@@ -1644,8 +1644,8 @@ p_exit = plant(("  } finally {\n    process.exit(0);\n  }", "  } finally {\n    
 r_red = subprocess.run(["node", str(p_exit), "hook", "PreToolUse"], input="}{not json",
                        capture_output=True, text=True, env=s_es.env(), cwd=str(HERE))
 eq("RED: a reporter that propagates its failure exits non-zero", True, r_red.returncode != 0)
-p_net = plant(("function hookMain(hookName) {\n  const atMs = now();",
-               "function hookMain(hookName) {\n  const atMs = now();\n  try { require('child_process').execSync('sleep 2'); } catch (e) {}"))
+p_net = plant(("function hookMain(hookName) {\n",
+               "function hookMain(hookName) {\n  try { require('child_process').execSync('sleep 2'); } catch (e) {}\n"))
 t0 = time.perf_counter()
 subprocess.run(["node", str(p_net), "hook", "PreToolUse"], input=json.dumps(pre()),
                capture_output=True, text=True, env=s3.env(), cwd=str(HERE))
@@ -1867,9 +1867,9 @@ def sweep(seat_obj: Seat, extra_streams: list[str]) -> list[str]:
 control_seat = seat("secrets-control")
 p_leak = plant(("      if (config && config.spool_dir) logLine(config.spool_dir, cmd || 'unknown', `crashed: ${e && e.stack}`);",
                 "      if (config && config.spool_dir) logLine(config.spool_dir, cmd || 'unknown', `crashed: ${e && e.stack}`);"),
-               ("function hookMain(hookName) {\n  const atMs = now();",
-                "function hookMain(hookName) {\n  const atMs = now();\n  { const c = loadConfig(configPath()).config; "
-                "if (c) { try { fs.appendFileSync(path.join(c.spool_dir, 'log', 'leak.log'), 'token=' + c.token + '\\n'); } catch (e) {} } }"))
+               ("function hookMain(hookName) {\n",
+                "function hookMain(hookName) {\n  { const c = loadConfig(configPath()).config; "
+                "if (c) { try { fs.appendFileSync(path.join(c.spool_dir, 'log', 'leak.log'), 'token=' + c.token + '\\n'); } catch (e) {} } }\n"))
 (control_seat.spool / "log").mkdir(parents=True, exist_ok=True)
 r_leak = hook(control_seat, "PreToolUse", pre(), reporter=p_leak)
 control_hits = sweep(control_seat, [r_leak.stdout, r_leak.stderr])
@@ -3268,12 +3268,13 @@ redgreen("the OS username never reaches the wire via project_label (§ 1 non-goa
 
 
 print("\n== 17. THE BUCKET IS DERIVED AT THE WRITE, AND § 6.1's PATTERN ADMITS ITS OWN EXAMPLE ==")
-# § 11.1: a hook entering at 13:59:59.900 must not write into bucket 13 after the hour rolled —
-# the flusher's next pass is <= 10 s away and would read to EOF and unlink. The entry timestamp
-# is moved back an hour, which is that boundary made deterministic; the event's `event_time`
-# must follow the entry clock while the FILE it lands in must follow the write clock.
-ENTRY_BACK_AN_HOUR = (r"function hookMain\(hookName\) \{\n  const atMs = now\(\);",
-                      "function hookMain(hookName) {\n  const atMs = now() - 3600000;")
+# § 11.1: a hook stamping its events at 13:59:59.900 must not write into bucket 13 after the hour
+# rolled — the flusher's next pass is <= 10 s away and would read to EOF and unlink. The events'
+# stamp (§ 11.2: read when the section takes the seat write lock) is moved back an hour, which is
+# that boundary made deterministic; the event's `event_time` must follow the stamp while the FILE
+# it lands in must follow the write clock.
+ENTRY_BACK_AN_HOUR = (r"held = acquireWriteLock\(spool\); stamp = now\(\);",
+                      "held = acquireWriteLock(spool); stamp = now() - 3600000;")
 
 
 def bucket_of(rfc: str) -> str:
@@ -3301,15 +3302,15 @@ s16 = seat("bucket-at-write")
 hook(s16, "PreToolUse", pre(), reporter=plant_src(ENTRY_BACK_AN_HOUR))
 entry_b, written_b = emitted_bucket(s16)
 eq("an event emitted after the hour rolled lands in the bucket the WRITE clock names, one hour "
-   "on from the timestamp captured at process entry", [bucket_shift(entry_b, 1)], written_b)
-eq("  … while event_time still carries the entry clock, so placement and semantics are not "
+   "on from the event's stamp", [bucket_shift(entry_b, 1)], written_b)
+eq("  … while event_time still carries the stamp, so placement and semantics are not "
    "conflated", True, entry_b == bucket_shift(written_b[0], -1))
-# RED: the pre-fix derivation — the bucket taken from the entry timestamp at both writers.
+# RED: the pre-fix derivation — the bucket taken from the event's stamp at both writers.
 s16r = seat("bucket-at-entry")
 hook(s16r, "PreToolUse", pre(),
      reporter=plant_src(ENTRY_BACK_AN_HOUR, (r"utcBucket\(now\(\)\)", "utcBucket(t)")))
 entry_r, written_r = emitted_bucket(s16r)
-eq("RED: derived at process entry it lands in the PREVIOUS hour's bucket — behind a cursor the "
+eq("RED: derived from the stamp it lands in the PREVIOUS hour's bucket — behind a cursor the "
    "flusher may already have read to EOF and unlinked", [entry_r], written_r)
 
 # § 6.1's `harness_label` pattern has to accept § 6.1's own mandated value. The doc and the
@@ -4548,6 +4549,160 @@ redgreen("a statusLine with no usable context_window raises no harness_contract_
          "counted as context_window_unavailable, which raises no member; an upgraded seat's saved total and "
          "unfolded old-name delta arrive as context_window_unavailable (3) and the badge clears; control: "
          "a payload_key_missing.* key no table names still raises harness_contract_moved")
+
+
+print("\n== 19g. ONE SEAT'S SPOOL ORDER IS ITS event_time ORDER, ACROSS EVERY WRITER (D1 § 11.2, card#11563) ==")
+# Every writer reads the clock its events carry while holding the seat write lock and appends them
+# before releasing it. Before card#11563 a hook read its clock at ENTRY and appended after stdin
+# and the index fold, and the flusher stamped its heartbeat at the start of a pass that had since
+# awaited the network — so two writers could append in the opposite order to their clocks. The
+# probe card#11563 names measured it with real racing processes (5 of 80 trials); the cases below
+# make the same interleavings DETERMINISTIC, by holding one writer at the exact point the race
+# needs it held, and assert on the spool itself.
+#
+# THE RED is one plant on the primitive: the stamp replaced by the clock read when the process
+# started, which is where a hook read it before card#11563. The lock is still taken and released.
+p19g_entry = plant(
+    ("const now = () => Date.now() + CLOCK_OFFSET;\n",
+     "const now = () => Date.now() + CLOCK_OFFSET;\nconst PROCESS_ENTRY_MS = Date.now() + CLOCK_OFFSET;\n"),
+    ("held = acquireWriteLock(spool); stamp = now();",
+     "held = acquireWriteLock(spool); stamp = PROCESS_ENTRY_MS;"))
+
+
+def spool_times(s: Seat) -> list[tuple[str, str]]:
+    """(event_time, kind) for every spooled event, in SPOOL order — the order seq is assigned in."""
+    return [(e["event_time"], e["kind"]) for e in s.events()]
+
+
+def inversions(s: Seat) -> list[str]:
+    """Every pair spooled in the opposite order to its event_times — all pairs, not only adjacent
+    ones: a later-stamped event can sit any distance ahead of the older one it overtook."""
+    t = spool_times(s)
+    return [f"{a[1]}@{a[0]} spooled before {b[1]}@{b[0]}"
+            for i, a in enumerate(t) for b in t[i + 1:] if b[0] < a[0]]
+
+
+def silence_race(name: str, reporter: Path) -> Seat:
+    """§ 6.2's inferred close against a `Stop` that ENTERED before it and appends after it.
+
+    The Stop hook is started and held on its stdin, which it reads after its old entry-time clock
+    and before its index fold; a one-pass flusher then closes the silent session; then the Stop is
+    released. That is the probe's measured interleaving with the timing removed."""
+    s = seat(name, ingest=DEAD)
+    old = int(time.time() * 1000) - 92 * 60_000
+    hook(s, "UserPromptSubmit", {"session_id": SID, "hook_event_name": "UserPromptSubmit",
+                                 "prompt_id": "p1", "prompt": "go"},
+         reporter=reporter, FLEET_REPORTER_NOW_MS=old)
+    hook(s, "PreToolUse", pre(), reporter=reporter, FLEET_REPORTER_NOW_MS=old + 1000)
+    held = subprocess.Popen(["node", str(reporter), "hook", "Stop"], stdin=subprocess.PIPE,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True,
+                            env=s.env(), cwd=str(HERE))
+    time.sleep(1.0)   # past node start-up and config load: the old reporter has read its clock
+    flush(s, reporter=reporter)
+    held.communicate(json.dumps({"session_id": SID, "hook_event_name": "Stop"}), timeout=30)
+    return s
+
+
+def heartbeat_race(name: str, reporter: Path) -> Seat:
+    """A hook that runs while the flusher awaits its health probe, i.e. after the pass's clock was
+    read and before the pass's heartbeat is spooled."""
+    s = seat(name)
+    hook(s, "PreToolUse", pre(tuid="hb_race_0"), reporter=reporter)
+    INGEST.get_script = [{"run": lambda: hook(s, "PreToolUse", pre(tuid="hb_race_1"), reporter=reporter)}]
+    try:
+        flush(s, reporter=reporter)
+    finally:
+        INGEST.get_script = []
+    return s
+
+
+r19g_s = silence_race("order-silence-red", p19g_entry)
+kinds_r = [k for _, k in spool_times(r19g_s)]
+eq("RED staging: the race happened — the flusher closed the session and the held Stop then ended "
+   "its turn", (True, True), ("session.end" in kinds_r, "turn.end" in kinds_r))
+inv_r = inversions(r19g_s)
+eq("RED: with the clock read at process entry, the held Stop's turn.end lands in the spool AFTER "
+   "the flusher's session.end and carries an OLDER event_time", True,
+   any(i.startswith("session.end@") and "before turn.end@" in i for i in inv_r))
+g19g_s = silence_race("order-silence-green", REPORTER)
+kinds_g = [k for _, k in spool_times(g19g_s)]
+eq("GREEN staging: the same race, the same two events", (True, True),
+   ("session.end" in kinds_g, "turn.end" in kinds_g))
+eq("GREEN: every event in the spool is in event_time order", [], inversions(g19g_s))
+
+r19g_h = heartbeat_race("order-heartbeat-red", p19g_entry)
+eq("RED staging: the hook ran during the probe, so the spool holds both calls' tool.start",
+   2, len([1 for _, k in spool_times(r19g_h) if k == "tool.start"]))
+eq("RED: a heartbeat stamped before the pass awaited the network is spooled behind the hook that "
+   "ran during the await, with an older event_time", True,
+   any(i.startswith("tool.start@") and "before reporter.heartbeat@" in i for i in inversions(r19g_h)))
+g19g_h = heartbeat_race("order-heartbeat-green", REPORTER)
+eq("GREEN staging: both tool.start and a heartbeat spooled",
+   (2, 1), (len([1 for _, k in spool_times(g19g_h) if k == "tool.start"]),
+            len([1 for _, k in spool_times(g19g_h) if k == "reporter.heartbeat"])))
+eq("GREEN: the heartbeat carries the clock of its own section, so the spool is in event_time order",
+   [], inversions(g19g_h))
+
+# THE LOCK ITSELF. A live holder makes a writer wait — bounded at K.WRITE_LOCK_WAIT_MS, then it
+# proceeds unlocked and COUNTS it, because a hook never holds up the harness for an ordering
+# guarantee. A dead or aged holder is broken and counted. The RED removes the exclusive create.
+p19g_nolock = plant(
+    ("      const fd = fs.openSync(lock, 'wx');\n",
+     "      return true;\n      const fd = fs.openSync(lock, 'wx');\n"))
+
+
+def held_lock(s: Seat, pid: int, age_s: float = 0.0) -> Path:
+    lk = s.spool / "write.lock"
+    lk.write_text(str(pid), encoding="utf-8")
+    t = time.time() - age_s
+    os.utime(lk, (t, t))
+    return lk
+
+
+def dead_pid() -> int:
+    p = subprocess.Popen(["true"])
+    p.wait()
+    return p.pid
+
+
+s19g_live = seat("write-lock-live", ingest=DEAD)
+lk = held_lock(s19g_live, os.getpid())
+hook(s19g_live, "PreToolUse", pre(tuid="wl_live"))
+# The counter is raised only once the wait's deadline has passed, so it is the measurement that the
+# hook waited; a wall-clock delta against a second hook would be node start-up jitter of the same size.
+eq("a live holder: the hook waits it out to the cap, proceeds, and counts write_lock_timeout",
+   1, s19g_live.counters().get("write_lock_timeout"))
+eq("  … its event is still spooled — a held lock costs ordering, never an event", 1,
+   len([1 for _, k in spool_times(s19g_live) if k == "tool.start"]))
+eq("  … and it leaves the holder's lock in place, since it never held it", str(os.getpid()),
+   lk.read_text(encoding="utf-8"))
+s19g_live_r = seat("write-lock-live-red", ingest=DEAD)
+held_lock(s19g_live_r, os.getpid())
+hook(s19g_live_r, "PreToolUse", pre(tuid="wl_live_r"), reporter=p19g_nolock)
+eq("RED: with no exclusive create the hook ignores a live holder and counts nothing", None,
+   s19g_live_r.counters().get("write_lock_timeout"))
+
+s19g_dead = seat("write-lock-dead", ingest=DEAD)
+held_lock(s19g_dead, dead_pid())
+hook(s19g_dead, "PreToolUse", pre(tuid="wl_dead"))
+eq("a holder whose pid is gone is broken at once and counted; the hook's own lock is released",
+   (1, None, False), (s19g_dead.counters().get("write_lock_broken"),
+                      s19g_dead.counters().get("write_lock_timeout"),
+                      (s19g_dead.spool / "write.lock").exists()))
+s19g_aged = seat("write-lock-aged", ingest=DEAD)
+held_lock(s19g_aged, os.getpid(), age_s=10.0)
+hook(s19g_aged, "PreToolUse", pre(tuid="wl_aged"))
+eq("a live pid on a lock 10 s old — a reused pid, or a holder hung far past any section — is "
+   "broken and counted", (1, None), (s19g_aged.counters().get("write_lock_broken"),
+                                     s19g_aged.counters().get("write_lock_timeout")))
+redgreen("one seat's spool order is its event_time order (D1 § 11.2, card#11563)",
+         "the clock read at process entry: a Stop held between its entry and its append puts "
+         "turn.end behind the flusher's session.end with an older event_time, and a heartbeat "
+         "stamped before the pass's network await lands behind a hook that ran during it; with no "
+         "exclusive create a hook ignores a live holder and counts nothing",
+         "both interleavings leave the spool in event_time order; a live holder makes the hook "
+         "wait to the cap, then spool its event and count write_lock_timeout; a dead or 10 s old "
+         "holder is broken and counted write_lock_broken")
 
 
 print("\n== 20. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")

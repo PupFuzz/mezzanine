@@ -985,6 +985,15 @@ processes, as Step 5 reports.
   clears at the first heartbeat after Step 1's artifact is replaced and Step 5's flusher restarted,
   unless a missing harness payload key also raises it. A seat that applied only Step 4(a) never
   counted the gap.
+- **A seat spools its events in `event_time` order only on a build that includes card#11563.** That
+  build has every writer stamp its events under a lock file, `write.lock` in the spool directory
+  (D1 § 11.2), so the flusher delivers them oldest-first. An older build can spool a hook's event
+  behind a newer one, most often behind the flusher's 90-minute `inferred_silence` close, and the
+  server's guards (FLEET-STATE § 6.5) handle that order. Hooks load the reporter when they fire, so
+  they stamp this way as soon as Step 1's artifact is replaced. The flusher's own events, its
+  heartbeat and its inferred close, follow once Step 5's flusher is restarted, because a running
+  flusher keeps the code it started with. Step 8's item 5 removes `write.lock` with the rest of the
+  spool directory.
 - **No context gauge** while Step 4(b) is not applied, which is the sandbox's state.
 - **No Windows procedure exists yet.** One is owed when the Windows agent seat onboards, a real
   Windows machine. By operator ruling on 2026-09-13, D1 § 13's Windows validation is not required

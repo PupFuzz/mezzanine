@@ -915,7 +915,8 @@ gap it exposes:
   `unknown` / `session_closed_turn_open` — never `idle`, because no `turn.end(stop_hook, [])` was ever
   observed. **That record is an inference, and the seat's real `turn.end` for the same turn overrides
   it** even when stamped before the close (card#11561): the flusher emits `session.end(inferred_silence)`
-  from its own process, so a `Stop` hook that read the clock first can reach the spool after it. In
+  from its own process, so on a reporter older than card#11563 a `Stop` hook that read the clock first
+  can reach the spool after it. In
   order that `turn.end` closes the turn and this rule finds it closed; [§ 6.5](#65-the-fold) states the
   guard. **One means is excepted: offline quiescence**, which closes those calls before it ends the
   session, so this rule finds none open and [§ 4.6](#46-every-open-fact-has-a-ceiling)'s values and
@@ -2308,10 +2309,14 @@ greater. Arrival order therefore decides *when* work happens and never *which va
 
 **Each group is guarded on its own time, and a close the server inferred is not an observation**
 (card#11561). One seat's events DO reach the ingest out of `event_time` order: the reporter delivers
-its spool in append order (a retried batch is re-sent before anything after it), but `event_time` is
-read when a hook starts and the line is appended when it finishes, so two writers that overlap can land
-newer-first. The flusher's `session.end(inferred_silence)` racing a `Stop` hook of the same session is
-the measured case. These guards follow from that:
+its spool in append order (a retried batch is re-sent before anything after it), and a reporter older
+than card#11563 read `event_time` when a hook started and appended the line when it finished, so two
+writers that overlapped could land newer-first. The flusher's `session.end(inferred_silence)` racing a
+`Stop` hook of the same session is the measured case. From card#11563 every writer stamps under the
+seat write lock ([D1 § 11.2](EVENT-SCHEMA.md#112-spool-line-format)), so such a reporter delivers in
+`event_time` order apart from a clock step or a writer that went ahead without the lock, which the
+reporter counts ([D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters)). Older reporters stay in the
+fleet, so the guards stay. These guards follow from that:
 
 - **The turn narrative** (`turn_started_at`, `turn_prompt_chars`, `console_url`) is guarded on
   `turn_started_at`, so an older `turn.start` arriving late leaves the newer turn's narrative alone.

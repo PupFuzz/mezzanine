@@ -104,6 +104,9 @@ const K = {
   BADGE_WINDOW_MS: 86400000,     // § 9.3 24 h — a member is raised while a counter that raises it
                                  // rose within this window (operator ruling 2026-09-14, card#9491)
   BUCKET_GRACE_MS: 5000,         // § 11.1 20x the P-5 hook budget
+  WRITE_LOCK_WAIT_MS: 100,       // § 11.2 the most a writer waits for the seat write lock: 40% of P-5
+  WRITE_LOCK_STALE_MS: 1000,     // § 11.2 4x P-5 — a live holder's section is far inside it
+  WRITE_LOCK_POLL_MS: 1,         // § 11.2
   WRAPPED_STATUSLINE_MS: 1000,   // § 6.11
   STATUSLINE_CADENCE_MS: 60000,  // § 6.11
   STATUSLINE_BUCKET_PCT: 5,      // § 6.11
@@ -1243,9 +1246,111 @@ function clampInt(v, lo, hi, wireField) {
   return n;
 }
 
-function makeEmitter(cfg, spool) {
-  return function emit(kind, sessionId, data, atMs) {
-    const t = atMs === undefined ? now() : atMs;
+/* ── THE SEAT WRITE LOCK (§ 11.2, card#11563) ─────────────────────────────────────────────────
+ * ONE SEAT'S SPOOL ORDER AND ITS event_time ORDER ARE THE SAME ORDER, and this lock is what makes
+ * them so. Every writer of the events tree — a hook, a statusLine render, the flusher's reaps,
+ * its inferred close and its heartbeat — reads the clock its events carry only while holding
+ * it, and appends those events before letting it go. Before card#11563 a hook read its clock at
+ * ENTRY and appended after config load, stdin and the index fold, and the flusher appended
+ * events stamped at the start of a pass that had since awaited the network; two writers could
+ * therefore append in the opposite order to their clocks. Measured with the probe card#11563
+ * names: 5 of 80 trials put a flusher `session.end` in the spool ahead of an older `turn.end`.
+ * O_APPEND makes each LINE atomic; it orders nothing across a clock read.
+ *
+ * A HOOK HOLDS IT FROM ITS FIRST EMIT TO THE END OF ITS SECTION; THE FLUSHER FROM BEFORE ITS
+ * INDEX FOLD. `withSeatWriter` below says why the two differ and what each costs.
+ *
+ * BOUNDED AND COUNTED, NEVER BLOCKING THE SEAT (P-1, P-5). An exclusive create, a poll, and a
+ * wait capped at K.WRITE_LOCK_WAIT_MS; past the cap the writer proceeds unlocked and counts
+ * `write_lock_timeout`, because a lost ordering guarantee is a smaller harm than a hook that
+ * holds up the harness. A holder whose pid is gone, or whose lock is older than
+ * K.WRITE_LOCK_STALE_MS, is broken and counted `write_lock_broken` — a hook the harness kills
+ * mid-section never wakes to release. The ages are WALL time, not `now()`: FLEET_REPORTER_NOW_MS
+ * shifts the seat's clock for tests, and a lock's age is a duration on the filesystem's clock. */
+const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+function pidAlive(pid) {
+  try { process.kill(pid, 0); return true; }
+  catch (e) { return e.code !== 'ESRCH'; }   // EPERM: alive, another user's
+}
+
+function breakStaleWriteLock(lock) {
+  let body, st;
+  try { body = fs.readFileSync(lock, 'utf8'); st = fs.statSync(lock); } catch (e) { return e.code === 'ENOENT'; }
+  const pid = Number(body);
+  const dead = Number.isInteger(pid) && pid > 0 && !pidAlive(pid);
+  if (!dead && Date.now() - st.mtimeMs < K.WRITE_LOCK_STALE_MS) return false;
+  try {
+    // Unlink only the lock that was judged: a breaker that read a dead holder must not remove the
+    // lock a faster breaker has since created in its place.
+    if (fs.readFileSync(lock, 'utf8') !== body || fs.statSync(lock).mtimeMs !== st.mtimeMs) return false;
+    fs.unlinkSync(lock);
+  } catch (e) { return false; }
+  count('write_lock_broken');
+  return true;
+}
+
+function acquireWriteLock(spool) {
+  const lock = path.join(spool, 'write.lock');
+  const deadline = Date.now() + K.WRITE_LOCK_WAIT_MS;
+  let madeDir = false;
+  for (;;) {
+    try {
+      const fd = fs.openSync(lock, 'wx');
+      try { fs.writeSync(fd, String(process.pid)); } finally { fs.closeSync(fd); }
+      return true;
+    } catch (e) {
+      // A spool not yet created is a seat's first write, and `appendLine` would create it: so
+      // does this, once, rather than letting that first section append unlocked.
+      if (e.code === 'ENOENT' && !madeDir) { madeDir = true; ensureDir(spool); continue; }
+      // Any other error but contention (a read-only spool) is one the appends that follow meet
+      // too, and `appendLine` counts those; waiting here would only add latency to them.
+      if (e.code !== 'EEXIST') return false;
+    }
+    if (breakStaleWriteLock(lock)) continue;
+    if (Date.now() >= deadline) { count('write_lock_timeout'); return false; }
+    sleepSync(K.WRITE_LOCK_POLL_MS);
+  }
+}
+
+function releaseWriteLock(spool) {
+  const lock = path.join(spool, 'write.lock');
+  try { if (fs.readFileSync(lock, 'utf8') === String(process.pid)) fs.unlinkSync(lock); }
+  catch (e) { /* broken under us as stale: the breaker counted it */ }
+}
+
+/* A SECTION, and the ONLY way to obtain an emitter: `fn(ctx, atMs)` gets `ctx.emit` and the
+ * section's DECISION clock `atMs` — the one its durations, ids and ceilings are computed with.
+ * There is no emitter outside a section, so a writer added later inherits the ordering instead
+ * of re-opening it.
+ *
+ * THE LOCK IS TAKEN AT THE SECTION'S FIRST EMIT, NOT AT ITS START, and the events carry the
+ * clock read the moment it is taken. Holding it from the section's start was measured on the
+ * card#11563 build: a hook's index fold and payload work are ~90 % of such a hold and its appends
+ * ~10 % (median 20.9 ms against 2.0 ms on a host at load average ~21), and the hold is what every
+ * concurrent hook of the seat waits on. Taken at the first emit, the guarantee is the same —
+ * no writer reads its stamp between another writer's stamp and that writer's last append — for a
+ * tenth of the wait. A section that never emits (most statusLine renders) never takes it.
+ *
+ * `ctx.take()` takes it early, and returns the stamp: the flusher calls it BEFORE its index fold,
+ * so its inferred close (§ 6.2) decides against every hook section that emitted before it, and
+ * its stamp is then its decision clock as well. */
+function withSeatWriter(config, spool, fn) {
+  let held = false, stamp = null;
+  const take = () => {
+    if (stamp === null) { held = acquireWriteLock(spool); stamp = now(); }
+    return stamp;
+  };
+  try { return fn({ config, spool, emit: makeEmitter(config, spool, take), take }, now()); }
+  finally { if (held) releaseWriteLock(spool); }
+}
+
+/* `event_time` is the section's stamp (`withSeatWriter`), read under the seat write lock — never
+ * a clock the caller passes in, which is what kept one seat's spool order and event_time order
+ * apart before card#11563. Every event of one section carries the one stamp. */
+function makeEmitter(cfg, spool, take) {
+  return function emit(kind, sessionId, data) {
+    const t = take();
     const ev = {
       event_id: ulid(t), schema_version: SCHEMA_VERSION, kind, event_time: rfc3339(t),
       install_id: cfg.install_id, seat_id: cfg.seat_id, session_id: sessionId, data,
@@ -1473,12 +1578,12 @@ function reapOne(ctx, entry, abortReason, closeSource, atMs) {
     call_id: entry.call_id, tool_name: entry.tool_name, outcome: 'aborted',
     abort_reason: abortReason, duration_ms: d.duration_ms, duration_source: d.duration_source,
     close_source: closeSource, match: 'reap',
-  }, atMs);
+  });
   if (entry.is_dispatch) {
     ctx.emit('subagent.stop', entry.session_id, {
       call_id: entry.call_id, outcome: 'aborted', abort_reason: abortReason,
       duration_ms: d.duration_ms, close_source: closeSource,
-    }, atMs);
+    });
   }
 }
 
@@ -1506,7 +1611,7 @@ function resolveAttention(ctx, ix, sessionId, resolution, source, atMs) {
   ctx.emit('attention.resolved', sessionId, {
     request_id: a.request_id, resolution, resolution_source: source,
     waited_ms: Math.max(0, atMs - Date.parse(a.opened_at || atMs)),
-  }, atMs);
+  });
   return true;
 }
 
@@ -1529,7 +1634,7 @@ function emitTurnEnd(ctx, ix, sessionId, endReason, apiErrorType, openBefore, ab
     background_tasks_open: Array.isArray(payload.background_tasks) ? payload.background_tasks.length : 0,
     tool_calls: turn ? turn.tool_calls : 0,
     failed_calls: turn ? turn.failed_calls : 0,
-  }, atMs);
+  });
   journal(ctx.spool, { k: 'turn_close', session_id: sessionId });
   ix.turns.delete(sessionId);
 }
@@ -1551,7 +1656,7 @@ function reapSessionBoundary(ctx, ix, sessionId, endReasonWire, abortReason, atM
     duration_ms: s && s.opened_at ? Math.max(0, atMs - Date.parse(s.opened_at)) : null,
     turns: s ? s.turns : null,
     aborted_calls: aborted.length,
-  }, atMs);
+  });
   resolveAttention(ctx, ix, sessionId, 'session_ended', 'session_end', atMs);
   journal(ctx.spool, { k: 'session_close', session_id: sessionId });
   ix.sessions.delete(sessionId); ix.turns.delete(sessionId);
@@ -1610,7 +1715,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       emit('session.start', sid, {
         source, project_label: projectLabel(payload), harness_label: harnessLabel(ctx.config),
         previous_session_id: previous,
-      }, atMs);
+      });
       break;
     }
 
@@ -1644,7 +1749,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         prompt_chars: prompt === null ? null : clampInt(prompt.length, 0, 1000000, 'turn.start.prompt_chars'),
         project_label: projectLabel(payload),
         console_url: consoleUrl(payload, ctx.config),
-      }, atMs);
+      });
       break;
     }
 
@@ -1701,7 +1806,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         descriptor_truncated: d.truncated, agent_scope: agentId ? 'subagent' : 'main',
         parent_call_id: parentCallId, harness_call_ref: ref,
         open_calls_before: Math.min(openBefore, K.OPEN_CALLS),
-      }, atMs);
+      });
       if (isDispatch) {
         // § 6.7 — the dispatch tool's PAYLOAD tool_name is "Agent" at 2.1.240; "Task" is the
         // model-facing name. Both are matched, because a design keyed on "Task" alone would
@@ -1715,7 +1820,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         emit('subagent.spawn', sid, {
           call_id: callId, title: title ? title.text : null,
           title_truncated: title ? title.truncated : false, subagent_type: st,
-        }, atMs);
+        });
       }
       break;
     }
@@ -1739,7 +1844,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
           agent_scope: agentId ? 'subagent' : 'main', parent_call_id: null,
           harness_call_ref: ref, open_calls_before: Math.min(ix.calls.size, K.OPEN_CALLS),
           synthesized: true,
-        }, atMs);
+        });
         entry = { call_id: callId, session_id: sid, tool_name: toolName, started_at: rfc3339(atMs), is_dispatch: false, prompt_id: payload.prompt_id || null };
         matchKind = 'synthesized';
       } else if (m.tombstone) {
@@ -1787,12 +1892,12 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         call_id: entry.call_id, tool_name: entry.tool_name || toolName, outcome,
         abort_reason: abortReason, duration_ms: d.duration_ms, duration_source: d.duration_source,
         close_source: failed ? 'post_tool_use_failure' : 'post_tool_use', match: matchKind,
-      }, atMs);
+      });
       if (entry.is_dispatch) {
         emit('subagent.stop', sid, {
           call_id: entry.call_id, outcome, abort_reason: abortReason,
           duration_ms: d.duration_ms, close_source: failed ? 'post_tool_use_failure' : 'post_tool_use',
-        }, atMs);
+        });
       }
       // § 6.13 rows 2 and 3 — the tool ran, so permission was given.
       const a = ix.attention.get(sid);
@@ -1857,11 +1962,11 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         call_id: entry.call_id, tool_name: entry.tool_name, outcome: 'completed',
         abort_reason: null, duration_ms: d.duration_ms, duration_source: d.duration_source,
         close_source: 'subagent_stop_hook', match: matchKind,
-      }, atMs);
+      });
       emit('subagent.stop', sid, {
         call_id: entry.call_id, outcome: 'completed', abort_reason: null,
         duration_ms: d.duration_ms, close_source: 'subagent_stop_hook',
-      }, atMs);
+      });
       break;
     }
 
@@ -1878,7 +1983,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         context_used_pct: sample ? sample.used_pct : null,
         context_used_pct_age_s: sample ? Math.round((atMs - Date.parse(sample.at)) / 1000) : null,
         open_calls: Math.min(ix.calls.size, K.OPEN_CALLS),
-      }, atMs);
+      });
       break;
     }
     case 'PostCompact': {
@@ -1941,7 +2046,7 @@ function openAttention(ctx, ix, sid, source, kind, atMs) {
     request_id: requestId, source, notification_kind: kind,
     call_id: openCalls.length === 1 ? openCalls[0].call_id : null,
     open_calls: Math.min(openCalls.length, K.OPEN_CALLS),
-  }, atMs);
+  });
 }
 
 function closeCompaction(ctx, ix, sid, closeSource, atMs) {
@@ -1952,7 +2057,7 @@ function closeCompaction(ctx, ix, sid, closeSource, atMs) {
   ctx.emit('compaction.end', sid, {
     duration_ms: c.started_at ? Math.max(0, atMs - Date.parse(c.started_at)) : null,
     close_source: closeSource,
-  }, atMs);
+  });
   return true;
 }
 
@@ -2059,14 +2164,13 @@ function dropSpoolBucket(spool, file, cursor) {
  * ════════════════════════════════════════════════════════════════════════════════════════════ */
 
 function hookMain(hookName) {
-  const atMs = now();
   const cp = configPath();
   const { config, errors } = loadConfig(cp);
   if (!config) return;                                   // nothing to spool to, and nothing to say
   registerConfigSecrets(config);
   const spool = config.spool_dir;
   if (errors.length) { count('config_invalid'); logLine(spool, 'hook', `config invalid: ${errors.join('; ')}`); }
-  if (!spool || !config.install_id || !config.seat_id) { flushCounters(spool, 'hook', atMs); return; }
+  if (!spool || !config.install_id || !config.seat_id) { flushCounters(spool, 'hook'); return; }
   // § 3.1/§ 6.14 — `enabled: false` is the ONLY switch that stops emission. The hooks go quiet
   // and the flusher keeps heartbeating with enabled:false, so the desk renders *disabled*
   // rather than sliding through stale into offline and looking broken.
@@ -2080,17 +2184,23 @@ function hookMain(hookName) {
   // healthy value is 0 and any non-zero is real.
   if (typeof payload.hook_event_name === 'string' && payload.hook_event_name !== hookName) count('hook_name_mismatch');
 
-  const ctx = { config, spool, emit: makeEmitter(config, spool) };
-  const ix = foldIndex(spool, atMs);
-  // § 8.2 — the seventeenth session evicts the least-recently-active one, and the eviction
-  // REAPS: its open calls close exactly as a SessionEnd would and its session.end goes out as
-  // `inferred_silence`. Without this the bound was asserted twice with nothing enforcing it,
-  // and the seventeenth session's calls would never be reaped at all.
-  for (const evicted of ix.evicted) reapSessionBoundary(ctx, ix, evicted, 'inferred_silence', 'session_ended', atMs);
-  handleHook(ctx, hookName, payload, ix, atMs);
-  enforceSpoolBoundFromHook(spool, atMs);
+  /* ONE SECTION OF THE SEAT WRITER (§ 11.2, card#11563). Its decision clock is read here, after
+   * stdin, and its events carry the stamp read when its first emit takes the seat write lock —
+   * never the entry-time clock a hook used to stamp with, which let another writer append a
+   * later-stamped event ahead of this hook's older one. No clock is read before this point. */
+  const at = withSeatWriter(config, spool, (ctx, sectionAt) => {
+    const ix = foldIndex(spool, sectionAt);
+    // § 8.2 — the seventeenth session evicts the least-recently-active one, and the eviction
+    // REAPS: its open calls close exactly as a SessionEnd would and its session.end goes out as
+    // `inferred_silence`. Without this the bound was asserted twice with nothing enforcing it,
+    // and the seventeenth session's calls would never be reaped at all.
+    for (const evicted of ix.evicted) reapSessionBoundary(ctx, ix, evicted, 'inferred_silence', 'session_ended', sectionAt);
+    handleHook(ctx, hookName, payload, ix, sectionAt);
+    return sectionAt;
+  });
+  enforceSpoolBoundFromHook(spool, at);
   maybeRespawnFlusher(spool, cp);
-  flushCounters(spool, 'hook', atMs);
+  flushCounters(spool, 'hook', at);
 }
 
 /* ── statusline (§ 6.11) ─────────────────────────────────────────────────────────────────────
@@ -2101,7 +2211,6 @@ function hookMain(hookName) {
  * counter line, so statusLine-side counters are a FLOOR, not a census. They are read for
  * direction (zero vs non-zero), never for arithmetic. */
 function statuslineMain() {
-  const atMs = now();
   const cp = configPath();
   const { config, errors } = loadConfig(cp);
   const raw = readStdin();
@@ -2112,7 +2221,10 @@ function statuslineMain() {
 
   try {
     if (spool && config.install_id && config.seat_id && config.enabled !== false) {
-      sampleContext(config, spool, parsePayload(raw), atMs);
+      // A section of the seat writer, like every writer of the events tree (§ 11.2, card#11563):
+      // a `context.sample` carries the stamp its emit takes the lock with. A suppressed render
+      // emits nothing and never takes the lock.
+      withSeatWriter(config, spool, (ctx, sectionAt) => sampleContext(ctx, parsePayload(raw), sectionAt));
     }
   } catch (e) { logLine(spool, 'statusline', `sample failed: ${e && e.message}`); }
 
@@ -2135,10 +2247,11 @@ function statuslineMain() {
       if (r.error || r.status !== 0 || r.signal) count('wrapped_statusline_failures');
     }
   } catch (e) { count('wrapped_statusline_failures'); }
-  if (spool) flushCounters(spool, 'statusline', atMs);
+  if (spool) flushCounters(spool, 'statusline');
 }
 
-function sampleContext(config, spool, payload, atMs) {
+function sampleContext(ctx, payload, atMs) {
+  const spool = ctx.spool;
   const cw = payload.context_window && typeof payload.context_window === 'object' ? payload.context_window : null;
   let usedPct = null, source = null, usedTokens = null, totalTokens = null;
   if (cw) {
@@ -2192,14 +2305,14 @@ function sampleContext(config, spool, payload, atMs) {
   const model = payload.model && typeof payload.model === 'object' && typeof payload.model.display_name === 'string'
     ? sanitize(payload.model.display_name, 48) : null;
   if (model) countSanitizer(model);
-  makeEmitter(config, spool)('context.sample', sid, {
+  ctx.emit('context.sample', sid, {
     used_pct: usedPct,
     used_tokens: usedTokens === null ? null : clampInt(usedTokens, 0, 10000000, 'context.sample.used_tokens'),
     total_tokens: totalTokens === null ? null : clampInt(totalTokens, 1, 10000000, 'context.sample.total_tokens'),
     used_pct_source: source,
     model_label: model ? model.text : null,
     sample_reason: reason,
-  }, atMs);
+  });
 }
 
 /* ════════════════════════════════════════════════════════════════════════════════════════════
@@ -2892,7 +3005,8 @@ function spoolLag(spool, state) {
   return { lines, oldest };
 }
 
-function emitHeartbeat(cfg, spool, state, ix, selftest, declaration, atMs) {
+function emitHeartbeat(ctx, state, ix, selftest, declaration, atMs) {
+  const { config: cfg, spool } = ctx;
   const all = state.counters;
   const { counters, counters_omitted } = buildCounters(all);
   if (counters_omitted > 0) all['data_truncated.reporter.heartbeat.counters'] = (all['data_truncated.reporter.heartbeat.counters'] || 0) + 1;
@@ -2904,7 +3018,7 @@ function emitHeartbeat(cfg, spool, state, ix, selftest, declaration, atMs) {
   // yet measured (null) rides it as `fail`; only the one-shot subcommand reports `not_measured`. Once
   // measured, a check holds its last measured value (flusherMain), never null again.
   for (const c of SELFTEST_CHECKS) st[c] = selftest[c] === true ? 'pass' : 'fail';
-  makeEmitter(cfg, spool)('reporter.heartbeat', null, {
+  ctx.emit('reporter.heartbeat', null, {
     uptime_s: Math.max(0, Math.round((atMs - Date.parse(state.started_at)) / 1000)),
     spool_bytes: Math.min(spoolBytes(spool), K.SPOOL_BYTES),
     spool_files: Math.min(spoolBuckets(spool).length, 400),
@@ -2928,7 +3042,7 @@ function emitHeartbeat(cfg, spool, state, ix, selftest, declaration, atMs) {
     degraded: buildDegraded(windowedCounters(state, atMs)).slice(0, K.DEGRADED_MAX),
     counters, counters_omitted, predicates, selftest: st,
     config_fingerprint: configFingerprint(cfg),
-  }, atMs);
+  });
 }
 
 function writeSnapshot(spool, state, ix) {
@@ -3015,15 +3129,14 @@ async function flusherMain() {
    * corrected config, and so does a `ca_file` that is not an absolute path: its re-check fails every pass. */
   let caPending = errors.length === 1 && caError !== null;
 
-  const emit = makeEmitter(config, spool);
-  const ctx = { config, spool, emit };
-
   // Flusher start finds index entries older than its own start time: those calls belong to a
-  // reporter that is no longer running (§ 8.3's last row).
-  {
-    const ix = foldIndex(spool, atStart);
-    reap(ctx, ix, (e) => Date.parse(e.started_at || 0) < atStart, 'reporter_restart', 'reap_reporter_restart', atStart);
-  }
+  // reporter that is no longer running (§ 8.3's last row). The SELECTION keys on `atStart`; the
+  // fold and the closes run under the seat write lock, on its stamp (§ 11.2).
+  withSeatWriter(config, spool, (ctx) => {
+    const at = ctx.take();
+    const ix = foldIndex(spool, at);
+    reap(ctx, ix, (e) => Date.parse(e.started_at || 0) < atStart, 'reporter_restart', 'reap_reporter_restart', at);
+  });
 
   const started = runSelftestChecks(config, cp);
   let selftest = started.results;
@@ -3042,9 +3155,19 @@ async function flusherMain() {
       foldCounterSink(spool, state);
       foldLocalCounters(state);
 
-      const ix = foldIndex(spool, atMs);
-      for (const evicted of ix.evicted) reapSessionBoundary(ctx, ix, evicted, 'inferred_silence', 'session_ended', atMs);
-      expireOpenFacts(ctx, ix, atMs);
+      /* THE FOLD, THE DECISIONS AND THEIR EMITS HOLD THE SEAT WRITE LOCK TOGETHER (§ 11.2,
+       * card#11563): `take()` comes before the fold, and its stamp is the decision clock too. The
+       * 90-minute inferred close then decides against an index holding every hook section that
+       * emitted before it, and its `session.end` cannot be appended ahead of an older event. A hook
+       * that has not emitted yet stamps after this section, so it lands after it in both orders.
+       * `atMs` stays the pass's clock for cadences only. */
+      const ix = withSeatWriter(config, spool, (ctx) => {
+        const at = ctx.take();
+        const fx = foldIndex(spool, at);
+        for (const evicted of fx.evicted) reapSessionBoundary(ctx, fx, evicted, 'inferred_silence', 'session_ended', at);
+        expireOpenFacts(ctx, fx, at);
+        return fx;
+      });
       writeSnapshot(spool, state, ix);
 
       if (caPending && readCaFile(config).error === null) {
@@ -3081,7 +3204,10 @@ async function flusherMain() {
 
       if (atMs - lastHeartbeat >= K.HEARTBEAT_MS) {
         lastHeartbeat = atMs;
-        emitHeartbeat(config, spool, state, ix, selftest, declaration, atMs);
+        // Its own section: the pass's `atMs` was read before the drain awaited the network, and a
+        // heartbeat stamped with it would land behind every hook event spooled during the drain
+        // while carrying an older event_time than all of them.
+        withSeatWriter(config, spool, (ctx, sectionAt) => emitHeartbeat(ctx, state, ix, selftest, declaration, sectionAt));
       }
 
       enforceSpoolBounds(spool, state, atMs);
@@ -3157,7 +3283,7 @@ function expireOpenFacts(ctx, ix, atMs) {
         end_reason: 'inferred_silence',
         duration_ms: s.opened_at ? Math.max(0, atMs - Date.parse(s.opened_at)) : null,
         turns: s.turns, aborted_calls: 0,
-      }, atMs);
+      });
     }
   }
 }
