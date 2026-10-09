@@ -1135,8 +1135,8 @@ FORMAT_CASES = [
     ("fmt-proxy-unparseable", "proxy_url", "http://proxy example:3128", True),
     ("fmt-proxy-no-scheme", "proxy_url", "proxy.corp:3128", True),
     ("fmt-proxy-empty", "proxy_url", "", True),
-    # A relative spool_dir drives `selftest` only: a hook or flusher on it writes under the suite's own
-    # working directory, which is the defect, and this suite never writes outside its temp tree.
+    # A relative spool_dir drives `selftest` only here; (e2) below drives a hook and a flusher on it from
+    # a temp working directory, because the old reporter writes under whatever directory that is.
     ("fmt-spool-relative", "spool_dir", "relative/spool", False),
 ]
 fmt = {n: drive_bad_config(n, k, v, flusher=f) for n, k, v, f in FORMAT_CASES}
@@ -1164,7 +1164,8 @@ p_fmt_old = plant(
     ("  else if (!parsesAsUrl(url)) errors.push('ingest_url is not a parseable URL (§ 3.1)');\n", ""),
     ("  if (typeof c.proxy_url === 'string' && !(/^https?:\\/\\//.test(c.proxy_url) && parsesAsUrl(c.proxy_url))) {\n"
      "    errors.push('proxy_url must be an absolute http:// or https:// URL, or null (§ 3.1)');\n  }\n", ""),
-    ("  if (!str('spool_dir') || !path.isAbsolute(c.spool_dir)) errors.push", "  if (!str('spool_dir')) errors.push"),
+    ("  const spool = str('spool_dir') && path.isAbsolute(c.spool_dir) ? c.spool_dir : null;\n  if (spool === null) errors.push",
+     "  const spool = str('spool_dir');\n  if (!spool) errors.push"),
     ("    if (r.invalid) return { kind: 'refused', status: 0, error: r.invalid };",
      "    if (r.invalid) return { kind: r.invalid === 'bad ingest_url' ? 'permanent' : 'refused', status: 0, error: r.invalid };"))
 fmt_red = {n: drive_bad_config(f"{n}-red", k, v, reporter=p_fmt_old, flusher=f) for n, k, v, f in FORMAT_CASES}
@@ -1184,6 +1185,50 @@ redgreen("a config value outside § 3.1's published format is a config error at 
          "; ".join(f"{k}={json.dumps(v)} -> config_readable={fmt[n]['check']}, errors={fmt[n]['errors']}"
                    + (f", config_invalid {fmt[n]['config_invalid']}, posts {fmt[n]['posts']}, retried {fmt[n]['retried']}, "
                       f"quarantined {fmt[n]['quarantined']}" if f else "") for n, k, v, f in FORMAT_CASES))
+
+
+# (e2) A RELATIVE `spool_dir` WRITES NOTHING ANYWHERE (card#9521). It names no directory a process can use, so
+# it is treated like an absent one: the hook and the flusher write no file at all. The old reporter, which
+# also refused it as a config error, still spooled, logged and counted under the process's working
+# directory — the agent's project directory for a hook, where the files can be committed. Each leg runs
+# from its own temp working directory and lists every file under it afterwards.
+def drive_relative_spool(name: str, reporter: Path = REPORTER) -> dict:
+    s = seat(name)
+    s.cfg["spool_dir"] = "relative/spool"
+    s.write_cfg()
+    cwd_hook = tmpdir("fr-cwd-hook-")
+    cwd_flusher = tmpdir("fr-cwd-flusher-")
+    r = subprocess.run(["node", str(reporter), "hook", "PreToolUse"], input=json.dumps(pre(tuid="toolu_rel")),
+                       capture_output=True, text=True, env=s.env(), cwd=str(cwd_hook))
+    spawned, _ = await_flushers(True, 2.0)          # a hook that finds no lock under its spool forks one
+    reap_flushers(spawned)
+    f = subprocess.run(["node", str(reporter), "flusher"], capture_output=True, text=True,
+                       env=s.env(freeze=False, FLEET_REPORTER_ONE_PASS="1"), cwd=str(cwd_flusher), timeout=90)
+    reap_flushers(spawned_flushers() or [])
+    files = lambda d: sorted(str(x.relative_to(d)) for x in d.rglob("*") if x.is_file())
+    return dict(hook_rc=r.returncode, hook_out=r.stdout + r.stderr, flusher_rc=f.returncode,
+                hook_files=files(cwd_hook), flusher_files=files(cwd_flusher), spawned=len(spawned))
+
+
+rel = drive_relative_spool("fmt-spool-relative-writes")
+eq("a hook on a relative spool_dir exits 0, prints nothing, and creates no file under its working directory",
+   (0, "", []), (rel["hook_rc"], rel["hook_out"], rel["hook_files"]))
+eq("  … and forks no flusher", 0, rel["spawned"])
+eq("a flusher on a relative spool_dir exits 0 and creates no file under its working directory", (0, []),
+   (rel["flusher_rc"], rel["flusher_files"]))
+# RED — the old behaviour, planted: the same config error, with the relative value still used as the spool.
+p_rel_old = plant(("  const spool = str('spool_dir') && path.isAbsolute(c.spool_dir) ? c.spool_dir : null;\n"
+                   "  if (spool === null) errors.push",
+                   "  const spool = str('spool_dir');\n  if (!spool || !path.isAbsolute(spool)) errors.push"))
+rel_red = drive_relative_spool("fmt-spool-relative-writes-red", reporter=p_rel_old)
+eq("RED: a reporter that refuses a relative spool_dir but still writes to it leaves files under the hook's "
+   "working directory", True, any(x.startswith("relative/spool/") for x in rel_red["hook_files"]))
+eq("RED: … and under the flusher's", True, any(x.startswith("relative/spool/") for x in rel_red["flusher_files"]))
+redgreen("a relative spool_dir writes nothing under the working directory (card#9521)",
+         f"refused but still used -> hook cwd files {rel_red['hook_files']}, flusher cwd files "
+         f"{rel_red['flusher_files']}, flushers forked {rel_red['spawned']}",
+         f"treated as absent -> hook cwd files {rel['hook_files']}, flusher cwd files {rel['flusher_files']}, "
+         f"flushers forked {rel['spawned']}")
 
 
 # (f) ONE READ: THE HEARTBEAT'S `config_readable` IS THE FLUSHER'S OWN SEND DECISION (card#9521). The flusher
@@ -2025,8 +2070,8 @@ def sweep(seat_obj: Seat, extra_streams: list[str]) -> list[str]:
 
 
 control_seat = seat("secrets-control")
-p_leak = plant(("      if (config && config.spool_dir) logLine(config.spool_dir, cmd || 'unknown', `crashed: ${e && e.stack}`);",
-                "      if (config && config.spool_dir) logLine(config.spool_dir, cmd || 'unknown', `crashed: ${e && e.stack}`);"),
+p_leak = plant(("      if (spool) logLine(spool, cmd || 'unknown', `crashed: ${e && e.stack}`);",
+                "      if (spool) logLine(spool, cmd || 'unknown', `crashed: ${e && e.stack}`);"),
                ("function hookMain(hookName) {\n",
                 "function hookMain(hookName) {\n  { const c = loadConfig(configPath()).config; "
                 "if (c) { try { fs.appendFileSync(path.join(c.spool_dir, 'log', 'leak.log'), 'token=' + c.token + '\\n'); } catch (e) {} } }\n"))
@@ -3991,9 +4036,9 @@ eq("  … and the flusher's start log says the declaration is malformed and was 
    all("protocol_agent_name is not a valid declaration" in d["log"] for d in malformed_seen.values()))
 
 # RED 1 — the round-1 build: a malformed name refused as a config error, so the flusher sends nothing.
-_red_silent = plant(("  return { config: c, errors, caError };\n}",
+_red_silent = plant(("  return { config: c, errors, caError, spool };\n}",
                      "  if (c.protocol_agent_name !== undefined && c.protocol_agent_name !== null && !declaredAgentName(c)) "
-                     "errors.push('protocol_agent_name malformed');\n  return { config: c, errors, caError };\n}"))
+                     "errors.push('protocol_agent_name malformed');\n  return { config: c, errors, caError, spool };\n}"))
 r_silent = drive_malformed("at27-bad-red-silent", "Magento", reporter=_red_silent)
 eq("RED: a malformed name refused as a config error silences the seat — no POST, config_readable failing, "
    "`config_invalid` counted", (0, "fail", True),

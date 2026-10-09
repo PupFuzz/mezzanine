@@ -337,7 +337,12 @@ Written once, at install time, by the installer. It is the **only** source of th
 `selftest`'s `config_readable` fails with an error naming the field, and at runtime the flusher counts
 `config_invalid` ([§ 9.3](#93-degradation-counters)), keeps spooling and sends nothing. `install_id`,
 `seat_id` and `token` must match their patterns. `ingest_url` must start `https://`, parse as a URL
-(`new URL`, the parser every request uses) and fit 256 B. `spool_dir` must be an absolute path. `ca_file`
+(`new URL`, the parser every request uses) and fit 256 B. `spool_dir` must be an absolute path, and one
+that is not — absent, empty or relative — is the one config error with nowhere to report it at runtime:
+it names no directory a process may write, so the hooks and the flusher write **nothing**, no spool, log,
+counter or lock, and `selftest` is where it shows. A relative one would otherwise resolve against the
+process's working directory, the agent's project directory for a hook, where its files could be committed
+(card#9521). `ca_file`
 must be `null`, absent, or an absolute path the seat can read ([§ 3.5](#35-transport-is-wan-always)).
 `proxy_url` must be `null`, absent, or a URL starting `http://` or `https://` that parses; the empty string
 is not "no proxy". `wrapped_statusline` must be a string or `null`, `descriptors` one of its three values,
@@ -349,9 +354,7 @@ longer one, and a config error would stop a working seat sending. Before card#95
 for its prefix alone, `proxy_url` for its type alone and `spool_dir` for being non-empty, so a value such as
 `"https://"`, `"proxy.corp:3128"` or a relative path passed `selftest` and failed later: an unparseable
 `ingest_url` lost every batch to quarantine, a bad `proxy_url` retried forever, `""` sent around the
-proxy, and a relative `spool_dir` spooled into each hook's working directory with nothing saying so. The
-hooks still spool there under the error, as they keep spooling under every config error; what the
-refusal adds is `selftest`'s failure and `config_invalid`.
+proxy, and a relative `spool_dir` spooled into each hook's working directory with nothing saying so.
 
 **`descriptors` is how much of [§ 7.1](#71-layer-1--the-descriptor-allowlist)'s allowlist the seat
 sends**, for an installer who wants less on the wire than the sanitized label. `"full"` is § 7.1's
@@ -3817,7 +3820,7 @@ statusLine processes reach the flusher through the counter sink
 | `kill_close_same_session` | a `PostToolUseFailure` reported **exit 137** with `is_interrupt: false` under the **same** `session_id` its call was opened in, **or** on a close whose open was never seen at all ([§ 6.6](#66-toolend)'s synthesized pair), where the call's session is unknowable — either way the kill signature's second leg did not fire ([§ 6.6](#66-toolend)) | informational, and the observable for that section's stated residual: an OOM kill increments it legitimately, so it is a rate to look at rather than an alarm. A `/clear` kill appearing here means the close beat both `/clear` signals and closed the call `failed` |
 | `compaction_double_close` | both `PostCompact` and `SessionStart(compact)` closed one compaction | informational; a zero means one of the two signals is dead |
 | `bad_session_id` | `session_id` failed its pattern and was sent as `null` ([§ 3.2](#32-session-identity)) | `degraded` |
-| `config_invalid` | the config failed validation at runtime (e.g. a non-`https` or unparseable `ingest_url`, a `proxy_url` that is not an `http(s)://` URL, a relative `spool_dir`, or a `ca_file` that is not an absolute path or that the seat cannot read; [§ 3.1](#31-the-seat-config-file) lists every rule) | `degraded`; the flusher keeps spooling and sends nothing |
+| `config_invalid` | the config failed validation at runtime (e.g. a non-`https` or unparseable `ingest_url`, a `proxy_url` that is not an `http(s)://` URL, or a `ca_file` that is not an absolute path or that the seat cannot read; [§ 3.1](#31-the-seat-config-file) lists every rule) | `degraded`; the flusher keeps spooling and sends nothing |
 | `protocol_agent_name_unchecked` | the seat declares a protocol agent name and **no coordination roster was readable on this box** to check it against ([§ 3.1](#31-the-seat-config-file)) | informational, and the fleet-wide measurement of how much of the join rests on an unchecked declaration. **It raises no `degraded` member on purpose**: the state rides every heartbeat as `protocol_agent_name_check`, dated by `uptime_s` beside it, which is strictly more than a badge carries |
 | `protocol_agent_name_disagreed` | a roster **was** readable here and the declared name is not a member of it — the two identity surfaces disagree ([§ 3.1](#31-the-seat-config-file)) | the `selftest` check `protocol_agent_name_in_roster` **fails**, so the act fails visibly and `selftest` carries the failure on every heartbeat; the name is emitted exactly as declared and **resolves to no desk**. **It raises no `degraded` member, deliberately**: the reporter is not degraded — it is reporting a coordination-config defect correctly — and badging the seat's own health would name the wrong subject |
 | `project_label_home_suppressed` | a `cwd` equal to the home directory, whose basename is the OS username, so `project_label` was sent as `null` ([§ 6.1](#61-sessionstart)) | informational, and the record that the § 1 non-goal is enforced rather than merely stated. It also distinguishes this `null` from a `null` caused by an absent `cwd` |

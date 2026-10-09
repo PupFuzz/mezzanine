@@ -277,7 +277,10 @@ function parsesAsUrl(s) {
   try { new URL(s); return true; } catch (e) { return false; }
 }
 
-/* Returns {config, errors[], caError}. NEVER throws: a hook with an unreadable config still exits 0 and
+/* Returns {config, errors[], caError, spool}. `spool` is the ONE answer to "where may this process write":
+ * the absolute `spool_dir`, or null when the config names none a process can use — absent, empty or
+ * relative — and then nothing writes anything (card#9521). Every writer takes it from here, never from
+ * `config.spool_dir`. NEVER throws: a hook with an unreadable config still exits 0 and
  * still writes nothing to stdout (P-1, P-2). A config error is loud on the seat's OWN surface
  * (the log, `config_invalid`, `selftest`) — never on the agent's. */
 function loadConfig(p) {
@@ -303,9 +306,11 @@ function loadConfig(p) {
   else if (bytes(url) > 256) errors.push('ingest_url exceeds 256 B');
   if (!TOKEN_RE.test(str('token') || '')) errors.push('token must be mzn_ + 43 base64url characters');
   // A relative `spool_dir` resolves against the process's working directory, which a hook inherits from
-  // the agent's project directory: hooks in two projects spool into two directories, and the flusher
-  // reads neither (card#9521).
-  if (!str('spool_dir') || !path.isAbsolute(c.spool_dir)) errors.push('spool_dir must be an absolute path (§ 3.1)');
+  // the agent's project directory: hooks in two projects spool into two directories, the flusher reads
+  // neither, and the files land in the agent's project, where they can be committed (card#9521). So it is
+  // a config error, and `spool` below is null for it exactly as for an absent one.
+  const spool = str('spool_dir') && path.isAbsolute(c.spool_dir) ? c.spool_dir : null;
+  if (spool === null) errors.push('spool_dir must be an absolute path (§ 3.1)');
   if (typeof c.enabled !== 'boolean') errors.push('enabled must be a boolean');
   for (const k of ['ca_file', 'proxy_url', 'wrapped_statusline']) {
     if (c[k] !== undefined && c[k] !== null && typeof c[k] !== 'string') errors.push(`${k} must be a string or null`);
@@ -328,7 +333,7 @@ function loadConfig(p) {
   if (caError) errors.push(caError);
   // `protocol_agent_name` is deliberately NOT validated here: a malformed one declares nothing, and
   // the seat keeps sending (`declaredAgentName` below, § 3.1's state table).
-  return { config: c, errors, caError };
+  return { config: c, errors, caError, spool };
 }
 
 /* THE ONE READ OF `ca_file` (card#9500): the config check above and every request (`ingestRequest`)
@@ -642,6 +647,8 @@ function predicate(name, branch) {
  * mount) leaves the log. That is why the log line is written here rather than assumed
  * redundant: it is the only trace this class of loss can leave. */
 function flushCounters(spoolDir, role, atMs) {
+  // No spool, no sink: a relative path joined here would land in the working directory (card#9521).
+  if (!spoolDir) return;
   if (!Object.keys(C).length && !Object.keys(P).length) return;
   const t = atMs === undefined ? now() : atMs;
   const line = JSON.stringify({ t: rfc3339(t), p: role, c: C, k: P });
@@ -2185,10 +2192,9 @@ function dropSpoolBucket(spool, file, cursor) {
 
 function hookMain(hookName) {
   const cp = configPath();
-  const { config, errors } = loadConfig(cp);
+  const { config, errors, spool } = loadConfig(cp);
   if (!config) return;                                   // nothing to spool to, and nothing to say
   registerConfigSecrets(config);
-  const spool = config.spool_dir;
   if (errors.length) { count('config_invalid'); logLine(spool, 'hook', `config invalid: ${errors.join('; ')}`); }
   if (!spool || !config.install_id || !config.seat_id) { flushCounters(spool, 'hook'); return; }
   // § 3.1/§ 6.14 — `enabled: false` is the ONLY switch that stops emission. The hooks go quiet
@@ -2232,11 +2238,10 @@ function hookMain(hookName) {
  * direction (zero vs non-zero), never for arithmetic. */
 function statuslineMain() {
   const cp = configPath();
-  const { config, errors } = loadConfig(cp);
+  const { config, errors, spool } = loadConfig(cp);
   const raw = readStdin();
   if (!config) { return; }
   registerConfigSecrets(config);
-  const spool = config.spool_dir;
   if (errors.length) count('config_invalid');
 
   try {
@@ -3117,10 +3122,9 @@ function unfoldUnsaved() {
 
 async function flusherMain() {
   const cp = configPath();
-  const { config, errors, caError } = loadConfig(cp);
-  if (!config || !config.spool_dir) { return; }
+  const { config, errors, caError, spool } = loadConfig(cp);
+  if (!config || !spool) { return; }   // no spool_dir a process can use: nowhere to write, so nothing runs
   registerConfigSecrets(config);
-  const spool = config.spool_dir;
   ensureDir(spool);
   const atStart = now();
   const { state, reset, minted } = loadState(spool, atStart);
@@ -3760,8 +3764,8 @@ function main() {
     // stderr from a hook reaches the transcript, and stdout on SessionStart / UserPromptSubmit
     // reaches the MODEL.
     try {
-      const { config } = loadConfig(configPath());
-      if (config && config.spool_dir) logLine(config.spool_dir, cmd || 'unknown', `crashed: ${e && e.stack}`);
+      const { spool } = loadConfig(configPath());
+      if (spool) logLine(spool, cmd || 'unknown', `crashed: ${e && e.stack}`);
     } catch (e2) { /* there is nowhere left to write, and the seat must still be untouched */ }
   } finally {
     process.exit(0);
