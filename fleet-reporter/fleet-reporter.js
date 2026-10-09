@@ -271,6 +271,11 @@ const TOKEN_RE = /^mzn_[A-Za-z0-9_-]{43}$/;
  * a heartbeat over it (§ 12.1 step 10). The acceptance suite re-reads that figure out of § 6.14 and
  * drives a name at it and one byte past it, so this literal cannot drift from the row unseen. */
 const AGENT_NAME_RE = /^[a-z0-9-]{1,48}$/;
+/* Whether `new URL` parses `s`: the parser every request runs on `ingest_url` and `proxy_url`, so a
+ * value that passes the config check is one the request can use. */
+function parsesAsUrl(s) {
+  try { new URL(s); return true; } catch (e) { return false; }
+}
 
 /* Returns {config, errors[], caError}. NEVER throws: a hook with an unreadable config still exits 0 and
  * still writes nothing to stdout (P-1, P-2). A config error is loud on the seat's OWN surface
@@ -289,13 +294,28 @@ function loadConfig(p) {
   const url = str('ingest_url') || '';
   // § 3.5: an http:// ingest_url is REFUSED at install and at runtime. Fail closed, loudly, on
   // the client's own surface — the bearer token rides the header and cleartext broadcasts it.
+  // The prefix alone is not § 3.1's "absolute https:// URL": `https://` and `https://ingest example.org/`
+  // pass it, and every request then fails to parse the URL it names (card#9521). The URL errors name
+  // the field and never echo the value: a URL that does not parse is one `registerConfigSecrets` could
+  // not take a password out of, so the value would reach `selftest`'s output and the log unredacted.
   if (!/^https:\/\//.test(url)) errors.push('ingest_url must be an absolute https:// URL (§ 3.5 — http is refused, not downgraded)');
+  else if (!parsesAsUrl(url)) errors.push('ingest_url is not a parseable URL (§ 3.1)');
   else if (bytes(url) > 256) errors.push('ingest_url exceeds 256 B');
   if (!TOKEN_RE.test(str('token') || '')) errors.push('token must be mzn_ + 43 base64url characters');
-  if (!str('spool_dir')) errors.push('spool_dir must be an absolute path');
+  // A relative `spool_dir` resolves against the process's working directory, which a hook inherits from
+  // the agent's project directory: hooks in two projects spool into two directories, and the flusher
+  // reads neither (card#9521).
+  if (!str('spool_dir') || !path.isAbsolute(c.spool_dir)) errors.push('spool_dir must be an absolute path (§ 3.1)');
   if (typeof c.enabled !== 'boolean') errors.push('enabled must be a boolean');
   for (const k of ['ca_file', 'proxy_url', 'wrapped_statusline']) {
     if (c[k] !== undefined && c[k] !== null && typeof c[k] !== 'string') errors.push(`${k} must be a string or null`);
+  }
+  // Only `null` or an absent key means no proxy (card#9521). The empty string read as unset sent direct
+  // around the proxy a network may require; a value that does not parse failed every request as a
+  // retryable proxy error, so the seat retried forever and delivered nothing; and a value with no
+  // `http://` or `https://` scheme (`proxy.corp:3128` parses, as the scheme `proxy.corp:`) named no proxy host.
+  if (typeof c.proxy_url === 'string' && !(/^https?:\/\//.test(c.proxy_url) && parsesAsUrl(c.proxy_url))) {
+    errors.push('proxy_url must be an absolute http:// or https:// URL, or null (§ 3.1)');
   }
   if (c.descriptors !== undefined && !DESCRIPTOR_MODES.includes(c.descriptors)) {
     errors.push('descriptors must be "full", "paths" or "none" (absent means "full")');
@@ -458,7 +478,7 @@ function registerConfigSecrets(cfg) {
       const u = new URL(raw);
       if (u.password) registerSecret(decodeURIComponent(u.password));
       if (u.username) registerSecret(decodeURIComponent(u.username));
-    } catch (e) { /* not a parseable URL: config validation reports it on its own surface */ }
+    } catch (e) { /* not a parseable URL: `loadConfig` refuses it by field name and never echoes the value (card#9521) */ }
   }
 }
 /* § 7.3 RULE 3's SHAPE LIST, and the ONE copy of it: the sanitizer runs this regex as rule 3 and the
@@ -2873,9 +2893,10 @@ function postBatch(config, body) {
   }
   headers['Content-Length'] = String(payload.length);
   return ingestRequest(config, { method: 'POST', path: (u) => u.pathname + u.search, headers, body: payload }).then((r) => {
-    // A request the config forbids — an http:// ingest_url, a `ca_file` that is not absolute or cannot be read — is
-    // `refused`: config_invalid, keep spooling, send nothing (§ 3.5). An unparseable ingest_url is `permanent`.
-    if (r.invalid) return { kind: r.invalid === 'bad ingest_url' ? 'permanent' : 'refused', status: 0, error: r.invalid };
+    // A request the config forbids — an ingest_url that is not an https:// URL or does not parse, a `ca_file` that
+    // is not absolute or cannot be read — is `refused`: config_invalid, keep spooling, send nothing (§ 3.5). Never
+    // `permanent`: that quarantines the batch, and a config typo would cost the events it holds (card#9521).
+    if (r.invalid) return { kind: 'refused', status: 0, error: r.invalid };
     // A deadline, a connect/DNS/TLS failure, a proxy that refused or never answered, or an answer
     // cut off before its end: all transient by nature (§ 11.5).
     if (r.error) return { kind: 'retryable', status: 0, error: r.error };
@@ -3120,14 +3141,22 @@ async function flusherMain() {
   if (reset) { count('state_reset'); logLine(spool, 'flusher', 'state.json unreadable — new seq_epoch, re-sending from the oldest bucket'); }
   else if (minted) logLine(spool, 'flusher', 'no state.json (a first start, or lost state) — new seq_epoch, sending from the oldest bucket');
   if (errors.length) { count('config_invalid'); logLine(spool, 'flusher', `config invalid: ${errors.join('; ')} — spooling, sending nothing`); }
-  let configOk = errors.length === 0;
-  /* A `ca_file` the seat cannot read is the ONE config error a running flusher outlives (card#9500): what
+  /* ONE VERDICT, `configOk`, FROM ONE READ (card#9521). It decides whether this flusher probes and sends,
+   * and it IS the heartbeat's `config_readable`: `runSelftestChecks` is handed this read's errors rather
+   * than reading the file again, and every pass below writes both together. Two reads could disagree: a
+   * `ca_file` rotation landing between them left a delivering seat heartbeating `fail` until restart. And
+   * a file that vanished after a clean start was never re-checked, so a seat whose requests all refused
+   * heartbeat `pass`.
+   *
+   * A `ca_file` the seat cannot read is the ONE config error a running flusher outlives (card#9500): what
    * changes is the file — a delete-and-recreate rotation, a mount that comes up late — and not the config
-   * this process loaded, so each pass re-reads it through `readCaFile`, the read every request makes, and
-   * the first pass that finds it readable probes and drains. This is the recovery a file that vanishes
-   * mid-run already has, at the request. Any other config error holds until the flusher restarts on a
-   * corrected config, and so does a `ca_file` that is not an absolute path: its re-check fails every pass. */
-  let caPending = errors.length === 1 && caError !== null;
+   * this process loaded. So while every other rule passes, each pass re-reads it through `readCaFile`, the
+   * read every request makes: the first pass that finds it readable probes and drains, and the first that
+   * finds it gone sends nothing and heartbeats `fail`. Any other config error holds until the flusher
+   * restarts on a corrected config, and so does a `ca_file` that is not an absolute path: its re-check
+   * fails every pass. */
+  let configOk = errors.length === 0;
+  const caRechecked = errors.length === (caError ? 1 : 0) && typeof config.ca_file === 'string';
 
   // Flusher start finds index entries older than its own start time: those calls belong to a
   // reporter that is no longer running (§ 8.3's last row). The SELECTION keys on `atStart`; the
@@ -3138,7 +3167,7 @@ async function flusherMain() {
     reap(ctx, ix, (e) => Date.parse(e.started_at || 0) < atStart, 'reporter_restart', 'reap_reporter_restart', at);
   });
 
-  const started = runSelftestChecks(config, cp);
+  const started = runSelftestChecks(config, cp, errors);
   let selftest = started.results;
   const declaration = started.declaration;   // § 3.1: read at flusher start, and never again per flush
   // Loud on the seat's own surface, once per start, and WITHOUT the value: D1 § 3.1 gives the value
@@ -3170,10 +3199,14 @@ async function flusherMain() {
       });
       writeSnapshot(spool, state, ix);
 
-      if (caPending && readCaFile(config).error === null) {
-        caPending = false; configOk = true;
-        selftest.config_readable = true;   // its one error is gone: the heartbeat stops reporting the refusal
-        logLine(spool, 'flusher', `ca_file readable at ${config.ca_file} — probing and sending resume`);
+      if (caRechecked) {
+        const caNow = readCaFile(config).error;
+        if ((caNow === null) !== configOk) {
+          configOk = caNow === null;
+          selftest.config_readable = configOk;
+          if (configOk) logLine(spool, 'flusher', `ca_file readable at ${config.ca_file} — probing and sending resume`);
+          else { count('config_invalid'); logLine(spool, 'flusher', `config invalid: ${caNow} — spooling, sending nothing`); }
+        }
       }
 
       if (configOk && atMs - lastHealth > healthEveryMs) {
@@ -3645,11 +3678,13 @@ let TLS_POSTURE = null;
 function tlsPosture() { return TLS_POSTURE || (TLS_POSTURE = checkTlsPosture()); }
 function tlsVerifyResult(reached) { return tlsPosture().ok ? reached : false; }
 
-function runSelftestChecks(config, cp) {
+/* `config` and `errors` are the caller's own `loadConfig` read, never a second one (card#9521): the
+ * flusher decides whether to send from that read, and its heartbeat's `config_readable` must be the
+ * same verdict. */
+function runSelftestChecks(config, cp, errors) {
   const results = {}; const detail = {};
-  const cfg = loadConfig(cp);
-  results.config_readable = !!cfg.config && cfg.errors.length === 0;
-  detail.config_readable = { errors: cfg.errors, path: cp };
+  results.config_readable = !!config && errors.length === 0;
+  detail.config_readable = { errors, path: cp };
   const s = checkSanitizerFixtures(); results.sanitizer_fixtures = s.ok; detail.sanitizer_fixtures = s.detail;
   const h = checkHarnessPayloadKeys(); results.harness_payload_keys = h.ok; detail.harness_payload_keys = h.detail;
   const p = checkPredicateDiscrimination(); results.predicate_discrimination = p.ok; detail.predicate_discrimination = p.detail;
@@ -3678,9 +3713,9 @@ function runSelftestChecks(config, cp) {
 
 async function selftestMain() {
   const cp = configPath();
-  const { config } = loadConfig(cp);
+  const { config, errors } = loadConfig(cp);
   registerConfigSecrets(config);   // null-guarded internally
-  const { results, detail } = runSelftestChecks(config, cp);
+  const { results, detail } = runSelftestChecks(config, cp, errors);
   // The install-time verification measures the network checks with the flusher's own probe (the
   // sender's route and TLS path — `proxy_url`, `ca_file` — and deadlines, card#9473), once — and
   // only on a config that passed validation, because an invalid one names no ingest this command
