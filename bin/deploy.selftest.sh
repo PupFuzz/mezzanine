@@ -22,6 +22,11 @@
 #         php-fpm.conf and pool directory shaped like the Virtualmin sandbox's.
 #   NOTHING here touches a live host, the real crontab, a real FPM pool, a credential or a socket,
 #   and nothing outside the temp dir is signalled: every kill targets a lock under $T.
+#   ⛔ THE REAL CRONTAB IS KEPT OUT BY CONSTRUCTION, not by the stub being first on PATH (card#11575): no
+#   crontab but the stub is on this suite's PATH, and every fixture names its stub, so bin/supervision.sh
+#   and bin/deploy.sh refuse any other crontab for it, a hand run of a fixture tree included. The one call
+#   to the real binary is a `crontab -l` at each end of the run, the tripwire (§ THE REAL CRONTAB), whose
+#   md5s must agree.
 #
 # RED-FIRST, WITH CONTROLS. Every refusal case is paired with a control that differs by ONE
 # variable and passes, so a green is evidence that the check DISCRIMINATES rather than evidence
@@ -135,11 +140,15 @@ kill_streams() { # SIGKILL the stand-in stream workers a case started — they a
   while read -r pid started; do [ -n "$pid" ] && kill -KILL "$pid" 2>/dev/null; done < "$T/knobs/streams" 2>/dev/null
   return 0
 }
+# shellcheck disable=SC2317  # reached only from the EXIT trap below, which ShellCheck reads as nothing reaching it
 cleanup() {
-  local r
+  local r rc=$?
+  # A run that ended before the summary — a death, a kill — still compares the real crontab (card#11575).
+  if [ -z "${TRIPWIRE_DONE:-}" ] && [ -n "${CRONTAB_MD5:-}" ]; then tripwire_check || rc=1; fi
   kill_streams
   for r in "$T"/*/root; do kill_daemons "$r"; done
   rm -rf "$T"
+  exit "$rc"
 }
 trap cleanup EXIT
 export CALL_LOG="$T/calls.log"; : > "$CALL_LOG"
@@ -180,7 +189,60 @@ REAL_GIT="$(command -v git)" || { echo "selftest: git not found" >&2; exit 1; }
 REAL_BASH="$(command -v bash)" || { echo "selftest: bash not found" >&2; exit 1; }
 REAL_DATE="$(command -v date)" || { echo "selftest: date not found" >&2; exit 1; }
 REAL_SLEEP="$(command -v sleep)" || { echo "selftest: sleep not found" >&2; exit 1; }
-mkdir -p "$T/bin" "$T/knobs"; export PATH="$T/bin:$PATH"
+
+# ⛔ THE REAL CRONTAB IS NOT ON THIS SUITE'S PATH, BY CONSTRUCTION (card#11575). On 2026-10-08 a run of this
+# suite replaced this host user's real crontab with one fixture's block: the run was killed during `mkfix
+# dirty_tree`, the exit trap removed $T — and $T/bin/crontab with it — while that fixture's install was still
+# running, so the install's `crontab -l` had been the stub's and its `crontab -` was /usr/bin/crontab. With
+# $T/bin first on PATH and the host's directories after it, the stub was the ONLY thing between a fixture and
+# the real crontab, and anything that took it away fell through. So the host's directories are not on PATH:
+# $T/host is every command they hold, in PATH's order, EXCEPT `crontab`, and it lives under $T, so a $T being
+# removed takes every command away rather than uncovering one. No `crontab` is reachable here but the stub.
+# ⛔ AND EVERY FIXTURE NAMES ITS STUB (mkfix writes $SUPERVISION_FIXTURE_CRONTAB), so bin/supervision.sh and
+# bin/deploy.sh refuse to run any crontab for a fixture whose PATH does not resolve `crontab` to it — a hand
+# run of a fixture tree, or a rig that copied part of this prelude without this PATH (bin/supervision.sh
+# § A SELFTEST FIXTURE). § card#11575, below, watches both refuse.
+mkdir -p "$T/bin" "$T/knobs" "$T/host"
+host_path_dirs() { local d; local IFS=:; for d in $1; do case "$d" in /*) [ -d "$d" ] && printf '%s\n' "$d" ;; esac; done; }
+# `ln` refuses a name already linked, so the first directory on PATH to hold a command is the one it runs from.
+while IFS= read -r d; do ln -s -t "$T/host" "$d"/* 2>/dev/null; done < <(host_path_dirs "$PATH")
+rm -f "$T/host/crontab"
+
+# THE TRIPWIRE (card#11575): the md5 of this user's real `crontab -l` at the start, compared at the end
+# (§ THE REAL CRONTAB, at the bottom). Read with the real binary by absolute path — the one crontab call
+# this suite makes that is not a stub's, and a LIST, never a write. A copy is kept beside $T, mode 600, as
+# the restore source if the comparison ever fails; a clean run removes it.
+REAL_CRONTAB="$(command -v crontab || true)"
+crontab_md5() { { "$1" -l 2>&1; printf 'rc=%s\n' "$?"; } | md5sum | cut -d' ' -f1; } # <crontab binary>
+if [ -n "$REAL_CRONTAB" ]; then
+  CRONTAB_BEFORE="$(mktemp "${T}.crontab-before.XXXXXX")"   # mode 600, as mktemp makes every file
+  "$REAL_CRONTAB" -l > "$CRONTAB_BEFORE" 2>/dev/null || true
+  CRONTAB_MD5="$(crontab_md5 "$REAL_CRONTAB")"
+fi
+# tripwire_check — one assertion: the real crontab reads as it did at the start. Run before the summary, and
+# by `cleanup` when a run ends before it. A change keeps the start's copy and prints the command to restore it;
+# the crontab's TEXT is never printed (a crontab line can carry a credential).
+TRIPWIRE_DONE=""
+tripwire_check() {
+  local now
+  TRIPWIRE_DONE=1
+  if [ -z "$REAL_CRONTAB" ]; then
+    notverified "the real crontab was not compared: this host has no \`crontab\` on PATH, so no fixture could have changed one"
+    return 0
+  fi
+  cases=$((cases + 1))
+  now="$(crontab_md5 "$REAL_CRONTAB")"
+  if [ "$now" = "$CRONTAB_MD5" ]; then
+    ok "the real crontab of $ME is byte-identical to the start of the run (md5 of \`crontab -l\` and its status)"
+    rm -f "$CRONTAB_BEFORE"
+    return 0
+  fi
+  bad "⛔ THE REAL CRONTAB OF $ME CHANGED WHILE THIS SUITE RAN — md5 $CRONTAB_MD5 at the start, $now now"
+  printf '  Its text at the start is kept, mode 600, in %s. If nothing else on this host changed it, restore it with:\n' "$CRONTAB_BEFORE" >&2
+  printf '    %s %s\n' "$REAL_CRONTAB" "$CRONTAB_BEFORE" >&2
+  return 1
+}
+export PATH="$T/bin:$T/host"
 # `mezzanine:extra` is in no release this repo ships: it is the daemon the ACROSS RELEASES case's target
 # release adds, and the stub has to know to hold a lock for it.
 printf '%s\n' "${SUPERVISED_DAEMONS[@]}" mezzanine:extra > "$T/knobs/daemons"
@@ -580,7 +642,7 @@ mkfix() {
   cp "$REPO/server/storage/framework/.gitignore" "$SRC/server/storage/framework/.gitignore"
   cp "$REPO/server/storage/logs/.gitignore" "$SRC/server/storage/logs/.gitignore"
   printf '0.0.1\n' > "$SRC/VERSION"
-  printf '.deploy-failed\nserver/.env\n' > "$SRC/.gitignore"
+  printf '.deploy-failed\nserver/.env\n%s\n' "$SUPERVISION_FIXTURE_CRONTAB" > "$SRC/.gitignore"
   printf '#!/usr/bin/env php\n' > "$SRC/server/artisan"
   printf '<?php return Application::configure()->withRouting(health: "/up")->create();\n' \
     > "$SRC/server/bootstrap/app.php"
@@ -611,6 +673,8 @@ MIG
   git clone -q "$ORIGIN" "$ROOT"
   gitc "$ROOT" checkout -q --detach "$V1"
   write_env "$ROOT"
+  # This checkout is a fixture, and its crontab is the stub: bin/supervision.sh § A SELFTEST FIXTURE.
+  printf '%s\n' "$T/bin/crontab" > "$ROOT/$SUPERVISION_FIXTURE_CRONTAB"
   export STUB_CRONTAB_FILE="$cd/crontab"
   install_crontab
 }
@@ -1491,7 +1555,7 @@ section "REFUSAL — a tool the supervision needs is missing (A1)"
 path_without() { # path_without <dir> [command-to-hide]
   mkdir -p "$1"
   ln -s -t "$1" "$T/bin"/* 2>/dev/null
-  ln -s -t "$1" /usr/local/bin/* /usr/bin/* /bin/* 2>/dev/null
+  ln -s -t "$1" "$T/host"/* 2>/dev/null   # the host's commands, which hold no crontab (card#11575)
   [ -z "${2:-}" ] || rm -f "$1/$2"
 }
 mkfix tool_control; path_without "$T/path-control"
@@ -3797,6 +3861,85 @@ inst
 eq "control: an absolute install after it leaves one managed block, not two" 1 "$(grep -c '^# BEGIN mezzanine-supervision ' "$F")"
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
+section "card#11575 — a fixture never reaches the real crontab, whatever PATH it is run with"
+# Two guards, each checked here, and NEITHER CASE CAN REACH THE REAL CRONTAB IF ITS GUARD IS BROKEN:
+# every PATH below is built from $T/host, which holds no crontab, and where a case needs a crontab that is not
+# the fixture's stub it puts a SENTINEL first — a script under $T that records its calls and changes nothing.
+# A broken guard therefore runs the sentinel, and the case reds on the sentinel's log.
+#
+# LAYER 1 — this suite's PATH (the prelude's ⛔ THE REAL CRONTAB IS NOT ON THIS SUITE'S PATH). Lookups only.
+eq  "the only crontab on this suite's PATH is the stub" "$T/bin/crontab" "$(type -ap crontab)"
+eq  "the host's commands on it hold no crontab, so a \$T/bin that is gone uncovers none" "" "$(PATH="$T/host" type -ap crontab)"
+neq "control: they hold the host's other commands (the comparison is not over an empty directory)" "" "$(PATH="$T/host" type -ap flock)"
+
+# LAYER 2 — the fixture names its stub, and bin/supervision.sh / bin/deploy.sh refuse any other crontab.
+mkdir -p "$T/sentinel"
+{
+  printf '#!%s\nLOG=%q\n' "$REAL_BASH" "$T/knobs/sentinel"
+  cat <<'STUB'
+printf 'SENTINEL crontab %s\n' "$*" >> "$LOG"
+case "${1:-}" in -) cat > /dev/null ;; esac
+exit 0
+STUB
+} > "$T/sentinel/crontab"
+chmod +x "$T/sentinel/crontab"
+mkfix crontab_guard
+F="$STUB_CRONTAB_FILE"; cp "$F" "$T/crontab_guard/crontab.before"
+SUITE_PATH="$PATH"
+# guarded <PATH> <command…> — <command…> under <PATH>, its output in INS and its status in IRC, the sentinel's
+# log emptied first. PATH is set and restored around it, never by `PATH=… function`.
+guarded() { : > "$T/knobs/sentinel"; PATH="$1"; shift; INS="$("$@" 2>&1)"; IRC=$?; PATH="$SUITE_PATH"; }
+sup_install() { "$ROOT/bin/supervision.sh" install --root "$ROOT" --php "$T/bin/php"; }
+
+# ⭐ THE RED-FIRST CASE: a hand run of the fixture's own install with the stub off PATH.
+guarded "$T/sentinel:$T/host" sup_install
+exits "the stub off PATH: the fixture's install refuses, exit 1"   1 "$IRC" "$INS"
+has   "the stub off PATH: says it is a fixture and names both crontabs" \
+  "is a selftest fixture: $ROOT/$SUPERVISION_FIXTURE_CRONTAB names its crontab stub, $T/bin/crontab, and the crontab on PATH is $T/sentinel/crontab" "$INS"
+eq    "the stub off PATH: no crontab ran at all — not even \`crontab -l\`" "" "$(cat "$T/knobs/sentinel")"
+eq    "the stub off PATH: the fixture's crontab is byte-identical" "$(md5sum < "$T/crontab_guard/crontab.before")" "$(md5sum < "$F")"
+# A stub SHADOWED by another crontab earlier on PATH, through the deploy: refused at A13, before the window.
+cp "$F" "$T/crontab_guard/crontab.before"
+guarded "$T/sentinel:$T/bin:$T/host" env MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run
+exits "the stub shadowed: the deploy refuses, exit 1"             1 "$IRC" "$INS"
+has   "the stub shadowed: the ⛔ REFUSED banner"                   "⛔ REFUSED — the crontab block of bin/supervision.sh at" "$INS"
+has   "the stub shadowed: says why"                                "is a selftest fixture" "$INS"
+eq    "the stub shadowed: no crontab ran at all"                    "" "$(cat "$T/knobs/sentinel")"
+eq    "the stub shadowed: the fixture's crontab is byte-identical" "$(md5sum < "$T/crontab_guard/crontab.before")" "$(md5sum < "$F")"
+# The stub the fixture names is DELETED while the fixture remains, with another crontab after it on PATH. (The
+# 2026-10-08 shape removed the fixture too, mark and all, which no mark can see: LAYER 1 is what closes that.)
+mkdir -p "$T/vanishing"; cp "$T/bin/crontab" "$T/vanishing/crontab"
+printf '%s\n' "$T/vanishing/crontab" > "$ROOT/$SUPERVISION_FIXTURE_CRONTAB"; rm -f "$T/vanishing/crontab"
+guarded "$T/vanishing:$T/sentinel:$T/host" sup_install
+exits "the stub deleted: the fixture's install refuses, exit 1"   1 "$IRC" "$INS"
+eq    "the stub deleted: no crontab ran at all"                     "" "$(cat "$T/knobs/sentinel")"
+# THE CONTROLS, one variable each. The same sentinel PATH with the fixture's mark removed RUNS the sentinel —
+# so the refusals above are the mark's, and not a PATH on which no crontab could have run anyway.
+rm -f "$ROOT/$SUPERVISION_FIXTURE_CRONTAB"
+guarded "$T/sentinel:$T/host" sup_install
+has   "control: no mark, the same PATH — that crontab IS run (-l)" "SENTINEL crontab -l" "$(cat "$T/knobs/sentinel")"
+has   "control: no mark, the same PATH — and written (-)"          "SENTINEL crontab -" "$(cat "$T/knobs/sentinel")"
+# And the mark with the stub on PATH installs, as every mkfix does.
+printf '%s\n' "$T/bin/crontab" > "$ROOT/$SUPERVISION_FIXTURE_CRONTAB"
+guarded "$SUITE_PATH" sup_install
+exits "control: the mark and its stub on PATH: install, exit 0"   0 "$IRC" "$INS"
+eq    "control: and the sentinel was not run"                       "" "$(cat "$T/knobs/sentinel")"
+
+# THE TRIPWIRE'S MEASUREMENT DISCRIMINATES (§ THE REAL CRONTAB, at the bottom, compares it): the same reading
+# over a throwaway crontab — a stub over a file under $T — before and after a one-byte change, and unchanged.
+{
+  printf '#!%s\nFILE=%q\n' "$REAL_BASH" "$T/knobs/tripwire_crontab"
+  cat <<'STUB'
+[ "${1:-}" = -l ] && cat "$FILE"
+STUB
+} > "$T/sentinel/tripwire-crontab"
+chmod +x "$T/sentinel/tripwire-crontab"; printf '0 3 * * * /bin/true\n' > "$T/knobs/tripwire_crontab"
+TW1="$(crontab_md5 "$T/sentinel/tripwire-crontab")"; TW2="$(crontab_md5 "$T/sentinel/tripwire-crontab")"
+eq  "tripwire: the same crontab reads the same md5 twice" "$TW1" "$TW2"
+printf '#' >> "$T/knobs/tripwire_crontab"
+neq "tripwire: a crontab one byte longer reads a different md5" "$TW1" "$(crontab_md5 "$T/sentinel/tripwire-crontab")"
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
 section "THE FULL RUN — the window, the order, the daemons, the close"
 mkfix full_run
 start_old_daemons
@@ -4980,6 +5123,11 @@ has "the control: and it fetched origin" "Fetching origin" "$OUT"
 hasnt "the control: and the colon-named remote is not printed by a deploy that never lists it" \
   "$COLON_TOKEN" "$OUT"
 
+section "THE REAL CRONTAB — byte-identical at the end of the run (card#11575)"
+# The tripwire the prelude armed. Every case above ran with no real crontab on PATH, so this is a second
+# opinion and not the guard: it is what would show a guard that a later change opened. It cannot see a write
+# made after this suite's own process has gone — the shape of 2026-10-08 — which is what the PATH prevents.
+tripwire_check
 printf '\n──────────────────────────────────────────────\n'
 # ⚠ REPEATED HERE because a line 1,400 assertions up has scrolled past. A condition this runner
 # could not produce is not a failure — the suite has nothing to say about it either way — but it

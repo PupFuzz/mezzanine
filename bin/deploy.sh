@@ -3867,7 +3867,7 @@ gate_a13_supervision() {
   gate_a13_target_plan "$SHA" "$work" "$DEPLOY_ROOT" "$php_bin"
   TARGET_DAEMONS="$(cat "$work/daemons")"; TARGET_DAEMONS="${TARGET_DAEMONS% }"
   target_locks="$(cat "$work/locks")"
-  installed="$(crontab -l 2>/dev/null || true)"
+  installed="$(supervision_crontab "$DEPLOY_ROOT" -l 2>/dev/null || true)"
   added="$(grep -Fxv -f <(printf '%s\n' "$installed") "$work/plan" || true)"
   removed="$(printf '%s\n' "$installed" | grep -Fxv -f "$work/plan" || true)"
   rm -rf "$work"
