@@ -25,7 +25,7 @@ class RebuildLeavesCountersUnchangedTest extends FoldTestCase
      */
     private const FOLD_DERIVED = [
         'attention_request_duplicate_server',
-        'console_url_refused',
+        'format_refused.console_url',
         'session_close_orphans',
         'seq_gap',
         'seq_collision',
@@ -130,7 +130,7 @@ class RebuildLeavesCountersUnchangedTest extends FoldTestCase
         ])]);
         $this->fold();
 
-        // A `console_url` that fails D1 § 6.3's pattern: `console_url_refused`.
+        // A `console_url` that fails D1 § 6.3's pattern: `format_refused.console_url`.
         $this->deliver([$this->event('turn.start', [
             'prompt_chars' => 12, 'console_url' => 'https://evil.example/code/session_SynthAAAAAAAAAAAAAAAAAAA',
         ])]);

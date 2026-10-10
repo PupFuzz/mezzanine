@@ -1,4 +1,4 @@
-<!-- BEGIN coord:solo-orientation (synced from coord v0.63.0) -->
+<!-- BEGIN coord:solo-orientation (synced from coord v0.65.0) -->
 # Agent Board Framework — solo agent orientation
 
 > **⚠ Only two sections of this file reach a session automatically: `## Who you are` and
@@ -240,7 +240,8 @@ merge-button intent) using each repo's own conventions. Use it whenever cutting 
   production gate; never self-merge them.
 - **Hard-gate changes** (error handling / validation rules / business-logic flow / permissive
   "fixes" / destructive DB / safety-critical / regulated surfaces / anything
-  irreversible or outward-facing / a new mechanism's design) → **ask your human before
+  irreversible or outward-facing / a new mechanism's design / a file moved into the repo from
+  outside it) → **ask your human before
   proceeding** (see § Ask-first gates below). On their go-ahead you implement and self-merge the integration PR; the
   change still reaches prod only through the user-gated release.
 
@@ -459,6 +460,8 @@ go, or the action is hard-gate, surface it and wait.
 - Anything irreversible or outward-facing (external sends, force-push, permanent deletes).
 - A new mechanism: its design goes to your human as an operator decision before any build
   (`USER-GATING.md § 2g` owns the rule).
+- Moving a file into the repo from outside it: only your human's authorization, recorded where
+  you can cite it, is a go (`USER-GATING.md § 2h` owns the rule and the same-repo exemption).
 
 **Capture is never gated** (canon #2 carves this out explicitly; whether a finding also earns an
 ITEM is #18's mint gate, a different question). Routing a capture to your human as a question is
@@ -540,7 +543,7 @@ holding every open card tagged `sprint:current`. A card leaves the plan by MOVIN
 never by editing the page; re-render with `sprint-burndown.py --html <path> --write-config`
 instead. The SessionStart check reds when the committed page no longer matches the
 board, and its UNMEASURED verdict means a read did not happen, not that the sprint is finished.
-Vocabulary, worked configs, why the page and the `lanes.definitions` the census reads cannot drift
+Vocabulary, worked configs, why the page and the lanes the census reads cannot drift
 apart, and the exit codes: **`docs/SPRINT.md`** — which owns those claims; do not restate them
 here.
 
