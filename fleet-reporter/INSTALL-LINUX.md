@@ -814,8 +814,15 @@ route the batches take (card#9473). Read its exit code by D1 § 6.14:
   empty string or a relative path: set the file's absolute path, or `null` for a seat that trusts the
   system store. The reporter never falls back to the system trust store (D1 § 3.5): the flusher sends
   nothing and keeps spooling, and logs the same error. Fix the file or the config and re-run this step.
-  A running flusher re-reads an unreadable `ca_file` on each pass: once the file is readable it probes
-  and sends the spooled events, logs `ca_file readable at <path>`, and needs no restart. The flusher
+  `ingest_url is not a parseable URL (§ 3.1)`, `proxy_url must be an absolute http:// or https:// URL,
+  or null (§ 3.1)` and `spool_dir must be an absolute path (§ 3.1)` mean the value breaks its D1 § 3.1
+  format: a space or a missing host in a URL, a proxy written without its `http://` scheme, the empty
+  string for "no proxy" (write `null`), or a relative spool path. A seat whose `spool_dir` is not absolute
+  records nothing at all until it is fixed: no spool, no log, and no flusher. The URL errors deliberately leave the
+  value out, because it may hold a proxy password; read the config file itself.
+  A running flusher re-reads `ca_file` on each pass: once the file is readable it probes and sends the
+  spooled events, logs `ca_file readable at <path>`, and needs no restart; a file that becomes
+  unreadable stops its sending, and its heartbeat's `config_readable` reads `fail`, from the next pass. The flusher
   reads its config only when it starts, so after a config change (an absolute path, or `null`) stop it
   with Step 5's `stop-flusher.js`, as Step 8 item 3 runs it:
   `node "$B/stop-flusher.js" /home/mezzanine/.local/state/fleet-reporter /home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js`.
