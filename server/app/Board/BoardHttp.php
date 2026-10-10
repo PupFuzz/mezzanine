@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Http;
 /**
  * The board's HTTP client, shared by its two callers — `docs/design/BOARD-TASK.md § 15.7`'s
  * "shared client": the poller's read (`CandidateRead`, through `BoardPoll`) and the compose path's
- * one write (`App\Compose\BoardCommentChannel`). Hoisted out of `BoardPoll` at the second real
+ * one write (the compose package's `BoardCommentChannel`). Hoisted out of `BoardPoll` at the second real
  * caller rather than written twice (canon #5): the base rule, the token's shape rule, the request
  * builder and the redaction are each stated once, here, for both tokens.
  *

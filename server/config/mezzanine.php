@@ -8,7 +8,8 @@
 return [
 
     /*
-     * The board poller's three keys — `docs/design/BOARD-TASK.md § 5`, which owns them.
+     * The board's four keys — `docs/design/BOARD-TASK.md § 5`, which owns them: the poller's three
+     * and the compose path's write token (§ 5.3, card#9417).
      *
      * `board_ids` EMPTY OR UNSET IS THE UNCONFIGURED STATE: `mezzanine:board-poll` is then a clean
      * no-op at exit 0 and no counter moves (§ 9). Set, every other key must be valid, or the poll
@@ -16,11 +17,16 @@ return [
      *
      * ⛔ THE TOKEN IS READ-SCOPED AND NEVER EMITTED (§ 5, § 5.1). It is sent in the
      * `Authorization` header and nowhere else; nothing prints, logs or raises its value.
+     *
+     * ⛔ `compose_token` IS THE COMPOSE PATH'S AND NOTHING ELSE'S (§ 5.3, § 15). It is write-scoped,
+     * read only by `App\Compose\ComposeCredential`, and never by the poller; empty is compose
+     * UNCONFIGURED, refused by name at the panel and at the route, with the poller unaffected.
      */
     'board' => [
         'api_base' => env('BOARD_API_BASE'),
         'api_token' => env('BOARD_API_TOKEN'),
         'board_ids' => env('BOARD_IDS'),
+        'compose_token' => env('BOARD_COMPOSE_TOKEN'),
     ],
 
     /*

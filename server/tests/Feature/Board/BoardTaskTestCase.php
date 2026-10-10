@@ -79,10 +79,26 @@ abstract class BoardTaskTestCase extends SweepTestCase
         $this->pages = $pages;
     }
 
+    /**
+     * What the faked board answers to a comment `POST` (`docs/design/BOARD-TASK.md § 15.7`) — a
+     * `[status, raw body]` pair, or a callable taking the request (a rejected promise is a transport
+     * failure). Only the compose suite sets it; the poller never posts.
+     *
+     * @var array{int, string}|callable
+     */
+    protected mixed $commentAnswer = [201, '{"data":{"id":117,"task_id":9234,"content":"…"}}'];
+
     private function fakeTheBoard(): void
     {
         Http::fake(['board.example.test/*' => function (Request $request) {
             $this->requested[] = $request->url();
+
+            if ($request->method() === 'POST'
+                && preg_match('#/tasks/[0-9]+/comments\.json$#', (string) parse_url($request->url(), PHP_URL_PATH)) === 1) {
+                $answer = $this->commentAnswer;
+
+                return is_callable($answer) ? $answer($request) : Http::response($answer[1], $answer[0]);
+            }
 
             parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $q);
             $board = (int) substr((string) ($q['q'] ?? ''), strlen('board_id='));

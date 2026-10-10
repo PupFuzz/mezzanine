@@ -161,6 +161,26 @@
                 <p><span data-panel-task></span> <span data-panel-task-ref hidden></span></p>
                 <p>answered by <span data-panel-task-source></span> <span data-panel-task-degraded hidden></span></p>
 
+                {{--
+                    BOARD-TASK § 15.10's COMPOSE BLOCK (card#9417) — an OPERATOR's only. ⛔ UNDER `@can('operate')`,
+                    SO AN OBSERVER's PAGE CARRIES NO COMPOSE SLOT AT ALL — not a hidden one. The block is NEVER
+                    hidden for a missing credential (§ 15.5): `$composeRefusal` is the server's render-time
+                    answer (`App\Compose\ComposeCredential::refusal()`, through the route), handed to the client
+                    as data, and the client draws the block disabled with § 15.11's target-line row for it.
+                    Every sentence here — target line, button, receipt — is a row of § 15.11's table, rendered by
+                    `public/js/drilldown/compose-model.js`; this view writes none of them.
+                --}}
+                @can('operate')
+                    <form data-panel-compose data-compose-refusal="{{ ($composeRefusal ?? null)?->class ?? '' }}" data-compose-key="{{ ($composeRefusal ?? null)?->key ?? '' }}">
+                        @csrf
+                        <h4>Say something to this desk</h4>
+                        <p data-panel-compose-target></p>
+                        <p><textarea data-panel-compose-text rows="3" aria-label="the message"></textarea></p>
+                        <p><button type="button" data-panel-compose-post hidden></button></p>
+                        <p data-panel-compose-receipt role="status" hidden></p>
+                    </form>
+                @endcan
+
                 <h4>Current action</h4>
                 <p data-panel-action></p>
                 <p>started <span data-panel-action-started></span> · <span data-panel-action-elapsed></span> · scope <span data-panel-action-scope></span></p>

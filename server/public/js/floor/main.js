@@ -55,7 +55,8 @@
 import { livePage } from '../wire/live-page.js';
 import { startAgeTicker } from '../wire/age-readout.js';
 import { startFloorScreen } from './floor-screen.js';
-import { renderDrillDown } from '../drilldown/main.js';
+import { renderCompose, renderDrillDown } from '../drilldown/main.js';
+import { ComposeBox } from '../drilldown/compose-box.js';
 import { createPainter, loadArt, measurer, themeInputs } from './painter.js';
 import { cameraView } from '../wire/camera-view.js';
 import { cameraGestures } from '../wire/camera-gestures.js';
@@ -197,6 +198,25 @@ function paintDesks(frame, desks) {
     node.dataset.dimmed = String(frame.failure.sign_in !== null);
 }
 
+/**
+ * BOARD-TASK § 15.10's compose block (card#9417) — present on an OPERATOR's page only (`@can('operate')`),
+ * so on an observer's this is `null` and nothing below touches it. The server's render-time refusal
+ * (§ 15.5) and the form's CSRF token are read off the block, once.
+ */
+const composeBlock = document.querySelector('[data-panel-compose]');
+const composeBox = composeBlock === null ? null : new ComposeBox(pageFetch, {
+    csrf: composeBlock.querySelector('input[name="_token"]')?.value ?? '',
+    unconfigured: composeBlock.dataset.composeRefusal ? {
+        class: composeBlock.dataset.composeRefusal,
+        key: composeBlock.dataset.composeKey || null,
+    } : null,
+});
+
+/** The held seat object the open panel is over — the target line is computed from it alone (§ 15.10). */
+function panelSeat(panel) {
+    return panel === null ? null : client.seats.get(`${panel.seat.install_id}/${panel.seat.seat_id}`) ?? null;
+}
+
 /** The open drill-down, or none — `drilldown/main.js` fills the slots from the frame's model. */
 function paintPanel(panel) {
     const node = el('floor-panel');
@@ -207,6 +227,10 @@ function paintPanel(panel) {
         renderDrillDown(node, panel);
         el('floor-panel-retry').hidden = !panel.can_retry;
         el('floor-panel-more').hidden = panel.activity.next_before === null;
+
+        const seat = panelSeat(panel);
+
+        renderCompose(node, composeBox === null || seat === null ? null : composeBox.view(seat));
     }
 }
 
@@ -356,6 +380,17 @@ el('floor-panel-retry').addEventListener('click', () => {
 });
 el('floor-panel-more').addEventListener('click', () => {
     screen.morePanel().then(requestRender);
+});
+
+// BOARD-TASK § 15.10: the compose post — one press, one request, the render asked for on the answer.
+// `compose-box.js` refuses a press while one is in flight, so a double click sends one comment.
+composeBlock?.querySelector('[data-panel-compose-post]')?.addEventListener('click', () => {
+    const seat = panelSeat(lastFrame?.panel ?? null);
+
+    if (seat !== null) {
+        composeBox.post(seat, composeBlock.querySelector('[data-panel-compose-text]').value).then(requestRender);
+        requestRender();
+    }
 });
 
 // Appendix B row 15: the viewer's camera (§ 4.5, the operator's ruling of 2026-10-01 on card#11045). A

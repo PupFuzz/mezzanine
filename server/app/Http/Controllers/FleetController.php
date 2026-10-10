@@ -11,6 +11,7 @@ use App\Read\IdleHorizon;
 use App\Read\ReadRefusal;
 use App\Read\RetirementFilter;
 use App\Read\SeatObject;
+use App\Read\SeatRow;
 use App\Read\Snapshot;
 use App\Read\TimelineCursor;
 use App\Sweep\Predicates;
@@ -67,16 +68,7 @@ class FleetController extends Controller
     public function seat(Request $request, string $installId, string $seatId): JsonResponse
     {
         return $this->serve(function () use ($request, $installId, $seatId) {
-            $row = RetirementFilter::renderable(
-                DB::table('seat_state')
-                    ->join('seats', 'seats.id', '=', 'seat_state.seat_ref')
-                    ->join('installs', 'installs.id', '=', 'seats.install_ref')
-                    ->where('installs.install_id', $installId)
-                    ->where('seats.seat_id', $seatId)
-            )->first([
-                'seat_state.*', 'installs.install_id', 'seats.seat_id',
-                'seats.retired_at', 'seats.retired_by', 'seats.retired_reason',
-            ]);
+            $row = SeatRow::find($installId, $seatId);
 
             if ($row === null) {
                 return ReadRefusal::seatNotFound();
