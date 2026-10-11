@@ -983,9 +983,11 @@ against.
    first channel, which delivers live today and costs a GitHub credential, a participant identity for
    the server and a thread model (item 8). **The ruling: (a).** Card comments ship first, as
    `BoardCommentChannel`, with the honest receipt — *posted*, never *delivered*, in the wording
-   [§ 15.10](#1510-the-panel) owns — and the bridge-side request is filed as
-   `PupFuzz/agent-roundtable#609` to kanban-solo ([§ 15.13](#1513-what-the-operator-provisions)
-   item 3). Until that lands, a comment reaches the agent at its next read of the card. The seam in
+   [§ 15.11](#1511-failure-paths-and-every-sentence-the-panel-renders)'s `posted` row owns — and the
+   bridge-side request is filed as `PupFuzz/agent-roundtable#609` to kanban-solo
+   ([§ 15.13](#1513-what-the-operator-provisions) item 3). It has landed upstream; until
+   [§ 15.2](#152-the-hop-and-what-this-repository-cannot-verify)'s three conditions hold on a host, a
+   comment reaches the agent at its next read of the card. **Built** (card#9417). The seam in
    [§ 15.9](#159-the-composechannel-seam) is what keeps (b) additive later rather than a redesign.
 8. **⇢ Operator — the coordination-channel target** ([§ 15.6](#156-target-resolution)). The second
    target in the card's resolution order is *a roundtable thread addressed to the seat's declared
@@ -1035,9 +1037,10 @@ against.
 *`card#9417`. The design for the desk compose box: the one write this product makes to the board, the
 credential it rides, how its target is chosen, the seam a second channel plugs into, and — first,
 because it decides what the panel may claim — the hop between the board and the seat that this
-repository cannot verify. This section designs; it builds nothing. Where it needs a change in D2, D3,
-`README.md` or `.env.example` it states the change as a request, per [§ 1.3](#13-the-boundary-stated-as-a-rule),
-and [§ 15.14](#1514-amendments-owed-to-other-surfaces) is the list.*
+repository cannot verify. Built by card#9417's build change, which landed this section's
+amendments to D2, D3, `README.md` and `.env.example` with it, stated as requests per
+[§ 1.3](#13-the-boundary-stated-as-a-rule); [§ 15.14](#1514-amendments-owed-to-other-surfaces) is the
+list.*
 
 ### 15.1 The problem, in the product's terms
 
@@ -1082,22 +1085,40 @@ bridge in the path; what it does not do is open a turn.
 **This is canon #7's seam, and the three things it owes are stated here rather than assumed.**
 
 - **DECLARE.** The floor declares the guarantee a post carries on the surface the operator reads: the
-  receipt line names the comment and the card — ***posted as comment#M on card#N*** — and **never the
-  word *delivered***. [§ 15.10](#1510-the-panel) is the exact wording. The bridge owner has declared
-  the far end's guarantee on its own surface, quoted above; this document cites it rather than
-  restating it as a Mezzanine fact.
+  receipt names the comment and the card, says *posted* and **never the word *delivered***, and says in
+  one clause that the floor does not confirm delivery. [§ 15.11](#1511-failure-paths-and-every-sentence-the-panel-renders)'s
+  `posted` row is the one wording. The bridge owner has declared the far end's guarantee on its own
+  surface, quoted above; this document cites it rather than restating it as a Mezzanine fact.
 - **CHECK.** This repository checks that its declaration is true of its own code: AT-C2 asserts the
   request population a compose issues (one `POST`, one path) and AT-C8 asserts the receipt wording
-  (the comment id present, *delivered* absent) — so the panel cannot drift into a claim the hop does
-  not back.
+  against § 15.11's table (the comment id present, *delivered* absent) — so the panel cannot drift
+  into a claim the hop does not back.
 - **NAME WHAT CANNOT BE VERIFIED.** Whether the board's webhook for this scope carries
   `comment.created`, whether the bridge forwards it, and whether the seat's channel is live are not
-  establishable from this repository; the receipt says so in one clause — ***the floor does not
-  confirm delivery*** — and [§ 14](#14-open-questions) item 7 records the operator's ruling on the
-  product fork and the bridge-side request that would close it. ⚠ The card's acceptance line *"the seat's channel receives
+  establishable from this repository; the `posted` row's last clause is where the receipt says so, and
+  [§ 14](#14-open-questions) item 7 records the operator's ruling on the product fork and the
+  bridge-side request that would close it. ⚠ The card's acceptance line *"the seat's channel receives
   it (control on a live seat, not a mock)"* is therefore a **live, cross-boundary** check that no test
   in this suite can run; it is owed on the real surface once the bridge change lands, exactly as
   [§ 13](#13-what-is-deliberately-not-built) still owes the poller's first real tier-1 read.
+
+**The live-delivery note — the bridge's side, and when the receipt may change.** The bridge-side
+request ([§ 15.13](#1513-what-the-operator-provisions) item 3) has an answer upstream: the bridge's
+`card_comment` intent, routed to the card's assignee seat only, documented in the bridge's own
+[`docs/consumer-guide.md` § Card comments](https://github.com/PupFuzz/agent-webhook-bridge/blob/dev/docs/consumer-guide.md#card-comments-card_comment)
+— which owns how that delivery behaves, and which this document points at rather than restates. Live
+delivery on a host needs **all three** of: (1) a board (kanban) release after v0.52.3 carrying the
+encoded-size cap on a comment's content; (2) a bridge release carrying the `card_comment` intent; and
+(3) `comment.created` added to the board subscription's `event_filter` in the install's bridge YAML,
+then `bridge:provision --reconcile`. ⛔ **The receipt stays *posted*, never *delivered*, until all
+three hold on the host** — and even then the floor still cannot see the hop, so a change to the
+`posted` row is a design change to this document, measured on the real surface first (AT-C6), not an
+edit made because the bridge shipped. ⛔ **Two bridge settings can silence a floor comment with no
+error anywhere**, and both are the operator's ([§ 15.13](#1513-what-the-operator-provisions) item 1):
+the floor's board account must never be the bridge's writeback identity (the bridge drops a comment
+whose author is that identity as an echo), and an assignee seat that sets
+`echo_suppression.treat_as_signal` must list the floor's account on it (that list admits named
+authors only).
 
 ### 15.3 The one verb, and why it is not an instrument inside the measurement
 
@@ -1167,9 +1188,9 @@ write route that follows (card#9417's compose box)"*.
 `can:` middleware); the page renders the compose block under `@can('operate')`, so an observer's floor
 page carries **no compose slot at all** — not a hidden one — which is the card's *"compose control
 absent"* in the strongest form the page can give it. `Tests\Feature\Admin\AnObserverReadsTheFleetTest::test_no_route_outside_the_admin_console_requires_the_operate_gate`
-already anticipates this route by name: `desk.compose` joins its allow-list, which is the one edit
-that says *a write control and not a read surface is being gated*, and the test reds if the gate is
-ever dropped from the route.
+carries this route by name: `desk.compose` is on its allow-list, which is the one edit that says *a
+write control and not a read surface is being gated*, and the test reds if the gate is ever dropped
+from the route.
 
 **CSRF and the throttle.** The route is in `web`, so the group's CSRF check applies to the `POST`
 (the read plane never needed one: every route behind `fleet.read` is a `GET`, as `routes/fleet.php`
@@ -1185,12 +1206,13 @@ the client sends that token with the post. `throttle:compose` is a per-account l
 [§ 5.3](#53-the-compose-credential)). It lives in `server/.env` and nowhere else: not in the store, not
 per operator, not in the session.
 
-**Missing is loud at two moments.** At page render, an operator's panel reads the config and, when
-the key is empty, draws the compose block **disabled** with the sentence
-***compose is not configured — set `BOARD_COMPOSE_TOKEN`*** in place of the target line, so no
-operator types a message into a box that cannot post it. At the route, the post is refused by name
-(`unconfigured`, [§ 15.11](#1511-failure-paths-and-every-sentence-the-panel-renders)) **whatever the page said**, because configuration
-can change between render and post. ⛔ **The block is never hidden for a missing credential.** A
+**Missing is loud at two moments.** At page render, the floor page's route asks
+`App\Compose\ComposeCredential::refusal()` — the same check the route makes — and hands the answer
+to an operator's page as data; when compose is unconfigured (or the two tokens are equal) the client
+draws the block **disabled**, with § 15.11's `target_unconfigured` (or `target_shared`) row in place
+of the target line, so no operator types a message into a box that cannot post it. At the route, the
+post is refused by name (`unconfigured`, [§ 15.11](#1511-failure-paths-and-every-sentence-the-panel-renders))
+**whatever the page said**, because configuration can change between render and post. ⛔ **The block is never hidden for a missing credential.** A
 hidden block reads as *this floor has no compose box*, which is a different fact; the role gate hides
 it for an observer, and nothing else does.
 
@@ -1214,17 +1236,18 @@ and the server treats it as a **precondition over every arm**, never as the targ
 resolved from the server's own state, and `expected_ref == resolvedTarget.label` is checked **after
 resolution and before any live read or channel call**; a mismatch is refused `target_moved` with
 **zero** board requests. Without it, the sequence *the desk renders A → a poll or delta moves tier 1 to
-B → the operator presses **Post to card#A** → the server resolves B and posts there* lands a message on
+B → the operator presses the button for card#A → the server resolves B and posts there* lands a message on
 a card the operator never saw. AT-C9's RED is a server that ignores the field.
 
 **The precedence, closed — each step runs only if every step above it passed:**
 
 | Step | What is checked | Refusal |
 |---|---|---|
-| **A — shape** | the text (non-empty after trim, within the byte bound); `expected_ref` present and matching `^card#[1-9][0-9]*$` or [D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)'s `slug` pattern — ⛔ a value that fails this step is **never echoed** into any sentence | `422` `text` / `expected_ref` |
-| **B — resolution** | the arms below, in order, from the seat row alone | `422` `no_target` / `no_channel_for_agent` |
-| **C — precondition** | `expected_ref == resolvedTarget.label` | `409` `target_moved` — the desk's card moved since it was shown |
-| **D — the live read** (card targets only) | with the READ token, through the poller's own reader (`App\Board\CandidateRead::winners()`, [§ 15.9](#159-the-composechannel-seam)), every configured board is read and § 4.2's winner for the seat's `board_user_id` recomputed over the fresh rows — read and **discarded**, never written to `seat_board_task`, so the compose path is not a second producer ([§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)) | the live winner is not `expected_ref`, or the user has no candidate ⇒ `409` `target_moved` — the board moved and the desk has not yet; the read degraded by any of [§ 6.3](#63-pagination-and-the-false-clean-rule)'s rules ⇒ `502` `target_unread`; `BOARD_IDS` empty ⇒ `503` `unconfigured` (a read over zero boards has no winner to compare and is never `target_moved`) |
+| **0 — the seat, then the configuration** | the seat exists and renders (`App\Read\SeatRow`, through the retirement filter); then `ComposeCredential::resolve()`: the compose token, its equality with the poller's, the base, and `BOARD_IDS` — ⭐ `BOARD_IDS` empty or malformed lives **here and only here** (design review F6): a read over zero boards has no winner to compare and is never `target_moved` | `404` `seat_not_found`; `503` `unconfigured` (naming the key) / `credential_shared` |
+| **A — shape** | the text (a valid UTF-8 string, non-empty after trim, within [§ 15.15](#1515-every-number)'s bound measured **encoded**); `expected_ref` present and matching `^card#[1-9][0-9]*$` or [D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)'s `slug` pattern — ⛔ a value that fails this step is **never echoed** into any sentence | `422` `text` / `expected_ref` |
+| **B — resolution** | the arms below, in order, from the seat row alone (`TargetResolver`) | `422` `no_target` |
+| **C — precondition** | `expected_ref == resolvedTarget.label` — then `ComposeChannels::for()` selects the target's channel and refuses a thread target (design review F2) | `409` `target_moved` — the desk's card moved since it was shown; then `422` `no_channel_for_agent` |
+| **D — the live read** (card targets only) | with the READ token, through the poller's own reader (`App\Board\CandidateRead::winners()`, [§ 15.9](#159-the-composechannel-seam)), every configured board is read and § 4.2's winner for the seat's `board_user_id` recomputed over the fresh rows — read and **discarded**, never written to `seat_board_task`, so the compose path is not a second producer ([§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)) | the live winner is not `expected_ref`, or the user has no candidate ⇒ `409` `target_moved` — the board moved and the desk has not yet; the read degraded by any of [§ 6.3](#63-pagination-and-the-false-clean-rule)'s rules, or an unusable read token ⇒ `502` `target_unread` |
 | **E — the write** | [§ 15.7](#157-the-write-and-the-receipt) | the board rows of [§ 15.11](#1511-failure-paths-and-every-sentence-the-panel-renders) |
 
 **Step B's arms, and what each reads:**
@@ -1232,8 +1255,8 @@ a card the operator never saw. AT-C9's RED is a server that ignores the field.
 | # | Arm | Predicate | Target |
 |---|---|---|---|
 | 1 | **the joined card** | `task_source = 'board_card'` and `task_ref` matches `^card#([1-9][0-9]*)$` | `BoardComment(card_id)`, label `card#N` |
-| 2 | **the declared agent name** | arm 1 false; `protocol_agent_name` non-null and `protocol_agent_name_check = 'checked'` | `CoordThread(name)`, label the name — **refused by name in the first build** (`no_channel_for_agent`), because no coordination channel is declared for the install ([§ 14](#14-open-questions) item 8). The arm exists so the refusal names *the seat declares `<name>` and no channel is configured for it* rather than *no target* |
-| 3 | **neither** | — | refused: `no_target`, naming both facts — the task source that answered (`telemetry` or none) and the name-check state (`undeclared`, `unchecked` or `disagreed`) |
+| 2 | **the declared agent name** | arm 1 false; `protocol_agent_name` non-null and `protocol_agent_name_check = 'checked'` | `CoordThread(name)`, label the name — it **resolves** at step B and is compared at step C like any target, and is then **refused by name in the first build** by `ComposeChannels::for()` (`no_channel_for_agent`), because no coordination channel is declared for the install ([§ 14](#14-open-questions) item 8). The arm exists so the refusal names the seat's declared name rather than *no target* |
+| 3 | **neither** | — | refused: `no_target`, naming both facts — the task source that answered (`telemetry`, or `none`) and the name-check state (`undeclared`, `unchecked`, `disagreed`, or `none` before the first heartbeat) |
 
 **What the live read costs.** One paged read per configured board — on board 14 one page of ~340 KB
 ([§ 12](#12-every-number-and-where-it-comes-from)), the poller's own per-tick cost — per compose, at a
@@ -1287,11 +1310,11 @@ Posted from the Mezzanine floor by <users.name> at 2026-10-08T14:03:11Z
 `users.name` and not the email — the comment is readable by every account on the board and by every
 agent that reads the card, and a name is what an audit needs. The timestamp is the server's, in D2's
 `rfc3339_ms` form truncated to seconds. The text is trimmed, must be non-empty, and is bounded in
-bytes ([§ 15.15](#1515-every-number)); it is otherwise untouched — D1 § 7's sanitizer is the reporter's
+encoded bytes ([§ 15.15](#1515-every-number)); it is otherwise untouched — D1 § 7's sanitizer is the reporter's
 and this is an operator's own words on an operator's own board.
 
-**The receipt is the board's own confirmation, not ours.** Success is `201` whose body carries
-`data.id` as an integer; that integer is the receipt (`comment#M`). A `2xx` with no integer id is
+**The receipt is the board's own confirmation, not ours.** Success is a `2xx` (the board answers
+`201`) whose body carries `data.id` as an integer; that integer is the receipt (`comment#M`). A `2xx` with no integer id is
 **`unverified`** — the post may have landed, and the panel renders that row of
 [§ 15.11](#1511-failure-paths-and-every-sentence-the-panel-renders)'s table, which owns the words —
 and nothing is retried. ⛔ No retry anywhere on this path: a retried comment is a duplicate comment,
@@ -1314,7 +1337,9 @@ states, applied in the direction of writing nothing).
 
 One application log line per outcome, at the fields [§ 5.1](#51--the-token-value-never-reaches-an-output-stream)
 admits: `compose posted seat=<install>/<seat> card=<id> comment=<id> user=<users.id>` or
-`compose refused seat=… class=<class> status=<n> url=<redacted>` — the refused line carrying the
+`compose refused seat=… class=<class> status=<n> board_status=<n|-> url=<redacted|->` (`status` is the
+response's, `board_status` the board's where it answered; a seat that is not found logs
+`class=seat_not_found`) — the refused line carrying the
 request URL with its userinfo redacted, exactly as `BoardPoll::countFailure()` logs the poller's
 (`'url' => $failure->redactedUrl`), so that AT-C5's planted defect has a line it can appear on; never
 the text, never a header, never a body.
@@ -1339,23 +1364,27 @@ interface ComposeChannel
 final class ComposeTarget  { kind, address, label }        // 'board_comment', 9234, 'card#9234'
 final class ComposeMessage { authorName, text, composedAt } // the attribution line is the CHANNEL's to render
 final class ComposeReceipt { kind, address, ref, postedAt } // 'board_comment', 9234, 'comment#117', …
-final class ComposeRefused extends \RuntimeException        // BoardPollFailed's shape: class, status, redactedUrl — NO message parameter
-final class TargetResolver { public function resolve(object $seatRow): ComposeTarget; }   // § 15.6 step B; throws ComposeRefused
-final class ComposeCredential { /* § 5.3: the ONE reader of both tokens; hands the compose token to the writer, the read token to nothing */ }
-final class ComposeChannels { public function for(ComposeTarget $t): ComposeChannel; }    // kind ⇒ implementation; unknown kind throws
+final class ComposeRefused extends \RuntimeException        // BoardPollFailed's shape: class, status, redactedUrl, plus § 15.11's members (ref, boardStatus, key, moved, maxBytes, taskSource, nameCheck) — NO message parameter
+final class TargetResolver { public function resolve(object $seatRow): ComposeTarget; }   // § 15.6 step B; throws ComposeRefused (no_target only)
+final class ComposeCredential { resolve(): array; refusal(): ?ComposeRefused; }           // § 5.3: the ONE reader of the compose token, and step 0's check; the page and the route both ask it
+final class ComposeChannels { public function for(ComposeTarget $t): ComposeChannel; }    // kind ⇒ implementation; a thread target throws no_channel_for_agent; unknown kind throws
 final class BoardCommentChannel implements ComposeChannel   // § 15.7 — the write only; the ONE home of the `comments.json` builder
 ```
 
 **Two hoists in `App\Board` and `App\Read`, named so the build does not copy.**
 
-- **`App\Board\CandidateRead::winners(): array<int, array<string, mixed>>`** — board user id ⇒ the
-  § 4.2 winner — **owns the `BOARD_IDS` parse, the paging and § 4.2's fold**, hoisted out of
-  `BoardPoll::boardIds()`, `read()` and `beats()`. **`BoardPoll::run()` and the compose path both call
-  it.** It throws `BoardPollFailed` and **never counts and never logs**: `run()` alone keeps
+- **`App\Board\CandidateRead::winners(array $ids, string $base, string $token, ?callable $say): array<int, array<string, mixed>>`**
+  — board user id ⇒ the § 4.2 winner — **owns the paging and § 4.2's fold**, hoisted out of
+  `BoardPoll::read()` and `beats()`; `CandidateRead::boardIds()` is the one `BOARD_IDS` parse.
+  **`BoardPoll::run()` and the compose path both call it.** Per design review F7, `run()` keeps the
+  `BOARD_IDS` parse call and hands the `-v` per-board line in as `$say`, so the poller's behaviour is
+  unchanged; the compose path passes no `$say`. It throws `BoardPollFailed` and **never counts and
+  never logs**: `run()` alone keeps
   `countFailure()` and the counters, so a compose's live read moves `board_poll_failed` by nothing and
   writes no poll log line — the counter counts polls. The read token is read by `BoardPoll::credential()`
-  as today, handed in.
-- **`App\Read\SeatRow`** — the `seat_state` ⋈ `seats` ⋈ `installs` selection hoisted from
+  as today (now public, so the compose path's live read takes the same token from the same reader),
+  handed in. `App\Board\BoardHttp` is § 15.7's shared client.
+- **`App\Read\SeatRow::find()`** — the `seat_state` ⋈ `seats` ⋈ `installs` selection hoisted from
   `FleetController::seat()`, **widened by one column: `seats.board_user_id`**, which the compose path
   needs to pick the live winner and which the read plane today does not select. `FleetController`
   keeps publishing what it published (`SeatObject` reads no new member), so the widening changes no
@@ -1367,7 +1396,9 @@ text, a time — and each channel renders attribution in its own idiom (a commen
 selects the channel, so *"chosen per agent"* (the card's phrase for Slack) is a resolver change —
 a per-seat declaration of which kinds it reads, on the model of `seats.board_user_id` — and not a
 channel change. The controller, `App\Http\Controllers\DeskComposeController::store()`, is the one
-caller: resolve, select, post, render; it holds no channel logic.
+caller of the post: resolve, select, post, render; it holds no channel logic and renders no sentence.
+The floor page's route (`routes/web.php`) is the package's only other caller, and asks
+`ComposeCredential::refusal()` and nothing else (design review F3; AT-C10 holds the pair).
 
 **Shape (b) stays what the card said.** A bridge endpoint that stages a free-text intent for one agent
 is the bridge owner's build; if it lands, `BridgeMessageChannel` is one more implementation behind
@@ -1375,82 +1406,121 @@ this interface and the resolver gains an arm. Nothing here pre-builds it.
 
 ### 15.10 The panel
 
-A D3 § 4.3 amendment, stated as a request ([§ 15.14](#1514-amendments-owed-to-other-surfaces)); the
+A D3 § 4.3 amendment ([§ 15.14](#1514-amendments-owed-to-other-surfaces), landed with the build); the
 behaviour it specifies:
 
-- **An operator's panel gains a `compose` block**: a target line, a text box, a ***Post to card#N***
-  button, and a receipt line. The block is rendered under `@can('operate')`; an observer's page does
-  not carry it. Its slots are `data-panel-compose-target`, `data-panel-compose-text`,
-  `data-panel-compose-post` and `data-panel-compose-receipt`, and they join the slot contract
-  `Tests\Feature\DrillDown\DrillDownModuleWiringTest` checks both ways — which means that test fetches
-  the page **as an operator**, and a new arm fetches it as an observer and asserts no
-  `data-panel-compose` slot in the HTML at all.
-- **The target line is computed by the client from the seat object alone** — `task.ref` when
-  `task.source` is `board_card`; else the declared name when `protocol_agent_name_check` is `checked`,
-  worded as the refusal the server will give; else [§ 15.6](#156-target-resolution) arm 3's sentence —
-  and **the post carries that rendered label as `expected_ref`**, so the server re-resolves and
-  refuses `target_moved` if the two differ. The button is disabled whenever the client's resolution is
-  a refusal, so the common case costs no request.
-- **The receipt line renders exactly one sentence, and every sentence it can render — success, in
-  flight, and every refusal — is a row of [§ 15.11](#1511-failure-paths-and-every-sentence-the-panel-renders)'s
+- **An operator's panel gains a `compose` block**: a target line, a text box, a button, and a receipt
+  line. The block is rendered under `@can('operate')`; an observer's page does not carry it. Its slots
+  are `data-panel-compose-target`, `data-panel-compose-text`, `data-panel-compose-post` and
+  `data-panel-compose-receipt` inside `data-panel-compose`, and they join the slot contract
+  `Tests\Feature\DrillDown\DrillDownModuleWiringTest` checks both ways — which that test fetches **as
+  an operator**, and a second arm fetches as an observer and asserts no `data-panel-compose` slot in
+  the HTML at all.
+- **The target line is computed by the client from the held seat object alone** — the `target_card`
+  row when `task.source` is `board_card`; else the `target_thread` row when
+  `protocol_agent_name_check` is `checked`; else the `target_none` row; and the `target_unconfigured`
+  or `target_shared` row whenever the page was rendered with compose refused (§ 15.5) — and **the post
+  carries the label it rendered as `expected_ref`**, so the server re-resolves and refuses
+  `target_moved` if the two differ. The button (the `button` row) is drawn beside a card target only
+  and is disabled whenever the client's resolution is a refusal, so the common case costs no request.
+- **The receipt line renders exactly one sentence, and every sentence the block can render — target
+  line, button, success, in flight, and every refusal — is a row of [§ 15.11](#1511-failure-paths-and-every-sentence-the-panel-renders)'s
   table.** This section owns none of them, so no second copy exists to drift; AT-C8 drives the client
-  over every row and asserts the slot against that table. The text box is cleared on the success row
-  and on no other; a refusal leaves the text where the operator can resend or edit it. ⛔ The word
-  *delivered* appears in no row, which AT-C8 holds.
-- **While a post is in flight** the button is disabled and the receipt line reads the in-flight row;
-  a delta arriving meanwhile re-renders the target line and nothing else of the block.
+  over every row and asserts the slot against that table. The text box is cleared on the `posted` row
+  and on no other; a refusal leaves the text where the operator can resend or edit it, and the panel's
+  1 s re-render never touches it. ⛔ The word *delivered* appears in no row, which AT-C8 holds.
+- **While a post is in flight** the button is disabled, a second press sends nothing, and the receipt
+  line reads the `in_flight` row; a delta arriving meanwhile re-renders the target line and nothing
+  else of the block. The post follows no redirect, so a signed-out answer is read as § 15.11's
+  `client_401` row rather than as a login page.
 
 ### 15.11 Failure paths, and every sentence the panel renders
 
-⭐ **This table is the ONE owner of every sentence the compose block can show** — success and
-in-flight included — and of every refusal class and status. [§ 15.10](#1510-the-panel) and
-[§ 15.14](#1514-amendments-owed-to-other-surfaces)'s D3 rows point here and restate nothing; AT-C8
-asserts the client against these rows and no other text. An earlier revision carried the sentences in
-three places and one copy kept saying *not posted* for a timed-out send after the others had stopped —
-the duplicate-comment defect, minted by a restatement.
+⭐ **This table is the ONE owner of every sentence the compose block can show** — the target line, the
+button, success and in-flight included — and of every refusal class and status. Every other section
+of this document, and D3's rows ([§ 15.14](#1514-amendments-owed-to-other-surfaces)), points here and
+restates nothing. AT-C8 parses this table out of the document on every run and drives the shipped
+client over every keyed row, so a sentence edited here reds the client until it follows, and a client
+sentence that is in no row has nowhere to hide. An earlier revision carried the sentences in three
+places and one copy kept saying *not posted* for a timed-out send after the others had stopped — the
+duplicate-comment defect, minted by a restatement.
+
+**How a row reads.** `Key` is the row's stable name: the client's sentence map and AT-C8's fixtures are
+keyed by it, and a row whose key is `—` renders no sentence. The sentence is the one italic span in
+its cell, written with **marked placeholders** that the client substitutes and nothing else:
+
+| Placeholder | Substituted with |
+|---|---|
+| `{card_a}` | the target label the panel showed and the post carried as `expected_ref` — a `card#N`, or for a thread target the declared name |
+| `{card_b}` | the response's `ref` on a `target_moved` — the label the server resolved, or the board's live winner |
+| `{comment_m}` | the success response's `ref` — `comment#M`, the board's own comment id |
+| `{hh_mm_ss}` | the success response's `posted_at`, in the viewer's zone through the one converter (`wire/clock.js`) |
+| `{key}` | the refusal's `key` — the configuration key that is empty or unusable |
+| `{max_bytes}` | the refusal's `max_bytes` — [§ 15.15](#1515-every-number)'s message bound |
+| `{board_status}` | the refusal's `board_status` — the board's HTTP status, never its body |
+| `{task_source}` | the refusal's (or, on the target line, the seat object's) task source: `telemetry`, or `none` when no task answered |
+| `{name_check}` | the refusal's (or the seat object's) `protocol_agent_name_check`, or `none` before the first heartbeat |
+| `{name}` | the declared `protocol_agent_name` |
+
+**The response body** of `desk.compose` is `{ref, posted_at}` on success and
+`{class, ref?, board_status?, key?, moved?, max_bytes?, task_source?, name_check?}` on a refusal — a
+member present only where its row substitutes it, plus `moved` (`desk` or `board`), which tells the
+two `target_moved` rows apart. `ComposeRefused` carries exactly these members (`ref`, `boardStatus`,
+`key`, `moved`, `maxBytes`, `taskSource`, `nameCheck`) and the redacted URL for the log, and never a
+message parameter. The `404` is the read plane's own `seat_not_found` body.
 
 The classes are a closed set on `ComposeRefused`. The status to the client is one per meaning: `403`
 for the gate, `404` for a desk that is gone, `422` for a refusal the request's shape or the seat's
 state produced, `409` for a precondition the server's own resolution or the board's live state failed,
 `502` for a board that did not answer as the contract says, `503` for an unconfigured path. **Three
 sentence families, by what is known:** *not posted* — said only where no write was attempted, or the
-transport proves the write never left; *may be on card#N — read the card before posting again* — said
-wherever a write may have landed and the board's answer is not in hand; *posted* — said only on an
-integer comment id from the board.
+transport proves the write never left; *may be on {card_a} — read the card before posting again* —
+said wherever a write may have landed and the board's answer is not in hand, **and for any answer the
+client does not recognise**; *posted* — said only on an integer comment id from the board.
 
-| Condition | Class | Status | Panel sentence (in the server's words; `card#A` = `expected_ref`, `card#B` = the resolution) | Board requests |
-|---|---|---|---|---|
-| **success** — `201` with integer `data.id` | — | `200` | *posted as comment#M on card#A at HH:MM:SS — the floor does not confirm delivery* | the read's pages + 1 write |
-| **in flight** — the client's own state between press and answer | — (client) | — | *posting…* | — |
-| observer | — (`can:operate`) | `403` | no block exists to render one | 0 |
-| **client** — the page's CSRF token expired (`419`) | — (client) | — | *the page has expired — reload the floor and post again; the message was not posted* | 0 |
-| **client** — signed out meanwhile (`401`, or the login redirect) | — (client) | — | *you are signed out — sign in again; the message was not posted* | 0 |
-| **client** — `throttle:compose` (`429`) | — (client) | — | *too many posts — wait a minute; the message was not posted* | 0 |
-| **client** — `403` on a page rendered while the account was still an operator | — (client) | — | *this account can no longer post from the floor; the message was not posted* | 0 |
-| `BOARD_COMPOSE_TOKEN` empty; `BOARD_API_BASE` empty or not `https`; **or `BOARD_IDS` empty** | `unconfigured` | `503` | *compose is not configured — set `BOARD_COMPOSE_TOKEN`* (the key named is the one that is empty) *; the message was not posted* | 0 |
-| compose token equals the poller's token ([§ 5.3](#53-the-compose-credential)) | `credential_shared` | `503` | *compose is refused — `BOARD_COMPOSE_TOKEN` is the same value as `BOARD_API_TOKEN`; the message was not posted* | 0 |
-| seat not found or retired | — | `404` | *this desk is gone* (D3's own notice) | 0 |
-| text empty after trim, or over the byte bound (step A) | `text` | `422` | *write something* / *the message is over N bytes* | 0 |
-| `expected_ref` absent or malformed (step A) — ⛔ the submitted value is **never** echoed | `expected_ref` | `422` | *the post did not say which card it was for — reload the floor and post again; the message was not posted* | 0 |
-| no joined card and no checked name (step B) | `no_target` | `422` | *no target: this desk shows no board card (task answered by `telemetry`) and declares no checked agent name (`undeclared`); the message was not posted* — the two values substituted | 0 |
-| a checked name and no channel for it (step B) | `no_channel_for_agent` | `422` | *this desk declares `mezzanine` and no coordination channel is configured for this install; the message was not posted* | 0 |
-| the resolution's label is not `expected_ref` (step C) — the **desk** moved | `target_moved` | `409` | *the desk's card has moved to card#B since you were shown card#A; the message was not posted* | 0 |
-| the live winner is not `expected_ref`, or the user has no candidate (step D) — the **board** moved and the desk has not yet | `target_moved` | `409` | *the board now shows card#B as this desk's card, and the desk follows at its next read; the message was not posted* — *no card* in place of `card#B` when there is no candidate | the read's pages; 0 writes |
-| the live read degraded (any [§ 6.3](#63-pagination-and-the-false-clean-rule) rule, `401`/`403`, transport) (step D) | `target_unread` | `502` | *the board could not be read to confirm card#A; the message was not posted* | the read's pages; 0 writes |
-| board `401` / `403` on the write | `auth` | `502` | *the board refused the floor's credential (`403`); the message was not posted* | 1 write |
-| board other non-`2xx` on the write | `status` | `502` | *the board answered `422`; the message was not posted* — the status, never the body | 1 write |
-| the write failed **before it was sent** — name resolution, connection refused, TLS handshake | `transport` | `502` | *the board could not be reached; the message was not posted* | 1 attempted write |
-| the write failed **after it was sent, or it cannot be told** — read timeout, connection lost mid-exchange, any transport error whose code does not prove the request never left | `unverified` | `502` | *the board's answer did not arrive — the message may be on card#A; read the card before posting again* | ≤ 1 write |
-| `2xx` with no integer `data.id` | `unverified` | `502` | *the board answered without a comment id — the message may be on card#A; read the card before posting again* | 1 write |
-| no response reaches the browser | — (client) | — | *the floor got no answer from the server — the message may be on card#A; read the card before posting again* — the browser cannot tell a request that never left from one whose answer was lost | ≤ 1 write |
+| Key | Condition | Class | Status | Panel sentence | Board requests |
+|---|---|---|---|---|---|
+| `target_card` | **target line** — the seat object's `task.source` is `board_card` with a `card#N` ref | — (client) | — | *a comment on {card_a}, written as you* | — |
+| `button` | **the button** — beside `target_card` only; disabled on every other target line | — (client) | — | *Post to {card_a}* | — |
+| `target_thread` | **target line** — no joined card, and a `checked` declared name: the refusal the server will give, so the button is disabled | — (client) | — | *this desk declares `{name}` and no coordination channel is configured for this install* | — |
+| `target_none` | **target line** — no joined card and no checked name ([§ 15.6](#156-target-resolution) arm 3); the button is disabled | — (client) | — | *no target: this desk shows no board card (task answered by `{task_source}`) and declares no checked agent name (`{name_check}`)* | — |
+| `target_unconfigured` | **target line** — the page was rendered with compose unconfigured ([§ 15.5](#155-where-the-credential-lives-and-how-a-missing-one-fails-loud)); the block is drawn disabled, never hidden | — (client) | — | *compose is not configured — set `{key}`* | — |
+| `target_shared` | **target line** — the page was rendered with the compose token equal to the poller's; the block is drawn disabled | — (client) | — | *compose is refused — `BOARD_COMPOSE_TOKEN` is the same value as `BOARD_API_TOKEN`* | — |
+| `posted` | **success** — a `2xx` whose body carries `data.id` as an integer (the board answers `201`) | — | `200` | *posted as {comment_m} on {card_a} at {hh_mm_ss} — the floor does not confirm delivery* | the read's pages + 1 write |
+| `in_flight` | **in flight** — the client's own state between press and answer | — (client) | — | *posting…* | — |
+| — | observer | — (`can:operate`) | `403` | no block exists to render one | 0 |
+| `client_419` | **client** — the page's CSRF token expired (`419`) | — (client) | — | *the page has expired — reload the floor and post again; the message was not posted* | 0 |
+| `client_401` | **client** — signed out meanwhile (`401`, or the login redirect, which a post that follows no redirect reads as status `0`) | — (client) | — | *you are signed out — sign in again; the message was not posted* | 0 |
+| `client_429` | **client** — `throttle:compose` (`429`) | — (client) | — | *too many posts — wait a minute; the message was not posted* | 0 |
+| `client_403` | **client** — `403` on a page rendered while the account was still an operator | — (client) | — | *this account can no longer post from the floor; the message was not posted* | 0 |
+| `desk_gone` | seat not found or retired (step 0) | — | `404` | *this desk is gone — it was retired or is no longer served; the message was not posted* | 0 |
+| `unconfigured` | `BOARD_COMPOSE_TOKEN` empty or unusable; `BOARD_API_BASE` empty or not `https`; **or `BOARD_IDS` empty or malformed** (step 0) — `key` names the first of these that fails | `unconfigured` | `503` | *compose is not configured — set `{key}`; the message was not posted* | 0 |
+| `credential_shared` | compose token equals the poller's token ([§ 5.3](#53-the-compose-credential)) (step 0) | `credential_shared` | `503` | *compose is refused — `BOARD_COMPOSE_TOKEN` is the same value as `BOARD_API_TOKEN`; the message was not posted* | 0 |
+| `text_empty` | text absent, not a string, or empty after trim (step A) | `text` | `422` | *write something — the message was not posted* | 0 |
+| `text_bytes` | text over the byte bound, measured encoded (step A, [§ 15.15](#1515-every-number)) | `text` | `422` | *the message is over {max_bytes} bytes — the message was not posted* | 0 |
+| `expected_ref` | `expected_ref` absent or malformed (step A) — ⛔ the submitted value is **never** echoed | `expected_ref` | `422` | *the post did not say which card it was for — reload the floor and post again; the message was not posted* | 0 |
+| `no_target` | no joined card and no checked name (step B) | `no_target` | `422` | *no target: this desk shows no board card (task answered by `{task_source}`) and declares no checked agent name (`{name_check}`); the message was not posted* | 0 |
+| `no_channel_for_agent` | a checked name and no channel for it (`ComposeChannels::for()`, after step C) | `no_channel_for_agent` | `422` | *this desk declares `{name}` and no coordination channel is configured for this install; the message was not posted* | 0 |
+| `target_moved_desk` | the resolution's label is not `expected_ref` (step C) — the **desk** moved; `moved` is `desk` | `target_moved` | `409` | *the desk's card has moved to {card_b} since you were shown {card_a}; the message was not posted* | 0 |
+| `target_moved_board` | the live winner is not `expected_ref` (step D) — the **board** moved and the desk has not yet; `moved` is `board` | `target_moved` | `409` | *the board now shows {card_b} as this desk's card, and the desk follows at its next read; the message was not posted* | the read's pages; 0 writes |
+| `target_moved_board_no_card` | the user has no candidate on the live read (step D); `moved` is `board`, no `ref` | `target_moved` | `409` | *the board now shows no card for this desk, and the desk follows at its next read; the message was not posted* | the read's pages; 0 writes |
+| `target_unread` | the live read degraded (any [§ 6.3](#63-pagination-and-the-false-clean-rule) rule, `401`/`403`, transport, an unusable read token) (step D) | `target_unread` | `502` | *the board could not be read to confirm {card_a}; the message was not posted* | the read's pages; 0 writes |
+| `auth` | board `401` / `403` on the write | `auth` | `502` | *the board refused the floor's credential (`{board_status}`); the message was not posted* | 1 write |
+| `status` | board other non-`2xx` on the write, a redirect included | `status` | `502` | *the board answered `{board_status}`; the message was not posted* | 1 write |
+| `transport` | the write failed **before it was sent** — name resolution, connection refused, connect timeout, TLS handshake (the client's own connect-class failure) | `transport` | `502` | *the board could not be reached; the message was not posted* | 1 attempted write |
+| `unverified_lost` | the write failed **after it was sent, or it cannot be told** — read timeout, connection lost mid-exchange, any transport error that is not connect-class | `unverified` | `502` | *the board's answer did not arrive — the message may be on {card_a}; read the card before posting again* | ≤ 1 write |
+| `unverified_no_id` | `2xx` with no integer `data.id`; `board_status` carries the `2xx` | `unverified` | `502` | *the board answered without a comment id — the message may be on {card_a}; read the card before posting again* | 1 write |
+| `no_response` | no response reaches the browser — the browser cannot tell a request that never left from one whose answer was lost | — (client) | — | *the floor got no answer from the server — the message may be on {card_a}; read the card before posting again* | ≤ 1 write |
+| `unrecognised` | **the catch-all** — any response the client cannot place in a row above: no recognised class, a class whose status is not its row's, a body that is not JSON (a post-write `500`, a proxy's HTML `502`/`504`), a `200` without a `comment#M` | — (client) | — | *the server's answer was not one the floor recognises — the message may be on {card_a}; read the card before posting again* | ≤ 1 write |
 
 ⛔ **Zero board requests on every row above the step-D rows is a property, not a convenience**: a
 refusal decided from local state must never have cost the board a request, and AT-C3/AT-C4/AT-C9
-assert the count. ⛔ **The four client rows are refusals the middleware makes before the controller
+assert the count. ⛔ **The four `client_*` rows are refusals the middleware makes before the controller
 runs** (`VerifyCsrfToken`-class, `auth`, `throttle`, `can:operate`), so *not posted* is known there by
 construction. ⛔ **A `non-2xx` with a body is reported as its status alone**: a board that echoes the
 request into an error body must not be able to write the message, or a header, into the panel or the
-log.
+log. ⛔ **The catch-all is in the *may be* family on purpose**: an answer the client cannot read is an
+answer it cannot rule a write out of.
 
 ### 15.12 Acceptance tests
 
@@ -1530,27 +1600,39 @@ red before it is trusted (the build brief's rule).*
   `no_channel_for_agent` would have answered — the precondition binds every arm. *RED:* a server that
   ignores `expected_ref` — the live read runs and the write lands on B.
 - **AT-C10 the capability population — who can read the compose token, and who can build the
-  write.** Two populations over the tree, each listed by name so an empty answer is a measurement:
-  **(a) readers of the compose token:** `git grep -lE 'compose_token|BOARD_COMPOSE_TOKEN' -- server`
-  minus `server/tests/` is exactly `{server/config/mezzanine.php, server/app/Compose/ComposeCredential.php,
-  server/.env.example}` — which is [§ 5.3](#53-the-compose-credential)'s check; **(b) builders and
-  callers of the write:** `git grep -lE 'comments\.json' -- server/app` is exactly
-  `{server/app/Compose/BoardCommentChannel.php}`, and `git grep -lE 'App\\Compose(\\|;)' -- server/app
-  server/routes server/bootstrap` minus `server/app/Compose/` is exactly
-  `{server/app/Http/Controllers/DeskComposeController.php}` — the `(\\|;)` tail is what makes a bare
-  `use App\Compose;` a member rather than a miss. No command, job, scheduler entry, listener or
-  provider binding appears in either. *RED (three):* read `compose_token` in `BoardPoll::credential()`;
-  build a `comments.json` URL in a console command; add `use App\Compose;` to any command — each gains
-  the set a member. *Control:* each assertion lists its known members.
+  write.** Two populations over the tree, each listed by name so an empty answer is a measurement, by
+  a walk of every `.php` under the named roots (tracked or not), so the controls can point the same
+  matcher at a planted tree. **(a) readers of the compose token** — reads, not name mentions (design
+  review F3): `mezzanine\.board\.compose_token` or `env('BOARD_COMPOSE_TOKEN')` under `server/app`,
+  `config`, `routes`, `bootstrap`, `resources` and `database` is exactly
+  `{server/app/Compose/ComposeCredential.php, server/config/mezzanine.php}` — which is
+  [§ 5.3](#53-the-compose-credential)'s check; a refusal naming the key to the operator is not a read.
+  **(b) builders and callers of the write:** `comments\.json` under `server/app` is exactly
+  `{server/app/Compose/BoardCommentChannel.php}`, and `App\Compose(\|;)` under `server/app`,
+  `server/routes` and `server/bootstrap`, minus `server/app/Compose/`, is exactly
+  `{server/app/Http/Controllers/DeskComposeController.php, server/routes/web.php}` — the second being
+  the floor page's render-time `ComposeCredential::refusal()` (F3) — and the `(\|;)` tail is what
+  makes a bare `use App\Compose;` a member rather than a miss. No command, job, scheduler entry,
+  listener or provider binding appears in either. *RED (three), planted in a scratch tree and asserted
+  every run:* read `compose_token` in `BoardPoll::credential()`; build a `comments.json` URL in a
+  console command; add `use App\Compose;` to any command — each is found, and a bare mention of the
+  key's name is not. ⚠ *What it cannot see:* a read through a computed key, or of the whole
+  `mezzanine.board` array; none exists, and a reviewer of a change that adds one is the check.
 - **AT-C8 the receipt renders [§ 15.11](#1511-failure-paths-and-every-sentence-the-panel-renders)'s
-  table and nothing else.** *Build:* drive the shipped drill-down client (the `DrivesTheDrillDownClient`
-  probe) over **every row** of that table — the success response, the in-flight state, each client
-  row's status, and each server class with its status — the expected sentences read from the table
-  itself (parsed from the document, not copied into the test) so a sentence changed in the table reds
-  the client until it follows. *GREEN:* the receipt slot's text equals the row's sentence; the string
-  `delivered` occurs in none; the text box is cleared on the success row only. *RED (two):* a client
-  that writes *delivered to the agent* on `201`; a client that writes *the message was not posted* on
-  an `unverified` class.
+  table and nothing else.** *Build:* drive the shipped client — `compose-box.js`, `compose-model.js`
+  and `drilldown/main.js`'s `renderCompose()`, through `tests/Feature/Compose/compose-probe.mjs` — over
+  **every keyed row** of that table: the target lines and the button, the success response, the
+  in-flight state, each client row's status, each server class at the status the table gives it, no
+  response, and the catch-all. The expected sentences are **parsed from the document**, the table's
+  marked placeholders filled with the fixture's values, so a sentence changed in the table reds the
+  client until it follows. *Parse floor* (design review F1): the rows cover every class of
+  `ComposeRefused`'s closed set plus every client row, the client's sentence map holds exactly the
+  table's keys, and a renamed header makes the parse return nothing (*control*, precedent
+  `DurationFormatMatchesTheDocumentTest`). *GREEN:* each slot's text equals its row's sentence with no
+  placeholder left; the string `delivered` occurs in none; the text box is cleared on the success row
+  only and survives a later render; a second press while in flight sends nothing. *RED (two), planted
+  every run:* a client that writes *delivered to the agent* on success; a client that writes *the
+  message was not posted* on an `unverified` class.
 
 ### 15.13 What the operator provisions
 
@@ -1560,39 +1642,51 @@ at the panel and at the route — until the first two are done:
 1. **A board account for the floor** (the comment author the board records), with the narrowest role
    that can comment on board 14's cards, and **a write-scoped token for it** — `BOARD_COMPOSE_TOKEN`
    in `server/.env` on each host, beside the existing three keys ([§ 14](#14-open-questions) item 6).
-   ⛔ Not the poller's token, and not any seat's.
+   ⛔ Not the poller's token, and not any seat's. The bridge side names this account
+   **`mezzanine-floor`** (rt#609), and two bridge settings follow from it, each of which would drop a
+   floor comment silently (the bridge's `docs/consumer-guide.md` § Card comments and § Echo-suppression
+   semantics own the mechanics): ⛔ **`mezzanine-floor` is never the bridge's writeback identity** —
+   the bridge's echo gate drops a comment whose author is that identity, so the assignee would never be
+   woken; and ⛔ **an assignee seat that sets `echo_suppression.treat_as_signal` must have
+   `mezzanine-floor` on that list** — a non-empty list admits only the authors it names.
 2. **The seat → board-user mapping and an assigned card** — [§ 10](#10-dark-on-arrival)'s conditions 2
    and 3, unchanged: arm 1 has nothing to resolve until tier 1 is lit. Compose arrives as dark as tier
    1 did, and for the same reasons, each separately legible.
 3. **✅ FILED — the bridge-side request** ([§ 14](#14-open-questions) item 7; the operator chose fork
    (a) on 2026-10-09): `PupFuzz/agent-roundtable#609`, a roundtable feature request to kanban-solo for
    `comment.created` in the subscription filter and a `card_comment` intent routed to the seat whose
-   card it is. Until it lands, a comment reaches the agent at its next read of the card and the panel
-   says so.
+   card it is. It has landed upstream (the bridge's `card_comment` intent); live delivery on a host
+   still needs [§ 15.2](#152-the-hop-and-what-this-repository-cannot-verify)'s three conditions. Until
+   they hold, a comment reaches the agent at its next read of the card, and the receipt's `posted` row
+   ([§ 15.11](#1511-failure-paths-and-every-sentence-the-panel-renders)) says the floor does not confirm
+   delivery.
 
 ### 15.14 Amendments owed to other surfaces
 
-Stated as exact requests, per [§ 1.3](#13-the-boundary-stated-as-a-rule); ratified before anything is
-built against them; landed by the build in the same change.
+Stated as exact requests, per [§ 1.3](#13-the-boundary-stated-as-a-rule); ratified before anything was
+built against them; **landed by the build (card#9417) in the same change** — each row's surface now
+carries it.
 
 | Surface | Amendment |
 |---|---|
-| D3 § 4.3 (the panel table) | a row **`compose` — an operator's only**: *a target line naming where a message goes (`task.ref` when `task.source` is `board_card`; else the refusal § 15.6 names), a text box, a **Post to card#N** button and a receipt line whose every sentence is a row of BOARD-TASK § 15.11's table, which D3 cites and does not restate; rendered under `@can('operate')`, so an observer's page carries no compose slot; the post carries the rendered label as `expected_ref`; source: `task.*`, `protocol_agent_name`, `protocol_agent_name_check`, and the `desk.compose` response* |
+| D3 § 4.3 (the panel table) | a row **`compose` — an operator's only**: *a target line naming where a message goes (`task.ref` when `task.source` is `board_card`; else the refusal § 15.6 names), a text box, a button beside a card target and a receipt line whose every sentence is a row of BOARD-TASK § 15.11's table, which D3 cites and does not restate; rendered under `@can('operate')`, so an observer's page carries no compose slot; the post carries the rendered label as `expected_ref`; source: `task.*`, `protocol_agent_name`, `protocol_agent_name_check`, and the `desk.compose` response* |
 | D3 § 5.2 (the drill-down render map) | a row **the compose receipt** — source *the `desk.compose` response*; example `comment#117`; rule *one sentence, the row BOARD-TASK § 15.11 gives for the response's class and status, cited and not copied; never the word* delivered; *`fetch-fresh` by construction — no delta carries it* |
 | D3 § 9 (failure paths) | one row for the compose post's client-side outcomes — no response, `419`, `401`, `429`, `403` — whose render column says *the sentence BOARD-TASK § 15.11's client rows give for the case*, with the text left in the box; D3 carries no sentence of its own, because the copy that drifted in an earlier revision of this section was exactly such a row |
 | D3 § 1.2 (non-goals) | a row stating that the compose box is the floor's one write, that it writes to the board and never to a seat, and that this document owns it — D3 states no read-only claim of its own to narrow (a grep of `FLOOR.md` for *read-only* finds none), but a non-goals table that does not name the one write the panel now carries would be read as excluding it. The phrase *read-only telemetry* lives in `AnObserverReadsTheFleetTest`'s docblock, where it describes the read surfaces and stays true |
 | D2 | **none.** No route under `/api/fleet`, no store column, no counter, no event kind, no process row ([§ 15.8](#158-the-audit-trail--the-comment-itself-and-no-new-table)); D2 § 9's gate text already names *every per-desk write route* |
 | `README.md § The board card on a desk` (the step that lists `BOARD_API_TOKEN`) and `§ The admin console` (the sentence on what an operator's desk detail offers) | the fourth key in the first; in the second, one sentence: an operator's desk detail also offers a compose box that posts a comment on the agent's current card |
 | `server/.env.example` | `BOARD_COMPOSE_TOKEN=` with the comment block naming it write-scoped, compose-only and never the poller's |
-| `docs/PLAN.md § 0` (the card#9415 entry) | no change: *"writes into a channel the agent already reads"* stays true of the card as a document the agent reads; what this section adds is that the live hop is the bridge's and is dark today |
+| `docs/PLAN.md § 0` (the card#9415 entry) | no change: *"writes into a channel the agent already reads"* stays true of the card as a document the agent reads; what this section adds is that the live hop is the bridge's, and is dark on a host until [§ 15.2](#152-the-hop-and-what-this-repository-cannot-verify)'s three conditions hold |
 | `AnObserverReadsTheFleetTest` | `desk.compose` in the allow-list |
 
 ### 15.15 Every number
 
 | Value | Number | Basis |
 |---|---|---|
-| message bound | **2,000 bytes** of operator text, after trim | **Chosen** — a sentence or a short paragraph is the product (*say one thing to the agent*); the board's own `content` limit is unknown here and a `422` from it is reported as class `status`. Re-derive if item 9's measurement finds a lower board bound |
+| message bound | **2,000 bytes** of operator text, after trim, **measured encoded** — the bytes of the text as a JSON string with raw UTF-8 (`ComposeMessage::encodedBytes()`), so a control character counts as its 6-byte escape and an emoji as its 4 bytes | **Chosen** — a sentence or a short paragraph is the product (*say one thing to the agent*). Measured encoded because that is the size that travels: the board sends non-ASCII as raw UTF-8 and a control character as a 6-byte escape, which is the bridge's own account of a comment's delivered size (the bridge's `docs/consumer-guide.md` § Card comments, `body` row). A `422` from the board is still reported as class `status`. Re-derive if a lower board bound is published |
+| composed message ceiling | **the bound above + the attribution line**: `Posted from the Mezzanine floor by ` + `users.name` (a `VARCHAR(255)` — `database/migrations/0001_01_01_000000_create_users_table.php` — at most 255 characters, each at most a 6-byte escape encoded) + ` at ` + a 20-character stamp + two encoded newlines | **Derived** — and set against the board's comment cap, **65,535 characters**, **cited** from the bridge's `docs/consumer-guide.md` § Card comments (`body` row): the composed message is more than an order of magnitude under it at its worst case, so a floor message is never the comment the board or the bridge truncates (card comment 10727). A test builds the worst case and measures it (`AtC1ToC4ComposeGateAndWriteTest`), so a widened bound or column re-measures there. ⚠ The board's encoded-size cap on a comment's content (kanban card 11588) has a figure this seat cannot read (the card answers `403` to this seat's board token); if it publishes one below the ceiling, re-derive |
 | `throttle:compose` | **10 per minute per account** | **Chosen** — a person composing by hand cannot reach it; a stuck client or a pasted loop does, and the limit is what keeps one account from filling a card with duplicates. Keyed on `users.id`, never IP: an operator is a person, not an address |
+| board rate limit, the shared READ token | **300 requests per window**, per credential | **Measured 2026-10-10** — the board publishes it on every response as `X-RateLimit-Limit: 300` with `X-RateLimit-Remaining`; read with one `GET` of [§ 6.1](#61-the-endpoint)'s endpoint (`limit=1`) under the READ token, printing only those headers, and never driven toward a `429`. Remaining fell by one per request and was back at 299 within 95 s (07:25:51Z → 07:27:26Z), so the window is at most that, which fits Laravel's per-minute default; the window length itself is not published. A request with this seat's own (different) board token did not move the READ token's count, so the bucket is per credential (per token or per account — this measurement cannot tell which). **What it means here:** the compose path's live read uses the READ token, so it shares the poller's bucket. Each compose costs `P` requests (one page per board on this install), at most 10 per minute per operator account (the `throttle:compose` row), against the poller's one pass per 5 minutes: 300 per window leaves room for dozens of operators composing at the limiter's ceiling before the poller could see a `429` (which would be `board_poll_failed`, § 9). Two hosts provisioned with one READ token share one bucket. **Re-measure** by re-running the one-`GET` header read whenever `BOARD_IDS`, the board, or the operator count changes |
 | request timeout | 20 s connect and read | **Cited** — [§ 12](#12-every-number-and-where-it-comes-from), the same client |
 | residual window, [§ 15.3](#153-the-one-verb-and-why-it-is-not-an-instrument-inside-the-measurement) leg 2 — **the answered-write part** | **≤ (P + 1) × the request timeout**, where `P` is the total page count across `BOARD_IDS` | **Derived** — the window opens when the live read's FIRST page answers (a touch landing after a board's page was read is unseen) and closes when the board stamps the write's `updated_at`; between them are the remaining `P − 1` pages and the write, so at most `P + 1` requests, each bounded by the timeout row. `P` is **re-derived from config and the board, never written here as a figure**: `BOARD_IDS` from `config/mezzanine.php`, and per board the `meta.last_page` of [§ 12](#12-every-number-and-where-it-comes-from)'s whole-board request — on this install that request measured one page for board 14, and `BOARD_IDS` lists it alone. **Re-derive whenever `BOARD_IDS` or any board's page count changes.** Accepted on the record at [§ 14](#14-open-questions) item 10 (i) |
 | residual window — **the unanswered-write part** | **no bound** | **Stated, not derived** — a write whose answer never arrived (`unverified`) may be accepted by the board at any later moment; nothing in this design bounds it, and [§ 14](#14-open-questions) item 10 (ii) is where that is accepted |

@@ -291,7 +291,9 @@ is what stands in its place.
 
 **An account is an observer or an operator** (card#9415). An observer reads everything the floor,
 the lobby, the drill-down and the fleet REST endpoints show, for every install; an operator also
-opens this console and, once they exist, the per-desk write controls. The console's **users** module
+opens this console and the per-desk write controls. An operator's desk detail also offers a compose
+box that posts a comment on the agent's current card (`docs/design/BOARD-TASK.md § 15`; see
+§ The board card on a desk for the key it needs). The console's **users** module
 shows each account's role and changes it. It refuses to make the last active operator an observer,
 and to retire it, because an install with no operator cannot be administered from the web; make
 another account an operator first. Every account that existed before this change is an operator.
@@ -328,6 +330,25 @@ board user; a board user can be mapped to one seat at a time, and retiring a sea
 user. If the board stops answering, each board title keeps showing for 30 minutes and then gives way
 to the telemetry title, marked degraded. `GET /api/fleet/health` counts polls in `board_poll_ok` and
 `board_poll_failed`, and the server log names the failure class of each failed poll.
+
+**The compose box** (`docs/design/BOARD-TASK.md § 15`, card#9417) needs a fourth key. An operator's
+desk detail offers a text box that posts one comment on the card the desk shows, signed with the
+operator's name; the receipt names the comment and says the floor does not confirm delivery. To turn
+it on:
+
+1. **Create a board account for the floor** (`mezzanine-floor`) with the narrowest role that can
+   comment on the boards in `BOARD_IDS`, and **issue a write-scoped token for it** — never the poller's
+   `BOARD_API_TOKEN` and never any agent's.
+2. **Set `BOARD_COMPOSE_TOKEN`** in `server/.env` and refresh the config cache. It shares
+   `BOARD_API_BASE` and `BOARD_IDS`. With it empty, or equal to `BOARD_API_TOKEN`, the panel draws the
+   box disabled with a sentence naming the key, the route refuses every post, and the poller keeps
+   running.
+3. **Check the bridge side** if the agents are woken by the bridge: `mezzanine-floor` must never be the
+   bridge's writeback identity, and an assignee seat that sets `echo_suppression.treat_as_signal` must
+   list `mezzanine-floor`; otherwise the bridge drops the floor's comments without an error.
+
+Until the board and the bridge carry live comment delivery (`docs/design/BOARD-TASK.md § 15.2` lists
+the three conditions), a comment reaches the agent the next time it reads its card.
 
 ### The idle horizon
 

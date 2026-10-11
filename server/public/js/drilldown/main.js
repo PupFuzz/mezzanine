@@ -247,3 +247,42 @@ export function renderDrillDown(root, model) {
 
     return model;
 }
+
+/**
+ * § 15.10's compose block (card#9417) — an OPERATOR's panel only: the floor page renders the block
+ * under `@can('operate')`, so on an observer's page every selector below answers `null` and nothing is
+ * drawn. The view is `compose-box.js`'s, every sentence in it `compose-model.js`'s (BOARD-TASK § 15.11).
+ *
+ * ⛔ THE TEXT BOX IS WRITTEN ONLY TO CLEAR IT, AND ONLY ON `posted`. Every other render leaves what the
+ * operator typed where it is, so a refusal keeps the message ready to edit or resend, and the 1 s age
+ * tick that re-renders the panel never erases a sentence half-written.
+ */
+export function renderCompose(root, view) {
+    const block = root.querySelector('[data-panel-compose]');
+
+    if (block === null || view === null) {
+        return;
+    }
+
+    block.dataset.enabled = String(view.enabled);
+    put(root, '[data-panel-compose-target]', view.target);
+    put(root, '[data-panel-compose-receipt]', view.receipt);
+
+    const text = root.querySelector('[data-panel-compose-text]');
+
+    if (text !== null) {
+        text.disabled = !view.enabled;
+
+        if (view.clear_text) {
+            text.value = '';
+        }
+    }
+
+    const post = root.querySelector('[data-panel-compose-post]');
+
+    if (post !== null) {
+        post.textContent = view.button ?? '';
+        post.hidden = view.button === null;
+        post.disabled = !view.enabled;
+    }
+}
