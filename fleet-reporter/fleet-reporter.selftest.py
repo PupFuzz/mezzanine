@@ -1021,8 +1021,7 @@ eq("  … and a heartbeat it sends after that carries config_readable `pass`", T
    "pass" in ca_appears["heartbeat_readable"])
 # RED — the flusher that refuses the file at start and never looks again (the defect verbatim, planted on the
 # scaled copy): the file appears and nothing is delivered.
-red_appears = drive_ca_appears("ca-appears-red", fast_flusher(("      if (caPending && readCaFile(config).error === null) {",
-                                                               "      if (false) {")))
+red_appears = drive_ca_appears("ca-appears-red", fast_flusher(("      if (caRechecked) {", "      if (false) {")))
 eq("RED: a flusher that checks ca_file only at start is still alive and delivers nothing after the file appears",
    (True, True, False), (red_appears["refused_at_start"], red_appears["alive"], red_appears["delivered"]))
 redgreen("a flusher started on an unreadable ca_file resumes once the file is readable, with no restart (§ 3.5, card#9500)",
@@ -1096,6 +1095,212 @@ redgreen("an unreadable ca_file is a config error, never a fall-back to the defa
          f"{ca_gone['config_invalid']}, path and errno logged, delivered after restore {ca_gone['recovered']}; "
          f"selftest config_readable={ca_missing['check']}, rc={ca_missing['rc']}, errors={ca_missing['errors']}, "
          f"flusher start delivered {ca_missing['posts']}")
+
+# (e) § 3.1'S PUBLISHED FORMATS ARE THE CONFIG CHECK, SO A MALFORMED VALUE IS A CONFIG ERROR AT ONCE AND NOT A
+# FAILURE LATER (card#9521). `loadConfig` checked `ingest_url` for its `https://` prefix only, never parsed
+# `proxy_url`, and took any non-empty `spool_dir`. Each value below passed and then failed downstream: an
+# `ingest_url` that `new URL` rejects made every batch `permanent`, so the flusher quarantined it and its events
+# were lost; a `proxy_url` that does not parse, or has no http(s) scheme, failed every request as a retryable
+# proxy error, so the seat retried forever and delivered nothing; `proxy_url: ""` read as unset and sent direct,
+# around the proxy; and a relative `spool_dir` resolved against each hook's working directory. Each is now
+# refused by `loadConfig`: `selftest` fails `config_readable` naming the field, and a flusher started on it
+# counts `config_invalid` and sends, retries and quarantines nothing.
+def drive_bad_config(name: str, key: str, value, *, reporter: Path = REPORTER, flusher: bool = True) -> dict:
+    s = seat(name)
+    s.cfg[key] = value
+    s.write_cfg()
+    g0 = INGEST.gets
+    r, rep_ = selftest(s, reporter=reporter)
+    d = dict(rc=r.returncode, gets=INGEST.gets - g0, check=rep_.get("checks", {}).get("config_readable"),
+             errors=rep_.get("detail", {}).get("config_readable", {}).get("errors", []))
+    if flusher:
+        hook(s, "PreToolUse", pre(tuid=f"toolu_{name}"), reporter=reporter)
+        b0 = len(INGEST.batches)
+        flush(s, reporter=reporter)
+        c = s.state().get("counters", {})
+        q = s.spool / "quarantine" / "rejected.jsonl"
+        d.update(posts=len(INGEST.batches) - b0, config_invalid=c.get("config_invalid", 0),
+                 retried=c.get("batches_retried", 0), rejected=c.get("batches_rejected", 0),
+                 quarantined=q.exists() and q.stat().st_size > 0, log=seat_log(s))
+    return d
+
+
+def names_field(d: dict, key: str) -> bool:
+    return any(e.startswith(f"{key} ") for e in d["errors"])
+
+
+FORMAT_CASES = [
+    ("fmt-ingest-space", "ingest_url", "https://ingest example.org/api/ingest/events", True),
+    ("fmt-ingest-bare", "ingest_url", "https://", True),
+    ("fmt-proxy-unparseable", "proxy_url", "http://proxy example:3128", True),
+    ("fmt-proxy-no-scheme", "proxy_url", "proxy.corp:3128", True),
+    ("fmt-proxy-empty", "proxy_url", "", True),
+    # A relative spool_dir drives `selftest` only here; (e2) below drives a hook and a flusher on it from
+    # a temp working directory, because the old reporter writes under whatever directory that is.
+    ("fmt-spool-relative", "spool_dir", "relative/spool", False),
+]
+fmt = {n: drive_bad_config(n, k, v, flusher=f) for n, k, v, f in FORMAT_CASES}
+for n, k, v, f in FORMAT_CASES:
+    d = fmt[n]
+    eq(f"{k} {json.dumps(v)} fails config_readable in `selftest`, an error names the field, the command "
+       f"exits 1 and asks the ingest nothing", ("fail", True, 1, 0), (d["check"], names_field(d, k), d["rc"], d["gets"]))
+    if f:
+        eq("  … a flusher started on it counts config_invalid and sends, retries and quarantines nothing",
+           (True, 0, 0, 0, False), (d["config_invalid"] > 0, d["posts"], d["retried"], d["rejected"], d["quarantined"]))
+        eq("  … and its log names the field", True, f"config invalid: " in d["log"] and f"{k} " in d["log"])
+eq("a URL error never echoes the value: one that does not parse is one whose password the seat never "
+   "registered for redaction", False,
+   any(v in e for n, k, v, _ in FORMAT_CASES if k != "spool_dir" and v for e in fmt[n]["errors"]))
+p_fmt_echo = plant(("errors.push('ingest_url is not a parseable URL (§ 3.1)')",
+                    "errors.push('ingest_url is not a parseable URL (§ 3.1): ' + url)"))
+fmt_echo = drive_bad_config("fmt-ingest-echo-red", "ingest_url", FORMAT_CASES[0][2], reporter=p_fmt_echo, flusher=False)
+eq("RED: … an error that echoes the value is caught by that check", True,
+   any(FORMAT_CASES[0][2] in e for e in fmt_echo["errors"]))
+
+# RED — the defect verbatim, planted on a copy: the prefix-only `ingest_url` check with the request's
+# `permanent` class for an `ingest_url` that does not parse, no `proxy_url` check, and the non-empty-only
+# `spool_dir` check.
+p_fmt_old = plant(
+    ("  else if (!parsesAsUrl(url)) errors.push('ingest_url is not a parseable URL (§ 3.1)');\n", ""),
+    ("  if (typeof c.proxy_url === 'string' && !(/^https?:\\/\\//.test(c.proxy_url) && parsesAsUrl(c.proxy_url))) {\n"
+     "    errors.push('proxy_url must be an absolute http:// or https:// URL, or null (§ 3.1)');\n  }\n", ""),
+    ("  const spool = str('spool_dir') && path.isAbsolute(c.spool_dir) ? c.spool_dir : null;\n  if (spool === null) errors.push",
+     "  const spool = str('spool_dir');\n  if (!spool) errors.push"),
+    ("    if (r.invalid) return { kind: 'refused', status: 0, error: r.invalid };",
+     "    if (r.invalid) return { kind: r.invalid === 'bad ingest_url' ? 'permanent' : 'refused', status: 0, error: r.invalid };"))
+fmt_red = {n: drive_bad_config(f"{n}-red", k, v, reporter=p_fmt_old, flusher=f) for n, k, v, f in FORMAT_CASES}
+for n, k, v, f in FORMAT_CASES:
+    eq(f"RED: the old check passes {k} {json.dumps(v)} in `selftest`", "pass", fmt_red[n]["check"])
+for n in ("fmt-ingest-space", "fmt-ingest-bare"):
+    eq(f"RED: … and a flusher on {n}'s ingest_url quarantines the batch, losing its events", (True, True),
+       (fmt_red[n]["quarantined"], fmt_red[n]["rejected"] > 0))
+for n in ("fmt-proxy-unparseable", "fmt-proxy-no-scheme"):
+    eq(f"RED: … and a flusher on {n}'s proxy_url delivers nothing and retries", (0, True),
+       (fmt_red[n]["posts"], fmt_red[n]["retried"] > 0))
+eq("RED: … and a flusher on proxy_url \"\" sends direct, around the configured proxy", True, fmt_red["fmt-proxy-empty"]["posts"] > 0)
+redgreen("a config value outside § 3.1's published format is a config error at once, never a later failure (card#9521)",
+         "; ".join(f"{k}={json.dumps(v)} -> config_readable={fmt_red[n]['check']}"
+                   + (f", posts {fmt_red[n]['posts']}, retried {fmt_red[n]['retried']}, quarantined {fmt_red[n]['quarantined']}"
+                      if f else "") for n, k, v, f in FORMAT_CASES),
+         "; ".join(f"{k}={json.dumps(v)} -> config_readable={fmt[n]['check']}, errors={fmt[n]['errors']}"
+                   + (f", config_invalid {fmt[n]['config_invalid']}, posts {fmt[n]['posts']}, retried {fmt[n]['retried']}, "
+                      f"quarantined {fmt[n]['quarantined']}" if f else "") for n, k, v, f in FORMAT_CASES))
+
+
+# (e2) A RELATIVE `spool_dir` WRITES NOTHING ANYWHERE (card#9521). It names no directory a process can use, so
+# it is treated like an absent one: the hook and the flusher write no file at all. The old reporter, which
+# also refused it as a config error, still spooled, logged and counted under the process's working
+# directory — the agent's project directory for a hook, where the files can be committed. Each leg runs
+# from its own temp working directory and lists every file under it afterwards.
+def drive_relative_spool(name: str, reporter: Path = REPORTER) -> dict:
+    s = seat(name)
+    s.cfg["spool_dir"] = "relative/spool"
+    s.write_cfg()
+    cwd_hook = tmpdir("fr-cwd-hook-")
+    cwd_flusher = tmpdir("fr-cwd-flusher-")
+    r = subprocess.run(["node", str(reporter), "hook", "PreToolUse"], input=json.dumps(pre(tuid="toolu_rel")),
+                       capture_output=True, text=True, env=s.env(), cwd=str(cwd_hook))
+    spawned, _ = await_flushers(True, 2.0)          # a hook that finds no lock under its spool forks one
+    reap_flushers(spawned)
+    f = subprocess.run(["node", str(reporter), "flusher"], capture_output=True, text=True,
+                       env=s.env(freeze=False, FLEET_REPORTER_ONE_PASS="1"), cwd=str(cwd_flusher), timeout=90)
+    reap_flushers(spawned_flushers() or [])
+    files = lambda d: sorted(str(x.relative_to(d)) for x in d.rglob("*") if x.is_file())
+    return dict(hook_rc=r.returncode, hook_out=r.stdout + r.stderr, flusher_rc=f.returncode,
+                hook_files=files(cwd_hook), flusher_files=files(cwd_flusher), spawned=len(spawned))
+
+
+rel = drive_relative_spool("fmt-spool-relative-writes")
+eq("a hook on a relative spool_dir exits 0, prints nothing, and creates no file under its working directory",
+   (0, "", []), (rel["hook_rc"], rel["hook_out"], rel["hook_files"]))
+eq("  … and forks no flusher", 0, rel["spawned"])
+eq("a flusher on a relative spool_dir exits 0 and creates no file under its working directory", (0, []),
+   (rel["flusher_rc"], rel["flusher_files"]))
+# RED — the old behaviour, planted: the same config error, with the relative value still used as the spool.
+p_rel_old = plant(("  const spool = str('spool_dir') && path.isAbsolute(c.spool_dir) ? c.spool_dir : null;\n"
+                   "  if (spool === null) errors.push",
+                   "  const spool = str('spool_dir');\n  if (!spool || !path.isAbsolute(spool)) errors.push"))
+rel_red = drive_relative_spool("fmt-spool-relative-writes-red", reporter=p_rel_old)
+eq("RED: a reporter that refuses a relative spool_dir but still writes to it leaves files under the hook's "
+   "working directory", True, any(x.startswith("relative/spool/") for x in rel_red["hook_files"]))
+eq("RED: … and under the flusher's", True, any(x.startswith("relative/spool/") for x in rel_red["flusher_files"]))
+redgreen("a relative spool_dir writes nothing under the working directory (card#9521)",
+         f"refused but still used -> hook cwd files {rel_red['hook_files']}, flusher cwd files "
+         f"{rel_red['flusher_files']}, flushers forked {rel_red['spawned']}",
+         f"treated as absent -> hook cwd files {rel['hook_files']}, flusher cwd files {rel['flusher_files']}, "
+         f"flushers forked {rel['spawned']}")
+
+
+# (f) ONE READ: THE HEARTBEAT'S `config_readable` IS THE FLUSHER'S OWN SEND DECISION (card#9521). The flusher
+# decided from its first `loadConfig` and the heartbeat reported a second one, and nothing re-checked a
+# `ca_file` that vanished after a clean start: requests refused while every heartbeat said `pass`. Driven on the
+# timing-scaled copy: a flusher started on a readable pinned `ca_file` delivers, the file is removed, and then
+# restored.
+CA_GONE_PASSES = 160                                    # scaled passes run with the file removed (~4 s, >= 3 heartbeats)
+
+
+def drive_ca_gone_live(name: str, reporter: Path) -> dict:
+    root = TMP / name
+    root.mkdir(parents=True, exist_ok=True)
+    ca_copy = root / "pinned-ca.pem"
+    shutil.copyfile(CA, ca_copy)
+    s = seat(name, ca=str(ca_copy))
+    hook(s, "PreToolUse", pre(tuid="toolu_ca_live_1"), reporter=reporter)
+    (s.spool / "flusher.lock").unlink(missing_ok=True)
+    b0 = len(INGEST.batches)
+    p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False), cwd=str(HERE),
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    d: dict = {"pid": p.pid}
+
+    def delivered(since: int) -> bool:
+        return any(e.get("kind") == "tool.start" for b in INGEST.batches[since:] for e in b["batch"].get("events", []))
+
+    try:
+        t0 = time.time()
+        while p.poll() is None and time.time() - t0 < CA_APPEARS_WITHIN_S and not delivered(b0):
+            time.sleep(0.02)
+        d["delivered_before"] = delivered(b0)
+        ca_copy.unlink()
+        hb0 = len(heartbeat_selftests(s))
+        b1 = len(INGEST.batches)
+        hook(s, "PreToolUse", pre(tuid="toolu_ca_live_2"), reporter=reporter)
+        time.sleep(CA_GONE_PASSES * FAST_K["FLUSH_MS"] / 1000)
+        d.update(posts_while_gone=len(INGEST.batches) - b1,
+                 heartbeats_while_gone=[h.get("config_readable") for h in heartbeat_selftests(s)[hb0:]],
+                 logged="ca_file unreadable" in seat_log(s))
+        shutil.copyfile(CA, ca_copy)
+        t1, b2 = time.time(), len(INGEST.batches)
+        while p.poll() is None and time.time() - t1 < CA_APPEARS_WITHIN_S and not delivered(b2):
+            time.sleep(0.02)
+        d.update(alive=p.poll() is None, delivered_after=delivered(b2))
+    finally:
+        if p.poll() is None:
+            p.kill()
+        p.wait()
+        s.freeze_flusher()
+    return d
+
+
+ca_live = drive_ca_gone_live("ca-gone-live", fast_flusher())
+eq("precondition: a flusher started on a readable pinned ca_file delivers", True, ca_live["delivered_before"])
+# The FIRST heartbeat after the removal is excluded: the pass in flight when the file went may have read
+# it before, and it acts on, and heartbeats, that pass's verdict. A pass emits at most one heartbeat.
+eq("once the file is removed it sends nothing, and every heartbeat from a later pass says config_readable "
+   "`fail`, the verdict it acts on", (0, True, {"fail"}),
+   (ca_live["posts_while_gone"], len(ca_live["heartbeats_while_gone"]) >= 3, set(ca_live["heartbeats_while_gone"][1:])))
+eq("  … its log names the unreadable file", True, ca_live["logged"])
+eq("  … and with the file restored the same process delivers again", (True, True), (ca_live["alive"], ca_live["delivered_after"]))
+# RED — the two-verdict flusher verbatim: the file re-checked only while the start refused it.
+red_live = drive_ca_gone_live("ca-gone-live-red", fast_flusher(
+    ("const caRechecked = errors.length === (caError ? 1 : 0) && typeof config.ca_file === 'string';",
+     "const caRechecked = errors.length === 1 && caError !== null;")))
+eq("RED: a flusher that re-checks ca_file only while its start refused it heartbeats `pass` while it sends nothing",
+   (True, 0, True), (red_live["delivered_before"], red_live["posts_while_gone"], "pass" in red_live["heartbeats_while_gone"][1:]))
+redgreen("the heartbeat's config_readable is the flusher's own send verdict, from one read (card#9521)",
+         f"re-checked only while refused at start -> file removed: posts {red_live['posts_while_gone']}, "
+         f"heartbeats {red_live['heartbeats_while_gone']}",
+         f"one verdict, re-checked each pass -> file removed: posts {ca_live['posts_while_gone']}, heartbeats "
+         f"{ca_live['heartbeats_while_gone']}, restored: delivered {ca_live['delivered_after']} by the same pid {ca_live['alive']}")
 
 # RED — the TLS posture lint AT-15 asks for, made mechanical.
 p_tls = plant(("({ keepAlive: true, maxSockets: 2 })",
@@ -1865,8 +2070,8 @@ def sweep(seat_obj: Seat, extra_streams: list[str]) -> list[str]:
 
 
 control_seat = seat("secrets-control")
-p_leak = plant(("      if (config && config.spool_dir) logLine(config.spool_dir, cmd || 'unknown', `crashed: ${e && e.stack}`);",
-                "      if (config && config.spool_dir) logLine(config.spool_dir, cmd || 'unknown', `crashed: ${e && e.stack}`);"),
+p_leak = plant(("      if (spool) logLine(spool, cmd || 'unknown', `crashed: ${e && e.stack}`);",
+                "      if (spool) logLine(spool, cmd || 'unknown', `crashed: ${e && e.stack}`);"),
                ("function hookMain(hookName) {\n",
                 "function hookMain(hookName) {\n  { const c = loadConfig(configPath()).config; "
                 "if (c) { try { fs.appendFileSync(path.join(c.spool_dir, 'log', 'leak.log'), 'token=' + c.token + '\\n'); } catch (e) {} } }\n"))
@@ -3831,9 +4036,9 @@ eq("  … and the flusher's start log says the declaration is malformed and was 
    all("protocol_agent_name is not a valid declaration" in d["log"] for d in malformed_seen.values()))
 
 # RED 1 — the round-1 build: a malformed name refused as a config error, so the flusher sends nothing.
-_red_silent = plant(("  return { config: c, errors, caError };\n}",
+_red_silent = plant(("  return { config: c, errors, caError, spool };\n}",
                      "  if (c.protocol_agent_name !== undefined && c.protocol_agent_name !== null && !declaredAgentName(c)) "
-                     "errors.push('protocol_agent_name malformed');\n  return { config: c, errors, caError };\n}"))
+                     "errors.push('protocol_agent_name malformed');\n  return { config: c, errors, caError, spool };\n}"))
 r_silent = drive_malformed("at27-bad-red-silent", "Magento", reporter=_red_silent)
 eq("RED: a malformed name refused as a config error silences the seat — no POST, config_readable failing, "
    "`config_invalid` counted", (0, "fail", True),
