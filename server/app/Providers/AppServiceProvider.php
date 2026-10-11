@@ -7,8 +7,11 @@ use App\Feed\MonotonicStreamClock;
 use App\Feed\StreamClock;
 use App\Floor\FurnitureBox;
 use App\Models\User;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -66,5 +69,14 @@ class AppServiceProvider extends ServiceProvider
          * § 14 item 7): an observer reads every install an operator does.
          */
         Gate::define('operate', fn (User $user): bool => $user->isOperator());
+
+        /*
+         * `compose` — card#9417's limiter for `desk.compose`, beside the gate it pairs with
+         * (docs/design/BOARD-TASK.md § 15.4): per ACCOUNT, never per IP — an operator is a person, not
+         * an address — at § 15.15's figure. A person composing by hand cannot reach it; a stuck client
+         * or a pasted loop does, and it is what keeps one account from filling a card with duplicates.
+         * The route is behind `auth`, so the account is always there.
+         */
+        RateLimiter::for('compose', fn (Request $request) => Limit::perMinute(10)->by('compose:'.$request->user()->id));
     }
 }
