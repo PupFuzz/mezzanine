@@ -81,7 +81,8 @@ export class ComposeBox {
     async post(seat, text) {
         const target = composeTarget(seat, this.#unconfigured);
 
-        if (this.#inFlight || !target.enabled || target.label === null) {
+        // `enabled` is a card target only (`composeTarget()`), so `label` is the `card#N` shown.
+        if (this.#inFlight || !target.enabled) {
             return;
         }
 
