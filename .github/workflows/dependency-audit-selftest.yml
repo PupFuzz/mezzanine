@@ -3,8 +3,8 @@
 # WHAT IT DOES. Runs `bin/dependency-audit.selftest.sh` over this checkout. The suite extracts the
 # shell of `.github/workflows/dependency-audit.yml` (the callee) and of the reporting job in
 # `.github/workflows/dependency-ref-matrix.yml` (the caller) verbatim from their marked blocks and
-# runs it against the vendored fixtures in `bin/dependency-audit-fixtures/`, with the three network
-# seams replaced by fixture readers. What each leg asserts is the suite's own header; it is not
+# runs it against the vendored fixtures in `bin/dependency-audit-fixtures/`, with the network seams
+# replaced by fixture readers. What each leg asserts is the suite's own header; it is not
 # restated here.
 #
 # WHY IT EXISTS. The audit itself runs only on a schedule, from the default branch, so a PR that
