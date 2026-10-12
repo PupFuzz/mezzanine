@@ -1022,13 +1022,14 @@ PLANTS = [
         "G14: a label-contract term outside section 4.1",
     ),
     (
-        # card#7343 r6, G14 leg (a), the CHANGELOG half: the same copy in the card's CHANGELOG bullet.
+        # card#7343 r6, G14 leg (a), the CHANGELOG half: the same copy in the card's CHANGELOG bullet,
+        # which release flow step 13 moved verbatim into the v0.7.0 archive file.
         "verify-floor.py",
-        "docs/CHANGELOG.md",
+        "docs/changelog/v0.7.0.md",
         r"(\n- \*\*card#7343\*\* — )(\*\*The lobby's)( elevator ride)",
         "restate",
         "§ 4.1's first claim copied into the card#7343 CHANGELOG bullet (card#7343 r6, G14 leg (a))",
-        "G14: a label-contract term outside section 4.1's claim region — docs/CHANGELOG.md",
+        "G14: a label-contract term outside section 4.1's claim region — docs/changelog/v0.7.0.md",
     ),
     (
         # card#7343 r6, G14 leg (b): a § 4.1 claim whose `(held by: …)` is deleted names no check.
