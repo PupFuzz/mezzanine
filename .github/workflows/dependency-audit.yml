@@ -1,3 +1,27 @@
+# ── VENDORED from coord 0.66.0 — the CALLEE of the scheduled dependency-advisory audit. A body edit reds bin/vendor-pin-check.sh until declared below. ──
+#
+#   upstream repo     PupFuzz/agent-board-framework  (PRIVATE — a public CI runner cannot clone it)
+#   upstream path     plugins/coord/templates/security/workflows/dependency-audit.yml
+#   vendored from     70fd3207c96f7240f7368c93de277970ac39598e   (marketplace, the v0.66.0 release merge)
+#   plugin version    coord 0.66.0
+#   upstream sha256   71223bba4e210ff11b21a35b1d6f1fb4977776f8e8a80fa2eb6d994ec24161e9
+#
+# That sha256 is the WHOLE upstream file; `bin/vendor-pin-check.sh` pins the BODY (from the first
+# line that is neither blank nor a comment), which is a different figure. Re-derive this one
+# against a marketplace clone:   git show 70fd3207:plugins/coord/templates/security/workflows/dependency-audit.yml | sha256sum
+#
+# DECLARED LOCAL EDITS — each is also a FRAGMENTS row in `bin/vendor-pin-check.sh`, which reds
+# when one leaves the body. Outside these edits, the text below this block was upstream's byte for
+# byte when vendored (checked by diff against the commit above); the body pin holds it there.
+#   (1) the CUSTOMIZE install step: osv-scanner 2.6.0, one release binary pinned by sha256
+#       (fragment: `SHA256=ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108`),
+#       with its `# MEZZANINE:` comment saying where the digest was read and how to move it.
+#   (2) the CUSTOMIZE ZONE's pointer to the selftest names this repo's path
+#       (fragment: `runs verbatim (bin/dependency-audit.selftest.sh`).
+#
+# TO RE-VENDOR: copy upstream's file over everything below this block, re-apply the edits above,
+# then re-pin with the command `bin/vendor-pin-check.sh` prints on a red.
+# ── END MEZZANINE VENDOR HEADER ────────────────────────────────────────────────────────────────
 # dependency-audit.yml — the CALLEE: one dependency-advisory audit of ONE ref, exposed as
 # a `workflow_call` so a single implementation serves every ref its caller matrixes over.
 #
@@ -73,12 +97,14 @@ on:
         description: '`audited` only when both sources completed; `error` otherwise.'
         value: ${{ jobs.audit.outputs.status }}
 
-permissions:
-  contents: read
-
+# PERMISSIONS ARE GRANTED PER JOB, never once at workflow level (card#11434), as in the caller;
+# the selftest reds if a top-level `permissions:` comes back.
 jobs:
   audit:
     runs-on: ubuntu-latest
+    # Checks out the audited ref and reads public advisories; nothing here writes.
+    permissions:
+      contents: read
     outputs:
       population: ${{ steps.audit.outputs.population }}
       findings: ${{ steps.audit.outputs.findings }}
@@ -149,13 +175,22 @@ jobs:
           # at the verdict. (Default: the package whose repo-level advisories motivated this
           # gate; replace it if it ever stops carrying any.)
           ADVISORY_CONTROL_REPO="thephpleague/commonmark"
+          # ACCEPT_FILE — this repo's REVIEWED per-advisory acceptance input, read from the audited
+          # ref's checkout. It accepts one advisory BY ID whose range this audit cannot read, at the
+          # resolved versions the entry lists, with a reason, a reviewer and a date (an expiry is
+          # recommended). It is optional: no file means nothing is accepted. Its format and rules:
+          # `docs/DEPENDENCY-AUDIT.md` § "Accepting one advisory". Keep it under review like code
+          # (CODEOWNERS on it is a good idea), since an entry in it turns one advisory's RED into a
+          # printed NOTICE.
+          ACCEPT_FILE=".github/dependency-audit-accept.json"
           OSV_SCANNER_BIN="${OSV_SCANNER_BIN:-osv-scanner}"
           # CUSTOMIZE-BEGIN audit-seams
-          # The THREE network seams, isolated here so the implementation below is exercisable
-          # with zero network in the selftest. Contract for each: print the payload on stdout
-          # and exit 0, or exit non-zero. A non-zero exit is RED with a named reason — never an
-          # empty result. Adapt the flags to YOUR scanner version; the block below only reads
-          # the JSON, so a flag rename cannot silently change the verdict.
+          # The network seams, each a function defined in this block, isolated here so the
+          # implementation below is exercisable with zero network in the selftest. Contract for
+          # each: print the payload on stdout and exit 0, or exit non-zero. A non-zero exit is
+          # RED with a named reason, never an empty result. Adapt the flags to YOUR scanner
+          # version; the block below only reads the JSON, so a flag rename cannot silently
+          # change the verdict.
           osv_scan() {            # "$@" = discovered lockfile paths -> scanner JSON on stdout
             local args=() f
             for f in "$@"; do args+=(--lockfile "$f"); done
@@ -174,13 +209,23 @@ jobs:
                        | capture("github\\.com[:/](?<o>[^/]+)/(?<r>[^/#?]+?)(\\.git)?$")
                        | "\(.o)/\(.r)"' 2>/dev/null
           }
+          reviewed_advisory_fetch() {  # $1 = GHSA ID -> that advisory's GLOBAL record (a JSON object)
+            # Called only for a source-2 entry whose range this audit does not read: GitHub's
+            # reviewed record of the same advisory splits the maintainer's free text into one
+            # range per entry. A 404 (no global record) exits non-zero, and that entry stays RED.
+            gh api "advisories/$1"
+          }
           # CUSTOMIZE-END audit-seams
           # ========================== END CUSTOMIZE ZONE ==========================
           # --- dep-audit-lib
           WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
-          mkdir -p "$WORK/adv"
+          mkdir -p "$WORK/adv" "$WORK/rev"
           AUDIT_ERRORS=0; FINDINGS=0; FATAL=0
           ERROR_LINES=""; FINDING_LINES=""; ERROR_CODES=""
+          # NOTICES are neither findings nor errors and move no counter: a withdrawn advisory, and an
+          # advisory the acceptance input accepts (card#11434). Printed at the verdict and exported
+          # by ID (`withdrawn`, `accepted`), so a reader of the run sees every one of them.
+          NOTICE_LINES=""; WITHDRAWN_IDS=""; ACCEPTED_IDS=""; ACCEPT_LINES=""
           N_MANIFESTS=0; N_PACKAGES=0; N_RESOLVED=0; N_UNRESOLVED=0; N_REPOS=0; N_SUPPORTED=0
           # ONE representation of each manifest list — newline-separated, the machine form.
           # Every display and every JSON rendering is DERIVED from it below, so the statement
@@ -196,14 +241,86 @@ jobs:
             printf 'AUDIT-ERROR[%s] %s\n' "$1" "$2" >&2
           }
           fatal() { err "$1" "$2"; FATAL=1; }   # cannot continue; the statement is still emitted
+          # ONE LINE PER RECORD (card#11434 r1). Free text — an acceptance entry's reason, an upstream
+          # advisory's range or patched text, a reviewed record's reason — is rendered into lines that
+          # are later split on newlines and tabs. `oneline` turns CR, LF and TAB into a space. The
+          # programs that start with "$ONELINE_JQ": the population statement's acceptance lines, the
+          # notices' `kind<TAB>id<TAB>line` records, the SOURCE2-RANGE-UNPARSEABLE detail, and the
+          # source-1 and source-2 finding lines. At the first three, free text cannot forge a line
+          # (or, through the notice records, an ID into an exported list): a selftest mutant
+          # removes `oneline` from each and requires its forging leg to see the forgery. The two
+          # finding-line sites use the helper too, but no mutant pins them.
+          ONELINE_JQ='def oneline: tostring | gsub("[\\r\\n\\t]"; " ");'
           # Version comparison and range matching, as one jq program reused by every leg.
-          # It is deliberately CLOSED: a version it cannot parse and a range form it does not
-          # recognise both come back as an explicit marker the caller turns into a RED. There
-          # is no branch here that answers "not affected" out of ignorance.
-          #   Recognised range forms, all seen in live repository advisories:
-          #     ">= 1.5.0, < 2.10.0"   comma-separated operator constraints (>=,>,<=,<,=)
-          #     "2.3.0 - 2.8.1"        inclusive hyphen range
-          #     "0.15.6 through 0.18.0"  inclusive prose range (legacy repo-level advisories)
+          # A version it cannot parse, a range form it does not recognise, and a comparison it
+          # cannot decide each come back as an explicit marker the caller turns into a RED.
+          #   THE RANGE GRAMMAR. A repository advisory's `vulnerable_version_range` is FREE TEXT
+          #   typed by the maintainer. GitHub documents one shape ("Best practices for writing
+          #   repository security advisories", github/docs content/code-security/tutorials/
+          #   fix-reported-vulnerabilities/write-security-advisories.md): one bound, `= v`, or
+          #   `<lower>, <upper>`. It says that several ranges may NOT share one field. Live
+          #   advisories break that rule and use their own ecosystem's syntax instead. The
+          #   CONNECTIVES below are taken from npm node-semver (README "Ranges": space = AND,
+          #   `||` = OR, `a - b` inclusive) and Composer (doc/articles/versions.md "Version
+          #   Range": space or comma = AND, `||` = OR, AND binds tighter). So the grammar read
+          #   here is:
+          #     range       := alternative ( "||" alternative )*          any alternative holds
+          #     alternative := V ("-" | "through") V                      inclusive span
+          #                  | piece ( "," piece )*
+          #     piece       := term ( ( ws | ";" | "&&" ) term )*         AND
+          #     term        := ( ">=" | ">" | "<=" | "<" | "=" ) ws? V     ("=>" is read as ">=",
+          #                                                                 unless eq_after_version)
+          #   The COMMA IS AMBIGUOUS across publishers, and a wrong guess FAILS OPEN. So:
+          #     every piece is a single term     -> comma = AND  (GitHub, Composer, PEP 440)
+          #     every piece is a bounded interval -> comma = OR  (websockets/ws GHSA-96hv-2xvq-fx4p:
+          #                                         ">= 1.1.0 < 5.2.5, >= 6.0.0 < 6.2.4, ...", where
+          #                                         the reviewed global advisory lists each piece as
+          #                                         its own range)
+          #     any other mix                    -> RANGE-UNPARSEABLE
+          #   A conjunction must describe ONE non-empty interval: at most one lower and one upper
+          #   bound, and `=` only alone. ANDing GitHub's own invalid example "> 2.0, < 2.3, > 3.0,
+          #   < 3.2" gives an empty set, which would read 2.1 as clean; this block refuses it
+          #   instead. `^`, `~`, `*`, `x`, `!=`, `~=`, `==` and a single `|` are NOT read. They
+          #   stay RANGE-UNPARSEABLE until a measured advisory needs one.
+          #   THE VERSION V is NOT read with npm's or Composer's version semantics, which differ
+          #   from each other. It is a list of numbers compared zero-padded ("2.3" = "2.3.0"),
+          #   plus an optional pre-release tag. Where the two ecosystems read a bound differently,
+          #   the wider reading is taken, or the comparison is refused:
+          #     a partial bound under `<=`, `=` or a hyphen's upper end is read as npm reads it:
+          #       up to the next minor or major, exclusive (`<= 2.3` is `< 2.4`, `= 1.2` is
+          #       `>= 1.2 < 1.3`). Composer reads it as the one version 2.3.0.
+          #     `>= X`, X untagged, admits the pre-releases of X, as Composer reads it (`>= X-dev`).
+          #     two DIFFERENT pre-release tags on one core are not ordered (npm and Composer order
+          #       tags differently). Against its own core untagged, a tag is ordered BELOW that core
+          #       only if it is on the list both ecosystems put there: `alpha`/`a`, `beta`/`b` or
+          #       `rc`, each with optional numbers and an optional trailing `dev`, or a bare `dev`
+          #       (any case; `belowtag`, checked against npm semver 7.6.2 `compare` and
+          #       composer/semver 3.4.4 `VersionParser::normalize` + `Comparator`). Every other tag
+          #       is not ordered against its core: Composer reads `-stable` as EQUAL to it, and its
+          #       patch tags (`-p1`, `-pl1`, `-patch1`, also with `-dev`) as ABOVE it, where npm
+          #       reads all of them below. So an unknown tag fails closed, never open.
+          #       Such a comparison is UNDECIDABLE. It reads RANGE-UNPARSEABLE unless the answer
+          #       does not depend on it (another bound of its interval is false, or another
+          #       alternative holds). A lower/upper pair whose order is undecidable is refused
+          #       outright, because the empty-interval rule cannot be applied to it (the range is not
+          #       read; agreed (3) below clears a version above both bounds).
+          #   Each connective and each reading of V stated above has a row in the §V range table
+          #   of dependency-audit.selftest.sh, and each guard behind a reading of V has a mutant
+          #   there that removes it. Of the forms NOT read, `^`, `x` and a single `|` have rows.
+          #   That is the extent of what is checked.
+          #   KNOWN LIMITS, each one over-flags or refuses. Two different tags on one core always
+          #   red, even where both ecosystems agree (`-p1` < `-p2`). A tag off the `belowtag`
+          #   list refuses against its own core even where only npm can read it (`< 1.2.3` at
+          #   `1.2.3-next.0`; Composer rejects that version). A partial `<=`/`=` bound
+          #   flags more than Composer does (`<= 2.3` flags 2.3.5). `< X` admits the pre-releases
+          #   of X, and `> 1.2` admits 1.2.x (npm reads it as `>= 1.3.0`). npm excludes a
+          #   pre-release from a range that names no pre-release on its core; that rule is not
+          #   applied.
+          #   A BARE version ("1.17.0") is NOT read (pm ruling on card#11106, comment 10035): the
+          #   same text means one version in axios GHSA-654m-c8p4-x5fp (reviewed record "= 1.15.2")
+          #   and a lower bound in axios GHSA-r4gj-5m52-g5wh (reviewed record ">= 1.17.0, < 1.20.0").
+          #   Like any unread range, what every reading agrees on decides it first (agreed, below;
+          #   card#11604), then the reviewed global record (reviewed_hit).
           VMATCH_JQ='
             def vparse:
               . as $v
@@ -212,58 +329,458 @@ jobs:
               | ($p[0] | split(".")) as $core
               | if ($core | length) == 0 or ($core | any(test("^[0-9]+$") | not))
                 then null
-                else {c: ($core | map(tonumber)), pre: (($p | length) > 1)}
+                else {c: ($core | map(tonumber)), pre: (($p | length) > 1), tag: ($p[1:] | join("-"))}
                 end;
             def pad($n): . + [range(0; $n - length) | 0];
-            def vcmp($a; $b):
+            def belowtag: .tag | test("^(?:(?:alpha|a|beta|b|rc)(?:[.-]?[0-9]+)*(?:[.-]?dev)?|dev)$"; "i");
+            def vcmp($a; $b):   # -1, 0 or 1; null = UNDECIDABLE
               ([($a.c | length), ($b.c | length)] | max) as $n
               | ($a.c | pad($n)) as $x | ($b.c | pad($n)) as $y
               | first(range(0; $n) | select($x[.] != $y[.]) | (if $x[.] < $y[.] then -1 else 1 end))
-                // (if $a.pre == $b.pre then 0 elif $a.pre then -1 else 1 end);
-            def satisfies($ver; $op; $bound):
+                // (if $a.pre and $b.pre then (if $a.tag == $b.tag then 0 else null end)
+                    elif $a.pre == $b.pre then 0
+                    elif (if $a.pre then $a else $b end | belowtag | not) then null
+                    elif $a.pre then -1 else 1 end);
+            def satisfies($ver; $op; $bound):   # true or false; null = UNDECIDABLE
               vcmp($ver; $bound) as $c
-              | if   $op == ">="  then $c >= 0
+              | if $c == null then null
+                elif $op == ">="  then $c >= 0
+                     or ($ver.pre and ($bound.pre | not) and vcmp($ver | .pre = false; $bound) == 0)
                 elif $op == ">"   then $c >  0
                 elif $op == "<="  then $c <= 0
                 elif $op == "<"   then $c <  0
                 elif $op == "="   then $c == 0
                 else null end;
-            def in_range($ver; $range):
-              ($range | gsub("^\\s+|\\s+$"; "")) as $r
-              | (($r | capture("^(?<a>[^\\s]+)\\s+(?:-|through)\\s+(?<b>[^\\s]+)$")) // null) as $hy
-              | if $hy != null then
-                  ($hy.a | vparse) as $lo | ($hy.b | vparse) as $hi
-                  | if $lo == null or $hi == null then "RANGE-UNPARSEABLE"
-                    else (vcmp($ver; $lo) >= 0 and vcmp($ver; $hi) <= 0) end
-                else
-                  [ $r | split(",")[] | gsub("^\\s+|\\s+$"; "") | select(length > 0)
-                    | (capture("^(?<op>>=|<=|=|>|<)\\s*(?<v>.+)$") // null)
-                    | if . == null then "RANGE-UNPARSEABLE"
-                      else (.v | vparse) as $b
-                           | if $b == null then "RANGE-UNPARSEABLE"
-                             else satisfies($ver; .op; $b) end
-                      end ] as $parts
-                  | if ($parts | any(. == "RANGE-UNPARSEABLE")) then "RANGE-UNPARSEABLE"
-                    elif ($parts | length) == 0 then "RANGE-UNPARSEABLE"
-                    else ($parts | all(. == true)) end
+            def all3: if any(. == false) then false elif all(. == true) then true else null end;
+            def any3: if any(. == true) then true elif any(. == null) then null else false end;
+            def upto: {c: (.c[:-1] + [.c[-1] + 1]), pre: false, tag: ""};
+            # Every helper below returns null for "not recognised", and in_range turns ANY null
+            # into RANGE-UNPARSEABLE.
+            def terms:        # one piece -> [{op, b}] ANDed, or null
+              gsub("^\\s+|\\s+$"; "") as $s
+              | [ $s | splits("\\s*(?:&&|;)\\s*") ] as $chunks
+              | if ($chunks | all(test("^(?:>=|<=|>|<|=)\\s*[^\\s<>=,;&|]+(?:\\s+(?:>=|<=|>|<|=)\\s*[^\\s<>=,;&|]+)*$")) | not) then null
+                else [ $chunks[] | scan("(>=|<=|>|<|=)\\s*([^\\s<>=,;&|]+)") | {op: .[0], b: (.[1] | vparse)} ]
+                     | if any(.b == null) then null else . end
                 end;
-            ($version | vparse) as $ver
+            # $keep (only `agreed` passes true) keeps a lower/upper pair whose order is
+            # undecidable as {lo, hi, unordered: true} instead of refusing it; holds decides it.
+            def interval_of($keep):  # [{op, b}] ANDed -> ONE non-empty {lo, hi, eq}, or null
+              if . == null then null
+              elif (map(select(.op == "=")) | length) > 0 and length > 1 then null
+              else
+                [ .[] | if (.b.c | length) < 3 and .op == "<=" then {op: "<", b: (.b | upto)}
+                        elif (.b.c | length) < 3 and .op == "=" then {op: ">=", b: .b}, {op: "<", b: (.b | upto)}
+                        else . end ]
+                | map(select(.op == ">=" or .op == ">")) as $l
+                | map(select(.op == "<=" or .op == "<")) as $u
+                | map(select(.op == "=")) as $e
+                | if ($l | length) > 1 or ($u | length) > 1 then null
+                  elif ($l | length) == 1 and ($u | length) == 1 and vcmp($l[0].b; $u[0].b) == null
+                  then (if $keep then {lo: $l[0], hi: $u[0], eq: null, unordered: true}
+                        else null end)   # UNDECIDABLE: bounds that cannot be ordered cannot be shown non-empty
+                  elif ($l | length) == 1 and ($u | length) == 1
+                       and (vcmp($l[0].b; $u[0].b) as $c
+                            | $c > 0 or ($c == 0 and ($l[0].op == ">" or $u[0].op == "<")))
+                  then null   # EMPTY: an advisory never means "no version" — this is a misread
+                  else {lo: $l[0], hi: $u[0], eq: $e[0]} end
+              end;
+            def interval: interval_of(false);
+            def bounded: . != null and .lo != null and .hi != null;
+            def alternative($keep):  # one ||-alternative -> [interval] ORed, or null
+              gsub("^\\s+|\\s+$"; "") as $a
+              | (($a | capture("^(?<a>[^\\s,]+)\\s+(?:-|through)\\s+(?<b>[^\\s,]+)$")) // null) as $hy
+              | if $hy != null then
+                  [ [ {op: ">=", b: ($hy.a | vparse)}, {op: "<=", b: ($hy.b | vparse)} ]
+                    | if any(.b == null) then null else . end | interval_of($keep) ]
+                else
+                  [ $a | splits("\\s*,\\s*") | terms ] as $pieces
+                  | if ($pieces | any(. == null)) then null
+                    elif ($pieces | length) == 1 then [ $pieces[0] | interval_of($keep) ]
+                    elif ($pieces | all(length == 1)) then [ $pieces | add | interval_of($keep) ]   # comma = AND
+                    elif ($pieces | all(interval | bounded)) then [ $pieces[] | interval_of($keep) ] # comma = OR
+                    else null end
+                end
+              | if . == null or any(. == null) then null else . end;
+            def core: {c: .c, pre: false, tag: ""};
+            def holds($ver):  # true or false; null = UNDECIDABLE
+              if .eq != null then satisfies($ver; "="; .eq.b)
+              # An unordered pair always shares one core (vcmp orders any two cores), so an
+              # untagged version on a higher core is above both bounds whatever order their tags take.
+              elif .unordered then (if ($ver.pre | not) and vcmp($ver; .hi.b | core) == 1 then false else null end)
+              else [ (.lo, .hi) | select(. != null) | satisfies($ver; .op; .b) ] | all3 end;
+            # AN = AFTER A VERSION (card#11642 r3). An `=` written after a version can close the
+            # operator before that version (`< 1.5 =` is `<= 1.5`), so where another operator follows
+            # the `=` (`< 1.5 =< 1.4`, `< 1.5 => 1.0`) it has two live readings, `<= 1.5 < 1.4` and
+            # `< 1.5 <= 1.4`, and no rewrite may pick one. Such text is not read (ranges_of) and not
+            # cleared by its fix (fix_above): it fails closed. The test is on the text as written,
+            # before any rewrite: an `=` whose nearest non-space character before it is anything but
+            # an operator or a connective (a version, or a word, which is refused anyway), and whose
+            # nearest non-space character after it is `<`, `>` or `=`. An `=<` or `=>` that no
+            # version precedes (`=< 1.5`, `>= 1.0, =< 1.5`) has one reading and is still given its
+            # one spelling. This is the one test of it; both readers call it.
+            def eq_after_version:  # true when an = follows a version and another operator follows the =
+              test("[^\\s<>=,;|&]\\s*=\\s*[<>=]");
+            def ranges_of($range; $keep):  # range text -> [interval] ORed, or null when it is not read
+              if ($range | eq_after_version) then null
+              else
+              [ $range | gsub("^\\s+|\\s+$"; "") | gsub("=>"; ">=")
+                | splits("\\s*\\|\\|\\s*") | alternative($keep) ]
+              | if any(. == null) then null else add end
+              end;
+            def ranges($range): ranges_of($range; false);
+            def in_range($ver; $range):
+              ranges($range) as $iv
+              | if $iv == null then "RANGE-UNPARSEABLE"
+                else ($iv | map(holds($ver)) | any3)
+                     | if . == null then "RANGE-UNPARSEABLE" else . end end;
+            def may_hold($ver; $range):  # the intervals of a READ range that may hold $ver
+              ranges($range) | map(select(holds($ver) != false));
+            def open_hit($ver; $range):  # true when no interval that may hold $ver has an upper bound
+              may_hold($ver; $range) | all(.hi == null and .eq == null);
+            def named($range):  # every version the text of a READ range names (each one parses, as the range was read)
+              [ $range | scan("[vV]?[0-9][^\\s<>=,;|&]*") | vparse ];
+            def room_below($ver; $fix):  # the lower bound of one interval holding $ver -> true when that interval begins below $fix
+              vcmp(.; $fix) as $f | vcmp(.; $ver) as $v
+              | $f != null and $v != null and ($f < 0 or $v > 0);
+            # starts_below takes the lower bound of each interval of the READ range that may hold
+            # $ver (open_hit runs first, and an interval with no upper bound has a lower one), and
+            # room_below tests each: a bound EQUAL to the fix begins an interval at it, and a bound
+            # that cannot be compared refuses. A bound above the version (`>= X` admitting a
+            # pre-release of X) begins no interval holding it below X, so it does not refuse.
+            def starts_below($ver; $range; $fix):  # THE INVARIANT: true when no interval that may hold $ver can begin at or above $fix
+              [ may_hold($ver; $range)[] | .lo.b ] | all(room_below($ver; $fix));
+            # THE PATCHED VERSIONS (card#11106). Each `vulnerabilities[]` entry pairs a range with
+            # its own `patched_versions`, also free text. Maintainers often write an OPEN range
+            # (axios ">=1.13.0") and put the fix only there (">=1.20.0"), so a version at or above
+            # the fix is NOT affected, whatever the open range says.
+            #   WHEN IT IS CONSULTED. A readable range is the specific evidence and the patched
+            #     text is the guess, so the patched text may clear a version only INSIDE A READ
+            #     RANGE, and only where that range leaves room for the fix patched_state chose:
+            #     the range holds the version (in_range is true), every interval that may hold it
+            #     has NO upper bound (open_hit), and the fix is strictly above the lower bound of
+            #     each of those intervals, each comparable with the fix and the version
+            #     (starts_below). An upper bound overrules the patched text (">=1.0.0 <1.2.3 ||
+            #     >=2.0.0 <2.0.5", patched "1.2.3", at 2.0.1 stays AFFECTED), and so does an
+            #     interval that begins at or above the fix ("<1.5.3 || >=2.0.0", patched "1.5.3",
+            #     at 2.0.1 stays AFFECTED).
+            #     A range that is read but cannot be compared at this version (a pre-release such
+            #     as 1.5.0-p1 against ">=1.0.0 <1.5.0") stays RANGE-UNPARSEABLE, never cleared
+            #     ("undecided"). A range that is NOT READ is not cleared by patched_state either
+            #     (pm ruling on card#11106, 2026-10-06): an unread range cannot tell a lower bound
+            #     from an upper one. Its patched text clears it only through agreed (2), where no
+            #     reading of the text can disagree (card#11604), and otherwise the reviewed global
+            #     record decides it (THE REVIEWED GLOBAL RECORD, below). An entry with no patched
+            #     value, or one not read, is decided by its range alone.
+            #   READ: one or more versions, each optionally prefixed `>=` or `=>`, separated by `,`,
+            #     `;` or `||` ("1.20.0", ">= v5.8.0", "6.20.45,7.30.7,8.83.28", "7.18.2; 6.23.0").
+            #     Anything else (a patched RANGE such as ">=5.4.19, <6.0.0", prose, a `:` typo) is
+            #     NOT read, so it never clears ("vite GHSA-859w-5945-r5v3" row in §P).
+            #   The comparison is vcmp, strict: a pre-release of a fix is BELOW it (no Composer
+            #     `>= X-dev` widening here, which would fail open), and an undecidable comparison
+            #     does not clear.
+            #   Several patched versions are fixes on different release lines, and the field does
+            #   not say which line a version is on. THESE ARE THE READINGS THAT CHOOSE A CLEARING
+            #   FIX, and each can fail open; no other branch of patched_state returns "clean", and
+            #   each clear then passes the read-range test above:
+            #   (1) OWN LINE. The version shares at least one leading number with a listed fix. Its
+            #     own line is the listed fix sharing the longest run of leading numbers with it (the
+            #     highest of them on a tie, so a tie fails closed), and it clears at or above that
+            #     fix. A list of one fix per major, "1.5.3, 2.1.0", reads the line of 1.6.0 as 1.5.3
+            #     and clears it, and reads the line of 2.0.5 as 2.1.0 and does not.
+            #     FAILS OPEN on a minor line with no listed fix, above a fix on an earlier minor of
+            #     the same major (2.4.0 against "2.3.5, 3.0.4" under ">= 1.0.0" reads as patched):
+            #     neither the field nor that range shows whether 2.4.0 shipped before the fix, since
+            #     the interval holding 2.4.0 begins below it. Where the range does show it (it names
+            #     the start of the 2.4 line, "<2.3.5 || >=2.4.0"), starts_below refuses.
+            #     §P rows: "a later minor of a line whose fix shipped"; "KNOWN LIMIT (1)".
+            #   (2) ABOVE EVERY LINE. The version shares no leading number with any listed fix. It
+            #     clears only when it is at or above the HIGHEST fix AND strictly above every version
+            #     the range names (named_above; a name it cannot compare refuses). That keeps
+            #     a later major such as 3.0.0 against "1.5.3, 2.1.0" under ">= 1.0.0" clean, and
+            #     refuses that 3.0.0 under ">=1.0.0 || >=4.0.0 <4.2.0" (the range names 4.0.0),
+            #     where it stays AFFECTED.
+            #     FAILS OPEN on a later major the advisory did not list (that same 3.0.0 row):
+            #     neither the field nor that range shows whether 3.0.0 carries the fix. Where the
+            #     range does show it (it names the start of a line above the highest fix,
+            #     ">=1.0.0 <1.5.3 || >=2.0.0"), starts_below refuses. Without the reading every
+            #     advisory reds once a package ships a major above all of its fixes.
+            #     §P rows: "KNOWN LIMIT (2)" (cleared); "no shared leading number, and the read
+            #     range names versions above it" (refused).
+            #   Each reading and each refusal stated here has a row in the §P table of
+            #   dependency-audit.selftest.sh. The guards with a mutant are the ones the §M
+            #   patched-version mutants name; that list is the extent of what is controlled.
+            def plist:        # patched_versions text -> [version], or null when not read
+              [ splits("\\s*(?:,|;|\\|\\|)\\s*")
+                | (capture("^(?:>=|=>)?\\s*(?<v>[^\\s<>=,;|&]+)$") // null)
+                | if . == null then null else (.v | vparse) end ]
+              | if length == 0 or any(. == null) then null else . end;
+            def lead($a; $b):  # how many leading numbers $a and $b share
+              ([($a.c | length), ($b.c | length)] | max) as $n
+              | ($a.c | pad($n)) as $x | ($b.c | pad($n)) as $y
+              | first(range(0; $n) | select($x[.] != $y[.])) // $n;
+            def ownline($ver):  # [version] -> the fix on the own line of $ver, or null = UNDECIDABLE
+              (map(lead($ver; .)) | max) as $m
+              | [ .[] | select(lead($ver; .) == $m) ] as $c
+              | reduce $c[1:][] as $p ($c[0];
+                  if . == null then null
+                  else vcmp(.; $p) as $k | if $k == null then null elif $k < 0 then $p else . end end);
+            def named_above($ver; $range):  # true when $ver is above every version the READ range names
+              named($range) | all(vcmp($ver; .) == 1);
+            def patched_state($ver; $text; $range):  # {state, fix}: the ONE place a fix is chosen
+              # state: "clean" | "below" | "noline" | "none" | "unread" | "undecidable"; fix: the
+              # chosen fix where one was chosen, which the caller hands to starts_below.
+              ($text // "" | gsub("^\\s+|\\s+$"; "")) as $t
+              | if $t == "" then {state: "none"}
+                else ($t | plist) as $ps
+                  | if $ps == null then {state: "unread"}
+                    elif ($ps | map(lead($ver; .)) | max) == 0 and (named_above($ver; $range) | not)
+                    then {state: "noline"}
+                    else ($ps | ownline($ver)) as $own
+                      | if $own == null then {state: "undecidable"}
+                        else vcmp($ver; $own) as $k
+                          | {fix: $own, state: (if $k == null then "undecidable" elif $k >= 0 then "clean" else "below" end)}
+                      end
+                  end
+                end;
+            def is_pkg:  # one vulnerabilities[] entry -> itself when it names the audited package, else nothing
+              select((.package.ecosystem // "" | ascii_downcase) == ($ecosystem | ascii_downcase))
+              | select((.package.name // "" | ascii_downcase) == ($package | ascii_downcase));
+            # WHAT EVERY READING OF AN UNREAD RANGE AGREES ON (card#11604, operator ruling). A range
+            # this grammar does not read is decided here first, only where no reading of its text
+            # could disagree; anything else goes to the reviewed global record below. In order:
+            #   (1) a BARE version ("1.16.0") the installed version equals -> AFFECTED. Whatever the
+            #     bare text means (one version, or a lower bound as in axios GHSA-r4gj-5m52-g5wh),
+            #     it holds that version. Any other version is NOT decided by it.
+            #   (2) at or above the ONE patched version of the advisory -> clean, only where the text is
+            #     nothing but versions, comparison operators and the connectives `, ; | & -` (a word
+            #     can name a bound with no version), names at least one version, and every version it
+            #     names is below that fix, or equal to it as an exclusive upper bound written `<` with
+            #     no `=` on either side (@hono/node-server GHSA-rmxm-3fg6-px4f "> = 1.19.10, < 2.1.3",
+            #     patched 2.1.3). A named version carrying `+`, or a tag off the belowtag list, refuses:
+            #     a span written without spaces ("1.0.0-2.5.0") or a word joined by a hyphen reads as
+            #     one version with a tag. So does a tag with a `-`-joined segment that starts with a
+            #     digit, which is a span hidden in a tag ("1.0.0-beta.1-3" can mean ">=1.0.0-beta.1
+            #     <=3"; card#11642 r1). A named version with fewer than three core numbers is compared
+            #     at its reach, the version upto gives it (`<= 1` is read as `< 2.0.0`), unless its
+            #     operator is exactly `<` with no `=` after it. Text where an `=` follows a version and
+            #     another operator follows that `=` is refused (eq_after_version: `< 1.5 =< 1.4` can
+            #     be `<= 1.5 < 1.4` or `< 1.5 <= 1.4`). Then each operator is given one spelling
+            #     (opcanon: no whitespace inside it, `=<` as `<=`, `=>` as `>=`, which can now only
+            #     be an `=<`/`=>` that no version precedes), and the text is refused unless every
+            #     operator is one of `>= <= > < =` and each is attached to exactly one version
+            #     (before it, or a trailing `=` after it), so no `=` is left that could be read as
+            #     part of the operator on either side of it. Then every bounded interval
+            #     of any reading ends below the fix, or at it exclusively, so a version at or above
+            #     the fix is outside it; and an
+            #     open interval ("> = 1.0.0") begins below the fix, which is the one shape of
+            #     interval patched_state also clears by its patched text in a read range.
+            #     A patched list of several versions is not read here (which line the version is on
+            #     is a guess: readings (1) and (2) of patched_state).
+            #   (3) an untagged version on a higher core than a lower/upper pair whose tags cannot be
+            #     ordered -> clean, through ranges_of with $keep (express GHSA-rv95-896h-c2vc
+            #     ">=5.0.0-alpha.1, <5.0.0-beta.3" at 5.2.1): above both bounds in either order. It
+            #     also applies to such a pair that is one alternative of an `||` composite when every
+            #     other alternative excludes the version (">=1.0.0-a.1 <1.0.0-b.2 || >=3.0.0" at 2.0.0).
+            #   Rows: the card#11604 rows of §V, §P and §G in dependency-audit.selftest.sh; each guard
+            #   has a §M mutant.
+            def bare($ver; $range):  # (1): true when $range is one bare version equal to $ver
+              ($range | gsub("^\\s+|\\s+$"; "")) as $r
+              | ($r | test("^[vV]?[0-9][^\\s<>=,;|&]*$"))
+                and (($r | vparse) as $x | $x != null and vcmp($ver; $x) == 0);
+            def opcanon:  # one spelling per operator: no whitespace inside it, "=<" read as "<=" and "=>" as ">="
+              gsub("(?<=[<>=])\\s+(?=[<>=])"; "") | gsub("=<"; "<=") | gsub("=>"; ">=");
+            def fix_above($ver; $range; $text):  # (2): true when no reading of $range has an interval holding $ver that begins at or above its one fix
+              ($text // "" | gsub("^\\s+|\\s+$"; "") | plist) as $ps
+              | $ps != null and ($ps | length) == 1
+                and (vcmp($ver; $ps[0]) as $k | $k != null and $k >= 0)
+                and ($range | gsub("[vV]?[0-9][^\\s<>=,;|&]*"; "") | test("^[\\s<>=,;|&-]*$"))
+                and ($range | eq_after_version | not)
+                and (($range | opcanon) as $r
+                     | [ $r | scan("[<>=]+") ] as $ops
+                     | [ $r | scan("([<>=]+)?\\s*([vV]?[0-9][^\\s<>=,;|&]*)(\\s*=)?") ] as $ns
+                     | ($ops | all(IN(">=", "<=", ">", "<", "=")))
+                       and ($ops | length) == ([ $ns[] | .[0], .[2] | select(. != null) ] | length)
+                       and ($ns | length) > 0
+                       and ($ns | all(. as $m | ($m[1] | vparse) as $n
+                                      | ($m[0] // "") as $op
+                                      | $n != null
+                                        and ($m[1] | test("\\+") | not)
+                                        and (($n.pre | not) or ($n | belowtag))
+                                        and ($n.tag | split("-")[1:] | any(test("^[0-9]")) | not)
+                                        and ((if ($n.c | length) < 3 and ($op != "<" or $m[2] != null) then ($n | upto) else $n end)
+                                             as $reach
+                                             | vcmp($reach; $ps[0]) as $c
+                                             | $c != null
+                                               and ($c < 0
+                                                    or ($c == 0
+                                                        and $op == "<"
+                                                        and $m[2] == null))))));
+            def agreed($ver; $range; $text):  # "AFFECTED" | "clean" | null = no agreement, the reviewed record decides
+              if bare($ver; $range) then "AFFECTED"
+              elif fix_above($ver; $range; $text) then "clean"
+              elif (ranges_of($range; true) | . != null and (map(holds($ver)) | all(. == false))) then "clean"
+              else null end;
+            # THE REVIEWED GLOBAL RECORD (card#11106, pm ruling 2026-10-06). A range of a repository
+            # advisory that this grammar does not read, and that agreed leaves undecided, is not
+            # guessed at: the REVIEWED global record
+            # GitHub keeps of the same advisory (`/advisories/<GHSA>`, type "reviewed") lists the
+            # ranges of the package one per `vulnerabilities[]` entry, and each entry goes through
+            # in_range on its own. No other grammar is read. The caller looks the record up (the
+            # `reviewed_advisory_fetch` seam) and hands it in as $reviewed, a map from GHSA ID to the
+            # record, or to {lookup_failed: why}.
+            #   AFFECTED when any entry holds the version. CLEAN only when every entry is read and
+            #   none holds it. RANGE-UNPARSEABLE (fail closed, as for any unread range) when an entry
+            #   is not read or cannot be compared and none holds, when the lookup was not made or
+            #   failed, when the record is not reviewed or names another advisory, and when it lists
+            #   no entry for this package. WITHDRAWN (card#11434) when the record is withdrawn: its
+            #   ranges are not used, and the entry is a printed NOTICE naming the advisory, neither a
+            #   finding nor an error. The patched text is not read on this path.
+            #   Each case has a §G row in dependency-audit.selftest.sh, and each guard that decides a
+            #   verdict has a §M mutant. The not-looked-up and lookup-failed branches only name their
+            #   reason (the identity guard refuses those entries too), so their reasons are asserted.
+            def reviewed_hit($ver; $id; $rec):  # {hit: true | false | null, why}; null = RANGE-UNPARSEABLE
+              if $rec == null then {hit: null, why: "its global record was not looked up"}
+              elif $rec.lookup_failed != null then {hit: null, why: "the lookup of its global record failed: \($rec.lookup_failed)"}
+              elif $rec.ghsa_id != $id then {hit: null, why: "the global record returned is \($rec.ghsa_id // "unnamed"), not \($id)"}
+              elif $rec.type != "reviewed" then {hit: null, why: "its global record is not reviewed (type \($rec.type // "none"))"}
+              elif $rec.withdrawn_at != null then {hit: null, withdrawn: true, why: "its reviewed global record is withdrawn"}
+              else [ ($rec.vulnerabilities // [])[] | is_pkg | in_range($ver; .vulnerable_version_range // "") ] as $h
+                | if ($h | length) == 0 then {hit: null, why: "its reviewed global record lists no range for this package"}
+                  else ($h | map(if . == "RANGE-UNPARSEABLE" then null else . end) | any3) as $x
+                    | {hit: $x, why: (if $x == null then "a range of its reviewed global record is not read either"
+                                      else "its reviewed global record decides" end)}
+                  end
+              end;
+            (($ARGS.named.reviewed // [])[0] // {}) as $reviewed
+            | ($version | vparse) as $ver
             | if $ver == null then [{verdict: "VERSION-UNPARSEABLE", ghsa: "", range: ""}]
               else
                 [ .[]
                   | select(.withdrawn_at == null)
                   | . as $adv
                   | (.vulnerabilities // [])[]
-                  | select((.package.ecosystem // "" | ascii_downcase) == ($ecosystem | ascii_downcase))
-                  | select((.package.name // "" | ascii_downcase) == ($package | ascii_downcase))
-                  | {r: (.vulnerable_version_range // "")} as $vr
-                  | in_range($ver; $vr.r) as $hit
-                  | select($hit == true or $hit == "RANGE-UNPARSEABLE")
-                  | {verdict: (if $hit == true then "AFFECTED" else "RANGE-UNPARSEABLE" end),
-                     ghsa: ($adv.ghsa_id // ""), severity: ($adv.severity // ""), range: $vr.r}
+                  | is_pkg
+                  | {r: (.vulnerable_version_range // ""), p: (.patched_versions // "")} as $vr
+                  | if ranges($vr.r) == null then
+                      # THE RANGE IS NOT READ: what every reading of it agrees on decides it (agreed),
+                      # then the reviewed global record, or it fails closed.
+                      ($adv.ghsa_id // "") as $id
+                      | agreed($ver; $vr.r; $vr.p) as $ag
+                      | select($ag != "clean")
+                      | if $ag == "AFFECTED" then
+                          {verdict: "AFFECTED", ghsa: $id, severity: ($adv.severity // ""), range: $vr.r,
+                           patched: "the version is the bare version the range names, which every reading of it holds",
+                           lookup: false}
+                        else
+                          reviewed_hit($ver; $id; $reviewed[$id]) as $rv
+                          | select($rv.hit != false)
+                          | {verdict: (if $rv.withdrawn == true then "WITHDRAWN" elif $rv.hit == true then "AFFECTED" else "RANGE-UNPARSEABLE" end),
+                             ghsa: $id, severity: ($adv.severity // ""), range: $vr.r,
+                             patched: "range not read, and no reading of it is agreed at this version; \($rv.why)",
+                             reviewed: $rv.why,
+                             lookup: ($id != "" and ($reviewed | has($id) | not))}
+                        end
+                    else
+                      in_range($ver; $vr.r) as $hit
+                      | select($hit == true or $hit == "RANGE-UNPARSEABLE")
+                      | patched_state($ver; $vr.p; $vr.r) as $p0
+                      | (if $p0.state != "clean" then $p0.state
+                         elif $hit != true then "undecided"
+                         elif (open_hit($ver; $vr.r) | not) then "bounded"
+                         elif (starts_below($ver; $vr.r; $p0.fix) | not) then "startsabove"
+                         else "clean" end) as $ps
+                      | select($ps != "clean")
+                      | {verdict: (if $hit == true then "AFFECTED" else "RANGE-UNPARSEABLE" end),
+                         ghsa: ($adv.ghsa_id // ""), severity: ($adv.severity // ""), range: $vr.r,
+                         patched: (if $ps == "none" then "no patched version"
+                                   elif $ps == "below" then "patched in \"\($vr.p)\""
+                                   elif $ps == "bounded" then "patched \"\($vr.p)\" overruled by an upper bound of the range, so not cleared"
+                                   elif $ps == "startsabove" then "patched \"\($vr.p)\" overruled: an interval of the range holding the version begins at or above the fix, or cannot be compared, so not cleared"
+                                   elif $ps == "undecided" then "patched \"\($vr.p)\" not read, because the range is read and cannot be compared at this version, so not cleared"
+                                   elif $ps == "noline" then "patched \"\($vr.p)\" lists no fix on this line, and the range does not place the version above every version it names, so not cleared"
+                                   else "patched \"\($vr.p)\" not \(if $ps == "unread" then "read" else "comparable" end), so not cleared" end)}
+                    end
                 ]
               end'
           # --- end dep-audit-lib
+          # --- dep-audit-accept
+          # THE ACCEPTANCE INPUT (card#11434). A source-2 entry whose range this audit does not read,
+          # and that neither what every reading agrees on (agreed, card#11604) nor a reviewed global
+          # record decides, is SOURCE2-RANGE-UNPARSEABLE at that version until the dependency moves to
+          # a version one of them decides or GitHub reviews the advisory. The one reviewed way out
+          # at the version held is an entry in the adopting repo's ACCEPT_FILE accepting THAT advisory:
+          #   {"accepted": [{"advisory": "GHSA-xxxx-xxxx-xxxx", "versions": ["1.2.3"], "reason": "...",
+          #                  "reviewer": "...", "date": "YYYY-MM-DD", "expires": "YYYY-MM-DD"}]}
+          # THE RULES, each with a §A leg in dependency-audit.selftest.sh:
+          #   ACCEPTS: only a source-2 entry that would otherwise be SOURCE2-RANGE-UNPARSEABLE, of the
+          #     advisory the entry names, at a resolved version the entry's `versions` lists (exact
+          #     string match). Any other version of the package stays SOURCE2-RANGE-UNPARSEABLE: an
+          #     acceptance covers the versions somebody reviewed, never the next one. A finding (a
+          #     read range, a bare version equal to the version, or a reviewed record, that holds
+          #     the version) is never cleared, and neither is any other error.
+          #   REFUSED (ACCEPT-ENTRY-REFUSED; the entry accepts nothing): an entry that is not a JSON
+          #     object, an advisory that is not a GHSA ID, a `versions` that is missing, empty, not a
+          #     list, or holds a member that is not a non-blank string, a blank reason, a blank
+          #     reviewer, a date that is not a YYYY-MM-DD calendar day, or an expiry that is present
+          #     and is not one.
+          #   EXPIRED: an expiry before today (UTC). The entry accepts nothing and is printed as
+          #     expired, so the advisory reds again. The expiry day itself still accepts. An expiry
+          #     is recommended, not required.
+          #   ACCEPT-FILE-UNPARSEABLE: a file that is present and is not a JSON object with an
+          #     "accepted" array; nothing in it accepts. No file at all accepts nothing.
+          #   PRINTED: every entry, with what became of it, in the population statement; every
+          #     acceptance used, as a NOTICE at the verdict, exported in the population's `accepted`.
+          read_acceptances() {   # -> $WORK/accept.json, [entry] of the entries that accept
+            local today n adv why
+            printf '[]' > "$WORK/accept.json"
+            if [ ! -e "$ACCEPT_FILE" ]; then
+              ACCEPT_LINES="    none: no $ACCEPT_FILE on this ref"$'\n'
+              return 0
+            fi
+            if ! jq -e 'type == "object" and (.accepted | type == "array")' "$ACCEPT_FILE" >/dev/null 2>&1; then
+              err ACCEPT-FILE-UNPARSEABLE "$ACCEPT_FILE is not a JSON object with an \"accepted\" array, so nothing in it accepts anything"
+              ACCEPT_LINES="    unparseable: $ACCEPT_FILE, nothing in it accepts anything"$'\n'
+              return 0
+            fi
+            today="$(date -u +%F)"
+            if ! jq -c --arg today "$today" '
+                def blank: type != "string" or gsub("^\\s+|\\s+$"; "") == "";
+                def day: type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+                         and ((. + "T00:00:00Z" | try (fromdateiso8601 | todate[0:10]) catch null) == .);
+                .accepted | to_entries[] | (.key + 1) as $n | .value as $e
+                | if ($e | type) != "object" then {n: $n, status: "refused", advisory: "?", why: ["not a JSON object"]}
+                  else [ (if ($e.advisory | type) == "string" and ($e.advisory | test("^GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$"))
+                          then empty else "advisory \($e.advisory | tojson) is not a GHSA ID" end),
+                         (if ($e.versions | type) == "array" and ($e.versions | length) > 0
+                             and all($e.versions[]; blank | not)
+                          then empty else "versions \($e.versions | tojson) is not a non-empty list of versions" end),
+                         (if ($e.reason | blank) then "no reason" else empty end),
+                         (if ($e.reviewer | blank) then "no reviewer" else empty end),
+                         (if ($e.date | day) then empty else "no date: \($e.date | tojson) is not a YYYY-MM-DD calendar day" end),
+                         (if $e.expires == null or ($e.expires | day) then empty
+                          else "expiry \($e.expires | tojson) is not a YYYY-MM-DD calendar day" end) ] as $why
+                    | {n: $n, advisory: ($e.advisory | tostring), why: $why, entry: $e,
+                       status: (if ($why | length) > 0 then "refused"
+                                elif $e.expires != null and $e.expires < $today then "expired"
+                                else "accepted" end)}
+                  end' "$ACCEPT_FILE" > "$WORK/accept.ndjson"; then
+              err ACCEPT-FILE-UNPARSEABLE "$ACCEPT_FILE could not be read entry by entry, so nothing in it accepts anything"
+              ACCEPT_LINES="    unparseable: $ACCEPT_FILE, nothing in it accepts anything"$'\n'
+              return 0
+            fi
+            ACCEPT_LINES="$(jq -r "$ONELINE_JQ"'
+                (if .status == "accepted" then "    accepted \(.advisory) at \(.entry.versions | join(", ")): \(.entry.reason) (by \(.entry.reviewer) on \(.entry.date), \(if .entry.expires == null then "no expiry" else "expires \(.entry.expires)" end))"
+                 elif .status == "expired" then "    expired \(.advisory): expired \(.entry.expires), so it no longer accepts (\(.entry.reason); by \(.entry.reviewer) on \(.entry.date))"
+                 else "    refused entry \(.n) (\(.advisory)): \(.why | join("; "))" end) | oneline' "$WORK/accept.ndjson")"$'\n'
+            [ -s "$WORK/accept.ndjson" ] || ACCEPT_LINES="    none: $ACCEPT_FILE lists no entry"$'\n'
+            # Process substitution, NOT a pipe, so each err() below counts in the parent shell.
+            while IFS=$'\t' read -r n adv why; do
+              err ACCEPT-ENTRY-REFUSED "$ACCEPT_FILE entry $n ($adv): $why, so it accepts nothing"
+            done < <(jq -r 'select(.status == "refused") | [.n, .advisory, (.why | join("; "))] | @tsv' "$WORK/accept.ndjson")
+            jq -s 'map(select(.status == "accepted") | .entry)' "$WORK/accept.ndjson" > "$WORK/accept.json"
+          }
+          # --- end dep-audit-accept
           # --- dep-audit-discovery
           # Discovery is by lockfile NAME over the tree that is actually checked out, so the
           # audited set is a property of the ref, not of a config file someone forgot to update.
@@ -312,7 +829,7 @@ jobs:
             fi
             FINDINGS=$((FINDINGS + n))
             if [ "$n" -gt 0 ]; then
-              FINDING_LINES="${FINDING_LINES}$(jq -r '.results[]?.packages[]? as $p | $p.vulnerabilities[]? | "  SOURCE1 \($p.package.ecosystem):\($p.package.name)@\($p.package.version) \(.id)"' "$WORK/osv.json")"$'\n'
+              FINDING_LINES="${FINDING_LINES}$(jq -r "$ONELINE_JQ"'.results[]?.packages[]? as $p | $p.vulnerabilities[]? | "  SOURCE1 \($p.package.ecosystem):\($p.package.name)@\($p.package.version) \(.id)" | oneline' "$WORK/osv.json")"$'\n'
             fi
           }
           # --- end dep-audit-source1
@@ -449,8 +966,35 @@ jobs:
             fi
             ADV_CACHE="$cache"
           }
+          # THE REVIEWED GLOBAL RECORDS a match asked for (`lookup` on an entry whose range is not
+          # read; VMATCH_JQ says what it does with them). Like fetch_advisories it records nothing:
+          # a lookup that fails is written into the map as {lookup_failed: why}, and the matcher
+          # turns that entry into RANGE-UNPARSEABLE, so no failure here can read as clean.
+          reviewed_records() {   # stdin: GHSA IDs, one per line -> $WORK/reviewed.json, {<id>: record}
+            local id rec
+            while IFS= read -r id; do
+              # The ID comes from a payload and is built into an API path, so it is checked first.
+              if ! [[ $id =~ ^GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$ ]]; then
+                jq -nc --arg id "$id" '{($id): {lookup_failed: "\"\($id)\" is not a GHSA ID, so no API path is built from it"}}'
+                continue
+              fi
+              rec="$WORK/rev/$id.json"   # cached per run
+              if [ ! -f "$rec" ]; then
+                if ! reviewed_advisory_fetch "$id" > "$rec.part" 2> "$WORK/rev.err" < /dev/null; then
+                  jq -nc --arg w "the lookup exited non-zero: $(tr '\n' ' ' < "$WORK/rev.err" | cut -c1-200)" '{lookup_failed: $w}' > "$rec"
+                elif ! jq -e 'type == "object"' "$rec.part" >/dev/null 2>&1; then
+                  jq -nc --arg w "the lookup returned a payload that is not a JSON object: $(head -c 200 "$rec.part" | tr '\n' ' ')" '{lookup_failed: $w}' > "$rec"
+                else
+                  mv "$rec.part" "$rec"
+                fi
+                rm -f "$rec.part"
+              fi
+              jq -c --arg id "$id" '{($id): .}' "$rec"
+            done > "$WORK/reviewed.ndjson"
+            jq -s 'add // {}' "$WORK/reviewed.ndjson" > "$WORK/reviewed.json"
+          }
           run_source2() {
-            local control_n
+            local control_n ids
             # Called bare, in the PARENT shell — never inside `$(...)`, so the err() below is the
             # one that counts, in both senses.
             if ! fetch_advisories "$ADVISORY_CONTROL_REPO"; then
@@ -472,7 +1016,7 @@ jobs:
               return 0
             fi
             [ -s "$WORK/resolved.tsv" ] || return 0
-            local eco name version repo adv hits verdicts n_adv
+            local eco name version repo adv hits verdicts n_adv notes kind id line
             # `< "$WORK/resolved.tsv"` and NOT a pipe: a piped `while` body runs in a subshell,
             # where every err() below would increment a counter that dies at the `done`.
             while IFS=$'\t' read -r eco name version repo; do
@@ -484,6 +1028,43 @@ jobs:
               hits="$(jq -c --arg package "$name" --arg version "$version" \
                         --arg ecosystem "$eco" "$VMATCH_JQ" "$adv")" \
                 || { err SOURCE2-MATCH-FAILED "range matching failed for $name@$version ($repo)"; continue; }
+              # A range the grammar does not read comes back flagged `lookup`: look each such
+              # advisory up in the reviewed global records, then match again with them in hand.
+              ids="$(printf '%s' "$hits" | jq -r '[.[] | select(.lookup == true) | .ghsa] | unique | .[]')" \
+                || { err SOURCE2-MATCH-FAILED "could not read the reviewed-record lookups $name@$version ($repo) asked for"; continue; }
+              if [ -n "$ids" ]; then
+                reviewed_records <<< "$ids" \
+                  || { err SOURCE2-MATCH-FAILED "could not assemble the reviewed global records for $name@$version ($repo)"; continue; }
+                hits="$(jq -c --arg package "$name" --arg version "$version" --arg ecosystem "$eco" \
+                          --slurpfile reviewed "$WORK/reviewed.json" "$VMATCH_JQ" "$adv")" \
+                  || { err SOURCE2-MATCH-FAILED "range matching against the reviewed global records failed for $name@$version ($repo)"; continue; }
+              fi
+              # THE ACCEPTANCE INPUT (dep-audit-accept): an entry that is RANGE-UNPARSEABLE becomes
+              # ACCEPTED when an ACCEPT_FILE entry accepts its advisory AT THIS VERSION. No other
+              # verdict, and no other version, is touched.
+              hits="$(printf '%s' "$hits" | jq -c --arg version "$version" --slurpfile acc "$WORK/accept.json" '
+                        $acc[0] as $a
+                        | map(.ghsa as $g
+                              | [$a[] | select(.advisory == $g) | select(any(.versions[]; . == $version))] as $m
+                              | if .verdict == "RANGE-UNPARSEABLE" and ($m | length) > 0
+                                then .verdict = "ACCEPTED" | .accepted = $m[0] else . end)')" \
+                || { err SOURCE2-MATCH-FAILED "could not apply $ACCEPT_FILE to $name@$version ($repo)"; continue; }
+              notes="$(printf '%s' "$hits" | jq -r --arg p "$name" --arg v "$version" --arg r "$repo" "$ONELINE_JQ"'.[]
+                        | if .verdict == "WITHDRAWN" then
+                            ["W", .ghsa, "  NOTICE[WITHDRAWN] \($p)@\($v) \(.ghsa) [\(.range)]: \(.reviewed), and its range is not read; not a finding and not an error (repo-level on \($r))"]
+                          elif .verdict == "ACCEPTED" then
+                            ["A", .ghsa, "  NOTICE[ACCEPTED] \($p)@\($v) \(.ghsa) [\(.range)]: \(.reviewed // .patched); accepted by \(.accepted.reviewer) on \(.accepted.date), \(if .accepted.expires == null then "no expiry" else "expires \(.accepted.expires)" end): \(.accepted.reason)"]
+                          else empty end
+                        | map(oneline) | join("\t")')" \
+                || { err SOURCE2-MATCH-FAILED "could not read the notices for $name@$version ($repo)"; continue; }
+              while IFS=$'\t' read -r kind id line; do
+                case "$kind" in
+                  W) WITHDRAWN_IDS="${WITHDRAWN_IDS}$id"$'\n' ;;
+                  A) ACCEPTED_IDS="${ACCEPTED_IDS}$id"$'\n' ;;
+                  *) continue ;;   # the one empty line an empty $notes feeds
+                esac
+                NOTICE_LINES="${NOTICE_LINES}$line"$'\n'
+              done <<< "$notes"
               verdicts="$(printf '%s' "$hits" | jq -r '.[].verdict' | sort -u)"
               case "$verdicts" in
                 *VERSION-UNPARSEABLE*)
@@ -502,7 +1083,7 @@ jobs:
               esac
               case "$verdicts" in
                 *RANGE-UNPARSEABLE*)
-                  err SOURCE2-RANGE-UNPARSEABLE "$name@$version ($repo): an advisory range form this audit does not recognise — $(printf '%s' "$hits" | jq -r '[.[] | select(.verdict == "RANGE-UNPARSEABLE") | "\(.ghsa) \"\(.range)\""] | join("; ")')"
+                  err SOURCE2-RANGE-UNPARSEABLE "$name@$version ($repo): an advisory range this audit does not recognise, or cannot read without guessing (an ambiguous comma, bounds that describe no version, or versions it cannot order), and that no reviewed global record of the advisory decides — $(printf '%s' "$hits" | jq -r "$ONELINE_JQ"'[.[] | select(.verdict == "RANGE-UNPARSEABLE") | "\(.ghsa) \"\(.range)\"\(if .reviewed then " (\(.reviewed))" else "" end)"] | join("; ") | oneline')"
                   ;;
               esac
               local n
@@ -513,7 +1094,7 @@ jobs:
                 err SOURCE2-UNCOUNTABLE "could not count the AFFECTED verdicts for $name@$version ($repo) (got '$n')"
               elif [ "$n" -gt 0 ]; then
                 FINDINGS=$((FINDINGS + n))
-                FINDING_LINES="${FINDING_LINES}$(printf '%s' "$hits" | jq -r --arg p "$name" --arg v "$version" --arg r "$repo" '.[] | select(.verdict == "AFFECTED") | "  SOURCE2 \($p)@\($v) \(.ghsa) \(.severity) [\(.range)] (repo-level on \($r))"')"$'\n'
+                FINDING_LINES="${FINDING_LINES}$(printf '%s' "$hits" | jq -r --arg p "$name" --arg v "$version" --arg r "$repo" "$ONELINE_JQ"'.[] | select(.verdict == "AFFECTED") | "  SOURCE2 \($p)@\($v) \(.ghsa) \(.severity) [\(.range)] \(.patched) (repo-level on \($r))" | oneline')"$'\n'
               fi
             done < "$WORK/resolved.tsv"
           }
@@ -545,6 +1126,8 @@ jobs:
               printf '  UNRESOLVED PACKAGES (named, never dropped):\n'
               sed 's/^/    /' "$WORK/unresolved.tsv"
             fi
+            printf '  ACCEPTANCE INPUT %s (every entry, and what became of it):\n' "$ACCEPT_FILE"
+            printf '%s' "$ACCEPT_LINES"
             return 0
           }
           emit_outputs() {
@@ -572,10 +1155,13 @@ jobs:
               --argjson codes "$(list_json "$ERROR_CODES")" \
               --argjson supported "$(list_json "$SUPPORTED_MANIFESTS")" \
               --argjson unsupported "$(list_json "$UNSUPPORTED_MANIFESTS")" \
+              --argjson withdrawn "$(list_json "$(printf '%s' "$WITHDRAWN_IDS" | sort -u)")" \
+              --argjson accepted "$(list_json "$(printf '%s' "$ACCEPTED_IDS" | sort -u)")" \
               '{ref: $ref, status: $status, manifests: $manifests, packages: $packages,
                 resolved: $resolved, unresolved: $unresolved, advisory_repos: $repos,
                 findings: $findings, errors: $errors, error_codes: $codes,
-                supported_manifests: $supported, unsupported_manifests: $unsupported}')"
+                supported_manifests: $supported, unsupported_manifests: $unsupported,
+                withdrawn: $withdrawn, accepted: $accepted}')"
             {
               printf 'population=%s\n' "$POPULATION_JSON"
               printf 'findings=%s\n' "$FINDINGS"
@@ -583,6 +1169,7 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           }
           verdict() {
+            [ -z "$NOTICE_LINES" ]  || printf 'NOTICES (not findings, not errors):\n%s' "$NOTICE_LINES"
             [ -z "$FINDING_LINES" ] || printf 'FINDINGS:\n%s' "$FINDING_LINES"
             [ -z "$ERROR_LINES" ]   || printf 'ERRORS:\n%s' "$ERROR_LINES"
             if [ "$AUDIT_ERRORS" -gt 0 ]; then
@@ -598,6 +1185,7 @@ jobs:
           # --- end dep-audit-report
           # --- dep-audit-main
           discover_manifests
+          read_acceptances
           if [ "$FATAL" -eq 0 ]; then run_source1; fi
           if [ "$FATAL" -eq 0 ]; then resolve_population; fi
           if [ "$FATAL" -eq 0 ]; then run_source2; fi
