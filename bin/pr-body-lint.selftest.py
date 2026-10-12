@@ -7,9 +7,9 @@
 #
 #   upstream repo     PupFuzz/agent-board-framework  (PRIVATE)
 #   upstream path     plugins/coord/templates/bin/pr-body-lint.selftest.py
-#   vendored from     239712e97fb685ac8ea7fdb18d69dc338d5ac8e8   (marketplace, the v0.63.0 release merge)
-#   plugin version    coord 0.63.0
-#   upstream sha256   4fa57438679d84bbedee6cb64a436e9ebbff27781ee638892700224f26a4f4a4
+#   vendored from     70fd3207c96f7240f7368c93de277970ac39598e   (marketplace, the v0.66.0 release merge)
+#   plugin version    coord 0.66.0
+#   upstream sha256   a52d5ff2b6dd66f6531e5ff14606616d6f06f0309fd32b9c8804435b1f71280b
 #                     — the WHOLE upstream file, NOT the body figure vendor-pin-check pins.
 #
 # ⚠ IT MUST BE RE-VENDORED IN THE SAME COMMIT AS THE TOOL. It resolves both `pr-body-lint.py` and
@@ -129,11 +129,16 @@ the path it tried and these two ways to point it elsewhere; every other arm stil
 It is never a skip: a vendored install that could not find its workflow would otherwise never
 check its own gate. `arm_k` builds a vendored copy and runs it both ways: with no input, and with
 `--workflow`.
+
+`arm_l` is the VERSION CLASSIFICATION (card#9748): every rule id derived from this lint's own
+`Finding("<id>", …)` sites carries a `VERSION_CLASSIFICATION` row, and a planted rule with no row
+is seen unclassified.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
+import ast
 import importlib.util
 import json
 import os
@@ -1387,6 +1392,82 @@ def arm_e_cli(td):
     check("E no source is a usage fault, not a pass", proc.returncode != 0, proc.returncode)
 
 
+def _finding_ids(path, source):
+    """(rule ids, unreadable sites) from `source`'s `Finding(...)` calls — the SAME rule as
+    `_reconciled.lint_rule_population`, which this file cannot import once vendored: a `Finding`
+    with no argument, or whose id is not a string literal, is a site the derivation cannot read,
+    never one it may skip (fw#955 r2/r3 MAJOR 2 — skipping it here kept this arm green while the
+    mechanism could not derive the population at all)."""
+    ids, unreadable = set(), []
+    for node in ast.walk(ast.parse(source, filename=path)):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "Finding"):
+            continue
+        first = node.args[0] if node.args else None
+        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            ids.add(first.value)
+        else:
+            unreadable.append("%s:%d" % (path, node.lineno))
+    return ids, unreadable
+
+
+def arm_l_version_classification(mod, td):
+    """⛔ EVERY RULE THIS FILE CAN EMIT CARRIES A VERSION CLASSIFICATION, OR THE SUITE REDS
+    (card#9748).
+
+    WHY IT IS A SUITE LEG AND NOT A COMMENT. A reviewer runs this program out of ITS OWN plugin
+    root against a PR in a repo that may have reconciled at a DIFFERENT coord version.
+    `hooks/bin/_reconciled.py` withholds a finding that would be false across that boundary — and
+    it can only do that for a rule whose `VERSION_CLASSIFICATION` row says what the change did.
+    A rule with no row, or a `Finding` whose id the derivation cannot read, makes every skewed
+    review's reconciled version NOT ESTABLISHED (exit 3) and arbitrates nothing. That has to red
+    HERE, in the author's own suite, not there.
+
+    THE POPULATION IS DERIVED FROM THIS FILE'S OWN `Finding("<id>", …)` SITES by `_finding_ids`,
+    under the run-time derivation's rule. A rule id written down in a list here would be a third copy.
+    """
+    with open(TOOL, encoding="utf-8") as fh:
+        emitted, unreadable = _finding_ids(TOOL, fh.read())
+    check("every `Finding(...)` site names its rule as a string literal the derivation can read",
+          not unreadable, "unreadable: %s" % ", ".join(unreadable))
+    check("the rule population derives non-empty from this file's own `Finding` sites",
+          bool(emitted), "an empty population would report every rule as classified")
+    declared = set(mod.VERSION_CLASSIFICATION)
+    check("every rule this file can emit has a VERSION_CLASSIFICATION row",
+          emitted <= declared, "unclassified: %s" % ", ".join(sorted(emitted - declared)))
+    check("VERSION_CLASSIFICATION names no rule this file cannot emit",
+          declared <= emitted, "stale row(s): %s" % ", ".join(sorted(declared - emitted)))
+    for rule, entry in sorted(mod.VERSION_CLASSIFICATION.items()):
+        check("`%s` declares a direction this mechanism understands" % rule,
+              entry.get("direction") in ("one-directional", "hard-flip"),
+              "direction=%r" % entry.get("direction"))
+        check("`%s` declares case 1 or case 2" % rule, entry.get("case") in (1, 2),
+              "case=%r" % entry.get("case"))
+        if entry.get("direction") == "hard-flip":
+            check("`%s` is a HARD FLIP and names the version it landed in" % rule,
+                  bool(entry.get("since")),
+                  "without `since` nothing can say which side of the flip a repo sits on")
+
+    # ⭐ THE CONTROLS. Neither failing input is constructible from the shipped file, so each is
+    # constructed: a COPY with one extra rule and no row, and a COPY whose extra rule's id is a
+    # name rather than a literal. Each must red its check above.
+    with open(TOOL, encoding="utf-8") as fh:
+        source = fh.read()
+    for label, planted_call in (
+            ("a planted rule with no VERSION_CLASSIFICATION row", '"planted-unclassified-rule"'),
+            ("a planted rule whose id is not a string literal", "PLANTED_RULE_ID")):
+        planted_ids, planted_bad = _finding_ids("planted", source.replace(
+            "def findings(body",
+            'def _rule_planted(rows):\n'
+            '    return [Finding(%s, 1, "", "planted")]\n\n\n'
+            "def findings(body" % planted_call, 1))
+        caught = (planted_ids - declared) if planted_call.startswith('"') else planted_bad
+        if check("CONTROL: %s is SEEN" % label, bool(caught),
+                 "the derivation did not see the planted `Finding` site, so the check above "
+                 "cannot red on the state it exists to catch"):
+            seen_red("%s -> %s" % (label, ", ".join(sorted(caught))))
+
+
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 # K — A VENDORED COPY OF THIS SUITE RUNS, AND NAMES A WORKFLOW IT CANNOT FIND (card#10719)
 # ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -1422,7 +1503,7 @@ def arm_k_vendored(td):
     check("K a vendored copy given no workflow does not crash — no traceback", "Traceback" not in out,
           out[-600:])
     check("K ...every arm after i still runs and reports (j and e included)",
-          re.search(r"^pr-body-lint\.selftest: arms run: a b c d f g h i j e$", proc.stdout, re.M)
+          re.search(r"^pr-body-lint\.selftest: arms run: a b c d f g h i j l e$", proc.stdout, re.M)
           is not None, proc.stdout[-600:])
     check("K ...and the result is a FAILURE of arm i that names the path it tried and both ways to "
           "point it elsewhere — never a pass, never a skip",
@@ -1485,6 +1566,7 @@ def main(argv=None):
                             ("h", lambda: arm_h_bot_author(mod_main, td)),
                             ("i", lambda: arm_i_release_scope(mod_main, td)),
                             ("j", lambda: arm_j_ai_attribution(mod_main, td)),
+                            ("l", lambda: arm_l_version_classification(mod_main, td)),
                             ("e", lambda: arm_e_cli(td)),
                             # A copy `arm_k` runs does not run arm k again; the list printed below
                             # is what says so.
