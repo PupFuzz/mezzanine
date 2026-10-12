@@ -1,4 +1,4 @@
-<!-- BEGIN coord:solo-orientation (synced from coord v0.65.0) -->
+<!-- BEGIN coord:solo-orientation (synced from coord v0.66.0) -->
 # Agent Board Framework — solo agent orientation
 
 > **⚠ Only two sections of this file reach a session automatically: `## Who you are` and
@@ -531,7 +531,8 @@ genuine question / gate → banner. The banner spends your human's attention —
 - **`coord:gh-wrapper`** — canonical `gh` query patterns + credential routing. PR/branch-state
   checks, release-tag enumeration, repo lookups, and the GitHub-generic pitfalls (`mergeable`
   ≠ `mergeStateStatus`, abbreviated SHA returning empty, `ls-remote` vs `ls-files`, HTTP 4xx
-  ≠ no-data, 2xx ≠ state-change). Use it whenever drafting a `gh` invocation against any of
+  ≠ no-data, 2xx ≠ state-change). A 403 on the roundtable channel means *use `coord-post --cross`*:
+  on a split install only its credential can write the channel (card#11571). Use it whenever drafting a `gh` invocation against any of
   your owned repos.
 - **`coord:release-pr`** — the release cutter described in § Your work loop. Use it when
   cutting a release PR on any owned repo.
