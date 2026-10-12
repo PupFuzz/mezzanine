@@ -22,8 +22,8 @@
 # up to the first non-`#` line, blanks INCLUDED, so a blank truncates the help text while this
 # check stays green. That is the mover's contract, not this one's; this check does not see it.
 #
-# WHAT IT ALSO CHECKS, AND WHAT IT CANNOT. Each DECLARED local edit — the mover's sites listed
-# in its header, and the selftest's one — is named in the FRAGMENTS table below by an unbroken fragment of its own text, the
+# WHAT IT ALSO CHECKS, AND WHAT IT CANNOT. Each DECLARED local edit — the sites each vendored
+# file's header lists — is named in the FRAGMENTS table below by an unbroken fragment of its own text, the
 # same fragment that file's header quotes, and the check requires every one of them to still be
 # present IN THE BODY. That is the leg that stops the pin being bumped past a list that has
 # gone stale, which is how the old declaration went false in the first place. It CANNOT detect
@@ -53,6 +53,11 @@
 # repo's last declaration — the comparison this script explains it has to do without. The CI job
 # runs that selftest, so the check is real rather than available.
 #
+# `bin/dependency-audit-fixtures/*` has no row either, for the same reason (JSON and lockfiles, no
+# header), and unlike the set above NOTHING pins it: upstream's selftest carries no per-fixture
+# sha256, so no check compares those files to the source. They were byte-identical to coord 0.66.0's
+# `templates/security/fixtures/` when vendored, except the README's title line naming this path.
+#
 # Usage: bash bin/vendor-pin-check.sh              # check every manifest row (exit 1 on drift)
 #        bash bin/vendor-pin-check.sh --selftest   # prove the check CAN fail, then that a
 #                                                  # header-only edit does NOT trip it
@@ -69,8 +74,8 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # of any change to either owes a glance at the other.
 #
 # ⚠ THE PIN COLUMN IS A PROVENANCE STRING, NOT ALWAYS A BARE COMMIT. The mover rows were vendored
-# from a commit and name it. The `pr-body-lint` rows name BOTH the plugin version and the
-# marketplace commit, because those answer different questions: the version is how a reader says
+# from a commit and name it. The `pr-body-lint` and `dependency-audit` rows name BOTH the plugin
+# version and the marketplace commit, because those answer different questions: the version is how a reader says
 # which release this install runs, the commit is what `git show <commit>:<upstream path>` needs to
 # reproduce the bytes. Each of those files' own header carries the same pair plus the WHOLE-FILE
 # sha256 upstream's copy has, which is deliberately NOT the figure in this table — this table pins
@@ -82,6 +87,9 @@ MANIFEST=(
   "bin/promote-cards-by-token.selftest.sh|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|463663423c3a5152bc8dc4833f331e069910e74424c54e69b024ba1598703984"
   "bin/pr-body-lint.py|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e|26c3eb1d3888c34d746f656eb11083cd03b1d3920327c49ed552470ebbff313c"
   "bin/pr-body-lint.selftest.py|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e|0df57e97ab0027305cf6848f77ae89a52478abdae75d29fe478a297c4c4980e6"
+  ".github/workflows/dependency-audit.yml|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|71b68902619fe84a14990a124a1af335f5afd0de41f348d20f6f9d3d10054239"
+  ".github/workflows/dependency-ref-matrix.yml|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|1a867e8435290a5d0f1d385c9501e09d65d4a4e841fb61b1951e6eae57d29705"
+  "bin/dependency-audit.selftest.sh|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|0fecc24fce3182dbc4faf04ba569c6acf06ed2ceef0cc5fe3a33b7ba3b001361"
 )
 
 # --- The declared local edits: <repo-relative path>|<what the site is>|<unbroken fragment>
@@ -100,6 +108,11 @@ FRAGMENTS=(
   "bin/promote-cards-by-token|card#11527 site (3), the scoped lookup's data-array refusal|error(\"no data array\")"
   "bin/promote-cards-by-token.selftest.sh|card#11527, the foreign-card / 403 / read-before-write cases|9c. A 403 card read is judged"
   "bin/promote-cards-by-token.selftest.sh|card#11527, the 200-shape degraded-read cases|9d. A 200 that does not carry the fields"
+  ".github/workflows/dependency-audit.yml|(1) the pinned osv-scanner install step|SHA256=ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108"
+  ".github/workflows/dependency-audit.yml|(2) the CUSTOMIZE ZONE's pointer to this repo's selftest path|runs verbatim (bin/dependency-audit.selftest.sh"
+  ".github/workflows/dependency-ref-matrix.yml|(1) the uses: slug names this repo|uses: PupFuzz/mezzanine/.github/workflows/dependency-audit.yml@dev"
+  "bin/dependency-audit.selftest.sh|(1) the callee path under .github/workflows/|ROOT/.github/workflows/dependency-audit.yml\""
+  "bin/dependency-audit.selftest.sh|(1) the fixtures path bin/dependency-audit-fixtures/|HERE/dependency-audit-fixtures\""
 )
 
 # The ONE spelling of the body rule. Both files use it; the failure message quotes it verbatim
