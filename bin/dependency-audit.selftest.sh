@@ -16,8 +16,8 @@
 # byte when vendored (checked by diff against the commit above); the body pin holds it there.
 #   (1) the CALLEE / CALLER / FIX paths point at this repo's layout — workflows under
 #       .github/workflows/, fixtures in bin/dependency-audit-fixtures/ (fragments:
-#       `CALLEE="$ROOT/.github/workflows/dependency-audit.yml"` and
-#       `FIX="$HERE/dependency-audit-fixtures"`).
+#       `ROOT/.github/workflows/dependency-audit.yml"` from the CALLEE line and
+#       `HERE/dependency-audit-fixtures"` from the FIX line).
 #   The two workflow paths in upstream's own header below are re-pointed too; that is header
 #   text and is not pinned. ShellCheck's findings on this file are recorded in
 #   bin/shell-lint.baseline.tsv rather than annotated in the body, so the body stays upstream's.

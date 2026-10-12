@@ -111,9 +111,8 @@ FRAGMENTS=(
   ".github/workflows/dependency-audit.yml|(1) the pinned osv-scanner install step|SHA256=ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108"
   ".github/workflows/dependency-audit.yml|(2) the CUSTOMIZE ZONE's pointer to this repo's selftest path|runs verbatim (bin/dependency-audit.selftest.sh"
   ".github/workflows/dependency-ref-matrix.yml|(1) the uses: slug names this repo|uses: PupFuzz/mezzanine/.github/workflows/dependency-audit.yml@dev"
-  # Single-quoted: these two fragments carry a literal `$`, which a double-quoted row would expand.
-  'bin/dependency-audit.selftest.sh|(1) the callee path under .github/workflows/|CALLEE="$ROOT/.github/workflows/dependency-audit.yml"'
-  'bin/dependency-audit.selftest.sh|(1) the fixtures path bin/dependency-audit-fixtures/|FIX="$HERE/dependency-audit-fixtures"'
+  "bin/dependency-audit.selftest.sh|(1) the callee path under .github/workflows/|ROOT/.github/workflows/dependency-audit.yml\""
+  "bin/dependency-audit.selftest.sh|(1) the fixtures path bin/dependency-audit-fixtures/|HERE/dependency-audit-fixtures\""
 )
 
 # The ONE spelling of the body rule. Both files use it; the failure message quotes it verbatim
