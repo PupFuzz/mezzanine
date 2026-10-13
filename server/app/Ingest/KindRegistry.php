@@ -48,7 +48,9 @@ namespace App\Ingest;
  * PUBLISHED BOUND and refuses nothing else: a field of an unexpected type is measured by no rule
  * here and passes through exactly as it did before, because widening the refusal beyond the
  * bound is the permanent-outage trade above, taken for a rule D1 never wrote. Field-level
- * projection into typed columns is the fold's, and card #7339 owns it.
+ * projection into typed columns is the fold's, and card #7339 owns it. A field's PATTERN is applied
+ * there too, where the store keeps the field in an ASCII column: a value off it stores `null` and is
+ * counted, and the batch is not refused (`App\Fold\FoldEvent::conforming()`, card#9346).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * WHY THE FIELD SETS ARE HERE AT ALL, given the above. They are the population

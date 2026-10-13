@@ -9,16 +9,16 @@
 #   upstream repo     PupFuzz/agent-board-framework  (PRIVATE — a public CI runner cannot clone it,
 #                     which is why this is a vendored copy and not an install step)
 #   upstream path     plugins/coord/templates/bin/pr-body-lint.py
-#   vendored from     239712e97fb685ac8ea7fdb18d69dc338d5ac8e8   (marketplace, the v0.63.0 release merge)
-#   plugin version    coord 0.63.0
-#   upstream sha256   22550e31d8425a65fa035e21e1e677078ad3e4956b1d05b15e47f10a9cd9e015
+#   vendored from     70fd3207c96f7240f7368c93de277970ac39598e   (marketplace, the v0.66.0 release merge)
+#   plugin version    coord 0.66.0
+#   upstream sha256   5ace68b1f4b21a08568bbd55e4f686e0792ada97d8868ae55184c48daeaa7fb5
 #
 # ⚠ THAT sha256 IS THE WHOLE UPSTREAM FILE AND IS **NOT** THE FIGURE `bin/vendor-pin-check.sh` PINS,
 # which is the BODY — this header excluded — and therefore a different number. Two figures, two
 # questions, so neither can be substituted for the other. Re-derive this one against a marketplace
 # clone (an agent's machine has one; a runner does not):
 #
-#   git show 239712e9:plugins/coord/templates/bin/pr-body-lint.py | sha256sum
+#   git show 70fd3207:plugins/coord/templates/bin/pr-body-lint.py | sha256sum
 #
 # and re-derive the body pin with the command `bin/vendor-pin-check.sh` prints on a red.
 #
@@ -191,7 +191,7 @@ title is itself a release checklist item, visible on the PR page, so the miss is
 finding as well as a lint one.
 
 ⛔ IT IS ONE PROGRAM WITH TWO CONSUMERS AND THAT IS WHY IT IS SHAPED THIS WAY. It runs (1) in
-every install's CI, from `templates/workflows/pr-body-lint.yml`, on `pull_request` opened / edited
+the CI of every repo that has adopted `templates/workflows/pr-body-lint.yml`, on `pull_request` opened / edited
 / synchronize; and (2) inside the review path, where `hooks/bin/review-prep.py` spawns it as a
 CHILD and transports its answer into the digest `coord-review prepare` builds — the same
 delegation, for the same reason, that `review-prep` already applies to `ci-read`: a second
@@ -1153,6 +1153,106 @@ def rule_audit_rows(body, author_type=None):
                            "finding. This program checks PRESENCE only — the VALUE's shape is "
                            "checked against that doc by `review-prep.py`, which owns that read."))
     return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# ⛔ THE VERSION CLASSIFICATION — ONE ROW PER RULE ABOVE, AUTHORED BY WHOEVER LANDS THE RULE
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# WHAT THIS IS FOR (card#9748). A reviewer runs THIS file out of ITS OWN plugin root and judges a
+# PR in a repo that may have reconciled at a DIFFERENT coord version. Where a rule judges the same
+# artifact differently at the two versions, the finding it emits is FALSE FOR THAT REPO — and it
+# arrives as a verdict, which is what makes it expensive: confidence, not a question. The
+# mechanism that catches that is `hooks/bin/_reconciled.py`, and it deliberately CANNOT infer
+# these two properties at runtime: they are properties of the CHANGE, not of the two repos, and
+# from inside the mechanism a policy fork and an upstream bugfix look identical.
+#
+# ⇒ SO THEY ARE DECLARED HERE, BESIDE THE RULES, BY THE HUMAN LANDING THE RULE. Two axes, and
+# only their INTERSECTION sizes anything:
+#
+#   direction   `one-directional` — ONE artifact satisfies both versions (the mechanism never
+#                                   engages: the finding is true at either).
+#               `hard-flip`       — NO artifact satisfies both. `since` is then REQUIRED: it is
+#                                   the coord version the flip LANDED in, and it is what decides
+#                                   which side of the flip a repo's marker sits on.
+#   case        `1` a POLICY divergence — both versions defensible ⇒ ARBITRATE to the reviewed
+#                                   repo's version.
+#               `2` a DEFECT fixed upstream — one version is simply wrong ⇒ judged at the NEWER
+#                                   version, NEVER arbitrated (arbitration would deliberately
+#                                   preserve the bug).
+#
+# ⛔ A RULE MISSING FROM THIS TABLE IS UNCLASSIFIED, AND IS NEVER ARBITRATED: across a skew it
+# makes every review's reconciled version NOT ESTABLISHED (exit 3, the rule named). It does not
+# default to safe. `pr-body-lint.selftest.py`'s arm l DERIVES the rule ids from this file's own
+# `Finding("<id>", …)` sites and reds when the two disagree — or when an id is not a string
+# literal it can read — so landing a rule without a row fails the suite rather than a review.
+#
+# ⚠ AND A LATER EDIT TO A RULE CAN CHANGE ITS ROW. These values describe the rule's history, not
+# its current text: loosening a rule that was one-directional into one that refuses what it used
+# to require makes it a `hard-flip` with a new `since`, and the row must move with the change.
+VERSION_CLASSIFICATION = {
+    # ⭐ THE ARBITRATED ROW: hard flip + case 1, the only combination in this table where NO
+    # artifact satisfies both versions. (Which rows are in that set is DERIVED, never written
+    # down — `hooks/bin/_reconciled.py`'s header owns the derivation and the reason a version
+    # window spelled in a comment is a figure with a maintenance schedule.) Until v0.53.0 the
+    # PR-body standard REQUIRED the
+    # `FROM:` / `TO:` attribution line; the operator's 2026-09-11 ruling (card#9229 → card#9073
+    # leg E) REFUSES it, and this rule is that refusal. A repo reconciled before the flip has
+    # bodies whose attribution line is correct FOR IT, so a reviewer holding v0.53.0+ emits a
+    # false accusation against every one of them. `since` is derived, not recalled: the rule
+    # arrived with this whole file in `13d45704`, whose earliest containing tag is v0.53.0.
+    "attribution-line": {
+        "case": 1, "direction": "hard-flip", "since": "0.53.0",
+        "note": "the standard REVERSED — required before v0.53.0, refused from v0.53.0",
+    },
+    # CASE 1 (the IN table's allowed-H2 set is a policy choice, and a future window could widen or
+    # narrow it), but ONE-DIRECTIONAL across every window so far: the set has only ever been read
+    # as closed, and a body whose headings are inside it is inside it at either version. ⚠ REMOVING
+    # a heading from `ALLOWED_H2` would make this a hard flip and this row must move with it.
+    "heading-not-allowed": {
+        "case": 1, "direction": "one-directional",
+        "note": "the allowed-H2 set is a policy choice; a body inside the set is inside it at "
+                "both versions. A heading REMOVED from the set makes this a hard flip.",
+    },
+    # CASE 2 — `LIVE_STATE_READINGS` names claim shapes a PR body cannot honestly make; a body
+    # that makes none of them is correct at every version, so the finding is true either way.
+    "live-state-reading": {
+        "case": 2, "direction": "one-directional",
+        "note": "a body carrying no live-state claim satisfies both versions",
+    },
+    # The four below are the EXECUTABLE FORM of standard rows that predate this file (the header
+    # says so: the rules are the STANDARD'S, not this file's). The change at `13d45704` was
+    # ENFORCEMENT, not policy — nothing that passed the written standard began to fail — so a body
+    # satisfying them satisfies both versions. CASE 2: "unenforced" is not a defensible
+    # alternative policy, it is the defect the rule fixed.
+    "scope-line": {
+        "case": 2, "direction": "one-directional",
+        "note": "the IN table's Scope line row predates the rule; enforcement, not a policy change",
+    },
+    "banned-opener": {
+        "case": 2, "direction": "one-directional",
+        "note": "the OUT table predates the rule; enforcement, not a policy change",
+    },
+    "coordinated-missing": {
+        "case": 2, "direction": "one-directional",
+        "note": "`review-prep` checked this field's PRESENCE before this file existed; the rule "
+                "moved the read, not the standard",
+    },
+    "built-missing": {
+        "case": 2, "direction": "one-directional",
+        "note": "`review-prep` checked this field's PRESENCE before this file existed; the rule "
+                "moved the read, not the standard",
+    },
+    # CASE 1 (an operator policy, card#10673 — not a defect fixed), ONE-DIRECTIONAL: no earlier
+    # standard REQUIRED a model name, session link or co-author trailer in a PR body, so a body
+    # carrying none of them satisfies both versions and the finding is true at either. Same shape
+    # as `heading-not-allowed`. ⚠ It would become a hard flip only if an older standard had
+    # REQUIRED such a line, which none did.
+    "ai-attribution": {
+        "case": 1, "direction": "one-directional",
+        "note": "a body carrying no AI-model / session / co-author attribution satisfies both "
+                "versions; no earlier standard required one",
+    },
+}
 
 
 def findings(body, author_type=None, title=None):

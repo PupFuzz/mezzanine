@@ -1,9 +1,12 @@
 <?php
 
+use App\Compose\ComposeCredential;
 use App\Http\Controllers\ArtController;
 use App\Http\Controllers\Auth\TwoFactorMoveController;
 use App\Http\Controllers\Auth\TwoFactorRecoveryCodeController;
 use App\Http\Controllers\Auth\TwoFactorResetController;
+use App\Http\Controllers\DeskComposeController;
+use App\Support\Slug;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => redirect()->route('dashboard'));
@@ -134,15 +137,32 @@ Route::middleware(['auth', 'mfa'])->group(function () {
     // against the composed floors it fetches; a segment naming a room that is not its floor's key
     // is redirected BY THE CLIENT (§ 4.4 row 3), because only the fetched layout knows which floor
     // holds the room. Like the lobby it carries no layout and no fleet data — both are fetched.
-    Route::get('/floor/{floor}', fn (string $floor) => view('floor', ['floor' => $floor, 'seat' => null]))
-        ->name('floor');
+    // ⚠ `composeRefusal` is BOARD-TASK § 15.5's render-time answer — `ComposeCredential::refusal()`,
+    // the same question the compose route asks — which an operator's page draws the compose block
+    // disabled from. An observer's page carries no block, so the value is unused there.
+    Route::get('/floor/{floor}', fn (string $floor) => view('floor', [
+        'floor' => $floor, 'seat' => null, 'composeRefusal' => ComposeCredential::refusal(),
+    ]))->name('floor');
 
     // § 4.4's `/floor/{floor}/{seat_id}` — the drill-down open (Appendix B row 10). The SAME page: "the
     // drill-down is a panel over the floor rather than a route of its own, because closing it must not
     // cost a reconnect" (§ 4), so the seat segment is handed over as data exactly as the floor's is,
     // and the client resolves it against the floor's own desks once it holds them.
-    Route::get('/floor/{floor}/{seat}', fn (string $floor, string $seat) => view('floor', ['floor' => $floor, 'seat' => $seat]))
-        ->name('floor.seat');
+    Route::get('/floor/{floor}/{seat}', fn (string $floor, string $seat) => view('floor', [
+        'floor' => $floor, 'seat' => $seat, 'composeRefusal' => ComposeCredential::refusal(),
+    ]))->name('floor.seat');
+
+    // ⛔ THE DESK COMPOSE BOX — `docs/design/BOARD-TASK.md § 15.4`, card#9417: the floor's ONE write,
+    // a comment on the card the seat is joined to. Here and not in `routes/fleet.php`: the read plane
+    // admits an `mzr_` machine token, which carries no account and so can never be an operator, and
+    // D2 § 8.2's REST surface is `GET`-only by contract. In `web`, so the group's CSRF check applies.
+    // `can:operate` refuses an observer `403`; `throttle:compose` is per account
+    // (`App\Providers\AppServiceProvider`). The segments are D1 § 3.1's slugs, so a malformed one is
+    // the router's `404` and reaches no gate and no store.
+    Route::post('/desk/{install_id}/{seat_id}/compose', [DeskComposeController::class, 'store'])
+        ->where(['install_id' => Slug::INSTALL_ID, 'seat_id' => Slug::SEAT_ID])
+        ->middleware(['can:operate', 'throttle:compose'])
+        ->name('desk.compose');
 
     // THE ASSET ROUTE — `docs/design/FLOOR.md` Appendix B row 14: the one HTTP surface for the art,
     // inside the floor's own gate because the art is the floor's. A prefix no other route claims,

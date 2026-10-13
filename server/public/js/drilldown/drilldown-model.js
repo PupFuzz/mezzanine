@@ -99,11 +99,24 @@ export const NO_CORRECTED_CLOCK = 'ages are not shown — this response carried 
 export const NO_SESSION_OPEN = 'no session open';
 
 /**
- * § 7.2 / § 5.6: D1's twelve badges are rendered *since reporter start*, never as *now*, with
- * `reporter.uptime_s` beside them; a null uptime reads *since reporter start — uptime not reported*
- * (§ 5.6's `reporter.uptime_s` cell, verbatim).
+ * § 7.2: a COUNTER-DERIVED badge means its counter rose within the last 24 h (D1 § 9.3, D2 § 7.2,
+ * card#9491), so its row says so beside the counter's value, which is the seat's running total.
  */
-export const SINCE_REPORTER_START = 'since reporter start';
+export const WITHIN_WINDOW = 'its counter rose within the last 24 h';
+
+/**
+ * § 5.2: the reporter's counters are the seat's running totals, which persist across a flusher
+ * restart (D2 § 7.3) — so they are labelled as totals, never as *since reporter start*.
+ */
+export const RUNNING_TOTALS = 'running totals, kept across reporter restarts';
+
+/**
+ * D2 § 7.2's counter-derived badges, windowed like D1's twelve. The rest of D2's set — `clock_skew`,
+ * `fold_lag`, `derivation_error` — are current conditions and carry no window. A GUARDED COPY of
+ * `App\Fold\Badges::COUNTER_BADGES`'s keys: `Tests\Feature\Floor\TheDrillDownWindowsTheServersCounterBadgesTest`
+ * reds when the two differ.
+ */
+export const WINDOWED_SERVER_BADGES = Object.freeze(['seq_gap', 'seq_collision', 'epoch_reset', 'reporter_ahead']);
 
 /**
  * § 7.2's **Drill-down line** column, one per badge — the first italic span of each cell, verbatim,
@@ -644,15 +657,6 @@ function reporterBlock(reporter, enabled, stamp) {
     };
 }
 
-/** § 7.2's *since reporter start* framing, with the uptime — or § 5.6's words for a null uptime. */
-function sinceReporterStart(reporter) {
-    const uptime = reporter?.uptime_s;
-
-    return typeof uptime === 'number'
-        ? `${SINCE_REPORTER_START} — uptime ${formatDuration(uptime)}`
-        : `${SINCE_REPORTER_START} — uptime ${NOT_REPORTED}`;
-}
-
 /** The heartbeat counters named in one `RAISED_BY` cell, as `{name, value}`, in name order. */
 function raisingCounters(badge, heartbeatCounters) {
     const names = RAISED_BY[badge] ?? [];
@@ -709,14 +713,15 @@ function badgeCount(badge, seat, raising) {
 
 /**
  * § 4.3's **badges** row: "every member of `badges[]`, each with its meaning and its counter value
- * from `detail`, *since reporter start* framing for D1's array, and ONE cluster-scoped *oldest badge
+ * from `detail`, the 24 h window for a counter-derived badge, and ONE cluster-scoped *oldest badge
  * since HH:MM* line — `badges_since` is the minimum over the present members and is never stamped on
  * an individual badge" (§ 7.2).
  *
- * ⛔ D1's TWELVE ARE *SINCE REPORTER START*, NEVER *NOW* (§ 7.2, D2 § 7.3): each carries the counters
- * that raised it and the reporter's uptime, "so *lossy, 1 event, 41 days of uptime* is never read as
- * *lossy now*". D2's seven are current conditions and are drawn as such. `epoch_reset` is in both
- * (§ 7.2), so its line says which side observed it.
+ * ⛔ A COUNTER-DERIVED BADGE IS *ITS COUNTER ROSE WITHIN THE LAST 24 h* (§ 7.2, card#9491): D1's
+ * twelve and D2's counter-derived badges carry that window beside the counters that raised them, whose values are the
+ * seat's running totals and not the size of the recent rise. `clock_skew`, `fold_lag` and
+ * `derivation_error` are current conditions and are drawn as such. `epoch_reset` is in both (§ 7.2),
+ * so its line says which side observed it.
  *
  * ⛔ AN UNRECOGNISED BADGE CARRIES ITS RAW STRING AND SAYS SO (§ 5.4, § 9 F9), never the nearest line.
  * ⛔ WITH NO `detail` (§ 9 F11) the counter values are *unavailable*, never zero.
@@ -731,7 +736,7 @@ function badgeBlock(seat, detailFailed, missingDetail) {
         if (!BADGES.has(badge) || !Object.hasOwn(BADGE_LINE, badge)) {
             // The raw id is drawn as the row's own text ahead of its line (card#11058), so the line
             // is the marker alone.
-            return { badge: String(badge), recognised: false, origin: null, line: UNRECOGNISED, counters: null, since_reporter_start: null };
+            return { badge: String(badge), recognised: false, origin: null, line: UNRECOGNISED, counters: null, window: null };
         }
 
         const { origin, line } = BADGE_LINE[badge];
@@ -746,7 +751,7 @@ function badgeBlock(seat, detailFailed, missingDetail) {
             origin,
             line: badge === 'epoch_reset' ? `${filled} — ${epochObservers(seat, missingDetail)}` : filled,
             counters: !fromReporter ? null : (noDetail ? missingDetail : (heartbeatCounters === null ? NOT_REPORTED : raising)),
-            since_reporter_start: origin === 'D1' ? sinceReporterStart(seat?.reporter ?? null) : null,
+            window: fromReporter || WINDOWED_SERVER_BADGES.includes(badge) ? WITHIN_WINDOW : null,
         };
     });
 
@@ -828,8 +833,8 @@ function consoleBlock(detail) {
 /**
  * § 5.2's **counters** row: "`detail`'s `seat_counters` rows and the reporter's `heartbeat_counters` /
  * `heartbeat_predicates` snapshots — **`fetch-fresh`** by construction, `detail` exists only on the
- * fetch … The reporter's are labelled **since reporter start** with `reporter.uptime_s` beside them —
- * never as *now*". Stamped with the detail response's own `server_time`.
+ * fetch … The reporter's are labelled as the seat's **running totals**, which persist across flusher
+ * restarts — never as *now*". Stamped with the detail response's own `server_time`.
  *
  * ⛔ A NULL SNAPSHOT IS *not reported*, AND NO `detail` AT ALL IS F11's *unavailable* — never a column
  * of zeros, which would say nothing has happened.
@@ -852,7 +857,7 @@ function countersBlock(seat, detailFailed, missingDetail, stamp) {
         statement: null,
         as_of: asOf(stamp),
         server: rows(detail.counters ?? {}),
-        reporter: { since: sinceReporterStart(seat?.reporter ?? null), rows: rows(detail.heartbeat_counters) },
+        reporter: { since: RUNNING_TOTALS, rows: rows(detail.heartbeat_counters) },
         predicates: rows(detail.heartbeat_predicates),
         failed: false,
     };

@@ -26,9 +26,9 @@ use Illuminate\Support\Facades\DB;
  *      suite's.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ ALL SEVEN CRITERIA ARE EVALUATED FROM § 6.4's COLUMNS, AND THAT IS A CHANGE (card #7833).
+ * ⛔ EVERY CRITERION IS EVALUATED FROM § 6.4's COLUMNS, AND THAT IS A CHANGE (card #7833).
  *
- * An earlier revision of this file could evaluate only three of the seven and returned a named
+ * An earlier revision of this file could evaluate only three of the then-seven and returned a named
  * `cannot_evaluate` for the other four, because § 6.4's `seat_predicates` carried CUMULATIVE
  * `true_count` / `false_count` and two last-seen timestamps and nothing else, from which no
  * windowed count is derivable. That refusal was honest and it was INERT: § 5's four headline
@@ -98,7 +98,7 @@ use Illuminate\Support\Facades\DB;
  *
  *   SHARE (`call_closed_by_wire`) — NOT constancy. § 5 states it as a share and says so in terms:
  *   "≥ 5 % server-closed across ≥ 1,000 in 24 h … server closes should be rare". Restating it as a
- *   run criterion would not weaken it, it would DELETE it, and it is the one criterion of the seven
+ *   run criterion would not weaken it, it would DELETE it, and it is the one criterion of § 5's
  *   that is a health signal rather than a discrimination meta-monitor. Evaluated over the last
  *   COMPLETED 24 h window — exact over a tumbling window.
  *
@@ -107,11 +107,11 @@ use Illuminate\Support\Facades\DB;
  *     reap outage stretches by up to one window; and a burst that straddles a boundary can leave
  *     both halves under the 1,000 floor and alarm on neither. Both are under-firing.
  *
- *   ANY_FALSE (`attention_resolved_by_wire`) — EXACT and unchanged. Its criterion is "**any**
- *   server-ceiling resolution in 24 h is surfaced; constant-server over ≥ 10 alarms". The first
- *   clause is an EXISTENCE test over the window and `last_false_at` is exactly the timestamp it
- *   asks about. The second clause is proved SUBSUMED by the first at the `outcome()` arm rather
- *   than coded as a disjunct that could never decide a row — see there.
+ *   ANY_FALSE — RETIRED with its one predicate, `attention_resolved_by_wire` (card#9527). Its false
+ *   branch was the sweeper's 60-minute attention ceiling, and the operator's ruling of 2026-09-14
+ *   removed the ceiling: with no server resolution left to count against the wire's, the predicate
+ *   could answer only `true`, which is a check that cannot fail. The kind went with it rather than
+ *   staying as an arm no criterion selects.
  */
 final class Predicates
 {
@@ -125,7 +125,7 @@ final class Predicates
     public const CLEAR = 'clear';
 
     /**
-     * § 5's seven, and the criterion each one alarms on. Every number is § 5's own.
+     * § 5's predicates, and the criterion each one alarms on. Every number is § 5's own.
      *
      * `direction` is the branch the alarm is ABOUT; `either` alarms on constancy whichever way it
      * went. `n` is the evaluation floor. `window_s` bounds the run's age and is `null` where § 5
@@ -177,9 +177,6 @@ final class Predicates
         // not — which is § 5's claim and not this comment's.
         'call_closed_by_wire' => ['kind' => 'share', 'share_pct' => 5, 'n' => 1000, 'window_s' => 86400],
 
-        // ANY server-ceiling resolution in 24 h is surfaced; constant-server over ≥ 10 alarms.
-        'attention_resolved_by_wire' => ['kind' => 'any_false', 'n' => 10, 'window_s' => 86400],
-
         // The predicate that separates "every seat died" from "our pipe is broken" — without it a
         // fleet-wide ingest outage renders as 40 independently-stale desks.
         'ingest_receiving' => [
@@ -228,12 +225,11 @@ final class Predicates
      *
      * What this docblock USED TO CLAIM made that safe was the write population — "the fold's § 6.5
      * claim is `SKIP LOCKED` plus a cursor guard, so two workers never hold one seat". THAT LOCK
-     * EXCLUDES OTHER *FOLD* WORKERS AND NOTHING ELSE, and two of these predicates are written by
-     * two different PROCESSES:
+     * EXCLUDES OTHER *FOLD* WORKERS AND NOTHING ELSE, and one of these predicates is written by
+     * two different PROCESSES (a second, `attention_resolved_by_wire`, was until card#9527):
      *
      *   `call_closed_by_wire`        fold `tool.end` (`Projector.php`) · sweeper orphan close and
      *                                quiescence (`Sweep.php`)
-     *   `attention_resolved_by_wire` fold `attention.resolved` · sweeper 60-minute ceiling
      *
      * A fold transaction and a sweep transaction can therefore interleave on ONE row of
      * `seat_predicates`: both read the same prior counts and the second write silently discards the
@@ -511,26 +507,6 @@ final class Predicates
             // § 5: "≥ 5 % server-closed across ≥ 1,000 in 24 h", over the last COMPLETED window,
             // rolled on the READER's clock so that a writer gone silent for a window clears.
             'share' => self::share($c, $row, $nowMs),
-
-            // EXACT, so it answers. § 5's criterion is "**any** server-ceiling resolution in 24 h
-            // is surfaced; constant-server over ≥ 10 alarms", and what is evaluated here is the
-            // FIRST clause alone — an EXISTENCE test over the window, for which `last_false_at` is
-            // exactly the timestamp asked about. No count, no proxy.
-            //
-            // ⛔ THE SECOND CLAUSE IS NOT DROPPED, IT IS SUBSUMED, AND THE SUBSUMPTION IS A PROOF
-            // RATHER THAN A JUDGEMENT CALL. "Constant-server" is `true_count === 0`, and
-            // `record()` writes `last_true_at` on exactly the evaluations that increment
-            // `true_count` — so `true_count === 0` holds if and only if `last_true_at IS NULL`, and
-            // the newest evaluation this predicate has ever had is therefore `last_false_at`. Any
-            // reading of clause two that keeps it inside § 5's 24 h window is then already clause
-            // one, with `false_count ≥ 10` narrowing it further; and a reading that puts clause two
-            // over the LIFETIME instead is a criterion § 5 does not state. An earlier revision
-            // coded clause two as a live disjunct guarded by a liveness bound: that disjunct could
-            // never decide a row either way, which is the decoration this repo refuses everywhere
-            // else.
-            'any_false' => $row->last_false_at !== null
-                && $nowMs - Clock::toMs($row->last_false_at) <= $c['window_s'] * 1000
-                    ? self::FIRES : self::CLEAR,
 
             default => throw new \LogicException('no alarm rule for predicate kind '.$c['kind']),
         };

@@ -2,7 +2,9 @@
 
 namespace App\Fold;
 
+use App\Ingest\Counters;
 use App\Ingest\Wire;
+use App\Support\Anchored;
 
 /**
  * One stored `events` row, with the accessors every projection needs.
@@ -26,7 +28,9 @@ use App\Ingest\Wire;
  * What is NOT tolerated is a value outside a column's declared ENUM, because that is a write
  * MariaDB refuses. While the suite ran on SQLite (until card#9328) it was also a write the test
  * store silently accepted, which is how such a value could pass every run. `enum()` maps anything
- * unrecognised to `null`, which every one of those columns is declared to hold.
+ * unrecognised to `null`, which every one of those columns is declared to hold. A string the store
+ * keeps in an ASCII column is the same case — a non-ASCII value is a write MariaDB refuses — and
+ * `conforming()` answers it the same way, holding the value to its published format (card#9346).
  */
 final class FoldEvent
 {
@@ -142,6 +146,64 @@ final class FoldEvent
 
         return $value;
     }
+
+    /**
+     * A `data` string held to its published FORMAT — the value, or `null` and one count.
+     *
+     * ⛔ THE INGEST CHECKS A BYTE BOUND AND NO PATTERN (D1 § 12.1 step 10), SO A VALUE OFF ITS FORMAT
+     * REACHES THIS PLANE, AND WHERE ITS COLUMN IS ASCII IT USED TO TAKE THE WHOLE EVENT WITH IT
+     * (card#9346). A non-ASCII value fails the write under the store's strict mode, the transaction
+     * rolls back, and § 6.5's poison-event rule quarantines the event: on a heartbeat that rolled
+     * back `last_heartbeat_received_at`, so one bad label drifted a healthy seat to `stale` with a
+     * `derivation_error` badge. The operator's ruling on the card (D18, option (a)): the fold stores
+     * `null` for the non-conforming field, counts it, and lands the rest of the event. Refusing the
+     * batch at the ingest instead was declined.
+     *
+     * Every `data` string the fold writes into an ASCII column goes through here, with the pattern
+     * D1 publishes for it (`App\Ingest\Wire` keeps the bodies). The whole published format is
+     * checked, not only the charset, because a value off its pattern is one a conforming reporter
+     * never sends: an ASCII `PM` in a protocol-agent column would be a name no roster member can
+     * equal, and stored it would read as a declaration.
+     *
+     * Missing and `null` are not a violation (§ 6.0: they are one thing) and return `null`
+     * uncounted. Anything else that does not match — `""` and a non-string included, as
+     * `console_url` always counted them — is `format_refused.<key>`, counted ONCE per event and field however
+     * many times a projection reads it (`StateRecompute` reads `harness_label` twice beside the
+     * projection's own read). The count is per instance, and `Fold` builds a fresh instance per
+     * transaction attempt, so a retried event counts once and a rolled-back attempt counts nothing.
+     * A rebuild's replay counts nothing either: `Counters::replaying()` drops it.
+     *
+     * `$refusedAs` is for a NOT NULL column, where `null` cannot land: it is the value written in
+     * place of a refused one, and it must be the stand-in D1 itself publishes for that case —
+     * `tool_name`'s `INVALID_TOOL_NAME` is the only one. A missing value still returns `null`, so a
+     * missing `tool_name` keeps § 6.5's poison-event answer (`Projector`'s note on fabricated
+     * fallbacks): a name that never arrived and a name that failed its pattern are different facts.
+     */
+    public function conforming(string $key, string $pattern, ?string $refusedAs = null): ?string
+    {
+        $value = Wire::field($this->data, $key);
+
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value) && preg_match(Anchored::pattern($pattern), $value) === 1) {
+            return $value;
+        }
+
+        if (! isset($this->refused[$key])) {
+            $this->refused[$key] = true;
+            Counters::seat($this->seatRef, self::FORMAT_REFUSED.$key);
+        }
+
+        return $refusedAs;
+    }
+
+    /** D2 § 7.2's `format_refused.<field>` family, completed by the wire field's name. */
+    public const FORMAT_REFUSED = 'format_refused.';
+
+    /** @var array<string, true> the keys `conforming()` has already counted for this event */
+    private array $refused = [];
 
     /**
      * @param  list<string>  $members

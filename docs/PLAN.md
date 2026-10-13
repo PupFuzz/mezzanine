@@ -566,7 +566,7 @@ rule violations anyone could have committed at the time.
     daemon the new release dropped, and, on a re-run after a deploy that failed in the window, every
     daemon the previous release still has up — relaunches the command cron runs, and fails the window
     unless each of its locks is held, a settle later, only by processes that started after the restart
-    (their start read with `ps`; a holder whose start cannot be read fails it), and every other lock
+    (their start read from `/proc/<pid>/stat` in the kernel's clock ticks, against the restart's own start on the same clock; a holder whose start cannot be read fails it), and every other lock
     file is held by nothing. No daemon registers a signal handler, so a kill
     mid-pass is a crash — which § 2.1 already requires every process to survive; a daemon added later
     must keep that property, and `bin/deploy.sh § restart_daemons` says how to re-measure it. The fold's guarantee is § 6.5's (the cursor advance is in the
@@ -586,6 +586,7 @@ rule violations anyone could have committed at the time.
     `user_ini.cache_ttl` after the file changes. A long-lived request
     already open when the code moves keeps the old code until it ends, which is
     `mezzanine:feed-reload`'s job and the drain's (the stream bullet below).
+- **A refusal is made only before the window opens** (card#9629). Its exit 1 and its closing promise — *"Nothing was changed. The previous release is still serving."* — are phase A's. The script reads its phase before anything can refuse, from the two halves of the re-exec: the `--internal-post-checkout` argument and the window flag phase A exports. With both present, every stop it would have made as a refusal is the in-window failure instead (the marker, the *DOWN AND STAYS DOWN* banner, exit 2), and `refuse` itself makes that choice, so a refusal added later inherits it. That covers a `MEZZ_DEPLOY_ROOT` that stops resolving between `artisan down` and the re-exec, and a re-exec that finds no marker. A marker the in-window failure cannot append to is named as not written in the banner, which still prints. **The promise also waits for the marker to be gone**: while a previous deploy's failure marker is on disk the app may still be down from that deploy, so every refusal, A2's included, keeps exit 1 and closes instead with *"This run changed nothing"* and the marker's path, saying the previous release may not be serving.
 - **What the deploy refuses on** — every one of them seen to fail before it was trusted: root,
   an unreviewed failure marker, a modified prod tree, `.env` (missing, unreadable by the deploy user, **opened and not readable to its end** (card#9610), **not read at all because no usable scratch file could be had for the loader's read diagnostic** (card#9933, card#9932), world-readable, non-production,
   `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, a store on another host without `MYSQL_ATTR_SSL_CA`, a
@@ -595,8 +596,8 @@ rule violations anyone could have committed at the time.
   `bash`, `git` or `npm` is too old** (card#9616 — each by name, in phase A, before anything is
   touched; the detail is the bullet below this list), a migration that
   ALTERs `events` without stating its algorithm (`docs/design/FLEET-STATE.md § 6.9` rule 1 —
-  *"the deploy checks it"*, and this is that check), a missing `crontab`, `flock`, `fuser`, `setsid`
-  or `ps`, a crontab the deployed release's own install would refuse (an unreadable one included), a
+  *"the deploy checks it"*, and this is that check), a missing `crontab`, `flock`, `fuser`
+  or `setsid`, a crontab the deployed release's own install would refuse (an unreadable one included), a
   release with no `bin/supervision.sh` or one that no longer defines what the deploy runs from it, a
   release that would move the daemons' lock files, a PHP-FPM whose opcache would not re-read changed files (timestamps
   off in the ini, a pool or a `.user.ini`; preload set; no pool running as the deploy user; no FPM

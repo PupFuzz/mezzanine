@@ -45,12 +45,14 @@ class AnObserverReadsTheFleetTest extends FeedTestCase
 
     /**
      * The population arm: `can:operate` is on the admin console's routes and on no route outside it.
-     * When card#9416 and card#9417 add the per-desk write routes they belong in the allowlist below,
-     * by name, which is the edit that says a write control and not a read surface is being gated.
+     * A per-desk write route belongs in the allowlist below, by name, which is the edit that says a
+     * write control and not a read surface is being gated — card#9417's compose post is the first.
+     * (card#9416's console link added none: it is a member of an operator's read, not a route.)
      */
     public function test_no_route_outside_the_admin_console_requires_the_operate_gate(): void
     {
-        $gatedWritesOutsideTheConsole = [];
+        // card#9417 — the desk compose box: the floor's one write (docs/design/BOARD-TASK.md § 15.4).
+        $gatedWritesOutsideTheConsole = ['desk.compose'];
 
         $gated = collect(Route::getRoutes()->getRoutes())
             ->filter(fn ($route) => in_array('can:operate', $route->gatherMiddleware(), true))

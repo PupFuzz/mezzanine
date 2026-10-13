@@ -81,7 +81,7 @@ globalThis.clearInterval = () => {};
 const { deskModel } = await mod('desk/desk-render.js');
 const { placeDesk, placeBubbles } = await mod('floor/scene.js');
 const { createPainter, measurer, STYLE } = await mod('floor/painter.js');
-const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME } = await mod('floor/desk-layout.js');
+const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD } = await mod('floor/desk-layout.js');
 
 /**
  * The character tree, stubbed: a frame is an SVG document naming the `(install, seat key, frame)` it was
@@ -171,6 +171,7 @@ const layer = svg?.children.find((n) => n.getAttribute('class') === 'desks');
 const byKey = new Map(desks.map((d) => [d.key, d]));
 const defects = [];
 let painted = 0;
+let bubbles = 0;
 const EPS = 1e-6;
 const num = (n, k) => Number(n.getAttribute(k));
 const same = (a, b) => Number.isFinite(a) && Math.abs(a - b) <= EPS;
@@ -195,7 +196,92 @@ function rectOf(n) {
         return { x: num(n, 'x1'), y: Math.min(num(n, 'y1'), num(n, 'y2')), w: num(n, 'x2') - num(n, 'x1'), h: Math.abs(num(n, 'y2') - num(n, 'y1')) };
     }
 
+    if (n.name === 'circle') {
+        const r = num(n, 'r');
+
+        return { x: num(n, 'cx') - r, y: num(n, 'cy') - r, w: 2 * r, h: 2 * r };
+    }
+
+    if (n.name === 'path') {
+        return pathExtent(String(n.getAttribute('d') ?? ''));
+    }
+
     return null;
+}
+
+/**
+ * A painted path's extent, read from its own `d` (§ 5.1's cloud, card#11468): the path is walked command by
+ * command and each arc is SAMPLED along the curve SVG's own endpoint parameterisation draws — so the extent
+ * is the ink's, whatever the scene meant it to be. Only what the cloud is written in is read — `M`, `A` with
+ * equal radii and no rotation, `Z`; anything else is NOT MEASURED and returns a non-finite rect, which the
+ * containment check reds rather than passing an ink it could not see.
+ */
+function pathExtent(d) {
+    const tokens = d.trim().split(/[\s,]+/);
+    const xs = [];
+    const ys = [];
+    let at = null;
+    let i = 0;
+    const bad = { x: NaN, y: NaN, w: NaN, h: NaN };
+
+    while (i < tokens.length) {
+        const cmd = tokens[i++];
+
+        if (cmd === 'M') {
+            at = [Number(tokens[i++]), Number(tokens[i++])];
+            xs.push(at[0]);
+            ys.push(at[1]);
+        } else if (cmd === 'A' && at !== null) {
+            const [rx, ry, rot, large, sweep, x, y] = tokens.slice(i, i + 7).map(Number);
+
+            i += 7;
+
+            if (rx !== ry || rot !== 0) {
+                return bad;
+            }
+
+            for (const p of arcPoints(at, [x, y], rx, large === 1, sweep === 1)) {
+                xs.push(p[0]);
+                ys.push(p[1]);
+            }
+
+            at = [x, y];
+        } else if (cmd === 'Z') {
+            continue;
+        } else {
+            return bad;
+        }
+    }
+
+    if (xs.length === 0 || ![...xs, ...ys].every(Number.isFinite)) {
+        return bad;
+    }
+
+    return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+}
+
+/** Points along an SVG circular arc from `p` to `q` (SVG 1.1 F.6.5's centre conversion, radius scaled up if short). */
+function arcPoints(p, q, radius, large, sweep) {
+    const [mx, my] = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+    const half = Math.hypot(q[0] - p[0], q[1] - p[1]) / 2;
+    const r = Math.max(radius, half);
+    const h = Math.sqrt(Math.max(0, r * r - half * half));
+    const [ux, uy] = half === 0 ? [0, 0] : [(q[0] - p[0]) / (2 * half), (q[1] - p[1]) / (2 * half)];
+    // The two candidate centres sit either side of the chord; F.6.5 takes the one with sign(large ≠ sweep).
+    const s = large !== sweep ? 1 : -1;
+    const [cx, cy] = [mx - s * h * uy, my + s * h * ux];
+    const a0 = Math.atan2(p[1] - cy, p[0] - cx);
+    let delta = Math.atan2(q[1] - cy, q[0] - cx) - a0;
+
+    if (sweep && delta < 0) {
+        delta += 2 * Math.PI;
+    }
+
+    if (!sweep && delta > 0) {
+        delta -= 2 * Math.PI;
+    }
+
+    return Array.from({ length: 65 }, (_, k) => [cx + r * Math.cos(a0 + (delta * k) / 64), cy + r * Math.sin(a0 + (delta * k) / 64)]);
 }
 
 /**
@@ -269,6 +355,9 @@ function owed(e, seat, failed, key) {
         }
         case 'plate':
             return [['rect', at, classIs(['plate'])]];
+        case 'facts-plate':
+            // § 10.6 (card#11468): the facts' one backdrop, at its rect, its corners at the layout's radius.
+            return [['rect', at, (n) => classIs(['facts-plate'])(n) ?? (n.getAttribute('rx') === String(e.rx) ? null : `its corners are rx «${n.getAttribute('rx')}», not ${e.rx}`)]];
         case 'monitor':
         case 'placeholder':
         case 'lag-overlay':
@@ -280,6 +369,9 @@ function owed(e, seat, failed, key) {
 
 /** § 10.6's art elements and the character — every other element of a desk is a fact, painted after them. */
 const PAINT_ART = new Set(['chair', 'character', 'desk-sprite', 'monitor-frame', 'desk-props', 'side-table']);
+
+/** The facts § 10.6 puts on the facts plate (card#11468), written here from the document, not imported. */
+const PLATED = new Set(['label', 'currency', 'lag', 'gauge-bar', 'gauge-pct', 'badge', 'flag', 'quiet-age']);
 
 /** A clipping viewport at the element's rect holding the one image at the viewport's own origin (§ 10.4). */
 function viewport(e) {
@@ -365,19 +457,83 @@ for (const g of layer?.children ?? []) {
         defects.push(`${key}: paint order — the fact ${paintedKind[firstFact]} is painted before the art ${paintedKind[lastArt]} (§ 10.6 rule 2)`);
     }
 
+    // ── the plate-order leg (card#11468, § 10.6's rule 2 for the plate): the facts plate is painted before every
+    // node of every fact it is drawn behind, and holds each of them — a plate painted after a fact hides it ──
+    const plateAt = paintedKind.indexOf('facts-plate');
+
+    if (plateAt >= 0) {
+        const plate = rectOf(nodes[plateAt]);
+
+        paintedKind.forEach((k, i) => {
+            if (!PLATED.has(k)) {
+                return;
+            }
+
+            if (i < plateAt) {
+                defects.push(`${key}: plate order — the fact ${k} is painted before the facts plate, which hides it`);
+            }
+
+            const r = rectOf(nodes[i]);
+
+            if (r !== null && !(r.x >= plate.x - EPS && r.y >= plate.y - EPS && r.x + r.w <= plate.x + plate.w + EPS && r.y + r.h <= plate.y + plate.h + EPS)) {
+                defects.push(`${key}: plate order — the fact ${k} is not on the facts plate`);
+            }
+        });
+    } else if (paintedKind.some((k) => PLATED.has(k))) {
+        defects.push(`${key}: plate order — facts are painted and no facts plate is`);
+    }
+
     if (desk.bubble !== null) {
         const bb = desk.bubble;
-        const lines = [['line', { x: bb.tail.x, w: 0 }], ['rect', { x: bb.x, y: bb.y, w: bb.w, h: bb.h }],
-            ['text', { x: bb.x + 3, y: bb.y + 3, text: bb.text }]];
+        const trailAt = next;
+        const lines = [
+            ...bb.trail.map((c) => ['circle', { x: c.x - c.r, y: c.y - c.r, w: 2 * c.r, h: 2 * c.r }, classIs(['bubble-trail'])]),
+            ['path', {}, (n) => classIs(['bubble'])(n) ?? (n.getAttribute('d') === bb.cloud.d ? null : 'its outline is not the cloud the scene traced')],
+            ['text', { x: bb.x + BUBBLE_PAD, y: bb.y + BUBBLE_PAD, text: bb.text }],
+        ];
 
         if (bb.second !== null) {
-            lines.push(['text', { x: bb.x + 3, y: bb.y + 3 + TYPE_ROLES.fact.line, text: bb.second }]);
+            lines.push(['text', { x: bb.x + BUBBLE_PAD, y: bb.y + BUBBLE_PAD + TYPE_ROLES.fact.line, text: bb.second }]);
         }
 
         for (const want of lines) {
             defects.push(...compare(key, 'bubble', { kind: 'bubble' }, nodes[next], want));
             next++;
         }
+
+        // ── the thought-bubble leg (§ 5.1, card#11468), read on what was PAINTED: at least three circles,
+        // smallest first and each above the last, on the anchor's line, none meeting the character; and the
+        // cloud's ink inside the bubble's own rect, which is what AT-D3-20 (b) and rule 5 read as the bubble ──
+        const circles = nodes.slice(trailAt).filter((n) => n.name === 'circle').map((n) => ({ x: num(n, 'cx'), y: num(n, 'cy'), r: num(n, 'r') }));
+        const head = desk.elements.find((e) => e.kind === 'character') ?? null;
+
+        if (circles.length < 3) {
+            defects.push(`${key}: the bubble's trail paints ${circles.length} circles, not at least 3`);
+        }
+
+        circles.forEach((c, i) => {
+            if (i > 0 && !(c.r > circles[i - 1].r && c.y < circles[i - 1].y)) {
+                defects.push(`${key}: the bubble's trail does not grow toward the cloud at circle ${i}`);
+            }
+
+            if (!same(c.x, desk.anchor_x)) {
+                defects.push(`${key}: the bubble's trail circle ${i} is at x ${c.x}, off the anchor ${desk.anchor_x}`);
+            }
+
+            if (head !== null && c.x + c.r > head.x && head.x + head.w > c.x - c.r && c.y + c.r > head.y && head.y + head.h > c.y - c.r) {
+                defects.push(`${key}: the bubble's trail circle ${i} meets the character's rect`);
+            }
+        });
+
+        const cloud = nodes.slice(trailAt).find((n) => n.name === 'path');
+        const ink = cloud === undefined ? null : rectOf(cloud);
+
+        if (ink === null || ![ink.x, ink.y, ink.w, ink.h].every(Number.isFinite)
+            || !(ink.x >= bb.x - EPS && ink.y >= bb.y - EPS && ink.x + ink.w <= bb.x + bb.w + EPS && ink.y + ink.h <= bb.y + bb.h + EPS)) {
+            defects.push(`${key}: the bubble's cloud leaves the bubble's rect [${[bb.x, bb.y, bb.x + bb.w, bb.y + bb.h].map((v) => Math.round(v)).join(', ')}]`);
+        }
+
+        bubbles++;
     }
 
     for (const n of nodes.slice(next)) {
@@ -705,4 +861,4 @@ for (const p of owedPoses) {
     }
 }
 
-console.log(JSON.stringify({ desks: desks.length, painted, interns, poses: [...poses].sort(), defects }));
+console.log(JSON.stringify({ desks: desks.length, painted, bubbles, interns, poses: [...poses].sort(), defects }));

@@ -1,3 +1,24 @@
+# ── VENDORED from coord 0.66.0 — the CALLER of the scheduled dependency-advisory audit. A body edit reds bin/vendor-pin-check.sh until declared below. ──
+#
+#   upstream repo     PupFuzz/agent-board-framework  (PRIVATE — a public CI runner cannot clone it)
+#   upstream path     plugins/coord/templates/security/workflows/dependency-ref-matrix.yml
+#   vendored from     70fd3207c96f7240f7368c93de277970ac39598e   (marketplace, the v0.66.0 release merge)
+#   plugin version    coord 0.66.0
+#   upstream sha256   9a2d3b954939a24d12976ba1720a2e6d2fc0c67e3df8d0a09a47b816cc9a80ed
+#
+# That sha256 is the WHOLE upstream file; `bin/vendor-pin-check.sh` pins the BODY (from the first
+# line that is neither blank nor a comment), which is a different figure. Re-derive this one
+# against a marketplace clone:   git show 70fd3207:plugins/coord/templates/security/workflows/dependency-ref-matrix.yml | sha256sum
+#
+# DECLARED LOCAL EDITS — each is also a FRAGMENTS row in `bin/vendor-pin-check.sh`, which reds
+# when one leaves the body. Outside these edits, the text below this block was upstream's byte for
+# byte when vendored (checked by diff against the commit above); the body pin holds it there.
+#   (1) the `uses:` slug names this repo
+#       (fragment: `uses: PupFuzz/mezzanine/.github/workflows/dependency-audit.yml@dev`).
+#
+# TO RE-VENDOR: copy upstream's file over everything below this block, re-apply the edits above,
+# then re-pin with the command `bin/vendor-pin-check.sh` prints on a red.
+# ── END MEZZANINE VENDOR HEADER ────────────────────────────────────────────────────────────────
 # dependency-ref-matrix.yml — the CALLER: audits the RELEASE ref and the INTEGRATION ref on a
 # clock, through one shared implementation (`dependency-audit.yml`, the callee).
 #
@@ -35,11 +56,14 @@ on:
     - cron: '17 6 * * *'
   workflow_dispatch:
 
-permissions:
-  contents: read
-
+# PERMISSIONS ARE GRANTED PER JOB, never once at workflow level (card#11434): each job gets only
+# what it uses, and an adopter whose posture requires per-job grants needs no local divergence.
+# There is deliberately no top-level `permissions:` key; the selftest reds if one comes back.
 jobs:
   audit:
+    # The callee checks out the audited ref and reads public advisories; nothing here writes.
+    permissions:
+      contents: read
     strategy:
       # ⛔ LOAD-BEARING, NOT STYLE. With the default (fail-fast: true) a real advisory on one
       # ref CANCELS the other leg, so the ref that matters most can go unmeasured — and a gate
@@ -63,6 +87,8 @@ jobs:
     needs: audit
     if: always()
     runs-on: ubuntu-latest
+    # Reads only the audit job's outputs; it checks nothing out and calls no API, so it gets no token scope.
+    permissions: {}
     steps:
       - name: A green must be a green over an AUDITED population
         env:

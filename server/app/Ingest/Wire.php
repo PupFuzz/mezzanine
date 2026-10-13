@@ -50,6 +50,36 @@ final class Wire
      */
     public const CONSOLE_URL = 'https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]{8,64}';
 
+    /*
+     * The published FORMATS of the `data` strings the fold writes into an ASCII column
+     * (`docs/design/FLEET-STATE.md § 6.4`), each beside the D1 row that publishes it. The ingest
+     * checks none of them — § 12.1 step 10 refuses a byte bound and no pattern — so the fold does,
+     * through `App\Fold\FoldEvent::conforming()`: a value off its format is stored `NULL` and
+     * counted `format_refused.<field>` (D2 § 7.2, card#9346). Each body carries its field's own
+     * byte bound, so a value the ingest let through at its bound matches at the same length.
+     * The `call_id`/`request_id` fields are D1 § 6.0 ULIDs and use `ULID`; `previous_session_id`
+     * is a § 3.2 session id and uses `SESSION_ID`; the two protocol-agent fields are slugs and use
+     * `App\Support\Slug::AGENT_NAME`.
+     */
+
+    /** D1 § 6.1's `harness_label` — `^[A-Za-z0-9._/-]+$`, ≤ 32 B. */
+    public const HARNESS_LABEL = '[A-Za-z0-9._\/-]{1,32}';
+
+    /** D1 § 6.5's `tool_name` — `^[A-Za-z0-9_.-]{1,64}$`, "else the literal `INVALID_TOOL_NAME`". */
+    public const TOOL_NAME = '[A-Za-z0-9_.-]{1,64}';
+
+    /** D1 § 6.5: the literal a `tool_name` that failed its pattern is sent as. */
+    public const INVALID_TOOL_NAME = 'INVALID_TOOL_NAME';
+
+    /** D1 § 6.7's `subagent_type` — `^[A-Za-z0-9_-]+$`, ≤ 32 B. */
+    public const SUBAGENT_TYPE = '[A-Za-z0-9_-]{1,32}';
+
+    /**
+     * D1 § 6.5's `harness_call_ref` — "≤ 64 B, opaque". D1 publishes no pattern for it, so the only
+     * format there is to hold it to is the column's: ASCII, which is what D2 § 6.4 stores it in.
+     */
+    public const HARNESS_CALL_REF = '[\x00-\x7F]{1,64}';
+
     /** § 4.3 — `data` is kind-specific and ≤ 3 KiB serialized. */
     public const DATA_MAX_BYTES = 3072;
 

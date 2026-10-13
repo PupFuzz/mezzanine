@@ -73,6 +73,7 @@ class TheDrillDownNeverDrawsANullAsAZeroTest extends TestCase
         'unknown_reason' => null,
         'api_error_type' => null,
         'blocked_since' => null,
+        'idle_since' => null,
         'model_label' => ['session.model_label', 'absent'],
         'retired' => null,
     ];

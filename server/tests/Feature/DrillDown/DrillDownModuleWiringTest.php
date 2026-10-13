@@ -112,6 +112,23 @@ class DrillDownModuleWiringTest extends TestCase
         $this->assertSame([], $this->slotDefects($this->floorPage(), $this->mainJs()));
     }
 
+    /**
+     * BOARD-TASK § 15.10 (card#9417): the compose block is an OPERATOR's. The slot contract above is
+     * checked on an operator's page, which carries it; an observer's page carries NO compose slot at
+     * all — not a hidden one — so the drill-down module's compose selectors answer `null` there.
+     */
+    public function test_an_observers_floor_page_carries_no_compose_slot_and_an_operators_carries_them_all(): void
+    {
+        $observer = $this->actingAs(User::factory()->twoFactorConfirmed()->observer()->create())
+            ->get('/floor/aimla')->assertOk()->getContent() ?: '';
+
+        $this->assertStringNotContainsString('data-panel-compose', $observer);
+        // The control: the same page as an operator does carry the block, so the absence is the gate's.
+        $this->assertStringContainsString('data-panel-compose-receipt', $this->floorPage());
+        // And the slot-defect check sees the observer's page as missing exactly the compose slots.
+        $this->assertStringContainsString('compose', $this->slotDefects($observer, $this->mainJs())['undeclared'] ?? '');
+    }
+
     /** § 4.4: the drill-down URL serves the floor page with the seat segment as data, behind the same gate. */
     public function test_the_drill_down_route_serves_the_floor_page_with_its_seat(): void
     {

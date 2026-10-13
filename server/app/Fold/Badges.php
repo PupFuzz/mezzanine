@@ -54,6 +54,32 @@ final class Badges
     public const FOLD_LAG_MS = 60_000;
 
     /**
+     * § 7.2's badge window: a COUNTER-DERIVED badge (`seq_gap`, `seq_collision`, `epoch_reset`,
+     * `reporter_ahead`) is raised while a counter that raises it rose within the last **24 h**, and
+     * clears on its own after that. Source: the operator's ruling of 2026-09-14 on card#9491, the
+     * same window D1 § 9.3 applies to the reporter's own members (`K.BADGE_WINDOW_MS`).
+     *
+     * The counters are monotonic and never reset (§ 7.2), so a badge read off "non-zero" was
+     * all-time: one reinstall badged a seat `epoch_reset` for the rest of its life, and the floor
+     * could no longer tell a seat degraded now from one with a one-time event weeks ago. The count
+     * itself stays in `seat_counters` and on the seat detail, so the badge clearing hides nothing.
+     */
+    public const COUNTER_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+    /**
+     * Each counter-derived badge, and the counters that raise it (§ 7.1's "Badge raised" column).
+     * PUBLIC because the drill-down carries a copy of the keys (`WINDOWED_SERVER_BADGES` in
+     * `drilldown-model.js`) to say which badges are windowed, and a test holds the two equal.
+     */
+    public const COUNTER_BADGES = [
+        'seq_gap' => ['seq_gap'],
+        'seq_collision' => ['seq_collision'],
+        'epoch_reset' => ['seq_epoch_change'],
+        // § 7.1 gives all three of these counters the same badge: this ingest is behind its fleet.
+        'reporter_ahead' => ['ignored_unknown_kinds', 'ignored_unknown_fields', 'coerced_enum_values'],
+    ];
+
+    /**
      * Recompute the server badge set for a seat from the facts that raise each one.
      *
      * DERIVED ON EVERY RECOMPUTE RATHER THAN LATCHED, so a badge CLEARS when its condition does.
@@ -68,39 +94,28 @@ final class Badges
      */
     public static function serverFor(int $seatRef, object $state, int $nowMs): array
     {
-        $counters = DB::table('seat_counters')
+        // The counters that rose within the window. A row exists only once a counter has risen
+        // (`Counters::upsert()` refuses a zero increment), so a row inside the window is a rise.
+        // STRICTLY INSIDE: a counter that last rose exactly 24 h ago has cleared.
+        $risen = DB::table('seat_counters')
             ->where('seat_ref', $seatRef)
-            ->whereIn('name', [
-                'seq_gap', 'seq_collision', 'seq_epoch_change',
-                'ignored_unknown_kinds', 'ignored_unknown_fields', 'coerced_enum_values',
-            ])
-            ->pluck('value', 'name');
+            ->whereIn('name', array_merge(...array_values(self::COUNTER_BADGES)))
+            ->where('last_increased_at', '>', Clock::fromMs($nowMs - self::COUNTER_WINDOW_MS))
+            ->pluck('name')
+            ->all();
 
         $badges = [];
 
-        if (($counters['seq_gap'] ?? 0) > 0) {
-            $badges[] = 'seq_gap';
-        }
-
-        if (($counters['seq_collision'] ?? 0) > 0) {
-            $badges[] = 'seq_collision';
+        foreach (self::COUNTER_BADGES as $badge => $raisers) {
+            if (array_intersect($raisers, $risen) !== []) {
+                $badges[] = $badge;
+            }
         }
 
         // The gauge the INGEST writes per batch (§ 7.1: "`batches` column, latest into
         // `seat_state`"), read here rather than recomputed — one fact, one home.
         if ($state->clock_skew_ms !== null && abs((int) $state->clock_skew_ms) > self::CLOCK_SKEW_MS) {
             $badges[] = 'clock_skew';
-        }
-
-        if (($counters['seq_epoch_change'] ?? 0) > 0) {
-            $badges[] = 'epoch_reset';
-        }
-
-        // § 7.1 gives all three of these counters the same badge: this ingest is behind its fleet.
-        if (($counters['ignored_unknown_kinds'] ?? 0) > 0
-            || ($counters['ignored_unknown_fields'] ?? 0) > 0
-            || ($counters['coerced_enum_values'] ?? 0) > 0) {
-            $badges[] = 'reporter_ahead';
         }
 
         if ((int) $state->fold_errors > 0) {

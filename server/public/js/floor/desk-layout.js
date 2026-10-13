@@ -85,8 +85,24 @@ export const TYPE_ROLES = Object.freeze({
     screen: Object.freeze({ font: FONT_SCREEN, line: LINE, baseline: 9 }),
 });
 
-/** The bubble's inner padding, and the band at the top of the box the bubble is drawn in. */
-export const BUBBLE_PAD = 3;
+/**
+ * The bubble's inner padding — the text's inset from the bubble's rect — and the band at the top of the box the
+ * bubble is drawn in. The padding holds the cloud's puffs (`CLOUD_PUFF`): the cloud is drawn INSIDE the rect, its
+ * scallops reaching the rect's edge and its valleys `CLOUD_PUFF` in from it, so the text clears every valley and
+ * the rect AT-D3-20 *(b)* reads is the cloud's own extent (card#11468).
+ */
+export const BUBBLE_PAD = 6;
+
+/** The cloud's puff radius: each scallop of the bubble's outline is a half-circle of at most this radius (§ 5.1, card#11468). */
+export const CLOUD_PUFF = 4;
+
+/**
+ * The thought trail (§ 5.1, card#11468): the radii of its circles, from the one just above the creature's head
+ * to the one nearest the cloud — growing, so the trail reads as a thought rising — and the gap between two.
+ */
+export const TRAIL_RADII = Object.freeze([2, 3, 4]);
+
+export const TRAIL_GAP = 1;
 
 export const BUBBLE_BAND = 2 * LINE + 2 * BUBBLE_PAD;
 
@@ -95,6 +111,27 @@ export const ART_W = 216;
 
 /** The gap between the art column and the facts column. */
 export const GUTTER = 4;
+
+/**
+ * THE FACTS PLATE (§ 10.6's *The desk, re-laid*, card#11468 — the operator's "A is fine", 2026-10-07): the
+ * facts column's one soft rounded backdrop. Its padding across is 4, so its left edge is the art column's edge
+ * (`ART_W`) and § 7.4's hatch, which covers the art column, never reaches it; 6 down; its corners `FACTS_PLATE_RX`.
+ */
+export const FACTS_PLATE_PAD = 4;
+
+export const FACTS_PLATE_PAD_Y = 6;
+
+export const FACTS_PLATE_RX = 8;
+
+/**
+ * The facts column's rows, top first — the order they stack in. A row the desk does not carry takes no place:
+ * the stack is bottom-anchored just above the side table and as tall as the rows it holds, and the plate is its
+ * size (card#11468). `gauge` is one row holding the bar and its %.
+ */
+export const FACT_ROWS = Object.freeze(['label', 'currency', 'lag', 'gauge', 'badge', 'flag', 'quiet-age']);
+
+/** The fact element kinds the plate is drawn behind — every element a `FACT_ROWS` row emits. */
+export const PLATED_KINDS = Object.freeze(['label', 'currency', 'lag', 'gauge-bar', 'gauge-pct', 'badge', 'flag', 'quiet-age']);
 
 /**
  * The character rect over the tree's footprint unit `SCENE_W × SCENE_H` (18 × 32): the rect is 3 × that,
@@ -123,10 +160,13 @@ export const BADGE_BOUND = BADGES.size;
 /** The badges drawn on the desk — Q1 (B): "up to two badges (treatment first)" (§ 12, Chosen). */
 export const BADGES_SHOWN = 2;
 
-/** One badge chip's width, and the pitch the row lays them at (§ 12, Chosen). */
-export const BADGE_W = 108;
+/**
+ * One badge chip's width, and the pitch the row lays them at (§ 12, Chosen): two chips and their gap are the
+ * facts column's width inside the plate's padding (card#11468; 108 / 112 before the plate).
+ */
+export const BADGE_W = 104;
 
-const BADGE_PITCH = 112;
+const BADGE_PITCH = 108;
 
 /** A badge chip's inner padding: an id of at most ⌊(BADGE_W − 2 × BADGE_PAD) ÷ glyph width⌋ glyphs fits. */
 const BADGE_PAD = 3;
@@ -219,9 +259,10 @@ export function fit(text, width, measure, role = 'fact') {
 
 /**
  * THE DESK's RECT TABLE — § 2.2's, derived from the box (`resources/floor/furniture-box.js`'s one
- * declaration): every element's rect relative to the box's top-left, bottom-anchored rows from `H`
- * and top-anchored ones from the bubble's band. A larger box keeps every rect inside; AT-D3-20 reds
- * when the box shrinks below the table at the cap.
+ * declaration): every element's rect relative to the box's top-left — the art from the desk's slab, the
+ * facts column stacked up from the side table on the desk's foot line, the hatch and the placeholder from the
+ * bubble's band. A larger box keeps every rect inside; AT-D3-20 reds when the box shrinks below the table at
+ * the cap. The facts rows here are the stack AT THE CAP; a desk's own stack is `deskLayout()`'s.
  *
  * @param {{width: number, height: number}} box the furniture box
  * @param {{w: number, h: number}} character the character tree's own `SCENE_W × SCENE_H`
@@ -234,7 +275,8 @@ export function deskRects(box, character) {
     const top = BUBBLE_BAND;
     const slab = H - 100;
     const colB = ART_W + GUTTER;
-    const widthB = W - colB;
+    // The facts are cut inside the plate's right padding, so the plate never reaches past the box.
+    const widthB = W - colB - FACTS_PLATE_PAD;
     const mid = ART_W / 2;
     const cw = character.w * CHARACTER_SCALE;
     const ch = character.h * CHARACTER_SCALE;
@@ -245,6 +287,13 @@ export function deskRects(box, character) {
     // The monitor's frame: 96 × 46, its right edge the desk's, standing on the desk's top; the screen
     // inset 4 px inside it and 31 px tall; the text 3 px inside the screen (§ 12's monitor row).
     const frame = { x: desk.x + desk.w - 96, y: slab - 46, w: 96, h: 46 };
+    // § 10.6 (card#11468): the side table stands on the desk's own foot line, its interns in front of it and the
+    // *+N more* tag under it; the facts stack upward from just above it, inside the plate's padding. These row
+    // rects are the stack AT THE CAP — every row present — and `deskLayout()` lays the rows a desk carries
+    // bottom-up from the same foot (`stackRows()`).
+    const foot = desk.y + desk.h;
+    const table = { x: colB - 8, y: foot - 42, w: W - colB + 8, h: 42 };
+    const rowY = stackRows(FACT_ROWS, table);
 
     return Object.freeze({
         character: { x: sitter, y: slab - 70, w: cw, h: ch },
@@ -257,22 +306,99 @@ export function deskRects(box, character) {
         monitor: { x: frame.x + 4, y: frame.y + 4, w: 88, h: 31 },
         'monitor-text': { x: frame.x + 7, y: frame.y + 13, w: 82, h: LINE },
         chip: { x: mid, y: H - 16, w: CHIP_MAX_W, h: 14 },
-        label: { x: colB, y: top + 6, w: widthB, h: LINE },
-        currency: { x: colB, y: top + 18, w: widthB, h: LINE },
-        lag: { x: colB, y: top + 30, w: widthB, h: LINE },
-        'gauge-bar': { x: colB, y: top + 58, w: 60, h: 8 },
-        'gauge-pct': { x: colB + 64, y: top + 56, w: 60, h: LINE },
-        badge: { x: colB, y: top + 70, w: BADGE_W, h: LINE },
-        flag: { x: colB, y: top + 82, w: widthB, h: LINE },
-        stool: { x: colB, y: top + 104, w: STOOL_W, h: STOOL_H },
-        // § 10.6: drawn at every desk with art, between the flag row and the *+N more* row; its foot line
-        // (its bottom edge) is the interns' foot line, so they stand in front of it.
-        'side-table': { x: colB - 8, y: top + 94, w: widthB + 8, h: 42 },
-        'stool-more': { x: colB, y: top + 148, w: widthB, h: LINE },
-        'quiet-age': { x: colB, y: top + 160, w: widthB, h: LINE },
+        label: { x: colB, y: rowY.label, w: widthB, h: LINE },
+        currency: { x: colB, y: rowY.currency, w: widthB, h: LINE },
+        lag: { x: colB, y: rowY.lag, w: widthB, h: LINE },
+        'gauge-bar': { x: colB, y: rowY.gauge + 2, w: 60, h: 8 },
+        'gauge-pct': { x: colB + 64, y: rowY.gauge, w: 60, h: LINE },
+        badge: { x: colB, y: rowY.badge, w: BADGE_W, h: LINE },
+        flag: { x: colB, y: rowY.flag, w: widthB, h: LINE },
+        'quiet-age': { x: colB, y: rowY['quiet-age'], w: widthB, h: LINE },
+        stool: { x: colB, y: foot - STOOL_H, w: STOOL_W, h: STOOL_H },
+        // § 10.6: drawn at every desk with art, under the facts and over the *+N more* row; its foot line (its
+        // bottom edge) is the desk's and the interns', so they stand in front of it.
+        'side-table': table,
+        'stool-more': { x: colB, y: foot + 2, w: widthB, h: LINE },
         'lag-overlay': { x: 0, y: top, w: ART_W, h: H - top },
         plate: { x: mid - 80, y: H - 36, w: 160, h: 18 },
     });
+}
+
+/**
+ * THE THOUGHT TRAIL (§ 5.1, card#11468 — the operator's "starting with a small bubble and increasing in size
+ * until reaching the top card status bubble"): the circles between the creature and its cloud, box-relative,
+ * smallest first. They stand on the character's centre line (`characterCentre()`), the first `TRAIL_GAP` above
+ * the character's rect so no circle covers the creature, each next one `TRAIL_GAP` above the last, growing by
+ * `TRAIL_RADII`. Their sizes are constants: the trail says nothing about the seat (§ 5.1 rule 2).
+ *
+ * @returns {list<{x: number, y: number, r: number}>} each circle's centre and radius
+ */
+export function thoughtTrail(box, character) {
+    const head = deskRects(box, character).character;
+    const x = head.x + head.w / 2;
+    const out = [];
+    let bottom = head.y - TRAIL_GAP;
+
+    for (const r of TRAIL_RADII) {
+        out.push(Object.freeze({ x, y: bottom - r, r }));
+        bottom -= 2 * r + TRAIL_GAP;
+    }
+
+    return Object.freeze(out);
+}
+
+/**
+ * THE CLOUD (§ 5.1, card#11468 — "drawn like a cloud"): the bubble's outline, a scalloped edge of half-circle
+ * puffs laid round the rect inset by `CLOUD_PUFF`, each bulging outward. An edge of length L takes
+ * ⌈L ÷ 2·CLOUD_PUFF⌉ puffs of equal width, so a puff's radius is at most `CLOUD_PUFF` and its crown at most the
+ * rect's edge: the cloud lies INSIDE the rect, which is what AT-D3-20 *(b)* and § 5.1 rule 5 read as the
+ * bubble. Traced clockwise from the inset rect's top-left corner, as one closed SVG path.
+ *
+ * @param {{x: number, y: number, w: number, h: number}} rect the bubble's measured rect
+ * @returns {{puffs: list<{x: number, y: number, r: number, side: string}>, d: string}} each puff's centre (on the
+ *          inset rect's edge), radius and the side it bulges to, and the path drawn
+ */
+export function cloudOutline(rect) {
+    const p = CLOUD_PUFF;
+    const [x0, y0, x1, y1] = [rect.x + p, rect.y + p, rect.x + rect.w - p, rect.y + rect.h - p];
+    const edges = [
+        ['top', [x0, y0], [x1, y0]],
+        ['right', [x1, y0], [x1, y1]],
+        ['bottom', [x1, y1], [x0, y1]],
+        ['left', [x0, y1], [x0, y0]],
+    ];
+    const puffs = [];
+    const round = (v) => Math.round(v * 1000) / 1000;
+    let d = `M ${round(x0)} ${round(y0)}`;
+
+    for (const [side, [ax, ay], [bx, by]] of edges) {
+        const length = Math.hypot(bx - ax, by - ay);
+        const n = Math.max(1, Math.ceil(length / (2 * p)));
+        const r = length / n / 2;
+
+        for (let i = 0; i < n; i++) {
+            const [ex, ey] = [ax + ((bx - ax) * (i + 1)) / n, ay + ((by - ay) * (i + 1)) / n];
+
+            puffs.push(Object.freeze({ x: ax + ((bx - ax) * (i + 0.5)) / n, y: ay + ((by - ay) * (i + 0.5)) / n, r, side }));
+            // Clockwise round the rect, so sweep 1 bulges every puff outward.
+            d += ` A ${round(r)} ${round(r)} 0 0 1 ${round(ex)} ${round(ey)}`;
+        }
+    }
+
+    return Object.freeze({ puffs: Object.freeze(puffs), d: `${d} Z` });
+}
+
+/**
+ * THE FACTS STACK (card#11468): each row in `rows` (a subsequence of `FACT_ROWS`, in its order) its top y, the
+ * last row ending `2 + FACTS_PLATE_PAD_Y` above the side table — so the plate, which pads the rows by
+ * `FACTS_PLATE_PAD_Y`, ends 2 px above the table and no text row meets the table (§ 10.6's rule 3).
+ *
+ * @returns {object} row → y, box-relative
+ */
+export function stackRows(rows, table) {
+    const bottom = table.y - 2 - FACTS_PLATE_PAD_Y;
+
+    return Object.fromEntries(rows.map((row, i) => [row, bottom - (rows.length - i) * LINE]));
 }
 
 /**
@@ -284,6 +410,18 @@ export function characterCentre(box, character) {
     const r = deskRects(box, character).character;
 
     return r.x + r.w / 2;
+}
+
+/**
+ * WHERE A THREAD, AN ENVELOPE, A RING OR A WALK MEETS THE DESK (§ 5.7, § 10.6) — box-relative: the character's
+ * centre line, at the desk's own mid-height. The height is the desk's rather than the box's (card#11468): every
+ * facts plate ends above the side table, whose top is below the desk's top, so a line between two desks of one
+ * row runs at a height no plate of either reaches, and meets each desk under its art.
+ */
+export function deskAnchor(box, character) {
+    const d = deskRects(box, character)['desk-sprite'];
+
+    return { x: characterCentre(box, character), y: d.y + d.h / 2 };
 }
 
 /**
@@ -363,15 +501,40 @@ export const NOT_DRAWN_MEMBERS = Object.freeze({
  */
 export function deskLayout(desk, ctx) {
     const { measure } = ctx;
-    const R = deskRects(ctx.box, ctx.character);
+    const R = { ...deskRects(ctx.box, ctx.character) };
     const elements = [];
+
+    // card#11468: the facts column STACKED — the rows this desk carries, in `FACT_ROWS`' order, bottom-up from
+    // just above the side table, with no empty row for one it does not carry. Same facts, same widths; only
+    // their y is the stack's. A row is carried exactly when its element is emitted below.
+    const badgeRow = clusterOrder(desk).slice(0, BADGES_SHOWN);
+    const carried = {
+        label: present(desk.desk_label),
+        currency: present(desk.desk_currency),
+        lag: present(desk.lag?.line),
+        gauge: desk.gauge.reported,
+        badge: badgeRow.length > 0,
+        flag: flagCount(desk, badgeRow) > 0,
+        'quiet-age': present(desk.quiet_age),
+    };
+    const rows = FACT_ROWS.filter((row) => carried[row]);
+    const rowY = stackRows(rows, R['side-table']);
+
+    for (const row of rows) {
+        if (row === 'gauge') {
+            R['gauge-bar'] = { ...R['gauge-bar'], y: rowY.gauge + 2 };
+            R['gauge-pct'] = { ...R['gauge-pct'], y: rowY.gauge };
+        } else {
+            R[row] = { ...R[row], y: rowY[row] };
+        }
+    }
 
     const rect = (kind, member, r, extra = {}) => {
         elements.push({ kind, member, x: r.x, y: r.y, w: r.w, h: r.h, ...extra });
     };
 
     const text = (kind, member, value, r, extra = {}) => {
-        if (value === null || value === undefined || value === '') {
+        if (!present(value)) {
             return null;
         }
 
@@ -427,6 +590,11 @@ export function deskLayout(desk, ctx) {
         });
     }
 
+    // card#11468: the facts plate goes HERE — after every art element (§ 10.6's rule 2: it is a fact element, the
+    // facts' backdrop) and before every fact it is drawn behind. It is as wide as the widest fact it holds, which is
+    // known once the facts are cut, so it is spliced in at this index after them.
+    const plateAt = elements.length;
+
     // The monitor is a fact (its light, Q1 B's task text), drawn on the placeholder too.
     rect('monitor', 'monitor', R.monitor, { lit: desk.monitor.lit });
 
@@ -472,7 +640,7 @@ export function deskLayout(desk, ctx) {
     }
 
     // Q1 (B): the badge row — the treatment badges, then recognised badges in the wire's order.
-    const row = clusterOrder(desk).slice(0, BADGES_SHOWN);
+    const row = badgeRow;
 
     row.forEach((badge, i) => {
         const x = R.badge.x + i * BADGE_PITCH;
@@ -540,6 +708,25 @@ export function deskLayout(desk, ctx) {
 
     // Q5 (b): *nothing done for N* stays on the desk.
     text('quiet-age', 'quiet_age', desk.quiet_age, R['quiet-age']);
+
+    // The plate: behind every row the stack holds, padded `FACTS_PLATE_PAD` across and `FACTS_PLATE_PAD_Y` down,
+    // as wide as the widest of them — none when the desk carries no row.
+    const plated = union(elements.filter((e) => PLATED_KINDS.includes(e.kind)));
+
+    if (plated !== null) {
+        const x = R.label.x - FACTS_PLATE_PAD;
+        const y = plated.y - FACTS_PLATE_PAD_Y;
+
+        elements.splice(plateAt, 0, {
+            kind: 'facts-plate',
+            member: null,
+            x,
+            y,
+            w: plated.x + plated.w + FACTS_PLATE_PAD - x,
+            h: plated.y + plated.h + FACTS_PLATE_PAD_Y - y,
+            rx: FACTS_PLATE_RX,
+        });
+    }
 
     // ── Layer 5: § 7.4's hatch over the art and the chip ────────────────────────────────────────
     if (desk.lag !== null) {
@@ -614,6 +801,11 @@ export function internKey(seatId, callId) {
 /** The asset id an intern's sprite is reported under when the painter cannot draw it (§ 9 F14). */
 export function internAsset(desk, callId) {
     return `intern:${desk.install_id}/${internKey(desk.seat_id, callId)}`;
+}
+
+/** Whether a string fact is there to draw: the model's null, an absent member and an empty string draw nothing. */
+function present(value) {
+    return value !== null && value !== undefined && value !== '';
 }
 
 /** The union of a list of rects, or `null` for none. */

@@ -243,6 +243,24 @@ deliberately**: a card still sitting in review when its release lands was never 
 shipped, and it will visibly NOT promote. That is fail-closed and inspectable, which beats
 silently dragging an un-shipped card to terminal. Do not widen the set to make a run go green.
 
+### A card token naming another board's card is skipped, and the rest of the release moves
+Card ids are global across the kanban instance, so a released commit can carry another board's
+card token (v0.8.0 named framework card#10493). The mover never moves such a card: it prints
+`↷ card#<id>: not on this board (board 14) — …`, counts it as `not on this board` in its summary,
+and promotes the rest with exit 0 (card#11527). A card on another board answers the mover's read
+with **HTTP 403**, and so does a board-14 card read by a token that has lost board 14's view
+permission; the 403 body is the same for both. So before the mover calls a 403 card another
+board's, it reads the board-14 card its preflight found back through the same route and looks
+the id up on board 14 (`tasks/search.json?q=board_id=14 id=<id>`). If that read fails or the
+lookup finds the card, the run exits **2** with nothing written. An HTTP 200 that lacks a field a
+verdict reads counts as a failed read and exits **2** with nothing written too: a card read with no
+`board_id`, `workflow_stage_id`, `archived_at` or `deleted_at` member, a control read with no
+`board_id`, and a lookup whose `data` is absent or not a list. Defaulting such an absence would
+skip the card as another board's, skip it as stage-guarded, or move it as live, on a read that
+described no card. The mover reads every card before
+it writes any, so exit 2 at any card read leaves the board untouched. The exit table is in
+`bin/promote-cards-by-token --help`.
+
 ### Release PRs into `main` must land as MERGE COMMITS
 A squash or rebase merge of the release PR collapses the per-PR subjects the mover correlates
 on. The mover detects a non-merge tip and exits **4** — it still promotes whatever tokens

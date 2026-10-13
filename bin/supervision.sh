@@ -45,6 +45,8 @@
 #     this script could not read would destroy it;
 #   · a line OUTSIDE every managed block already runs a supervised command — a hand-staged crontab is
 #     that case, and installing beside it would run every daemon twice, under two different locks.
+#   · the checkout is a selftest fixture and `crontab` on PATH is not its stub (§ A SELFTEST FIXTURE) —
+#     then no crontab is run at all, not even `crontab -l`.
 #
 # MOVING A HAND-STAGED CRONTAB ONTO THIS ONE — in THIS order, which never runs two copies of a daemon:
 #   1. remove the hand-staged lines (`crontab -e`), so nothing starts the old copies again;
@@ -55,6 +57,18 @@
 #   each beside the old one from cron's next minute; forgetting step 2 runs it forever, because no
 #   deploy stops them — bin/deploy.sh stops what holds THIS checkout's lock files (LOCKS, below), and nothing
 #   else.
+#
+# A SELFTEST FIXTURE NEVER REACHES THE REAL CRONTAB (card#11575). A checkout carrying the file
+# SUPERVISION_FIXTURE_CRONTAB names (below) at its root is a selftest fixture, and the file holds the
+# absolute path of the stub that stands in for `crontab` there. Every crontab call this script and
+# bin/deploy.sh make goes through supervision_crontab, which, for such a checkout, runs only that stub, by
+# that absolute path, and only while `crontab` on PATH resolves to it. Any other PATH is REFUSED before any
+# crontab runs: a hand run of a fixture's bin/supervision.sh or bin/deploy.sh, a scratch rig that copied part
+# of bin/deploy.selftest.sh, a fixture whose stub has been deleted. ⚠ It cannot see a fixture whose whole
+# tree, this file included, is removed while an install runs — the 2026-10-08 overwrite, when the suite's
+# exit trap removed its temp dir between an install's read and its write. bin/deploy.selftest.sh closes that
+# one with a PATH that holds no crontab but the stub. A checkout without the file, which every real host is,
+# runs `crontab` from PATH as before.
 #
 # LOCKS are per checkout — server/storage/framework/daemon-<name>.lock, git-ignored there — so two
 # checkouts under one account never share one, and a deploy's proof that a lock is held is a proof
@@ -76,6 +90,34 @@ supervision_default_php() {
   local p
   p="$(command -v php 2>/dev/null)" || return 1
   readlink -f "$p"
+}
+
+# The file, at a checkout's root, that marks it a selftest fixture (§ A SELFTEST FIXTURE, above).
+SUPERVISION_FIXTURE_CRONTAB=.selftest-crontab-stub
+
+# supervision_crontab_bin <root> — the crontab to run for <root>, printed: `crontab`, found on PATH, for a real
+# checkout; for a fixture its stub's absolute path, and only while `crontab` on PATH resolves to that stub.
+# Otherwise it prints why on stderr and fails, having run no crontab.
+supervision_crontab_bin() {
+  local root="$1" mark stub resolved=""
+  mark="$root/$SUPERVISION_FIXTURE_CRONTAB"
+  if [ ! -e "$mark" ] && [ ! -L "$mark" ]; then printf 'crontab'; return 0; fi
+  stub="$(cat -- "$mark")" || { printf '%s marks a selftest fixture and cannot be read\n' "$mark" >&2; return 1; }
+  if resolved="$(command -v crontab)"; then resolved="$(readlink -f -- "$resolved")"; fi
+  if [ "${stub#/}" = "$stub" ] || [ "$resolved" != "$stub" ]; then
+    printf '%s is a selftest fixture: %s names its crontab stub, %s, and the crontab on PATH is %s\n' \
+      "$root" "$mark" "${stub:-<empty>}" "${resolved:-not found}" >&2
+    return 1
+  fi
+  printf '%s' "$stub"
+}
+
+# supervision_crontab <root> <crontab args…> — THE one way this script and bin/deploy.sh run `crontab`.
+supervision_crontab() {
+  local root="$1" bin
+  shift
+  bin="$(supervision_crontab_bin "$root")" || return 1
+  "$bin" "$@"
 }
 
 supervision_daemon_name() { printf '%s' "${1#mezzanine:}"; }
@@ -127,13 +169,17 @@ supervision_die() {
 # written. bin/deploy.sh runs it from the TARGET release's copy before the maintenance window, so the
 # install it makes inside the window can fail only on what changed in between.
 supervision_install_plan() { # <root> <php>
-  local root="$1" php="$2" block current err rc=0 stripped outside dupes c line
+  local root="$1" php="$2" block current err why rc=0 stripped outside dupes c line
   block="$(supervision_render "$root" "$php")" \
     || supervision_die "cron cannot carry '$root' / '$php' verbatim" \
       "Both must be plain paths of [A-Za-z0-9/._+-]: cron ends a command at '%'."
 
+  # A fixture's stub that is not what PATH resolves is refused HERE, before any crontab runs (card#11575).
+  why="$(supervision_crontab_bin "$root" 2>&1 >/dev/null)" \
+    || supervision_die "$why" "No crontab was run, and nothing was written: bin/supervision.sh § A SELFTEST FIXTURE."
+
   err="$(mktemp)"
-  current="$(crontab -l 2>"$err")" || rc=$?
+  current="$(supervision_crontab "$root" -l 2>"$err")" || rc=$?
   if [ "$rc" -ne 0 ]; then
     if grep -q '^no crontab for ' "$err"; then
       current=""
@@ -172,10 +218,10 @@ supervision_install_plan() { # <root> <php>
 supervision_install() { # <root> <php>
   local root="$1" php="$2" next current line
   next="$(supervision_install_plan "$root" "$php")" || exit 1
-  printf '%s\n' "$next" | crontab -
+  printf '%s\n' "$next" | supervision_crontab "$root" -
 
   # Read back, not assumed: every entry must now be in the installed crontab, whole-line.
-  current="$(crontab -l 2>/dev/null)" || supervision_die "\`crontab -l\` failed right after installing"
+  current="$(supervision_crontab "$root" -l 2>/dev/null)" || supervision_die "\`crontab -l\` failed right after installing"
   while IFS= read -r line; do
     grep -Fxq -- "$line" <<< "$current" || supervision_die "installed, but the read-back lacks: $line"
   done < <(supervision_entries "$root" "$php")

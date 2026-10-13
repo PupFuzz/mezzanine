@@ -7,7 +7,9 @@ use Tests\TestCase;
 /**
  * AT-D3-25's RE-LAID HALF — `docs/design/FLOOR.md` § 10.6's *The desk, re-laid*, built at Appendix B row 20
  * (card#11046): the desk's rects, the chair and the side table at every desk with art, the paint order of
- * § 10.6's rule 2, the bare-text half of its rule 3, the screen type role and its ink, and the one anchor.
+ * § 10.6's rule 2, the bare-text half of its rule 3, the screen type role and its ink, and the one anchor —
+ * and since card#11468 the facts plate (its paint order and that the facts column meets no art), the anchor's
+ * height below every plate, and § 5.1's thought bubble as painted: its trail and its cloud.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE RECTS ARE READ OUT OF § 10.6's TABLE, NEVER WRITTEN HERE. Each row of the table states an element's
@@ -31,8 +33,11 @@ class TheDeskIsReLaidTest extends TestCase
     /** § 10.6's art elements and the character; every other element of a desk is a fact. */
     private const ART = ['chair', 'character', 'desk-sprite', 'monitor-frame', 'desk-props', 'side-table'];
 
-    /** Rule 3's bare text facts — the ones that stand on the floor rather than on a backdrop of their own. */
-    private const BARE = ['label', 'currency', 'lag', 'gauge-pct', 'stool-more', 'quiet-age'];
+    /**
+     * The facts column, which meets no art (§ 10.6's rule 3, card#11468): the facts plate, the facts on it — whose
+     * backdrop is the plate — and the one bare text left on the floor, the *+N more* tag.
+     */
+    private const OFF_ART = ['facts-plate', 'label', 'currency', 'lag', 'gauge-bar', 'gauge-pct', 'badge', 'flag', 'quiet-age', 'stool-more'];
 
     /** § 10.6's table's element names → the layout's element kinds. */
     private const TABLE_KINDS = [
@@ -61,7 +66,23 @@ class TheDeskIsReLaidTest extends TestCase
     public function test_green_the_bare_text_leg(): void
     {
         foreach ([self::SHIPPED, self::CAP] as $run) {
-            $this->assertSame([], $this->bareDefects($this->sceneOf($run)), "[{$run}] the bare-text leg");
+            $this->assertSame([], $this->bareDefects($this->sceneOf($run)), "[{$run}] the facts-off-art leg");
+        }
+    }
+
+    public function test_green_the_plate_and_bubble_legs(): void
+    {
+        $run = $this->painterRun();
+
+        $this->assertGreaterThan(0, $run['bubbles'], 'the painter probe painted no bubble — the bubble leg read nothing');
+        $this->assertSame([], $this->plateDefects($run));
+        $this->assertSame([], $this->bubbleDefects($run));
+    }
+
+    public function test_green_the_anchor_height_leg(): void
+    {
+        foreach ([self::SHIPPED, self::CAP] as $run) {
+            $this->assertSame([], $this->anchorHeightDefects($this->sceneOf($run)), "[{$run}] the anchor-height leg");
         }
     }
 
@@ -72,6 +93,7 @@ class TheDeskIsReLaidTest extends TestCase
         }
 
         $this->assertSame([], $this->inkDefects($this->jsRoot().'/floor/painter.js'));
+        $this->assertSame([], $this->plateInkDefects($this->jsRoot().'/floor/painter.js'));
     }
 
     // ── RED ───────────────────────────────────────────────────────────────────────────────────────
@@ -103,20 +125,78 @@ class TheDeskIsReLaidTest extends TestCase
         }
     }
 
-    public function test_red_bare_text_over_art(): void
+    public function test_red_a_facts_row_over_the_table(): void
     {
+        // The stack laid from 12 px BELOW the table's top rather than above it (card#11468).
         $dir = $this->mutatedModules(['../floor/desk-layout.js',
-            "'side-table': { x: colB - 8, y: top + 94, w: widthB + 8, h: 42 },", "'side-table': { x: colB - 8, y: top + 50, w: widthB + 8, h: 42 },"]);
+            'const bottom = table.y - 2 - FACTS_PLATE_PAD_Y;', 'const bottom = table.y + 12 - FACTS_PLATE_PAD_Y;']);
+        $defects = $this->bareDefects($this->sceneOf(self::SHIPPED, $dir));
 
-        $this->assertNotSame([], array_filter($this->bareDefects($this->sceneOf(self::SHIPPED, $dir)), fn (string $d): bool => str_contains($d, 'gauge-pct')),
-            'RED (the side table lifted into the gauge row) did not fail the bare-text leg on the gauge\'s percentage');
+        foreach (['facts-plate', 'quiet-age'] as $kind) {
+            $this->assertNotSame([], array_filter($defects, fn (string $d): bool => str_contains($d, "`{$kind}` meets the art `side-table`")),
+                "RED (the facts stack over the side table) did not fail the facts-off-art leg on `{$kind}`");
+        }
+    }
+
+    public function test_red_the_plate_painted_after_a_fact(): void
+    {
+        $dir = $this->mutatedModules(['../floor/desk-layout.js', '        elements.splice(plateAt, 0, {', '        elements.push({']);
+
+        $this->assertNotSame([], $this->plateDefects($this->painterRun(dirname($dir))),
+            'RED (the facts plate emitted after the facts) did not fail the plate-order leg');
+    }
+
+    public function test_red_the_trail_missing_or_not_growing(): void
+    {
+        foreach ([
+            'the trail not painted' => ['../floor/painter.js', "                node('circle', { cx: c.x, cy: c.y, r: c.r, class: 'bubble-trail' }, g);\n", '', 'paints 0 circles'],
+            'two circles only' => ['../floor/desk-layout.js', 'export const TRAIL_RADII = Object.freeze([2, 3, 4]);', 'export const TRAIL_RADII = Object.freeze([2, 3]);', 'paints 2 circles'],
+            'largest at the creature' => ['../floor/desk-layout.js', 'export const TRAIL_RADII = Object.freeze([2, 3, 4]);', 'export const TRAIL_RADII = Object.freeze([4, 3, 2]);', 'does not grow'],
+            'one size' => ['../floor/desk-layout.js', 'export const TRAIL_RADII = Object.freeze([2, 3, 4]);', 'export const TRAIL_RADII = Object.freeze([3, 3, 3]);', 'does not grow'],
+        ] as $what => [$file, $from, $to, $says]) {
+            $dir = $this->mutatedModules([$file, $from, $to]);
+
+            $this->assertNotSame([], array_filter($this->bubbleDefects($this->painterRun(dirname($dir))), fn (string $d): bool => str_contains($d, $says)),
+                "RED ({$what}) did not fail the bubble leg with «{$says}»");
+        }
+    }
+
+    public function test_red_a_trail_circle_on_the_creature(): void
+    {
+        $dir = $this->mutatedModules(['../floor/desk-layout.js', '    let bottom = head.y - TRAIL_GAP;', '    let bottom = head.y + 8;']);
+
+        $this->assertNotSame([], array_filter($this->bubbleDefects($this->painterRun(dirname($dir))), fn (string $d): bool => str_contains($d, "meets the character's rect")),
+            'RED (the trail started 8 px inside the character\'s rect) did not fail the bubble leg');
+    }
+
+    public function test_red_the_cloud_escaping_its_box(): void
+    {
+        // The puffs centred on the rect's own edge rather than the inset one: every crown leaves the rect.
+        $dir = $this->mutatedModules(['../floor/desk-layout.js',
+            '    const [x0, y0, x1, y1] = [rect.x + p, rect.y + p, rect.x + rect.w - p, rect.y + rect.h - p];',
+            '    const [x0, y0, x1, y1] = [rect.x, rect.y, rect.x + rect.w, rect.y + rect.h];']);
+        $defects = $this->painterRun(dirname($dir))['defects'];
+
+        $this->assertNotSame([], array_filter($defects, fn (string $d): bool => str_contains($d, "the bubble's cloud leaves the bubble's rect")),
+            'RED (the cloud past its rect) did not fail the bubble leg');
+        $this->assertNotSame([], array_filter($defects, fn (string $d): bool => str_contains($d, "a painted path (bubble)") && str_contains($d, "leaves the desk's box")),
+            'RED (the cloud past its rect) did not fail the probe\'s containment on the desk\'s box');
+    }
+
+    public function test_red_the_anchor_back_at_the_box_mid_height(): void
+    {
+        $dir = $this->mutatedModules(['../floor/scene.js',
+            '    return Object.freeze({ x: desk.anchor_x, y: desk.anchor_y });', '    return Object.freeze({ x: desk.anchor_x, y: desk.box.y + desk.box.h / 2 });']);
+
+        $this->assertNotSame([], $this->anchorHeightDefects($this->sceneOf(self::SHIPPED, $dir)),
+            'RED (the thread anchor back at the box\'s mid-height, inside the plate\'s rows) did not fail the anchor-height leg');
     }
 
     public function test_red_the_tables_seats_and_feet(): void
     {
         foreach ([
             'the empty table with no seats' => ['const seats = Math.max(SIDE_TABLE_SEATS, shown.length);', 'const seats = shown.length;', 'seats'],
-            'its foot line 4 px above the interns\'' => ["'side-table': { x: colB - 8, y: top + 94, w: widthB + 8, h: 42 },", "'side-table': { x: colB - 8, y: top + 90, w: widthB + 8, h: 42 },", 'foot line'],
+            'its foot line 4 px above the interns\'' => ['const table = { x: colB - 8, y: foot - 42, w: W - colB + 8, h: 42 };', 'const table = { x: colB - 8, y: foot - 46, w: W - colB + 8, h: 42 };', 'foot line'],
         ] as $what => [$from, $to, $says]) {
             $defects = $this->tableDefects($this->sceneOf(self::CAP, $this->mutatedModules(['../floor/desk-layout.js', $from, $to])));
 
@@ -132,6 +212,14 @@ class TheDeskIsReLaidTest extends TestCase
             'RED (the dimmed screen in the scene\'s ink, 2.25:1) did not fail the screen leg');
     }
 
+    public function test_red_the_plate_in_the_facts_ink(): void
+    {
+        $dir = $this->mutatedModules(['../floor/painter.js', '.facts-plate{fill:var(--scene-plate);', '.facts-plate{fill:var(--scene-ink);']);
+
+        $this->assertNotSame([], $this->plateInkDefects(dirname($dir).'/floor/painter.js'),
+            'RED (the facts plate filled in the facts\' ink) did not fail the plate leg\'s contrast');
+    }
+
     public function test_red_the_screen_text_in_the_facts_role(): void
     {
         $dir = $this->mutatedModules(['../floor/desk-layout.js', "{ role: 'screen', lit: desk.monitor.lit }", '{ lit: desk.monitor.lit }']);
@@ -142,12 +230,11 @@ class TheDeskIsReLaidTest extends TestCase
 
     public function test_red_the_anchor_left_behind(): void
     {
-        // One of the sites `grep -n 'ART_W / 2' server/public/js/floor/scene.js` found before row 20, restored.
-        $dir = $this->mutatedModules(['../floor/scene.js',
-            'tail: Object.freeze({ x: desk.anchor_x, y: desk.box.y + BUBBLE_BAND }),', 'tail: Object.freeze({ x: desk.box.x + 108, y: desk.box.y + BUBBLE_BAND }),']);
+        // The art column's centre — where the tail stood before row 20 — restored for the bubble's trail.
+        $dir = $this->mutatedModules(['../floor/desk-layout.js', '    const x = head.x + head.w / 2;', '    const x = ART_W / 2;']);
 
         $this->assertNotSame([], array_filter($this->screenDefects($this->sceneOf(self::SHIPPED, $dir)), fn (string $d): bool => str_contains($d, 'anchor')),
-            'RED (the bubble\'s tail back on the art column\'s centre) did not fail the anchor half of the screen leg');
+            'RED (the bubble\'s trail back on the art column\'s centre) did not fail the anchor half of the screen leg');
     }
 
     // ── the legs ──────────────────────────────────────────────────────────────────────────────────
@@ -244,6 +331,48 @@ class TheDeskIsReLaidTest extends TestCase
     }
 
     /** @return list<string> */
+    private function plateDefects(array $run): array
+    {
+        return array_values(array_filter($run['defects'], fn (string $d): bool => str_contains($d, 'plate order') || str_contains($d, '(facts-plate)')));
+    }
+
+    /** @return list<string> */
+    private function bubbleDefects(array $run): array
+    {
+        return array_values(array_filter($run['defects'], fn (string $d): bool => str_contains($d, 'bubble')));
+    }
+
+    /**
+     * The thread's anchor below every facts plate of its desk (card#11468): a line meets a desk at the desk's
+     * own mid-height, and no plate reaches it, so a line between two desks of one row runs under no plate.
+     *
+     * @return list<string>
+     */
+    private function anchorHeightDefects(array $scene): array
+    {
+        $defects = [];
+        $read = 0;
+
+        foreach ($scene['desks'] as $desk) {
+            $anchor = $scene['anchors'][$desk['key']] ?? null;
+
+            foreach ($this->elementsOf($desk, 'facts-plate') as $plate) {
+                $read++;
+
+                if ($anchor === null || $anchor['y'] <= $plate['y'] + $plate['h']) {
+                    $defects[] = "{$desk['key']}'s thread anchor at y ".($anchor['y'] ?? 'none').' is not below its facts plate, which ends at '.($plate['y'] + $plate['h']);
+                }
+            }
+        }
+
+        if ($read === 0) {
+            $defects[] = 'no facts plate was read — the leg read nothing';
+        }
+
+        return $defects;
+    }
+
+    /** @return list<string> */
     private function bareDefects(array $scene): array
     {
         $defects = [];
@@ -251,7 +380,7 @@ class TheDeskIsReLaidTest extends TestCase
 
         foreach ($scene['desks'] as $desk) {
             foreach ($desk['elements'] as $e) {
-                if (! in_array($e['kind'], self::BARE, true)) {
+                if (! in_array($e['kind'], self::OFF_ART, true)) {
                     continue;
                 }
 
@@ -259,14 +388,14 @@ class TheDeskIsReLaidTest extends TestCase
 
                 foreach ($desk['elements'] as $art) {
                     if (in_array($art['kind'], self::ART, true) && $this->intersect($e, $art)) {
-                        $defects[] = "{$desk['key']}'s bare `{$e['kind']}` meets the art `{$art['kind']}`";
+                        $defects[] = "{$desk['key']}'s facts-column `{$e['kind']}` meets the art `{$art['kind']}`";
                     }
                 }
             }
         }
 
         if ($read === 0) {
-            $defects[] = 'no bare text was read — the leg read nothing';
+            $defects[] = 'no facts-column element was read — the leg read nothing';
         }
 
         return $defects;
@@ -296,8 +425,10 @@ class TheDeskIsReLaidTest extends TestCase
                     $defects[] = "{$desk['key']}'s anchor is at {$desk['anchor_x']}, not the character's centre line {$centre}";
                 }
 
-                if ($desk['bubble'] !== null && abs($desk['bubble']['tail']['x'] - $centre) > 1e-6) {
-                    $defects[] = "{$desk['key']}'s bubble tail is at {$desk['bubble']['tail']['x']}, not the anchor {$centre}";
+                foreach ($desk['bubble']['trail'] ?? [] as $i => $c) {
+                    if (abs($c['x'] - $centre) > 1e-6) {
+                        $defects[] = "{$desk['key']}'s bubble trail circle {$i} is at {$c['x']}, not the anchor {$centre}";
+                    }
                 }
 
                 $anchor = $scene['anchors'][$desk['key']] ?? null;
@@ -356,6 +487,40 @@ class TheDeskIsReLaidTest extends TestCase
         return $defects;
     }
 
+    /**
+     * The facts' ink on the facts plate (§ 10.6's rule 3, card#11468): the token the painter's `text` rule names, on
+     * the token its `.facts-plate` rule fills with, at full and desaturated light. The plate is opaque — a plate
+     * rule with any opacity reds, because its backdrop would then be part floor.
+     *
+     * @return list<string>
+     */
+    private function plateInkDefects(string $painter): array
+    {
+        $style = (string) file_get_contents($painter);
+        $css = (string) file_get_contents(base_path('public/css/mezzanine.css'));
+        preg_match_all('/--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6})\s*;/', $css, $m, PREG_SET_ORDER);
+        $tok = array_column(array_map(fn (array $r): array => [$r[1], $r[2]], $m), 1, 0);
+        $ink = preg_match('/(?:^|\n)text\{font:[^;]*;fill:var\(--([a-z0-9-]+)\)\}/', $style, $a) === 1 ? $a[1] : null;
+        $rule = preg_match('/\.facts-plate\{([^}]*)\}/', $style, $b) === 1 ? $b[1] : null;
+        $fill = $rule !== null && preg_match('/(?:^|;)fill:var\(--([a-z0-9-]+)\)/', $rule, $c) === 1 ? $c[1] : null;
+
+        if ($ink === null || $fill === null || ! isset($tok[$ink], $tok[$fill])) {
+            return ['the painter names no facts ink or no facts-plate fill token'];
+        }
+
+        $defects = str_contains((string) $rule, 'fill-opacity') || str_contains((string) $rule, ';opacity') ? ['the facts plate is not opaque'] : [];
+
+        foreach (['full' => 1.0, 'desaturated' => 0.3] as $light => $sat) {
+            $ratio = $this->contrast($this->saturate($this->rgb($tok[$ink]), $sat), $this->saturate($this->rgb($tok[$fill]), $sat));
+
+            if ($ratio < 4.5) {
+                $defects[] = sprintf('the facts on their plate hold %.2f:1 at %s light, under 4.5:1', $ratio, $light);
+            }
+        }
+
+        return $defects;
+    }
+
     /** @return array{0: float, 1: float, 2: float} */
     private function rgb(string $hex): array
     {
@@ -397,7 +562,7 @@ class TheDeskIsReLaidTest extends TestCase
         file_put_contents($target, str_replace($anchor, $replacement, $original));
     }
 
-    /** @return array{desks: int, painted: int, defects: list<string>} */
+    /** @return array{desks: int, painted: int, bubbles: int, defects: list<string>} */
     private function painterRun(?string $jsRoot = null): array
     {
         $out = shell_exec('node '.escapeshellarg(__DIR__.'/painter-probe.mjs').($jsRoot === null ? '' : ' --js '.escapeshellarg($jsRoot)).' 2>&1');

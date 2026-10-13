@@ -65,6 +65,7 @@ final class SeatDelta implements FeedMessage
         'unknown_reason' => 'unknown_reason',
         'api_error_type' => 'api_error_type',
         'blocked_since' => 'blocked_since',
+        'idle_since' => 'idle_since',
         'action' => 'action',
         'open_calls' => 'open_calls',
         'open_turn' => 'open_turn',

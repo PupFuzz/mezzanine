@@ -109,7 +109,7 @@ jobs:
   #
   # ⚠ WHY A SOURCE BUILD AND NOT `docker run bash:$BASH_FLOOR`. The `bash:4.x` images exist and are
   # current (verified 2026-09-19: `bash:4.4` and `bash:4.3` are rebuilt on alpine3.22), but they are
-  # busybox + musl userland, and this suite needs GNU `sed -i`, `readlink -f`, `git`, `php`, `ps`,
+  # busybox + musl userland, and this suite needs GNU `sed -i`, `readlink -f`, `git`, `php`,
   # `fuser`, `flock` and `setsid` to run AT ALL — so a container run would measure a SUBSET and
   # report the rest as not verified, which is a weaker measurement than the one below. And a Docker
   # Hub TAG IS MUTABLE (`bash:4.4` was rebuilt the day this was written), so pinning the measurement

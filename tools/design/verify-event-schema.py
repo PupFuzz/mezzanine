@@ -557,6 +557,13 @@ for column in ("protocol_agent_name", "protocol_agent_role"):
         f"ingest registry `{column}`": int(reg.group(1)) if reg else None,
         f"migration {mig[0] if mig else '(none sizes the column)'} `{column}`": mig[1] if mig else None,
     })
+# card#9346: the FOLD refuses a name or role off its slug pattern (`FoldEvent::conforming()`), and the
+# pattern it refuses with -- `Slug::AGENT_NAME`, one body for both members -- carries the bound as its
+# quantifier's upper limit, so it is a home like the others: narrower, and the fold stores `null` for a
+# name the ingest accepted; wider, and it passes one the column cannot hold.
+slug_src = (ROOT / "server" / "app" / "Support" / "Slug.php").read_text()
+slug_agent = re.search(r"const AGENT_NAME = '[^']*\{1,(\d+)\}';", slug_src)
+name_bounds["fold pattern `Slug::AGENT_NAME`"] = int(slug_agent.group(1)) if slug_agent else None
 unread = [home for home, n in name_bounds.items() if n is None]
 if unread:
     fail.append(f"check 12 CONTROL: no byte bound could be read at {unread} (parsed {name_bounds}) — "
