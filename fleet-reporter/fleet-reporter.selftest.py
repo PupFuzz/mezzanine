@@ -4910,7 +4910,225 @@ redgreen("one seat's spool order is its event_time order (D1 § 11.2, card#11563
          "holder is broken and counted write_lock_broken")
 
 
-print("\n== 20. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
+print("\n== 20. A BACKGROUND DISPATCH STAYS OPEN UNTIL ITS SubagentStop (§ 8.5, card#11799) ==")
+# The floor draws an intern for every OPEN dispatch call. The harness now runs a dispatched
+# subagent as a background task: the dispatch tool returns on LAUNCH, so its PostToolUse fires
+# tens of ms after its PreToolUse (MEASURED on this project's seats, 2.1.266-2.1.296: every
+# dispatch closed `post_tool_use` with a harness duration of tens of ms) while the subagent runs
+# for minutes. Closing the call there left the side table permanently empty. The tool's own
+# response says which case it is — `status: "async_launched"` with the launched `agentId` —
+# so that is what every case below drives, in BOTH hook orders, plus the backstops that must
+# still close a dispatch whose SubagentStop never comes.
+BGSID = "77777777-2222-4333-8444-000000000001"
+AG1, AG2, FOREIGN = "a0123456789abcdef", "a00000000000000b2", "a99999999999999f9"
+
+
+def bg_pre(tuid, desc="probe the ingest"):
+    return pre(tool="Agent", ti={"description": desc, "subagent_type": "coder", "prompt": "x",
+                                 "run_in_background": True}, tuid=tuid, session_id=BGSID)
+
+
+def bg_post(tuid, agent, *, launched=True, desc="probe the ingest"):
+    # tool_response is the shape a launch records on this project's seats at 2.1.296 (keys read
+    # from the transcripts' recorded tool results); a foreground dispatch's is `completed`.
+    tr = ({"isAsync": True, "status": "async_launched", "agentId": agent, "description": desc,
+           "resolvedModel": "<model id>", "prompt": "x", "outputFile": "/tmp/x.output",
+           "canReadOutputFile": True, "canContinueAgent": True}
+          if launched else {"status": "completed", "agentId": agent, "content": []})
+    p = bg_pre(tuid, desc)
+    p.update(hook_event_name="PostToolUse", tool_response=tr, duration_ms=22 if launched else 4957)
+    return p
+
+
+def bg_tasks(*agents):
+    return [{"id": a, "type": "subagent", "status": "running", "description": "probe",
+             "agent_type": "coder"} for a in agents]
+
+
+def bg_hook(s, name, *, reporter, **kw):
+    base = {"session_id": BGSID, "hook_event_name": name, "prompt_id": "p1", "cwd": "/home/agent/mezzanine"}
+    base.update(kw)
+    return hook(s, name, base, reporter=reporter)
+
+
+STEPS = {
+    "prompt": lambda s, r: bg_hook(s, "UserPromptSubmit", reporter=r, prompt="go"),
+    "pre1": lambda s, r: hook(s, "PreToolUse", bg_pre("toolu_D1"), reporter=r),
+    "pre2": lambda s, r: hook(s, "PreToolUse", bg_pre("toolu_D2", "second"), reporter=r),
+    "start1": lambda s, r: bg_hook(s, "SubagentStart", reporter=r, agent_id=AG1, agent_type="coder"),
+    "start2": lambda s, r: bg_hook(s, "SubagentStart", reporter=r, agent_id=AG2, agent_type="coder"),
+    "launch1": lambda s, r: hook(s, "PostToolUse", bg_post("toolu_D1", AG1), reporter=r),
+    "launch2": lambda s, r: hook(s, "PostToolUse", bg_post("toolu_D2", AG2, desc="second"), reporter=r),
+    "done1": lambda s, r: hook(s, "PostToolUse", bg_post("toolu_D1", AG1, launched=False), reporter=r),
+    "inner1": lambda s, r: hook(s, "PreToolUse", pre(tool="Bash", ti={"command": "ls"}, tuid="toolu_I1",
+                                                     session_id=BGSID, agent_id=AG1), reporter=r),
+    "stop_bg1": lambda s, r: bg_hook(s, "Stop", reporter=r, stop_hook_active=False,
+                                     background_tasks=bg_tasks(AG1), session_crons=[]),
+    "stop_bg12": lambda s, r: bg_hook(s, "Stop", reporter=r, stop_hook_active=False,
+                                      background_tasks=bg_tasks(AG1, AG2), session_crons=[]),
+    "stop_none": lambda s, r: bg_hook(s, "Stop", reporter=r, stop_hook_active=False,
+                                      background_tasks=[], session_crons=[]),
+    "foreign_stop": lambda s, r: bg_hook(s, "SubagentStop", reporter=r, agent_id=FOREIGN, agent_type="x",
+                                         stop_hook_active=False, background_tasks=[], session_crons=[]),
+    "sstop1": lambda s, r: bg_hook(s, "SubagentStop", reporter=r, agent_id=AG1, agent_type="coder",
+                                   stop_hook_active=False, background_tasks=[], session_crons=[]),
+    "sstop2": lambda s, r: bg_hook(s, "SubagentStop", reporter=r, agent_id=AG2, agent_type="coder",
+                                   stop_hook_active=False, background_tasks=[], session_crons=[]),
+    "end": lambda s, r: bg_hook(s, "SessionEnd", reporter=r, reason="other"),
+}
+
+
+def dispatch_trace(name, steps, reporter=REPORTER):
+    """Drive `steps` in order; return (events, counters, {step: [kinds emitted by that step]})."""
+    s = seat(name)
+    bg_hook(s, "SessionStart", reporter=reporter, source="startup")
+    per = {}
+    for st in steps:
+        before = len(s.events())
+        STEPS[st](s, reporter)
+        per.setdefault(st, []).extend(e["kind"] for e in s.events()[before:])
+    return s.events(), s.counters(), per
+
+
+def dispatch_closes(ev, call_id):
+    return [(e["data"]["outcome"], e["data"]["close_source"], e["data"]["match"])
+            for e in ev if e["kind"] == "tool.end" and e["data"]["call_id"] == call_id]
+
+
+def dispatch_ids(ev):
+    return [e["data"]["call_id"] for e in ev if e["kind"] == "subagent.spawn"]
+
+
+BG_MEASURED = ["prompt", "pre1", "start1", "launch1", "inner1", "stop_bg1", "foreign_stop", "sstop1"]
+ev, ctr, per = dispatch_trace("bg-measured", BG_MEASURED)
+D1 = dispatch_ids(ev)[0]
+eq("the MEASURED background order (SubagentStart, then the launch's PostToolUse): the launch "
+   "closes nothing — the dispatch is still open, so the floor draws the intern", [], per["launch1"])
+eq("  … the parent's turn ends while the subagent runs, and its Stop does NOT reap the dispatch "
+   "the payload lists as a running background task", ["turn.end"], per["stop_bg1"])
+te = [e for e in ev if e["kind"] == "turn.end"][0]["data"]
+eq("  … so that turn.end is clean: aborted_call_ids [], open_calls_at_end 0, background_tasks_open 1",
+   ([], 0, 1), (te["aborted_call_ids"], te["open_calls_at_end"], te["background_tasks_open"]))
+eq("  … a SubagentStop for an agent no dispatch launched (the harness fires these far more often "
+   "than dispatches) closes nothing", [], per["foreign_stop"])
+eq("  … the subagent's inner call names its still-open parent", D1,
+   [e for e in ev if e["kind"] == "tool.start" and e["data"]["tool_name"] == "Bash"][0]["data"]["parent_call_id"])
+eq("  … and the dispatch's ONE close is its own SubagentStop, completed, matched by agent_id",
+   [("completed", "subagent_stop_hook", "agent_id")], dispatch_closes(ev, D1))
+eq("  … with exactly one subagent.stop, from the same hook",
+   ["subagent_stop_hook"], [e["data"]["close_source"] for e in ev if e["kind"] == "subagent.stop"])
+eq("  … and the counters say which rule fired", (1, 1, 1),
+   (ctr.get("dispatch_background_launch"), ctr.get("dispatch_kept_across_turn_reap"),
+    ctr.get("subagent_stop_unmatched")))
+
+# RED 1 — the defect as shipped: the launch's PostToolUse closes the dispatch.
+p_close_on_launch = plant(("if (!tr || typeof tr !== 'object' || tr.status !== 'async_launched') return null;",
+                           "return null;"))
+evr, ctrr, perr = dispatch_trace("bg-measured-red-launch", BG_MEASURED, p_close_on_launch)
+D1r = dispatch_ids(evr)[0]
+eq("RED: reading no launch marker closes the dispatch at its launch, ~tens of ms after it opened "
+   "— the empty side table", ["tool.end", "subagent.stop"], perr["launch1"])
+eq("  … and the real SubagentStop then finds nothing to close",
+   [("completed", "post_tool_use", "harness_ref")], dispatch_closes(evr, D1r))
+
+# RED 2 — keep it open but let the turn reap take it: the intern vanishes when the parent's turn
+# ends, minutes before the subagent does.
+p_turn_reaps = plant(("  const stillRunning = (e) => !!(e.is_dispatch && e.child_agent_id && running.has(e.child_agent_id));",
+                      "  const stillRunning = (e) => false;"))
+evt, _, pert = dispatch_trace("bg-measured-red-turnreap", BG_MEASURED, p_turn_reaps)
+eq("RED: a turn reap blind to background_tasks aborts the running subagent's dispatch at the "
+   "parent's Stop", [("aborted", "reap_turn_boundary", "reap")], dispatch_closes(evt, dispatch_ids(evt)[0]))
+
+# RED 3 — the SubagentStop fallback considering BOUND dispatches: the first foreign stop takes it.
+p_any_sole = plant(("const dispatches = [...ix.calls.values()].filter((e) => e.is_dispatch && !e.child_agent_id);",
+                    "const dispatches = [...ix.calls.values()].filter((e) => e.is_dispatch);"))
+evf, _, perf = dispatch_trace("bg-measured-red-foreign", BG_MEASURED, p_any_sole)
+eq("RED: a sole-open fallback over BOUND dispatches lets a foreign agent's SubagentStop close the "
+   "running subagent's dispatch", [("completed", "subagent_stop_hook", "sole_open")],
+   dispatch_closes(evf, dispatch_ids(evf)[0]))
+
+# The OTHER order of launch and binding: the launch's PostToolUse before SubagentStart. The
+# launch's own agentId binds the call exactly, so SubagentStart has nothing left to decide.
+ev2, ctr2, _ = dispatch_trace("bg-launch-first", ["prompt", "pre1", "launch1", "start1", "stop_bg1", "sstop1"])
+eq("launch BEFORE SubagentStart: still one close, by SubagentStop, matched by agent_id",
+   [("completed", "subagent_stop_hook", "agent_id")], dispatch_closes(ev2, dispatch_ids(ev2)[0]))
+eq("  … bound by the launch's own agentId", 1, ctr2.get("agent_bind_launch_ref"))
+
+# Two dispatches in parallel, both launched before either SubagentStart: the sole-unbound rule
+# can bind neither (ambiguous), so only the launch's exact agentId can tie each stop to its call.
+PAR = ["prompt", "pre1", "pre2", "start1", "start2", "launch1", "launch2", "stop_bg12", "sstop2", "sstop1"]
+evp, ctrp, _ = dispatch_trace("bg-parallel", PAR)
+P1, P2 = dispatch_ids(evp)
+eq("two parallel background dispatches each close at their OWN SubagentStop, by agent_id",
+   ([("completed", "subagent_stop_hook", "agent_id")], [("completed", "subagent_stop_hook", "agent_id")]),
+   (dispatch_closes(evp, P1), dispatch_closes(evp, P2)))
+p_no_launch_bind = plant(("          journal(ctx.spool, { k: 'bind', call_id: entry.call_id, child_agent_id: launch.agentId });\n"
+                          "          entry.child_agent_id = launch.agentId;\n",
+                          ""))
+evpr, _, _ = dispatch_trace("bg-parallel-red", PAR, p_no_launch_bind)
+eq("RED: without the launch's exact binding the ambiguous parallel pair is bound to nothing, so "
+   "the parent's Stop cannot see them in background_tasks and aborts both while they run",
+   ([("aborted", "reap_turn_boundary", "reap")], [("aborted", "reap_turn_boundary", "reap")]),
+   tuple(dispatch_closes(evpr, c) for c in dispatch_ids(evpr)))
+
+# SubagentStop BEFORE the dispatch's own PostToolUse — the 2.1.240 / 2.1.247-headless order, and
+# a background launch whose subagent finished inside the launch window. The second signal finds
+# the call closed and puts nothing on the wire (§ 8.5).
+for label, steps in (("foreground", ["prompt", "pre1", "start1", "sstop1", "done1"]),
+                     ("background", ["prompt", "pre1", "start1", "sstop1", "launch1"])):
+    evo, ctro, pero = dispatch_trace(f"order-stop-first-{label}", steps)
+    eq(f"{label}, SubagentStop FIRST: one close, by SubagentStop", [("completed", "subagent_stop_hook", "agent_id")],
+       dispatch_closes(evo, dispatch_ids(evo)[0]))
+    eq(f"  … and the late PostToolUse emits nothing — no synthesized phantom `Agent` call",
+       ([], 0), (pero[steps[-1]], len([e for e in evo if e["data"].get("synthesized")])))
+    eq("  … counted", 1, ctro.get("dispatch_close_after_subagent_stop"))
+p_no_absorb = plant(("        if (r.close_source === 'subagent_stop_hook' && e.harness_call_ref) {",
+                     "        if (false) {"))
+evn, _, pern = dispatch_trace("order-stop-first-red", ["prompt", "pre1", "start1", "sstop1", "done1"], p_no_absorb)
+eq("RED: with no trace of the SubagentStop close, the late PostToolUse synthesizes a phantom "
+   "`Agent` call pair", ["tool.start", "tool.end"], pern["done1"])
+
+# A foreground dispatch whose PostToolUse comes FIRST keeps the behaviour it always had.
+evg, ctrg, _ = dispatch_trace("order-fg-post-first", ["prompt", "pre1", "start1", "done1", "sstop1"])
+eq("foreground, PostToolUse first (status completed): closes at its PostToolUse, exactly as before",
+   [("completed", "post_tool_use", "harness_ref")], dispatch_closes(evg, dispatch_ids(evg)[0]))
+eq("  … and is not counted as a background launch", None, ctrg.get("dispatch_background_launch"))
+
+# THE BACKSTOPS — a dispatch whose SubagentStop never arrives is still closed.
+evs, _, pers = dispatch_trace("bg-backstop-turn", ["prompt", "pre1", "start1", "launch1", "stop_none"])
+Ds = dispatch_ids(evs)[0]
+eq("backstop: a Stop whose background_tasks no longer lists the subagent reaps its dispatch",
+   [("aborted", "reap_turn_boundary", "reap")], dispatch_closes(evs, Ds))
+eq("  … and that turn.end names it", [Ds], [e for e in evs if e["kind"] == "turn.end"][0]["data"]["aborted_call_ids"])
+p_never_reap = plant(("  const stillRunning = (e) => !!(e.is_dispatch && e.child_agent_id && running.has(e.child_agent_id));",
+                      "  const stillRunning = (e) => !!e.is_dispatch;"))
+evsr, _, _ = dispatch_trace("bg-backstop-turn-red", ["prompt", "pre1", "start1", "launch1", "stop_none"], p_never_reap)
+eq("RED: exempting every dispatch from the turn reap leaves it open with nothing listing it",
+   [], dispatch_closes(evsr, dispatch_ids(evsr)[0]))
+eve, _, _ = dispatch_trace("bg-backstop-session", ["prompt", "pre1", "start1", "launch1", "stop_bg1", "end"])
+eq("backstop: the session boundary reaps a background dispatch still open at SessionEnd",
+   [("aborted", "reap_session_boundary", "reap")], dispatch_closes(eve, dispatch_ids(eve)[0]))
+p_session_spares = plant(("  const aborted = reap(ctx, ix, (e) => e.session_id === sessionId, abortReason, 'reap_session_boundary', atMs);",
+                          "  const aborted = reap(ctx, ix, (e) => e.session_id === sessionId && !e.child_agent_id, abortReason, 'reap_session_boundary', atMs);"))
+ever, _, _ = dispatch_trace("bg-backstop-session-red", ["prompt", "pre1", "start1", "launch1", "stop_bg1", "end"], p_session_spares)
+eq("RED: a session reap that spares bound dispatches leaves one open past its session's end",
+   [], dispatch_closes(ever, dispatch_ids(ever)[0]))
+
+redgreen("a background dispatch stays open until its SubagentStop (§ 8.5, card#11799)",
+         "close on the launch's PostToolUse -> dispatch closed tens of ms after opening, no intern; "
+         "turn reap blind to background_tasks -> aborted at the parent's Stop; sole-open over bound "
+         "dispatches -> a foreign SubagentStop closes it; no launch binding -> a parallel pair is "
+         "aborted at the parent's Stop; no SubagentStop trace -> a late PostToolUse synthesizes a phantom Agent pair; "
+         "every-dispatch turn exemption or a session reap sparing bound calls -> a lost SubagentStop "
+         "leaves the dispatch open",
+         "async_launched keeps the call open; its one close is its own SubagentStop (agent_id), in "
+         "both launch/bind orders and for a parallel pair; a Stop listing the subagent leaves it open "
+         "with a clean turn.end; a foreign SubagentStop closes nothing; SubagentStop-first gives one "
+         "close and a silent, counted PostToolUse in both modes; a foreground PostToolUse-first "
+         "dispatch closes as before; Stop not listing it and SessionEnd both still reap it")
+
+
+print("\n== 21. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
 # WHY THIS IS A CHECK AND NOT JUST A TEARDOWN. Every hook that finds a stale lock forks a real
 # detached flusher (§ 2.3, P-7) — correct reporter behaviour, and nobody's bug in the product —
 # and that process loops until it is signalled. A teardown that quietly reaped them would leave

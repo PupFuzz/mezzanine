@@ -1001,6 +1001,14 @@ processes, as Step 5 reports.
   heartbeat and its inferred close, follow once Step 5's flusher is restarted, because a running
   flusher keeps the code it started with. Step 8's item 5 removes `write.lock` with the rest of the
   spool directory.
+- **A seat's subagents appear on the floor only on a build that includes card#11799.** The harness
+  runs a dispatched subagent as a background task, so the dispatch tool returns as soon as the
+  subagent starts. An older build closed the dispatch call then, and the floor draws an intern only
+  for an open dispatch call, so it drew none. A build that includes card#11799 keeps the call open
+  until the subagent's own `SubagentStop` (D1 § 8.5). Hooks load the reporter when they fire, so the
+  next dispatch after Step 1's artifact is replaced appears. Restart Step 5's flusher too: a running
+  flusher keeps the code it started with, and it is the flusher that writes the call index snapshot
+  the hooks read.
 - **No context gauge** while Step 4(b) is not applied, which is the sandbox's state.
 - **No Windows procedure exists yet.** One is owed when the Windows agent seat onboards, a real
   Windows machine. By operator ruling on 2026-09-13, D1 § 13's Windows validation is not required

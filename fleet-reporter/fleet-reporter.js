@@ -1089,6 +1089,15 @@ function applyIndexRecord(ix, r, nowMs) {
         if (turn && turn.prompt_id === e.prompt_id && r.outcome === 'failed') turn.failed_calls += 1;
         ix.calls.delete(r.call_id);
         touch(e.session_id);
+        // § 8.5 — a dispatch call closed by its SubagentStop keeps its harness reference for the
+        // tombstone window, so the dispatch call's OWN close, when it is the second of the two
+        // signals, matches it exactly and is absorbed (card#11799). Without it that close matched
+        // nothing and fell through to the heuristics: a phantom synthesized `Agent` pair, or a
+        // `sole_open` close of some unrelated running call. Not an abort: `closed_by` is what
+        // tells the PostToolUse handler this entry was closed `completed` by the other signal.
+        if (r.close_source === 'subagent_stop_hook' && e.harness_call_ref) {
+          ix.tombstones.set(r.call_id, Object.assign({}, e, { closed_at: r.at, closed_by: 'subagent_stop_hook' }));
+        }
       }
       break;
     }
@@ -1596,6 +1605,44 @@ function durationFor(entry, payload, atMs) {
   return { duration_ms: null, duration_source: 'none' };
 }
 
+/* ── A BACKGROUND DISPATCH OUTLIVES THE CALL THAT LAUNCHED IT (§ 8.5, card#11799) ─────────────
+ * The harness runs a dispatched subagent as a background task: the dispatch tool returns as soon
+ * as the subagent is LAUNCHED, so its PostToolUse fires tens of ms after its PreToolUse while the
+ * subagent runs on for minutes. The tool says so itself — `tool_response.status` is
+ * `"async_launched"` and `tool_response.agentId` is the launched subagent's `agent_id` — which
+ * is the discriminator: a call whose tool returned on LAUNCH has not finished, and closing it
+ * there emptied the floor's side table (an intern IS an open dispatch call). A foreground
+ * dispatch returns `status: "completed"` after its subagent finished and closes exactly as
+ * before. Never a timing heuristic: the harness's own word for the case is what is read. */
+function asyncLaunch(payload) {
+  const tr = payload.tool_response;
+  if (!tr || typeof tr !== 'object' || tr.status !== 'async_launched') return null;
+  const id = tr.agentId;
+  if (typeof id !== 'string' || !id || bytes(id) > 64) {
+    count('payload_key_missing.tool_response.agentId');
+    return { agentId: null };
+  }
+  return { agentId: id };
+}
+
+/* § 8.3 — the selector of a TURN reap (Stop, StopFailure, SubagentStop), given the calls the turn
+ * owns. It drops a dispatch call whose subagent the payload's `background_tasks` lists: the harness
+ * lists a task only while it is `running` or `pending` AND backgrounded, and a launched subagent's
+ * task id IS its `agent_id`. The turn ended, the subagent did not, and its SubagentStop is what
+ * closes that call. A dispatch the list does NOT name is reaped as before — the backstop for a
+ * SubagentStop that never arrives. One primitive for every turn reap, so the rule cannot differ
+ * between the parent's turn and a subagent's. */
+function turnReapScope(ix, payload, ownedByTurn) {
+  const running = new Set();
+  if (Array.isArray(payload.background_tasks)) {
+    for (const t of payload.background_tasks) if (t && typeof t === 'object' && typeof t.id === 'string') running.add(t.id);
+  }
+  const stillRunning = (e) => !!(e.is_dispatch && e.child_agent_id && running.has(e.child_agent_id));
+  const kept = [...ix.calls.values()].filter((e) => ownedByTurn(e) && stillRunning(e)).length;
+  if (kept) count('dispatch_kept_across_turn_reap', kept);
+  return (e) => ownedByTurn(e) && !stillRunning(e);
+}
+
 /* Close one ledger entry as ABORTED and emit its tool.end (+ subagent.stop when it is a
  * dispatch call). Used by every row of § 8.3's reap table. */
 function reapOne(ctx, entry, abortReason, closeSource, atMs) {
@@ -1785,7 +1832,9 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
     case 'StopFailure': {
       const isFailure = hookName === 'StopFailure';
       const scope = agentId || 'main';
-      const inScope = (e) => e.session_id === sid && (e.agent_scope_id || 'main') === scope;
+      // A dispatch whose subagent the payload lists as a running background task is not part of
+      // the turn that ended — it is neither reaped nor counted in `open_calls_at_end`.
+      const inScope = turnReapScope(ix, payload, (e) => e.session_id === sid && (e.agent_scope_id || 'main') === scope);
       const openBefore = [...ix.calls.values()].filter(inScope).length;
       const aborted = reap(ctx, ix, inScope, isFailure ? 'api_error' : 'turn_boundary', 'reap_turn_boundary', atMs);
       // § 8.3 — turn.end is emitted ONLY when the triggering payload carries no agent_id: a
@@ -1874,8 +1923,29 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         });
         entry = { call_id: callId, session_id: sid, tool_name: toolName, started_at: rfc3339(atMs), is_dispatch: false, prompt_id: payload.prompt_id || null };
         matchKind = 'synthesized';
+      } else if (m.tombstone && entry.closed_by === 'subagent_stop_hook') {
+        // § 8.5 — the dispatch call's own close arriving SECOND: its SubagentStop already closed
+        // it and put the close on the wire. A second close for one call_id is a duplicate, so
+        // nothing is emitted; only the permission fact it carries is honoured (§ 6.13).
+        count('dispatch_close_after_subagent_stop');
+        if (!failed) grantOnClose(ctx, ix, sid, entry.call_id, atMs);
+        break;
       } else if (m.tombstone) {
         count('tombstone_late_close');   // the reap was too eager for this call
+      }
+      // § 8.5 — a dispatch whose tool returned on LAUNCH stays open: its SubagentStop closes it.
+      const launch = !failed && !m.tombstone && entry.is_dispatch ? asyncLaunch(payload) : null;
+      if (launch) {
+        count('dispatch_background_launch');
+        if (launch.agentId && entry.child_agent_id !== launch.agentId) {
+          // The EXACT binding: the tool names the subagent it launched, so this outranks
+          // SubagentStart's sole-unbound rule and corrects it where that rule guessed.
+          journal(ctx.spool, { k: 'bind', call_id: entry.call_id, child_agent_id: launch.agentId });
+          entry.child_agent_id = launch.agentId;
+          count('agent_bind_launch_ref');
+        }
+        grantOnClose(ctx, ix, sid, entry.call_id, atMs);
+        break;
       }
       /* § 6.6's KILL SIGNATURE — two independent signals, and NEITHER MAY BE PROMOTED TO A SOLE
        * RULE. `is_interrupt` is the harness's own kill-vs-fail discriminator, but it is MEASURED
@@ -1926,11 +1996,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
           duration_ms: d.duration_ms, close_source: failed ? 'post_tool_use_failure' : 'post_tool_use',
         });
       }
-      // § 6.13 rows 2 and 3 — the tool ran, so permission was given.
-      const a = ix.attention.get(sid);
-      if (a && outcome !== 'aborted' && (a.call_id === entry.call_id || a.call_id === null)) {
-        resolveAttention(ctx, ix, sid, 'granted', 'call_close', atMs);
-      }
+      if (outcome !== 'aborted') grantOnClose(ctx, ix, sid, entry.call_id, atMs);
       break;
     }
 
@@ -1941,8 +2007,11 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       // There is NO exact-reference binding row, because the payload carries no reference to
       // bind on: SubagentStart's complete key set at 2.1.240 has no tool_use_id and no
       // parent_tool_use_id (MEASURED). prompt_id does not discriminate — parent and subagent
-      // share it. So the sole-unbound rule carries the fleet, and its ambiguous case is
-      // counted rather than guessed.
+      // share it. So the sole-unbound rule is this hook's only rule, and its ambiguous case is
+      // counted rather than guessed. The EXACT binding comes from elsewhere: a background
+      // launch's own PostToolUse names the agent it launched (§ 8.5, card#11799), and a call it
+      // already bound to THIS agent_id must not have some other call bound to it as well.
+      if ([...ix.calls.values()].some((e) => e.child_agent_id === agentId)) break;
       const unbound = [...ix.calls.values()].filter((e) => e.session_id === sid && e.is_dispatch && !e.child_agent_id);
       if (unbound.length === 1) {
         journal(ctx.spool, { k: 'bind', call_id: unbound[0].call_id, child_agent_id: agentId });
@@ -1964,7 +2033,9 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         //    fires PreToolUse and then no close hook of any kind — had no close rule at all
         //    before its session ended. Inner calls close FIRST so a consumer never sees a
         //    parent close while its children are still open.
-        reap(ctx, ix, (e) => e.session_id === sid && e.agent_scope_id === agentId, 'turn_boundary', 'reap_turn_boundary', atMs);
+        //    A dispatch this subagent launched that the payload lists as a running background task
+        //    is exempt, by the same rule as the Stop reap (card#11799).
+        reap(ctx, ix, turnReapScope(ix, payload, (e) => e.session_id === sid && e.agent_scope_id === agentId), 'turn_boundary', 'reap_turn_boundary', atMs);
       }
       // 2. BINDING — close the dispatch call this subagent belongs to.
       let entry = null, matchKind = null;
@@ -1972,14 +2043,19 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       if (!entry) {
         // Not a defence against a missing agent_id — the key is always there. It is the
         // recovery path for a LOST bind record (a torn index-journal line), without which that
-        // call would sit open to its 60-minute orphan ceiling.
-        const dispatches = [...ix.calls.values()].filter((e) => e.is_dispatch);
+        // call would sit open to its 60-minute orphan ceiling. So it considers UNBOUND calls
+        // only: a call bound to another agent_id is that agent's by construction, and the
+        // harness fires SubagentStop for agents no dispatch launched far more often than for
+        // dispatches (card#11799) — with a background dispatch open for minutes, an unrestricted
+        // rule closed it at the first such stop.
+        const dispatches = [...ix.calls.values()].filter((e) => e.is_dispatch && !e.child_agent_id);
         if (dispatches.length === 1) { entry = dispatches[0]; matchKind = 'sole_open'; }
       }
       if (!entry) { count('subagent_stop_unmatched'); break; }
       const d = durationFor(entry, {}, atMs);
-      journal(ctx.spool, { k: 'close', call_id: entry.call_id, close_source: 'subagent_stop_hook', outcome: 'completed' });
-      ix.calls.delete(entry.call_id);
+      const closeRec = { k: 'close', call_id: entry.call_id, close_source: 'subagent_stop_hook', outcome: 'completed' };
+      journal(ctx.spool, closeRec);
+      applyIndexRecord(ix, closeRec, atMs);
       // The payload carries agent_id, agent_type, agent_transcript_path, last_assistant_message,
       // stop_hook_active, background_tasks and session_crons — and NO error indicator of any
       // kind (MEASURED). The hook genuinely cannot distinguish a subagent that succeeded from
@@ -2055,6 +2131,14 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       count(`payload_key_missing.unsubscribed_hook.${hookName}`);
       break;
   }
+}
+
+/* § 6.13 rows 2 and 3 — a tool call's own close hook means the tool ran, so permission was given.
+ * One primitive for every PostToolUse branch: the ordinary close, the launch of a background
+ * dispatch (which ran without closing), and a dispatch close absorbed after its SubagentStop. */
+function grantOnClose(ctx, ix, sid, callId, atMs) {
+  const a = ix.attention.get(sid);
+  if (a && (a.call_id === callId || a.call_id === null)) resolveAttention(ctx, ix, sid, 'granted', 'call_close', atMs);
 }
 
 function openAttention(ctx, ix, sid, source, kind, atMs) {
@@ -3600,10 +3684,10 @@ const READS = {
   Stop: { keys: ['session_id', 'hook_event_name', 'prompt_id', 'stop_hook_active', 'background_tasks'], enums: {} },
   StopFailure: { keys: ['session_id', 'hook_event_name', 'error'], enums: { error: ENUM.stopfailure_error } },
   PreToolUse: { keys: ['session_id', 'hook_event_name', 'tool_name', 'tool_input', 'tool_use_id', 'prompt_id', 'agent_id'], enums: {} },
-  PostToolUse: { keys: ['session_id', 'hook_event_name', 'tool_name', 'tool_use_id', 'duration_ms', 'prompt_id'], enums: {} },
+  PostToolUse: { keys: ['session_id', 'hook_event_name', 'tool_name', 'tool_use_id', 'duration_ms', 'prompt_id', 'tool_response'], enums: {} },
   PostToolUseFailure: { keys: ['session_id', 'hook_event_name', 'tool_name', 'tool_use_id', 'duration_ms', 'is_interrupt', 'error', 'prompt_id'], enums: {} },
   SubagentStart: { keys: ['session_id', 'hook_event_name', 'agent_id'], enums: {} },
-  SubagentStop: { keys: ['session_id', 'hook_event_name', 'agent_id'], enums: {} },
+  SubagentStop: { keys: ['session_id', 'hook_event_name', 'agent_id', 'background_tasks'], enums: {} },
   PreCompact: { keys: ['session_id', 'hook_event_name', 'trigger'], enums: { trigger: ENUM.precompact_trigger } },
   PostCompact: { keys: ['session_id', 'hook_event_name'], enums: {} },
   PermissionRequest: { keys: ['session_id', 'hook_event_name', 'tool_name'], enums: {} },

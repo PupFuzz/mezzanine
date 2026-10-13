@@ -1297,7 +1297,7 @@ reference, the measurement wins and the row says so.
 | **`Stop` does not fire inside a subagent** — a subagent's completion fires `SubagentStop` only | — | **MEASURED** — a turn that dispatched one subagent produced exactly one `Stop`, after the subagent's `SubagentStop` and after the dispatching call's `PostToolUse`. *(At 2.1.245 the fact holds and that ORDERING does not: the `Stop` fires while the subagent is still running, before its `SubagentStop` — the background-task row above. The fact and its evidence sentence are separated here because only the second moved.)* This was the document's highest-cost unverified fact: if `Stop` *had* fired per subagent, [§ 8.3](#83-the-reap-rules)'s reap would have aborted the parent's own in-flight calls and [§ 6.4](#64-turnend) would have minted a false idle per subagent. [§ 8.3](#83-the-reap-rules) is still `agent_id`-scoped, because the scoping is free and fails safe if this ever changes |
 | The subagent-dispatch tool's `tool_name` is **`"Agent"`** on this build | `tool_name` | **MEASURED** — `{"tool_name":"Agent","tool_input":{"description":…,"prompt":…}}`. The model-facing name is `Task`; the *hook payload* says `Agent`. [§ 6.7](#67-subagentspawn) matches the set `{"Agent","Task"}` and counts which fired, because a design keyed on `"Task"` alone would emit no `subagent.spawn` on this build at all |
 | `Stop` carries `stop_hook_active` (bool), `last_assistant_message`, `background_tasks`, `session_crons` | `stop_hook_active` | **MEASURED** — `false` on the reproduced `Stop` capture and on every `Stop` of the capture run; settles what an earlier draft parked as unverified. `background_tasks` was DOCS-CITED and is now **MEASURED at 2.1.245** (card #7337): a `Stop` fired while a dispatched subagent ran carried `[{id, type: "subagent", status: "running", description, agent_type}]`, so the field does distinguish "session is done" from "paused waiting on background work" — [§ 6.4](#64-turnend) reads its **length** and is where the idle rule that consumes it lives |
-| A dispatched subagent runs as a **background task**: the dispatch call's own `PostToolUse` fires **4–45 ms after `SubagentStart`** and closes it `completed`, while the subagent runs on and its `SubagentStop` arrives **8.2 s and 18.9 s later** (2 observations; a third run's session ended before it fired), matching nothing | `background_tasks`, `tool_use_id` | **MEASURED at 2.1.245** (card #7337, 3 of 3 dispatch runs; `subagent_stop_unmatched` and `agent_bind_unresolved` counted it on the seat). **This contradicts the 2.1.240 measurement in [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)** that `SubagentStop` arrives first and is usually the hook that closes the dispatch call. Consequences: [§ 8.7](#87-worked-flow--a-clear-during-a-subagents-bash-call)'s two-open-calls trace does not reproduce, `parent_call_id` is `null` on every subagent-scoped call, and the parent's turn ends clean while the subagent works — [§ 6.4](#64-turnend)'s amendment. **No capture is committed** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s declined-capture ruling stands); the rig that reproduces it is `tools/at1-kill-vs-complete/`. ⚠ **CONTESTED at 2.1.247 (card #7930, 3 of 3 headless dispatch runs):** the dispatch call's `PostToolUse` fires **45–72 ms AFTER `SubagentStop`**, carrying `duration_ms` equal to the subagent's whole run (3300, 3811, 4957 ms), and `background_tasks` is `[]` on both `SubagentStop` and `Stop` — which is the **2.1.240** behaviour, not this row's. **Whether that is a version revert or a MODE difference is NOT established, and the two runs differ in both:** this row was measured through a real TUI (`tools/at1-kill-vs-complete/drive.py` types `/clear` into a live session), and both the 2.1.240 capture and the 2.1.247 re-capture were headless `claude -p`. So this row is stated build-scoped on evidence that may be mode-scoped, and settling it would need the TUI rig re-run at 2.1.247 — the one measurement that varies version alone. **DECLINED by pm on 2026-08-27, and this row is therefore finished rather than open:** [§ 8.7](#87-worked-flow--a-clear-during-a-subagents-bash-call) already requires **both** lifecycles to be handled and [AT-1](#at-1-kill-vs-complete-the-headline-test) carries one GREEN case for each, so nothing depends on the answer — settling it would buy only the right to delete a trace this document must keep anyway. **Nothing here has been edited to prefer one reading over the other** |
+| A dispatched subagent runs as a **background task**: the dispatch call's own `PostToolUse` fires **4–45 ms after `SubagentStart`** and closes it `completed`, while the subagent runs on and its `SubagentStop` arrives **8.2 s and 18.9 s later** (2 observations; a third run's session ended before it fired), matching nothing | `background_tasks`, `tool_use_id` | **MEASURED at 2.1.245** (card #7337, 3 of 3 dispatch runs; `subagent_stop_unmatched` and `agent_bind_unresolved` counted it on the seat). **This contradicts the 2.1.240 measurement in [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)** that `SubagentStop` arrives first and is usually the hook that closes the dispatch call. Consequences: [§ 8.7](#87-worked-flow--a-clear-during-a-subagents-bash-call)'s two-open-calls trace does not reproduce, `parent_call_id` is `null` on every subagent-scoped call, and the parent's turn ends clean while the subagent works — [§ 6.4](#64-turnend)'s amendment. **No capture is committed** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s declined-capture ruling stands); the rig that reproduces it is `tools/at1-kill-vs-complete/`. ⚠ **CONTESTED at 2.1.247 (card #7930, 3 of 3 headless dispatch runs):** the dispatch call's `PostToolUse` fires **45–72 ms AFTER `SubagentStop`**, carrying `duration_ms` equal to the subagent's whole run (3300, 3811, 4957 ms), and `background_tasks` is `[]` on both `SubagentStop` and `Stop` — which is the **2.1.240** behaviour, not this row's. **Whether that is a version revert or a MODE difference is NOT established, and the two runs differ in both:** this row was measured through a real TUI (`tools/at1-kill-vs-complete/drive.py` types `/clear` into a live session), and both the 2.1.240 capture and the 2.1.247 re-capture were headless `claude -p`. So this row is stated build-scoped on evidence that may be mode-scoped, and settling it would need the TUI rig re-run at 2.1.247 — the one measurement that varies version alone. **DECLINED by pm on 2026-08-27, and this row is therefore finished rather than open:** [§ 8.7](#87-worked-flow--a-clear-during-a-subagents-bash-call) already requires **both** lifecycles to be handled and [AT-1](#at-1-kill-vs-complete-the-headline-test) carries one GREEN case for each, so nothing depends on the answer — settling it would buy only the right to delete a trace this document must keep anyway. **Nothing here has been edited to prefer one reading over the other** ⚠ **SUPERSEDED as a design input (card#11799):** "nothing depends on the answer" was false — the reporter closed the dispatch call at whichever close came first, so in this row's order no intern was ever drawn. The background order is **MEASURED as the only order on this project's interactive seats at 2.1.266–2.1.296**, and the dispatch tool's own `tool_response` now decides it per call rather than either reading being preferred: [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) owns the rule and its evidence |
 | A tool call killed by a `/clear` fires **`PostToolUseFailure`** carrying `error: "Exit code 137"`, `is_interrupt: false`, under the **new** `session_id`, 369 ms and 375 ms after `SessionEnd(reason: "clear")` | `error`, `is_interrupt` | **MEASURED at 2.1.245** (card #7337, 2 of 2 subagent-kill runs). [§ 8.1](#81-the-problem-restated) said no such hook fires; [§ 6.6](#66-toolend)'s kill signature and [§ 8.6](#86-server-side-interpretation-of-open-call-state)'s override exclusion are what this fact costs. Whether it differs from 2.1.240 is **not established** — the upstream capture was not re-read |
 | **`StopFailure`** fires instead of `Stop` when a turn ends on an API error, with `error` ∈ `rate_limit` \| `overloaded` \| `server_error` \| `authentication_failed` \| `billing_error` \| `invalid_request` \| `model_not_found` \| `max_output_tokens` \| `oauth_org_not_allowed` \| `account_on_hold` \| `unknown` | `error`, `error_details` | **DOCS-CITED** (binary enum declaration + reference, 2026-08-23). **Not drivable** — driving it means provoking a real rate-limit or outage. Cost if the shape is wrong: `turn.end` is still emitted from the reap path with `end_reason: "api_error"` and a null `api_error_type`, so *stalled* stays reachable and only the sub-classification is lost. Closed by the first real rate-limited turn on an instrumented seat, which `enum_value_unknown.turn.end.api_error_type` will announce. The eleven values are the harness's; [§ 6.4](#64-turnend) adds a twelfth, `unrecognised`, as the coercion target, because this set's own `unknown` is a real harness member and the two must not collide ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)) |
 | `Notification` carries `notification_type` (string), `message` (string) and `title` (optional) | `notification_type` | **DOCS-CITED** (binary payload schema, 2026-08-23) — **not drivable headlessly**; a notification needs an interactive surface. Note two things the schema settles: a `message` field **does** exist, and `notification_type` is typed as a plain **string**, not a closed enum — so the wire contract is an **open set**: [§ 6.12](#612-attentionrequest) emits nothing for a type it does not recognise and counts it as `enum_value_unknown.notification_type`, rather than coercing it onto a wire value, because the suppression happens before rule 4 could reach it. There is **no** `notification_metadata` object on this build, so a notification cannot name a tool call |
@@ -1312,7 +1312,9 @@ reference, the measurement wins and the row says so.
 | The harness offers further hook events this design does **not** subscribe: `PostToolBatch`, `Setup`, `UserPromptExpansion`, `TeammateIdle`, `TaskCreated`, `TaskCompleted`, `Elicitation`, `ElicitationResult`, `ConfigChange`, `InstructionsLoaded`, `WorktreeCreate`, `WorktreeRemove`, `FileChanged`, `DirectoryAdded`, `MessageDisplay`, `CwdChanged` | — | **DOCS-CITED** — all 31 hook events the installed build declares, read from the binary 2026-08-23, minus the 15 subscribed above. Listed because "we did not subscribe it" and "we did not know it existed" are different states, and only the first is a decision |
 | the `Bash` tool's 10-minute timeout ceiling | — | **UNVERIFIED** against the installed build — the 15-minute orphan timeout ([§ 12.5](#125-late-completions-and-orphan-timeouts)) is derived from it and moves with it. Cost if wrong: a long `Bash` call is orphan-closed server-side before it returns, then re-opened by its late close. Closed by reading the installed build's Bash timeout |
 | nginx `client_max_body_size` on the actual deploy host | — | **UNVERIFIED** — nothing has been deployed to the prod host yet (`docs/PLAN.md` D-08). Cost if wrong: a `413` on every batch over the real limit, retried once at half size ([§ 11.5](#115-retry-and-backoff)), so a tighter limit degrades throughput rather than losing events. Read it at first deploy ([§ 4.4](#44-size-caps-and-their-derivations)) |
-| `tool_response`'s per-tool schema | — | **UNVERIFIED**, and **not needed**: which hook closed the call carries the error fact ([§ 6.6](#66-toolend)) and `PostToolUseFailure.error` carries the detail. Nothing to close |
+| `tool_response`'s per-tool schema | — | **UNVERIFIED**, and **not needed**: which hook closed the call carries the error fact ([§ 6.6](#66-toolend)) and `PostToolUseFailure.error` carries the detail. Nothing to close — **except for the dispatch tool**, below |
+| The dispatch tool's `tool_response` says whether it returned on **launch** or on **completion**: `{"isAsync": true, "status": "async_launched", "agentId", "description", "resolvedModel", "prompt", "outputFile", "canReadOutputFile", "canContinueAgent"}` for a background launch; `status` is `"completed"` when the call returned after its subagent finished | `tool_response.status`, `tool_response.agentId` | **MEASURED, by a different method from [§ 17](#17-appendix--the-captured-harness-payloads)'s** (card#11799): read off the tool results recorded in this project's seat transcripts at 2.1.266–2.1.296, every one of them `async_launched`, and the `agentId` matched against the `agent_id` the reporter's own `SubagentStart` `bind` recorded for the same dispatch. That the hook's `tool_response` is this same object is **DOCS-CITED** from the installed 2.1.296 binary, whose `PostToolUse` builder passes the tool's result as `tool_response`; **no hook-stdin capture of an `Agent` `PostToolUse` exists**, so none is added to § 17. `"completed"` is DOCS-CITED from the same binary — no foreground dispatch occurred on these seats. [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) reads both fields. Cost if wrong: a launch that is not recognised closes at its `PostToolUse` as before — the empty side table, never a lost event; `dispatch_background_launch` reading zero on a dispatching seat is the observable |
+| A `background_tasks` entry for a launched subagent carries `id` equal to its `agent_id`, and the array lists only tasks that are `running` or `pending` **and** backgrounded | `background_tasks[].id` | **DOCS-CITED** from the installed 2.1.296 binary (the subagent task is registered under its `agent_id`, the payload builder filters on that status pair and `isBackgrounded`, and the binary's own task-notification contract states "The `<task-id>` value is the agent ID"); the entry's key set is MEASURED at 2.1.245 above. **No `Stop` payload naming a running subagent has been captured on this project's seats.** [§ 8.3](#83-the-reap-rules)'s turn reap reads it. Cost if wrong: no id ever matches, the reap aborts a running subagent's dispatch at its parent's `Stop` — the intern leaves early, counted by `dispatch_kept_across_turn_reap` reading zero beside a non-zero `dispatch_background_launch` |
 
 #### Harness enum value sets are bound to the binary, not transcribed
 
@@ -1970,7 +1972,7 @@ gate — the event is emitted identically whether the ref is present or absent; 
 
 | Closing hook | `outcome` | `close_source` |
 |---|---|---|
-| `PostToolUse` — fires when the call **succeeded** | `completed` | `post_tool_use` |
+| `PostToolUse` — fires when the call **succeeded**; a dispatch call's `PostToolUse` that reports a **launch** (`tool_response.status: "async_launched"`) closes nothing, and its `SubagentStop` closes it ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) | `completed` | `post_tool_use` |
 | `PostToolUseFailure` matching the **kill signature** below — the call was killed, not errored | `aborted` | `post_tool_use_failure` |
 | `PostToolUseFailure` otherwise — the call ran and errored | `failed` | `post_tool_use_failure` |
 | a reap ([§ 8.3](#83-the-reap-rules)) — no harness close was ever observed | `aborted` | `reap_session_boundary` \| `reap_turn_boundary` \| `reap_reporter_restart` |
@@ -2169,7 +2171,11 @@ Emitted immediately after that call's `tool.end`, sharing the `call_id`.
 call's own `PostToolUse`, and it is `SubagentStop` that normally closes the call while `PostToolUse`
 finds it already closed — the reverse of what "the primary close" suggests. Neither ordering is
 relied on: both close the same `call_id`, the second finds nothing open, and `close_source` records
-which one won.
+which one won. **On this project's interactive seats the order is the background one** — the
+dispatch call's `PostToolUse` reports a launch (`tool_response.status: "async_launched"`) tens of ms
+after `SubagentStart`, and that `PostToolUse` **closes nothing**: `subagent.stop` comes from the
+`SubagentStop` hook, minutes later, or from a reap
+([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call), card#11799).
 
 | `data` field | Type | Units | Null? | Bounds | Example |
 |---|---|---|---|---|---|
@@ -3313,7 +3319,7 @@ record, no process ever rewriting what another may be writing**:
 | `open` | `call_id`, `session_id`, `tool_name`, `harness_call_ref`, `started_at`, `is_dispatch` (`tool_name ∈ {"Agent","Task"}`), `agent_scope_id`, `child_agent_id` (null until bound) |
 | `close` | `call_id`, `closed_at`, `close_source` |
 | `bind` | `call_id`, `child_agent_id` — written by `SubagentStart` ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) |
-| `tombstone` | `call_id`, `closed_at` — a reaped entry, retained for late matching |
+| `tombstone` | `call_id`, `closed_at` — a reaped entry, retained for late matching. A dispatch call closed by its `SubagentStop` is retained the same way, as a tombstone its `close` record mints carrying `closed_by: "subagent_stop_hook"`, so its own late close is absorbed rather than read as a late completion ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call), card#11799) |
 | `attention_open` | `request_id`, `session_id`, `opened_at`, `call_id` — an open attention request ([§ 6.12](#612-attentionrequest)) |
 | `attention_close` | `request_id`, `closed_at`, `resolution` |
 
@@ -3376,7 +3382,7 @@ is too eager — could never fire, because the completion and the abort would na
 | Order | Key | `match` value | Precision |
 |---|---|---|---|
 | 1 | equal `harness_call_ref` on an **open** entry | `harness_ref` | exact |
-| 2 | equal `harness_call_ref` on a **tombstone** | `tombstone_ref` | exact — and by construction a *late* close, since the reap already closed this call |
+| 2 | equal `harness_call_ref` on a **tombstone** | `tombstone_ref` | exact — and by construction a *late* close, since the reap already closed this call. On a tombstone carrying `closed_by: "subagent_stop_hook"` the close is a dispatch's second signal and emits **nothing** ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) |
 | 3 | the only open call, if exactly one | `sole_open` | approximate |
 | 4 | most recent open call with the same `tool_name` (LIFO) | `lifo_tool_name` | **approximate** |
 | 5 | no match → synthesize the open ([§ 6.6](#66-toolend)) | `synthesized` | — |
@@ -3414,9 +3420,9 @@ declares aborted is closed, in spool order, *ahead of* the triggering event. Eve
 | `SessionEnd` with `reason == "clear"` | every open call of **that** `session_id` | `session_cleared` | `reap_session_boundary` |
 | `SessionEnd` with any other reason | every open call of **that** `session_id` | `session_ended` | `reap_session_boundary` |
 | `SessionStart` with `source == "clear"` | every open call of the **superseded session** ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals) names it) | `session_cleared` | `reap_session_boundary` |
-| `Stop` | every call still open in `(session_id, agent_scope_id ?? "main")` | `turn_boundary` | `reap_turn_boundary` |
-| `StopFailure` | every call still open in `(session_id, agent_scope_id ?? "main")` | `api_error` | `reap_turn_boundary` |
-| `SubagentStop` | every call still open in `(session_id, agent_scope_id)` where `agent_scope_id` equals this payload's `agent_id` — the subagent's **own inner** calls | `turn_boundary` | `reap_turn_boundary` |
+| `Stop` | every call still open in `(session_id, agent_scope_id ?? "main")`, **except a dispatch call whose bound `child_agent_id` is the `id` of an entry in this payload's `background_tasks`** (below) | `turn_boundary` | `reap_turn_boundary` |
+| `StopFailure` | every call still open in `(session_id, agent_scope_id ?? "main")`, with the same exception — which never applies, because the payload declares no `background_tasks` ([§ 17.1](#171-docs-cited-stubs--the-four-hooks-that-could-not-be-driven)) | `api_error` | `reap_turn_boundary` |
+| `SubagentStop` | every call still open in `(session_id, agent_scope_id)` where `agent_scope_id` equals this payload's `agent_id` — the subagent's **own inner** calls — with the same exception for a dispatch call it launched | `turn_boundary` | `reap_turn_boundary` |
 | the session cap evicting a session ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)) | every open call of the evicted `session_id` | `session_ended` | `reap_session_boundary` |
 | flusher start finding index entries older than its own start time | every such call | `reporter_restart` | `reap_reporter_restart` |
 
@@ -3477,7 +3483,25 @@ the harness says it ended, which is what `SessionEnd` is for.
 
 **Why `Stop` reaps.** When the main agent's turn ends, no tool call of that session can still be
 legitimately running: the turn's completion is downstream of every call it made. A call open at `Stop`
-is therefore either killed or lost, and both are correctly *not* completions. The one case this could
+is therefore either killed or lost, and both are correctly *not* completions.
+
+> **AMENDED — one call CAN legitimately outlive the turn: a background dispatch (card#11799).** A
+> subagent launched as a background task runs on after the parent's turn ends, and the dispatch call
+> that launched it is held open until its `SubagentStop`
+> ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) — that open call **is** the floor's
+> intern. Reaping it at the parent's `Stop` aborted every running subagent the moment its dispatcher
+> ended its turn, which on this project's seats is seconds after every dispatch (MEASURED: the
+> parent's `turn.end` lands with `background_tasks_open` ≥ 1 while the subagent works). So the turn
+> reap skips a dispatch call **exactly when the harness's own payload says its subagent is still a
+> running background task**: `background_tasks` lists a task only while it is `running` or
+> `pending` and backgrounded, and a launched subagent's task `id` **is** its `agent_id` (DOCS-CITED,
+> the installed 2.1.296 binary's task registration and its task-notification contract, read
+> 2026-10-13). The rule needs the call to be bound, which the launch's own `tool_response.agentId`
+> guarantees. A skipped call is neither aborted nor counted in that `turn.end`'s
+> `open_calls_at_end`, and is counted `dispatch_kept_across_turn_reap`. **The reap stays the
+> backstop:** a dispatch whose subagent the list no longer names — its `SubagentStop` lost, or never
+> fired — is reaped at the next `Stop` exactly as before, and the session-boundary rows above reap it
+> unconditionally. The one case this could
 get wrong — a close that arrives *after* the reap — is handled by the tombstone
 ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)) plus the
 late-completion rule in [§ 12.5](#125-late-completions-and-orphan-timeouts): **completion is an
@@ -3569,8 +3593,16 @@ reported a structural zero forever. The row is deleted rather than kept-and-hedg
 `agent_bind_ref` is deleted with it. `prompt_id` is on both payloads but does **not** discriminate:
 parent and subagent share it (MEASURED), which is what makes `agent_id` the only usable key.
 
-The sole-unbound rule therefore carries the fleet, and it binds correctly for every dispatch that is
-not *simultaneous*. `agent_bind_ambiguous` measures how often that happens, and a fleet where it is
+**The exact binding, at launch (card#11799).** SubagentStart carries no reference, but the dispatch
+call's **own** `PostToolUse` does, whenever the subagent was launched as a background task: its
+`tool_response` is `{"isAsync": true, "status": "async_launched", "agentId": "<the subagent's
+agent_id>", …}` (MEASURED below). The reporter then writes a `bind` record from that `agentId` —
+**exact**, so it outranks the sole-unbound rule and overwrites a binding that rule guessed differently
+— and counts `agent_bind_launch_ref`. A `SubagentStart` whose `agent_id` is already bound this way
+binds nothing further. The two arrive tens of ms apart in either order, and the result is the same.
+
+The sole-unbound rule therefore carries only foreground dispatches and the window before a launch's
+`PostToolUse`, and it binds correctly for every dispatch that is not *simultaneous*. `agent_bind_ambiguous` measures how often that happens, and a fleet where it is
 non-trivial is the trigger to revisit this — with a real capture of a parallel dispatch, which is a
 measurement nobody has taken.
 
@@ -3589,15 +3621,58 @@ named here because they read the same payload value against two different index 
 - payload carries an `agent_id` **bound** to an open call → close that call, `close_source:
   "subagent_stop_hook"`, `match: "agent_id"`. Parallel dispatches are handled correctly, which is the
   whole point of the binding;
-- `agent_id` present but **unbound**, and **exactly one** open `is_dispatch` call → close it, `match:
-  "sole_open"`. This is not a defence against a missing `agent_id` — the key is always there. It is
+- `agent_id` present but **unbound**, and **exactly one** open `is_dispatch` call **that is itself
+  unbound** → close it, `match: "sole_open"`. This is not a defence against a missing `agent_id` — the key is always there. It is
   the recovery path for a **lost `bind` record**: a torn index-journal line drops the binding while
   leaving the call open ([§ 11.4](#114-corruption-the-torn-last-line-and-a-missing-or-unreadable-statejson)), and
-  without this row that call would sit open to its 60-minute orphan ceiling;
+  without this row that call would sit open to its 60-minute orphan ceiling. **It never considers a
+  bound call** (card#11799): a call bound to another `agent_id` is that agent's by construction, and
+  the harness fires `SubagentStop` for agents no dispatch launched — on this project's seats
+  `subagent_stop_unmatched` read in the tens of thousands against hundreds of dispatches on
+  2026-10-13, in a
+  ~31 s rhythm per running subagent that never carries the running subagent's own `agent_id`
+  (MEASURED: no in-flight call of a running subagent was reaped by one). With a background dispatch
+  held open for minutes, the unrestricted rule closed it at the first such stop;
 - otherwise → emit nothing, increment `subagent_stop_unmatched`.
 
 `SubagentStop` and the dispatch call's own `PostToolUse` are two independent signals for one
-transition, in the same spirit as the two `/clear` signals. **Which of them arrives first is a
+transition, in the same spirit as the two `/clear` signals — **except when the `PostToolUse` reports
+a launch rather than a completion.**
+
+> **AMENDED — the design DID depend on the answer, and the floor showed it (card#11799).** The
+> paragraph below said the order did not matter. It mattered whenever the `PostToolUse` arrived
+> first: that hook closed the dispatch call, and an intern **is** an open dispatch call
+> ([`FLOOR.md` § 8](FLOOR.md#8-interns--subagent-rendering-and-the-cap)), so no subagent was ever drawn on any seat in the background
+> lifecycle. **MEASURED on this project's interactive seats at 2.1.266 through 2.1.296**
+> (2026-10-05 → 2026-10-13, read from the seats' own transcripts and the reporter's spool and index
+> journal): every `Agent` call's recorded `tool_response` is `status: "async_launched"` — with
+> `run_in_background` set **or absent**, so the input flag is not the discriminator — and every
+> reporter close of a dispatch in the spool was `post_tool_use` with a harness `duration_ms` of tens
+> of ms, except those a foreign `SubagentStop` reached first through the then-unrestricted
+> `sole_open` fallback below, seconds after the dispatch opened. In the
+> index journal the `SubagentStart` `bind` lands **30–106 ms before** that close, and the bound
+> `agent_id` equals the `tool_response.agentId` on all four dispatches of the hour read. So the order
+> on these seats is `PreToolUse` → `SubagentStart` → `PostToolUse(async_launched)` → … the subagent's
+> work … → `SubagentStop`, minutes later.
+>
+> **The rule now, by what the `PostToolUse` says:**
+>
+> | The dispatch call's own close | What the reporter does |
+> |---|---|
+> | `PostToolUse` with `tool_response.status == "async_launched"` | **nothing closes.** The call stays open, is bound exactly from `agentId`, and is counted `dispatch_background_launch`; its `SubagentStop` closes it (`close_source: "subagent_stop_hook"`, `match: "agent_id"`). A permission request it was waiting on is resolved `granted`, because the tool ran |
+> | `PostToolUse` with any other `tool_response` — a foreground dispatch, `status: "completed"`, whose subagent already finished | closes it, as before |
+> | either close arriving **after** the call's `SubagentStop` closed it | **emits nothing** and counts `dispatch_close_after_subagent_stop`. The `SubagentStop` close leaves a tombstone carrying `closed_by: "subagent_stop_hook"` ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)) so the late close matches it by `harness_call_ref` instead of falling through to the heuristics — which synthesized a phantom `Agent` pair, or closed an unrelated call by `sole_open`, until this amendment |
+>
+> **The discriminator is the tool's own word for the case, never a timing.** The installed binary
+> reads the same field the same way to decide that a launch happened (an `Agent` result with
+> `status === "async_launched"` and a string `agentId`). A background dispatch held open past its
+> parent's turn is protected from the turn reap by the `background_tasks` rule in
+> [§ 8.3](#83-the-reap-rules), and is still closed by the session-boundary reaps and, server-side,
+> by the 60-minute dispatch orphan ceiling ([§ 12.5](#125-late-completions-and-orphan-timeouts)) —
+> which also means a subagent that runs longer than an hour leaves the floor at that ceiling.
+
+**The paragraph as it stood before card#11799, kept because its measurements are still the record:**
+**Which of them arrives first is a
 harness fact that has already moved, and the design does not depend on the answer** — at 2.1.240
 `SubagentStop` arrived first ([§ 6.8](#68-subagentstop), MEASURED) and was usually the hook that
 closed the call; **at 2.1.245 the dispatch call's `PostToolUse` arrives first, 4–45 ms after
@@ -3695,7 +3770,11 @@ is equally valid and is covered below.
 > is the readable statement of the reap's ordering rules; the measured 2.1.245 trace is
 > [AT-1](#at-1-kill-vs-complete-the-headline-test)'s Case A′, and which one a given build produces is
 > a question for the re-capture obligation ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)),
-> not for the reader to guess.
+> not for the reader to guess. **Since card#11799 the reporter keeps a background `A` open until its
+> `SubagentStop`** ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)), so in the background
+> lifecycle the `/clear` again reaps **both** calls in this order, `B` then `A`; what still differs
+> from rows 7 and 8 is that the parent's turn has already ended, so no `turn.end` is emitted and
+> `session.end` carries the `aborted_calls: 2`.
 
 | # | Time | Kind | Key data |
 |---|---|---|---|
@@ -3803,7 +3882,7 @@ statusLine processes reach the flusher through the counter sink
 | `batches_ok` | a batch the server accepted (`202` or `200`) | informational; the denominator the other batch counters are read against |
 | `batches_retried` | a batch that will be sent again: a retryable status (`408`, `429`, any `5xx`) or a transport failure or timeout ([§ 11.5](#115-retry-and-backoff)) | informational — **no loss**, because the batch stays spooled and a retry commits once ([§ 10.4](#104-batch-level-idempotency)). For a `5xx` it is the reporter's side of the server's `batches_failed.<detail>` ([§ 12.7](#127-server-side-counters)) |
 | `hook_name_mismatch` | `argv[2]` ≠ `hook_event_name` | `degraded`; the harness contract moved |
-| `payload_key_missing.<key>` | a harness payload key the reporter reads was absent: `session_id`, a key a hook handler reads, or `agent_id` on `SubagentStart` ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)). The family also carries `payload_key_missing.unsubscribed_hook.<name>`, counted when the reporter is run for a hook outside [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s subscribed set, which a seat wired by `fleet-reporter/INSTALL-LINUX.md` Step 4 never is | `degraded`, member `harness_contract_moved`, for **every** key in the family: the reporter matches the `payload_key_missing.` prefix, so a key a later build starts reading raises the member with no edit here. A gap that is expected on a correct install is therefore counted under its own name and never in this family: `harness_label_unset` and `context_window_unavailable` |
+| `payload_key_missing.<key>` | a harness payload key the reporter reads was absent: `session_id`, a key a hook handler reads, `agent_id` on `SubagentStart`, or `tool_response.agentId` on a background launch's `PostToolUse` ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)). The family also carries `payload_key_missing.unsubscribed_hook.<name>`, counted when the reporter is run for a hook outside [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s subscribed set, which a seat wired by `fleet-reporter/INSTALL-LINUX.md` Step 4 never is | `degraded`, member `harness_contract_moved`, for **every** key in the family: the reporter matches the `payload_key_missing.` prefix, so a key a later build starts reading raises the member with no edit here. A gap that is expected on a correct install is therefore counted under its own name and never in this family: `harness_label_unset` and `context_window_unavailable` |
 | `enum_value_unknown.<wire field>` | a closed-enum field carried a value this reporter does not know, coerced per [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 4 | informational, rendered `reporter_behind` — the harness has added a member and this document owes an edit |
 | `enum_value_unknown.notification_type` | a `Notification` carried a `notification_type` [§ 6.12](#612-attentionrequest)'s lookup table does not know, so **no** `attention.request` was emitted — the one counter in this document that names a harness **payload key** rather than a wire field, and the single exception [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 4 names | informational, rendered `reporter_behind` — this is where `notification_kind`'s unknown case lives, since the field has no `other` member and no event survives to carry one ([§ 6.12](#612-attentionrequest)). A rising value on real seats is the edit's trigger |
 | `invalid_tool_name` | `tool_name` failed its pattern and was sent as `INVALID_TOOL_NAME` | `degraded` |
@@ -3817,8 +3896,12 @@ statusLine processes reach the flusher through the counter sink
 | `index_fold_truncated` | the index journal tail exceeded 8 MiB and history was skipped | `degraded` |
 | `flusher_lost_ownership` | a flusher found `state.json` owned by another and exited | informational; > 1/day means the lock is being lost, not just raced |
 | `state_reset` | `state.json` existed and could not be used (a read error other than a missing file, or empty, truncated, unparseable, or the wrong shape); a new epoch was minted and the spool re-sent from its oldest bucket ([§ 11.4](#114-corruption-the-torn-last-line-and-a-missing-or-unreadable-statejson)). **A missing `state.json` is not a reset:** it is a first start, or state lost with the file, and it mints an epoch and re-sends the same way while counting nothing. Lost state on a seat that has already reported is badged by the server's `seq_epoch_change` ([§ 10.2](#102-ordering-seq-and-gap-detection)) | informational, rendered `epoch_reset`; **not** `lossy`, because nothing was discarded |
-| `subagent_stop_unmatched` | `SubagentStop` that could name no call | informational; expected ~0 once the `agent_id` binding works, so a rising share is the signal that it does not |
-| `agent_bind_sole_unbound` | a `SubagentStart` bound by being the only unbound dispatch call — the **only** binding rule, since the payload carries no parent reference ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) | informational; its share of `SubagentStart`s is the binding's success rate |
+| `subagent_stop_unmatched` | `SubagentStop` that could name no call | informational, and **not** expected near zero: the harness fires `SubagentStop` for agents no dispatch launched, far more often than for dispatches (MEASURED, [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)). The binding's health is read off `agent_bind_launch_ref` and `dispatch_background_launch` instead |
+| `agent_bind_sole_unbound` | a `SubagentStart` bound by being the only unbound dispatch call — the binding rule for a dispatch whose launch carries no `agentId`, since the `SubagentStart` payload carries no parent reference ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) | informational; its share of `SubagentStart`s is that rule's success rate |
+| `agent_bind_launch_ref` | a background launch's `PostToolUse` bound its dispatch call from `tool_response.agentId`, where the call was unbound or bound to a different id ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call), card#11799) | informational; the exact rule. Against `dispatch_background_launch` it says how often `SubagentStart` had not already bound the same id |
+| `dispatch_background_launch` | a dispatch call's `PostToolUse` reported `tool_response.status: "async_launched"`, so the call was held open for its `SubagentStop` ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) | informational; zero on a seat that dispatches means its harness returns dispatches on completion — or that the marker moved and every intern is closing at launch again |
+| `dispatch_kept_across_turn_reap` | a `Stop` or `SubagentStop` reap skipped an open dispatch call because its payload's `background_tasks` lists that call's subagent as running ([§ 8.3](#83-the-reap-rules)) | informational; zero beside a non-zero `dispatch_background_launch` on a seat whose turns end while subagents run means the task ids no longer match `agent_id` and running subagents are being reaped at their parent's `Stop` |
+| `dispatch_close_after_subagent_stop` | a dispatch call's own `PostToolUse` or `PostToolUseFailure` arrived after its `SubagentStop` had closed it, and emitted nothing ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) | informational; the measurement of how often the second-signal order occurs |
 | `agent_bind_ambiguous` / `agent_bind_unresolved` | two unbound dispatch calls at `SubagentStart`; a subagent hook whose parent could not be resolved | informational; `parent_call_id` is `null` for those events. `agent_bind_ambiguous` is the trigger to revisit [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) with a real parallel-dispatch capture |
 | `attention_request_duplicate` | a second attention request while one was open | informational; also the measurement of whether `PermissionRequest` and `Notification` overlap |
 | `context_sample_stale` | a compaction event found no statusLine sample newer than 300 s | informational; > 0 on every seat without the statusLine integration installed |
@@ -4773,6 +4856,13 @@ recorded here because they are what a re-run will hit first:
   `session.end` with `end_reason:"clear"`; a `session.start(source:"clear")`; and **no `turn.end` at
   the clear at all**, because no turn was open. The reap must have happened **exactly once**: assert
   `reap_noop_second_signal` incremented by exactly 1 and that no call was closed twice.
+  ⚠ **That is Case A′ against a reporter older than card#11799.** A current reporter keeps `A` open
+  across the launch's `PostToolUse` and across the parent's `Stop`, whose `background_tasks` lists the
+  subagent ([§ 8.3](#83-the-reap-rules), [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)),
+  so the clear reaps **both** `B` and then `A` — two `tool.end`s `aborted`/`session_cleared`, a
+  `subagent.stop` `aborted` for `A`, `session.end` with `aborted_calls: 2` — and still **no
+  `turn.end`**, because the parent's turn had already ended. Record which of the two a run produced,
+  and the reporter build, alongside the harness version.
 - **GREEN — Case A, the 2.1.240 lifecycle**, if the build under test keeps `A` open: the stream
   matches [§ 8.7](#87-worked-flow--a-clear-during-a-subagents-bash-call) — two `tool.end`s
   `aborted`/`session_cleared`/`reap_session_boundary`, a `subagent.stop` with `outcome:"aborted"`, a
@@ -4849,6 +4939,11 @@ recorded here because they are what a re-run will hit first:
   [§ 8.6](#86-server-side-interpretation-of-open-call-state) renders the seat *working* the whole
   time. That RED reproduces on **every** build — unlike Case B's, it does not depend on a harness fact
   that might move.
+  **Scope of the GREEN since card#11799:** `A` is reaped at the `Stop` when that `Stop`'s
+  `background_tasks` does **not** name `A`'s subagent — a foreground dispatch, or a background one
+  whose task the harness no longer lists. A `Stop` that lists it leaves `A` open by design
+  ([§ 8.3](#83-the-reap-rules)); the reporter suite's block *A BACKGROUND DISPATCH STAYS OPEN UNTIL ITS SubagentStop* drives that
+  case, not this rig.
 - **Case D — a permission-refused call inside a subagent is reaped by `SubagentStop`.** Run the
   subagent under `--permission-mode default` against an operation it will be refused, so its
   `PreToolUse` fires and **no close hook of any kind** does (MEASURED,
@@ -5788,7 +5883,7 @@ values no published rule derived.
 | # | Decision | Alternative considered | Why this one | Cost if wrong |
 |---|---|---|---|---|
 | 1 | **Identity repeats on every event**, with server-enforced equality against the batch header and the token binding | batch-level only, stamped onto events at ingest | an event is the durable, forwardable, quotable unit; ~60 B (12 %) buys unambiguity, and enforced equality makes drift impossible | ~12 % wire overhead. Reversible in one direction only: removing the fields later is a **schema bump** under the policy. **Amended 2026-08-23:** `schema_version` now rides every event on the identical argument — see row 19 |
-| 2 | **`Stop` reaps every open call in its turn scope** as aborted | wait for the orphan timeout and let the server infer | a false idle at a turn boundary is the exact defect this design exists to prevent; waiting 15–60 min to notice defeats it | over-eager aborts on any legitimate call outstanding at `Stop`. **Amended 2026-08-23:** the late-completion override this row leans on now has a path — reaped entries are **tombstoned** for 15 min so a late close rejoins its original `call_id` ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)). Before that amendment the late close was synthesized under a fresh id and `late_completion` could never leave zero, so the instrument bounding this decision could not report. **Amended 2026-08-23 (round 4):** "its session" was always shorthand — the rule is scoped to `(session_id, agent_scope_id ?? "main")` and row 32 is why the scope key had to be split out of the binding field before that sentence was true |
+| 2 | **`Stop` reaps every open call in its turn scope** as aborted — **except a dispatch call whose subagent its payload's `background_tasks` lists as running** (amended by card#11799, [§ 8.3](#83-the-reap-rules)) | wait for the orphan timeout and let the server infer | a false idle at a turn boundary is the exact defect this design exists to prevent; waiting 15–60 min to notice defeats it | over-eager aborts on any legitimate call outstanding at `Stop`. **Amended 2026-08-23:** the late-completion override this row leans on now has a path — reaped entries are **tombstoned** for 15 min so a late close rejoins its original `call_id` ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)). Before that amendment the late close was synthesized under a fresh id and `late_completion` could never leave zero, so the instrument bounding this decision could not report. **Amended 2026-08-23 (round 4):** "its session" was always shorthand — the rule is scoped to `(session_id, agent_scope_id ?? "main")` and row 32 is why the scope key had to be split out of the binding field before that sentence was true |
 | 3 | **The dispatch tool emits both `tool.start` and `subagent.spawn`** sharing a `call_id` | one `subagent.spawn` and no `tool.start` for the dispatch call | a special case in the call ledger would live in the *one* path the kill-vs-complete requirement is actually about | ~120 B per dispatch, tens of times a day |
 | 4 | **Batches are atomic** — one bad event rejects 200 | per-event partial ingest with a report | a partially-ingested batch under a success status destroys the reporter's only other copy of the data | one malformed event costs ≤ 199 neighbours, bounded by the poison-pill rule. **Amended 2026-08-23:** this is precisely why an unknown `kind` or enum value must never be a validation failure (rows 20, and [§ 12.4](#124-batches-are-atomic)) |
 | 5 | ~~A new event `kind` is compatible; unknown kinds are ignored and counted — **minted in D1** with a pointer saying it might belong in the policy~~ | reject the batch on an unknown kind | — | **Superseded 2026-08-23.** The rule was policy, not mechanic: it governs what any producer and any receiver may do without a bump. It now lives in [`docs/VERSIONING.md § Wire compatibility` rule 7](../VERSIONING.md#the-rules), extended to cover new closed-enum members too, and [§ 5](#5-compatibility--what-this-document-owes-the-policy) carries only the mechanics with a cite. One rule, one home |
