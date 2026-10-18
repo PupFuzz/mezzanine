@@ -55,9 +55,11 @@ export const BAND_H = 160;
  *
  * ⛔ THE ELEVATOR IS WHERE A SEAT LEAVES AND RETURNS (§ 4.2, card#9566). It is the lobby cab's form — two
  * leaves meeting at a seam, a lamp over them — in the lobby's own door colours (`--door` / `--door-edge`),
- * so the floor and the lobby read as one building. Its leaves open and close inside an A1 or A2 walk and
- * for nothing else, and it takes no § 6.2 row of its own. It never navigates: the elevator that does is
- * the lobby's (§ 4.1), reached by the floor's *whole building* control.
+ * so the floor and the lobby read as one building. Its leaves open and close inside an A1 or A2 walk, and
+ * on the viewer's own ride (§ 4.5, card#11795: `scene.ride`, which the painter draws instead of the walks'
+ * door spans while it is set — § 6.3's exception); it takes no § 6.2 row of its own. It IS the floor's
+ * ride control: the painter draws it as a button that asks the floor screen for a ride to another floor
+ * or the lobby, and the ride ends in a real navigation (`floor/floor-screen.js`'s `ride()` and its phases).
  *
  * ⛔ THE WINDOWS FILL WHAT IS LEFT, PAST THE ZONE: `n = ⌊(w − ZONE_W − margin) ÷ pitch⌋`, at least
  * one, spread evenly, each centred in its cell and `WINDOW.w` wide — narrowed to its cell less the gap

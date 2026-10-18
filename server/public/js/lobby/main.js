@@ -23,7 +23,9 @@
  * `feed.heartbeat` and which this page paints as a STEP — `building-scene.js`'s `surfaceStyle()`, with
  * no transition — through the page's bounded animation log (`wire/live-page.js`). The one transition on
  * this page is the cab's, and it is the ride's: navigation, over the ride's own glide, and cut on every
- * render that is no ride (the building's `drawing`, below).
+ * render that is no ride (the building's `drawing`, below). The other is a floor's ride ARRIVING here
+ * (§ 4.5, card#11795): the floor's cab snapshot held over this page by the layout's head script and faded
+ * into the first drawn building (`revealed()`, below) — the viewer's own navigation, never a fact.
  *
  * ⭐ THE CAMERA AT BUILDING SCALE AND THE RIDE'S ARRIVAL ARE THE SCREEN's (Appendix B row 16, slice A,
  * card#7343); this file supplies the building's drawing surface — a clipping drawing only while there
@@ -56,6 +58,7 @@ import { buildingDrawing, keepDrawing, paintBuilding } from './building-paint.js
 import { showLabels } from './label-paint.js';
 import { plateRow } from './plate-row.js';
 import { holdPlateLinks } from './ride-hold.js';
+import { revealed } from '../wire/ride-arrival.js';
 
 /**
  * THE VIEWER'S OWN CAB POSITION, and it lives here because § 4.5 says navigation is never state:
@@ -325,6 +328,12 @@ function paint(frame) {
 
     renderBuilding(building, frame.scene, frame.sky, summary.unclaimed, frame.riding);
 
+    // § 4.5 (card#11795): a floor's ride into the lobby holds the cab's snapshot until the first drawn
+    // building, and ends it there — on nothing else (`wire/ride-arrival.js`).
+    if (frame.scene !== null) {
+        revealed(document.documentElement);
+    }
+
     // A render never moves the viewer: a glide in flight keeps its step, and otherwise the plates show
     // the screen's camera, which the render left where the viewer put it — and `view()` paints every
     // plate's label from THIS same camera (`label-paint.js`'s `showLabels()`), never a stale plan.
@@ -397,7 +406,10 @@ el('lobby-elevator').addEventListener('click', () => {
 
 // Back to a lobby the browser kept whole (the back-forward cache): the ride that left it has arrived,
 // so the viewer may ride again — ended already on arrival, and ended here too for a page kept at any
-// other moment.
+// other moment. The headless shell this repository measures with never restores a page from the
+// back-forward cache (`BackForwardCacheDisabledForDelegate`, on a page with no stream as on one with one),
+// so this branch is unexercised there; headed Chrome, Safari and Firefox are unmeasured, which is why it
+// stays. The floor page carries the same branch for its own ride (card#11795), beside its `pageswap` rule.
 window.addEventListener('pageshow', (event) => {
     if (event.persisted) {
         screen.returned();

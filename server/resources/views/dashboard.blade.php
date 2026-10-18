@@ -1,5 +1,7 @@
 @extends('layouts.app')
 @section('title', 'Mezzanine')
+{{-- § 4.5's ride from a floor arrives here with the cab's snapshot held until the first drawn building (`layouts/app.blade.php`). --}}
+@section('document-attributes', 'data-ride-reveals')
 
 @section('content')
     {{--
@@ -120,13 +122,15 @@
         --}}
 
         {{--
-            § 4.1's ELEVATOR — card#7343. The ratified cross-section stacks one floor plate per
-            FLOOR — since card#9267 a composed set of rooms, one room per floor until the layout
-            above says otherwise — "with an elevator as the way between them", and § 4.5 makes
-            that ride a CAMERA move: it is navigation, it renders no fact, and it takes no § 6.2
-            row. The ride ARRIVES (Appendix B row 16): the cab moves to the next stop, the camera
-            zooms to that plate, and the page goes to `/floor/{key}` — the floor's key, never its
-            label (card#9273).
+            § 4.1's ELEVATOR — card#7343: the lobby's ride. The ratified cross-section stacks one
+            floor plate per FLOOR — since card#9267 a composed set of rooms, one room per floor
+            until the layout above says otherwise — "with an elevator as the way between them", and
+            § 4.5 makes that ride a CAMERA move: it is navigation, it renders no fact, and it takes
+            no § 6.2 row. The ride ARRIVES (Appendix B row 16): the cab moves to the next stop, the
+            camera zooms to that plate, and the page goes to `/floor/{key}` — the floor's key, never
+            its label (card#9273). It navigates without `#ride`, so a floor reached by it arrives with
+            its leaves at rest; the floor's own cab (card#11795) arrives with them opening and
+            closing. The lobby's cab becomes a cab of stops in card#11800.
 
             ⛔ THE CONTROL IS REFUSED WHEN THERE IS NOWHERE TO RIDE, and the reason is written
             beside it rather than left as a dead button. A building with one floor — which is
