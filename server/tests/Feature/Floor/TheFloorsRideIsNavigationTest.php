@@ -368,7 +368,9 @@ class TheFloorsRideIsNavigationTest extends TestCase
             }
 
             $triggers[$render['trigger']] = true;
-            $this->assertNotNull($render['frame']['scene']['ride'], "[{$render['at']} {$render['trigger']}] a scene drawn while a ride is in flight carries no `scene.ride`");
+            // A producer that omits the member serialises no key at all, so it is read with `??` — the defect is
+            // an assertion failure here, never a PHP warning.
+            $this->assertNotNull($render['frame']['scene']['ride'] ?? null, "[{$render['at']} {$render['trigger']}] a scene drawn while a ride is in flight carries no `scene.ride`");
             $this->assertSame($render['frame']['ride']['phase'], $render['frame']['scene']['ride']['phase']);
         }
 
@@ -694,7 +696,7 @@ class TheFloorsRideIsNavigationTest extends TestCase
 
         foreach ($result['floor_renders'] as $render) {
             if ($render['at'] > $pressed && $render['frame']['scene'] !== null) {
-                $this->assertNotNull($render['frame']['scene']['ride']);
+                $this->assertNotNull($render['frame']['scene']['ride'] ?? null);
             }
         }
 
