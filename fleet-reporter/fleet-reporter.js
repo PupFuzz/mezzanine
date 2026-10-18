@@ -1848,14 +1848,18 @@ const findTwinForStart = (ix, nowMs) => latestUnpaired(ix.sessionsClosed,
 const findTwinForEnd = (ix, nowMs) => latestUnpaired(ix.sessions,
   (s) => s.start_source === 'clear' && !s.paired_from, (s) => s.opened_at, K.CLEAR_GAP_MS, nowMs);
 
-function pairClear(ctx, ix, oldSid, newSid, twin, which) {
+/* The pairing is REPORTER-INTERNAL: it moves carried index entries and nothing on the wire names it.
+ * `session.start.previous_session_id`, `reap_noop_second_signal`, `clear_second_signal_found_nothing`
+ * and `clear_reap_by_session_end` keep the meanings and values they had before card#11817 — see the
+ * SessionStart and SessionEnd cases — because changing what a wire field MEANS is a schema bump
+ * (docs/VERSIONING.md, wire rule 4). `clear_signals_paired` is the pairing's own, additive counter. */
+function pairClear(ctx, ix, oldSid, newSid, twin) {
   const rekeyed = [...ix.calls.values()].filter((e) => e.carried_from === oldSid).length;
   const rec = { k: 'pair', old_session_id: oldSid, new_session_id: newSid };
   journal(ctx.spool, rec);
   applyIndexRecord(ix, rec, now());
-  count('reap_noop_second_signal');
+  count('clear_signals_paired');
   if (rekeyed) count('dispatch_rekeyed_to_new_session', rekeyed);
-  predicate('clear_reap_by_session_end', which === 'end_first');
   if (twin.qualified > 1) count('clear_pair_ambiguous');
   if (twin.age_ms > K.CLEAR_GAP_MS) count('clear_pair_late');
 }
@@ -1874,19 +1878,30 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       touchSession(ctx, ix, sid, source === 'clear' ? 'clear' : null);
       if (source === 'clear') {
         /* § 8.4 — SessionStart(clear) carries only its own (new) session_id; this build sends no
-         * previous_session_id key (MEASURED). It REAPS NOTHING (card#11824): it pairs with the latest
-         * unpaired clear-closed session, which in the measured order SessionEnd(clear) closed a second
-         * or two ago. The rule it replaces reaped "the most-recently-active open session other than
-         * its own" — in that order the cleared session was already closed, so on a seat with a second
-         * terminal the pick could only land on the OTHER, live terminal and end it. */
-        const twin = findTwinForStart(ix, atMs);
-        if (twin) {
-          previous = twin.session_id;
-          pairClear(ctx, ix, twin.session_id, sid, twin, 'end_first');
+         * previous_session_id key (MEASURED). Two separate jobs, and since card#11824 NEITHER reaps:
+         *
+         * 1. THE SELECTION, unchanged from before card#11817: the seat's most-recently-active open
+         *    session other than its own. It sets `previous_session_id`, the predicate's `false`
+         *    branch, and — when it selects none — `reap_noop_second_signal` and
+         *    `clear_second_signal_found_nothing`, exactly as it always has (§ 6.1). It used to REAP
+         *    what it selected; in the measured order the cleared session is already closed, so on a
+         *    seat with a second terminal it selected that terminal and ended it. It now only names.
+         * 2. THE PAIRING (reporter-internal): the latest unpaired clear-closed session, whose carried
+         *    dispatches move to this session. */
+        let pick = null;
+        for (const [x, rec] of ix.sessions) {
+          if (x === sid) continue;
+          if (!pick || Date.parse(rec.last_active || 0) > Date.parse(ix.sessions.get(pick).last_active || 0)) pick = x;
+        }
+        if (pick) {
+          previous = pick;
+          predicate('clear_reap_by_session_end', false);
         } else {
-          // The SessionStart-first order (SessionEnd will pair), or a SessionEnd that never comes.
+          count('reap_noop_second_signal');
           count('clear_second_signal_found_nothing');
         }
+        const twin = findTwinForStart(ix, atMs);
+        if (twin) pairClear(ctx, ix, twin.session_id, sid, twin);
       }
       if (source === 'compact') {
         for (const [s] of ix.compactions) { closeCompaction(ctx, ix, s, 'session_start_compact', atMs); break; }
@@ -1913,9 +1928,13 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       touchSession(ctx, ix, sid);
       reapSessionBoundary(ctx, ix, sid, reason, reason === 'clear' ? 'session_cleared' : 'session_ended', atMs);
       if (reason === 'clear') {
+        // The counter and predicate keep their pre-card#11817 values: before, a SessionStart that
+        // came first had already reaped this session, and this hook counted the no-op instead of
+        // evaluating the predicate. Now the start reaps nothing, and the twin it left is what says it
+        // came first.
         const twin = findTwinForEnd(ix, atMs);
-        if (twin) pairClear(ctx, ix, sid, twin.session_id, twin, 'start_first');
-        else count('clear_second_signal_found_nothing');   // the measured order: the start is still to come
+        if (twin) { pairClear(ctx, ix, sid, twin.session_id, twin); count('reap_noop_second_signal'); }
+        else predicate('clear_reap_by_session_end', true);
       }
       break;
     }
