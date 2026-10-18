@@ -39,6 +39,10 @@ use Tests\TestCase;
  * counter-scale from the camera it shows; and that the building takes focus with the floor's keys and
  * zoom buttons. Each as the source's own lines, each with a control.
  *
+ * ⛔ AND A FLOOR's RIDE ARRIVING HERE (§ 4.5, card#11795): the view declares `data-ride-reveals`, and the page ends
+ * the layout head script's hold through `wire/ride-arrival.js`'s `revealed()` — once, under `frame.scene !== null`
+ * (the first drawn building), and on nothing else.
+ *
  * ⚠ WHAT A GREEN HERE IS NOT: evidence that anything renders, lays out, or is legible. It is
  * evidence that every fact the model produces has an element with its name on it.
  */
@@ -448,6 +452,58 @@ class LobbyPageWiringTest extends TestCase
     }
 
     /** ⛔ THE CONTROLS — each re-mints one of the two directions' defects. */
+    /** § 4.5 (card#11795): a floor's ride arriving here is held until the first drawn building, and only by it. */
+    public function test_a_ride_arriving_here_is_revealed_on_the_first_drawn_building(): void
+    {
+        $this->assertSame([], $this->arrivalDefects($this->mainJs(), $this->lobbyPage()));
+    }
+
+    /** ⛔ The arrival's controls. */
+    public function test_the_arrival_check_goes_red_against_each_defect_it_exists_to_catch(): void
+    {
+        $js = $this->mainJs();
+        $html = $this->lobbyPage();
+
+        foreach ([
+            'import' => ["import { revealed } from '../wire/ride-arrival.js';\n", ''],
+            'reveal' => ["    if (frame.scene !== null) {\n        revealed(document.documentElement);\n    }\n", "    if (frame.summary !== null) {\n        revealed(document.documentElement);\n    }\n"],
+            'site' => ["    say('lobby-feed', `feed: \${frame.strip.feed}`);\n", "    revealed(document.documentElement);\n    say('lobby-feed', `feed: \${frame.strip.feed}`);\n"],
+        ] as $key => [$from, $to]) {
+            $planted = str_replace($from, $to, $js);
+            $this->assertNotSame($planted, $js, "the arrival's {$key} control's anchor is gone — it mutated nothing");
+            $this->assertArrayHasKey($key, $this->arrivalDefects($planted, $html), "CONTROL (the arrival's {$key}) did not bite");
+        }
+
+        $undeclared = str_replace(' data-ride-reveals', '', $html);
+        $this->assertNotSame($undeclared, $html);
+        $this->assertArrayHasKey('declared', $this->arrivalDefects($js, $undeclared), 'CONTROL (the lobby not declaring the reveal) did not bite');
+    }
+
+    /** @return array<string, string> */
+    private function arrivalDefects(string $js, string $html): array
+    {
+        $defects = [];
+        $code = (string) preg_replace('/^\s*(\/\/|\*|\/\*\*).*$/m', '', $js);
+
+        if (! str_contains($code, "import { revealed } from '../wire/ride-arrival.js';")) {
+            $defects['import'] = 'the lobby does not import wire/ride-arrival.js';
+        }
+
+        if (! str_contains($code, "    if (frame.scene !== null) {\n        revealed(document.documentElement);\n    }\n")) {
+            $defects['reveal'] = 'revealed() is not called under `frame.scene !== null` alone';
+        }
+
+        if (substr_count($code, 'revealed(') !== 1) {
+            $defects['site'] = 'revealed() is called at '.substr_count($code, 'revealed(').' sites — one';
+        }
+
+        if (preg_match('/<html\b[^>]*\bdata-ride-reveals\b/', $html) !== 1) {
+            $defects['declared'] = 'the lobby view does not declare data-ride-reveals on <html>';
+        }
+
+        return $defects;
+    }
+
     public function test_the_wiring_check_goes_red_against_each_defect_it_exists_to_catch(): void
     {
         $html = $this->lobbyPage();

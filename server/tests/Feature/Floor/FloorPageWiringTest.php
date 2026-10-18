@@ -46,6 +46,15 @@ use Tests\TestCase;
  * keyboard was on keeps focus across the painter's rebuild of the `<svg>` — restored only when the
  * keyboard was inside the drawing.
  *
+ * ⛔ AND TO THE RIDE's (§ 4.5, card#11795): the cab's elements exist both ways (the check above), the painter is
+ * constructed with the elevator's press, the cab's `cancel` asks the screen (`escape()`) and re-asks the
+ * departing page's one rule of a transition already let through, the page's one `pageswap` listener IS that
+ * rule (`wire/ride-arrival.js`'s `skipUnlessCabLeaving`, fed the last painted frame's ride) and nothing listens
+ * on `pagehide`, the ride arms ONE timer at ONE site, the arrival is handed to the screen before the first
+ * render and the hold is ended only under `frame.scene !== null`, the lobby stop is the page's own link, and the
+ * view declares `data-ride-reveals`. The rule itself is run under `node`: it lets a transition through only for
+ * `leaving` with the cab open, and its text touches no document.
+ *
  * ⚠ WHAT A GREEN HERE IS NOT: evidence that anything renders, lays out or is legible.
  */
 class FloorPageWiringTest extends TestCase
@@ -105,6 +114,18 @@ class FloorPageWiringTest extends TestCase
     public function test_the_header_counts_are_the_lobbys_totals_never_recounted(): void
     {
         $this->assertSame([], $this->countDefects($this->mainJs()));
+    }
+
+    /** § 4.5 (card#11795): the entry performs the ride the screen decides, and the arrival the layout records. */
+    public function test_the_entry_performs_the_ride_and_its_arrival(): void
+    {
+        $this->assertSame([], $this->rideDefects($this->mainJs(), $this->floorPage()));
+    }
+
+    /** § 4.5 (card#11795): the departing page's one `pageswap` rule, run under `node`. */
+    public function test_the_pageswap_rule_lets_a_transition_through_only_for_a_cab_leaving(): void
+    {
+        $this->assertSame([], $this->skipDefects($this->rideArrivalJs()));
     }
 
     public function test_the_page_serves_the_entry_as_a_module_and_every_import_resolves(): void
@@ -359,6 +380,66 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('paint', $this->countDefects($unpaintedCounts),
             'CONTROL (header counts never painted) did not bite');
 
+        // § 4.5 (card#11795): the ride's wiring.
+        $page = $this->floorPage();
+
+        foreach ([
+            'press' => ['        ride: () => rideAct(screen.ride()),', '        ride: () => {},'],
+            'cancel' => ['    rideAct(screen.escape(event.cancelable));', '    rideAct(screen.escape(true));'],
+            'cancel-reask' => ['    outbound = skipUnlessCabLeaving(outbound, lastFrame?.ride ?? null);', ''],
+            'pageswap' => ["window.addEventListener('pageswap', (event) => {
+    outbound = skipUnlessCabLeaving(event.viewTransition, lastFrame?.ride ?? null);", "window.addEventListener('pageswap', (event) => {
+    outbound = event.viewTransition;"],
+            'pageswap-dom' => ["window.addEventListener('pageswap', (event) => {
+", "window.addEventListener('pageswap', () => cab.close());
+window.addEventListener('pageswap', (event) => {
+"],
+            'pagehide' => ["window.addEventListener('pageshow', (event) => {", "window.addEventListener('pagehide', () => cab.close());
+window.addEventListener('pageshow', (event) => {"],
+            'pageshow' => ["window.addEventListener('pageshow', (event) => {", "window.addEventListener('pageshowx', (event) => {"],
+            'timer' => ['    rideTimer = timers.after(ms, () => {', '    window.setTimeout(() => {}, ms);
+    rideTimer = timers.after(ms, () => {'],
+            'arrival' => ['    screen.arriveByRide(rideArrival);
+', ''],
+            'reveal' => ['    if (frame.scene !== null) {
+        revealed(html);
+    }
+', '    if (frame.statement !== null || frame.scene !== null) {
+        revealed(html);
+    }
+'],
+            'reveal-site' => ['    paintDesks(frame, frame.desks.desks);
+', '    revealed(html);
+    paintDesks(frame, frame.desks.desks);
+'],
+            'lobby' => ["const lobbyHref = document.querySelector('a.floor-home').href;", "const lobbyHref = '/dashboard';"],
+            'navigation' => ['        window.location.assign(ride.route);', '        window.history.pushState(null, \'\', ride.route);'],
+        ] as $key => [$from, $to]) {
+            $planted = str_replace($from, $to, $js);
+            $this->assertNotSame($planted, $js, "the ride's {$key} control's anchor is gone — it mutated nothing");
+            $this->assertArrayHasKey($key, $this->rideDefects($planted, $page), "CONTROL (the ride's {$key}) did not bite");
+        }
+
+        $undeclared = str_replace(' data-ride-reveals', '', $page);
+        $this->assertNotSame($undeclared, $page, 'the reveal-declaration control\'s anchor is gone — it mutated nothing');
+        $this->assertArrayHasKey('declared', $this->rideDefects($js, $undeclared), 'CONTROL (the floor view not declaring the reveal) did not bite');
+
+        $cabless = preg_replace('/<dialog id="floor-cab".*?<\/dialog>/s', '', $page);
+        $this->assertNotSame($cabless, $page);
+        $this->assertArrayHasKey('cab', $this->rideDefects($js, $cabless), 'CONTROL (the view without the cab) did not bite');
+
+        $rule = $this->rideArrivalJs();
+
+        foreach ([
+            'the phase alone' => ["    if (ride?.phase === 'leaving' && ride.cab === 'open') {", "    if (ride?.phase === 'leaving') {"],
+            'every transition kept' => ['    transition.skipTransition();', ''],
+            'a DOM read' => ["    if (ride?.phase === 'leaving' && ride.cab === 'open') {", "    if (ride?.phase === 'leaving' && ride.cab === 'open' && document.querySelector('dialog').open) {"],
+        ] as $what => [$from, $to]) {
+            $planted = str_replace($from, $to, $rule);
+            $this->assertNotSame($planted, $rule, "the skip rule's {$what} control's anchor is gone — it mutated nothing");
+            $this->assertNotSame([], $this->skipDefects($planted), "CONTROL (the pageswap rule reading {$what}) did not bite");
+        }
+
         $drifted = (string) preg_replace('/export const ANIMATION_LOG_RETENTION = \d+;/', 'export const ANIMATION_LOG_RETENTION = 5000;', $livePage);
         $this->assertNotSame($drifted, $livePage);
         $this->assertArrayHasKey('retention', $this->pageLogDefects($js, $drifted),
@@ -391,6 +472,135 @@ class FloorPageWiringTest extends TestCase
         }
 
         return $defects;
+    }
+
+    /**
+     * § 4.5's ride, as the entry wires it (card#11795). Each key is one property a page that rides must keep.
+     *
+     * @return array<string, string>
+     */
+    private function rideDefects(string $js, string $html): array
+    {
+        $defects = [];
+        $code = (string) preg_replace('/^\s*(\/\/|\*|\/\*\*).*$/m', '', $js);
+
+        foreach (['floor-cab', 'floor-cab-heading', 'floor-cab-stops', 'floor-cab-status', 'floor-cab-feed', 'floor-cab-layout', 'floor-cab-doors', 'floor-cab-panel'] as $id) {
+            if (! str_contains($html, 'id="'.$id.'"')) {
+                $defects['cab'] = "the view declares no #{$id}";
+            }
+        }
+
+        if (preg_match('/<dialog id="floor-cab"/', $html) !== 1) {
+            $defects['cab'] = 'the cab is not a <dialog>';
+        }
+
+        if (preg_match('/<html\b[^>]*\bdata-ride-reveals\b/', $html) !== 1) {
+            $defects['declared'] = 'the floor view does not declare data-ride-reveals on <html>';
+        }
+
+        $wired = [
+            'press' => ['ride: () => rideAct(screen.ride()),'],
+            'cancel' => ["cab.addEventListener('cancel', (event) => {", 'rideAct(screen.escape(event.cancelable));'],
+            'cancel-reask' => ['outbound = skipUnlessCabLeaving(outbound, lastFrame?.ride ?? null);'],
+            'pageswap' => ["import { arrival, revealed, skipUnlessCabLeaving } from '../wire/ride-arrival.js';",
+                "window.addEventListener('pageswap', (event) => {\n    outbound = skipUnlessCabLeaving(event.viewTransition, lastFrame?.ride ?? null);\n});"],
+            'pageshow' => ["window.addEventListener('pageshow', (event) => {", 'rideAct(screen.returned());'],
+            'arrival' => ['const rideArrival = arrival(html, performance.now());', 'screen.arriveByRide(rideArrival);'],
+            'lobby' => ["const lobbyHref = document.querySelector('a.floor-home').href;", '    lobby_href: lobbyHref,'],
+            'navigation' => ['window.location.assign(ride.route);'],
+        ];
+
+        foreach ($wired as $key => $needles) {
+            foreach ($needles as $needle) {
+                if (! str_contains($code, $needle)) {
+                    $defects[$key] = "the entry does not wire the ride's {$key} (`{$needle}` is missing)";
+                }
+            }
+        }
+
+        // One `pageswap` listener, and none on `pagehide`: nothing on the unload path changes the DOM (R3-2).
+        if (substr_count($code, "addEventListener('pageswap'") !== 1) {
+            $defects['pageswap-dom'] = 'the entry registers '.substr_count($code, "addEventListener('pageswap'").' pageswap listeners — exactly one, the skip rule';
+        }
+
+        if (str_contains($code, "'pagehide'")) {
+            $defects['pagehide'] = 'the entry listens on pagehide';
+        }
+
+        // One timer site for the ride, and no browser timer of the page's own beside `timers`.
+        if (substr_count($code, 'timers.after(') !== 1 || preg_match_all('/window\.setTimeout\(/', $code) !== 1) {
+            $defects['timer'] = 'the ride does not arm its one timer at one site through `timers` (count `timers.after(` and `window.setTimeout(`)';
+        }
+
+        // The arrival is handed to the screen before the client starts (before any render can be asked for).
+        if (strpos($code, 'screen.arriveByRide(') === false || strpos($code, 'screen.arriveByRide(') > strpos($code, 'client.start();')) {
+            $defects['arrival'] = 'the screen is not told of the arrival before the client starts';
+        }
+
+        // The hold ends on the first drawn scene and on nothing else: one call, guarded by that member alone.
+        if (substr_count($code, 'revealed(') !== 1) {
+            $defects['reveal-site'] = 'revealed() is called at '.substr_count($code, 'revealed(').' sites — one, in paint';
+        }
+
+        if (! str_contains($code, "    if (frame.scene !== null) {\n        revealed(html);\n    }\n")) {
+            $defects['reveal'] = 'revealed() is not called under `frame.scene !== null` alone';
+        }
+
+        // The ride's navigation is `location.assign`, never a history entry the page pushes itself.
+        if (preg_match('/pushState\([^)]*ride/', $code) === 1) {
+            $defects['navigation'] = 'the ride pushes a history entry';
+        }
+
+        return $defects;
+    }
+
+    /**
+     * `skipUnlessCabLeaving()` under `node`: a transition kept only for `leaving` with the cab open, skipped once
+     * otherwise, and the rule's text names no document, dialog or painter member.
+     *
+     * @return array<string, string>
+     */
+    private function skipDefects(string $source): array
+    {
+        $defects = [];
+        $body = preg_match('/export function skipUnlessCabLeaving\([^)]*\) \{(.*?)\n\}/s', $source, $m) === 1 ? $m[1] : '';
+
+        $this->assertNotSame('', $body, 'ride-arrival.js has no skipUnlessCabLeaving() this check can read');
+
+        if (preg_match('/\b(document|dialog|painter|querySelector|getElementById)\b/', $body, $hit) === 1) {
+            $defects['dom'] = "the rule reads `{$hit[1]}` — the cab's state is the frame's";
+        }
+
+        $dir = (string) tempnam(sys_get_temp_dir(), 'ride');
+        unlink($dir);
+        mkdir($dir);
+        file_put_contents($dir.'/ride-arrival.js', $source);
+        $script = 'globalThis.document = { querySelector: () => ({ open: true }) };'
+            .'const m = await import('.json_encode('file://'.$dir.'/ride-arrival.js').');'
+            .'const cases = [["leaving","open"],["leaving","closed"],["chosen","open"],["entering","open"],["inside","open"],["staying","open"],["arriving","open"],[null,null]];'
+            .'console.log(JSON.stringify(cases.map(([phase, cab]) => { let skips = 0; const t = { skipTransition() { skips++; } };'
+            .' const kept = m.skipUnlessCabLeaving(t, phase === null ? null : { phase, cab }); return [phase, cab, skips, kept === t]; })))';
+        $out = shell_exec('node --input-type=module -e '.escapeshellarg($script).' 2>&1');
+        array_map('unlink', glob($dir.'/*') ?: []);
+        rmdir($dir);
+
+        $rows = json_decode((string) $out, true);
+        $this->assertIsArray($rows, "node could not run the rule: {$out}");
+
+        foreach ($rows as [$phase, $cab, $skips, $kept]) {
+            $keep = $phase === 'leaving' && $cab === 'open';
+
+            if ($skips !== ($keep ? 0 : 1) || $kept !== $keep) {
+                $defects["{$phase}/{$cab}"] = "with ride {phase: {$phase}, cab: {$cab}} the rule skipped {$skips} time(s) and ".($kept ? 'kept' : 'did not keep').' the transition';
+            }
+        }
+
+        return $defects;
+    }
+
+    private function rideArrivalJs(): string
+    {
+        return (string) file_get_contents($this->jsRoot().'/wire/ride-arrival.js');
     }
 
     /** @return array<string, string> */

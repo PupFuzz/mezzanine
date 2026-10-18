@@ -905,8 +905,17 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             $defects = [...$defects, ...$this->sheetDefects($this->chromeSheet())];
         }
 
-        if (preg_match('/<style[\s>]/i', $html) === 1) {
-            $defects[] = 'the lobby page carries a style block — re-derive the body text size from it';
+        // Every inline style block is re-derived the way the linked sheet is: a block may carry rules (the layout's
+        // elevator-ride block does, card#11795), but none of them may size the text a plate is drawn in.
+        preg_match_all('#<style\b[^>]*>(.*?)</style>#is', $html, $blocks);
+        $this->assertSame(preg_match_all('/<style[\s>]/i', $html), count($blocks[1]), 'a <style> tag this parse cannot pair with its close — the block clause reads nothing');
+
+        foreach ($blocks[1] as $block) {
+            $this->assertNotSame([], $this->cssRules($block), 'a style block parsed to no rules — the block clause reads nothing');
+
+            foreach ($this->ruleDefects($block) as $defect) {
+                $defects[] = "the lobby page's style block: {$defect}";
+            }
         }
 
         preg_match_all('/\bstyle\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'>]+))/i', $html, $m, PREG_SET_ORDER | PREG_UNMATCHED_AS_NULL);
@@ -939,6 +948,27 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
      */
     private function sheetDefects(string $sheet): array
     {
+        $this->assertGreaterThan(5, count($this->cssRules($sheet)), 'the sheet parsed to almost no rules — the sheet clause reads nothing');
+
+        return $this->ruleDefects($sheet);
+    }
+
+    /** @return list<array{0: string, 1: string, 2: string}> each innermost rule of `$css`: [match, selectors, body] */
+    private function cssRules(string $css): array
+    {
+        preg_match_all('/([^{}]+)\{([^{}]*)\}/', (string) preg_replace('#/\*.*?\*/#s', '', $css), $rules, PREG_SET_ORDER);
+
+        return $rules;
+    }
+
+    /**
+     * The rules of `$css` that size a plate's text: a text size with `!important`, or one on a tag `plate-row.js`
+     * creates or on the document's root.
+     *
+     * @return list<string>
+     */
+    private function ruleDefects(string $css): array
+    {
         $row = (string) file_get_contents($this->moduleDir().'/'.self::ROW);
         preg_match_all("/createElement\\('([a-z]+)'\\)|textEl\\(doc, '([a-z]+)'/", $row, $m);
         $tags = array_values(array_unique(array_filter([...$m[1], ...$m[2]])));
@@ -946,14 +976,9 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         $this->assertContains('a', $tags, 'plate-row.js creates no tags this parse can read — the tag clause reads nothing');
 
         $sized = [...$tags, 'html', 'body', ':root', '*'];
-        $css = (string) preg_replace('#/\*.*?\*/#s', '', $sheet);
         $defects = [];
 
-        preg_match_all('/([^{}]+)\{([^{}]*)\}/', $css, $rules, PREG_SET_ORDER);
-
-        $this->assertGreaterThan(5, count($rules), 'the sheet parsed to almost no rules — the sheet clause reads nothing');
-
-        foreach ($rules as [, $selectors, $body]) {
+        foreach ($this->cssRules($css) as [, $selectors, $body]) {
             if (preg_match('/(^|;|\s)font(-size)?\s*:/i', $body) !== 1) {
                 continue;
             }

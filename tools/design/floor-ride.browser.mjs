@@ -1,0 +1,917 @@
+#!/usr/bin/env node
+// THE ELEVATOR RIDE, IN A REAL BROWSER — card#11795 (`docs/design/FLOOR.md` § 4.5, § 9.6 of the design; Appendix B
+// row 23). Node, no dependencies — but real navigations in the Playwright-cached headless Chromium: the served floor,
+// lobby, sign-in and console pages (`render-floor-view.php`, each rendered through the real layout, whose head script
+// and inline style ARE what is measured here), the shipped `server/public` modules and stylesheet, the asset route's
+// art, and one checked-in fixture run (`floor_rides`, `fx-camera.json`) answering every page's `/api/…` requests.
+//
+//   node tools/design/floor-ride.browser.mjs              every row, each once
+//   node tools/design/floor-ride.browser.mjs --row <id>   one row
+//   node tools/design/floor-ride.browser.mjs --selftest   every row, then every row again under its PLANT, which must red
+//                                                         (the bookmark row documents a residual and plants nothing)
+//   …and --chrome <path> or $CHROME, as every browser tool here.
+//
+// ⛔ THE PAGES ARE THE SERVED ONES, AND THE TOOL CARRIES NO COPY OF THE READER. Every page is rendered by
+// `render-floor-view.php`; every absolute origin the view prints (the app URL, the sandbox host included) is
+// rewritten to this tool's server. A plant edits what is SERVED — a module, the sheet, or the rendered page —
+// never a copy kept here, so a change to the layout's script changes what every row measures (the `page` row's
+// CONTROL).
+//
+// ⛔ THE RUN IS THE FIXTURE's. Each page's `/api/…` answers are the run's `http` map, each path's last answer
+// repeating; its stream is a stand-in `EventSource` firing the run's messages on the page's own clock; its clock is
+// continuous. A row may DELAY an answer, a document or the static files, change a status, or redirect a document —
+// page conditions, never scenario bytes.
+//
+// ⛔ THE DEPARTING PAGE IS SETTLED BEFORE IT IS PRESSED (`load`, the first drawn scene, one animation frame): a
+// press before the departing page has painted loses the transition, and a viewer presses seconds after load.
+// ⛔ AND IT IS NOT READ WHILE ITS NAVIGATION IS PENDING: once `location.assign` is in flight, `Runtime.evaluate`
+// on it blocks until the destination commits, so its facts at `pageswap` come from a beacon to this tool's server.
+//
+// ⚠ WHAT A PASS IS NOT: Safari and Firefox (no `PageRevealEvent` there as of the design's reading, unverified), a
+// headed Chrome, a back-forward-cache restore (this headless shell never restores — `BackForwardCacheDisabledForDelegate`),
+// a screen reader's reading of the cab, or a real network's round trip. Timings here are a loopback host's.
+
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { dirname, extname, join, normalize } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { browser, findChrome } from './headless-chromium.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO = join(HERE, '..', '..');
+const FIXTURES = join(REPO, 'server', 'tests', 'Feature', 'Floor', 'fixtures');
+const FLOOR_MD = join(REPO, 'docs', 'design', 'FLOOR.md');
+const RUN = 'floor_rides';
+
+const argv = process.argv.slice(2);
+const argOf = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : null; };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** § 12's reference viewport, read as `floor-chrome.browser.mjs` reads it. */
+function referenceViewport() {
+  const row = readFileSync(FLOOR_MD, 'utf8').split('\n').find((l) => l.startsWith('| Floor reference viewport |')) ?? '';
+  const m = /^\| Floor reference viewport \| \*\*([\d,]+) × ([\d,]+) CSS px\*\*/.exec(row);
+  if (m === null) throw new Error("§ 12's viewport row states no reference viewport in the form this tool reads");
+  return { w: Number(m[1].replace(/,/g, '')), h: Number(m[2].replace(/,/g, '')) };
+}
+
+/** The shipped hold, read from the module the page imports (the head script's copy is held equal by the suite). */
+const CAB_HOLD_MS = Number(/export const CAB_HOLD_MS = (\d+);/.exec(readFileSync(join(REPO, 'server', 'public', 'js', 'wire', 'ride-arrival.js'), 'utf8'))[1]);
+
+/** The run, from whichever fixture file holds it, with the rig's `@json:` / `@text:` references resolved. */
+function fixtureRun(name) {
+  const holders = readdirSync(FIXTURES).filter((f) => f.endsWith('.json'))
+    .map((f) => JSON.parse(readFileSync(join(FIXTURES, f), 'utf8'))).filter((body) => Object.hasOwn(body.runs ?? {}, name));
+  if (holders.length !== 1) throw new Error(`the run ${name} is held by ${holders.length} fixture files, not one`);
+  const resolve = (node) => {
+    if (typeof node === 'string') {
+      if (node.startsWith('@json:')) return JSON.parse(readFileSync(join(REPO, node.slice(6)), 'utf8'));
+      if (node.startsWith('@text:')) return readFileSync(join(REPO, node.slice(6)), 'utf8');
+      return node;
+    }
+    if (Array.isArray(node)) return node.map(resolve);
+    if (node !== null && typeof node === 'object') return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, resolve(v)]));
+    return node;
+  };
+  return resolve(holders[0].runs[name]);
+}
+
+/** Each view the layout serves here, rendered once, its absolute origins made local. */
+const VIEWS = Object.fromEntries(['floor', 'dashboard', 'login', 'console'].map((v) => [v,
+  execFileSync('php', [join(HERE, 'render-floor-view.php'), v], { encoding: 'utf8' }).replace(/https?:\/\/[a-z0-9.-]+(:\d+)?(\/|(?=["']))/gi, '/')]));
+
+for (const [v, html] of Object.entries(VIEWS)) {
+  if (!html.includes('<script>') || !html.includes('<link rel="stylesheet"')) throw new Error(`the ${v} view rendered no head script or no stylesheet link`);
+}
+
+/**
+ * The page's own scripted world and the tool's instruments, installed right after the layout's head script and
+ * style — so the reader stays the first script on the page — and before the stylesheet link and every module.
+ */
+const STAGE = (run, apiDelay, layoutStatus) => `<script>
+(() => {
+  const RUN = ${JSON.stringify(run).replace(/</g, '\\u003c')};
+  const API_DELAY = ${JSON.stringify(apiDelay)};
+  const LAYOUT_STATUS = ${JSON.stringify(layoutStatus)};
+  const html = document.documentElement;
+  const T = () => Math.round(performance.now());
+  // The instruments: every class change on <html>, every pagereveal, the first drawn scene and the chrome's changes.
+  const R = window.__ride = { classes: [], reveals: [], errors: [], scene: null, chrome: [], requests: [] };
+  new MutationObserver(() => R.classes.push([T(), html.className, location.hash])).observe(html, { attributes: true, attributeFilter: ['class'] });
+  addEventListener('pagereveal', (e) => {
+    const rec = { at: T(), vt: e.viewTransition !== null, finished: null };
+    R.reveals.push(rec);
+    e.viewTransition?.finished.then(() => { rec.finished = T(); }, () => { rec.finished = T(); });
+  });
+  addEventListener('error', (e) => R.errors.push(String(e.message)));
+  addEventListener('unhandledrejection', (e) => R.errors.push(String(e.reason?.message ?? e.reason)));
+  document.addEventListener('DOMContentLoaded', () => {
+    const chrome = () => {
+      const s = document.getElementById('floor-layout-statement');
+      const r = document.getElementById('floor-rooms');
+      const n = document.getElementById('floor-name');
+      return { stmt: s === null ? null : (s.hidden ? null : s.textContent), rooms: r?.children.length ?? null, name: n?.textContent ?? null };
+    };
+    R.chrome.push({ at: T(), cls: html.className, ...chrome(), initial: true });
+    new MutationObserver(() => {
+      const c = chrome();
+      const last = R.chrome[R.chrome.length - 1];
+      if (last.stmt !== c.stmt || last.rooms !== c.rooms || last.name !== c.name) R.chrome.push({ at: T(), cls: html.className, ...c });
+      if (R.scene === null && document.querySelector('#floor-drawing svg, #lobby-building [data-floor]') !== null) {
+        R.scene = { at: T(), cls: html.className, leaves: [...document.querySelectorAll('#floor-drawing .elevator-leaf')].map((l) => l.getAttribute('style')) };
+      }
+    }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+  });
+  // The departing page's cab, beaconed whenever it opens or closes: once its navigation is pending the page cannot
+  // be read over the DevTools protocol, so what it shows at the bound is read from here.
+  document.addEventListener('DOMContentLoaded', () => {
+    const cab = document.getElementById('floor-cab');
+    if (cab === null) return;
+    new MutationObserver(() => navigator.sendBeacon('/beacon', JSON.stringify({ kind: 'cab', at: T(), open: cab.open, path: location.pathname,
+      leaves: [...document.querySelectorAll('#floor-drawing .elevator-leaf')].map((l) => l.getAttribute('style')),
+      disabled: document.querySelector('#floor-drawing [data-key="elevator"]')?.getAttribute('aria-disabled') ?? null }))).observe(cab, { attributes: true, attributeFilter: ['open'] });
+  });
+  // The departing page's facts at pageswap, beaconed — registered after the page's own listener (on load).
+  addEventListener('load', () => addEventListener('pageswap', (e) => {
+    const cab = document.getElementById('floor-cab');
+    navigator.sendBeacon('/beacon', JSON.stringify({ at: T(), vt: e.viewTransition !== null, dialog: cab?.open ?? null, path: location.pathname }));
+  }));
+  // The run's world: the API from the run's own answers, the stream on the page's clock, a continuous viewer clock.
+  const T0 = Date.UTC(2026, 7, 23, RUN.floor?.local_hours ?? 9, RUN.floor?.local_minutes ?? 0);
+  const start = performance.now();
+  const RealDate = Date;
+  class RunDate extends RealDate { constructor(...a) { if (a.length === 0) { super(T0 + performance.now() - start); } else { super(...a); } } static now() { return T0 + performance.now() - start; } }
+  window.Date = RunDate;
+  const queues = {};
+  for (const [path, list] of Object.entries(RUN.http ?? {})) queues[path] = list.map((entry) => ({ entry, left: entry.times ?? 1 }));
+  const realFetch = window.fetch.bind(window);
+  window.fetch = (input, init) => {
+    const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+    if (!url.pathname.startsWith('/api/')) return realFetch(input, init);
+    R.requests.push([T(), url.pathname]);
+    const queue = queues[url.pathname] ?? [];
+    const head = queue[0];
+    if (head === undefined) return Promise.reject(new TypeError('unscripted request: ' + url.pathname));
+    if (--head.left <= 0 && queue.length > 1) queue.shift();
+    const next = head.entry;
+    const status = url.pathname === '/api/building' && LAYOUT_STATUS[location.pathname] !== undefined ? LAYOUT_STATUS[location.pathname] : next.status;
+    const text = status !== next.status ? JSON.stringify({ error: 'planted' }) : (next.text !== undefined ? next.text : JSON.stringify(next.body ?? null));
+    const delay = (next.delay_ms ?? 0) + (API_DELAY[url.pathname] ?? 0);
+    return new Promise((resolve) => setTimeout(() => resolve(new Response(text, { status, headers: { 'content-type': 'application/json' } })), delay));
+  };
+  class RunEventSource {
+    constructor(url) {
+      this.url = url; this.readyState = 0; this.listeners = {};
+      const opened = performance.now() - start;
+      setTimeout(() => { this.readyState = 1; this.fire('open', {}); }, 0);
+      for (const m of RUN.messages ?? []) {
+        if (m.at_ms < opened) continue;
+        setTimeout(() => {
+          if (this.readyState === 2) return;
+          if (m.end === true) { this.readyState = 2; this.fire('error', {}); return; }
+          this.fire('mezzanine', { data: JSON.stringify(m.envelope) });
+        }, m.at_ms - (performance.now() - start));
+      }
+    }
+    addEventListener(type, cb) { (this.listeners[type] ??= []).push(cb); }
+    removeEventListener(type, cb) { this.listeners[type] = (this.listeners[type] ?? []).filter((c) => c !== cb); }
+    fire(type, event) { for (const cb of this.listeners[type] ?? []) cb({ type, ...event }); }
+    close() { this.readyState = 2; }
+  }
+  window.EventSource = RunEventSource;
+})();
+</script>`;
+
+const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png',
+  '.json': 'application/json', '.tmj': 'application/json', '.tsx': 'application/xml', '.svg': 'image/svg+xml' };
+
+/**
+ * One row's server. `c` — the row's page conditions: `run` (the fixture run, `floor_rides` by default), `delay` (ms
+ * on every static `/js` and `/css` answer), `doc` (`path → ms` before a document is answered, or `'gate'` to hold it
+ * until `/release`), `redirect` (`path → target`), `api` (`path → ms` added to the run's answer), `layout`
+ * (`document path → status` for that page's `/api/building`), `media` (emulated); and
+ * `plant` — `[{ file, from, to }]` edits to what is served, `file` a path under `server/public` or `page` (every
+ * rendered page).
+ */
+function serve(c = {}) {
+  const run = fixtureRun(c.run ?? RUN);
+  const plants = c.plant ?? [];
+  const edit = (file, text) => plants.filter((p) => p.file === file).reduce((t, p) => {
+    if (!t.includes(p.from)) throw new Error(`the plant's anchor is not in ${file}: ${p.from.slice(0, 60)}`);
+    return t.split(p.from).join(p.to);
+  }, text);
+  const pageOf = (view, key, seat = '') => {
+    let html = VIEWS[view];
+    if (view === 'floor') html = html.replace(/data-floor="[^"]*"/, `data-floor="${key}"`).replace(/data-seat="[^"]*"/, `data-seat="${seat}"`);
+    const at = html.indexOf('<link rel="stylesheet"');
+    return edit('page', edit(`page:${view}`, html.slice(0, at) + STAGE(run, c.api ?? {}, c.layout ?? {}) + html.slice(at)));
+  };
+  const beacons = [];
+  let release = null;
+  const roots = [['/art/floor/', join(REPO, 'resources', 'floor')], ['/art/characters/', join(REPO, 'resources', 'characters')], ['/', join(REPO, 'server', 'public')]];
+  const server = createServer((req, res) => {
+    const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    const doc = (body) => { res.writeHead(200, { 'content-type': 'text/html', 'cache-control': 'no-store' }); res.end(body); };
+    if (path === '/beacon' && req.method === 'POST') {
+      let b = ''; req.on('data', (d) => { b += d; }); req.on('end', () => { beacons.push(JSON.parse(b)); res.writeHead(204); res.end(); });
+      return;
+    }
+    if (path === '/release') { release?.(); release = null; res.end('ok'); return; }
+    const documents = { '/dashboard': () => pageOf('dashboard'), '/login': () => pageOf('login'), '/admin': () => pageOf('console'), '/admin/other': () => pageOf('console') };
+    const floor = /^\/floor\/([^/]+)(?:\/([^/]+))?$/.exec(path);
+    if (floor !== null || Object.hasOwn(documents, path)) {
+      if (c.redirect?.[path] !== undefined) { res.writeHead(302, { location: c.redirect[path] }); res.end(); return; }
+      const body = () => doc(floor !== null ? pageOf('floor', floor[1], floor[2] ?? '') : documents[path]());
+      const wait = c.doc?.[path];
+      if (wait === 'gate') { release = body; return; }
+      setTimeout(body, wait ?? 0);
+      return;
+    }
+    for (const [prefix, root] of roots) {
+      if (!path.startsWith(prefix)) continue;
+      const file = normalize(join(root, path.slice(prefix.length)));
+      if (file.startsWith(root) && existsSync(file)) {
+        const rel = file.slice(join(REPO, 'server', 'public').length + 1);
+        const body = edit(rel, readFileSync(file, 'utf8'));
+        const late = (path.startsWith('/js/') || path.startsWith('/css/')) ? (c.delay ?? 0) : 0;
+        setTimeout(() => { res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-store' }); res.end(body); }, late);
+        return;
+      }
+    }
+    res.writeHead(404); res.end();
+  });
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({
+    base: `http://127.0.0.1:${server.address().port}`, beacons, released: () => release === null, close: () => server.close(),
+  })));
+}
+
+/** A browser on one row's server: the page, its clicks and keys, its instruments. */
+async function session(chrome, srv, c = {}) {
+  const { w, h } = referenceViewport();
+  const b = await browser(chrome, w, h, 'never', { media: c.media ?? [] });
+  const page = b.page;
+  const ev = b.evaluate;
+  const at = async (selector) => ev(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (e === null) return null; const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+  const click = async (selector) => {
+    const p = await at(selector);
+    if (p === null) throw new Error(`nothing to click at ${selector}`);
+    for (const type of ['mousePressed', 'mouseReleased']) await page('Input.dispatchMouseEvent', { type, x: p.x, y: p.y, button: 'left', clickCount: 1 });
+  };
+  const key = async (k, code, vk, extra = {}) => {
+    await page('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: k, code, windowsVirtualKeyCode: vk, ...extra });
+    if (!extra.hold) await page('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk });
+  };
+  const escape = () => key('Escape', 'Escape', 27);
+  const pixel = async () => {
+    const url = `data:image/png;base64,${(await page('Page.captureScreenshot', { format: 'png' })).data}`;
+    return ev(`new Promise((ok) => { const i = new Image(); i.onload = () => { const c = document.createElement('canvas'); c.width = i.width; c.height = i.height; const x = c.getContext('2d'); x.drawImage(i, 0, 0); const d = x.getImageData(Math.floor(i.width / 2), Math.floor(i.height / 2), 1, 1).data; ok('#' + [d[0], d[1], d[2]].map((v) => v.toString(16).padStart(2, '0')).join('')); }; i.src = ${JSON.stringify(url)}; })`);
+  };
+  /** Navigate and settle: loaded, a scene drawn, one animation frame. */
+  const open = async (path) => {
+    await page('Page.navigate', { url: srv.base + path });
+    await until(() => ev("document.readyState === 'complete' && window.__ride?.scene !== null && window.__ride?.scene !== undefined"), 15000, `the page ${path} drew no scene`);
+    await ev('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))');
+  };
+  /** The page's instruments, once readable (after a pending navigation commits). */
+  const record = () => ev('JSON.parse(JSON.stringify({ path: location.pathname, hash: location.hash, cls: document.documentElement.className, now: Math.round(performance.now()), arrivalAt: document.documentElement.dataset.rideArrivalAt ?? null, arrival: document.documentElement.dataset.rideArrival ?? null, nav: performance.getEntriesByType("navigation")[0]?.type ?? null, ...window.__ride }))');
+  const cab = () => ev(`(() => { const d = document.getElementById('floor-cab'); return { open: d.open, modal: d.matches(':modal'), doors: document.getElementById('floor-cab-doors').children.length,
+    focus: document.activeElement?.closest('[data-key], [data-stop]')?.getAttribute('data-key') ?? document.activeElement?.closest('[data-stop]')?.dataset.stop ?? null,
+    disabled: document.querySelector('#floor-drawing [data-key="elevator"]')?.getAttribute('aria-disabled') ?? null,
+    leaves: [...document.querySelectorAll('#floor-drawing .elevator-leaf')].map((l) => l.getAttribute('style')),
+    path: location.pathname, panel: !document.getElementById('floor-panel').hidden }; })()`);
+  return { b, page, ev, at, click, key, escape, pixel, open, record, cab, close: () => b.close() };
+}
+
+/** Poll `fn` until it answers truthy, or fail with `why`. */
+async function until(fn, ms, why) {
+  const end = Date.now() + ms;
+  for (;;) {
+    try { const v = await fn(); if (v) return v; } catch { /* the page is between documents */ }
+    if (Date.now() > end) throw new Error(why);
+    await sleep(25);
+  }
+}
+
+/** Into the cab on A and up to `inside` (its doors shut, its buttons armed). */
+async function intoTheCab(s) {
+  await s.click('#floor-drawing [data-key="elevator"]');
+  try {
+    await until(async () => (await s.cab()).open, 2000, 'the elevator opened no cab');
+  } catch (e) {
+    const p = await s.at('#floor-drawing [data-key="elevator"]');
+    const hit = p === null ? null : await s.ev(`(() => { const e = document.elementFromPoint(${p.x}, ${p.y}); return e === null ? null : e.tagName + '.' + (e.getAttribute('class') ?? '') + ' in ' + (e.closest('[data-key]')?.getAttribute('data-key') ?? '-'); })()`);
+    throw new Error(`${e.message} (the elevator at ${JSON.stringify(p)}, the point hits ${hit}; page errors ${JSON.stringify((await s.record()).errors)})`);
+  }
+  await until(() => s.ev("!document.getElementById('floor-cab-panel').inert"), 3000, 'the cab never reached inside');
+}
+
+/** A ride from `aimla` to `stop`: settled, into the cab, the stop pressed; answers when the destination committed. */
+async function rideTo(s, stop) {
+  await s.open('/floor/aimla');
+  await intoTheCab(s);
+  await s.click(`#floor-cab-stops li[data-stop="${stop}"] button`);
+  const target = stop === '' ? '/dashboard' : `/floor/${stop}`;
+  await until(async () => (await s.ev('location.pathname')) === target, 15000, `the ride never reached ${target}`);
+}
+
+/** The departing page's reference pixels: its bare floor, and its cab standing open (the `chosen` doors at rest open). */
+async function references(s) {
+  const floor = await s.pixel();
+  await intoTheCab(s);
+  return { floor };
+}
+
+/** The cab, doors open, `chosen` at its end (no navigation pending yet): what the browser will snapshot in `leaving`. */
+async function cabOpenPixel(s) {
+  await sleep(650);
+  return s.pixel();
+}
+
+/** Each row: `run(chrome, c)` answers `{ defects, facts }`; `base` its own page conditions; `plant` what must red it. */
+const MAIN = 'js/floor/main.js';
+const SCREEN = 'js/floor/floor-screen.js';
+const PANEL = 'js/floor/cab-panel.js';
+const RULE = 'js/wire/ride-arrival.js';
+const row = (what, base, plant, run) => ({ what, base, plant, run });
+
+/** One session on one server, closed whatever the row does. */
+async function within(chrome, c, fn) {
+  const srv = await serve(c);
+  const s = await session(chrome, srv, c);
+  try { return await fn(s, srv); } finally { s.close(); srv.close(); }
+}
+
+/** The destination's record once it has arrived and drawn (or `ms` has passed). */
+async function arrivedRecord(s, ms = 6000) {
+  await until(async () => { const r = await s.record(); return r.scene !== null && (r.classes.some(([, k]) => k.includes('ride-arrived')) || !r.classes.some(([, k]) => k.includes('ride-holding'))); }, ms, 'the destination never drew');
+  await sleep(100);
+  return s.record();
+}
+
+/** The defects every destination must be free of: a held class, a transition carried, page errors. */
+function cut(r, why) {
+  const d = [];
+  if (r.reveals[0]?.vt === true && !(r.reveals[0].finished !== null && r.reveals[0].finished - r.reveals[0].at <= 20)) d.push(`${why}: the destination's pagereveal carried a transition that ran (finished ${r.reveals[0].finished} after ${r.reveals[0].at})`);
+  if (r.classes.some(([, k]) => k.includes('ride-'))) d.push(`${why}: the destination took a ride-* class: ${JSON.stringify(r.classes)}`);
+  return d;
+}
+
+const ROWS = {
+  press: row('click the elevator: the cab opens within opening\'s length and one frame', {}, { plant: [{ file: MAIN, from: '        ride: () => rideAct(screen.ride()),', to: '        ride: () => {},' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await s.open('/floor/aimla');
+      const t = await s.ev('performance.now()');
+      await s.click('#floor-drawing [data-key="elevator"]');
+      const opened = await until(async () => ((await s.cab()).open ? s.ev('performance.now()') : null), 3000, 'the cab never opened').catch(() => null);
+      const limit = 500 + 250 + 120;
+      return { defects: opened === null ? ['the cab never opened'] : (opened - t > limit ? [`the cab opened ${Math.round(opened - t)} ms after the press`] : []), facts: { after: opened === null ? null : Math.round(opened - t) } };
+    })),
+
+  'door-order': row('the cab\'s doors close only after the cab has faded in (M3)', {}, { plant: [{ file: SCREEN, from: '        entering: [1 + D.close, 1],', to: '        entering: [1 + D.close, 0],' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await s.open('/floor/aimla');
+      await s.click('#floor-drawing [data-key="elevator"]');
+      await until(async () => (await s.cab()).open, 3000, 'the cab never opened');
+      // Each animation's start is read once it has one: `ready` settles when the animation has started.
+      const t = await s.ev(`(async () => { const fade = document.getElementById('floor-cab').getAnimations()[0]; const leaf = document.querySelector('#floor-cab-doors .elevator-leaf')?.getAnimations()[0];
+        await Promise.all([fade?.ready, leaf?.ready]);
+        return { fade: fade?.startTime ?? null, leaf: leaf === undefined ? null : leaf.startTime + leaf.effect.getTiming().delay, name: leaf?.animationName ?? null }; })()`);
+      const d = [];
+      if (t.fade === null || t.leaf === null) d.push(`no fade or no door motion: ${JSON.stringify(t)}`);
+      else if (t.leaf < t.fade + 250 - 17) d.push(`the doors start ${Math.round(t.leaf - t.fade)} ms after the fade does — under one frame`);
+      if (t.name !== 'leaf-close') d.push(`the cab's doors ran ${t.name} on entering`);
+      return { defects: d, facts: t };
+    })),
+
+  focus: row('inside, focus is on the current floor\'s button, and stays there across a render', {}, { plant: [{ file: PANEL, from: '            const held = new Map([...list.children].map((li) => [li.dataset.stop, li]));', to: "            [...list.children].forEach((li) => li.remove());\n            const held = new Map();" }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await s.open('/floor/aimla');
+      await intoTheCab(s);
+      await sleep(50);
+      const first = (await s.cab()).focus;
+      // The run's next heartbeat renders the page; the panel is reconciled on that paint.
+      await until(async () => (await s.ev('performance.now()')) > 5600, 8000, 'the clock stood still');
+      const later = (await s.cab()).focus;
+      return { defects: [first, later].every((f) => f === 'aimla') ? [] : [`focus: ${first} inside, ${later} after a render`], facts: { first, later } };
+    })),
+
+  'one-escape': row('one Escape in entering leaves the cab open', {}, { plant: [{ file: MAIN, from: '    event.preventDefault();\n    rideAct(screen.escape(event.cancelable));', to: '    rideAct(screen.escape(event.cancelable));' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await s.open('/floor/aimla');
+      await s.click('#floor-drawing [data-key="elevator"]');
+      await until(async () => (await s.cab()).open, 3000, 'the cab never opened');
+      await sleep(100);
+      await s.escape();
+      await sleep(100);
+      const cab = await s.cab();
+      return { defects: cab.open ? [] : ['one Escape closed the cab'], facts: { open: cab.open } };
+    })),
+
+  'two-escapes-entering': row('two Escapes in entering end the ride: the cab gone, focus on the elevator, the leaves at rest, the elevator answering again (M5-1)', {},
+    { plant: [{ file: MAIN, from: '    rideAct(screen.escape(event.cancelable));', to: '    rideAct(screen.escape(true));' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await s.open('/floor/aimla');
+      await s.click('#floor-drawing [data-key="elevator"]');
+      await until(async () => (await s.cab()).open, 3000, 'the cab never opened');
+      await sleep(100);
+      await s.escape();
+      await sleep(30);
+      await s.escape();
+      await sleep(100);
+      const ended = await s.cab();
+      await sleep(900);
+      await s.click('#floor-drawing [data-key="elevator"]');
+      const again = await until(async () => (await s.cab()).open, 2000, '').then(() => true, () => false);
+      const d = [];
+      if (ended.open || ended.doors !== 0) d.push(`the cab is still drawn: ${JSON.stringify(ended)}`);
+      if (ended.disabled !== null) d.push('the elevator still says a ride is in flight');
+      if (ended.focus !== 'elevator') d.push(`focus is on ${ended.focus}`);
+      if (ended.leaves.some((l) => l !== null)) d.push(`the leaves are not at rest: ${JSON.stringify(ended.leaves)}`);
+      if (!again) d.push('the elevator refused the next press');
+      return { defects: d, facts: { ended, again } };
+    })),
+
+  'two-escapes-committed': row('two Escapes in chosen, and in leaving, with the destination 1 200 ms late: the destination is a cut with its own doors, never A\'s floor held over it (M5-1)',
+    { doc: { '/floor/zeta': 1200 } }, { plant: [{ file: RULE, from: "    if (ride?.phase === 'leaving' && ride.cab === 'open') {", to: "    if (ride?.phase === 'leaving') {" }] },
+    async (chrome, c) => {
+      const d = [];
+      const facts = {};
+      for (const [label, wait] of [['chosen', 100], ['leaving', 900]]) {
+        await within(chrome, c, async (s) => {
+          await s.open('/floor/aimla');
+          await intoTheCab(s);
+          await s.click('#floor-cab-stops li[data-stop="zeta"] button');
+          await sleep(wait);
+          await s.escape();
+          await sleep(30);
+          await s.escape();
+          await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the ride never committed');
+          const r = await arrivedRecord(s);
+          facts[label] = { reveals: r.reveals, classes: r.classes, leaves: r.scene?.leaves };
+          d.push(...cut(r, label));
+          if (!(r.scene?.leaves ?? []).some((l) => String(l).includes('leaf-close'))) d.push(`${label}: the destination's leaves did not close on its first scene: ${JSON.stringify(r.scene?.leaves)}`);
+        });
+      }
+      return { defects: d, facts };
+    }),
+
+  race: row('a second Escape within a frame or so of the commit, either side: the destination is still a cut (m6-1); with no second Escape the cab is held',
+    { doc: { '/floor/zeta': 'gate' } }, { plant: [{ file: MAIN, from: '    outbound = skipUnlessCabLeaving(outbound, lastFrame?.ride ?? null);\n', to: '' }] },
+    async (chrome, c) => {
+      const d = [];
+      const facts = [];
+      for (const off of [null, -5, 0, 1, 3, 5, 7, 10, 15]) {
+        await within(chrome, c, async (s, srv) => {
+          await s.open('/floor/aimla');
+          await intoTheCab(s);
+          await s.click('#floor-cab-stops li[data-stop="zeta"] button');
+          await sleep(900);                                      // leaving: the navigation pending, held by the server
+          await s.escape();
+          await sleep(40);
+          const release = () => fetch(`${srv.base}/release`);
+          if (off === null) await release();
+          else if (off >= 0) { await release(); if (off > 0) await sleep(off); await s.escape(); } else { await s.escape(); await sleep(-off); await release(); }
+          await until(async () => (await s.ev('location.pathname')) === '/floor/zeta' && (await s.record()).reveals.length > 0, 8000, 'the ride never committed');
+          await sleep(100);
+          const r = await s.record();
+          const held = r.classes.some(([, k]) => k.includes('ride-holding'));
+          facts.push({ off, held });
+          if (off === null && !held) d.push('CONTROL: with one Escape the destination did not hold the cab — the window measured nothing');
+          if (off !== null && held) d.push(`a second Escape ${off} ms from the release: the destination held A's frame`);
+        });
+      }
+      return { defects: d, facts };
+    }),
+
+  stay: row('Escape inside, with a desk\'s drill-down open: the cab closes, the URL and the drill-down stay, the leaves close once, focus on the elevator after the close (m3)', {},
+    { plant: [{ file: MAIN, from: "        fade(cab, 1, 0, ride.fade_ms).then(() => {\n            if (cab.open) {\n                cab.close();\n            }\n\n            elevator()?.focus({ preventScroll: true });\n        });",
+      to: "        elevator()?.focus({ preventScroll: true });\n        fade(cab, 1, 0, ride.fade_ms).then(() => {\n            if (cab.open) {\n                cab.close();\n            }\n        });" }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await s.open('/floor/aimla/aimla-pm');
+      await until(async () => (await s.cab()).panel, 5000, 'the drill-down never opened');
+      await intoTheCab(s);
+      await s.ev("document.getElementById('floor-cab').addEventListener('close', () => { window.__ride.closeFocus = document.activeElement?.closest('[data-key]')?.getAttribute('data-key') ?? document.activeElement?.tagName ?? null; }, { once: true })");
+      await s.escape();
+      await until(async () => !(await s.cab()).open, 3000, 'the cab never closed');
+      const closing = await s.cab();
+      await sleep(900);
+      const after = await s.cab();
+      const r = await s.record();
+      const d = [];
+      if (after.path !== '/floor/aimla/aimla-pm') d.push(`the URL moved to ${after.path}`);
+      if (!after.panel) d.push('the drill-down closed');
+      if (!closing.leaves.every((l) => String(l).startsWith('animation:leaf-close'))) d.push(`the leaves did not close: ${JSON.stringify(closing.leaves)}`);
+      if (r.closeFocus !== 'elevator' || after.focus !== 'elevator') d.push(`focus at the close was ${r.closeFocus}, after ${after.focus}`);
+      return { defects: d, facts: { closing, after, closeFocus: r.closeFocus } };
+    })),
+
+  modal: row('inside, the cab is modal: the page under it does not take a pointer (m5)', {}, { plant: [{ file: MAIN, from: '        cab.showModal();', to: '        cab.show();' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await s.open('/floor/aimla');
+      await intoTheCab(s);
+      const r = await s.ev(`(() => { const a = document.querySelector('a.floor-home').getBoundingClientRect(); const hit = document.elementFromPoint(a.x + a.width / 2, a.y + a.height / 2);
+        return { modal: document.getElementById('floor-cab').matches(':modal'), hit: hit?.closest('#floor-cab') !== null }; })()`);
+      // The design wrote this row as `a.floor-home.closest(':modal, [inert]')` — which no browser answers true: a
+      // modal dialog makes the page under it inert without an attribute, and the link is not inside the dialog.
+      return { defects: r.modal && r.hit ? [] : [`the cab is not modal over the page: ${JSON.stringify(r)}`], facts: r };
+    })),
+
+  'pre-layout': row('the pre-layout frame under the hold: at the first chrome change the cab is still held, nothing is stated, no room is listed', { api: { '/api/building': 600 } },
+    { plant: [{ file: MAIN, from: '    if (frame.scene !== null) {\n        revealed(html);', to: '    if (frame.scene !== null || frame.statement !== null || frame.floor === null) {\n        revealed(html);' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await rideTo(s, 'zeta');
+      const r = await arrivedRecord(s);
+      const change = r.chrome.find((x) => !x.initial) ?? null;
+      const d = [];
+      if (change === null) d.push('the destination\'s chrome never changed');
+      else {
+        if (!change.cls.includes('ride-holding')) d.push(`at the first chrome change (${change.at} ms) the cab was not held: ${change.cls}`);
+        if (change.stmt !== null || change.rooms !== 0) d.push(`the first chrome change stated something: ${JSON.stringify(change)}`);
+      }
+      return { defects: d, facts: { change, scene: r.scene?.at } };
+    })),
+
+  'layout-fails': row('a layout that fails (503): its statement drawn under the hold, the cab fading into it at the bound, no elevator, no door motion', { layout: { '/floor/zeta': 503 } },
+    { plant: [{ file: MAIN, from: '    if (frame.scene !== null) {\n        revealed(html);', to: '    if (frame.scene !== null || frame.statement !== null) {\n        revealed(html);' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await s.open('/floor/aimla');
+      await intoTheCab(s);
+      await s.click('#floor-cab-stops li[data-stop="zeta"] button');
+      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the ride never committed');
+      await sleep(CAB_HOLD_MS + 600);
+      const r = await s.record();
+      const t0 = Number(r.arrivalAt);
+      const arrived = r.classes.find(([, k]) => k.includes('ride-arrived'))?.[0] ?? null;
+      const stated = r.chrome.find((x) => x.stmt !== null) ?? null;
+      const bits = await s.ev("({ elevator: document.querySelector('[data-key=\"elevator\"]') !== null, svg: document.querySelector('#floor-drawing svg') !== null })");
+      const d = [];
+      if (arrived === null || Math.abs(arrived - (t0 + CAB_HOLD_MS)) > 40) d.push(`the hold ended at ${arrived} ms, not at the bound ${t0 + CAB_HOLD_MS}`);
+      if (stated === null || !stated.cls.includes('ride-holding')) d.push(`the statement was not drawn under the hold: ${JSON.stringify(stated)}`);
+      if (bits.elevator || bits.svg) d.push(`a failed layout drew ${JSON.stringify(bits)}`);
+      return { defects: d, facts: { t0, arrived, stated: stated?.at } };
+    })),
+
+  pending: row('a layout pending past the bound (2 200 ms): the cab fades into the waiting chrome at the bound, and the room drawn later has its leaves at rest',
+    { api: { '/api/building': 2200 } }, { plant: [{ file: SCREEN, from: ' && !endsRide(frame) && now <= expiresAt) {', to: ' && !endsRide(frame)) {' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await rideTo(s, 'zeta');
+      await until(async () => (await s.record()).scene !== null, 8000, 'the destination never drew');
+      await sleep(200);
+      const r = await s.record();
+      const t0 = Number(r.arrivalAt);
+      const arrived = r.classes.find(([, k]) => k.includes('ride-arrived'))?.[0] ?? null;
+      const atBound = [...r.chrome].reverse().find((x) => x.at <= (arrived ?? 0)) ?? null;
+      const d = [];
+      if (arrived === null || Math.abs(arrived - (t0 + CAB_HOLD_MS)) > 40) d.push(`the hold ended at ${arrived}, not the bound ${t0 + CAB_HOLD_MS}`);
+      if (atBound === null || atBound.stmt !== null || atBound.rooms !== 0) d.push(`at the bound the chrome said ${JSON.stringify(atBound)}`);
+      if (r.scene.at <= (arrived ?? Infinity)) d.push('the room was drawn inside the bound — the row measured nothing');
+      if ((r.scene.leaves ?? []).some((l) => l !== null)) d.push(`a room drawn after the bound moved its leaves: ${JSON.stringify(r.scene.leaves)}`);
+      return { defects: d, facts: { t0, arrived, scene: r.scene.at, leaves: r.scene.leaves } };
+    })),
+
+  'late-modules': row('the module graph 600 ms late, the layout past the bound: the head script still sees the transition and holds before any module has run',
+    // PLANT: the listener moved into the module graph — the head script no longer registers it, and `floor/main.js`
+    // (twelve imports deep, each 600 ms late) registers it when it runs.
+    { delay: 600, api: { '/api/building': 2200 } }, { plant: [
+      { file: 'page', from: "addEventListener('pagereveal', function (event) {", to: 'window.__rideReveal = (function (event) {' },
+      { file: MAIN, from: "const root = el('floor');\n", to: "addEventListener('pagereveal', window.__rideReveal);\nconst root = el('floor');\n" }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await rideTo(s, 'zeta');
+      await until(async () => (await s.record()).scene !== null, 10000, 'the destination never drew');
+      const r = await s.record();
+      const held = r.classes.find(([, k]) => k.includes('ride-holding'))?.[0] ?? null;
+      const moduleRan = r.chrome.find((x) => !x.initial)?.at ?? null;
+      const d = [];
+      if (held === null) d.push('the destination never held the cab');
+      else if (moduleRan !== null && held >= moduleRan) d.push(`the hold began at ${held} ms, after the module's first paint at ${moduleRan}`);
+      if ((r.scene.leaves ?? []).some((l) => l !== null)) d.push(`the room drawn after the bound moved its leaves: ${JSON.stringify(r.scene.leaves)}`);
+      return { defects: d, facts: { held, moduleRan, scene: r.scene.at } };
+    })),
+
+  'late-commit': row('the destination\'s document 2 500 ms late: A tears down at the bound, and the late commit is a cut on B with its own doors (M4-1)',
+    { doc: { '/floor/zeta': 2500 } }, { plant: [{ file: MAIN, from: "window.addEventListener('pageswap', (event) => {\n    outbound = skipUnlessCabLeaving(event.viewTransition, lastFrame?.ride ?? null);\n});", to: '' }] },
+    (chrome, c) => within(chrome, c, async (s, srv) => {
+      const pressed = await pressStop(s, 'zeta');
+      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the ride never committed');
+      const r = await arrivedRecord(s);
+      const d = [...cut(r, 'the late commit'), ...tornDown(srv, pressed)];
+      if (!(r.scene?.leaves ?? []).some((l) => String(l).includes('leaf-close'))) d.push(`B's leaves did not close on its first scene: ${JSON.stringify(r.scene?.leaves)}`);
+      return { defects: d, facts: { beacons: srv.beacons, reveals: r.reveals } };
+    })),
+
+  'mid-hold': row('300 ms into the hold the window shows the cab — not A\'s bare floor, not the destination; after the fade it shows the destination', { delay: 600 },
+    { plant: [{ file: MAIN, from: "window.addEventListener('pageswap', (event) => {\n", to: "window.addEventListener('pageswap', () => cab.close());\nwindow.addEventListener('pageswap', (event) => {\n" }] },
+    (chrome, c) => holdPixels(chrome, c)),
+
+  'new-hidden': row('the destination\'s new image is hidden during the hold', { delay: 600 },
+    { plant: [{ file: 'page', from: '        html.ride-holding::view-transition-new(root) { animation: ride-hidden var(--ride-hold-max) linear; }\n', to: '' }] },
+    (chrome, c) => holdPixels(chrome, c)),
+
+  'arrival-doors': row('on the destination the leaves are drawn open, close after the fade, and the ride is over within one door cycle', {},
+    { plant: [{ file: MAIN, from: '    screen.arriveByRide(rideArrival);\n', to: '' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await rideTo(s, 'zeta');
+      const r = await arrivedRecord(s);
+      const arrived = r.classes.find(([, k]) => k.includes('ride-arrived'))?.[0] ?? null;
+      const leaf = await s.ev("(async () => { const a = document.querySelector('#floor-drawing .elevator-leaf')?.getAnimations()[0]; if (a === undefined) return null; await a.ready; return { name: a.animationName, start: a.startTime + a.effect.getTiming().delay }; })()");
+      await sleep(900);
+      const after = await s.cab();
+      const d = [];
+      if (!(r.scene?.leaves ?? []).every((l) => String(l).includes('leaf-close'))) d.push(`the first scene's leaves: ${JSON.stringify(r.scene?.leaves)}`);
+      if (arrived !== null && leaf !== null && leaf.start < arrived + 250 - 20) d.push(`the doors started closing ${Math.round(leaf.start - arrived)} ms after the fade began — before it ended`);
+      if (after.disabled !== null) d.push('the arrival was still in flight a door cycle later');
+      return { defects: d, facts: { arrived, leaf, after: after.disabled } };
+    })),
+
+  lobby: row('press Lobby: the lobby is held and revealed at its first drawn building, the fragment stripped', {},
+    { plant: [{ file: 'page:dashboard', from: ' data-ride-reveals>', to: '>' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await rideTo(s, '');
+      await until(async () => (await s.record()).scene !== null, 8000, 'the lobby never drew a building');
+      await sleep(300);
+      const r = await s.record();
+      const held = r.classes.find(([, k]) => k.includes('ride-holding'))?.[0] ?? null;
+      const arrived = r.classes.find(([, k]) => k.includes('ride-arrived'))?.[0] ?? null;
+      const t0 = Number(r.arrivalAt);
+      const d = [];
+      if (held === null || arrived === null) d.push(`the lobby was not held and revealed: ${JSON.stringify(r.classes)}`);
+      if (r.hash !== '') d.push(`the fragment was not stripped: ${r.hash}`);
+      // Recorded, not judged: the real lobby's first-scene time, and which exit ended its hold (m5-5).
+      return { defects: d, facts: { t0, scene: r.scene.at - t0, arrived: arrived === null ? null : arrived - t0, exit: arrived !== null && Math.abs(arrived - r.scene.at) <= 20 ? 'scene' : 'bound' } };
+    })),
+
+  links: row('a plate link into a floor, and a console link: a cut — the transition skipped, no ride-* class, the leaves at rest', {},
+    { plant: [{ file: 'page', from: '                event.viewTransition.skipTransition();\n', to: '' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      const d = [];
+      await s.open('/dashboard');
+      await s.click('#lobby-building li[data-floor="zeta"] a');
+      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the plate link never arrived');
+      const plate = await arrivedRecord(s);
+      d.push(...cut(plate, 'a plate link'));
+      if (plate.reveals[0]?.vt !== true) d.push('the plate link carried no transition to skip — the row measured nothing');
+      if ((plate.scene?.leaves ?? []).some((l) => l !== null)) d.push(`a plate link moved the leaves: ${JSON.stringify(plate.scene?.leaves)}`);
+      await s.page('Page.navigate', { url: `${await s.ev('location.origin')}/admin` });
+      await until(async () => (await s.ev("document.readyState === 'complete'")), 5000, 'the console never loaded');
+      await s.ev('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))');
+      await s.ev("location.assign('/admin/other')");
+      await until(async () => (await s.ev('location.pathname')) === '/admin/other' && (await s.ev("document.readyState === 'complete'")), 5000, 'the console link never arrived');
+      await sleep(400);
+      const console_ = await s.record();
+      d.push(...cut(console_, 'a console link'));
+      return { defects: d, facts: { plate: plate.reveals, console: console_.reveals } };
+    })),
+
+  // ⚠ The design placed the strip inside the reveal on a measurement (its r4: a synchronous strip in the head left the
+  // inbound transition null). This tool does NOT reproduce that on the headless shell it runs: with the strip moved
+  // before the reveal the transition still held, three runs of three (card#11795). So the placement is not what this
+  // row can check; what it checks is that the fragment is gone by the first moment the cab is held.
+  strip: row('the fragment is stripped by the time the cab is held: the hold is reached and the hash is already gone at its first read', {},
+    { plant: [{ file: 'page', from: "                history.replaceState(null, '', location.pathname + location.search);\n", to: '' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await rideTo(s, 'zeta');
+      const r = await arrivedRecord(s);
+      const held = r.classes.find(([, k]) => k.includes('ride-holding')) ?? null;
+      return { defects: held === null ? ['the destination never held'] : (held[2] !== '' ? [`the hash at the first hold was ${held[2]}`] : []), facts: { held } };
+    })),
+
+  'opt-in': row('the opt-in where the parser has it: three rides with the static files 50 ms late, each held', { delay: 50 },
+    { plant: [{ file: 'page', from: '        @view-transition { navigation: auto; }\n', to: '' }, { file: 'css/mezzanine.css', from: ':root {', to: '@view-transition { navigation: auto; }\n\n:root {' }] },
+    async (chrome, c) => {
+      const held = [];
+      for (let i = 0; i < 3; i++) {
+        held.push(await within(chrome, c, async (s) => { await rideTo(s, 'zeta'); return (await arrivedRecord(s)).classes.some(([, k]) => k.includes('ride-holding')); }));
+      }
+      return { defects: held.every(Boolean) ? [] : [`held in ${held.filter(Boolean).length} of 3 rides`], facts: held };
+    }),
+
+  'reload-back': row('reload the destination, then Back: no hold, the transition skipped, the leaves at rest', {},
+    // The type gate alone cannot be planted here: the strip has removed `#ride` from every history entry before a reload
+    // or a traversal could read it, so the gate is reached only once the strip has failed too — which is this plant.
+    { plant: [{ file: 'page', from: " && entry !== undefined && entry.type === 'navigate';", to: ';' }, { file: 'page', from: "                history.replaceState(null, '', location.pathname + location.search);\n", to: '' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await rideTo(s, 'zeta');
+      await arrivedRecord(s);
+      await s.page('Page.reload', {});
+      await until(async () => (await s.ev("document.readyState === 'complete' && window.__ride.scene !== null")), 8000, 'the reload never drew');
+      await sleep(300);
+      const reloaded = await s.record();
+      await s.ev('history.back()');
+      await until(async () => (await s.ev('location.pathname')) === '/floor/aimla' && (await s.ev("window.__ride?.scene !== null")), 8000, 'Back never drew');
+      await sleep(300);
+      const back = await s.record();
+      const d = [...cut(reloaded, 'the reload'), ...cut(back, 'Back')];
+      if ((reloaded.scene?.leaves ?? []).some((l) => l !== null)) d.push('the reload moved the leaves');
+      if ((back.scene?.leaves ?? []).some((l) => l !== null)) d.push('Back moved the leaves');
+      return { defects: d, facts: { reload: [reloaded.nav, reloaded.reveals], back: [back.nav, back.reveals] } };
+    })),
+
+  bookmark: row('a bookmark-style open of /floor/zeta#ride: the named residual — the leaves open then close, the hash stripped, no hold', {}, null,
+    (chrome, c) => within(chrome, c, async (s) => {
+      await s.open('/floor/zeta#ride');
+      const r = await s.record();
+      const d = [];
+      if (r.hash !== '') d.push(`the hash was not stripped: ${r.hash}`);
+      if (r.classes.some(([, k]) => k.includes('ride-holding'))) d.push('a bookmark held a cab nobody rode in');
+      return { defects: d, facts: { reveals: r.reveals, leaves: r.scene?.leaves } };
+    })),
+
+  'to-login': row('the destination answering a 302 to /login: the sign-in page cuts, the hash stripped', { redirect: { '/floor/zeta': '/login' } },
+    { plant: [{ file: 'page', from: '            if (!(arriving && reveals) || reduce) {', to: '            if (!arriving || reduce) {' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await s.open('/floor/aimla');
+      await intoTheCab(s);
+      await s.click('#floor-cab-stops li[data-stop="zeta"] button');
+      await until(async () => (await s.ev('location.pathname')) === '/login', 8000, 'the redirect never arrived');
+      await sleep(500);
+      const r = await s.record();
+      const d = [...cut(r, 'the sign-in page')];
+      if (r.hash !== '') d.push(`the hash was not stripped: ${r.hash}`);
+      return { defects: d, facts: { reveals: r.reveals, classes: r.classes } };
+    })),
+
+  'never-commits': row('a destination that does not answer within the bound: the cab closes and A\'s floor is back, its leaves at rest; a late answer is a cut', { doc: { '/floor/zeta': 'gate' } },
+    { plant: [{ file: MAIN, from: '        after(ride.ms, screen.abandoned);\n', to: '' }] },
+    (chrome, c) => within(chrome, c, async (s, srv) => {
+      const pressed = await pressStop(s, 'zeta');
+      await sleep(750 + CAB_HOLD_MS + 500);
+      const d = tornDown(srv, pressed);
+      await fetch(`${srv.base}/release`);
+      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the late answer never arrived');
+      const r = await arrivedRecord(s);
+      d.push(...cut(r, 'the late answer'));
+      return { defects: d, facts: { beacons: srv.beacons } };
+    })),
+
+  page: row('the tool\'s own page: every origin the view prints is this server\'s, and a change to the layout\'s script changes what the rows measure', {},
+    { plant: [{ file: 'page', from: "            html.classList.add('ride-holding');\n", to: '' }] },
+    async (chrome, c) => {
+      const d = [];
+      for (const [v, html] of Object.entries(VIEWS)) {
+        const left = html.match(/https?:\/\/[a-z0-9.-]+/gi) ?? [];
+        if (left.length > 0) d.push(`the ${v} view still prints ${left[0]}`);
+      }
+      // CONTROL: the ride row's measurement under this row's page edit — it must change.
+      const ride = await ROWS.ride.run(chrome, conditions(ROWS.ride, c));
+      if (ride.defects.length > 0) d.push(...ride.defects.map((x) => `the ride row: ${x}`));
+      return { defects: d, facts: ride.facts };
+    }),
+
+  reduce: row('under prefers-reduced-motion: the ride arrives as a cut — the transition skipped, no hold, no leaf motion', { media: [{ name: 'prefers-reduced-motion', value: 'reduce' }] },
+    { plant: [{ file: 'page', from: '            if (!(arriving && reveals) || reduce) {', to: '            if (!(arriving && reveals)) {' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await rideTo(s, 'zeta');
+      const r = await arrivedRecord(s);
+      const d = [...cut(r, 'reduced motion')];
+      if ((r.scene?.leaves ?? []).some((l) => String(l).includes('animation'))) d.push(`the leaves moved: ${JSON.stringify(r.scene?.leaves)}`);
+      return { defects: d, facts: { reveals: r.reveals, leaves: r.scene?.leaves } };
+    })),
+
+  signin: row('a 401 while inside the cab: the cab closes and the prompt answers; the elevator under the prompt opens nothing', { run: 'floor_ride_signin' },
+    { plant: [{ file: SCREEN, from: '    return frame.redirect !== null || frame.failure.sign_in !== null || frame.floor === null;', to: '    return frame.redirect !== null || frame.floor === null;' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await s.open('/floor/aimla');
+      await intoTheCab(s);
+      await until(async () => s.ev("!document.getElementById('floor-signin').hidden"), 8000, 'the prompt never came');
+      await sleep(200);
+      const after = await s.cab();
+      const inert = await s.ev("document.getElementById('floor-signin').closest('[inert]') !== null || document.getElementById('floor-cab').open");
+      await s.ev("document.querySelector('#floor-drawing [data-key=\"elevator\"]').dispatchEvent(new MouseEvent('click', { bubbles: true }))");
+      await sleep(900);
+      const pressed = await s.cab();
+      const d = [];
+      if (after.open || inert) d.push('the cab stayed over the prompt');
+      if (pressed.open) d.push('the elevator opened a cab under the prompt');
+      return { defects: d, facts: { after, pressed } };
+    })),
+
+  errors: row('no error and no unhandled rejection on either page across a ride', {},
+    { plant: [{ file: MAIN, from: '        cab.showModal();\n', to: '        cab.showModal();\n        cab.show();\n' }] },
+    async (chrome, c) => within(chrome, c, async (s) => {
+      await s.open('/floor/aimla');
+      await s.click('#floor-drawing [data-key="elevator"]');
+      await sleep(1600);
+      const a = (await s.record()).errors;
+      await s.click('#floor-cab-stops li[data-stop="zeta"] button').catch(() => {});
+      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, '').catch(() => {});
+      const b = (await s.record().catch(() => ({ errors: [] }))).errors;
+      return { defects: [...a, ...b].length === 0 ? [] : [`errors: ${JSON.stringify([...a, ...b])}`], facts: { a, b } };
+    })),
+
+  'held-enter': row('an Enter held on the elevator rides once and chooses no floor (m9)', {},
+    { plant: [{ file: PANEL, from: "        if (!event.repeat) {\n            armed = true;\n        }", to: '        armed = true;' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await s.open('/floor/aimla');
+      await s.ev("document.querySelector('#floor-drawing [data-key=\"elevator\"]').focus()");
+      const enter = (autoRepeat) => s.page('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r', unmodifiedText: '\r', autoRepeat });
+      await enter(false);
+      for (let i = 0; i < 50; i++) { await sleep(40); await enter(true); }
+      await s.page('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+      await sleep(400);
+      const cab = await s.cab();
+      return { defects: cab.open && cab.path === '/floor/aimla' ? [] : [`the held Enter chose: ${JSON.stringify(cab)}`], facts: cab };
+    })),
+
+  ride: row('press a floor: the destination is navigated to by a ride, held, and revealed at its first scene (no blank)',
+    // The layout answering 600 ms late, so the destination paints its waiting chrome well before its first scene.
+    { api: { '/api/building': 600 } },
+    { plant: [{ file: MAIN, from: "    if (frame.scene !== null) {\n        revealed(html);\n    }\n", to: "    revealed(html);\n" }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await rideTo(s, 'zeta');
+      await until(async () => { const r = await s.record(); return r.scene !== null && r.classes.some(([, k]) => k.includes('ride-arrived')); }, 6000, 'the destination never arrived and drew');
+      const r = await s.record();
+      const d = [];
+      if (r.hash !== '') d.push(`the fragment was not stripped: ${r.hash}`);
+      if (r.nav !== 'navigate') d.push(`the navigation's type is ${r.nav}`);
+      if (r.arrival !== 'ride') d.push(`data-ride-arrival is ${r.arrival}`);
+      const held = r.classes.find(([, k]) => k.includes('ride-holding'));
+      const arrived = r.classes.find(([, k]) => k.includes('ride-arrived'));
+      if (held === undefined) d.push('the destination never held the cab');
+      if (arrived !== undefined && r.scene !== null && arrived[0] < r.scene.at && arrived[0] < Number(r.arrivalAt) + CAB_HOLD_MS - 20) {
+        d.push(`the hold ended at ${arrived[0]} ms, before the first scene (${r.scene.at}) and before the bound`);
+      }
+      const anim = await s.ev("document.getAnimations().filter((a) => a.effect?.pseudoElement).map((a) => [a.effect.pseudoElement, a.animationName])");
+      if (r.errors.length > 0) d.push(`page errors: ${JSON.stringify(r.errors)}`);
+      return { defects: d, facts: { held: held?.[0], arrived: arrived?.[0], scene: r.scene?.at, t0: Number(r.arrivalAt), anim } };
+    })),
+};
+
+/** Settled on A, into the cab, `stop` pressed: answers the press's time on A's clock (beacons are on that clock). */
+async function pressStop(s, stop) {
+  await s.open('/floor/aimla');
+  await intoTheCab(s);
+  const pressed = await s.ev('performance.now()');
+  await s.click(`#floor-cab-stops li[data-stop="${stop}"] button`);
+  return pressed;
+}
+
+/** A tore its cab down at the bound: a beacon of the cab closing, after `chosen` and *Cab hold*, with the leaves at rest. */
+function tornDown(srv, pressed) {
+  const closed = srv.beacons.find((b) => b.kind === 'cab' && b.open === false && b.path === '/floor/aimla') ?? null;
+  if (closed === null) return ['A never closed its cab before the destination answered'];
+  const d = [];
+  if (closed.at < pressed + 750 + CAB_HOLD_MS - 50) d.push(`A closed its cab ${Math.round(closed.at - pressed)} ms after the press, before the bound`);
+  if (closed.leaves.some((l) => l !== null) || closed.disabled !== null) d.push(`A at the bound: ${JSON.stringify(closed)}`);
+  return d;
+}
+
+/** The two pixel rows: a ride with the modules 600 ms late, the centre pixel 300 ms into the hold and after the fade. */
+async function holdPixels(chrome, c) {
+  return within(chrome, c, async (s) => {
+    await s.open('/floor/aimla');
+    const { floor } = await references(s);
+    await s.click('#floor-cab-stops li[data-stop="zeta"] button');
+    const cabRef = await cabOpenPixel(s);
+    await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the ride never committed');
+    await until(async () => (await s.record()).classes.some(([, k]) => k.includes('ride-holding')), 3000, 'the destination never held');
+    const held = (await s.record()).classes.find(([, k]) => k.includes('ride-holding'))[0];
+    const now = await s.ev('performance.now()');
+    await sleep(Math.max(0, held + 300 - now));
+    const mid = await s.pixel();
+    const anim = await s.ev("document.getAnimations().filter((a) => a.effect?.pseudoElement).map((a) => [a.effect.pseudoElement, a.animationName])");
+    await arrivedRecord(s);
+    await sleep(800);
+    const after = await s.pixel();
+    const d = [];
+    if (mid !== cabRef) d.push(`300 ms into the hold the window shows ${mid}, not the cab's ${cabRef} (A's floor ${floor}, the destination ${after})`);
+    if (after === cabRef) d.push('after the fade the window still shows the cab');
+    const names = Object.fromEntries(anim.map(([p, n]) => [p, n]));
+    if (names['::view-transition-old(root)'] !== 'ride-hold' || names['::view-transition-new(root)'] !== 'ride-hidden') d.push(`the hold's animations: ${JSON.stringify(anim)}`);
+    return { defects: d, facts: { floor, cabRef, mid, after, anim } };
+  });
+}
+
+const chrome = findChrome();
+
+if (chrome === null) {
+  console.error('FAIL — no Chromium: pass --chrome <path>, set $CHROME, or install one under ~/.cache/ms-playwright. A missing browser is a failure, never a skip.');
+  process.exit(1);
+}
+
+const only = argOf('--row');
+const rows = Object.entries(ROWS).filter(([id]) => only === null || id === only);
+let failed = 0;
+
+/** A row's conditions: its own, with a plant's edits and conditions added. */
+const conditions = (row, planted) => ({ ...(row.base ?? {}), ...(planted ?? {}), plant: [...(row.base?.plant ?? []), ...(planted?.plant ?? [])] });
+
+for (const [id, row] of rows) {
+  let result;
+  try { result = await row.run(chrome, conditions(row, null)); } catch (e) { result = { defects: [`the row could not run: ${e.message}`], facts: null }; }
+  const ok = result.defects.length === 0;
+  failed += ok ? 0 : 1;
+  console.log(`${ok ? 'PASS' : 'FAIL'} ${id} — ${row.what}${ok ? '' : `\n  ${result.defects.join('\n  ')}`}\n  facts: ${JSON.stringify(result.facts)}`);
+  if (argv.includes('--selftest') && row.plant === null) {
+    console.log(`PASS ${id} PLANT — none: the row documents a named residual, and no defect of it is planted`);
+  } else if (argv.includes('--selftest')) {
+    let planted;
+    try { planted = await row.run(chrome, conditions(row, row.plant)); } catch (e) { planted = { defects: [`(raised) ${e.message}`] }; }
+    const bit = planted.defects.length > 0;
+    failed += bit ? 0 : 1;
+    console.log(`${bit ? "PASS" : "FAIL"} ${id} PLANT — ${bit ? `red: ${planted.defects[0]}` : `NOT CAUGHT — facts: ${JSON.stringify(planted.facts ?? null)}`}`);
+  }
+}
+
+console.log(failed === 0 ? 'PASS' : `FAIL (${failed})`);
+process.exit(failed === 0 ? 0 : 1);

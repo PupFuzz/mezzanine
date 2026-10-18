@@ -66,6 +66,18 @@
  * first framing alone fits), and the viewer's acts — `pan()`, `zoom()`, `pinch()`, `zoomStep()`, `drag()`, `fitFloor()`
  * — move the camera and nothing else: they drain nothing, draw nothing and write no animation-log
  * row. A navigation act is never state (§ 4.5), and AT-D3-21 reds the day one of them reaches the log.
+ *
+ * ⛔ THE ELEVATOR's RIDE IS THIS SCREEN's STATE TOO (§ 4.5, card#11795), AND IT IS NEVER A FACT. `frame.ride`
+ * is the departure's phase — `opening`, `entering`, `inside`, `chosen`, `leaving` or `staying` — or the
+ * arrival's `arriving`, with each phase's length and door delay, the stops (`plates()` of the composed
+ * floors, re-derived on every frame, then the lobby), the choice and whether the browser closed the cab.
+ * Every ride method is SYNCHRONOUS and answers `null` out of phase; the page performs each phase's entry
+ * from the frame and decides nothing, and it paints `rideView()` after each method rather than waiting on a
+ * render. One predicate ends a ride — `endsRide()`, the departure's — and the arrival has none: the flag
+ * `arriveByRide()` records is consumed by the first render that draws a scene, and expires by a clock
+ * comparison there (the head script's `t0` bound). The ride drains nothing, writes no animation-log row and
+ * takes no § 6.2 row (§ 6.3's exception for the viewer's own ride); its leaves are `scene.ride`, never
+ * `scene.doors`, which stays the walks'.
  */
 
 import { Building } from '../wire/building.js';
@@ -76,10 +88,12 @@ import { coordModel } from '../coord/coord-model.js';
 import { correctedNowMs } from '../wire/duration.js';
 import { floorAgeReadouts } from '../wire/age-readout.js';
 import { floors, heldBody, roomsOf } from '../lobby/lobby-model.js';
+import { plates } from '../lobby/building-model.js';
+import { CAB_HOLD_MS } from '../wire/ride-arrival.js';
 import { buildJoin } from './coord-join.js';
 import { statusStrip } from './status-strip.js';
 import { failureRender } from '../wire/failure-render.js';
-import { buildScene, threshold } from './scene.js';
+import { ELEVATOR_DOOR, buildScene, threshold } from './scene.js';
 import { EffectsInFlight, inboundDesk } from './in-flight.js';
 import { createCamera, fit, frameOn, glideMs, pan, panBy, pinch, resize, zoom, zoomStep } from '../wire/camera.js';
 import { TilesetLoader, tilesetUrl } from './tileset.js';
@@ -179,6 +193,50 @@ export function resolveRoute(segment, composed) {
     return holder === undefined
         ? { floor: null, redirect: null }
         : { floor: null, redirect: holder.floor };
+}
+
+/** The cab's last stop (§ 4.5, Q2): the lobby, which has no floor key — its `href` is the page's own link's. */
+export const LOBBY_STOP = 'Lobby';
+
+/**
+ * THE ONE PREDICATE THAT ENDS A RIDE (§ 4.5, card#11795) — the DEPARTURE's, asked of a frame drawn while a ride
+ * is in flight on the page the viewer is leaving: a redirect, the sign-in prompt, or the floor gone from the
+ * building. A scene has been drawn there, so the layout is held and `floor === null` never means *pending*.
+ * Asked at `ride()` (the refusal: the prompt dims the drawing but leaves it clickable) and at `draw()` (the end
+ * rule), so no ride stands over a frame that ends it — and `rideView()`, which re-reads the last drawn frame,
+ * never meets one.
+ */
+export function endsRide(frame) {
+    return frame.redirect !== null || frame.failure.sign_in !== null || frame.floor === null;
+}
+
+/**
+ * The ride's phase table (FLOOR.md § 4.5's floor's ride): how long each phase lasts and when its doors start,
+ * in ms. Door motion is § 12's *Elevator leaves* row (`ELEVATOR_DOOR`) and each fade one loop frame (§ 12's
+ * *Fade*); `leaving` is bounded by *Cab hold*, which is a bound and the same under `prefers-reduced-motion`,
+ * where every motion figure is 0 (§ 6.4). `door_delay_ms` is `null` for a phase whose doors do not move.
+ *
+ * @returns {{ms: number, door_delay_ms: number|null, fade_ms: number}}
+ */
+export function ridePhase(phase, reduce) {
+    if (phase === 'leaving') {
+        return { ms: CAB_HOLD_MS, door_delay_ms: null, fade_ms: 0 };
+    }
+
+    const frame = 1000 / LOOP_FPS;
+    const D = ELEVATOR_DOOR;
+    // [frames the phase lasts, frames before its doors move] — the fade first, then the doors.
+    const [frames, delay] = {
+        opening: [D.open, 0],
+        entering: [1 + D.close, 1],
+        inside: [1, null],
+        chosen: [1 + D.open, 1],
+        staying: [1 + D.close, 1],
+        arriving: [1 + D.close, 1],
+    }[phase];
+    const at = (n) => (reduce === true ? 0 : n * frame);
+
+    return { ms: at(frames), door_delay_ms: delay === null ? null : at(delay), fade_ms: at(1) };
 }
 
 /**
@@ -282,6 +340,19 @@ export class FloorScreen {
 
     /** The camera (`wire/camera.js`) — the viewer's head, never the fleet's; framed while the floor is drawn. */
     #camera;
+
+    /**
+     * The elevator's ride in flight (§ 4.5, card#11795), or `null`: `{ phase, started_at, current, current_name,
+     * chosen, cab }` — `chosen` the stop the viewer pressed (`{ key, name, href }`, the lobby's key `null`), `cab`
+     * `'open'` until the browser closes the dialog in `chosen` or `leaving`. Never a fact, never sent anywhere.
+     */
+    #ride = null;
+
+    /** The arrival flag (`arriveByRide()`), `{ expires_at }` on this screen's clock, or `null`. */
+    #arrival = null;
+
+    /** Whether `arriveByRide()` has been asked — it is accepted once, before any render. */
+    #arrivalAsked = false;
 
     /**
      * @param {object} client a `FleetClient` — the seats, the journal, the record and the offset
@@ -653,9 +724,16 @@ export class FloorScreen {
 
         const frame = this.#drawFrame(journal);
         const rows = this.#tap.take();
+        const now = this.#clock.now();
+
+        // The ride's end rule (§ 4.5): a frame that ends a ride carries none.
+        if (this.#ride !== null && endsRide(frame)) {
+            this.#ride = null;
+        }
+
         // § 4.5: the room is drawn at every surface size — there is no size below which a frame
         // carries no scene.
-        const scene = this.#scene(frame, rows, journal);
+        const scene = this.#scene(frame, rows, journal, now);
 
         // A frame with nothing to draw — no floor composed yet, the art not yet answered, or a floor
         // with nothing measurable on it (no map held and no desk, where the scene's extent is `null`,
@@ -679,6 +757,8 @@ export class FloorScreen {
             camera: this.#camera,
             // § 9 F21's notices — the scene's, from the maps it drew — beside the floor's own.
             notices: Object.freeze([...frame.notices, ...(scene?.notices ?? [])]),
+            // § 4.5: the elevator's ride, decided here and performed by the page.
+            ride: this.#rideFrame(now),
         };
 
         this.#lastDrawn = Object.freeze({ ...drawn, ...this.#drillDown(drawn) });
@@ -691,15 +771,13 @@ export class FloorScreen {
      * § 6.2's effects in flight laid over it (`#overlay()`). This is a RENDER, so it is the one place a
      * walk is cancelled: the holder asks the walk note's item 6 of it, over this render's journal.
      */
-    #scene(frame, rows, journal = []) {
+    #scene(frame, rows, journal, now) {
         const drawable = this.#sceneInput !== null && frame.floor !== null;
         const plain = drawable ? buildScene(frame, this.#sceneDocs(frame, rows)) : null;
 
         if (drawable) {
             this.#lastFrame = frame;
         }
-
-        const now = this.#clock.now();
 
         // Every render reaches the holder, a render that draws no scene included: it drained its journal
         // once, so a touch it carries is tested now or never. With no scene there is no anchor for any
@@ -718,8 +796,31 @@ export class FloorScreen {
         }
 
         this.#anchors = new Map(Object.entries(plain.anchors));
+        this.#arrive(frame, now);
 
         return this.#overlay(frame, plain, now);
+    }
+
+    /**
+     * THE ARRIVAL FLAG's ONE CONSUMER (§ 4.5, card#11795): the first render that draws a scene. It clears the
+     * flag and, unless the frame ends a ride or the flag has expired, enters `arriving` with its clock origin at
+     * THIS render — the first scene's paint — so the leaves are first drawn open whatever the cold start cost.
+     * No other frame touches the flag: a frame with the layout pending, failed or composing no floor has no
+     * scene, and neither has the frame drawn before the art answers. Expiry is a comparison here, not a second
+     * timer: the flag has no effect anywhere else.
+     */
+    #arrive(frame, now) {
+        if (this.#arrival === null) {
+            return;
+        }
+
+        const { expires_at: expiresAt } = this.#arrival;
+
+        this.#arrival = null;
+
+        if (this.#ride === null && !endsRide(frame) && now <= expiresAt) {
+            this.#ride = { phase: 'arriving', started_at: now, current: frame.floor.key, current_name: frame.floor.name, chosen: null, cab: 'open' };
+        }
     }
 
     /**
@@ -750,6 +851,9 @@ export class FloorScreen {
             // holder's, this render's new ones included.
             effects: Object.freeze([...plain.effects.filter((e) => !(e.frames > 0)), ...this.#inFlight.current(now)]),
             doors: Object.freeze(this.#inFlight.doors(now)),
+            // § 4.5: the elevator's leaves while a ride holds them — the painter draws them from this and
+            // adds nothing for a walk's door span meanwhile; `doors` stays the walks' (AT-D3-23's instrument).
+            ride: this.#sceneRide(now),
         });
     }
 
@@ -814,6 +918,7 @@ export class FloorScreen {
             camera: this.#camera,
             seat: this.#seatSegment,
             panel: this.panelView(this.#lastDrawn.floor?.name ?? null),
+            ride: this.#rideFrame(now),
         });
 
         return this.#lastDrawn;
@@ -838,6 +943,257 @@ export class FloorScreen {
         const plain = buildScene(frame, this.#sceneDocs(frame, []));
 
         return plain === null ? null : this.#overlay(frame, plain, this.#clock.now());
+    }
+
+    /**
+     * THE ELEVATOR's RIDE (§ 4.5, card#11795): the press on the drawn elevator. Accepted only with no ride in
+     * flight, on a frame that drew a scene, and while no `endsRide()` holds of it — the sign-in prompt dims the
+     * drawing without making it inert, so the refusal has to be here. Every ride method is synchronous,
+     * answers `null` out of phase and `{ phase }` (the phase it left the ride in, `null` when it ended it)
+     * otherwise; the page paints `rideView()` after each one that answered.
+     *
+     * @returns {{phase: string|null}|null}
+     */
+    ride() {
+        const last = this.#lastDrawn;
+
+        if (this.#ride !== null || last === null || last.scene === null || endsRide(last)) {
+            return null;
+        }
+
+        this.#ride = { phase: 'opening', started_at: this.#clock.now(), current: last.floor.key, current_name: last.floor.name, chosen: null, cab: 'open' };
+
+        return this.#answer();
+    }
+
+    /** `opening`'s timer: the floor's leaves are open, and the viewer steps into the cab. */
+    entered() {
+        return this.#step('opening', 'entering');
+    }
+
+    /** `entering`'s timer: the cab's doors are shut, and its buttons fade in. */
+    shut() {
+        return this.#step('entering', 'inside');
+    }
+
+    /**
+     * A stop pressed in the cab — a floor by its key, or the lobby by `null` — accepted only `inside`, and only
+     * for a stop the frame still offers. The choice commits the ride (§ 4.5).
+     */
+    choose(key) {
+        if (this.#ride?.phase !== 'inside') {
+            return null;
+        }
+
+        const stop = this.#stops().find((s) => s.key === key) ?? null;
+
+        if (stop === null) {
+            return null;
+        }
+
+        this.#ride = { ...this.#ride, phase: 'chosen', started_at: this.#clock.now(), chosen: { key: stop.key, name: stop.name, href: stop.href } };
+
+        return this.#answer();
+    }
+
+    /**
+     * `chosen`'s timer: the cab's doors are open. The current floor is a stay (Q1); any other stop is the
+     * ride's navigation, to the stop's own `href` — the plate's for a floor (§ 4.4's route, never one built
+     * from a name), the page's own lobby link for the lobby — with `#ride`, the one parameter the destination
+     * reads (§ 4.5).
+     *
+     * @returns {{phase: string, route: string|null}|null}
+     */
+    opened() {
+        if (this.#ride?.phase !== 'chosen') {
+            return null;
+        }
+
+        const stay = this.#ride.chosen.key === this.#ride.current;
+
+        this.#ride = { ...this.#ride, phase: stay ? 'staying' : 'leaving', started_at: this.#clock.now() };
+
+        return { phase: this.#ride.phase, route: stay ? null : `${this.#ride.chosen.href}#ride` };
+    }
+
+    /** `leaving`'s bound (*Cab hold*): the navigation never committed, so the ride ends and the floor is usable. */
+    abandoned() {
+        return this.#step('leaving', null);
+    }
+
+    /** The end of a stay, or of an arrival: the leaves have closed. */
+    arrived() {
+        if (this.#ride?.phase !== 'arriving' && this.#ride?.phase !== 'staying') {
+            return null;
+        }
+
+        this.#ride = null;
+
+        return this.#answer();
+    }
+
+    /** The page is back from the back-forward cache: whatever ride it left in is over. */
+    returned() {
+        if (this.#ride === null) {
+            return null;
+        }
+
+        this.#ride = null;
+
+        return this.#answer();
+    }
+
+    /**
+     * THE BROWSER CLOSED THE CAB (card#11795 M5-1): a second Escape with no user activation between is not
+     * cancelable, and the dialog closes whatever its handler does. In `entering` the ride ends — the elevator
+     * answers the next press; in `chosen` and `leaving` the choice has committed the ride, so it proceeds and
+     * the cab is recorded closed, which the departing page's `pageswap` rule reads (`skipUnlessCabLeaving`): the
+     * snapshot would be the bare floor, not the cab. `null` in every other phase — in `inside` the Escape is
+     * the stay (`escape()`), and there is no cab dialog in `staying`'s fade or on arrival.
+     */
+    cabClosed() {
+        const phase = this.#ride?.phase ?? null;
+
+        if (phase === 'entering') {
+            this.#ride = null;
+
+            return this.#answer();
+        }
+
+        if (phase === 'chosen' || phase === 'leaving') {
+            this.#ride = { ...this.#ride, cab: 'closed' };
+
+            return this.#answer();
+        }
+
+        return null;
+    }
+
+    /**
+     * Escape in the cab — the dialog's `cancel`, whose `cancelable` says whether the browser will close the
+     * dialog anyway: `inside`, the stay (`choose()` of the current floor, Q1); in any other phase the first
+     * Escape is held (the page prevents its default), and one that cannot be held is the browser closing
+     * the cab (`cabClosed()`).
+     */
+    escape(cancelable) {
+        if (this.#ride?.phase === 'inside') {
+            return this.choose(this.#ride.current);
+        }
+
+        return cancelable ? null : this.cabClosed();
+    }
+
+    /**
+     * This document was entered by a ride (the layout's head script read it off the navigation; § 4.5): the
+     * first scene drawn before `expires_in_ms` has passed enters `arriving`. Accepted once, before any render.
+     */
+    arriveByRide({ expires_in_ms: expiresInMs }) {
+        if (this.#arrivalAsked || this.#lastDrawn !== null || this.#ride !== null) {
+            return null;
+        }
+
+        this.#arrivalAsked = true;
+        this.#arrival = { expires_at: this.#clock.now() + expiresInMs };
+
+        return { expires_at: this.#arrival.expires_at };
+    }
+
+    /**
+     * The last drawn frame with the ride as it stands now — what the page paints after a ride method, with no
+     * render and no await between the act and its paint. It needs no end rule of its own: `ride()` refuses on a
+     * last drawn frame that ends a ride and `draw()` ends the ride on one, so no ride stands over such a frame.
+     */
+    rideView() {
+        if (this.#lastDrawn === null) {
+            return null;
+        }
+
+        const now = this.#clock.now();
+        const scene = this.#lastDrawn.scene;
+
+        this.#lastDrawn = Object.freeze({
+            ...this.#lastDrawn,
+            ride: this.#rideFrame(now),
+            scene: scene === null ? null : Object.freeze({ ...scene, ride: this.#sceneRide(now) }),
+        });
+
+        return this.#lastDrawn;
+    }
+
+    /** One timer's step: `from` to `to` (`null` ends the ride), or `null` out of phase. */
+    #step(from, to) {
+        if (this.#ride?.phase !== from) {
+            return null;
+        }
+
+        this.#ride = to === null ? null : { ...this.#ride, phase: to, started_at: this.#clock.now() };
+
+        return this.#answer();
+    }
+
+    /** A ride method's answer: the phase it left the ride in. */
+    #answer() {
+        return { phase: this.#ride?.phase ?? null };
+    }
+
+    /**
+     * The cab's stops, re-derived on every frame (never captured at the press, so a floor the layout removed
+     * leaves the panel): § 4.1's plates — every composed floor in its key order, each `name` its label else its
+     * key and `href` its own route — then the lobby, last and keyless, at the page's own *Back to the lobby*
+     * link (`lobby_href`).
+     */
+    #stops() {
+        const current = this.#ride?.current ?? null;
+        const floorStops = (plates(this.#snapshotShape(), this.#building.floors) ?? []).map((plate) => Object.freeze({
+            key: plate.floor,
+            name: plate.name,
+            href: plate.href,
+            current: plate.floor === current,
+        }));
+
+        return Object.freeze([...floorStops, Object.freeze({ key: null, name: LOBBY_STOP, href: this.#options.lobby_href ?? null, current: false })]);
+    }
+
+    /** The ride, as the page performs it and the cab shows it, or `null`. */
+    #rideFrame(now) {
+        const ride = this.#ride;
+
+        if (ride === null) {
+            return null;
+        }
+
+        const chosen = ride.chosen;
+        const status = ride.phase === 'staying'
+            ? `staying on ${ride.current_name}`
+            : (ride.phase === 'chosen' || ride.phase === 'leaving') && chosen.key !== ride.current
+                ? `going to ${chosen.name}`
+                : null;
+
+        return Object.freeze({
+            phase: ride.phase,
+            started_at: ride.started_at,
+            elapsed_ms: now - ride.started_at,
+            ...ridePhase(ride.phase, this.#options.reduce === true),
+            stops: this.#stops(),
+            current: ride.current,
+            chosen: chosen === null ? null : Object.freeze({ ...chosen }),
+            route: ride.phase === 'leaving' ? `${chosen.href}#ride` : null,
+            cab: ride.cab,
+            status,
+        });
+    }
+
+    /** The ride's leaves, as the painter draws them: the phase, how far into it, and when its doors move. */
+    #sceneRide(now) {
+        const ride = this.#ride;
+
+        if (ride === null) {
+            return null;
+        }
+
+        const { ms, door_delay_ms: doorDelayMs } = ridePhase(ride.phase, this.#options.reduce === true);
+
+        return Object.freeze({ phase: ride.phase, elapsed_ms: now - ride.started_at, ms, door_delay_ms: doorDelayMs });
     }
 
     /** What the scene reads beside a frame: the inputs, the documents held, and what failed. */
@@ -1487,5 +1843,19 @@ export function startFloorScreen(client, fetchImpl, clock, log, draw, options = 
         zoomStep: (notches) => screen.zoomStep(notches),
         drag: (dx, dy) => screen.drag(dx, dy),
         fitFloor: () => screen.fitFloor(),
+        // § 4.5's elevator ride (card#11795): each synchronous, each answering `null` out of phase; the page
+        // paints `rideView()` after each that answered.
+        ride: () => screen.ride(),
+        entered: () => screen.entered(),
+        shut: () => screen.shut(),
+        choose: (key) => screen.choose(key),
+        opened: () => screen.opened(),
+        abandoned: () => screen.abandoned(),
+        arrived: () => screen.arrived(),
+        returned: () => screen.returned(),
+        cabClosed: () => screen.cabClosed(),
+        escape: (cancelable) => screen.escape(cancelable),
+        arriveByRide: (arrival) => screen.arriveByRide(arrival),
+        rideView: () => screen.rideView(),
     };
 }

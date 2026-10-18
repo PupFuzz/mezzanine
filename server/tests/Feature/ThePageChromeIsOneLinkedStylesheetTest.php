@@ -14,7 +14,10 @@ use Tests\TestCase;
  * ⛔ ONE LINK, IN THE LAYOUT, VERSIONED BY THE FILE's OWN MTIME. Every view extends
  * `layouts/app.blade.php`, so the sheet is linked there and nowhere else; a page served without it is
  * a page with no chrome, and a `?v=` that is not the file's mtime is a sheet a browser keeps serving
- * from its cache after a deploy changed it.
+ * from its cache after a deploy changed it. This counts LINKED sheets: the layout's one inline `<style>`
+ * — the elevator ride's view-transition rules and nothing else (card#11795), inline because a linked
+ * opt-in resolved the inbound transition only some of the time — is deliberate, and
+ * `TheRideArrivalIsTheLayoutsTest` holds its shape and its one copy.
  *
  * ⛔ THE PALETTE HAS ONE HOME, AND THE DRAWING READS IT. `public/js/floor/painter.js`'s embedded style
  * names its colours as `var(--…)` tokens; a token the sheet does not declare resolves to nothing and

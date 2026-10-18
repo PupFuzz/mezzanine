@@ -50,6 +50,19 @@
  * this file's to perform, as the floor segment's redirect already is — a panel a retirement closed
  * takes the seat segment off the URL with it. The panel's strings are `drilldown/main.js`'s slots over
  * the model the frame carries; nothing is fetched here, and no second stream is opened.
+ *
+ * ⛔ THE ELEVATOR RIDES, AND THIS FILE PERFORMS THE RIDE THE SCREEN DECIDES (§ 4.5, card#11795). The drawn
+ * elevator is the painter's control; its press, each phase's timer, a stop's press and the cab's Escape are
+ * each one synchronous screen method, after which this file paints `screen.rideView()` — never a render, so no
+ * step of the ride waits on the render's awaits. ONE PAGE RULE performs the phases: `paint()` compares the
+ * frame's ride phase with the last one performed and, on a change, performs that phase's entry once — the cab
+ * dialog, its fades, `paintCab()`, the ride's one timer (armed at one site, the previous cancelled), the
+ * navigation to the screen's route — or, on a change to no ride, the teardown. A phase of no length
+ * (`prefers-reduced-motion`) is performed at once. The arrival is the layout head script's
+ * (`wire/ride-arrival.js` says how the halves meet): the screen is told before its first render, and the hold
+ * ends on the first frame that drew a scene — `revealed()` is called there and nowhere else. The departing
+ * page's one `pageswap` listener is `skipUnlessCabLeaving()`, which reads the frame and touches no DOM, so the
+ * browser snapshots the cab as it stands; nothing listens on `pagehide`.
  */
 
 import { livePage } from '../wire/live-page.js';
@@ -62,6 +75,8 @@ import { cameraView } from '../wire/camera-view.js';
 import { cameraGestures } from '../wire/camera-gestures.js';
 import { cameraKeys, offerKeys } from '../wire/camera-keys.js';
 import { deskListRow } from '../desk/desk-list.js';
+import { arrival, revealed, skipUnlessCabLeaving } from '../wire/ride-arrival.js';
+import { cabPanel } from './cab-panel.js';
 
 /** A missing element throws rather than being guarded past — the lobby's rule, for its reason. */
 function el(id) {
@@ -102,6 +117,15 @@ function list(id, lines) {
 }
 
 const root = el('floor');
+
+/** The document element: the layout head script's record of a ride arrival, and the hold it ended (§ 4.5). */
+const html = document.documentElement;
+
+/** The page's own *Back to the lobby* link — the one source of the cab's lobby stop (§ 4.5). */
+const lobbyHref = document.querySelector('a.floor-home').href;
+
+/** The browser's timers, as the screen's walks and the ride's one timer use them. */
+const timers = { after: (ms, fire) => window.setTimeout(fire, ms), cancel: (id) => window.clearTimeout(id) };
 
 /**
  * The drawing's zoom buttons — handed to `wire/camera-keys.js` to wire — its framing control, *Fit the
@@ -315,17 +339,213 @@ function paint(frame) {
     paintDesks(frame, frame.desks.desks);
     paintPanel(frame.panel);
     list('floor-log', client.eventLog);
+
+    // § 4.5: the arrival's hold ends on the first drawn scene — on nothing else (`wire/ride-arrival.js`).
+    if (frame.scene !== null) {
+        revealed(html);
+    }
+
+    // Last, so a phase performed at once paints its next frame over this one, never under it.
+    performRide(frame);
 }
+
+/**
+ * THE ELEVATOR's CAB (§ 4.5, card#11795) — the dialog, its stops, and the ride's one timer.
+ */
+const cab = el('floor-cab');
+const cabPanelNode = el('floor-cab-panel');
+const stops = cabPanel(el('floor-cab-stops'), (key) => rideAct(screen.choose(key)));
+
+/** The ride phase this page last performed (`null`: no ride), and the ride's one timer. */
+let performed = null;
+let rideTimer = null;
+
+/** The outbound view transition the `pageswap` rule let through, kept so a later cab close can skip it. */
+let outbound = null;
+
+/** A ride method's answer: when it answered, the ride as it now stands is painted — no render, no await. */
+function rideAct(answer) {
+    if (answer !== null) {
+        paint(screen.rideView());
+    }
+
+    return answer;
+}
+
+/** The drawn elevator, which the painter rebuilds on every paint. */
+function elevator() {
+    return el('floor-drawing').querySelector('[data-key="elevator"]');
+}
+
+/**
+ * A fade of one element to `to` over the phase's fade length — a cut under reduced motion. The element is left
+ * at `to` either way; the promise settles when the fade has run.
+ */
+function fade(node, from, to, ms) {
+    node.style.opacity = String(to);
+
+    return ms > 0 ? node.animate([{ opacity: from }, { opacity: to }], { duration: ms }).finished : Promise.resolve();
+}
+
+/** The cab's interior for this phase (`painter.js`'s `paintCab()`), from the frame's `scene.ride`. */
+function paintCab(frame) {
+    painter?.paintCab(el('floor-cab-doors'), frame.scene?.ride ?? null);
+}
+
+/** The ride's one timer: the phase's step after `ms`, or at once for a phase of no length. */
+function after(ms, step) {
+    if (ms === 0) {
+        rideAct(step());
+
+        return;
+    }
+
+    rideTimer = timers.after(ms, () => {
+        rideTimer = null;
+        rideAct(step());
+    });
+}
+
+/** Each phase's ENTRY, performed once when the frame's ride enters it (FLOOR.md § 4.5's floor's ride). */
+const ENTRY = {
+    // The floor's leaves open (the painter draws them from `scene.ride`).
+    opening: (ride) => after(ride.ms, screen.entered),
+    // Into the cab: the dialog fades in over one frame, then its doors close; the buttons are hidden and inert
+    // until they have.
+    entering: (ride, frame) => {
+        cabPanelNode.inert = true;
+        cabPanelNode.style.opacity = '0';
+        cab.showModal();
+        fade(cab, 0, 1, ride.fade_ms);
+        paintCab(frame);
+        after(ride.ms, screen.shut);
+    },
+    // The buttons fade in and answer; focus on the current floor's.
+    inside: (ride) => {
+        cabPanelNode.inert = false;
+        stops.arm();
+        fade(cabPanelNode, 0, 1, ride.fade_ms);
+        stops.focusCurrent();
+    },
+    // The buttons fade out, then the doors open.
+    chosen: (ride, frame) => {
+        cabPanelNode.inert = true;
+        fade(cabPanelNode, 1, 0, ride.fade_ms);
+        paintCab(frame);
+        after(ride.ms, screen.opened);
+    },
+    // The ride's navigation. The cab stays open — it is what the browser snapshots — bounded by *Cab hold*.
+    leaving: (ride, frame) => {
+        paintCab(frame);
+        window.location.assign(ride.route);
+        after(ride.ms, screen.abandoned);
+    },
+    // A stay (Q1): the cab fades out and closes, focus back on the elevator after the close, the leaves close.
+    staying: (ride) => {
+        cabPanelNode.inert = true;
+        fade(cab, 1, 0, ride.fade_ms).then(() => {
+            if (cab.open) {
+                cab.close();
+            }
+
+            elevator()?.focus({ preventScroll: true });
+        });
+        after(ride.ms, screen.arrived);
+    },
+    // The destination's doors close after the cab's snapshot has faded into this page (FLOOR.md § 4.5).
+    arriving: (ride) => {
+        elevator()?.focus({ preventScroll: true });
+        after(ride.ms, screen.arrived);
+    },
+};
+
+/**
+ * THE ONE PAGE RULE: a change of the frame's ride phase performs that phase's entry once, the previous timer
+ * cancelled; a change to no ride is the teardown — the timer cancelled, the dialog closed, the cab emptied and
+ * focus on the elevator. A cut: teardown animates nothing.
+ */
+function performRide(frame) {
+    const ride = frame.ride;
+
+    if (ride !== null) {
+        stops.reconcile(ride.stops);
+        say('floor-cab-status', ride.status);
+    }
+
+    // The cab's own lines: the feed's (§ 9 F1, *the feed dies while idling inside*) and the layout's label.
+    say('floor-cab-feed', `feed: ${frame.strip.feed}`);
+    say('floor-cab-layout', frame.last_known_layout === null || frame.last_known_layout === false ? null : frame.last_known_layout);
+
+    const phase = ride?.phase ?? null;
+
+    if (phase === performed) {
+        return;
+    }
+
+    performed = phase;
+
+    if (rideTimer !== null) {
+        timers.cancel(rideTimer);
+        rideTimer = null;
+    }
+
+    if (phase !== null) {
+        ENTRY[phase](ride, frame);
+
+        return;
+    }
+
+    cabPanelNode.inert = true;
+
+    if (cab.open) {
+        cab.close();
+    }
+
+    paintCab(frame);
+    elevator()?.focus({ preventScroll: true });
+}
+
+// Escape in the cab: never the browser's own close while it can be held — the screen answers it (the stay
+// `inside`; nothing in the other phases). A second Escape with no activation between cannot be held: the
+// browser closes the cab whatever this does, so the screen records it (`cabClosed()`), and an outbound
+// transition the `pageswap` rule already let through is asked again — the cab it would carry is gone.
+cab.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    rideAct(screen.escape(event.cancelable));
+    outbound = skipUnlessCabLeaving(outbound, lastFrame?.ride ?? null);
+});
+
+// The departing page's one rule on its unload path (§ 4.5): the outbound transition only while the ride is
+// leaving with its cab open — it touches no DOM, so the snapshot is the cab as it stands.
+window.addEventListener('pageswap', (event) => {
+    outbound = skipUnlessCabLeaving(event.viewTransition, lastFrame?.ride ?? null);
+});
+
+// Back to a page the browser kept whole (the back-forward cache): whatever ride it left in is over.
+window.addEventListener('pageshow', (event) => {
+    if (event.persisted) {
+        rideAct(screen.returned());
+    }
+});
 
 const screen = startFloorScreen(client, pageFetch, clock, log, paint, {
     floor: root.dataset.floor,
     seat: root.dataset.seat === '' ? null : root.dataset.seat,
     reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
     surface: surface(),
+    lobby_href: lobbyHref,
     // § 6.2's walk note item 4: a walk's last frame is a paint-only refresh on the browser's timer — it
     // reaches `paint` and never `screen.render()`, so it drains nothing and writes no animation-log row.
-    timers: { after: (ms, fire) => window.setTimeout(fire, ms), cancel: (id) => window.clearTimeout(id) },
+    timers,
 });
+
+// § 4.5: entered by a ride — the layout head script's record — so the first drawn scene arrives (the screen's
+// `arriving`), told before the first render.
+const rideArrival = arrival(html, performance.now());
+
+if (rideArrival !== null) {
+    screen.arriveByRide(rideArrival);
+}
 
 // § 2.5's 1 s tick: the ages over the desks the last render read — and the open panel's — with
 // nothing drained.
@@ -351,6 +571,9 @@ loadArt().then(({ furniture, characters, registry, themes, failed }) => {
             requestRender();
         },
         select: openDesk,
+        // § 4.5: the drawn elevator's press.
+        ride: () => rideAct(screen.ride()),
+        house: registry?.HOUSE_THEME ?? null,
     });
 
     if (furniture !== null) {

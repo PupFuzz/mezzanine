@@ -27,6 +27,14 @@
  * list included — which is the empty office § 9 exists against. A failed import is reported as the
  * failed asset it is (§ 9 F14) and the page keeps every fact.
  *
+ * ⛔ THE ELEVATOR IS A CONTROL (§ 4.5, card#11795): a `role="button"` group over its surround, wired as a
+ * desk is — a click, Enter and Space each call the page's `ride` once — and `aria-disabled` while a ride is in
+ * flight. Its leaves are the RIDE's while the scene carries `scene.ride` (`rideLeaves()`), each phase's door
+ * motion delayed past its fade and placed at the phase's elapsed time so a re-paint neither restarts nor
+ * reorders it; with no ride they are the walks' (`leafAnimation()`), as before. The cab's interior is
+ * `paintCab()`'s, into the cab dialog's own element: the house theme's elevator palette, a plain dial, the two
+ * leaves in the building's door colours, and no text — the cab's words are the page's (`floor/cab-panel.js`).
+ *
  * ⛔ THE ONE TIMER HERE IS A HELD LOOP's OWN FRAMES, at the interval the scene carries (§ 6.3's
  * second bullet: "except a state-held loop's own frames at the fixed rate"), and it runs only for a
  * character whose held render the animation set drew WITH motion. Decorative motion is the
@@ -120,6 +128,9 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 .elevator-leaf.left{transform-box:fill-box;transform-origin:left center}.elevator-leaf.right{transform-box:fill-box;transform-origin:right center}
 @keyframes leaf-open{from{transform:scaleX(1)}to{transform:scaleX(.12)}}
 @keyframes leaf-close{from{transform:scaleX(.12)}to{transform:scaleX(1)}}
+.elevator{cursor:pointer}.elevator:focus{outline:none}.elevator-hit{fill:transparent}.elevator:focus-visible .elevator-hit{stroke:var(--scene-thread);stroke-width:3}
+.elevator[aria-disabled="true"]{cursor:default}
+.cab-wall{fill:var(--door-frame)}.cab-frame{fill:var(--door-frame)}.cab-recess{fill:var(--ground-deep)}.cab-dial{fill:none;stroke:var(--door-edge);stroke-width:1.5}.cab-lamp{fill:var(--lamp)}
 .fx-broadcast-marker{fill:none;stroke:var(--scene-thread);stroke-width:3}
 `;
 
@@ -208,13 +219,80 @@ function node(name, attrs = {}, parent = null) {
 }
 
 /**
+ * When a ride phase's leaves move, ms (FLOOR.md § 4.5): `delay` from this paint — the phase's door delay (its fade)
+ * less the time already spent in the phase, so a re-paint lands mid-motion rather than restarting it — and
+ * `motion`, the rest of the phase.
+ */
+function doorTiming(ride) {
+    const doorDelay = ride.door_delay_ms ?? 0;
+
+    return { delay: doorDelay - ride.elapsed_ms, motion: ride.ms - doorDelay };
+}
+
+/**
+ * The ride's band leaves (§ 4.5, card#11795), as a `style` — or `null` when no ride holds them, and the walks'
+ * door spans draw them. `opening` opens them; `entering` to `leaving` hold them open while the viewer is in the
+ * cab; `staying` and `arriving` draw them open and close them once the phase's fade is over. Each motion is
+ * placed at the phase's elapsed time — `animation-delay: (door_delay − elapsed)` — so a re-paint mid-phase
+ * neither restarts nor reorders it. A phase of no length (`prefers-reduced-motion`) moves nothing.
+ *
+ * @param {{phase: string, elapsed_ms: number, ms: number, door_delay_ms: number|null}|null} ride `scene.ride`
+ * @returns {string|null}
+ */
+export function rideLeaves(ride) {
+    if (ride === null || ride === undefined) {
+        return null;
+    }
+
+    const D = ELEVATOR_DOOR;
+    const { delay, motion } = doorTiming(ride);
+
+    switch (ride.phase) {
+        case 'opening':
+            return ride.ms === 0 ? 'transform:scaleX(.12)' : `animation:leaf-open ${motion}ms steps(${D.open}) ${delay}ms forwards`;
+        case 'staying':
+        case 'arriving':
+            return ride.ms === 0 ? null : `animation:leaf-close ${motion}ms steps(${D.close}) ${delay}ms both`;
+        default:
+            // `entering`, `inside`, `chosen`, `leaving`: the floor's leaves stand open behind the cab.
+            return 'transform:scaleX(.12)';
+    }
+}
+
+/**
+ * The cab's leaves (§ 4.5, card#11795), as a `style`: they close as the viewer enters (`entering`) and open
+ * on the choice (`chosen`), each once the phase's fade is over; they stand shut `inside` and in a stay's fade,
+ * and open in `leaving`, which the departing page's snapshot carries across the navigation.
+ */
+export function cabLeaves(ride) {
+    const D = ELEVATOR_DOOR;
+    const { delay, motion } = doorTiming(ride);
+
+    switch (ride.phase) {
+        case 'entering':
+            return ride.ms === 0 ? null : `animation:leaf-close ${motion}ms steps(${D.close}) ${delay}ms both`;
+        case 'chosen':
+            return ride.ms === 0 ? 'transform:scaleX(.12)' : `animation:leaf-open ${motion}ms steps(${D.open}) ${delay}ms both`;
+        case 'leaving':
+            return 'transform:scaleX(.12)';
+        default:
+            return null;
+    }
+}
+
+/** The cab interior's own space: one elevator's leaves (84 × 144, § 12) in a frame, filling the dialog. */
+const CAB = Object.freeze({ w: 132, h: 176, leaves: Object.freeze({ x: 24, y: 24, w: 84, h: 144 }) });
+
+/**
  * The painter, over the floor view's own drawing element — `#floor-drawing`, which
  * `FloorPageWiringTest` holds to the view in both directions.
  *
  * @param {{characters: object|null, themes: Object<string, object|null>, failed: function(list<string>): void,
- *          select: function(string, string): void}} options `themes` the theme modules `loadArt()` held, by name
+ *          select: function(string, string): void, ride: function(): void, house: string|null}} options `themes`
+ *          the theme modules `loadArt()` held, by name; `ride` the elevator's press (§ 4.5); `house` the house
+ *          theme's name, whose elevator palette the cab is drawn in
  */
-export function createPainter({ characters, themes = {}, failed, select }) {
+export function createPainter({ characters, themes = {}, failed, select, ride = () => {}, house = null }) {
     const host = document.getElementById('floor-drawing');
 
     if (host === null) {
@@ -580,7 +658,8 @@ export function createPainter({ characters, themes = {}, failed, select }) {
 
     /**
      * The elevator's leaves (§ 6.2's walk note item 10): open while any walk in flight is in its door
-     * frames — one open-then-close per merged span the scene carries, in frames from this paint.
+     * frames — one open-then-close per merged span the scene carries, in frames from this paint. Not while a
+     * ride holds them (§ 4.5): then they are `rideLeaves()`'s, and a walk's span adds nothing.
      */
     function leafAnimation(doors, interval) {
         const sec = (frames) => (frames * interval) / 1000;
@@ -677,14 +756,41 @@ export function createPainter({ characters, themes = {}, failed, select }) {
             });
 
             // The two-door elevator: its surround is the theme's, its leaves the painter's, in the building's
-            // door colours, opening only inside an A1 or A2 walk (§ 4.2, card#9566).
+            // door colours — the ride's while a ride holds them (§ 4.5, card#11795), else opening only inside an
+            // A1 or A2 walk (§ 4.2, card#9566). The elevator is a CONTROL: a button over its surround, which
+            // rides (§ 4.5) — `aria-disabled` while a ride is in flight, when the screen refuses the press.
             const e = band.elevator;
-            const leaves = (scene.doors ?? []).length === 0 ? null : `animation:${leafAnimation(scene.doors, 1000 / scene.loop_fps)}`;
-
+            const riding = scene.ride !== null && scene.ride !== undefined;
+            const leaves = riding
+                ? rideLeaves(scene.ride)
+                : (scene.doors ?? []).length === 0 ? null : `animation:${leafAnimation(scene.doors, 1000 / scene.loop_fps)}`;
+            // The theme's surround first: the control — its leaves and its hit area — is drawn over it, so a press
+            // anywhere on the surround reaches the control rather than the image under it.
             drawDoc(at(1 + band.windows.length));
-            node('rect', { x: e.x, y: e.y, width: e.seam - e.x - 1, height: e.h, rx: 3, class: 'elevator-leaf left', style: leaves }, g);
-            node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, g);
-            node('line', { x1: e.seam, y1: e.y, x2: e.seam, y2: e.y + e.h, class: 'elevator-seam' }, g);
+
+            const control = node('g', {
+                class: 'elevator',
+                'data-key': 'elevator',
+                tabindex: 0,
+                role: 'button',
+                'aria-label': 'the elevator — ride to another floor',
+                'aria-disabled': riding ? 'true' : null,
+            }, g);
+
+            control.addEventListener('click', () => ride());
+            // A `role="button"` activates on Enter and on Space; Space's default would scroll the page.
+            control.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    ride();
+                }
+            });
+
+            node('rect', { x: e.x, y: e.y, width: e.seam - e.x - 1, height: e.h, rx: 3, class: 'elevator-leaf left', style: leaves }, control);
+            node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, control);
+            node('line', { x1: e.seam, y1: e.y, x2: e.seam, y2: e.y + e.h, class: 'elevator-seam' }, control);
+            // The control's hit area is the surround — frame, header and call buttons — over everything in it.
+            node('rect', { x: e.surround.x, y: e.surround.y, width: e.surround.w, height: e.surround.h, class: 'elevator-hit' }, control);
 
             // The clock: its case is the theme's; its hands and its unset treatment are the painter's (A17),
             // over a plain face that is what is left when the case is not drawn.
@@ -846,5 +952,43 @@ export function createPainter({ characters, themes = {}, failed, select }) {
         }
     }
 
-    return { paint, refresh, view };
+    /**
+     * THE CAB's INTERIOR (§ 4.5, card#11795) into `host`, the cab dialog's own drawing element: the back wall and
+     * frame in the house theme's elevator palette (its `PALETTE.elevator`, or the door frame's token when the
+     * theme did not load), a plain dial and its lamp — no numeral and no arrow — and the two leaves in the
+     * building's door colours, moving as `cabLeaves()` says. No `<text>`: every word in the cab is the panel's.
+     * Painted once per phase entry; `null` empties it.
+     *
+     * @param {Element} host
+     * @param {{phase: string, elapsed_ms: number, ms: number, door_delay_ms: number|null}|null} ride `scene.ride`
+     */
+    function paintCab(host, ride) {
+        if (ride === null || ride === undefined) {
+            host.replaceChildren();
+
+            return;
+        }
+
+        const palette = themes[house]?.PALETTE?.elevator ?? null;
+        const L = CAB.leaves;
+        const seam = L.x + L.w / 2;
+        const cab = node('svg', { viewBox: `0 0 ${CAB.w} ${CAB.h}`, width: '100%', height: '100%', preserveAspectRatio: 'xMidYMid slice', class: 'cab-scene', 'aria-hidden': 'true' });
+
+        node('style', {}, cab).textContent = STYLE;
+        node('rect', { x: 0, y: 0, width: CAB.w, height: CAB.h, class: 'cab-wall' }, cab);
+        node('rect', { x: L.x - 8, y: L.y - 18, width: L.w + 16, height: L.h + 18, rx: 8, class: palette === null ? 'cab-frame' : null, fill: palette?.frame ?? null }, cab);
+        node('rect', { x: L.x - 2, y: L.y - 2, width: L.w + 4, height: L.h + 2, rx: 4, class: 'cab-recess' }, cab);
+        node('path', { d: `M${seam - 12} ${L.y - 7}A12 7 0 0 1 ${seam + 12} ${L.y - 7}`, class: 'cab-dial' }, cab);
+        node('circle', { cx: seam, cy: L.y - 7, r: 1.8, class: palette === null ? 'cab-lamp' : null, fill: palette?.lamp ?? null }, cab);
+
+        const style = cabLeaves(ride);
+
+        node('rect', { x: L.x, y: L.y, width: L.w / 2 - 1, height: L.h, rx: 3, class: 'elevator-leaf left', style }, cab);
+        node('rect', { x: seam + 1, y: L.y, width: L.w / 2 - 1, height: L.h, rx: 3, class: 'elevator-leaf right', style }, cab);
+        node('line', { x1: seam, y1: L.y, x2: seam, y2: L.y + L.h, class: 'elevator-seam' }, cab);
+
+        host.replaceChildren(cab);
+    }
+
+    return { paint, refresh, view, paintCab };
 }

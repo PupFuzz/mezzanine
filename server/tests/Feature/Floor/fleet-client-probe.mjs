@@ -88,6 +88,28 @@
  *                                               //  arrow key's), the keyboard's focus on a plate
  *                                               //  (`focusPlate()`) and a surface resize, none
  *                                               //  followed by a render
+ *      "floor.lobby_href": "<url>"              // the floor page's own *Back to the lobby* link's href,
+ *                                               //  handed to the screen as the page hands it (§ 4.5's
+ *                                               //  ride, card#11795) — the cab's lobby stop
+ *      "floor.ride": [ { "at_ms": N, "act": "ride" | "entered" | "shut" | "choose", "key": "<floor>"|null
+ *                        | "opened" | "abandoned" | "arrived" | "returned" | "cab_closed" | "escape",
+ *                        "cancelable": bool | "arrive_by_ride", "expires_in_ms": N } ]
+ *                                               //  the elevator ride's acts (§ 4.5): each the screen's
+ *                                               //  method of that name (`cab_closed` its `cabClosed()`,
+ *                                               //  `escape` the cab's `cancel` with its `cancelable`), its
+ *                                               //  answer recorded in `ride_acts[]`, and — when it answered
+ *                                               //  — `rideView()` drawn as the page paints it (`trigger`
+ *                                               //  `ride`). None is followed by a render: a ride act
+ *                                               //  applies nothing
+ *      "arrive_by_ride": { "expires_in_ms": N } // with a `floor`: the page entered by a ride — the screen's
+ *                                               //  `arriveByRide()` before its first render, as
+ *                                               //  `floor/main.js` calls it from the head script's record
+ *      "scene_inputs_after_enter": true | { "at_ms": N }
+ *                                               // with a `floor.scene`: the scene's inputs supplied AFTER
+ *                                               //  § 4.4's `enter()` and one `render()` (`true`), or as an
+ *                                               //  event at N followed by a render — the art answering
+ *                                               //  after the layout, which a page meets on every cold load:
+ *                                               //  the frames before it carry a floor and no scene
  *      "render_before_enter": true              // with a `floor`: one `render()` BEFORE § 4.4's
  *                                               //  `enter()`, as the page draws one while that entry's
  *                                               //  layout request is still in flight — its
@@ -114,7 +136,10 @@
  *      "pending_timers": N, "rejections": [], "age_renders": [ {at, readouts} ],
  *      "streams": [ {opened_at, open_fired, refused, ended_at, closed_at} ],
  *      "desk_renders": [ {at, trigger, frame, …} ], "floor_renders": [ {at, trigger, frame} ] — `trigger`
- *      `render` for a render, `walk end` for a walk's paint-only refresh,
+ *      `render` for a render, `walk end` for a walk's paint-only refresh, `ride` for the frame a page paints
+ *      after a ride act (`rideView()`), "ride_acts": [ {at, act, answer, ride, scene_view_ride} ] — each ride act's
+ *      answer, the `ride` of the frame painted after it (`null` when it answered `null` and nothing was painted)
+ *      and the `ride` of the 1 s tick's scene over that frame's desks (`sceneView()`),
  *      "lobby_renders": [ {at, frame, label} ], "camera_acts": [ {at, act, before, after, glide_ms} ] — on
  *      the lobby, each act also carrying `label: {after, mid}`, and a ride's `ride: {cab, route, resolves_to}`
  *      — `resolves_to` the floor the floor page's `resolveRoute()` finds for the route over the building the
@@ -601,6 +626,7 @@ async function replay(scenario) {
             reduce: scenario.reduce === true,
             local_time: viewerTime(scenario.floor),
             surface: scenario.floor.viewport ?? HARNESS_SURFACE,
+            lobby_href: scenario.floor.lobby_href ?? null,
             // FLOOR § 6.2's walk note item 4: a walk's last frame, on the scenario queue under its own
             // label — a paint-only refresh the screen draws through the same callback as `walk end`,
             // which the loop below never follows with a render.
@@ -626,6 +652,8 @@ async function replay(scenario) {
     // role, the character's size as the fixture states it, and the themes (FLOOR.md § 10.6) through the
     // page's own `themeInputs()`. A run may reject the registry's import (`themes.registry: false`) or a
     // theme's (`themes.reject: [name]`), and each is reported failed as `loadArt()` reports it.
+    let supplyScene = null;
+
     if (screen !== null && scenario.floor.scene !== undefined) {
         const { measurer, character, box, themes: spec = {} } = scenario.floor.scene;
         const { themeInputs, THEME_REGISTRY } = await import(pathToFileURL(join(dir, '..', 'floor', 'painter.js')).href);
@@ -633,13 +661,81 @@ async function replay(scenario) {
         const rejected = registry === null ? [] : registry.THEMES.filter((name) => (spec.reject ?? []).includes(name));
         const modules = registry === null ? {} : Object.fromEntries(registry.THEMES.map((name) => [name, rejected.includes(name) ? null : themeModules[name]]));
 
-        screen.sceneInputs({
-            box: box ?? furniture.FURNITURE_BOX,
-            measure: harnessMeasurer(measurer),
-            character,
-            themes: themeInputs(registry, modules),
+        supplyScene = () => {
+            screen.sceneInputs({
+                box: box ?? furniture.FURNITURE_BOX,
+                measure: harnessMeasurer(measurer),
+                character,
+                themes: themeInputs(registry, modules),
+            });
+            screen.assetsFailed([...(registry === null ? [THEME_REGISTRY] : []), ...rejected.map((name) => `theme:${name}`)]);
+        };
+    }
+
+    // The art's answer (`floor/main.js`'s `loadArt().then(…)`): at once, before the entry — or, under
+    // `scene_inputs_after_enter`, after it, so the frames between carry a floor and no scene (card#11795 m5-3).
+    const sceneLate = scenario.scene_inputs_after_enter ?? null;
+
+    if (supplyScene !== null && sceneLate === null) {
+        supplyScene();
+    }
+
+    if (supplyScene !== null && typeof sceneLate === 'object' && sceneLate !== null) {
+        schedule(sceneLate.at_ms, 'art answered', () => {
+            supplyScene();
+
+            return 'supplied';
         });
-        screen.assetsFailed([...(registry === null ? [THEME_REGISTRY] : []), ...rejected.map((name) => `theme:${name}`)]);
+    }
+
+    // § 4.5's elevator ride (card#11795): each act the screen's method, its answer recorded, and the frame the
+    // page paints after it — `rideView()` — drawn with the trigger `ride`. No render follows (the loop below).
+    const rideActs = [];
+    const rideMethod = {
+        ride: () => screen.ride(),
+        entered: () => screen.entered(),
+        shut: () => screen.shut(),
+        choose: (act) => screen.choose(act.key ?? null),
+        opened: () => screen.opened(),
+        abandoned: () => screen.abandoned(),
+        arrived: () => screen.arrived(),
+        returned: () => screen.returned(),
+        cab_closed: () => screen.cabClosed(),
+        escape: (act) => screen.escape(act.cancelable === true),
+        arrive_by_ride: (act) => screen.arriveByRide({ expires_in_ms: act.expires_in_ms }),
+    };
+    const rideAct = (act) => {
+        const method = rideMethod[act.act];
+
+        if (method === undefined) {
+            throw new Error(`unknown ride act ${act.act}`);
+        }
+
+        const answer = method(act);
+        const frame = answer === null ? null : screen.rideView();
+
+        if (frame !== null) {
+            floorRenders.push({ at: now, trigger: 'ride', frame: JSON.parse(JSON.stringify(frame)) });
+        }
+
+        rideActs.push({
+            at: now,
+            act,
+            answer: answer === null ? null : JSON.parse(JSON.stringify(answer)),
+            ride: frame === null ? null : JSON.parse(JSON.stringify(frame.ride)),
+            // The 1 s tick's scene (`sceneView()`) over the same desks, as the page's ticker would draw it now.
+            scene_view_ride: frame === null ? null : JSON.parse(JSON.stringify(screen.sceneView(frame.desks)?.ride ?? null)),
+        });
+
+        return act.act;
+    };
+
+    for (const act of scenario.floor?.ride ?? []) {
+        schedule(act.at_ms, `ride ${act.act}`, () => (screen === null ? 'no floor' : rideAct(act)));
+    }
+
+    if (screen !== null && scenario.arrive_by_ride !== undefined) {
+        rideAct({ act: 'arrive_by_ride', expires_in_ms: scenario.arrive_by_ride.expires_in_ms });
     }
 
     // § 9 F14, as the painter reports it — each an event on the scenario queue, followed by a render
@@ -855,6 +951,11 @@ async function replay(scenario) {
         await screen.enter();
         await turn();
         await screen.render();
+
+        if (sceneLate === true && supplyScene !== null) {
+            supplyScene();
+            await screen.render();
+        }
     }
 
     snap('start');
@@ -875,9 +976,10 @@ async function replay(scenario) {
 
         await turn();
 
-        // A tick re-reads ages, a camera act moves the viewer's head, and a walk's end is a paint-only
-        // refresh (FLOOR § 6.2's walk note item 4): none is an apply, and a page renders after none.
-        if (timer.label !== 'age tick' && timer.label !== 'walk end' && !timer.label.startsWith('camera ')) {
+        // A tick re-reads ages, a camera act moves the viewer's head, a ride act is the viewer's own ride
+        // (§ 4.5), and a walk's end is a paint-only refresh (FLOOR § 6.2's walk note item 4): none is an
+        // apply, and a page renders after none.
+        if (timer.label !== 'age tick' && timer.label !== 'walk end' && !timer.label.startsWith('camera ') && !timer.label.startsWith('ride ')) {
             floor?.render();
 
             if (screen !== null) {
@@ -917,6 +1019,7 @@ async function replay(scenario) {
         floor_renders: floorRenders,
         lobby_renders: lobbyRenders,
         camera_acts: cameraActs,
+        ride_acts: rideActs,
         animation_log: log.rows,
     };
 }

@@ -1,6 +1,8 @@
 @extends('layouts.app')
 @section('title', 'Mezzanine — floor')
 @section('page-class', 'page-floor')
+{{-- § 4.5's ride arrives here with the cab's snapshot held until the first drawn scene (`layouts/app.blade.php`). --}}
+@section('document-attributes', 'data-ride-reveals')
 
 {{--
     The header's right-hand side: the BUILDING's counts — `fleet.seats_total` · `fleet.seats_live`, the
@@ -33,7 +35,9 @@
 
         ⭐ THE ROOM IS DRAWN (Appendix B row 14, card#7341 step 11): `#floor-drawing` holds the SVG
         `public/js/floor/painter.js` paints from the floor screen's scene (`floor/scene.js`) — tiles,
-        desks, the band, the thread line — and `#floor-art` is § 9 F14's strip line.
+        desks, the band, the thread line — and `#floor-art` is § 9 F14's strip line. The band's
+        elevator is the floor's ride control (§ 4.5, card#11795): the painter draws it as a button,
+        and its cab is `#floor-cab` below.
 
         ⭐ UNDER THE CAMERA (Appendix B row 15), AT EVERY WINDOW SIZE (§ 4.5; the operator's ruling of
         2026-10-01 on card#7341 — no minimum size and no substitute view): the drawing fills the
@@ -282,6 +286,27 @@
             <p id="floor-not-live"></p>
             <p><a href="{{ route('login') }}">Sign in</a></p>
         </section>
+
+        {{--
+            § 4.5's CAB (card#11795): the elevator's interior, a native modal dialog filling the window, opened
+            when the viewer steps in from the drawn elevator and closed on a stay, an arrival's end or a ride
+            that ends. `#floor-cab-doors` is `public/js/floor/painter.js`'s `paintCab()` — the cab's frame and
+            its two leaves, no words; the panel's stops are `public/js/floor/cab-panel.js`'s, reconciled by key
+            from the screen's `frame.ride.stops`, inert until the doors have shut. Every line is the screen's:
+            the status (*going to* / *staying on*), the feed's own line, and the last-known-layout label.
+            Escape in the cab is the stay; the dialog never navigates by itself — the ride's navigation is the
+            screen's route, performed by `main.js`.
+        --}}
+        <dialog id="floor-cab" class="floor-cab" aria-labelledby="floor-cab-heading">
+            <div id="floor-cab-doors" class="floor-cab-doors"></div>
+            <section id="floor-cab-panel" class="floor-cab-panel" inert>
+                <h2 id="floor-cab-heading">The elevator</h2>
+                <p id="floor-cab-status" role="status" hidden></p>
+                <ul id="floor-cab-stops" aria-labelledby="floor-cab-heading"></ul>
+                <p id="floor-cab-layout" hidden></p>
+                <p id="floor-cab-feed">feed: waiting for the stream</p>
+            </section>
+        </dialog>
     </section>
 
     {{-- Native ES modules, no bundler — the lobby's reason (`dashboard.blade.php`). --}}
