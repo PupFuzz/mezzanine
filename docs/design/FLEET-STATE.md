@@ -508,6 +508,14 @@ above is filed as a D1 amendment need in [§ 14](#14-open-questions-for-the-revi
 > background count does not. Both halves are asserted by
 > [AT-D2-2](#at-d2-2-the-clear-trace-mints-no-idle), which is where the difference is checkable
 > rather than argued.
+>
+> **AMENDED (card#11817): a background task CAN outlive its session** — a `/clear` re-homes a running
+> subagent to the new session ([D1 § 8.3](EVENT-SCHEMA.md#83-the-reap-rules), MEASURED 2.1.296).
+> **The rule stands for a different reason:** a subagent that survives the clear is carried as an
+> **open call** and is rule 3's business, so the count's only remaining job — the window before a
+> subagent's first call — is one no session boundary can straddle. Clearing it at `session.end` is
+> still right: while the carried call is open the seat is `working` by rule 3, and when it closes
+> nothing of that session is running.
 
 **Why precedence and not a state machine.** Two of these facts are genuinely simultaneous. A permission
 prompt fires while the tool call it is about is already open ([D1 § 6.12](EVENT-SCHEMA.md#612-attentionrequest):
@@ -606,7 +614,7 @@ facts*. This table is therefore complete by construction: every writer of every 
 | **enter** | the only entry is rule 4 of [§ 4.3](#43-the-derivation-function): a `turn.end(stop_hook, [])` with no open calls and no open turn |
 | **exit** | `turn.start` (→ `working`), `tool.start` (→ `working`), `attention.request` (→ `blocked`) |
 | **exit** | a later turn on any of the seat's sessions ending dirty — `L` is seat-scoped and the newest record wins ([§ 4.3](#43-the-derivation-function)) |
-| **not an exit** | `session.end`, including the flusher's 90-minute `inferred_silence` close. It clears `T`, `C`, `S` and **`L.background_tasks_open`** — the last because a background task cannot outlive its session — and changes no other fact rule 4 reads, so a cleanly-finished seat stays `idle` ([§ 4.3](#43-the-derivation-function), [§ 4.8](#48-what-may-never-mint-a-state) row 5) |
+| **not an exit** | `session.end`, including the flusher's 90-minute `inferred_silence` close. It clears `T`, `C`, `S` and **`L.background_tasks_open`** — the last because a subagent that survives its session is carried as an open call ([D1 § 8.3](EVENT-SCHEMA.md#83-the-reap-rules), card#11817) — and changes no other fact rule 4 reads, so a cleanly-finished seat stays `idle` ([§ 4.3](#43-the-derivation-function), [§ 4.8](#48-what-may-never-mint-a-state) row 5) |
 | **entry** | that same `session.end`, when the seat's last turn was clean apart from an open background task: clearing the count makes rule 4 true, and it **is** true — the session ended, so nothing is running ([§ 4.3](#43-the-derivation-function), card #7337 — this is the transition AT-D2-2 asserts is a PASS rather than a defect) |
 | **not an exit** | a `link_state` change out of `live`. The activity state is **masked, not cleared** — [§ 4.2](#42-render-precedence) renders the transport state and `activity_state` still rides the object ([AT-D2-3](#at-d2-3-stale-offline-and-disabled-are-rendered-never-idle)) |
 
@@ -840,7 +848,8 @@ instead of `idle`.
 
 **These values outrank [§ 4.6.1](#461-the-turn-has-no-timer-of-its-own)'s session-close rule on this
 path, and the order stated above is the reason rather than a preference.** That rule closes whatever
-calls a session close finds still open — but quiescence closes the calls *before* it marks the session
+calls a session close finds still open, except those the `session.end` names in `carried_call_ids`
+([D1 § 8.3](EVENT-SCHEMA.md#83-the-reap-rules), card#11817) — but quiescence closes the calls *before* it marks the session
 ended, in the sequence just given, so here the session close finds none: `last_turn_aborted_count` is
 **0**, `session_close_orphans` does not move, and each of those calls is closed once and counted once,
 by `offline_quiesced_calls`. The turn is this paragraph's for the same reason —
@@ -909,7 +918,10 @@ gap it exposes:
   `last_turn_end_reason: "server_session_close"` with `last_turn_aborted_count` set to the number of
   calls still open at the close** (each of those calls the server closes itself —
   `abort_reason: session_close`, `close_source: server_session_close` — counting
-  `session_close_orphans`, [§ 7.2](#72-this-planes-own-counters-and-badges)) — without which `L` would
+  `session_close_orphans`, [§ 7.2](#72-this-planes-own-counters-and-badges)), **except those the
+  `session.end` names in `carried_call_ids`**, which stay open under their original `session_ref`
+  and are counted `session_close_carried` ([D1 § 8.3](EVENT-SCHEMA.md#83-the-reap-rules), card#11817)
+  — without which `L` would
   stay null, rule 5 would fire and `session_closed_turn_open` would be a member no path can
   select. It therefore derives
   `unknown` / `session_closed_turn_open` — never `idle`, because no `turn.end(stop_hook, [])` was ever
@@ -2890,6 +2902,7 @@ for the same reason: a counter with no stated home is a counter two implementers
 | `left_live_cleared_stalls` | `seat_counters` | seat detail | the sweeper cleared a `stalled` flag at the seat's leaving-live boundary — `stale` at 300 s, or `offline` at 900 s on the one-pass jump ([§ 4.5](#45-link-states)) | rising ⇒ seats are going quiet while rate-limited, which is a different story from the stall ending properly |
 | `compaction_ceiling_closed` | `seat_counters` | seat detail | the sweeper closed a `compaction_open_since` at its 15-minute ceiling ([§ 4.6](#46-every-open-fact-has-a-ceiling)) | rising ⇒ `compaction.end` is not arriving; `PostCompact` is one of D1's un-driven hook stubs, so this is the instrument that says so |
 | `session_close_orphans` | `seat_counters` | seat detail | a `session.end` arrived with calls still open server-side and the server closed them (`abort_reason: session_close`, `close_source: server_session_close`) | rising ⇒ reap `tool.end`s are being lost in transit, since D1's reaps should have closed them on the wire first |
+| `session_close_carried` | `seat_counters` | seat detail | a `session.end` named open calls in `carried_call_ids` and the server left them open (card#11817); counted seat-wide over the named ids still open, not by `session_ref` — after a second `/clear` a carried row's `session_ref` still names the session it was opened in | informational; read beside `server_orphan_closes` on `is_dispatch` rows — carried calls that end at the 60-minute ceiling instead of at a `SubagentStop` are carries the harness did not honour |
 | `format_refused.<field>` | `seat_counters`, one row per wire field | seat detail | the fold met a `data` string, destined for an ASCII column of [§ 6.4](#64-ddl), that fails the format D1 publishes for it — a `turn.start`'s `console_url` off [D1 § 6.3](EVENT-SCHEMA.md#63-turnstart)'s pattern, a heartbeat's `protocol_agent_name` that is not a slug, and every other member [§ 6.5](#65-the-fold) names — and stored `NULL` in its place (`INVALID_TOOL_NAME` for `tool_name`, whose column is `NOT NULL`). Once per event and field (card#9346; until then `console_url` alone was checked, as `console_url_refused`) | none rendered; the field is simply absent and the rest of the event lands. A conforming reporter never sends such a value, so a count here is a reporter that does not check the format it owes, or a value that did not come from a reporter — a reason to look at the seat's token |
 | `fold_window_purged` | `seat_counters` | seat detail | the fold's emptiness proof found its unfolded window gone to [§ 6.7](#67-retention-and-purge)'s purge, so the cursor advances to the head that proof covered rather than the seat re-claiming forever ([§ 6.5](#65-the-fold)). Counted on the **proof**, not on the guarded cursor write: a pass that loses the race to an ingest advances nothing and still admits the purge, because the same window is jumped by the ordinary branch on a later pass and that jump must not be silent | non-zero ⇒ that seat's state is honest but shorter, and the fold was down longer than retention; the same admission `rebuild_truncated` makes |
 | `state_rebuilds` / `rebuild_truncated` | `seat_counters` | seat detail | a `mezzanine:rebuild` ran / ran against a window shorter than the seat's history | operator-visible; a truncated rebuild's state is honest but shorter |
@@ -5189,6 +5202,20 @@ and the gate on trusting the derived signal at all.*
     `session.end` preserve `L.background_tasks_open` → the second half fails and the seat renders
     `unknown` on a genuinely quiet desk. Both REDs are necessary: they fail in opposite directions,
     which is what shows the rule is a discrimination rather than a bias toward one answer.
+- **Case γ — a `/clear` while a background subagent runs (card#11817).** Replay a stream in which the
+  parent dispatches `A` and ends its turn clean with `background_tasks_open: 1`, then
+  `session.end(clear, aborted_calls: 0, carried_call_ids: [A])` and `session.start(clear)` under a new
+  `session_id`, then the subagent's next call and `A`'s own `tool.end`
+  `completed`/`subagent_stop_hook` under the new session. **GREEN:** after the `session.end`, `A` is
+  open, the seat's open dispatch count is 1, `session_close_orphans` is unchanged,
+  `session_close_carried` is 1 and the seat is `working` (rule 3); after `A`'s close, no open dispatch
+  remains, `A`'s `close_source` is `subagent_stop_hook`, no call carries a `server_`-prefixed close,
+  and `late_close_cross_session` is unchanged. **Controls:** `carried_call_ids: []` (an older
+  reporter) → `A` closed `server_session_close` and `session_close_orphans` +1; a non-array value →
+  both sweeps run; a member off the ULID format → ignored, `A` spared; a second clear naming `A`
+  again while its `session_ref` is still the first session → `session_close_carried` +1 again (the
+  count is seat-wide). **RED:** the server ignoring `carried_call_ids` → the GREEN's first half fails,
+  `A` closed `server_session_close` at the `session.end`.
 
 ### AT-D2-3 stale, offline and disabled are rendered, never idle
 

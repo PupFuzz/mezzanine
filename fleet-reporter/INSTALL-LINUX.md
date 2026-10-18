@@ -1009,6 +1009,16 @@ processes, as Step 5 reports.
   next dispatch after Step 1's artifact is replaced appears. Restart Step 5's flusher too: a running
   flusher keeps the code it started with, and it is the flusher that writes the call index snapshot
   the hooks read.
+- **A subagent stays on the floor across a `/clear` only on a build that includes card#11817.** The
+  harness keeps a running subagent alive through a `/clear` and moves it to the new session; an older
+  build closed its dispatch call at the clear, so the intern left the floor while the subagent ran.
+  The same build stops a `/clear` in one terminal from ending another terminal's session on the same
+  seat (card#11824). **Restart Step 5's flusher after replacing the artifact:** until it restarts, the
+  old flusher's every pass writes the call index snapshot without the records this build adds, so a
+  subagent carried across a `/clear` in that window stays under its old session and closes at its own
+  `SubagentStop` or the server's 60-minute dispatch ceiling. The restart itself closes every call open
+  at that moment as `reporter_restart` (D1 § 8.3's last row), carried ones included. Install the
+  server change first: a server without it closes a carried call at the `session.end`, as before.
 - **No context gauge** while Step 4(b) is not applied, which is the sandbox's state.
 - **No Windows procedure exists yet.** One is owed when the Windows agent seat onboards, a real
   Windows machine. By operator ruling on 2026-09-13, D1 § 13's Windows validation is not required

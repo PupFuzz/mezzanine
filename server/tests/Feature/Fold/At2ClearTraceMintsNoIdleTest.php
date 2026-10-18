@@ -207,4 +207,158 @@ class At2ClearTraceMintsNoIdleTest extends FoldTestCase
         $this->assertSame(0, (int) $session->last_turn_aborted_count);
         $this->assertSame(0, (int) $session->last_turn_background_tasks_open);
     }
+
+    /**
+     * CASE γ — a `/clear` while a background subagent runs (D1 § 8.3, card#11817). The harness
+     * re-homes the subagent to the new session, so the reporter CARRIES its open dispatch call and
+     * names it in `session.end.carried_call_ids`; the server must leave that call open across the
+     * session close, so the intern stays drawn until the call's own close under the new session.
+     */
+    public function test_case_gamma_a_carried_dispatch_stays_open_across_the_clear(): void
+    {
+        [$events, $dispatch] = $this->carriedClearTrace([fn (string $a) => [$a]]);
+
+        $this->deliver(array_slice($events, 0, 6));   // …through the session.start after the clear
+        $this->fold();
+
+        $this->assertNull($this->callRow($dispatch)->closed_at, 'the session close swept the carried dispatch');
+        $this->assertSame(1, $this->openDispatches());
+        $this->assertSame(0, $this->counter('session_close_orphans'));
+        $this->assertSame(1, $this->counter('session_close_carried'));
+        $this->assertSame(0, $this->counter('ignored_unknown_fields'), 'the ingest does not know carried_call_ids');
+        $this->assertSame('working', $this->state()->activity_state);
+
+        $this->deliver(array_slice($events, 6));
+        $this->fold();
+
+        $a = $this->callRow($dispatch);
+        $this->assertNotNull($a->closed_at);
+        $this->assertSame('subagent_stop_hook', $a->close_source);
+        $this->assertSame(0, $this->openDispatches());
+        $this->assertSame(0, DB::table('calls')->where('seat_ref', $this->seatRef)
+            ->where('close_source', 'like', 'server\_%')->count());
+        $this->assertSame(0, $this->counter('late_close_cross_session'));
+    }
+
+    public function test_case_gamma_controls_an_absent_or_malformed_carry_is_swept(): void
+    {
+        // An older reporter: nothing carried, so the session close sweeps the dispatch as before.
+        [$events, $dispatch] = $this->carriedClearTrace([fn (string $a) => []]);
+        $this->deliver(array_slice($events, 0, 6));
+        $this->fold();
+        $this->assertSame('server_session_close', $this->callRow($dispatch)->close_source);
+        $this->assertSame(1, $this->counter('session_close_orphans'));
+        $this->assertSame(0, $this->counter('session_close_carried'));
+    }
+
+    public function test_case_gamma_controls_a_non_array_carry_runs_both_sweeps(): void
+    {
+        [$events, $dispatch] = $this->carriedClearTrace([fn (string $a) => $a]);
+        $this->deliver(array_slice($events, 0, 6));
+        $this->fold();
+        $this->assertSame('server_session_close', $this->callRow($dispatch)->close_source);
+        $this->assertSame(0, $this->counter('session_close_carried'));
+    }
+
+    public function test_case_gamma_controls_a_member_off_the_ulid_format_is_ignored(): void
+    {
+        [$events, $dispatch] = $this->carriedClearTrace([fn (string $a) => [$a, 'not-a-ulid']]);
+        $this->deliver(array_slice($events, 0, 6));
+        $this->fold();
+        $this->assertNull($this->callRow($dispatch)->closed_at);
+        $this->assertSame(1, $this->counter('session_close_carried'));
+    }
+
+    public function test_case_gamma_the_carried_count_is_seat_wide_across_a_second_clear(): void
+    {
+        // The second clear's session.end names A again while A's `session_ref` is still the FIRST
+        // session — the server never re-homes the row — so a per-session count would read 0.
+        [$events, $dispatch] = $this->carriedClearTrace([fn (string $a) => [$a], fn (string $a) => [$a]]);
+        $this->deliver(array_slice($events, 0, 8));   // …through the second clear
+        $this->fold();
+        $this->assertNull($this->callRow($dispatch)->closed_at);
+        $this->assertSame(2, $this->counter('session_close_carried'));
+        $this->assertSame(0, $this->counter('session_close_orphans'));
+    }
+
+    /**
+     * Case γ's stream: the parent dispatches A and ends its turn clean with the subagent running,
+     * then one `session.end(clear)` + `session.start(clear)` pair per entry of `$clears`, each
+     * `session.end` carrying what its closure returns for A; then the subagent's next call and A's
+     * own close, both under the last session.
+     *
+     * @param  list<\Closure(string): mixed>  $clears
+     * @return array{0: list<array<string, mixed>>, 1: string}
+     */
+    private function carriedClearTrace(array $clears): array
+    {
+        $a = $this->ulid();
+        $c = $this->ulid();
+        $events = [
+            $this->event('turn.start', ['prompt_chars' => 88]),
+            $this->event('tool.start', [
+                'call_id' => $a, 'tool_name' => 'Agent', 'descriptor' => null,
+                'descriptor_truncated' => false, 'agent_scope' => 'main', 'parent_call_id' => null,
+                'harness_call_ref' => 'toolu_01Carried', 'open_calls_before' => 0,
+            ]),
+            $this->event('subagent.spawn', [
+                'call_id' => $a, 'title' => 'design the clear carry', 'title_truncated' => false,
+                'subagent_type' => 'designer',
+            ]),
+            $this->event('turn.end', [
+                'end_reason' => 'stop_hook', 'api_error_type' => null, 'duration_ms' => 4100,
+                'open_calls_at_end' => 0, 'aborted_call_ids' => [], 'stop_hook_active' => false,
+                'background_tasks_open' => 1, 'tool_calls' => 1, 'failed_calls' => 0,
+            ]),
+        ];
+
+        $old = $this->sessionId;
+        foreach ($clears as $i => $carry) {
+            $new = sprintf('c1ea7000-0000-4000-8000-%012d', $i + 1);
+            $events[] = $this->event('session.end', [
+                'end_reason' => 'clear', 'duration_ms' => 9000, 'turns' => 1, 'aborted_calls' => 0,
+                'carried_call_ids' => $carry($a),
+            ], $old);
+            $events[] = $this->event('session.start', [
+                'source' => 'clear', 'project_label' => 'mezzanine',
+                'harness_label' => 'claude-code/2.1.296', 'previous_session_id' => $old,
+            ], $new);
+            $old = $new;
+        }
+
+        array_push($events,
+            $this->event('tool.start', [
+                'call_id' => $c, 'tool_name' => 'Bash', 'descriptor' => 'Bash: ls',
+                'descriptor_truncated' => false, 'agent_scope' => 'subagent', 'parent_call_id' => $a,
+                'harness_call_ref' => null, 'open_calls_before' => 1,
+            ], $old),
+            $this->event('tool.end', [
+                'call_id' => $c, 'tool_name' => 'Bash', 'outcome' => 'completed', 'abort_reason' => null,
+                'duration_ms' => 31, 'duration_source' => 'harness', 'close_source' => 'post_tool_use',
+                'match' => 'harness_ref',
+            ], $old),
+            $this->event('tool.end', [
+                'call_id' => $a, 'tool_name' => 'Agent', 'outcome' => 'completed', 'abort_reason' => null,
+                'duration_ms' => 600000, 'duration_source' => 'index', 'close_source' => 'subagent_stop_hook',
+                'match' => 'agent_id',
+            ], $old),
+            $this->event('subagent.stop', [
+                'call_id' => $a, 'outcome' => 'completed', 'abort_reason' => null, 'duration_ms' => 600000,
+                'close_source' => 'subagent_stop_hook',
+            ], $old),
+        );
+
+        return [$events, $a];
+    }
+
+    private function callRow(string $callId): object
+    {
+        return DB::table('calls')->where('seat_ref', $this->seatRef)->where('call_id', $callId)->first();
+    }
+
+    private function openDispatches(): int
+    {
+        return DB::table('calls')->where('seat_ref', $this->seatRef)
+            ->where('is_dispatch', true)->whereNull('closed_at')->count();
+    }
 }

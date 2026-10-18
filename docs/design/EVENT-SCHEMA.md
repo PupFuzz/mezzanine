@@ -1289,6 +1289,7 @@ reference, the measurement wins and the row says so.
 | `SessionStart` carries **no** predecessor-session key | `previous_session_id` — **does not exist** | **MEASURED** — the `source == "clear"` capture's complete key set is `{cwd, hook_event_name, session_id, source, transcript_path}`. The binary contains `previous_session_id` only in an internal analytics event, never in a hook payload. [§ 6.1](#61-sessionstart) and [§ 8.4](#84-detecting-a-clear-with-two-independent-signals) are designed against this, not around it |
 | A `/clear` fires **both** `SessionEnd(reason=clear)` on the outgoing session **and** `SessionStart(source=clear)` under a **new** `session_id` | — | **MEASURED** — `SessionEnd(clear)` on `d867abf5…` at `T`, `SessionStart(clear)` on `d8f4ac95…` at `T+144 ms`. `SessionEnd` first, by 144 ms, in the one ordering captured |
 | A `resume` **keeps** the same `session_id`; a `/clear` **changes** it | — | **MEASURED** — resume fired `SessionStart(source=resume)` under the identical id |
+| A `/clear` does **not** end a running background subagent: the harness **re-homes** it to the new session — its later hooks carry the **new** `session_id`, the harness opens a new transcript segment for it under the new session, and the new session's `Stop.background_tasks` counts it | `session_id`, `background_tasks` | **MEASURED at 2.1.296, interactive, 2026-10-13** (card#11817, one subagent carried across two `/clear`s on this project's seat): its first post-clear hook arrived 450 ms after `SessionStart(clear)` under the new id, and its transcript has one segment per session, each carrying only that session's id. The `background_tasks` half is **inferred** from the count — the wire carries `background_tasks_open`, not the task ids. The in-flight tool call inside it **is** killed, as the `PostToolUseFailure` row below records. **Not measured:** which `session_id` the carried subagent's `SubagentStop` arrives under — [§ 8.3](#83-the-reap-rules)'s carry closes the call either way. [§ 8.3](#83-the-reap-rules) carries the dispatch call across the clear because of this row |
 | `PreCompact.trigger` ∈ `manual` \| `auto`; `PostCompact` exists with the same key | **`trigger`** | `trigger`, `"manual"` **and `PostCompact` itself** are **MEASURED**; only `"auto"` remains **DOCS-CITED** (binary enum declaration, re-read 2026-08-27) — an automatic compaction is not drivable on a scratch session. `PreCompact` also carries `custom_instructions` (nullable), which **never transits** ([§ 6.9](#69-compactionstart)) |
 | `PostCompact` carries `compact_summary` — the whole conversation summary | `compact_summary` | **MEASURED at 2.1.247** — was DOCS-CITED and *"not drivable"*; the 2026-08-27 re-capture drove it by resuming a session that already had history and issuing `/compact`, and the real payload's key set is exactly the one the stub declared, plus `prompt_id`. The value is model-authored prose about the session and is **never read and never transits** ([§ 6.10](#610-compactionend)) — naming it here is what stops a later editor treating it as a free descriptor source |
 | `agent_id` and `agent_type` are common fields **present only inside a subagent**; `SubagentStart` exists | `agent_id`, `agent_type` | **MEASURED** — the subagent's own `PreToolUse`/`PostToolUse` carried `agent_id`; the main agent's did not. `agent_id` is a 17-hex-character opaque string on this build (**not** the `subagent_xyz789` shape the reference example shows) — [§ 3.2](#32-session-identity)'s opacity rule is why that costs nothing |
@@ -1496,12 +1497,11 @@ limits sit 46× above it.
 
 **Trigger:** the `SessionStart` hook, unconditionally. The payload key is **`source`** and the value
 set is MEASURED at 2.1.247 ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). When
-`source == "clear"` the hook runs the second `/clear` reap
-([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) before emitting, so any calls the clear
-killed are already closed as aborted and appear *earlier* in the spool. A `/clear` also fires
-`SessionEnd(reason: "clear")` on the **outgoing** session, which reaps the same set; both reap, the
-reap is idempotent, and whichever runs second finds nothing open and increments
-`reap_noop_second_signal` — the counter that says both signals are alive.
+`source == "clear"` the hook makes [§ 8.4](#84-detecting-a-clear-with-two-independent-signals)'s
+selection before emitting and **reaps nothing** (card#11817): the reap of the cleared session is
+`SessionEnd(reason: "clear")`'s alone, on the **outgoing** session. `reap_noop_second_signal` is
+incremented where it always was — by this hook when its selection finds no other open session, and
+by `SessionEnd` when this start came first — the counter that says both signals are alive.
 
 | `data` field | Type | Units | Null? | Bounds | Example |
 |---|---|---|---|---|---|
@@ -1555,7 +1555,7 @@ way the field is `null`, and `harness_label_unset` counts the gap. **It is not a
 is neither, so counting it there badged every correctly installed seat "the harness payload moved"
 (card#11330).
 
-**`previous_session_id` names the session this reporter just reaped — it is not a payload field.**
+**`previous_session_id` names the session this reporter selected — it is not a payload field.**
 The `SessionStart` payload carries **no** predecessor-session key of any kind: the captured
 `source == "clear"` payload's complete key set is
 `{cwd, hook_event_name, session_id, source, transcript_path}`
@@ -1563,10 +1563,20 @@ The `SessionStart` payload carries **no** predecessor-session key of any kind: t
 from the payload, which would have made this field `null` forever and the `/clear` reap keyed on it
 structurally dead. The reporter does not need the harness for this, because it already holds the
 seat's live-session set in its own call index: `previous_session_id` is the session
-[§ 8.4](#84-detecting-a-clear-with-two-independent-signals)'s rule selected and reaped, or `null`
-when that rule selected none. It is therefore a **reporter-derived** value, subject to
+[§ 8.4](#84-detecting-a-clear-with-two-independent-signals)'s rule selected (and, before card#11817,
+reaped), or `null` when that rule selected none. It is therefore a **reporter-derived** value, subject to
 [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s reporter-minted discipline rather than
 to the payload-reading rules.
+
+> **Unchanged by card#11817, in value and in meaning.** The selection is made exactly as before —
+> the seat's most-recently-active open session other than the new one — and only the reap that used
+> to follow it is gone ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)). So the field
+> carries what a reporter before card#11817 sent in every order: `null` in the measured
+> (`SessionEnd`-first) order on a one-terminal seat, the cleared session when `SessionStart` comes
+> first, and on a seat with a second live terminal that terminal's session, as before. The reporter's
+> internal pairing ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) does not set it:
+> changing what a wire field means is a schema bump
+> ([`docs/VERSIONING.md` § Wire compatibility](../VERSIONING.md#the-rules), rule 4).
 
 ```json
 { "event_id":"01K3TA1B2C3D4E5F6G7H8J9K0M","schema_version":1,"kind":"session.start",
@@ -1583,7 +1593,9 @@ to the payload-reading rules.
 `end_reason` is that value passed through, coerced to `other` if it is one this reporter does not
 know ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 4).
 
-Before emitting, the hook reaps every call still open **in that session** and emits a `turn.end` if a
+Before emitting, the hook reaps every call still open **in that session** — **except, on a `/clear`,
+a bound dispatch call whose subagent the harness carries into the new session, which is named in
+`carried_call_ids` instead ([§ 8.3](#83-the-reap-rules), card#11817)** — and emits a `turn.end` if a
 turn was open, so the spool order at a session boundary is: aborted `tool.end`s (and their
 `subagent.stop`s), then `turn.end`, then `session.end`.
 
@@ -1613,6 +1625,7 @@ index it decides against, and one that emits after it carries a later `event_tim
 | `duration_ms` | int | yes | ≥ 0; `null` if the start was not observed | `938204` |
 | `turns` | int | yes | ≥ 0, the reporter's count for this session | `14` |
 | `aborted_calls` | int | no | ≥ 0, calls reaped as aborted at this boundary | `1` |
+| `carried_call_ids` | array\<ULID\> | no | 0…64 elements; the open dispatch calls of this session that a `/clear` carried into its successor ([§ 8.3](#83-the-reap-rules)); `[]` on every `end_reason` but `clear` and on a `clear` that carried nothing; absent only from a reporter older than card#11817, which a consumer reads as `[]` | `["01K3TA0Z9Y8X7W6V5T4S3R2Q1P"]` |
 
 **Why the inferred member is 90 minutes and not six hours.** A hard reboot, a power cut or a
 `SIGKILL`ed harness produces no `SessionEnd`, so silence must still close a session eventually. What
@@ -1659,7 +1672,7 @@ activity event resolves only its own session's request.
 { "event_id":"01K3TA1B1A2B3C4D5E6F7G8H9J","schema_version":1,"kind":"session.end",
   "event_time":"2026-08-23T14:22:40.198Z","seq":48309,
   "install_id":"aimla","seat_id":"aimla-pm","session_id":"e3c1a5f0-9b21-4a77-8f0e-2d61c4b8a913",
-  "data":{"end_reason":"clear","duration_ms":938204,"turns":14,"aborted_calls":1} }
+  "data":{"end_reason":"clear","duration_ms":938204,"turns":14,"aborted_calls":1,"carried_call_ids":[]} }
 ```
 
 ### 6.3 `turn.start`
@@ -1740,7 +1753,7 @@ reason. **This is the event a consumer reads to mint "idle", and the only one.**
 | `end_reason` | enum | — | no | `stop_hook` \| `api_error` \| `session_cleared` \| `session_ended` | `"stop_hook"` |
 | `api_error_type` | enum | — | **yes** | `null` unless `end_reason == "api_error"`; then `rate_limit` \| `overloaded` \| `server_error` \| `authentication_failed` \| `billing_error` \| `invalid_request` \| `model_not_found` \| `max_output_tokens` \| `oauth_org_not_allowed` \| `account_on_hold` \| `unknown` \| `unrecognised` | `null` |
 | `duration_ms` | int | ms | yes | ≥ 0; `null` if no `turn.start` was seen | `41880` |
-| `open_calls_at_end` | int | — | no | 0…64; counted **before** the reap closed them, over the scope **the reap that produced this event** used — `(session_id, agent_scope_id ?? "main")` for `stop_hook`/`api_error`, and the whole `session_id` for `session_cleared`/`session_ended` ([§ 8.3](#83-the-reap-rules)) | `0` |
+| `open_calls_at_end` | int | — | no | 0…64; counted **before** the reap closed them, over the scope **the reap that produced this event** used — `(session_id, agent_scope_id ?? "main")` for `stop_hook`/`api_error`, and the whole `session_id` for `session_cleared`/`session_ended` — less, for `session_cleared`, the dispatch calls that boundary carried rather than reaped ([§ 8.3](#83-the-reap-rules), card#11817), which are neither counted nor named, exactly as a dispatch a `Stop` keeps for its `background_tasks` is not ([§ 8.3](#83-the-reap-rules)) | `0` |
 | `aborted_call_ids` | array\<ULID\> | — | no | 0…64 elements; see the size note below | `[]` |
 | `stop_hook_active` | bool | — | yes | `null` when the payload does not carry it | `false` |
 | `background_tasks_open` | int | — | no | ≥ 0, length of the payload's `background_tasks` array | `0` |
@@ -1975,7 +1988,7 @@ gate — the event is emitted identically whether the ref is present or absent; 
 | `PostToolUse` — fires when the call **succeeded**; a dispatch call's `PostToolUse` that reports a **launch** (`tool_response.status: "async_launched"`) closes nothing, and its `SubagentStop` closes it ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) | `completed` | `post_tool_use` |
 | `PostToolUseFailure` matching the **kill signature** below — the call was killed, not errored | `aborted` | `post_tool_use_failure` |
 | `PostToolUseFailure` otherwise — the call ran and errored | `failed` | `post_tool_use_failure` |
-| a reap ([§ 8.3](#83-the-reap-rules)) — no harness close was ever observed | `aborted` | `reap_session_boundary` \| `reap_turn_boundary` \| `reap_reporter_restart` |
+| a reap ([§ 8.3](#83-the-reap-rules)) — no harness close was ever observed. A bound dispatch call open at a `/clear` is not reaped by it, so `session_cleared` on a dispatch names an **unbound** one ([§ 8.3](#83-the-reap-rules), card#11817) | `aborted` | `reap_session_boundary` \| `reap_turn_boundary` \| `reap_reporter_restart` |
 | `SubagentStop`, for a dispatch call still open ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) | `completed` | `subagent_stop_hook` |
 
 > **THE KILL SIGNATURE — two independent signals, because neither is sufficient alone
@@ -2176,6 +2189,10 @@ dispatch call's `PostToolUse` reports a launch (`tool_response.status: "async_la
 after `SubagentStart`, and that `PostToolUse` **closes nothing**: `subagent.stop` comes from the
 `SubagentStop` hook, minutes later, or from a reap
 ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call), card#11799).
+
+**A `/clear` while the subagent runs does not close its dispatch**: the call is carried into the new
+session ([§ 8.3](#83-the-reap-rules)) and this event comes from the `SubagentStop` under the **new**
+`session_id`, minutes later (card#11817).
 
 | `data` field | Type | Units | Null? | Bounds | Example |
 |---|---|---|---|---|---|
@@ -3322,6 +3339,17 @@ record, no process ever rewriting what another may be writing**:
 | `tombstone` | `call_id`, `closed_at` — a reaped entry, retained for late matching. A dispatch call closed by its `SubagentStop` is retained the same way, as a tombstone its `close` record mints carrying `closed_by: "subagent_stop_hook"`, so its own late close is absorbed rather than read as a late completion ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call), card#11799) |
 | `attention_open` | `request_id`, `session_id`, `opened_at`, `call_id` — an open attention request ([§ 6.12](#612-attentionrequest)) |
 | `attention_close` | `request_id`, `closed_at`, `resolution` |
+| `session_open` | `session_id`, `opened_at`, `source` — written for the first hook of a session; `source` is `"clear"` only when written by `SessionStart(source=clear)`, which writes it **even when an earlier hook already registered the session** ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)). A later `session_open` for a known session sets `source` and touches nothing else, so it can never clear `paired_from` |
+| `session_close` | `session_id`, `closed_at`, `end_reason` — the session tombstone ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)); `end_reason` is the wire member the boundary emitted; `paired_to` is set by `pair` |
+| `carry` | `call_id`, `from_session_id` — a bound dispatch a `/clear` left open ([§ 8.3](#83-the-reap-rules)); applied only while the entry's `session_id` equals `from_session_id`, so a `carry` folded after the `pair` that re-keyed its entry does nothing |
+| `pair` | `old_session_id`, `new_session_id` — written by the second of a `/clear`'s two signals ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)); its fold marks both sessions paired and re-keys every entry carried from old to new that exists at that point in the journal |
+
+> **AMENDED — the session records, and the two `/clear` records (card#11817).** The code has journaled
+> `session_open` and `session_close` since the 16-session cap landed, and this table never listed
+> them; the rows above add them with the fields card#11817 gave them, beside `carry` and `pair`. The
+> snapshot's `sessions[]` and `sessions_closed[]` carry the same fields: a `sessions_closed` entry is
+> `{session_id, closed_at, end_reason, paired_to}`. A snapshot an older flusher wrote has no
+> `end_reason`, and such a tombstone loads as never pairable until it expires.
 
 **`agent_scope_id` and `child_agent_id` are two different facts and must never be one field.** Both
 are `agent_id` values and an earlier draft carried exactly one field for both, which is how a single
@@ -3417,12 +3445,12 @@ declares aborted is closed, in spool order, *ahead of* the triggering event. Eve
 
 | Reap trigger | What is aborted | `abort_reason` | `close_source` |
 |---|---|---|---|
-| `SessionEnd` with `reason == "clear"` | every open call of **that** `session_id` | `session_cleared` | `reap_session_boundary` |
+| `SessionEnd` with `reason == "clear"` | every open call of **that** `session_id` **except a dispatch call with a bound `child_agent_id` — carried, below** | `session_cleared` | `reap_session_boundary` |
 | `SessionEnd` with any other reason | every open call of **that** `session_id` | `session_ended` | `reap_session_boundary` |
-| `SessionStart` with `source == "clear"` | every open call of the **superseded session** ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals) names it) | `session_cleared` | `reap_session_boundary` |
+| `SessionStart` with `source == "clear"` | **nothing** — since card#11817 this signal reaps no call; it still makes the selection [§ 6.1](#61-sessionstart)'s `previous_session_id` names, and it pairs with the `clear`-ended session ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) | — | — |
 | `Stop` | every call still open in `(session_id, agent_scope_id ?? "main")`, **except a dispatch call whose bound `child_agent_id` is the `id` of an entry in this payload's `background_tasks`** (below) | `turn_boundary` | `reap_turn_boundary` |
 | `StopFailure` | every call still open in `(session_id, agent_scope_id ?? "main")`, with the same exception — which never applies, because the payload declares no `background_tasks` ([§ 17.1](#171-docs-cited-stubs--the-four-hooks-that-could-not-be-driven)) | `api_error` | `reap_turn_boundary` |
-| `SubagentStop` | every call still open in `(session_id, agent_scope_id)` where `agent_scope_id` equals this payload's `agent_id` — the subagent's **own inner** calls — with the same exception for a dispatch call it launched | `turn_boundary` | `reap_turn_boundary` |
+| `SubagentStop` | every call still open whose `agent_scope_id` equals this payload's `agent_id`, in **any** session — the subagent's **own inner** calls; after a `/clear` carried the subagent they were opened under a later `session_id` (card#11817) — with the same exception for a dispatch call it launched | `turn_boundary` | `reap_turn_boundary` |
 | the session cap evicting a session ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)) | every open call of the evicted `session_id` | `session_ended` | `reap_session_boundary` |
 | flusher start finding index entries older than its own start time | every such call | `reporter_restart` | `reap_reporter_restart` |
 
@@ -3507,6 +3535,25 @@ get wrong — a close that arrives *after* the reap — is handled by the tombst
 late-completion rule in [§ 12.5](#125-late-completions-and-orphan-timeouts): **completion is an
 observation and abort is an inference, so an observation always overrides.**
 
+> **AMENDED — a `/clear` does not end a running subagent; it re-homes it (card#11817).** MEASURED
+> at 2.1.296, interactive, 2026-10-13 ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)):
+> after a `/clear` the subagent's hooks and its new transcript segment carry the **new**
+> `session_id`, and the new session's `Stop.background_tasks` counts it, while its in-flight tool call
+> is killed as [§ 8.1](#81-the-problem-restated) records. The session-boundary reap for
+> `session_cleared` therefore **carries** every open dispatch call with a bound `child_agent_id`: no
+> `tool.end`, no `subagent.stop`, not counted in `aborted_calls` or in a `turn.end`'s scope; named in
+> `session.end.carried_call_ids` ([§ 6.2](#62-sessionend)), journaled `carry`, and re-keyed to the
+> new `session_id` by the `pair` record the second `/clear` signal writes
+> ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)). From then on every rule in this table
+> selects it as the new session's: its `SubagentStop` closes it
+> ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)), a `Stop` whose `background_tasks` no
+> longer lists its subagent reaps it, and a real `SessionEnd` reaps it. The carry applies to **no
+> other** `abort_reason`: a session that ends for any reason but `clear` takes everything it owned.
+> An unbound dispatch at the clear is reaped as before — the only `/clear` path that still produces
+> `subagent.stop(aborted, session_cleared)`. Counted `dispatch_carried_across_clear`. A carry that
+> never pairs (the other signal lost, or late past the window) stays under the old session, where
+> only its own `SubagentStop`, a flusher restart or the server's 60-minute dispatch ceiling closes it.
+
 ### 8.4 Detecting a `/clear` with two independent signals
 
 A `/clear` announces itself twice, and the measurement says exactly how. **MEASURED at 2.1.247**
@@ -3540,10 +3587,57 @@ calls — [§ 8.3](#83-the-reap-rules) explains what that rule did to an earlier
 Most-recently-active picks exactly one, and picks the right one in the only case that matters, since
 the cleared session was active microseconds ago by construction.
 
+> **AMENDED — the second signal pairs by tombstone; it never reaps (card#11817, card#11824).** The
+> rule above — reap "the seat's most-recently-active open session other than its own" — was wrong in
+> the measured order on any seat with a second live terminal: `SessionEnd(clear)` had already closed
+> the cleared session, so the pick could only land on the OTHER terminal, aborting its calls and
+> emitting `session.end` for a session still running. The paragraph "picks the right one in the only
+> case that matters" assumed the cleared session was still open at the pick; in the measured order
+> it is not. On the first connected seat the lifetime counters bound how often the pick did its job:
+> `SessionStart(clear)` evaluations are `clear_second_signal_found_nothing` plus the predicate's
+> `false` branch, `SessionEnd(clear)` evaluations are its `true` branch, and `SessionEnd`'s
+> already-reaped no-op (the only `SessionStart`-first signature) is `reap_noop_second_signal` minus
+> `clear_second_signal_found_nothing` — zero on that seat. So every `false` evaluation was a pick of
+> a session other than the cleared one, except for as many as the starts exceed the ends by: those
+> may be clears whose `SessionEnd` was never recorded (a lost signal, or a lost counter line), where
+> the pick would have been right. The figures are a reading of that seat's `state.json`, re-printed
+> by card#11817's design § 2.3 command, not a constant of this document.
+>
+> **Now:** every `session_close` records its `end_reason` and every `session_open` written by
+> `SessionStart(source=clear)` records its `source` ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)).
+> `SessionStart(source=clear)` finds the latest **unpaired** `clear`-closed session closed within
+> `CLEAR_PAIR_MS` and pairs with it; `SessionEnd(reason=clear)`, after its reap, finds the latest
+> unpaired `clear`-started session opened within `CLEAR_GAP_MS` and pairs with it
+> ([§ 14](#14-every-number-and-where-it-comes-from) has both windows). The pairing is one `pair`
+> journal record that re-keys the carried dispatch calls ([§ 8.3](#83-the-reap-rules)), counted
+> `clear_signals_paired`, and it is **reporter-internal**: nothing on the wire names it.
+> `SessionEnd(clear)` is the only reaper; `SessionStart(clear)` reaps nothing, so a `/clear` in one
+> terminal no longer touches another terminal's session's calls in either hook order.
+>
+> **The wire keeps its meanings.** `SessionStart(clear)` still makes the selection above, and
+> `previous_session_id` ([§ 6.1](#61-sessionstart)), `reap_noop_second_signal`,
+> `clear_second_signal_found_nothing` and the predicate take the values they took before card#11817
+> — `SessionEnd(clear)` counts the no-op instead of evaluating the predicate when it finds a
+> `SessionStart`-first twin, which is the case where it used to find its session already reaped.
+> Changing what any of them means is a schema bump
+> ([`docs/VERSIONING.md` § Wire compatibility](../VERSIONING.md#the-rules), rule 4), so none does.
+>
+> **Pairing is by recency inside a window, not by identity** — neither payload carries anything that
+> ties one signal to the other. So two terminals whose clears overlap inside a window, or one clear
+> whose own other signal was lost while another terminal clears, can pair one terminal's half with
+> the other's; a carried dispatch then lands in the wrong new session and is reaped at that session's
+> next `Stop` while its subagent runs. The windows are what bound it. `SessionEnd`'s is the narrow
+> one, `CLEAR_GAP_MS`, because the twin it adopts is a **live** session whose calls it re-keys; any
+> pairing whose twin is older than `CLEAR_GAP_MS` counts `clear_pair_late`, and any pick with more
+> than one candidate counts `clear_pair_ambiguous` ([§ 9.3](#93-degradation-counters)). Cost of
+> giving up the activity pick's reap: a lost `SessionEnd(clear)` is no longer covered by the start —
+> the old session waits for the 90-minute rule — and shows as `clear_signals_paired` falling behind
+> the seat's clears, which no alarm reads. The counter table below keeps its meanings.
+
 | Signal | Counter | If it stops firing |
 |---|---|---|
-| `SessionEnd(reason == "clear")` | `predicates.clear_reap_by_session_end`, `true` branch | the `SessionStart` signal still reaps, so nothing visibly breaks — the branches diverge and the divergence criterion in [§ 9.4](#94-the-predicate-constant-alarm) is what says so |
-| `SessionStart(source == "clear")` | `predicates.clear_reap_by_session_end`, `false` branch | the `SessionEnd` signal still reaps; same divergence criterion |
+| `SessionEnd(reason == "clear")` | `predicates.clear_reap_by_session_end`, `true` branch | since card#11817 nothing reaps the cleared session's calls on the reporter — the server's session-close and orphan rules bound them — and the predicate's `true` branch stops while `false` runs on; `clear_signals_paired` falls behind the seat's clears. Unalarmed ([§ 9.4](#94-the-predicate-constant-alarm)) |
+| `SessionStart(source == "clear")` | `predicates.clear_reap_by_session_end`, `false` branch | the `SessionEnd` signal still reaps, and nothing pairs: carried dispatches stay under the old session; `reap_noop_second_signal` stops, and `clear_signals_paired` falls behind |
 
 **The predicate is one classification with two branches, which is what [§ 3.4](#34-why-identity-never-comes-from-the-environment)
 rule 2 asks for.** It is evaluated once per `/clear`, at the moment the reap runs, and its branches
@@ -3744,6 +3838,7 @@ the right intern without the harness's opaque `agent_id` ever transiting. Where 
 | `turn.end` with `end_reason: "api_error"` | the seat renders **`stalled`**, carrying `api_error_type`; never `idle`, and distinct from `unknown`. `stalled` is **bounded** — it ends on the session's next `turn.start`, on that session's `session.end`, or on the seat leaving live state ([§ 6.4](#64-turnend)) |
 | `turn.end` whose calls all closed `completed` / `failed` | an ordinary finish; `failed` never blocks *idle* ([§ 6.4](#64-turnend)) |
 | a seat with any open call | the seat is **working**, regardless of turn state |
+| `session.end` naming open calls in `carried_call_ids` | those calls are **not** closed by the session-close sweep ([D2 § 4.6.1](FLEET-STATE.md#461-the-turn-has-no-timer-of-its-own)); count `session_close_carried` seat-wide. They remain the seat's open calls under their original `session_ref` until their own close arrives under the new `session_id`, or the 60-minute dispatch ceiling (card#11817) |
 
 **D2: this ledger is seat-scoped and models no agent scope, deliberately.** `agent_scope_id` and
 `child_agent_id` are reporter-side index fields
@@ -3774,7 +3869,17 @@ is equally valid and is covered below.
 > `SubagentStop`** ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)), so in the background
 > lifecycle the `/clear` again reaps **both** calls in this order, `B` then `A`; what still differs
 > from rows 7 and 8 is that the parent's turn has already ended, so no `turn.end` is emitted and
-> `session.end` carries the `aborted_calls: 2`.
+> `session.end` carries the `aborted_calls: 2`. **Since card#11817 the `/clear` carries `A` instead of
+> reaping it** ([§ 8.3](#83-the-reap-rules)): rows 5 and 6 do not occur, row 7 carries
+> `open_calls_at_end: 1`, `aborted_call_ids: [B]`, row 8 carries `aborted_calls: 1`,
+> `carried_call_ids: [A]`, and row 9 reaps nothing, pairs with the cleared session
+> ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) and counts `reap_noop_second_signal`
+> as before. Row 9's `previous_session_id` is what it always was in this order: `null` on a
+> one-terminal seat, because the selection finds no other open session
+> ([§ 6.1](#61-sessionstart)) — the row's `<old>` holds only when `SessionStart` arrives first. Three rows follow: a
+> `tool.start` for the subagent's next call under the new `session_id` with `parent_call_id: A`, then
+> at its `SubagentStop` a `tool.end` `A` `completed`/`subagent_stop_hook`/`agent_id` and a
+> `subagent.stop` `A` `completed`, both under the new `session_id`.
 
 | # | Time | Kind | Key data |
 |---|---|---|---|
@@ -3801,6 +3906,12 @@ active milliseconds earlier — reaps its calls with the identical `abort_reason
 emits events 4–8 itself, and the later `SessionEnd` is the one that finds nothing and counts
 `reap_noop_second_signal`. The wire is the same either way; that is what "two independent signals,
 either suffices" buys, and AT-1 accepts both orders while asserting that exactly one reap happened.
+
+> **AMENDED (card#11817).** `SessionStart` no longer reaps ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)),
+> so the paragraph above describes the rule it replaced. The event SET is the same either way; in the
+> `SessionStart`-first order `session.start` **precedes** the boundary set and carries
+> `previous_session_id: <old>` as before, and the later `SessionEnd` emits events 4–8, then pairs
+> with it and counts `reap_noop_second_signal`.
 *(The order MEASURED at 2.1.247 is the one traced above — `SessionEnd` 111 ms before `SessionStart`,
 and 144 ms at 2.1.240 —
 but one capture is not a guarantee, so both paths are specified and both are tested.)*
@@ -3905,8 +4016,13 @@ statusLine processes reach the flusher through the counter sink
 | `agent_bind_ambiguous` / `agent_bind_unresolved` | two unbound dispatch calls at `SubagentStart`; a subagent hook whose parent could not be resolved | informational; `parent_call_id` is `null` for those events. `agent_bind_ambiguous` is the trigger to revisit [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) with a real parallel-dispatch capture |
 | `attention_request_duplicate` | a second attention request while one was open | informational; also the measurement of whether `PermissionRequest` and `Notification` overlap |
 | `context_sample_stale` | a compaction event found no statusLine sample newer than 300 s | informational; > 0 on every seat without the statusLine integration installed |
-| `clear_second_signal_found_nothing` | a `SessionStart(source=clear)` whose index held no other open session to reap ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) | informational, and **expected on every `/clear` where `SessionEnd` ran first** — which at 2.1.247 is every one measured. It is `reap_noop_second_signal` seen from the selection side, and the two disagreeing means the second signal selected the *wrong* session |
+| `clear_second_signal_found_nothing` | a `SessionStart(source=clear)` whose index held no other open session to select (before card#11817: to reap) ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) | informational, and **expected on every `/clear` where `SessionEnd` ran first** — which at 2.1.247 is every one measured. It is `reap_noop_second_signal` seen from the selection side, and the two disagreeing means the second signal selected the *wrong* session |
 | `reap_noop_second_signal` | the second `/clear` signal found nothing to reap | informational, and **expected on every `/clear`** — a zero here on a seat that has cleared is the alarm ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) |
+| `clear_signals_paired` | the two signals of one `/clear` were paired, internally ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals), card#11817) | informational; falling behind the seat's clears means clears whose second signal never arrived, or arrived outside its window — their carried dispatches stay under the old session |
+| `dispatch_carried_across_clear` | a `/clear`'s session-boundary reap carried an open, bound dispatch call instead of aborting it ([§ 8.3](#83-the-reap-rules), card#11817) | informational; zero on a seat whose `/clear`s land while subagents run means dispatches are unbound at the clear or the carry is not firing — read beside `subagent.stop(aborted, session_cleared)` |
+| `dispatch_rekeyed_to_new_session` | a `/clear`'s pairing moved carried dispatch calls to the new `session_id` ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) | informational; below `dispatch_carried_across_clear` means carries that never paired, or whose `SubagentStop` landed between the two signals |
+| `clear_pair_ambiguous` | more than one unpaired candidate qualified at a `/clear` pairing; the latest was taken ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) | informational; non-zero means two terminals' clears overlapped inside one window, and the pairing may have crossed them |
+| `clear_pair_late` | a `/clear` pairing whose twin was older than `CLEAR_GAP_MS` ([§ 14](#14-every-number-and-where-it-comes-from)) | informational; either a slow second signal or a pairing with another terminal's unpaired half after this clear's own other signal was lost — the case [§ 8.4](#84-detecting-a-clear-with-two-independent-signals) names, made visible |
 | `tombstone_late_close` | a close matched a tombstone — the reap was too eager for that call | informational; the reporter-side half of `late_completion` |
 | `kill_close_same_session` | a `PostToolUseFailure` reported **exit 137** with `is_interrupt: false` under the **same** `session_id` its call was opened in, **or** on a close whose open was never seen at all ([§ 6.6](#66-toolend)'s synthesized pair), where the call's session is unknowable — either way the kill signature's second leg did not fire ([§ 6.6](#66-toolend)) | informational, and the observable for that section's stated residual: an OOM kill increments it legitimately, so it is a rate to look at rather than an alarm. A `/clear` kill appearing here means the close beat both `/clear` signals and closed the call `failed` |
 | `compaction_double_close` | both `PostCompact` and `SessionStart(compact)` closed one compaction | informational; a zero means one of the two signals is dead |
@@ -4037,7 +4153,7 @@ same reason adding one with an unreachable threshold is.
 |---|---|---|---|---|
 | `descriptor_allowlisted` | tool on the allowlist / not | ~1,000–3,000/day | **0 % or 100 % across ≥ 500 evaluations in a rolling 24 h** | constant-false: the allowlist no longer matches any tool name the harness sends |
 | `agent_scope_subagent` | `agent_id` present / absent ([§ 6.5](#65-toolstart)) | ~1,000–3,000/day | same 500 / 24 h rule | constant-true: the harness now sends `agent_id` everywhere; constant-false: it stopped sending it |
-| `clear_reap_by_session_end` | which `/clear` signal reaped first — `SessionEnd` / `SessionStart` ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) | ~10–80/day | **0 % or 100 % across ≥ 20 evaluations in a rolling 7 days** | one of the two `/clear` signals has died; the other is still reaping, so nothing else looks broken |
+| `clear_reap_by_session_end` | which `/clear` signal reaped first — `SessionEnd` / `SessionStart` ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)); since card#11817 the start reaps nothing and the branches keep their values, so read it as which arrived first | ~10–80/day | **none — no constancy alarm.** Constant-`true` is the healthy state: `SessionEnd` first is the measured order (every `/clear` in the spool window card#11817's design measured), so a 0 %/100 % rule fires on a seat in healthy operation and discriminates nothing | a run of `false` means the harness flipped its hook order, or a second terminal's session was selected ([§ 6.1](#61-sessionstart)); informational. A dead signal shows as `clear_signals_paired` falling behind the seat's clears ([§ 9.3](#93-degradation-counters)), which raises no badge — the dead-signal case is **unalarmed** |
 | `attention_source_permission_hook` | an `attention.request` opened by `PermissionRequest` / by `Notification` ([§ 6.12](#612-attentionrequest)) | 0–50/day | **0 % or 100 % across ≥ 50 evaluations in a rolling 7 days** | constant-false: the permission hooks stopped firing and every *blocked* now comes from a notification. This is the predicate that would have seen a permission-hook death ([§ 6.13](#613-attentionresolved)) |
 
 **On the 500 (and the 50, and the 20).** A threshold must exceed the longest legitimate run of one
@@ -4863,6 +4979,12 @@ recorded here because they are what a re-run will hit first:
   `subagent.stop` `aborted` for `A`, `session.end` with `aborted_calls: 2` — and still **no
   `turn.end`**, because the parent's turn had already ended. Record which of the two a run produced,
   and the reporter build, alongside the harness version.
+  ⚠ **And since card#11817** the clear reaps `B` and **carries** `A`: one `tool.end`
+  `aborted`/`session_cleared`, no `subagent.stop`, `session.end` with `aborted_calls: 1` and
+  `carried_call_ids: [A]`, `session.start` as before, and
+  `A`'s one close is its `SubagentStop` under the new `session_id`, `completed`/`subagent_stop_hook`.
+  **GREEN — the intern survives the clear**: the server's ledger shows `A` open across the
+  `session.end`, and the seat's open dispatch count does not drop until `A`'s own close.
 - **GREEN — Case A, the 2.1.240 lifecycle**, if the build under test keeps `A` open: the stream
   matches [§ 8.7](#87-worked-flow--a-clear-during-a-subagents-bash-call) — two `tool.end`s
   `aborted`/`session_cleared`/`reap_session_boundary`, a `subagent.stop` with `outcome:"aborted"`, a
@@ -4910,7 +5032,12 @@ recorded here because they are what a re-run will hit first:
   **including the three `Bash` calls opened inside the subagents**, because a `/clear` reaps
   session-wide ([§ 8.3](#83-the-reap-rules)) and [§ 6.4](#64-turnend) scopes the field to the reap
   that produced the event — three
-  `subagent.stop`s with `outcome: "aborted"`, and **no idle transition**. **RED:** scope the `Stop`
+  `subagent.stop`s with `outcome: "aborted"`, and **no idle transition**. *(Since card#11817 a bound
+  dispatch is carried, not reaped: `aborted_call_ids` names the **three** `Bash` calls opened inside
+  the subagents, `open_calls_at_end: 3`, the `session.end` carries `carried_call_ids` of length 3, and
+  **no** `subagent.stop` is emitted at the clear. **RED:** re-apply the carry to `session_ended` → a
+  real exit leaves the dispatch open — the reporter suite's card#11817 block plants exactly this and
+  asserts its real-exit case flips.)* **RED:** scope the `Stop`
   reap to `session_id` alone instead of `(session_id, agent_scope_id ?? "main")` and emit `turn.end`
   regardless of `agent_id` → if the harness ever fires `Stop` inside subagents, each subagent's
   completion aborts the parent's in-flight calls and mints a mid-turn `turn.end`. At 2.1.240 this RED
@@ -4952,6 +5079,13 @@ recorded here because they are what a re-run will hit first:
   `tool.end` precedes the dispatch call's, and **no `turn.end` is emitted for the subagent**.
   **RED:** remove the `SubagentStop` reap row from [§ 8.3](#83-the-reap-rules) → the inner call has no
   close rule at all (`Stop` does not fire inside a subagent) and stays open until its session ends.
+- **Case E — a `/clear` in one terminal while a second terminal of the same seat runs a subagent
+  (card#11824).** **GREEN:** no event carries the second terminal's `session_id` across the first
+  terminal's clear, in either hook order; the second terminal's dispatch closes at its own
+  `SubagentStop`. **RED:** re-plant the activity pick as the second signal's rule
+  ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) → the clear emits `session.end` for
+  the second terminal while it runs. The reporter suite drives both orders and the RED; this rig
+  does not.
 
 ### AT-2 sanitizer red fixtures
 
@@ -5781,7 +5915,7 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | Flush event trigger | 50 events | Derived — ~25 KB, a batch worth a WAN round-trip | [§ 11.5](#115-retry-and-backoff) |
 | Seat `stale` | 300 s | Derived — ~4× the 70 s worst-case freshness of a healthy seat. It **does** fire on an outage longer than ~110 s, correctly; what the 120 s backoff cap bounds is how long a seat stays stale *after* recovery | [§ 9.1](#91-the-cadence-and-the-alarm) |
 | Seat `offline` | 900 s | Derived — 3× `stale`, so `stale` is a distinct investigable state | [§ 9.1](#91-the-cadence-and-the-alarm) |
-| Predicate-constant criteria | 500 evaluations / 24 h (high-volume predicates); 50 / 7 days, or 20 / 7 days for `clear_reap_by_session_end` | **Chosen provisionally** — ~a working day of evidence for a predicate evaluated thousands of times a day, scaled down for the three evaluated tens of times a day, because a threshold above a predicate's own rate is an alarm that can never fire. Re-picked from the first week's per-predicate counts | [§ 9.4](#94-the-predicate-constant-alarm) |
+| Predicate-constant criteria | 500 evaluations / 24 h (high-volume predicates); 50 / 7 days. `clear_reap_by_session_end` had 20 / 7 days and has **no** constancy criterion since card#11817 ([§ 9.4](#94-the-predicate-constant-alarm)) | **Chosen provisionally** — ~a working day of evidence for a predicate evaluated thousands of times a day, scaled down for the three evaluated tens of times a day, because a threshold above a predicate's own rate is an alarm that can never fire. Re-picked from the first week's per-predicate counts | [§ 9.4](#94-the-predicate-constant-alarm) |
 | Degradation badge window | 24 h | **Ruled** — the operator's ruling of 2026-09-14 on card#9491, which names 24 h as the starting window: a counter-derived badge is raised while its counter rose within the window and clears on its own after it | [§ 9.3](#93-degradation-counters) |
 | Clock-skew badge | 120 s | Derived — 2× heartbeat, above NTP drift, below the 300 s stale threshold so the alarms cannot alias | [§ 10.1](#101-two-clocks-and-which-is-authoritative-for-what) |
 | Dedup window | 10 days | Derived — 25 % above the **8-day residency cap**, which is what bounds how old a delivered event can be. **Moves whenever the residency cap moves** | [§ 10.3](#103-idempotency-and-the-dedup-window) |
@@ -5792,6 +5926,8 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | Index-journal fold cap | 8 MiB | Derived — ~9 days of a busy seat's index writes with no flusher at all; past it the fold truncates, counts, and badges rather than growing without bound | [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open) |
 | Open-call index | 64 open + 64 tombstones | Chosen — far above any observed concurrency; overflow is itself a signal | [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open) |
 | Tombstone retention | 15 min | Derived — equals the ordinary orphan timeout, so the reporter can name a call for as long as the server holds one open | [§ 12.5](#125-late-completions-and-orphan-timeouts) |
+| `CLEAR_PAIR_MS` | 30 s | **Chosen** (card#11817) — the window inside which `SessionStart(clear)` pairs with the latest unpaired `clear`-closed session. The `SessionEnd(clear)` → `SessionStart(clear)` gaps MEASURED on this project's seat are 0.97–2.49 s (2.1.296, interactive, 2026-10-10…13) and 111 ms at 2.1.247; 30 s is about 12× the largest. A cost bound, not a convergence claim: a later start pairs nothing and the carry stays under the old session; revisable on `clear_pair_late`, or on `clear_signals_paired` falling behind the seat's clears | [§ 8.4](#84-detecting-a-clear-with-two-independent-signals) |
+| `CLEAR_GAP_MS` | 5 s | **Derived** (card#11817) — 2× the largest measured `SessionEnd(clear)` → `SessionStart(clear)` gap, 2.49 s, rounded up. `SessionEnd(clear)`'s window for an unpaired `clear`-started session, narrow because that twin is a live session whose calls the pairing re-keys; and the age past which any pairing counts `clear_pair_late`. The `SessionStart`-first order it serves has never been measured, so the figure is the other order's | [§ 8.4](#84-detecting-a-clear-with-two-independent-signals) |
 | Backoff base / factor / cap | 2 s / ×2 / 120 s, full jitter | Derived — 2→4→8→16 covers a ~30 s app restart; the 120 s cap bounds post-recovery staleness; jitter prevents a fleet-wide herd | [§ 11.5](#115-retry-and-backoff) |
 | `Retry-After` clamp | 600 s | Chosen — honours the server without letting a bad header park a seat for hours | [§ 11.5](#115-retry-and-backoff) |
 | Full-spool drain time | ~3.4 h | Derived — ~67,000 events (32 MiB ÷ 500 B) ÷ 20,000 events/hour. Nothing is lost; the seat renders *catching up* for that long | [§ 11.5](#115-retry-and-backoff) |
@@ -5893,7 +6029,7 @@ values no published rule derived.
 | 9 | **The flusher is OS-supervised *and* hook-respawned** | hook-respawn only (no OS integration) | respawn-only means an idle seat stops heartbeating and renders `offline` while it is merely quiet — destroying the idle/offline distinction the product depends on | install complexity on two platforms: on Linux `fleet-reporter/INSTALL-LINUX.md`, and on Windows mechanics owed when the Windows agent seat onboards |
 | 10 | **`GET /api/ingest/health` requires a seat token** | unauthenticated health surface | the accepted-version set is fleet-internal, and everyone who needs it already holds a token | an operator without a token must read the deployed declaration instead |
 | 11 | **`session.end` is an observation from the `SessionEnd` hook**, with one inferred member (`inferred_silence`, 90 min) | keep the four-way inference (`cleared` / `superseded` / `compacted` / 6 h stale) that an earlier draft built on the premise that no session-end hook exists | the premise was false — `SessionEnd` exists with a documented `reason` set. Reading a session's end from the harness that ended it is strictly better than inferring it from three side effects | if `SessionEnd` does not fire on some path, that path closes on the 90-minute silence rule instead, and `session_reopened` says so. The inference did not become *less* available; it became the fallback |
-| 12 | **Every reap and index rule is keyed by `session_id`**, and the supersede-on-different-session rule is deleted | keep reaping whenever a hook carries an unfamiliar `session_id` | two terminals on one seat is ordinary (`open_sessions` is bounded at 16), and under the old rule each session aborted the other's healthy calls, making *idle* unreachable on both and minting a `session.end` storm | a session that genuinely ends without a `SessionEnd` now waits for the 90-minute rule rather than being closed by its successor's first hook |
+| 12 | **Every reap and index rule is keyed by `session_id`**, and the supersede-on-different-session rule is deleted | keep reaping whenever a hook carries an unfamiliar `session_id` | two terminals on one seat is ordinary (`open_sessions` is bounded at 16), and under the old rule each session aborted the other's healthy calls, making *idle* unreachable on both and minting a `session.end` storm | a session that genuinely ends without a `SessionEnd` now waits for the 90-minute rule rather than being closed by its successor's first hook — and the second `/clear` signal's activity pick, kept then, is deleted by row 53 |
 | 13 | **`tool.end.outcome` gains `failed`, from the `PostToolUseFailure` hook; `is_error` is deleted** | keep `outcome ∈ completed\|aborted` with a nullable `is_error` read from the payload | `PostToolUse` fires **only on success**, so without the failure hook every failed tool call stayed open until the `Stop` reap aborted it — and `D2-MUST` #1 then forbade *idle* on any turn containing one failed `Read`. On a real seat that is most turns, so *idle* was unreachable. The closing hook's identity is also a cleaner error indicator than a payload field nobody has verified | a third `outcome` value for consumers to handle, and one deleted field. AT-19 is the regression test |
 | 14 | **The call index is an append-only journal folded over a flusher-written snapshot** | keep the shared `open-calls.json` rewritten `.tmp`+rename by every hook, or add OS advisory locks | tool calls run in parallel, so the old design was a lost-update generator with no lock and one fixed temp name: a forgotten open call can never be closed, and a healthy seat renders *working* until the orphan timeout. Locking in the hook path would put contention inside the 250 ms budget; appending is the primitive the spool already proves | a fold on every hook invocation (~1 ms per 100 KiB of tail) and a compaction duty for the flusher. Bounded, counted (`index_fold_truncated`), and tested by AT-10 |
 | 15 | **Counters and predicates travel to the flusher through an hour-bucketed append-only sink** | let hook processes write `state.json` directly, or drop the counters that hooks compute | `state.json` is flusher-owned and the counters are computed in short-lived concurrent processes — the earlier draft specified both and reconciled neither, which left [§ 9.4](#94-the-predicate-constant-alarm)'s alarm unbuildable from this document. The sink reuses the spool's own primitive, so there is one concurrency discipline in the design rather than two | one extra small append per process exit, and counters up to one flush interval stale in a heartbeat. StatusLine-side counters remain a floor because the harness cancels renders — stated at [§ 9.3](#93-degradation-counters) rather than hidden |
@@ -5934,6 +6070,7 @@ values no published rule derived.
 | 50 | **card#11292: rule 4 matches a keyword inside a name and reads credential headers whole, rule 3 takes JWTs and more prefixes, rule 7 takes mixed-class base64url runs, rule 9 replaces host names, and a `descriptors` config key lets a seat send less** | a per-seat local narrowing of the allowlist, the option the auditing seat's operator was weighing; or an entropy scorer beside the regexes; or host scrubbing by an allowlist of public hosts | Every shape was measured passing whole by an outside audit, and the descriptor is stored on the server and shown on the floor to every signed-in user. A local narrowing fixes one seat and leaves the sanitizer that every seat runs as it was. An entropy scorer is a second mechanism with its own false-positive profile; rule 7's mixed-class condition is the entropy test the existing rule could carry. A public-host allowlist is a list of the world, and § 1 excludes host names without exception | `--author=` and `max_tokens =` lose their values; `socket.io` reads as a host; `WebFetch` descriptors no longer say where. Single-label hosts outside a URL still pass (fixture 18 pins one). The `coord.subject` profile shares rule 4, so row 48's measured title rates describe the rule before this change and were **not** re-measured |
 | 51 | **card#9416: the seat's console URL rides `turn.start` as `console_url`, read from the transcript's newest deciding record within a 1 MiB tail, pattern-checked at the reporter and again at the fold, and sent only under `descriptors: "full"`** | carry it on `session.start`; or on the heartbeat; or read the whole transcript; or send it under every `descriptors` value | `session.start` fires once and before the transcript holds a bridge record, while the bridge id changes within a session and ends with it; the heartbeat carries no session and its flusher never sees a `transcript_path`; a whole-file read of a many-MiB transcript breaks P-5's budget; and `descriptors` is the seat's one statement of how much it sends, so a seat that asked for less is not sent a link to its live console | a link lags a changed bridge by one prompt; a bridge record more than 1 MiB back is a `null` for that turn, counted; a harness that moves the record makes every value `null`, counted as `console_url_malformed` rather than silent |
 | 52 | **card#11563: every writer reads the clock its events carry under one per-seat write lock, taken at a hook's first emit and before the flusher's index fold, with a bounded wait** | take the lock for a hook's whole section, including its index fold; or stamp each line just before its write with no lock; or leave the order to the server's guards | The whole-section lock held the payload work and the fold as well, measured at ~10× the hold of the appends alone, and every concurrent hook waits on that hold. A late stamp with no lock narrows the window and does not close it. The server's per-group guards converge pairs and cannot converge every composition (card#11561, [D2 § 6.5](FLEET-STATE.md#65-the-fold)) | a writer that waits out 100 ms appends unordered, counted `write_lock_timeout`; a hook's `event_time` is later than its decision clock by its own payload work, so a duration and the difference of two `event_time`s differ by a few ms |
+| 53 | **card#11817, card#11824: a `/clear` carries a bound open dispatch into the new session rather than aborting it, declared on `session.end.carried_call_ids`; the two `/clear` signals pair by `clear` tombstone inside a window, and `SessionStart(clear)` never reaps** | abort it (the pre-#11817 rule); keep it under the old id with no declaration; let the server infer the carry; keep the activity pick as a fallback for an unpaired start | the subagent survives the clear (MEASURED 2.1.296, [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)), so the abort rendered a running intern as gone for the rest of its run; and the activity pick could only land on another live terminal in the measured order — on the first connected seat every `false` evaluation of `clear_reap_by_session_end` was such a pick, except at most as many as that seat's `SessionStart(clear)` evaluations exceed its `SessionEnd(clear)` ones ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) | a dispatch the clear DID kill is reaped at the new session's next `Stop` instead of at the clear; a lost `SessionEnd(clear)` waits for the 90-minute rule; pairing is by recency, so two terminals clearing inside one window, or one terminal's lost signal beside another's clear, can cross a carry into the wrong session, where its next `Stop` reaps it — counted `clear_pair_ambiguous` / `clear_pair_late`, and narrowed by `CLEAR_GAP_MS` on the side that adopts a live session |
 
 **One thing this document deliberately does not contain:** the accepted schema-version set. That set
 lives in exactly one machine-readable place in the ingest's code and is reported by the health
