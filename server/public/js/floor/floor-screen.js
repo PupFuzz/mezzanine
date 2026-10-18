@@ -40,6 +40,13 @@
  * segment into a one-room floor, "because deciding whether a segment is a floor's key or a room on
  * someone else's floor needs the very document that failed".
  *
+ * ⛔ A LAYOUT STILL IN FLIGHT IS NOT F17 (card#11825). Every frame carries `layout` — the building
+ * client's `layoutState`: `pending` until the layout request settles, then `ready` or `failed` — and
+ * the uncomposed render states F17 only on `failed`. A frame drawn while the request is `pending`,
+ * which the page draws on every cold load, composes nothing and states nothing: no statement and no
+ * *no floor claimed* list, both of which say the request failed. A reader that needs to know whether
+ * the layout has answered reads `layout`, never a missing status.
+ *
  * ⛔ THE ROOM DRAWING IS THIS FRAME's `scene` (Appendix B row 14, card#7341 step 11). Once the page
  * has handed this screen the scene's inputs (`sceneInputs()` — the furniture box, its measurer, the
  * character's size and the themes the page holds) every frame carries `floor/scene.js`'s model of what is
@@ -901,6 +908,7 @@ export class FloorScreen {
         const at = correctedNowMs(offset, this.#clock.now());
         const composed = this.#composed();
         const failure = this.#building.layoutFailure;
+        const layout = this.#building.layoutState;
 
         // § 9 F6: "ANY read returns 401" — the building surface's two requests included, which go
         // through `wire/building.js` and not through the protocol's own reads.
@@ -926,18 +934,25 @@ export class FloorScreen {
         this.#room.take(journal);
 
         if (composed === null) {
-            // F17's cold start: no layout was ever read, so nothing is composed. The installs the
-            // client holds are listed as rooms with NO FLOOR CLAIMED.
+            // No layout is held, so nothing is composed. While the request is still in flight that is
+            // all: nothing has failed, so nothing is stated. Once it has failed it is F17's cold
+            // start — the statement, and the installs the client holds listed as rooms with NO FLOOR
+            // CLAIMED.
+            const failed = layout === 'failed';
+
             return Object.freeze({
                 composed: false,
-                statement: layoutFailureStatement(failure?.status ?? null),
+                layout,
+                statement: failed ? layoutFailureStatement(failure.status) : null,
                 last_known_layout: false,
                 floor: null,
                 redirect: null,
-                rooms: Object.freeze(this.#snapshotShape().installs.map((install) => Object.freeze({
-                    install_id: install.install_id,
-                    floor_claimed: false,
-                }))),
+                rooms: failed
+                    ? Object.freeze(this.#snapshotShape().installs.map((install) => Object.freeze({
+                        install_id: install.install_id,
+                        floor_claimed: false,
+                    })))
+                    : Object.freeze([]),
                 room: this.#room.tick,
                 desks: deskFrame,
                 notices: Object.freeze([]),
@@ -950,6 +965,7 @@ export class FloorScreen {
         if (route.floor === null) {
             return Object.freeze({
                 composed: true,
+                layout,
                 statement: null,
                 last_known_layout: failure !== null,
                 floor: null,
@@ -965,11 +981,11 @@ export class FloorScreen {
             });
         }
 
-        return this.#drawFloor(route.floor, deskFrame, failure, journal, at, narration);
+        return this.#drawFloor(route.floor, deskFrame, failure, layout, journal, at, narration);
     }
 
     /** One composed floor: its rooms placed, its desks slotted, its band, and its lines. */
-    #drawFloor(floor, deskFrame, failure, journal, at, narration) {
+    #drawFloor(floor, deskFrame, failure, layout, journal, at, narration) {
         const held = new Map();
         const extents = new Map();
 
@@ -1102,6 +1118,7 @@ export class FloorScreen {
 
         return Object.freeze({
             composed: true,
+            layout,
             // § 9 F17 on the floor route: the same statement, over the rooms it already holds.
             statement: failure === null ? null : layoutFailureStatement(failure.status),
             last_known_layout: failure !== null ? LAST_KNOWN_LAYOUT : null,
