@@ -256,6 +256,7 @@ class TheFloorComposesItsRoomsTest extends TestCase
         $frame = $this->lastFloor($this->floorRun(self::LAYOUT_FAILS));
 
         $this->assertFalse($frame['composed'], 'a failed layout request composed a building anyway');
+        $this->assertSame('failed', $frame['layout'], 'a failed layout request is not marked failed on the frame');
         $this->assertSame('the building layout could not be loaded — HTTP 503', $frame['statement'],
             'the floor route does not render F17\'s statement, or does not name the status');
         $this->assertNull($frame['floor'], 'the route\'s segment was composed into a floor with no layout to say it is one');
@@ -267,6 +268,35 @@ class TheFloorComposesItsRoomsTest extends TestCase
             $this->assertFalse($room['floor_claimed'],
                 "[{$room['install_id']}] is listed with a floor claimed, which needs the document that failed");
         }
+    }
+
+    /**
+     * GREEN — card#11825: a frame drawn while the layout request is still in flight states NO failure.
+     * The page draws such frames on every cold load (its ResizeObserver, the stream's events and the
+     * art's answer each ask for a render before `/api/building` answers), and F17's statement and its
+     * *no floor claimed* list are claims that the request FAILED. The frame says which it is in
+     * `layout` — `pending` until the request settles, then `ready` or `failed` — so no reader infers
+     * it from a missing status.
+     */
+    public function test_green_a_frame_drawn_before_the_layout_answers_states_no_failure(): void
+    {
+        foreach ([self::UNPLANNED => 'ready', self::LAYOUT_FAILS => 'failed'] as $run => $settled) {
+            $result = $this->floorRun($run, null, ['render_before_enter' => true]);
+            $first = $result['floor_renders'][0]['frame'];
+
+            $this->assertFalse($first['composed'], "[{$run}] a frame with no layout answered composed a building");
+            $this->assertNull($first['statement'], "[{$run}] a layout request still in flight was stated as a failure");
+            $this->assertSame([], $first['rooms'], "[{$run}] a layout request still in flight listed rooms with no floor claimed");
+            $this->assertSame('pending', $first['layout'], "[{$run}] the frame drawn before the entry is not marked pending");
+
+            $this->assertSame($settled, $this->lastFloor($result)['layout'], "[{$run}] the settled frame does not say how the request settled");
+        }
+
+        // The settled failure still states itself, after the pending frame.
+        $failed = $this->lastFloor($this->floorRun(self::LAYOUT_FAILS, null, ['render_before_enter' => true]));
+
+        $this->assertSame('the building layout could not be loaded — HTTP 503', $failed['statement']);
+        $this->assertNotSame([], $failed['rooms']);
     }
 
     /**

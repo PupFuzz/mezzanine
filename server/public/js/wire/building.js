@@ -163,6 +163,26 @@ export class Building {
     }
 
     /**
+     * Where the layout request stands (card#11825): `pending` until a layout request has settled,
+     * then `ready` when the last one succeeded and `failed` when it did not — a failure over a
+     * layout held before it included, which is F17's *last known layout*.
+     *
+     * ⛔ PENDING IS NOT A FAILURE WITH NO STATUS. A screen draws frames before `GET /api/building`
+     * answers, and both a pending request and one that never reached the server leave no status to
+     * read, so a screen inferring *failed* from a missing status states F17 on every cold load.
+     * Screens read this instead.
+     *
+     * @returns {'pending'|'ready'|'failed'}
+     */
+    get layoutState() {
+        if (this.#layoutFailure !== null) {
+            return 'failed';
+        }
+
+        return this.#layout === null ? 'pending' : 'ready';
+    }
+
+    /**
      * A `building.layout` message (D2 § 8.3). § 2.5: the client fetches `GET /api/building` again "when
      * the message's `layout_version` differs from the one it holds" — and F17's recovery is "on the next
      * `building.layout`", so a client whose last request failed fetches on any.

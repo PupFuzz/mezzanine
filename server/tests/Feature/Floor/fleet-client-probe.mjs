@@ -88,6 +88,11 @@
  *                                               //  arrow key's), the keyboard's focus on a plate
  *                                               //  (`focusPlate()`) and a surface resize, none
  *                                               //  followed by a render
+ *      "render_before_enter": true              // with a `floor`: one `render()` BEFORE § 4.4's
+ *                                               //  `enter()`, as the page draws one while that entry's
+ *                                               //  layout request is still in flight — its
+ *                                               //  ResizeObserver, the stream's events and the art's
+ *                                               //  answer each ask for a render (`floor/main.js`)
  *      "reduce":     true                       // § 6.4's `prefers-reduced-motion: reduce`, as a
  *                                               //  page reads it — every § 6.2 row draws its
  *                                               //  reduced-motion form and logs `motion: false`
@@ -839,6 +844,12 @@ async function replay(scenario) {
     }
 
     if (screen !== null) {
+        // The page's frame drawn before the entry has answered (card#11825): on a page the entry and
+        // the renders run concurrently, so a frame can be drawn while the layout is still pending.
+        if (scenario.render_before_enter === true) {
+            await screen.render();
+        }
+
         // § 4.4's floor entry: the layout, then each room's map. It runs after `start()` because
         // "deep-linking to a floor on a cold start runs the whole of § 2.2 first".
         await screen.enter();
