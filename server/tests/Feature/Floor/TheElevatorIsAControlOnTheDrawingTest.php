@@ -30,9 +30,17 @@ use Tests\TestCase;
  * the drawing and the button popup both read — and marks it `data-themed` (card#12047: what turns the popup from the
  * page's own panel to the frame); a painter holding no theme removes all three. The cab's frame and lamp
  * are painted from those properties, never an inline colour; its space is fitted with `meet`, never cropped with
- * `slice`, its overflow visible so the wall and floor run on past the door, and its shape handed to the layout as
- * `--cab-aspect`. That the whole door is then IN THE WINDOW is a browser's to measure: `tools/design/floor-ride.browser.mjs`'s
+ * `slice`, its overflow hidden so nothing is drawn past the cab (card#12051), and its shape handed to the layout as
+ * `--cab-aspect`. That the whole cab is then IN THE WINDOW is a browser's to measure: `tools/design/floor-ride.browser.mjs`'s
  * `cab-fit` row, run by hand.
+ *
+ * ⛔ THE CAB IS A ROOM IN DEPTH (card#12051): a one-point perspective of § 12's *Cab interior* (`painter.js`'s `CAB`,
+ * held equal to that row here) — a narrow space taller than it is wide, the back wall carrying the door inset on
+ * every side of the cab's opening, two side walls each a trapezoid whose far edge is shorter than its near one, a
+ * ceiling over the back wall and a floor under it, each painted by its class from `--cab-frame`, never inline; the
+ * leaves on the back wall; and the layer behind the leaves (`.cab-beyond`), empty, over the doorway's recess and under
+ * the leaves. `drawCabInterior()` draws the same room, and no door, into any box it is handed, and answers its back
+ * wall as it drew it.
  *
  * ⛔ THE RIDE's DOORS MOVE CONTINUOUSLY, AND THE WALKS' STEP (card#12038). Every ride motion — band and cab — eases
  * (`ease-in-out`) over the length the phase hands it, and no ride style carries `steps(`: the ride is § 6.3's
@@ -71,6 +79,23 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
     public function test_the_cab_is_in_the_house_elevator_palette_and_fitted_whole(): void
     {
         $this->assertSame([], $this->paletteDefects($this->run_()));
+    }
+
+    public function test_the_cab_is_a_room_in_depth(): void
+    {
+        $this->assertSame([], $this->depthDefects($this->run_()));
+    }
+
+    /** § 12's *Cab interior* row is `painter.js`'s `CAB`, figure for figure. */
+    public function test_green_section_12s_cab_interior_is_cab(): void
+    {
+        $this->assertSame(1, preg_match('/^\| \*\*Cab interior\*\* \| \*\*(\d+) × (\d+) × (\d+) cm\*\* wide × deep × high, the eye (\d+) cm over the floor and (\d+) cm from the cab\'s open front, the door (\d+) × (\d+) cm \|/m', $this->floorMd(), $m),
+            '§ 12 carries no *Cab interior* row in the form this test reads');
+
+        $this->assertSame(
+            ['w' => (int) $m[1], 'd' => (int) $m[2], 'h' => (int) $m[3], 'eye' => (int) $m[4], 'view' => (int) $m[5], 'door' => ['w' => (int) $m[6], 'h' => (int) $m[7]]],
+            $this->run_()['depth']['cab'],
+        );
     }
 
     /** No ride door style — the band's in any phase, the cab's in any phase — is quantised with `steps(` (card#12038). */
@@ -114,8 +139,19 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
             // card#12047's: the dialog never marked themed, or marked with no theme loaded.
             'the dialog not marked' => ["        el.toggleAttribute('data-themed', palette !== null);\n", '', 'paletteDefects'],
             'marked with no theme' => ["        el.toggleAttribute('data-themed', palette !== null);", "        el.toggleAttribute('data-themed', true);", 'paletteDefects'],
-            'the frame off the palette' => ['.cab-frame{fill:var(--cab-frame)}', '.cab-frame{fill:var(--door-frame)}', 'paletteDefects'],
+            'the frame off the palette' => ['.cab-frame{fill:var(--cab-frame);', '.cab-frame{fill:var(--door-frame);', 'paletteDefects'],
             'the lamp off the palette' => ['.cab-lamp{fill:var(--cab-lamp)}', '.cab-lamp{fill:var(--lamp)}', 'paletteDefects'],
+            // card#12051's: the cab flattened back to a front-on door, its side walls gone or off the palette, drawn as
+            // wide as a room, painted past its opening, or with no layer behind its leaves.
+            'the cab flattened' => ['        const s = CAB.view / (CAB.view + Z);', '        const s = 1;', 'depthDefects'],
+            'no side walls' => ["    face('cab-side left', ", "    false && face('cab-side left', ", 'depthDefects'],
+            'a side wall off the palette' => ['.cab-side{fill:color-mix(in srgb,var(--cab-frame) 88%,var(--door))}', '.cab-side{fill:var(--door)}', 'depthDefects'],
+            'the ceiling inline' => ["    face('cab-ceiling', pts(", "    node('polygon', { fill: 'tan', points: pts(at(l, top, 0)) }, g).setAttribute('class', 'cab-ceiling');\n    face('cab-ceiling-gone', pts(", 'depthDefects'],
+            'the cab as wide as a room' => ['export const CAB = Object.freeze({ w: 160,', 'export const CAB = Object.freeze({ w: 400,', 'depthDefects'],
+            'no layer behind the leaves' => ["        node('g', { class: 'cab-beyond' }, cab);\n", '', 'depthDefects'],
+            'the layer over the leaves' => ["        node('g', { class: 'cab-beyond' }, cab);\n\n        const style = cabLeaves(ride);\n", "        const style = cabLeaves(ride);\n", 'depthDefects'],
+            'the cab painted past its opening' => ["preserveAspectRatio: 'xMidYMid meet', overflow: 'hidden'", "preserveAspectRatio: 'xMidYMid meet', overflow: 'visible'", 'paletteDefects'],
+            'the room alone not answering its back wall' => ['    return { back };', '    return { back: { x: 0, y: 0, w: box.w, h: box.h } };', 'depthDefects'],
             'the cab doors not closing on entering' => ["        case 'entering':\n            return ride.ms === 0 ? null : `animation:leaf-close", "        case 'entering':\n            return ride.ms === 0 ? null : `animation:leaf-open", 'cabDefects'],
         ] as $what => [$from, $to, $check]) {
             $dir = $this->mutatedModules(['painter.js', $from, $to]);
@@ -266,8 +302,8 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
             $defects[] = 'with no theme, cabTheme() left '.json_encode($p['unmarked']).' on the dialog — the popup would draw as themed';
         }
 
-        if ($p['fit'] !== 'xMidYMid meet' || $p['overflow'] !== 'visible') {
-            $defects[] = "the cab is fitted {$p['fit']} with overflow {$p['overflow']} — not whole, with the wall running on";
+        if ($p['fit'] !== 'xMidYMid meet' || $p['overflow'] !== 'hidden') {
+            $defects[] = "the cab is fitted {$p['fit']} with overflow {$p['overflow']} — not whole, with nothing drawn past it";
         }
 
         if ($p['viewBox'] === null || $p['aspect'] !== str_replace(['0 0 ', ' '], ['', ' / '], $p['viewBox'])) {
@@ -279,9 +315,104 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
                 $defects[] = "the cab's {$part} is ".json_encode($p[$part]).' — drawn, and painted by its class, never inline';
             }
 
-            if (! str_contains($p['style'], ".cab-{$part}{fill:var(--cab-{$part})}")) {
+            if (preg_match('/\.cab-'.$part.'\{fill:var\(--cab-'.$part.'\)[;}]/', $p['style']) !== 1) {
                 $defects[] = "the cab's style paints .cab-{$part} from something other than --cab-{$part}";
             }
+        }
+
+        return $defects;
+    }
+
+    /** @return list<string> */
+    private function depthDefects(array $run): array
+    {
+        $d = $run['depth'];
+        $defects = [];
+
+        foreach (['back', 'left', 'right', 'ceiling', 'floor'] as $part) {
+            if ($d[$part] === null) {
+                $defects[] = "the cab draws no {$part}";
+            }
+        }
+
+        if ($defects !== []) {
+            return $defects;
+        }
+
+        [, , $w, $h] = array_map('floatval', explode(' ', (string) $d['viewBox']));
+        $b = $d['back'];
+
+        // An elevator's shape: taller than it is wide, and nowhere near the window's.
+        if ($w / $h < 0.6 || $w / $h > 0.8) {
+            $defects[] = "the cab's opening is {$w} × {$h} — not an elevator's narrow, tall shape";
+        }
+
+        // The back wall inset on every side of the opening, by more than a frame's width: the room has depth.
+        if (! ($b['x'] > 0.1 * $w && $b['x'] + $b['w'] < 0.9 * $w && $b['y'] > 0.1 * $h && $b['y'] + $b['h'] < 0.9 * $h)) {
+            $defects[] = 'the back wall is not inset in the opening — the cab is drawn flat: '.json_encode($b);
+        }
+
+        // Each side wall a trapezoid from the opening's edge to the back wall's, its far edge the shorter.
+        foreach (['left' => [0.0, $b['x']], 'right' => [$w, $b['x'] + $b['w']]] as $side => [$near, $far]) {
+            $xs = array_map(static fn ($p) => $p[0], $d[$side]);
+            $atX = static fn ($x) => array_values(array_filter($d[$side], static fn ($p) => abs($p[0] - $x) < 0.05));
+            [$n, $f] = [$atX($near), $atX($far)];
+
+            if (count($d[$side]) !== 4 || count($n) !== 2 || count($f) !== 2 || abs(min($xs) - min($near, $far)) > 0.05 || abs(max($xs) - max($near, $far)) > 0.05) {
+                $defects[] = "the {$side} wall does not run from the opening's edge to the back wall's: ".json_encode($d[$side]);
+
+                continue;
+            }
+
+            if (abs($f[0][1] - $f[1][1]) >= abs($n[0][1] - $n[1][1]) - 1) {
+                $defects[] = "the {$side} wall's far edge is not shorter than its near one — it does not recede: ".json_encode($d[$side]);
+            }
+        }
+
+        $ys = static fn ($pts) => array_map(static fn ($p) => $p[1], $pts);
+
+        if (abs(min($ys($d['ceiling']))) > 0.05 || abs(max($ys($d['ceiling'])) - $b['y']) > 0.05) {
+            $defects[] = 'the ceiling does not run from the opening\'s head to the back wall\'s: '.json_encode($d['ceiling']);
+        }
+
+        if (abs(max($ys($d['floor'])) - $h) > 0.05 || abs(min($ys($d['floor'])) - ($b['y'] + $b['h'])) > 0.05) {
+            $defects[] = 'the floor does not run from the opening\'s foot to the back wall\'s: '.json_encode($d['floor']);
+        }
+
+        foreach ($d['leaves'] as $i => $leaf) {
+            if ($leaf['x'] < $b['x'] || $leaf['x'] + $leaf['w'] > $b['x'] + $b['w'] + 0.01 || $leaf['y'] < $b['y'] || $leaf['y'] + $leaf['h'] > $b['y'] + $b['h'] + 0.01) {
+                $defects[] = "leaf {$i} is not on the back wall: ".json_encode($leaf);
+            }
+        }
+
+        if ($d['inline'] !== []) {
+            $defects[] = 'a surface carries an inline colour: '.implode(', ', $d['inline']);
+        }
+
+        foreach (['back', 'side', 'ceiling', 'floor'] as $part) {
+            if (preg_match('/\.cab-'.$part.'\{fill:color-mix\(in srgb,var\(--cab-frame\) \d+%,var\(--[a-z-]+\)\)\}/', $run['palette']['style']) !== 1) {
+                $defects[] = "the cab's style does not paint .cab-{$part} from --cab-frame";
+            }
+        }
+
+        $y = $d['beyond'];
+
+        if ($y === null || $y['children'] !== 0 || ! ($y['recess'] < $y['at'] && $y['at'] < $y['leaf'])) {
+            $defects[] = 'the layer behind the leaves is not an empty group over the recess and under the leaves: '.json_encode($y);
+        }
+
+        $a = $d['alone'];
+        $box = $a['box'];
+        $ab = $a['back'];
+
+        if ($ab === null || $a['answered'] !== $ab || $a['sides'] !== 2 || $a['ceiling'] !== 1 || $a['floor'] !== 1 || $a['leaves'] !== 0) {
+            $defects[] = 'drawCabInterior() alone did not draw the room and answer its back wall, without a door: '.json_encode($a);
+        } elseif (! ($ab['x'] > $box['x'] && $ab['y'] > $box['y'] && $ab['x'] + $ab['w'] < $box['x'] + $box['w'] && $ab['y'] + $ab['h'] < $box['y'] + $box['h'])) {
+            $defects[] = 'drawCabInterior() drew its back wall outside the box it was handed: '.json_encode($a);
+        }
+
+        if ($a['ids'] === [] || array_filter($a['ids'], static fn ($id) => ! str_starts_with($id, 'probe-')) !== []) {
+            $defects[] = 'drawCabInterior()\'s ids are not the prefix it was handed: '.json_encode($a['ids']);
         }
 
         return $defects;

@@ -324,18 +324,24 @@ async function intoTheCab(s) {
 }
 
 /**
- * The windows the cab is measured at (card#12039): § 12's desktop and phone screenshots' sizes, a short ultra-wide one,
- * a tall tablet one, and a landscape window too narrow for the popup beside the door. ⚠ In a landscape window wide
- * enough for the side-by-side layout the door's box takes the cab's own shape, so `slice` and `meet` draw it alike
- * there: the `cab-fit` plant reds at the tall windows, where the box is not that shape.
+ * The windows the cab is measured at (card#12039, card#12051): § 12's desktop and phone screenshots' sizes, a short
+ * ultra-wide one, a tall tablet one, a landscape window too narrow for the popup beside the cab, and a small phone's.
+ * ⚠ In a landscape window wide enough for the side-by-side layout the cab's box takes the cab's own shape, so a
+ * stretched fit and `meet` draw it alike there: the `cab-fit` plant reds at the other windows, where the box is not
+ * that shape.
  */
-const CAB_WINDOWS = Object.freeze({ desktop: { w: 1440, h: 900 }, 'ultra-wide': { w: 1920, h: 600 }, tablet: { w: 768, h: 1024 }, phone: { w: 390, h: 844 }, 'small-landscape': { w: 400, h: 300 } });
+const CAB_WINDOWS = Object.freeze({ desktop: { w: 1440, h: 900 }, 'ultra-wide': { w: 1920, h: 600 }, tablet: { w: 768, h: 1024 }, phone: { w: 390, h: 844 }, 'small-landscape': { w: 400, h: 300 }, 'small-phone': { w: 320, h: 568 } });
 
-/** The cab's geometry inside, in window px: the window, the drawing's box, the door's frame, its lamp and leaves, the popup and its buttons. */
+/**
+ * The cab's geometry inside, in window px: the window, the drawing's box, the cab's open front (its rim, the room's
+ * whole drawn space), its back wall and side walls, the door's frame, its lamp and leaves, the popup and its buttons.
+ */
 const cabGeometry = (s) => s.ev(`(() => {
   const r = (e) => { if (e === null) return null; const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
   const cab = document.getElementById('floor-cab');
   return { w: innerWidth, h: innerHeight, cell: r(document.getElementById('floor-cab-doors')),
+    room: r(document.querySelector('#floor-cab-doors .cab-rim')), back: r(document.querySelector('#floor-cab-doors .cab-back')),
+    sides: [...document.querySelectorAll('#floor-cab-doors .cab-side')].map(r),
     frame: r(document.querySelector('#floor-cab-doors .cab-frame')), lamp: r(document.querySelector('#floor-cab-doors .cab-lamp')),
     leaves: [...document.querySelectorAll('#floor-cab-doors .elevator-leaf')].map(r),
     panel: r(document.getElementById('floor-cab-panel')), buttons: [...document.querySelectorAll('#floor-cab-stops button')].map(r),
@@ -507,7 +513,13 @@ const ROWS = {
       if (distinct(cab) < MIN) d.push(`the cab's leaves took ${distinct(cab)} distinct scales over the closing: ${JSON.stringify([...new Set(cab)])}`);
       const bandEnd = r.band.filter(([, v]) => v !== null).map(([, v]) => v).at(-1) ?? null;
       if (bandEnd === null || Math.abs(bandEnd - 0.12) > 0.005) d.push(`the band's leaves end the sample at ${bandEnd}, not open`);
-      return { defects: d, facts: { band: distinct(band), cab: distinct(cab), frames: r.gaps.length, long_frames: r.gaps.slice(1).filter(([, g]) => g > 34), rebuilds: r.rebuilds, bandEnd } };
+      // card#12051: the cab's leaves move on the room's back wall — both of them inside it once shut.
+      const wall = await s.ev(`(() => { const r = (e) => { const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
+        const back = document.querySelector('#floor-cab-doors .cab-back');
+        return back === null ? null : { back: r(back), leaves: [...document.querySelectorAll('#floor-cab-doors .elevator-leaf')].map(r) }; })()`);
+      if (wall === null || wall.leaves.length !== 2) d.push(`the cab has no back wall or not two leaves: ${JSON.stringify(wall)}`);
+      else wall.leaves.forEach((l, i) => { if (!(l.l >= wall.back.l - 0.5 && l.r <= wall.back.r + 0.5 && l.t >= wall.back.t - 0.5 && l.b <= wall.back.b + 0.5)) d.push(`the cab's leaf ${i} is off its back wall: ${JSON.stringify(l)} on ${JSON.stringify(wall.back)}`); });
+      return { defects: d, facts: { band: distinct(band), cab: distinct(cab), frames: r.gaps.length, long_frames: r.gaps.slice(1).filter(([, g]) => g > 34), rebuilds: r.rebuilds, bandEnd, wall } };
     })),
 
   focus: row('inside, focus is on the current floor\'s button, and stays there across a render', {}, { plant: [{ file: PANEL, from: '            const held = new Map([...list.children].map((li) => [li.dataset.stop, li]));', to: "            [...list.children].forEach((li) => li.remove());\n            const held = new Map();" }] },
@@ -523,11 +535,14 @@ const ROWS = {
     })),
 
   // card#12039: the operator's *I want to see the top of the elevator door (currently the door is too tall and stretches
-  // to the top of the screen)*. Inside, at every window in CAB_WINDOWS: the door's frame — its head and the lamp over it
-  // included — and both leaves lie wholly in the window; the drawing is fitted, not shrunk (the frame spans the drawing's
-  // box on one axis, as a `meet` fit of the cab's space makes it); and the button popup overlaps no part of the frame.
-  'cab-fit': row('inside the cab the whole door, its head and lamp included, is in the window at a wide, an ultra-wide, a tall, a phone and a small landscape window, and the button popup covers none of it', {},
-    { plant: [{ file: 'js/floor/painter.js', from: "preserveAspectRatio: 'xMidYMid meet'", to: "preserveAspectRatio: 'xMidYMid slice'" }] },
+  // to the top of the screen)*; card#12051: *an elevator is a limited space. It will not take up the entire screen.
+  // Elevators are not very wide.* Inside, at every window in CAB_WINDOWS: the cab's whole open front lies in the window,
+  // narrower than it and of an elevator's shape (between 0.6 and 0.8 as wide as it is high); it is fitted, not shrunk
+  // (it spans the drawing's box on one axis, as a `meet` fit of the cab's space makes it); its back wall is inside it
+  // with a side wall showing either side; the door's frame — its head and the lamp over it included — and both leaves
+  // lie wholly in the window; and the button popup overlaps no part of the cab.
+  'cab-fit': row('inside the cab the whole cab — a narrow elevator-shaped room, its door\'s head and lamp included — is in the window at a wide, an ultra-wide, a tall, a phone, a small landscape and a small phone window, and the button popup covers none of it', {},
+    { plant: [{ file: 'js/floor/painter.js', from: "preserveAspectRatio: 'xMidYMid meet'", to: "preserveAspectRatio: 'none'" }] },
     async (chrome, c) => {
       const d = [];
       const facts = {};
@@ -539,15 +554,22 @@ const ROWS = {
           const g = await cabGeometry(s);
           if (c.plant.length === 0) await s.shot(`cab-${name}-${viewport.w}x${viewport.h}`);
           const at = `${name} ${viewport.w}×${viewport.h}`;
-          facts[name] = { frame: g.frame, panel: g.panel, cell: g.cell };
-          if (g.frame === null || g.frame.b - g.frame.t < 1) { d.push(`${at}: the cab drew no door frame`); return; }
+          const m = g.room;
+          facts[name] = { room: m, panel: g.panel, cell: g.cell, aspect: m === null ? null : Math.round(((m.r - m.l) / (m.b - m.t)) * 1000) / 1000 };
+          if (m === null || m.b - m.t < 1 || g.frame === null || g.back === null) { d.push(`${at}: the cab drew no room, back wall or door frame`); return; }
+          if (!inWindow(m, g)) d.push(`${at}: the cab runs out of the window: ${JSON.stringify(m)}`);
+          const [mw, mh] = [m.r - m.l, m.b - m.t];
+          if (!(mw < 0.9 * g.w)) d.push(`${at}: the cab is ${Math.round(mw)} px wide in a ${g.w} px window — stretched across it`);
+          if (!(mw / mh >= 0.6 && mw / mh <= 0.8)) d.push(`${at}: the cab is ${Math.round(mw)} × ${Math.round(mh)} px — not an elevator's narrow, tall shape`);
+          const spans = mh >= 0.97 * (g.cell.b - g.cell.t) || mw >= 0.97 * (g.cell.r - g.cell.l);
+          if (!spans) d.push(`${at}: the cab is drawn small in its box (${JSON.stringify(m)} in ${JSON.stringify(g.cell)})`);
+          if (!(g.back.l > m.l && g.back.r < m.r && g.back.t > m.t && g.back.b < m.b)) d.push(`${at}: the back wall is not inside the cab: ${JSON.stringify(g.back)} in ${JSON.stringify(m)}`);
+          if (g.sides.length !== 2 || g.sides.some((w) => w === null || w.r - w.l < 0.1 * mw)) d.push(`${at}: the side walls do not show: ${JSON.stringify(g.sides)}`);
           if (!inWindow(g.frame, g)) d.push(`${at}: the door's frame runs out of the window: ${JSON.stringify(g.frame)}`);
           if (!inWindow(g.lamp, g)) d.push(`${at}: the lamp over the door is out of the window: ${JSON.stringify(g.lamp)}`);
           g.leaves.forEach((leaf, i) => { if (!inWindow(leaf, g)) d.push(`${at}: leaf ${i} runs out of the window: ${JSON.stringify(leaf)}`); });
-          const spans = (g.frame.b - g.frame.t) >= 0.85 * (g.cell.b - g.cell.t) || (g.frame.r - g.frame.l) >= 0.7 * (g.cell.r - g.cell.l);
-          if (!spans) d.push(`${at}: the door is drawn small in its box (${JSON.stringify(g.frame)} in ${JSON.stringify(g.cell)})`);
           const p = g.panel;
-          if (p.l < g.frame.r && g.frame.l < p.r && p.t < g.frame.b && g.frame.t < p.b) d.push(`${at}: the button popup covers the door: ${JSON.stringify(p)} over ${JSON.stringify(g.frame)}`);
+          if (p.l < m.r && m.l < p.r && p.t < m.b && m.t < p.b) d.push(`${at}: the button popup covers the cab: ${JSON.stringify(p)} over ${JSON.stringify(m)}`);
         });
       }
       return { defects: d, facts };
@@ -557,7 +579,7 @@ const ROWS = {
   // the house theme's elevator frame colour, a stop's button the building's door and door-edge colours, the current
   // floor's call button the elevator's lamp — each read from the theme module and the sheet the page loads, and the
   // cab's drawn frame and lamp the same two palette colours.
-  'cab-palette': row('the button popup is drawn in the house theme\'s elevator palette — its body the frame\'s colour, a stop in the door\'s colours, the current floor lit by the lamp — as the cab\'s drawing is', {},
+  'cab-palette': row('the button popup is drawn in the house theme\'s elevator palette — its body the frame\'s colour, a stop in the door\'s colours, the current floor lit by the lamp — as the cab\'s drawing is, its walls, ceiling and floor following the frame\'s colour', {},
     { plant: [{ file: MAIN, from: '    painter.cabTheme(cab);\n', to: '' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla');
@@ -573,8 +595,23 @@ const ROWS = {
           want: { frame: rgb(PALETTE.elevator.frame), lamp: rgb(PALETTE.elevator.lamp), door: rgb(root.getPropertyValue('--door')), edge: rgb(root.getPropertyValue('--door-edge')) },
           got: { panel: cs('#floor-cab-panel').backgroundColor ?? null, stop: stop.backgroundColor ?? null, stopEdge: stop.borderTopColor ?? null,
             lit: cs('#floor-cab-stops li.current .cab-cap').backgroundColor ?? null, frame: cs('#floor-cab-doors .cab-frame').fill ?? null, lamp: cs('#floor-cab-doors .cab-lamp').fill ?? null },
+          // card#12051: the room's surfaces as painted, and again with the dialog's frame colour changed — each must follow it.
+          room: (() => {
+            const parts = ['.cab-back', '.cab-side.left', '.cab-side.right', '.cab-ceiling', '.cab-floor'];
+            const read = () => Object.fromEntries(parts.map((p) => [p, cs('#floor-cab-doors ' + p).fill ?? null]));
+            const dialog = document.getElementById('floor-cab');
+            const before = read();
+            const held = dialog.style.getPropertyValue('--cab-frame');
+            dialog.style.setProperty('--cab-frame', 'rgb(0, 128, 0)');
+            const after = read();
+            dialog.style.setProperty('--cab-frame', held);
+            return { before, after };
+          })(),
         }; })()`);
       const d = [];
+      for (const [part, fill] of Object.entries(r.room.before)) {
+        if (fill === null || fill === r.room.after[part]) d.push(`the cab's ${part} is ${fill}, and does not follow the palette's frame colour (${r.room.after[part]} with it changed)`);
+      }
       for (const [got, want, what] of [['panel', 'frame', 'the popup\'s body'], ['stop', 'door', 'a stop\'s button'], ['stopEdge', 'edge', 'a stop\'s edge'],
         ['lit', 'lamp', 'the current floor\'s call button'], ['frame', 'frame', 'the cab\'s drawn frame'], ['lamp', 'lamp', 'the cab\'s drawn lamp']]) {
         if (r.got[got] !== r.want[want]) d.push(`${what} is ${r.got[got]}, not the palette's ${want} ${r.want[want]}`);

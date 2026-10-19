@@ -681,9 +681,10 @@ main > section.lobby {
 /*
  * § 4.5's CAB (card#11795): the elevator's interior, a modal dialog filling the window — the painter's cab
  * (`#floor-cab-doors`, `paintCab()`) and the button popup, LAID OUT TOGETHER (card#12039): side by side in a
- * landscape window, the door over the popup in a portrait one, so the popup never covers the door and the
- * door is fitted whole into its own box (`paintCab()`'s `meet`), its head and lamp always in view. The
- * painted wall and floor run past that box to fill the window behind the popup. The dialog's look only:
+ * landscape window, the cab over the popup in a portrait one, so the popup never covers the door and the
+ * cab is fitted whole into its own box (`paintCab()`'s `meet`), its door's head and lamp always in view. The
+ * cab is a narrow room drawn in depth (card#12051), sized to the window's height in a landscape window, and
+ * nothing is painted past it: around it is the dialog's own dark background. The dialog's look only:
  * the ride's view transition is the layout's inline block, never this sheet's (`layouts/app.blade.php`).
  *
  * ⛔ THE POPUP IS THE ELEVATOR's OWN BUTTON PANEL, IN THE HOUSE THEME's ELEVATOR PALETTE, AND THIS SHEET
@@ -757,12 +758,12 @@ main > section.lobby {
     min-height: 0;
 }
 
-/* In a landscape window the door's box is the cab's own shape (`paintCab()` sets `--cab-aspect`), as tall as the
-   window allows, so the door and the popup sit together as one centred group. */
+/* In a landscape window the cab's box is the cab's own shape (`paintCab()` sets `--cab-aspect`), as tall as the
+   window allows less a margin, so the narrow cab and the popup sit together as one centred group. */
 @media (orientation: landscape) and (min-width: 420px) {
     .floor-cab-doors {
-        height: calc(100vh - 2 * var(--gutter));
-        height: calc(100dvh - 2 * var(--gutter));
+        height: calc(100vh - 4 * var(--gutter));
+        height: calc(100dvh - 4 * var(--gutter));
         aspect-ratio: var(--cab-aspect, auto);
         max-width: calc(100vw - var(--cab-panel-w) - 4 * var(--gutter));
     }
@@ -788,7 +789,7 @@ main > section.lobby {
     color: var(--cab-ink);
 }
 
-/* A portrait window, or one too narrow to hold the popup beside the door: the door above, the popup centred under it. */
+/* A portrait window, or one too narrow to hold the popup beside the cab: the cab above, the popup centred under it. */
 @media (orientation: portrait), (max-width: 419px) {
     .floor-cab[open] {
         grid-template-columns: minmax(0, 1fr);
