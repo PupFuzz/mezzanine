@@ -27,7 +27,8 @@ use Tests\TestCase;
  *
  * ⛔ THE CAB IS IN THE HOUSE THEME's ELEVATOR PALETTE, AND FITTED WHOLE (card#12039). `cabTheme()` carries the shipped
  * house theme's `PALETTE.elevator` frame and lamp onto the dialog as `--cab-frame` / `--cab-lamp` — the one carrier
- * the drawing and the button popup both read — and a painter holding no theme removes them. The cab's frame and lamp
+ * the drawing and the button popup both read — and marks it `data-themed` (card#12047: what turns the popup from the
+ * page's own panel to the frame); a painter holding no theme removes all three. The cab's frame and lamp
  * are painted from those properties, never an inline colour; its space is fitted with `meet`, never cropped with
  * `slice`, its overflow visible so the wall and floor run on past the door, and its shape handed to the layout as
  * `--cab-aspect`. That the whole door is then IN THE WINDOW is a browser's to measure: `tools/design/floor-ride.browser.mjs`'s
@@ -110,6 +111,9 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
             'the cab sliced' => ["preserveAspectRatio: 'xMidYMid meet'", "preserveAspectRatio: 'xMidYMid slice'", 'paletteDefects'],
             'the palette not carried' => ["        el.style.setProperty('--cab-frame', palette.frame);\n", '', 'paletteDefects'],
             'a stale palette kept' => ["            el.style.removeProperty('--cab-lamp');\n", '', 'paletteDefects'],
+            // card#12047's: the dialog never marked themed, or marked with no theme loaded.
+            'the dialog not marked' => ["        el.toggleAttribute('data-themed', palette !== null);\n", '', 'paletteDefects'],
+            'marked with no theme' => ["        el.toggleAttribute('data-themed', palette !== null);", "        el.toggleAttribute('data-themed', true);", 'paletteDefects'],
             'the frame off the palette' => ['.cab-frame{fill:var(--cab-frame)}', '.cab-frame{fill:var(--door-frame)}', 'paletteDefects'],
             'the lamp off the palette' => ['.cab-lamp{fill:var(--cab-lamp)}', '.cab-lamp{fill:var(--lamp)}', 'paletteDefects'],
             'the cab doors not closing on entering' => ["        case 'entering':\n            return ride.ms === 0 ? null : `animation:leaf-close", "        case 'entering':\n            return ride.ms === 0 ? null : `animation:leaf-open", 'cabDefects'],
@@ -252,6 +256,14 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
 
         if ($p['unthemed'] !== []) {
             $defects[] = 'with no theme, cabTheme() left '.json_encode($p['unthemed']).' on the dialog';
+        }
+
+        if ($p['marked'] !== ['data-themed' => '']) {
+            $defects[] = 'with the house theme, cabTheme() left the dialog\'s attributes '.json_encode($p['marked']).', not marked data-themed';
+        }
+
+        if ($p['unmarked'] !== []) {
+            $defects[] = 'with no theme, cabTheme() left '.json_encode($p['unmarked']).' on the dialog — the popup would draw as themed';
         }
 
         if ($p['fit'] !== 'xMidYMid meet' || $p['overflow'] !== 'visible') {
