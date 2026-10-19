@@ -130,7 +130,7 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 @keyframes leaf-close{from{transform:scaleX(.12)}to{transform:scaleX(1)}}
 .elevator{cursor:pointer}.elevator:focus{outline:none}.elevator-hit{fill:transparent}.elevator:focus-visible .elevator-hit{stroke:var(--scene-thread);stroke-width:3}
 .elevator[aria-disabled="true"]{cursor:default}
-.cab-wall{fill:var(--door-frame)}.cab-frame{fill:var(--door-frame)}.cab-recess{fill:var(--ground-deep)}.cab-dial{fill:none;stroke:var(--door-edge);stroke-width:1.5}.cab-lamp{fill:var(--lamp)}
+.cab-wall{fill:var(--door-frame)}.cab-floor{fill:color-mix(in srgb,var(--cab-frame) 30%,var(--ground-deep))}.cab-sill{fill:var(--door-edge)}.cab-frame{fill:var(--cab-frame)}.cab-recess{fill:var(--ground-deep)}.cab-dial{fill:none;stroke:var(--door-edge);stroke-width:1.5}.cab-lamp{fill:var(--cab-lamp)}
 .fx-broadcast-marker{fill:none;stroke:var(--scene-thread);stroke-width:3}
 `;
 
@@ -286,8 +286,12 @@ export function cabLeaves(ride) {
     }
 }
 
-/** The cab interior's own space: one elevator's leaves (84 × 144, § 12) in a frame, filling the dialog. */
-const CAB = Object.freeze({ w: 132, h: 176, leaves: Object.freeze({ x: 24, y: 24, w: 84, h: 144 }) });
+/**
+ * The cab interior's own space: one elevator's leaves (84 × 144, § 12) in a frame, fitted WHOLE into the cab's
+ * drawing box (`meet`, card#12039) — the frame's head and its lamp always in view — with the wall and the floor
+ * drawn `far` past it on every side, so whatever the box's shape leaves around the door is the cab, never a crop.
+ */
+const CAB = Object.freeze({ w: 132, h: 176, far: 10000, leaves: Object.freeze({ x: 24, y: 24, w: 84, h: 144 }) });
 
 /**
  * The painter, over the floor view's own drawing element — `#floor-drawing`, which
@@ -959,11 +963,35 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     }
 
     /**
+     * THE CAB's COLOURS (§ 4.5, card#12039) onto `el`, the cab dialog: the house theme's elevator palette — its
+     * `PALETTE.elevator` frame and lamp — as `--cab-frame` and `--cab-lamp`, which the cab's drawing (`paintCab()`)
+     * and its button popup (the sheet's `.floor-cab*` rules) both read. The palette's one home stays the theme
+     * module; these properties carry it, and are not a copy. A theme that did not load removes them, and the
+     * sheet's own defaults on `.floor-cab` — the door frame's and the lamp's tokens — answer instead.
+     *
+     * @param {HTMLElement} el
+     */
+    function cabTheme(el) {
+        const palette = themes[house]?.PALETTE?.elevator ?? null;
+
+        if (palette === null) {
+            el.style.removeProperty('--cab-frame');
+            el.style.removeProperty('--cab-lamp');
+
+            return;
+        }
+
+        el.style.setProperty('--cab-frame', palette.frame);
+        el.style.setProperty('--cab-lamp', palette.lamp);
+    }
+
+    /**
      * THE CAB's INTERIOR (§ 4.5, card#11795) into `host`, the cab dialog's own drawing element: the back wall and
-     * frame in the house theme's elevator palette (its `PALETTE.elevator`, or the door frame's token when the
-     * theme did not load), a plain dial and its lamp — no numeral and no arrow — and the two leaves in the
-     * building's door colours, moving as `cabLeaves()` says. No `<text>`: every word in the cab is the panel's.
-     * Painted once per phase entry; `null` empties it.
+     * the floor, the frame in the house theme's elevator palette (`--cab-frame`, `cabTheme()`'s), a plain dial and
+     * its lamp (`--cab-lamp`) — no numeral and no arrow — and the two leaves in the building's door colours,
+     * moving as `cabLeaves()` says. The cab's space is fitted WHOLE into `host` (`meet`, card#12039), so the door's
+     * head and lamp are in view at any window shape, and the wall and the floor run on past it to fill the rest.
+     * No `<text>`: every word in the cab is the panel's. Painted once per phase entry; `null` empties it.
      *
      * @param {Element} host
      * @param {{phase: string, elapsed_ms: number, ms: number, door_delay_ms: number|null}|null} ride `scene.ride`
@@ -975,17 +1003,23 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             return;
         }
 
-        const palette = themes[house]?.PALETTE?.elevator ?? null;
         const L = CAB.leaves;
         const seam = L.x + L.w / 2;
-        const cab = node('svg', { viewBox: `0 0 ${CAB.w} ${CAB.h}`, width: '100%', height: '100%', preserveAspectRatio: 'xMidYMid slice', class: 'cab-scene', 'aria-hidden': 'true' });
+        const foot = L.y + L.h;
+        const cab = node('svg', {
+            viewBox: `0 0 ${CAB.w} ${CAB.h}`, width: '100%', height: '100%', preserveAspectRatio: 'xMidYMid meet', overflow: 'visible', class: 'cab-scene', 'aria-hidden': 'true',
+        });
 
+        // The cab's own shape, for the layout that sets the door's box beside the popup (the sheet's `.floor-cab-doors`).
+        host.style.setProperty('--cab-aspect', `${CAB.w} / ${CAB.h}`);
         node('style', {}, cab).textContent = STYLE;
-        node('rect', { x: 0, y: 0, width: CAB.w, height: CAB.h, class: 'cab-wall' }, cab);
-        node('rect', { x: L.x - 8, y: L.y - 18, width: L.w + 16, height: L.h + 18, rx: 8, class: palette === null ? 'cab-frame' : null, fill: palette?.frame ?? null }, cab);
+        node('rect', { x: -CAB.far, y: -CAB.far, width: CAB.w + 2 * CAB.far, height: foot + CAB.far, class: 'cab-wall' }, cab);
+        node('rect', { x: -CAB.far, y: foot, width: CAB.w + 2 * CAB.far, height: CAB.far, class: 'cab-floor' }, cab);
+        node('rect', { x: L.x - 8, y: L.y - 18, width: L.w + 16, height: L.h + 18, rx: 8, class: 'cab-frame' }, cab);
         node('rect', { x: L.x - 2, y: L.y - 2, width: L.w + 4, height: L.h + 2, rx: 4, class: 'cab-recess' }, cab);
         node('path', { d: `M${seam - 12} ${L.y - 7}A12 7 0 0 1 ${seam + 12} ${L.y - 7}`, class: 'cab-dial' }, cab);
-        node('circle', { cx: seam, cy: L.y - 7, r: 1.8, class: palette === null ? 'cab-lamp' : null, fill: palette?.lamp ?? null }, cab);
+        node('circle', { cx: seam, cy: L.y - 7, r: 1.8, class: 'cab-lamp' }, cab);
+        node('rect', { x: L.x - 10, y: foot, width: L.w + 20, height: 2, rx: 1, class: 'cab-sill' }, cab);
 
         const style = cabLeaves(ride);
 
@@ -996,5 +1030,5 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         host.replaceChildren(cab);
     }
 
-    return { paint, refresh, view, paintCab };
+    return { paint, refresh, view, paintCab, cabTheme };
 }

@@ -9,6 +9,7 @@
 //   node tools/design/floor-ride.browser.mjs --row <id>   one row
 //   node tools/design/floor-ride.browser.mjs --selftest   every row, then every row again under its PLANT, which must red
 //                                                         (the bookmark row documents a residual and plants nothing)
+//   node tools/design/floor-ride.browser.mjs --shots <dir>  also save the cab rows' windows as PNGs under <dir>
 //   …and --chrome <path> or $CHROME, as every browser tool here.
 //
 // ⛔ THE PAGES ARE THE SERVED ONES, AND THE TOOL CARRIES NO COPY OF THE READER. Every page is rendered by
@@ -32,7 +33,7 @@
 // a screen reader's reading of the cab, or a real network's round trip. Timings here are a loopback host's.
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,6 +48,8 @@ const RUN = 'floor_rides';
 const argv = process.argv.slice(2);
 const argOf = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : null; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** `--shots <dir>`: the cab rows save a screenshot of each window they measure there. */
+const SHOTS = argOf('--shots');
 
 /** § 12's reference viewport, read as `floor-chrome.browser.mjs` reads it. */
 function referenceViewport() {
@@ -254,7 +257,7 @@ function serve(c = {}) {
 
 /** A browser on one row's server: the page, its clicks and keys, its instruments. */
 async function session(chrome, srv, c = {}) {
-  const { w, h } = referenceViewport();
+  const { w, h } = c.viewport ?? referenceViewport();
   const b = await browser(chrome, w, h, 'never', { media: c.media ?? [] });
   const page = b.page;
   const ev = b.evaluate;
@@ -286,7 +289,13 @@ async function session(chrome, srv, c = {}) {
     disabled: document.querySelector('#floor-drawing [data-key="elevator"]')?.getAttribute('aria-disabled') ?? null,
     leaves: [...document.querySelectorAll('#floor-drawing .elevator-leaf')].map((l) => l.getAttribute('style')),
     path: location.pathname, panel: !document.getElementById('floor-panel').hidden }; })()`);
-  return { b, page, ev, at, click, key, escape, pixel, open, record, cab, close: () => b.close() };
+  /** With `--shots <dir>`, the window as it stands, saved as `<dir>/<name>.png` (recorded, never judged). */
+  const shot = async (name) => {
+    if (SHOTS === null) return;
+    mkdirSync(SHOTS, { recursive: true });
+    writeFileSync(join(SHOTS, `${name}.png`), Buffer.from((await page('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+  };
+  return { b, page, ev, at, click, key, escape, pixel, open, record, cab, shot, close: () => b.close() };
 }
 
 /** Poll `fn` until it answers truthy, or fail with `why`. */
@@ -311,6 +320,31 @@ async function intoTheCab(s) {
   }
   await until(() => s.ev("!document.getElementById('floor-cab-panel').inert"), RIDE_DOOR_MS + DOOR_PHASE_MS + 1000, 'the cab never reached inside');
 }
+
+/**
+ * The windows the cab is measured at (card#12039): § 12's desktop and phone screenshots' sizes, a short ultra-wide one,
+ * a tall tablet one, and a landscape window too narrow for the popup beside the door. ⚠ In a landscape window wide
+ * enough for the side-by-side layout the door's box takes the cab's own shape, so `slice` and `meet` draw it alike
+ * there: the `cab-fit` plant reds at the tall windows, where the box is not that shape.
+ */
+const CAB_WINDOWS = Object.freeze({ desktop: { w: 1440, h: 900 }, 'ultra-wide': { w: 1920, h: 600 }, tablet: { w: 768, h: 1024 }, phone: { w: 390, h: 844 }, 'small-landscape': { w: 400, h: 300 } });
+
+/** The cab's geometry inside, in window px: the window, the drawing's box, the door's frame, its lamp and leaves, the popup and its buttons. */
+const cabGeometry = (s) => s.ev(`(() => {
+  const r = (e) => { if (e === null) return null; const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
+  const cab = document.getElementById('floor-cab');
+  return { w: innerWidth, h: innerHeight, cell: r(document.getElementById('floor-cab-doors')),
+    frame: r(document.querySelector('#floor-cab-doors .cab-frame')), lamp: r(document.querySelector('#floor-cab-doors .cab-lamp')),
+    leaves: [...document.querySelectorAll('#floor-cab-doors .elevator-leaf')].map(r),
+    panel: r(document.getElementById('floor-cab-panel')), buttons: [...document.querySelectorAll('#floor-cab-stops button')].map(r),
+    scroll: { cab: cab.scrollWidth - cab.clientWidth, page: document.documentElement.scrollWidth - innerWidth } };
+})()`);
+
+/** The popup's fade-in run to its end (a software rasteriser can lag a timed wait), then one frame. */
+const buttonsIn = (s) => s.ev("Promise.all(document.getElementById('floor-cab-panel').getAnimations().map((a) => a.finished)).then(() => new Promise((r) => requestAnimationFrame(() => r(true))))");
+
+/** `a` wholly inside the window (half a px of rounding allowed). */
+const inWindow = (a, g) => a !== null && a.l >= -0.5 && a.t >= -0.5 && a.r <= g.w + 0.5 && a.b <= g.h + 0.5;
 
 /** A ride from `aimla` to `stop`: settled, into the cab, the stop pressed; answers when the destination committed. */
 async function rideTo(s, stop) {
@@ -440,6 +474,90 @@ const ROWS = {
       const later = (await s.cab()).focus;
       return { defects: [first, later].every((f) => f === 'aimla') ? [] : [`focus: ${first} inside, ${later} after a render`], facts: { first, later } };
     })),
+
+  // card#12039: the operator's *I want to see the top of the elevator door (currently the door is too tall and stretches
+  // to the top of the screen)*. Inside, at every window in CAB_WINDOWS: the door's frame — its head and the lamp over it
+  // included — and both leaves lie wholly in the window; the drawing is fitted, not shrunk (the frame spans the drawing's
+  // box on one axis, as a `meet` fit of the cab's space makes it); and the button popup overlaps no part of the frame.
+  'cab-fit': row('inside the cab the whole door, its head and lamp included, is in the window at a wide, an ultra-wide, a tall, a phone and a small landscape window, and the button popup covers none of it', {},
+    { plant: [{ file: 'js/floor/painter.js', from: "preserveAspectRatio: 'xMidYMid meet'", to: "preserveAspectRatio: 'xMidYMid slice'" }] },
+    async (chrome, c) => {
+      const d = [];
+      const facts = {};
+      for (const [name, viewport] of Object.entries(CAB_WINDOWS)) {
+        await within(chrome, { ...c, viewport }, async (s) => {
+          await s.open('/floor/aimla');
+          await intoTheCab(s);
+          await buttonsIn(s);
+          const g = await cabGeometry(s);
+          if (c.plant.length === 0) await s.shot(`cab-${name}-${viewport.w}x${viewport.h}`);
+          const at = `${name} ${viewport.w}×${viewport.h}`;
+          facts[name] = { frame: g.frame, panel: g.panel, cell: g.cell };
+          if (g.frame === null || g.frame.b - g.frame.t < 1) { d.push(`${at}: the cab drew no door frame`); return; }
+          if (!inWindow(g.frame, g)) d.push(`${at}: the door's frame runs out of the window: ${JSON.stringify(g.frame)}`);
+          if (!inWindow(g.lamp, g)) d.push(`${at}: the lamp over the door is out of the window: ${JSON.stringify(g.lamp)}`);
+          g.leaves.forEach((leaf, i) => { if (!inWindow(leaf, g)) d.push(`${at}: leaf ${i} runs out of the window: ${JSON.stringify(leaf)}`); });
+          const spans = (g.frame.b - g.frame.t) >= 0.85 * (g.cell.b - g.cell.t) || (g.frame.r - g.frame.l) >= 0.7 * (g.cell.r - g.cell.l);
+          if (!spans) d.push(`${at}: the door is drawn small in its box (${JSON.stringify(g.frame)} in ${JSON.stringify(g.cell)})`);
+          const p = g.panel;
+          if (p.l < g.frame.r && g.frame.l < p.r && p.t < g.frame.b && g.frame.t < p.b) d.push(`${at}: the button popup covers the door: ${JSON.stringify(p)} over ${JSON.stringify(g.frame)}`);
+        });
+      }
+      return { defects: d, facts };
+    }),
+
+  // card#12039: the operator's *a larger popup window drawn in the same theme as the elevator itself*. The popup's body is
+  // the house theme's elevator frame colour, a stop's button the building's door and door-edge colours, the current
+  // floor's call button the elevator's lamp — each read from the theme module and the sheet the page loads, and the
+  // cab's drawn frame and lamp the same two palette colours.
+  'cab-palette': row('the button popup is drawn in the house theme\'s elevator palette — its body the frame\'s colour, a stop in the door\'s colours, the current floor lit by the lamp — as the cab\'s drawing is', {},
+    { plant: [{ file: MAIN, from: '    painter.cabTheme(cab);\n', to: '' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await s.open('/floor/aimla');
+      await intoTheCab(s);
+      const r = await s.ev(`(async () => {
+        const { HOUSE_THEME } = await import('/art/floor/themes/index.js');
+        const { PALETTE } = await import('/art/floor/themes/' + HOUSE_THEME + '/theme.js');
+        const rgb = (hex) => { const n = parseInt(hex.trim().slice(1), 16); return 'rgb(' + (n >> 16) + ', ' + ((n >> 8) & 255) + ', ' + (n & 255) + ')'; };
+        const root = getComputedStyle(document.documentElement);
+        const cs = (sel) => { const e = document.querySelector(sel); return e === null ? {} : getComputedStyle(e); };
+        const stop = cs('#floor-cab-stops li:not(.current) > button');
+        return {
+          want: { frame: rgb(PALETTE.elevator.frame), lamp: rgb(PALETTE.elevator.lamp), door: rgb(root.getPropertyValue('--door')), edge: rgb(root.getPropertyValue('--door-edge')) },
+          got: { panel: cs('#floor-cab-panel').backgroundColor ?? null, stop: stop.backgroundColor ?? null, stopEdge: stop.borderTopColor ?? null,
+            lit: cs('#floor-cab-stops li.current .cab-cap').backgroundColor ?? null, frame: cs('#floor-cab-doors .cab-frame').fill ?? null, lamp: cs('#floor-cab-doors .cab-lamp').fill ?? null },
+        }; })()`);
+      const d = [];
+      for (const [got, want, what] of [['panel', 'frame', 'the popup\'s body'], ['stop', 'door', 'a stop\'s button'], ['stopEdge', 'edge', 'a stop\'s edge'],
+        ['lit', 'lamp', 'the current floor\'s call button'], ['frame', 'frame', 'the cab\'s drawn frame'], ['lamp', 'lamp', 'the cab\'s drawn lamp']]) {
+        if (r.got[got] !== r.want[want]) d.push(`${what} is ${r.got[got]}, not the palette's ${want} ${r.want[want]}`);
+      }
+      return { defects: d, facts: r };
+    })),
+
+  // card#12039: the popup fits a phone. At a common and a small phone window, inside: the popup and every stop's button
+  // lie wholly in the window, and neither the cab nor the page scrolls sideways.
+  'cab-phone': row('at a phone\'s width the button popup and every stop\'s button are wholly in the window, and nothing scrolls sideways', {},
+    { plant: [{ file: 'css/mezzanine.css', from: '        width: min(var(--cab-panel-max), 100%);\n', to: '        width: 460px;\n' }] },
+    async (chrome, c) => {
+      const d = [];
+      const facts = {};
+      for (const viewport of [CAB_WINDOWS.phone, { w: 320, h: 568 }]) {
+        await within(chrome, { ...c, viewport }, async (s) => {
+          await s.open('/floor/aimla');
+          await intoTheCab(s);
+          await buttonsIn(s);
+          const g = await cabGeometry(s);
+          const at = `${viewport.w}×${viewport.h}`;
+          facts[at] = { panel: g.panel, scroll: g.scroll };
+          if (g.buttons.length === 0) d.push(`${at}: the popup drew no stop`);
+          if (!inWindow(g.panel, g)) d.push(`${at}: the popup runs out of the window: ${JSON.stringify(g.panel)}`);
+          g.buttons.forEach((b, i) => { if (b.l < g.panel.l - 0.5 || b.r > g.panel.r + 0.5 || !(b.l >= -0.5 && b.r <= g.w + 0.5)) d.push(`${at}: stop ${i}'s button runs out of the popup or the window: ${JSON.stringify(b)}`); });
+          if (g.scroll.cab > 0 || g.scroll.page > 0) d.push(`${at}: it scrolls sideways: ${JSON.stringify(g.scroll)}`);
+        });
+      }
+      return { defects: d, facts };
+    }),
 
   'one-escape': row('one Escape in entering leaves the cab open', {}, { plant: [{ file: MAIN, from: '    event.preventDefault();\n    rideAct(screen.escape(event.cancelable));', to: '    rideAct(screen.escape(event.cancelable));' }] },
     (chrome, c) => within(chrome, c, async (s) => {
@@ -653,7 +771,7 @@ const ROWS = {
     { plant: [{ file: 'page', from: '        html.ride-holding::view-transition-new(root) { animation: ride-hidden var(--ride-hold-max) linear; }\n', to: '' }] },
     (chrome, c) => holdPixels(chrome, c)),
 
-  'arrival-doors': row('on the destination the leaves are drawn open, close after the fade, and the ride is over within one door cycle', {},
+  'arrival-doors': row('on the destination the leaves are drawn open, close after the fade, and the ride is over one fade and one ride door motion after the arrival', {},
     { plant: [{ file: MAIN, from: '    screen.arriveByRide(rideArrival);\n', to: '' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await rideTo(s, 'zeta');
@@ -665,7 +783,7 @@ const ROWS = {
       const d = [];
       if (!(r.scene?.leaves ?? []).every((l) => String(l).includes('leaf-close'))) d.push(`the first scene's leaves: ${JSON.stringify(r.scene?.leaves)}`);
       if (arrived !== null && leaf !== null && leaf.start < arrived + FADE_MS - 20) d.push(`the doors started closing ${Math.round(leaf.start - arrived)} ms after the fade began — before it ended`);
-      if (after.disabled !== null) d.push('the arrival was still in flight a door cycle later');
+      if (after.disabled !== null) d.push('the arrival was still in flight one fade and one ride door motion later');
       return { defects: d, facts: { arrived, leaf, after: after.disabled } };
     })),
 

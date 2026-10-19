@@ -291,8 +291,10 @@
             § 4.5's CAB (card#11795): the elevator's interior, a native modal dialog filling the window, opened
             when the viewer steps in from the drawn elevator and closed on a stay, an arrival's end or a ride
             that ends. `#floor-cab-doors` is `public/js/floor/painter.js`'s `paintCab()` — the cab's frame and
-            its two leaves, no words; the panel's stops are `public/js/floor/cab-panel.js`'s, reconciled by key
-            from the screen's `frame.ride.stops`, inert until the doors have shut. Every line is the screen's:
+            its two leaves, no words, fitted whole; the panel is the button popup beside or under the door, in
+            the house theme's elevator palette (card#12039, `mezzanine.css`'s cab block); the panel's stops are
+            `public/js/floor/cab-panel.js`'s, reconciled by key from the screen's `frame.ride.stops`, inert until
+            the doors have shut. Every line is the screen's:
             the status (*going to* / *staying on*), the feed's own line, and the last-known-layout label.
             Escape in the cab is the stay; the dialog never navigates by itself — the ride's navigation is the
             screen's route, performed by `main.js`.

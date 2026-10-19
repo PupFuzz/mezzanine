@@ -4,7 +4,8 @@
  *
  * The painter is handed one band and no desks, and painted under each ride phase at a stated elapsed time; what it
  * wrote is read back: the elevator control's attributes and hit rect, how many presses a click, Enter and Space
- * each make, each band leaf's `style`, and `paintCab()`'s cab.
+ * each make, each band leaf's `style`, and `paintCab()`'s cab — and (card#12039) what `cabTheme()` carries onto the
+ * dialog from the shipped house theme's elevator palette, and the cab drawing's fit and paint.
  *
  * argv: `--js <tree>` (default: the shipped tree). stdout: JSON, one member per leg (see the bottom).
  */
@@ -16,6 +17,8 @@ import { Node } from './fake-svg-node.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const JS = args.includes('--js') ? args[args.indexOf('--js') + 1] : join(HERE, '..', '..', '..', 'public', 'js');
+/** The theme registry and modules, from disk — the tree the asset route serves as `/art/floor/themes/`. */
+const THEMES = join(HERE, '..', '..', '..', '..', 'resources', 'floor', 'themes');
 const host = new Node('div');
 
 globalThis.document = {
@@ -111,4 +114,36 @@ const cabLeg = {
     emptied: cab(null),
 };
 
-console.log(JSON.stringify({ control: controlLeg, leaves: leavesLeg, walks: walksLeg, cab: cabLeg, elapsed: E }));
+// ── the cab's palette and fit (card#12039) ───────────────────────────────────────────────────────
+// A painter holding the shipped house theme (read from the registry, as the page does) carries its elevator palette
+// onto the dialog; one holding no theme removes what an earlier one set. The cab's drawing: its fit, its overflow,
+// and what its frame and lamp are painted with.
+const recording = (props = {}) => ({ props, setProperty(k, v) { props[k] = v; }, removeProperty(k) { delete props[k]; } });
+const { HOUSE_THEME } = await import(pathToFileURL(join(THEMES, 'index.js')).href);
+const house = await import(pathToFileURL(join(THEMES, HOUSE_THEME, 'theme.js')).href);
+const themed = createPainter({ characters: null, themes: { [HOUSE_THEME]: house }, failed() {}, select() {}, house: HOUSE_THEME });
+const dialog = { style: recording() };
+const stale = { style: recording({ '--cab-frame': 'stale', '--cab-lamp': 'stale' }) };
+const themedHost = new Node('div');
+
+themedHost.style = recording();
+themed.cabTheme(dialog);
+painter.cabTheme(stale);
+themed.paintCab(themedHost, ride('inside', E, { ms: 250, door_delay_ms: null }));
+
+const svg = themedHost.children[0] ?? null;
+const one = (cls) => { const n = withClass(themedHost, cls)[0] ?? null; return n === null ? null : { fill: n.getAttribute('fill') }; };
+const paletteLeg = {
+    palette: house.PALETTE.elevator,
+    carried: dialog.style.props,
+    unthemed: stale.style.props,
+    fit: svg?.getAttribute('preserveAspectRatio') ?? null,
+    overflow: svg?.getAttribute('overflow') ?? null,
+    viewBox: svg?.getAttribute('viewBox') ?? null,
+    aspect: themedHost.style.props['--cab-aspect'] ?? null,
+    frame: one('cab-frame'),
+    lamp: one('cab-lamp'),
+    style: nodes(themedHost).find((n) => n.name === 'style')?.textContent ?? '',
+};
+
+console.log(JSON.stringify({ control: controlLeg, leaves: leavesLeg, walks: walksLeg, cab: cabLeg, palette: paletteLeg, elapsed: E }));
