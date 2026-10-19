@@ -1641,7 +1641,13 @@ panel.
     panel colour and ink (card#12047): every text in the popup, and the focus ring drawn on it, holds WCAG AA on what
     it sits on with the house theme and without it — 4.5:1 for text, 3:1 for the ring, against the body's light
     and shade — held by `Tests\Feature\Floor\TheCabPanelReconcilesByKeyTest`'s contrast check and measured in a
-    browser by `tools/design/floor-ride.browser.mjs`'s `cab-fallback` row. The popup's size is
+    browser by `tools/design/floor-ride.browser.mjs`'s `cab-fallback` row. The popup's browser baseline is the
+    drawing's: every `color-mix()` the sheet draws it with — the frame's rim, a button's shadow, a call button, the
+    current floor's plate and edges — sits in an `@supports` block after a plain rule painting one of the mix's own
+    colours (card#12070; `Tests\Feature\ThePageChromeIsOneLinkedStylesheetTest` reds on any other `color-mix()` in
+    the sheet or the painter's style), so a browser without it keeps every fill, shadow and rim, the current floor's
+    plate in the door's colour edged in the room's ink, and the same contrast holds there, computed by the same check
+    and measured by the `cab-no-mix` row. The popup's size is
     [§ 12](#12-every-number-and-where-it-comes-from)'s *Cab button popup*: 280 to 480 px wide, 36 % of a landscape
     window's width between those bounds; in a portrait window, or one narrower than 420 px, the window's width less
     its gutters, up to 480 px, and at most 55 % of its height, scrolling past that. Heights are the dynamic
@@ -3295,11 +3301,13 @@ permits this one.
   above or a walk's [A1](#62-the-animation-table--the-closed-set)/[A2](#62-the-animation-table--the-closed-set) frames,
   and they add no motion of their own, so none of the three tests reaches them. *The instrument test* — nothing reads
   them: AT-D3-23 reads `scene.doors` and AT-D3-26 `scene.ride`, and neither view is in the scene or adds to it. *The
-  dead-feed test* — being still, they assert the same on a dead feed as on a live one. *The vocabulary test* — they draw
-  none of the seventeen's elements and reuse none of their vocabulary: no character, monitor, badge, gauge, bubble, feed
-  indicator or clock, no seat and no name; the office's desks are empty furniture with no desk slot behind them, and its
-  windows hold a fixed daylight that is no room's sky (A17's sky is the band's own windows'). And the office answers the
-  viewer's own press: the cab's doors open on it only inside the ride the exception above covers.
+  dead-feed test* — being still, they assert the same on a dead feed as on a live one. *The vocabulary test* — it is a
+  test of motion, and both views are static scenery seen only inside the viewer's own ride: the cab's doors open on the
+  office only inside the ride the exception above covers. The office does draw some of the seventeen's vocabulary — desks
+  and chairs, and [§ 7.1](#71-the-render-per-state)'s *empty chair* is a render of a seat — but nothing in it moves, and it
+  renders no seat: no character, monitor, badge, gauge, bubble, feed indicator or clock and no name, and no desk slot
+  behind its desks, so an empty chair seen through the doors while the panel says *feed: live* is furniture, not a claim
+  about any seat. Its windows hold a fixed daylight that is no room's sky (A17's sky is the band's own windows').
   `Tests\Feature\Floor\TheElevatorIsAControlOnTheDrawingTest` holds both views to that — no word, image, datum
   attribute, colour of its own or motion in either, the office drawing nothing but its own classes, and the scene the
   band was painted from unchanged.
@@ -7974,12 +7982,14 @@ with a plant under `--selftest`, and is named absent in CI with the other browse
   the house theme's elevator palette and the sheet's door frame and lamp without it, still, and leaves the scene —
   `scene.doors` included — unchanged; the cab's drawing draws nothing after its leaves, and the band's elevator control
   nothing after its leaves but its hit area; every
-  `color-mix()` in the painter's style sits in its `@supports` block with a plain rule of its selector outside it — its frame
+  `color-mix()` in the painter's style sits in its `@supports` block after a plain rule of its selector setting the same
+  property to one of the mix's own colours (card#12070) — its frame
   and lamp painted from `--cab-frame` / `--cab-lamp`, which `cabTheme()` sets to the house theme's elevator
   palette and removes with no theme (card#12039), marking the dialog `data-themed` only with it (card#12047);
   the panel is reconciled by key and takes one choice per fresh press, and the sheet draws the popup from the
   palette's carriers and the door tokens, with no hex of its own (card#12039); every text in the popup and its focus
-  ring hold WCAG AA on what they sit on, with the house theme and without it, computed from the sheet (card#12047); the head script holds only a ride into a
+  ring hold WCAG AA on what they sit on, with the house theme and without it, computed from the sheet (card#12047), and
+  with `color-mix()` and without it (card#12070); the head script holds only a ride into a
   page that declares the reveal, outside reduced motion, strips `#ride` inside the reveal, arms one bound from its
   own start, and is consumed by the first reveal.
 - **RED (each a plant in a copy of the shipped module):** the ride's leaves appended to `scene.doors`; a row

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Floor;
 
 use Tests\Feature\Support\DrivesAShippedClientModule;
+use Tests\Feature\Support\HoldsEveryColourMixToAFallback;
 use Tests\Feature\Support\MeasuresContrast;
 use Tests\TestCase;
 
@@ -37,13 +38,17 @@ use Tests\TestCase;
  * the `:root` tokens, the cab block's custom properties for the state (the dialog's defaults; with the theme, its
  * `[data-themed]` rule and the house theme's `PALETTE.elevator` carried inline over both), `var()` and `color-mix()` in
  * sRGB. The body is read at its plain colour and under each stop of its light-and-shade gradient, the worst one
- * counting. ⚠ What this does not see: the corner rivets (drawn outside the padding the text sits in), and a cascade
- * by specificity — each pairing names its rules in the order they apply, so a new rule that out-ranks one is not read.
- * What a browser computes is the `cab-fallback` row's.
+ * counting. And each in both of the sheet's branches (card#12070): with `color-mix()`, the sheet as written; without it,
+ * the sheet less its `@supports (color-mix)` blocks — what such a browser applies — where a colour still written as a
+ * `color-mix()` is a colour that browser never paints, and reds. ⚠ What this does not see: the corner rivets (drawn
+ * outside the padding the text sits in), and a cascade by specificity — each pairing names its rules in the order they
+ * apply, so a new rule that out-ranks one is not read. What a browser computes is the `cab-fallback` row's, and without
+ * `color-mix()` the `cab-no-mix` row's.
  */
 class TheCabPanelReconcilesByKeyTest extends TestCase
 {
     use DrivesAShippedClientModule;
+    use HoldsEveryColourMixToAFallback;
     use MeasuresContrast;
 
     /** WCAG 2.x AA: body text (1.4.3), and a focus indicator's non-text contrast (1.4.11). */
@@ -99,7 +104,7 @@ class TheCabPanelReconcilesByKeyTest extends TestCase
         $this->assertSame([], $this->paletteDefects($this->cabSheet()));
     }
 
-    /** card#12047: every text in the popup is legible on what it sits on, with the house theme and with none. */
+    /** card#12047: every text in the popup is legible on what it sits on, with the house theme and with none — and card#12070: with color-mix() and without it. */
     public function test_every_popup_text_holds_wcag_aa_with_the_theme_and_without_it(): void
     {
         $this->assertSame([], $this->popupTextPopulationDefects());
@@ -118,6 +123,12 @@ class TheCabPanelReconcilesByKeyTest extends TestCase
             'the themed words in the page\'s ink' => [['    --cab-ink: var(--scene-ink);', '    --cab-ink: var(--ink);'], null, 'with the theme'],
             'the focus ring in the room\'s ink' => [['    outline: 3px solid var(--cab-ink);', '    outline: 3px solid var(--scene-ink);'], null, 'without the theme'],
             'a stop\'s name off its plate' => [["    background: var(--door);\n    color: var(--scene-ink);", "    background: var(--door);\n    color: var(--cab-ink);"], null, 'without the theme'],
+            // card#12070: the popup as it was — the current floor's plate mixed with no fallback, nothing a browser without
+            // color-mix() paints; a fallback plate in the room's ink, read only in that branch; and the mixed plate in the
+            // room's ink, read only in the other.
+            'the current plate mixed with no fallback' => [["    border-color: var(--scene-ink);\n    background: var(--door);\n}", "    border-color: var(--scene-ink);\n    background: color-mix(in srgb, var(--door) 65%, var(--cab-lamp));\n}"], null, 'without the theme, without color-mix()'],
+            'the current plate\'s fallback in the room\'s ink' => [["    border-color: var(--scene-ink);\n    background: var(--door);\n}", "    border-color: var(--scene-ink);\n    background: var(--scene-ink);\n}"], null, 'with the theme, without color-mix()'],
+            'the current plate\'s mix in the room\'s ink' => [['background: color-mix(in srgb, var(--door) 65%, var(--cab-lamp));', 'background: color-mix(in srgb, var(--scene-ink) 65%, var(--cab-lamp));'], null, 'with the theme, with color-mix()'],
         ] as $what => [$first, $second, $state]) {
             $planted = $sheet;
 
@@ -129,6 +140,15 @@ class TheCabPanelReconcilesByKeyTest extends TestCase
             $defects = $this->legibilityDefects($planted, $palette);
             $this->assertNotSame([], $defects, "CONTROL ({$what}) did not bite");
             $this->assertNotSame([], array_filter($defects, fn (string $d): bool => str_starts_with($d, $state)), "CONTROL ({$what}) bit, but not {$state}: ".json_encode($defects));
+        }
+
+        // Each branch is read on its own: a plant in one leaves the other clean.
+        foreach ([
+            'the fallback branch' => ["    border-color: var(--scene-ink);\n    background: var(--door);\n}", "    border-color: var(--scene-ink);\n    background: var(--scene-ink);\n}", 'with color-mix()'],
+            'the mixed branch' => ['background: color-mix(in srgb, var(--door) 65%, var(--cab-lamp));', 'background: color-mix(in srgb, var(--scene-ink) 65%, var(--cab-lamp));', 'without color-mix()'],
+        ] as $what => [$from, $to, $clean]) {
+            $defects = $this->legibilityDefects(str_replace($from, $to, $sheet), $palette);
+            $this->assertSame([], array_filter($defects, fn (string $d): bool => str_contains($d, ", {$clean}:")), "CONTROL ({$what}): a plant there reached the branch {$clean}: ".json_encode($defects));
         }
 
         $this->assertNotSame([], $this->popupTextPopulationDefects(['floor-cab-heading', 'floor-cab-status', 'floor-cab-stops', 'floor-cab-layout', 'floor-cab-feed', 'floor-cab-note'], null),
@@ -161,7 +181,7 @@ class TheCabPanelReconcilesByKeyTest extends TestCase
         foreach ([
             'a hex body' => ['    background-color: var(--cab-body);', '    background-color: #c9a873;'],
             'the themed body off the frame' => ['    --cab-body: var(--cab-frame);', '    --cab-body: var(--panel);'],
-            'a stop off the door' => ['    background: var(--door);', '    background: var(--panel-2);'],
+            'a stop off the door' => ["    background: var(--door);\n    color: var(--scene-ink);", "    background: var(--panel-2);\n    color: var(--scene-ink);"],
             'a stop edged off the door' => ['    border: 2px solid var(--door-edge);', '    border: 2px solid var(--line);'],
             'the lit stop off the lamp' => ["    background: var(--cab-lamp);\n    box-shadow: inset", "    background: var(--lamp);\n    box-shadow: inset"],
             'no default frame' => ['    --cab-frame: var(--door-frame);', ''],
@@ -335,7 +355,8 @@ class TheCabPanelReconcilesByKeyTest extends TestCase
     }
 
     /**
-     * Every `POPUP_TEXTS` pairing's contrast, without the theme and with the house theme, under its floor.
+     * Every `POPUP_TEXTS` pairing's contrast, without the theme and with the house theme, with `color-mix()` and without
+     * it, under its floor.
      *
      * @param  array{frame: string, lamp: string}  $palette
      * @return list<string>
@@ -345,69 +366,88 @@ class TheCabPanelReconcilesByKeyTest extends TestCase
         $this->assertSame(1, preg_match('/:root\s*\{([^}]*)\}/', $sheet, $root), 'the sheet declares no :root block');
         preg_match_all('/--([a-z0-9_-]+)\s*:\s*(#[0-9a-f]{6})\s*;/i', $root[1], $t);
         $tokens = array_combine($t[1], $t[2]);
-        $rules = $this->rulesOf($this->cabBlockOf($sheet));
+        $block = $this->cabBlockOf($sheet);
         $defects = [];
 
-        foreach (['without the theme' => null, 'with the theme' => $palette] as $state => $carried) {
-            // The dialog's custom properties: its defaults, the themed rule over them, and the carriers inline over both.
-            $scope = $this->customProperties($rules['.floor-cab'] ?? []);
+        foreach (['with color-mix()' => $block, 'without color-mix()' => $this->withoutColourMixBlocks($block)] as $branch => $css) {
+            $rules = $this->rulesOf($css);
+            $mixes = $branch === 'with color-mix()';
 
-            if ($carried !== null) {
-                $scope = [...$scope, ...$this->customProperties($rules['.floor-cab[data-themed]'] ?? []), '--cab-frame' => $carried['frame'], '--cab-lamp' => $carried['lamp']];
-            }
+            foreach (['without the theme' => null, 'with the theme' => $palette] as $theme => $carried) {
+                $state = "{$theme}, {$branch}";
+                // The dialog's custom properties: its defaults, the themed rule over them, and the carriers inline over both.
+                $scope = $this->customProperties($rules['.floor-cab'] ?? []);
 
-            $resolve = function (string $value) use (&$resolve, $scope, $tokens, $state): array {
-                $value = trim($value);
-
-                if (preg_match('/^#[0-9a-f]{6}$/i', $value) === 1) {
-                    return $this->rgbOf($value);
+                if ($carried !== null) {
+                    $scope = [...$scope, ...$this->customProperties($rules['.floor-cab[data-themed]'] ?? []), '--cab-frame' => $carried['frame'], '--cab-lamp' => $carried['lamp']];
                 }
 
-                if (preg_match('/^var\(\s*(--[a-z0-9_-]+)\s*\)$/i', $value, $v) === 1) {
-                    $named = $scope[$v[1]] ?? (isset($tokens[substr($v[1], 2)]) ? $tokens[substr($v[1], 2)] : null);
-                    $this->assertNotNull($named, "{$state}: {$v[1]} resolves to nothing");
+                // A colour as sRGB channels, or null for a `color-mix()` a browser without it never paints.
+                $resolve = function (string $value) use (&$resolve, $scope, $tokens, $state, $mixes): ?array {
+                    $value = trim($value);
 
-                    return $resolve($named);
-                }
-
-                if (preg_match('/^color-mix\(in srgb,\s*(.+?)\s+(\d+(?:\.\d+)?)%,\s*(.+)\)$/', $value, $mix) === 1) {
-                    [$a, $b, $p] = [$resolve($mix[1]), $resolve($mix[3]), (float) $mix[2] / 100];
-
-                    return [$a[0] * $p + $b[0] * (1 - $p), $a[1] * $p + $b[1] * (1 - $p), $a[2] * $p + $b[2] * (1 - $p)];
-                }
-
-                $this->fail("{$state}: the contrast check cannot resolve the colour `{$value}`");
-            };
-
-            foreach (self::POPUP_TEXTS as $what => [$colourRules, $property, $on]) {
-                $ink = $this->lastDeclared($rules, $colourRules, $property);
-                $this->assertNotNull($ink, "{$what}: no `{$property}` in ".implode(', ', $colourRules));
-
-                if ($property === 'outline') {
-                    $ink = (string) preg_replace('/^\S+\s+\S+\s+/', '', $ink);
-                }
-
-                if ($on === 'body') {
-                    $base = $resolve((string) $this->lastDeclared($rules, ['.floor-cab-panel'], 'background-color'));
-                    $grounds = [$base];
-                    $image = (string) $this->lastDeclared($rules, ['.floor-cab-panel'], 'background-image');
-                    $this->assertSame(1, preg_match('/linear-gradient\((.*)\)\s*$/s', $image, $gradient), 'the popup\'s body has no light-and-shade gradient this check can read');
-                    preg_match_all('#rgb\((\d+) (\d+) (\d+) / ([\d.]+)\)#', $gradient[1], $stops, PREG_SET_ORDER);
-                    $this->assertNotSame([], $stops, 'the popup\'s gradient has no rgb() stop this check can read');
-
-                    foreach ($stops as [, $r, $g, $b, $alpha]) {
-                        $a = (float) $alpha;
-                        $grounds[] = [$base[0] * (1 - $a) + $r / 255 * $a, $base[1] * (1 - $a) + $g / 255 * $a, $base[2] * (1 - $a) + $b / 255 * $a];
+                    if (preg_match('/^#[0-9a-f]{6}$/i', $value) === 1) {
+                        return $this->rgbOf($value);
                     }
-                } else {
-                    $grounds = [$resolve((string) $this->lastDeclared($rules, $on, 'background'))];
-                }
 
-                $ratio = min(array_map(fn (array $ground): float => $this->contrastRatio($resolve($ink), $ground), $grounds));
-                $floor = $property === 'outline' ? self::RING_FLOOR : self::TEXT_FLOOR;
+                    if (preg_match('/^var\(\s*(--[a-z0-9_-]+)\s*\)$/i', $value, $v) === 1) {
+                        $named = $scope[$v[1]] ?? (isset($tokens[substr($v[1], 2)]) ? $tokens[substr($v[1], 2)] : null);
+                        $this->assertNotNull($named, "{$state}: {$v[1]} resolves to nothing");
 
-                if ($ratio < $floor) {
-                    $defects[] = sprintf('%s: %s is %.2f:1 on what it sits on, under %.1f:1', $state, $what, $ratio, $floor);
+                        return $resolve($named);
+                    }
+
+                    if (preg_match('/^color-mix\(in srgb,\s*(.+?)\s+(\d+(?:\.\d+)?)%,\s*(.+)\)$/', $value, $mix) === 1) {
+                        if (! $mixes) {
+                            return null;
+                        }
+
+                        [$a, $b, $p] = [$resolve($mix[1]), $resolve($mix[3]), (float) $mix[2] / 100];
+
+                        return [$a[0] * $p + $b[0] * (1 - $p), $a[1] * $p + $b[1] * (1 - $p), $a[2] * $p + $b[2] * (1 - $p)];
+                    }
+
+                    $this->fail("{$state}: the contrast check cannot resolve the colour `{$value}`");
+                };
+
+                foreach (self::POPUP_TEXTS as $what => [$colourRules, $property, $on]) {
+                    $ink = $this->lastDeclared($rules, $colourRules, $property);
+                    $this->assertNotNull($ink, "{$what}: no `{$property}` in ".implode(', ', $colourRules));
+
+                    if ($property === 'outline') {
+                        $ink = (string) preg_replace('/^\S+\s+\S+\s+/', '', $ink);
+                    }
+
+                    if ($on === 'body') {
+                        $base = $resolve((string) $this->lastDeclared($rules, ['.floor-cab-panel'], 'background-color'));
+                        $grounds = [$base];
+                        $image = (string) $this->lastDeclared($rules, ['.floor-cab-panel'], 'background-image');
+                        $this->assertSame(1, preg_match('/linear-gradient\((.*)\)\s*$/s', $image, $gradient), 'the popup\'s body has no light-and-shade gradient this check can read');
+                        preg_match_all('#rgb\((\d+) (\d+) (\d+) / ([\d.]+)\)#', $gradient[1], $stops, PREG_SET_ORDER);
+                        $this->assertNotSame([], $stops, 'the popup\'s gradient has no rgb() stop this check can read');
+
+                        foreach ($stops as [, $r, $g, $b, $alpha]) {
+                            $a = (float) $alpha;
+                            $grounds[] = $base === null ? null : [$base[0] * (1 - $a) + $r / 255 * $a, $base[1] * (1 - $a) + $g / 255 * $a, $base[2] * (1 - $a) + $b / 255 * $a];
+                        }
+                    } else {
+                        $grounds = [$resolve((string) $this->lastDeclared($rules, $on, 'background'))];
+                    }
+
+                    $inkRgb = $resolve($ink);
+
+                    if ($inkRgb === null || in_array(null, $grounds, true)) {
+                        $defects[] = "{$state}: {$what} or what it sits on is a color-mix() with no fallback, which this browser does not paint";
+
+                        continue;
+                    }
+
+                    $ratio = min(array_map(fn (array $ground): float => $this->contrastRatio($inkRgb, $ground), $grounds));
+                    $floor = $property === 'outline' ? self::RING_FLOOR : self::TEXT_FLOOR;
+
+                    if ($ratio < $floor) {
+                        $defects[] = sprintf('%s: %s is %.2f:1 on what it sits on, under %.1f:1', $state, $what, $ratio, $floor);
+                    }
                 }
             }
         }
