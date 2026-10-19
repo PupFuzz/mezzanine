@@ -1257,12 +1257,19 @@ draws on every paint. The frame, top to bottom:
 - **The back-wall band, 160 px tall**, spanning the floor's extent above the slab, **in its floor's THEME**
   ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)): the theme draws the wall — its skirting and
   its end posts among it — and the surrounds of the elevator, the clock and each window, over the band's flat
-  fallback fill (`--house-wall`); the leaves, the clock's hands and its unset treatment, and the glazing with
-  its sky stay the painter's on every theme. Its left **272 px is a reserved zone**: the **two-door elevator** — two leaves meeting at a
+  fallback fill (`--house-wall`); the leaves and the cab seen behind them, the clock's hands and its unset
+  treatment, and the glazing with its sky stay the painter's on every theme. Its left **272 px is a reserved zone**: the **two-door elevator** — two leaves meeting at a
   seam in the theme's surround, which draws the frame, the header plate with its plain dial, the lamp, the
   recess and the call buttons; the leaves are the lobby cab's, in the lobby's own door
   colours (`--door` / `--door-edge`, [§ 10.4](#104-the-art-direction-as-a-specification)), so the floor and
-  the lobby read as one building — and the **wall clock**, A17's, hung at mid-wall right of it. **The elevator
+  the lobby read as one building — and the **wall clock**, A17's, hung at mid-wall right of it. **Behind the
+  leaves is the cab** (card#12052; the operator's request of 2026-10-19 — *on the floor views, when the elevator
+  door opens or closes, we should see a 3D perspective of the elevator cab*): the painter's `drawCabInterior()`
+  room, [§ 4.5](#45-the-viewport-rule-and-the-camera)'s cab, fitted to the doorway and clipped to it over the
+  surround's recess, in the house theme's elevator palette (the sheet's door frame and lamp when that theme did
+  not load), so whenever the leaves open or close, for a walk or for the viewer's ride, the cab is seen inside in
+  depth. It is scenery drawn once with the band: it never moves, takes no row, writes no log entry and adds
+  nothing to the scene — `scene.doors` and the walks' timing are the leaves' as before. **The elevator
   is where a seat leaves the floor and where it comes back** (card#9566, the operator's request of
   2026-09-14): its leaves open and close as part of [§ 6.2](#62-the-animation-table--the-closed-set)'s
   [A1](#62-the-animation-table--the-closed-set) and [A2](#62-the-animation-table--the-closed-set), and on
@@ -1600,15 +1607,31 @@ panel.
     its door 110 cm wide and 200 cm high — seen from its open front with the eye 140 cm over the floor and 230 cm
     back from it: the doors on the
     far wall, the two side walls with a handrail and a kick plate each receding toward it, a ceiling with a lit panel
-    and its glow, and a tiled floor converging on the doors, each surface shaded deeper toward the back. It is a
+    and its glow, and a tiled floor converging on the doors — the side walls, the ceiling and the floor each shaded deeper
+    toward the back, and the back wall, the farthest surface, shaded evenly as deep as the ceiling reaches where they
+    meet. It is a
     narrow box taller than it is wide, fitted whole into its own part of the window and sized to the window's height
     in a landscape window — the door's frame, its head and the lamp above it in view at every window shape — and
     nothing is drawn past it: around the cab is the dialog's own dark background. The leaves open and close on the
-    far wall exactly as the ride's phases say. Between the dark doorway and the leaves is an empty layer
-    (`.cab-beyond`) for what the open doors look out on, which a later card draws; the room itself is
-    `server/public/js/floor/painter.js`'s `drawCabInterior()`, which draws it into any box it is handed and answers
-    the back wall it drew, door and leaves being its caller's. Every surface's colour is the elevator palette's carriers
-    below mixed with the sheet's door and ink tokens — no colour of its own. The popup is drawn as the elevator's own button panel in the
+    far wall exactly as the ride's phases say. **Through the open doors is the office** (card#12052; the operator's
+    request of 2026-10-19 — *when the elevator door opens, render a 3D perspective of the office outside*): between the
+    dark doorway and the leaves, in their layer (`.cab-beyond`), a one-point perspective of an office of
+    [§ 12](#12-every-number-and-where-it-comes-from)'s *Office view* size — 520 cm wide, 900 cm deep and 280 cm high, its
+    left wall 220 cm left of the door's centre line, seen with the eye 120 cm back from the doorway at the cab's eye
+    height, so its vanishing point is the cab's — a boarded floor receding, a ceiling with its lights, two walls and a
+    far one, windows of daylight on the left wall and the far one with the light they lay on the floor, two empty desks each with its chair, and a plant — clipped to the doorway and drawn
+    once with the cab, so the leaves reveal it as they open and hide it as they close. It is scenery: no character, seat,
+    name, badge or word, nothing read from the fleet or the floor, and no motion of its own
+    ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith) says why that keeps it out of § 6.2).
+    The two leaves meet at the seam, each edged in the door's edge colour: the seam is the leaves' own, so it opens with
+    them and nothing stands in the open doorway. The room itself is `server/public/js/floor/painter.js`'s
+    `drawCabInterior()`, which draws it into any box it is handed and answers the back wall it drew, door and leaves
+    being its caller's; the office is its `drawOfficeView()`, which draws into any doorway it is handed, clipped to it.
+    Every surface's colour is the elevator palette's carriers below mixed with the sheet's door and ink tokens, and the
+    office's the sheet's room tokens and their mixes — no colour of its own. **The drawing's browser
+    baseline is CSS `color-mix()`**: a browser without it paints each mixed surface in the token with the larger share
+    (the painter's `@supports` fallback, derived from the mixed rules themselves), so the walls, ceiling and floor stay
+    coherent and shaded, only less finely tinted. The popup is drawn as the elevator's own button panel in the
     house theme's elevator palette: its body the frame's colour, each stop's button in the leaves' door and
     door-edge colours, the current floor's call button lit by the lamp. That palette's one home is the theme
     module's `PALETTE.elevator` ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s house table);
@@ -3265,6 +3288,21 @@ permits this one.
   feed line says the feed is dead. **What stays:** the leaves never move from a feed event that is not a
   walk, and never from nothing — on the destination `#ride` under its gate is the cause, and a reload, a
   traverse or a plate link draws them at rest; an abandoned ride's teardown moves nothing.
+
+  ⭐ **What the open doors show is scenery, not a claim (card#12052).** The office seen through the cab's doorway and the
+  cab seen behind the floor's leaves ([§ 4.5](#45-the-viewport-rule-and-the-camera), [§ 4.2](#42-the-floor)) are drawn
+  once with the drawing they belong to and never move: what reveals them is the leaves, whose motion is the exception
+  above or a walk's [A1](#62-the-animation-table--the-closed-set)/[A2](#62-the-animation-table--the-closed-set) frames,
+  and they add no motion of their own, so none of the three tests reaches them. *The instrument test* — nothing reads
+  them: AT-D3-23 reads `scene.doors` and AT-D3-26 `scene.ride`, and neither view is in the scene or adds to it. *The
+  dead-feed test* — being still, they assert the same on a dead feed as on a live one. *The vocabulary test* — they draw
+  none of the seventeen's elements and reuse none of their vocabulary: no character, monitor, badge, gauge, bubble, feed
+  indicator or clock, no seat and no name; the office's desks are empty furniture with no desk slot behind them, and its
+  windows hold a fixed daylight that is no room's sky (A17's sky is the band's own windows'). And the office answers the
+  viewer's own press: the cab's doors open on it only inside the ride the exception above covers.
+  `Tests\Feature\Floor\TheElevatorIsAControlOnTheDrawingTest` holds both views to that — no word, image, datum
+  attribute, colour of its own or motion in either, the office drawing nothing but its own classes, and the scene the
+  band was painted from unchanged.
 
   **The cost of the old form is what the ruling paid down, and the cost of the new one is stated
   too.** The old bullet said *a viewer cannot distinguish decorative motion from state-bearing motion
@@ -7928,8 +7966,15 @@ with a plant under `--selftest`, and is named absent in CI with the other browse
   eases and none is stepped (card#12038); the cab draws two leaves and no text, fitted whole (`meet`) with nothing
   drawn past it, as a room in depth — an elevator's narrow shape (§ 12's *Cab interior*, held equal to `CAB`), the back
   wall inset in the opening and carrying the leaves, two side walls receding to it, a ceiling and a floor, each painted
-  from `--cab-frame`, and an empty layer behind the leaves; `drawCabInterior()` draws that room and no door into any
-  box and answers its back wall (card#12051) — its frame
+  from `--cab-frame` and each with its depth overlay (card#12052), and a layer behind the leaves; `drawCabInterior()` draws that room and no door into any
+  box and answers its back wall (card#12051); through the open doors (card#12052), the cab's layer behind its leaves
+  holds `drawOfficeView()`'s office clipped to the doorway — floor, ceiling, walls, windows, two desks and chairs, a
+  plant — and nothing in it but the office's own classes, with no word, image, datum attribute, colour of its own or
+  motion; the band draws `drawCabInterior()`'s room behind its leaves, clipped to the doorway, with ids of its own, in
+  the house theme's elevator palette and the sheet's door frame and lamp without it, still, and leaves the scene —
+  `scene.doors` included — unchanged; the cab's drawing draws nothing after its leaves, and the band's elevator control
+  nothing after its leaves but its hit area; every
+  `color-mix()` in the painter's style sits in its `@supports` block with a plain rule of its selector outside it — its frame
   and lamp painted from `--cab-frame` / `--cab-lamp`, which `cabTheme()` sets to the house theme's elevator
   palette and removes with no theme (card#12039), marking the dialog `data-themed` only with it (card#12047);
   the panel is reconciled by key and takes one choice per fresh press, and the sheet draws the popup from the
@@ -7944,7 +7989,10 @@ with a plant under `--selftest`, and is named absent in CI with the other browse
   a motion figure under reduce; no door delay on `entering`; the ride's doors at the walks' loop-frame figure, or
   stepped (card#12038); the cab flattened to a front-on door, its side walls gone or off the palette, a surface
   painted inline, drawn as wide as a room, painted past its opening, its layer behind the leaves missing or over them,
-  or `drawCabInterior()` answering a back wall it did not draw (card#12051); the cab cropped (`slice`), its palette not carried or left stale, its frame or lamp
+  or `drawCabInterior()` answering a back wall it did not draw (card#12051); the ceiling or the back wall unshaded; the
+  office missing, unclipped, carrying a character or a name, painted inline or moving; the band's cab missing, unclipped,
+  drawn over the leaves, moving, adding a door span, sharing the dialog's ids or off the palette; a seam line over either
+  open doorway; a mixed colour with no fallback, a fallback still mixing, or a mix outside its block (card#12052); the cab cropped (`slice`), its palette not carried or left stale, its frame or lamp
   painted off the carriers, or the popup's body, stops or lit stop off the palette (card#12039); the dialog marked
   themed with no theme or not marked with one, PR #340's fallback (the door frame under the room's ink), the themed
   words in the page's ink, the focus ring in the room's ink, a stop's words in the body's ink, and a popup text the
@@ -7982,7 +8030,8 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | **Fade** | **1 frame** | **Chosen** (card#11795) — every fade of the floor's ride ([§ 4.5](#45-the-viewport-rule-and-the-camera)): the cab in and out, its buttons in and out, and the cross-fade from the held cab into the destination. One loop frame, for its own reason: a view or panel fade shorter than a stream tick reads as a cut, and a longer one delays the ride's next beat, the doors, which move only after it (each phase's door delay is this figure). Its code home is `server/public/js/floor/floor-screen.js`'s `ridePhase()`, at `1000 / LOOP_FPS`; the layout's inline `--ride-fade` (`server/resources/views/layouts/app.blade.php`) is a copy a style cannot import, held equal by `Tests\Feature\TheRideArrivalIsTheLayoutsTest`. 0 under reduced motion | [§ 4.5](#45-the-viewport-rule-and-the-camera), [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation) |
 | **Cab hold** | **2,000 ms** | **Chosen** (card#11795) — the longest a viewer is left looking at a static cab, on either side of the ride's navigation ([§ 4.5](#45-the-viewport-rule-and-the-camera)): the departing page's `leaving` (a navigation that has not committed by then is abandoned, the cab closed, the floor usable) and the destination's hold of the cab's snapshot (past it the cab fades into what the page says at that instant, and a scene drawn later has its leaves at rest). A **bound**, not a motion figure, so it is the same under reduced motion. **Its origin on the destination is the layout head script's own start, `t0`, for both the hold and the arrival flag's expiry**, so the two are one bound read on two clocks. Its code home is `server/public/js/wire/ride-arrival.js`'s `CAB_HOLD_MS`; the head script's literal is a copy a classic script cannot import, held equal by `Tests\Feature\TheRideArrivalIsTheLayoutsTest`. **The evidence for the figure** (card#11795's design, measured on this host): the real floor page's first scene came about half a second after `t0` with its API answering at once, so the bound is several times the healthy case. **What makes a healthy ride reach it is the viewer's round trip**: under emulated latency the first scene's time grew by roughly the module graph's serial import depth, plus one for the document, per millisecond of round trip — [inferred] from that match, the slope not read in any spec — so a round trip above (*Cab hold* − the first scene's time with none) ÷ (that depth + 1) reaches the bound on every ride and no arrival doors play; on the design's measurements that is at most about 100 ms, and less once the API's sequential reads are added. The depth is re-printed, in `server/public/js`, by `node -e 'const fs=require("fs"),p=require("path"),memo=new Map();const deps=(f)=>[...fs.readFileSync(f,"utf8").matchAll(/^import[^;]*?from\s+["\x27]([^"\x27]+)["\x27]/gms)].map((m)=>p.resolve(p.dirname(f),m[1])).filter((q)=>fs.existsSync(q));const depth=(f,seen=new Set())=>{if(memo.has(f))return memo.get(f);if(seen.has(f))return 0;seen.add(f);const d=1+Math.max(0,...deps(f).map((q)=>depth(q,seen)));seen.delete(f);memo.set(f,d);return d;};console.log(depth(p.resolve(process.argv[1])));' floor/main.js`. The operator's round trip to the deployment has not been measured from this host, whose sandbox address is its own; if it is near the bound, the lever is the serial import depth (a preload list or a bundle), not this figure | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
 | **Cab button popup** | **280 to 480 px wide**: 36 % of the window's width between those bounds in a landscape window; in a portrait one, or one narrower than 420 px, the window's width less its gutters, up to 480 px, and at most 55 % of its height (the dynamic viewport's, `dvh`, after a `vh` fallback) | **Chosen** (card#12039) — the width of the cab's button popup ([§ 4.5](#45-the-viewport-rule-and-the-camera)'s *cab's look*), beside the door in a landscape window and under it in a portrait one, scrolling past its height bound. Chosen by eye on card#12039's screenshots of the cab at 1,440 × 900 and 390 × 844 CSS px, not measured against a criterion. **What re-derives it:** the operator's reading of the cab on a desktop and a phone. Its code home is `server/public/css/mezzanine.css`'s `.floor-cab` (`--cab-panel-max`, `--cab-panel-w`) and its portrait rule, held equal to this cell by `Tests\Feature\Floor\TheCabPanelReconcilesByKeyTest`'s `test_green_section_12s_cab_button_popup_is_the_sheets` (the height bound in both its `vh` and `dvh` forms, card#12047); `tools/design/floor-ride.browser.mjs`'s `cab-fit` and `cab-phone` rows measure the layout it makes — the cab whole and uncovered, the popup on screen at a phone's width — run by hand | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
-| **Cab interior** | **160 × 140 × 230 cm** wide × deep × high, the eye 140 cm over the floor and 230 cm from the cab's open front, the door 110 × 200 cm | **Chosen** (card#12051) — the room the cab's interior is drawn as ([§ 4.5](#45-the-viewport-rule-and-the-camera)'s *cab's look*): a one-point perspective of a passenger cab of about a real one's size, seen from its open front at a standing eye's height, so its back wall is the opening's size times 230 / (230 + 140) and the side walls, ceiling and floor recede to the eye's point; the door is a real elevator door's width and height, most of the back wall's width. The drawing's space is the opening, one unit a centimetre, so the cab is a narrow box taller than it is wide at every window shape. **What re-derives it:** the operator's readings of 2026-10-19 — *when inside the elevator, it should appear like you are inside an elevator … the appearance should be 3D*, and *an elevator is a limited space. It will not take up the entire screen. Elevators are not very wide.* Its code home is `server/public/js/floor/painter.js`'s `CAB`, read by `drawCabInterior()` and `paintCab()`, held equal to this cell by `Tests\Feature\Floor\TheElevatorIsAControlOnTheDrawingTest`'s `test_green_section_12s_cab_interior_is_cab`; that test's `test_the_cab_is_a_room_in_depth` holds the drawing's shape to an elevator's (opening between 0.6 and 0.8 as wide as it is high, the back wall inset on every side), and `tools/design/floor-ride.browser.mjs`'s `cab-fit` row measures it in the window, run by hand | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
+| **Cab interior** | **160 × 140 × 230 cm** wide × deep × high, the eye 140 cm over the floor and 230 cm from the cab's open front, the door 110 × 200 cm | **Chosen** (card#12051) — the room the cab's interior is drawn as ([§ 4.5](#45-the-viewport-rule-and-the-camera)'s *cab's look*): a one-point perspective of a passenger cab of about a real one's size, seen from its open front at a standing eye's height, so its back wall is the opening's size times 230 / (230 + 140) and the side walls, ceiling and floor recede to the eye's point; the door is a real elevator door's width and height, most of the back wall's width. The drawing's space is the opening, one unit a centimetre, so the cab is a narrow box taller than it is wide at every window shape. **What re-derives it:** the operator's readings of 2026-10-19 — *when inside the elevator, it should appear like you are inside an elevator … the appearance should be 3D*, and *an elevator is a limited space. It will not take up the entire screen. Elevators are not very wide.* Its code home is `server/public/js/floor/painter.js`'s `CAB`, read by `drawCabInterior()`, `paintCab()` and `drawOfficeView()` (its door and its eye), held equal to this cell by `Tests\Feature\Floor\TheElevatorIsAControlOnTheDrawingTest`'s `test_green_section_12s_cab_interior_is_cab`; that test's `test_the_cab_is_a_room_in_depth` holds the drawing's shape to an elevator's (opening between 0.6 and 0.8 as wide as it is high, the back wall inset on every side), and `tools/design/floor-ride.browser.mjs`'s `cab-fit` row measures it in the window, run by hand | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
+| **Office view** | **520 × 900 × 280 cm** wide × deep × high, its left wall 220 cm left of the door's centre line, the eye 120 cm from the doorway | **Chosen** (card#12052) — the office the cab's open doors look out on ([§ 4.5](#45-the-viewport-rule-and-the-camera)'s *cab's look*): a one-point perspective of an open-plan room about a real one's size, seen through the cab's doorway (*Cab interior*'s door, 110 × 200 cm) with the eye at *Cab interior*'s height, so its vanishing point is the cab's; the eye stands closer to the doorway than the cab's own, as a rider at the door looks out, so the far wall is 280 × 120 / (120 + 900) cm high, about a sixth of the doorway's height, and the side walls show with their windows. The room stands off-centre so its two walls are not a mirror of each other. **What re-derives it:** the operator's request of 2026-10-19 — *when the elevator door opens, render a 3D perspective of the office outside*. Its code home is `server/public/js/floor/painter.js`'s `OFFICE`, read by `drawOfficeView()`, held equal to this cell by `Tests\Feature\Floor\TheElevatorIsAControlOnTheDrawingTest`'s `test_green_section_12s_office_view_is_office`; that test's `test_the_cab_doors_open_onto_the_office` holds what is drawn, and `tools/design/floor-ride.browser.mjs`'s `through-doors` row measures it through the half-open doors, run by hand | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
 | **Age readout refresh** | **1 s** | **Chosen** — the unit the smallest rendered age uses. Slower shows a second that has passed; faster repaints for nothing | [§ 2.4](#24-the-clock-and-every-age-on-the-page) |
 | **Units in a rendered duration** | **2** | **Chosen** — the largest unit whose value is non-zero and the one below it ([§ 2.4](#24-the-clock-and-every-age-on-the-page) clause 3). One unit throws away the figure an operator reads a lag by (*2h* for anything from two hours to three); three renders *2h 06m 12s*, whose seconds are noise at that scale and whose width changes every second on a readout that repaints every 1 s. What moves it is a rendered duration whose second unit is not the one its reader needs | [§ 2.4](#24-the-clock-and-every-age-on-the-page) |
 | **The day boundary** | **24 h** | **Chosen**, and chosen to be **nothing**: there is no day unit and hours continue past it, so a seat dark for just over three days reads *73h 12m* ([decision 23](#13-decisions-taken-revisable-at-review)). What moves it is an operator who reads that string and wants days | [§ 2.4](#24-the-clock-and-every-age-on-the-page) |

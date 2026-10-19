@@ -7,7 +7,9 @@
  * each make, each band leaf's `style`, and `paintCab()`'s cab — and (card#12039) what `cabTheme()` carries onto the
  * dialog from the shipped house theme's elevator palette, and the cab drawing's fit and paint — and (card#12051) the
  * cab's room in depth: its back wall, side walls, ceiling and floor as drawn, the layer behind its leaves, and the room
- * `drawCabInterior()` draws into a box of its own.
+ * `drawCabInterior()` draws into a box of its own — and (card#12052) what is seen through the open doors: the office
+ * in the cab's layer behind its leaves (`drawOfficeView()`), the cab's room behind the band's leaves, what is drawn after
+ * the leaves in each doorway, and `STYLE`'s `color-mix()` fallback.
  *
  * argv: `--js <tree>` (default: the shipped tree). stdout: JSON, one member per leg (see the bottom).
  */
@@ -32,7 +34,7 @@ globalThis.CSS = { escape: (s) => s };
 globalThis.setInterval = () => 1;
 globalThis.clearInterval = () => {};
 
-const { createPainter, CAB, drawCabInterior } = await import(pathToFileURL(join(JS, 'floor', 'painter.js')).href);
+const { createPainter, CAB, OFFICE, STYLE, drawCabInterior, drawOfficeView } = await import(pathToFileURL(join(JS, 'floor', 'painter.js')).href);
 
 const BAND = {
     x: 0, y: 0, w: 1000, h: 160,
@@ -174,6 +176,12 @@ const depthLeg = {
     ceiling: cornersOf(firstOf(themedHost, 'cab-ceiling')),
     floor: cornersOf(firstOf(themedHost, 'cab-floor')),
     leaves: withClass(themedHost, 'elevator-leaf').map(rectOf),
+    // card#12052: each surface with its depth overlay — a `cab-shade` drawn over exactly its shape, the back wall's an even one.
+    shaded: Object.fromEntries([['ceiling', 'cab-ceiling'], ['floor', 'cab-floor'], ['left', 'cab-side', 'left'], ['right', 'cab-side', 'right'], ['back', 'cab-back']].map(([part, cls, also]) => {
+        const surface = firstOf(themedHost, cls, also ?? null);
+        const shape = (n) => n.getAttribute('points') ?? ['x', 'y', 'width', 'height'].map((k) => n.getAttribute(k)).join(' ');
+        return [part, surface !== null && withClass(themedHost, 'cab-shade').some((o) => o.name === surface.name && shape(o) === shape(surface))];
+    })),
     inline: ['cab-back', 'cab-side', 'cab-ceiling', 'cab-floor'].flatMap((cls) => withClass(themedHost, cls).filter((n) => n.getAttribute('fill') !== null || n.getAttribute('style') !== null).map(() => cls)),
     beyond: beyond === null ? null : { children: beyond.children.length, at: at('cab-beyond'), recess: at('cab-recess'), leaf: at('elevator-leaf') },
     alone: {
@@ -188,4 +196,83 @@ const depthLeg = {
     },
 };
 
-console.log(JSON.stringify({ control: controlLeg, leaves: leavesLeg, walks: walksLeg, cab: cabLeg, palette: paletteLeg, depth: depthLeg, elapsed: E }));
+// ── through the doors (card#12052) ───────────────────────────────────────────────────────────────
+// Every element under `root`, with what a check of scenery reads off it: its tag, its classes, its id, any attribute that
+// could carry a datum (`data-*`, `href`, `aria-label`), any colour written on it rather than by its class (a `fill`,
+// `stroke` or `stop-color` that is not a `url(#…)` reference, or a `style`), and any motion (an `<animate…>`/`<set>`, a
+// style naming an animation or a transition).
+const census = (root) => nodes(root).slice(1).map((n) => ({
+    tag: n.name,
+    cls: (n.getAttribute?.('class') ?? '').split(' ').filter(Boolean),
+    id: n.getAttribute?.('id') ?? null,
+    data: Object.keys(n.attrs ?? {}).filter((k) => k.startsWith('data-') || k === 'href' || k === 'aria-label' || k === 'role'),
+    inline: ['fill', 'stroke', 'stop-color', 'color', 'style'].filter((k) => { const v = n.getAttribute?.(k); return v !== null && v !== undefined && !(k !== 'style' && /^url\(#[a-z0-9-]+\)$/.test(v)); }),
+    motion: /^(animate|animateTransform|animateMotion|set)$/.test(n.name) || /animation|transition/.test(n.getAttribute?.('style') ?? ''),
+    text: n.name === 'text' || (n.textContent ?? '') !== '',
+}));
+/** The clip rect a group under `root` is clipped to: the `<clipPath>` its `clip-path` names, read back as a rect. */
+const clipOf = (root) => {
+    const clipped = nodes(root).find((n) => /^url\(#(.+)\)$/.test(n.getAttribute?.('clip-path') ?? '')) ?? null;
+    if (clipped === null) return null;
+    const id = /^url\(#(.+)\)$/.exec(clipped.getAttribute('clip-path'))[1];
+    const path = nodes(root).find((n) => n.name === 'clipPath' && n.getAttribute('id') === id) ?? null;
+    return { id, rect: rectOf(path?.children[0]), drawn: nodes(clipped).filter((n) => n.name === 'polygon' || n.name === 'rect').length };
+};
+
+// The office, in the themed cab's layer behind its leaves: its doorway (the two leaves' span) and what is drawn in it.
+const [leafL, leafR] = withClass(themedHost, 'elevator-leaf').map(rectOf);
+const officeIn = beyond === null ? null : firstOf(beyond, 'office-view');
+const officeAlone = new Node('g');
+const officeBox = { x: 5, y: 7, w: 55, h: 100 };
+const officeAnswer = drawOfficeView(officeAlone, officeBox, 'probe-office');
+const officeLeg = {
+    office: OFFICE,
+    door: leafL === undefined ? null : { x: leafL.x, y: leafL.y, w: leafR.x + leafR.w - leafL.x, h: leafL.h },
+    found: officeIn !== null,
+    clip: officeIn === null ? null : clipOf(officeIn),
+    census: officeIn === null ? [] : census(officeIn),
+    beyond: beyond === null ? [] : census(beyond).filter((c) => c.cls.includes('office-view')).length,
+    alone: { box: officeBox, answered: officeAnswer.clip, clip: clipOf(officeAlone), ids: census(officeAlone).map((c) => c.id).filter((v) => v !== null) },
+};
+
+// The band's cab: a painter with the house theme and one without, each painting the band at rest and over a walk.
+const bandOf = (p, doors) => {
+    const scene = sceneOf({ doors: structuredClone(doors) });
+    const before = JSON.stringify(scene);
+    p.paint(scene, { bounds: null });
+    const band = nodes(host).find((n) => n.getAttribute?.('class') === 'band') ?? null;
+    const order = band === null ? [] : nodes(band);
+    const cab = band === null ? null : firstOf(band, 'band-cab');
+    const control = order.find((n) => n.getAttribute?.('data-key') === 'elevator') ?? null;
+    const leafAt = order.findIndex((n) => (n.getAttribute?.('class') ?? '').split(' ').includes('elevator-leaf'));
+    const rooms = order.map((n, i) => [n, i]).filter(([n]) => (n.getAttribute?.('class') ?? '') === 'cab-room');
+    return {
+        found: cab !== null,
+        // Every cab room in the band, by draw order, against the first leaf.
+        rooms: rooms.map(([, i]) => i),
+        leaf: leafAt,
+        sides: cab === null ? 0 : withClass(cab, 'cab-side').length,
+        back: cab === null ? null : rectOf(firstOf(cab, 'cab-back')),
+        surfaces: cab === null ? [] : ['cab-ceiling', 'cab-floor', 'cab-back'].filter((k) => withClass(cab, k).length === 1),
+        clip: cab === null ? null : clipOf(cab),
+        census: cab === null ? [] : census(cab),
+        carriers: cab?.getAttribute('style') ?? null,
+        // The control's children as drawn: the leaves, then the hit area — nothing after the leaves but it.
+        control: control === null ? [] : control.children.map((n) => `${n.name}.${n.getAttribute('class') ?? ''}`),
+        scene: JSON.stringify(scene) === before,
+        doors: scene.doors,
+    };
+};
+const bandLeg = {
+    elevator: BAND.elevator,
+    themed: bandOf(themed, []),
+    walking: bandOf(themed, WALK_DOORS),
+    unthemed: bandOf(painter, WALK_DOORS),
+    palette: house.PALETTE.elevator,
+};
+
+// What the cab draws after its layer behind the leaves: the leaves, and nothing else.
+const cabOrder = svg === null ? [] : svg.children.map((n) => `${n.name}.${n.getAttribute('class') ?? ''}`);
+const seamLeg = { cab: cabOrder.slice(cabOrder.findIndex((c) => c.endsWith('.cab-beyond'))), band: bandLeg.themed.control };
+
+console.log(JSON.stringify({ control: controlLeg, leaves: leavesLeg, walks: walksLeg, cab: cabLeg, palette: paletteLeg, depth: depthLeg, office: officeLeg, band: bandLeg, seam: seamLeg, style: STYLE, elapsed: E }));
