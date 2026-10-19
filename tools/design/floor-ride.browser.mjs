@@ -7,8 +7,8 @@
 //
 //   node tools/design/floor-ride.browser.mjs              every row, each once
 //   node tools/design/floor-ride.browser.mjs --row <id>   one row
-//   node tools/design/floor-ride.browser.mjs --selftest   every row, then every row again under its PLANT, which must red
-//                                                         (the bookmark row documents a residual and plants nothing)
+//   node tools/design/floor-ride.browser.mjs --selftest   every row, then every row again under each of its PLANTs, each of
+//                                                         which must red (the bookmark row documents a residual and plants nothing)
 //   node tools/design/floor-ride.browser.mjs --shots <dir>  also save the cab rows' windows, and the doors held open, as PNGs under <dir>
 //   …and --chrome <path> or $CHROME, as every browser tool here.
 //
@@ -421,12 +421,25 @@ const cabContrast = (s) => s.ev(`(() => {
   return { themed: document.getElementById('floor-cab').hasAttribute('data-themed'), body: cs(panel).backgroundColor, stops: stops.length, ratios: Object.fromEntries(Object.entries(out).map(([k, v]) => [k, Math.round(v * 100) / 100])) };
 })()`);
 
-/** Each row: `run(chrome, c)` answers `{ defects, facts }`; `base` its own page conditions; `plant` what must red it. */
+/**
+ * Each row: `run(chrome, c)` answers `{ defects, facts }`; `base` its own page conditions; `plant` what must red it — or a
+ * list of plants, each run on its own and each required to red, where one row reads two surfaces with a defect each.
+ */
 const MAIN = 'js/floor/main.js';
 const SCREEN = 'js/floor/floor-screen.js';
 const PANEL = 'js/floor/cab-panel.js';
 const RULE = 'js/wire/ride-arrival.js';
 const row = (what, base, plant, run) => ({ what, base, plant, run });
+
+/**
+ * A browser without `color-mix()`: the painter's `@supports` condition made one no browser meets (its fallback is derived
+ * from the mixed text, so only the condition is edited), and every `color-mix(` in the sheet an unknown function — its
+ * `@supports` conditions fail, and a mix written outside them is dropped, as such a browser drops it.
+ */
+const NO_MIX = [
+  { file: 'js/floor/painter.js', from: '@supports (fill:color-mix(in srgb,currentColor 50%,transparent))', to: '@supports (fill:no-such-colour(1))' },
+  { file: 'css/mezzanine.css', from: 'color-mix(', to: 'no-such-mix(' },
+];
 
 /** One session on one server, closed whatever the row does. */
 async function within(chrome, c, fn) {
@@ -764,31 +777,70 @@ const ROWS = {
       return { defects: d, facts };
     }),
 
-  // card#12052: PR #342's review — a browser without `color-mix()` must still see coherent walls. This headless Chromium
-  // has `color-mix()`, so the row serves the painter with its `@supports` condition made one no browser meets, which is
-  // exactly what a browser without `color-mix()` evaluates: every mixed surface — the cab's, the office's, the band's
-  // cab's — must then be painted (not `none`, not the unpainted black) by its plain fallback.
-  'cab-no-mix': row('with color-mix() unavailable, the cab, the office through its doors and the cab behind the floor\'s leaves are each still painted, every surface in a theme colour', {
-    plant: [{ file: 'js/floor/painter.js', from: '@supports (fill:color-mix(in srgb,currentColor 50%,transparent))', to: '@supports (fill:no-such-colour(1))' }],
-  },
-    { plant: [{ file: 'js/floor/painter.js', from: '${unmixed(MIXED)}@supports', to: '@supports' }] },
-    (chrome, c) => within(chrome, { ...c, viewport: CAB_WINDOWS.desktop }, async (s) => {
-      await s.open('/floor/aimla');
-      await intoTheCab(s);
-      if (!c.plant.some((p) => p.to === '@supports')) await s.shot(`cab-no-mix-${CAB_WINDOWS.desktop.w}x${CAB_WINDOWS.desktop.h}`);
-      const r = await s.ev(`(() => {
-        const fill = (sel) => [...document.querySelectorAll(sel)].map((e) => getComputedStyle(e).fill);
-        return Object.fromEntries(['#floor-cab-doors .cab-back', '#floor-cab-doors .cab-side', '#floor-cab-doors .cab-ceiling', '#floor-cab-doors .cab-floor',
-          '#floor-cab-doors .office-floor', '#floor-cab-doors .office-wall', '#floor-cab-doors .office-back', '#floor-cab-doors .office-ceiling', '#floor-cab-doors .office-desk-top',
-          '#floor-drawing .band-cab .cab-back', '#floor-drawing .band-cab .cab-side', '#floor-drawing .band-cab .cab-floor'].map((sel) => [sel, fill(sel)]));
-      })()`);
+  // card#12052: PR #342's review — a browser without `color-mix()` must still see coherent walls; card#12070: and the button
+  // popup must keep its colours. This headless Chromium has `color-mix()`, so the row serves the painter and the sheet as a
+  // browser without it reads them (`NO_MIX`): every mixed surface — the cab's, the office's, the band's cab's — must then be painted (not `none`, not the
+  // unpainted black) by its plain fallback; and in the popup, with the house theme and with it failed, the current
+  // floor's plate and every call button are filled, every stop's button keeps its shadow, the body its rim, and every
+  // text holds WCAG AA on what it sits on. Two plants, one per surface: the painter's fallback removed, and the call
+  // buttons' plain fill removed from the sheet, leaving only their mix.
+  'cab-no-mix': row('with color-mix() unavailable, the cab, the office through its doors and the cab behind the floor\'s leaves are each still painted, every surface in a theme colour, and the button popup keeps its fills, shadows, rim and WCAG AA text with the theme and without it', { plant: NO_MIX },
+    [
+      { plant: [{ file: 'js/floor/painter.js', from: '${unmixed(MIXED)}@supports', to: '@supports' }] },
+      { plant: [{ file: 'css/mezzanine.css', from: '    background: var(--door);\n    box-shadow: inset 0 2px 2px rgb(255 255 255 / 0.6);\n}', to: '    box-shadow: inset 0 2px 2px rgb(255 255 255 / 0.6);\n}' }] },
+    ],
+    async (chrome, c) => {
       const d = [];
-      for (const [sel, fills] of Object.entries(r)) {
-        if (fills.length === 0) d.push(`${sel}: not drawn`);
-        for (const f of fills) if (f === 'none' || f === 'rgb(0, 0, 0)') d.push(`${sel}: painted ${f} — left unpainted with no color-mix()`);
+      const facts = {};
+      const planted = c.plant.length > NO_MIX.length;
+      for (const [state, missing] of [['theme loaded', []], ['theme failed', [HOUSE_THEME_PATH]]]) {
+        await within(chrome, { ...c, missing, viewport: CAB_WINDOWS.desktop }, async (s) => {
+          await s.open('/floor/aimla');
+          await intoTheCab(s);
+          await buttonsIn(s);
+          if (!planted) await s.shot(`cab-no-mix-${state.replace(' ', '-')}-${CAB_WINDOWS.desktop.w}x${CAB_WINDOWS.desktop.h}`);
+          const r = await s.ev(`(() => {
+            const fill = (sel) => [...document.querySelectorAll(sel)].map((e) => getComputedStyle(e).fill);
+            const cs = (e) => getComputedStyle(e);
+            const panel = document.getElementById('floor-cab-panel');
+            return {
+              fills: Object.fromEntries(['#floor-cab-doors .cab-back', '#floor-cab-doors .cab-side', '#floor-cab-doors .cab-ceiling', '#floor-cab-doors .cab-floor',
+                '#floor-cab-doors .office-floor', '#floor-cab-doors .office-wall', '#floor-cab-doors .office-back', '#floor-cab-doors .office-ceiling', '#floor-cab-doors .office-desk-top',
+                '#floor-drawing .band-cab .cab-back', '#floor-drawing .band-cab .cab-side', '#floor-drawing .band-cab .cab-floor'].map((sel) => [sel, fill(sel)])),
+              popup: {
+                plates: [...document.querySelectorAll('#floor-cab-stops li > button')].map((b) => ({ current: b.parentElement.classList.contains('current'), background: cs(b).backgroundColor, shadow: cs(b).boxShadow })),
+                caps: [...document.querySelectorAll('#floor-cab-stops .cab-cap')].map((e) => cs(e).backgroundColor),
+                rim: { style: cs(panel).borderTopStyle, colour: cs(panel).borderTopColor },
+                lamp: getComputedStyle(panel.querySelector('h2'), '::before').boxShadow,
+              },
+            };
+          })()`);
+          const contrast = await cabContrast(s);
+          facts[state] = { ...r, ratios: contrast.ratios };
+          if (state === 'theme loaded') {
+            for (const [sel, fills] of Object.entries(r.fills)) {
+              if (fills.length === 0) d.push(`${sel}: not drawn`);
+              for (const f of fills) if (f === 'none' || f === 'rgb(0, 0, 0)') d.push(`${sel}: painted ${f} — left unpainted with no color-mix()`);
+            }
+          }
+          const clear = (colour) => colour === 'transparent' || /^rgba\(.*, 0\)$/.test(colour);
+          const p = r.popup;
+          if (!p.plates.some((b) => b.current)) d.push(`${state}: the popup drew no current floor`);
+          for (const b of p.plates) {
+            if (clear(b.background)) d.push(`${state}: ${b.current ? 'the current floor\'s' : 'a stop\'s'} plate is unfilled (${b.background}) with no color-mix()`);
+            if (b.shadow === 'none') d.push(`${state}: ${b.current ? 'the current floor\'s' : 'a stop\'s'} button lost its shadow with no color-mix()`);
+          }
+          if (p.caps.length === 0 || p.caps.some(clear)) d.push(`${state}: a call button is unfilled with no color-mix(): ${JSON.stringify(p.caps)}`);
+          if (p.rim.style === 'none' || clear(p.rim.colour)) d.push(`${state}: the popup lost its rim with no color-mix(): ${JSON.stringify(p.rim)}`);
+          if (p.lamp === 'none') d.push(`${state}: the popup's lamp lost its rim with no color-mix()`);
+          for (const [what, ratio] of Object.entries(contrast.ratios)) {
+            const floor = what === 'ring' ? 3 : 4.5;
+            if (!(ratio >= floor)) d.push(`${state}: ${what} is ${ratio}:1 on what it sits on with no color-mix(), under ${floor}:1`);
+          }
+        });
       }
-      return { defects: d, facts: r };
-    })),
+      return { defects: d, facts };
+    }),
 
   'one-escape': row('one Escape in entering leaves the cab open', {}, { plant: [{ file: MAIN, from: '    event.preventDefault();\n    rideAct(screen.escape(event.cancelable));', to: '    rideAct(screen.escape(event.cancelable));' }] },
     (chrome, c) => within(chrome, c, async (s) => {
@@ -1304,11 +1356,15 @@ for (const [id, row] of rows) {
   if (argv.includes('--selftest') && row.plant === null) {
     console.log(`PASS ${id} PLANT — none: the row documents a named residual, and no defect of it is planted`);
   } else if (argv.includes('--selftest')) {
-    let planted;
-    try { planted = await row.run(chrome, conditions(row, row.plant)); } catch (e) { planted = { defects: [`(raised) ${e.message}`] }; }
-    const bit = planted.defects.length > 0;
-    failed += bit ? 0 : 1;
-    console.log(`${bit ? "PASS" : "FAIL"} ${id} PLANT — ${bit ? `red: ${planted.defects[0]}` : `NOT CAUGHT — facts: ${JSON.stringify(planted.facts ?? null)}`}`);
+    const plants = Array.isArray(row.plant) ? row.plant : [row.plant];
+    for (const [i, plant] of plants.entries()) {
+      let planted;
+      try { planted = await row.run(chrome, conditions(row, plant)); } catch (e) { planted = { defects: [`(raised) ${e.message}`] }; }
+      const bit = planted.defects.length > 0;
+      failed += bit ? 0 : 1;
+      const tag = plants.length === 1 ? 'PLANT' : `PLANT ${i + 1}/${plants.length}`;
+      console.log(`${bit ? "PASS" : "FAIL"} ${id} ${tag} — ${bit ? `red: ${planted.defects[0]}` : `NOT CAUGHT — facts: ${JSON.stringify(planted.facts ?? null)}`}`);
+    }
   }
 }
 

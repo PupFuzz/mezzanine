@@ -3,6 +3,7 @@
 namespace Tests\Feature\Floor;
 
 use Tests\Feature\Support\DrivesAShippedClientModule;
+use Tests\Feature\Support\HoldsEveryColourMixToAFallback;
 use Tests\TestCase;
 
 /**
@@ -51,8 +52,9 @@ use Tests\TestCase;
  * IS DRAWN AFTER THE LEAVES in the cab's drawing, nor in the band's elevator control but its hit area: the seam is the
  * leaves' own edges, so no seam line of either stands in the open doorway — a structural reading; that nothing at all
  * crosses the open doorway as drawn is `floor-ride.browser.mjs`'s `through-doors` row's, run by hand. And every
- * `color-mix()` in `STYLE` sits in its `@supports` block with a plain rule of the same selector outside it, the fallback
- * a browser without `color-mix()` paints.
+ * `color-mix()` in `STYLE` sits in its `@supports` block after a plain rule of the same selector setting the same property
+ * to one of the mix's own colours, the fallback a browser without `color-mix()` paints (`HoldsEveryColourMixToAFallback`,
+ * the one check the sheet is held to as well).
  *
  * ⛔ THE RIDE's DOORS MOVE CONTINUOUSLY, AND THE WALKS' STEP (card#12038). Every ride motion — band and cab — eases
  * (`ease-in-out`) over the length the phase hands it, and no ride style carries `steps(`: the ride is § 6.3's
@@ -62,6 +64,7 @@ use Tests\TestCase;
 class TheElevatorIsAControlOnTheDrawingTest extends TestCase
 {
     use DrivesAShippedClientModule;
+    use HoldsEveryColourMixToAFallback;
 
     protected function moduleDir(): string
     {
@@ -218,6 +221,11 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
             'no fallback for a mixed colour' => ['${unmixed(MIXED)}@supports', '@supports', 'mixDefects'],
             'the fallback still mixing' => ['const unmixed = (css) => css.replace(', 'const unmixed = (css) => css || css.replace(', 'mixDefects'],
             'a mix outside its block' => ['.cab-sill{fill:var(--door-edge)}', '.cab-sill{fill:color-mix(in srgb,var(--door-edge) 50%,var(--door))}', 'mixDefects'],
+            // card#12070 (PR #343 review F4): a fallback that paints another property than its mix, or a colour that is not
+            // one of the mix's own, or that comes after the block (overriding the mix where color-mix() is supported).
+            'the fallback on another property' => ['${unmixed(MIXED)}@supports', '${unmixed(MIXED).replace(\'.cab-back{fill:\', \'.cab-back{stroke:\')}@supports', 'mixDefects'],
+            'the fallback off the mix\'s colours' => ['${unmixed(MIXED)}@supports', '${unmixed(MIXED).replace(\'.cab-back{fill:var(--cab-frame)}\', \'.cab-back{fill:var(--lamp)}\')}@supports', 'mixDefects'],
+            'the fallback after its block' => ['${unmixed(MIXED)}@supports (fill:color-mix(in srgb,currentColor 50%,transparent)){${MIXED}}', '@supports (fill:color-mix(in srgb,currentColor 50%,transparent)){${MIXED}}${unmixed(MIXED)}', 'mixDefects'],
             'the cab doors not closing on entering' => ["        case 'entering':\n            return ride.ms === 0 ? null : `animation:leaf-close", "        case 'entering':\n            return ride.ms === 0 ? null : `animation:leaf-open", 'cabDefects'],
         ] as $what => [$from, $to, $check]) {
             $dir = $this->mutatedModules(['painter.js', $from, $to]);
@@ -656,38 +664,10 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
         return $defects;
     }
 
-    /** @return list<string> a `color-mix()` outside the `@supports` block, or a rule in it with no plain rule of its selector outside */
+    /** @return list<string> `STYLE` against the one `color-mix()` fallback shape (`HoldsEveryColourMixToAFallback`) */
     private function mixDefects(array $run): array
     {
-        $style = $run['style'];
-        $defects = [];
-
-        if (preg_match('/@supports \(fill:color-mix\([^{]*\)\)\{((?:[^{}]*\{[^{}]*\})*)\s*\}/', $style, $m, PREG_OFFSET_CAPTURE) !== 1) {
-            return ['STYLE holds no @supports (color-mix) block'];
-        }
-
-        $block = $m[1][0];
-        $outside = substr($style, 0, $m[0][1]).substr($style, $m[0][1] + strlen($m[0][0]));
-
-        if (str_contains($outside, 'color-mix(')) {
-            $defects[] = 'STYLE mixes a colour outside its @supports block';
-        }
-
-        preg_match_all('/([^{}]+)\{([^{}]*)\}/', $block, $rules, PREG_SET_ORDER);
-
-        if ($rules === []) {
-            $defects[] = 'the @supports block holds no rule';
-        }
-
-        foreach ($rules as [, $selector]) {
-            $selector = trim($selector);
-
-            if (preg_match('/(?:^|[}\s])'.preg_quote($selector, '/').'\{([^{}]*)\}/', $outside, $plain) !== 1 || ! str_contains($plain[1], 'var(--')) {
-                $defects[] = "{$selector} mixes its colour with no plain rule outside the block to fall back on";
-            }
-        }
-
-        return $defects;
+        return $this->colourMixDefects($run['style'], 'STYLE');
     }
 
     /** @return list<string|null> every style the ride gives a leaf: the band's in each phase at both times, and the cab's */

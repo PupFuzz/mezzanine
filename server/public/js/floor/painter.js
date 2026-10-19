@@ -82,7 +82,8 @@ export const svgUri = (doc) => `data:image/svg+xml;charset=utf-8,${encodeURIComp
  * same rule would be thrown away and the surface left unpainted (black). The fallback is therefore a RULE OF ITS OWN,
  * outside a `@supports` block that holds these: `unmixed()` derives it from this text — each mix replaced by its larger
  * share's token — so there is one copy to edit and the two cannot drift. `TheElevatorIsAControlOnTheDrawingTest` holds
- * every `color-mix()` in `STYLE` inside the block and every rule in it to a fallback outside.
+ * every `color-mix()` in `STYLE` inside the block and every rule in it to a fallback before it that sets the same property
+ * to one of the mix's own colours (`HoldsEveryColourMixToAFallback`, the check `mezzanine.css` is held to too: card#12070).
  */
 const MIXED = `.cab-back{fill:color-mix(in srgb,var(--cab-frame) 78%,var(--door))}.cab-side{fill:color-mix(in srgb,var(--cab-frame) 88%,var(--door))}.cab-ceiling{fill:color-mix(in srgb,var(--cab-frame) 50%,var(--door))}.cab-floor{fill:color-mix(in srgb,var(--cab-frame) 55%,var(--scene-ink))}
 .cab-tile{stroke:color-mix(in srgb,var(--cab-frame) 45%,var(--door-edge));stroke-width:.8;stroke-opacity:.45}.cab-seam{stroke:color-mix(in srgb,var(--cab-frame) 45%,var(--scene-ink));stroke-width:1;stroke-opacity:.6}

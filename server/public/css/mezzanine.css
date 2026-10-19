@@ -31,6 +31,19 @@
  * The camera's surface is the drawing's own box (`main.js`'s `surface()`, re-read by a `ResizeObserver`
  * on the drawing), so the chrome growing or shrinking is a resize of the drawing the camera sees.
  *
+ * ⛔ EVERY `color-mix()` HERE SITS IN AN `@supports (color: color-mix(in srgb, currentColor 50%, transparent))`
+ * BLOCK, AFTER A PLAIN RULE OF THE SAME SELECTOR THAT SETS THE SAME PROPERTY (card#12070, the mechanism card#12052
+ * gave the drawing's own style in `painter.js`). A declaration holding `var()` is accepted when it is parsed and
+ * fails only when its value is computed, so a browser without `color-mix()` would keep it and paint nothing — a
+ * `box-shadow` or `border` losing the whole declaration — and a plain value declared before it in the same rule would
+ * be thrown away. The plain rule
+ * is therefore a rule of its own: a browser without `color-mix()` skips the block and keeps it, one with it takes the
+ * block's later rule. Each fallback is the mixed value with every `color-mix()` replaced by ONE OF ITS OWN COLOURS,
+ * picked so the rule still reads (the larger share unless named otherwise beside it).
+ * `Tests\Feature\ThePageChromeIsOneLinkedStylesheetTest` reds on a `color-mix()` outside such a block, here or in
+ * the painter's style, and on a mixed declaration with no plain one before its block; the popup's contrast in this
+ * branch is `TheCabPanelReconcilesByKeyTest`'s.
+ *
  * Scoping: the shell's rules are generic; the floor's sit under `#floor`, the lobby's under `.lobby`,
  * the console's under `.console-nav`; a sign-in page gets the shell and nothing else.
  */
@@ -281,10 +294,16 @@ pre {
 
 [role="alert"] {
     color: var(--ink);
-    background: color-mix(in srgb, var(--alarm) 30%, var(--panel));
+    background: var(--panel);
     border-left: 4px solid var(--alarm);
     padding: 8px 12px;
     border-radius: 6px;
+}
+
+@supports (color: color-mix(in srgb, currentColor 50%, transparent)) {
+    [role="alert"] {
+        background: color-mix(in srgb, var(--alarm) 30%, var(--panel));
+    }
 }
 
 main > [role="status"] {
@@ -499,9 +518,21 @@ main > section.lobby {
 #floor-notices > li,
 #floor-rooms > li {
     padding: 6px var(--gutter);
-    background: color-mix(in srgb, var(--warn) 18%, var(--panel));
-    border-bottom: 1px solid color-mix(in srgb, var(--warn) 45%, var(--panel));
+    background: var(--panel);
+    /* Without color-mix() the edge is the amber itself, so the bar still reads as a statement. */
+    border-bottom: 1px solid var(--warn);
     color: var(--ink);
+}
+
+@supports (color: color-mix(in srgb, currentColor 50%, transparent)) {
+    #floor-statement,
+    #floor-kept,
+    #floor-layout-statement,
+    #floor-notices > li,
+    #floor-rooms > li {
+        background: color-mix(in srgb, var(--warn) 18%, var(--panel));
+        border-bottom: 1px solid color-mix(in srgb, var(--warn) 45%, var(--panel));
+    }
 }
 
 #floor-notices,
@@ -707,8 +738,9 @@ main > section.lobby {
     --cab-lamp: var(--lamp);
     --cab-body: var(--panel);
     --cab-ink: var(--ink);
-    /* The frame's rim — its edges, its rivets and its shadows: the frame darkened toward the room's ink. */
-    --cab-rim: color-mix(in srgb, var(--cab-frame) 55%, var(--scene-ink));
+    /* The frame's rim — its edges, its rivets and its shadows: the frame darkened toward the room's ink (below). Without
+       color-mix() the rim is the room's ink itself, so the edge and the rivets still show on the frame. */
+    --cab-rim: var(--scene-ink);
     /* The popup's width — FLOOR.md § 12's *Cab button popup*, held equal to it by `TheCabPanelReconcilesByKeyTest`
        (with the two layouts' width bound and the stacked one's height bound): its widest, and beside the door a
        share of the window. */
@@ -728,6 +760,12 @@ main > section.lobby {
     background: var(--door-frame);
     color: var(--ink);
     overflow: hidden;
+}
+
+@supports (color: color-mix(in srgb, currentColor 50%, transparent)) {
+    .floor-cab {
+        --cab-rim: color-mix(in srgb, var(--cab-frame) 55%, var(--scene-ink));
+    }
 }
 
 /* The house theme loaded (`cabTheme()`): the popup is the elevator's frame, and its words the room's ink on it. */
@@ -851,7 +889,13 @@ main > section.lobby {
     color: var(--scene-ink);
     font-size: 16px;
     text-align: left;
-    box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--door-edge) 55%, transparent), 0 2px 0 var(--cab-rim);
+    box-shadow: inset 0 -3px 0 var(--door-edge), 0 2px 0 var(--cab-rim);
+}
+
+@supports (color: color-mix(in srgb, currentColor 50%, transparent)) {
+    .floor-cab-panel li > button {
+        box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--door-edge) 55%, transparent), 0 2px 0 var(--cab-rim);
+    }
 }
 
 .floor-cab-panel li > button:hover {
@@ -860,7 +904,13 @@ main > section.lobby {
 
 .floor-cab-panel li > button:active {
     transform: translateY(2px);
-    box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--door-edge) 55%, transparent);
+    box-shadow: inset 0 -1px 0 var(--door-edge);
+}
+
+@supports (color: color-mix(in srgb, currentColor 50%, transparent)) {
+    .floor-cab-panel li > button:active {
+        box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--door-edge) 55%, transparent);
+    }
 }
 
 .floor-cab-panel li > button:focus-visible {
@@ -877,19 +927,36 @@ main > section.lobby {
     box-sizing: border-box;
     border: 3px solid var(--door-edge);
     border-radius: 50%;
-    background: color-mix(in srgb, var(--door) 60%, var(--door-edge));
+    background: var(--door);
     box-shadow: inset 0 2px 2px rgb(255 255 255 / 0.6);
 }
 
+/* Without color-mix() the current floor's plate is the door's and its edge — and its call button's — the room's ink,
+   so the lit call button and the dark edge still pick it out. */
 .floor-cab-panel li.current > button {
-    border-color: color-mix(in srgb, var(--cab-lamp) 60%, var(--scene-ink));
-    background: color-mix(in srgb, var(--door) 65%, var(--cab-lamp));
+    border-color: var(--scene-ink);
+    background: var(--door);
 }
 
 .floor-cab-panel li.current .cab-cap {
-    border-color: color-mix(in srgb, var(--cab-lamp) 60%, var(--scene-ink));
+    border-color: var(--scene-ink);
     background: var(--cab-lamp);
     box-shadow: inset 0 2px 2px rgb(255 255 255 / 0.6), 0 0 12px var(--cab-lamp);
+}
+
+@supports (color: color-mix(in srgb, currentColor 50%, transparent)) {
+    .cab-cap {
+        background: color-mix(in srgb, var(--door) 60%, var(--door-edge));
+    }
+
+    .floor-cab-panel li.current > button {
+        border-color: color-mix(in srgb, var(--cab-lamp) 60%, var(--scene-ink));
+        background: color-mix(in srgb, var(--door) 65%, var(--cab-lamp));
+    }
+
+    .floor-cab-panel li.current .cab-cap {
+        border-color: color-mix(in srgb, var(--cab-lamp) 60%, var(--scene-ink));
+    }
 }
 
 .cab-name {

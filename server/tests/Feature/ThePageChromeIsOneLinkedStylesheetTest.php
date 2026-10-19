@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Feature\Support\HoldsEveryColourMixToAFallback;
 use Tests\TestCase;
 
 /**
@@ -34,11 +35,19 @@ use Tests\TestCase;
  * custom property; the sheet's `--door` / `--door-edge` are the floor's copies of them, and they must
  * stay equal so the floor's elevator and the lobby's cab read as one building.
  *
+ * ⛔ EVERY `color-mix()` HAS A PLAIN FALLBACK, ON THE SHEET AND IN THE PAINTER's STYLE ALIKE (card#12070). A browser
+ * without `color-mix()` keeps a mixed declaration that holds `var()` and paints nothing, so each one sits in an
+ * `@supports (… color-mix(…))` block after a plain rule of its selector that sets the same property to one of the mix's
+ * own colours (`HoldsEveryColourMixToAFallback` owns the shape). A `color-mix()` written anywhere else — a third copy of
+ * the defect card#12052 and card#12070 fixed — reds here. What the popup's fallback colours read as is
+ * `TheCabPanelReconcilesByKeyTest`'s contrast check, in both branches.
+ *
  * ⚠ WHAT A GREEN HERE IS NOT: evidence that any page lays out or looks right — there is no browser on
  * the build host. The screenshots on the PR's review round are where the look is checked.
  */
 class ThePageChromeIsOneLinkedStylesheetTest extends TestCase
 {
+    use HoldsEveryColourMixToAFallback;
     use RefreshDatabase;
 
     private const SHEET = 'css/mezzanine.css';
@@ -58,6 +67,36 @@ class ThePageChromeIsOneLinkedStylesheetTest extends TestCase
     public function test_the_floors_elevator_colours_are_the_lobbys(): void
     {
         $this->assertSame([], $this->doorDefects($this->sheet(), $this->buildingSceneJs()));
+    }
+
+    public function test_every_colour_mix_has_a_plain_fallback_on_the_sheet_and_in_the_painters_style(): void
+    {
+        $this->assertSame([], [...$this->colourMixDefects($this->sheet(), 'mezzanine.css'), ...$this->colourMixDefects($this->painterStyle(), 'STYLE')]);
+    }
+
+    /** ⛔ THE CONTROLS for the `color-mix()` fallback — each plants one break of its shape in the sheet, or in the style. */
+    public function test_the_colour_mix_check_goes_red_against_the_defect_it_exists_to_catch(): void
+    {
+        $sheet = $this->sheet();
+
+        foreach ([
+            // The defect itself, as card#12070 found it: the current floor's plate mixed with no fallback.
+            'a mix outside its block' => ["    border-color: var(--scene-ink);\n    background: var(--door);\n}", "    border-color: var(--scene-ink);\n    background: color-mix(in srgb, var(--door) 65%, var(--cab-lamp));\n}", 'outside an @supports'],
+            'a mixed rule with no plain rule of its selector' => ["    [role=\"alert\"] {\n        background: color-mix(", "    [role=\"note\"] {\n        background: color-mix(", 'no plain rule'],
+            // PR #343 review F4: the fallback rule is there, but sets another property.
+            'a fallback that sets another property' => ["    --cab-rim: var(--scene-ink);\n", "    --cab-edge: var(--scene-ink);\n", 'sets no `--cab-rim`'],
+            'a fallback off the mix\'s colours' => ['    border-bottom: 1px solid var(--warn);', '    border-bottom: 1px solid var(--alarm);', 'one of its own colours'],
+            'a plain rule after its block' => ["\n.cab-name {", "\n.cab-cap {\n    background: var(--door);\n}\n\n.cab-name {", 'comes after its @supports block'],
+        ] as $what => [$from, $to, $reason]) {
+            $this->assertSame(1, substr_count($sheet, $from), "CONTROL ({$what}): its anchor is not in the sheet exactly once");
+            $defects = $this->colourMixDefects(str_replace($from, $to, $sheet), 'mezzanine.css');
+            $this->assertNotSame([], array_filter($defects, fn (string $d): bool => str_contains($d, $reason)), "CONTROL ({$what}) did not bite for its reason: ".json_encode($defects));
+        }
+
+        $style = $this->painterStyle();
+        $mixed = str_replace('.cab-sill{fill:var(--door-edge)}', '.cab-sill{fill:color-mix(in srgb,var(--door-edge) 50%,var(--door))}', $style);
+        $this->assertNotSame($mixed, $style, 'the style control\'s anchor is gone — it mutated nothing');
+        $this->assertNotSame([], $this->colourMixDefects($mixed, 'STYLE'), 'CONTROL (a mix outside its block in the painter\'s style) did not bite');
     }
 
     /** ⛔ THE CONTROLS — each re-mints one defect this file exists to catch. */
