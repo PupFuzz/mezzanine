@@ -219,6 +219,14 @@ function node(name, attrs = {}, parent = null) {
 }
 
 /**
+ * ⛔ THE RIDE's DOORS MOVE CONTINUOUSLY — NEVER `steps()` (§ 12's *Ride door motion*, card#12038). The ride's leaf
+ * motion is § 6.3's exception for the viewer's own ride, which is not claim-bearing, so no loop rate binds it; the
+ * walks' leaves (`leafAnimation()`) are claim-bearing and stay quantised to the loop rate. How long each motion
+ * takes is the phase's (`floor-screen.js`'s `RIDE_DOOR_MS`, through `ridePhase()`), never this file's.
+ */
+const RIDE_DOOR_EASING = 'ease-in-out';
+
+/**
  * When a ride phase's leaves move, ms (FLOOR.md § 4.5): `delay` from this paint — the phase's door delay (its fade)
  * less the time already spent in the phase, so a re-paint lands mid-motion rather than restarting it — and
  * `motion`, the rest of the phase.
@@ -244,15 +252,14 @@ export function rideLeaves(ride) {
         return null;
     }
 
-    const D = ELEVATOR_DOOR;
     const { delay, motion } = doorTiming(ride);
 
     switch (ride.phase) {
         case 'opening':
-            return ride.ms === 0 ? 'transform:scaleX(.12)' : `animation:leaf-open ${motion}ms steps(${D.open}) ${delay}ms forwards`;
+            return ride.ms === 0 ? 'transform:scaleX(.12)' : `animation:leaf-open ${motion}ms ${RIDE_DOOR_EASING} ${delay}ms forwards`;
         case 'staying':
         case 'arriving':
-            return ride.ms === 0 ? null : `animation:leaf-close ${motion}ms steps(${D.close}) ${delay}ms both`;
+            return ride.ms === 0 ? null : `animation:leaf-close ${motion}ms ${RIDE_DOOR_EASING} ${delay}ms both`;
         default:
             // `entering`, `inside`, `chosen`, `leaving`: the floor's leaves stand open behind the cab.
             return 'transform:scaleX(.12)';
@@ -265,14 +272,13 @@ export function rideLeaves(ride) {
  * and open in `leaving`, which the departing page's snapshot carries across the navigation.
  */
 export function cabLeaves(ride) {
-    const D = ELEVATOR_DOOR;
     const { delay, motion } = doorTiming(ride);
 
     switch (ride.phase) {
         case 'entering':
-            return ride.ms === 0 ? null : `animation:leaf-close ${motion}ms steps(${D.close}) ${delay}ms both`;
+            return ride.ms === 0 ? null : `animation:leaf-close ${motion}ms ${RIDE_DOOR_EASING} ${delay}ms both`;
         case 'chosen':
-            return ride.ms === 0 ? 'transform:scaleX(.12)' : `animation:leaf-open ${motion}ms steps(${D.open}) ${delay}ms both`;
+            return ride.ms === 0 ? 'transform:scaleX(.12)' : `animation:leaf-open ${motion}ms ${RIDE_DOOR_EASING} ${delay}ms both`;
         case 'leaving':
             return 'transform:scaleX(.12)';
         default:

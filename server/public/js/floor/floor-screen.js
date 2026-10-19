@@ -93,7 +93,7 @@ import { CAB_HOLD_MS } from '../wire/ride-arrival.js';
 import { buildJoin } from './coord-join.js';
 import { statusStrip } from './status-strip.js';
 import { failureRender } from '../wire/failure-render.js';
-import { ELEVATOR_DOOR, buildScene, threshold } from './scene.js';
+import { buildScene, threshold } from './scene.js';
 import { EffectsInFlight, inboundDesk } from './in-flight.js';
 import { createCamera, fit, frameOn, glideMs, pan, panBy, pinch, resize, zoom, zoomStep } from '../wire/camera.js';
 import { TilesetLoader, tilesetUrl } from './tileset.js';
@@ -211,10 +211,20 @@ export function endsRide(frame) {
 }
 
 /**
+ * § 12's *Ride door motion* (card#12038): how long each of the ride's door motions takes, ms — the floor's leaves
+ * opening, the cab's closing on entry and opening on the choice, and the closing on a stay and on arrival. The ride's
+ * OWN figure, not the walks' *Elevator leaves* frames: the ride's leaf motion is § 6.3's exception for the viewer's
+ * own ride, which is not claim-bearing, so it is bound by no loop rate and moves continuously (the painter's
+ * `RIDE_DOOR_EASING`). The walks' doors stay at `ELEVATOR_DOOR`. 0 under `prefers-reduced-motion` (`ridePhase()`).
+ */
+export const RIDE_DOOR_MS = 1000;
+
+/**
  * The ride's phase table (FLOOR.md § 4.5's floor's ride): how long each phase lasts and when its doors start,
- * in ms. Door motion is § 12's *Elevator leaves* row (`ELEVATOR_DOOR`) and each fade one loop frame (§ 12's
- * *Fade*); `leaving` is bounded by *Cab hold*, which is a bound and the same under `prefers-reduced-motion`,
- * where every motion figure is 0 (§ 6.4). `door_delay_ms` is `null` for a phase whose doors do not move.
+ * in ms. Each door motion is `RIDE_DOOR_MS` and each fade one loop frame (§ 12's *Fade*), the fade first and the
+ * doors after it, so a phase's timer ends exactly as its doors finish; `leaving` is bounded by *Cab hold*, which is
+ * a bound and the same under `prefers-reduced-motion`, where every motion figure is 0 (§ 6.4). `door_delay_ms` is
+ * `null` for a phase whose doors do not move.
  *
  * @returns {{ms: number, door_delay_ms: number|null, fade_ms: number}}
  */
@@ -223,20 +233,20 @@ export function ridePhase(phase, reduce) {
         return { ms: CAB_HOLD_MS, door_delay_ms: null, fade_ms: 0 };
     }
 
-    const frame = 1000 / LOOP_FPS;
-    const D = ELEVATOR_DOOR;
-    // [frames the phase lasts, frames before its doors move] — the fade first, then the doors.
-    const [frames, delay] = {
-        opening: [D.open, 0],
-        entering: [1 + D.close, 1],
-        inside: [1, null],
-        chosen: [1 + D.open, 1],
-        staying: [1 + D.close, 1],
-        arriving: [1 + D.close, 1],
+    const fade = 1000 / LOOP_FPS;
+    const door = RIDE_DOOR_MS;
+    // [ms the phase lasts, ms before its doors move] — the fade first, then the doors.
+    const [ms, delay] = {
+        opening: [door, 0],
+        entering: [fade + door, fade],
+        inside: [fade, null],
+        chosen: [fade + door, fade],
+        staying: [fade + door, fade],
+        arriving: [fade + door, fade],
     }[phase];
-    const at = (n) => (reduce === true ? 0 : n * frame);
+    const at = (n) => (reduce === true ? 0 : n);
 
-    return { ms: at(frames), door_delay_ms: delay === null ? null : at(delay), fade_ms: at(1) };
+    return { ms: at(ms), door_delay_ms: delay === null ? null : at(delay), fade_ms: at(fade) };
 }
 
 /**

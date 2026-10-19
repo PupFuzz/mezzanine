@@ -20,7 +20,7 @@ use Tests\TestCase;
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ EVERY EXPECTATION IS RE-DERIVED, NEVER TRANSCRIBED: the stops from the fixture's own layout through § 4.6's
- * rule (`label ?? key`, `/floor/{key}`, key order), every phase's length from § 12's *Elevator leaves*, *Loop
+ * rule (`label ?? key`, `/floor/{key}`, key order), every phase's length from § 12's *Ride door motion*, *Loop
  * frame rate* and *Cab hold* rows, and the guard table below from § 4.5's phase table — so a method accepted out
  * of phase, a length that drifted from § 12, or a stop list captured at the press reds here.
  *
@@ -61,13 +61,13 @@ class TheFloorsRideIsNavigationTest extends TestCase
 
     // ── § 12's rows, read out of the document ────────────────────────────────────────────────────
 
-    /** @return array{open: int, step: int, close: int} */
-    private function door(): array
+    /** Each of the ride's door motions, ms: § 12's *Ride door motion* (card#12038) — the ride's own, not *Elevator leaves*. */
+    private function rideDoorMs(): int
     {
-        $this->assertSame(1, preg_match('/^\| \*\*Elevator leaves: opening \/ step \/ closing\*\* \| \*\*(\d+) \/ (\d+) \/ (\d+) frames\*\* \|/m', $this->floorMd(), $m),
-            '§ 12 carries no *Elevator leaves* row in the form this test reads');
+        $this->assertSame(1, preg_match('/^\| \*\*Ride door motion\*\* \| \*\*([\d,]+) ms\*\* \|/m', $this->floorMd(), $m),
+            '§ 12 carries no *Ride door motion* row in the form this test reads');
 
-        return ['open' => (int) $m[1], 'step' => (int) $m[2], 'close' => (int) $m[3]];
+        return (int) str_replace(',', '', $m[1]);
     }
 
     /** One loop frame, ms: § 12's *Loop frame rate*. */
@@ -104,19 +104,19 @@ class TheFloorsRideIsNavigationTest extends TestCase
      */
     private function phaseTable(bool $reduce): array
     {
-        $d = $this->door();
+        $door = $this->rideDoorMs();
         $f = $this->frameMs();
-        $fade = $this->fadeFrames();
-        $at = static fn (int $frames): float|int => $reduce ? 0 : $frames * $f;
+        $fade = $this->fadeFrames() * $f;
+        $at = static fn (float|int $ms): float|int => $reduce ? 0 : $ms;
 
         return [
-            'opening' => ['ms' => $at($d['open']), 'door_delay_ms' => $at(0), 'fade_ms' => $at($fade)],
-            'entering' => ['ms' => $at($fade + $d['close']), 'door_delay_ms' => $at($fade), 'fade_ms' => $at($fade)],
+            'opening' => ['ms' => $at($door), 'door_delay_ms' => $at(0), 'fade_ms' => $at($fade)],
+            'entering' => ['ms' => $at($fade + $door), 'door_delay_ms' => $at($fade), 'fade_ms' => $at($fade)],
             'inside' => ['ms' => $at($fade), 'door_delay_ms' => null, 'fade_ms' => $at($fade)],
-            'chosen' => ['ms' => $at($fade + $d['open']), 'door_delay_ms' => $at($fade), 'fade_ms' => $at($fade)],
+            'chosen' => ['ms' => $at($fade + $door), 'door_delay_ms' => $at($fade), 'fade_ms' => $at($fade)],
             'leaving' => ['ms' => $this->cabHoldMs(), 'door_delay_ms' => null, 'fade_ms' => 0],
-            'staying' => ['ms' => $at($fade + $d['close']), 'door_delay_ms' => $at($fade), 'fade_ms' => $at($fade)],
-            'arriving' => ['ms' => $at($fade + $d['close']), 'door_delay_ms' => $at($fade), 'fade_ms' => $at($fade)],
+            'staying' => ['ms' => $at($fade + $door), 'door_delay_ms' => $at($fade), 'fade_ms' => $at($fade)],
+            'arriving' => ['ms' => $at($fade + $door), 'door_delay_ms' => $at($fade), 'fade_ms' => $at($fade)],
         ];
     }
 
@@ -281,6 +281,18 @@ class TheFloorsRideIsNavigationTest extends TestCase
 
         $this->assertEquals($table['ms'], $arriving['ride']['ms']);
         $this->assertEquals($table['door_delay_ms'], $arriving['ride']['door_delay_ms']);
+    }
+
+    /**
+     * § 12's *Ride door motion* is `floor-screen.js`'s `RIDE_DOOR_MS`, its one code home (card#12038) — held equal as
+     * *Elevator leaves* is to `ELEVATOR_DOOR`, so the figure the phase table above reads is the figure that ships.
+     */
+    public function test_green_section_12s_ride_door_motion_is_ride_door_ms(): void
+    {
+        $source = (string) file_get_contents($this->moduleDir().'/../floor/floor-screen.js');
+
+        $this->assertSame(1, preg_match('/^export const RIDE_DOOR_MS = (\d+);$/m', $source, $m), 'floor-screen.js exports no RIDE_DOOR_MS');
+        $this->assertSame($this->rideDoorMs(), (int) $m[1], '§ 12\'s *Ride door motion* is not floor-screen.js\'s RIDE_DOOR_MS');
     }
 
     /** Every ride method answers `null` out of phase, in every phase the departing page reaches (§ 4.5's guards). */
@@ -587,8 +599,9 @@ class TheFloorsRideIsNavigationTest extends TestCase
 
         // RED 10 — a motion length not 0 under reduced motion; RED 13 — no door delay on `entering`.
         foreach ([
-            'RED 10 (motion under reduce)' => ['    const at = (n) => (reduce === true ? 0 : n * frame);', '    const at = (n) => n * frame;'],
-            'RED 13 (no door delay on entering)' => ['        entering: [1 + D.close, 1],', '        entering: [1 + D.close, 0],'],
+            'RED 10 (motion under reduce)' => ['    const at = (n) => (reduce === true ? 0 : n);', '    const at = (n) => n;'],
+            'RED 13 (no door delay on entering)' => ['        entering: [fade + door, fade],', '        entering: [fade + door, 0],'],
+            'RED 25 (the ride\'s doors at the walks\' loop-frame figure)' => ['    const door = RIDE_DOOR_MS;', '    const door = 2 * fade;'],
         ] as $what => [$from, $to]) {
             $this->assertRedBy(fn () => $this->test_green_every_phase_length_is_section_12s_in($this->mutatedModules([$screen, $from, $to])), $what);
         }
