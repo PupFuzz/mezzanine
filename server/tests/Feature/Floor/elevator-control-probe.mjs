@@ -9,7 +9,8 @@
  * cab's room in depth: its back wall, side walls, ceiling and floor as drawn, the layer behind its leaves, and the room
  * `drawCabInterior()` draws into a box of its own — and (card#12052) what is seen through the open doors: the office
  * in the cab's layer behind its leaves (`drawOfficeView()`), the cab's room behind the band's leaves, what is drawn after
- * the leaves in each doorway, and `STYLE`'s `color-mix()` fallback.
+ * the leaves in each doorway, and `STYLE`'s `color-mix()` fallback — and (card#12071) the call plate beside the cab's
+ * doors, read as scenery and as a control would be, and the share of the cab's view its doorway takes.
  *
  * argv: `--js <tree>` (default: the shipped tree). stdout: JSON, one member per leg (see the bottom).
  */
@@ -34,7 +35,7 @@ globalThis.CSS = { escape: (s) => s };
 globalThis.setInterval = () => 1;
 globalThis.clearInterval = () => {};
 
-const { createPainter, CAB, OFFICE, STYLE, drawCabInterior, drawOfficeView } = await import(pathToFileURL(join(JS, 'floor', 'painter.js')).href);
+const { createPainter, CAB, LANDING, OFFICE, STYLE, drawCabInterior, drawOfficeView } = await import(pathToFileURL(join(JS, 'floor', 'painter.js')).href);
 
 const BAND = {
     x: 0, y: 0, w: 1000, h: 160,
@@ -169,6 +170,7 @@ const box = { x: 10, y: 20, w: 80, h: 115 };
 const answered = drawCabInterior(room, box, 'probe');
 const depthLeg = {
     cab: CAB,
+    landing: LANDING,
     viewBox: svg?.getAttribute('viewBox') ?? null,
     back: rectOf(firstOf(themedHost, 'cab-back')),
     left: cornersOf(firstOf(themedHost, 'cab-side', 'left')),
@@ -254,6 +256,7 @@ const bandOf = (p, doors) => {
         sides: cab === null ? 0 : withClass(cab, 'cab-side').length,
         back: cab === null ? null : rectOf(firstOf(cab, 'cab-back')),
         surfaces: cab === null ? [] : ['cab-ceiling', 'cab-floor', 'cab-back'].filter((k) => withClass(cab, k).length === 1),
+        plates: band === null ? 0 : withClass(band, 'cab-plate').length,
         clip: cab === null ? null : clipOf(cab),
         census: cab === null ? [] : census(cab),
         carriers: cab?.getAttribute('style') ?? null,
@@ -271,8 +274,29 @@ const bandLeg = {
     palette: house.PALETTE.elevator,
 };
 
+// ── the call plate beside the doors, and how close the eye stands (card#12071) ─────────────────────
+// The decorative plate in the themed cab: the group's own attributes (what a focus, a pointer or a screen reader would
+// reach), every element under it read as scenery is, its rects against the doors' wall and the door's frame, and the
+// sheet's rule for it. And the share of the cab's view the doorway the leaves span takes.
+const plate = firstOf(themedHost, 'cab-plate');
+const frameRect = rectOf(firstOf(themedHost, 'cab-frame'));
+const plateLeg = {
+    count: withClass(themedHost, 'cab-plate').length,
+    attrs: plate === null ? null : Object.fromEntries(Object.entries(plate.attrs)),
+    listeners: plate === null ? [] : nodes(plate).flatMap((n) => Object.keys(n.listeners ?? {})),
+    census: plate === null ? [] : census(plate),
+    body: rectOf(plate === null ? null : firstOf(plate, 'cab-plate-body')),
+    buttons: plate === null ? 0 : withClass(plate, 'cab-plate-button').length,
+    windows: plate === null ? 0 : withClass(plate, 'cab-plate-window').length,
+    frame: frameRect,
+    back: depthLeg.back,
+    before: { plate: at('cab-plate'), beyond: at('cab-beyond') },
+};
+const viewOf = (door) => door === null ? null : (door.w * door.h) / (CAB.w * CAB.h);
+const closerLeg = { share: viewOf(officeLeg.door), door: officeLeg.door };
+
 // What the cab draws after its layer behind the leaves: the leaves, and nothing else.
 const cabOrder = svg === null ? [] : svg.children.map((n) => `${n.name}.${n.getAttribute('class') ?? ''}`);
 const seamLeg = { cab: cabOrder.slice(cabOrder.findIndex((c) => c.endsWith('.cab-beyond'))), band: bandLeg.themed.control };
 
-console.log(JSON.stringify({ control: controlLeg, leaves: leavesLeg, walks: walksLeg, cab: cabLeg, palette: paletteLeg, depth: depthLeg, office: officeLeg, band: bandLeg, seam: seamLeg, style: STYLE, elapsed: E }));
+console.log(JSON.stringify({ control: controlLeg, leaves: leavesLeg, walks: walksLeg, cab: cabLeg, palette: paletteLeg, depth: depthLeg, office: officeLeg, band: bandLeg, plate: plateLeg, closer: closerLeg, seam: seamLeg, style: STYLE, elapsed: E }));

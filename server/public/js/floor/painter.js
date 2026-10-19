@@ -35,7 +35,8 @@
  * `paintCab()`'s, into the cab dialog's own element: the room in depth `drawCabInterior()` draws (card#12051), and on
  * its back wall the door in the house theme's elevator palette, a plain dial, the office seen through it
  * (`drawOfficeView()`, card#12052), the two leaves in the building's door colours, and no text — the cab's words are
- * the page's (`floor/cab-panel.js`). The band's leaves open onto the same room, drawn behind them (card#12052).
+ * the page's (`floor/cab-panel.js`); beside the door, a decorative call plate that names, lights and does nothing
+ * (card#12071). The band's leaves open onto the same room, seen from the landing, drawn behind them (card#12052).
  *
  * ⛔ THE ONE TIMER HERE IS A HELD LOOP's OWN FRAMES, at the interval the scene carries (§ 6.3's
  * second bullet: "except a state-held loop's own frames at the fixed rate"), and it runs only for a
@@ -90,6 +91,7 @@ const MIXED = `.cab-back{fill:color-mix(in srgb,var(--cab-frame) 78%,var(--door)
 .cab-kick{fill:color-mix(in srgb,var(--door-edge) 60%,var(--cab-frame))}
 .cab-light{fill:color-mix(in srgb,var(--cab-lamp) 35%,var(--door));stroke:color-mix(in srgb,var(--cab-lamp) 60%,var(--door));stroke-width:.8}.cab-rim{fill:none;stroke:color-mix(in srgb,var(--cab-frame) 50%,var(--scene-ink));stroke-width:4}
 .cab-frame{fill:var(--cab-frame);stroke:color-mix(in srgb,var(--cab-frame) 65%,var(--scene-ink));stroke-width:.8}
+.cab-plate-body{fill:color-mix(in srgb,var(--cab-frame) 62%,var(--door));stroke:color-mix(in srgb,var(--cab-frame) 55%,var(--scene-ink));stroke-width:.5}
 .office-ceiling{fill:color-mix(in srgb,var(--scene-paper) 82%,var(--house-wall-2))}.office-floor{fill:color-mix(in srgb,var(--scene-floor) 80%,var(--scene-trim))}.office-plank{stroke:color-mix(in srgb,var(--scene-trim) 60%,var(--scene-floor));stroke-width:.5;stroke-opacity:.5}
 .office-wall{fill:color-mix(in srgb,var(--scene-paper) 62%,var(--house-wall-2))}.office-wall.right{fill:color-mix(in srgb,var(--scene-paper) 52%,var(--house-wall-2))}.office-back{fill:color-mix(in srgb,var(--scene-paper) 58%,var(--house-wall))}
 .office-light{fill:var(--scene-paper);stroke:color-mix(in srgb,var(--lamp) 55%,var(--scene-paper));stroke-width:.4}
@@ -161,6 +163,7 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 .cab-rail{fill:var(--door-edge);stroke:var(--door-edge);stroke-width:.6;stroke-linejoin:round}.cab-rail-shine{stroke:var(--door);stroke-width:1;stroke-linecap:round;stroke-opacity:.8}.cab-rail-post{stroke:var(--door-edge);stroke-width:2;stroke-linecap:round}
 .cab-light-glow{fill:var(--cab-lamp);opacity:.28}.cab-sill{fill:var(--door-edge)}.cab-recess{fill:var(--ground-deep)}.cab-dial{fill:none;stroke:var(--door-edge);stroke-width:1.2}.cab-lamp{fill:var(--cab-lamp)}
 .band-cab{--cab-frame:var(--door-frame);--cab-lamp:var(--lamp)}
+.cab-plate{pointer-events:none}.cab-plate-window{fill:var(--ground-deep)}.cab-plate-button{fill:var(--door);stroke:var(--door-edge);stroke-width:.5}.cab-plate-keyhole{fill:var(--scene-ink)}
 .office-skirting{fill:var(--house-trim)}.office-sky-stop{stop-color:var(--scene-glass)}.office-day-stop{stop-color:var(--scene-paper)}.office-mullion{fill:none;stroke:var(--house-trim);stroke-width:.7}
 .office-sun{fill:var(--scene-paper);opacity:.32}.office-shade-stop{stop-color:var(--scene-ink)}.office-back-shade{fill:var(--scene-ink)}.office-leaf.lit{fill:var(--scene-gauge-fill)}
 ${unmixed(MIXED)}@supports (fill:color-mix(in srgb,currentColor 50%,transparent)){${MIXED}}
@@ -320,20 +323,32 @@ export function cabLeaves(ride) {
 }
 
 /**
- * THE CAB's ROOM (§ 4.5's *cab's look*, card#12051; § 12's *Cab interior*), in centimetres: a real passenger cab's
- * width, depth and height, the eye's height over its floor and the eye's distance from the cab's open front, and the
- * door on its back wall. The interior is a ONE-POINT PERSPECTIVE of that room seen from its open front — the back wall
- * at `view / (view + depth)` of the opening's size, the side walls, the ceiling and the floor receding to the eye's
- * point — so the room is a narrow box taller than it is wide, never the window's shape. The cab dialog's drawing is
- * this room's front opening, one unit a centimetre (`paintCab()`'s viewBox).
+ * THE CAB's ROOM (§ 4.5's *cab's look*, card#12051; wider, and seen from closer, card#12071; § 12's *Cab interior*), in
+ * centimetres: a real passenger cab's width, depth and height, the door on the wall the rider faces, and the RIDER's eye —
+ * its height over the floor (`eye`), its distance from the doors' wall (`back`), and the distance from it at which the
+ * drawing's frame cuts the room (`view`, the lens: the frame spans the room's whole width and height there, so the doors'
+ * wall is drawn at `view / back` of the frame's size). The interior is a ONE-POINT PERSPECTIVE of that room — the side
+ * walls, the ceiling and the floor receding from the frame to the doors' wall at the eye's point — so the room is a box
+ * taller than it is wide, never the window's shape. The cab dialog's drawing is the frame, one unit a centimetre
+ * (`paintCab()`'s viewBox). `back` is also the eye the office through the doors is seen from (`OFFICE.view`).
  */
-export const CAB = Object.freeze({ w: 160, d: 140, h: 230, eye: 140, view: 230, door: Object.freeze({ w: 110, h: 200 }) });
+export const CAB = Object.freeze({ w: 200, d: 140, h: 230, eye: 155, back: 120, view: 94, door: Object.freeze({ w: 110, h: 200 }) });
+
+/**
+ * THE CAB SEEN FROM THE LANDING (card#12052's band cab; § 12's *Cab interior*): the eye `view` cm in front of the cab's open
+ * front, at `CAB.eye`'s height, the frame that open front and the far wall the cab's rear one, `CAB.d` behind it — the lens
+ * `drawCabInterior()` is handed for the room seen behind the floor's leaves.
+ */
+export const LANDING = Object.freeze({ view: 230, back: 230 + CAB.d });
 
 /**
  * THE CAB's INTERIOR, REUSABLE (card#12051): the room of `CAB` drawn in one-point perspective into `parent`, fitted to
- * `box` (`{x, y, w, h}`, the room's open front, in `parent`'s units) — the ceiling and its light, the floor and its
- * tiles, the two side walls and their handrails, and the back wall, each surface shaded so the far end reads deeper.
- * It draws no door and no leaves, and lays nothing out: the caller places those on the back wall it answers.
+ * `box` (`{x, y, w, h}`, the frame — the room's cross-section where `lens` cuts it — in `parent`'s units) — the ceiling and
+ * its light, the floor and its tiles, the two side walls and their handrails, and the far wall, each surface shaded so the
+ * far end reads deeper. `lens` is the eye it is seen from (`{view, back}`: the eye's distance from the frame and from the
+ * far wall): the rider's, `CAB`, by default, or the landing's (`LANDING`). Only what lies between the frame and the far
+ * wall is drawn — a handrail or the ceiling's light behind the frame is out of view. It draws no door and no leaves, and
+ * lays nothing out: the caller places those on the far wall it answers.
  *
  * ⛔ ITS COLOURS ARE THE ELEVATOR PALETTE's CARRIERS, NEVER AN ARGUMENT OR AN INLINE COLOUR. Every surface is painted by
  * its class in `STYLE`, from `--cab-frame` / `--cab-lamp` (which `cabTheme()` sets on an ancestor from the house
@@ -344,19 +359,22 @@ export const CAB = Object.freeze({ w: 160, d: 140, h: 230, eye: 140, view: 230, 
  * @param {Element} parent
  * @param {{x: number, y: number, w: number, h: number}} box
  * @param {string} [id]
- * @returns {{back: {x: number, y: number, w: number, h: number}}} the back wall, in `parent`'s units
+ * @param {{view: number, back: number}} [lens]
+ * @returns {{back: {x: number, y: number, w: number, h: number}}} the far wall, in `parent`'s units
  */
-export function drawCabInterior(parent, box, id = 'cab') {
+export function drawCabInterior(parent, box, id = 'cab', lens = CAB) {
     const sx = box.w / CAB.w;
     const sy = box.h / CAB.h;
-    // A point of the room — `X` across from its centre line, `Y` up from its floor, `Z` back from its open front — on the box.
+    // A point of the room — `X` across from its centre line, `Y` up from its floor, `Z` back from the frame — on the box.
     const at = (X, Y, Z) => {
-        const s = CAB.view / (CAB.view + Z);
+        const s = lens.view / (lens.view + Z);
 
         return [box.x + (CAB.w / 2 + X * s) * sx, box.y + (CAB.h - CAB.eye + (CAB.eye - Y) * s) * sy];
     };
     const pts = (...ps) => ps.map((p) => p.map((v) => +v.toFixed(2)).join(',')).join(' ');
-    const [l, r, top, D] = [-CAB.w / 2, CAB.w / 2, CAB.h, CAB.d];
+    // The depth in view, frame to far wall; `Zof(B)` is the depth of a point `B` in front of the far wall.
+    const [l, r, top, D] = [-CAB.w / 2, CAB.w / 2, CAB.h, lens.back - lens.view];
+    const Zof = (B) => D - B;
     const g = node('g', { class: 'cab-room' }, parent);
     const defs = node('defs', {}, g);
     // The depth the ceiling's shade reaches at the back wall, and the back wall's own even shade.
@@ -398,14 +416,15 @@ export function drawCabInterior(parent, box, id = 'cab') {
     // The ceiling light's pool on the back wall's head.
     node('rect', { x: back.x, y: back.y, width: back.w, height: back.h * 0.6, fill: `url(#${id}-glow)`, class: 'cab-glow' }, g);
 
-    // The floor's tiles: seams running back to the eye's point, and across at each tile's depth.
+    // The floor's tiles, 50 cm across and 35 cm deep: seams running back to the eye's point, and across at each tile's
+    // depth that lies in view.
     for (let i = 1; i < 4; i += 1) {
         const X = l + (i * CAB.w) / 4;
         const [a, b] = [at(X, 0, 0), at(X, 0, D)];
         node('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], class: 'cab-tile' }, g);
     }
-    for (const Z of [D / 4, D / 2, (3 * D) / 4]) {
-        const [a, b] = [at(l, 0, Z), at(r, 0, Z)];
+    for (const B of [CAB.d / 4, CAB.d / 2, (3 * CAB.d) / 4].filter((v) => Zof(v) > 0)) {
+        const [a, b] = [at(l, 0, Zof(B)), at(r, 0, Zof(B))];
         node('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], class: 'cab-tile' }, g);
     }
 
@@ -414,13 +433,13 @@ export function drawCabInterior(parent, box, id = 'cab') {
         node('line', { x1: p[0], y1: p[1], x2: q[0], y2: q[1], class: 'cab-seam' }, g);
     }
 
-    // A kick plate along each side wall's foot, and a handrail at hip height, standing off the wall on a post at each
-    // end, its bar thinning with depth as the room does.
+    // A kick plate along each side wall's foot, and a handrail at hip height running the wall's length but 10 cm at each
+    // end, standing off the wall on a post at each end — the part of it in view, its bar thinning with depth as the room does.
+    const [near, far] = [Math.max(0, Zof(CAB.d - 10)), Zof(10)];
     for (const side of [l, r]) {
         face('cab-kick', pts(at(side, 10, 0), at(side, 10, D), at(side, 0, D), at(side, 0, 0)), side < 0 ? 'shade-left' : 'shade-right');
         const rail = side - Math.sign(side) * 5;
-        const [near, far] = [18, D - 18];
-        for (const Z of [near, far]) {
+        for (const Z of [Zof(CAB.d - 10), far].filter((v) => v >= 0)) {
             const [p, q] = [at(side, 95, Z), at(rail, 95, Z)];
             node('line', { x1: p[0], y1: p[1], x2: q[0], y2: q[1], class: 'cab-rail-post' }, g);
         }
@@ -429,11 +448,15 @@ export function drawCabInterior(parent, box, id = 'cab') {
         node('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], class: 'cab-rail-shine' }, g);
     }
 
-    // The ceiling light: a lit panel in the middle of the ceiling, and its soft glow.
-    const panel = pts(at(-34, top, 28), at(34, top, 28), at(34, top, 92), at(-34, top, 92));
-    const [gx, gy] = at(0, top, 60);
-    node('ellipse', { cx: gx, cy: gy + 2 * sy, rx: 46 * sx, ry: 14 * sy, class: 'cab-light-glow' }, g);
-    node('polygon', { points: panel, class: 'cab-light' }, g);
+    // The ceiling light: a lit panel in the middle of the ceiling, and its soft glow — when it lies in view.
+    const [lightNear, lightFar] = [Zof(CAB.d / 2 + 32), Zof(CAB.d / 2 - 32)];
+    if (lightFar > 0) {
+        const z0 = Math.max(0, lightNear);
+        const panel = pts(at(-34, top, z0), at(34, top, z0), at(34, top, lightFar), at(-34, top, lightFar));
+        const [gx, gy] = at(0, top, Zof(CAB.d / 2));
+        node('ellipse', { cx: gx, cy: gy + 2 * sy, rx: 46 * sx, ry: 14 * sy, class: 'cab-light-glow' }, g);
+        node('polygon', { points: panel, class: 'cab-light' }, g);
+    }
 
     // The open front's rim, so the room reads as a box in the dark around it.
     node('rect', { x: box.x, y: box.y, width: box.w, height: box.h, class: 'cab-rim' }, g);
@@ -454,11 +477,48 @@ function clippedTo(parent, defs, box, id) {
 }
 
 /**
+ * THE CALL PLATE BESIDE THE CAB's DOORS (card#12071; § 4.5's *cab's look*): a DECORATIVE button plate on the doors' wall,
+ * between the door's frame (whose right edge is `frameRight`, in the drawing's units) and the right side wall — a brushed
+ * plate in the elevator palette, a small dark indicator window, round buttons and a keyhole — drawn into `parent` on `back`,
+ * the doors' wall as `drawCabInterior()` answered it, at its own size in the room (centimetres, scaled as that wall is).
+ *
+ * ⛔ IT IS SCENERY, NOT THE CAB's BUTTON PANEL (§ 6.3, card#12071): the real panel is the popup (`floor/cab-panel.js`),
+ * the only place a stop is named, chosen or lit. This plate draws no word, number or floor, no lit button and no lit
+ * window, carries no datum attribute, role, tab stop or handler, takes no pointer (`aria-hidden`, `.cab-plate`'s
+ * `pointer-events:none`), reads nothing — its only inputs are the wall and the frame's edge — and never moves. It is
+ * `paintCab()`'s only: from the landing the doors' wall is the one looked through, so the band's cab has none.
+ *
+ * @param {Element} parent
+ * @param {{x: number, y: number, w: number, h: number}} back
+ * @param {number} frameRight
+ */
+function drawCallPlate(parent, back, frameRight) {
+    const k = back.w / CAB.w;
+    const wall = back.x + back.w;
+    // The plate's size in the room: 16 × 60 cm, centred in the wall between the frame and the side wall, its head 150 cm up.
+    const [w, h] = [16 * k, 60 * k];
+    const x = (frameRight + wall) / 2 - w / 2;
+    const y = back.y + (CAB.h - 150) * k;
+    const g = node('g', { class: 'cab-plate', 'aria-hidden': 'true' }, parent);
+
+    node('rect', { x, y, width: w, height: h, rx: 2 * k, class: 'cab-plate-body' }, g);
+    node('rect', { x: x + 3 * k, y: y + 4 * k, width: w - 6 * k, height: 6 * k, rx: k, class: 'cab-plate-window' }, g);
+    for (let row = 0; row < 4; row += 1) {
+        for (const col of [-1, 1]) {
+            node('circle', { cx: x + w / 2 + col * 3.6 * k, cy: y + (17 + row * 8.5) * k, r: 2.3 * k, class: 'cab-plate-button' }, g);
+        }
+    }
+    node('circle', { cx: x + w / 2, cy: y + 52 * k, r: 1.6 * k, class: 'cab-plate-keyhole' }, g);
+    node('rect', { x: x + w / 2 - 0.5 * k, y: y + 52 * k, width: k, height: 3 * k, class: 'cab-plate-keyhole' }, g);
+}
+
+/**
  * THE OFFICE THE CAB's DOORS OPEN ONTO (§ 4.5's *cab's look*, card#12052; § 12's *Office view*), in centimetres: the
  * room's width, its depth beyond the doorway, its height, how far its left wall stands from the door's centre line, and
- * the eye's distance from the doorway — closer than the cab's own eye, as a rider standing at the door looks out.
+ * the eye's distance from the doorway — the rider's own eye in the cab (`CAB.back`, card#12071), so the office through the
+ * doors and the cab around them are one view from one point.
  */
-export const OFFICE = Object.freeze({ w: 520, d: 900, h: 280, left: 220, view: 120 });
+export const OFFICE = Object.freeze({ w: 520, d: 900, h: 280, left: 220, view: CAB.back });
 
 /**
  * THE OFFICE OUTSIDE, REUSABLE (card#12052): a one-point perspective of the room of `OFFICE` seen through a doorway,
@@ -1086,7 +1146,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             }, g);
             const doorway = { x: e.x, y: e.y, w: e.w, h: e.h };
 
-            drawCabInterior(clippedTo(inside, node('defs', {}, inside), doorway, 'band-cab'), doorway, 'band-cab');
+            drawCabInterior(clippedTo(inside, node('defs', {}, inside), doorway, 'band-cab'), doorway, 'band-cab', LANDING);
 
             const control = node('g', {
                 class: 'elevator',
@@ -1306,13 +1366,14 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
 
     /**
      * THE CAB's INTERIOR (§ 4.5, card#11795; in depth, card#12051) into `host`, the cab dialog's own drawing element:
-     * the room `drawCabInterior()` draws — one cab, its open front the drawing's whole space — and on its back wall the
-     * door: its frame in the house theme's elevator palette (`--cab-frame`, `cabTheme()`'s), a plain dial and its lamp
+     * the room `drawCabInterior()` draws from the rider's eye (card#12071) — one cab, the frame its lens cuts the drawing's
+     * whole space — and on its back wall the door: its frame in the house theme's elevator palette (`--cab-frame`, `cabTheme()`'s), a plain dial and its lamp
      * (`--cab-lamp`) — no numeral and no arrow — the dark doorway, the layer behind the leaves (`.cab-beyond`: the office
      * the open doors look out on, `drawOfficeView()`'s, card#12052), and the two leaves in the building's door colours,
-     * moving as `cabLeaves()` says, the seam between them being their own edges. The cab's space is fitted WHOLE into
-     * `host` (`meet`, card#12039) and nothing is drawn past it (`overflow: hidden`, card#12051): the room is a narrow box
-     * in the dialog's dark, its door's head and lamp in view at any window shape. No `<text>`: every word in the cab is the panel's. Painted once per phase entry; `null`
+     * moving as `cabLeaves()` says, the seam between them being their own edges; beside the door's frame, under the layer
+     * behind the leaves, the decorative call plate (`drawCallPlate()`, card#12071). The cab's space is fitted WHOLE into
+     * `host` (`meet`, card#12039) and nothing is drawn past it (`overflow: hidden`, card#12051): the room is a box taller
+     * than it is wide in the dialog's dark, its door's head and lamp in view at any window shape. No `<text>`: every word in the cab is the panel's. Painted once per phase entry; `null`
      * empties it.
      *
      * @param {Element} host
@@ -1349,6 +1410,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         node('path', { d: `M${seam - 12 * f} ${L.y - 7 * f}A${12 * f} ${7 * f} 0 0 1 ${seam + 12 * f} ${L.y - 7 * f}`, class: 'cab-dial' }, cab);
         node('circle', { cx: seam, cy: L.y - 7 * f, r: 1.8 * f, class: 'cab-lamp' }, cab);
         node('rect', { x: L.x - 10 * f, y: foot - f, width: L.w + 20 * f, height: 2 * f, rx: f, class: 'cab-sill' }, cab);
+        drawCallPlate(cab, back, L.x + L.w + 8 * f);
         // ⛔ THE LAYER BEHIND THE LEAVES: the doorway's own group, under the leaves and over the dark recess — what the
         // open doors look out on, the office (card#12052), clipped to the doorway and still: the leaves reveal it.
         drawOfficeView(node('g', { class: 'cab-beyond' }, cab), L, 'cab-office');
