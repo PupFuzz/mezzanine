@@ -5,7 +5,9 @@
  * The painter is handed one band and no desks, and painted under each ride phase at a stated elapsed time; what it
  * wrote is read back: the elevator control's attributes and hit rect, how many presses a click, Enter and Space
  * each make, each band leaf's `style`, and `paintCab()`'s cab — and (card#12039) what `cabTheme()` carries onto the
- * dialog from the shipped house theme's elevator palette, and the cab drawing's fit and paint.
+ * dialog from the shipped house theme's elevator palette, and the cab drawing's fit and paint — and (card#12051) the
+ * cab's room in depth: its back wall, side walls, ceiling and floor as drawn, the layer behind its leaves, and the room
+ * `drawCabInterior()` draws into a box of its own.
  *
  * argv: `--js <tree>` (default: the shipped tree). stdout: JSON, one member per leg (see the bottom).
  */
@@ -30,7 +32,7 @@ globalThis.CSS = { escape: (s) => s };
 globalThis.setInterval = () => 1;
 globalThis.clearInterval = () => {};
 
-const { createPainter } = await import(pathToFileURL(join(JS, 'floor', 'painter.js')).href);
+const { createPainter, CAB, drawCabInterior } = await import(pathToFileURL(join(JS, 'floor', 'painter.js')).href);
 
 const BAND = {
     x: 0, y: 0, w: 1000, h: 160,
@@ -150,4 +152,40 @@ const paletteLeg = {
     style: nodes(themedHost).find((n) => n.name === 'style')?.textContent ?? '',
 };
 
-console.log(JSON.stringify({ control: controlLeg, leaves: leavesLeg, walks: walksLeg, cab: cabLeg, palette: paletteLeg, elapsed: E }));
+// ── the cab in depth (card#12051) ────────────────────────────────────────────────────────────────
+// The themed cab's surfaces as drawn — each polygon's corners, the back wall's rect, the leaves' rects, and whether any
+// carries an inline colour — the order of the doorway's layers, and the room drawn on its own into a stated box.
+const num = (n, k) => Number(n.getAttribute(k));
+const rectOf = (n) => (n === undefined || n === null ? null : { x: num(n, 'x'), y: num(n, 'y'), w: num(n, 'width'), h: num(n, 'height') });
+const cornersOf = (n) => (n === undefined || n === null ? null : (n.getAttribute('points') ?? '').trim().split(/\s+/).map((p) => p.split(',').map(Number)));
+const firstOf = (root, cls, also = null) => withClass(root, cls).find((n) => also === null || (n.getAttribute('class') ?? '').split(' ').includes(also)) ?? null;
+const drawn = svg === null ? [] : nodes(svg);
+const at = (cls) => drawn.findIndex((n) => (n.getAttribute?.('class') ?? '').split(' ').includes(cls));
+const beyond = firstOf(themedHost, 'cab-beyond');
+const room = new Node('g');
+const box = { x: 10, y: 20, w: 80, h: 115 };
+const answered = drawCabInterior(room, box, 'probe');
+const depthLeg = {
+    cab: CAB,
+    viewBox: svg?.getAttribute('viewBox') ?? null,
+    back: rectOf(firstOf(themedHost, 'cab-back')),
+    left: cornersOf(firstOf(themedHost, 'cab-side', 'left')),
+    right: cornersOf(firstOf(themedHost, 'cab-side', 'right')),
+    ceiling: cornersOf(firstOf(themedHost, 'cab-ceiling')),
+    floor: cornersOf(firstOf(themedHost, 'cab-floor')),
+    leaves: withClass(themedHost, 'elevator-leaf').map(rectOf),
+    inline: ['cab-back', 'cab-side', 'cab-ceiling', 'cab-floor'].flatMap((cls) => withClass(themedHost, cls).filter((n) => n.getAttribute('fill') !== null || n.getAttribute('style') !== null).map(() => cls)),
+    beyond: beyond === null ? null : { children: beyond.children.length, at: at('cab-beyond'), recess: at('cab-recess'), leaf: at('elevator-leaf') },
+    alone: {
+        box,
+        answered: answered.back,
+        back: rectOf(firstOf(room, 'cab-back')),
+        sides: withClass(room, 'cab-side').length,
+        ceiling: withClass(room, 'cab-ceiling').length,
+        floor: withClass(room, 'cab-floor').length,
+        leaves: withClass(room, 'elevator-leaf').length + withClass(room, 'cab-frame').length,
+        ids: nodes(room).map((n) => n.getAttribute?.('id')).filter((v) => v !== null && v !== undefined),
+    },
+};
+
+console.log(JSON.stringify({ control: controlLeg, leaves: leavesLeg, walks: walksLeg, cab: cabLeg, palette: paletteLeg, depth: depthLeg, elapsed: E }));

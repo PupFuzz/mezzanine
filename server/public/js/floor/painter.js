@@ -32,8 +32,9 @@
  * flight. Its leaves are the RIDE's while the scene carries `scene.ride` (`rideLeaves()`), each phase's door
  * motion delayed past its fade and placed at the phase's elapsed time so a re-paint neither restarts nor
  * reorders it; with no ride they are the walks' (`leafAnimation()`), as before. The cab's interior is
- * `paintCab()`'s, into the cab dialog's own element: the house theme's elevator palette, a plain dial, the two
- * leaves in the building's door colours, and no text — the cab's words are the page's (`floor/cab-panel.js`).
+ * `paintCab()`'s, into the cab dialog's own element: the room in depth `drawCabInterior()` draws (card#12051), and on
+ * its back wall the door in the house theme's elevator palette, a plain dial, the two leaves in the building's door
+ * colours, and no text — the cab's words are the page's (`floor/cab-panel.js`).
  *
  * ⛔ THE ONE TIMER HERE IS A HELD LOOP's OWN FRAMES, at the interval the scene carries (§ 6.3's
  * second bullet: "except a state-held loop's own frames at the fixed rate"), and it runs only for a
@@ -130,7 +131,11 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 @keyframes leaf-close{from{transform:scaleX(.12)}to{transform:scaleX(1)}}
 .elevator{cursor:pointer}.elevator:focus{outline:none}.elevator-hit{fill:transparent}.elevator:focus-visible .elevator-hit{stroke:var(--scene-thread);stroke-width:3}
 .elevator[aria-disabled="true"]{cursor:default}
-.cab-wall{fill:var(--door-frame)}.cab-floor{fill:color-mix(in srgb,var(--cab-frame) 30%,var(--ground-deep))}.cab-sill{fill:var(--door-edge)}.cab-frame{fill:var(--cab-frame)}.cab-recess{fill:var(--ground-deep)}.cab-dial{fill:none;stroke:var(--door-edge);stroke-width:1.5}.cab-lamp{fill:var(--cab-lamp)}
+.cab-back{fill:color-mix(in srgb,var(--cab-frame) 78%,var(--door))}.cab-side{fill:color-mix(in srgb,var(--cab-frame) 88%,var(--door))}.cab-ceiling{fill:color-mix(in srgb,var(--cab-frame) 50%,var(--door))}.cab-floor{fill:color-mix(in srgb,var(--cab-frame) 55%,var(--scene-ink))}
+.cab-shade-stop{stop-color:var(--scene-ink)}.cab-glow-stop{stop-color:var(--cab-lamp)}.cab-tile{stroke:color-mix(in srgb,var(--cab-frame) 45%,var(--door-edge));stroke-width:.8;stroke-opacity:.45}.cab-seam{stroke:color-mix(in srgb,var(--cab-frame) 45%,var(--scene-ink));stroke-width:1;stroke-opacity:.6}
+.cab-rail{fill:var(--door-edge);stroke:var(--door-edge);stroke-width:.6;stroke-linejoin:round}.cab-kick{fill:color-mix(in srgb,var(--door-edge) 60%,var(--cab-frame))}.cab-rail-shine{stroke:var(--door);stroke-width:1;stroke-linecap:round;stroke-opacity:.8}.cab-rail-post{stroke:var(--door-edge);stroke-width:2;stroke-linecap:round}
+.cab-light{fill:color-mix(in srgb,var(--cab-lamp) 35%,var(--door));stroke:color-mix(in srgb,var(--cab-lamp) 60%,var(--door));stroke-width:.8}.cab-light-glow{fill:var(--cab-lamp);opacity:.28}.cab-rim{fill:none;stroke:color-mix(in srgb,var(--cab-frame) 50%,var(--scene-ink));stroke-width:4}
+.cab-sill{fill:var(--door-edge)}.cab-frame{fill:var(--cab-frame);stroke:color-mix(in srgb,var(--cab-frame) 65%,var(--scene-ink));stroke-width:.8}.cab-recess{fill:var(--ground-deep)}.cab-dial{fill:none;stroke:var(--door-edge);stroke-width:1.2}.cab-lamp{fill:var(--cab-lamp)}
 .fx-broadcast-marker{fill:none;stroke:var(--scene-thread);stroke-width:3}
 `;
 
@@ -287,11 +292,120 @@ export function cabLeaves(ride) {
 }
 
 /**
- * The cab interior's own space: one elevator's leaves (84 × 144, § 12) in a frame, fitted WHOLE into the cab's
- * drawing box (`meet`, card#12039) — the frame's head and its lamp always in view — with the wall and the floor
- * drawn `far` past it on every side, so whatever the box's shape leaves around the door is the cab, never a crop.
+ * THE CAB's ROOM (§ 4.5's *cab's look*, card#12051; § 12's *Cab interior*), in centimetres: a real passenger cab's
+ * width, depth and height, the eye's height over its floor and the eye's distance from the cab's open front, and the
+ * door on its back wall. The interior is a ONE-POINT PERSPECTIVE of that room seen from its open front — the back wall
+ * at `view / (view + depth)` of the opening's size, the side walls, the ceiling and the floor receding to the eye's
+ * point — so the room is a narrow box taller than it is wide, never the window's shape. The cab dialog's drawing is
+ * this room's front opening, one unit a centimetre (`paintCab()`'s viewBox).
  */
-const CAB = Object.freeze({ w: 132, h: 176, far: 10000, leaves: Object.freeze({ x: 24, y: 24, w: 84, h: 144 }) });
+export const CAB = Object.freeze({ w: 160, d: 140, h: 230, eye: 140, view: 230, door: Object.freeze({ w: 110, h: 200 }) });
+
+/**
+ * THE CAB's INTERIOR, REUSABLE (card#12051): the room of `CAB` drawn in one-point perspective into `parent`, fitted to
+ * `box` (`{x, y, w, h}`, the room's open front, in `parent`'s units) — the ceiling and its light, the floor and its
+ * tiles, the two side walls and their handrails, and the back wall, each surface shaded so the far end reads deeper.
+ * It draws no door and no leaves, and lays nothing out: the caller places those on the back wall it answers.
+ *
+ * ⛔ ITS COLOURS ARE THE ELEVATOR PALETTE's CARRIERS, NEVER AN ARGUMENT OR AN INLINE COLOUR. Every surface is painted by
+ * its class in `STYLE`, from `--cab-frame` / `--cab-lamp` (which `cabTheme()` sets on an ancestor from the house
+ * theme's `PALETTE.elevator`, the sheet's door tokens answering with no theme) mixed with the sheet's door and ink
+ * tokens; its shading is a translucent overlay of those. `id` prefixes the gradients it defines, so two rooms drawn into
+ * one document do not share an id.
+ *
+ * @param {Element} parent
+ * @param {{x: number, y: number, w: number, h: number}} box
+ * @param {string} [id]
+ * @returns {{back: {x: number, y: number, w: number, h: number}}} the back wall, in `parent`'s units
+ */
+export function drawCabInterior(parent, box, id = 'cab') {
+    const sx = box.w / CAB.w;
+    const sy = box.h / CAB.h;
+    // A point of the room — `X` across from its centre line, `Y` up from its floor, `Z` back from its open front — on the box.
+    const at = (X, Y, Z) => {
+        const s = CAB.view / (CAB.view + Z);
+
+        return [box.x + (CAB.w / 2 + X * s) * sx, box.y + (CAB.h - CAB.eye + (CAB.eye - Y) * s) * sy];
+    };
+    const pts = (...ps) => ps.map((p) => p.map((v) => +v.toFixed(2)).join(',')).join(' ');
+    const [l, r, top, D] = [-CAB.w / 2, CAB.w / 2, CAB.h, CAB.d];
+    const g = node('g', { class: 'cab-room' }, parent);
+    const defs = node('defs', {}, g);
+    // Each overlay deepens toward the back: clear at the near edge, the room's ink at the far one.
+    const shade = (name, x1, y1, x2, y2, far) => {
+        const grad = node('linearGradient', { id: `${id}-${name}`, x1, y1, x2, y2 }, defs);
+        node('stop', { offset: 0, class: 'cab-shade-stop', 'stop-opacity': 0 }, grad);
+        node('stop', { offset: 1, class: 'cab-shade-stop', 'stop-opacity': far }, grad);
+    };
+    shade('shade-left', 0, 0, 1, 0, 0.32);
+    shade('shade-right', 1, 0, 0, 0, 0.32);
+    shade('shade-floor', 0, 1, 0, 0, 0.4);
+    const glow = node('radialGradient', { id: `${id}-glow`, cx: 0.5, cy: 0, r: 0.75 }, defs);
+    node('stop', { offset: 0, class: 'cab-glow-stop', 'stop-opacity': 0.55 }, glow);
+    node('stop', { offset: 1, class: 'cab-glow-stop', 'stop-opacity': 0 }, glow);
+
+    const face = (cls, points, overlay) => {
+        node('polygon', { points, class: cls }, g);
+        if (overlay !== undefined) {
+            node('polygon', { points, fill: `url(#${id}-${overlay})`, class: 'cab-shade' }, g);
+        }
+    };
+
+    face('cab-ceiling', pts(at(l, top, 0), at(r, top, 0), at(r, top, D), at(l, top, D)));
+    face('cab-floor', pts(at(l, 0, 0), at(r, 0, 0), at(r, 0, D), at(l, 0, D)), 'shade-floor');
+    face('cab-side left', pts(at(l, top, 0), at(l, top, D), at(l, 0, D), at(l, 0, 0)), 'shade-left');
+    face('cab-side right', pts(at(r, top, 0), at(r, top, D), at(r, 0, D), at(r, 0, 0)), 'shade-right');
+
+    const [bx, by] = at(l, top, D);
+    const [bx2, by2] = at(r, 0, D);
+    const back = { x: bx, y: by, w: bx2 - bx, h: by2 - by };
+
+    node('rect', { x: back.x, y: back.y, width: back.w, height: back.h, class: 'cab-back' }, g);
+    // The ceiling light's pool on the back wall's head.
+    node('rect', { x: back.x, y: back.y, width: back.w, height: back.h * 0.6, fill: `url(#${id}-glow)`, class: 'cab-glow' }, g);
+
+    // The floor's tiles: seams running back to the eye's point, and across at each tile's depth.
+    for (let i = 1; i < 4; i += 1) {
+        const X = l + (i * CAB.w) / 4;
+        const [a, b] = [at(X, 0, 0), at(X, 0, D)];
+        node('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], class: 'cab-tile' }, g);
+    }
+    for (const Z of [D / 4, D / 2, (3 * D) / 4]) {
+        const [a, b] = [at(l, 0, Z), at(r, 0, Z)];
+        node('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], class: 'cab-tile' }, g);
+    }
+
+    // The corner seams, where each side wall meets the ceiling, the floor and the back wall.
+    for (const [p, q] of [[at(l, top, 0), at(l, top, D)], [at(r, top, 0), at(r, top, D)], [at(l, 0, 0), at(l, 0, D)], [at(r, 0, 0), at(r, 0, D)]]) {
+        node('line', { x1: p[0], y1: p[1], x2: q[0], y2: q[1], class: 'cab-seam' }, g);
+    }
+
+    // A kick plate along each side wall's foot, and a handrail at hip height, standing off the wall on a post at each
+    // end, its bar thinning with depth as the room does.
+    for (const side of [l, r]) {
+        face('cab-kick', pts(at(side, 10, 0), at(side, 10, D), at(side, 0, D), at(side, 0, 0)), side < 0 ? 'shade-left' : 'shade-right');
+        const rail = side - Math.sign(side) * 5;
+        const [near, far] = [18, D - 18];
+        for (const Z of [near, far]) {
+            const [p, q] = [at(side, 95, Z), at(rail, 95, Z)];
+            node('line', { x1: p[0], y1: p[1], x2: q[0], y2: q[1], class: 'cab-rail-post' }, g);
+        }
+        face('cab-rail', pts(at(rail, 97, near), at(rail, 97, far), at(rail, 93, far), at(rail, 93, near)));
+        const [a, b] = [at(rail, 96.5, near), at(rail, 96.5, far)];
+        node('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], class: 'cab-rail-shine' }, g);
+    }
+
+    // The ceiling light: a lit panel in the middle of the ceiling, and its soft glow.
+    const panel = pts(at(-34, top, 28), at(34, top, 28), at(34, top, 92), at(-34, top, 92));
+    const [gx, gy] = at(0, top, 60);
+    node('ellipse', { cx: gx, cy: gy + 2 * sy, rx: 46 * sx, ry: 14 * sy, class: 'cab-light-glow' }, g);
+    node('polygon', { points: panel, class: 'cab-light' }, g);
+
+    // The open front's rim, so the room reads as a box in the dark around it.
+    node('rect', { x: box.x, y: box.y, width: box.w, height: box.h, class: 'cab-rim' }, g);
+
+    return { back };
+}
 
 /**
  * The painter, over the floor view's own drawing element — `#floor-drawing`, which
@@ -990,12 +1104,15 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     }
 
     /**
-     * THE CAB's INTERIOR (§ 4.5, card#11795) into `host`, the cab dialog's own drawing element: the back wall and
-     * the floor, the frame in the house theme's elevator palette (`--cab-frame`, `cabTheme()`'s), a plain dial and
-     * its lamp (`--cab-lamp`) — no numeral and no arrow — and the two leaves in the building's door colours,
-     * moving as `cabLeaves()` says. The cab's space is fitted WHOLE into `host` (`meet`, card#12039), so the door's
-     * head and lamp are in view at any window shape, and the wall and the floor run on past it to fill the rest.
-     * No `<text>`: every word in the cab is the panel's. Painted once per phase entry; `null` empties it.
+     * THE CAB's INTERIOR (§ 4.5, card#11795; in depth, card#12051) into `host`, the cab dialog's own drawing element:
+     * the room `drawCabInterior()` draws — one cab, its open front the drawing's whole space — and on its back wall the
+     * door: its frame in the house theme's elevator palette (`--cab-frame`, `cabTheme()`'s), a plain dial and its lamp
+     * (`--cab-lamp`) — no numeral and no arrow — the dark doorway, the layer behind the leaves (`.cab-beyond`, empty:
+     * what the open doors show is a later card's), and the two leaves in the building's door colours, moving as
+     * `cabLeaves()` says. The cab's space is fitted WHOLE into `host` (`meet`, card#12039) and nothing is drawn past it
+     * (`overflow: hidden`, card#12051): the room is a narrow box in the dialog's dark, its door's head and lamp in view
+     * at any window shape. No `<text>`: every word in the cab is the panel's. Painted once per phase entry; `null`
+     * empties it.
      *
      * @param {Element} host
      * @param {{phase: string, elapsed_ms: number, ms: number, door_delay_ms: number|null}|null} ride `scene.ride`
@@ -1007,28 +1124,36 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             return;
         }
 
-        const L = CAB.leaves;
-        const seam = L.x + L.w / 2;
-        const foot = L.y + L.h;
         const cab = node('svg', {
-            viewBox: `0 0 ${CAB.w} ${CAB.h}`, width: '100%', height: '100%', preserveAspectRatio: 'xMidYMid meet', overflow: 'visible', class: 'cab-scene', 'aria-hidden': 'true',
+            viewBox: `0 0 ${CAB.w} ${CAB.h}`, width: '100%', height: '100%', preserveAspectRatio: 'xMidYMid meet', overflow: 'hidden', class: 'cab-scene', 'aria-hidden': 'true',
         });
 
-        // The cab's own shape, for the layout that sets the door's box beside the popup (the sheet's `.floor-cab-doors`).
+        // The cab's own shape, for the layout that sets the drawing's box beside the popup (the sheet's `.floor-cab-doors`).
         host.style.setProperty('--cab-aspect', `${CAB.w} / ${CAB.h}`);
         node('style', {}, cab).textContent = STYLE;
-        node('rect', { x: -CAB.far, y: -CAB.far, width: CAB.w + 2 * CAB.far, height: foot + CAB.far, class: 'cab-wall' }, cab);
-        node('rect', { x: -CAB.far, y: foot, width: CAB.w + 2 * CAB.far, height: CAB.far, class: 'cab-floor' }, cab);
-        node('rect', { x: L.x - 8, y: L.y - 18, width: L.w + 16, height: L.h + 18, rx: 8, class: 'cab-frame' }, cab);
-        node('rect', { x: L.x - 2, y: L.y - 2, width: L.w + 4, height: L.h + 2, rx: 4, class: 'cab-recess' }, cab);
-        node('path', { d: `M${seam - 12} ${L.y - 7}A12 7 0 0 1 ${seam + 12} ${L.y - 7}`, class: 'cab-dial' }, cab);
-        node('circle', { cx: seam, cy: L.y - 7, r: 1.8, class: 'cab-lamp' }, cab);
-        node('rect', { x: L.x - 10, y: foot, width: L.w + 20, height: 2, rx: 1, class: 'cab-sill' }, cab);
+
+        const { back } = drawCabInterior(cab, { x: 0, y: 0, w: CAB.w, h: CAB.h });
+        // The door on the back wall: the leaves' size in the room, centred, standing on the back wall's foot.
+        const w = (CAB.door.w * back.w) / CAB.w;
+        const h = (CAB.door.h * back.h) / CAB.h;
+        const L = { x: back.x + (back.w - w) / 2, y: back.y + back.h - h, w, h };
+        const f = L.w / 84;
+        const seam = L.x + L.w / 2;
+        const foot = L.y + L.h;
+
+        node('rect', { x: L.x - 8 * f, y: L.y - 18 * f, width: L.w + 16 * f, height: L.h + 18 * f, rx: 6 * f, class: 'cab-frame' }, cab);
+        node('rect', { x: L.x - 2 * f, y: L.y - 2 * f, width: L.w + 4 * f, height: L.h + 2 * f, rx: 3 * f, class: 'cab-recess' }, cab);
+        node('path', { d: `M${seam - 12 * f} ${L.y - 7 * f}A${12 * f} ${7 * f} 0 0 1 ${seam + 12 * f} ${L.y - 7 * f}`, class: 'cab-dial' }, cab);
+        node('circle', { cx: seam, cy: L.y - 7 * f, r: 1.8 * f, class: 'cab-lamp' }, cab);
+        node('rect', { x: L.x - 10 * f, y: foot - f, width: L.w + 20 * f, height: 2 * f, rx: f, class: 'cab-sill' }, cab);
+        // ⛔ THE LAYER BEHIND THE LEAVES: the doorway's own group, under the leaves and over the dark recess, which a
+        // later card fills with what the open doors look out on. Empty here — the recess shows through it.
+        node('g', { class: 'cab-beyond' }, cab);
 
         const style = cabLeaves(ride);
 
-        node('rect', { x: L.x, y: L.y, width: L.w / 2 - 1, height: L.h, rx: 3, class: 'elevator-leaf left', style }, cab);
-        node('rect', { x: seam + 1, y: L.y, width: L.w / 2 - 1, height: L.h, rx: 3, class: 'elevator-leaf right', style }, cab);
+        node('rect', { x: L.x, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf left', style }, cab);
+        node('rect', { x: seam + f, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf right', style }, cab);
         node('line', { x1: seam, y1: L.y, x2: seam, y2: L.y + L.h, class: 'elevator-seam' }, cab);
 
         host.replaceChildren(cab);
