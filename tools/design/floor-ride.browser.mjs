@@ -9,7 +9,7 @@
 //   node tools/design/floor-ride.browser.mjs --row <id>   one row
 //   node tools/design/floor-ride.browser.mjs --selftest   every row, then every row again under its PLANT, which must red
 //                                                         (the bookmark row documents a residual and plants nothing)
-//   node tools/design/floor-ride.browser.mjs --shots <dir>  also save the cab rows' windows as PNGs under <dir>
+//   node tools/design/floor-ride.browser.mjs --shots <dir>  also save the cab rows' windows, and the doors held open, as PNGs under <dir>
 //   …and --chrome <path> or $CHROME, as every browser tool here.
 //
 // ⛔ THE PAGES ARE THE SERVED ONES, AND THE TOOL CARRIES NO COPY OF THE READER. Every page is rendered by
@@ -291,11 +291,11 @@ async function session(chrome, srv, c = {}) {
     disabled: document.querySelector('#floor-drawing [data-key="elevator"]')?.getAttribute('aria-disabled') ?? null,
     leaves: [...document.querySelectorAll('#floor-drawing .elevator-leaf')].map((l) => l.getAttribute('style')),
     path: location.pathname, panel: !document.getElementById('floor-panel').hidden }; })()`);
-  /** With `--shots <dir>`, the window as it stands, saved as `<dir>/<name>.png` (recorded, never judged). */
-  const shot = async (name) => {
+  /** With `--shots <dir>`, the window as it stands — or `clip` of it (`{x, y, width, height, scale}`) — saved as `<dir>/<name>.png` (recorded, never judged). */
+  const shot = async (name, clip = null) => {
     if (SHOTS === null) return;
     mkdirSync(SHOTS, { recursive: true });
-    writeFileSync(join(SHOTS, `${name}.png`), Buffer.from((await page('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+    writeFileSync(join(SHOTS, `${name}.png`), Buffer.from((await page('Page.captureScreenshot', { format: 'png', ...(clip === null ? {} : { clip }) })).data, 'base64'));
   };
   return { b, page, ev, at, click, key, escape, pixel, open, record, cab, shot, close: () => b.close() };
 }
@@ -671,6 +671,124 @@ const ROWS = {
       }
       return { defects: d, facts };
     }),
+
+  // card#12052: the operator's *when the elevator door opens, render a 3D perspective of the office outside. On the floor
+  // views, when the elevator door opens or closes, we should see a 3D perspective of the elevator cab*. Each door is held
+  // HALF OPEN by pausing its own leaf motion at its midpoint — the band's in `opening`, the cab's in `chosen`, each the
+  // ride's real motion — and measured as drawn: between the two leaves' inner edges is the open doorway, and through it
+  // the layer behind the leaves shows — the cab's room on the band (`.band-cab .cab-back`), the office in the cab
+  // (`.cab-beyond .office-back`) — and NOTHING drawn over the leaves' layer crosses it: no seam line left standing in the
+  // doorway (the seam is the leaves' own edges). At a desktop and a phone window, and with the house theme failed.
+  // With `--shots`, each held door is saved: the cab half and fully open, the floor's elevator zoomed, half open.
+  'through-doors': row('through the open doors the office shows from inside the cab and the cab from the floor, each door held half open, and nothing — no seam line — is drawn across the open doorway', {},
+    { plant: [
+      { file: 'js/floor/painter.js', from: "            node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, control);\n",
+        to: "            node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, control);\n            node('line', { x1: e.seam, y1: e.y, x2: e.seam, y2: e.y + e.h, class: 'elevator-seam' }, control);\n" },
+      { file: 'js/floor/painter.js', from: "        node('rect', { x: seam + f, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf right', style }, cab);\n",
+        to: "        node('rect', { x: seam + f, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf right', style }, cab);\n        node('line', { x1: seam, y1: L.y, x2: seam, y2: L.y + L.h, class: 'elevator-seam' }, cab);\n" },
+    ] },
+    async (chrome, c) => {
+      const d = [];
+      const facts = {};
+      // Hold every leaf under `root` at `at` (0 shut … 1 open) of its own motion, and answer the doorway as drawn: the gap
+      // between the leaves, what of the layer behind them shows in it, and every later-drawn element that crosses it. The
+      // painter rebuilds the drawing on every render, so a hold whose leaves were replaced before it was read is retried.
+      const hold = async (s, root, behind, layer, at) => {
+        for (let i = 0; i < 5; i++) {
+          const r = await holdOnce(s, root, behind, layer, at);
+          if (r.replaced !== true) return r;
+        }
+        return { error: 'the drawing was replaced under every hold' };
+      };
+      const holdOnce = (s, root, behind, layer, at) => s.ev(`(async () => {
+        const root = document.querySelector(${JSON.stringify(root)});
+        const leaves = [...root.querySelectorAll('.elevator-leaf')];
+        const anims = leaves.flatMap((l) => l.getAnimations());
+        if (anims.length === 0) return { error: 'no leaf motion to hold', styles: leaves.map((l) => l.getAttribute('style')) };
+        for (const a of anims) { a.pause(); const t = a.effect.getTiming(); a.currentTime = t.delay + t.duration * ${at}; }
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        if (!root.isConnected) return { replaced: true };
+        const box = (e) => { const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
+        const [L, R] = leaves.map(box);
+        const gap = { l: L.r, t: Math.min(L.t, R.t), r: R.l, b: Math.max(L.b, R.b) };
+        const crosses = (b) => b.l < gap.r - 0.5 && b.r > gap.l + 0.5 && b.t < gap.b - 0.5 && b.b > gap.t + 0.5;
+        const behind = root.querySelector(${JSON.stringify(behind)});
+        const seen = behind === null ? null : box(behind);
+        // Everything drawn after the layer behind the leaves, in the drawing's order: the leaves, and whatever else.
+        const layer = root.querySelector(${JSON.stringify(layer)});
+        const all = [...root.querySelectorAll('*')];
+        const after = layer === null ? [] : all.filter((e) => (layer.compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING) && !layer.contains(e));
+        const over = after.filter((e) => !e.classList.contains('elevator-leaf') && !e.classList.contains('elevator-hit') && e.getBBox !== undefined && !['g', 'defs', 'clipPath', 'linearGradient', 'radialGradient', 'stop', 'style'].includes(e.tagName))
+          .filter((e) => crosses(box(e))).map((e) => e.tagName + '.' + (e.getAttribute('class') ?? ''));
+        return { gap, open: gap.r - gap.l, leaf: L.r - L.l, seen, shows: seen !== null && crosses(seen), over, layer: layer !== null };
+      })()`);
+      const judge = (where, r) => {
+        if (r.error !== undefined) { d.push(`${where}: ${r.error} ${JSON.stringify(r.styles ?? '')}`); return; }
+        if (!r.layer) d.push(`${where}: no layer behind the leaves`);
+        if (!(r.open > 2)) d.push(`${where}: the doors held half open leave no gap (${r.open} px)`);
+        if (!r.shows) d.push(`${where}: nothing of the view behind the leaves shows in the open doorway: ${JSON.stringify(r.seen)} vs ${JSON.stringify(r.gap)}`);
+        if (r.over.length > 0) d.push(`${where}: drawn across the open doorway, over the leaves' layer: ${r.over.join(', ')}`);
+      };
+      for (const [name, viewport, missing] of [['desktop', CAB_WINDOWS.desktop, []], ['phone', CAB_WINDOWS.phone, []], ['no-theme', CAB_WINDOWS.desktop, [HOUSE_THEME_PATH]]]) {
+        await within(chrome, { ...c, viewport, missing }, async (s) => {
+          const tag = `${name}-${viewport.w}x${viewport.h}`;
+          await s.open('/floor/aimla');
+          // The band: press, and hold its leaves half open inside `opening`, before the cab fades in.
+          await s.click('#floor-drawing [data-key="elevator"]');
+          await until(() => s.ev("document.querySelector('#floor-drawing .elevator-leaf')?.getAnimations().length > 0"), 2000, 'the band\'s leaves never moved');
+          const band = await hold(s, '#floor-drawing [data-key="elevator"]', '.cab-back', '.elevator-leaf', 0.5);
+          // The band's layer behind the leaves is the band's cab, a sibling drawn before the control: read it from the band.
+          const bandCab = await s.ev(`(() => { const c = document.querySelector('#floor-drawing .band-cab'); const k = document.querySelector('#floor-drawing [data-key="elevator"]');
+            if (c === null || k === null) return null; const b = c.querySelector('.cab-back')?.getBoundingClientRect(); const h = k.querySelector('.elevator-hit').getBoundingClientRect();
+            return { before: (c.compareDocumentPosition(k) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0, back: b === undefined ? null : { l: b.left, t: b.top, r: b.right, b: b.bottom }, hit: { x: h.left, y: h.top, w: h.width, h: h.height } }; })()`);
+          if (c.plant.length === 0 && bandCab !== null) {
+            const m = 10;
+            await s.shot(`floor-elevator-half-open-${tag}`, { x: bandCab.hit.x - m, y: bandCab.hit.y - m, width: bandCab.hit.w + 2 * m, height: bandCab.hit.h + 2 * m, scale: 4 });
+          }
+          const bandShows = bandCab?.back !== null && bandCab?.back !== undefined && band.gap !== undefined
+            && bandCab.back.l < band.gap.r && bandCab.back.r > band.gap.l;
+          judge(`${tag} band`, { ...band, layer: bandCab !== null && bandCab.before, shows: bandShows, seen: bandCab?.back ?? null });
+          // The cab: into it, a stop pressed, and its leaves held half open in `chosen`, then fully open.
+          await until(async () => (await s.cab()).open, RIDE_DOOR_MS + 1500, 'the elevator opened no cab');
+          await until(() => s.ev("!document.getElementById('floor-cab-panel').inert"), RIDE_DOOR_MS + DOOR_PHASE_MS + 1000, 'the cab never reached inside');
+          await buttonsIn(s);
+          await s.click('#floor-cab-stops li[data-stop="zeta"] button');
+          await until(() => s.ev("document.querySelector('#floor-cab-doors .elevator-leaf')?.getAnimations().length > 0"), 2000, 'the cab\'s leaves never moved');
+          const cab = await hold(s, '#floor-cab-doors', '.cab-beyond .office-back', '.cab-beyond', 0.5);
+          if (c.plant.length === 0) await s.shot(`cab-half-open-${tag}`);
+          judge(`${tag} cab`, cab);
+          if (c.plant.length === 0) { await hold(s, '#floor-cab-doors', '.cab-beyond .office-back', '.cab-beyond', 1); await s.shot(`cab-open-${tag}`); }
+          facts[tag] = { band: { open: band.open, over: band.over }, cab: { open: cab.open, over: cab.over } };
+        });
+      }
+      return { defects: d, facts };
+    }),
+
+  // card#12052: PR #342's review — a browser without `color-mix()` must still see coherent walls. This headless Chromium
+  // has `color-mix()`, so the row serves the painter with its `@supports` condition made one no browser meets, which is
+  // exactly what a browser without `color-mix()` evaluates: every mixed surface — the cab's, the office's, the band's
+  // cab's — must then be painted (not `none`, not the unpainted black) by its plain fallback.
+  'cab-no-mix': row('with color-mix() unavailable, the cab, the office through its doors and the cab behind the floor\'s leaves are each still painted, every surface in a theme colour', {
+    plant: [{ file: 'js/floor/painter.js', from: '@supports (fill:color-mix(in srgb,currentColor 50%,transparent))', to: '@supports (fill:no-such-colour(1))' }],
+  },
+    { plant: [{ file: 'js/floor/painter.js', from: '${unmixed(MIXED)}@supports', to: '@supports' }] },
+    (chrome, c) => within(chrome, { ...c, viewport: CAB_WINDOWS.desktop }, async (s) => {
+      await s.open('/floor/aimla');
+      await intoTheCab(s);
+      if (!c.plant.some((p) => p.to === '@supports')) await s.shot(`cab-no-mix-${CAB_WINDOWS.desktop.w}x${CAB_WINDOWS.desktop.h}`);
+      const r = await s.ev(`(() => {
+        const fill = (sel) => [...document.querySelectorAll(sel)].map((e) => getComputedStyle(e).fill);
+        return Object.fromEntries(['#floor-cab-doors .cab-back', '#floor-cab-doors .cab-side', '#floor-cab-doors .cab-ceiling', '#floor-cab-doors .cab-floor',
+          '#floor-cab-doors .office-floor', '#floor-cab-doors .office-wall', '#floor-cab-doors .office-back', '#floor-cab-doors .office-ceiling', '#floor-cab-doors .office-desk-top',
+          '#floor-drawing .band-cab .cab-back', '#floor-drawing .band-cab .cab-side', '#floor-drawing .band-cab .cab-floor'].map((sel) => [sel, fill(sel)]));
+      })()`);
+      const d = [];
+      for (const [sel, fills] of Object.entries(r)) {
+        if (fills.length === 0) d.push(`${sel}: not drawn`);
+        for (const f of fills) if (f === 'none' || f === 'rgb(0, 0, 0)') d.push(`${sel}: painted ${f} — left unpainted with no color-mix()`);
+      }
+      return { defects: d, facts: r };
+    })),
 
   'one-escape': row('one Escape in entering leaves the cab open', {}, { plant: [{ file: MAIN, from: '    event.preventDefault();\n    rideAct(screen.escape(event.cancelable));', to: '    rideAct(screen.escape(event.cancelable));' }] },
     (chrome, c) => within(chrome, c, async (s) => {

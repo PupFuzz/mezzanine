@@ -37,10 +37,22 @@ use Tests\TestCase;
  * ⛔ THE CAB IS A ROOM IN DEPTH (card#12051): a one-point perspective of § 12's *Cab interior* (`painter.js`'s `CAB`,
  * held equal to that row here) — a narrow space taller than it is wide, the back wall carrying the door inset on
  * every side of the cab's opening, two side walls each a trapezoid whose far edge is shorter than its near one, a
- * ceiling over the back wall and a floor under it, each painted by its class from `--cab-frame`, never inline; the
- * leaves on the back wall; and the layer behind the leaves (`.cab-beyond`), empty, over the doorway's recess and under
- * the leaves. `drawCabInterior()` draws the same room, and no door, into any box it is handed, and answers its back
- * wall as it drew it.
+ * ceiling over the back wall and a floor under it, each painted by its class from `--cab-frame`, never inline, and each
+ * with its depth overlay — the back wall's an even one (card#12052: § 4.5 says every surface is shaded); the leaves on the
+ * back wall; and the layer behind the leaves (`.cab-beyond`) over the doorway's recess and under the leaves.
+ * `drawCabInterior()` draws the same room, and no door, into any box it is handed, and answers its back wall as it drew it.
+ *
+ * ⛔ THROUGH THE OPEN DOORS (card#12052). In the cab, the layer behind the leaves holds the office (`drawOfficeView()`),
+ * clipped to the doorway the leaves span: a floor, a ceiling, two walls and a far one, windows, two desks, two chairs and a
+ * plant — SCENERY, so every element in it is the office's own class, and none carries a word, an image, a datum
+ * attribute, a colour of its own or any motion (§ 6.3). On the band, `drawCabInterior()`'s room sits behind the leaves,
+ * clipped to the doorway, with ids of its own, in the house theme's elevator palette when it loaded and the sheet's
+ * door frame and lamp when not, still, and the scene it was painted from — `scene.doors` included — unchanged. NOTHING
+ * IS DRAWN AFTER THE LEAVES in the cab's drawing, nor in the band's elevator control but its hit area: the seam is the
+ * leaves' own edges, so no seam line of either stands in the open doorway — a structural reading; that nothing at all
+ * crosses the open doorway as drawn is `floor-ride.browser.mjs`'s `through-doors` row's, run by hand. And every
+ * `color-mix()` in `STYLE` sits in its `@supports` block with a plain rule of the same selector outside it, the fallback
+ * a browser without `color-mix()` paints.
  *
  * ⛔ THE RIDE's DOORS MOVE CONTINUOUSLY, AND THE WALKS' STEP (card#12038). Every ride motion — band and cab — eases
  * (`ease-in-out`) over the length the phase hands it, and no ride style carries `steps(`: the ride is § 6.3's
@@ -84,6 +96,35 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
     public function test_the_cab_is_a_room_in_depth(): void
     {
         $this->assertSame([], $this->depthDefects($this->run_()));
+    }
+
+    public function test_the_cab_doors_open_onto_the_office(): void
+    {
+        $this->assertSame([], $this->officeDefects($this->run_()));
+    }
+
+    public function test_the_floors_doors_open_onto_the_cab(): void
+    {
+        $this->assertSame([], $this->bandDefects($this->run_()));
+    }
+
+    public function test_nothing_is_drawn_after_the_leaves(): void
+    {
+        $this->assertSame([], $this->seamDefects($this->run_()));
+    }
+
+    public function test_every_mixed_colour_has_a_plain_fallback(): void
+    {
+        $this->assertSame([], $this->mixDefects($this->run_()));
+    }
+
+    /** § 12's *Office view* row is `painter.js`'s `OFFICE`, figure for figure. */
+    public function test_green_section_12s_office_view_is_office(): void
+    {
+        $this->assertSame(1, preg_match('/^\| \*\*Office view\*\* \| \*\*(\d+) × (\d+) × (\d+) cm\*\* wide × deep × high, its left wall (\d+) cm left of the door\'s centre line, the eye (\d+) cm from the doorway \|/m', $this->floorMd(), $m),
+            '§ 12 carries no *Office view* row in the form this test reads');
+
+        $this->assertSame(['w' => (int) $m[1], 'd' => (int) $m[2], 'h' => (int) $m[3], 'left' => (int) $m[4], 'view' => (int) $m[5]], $this->run_()['office']['office']);
     }
 
     /** § 12's *Cab interior* row is `painter.js`'s `CAB`, figure for figure. */
@@ -148,10 +189,35 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
             'a side wall off the palette' => ['.cab-side{fill:color-mix(in srgb,var(--cab-frame) 88%,var(--door))}', '.cab-side{fill:var(--door)}', 'depthDefects'],
             'the ceiling inline' => ["    face('cab-ceiling', pts(", "    node('polygon', { fill: 'tan', points: pts(at(l, top, 0)) }, g).setAttribute('class', 'cab-ceiling');\n    face('cab-ceiling-gone', pts(", 'depthDefects'],
             'the cab as wide as a room' => ['export const CAB = Object.freeze({ w: 160,', 'export const CAB = Object.freeze({ w: 400,', 'depthDefects'],
-            'no layer behind the leaves' => ["        node('g', { class: 'cab-beyond' }, cab);\n", '', 'depthDefects'],
-            'the layer over the leaves' => ["        node('g', { class: 'cab-beyond' }, cab);\n\n        const style = cabLeaves(ride);\n", "        const style = cabLeaves(ride);\n", 'depthDefects'],
+            'no layer behind the leaves' => ["        drawOfficeView(node('g', { class: 'cab-beyond' }, cab), L, 'cab-office');\n", '', 'depthDefects'],
+            'the layer over the leaves' => ["        drawOfficeView(node('g', { class: 'cab-beyond' }, cab), L, 'cab-office');\n\n        const style = cabLeaves(ride);\n\n        // The two leaves meet at the seam, each edged in the door's edge colour: the seam is theirs, so it opens with them.\n        node('rect', { x: L.x, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf left', style }, cab);\n        node('rect', { x: seam + f, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf right', style }, cab);\n",
+                "\n        const style = cabLeaves(ride);\n\n        // The two leaves meet at the seam, each edged in the door's edge colour: the seam is theirs, so it opens with them.\n        node('rect', { x: L.x, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf left', style }, cab);\n        node('rect', { x: seam + f, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf right', style }, cab);\n        drawOfficeView(node('g', { class: 'cab-beyond' }, cab), L, 'cab-office');\n", 'depthDefects'],
             'the cab painted past its opening' => ["preserveAspectRatio: 'xMidYMid meet', overflow: 'hidden'", "preserveAspectRatio: 'xMidYMid meet', overflow: 'visible'", 'paletteDefects'],
             'the room alone not answering its back wall' => ['    return { back };', '    return { back: { x: 0, y: 0, w: box.w, h: box.h } };', 'depthDefects'],
+            // card#12052's: the ceiling or the back wall left unshaded (§ 4.5 says every surface deepens toward the back).
+            'the ceiling unshaded' => ["at(l, top, D)), 'shade-ceiling');", 'at(l, top, D)));', 'depthDefects'],
+            'the back wall unshaded' => ["class: 'cab-shade cab-back-shade', 'fill-opacity': FAR }, g);", "class: 'cab-back-shade-gone', 'fill-opacity': FAR }, g);", 'depthDefects'],
+            // card#12052's: the office missing, unclipped, peopled, named, painted inline or moving; the band's cab missing,
+            // unclipped, over the leaves, moving, adding a door span, sharing the dialog's ids or off the palette; a seam line
+            // over either open doorway; a mixed colour with no fallback, or mixing outside its block.
+            'the office not drawn' => ["        drawOfficeView(node('g', { class: 'cab-beyond' }, cab), L, 'cab-office');", "        node('g', { class: 'cab-beyond' }, cab);", 'officeDefects'],
+            'the office unclipped' => ['    const room = clippedTo(g, defs, box, id);', '    const room = g;', 'officeDefects'],
+            'a character in the office' => ['    return { clip: box };', "    node('image', { class: 'character', href: 'data:,' }, room);\n    return { clip: box };", 'officeDefects'],
+            'a name in the office' => ['    return { clip: box };', "    node('text', { class: 'office-plate' }, room).textContent = 'aimla';\n    return { clip: box };", 'officeDefects'],
+            'an inline hex in the office' => ["    face('office-floor', pts(", "    node('polygon', { points: pts(at(l, 0, 0)), fill: '#c0ffee', class: 'office-rug' }, room);\n    face('office-floor', pts(", 'officeDefects'],
+            'the office moving' => ['    return { clip: box };', "    node('animateTransform', { attributeName: 'transform', type: 'translate', dur: '4s' }, room);\n    return { clip: box };", 'officeDefects'],
+            'no cab behind the band\'s leaves' => ["            drawCabInterior(clippedTo(inside, node('defs', {}, inside), doorway, 'band-cab'), doorway, 'band-cab');\n", '', 'bandDefects'],
+            'the band\'s cab unclipped' => ["drawCabInterior(clippedTo(inside, node('defs', {}, inside), doorway, 'band-cab'), doorway, 'band-cab');", "drawCabInterior(inside, doorway, 'band-cab');", 'bandDefects'],
+            'the band\'s cab over the leaves' => ["class: 'elevator-leaf right', style: leaves }, control);\n", "class: 'elevator-leaf right', style: leaves }, control);\n            drawCabInterior(control, doorway, 'band-cab-over');\n", 'bandDefects'],
+            'the band\'s cab moving' => ["doorway, 'band-cab'), doorway, 'band-cab');\n", "doorway, 'band-cab'), doorway, 'band-cab');\n            node('animate', { attributeName: 'opacity', dur: '1s' }, inside.children[1]);\n", 'bandDefects'],
+            'the band\'s cab adding a door span' => ["            const doorway = { x: e.x, y: e.y, w: e.w, h: e.h };\n", "            const doorway = { x: e.x, y: e.y, w: e.w, h: e.h };\n            (scene.doors ??= []).push({ from: 0, to: 1 });\n", 'bandDefects'],
+            'the band\'s cab sharing the dialog\'s ids' => ["doorway, 'band-cab'), doorway, 'band-cab');", "doorway, 'band-cab'), doorway, 'cab');", 'bandDefects'],
+            'the band\'s cab off the palette' => ['                style: palette === null ? null : `--cab-frame:${palette.frame};--cab-lamp:${palette.lamp}`,', '                style: null,', 'bandDefects'],
+            'a seam line over the band\'s doorway' => ["class: 'elevator-leaf right', style: leaves }, control);\n", "class: 'elevator-leaf right', style: leaves }, control);\n            node('line', { x1: e.seam, y1: e.y, x2: e.seam, y2: e.y + e.h, class: 'elevator-seam' }, control);\n", 'seamDefects'],
+            'a seam line over the cab\'s doorway' => ["class: 'elevator-leaf right', style }, cab);\n", "class: 'elevator-leaf right', style }, cab);\n        node('line', { x1: seam, y1: L.y, x2: seam, y2: L.y + L.h, class: 'elevator-seam' }, cab);\n", 'seamDefects'],
+            'no fallback for a mixed colour' => ['${unmixed(MIXED)}@supports', '@supports', 'mixDefects'],
+            'the fallback still mixing' => ['const unmixed = (css) => css.replace(', 'const unmixed = (css) => css || css.replace(', 'mixDefects'],
+            'a mix outside its block' => ['.cab-sill{fill:var(--door-edge)}', '.cab-sill{fill:color-mix(in srgb,var(--door-edge) 50%,var(--door))}', 'mixDefects'],
             'the cab doors not closing on entering' => ["        case 'entering':\n            return ride.ms === 0 ? null : `animation:leaf-close", "        case 'entering':\n            return ride.ms === 0 ? null : `animation:leaf-open", 'cabDefects'],
         ] as $what => [$from, $to, $check]) {
             $dir = $this->mutatedModules(['painter.js', $from, $to]);
@@ -397,8 +463,12 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
 
         $y = $d['beyond'];
 
-        if ($y === null || $y['children'] !== 0 || ! ($y['recess'] < $y['at'] && $y['at'] < $y['leaf'])) {
-            $defects[] = 'the layer behind the leaves is not an empty group over the recess and under the leaves: '.json_encode($y);
+        if ($y === null || ! ($y['recess'] < $y['at'] && $y['at'] < $y['leaf'])) {
+            $defects[] = 'the layer behind the leaves is not a group over the recess and under the leaves: '.json_encode($y);
+        }
+
+        if (array_keys(array_filter($d['shaded'])) !== ['ceiling', 'floor', 'left', 'right', 'back']) {
+            $defects[] = 'a surface carries no depth overlay: '.json_encode($d['shaded']);
         }
 
         $a = $d['alone'];
@@ -413,6 +483,208 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
 
         if ($a['ids'] === [] || array_filter($a['ids'], static fn ($id) => ! str_starts_with($id, 'probe-')) !== []) {
             $defects[] = 'drawCabInterior()\'s ids are not the prefix it was handed: '.json_encode($a['ids']);
+        }
+
+        return $defects;
+    }
+
+    /**
+     * Scenery's census, read for what scenery may not carry: a word, an image, a datum attribute, a colour of its own, any
+     * motion — and, where `$own` is given, a class outside the view's own (`$own` its prefix; `left`, `right`, `lit` its
+     * modifiers), which is where a character, a desk slot or a badge would show.
+     *
+     * @param  list<array<string, mixed>>  $census
+     * @return list<string>
+     */
+    private function sceneryDefects(string $what, array $census, ?string $own): array
+    {
+        $defects = [];
+
+        foreach ($census as $n) {
+            $at = "{$what}: <{$n['tag']} class=\"".implode(' ', $n['cls']).'">';
+
+            if ($n['text'] || in_array($n['tag'], ['text', 'image', 'foreignObject', 'use'], true)) {
+                $defects[] = "{$at} is a word or an image";
+            }
+
+            if ($n['data'] !== []) {
+                $defects[] = "{$at} carries ".implode(', ', $n['data']);
+            }
+
+            if ($n['inline'] !== []) {
+                $defects[] = "{$at} carries a colour of its own (".implode(', ', $n['inline']).')';
+            }
+
+            if ($n['motion']) {
+                $defects[] = "{$at} moves";
+            }
+
+            if ($own !== null) {
+                $foreign = array_filter($n['cls'], static fn ($c) => ! str_starts_with($c, $own) && ! in_array($c, ['left', 'right', 'lit'], true));
+
+                if ($foreign !== []) {
+                    $defects[] = "{$at} is not the view's own: ".implode(' ', $foreign);
+                }
+            }
+        }
+
+        return $defects;
+    }
+
+    /** @return list<string> */
+    private function officeDefects(array $run): array
+    {
+        $o = $run['office'];
+        $defects = [];
+
+        if (! $o['found'] || $o['beyond'] !== 1) {
+            return ['the cab\'s layer behind the leaves holds no office view, or more than one'];
+        }
+
+        $near = static fn ($a, $b) => $a !== null && $b !== null && max(array_map(static fn ($k) => abs($a[$k] - $b[$k]), ['x', 'y', 'w', 'h'])) < 0.01;
+
+        if ($o['clip'] === null || ! $near($o['clip']['rect'], $o['door']) || $o['clip']['drawn'] === 0) {
+            $defects[] = 'the office is not drawn clipped to the doorway the leaves span: '.json_encode(['clip' => $o['clip'], 'door' => $o['door']]);
+        }
+
+        $count = static fn ($cls) => count(array_filter($o['census'], static fn ($n) => in_array($cls, $n['cls'], true)));
+
+        foreach (['office-floor' => 1, 'office-ceiling' => 1, 'office-wall' => 2, 'office-back' => 1, 'office-glass' => 1, 'office-desk-top' => 2, 'office-chair' => 2, 'office-pot' => 1, 'office-leaf' => 1] as $part => $least) {
+            if ($count($part) < $least) {
+                $defects[] = "the office draws {$count($part)} .{$part}, fewer than {$least}";
+            }
+
+            // The glass is painted by its gradient, whose stops are classes of their own (below).
+            if ($part !== 'office-glass' && preg_match('/\.'.preg_quote($part, '/').'\{[a-z-]+:/', $run['style']) !== 1) {
+                $defects[] = "STYLE paints no .{$part}";
+            }
+        }
+
+        foreach (['office-sky-stop', 'office-day-stop', 'office-shade-stop'] as $stop) {
+            if (preg_match('/\.'.$stop.'\{stop-color:var\(--[a-z0-9-]+\)\}/', $run['style']) !== 1) {
+                $defects[] = "STYLE does not colour .{$stop} from a token";
+            }
+        }
+
+        array_push($defects, ...$this->sceneryDefects('the office', $o['census'], 'office-'));
+
+        $a = $o['alone'];
+
+        if ($a['answered'] !== $a['box'] || $a['clip'] === null || $a['clip']['rect'] !== $a['box']) {
+            $defects[] = 'drawOfficeView() alone is not clipped to the box it was handed, or does not answer it: '.json_encode($a);
+        }
+
+        if ($a['ids'] === [] || array_filter($a['ids'], static fn ($id) => ! str_starts_with($id, 'probe-office-')) !== []) {
+            $defects[] = 'drawOfficeView()\'s ids are not the prefix it was handed: '.json_encode($a['ids']);
+        }
+
+        return $defects;
+    }
+
+    /** @return list<string> */
+    private function bandDefects(array $run): array
+    {
+        $b = $run['band'];
+        $e = $b['elevator'];
+        $door = ['x' => $e['x'], 'y' => $e['y'], 'w' => $e['w'], 'h' => $e['h']];
+        $defects = [];
+
+        foreach (['themed', 'walking', 'unthemed'] as $case) {
+            $c = $b[$case];
+
+            if (! $c['found']) {
+                $defects[] = "{$case}: the band draws no cab behind its leaves";
+
+                continue;
+            }
+
+            if ($c['rooms'] === [] || $c['leaf'] < 0 || max($c['rooms']) > $c['leaf']) {
+                $defects[] = "{$case}: a cab room is drawn over the leaves (rooms at ".json_encode($c['rooms']).", the first leaf at {$c['leaf']})";
+            }
+
+            if ($c['sides'] !== 2 || count($c['surfaces']) !== 3) {
+                $defects[] = "{$case}: the band's cab is not drawCabInterior()'s room: ".json_encode(['sides' => $c['sides'], 'surfaces' => $c['surfaces']]);
+            }
+
+            if ($c['clip'] === null || $c['clip']['rect'] !== $door || $c['clip']['drawn'] === 0) {
+                $defects[] = "{$case}: the band's cab is not clipped to the doorway: ".json_encode($c['clip']);
+            }
+
+            array_push($defects, ...$this->sceneryDefects("{$case}: the band's cab", $c['census'], null));
+
+            $ids = array_values(array_filter(array_map(static fn ($n) => $n['id'], $c['census'])));
+
+            if ($ids === [] || array_filter($ids, static fn ($id) => ! str_starts_with($id, 'band-cab-')) !== []) {
+                $defects[] = "{$case}: the band's cab's ids are not its own (band-cab-…): ".json_encode($ids);
+            }
+
+            if (! $c['scene']) {
+                $defects[] = "{$case}: painting the band changed the scene it was handed: doors ".json_encode($c['doors']);
+            }
+        }
+
+        $palette = $b['palette'];
+
+        if ($b['themed']['carriers'] !== "--cab-frame:{$palette['frame']};--cab-lamp:{$palette['lamp']}") {
+            $defects[] = 'with the house theme, the band\'s cab is not in its elevator palette: '.json_encode($b['themed']['carriers']);
+        }
+
+        if ($b['unthemed']['carriers'] !== null || ! str_contains($run['style'], '.band-cab{--cab-frame:var(--door-frame);--cab-lamp:var(--lamp)}')) {
+            $defects[] = 'with no theme, the band\'s cab does not fall back to the sheet\'s door frame and lamp';
+        }
+
+        if ($b['walking']['doors'] !== [['from' => 3, 'to' => 8]]) {
+            $defects[] = 'the walk\'s door spans are not what the scene carried: '.json_encode($b['walking']['doors']);
+        }
+
+        return $defects;
+    }
+
+    /** @return list<string> nothing but the leaves (and, on the band, its hit area) drawn after the layer behind them */
+    private function seamDefects(array $run): array
+    {
+        $defects = [];
+
+        if ($run['seam']['cab'] !== ['g.cab-beyond', 'rect.elevator-leaf left', 'rect.elevator-leaf right']) {
+            $defects[] = 'the cab draws more than its leaves after the layer behind them: '.json_encode($run['seam']['cab']);
+        }
+
+        if ($run['seam']['band'] !== ['rect.elevator-leaf left', 'rect.elevator-leaf right', 'rect.elevator-hit']) {
+            $defects[] = 'the band\'s elevator draws more than its leaves and its hit area: '.json_encode($run['seam']['band']);
+        }
+
+        return $defects;
+    }
+
+    /** @return list<string> a `color-mix()` outside the `@supports` block, or a rule in it with no plain rule of its selector outside */
+    private function mixDefects(array $run): array
+    {
+        $style = $run['style'];
+        $defects = [];
+
+        if (preg_match('/@supports \(fill:color-mix\([^{]*\)\)\{((?:[^{}]*\{[^{}]*\})*)\s*\}/', $style, $m, PREG_OFFSET_CAPTURE) !== 1) {
+            return ['STYLE holds no @supports (color-mix) block'];
+        }
+
+        $block = $m[1][0];
+        $outside = substr($style, 0, $m[0][1]).substr($style, $m[0][1] + strlen($m[0][0]));
+
+        if (str_contains($outside, 'color-mix(')) {
+            $defects[] = 'STYLE mixes a colour outside its @supports block';
+        }
+
+        preg_match_all('/([^{}]+)\{([^{}]*)\}/', $block, $rules, PREG_SET_ORDER);
+
+        if ($rules === []) {
+            $defects[] = 'the @supports block holds no rule';
+        }
+
+        foreach ($rules as [, $selector]) {
+            $selector = trim($selector);
+
+            if (preg_match('/(?:^|[}\s])'.preg_quote($selector, '/').'\{([^{}]*)\}/', $outside, $plain) !== 1 || ! str_contains($plain[1], 'var(--')) {
+                $defects[] = "{$selector} mixes its colour with no plain rule outside the block to fall back on";
+            }
         }
 
         return $defects;
