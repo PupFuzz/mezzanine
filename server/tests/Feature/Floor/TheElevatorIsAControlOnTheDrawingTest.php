@@ -25,6 +25,14 @@ use Tests\TestCase;
  * ⛔ THE CAB (`paintCab()`) draws two leaves — closing on `entering`, opening on `chosen`, each after the door
  * delay — and no text; `null` empties it.
  *
+ * ⛔ THE CAB IS IN THE HOUSE THEME's ELEVATOR PALETTE, AND FITTED WHOLE (card#12039). `cabTheme()` carries the shipped
+ * house theme's `PALETTE.elevator` frame and lamp onto the dialog as `--cab-frame` / `--cab-lamp` — the one carrier
+ * the drawing and the button popup both read — and a painter holding no theme removes them. The cab's frame and lamp
+ * are painted from those properties, never an inline colour; its space is fitted with `meet`, never cropped with
+ * `slice`, its overflow visible so the wall and floor run on past the door, and its shape handed to the layout as
+ * `--cab-aspect`. That the whole door is then IN THE WINDOW is a browser's to measure: `tools/design/floor-ride.browser.mjs`'s
+ * `cab-fit` row, run by hand.
+ *
  * ⛔ THE RIDE's DOORS MOVE CONTINUOUSLY, AND THE WALKS' STEP (card#12038). Every ride motion — band and cab — eases
  * (`ease-in-out`) over the length the phase hands it, and no ride style carries `steps(`: the ride is § 6.3's
  * exception, which is not claim-bearing, so no loop rate binds it (§ 12's *Ride door motion*). The walks' leaves are
@@ -57,6 +65,11 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
     public function test_the_cab_draws_two_leaves_and_no_words(): void
     {
         $this->assertSame([], $this->cabDefects($this->run_()));
+    }
+
+    public function test_the_cab_is_in_the_house_elevator_palette_and_fitted_whole(): void
+    {
+        $this->assertSame([], $this->paletteDefects($this->run_()));
     }
 
     /** No ride door style — the band's in any phase, the cab's in any phase — is quantised with `steps(` (card#12038). */
@@ -92,6 +105,13 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
                 "        case 'chosen':\n".'            return ride.ms === 0 ? \'transform:scaleX(.12)\' : `animation:leaf-open ${motion}ms steps(4)', 'steppedDefects'],
             'the band doors linear' => ['            return ride.ms === 0 ? \'transform:scaleX(.12)\' : `animation:leaf-open ${motion}ms ${RIDE_DOOR_EASING} ${delay}ms forwards`;',
                 '            return ride.ms === 0 ? \'transform:scaleX(.12)\' : `animation:leaf-open ${motion}ms linear ${delay}ms forwards`;', 'leafDefects'],
+            // card#12039's REDs: the cab cropped again, the palette not carried, a stale palette kept, the frame or the
+            // lamp painted off the carrier.
+            'the cab sliced' => ["preserveAspectRatio: 'xMidYMid meet'", "preserveAspectRatio: 'xMidYMid slice'", 'paletteDefects'],
+            'the palette not carried' => ["        el.style.setProperty('--cab-frame', palette.frame);\n", '', 'paletteDefects'],
+            'a stale palette kept' => ["            el.style.removeProperty('--cab-lamp');\n", '', 'paletteDefects'],
+            'the frame off the palette' => ['.cab-frame{fill:var(--cab-frame)}', '.cab-frame{fill:var(--door-frame)}', 'paletteDefects'],
+            'the lamp off the palette' => ['.cab-lamp{fill:var(--cab-lamp)}', '.cab-lamp{fill:var(--lamp)}', 'paletteDefects'],
             'the cab doors not closing on entering' => ["        case 'entering':\n            return ride.ms === 0 ? null : `animation:leaf-close", "        case 'entering':\n            return ride.ms === 0 ? null : `animation:leaf-open", 'cabDefects'],
         ] as $what => [$from, $to, $check]) {
             $dir = $this->mutatedModules(['painter.js', $from, $to]);
@@ -212,6 +232,44 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
 
         if ($run['cab']['emptied']['children'] !== 0) {
             $defects[] = 'paintCab(null) leaves the cab drawn';
+        }
+
+        return $defects;
+    }
+
+    /** @return list<string> */
+    private function paletteDefects(array $run): array
+    {
+        $p = $run['palette'];
+        $defects = [];
+        $palette = $p['palette'];
+
+        $this->assertMatchesRegularExpression('/^#[0-9a-f]{6}$/i', (string) ($palette['frame'] ?? ''), 'the house theme has no elevator frame colour this check can read');
+
+        if ($p['carried'] !== ['--cab-frame' => $palette['frame'], '--cab-lamp' => $palette['lamp']]) {
+            $defects[] = 'cabTheme() carried '.json_encode($p['carried']).' onto the dialog, not the house elevator palette '.json_encode($palette);
+        }
+
+        if ($p['unthemed'] !== []) {
+            $defects[] = 'with no theme, cabTheme() left '.json_encode($p['unthemed']).' on the dialog';
+        }
+
+        if ($p['fit'] !== 'xMidYMid meet' || $p['overflow'] !== 'visible') {
+            $defects[] = "the cab is fitted {$p['fit']} with overflow {$p['overflow']} — not whole, with the wall running on";
+        }
+
+        if ($p['viewBox'] === null || $p['aspect'] !== str_replace(['0 0 ', ' '], ['', ' / '], $p['viewBox'])) {
+            $defects[] = "the cab's shape handed to the layout ({$p['aspect']}) is not its space's ({$p['viewBox']})";
+        }
+
+        foreach (['frame', 'lamp'] as $part) {
+            if ($p[$part] === null || $p[$part]['fill'] !== null) {
+                $defects[] = "the cab's {$part} is ".json_encode($p[$part]).' — drawn, and painted by its class, never inline';
+            }
+
+            if (! str_contains($p['style'], ".cab-{$part}{fill:var(--cab-{$part})}")) {
+                $defects[] = "the cab's style paints .cab-{$part} from something other than --cab-{$part}";
+            }
         }
 
         return $defects;

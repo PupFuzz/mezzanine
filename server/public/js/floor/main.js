@@ -575,6 +575,8 @@ loadArt().then(({ furniture, characters, registry, themes, failed }) => {
         ride: () => rideAct(screen.ride()),
         house: registry?.HOUSE_THEME ?? null,
     });
+    // § 4.5 (card#12039): the cab's drawing and its button popup in the house theme's elevator palette.
+    painter.cabTheme(cab);
 
     if (furniture !== null) {
         screen.sceneInputs({
