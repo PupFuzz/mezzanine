@@ -59,6 +59,12 @@ function referenceViewport() {
 /** The shipped hold, read from the module the page imports (the head script's copy is held equal by the suite). */
 const CAB_HOLD_MS = Number(/export const CAB_HOLD_MS = (\d+);/.exec(readFileSync(join(REPO, 'server', 'public', 'js', 'wire', 'ride-arrival.js'), 'utf8'))[1]);
 
+/** The ride's door motion (§ 12's *Ride door motion*, card#12038) and one fade (one loop frame), read from the modules. */
+const RIDE_DOOR_MS = Number(/^export const RIDE_DOOR_MS = (\d+);$/m.exec(readFileSync(join(REPO, 'server', 'public', 'js', 'floor', 'floor-screen.js'), 'utf8'))[1]);
+const FADE_MS = 1000 / Number(/^export const LOOP_FPS = (\d+);$/m.exec(readFileSync(join(REPO, 'server', 'public', 'js', 'wire', 'animation-set.js'), 'utf8'))[1]);
+/** A phase that fades and then moves its doors: `entering`, `chosen`, `staying`, `arriving`. */
+const DOOR_PHASE_MS = FADE_MS + RIDE_DOOR_MS;
+
 /** The run, from whichever fixture file holds it, with the rig's `@json:` / `@text:` references resolved. */
 function fixtureRun(name) {
   const holders = readdirSync(FIXTURES).filter((f) => f.endsWith('.json'))
@@ -297,13 +303,13 @@ async function until(fn, ms, why) {
 async function intoTheCab(s) {
   await s.click('#floor-drawing [data-key="elevator"]');
   try {
-    await until(async () => (await s.cab()).open, 2000, 'the elevator opened no cab');
+    await until(async () => (await s.cab()).open, RIDE_DOOR_MS + 1000, 'the elevator opened no cab');
   } catch (e) {
     const p = await s.at('#floor-drawing [data-key="elevator"]');
     const hit = p === null ? null : await s.ev(`(() => { const e = document.elementFromPoint(${p.x}, ${p.y}); return e === null ? null : e.tagName + '.' + (e.getAttribute('class') ?? '') + ' in ' + (e.closest('[data-key]')?.getAttribute('data-key') ?? '-'); })()`);
     throw new Error(`${e.message} (the elevator at ${JSON.stringify(p)}, the point hits ${hit}; page errors ${JSON.stringify((await s.record()).errors)})`);
   }
-  await until(() => s.ev("!document.getElementById('floor-cab-panel').inert"), 3000, 'the cab never reached inside');
+  await until(() => s.ev("!document.getElementById('floor-cab-panel').inert"), RIDE_DOOR_MS + DOOR_PHASE_MS + 1000, 'the cab never reached inside');
 }
 
 /** A ride from `aimla` to `stop`: settled, into the cab, the stop pressed; answers when the destination committed. */
@@ -324,7 +330,7 @@ async function references(s) {
 
 /** The cab, doors open, `chosen` at its end (no navigation pending yet): what the browser will snapshot in `leaving`. */
 async function cabOpenPixel(s) {
-  await sleep(650);
+  await sleep(DOOR_PHASE_MS - 100);
   return s.pixel();
 }
 
@@ -364,11 +370,11 @@ const ROWS = {
       const t = await s.ev('performance.now()');
       await s.click('#floor-drawing [data-key="elevator"]');
       const opened = await until(async () => ((await s.cab()).open ? s.ev('performance.now()') : null), 3000, 'the cab never opened').catch(() => null);
-      const limit = 500 + 250 + 120;
+      const limit = RIDE_DOOR_MS + FADE_MS + 120;
       return { defects: opened === null ? ['the cab never opened'] : (opened - t > limit ? [`the cab opened ${Math.round(opened - t)} ms after the press`] : []), facts: { after: opened === null ? null : Math.round(opened - t) } };
     })),
 
-  'door-order': row('the cab\'s doors close only after the cab has faded in (M3)', {}, { plant: [{ file: SCREEN, from: '        entering: [1 + D.close, 1],', to: '        entering: [1 + D.close, 0],' }] },
+  'door-order': row('the cab\'s doors close only after the cab has faded in (M3)', {}, { plant: [{ file: SCREEN, from: '        entering: [fade + door, fade],', to: '        entering: [fade + door, 0],' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla');
       await s.click('#floor-drawing [data-key="elevator"]');
@@ -379,9 +385,48 @@ const ROWS = {
         return { fade: fade?.startTime ?? null, leaf: leaf === undefined ? null : leaf.startTime + leaf.effect.getTiming().delay, name: leaf?.animationName ?? null }; })()`);
       const d = [];
       if (t.fade === null || t.leaf === null) d.push(`no fade or no door motion: ${JSON.stringify(t)}`);
-      else if (t.leaf < t.fade + 250 - 17) d.push(`the doors start ${Math.round(t.leaf - t.fade)} ms after the fade does — under one frame`);
+      else if (t.leaf < t.fade + FADE_MS - 17) d.push(`the doors start ${Math.round(t.leaf - t.fade)} ms after the fade does — under one frame`);
       if (t.name !== 'leaf-close') d.push(`the cab's doors ran ${t.name} on entering`);
       return { defects: d, facts: t };
+    })),
+
+  // card#12038: the operator's reading on the sandbox — *the doors open and close too quickly, and it is very choppy*.
+  // Each leaf's computed scale is sampled on every animation frame through a whole door motion, on the band
+  // (`opening`) and in the cab (`entering`): a continuous motion takes many distinct values, a stepped one a few. The
+  // drawing's rebuilds (the painter replaces it on every paint) and the frames over two refresh intervals are recorded,
+  // not judged: this headless shell rasterises in software, so its frame times are not a viewer's.
+  'smooth-doors': row('the ride\'s doors move continuously over § 12\'s Ride door motion, on the band and in the cab — never in loop-frame steps', {},
+    { plant: [{ file: 'js/floor/painter.js', from: "const RIDE_DOOR_EASING = 'ease-in-out';", to: "const RIDE_DOOR_EASING = 'steps(2)';" }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await s.open('/floor/aimla');
+      // One sampler, started just before the press: on every animation frame through `opening` and `entering`, the band's
+      // left leaf and the cab's.
+      const sample = `(window.__doors = { band: [], cab: [], gaps: [], rebuilds: [], t0: performance.now() },
+        new MutationObserver(() => { window.__doors.rebuilds.push(Math.round(performance.now() - window.__doors.t0)); }).observe(document.getElementById('floor-drawing'), { childList: true }),
+        (() => { const scale = (sel) => { const e = document.querySelector(sel); if (e === null) return null; const m = /matrix\\(([^,]+)/.exec(getComputedStyle(e).transform); return m === null ? 1 : Number(Number(m[1]).toFixed(3)); };
+          let last = performance.now();
+          const tick = (now) => { const t = now - window.__doors.t0; window.__doors.gaps.push([Math.round(t), Math.round(now - last)]); last = now;
+            window.__doors.band.push([t, scale('#floor-drawing .elevator-leaf.left')]); window.__doors.cab.push([t, scale('#floor-cab-doors .elevator-leaf.left')]);
+            if (t < ${RIDE_DOOR_MS + DOOR_PHASE_MS + 200}) requestAnimationFrame(tick); };
+          requestAnimationFrame(tick); })(), true)`;
+      await s.ev(sample);
+      await s.click('#floor-drawing [data-key="elevator"]');
+      await sleep(RIDE_DOOR_MS + DOOR_PHASE_MS + 400);
+      const r = await s.ev('window.__doors');
+      // The band opens over `opening`; the cab closes over `entering`'s door motion, which starts after its fade.
+      const band = r.band.filter(([t, v]) => t <= RIDE_DOOR_MS && v !== null).map(([, v]) => v);
+      const cabStart = RIDE_DOOR_MS + FADE_MS;
+      const cab = r.cab.filter(([t, v]) => t >= cabStart && t <= cabStart + RIDE_DOOR_MS && v !== null).map(([, v]) => v);
+      const distinct = (xs) => new Set(xs).size;
+      // Ten distinct values over a motion is far above a stepped motion's (its step count plus the ends) and far below a
+      // continuous one's at any frame rate a viewer would call smooth.
+      const MIN = 10;
+      const d = [];
+      if (distinct(band) < MIN) d.push(`the band's leaves took ${distinct(band)} distinct scales over the opening: ${JSON.stringify([...new Set(band)])}`);
+      if (distinct(cab) < MIN) d.push(`the cab's leaves took ${distinct(cab)} distinct scales over the closing: ${JSON.stringify([...new Set(cab)])}`);
+      const bandEnd = r.band.filter(([, v]) => v !== null).map(([, v]) => v).at(-1) ?? null;
+      if (bandEnd === null || Math.abs(bandEnd - 0.12) > 0.005) d.push(`the band's leaves end the sample at ${bandEnd}, not open`);
+      return { defects: d, facts: { band: distinct(band), cab: distinct(cab), frames: r.gaps.length, long_frames: r.gaps.slice(1).filter(([, g]) => g > 34), rebuilds: r.rebuilds, bandEnd } };
     })),
 
   focus: row('inside, focus is on the current floor\'s button, and stays there across a render', {}, { plant: [{ file: PANEL, from: '            const held = new Map([...list.children].map((li) => [li.dataset.stop, li]));', to: "            [...list.children].forEach((li) => li.remove());\n            const held = new Map();" }] },
@@ -422,7 +467,7 @@ const ROWS = {
       const ended = await s.cab();
       await sleep(900);
       await s.click('#floor-drawing [data-key="elevator"]');
-      const again = await until(async () => (await s.cab()).open, 2000, '').then(() => true, () => false);
+      const again = await until(async () => (await s.cab()).open, RIDE_DOOR_MS + 1000, '').then(() => true, () => false);
       const d = [];
       if (ended.open || ended.doors !== 0) d.push(`the cab is still drawn: ${JSON.stringify(ended)}`);
       if (ended.disabled !== null) d.push('the elevator still says a ride is in flight');
@@ -437,7 +482,7 @@ const ROWS = {
     async (chrome, c) => {
       const d = [];
       const facts = {};
-      for (const [label, wait] of [['chosen', 100], ['leaving', 900]]) {
+      for (const [label, wait] of [['chosen', 100], ['leaving', DOOR_PHASE_MS + 150]]) {
         await within(chrome, c, async (s) => {
           await s.open('/floor/aimla');
           await intoTheCab(s);
@@ -466,7 +511,7 @@ const ROWS = {
           await s.open('/floor/aimla');
           await intoTheCab(s);
           await s.click('#floor-cab-stops li[data-stop="zeta"] button');
-          await sleep(900);                                      // leaving: the navigation pending, held by the server
+          await sleep(DOOR_PHASE_MS + 150);                      // leaving: the navigation pending, held by the server
           await s.escape();
           await sleep(40);
           const release = () => fetch(`${srv.base}/release`);
@@ -495,7 +540,7 @@ const ROWS = {
       await s.escape();
       await until(async () => !(await s.cab()).open, 3000, 'the cab never closed');
       const closing = await s.cab();
-      await sleep(900);
+      await sleep(DOOR_PHASE_MS + 150);
       const after = await s.cab();
       const r = await s.record();
       const d = [];
@@ -615,11 +660,11 @@ const ROWS = {
       const r = await arrivedRecord(s);
       const arrived = r.classes.find(([, k]) => k.includes('ride-arrived'))?.[0] ?? null;
       const leaf = await s.ev("(async () => { const a = document.querySelector('#floor-drawing .elevator-leaf')?.getAnimations()[0]; if (a === undefined) return null; await a.ready; return { name: a.animationName, start: a.startTime + a.effect.getTiming().delay }; })()");
-      await sleep(900);
+      await sleep(DOOR_PHASE_MS + 150);
       const after = await s.cab();
       const d = [];
       if (!(r.scene?.leaves ?? []).every((l) => String(l).includes('leaf-close'))) d.push(`the first scene's leaves: ${JSON.stringify(r.scene?.leaves)}`);
-      if (arrived !== null && leaf !== null && leaf.start < arrived + 250 - 20) d.push(`the doors started closing ${Math.round(leaf.start - arrived)} ms after the fade began — before it ended`);
+      if (arrived !== null && leaf !== null && leaf.start < arrived + FADE_MS - 20) d.push(`the doors started closing ${Math.round(leaf.start - arrived)} ms after the fade began — before it ended`);
       if (after.disabled !== null) d.push('the arrival was still in flight a door cycle later');
       return { defects: d, facts: { arrived, leaf, after: after.disabled } };
     })),
@@ -735,7 +780,7 @@ const ROWS = {
     { plant: [{ file: MAIN, from: '        after(ride.ms, screen.abandoned);\n', to: '' }] },
     (chrome, c) => within(chrome, c, async (s, srv) => {
       const pressed = await pressStop(s, 'zeta');
-      await sleep(750 + CAB_HOLD_MS + 500);
+      await sleep(DOOR_PHASE_MS + CAB_HOLD_MS + 500);
       const d = tornDown(srv, pressed);
       await fetch(`${srv.base}/release`);
       await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the late answer never arrived');
@@ -778,7 +823,8 @@ const ROWS = {
       const after = await s.cab();
       const inert = await s.ev("document.getElementById('floor-signin').closest('[inert]') !== null || document.getElementById('floor-cab').open");
       await s.ev("document.querySelector('#floor-drawing [data-key=\"elevator\"]').dispatchEvent(new MouseEvent('click', { bubbles: true }))");
-      await sleep(900);
+      // Past where an accepted press would have opened the cab (`opening`'s length).
+      await sleep(RIDE_DOOR_MS + FADE_MS + 150);
       const pressed = await s.cab();
       const d = [];
       if (after.open || inert) d.push('the cab stayed over the prompt');
@@ -791,7 +837,7 @@ const ROWS = {
     async (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla');
       await s.click('#floor-drawing [data-key="elevator"]');
-      await sleep(1600);
+      await sleep(RIDE_DOOR_MS + DOOR_PHASE_MS + FADE_MS + 100);   // inside, its buttons faded in
       const a = (await s.record()).errors;
       await s.click('#floor-cab-stops li[data-stop="zeta"] button').catch(() => {});
       await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, '').catch(() => {});
@@ -806,11 +852,15 @@ const ROWS = {
       await s.ev("document.querySelector('#floor-drawing [data-key=\"elevator\"]').focus()");
       const enter = (autoRepeat) => s.page('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r', unmodifiedText: '\r', autoRepeat });
       await enter(false);
-      for (let i = 0; i < 50; i++) { await sleep(40); await enter(true); }
+      // Held past `inside` and its buttons' fade, so a repeat lands while the stops answer.
+      for (let i = 0; i < Math.ceil((RIDE_DOOR_MS + DOOR_PHASE_MS + FADE_MS + 500) / 40); i++) { await sleep(40); await enter(true); }
       await s.page('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
       await sleep(400);
       const cab = await s.cab();
-      return { defects: cab.open && cab.path === '/floor/aimla' ? [] : [`the held Enter chose: ${JSON.stringify(cab)}`], facts: cab };
+      // Still `inside`: the cab open on this page and the band's leaves held open behind it — a stay chosen late in the
+      // hold is still fading the cab out, but its leaves are already closing.
+      const inside = cab.open && cab.path === '/floor/aimla' && cab.leaves.every((l) => l === 'transform:scaleX(.12)');
+      return { defects: inside ? [] : [`the held Enter chose: ${JSON.stringify(cab)}`], facts: cab };
     })),
 
   ride: row('press a floor: the destination is navigated to by a ride, held, and revealed at its first scene (no blank)',
@@ -851,7 +901,7 @@ function tornDown(srv, pressed) {
   const closed = srv.beacons.find((b) => b.kind === 'cab' && b.open === false && b.path === '/floor/aimla') ?? null;
   if (closed === null) return ['A never closed its cab before the destination answered'];
   const d = [];
-  if (closed.at < pressed + 750 + CAB_HOLD_MS - 50) d.push(`A closed its cab ${Math.round(closed.at - pressed)} ms after the press, before the bound`);
+  if (closed.at < pressed + DOOR_PHASE_MS + CAB_HOLD_MS - 50) d.push(`A closed its cab ${Math.round(closed.at - pressed)} ms after the press, before the bound`);
   if (closed.leaves.some((l) => l !== null) || closed.disabled !== null) d.push(`A at the bound: ${JSON.stringify(closed)}`);
   return d;
 }

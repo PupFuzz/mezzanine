@@ -25,7 +25,10 @@ use Tests\TestCase;
  * ⛔ THE CAB (`paintCab()`) draws two leaves — closing on `entering`, opening on `chosen`, each after the door
  * delay — and no text; `null` empties it.
  *
- * Every motion's step count is § 12's *Elevator leaves* row, read out of the document.
+ * ⛔ THE RIDE's DOORS MOVE CONTINUOUSLY, AND THE WALKS' STEP (card#12038). Every ride motion — band and cab — eases
+ * (`ease-in-out`) over the length the phase hands it, and no ride style carries `steps(`: the ride is § 6.3's
+ * exception, which is not claim-bearing, so no loop rate binds it (§ 12's *Ride door motion*). The walks' leaves are
+ * claim-bearing and keep § 12's *Elevator leaves* frames, read out of the document, at the loop rate with `steps()`.
  */
 class TheElevatorIsAControlOnTheDrawingTest extends TestCase
 {
@@ -56,6 +59,16 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
         $this->assertSame([], $this->cabDefects($this->run_()));
     }
 
+    /** No ride door style — the band's in any phase, the cab's in any phase — is quantised with `steps(` (card#12038). */
+    public function test_the_ride_doors_never_step(): void
+    {
+        $run = $this->run_();
+
+        $this->assertSame([], $this->steppedDefects($run));
+        $this->assertNotSame([], array_filter($this->rideStyles($run), static fn ($s) => str_contains((string) $s, 'animation:')),
+            'no ride style carried an animation — the check measured nothing');
+    }
+
     /** ⛔ THE CONTROLS — each plants one defect in a copy of the shipped painter. */
     public function test_each_check_goes_red_against_the_defect_it_exists_to_catch(): void
     {
@@ -70,9 +83,15 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
             'no negative delay' => ['    return { delay: doorDelay - ride.elapsed_ms, motion: ride.ms - doorDelay };', '    return { delay: Math.max(0, doorDelay - ride.elapsed_ms), motion: ride.ms - doorDelay };', 'leafDefects'],
             'the delay without the door offset' => ['    return { delay: doorDelay - ride.elapsed_ms, motion: ride.ms - doorDelay };', '    return { delay: -ride.elapsed_ms, motion: ride.ms - doorDelay };', 'leafDefects'],
             'the leaves closing inside' => ["            // `entering`, `inside`, `chosen`, `leaving`: the floor's leaves stand open behind the cab.\n            return 'transform:scaleX(.12)';",
-                '            return `animation:leaf-close ${motion}ms steps(${D.close}) ${delay}ms both`;', 'leafDefects'],
+                '            return `animation:leaf-close ${motion}ms ${RIDE_DOOR_EASING} ${delay}ms both`;', 'leafDefects'],
             'a walk adding to the ride' => ["            const leaves = riding\n                ? rideLeaves(scene.ride)", "            const leaves = riding && (scene.doors ?? []).length === 0\n                ? rideLeaves(scene.ride)", 'leafDefects'],
             'a word in the cab' => ["        const style = cabLeaves(ride);\n", "        const style = cabLeaves(ride);\n\n        node('text', {}, cab).textContent = 'B';\n", 'cabDefects'],
+            // card#12038's RED: the ride's doors quantised again — by any step count — red the step check itself.
+            'the ride doors stepped' => ["const RIDE_DOOR_EASING = 'ease-in-out';", "const RIDE_DOOR_EASING = 'steps(2)';", 'steppedDefects'],
+            'the ride doors stepped, the cab alone' => ["        case 'chosen':\n".'            return ride.ms === 0 ? \'transform:scaleX(.12)\' : `animation:leaf-open ${motion}ms ${RIDE_DOOR_EASING}',
+                "        case 'chosen':\n".'            return ride.ms === 0 ? \'transform:scaleX(.12)\' : `animation:leaf-open ${motion}ms steps(4)', 'steppedDefects'],
+            'the band doors linear' => ['            return ride.ms === 0 ? \'transform:scaleX(.12)\' : `animation:leaf-open ${motion}ms ${RIDE_DOOR_EASING} ${delay}ms forwards`;',
+                '            return ride.ms === 0 ? \'transform:scaleX(.12)\' : `animation:leaf-open ${motion}ms linear ${delay}ms forwards`;', 'leafDefects'],
             'the cab doors not closing on entering' => ["        case 'entering':\n            return ride.ms === 0 ? null : `animation:leaf-close", "        case 'entering':\n            return ride.ms === 0 ? null : `animation:leaf-open", 'cabDefects'],
         ] as $what => [$from, $to, $check]) {
             $dir = $this->mutatedModules(['painter.js', $from, $to]);
@@ -136,12 +155,13 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
         $e = $run['elapsed'];
         $defects = [];
         $held = 'transform:scaleX(.12)';
-        // The probe's ride: 750 ms, the doors 250 ms in (opening: 500, at once).
+        // The probe's ride: 750 ms, the doors 250 ms in (opening: 500, at once) — the painter moves them over whatever
+        // the phase hands it, eased; how long that is is `ridePhase()`'s (`TheFloorsRideIsNavigationTest`).
         $expect = [
-            'opening' => [fn ($t) => "animation:leaf-open 500ms steps({$d['open']}) ".(0 - $t).'ms forwards'],
+            'opening' => [fn ($t) => 'animation:leaf-open 500ms ease-in-out '.(0 - $t).'ms forwards'],
             'entering' => [fn () => $held], 'inside' => [fn () => $held], 'chosen' => [fn () => $held], 'leaving' => [fn () => $held],
-            'staying' => [fn ($t) => "animation:leaf-close 500ms steps({$d['close']}) ".(250 - $t).'ms both'],
-            'arriving' => [fn ($t) => "animation:leaf-close 500ms steps({$d['close']}) ".(250 - $t).'ms both'],
+            'staying' => [fn ($t) => 'animation:leaf-close 500ms ease-in-out '.(250 - $t).'ms both'],
+            'arriving' => [fn ($t) => 'animation:leaf-close 500ms ease-in-out '.(250 - $t).'ms both'],
         ];
 
         foreach ($expect as $phase => [$style]) {
@@ -169,12 +189,11 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
     /** @return list<string> */
     private function cabDefects(array $run): array
     {
-        $d = $this->door();
         $e = $run['elapsed'];
         $defects = [];
         $expect = [
-            'entering' => 'animation:leaf-close 500ms steps('.$d['close'].') '.(250 - $e).'ms both',
-            'chosen' => 'animation:leaf-open 500ms steps('.$d['open'].') '.(250 - $e).'ms both',
+            'entering' => 'animation:leaf-close 500ms ease-in-out '.(250 - $e).'ms both',
+            'chosen' => 'animation:leaf-open 500ms ease-in-out '.(250 - $e).'ms both',
             'inside' => null,
             'leaving' => 'transform:scaleX(.12)',
         ];
@@ -196,5 +215,30 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
         }
 
         return $defects;
+    }
+
+    /** @return list<string|null> every style the ride gives a leaf: the band's in each phase at both times, and the cab's */
+    private function rideStyles(array $run): array
+    {
+        $styles = [];
+
+        foreach ($run['leaves'] as $times) {
+            foreach ($times as $leaves) {
+                array_push($styles, ...$leaves);
+            }
+        }
+
+        foreach (['entering', 'inside', 'chosen', 'leaving'] as $phase) {
+            array_push($styles, ...$run['cab'][$phase]['leaves']);
+        }
+
+        return $styles;
+    }
+
+    /** @return list<string> every ride leaf style quantised with `steps(` — the walks' form, which the ride never takes */
+    private function steppedDefects(array $run): array
+    {
+        return array_values(array_map(static fn ($s) => "a ride door is stepped: {$s}",
+            array_filter($this->rideStyles($run), static fn ($s) => str_contains((string) $s, 'steps('))));
     }
 }

@@ -9671,7 +9671,7 @@
       }
     },
     "floor_ride_signin": {
-      "note": "card#11795's AT-D3-26 under § 9 F6 (FLOOR.md § 4.5): `floor_rides`' floor with a ride `inside` when the stream ends (3000 ms — late enough for a browser to be inside the cab by then, `tools/design/floor-ride.browser.mjs`) and the recovery's next snapshot is answered `401` — the sign-in prompt ends the ride — then a press on the elevator under the prompt (5000 ms), refused.",
+      "note": "card#11795's AT-D3-26 under § 9 F6 (FLOOR.md § 4.5): `floor_rides`' floor with a ride `inside` when the stream ends (4500 ms — late enough for a browser to be inside the cab by then under § 12's *Ride door motion*, `tools/design/floor-ride.browser.mjs`; card#12038 moved it from 3000 ms with the ride's longer doors) and the recovery's next snapshot is answered `401` — the sign-in prompt ends the ride — then a press on the elevator under the prompt (6500 ms), refused.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -9902,9 +9902,9 @@
         ]
       },
       "messages": [
-        { "at_ms": 3000, "end": true }
+        { "at_ms": 4500, "end": true }
       ],
-      "until_ms": 6000,
+      "until_ms": 7500,
       "recovery": true,
       "floor": {
         "key": "aimla",
@@ -9923,7 +9923,7 @@
           { "at_ms": 100, "act": "ride" },
           { "at_ms": 600, "act": "entered" },
           { "at_ms": 1100, "act": "shut" },
-          { "at_ms": 5000, "act": "ride", "under_prompt": true }
+          { "at_ms": 6500, "act": "ride", "under_prompt": true }
         ]
       }
     },
