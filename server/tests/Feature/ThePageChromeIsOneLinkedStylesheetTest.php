@@ -82,6 +82,8 @@ class ThePageChromeIsOneLinkedStylesheetTest extends TestCase
         foreach ([
             // The defect itself, as card#12070 found it: the current floor's plate mixed with no fallback.
             'a mix outside its block' => ["    border-color: var(--scene-ink);\n    background: var(--door);\n}", "    border-color: var(--scene-ink);\n    background: color-mix(in srgb, var(--door) 65%, var(--cab-lamp));\n}", 'outside an @supports'],
+            // PR #344 review F4: a CSS function name is case-insensitive, so a mix in capitals is a mix.
+            'a mix outside its block, in capitals' => ["    border-color: var(--scene-ink);\n    background: var(--door);\n}", "    border-color: var(--scene-ink);\n    background: COLOR-MIX(in srgb, var(--door) 65%, var(--cab-lamp));\n}", 'outside an @supports'],
             'a mixed rule with no plain rule of its selector' => ["    [role=\"alert\"] {\n        background: color-mix(", "    [role=\"note\"] {\n        background: color-mix(", 'no plain rule'],
             // PR #343 review F4: the fallback rule is there, but sets another property.
             'a fallback that sets another property' => ["    --cab-rim: var(--scene-ink);\n", "    --cab-edge: var(--scene-ink);\n", 'sets no `--cab-rim`'],

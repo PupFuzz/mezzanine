@@ -550,11 +550,12 @@ const ROWS = {
   // card#12039: the operator's *I want to see the top of the elevator door (currently the door is too tall and stretches
   // to the top of the screen)*; card#12051: *an elevator is a limited space. It will not take up the entire screen.
   // Elevators are not very wide.* Inside, at every window in CAB_WINDOWS: the cab's whole open front lies in the window,
-  // narrower than it and of an elevator's shape (between 0.6 and 0.8 as wide as it is high); it is fitted, not shrunk
+  // narrower than it and of an elevator's shape (between 0.8 and 0.95 as wide as it is high: § 12's *Cab interior*, 200 × 230 cm,
+  // card#12071); it is fitted, not shrunk
   // (it spans the drawing's box on one axis, as a `meet` fit of the cab's space makes it); its back wall is inside it
   // with a side wall showing either side; the door's frame — its head and the lamp over it included — and both leaves
   // lie wholly in the window; and the button popup overlaps no part of the cab.
-  'cab-fit': row('inside the cab the whole cab — a narrow elevator-shaped room, its door\'s head and lamp included — is in the window at a wide, an ultra-wide, a tall, a phone, a small landscape and a small phone window, and the button popup covers none of it', {},
+  'cab-fit': row('inside the cab the whole cab — an elevator-shaped room taller than it is wide, its door\'s head and lamp included — is in the window at a wide, an ultra-wide, a tall, a phone, a small landscape and a small phone window, and the button popup covers none of it', {},
     { plant: [{ file: 'js/floor/painter.js', from: "preserveAspectRatio: 'xMidYMid meet'", to: "preserveAspectRatio: 'none'" }] },
     async (chrome, c) => {
       const d = [];
@@ -573,7 +574,7 @@ const ROWS = {
           if (!inWindow(m, g)) d.push(`${at}: the cab runs out of the window: ${JSON.stringify(m)}`);
           const [mw, mh] = [m.r - m.l, m.b - m.t];
           if (!(mw < 0.9 * g.w)) d.push(`${at}: the cab is ${Math.round(mw)} px wide in a ${g.w} px window — stretched across it`);
-          if (!(mw / mh >= 0.6 && mw / mh <= 0.8)) d.push(`${at}: the cab is ${Math.round(mw)} × ${Math.round(mh)} px — not an elevator's narrow, tall shape`);
+          if (!(mw / mh >= 0.8 && mw / mh <= 0.95)) d.push(`${at}: the cab is ${Math.round(mw)} × ${Math.round(mh)} px — not an elevator's shape, taller than it is wide`);
           const spans = mh >= 0.97 * (g.cell.b - g.cell.t) || mw >= 0.97 * (g.cell.r - g.cell.l);
           if (!spans) d.push(`${at}: the cab is drawn small in its box (${JSON.stringify(m)} in ${JSON.stringify(g.cell)})`);
           if (!(g.back.l > m.l && g.back.r < m.r && g.back.t > m.t && g.back.b < m.b)) d.push(`${at}: the back wall is not inside the cab: ${JSON.stringify(g.back)} in ${JSON.stringify(m)}`);
@@ -608,9 +609,10 @@ const ROWS = {
           want: { frame: rgb(PALETTE.elevator.frame), lamp: rgb(PALETTE.elevator.lamp), door: rgb(root.getPropertyValue('--door')), edge: rgb(root.getPropertyValue('--door-edge')) },
           got: { panel: cs('#floor-cab-panel').backgroundColor ?? null, stop: stop.backgroundColor ?? null, stopEdge: stop.borderTopColor ?? null,
             lit: cs('#floor-cab-stops li.current .cab-cap').backgroundColor ?? null, frame: cs('#floor-cab-doors .cab-frame').fill ?? null, lamp: cs('#floor-cab-doors .cab-lamp').fill ?? null },
-          // card#12051: the room's surfaces as painted, and again with the dialog's frame colour changed — each must follow it.
+          // card#12051: the room's surfaces as painted, and again with the dialog's frame colour changed — each must follow it;
+          // card#12071: the call plate beside the doors too.
           room: (() => {
-            const parts = ['.cab-back', '.cab-side.left', '.cab-side.right', '.cab-ceiling', '.cab-floor'];
+            const parts = ['.cab-back', '.cab-side.left', '.cab-side.right', '.cab-ceiling', '.cab-floor', '.cab-plate-body'];
             const read = () => Object.fromEntries(parts.map((p) => [p, cs('#floor-cab-doors ' + p).fill ?? null]));
             const dialog = document.getElementById('floor-cab');
             const before = read();
@@ -804,7 +806,7 @@ const ROWS = {
             const cs = (e) => getComputedStyle(e);
             const panel = document.getElementById('floor-cab-panel');
             return {
-              fills: Object.fromEntries(['#floor-cab-doors .cab-back', '#floor-cab-doors .cab-side', '#floor-cab-doors .cab-ceiling', '#floor-cab-doors .cab-floor',
+              fills: Object.fromEntries(['#floor-cab-doors .cab-back', '#floor-cab-doors .cab-side', '#floor-cab-doors .cab-ceiling', '#floor-cab-doors .cab-floor', '#floor-cab-doors .cab-plate-body',
                 '#floor-cab-doors .office-floor', '#floor-cab-doors .office-wall', '#floor-cab-doors .office-back', '#floor-cab-doors .office-ceiling', '#floor-cab-doors .office-desk-top',
                 '#floor-drawing .band-cab .cab-back', '#floor-drawing .band-cab .cab-side', '#floor-drawing .band-cab .cab-floor'].map((sel) => [sel, fill(sel)])),
               popup: {

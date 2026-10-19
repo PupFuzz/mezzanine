@@ -11,7 +11,8 @@ namespace Tests\Feature\Support;
  * mixed rule sits in an `@supports (<property>: color-mix(…))` block, and BEFORE that block a plain rule of the same
  * selector sets the same property to the mixed value with each `color-mix()` replaced by one of its own colours.
  *
- * This reads one stylesheet's text, comments dropped, and answers each break of that shape: a `color-mix()` outside
+ * This reads one stylesheet's text, comments dropped, and answers each break of that shape: a `color-mix()` — in any
+ * letter case, as CSS reads a function name (PR #344 review F4) — outside
  * such a block; a block with no rule; a mixed declaration whose selector has no plain rule, whose plain rule sets no
  * such property, or sets it to a colour that is not one of the mix's own; and a plain one that comes only after the
  * block (it would override the mix where `color-mix()` is supported). ⚠ What this does not see: a cascade by
@@ -33,7 +34,7 @@ trait HoldsEveryColourMixToAFallback
 
         foreach ($this->cssRules($outside) as [$selector, $declarations]) {
             foreach ($declarations as [$property, $value]) {
-                if (str_contains($value, 'color-mix(')) {
+                if (stripos($value, 'color-mix(') !== false) {
                     $defects[] = "{$where}: {$selector} mixes its `{$property}` outside an @supports (color-mix) block";
                 }
             }
@@ -51,7 +52,7 @@ trait HoldsEveryColourMixToAFallback
                 $after = $this->plainDeclarations(substr($outside, $this->outsideOffset($blocks, $start)), $selector);
 
                 foreach ($declarations as [$property, $value]) {
-                    if (! str_contains($value, 'color-mix(')) {
+                    if (stripos($value, 'color-mix(') === false) {
                         continue;
                     }
 
@@ -162,7 +163,7 @@ trait HoldsEveryColourMixToAFallback
     /** @return list<string> `value` with each `color-mix()` replaced by one of its two colours, every combination */
     private function colourMixChoices(string $value): array
     {
-        $at = strpos($value, 'color-mix(');
+        $at = stripos($value, 'color-mix(');
 
         if ($at === false) {
             return [$value];

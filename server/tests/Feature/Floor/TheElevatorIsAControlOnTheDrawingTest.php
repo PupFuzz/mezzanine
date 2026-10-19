@@ -35,13 +35,19 @@ use Tests\TestCase;
  * `--cab-aspect`. That the whole cab is then IN THE WINDOW is a browser's to measure: `tools/design/floor-ride.browser.mjs`'s
  * `cab-fit` row, run by hand.
  *
- * ⛔ THE CAB IS A ROOM IN DEPTH (card#12051): a one-point perspective of § 12's *Cab interior* (`painter.js`'s `CAB`,
- * held equal to that row here) — a narrow space taller than it is wide, the back wall carrying the door inset on
- * every side of the cab's opening, two side walls each a trapezoid whose far edge is shorter than its near one, a
+ * ⛔ THE CAB IS A ROOM IN DEPTH (card#12051): a one-point perspective of § 12's *Cab interior* (`painter.js`'s `CAB`
+ * and `LANDING`, held equal to that row here) — a space taller than it is wide, the back wall carrying the door where
+ * the row's eye puts it and inset on every side of the cab's opening, two side walls each a trapezoid whose far edge is shorter than its near one, a
  * ceiling over the back wall and a floor under it, each painted by its class from `--cab-frame`, never inline, and each
  * with its depth overlay — the back wall's an even one (card#12052: § 4.5 says every surface is shaded); the leaves on the
  * back wall; and the layer behind the leaves (`.cab-beyond`) over the doorway's recess and under the leaves.
  * `drawCabInterior()` draws the same room, and no door, into any box it is handed, and answers its back wall as it drew it.
+ *
+ * ⛔ CLOSER, WIDER, AND A CALL PLATE THAT IS SCENERY (card#12071). The rider's eye stands close enough that the doorway takes
+ * at least 1.2 times the share of the view it took from card#12051's eye; the band's cab is seen from the landing's eye,
+ * not the rider's. Beside the door's frame is one decorative call plate — buttons and an indicator window, aria-hidden,
+ * with no role, tab stop, handler or pointer, and no word, datum attribute, colour of its own or motion — and the band's
+ * cab has none (§ 6.3: the real panel is the popup).
  *
  * ⛔ THROUGH THE OPEN DOORS (card#12052). In the cab, the layer behind the leaves holds the office (`drawOfficeView()`),
  * clipped to the doorway the leaves span: a floor, a ceiling, two walls and a far one, windows, two desks, two chairs and a
@@ -130,16 +136,42 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
         $this->assertSame(['w' => (int) $m[1], 'd' => (int) $m[2], 'h' => (int) $m[3], 'left' => (int) $m[4], 'view' => (int) $m[5]], $this->run_()['office']['office']);
     }
 
-    /** § 12's *Cab interior* row is `painter.js`'s `CAB`, figure for figure. */
+    /**
+     * § 12's *Cab interior* row is `painter.js`'s `CAB` and `LANDING`, figure for figure — the cab's width, the rider's eye
+     * (its height, its distance from the doors' wall and the frame's from it) included (card#12071).
+     */
     public function test_green_section_12s_cab_interior_is_cab(): void
     {
-        $this->assertSame(1, preg_match('/^\| \*\*Cab interior\*\* \| \*\*(\d+) × (\d+) × (\d+) cm\*\* wide × deep × high, the eye (\d+) cm over the floor and (\d+) cm from the cab\'s open front, the door (\d+) × (\d+) cm \|/m', $this->floorMd(), $m),
+        $this->assertSame(1, preg_match('/^\| \*\*Cab interior\*\* \| \*\*(\d+) × (\d+) × (\d+) cm\*\* wide × deep × high, the eye (\d+) cm over the floor and (\d+) cm from the doors\' wall, the drawing\'s frame (\d+) cm from the eye, the door (\d+) × (\d+) cm; from the landing, the eye (\d+) cm from the cab\'s open front \|/m', $this->floorMd(), $m),
             '§ 12 carries no *Cab interior* row in the form this test reads');
 
+        $depth = $this->run_()['depth'];
+
         $this->assertSame(
-            ['w' => (int) $m[1], 'd' => (int) $m[2], 'h' => (int) $m[3], 'eye' => (int) $m[4], 'view' => (int) $m[5], 'door' => ['w' => (int) $m[6], 'h' => (int) $m[7]]],
-            $this->run_()['depth']['cab'],
+            ['w' => (int) $m[1], 'd' => (int) $m[2], 'h' => (int) $m[3], 'eye' => (int) $m[4], 'back' => (int) $m[5], 'view' => (int) $m[6], 'door' => ['w' => (int) $m[7], 'h' => (int) $m[8]]],
+            $depth['cab'],
         );
+        $this->assertSame(['view' => (int) $m[9], 'back' => (int) $m[9] + (int) $m[2]], $depth['landing']);
+    }
+
+    /**
+     * ⛔ THE CALL PLATE IS SCENERY (card#12071): one plate, beside the door's frame on the doors' wall, with its buttons and
+     * its indicator window — and aria-hidden, with no role, tab stop or handler, taking no pointer, and carrying no word,
+     * datum attribute, colour of its own or motion. The band's cab has none.
+     */
+    public function test_the_call_plate_beside_the_doors_is_inert_scenery(): void
+    {
+        $this->assertSame([], $this->plateDefects($this->run_()));
+    }
+
+    /**
+     * ⛔ THE RIDER STANDS CLOSER TO THE DOORS THAN card#12051's EYE DID (card#12071): the doorway the leaves span takes at
+     * least a fifth more of the cab's view than it did from that eye — 230 cm in front of a 160 × 140 × 230 cm cab's open
+     * front, which drew the doors' wall at 230 / (230 + 140) of the opening.
+     */
+    public function test_the_doors_take_more_of_the_view_than_before(): void
+    {
+        $this->assertSame([], $this->closerDefects($this->run_()));
     }
 
     /** No ride door style — the band's in any phase, the cab's in any phase — is quantised with `steps(` (card#12038). */
@@ -187,11 +219,11 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
             'the lamp off the palette' => ['.cab-lamp{fill:var(--cab-lamp)}', '.cab-lamp{fill:var(--lamp)}', 'paletteDefects'],
             // card#12051's: the cab flattened back to a front-on door, its side walls gone or off the palette, drawn as
             // wide as a room, painted past its opening, or with no layer behind its leaves.
-            'the cab flattened' => ['        const s = CAB.view / (CAB.view + Z);', '        const s = 1;', 'depthDefects'],
+            'the cab flattened' => ['        const s = lens.view / (lens.view + Z);', '        const s = 1;', 'depthDefects'],
             'no side walls' => ["    face('cab-side left', ", "    false && face('cab-side left', ", 'depthDefects'],
             'a side wall off the palette' => ['.cab-side{fill:color-mix(in srgb,var(--cab-frame) 88%,var(--door))}', '.cab-side{fill:var(--door)}', 'depthDefects'],
             'the ceiling inline' => ["    face('cab-ceiling', pts(", "    node('polygon', { fill: 'tan', points: pts(at(l, top, 0)) }, g).setAttribute('class', 'cab-ceiling');\n    face('cab-ceiling-gone', pts(", 'depthDefects'],
-            'the cab as wide as a room' => ['export const CAB = Object.freeze({ w: 160,', 'export const CAB = Object.freeze({ w: 400,', 'depthDefects'],
+            'the cab as wide as a room' => ['export const CAB = Object.freeze({ w: 200,', 'export const CAB = Object.freeze({ w: 400,', 'depthDefects'],
             'no layer behind the leaves' => ["        drawOfficeView(node('g', { class: 'cab-beyond' }, cab), L, 'cab-office');\n", '', 'depthDefects'],
             'the layer over the leaves' => ["        drawOfficeView(node('g', { class: 'cab-beyond' }, cab), L, 'cab-office');\n\n        const style = cabLeaves(ride);\n\n        // The two leaves meet at the seam, each edged in the door's edge colour: the seam is theirs, so it opens with them.\n        node('rect', { x: L.x, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf left', style }, cab);\n        node('rect', { x: seam + f, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf right', style }, cab);\n",
                 "\n        const style = cabLeaves(ride);\n\n        // The two leaves meet at the seam, each edged in the door's edge colour: the seam is theirs, so it opens with them.\n        node('rect', { x: L.x, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf left', style }, cab);\n        node('rect', { x: seam + f, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf right', style }, cab);\n        drawOfficeView(node('g', { class: 'cab-beyond' }, cab), L, 'cab-office');\n", 'depthDefects'],
@@ -209,12 +241,26 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
             'a name in the office' => ['    return { clip: box };', "    node('text', { class: 'office-plate' }, room).textContent = 'aimla';\n    return { clip: box };", 'officeDefects'],
             'an inline hex in the office' => ["    face('office-floor', pts(", "    node('polygon', { points: pts(at(l, 0, 0)), fill: '#c0ffee', class: 'office-rug' }, room);\n    face('office-floor', pts(", 'officeDefects'],
             'the office moving' => ['    return { clip: box };', "    node('animateTransform', { attributeName: 'transform', type: 'translate', dur: '4s' }, room);\n    return { clip: box };", 'officeDefects'],
-            'no cab behind the band\'s leaves' => ["            drawCabInterior(clippedTo(inside, node('defs', {}, inside), doorway, 'band-cab'), doorway, 'band-cab');\n", '', 'bandDefects'],
-            'the band\'s cab unclipped' => ["drawCabInterior(clippedTo(inside, node('defs', {}, inside), doorway, 'band-cab'), doorway, 'band-cab');", "drawCabInterior(inside, doorway, 'band-cab');", 'bandDefects'],
+            'no cab behind the band\'s leaves' => ["            drawCabInterior(clippedTo(inside, node('defs', {}, inside), doorway, 'band-cab'), doorway, 'band-cab', LANDING);\n", '', 'bandDefects'],
+            'the band\'s cab unclipped' => ["drawCabInterior(clippedTo(inside, node('defs', {}, inside), doorway, 'band-cab'), doorway, 'band-cab', LANDING);", "drawCabInterior(inside, doorway, 'band-cab', LANDING);", 'bandDefects'],
             'the band\'s cab over the leaves' => ["class: 'elevator-leaf right', style: leaves }, control);\n", "class: 'elevator-leaf right', style: leaves }, control);\n            drawCabInterior(control, doorway, 'band-cab-over');\n", 'bandDefects'],
-            'the band\'s cab moving' => ["doorway, 'band-cab'), doorway, 'band-cab');\n", "doorway, 'band-cab'), doorway, 'band-cab');\n            node('animate', { attributeName: 'opacity', dur: '1s' }, inside.children[1]);\n", 'bandDefects'],
+            'the band\'s cab moving' => ["doorway, 'band-cab'), doorway, 'band-cab', LANDING);\n", "doorway, 'band-cab'), doorway, 'band-cab', LANDING);\n            node('animate', { attributeName: 'opacity', dur: '1s' }, inside.children[1]);\n", 'bandDefects'],
             'the band\'s cab adding a door span' => ["            const doorway = { x: e.x, y: e.y, w: e.w, h: e.h };\n", "            const doorway = { x: e.x, y: e.y, w: e.w, h: e.h };\n            (scene.doors ??= []).push({ from: 0, to: 1 });\n", 'bandDefects'],
-            'the band\'s cab sharing the dialog\'s ids' => ["doorway, 'band-cab'), doorway, 'band-cab');", "doorway, 'band-cab'), doorway, 'cab');", 'bandDefects'],
+            'the band\'s cab sharing the dialog\'s ids' => ["doorway, 'band-cab'), doorway, 'band-cab', LANDING);", "doorway, 'band-cab'), doorway, 'cab', LANDING);", 'bandDefects'],
+            // card#12071's: the band's cab seen from the rider's eye inside it, not the landing's; the call plate named,
+            // focusable, clickable, lit, moving, missing, or drawn on the band's cab; the rider's eye put back where card#12051 had it.
+            'the band\'s cab from the rider\'s eye' => ["doorway, 'band-cab'), doorway, 'band-cab', LANDING);", "doorway, 'band-cab'), doorway, 'band-cab');", 'bandDefects'],
+            'a floor name on the plate' => ["    node('circle', { cx: x + w / 2, cy: y + 52 * k, r: 1.6 * k, class: 'cab-plate-keyhole' }, g);\n", "    node('circle', { cx: x + w / 2, cy: y + 52 * k, r: 1.6 * k, class: 'cab-plate-keyhole' }, g);\n    node('text', { class: 'cab-plate-label' }, g).textContent = 'kappa';\n", 'plateDefects'],
+            'the plate focusable' => ["    const g = node('g', { class: 'cab-plate', 'aria-hidden': 'true' }, parent);", "    const g = node('g', { class: 'cab-plate', 'aria-hidden': 'true', tabindex: 0 }, parent);", 'plateDefects'],
+            'the plate a button' => ["    const g = node('g', { class: 'cab-plate', 'aria-hidden': 'true' }, parent);", "    const g = node('g', { class: 'cab-plate', 'aria-hidden': 'true', role: 'button' }, parent);\n    g.addEventListener('click', () => {});", 'plateDefects'],
+            'the plate read aloud' => ["    const g = node('g', { class: 'cab-plate', 'aria-hidden': 'true' }, parent);", "    const g = node('g', { class: 'cab-plate' }, parent);", 'plateDefects'],
+            'the plate taking a pointer' => ['.cab-plate{pointer-events:none}', '.cab-plate{cursor:pointer}', 'plateDefects'],
+            'a stop on the plate' => ["class: 'cab-plate-button' }, g);", "class: 'cab-plate-button', 'data-stop': 'kappa' }, g);", 'plateDefects'],
+            'a lit button on the plate' => ["class: 'cab-plate-button' }, g);", "class: 'cab-plate-button', fill: 'var(--cab-lamp)' }, g);", 'plateDefects'],
+            'the plate moving' => ["    node('rect', { x: x + w / 2 - 0.5 * k,", "    node('animate', { attributeName: 'opacity', dur: '1s' }, g);\n    node('rect', { x: x + w / 2 - 0.5 * k,", 'plateDefects'],
+            'no plate' => ["        drawCallPlate(cab, back, L.x + L.w + 8 * f);\n", '', 'plateDefects'],
+            'the plate over the door' => ["    const x = (frameRight + wall) / 2 - w / 2;", "    const x = back.x + back.w / 2 - w / 2;", 'plateDefects'],
+            'the old eye' => ['eye: 155, back: 120, view: 94,', 'eye: 140, back: 370, view: 230,', 'closerDefects'],
             'the band\'s cab off the palette' => ['                style: palette === null ? null : `--cab-frame:${palette.frame};--cab-lamp:${palette.lamp}`,', '                style: null,', 'bandDefects'],
             'a seam line over the band\'s doorway' => ["class: 'elevator-leaf right', style: leaves }, control);\n", "class: 'elevator-leaf right', style: leaves }, control);\n            node('line', { x1: e.seam, y1: e.y, x2: e.seam, y2: e.y + e.h, class: 'elevator-seam' }, control);\n", 'seamDefects'],
             'a seam line over the cab\'s doorway' => ["class: 'elevator-leaf right', style }, cab);\n", "class: 'elevator-leaf right', style }, cab);\n        node('line', { x1: seam, y1: L.y, x2: seam, y2: L.y + L.h, class: 'elevator-seam' }, cab);\n", 'seamDefects'],
@@ -416,13 +462,25 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
         [, , $w, $h] = array_map('floatval', explode(' ', (string) $d['viewBox']));
         $b = $d['back'];
 
-        // An elevator's shape: taller than it is wide, and nowhere near the window's.
-        if ($w / $h < 0.6 || $w / $h > 0.8) {
-            $defects[] = "the cab's opening is {$w} × {$h} — not an elevator's narrow, tall shape";
+        // An elevator's shape: taller than it is wide, and nowhere near the window's — § 12's 200 × 230 cm cab is 0.87 as
+        // wide as it is high (card#12071; card#12051's 160 cm cab was 0.70, held between 0.6 and 0.8).
+        if ($w / $h < 0.8 || $w / $h > 0.95) {
+            $defects[] = "the cab's opening is {$w} × {$h} — not an elevator's shape, taller than it is wide";
         }
 
-        // The back wall inset on every side of the opening, by more than a frame's width: the room has depth.
-        if (! ($b['x'] > 0.1 * $w && $b['x'] + $b['w'] < 0.9 * $w && $b['y'] > 0.1 * $h && $b['y'] + $b['h'] < 0.9 * $h)) {
+        // The doors' wall exactly where § 12's figures put it — the frame's size times `view / back`, about the eye's point
+        // (card#12071) — and inset on every side by more than a twentieth of the opening, so each side wall, the ceiling and
+        // the floor shows as a surface: the room has depth. (The rider stands close, so the ceiling's strip — (h − eye) × (1 − view / back)
+        // — is the narrowest; card#12051's far eye held a tenth on every side.)
+        $c = $d['cab'];
+        $k = $c['view'] / $c['back'];
+        $want = ['x' => $w / 2 * (1 - $k), 'y' => ($c['h'] - $c['eye']) * (1 - $k), 'w' => $w * $k, 'h' => $h * $k];
+
+        if (max(array_map(static fn ($key) => abs($b[$key] - $want[$key]), ['x', 'y', 'w', 'h'])) > 0.05) {
+            $defects[] = 'the doors\' wall is not where § 12\'s eye puts it: '.json_encode(['drawn' => $b, 'want' => $want]);
+        }
+
+        if (! ($b['x'] > 0.05 * $w && $b['x'] + $b['w'] < 0.95 * $w && $b['y'] > 0.05 * $h && $b['y'] + $b['h'] < 0.95 * $h)) {
             $defects[] = 'the back wall is not inset in the opening — the cab is drawn flat: '.json_encode($b);
         }
 
@@ -629,6 +687,18 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
             if (! $c['scene']) {
                 $defects[] = "{$case}: painting the band changed the scene it was handed: doors ".json_encode($c['doors']);
             }
+
+            // card#12071: seen from the landing, its far wall at `LANDING.view / LANDING.back` of the doorway; and no call
+            // plate — that is on the wall the landing looks through.
+            $k = $run['depth']['landing']['view'] / $run['depth']['landing']['back'];
+
+            if ($c['back'] === null || abs($c['back']['w'] / $door['w'] - $k) > 0.005 || abs($c['back']['h'] / $door['h'] - $k) > 0.005) {
+                $defects[] = "{$case}: the band's cab is not seen from the landing's eye: ".json_encode(['back' => $c['back'], 'doorway' => $door]);
+            }
+
+            if ($c['plates'] !== 0) {
+                $defects[] = "{$case}: the band's cab draws the call plate from inside";
+            }
         }
 
         $palette = $b['palette'];
@@ -646,6 +716,65 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
         }
 
         return $defects;
+    }
+
+    /** @return list<string> */
+    private function plateDefects(array $run): array
+    {
+        $p = $run['plate'];
+
+        if ($p['count'] !== 1 || $p['body'] === null) {
+            return ["the cab draws {$p['count']} call plates, not one"];
+        }
+
+        $defects = [];
+        $attrs = $p['attrs'];
+
+        if (($attrs['aria-hidden'] ?? null) !== 'true') {
+            $defects[] = 'the call plate is not aria-hidden: '.json_encode($attrs);
+        }
+
+        $reach = array_intersect(array_keys($attrs), ['tabindex', 'role', 'aria-label', 'href', 'onclick']);
+
+        if ($reach !== [] || $p['listeners'] !== [] || array_filter($p['census'], static fn ($n) => $n['tag'] === 'a') !== []) {
+            $defects[] = 'the call plate can be reached or pressed: '.json_encode(['attrs' => $attrs, 'listeners' => $p['listeners']]);
+        }
+
+        if (preg_match('/\.cab-plate\{pointer-events:none\}/', $run['style']) !== 1) {
+            $defects[] = 'the call plate takes a pointer: STYLE gives .cab-plate no pointer-events:none';
+        }
+
+        array_push($defects, ...$this->sceneryDefects('the call plate', $p['census'], 'cab-plate-'));
+
+        if ($p['buttons'] < 3 || $p['windows'] !== 1) {
+            $defects[] = "the call plate draws {$p['buttons']} buttons and {$p['windows']} indicator windows — a plate has a few buttons and one window";
+        }
+
+        // Beside the door's frame on the doors' wall, never over the door.
+        [$b, $f, $r] = [$p['back'], $p['frame'], $p['body']];
+
+        if (! ($r['x'] >= $f['x'] + $f['w'] && $r['x'] + $r['w'] <= $b['x'] + $b['w'] && $r['y'] >= $b['y'] && $r['y'] + $r['h'] <= $b['y'] + $b['h'])) {
+            $defects[] = 'the call plate is not on the doors\' wall beside the frame: '.json_encode(['plate' => $r, 'frame' => $f, 'wall' => $b]);
+        }
+
+        if (! ($p['before']['plate'] >= 0 && $p['before']['plate'] < $p['before']['beyond'])) {
+            $defects[] = 'the call plate is not drawn under the layer behind the leaves: '.json_encode($p['before']);
+        }
+
+        return $defects;
+    }
+
+    /** @return list<string> the doorway's share of the cab's view against card#12051's eye's */
+    private function closerDefects(array $run): array
+    {
+        // card#12051's cab: 160 × 230 cm open front, its doors' wall at 230 / (230 + 140) of it, the door 110 × 200 cm.
+        $k = 230 / (230 + 140);
+        $before = (110 * $k * 200 * $k) / (160 * 230);
+        $share = $run['closer']['share'];
+
+        return $share !== null && $share >= 1.2 * $before
+            ? []
+            : ['the doors take '.json_encode($share).' of the cab\'s view — not a fifth more than card#12051\'s '.round($before, 3)];
     }
 
     /** @return list<string> nothing but the leaves (and, on the band, its hit area) drawn after the layer behind them */
