@@ -1137,6 +1137,8 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         const w = (CAB.door.w * back.w) / CAB.w;
         const h = (CAB.door.h * back.h) / CAB.h;
         const L = { x: back.x + (back.w - w) / 2, y: back.y + back.h - h, w, h };
+        // The door's trim — frame, recess, dial, sill — keeps the proportions it was drawn at for leaves 84 units wide
+        // (the floor's own elevator's, `scene.js`'s `ELEVATOR`): `f` is this door's scale against that width. A look, not a fact.
         const f = L.w / 84;
         const seam = L.x + L.w / 2;
         const foot = L.y + L.h;
