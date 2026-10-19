@@ -199,7 +199,8 @@ const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'te
  * One row's server. `c` — the row's page conditions: `run` (the fixture run, `floor_rides` by default), `delay` (ms
  * on every static `/js` and `/css` answer), `doc` (`path → ms` before a document is answered, or `'gate'` to hold it
  * until `/release`), `redirect` (`path → target`), `api` (`path → ms` added to the run's answer), `layout`
- * (`document path → status` for that page's `/api/building`), `media` (emulated); and
+ * (`document path → status` for that page's `/api/building`), `media` (emulated), `missing` (paths answered 404 — an
+ * asset that failed to load); and
  * `plant` — `[{ file, from, to }]` edits to what is served, `file` a path under `server/public` or `page` (every
  * rendered page).
  */
@@ -237,6 +238,7 @@ function serve(c = {}) {
       setTimeout(body, wait ?? 0);
       return;
     }
+    if ((c.missing ?? []).includes(path)) { res.writeHead(404); res.end(); return; }
     for (const [prefix, root] of roots) {
       if (!path.startsWith(prefix)) continue;
       const file = normalize(join(root, path.slice(prefix.length)));
@@ -367,6 +369,51 @@ async function cabOpenPixel(s) {
   await sleep(DOOR_PHASE_MS - 100);
   return s.pixel();
 }
+
+/** The house theme's module as the asset route serves it — the registry's `HOUSE_THEME`, read as PHP reads that line. */
+const HOUSE_THEME_PATH = `/art/floor/themes/${/^export const HOUSE_THEME = '([a-z0-9-]+)';$/m.exec(readFileSync(join(REPO, 'resources', 'floor', 'themes', 'index.js'), 'utf8'))[1]}/theme.js`;
+
+/**
+ * Every text in the open cab's popup against what it sits on, as the browser computed them (WCAG 2.x, sRGB): the body's
+ * texts on its plain colour and under each stop of its light-and-shade gradient (the worst counting), a stop's words on
+ * its button, the focus ring's colour on the body. Also whether the dialog is marked themed, and the body's colour.
+ */
+const cabContrast = (s) => s.ev(`(() => {
+  // A computed colour: \`rgb()\` / \`rgba()\`, or \`color(srgb …)\` (what a \`color-mix()\` in sRGB computes to), as 0–255 channels and alpha.
+  const rgb = (css) => {
+    const m = /rgba?\\(([\\d.]+),? ([\\d.]+),? ([\\d.]+)(?:,? \\/? ?([\\d.]+))?\\)/.exec(css);
+    if (m !== null) return [Number(m[1]), Number(m[2]), Number(m[3]), m[4] === undefined ? 1 : Number(m[4])];
+    const c = /color\\(srgb ([\\d.e-]+) ([\\d.e-]+) ([\\d.e-]+)(?: \\/ ([\\d.]+))?\\)/.exec(css);
+    if (c !== null) return [Number(c[1]) * 255, Number(c[2]) * 255, Number(c[3]) * 255, c[4] === undefined ? 1 : Number(c[4])];
+    throw new Error('a colour this row cannot read: ' + css);
+  };
+  const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)]; return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const over = (base, o) => [0, 1, 2].map((i) => base[i] * (1 - o[3]) + o[i] * o[3]);
+  const cs = (e) => getComputedStyle(e);
+  const panel = document.getElementById('floor-cab-panel');
+  const body = rgb(cs(panel).backgroundColor);
+  const image = cs(panel).backgroundImage;
+  const linear = image.slice(image.lastIndexOf('linear-gradient('));
+  const stops = [...linear.matchAll(/rgba?\\([^)]*\\)/g)].map((m) => rgb(m[0]));
+  const grounds = [body, ...stops.map((o) => over(body, o))];
+  const worst = (ink) => Math.min(...grounds.map((g) => ratio(ink, g)));
+  const out = {};
+  for (const id of ['floor-cab-heading', 'floor-cab-status', 'floor-cab-layout', 'floor-cab-feed']) out[id] = worst(rgb(cs(document.getElementById(id)).color));
+  for (const li of document.querySelectorAll('#floor-cab-stops li')) {
+    const button = li.querySelector('button');
+    const plate = rgb(cs(button).backgroundColor);
+    const at = li.classList.contains('current') ? 'current' : 'stop';
+    for (const part of ['cab-name', 'cab-here']) out[at + ' ' + part] = Math.min(out[at + ' ' + part] ?? Infinity, ratio(rgb(cs(button.querySelector('.' + part)).color), plate));
+  }
+  const ringRule = [...document.styleSheets].flatMap((sh) => { try { return [...sh.cssRules]; } catch { return []; } }).find((r) => r.selectorText === '.floor-cab-panel li > button:focus-visible');
+  const probe = document.createElement('i');
+  probe.style.color = ringRule?.style.outlineColor ?? '';
+  panel.append(probe);
+  out.ring = worst(rgb(cs(probe).color));
+  probe.remove();
+  return { themed: document.getElementById('floor-cab').hasAttribute('data-themed'), body: cs(panel).backgroundColor, stops: stops.length, ratios: Object.fromEntries(Object.entries(out).map(([k, v]) => [k, Math.round(v * 100) / 100])) };
+})()`);
 
 /** Each row: `run(chrome, c)` answers `{ defects, facts }`; `base` its own page conditions; `plant` what must red it. */
 const MAIN = 'js/floor/main.js';
@@ -534,6 +581,35 @@ const ROWS = {
       }
       return { defects: d, facts: r };
     })),
+
+  // card#12047: the popup stays legible when the house theme fails to load (§ 9 F14's failed art, its module answered 404),
+  // and with it. Each text in the popup holds 4.5:1 on what it sits on and the focus ring 3:1, as the browser computed
+  // them; with the theme failed the dialog is not marked themed and the body is the page's own panel colour.
+  'cab-fallback': row('with the house theme failed to load, and with it, every text in the button popup holds WCAG AA on what it sits on', {},
+    { plant: [{ file: 'css/mezzanine.css', from: '    --cab-body: var(--panel);\n    --cab-ink: var(--ink);\n', to: '    --cab-body: var(--cab-frame);\n    --cab-ink: var(--scene-ink);\n' }] },
+    async (chrome, c) => {
+      const d = [];
+      const facts = {};
+      for (const [state, missing] of [['theme failed', [HOUSE_THEME_PATH]], ['theme loaded', []]]) {
+        await within(chrome, { ...c, missing, viewport: CAB_WINDOWS.desktop }, async (s) => {
+          await s.open('/floor/aimla');
+          await intoTheCab(s);
+          await buttonsIn(s);
+          const r = await cabContrast(s);
+          if (c.plant.length === 0) await s.shot(`cab-fallback-${state.replace(' ', '-')}-${CAB_WINDOWS.desktop.w}x${CAB_WINDOWS.desktop.h}`);
+          facts[state] = r;
+          if (r.themed !== (missing.length === 0)) d.push(`${state}: the dialog is ${r.themed ? '' : 'not '}marked themed`);
+          if (r.stops === 0) d.push(`${state}: the popup's body has no light-and-shade stop to read`);
+          if (!['current cab-name', 'stop cab-name', 'floor-cab-heading', 'ring'].every((k) => Object.hasOwn(r.ratios, k))) d.push(`${state}: a text was not measured: ${JSON.stringify(r.ratios)}`);
+          for (const [what, ratio] of Object.entries(r.ratios)) {
+            // A stop that is not current hides *you are here*; its colour is still the plate's text colour, and is held too.
+            const floor = what === 'ring' ? 3 : 4.5;
+            if (!(ratio >= floor)) d.push(`${state}: ${what} is ${ratio}:1 on what it sits on, under ${floor}:1`);
+          }
+        });
+      }
+      return { defects: d, facts };
+    }),
 
   // card#12039: the popup fits a phone. At a common and a small phone window, inside: the popup and every stop's button
   // lie wholly in the window, and neither the cab nor the page scrolls sideways.

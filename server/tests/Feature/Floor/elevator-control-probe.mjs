@@ -116,14 +116,16 @@ const cabLeg = {
 
 // ── the cab's palette and fit (card#12039) ───────────────────────────────────────────────────────
 // A painter holding the shipped house theme (read from the registry, as the page does) carries its elevator palette
-// onto the dialog; one holding no theme removes what an earlier one set. The cab's drawing: its fit, its overflow,
-// and what its frame and lamp are painted with.
+// onto the dialog and marks it `data-themed` (card#12047); one holding no theme removes what an earlier one set. The
+// cab's drawing: its fit, its overflow, and what its frame and lamp are painted with.
 const recording = (props = {}) => ({ props, setProperty(k, v) { props[k] = v; }, removeProperty(k) { delete props[k]; } });
+/** A fake dialog: its inline style and its attributes, `attrs` set at the start. */
+const dialogOf = (props, attrs = {}) => ({ style: recording(props), attrs, toggleAttribute(k, on) { if (on) { attrs[k] = ''; } else { delete attrs[k]; } return on; } });
 const { HOUSE_THEME } = await import(pathToFileURL(join(THEMES, 'index.js')).href);
 const house = await import(pathToFileURL(join(THEMES, HOUSE_THEME, 'theme.js')).href);
 const themed = createPainter({ characters: null, themes: { [HOUSE_THEME]: house }, failed() {}, select() {}, house: HOUSE_THEME });
-const dialog = { style: recording() };
-const stale = { style: recording({ '--cab-frame': 'stale', '--cab-lamp': 'stale' }) };
+const dialog = dialogOf({});
+const stale = dialogOf({ '--cab-frame': 'stale', '--cab-lamp': 'stale' }, { 'data-themed': '' });
 const themedHost = new Node('div');
 
 themedHost.style = recording();
@@ -137,6 +139,8 @@ const paletteLeg = {
     palette: house.PALETTE.elevator,
     carried: dialog.style.props,
     unthemed: stale.style.props,
+    marked: dialog.attrs,
+    unmarked: stale.attrs,
     fit: svg?.getAttribute('preserveAspectRatio') ?? null,
     overflow: svg?.getAttribute('overflow') ?? null,
     viewBox: svg?.getAttribute('viewBox') ?? null,

@@ -966,13 +966,17 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
      * THE CAB's COLOURS (§ 4.5, card#12039) onto `el`, the cab dialog: the house theme's elevator palette — its
      * `PALETTE.elevator` frame and lamp — as `--cab-frame` and `--cab-lamp`, which the cab's drawing (`paintCab()`)
      * and its button popup (the sheet's `.floor-cab*` rules) both read. The palette's one home stays the theme
-     * module; these properties carry it, and are not a copy. A theme that did not load removes them, and the
-     * sheet's own defaults on `.floor-cab` — the door frame's and the lamp's tokens — answer instead.
+     * module; these properties carry it, and are not a copy. `data-themed` marks the dialog as carrying it, which
+     * is what makes the popup's body the frame and its words the room's ink (card#12047). A theme that did not load
+     * removes all three, and the sheet's own defaults on `.floor-cab` answer instead: the door frame's and the lamp's
+     * tokens for the drawing, and the page's own panel and ink for the popup, so its words stay legible.
      *
      * @param {HTMLElement} el
      */
     function cabTheme(el) {
         const palette = themes[house]?.PALETTE?.elevator ?? null;
+
+        el.toggleAttribute('data-themed', palette !== null);
 
         if (palette === null) {
             el.style.removeProperty('--cab-frame');
