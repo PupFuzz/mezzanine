@@ -60,9 +60,11 @@ import { floors } from './lobby-model.js';
  * what lets that be a rendering choice rather than a second ruling invented here.
  *
  * `null` when `floors()` composes no building, which is its answer when no layout is held (§ 9 F17).
+ * `nowMs` is the corrected clock `floors()` reads the directory plaque's ages at (card#12113), handed
+ * through so a plate stays the lobby's row for its floor.
  */
-export function plates(snapshot, layout) {
-    const rows = floors(snapshot, layout);
+export function plates(snapshot, layout, nowMs = null) {
+    const rows = floors(snapshot, layout, nowMs);
 
     return rows === null ? null : rows.map((floor, level) => ({ ...floor, level }));
 }
@@ -164,8 +166,8 @@ export function elevator(stack, requested = null) {
  * and the lobby's F17 statement is the reason already on the page. `composed: false` is what lets
  * `main.js` keep the viewer's cab where it was rather than re-seat it on a building that was not drawn.
  */
-export function buildingModel(snapshot, at, layout) {
-    const stack = plates(snapshot, layout);
+export function buildingModel(snapshot, at, layout, nowMs = null) {
+    const stack = plates(snapshot, layout, nowMs);
 
     if (stack === null) {
         return {

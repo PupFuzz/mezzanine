@@ -138,6 +138,9 @@ class LobbyRendersTheFleetSnapshotTest extends FeedTestCase
         // string to render — and the shapes to exclude are no longer guesswork at three disagreeing
         // exemplars: they are exactly what that function emits, `Nh MMm` / `Nm MMs` and the
         // single-unit forms clause 4 drops the second unit of.
+        // ⚠ The directory plaque's own ages (card#12113, § 4.1) are drawn at a corrected clock, and this
+        // probe hands the model none, so none is drawn here: they are AT-D3-27's
+        // (`Tests\Feature\Floor\TheDirectoryPlaqueReadsWhatTheClientHoldsTest`).
         $this->assertDoesNotMatchRegularExpression('/\d+\s*m\s+\d+\s*s/', $rendered);
         $this->assertDoesNotMatchRegularExpression('/\d+\s*h\s+\d+\s*m/', $rendered);
         $this->assertDoesNotMatchRegularExpression('/(?<![\w:.])\d+[hms](?![\w:])/', $rendered,
@@ -319,7 +322,7 @@ class LobbyRendersTheFleetSnapshotTest extends FeedTestCase
         // and no glyph: a seat in no member set simply falls out of its own floor's count.
         $filtered = $this->mutatedModules([
             'lobby-model.js',
-            '        .concat(unheard.map((v) => `${seen[String(v)]} unrecognised (${String(v)})`))',
+            '        .concat(unheard.map((v) => chip(v, false)));',
             '',
         ]);
         $unrecognised = $body;

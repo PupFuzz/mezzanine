@@ -2709,6 +2709,17 @@ ingest outage. Three rules, and the first one is the one that gets skipped:
    maintenance-window operation or not at all.
 2. **A projection change needs no `ALTER` on `events` at all** — add the column to the projection, then
    `mezzanine:rebuild`. That is the payoff for keeping `data` opaque and the projections derived.
+   ⚠ **A column the recompute writes on every pass needs no rebuild to be filled, and `longest_call_ref`
+   (card#12113) is one:** its migration adds the column and backfills nothing, because `StateRecompute`
+   writes it on every pass that writes `current_call_ref` and the sweeper recomputes every seat once per
+   `Sweep::CADENCE_S` ([§ 2.1](#21-processes)) — so the first sweep pass after the migration fills
+   every seat it does not find held (one it finds held is filled by the next
+   pass, or by its own next folded event), and the fingerprint change delivers `longest_open_call` on a
+   delta. Until then a seat with an open call publishes `longest_open_call: null` beside a non-zero
+   `open_calls` — the one window in which [§ 8.2.1](#821-the-seat-state-object)'s "`null` exactly when
+   `open_calls` is 0" does not hold. A backfill in the migration would be a second copy of
+   `StateRecompute`'s ordering, free to disagree with it; `mezzanine:rebuild` re-derives the column from
+   the log as it does `current_call_ref`.
 3. **New columns are nullable and additive.** Backfills run in the same bounded-batch shape as the
    purge, never as one statement.
 
@@ -3300,10 +3311,13 @@ and the drill-down reads the full open-call list from [§ 8.2.3](#823-the-seat-d
 always did. It is version-bearing by [§ 6.5](#65-the-fold)'s subtraction — not one of the ten — and
 **it moves only on an edge that already emits a delta**: a call opening or closing moves `open_calls`
 (and usually `action`), so the volume of [§ 8.3](#83-the-websocket-delta-feed) is unchanged, and a
-heartbeat moves it not at all. `null` exactly when `open_calls` is 0, by construction; when `open_calls`
-is 1 it names the same call `action` names. It costs the store one nullable reference column at the end
-of `seat_state` ([§ 6.9](#69-migrations-on-a-live-events-table) rule 2's path) and the worst-case
-object the bytes the size table below measures. **A delta's `changed[]` is not computed by comparing seat
+heartbeat moves it not at all. `null` exactly when `open_calls` is 0, by construction, once the
+recompute has written its column — [§ 6.9](#69-migrations-on-a-live-events-table) rule 2 states the one
+window before that; when `open_calls` is 1 it names the same call `action` names. It costs the store
+one nullable reference column on `seat_state`, placed after `current_call_ref` as [§ 6.4](#64-ddl)'s
+DDL lists it ([§ 6.9](#69-migrations-on-a-live-events-table) rule 2's path, which also states what a
+seat publishes until the column is first written), and the worst-case object the bytes the size table
+below measures. **A delta's `changed[]` is not computed by comparing seat
 objects**: `SeatDelta::between()` walks a hand-kept map, `SeatDelta::WIRE_MEMBER`, from the keys of
 `SeatFacts::versionBearing()`'s fingerprint to the wire members, so the member is added to both the
 fingerprint and the map — the guard test that reds a fingerprint key with no map entry is what catches a

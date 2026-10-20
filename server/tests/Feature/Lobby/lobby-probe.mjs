@@ -11,11 +11,14 @@
  *                   "layout": <the floors GET /api/building answered (§ 4.6, D2 § 8.7), or absent =
  *                              the empty layout's floors, `[]`>,
  *                   "notices": [[held, total], …],           // § 4.1's words for each pair
+ *                   "context_candidates": <absent, or seat objects for § 4.1's (b) population>,
  *                   "cab": <the stop the viewer last rode to, or absent>,
  *                   "primitives": <absent, or a list of argument lists for `floors()` / `plates()`>,
  *                   "scenario": <absent, or a scripted run of the building surface — below> }`
  * stdout — JSON: `{ "render_states": [...], "model": {...}, "building": {...},
  *                   "primitives": { "floors": [...], "plates": [...] } | null, "notices": [...],
+ *                   "directory": { "marker_cap", "context_attention_pct", "long_call_ms",
+ *                                  "context_candidates": [<install_id/seat_id>, …] | null },
  *                   "scenario": [<one record per step>] | null }`
  *
  * THE SCENARIO drives the shipped lobby entry — `lobby-screen.js` over the client protocol
@@ -80,6 +83,17 @@ console.log(JSON.stringify({
     },
     // § 4.1's two ratified sentences, worded for each `(held, total)` pair named here.
     notices: (payload.notices ?? []).map(([held, total]) => model.discrepancyNotice(held, total)),
+    // The directory plaque's § 12 figures as the module carries them (card#12113), and § 4.1's (b)
+    // population over the seats named here, as `install_id/seat_id` — AT-D3-27's reading of the
+    // population a threshold is asked of, which the attention line alone cannot show.
+    directory: {
+        marker_cap: model.MARKER_CAP,
+        context_attention_pct: model.CONTEXT_ATTENTION_PCT,
+        long_call_ms: model.LONG_CALL_MS,
+        context_candidates: payload.context_candidates === undefined
+            ? null
+            : model.contextCandidates(payload.context_candidates).map((s) => `${s.install_id}/${s.seat_id}`),
+    },
     scenario: payload.scenario === undefined ? null : await runScenario(payload.scenario),
 }, null, 2));
 

@@ -235,8 +235,12 @@ export class LobbyScreen {
 
         const state = client.discrepancyState();
         const body = heldBody(client.seats.values(), client.fleet, client.membershipAsOf);
+        // § 2.4's corrected clock, read once per frame: the directory plaque's ages and its long-call
+        // threshold are asked of it (card#12113), and the plates and the summary are one composition, so
+        // both are handed the same instant.
+        const nowMs = correctedNowMs(client.clockOffsetMs, this.#clock.now());
 
-        const building = feed.applied ? buildingModel(body, cab, this.#building.floors) : null;
+        const building = feed.applied ? buildingModel(body, cab, this.#building.floors, nowMs) : null;
         const scene = building?.composed === true ? buildingScene(building.plates) : null;
 
         // Nothing to frame — no snapshot yet, no layout held (§ 9 F17), or no plate — leaves the camera
@@ -246,7 +250,7 @@ export class LobbyScreen {
             : frameOn(this.#camera, scene.extent);
 
         this.#drawn = Object.freeze({
-            summary: feed.applied ? lobbyModel(body, this.#building.floors, layoutFailure) : null,
+            summary: feed.applied ? lobbyModel(body, this.#building.floors, layoutFailure, nowMs) : null,
             building,
             scene,
             camera: this.#camera,
