@@ -156,7 +156,7 @@
         means a built manifest this script tag would then depend on, which is its own card, and a
         stale reason left standing here would read as one.
     --}}
-    <script type="module" src="{{ asset('js/lobby/main.js') }}"></script>
+    <script type="module" src="{{ \App\Support\PublicAsset::url('js/lobby/main.js') }}"></script>
 
     <p>Signed in as {{ auth()->user()->email }}, with a confirmed second factor.</p>
 

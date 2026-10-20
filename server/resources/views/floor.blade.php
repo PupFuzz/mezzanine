@@ -292,5 +292,5 @@
     </section>
 
     {{-- Native ES modules, no bundler — the lobby's reason (`dashboard.blade.php`). --}}
-    <script type="module" src="{{ asset('js/floor/main.js') }}"></script>
+    <script type="module" src="{{ \App\Support\PublicAsset::url('js/floor/main.js') }}"></script>
 @endsection
