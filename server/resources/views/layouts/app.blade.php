@@ -97,12 +97,23 @@
     </style>
     {{--
         THE PAGE CHROME — card#11045 PR-A: one stylesheet for every page, plain CSS served static (no
-        bundler), versioned by the file's own mtime so a deploy that changes it is never served from a
-        browser's cache. `Tests\Feature\ThePageChromeIsOneLinkedStylesheetTest` holds this link.
+        bundler), versioned by the file's own mtime (`App\Support\PublicAsset::url()`) so a deploy that changes
+        it is never served from a browser's cache. `Tests\Feature\ThePageChromeIsOneLinkedStylesheetTest` holds
+        this link.
     --}}
-    <link rel="stylesheet" href="{{ asset('css/mezzanine.css') }}?v={{ filemtime(public_path('css/mezzanine.css')) }}">
+    <link rel="stylesheet" href="{{ \App\Support\PublicAsset::url('css/mezzanine.css') }}">
 </head>
 <body class="@yield('page-class')">
+    {{--
+        THE MODULES' IMPORT MAP — card#12158: every module under `public/` by its URL, mapped to that URL
+        versioned by the file's mtime (`App\Support\PublicAsset::moduleMap()`), so after a deploy a page's
+        imports, static and dynamic, fetch the new copies rather than run the previous release's from the
+        browser's cache. ⛔ IT PRECEDES EVERY MODULE SCRIPT ON THE PAGE, which is what makes a browser apply
+        it, and it sits here rather than in the `<head>`, whose one script is the ride's reader
+        (`TheRideArrivalIsTheLayoutsTest`). Each entry's `src` is `PublicAsset::url()`'s, because a `src` is
+        fetched without the map. `Tests\Feature\EveryModuleAPageLoadsIsVersionedTest` holds both.
+    --}}
+    <script type="importmap">@json(\App\Support\PublicAsset::moduleMap())</script>
     <main>
         {{--
             The page's one <h1>, on every page — most views have no heading of their own — styled as the
@@ -138,6 +149,6 @@
         THE ONE TIME CONVERTER's page half (card#9446): every `<x-utc-time>` this page printed is labelled
         UTC, and this rewrites it to the viewer's browser zone. With JavaScript off the UTC text stays.
     --}}
-    <script type="module" src="{{ asset('js/local-times.js') }}"></script>
+    <script type="module" src="{{ \App\Support\PublicAsset::url('js/local-times.js') }}"></script>
 </body>
 </html>
