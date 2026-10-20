@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lobby 2G</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@600;700&amp;family=IBM+Plex+Sans:wght@400;600&amp;family=IBM+Plex+Mono&amp;display=swap">
+<style>
+body{margin:0}
+a{color:inherit}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #171a28; color: #eef0f6; font-family: 'IBM Plex Sans', system-ui, sans-serif; overflow: hidden; position: relative;">
+  <header style="height: 56px; box-sizing: border-box; display: flex; align-items: center; gap: 16px; padding: 0 24px; background: #1f2333; border-bottom: 1px solid #323850;">
+    <h1 style="margin: 0; margin-right: auto; font-family: Quicksand, ui-rounded, system-ui, sans-serif; font-size: 22px; font-weight: 700; color: #ffcf7d; letter-spacing: 0.01em;">Mezzanine — lobby</h1>
+    <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px; color: #aab1c6;">building: 18 seats · 15 live</span>
+  </header>
+  <div style="height: 44px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 24px; background: #171a28; border-bottom: 1px solid #323850;">
+    <h2 style="margin: 0; margin-right: auto; font-family: Quicksand, ui-rounded, system-ui, sans-serif; font-size: 20px; font-weight: 700; color: #eef0f6;">Lobby</h2>
+    <button type="button" style="width: 32px; height: 32px; border: 1px solid #323850; border-radius: 16px; background: #1f2333; color: #eef0f6; font-size: 16px;">+</button>
+    <button type="button" style="width: 32px; height: 32px; border: 1px solid #323850; border-radius: 16px; background: #1f2333; color: #eef0f6; font-size: 16px;">−</button>
+    <button type="button" style="height: 32px; padding: 0 14px; border: 1px solid #323850; border-radius: 16px; background: #1f2333; color: #eef0f6; font-size: 14px;">Fit the lobby</button>
+  </div>
+  <div style="flex: 1; position: relative; overflow: hidden;">
+    <!-- the drawn room (FLOOR.md § 4.1, 1,440 × 772 scene px): the far wall is the elevator wall; the directory board hangs left of the elevator; nothing says where the cab is -->
+    <svg viewBox="0 0 1440 772" width="1440" height="772" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The lobby seen from inside, facing the elevator wall: a floor directory with one plaque per floor is mounted on the wall beside the elevator door, and the building's readings stand under it" style="position: absolute; left: 0; top: 0;">
+      <defs>
+        <linearGradient id="g-shL" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3b2f2a" stop-opacity="0"></stop><stop offset="1" stop-color="#3b2f2a" stop-opacity="0.18"></stop></linearGradient>
+        <linearGradient id="g-shR" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#3b2f2a" stop-opacity="0"></stop><stop offset="1" stop-color="#3b2f2a" stop-opacity="0.18"></stop></linearGradient>
+        <linearGradient id="g-shF" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#3b2f2a" stop-opacity="0"></stop><stop offset="1" stop-color="#3b2f2a" stop-opacity="0.3"></stop></linearGradient>
+        <linearGradient id="g-shC" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b2f2a" stop-opacity="0"></stop><stop offset="1" stop-color="#3b2f2a" stop-opacity="0.2"></stop></linearGradient>
+        <radialGradient id="g-glow" cx="0.5" cy="0" r="0.8"><stop offset="0" stop-color="#ffcf7d" stop-opacity="0.38"></stop><stop offset="1" stop-color="#ffcf7d" stop-opacity="0"></stop></radialGradient>
+        <linearGradient id="g-leaf" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e9f0f6"></stop><stop offset="0.5" stop-color="#dbe5ee"></stop><stop offset="1" stop-color="#c9d6e2"></stop></linearGradient>
+        <linearGradient id="g-pic" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3d9a8"></stop><stop offset="1" stop-color="#e7b98f"></stop></linearGradient>
+      </defs>
+
+      <!-- the room -->
+      <g aria-hidden="true">
+        <polygon points="0,0 1440,0 1166.5,187.1 273.5,187.1" fill="#f8ead6"></polygon>
+        <polygon points="0,0 1440,0 1166.5,187.1 273.5,187.1" fill="url(#g-shC)"></polygon>
+        <polygon points="0,772 1440,772 1166.5,666 273.5,666" fill="#e2b07c"></polygon>
+        <g stroke="#c9925f" stroke-width="2" stroke-opacity="0.75">
+          <line x1="180" y1="772" x2="385.1" y2="666"></line>
+          <line x1="360" y1="772" x2="496.7" y2="666"></line>
+          <line x1="540" y1="772" x2="608.4" y2="666"></line>
+          <line x1="720" y1="772" x2="720" y2="666"></line>
+          <line x1="900" y1="772" x2="831.6" y2="666"></line>
+          <line x1="1080" y1="772" x2="943.3" y2="666"></line>
+          <line x1="1260" y1="772" x2="1054.9" y2="666"></line>
+        </g>
+        <g stroke="#c9925f" stroke-width="1.5" stroke-opacity="0.5">
+          <line x1="65.5" y1="746.6" x2="1374.5" y2="746.6"></line>
+          <line x1="132.2" y1="720.8" x2="1307.8" y2="720.8"></line>
+          <line x1="196.4" y1="695.9" x2="1243.6" y2="695.9"></line>
+          <line x1="240" y1="679" x2="1200" y2="679"></line>
+        </g>
+        <polygon points="0,772 1440,772 1166.5,666 273.5,666" fill="url(#g-shF)"></polygon>
+        <polygon points="0,0 273.5,187.1 273.5,666 0,772" fill="#fcf3e4"></polygon>
+        <polygon points="0,0 273.5,187.1 273.5,666 0,772" fill="url(#g-shL)"></polygon>
+        <polygon points="1440,0 1166.5,187.1 1166.5,666 1440,772" fill="#fcf3e4"></polygon>
+        <polygon points="1440,0 1166.5,187.1 1166.5,666 1440,772" fill="url(#g-shR)"></polygon>
+        <rect x="273.5" y="187.1" width="893" height="478.9" fill="#fcf3e4"></rect>
+        <rect x="273.5" y="187.1" width="893" height="478.9" fill="#3b2f2a" fill-opacity="0.07"></rect>
+        <rect x="273.5" y="187.1" width="893" height="260" fill="url(#g-glow)"></rect>
+        <!-- the one window, on the left wall, carrying the floors' sky (§ 4.1: A17's value on A17's driver) — drawn here at its day phase -->
+        <polygon points="84,236 206,284 206,492 84,488" fill="#4a5670"></polygon>
+        <polygon points="90,247 200,291 200,484 90,480" fill="#cfe8ef"></polygon>
+        <circle cx="128" cy="320" r="17" fill="#ffe9a3"></circle>
+        <polygon points="90,420 118,414 118,402 136,398 136,410 160,406 160,392 178,390 178,404 200,402 200,484 90,480" fill="#5a7086"></polygon>
+        <line x1="145" y1="269" x2="145" y2="482" stroke="#4a5670" stroke-width="3"></line>
+        <line x1="90" y1="362" x2="200" y2="386" stroke="#4a5670" stroke-width="3"></line>
+        <line x1="0" y1="610" x2="273.5" y2="565.6" stroke="#e7b98f" stroke-width="3"></line>
+        <line x1="1440" y1="610" x2="1166.5" y2="565.6" stroke="#e7b98f" stroke-width="3"></line>
+        <line x1="273.5" y1="565.6" x2="1166.5" y2="565.6" stroke="#e7b98f" stroke-width="2.5"></line>
+        <rect x="273.5" y="652.6" width="893" height="13.4" fill="#c98f63"></rect>
+        <polygon points="0,750.4 273.5,652.6 273.5,666 0,772" fill="#c98f63"></polygon>
+        <polygon points="1440,750.4 1166.5,652.6 1166.5,666 1440,772" fill="#c98f63"></polygon>
+        <g stroke="#3b2f2a" stroke-opacity="0.28" stroke-width="1.5">
+          <line x1="0" y1="0" x2="273.5" y2="187.1"></line>
+          <line x1="1440" y1="0" x2="1166.5" y2="187.1"></line>
+          <line x1="0" y1="772" x2="273.5" y2="666"></line>
+          <line x1="1440" y1="772" x2="1166.5" y2="666"></line>
+        </g>
+        <ellipse cx="720" cy="80" rx="80" ry="22" fill="#ffcf7d" fill-opacity="0.22"></ellipse>
+        <ellipse cx="720" cy="77" rx="63" ry="13" fill="#fff6dc" stroke="#f0cfa8" stroke-width="2"></ellipse>
+        <ellipse cx="720" cy="133" rx="68" ry="16" fill="#ffcf7d" fill-opacity="0.2"></ellipse>
+        <ellipse cx="720" cy="131" rx="54" ry="10" fill="#fff6dc" stroke="#f0cfa8" stroke-width="2"></ellipse>
+        <ellipse cx="720" cy="173" rx="58" ry="12" fill="#ffcf7d" fill-opacity="0.18"></ellipse>
+        <ellipse cx="720" cy="172" rx="47" ry="8" fill="#fff6dc" stroke="#f0cfa8" stroke-width="1.5"></ellipse>
+        <!-- a picture on the right wall, a plant in the back right corner, a bench on the left -->
+        <polygon points="1253.5,353 1346.1,328.6 1346.1,485.2 1253.5,486.3" fill="#b07a4f"></polygon>
+        <polygon points="1262,362 1337,342 1337,475 1262,476" fill="url(#g-pic)"></polygon>
+        <polygon points="1262,445 1337,440 1337,475 1262,476" fill="#8fa66b"></polygon>
+        <circle cx="1312" cy="382" r="11" fill="#ffcf7d"></circle>
+        <path d="M 1116 637 L 1188 637 L 1180 679 L 1124 679 Z" fill="#d98b5f"></path>
+        <ellipse cx="1152" cy="590" rx="40" ry="48" fill="#7fb77e"></ellipse>
+        <ellipse cx="1126" cy="608" rx="22" ry="30" fill="#5f9a63"></ellipse>
+        <ellipse cx="1178" cy="606" rx="20" ry="28" fill="#5f9a63"></ellipse>
+        <polygon points="60,700 230,660 230,676 60,718" fill="#b27b56"></polygon>
+        <polygon points="60,718 230,676 230,690 60,732" fill="#9a6646"></polygon>
+        <rect x="66" y="732" width="10" height="34" fill="#8f5f41"></rect>
+        <rect x="218" y="690" width="8" height="28" fill="#8f5f41"></rect>
+      </g>
+
+      <!-- the elevator, right of the wall's centre: the one control on the wall (§ 4.1), its two call buttons unlit, and no sign saying where the cab is -->
+      <g role="button" tabindex="0" aria-label="the elevator — ride to another floor">
+        <rect x="830" y="425" width="143" height="246" rx="6" fill="#c9a873" stroke="#8a6f5a" stroke-width="1.5"></rect>
+        <rect x="840" y="443" width="123" height="223" fill="#2b3340"></rect>
+        <rect x="841" y="444" width="60" height="221" fill="url(#g-leaf)" stroke="#9fb1c4" stroke-width="1"></rect>
+        <rect x="902" y="444" width="60" height="221" fill="url(#g-leaf)" stroke="#9fb1c4" stroke-width="1"></rect>
+        <line x1="901.5" y1="444" x2="901.5" y2="665" stroke="#2b3340" stroke-width="2"></line>
+        <rect x="826" y="664" width="151" height="5" fill="#9fb1c4"></rect>
+        <path d="M 879.5 440 A 24 24 0 0 1 923.5 440" fill="none" stroke="#8a6f5a" stroke-width="1.5"></path>
+        <rect x="816" y="670" width="172" height="10" rx="4" fill="#e7866d"></rect>
+        <rect x="987" y="520" width="22" height="58" rx="4" fill="#e9d9b3" stroke="#8a6f5a" stroke-width="1"></rect>
+        <circle cx="998" cy="537" r="6" fill="#dbe5ee" stroke="#8a6f5a" stroke-width="1"></circle>
+        <circle cx="998" cy="561" r="6" fill="#dbe5ee" stroke="#8a6f5a" stroke-width="1"></circle>
+      </g>
+      <g aria-hidden="true">
+        <!-- the brass sign over the door: the building's name, and nothing about the cab -->
+        <rect x="830" y="386" width="143" height="30" rx="6" fill="#3b2f4a"></rect>
+        <text x="901.5" y="406" text-anchor="middle" font-family="Quicksand, ui-rounded, system-ui, sans-serif" font-weight="700" font-size="13" letter-spacing="2.5" fill="#ffcf7d">MEZZANINE</text>
+        <!-- the directory board: a honey face, a darker inset, four brass fixings -->
+        <rect x="292" y="198" width="520" height="340" rx="18" fill="#c9a873"></rect>
+        <rect x="300" y="206" width="504" height="324" rx="14" fill="#8a6f5a"></rect>
+        <circle cx="312" cy="218" r="3.5" fill="#ffcf7d"></circle>
+        <circle cx="792" cy="218" r="3.5" fill="#ffcf7d"></circle>
+        <circle cx="312" cy="518" r="3.5" fill="#ffcf7d"></circle>
+        <circle cx="792" cy="518" r="3.5" fill="#ffcf7d"></circle>
+      </g>
+    </svg>
+
+    <!-- the directory, as HTML over the drawn board so each plaque can be edited on its own (§ 4.1's table, one plaque per floor, floor ids ascending) -->
+    <div style="position: absolute; left: 308px; top: 214px; width: 488px; height: 308px; display: flex; flex-direction: column; gap: 8px; color: #3b2f2a;">
+      <div style="height: 24px; flex: none; display: flex; align-items: center; justify-content: center; gap: 8px; background: #3b2f4a; border-radius: 8px; color: #ffcf7d; white-space: nowrap;">
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#ffcf7d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="12" height="12" rx="2"></rect><line x1="2" y1="6.5" x2="14" y2="6.5"></line><line x1="2" y1="11" x2="14" y2="11"></line></svg>
+        <span style="font-family: Quicksand, ui-rounded, system-ui, sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 2.5px;">FLOOR DIRECTORY</span>
+        <span style="font-size: 13px; color: #ffcf7d;">— counts the seats this client holds</span>
+      </div>
+
+      <!-- plaque 1: kanban — a floor of two rooms and seventeen held seats, so the marker row reaches the cap and the attention line has all three parts -->
+      <section aria-labelledby="g-floor-kanban" style="box-sizing: border-box; height: 162px; flex: none; display: flex; flex-direction: column; gap: 4px; padding: 7px 10px; background: #fffaf2; border: 2px solid #e7b98f; border-radius: 10px; overflow: hidden;">
+        <div style="height: 22px; display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden;">
+          <a id="g-floor-kanban" href="/floor/kanban" aria-label="kanban, 8 working · 3 idle · 1 blocked · 1 stalled · 1 unknown · 3 stale" style="display: flex; align-items: center; gap: 8px; font-family: Quicksand, ui-rounded, system-ui, sans-serif; font-size: 17px; font-weight: 700; color: #3b2f2a; text-decoration: none;">
+            <span style="display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; border-radius: 11px; background: #3b2f4a; color: #ffcf7d; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px;">1</span>
+            kanban
+          </a>
+          <span style="margin-right: auto; font-size: 13px; color: #6b5f58; overflow: hidden; text-overflow: ellipsis;">rooms: kanban, kanban-bridge</span>
+          <span style="font-size: 13px; font-weight: 600; color: #3b2f2a;">14 agents · 17 desks</span>
+        </div>
+        <div style="height: 20px; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden;">
+          <span style="display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 10px; background: #57c785; border: 1px solid rgba(59, 47, 42, 0.35); color: #1b1f2b; font-size: 13px; font-weight: 600;">8 working</span>
+          <span style="display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 10px; background: #9aa7c0; border: 1px solid rgba(59, 47, 42, 0.35); color: #1b1f2b; font-size: 13px; font-weight: 600;">3 idle</span>
+          <span style="display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 10px; background: #f0b455; border: 1px solid rgba(59, 47, 42, 0.35); color: #1b1f2b; font-size: 13px; font-weight: 600;">1 blocked</span>
+          <span style="display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 10px; background: #d97b6c; border: 1px solid rgba(59, 47, 42, 0.35); color: #1b1f2b; font-size: 13px; font-weight: 600;">1 stalled</span>
+          <span style="display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 10px; background: #c9a7e8; border: 1px solid rgba(59, 47, 42, 0.35); color: #1b1f2b; font-size: 13px; font-weight: 600;">1 unknown</span>
+          <span style="display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 10px; background: #e2f3fe; border: 1px solid rgba(59, 47, 42, 0.35); color: #1b1f2b; font-size: 13px; font-weight: 600;">3 stale</span>
+        </div>
+        <!-- the marker row: one marker per held seat in room-key then seat_id order, a disc for a member that draws a character and a ring for an empty chair; the first 12, then the tag -->
+        <div style="height: 14px; display: flex; align-items: center; gap: 5px; white-space: nowrap;">
+          <span role="img" aria-label="backend-impl, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="frontend-impl, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="infra-impl, stale" style="box-sizing: border-box; width: 12px; height: 12px; border-radius: 6px; border: 3px solid #e2f3fe; background: #fffaf2; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="kanban-pm, blocked" style="width: 12px; height: 12px; border-radius: 6px; background: #f0b455; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="kanban-solo, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="qa-impl, idle" style="width: 12px; height: 12px; border-radius: 6px; background: #9aa7c0; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="release-impl, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="sola-pm, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="test-impl, stalled" style="width: 12px; height: 12px; border-radius: 6px; background: #d97b6c; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="ux-impl, idle" style="width: 12px; height: 12px; border-radius: 6px; background: #9aa7c0; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="bridge-impl, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="bridge-pm, unknown" style="width: 12px; height: 12px; border-radius: 6px; background: #c9a7e8; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span style="margin-left: 4px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px; color: #3b2f2a;">+5 more</span>
+        </div>
+        <!-- the attention line: (a) blocked longest, (b) context at or above 80 %, (c) a call 10 min or longer — each opening with the seat_id -->
+        <div style="height: 16px; display: flex; align-items: baseline; gap: 6px; font-size: 13px; line-height: 16px; color: #3b2f2a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+          <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 600;">kanban-pm</span>
+          <span>— waiting on a human since 14:31 (seat clock)</span>
+        </div>
+        <div style="height: 16px; display: flex; align-items: baseline; gap: 6px; font-size: 13px; line-height: 16px; color: #3b2f2a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+          <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 600;">kanban-solo</span>
+          <span>— context 91.2 %</span>
+        </div>
+        <div style="height: 16px; display: flex; align-items: baseline; gap: 6px; font-size: 13px; line-height: 16px; color: #3b2f2a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+          <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 600;">sola-pm</span>
+          <span>— Bash running for 12m 05s</span>
+        </div>
+        <!-- the floor totals -->
+        <div style="height: 16px; font-size: 13px; line-height: 16px; color: #6b5f58; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">6 cards · 9 open calls · 4 interns · last activity 8s ago</div>
+      </section>
+
+      <!-- plaque 2: Mezzanine — one room, one held seat: a single marker, no attention line -->
+      <section aria-labelledby="g-floor-mezzanine" style="box-sizing: border-box; height: 106px; flex: none; display: flex; flex-direction: column; gap: 4px; padding: 7px 10px; background: #fffaf2; border: 2px solid #e7b98f; border-radius: 10px; overflow: hidden;">
+        <div style="height: 22px; display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden;">
+          <a id="g-floor-mezzanine" href="/floor/mezzanine" aria-label="Mezzanine, 1 working" style="margin-right: auto; display: flex; align-items: center; gap: 8px; font-family: Quicksand, ui-rounded, system-ui, sans-serif; font-size: 17px; font-weight: 700; color: #3b2f2a; text-decoration: none;">
+            <span style="display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; border-radius: 11px; background: #3b2f4a; color: #ffcf7d; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px;">2</span>
+            Mezzanine
+          </a>
+          <span style="font-size: 13px; font-weight: 600; color: #3b2f2a;">1 agent · 1 desk</span>
+        </div>
+        <div style="height: 20px; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden;">
+          <span style="display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 10px; background: #57c785; border: 1px solid rgba(59, 47, 42, 0.35); color: #1b1f2b; font-size: 13px; font-weight: 600;">1 working</span>
+        </div>
+        <div style="height: 14px; display: flex; align-items: center; gap: 5px; white-space: nowrap;">
+          <span role="img" aria-label="mezzanine-solo, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+        </div>
+        <div style="height: 16px; font-size: 13px; line-height: 16px; color: #6b5f58; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">1 card · 1 open call · 2 interns · last activity 12s ago</div>
+      </section>
+    </div>
+
+    <!-- under the board: the building's own readings as two brass-edged panels — the left one the feed, the fleet totals, the three indicators, the ingest line and the membership stamp; the right one the client's event log, newest first -->
+    <div style="position: absolute; left: 292px; top: 548px; width: 520px; height: 78px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; color: #3b2f2a; line-height: 1.2;">
+      <section aria-label="Building readings" style="box-sizing: border-box; display: flex; flex-direction: column; gap: 3px; padding: 6px 10px; background: #fffaf2; border: 2px solid #c9a873; border-radius: 8px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px; color: #3b2f2a; overflow: hidden;">
+        <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">feed: live · resyncs: 0 · 18 seats · 15 live</div>
+        <div style="display: flex; align-items: center; gap: 10px; white-space: nowrap;">
+          <span style="display: inline-flex; align-items: center; gap: 5px;"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 5px; background: #57c785; border: 1px solid #3b2f2a;"></span>store ok</span>
+          <span style="display: inline-flex; align-items: center; gap: 5px;"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 5px; background: #57c785; border: 1px solid #3b2f2a;"></span>derivation ok</span>
+          <span style="display: inline-flex; align-items: center; gap: 5px;"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 5px; background: #57c785; border: 1px solid #3b2f2a;"></span>sweep ok</span>
+        </div>
+        <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">ingest: last receipt 14:23:12 · membership as of 14:23:14</div>
+      </section>
+      <section aria-labelledby="g-event-log" style="box-sizing: border-box; display: flex; flex-direction: column; gap: 3px; padding: 6px 10px; background: #fffaf2; border: 2px solid #c9a873; border-radius: 8px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px; color: #3b2f2a; overflow: hidden;">
+        <div style="display: flex; align-items: baseline; gap: 8px;">
+          <h3 id="g-event-log" style="margin: 0; font-family: Quicksand, ui-rounded, system-ui, sans-serif; font-size: 14px; font-weight: 700; color: #3b2f2a;">Event log</h3>
+          <a href="#g-event-log" style="margin-left: auto; color: #3b2f2a; text-decoration: underline;">show all</a>
+        </div>
+        <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">14:23:14 · snapshot applied — 18 desks held</div>
+        <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">14:23:00 · feed live — first heartbeat</div>
+      </section>
+    </div>
+  </div>
+  <footer style="height: 28px; box-sizing: border-box; display: flex; align-items: center; padding: 0 24px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px; color: #aab1c6; border-top: 1px solid #323850;">scroll to pan · ctrl+scroll or pinch to zoom · drag to pan · arrows · + −</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lobby 2H</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@600;700&amp;family=IBM+Plex+Sans:wght@400;600&amp;family=IBM+Plex+Mono&amp;display=swap">
+<style>
+body{margin:0}
+a{color:inherit}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #171a28; color: #eef0f6; font-family: 'IBM Plex Sans', system-ui, sans-serif; overflow: hidden; position: relative;">
+  <header style="height: 56px; box-sizing: border-box; display: flex; align-items: center; gap: 16px; padding: 0 24px; background: #1f2333; border-bottom: 1px solid #323850;">
+    <h1 style="margin: 0; margin-right: auto; font-family: Quicksand, ui-rounded, system-ui, sans-serif; font-size: 22px; font-weight: 700; color: #ffcf7d; letter-spacing: 0.01em;">Mezzanine — lobby</h1>
+    <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px; color: #aab1c6;">building: 18 seats · 15 live</span>
+  </header>
+  <div style="height: 44px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 24px; background: #171a28; border-bottom: 1px solid #323850;">
+    <h2 style="margin: 0; margin-right: auto; font-family: Quicksand, ui-rounded, system-ui, sans-serif; font-size: 20px; font-weight: 700; color: #eef0f6;">Lobby</h2>
+    <button type="button" style="width: 32px; height: 32px; border: 1px solid #323850; border-radius: 16px; background: #1f2333; color: #eef0f6; font-size: 16px;">+</button>
+    <button type="button" style="width: 32px; height: 32px; border: 1px solid #323850; border-radius: 16px; background: #1f2333; color: #eef0f6; font-size: 16px;">−</button>
+    <button type="button" style="height: 32px; padding: 0 14px; border: 1px solid #323850; border-radius: 16px; background: #1f2333; color: #eef0f6; font-size: 14px;">Fit the lobby</button>
+  </div>
+
+  <!-- the cab dialog (FLOOR.md § 4.5's ride, `entering` at its start on the lobby page): the cab's room in depth on the left, its doors standing open on the lobby, and the elevator's own button panel on the right -->
+  <div role="dialog" aria-labelledby="h-cab-heading" style="flex: 1; position: relative; overflow: hidden; background: #2b3340;">
+
+    <!-- the cab: `drawCabInterior()` from the rider's eye (CAB — 200 × 140 × 230 cm, eye 155 up and 120 back, frame 94 in front of the eye), one unit a centimetre -->
+    <svg viewBox="0 0 200 230" width="616" height="708" preserveAspectRatio="xMidYMid meet" overflow="hidden" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="position: absolute; left: 156px; top: 32px;">
+      <defs>
+        <linearGradient id="h-cab-shade-left" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3b2f2a" stop-opacity="0"></stop><stop offset="1" stop-color="#3b2f2a" stop-opacity="0.32"></stop></linearGradient>
+        <linearGradient id="h-cab-shade-right" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#3b2f2a" stop-opacity="0"></stop><stop offset="1" stop-color="#3b2f2a" stop-opacity="0.32"></stop></linearGradient>
+        <linearGradient id="h-cab-shade-floor" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#3b2f2a" stop-opacity="0"></stop><stop offset="1" stop-color="#3b2f2a" stop-opacity="0.4"></stop></linearGradient>
+        <linearGradient id="h-cab-shade-ceiling" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b2f2a" stop-opacity="0"></stop><stop offset="1" stop-color="#3b2f2a" stop-opacity="0.3"></stop></linearGradient>
+        <radialGradient id="h-cab-glow" cx="0.5" cy="0" r="0.75"><stop offset="0" stop-color="#f2b84b" stop-opacity="0.55"></stop><stop offset="1" stop-color="#f2b84b" stop-opacity="0"></stop></radialGradient>
+        <linearGradient id="h-lobby-shade-left" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3b2f2a" stop-opacity="0"></stop><stop offset="1" stop-color="#3b2f2a" stop-opacity="0.22"></stop></linearGradient>
+        <linearGradient id="h-lobby-shade-right" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#3b2f2a" stop-opacity="0"></stop><stop offset="1" stop-color="#3b2f2a" stop-opacity="0.22"></stop></linearGradient>
+        <linearGradient id="h-lobby-shade-floor" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#3b2f2a" stop-opacity="0"></stop><stop offset="1" stop-color="#3b2f2a" stop-opacity="0.2"></stop></linearGradient>
+        <linearGradient id="h-lobby-shade-ceiling" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b2f2a" stop-opacity="0"></stop><stop offset="1" stop-color="#3b2f2a" stop-opacity="0.18"></stop></linearGradient>
+        <clipPath id="h-doorway"><rect x="56.92" y="39.75" width="86.17" height="156.67"></rect></clipPath>
+      </defs>
+
+      <!-- the cab's room: ceiling, floor, side walls, back wall — the studio theme's elevator palette (frame #c9a873, lamp #f2b84b) mixed with the sheet's door and ink tokens, as the painter's MIXED rules resolve -->
+      <g>
+        <polygon points="0,0 200,0 178.33,16.25 21.67,16.25" fill="#d2c6b0"></polygon>
+        <polygon points="0,0 200,0 178.33,16.25 21.67,16.25" fill="url(#h-cab-shade-ceiling)"></polygon>
+        <polygon points="0,230 200,230 178.33,196.42 21.67,196.42" fill="#897252"></polygon>
+        <polygon points="0,230 200,230 178.33,196.42 21.67,196.42" fill="url(#h-cab-shade-floor)"></polygon>
+        <polygon points="0,0 21.67,16.25 21.67,196.42 0,230" fill="#cbaf82"></polygon>
+        <polygon points="0,0 21.67,16.25 21.67,196.42 0,230" fill="url(#h-cab-shade-left)"></polygon>
+        <polygon points="200,0 178.33,16.25 178.33,196.42 200,230" fill="#cbaf82"></polygon>
+        <polygon points="200,0 178.33,16.25 178.33,196.42 200,230" fill="url(#h-cab-shade-right)"></polygon>
+        <rect x="21.67" y="16.25" width="156.67" height="180.17" fill="#cdb58e"></rect>
+        <rect x="21.67" y="16.25" width="156.67" height="180.17" fill="#3b2f2a" fill-opacity="0.3"></rect>
+        <rect x="21.67" y="16.25" width="156.67" height="108.1" fill="url(#h-cab-glow)"></rect>
+        <!-- the floor's tile seams running back to the eye's point -->
+        <g stroke="#b2ad9f" stroke-width="0.8" stroke-opacity="0.45">
+          <line x1="50" y1="230" x2="60.83" y2="196.42"></line>
+          <line x1="100" y1="230" x2="100" y2="196.42"></line>
+          <line x1="150" y1="230" x2="139.17" y2="196.42"></line>
+        </g>
+        <!-- the corner seams -->
+        <g stroke="#7b654b" stroke-width="1" stroke-opacity="0.6">
+          <line x1="0" y1="0" x2="21.67" y2="16.25"></line>
+          <line x1="200" y1="0" x2="178.33" y2="16.25"></line>
+          <line x1="0" y1="230" x2="21.67" y2="196.42"></line>
+          <line x1="200" y1="230" x2="178.33" y2="196.42"></line>
+        </g>
+        <!-- the kick plates along each side wall's foot -->
+        <polygon points="0,220 21.67,188.58 21.67,196.42 0,230" fill="#b0ada4"></polygon>
+        <polygon points="0,220 21.67,188.58 21.67,196.42 0,230" fill="url(#h-cab-shade-left)"></polygon>
+        <polygon points="200,220 178.33,188.58 178.33,196.42 200,230" fill="#b0ada4"></polygon>
+        <polygon points="200,220 178.33,188.58 178.33,196.42 200,230" fill="url(#h-cab-shade-right)"></polygon>
+        <!-- the near end of each handrail, on its post, the part of it in view -->
+        <line x1="14.55" y1="126.27" x2="18.82" y2="126.27" stroke="#9fb1c4" stroke-width="2" stroke-linecap="round"></line>
+        <polygon points="5,133 18.82,124.56 18.82,127.98 5,137" fill="#9fb1c4" stroke="#9fb1c4" stroke-width="0.6" stroke-linejoin="round"></polygon>
+        <line x1="5" y1="133.5" x2="18.82" y2="124.99" stroke="#dbe5ee" stroke-width="1" stroke-linecap="round" stroke-opacity="0.8"></line>
+        <line x1="185.45" y1="126.27" x2="181.18" y2="126.27" stroke="#9fb1c4" stroke-width="2" stroke-linecap="round"></line>
+        <polygon points="195,133 181.18,124.56 181.18,127.98 195,137" fill="#9fb1c4" stroke="#9fb1c4" stroke-width="0.6" stroke-linejoin="round"></polygon>
+        <line x1="195" y1="133.5" x2="181.18" y2="124.99" stroke="#dbe5ee" stroke-width="1" stroke-linecap="round" stroke-opacity="0.8"></line>
+        <!-- the open front's rim -->
+        <rect x="0" y="0" width="200" height="230" fill="none" stroke="#826b4f" stroke-width="4"></rect>
+      </g>
+
+      <!-- the door on the back wall: its frame in the elevator palette, the dark recess, a plain dial and its lamp (no numeral, no arrow), the sill -->
+      <g>
+        <rect x="48.71" y="21.29" width="102.58" height="175.13" rx="6.15" fill="#c9a873" stroke="#977e59" stroke-width="0.8"></rect>
+        <rect x="54.87" y="37.7" width="90.27" height="158.72" rx="3.08" fill="#10121c"></rect>
+        <path d="M 87.69 32.57 A 12.31 7.18 0 0 1 112.31 32.57" fill="none" stroke="#9fb1c4" stroke-width="1.2"></path>
+        <circle cx="100" cy="32.57" r="1.85" fill="#f2b84b"></circle>
+        <rect x="46.66" y="195.39" width="106.69" height="2.05" rx="1.03" fill="#9fb1c4"></rect>
+        <!-- the decorative call plate beside the frame: no word, no number, nothing lit -->
+        <rect x="158.55" y="78.92" width="12.53" height="47" rx="1.57" fill="#d0bfa2" stroke="#897252" stroke-width="0.5"></rect>
+        <rect x="160.9" y="82.05" width="7.83" height="4.7" rx="0.78" fill="#10121c"></rect>
+        <g fill="#dbe5ee" stroke="#9fb1c4" stroke-width="0.5">
+          <circle cx="161.99" cy="92.24" r="1.8"></circle><circle cx="167.63" cy="92.24" r="1.8"></circle>
+          <circle cx="161.99" cy="98.9" r="1.8"></circle><circle cx="167.63" cy="98.9" r="1.8"></circle>
+          <circle cx="161.99" cy="105.56" r="1.8"></circle><circle cx="167.63" cy="105.56" r="1.8"></circle>
+          <circle cx="161.99" cy="112.22" r="1.8"></circle><circle cx="167.63" cy="112.22" r="1.8"></circle>
+        </g>
+        <circle cx="164.82" cy="119.65" r="1.25" fill="#3b2f2a"></circle>
+        <rect x="164.43" y="119.65" width="0.78" height="2.35" fill="#3b2f2a"></rect>
+      </g>
+
+      <!-- THE LAYER BEHIND THE LEAVES: `drawLobbyView()` — the lobby seen from the elevator wall toward the street, clipped to the doorway (110 × 200 cm), vanishing point the cab's; scenery, the windows' daylight fixed -->
+      <g clip-path="url(#h-doorway)">
+        <polygon points="-291.65,-54.25 491.65,-54.25 130.92,64.79 69.08,64.79" fill="#f8ead6"></polygon>
+        <polygon points="-291.65,-54.25 491.65,-54.25 130.92,64.79 69.08,64.79" fill="url(#h-lobby-shade-ceiling)"></polygon>
+        <polygon points="-291.65,196.42 491.65,196.42 130.92,84.59 69.08,84.59" fill="#e2b07c"></polygon>
+        <!-- the boards, converging on the far wall, and their cross seams -->
+        <g stroke="#c9925f" stroke-width="0.5" stroke-opacity="0.6">
+          <line x1="-213.3" y1="196.42" x2="75.26" y2="84.59"></line>
+          <line x1="-135" y1="196.42" x2="81.45" y2="84.59"></line>
+          <line x1="-56.66" y1="196.42" x2="87.63" y2="84.59"></line>
+          <line x1="21.67" y1="196.42" x2="93.82" y2="84.59"></line>
+          <line x1="100" y1="196.42" x2="100" y2="84.59"></line>
+          <line x1="178.33" y1="196.42" x2="106.18" y2="84.59"></line>
+          <line x1="256.66" y1="196.42" x2="112.37" y2="84.59"></line>
+          <line x1="335" y1="196.42" x2="118.55" y2="84.59"></line>
+          <line x1="413.3" y1="196.42" x2="124.74" y2="84.59"></line>
+          <line x1="-46.9" y1="120.53" x2="246.9" y2="120.53"></line>
+          <line x1="9.6" y1="103.01" x2="190.4" y2="103.01"></line>
+          <line x1="42.7" y1="92.77" x2="157.3" y2="92.77"></line>
+          <line x1="58.05" y1="88" x2="141.95" y2="88"></line>
+        </g>
+        <polygon points="-291.65,196.42 491.65,196.42 130.92,84.59 69.08,84.59" fill="url(#h-lobby-shade-floor)"></polygon>
+        <polygon points="-291.65,-54.25 69.08,64.79 69.08,84.59 -291.65,196.42" fill="#fcf3e4"></polygon>
+        <polygon points="-291.65,-54.25 69.08,64.79 69.08,84.59 -291.65,196.42" fill="url(#h-lobby-shade-left)"></polygon>
+        <polygon points="491.65,-54.25 130.92,64.79 130.92,84.59 491.65,196.42" fill="#fcf3e4"></polygon>
+        <polygon points="491.65,-54.25 130.92,64.79 130.92,84.59 491.65,196.42" fill="url(#h-lobby-shade-right)"></polygon>
+        <!-- the street wall, at the room's full depth -->
+        <rect x="69.08" y="64.79" width="61.84" height="19.8" fill="#fcf3e4"></rect>
+        <rect x="69.08" y="64.79" width="61.84" height="19.8" fill="#3b2f2a" fill-opacity="0.12"></rect>
+        <!-- the skirting along the three walls' feet, and the rail along the side walls -->
+        <polygon points="-291.65,188.58 69.08,83.97 69.08,84.59 -291.65,196.42" fill="#c98f63"></polygon>
+        <polygon points="491.65,188.58 130.92,83.97 130.92,84.59 491.65,196.42" fill="#c98f63"></polygon>
+        <rect x="69.08" y="83.97" width="61.84" height="0.62" fill="#c98f63"></rect>
+        <line x1="-291.65" y1="122" x2="69.08" y2="78.71" stroke="#e7b98f" stroke-width="1.2"></line>
+        <line x1="491.65" y1="122" x2="130.92" y2="78.71" stroke="#e7b98f" stroke-width="1.2"></line>
+        <!-- the ceiling's lamps down the centre line -->
+        <g fill="#fff6dc" stroke="#f0cfa8" stroke-width="0.3">
+          <polygon points="91,42 109,42 108.14,45.17 91.86,45.17"></polygon>
+          <polygon points="94.12,53.46 105.88,53.46 105.49,54.86 94.51,54.86"></polygon>
+          <polygon points="95.85,59.8 104.15,59.8 104.05,60.51 95.95,60.51"></polygon>
+          <polygon points="96.8,63.25 103.2,63.25 103.09,63.68 96.91,63.68"></polygon>
+        </g>
+        <!-- the daylight the doors and the two windows lay on the floor -->
+        <polygon points="92.58,84.59 107.42,84.59 111.56,86.94 88.44,86.94" fill="#ffffff" fill-opacity="0.32"></polygon>
+        <polygon points="76.5,84.59 86.4,84.59 83.04,86.94 70.71,86.94" fill="#ffffff" fill-opacity="0.25"></polygon>
+        <polygon points="113.6,84.59 123.5,84.59 129.29,86.94 116.96,86.94" fill="#ffffff" fill-opacity="0.25"></polygon>
+        <!-- the welcome mat before the doors -->
+        <polygon points="91.4,85.26 108.6,85.26 108.04,84.59 91.96,84.59" fill="#e7866d"></polygon>
+        <!-- the front doors: two glass leaves under an arch, centred on the cab's door line (240 × 260 cm) -->
+        <path d="M 92.58 68.51 A 7.42 2.6 0 0 1 107.42 68.51 Z" fill="#c9a873" stroke="#8a6f5a" stroke-width="0.3"></path>
+        <rect x="92.58" y="68.51" width="14.84" height="16.08" fill="#9fb1c4"></rect>
+        <rect x="93.1" y="69" width="6.65" height="15.59" fill="#cfe8ef" stroke="#9fb1c4" stroke-width="0.3"></rect>
+        <rect x="100.25" y="69" width="6.65" height="15.59" fill="#cfe8ef" stroke="#9fb1c4" stroke-width="0.3"></rect>
+        <rect x="95.4" y="76" width="1.6" height="0.5" fill="#9fb1c4"></rect>
+        <rect x="103" y="76" width="1.6" height="0.5" fill="#9fb1c4"></rect>
+        <!-- one window 160 cm wide either side of the doors, daylight in the glass -->
+        <polygon points="76.5,69.12 86.4,69.12 86.4,79.02 76.5,79.02" fill="#cfe8ef" stroke="#4a5670" stroke-width="0.5"></polygon>
+        <line x1="81.45" y1="69.12" x2="81.45" y2="79.02" stroke="#4a5670" stroke-width="0.4"></line>
+        <line x1="76.5" y1="74.07" x2="86.4" y2="74.07" stroke="#4a5670" stroke-width="0.4"></line>
+        <polygon points="113.6,69.12 123.5,69.12 123.5,79.02 113.6,79.02" fill="#cfe8ef" stroke="#4a5670" stroke-width="0.5"></polygon>
+        <line x1="118.55" y1="69.12" x2="118.55" y2="79.02" stroke="#4a5670" stroke-width="0.4"></line>
+        <line x1="113.6" y1="74.07" x2="123.5" y2="74.07" stroke="#4a5670" stroke-width="0.4"></line>
+      </g>
+
+      <!-- the two leaves, standing open (scaleX .12 from their outer edges), each edged in the door's edge colour -->
+      <rect x="56.92" y="39.75" width="5.05" height="156.67" rx="3.08" fill="#dbe5ee" stroke="#9fb1c4" stroke-width="2"></rect>
+      <rect x="138.04" y="39.75" width="5.05" height="156.67" rx="3.08" fill="#dbe5ee" stroke="#9fb1c4" stroke-width="2"></rect>
+    </svg>
+
+    <!-- the elevator's own button panel (`floor/cab-panel.js`): every floor in § 4.1's order, each named as its plaque is, and Lobby last; the stop the viewer stands at lit and marked -->
+    <section style="position: absolute; left: 804px; top: 236px; box-sizing: border-box; width: 480px; padding: 20px 22px 18px; border: 3px solid #826b4f; border-radius: 28px; background: #c9a873; color: #3b2f2a; box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.35), inset 0 -4px 0 rgba(0, 0, 0, 0.12), 0 18px 48px rgba(0, 0, 0, 0.45);">
+      <h2 id="h-cab-heading" style="display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 0 0 14px; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 20px; font-weight: 600; color: #3b2f2a; text-align: center;">
+        <span aria-hidden="true" style="width: 14px; height: 14px; border-radius: 7px; background: #f2b84b; box-shadow: 0 0 0 3px #826b4f, 0 0 14px #f2b84b;"></span>
+        The elevator
+      </h2>
+      <ul aria-labelledby="h-cab-heading" style="display: grid; gap: 10px; margin: 0 0 12px; padding: 0; list-style: none;">
+        <li>
+          <button type="button" style="display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; box-sizing: border-box; padding: 8px 16px 8px 10px; border: 2px solid #9fb1c4; border-radius: 18px; background: #dbe5ee; color: #3b2f2a; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 16px; text-align: left; box-shadow: inset 0 -3px 0 rgba(159, 177, 196, 0.55), 0 2px 0 #826b4f;">
+            <span aria-hidden="true" style="flex: none; width: 26px; height: 26px; box-sizing: border-box; border: 3px solid #9fb1c4; border-radius: 13px; background: #c3d0dd; box-shadow: inset 0 2px 2px rgba(255, 255, 255, 0.6);"></span>
+            <span style="font-weight: 600;">kanban</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" style="display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; box-sizing: border-box; padding: 8px 16px 8px 10px; border: 2px solid #9fb1c4; border-radius: 18px; background: #dbe5ee; color: #3b2f2a; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 16px; text-align: left; box-shadow: inset 0 -3px 0 rgba(159, 177, 196, 0.55), 0 2px 0 #826b4f;">
+            <span aria-hidden="true" style="flex: none; width: 26px; height: 26px; box-sizing: border-box; border: 3px solid #9fb1c4; border-radius: 13px; background: #c3d0dd; box-shadow: inset 0 2px 2px rgba(255, 255, 255, 0.6);"></span>
+            <span style="font-weight: 600;">Mezzanine</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" aria-current="true" style="display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; box-sizing: border-box; padding: 8px 16px 8px 10px; border: 2px solid #a9813e; border-radius: 18px; background: #e3d5b5; color: #3b2f2a; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 16px; text-align: left; box-shadow: inset 0 -3px 0 rgba(159, 177, 196, 0.55), 0 2px 0 #826b4f;">
+            <span aria-hidden="true" style="flex: none; width: 26px; height: 26px; box-sizing: border-box; border: 3px solid #a9813e; border-radius: 13px; background: #f2b84b; box-shadow: inset 0 2px 2px rgba(255, 255, 255, 0.6), 0 0 12px #f2b84b;"></span>
+            <span style="font-weight: 600;">Lobby</span>
+            <span style="color: #3b2f2a;"> — you are here</span>
+          </button>
+        </li>
+      </ul>
+      <p style="margin: 4px 0 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px; color: #3b2f2a;">feed: live</p>
+    </section>
+  </div>
+  <footer style="height: 28px; box-sizing: border-box; display: flex; align-items: center; padding: 0 24px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px; color: #aab1c6; border-top: 1px solid #323850;">scroll to pan · ctrl+scroll or pinch to zoom · drag to pan · arrows · + −</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
