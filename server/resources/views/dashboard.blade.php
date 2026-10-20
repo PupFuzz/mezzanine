@@ -35,7 +35,7 @@
         feed status, the resync count and the client's event record below are live, and § 4.1's
         discrepancy check is the protocol's — this page fetches no snapshot of its own.
     --}}
-    <section id="lobby" class="lobby" aria-labelledby="lobby-heading" data-lobby-href="{{ url('/') }}">
+    <section id="lobby" class="lobby" aria-labelledby="lobby-heading" data-lobby-href="{{ route('dashboard') }}">
         <h2 id="lobby-heading">Lobby</h2>
 
         {{-- § 9 F8: "a full-width banner", above everything else on the page. --}}
