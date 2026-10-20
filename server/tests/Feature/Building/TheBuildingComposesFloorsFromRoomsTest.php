@@ -14,7 +14,7 @@ use Tests\TestCase;
  * composes the same floors (`public/js/lobby/lobby-model.js`, `floors()`) — § 4.1's discrepancy
  * check discovers an install after the page was served, and that install still owes a floor — so
  * `tests/fixtures/building/compose-cases.json` is the one statement of the rule and both this
- * suite and `Tests\Feature\Lobby\TheBuildingStacksTheComposedFloorsTest` walk every case in it.
+ * suite and `Tests\Feature\Lobby\TheDirectoryListsTheComposedFloorsTest` walk every case in it.
  * A case added there reaches both; a rule one runtime has and the other lacks reds one of them.
  *
  * ⭐ THE TWO RULES THE FIXTURE EXISTS FOR ARE BOTH ABOUT A HOLE, and they point in opposite

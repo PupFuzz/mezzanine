@@ -7,7 +7,7 @@ namespace Tests\Feature\Support;
  *
  * A declaration holding `var()` is accepted when it is parsed and fails only when its value is computed, so a browser
  * without `color-mix()` keeps a mixed declaration and paints nothing — and a plain value declared before it in the same
- * rule is thrown away. The one mechanism, in `server/public/css/mezzanine.css` and in `painter.js`'s `STYLE` alike: the
+ * rule is thrown away. The one mechanism, in `server/public/css/mezzanine.css` and in `painter.js`'s `STYLE` (which carries `cab-paint.js`'s `CAB_STYLE` whole) alike: the
  * mixed rule sits in an `@supports (<property>: color-mix(…))` block, and BEFORE that block a plain rule of the same
  * selector sets the same property to the mixed value with each `color-mix()` replaced by one of its own colours.
  *

@@ -19,13 +19,13 @@
  *  · `+` or `=` zooms in and `-` or `_` out, one notch about the drawing's centre;
  *  · an arrow key pans by `PAN_STEP_PX`, the view moving the way the arrow points;
  *  · a key with a modifier is the browser's (Ctrl + is the page zoom) and passes through, and so does
- *    every other key — a focused desk's Enter and Space, a plate link's Enter — untouched;
+ *    every other key — a focused desk's Enter and Space, a plaque link's Enter, the lobby's elevator's — untouched;
  *  · the zoom-in and zoom-out buttons are one notch each, about the centre, as the keys are;
  *  · ⛔ NOTHING FRAMED, NOTHING OFFERED AND NOTHING TAKEN (card#7343 r4b, the seat's ruling — the same one
  *    gate as `camera-gestures.js`'s, `camera.js`'s `framesNothing()` over the screen's `camera()`). While
  *    the camera frames nothing, a key is the browser's — an arrow key scrolls the lobby's flowing list, as
- *    it did before the lobby had a camera — and nothing of the camera is offered: the zoom buttons, the
- *    page's framing control (the floor's *Fit the floor*, the lobby's *Whole building*) and the page's
+ *    it did before the lobby had a camera, and as the lobby's placeholders do before its first snapshot — and nothing of the camera is offered: the zoom buttons, the
+ *    page's framing control (the floor's *Fit the floor*, the lobby's *Fit the lobby*) and the page's
  *    gesture hint (*scroll to pan · ctrl+scroll or pinch to zoom …*, card#11045 — untrue of a page whose
  *    wheel scrolls it) are hidden, the
  *    drawing is no tab stop, and it names no `aria-keyshortcuts`, so neither the keyboard nor assistive

@@ -114,7 +114,7 @@ class EveryFixtureSeatMatchesThePublishedSeatObjectTest extends TestCase
 
     /**
      * The controls. Each rule above is planted once, against a real fixture object, and seen to
-     * red — a checker nobody has watched fail is a decoration, and this one is 15 rules deep.
+     * red — a checker nobody has watched fail is a decoration, and every rule here is planted.
      */
     public function test_the_check_reds_on_each_rule_it_exists_to_enforce(): void
     {
@@ -148,6 +148,11 @@ class EveryFixtureSeatMatchesThePublishedSeatObjectTest extends TestCase
             'badges_since' => static fn (array $s): array => array_replace($s, ['badges' => []]),
             'retired' => static fn (array $s): array => array_replace($s, ['retired' => ['at' => 'x', 'by' => 'y', 'reason' => 'z']]),
             'call_id ULID' => static fn (array $s): array => array_replace_recursive($s, ['action' => ['call_id' => '01K3TA4E5F6G7H8J9K0M1N2P3']]),
+            // card#12113: the oldest open call, null exactly when nothing is open and the same call as
+            // `action` when exactly one is.
+            'longest_open_call against open_calls' => static fn (array $s): array => array_replace($s, ['longest_open_call' => null]),
+            'longest_open_call against action' => static fn (array $s): array => array_replace_recursive($s, ['longest_open_call' => ['call_id' => '01K3TB1A2B3C4D5E6F7G8H9J0K']]),
+            'longest_open_call call_id ULID' => static fn (array $s): array => array_replace_recursive($s, ['longest_open_call' => ['call_id' => '01K3TA4E5F6G7H8J9K0M1N2P3']]),
             'live render_state' => static fn (array $s): array => array_replace($s, ['render_state' => 'idle']),
         ];
 
@@ -394,6 +399,20 @@ class EveryFixtureSeatMatchesThePublishedSeatObjectTest extends TestCase
             $defects[] = 'action disagrees with open_calls';
         }
 
+        // card#12113: § 8.2.1 — "`null` exactly when `open_calls` is 0 … when `open_calls` is 1 it
+        // names the same call `action` names".
+        if ((($seat['longest_open_call'] ?? null) === null) !== (($seat['open_calls'] ?? null) === 0)) {
+            $defects[] = 'longest_open_call disagrees with open_calls';
+        }
+
+        if (($seat['open_calls'] ?? null) === 1 && is_array($seat['action'] ?? null) && is_array($seat['longest_open_call'] ?? null)) {
+            foreach (['call_id', 'tool_name', 'started_received_at'] as $member) {
+                if (($seat['longest_open_call'][$member] ?? null) !== ($seat['action'][$member] ?? null)) {
+                    $defects[] = "one call is open and longest_open_call.{$member} is not action's";
+                }
+            }
+        }
+
         if (count($seat['subagents'] ?? []) !== min($seat['subagents_open'] ?? 0, 8)) {
             $defects[] = 'subagents carries a different number of elements than subagents_open states';
         }
@@ -410,7 +429,13 @@ class EveryFixtureSeatMatchesThePublishedSeatObjectTest extends TestCase
             $defects[] = 'retired is non-null on a read surface';
         }
 
-        foreach (array_merge(($seat['action'] ?? null) !== null ? [$seat['action']] : [], $seat['subagents'] ?? []) as $call) {
+        $calls = array_merge(
+            ($seat['action'] ?? null) !== null ? [$seat['action']] : [],
+            ($seat['longest_open_call'] ?? null) !== null ? [$seat['longest_open_call']] : [],
+            $seat['subagents'] ?? [],
+        );
+
+        foreach ($calls as $call) {
             if (preg_match('/^[0-9A-HJKMNP-TV-Z]{26}$/', (string) ($call['call_id'] ?? '')) !== 1) {
                 $defects[] = 'call_id is not a 26-character ULID';
             }

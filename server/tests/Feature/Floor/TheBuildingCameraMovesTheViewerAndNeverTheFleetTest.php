@@ -2,100 +2,89 @@
 
 namespace Tests\Feature\Floor;
 
-use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Feature\Support\ModuleSpecifiers;
 use Tests\TestCase;
 
 /**
- * **AT-D3-21 — the camera moves the viewer and never the fleet, building half.** `docs/design/FLOOR.md
- * § 11`, gated at Appendix B row 16 (card#7343): row 15's camera (`wire/camera.js`) at building scale,
- * held by the lobby screen (`lobby/lobby-screen.js`) over the plates `lobby/building-scene.js` places,
- * and the elevator ride's arrival at `/floor/{key}`. The floor half is
+ * **AT-D3-21 — the camera moves the viewer and never the fleet, building half.** `docs/design/FLOOR.md § 11`, gated at
+ * Appendix B row 24 (card#12113, which re-cut the half for the drawn room; until then it read the cross-section's plates,
+ * the whole-building framing and the ride to a plate, built at row 16): row 15's camera (`wire/camera.js`) at room scale,
+ * held by the lobby screen (`lobby/lobby-screen.js`) over the room `lobby/building-scene.js` places. The floor half is
  * `TheCameraMovesTheViewerAndNeverTheFleetTest`, beside this file.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ THE RUNS ARE `fixtures/fx-camera.json`'s `building_rides` and `building_rides_reduced`:
- * `fx-snapshot-4` under a layout of two floors, one of them labelled, entered at the lobby through the
- * harness (`fleet-client-probe.mjs` with `lobby.camera`) — ride to the labelled floor, ride to the other,
- * whole-building — and the same under `prefers-reduced-motion`. A ride's arrival is a route change the
- * page performs; the harness stays on the lobby and records the route, and where the floor page's own
- * `resolveRoute()` lands it over the building the lobby drew. Because a ride LEAVES the lobby, each is
- * followed by the page coming back from the back-forward cache (`return`) before the next act.
+ * ⛔ THE RUNS ARE `fixtures/fx-camera.json`'s `building_room` and `building_room_reduced`: `fx-snapshot-4` under a layout of
+ * two floors, one of them labelled, entered at the lobby through the harness (`fleet-client-probe.mjs` with
+ * `lobby.camera`) — the wheel, a Ctrl+wheel, a pinch, a drag and an arrow key over the room, *Fit the lobby*, the
+ * keyboard's focus on the elevator and on a plaque's link, in view and out of it — and the same under
+ * `prefers-reduced-motion`. A wheel or a drag begun over the DIRECTORY is the gesture wire's
+ * (`wire/camera-gestures.js`'s scroller rule), held where that wire is driven, `TheCameraWireIsOneForBothPagesTest`.
  *
- * ⛔ THE CLICK COMMITS THE RIDE, AND THE HOLD PROTECTS THE GLIDE (card#7343 r1 ruling; r2-4, the seat's
- * ruling; row 16), held over `building_ride_in_flight`: from a ride's click until its glide arrives and
- * the page asks for the route (`arrive`) — or the page comes back from the back-forward cache (`return`)
- * — every frame says the ride is in flight (the page disables the control on it), a second ride is
- * refused, and the wheel (its pan and its Ctrl+zoom, each still consuming the event — card#11045), the
- * touch pinch, a key's zoom, the drag, the keyboard's focus on a plate and the whole-building control
- * leave the camera on the plate; after it the camera moves and the viewer rides again, whether
- * or not the navigation completed. The page's half — an interrupted glide cutting to the plate and
- * arriving — is `wire/camera-view.js`'s committed glide, held by `TheCameraWireIsOneForBothPagesTest`.
+ * ⛔ THE LOG CLAUSE HAS ITS TEETH IN THE IMPORT GRAPH, AND THIS SAYS WHY. The lobby's one § 6.2 row is A17 — the room's
+ * window, fired by each `feed.heartbeat` (§ 4.1) — so the harness's log holds the run's heartbeats' A17 rows, and the
+ * SAME rows with the camera acts and without them. What makes *the animation log gains no row* true of a camera act is
+ * that the lobby reaches the log and the set by exactly the paths `PATH` names — the page's bounded log from
+ * `wire/live-page.js`, handed to `lobby/lobby-screen.js`, the one module that constructs the set, drawing A17 alone
+ * (`TheLobbySkyIsTheFloorsA17Test` holds the rows that set writes); and, since card#12113, `wire/ride.js`, which reads one
+ * CONSTANT out of the set's module (`LOOP_FPS`, the ride's fade) and is held to importing that name and no other, so it
+ * can neither construct a set nor write a row — and no other module the page loads can IMPORT the log or the set; that
+ * is asserted over the page's whole import graph from `lobby/main.js`, as its edges into the two modules. Two things the
+ * graph cannot see are held elsewhere: `lobby/main.js` holds the page's log without importing it, and
+ * `LobbyPageWiringTest` holds it to handing that log to the screen and using it nowhere else; and a camera act writing a
+ * row through the lobby's own set, on the one path, is caught by the replayed log (the planted *Fit the lobby* below).
+ * The walk reads, in each module's code (its comments blanked), every string-literal specifier after `from`, after a
+ * bare `import` and inside `import(` (`Tests\Feature\Support\ModuleSpecifiers`) and follows each that starts `./` or `../`;
+ * every other specifier is a DEFECT it cannot follow, never one it skips (card#7343 r2-1) — with ONE declared exception,
+ * followed rather than skipped: `floor/cab-paint.js`'s `loadHousePalette()`, whose two dynamic imports load the asset
+ * route's theme registry and the house theme it names (the cab's palette, § 4.5), are walked into
+ * `resources/floor/themes/` by name, the registry's `HOUSE_THEME` read off its own line. Its REDs plant the import in
+ * each form into the room's drawing (`lobby/building-scene.js`), each held to the reason it must red for.
  *
- * ⛔ A FOCUSED PLATE OUT OF VIEW IS BROUGHT INTO IT (card#7343 r2-2), held over `building_focus`: the
- * keyboard's focus on a plate not wholly in view glides the camera to it, and a focus on a plate already
- * in view — every plate, at fit — or on a key no plate has moves nothing.
- *
- * ⛔ THE LOG CLAUSE HAS ITS TEETH IN THE IMPORT GRAPH, AND THIS SAYS WHY. The lobby's one § 6.2 row is A17
- * — its sky behind the building, fired by each `feed.heartbeat` (the operator's ruling on card#7343,
- * 2026-09-30; § 4.1's plates carry no § 6.2 row) — so the harness's log holds the run's heartbeats' A17
- * rows, and the SAME rows with the camera acts and without them. What makes *the animation log gains no
- * row* true of a camera act is that the lobby reaches the log and the set by exactly ONE path — the page's
- * bounded log from `wire/live-page.js`, handed to `lobby/lobby-screen.js`, the one module that constructs
- * the set, drawing A17 alone (`TheLobbySkyIsTheFloorsA17Test` holds the rows that set writes) — and no
- * other module the page loads can IMPORT the log or the set; that is asserted over the page's whole import
- * graph from `lobby/main.js`, as its edges into the two modules. Two things the graph cannot see are held
- * elsewhere: `lobby/main.js` holds the page's log without importing it, and `LobbyPageWiringTest` holds it
- * to handing that log to the screen and using it nowhere else; and a camera act writing a row through the
- * lobby's own set, on the one path, is caught by the replayed log (the planted ride below).
- * The walk reads, in each module's code (its comments blanked), every string-literal specifier after
- * `from`, after a bare `import` and inside `import(` — single quotes, double quotes, or a backtick with no
- * `${` (`Tests\Feature\Support\ModuleSpecifiers`) — and follows each that starts `./` or `../`; every
- * other specifier — an absolute path, a URL, a bare name, a template with `${`, an `import(` of anything
- * but one literal — is a DEFECT it cannot follow, never one it skips (card#7343 r2-1). Its REDs plant the
- * import in each form into the building's drawing (`lobby/building-scene.js`), each held to the reason it
- * must red for: reaching the log or the set off the one path, or a specifier the walk cannot follow. The
- * replayed log comparison stays as the harness's own reading of the GREEN, beside the discriminating
- * control § 11 names.
- *
- * ⚠ WHAT THIS DOES NOT HOLD: the plate drawn as the reference's section, the cab drawn and glided, the
- * roof sign and the ground lobby — Appendix B row 16's slice B, whose drawing reads no plate's field
- * (`Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest`, where it is drawn). The seventh RED is
- * held here over the plate the MODEL hands the page (`lobby/main.js` draws each plate's text over that
- * drawing, which reads the scene's rects alone). And, as on the floor, no test
- * here can see a wheel, a drag or a click reach these acts in a browser: `lobby/main.js` wires them and
- * decides nothing, and `LobbyPageWiringTest` holds its elements and the ride's wiring.
+ * ⚠ WHAT THIS DOES NOT HOLD: the room drawn as the reference's room and the directory painted on its board —
+ * `Tests\Feature\Lobby\TheLobbyIsADrawnRoomTest`, where they are drawn — and the elevator's ride
+ * (`Tests\Feature\Lobby\TheLobbysElevatorIsTheFloorsRideTest`). As on the floor, no test here can see a wheel, a drag or a
+ * click reach these acts in a browser: `lobby/main.js` wires them and decides nothing, and `LobbyPageWiringTest` holds
+ * the wiring.
  */
 class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 {
     use DrivesTheFleetClientModule;
     use RefreshDatabase;
 
-    private const RUN = 'building_rides';
+    private const RUN = 'building_room';
 
-    private const REDUCED = 'building_rides_reduced';
-
-    private const IN_FLIGHT = 'building_ride_in_flight';
-
-    private const FOCUS = 'building_focus';
+    private const REDUCED = 'building_room_reduced';
 
     private const SCREEN = '../lobby/lobby-screen.js';
 
-    /** The module the import-form REDs are planted in — one the lobby page loads that is on neither path. */
+    /** The module the import-form REDs are planted in — one the lobby page loads that is on no path. */
     private const DRAWING = '../lobby/building-scene.js';
 
     /**
-     * The lobby page's one path to the log and the set (card#7343): importer => the module it may load.
-     * `live-page.js` constructs the page's bounded log; `lobby-screen.js` constructs the set over it.
+     * The lobby page's paths to the log and the set: importer => the module it may load. `live-page.js` constructs the
+     * page's bounded log; `lobby-screen.js` constructs the set over it; `ride.js` reads `LOOP_FPS` out of the set's
+     * module and nothing else (`RIDE_IMPORT`).
      */
     private const PATH = [
         'wire/live-page.js' => 'wire/animation-log.js',
         'lobby/lobby-screen.js' => 'wire/animation-set.js',
+        'wire/ride.js' => 'wire/animation-set.js',
     ];
 
+    /** The ride's one import from the set's module — a constant, never the set (card#12113). */
+    private const RIDE_IMPORT = "import { LOOP_FPS } from './animation-set.js';";
+
+    /** The one module whose dynamic imports the walk follows into the asset route, and the two it holds them to. */
+    private const ASSET_LOADER = 'floor/cab-paint.js';
+
+    private const ASSET_IMPORTS = ['await import(THEME_REGISTRY)', 'await import(themeModule(registry.HOUSE_THEME))'];
+
     private const EPSILON = 1e-6;
+
+    /** The acts that move the camera wherever it stands — the wheel, Ctrl+wheel, pinch, drag and a key's zoom. */
+    private const MOVES = ['scroll', 'ctrl_wheel', 'pinch', 'drag', 'zoom'];
 
     // ── GREEN ──────────────────────────────────────────────────────────────────────────────────
 
@@ -108,46 +97,46 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
             $this->assertCount(2, $floors, "[{$run}] the layout is not two floors");
             $this->assertSame(1, count(array_filter($floors, static fn (array $f): bool => isset($f['label']))), "[{$run}] not exactly one floor is labelled");
-            $acts = array_column($fixture['lobby']['camera'], 'act');
+            $acts = array_unique(array_column($fixture['lobby']['camera'], 'act'));
 
-            $this->assertSame(['ride', 'ride', 'building'], array_values(array_diff($acts, ['return'])), "[{$run}] the acts are not ride, ride, whole-building");
-            // A ride leaves the lobby: the viewer is back on it before anything else is asked of it.
-            $this->assertSame(['ride', 'return', 'ride', 'return', 'building'], $acts, "[{$run}] a ride is not followed by the page coming back");
+            foreach ([...self::MOVES, 'fit', 'focus_elevator', 'focus_board'] as $act) {
+                $this->assertContains($act, $acts, "[{$run}] the run has no {$act}");
+            }
         }
 
         $this->assertTrue($this->fixture(self::REDUCED)['reduce'] ?? false, 'the reduced run is not under prefers-reduced-motion');
         $this->assertFalse($this->fixture(self::RUN)['reduce'] ?? false, 'the moving run is under prefers-reduced-motion');
+        $this->assertSame($this->fixture(self::RUN)['lobby']['camera'], $this->fixture(self::REDUCED)['lobby']['camera'], 'the reduced run\'s acts are not the moving run\'s');
     }
 
-    public function test_green_the_plates_are_the_composed_floors_carrying_the_lobby_rows_verbatim_and_no_desk(): void
+    /** § 4.1: the room is drawn once a full snapshot has applied, at fit, and two buildings draw one room. */
+    public function test_green_the_room_is_drawn_at_fit_and_reads_no_fact(): void
     {
-        $this->assertSame([], $this->plateDefects($this->replay(self::RUN)));
+        $this->assertSame([], $this->roomDefects($this->replay(self::RUN), $this->replay(self::RUN, null, $this->threeFloors())));
     }
 
-    public function test_green_whole_building_frames_every_plate(): void
+    /** The directory lists the composed floors ascending, each plaque the link to its KEY's route, none drawing a desk. */
+    public function test_green_the_directory_lists_the_composed_floors_linked_by_key_and_draws_no_desk(): void
     {
-        $this->assertSame([], $this->wholeBuildingDefects($this->replay(self::RUN)));
+        $this->assertSame([], $this->plaqueDefects($this->replay(self::RUN)));
     }
 
-    public function test_green_each_ride_ends_at_the_floor_route_by_its_key_on_the_labelled_floor_too(): void
+    /** AT-D3-15's assertions hold over the directory verbatim: the fleet totals are the wire's, and the intact run disagrees with nothing. */
+    public function test_green_the_directory_recounts_nothing(): void
     {
-        $this->assertSame([], $this->rideDefects($this->replay(self::RUN)));
+        $this->assertSame([], $this->countDefects($this->replay(self::RUN)));
     }
 
-    /** § 4.4: the route a ride arrives at "must still deep-link on a cold start" — row 8 serves it. */
-    public function test_green_each_rides_route_deep_links_on_a_cold_start(): void
+    /** *Fit the lobby* frames the whole room, and every camera act moves the camera over it. */
+    public function test_green_fit_frames_the_room_and_every_act_moves_the_camera(): void
     {
-        $rides = $this->rides($this->replay(self::RUN));
-        $this->assertNotSame([], $rides, 'the run rode nowhere');
+        $this->assertSame([], $this->actDefects($this->replay(self::RUN)));
+    }
 
-        $user = User::factory()->twoFactorConfirmed()->create();
-
-        foreach ($rides as $a) {
-            $html = (string) $this->actingAs($user)->get($a['ride']['route'])->assertOk()->getContent();
-
-            $this->assertStringContainsString('data-floor="'.e($a['ride']['cab']).'"', $html,
-                "the cold start at {$a['ride']['route']} does not serve the floor page for {$a['ride']['cab']}");
-        }
+    /** The keyboard's focus on the elevator or a plaque outside the view brings the camera to it, and moves nothing in view. */
+    public function test_green_a_focus_out_of_view_is_brought_into_it_and_one_in_view_moves_nothing(): void
+    {
+        $this->assertSame([], $this->focusDefects($this->replay(self::RUN)));
     }
 
     public function test_green_a_render_after_a_camera_act_leaves_the_camera_where_the_viewer_put_it(): void
@@ -155,71 +144,103 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $this->assertSame([], $this->survivalDefects($this->replay(self::RUN)));
     }
 
-    public function test_green_the_log_gains_no_row_from_any_ride_or_the_whole_building_control(): void
+    public function test_green_the_log_gains_no_row_from_any_camera_act(): void
     {
         $this->assertSame([], $this->logDefects(self::RUN));
     }
 
-    public function test_green_no_module_the_lobby_page_loads_but_the_one_path_can_write_the_log_or_start_the_set(): void
+    public function test_green_no_module_the_lobby_page_loads_but_the_paths_can_write_the_log_or_start_the_set(): void
     {
         $this->assertSame([], $this->graphDefects($this->jsRoot()));
     }
 
-    /** The ruling: the click commits the ride — held in flight, refused twice, and the camera left on the plate. */
-    public function test_green_the_click_commits_the_ride(): void
-    {
-        $this->assertSame([], $this->inFlightDefects($this->replay(self::IN_FLIGHT)));
-    }
-
-    /** Every run's frames say a ride is in flight exactly while one is — the moving and reduced runs too. */
-    public function test_green_each_runs_frames_say_when_a_ride_is_in_flight(): void
-    {
-        foreach ([self::RUN, self::REDUCED] as $run) {
-            $this->assertSame([], $this->ridingDefects($this->replay($run)), "[{$run}]");
-        }
-    }
-
-    /** card#7343 r2-2: a plate the keyboard focuses outside the view is brought into it, and one in view stays put. */
-    public function test_green_a_focused_plate_out_of_view_is_brought_into_it(): void
-    {
-        $this->assertSame([], $this->focusDefects($this->replay(self::FOCUS)));
-    }
-
-    public function test_green_under_reduced_motion_the_cab_and_the_camera_cut_rather_than_glide(): void
+    public function test_green_under_reduced_motion_the_camera_cuts_rather_than_glides(): void
     {
         $this->assertSame([], $this->glideDefects($this->replay(self::REDUCED), $this->replay(self::RUN)));
     }
 
     // ── RED — each defect planted in the shipped module it would live in, and watched failing ──
 
-    /** § 11's sixth RED: ride to `/floor/{label}`. */
+    /** § 11's sixth RED: a plaque linking to `/floor/{label}`. */
     public function test_red_the_label_in_the_link(): void
     {
-        $dir = $this->mutatedModules([self::SCREEN,
-            '{ cab: plate.floor, route: plate.href,',
-            '{ cab: plate.floor, route: `/floor/${encodeURIComponent(plate.name)}`,']);
+        $dir = $this->mutatedModules(['../lobby/lobby-model.js', 'href: `/floor/${encodeURIComponent(floor)}`,', 'href: `/floor/${encodeURIComponent(label ?? floor)}`,']);
 
-        $this->assertNotSame([], $this->rideDefects($this->replay(self::RUN, $dir)), 'the sixth RED (the label in the link) did not bite');
+        $this->assertNotSame([], $this->plaqueDefects($this->replay(self::RUN, $dir)), 'the sixth RED (the label in the link) did not bite');
     }
 
-    /** § 11's seventh RED: draw the floor's desks on its plate. */
-    public function test_red_the_desks_on_the_plate(): void
+    /** § 11's seventh RED: the floor's desks drawn on its plaque. */
+    public function test_red_the_desks_on_the_plaque(): void
     {
-        $dir = $this->mutatedModules(['../lobby/lobby-model.js', 'held: seats.length,', 'held: seats.length,
-        desks: seats,']);
+        $dir = $this->mutatedModules(['../lobby/lobby-model.js', 'held: seats.length,', "held: seats.length,\n        desks: seats,"]);
 
-        $this->assertNotSame([], $this->plateDefects($this->replay(self::RUN, $dir)), 'the seventh RED (the desks on the plate) did not bite');
+        $this->assertNotSame([], $this->plaqueDefects($this->replay(self::RUN, $dir)), 'the seventh RED (the desks on the plaque) did not bite');
+    }
+
+    /** § 11's seventh RED, its other half: the room drawn from a plaque's count — two buildings draw two rooms. */
+    public function test_red_a_room_drawn_from_a_fact(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN, 'const room = feed.applied ? lobbyScene() : null;',
+            'const room = feed.applied ? { ...lobbyScene(), extent: { ...lobbyScene().extent, h: 772 + 100 * (this.#building.floors?.length ?? 0) } } : null;']);
+
+        $this->assertNotSame([], $this->roomDefects($this->replay(self::RUN, $dir), $this->replay(self::RUN, $dir, $this->threeFloors())),
+            'the seventh RED (a room drawn from a fact) did not bite');
+    }
+
+    /** § 11's RED — the logged zoom: a camera act writing a row through the lobby's own set, on the one path. */
+    public function test_red_a_camera_act_that_writes_a_row_through_the_lobbys_set(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN, "        this.#camera = fit(from);\n", "        this.#camera = fit(from);\n        this.#set.edges([{ t: 'feed.heartbeat' }], 0);\n"]);
+
+        $this->assertSame([], $this->graphDefects(dirname($dir)), 'the plant is not on the one path — the graph reds it, and the log clause is not what caught it');
+        $this->assertNotSame([], array_filter($this->logDefects(self::RUN, $dir), static fn (string $d): bool => str_contains($d, 'the camera acts changed the animation log')),
+            'CONTROL (a camera act writing an A17 row through the lobby\'s set) did not bite for its reason');
+    }
+
+    /** § 11's second RED — the reset camera: re-fit on every render. */
+    public function test_red_the_reset_camera(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN, 'this.#camera = room === null ? unframe(this.#camera) : frameOn(this.#camera, room.extent);',
+            'this.#camera = room === null ? unframe(this.#camera) : fit(frameOn(this.#camera, room.extent));']);
+
+        $this->assertNotSame([], $this->survivalDefects($this->replay(self::RUN, $dir)), 'the second RED (the reset camera) did not bite');
+    }
+
+    /** *Fit the lobby* that frames the board alone — the room cut. */
+    public function test_red_a_fit_that_cuts_the_room(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN, "        this.#camera = fit(from);\n", "        this.#camera = focusOn(from, this.#drawn.room.board);\n"]);
+
+        $this->assertNotSame([], $this->actDefects($this->replay(self::RUN, $dir)), 'CONTROL (a fit that cuts the room) did not bite');
+    }
+
+    public function test_red_a_focus_that_never_brings_its_rect_into_view(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN, "        this.#camera = focusOn(from, rect);\n", "        this.#camera = from;\n"]);
+
+        $this->assertNotSame([], $this->focusDefects($this->replay(self::RUN, $dir)), 'CONTROL (a focus that never brings the camera) did not bite');
+    }
+
+    public function test_red_a_focus_that_moves_a_rect_already_in_view(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN, 'if (rect === null || within(from.view, rect)) {', 'if (rect === null) {']);
+
+        $this->assertNotSame([], $this->focusDefects($this->replay(self::RUN, $dir)), 'CONTROL (a focus that moves a rect in view) did not bite');
+    }
+
+    public function test_red_a_fit_that_glides_under_reduced_motion(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN, "        this.#camera = fit(from);\n\n        return { from, to: this.#camera, glide_ms: glideMs(this.#reduce) };",
+            "        this.#camera = fit(from);\n\n        return { from, to: this.#camera, glide_ms: 850 };"]);
+
+        $this->assertNotSame([], $this->glideDefects($this->replay(self::REDUCED, $dir), $this->replay(self::RUN, $dir)), 'CONTROL (a fit gliding under reduced motion) did not bite');
     }
 
     /**
-     * The logged ride: the lobby's drawing given the animation log to write a ride into, or the set to
-     * start one through, off the one path (`PATH`) — planted once per specifier form: after `from` (an import, a re-export), after a bare
-     * `import`, and inside `import(`, in single quotes, double quotes and a backtick; and as an absolute
-     * `/js/…` path, a URL, a bare name, a template with `${`, a variable and a concatenation. Each
-     * control is held to the REASON it reds: a relative literal reds because the walk followed it to
-     * the log or the set, and every other form reds because the walk could not follow it (card#7343
-     * r2-1: fail closed). A form outside these — `require()`, a `<script>` the module injects, a Worker
-     * — is not read by the walk; none is used anywhere in `server/public/js`.
+     * The logged act: the room's drawing given the animation log to write a row into, or the set to start one through, off
+     * the paths (`PATH`) — planted once per specifier form. Each control is held to the REASON it reds: a relative literal
+     * reds because the walk followed it to the log or the set, and every other form reds because the walk could not
+     * follow it (card#7343 r2-1: fail closed).
      *
      * @return array<string, array{0: string, 1: string}>
      */
@@ -260,22 +281,6 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
             "CONTROL (the lobby loading the log or the set by `{$line}`) did not bite for its reason ({$reason}): ".json_encode($defects));
     }
 
-    /**
-     * card#7343 r1 (design review MINOR 5): a ride that writes a row through the lobby's own set — the one
-     * path the import graph allows — is caught by the replayed log, not by the graph, which cannot see it.
-     */
-    public function test_red_a_ride_that_writes_a_row_through_the_lobbys_set(): void
-    {
-        $dir = $this->mutatedModules([self::SCREEN,
-            "        this.#riding = { cab: plate.floor, route: plate.href, from, to: this.#camera, glide_ms: glideMs(this.#reduce) };\n",
-            "        this.#riding = { cab: plate.floor, route: plate.href, from, to: this.#camera, glide_ms: glideMs(this.#reduce) };\n"
-            ."        this.#set.edges([{ t: 'feed.heartbeat' }], 0);\n"]);
-
-        $this->assertSame([], $this->graphDefects(dirname($dir)), 'the plant is not on the one path — the graph reds it, and the log clause is not what caught it');
-        $this->assertNotSame([], array_filter($this->logDefects(self::RUN, $dir), static fn (string $d): bool => str_contains($d, 'the camera acts changed the animation log')),
-            'CONTROL (a ride writing an A17 row through the lobby\'s set) did not bite for its reason');
-    }
-
     /** The one path gone — the lobby screen no longer loads the set — is a walk holding nothing, not a clean one. */
     public function test_red_a_lobby_whose_one_path_to_the_set_is_gone(): void
     {
@@ -285,180 +290,43 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
             'CONTROL (the lobby screen no longer loading the set) did not bite for its reason');
     }
 
+    /** The ride reaching for the set itself, beside its constant (card#12113's deliberate edge, held narrow). */
+    public function test_red_a_ride_that_imports_the_set_beside_its_constant(): void
+    {
+        $dir = $this->mutatedModules(['ride.js', self::RIDE_IMPORT, "import { AnimationSet, LOOP_FPS } from './animation-set.js';"]);
+
+        $this->assertNotSame([], array_filter($this->graphDefects(dirname($dir)), static fn (string $d): bool => str_contains($d, 'wire/ride.js imports')),
+            'CONTROL (the ride importing the set) did not bite for its reason');
+    }
+
+    /** A dynamic import beside the asset loader's two — one the walk was never told of — is a defect, never followed. */
+    public function test_red_a_third_dynamic_import_in_the_asset_loader(): void
+    {
+        $dir = $this->mutatedModules(['../floor/cab-paint.js', "        return house.PALETTE?.elevator ?? null;\n",
+            "        await import(registry.HOUSE_THEME + '.js');\n        return house.PALETTE?.elevator ?? null;\n"]);
+
+        $this->assertNotSame([], array_filter($this->graphDefects(dirname($dir)), static fn (string $d): bool => str_contains($d, 'cannot follow')),
+            'CONTROL (a third dynamic import in the asset loader) did not bite for its reason');
+    }
+
     /** A commented-out import is no import: the walk reads code, and documentation naming a module does not red. */
     public function test_green_an_import_in_a_comment_is_not_read(): void
     {
         $dir = $this->mutatedModules([self::SCREEN,
-            "import { buildingScene } from './building-scene.js';\n",
-            "import { buildingScene } from './building-scene.js';\n// import '../wire/animation-log.js';\n/* import('/js/wire/animation-set.js') from `x` */\n"]);
+            "import { lobbyScene } from './building-scene.js';\n",
+            "import { lobbyScene } from './building-scene.js';\n// import '../wire/animation-log.js';\n/* import('/js/wire/animation-set.js') from `x` */\n"]);
 
         $this->assertSame([], $this->graphDefects(dirname($dir)));
     }
 
-    /** A ride that glides under `prefers-reduced-motion`. */
-    public function test_red_a_ride_that_glides_under_reduced_motion(): void
-    {
-        $dir = $this->mutatedModules([self::SCREEN,
-            'route: plate.href, from, to: this.#camera, glide_ms: glideMs(this.#reduce) };',
-            'route: plate.href, from, to: this.#camera, glide_ms: glideMs(false) };']);
+    // ── the measurements ───────────────────────────────────────────────────────────────────────
 
-        $this->assertNotSame([], $this->glideDefects($this->replay(self::REDUCED, $dir), $this->replay(self::RUN, $dir)),
-            'CONTROL (a ride gliding under prefers-reduced-motion) did not bite');
-    }
-
-    /** A second click during a ride rides again — the click did not commit it. */
-    public function test_red_a_second_ride_while_one_is_in_flight(): void
-    {
-        $dir = $this->mutatedModules([self::SCREEN,
-            'if (next === null || this.#riding !== null) {',
-            'if (next === null) {']);
-
-        $this->assertNotSame([], $this->inFlightDefects($this->replay(self::IN_FLIGHT, $dir)), 'CONTROL (a second ride in flight) did not bite');
-    }
-
-    /**
-     * The wheel's two acts and the touch pinch during a ride (card#11045): each planted to move the camera
-     * off the plate it is arriving at, and the wheel's two planted to leave the event to the page while the
-     * camera is held.
-     *
-     * @return array<string, array{0: string, 1: string}>
-     */
-    public static function rideHoldPlants(): array
-    {
-        $hold = "        if (this.#riding !== null) {\n            return { camera: this.#camera, consumed: true };\n        }\n\n";
-
-        return [
-            'a plain wheel (a pan) that moves the camera during a ride' => [$hold.'        const { camera, consumed } = pan(', '        const { camera, consumed } = pan('],
-            'a Ctrl+wheel (a zoom) that moves the camera during a ride' => [$hold.'        const { camera, consumed } = zoom(', '        const { camera, consumed } = zoom('],
-            'a touch pinch that moves the camera during a ride' => ['this.#camera = this.#riding === null ? pinch(this.#camera, from, to, factor) : this.#camera;',
-                'this.#camera = pinch(this.#camera, from, to, factor);'],
-            'a plain wheel held during a ride that scrolls the page instead' => [$hold.'        const { camera, consumed } = pan(',
-                str_replace('consumed: true', 'consumed: false', $hold).'        const { camera, consumed } = pan('],
-            'a Ctrl+wheel held during a ride that zooms the page instead' => [$hold.'        const { camera, consumed } = zoom(',
-                str_replace('consumed: true', 'consumed: false', $hold).'        const { camera, consumed } = zoom('],
-        ];
-    }
-
-    #[DataProvider('rideHoldPlants')]
-    public function test_red_a_wheel_or_pinch_during_a_ride_that_breaks_the_hold(string $anchor, string $replacement): void
-    {
-        $dir = $this->mutatedModules([self::SCREEN, $anchor, $replacement]);
-
-        $this->assertNotSame([], $this->inFlightDefects($this->replay(self::IN_FLIGHT, $dir)), 'CONTROL (the planted ride-hold defect) did not bite');
-    }
-
-    /** A frame that never says a ride is in flight — the ride control stays enabled under it. */
-    public function test_red_a_frame_that_hides_the_ride_in_flight(): void
-    {
-        $dir = $this->mutatedModules([self::SCREEN,
-            'riding: this.#riding !== null,',
-            'riding: false,']);
-
-        $this->assertNotSame([], $this->ridingDefects($this->replay(self::RUN, $dir)), 'CONTROL (a frame hiding the ride in flight) did not bite');
-    }
-
-    /** card#7343 r4b: the page's in-flight accessor blind to the ride — the plate links it holds are never held. */
-    public function test_red_a_riding_accessor_that_never_sees_the_ride(): void
-    {
-        $dir = $this->mutatedModules([self::SCREEN, 'riding: () => screen.riding,', 'riding: () => false,']);
-
-        $this->assertNotSame([], array_filter($this->ridingDefects($this->replay(self::RUN, $dir)),
-            static fn (string $d): bool => str_contains($d, 'the accessor disagrees with the frame')),
-            'CONTROL (a riding() accessor that never sees the ride) did not bite for its reason');
-    }
-
-    /** A ride that stays in flight after its glide arrived — the lobby's controls dead for good (r2-4). */
-    public function test_red_a_ride_that_never_ends_when_its_glide_arrives(): void
-    {
-        $dir = $this->mutatedModules([self::SCREEN,
-            "    returned() {\n        this.#riding = null;\n    }",
-            "    returned() {\n    }"]);
-
-        $this->assertNotSame([], $this->inFlightDefects($this->replay(self::IN_FLIGHT, $dir)), 'CONTROL (a ride never ended when its glide arrived) did not bite');
-    }
-
-    /** A key's or a zoom button's zoom during a ride moves the camera off the plate it is arriving at. */
-    public function test_red_a_key_zoom_that_moves_the_camera_during_a_ride(): void
-    {
-        $dir = $this->mutatedModules([self::SCREEN,
-            'this.#camera = this.#riding === null ? zoomStep(this.#camera, notches) : this.#camera;',
-            'this.#camera = zoomStep(this.#camera, notches);']);
-
-        $this->assertNotSame([], $this->inFlightDefects($this->replay(self::IN_FLIGHT, $dir)), 'CONTROL (a key zoom moving the camera in flight) did not bite');
-    }
-
-    /** The keyboard's focus during a ride moves the camera off the plate it is arriving at. */
-    public function test_red_a_focus_that_moves_the_camera_during_a_ride(): void
-    {
-        $dir = $this->mutatedModules([self::SCREEN,
-            'if (plate === null || this.#riding !== null || within(from.view, plate.rect)) {',
-            'if (plate === null || within(from.view, plate.rect)) {']);
-
-        $this->assertNotSame([], $this->inFlightDefects($this->replay(self::IN_FLIGHT, $dir)), 'CONTROL (a focus moving the camera in flight) did not bite');
-    }
-
-    /** A focused plate out of view that the camera never comes to. */
-    public function test_red_a_focus_that_never_brings_the_plate_into_view(): void
-    {
-        $dir = $this->mutatedModules([self::SCREEN,
-            '        this.#camera = focusOn(from, plate.rect);',
-            '        this.#camera = from;']);
-
-        $this->assertNotSame([], $this->focusDefects($this->replay(self::FOCUS, $dir)), 'CONTROL (a focus that never brings the plate into view) did not bite');
-    }
-
-    /** A focus that moves the camera to a plate already in view — tabbing through a building at fit zooms. */
-    public function test_red_a_focus_that_moves_a_plate_already_in_view(): void
-    {
-        $dir = $this->mutatedModules([self::SCREEN,
-            'if (plate === null || this.#riding !== null || within(from.view, plate.rect)) {',
-            'if (plate === null || this.#riding !== null) {']);
-
-        $this->assertNotSame([], $this->focusDefects($this->replay(self::FOCUS, $dir)), 'CONTROL (a focus moving a plate already in view) did not bite');
-    }
-
-    /** § 11's second RED at building scale: re-fit the building on every render. */
-    public function test_red_the_reset_camera(): void
-    {
-        $dir = $this->mutatedModules([self::SCREEN,
-            ': frameOn(this.#camera, scene.extent);',
-            ': fit(frameOn(this.#camera, scene.extent));']);
-
-        $this->assertNotSame([], $this->survivalDefects($this->replay(self::RUN, $dir)), 'CONTROL (a camera reset by every render) did not bite');
-    }
-
-    /** A whole building that frames one plate: the building's extent taken as the first plate's. */
-    public function test_red_a_whole_building_that_cuts_a_plate(): void
-    {
-        $dir = $this->mutatedModules([self::SCREEN,
-            ': frameOn(this.#camera, scene.extent);',
-            ': frameOn(this.#camera, scene.plates[0].rect);']);
-
-        $this->assertNotSame([], $this->wholeBuildingDefects($this->replay(self::RUN, $dir)), 'CONTROL (a whole building that cuts a plate) did not bite');
-    }
-
-    /** A ride whose camera never goes to the plate — the cab moves and the view stays on the building. */
-    public function test_red_a_ride_that_does_not_zoom_to_the_plate(): void
-    {
-        $dir = $this->mutatedModules([self::SCREEN,
-            'this.#camera = focusOn(from, this.#drawn.scene.plates[plate.level].rect);',
-            'this.#camera = from;']);
-
-        $this->assertNotSame([], $this->rideDefects($this->replay(self::RUN, $dir)), 'CONTROL (a ride with no zoom to the plate) did not bite');
-    }
-
-    // ── The checks ─────────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Every lobby frame that drew the building.
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function built(array $result): array
+    /** Every frame that drew the room, with its time. @return list<array<string, mixed>> */
+    private function drawn(array $result): array
     {
         return array_values(array_filter(
             array_map(static fn (array $r): array => $r['frame'] + ['at' => $r['at']], $result['lobby_renders']),
-            static fn (array $f): bool => ($f['building']['composed'] ?? false) === true,
+            static fn (array $f): bool => $f['room'] !== null,
         ));
     }
 
@@ -468,116 +336,128 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         return array_values(array_filter($result['camera_acts'], static fn (array $a): bool => $a['act']['act'] === $act));
     }
 
-    /** @return list<array<string, mixed>> */
-    private function rides(array $result): array
+    /** The run's own overrides with a layout of THREE floors — another building, which must draw the same room. */
+    private function threeFloors(): array
     {
-        return $this->acts($result, 'ride');
+        $http = $this->fixture(self::RUN)['http'];
+        $floors = $http['/api/building'][0]['body']['layout']['floors'];
+        $floors[] = ['floor' => 'zz-annexe', 'label' => 'the far annexe', 'rooms' => [['install' => 'zz-annexe', 'form' => 'office']]];
+        $http['/api/building'][0]['body']['layout']['floors'] = $floors;
+
+        return ['http' => $http];
     }
 
     /** @return list<string> */
-    private function plateDefects(array $result): array
+    private function roomDefects(array $two, array $three): array
     {
-        $built = $this->built($result);
+        $defects = [];
+        $a = $this->drawn($two);
+        $b = $this->drawn($three);
 
-        if ($built === []) {
-            return ['the lobby never drew the building'];
+        if ($a === [] || $b === []) {
+            return ['a run never drew the room'];
+        }
+
+        if (count($a[count($a) - 1]['summary']['floors']) === count($b[count($b) - 1]['summary']['floors'])) {
+            $defects[] = 'the two runs list the same number of floors — the two-buildings clause compared nothing';
+        }
+
+        // The first frame that drew the room is at fit, the room framed; every frame before it drew none and held no summary.
+        $first = $a[0];
+
+        if ($first['camera']['fitted'] !== true || ! $this->contains($first['camera']['view'], $first['room']['extent'])) {
+            $defects[] = "the room's first frame at {$first['at']} ms is not at fit on the room";
+        }
+
+        foreach ($two['lobby_renders'] as $r) {
+            if (($r['frame']['room'] === null) !== ($r['frame']['summary'] === null)) {
+                $defects[] = "the frame at {$r['at']} ms draws the room without a summary, or a summary without the room";
+            }
+        }
+
+        // The drawing reads no plaque's key, name or count: every frame of both buildings draws one room.
+        $rooms = array_unique(array_map(static fn (array $f): string => json_encode(array_diff_key($f['room'], ['ride' => null])), [...$a, ...$b]));
+
+        if (count($rooms) !== 1) {
+            $defects[] = 'two buildings draw '.count($rooms).' rooms — the room is drawn from a fact';
+        }
+
+        // The directory and the readings stand on the board's wall, the directory inside the board.
+        $room = $a[0]['room'];
+
+        if (! $this->contains($room['board'], $room['directory'])) {
+            $defects[] = "the directory's box is not inside the board";
+        }
+
+        return $defects;
+    }
+
+    /** @return list<string> */
+    private function plaqueDefects(array $result): array
+    {
+        $drawn = $this->drawn($result);
+
+        if ($drawn === []) {
+            return ['the lobby never drew the room'];
         }
 
         $defects = [];
 
-        foreach ($built as $f) {
-            $plates = $f['building']['plates'];
-            $keys = array_column($plates, 'floor');
+        foreach ($drawn as $f) {
+            $plaques = $f['summary']['floors'];
+            $keys = array_column($plaques, 'floor');
             $sorted = $keys;
             sort($sorted, SORT_STRING);
 
-            if ($keys !== $sorted || $keys !== array_column($f['summary']['floors'], 'floor')) {
-                $defects[] = "at {$f['at']} ms the plates are not the composed floors, ascending";
+            if ($keys !== $sorted) {
+                $defects[] = "at {$f['at']} ms the plaques are not the composed floors, ascending";
             }
 
-            foreach ($plates as $i => $plate) {
-                $row = $plate;
-                unset($row['level']);
-
-                // AT-D3-15 over the plates verbatim: each plate IS the lobby's row, so the cross-section
-                // recounts nothing and every assertion over the rows holds over it.
-                if ($row !== ($f['summary']['floors'][$i] ?? null)) {
-                    $defects[] = "at {$f['at']} ms the plate {$plate['floor']} is not the lobby's row for that floor";
+            foreach ($plaques as $plaque) {
+                if ($plaque['href'] !== '/floor/'.rawurlencode($plaque['floor'])) {
+                    $defects[] = "at {$f['at']} ms the plaque {$plaque['floor']} links to {$plaque['href']}, not its key's route";
                 }
 
-                if ($plate['name'] !== ($plate['label'] ?? $plate['floor'])) {
-                    $defects[] = "at {$f['at']} ms the plate {$plate['floor']} does not read as its label, else its key";
+                if ($plaque['name'] !== ($plaque['label'] ?? $plaque['floor'])) {
+                    $defects[] = "at {$f['at']} ms the plaque {$plaque['floor']} does not read as its label, else its key";
                 }
 
-                if ($plate['rooms'] === [] || in_array('', array_column($plate['rooms'], 'install_id'), true)) {
-                    $defects[] = "at {$f['at']} ms the plate {$plate['floor']} names no room";
-                }
-
-                if ($this->carriesASeat($plate)) {
-                    $defects[] = "at {$f['at']} ms the plate {$plate['floor']} carries a desk — a count a viewer counts by eye (§ 4.1)";
+                if ($this->carriesASeat($plaque)) {
+                    $defects[] = "at {$f['at']} ms the plaque {$plaque['floor']} carries a desk — a count a viewer counts by eye (§ 4.1)";
                 }
             }
         }
 
-        $last = $built[count($built) - 1]['building']['plates'];
+        $last = $drawn[count($drawn) - 1]['summary']['floors'];
 
         if (count($last) < 2 || array_filter(array_column($last, 'label')) === []) {
-            $defects[] = 'the run draws no building of two floors with one labelled';
+            $defects[] = 'the run draws no directory of two floors with one labelled';
         }
 
         return $defects;
     }
 
-    /** Whether any member of a plate, at any depth, is a seat object. */
-    private function carriesASeat(mixed $node): bool
-    {
-        if (! is_array($node)) {
-            return false;
-        }
-
-        if (array_key_exists('seat_id', $node)) {
-            return true;
-        }
-
-        foreach ($node as $child) {
-            if ($this->carriesASeat($child)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     /** @return list<string> */
-    private function wholeBuildingDefects(array $result): array
+    private function countDefects(array $result): array
     {
-        $built = $this->built($result);
-        $wholes = $this->acts($result, 'building');
+        $defects = [];
+        $fleet = $this->fixture(self::RUN)['http']['/api/fleet/snapshot'][0]['body']['fleet'] ?? null;
 
-        if ($built === [] || $wholes === []) {
-            return ['the run draws no building or never asks for the whole of it'];
+        if ($fleet === null) {
+            return ['the run carries no fleet object'];
         }
 
-        $first = $built[0];
-        $defects = $this->framesEveryPlate($first['camera'], $first['scene'], 'the first framing');
-
-        if ($first['camera']['fitted'] !== true) {
-            $defects[] = 'the first framing is not at fit — whole-building is how the lobby is entered';
-        }
-
-        foreach ($result['camera_acts'] as $a) {
-            if ($a['at'] <= $first['at']) {
-                $defects[] = "a camera act at {$a['at']} ms came before the first framing — the run cannot tell a fit from a move";
+        foreach ($this->drawn($result) as $f) {
+            if (! str_contains($f['summary']['totals'], (string) $fleet['seats_total']) || ! str_contains($f['summary']['totals'], (string) $fleet['seats_live'])) {
+                $defects[] = "at {$f['at']} ms the fleet totals ({$f['summary']['totals']}) are not the wire's {$fleet['seats_total']} / {$fleet['seats_live']}";
             }
-        }
 
-        $scene = $built[count($built) - 1]['scene'];
+            if ($f['discrepancy'] !== null) {
+                $defects[] = "at {$f['at']} ms the intact run renders a discrepancy: {$f['discrepancy']}";
+            }
 
-        foreach ($wholes as $a) {
-            array_push($defects, ...$this->framesEveryPlate($a['after'], $scene, "the whole-building control at {$a['at']} ms"));
-
-            if ($this->framesEveryPlate($a['before'], $scene, '') === []) {
-                $defects[] = "before the whole-building control at {$a['at']} ms every plate was already in view — it measured nothing";
+            if ($f['summary']['held'] !== array_sum(array_column($f['summary']['floors'], 'held'))) {
+                $defects[] = "at {$f['at']} ms the held count is not the plaques' own";
             }
         }
 
@@ -585,288 +465,91 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     }
 
     /** @return list<string> */
-    private function framesEveryPlate(array $camera, array $scene, string $what): array
+    private function actDefects(array $result): array
     {
         $defects = [];
+        $room = $this->drawn($result)[0]['room'] ?? null;
 
-        foreach ($scene['plates'] as $p) {
-            if (! $this->contains($camera['view'], $p['rect'])) {
-                $defects[] = "{$what} leaves the plate {$p['floor']} out of view";
+        if ($room === null) {
+            return ['the lobby never drew the room'];
+        }
+
+        foreach (self::MOVES as $move) {
+            $acts = $this->acts($result, $move);
+
+            if ($acts === []) {
+                $defects[] = "the run has no {$move}";
+            }
+
+            foreach ($acts as $a) {
+                if ($a['before'] == $a['after']) {
+                    $defects[] = "the {$move} at {$a['at']} ms moved nothing";
+                }
             }
         }
 
-        if (! $this->contains($camera['view'], $scene['extent'])) {
-            $defects[] = "{$what} does not frame the building's whole extent";
+        foreach (['scroll', 'ctrl_wheel'] as $wheel) {
+            foreach ($this->acts($result, $wheel) as $a) {
+                if (($a['consumed'] ?? null) !== true) {
+                    $defects[] = "the {$wheel} at {$a['at']} ms over the room was not taken from the page";
+                }
+            }
+        }
+
+        $fits = $this->acts($result, 'fit');
+
+        if ($fits === []) {
+            $defects[] = 'the run never fits the lobby';
+        }
+
+        foreach ($fits as $a) {
+            if ($a['after']['fitted'] !== true || ! $this->contains($a['after']['view'], $room['extent'])) {
+                $defects[] = "*Fit the lobby* at {$a['at']} ms does not frame the whole room";
+            }
         }
 
         return $defects;
     }
 
     /** @return list<string> */
-    private function rideDefects(array $result): array
-    {
-        $rides = $this->rides($result);
-        $built = $this->built($result);
-
-        if (count($rides) < 2 || $built === []) {
-            return ['the run needs two rides over a drawn building'];
-        }
-
-        $defects = [];
-        $labels = [];
-
-        foreach ($rides as $a) {
-            $ride = $a['ride'];
-
-            if ($ride === null) {
-                $defects[] = "the ride at {$a['at']} ms was refused on a building of two floors";
-
-                continue;
-            }
-
-            // The frame the ride drew: the cab at the plate it rode to.
-            $drawn = array_values(array_filter($built, static fn (array $f): bool => $f['at'] === $a['at']));
-            $frame = $drawn[count($drawn) - 1] ?? null;
-            $key = $ride['cab'];
-            $plates = $frame === null ? [] : array_column($frame['building']['plates'], null, 'floor');
-            $plate = $plates[$key] ?? null;
-
-            if ($frame === null || $plate === null) {
-                $defects[] = "the ride at {$a['at']} ms drew no building holding the floor {$key}";
-
-                continue;
-            }
-
-            if ($frame['building']['elevator']['at'] !== $key) {
-                $defects[] = "the ride at {$a['at']} ms did not bring the cab to {$key}";
-            }
-
-            if ($ride['route'] !== '/floor/'.rawurlencode($key)) {
-                $defects[] = "the ride at {$a['at']} ms ends at {$ride['route']}, not at /floor/{$key} — the floor's KEY";
-            }
-
-            if ($ride['resolves_to'] !== $key) {
-                $defects[] = "the ride at {$a['at']} ms ends at a route the floor page does not resolve to {$key}";
-            }
-
-            $labels[] = $plate['label'];
-
-            // Zoom-to-a-plate is the ride: the plate whole in the view, and the view tight on it.
-            $rect = array_column($frame['scene']['plates'], 'rect', 'floor')[$key];
-            $view = $a['after']['view'];
-
-            if (! $this->contains($view, $rect)) {
-                $defects[] = "after the ride at {$a['at']} ms the plate {$key} is not in view";
-            }
-
-            if (abs($view['w'] - $rect['w']) > self::EPSILON && abs($view['h'] - $rect['h']) > self::EPSILON) {
-                $defects[] = "after the ride at {$a['at']} ms the camera is not on the plate {$key} — the view is not tight on it";
-            }
-        }
-
-        if (! in_array(null, $labels, true) || array_filter($labels) === []) {
-            $defects[] = 'the run does not ride to both the labelled floor and the other';
-        }
-
-        return $defects;
-    }
-
-    /**
-     * Whether each frame says a ride is in flight exactly while one is: from a ride's click until its glide
-     * arrives or the page comes back, taking the acts in order.
-     *
-     * @return list<string>
-     */
-    private function ridingDefects(array $result): array
-    {
-        $defects = [];
-        $built = $this->built($result);
-
-        if ($built === [] || $this->rides($result) === []) {
-            return ['the run draws no building or rides nowhere — the in-flight clause measured nothing'];
-        }
-
-        $seen = [true => false, false => false];
-
-        foreach ($built as $f) {
-            $riding = false;
-
-            foreach ($result['camera_acts'] as $a) {
-                if ($a['at'] > $f['at']) {
-                    break;
-                }
-
-                if ($a['act']['act'] === 'ride' && $a['ride'] !== null) {
-                    $riding = true;
-                } elseif (in_array($a['act']['act'], ['arrive', 'return'], true)) {
-                    $riding = false;
-                }
-            }
-
-            $seen[$riding] = true;
-
-            if (($f['riding'] ?? null) !== $riding) {
-                $defects[] = sprintf('the frame at %d ms says a ride is %sin flight, and one %s', $f['at'],
-                    ($f['riding'] ?? false) ? '' : 'not ', $riding ? 'is' : 'is not');
-            }
-        }
-
-        if (! $seen[true] || ! $seen[false]) {
-            $defects[] = 'the run draws no frame both in and out of a ride — the clause read one side only';
-        }
-
-        // The screen's `riding()` accessor — what the page's `ride-hold.js` holds plate links on — agrees
-        // with the frame at every ride step (card#7343 r4b): the frame disables the ride control, and the
-        // accessor holds the links, so the two must never say different things about one ride.
-        $steps = array_values(array_filter($result['camera_acts'], static fn (array $a): bool => array_key_exists('riding', $a)));
-        $accessorSeen = [true => false, false => false];
-
-        foreach ($steps as $a) {
-            $accessorSeen[$a['riding']['accessor'] === true] = true;
-
-            if ($a['riding']['accessor'] !== $a['riding']['frame']) {
-                $defects[] = sprintf("after the %s at %d ms the screen's riding() says %s and the frame says %s — the accessor disagrees with the frame",
-                    $a['act']['act'], $a['at'], json_encode($a['riding']['accessor']), json_encode($a['riding']['frame']));
-            }
-        }
-
-        if (! $accessorSeen[true] || ! $accessorSeen[false]) {
-            $defects[] = "no ride step read the screen's riding() both in and out of a ride — the accessor clause read one side only";
-        }
-
-        return $defects;
-    }
-
-    /**
-     * The rulings over `building_ride_in_flight`: a ride's click commits it — a second ride is refused, and
-     * the wheel (a pan or a Ctrl+wheel zoom, each consuming the event — card#11045), the touch pinch, a key's
-     * zoom, the drag, the keyboard's focus on a plate and the whole-building control leave the camera on the
-     * plate while its glide is in flight (card#7343 r1) — and the hold protects the
-     * glide only: once the glide has arrived and the page has asked for the route, the controls work again
-     * and the viewer rides again (r2-4), whether or not the navigation completed.
-     *
-     * @return list<string>
-     */
-    private function inFlightDefects(array $result): array
-    {
-        $defects = $this->ridingDefects($result);
-        $inFlight = null;
-        $arrived = false;
-        $interrupted = [];
-        $freed = [];
-        $refused = 0;
-        $taken = 0;
-
-        foreach ($result['camera_acts'] as $a) {
-            $act = $a['act']['act'];
-
-            if ($act === 'ride') {
-                if ($inFlight !== null) {
-                    if ($a['ride'] !== null) {
-                        $defects[] = "the ride at {$a['at']} ms was taken while the ride at {$inFlight['at']} ms was in flight";
-                    }
-
-                    $refused++;
-                } elseif ($a['ride'] === null) {
-                    $defects[] = "the ride at {$a['at']} ms was refused with no ride in flight";
-                } else {
-                    $inFlight = $a;
-                    $taken++;
-                }
-            } elseif (in_array($act, ['arrive', 'return'], true)) {
-                $arrived = $arrived || ($act === 'arrive' && $inFlight !== null);
-                $inFlight = null;
-            } elseif ($inFlight !== null) {
-                $interrupted[] = $act;
-
-                // The wheel's two acts take the event from the page while they hold the camera (card#11045).
-                if (in_array($act, ['scroll', 'ctrl_wheel'], true) && ($a['consumed'] ?? null) !== true) {
-                    $defects[] = "the {$act} at {$a['at']} ms during the ride was not consumed — the page would scroll or zoom under the held building";
-                }
-
-                foreach (['zoom', 'x', 'y'] as $k) {
-                    if (abs($a['after'][$k] - $inFlight['after'][$k]) > self::EPSILON) {
-                        $defects[] = "the {$act} at {$a['at']} ms moved the camera off the plate the ride at {$inFlight['at']} ms is arriving at";
-
-                        break;
-                    }
-                }
-            } elseif ($arrived) {
-                $freed[] = $act;
-
-                if (abs($a['after']['zoom'] - $a['before']['zoom']) < self::EPSILON && abs($a['after']['x'] - $a['before']['x']) < self::EPSILON
-                    && abs($a['after']['y'] - $a['before']['y']) < self::EPSILON) {
-                    $defects[] = "the {$act} at {$a['at']} ms, after the ride's glide had arrived, moved nothing — the lobby is still held";
-                }
-            }
-        }
-
-        foreach (['scroll', 'ctrl_wheel', 'pinch', 'zoom', 'drag', 'focus', 'building'] as $act) {
-            if (! in_array($act, $interrupted, true)) {
-                $defects[] = "the run never interrupts a ride with the {$act} — the clause measured nothing for it";
-            }
-        }
-
-        if (! $arrived || $freed === []) {
-            $defects[] = 'the run never lets a ride arrive and then moves the camera — the hold\'s end measured nothing';
-        }
-
-        if ($refused === 0 || $taken < 2) {
-            $defects[] = 'the run refuses no second ride, or never rides again after the ride arrived';
-        }
-
-        return $defects;
-    }
-
-    /**
-     * Focus-into-view over `building_focus` (card#7343 r2-2): the keyboard's focus on a plate not wholly in
-     * view brings the camera to that plate — the plate whole in the view after it, by a glide — and a focus
-     * on a plate already in view, or on a key no drawn plate has, moves nothing. The run must hold both.
-     *
-     * @return list<string>
-     */
     private function focusDefects(array $result): array
     {
-        $built = $this->built($result);
+        $defects = [];
+        $room = $this->drawn($result)[0]['room'] ?? null;
 
-        if ($built === []) {
-            return ['the run draws no building'];
+        if ($room === null) {
+            return ['the lobby never drew the room'];
         }
 
-        $rects = array_column($built[count($built) - 1]['scene']['plates'], 'rect', 'floor');
-        $defects = [];
-        $moved = 0;
-        $held = 0;
+        $moved = ['focus_elevator' => 0, 'focus_board' => 0];
+        $stayed = ['focus_elevator' => 0, 'focus_board' => 0];
 
-        foreach ($this->acts($result, 'focus') as $a) {
-            $rect = $rects[$a['act']['floor']] ?? null;
-            $still = abs($a['after']['zoom'] - $a['before']['zoom']) < self::EPSILON
-                && abs($a['after']['x'] - $a['before']['x']) < self::EPSILON && abs($a['after']['y'] - $a['before']['y']) < self::EPSILON;
+        foreach (['focus_elevator' => 'elevator', 'focus_board' => 'board'] as $act => $part) {
+            foreach ($this->acts($result, $act) as $a) {
+                $inView = $this->contains($a['before']['view'], $room[$part]);
 
-            if ($rect === null || $this->contains($a['before']['view'], $rect)) {
-                $held++;
+                if ($inView) {
+                    $stayed[$act]++;
 
-                if (! $still || $a['glide_ms'] !== null) {
-                    $defects[] = "the focus on {$a['act']['floor']} at {$a['at']} ms moved the camera, though "
-                        .($rect === null ? 'no drawn plate has that key' : 'the plate was already wholly in view');
+                    if ($a['before'] != $a['after'] || $a['glide_ms'] !== null) {
+                        $defects[] = "the {$act} at {$a['at']} ms moved the camera though the {$part} was in view";
+                    }
+
+                    continue;
                 }
 
-                continue;
-            }
+                $moved[$act]++;
 
-            $moved++;
-
-            if (! $this->contains($a['after']['view'], $rect)) {
-                $defects[] = "the focus on {$a['act']['floor']} at {$a['at']} ms left that plate out of view";
-            }
-
-            if (! ($a['glide_ms'] > 0)) {
-                $defects[] = "the focus on {$a['act']['floor']} at {$a['at']} ms does not glide — without reduced motion a camera move glides";
+                if (! $this->contains($a['after']['view'], $room[$part])) {
+                    $defects[] = "the {$act} at {$a['at']} ms did not bring the {$part} into view";
+                }
             }
         }
 
-        if ($moved === 0 || $held === 0) {
-            $defects[] = 'the run has no focus out of view, or none in view — the clause read one side only';
+        foreach ($moved as $act => $n) {
+            if ($n === 0 || $stayed[$act] === 0) {
+                $defects[] = "the run has no {$act} out of view and in view both — the clause measured half of itself";
+            }
         }
 
         return $defects;
@@ -876,14 +559,16 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     private function survivalDefects(array $result): array
     {
         $defects = [];
-        $built = $this->built($result);
+        $drawn = $this->drawn($result);
+        $acts = $result['camera_acts'];
+        $checked = 0;
 
-        foreach ($result['camera_acts'] as $i => $a) {
-            $next = $result['camera_acts'][$i + 1]['at'] ?? PHP_INT_MAX;
-            // The renders after this act and before the next one — a ride's own draw included.
-            $after = array_values(array_filter($built, static fn (array $f): bool => $f['at'] >= $a['at'] && $f['at'] < $next));
+        foreach ($acts as $i => $a) {
+            $next = $acts[$i + 1]['at'] ?? PHP_INT_MAX;
+            $after = array_values(array_filter($drawn, static fn (array $f): bool => $f['at'] >= $a['at'] && $f['at'] < $next));
 
             foreach ($after as $f) {
+                $checked++;
                 $c = $f['camera'];
 
                 if (abs($c['zoom'] - $a['after']['zoom']) > self::EPSILON || abs($c['x'] - $a['after']['x']) > self::EPSILON || abs($c['y'] - $a['after']['y']) > self::EPSILON) {
@@ -893,13 +578,11 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
             }
         }
 
-        // A heartbeat rendered while the camera stood on a plate — or this clause held nothing.
-        $rides = $this->rides($result);
-        $last = $rides[count($rides) - 1] ?? null;
-        $held = $last === null ? [] : array_filter($built, static fn (array $f): bool => $f['at'] > $last['at'] && ! $f['camera']['fitted']);
+        // A heartbeat rendered after the viewer moved the camera off the fit — or this clause held nothing.
+        $last = $acts[count($acts) - 1] ?? null;
 
-        if ($held === []) {
-            $defects[] = 'no render followed a ride with the camera on the plate';
+        if ($checked === 0 || $last === null || $last['after']['fitted'] === true) {
+            $defects[] = 'no render followed a camera act that left the camera off the fit';
         }
 
         return $defects;
@@ -924,19 +607,21 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
                 count($touched['animation_log']), count($untouched['animation_log']));
         }
 
-        // § 11's discriminating control: a client that never touches the camera reads the building at fit.
-        $built = $this->built($untouched);
-
-        if ($built === []) {
-            $defects[] = 'the control drew no building';
+        if (array_values(array_unique(array_column($untouched['animation_log'], 'animation_id'))) !== ['A17']) {
+            $defects[] = 'the run\'s log is not A17 rows alone';
         }
 
-        foreach ($built as $f) {
-            if ($f['camera']['fitted'] !== true) {
-                $defects[] = "the control's frame at {$f['at']} ms is not at fit";
-            }
+        // § 11's discriminating control: a client that never touches the camera reads the room at fit.
+        $drawn = $this->drawn($untouched);
 
-            array_push($defects, ...$this->framesEveryPlate($f['camera'], $f['scene'], "the control's frame at {$f['at']} ms"));
+        if ($drawn === []) {
+            $defects[] = 'the control drew no room';
+        }
+
+        foreach ($drawn as $f) {
+            if ($f['camera']['fitted'] !== true || ! $this->contains($f['camera']['view'], $f['room']['extent'])) {
+                $defects[] = "the control's frame at {$f['at']} ms is not at fit on the room";
+            }
         }
 
         return $defects;
@@ -944,20 +629,19 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     /**
      * Every module the lobby page loads, from `lobby/main.js` through every specifier each module names
-     * (`ModuleSpecifiers::of()`) — and a defect for each import of the animation log or the animation set,
-     * the only two ways to write a row or start one, by any module but its one importer on `PATH`, for
-     * each module on `PATH` that no longer loads its one (the path the lobby's A17 rides is gone, so the
-     * walk would be holding nothing), and for each specifier the walk cannot follow.
+     * (`ModuleSpecifiers::of()`) — and a defect for each import of the animation log or the animation set by any module but
+     * its importer on `PATH`, for each module on `PATH` that no longer loads its one, for the ride's import from the set
+     * being anything but its constant, and for each specifier the walk cannot follow but the asset loader's two, which it
+     * follows into `resources/floor/themes/` by name.
      *
-     * ⛔ AN UNFOLLOWABLE SPECIFIER IS A DEFECT, NEVER SKIPPED (card#7343 r2-1). An absolute `/js/…` path,
-     * a URL, a bare name, a template with `${` or an `import(` of a variable loads a module this walk
-     * cannot read, and a bound over "every module the page loads" that stepped over it would report
-     * clean over exactly the module it could not see.
+     * ⛔ AN UNFOLLOWABLE SPECIFIER IS A DEFECT, NEVER SKIPPED (card#7343 r2-1).
      *
      * @return list<string>
      */
     private function graphDefects(string $root): array
     {
+        // The asset route's tree is the repository's `resources/`, whichever copy of the module tree is walked.
+        $resources = dirname($this->jsRoot(), 3).'/resources';
         $seen = [];
         $queue = ['lobby/main.js'];
         $defects = [];
@@ -970,36 +654,59 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
                 continue;
             }
 
-            $path = $root.'/'.$file;
+            // A key `@resources/…` is the asset route's tree (`resources/`), walked with its own relative imports.
+            $path = str_starts_with($file, '@resources/') ? $resources.'/'.substr($file, 11) : $root.'/'.$file;
             $this->assertFileExists($path, "the lobby page imports {$file}, which is not there");
             $seen[$file] = true;
+            $source = (string) file_get_contents($path);
+            $unfollowable = [];
 
-            foreach (ModuleSpecifiers::of((string) file_get_contents($path)) as $s) {
+            foreach (ModuleSpecifiers::of($source) as $s) {
                 if (! $s['followable']) {
-                    $defects[] = sprintf('%s loads %s by %s, which this walk cannot follow: %s',
-                        $file, $s['specifier'] === null ? 'a non-literal' : "`{$s['specifier']}`", $s['form'], $s['why']);
+                    $unfollowable[] = $s;
 
                     continue;
                 }
 
-                $target = $this->normalise(dirname($file).'/'.$s['specifier']);
-                $edges[] = [$file, $target];
-                $queue[] = $target;
+                $base = str_starts_with($file, '@resources/') ? '@resources/'.$this->normalise(dirname(substr($file, 11)).'/'.$s['specifier']) : $this->normalise(dirname($file).'/'.$s['specifier']);
+                $edges[] = [$file, $base];
+                $queue[] = $base;
+            }
+
+            // The asset loader's two dynamic imports, and only those two, are followed into the asset route by name.
+            if ($file === self::ASSET_LOADER && count($unfollowable) === count(self::ASSET_IMPORTS)
+                && array_filter(self::ASSET_IMPORTS, static fn (string $needle): bool => ! str_contains(ModuleSpecifiers::withoutComments($source), $needle)) === []) {
+                $registry = (string) file_get_contents($resources.'/floor/themes/index.js');
+                $this->assertSame(1, preg_match("/^export const HOUSE_THEME = '([a-z0-9-]+)';$/m", $registry, $house), 'the theme registry names no house theme');
+                $queue[] = '@resources/floor/themes/index.js';
+                $queue[] = "@resources/floor/themes/{$house[1]}/theme.js";
+                $edges[] = [$file, '@resources/floor/themes/index.js'];
+                $unfollowable = [];
+            }
+
+            foreach ($unfollowable as $s) {
+                $defects[] = sprintf('%s loads %s by %s, which this walk cannot follow: %s',
+                    $file, $s['specifier'] === null ? 'a non-literal' : "`{$s['specifier']}`", $s['form'], $s['why']);
+            }
+
+            if ($file === 'wire/ride.js' && ! str_contains($source, self::RIDE_IMPORT)) {
+                $defects[] = 'wire/ride.js imports from the set\'s module something beside its constant — `'.self::RIDE_IMPORT.'` is its one import there';
             }
         }
 
         $this->assertContains('lobby/lobby-screen.js', array_keys($seen), 'the walk never reached the lobby screen — it read nothing');
         $this->assertContains('wire/camera.js', array_keys($seen), 'the walk never reached the camera — it read nothing');
+        $this->assertContains('wire/ride.js', array_keys($seen), 'the walk never reached the ride — it read nothing');
 
         foreach ($edges as [$from, $to]) {
             if (in_array(basename($to), ['animation-log.js', 'animation-set.js'], true) && (self::PATH[$from] ?? null) !== $to) {
-                $defects[] = "{$from} loads {$to}, which writes the animation log or starts the set off the lobby's one path to it";
+                $defects[] = "{$from} loads {$to}, which writes the animation log or starts the set off the lobby's paths to it";
             }
         }
 
         foreach (self::PATH as $from => $to) {
             if (! in_array([$from, $to], $edges, true)) {
-                $defects[] = "{$from} no longer loads {$to} — the lobby's one path to the log is not the one this walk holds";
+                $defects[] = "{$from} no longer loads {$to} — the lobby's paths to the log are not the ones this walk holds";
             }
         }
 
@@ -1026,18 +733,21 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     {
         $defects = [];
 
-        foreach (['ride', 'building'] as $act) {
-            if ($this->acts($reduced, $act) === [] || $this->acts($moving, $act) === []) {
-                $defects[] = "a run has no {$act}";
+        foreach (['fit', 'focus_elevator', 'focus_board'] as $act) {
+            $cuts = array_filter($this->acts($reduced, $act), static fn (array $a): bool => $a['glide_ms'] !== null);
+            $glides = array_filter($this->acts($moving, $act), static fn (array $a): bool => $a['glide_ms'] !== null);
+
+            if ($cuts === [] || $glides === []) {
+                $defects[] = "a run has no {$act} that moves the camera";
             }
 
-            foreach ($this->acts($reduced, $act) as $a) {
+            foreach ($cuts as $a) {
                 if ($a['glide_ms'] !== 0) {
                     $defects[] = "under prefers-reduced-motion the {$act} at {$a['at']} ms glides for {$a['glide_ms']} ms";
                 }
             }
 
-            foreach ($this->acts($moving, $act) as $a) {
+            foreach ($glides as $a) {
                 if (! ($a['glide_ms'] > 0)) {
                     $defects[] = "without reduced motion the {$act} at {$a['at']} ms does not glide — the cut clause measured nothing";
                 }
@@ -1045,6 +755,26 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         }
 
         return $defects;
+    }
+
+    /** Whether any member of a plaque, at any depth, is a seat object. */
+    private function carriesASeat(mixed $node): bool
+    {
+        if (! is_array($node)) {
+            return false;
+        }
+
+        if (array_key_exists('seat_id', $node)) {
+            return true;
+        }
+
+        foreach ($node as $child) {
+            if ($this->carriesASeat($child)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function contains(array $outer, array $inner): bool

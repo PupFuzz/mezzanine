@@ -46,12 +46,12 @@ use Tests\TestCase;
  * drawing is refused, and the drawing is `user-select: none` from a primary press until it ends — and
  * selectable again after, however it ended.
  *
- * ⛔ THE CLICK COMMITS THE RIDE (card#7343 r1 ruling). A committed glide interrupted — by a `show()`, which
- * is what a wheel, a pinch, a key, a zoom button, a drag and a resize do, or by another `glideTo()`, which is the
- * whole-building control — cuts to its destination and runs its arrival; an
- * uncommitted one — the floor's fit, the lobby's whole-building — stops where it is, as the floor's did
- * before. The model's half — the ride held in flight until its glide arrives, a second one refused — is
- * `TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`'s.
+ * ⛔ AN INTERRUPTED GLIDE STOPS WHERE IT IS — the floor's fit, the lobby's *Fit the lobby* and its focus glides alike.
+ * (Until card#12113 the lobby's ride glided the camera to a plate COMMITTED, finishing on an interruption; the ride is
+ * now § 4.5's cab, and the committed glide went with it.)
+ *
+ * ⛔ A GESTURE OVER AN ELEMENT THAT DECLARES IT SCROLLS IS ITS OWN WHILE IT CAN MOVE (card#12113, § 4.1's directory):
+ * the wheel, and the drag decided at its first move and kept — `scrollerDefects()`.
  *
  * ⚠ WHAT THIS DOES NOT HOLD: that a browser delivers these events to these listeners, honours
  * `user-select` (or its WebKit-prefixed form), or paints what is applied — card#11045 PR-B drove the pages
@@ -78,37 +78,35 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
 
     // ── The glide ──────────────────────────────────────────────────────────────────────────────
 
-    public function test_green_a_committed_glide_interrupted_cuts_to_the_plate_and_arrives(): void
-    {
-        $this->assertSame([], $this->committedDefects());
-    }
-
-    /** The floor's fit and the lobby's whole-building glide: interrupted, they stop — and arrive nowhere. */
-    public function test_green_an_uncommitted_glide_interrupted_stops_where_it_is(): void
+    /** A glide interrupted — by a show, as a wheel, a drag or a resize shows, or by another glide — stops where it is. */
+    public function test_green_a_glide_interrupted_stops_where_it_is(): void
     {
         $log = $this->glideLog([['op' => 'glide', 'ms' => 850], ['op' => 'frame', 'ms' => 100], ['op' => 'show'], ['op' => 'frame', 'ms' => 1000]]);
 
         $this->assertSame([['applied' => 'from'], ['applied' => 'between'], ['applied' => 'other']], $log);
+
+        $other = $this->glideLog([['op' => 'glide', 'ms' => 850], ['op' => 'frame', 'ms' => 100], ['op' => 'glide_other', 'ms' => 0], ['op' => 'frame', 'ms' => 1000]]);
+
+        $this->assertSame([['applied' => 'from'], ['applied' => 'between'], ['applied' => 'from'], ['applied' => 'other']], $other);
     }
 
-    /** A committed glide that runs its length arrives once, and a committed cut (reduced motion) arrives at once. */
-    public function test_green_a_committed_glide_arrives_once_whether_it_glides_or_cuts(): void
+    /** A glide that runs its length ends on its destination, and a cut (reduced motion) is there at once. */
+    public function test_green_a_glide_ends_on_its_destination_whether_it_glides_or_cuts(): void
     {
-        $glided = $this->glideLog([['op' => 'glide', 'ms' => 850, 'commit' => true], ['op' => 'frame', 'ms' => 400], ['op' => 'frame', 'ms' => 500], ['op' => 'frame', 'ms' => 500]]);
+        $glided = $this->glideLog([['op' => 'glide', 'ms' => 850], ['op' => 'frame', 'ms' => 400], ['op' => 'frame', 'ms' => 500], ['op' => 'frame', 'ms' => 500]]);
 
-        $this->assertSame([['applied' => 'from'], ['applied' => 'between'], ['applied' => 'to'], ['done' => 'to']], $glided);
-
-        $cut = $this->glideLog([['op' => 'glide', 'ms' => 0, 'commit' => true]]);
-
-        $this->assertSame([['applied' => 'from'], ['applied' => 'to'], ['done' => 'to']], $cut);
+        $this->assertSame([['applied' => 'from'], ['applied' => 'between'], ['applied' => 'to']], $glided);
+        $this->assertSame([['applied' => 'from'], ['applied' => 'to']], $this->glideLog([['op' => 'glide', 'ms' => 0]]));
     }
 
-    /** A committed glide abandoned by an interruption, as every glide was before the ruling. */
-    public function test_red_a_committed_glide_an_interruption_abandons(): void
+    /** A glide an interruption never stops: it steps on over the camera the viewer moved to. */
+    public function test_red_a_glide_an_interruption_never_stops(): void
     {
-        $dir = $this->mutatedModules(['camera-view.js', 'if (!stopped.commit) {', 'if (true) {']);
+        $dir = $this->mutatedModules(['camera-view.js', "        if (glide !== null) {\n            cancelAnimationFrame(glide.frame);\n            glide = null;\n        }\n", '']);
 
-        $this->assertNotSame([], $this->committedDefects($dir), 'CONTROL (a committed glide abandoned) did not bite');
+        $log = $this->glideLog([['op' => 'glide', 'ms' => 850], ['op' => 'frame', 'ms' => 100], ['op' => 'show'], ['op' => 'frame', 'ms' => 1000]], $dir);
+
+        $this->assertNotSame([['applied' => 'from'], ['applied' => 'between'], ['applied' => 'other']], $log, 'CONTROL (a glide never stopped) did not bite');
     }
 
     // ── The gestures ───────────────────────────────────────────────────────────────────────────
@@ -148,7 +146,7 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
             'a second finger that never pinches' => ['camera-gestures.js', 'if (second ? pinch !== null || event.button !== 0 :', 'if (second ? true :'],
             'a pinch that zooms by nothing' => ['camera-gestures.js', 'was.spread > 0 ? pinch.spread / was.spread : 1', '1'],
             'a pinch about its first finger, not its midpoint' => ['camera-gestures.js', 'local((a.x + b.x) / 2, (a.y + b.y) / 2)', 'local(a.x, a.y)'],
-            'a pinch that is a click' => ['camera-gestures.js', "            drag.moved = true;\n            capture(drag.id);\n", "            capture(drag.id);\n"],
+            'a pinch that is a click' => ['camera-gestures.js', "            drag.moved = true;\n            // A pinch is the camera's, and so is the drag the finger left down carries on.\n            drag.owner = 'camera';\n            capture(drag.id);\n", "            drag.owner = 'camera';\n            capture(drag.id);\n"],
             'a pinch that leaves its first finger uncaptured' => ['camera-gestures.js', "            capture(drag.id);\n            capture(event.pointerId);\n", "            capture(event.pointerId);\n"],
             'a lifted finger that ends the other one\'s drag' => ['camera-gestures.js', 'if (pinch !== null && (event.pointerId === drag.id || event.pointerId === pinch.id)) {', 'if (false) {'],
             'a move of a pointer that is not the press, panning' => ['camera-gestures.js', "        if (finger === null) {\n            return;\n        }\n", ''],
@@ -211,42 +209,130 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
         return $this->logDefects($this->probe(['gestures' => [$wheel(false), $wheel(true)], 'pan_consumed' => false], $dir)['log'], $expected, 'released wheel');
     }
 
-    // ── A lobby mid-ride (card#11045 PR-C) ─────────────────────────────────────────────────────
+    // ── An element that declares it scrolls (card#12113, FLOOR.md § 4.1) ─────────────────────────
 
     /**
-     * Over a lobby mid-ride the screen's acts hold the camera (`lobby/lobby-screen.js`'s ride-hold): Safari's
-     * pinch is taken from the page as the wheel is — no page zoom and no Ctrl+wheel after it — and shows the
-     * camera the act answers, whatever it is. The model's half, the camera held, is
-     * `TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`'s.
+     * AT-D3-21's building half: a wheel or a drag begun over the lobby's directory — an element inside the drawing that
+     * declares it scrolls (`data-camera-scrolls`) — moves the directory while it can move that way and the camera once it
+     * cannot; a Ctrl+wheel over it is the camera's zoom; a drag decides its owner at its first move and keeps it, so it
+     * never flips from scrolling the list to panning the room half-way; and a drag that scrolled is no click either.
+     * ⚠ Synthetic events: the touch half — a real finger, whose native scroll `touch-action: none` keeps out of the way —
+     * is unverified until a real device has run it (§ 14 item 39(4)).
      */
-    public function test_green_a_safari_pinch_over_a_lobby_mid_ride_is_the_rides(): void
+    public function test_green_a_gesture_over_a_scroller_is_its_own_while_it_can_move(): void
     {
-        $this->assertSame([], $this->ridingDefects());
+        $this->assertSame([], $this->scrollerDefects());
     }
 
-    /** The gesture left to the page — Safari's page zoom over a ride, and a Ctrl+wheel after it. */
-    public function test_red_a_safari_pinch_mid_ride_left_to_the_page(): void
+    /** The scroller rule gone from the wheel: a wheel over the directory pans the room while the list could still move. */
+    public function test_red_a_wheel_over_a_scroller_that_pans_the_room(): void
     {
-        $dir = $this->mutatedModules(['camera-gestures.js', "        event.preventDefault();\n\n        // A press held is a touch screen's finger", "\n        // A press held is a touch screen's finger"]);
+        $dir = $this->mutatedModules(['camera-gestures.js', "        const scroller = event.ctrlKey ? null : scrollerOf(event.target);\n", "        const scroller = null;\n"]);
 
-        $this->assertNotSame([], $this->ridingDefects($dir), 'CONTROL (a Safari pinch mid-ride left to the page) did not bite');
+        $this->assertNotSame([], $this->scrollerDefects($dir), 'CONTROL (a wheel over the directory panning the room) did not bite');
+    }
+
+    /** The scroller rule given the Ctrl+wheel too: a zoom over the directory scrolls the list instead. */
+    public function test_red_a_ctrl_wheel_over_a_scroller_that_scrolls_it(): void
+    {
+        $dir = $this->mutatedModules(['camera-gestures.js', "        const scroller = event.ctrlKey ? null : scrollerOf(event.target);\n", "        const scroller = scrollerOf(event.target);\n"]);
+
+        $this->assertNotSame([], $this->scrollerDefects($dir), 'CONTROL (a Ctrl+wheel over the directory scrolling it) did not bite');
+    }
+
+    /** The drag's owner re-decided on every move: a drag over the directory flips to panning the room half-way. */
+    public function test_red_a_drag_that_flips_its_owner_half_way(): void
+    {
+        $dir = $this->mutatedModules(['camera-gestures.js', "        drag.x = event.clientX;\n        drag.y = event.clientY;\n\n        if (drag.owner !== 'camera') {",
+            "        drag.x = event.clientX;\n        drag.y = event.clientY;\n        drag.owner = drag.over !== null && Math.abs(dy) >= Math.abs(dx) && canScroll(drag.over, -dy) ? drag.over : 'camera';\n\n        if (drag.owner !== 'camera') {"]);
+
+        $this->assertNotSame([], $this->scrollerDefects($dir), 'CONTROL (a drag re-deciding its owner every move) did not bite');
+    }
+
+    /** A drag over the directory the wire never scrolls — the native scroll it relies on is what `touch-action: none` refuses. */
+    public function test_red_a_drag_over_a_scroller_the_wire_never_scrolls(): void
+    {
+        $dir = $this->mutatedModules(['camera-gestures.js', "            drag.owner.scrollTop -= dy;\n", '']);
+
+        $this->assertNotSame([], $this->scrollerDefects($dir), 'CONTROL (a drag over the directory that scrolls nothing) did not bite');
     }
 
     /** @return list<string> */
-    private function ridingDefects(?string $dir = null): array
+    private function scrollerDefects(?string $dir = null): array
     {
-        $taken = static fn (string $type): array => ['event' => $type, 'default_prevented' => true, 'propagation_stopped' => false, 'user_select' => '', 'webkit_user_select' => ''];
-        $held = ['show' => ['act' => 'held']];
-        $events = [
-            ['type' => 'gesturestart', 'scale' => 1, 'clientX' => 110, 'clientY' => 220],
-            ['type' => 'gesturechange', 'scale' => 2, 'clientX' => 110, 'clientY' => 220],
-            ['type' => 'gestureend', 'scale' => 2, 'clientX' => 110, 'clientY' => 220],
-            ['type' => 'wheel', 'clientX' => 110, 'clientY' => 220, 'deltaX' => 0, 'deltaY' => -120, 'deltaMode' => 0, 'ctrlKey' => true],
-        ];
-        $expected = [$taken('gesturestart'), $held, $taken('gesturechange'), $held, $taken('gestureend'), $held, $taken('wheel')];
+        $wheel = static fn (bool $ctrl, int $dy, bool $over = true): array => ['type' => 'wheel', 'clientX' => 110, 'clientY' => 220, 'deltaX' => 0, 'deltaY' => $dy, 'deltaMode' => 0, 'ctrlKey' => $ctrl] + ($over ? ['over' => 'scroller'] : []);
+        $down = static fn (int $x, int $y): array => ['type' => 'pointerdown', 'isPrimary' => true, 'button' => 0, 'clientX' => $x, 'clientY' => $y, 'pointerId' => 7, 'over' => 'scroller'];
+        $move = static fn (int $x, int $y): array => ['type' => 'pointermove', 'buttons' => 1, 'clientX' => $x, 'clientY' => $y, 'pointerId' => 7];
+        $up = ['type' => 'pointerup', 'pointerId' => 7];
+        $entry = static fn (string $type, bool $prevented, int $top, string $select = ''): array => ['event' => $type, 'default_prevented' => $prevented, 'propagation_stopped' => false, 'user_select' => $select, 'webkit_user_select' => $select, 'scroll_top' => $top];
+        $pan = static fn (int $dy): array => ['show' => ['act' => 'pan', 'delta' => ['deltaX' => 0, 'deltaY' => $dy, 'deltaMode' => 0]]];
+        $drag = static fn (int $dx, int $dy): array => ['show' => ['act' => 'drag', 'dx' => $dx, 'dy' => $dy]];
+        $defects = [];
 
-        return $this->logDefects($this->probe(['gestures' => $events, 'riding' => true], $dir)['log'], $expected, 'riding');
+        // The wheel: a list that can move down takes the notch, to its end, and then the room has it; at its top a notch
+        // up is the room's; a Ctrl+wheel over it is the room's zoom whatever the list could do.
+        $wheels = $this->probe(['gestures' => [$wheel(false, 100), $wheel(false, 100), $wheel(false, 100), $wheel(true, -120)],
+            'scroller' => ['scrollTop' => 0, 'clientHeight' => 100, 'scrollHeight' => 300]], $dir)['log'];
+        array_push($defects, ...$this->logDefects($wheels, [
+            $entry('wheel', true, 100),
+            $entry('wheel', true, 200),
+            $pan(100),
+            $entry('wheel', true, 200),
+            ['show' => ['act' => 'zoom', 'point' => ['x' => 100, 'y' => 200], 'delta' => ['deltaY' => -120, 'deltaMode' => 0]]],
+            $entry('wheel', true, 200),
+        ], 'scroller wheel'));
+
+        $top = $this->probe(['gestures' => [$wheel(false, -100)], 'scroller' => ['scrollTop' => 0, 'clientHeight' => 100, 'scrollHeight' => 300]], $dir)['log'];
+        array_push($defects, ...$this->logDefects($top, [$pan(-100), $entry('wheel', true, 0)], 'scroller wheel at its top'));
+
+        // The drag: begun over the list, moving up (the list scrolls down) — the list's, by the drag's own movement, kept
+        // through a sideways move; released, its click is no click.
+        $drags = $this->probe(['gestures' => [$down(100, 200), $move(100, 150), $move(100, 120), $move(160, 120), $up, ['type' => 'click']],
+            'scroller' => ['scrollTop' => 0, 'clientHeight' => 100, 'scrollHeight' => 300]], $dir)['log'];
+        array_push($defects, ...$this->logDefects($drags, [
+            ['event' => 'pointerdown', 'default_prevented' => false, 'propagation_stopped' => false, 'user_select' => 'none', 'webkit_user_select' => 'none', 'scroll_top' => 0],
+            ['capture' => 7],
+            $entry('pointermove', false, 50, 'none'),
+            $entry('pointermove', false, 80, 'none'),
+            $entry('pointermove', false, 80, 'none'),
+            $entry('pointerup', false, 80),
+            ['event' => 'click', 'default_prevented' => true, 'propagation_stopped' => true, 'user_select' => '', 'webkit_user_select' => '', 'scroll_top' => 80],
+        ], 'scroller drag'));
+
+        // At its end the list cannot move down, so the same drag is the room's from its first move — and stays the room's.
+        $atEnd = $this->probe(['gestures' => [$down(100, 200), $move(100, 150), $move(100, 120), $up],
+            'scroller' => ['scrollTop' => 200, 'clientHeight' => 100, 'scrollHeight' => 300]], $dir)['log'];
+        array_push($defects, ...$this->logDefects($atEnd, [
+            ['event' => 'pointerdown', 'default_prevented' => false, 'propagation_stopped' => false, 'user_select' => 'none', 'webkit_user_select' => 'none', 'scroll_top' => 200],
+            ['capture' => 7],
+            $drag(0, -50),
+            $entry('pointermove', false, 200, 'none'),
+            $drag(0, -30),
+            $entry('pointermove', false, 200, 'none'),
+            $entry('pointerup', false, 200),
+        ], 'scroller drag at its end'));
+
+        // A drag begun over the list that moves mostly sideways is the room's, and stays the room's when it turns vertical.
+        $sideways = $this->probe(['gestures' => [$down(100, 200), $move(150, 190), $move(150, 150), $up],
+            'scroller' => ['scrollTop' => 0, 'clientHeight' => 100, 'scrollHeight' => 300]], $dir)['log'];
+        array_push($defects, ...$this->logDefects($sideways, [
+            ['event' => 'pointerdown', 'default_prevented' => false, 'propagation_stopped' => false, 'user_select' => 'none', 'webkit_user_select' => 'none', 'scroll_top' => 0],
+            ['capture' => 7],
+            $drag(50, -10),
+            $entry('pointermove', false, 0, 'none'),
+            $drag(0, -40),
+            $entry('pointermove', false, 0, 'none'),
+            $entry('pointerup', false, 0),
+        ], 'sideways drag over the scroller'));
+
+        // ⛔ AND OFF THE SCROLLER NOTHING CHANGED: a wheel over the drawing itself pans the room though a scroller exists.
+        $off = $this->probe(['gestures' => [$wheel(false, 100, false)], 'scroller' => ['scrollTop' => 0, 'clientHeight' => 100, 'scrollHeight' => 300]], $dir)['log'];
+        array_push($defects, ...$this->logDefects($off, [$pan(100), $entry('wheel', true, 0)], 'wheel off the scroller'));
+
+        return $defects;
     }
+
+
 
     // ── The framing gate ───────────────────────────────────────────────────────────────────────
 
@@ -408,32 +494,6 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
     private function glideLog(array $ops, ?string $dir = null): array
     {
         return $this->probe(['view' => $ops], $dir)['log'];
-    }
-
-    /**
-     * A committed glide interrupted mid-flight by a `show()` and by another glide: each time the plate is
-     * applied last, the arrival runs exactly once, and nothing the interruption asked for is shown.
-     *
-     * @return list<string>
-     */
-    private function committedDefects(?string $dir = null): array
-    {
-        $defects = [];
-        $interruptions = [
-            'a show (a wheel, a drag or a resize)' => ['op' => 'show'],
-            'another glide (the whole-building control)' => ['op' => 'glide_other', 'ms' => 850],
-        ];
-
-        foreach ($interruptions as $what => $op) {
-            $log = $this->glideLog([['op' => 'glide', 'ms' => 850, 'commit' => true], ['op' => 'frame', 'ms' => 100], $op, ['op' => 'frame', 'ms' => 1000]], $dir);
-            $expected = [['applied' => 'from'], ['applied' => 'between'], ['applied' => 'to'], ['done' => 'to']];
-
-            if ($log !== $expected) {
-                $defects[] = "a committed glide interrupted by {$what} did not cut to the plate and arrive once: ".json_encode($log);
-            }
-        }
-
-        return $defects;
     }
 
     /**
@@ -694,7 +754,7 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
                 $defects[] = sprintf('offer %d (%s): a zoom button is %s', $i, $framed ? 'framed' : 'nothing framed', $framed ? 'hidden' : 'shown');
             }
 
-            // card#7343 c7692 item 2: the page's framing control — Fit the floor, Whole building — with them.
+            // card#7343 c7692 item 2: the page's framing control — Fit the floor, Fit the lobby — with them.
             if ($entry['fit_hidden'] === $framed) {
                 $defects[] = sprintf('offer %d (%s): the framing control is %s', $i, $framed ? 'framed' : 'nothing framed', $framed ? 'hidden' : 'shown');
             }

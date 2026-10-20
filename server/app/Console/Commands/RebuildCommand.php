@@ -229,6 +229,7 @@ class RebuildCommand extends Command
             'unknown_reason' => 'no_data_yet',
             'current_session_ref' => null,
             'current_call_ref' => null,
+            'longest_call_ref' => null,
             'open_calls' => 0,
             'open_turn' => false,
             'open_attention_ref' => null,

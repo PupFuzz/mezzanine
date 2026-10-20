@@ -10,7 +10,10 @@
  * `drawCabInterior()` draws into a box of its own — and (card#12052) what is seen through the open doors: the office
  * in the cab's layer behind its leaves (`drawOfficeView()`), the cab's room behind the band's leaves, what is drawn after
  * the leaves in each doorway, and `STYLE`'s `color-mix()` fallback — and (card#12071) the call plate beside the cab's
- * doors, read as scenery and as a control would be, and the share of the cab's view its doorway takes.
+ * doors, read as scenery and as a control would be, and the share of the cab's view its doorway takes — and (card#12113)
+ * the view behind the cab's doors chosen by `scene.ride`'s `beyond`: the lobby (`drawLobbyView()`) for `lobby`, the
+ * office for `office`, each in the cab and on its own; and the module's `paintCab()` / `cabTheme()`, which a page with
+ * no painter calls, against the painter's own.
  *
  * argv: `--js <tree>` (default: the shipped tree). stdout: JSON, one member per leg (see the bottom).
  */
@@ -35,7 +38,7 @@ globalThis.CSS = { escape: (s) => s };
 globalThis.setInterval = () => 1;
 globalThis.clearInterval = () => {};
 
-const { createPainter, CAB, LANDING, OFFICE, STYLE, drawCabInterior, drawOfficeView } = await import(pathToFileURL(join(JS, 'floor', 'painter.js')).href);
+const { createPainter, CAB, LANDING, OFFICE, LOBBY_VIEW, STYLE, cabTheme, drawCabInterior, drawLobbyView, drawOfficeView, paintCab } = await import(pathToFileURL(join(JS, 'floor', 'painter.js')).href);
 
 const BAND = {
     x: 0, y: 0, w: 1000, h: 160,
@@ -64,7 +67,7 @@ function paint(ride, doors = []) {
     return { control, leaves };
 }
 
-const ride = (phase, elapsed, over = {}) => ({ phase, elapsed_ms: elapsed, ms: 750, door_delay_ms: 250, ...over });
+const ride = (phase, elapsed, over = {}) => ({ phase, elapsed_ms: elapsed, ms: 750, door_delay_ms: 250, beyond: 'office', ...over });
 
 // ── the control ──────────────────────────────────────────────────────────────────────────────────
 const { control } = paint(null);
@@ -299,4 +302,50 @@ const closerLeg = { share: viewOf(officeLeg.door), door: officeLeg.door };
 const cabOrder = svg === null ? [] : svg.children.map((n) => `${n.name}.${n.getAttribute('class') ?? ''}`);
 const seamLeg = { cab: cabOrder.slice(cabOrder.findIndex((c) => c.endsWith('.cab-beyond'))), band: bandLeg.themed.control };
 
-console.log(JSON.stringify({ control: controlLeg, leaves: leavesLeg, walks: walksLeg, cab: cabLeg, palette: paletteLeg, depth: depthLeg, office: officeLeg, band: bandLeg, plate: plateLeg, closer: closerLeg, seam: seamLeg, style: STYLE, elapsed: E }));
+// ── the lobby through the doors (card#12113) ───────────────────────────────────────────────────────
+// The cab painted with `beyond: lobby` and with `beyond: office`, in each phase whose doors move, by the module's own
+// `paintCab()` (the lobby page's path) and by the painter's (the floor's): which view the layer behind the leaves holds,
+// the lobby's census and clip, and its parts — the front doors under their arch, the windows, the mat, the boards, the
+// ceiling's panels. And `drawLobbyView()` on its own into a box of its own, and the module's `cabTheme()` against the
+// painter's with the same palette.
+const viewsIn = (h) => {
+    const b = firstOf(h, 'cab-beyond');
+    return { lobby: b === null ? 0 : withClass(b, 'lobby-view').length, office: b === null ? 0 : withClass(b, 'office-view').length };
+};
+const lobbyHost = new Node('div');
+lobbyHost.style = recording();
+const viewsLeg = {};
+for (const phase of ['entering', 'chosen', 'staying']) {
+    for (const beyondView of ['lobby', 'office']) {
+        paintCab(lobbyHost, ride(phase, E, { beyond: beyondView }));
+        const module_ = viewsIn(lobbyHost);
+        themed.paintCab(lobbyHost, ride(phase, E, { beyond: beyondView }));
+        viewsLeg[`${phase}:${beyondView}`] = { module: module_, painter: viewsIn(lobbyHost) };
+    }
+}
+paintCab(lobbyHost, ride('chosen', E, { beyond: 'lobby' }));
+const lobbyBeyond = firstOf(lobbyHost, 'cab-beyond');
+const lobbyIn = lobbyBeyond === null ? null : firstOf(lobbyBeyond, 'lobby-view');
+const [lobbyL, lobbyR] = withClass(lobbyHost, 'elevator-leaf').map(rectOf);
+const lobbyAlone = new Node('g');
+const lobbyBox = { x: 4, y: 9, w: 55, h: 100 };
+const lobbyAnswer = drawLobbyView(lobbyAlone, lobbyBox, 'probe-lobby');
+const moduleDialog = dialogOf({});
+const painterDialog = dialogOf({});
+cabTheme(moduleDialog, house.PALETTE.elevator);
+themed.cabTheme(painterDialog);
+const moduleUnthemed = dialogOf({ '--cab-frame': 'stale', '--cab-lamp': 'stale' }, { 'data-themed': '' });
+cabTheme(moduleUnthemed, null);
+const lobbyLeg = {
+    lobby_view: LOBBY_VIEW,
+    views: viewsLeg,
+    door: lobbyL === undefined ? null : { x: lobbyL.x, y: lobbyL.y, w: lobbyR.x + lobbyR.w - lobbyL.x, h: lobbyL.h },
+    found: lobbyIn !== null,
+    clip: lobbyIn === null ? null : clipOf(lobbyIn),
+    census: lobbyIn === null ? [] : census(lobbyIn),
+    lights: lobbyIn === null ? [] : withClass(lobbyIn, 'lobby-view-light').map(cornersOf),
+    alone: { box: lobbyBox, answered: lobbyAnswer.clip, clip: clipOf(lobbyAlone), ids: census(lobbyAlone).map((c) => c.id).filter((v) => v !== null), lights: withClass(lobbyAlone, 'lobby-view-light').length },
+    theme: { module: { props: moduleDialog.style.props, attrs: moduleDialog.attrs }, painter: { props: painterDialog.style.props, attrs: painterDialog.attrs }, unthemed: { props: moduleUnthemed.style.props, attrs: moduleUnthemed.attrs } },
+};
+
+console.log(JSON.stringify({ lobby: lobbyLeg, control: controlLeg, leaves: leavesLeg, walks: walksLeg, cab: cabLeg, palette: paletteLeg, depth: depthLeg, office: officeLeg, band: bandLeg, plate: plateLeg, closer: closerLeg, seam: seamLeg, style: STYLE, elapsed: E }));

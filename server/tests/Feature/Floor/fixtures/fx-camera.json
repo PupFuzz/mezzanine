@@ -44,6 +44,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "started_received_at": "2026-08-23T14:23:14.201Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
@@ -134,6 +139,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "started_received_at": "2026-08-23T14:23:02.530Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -207,6 +217,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -280,6 +291,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -386,6 +398,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "started_received_at": "2026-08-23T14:23:14.201Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
@@ -476,6 +493,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "started_received_at": "2026-08-23T14:23:02.530Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -549,6 +571,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -622,6 +645,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -753,6 +777,11 @@
                 "agent_scope": "main",
                 "parent_call_id": null
               },
+              "longest_open_call": {
+                "call_id": "01K3TC2B3C4D5E6F7G8H9J0K1M",
+                "tool_name": "Bash",
+                "started_received_at": "2026-08-23T14:23:15.290Z"
+              },
               "open_calls": 1,
               "open_turn": true,
               "subagents": [
@@ -861,12 +890,14 @@
               "render_state",
               "activity_state",
               "action",
+              "longest_open_call",
               "open_calls"
             ],
             "patch": {
               "render_state": "idle",
               "activity_state": "idle",
               "action": null,
+              "longest_open_call": null,
               "open_calls": 0
             }
           }
@@ -885,6 +916,7 @@
               "render_state",
               "activity_state",
               "action",
+              "longest_open_call",
               "open_calls"
             ],
             "patch": {
@@ -898,6 +930,11 @@
                 "started_received_at": "2026-08-23T14:23:15.290Z",
                 "agent_scope": "main",
                 "parent_call_id": null
+              },
+              "longest_open_call": {
+                "call_id": "01K3TC2B3C4D5E6F7G8H9J0K1M",
+                "tool_name": "Bash",
+                "started_received_at": "2026-08-23T14:23:15.290Z"
               },
               "open_calls": 1
             }
@@ -1117,6 +1154,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "started_received_at": "2026-08-23T14:23:14.201Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
@@ -1207,6 +1249,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "started_received_at": "2026-08-23T14:23:02.530Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -1280,6 +1327,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -1353,6 +1401,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -1459,6 +1508,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "started_received_at": "2026-08-23T14:23:14.201Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
@@ -1549,6 +1603,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "started_received_at": "2026-08-23T14:23:02.530Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -1622,6 +1681,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -1695,6 +1755,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -1826,6 +1887,11 @@
                 "agent_scope": "main",
                 "parent_call_id": null
               },
+              "longest_open_call": {
+                "call_id": "01K3TC2B3C4D5E6F7G8H9J0K1M",
+                "tool_name": "Bash",
+                "started_received_at": "2026-08-23T14:23:15.290Z"
+              },
               "open_calls": 1,
               "open_turn": true,
               "subagents": [
@@ -1934,12 +2000,14 @@
               "render_state",
               "activity_state",
               "action",
+              "longest_open_call",
               "open_calls"
             ],
             "patch": {
               "render_state": "idle",
               "activity_state": "idle",
               "action": null,
+              "longest_open_call": null,
               "open_calls": 0
             }
           }
@@ -1958,6 +2026,7 @@
               "render_state",
               "activity_state",
               "action",
+              "longest_open_call",
               "open_calls"
             ],
             "patch": {
@@ -1971,6 +2040,11 @@
                 "started_received_at": "2026-08-23T14:23:15.290Z",
                 "agent_scope": "main",
                 "parent_call_id": null
+              },
+              "longest_open_call": {
+                "call_id": "01K3TC2B3C4D5E6F7G8H9J0K1M",
+                "tool_name": "Bash",
+                "started_received_at": "2026-08-23T14:23:15.290Z"
               },
               "open_calls": 1
             }
@@ -2056,6 +2130,11 @@
                         "started_received_at": "2026-08-23T14:23:14.201Z",
                         "agent_scope": "main",
                         "parent_call_id": null
+                      },
+                      "longest_open_call": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "started_received_at": "2026-08-23T14:23:14.201Z"
                       },
                       "open_calls": 1,
                       "open_turn": true,
@@ -2147,6 +2226,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "started_received_at": "2026-08-23T14:23:02.530Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -2220,6 +2304,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -2293,6 +2378,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -2519,6 +2605,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "started_received_at": "2026-08-23T14:23:14.201Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
@@ -2609,6 +2700,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "started_received_at": "2026-08-23T14:23:02.530Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -2682,6 +2778,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -2755,6 +2852,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -2958,6 +3056,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "started_received_at": "2026-08-23T14:23:14.201Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
@@ -3048,6 +3151,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "started_received_at": "2026-08-23T14:23:02.530Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -3121,6 +3229,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -3194,6 +3303,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -3406,6 +3516,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "started_received_at": "2026-08-23T14:23:14.201Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
@@ -3496,6 +3611,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "started_received_at": "2026-08-23T14:23:02.530Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -3569,6 +3689,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -3642,6 +3763,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -3846,6 +3968,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": true,
                       "subagents": [],
@@ -3919,6 +4042,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -3992,6 +4116,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -4065,6 +4190,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": true,
                       "subagents": [],
@@ -4146,6 +4272,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "started_received_at": "2026-08-23T14:23:02.530Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -4221,6 +4352,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -4375,6 +4507,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": true,
                       "subagents": [],
@@ -4448,6 +4581,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -4521,6 +4655,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -4594,6 +4729,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": true,
                       "subagents": [],
@@ -4675,6 +4811,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "started_received_at": "2026-08-23T14:23:02.530Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -4750,6 +4891,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -4912,6 +5054,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "started_received_at": "2026-08-23T14:23:14.201Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
@@ -5002,6 +5149,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "started_received_at": "2026-08-23T14:23:02.530Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -5075,6 +5227,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -5148,6 +5301,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -5325,6 +5479,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "started_received_at": "2026-08-23T14:23:14.201Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
@@ -5415,6 +5574,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "started_received_at": "2026-08-23T14:23:02.530Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -5488,6 +5652,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -5561,6 +5726,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -6011,6 +6177,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "started_received_at": "2026-08-23T14:23:14.201Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
@@ -6101,6 +6272,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "started_received_at": "2026-08-23T14:23:02.530Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -6174,6 +6350,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -6247,6 +6424,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -6420,8 +6598,8 @@
         ]
       }
     },
-    "building_rides": {
-      "note": "AT-D3-21's building half (Appendix B row 16, card#7343): entered at the lobby at fit on every plate; the ride to the labelled floor, the page back from the back-forward cache, the ride to the other, a heartbeat drawn with the camera on the second plate, the page back again, then the whole building. Every ride arrives at `/floor/{key}`, and the animation log gains no row.",
+    "building_room": {
+      "note": "AT-D3-21's building half, re-cut for the drawn room (Appendix B row 24, card#12113): fx-snapshot-4 under a layout of two floors, one of them labelled, entered at the lobby at fit on the room. A plain wheel, a Ctrl+wheel, a touch pinch, a drag, a key's zoom and an arrow key's pan over the room, *Fit the lobby*; the keyboard's focus on the elevator and on a plaque's link with both in view at fit (nothing moves); then zoomed in and panned off to the right, the focus on the elevator (the camera comes to it), again (nothing moves), on a plaque's link (the camera comes to the board), again (nothing moves). Heartbeats are drawn between the acts, so a render's camera is the one the viewer left, and the animation log gains no row from any act.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -6462,6 +6640,11 @@
                         "started_received_at": "2026-08-23T14:23:14.201Z",
                         "agent_scope": "main",
                         "parent_call_id": null
+                      },
+                      "longest_open_call": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "started_received_at": "2026-08-23T14:23:14.201Z"
                       },
                       "open_calls": 1,
                       "open_turn": true,
@@ -6553,6 +6736,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "started_received_at": "2026-08-23T14:23:02.530Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -6626,6 +6814,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -6699,6 +6888,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -6865,960 +7055,19 @@
         "camera": [
           {
             "at_ms": 2000,
-            "act": "ride"
+            "act": "scroll",
+            "delta_x": 40,
+            "delta_y": 60
           },
           {
-            "at_ms": 2500,
-            "act": "return"
-          },
-          {
-            "at_ms": 3000,
-            "act": "ride"
-          },
-          {
-            "at_ms": 6000,
-            "act": "return"
-          },
-          {
-            "at_ms": 8000,
-            "act": "building"
-          }
-        ]
-      }
-    },
-    "building_rides_reduced": {
-      "note": "AT-D3-21's building half (Appendix B row 16, card#7343), under `prefers-reduced-motion`: every ride and the whole-building control cut rather than glide. The acts are `building_rides`' own.",
-      "http": {
-        "/api/fleet/snapshot": [
-          {
-            "status": 200,
-            "body": {
-              "api_version": 1,
-              "server_time": "2026-08-23T14:23:14.400Z",
-              "fleet": {
-                "db": "ok",
-                "fold": "ok",
-                "sweep": "ok",
-                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
-                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
-                "max_fold_lag_ms": 117,
-                "seats_total": 4,
-                "seats_live": 4
-              },
-              "installs": [
-                {
-                  "install_id": "aimla",
-                  "seats": [
-                    {
-                      "install_id": "aimla",
-                      "seat_id": "aimla-pm",
-                      "state_version": 48219,
-                      "render_state": "working",
-                      "link_state": "live",
-                      "activity_state": "working",
-                      "unknown_reason": null,
-                      "api_error_type": null,
-                      "blocked_since": null,
-                      "idle_since": null,
-                      "action": {
-                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
-                        "tool_name": "Bash",
-                        "descriptor": "Bash: composer test",
-                        "started_at": "2026-08-23T14:23:09.882Z",
-                        "started_received_at": "2026-08-23T14:23:14.201Z",
-                        "agent_scope": "main",
-                        "parent_call_id": null
-                      },
-                      "open_calls": 1,
-                      "open_turn": true,
-                      "subagents": [
-                        {
-                          "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
-                          "title": "draft the D1 event schema",
-                          "subagent_type": "coder",
-                          "started_at": "2026-08-23T14:23:31.004Z"
-                        }
-                      ],
-                      "subagents_open": 1,
-                      "task": {
-                        "title": "ingest endpoint",
-                        "source": "board_card",
-                        "ref": "card#7338",
-                        "as_of": "2026-08-23T14:05:00.000Z",
-                        "degraded": false
-                      },
-                      "context": {
-                        "used_pct": 73.2,
-                        "used_tokens": 146401,
-                        "total_tokens": 200000,
-                        "source": "harness",
-                        "sampled_at": "2026-08-23T14:41:00.310Z",
-                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
-                      },
-                      "model_label": "claude-opus-5",
-                      "session": {
-                        "session_id": "a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
-                        "started_at": "2026-08-23T14:22:40.201Z",
-                        "source": "clear",
-                        "project_label": "mezzanine",
-                        "harness_label": "claude-code/2.1.240"
-                      },
-                      "activity": {
-                        "last_event_time": "2026-08-23T14:23:09.882Z",
-                        "last_received_at": "2026-08-23T14:23:14.201Z",
-                        "last_kind": "tool.start"
-                      },
-                      "delivery": {
-                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
-                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
-                        "no_data_since": null,
-                        "clock_skew_ms": 412,
-                        "spool_lag_events": 0,
-                        "oldest_unsent_age_s": null,
-                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
-                        "last_seq": 48211
-                      },
-                      "badges": [
-                        "lossy"
-                      ],
-                      "badges_since": "2026-08-23T09:14:02.118Z",
-                      "enabled": true,
-                      "protocol_agent_name": "pm",
-                      "protocol_agent_name_check": "checked",
-                      "protocol_agent_role": "pm",
-                      "reporter": {
-                        "version": "0.1.0",
-                        "platform": "linux",
-                        "uptime_s": 401150,
-                        "selftest_failed": []
-                      },
-                      "retired": null,
-                      "derivation": {
-                        "computed_at": "2026-08-23T14:23:14.318Z",
-                        "fold_lag_ms": 117,
-                        "cursor_event_id": 9912837
-                      }
-                    },
-                    {
-                      "install_id": "aimla",
-                      "seat_id": "aimla-impl-1",
-                      "state_version": 31107,
-                      "render_state": "working",
-                      "link_state": "live",
-                      "activity_state": "working",
-                      "unknown_reason": null,
-                      "api_error_type": null,
-                      "blocked_since": null,
-                      "idle_since": null,
-                      "action": {
-                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
-                        "tool_name": "Edit",
-                        "descriptor": "Edit: server/app/Feed/SeatDelta.php",
-                        "started_at": "2026-08-23T14:22:58.120Z",
-                        "started_received_at": "2026-08-23T14:23:02.530Z",
-                        "agent_scope": "main",
-                        "parent_call_id": null
-                      },
-                      "open_calls": 1,
-                      "open_turn": true,
-                      "subagents": [],
-                      "subagents_open": 0,
-                      "task": {
-                        "title": "ingest endpoint",
-                        "source": "board_card",
-                        "ref": "card#7338",
-                        "as_of": "2026-08-23T14:05:00.000Z",
-                        "degraded": false
-                      },
-                      "context": {
-                        "used_pct": 73.2,
-                        "used_tokens": 146401,
-                        "total_tokens": 200000,
-                        "source": "harness",
-                        "sampled_at": "2026-08-23T14:41:00.310Z",
-                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
-                      },
-                      "model_label": "claude-opus-5",
-                      "session": {
-                        "session_id": "0b6c2d4e-1f3a-4b5c-8d7e-9f0a1b2c3d4e",
-                        "started_at": "2026-08-23T14:22:40.201Z",
-                        "source": "clear",
-                        "project_label": "mezzanine",
-                        "harness_label": "claude-code/2.1.240"
-                      },
-                      "activity": {
-                        "last_event_time": "2026-08-23T14:22:58.120Z",
-                        "last_received_at": "2026-08-23T14:23:02.530Z",
-                        "last_kind": "tool.start"
-                      },
-                      "delivery": {
-                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
-                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
-                        "no_data_since": null,
-                        "clock_skew_ms": 412,
-                        "spool_lag_events": 0,
-                        "oldest_unsent_age_s": null,
-                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
-                        "last_seq": 48211
-                      },
-                      "badges": [],
-                      "badges_since": null,
-                      "enabled": true,
-                      "protocol_agent_name": "impl-1",
-                      "protocol_agent_name_check": "checked",
-                      "protocol_agent_role": "impl",
-                      "reporter": {
-                        "version": "0.1.0",
-                        "platform": "linux",
-                        "uptime_s": 401150,
-                        "selftest_failed": []
-                      },
-                      "retired": null,
-                      "derivation": {
-                        "computed_at": "2026-08-23T14:23:14.318Z",
-                        "fold_lag_ms": 117,
-                        "cursor_event_id": 9912837
-                      }
-                    },
-                    {
-                      "install_id": "aimla",
-                      "seat_id": "aimla-impl-2",
-                      "state_version": 20544,
-                      "render_state": "idle",
-                      "link_state": "live",
-                      "activity_state": "idle",
-                      "unknown_reason": null,
-                      "api_error_type": null,
-                      "blocked_since": null,
-                      "idle_since": null,
-                      "action": null,
-                      "open_calls": 0,
-                      "open_turn": false,
-                      "subagents": [],
-                      "subagents_open": 0,
-                      "task": {
-                        "title": "ingest endpoint",
-                        "source": "board_card",
-                        "ref": "card#7338",
-                        "as_of": "2026-08-23T14:05:00.000Z",
-                        "degraded": false
-                      },
-                      "context": {
-                        "used_pct": 73.2,
-                        "used_tokens": 146401,
-                        "total_tokens": 200000,
-                        "source": "harness",
-                        "sampled_at": "2026-08-23T14:41:00.310Z",
-                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
-                      },
-                      "model_label": "claude-opus-5",
-                      "session": {
-                        "session_id": "5e8f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
-                        "started_at": "2026-08-23T14:22:40.201Z",
-                        "source": "clear",
-                        "project_label": "mezzanine",
-                        "harness_label": "claude-code/2.1.240"
-                      },
-                      "activity": {
-                        "last_event_time": "2026-08-23T14:21:47.300Z",
-                        "last_received_at": "2026-08-23T14:21:51.010Z",
-                        "last_kind": "turn.end"
-                      },
-                      "delivery": {
-                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
-                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
-                        "no_data_since": null,
-                        "clock_skew_ms": 412,
-                        "spool_lag_events": 0,
-                        "oldest_unsent_age_s": null,
-                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
-                        "last_seq": 48211
-                      },
-                      "badges": [],
-                      "badges_since": null,
-                      "enabled": true,
-                      "protocol_agent_name": "impl-2",
-                      "protocol_agent_name_check": "checked",
-                      "protocol_agent_role": "impl",
-                      "reporter": {
-                        "version": "0.1.0",
-                        "platform": "linux",
-                        "uptime_s": 401150,
-                        "selftest_failed": []
-                      },
-                      "retired": null,
-                      "derivation": {
-                        "computed_at": "2026-08-23T14:23:14.318Z",
-                        "fold_lag_ms": 117,
-                        "cursor_event_id": 9912837
-                      }
-                    },
-                    {
-                      "install_id": "aimla",
-                      "seat_id": "aimla-review",
-                      "state_version": 15032,
-                      "render_state": "blocked",
-                      "link_state": "live",
-                      "activity_state": "blocked",
-                      "unknown_reason": null,
-                      "api_error_type": null,
-                      "blocked_since": "2026-08-23T14:19:40.006Z",
-                      "idle_since": null,
-                      "action": null,
-                      "open_calls": 0,
-                      "open_turn": false,
-                      "subagents": [],
-                      "subagents_open": 0,
-                      "task": {
-                        "title": "ingest endpoint",
-                        "source": "board_card",
-                        "ref": "card#7338",
-                        "as_of": "2026-08-23T14:05:00.000Z",
-                        "degraded": false
-                      },
-                      "context": {
-                        "used_pct": 73.2,
-                        "used_tokens": 146401,
-                        "total_tokens": 200000,
-                        "source": "harness",
-                        "sampled_at": "2026-08-23T14:41:00.310Z",
-                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
-                      },
-                      "model_label": "claude-opus-5",
-                      "session": {
-                        "session_id": "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
-                        "started_at": "2026-08-23T14:22:40.201Z",
-                        "source": "clear",
-                        "project_label": "mezzanine",
-                        "harness_label": "claude-code/2.1.240"
-                      },
-                      "activity": {
-                        "last_event_time": "2026-08-23T14:19:40.006Z",
-                        "last_received_at": "2026-08-23T14:19:44.120Z",
-                        "last_kind": "attention.request"
-                      },
-                      "delivery": {
-                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
-                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
-                        "no_data_since": null,
-                        "clock_skew_ms": 412,
-                        "spool_lag_events": 0,
-                        "oldest_unsent_age_s": null,
-                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
-                        "last_seq": 48211
-                      },
-                      "badges": [],
-                      "badges_since": null,
-                      "enabled": true,
-                      "protocol_agent_name": "review",
-                      "protocol_agent_name_check": "checked",
-                      "protocol_agent_role": "review",
-                      "reporter": {
-                        "version": "0.1.0",
-                        "platform": "linux",
-                        "uptime_s": 401150,
-                        "selftest_failed": []
-                      },
-                      "retired": null,
-                      "derivation": {
-                        "computed_at": "2026-08-23T14:23:14.318Z",
-                        "fold_lag_ms": 117,
-                        "cursor_event_id": 9912837
-                      }
-                    }
-                  ]
-                }
-              ]
-            },
-            "delay_ms": 0
-          }
-        ],
-        "/api/building": [
-          {
-            "status": 200,
-            "body": {
-              "layout": {
-                "layout_version": 3,
-                "floors": [
-                  {
-                    "floor": "aimla",
-                    "rooms": [
-                      {
-                        "install": "aimla",
-                        "form": "open"
-                      }
-                    ]
-                  },
-                  {
-                    "floor": "zeta",
-                    "label": "the annex",
-                    "rooms": [
-                      {
-                        "install": "zeta",
-                        "form": "office"
-                      }
-                    ]
-                  }
-                ]
-              },
-              "rooms": []
-            }
-          }
-        ]
-      },
-      "messages": [
-        {
-          "at_ms": 1000,
-          "envelope": {
-            "feed_version": 1,
-            "t": "feed.heartbeat",
-            "server_time": "2026-08-23T14:23:15.000Z",
-            "fleet": {
-              "db": "ok",
-              "fold": "ok",
-              "sweep": "ok",
-              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
-              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
-              "max_fold_lag_ms": 117,
-              "seats_total": 4,
-              "seats_live": 4
-            }
-          }
-        },
-        {
-          "at_ms": 5000,
-          "envelope": {
-            "feed_version": 1,
-            "t": "feed.heartbeat",
-            "server_time": "2026-08-23T14:23:19.000Z",
-            "fleet": {
-              "db": "ok",
-              "fold": "ok",
-              "sweep": "ok",
-              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
-              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
-              "max_fold_lag_ms": 117,
-              "seats_total": 4,
-              "seats_live": 4
-            }
-          }
-        },
-        {
-          "at_ms": 16000,
-          "envelope": {
-            "feed_version": 1,
-            "t": "feed.heartbeat",
-            "server_time": "2026-08-23T14:23:30.000Z",
-            "fleet": {
-              "db": "ok",
-              "fold": "ok",
-              "sweep": "ok",
-              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
-              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
-              "max_fold_lag_ms": 117,
-              "seats_total": 4,
-              "seats_live": 4
-            }
-          }
-        }
-      ],
-      "until_ms": 20000,
-      "lobby": {
-        "surface": {
-          "width": 1280,
-          "height": 800
-        },
-        "camera": [
-          {
-            "at_ms": 2000,
-            "act": "ride"
-          },
-          {
-            "at_ms": 2500,
-            "act": "return"
-          },
-          {
-            "at_ms": 3000,
-            "act": "ride"
-          },
-          {
-            "at_ms": 6000,
-            "act": "return"
-          },
-          {
-            "at_ms": 8000,
-            "act": "building"
-          }
-        ]
-      },
-      "reduce": true
-    },
-    "building_ride_in_flight": {
-      "note": "Appendix B row 16's ride in flight (card#7343 r1 ruling: the click commits the ride; r2-4, the seat's ruling: the hold protects the glide only). The ride to the labelled floor, then — while its glide is in flight — a second click on the ride control, a Ctrl+wheel, a plain wheel and a touch pinch (each leaving the camera on the plate, the two wheels consumed — card#11045), a key's zoom, a drag, the keyboard's focus on the other plate and the whole-building control, each of which leaves the camera on the plate and none of which rides again; then the glide arrives and the page asks for the route (`arrive`) and the navigation does not complete, so the lobby stays — a Ctrl+wheel then moves the camera, and the ride to the other floor is taken.",
-      "http": {
-        "/api/fleet/snapshot": [
-          {
-            "status": 200,
-            "body": {
-              "api_version": 1,
-              "server_time": "2026-08-23T14:23:14.400Z",
-              "fleet": {
-                "db": "ok",
-                "fold": "ok",
-                "sweep": "ok",
-                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
-                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
-                "max_fold_lag_ms": 117,
-                "seats_total": 4,
-                "seats_live": 4
-              },
-              "installs": [
-                {
-                  "install_id": "aimla",
-                  "seats": [
-                    {
-                      "install_id": "aimla",
-                      "seat_id": "aimla-pm",
-                      "state_version": 48219,
-                      "render_state": "working",
-                      "link_state": "live",
-                      "activity_state": "working",
-                      "unknown_reason": null,
-                      "api_error_type": null,
-                      "blocked_since": null,
-                      "idle_since": null,
-                      "action": {
-                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
-                        "tool_name": "Bash",
-                        "descriptor": "Bash: composer test",
-                        "started_at": "2026-08-23T14:23:09.882Z",
-                        "started_received_at": "2026-08-23T14:23:14.201Z",
-                        "agent_scope": "main",
-                        "parent_call_id": null
-                      },
-                      "open_calls": 1,
-                      "open_turn": true,
-                      "subagents": [
-                        {
-                          "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
-                          "title": "draft the D1 event schema",
-                          "subagent_type": "coder",
-                          "started_at": "2026-08-23T14:23:31.004Z"
-                        }
-                      ],
-                      "subagents_open": 1,
-                      "task": {
-                        "title": "ingest endpoint",
-                        "source": "board_card",
-                        "ref": "card#7338",
-                        "as_of": "2026-08-23T14:05:00.000Z",
-                        "degraded": false
-                      },
-                      "context": {
-                        "used_pct": 73.2,
-                        "used_tokens": 146401,
-                        "total_tokens": 200000,
-                        "source": "harness",
-                        "sampled_at": "2026-08-23T14:41:00.310Z",
-                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
-                      },
-                      "model_label": "claude-opus-5",
-                      "session": {
-                        "session_id": "a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
-                        "started_at": "2026-08-23T14:22:40.201Z",
-                        "source": "clear",
-                        "project_label": "mezzanine",
-                        "harness_label": "claude-code/2.1.240"
-                      },
-                      "activity": {
-                        "last_event_time": "2026-08-23T14:23:09.882Z",
-                        "last_received_at": "2026-08-23T14:23:14.201Z",
-                        "last_kind": "tool.start"
-                      },
-                      "delivery": {
-                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
-                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
-                        "no_data_since": null,
-                        "clock_skew_ms": 412,
-                        "spool_lag_events": 0,
-                        "oldest_unsent_age_s": null,
-                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
-                        "last_seq": 48211
-                      },
-                      "badges": [
-                        "lossy"
-                      ],
-                      "badges_since": "2026-08-23T09:14:02.118Z",
-                      "enabled": true,
-                      "protocol_agent_name": "pm",
-                      "protocol_agent_name_check": "checked",
-                      "protocol_agent_role": "pm",
-                      "reporter": {
-                        "version": "0.1.0",
-                        "platform": "linux",
-                        "uptime_s": 401150,
-                        "selftest_failed": []
-                      },
-                      "retired": null,
-                      "derivation": {
-                        "computed_at": "2026-08-23T14:23:14.318Z",
-                        "fold_lag_ms": 117,
-                        "cursor_event_id": 9912837
-                      }
-                    },
-                    {
-                      "install_id": "aimla",
-                      "seat_id": "aimla-impl-1",
-                      "state_version": 31107,
-                      "render_state": "working",
-                      "link_state": "live",
-                      "activity_state": "working",
-                      "unknown_reason": null,
-                      "api_error_type": null,
-                      "blocked_since": null,
-                      "idle_since": null,
-                      "action": {
-                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
-                        "tool_name": "Edit",
-                        "descriptor": "Edit: server/app/Feed/SeatDelta.php",
-                        "started_at": "2026-08-23T14:22:58.120Z",
-                        "started_received_at": "2026-08-23T14:23:02.530Z",
-                        "agent_scope": "main",
-                        "parent_call_id": null
-                      },
-                      "open_calls": 1,
-                      "open_turn": true,
-                      "subagents": [],
-                      "subagents_open": 0,
-                      "task": {
-                        "title": "ingest endpoint",
-                        "source": "board_card",
-                        "ref": "card#7338",
-                        "as_of": "2026-08-23T14:05:00.000Z",
-                        "degraded": false
-                      },
-                      "context": {
-                        "used_pct": 73.2,
-                        "used_tokens": 146401,
-                        "total_tokens": 200000,
-                        "source": "harness",
-                        "sampled_at": "2026-08-23T14:41:00.310Z",
-                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
-                      },
-                      "model_label": "claude-opus-5",
-                      "session": {
-                        "session_id": "0b6c2d4e-1f3a-4b5c-8d7e-9f0a1b2c3d4e",
-                        "started_at": "2026-08-23T14:22:40.201Z",
-                        "source": "clear",
-                        "project_label": "mezzanine",
-                        "harness_label": "claude-code/2.1.240"
-                      },
-                      "activity": {
-                        "last_event_time": "2026-08-23T14:22:58.120Z",
-                        "last_received_at": "2026-08-23T14:23:02.530Z",
-                        "last_kind": "tool.start"
-                      },
-                      "delivery": {
-                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
-                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
-                        "no_data_since": null,
-                        "clock_skew_ms": 412,
-                        "spool_lag_events": 0,
-                        "oldest_unsent_age_s": null,
-                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
-                        "last_seq": 48211
-                      },
-                      "badges": [],
-                      "badges_since": null,
-                      "enabled": true,
-                      "protocol_agent_name": "impl-1",
-                      "protocol_agent_name_check": "checked",
-                      "protocol_agent_role": "impl",
-                      "reporter": {
-                        "version": "0.1.0",
-                        "platform": "linux",
-                        "uptime_s": 401150,
-                        "selftest_failed": []
-                      },
-                      "retired": null,
-                      "derivation": {
-                        "computed_at": "2026-08-23T14:23:14.318Z",
-                        "fold_lag_ms": 117,
-                        "cursor_event_id": 9912837
-                      }
-                    },
-                    {
-                      "install_id": "aimla",
-                      "seat_id": "aimla-impl-2",
-                      "state_version": 20544,
-                      "render_state": "idle",
-                      "link_state": "live",
-                      "activity_state": "idle",
-                      "unknown_reason": null,
-                      "api_error_type": null,
-                      "blocked_since": null,
-                      "idle_since": null,
-                      "action": null,
-                      "open_calls": 0,
-                      "open_turn": false,
-                      "subagents": [],
-                      "subagents_open": 0,
-                      "task": {
-                        "title": "ingest endpoint",
-                        "source": "board_card",
-                        "ref": "card#7338",
-                        "as_of": "2026-08-23T14:05:00.000Z",
-                        "degraded": false
-                      },
-                      "context": {
-                        "used_pct": 73.2,
-                        "used_tokens": 146401,
-                        "total_tokens": 200000,
-                        "source": "harness",
-                        "sampled_at": "2026-08-23T14:41:00.310Z",
-                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
-                      },
-                      "model_label": "claude-opus-5",
-                      "session": {
-                        "session_id": "5e8f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
-                        "started_at": "2026-08-23T14:22:40.201Z",
-                        "source": "clear",
-                        "project_label": "mezzanine",
-                        "harness_label": "claude-code/2.1.240"
-                      },
-                      "activity": {
-                        "last_event_time": "2026-08-23T14:21:47.300Z",
-                        "last_received_at": "2026-08-23T14:21:51.010Z",
-                        "last_kind": "turn.end"
-                      },
-                      "delivery": {
-                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
-                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
-                        "no_data_since": null,
-                        "clock_skew_ms": 412,
-                        "spool_lag_events": 0,
-                        "oldest_unsent_age_s": null,
-                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
-                        "last_seq": 48211
-                      },
-                      "badges": [],
-                      "badges_since": null,
-                      "enabled": true,
-                      "protocol_agent_name": "impl-2",
-                      "protocol_agent_name_check": "checked",
-                      "protocol_agent_role": "impl",
-                      "reporter": {
-                        "version": "0.1.0",
-                        "platform": "linux",
-                        "uptime_s": 401150,
-                        "selftest_failed": []
-                      },
-                      "retired": null,
-                      "derivation": {
-                        "computed_at": "2026-08-23T14:23:14.318Z",
-                        "fold_lag_ms": 117,
-                        "cursor_event_id": 9912837
-                      }
-                    },
-                    {
-                      "install_id": "aimla",
-                      "seat_id": "aimla-review",
-                      "state_version": 15032,
-                      "render_state": "blocked",
-                      "link_state": "live",
-                      "activity_state": "blocked",
-                      "unknown_reason": null,
-                      "api_error_type": null,
-                      "blocked_since": "2026-08-23T14:19:40.006Z",
-                      "idle_since": null,
-                      "action": null,
-                      "open_calls": 0,
-                      "open_turn": false,
-                      "subagents": [],
-                      "subagents_open": 0,
-                      "task": {
-                        "title": "ingest endpoint",
-                        "source": "board_card",
-                        "ref": "card#7338",
-                        "as_of": "2026-08-23T14:05:00.000Z",
-                        "degraded": false
-                      },
-                      "context": {
-                        "used_pct": 73.2,
-                        "used_tokens": 146401,
-                        "total_tokens": 200000,
-                        "source": "harness",
-                        "sampled_at": "2026-08-23T14:41:00.310Z",
-                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
-                      },
-                      "model_label": "claude-opus-5",
-                      "session": {
-                        "session_id": "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
-                        "started_at": "2026-08-23T14:22:40.201Z",
-                        "source": "clear",
-                        "project_label": "mezzanine",
-                        "harness_label": "claude-code/2.1.240"
-                      },
-                      "activity": {
-                        "last_event_time": "2026-08-23T14:19:40.006Z",
-                        "last_received_at": "2026-08-23T14:19:44.120Z",
-                        "last_kind": "attention.request"
-                      },
-                      "delivery": {
-                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
-                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
-                        "no_data_since": null,
-                        "clock_skew_ms": 412,
-                        "spool_lag_events": 0,
-                        "oldest_unsent_age_s": null,
-                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
-                        "last_seq": 48211
-                      },
-                      "badges": [],
-                      "badges_since": null,
-                      "enabled": true,
-                      "protocol_agent_name": "review",
-                      "protocol_agent_name_check": "checked",
-                      "protocol_agent_role": "review",
-                      "reporter": {
-                        "version": "0.1.0",
-                        "platform": "linux",
-                        "uptime_s": 401150,
-                        "selftest_failed": []
-                      },
-                      "retired": null,
-                      "derivation": {
-                        "computed_at": "2026-08-23T14:23:14.318Z",
-                        "fold_lag_ms": 117,
-                        "cursor_event_id": 9912837
-                      }
-                    }
-                  ]
-                }
-              ]
-            },
-            "delay_ms": 0
-          }
-        ],
-        "/api/building": [
-          {
-            "status": 200,
-            "body": {
-              "layout": {
-                "layout_version": 3,
-                "floors": [
-                  {
-                    "floor": "aimla",
-                    "rooms": [
-                      {
-                        "install": "aimla",
-                        "form": "open"
-                      }
-                    ]
-                  },
-                  {
-                    "floor": "zeta",
-                    "label": "the annex",
-                    "rooms": [
-                      {
-                        "install": "zeta",
-                        "form": "office"
-                      }
-                    ]
-                  }
-                ]
-              },
-              "rooms": []
-            }
-          }
-        ]
-      },
-      "messages": [
-        {
-          "at_ms": 1000,
-          "envelope": {
-            "feed_version": 1,
-            "t": "feed.heartbeat",
-            "server_time": "2026-08-23T14:23:15.000Z",
-            "fleet": {
-              "db": "ok",
-              "fold": "ok",
-              "sweep": "ok",
-              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
-              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
-              "max_fold_lag_ms": 117,
-              "seats_total": 4,
-              "seats_live": 4
-            }
-          }
-        },
-        {
-          "at_ms": 5000,
-          "envelope": {
-            "feed_version": 1,
-            "t": "feed.heartbeat",
-            "server_time": "2026-08-23T14:23:19.000Z",
-            "fleet": {
-              "db": "ok",
-              "fold": "ok",
-              "sweep": "ok",
-              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
-              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
-              "max_fold_lag_ms": 117,
-              "seats_total": 4,
-              "seats_live": 4
-            }
-          }
-        },
-        {
-          "at_ms": 16000,
-          "envelope": {
-            "feed_version": 1,
-            "t": "feed.heartbeat",
-            "server_time": "2026-08-23T14:23:30.000Z",
-            "fleet": {
-              "db": "ok",
-              "fold": "ok",
-              "sweep": "ok",
-              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
-              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
-              "max_fold_lag_ms": 117,
-              "seats_total": 4,
-              "seats_live": 4
-            }
-          }
-        }
-      ],
-      "until_ms": 20000,
-      "lobby": {
-        "surface": {
-          "width": 1280,
-          "height": 800
-        },
-        "camera": [
-          {
-            "at_ms": 2000,
-            "act": "ride"
-          },
-          {
-            "at_ms": 2200,
-            "act": "ride"
-          },
-          {
-            "at_ms": 2300,
+            "at_ms": 2100,
             "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -100
+            "delta_y": -300
           },
           {
-            "at_ms": 2310,
-            "act": "scroll",
-            "delta_x": 30,
-            "delta_y": 120
-          },
-          {
-            "at_ms": 2320,
+            "at_ms": 2200,
             "act": "pinch",
             "from": {
               "x": 640,
@@ -7828,48 +7077,69 @@
               "x": 600,
               "y": 380
             },
-            "factor": 1.5
+            "factor": 1.25
           },
           {
-            "at_ms": 2350,
+            "at_ms": 2300,
+            "act": "drag",
+            "dx": -50,
+            "dy": 30
+          },
+          {
+            "at_ms": 2400,
             "act": "zoom",
             "notches": 1
           },
           {
-            "at_ms": 2400,
-            "act": "drag",
-            "dx": 50,
-            "dy": 30
-          },
-          {
             "at_ms": 2450,
-            "act": "focus",
-            "floor": "aimla"
+            "act": "drag",
+            "dx": 0,
+            "dy": -48
           },
           {
             "at_ms": 2500,
-            "act": "building"
+            "act": "fit"
+          },
+          {
+            "at_ms": 2600,
+            "act": "focus_elevator"
+          },
+          {
+            "at_ms": 2650,
+            "act": "focus_board"
           },
           {
             "at_ms": 3000,
-            "act": "arrive"
+            "act": "zoom",
+            "notches": 6
+          },
+          {
+            "at_ms": 3050,
+            "act": "drag",
+            "dx": 2000,
+            "dy": 0
+          },
+          {
+            "at_ms": 3100,
+            "act": "focus_elevator"
           },
           {
             "at_ms": 3200,
-            "act": "ctrl_wheel",
-            "x": 640,
-            "y": 400,
-            "delta_y": 100
+            "act": "focus_elevator"
           },
           {
-            "at_ms": 3500,
-            "act": "ride"
+            "at_ms": 3300,
+            "act": "focus_board"
+          },
+          {
+            "at_ms": 3400,
+            "act": "focus_board"
           }
         ]
       }
     },
-    "building_focus": {
-      "note": "Appendix B row 16's focus-into-view (card#7343 r2-2): entered at the lobby at fit on every plate. The keyboard's focus on a plate at fit moves nothing — every plate is in view; the ride to the labelled floor puts the camera on it, and its glide arrives (`arrive`); the keyboard's focus on the other plate, now out of view, brings the camera to that plate; the same focus again moves nothing, and so does a focus on a key no plate has.",
+    "building_room_reduced": {
+      "note": "AT-D3-21's building half (card#12113) under `prefers-reduced-motion`: the acts are `building_room`'s own, and *Fit the lobby* and each focus that moves the camera cut rather than glide.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -7910,6 +7180,11 @@
                         "started_received_at": "2026-08-23T14:23:14.201Z",
                         "agent_scope": "main",
                         "parent_call_id": null
+                      },
+                      "longest_open_call": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "started_received_at": "2026-08-23T14:23:14.201Z"
                       },
                       "open_calls": 1,
                       "open_turn": true,
@@ -8001,6 +7276,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "started_received_at": "2026-08-23T14:23:02.530Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -8074,6 +7354,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -8147,6 +7428,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -8313,34 +7595,89 @@
         "camera": [
           {
             "at_ms": 2000,
-            "act": "focus",
-            "floor": "zeta"
+            "act": "scroll",
+            "delta_x": 40,
+            "delta_y": 60
+          },
+          {
+            "at_ms": 2100,
+            "act": "ctrl_wheel",
+            "x": 640,
+            "y": 400,
+            "delta_y": -300
+          },
+          {
+            "at_ms": 2200,
+            "act": "pinch",
+            "from": {
+              "x": 640,
+              "y": 400
+            },
+            "to": {
+              "x": 600,
+              "y": 380
+            },
+            "factor": 1.25
+          },
+          {
+            "at_ms": 2300,
+            "act": "drag",
+            "dx": -50,
+            "dy": 30
+          },
+          {
+            "at_ms": 2400,
+            "act": "zoom",
+            "notches": 1
+          },
+          {
+            "at_ms": 2450,
+            "act": "drag",
+            "dx": 0,
+            "dy": -48
           },
           {
             "at_ms": 2500,
-            "act": "ride"
+            "act": "fit"
+          },
+          {
+            "at_ms": 2600,
+            "act": "focus_elevator"
+          },
+          {
+            "at_ms": 2650,
+            "act": "focus_board"
           },
           {
             "at_ms": 3000,
-            "act": "arrive"
+            "act": "zoom",
+            "notches": 6
           },
           {
-            "at_ms": 3500,
-            "act": "focus",
-            "floor": "aimla"
+            "at_ms": 3050,
+            "act": "drag",
+            "dx": 2000,
+            "dy": 0
           },
           {
-            "at_ms": 4000,
-            "act": "focus",
-            "floor": "aimla"
+            "at_ms": 3100,
+            "act": "focus_elevator"
           },
           {
-            "at_ms": 4500,
-            "act": "focus",
-            "floor": "no-such-floor"
+            "at_ms": 3200,
+            "act": "focus_elevator"
+          },
+          {
+            "at_ms": 3300,
+            "act": "focus_board"
+          },
+          {
+            "at_ms": 3400,
+            "act": "focus_board"
           }
         ]
-      }
+      },
+      "reduce": true
     },
     "floor_rides": {
       "note": "card#11795's AT-D3-26, the departure (FLOOR.md § 4.5): `building_rides`' snapshot and heartbeats on the floor `aimla` (the shipped default map, `@json:`) under a layout of three floors — `aimla` and `kappa` unlabelled, `zeta` labelled *the annex* — with the page's own lobby link handed over (`floor.lobby_href`) and `aimla-pm`'s drill-down open (50 ms, `fx-drilldown`'s `panel_feed_lives` responses). `kappa`'s and `zeta`'s rooms answer the shipped default map too, which a page arriving on either floor asks for (`tools/design/floor-ride.browser.mjs`); this floor's screen never does. Four rides, each the press, the leaves' timer (`entered`), the doors' (`shut`), a stop, the doors open (`opened`) and its end: to `zeta`, to `kappa` (each `abandoned` at the bound — the harness does not navigate), a stay on `aimla` (`arrived`), and the lobby — with a heartbeat drawn during the stay (9 300 ms). The ride writes no animation-log row and leaves the drill-down open.",
@@ -8368,6 +7705,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": { "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "Bash", "descriptor": "Bash: composer test", "started_at": "2026-08-23T14:23:09.882Z", "started_received_at": "2026-08-23T14:23:14.201Z", "agent_scope": "main", "parent_call_id": null },
+                      "longest_open_call": { "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "Bash", "started_received_at": "2026-08-23T14:23:14.201Z" },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
@@ -8409,6 +7747,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": { "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K", "tool_name": "Edit", "descriptor": "Edit: server/app/Feed/SeatDelta.php", "started_at": "2026-08-23T14:22:58.120Z", "started_received_at": "2026-08-23T14:23:02.530Z", "agent_scope": "main", "parent_call_id": null },
+                      "longest_open_call": { "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K", "tool_name": "Edit", "started_received_at": "2026-08-23T14:23:02.530Z" },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -8446,6 +7785,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -8483,6 +7823,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -8573,6 +7914,7 @@
               "blocked_since": null,
               "idle_since": null,
               "action": { "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "Bash", "descriptor": "Bash: composer test", "started_at": "2026-08-23T14:23:09.882Z", "started_received_at": "2026-08-23T14:23:14.201Z", "agent_scope": "main", "parent_call_id": null },
+              "longest_open_call": { "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "Bash", "started_received_at": "2026-08-23T14:23:14.201Z" },
               "open_calls": 1,
               "open_turn": true,
               "subagents": [
@@ -8749,6 +8091,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": { "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "Bash", "descriptor": "Bash: composer test", "started_at": "2026-08-23T14:23:09.882Z", "started_received_at": "2026-08-23T14:23:14.201Z", "agent_scope": "main", "parent_call_id": null },
+                      "longest_open_call": { "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "Bash", "started_received_at": "2026-08-23T14:23:14.201Z" },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
@@ -8790,6 +8133,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": { "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K", "tool_name": "Edit", "descriptor": "Edit: server/app/Feed/SeatDelta.php", "started_at": "2026-08-23T14:22:58.120Z", "started_received_at": "2026-08-23T14:23:02.530Z", "agent_scope": "main", "parent_call_id": null },
+                      "longest_open_call": { "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K", "tool_name": "Edit", "started_received_at": "2026-08-23T14:23:02.530Z" },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -8827,6 +8171,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -8864,6 +8209,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -9398,6 +8744,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": { "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "Bash", "descriptor": "Bash: composer test", "started_at": "2026-08-23T14:23:09.882Z", "started_received_at": "2026-08-23T14:23:14.201Z", "agent_scope": "main", "parent_call_id": null },
+                      "longest_open_call": { "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "Bash", "started_received_at": "2026-08-23T14:23:14.201Z" },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
@@ -9439,6 +8786,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": { "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K", "tool_name": "Edit", "descriptor": "Edit: server/app/Feed/SeatDelta.php", "started_at": "2026-08-23T14:22:58.120Z", "started_received_at": "2026-08-23T14:23:02.530Z", "agent_scope": "main", "parent_call_id": null },
+                      "longest_open_call": { "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K", "tool_name": "Edit", "started_received_at": "2026-08-23T14:23:02.530Z" },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -9476,6 +8824,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -9513,6 +8862,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -9696,6 +9046,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": { "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "Bash", "descriptor": "Bash: composer test", "started_at": "2026-08-23T14:23:09.882Z", "started_received_at": "2026-08-23T14:23:14.201Z", "agent_scope": "main", "parent_call_id": null },
+                      "longest_open_call": { "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "Bash", "started_received_at": "2026-08-23T14:23:14.201Z" },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
@@ -9737,6 +9088,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": { "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K", "tool_name": "Edit", "descriptor": "Edit: server/app/Feed/SeatDelta.php", "started_at": "2026-08-23T14:22:58.120Z", "started_received_at": "2026-08-23T14:23:02.530Z", "agent_scope": "main", "parent_call_id": null },
+                      "longest_open_call": { "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K", "tool_name": "Edit", "started_received_at": "2026-08-23T14:23:02.530Z" },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -9774,6 +9126,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -9811,6 +9164,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -9953,6 +9307,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": { "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "Bash", "descriptor": "Bash: composer test", "started_at": "2026-08-23T14:23:09.882Z", "started_received_at": "2026-08-23T14:23:14.201Z", "agent_scope": "main", "parent_call_id": null },
+                      "longest_open_call": { "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "Bash", "started_received_at": "2026-08-23T14:23:14.201Z" },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
@@ -9994,6 +9349,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": { "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K", "tool_name": "Edit", "descriptor": "Edit: server/app/Feed/SeatDelta.php", "started_at": "2026-08-23T14:22:58.120Z", "started_received_at": "2026-08-23T14:23:02.530Z", "agent_scope": "main", "parent_call_id": null },
+                      "longest_open_call": { "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K", "tool_name": "Edit", "started_received_at": "2026-08-23T14:23:02.530Z" },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -10031,6 +9387,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -10068,6 +9425,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -10228,6 +9586,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": { "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "Bash", "descriptor": "Bash: composer test", "started_at": "2026-08-23T14:23:09.882Z", "started_received_at": "2026-08-23T14:23:14.201Z", "agent_scope": "main", "parent_call_id": null },
+                      "longest_open_call": { "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "Bash", "started_received_at": "2026-08-23T14:23:14.201Z" },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
@@ -10269,6 +9628,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": { "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K", "tool_name": "Edit", "descriptor": "Edit: server/app/Feed/SeatDelta.php", "started_at": "2026-08-23T14:22:58.120Z", "started_received_at": "2026-08-23T14:23:02.530Z", "agent_scope": "main", "parent_call_id": null },
+                      "longest_open_call": { "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K", "tool_name": "Edit", "started_received_at": "2026-08-23T14:23:02.530Z" },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -10306,6 +9666,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -10343,6 +9704,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],

@@ -63,7 +63,7 @@ function referenceViewport() {
 const CAB_HOLD_MS = Number(/export const CAB_HOLD_MS = (\d+);/.exec(readFileSync(join(REPO, 'server', 'public', 'js', 'wire', 'ride-arrival.js'), 'utf8'))[1]);
 
 /** The ride's door motion (§ 12's *Ride door motion*, card#12038) and one fade (one loop frame), read from the modules. */
-const RIDE_DOOR_MS = Number(/^export const RIDE_DOOR_MS = (\d+);$/m.exec(readFileSync(join(REPO, 'server', 'public', 'js', 'floor', 'floor-screen.js'), 'utf8'))[1]);
+const RIDE_DOOR_MS = Number(/^export const RIDE_DOOR_MS = (\d+);$/m.exec(readFileSync(join(REPO, 'server', 'public', 'js', 'wire', 'ride.js'), 'utf8'))[1]);
 const FADE_MS = 1000 / Number(/^export const LOOP_FPS = (\d+);$/m.exec(readFileSync(join(REPO, 'server', 'public', 'js', 'wire', 'animation-set.js'), 'utf8'))[1]);
 /** A phase that fades and then moves its doors: `entering`, `chosen`, `staying`, `arriving`. */
 const DOOR_PHASE_MS = FADE_MS + RIDE_DOOR_MS;
@@ -127,15 +127,16 @@ const STAGE = (run, apiDelay, layoutStatus) => `<script>
       const c = chrome();
       const last = R.chrome[R.chrome.length - 1];
       if (last.stmt !== c.stmt || last.rooms !== c.rooms || last.name !== c.name) R.chrome.push({ at: T(), cls: html.className, ...c });
-      if (R.scene === null && document.querySelector('#floor-drawing svg, #lobby-building [data-floor]') !== null) {
-        R.scene = { at: T(), cls: html.className, leaves: [...document.querySelectorAll('#floor-drawing .elevator-leaf')].map((l) => l.getAttribute('style')) };
+      // The first drawn scene: the floor's drawing, or the lobby's room (card#12113) — with the leaves as drawn there.
+      if (R.scene === null && document.querySelector('#floor-drawing svg, #lobby-room[data-drawn]') !== null) {
+        R.scene = { at: T(), cls: html.className, leaves: [...document.querySelectorAll('#floor-drawing .elevator-leaf, #lobby-room .elevator-leaf')].map((l) => l.getAttribute('style')) };
       }
     }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
   });
   // The departing page's cab, beaconed whenever it opens or closes: once its navigation is pending the page cannot
   // be read over the DevTools protocol, so what it shows at the bound is read from here.
   document.addEventListener('DOMContentLoaded', () => {
-    const cab = document.getElementById('floor-cab');
+    const cab = document.querySelector('dialog.floor-cab');
     if (cab === null) return;
     new MutationObserver(() => navigator.sendBeacon('/beacon', JSON.stringify({ kind: 'cab', at: T(), open: cab.open, path: location.pathname,
       leaves: [...document.querySelectorAll('#floor-drawing .elevator-leaf')].map((l) => l.getAttribute('style')),
@@ -143,7 +144,7 @@ const STAGE = (run, apiDelay, layoutStatus) => `<script>
   });
   // The departing page's facts at pageswap, beaconed — registered after the page's own listener (on load).
   addEventListener('load', () => addEventListener('pageswap', (e) => {
-    const cab = document.getElementById('floor-cab');
+    const cab = document.querySelector('dialog.floor-cab');
     navigator.sendBeacon('/beacon', JSON.stringify({ at: T(), vt: e.viewTransition !== null, dialog: cab?.open ?? null, path: location.pathname }));
   }));
   // The run's world: the API from the run's own answers, the stream on the page's clock, a continuous viewer clock.
@@ -349,7 +350,7 @@ const cabGeometry = (s) => s.ev(`(() => {
 })()`);
 
 /** The popup's fade-in run to its end (a software rasteriser can lag a timed wait), then one frame. */
-const buttonsIn = (s) => s.ev("Promise.all(document.getElementById('floor-cab-panel').getAnimations().map((a) => a.finished)).then(() => new Promise((r) => requestAnimationFrame(() => r(true))))");
+const buttonsIn = (s, prefix = 'floor') => s.ev(`Promise.all(document.getElementById('${prefix}-cab-panel').getAnimations().map((a) => a.finished)).then(() => new Promise((r) => requestAnimationFrame(() => r(true))))`);
 
 /** `a` wholly inside the window (half a px of rounding allowed). */
 const inWindow = (a, g) => a !== null && a.l >= -0.5 && a.t >= -0.5 && a.r <= g.w + 0.5 && a.b <= g.h + 0.5;
@@ -429,6 +430,9 @@ const MAIN = 'js/floor/main.js';
 const SCREEN = 'js/floor/floor-screen.js';
 const PANEL = 'js/floor/cab-panel.js';
 const RULE = 'js/wire/ride-arrival.js';
+/** The ride's state machine (card#12113, hoisted from the floor screen) and its page half (hoisted from the floor's entry). */
+const RIDE = 'js/wire/ride.js';
+const PERFORMER = 'js/wire/ride-page.js';
 const row = (what, base, plant, run) => ({ what, base, plant, run });
 
 /**
@@ -437,7 +441,7 @@ const row = (what, base, plant, run) => ({ what, base, plant, run });
  * `@supports` conditions fail, and a mix written outside them is dropped, as such a browser drops it.
  */
 const NO_MIX = [
-  { file: 'js/floor/painter.js', from: '@supports (fill:color-mix(in srgb,currentColor 50%,transparent))', to: '@supports (fill:no-such-colour(1))' },
+  { file: 'js/floor/cab-paint.js', from: '@supports (fill:color-mix(in srgb,currentColor 50%,transparent))', to: '@supports (fill:no-such-colour(1))' },
   { file: 'css/mezzanine.css', from: 'color-mix(', to: 'no-such-mix(' },
 ];
 
@@ -463,8 +467,41 @@ function cut(r, why) {
   return d;
 }
 
+// Hold every leaf under `root` at `at` (0 shut … 1 open) of its own motion, and answer the doorway as drawn: the gap
+// between the leaves, what of the layer behind them shows in it, and every later-drawn element that crosses it. The
+// painter rebuilds the drawing on every render, so a hold whose leaves were replaced before it was read is retried.
+async function hold(s, root, behind, layer, at) {
+  for (let i = 0; i < 5; i++) {
+    const r = await holdOnce(s, root, behind, layer, at);
+    if (r.replaced !== true) return r;
+  }
+  return { error: 'the drawing was replaced under every hold' };
+}
+const holdOnce = (s, root, behind, layer, at) => s.ev(`(async () => {
+  const root = document.querySelector(${JSON.stringify(root)});
+  const leaves = [...root.querySelectorAll('.elevator-leaf')];
+  const anims = leaves.flatMap((l) => l.getAnimations());
+  if (anims.length === 0) return { error: 'no leaf motion to hold', styles: leaves.map((l) => l.getAttribute('style')) };
+  for (const a of anims) { a.pause(); const t = a.effect.getTiming(); a.currentTime = t.delay + t.duration * ${at}; }
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  if (!root.isConnected) return { replaced: true };
+  const box = (e) => { const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
+  const [L, R] = leaves.map(box);
+  const gap = { l: L.r, t: Math.min(L.t, R.t), r: R.l, b: Math.max(L.b, R.b) };
+  const crosses = (b) => b.l < gap.r - 0.5 && b.r > gap.l + 0.5 && b.t < gap.b - 0.5 && b.b > gap.t + 0.5;
+  const behind = root.querySelector(${JSON.stringify(behind)});
+  const seen = behind === null ? null : box(behind);
+  // Everything drawn after the layer behind the leaves, in the drawing's order: the leaves, and whatever else.
+  const layer = root.querySelector(${JSON.stringify(layer)});
+  const all = [...root.querySelectorAll('*')];
+  const after = layer === null ? [] : all.filter((e) => (layer.compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING) && !layer.contains(e));
+  const over = after.filter((e) => !e.classList.contains('elevator-leaf') && !e.classList.contains('elevator-hit') && e.getBBox !== undefined && !['g', 'defs', 'clipPath', 'linearGradient', 'radialGradient', 'stop', 'style'].includes(e.tagName))
+    .filter((e) => crosses(box(e))).map((e) => e.tagName + '.' + (e.getAttribute('class') ?? ''));
+  return { gap, open: gap.r - gap.l, leaf: L.r - L.l, seen, shows: seen !== null && crosses(seen), over, layer: layer !== null };
+})()`);
+
 const ROWS = {
-  press: row('click the elevator: the cab opens within opening\'s length and one frame', {}, { plant: [{ file: MAIN, from: '        ride: () => rideAct(screen.ride()),', to: '        ride: () => {},' }] },
+  press: row('click the elevator: the cab opens within opening\'s length and one frame', {}, { plant: [{ file: MAIN, from: '        ride: () => cab.act(screen.ride()),', to: '        ride: () => {},' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla');
       const t = await s.ev('performance.now()');
@@ -474,7 +511,7 @@ const ROWS = {
       return { defects: opened === null ? ['the cab never opened'] : (opened - t > limit ? [`the cab opened ${Math.round(opened - t)} ms after the press`] : []), facts: { after: opened === null ? null : Math.round(opened - t) } };
     })),
 
-  'door-order': row('the cab\'s doors close only after the cab has faded in (M3)', {}, { plant: [{ file: SCREEN, from: '        entering: [fade + door, fade],', to: '        entering: [fade + door, 0],' }] },
+  'door-order': row('the cab\'s doors close only after the cab has faded in (M3)', {}, { plant: [{ file: RIDE, from: '        entering: [fade + door, fade],', to: '        entering: [fade + door, 0],' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla');
       await s.click('#floor-drawing [data-key="elevator"]');
@@ -496,7 +533,7 @@ const ROWS = {
   // drawing's rebuilds (the painter replaces it on every paint) and the frames over two refresh intervals are recorded,
   // not judged: this headless shell rasterises in software, so its frame times are not a viewer's.
   'smooth-doors': row('the ride\'s doors move continuously over § 12\'s Ride door motion, on the band and in the cab — never in loop-frame steps', {},
-    { plant: [{ file: 'js/floor/painter.js', from: "const RIDE_DOOR_EASING = 'ease-in-out';", to: "const RIDE_DOOR_EASING = 'steps(2)';" }] },
+    { plant: [{ file: 'js/floor/cab-paint.js', from: "const RIDE_DOOR_EASING = 'ease-in-out';", to: "const RIDE_DOOR_EASING = 'steps(2)';" }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla');
       // One sampler, started just before the press: on every animation frame through `opening` and `entering`, the band's
@@ -556,7 +593,7 @@ const ROWS = {
   // with a side wall showing either side; the door's frame — its head and the lamp over it included — and both leaves
   // lie wholly in the window; and the button popup overlaps no part of the cab.
   'cab-fit': row('inside the cab the whole cab — an elevator-shaped room taller than it is wide, its door\'s head and lamp included — is in the window at a wide, an ultra-wide, a tall, a phone, a small landscape and a small phone window, and the button popup covers none of it', {},
-    { plant: [{ file: 'js/floor/painter.js', from: "preserveAspectRatio: 'xMidYMid meet'", to: "preserveAspectRatio: 'none'" }] },
+    { plant: [{ file: 'js/floor/cab-paint.js', from: "preserveAspectRatio: 'xMidYMid meet'", to: "preserveAspectRatio: 'none'" }] },
     async (chrome, c) => {
       const d = [];
       const facts = {};
@@ -594,7 +631,7 @@ const ROWS = {
   // floor's call button the elevator's lamp — each read from the theme module and the sheet the page loads, and the
   // cab's drawn frame and lamp the same two palette colours.
   'cab-palette': row('the button popup is drawn in the house theme\'s elevator palette — its body the frame\'s colour, a stop in the door\'s colours, the current floor lit by the lamp — as the cab\'s drawing is, its walls, ceiling and floor following the frame\'s colour', {},
-    { plant: [{ file: MAIN, from: '    painter.cabTheme(cab);\n', to: '' }] },
+    { plant: [{ file: MAIN, from: '    painter.cabTheme(cab.dialog);\n', to: '' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla');
       await intoTheCab(s);
@@ -699,44 +736,12 @@ const ROWS = {
     { plant: [
       { file: 'js/floor/painter.js', from: "            node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, control);\n",
         to: "            node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, control);\n            node('line', { x1: e.seam, y1: e.y, x2: e.seam, y2: e.y + e.h, class: 'elevator-seam' }, control);\n" },
-      { file: 'js/floor/painter.js', from: "        node('rect', { x: seam + f, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf right', style }, cab);\n",
-        to: "        node('rect', { x: seam + f, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf right', style }, cab);\n        node('line', { x1: seam, y1: L.y, x2: seam, y2: L.y + L.h, class: 'elevator-seam' }, cab);\n" },
+      { file: 'js/floor/cab-paint.js', from: "    node('rect', { x: seam + f, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf right', style }, cab);\n",
+        to: "    node('rect', { x: seam + f, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf right', style }, cab);\n    node('line', { x1: seam, y1: L.y, x2: seam, y2: L.y + L.h, class: 'elevator-seam' }, cab);\n" },
     ] },
     async (chrome, c) => {
       const d = [];
       const facts = {};
-      // Hold every leaf under `root` at `at` (0 shut … 1 open) of its own motion, and answer the doorway as drawn: the gap
-      // between the leaves, what of the layer behind them shows in it, and every later-drawn element that crosses it. The
-      // painter rebuilds the drawing on every render, so a hold whose leaves were replaced before it was read is retried.
-      const hold = async (s, root, behind, layer, at) => {
-        for (let i = 0; i < 5; i++) {
-          const r = await holdOnce(s, root, behind, layer, at);
-          if (r.replaced !== true) return r;
-        }
-        return { error: 'the drawing was replaced under every hold' };
-      };
-      const holdOnce = (s, root, behind, layer, at) => s.ev(`(async () => {
-        const root = document.querySelector(${JSON.stringify(root)});
-        const leaves = [...root.querySelectorAll('.elevator-leaf')];
-        const anims = leaves.flatMap((l) => l.getAnimations());
-        if (anims.length === 0) return { error: 'no leaf motion to hold', styles: leaves.map((l) => l.getAttribute('style')) };
-        for (const a of anims) { a.pause(); const t = a.effect.getTiming(); a.currentTime = t.delay + t.duration * ${at}; }
-        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-        if (!root.isConnected) return { replaced: true };
-        const box = (e) => { const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
-        const [L, R] = leaves.map(box);
-        const gap = { l: L.r, t: Math.min(L.t, R.t), r: R.l, b: Math.max(L.b, R.b) };
-        const crosses = (b) => b.l < gap.r - 0.5 && b.r > gap.l + 0.5 && b.t < gap.b - 0.5 && b.b > gap.t + 0.5;
-        const behind = root.querySelector(${JSON.stringify(behind)});
-        const seen = behind === null ? null : box(behind);
-        // Everything drawn after the layer behind the leaves, in the drawing's order: the leaves, and whatever else.
-        const layer = root.querySelector(${JSON.stringify(layer)});
-        const all = [...root.querySelectorAll('*')];
-        const after = layer === null ? [] : all.filter((e) => (layer.compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING) && !layer.contains(e));
-        const over = after.filter((e) => !e.classList.contains('elevator-leaf') && !e.classList.contains('elevator-hit') && e.getBBox !== undefined && !['g', 'defs', 'clipPath', 'linearGradient', 'radialGradient', 'stop', 'style'].includes(e.tagName))
-          .filter((e) => crosses(box(e))).map((e) => e.tagName + '.' + (e.getAttribute('class') ?? ''));
-        return { gap, open: gap.r - gap.l, leaf: L.r - L.l, seen, shows: seen !== null && crosses(seen), over, layer: layer !== null };
-      })()`);
       const judge = (where, r) => {
         if (r.error !== undefined) { d.push(`${where}: ${r.error} ${JSON.stringify(r.styles ?? '')}`); return; }
         if (!r.layer) d.push(`${where}: no layer behind the leaves`);
@@ -788,7 +793,7 @@ const ROWS = {
   // buttons' plain fill removed from the sheet, leaving only their mix.
   'cab-no-mix': row('with color-mix() unavailable, the cab, the office through its doors and the cab behind the floor\'s leaves are each still painted, every surface in a theme colour, and the button popup keeps its fills, shadows, rim and WCAG AA text with the theme and without it', { plant: NO_MIX },
     [
-      { plant: [{ file: 'js/floor/painter.js', from: '${unmixed(MIXED)}@supports', to: '@supports' }] },
+      { plant: [{ file: 'js/floor/cab-paint.js', from: '${unmixed(MIXED)}@supports', to: '@supports' }] },
       { plant: [{ file: 'css/mezzanine.css', from: '    background: var(--door);\n    box-shadow: inset 0 2px 2px rgb(255 255 255 / 0.6);\n}', to: '    box-shadow: inset 0 2px 2px rgb(255 255 255 / 0.6);\n}' }] },
     ],
     async (chrome, c) => {
@@ -844,7 +849,7 @@ const ROWS = {
       return { defects: d, facts };
     }),
 
-  'one-escape': row('one Escape in entering leaves the cab open', {}, { plant: [{ file: MAIN, from: '    event.preventDefault();\n    rideAct(screen.escape(event.cancelable));', to: '    rideAct(screen.escape(event.cancelable));' }] },
+  'one-escape': row('one Escape in entering leaves the cab open', {}, { plant: [{ file: PERFORMER, from: '        event.preventDefault();\n        act(screen().escape(event.cancelable));', to: '        act(screen().escape(event.cancelable));' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla');
       await s.click('#floor-drawing [data-key="elevator"]');
@@ -857,7 +862,7 @@ const ROWS = {
     })),
 
   'two-escapes-entering': row('two Escapes in entering end the ride: the cab gone, focus on the elevator, the leaves at rest, the elevator answering again (M5-1)', {},
-    { plant: [{ file: MAIN, from: '    rideAct(screen.escape(event.cancelable));', to: '    rideAct(screen.escape(true));' }] },
+    { plant: [{ file: PERFORMER, from: '        act(screen().escape(event.cancelable));', to: '        act(screen().escape(true));' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla');
       await s.click('#floor-drawing [data-key="elevator"]');
@@ -905,7 +910,7 @@ const ROWS = {
     }),
 
   race: row('a second Escape within a frame or so of the commit, either side: the destination is still a cut (m6-1); with no second Escape the cab is held',
-    { doc: { '/floor/zeta': 'gate' } }, { plant: [{ file: MAIN, from: '    outbound = skipUnlessCabLeaving(outbound, lastFrame?.ride ?? null);\n', to: '' }] },
+    { doc: { '/floor/zeta': 'gate' } }, { plant: [{ file: PERFORMER, from: '        outbound = skipUnlessCabLeaving(outbound, lastRide());\n', to: '' }] },
     async (chrome, c) => {
       const d = [];
       const facts = [];
@@ -933,8 +938,8 @@ const ROWS = {
     }),
 
   stay: row('Escape inside, with a desk\'s drill-down open: the cab closes, the URL and the drill-down stay, the leaves close once, focus on the elevator after the close (m3)', {},
-    { plant: [{ file: MAIN, from: "        fade(cab, 1, 0, ride.fade_ms).then(() => {\n            if (cab.open) {\n                cab.close();\n            }\n\n            elevator()?.focus({ preventScroll: true });\n        });",
-      to: "        elevator()?.focus({ preventScroll: true });\n        fade(cab, 1, 0, ride.fade_ms).then(() => {\n            if (cab.open) {\n                cab.close();\n            }\n        });" }] },
+    { plant: [{ file: PERFORMER, from: "            fade(cab, 1, 0, ride.fade_ms).then(() => {\n                if (cab.open) {\n                    cab.close();\n                }\n\n                elevator()?.focus({ preventScroll: true });\n            });",
+      to: "            elevator()?.focus({ preventScroll: true });\n            fade(cab, 1, 0, ride.fade_ms).then(() => {\n                if (cab.open) {\n                    cab.close();\n                }\n            });" }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla/aimla-pm');
       await until(async () => (await s.cab()).panel, 5000, 'the drill-down never opened');
@@ -954,7 +959,7 @@ const ROWS = {
       return { defects: d, facts: { closing, after, closeFocus: r.closeFocus } };
     })),
 
-  modal: row('inside, the cab is modal: the page under it does not take a pointer (m5)', {}, { plant: [{ file: MAIN, from: '        cab.showModal();', to: '        cab.show();' }] },
+  modal: row('inside, the cab is modal: the page under it does not take a pointer (m5)', {}, { plant: [{ file: PERFORMER, from: '            cab.showModal();', to: '            cab.show();' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla');
       await intoTheCab(s);
@@ -1001,7 +1006,7 @@ const ROWS = {
     })),
 
   pending: row('a layout pending past the bound (2 200 ms): the cab fades into the waiting chrome at the bound, and the room drawn later has its leaves at rest',
-    { api: { '/api/building': 2200 } }, { plant: [{ file: SCREEN, from: ' && !endsRide(frame) && now <= expiresAt) {', to: ' && !endsRide(frame)) {' }] },
+    { api: { '/api/building': 2200 } }, { plant: [{ file: RIDE, from: ' && !this.#endsRide(frame) && now <= expiresAt) {', to: ' && !this.#endsRide(frame)) {' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await rideTo(s, 'zeta');
       await until(async () => (await s.record()).scene !== null, 8000, 'the destination never drew');
@@ -1038,7 +1043,7 @@ const ROWS = {
     })),
 
   'late-commit': row('the destination\'s document 2 500 ms late: A tears down at the bound, and the late commit is a cut on B with its own doors (M4-1)',
-    { doc: { '/floor/zeta': 2500 } }, { plant: [{ file: MAIN, from: "window.addEventListener('pageswap', (event) => {\n    outbound = skipUnlessCabLeaving(event.viewTransition, lastFrame?.ride ?? null);\n});", to: '' }] },
+    { doc: { '/floor/zeta': 2500 } }, { plant: [{ file: PERFORMER, from: "    window.addEventListener('pageswap', (event) => {\n        outbound = skipUnlessCabLeaving(event.viewTransition, lastRide());\n    });", to: '' }] },
     (chrome, c) => within(chrome, c, async (s, srv) => {
       const pressed = await pressStop(s, 'zeta');
       await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the ride never committed');
@@ -1049,7 +1054,7 @@ const ROWS = {
     })),
 
   'mid-hold': row('300 ms into the hold the window shows the cab — not A\'s bare floor, not the destination; after the fade it shows the destination', { delay: 600 },
-    { plant: [{ file: MAIN, from: "window.addEventListener('pageswap', (event) => {\n", to: "window.addEventListener('pageswap', () => cab.close());\nwindow.addEventListener('pageswap', (event) => {\n" }] },
+    { plant: [{ file: PERFORMER, from: "    window.addEventListener('pageswap', (event) => {\n", to: "    window.addEventListener('pageswap', () => cab.close());\n    window.addEventListener('pageswap', (event) => {\n" }] },
     (chrome, c) => holdPixels(chrome, c)),
 
   'new-hidden': row('the destination\'s new image is hidden during the hold', { delay: 600 },
@@ -1072,11 +1077,14 @@ const ROWS = {
       return { defects: d, facts: { arrived, leaf, after: after.disabled } };
     })),
 
-  lobby: row('press Lobby: the lobby is held and revealed at its first drawn building, the fragment stripped', {},
-    { plant: [{ file: 'page:dashboard', from: ' data-ride-reveals>', to: '>' }] },
+  // card#12113: the floor's ride to the lobby arrives on the lobby's own drawn elevator — the room drawn, the hold ended
+  // on its first drawn room, the room's leaves drawn open and closing.
+  lobby: row('press Lobby: the lobby is held and revealed at its first drawn room, the fragment stripped, the room\'s leaves drawn open and closing', {},
+    [{ plant: [{ file: 'page:dashboard', from: ' data-ride-reveals>', to: '>' }] },
+      { plant: [{ file: 'js/lobby/main.js', from: '    screen.arriveByRide(rideArrival);\n', to: '' }] }],
     (chrome, c) => within(chrome, c, async (s) => {
       await rideTo(s, '');
-      await until(async () => (await s.record()).scene !== null, 8000, 'the lobby never drew a building');
+      await until(async () => (await s.record()).scene !== null, 8000, 'the lobby never drew its room');
       await sleep(300);
       const r = await s.record();
       const held = r.classes.find(([, k]) => k.includes('ride-holding'))?.[0] ?? null;
@@ -1085,21 +1093,108 @@ const ROWS = {
       const d = [];
       if (held === null || arrived === null) d.push(`the lobby was not held and revealed: ${JSON.stringify(r.classes)}`);
       if (r.hash !== '') d.push(`the fragment was not stripped: ${r.hash}`);
+      if (r.scene.leaves.length !== 2 || !r.scene.leaves.every((l) => typeof l === 'string' && l.includes('leaf-close'))) d.push(`the room's first drawn leaves are not open and closing: ${JSON.stringify(r.scene.leaves)}`);
       // Recorded, not judged: the real lobby's first-scene time, and which exit ended its hold (m5-5).
-      return { defects: d, facts: { t0, scene: r.scene.at - t0, arrived: arrived === null ? null : arrived - t0, exit: arrived !== null && Math.abs(arrived - r.scene.at) <= 20 ? 'scene' : 'bound' } };
+      return { defects: d, facts: { t0, scene: r.scene.at - t0, arrived: arrived === null ? null : arrived - t0, exit: arrived !== null && Math.abs(arrived - r.scene.at) <= 20 ? 'scene' : 'bound', leaves: r.scene.leaves } };
     })),
 
-  links: row('a plate link into a floor, and a console link: a cut — the transition skipped, no ride-* class, the leaves at rest', {},
+  // card#12113 (AT-D3-28): the lobby's elevator rides as the floor's does — pressed on the drawn room, the lobby's own cab
+  // opened, a floor chosen, and the floor arriving by a ride, held and revealed at its first scene with its leaves moving.
+  'lobby-ride': row('from the lobby, press the room\'s elevator and a floor: the lobby\'s cab opens, and the floor arrives by a ride, held and revealed at its first scene, its leaves drawn open and closing', {},
+    { plant: [{ file: 'js/lobby/main.js', from: 'roomDrawing(document, () => cab.act(screen.ride()))', to: 'roomDrawing(document, () => {})' }] },
+    (chrome, c) => within(chrome, c, async (s) => {
+      await s.open('/dashboard');
+      await s.click('#lobby-room [data-key="elevator"]');
+      await until(() => s.ev("document.getElementById('lobby-cab').open"), RIDE_DOOR_MS + 1000, 'the lobby\'s elevator opened no cab');
+      await until(() => s.ev("!document.getElementById('lobby-cab-panel').inert"), RIDE_DOOR_MS + DOOR_PHASE_MS + 1000, 'the lobby\'s cab never reached inside');
+      const stops = await s.ev("[...document.querySelectorAll('#lobby-cab-stops li')].map((li) => [li.dataset.stop, li.classList.contains('current')])");
+      await buttonsIn(s, 'lobby');
+      await s.click('#lobby-cab-stops li[data-stop="zeta"] button');
+      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 15000, 'the ride never reached /floor/zeta');
+      const r = await arrivedRecord(s);
+      const d = [];
+      if (stops.at(-1)?.[0] !== '' || stops.at(-1)?.[1] !== true || stops.filter(([, cur]) => cur).length !== 1) d.push(`the lobby's cab does not end on *Lobby*, current alone: ${JSON.stringify(stops)}`);
+      if (!r.classes.some(([, k]) => k.includes('ride-holding')) || !r.classes.some(([, k]) => k.includes('ride-arrived'))) d.push(`the floor was not held and revealed: ${JSON.stringify(r.classes)}`);
+      if (r.hash !== '') d.push(`the fragment was not stripped: ${r.hash}`);
+      if (!(r.scene?.leaves ?? []).some((l) => typeof l === 'string' && l.includes('leaf-close'))) d.push(`the floor's leaves were not drawn open and closing: ${JSON.stringify(r.scene?.leaves)}`);
+      return { defects: d, facts: { stops, classes: r.classes, leaves: r.scene?.leaves } };
+    })),
+
+  // card#12113 (AT-D3-28): the doors held half open on each page show the view the stop owes — on the lobby, its room's
+  // leaves open on the cab behind them, the cab's doors closing in `entering` on the lobby (the page's own stop) and
+  // opening in `chosen` on the office (a floor's); on a floor, the cab's doors opening on *Lobby* show the lobby.
+  'lobby-doors': row('the doors held half open on each page show the view the stop owes: on the lobby, the cab behind the room\'s leaves, the lobby in entering and the office for a floor; on a floor, the lobby for *Lobby*', {},
+    { plant: [{ file: RIDE, from: "beyond: stop === null ? 'lobby' : 'office'", to: "beyond: stop === null ? 'office' : 'lobby'" }] },
+    async (chrome, c) => {
+      const d = [];
+      const facts = {};
+      const shows = (where, r) => {
+        if (r.error !== undefined) { d.push(`${where}: ${r.error}`); return false; }
+        if (!(r.open > 2)) d.push(`${where}: the doors held half open leave no gap (${r.open} px)`);
+        if (!r.shows) d.push(`${where}: the view the stop owes does not show in the open doorway: ${JSON.stringify(r.seen)} vs ${JSON.stringify(r.gap)}`);
+        if (r.over.length > 0) d.push(`${where}: drawn across the open doorway: ${r.over.join(', ')}`);
+        return r.shows === true;
+      };
+      for (const [name, viewport] of [['desktop', CAB_WINDOWS.desktop], ['phone', CAB_WINDOWS.phone]]) {
+        const tag = `${name}-${viewport.w}x${viewport.h}`;
+        await within(chrome, { ...c, viewport }, async (s) => {
+          await s.open('/dashboard');
+          // The lobby as it stands, for a person to look at (recorded, never judged).
+          if (c.plant.length === 0) await s.shot(`lobby-page-${tag}`);
+          // The room's leaves, half open in `opening`: the cab behind them, from the landing.
+          await s.click('#lobby-room [data-key="elevator"]');
+          await until(() => s.ev("document.querySelector('#lobby-room .elevator-leaf')?.getAnimations().length > 0"), 2000, 'the room\'s leaves never moved');
+          const room = await hold(s, '#lobby-room [data-key="elevator"]', '.elevator-hit', '.elevator-leaf', 0.5);
+          const cabBehind = await s.ev(`(() => { const b = document.querySelector('#lobby-room .band-cab .cab-back')?.getBoundingClientRect(); const h = document.querySelector('#lobby-room .elevator-hit').getBoundingClientRect();
+            return { back: b === undefined ? null : { l: b.left, t: b.top, r: b.right, b: b.bottom }, hit: { x: h.left, y: h.top, w: h.width, h: h.height } }; })()`);
+          if (c.plant.length === 0) await s.shot(`lobby-elevator-half-open-${tag}`, { x: cabBehind.hit.x - 10, y: cabBehind.hit.y - 10, width: cabBehind.hit.w + 20, height: cabBehind.hit.h + 20, scale: 4 });
+          shows(`${tag} the lobby's room`, { ...room, over: [], shows: cabBehind.back !== null && room.gap !== undefined && cabBehind.back.l < room.gap.r && cabBehind.back.r > room.gap.l, seen: cabBehind.back });
+          // The cab's doors closing in `entering`: the page's own stop, the lobby.
+          await until(() => s.ev("document.getElementById('lobby-cab').open && document.querySelector('#lobby-cab-doors .elevator-leaf')?.getAnimations().length > 0"), RIDE_DOOR_MS + 1500, 'the lobby\'s cab never closed its doors');
+          const entering = await hold(s, '#lobby-cab-doors', '.cab-beyond .lobby-view-back', '.cab-beyond', 0.5);
+          if (c.plant.length === 0) await s.shot(`lobby-cab-entering-half-open-${tag}`);
+          shows(`${tag} the lobby's cab in entering`, entering);
+          await until(() => s.ev("!document.getElementById('lobby-cab-panel').inert"), RIDE_DOOR_MS + DOOR_PHASE_MS + 2000, 'the lobby\'s cab never reached inside');
+          await buttonsIn(s, 'lobby');
+          // A floor chosen: the cab's doors open on the office.
+          await s.click('#lobby-cab-stops li[data-stop="zeta"] button');
+          await until(() => s.ev("document.querySelector('#lobby-cab-doors .elevator-leaf')?.getAnimations().length > 0"), 2000, 'the lobby\'s cab never opened its doors');
+          const chosen = await hold(s, '#lobby-cab-doors', '.cab-beyond .office-back', '.cab-beyond', 0.5);
+          if (c.plant.length === 0) await s.shot(`lobby-cab-chosen-half-open-${tag}`);
+          shows(`${tag} the lobby's cab opening on a floor`, chosen);
+          facts[`${tag} lobby`] = { room: room.open, entering: entering.open, chosen: chosen.open };
+        });
+        await within(chrome, { ...c, viewport }, async (s) => {
+          // On a floor, *Lobby* chosen: the cab's doors open on the lobby.
+          await s.open('/floor/aimla');
+          await intoTheCab(s);
+          await buttonsIn(s);
+          await s.click('#floor-cab-stops li[data-stop=""] button');
+          await until(() => s.ev("document.querySelector('#floor-cab-doors .elevator-leaf')?.getAnimations().length > 0"), 2000, 'the floor\'s cab never opened its doors');
+          const toLobby = await hold(s, '#floor-cab-doors', '.cab-beyond .lobby-view-back', '.cab-beyond', 0.5);
+          if (c.plant.length === 0) await s.shot(`floor-cab-to-lobby-half-open-${tag}`);
+          shows(`${tag} the floor's cab opening on the lobby`, toLobby);
+          facts[`${tag} floor`] = { toLobby: toLobby.open };
+        });
+      }
+      return { defects: d, facts };
+    }),
+
+  links: row('a plaque link into a floor, and a console link: a cut — the transition skipped, no ride-* class, the leaves at rest', {},
     { plant: [{ file: 'page', from: '                event.viewTransition.skipTransition();\n', to: '' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       const d = [];
       await s.open('/dashboard');
-      await s.click('#lobby-building li[data-floor="zeta"] a');
-      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the plate link never arrived');
+      // The plaque may sit past the directory's fold: the list is scrolled to it, as the keyboard's focus would.
+      await s.ev(`document.querySelector('#lobby-floors li[data-floor="zeta"] a').scrollIntoView({ block: 'nearest' })`);
+      await s.click('#lobby-floors li[data-floor="zeta"] a');
+      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the plaque link never arrived');
       const plate = await arrivedRecord(s);
-      d.push(...cut(plate, 'a plate link'));
-      if (plate.reveals[0]?.vt !== true) d.push('the plate link carried no transition to skip — the row measured nothing');
-      if ((plate.scene?.leaves ?? []).some((l) => l !== null)) d.push(`a plate link moved the leaves: ${JSON.stringify(plate.scene?.leaves)}`);
+      // card#12113: the lobby is a ride's departing page now, so its own `pageswap` rule skips a plaque link's outbound
+      // transition before the floor sees one (as a floor's own links are skipped); the destination's skip is measured on
+      // the console link below, whose page has no such rule.
+      d.push(...cut(plate, 'a plaque link'));
+      if ((plate.scene?.leaves ?? []).some((l) => l !== null)) d.push(`a plaque link moved the leaves: ${JSON.stringify(plate.scene?.leaves)}`);
       await s.page('Page.navigate', { url: `${await s.ev('location.origin')}/admin` });
       await until(async () => (await s.ev("document.readyState === 'complete'")), 5000, 'the console never loaded');
       await s.ev('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))');
@@ -1108,6 +1203,7 @@ const ROWS = {
       await sleep(400);
       const console_ = await s.record();
       d.push(...cut(console_, 'a console link'));
+      if (console_.reveals[0]?.vt !== true) d.push('the console link carried no transition to skip — the row measured nothing');
       return { defects: d, facts: { plate: plate.reveals, console: console_.reveals } };
     })),
 
@@ -1180,7 +1276,7 @@ const ROWS = {
     })),
 
   'never-commits': row('a destination that does not answer within the bound: the cab closes and A\'s floor is back, its leaves at rest; a late answer is a cut', { doc: { '/floor/zeta': 'gate' } },
-    { plant: [{ file: MAIN, from: '        after(ride.ms, screen.abandoned);\n', to: '' }] },
+    { plant: [{ file: PERFORMER, from: '            after(ride.ms, () => screen().abandoned());\n', to: '' }] },
     (chrome, c) => within(chrome, c, async (s, srv) => {
       const pressed = await pressStop(s, 'zeta');
       await sleep(DOOR_PHASE_MS + CAB_HOLD_MS + 500);
@@ -1236,7 +1332,7 @@ const ROWS = {
     })),
 
   errors: row('no error and no unhandled rejection on either page across a ride', {},
-    { plant: [{ file: MAIN, from: '        cab.showModal();\n', to: '        cab.showModal();\n        cab.show();\n' }] },
+    { plant: [{ file: PERFORMER, from: '            cab.showModal();\n', to: '            cab.showModal();\n            cab.show();\n' }] },
     async (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla');
       await s.click('#floor-drawing [data-key="elevator"]');

@@ -21,6 +21,10 @@ and measures:
          dashed edge in the state's token, and its desk is ALWAYS dimmed (`desk/desk-render.js`'s
          unconfirmed branch of `deskModel()`), so the edge the eye meets is the token at .72 over the
          surface, for every state alike.
+       · ON THE LOBBY DIRECTORY's PLAQUE (card#12113, FLOOR.md § 4.1): a plaque's chips and markers at full
+         light — the directory applies no § 7.3 lighting class and its fills are opaque — on the plaque's face,
+         the sheet's `--lobby-plaque`, read like every token. And beside the gate, the plaque's own text inks on
+         that face (`--lobby-plaque-ink`, `--lobby-plaque-dim`) are printed with the sibling checks.
   3. A per-state MINIMA table — for each reviewed state, condition × vision, the smallest ΔE2000 to any
      other drawn state and WHICH state — and an L* table, both printed and recorded, so the design cites
      this output and restates no figure (confirm review M2).
@@ -84,7 +88,12 @@ LIGHTING = {'working': 'full', 'idle': 'full', 'blocked': 'full', 'stalled': 'fu
 OPACITY = {'full': 1.0, 'desaturated': 1.0, 'dimmed': 0.72, 'dark': 0.45}
 SATURATE = 0.3
 HOLLOW_OPACITY = OPACITY['dimmed']                   # desk/desk-render.js, deskModel()'s unconfirmed branch: an unconfirmed seat's desk is dimmed
-CONDITIONS = ('tokens', *(f'hollow@{s}' for s in SURFACES), *(f'drawn@{s}' for s in SURFACES))
+# THE LOBBY DIRECTORY's PLAQUE (FLOOR.md § 4.1, card#12113): its chips and its markers stand on the plaque's cream face
+# at FULL light — the directory applies no § 7.3 lighting class, a chip is opaque, and a pale fill keeps its edge by a
+# 1 px outline in the plaque's ink — so the pairs are measured as drawn on that face too: one more surface, read from
+# the sheet's `--lobby-plaque` (never transcribed), every pair held to the same bound in every vision.
+PLAQUE_FACES = {} if a.model else {'lobby/plaque-face': TOK['lobby-plaque']}
+CONDITIONS = ('tokens', *(f'hollow@{s}' for s in SURFACES), *(f'drawn@{s}' for s in SURFACES), *(f'plaque@{s}' for s in PLAQUE_FACES))
 
 # The bound a pair must clear, CHOSEN: ΔE2000 5 — about twice the ≈ 2.3 just-noticeable difference, the low
 # end of the "perceptible at a glance" band of the commonly cited Mokrzycki & Tatol (2011) survey table
@@ -199,9 +208,15 @@ def hollow_edge(c, over):
     o = hex2rgb(over)
     return tuple(HOLLOW_OPACITY * c[i] + (1 - HOLLOW_OPACITY) * o[i] for i in range(3))
 
+def on_plaque(c, over):
+    """A chip or a marker on the plaque's face: the fill at full light, opaque, over the face — the face shows through
+    nothing, so the fill is the token itself, on that face."""
+    return c
+
 def seen(c, state, condition):
     if condition == 'tokens': return c
     kind, surface = condition.split('@', 1)
+    if kind == 'plaque': return on_plaque(c, PLAQUE_FACES[surface])
     return hollow_edge(c, SURFACES[surface]) if kind == 'hollow' else as_drawn(c, state, SURFACES[surface])
 
 def all_pairs(pal, condition):
@@ -363,6 +378,7 @@ if a.search:
     print(json.dumps(search()))
     sys.exit(0)
 
+print(f"surfaces measured over: {', '.join(SURFACES)}; and the directory plaque's face, at full light: {', '.join(f'{k} ({v})' for k, v in PLAQUE_FACES.items())}")
 cur = report('SHEET (the tokens as read from --repo)', palette({}))
 new = report('PROPOSED', palette(PROPOSED))
 
@@ -381,6 +397,8 @@ sib = {
     'state-ink-unconfirmed on scene-paper (hollow chip)': contrast(hex2rgb(TOK['state-ink-unconfirmed']), hex2rgb(TOK['scene-paper'])),
     'scene-unrecognised on scene-paper (unrecognised chip)': contrast(hex2rgb(TOK['scene-unrecognised']), hex2rgb(TOK['scene-paper'])),
     'scene-flag-ink on scene-flag (the flag)': contrast(hex2rgb(TOK['scene-flag-ink']), hex2rgb(TOK['scene-flag'])),
+    'lobby-plaque-ink on lobby-plaque (the directory plaque\'s text)': contrast(hex2rgb(TOK['lobby-plaque-ink']), hex2rgb(TOK['lobby-plaque'])),
+    'lobby-plaque-dim on lobby-plaque (the plaque\'s rooms and totals)': contrast(hex2rgb(TOK['lobby-plaque-dim']), hex2rgb(TOK['lobby-plaque'])),
     'scene-ink on scene-badge (a badge)': contrast(hex2rgb(TOK['scene-ink']), hex2rgb(TOK['scene-badge'])),
     'scene-ink on scene-plate (the nameplate)': contrast(hex2rgb(TOK['scene-ink']), hex2rgb(TOK['scene-plate'])),
     **{f'scene-ink on {k} (facts text over the floor)': contrast(hex2rgb(TOK['scene-ink']), hex2rgb(v)) for k, v in SURFACES.items()},

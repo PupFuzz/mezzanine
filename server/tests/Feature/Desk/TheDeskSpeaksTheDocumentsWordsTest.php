@@ -9,6 +9,9 @@ use Tests\TestCase;
  * desk-render.js`'s copies of `docs/design/FLOOR.md` § 7.1's state sentences and its seven
  * `unknown_reason` sentences, § 7.6's twelve `api_error_type` phrases, § 7.1's Desk column, and
  * the single words § 7.2, § 7.3 and § 5.6 fix — each RE-DERIVED from the document on every run.
+ * The state sentences and the phrases live in `desk/state-words.js` since card#12113 (the lobby's
+ * attention line speaks them too) and are read here through `desk-render.js`'s re-exports, so
+ * CONTROLS 2 and 3 plant their drift in that file.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * WHY THE COPIES EXIST AT ALL: a browser cannot read FLOOR.md, so the desk carries the words, and
@@ -55,12 +58,12 @@ class TheDeskSpeaksTheDocumentsWordsTest extends TestCase
             '§ 7.6\'s api_error_type table did not parse to its twelve members');
 
         // CONTROL 2 — a module phrase edited away from the document reds.
-        $edited = $this->probe([], $this->mutatedModules(['desk-render.js', "rate_limit: 'rate limit',", "rate_limit: 'rate-limit',"]))['words'];
+        $edited = $this->probe([], $this->mutatedModules(['state-words.js', "rate_limit: 'rate limit',", "rate_limit: 'rate-limit',"]))['words'];
 
         $this->assertNotSame([], $this->wordDefects($edited, $md), 'CONTROL 2 did not bite: a phrase drifted from § 7.6 and the guard passed');
 
         // CONTROL 3 — a state sentence edited away from the document reds.
-        $label = $this->probe([], $this->mutatedModules(['desk-render.js', "catching_up: 'replaying history',", "catching_up: 'replaying',"]))['words'];
+        $label = $this->probe([], $this->mutatedModules(['state-words.js', "catching_up: 'replaying history',", "catching_up: 'replaying',"]))['words'];
 
         $this->assertNotSame([], $this->wordDefects($label, $md), 'CONTROL 3 did not bite: a state sentence drifted from § 7.1 and the guard passed');
 

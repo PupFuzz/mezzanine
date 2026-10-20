@@ -11,11 +11,13 @@
  *                   "layout": <the floors GET /api/building answered (§ 4.6, D2 § 8.7), or absent =
  *                              the empty layout's floors, `[]`>,
  *                   "notices": [[held, total], …],           // § 4.1's words for each pair
- *                   "cab": <the stop the viewer last rode to, or absent>,
+ *                   "context_candidates": <absent, or seat objects for § 4.1's (b) population>,
  *                   "primitives": <absent, or a list of argument lists for `floors()` / `plates()`>,
  *                   "scenario": <absent, or a scripted run of the building surface — below> }`
- * stdout — JSON: `{ "render_states": [...], "model": {...}, "building": {...},
+ * stdout — JSON: `{ "render_states": [...], "model": {...}, "plates": [...] | null,
  *                   "primitives": { "floors": [...], "plates": [...] } | null, "notices": [...],
+ *                   "directory": { "marker_cap", "context_attention_pct", "long_call_ms",
+ *                                  "context_candidates": [<install_id/seat_id>, …] | null },
  *                   "scenario": [<one record per step>] | null }`
  *
  * THE SCENARIO drives the shipped lobby entry — `lobby-screen.js` over the client protocol
@@ -66,11 +68,9 @@ console.log(JSON.stringify({
     // client does not KNOW a value as well as that it does not render it as one.
     membership: Object.fromEntries((payload.membership_probe ?? []).map((v) => [String(v), isRenderState(v)])),
     model: payload.snapshot === undefined ? null : model.lobbyModel(payload.snapshot, payload.layout ?? []),
-    // § 4.1's cross-section and its elevator. `cab` is the viewer's own position (§ 4.5:
-    // navigation is never state), so it is an INPUT here and is never read out of the snapshot.
-    building: payload.snapshot === undefined
-        ? null
-        : building.buildingModel(payload.snapshot, payload.cab ?? null, payload.layout ?? []),
+    // § 4.1's floor list as the directory and both cabs read it (`building-model.js`'s `plates()`), over the layout
+    // named (absent, the empty layout's floors).
+    plates: payload.snapshot === undefined ? null : building.plates(payload.snapshot, payload.layout ?? []),
     // The composition PRIMITIVES, called directly: `floors()` and `plates()`, once per argument list
     // named here, each list spread after the snapshot. So `[]` calls with no layout argument at all
     // and `[null]` passes `null`, the two a JSON `layout` member cannot tell apart.
@@ -80,6 +80,17 @@ console.log(JSON.stringify({
     },
     // § 4.1's two ratified sentences, worded for each `(held, total)` pair named here.
     notices: (payload.notices ?? []).map(([held, total]) => model.discrepancyNotice(held, total)),
+    // The directory plaque's § 12 figures as the module carries them (card#12113), and § 4.1's (b)
+    // population over the seats named here, as `install_id/seat_id` — AT-D3-27's reading of the
+    // population a threshold is asked of, which the attention line alone cannot show.
+    directory: {
+        marker_cap: model.MARKER_CAP,
+        context_attention_pct: model.CONTEXT_ATTENTION_PCT,
+        long_call_ms: model.LONG_CALL_MS,
+        context_candidates: payload.context_candidates === undefined
+            ? null
+            : model.contextCandidates(payload.context_candidates).map((s) => `${s.install_id}/${s.seat_id}`),
+    },
     scenario: payload.scenario === undefined ? null : await runScenario(payload.scenario),
 }, null, 2));
 
@@ -108,7 +119,7 @@ async function runScenario(scenario) {
     const clock = { now: () => 0 };
     const client = new FleetClient(fetchImpl, SilentEventSource, clock);
     const surface = new Building(fetchImpl);
-    // The building's drawing surface (Appendix B row 16's camera): this probe asks what the entry
+    // The room's drawing surface (Appendix B row 24's camera): this probe asks what the entry
     // fetches and composes and moves no camera, so the surface is the harness's default size
     // (`../Support/harness-surface.mjs`).
     const screen = new LobbyScreen(client, surface, clock, createAnimationLog(), { surface: HARNESS_SURFACE });
@@ -125,7 +136,7 @@ async function runScenario(scenario) {
                 client.start();
                 // The page's first render, which runs before the snapshot has answered — and what
                 // had been asked for by then, which is § 4.4's "then" made observable.
-                const first = screen.render(() => payload.cab ?? null);
+                const first = screen.render();
 
                 beforeSnapshot = [...requests];
                 await first;
@@ -150,7 +161,7 @@ async function runScenario(scenario) {
 
         // The page renders after every settled event; the render is what makes the entry's layout
         // request once a snapshot has applied.
-        const frame = await screen.render(() => payload.cab ?? null);
+        const frame = await screen.render();
 
         records.push({
             requests: [...requests],
@@ -160,10 +171,12 @@ async function runScenario(scenario) {
             layout_failure: surface.layoutFailure,
             rooms: Object.fromEntries(rendered.map((id) => [id, surface.room(id)])),
             lobby: frame.summary,
-            building: frame.building,
-            // `#lobby-building`'s own style over this frame's scene — a clipping drawing only while
-            // there is a building to draw (card#7343 r3), the style `lobby/main.js` applies.
-            surface: surfaceStyle(frame.scene, frame.sky),
+            // The drawn room's scene, or `null` — drawn once a full snapshot has applied, with or without a layout
+            // (§ 9 F17: the room carries no fact).
+            room: frame.room,
+            // `#lobby-building`'s own style over this frame's scene — a clipping drawing only while the room is
+            // drawn, the style `lobby/main.js` applies.
+            surface: surfaceStyle(frame.scene),
             discrepancy: frame.discrepancy,
             failure: frame.failure,
         });

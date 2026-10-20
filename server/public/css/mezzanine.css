@@ -11,14 +11,15 @@
  * `public/js/floor/painter.js`'s embedded style names every colour as `var(--scene-…)`; a token it reads
  * that is not declared below resolves to nothing, so the same test reds on one.
  *
- * ⛔ `--door` / `--door-edge` ARE COPIES OF THE LOBBY's `INK.door` / `INK.doorEdge`
- * (`public/js/lobby/building-scene.js`), which the lobby keeps as hex because it does arithmetic on its
- * palette; the floor's elevator (card#11045 PR-D) reads these, and the same test reds when the two drift.
+ * ⛔ `--door` / `--door-edge` / `--lobby-mat` ARE COPIES OF THE LOBBY's `INK.door` / `INK.doorEdge` / `INK.mat`
+ * (`public/js/lobby/building-scene.js`), which the lobby keeps as hex because its room is SVG shape data painted as
+ * presentation attributes, which read no custom property; the floor's elevator (card#11045 PR-D), the lobby room's
+ * leaves and the lobby view behind the cab's doors (card#12113) read these, and the same test reds when they drift.
  *
- * ⛔ NO TEXT SIZE ON `:root`, `html`, `body`, `*` OR ON ANY TAG A LOBBY PLATE's LABEL IS BUILT FROM, AND
- * NO `!important` TEXT SIZE. A plate's label is `1rem`, which must be the body text size
- * (§ 4.1; `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest` reads this sheet and reds on
- * each). Text sizes below are set on classes and ids, and on headings, summaries and controls.
+ * ⛔ NO TEXT SIZE ON `:root`, `html`, `body`, `*` OR ON ANY TAG THE LOBBY DIRECTORY IS BUILT FROM, AND NO
+ * `!important` TEXT SIZE. The directory's face is `1rem`, which must be the body text size (§ 4.1;
+ * `Tests\Feature\Lobby\TheLobbyIsADrawnRoomTest` reads this sheet and reds on each). Text sizes below are set on
+ * classes and ids, and on headings, summaries and controls.
  *
  * ⛔ THE FLOOR's DRAWING HEIGHT IS ONE MECHANISM, A FLEX COLUMN: on the floor page `main` is a column at
  * least `100dvh − --reveal` tall, and the room's stage (`#floor-drawing`, the gesture hint's row under it,
@@ -70,6 +71,19 @@
     --door: #dbe5ee;
     --door-edge: #9fb1c4;
     --door-frame: #2b3340;
+    /* The welcome mat the lobby view behind the cab's doors lays before the front doors (card#12113) — a copy of
+       the lobby's `INK.mat`, held equal by the same test. */
+    --lobby-mat: #e7866d;
+    /* The lobby directory's plaque (FLOOR.md § 4.1, card#12113): its cream face — a surface the state chips are measured
+       over (`tools/design/state-chip-colours.py`) — its soft frame, its ink, its dimmer ink, the chips' outline, the brass
+       edge of the readings' panels and the dark of its title bar and numerals. */
+    --lobby-plaque: #fffaf2;
+    --lobby-plaque-edge: #e7b98f;
+    --lobby-plaque-ink: #3b2f2a;
+    --lobby-plaque-dim: #6b5f58;
+    --lobby-plaque-outline: rgba(59, 47, 42, 0.35);
+    --lobby-brass: #c9a873;
+    --lobby-sign: #3b2f4a;
 
     /* The floor's frame's FALLBACK (docs/design/FLOOR.md § 10.6 item 8): what the painter draws under the
        floor's theme on every paint, so it is what is left where a theme's document is not — the band's flat
@@ -371,27 +385,21 @@ main > form:has(label) input:not([type="checkbox"]):not([type="radio"]) {
 /* ── The lobby ───────────────────────────────────────────────────────────────────────────────── */
 
 /*
- * The lobby keeps the 8 px side margin its page had before this sheet — the surface width every run of
- * `tools/design/lobby-label-contrast.browser.mjs` was measured at. The shell's wider gutter narrowed the
- * building's drawing and moved its plate labels: a night star behind a label's glyph at 1,440 px, and at
- * phone width a label falling back onto its plate under the contrast floor (card#11045 review r1). A
- * different margin is a re-measurement by that tool, not an edit here.
+ * THE LOBBY's DRAWN ROOM AND ITS DIRECTORY (FLOOR.md § 4.1, card#12113). `#lobby-building` is the drawing surface and
+ * `#lobby-room` the camera's layer: its size, its clip and its transform are `public/js/lobby/main.js`'s (from
+ * `building-scene.js`'s `surfaceStyle()` and the camera), never this sheet's, so a placeholder page before the first
+ * snapshot flows as text. The directory's and the readings' FACES are counter-scaled by `--lobby-zoom` /
+ * `--lobby-scale`, which `directory.js`'s `showDirectory()` alone writes on the layer, so their text is the page's own
+ * size at every zoom. ⛔ The plaque's face is a surface `tools/design/state-chip-colours.py` measures the state chips
+ * over (`--lobby-plaque`).
  */
 main > section.lobby {
     margin-inline: 8px;
 }
 
-/*
- * …and the building's plate labels keep the face they were measured in, the browser's own default: the
- * shell's body face changed their glyphs and so which night-sky star stands behind which one (the same
- * review). The labels' type is the lobby's to redesign, with that tool re-run; this sheet does not move it.
- */
+/* A frame that takes no layout: a border would move the room off the box the camera measures. */
 .lobby #lobby-building {
-    font-family: initial;
-}
-
-/* A frame that takes no layout: a border would move the plates off the box the camera measures. */
-.lobby #lobby-building {
+    width: 100%;
     border-radius: var(--radius);
     box-shadow: 0 0 0 1px var(--line);
 }
@@ -403,31 +411,233 @@ main > section.lobby {
     margin: 10px 0;
 }
 
-.lobby > p:not([role]),
-.lobby section[aria-labelledby="lobby-health-heading"] > p {
+.lobby > p:not([role]) {
     color: var(--dim);
 }
 
-.lobby section[aria-labelledby="lobby-health-heading"] {
+/* The two faces: the page's own text size, and every line read whole — a line wider than its box wraps, breaking inside a
+   word only where a word alone is wider (FLOOR.md § 4.1), so a plaque grows taller rather than hiding a figure. */
+.lobby .lobby-face {
+    box-sizing: border-box;
+    font-size: 1rem;
+    line-height: 1.3;
+    color: var(--lobby-plaque-ink);
+    overflow-wrap: anywhere;
+}
+
+.lobby .lobby-directory-face {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    container-type: inline-size;
+}
+
+.lobby #lobby-directory-heading {
+    flex: none;
+    margin: 0;
+    padding: 2px 8px;
+    border-radius: 8px;
+    background: var(--lobby-sign);
+    color: var(--lamp);
+    font-size: 1rem;
+    font-weight: 600;
+    text-align: center;
+}
+
+/* The title wraps — but on a face narrower than the Directory title wrap width (FLOOR.md § 12), the phone's fitted board,
+   a wrapped title would fill the box and leave the plaques none, so there it is one line cut at its end (§ 4.1's
+   residual). */
+@container (width < 15em) {
+    .lobby #lobby-directory-heading {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
+.lobby .lobby-directory-title {
+    font-family: var(--face-display);
+    font-weight: 700;
+    letter-spacing: 0.15em;
+}
+
+/* The plaques' list scrolls inside its box (§ 4.1) — `touch-action: none` like the drawing around it, the gesture wire
+   scrolling it from the drag it owns. */
+.lobby .lobby-plaques {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-y: auto;
+    touch-action: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.lobby .lobby-plaque {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 5px 10px;
+    border: 2px solid var(--lobby-plaque-edge);
+    border-radius: 10px;
+    background: var(--lobby-plaque);
+}
+
+.lobby .lobby-plaque-row {
     display: flex;
     flex-wrap: wrap;
-    align-items: baseline;
-    gap: 4px 18px;
-    padding: 8px 14px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    background: var(--panel);
+    align-items: center;
+    gap: 2px 6px;
+    min-width: 0;
+    overflow: hidden;
 }
 
-.lobby section[aria-labelledby="lobby-health-heading"] > h3 {
-    flex-basis: 100%;
-    margin: 4px 0;
+/* The name row: the name and the agents and desks never shrink, so the rooms line is the one part that gives way — it
+   takes what the row has left and wraps inside it. Where the name and the figures do not fit side by side, the figures
+   move to a line of their own, still right-aligned; a name wider than the row wraps. */
+.lobby .lobby-plaque-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    max-width: 100%;
+    font-weight: 700;
+    color: var(--lobby-plaque-ink);
+    outline-offset: -2px;
 }
 
-.lobby section[aria-labelledby="lobby-health-heading"] > p {
-    margin: 0;
+.lobby .lobby-plaque-numeral {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.4em;
+    height: 1.4em;
+    border-radius: 0.7em;
+    background: var(--lobby-sign);
+    color: var(--lamp);
     font-family: var(--face-mono);
-    font-size: 13px;
+}
+
+.lobby .lobby-plaque-rooms {
+    flex: 1 1 0;
+    min-width: 6em;
+    color: var(--lobby-plaque-dim);
+}
+
+.lobby .lobby-plaque-staffing {
+    flex: none;
+    max-width: 100%;
+    margin-left: auto;
+    font-weight: 600;
+}
+
+/* A chip: its member's fill, a 1 px outline in the plaque's ink at low opacity so a pale fill keeps its edge, its word
+   always on it (§ 4.1). An unrecognised value is the sheet's unrecognised treatment. */
+.lobby .lobby-chip {
+    flex: none;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 0 8px;
+    border-radius: 10px;
+    border: 1px solid var(--lobby-plaque-outline);
+    background: var(--fill);
+    color: var(--state-ink);
+    font-weight: 600;
+}
+
+.lobby .lobby-chip.unrecognised {
+    background: var(--lobby-plaque);
+    border: 1.5px dashed var(--scene-unrecognised);
+    color: var(--lobby-plaque-ink);
+}
+
+/* A marker: a disc for a member that draws a character, a ring for an empty chair (§ 4.1). */
+.lobby .lobby-marker {
+    flex: none;
+    box-sizing: border-box;
+    width: 12px;
+    height: 12px;
+    border-radius: 6px;
+    box-shadow: 0 0 0 1px var(--lobby-plaque-ink);
+}
+
+.lobby .lobby-marker.disc {
+    background: var(--fill);
+}
+
+.lobby .lobby-marker.ring {
+    border: 3px solid var(--fill);
+    background: var(--lobby-plaque);
+}
+
+.lobby .lobby-marker-more {
+    margin-left: 4px;
+    font-family: var(--face-mono);
+}
+
+.lobby .lobby-plaque-totals {
+    color: var(--lobby-plaque-dim);
+}
+
+.lobby .lobby-plaque.unclaimed,
+.lobby .lobby-plaque.none {
+    flex-direction: row;
+}
+
+/* The readings under the board: two brass-edged panels side by side, each scrolling inside its half and each declaring it
+   (`data-camera-scrolls`), as the directory's list does. */
+.lobby .lobby-readings-face {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    overflow: hidden;
+}
+
+.lobby .lobby-reading {
+    box-sizing: border-box;
+    min-height: 0;
+    padding: 4px 10px;
+    border: 2px solid var(--lobby-brass);
+    border-radius: 8px;
+    background: var(--lobby-plaque);
+    font-family: var(--face-mono);
+    overflow-y: auto;
+    /* A scroller of its own, so `touch-action` does not reach it from the drawing: the gesture wire scrolls it (§ 4.1). */
+    touch-action: none;
+}
+
+.lobby .lobby-reading h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: inherit;
+}
+
+.lobby .lobby-reading p,
+.lobby .lobby-reading li {
+    margin: 0;
+}
+
+.lobby .lobby-reading ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* Before the first snapshot nothing is drawn, and the faces flow as the page's own text. */
+.lobby #lobby-room:not([data-drawn]) .lobby-face {
+    color: var(--ink);
+}
+
+.lobby #lobby-room:not([data-drawn]) .lobby-reading,
+.lobby #lobby-room:not([data-drawn]) .lobby-plaque {
+    background: var(--panel);
+    border-color: var(--line);
+    color: var(--ink);
 }
 
 /* ── The floor ───────────────────────────────────────────────────────────────────────────────── */
@@ -721,7 +931,7 @@ main > section.lobby {
  *
  * ⛔ THE POPUP IS THE ELEVATOR's OWN BUTTON PANEL, IN THE HOUSE THEME's ELEVATOR PALETTE, AND THIS SHEET
  * HOLDS NO COPY OF IT. `--cab-frame` and `--cab-lamp` are set on the dialog from the theme module's
- * `PALETTE.elevator` (`painter.js`'s `cabTheme()`, which also marks the dialog `data-themed`); the defaults
+ * `PALETTE.elevator` (`floor/cab-paint.js`'s `cabTheme()`, which also marks the dialog `data-themed`); the defaults
  * below are only what a theme that did not load leaves, the same tokens the painter's own fallback drew. Its
  * body is the frame, its words the room's ink, a stop's button the building's door and door edge (`--door` /
  * `--door-edge`, the leaves' colours), the current floor's call button the lamp.
@@ -972,20 +1182,20 @@ main > section.lobby {
     color: var(--scene-ink);
 }
 
-/* The status, layout and feed lines, on the popup's body. */
-#floor-cab-status,
-#floor-cab-layout,
-#floor-cab-feed {
+/* The status, layout and feed lines, on the popup's body — by class, so the lobby's cab (`#lobby-cab-*`) is styled as the floor's. */
+.floor-cab-status,
+.floor-cab-layout,
+.floor-cab-feed {
     color: var(--cab-ink);
 }
 
-#floor-cab-status {
+.floor-cab-status {
     margin: 0 0 10px;
     text-align: center;
 }
 
-#floor-cab-feed,
-#floor-cab-layout {
+.floor-cab-feed,
+.floor-cab-layout {
     margin: 4px 0 0;
     font-size: 13px;
     text-align: center;

@@ -149,7 +149,8 @@ because a gate can only be proven on a defect of its own class:
                "a name was malformed into a shape the gate's token does not read".  Also #164 round 1:
                G5's undeclared-fixture control read only `fx-` names, so `fx_gap` was invisible to it.
   `restate` -- insert § 4.1's first numbered claim, read out of FLOOR.md, before the anchored span,
-               which is the class "the lobby label's contract was copied outside its one statement".
+               which is the class "the lobby's text contract (the plate label's until card#12113, the
+               directory plaque's since) was copied outside its one statement".
                card#7343 is why this exists: every round before r6 re-minted a false copy of that
                contract somewhere else.  One plant per surface the guard reads (FLOOR.md, the
                CHANGELOG bullet).  `point` is its HOLD: a pointer to § 4.1, which must not red.
@@ -1011,7 +1012,7 @@ PLANTS = [
         "Appendix A's U5 states the off-versus-gone obligation as discharged",
     ),
     (
-        # card#7343 r6, G14 leg (a).  The label contract is § 4.1's alone; a copy of one of its claims
+        # card#7343 r6, G14 leg (a), re-aimed by card#12113.  The directory contract is § 4.1's alone; a copy of one of its claims
         # outside it -- the shape every earlier round re-minted -- must red.  Inserted into § 4.2's
         # opening sentence, the first section after § 4.1.
         "verify-floor.py",
@@ -1019,7 +1020,7 @@ PLANTS = [
         r"(\n### 4\.2 The floor\n\n)(One \*\*floor\*\*)(, which since)",
         "restate",
         "§ 4.1's first claim copied into § 4.2 (card#7343 r6, G14 leg (a))",
-        "G14: a label-contract term outside section 4.1",
+        "G14: a directory-contract term outside section 4.1",
     ),
     (
         # card#7343 r6, G14 leg (a), the CHANGELOG half: the same copy in the card's CHANGELOG bullet,
@@ -1029,7 +1030,7 @@ PLANTS = [
         r"(\n- \*\*card#7343\*\* — )(\*\*The lobby's)( elevator ride)",
         "restate",
         "§ 4.1's first claim copied into the card#7343 CHANGELOG bullet (card#7343 r6, G14 leg (a))",
-        "G14: a label-contract term outside section 4.1's claim region — docs/changelog/v0.7.0.md",
+        "G14: a directory-contract term outside section 4.1's claim region — docs/changelog/v0.7.0.md",
     ),
     (
         # card#7343 r6, G14 leg (b): a § 4.1 claim whose `(held by: …)` is deleted names no check.
@@ -1053,7 +1054,7 @@ PLANTS = [
         # card#7343 r6, G14 leg (b): a claim naming a contrast-tool control that does not exist.
         "verify-floor.py",
         "docs/design/FLOOR.md",
-        r"(held by: B check ')(overlap)(')",
+        r"(held by: B check ')(contrast)(')",
         "rename",
         "the contrast-tool control a § 4.1 claim names (card#7343 r6, G14 leg (b))",
         "reports no control for",
@@ -1079,7 +1080,7 @@ HOLDS = [
         r"(\n### 4\.2 The floor\n\n)(One \*\*floor\*\*)(, which since)",
         "point",
         "a pointer to § 4.1 inserted into § 4.2, which G14 leg (a) must not read as a copy (card#7343 r6)",
-        "G14: a label-contract term outside section 4.1",
+        "G14: a directory-contract term outside section 4.1",
         {"adds_only": True},
     ),
     (
@@ -1157,7 +1158,7 @@ MUTATIONS = {
                                                  (ROOT / "docs/design/FLOOR.md").read_text(encoding="utf-8"),
                                                  re.S).group(1) + " "
                           + m.group(2) + m.group(3)),
-    "point": lambda m: (m.group(1) + "A plate's label is [§ 4.1](#41-the-lobby--the-building-summary)'s. "
+    "point": lambda m: (m.group(1) + "The lobby directory's text is [§ 4.1](#41-the-lobby--the-building-summary)'s. "
                         + m.group(2) + m.group(3)),
 }
 

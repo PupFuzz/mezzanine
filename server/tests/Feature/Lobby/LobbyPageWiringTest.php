@@ -32,16 +32,17 @@ use Tests\TestCase;
  * floor page's own construction (Appendix B row 8's ⛔, which binds every page holding a real
  * `EventSource`).
  *
- * ⛔ AND THE BUILDING's CAMERA (Appendix B row 16, card#7343): that the page hands each viewer act to the
- * lobby screen — the ride and its arrival, the hold that keeps a plate link from outrunning it, the whole-building control, the wheel (its pan and its Ctrl+zoom), the touch pinch and the drag through
- * `wire/camera-gestures.js`, the keys and the zoom buttons through `wire/camera-keys.js`, the keyboard's
- * focus on a plate — grows no copy of either shared module, stands `plate-row.js`'s rows and writes their
- * counter-scale from the camera it shows; and that the building takes focus with the floor's keys and
- * zoom buttons. Each as the source's own lines, each with a control.
+ * ⛔ AND THE ROOM's CAMERA AND ITS RIDE (Appendix B row 24, card#12113): that the page hands each viewer act to the
+ * lobby screen — *Fit the lobby*, the wheel (its pan and its Ctrl+zoom), the touch pinch and the drag through
+ * `wire/camera-gestures.js`, the keys and the zoom buttons through `wire/camera-keys.js`, the keyboard's focus on the
+ * elevator or a plaque — grows no copy of either shared module, writes the directory's counter-scale from the camera
+ * it shows and from nowhere else (`directory.js`'s `showDirectory()`), paints the plaques on the 1 s tick, and wires the
+ * drawn elevator to the screen's ride through the one performer both pages share (`wire/ride-page.js`) with the cab
+ * partial under the `lobby` prefix. Each as the source's own lines, each with a control.
  *
  * ⛔ AND A FLOOR's RIDE ARRIVING HERE (§ 4.5, card#11795): the view declares `data-ride-reveals`, and the page ends
- * the layout head script's hold through `wire/ride-arrival.js`'s `revealed()` — once, under `frame.scene !== null`
- * (the first drawn building), and on nothing else.
+ * the layout head script's hold through `wire/ride-arrival.js`'s `revealed()` — once, on the first frame that drew the
+ * room (`summary !== null`), and on nothing else.
  *
  * ⚠ WHAT A GREEN HERE IS NOT: evidence that anything renders, lays out, or is legible. It is
  * evidence that every fact the model produces has an element with its name on it.
@@ -68,7 +69,7 @@ class LobbyPageWiringTest extends TestCase
             'main.js writes a fact into an element the page does not declare — getElementById '
             .'answers null, nothing throws, and that fact is silently never rendered');
 
-        $this->assertSame([], array_values(array_diff($declared, $this->accountedFor($html, $addressed))),
+        $this->assertSame([], array_values(array_diff($declared, $this->accountedFor($html, [...$addressed, ...$this->cabIds()]))),
             'the page declares a lobby element nothing ever writes into — it will hold its '
             .'placeholder over a fleet that answered');
     }
@@ -131,227 +132,84 @@ class LobbyPageWiringTest extends TestCase
     }
 
     /**
-     * Appendix B row 16 (card#7343): the ride ARRIVES and the building's camera reaches the screen. The
-     * decisions are `lobby-screen.js`'s and held headlessly by
-     * `Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`; what only this file can
-     * hold is that the page hands each act to the screen and performs the arrival the ride returns —
-     * there is no browser on this host, so the wiring is asserted as the source's own lines.
+     * Appendix B row 24 (card#12113): the room's camera and the elevator's ride reach the screen. The decisions are
+     * `lobby-screen.js`'s and held headlessly by `Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`
+     * and `TheLobbysElevatorIsTheFloorsRideTest`; what only this file can hold is that the page hands each act to the
+     * screen — there is no browser on this host, so the wiring is asserted as the source's own lines.
      */
-    public function test_the_page_wires_the_ride_and_the_building_camera_to_the_screen(): void
+    public function test_the_page_wires_the_ride_and_the_rooms_camera_to_the_screen(): void
     {
         $js = $this->mainJs();
 
         $this->assertSame([], $this->cameraDefects($js));
+        $this->assertSame([], $this->showDirectoryPlacementDefects($js));
 
-        // CONTROL — a ride that moves the cab and the camera and never arrives: the lobby as it was.
-        $stays = str_replace('window.location.assign(ride.route);', '', $js);
-        $this->assertNotSame($stays, $js, "the arrival control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('ride', $this->cameraDefects($stays),
-            'CONTROL (a ride that never arrives at its route) did not bite');
-
-        // CONTROL — a ride whose glide an interruption abandons: the ruling's "the click commits the ride".
-        $uncommitted = str_replace('}, { commit: true });', '});', $js);
-        $this->assertNotSame($uncommitted, $js, "the commit control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('ride in flight', $this->cameraDefects($uncommitted),
-            'CONTROL (a ride an interruption abandons) did not bite');
-
-        // CONTROL — a ride control left enabled while a ride is in flight.
-        $enabled = str_replace('ride.disabled = building.elevator.next === null || riding;', 'ride.disabled = building.elevator.next === null;', $js);
-        $this->assertNotSame($enabled, $js, "the in-flight control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('ride in flight', $this->cameraDefects($enabled),
-            'CONTROL (a ride control enabled in flight) did not bite');
-
-        // CONTROL — a lobby the back-forward cache restores with its ride still in flight, the control dead.
-        $stranded = str_replace("    if (event.persisted) {\n        screen.returned();\n", "    if (event.persisted) {\n", $js);
-        $this->assertNotSame($stranded, $js, "the return control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('ride in flight', $this->cameraDefects($stranded),
-            'CONTROL (a restored lobby whose ride never ends) did not bite');
-
-        // CONTROL — a ride whose glide arrived and whose hold never ended (card#7343 r2-4): a navigation
-        // the browser cancels leaves the lobby's controls dead.
-        $held = str_replace("        window.location.assign(ride.route);\n        screen.returned();\n", "        window.location.assign(ride.route);\n", $js);
-        $this->assertNotSame($held, $js, "the arrival-hold control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('ride in flight', $this->cameraDefects($held),
-            'CONTROL (a hold that outlives the glide) did not bite');
-
-        // CONTROL — the gestures handed a camera that frames nothing (card#7343 r3b): every wheel over the
-        // drawn building would then scroll the page instead of moving the camera.
-        $unframed = str_replace('cameraGestures(building, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);',
-            'cameraGestures(building, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: () => ({ bounds: null }) }, show);', $js);
-        $this->assertNotSame($unframed, $js, "the framed-wheel control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('wheel', $this->cameraDefects($unframed),
-            'CONTROL (a wheel handed a camera that frames nothing) did not bite');
-
-        // CONTROL — the keys handed a camera that frames nothing (card#7343 r4b): every key over the drawn
-        // building would then be the browser's.
-        $keysUnframed = str_replace('{ zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }', '{ zoomStep: screen.zoomStep, drag: screen.drag, camera: () => ({ bounds: null }) }', $js);
-        $this->assertNotSame($keysUnframed, $js, "the framed-keys control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('keys', $this->cameraDefects($keysUnframed),
-            'CONTROL (keys handed a camera that frames nothing) did not bite');
-
-        // CONTROL — the keys and the zoom buttons never offered from the camera shown (card#7343 r4b).
-        $unoffered = str_replace("    offerKeys(el('lobby-building'), zoomButtons, screen.camera());\n", '', $js);
-        $this->assertNotSame($unoffered, $js, "the offer control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('keys', $this->cameraDefects($unoffered),
-            'CONTROL (keys and zoom buttons never offered) did not bite');
-
-        // CONTROL — the offer read off the glide's step rather than the screen's camera (card#7343 c7692 item 4):
-        // a building that stops framing mid-glide would keep its zoom buttons shown.
-        $stepped = str_replace("    offerKeys(el('lobby-building'), zoomButtons, screen.camera());", "    offerKeys(el('lobby-building'), zoomButtons, camera);", $js);
-        $this->assertNotSame($stepped, $js, "the offer-camera control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('keys', $this->cameraDefects($stepped),
-            'CONTROL (the offer read off a glide step) did not bite');
-
-        // CONTROL — the plain wheel's pan, the Ctrl+wheel's zoom and the touch pinch each reach the screen (card#11045).
-        foreach (['pan', 'zoom', 'pinch'] as $act) {
-            $unwired = str_replace("{$act}: screen.{$act},", "{$act}: screen.camera,", $js);
-            $this->assertNotSame($unwired, $js, "the {$act} control's anchor is gone — it mutated nothing");
-            $this->assertArrayHasKey('wheel', $this->cameraDefects($unwired),
-                "CONTROL (a {$act} that never reaches the camera) did not bite");
-        }
-
-        // CONTROL — the gesture hint never offered or withdrawn with the camera (card#11045).
-        $hintless = str_replace("hint: el('lobby-hint') }", "hint: el('lobby-zoom-out') }", $js);
-        $this->assertNotSame($hintless, $js, "the hint offer control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('keys', $this->cameraDefects($hintless),
-            'CONTROL (a gesture hint never offered with the camera) did not bite');
-
-        // CONTROL — the whole-building control never offered or withdrawn with the camera (card#7343 c7692 item 2).
-        $wholeless = str_replace("fit: el('lobby-whole-building'),", "fit: el('lobby-zoom-out'),", $js);
-        $this->assertNotSame($wholeless, $js, "the whole-building offer control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('keys', $this->cameraDefects($wholeless),
-            'CONTROL (a whole-building control never offered with the camera) did not bite');
-
-        // CONTROL — a plate link clicked mid-ride that navigates (card#7343 r3b): the hold never wired.
-        $unheld = str_replace("holdPlateLinks(building, screen.riding);\n", '', $js);
-        $this->assertNotSame($unheld, $js, "the link-hold control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('ride in flight', $this->cameraDefects($unheld),
-            'CONTROL (a plate link that outruns the committed ride) did not bite');
-
-        // CONTROL — the hold wired over something other than the screen's in-flight state.
-        $blind = str_replace('holdPlateLinks(building, screen.riding);', 'holdPlateLinks(building, () => false);', $js);
-        $this->assertNotSame($blind, $js, "the link-hold state control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('ride in flight', $this->cameraDefects($blind),
-            'CONTROL (a hold that never sees a ride) did not bite');
-
-        // CONTROL — the keys and the zoom buttons wired to nothing (card#7343 r2-2).
-        $keyless = str_replace('cameraKeys(building, ', "cameraKeys(el('lobby-floors'), ", $js);
-        $this->assertNotSame($keyless, $js, "the keys control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('keys', $this->cameraDefects($keyless),
-            'CONTROL (keys handed an element that is not the drawing) did not bite');
-
-        // CONTROL — the lobby growing its own key or zoom-button copy back beside the shared module.
         foreach ([
-            'a keydown of its own' => "building.addEventListener('keydown', () => {});\n",
-            'a zoom button of its own' => "el('lobby-zoom-in').addEventListener('click', () => {\n    show(screen.zoomStep(1));\n});\n",
-        ] as $what => $copy) {
-            $keyCopy = str_replace('cameraKeys(building, ', $copy.'cameraKeys(building, ', $js);
-            $this->assertNotSame($keyCopy, $js);
-            $this->assertArrayHasKey('key copy', $this->cameraDefects($keyCopy),
-                "CONTROL (the lobby wiring {$what} beside wire/camera-keys.js) did not bite");
-        }
-
-        // CONTROL — focus-into-view wired to nothing, and wired to a press too (card#7343 r2-2).
-        $unfocused = str_replace('const focus = screen.focusPlate(row.dataset.floor);', 'const focus = null;', $js);
-        $this->assertNotSame($unfocused, $js, "the focus control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('focus', $this->cameraDefects($unfocused),
-            'CONTROL (a focused plate the camera never comes to) did not bite');
-
-        $pressed = str_replace(" || !event.target.matches(':focus-visible')", '', $js);
-        $this->assertNotSame($pressed, $js, "the focus-visible control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('focus', $this->cameraDefects($pressed),
-            'CONTROL (a press on a plate moving the camera to it) did not bite');
-
-        // CONTROL — the clipping surface left scrollable out from under the camera.
-        $scrolled = str_replace("    if (framed) {\n        unscroll();\n    }\n", '', $js);
-        $this->assertNotSame($scrolled, $js, "the scroll control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('scroll', $this->cameraDefects($scrolled),
-            'CONTROL (a camera shown over a scrolled surface) did not bite');
-
-        // CONTROL — the lobby growing its own gesture copy back beside the shared module.
-        $copied = str_replace("const building = el('lobby-building');\n", "const building = el('lobby-building');\nbuilding.addEventListener('pointerdown', () => {});\n", $js);
-        $this->assertNotSame($copied, $js, "the gesture-copy control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('gestures', $this->cameraDefects($copied),
-            'CONTROL (a gesture copy beside wire/camera-gestures.js) did not bite');
-
-        // CONTROL — a plate's label never painted from the camera at all (card#7343 r4's fix round):
-        // `showLabels()` never called by `view()`, so a camera move leaves every label as it was.
-        $unlabelled = str_replace('    showLabels(floors, camera);', '', $js);
-        $this->assertNotSame($unlabelled, $js, "the label-paint control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('plate text', $this->cameraDefects($unlabelled),
-            'CONTROL (showLabels() never called from view()) did not bite');
-
-        // ⛔ NEITHER `renderBuilding()` NOR `paint()` WRITES ANY LABEL GEOMETRY (P5's own ask): `showLabels()`
-        // is the ONE writer, called only from `view()` — a second writer growing back beside it, even one
-        // that agrees with it, is exactly the shape the round's whole redesign exists to make impossible.
-        // r6 review round (r5 review m8): the real assertion and the moved-call CONTROL below both USED
-        // TO check this by hand, as two separately written sets of assertions — so a change to what
-        // "correct placement" means had to be made twice, and the control could silently stop proving
-        // anything if only one copy was updated. `showLabelsPlacementDefects()` is the ONE predicate; both
-        // this assertion and the control below run the SAME call against it.
-        $this->assertSame([], $this->showLabelsPlacementDefects($js));
-
-        // CONTROL — the call MOVED into paint() rather than removed: still present in the file (every
-        // `cameraDefects()` substring needle still matches, since that check is substring-anywhere — r4
-        // review MAJOR 3), so only a check that reads WHERE the call sits catches this.
-        $movedIntoPaint = str_replace(
-            ['    showLabels(floors, camera);', 'view(current(camera));'],
-            ['', "view(current(camera));\n    showLabels(floors, camera);"],
-            $js,
-        );
-        $this->assertNotSame($movedIntoPaint, $js, "the moved-call control's anchor is gone — it mutated nothing");
-        $this->assertArrayNotHasKey('plate text', $this->cameraDefects($movedIntoPaint),
-            'the moved-call control is meant to stay green under the OLD substring-anywhere check — every needle is still present, just relocated; '.
-            'if this now fails, cameraDefects() itself changed and this proof of the r4 review MAJOR is stale');
-        $this->assertNotSame([], $this->showLabelsPlacementDefects($movedIntoPaint),
-            'CONTROL (showLabels() moved into paint()) did not bite');
-
-
-        // CONTROL — the surface's style never applied: the page keeps whatever box it started with (r3).
-        // ⛔ MOVED, card#7343 r3's fix round: applied BEFORE `surface()` is read (the render may just have
-        // made the surface a drawing, or stopped it being one), so the camera below sizes off the surface
-        // as it now stands, not as it stood before this render's own style change.
-        $unstyled = str_replace("    Object.assign(el('lobby-building').style, surfaceStyle(frame.scene, frame.sky));\n", '', $js);
-        $this->assertNotSame($unstyled, $js, "the surface control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('surface', $this->cameraDefects($unstyled),
-            'CONTROL (a surface style never applied) did not bite');
-
-        // CONTROL — a camera left sized to the surface the render replaced.
-        $unsized = str_replace('view(current(camera));', 'view(current(frame.camera));', $js);
-        $this->assertNotSame($unsized, $js, "the surface-size control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('surface', $this->cameraDefects($unsized),
-            'CONTROL (a camera sized to the old surface) did not bite');
-
-        // CONTROL — a plate drawn by the page itself rather than by `plate-row.js`, which the size test builds.
-        $inline = str_replace('rows.append(plateRow(document, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at));',
-            "rows.append(document.createElement('li'));", $js);
-        $this->assertNotSame($inline, $js, "the plate-row control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('plate text', $this->cameraDefects($inline),
-            'CONTROL (a plate not built by plate-row.js) did not bite');
-
-        // CONTROLS — the ride's own cab-glide timing (Appendix B row 16, slice B): a cab that glides
-        // over a time not the ride's (under reduced motion too), and a cab still gliding after the ride.
-        // ⚠ A building never painted, a drawing read out to assistive technology, and a drawing rebuilt on
-        // every render were checked here as STRING-PRESENCE against `$js` until the impl review's r1 finding
-        // (card#7343 row 16): a plant of exactly those three shapes — the cab's `Object.assign` deleted,
-        // `scenery.replaceChildren()` deleted, an unconditional `drawing.remove()` added — stayed green
-        // against it, because reading main.js's own text never RUNS what it says. That construction, the
-        // keeping and the painting are `building-paint.js`'s now, and a node probe RUNS them on a stand-in
-        // DOM: `Tests\Feature\Lobby\TheBuildingDrawingKeepsItsElementTest`.
-        foreach ([
-            'a cab gliding over a time of its own' => ['    cabGlide = ride.glide_ms;', '    cabGlide = 850;'],
-            'a cab still gliding after the ride' => ["        cabGlide = 0;\n        window.location.assign(ride.route);", '        window.location.assign(ride.route);'],
-        ] as $what => [$anchor, $replacement]) {
-            $planted = str_replace($anchor, $replacement, $js);
+            // The ride: the drawn elevator's press is the screen's, through the one performer and its cab.
+            'a press that never reaches the screen' => ['ride', 'roomDrawing(document, () => cab.act(screen.ride()))', 'roomDrawing(document, () => {})'],
+            'a cab of the page\'s own prefix' => ['ride', "    prefix: 'lobby',\n", "    prefix: 'floor',\n"],
+            'the performer never told of a frame' => ['ride', "    cab.perform({\n", "    ({\n"],
+            'the cab drawn by something else' => ['ride', "    paintCab,\n", "    paintCab: () => {},\n"],
+            'focus back on no elevator' => ['ride', '    elevator: () => room.control,', '    elevator: () => null,'],
+            'a pageswap rule reading no frame' => ['ride', "    lastRide: () => lastFrame?.ride ?? null,", "    lastRide: () => null,"],
+            'a ride arriving here never told the screen' => ['ride', "    screen.arriveByRide(rideArrival);\n", ''],
+            // The room's leaves are the ride's: painted from the frame's `scene.ride` and nothing else.
+            'leaves painted from no ride' => ['room drawing', 'paintRoom(document, room, frame.scene.ride, frame.sky, painted)', 'paintRoom(document, room, null, frame.sky, painted)'],
+            // The house theme's elevator palette on the cab and the room's cab.
+            'no palette on the cab' => ['palette', '    cabTheme(cab.dialog, palette);', '    cabTheme(cab.dialog, null);'],
+            'no palette on the room\'s cab' => ['palette', '    themeRoomCab(room.cab, palette);', ''],
+            // *Fit the lobby*.
+            'a fit wired to nothing' => ['fit', 'screen.fitLobby()', 'screen.camera()'],
+            // The gestures handed a camera that frames nothing (card#7343 r3b).
+            'a wheel over no camera' => ['wheel', 'cameraGestures(building, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);',
+                'cameraGestures(building, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: () => ({ bounds: null }) }, show);'],
+            'keys over no camera' => ['keys', '{ zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }', '{ zoomStep: screen.zoomStep, drag: screen.drag, camera: () => ({ bounds: null }) }'],
+            'keys never offered' => ['keys', "    offerKeys(building, zoomButtons, screen.camera());\n", ''],
+            'keys offered off a glide step' => ['keys', '    offerKeys(building, zoomButtons, screen.camera());', '    offerKeys(building, zoomButtons, camera);'],
+            'a hint never offered' => ['keys', "hint: el('lobby-hint') }", "hint: el('lobby-zoom-out') }"],
+            'a fit never offered' => ['keys', "fit: el('lobby-fit'),", "fit: el('lobby-zoom-out'),"],
+            'keys on another element' => ['keys', 'cameraKeys(building, ', "cameraKeys(el('lobby-floors'), "],
+            // Focus-into-view: the keyboard's, on the elevator and on a plaque.
+            'the elevator\'s focus brought nowhere' => ['focus', '? screen.focusElevator()', '? null'],
+            'a plaque\'s focus brought nowhere' => ['focus', ": event.target.closest('#lobby-floors') !== null ? screen.focusBoard() : null;", ': null;'],
+            'a press moving the camera' => ['focus', "    if (!event.target.matches(':focus-visible')) {\n        return;\n    }\n", ''],
+            // The clipping surface never scrolled out from under the camera.
+            'a camera over a scrolled surface' => ['scroll', "    if (framed) {\n        unscroll();\n    }\n", ''],
+            // The surface's style, applied before the surface is measured.
+            'a surface style never applied' => ['surface', "    Object.assign(building.style, surfaceStyle(frame.scene));\n", ''],
+            'a camera sized to the old surface' => ['surface', 'view(current(camera));', 'view(current(frame.camera));'],
+            // The directory: painted from the frame, on the render and on the 1 s tick.
+            'plaques never painted' => ['directory', "        renderDirectory(document, el('lobby-floors'), frame.summary);\n", ''],
+            'no tick' => ['tick', 'startAgeTicker(client, clock, window, () => {', 'void (client, clock, window, () => {'],
+            'a tick that re-reads nothing' => ['tick', '    const frame = screen.tickView();', '    const frame = lastFrame;'],
+            'a pan and zoom that never reach the camera' => ['wheel', 'pan: screen.pan,', 'pan: screen.camera,'],
+        ] as $what => [$key, $from, $to]) {
+            $planted = str_replace($from, $to, $js);
             $this->assertNotSame($planted, $js, "the {$what} control's anchor is gone — it mutated nothing");
-            $this->assertArrayHasKey('building drawing', $this->cameraDefects($planted), "CONTROL ({$what}) did not bite");
+            $this->assertArrayHasKey($key, $this->cameraDefects($planted), "CONTROL ({$what}) did not bite");
         }
 
-        // CONTROL — the whole-building control wired to nothing.
-        $unwired = str_replace('screen.wholeBuilding()', 'screen.camera()', $js);
-        $this->assertNotSame($unwired, $js, "the whole-building control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('whole-building', $this->cameraDefects($unwired),
-            'CONTROL (a whole-building control that never reaches the camera) did not bite');
+        // The lobby growing its own gesture or key copy back beside the shared modules.
+        foreach ([
+            'a pointerdown of its own' => ['gestures', "building.addEventListener('pointerdown', () => {});\n"],
+            'a keydown of its own' => ['key copy', "building.addEventListener('keydown', () => {});\n"],
+            'a zoom button of its own' => ['key copy', "el('lobby-zoom-in').addEventListener('click', () => {\n    show(screen.zoomStep(1));\n});\n"],
+        ] as $what => [$key, $copy]) {
+            $planted = str_replace('cameraKeys(building, ', $copy.'cameraKeys(building, ', $js);
+            $this->assertNotSame($planted, $js);
+            $this->assertArrayHasKey($key, $this->cameraDefects($planted), "CONTROL (the lobby wiring {$what}) did not bite");
+        }
+
+        // ⛔ THE COUNTER-SCALE's ONE WRITER (§ 4.1): `showDirectory()` from `view()` and from nowhere else.
+        $unscaled = str_replace("    showDirectory(layer, camera);\n", '', $js);
+        $this->assertNotSame($unscaled, $js);
+        $this->assertNotSame([], $this->showDirectoryPlacementDefects($unscaled), 'CONTROL (showDirectory() never called from view()) did not bite');
+        $moved = str_replace(["    showDirectory(layer, camera);\n", "    paintScene(frame);\n"], ['', "    paintScene(frame);\n    showDirectory(layer, frame.camera);\n"], $js);
+        $this->assertNotSame($moved, $js);
+        $this->assertNotSame([], $this->showDirectoryPlacementDefects($moved), 'CONTROL (showDirectory() moved into paint()) did not bite');
+        $second = str_replace("    paintScene(frame);\n", "    paintScene(frame);\n    layer.style.setProperty('--lobby-zoom', '1');\n", $js);
+        $this->assertNotSame($second, $js);
+        $this->assertNotSame([], $this->showDirectoryPlacementDefects($second), 'CONTROL (a second writer of the counter-scale) did not bite');
     }
 
     /**
@@ -363,7 +221,7 @@ class LobbyPageWiringTest extends TestCase
      * once one does is `wire/camera-keys.js`'s `offerKeys()`, one list for both pages
      * (`Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`).
      */
-    public function test_the_building_takes_focus_and_its_keys_and_zoom_buttons_are_the_floors(): void
+    public function test_the_drawing_takes_focus_and_its_keys_and_zoom_buttons_are_the_floors(): void
     {
         $this->assertSame([], $this->keyMarkupDefects($this->lobbyPage()));
 
@@ -372,17 +230,17 @@ class LobbyPageWiringTest extends TestCase
         foreach ([
             // card#7343 comment 7692 item 1: a tab stop before any camera frames the building, which then does
             // nothing — the tab stop is `offerKeys()`'s, and a building the keyboard cannot reach is planted there.
-            'a tab stop in the markup' => ['aria-label="the building drawing">', 'aria-label="the building drawing" tabindex="0">'],
-            'a building drawn as an image' => ['id="lobby-building" role="group"', 'id="lobby-building" role="img"'],
-            // card#7343 r4b: keys named before any camera frames the building, which then do nothing.
-            'keys named in the markup' => ['aria-label="the building drawing">', 'aria-label="the building drawing" aria-keyshortcuts="+ - ArrowUp ArrowDown ArrowLeft ArrowRight">'],
+            'a tab stop in the markup' => ['aria-label="the lobby drawing">', 'aria-label="the lobby drawing" tabindex="0">'],
+            'a drawing as an image' => ['id="lobby-building" role="group"', 'id="lobby-building" role="img"'],
+            // card#7343 r4b: keys named before any camera frames the room, which then do nothing.
+            'keys named in the markup' => ['aria-label="the lobby drawing">', 'aria-label="the lobby drawing" aria-keyshortcuts="+ - ArrowUp ArrowDown ArrowLeft ArrowRight">'],
             'a zoom button shown in the markup' => ['id="lobby-zoom-in" hidden>', 'id="lobby-zoom-in">'],
-            // card#7343 comment 7692 item 2: the whole-building control shown before any camera frames anything.
-            'a whole-building control shown in the markup' => ['id="lobby-whole-building" hidden>', 'id="lobby-whole-building">'],
+            // card#7343 comment 7692 item 2: the framing control shown before any camera frames anything.
+            'a framing control shown in the markup' => ['id="lobby-fit" hidden>', 'id="lobby-fit">'],
             // card#11045: the gesture hint shown before any camera frames anything — untrue over the flowing list.
             'a gesture hint shown in the markup' => ['id="lobby-hint" class="camera-hint" hidden>', 'id="lobby-hint" class="camera-hint">'],
             // card#7343 r3: a size or a clip in the markup holds the list in a box before and without a building.
-            'a surface clipped in the markup' => ['aria-label="the building drawing">', 'aria-label="the building drawing" style="height: 70vh; overflow: hidden">'],
+            'a surface clipped in the markup' => ['aria-label="the lobby drawing">', 'aria-label="the lobby drawing" style="height: 70vh; overflow: hidden">'],
             'a zoom button in words of its own' => ['id="lobby-zoom-in" hidden>Zoom in<', 'id="lobby-zoom-in" hidden>Closer<'],
         ] as $what => [$anchor, $replacement]) {
             $planted = str_replace($anchor, $replacement, $html);
@@ -409,8 +267,8 @@ class LobbyPageWiringTest extends TestCase
             $defects[] = 'the building is a tab stop in the markup, before any camera frames it — `offerKeys()` offers it';
         }
 
-        if (preg_match('/<button type="button" id="lobby-whole-building"([^>]*)>/', $html, $wb) !== 1 || preg_match('/(^|\s)hidden(\s|$)/', $wb[1]) !== 1) {
-            $defects[] = 'the whole-building control is shown in the markup, before any camera frames anything — `offerKeys()` offers it';
+        if (preg_match('/<button type="button" id="lobby-fit"([^>]*)>/', $html, $wb) !== 1 || preg_match('/(^|\s)hidden(\s|$)/', $wb[1]) !== 1) {
+            $defects[] = 'the framing control is shown in the markup, before any camera frames anything — `offerKeys()` offers it';
         }
 
         if (preg_match('/<p id="lobby-hint"([^>]*)>/', $html, $hint) !== 1 || preg_match('/(^|\s)hidden(\s|$)/', $hint[1]) !== 1) {
@@ -452,8 +310,8 @@ class LobbyPageWiringTest extends TestCase
     }
 
     /** ⛔ THE CONTROLS — each re-mints one of the two directions' defects. */
-    /** § 4.5 (card#11795): a floor's ride arriving here is held until the first drawn building, and only by it. */
-    public function test_a_ride_arriving_here_is_revealed_on_the_first_drawn_building(): void
+    /** § 4.5 (card#11795): a floor's ride arriving here is held until the first drawn room, and only by it. */
+    public function test_a_ride_arriving_here_is_revealed_on_the_first_drawn_room(): void
     {
         $this->assertSame([], $this->arrivalDefects($this->mainJs(), $this->lobbyPage()));
     }
@@ -465,9 +323,9 @@ class LobbyPageWiringTest extends TestCase
         $html = $this->lobbyPage();
 
         foreach ([
-            'import' => ["import { revealed } from '../wire/ride-arrival.js';\n", ''],
-            'reveal' => ["    if (frame.scene !== null) {\n        revealed(document.documentElement);\n    }\n", "    if (frame.summary !== null) {\n        revealed(document.documentElement);\n    }\n"],
-            'site' => ["    say('lobby-feed', `feed: \${frame.strip.feed}`);\n", "    revealed(document.documentElement);\n    say('lobby-feed', `feed: \${frame.strip.feed}`);\n"],
+            'import' => ["import { arrival, revealed } from '../wire/ride-arrival.js';\n", ''],
+            'reveal' => ["        // § 4.5: a floor's ride into the lobby holds the cab's snapshot until the first drawn room, and ends it there.\n        revealed(html);\n", ''],
+            'site' => ["    say('lobby-feed', `feed: \${frame.strip.feed}`);\n", "    revealed(html);\n    say('lobby-feed', `feed: \${frame.strip.feed}`);\n"],
         ] as $key => [$from, $to]) {
             $planted = str_replace($from, $to, $js);
             $this->assertNotSame($planted, $js, "the arrival's {$key} control's anchor is gone — it mutated nothing");
@@ -485,12 +343,14 @@ class LobbyPageWiringTest extends TestCase
         $defects = [];
         $code = (string) preg_replace('/^\s*(\/\/|\*|\/\*\*).*$/m', '', $js);
 
-        if (! str_contains($code, "import { revealed } from '../wire/ride-arrival.js';")) {
+        if (! str_contains($code, "import { arrival, revealed } from '../wire/ride-arrival.js';")) {
             $defects['import'] = 'the lobby does not import wire/ride-arrival.js';
         }
 
-        if (! str_contains($code, "    if (frame.scene !== null) {\n        revealed(document.documentElement);\n    }\n")) {
-            $defects['reveal'] = 'revealed() is not called under `frame.scene !== null` alone';
+        // The room is drawn exactly when the frame carries a summary (`lobby-screen.js`'s `draw()`), so the reveal sits in
+        // that branch of `paint()` — the first drawn room — and in no other.
+        if (preg_match('/    if \(summary !== null\) \{\n(.*?)\n    \} else \{/s', $code, $drawn) !== 1 || ! str_contains($drawn[1], '        revealed(html);')) {
+            $defects['reveal'] = 'revealed() is not called on the first drawn room (`summary !== null`) alone';
         }
 
         if (substr_count($code, 'revealed(') !== 1) {
@@ -518,7 +378,7 @@ class LobbyPageWiringTest extends TestCase
             .'direction stayed clean, so it is not measuring the silent no-op');
 
         // CONTROL 10 — an element nothing writes into. Direction two must red.
-        $orphaned = str_replace('<p id="lobby-stamp">', '<p id="lobby-orphan"></p><p id="lobby-stamp">', $html);
+        $orphaned = str_replace('<span id="lobby-stamp">', '<span id="lobby-orphan"></span><span id="lobby-stamp">', $html);
         $this->assertNotSame($orphaned, $html, "CONTROL 10's anchor is gone — it mutated nothing");
         $this->assertNotSame([], array_diff($this->declaredIds($orphaned), $this->accountedFor($orphaned, $addressed)),
             'CONTROL 10 did not bite: an element nothing writes into was added and the '
@@ -542,7 +402,7 @@ class LobbyPageWiringTest extends TestCase
 
         // CONTROL 12 — the lobby holding a protocol of its own, which inherits the browser's reconnect
         // (Appendix B row 8's ⛔) and is the page walking around the one construction both pages share.
-        $bypassed = str_replace('livePage(() => screen.render(() => cab))', 'new FleetClient(fetch, EventSource, { now: Date.now }) && livePage(() => screen.render(() => cab))', $js);
+        $bypassed = str_replace('livePage(() => screen.render())', 'new FleetClient(fetch, EventSource, { now: Date.now }) && livePage(() => screen.render())', $js);
         $this->assertNotSame($bypassed, $js, "CONTROL 12's anchor is gone — it mutated nothing");
         $this->assertArrayHasKey('recovery', $this->livePageDefects($bypassed),
             'CONTROL 12 did not bite: the page constructed its own protocol and the recovery check stayed clean');
@@ -587,72 +447,42 @@ class LobbyPageWiringTest extends TestCase
     {
         $defects = [];
         $wired = [
-            'ride' => ["el('lobby-elevator').addEventListener('click'", 'const ride = screen.ride();',
-                'glideTo(ride.from, ride.to, ride.glide_ms, () => {', 'window.location.assign(ride.route);'],
-            // The click commits the ride (card#7343 r1 ruling): the glide is committed, the control is
-            // disabled while the frame says a ride is in flight, and the page coming back ends it.
-            // … and the hold protects the glide only (r2-4): arriving asks for the route, then ends the hold.
-            'ride in flight' => ['}, { commit: true });', 'ride.disabled = building.elevator.next === null || riding;',
-                'renderBuilding(building, frame.scene, frame.sky, summary.unclaimed, frame.riding);',
-                "window.addEventListener('pageshow', (event) => {\n    if (event.persisted) {\n        screen.returned();",
-                "        window.location.assign(ride.route);\n        screen.returned();\n        screen.draw(cab);\n    }, { commit: true });",
-                // … and the committed ride wins over a plate link clicked during it (card#7343 r3b): the hold
-                // is `ride-hold.js`'s, on the building, over the screen's own in-flight state.
-                "import { holdPlateLinks } from './ride-hold.js';", 'holdPlateLinks(building, screen.riding);'],
-            'whole-building' => ["el('lobby-whole-building').addEventListener('click'", 'screen.wholeBuilding()'],
-            // … and the camera as it stands, so the wheel is the page's scroll while it frames nothing (card#7343 r3b).
-            // card#11045: the wheel's two acts (a plain wheel's pan, a Ctrl+wheel's zoom) and the touch pinch.
+            // § 4.5's ride: the drawn elevator's press is the screen's, through the performer both pages share, with the
+            // cab partial under the lobby's prefix, the cab's drawing `cab-paint.js`'s, focus back on the drawn elevator,
+            // the departing page's rule reading the last painted frame, and an arrival told to the screen.
+            'ride' => ["import { ridePage } from '../wire/ride-page.js';", "import { cabTheme, loadHousePalette, paintCab } from '../floor/cab-paint.js';",
+                'roomDrawing(document, () => cab.act(screen.ride()))', "    prefix: 'lobby',\n", "    paintCab,\n",
+                '    elevator: () => room.control,', '    lastRide: () => lastFrame?.ride ?? null,', "    cab.perform({\n",
+                "    lobby_href: el('lobby').dataset.lobbyHref,", "    screen.arriveByRide(rideArrival);\n"],
+            // The room's drawing and its leaves, painted from the frame's ride.
+            'room drawing' => ["import { paintRoom, roomDrawing, themeRoomCab } from './building-paint.js';", 'layer.prepend(room.art);',
+                'paintRoom(document, room, frame.scene.ride, frame.sky, painted)'],
+            // The house theme's elevator palette on the cab dialog and the room's cab (card#12039, card#12113).
+            'palette' => ['loadHousePalette().then((palette) => {', '    cabTheme(cab.dialog, palette);', '    themeRoomCab(room.cab, palette);'],
+            'fit' => ["el('lobby-fit').addEventListener('click'", 'screen.fitLobby()'],
+            // The camera as it stands, so the wheel is the page's scroll while it frames nothing (card#7343 r3b); the
+            // wheel's two acts and the touch pinch (card#11045) — and over the directory the wire's own scroller rule.
             'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(building, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);'],
-            'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(building, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);'],
-            // The clipping surface is never scrolled out from under the camera (card#7343 r1).
             'scroll' => ["import { framesNothing } from '../wire/camera.js';", "function view(camera) {\n    const framed = !framesNothing(camera);\n\n    if (framed) {\n        unscroll();\n    }\n",
-                "building.addEventListener('scroll', unscroll);",
-                "    node.scrollTop = 0;\n    node.scrollLeft = 0;"],
+                "building.addEventListener('scroll', unscroll);", "    building.scrollTop = 0;\n    building.scrollLeft = 0;"],
             'resize' => ['show(screen.resize(surface()))'],
-            // A plate's label (FLOOR.md § 4.1 states the contract), held by
-            // `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest` at every framing it drives;
-            // what only this file can hold is that the page stands `plate-row.js`'s rows and calls
-            // `showLabels()` — the ONE writer — from `view()`.
-            'plate text' => ["import { surfaceStyle } from './building-scene.js';", "import { showLabels } from './label-paint.js';", "import { plateRow } from './plate-row.js';",
-                '    showLabels(floors, camera);',
-                'rows.append(plateRow(document, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at));'],
-            // The keyboard and the zoom buttons (card#7343 r2-2): the floor's, through the one module.
-            // … the camera as it stands, so every key is the browser's while it frames nothing, and the keys
-            // and the zoom buttons offered from the camera `view()` shows (card#7343 r4b).
             'keys' => ["import { cameraKeys, offerKeys } from '../wire/camera-keys.js';",
-                "const zoomButtons = { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out'), fit: el('lobby-whole-building'), hint: el('lobby-hint') };",
+                "const zoomButtons = { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out'), fit: el('lobby-fit'), hint: el('lobby-hint') };",
                 'cameraKeys(building, zoomButtons, { zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }, show);',
-                // … from the screen's camera, which every gate reads, never a glide's step (card#7343 c7692 item 4).
-                "    offerKeys(el('lobby-building'), zoomButtons, screen.camera());"],
-            // Focus-into-view (card#7343 r2-2): the keyboard's focus on a plate, and never a press's.
-            'focus' => ["building.addEventListener('focusin', (event) => {", "const row = event.target.closest('li[data-floor]');",
-                "if (row === null || !event.target.matches(':focus-visible')) {", 'const focus = screen.focusPlate(row.dataset.floor);',
-                'glideTo(focus.from, focus.to, focus.glide_ms);'],
-            // The surface is a clipping drawing only while there is a building to draw (card#7343 r3):
-            // `building-scene.js`'s `surfaceStyle()`, applied on every render, and the camera sized to the
-            // surface the render leaves. What the style is for each scene is
-            // `Tests\Feature\Lobby\TheLobbyFetchesTheBuildingTest`'s.
-            'surface' => ["import { surfaceStyle } from './building-scene.js';",
-                // … with § 6.2 A17's sky, as the screen last set it, behind the building (card#7343's ruling),
-                // applied BEFORE `surface()` is read (the camera below sizes off the surface as THIS render
-                // leaves it, never as it stood before).
-                "Object.assign(el('lobby-building').style, surfaceStyle(frame.scene, frame.sky));",
+                '    offerKeys(building, zoomButtons, screen.camera());'],
+            // Focus-into-view: the keyboard's focus on the elevator or on a plaque's link, and never a press's.
+            'focus' => ["building.addEventListener('focusin', (event) => {", "    if (!event.target.matches(':focus-visible')) {\n        return;\n    }\n",
+                "event.target.closest('[data-key=\"elevator\"]') !== null", '? screen.focusElevator()',
+                ": event.target.closest('#lobby-floors') !== null ? screen.focusBoard() : null;", 'glideTo(focus.from, focus.to, focus.glide_ms);'],
+            // The surface is a clipping drawing only while the room is drawn, applied BEFORE it is measured.
+            'surface' => ["import { lobbyScene, surfaceStyle } from './building-scene.js';", "    Object.assign(building.style, surfaceStyle(frame.scene));\n",
                 ': screen.resize(size);', 'view(current(camera));'],
             'reduced motion' => ["reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches"],
-            // Appendix B row 16, slice B: the building's drawing — `building-scene.js`'s shapes, painted under
-            // the plates' labels and hidden from assistive technology, kept across renders so the cab glides,
-            // and the cab gliding over the ride's glide (none under reduced motion) and cut on every other
-            // render. What the shapes and the cab's style are is `TheBuildingIsDrawnAsTheReferencesSectionTest`'s.
-            'building drawing' => ["import { buildingDrawing, keepDrawing, paintBuilding } from './building-paint.js';",
-                'const { drawing, art, scenery, windows, cabNode } = buildingDrawing(document);',
-                "    keepDrawing(rows, drawing);\n",
-                "    painted = paintBuilding(document, { drawing, art, scenery, windows, cabNode }, scene, building.elevator.level, cabGlide, painted, sky);\n",
-                "    cabGlide = ride.glide_ms;\n    screen.draw(cab);",
-                "        cabGlide = 0;\n        window.location.assign(ride.route);"],
-            // Impl review r2 (card#7343 row 16): the page reads `cab` through a THUNK, so `lobby-screen.js`'s
-            // `render()` sees the current cab only after its own awaits, never one captured stale at the
-            // moment the render started — held behaviourally by `Tests\Feature\Lobby\TheDrawnCabNeverStalesTest`.
-            'cab read late' => ["livePage(() => screen.render(() => cab));"],
+            // The directory's plaques and boxes, `directory.js`'s; painted from the frame's summary.
+            'directory' => ["import { boxStyles, renderDirectory, showDirectory } from './directory.js';",
+                "        renderDirectory(document, el('lobby-floors'), frame.summary);\n", 'const styles = boxStyles(rect, drawn);'],
+            // § 2.5's 1 s tick: the directory's ages re-read through the screen, nothing drained.
+            'tick' => ["import { startAgeTicker } from '../wire/age-readout.js';", 'startAgeTicker(client, clock, window, () => {', '    const frame = screen.tickView();'],
         ];
 
         foreach ($wired as $act => $needles) {
@@ -676,6 +506,53 @@ class LobbyPageWiringTest extends TestCase
         return $defects;
     }
 
+    /**
+     * ⛔ THE DIRECTORY's COUNTER-SCALE HAS ONE WRITER (§ 4.1): `showDirectory()` is called from `view()`'s own body —
+     * the camera hook, called on every camera the page shows — and neither `paint()` nor `paintScene()` nor
+     * `paintDirectory()` calls it or writes a `--lobby-` property of its own.
+     *
+     * @return list<string>
+     */
+    private function showDirectoryPlacementDefects(string $js): array
+    {
+        $defects = [];
+        $code = $this->stripLineComments($js);
+
+        $this->assertSame(1, preg_match('/function view\(.*?\n\}\n/s', $code, $vw), 'view() did not parse out of main.js');
+
+        if (! str_contains($vw[0], 'showDirectory(layer, camera);')) {
+            $defects[] = 'view() does not call showDirectory() — a camera move would leave the directory scaled for the camera before it';
+        }
+
+        foreach (['paint', 'paintScene', 'paintDirectory'] as $fn) {
+            $this->assertSame(1, preg_match('/function '.$fn.'\(.*?\n\}\n/s', $code, $body), "{$fn}() did not parse out of main.js");
+
+            if (str_contains($body[0], 'showDirectory(')) {
+                $defects[] = "{$fn}() calls showDirectory() — a writer called from a render, not from the camera hook";
+            }
+
+            if (str_contains($body[0], '--lobby-')) {
+                $defects[] = "{$fn}() writes a --lobby- property of its own — a second writer of the counter-scale";
+            }
+        }
+
+        return $defects;
+    }
+
+    /**
+     * The cab dialog's ids under the lobby's prefix — `wire/ride-page.js`'s `cabIds()`, which the performer addresses
+     * for the page — read out of the performer rather than listed here.
+     *
+     * @return list<string>
+     */
+    private function cabIds(): array
+    {
+        preg_match_all('/`\$\{prefix\}(-cab[a-z-]*)`/', (string) file_get_contents($this->jsRoot().'/wire/ride-page.js'), $m);
+        $this->assertNotSame([], $m[1], 'the performer names no cab id — the parse has stopped reading wire/ride-page.js');
+
+        return array_map(static fn (string $suffix): string => 'lobby'.$suffix, $m[1]);
+    }
+
     /** The rendered page, as an MFA-satisfied session actually receives it. */
     private function lobbyPage(): string
     {
@@ -693,60 +570,12 @@ class LobbyPageWiringTest extends TestCase
     /**
      * A JS source snippet with every `//` line comment blanked (the code before it kept, verbatim) — so a
      * containment check reads only executable text, never prose that names a function descriptively. This
-     * module's own comments write `showLabels()` in backticks to explain what a line does; a check for
-     * "does this body call `showLabels(`" must not fire on that sentence.
+     * module's own comments write `showDirectory()` in backticks to explain what a line does; a check for
+     * "does this body call `showDirectory(`" must not fire on that sentence.
      */
     private function stripLineComments(string $js): string
     {
         return (string) preg_replace('#//[^\n]*#', '', $js);
-    }
-
-    /**
-     * `showLabels()` is called from `view()`'s own body, and from neither `renderBuilding()` nor `paint()`,
-     * which also call no `setProperty` and name no `--label-` property (P5's own ask; `showLabels()` is the
-     * ONE writer). The ONE predicate for "is the call placed correctly": the real assertion and the
-     * moved-call CONTROL both run THIS, so a change to what "correct" means cannot update one and leave
-     * the other silently checking a stale rule (r6 review round, r5 review m8).
-     *
-     * @return list<string>
-     */
-    private function showLabelsPlacementDefects(string $js): array
-    {
-        $defects = [];
-
-        $this->assertSame(1, preg_match('/function view\(.*?\n\}\n/s', $js, $vw), 'view() did not parse out of main.js');
-        $this->assertSame(1, preg_match('/function renderBuilding\(.*?\n\}\n/s', $js, $rb), 'renderBuilding() did not parse out of main.js');
-        $this->assertSame(1, preg_match('/function paint\(.*?\n\}\n/s', $js, $pt), 'paint() did not parse out of main.js');
-
-        if (! str_contains($this->stripLineComments($vw[0]), 'showLabels(')) {
-            $defects[] = 'view() does not call showLabels() — a camera move would leave every label as it was';
-        }
-
-        if (str_contains($this->stripLineComments($pt[0]), 'showLabels(')) {
-            $defects[] = 'paint() calls showLabels() — a second writer, even one that agrees with view()\'s, is the shape r3 M1 exists to make impossible';
-        }
-
-        if (str_contains($this->stripLineComments($rb[0]), 'showLabels(')) {
-            $defects[] = 'renderBuilding() calls showLabels() — a second writer, even one that agrees with view()\'s, is the shape r3 M1 exists to make impossible';
-        }
-
-        if (str_contains($pt[0], 'setProperty')) {
-            $defects[] = 'paint() writes a custom property — label geometry belongs to showLabels() alone';
-        }
-
-        if (str_contains($rb[0], 'setProperty')) {
-            $defects[] = 'renderBuilding() writes a custom property — label geometry belongs to showLabels() alone';
-        }
-
-        if (str_contains($pt[0], '--label-')) {
-            $defects[] = 'paint() names a --label- property directly';
-        }
-
-        if (str_contains($rb[0], '--label-')) {
-            $defects[] = 'renderBuilding() names a --label- property directly';
-        }
-
-        return $defects;
     }
 
     /**
