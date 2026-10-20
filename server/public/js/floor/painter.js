@@ -221,11 +221,12 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             failed([id]);
         }
     };
-    // THE ONE CACHE OF CHARACTER ART: asset → its frame URIs, made once per asset. The character tree
+    // THE ONE CACHE OF CHARACTER ART: asset and drawing → its frame URIs, made once each. The character tree
     // holds none (it is pure, `resources/characters/index.js`), so this Map is the whole of what a page
     // keeps. An intern's key is minted per dispatch, so an intern this paint no longer draws is dropped
-    // from it (`interns` below) — that is what bounds the INTERNS' entries. A seat's entry is kept, as the
-    // pixel tree's cache kept it: those are bounded by the distinct seats a page has drawn, not dropped.
+    // from it (`interns` below) — that is what bounds the INTERNS' entries. A seat's entries are kept, as the
+    // pixel tree's cache kept them: those are bounded by the distinct seats a page has drawn, each in at most
+    // its walk and the drawings the tree has for poses (`poseFrames()`), not dropped.
     const frames = new Map();
     // The interns whose frames are held, and those this paint drew.
     const interns = new Set();
@@ -283,24 +284,32 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     };
 
     /**
-     * A character's frames as image URIs, made once per asset: a seat's walk frames — stand, step-left,
-     * step-right, the first being the standing frame every pose draws (§ 10.4's frame contract) — or an
-     * intern's one chibi frame, the tree handed the intern key (`internKey()`) in the seat's place. A
-     * tree that failed to load, or a generator that throws for this key, is § 9 F14 for this asset and
-     * never a throw out of the paint.
+     * A character's frames as image URIs, made once per asset and drawing: a desk's frames for its pose —
+     * the tree's `poseFrames()`, frame 0 the pose's static form and the rest its held loop (§ 10.4's frame
+     * contract: the sleeper's for `asleep`, the walk's for every other pose) — a walker's walk frames
+     * (`at` null), or an intern's one chibi frame, the tree handed the intern key (`internKey()`) in the
+     * seat's place. The cache key is the asset with the drawing it holds, so a desk asleep and its walker
+     * never share frames. A tree that failed to load, or a generator that throws for this key, is § 9 F14
+     * for this asset and never a throw out of the paint.
+     *
+     * @param {{pose: string, desk_top: number}|null} at a desk's pose and its desk's top edge, or `null`
      */
-    const characterFrames = (installId, seatId, asset, intern = false) => {
+    const characterFrames = (installId, seatId, asset, at = null, intern = false) => {
         if (characters === null) {
             report(asset);
 
             return null;
         }
 
-        if (!frames.has(asset)) {
-            try {
-                const docs = intern ? [characters.chibiFrame(installId, seatId)] : characters.walkFrames(installId, seatId);
+        const key = intern ? asset : at === null ? `${asset}#walk` : `${asset}#${at.pose}@${at.desk_top}`;
 
-                frames.set(asset, docs.map(svgUri));
+        if (!frames.has(key)) {
+            try {
+                const docs = intern ? [characters.chibiFrame(installId, seatId)]
+                    : at === null ? characters.walkFrames(installId, seatId)
+                        : characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top });
+
+                frames.set(key, docs.map(svgUri));
             } catch {
                 report(asset);
 
@@ -308,7 +317,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             }
         }
 
-        return frames.get(asset);
+        return frames.get(key);
     };
 
     /** An image in its rect. Tiles stretch to their cell (`none`); the desk's art is `art()`'s. */
@@ -386,7 +395,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
 
             switch (e.kind) {
                 case 'character': {
-                    const urls = characterFrames(desk.install_id, desk.seat_id, e.asset);
+                    const urls = characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, desk_top: e.desk_top });
 
                     if (urls !== null) {
                         const el = art(g, urls[0], e, e.asset, 'character');
@@ -428,7 +437,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                         // dashed (§ 8): its sprite inside a dashed edge at its own 20 × 32 rect — rx 3, no
                         // fill, `--scene-stool` at 1.5 wide, dashed `3 2` — and its fallback glyph below is
                         // dashed `3 2` with no fill (the designer's rulings on card#11058 PR-C).
-                        const urls = characterFrames(e.install_id, e.key, e.asset, true);
+                        const urls = characterFrames(e.install_id, e.key, e.asset, null, true);
 
                         if (urls !== null) {
                             interns.add(e.asset);
@@ -848,14 +857,16 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         const walking = scene.effects.some((fx) => (fx.animation_id === 'A1' || fx.animation_id === 'A2') && fx.frames > 0);
         const interval = scene.desks.find((d) => d.held?.motion)?.held.frame_interval_ms ?? (walking ? 1000 / scene.loop_fps : null);
 
+        // Each character steps through its OWN frames — a walker's walk, a sleeper's loop — so a loop of one
+        // length never draws another drawing's frames.
         if (moving.length > 0 && interval !== null) {
             let tick = 0;
 
             loop = setInterval(() => {
-                tick = (tick + 1) % 3;
+                tick += 1;
 
                 for (const [el, urls] of moving) {
-                    el.setAttribute('href', urls[tick]);
+                    el.setAttribute('href', urls[tick % urls.length]);
                 }
             }, interval);
         }

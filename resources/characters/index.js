@@ -2,20 +2,23 @@
 // needs is here; nothing else in this directory should be imported directly by app code.
 //
 // Two layers under this one: `seed.js`, the seed machinery (first-party), and `creatures.js`, the
-// creature generator (first-party, card#11046). This file adds the frame contract's three entry
-// points and the size the scene reads — no cache: the generator is pure and the PAINTER caches the
-// URIs it makes per asset, and drops an intern's when it stops drawing it (`floor/painter.js`).
+// creature generator (first-party, card#11046). This file adds the frame contract's entry points —
+// the standing frame, the walk, the intern's chibi frame, the sleeper, and `poseFrames()`, which a desk
+// draws its pose in — and the size the scene reads. No cache: the generator is pure and the PAINTER
+// caches the URIs it makes per asset and drawing, and drops an intern's when it stops drawing it
+// (`floor/painter.js`).
 //
 // ⛔ Every entry point returns standalone SVG DOCUMENTS. The painter turns each into a
 // SVG `data:` URI (UTF-8, encodeURIComponent) — this tree carries no URI, and no text naming one.
 
-import { frameDocument } from './creatures.js';
+import { SLEEP_FRAMES, frameDocument, sleepDocument } from './creatures.js';
 import { seatKey } from './seed.js';
 
 export { seatKey, fnv1a32, draw } from './seed.js';
 export {
   SPECIES, SPECIES_KEYS, SPECIES_FIELD, WITHHELD, EYES, MOUTHS, BLUSH, BROWS, SIZES, STOUT, TILTS, ACCENTS, GREENS,
   RIM, RIM_W, SEAT_VIEWBOX, CHIBI_VIEWBOX, CHIBI_HEAD_SHARE, speciesOf, recipe, describe, chibiGeometry, frameDocument,
+  SLEEP_FRAMES, sleepDocument,
 } from './creatures.js';
 
 /**
@@ -29,8 +32,8 @@ export const SCENE_W = 18;
 export const SCENE_H = 32;
 
 /**
- * THE STANDING FRAME — what a desk with a character draws for every pose (FLOOR.md § 10.4's frame
- * contract: parity with today), and phase 0 of the walk.
+ * THE STANDING FRAME — what a desk with a character draws for every pose but `asleep` (FLOOR.md § 10.4's
+ * frame contract), and phase 0 of the walk.
  * @param {string} installId @param {string} seatId @returns {string} an SVG document
  */
 export function standingFrame(installId, seatId) {
@@ -55,4 +58,28 @@ export function walkFrames(installId, seatId) {
  */
 export function chibiFrame(installId, internKey) {
   return frameDocument(seatKey(installId, internKey), { chibi: true });
+}
+
+/**
+ * THE SLEEPER — A6's loop (FLOOR.md § 6.2, § 10.4's frame contract item 4): `SLEEP_FRAMES` documents of the
+ * seat slumped asleep on its desk with its eyes closed and the z's rising above its head; frame 0 is the
+ * static, reduced-motion form. `deskTop` is where the desk's top edge crosses the character's rect, as a
+ * share of the rect's height — the floor's to say (`floor/desk-layout.js`), because the frame draws no desk.
+ * @param {string} installId @param {string} seatId @param {number} deskTop @returns {string[]}
+ */
+export function sleepFrames(installId, seatId, deskTop) {
+  const key = seatKey(installId, seatId);
+  return Array.from({ length: SLEEP_FRAMES }, (_, frame) => sleepDocument(key, { frame, deskTop }));
+}
+
+/**
+ * WHAT A DESK DRAWS FOR A POSE — the frames a desk's character is drawn in, frame 0 its static form and the
+ * rest the held loop it steps when its render moves: the sleeper's for `asleep`; for every other pose the walk,
+ * as before (§ 10.4's frame contract item 1). The one place a pose becomes a drawing: the painter asks, and
+ * decides nothing.
+ * @param {string} installId @param {string} seatId @param {{pose: string, deskTop: number}} at
+ * @returns {string[]}
+ */
+export function poseFrames(installId, seatId, { pose, deskTop }) {
+  return pose === 'asleep' ? sleepFrames(installId, seatId, deskTop) : walkFrames(installId, seatId);
 }
