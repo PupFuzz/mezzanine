@@ -3107,7 +3107,7 @@ it carries the same fact.
 | **A3** | `held` | `work` — typing at the keyboard, with the eye **blink** and the gentle in-place **wiggle**, 4 fps loop | desk | `render_state` | `render_state == "working"` **and not** A4's condition — the two are exclusive, and stating it here is what makes *the held rows this table predicts* a single answer rather than two ([§ 7.1](#71-the-render-per-state)'s `working` row says the same thing in prose) | when it is not | a *working* pose, static, with the glyph | the seat is not working **now** |
 | **A4** | `held` | `think` — leaning back, watching the monitor, with the same **blink** and **wiggle**, 4 fps loop | desk | `open_calls`, `open_turn` | `render_state == "working"` **and** `open_calls == 0` **and** `open_turn == true` | when either fact changes | a *thinking* pose, static | there is an open call, so A3 runs instead |
 | **A5** | `edge` | `tool-swap` — the monitor's glyph changes, one 250 ms cross-fade | desk monitor | `action.tool_name` | a delta whose `changed[]` contains `action` and whose `action.tool_name` differs from the held one | after one tick | the glyph changes with no fade | the action did not change |
-| **A6** | `held` | `idle` — the character is **slumped asleep on the desk**, the monitor dimmed, with drifting **z**'s, 4 fps loop | desk | `render_state` | `render_state == "idle"` | when it is not | the **static slumped pose**, z's drawn once and still | the seat has not cleanly finished a turn. **A sleeper is never a gone seat** — [§ 7.5](#75-what-a-degraded-desk-may-never-look-like) owns that rule |
+| **A6** | `held` | `idle` — the character is **slumped asleep on the desk**, the monitor dimmed, with **z**'s rising above its head — the largest lowest, each higher one smaller and fading (*ZZzzz*), 4 fps loop | desk | `render_state` | `render_state == "idle"` | when it is not | the **static slumped pose**, z's drawn once and still | the seat has not cleanly finished a turn. **A sleeper is never a gone seat** — [§ 7.5](#75-what-a-degraded-desk-may-never-look-like) owns that rule |
 | **A7** | `held` | `attention` — a raised hand and a marker above the desk, 4 fps loop | desk | `render_state` | `render_state == "blocked"` | when it is not | a static raised-hand pose and the marker | no `attention.request` is open ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)) |
 | **A8** | `held` | `stalled` — head in hands, static, with the `api_error_type` line | desk | `render_state`, `api_error_type` | `render_state == "stalled"` | when it is not | identical | no `turn.end(api_error)` is standing |
 | **A9** | `held` | `unknown` — a question marker over an occupied desk | desk | `render_state`, `unknown_reason` | `render_state == "unknown"` | when it is not | identical | the seat's last turn record supports a positive reading |
@@ -3883,7 +3883,8 @@ and the fixed word *unrecognised* for an unrecognised member ([§ 5.4](#54-what-
 the desk an unrecognised `unknown_reason` reads *unknown — unrecognised reason*; the reason's raw string
 is the drill-down's and the desk list's. The **Desk** column's markers are the pose art's
 ([§ 10.4](#104-the-art-direction-as-a-specification)), drawn inside the character's rect, and no scene
-element of their own — and, like the poses, not yet drawn: [§ 14](#14-open-questions-for-the-review-loop) item 34.
+element of their own — and, like every pose but `idle`'s sleeper (§ 10.4's frame contract item 4, card#12159),
+not yet drawn: [§ 14](#14-open-questions-for-the-review-loop) item 34.
 
 ### 7.2 Badges: every member has a render
 
@@ -5364,25 +5365,39 @@ creature generator's sheet is their worked example.
   scales a curve rather than resampling a picture (measured, § 10.2), and each document's ids are its own.
   The bridge kit's desk PNG that stood in for the desk until row 22 is gone: the desk's back is the theme's
   document, drawn into the rect row 20 re-laid ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk, re-laid*).
-- ⭐ **THE FRAME CONTRACT — what the character tree draws for every key, and it is PARITY with today**
-  (card#11046; the seat's ruling of 2026-10-06). Until this card the tree drew a portrait and a walk, and
-  the painter drew the walk's standing frame for whatever pose the desk asked for — stepping the walk's
-  frames where a held loop moved — so **no pose the desk model names has ever been drawn, and this card
-  does not start drawing them.** The creatures replace what the product draws today, frame for frame:
-  1. **One standing frame per key, and every pose draws it, as today.** Whatever `(pose, glyph)` the desk
-     model asks for — `server/public/js/desk/desk-poses.js`'s `DESK`, and A4's think pose, which
+- ⭐ **THE FRAME CONTRACT — what the character tree draws for every key** (card#11046, the seat's ruling of
+  2026-10-06; item 4 card#12159). card#11046 drew the creatures at parity with the pixel tree they replaced:
+  the painter drew the walk's standing frame for whatever pose the desk asked for, stepping the walk's frames
+  where a held loop moved, so no pose the desk model names was drawn — and an `idle` desk showed an upright,
+  open-eyed character swaying side to side under an *asleep* chip. Since card#12159 a desk asks the tree for
+  **its pose's frames** (`resources/characters/index.js`'s `poseFrames()`, handed the pose and the desk's top
+  edge), draws frame 0, and steps that pose's own frames where its held loop moves:
+  1. **One standing frame per key, and every pose but `asleep` draws it.** Whatever other `(pose, glyph)` the
+     desk model asks for — `server/public/js/desk/desk-poses.js`'s `DESK`, and A4's think pose, which
      `desk-render.js` keeps unexported as `THINKING` and the tests reach through `deskModel()` itself
      (a `working` seat with `open_calls` 0 and `open_turn` true, N5) —
      a desk with a character draws this one frame; `empty-chair` still draws none
-     ([§ 7.1](#71-the-render-per-state)). A held loop that moves steps the walk's frames (item 2), as the
-     painter does today. **A state is told from another by its chip, its label line and its monitor, not
-     by the character** — which is true today and stays true; drawing the poses is
-     [§ 14](#14-open-questions-for-the-review-loop) item 34's, unscheduled.
+     ([§ 7.1](#71-the-render-per-state)). A held loop that moves steps the walk's frames (item 2). **A state
+     but `idle` is told from another by its chip, its label line and its monitor, not by the character**;
+     drawing the remaining poses is [§ 14](#14-open-questions-for-the-review-loop) item 34's, unscheduled.
   2. **The walk: three phases** — stand, step-left, step-right — **front-facing**, which A1's and A2's
      walker draws (`resources/characters/index.js`'s `walkFrames()`, which `floor/painter.js`'s `characterFrames()` caches) and A16 needs when it is walked; phase 0
      is item 1's standing frame. No back view is drawn; the walker has never used one
      ([§ 10.2](#102-characters-original-creatures-drawn-by-code)).
   3. **The intern's chibi frame** (the interns bullet above), static, as [§ 8](#8-interns--subagent-rendering-and-the-cap) draws it.
+  4. **The sleeper — `asleep`, the pose `idle` draws ([§ 6.2](#62-the-animation-table--the-closed-set) A6,
+     card#12159).** The key's own creature slumped asleep on its desk: its eyes closed, its brows and any held
+     thing put away, its head rolled onto its forearms, which lie along the desk's top edge — an edge the
+     floor hands the tree as a share of the character's rect (`floor/desk-layout.js` derives it from
+     `deskRects()`), because the frame draws no desk and nothing below that edge. Above the head the
+     **z's rise — *ZZzzz***: the largest lowest, each higher one smaller, the highest fading as it leaves the
+     frame's top, every one above the closed eyes and inside the character's rect, over the loop's frames
+     (`creatures.js`'s `SLEEP_FRAMES`) at A6's fixed 4 fps; between frames only the z's move, so the sleeper never sways. **Frame 0 is the
+     reduced-motion form** ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)): the
+     static slumped pose with its z's drawn once and still. The z's are a fixed loop and say nothing about the
+     seat — not the quiet age, not how long it has slept ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)).
+     `server/tests/Feature/Floor/AnIdleDeskDrawsItsSleeperTest.php` reads every one of these off the painted
+     drawing, for every species and variant, each with a planted control.
 
   **The projection every one of them obeys** is the projection bullet's item 2 and item 5, restated
   nowhere: flat and straight-on, no top, the foot on the rect's floor line with its soft contact shadow
@@ -7229,9 +7244,8 @@ building. It is not split, because no half of it is observable earlier.*
   alone, and each carries its label line — **including the `idle` / `stale` / `offline` triple, named
   here because it is the pair-set the ratified art makes hardest and the one
   [§ 7.5](#75-what-a-degraded-desk-may-never-look-like) turns into a rule**: `idle` is the **static
-  slumped sleeper** and `stale` and `offline` are the **empty chair** — ⚠ the slumped pose is pose art
-  not yet drawn ([§ 14](#14-open-questions-for-the-review-loop) item 34; until it lands every character
-  draws its standing frame, card#11046) — so with the z's switched off
+  slumped sleeper** and `stale` and `offline` are the **empty chair** — the slumped pose is drawn since
+  card#12159 ([§ 10.4](#104-the-art-direction-as-a-specification)'s frame contract item 4) — so with the z's switched off
   the difference is a character being there or not, and the assertion is that the three static images
   differ, not that three labels do; every animation row's reduced-motion form is what appears;
   the log gains **no `edge` row**, and every `held` row with **`phase: entered`** reads
@@ -7964,10 +7978,13 @@ painter's legs in `server/tests/Feature/Floor/painter-probe.mjs`.*
   build's measurement, and gate nothing (§ 10.4). Every species' and variant's chibi frame gives the head at least half its drawn
   height — [§ 12](#12-every-number-and-where-it-comes-from)'s *Intern head share* row — measured from the
   generator's own head and foot geometry, and stands on the 20 × 32 rect's floor line.
-- **GREEN — the frames, at parity:** for a key of every species and variant the standing frame, the walk's
+- **GREEN — the frames:** for a key of every species and variant the standing frame, the walk's
   three phases — distinct from each other, phase 0 the standing frame — and the chibi frame all draw;
-  and through the painter, a desk of every `(pose, glyph)` pair draws that key's standing frame, and a
-  held loop that moves steps the walk's frames, exactly as today (§ 10.4's frame contract).
+  a desk's pose frames are the sleeper's for `asleep` and the walk's for every other pose; and through the
+  painter, a desk of every `(pose, glyph)` pair draws frame 0 of its pose's frames over its desk's top edge,
+  and a held loop that moves steps that pose's own frames, every one in order (§ 10.4's frame contract). The
+  sleeper's own legs — every species asleep, its z's, its loop and its reduced form, painted — are
+  `server/tests/Feature/Floor/AnIdleDeskDrawsItsSleeperTest.php`'s (card#12159).
 - **GREEN — vector and well-formed (N2):** every frame is one standalone SVG document that parses as
   strict XML — every tag closed, every `&` an entity — with an `<svg>` root carrying
   `xmlns="http://www.w3.org/2000/svg"`, and carries no `<image`, no `data:` URI and no reference that
@@ -9566,7 +9583,9 @@ reason to leave two readings live.
     real floor behind the desks — among them **one full side table at the cap**, because a repeated body among siblings is the common case there (§ 10.4) and is what the operator should see — before it merges, under the card's own *screenshots to the operator at each step*. **Closes it:** the operator's
     answer on those screenshots.
 
-34. **⇢ Follow-up, unscheduled — pose art.** The desk model names a pose for every state it draws a
+34. **⇢ Follow-up, unscheduled — pose art. `asleep` is drawn since card#12159** ([§ 10.4](#104-the-art-direction-as-a-specification)'s
+    frame contract item 4: the sleeper, its z's, A6's loop and its reduced form); **every other pose is still
+    owed**, as below. The record below stands as written. The desk model names a pose for every state it draws a
     character in (`desk/desk-poses.js`'s `DESK`, `desk/desk-render.js`'s `THINKING`), and
     [§ 6.2](#62-the-animation-table--the-closed-set)'s A3, A4, A6 and A7 describe loops over them — the
     keyboard, the lean back, the sleeper slumped on the desk with its z's, the raised hand — and § 7.1's
