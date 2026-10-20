@@ -337,7 +337,9 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
             'the panels larger than § 12' => ['    panel: Object.freeze({ w: 120, d: 100, across: 250, deep: 200 }),', '    panel: Object.freeze({ w: 140, d: 100, across: 250, deep: 200 }),', 'lobbyViewDefects'],
             'the module\'s cabTheme not the painter\'s' => ['        cabTheme: (el) => cabTheme(el, cabPalette()),', '        cabTheme: (el) => cabTheme(el, { frame: \'#000000\', lamp: \'#000000\' }),', 'themeDefects'],
         ] as $what => [$from, $to, $check]) {
-            $dir = $this->mutatedModules(['painter.js', $from, $to]);
+            // The cab's drawing is `cab-paint.js`'s since card#12113; the band and the painter's own wrappers stay in `painter.js`.
+            $file = str_contains((string) file_get_contents($this->moduleDir().'/painter.js'), $from) ? 'painter.js' : 'cab-paint.js';
+            $dir = $this->mutatedModules([$file, $from, $to]);
             $this->assertNotSame([], $this->{$check}($this->run_(dirname($dir))), "CONTROL ({$what}) did not bite");
         }
     }

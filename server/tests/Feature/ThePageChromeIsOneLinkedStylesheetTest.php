@@ -259,9 +259,11 @@ class ThePageChromeIsOneLinkedStylesheetTest extends TestCase
         return (string) file_get_contents(public_path(self::SHEET));
     }
 
+    /** The painter's code — `painter.js` and the cab drawing its `STYLE` carries whole (`cab-paint.js`, card#12113). */
     private function painterJs(): string
     {
-        return (string) file_get_contents(public_path('js/floor/painter.js'));
+        return (string) file_get_contents(public_path('js/floor/painter.js'))
+            .(string) file_get_contents(public_path('js/floor/cab-paint.js'));
     }
 
     private function buildingSceneJs(): string
