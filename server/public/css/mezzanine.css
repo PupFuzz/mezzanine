@@ -11,9 +11,10 @@
  * `public/js/floor/painter.js`'s embedded style names every colour as `var(--scene-…)`; a token it reads
  * that is not declared below resolves to nothing, so the same test reds on one.
  *
- * ⛔ `--door` / `--door-edge` ARE COPIES OF THE LOBBY's `INK.door` / `INK.doorEdge`
+ * ⛔ `--door` / `--door-edge` / `--lobby-mat` ARE COPIES OF THE LOBBY's `INK.door` / `INK.doorEdge` / `INK.mat`
  * (`public/js/lobby/building-scene.js`), which the lobby keeps as hex because it does arithmetic on its
- * palette; the floor's elevator (card#11045 PR-D) reads these, and the same test reds when the two drift.
+ * palette; the floor's elevator (card#11045 PR-D) and the lobby view behind the cab's doors (card#12113) read
+ * these, and the same test reds when they drift.
  *
  * ⛔ NO TEXT SIZE ON `:root`, `html`, `body`, `*` OR ON ANY TAG A LOBBY PLATE's LABEL IS BUILT FROM, AND
  * NO `!important` TEXT SIZE. A plate's label is `1rem`, which must be the body text size
@@ -70,6 +71,9 @@
     --door: #dbe5ee;
     --door-edge: #9fb1c4;
     --door-frame: #2b3340;
+    /* The welcome mat the lobby view behind the cab's doors lays before the front doors (card#12113) — a copy of
+       the lobby's `INK.mat`, held equal by the same test. */
+    --lobby-mat: #e7866d;
 
     /* The floor's frame's FALLBACK (docs/design/FLOOR.md § 10.6 item 8): what the painter draws under the
        floor's theme on every paint, so it is what is left where a theme's document is not — the band's flat

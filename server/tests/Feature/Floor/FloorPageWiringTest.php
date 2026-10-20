@@ -53,7 +53,11 @@ use Tests\TestCase;
  * on `pagehide`, the ride arms ONE timer at ONE site, the arrival is handed to the screen before the first
  * render and the hold is ended only under `frame.scene !== null`, the lobby stop is the page's own link, and the
  * view declares `data-ride-reveals`. The rule itself is run under `node`: it lets a transition through only for
- * `leaving` with the cab open, and its text touches no document.
+ * `leaving` with the cab open, and its text touches no document. ⭐ Since card#12113 the phase performer, the
+ * cab's `cancel`, `pageswap` and `pageshow` wiring and the ride's timer are `wire/ride-page.js`'s, which both pages
+ * share, so the ride's checks read the entry AND that module, and the entry is held to wiring it under the
+ * `floor` prefix; the cab's markup is `partials/ride-cab.blade.php`, which the view includes under that prefix
+ * and never restates, and whose ids are the module's `cabIds()` — so the both-ways check reads them from there.
  *
  * ⚠ WHAT A GREEN HERE IS NOT: evidence that anything renders, lays out or is legible.
  */
@@ -120,6 +124,15 @@ class FloorPageWiringTest extends TestCase
     public function test_the_entry_performs_the_ride_and_its_arrival(): void
     {
         $this->assertSame([], $this->rideDefects($this->mainJs(), $this->floorPage()));
+    }
+
+    /**
+     * card#12113: the floor's cab is the one partial both pages include — the view includes it under the `floor` prefix
+     * and declares no cab of its own, and the dialog the page serves is the partial's, byte for byte.
+     */
+    public function test_the_cab_is_the_shared_partial_under_the_floors_prefix(): void
+    {
+        $this->assertSame([], $this->partialDefects($this->floorView(), $this->floorPage()));
     }
 
     /** § 4.5 (card#11795): the departing page's one `pageswap` rule, run under `node`. */
@@ -383,22 +396,10 @@ class FloorPageWiringTest extends TestCase
         // § 4.5 (card#11795): the ride's wiring.
         $page = $this->floorPage();
 
+        // The entry's plants first; then the shared performer's, planted in its own source (card#12113).
         foreach ([
-            'press' => ['        ride: () => rideAct(screen.ride()),', '        ride: () => {},'],
-            'cancel' => ['    rideAct(screen.escape(event.cancelable));', '    rideAct(screen.escape(true));'],
-            'cancel-reask' => ['    outbound = skipUnlessCabLeaving(outbound, lastFrame?.ride ?? null);', ''],
-            'pageswap' => ["window.addEventListener('pageswap', (event) => {
-    outbound = skipUnlessCabLeaving(event.viewTransition, lastFrame?.ride ?? null);", "window.addEventListener('pageswap', (event) => {
-    outbound = event.viewTransition;"],
-            'pageswap-dom' => ["window.addEventListener('pageswap', (event) => {
-", "window.addEventListener('pageswap', () => cab.close());
-window.addEventListener('pageswap', (event) => {
-"],
-            'pagehide' => ["window.addEventListener('pageshow', (event) => {", "window.addEventListener('pagehide', () => cab.close());
-window.addEventListener('pageshow', (event) => {"],
-            'pageshow' => ["window.addEventListener('pageshow', (event) => {", "window.addEventListener('pageshowx', (event) => {"],
-            'timer' => ['    rideTimer = timers.after(ms, () => {', '    window.setTimeout(() => {}, ms);
-    rideTimer = timers.after(ms, () => {'],
+            'press' => ['        ride: () => cab.act(screen.ride()),', '        ride: () => {},'],
+            'performer' => ["const cab = ridePage({\n    prefix: 'floor',", "const cab = ridePage({\n    prefix: 'lobby',"],
             'arrival' => ['    screen.arriveByRide(rideArrival);
 ', ''],
             'reveal' => ['    if (frame.scene !== null) {
@@ -413,18 +414,52 @@ window.addEventListener('pageshow', (event) => {"],
     paintDesks(frame, frame.desks.desks);
 '],
             'lobby' => ["const lobbyHref = document.querySelector('a.floor-home').href;", "const lobbyHref = '/dashboard';"],
-            'navigation' => ['        window.location.assign(ride.route);', '        window.history.pushState(null, \'\', ride.route);'],
+            'performed' => ['    cab.perform({', '    ({'],
         ] as $key => [$from, $to]) {
             $planted = str_replace($from, $to, $js);
             $this->assertNotSame($planted, $js, "the ride's {$key} control's anchor is gone — it mutated nothing");
             $this->assertArrayHasKey($key, $this->rideDefects($planted, $page), "CONTROL (the ride's {$key}) did not bite");
         }
 
+        $performer = $this->ridePageJs();
+
+        foreach ([
+            'cancel' => ['        act(screen().escape(event.cancelable));', '        act(screen().escape(true));'],
+            'cancel-reask' => ['        outbound = skipUnlessCabLeaving(outbound, lastRide());', ''],
+            'pageswap' => ["    window.addEventListener('pageswap', (event) => {\n        outbound = skipUnlessCabLeaving(event.viewTransition, lastRide());", "    window.addEventListener('pageswap', (event) => {\n        outbound = event.viewTransition;"],
+            'pageswap-dom' => ["    window.addEventListener('pageswap', (event) => {\n", "    window.addEventListener('pageswap', () => cab.close());\n    window.addEventListener('pageswap', (event) => {\n"],
+            'pagehide' => ["    window.addEventListener('pageshow', (event) => {", "    window.addEventListener('pagehide', () => cab.close());\n    window.addEventListener('pageshow', (event) => {"],
+            'pageshow' => ["    window.addEventListener('pageshow', (event) => {", "    window.addEventListener('pageshowx', (event) => {"],
+            'timer' => ['        rideTimer = timers.after(ms, () => {', "        window.setTimeout(() => {}, ms);\n        rideTimer = timers.after(ms, () => {"],
+            'navigation' => ['            window.location.assign(ride.route);', '            window.history.pushState(null, \'\', ride.route);'],
+        ] as $key => [$from, $to]) {
+            $planted = str_replace($from, $to, $performer);
+            $this->assertNotSame($planted, $performer, "the performer's {$key} control's anchor is gone — it mutated nothing");
+            $this->assertArrayHasKey($key, $this->rideDefects($js, $page, $planted), "CONTROL (the performer's {$key}) did not bite");
+        }
+
+        // card#12113: the cab is the shared partial — the view restating a cab of its own, including it under another
+        // prefix, or serving a dialog that is not the partial's.
+        $view = $this->floorView();
+        $ownCab = str_replace("        @include('partials.ride-cab', ['prefix' => 'floor'])\n", "        <dialog id=\"floor-cab\" class=\"floor-cab\"></dialog>\n", $view);
+        $this->assertNotSame($ownCab, $view, 'the own-cab control\'s anchor is gone — it mutated nothing');
+        $this->assertArrayHasKey('partial', $this->partialDefects($ownCab, $page), 'CONTROL (a cab dialog of the view\'s own) did not bite');
+        $otherPrefix = str_replace("['prefix' => 'floor']", "['prefix' => 'flor']", $view);
+        $this->assertNotSame($otherPrefix, $view);
+        $this->assertArrayHasKey('partial', $this->partialDefects($otherPrefix, $page), 'CONTROL (the partial under another prefix) did not bite');
+        $edited = str_replace('<p id="floor-cab-feed">feed: waiting for the stream</p>', '<p id="floor-cab-feed">feed: waiting</p>', $page);
+        $this->assertNotSame($edited, $page);
+        $this->assertArrayHasKey('served', $this->partialDefects($view, $edited), 'CONTROL (a served dialog that is not the partial\'s) did not bite');
+        $unaddressed = str_replace('        status: `${prefix}-cab-status`,', '', $performer);
+        $this->assertNotSame($unaddressed, $performer);
+        $this->assertArrayHasKey('unwritten', $this->wiringDefects($page, $js, null, null, $unaddressed),
+            'CONTROL (a cab element the performer no longer addresses) did not bite');
+
         $undeclared = str_replace(' data-ride-reveals', '', $page);
         $this->assertNotSame($undeclared, $page, 'the reveal-declaration control\'s anchor is gone — it mutated nothing');
         $this->assertArrayHasKey('declared', $this->rideDefects($js, $undeclared), 'CONTROL (the floor view not declaring the reveal) did not bite');
 
-        $cabless = preg_replace('/<dialog id="floor-cab".*?<\/dialog>/s', '', $page);
+        $cabless = (string) preg_replace('/<dialog id="floor-cab".*?<\/dialog>/s', '', $page);
         $this->assertNotSame($cabless, $page);
         $this->assertArrayHasKey('cab', $this->rideDefects($js, $cabless), 'CONTROL (the view without the cab) did not bite');
 
@@ -447,12 +482,13 @@ window.addEventListener('pageshow', (event) => {"],
     }
 
     /** @return array<string, string> */
-    private function wiringDefects(string $html, string $js, ?string $jsRoot = null, ?string $painter = null): array
+    private function wiringDefects(string $html, string $js, ?string $jsRoot = null, ?string $painter = null, ?string $performer = null): array
     {
         $declared = $this->declaredIds($html);
         $addressed = array_values(array_unique(array_merge(
             $this->addressedIds($js, $jsRoot),
             $this->painterIds($painter ?? $this->painterJs()),
+            $this->cabIds($js, $performer ?? $this->ridePageJs()),
         )));
         sort($addressed);
 
@@ -479,10 +515,11 @@ window.addEventListener('pageshow', (event) => {"],
      *
      * @return array<string, string>
      */
-    private function rideDefects(string $js, string $html): array
+    private function rideDefects(string $js, string $html, ?string $performer = null): array
     {
         $defects = [];
-        $code = (string) preg_replace('/^\s*(\/\/|\*|\/\*\*).*$/m', '', $js);
+        // The entry and the performer both pages share (card#12113), read as one: every needle below is in one of them.
+        $code = (string) preg_replace('/^\s*(\/\/|\*|\/\*\*).*$/m', '', $js."\n".($performer ?? $this->ridePageJs()));
 
         foreach (['floor-cab', 'floor-cab-heading', 'floor-cab-stops', 'floor-cab-status', 'floor-cab-feed', 'floor-cab-layout', 'floor-cab-doors', 'floor-cab-panel'] as $id) {
             if (! str_contains($html, 'id="'.$id.'"')) {
@@ -499,12 +536,15 @@ window.addEventListener('pageshow', (event) => {"],
         }
 
         $wired = [
-            'press' => ['ride: () => rideAct(screen.ride()),'],
-            'cancel' => ["cab.addEventListener('cancel', (event) => {", 'rideAct(screen.escape(event.cancelable));'],
-            'cancel-reask' => ['outbound = skipUnlessCabLeaving(outbound, lastFrame?.ride ?? null);'],
-            'pageswap' => ["import { arrival, revealed, skipUnlessCabLeaving } from '../wire/ride-arrival.js';",
-                "window.addEventListener('pageswap', (event) => {\n    outbound = skipUnlessCabLeaving(event.viewTransition, lastFrame?.ride ?? null);\n});"],
-            'pageshow' => ["window.addEventListener('pageshow', (event) => {", 'rideAct(screen.returned());'],
+            'press' => ['ride: () => cab.act(screen.ride()),'],
+            // The entry wires the shared performer under its own prefix, with the last painted frame's ride.
+            'performer' => ["import { ridePage } from '../wire/ride-page.js';", "const cab = ridePage({\n    prefix: 'floor',", '    lastRide: () => lastFrame?.ride ?? null,'],
+            'performed' => ['    cab.perform({'],
+            'cancel' => ["cab.addEventListener('cancel', (event) => {", 'act(screen().escape(event.cancelable));'],
+            'cancel-reask' => ['outbound = skipUnlessCabLeaving(outbound, lastRide());'],
+            'pageswap' => ["import { skipUnlessCabLeaving } from './ride-arrival.js';",
+                "window.addEventListener('pageswap', (event) => {\n        outbound = skipUnlessCabLeaving(event.viewTransition, lastRide());\n    });"],
+            'pageshow' => ["window.addEventListener('pageshow', (event) => {", 'act(screen().returned());'],
             'arrival' => ['const rideArrival = arrival(html, performance.now());', 'screen.arriveByRide(rideArrival);'],
             'lobby' => ["const lobbyHref = document.querySelector('a.floor-home').href;", '    lobby_href: lobbyHref,'],
             'navigation' => ['window.location.assign(ride.route);'],
@@ -816,6 +856,69 @@ window.addEventListener('pageshow', (event) => {"],
             ->get('/floor/aimla')
             ->assertOk()
             ->getContent() ?: '';
+    }
+
+    /** The shared ride performer (card#12113), `wire/ride-page.js`. */
+    private function ridePageJs(): string
+    {
+        return (string) file_get_contents($this->jsRoot().'/wire/ride-page.js');
+    }
+
+    /** The floor view's own source, before Blade renders it. */
+    private function floorView(): string
+    {
+        return (string) file_get_contents(resource_path('views/floor.blade.php'));
+    }
+
+    /**
+     * The cab ids the performer addresses for the prefix the entry wires it under: `cabIds()` run under `node` over the
+     * performer's source as handed in (a control's), the prefix read off the entry's `ridePage({ prefix: … })`.
+     *
+     * @return list<string>
+     */
+    private function cabIds(string $js, string $performer): array
+    {
+        if (preg_match("/ridePage\\(\\{\\s*prefix: '([a-z]+)',/", $js, $m) !== 1) {
+            return [];
+        }
+
+        $dir = (string) tempnam(sys_get_temp_dir(), 'ridepage');
+        unlink($dir);
+        mkdir($dir);
+        file_put_contents($dir.'/ride-page.js', (string) preg_replace('/^import .*$/m', '', $performer));
+        $script = 'const m = await import('.json_encode('file://'.$dir.'/ride-page.js').'); console.log(JSON.stringify(Object.values(m.cabIds('.json_encode($m[1]).'))));';
+        $out = shell_exec('node --input-type=module -e '.escapeshellarg($script).' 2>&1');
+        array_map('unlink', glob($dir.'/*') ?: []);
+        rmdir($dir);
+
+        $ids = json_decode((string) $out, true);
+        $this->assertIsArray($ids, "node could not read the performer's cab ids: {$out}");
+
+        return $ids;
+    }
+
+    /**
+     * card#12113: the view includes the shared cab partial under the `floor` prefix and declares no cab markup of its own,
+     * and the page serves exactly the partial's dialog.
+     *
+     * @return array<string, string>
+     */
+    private function partialDefects(string $view, string $page): array
+    {
+        $defects = [];
+
+        if (substr_count($view, "@include('partials.ride-cab', ['prefix' => 'floor'])") !== 1 || preg_match('/<dialog\b/', $view) === 1) {
+            $defects['partial'] = 'the floor view does not include the shared cab partial once under the floor prefix, or declares a cab of its own';
+        }
+
+        $squash = static fn (string $html): string => trim((string) preg_replace('/\s+/', ' ', $html));
+        $partial = $squash(view('partials.ride-cab', ['prefix' => 'floor'])->render());
+
+        if (preg_match('/<dialog id="floor-cab".*?<\/dialog>/s', $page, $served) !== 1 || $squash($served[0]) !== $partial) {
+            $defects['served'] = 'the page does not serve the cab partial\'s dialog as the partial renders it';
+        }
+
+        return $defects;
     }
 
     private function mainJs(): string

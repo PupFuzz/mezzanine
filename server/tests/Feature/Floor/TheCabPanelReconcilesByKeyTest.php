@@ -323,8 +323,9 @@ class TheCabPanelReconcilesByKeyTest extends TestCase
     private function popupTextPopulationDefects(?array $ids = null, ?array $classes = null): array
     {
         if ($ids === null) {
-            $blade = (string) file_get_contents(resource_path('views/floor.blade.php'));
-            $this->assertSame(1, preg_match('#<section id="floor-cab-panel"[^>]*>(.*?)</section>#s', $blade, $section), 'the floor view has no cab panel section');
+            // The floor's cab is the shared partial under the floor's prefix (card#12113), rendered as the floor view includes it.
+            $blade = view('partials.ride-cab', ['prefix' => 'floor'])->render();
+            $this->assertSame(1, preg_match('#<section id="floor-cab-panel"[^>]*>(.*?)</section>#s', $blade, $section), 'the floor\'s cab has no panel section');
             preg_match_all('/\bid="([^"]+)"/', $section[1], $m);
             $ids = $m[1];
         }

@@ -33,7 +33,8 @@ use Tests\TestCase;
  * The lobby's `INK.door` / `INK.doorEdge` (`public/js/lobby/building-scene.js`) are hex constants the
  * lobby does arithmetic on (`label-paint.js` builds an rgba from `INK.wall`), so they cannot read a CSS
  * custom property; the sheet's `--door` / `--door-edge` are the floor's copies of them, and they must
- * stay equal so the floor's elevator and the lobby's cab read as one building.
+ * stay equal so the floor's elevator and the lobby's cab read as one building. The sheet's `--lobby-mat`
+ * is `INK.mat`'s copy on the same terms (card#12113: the lobby view behind the cab's doors lays it).
  *
  * ⛔ EVERY `color-mix()` HAS A PLAIN FALLBACK, ON THE SHEET AND IN THE PAINTER's STYLE ALIKE (card#12070). A browser
  * without `color-mix()` keeps a mixed declaration that holds `var()` and paints nothing, so each one sits in an
@@ -139,6 +140,12 @@ class ThePageChromeIsOneLinkedStylesheetTest extends TestCase
         $this->assertNotSame($drifted, $sheet, 'the door control\'s anchor is gone — it mutated nothing');
         $this->assertArrayHasKey('door', $this->doorDefects($drifted, $this->buildingSceneJs()),
             'CONTROL (the floor\'s door colour drifted from the lobby\'s) did not bite');
+
+        // card#12113: the lobby view's mat is a copy too.
+        $matDrifted = preg_replace('/--lobby-mat:\s*#[0-9a-f]{6};/i', '--lobby-mat: #ffffff;', $sheet);
+        $this->assertNotSame($matDrifted, $sheet, 'the mat control\'s anchor is gone — it mutated nothing');
+        $this->assertArrayHasKey('door', $this->doorDefects($matDrifted, $this->buildingSceneJs()),
+            'CONTROL (the lobby view\'s mat drifted from the lobby\'s) did not bite');
     }
 
     /** @return array<string, string> */
@@ -199,7 +206,7 @@ class ThePageChromeIsOneLinkedStylesheetTest extends TestCase
         $tokens = $this->rootTokens($sheet);
         $defects = [];
 
-        foreach (['door' => 'door', 'door-edge' => 'doorEdge'] as $token => $ink) {
+        foreach (['door' => 'door', 'door-edge' => 'doorEdge', 'lobby-mat' => 'mat'] as $token => $ink) {
             $this->assertSame(1, preg_match("/^\\s*{$ink}: '(#[0-9a-f]{6})',/mi", $scene, $m), "INK.{$ink} is not in building-scene.js");
 
             if (strtolower($tokens[$token] ?? '') !== strtolower($m[1])) {

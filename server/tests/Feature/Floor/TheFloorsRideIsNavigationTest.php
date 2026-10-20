@@ -29,8 +29,12 @@ use Tests\TestCase;
  * each have their own run, because each is a page shape on which a negative reading ("the page is in some
  * failure state") ended the hold too early in an earlier design (r4's B4-1).
  *
- * ⛔ THE CONTROLS — each REDS plants one defect in a copy of the shipped `floor/floor-screen.js` and watches the
- * named check catch it.
+ * ⛔ THE VIEW BEHIND THE CAB's DOORS IS THE RIDE's `beyond`, ON `scene.ride` (card#12113): the stop the doors open
+ * on — the page's own before the choice, the chosen one from `chosen` on — `office` for a floor and `lobby` for the
+ * lobby. The run's rides choose floors, the current floor and the lobby, so every value is met on this page.
+ *
+ * ⛔ THE CONTROLS — each REDS plants one defect in a copy of the shipped `floor/floor-screen.js`, or of the ride's
+ * state machine it holds, `wire/ride.js` (card#12113 hoisted it there), and watches the named check catch it.
  *
  * ⚠ WHAT A GREEN HERE IS NOT: evidence that a browser performs the ride — the dialog, the view transition, the
  * pixels. That is `tools/design/floor-ride.browser.mjs`'s, hand-run (`tools/design/README.md`).
@@ -284,15 +288,61 @@ class TheFloorsRideIsNavigationTest extends TestCase
     }
 
     /**
-     * § 12's *Ride door motion* is `floor-screen.js`'s `RIDE_DOOR_MS`, its one code home (card#12038) — held equal as
-     * *Elevator leaves* is to `ELEVATOR_DOOR`, so the figure the phase table above reads is the figure that ships.
+     * § 12's *Ride door motion* is `wire/ride.js`'s `RIDE_DOOR_MS`, its one code home (card#12038; hoisted from the floor
+     * screen by card#12113) — held equal as *Elevator leaves* is to `ELEVATOR_DOOR`, so the figure the phase table above
+     * reads is the figure that ships.
      */
     public function test_green_section_12s_ride_door_motion_is_ride_door_ms(): void
     {
-        $source = (string) file_get_contents($this->moduleDir().'/../floor/floor-screen.js');
+        $source = (string) file_get_contents($this->moduleDir().'/ride.js');
 
-        $this->assertSame(1, preg_match('/^export const RIDE_DOOR_MS = (\d+);$/m', $source, $m), 'floor-screen.js exports no RIDE_DOOR_MS');
-        $this->assertSame($this->rideDoorMs(), (int) $m[1], '§ 12\'s *Ride door motion* is not floor-screen.js\'s RIDE_DOOR_MS');
+        $this->assertSame(1, preg_match('/^export const RIDE_DOOR_MS = (\d+);$/m', $source, $m), 'wire/ride.js exports no RIDE_DOOR_MS');
+        $this->assertSame($this->rideDoorMs(), (int) $m[1], '§ 12\'s *Ride door motion* is not wire/ride.js\'s RIDE_DOOR_MS');
+    }
+
+    /**
+     * `scene.ride.beyond` (card#12113, § 4.5's *Through the open doors at the LOBBY is the lobby*): the floor's own stop —
+     * `office` — until the choice, and the chosen stop's view from `chosen` on: `lobby` for the lobby, `office` for a
+     * floor, the current floor's own (`office`) for a stay. Read on every frame of the run that drew a scene under a ride.
+     */
+    public function test_green_the_view_behind_the_doors_is_the_stop_they_open_on(): void
+    {
+        $this->assertSame([], $this->beyondDefects($this->floorRun(self::RIDES)));
+    }
+
+    /** @return list<string> every frame whose `scene.ride.beyond` is not the view of the stop its doors open on */
+    private function beyondDefects(array $result): array
+    {
+        $defects = [];
+        $seen = [];
+
+        foreach ($this->rideFrames($result) as $render) {
+            $ride = $render['frame']['ride'];
+            $scene = $render['frame']['scene']['ride'] ?? null;
+
+            if ($scene === null) {
+                continue;
+            }
+
+            $chosen = in_array($ride['phase'], ['chosen', 'leaving', 'staying'], true);
+            $stop = $chosen ? $ride['chosen']['key'] : $ride['current'];
+            $expected = $stop === null ? 'lobby' : 'office';
+            $actual = $scene['beyond'] ?? null;
+            $seen["{$ride['phase']}:{$expected}"] = true;
+
+            if ($actual !== $expected) {
+                $defects[] = "[{$render['at']} {$ride['phase']}] beyond is ".json_encode($actual)." where the doors open on {$expected}";
+            }
+        }
+
+        // The run must meet both views on the choice, and the floor's own before it, or the reading measured nothing.
+        foreach (['entering:office', 'chosen:lobby', 'leaving:lobby', 'chosen:office', 'staying:office'] as $case) {
+            if (! isset($seen[$case])) {
+                $defects[] = "the run drew no {$case} frame — the view behind the doors was never read there";
+            }
+        }
+
+        return $defects;
     }
 
     /** Every ride method answers `null` out of phase, in every phase the departing page reaches (§ 4.5's guards). */
@@ -552,49 +602,55 @@ class TheFloorsRideIsNavigationTest extends TestCase
     public function test_each_check_goes_red_against_the_defect_it_exists_to_catch(): void
     {
         $screen = '../floor/floor-screen.js';
+        // card#12113: the state machine the screen holds — every phase, guard, timer step and the stops.
+        $ride = 'ride.js';
 
         // RED 1 — the ride's leaves appended to the walks' `scene.doors`.
         $dir = $this->mutatedModules([$screen, "            doors: Object.freeze(this.#inFlight.doors(now)),\n",
-            "            doors: Object.freeze([...this.#inFlight.doors(now), ...(this.#ride === null ? [] : [{ from: 0, to: 4 }])]),\n"]);
+            "            doors: Object.freeze([...this.#inFlight.doors(now), ...(this.#ride.sceneRide(now) === null ? [] : [{ from: 0, to: 4 }])]),\n"]);
         [$with, $without] = $this->withAndWithoutRide(self::RIDES, $dir);
         $this->assertNotSame($this->doorsByRender($without), $this->doorsByRender($with), 'RED 1 (ride leaves in `scene.doors`) did not bite');
 
         // RED 2 — the ride writing a row through the animation set.
-        $dir = $this->mutatedModules([$screen, "        this.#ride = { phase: 'opening',", "        this.#set.displaced(last.floor.key, 'ride', 'ride', 0);\n        this.#ride = { phase: 'opening',"]);
+        $dir = $this->mutatedModules([$screen, '        return this.#ride.press(last);', "        this.#set.displaced(last.floor.key, 'ride', 'ride', 0);\n        return this.#ride.press(last);"]);
         [$with, $without] = $this->withAndWithoutRide(self::RIDES, $dir);
         $this->assertNotSame($without['animation_log'], $with['animation_log'], 'RED 2 (a row through animation-set.js) did not bite');
 
         // RED 3 — the route built from the stop's name.
-        $dir = $this->mutatedModules([$screen, 'chosen: { key: stop.key, name: stop.name, href: stop.href } };',
+        $dir = $this->mutatedModules([$ride, 'chosen: { key: stop.key, name: stop.name, href: stop.href } };',
             'chosen: { key: stop.key, name: stop.name, href: `/floor/${encodeURIComponent(stop.name)}` } };']);
         $routes = array_column(array_column(array_filter($this->acts($this->floorRun(self::RIDES, $dir)), static fn ($a) => $a['act']['act'] === 'opened'), 'answer'), 'route');
         $this->assertNotContains('/floor/zeta#ride', $routes, 'RED 3 (route from the name) did not bite');
 
         // RED 4 — the stops captured at the press.
-        $dir = $this->mutatedModules([$screen, '            stops: this.#stops(),', '            stops: (ride.stops ??= this.#stops()),']);
+        $dir = $this->mutatedModules([$ride, '            stops: this.#stops(),', '            stops: (ride.stops ??= this.#stops()),']);
         $this->assertRedBy(fn () => $this->test_green_the_stops_follow_the_building_and_a_redirect_ends_the_ride_in($dir), 'RED 4 (stops captured at the press)');
 
         // RED 5 — a second ride() accepted; RED 6 — choose() accepted in `chosen`; RED 7 — entered() with no ride, opened() twice.
         foreach ([
-            'RED 5 (a second ride)' => ['        if (this.#ride !== null || last === null', '        if (last === null'],
+            'RED 5 (a second ride)' => ['        if (this.#ride !== null || this.#endsRide(frame)) {', '        if (this.#endsRide(frame)) {'],
             'RED 6 (choose in chosen)' => ["        if (this.#ride?.phase !== 'inside') {\n            return null;\n        }\n\n        const stop",
                 "        if (this.#ride?.phase !== 'inside' && this.#ride?.phase !== 'chosen') {\n            return null;\n        }\n\n        const stop"],
             'RED 7a (entered with no ride)' => ['        if (this.#ride?.phase !== from) {', '        if (this.#ride !== null && this.#ride?.phase !== from) {'],
             'RED 7b (opened twice)' => ["        if (this.#ride?.phase !== 'chosen') {", "        if (this.#ride?.phase !== 'chosen' && this.#ride?.phase !== 'leaving') {"],
-            'RED 20 (arrive_by_ride after a render)' => ['        if (this.#arrivalAsked || this.#lastDrawn !== null || this.#ride !== null) {', '        if (this.#arrivalAsked) {'],
             'RED 21 (cab_closed in entering leaves the ride)' => ["        if (phase === 'entering') {", "        if (phase === 'entering' && false) {"],
         ] as $what => [$from, $to]) {
-            $this->assertNotSame([], $this->guardDefects($this->floorRun(self::IN_FLIGHT, $this->mutatedModules([$screen, $from, $to]))), "{$what} did not bite");
+            $this->assertNotSame([], $this->guardDefects($this->floorRun(self::IN_FLIGHT, $this->mutatedModules([$ride, $from, $to]))), "{$what} did not bite");
         }
 
+        // RED 20 — arrive_by_ride accepted after a render: the screen's half of the guard (the ride's is once, and
+        // never over a ride in flight).
+        $dir = $this->mutatedModules([$screen, "    arriveByRide(arrival) {\n        if (this.#lastDrawn !== null) {", "    arriveByRide(arrival) {\n        if (false) {"]);
+        $this->assertNotSame([], $this->guardDefects($this->floorRun(self::IN_FLIGHT, $dir)), 'RED 20 (arrive_by_ride after a render) did not bite');
+
         // RED 8 — a stay never ending.
-        $dir = $this->mutatedModules([$screen, "        if (this.#ride?.phase !== 'arriving' && this.#ride?.phase !== 'staying') {", "        if (this.#ride?.phase !== 'arriving') {"]);
+        $dir = $this->mutatedModules([$ride, "        if (this.#ride?.phase !== 'arriving' && this.#ride?.phase !== 'staying') {", "        if (this.#ride?.phase !== 'arriving') {"]);
         $this->assertRedBy(fn () => $this->test_green_a_stay_ends_with_no_ride_and_leaves_the_drill_down_alone_in($dir), 'RED 8 (a stay never ending)');
 
         // RED 9 — the ride surviving the sign-in prompt; RED 16 — ride() accepted under it.
         $dir = $this->mutatedModules([$screen, '    return frame.redirect !== null || frame.failure.sign_in !== null || frame.floor === null;', '    return frame.redirect !== null || frame.floor === null;']);
         $this->assertRedBy(fn () => $this->test_green_the_sign_in_prompt_ends_the_ride_and_refuses_the_press_in($dir), 'RED 9 (the ride surviving sign_in)');
-        $dir = $this->mutatedModules([$screen, ' || last.scene === null || endsRide(last)) {', ' || last.scene === null) {']);
+        $dir = $this->mutatedModules([$ride, '        if (this.#ride !== null || this.#endsRide(frame)) {', '        if (this.#ride !== null) {']);
         $this->assertRedBy(fn () => $this->test_green_the_sign_in_prompt_ends_the_ride_and_refuses_the_press_in($dir), 'RED 16 (ride() under sign_in)');
 
         // RED 10 — a motion length not 0 under reduced motion; RED 13 — no door delay on `entering`.
@@ -603,49 +659,57 @@ class TheFloorsRideIsNavigationTest extends TestCase
             'RED 13 (no door delay on entering)' => ['        entering: [fade + door, fade],', '        entering: [fade + door, 0],'],
             'RED 25 (the ride\'s doors at the walks\' loop-frame figure)' => ['    const door = RIDE_DOOR_MS;', '    const door = 2 * fade;'],
         ] as $what => [$from, $to]) {
-            $this->assertRedBy(fn () => $this->test_green_every_phase_length_is_section_12s_in($this->mutatedModules([$screen, $from, $to])), $what);
+            $this->assertRedBy(fn () => $this->test_green_every_phase_length_is_section_12s_in($this->mutatedModules([$ride, $from, $to])), $what);
         }
 
         // RED 11 — a stay that closes the drill-down.
-        $dir = $this->mutatedModules([$screen, "        const stay = this.#ride.chosen.key === this.#ride.current;\n",
-            "        const stay = this.#ride.chosen.key === this.#ride.current;\n\n        if (stay) {\n            this.closePanel();\n        }\n"]);
+        $dir = $this->mutatedModules([$screen, "    opened() {\n        return this.#ride.opened();\n",
+            "    opened() {\n        if (this.#ride.rideFrame(0)?.chosen?.key === this.#lastDrawn?.floor?.key) {\n            this.closePanel();\n        }\n\n        return this.#ride.opened();\n"]);
         $this->assertRedBy(fn () => $this->test_green_a_stay_ends_with_no_ride_and_leaves_the_drill_down_alone_in($dir), 'RED 11 (a stay that closes the drill-down)');
 
         // RED 12 — `scene.ride` attached in `draw()` only: the walk's end and the tick lose it.
-        $dir = $this->mutatedModules([$screen, "            ride: this.#sceneRide(now),\n        });\n    }\n\n    /** One timer at a time",
+        $dir = $this->mutatedModules([$screen, "            ride: this.#ride.sceneRide(now),\n        });\n    }\n\n    /** One timer at a time",
             "        });\n    }\n\n    /** One timer at a time"]);
         $this->assertRedBy(fn () => $this->test_green_scene_ride_is_on_every_scene_producer_in($dir), 'RED 12 (scene.ride from one producer)');
 
         // RED 14 — the flag consumed by the pending frame (r4's "failure render" reading).
         $dir = $this->mutatedModules([$screen, "        if (plain === null) {\n            return null;\n        }\n\n        this.#anchors",
-            "        if (plain === null) {\n            this.#arrival = frame.floor === null ? null : this.#arrival;\n\n            return null;\n        }\n\n        this.#anchors"]);
+            "        if (plain === null) {\n            if (frame.floor === null) {\n                this.#ride.arrive(frame, Infinity);\n            }\n\n            return null;\n        }\n\n        this.#anchors"]);
         $this->assertRedBy(fn () => $this->test_green_the_pending_frame_leaves_the_flag_in($dir), 'RED 14 (the pending frame consumes the flag)');
 
         // RED 15 — `arriving`'s clock taken at `arriveByRide()`.
-        $dir = $this->mutatedModules([$screen, "        if (this.#ride === null && !endsRide(frame) && now <= expiresAt) {\n            this.#ride = { phase: 'arriving', started_at: now,",
-            "        if (this.#ride === null && !endsRide(frame) && now <= expiresAt) {\n            this.#ride = { phase: 'arriving', started_at: expiresAt - CAB_HOLD_MS,"]);
+        $dir = $this->mutatedModules([$ride, "            this.#ride = { phase: 'arriving', started_at: now,", "            this.#ride = { phase: 'arriving', started_at: expiresAt - CAB_HOLD_MS,"]);
         $this->assertRedBy(fn () => $this->test_green_the_first_scene_arrives_in($dir), 'RED 15 (the clock taken at arriveByRide)');
 
         // RED 17 — arrived() refused in `arriving`.
-        $dir = $this->mutatedModules([$screen, "        if (this.#ride?.phase !== 'arriving' && this.#ride?.phase !== 'staying') {", "        if (this.#ride?.phase !== 'staying') {"]);
+        $dir = $this->mutatedModules([$ride, "        if (this.#ride?.phase !== 'arriving' && this.#ride?.phase !== 'staying') {", "        if (this.#ride?.phase !== 'staying') {"]);
         $this->assertRedBy(fn () => $this->test_green_the_first_scene_arrives_in($dir), 'RED 17 (arrived() refused in arriving)');
 
         // RED 19 — a scene drawn after the flag expired arriving.
-        $dir = $this->mutatedModules([$screen, ' && !endsRide(frame) && now <= expiresAt) {', ' && !endsRide(frame)) {']);
+        $dir = $this->mutatedModules([$ride, ' && !this.#endsRide(frame) && now <= expiresAt) {', ' && !this.#endsRide(frame)) {']);
         $this->assertRedBy(fn () => $this->test_green_a_scene_after_the_bound_draws_the_leaves_at_rest_in($dir), 'RED 19 (expiry unchecked)');
 
         // RED 22 — cab_closed in `chosen` not writing `cab`.
-        $dir = $this->mutatedModules([$screen, "        if (phase === 'chosen' || phase === 'leaving') {", "        if (phase === 'leaving') {"]);
+        $dir = $this->mutatedModules([$ride, "        if (phase === 'chosen' || phase === 'leaving') {", "        if (phase === 'leaving') {"]);
         $this->assertRedBy(fn () => $this->test_green_a_cab_the_browser_closes_in($dir), 'RED 22 (cab_closed in chosen unrecorded)');
 
         // RED 23 — the flag consumed by the art-late frame.
         $dir = $this->mutatedModules([$screen, "        if (plain === null) {\n            return null;\n        }\n\n        this.#anchors",
-            "        if (plain === null) {\n            this.#arrival = frame.floor === null ? this.#arrival : null;\n\n            return null;\n        }\n\n        this.#anchors"]);
+            "        if (plain === null) {\n            if (frame.floor !== null) {\n                this.#ride.arrive(frame, Infinity);\n            }\n\n            return null;\n        }\n\n        this.#anchors"]);
         $this->assertRedBy(fn () => $this->test_green_the_art_late_frames_leave_the_flag_in($dir), 'RED 23 (the art-late frame consumes the flag)');
 
         // RED 24 — `arriving` entered by a first scene under the sign-in prompt.
-        $dir = $this->mutatedModules([$screen, ' && !endsRide(frame) && now <= expiresAt) {', ' && now <= expiresAt) {']);
+        $dir = $this->mutatedModules([$ride, ' && !this.#endsRide(frame) && now <= expiresAt) {', ' && now <= expiresAt) {']);
         $this->assertRedBy(fn () => $this->test_green_a_first_scene_under_the_prompt_enters_nothing_in($dir), 'RED 24 (arriving under the prompt)');
+
+        // RED 26 — `beyond` read off the page's own stop rather than the stop the doors open on (the page's route,
+        // which is the painter-side inference § 4.5 forbids); RED 27 — the two views swapped.
+        foreach ([
+            'RED 26 (beyond from the page, not the chosen stop)' => ["beyond: stop === null ? 'lobby' : 'office'", "beyond: ride.current === null ? 'lobby' : 'office'"],
+            'RED 27 (lobby for a floor\'s stop, office for the lobby\'s)' => ["beyond: stop === null ? 'lobby' : 'office'", "beyond: stop === null ? 'office' : 'lobby'"],
+        ] as $what => [$from, $to]) {
+            $this->assertNotSame([], $this->beyondDefects($this->floorRun(self::RIDES, $this->mutatedModules([$ride, $from, $to]))), "{$what} did not bite");
+        }
     }
 
     // ── The GREENs over a planted tree ───────────────────────────────────────────────────────────
