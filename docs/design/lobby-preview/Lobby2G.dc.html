@@ -85,12 +85,21 @@ a{color:inherit}
           <line x1="0" y1="772" x2="273.5" y2="666"></line>
           <line x1="1440" y1="772" x2="1166.5" y2="666"></line>
         </g>
-        <ellipse cx="720" cy="80" rx="80" ry="22" fill="#ffcf7d" fill-opacity="0.22"></ellipse>
-        <ellipse cx="720" cy="77" rx="63" ry="13" fill="#fff6dc" stroke="#f0cfa8" stroke-width="2"></ellipse>
-        <ellipse cx="720" cy="133" rx="68" ry="16" fill="#ffcf7d" fill-opacity="0.2"></ellipse>
-        <ellipse cx="720" cy="131" rx="54" ry="10" fill="#fff6dc" stroke="#f0cfa8" stroke-width="2"></ellipse>
-        <ellipse cx="720" cy="173" rx="58" ry="12" fill="#ffcf7d" fill-opacity="0.18"></ellipse>
-        <ellipse cx="720" cy="172" rx="47" ry="8" fill="#fff6dc" stroke="#f0cfa8" stroke-width="1.5"></ellipse>
+        <!-- the ceiling's recessed panels: an even grid, 4 across × 3 deep, each quad projected from the ceiling's own vanishing point (720, 492.5) — y = 492.5·(1 − s), x = 720 + X·s, s = 1/(1 + Z) with the far wall at Z = 0.6126 -->
+        <g fill="#fff6dc" stroke="#f0cfa8" stroke-width="1.5" stroke-linejoin="round">
+          <polygon points="108.8,22.16 299.8,22.16 339.8,66.88 166.9,66.88"></polygon>
+          <polygon points="452.6,22.16 643.6,22.16 650.9,66.88 478,66.88"></polygon>
+          <polygon points="796.4,22.16 987.4,22.16 962,66.88 789.1,66.88"></polygon>
+          <polygon points="1140.2,22.16 1331.2,22.16 1273.1,66.88 1100.2,66.88"></polygon>
+          <polygon points="208.5,98.89 368.4,98.89 396.8,130.71 249.9,130.71"></polygon>
+          <polygon points="496.2,98.89 656.1,98.89 661.2,130.71 514.3,130.71"></polygon>
+          <polygon points="783.9,98.89 943.8,98.89 925.7,130.71 778.8,130.71"></polygon>
+          <polygon points="1071.6,98.89 1231.5,98.89 1190.1,130.71 1043.2,130.71"></polygon>
+          <polygon points="280.3,154.15 417.7,154.15 438.9,177.89 311.2,177.89"></polygon>
+          <polygon points="527.6,154.15 665,154.15 668.9,177.89 541.1,177.89"></polygon>
+          <polygon points="775,154.15 912.4,154.15 898.9,177.89 771.1,177.89"></polygon>
+          <polygon points="1022.3,154.15 1159.7,154.15 1128.8,177.89 1001.1,177.89"></polygon>
+        </g>
         <!-- a picture on the right wall, a plant in the back right corner, a bench on the left -->
         <polygon points="1253.5,353 1346.1,328.6 1346.1,485.2 1253.5,486.3" fill="#b07a4f"></polygon>
         <polygon points="1262,362 1337,342 1337,475 1262,476" fill="url(#g-pic)"></polygon>
@@ -162,31 +171,31 @@ a{color:inherit}
         </div>
         <!-- the marker row: one marker per held seat in room-key then seat_id order, a disc for a member that draws a character and a ring for an empty chair; the first 12, then the tag -->
         <div style="height: 14px; display: flex; align-items: center; gap: 5px; white-space: nowrap;">
-          <span role="img" aria-label="backend-impl, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
-          <span role="img" aria-label="frontend-impl, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
-          <span role="img" aria-label="infra-impl, stale" style="box-sizing: border-box; width: 12px; height: 12px; border-radius: 6px; border: 3px solid #e2f3fe; background: #fffaf2; box-shadow: 0 0 0 1px #3b2f2a;"></span>
-          <span role="img" aria-label="kanban-pm, blocked" style="width: 12px; height: 12px; border-radius: 6px; background: #f0b455; box-shadow: 0 0 0 1px #3b2f2a;"></span>
-          <span role="img" aria-label="kanban-solo, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
-          <span role="img" aria-label="qa-impl, idle" style="width: 12px; height: 12px; border-radius: 6px; background: #9aa7c0; box-shadow: 0 0 0 1px #3b2f2a;"></span>
-          <span role="img" aria-label="release-impl, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
-          <span role="img" aria-label="sola-pm, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
-          <span role="img" aria-label="test-impl, stalled" style="width: 12px; height: 12px; border-radius: 6px; background: #d97b6c; box-shadow: 0 0 0 1px #3b2f2a;"></span>
-          <span role="img" aria-label="ux-impl, idle" style="width: 12px; height: 12px; border-radius: 6px; background: #9aa7c0; box-shadow: 0 0 0 1px #3b2f2a;"></span>
-          <span role="img" aria-label="bridge-impl, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
-          <span role="img" aria-label="bridge-pm, unknown" style="width: 12px; height: 12px; border-radius: 6px; background: #c9a7e8; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="kanban/backend-impl, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="kanban/frontend-impl, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="kanban/infra-impl, stale" style="box-sizing: border-box; width: 12px; height: 12px; border-radius: 6px; border: 3px solid #e2f3fe; background: #fffaf2; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="kanban/kanban-pm, blocked" style="width: 12px; height: 12px; border-radius: 6px; background: #f0b455; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="kanban/kanban-solo, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="kanban/qa-impl, idle" style="width: 12px; height: 12px; border-radius: 6px; background: #9aa7c0; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="kanban/release-impl, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="kanban/test-impl, stalled" style="width: 12px; height: 12px; border-radius: 6px; background: #d97b6c; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="kanban/ux-impl, idle" style="width: 12px; height: 12px; border-radius: 6px; background: #9aa7c0; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="kanban-bridge/bridge-impl, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="kanban-bridge/bridge-pm, unknown" style="width: 12px; height: 12px; border-radius: 6px; background: #c9a7e8; box-shadow: 0 0 0 1px #3b2f2a;"></span>
+          <span role="img" aria-label="kanban-bridge/bridge-qa, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
           <span style="margin-left: 4px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px; color: #3b2f2a;">+5 more</span>
         </div>
         <!-- the attention line: (a) blocked longest, (b) context at or above 80 %, (c) a call 10 min or longer — each opening with the seat_id -->
         <div style="height: 16px; display: flex; align-items: baseline; gap: 6px; font-size: 13px; line-height: 16px; color: #3b2f2a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-          <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 600;">kanban-pm</span>
+          <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 600;">kanban/kanban-pm</span>
           <span>— waiting on a human since 14:31 (seat clock)</span>
         </div>
         <div style="height: 16px; display: flex; align-items: baseline; gap: 6px; font-size: 13px; line-height: 16px; color: #3b2f2a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-          <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 600;">kanban-solo</span>
+          <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 600;">kanban/kanban-solo</span>
           <span>— context 91.2 %</span>
         </div>
         <div style="height: 16px; display: flex; align-items: baseline; gap: 6px; font-size: 13px; line-height: 16px; color: #3b2f2a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-          <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 600;">sola-pm</span>
+          <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 600;">kanban-bridge/sola-pm</span>
           <span>— Bash running for 12m 05s</span>
         </div>
         <!-- the floor totals -->
@@ -208,7 +217,7 @@ a{color:inherit}
         <div style="height: 14px; display: flex; align-items: center; gap: 5px; white-space: nowrap;">
           <span role="img" aria-label="mezzanine-solo, working" style="width: 12px; height: 12px; border-radius: 6px; background: #57c785; box-shadow: 0 0 0 1px #3b2f2a;"></span>
         </div>
-        <div style="height: 16px; font-size: 13px; line-height: 16px; color: #6b5f58; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">1 card · 1 open call · 2 interns · last activity 12s ago</div>
+        <div style="height: 16px; font-size: 13px; line-height: 16px; color: #6b5f58; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">1 card · 3 open calls · 2 interns · last activity 12s ago</div>
       </section>
     </div>
 
@@ -226,7 +235,6 @@ a{color:inherit}
       <section aria-labelledby="g-event-log" style="box-sizing: border-box; display: flex; flex-direction: column; gap: 3px; padding: 6px 10px; background: #fffaf2; border: 2px solid #c9a873; border-radius: 8px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px; color: #3b2f2a; overflow: hidden;">
         <div style="display: flex; align-items: baseline; gap: 8px;">
           <h3 id="g-event-log" style="margin: 0; font-family: Quicksand, ui-rounded, system-ui, sans-serif; font-size: 14px; font-weight: 700; color: #3b2f2a;">Event log</h3>
-          <a href="#g-event-log" style="margin-left: auto; color: #3b2f2a; text-decoration: underline;">show all</a>
         </div>
         <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">14:23:14 · snapshot applied — 18 desks held</div>
         <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">14:23:00 · feed live — first heartbeat</div>

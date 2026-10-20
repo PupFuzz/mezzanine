@@ -141,12 +141,28 @@ a{color:inherit}
         <rect x="69.08" y="83.97" width="61.84" height="0.62" fill="#c98f63"></rect>
         <line x1="-291.65" y1="122" x2="69.08" y2="78.71" stroke="#e7b98f" stroke-width="1.2"></line>
         <line x1="491.65" y1="122" x2="130.92" y2="78.71" stroke="#e7b98f" stroke-width="1.2"></line>
-        <!-- the ceiling's lamps down the centre line -->
-        <g fill="#fff6dc" stroke="#f0cfa8" stroke-width="0.3">
-          <polygon points="91,42 109,42 108.14,45.17 91.86,45.17"></polygon>
-          <polygon points="94.12,53.46 105.88,53.46 105.49,54.86 94.51,54.86"></polygon>
-          <polygon points="95.85,59.8 104.15,59.8 104.05,60.51 95.95,60.51"></polygon>
-          <polygon points="96.8,63.25 103.2,63.25 103.09,63.68 96.91,63.68"></polygon>
+        <!-- the ceiling's recessed panels: an even grid of 120 × 100 cm panels on 250 cm centres across and 200 cm centres in depth, each quad `at(X, 320, Z)` from the lobby view's own lens (eye 120 cm back); rows nearer than Z = 320 lie above the doorway's head and panels past its jambs are clipped, so only those that reach the doorway are drawn -->
+        <g fill="#fff6dc" stroke="#f0cfa8" stroke-width="0.3" stroke-linejoin="round">
+          <polygon points="53,33.08 83.5,33.08 87,42 63,42"></polygon>
+          <polygon points="116.5,33.08 147,33.08 137,42 113,42"></polygon>
+          <polygon points="69.5,47.79 89.3,47.79 90.9,51.85 74,51.85"></polygon>
+          <polygon points="110.7,47.79 130.5,47.79 126,51.85 109.1,51.85"></polygon>
+          <polygon points="46.9,54.86 61.5,54.86 66,57.17 53,57.17"></polygon>
+          <polygon points="77.4,54.86 92.1,54.86 93,57.17 80,57.17"></polygon>
+          <polygon points="107.9,54.86 122.6,54.86 120,57.17 107,57.17"></polygon>
+          <polygon points="138.5,54.86 153.1,54.86 147,57.17 134,57.17"></polygon>
+          <polygon points="57.8,59.01 69.5,59.01 72.3,60.51 61.8,60.51"></polygon>
+          <polygon points="82.1,59.01 93.7,59.01 94.3,60.51 83.8,60.51"></polygon>
+          <polygon points="106.3,59.01 117.9,59.01 116.2,60.51 105.7,60.51"></polygon>
+          <polygon points="130.5,59.01 142.2,59.01 138.2,60.51 127.7,60.51"></polygon>
+          <polygon points="65,61.74 74.7,61.74 76.7,62.79 67.8,62.79"></polygon>
+          <polygon points="85.1,61.74 94.8,61.74 95.2,62.79 86.3,62.79"></polygon>
+          <polygon points="105.2,61.74 114.9,61.74 113.7,62.79 104.8,62.79"></polygon>
+          <polygon points="125.3,61.74 135,61.74 132.2,62.79 123.3,62.79"></polygon>
+          <polygon points="70.2,63.68 78.4,63.68 79.9,64.46 72.2,64.46"></polygon>
+          <polygon points="87.3,63.68 95.5,63.68 95.8,64.46 88.2,64.46"></polygon>
+          <polygon points="104.5,63.68 112.7,63.68 111.8,64.46 104.2,64.46"></polygon>
+          <polygon points="121.6,63.68 129.8,63.68 127.8,64.46 120.1,64.46"></polygon>
         </g>
         <!-- the daylight the doors and the two windows lay on the floor -->
         <polygon points="92.58,84.59 107.42,84.59 111.56,86.94 88.44,86.94" fill="#ffffff" fill-opacity="0.32"></polygon>
