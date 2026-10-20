@@ -42,6 +42,17 @@ class LobbyNode extends Node {
     get href() { return this.attrs.href ?? null; }
 
     prepend(...nodes) { for (const n of nodes.reverse()) { n.parentNode = this; this.children.unshift(n); } }
+
+    // An append moves a node: it leaves the parent it had.
+    append(...nodes) { for (const n of nodes) { n.parentNode?.children && n.parentNode !== this && n.parentNode.children.includes(n) && n.parentNode.children.splice(n.parentNode.children.indexOf(n), 1); n.parentNode = this; this.children.push(n); } }
+
+    remove() { const p = this.parentNode; if (p !== null) { p.children.splice(p.children.indexOf(this), 1); this.parentNode = null; } }
+
+    get firstElementChild() { return this.children[0] ?? null; }
+
+    get lastChild() { return this.children.at(-1) ?? null; }
+
+    get childNodes() { return [...this.children]; }
 }
 
 globalThis.document = {
@@ -163,7 +174,23 @@ const scaled = (camera) => {
     return { ...layer.style.props };
 };
 
+// A re-render over the same floors (the 1 s tick's, or a render's): the list rendered from `rerender[0]`, its first plaque's
+// link marked, then rendered from `rerender[1]` — whether that link is the same element, and the list as it then stands.
+let rerendered = null;
+
+if (payload.rerender !== undefined) {
+    const list = new LobbyNode('ol');
+
+    renderDirectory(document, list, { floors: payload.rerender[0], unclaimed: [] });
+    const first = list.children[0]?.children[0]?.children[0] ?? null;
+
+    if (first !== null) first.marked = true;
+    renderDirectory(document, list, { floors: payload.rerender[1], unclaimed: [] });
+    rerendered = { kept: list.children[0]?.children[0]?.children[0]?.marked === true, list: tree(list) };
+}
+
 const directoryOut = {
+    rerendered,
     plaques,
     unclaimed,
     empty: tree(emptyList),

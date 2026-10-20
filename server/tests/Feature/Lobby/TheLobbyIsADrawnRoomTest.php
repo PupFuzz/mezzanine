@@ -61,6 +61,15 @@ class TheLobbyIsADrawnRoomTest extends TestCase
         $this->assertSame([], $this->unclaimedDefects($this->paint([], [['install_id' => 'aimla', 'href' => '/floor/aimla', 'held' => 1]])['directory']));
     }
 
+    /**
+     * § 4.1: a re-render over the same floors — every render's, and the 1 s tick's — brings each plaque up to date in place:
+     * its link is the same element, so the keyboard's focus on it survives, and every row reads the new figures.
+     */
+    public function test_green_a_re_render_keeps_the_plaques_link_and_redraws_its_rows(): void
+    {
+        $this->assertSame([], $this->rerenderDefects($this->plaquesOf('lobby_markers')));
+    }
+
     /** § 4.1: the one writer of the counter-scale, the boxes at their rects while the room is drawn, and nothing before it. */
     public function test_green_the_text_is_counter_scaled_by_one_writer_inside_boxes_on_the_board(): void
     {
@@ -71,6 +80,17 @@ class TheLobbyIsADrawnRoomTest extends TestCase
     public function test_green_the_directory_scrolls_inside_its_box_and_no_line_wraps(): void
     {
         $this->assertSame([], $this->sheetDefects($this->sheet(), $this->lobbyPage()));
+    }
+
+    /**
+     * § 4.1: the lobby page sets no text size of its own — no second stylesheet, no style block or attribute sizing text,
+     * and on the page chrome sheet no text size on the root, the body, `*` or a tag `directory.js` builds, and none with
+     * `!important` — so the directory's `1rem` is the viewer's body text size. (Carried from the plate label's check, card#7343,
+     * when card#12113 retired the plate.)
+     */
+    public function test_green_the_lobby_page_sets_no_text_size_of_its_own(): void
+    {
+        $this->assertSame([], $this->baseDefects($this->lobbyPage(), $this->sheet()));
     }
 
     // ── RED ──────────────────────────────────────────────────────────────────────────────────
@@ -118,6 +138,14 @@ class TheLobbyIsADrawnRoomTest extends TestCase
         }
     }
 
+    /** A re-render that rebuilds every plaque: the focused link is removed, and the keyboard's place with it, every second. */
+    public function test_red_a_re_render_that_rebuilds_the_plaques(): void
+    {
+        $dir = $this->mutatedModules(['../lobby/directory.js', '    const same = summary.floors.length > 0 && held.length === rows.length', '    const same = false && held.length === rows.length']);
+
+        $this->assertNotSame([], $this->rerenderDefects($this->plaquesOf('lobby_markers'), dirname($dir)), 'RED (a re-render rebuilding every plaque) did not bite');
+    }
+
     public function test_red_a_counter_scale_that_does_not_invert_the_zoom(): void
     {
         $dir = $this->mutatedModules(['../lobby/directory.js', "    layer.style.setProperty('--lobby-scale', String(1 / camera.zoom));", "    layer.style.setProperty('--lobby-scale', String(camera.zoom));"]);
@@ -151,6 +179,32 @@ class TheLobbyIsADrawnRoomTest extends TestCase
         $undeclared = str_replace(' data-camera-scrolls>', '>', $page);
         $this->assertNotSame($undeclared, $page);
         $this->assertNotSame([], $this->sheetDefects($sheet, $undeclared), 'RED (a directory that does not declare it scrolls) did not bite');
+    }
+
+    /** A page or a sheet that sets its own text size — `1rem` is then no longer the body text size. */
+    public function test_red_a_page_that_sets_its_own_text_size(): void
+    {
+        $html = $this->lobbyPage();
+        $sheet = $this->sheet();
+
+        foreach ([
+            'a second stylesheet' => '<link rel="stylesheet" href="/build/app.css">',
+            'a style block' => '<style>body { font-size: 14px }</style>',
+            'a style attribute' => '<p style="font-size: 14px">',
+            'an unquoted style attribute' => '<p style=font-size:14px>',
+        ] as $what => $tag) {
+            $planted = str_replace('<main>', "<main>{$tag}", $html);
+            $this->assertNotSame($planted, $html, "the {$what} RED's anchor is gone — it mutated nothing");
+            $this->assertNotSame([], $this->baseDefects($planted, $sheet), "RED ({$what}) did not bite");
+        }
+
+        foreach ([
+            'a size on the body' => "\nbody { font-size: 14px; }\n",
+            'a size on a tag the directory builds' => "\nspan { font-size: 14px; }\n",
+            'a size with !important' => "\n.anything { font-size: 14px !important; }\n",
+        ] as $what => $rule) {
+            $this->assertNotSame([], $this->baseDefects($html, $sheet.$rule), "RED ({$what}) did not bite");
+        }
     }
 
     // ── the measurements ───────────────────────────────────────────────────────────────────────
@@ -342,6 +396,28 @@ class TheLobbyIsADrawnRoomTest extends TestCase
     }
 
     /** @return list<string> */
+    private function rerenderDefects(array $plaques, ?string $jsRoot = null): array
+    {
+        // The second render: the same floors with every plaque's totals moved on, as a later clock moves its ages.
+        $later = array_map(static function (array $p): array {
+            $p['floor_totals']['text'] .= ' (later)';
+            $p['accessible_name'] .= ' (later)';
+
+            return $p;
+        }, $plaques);
+        $payload = escapeshellarg((string) json_encode(['rerender' => [$plaques, $later]], JSON_UNESCAPED_UNICODE));
+        $out = [];
+        exec('echo '.$payload.' | node '.escapeshellarg(self::PROBE).($jsRoot === null ? '' : ' --js '.escapeshellarg($jsRoot)).' 2>&1', $out, $rc);
+        $this->assertSame(0, $rc, "the room probe failed:\n".implode("\n", $out));
+        $r = json_decode(implode("\n", $out), true)['directory']['rerendered'];
+
+        return [
+            ...($r['kept'] ? [] : ['a re-render replaced the plaque\'s link — the keyboard\'s focus on it is lost']),
+            ...$this->plaqueDefects($later, $r['list']['children']),
+        ];
+    }
+
+    /** @return list<string> */
     private function unclaimedDefects(array $directory): array
     {
         $defects = [];
@@ -421,6 +497,85 @@ class TheLobbyIsADrawnRoomTest extends TestCase
         if (preg_match('#<section id="lobby-directory" aria-labelledby="lobby-directory-heading">\s*<div class="lobby-face lobby-directory-face">\s*<h3 id="lobby-directory-heading">(.*?)</h3>\s*<ol id="lobby-floors" class="lobby-plaques" aria-labelledby="lobby-directory-heading" data-camera-scrolls>#s', $page, $m) !== 1
             || trim(strip_tags($m[1])) !== 'FLOOR DIRECTORY — counts the seats this client holds') {
             $defects[] = 'the directory is not its HTML title over a list it names, declaring that it scrolls';
+        }
+
+        return $defects;
+    }
+
+    /**
+     * What sets the lobby page's text size other than the viewer: a stylesheet besides the page chrome sheet, a style
+     * block or attribute sizing text, or a sheet rule sizing the root, the body, `*` or a tag `directory.js` builds, or
+     * sizing anything `!important`.
+     *
+     * @return list<string>
+     */
+    private function baseDefects(string $html, string $sheet): array
+    {
+        $defects = [];
+
+        preg_match_all('/<link\b[^>]*\brel\s*=\s*["\']?stylesheet[^>]*>/i', $html, $links);
+
+        foreach ($links[0] as $link) {
+            if (preg_match('#href="[^"]*/css/mezzanine\.css\?v=\d+"#', $link) !== 1) {
+                $defects[] = "the lobby page loads a stylesheet ({$link}) — re-derive the body text size from it";
+            }
+        }
+
+        preg_match_all('#<style\b[^>]*>(.*?)</style>#is', $html, $blocks);
+
+        foreach ($blocks[1] as $block) {
+            foreach ($this->sizeRuleDefects($block) as $defect) {
+                $defects[] = "the lobby page's style block: {$defect}";
+            }
+        }
+
+        preg_match_all('/\bstyle\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'>]+))/i', $html, $m, PREG_SET_ORDER | PREG_UNMATCHED_AS_NULL);
+
+        foreach ($m as $attribute) {
+            $style = $attribute[1] ?? $attribute[2] ?? $attribute[3];
+
+            if (preg_match('/\bfont(-size)?\s*:/i', $style) === 1) {
+                $defects[] = "the lobby page sets a font size in a style attribute (`{$style}`)";
+            }
+        }
+
+        if (! str_contains($html, 'id="lobby-directory"')) {
+            $defects[] = 'the page read is not the lobby — it has no directory';
+        }
+
+        return [...$defects, ...$this->sizeRuleDefects($sheet)];
+    }
+
+    /** @return list<string> */
+    private function sizeRuleDefects(string $css): array
+    {
+        preg_match_all("/el\\(doc, '([a-z0-9]+)'/", (string) file_get_contents($this->jsRoot().'/lobby/directory.js'), $t);
+        $tags = array_values(array_unique($t[1]));
+
+        $this->assertContains('a', $tags, 'directory.js builds no tags this parse can read — the tag clause reads nothing');
+
+        $sized = [...$tags, 'html', 'body', ':root', '*'];
+        $defects = [];
+
+        preg_match_all('/([^{}]+)\{([^{}]*)\}/', (string) preg_replace('#/\*.*?\*/#s', '', $css), $rules, PREG_SET_ORDER);
+
+        foreach ($rules as [, $selectors, $body]) {
+            if (preg_match('/(^|;|\s)font(-size)?\s*:/i', $body) !== 1) {
+                continue;
+            }
+
+            if (preg_match('/font(-size)?\s*:[^;]*!\s*important/i', $body) === 1) {
+                $defects[] = "a text size with !important (`".trim($selectors).'`)';
+            }
+
+            foreach (explode(',', $selectors) as $selector) {
+                $parts = preg_split('/[\s>+~]+/', trim($selector)) ?: [];
+                $subject = (string) end($parts);
+
+                if (preg_match('/^(\*|:root|[a-z][a-z0-9]*)/i', $subject, $ty) === 1 && in_array(strtolower($ty[1]), $sized, true)) {
+                    $defects[] = "a text size on `{$ty[1]}` (`".trim($selector).'`) — the directory\'s text is then not the body text size';
+                }
+            }
         }
 
         return $defects;

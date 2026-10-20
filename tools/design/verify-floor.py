@@ -79,10 +79,10 @@ with the document it is checking, and it survives exactly the pass that falsifie
                                                timestamp in their own span and the corrected clock
                                                their own prose states
   G13 an empty-desk Never cell, scoped          the comment block at G13 below
-  G14 the lobby label's one statement           a label-contract term outside section 4.1's claim
-                                               region (lead-in through the last claim) or in the
-                                               card#7343 CHANGELOG bullet; a section 4.1 claim that
-                                               names no check, or names one that does not exist
+  G14 the lobby directory's one statement       a directory-contract term outside section 4.1's claim
+                                               region (lead-in through the last claim) or in a
+                                               card#7343 or card#12113 CHANGELOG bullet; a section 4.1
+                                               claim that names no check, or names one that does not exist
 
 Two things are NOT mechanizable and say so in the output rather than reporting a clean over a
 population they never measured (canon: a clean result over an unnamed population reports where the
@@ -3373,16 +3373,18 @@ else:
                             "absolute at the very row that cites the scoped section as its proof")
 
 
-# ---- G14. the lobby's plate label has ONE statement, and every claim in it names what holds it ----
+# ---- G14. the lobby directory's text has ONE statement, and every claim in it names what holds it ----
 #
-# card#7343 r6's fix round.  Section 4.1 is the only statement of what a lobby plate's label does.
-# Every round of card#7343 before it re-wrote that contract in prose certified by its writer, and a
-# copy elsewhere -- Appendix B row 16, decisions 37 and 38, the sky paragraph, the CHANGELOG entry --
-# went false on each round the label changed.  Two legs, both re-derived on every run:
+# card#7343 r6's fix round, for the plate's label; card#12113 re-aimed it at the directory plaque that
+# replaced the plate.  Section 4.1 is the only statement of what the directory's text does.  Every round
+# of card#7343 before r6 re-wrote the plate's contract in prose certified by its writer, and a copy
+# elsewhere -- Appendix B row 16, decisions 37 and 38, the sky paragraph, the CHANGELOG entry -- went
+# false on each round the label changed.  Two legs, both re-derived on every run:
 #
-#   (a) NO COPY.  The label-contract vocabulary below must not appear in this document outside
-#       section 4.1's claim region -- the `**The plate label.**` lead-in through the last numbered
-#       claim -- nor in any `- **card#7343**` bullet of docs/CHANGELOG.md or docs/changelog/.
+#   (a) NO COPY.  The contract's vocabulary below -- the mechanism's own names, which the room paragraph
+#       and every pointer can do without -- must not appear in this document outside section 4.1's claim
+#       region -- the `**The directory plaque.**` lead-in through the last numbered claim -- nor in any
+#       `- **card#7343**` or `- **card#12113**` bullet of docs/CHANGELOG.md or docs/changelog/.
 #       A POINTER to section 4.1 needs none of these words; there is deliberately no exemption for
 #       a sentence that links to section 4.1, because the copy this leg exists against (row 16's,
 #       before r6) restated the contract AND linked to it.
@@ -3396,22 +3398,20 @@ else:
 # paraphrase that uses no listed term; an unnumbered bullet inside the claim region (exempt with it);
 # and code or test docblocks, tools/design/README.md and the tool headers, which this leg never reads.
 G14_TERMS = re.compile(
-    r"LABEL_[A-Z_]+|--label-[a-z-]+|\bshowLabels\b|\bsideFor\b|\blinesFor\b|\bLINE_PAD\b"
-    r"|label-paint\.js|plate-row\.js|clip-path|outline-offset|text-decoration"
-    r"|(?i:beside the building|summary link|\bbacking\b|\breads? over\b|the elevator is here"
-    r"|ellipsiz\w*|body text size|\bhalo\b|warm gold|three-line clip)")
+    r"--lobby-zoom|--lobby-scale|\bshowDirectory\b|\bboxStyles\b|data-camera-scrolls"
+    r"|\bshowDirectoryPlacementDefects\b|\bpaintDirectory\b|\bpaintScene\b|white-space: nowrap")
 G14_ANCHOR = "41-the-lobby--the-building-summary"
 g14_head = BY_ANCHOR.get(G14_ANCHOR)
 g14_hits, g14_bullets, g14_claims, g14_refs, g14_span = [], 0, [], 0, (0, 0)
 if g14_head is None:
-    fail.append(f"G14: no section anchored `{G14_ANCHOR}` — the label contract's one statement was "
+    fail.append(f"G14: no section anchored `{G14_ANCHOR}` — the directory contract's one statement was "
                 f"not found, so neither leg could run")
 else:
-    # The exemption is the claim region alone: from the `**The plate label.**` lead-in through the last
+    # The exemption is the claim region alone: from the `**The directory plaque.**` lead-in through the last
     # line of the last numbered claim.  The rest of section 4.1 (the table, the sky paragraph) is scanned.
     # A section with no lead-in exempts nothing, so every claim's own vocabulary reds below.
     for i in range(g14_head[3], g14_head[4]):
-        if lines[i].startswith("**The plate label.**"):
+        if lines[i].startswith("**The directory plaque.**"):
             j, last = i, i
             while j < g14_head[4]:
                 if re.match(r"^\d+\. ", lines[j]):
@@ -3433,7 +3433,7 @@ else:
         src = path.read_text().split("\n")
         i = 0
         while i < len(src):
-            if not src[i].startswith("- **card#7343**"):
+            if not src[i].startswith(("- **card#7343**", "- **card#12113**")):
                 i += 1
                 continue
             g14_bullets += 1
@@ -3445,11 +3445,11 @@ else:
                     g14_hits.append(f"{path.relative_to(ROOT)} L{k + 1}: `{m.group(0)}`")
             i = j
     if g14_bullets == 0:
-        fail.append("G14: no `- **card#7343**` bullet in docs/CHANGELOG.md or docs/changelog/ — leg (a)'s "
-                    "CHANGELOG half read nothing")
+        fail.append("G14: no `- **card#7343**` or `- **card#12113**` bullet in docs/CHANGELOG.md or docs/changelog/ — "
+                    "leg (a)'s CHANGELOG half read nothing")
     for h in g14_hits:
-        fail.append(f"G14: a label-contract term outside section 4.1's claim region — {h}; the contract is section "
-                    f"4.1's alone, so point at it instead")
+        fail.append(f"G14: a directory-contract term outside section 4.1's claim region — {h}; the contract is "
+                    f"section 4.1's alone, so point at it instead")
 
     body = lines[g14_head[3]:g14_head[4]]
     aliases = dict(re.findall(r"\*\*([A-Z])\*\* is `([^`]+)`", "\n".join(body)))
@@ -3639,9 +3639,9 @@ print(f"G13 the empty-desk Never cells, scoped to the client's own confirmation 
       f"{sorted(s for s, ok in g13_seen.items() if ok)}; Appendix A's U5 discharge cell scoped: "
       f"{g13_u5}. The U5 leg is why this is not two cells: a gate reading only 7.1's table returned "
       f"CLEAN over the same obligation published absolutely one appendix away")
-print(f"G14 the lobby's plate label, one statement: {len(g14_claims)} numbered claims in section 4.1, "
-      f"{g14_refs} check references resolved; label-contract terms outside it — in this document and in "
-      f"{g14_bullets} card#7343 CHANGELOG bullet(s) — {len(g14_hits)}; exempt: FLOOR.md "
+print(f"G14 the lobby directory's text, one statement: {len(g14_claims)} numbered claims in section 4.1, "
+      f"{g14_refs} check references resolved; directory-contract terms outside it — in this document and in "
+      f"{g14_bullets} card#7343 / card#12113 CHANGELOG bullet(s) — {len(g14_hits)}; exempt: FLOOR.md "
       f"L{g14_span[0] + 1}-L{g14_span[1]}, the claim region. NOT MECHANIZED: whether a claim is true, and "
       f"whether the check it names asserts it; a paraphrase with no listed term; an unnumbered bullet "
       f"inside the claim region; code and test docblocks, tools/design/README.md and the tool headers")

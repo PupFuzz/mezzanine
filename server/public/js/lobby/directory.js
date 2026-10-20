@@ -186,9 +186,41 @@ export function unclaimedRow(doc, room) {
 }
 
 /**
+ * The plaque `old` brought up to `fresh` IN PLACE, keeping its link element — the one a keyboard focuses — and its name
+ * row: the link's href, name and text are rewritten, the name row's other parts and every other row replaced. A focused
+ * link is never removed from the document, so a re-render (the 1 s tick's included) never takes the keyboard's focus.
+ */
+function patchPlaque(old, fresh) {
+    const [oldHead] = old.children;
+    const [freshHead, ...rows] = [...fresh.children];
+    const link = oldHead.firstElementChild;
+    const freshLink = freshHead.firstElementChild;
+
+    link.href = freshLink.href;
+    link.setAttribute('aria-label', freshLink.getAttribute('aria-label'));
+    link.replaceChildren(...freshLink.childNodes);
+
+    while (oldHead.lastChild !== link) {
+        oldHead.lastChild.remove();
+    }
+
+    oldHead.append(...[...freshHead.children].slice(1));
+
+    while (old.lastChild !== oldHead) {
+        old.lastChild.remove();
+    }
+
+    old.append(...rows);
+}
+
+/**
  * The directory's list for one summary: a plaque per floor, in the model's order, or under § 9 F17 the snapshot's
  * installs unclaimed — and, with neither, the fleet's having none IN WORDS, because an empty list and a lobby that
  * failed to draw are the same pixels.
+ *
+ * ⛔ A RE-RENDER KEEPS THE KEYBOARD's PLACE. Where the list already holds a plaque for every floor, in the same order, each
+ * is brought up to date in place (`patchPlaque()`), so a focused plaque link stays focused across every render and every
+ * 1 s tick, and the list's scroll stays where the viewer left it. Any other change rebuilds the list.
  *
  * @param {Document} doc the page's `document`, or the probe's stand-in
  * @param {Element} list the plaques' list, `#lobby-floors`
@@ -204,5 +236,15 @@ export function renderDirectory(doc, list, summary) {
         rows.push(el(doc, 'li', 'lobby-plaque none', 'no installs are provisioned — the fleet reports none'));
     }
 
-    list.replaceChildren(...rows);
+    const held = [...list.children];
+    const keys = (items) => items.map((li) => (li.className === 'lobby-plaque' ? li.dataset.floor : null));
+    const same = summary.floors.length > 0 && held.length === rows.length && keys(held).every((k, i) => k !== null && k === keys(rows)[i]);
+
+    if (!same) {
+        list.replaceChildren(...rows);
+
+        return;
+    }
+
+    held.forEach((li, i) => patchPlaque(li, rows[i]));
 }

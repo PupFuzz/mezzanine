@@ -31,8 +31,7 @@ use Tests\TestCase;
  *
  * ⛔ THE ELEVATOR's TWO COLOURS ARE COPIES, AND THIS IS THEIR DRIFT CHECK (design review r3 MINOR-7).
  * The lobby's `INK.door` / `INK.doorEdge` (`public/js/lobby/building-scene.js`) are hex constants the
- * lobby does arithmetic on (`label-paint.js` builds an rgba from `INK.wall`), so they cannot read a CSS
- * custom property; the sheet's `--door` / `--door-edge` are the floor's copies of them, and they must
+ * lobby's room paints as SVG presentation attributes, which read no CSS custom property; the sheet's `--door` / `--door-edge` are the floor's copies of them, and they must
  * stay equal so the floor's elevator and the lobby's cab read as one building. The sheet's `--lobby-mat`
  * is `INK.mat`'s copy on the same terms (card#12113: the lobby view behind the cab's doors lays it).
  *

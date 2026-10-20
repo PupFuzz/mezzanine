@@ -35,7 +35,7 @@ use Tests\TestCase;
  * `--cab-aspect`. That the whole cab is then IN THE WINDOW is a browser's to measure: `tools/design/floor-ride.browser.mjs`'s
  * `cab-fit` row, run by hand.
  *
- * ⛔ THE CAB IS A ROOM IN DEPTH (card#12051): a one-point perspective of § 12's *Cab interior* (`painter.js`'s `CAB`
+ * ⛔ THE CAB IS A ROOM IN DEPTH (card#12051): a one-point perspective of § 12's *Cab interior* (`cab-paint.js`'s `CAB`
  * and `LANDING`, held equal to that row here) — a space taller than it is wide, the back wall carrying the door where
  * the row's eye puts it and inset on every side of the cab's opening, two side walls each a trapezoid whose far edge is shorter than its near one, a
  * ceiling over the back wall and a floor under it, each painted by its class from `--cab-frame`, never inline, and each
@@ -156,7 +156,7 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
         $this->assertSame([], $this->lobbyDefects($this->run_()));
     }
 
-    /** § 12's *Lobby view* row is `painter.js`'s `LOBBY_VIEW`, figure for figure. */
+    /** § 12's *Lobby view* row is `cab-paint.js`'s `LOBBY_VIEW` (re-exported by `painter.js`), figure for figure. */
     public function test_green_section_12s_lobby_view_is_lobby_view(): void
     {
         $this->assertSame([], $this->lobbyViewDefects($this->run_()));
@@ -168,7 +168,7 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
         $this->assertSame([], $this->themeDefects($this->run_()));
     }
 
-    /** § 12's *Office view* row is `painter.js`'s `OFFICE`, figure for figure. */
+    /** § 12's *Office view* row is `cab-paint.js`'s `OFFICE` (re-exported by `painter.js`), figure for figure. */
     public function test_green_section_12s_office_view_is_office(): void
     {
         $this->assertSame(1, preg_match('/^\| \*\*Office view\*\* \| \*\*(\d+) × (\d+) × (\d+) cm\*\* wide × deep × high, its left wall (\d+) cm left of the door\'s centre line, the eye (\d+) cm from the doorway \|/m', $this->floorMd(), $m),
@@ -178,7 +178,7 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
     }
 
     /**
-     * § 12's *Cab interior* row is `painter.js`'s `CAB` and `LANDING`, figure for figure — the cab's width, the rider's eye
+     * § 12's *Cab interior* row is `cab-paint.js`'s `CAB` and `LANDING`, figure for figure — the cab's width, the rider's eye
      * (its height, its distance from the doors' wall and the frame's from it) included (card#12071).
      */
     public function test_green_section_12s_cab_interior_is_cab(): void

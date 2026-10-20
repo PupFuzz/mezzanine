@@ -358,7 +358,7 @@ function elevator() {
 
 /**
  * THE ELEVATOR's CAB (§ 4.5, card#11795) — the page's `#floor-cab` dialog, wired to the screen's ride by the module
- * both pages share (card#12113). The drawing is `painter.js`'s `paintCab()`, from the frame's `scene.ride`, once the
+ * both pages share (card#12113). The drawing is `cab-paint.js`'s `paintCab()` (the painter's own), from the frame's `scene.ride`, once the
  * painter has answered.
  */
 const cab = ridePage({

@@ -754,7 +754,7 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
                 $defects[] = sprintf('offer %d (%s): a zoom button is %s', $i, $framed ? 'framed' : 'nothing framed', $framed ? 'hidden' : 'shown');
             }
 
-            // card#7343 c7692 item 2: the page's framing control — Fit the floor, Whole building — with them.
+            // card#7343 c7692 item 2: the page's framing control — Fit the floor, Fit the lobby — with them.
             if ($entry['fit_hidden'] === $framed) {
                 $defects[] = sprintf('offer %d (%s): the framing control is %s', $i, $framed ? 'framed' : 'nothing framed', $framed ? 'hidden' : 'shown');
             }

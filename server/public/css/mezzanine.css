@@ -12,14 +12,14 @@
  * that is not declared below resolves to nothing, so the same test reds on one.
  *
  * ⛔ `--door` / `--door-edge` / `--lobby-mat` ARE COPIES OF THE LOBBY's `INK.door` / `INK.doorEdge` / `INK.mat`
- * (`public/js/lobby/building-scene.js`), which the lobby keeps as hex because it does arithmetic on its
- * palette; the floor's elevator (card#11045 PR-D) and the lobby view behind the cab's doors (card#12113) read
- * these, and the same test reds when they drift.
+ * (`public/js/lobby/building-scene.js`), which the lobby keeps as hex because its room is SVG shape data painted as
+ * presentation attributes, which read no custom property; the floor's elevator (card#11045 PR-D), the lobby room's
+ * leaves and the lobby view behind the cab's doors (card#12113) read these, and the same test reds when they drift.
  *
- * ⛔ NO TEXT SIZE ON `:root`, `html`, `body`, `*` OR ON ANY TAG A LOBBY PLATE's LABEL IS BUILT FROM, AND
- * NO `!important` TEXT SIZE. A plate's label is `1rem`, which must be the body text size
- * (§ 4.1; `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest` reads this sheet and reds on
- * each). Text sizes below are set on classes and ids, and on headings, summaries and controls.
+ * ⛔ NO TEXT SIZE ON `:root`, `html`, `body`, `*` OR ON ANY TAG THE LOBBY DIRECTORY IS BUILT FROM, AND NO
+ * `!important` TEXT SIZE. The directory's face is `1rem`, which must be the body text size (§ 4.1;
+ * `Tests\Feature\Lobby\TheLobbyIsADrawnRoomTest` reads this sheet and reds on each). Text sizes below are set on
+ * classes and ids, and on headings, summaries and controls.
  *
  * ⛔ THE FLOOR's DRAWING HEIGHT IS ONE MECHANISM, A FLEX COLUMN: on the floor page `main` is a column at
  * least `100dvh − --reveal` tall, and the room's stage (`#floor-drawing`, the gesture hint's row under it,
@@ -486,11 +486,13 @@ main > section.lobby {
     text-overflow: ellipsis;
 }
 
+/* The name keeps its room: the rooms line gives way first, then the agents and desks; a name wider than the row is cut. */
 .lobby .lobby-plaque-name {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    flex: 0 1 auto;
+    flex: 0 0 auto;
+    max-width: 100%;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -513,7 +515,7 @@ main > section.lobby {
 }
 
 .lobby .lobby-plaque-rooms {
-    flex: 0 1 auto;
+    flex: 0 5 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -521,7 +523,10 @@ main > section.lobby {
 }
 
 .lobby .lobby-plaque-staffing {
-    flex: none;
+    flex: 0 3 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     margin-left: auto;
     font-weight: 600;
 }
@@ -600,6 +605,7 @@ main > section.lobby {
 .lobby .lobby-reading h3 {
     margin: 0;
     font-size: 1rem;
+    color: inherit;
 }
 
 .lobby .lobby-reading p,
@@ -919,7 +925,7 @@ main > section.lobby {
  *
  * ⛔ THE POPUP IS THE ELEVATOR's OWN BUTTON PANEL, IN THE HOUSE THEME's ELEVATOR PALETTE, AND THIS SHEET
  * HOLDS NO COPY OF IT. `--cab-frame` and `--cab-lamp` are set on the dialog from the theme module's
- * `PALETTE.elevator` (`painter.js`'s `cabTheme()`, which also marks the dialog `data-themed`); the defaults
+ * `PALETTE.elevator` (`floor/cab-paint.js`'s `cabTheme()`, which also marks the dialog `data-themed`); the defaults
  * below are only what a theme that did not load leaves, the same tokens the painter's own fallback drew. Its
  * body is the frame, its words the room's ink, a stop's button the building's door and door edge (`--door` /
  * `--door-edge`, the leaves' colours), the current floor's call button the lamp.

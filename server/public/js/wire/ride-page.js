@@ -10,7 +10,7 @@
  * which this file has the page paint `screen.rideView()` (`act()`) — never a render, so no step of the ride waits on
  * the render's awaits. ONE PAGE RULE performs the phases: `perform()` compares the frame's ride phase with the last one
  * performed and, on a change, performs that phase's entry once — the cab dialog, its fades, the cab's drawing
- * (`floor/painter.js`'s `paintCab()`, handed in), the ride's one timer (armed at one site, the previous cancelled), the
+ * (`floor/cab-paint.js`'s `paintCab()`, handed in), the ride's one timer (armed at one site, the previous cancelled), the
  * navigation to the screen's route — or, on a change to no ride, the teardown. A phase of no length
  * (`prefers-reduced-motion`) is performed at once.
  *

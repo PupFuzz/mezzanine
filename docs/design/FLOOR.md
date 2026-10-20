@@ -1122,14 +1122,14 @@ no fact and are not [§ 12](#12-every-number-and-where-it-comes-from) rows — t
   in flight, refusing a press then — exactly the floor's drawn elevator
   ([§ 4.5](#45-the-viewport-rule-and-the-camera)'s floor's ride, card#11795), through the same code
   path: a press is the lobby screen's `ride()`, and what follows is the ride [§ 4.5](#45-the-viewport-rule-and-the-camera)
-  states once for both pages. **Behind its leaves is the cab**: `floor/painter.js`'s `drawCabInterior()`
+  states once for both pages. **Behind its leaves is the cab**: `floor/cab-paint.js`'s `drawCabInterior()`
   from the landing's eye (`LANDING`), clipped to the doorway, as the floor's band draws it, so a ride
   arriving at the lobby — its leaves drawn open and closing — shows the cab the viewer just stepped out
   of. **No cab-position indicator**: no cue, no *at:* sign, no dial reading a floor — the sign over the
   door is the building's name, the dial over the cab's own door inside is plain
   ([§ 4.5](#45-the-viewport-rule-and-the-camera)), and the cab's leaves on the lobby's wall move only
   with the viewer's own ride. The keyboard's focus on the elevator outside the camera's view brings the
-  camera to it, as focus on a plate did (the lobby screen's `focusOn()` over the elevator's rect),
+  camera to it, as focus on a plate did (the lobby screen's `focusElevator()`, `focusOn()` over the elevator's rect),
   and a press focuses it too.
 - **The directory board**, left of the elevator on the same wall: a wooden board — a honey face with a
   darker inset and four brass fixings — and inside it **the directory**, whose title line reads ***FLOOR
@@ -1170,8 +1170,8 @@ no fact and are not [§ 12](#12-every-number-and-where-it-comes-from) rows — t
   browser scroll it natively and cancel the pointer stream the hand-off reads, and the edge hand-off above
   would never fire. The keyboard's focus on a plaque's
   link scrolls the directory to it — the browser's own scroll-into-view inside the directory's box — and
-  brings the camera to the board where the board is not wholly in view (the lobby screen's `focusOn()`
-  over the board's rect, as a plate's focus moved the camera). A line longer than its plaque is cut at
+  brings the camera to the board where the board is not wholly in view (the lobby screen's `focusBoard()`,
+  `focusOn()` over the board's rect, as a plate's focus moved the camera). A line longer than its plaque is cut at
   its end with `text-overflow`, never wrapped, so a plaque's height is its row count. ⚠ **One residual,
   declared:** at a phone's width the fitted board's box holds less than one plaque at `1rem`, so the
   directory scrolls almost at once — the plate's phone-width residual, inherited
@@ -1191,112 +1191,67 @@ name; the directory, the room and the elevator are three elements and the room's
 the cab's leaves on the wall move with the ride and with nothing else; and the sky's one driver is the
 window's (below).
 
-⚠ **The numbered claims below are the PLATE's label contract, and card#12113 supersedes the plate.**
-They are kept, numbered and checked, for exactly as long as the plate's modules and their tests are in
-the tree — a contract deleted ahead of the code it binds leaves that code held by nothing — and
-[Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 24's last slice, which removes
-the plate, **rewrites this block into the directory plaque's contract** in the same form: one lead-in,
-numbered claims, each ending with the check that holds it or declared unchecked, with the alias lines
-that name the checks' files. What the rewrite carries over is stated in the room paragraph above and
-is not a second copy here: the text at the page's own size and never scaled by the camera ([decision 37](#13-decisions-taken-revisable-at-review));
-the one writer, called on every camera shown and never from a render; the header link's accessible
-name as the name, a comma and the tally's text form; the board as the directory's one box; no line
-wrapped. What it drops with the plate: every claim about a label standing to one side of a building,
-its line budget against a storey, the cab's cue and its width, and the sky as the ink's ground. The
-contrast tool named below as **B** is re-aimed at the plaque's text on the plaque's face in that same
-slice, its runs re-cut to the directory, and the alias moves to the re-aimed tool.
+⚠ **Until card#12113 the numbered claims here were the PLATE's label contract** — its text read at the body size beside
+the building or on its plate, a counter-scale, a side, a line budget against a storey, a backing and a halo, the cab's
+cue — held by a test and a hand-run contrast tool that went with the plate. Card#12113's last slice rewrote them into the
+directory plaque's contract below, in the same form; what it carries over and what it dropped are the room paragraph's
+above, and are not a second copy here.
 
-**The plate label.** A plate's name and its status line — the summary, the rooms the plate names, and
-on the cab's plate *the elevator is here* — are one label, read at building scale because the lobby
-exists to pick a floor before any zoom ([decision 37](#13-decisions-taken-revisable-at-review); the
-operator's rulings on card#7343, 2026-09-27 and 2026-09-30 option A). Each claim below names the check
-that holds it: **T** is `server/tests/Feature/Floor/ThePlateNameIsReadAtTheBodyTextSizeTest.php`, and
-**B** is `tools/design/lobby-label-contrast.browser.mjs`, run by hand in headless Chromium over its own
-`RUNS` (no browser in CI). *T's frames* are the frames T's runs draw, with the row built for each plate
-in them; *T's cameras* are the three T's `showLabels()` test computes by hand, one beside the building
-and two on the plate. How each is done is the code's own docblocks'.
+**The directory plaque.** The directory's text — its title, each plaque's rows and the readings under the board — is read
+at the page's own size because the lobby exists to pick a floor before any zoom ([decision 37](#13-decisions-taken-revisable-at-review)).
+Each claim below names the check that holds it: **T** is `server/tests/Feature/Lobby/TheLobbyIsADrawnRoomTest.php`, and
+**B** is `tools/design/lobby-directory.browser.mjs`, run by hand in headless Chromium over its own `RUNS` (no browser in
+CI). How each is done is the code's own docblocks'.
 
-1. **Size.** Every text of a label — name, summary, rooms line, cue — is `LABEL_FONT` on the screen, by
-   T's arithmetic over the rows built in T's frames, at whole-building fit, after a wheel, and halfway
-   through a whole-building glide and a ride, at every stack height T's runs draw; no camera changes it. (held by: T::test_green_the_name_and_status_line_are_the_body_text_size_at_fit_after_a_wheel_and_mid_glide_at_every_stack_height,
-   over the camera acts `fleet-client-probe.mjs` records)
-2. **The page's own size.** The lobby page sets no text size of its own, so `LABEL_FONT` is the viewer's
-   body text size. (held by: T::test_green_the_lobby_page_sets_no_text_size_of_its_own)
-3. **Which side.** At T's cameras, `showLabels()` picks the side beside the building, left of its shell
-   (a `data-label-side` of `left`), at the one camera that leaves more than `LABEL_SIDE_MIN_PX` of room
-   left of the shell, and the plate's side, with a `--label-left` of `0`, at the two that leave less.
-   (held by: T::test_green_showlabels_written_values_match_a_hand_computed_camera_at_every_side)
-4. **Beside, clear of the building.** Wherever a label stands beside the building in T's frames, and at
-   T's beside camera, its right edge, as `showLabels()` writes `--label-left` and `--label-width`, stands
-   at least `LABEL_GAP_PX` clear of the shell's left edge; in B's runs where labels stand beside the
-   building, no label's box meets the drawn building. (held by:
-   T::test_green_the_label_lies_outside_the_shell_wherever_it_stands_beside_the_building;
-   T::test_green_showlabels_written_values_match_a_hand_computed_camera_at_every_side; B check 'coverage')
-5. **Beside, on the backdrop.** At T's beside camera, `showLabels()` sets `--label-backing` to
-   `transparent`, `--label-halo` to a value other than `none`, `--label-ink` to `LABEL_GOLD`,
-   `--label-text-ink` to a value other than `--label-ink`'s, and `--label-align` to `right`. (held by:
-   T::test_green_showlabels_written_values_match_a_hand_computed_camera_at_every_side)
-6. **The backing is the fallback's alone.** At T's two fallback cameras, `showLabels()` sets `--label-ink`
-   and `--label-text-ink` to `LABEL_DARK_INK`, `--label-backing` to a value other than `transparent`,
-   `--label-halo` to `none` and `--label-align` to `left`; in T's frames, the name link, the summary link
-   and the rooms line each have `var(--label-backing)` as their background colour. (held by:
-   T::test_green_showlabels_written_values_match_a_hand_computed_camera_at_every_side;
-   T::test_green_every_plate_row_is_built_to_the_construction_contract)
-7. **Three lines, in order.** In T's frames, line 1 is the name link, its `textContent` set to the name
-   alone, with the cue after it and outside it on the cab's plate and on no other; line 2 is the summary
-   link, its `textContent` set to the summary; line 3 is the rooms line, present only where the plate
-   names more than one room or a room with no seats reported.
-   (held by: T::test_green_every_plate_row_is_built_to_the_construction_contract)
-8. **Set not to wrap.** In T's frames, the name link, the cue, the summary link and the rooms line are each
-   set `white-space: nowrap`, `text-overflow: ellipsis` and `overflow: hidden`. (held by:
-   T::test_green_every_plate_row_is_built_to_the_construction_contract)
-9. **The line budget.** At T's cameras, `showLabels()` sets `--label-lines` to
-   `max(1, ⌊storey height on screen ÷ LABEL_LINE_PX⌋)`; in T's frames, the label's `max-height` reads
-   `--label-lines`, its `clip-path` is the one inset `constructionDefects()` names, with no bleed at the
-   bottom, and a label of more than one line has `lines × LABEL_LINE_PX` no greater than its storey's
-   height on the screen.
-   (held by: T::test_green_showlabels_written_values_match_a_hand_computed_camera_at_every_side;
-   T::test_green_no_labels_own_line_budget_runs_it_taller_than_its_storey;
-   T::test_green_every_plate_row_is_built_to_the_construction_contract)
-10. **No line sliced, on rendered pixels.** In B's runs no glyph pixel paints below its own label's clip
-    edge. A pixel that falls inside another label's box is not counted, so heavy overlap can hide
-    slicing — B's declared blind spot. (held by: B check 'sliced lines')
-11. **The one-line floor.** Where a storey on the screen is shorter than one line, line 1 still shows and
-    runs past its storey's bottom edge; no rule chooses what the lobby does then. (declared,
-    unchecked: the line-budget check exempts the one-line floor, and no behaviour is chosen to check)
-12. **No overlap.** In B's runs no two plates' label boxes intersect. (held by: B check 'overlap')
-13. **The cue is shown whole.** On the cab's plate the cue lies wholly inside its label's box in every
-    B run. (held by: B check 'cueWidth')
-14. **The accessible name.** In T's frames, the name link's `aria-label` is the name, a comma and a space,
-    and the summary — *no seats held* where the plate holds none — e.g. *Floor 2, 2 working · 1 idle*.
-    (held by: T::test_green_every_plate_row_is_built_to_the_construction_contract)
-15. **The summary link is `aria-hidden`.** In T's frames, the summary line is a second link with the name
-    link's `href`, a `tabIndex` of `-1`, `aria-hidden` set to `true` and `text-decoration: none`. (held by:
-    T::test_green_every_plate_row_is_built_to_the_construction_contract)
-16. **The cue and the rooms line, in document order.** In T's frames, both sit outside both links — the
-    cue after the name link on line 1, the rooms line on line 3 — and nothing from the label down to
-    either carries `aria-hidden`. (held by:
-    T::test_green_every_plate_row_is_built_to_the_construction_contract)
-17. **What a screen reader reads.** A screen reader reads the name link's `aria-label`, then the cue where
-    there is one, then the rooms line where one is built, and never the summary link on its own — a line
-    the budget clips included (claims 7, 14, 15 and 16 hold the structure this rests on). (declared,
-    unchecked: not wired — a check could read the browser's accessibility tree; none is built)
-18. **The focus ring.** In T's frames, both links set a negative `outline-offset`. (held by:
-    T::test_green_every_plate_row_is_built_to_the_construction_contract)
-19. **The link's colour is on the link.** In T's frames, the name link's own `color` is
-    `var(--label-ink)`. (held by: T::test_green_every_plate_row_is_built_to_the_construction_contract)
-20. **One writer.** `lobby/main.js`'s `view()` calls `label-paint.js`'s `showLabels()`, and neither its
-    `paint()` nor its `renderBuilding()` calls it, calls `setProperty` or names a `--label-` property; a
-    camera that frames nothing gets no label write. (held by:
-    `server/tests/Feature/Lobby/LobbyPageWiringTest.php`::test_the_page_wires_the_ride_and_the_building_camera_to_the_screen,
-    through its `showLabelsPlacementDefects()`; T::test_green_showlabels_writes_nothing_when_the_camera_frames_nothing)
-21. **Contrast.** In every one of B's `RUNS`, every glyph pixel B measures on every visible line — it
-    skips the outermost pixels of each line box and of the drawing surface — and a ring of pixels around
-    it, reads at least B's `MIN_RATIO` (WCAG 2.1 SC 1.4.3) against what it stands on —
-    except the `RESIDUALS` B declares, each by name and reason, keyed to one line and one y-band, with a
-    cap. (held by: B check 'contrast')
-22. **Known: phone width.** At phone width a label on its plate can run past the building's right edge
-    onto the sky. (declared, unchecked: known and accepted, out of scope for card#7343)
+1. **Size.** `directory.js`'s `showDirectory()` keeps every text of the directory — the title, a plaque's rows, the
+   readings — at `1rem` on the screen at every camera: each is laid out in a face whose font size is `1rem`, sized to its
+   box at the camera's zoom and scaled by the zoom's inverse through the two properties `showDirectory()` writes
+   (`--lobby-zoom`, `--lobby-scale`). (held by: T::test_green_the_text_is_counter_scaled_by_one_writer_inside_boxes_on_the_board;
+   T::test_green_the_directory_scrolls_inside_its_box_and_no_line_wraps; B check 'size')
+2. **The page's own size.** The lobby page sets no text size on the root, the body, `*` or a tag `directory.js` builds, none with `!important`, and none in a style block or attribute, so `1rem` is the viewer's body text size. (held by: T::test_green_the_lobby_page_sets_no_text_size_of_its_own)
+3. **One writer.** `lobby/main.js`'s `view()` — the page's camera hook, called on every camera the page shows — calls
+   `showDirectory()`, and none of `paint()`, `paintScene()` and `paintDirectory()` calls it or writes a `--lobby-` property;
+   a camera that frames nothing gets no write. (held by:
+   `server/tests/Feature/Lobby/LobbyPageWiringTest.php`::test_the_page_wires_the_ride_and_the_rooms_camera_to_the_screen,
+   through its `showDirectoryPlacementDefects()`; T::test_green_the_text_is_counter_scaled_by_one_writer_inside_boxes_on_the_board)
+4. **The board is the one box.** While the room is drawn the directory's box stands at `building-scene.js`'s `directory`
+   rect — the board's inner rectangle — in scene px, clipping its face, and the face fills the box on the screen at every
+   camera; with no room drawn neither carries a style. (held by: T::test_green_the_text_is_counter_scaled_by_one_writer_inside_boxes_on_the_board;
+   T::test_green_the_room_is_drawn_from_nothing_and_its_only_words_are_the_signs; B check 'board')
+5. **It scrolls inside its box.** The plaques' list is `overflow-y: auto` and `touch-action: none`, and declares
+   `data-camera-scrolls`; a long directory holds more than it shows and reaches its last plaque when scrolled to its end.
+   (held by: T::test_green_the_directory_scrolls_inside_its_box_and_no_line_wraps; B check 'scroll')
+6. **The hand-off.** A wheel begun over an element that declares it scrolls moves it while it can move the wheel's way and
+   the camera once it cannot; a Ctrl+wheel there is the camera's zoom; a drag decides its owner at its first move and keeps
+   it, and a drag that scrolled is no click. (held by:
+   `server/tests/Feature/Floor/TheCameraWireIsOneForBothPagesTest.php`::test_green_a_gesture_over_a_scroller_is_its_own_while_it_can_move)
+7. **The touch half.** A real finger's drag over the directory reaches the gesture wire whole — the browser never scrolls
+   the list natively and cancels the pointer stream. (declared, unchecked: synthetic pointers bypass `touch-action`, so
+   only a real device can show it — § 14 item 39(4))
+8. **The name and the link.** A plaque's one link is its `href` — the key's route — named by its `accessible_name`, the
+   floor's name, a comma and the tally's text form. (held by: T::test_green_each_plaque_is_painted_as_the_model_decided_it)
+9. **Every row as decided, in order.** The name row (the numeral, the link, the rooms where the plaque names any, the agents
+   and desks), the tally row (a chip per member, its member's fill), the marker row (each marker named, then the tag where
+   there is one), a row per attention part and none where there is none, and the totals row last — each the model's string.
+   (held by: T::test_green_each_plaque_is_painted_as_the_model_decided_it;
+   T::test_green_the_unclaimed_and_the_empty_directory_are_said_in_words)
+10. **No line wrapped.** Every plaque row is one line, `white-space: nowrap` cut by `text-overflow: ellipsis`, so a
+    plaque's height is its row count. (held by: T::test_green_the_directory_scrolls_inside_its_box_and_no_line_wraps;
+    B check 'wrap')
+11. **Focus brings the board.** The keyboard's focus on a plaque's link with the board not wholly in view brings the camera
+    to the board's rect, and moves nothing when it is in view. (held by:
+    `server/tests/Feature/Floor/TheBuildingCameraMovesTheViewerAndNeverTheFleetTest.php`::test_green_a_focus_out_of_view_is_brought_into_it_and_one_in_view_moves_nothing)
+12. **Focus scrolls the list.** The same focus scrolls the directory's list to the plaque — the browser's own
+    scroll-into-view inside the list's box. (declared, unchecked: the browser's own behaviour; no check drives a keyboard
+    focus in a browser)
+13. **Contrast.** In every one of B's `RUNS`, every glyph pixel of the directory's text reads at least B's `MIN_RATIO`
+    (WCAG 2.1 SC 1.4.3) against what it stands on and a ring of pixels inside its own line box — except the `RESIDUALS` B
+    declares, each by run, line and band, with a cap. (held by: B check 'contrast')
+14. **Known: phone width.** At a phone's width the fitted board's box holds less than one plaque, so the directory scrolls
+    almost at once. (declared, unchecked: known and accepted — § 14 item 39(4))
+15. **What a screen reader reads.** A screen reader reads each plaque's link by its accessible name, each marker by its
+    name, and the rows in document order. (declared, unchecked: not wired — a check could read the browser's
+    accessibility tree; none is built)
 
 ⚠ **This paragraph said *per install* and `installs[].install_id` until card#9267**, which is what
 the reference was drawn against and what the empty layout still composes; a plate is a floor, and a
@@ -1781,7 +1736,10 @@ panel.
   `themes` argument; they are module functions, `cabTheme()` taking the palette (`{frame, lamp}` or `null`)
   as a parameter — `paintCab()` reads no palette of its own, its colours being the carriers `cabTheme()`
   sets on the dialog — with the painter's own two kept as thin wrappers, so the lobby page — which constructs no painter, having no
-  desk to paint — calls them with the palette it loaded. Every
+  desk to paint — calls them with the palette it loaded. They, the cab's room, the views behind its doors, the ride's leaf
+  motion and the classes they paint with are `floor/cab-paint.js`'s since card#12113's last slice, which the painter
+  imports and re-exports: the lobby page loads that module and not the floor's painter — whose scene machinery it has no
+  use for — and the house theme's elevator palette through its `loadHousePalette()`. Every
   phase is the page's screen's state (`frame.ride`), decided there and performed by the page from the frame
   alone, and every phase's length is [§ 12](#12-every-number-and-where-it-comes-from)'s: *Ride door
   motion* (1,000 ms) for each door motion, which eases continuously rather than stepping at the loop rate (card#12038),
@@ -1824,7 +1782,7 @@ panel.
     name, badge or word, nothing read from the fleet or the floor, and no motion of its own
     ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith) says why that keeps it out of § 6.2).
     The two leaves meet at the seam, each edged in the door's edge colour: the seam is the leaves' own, so it opens with
-    them and nothing stands in the open doorway. The room itself is `server/public/js/floor/painter.js`'s
+    them and nothing stands in the open doorway. The room itself is `server/public/js/floor/cab-paint.js`'s
     `drawCabInterior()`, which draws it into any box it is handed, seen from the eye it is handed (the rider's, `CAB`, in
     the cab; the landing's, `LANDING`, behind the floor's leaves), and answers the back wall it drew, door and leaves
     being its caller's; the office is its `drawOfficeView()`, which draws into any doorway it is handed, clipped to it.
@@ -1836,7 +1794,7 @@ panel.
     house theme's elevator palette: its body the frame's colour, each stop's button in the leaves' door and
     door-edge colours, the current floor's call button lit by the lamp. That palette's one home is the theme
     module's `PALETTE.elevator` ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s house table);
-    `server/public/js/floor/painter.js`'s `cabTheme()` carries it onto the dialog as `--cab-frame` and
+    `server/public/js/floor/cab-paint.js`'s `cabTheme()` carries it onto the dialog as `--cab-frame` and
     `--cab-lamp`, which the cab's drawing and the popup's rules both read, and marks the dialog `data-themed`. A
     theme that did not load leaves the drawing the sheet's door-frame and lamp tokens, and the popup the page's own
     panel colour and ink (card#12047): every text in the popup, and the focus ring drawn on it, holds WCAG AA on what
@@ -1881,7 +1839,7 @@ panel.
     the worked example); the viewer stepping out of the cab sees the room they are about to stand in, bare of
     what stands against its side walls — a stated simplification, [§ 14](#14-open-questions-for-the-review-loop)
     item 39(12). It is `drawLobbyView()`, beside `drawOfficeView()`
-    in `floor/painter.js`, drawing into any doorway it is handed, clipped to it, from the same tokens and the
+    in `floor/cab-paint.js`, drawing into any doorway it is handed, clipped to it, from the same tokens and the
     lobby palette's door and mat inks; and it is scenery under the office's rule exactly: no word, no seat, no
     fact, **the windows' daylight fixed** — not A17's sky, because the cab is drawn once per phase entry and
     a window stepping on the heartbeat inside a dialog that lives for one ride would be a second A17 surface
@@ -7729,7 +7687,9 @@ the same reason: no browser on the build host.*
 *[§ 4.5](#45-the-viewport-rule-and-the-camera)'s any-size rule and its camera-is-navigation rule, mechanised — the rules of it a harness can read. Two halves, gated at their own steps: the **floor half** at [Appendix B](#appendix-b--what-an-implementer-builds-from-this)
 **step 15**, where the camera is built; the **building half** at **step 24**,
 where the lobby's room is drawn over row 9's lobby (at step 16, where the cross-section was, until
-card#12113 re-cut the half for the room). Navigation is never state, so the whole of what this
+card#12113 re-cut the half for the room). The building half's home is `Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest` over the camera
+runs `building_room` and `building_room_reduced`, with the directory's wheel and drag in
+`Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest` and the room's drawing in `Tests\Feature\Lobby\TheLobbyIsADrawnRoomTest`. Navigation is never state, so the whole of what this
 test asserts is that nothing the camera does reaches the animation log or the fleet, and that what the
 viewer asked for is what the view does.*
 
@@ -8395,9 +8355,13 @@ elevator as the same control, the one ride state machine both screens hold (`wir
 with *Lobby* current, the view behind the doors chosen by the stop the doors open on (`beyond`), and a floor's
 ride arriving on the lobby's own leaves. Everything [AT-D3-26](#at-d3-26-the-floors-ride-is-navigation)
 holds of the floor's ride is held of the lobby's by the same test shapes over the lobby screen, and this test
-states only what the lobby adds. The browser half is `tools/design/floor-ride.browser.mjs`, gaining the lobby's
-rows: a ride from the lobby to a floor and back, and the doors held half open on each page showing the view
-the stop owes.*
+states only what the lobby adds. Its home is `Tests\Feature\Lobby\TheLobbysElevatorIsTheFloorsRideTest` over the
+harness's `lobby.ride` acts and `fx-lobby.json`'s `lobby_ride`, `lobby_arrival` and `lobby_unclaimed` runs, with
+`fx-camera.json`'s `floor_rides` re-read for `beyond` and the lobby's elevator painted over a fake DOM
+(`lobby-room-probe.mjs`); what it leaves to the tests that already hold it — the cab drawing the lobby or the office by
+`beyond`, `LOBBY_VIEW` against § 12, the cab's panel and the page's wiring — it names there. The browser half is
+`tools/design/floor-ride.browser.mjs`'s `lobby`, `lobby-ride` and `lobby-doors` rows: a ride from the lobby to a floor
+and back, and the doors held half open on each page showing the view the stop owes.*
 
 - **Build:** replay `fx-lobby`'s **lobby-ride**, **lobby-arrival** and **unclaimed** runs — the lobby screen's
   ride driven by the screen's own methods on the scenario clock, each answer recorded with the frame the page
@@ -8470,10 +8434,10 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | **Fade** | **1 frame** | **Chosen** (card#11795) — every fade of the floor's ride ([§ 4.5](#45-the-viewport-rule-and-the-camera)): the cab in and out, its buttons in and out, and the cross-fade from the held cab into the destination. One loop frame, for its own reason: a view or panel fade shorter than a stream tick reads as a cut, and a longer one delays the ride's next beat, the doors, which move only after it (each phase's door delay is this figure). Its code home is `server/public/js/wire/ride.js`'s `ridePhase()`, at `1000 / LOOP_FPS`; the layout's inline `--ride-fade` (`server/resources/views/layouts/app.blade.php`) is a copy a style cannot import, held equal by `Tests\Feature\TheRideArrivalIsTheLayoutsTest`. 0 under reduced motion | [§ 4.5](#45-the-viewport-rule-and-the-camera), [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation) |
 | **Cab hold** | **2,000 ms** | **Chosen** (card#11795) — the longest a viewer is left looking at a static cab, on either side of the ride's navigation ([§ 4.5](#45-the-viewport-rule-and-the-camera)): the departing page's `leaving` (a navigation that has not committed by then is abandoned, the cab closed, the floor usable) and the destination's hold of the cab's snapshot (past it the cab fades into what the page says at that instant, and a scene drawn later has its leaves at rest). A **bound**, not a motion figure, so it is the same under reduced motion. **Its origin on the destination is the layout head script's own start, `t0`, for both the hold and the arrival flag's expiry**, so the two are one bound read on two clocks. Its code home is `server/public/js/wire/ride-arrival.js`'s `CAB_HOLD_MS`; the head script's literal is a copy a classic script cannot import, held equal by `Tests\Feature\TheRideArrivalIsTheLayoutsTest`. **The evidence for the figure** (card#11795's design, measured on this host): the real floor page's first scene came about half a second after `t0` with its API answering at once, so the bound is several times the healthy case. **What makes a healthy ride reach it is the viewer's round trip**: under emulated latency the first scene's time grew by roughly the module graph's serial import depth, plus one for the document, per millisecond of round trip — [inferred] from that match, the slope not read in any spec — so a round trip above (*Cab hold* − the first scene's time with none) ÷ (that depth + 1) reaches the bound on every ride and no arrival doors play; on the design's measurements that is at most about 100 ms, and less once the API's sequential reads are added. The depth is re-printed, in `server/public/js`, by `node -e 'const fs=require("fs"),p=require("path"),memo=new Map();const deps=(f)=>[...fs.readFileSync(f,"utf8").matchAll(/^import[^;]*?from\s+["\x27]([^"\x27]+)["\x27]/gms)].map((m)=>p.resolve(p.dirname(f),m[1])).filter((q)=>fs.existsSync(q));const depth=(f,seen=new Set())=>{if(memo.has(f))return memo.get(f);if(seen.has(f))return 0;seen.add(f);const d=1+Math.max(0,...deps(f).map((q)=>depth(q,seen)));seen.delete(f);memo.set(f,d);return d;};console.log(depth(p.resolve(process.argv[1])));' floor/main.js`. The operator's round trip to the deployment has not been measured from this host, whose sandbox address is its own; if it is near the bound, the lever is the serial import depth (a preload list or a bundle), not this figure | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
 | **Cab button popup** | **280 to 480 px wide**: 36 % of the window's width between those bounds in a landscape window; in a portrait one, or one narrower than 420 px, the window's width less its gutters, up to 480 px, and at most 55 % of its height (the dynamic viewport's, `dvh`, after a `vh` fallback) | **Chosen** (card#12039) — the width of the cab's button popup ([§ 4.5](#45-the-viewport-rule-and-the-camera)'s *cab's look*), beside the door in a landscape window and under it in a portrait one, scrolling past its height bound. Chosen by eye on card#12039's screenshots of the cab at 1,440 × 900 and 390 × 844 CSS px, not measured against a criterion. **What re-derives it:** the operator's reading of the cab on a desktop and a phone. Its code home is `server/public/css/mezzanine.css`'s `.floor-cab` (`--cab-panel-max`, `--cab-panel-w`) and its portrait rule, held equal to this cell by `Tests\Feature\Floor\TheCabPanelReconcilesByKeyTest`'s `test_green_section_12s_cab_button_popup_is_the_sheets` (the height bound in both its `vh` and `dvh` forms, card#12047); `tools/design/floor-ride.browser.mjs`'s `cab-fit` and `cab-phone` rows measure the layout it makes — the cab whole and uncovered, the popup on screen at a phone's width — run by hand | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
-| **Cab interior** | **200 × 140 × 230 cm** wide × deep × high, the eye 155 cm over the floor and 120 cm from the doors' wall, the drawing's frame 94 cm from the eye, the door 110 × 200 cm; from the landing, the eye 230 cm from the cab's open front | **Chosen** (card#12051; wider and seen from closer, card#12071) — the room the cab's interior is drawn as ([§ 4.5](#45-the-viewport-rule-and-the-camera)'s *cab's look*): a one-point perspective of a passenger cab of about a real one's size, seen by a rider standing in it facing the doors at a standing adult's eye height. The drawing's frame is the room's cross-section 94 cm in front of the eye (a lens 2 × atan(100 / 94) across), so the doors' wall is the frame's size times 94 / 120 and the side walls, ceiling and floor recede to the eye's point over the 120 − 94 cm of room between the frame and that wall; the handrails and the ceiling's light lie behind the frame, so only the rails' near ends show. The figures are picked so the door, its frame and the office through it fill most of the view while every surface of the room still shows: 120 cm puts the eye at the back of a 140 cm cab, the same eye the *Office view* is seen from, so the office and the cab are one view from one point; the ceiling's strip, (230 − 155) × (1 − 94 / 120) of the opening's 230, is the narrowest, and a frame much nearer the doors' wall — one that takes (230 − 155) × (1 − view / 120) under 230 / 20 — would leave it under a twentieth of the opening's height. The doors' share of the view — the doorway's area over the frame's — is 110 × 200 × (94 / 120)² / (200 × 230), against card#12051's 110 × 200 × (230 / 370)² / (160 × 230) (its eye 230 cm in front of a 160 cm cab's open front). The width gives a roomier cab whose drawing is 200 / 230 as wide as it is high, still taller than it is wide; the door is a real elevator door's width and height. From the landing — the cab seen behind the floor's own leaves (card#12052) — the eye stands 230 cm in front of the cab's open front, so its rear wall is the doorway's size times 230 / (230 + 140). The drawing's space is the frame, one unit a centimetre. **What re-derives it:** the operator's readings of 2026-10-19 — *when inside the elevator, it should appear like you are inside an elevator … the appearance should be 3D*, *an elevator is a limited space. It will not take up the entire screen. Elevators are not very wide*, and *for the view insider the elevator cab, zoom in closer so that the viewer feels that they are closer to the sliding doors. Also make the elevator wider*. Its code home is `server/public/js/floor/painter.js`'s `CAB` and `LANDING`, read by `drawCabInterior()` (the lens it is handed), `paintCab()` and `drawOfficeView()` (its door, its eye, and `OFFICE.view`, which is `CAB.back`), held equal to this cell by `Tests\Feature\Floor\TheElevatorIsAControlOnTheDrawingTest`'s `test_green_section_12s_cab_interior_is_cab`; that test's `test_the_cab_is_a_room_in_depth` holds the drawing's shape to an elevator's (opening between 0.8 and 0.95 as wide as it is high, the doors' wall where these figures put it and inset on every side by more than a twentieth), its `test_the_doors_take_more_of_the_view_than_before` holds the doors' share to at least 1.2 times card#12051's, and `tools/design/floor-ride.browser.mjs`'s `cab-fit` row measures it in the window, run by hand | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
-| **Office view** | **520 × 900 × 280 cm** wide × deep × high, its left wall 220 cm left of the door's centre line, the eye 120 cm from the doorway | **Chosen** (card#12052) — the office the cab's open doors look out on ([§ 4.5](#45-the-viewport-rule-and-the-camera)'s *cab's look*): a one-point perspective of an open-plan room about a real one's size, seen through the cab's doorway (*Cab interior*'s door, 110 × 200 cm) with the eye at *Cab interior*'s height, so its vanishing point is the cab's; the eye is the rider's in the cab (*Cab interior*'s 120 cm from the doors' wall; `OFFICE.view` is `CAB.back`, card#12071), so the office and the cab are one view from one point, and the far wall is 280 × 120 / (120 + 900) cm high, about a sixth of the doorway's height, and the side walls show with their windows. The room stands off-centre so its two walls are not a mirror of each other. **What re-derives it:** the operator's request of 2026-10-19 — *when the elevator door opens, render a 3D perspective of the office outside*. Its code home is `server/public/js/floor/painter.js`'s `OFFICE`, read by `drawOfficeView()`, held equal to this cell by `Tests\Feature\Floor\TheElevatorIsAControlOnTheDrawingTest`'s `test_green_section_12s_office_view_is_office`; that test's `test_the_cab_doors_open_onto_the_office` holds what is drawn, and `tools/design/floor-ride.browser.mjs`'s `through-doors` row measures it through the half-open doors, run by hand | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
-| **Lobby view** | **1,000 × 1,400 × 320 cm** wide × deep × high, its front doors **240 × 260 cm** centred on the cab's door line, one window **160 cm** wide either side of them, the eye **120 cm** from the doorway; its ceiling panels **120 × 100 cm** on **250 cm** centres across and **200 cm** centres in depth | **Chosen** (card#12113; the ceiling grid a seat ruling read off the reference drawing `docs/design/lobby-preview/Lobby2H.dc.html`, after the operator's request of 2026-10-20 for *evenly spaced rectangular lights in a grid pattern* — four columns and seven rows over the room, each panel a lit rectangle, foreshortened with the ceiling) — the lobby the cab's open doors look out on when the stop is the lobby ([§ 4.5](#45-the-viewport-rule-and-the-camera)'s *cab's look*): a one-point perspective of a building lobby about a real one's size, seen through *Cab interior*'s door from *Cab interior*'s eye — `OFFICE.view`'s 120 cm, so the lobby and the cab are one view from one point, as the office is — its far wall the street wall with the front doors and a window either side, its side walls bare but for the rail and the skirting ([§ 4.5](#45-the-viewport-rule-and-the-camera) says why), the far wall 320 × 120 / (120 + 1,400) cm high, about an eighth of the doorway's height, so the doors and windows read as the far end of a long room. The doors' 240 × 260 are a real double door's; the windows' 160 is wide enough to carry daylight at that distance. **What re-derives it:** the operator's request of 2026-10-20 — *when the elevator door opens at the Lobby, we should see the building front door and windows (from an interior view)*. Its code home is `server/public/js/floor/painter.js`'s `LOBBY_VIEW`, read by `drawLobbyView()`, held equal to this cell by `Tests\Feature\Floor\TheElevatorIsAControlOnTheDrawingTest`'s `test_green_section_12s_lobby_view_is_lobby_view` as `OFFICE` is; that test's `test_the_cab_doors_open_onto_the_lobby` holds what is drawn — the ceiling's panels one per centre the room's width and depth hold at these pitches — and its `test_the_cab_doors_open_onto_the_view_the_ride_names` that it is drawn for the lobby's stop and the office for a floor's. The street wall's other measures — the windows centred 300 cm either side of the door line, their sill at 90 cm and head at 250 cm, the arch rising 40 cm over the doors, the mat 200 × 100 cm against the wall, the rail at 95 cm — are the drawing's, chosen after the reference drawing, and carry no fact | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
-| **Lobby room drawing** | **1,440 × 772** scene px; its ceiling panels **4** across × **3** deep | **Chosen** (card#12113; the ceiling grid a seat ruling read off the reference drawing `docs/design/lobby-preview/Lobby2G.dc.html` after the operator's request of 2026-10-20 — four 360-unit bays across with a 200-unit panel centred in each, three equal bays in depth, foreshortened to the ceiling's vanishing point; the floor's own cab interior, `drawCabInterior()`, draws no ceiling light from the rider's lens and is unchanged by this card unless the operator asks) — the size of the lobby's drawn room ([§ 4.1](#41-the-lobby--the-building-summary)) in the camera's scene units: the artboard the operator accepted was drawn at 1,440 × 900 CSS px with 128 px of page chrome in all above and below the room, and the room is kept at the size it was accepted at rather than re-proportioned, so a window of that width at fit shows it one scene px to one CSS px. The figure carries no fact; it is the drawing's own, as `PLATE_W` / `PLATE_H` were the cross-section's. **What re-derives it:** the operator's reading of the lobby on the sandbox | [§ 4.1](#41-the-lobby--the-building-summary) |
+| **Cab interior** | **200 × 140 × 230 cm** wide × deep × high, the eye 155 cm over the floor and 120 cm from the doors' wall, the drawing's frame 94 cm from the eye, the door 110 × 200 cm; from the landing, the eye 230 cm from the cab's open front | **Chosen** (card#12051; wider and seen from closer, card#12071) — the room the cab's interior is drawn as ([§ 4.5](#45-the-viewport-rule-and-the-camera)'s *cab's look*): a one-point perspective of a passenger cab of about a real one's size, seen by a rider standing in it facing the doors at a standing adult's eye height. The drawing's frame is the room's cross-section 94 cm in front of the eye (a lens 2 × atan(100 / 94) across), so the doors' wall is the frame's size times 94 / 120 and the side walls, ceiling and floor recede to the eye's point over the 120 − 94 cm of room between the frame and that wall; the handrails and the ceiling's light lie behind the frame, so only the rails' near ends show. The figures are picked so the door, its frame and the office through it fill most of the view while every surface of the room still shows: 120 cm puts the eye at the back of a 140 cm cab, the same eye the *Office view* is seen from, so the office and the cab are one view from one point; the ceiling's strip, (230 − 155) × (1 − 94 / 120) of the opening's 230, is the narrowest, and a frame much nearer the doors' wall — one that takes (230 − 155) × (1 − view / 120) under 230 / 20 — would leave it under a twentieth of the opening's height. The doors' share of the view — the doorway's area over the frame's — is 110 × 200 × (94 / 120)² / (200 × 230), against card#12051's 110 × 200 × (230 / 370)² / (160 × 230) (its eye 230 cm in front of a 160 cm cab's open front). The width gives a roomier cab whose drawing is 200 / 230 as wide as it is high, still taller than it is wide; the door is a real elevator door's width and height. From the landing — the cab seen behind the floor's own leaves (card#12052) — the eye stands 230 cm in front of the cab's open front, so its rear wall is the doorway's size times 230 / (230 + 140). The drawing's space is the frame, one unit a centimetre. **What re-derives it:** the operator's readings of 2026-10-19 — *when inside the elevator, it should appear like you are inside an elevator … the appearance should be 3D*, *an elevator is a limited space. It will not take up the entire screen. Elevators are not very wide*, and *for the view insider the elevator cab, zoom in closer so that the viewer feels that they are closer to the sliding doors. Also make the elevator wider*. Its code home is `server/public/js/floor/cab-paint.js`'s `CAB` and `LANDING` (re-exported by `floor/painter.js`), read by `drawCabInterior()` (the lens it is handed), `paintCab()` and `drawOfficeView()` (its door, its eye, and `OFFICE.view`, which is `CAB.back`), held equal to this cell by `Tests\Feature\Floor\TheElevatorIsAControlOnTheDrawingTest`'s `test_green_section_12s_cab_interior_is_cab`; that test's `test_the_cab_is_a_room_in_depth` holds the drawing's shape to an elevator's (opening between 0.8 and 0.95 as wide as it is high, the doors' wall where these figures put it and inset on every side by more than a twentieth), its `test_the_doors_take_more_of_the_view_than_before` holds the doors' share to at least 1.2 times card#12051's, and `tools/design/floor-ride.browser.mjs`'s `cab-fit` row measures it in the window, run by hand | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
+| **Office view** | **520 × 900 × 280 cm** wide × deep × high, its left wall 220 cm left of the door's centre line, the eye 120 cm from the doorway | **Chosen** (card#12052) — the office the cab's open doors look out on ([§ 4.5](#45-the-viewport-rule-and-the-camera)'s *cab's look*): a one-point perspective of an open-plan room about a real one's size, seen through the cab's doorway (*Cab interior*'s door, 110 × 200 cm) with the eye at *Cab interior*'s height, so its vanishing point is the cab's; the eye is the rider's in the cab (*Cab interior*'s 120 cm from the doors' wall; `OFFICE.view` is `CAB.back`, card#12071), so the office and the cab are one view from one point, and the far wall is 280 × 120 / (120 + 900) cm high, about a sixth of the doorway's height, and the side walls show with their windows. The room stands off-centre so its two walls are not a mirror of each other. **What re-derives it:** the operator's request of 2026-10-19 — *when the elevator door opens, render a 3D perspective of the office outside*. Its code home is `server/public/js/floor/cab-paint.js`'s `OFFICE` (re-exported by `floor/painter.js`), read by `drawOfficeView()`, held equal to this cell by `Tests\Feature\Floor\TheElevatorIsAControlOnTheDrawingTest`'s `test_green_section_12s_office_view_is_office`; that test's `test_the_cab_doors_open_onto_the_office` holds what is drawn, and `tools/design/floor-ride.browser.mjs`'s `through-doors` row measures it through the half-open doors, run by hand | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
+| **Lobby view** | **1,000 × 1,400 × 320 cm** wide × deep × high, its front doors **240 × 260 cm** centred on the cab's door line, one window **160 cm** wide either side of them, the eye **120 cm** from the doorway; its ceiling panels **120 × 100 cm** on **250 cm** centres across and **200 cm** centres in depth | **Chosen** (card#12113; the ceiling grid a seat ruling read off the reference drawing `docs/design/lobby-preview/Lobby2H.dc.html`, after the operator's request of 2026-10-20 for *evenly spaced rectangular lights in a grid pattern* — four columns and seven rows over the room, each panel a lit rectangle, foreshortened with the ceiling) — the lobby the cab's open doors look out on when the stop is the lobby ([§ 4.5](#45-the-viewport-rule-and-the-camera)'s *cab's look*): a one-point perspective of a building lobby about a real one's size, seen through *Cab interior*'s door from *Cab interior*'s eye — `OFFICE.view`'s 120 cm, so the lobby and the cab are one view from one point, as the office is — its far wall the street wall with the front doors and a window either side, its side walls bare but for the rail and the skirting ([§ 4.5](#45-the-viewport-rule-and-the-camera) says why), the far wall 320 × 120 / (120 + 1,400) cm high, about an eighth of the doorway's height, so the doors and windows read as the far end of a long room. The doors' 240 × 260 are a real double door's; the windows' 160 is wide enough to carry daylight at that distance. **What re-derives it:** the operator's request of 2026-10-20 — *when the elevator door opens at the Lobby, we should see the building front door and windows (from an interior view)*. Its code home is `server/public/js/floor/cab-paint.js`'s `LOBBY_VIEW` (re-exported by `floor/painter.js`), read by `drawLobbyView()`, held equal to this cell by `Tests\Feature\Floor\TheElevatorIsAControlOnTheDrawingTest`'s `test_green_section_12s_lobby_view_is_lobby_view` as `OFFICE` is; that test's `test_the_cab_doors_open_onto_the_lobby` holds what is drawn — the ceiling's panels one per centre the room's width and depth hold at these pitches — and its `test_the_cab_doors_open_onto_the_view_the_ride_names` that it is drawn for the lobby's stop and the office for a floor's. The street wall's other measures — the windows centred 300 cm either side of the door line, their sill at 90 cm and head at 250 cm, the arch rising 40 cm over the doors, the mat 200 × 100 cm against the wall, the rail at 95 cm — are the drawing's, chosen after the reference drawing, and carry no fact | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
+| **Lobby room drawing** | **1,440 × 772** scene px; its ceiling panels **4** across × **3** deep | **Chosen** (card#12113; the ceiling grid a seat ruling read off the reference drawing `docs/design/lobby-preview/Lobby2G.dc.html` after the operator's request of 2026-10-20 — four 360-unit bays across with a 200-unit panel centred in each, three equal bays in depth, foreshortened to the ceiling's vanishing point; the floor's own cab interior, `drawCabInterior()`, draws no ceiling light from the rider's lens and is unchanged by this card unless the operator asks) — the size of the lobby's drawn room ([§ 4.1](#41-the-lobby--the-building-summary)) in the camera's scene units: the artboard the operator accepted was drawn at 1,440 × 900 CSS px with 128 px of page chrome in all above and below the room, and the room is kept at the size it was accepted at rather than re-proportioned, so a window of that width at fit shows it one scene px to one CSS px. The figure carries no fact; it is the drawing's own, as `PLATE_W` / `PLATE_H` were the cross-section's. Its code home is `server/public/js/lobby/building-scene.js`'s `ROOM` and `CEILING_GRID`, held equal to this cell by `Tests\Feature\Lobby\TheLobbyIsADrawnRoomTest`'s `test_green_the_room_is_section_12s_size_and_its_ceiling_an_even_grid_of_panels`, which also holds the panels to an even grid receding toward the far wall. **What re-derives it:** the operator's reading of the lobby on the sandbox | [§ 4.1](#41-the-lobby--the-building-summary) |
 | **Directory marker cap** | **12** | **Chosen** (card#12113, a seat ruling) — the markers a plaque's marker row draws before *+N more* ([§ 4.1](#41-the-lobby--the-building-summary)). Twelve small markers with their gaps fit a plaque's width at the page's own text size with room for the tag, and the fleet this install draws has fewer seats on any floor than the cap, so the cap is reached only on a floor larger than any today; the seats past the cap are the tag's count and are read on the floor page the plaque's link opens, never on the plaque. **What re-derives it:** the operator's reading of a floor that reaches it | [§ 4.1](#41-the-lobby--the-building-summary) |
 | **Context attention threshold** | **80 %** | **Chosen** (card#12113, a seat ruling) — the `context.used_pct` at or above which a plaque's attention line names a seat ([§ 4.1](#41-the-lobby--the-building-summary)). Equal to the coordination framework's `context_budget.backstop_pct` default as read on 2026-10-20 (0.80, the coord plugin's `docs/CONTEXT-RESET.md`) — a figure borrowed for familiarity, not a contract: that repository may move its default without this row moving, and this row claims nothing about what any seat's tooling does at it. **What re-derives it:** the operator's reading of the line | [§ 4.1](#41-the-lobby--the-building-summary) |
 | **Long-call threshold** | **10 min** | **Chosen** (card#12113, a seat ruling) — the age of a seat's **oldest** open call, `server_time − longest_open_call.started_received_at` ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)), at or above which a plaque's attention line names it ([§ 4.1](#41-the-lobby--the-building-summary)). Two thirds of [D2 § 4.6](FLEET-STATE.md#46-every-open-fact-has-a-ceiling)'s 15-minute ceiling on an ordinary open call — early enough that a viewer can look before the server orphan-closes the call, and past the longest ordinary tool call this install's agents run (a full test suite, measured by eye on the sandbox at a few minutes). A dispatch call (a subagent) runs under a 60-minute ceiling and is the seat's oldest open call for as long as it is open, whatever its interns do, so it is named at the same threshold once it has run ten minutes — a deliberate over-report, since a dispatch running ten minutes is common and the line names the tool (*Agent*), so a viewer can read it as one. **What re-derives it:** the operator's reading of the line over a working day | [§ 4.1](#41-the-lobby--the-building-summary) |

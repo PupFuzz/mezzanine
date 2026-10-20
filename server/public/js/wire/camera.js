@@ -7,10 +7,11 @@
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ ONE MACHINERY AT TWO SCALES (card#7341's scope addition, operator 2026-08-26: "same one zoom/pan
  * machinery serves both scales"). Nothing here knows what a floor is. It frames a RECT in a scene's
- * own coordinates — the floor's scene extent on `/floor/{floor}` (row 15), every plate of the
- * building on `/` (row 16, `lobby/lobby-screen.js`) — so the second scale is a second caller, never a
- * second camera. What the second caller needed and the first did not — zooming to one rect inside
- * what is framed, a plate inside the building — is `focusOn()` here, not a function of its own there.
+ * own coordinates — the floor's scene extent on `/floor/{floor}` (row 15), the lobby's drawn room on `/`
+ * (row 24, `lobby/lobby-screen.js`; the cross-section's plates at row 16 until card#12113) — so the second
+ * scale is a second caller, never a second camera. What the second caller needed and the first did not —
+ * zooming to one rect inside what is framed, the elevator or the directory's board inside the room — is
+ * `focusOn()` here, not a function of its own there.
  *
  * ⛔ A MODEL AND NOT A PAGE, for the reason every renderer in Appendix B keeps the split: there is no
  * browser on the build host, so every decision about where the viewer is looking is made here and
@@ -97,9 +98,8 @@ export function frameOn(camera, bounds) {
 }
 
 /**
- * Nothing framed any more — the lobby with no building to draw (`lobby/lobby-screen.js`: no snapshot
- * yet, no layout held, or no plate). The next framing is a first framing again, so a building that
- * comes back comes back at fit.
+ * Nothing framed any more — the lobby with no room drawn (`lobby/lobby-screen.js`: no snapshot applied
+ * yet). The next framing is a first framing again, so a room that comes back comes back at fit.
  */
 export function unframe(camera) {
     return settle({ ...camera, bounds: null, fitted: false });
@@ -127,8 +127,8 @@ export function fit(camera) {
 /**
  * Zoom to a rect INSIDE what is framed: the rect whole in the surface, centred, at the zoom that just
  * holds it — within the zoom range, then the clamp. What is framed does not change, so the viewer can
- * still zoom back out to the whole of it. Row 16's zoom-to-a-plate: the building stays framed and the
- * view goes to one plate of it (card#7343).
+ * still zoom back out to the whole of it. The lobby's focus-into-view (row 24, card#12113): the room
+ * stays framed and the view goes to the elevator or the board — row 16's zoom-to-a-plate until then.
  */
 export function focusOn(camera, rect) {
     if (camera.bounds === null) {
