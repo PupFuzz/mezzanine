@@ -447,7 +447,7 @@ class FloorPageWiringTest extends TestCase
         $otherPrefix = str_replace("['prefix' => 'floor']", "['prefix' => 'flor']", $view);
         $this->assertNotSame($otherPrefix, $view);
         $this->assertArrayHasKey('partial', $this->partialDefects($otherPrefix, $page), 'CONTROL (the partial under another prefix) did not bite');
-        $edited = str_replace('<p id="floor-cab-feed">feed: waiting for the stream</p>', '<p id="floor-cab-feed">feed: waiting</p>', $page);
+        $edited = str_replace('<p id="floor-cab-feed" class="floor-cab-feed">feed: waiting for the stream</p>', '<p id="floor-cab-feed" class="floor-cab-feed">feed: waiting</p>', $page);
         $this->assertNotSame($edited, $page);
         $this->assertArrayHasKey('served', $this->partialDefects($view, $edited), 'CONTROL (a served dialog that is not the partial\'s) did not bite');
         $unaddressed = str_replace('        status: `${prefix}-cab-status`,', '', $performer);

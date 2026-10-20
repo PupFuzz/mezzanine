@@ -63,9 +63,9 @@ class TheCabPanelReconcilesByKeyTest extends TestCase
      */
     private const POPUP_TEXTS = [
         'the heading' => [['.floor-cab', '.floor-cab-panel', '.floor-cab-panel h2'], 'color', 'body'],
-        'the status line' => [['.floor-cab', '.floor-cab-panel', '#floor-cab-status'], 'color', 'body'],
-        'the layout line' => [['.floor-cab', '.floor-cab-panel', '#floor-cab-layout'], 'color', 'body'],
-        'the feed line' => [['.floor-cab', '.floor-cab-panel', '#floor-cab-feed'], 'color', 'body'],
+        'the status line' => [['.floor-cab', '.floor-cab-panel', '.floor-cab-status'], 'color', 'body'],
+        'the layout line' => [['.floor-cab', '.floor-cab-panel', '.floor-cab-layout'], 'color', 'body'],
+        'the feed line' => [['.floor-cab', '.floor-cab-panel', '.floor-cab-feed'], 'color', 'body'],
         'a stop\'s name' => [['.floor-cab', '.floor-cab-panel', '.floor-cab-panel li > button', '.cab-name'], 'color', ['.floor-cab-panel li > button']],
         'the current stop\'s name' => [['.floor-cab', '.floor-cab-panel', '.floor-cab-panel li > button', '.cab-name'], 'color',
             ['.floor-cab-panel li > button', '.floor-cab-panel li.current > button']],

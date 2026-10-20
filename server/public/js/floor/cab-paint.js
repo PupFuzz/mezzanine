@@ -19,6 +19,33 @@
 
 const SVG = 'http://www.w3.org/2000/svg';
 
+/** The theme registry — `resources/floor/themes/index.js`, by the asset route (FLOOR.md § 10.6 item 1). */
+export const THEME_REGISTRY = '/art/floor/themes/index.js';
+
+/** A theme's module — `resources/floor/themes/<name>/theme.js`, by the asset route (§ 10.6 item 1). */
+export const themeModule = (name) => `/art/floor/themes/${encodeURIComponent(name)}/theme.js`;
+
+/**
+ * THE HOUSE THEME's ELEVATOR PALETTE, LOADED — `{frame, lamp}`, its `PALETTE.elevator`, or `null` when the registry or
+ * the house theme's module did not load (a cab then drawn in the sheet's door frame and lamp, `cabTheme()`'s
+ * fallback). For a page that constructs no painter — the lobby, which has no desk to paint and so loads no other art
+ * (`floor/painter.js`'s `loadArt()` loads the floor's, every theme included). ⛔ THE ONLY DYNAMIC IMPORTS ON THE LOBBY
+ * PAGE: the asset route's registry and the one theme module it names house — the two the lobby's import-graph bound
+ * follows into `resources/floor/themes/` by name (`TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`).
+ *
+ * @returns {Promise<{frame: string, lamp: string}|null>}
+ */
+export async function loadHousePalette() {
+    try {
+        const registry = await import(THEME_REGISTRY);
+        const house = await import(themeModule(registry.HOUSE_THEME));
+
+        return house.PALETTE?.elevator ?? null;
+    } catch {
+        return null;
+    }
+}
+
 /** An SVG element named `name`, its attributes set (a `null` or `undefined` value left unset), under `parent`. */
 export function node(name, attrs = {}, parent = null) {
     const el = document.createElementNS(SVG, name);

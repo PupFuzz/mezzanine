@@ -1,145 +1,118 @@
 /**
- * THE BUILDING'S SCENE — where each plate stands in the building's own coordinates, so that row 15's
- * camera (`../wire/camera.js`) can frame the whole building and zoom to one plate of it.
- * `docs/design/FLOOR.md` Appendix B row 16, slice A (card#7343).
+ * THE LOBBY's ROOM — `docs/design/FLOOR.md` § 4.1's *The room, the directory and the elevator* (card#12113, closing
+ * card#11800): one room seen from inside, standing in it and facing the elevator wall, in a one-point perspective, of
+ * § 12's *Lobby room drawing* size. Where every part stands in the room's own scene px, so that row 15's camera
+ * (`../wire/camera.js`) can frame the room and the page can stand the directory on its board, and what the room is drawn
+ * with, as shapes the page paints deciding nothing (`lobby/building-paint.js`).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ GEOMETRY AND NOTHING ELSE. A plate here is its key and a rect; every fact the plate carries — its
- * name, its rooms, its summary, its link — is `building-model.js`'s `plates()`, which this module reads
- * for the stack position alone (`level`) and never re-derives. So the cross-section still reads no field
- * the table does not and recounts nothing (row 16; AT-D3-15 stays at row 9). ⛔ NO LABEL KNOWLEDGE EITHER:
- * a plate's label — its font, its counter-scale, its side, its width, its line budget and its paint — is
- * `lobby/label-paint.js`'s (FLOOR.md § 4.1 states the contract), not this one's; this module exports
- * `PLATE_INSET` and `INK` for it to read rather than holding a second copy of either.
+ * ⛔ SCENERY CARRYING NO FACT. Nothing here reads a plaque, a floor's key, name or count, or a seat: `lobbyScene()` and
+ * `roomArt()` take no argument at all, so two buildings of any two shapes draw ONE room
+ * (`Tests\Feature\Lobby\TheLobbyIsADrawnRoomTest`), and the room's only words are the sign's. The directory's figures
+ * are HTML in the camera's layer over the board's rect (`lobby/directory.js`), never painted into the board.
  *
- * ⛔ THE STACK RUNS FIRST-AT-THE-TOP, because `level` is an index into § 4.1's ascending order and the
- * ratified reference draws the first of it at the top (`building-model.js`'s `plates()` says why that is
- * a rendering choice and not a ruling). A plate is `PLATE_H` below the one before it.
+ * ⛔ NO CAB-POSITION INDICATOR (§ 4.1): no cue, no *at:* sign, no dial reading a floor. The sign over the door reads the
+ * building's name; the elevator's leaves move only with the viewer's own ride, which the page draws from the ride frame
+ * (`building-paint.js`), never from anything here.
  *
- * ⛔ THE SURFACE IS A DRAWING ONLY WHILE THERE IS A BUILDING TO DRAW (card#7343 r3, the seat's ruling).
- * `surfaceStyle()` is `#lobby-building`'s own style: with a scene that has an extent it is the drawing —
- * a fixed height that clips the plates, which the camera alone moves; with none — no snapshot yet, § 9
- * F17's cold start with no layout (its rooms listed with no floor claimed), or no install — it is no
- * style at all, and the list flows in the page as the lobby's list always did, every row reachable by
- * the page's own scroll — the wheel's and the arrow keys' included, which `wire/camera-gestures.js` and
- * `wire/camera-keys.js` leave to the browser, with every other camera event, while the camera frames
- * nothing (card#7343 r3b, r4b).
+ * ⭐ THE ONE WINDOW CARRIES A17's SKY (§ 4.1; the operator's ruling of 2026-09-30 on card#7343, answer A, moved to the
+ * room's one window by card#12113). `windowArt()` fills the left wall's window with the phase's sky at full strength —
+ * its gradient, stars and a moon at night, the sun by day, the city's roofline lit by the phase — from ONE table,
+ * `floor/floor-layout.js`'s `SKY_PAINT`, which the floor's windows read too. ⛔ THE PHASE IS NOT DECIDED HERE: it is
+ * § 6.2 A17's value, set by the floor's own driver on a delivered `feed.heartbeat` (`lobby-screen.js`'s frame `sky`).
+ * ⛔ NO TRANSITION: the sky STEPS to its new value in both of A17's columns (§ 6.2 A17, § 6.4). The drawing surface
+ * around the room is the sheet's own dark ground, with no sky on it (`surfaceStyle()`). The lobby draws no wall clock —
+ * that element is the floor's (§ 4.1).
  *
- * ⛔ THE NUMBERS ARE THE DRAWING's (§ 10.4's last bullet): a plate's size carries no fact. The plate is
- * a storey's proportion — the reference's storey has about the proportions of § 12's reference
- * viewport — so a zoom to one plate fills the surface rather than panning a strip across it.
- *
- * ⭐ THE PLATE DRAWN AS THE REFERENCE's SECTION — slice B (card#7343). `buildingArt()` is the building
- * the plates stand in, as data the page paints and decides nothing about (`lobby/main.js`'s painter, as
- * `floor/painter.js` paints `floor/scene.js`): the roof and its sign above the top plate, each plate a
- * storey — its wall, skirting, floorboards and slab, and its elevator doors in the shaft — and the ground
- * lobby under the bottom plate; `cabStyle()` stands the cab in its shaft at the viewer's plate. ⛔ SCENERY
- * CARRYING NO FACT: `buildingArt()` reads the scene's rects and nothing else — no plate's key, name,
- * summary or rooms — so two buildings of one height draw the same building
- * (`Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest`). The roof and the ground lobby
- * stand inside the scene's `extent`, so the whole-building framing — the first framing and the
- * whole-building control — shows them.
- *
- * ⭐ THE SKY IN THE WINDOWS AND BEHIND THE BUILDING, AND NO CLOCK (the operator's ruling on card#7343,
- * 2026-09-30; § 4.1; the seat's ruling R1 of its r1 fix round). The time of day is carried by each
- * storey's WINDOWS, as the reference's windows carry it: `windowArt()` fills the four arches with the
- * phase's sky at full strength. `surfaceStyle()` paints the rest of the drawing surface — all of it the
- * building does not cover, at every zoom — with the same sky in the reference's dim treatment, the foil
- * behind the windows: the phase's gradient at `SKY_OPACITY` under `SKY_WASH`, with stars at night
- * (`docs/design/floor-preview/floor-preview.html`'s building). Both read ONE table,
- * `floor/floor-layout.js`'s `SKY_PAINT`, which the floor's windows read too. ⛔ THE PHASE IS NOT DECIDED HERE: it is § 6.2 A17's value, set by the floor's own driver on a
- * delivered `feed.heartbeat` (`lobby-screen.js`'s frame `sky`), so this module maps a phase to paint and
- * reads no clock. ⛔ NO TRANSITION, in either of A17's columns: the sky STEPS to its new value (§ 6.2
- * A17, § 6.4). The lobby still draws no wall clock — that element is the floor's room render (§ 4.1).
+ * ⛔ THE NUMBERS ARE THE DRAWING's (§ 10.4's last bullet): the room's figures carry no fact. They are the reference
+ * drawing's (`docs/design/lobby-preview/Lobby2G.dc.html`), kept at the size the operator accepted; the room's scene
+ * size and its ceiling grid are § 12's *Lobby room drawing* row.
  */
 
 import { skyPaint } from '../floor/floor-layout.js';
 
-/** A plate's width in scene px. */
-export const PLATE_W = 1600;
+/** § 12's *Lobby room drawing*: the room's size in scene px. */
+export const ROOM = Object.freeze({ w: 1440, h: 772 });
 
-/** A plate's height in scene px — one storey. */
-export const PLATE_H = 1000;
-
-/**
- * The margin each plate stands INSIDE the extent, on both sides (design review r2, card#7343 row 16
- * F2): the frame — `buildingArt()`'s first shape — spans the extent's full width, and a plate exactly
- * as wide as the extent left nothing of it to show, painting the frame fully over (r1's mistake). Each
- * plate stands `PLATE_INSET` in from the extent's left edge, `PLATE_W` wide, so the frame shows as the
- * outer wall around it — the reference's own technique, its shell wider than its floors
- * (`docs/design/floor-preview/floor-preview.html:1094`).
- */
-export const PLATE_INSET = 24;
-
-/** The roof and its sign, above the top plate, in scene px — the drawing's, carrying no fact. */
-export const ROOF_H = 360;
-
-/** The ground lobby, under the bottom plate, in scene px — the drawing's, carrying no fact. */
-export const GROUND_H = 520;
+/** § 12's *Lobby room drawing*: the ceiling's recessed panels, across and in depth. */
+export const CEILING_GRID = Object.freeze({ across: 4, deep: 3 });
 
 /**
- * The scene for a stack of plates: `{ extent, plates: [{ floor, rect }] }`, `extent` the whole
- * building's rect — the roof, every plate and the ground lobby, `PLATE_INSET` wider on each side than a
- * plate so the frame shows as the outer wall around them (design review r2, F2); `null` when there is no
- * plate to frame — and each plate's `rect` at its `level`, under the roof, standing `PLATE_INSET` in from
- * the extent's left edge — `label-paint.js` reads a plate's label position from this module's own
- * `PLATE_INSET`, not from a plate's `rect.x` directly, so it can measure to the SHELL (the extent's own
- * left edge) rather than to the plate's.
- *
- * @param {Array<{floor: string, level: number}>} plates `building-model.js`'s `plates()`, in its order
+ * The room's one-point perspective, in the drawing's own figures: the vanishing point, and the depth `Z` of the far
+ * wall — a point at depth `Z` is drawn at the scale `1 / (1 + Z)` about the vanishing point, so the far wall stands
+ * at `1 / (1 + FAR_Z)` of the scene. A point of the near plane is given in scene px (`X` from the vanishing point's
+ * line across, `Y` down from the scene's top).
  */
-export function buildingScene(plates) {
-    return {
-        extent: plates.length === 0 ? null : { x: 0, y: 0, w: PLATE_W + PLATE_INSET * 2, h: ROOF_H + PLATE_H * plates.length + GROUND_H },
-        plates: plates.map((plate) => ({
-            floor: plate.floor,
-            rect: { x: PLATE_INSET, y: ROOF_H + plate.level * PLATE_H, w: PLATE_W, h: PLATE_H },
-        })),
-    };
+const VANISH = Object.freeze({ x: 720, y: 492.5 });
+const FAR_Z = 0.6126;
+
+/** A point of the room: `x`, `y` on the scene's near plane, carried back to depth `z`. */
+function at(x, y, z) {
+    const s = 1 / (1 + z);
+
+    return [+(VANISH.x + (x - VANISH.x) * s).toFixed(2), +(VANISH.y + (y - VANISH.y) * s).toFixed(2)];
+}
+
+/** The far wall — the elevator wall — in scene px. */
+const [WALL_L, WALL_T] = at(0, 0, FAR_Z);
+const [WALL_R, WALL_B] = at(ROOM.w, ROOM.h, FAR_Z);
+
+/** Every rect the page stands something at, in scene px — the drawing's, carrying no fact. */
+const PARTS = Object.freeze({
+    // The directory board on the far wall, left of the elevator: its wooden face.
+    board: Object.freeze({ x: 292, y: 198, w: 520, h: 340 }),
+    // The directory's box — the board's inner rectangle, where the plaques stand (§ 4.1).
+    directory: Object.freeze({ x: 308, y: 214, w: 488, h: 308 }),
+    // The building's readings, two brass-edged panels under the board (§ 4.1).
+    readings: Object.freeze({ x: 292, y: 548, w: 520, h: 78 }),
+    // The elevator, right of the wall's centre: its sign, frame, call plate and mat — what the keyboard's focus on it
+    // brings the camera to.
+    elevator: Object.freeze({ x: 816, y: 386, w: 193, h: 294 }),
+    // The elevator's surround — its frame and its call plate — which is the control's hit area.
+    surround: Object.freeze({ x: 830, y: 425, w: 179, h: 246 }),
+    // The doorway the leaves close: the cab is drawn behind them, clipped to it.
+    doorway: Object.freeze({ x: 841, y: 444, w: 121, h: 221 }),
+});
+
+/**
+ * The room's scene: `{ extent, board, directory, readings, elevator, surround, doorway }`, each a rect in scene px —
+ * `extent` the whole room, which the camera frames (fit on entry and on *Fit the lobby*). The same scene for every
+ * building: it takes no argument (the header's ⛔).
+ */
+export function lobbyScene() {
+    return Object.freeze({ extent: Object.freeze({ x: 0, y: 0, w: ROOM.w, h: ROOM.h }), ...PARTS });
 }
 
 /**
- * The storey's parts, in scene px from a plate's top-left — the drawing's, carrying no fact. The shaft
- * stands at the plate's RIGHT; where a plate's label stands is FLOOR.md § 4.1's (`lobby/label-paint.js`).
+ * The palette — § 10.4's warm and whimsical, the inks the cross-section drew with, so nothing is re-coloured, plus the
+ * board's two wood tones (`honey`, `wood`) and a shading ink (`shade`), which are the drawing's own. ⛔ `door`,
+ * `doorEdge` and `mat` are HELD EQUAL to the sheet's `--door`, `--door-edge` and `--lobby-mat`
+ * (`Tests\Feature\ThePageChromeIsOneLinkedStylesheetTest`), which the elevator's leaves and the lobby view read.
  */
-const STOREY = {
-    skirting: 836,
-    floor: 856,
-    slab: 948,
-    shaft: { x: 1296, w: 232 },
-    door: { x: 1316, y: 420, w: 192, h: 416 },
-};
-
-/** The palette — § 10.4's warm and whimsical, in the drawing's own figures — shared with `label-paint.js`'s own paint values, which read it rather than holding a second copy. */
-export const INK = {
+export const INK = Object.freeze({
     shell: '#e7b98f',
     wall: '#fcf3e4',
     skirting: '#c98f63',
     floor: '#e2b07c',
     plank: '#c9925f',
     slab: '#b27b56',
-    slabTop: '#f0cfa8',
-    shaft: '#f2e2cb',
-    guide: '#c9a27e',
     door: '#dbe5ee',
     doorEdge: '#9fb1c4',
     lamp: '#ffcf7d',
-    roof: '#c7735a',
-    roofTop: '#e08f6f',
     sign: '#3b2f4a',
     signInk: '#ffcf7d',
     leaf: '#7fb77e',
     leafDark: '#5f9a63',
     pot: '#d98b5f',
-    glass: '#cfe8ef',
     mat: '#e7866d',
-    ground: '#b9d98f',
-    path: '#e9d8bf',
-};
+    honey: '#c9a873',
+    wood: '#8a6f5a',
+    shade: '#3b2f2a',
+});
 
 /**
- * A shape: an SVG element name, its attributes, and the text it carries (only the roof sign's and the
- * lobby's) — or, for a paint server (`windowArt()`'s gradient), the shapes it holds.
+ * A shape: an SVG element name, its attributes, and the text it carries (only the sign's) — or, for a paint server, the
+ * shapes it holds.
  */
 function shape(el, attrs, text = null) {
     return text === null ? { el, attrs } : { el, attrs, text };
@@ -150,178 +123,187 @@ function parent(el, attrs, children) {
     return { el, attrs, children };
 }
 
-/** A potted plant standing on `y` at `x` — the roof garden's and the ground lobby's. */
+/** Points as an SVG `points` list. */
+const pts = (...ps) => ps.map((p) => p.join(',')).join(' ');
+
+/** A shading overlay's gradient, clear at `from` and the shading ink at `opacity` at the other end. */
+function shading(id, [x1, y1, x2, y2], opacity) {
+    return parent('linearGradient', { id, x1, y1, x2, y2 }, [
+        shape('stop', { offset: 0, 'stop-color': INK.shade, 'stop-opacity': 0 }),
+        shape('stop', { offset: 1, 'stop-color': INK.shade, 'stop-opacity': opacity }),
+    ]);
+}
+
+/**
+ * The ceiling's recessed panels (the operator's request of 2026-10-20, *evenly spaced rectangular lights in a grid
+ * pattern*): `CEILING_GRID.across` bays of equal width across the near edge, a panel `PANEL_SHARE` of its bay centred in
+ * each, and `CEILING_GRID.deep` equal bays in depth to the far wall, the panel the same share of its bay — each carried
+ * to the vanishing point, so panels and gaps foreshorten alike.
+ */
+const PANEL_SHARE = 200 / 360;
+
+function ceilingPanels() {
+    const bayX = ROOM.w / CEILING_GRID.across;
+    const bayZ = FAR_Z / CEILING_GRID.deep;
+    const out = [];
+
+    for (let row = 0; row < CEILING_GRID.deep; row += 1) {
+        const zc = (row + 0.5) * bayZ;
+        const [z0, z1] = [zc - (bayZ * PANEL_SHARE) / 2, zc + (bayZ * PANEL_SHARE) / 2];
+
+        for (let col = 0; col < CEILING_GRID.across; col += 1) {
+            const xc = (col + 0.5) * bayX;
+            const [x0, x1] = [xc - (bayX * PANEL_SHARE) / 2, xc + (bayX * PANEL_SHARE) / 2];
+            const quad = pts(at(x0, 0, z0), at(x1, 0, z0), at(x1, 0, z1), at(x0, 0, z1));
+
+            out.push(
+                shape('polygon', { points: quad, fill: INK.lamp, opacity: 0.25, stroke: INK.lamp, 'stroke-width': 8, 'stroke-linejoin': 'round', class: 'lobby-ceiling-glow' }),
+                shape('polygon', { points: quad, fill: INK.wall, stroke: INK.shell, 'stroke-width': 1.5, 'stroke-linejoin': 'round', class: 'lobby-ceiling-panel' }),
+            );
+        }
+    }
+
+    return out;
+}
+
+/** A potted plant standing on `y` at `x`. */
 function plant(x, y, size) {
     return [
-        shape('ellipse', { cx: x, cy: y - size * 1.25, rx: size * 0.72, ry: size * 0.9, fill: INK.leaf }),
-        shape('ellipse', { cx: x - size * 0.34, cy: y - size * 0.95, rx: size * 0.42, ry: size * 0.55, fill: INK.leafDark }),
-        shape('ellipse', { cx: x + size * 0.36, cy: y - size * 1.05, rx: size * 0.4, ry: size * 0.52, fill: INK.leafDark }),
-        shape('path', { d: `M ${x - size * 0.5} ${y - size * 0.55} L ${x + size * 0.5} ${y - size * 0.55} L ${x + size * 0.38} ${y} L ${x - size * 0.38} ${y} Z`, fill: INK.pot }),
+        shape('path', { d: `M ${x - size * 0.9} ${y - size * 1.05} L ${x + size * 0.9} ${y - size * 1.05} L ${x + size * 0.7} ${y} L ${x - size * 0.7} ${y} Z`, fill: INK.pot }),
+        shape('ellipse', { cx: x, cy: y - size * 2.2, rx: size, ry: size * 1.2, fill: INK.leaf }),
+        shape('ellipse', { cx: x - size * 0.65, cy: y - size * 1.78, rx: size * 0.55, ry: size * 0.75, fill: INK.leafDark }),
+        shape('ellipse', { cx: x + size * 0.65, cy: y - size * 1.82, rx: size * 0.5, ry: size * 0.7, fill: INK.leafDark }),
     ];
 }
 
 /**
- * The elevator's column — its shaft and the doors in it — from the left edge of the column of plates it
- * serves: every storey's, the ground lobby's and the cab's are this one column, so none of them can stand
- * off the others (design review r3, card#7343 row 16 F-A: the ground lobby's shaft was placed from the
- * extent's left edge while the storeys' was placed from the plates', and jogged `PLATE_INSET` left once
- * the plates were inset). `storey()` passes its plate's left edge, `ground()` the plates' shared one, and
- * `CAB` is drawn at `shaftAt(0)` — its plate's own left edge, which `cabStyle()` translates it to.
- *
- * @param {number} left the column's left edge, in scene px
+ * The room as shapes for the page to paint, bottom first, in scene px — `{ box, shapes }`, `box` the room's extent:
+ * the ceiling with its panel grid, the floor in boards, the two side walls, the far wall, the rail along the three
+ * walls and the skirting along their foot, the room's four edges as faint lines, the bench on the left wall, the
+ * picture on the right one, the plant in the back right corner, the directory board's wood and fixings, and the
+ * elevator's scenery — its frame, the dark recess, the lamp arc over the doors, the sill, the mat, the call plate and
+ * the brass sign. The elevator's leaves and the cab behind them are the page's (`building-paint.js`), because they
+ * move with the ride; the window is `windowArt()`'s, because it carries A17's sky.
  */
-function shaftAt(left) {
-    const x = left + STOREY.shaft.x;
-    const door = left + STOREY.door.x;
-
-    return {
-        x,
-        w: STOREY.shaft.w,
-        mid: x + STOREY.shaft.w / 2,
-        door: { x: door, w: STOREY.door.w, mid: door + STOREY.door.w / 2 },
-    };
-}
-
-/** One storey at a plate's rect: wall, skirting, floorboards, slab, shaft and its doors (its windows are `windowArt()`'s). */
-function storey(rect) {
-    const { x, y, w } = rect;
-    const shaft = shaftAt(x);
+export function roomArt() {
+    const { w, h } = ROOM;
+    const near = { tl: [0, 0], tr: [w, 0], bl: [0, h], br: [w, h] };
+    const far = { tl: [WALL_L, WALL_T], tr: [WALL_R, WALL_T], bl: [WALL_L, WALL_B], br: [WALL_R, WALL_B] };
+    const ceiling = pts(near.tl, near.tr, far.tr, far.tl);
+    const floor = pts(near.bl, near.br, far.br, far.bl);
+    const left = pts(near.tl, far.tl, far.bl, near.bl);
+    const right = pts(near.tr, far.tr, far.br, near.br);
     const shapes = [
-        shape('rect', { x, y, width: w, height: STOREY.skirting, fill: INK.wall }),
+        parent('defs', {}, [
+            shading('lobby-shade-ceiling', [0, 0, 0, 1], 0.2),
+            shading('lobby-shade-floor', [0, 1, 0, 0], 0.3),
+            shading('lobby-shade-left', [0, 0, 1, 0], 0.18),
+            shading('lobby-shade-right', [1, 0, 0, 0], 0.18),
+            parent('radialGradient', { id: 'lobby-wall-glow', cx: 0.5, cy: 0, r: 0.8 }, [
+                shape('stop', { offset: 0, 'stop-color': INK.lamp, 'stop-opacity': 0.38 }),
+                shape('stop', { offset: 1, 'stop-color': INK.lamp, 'stop-opacity': 0 }),
+            ]),
+        ]),
+        shape('polygon', { points: ceiling, fill: INK.wall }),
+        shape('polygon', { points: ceiling, fill: 'url(#lobby-shade-ceiling)' }),
+        shape('polygon', { points: floor, fill: INK.floor }),
     ];
 
-    // The arched windows between the building's left wall and the shaft are `windowArt()`'s: they carry
-    // A17's sky, so they are painted from the phase and not with the scenery, which reads the rects alone.
+    // The floor's boards, converging on the far wall, and the seams across them at four depths.
+    for (let x = w / 8; x < w; x += w / 8) {
+        const [a, b] = [[x, h], at(x, h, FAR_Z)];
 
-    shapes.push(
-        shape('rect', { x, y: y + STOREY.skirting, width: w, height: STOREY.floor - STOREY.skirting, fill: INK.skirting }),
-        shape('rect', { x, y: y + STOREY.floor, width: w, height: STOREY.slab - STOREY.floor, fill: INK.floor }),
-    );
+        shapes.push(shape('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: INK.plank, 'stroke-width': 2, 'stroke-opacity': 0.75 }));
+    }
 
-    for (let px = x + 120; px < x + w; px += 160) {
-        shapes.push(shape('rect', { x: px, y: y + STOREY.floor, width: 4, height: STOREY.slab - STOREY.floor, fill: INK.plank }));
+    for (const z of [0.05, 0.12, 0.2, 0.26]) {
+        const [a, b] = [at(0, h, z), at(w, h, z)];
+
+        shapes.push(shape('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: INK.plank, 'stroke-width': 1.5, 'stroke-opacity': 0.5 }));
     }
 
     shapes.push(
-        shape('rect', { x, y: y + STOREY.slab, width: w, height: PLATE_H - STOREY.slab, fill: INK.slab }),
-        shape('rect', { x, y: y + STOREY.slab, width: w, height: 10, fill: INK.slabTop }),
-        // The shaft, its guide rail, and this storey's doors with the lamp over them — lit alike on every storey.
-        shape('rect', { x: shaft.x, y, width: shaft.w, height: STOREY.skirting, fill: INK.shaft }),
-        shape('line', { x1: shaft.mid, y1: y, x2: shaft.mid, y2: y + STOREY.door.y - 24, stroke: INK.guide, 'stroke-width': 6, 'stroke-dasharray': '14 12' }),
-        shape('rect', { x: shaft.door.x, y: y + STOREY.door.y, width: shaft.door.w, height: STOREY.door.h, rx: 18, fill: INK.door, stroke: INK.doorEdge, 'stroke-width': 6 }),
-        shape('line', { x1: shaft.door.mid, y1: y + STOREY.door.y, x2: shaft.door.mid, y2: y + STOREY.door.y + STOREY.door.h, stroke: INK.doorEdge, 'stroke-width': 5 }),
-        shape('circle', { cx: shaft.door.mid, cy: y + STOREY.door.y - 40, r: 14, fill: INK.lamp }),
+        shape('polygon', { points: floor, fill: 'url(#lobby-shade-floor)' }),
+        shape('polygon', { points: left, fill: INK.wall }),
+        shape('polygon', { points: left, fill: 'url(#lobby-shade-left)' }),
+        shape('polygon', { points: right, fill: INK.wall }),
+        shape('polygon', { points: right, fill: 'url(#lobby-shade-right)' }),
+        shape('rect', { x: WALL_L, y: WALL_T, width: WALL_R - WALL_L, height: WALL_B - WALL_T, fill: INK.wall }),
+        shape('rect', { x: WALL_L, y: WALL_T, width: WALL_R - WALL_L, height: WALL_B - WALL_T, fill: INK.shade, 'fill-opacity': 0.07 }),
+        shape('rect', { x: WALL_L, y: WALL_T, width: WALL_R - WALL_L, height: 260, fill: 'url(#lobby-wall-glow)' }),
     );
 
-    return shapes;
-}
+    // The rail along the three walls, and the skirting along their foot.
+    const railY = 610;
+    const [railFar] = [at(0, railY, FAR_Z)];
 
-/** The roof over the building's top: its slab with an overhang, a chimney, the sign and a roof garden. */
-function roof(extent) {
-    const { x, w } = extent;
-    const top = extent.y;
-    const eave = top + ROOF_H - 64;
+    shapes.push(
+        shape('line', { x1: 0, y1: railY, x2: railFar[0], y2: railFar[1], stroke: INK.shell, 'stroke-width': 3 }),
+        shape('line', { x1: w, y1: railY, x2: w - railFar[0], y2: railFar[1], stroke: INK.shell, 'stroke-width': 3 }),
+        shape('line', { x1: WALL_L, y1: railFar[1], x2: WALL_R, y2: railFar[1], stroke: INK.shell, 'stroke-width': 2.5 }),
+    );
 
-    return [
-        shape('rect', { x: x + w - 330, y: eave - 150, width: 120, height: 150, rx: 14, fill: INK.roof }),
-        shape('rect', { x: x + w - 346, y: eave - 172, width: 152, height: 30, rx: 12, fill: INK.roofTop }),
-        shape('rect', { x: x + 120, y: top + 36, width: 760, height: 200, rx: 36, fill: INK.sign, stroke: INK.signInk, 'stroke-width': 10 }),
-        shape('line', { x1: x + 260, y1: top + 236, x2: x + 260, y2: eave, stroke: INK.sign, 'stroke-width': 14 }),
-        shape('line', { x1: x + 740, y1: top + 236, x2: x + 740, y2: eave, stroke: INK.sign, 'stroke-width': 14 }),
-        // font-size 76 and letter-spacing ≈10.36 are the reference's own sign proportions (44px text on a
-        // 440-wide sign, floor-preview.html:1098-1099) scaled to this sign's 760px width — no textLength or
-        // lengthAdjust, which distort an unshipped Quicksand's fallback glyphs (design review r1, row 16 F3).
-        shape('text', { x: x + 500, y: top + 160, 'text-anchor': 'middle', 'font-family': 'Quicksand, ui-rounded, system-ui, sans-serif', 'font-weight': 700, 'font-size': 76, 'letter-spacing': 10.36, fill: INK.signInk }, 'MEZZANINE'),
-        ...plant(x + 1000, eave, 60),
-        ...plant(x + 1110, eave, 44),
-        shape('rect', { x, y: eave, width: w, height: 64, rx: 20, fill: INK.roof }),
-        shape('rect', { x, y: eave, width: w, height: 18, rx: 9, fill: INK.roofTop }),
-    ];
-}
+    const skirtTop = at(0, h - 21.6, FAR_Z)[1];
 
-/**
- * The ground lobby under the bottom plate: its wall, the entrance, the lobby's own name, plants and the
- * ground — spanning the extent, with the elevator's shaft and doors in the plates' column (`shaftAt()`).
- *
- * @param {{x: number, y: number, w: number, h: number}} extent the building's
- * @param {number} column the plates' shared left edge, which the shaft is placed from
- */
-function ground(extent, column) {
-    const { x, w } = extent;
-    const shaft = shaftAt(column);
-    const top = extent.y + extent.h - GROUND_H;
-    const floor = top + GROUND_H - 80;
-    const doors = { x: x + 560, w: 360, h: 300 };
+    shapes.push(
+        shape('rect', { x: WALL_L, y: skirtTop, width: WALL_R - WALL_L, height: WALL_B - skirtTop, fill: INK.skirting }),
+        shape('polygon', { points: pts([0, h - 21.6], [WALL_L, skirtTop], far.bl, near.bl), fill: INK.skirting }),
+        shape('polygon', { points: pts([w, h - 21.6], [WALL_R, skirtTop], far.br, near.br), fill: INK.skirting }),
+    );
 
-    return [
-        shape('rect', { x, y: top, width: w, height: GROUND_H - 80, fill: INK.wall }),
-        shape('rect', { x: shaft.x, y: top, width: shaft.w, height: GROUND_H - 80, fill: INK.shaft }),
-        shape('rect', { x: shaft.door.x, y: floor - STOREY.door.h, width: shaft.door.w, height: STOREY.door.h, rx: 18, fill: INK.door, stroke: INK.doorEdge, 'stroke-width': 6 }),
-        shape('line', { x1: shaft.door.mid, y1: floor - STOREY.door.h, x2: shaft.door.mid, y2: floor, stroke: INK.doorEdge, 'stroke-width': 5 }),
-        // The entrance: two glass doors under an arch, and the welcome mat before them.
-        shape('path', { d: `M ${doors.x} ${floor} L ${doors.x} ${floor - doors.h + 90} Q ${doors.x + doors.w / 2} ${floor - doors.h - 60} ${doors.x + doors.w} ${floor - doors.h + 90} L ${doors.x + doors.w} ${floor} Z`, fill: INK.glass, stroke: INK.skirting, 'stroke-width': 12 }),
-        shape('line', { x1: doors.x + doors.w / 2, y1: floor - doors.h + 20, x2: doors.x + doors.w / 2, y2: floor, stroke: INK.skirting, 'stroke-width': 8 }),
-        shape('rect', { x: doors.x - 30, y: floor - 6, width: doors.w + 60, height: 20, rx: 10, fill: INK.mat }),
-        // The same defect as the roof sign's (design review r1, row 16 F3), fixed the same way: no
-        // textLength or lengthAdjust, and letter-spacing at the roof sign's own ratio to font-size (6/44).
-        shape('text', { x: x + 300, y: top + 140, 'text-anchor': 'middle', 'font-family': 'Quicksand, ui-rounded, system-ui, sans-serif', 'font-weight': 700, 'font-size': 72, 'letter-spacing': 9.82, fill: INK.skirting }, 'LOBBY'),
-        ...plant(x + 170, floor, 90),
-        ...plant(x + 1080, floor, 90),
-        shape('rect', { x, y: floor, width: w, height: 80, fill: INK.ground }),
-        shape('rect', { x: doors.x - 30, y: floor, width: doors.w + 60, height: 80, fill: INK.path }),
-    ];
-}
-
-/**
- * The building the plates stand in, as shapes for the page to paint under the plates' labels:
- * `{ box, shapes: [{ el, attrs, text? }] }` in scene px, bottom first — `box` the scene's `extent` —
- * or `null` when the scene has no extent (nothing composed, or no plate), where the list flows and no
- * building is drawn.
- *
- * ⛔ IT READS THE SCENE's RECTS AND NOTHING ELSE (row 16: scenery carrying no fact) — never a plate's
- * key — so it is a function of the stack's height alone.
- *
- * @param {{extent: object|null, plates: Array<{rect: object}>}|null} scene `buildingScene()`'s
- */
-export function buildingArt(scene) {
-    const extent = scene?.extent ?? null;
-
-    if (extent === null) {
-        return null;
+    // The room's four edges, as faint lines.
+    for (const [a, b] of [[near.tl, far.tl], [near.tr, far.tr], [near.bl, far.bl], [near.br, far.br]]) {
+        shapes.push(shape('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: INK.shade, 'stroke-opacity': 0.28, 'stroke-width': 1.5 }));
     }
 
-    return {
-        box: extent,
-        shapes: [
-            // The extent's full width (design review r1 F4, then r2 F2): the whole-building fit frames
-            // the extent exactly, so a frame drawn wider than it would be clipped there — and the plates
-            // are the ones inset `PLATE_INSET` inside it now, so this shows as the outer wall around them.
-            shape('rect', { x: extent.x, y: extent.y + ROOF_H - 40, width: extent.w, height: extent.h - ROOF_H + 40 - 80, rx: 28, fill: INK.shell }),
-            ...scene.plates.flatMap(({ rect }) => storey(rect)),
-            ...roof(extent),
-            ...ground(extent, scene.plates[0].rect.x),
-        ],
-    };
+    shapes.push(...ceilingPanels());
+
+    // A picture on the right wall — a hill under a sun — a plant in the back right corner, a bench on the left wall.
+    shapes.push(
+        shape('polygon', { points: pts([1253.5, 353], [1346.1, 328.6], [1346.1, 485.2], [1253.5, 486.3]), fill: INK.slab }),
+        shape('polygon', { points: pts([1262, 362], [1337, 342], [1337, 475], [1262, 476]), fill: INK.shell }),
+        shape('polygon', { points: pts([1262, 445], [1337, 440], [1337, 475], [1262, 476]), fill: INK.leafDark }),
+        shape('circle', { cx: 1312, cy: 382, r: 11, fill: INK.lamp }),
+        ...plant(1152, 679, 40),
+        shape('polygon', { points: pts([60, 700], [230, 660], [230, 676], [60, 718]), fill: INK.slab }),
+        shape('polygon', { points: pts([60, 718], [230, 676], [230, 690], [60, 732]), fill: INK.wood }),
+        shape('rect', { x: 66, y: 732, width: 10, height: 34, fill: INK.wood }),
+        shape('rect', { x: 218, y: 690, width: 8, height: 28, fill: INK.wood }),
+    );
+
+    // The directory board: a honey face, a darker inset and four brass fixings. Its words are the directory's HTML.
+    const { board } = PARTS;
+
+    shapes.push(
+        shape('rect', { x: board.x, y: board.y, width: board.w, height: board.h, rx: 18, fill: INK.honey }),
+        shape('rect', { x: board.x + 8, y: board.y + 8, width: board.w - 16, height: board.h - 16, rx: 14, fill: INK.wood }),
+        ...[[20, 20], [board.w - 20, 20], [20, board.h - 20], [board.w - 20, board.h - 20]]
+            .map(([dx, dy]) => shape('circle', { cx: board.x + dx, cy: board.y + dy, r: 3.5, fill: INK.lamp })),
+    );
+
+    // The elevator's scenery: its frame round a dark recess, the lamp arc over the doors, the sill, the mat before them
+    // and a two-button call plate beside the frame — none lit — and over the door the brass sign, the building's name.
+    const { doorway: d } = PARTS;
+
+    shapes.push(
+        shape('rect', { x: 830, y: 425, width: 143, height: 246, rx: 6, fill: INK.honey, stroke: INK.wood, 'stroke-width': 1.5 }),
+        shape('rect', { x: d.x - 1, y: d.y - 1, width: d.w + 2, height: d.h + 2, fill: INK.sign }),
+        shape('path', { d: `M ${d.x + d.w / 2 - 22} ${d.y - 4} A 24 24 0 0 1 ${d.x + d.w / 2 + 22} ${d.y - 4}`, fill: 'none', stroke: INK.wood, 'stroke-width': 1.5 }),
+        shape('circle', { cx: d.x + d.w / 2, cy: d.y - 14, r: 3, fill: INK.lamp }),
+        shape('rect', { x: 826, y: d.y + d.h - 1, width: 151, height: 5, fill: INK.doorEdge }),
+        shape('rect', { x: 816, y: 670, width: 172, height: 10, rx: 4, fill: INK.mat }),
+        shape('rect', { x: 987, y: 520, width: 22, height: 58, rx: 4, fill: INK.wall, stroke: INK.wood, 'stroke-width': 1 }),
+        shape('circle', { cx: 998, cy: 537, r: 6, fill: INK.door, stroke: INK.wood, 'stroke-width': 1 }),
+        shape('circle', { cx: 998, cy: 561, r: 6, fill: INK.door, stroke: INK.wood, 'stroke-width': 1 }),
+        shape('rect', { x: 830, y: 386, width: 143, height: 30, rx: 6, fill: INK.sign }),
+        shape('text', { x: 901.5, y: 406, 'text-anchor': 'middle', 'font-family': 'Quicksand, ui-rounded, system-ui, sans-serif', 'font-weight': 700, 'font-size': 13, 'letter-spacing': 2.5, fill: INK.signInk }, 'MEZZANINE'),
+    );
+
+    return { box: lobbyScene().extent, shapes };
 }
 
-/**
- * The storey's windows, in scene px from a plate's left and top edges: four arches between the building's
- * left wall and the shaft, where the moulded wall panels stood before the windows carried the sky.
- */
-const WINDOW = {
-    first: 96,
-    step: 300,
-    w: 220,
-    top: 260,
-    spring: 380,
-    bottom: STOREY.skirting - 60,
-};
-
-/** The one gradient every lobby window is filled with — the phase's `top` to `bot`, down each arch. */
-export const WINDOW_SKY_ID = 'lobby-window-sky';
-
-/** The window frame's colour and the city's inks — the reference window's own (`floor-preview.html`'s `floorBody()`). */
-const WINDOW_INK = {
+/** The window's frame and the city's inks — the reference window's own (`floor-preview.html`'s `floorBody()`). */
+const WINDOW_INK = Object.freeze({
     frame: '#4a5670',
     star: '#e8ecff',
     moon: '#fff3cf',
@@ -330,256 +312,129 @@ const WINDOW_INK = {
     cityFlat: '#454b63',
     cityNight: '#1b2547',
     cityDay: '#5a7086',
-};
+});
 
-/** One arch's outline — the path the window's sky fills and its frame strokes. */
-function archPath(px, y) {
-    const { w, top, spring, bottom } = WINDOW;
+/** The one gradient the window's glass is filled with — the phase's `top` to `bot`. */
+export const WINDOW_SKY_ID = 'lobby-window-sky';
 
-    return `M ${px} ${y + bottom} L ${px} ${y + spring} Q ${px} ${y + top} ${px + w / 2} ${y + top} Q ${px + w} ${y + top} ${px + w} ${y + spring} L ${px + w} ${y + bottom} Z`;
+/** The window on the left wall: its frame's and its glass's corners, near edge first, in scene px. */
+const WINDOW = Object.freeze({
+    frame: Object.freeze([[84, 236], [206, 284], [206, 492], [84, 488]]),
+    glass: Object.freeze([[90, 247], [200, 291], [200, 484], [90, 480]]),
+});
+
+/** The point `u` across and `v` down the glass, `0..1` each, on the wall's perspective. */
+function onGlass(u, v) {
+    const [a, b, c, dd] = WINDOW.glass;
+    const top = [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
+    const bot = [dd[0] + (c[0] - dd[0]) * u, dd[1] + (c[1] - dd[1]) * u];
+
+    return [+(top[0] + (bot[0] - top[0]) * v).toFixed(2), +(top[1] + (bot[1] - top[1]) * v).toFixed(2)];
 }
 
-/** The colour `fraction` of the way from `a` to `b`, both `#rrggbb` — the sky at a height in the window. */
-function mix(a, b, fraction) {
-    const [x, y] = [a, b].map((hex) => Number.parseInt(hex.slice(1), 16));
-    const channel = (shift) => Math.round(((x >> shift) & 255) + (((y >> shift) & 255) - ((x >> shift) & 255)) * fraction);
-
-    return `#${[16, 8, 0].map((shift) => channel(shift).toString(16).padStart(2, '0')).join('')}`;
-}
-
-/** Every window of every plate, as `{ px, y, index }` — `index` its place in its storey's row, from the left. */
-function windowsOf(scene) {
-    return scene.plates.flatMap(({ rect }) => {
-        const out = [];
-        const last = shaftAt(rect.x).x - 48;
-
-        for (let px = rect.x + WINDOW.first, index = 0; px + WINDOW.w <= last; px += WINDOW.step, index += 1) {
-            out.push({ px, y: rect.y, index });
-        }
-
-        return out;
-    });
-}
-
-/** One window: its sky, the phase's stars, the city's roofline with its lit windows, the sun or the moon, and the frame. */
-function windowShapes({ px, y, index }, sky) {
-    const { w, top, bottom } = WINDOW;
-    const h = bottom - top;
-    const shapes = [shape('path', { d: archPath(px, y), fill: `url(#${WINDOW_SKY_ID})` })];
+/**
+ * THE ROOM's WINDOW, CARRYING THE TIME OF DAY: the left wall's one window filled with A17's sky at FULL strength — the
+ * phase's gradient `top` to `bot`; seven stars at night; the city's roofline, lit at the phase's `city_lit`, the flat
+ * unlit ink when `unset`; the moon at night and the sun at the phase's `sun_y`; the frame and its mullions. `unset` (no
+ * live feed yet, § 6.5) is the reference's flat treatment: no star, sun, moon or lit window — never a plausible time of
+ * day. It reads the phase alone (A17's value, `lobby-screen.js`'s frame `sky`).
+ *
+ * @param {string|null} phase § 6.2 A17's sky phase
+ * @returns {{shapes: Array<object>}}
+ */
+export function windowArt(phase) {
+    const sky = skyPaint(phase);
+    const glass = pts(...WINDOW.glass);
+    const shapes = [
+        parent('defs', {}, [
+            parent('linearGradient', { id: WINDOW_SKY_ID, x1: 0, y1: 0, x2: 0, y2: 1 }, [
+                shape('stop', { offset: 0, 'stop-color': sky.top }),
+                shape('stop', { offset: 1, 'stop-color': sky.bot }),
+            ]),
+        ]),
+        shape('polygon', { points: pts(...WINDOW.frame), fill: WINDOW_INK.frame }),
+        shape('polygon', { points: glass, fill: `url(#${WINDOW_SKY_ID})` }),
+    ];
 
     if (sky.stars) {
         for (let i = 0; i < 7; i += 1) {
-            shapes.push(shape('circle', { cx: px + 26 + ((i * 67) % (w - 52)), cy: y + top + 70 + ((i * 37) % 170), r: 4 + (i % 2) * 2, fill: WINDOW_INK.star, opacity: 0.8 }));
+            const [cx, cy] = onGlass(0.12 + ((i * 0.37) % 0.76), 0.08 + ((i * 0.23) % 0.45));
+
+            shapes.push(shape('circle', { cx, cy, r: 1.5 + (i % 2), fill: WINDOW_INK.star, opacity: 0.8 }));
         }
     }
 
-    for (let i = 0; i < 6; i += 1) {
-        const bx = px + 10 + i * 34;
-        const bh = 70 + ((i * 13) % 26) * 3;
-
-        shapes.push(shape('rect', {
-            x: bx,
-            y: y + bottom - bh,
-            width: 24,
-            height: bh,
-            fill: sky.flat ? WINDOW_INK.cityFlat : sky.city_lit > 0 ? WINDOW_INK.cityNight : WINDOW_INK.cityDay,
-            opacity: sky.city_lit > 0 ? 1 : 0.75,
-        }));
-
-        if (sky.city_lit > 0) {
-            shapes.push(
-                shape('rect', { x: bx + 4, y: y + bottom - bh + 12, width: 7, height: 7, fill: WINDOW_INK.lit, opacity: sky.city_lit }),
-                shape('rect', { x: bx + 13, y: y + bottom - bh + 26, width: 7, height: 7, fill: WINDOW_INK.lit, opacity: sky.city_lit * 0.7 }),
-            );
-        }
-    }
-
-    // One moon and one sun per storey, each in its own window, as the reference draws one of each per floor.
-    if (sky.moon && index === 2) {
-        const cx = px + w * 0.66;
-        const cy = y + top + 110;
+    if (sky.moon) {
+        const [cx, cy] = onGlass(0.66, 0.22);
 
         shapes.push(
-            shape('circle', { cx, cy, r: 30, fill: WINDOW_INK.moon, opacity: 0.95 }),
-            // The crescent's bite is the sky's own colour at that height, so it reads as sky and not as a disc.
-            shape('circle', { cx: cx - 12, cy: cy - 10, r: 25, fill: mix(sky.top, sky.bot, (cy - y - top) / h) }),
+            shape('circle', { cx, cy, r: 12, fill: WINDOW_INK.moon, opacity: 0.95 }),
+            shape('circle', { cx: cx - 5, cy: cy - 4, r: 10, fill: sky.top }),
         );
     }
 
-    if (sky.sun && index === 1) {
-        const cy = y + top + h * sky.sun_y;
+    if (sky.sun) {
+        const [cx, cy] = onGlass(0.36, 0.1 + sky.sun_y * 0.5);
 
         shapes.push(
-            shape('circle', { cx: px + w / 2, cy, r: 34, fill: WINDOW_INK.sun }),
-            shape('circle', { cx: px + w / 2, cy, r: 48, fill: WINDOW_INK.sun, opacity: 0.25 }),
+            shape('circle', { cx, cy, r: 17, fill: WINDOW_INK.sun }),
+            shape('circle', { cx, cy, r: 24, fill: WINDOW_INK.sun, opacity: 0.25 }),
         );
     }
+
+    // The city's roofline across the glass's foot: six blocks, their heights the drawing's.
+    const roofs = [0.62, 0.55, 0.66, 0.5, 0.6, 0.57];
+    const city = [onGlass(0, 1)];
+
+    roofs.forEach((v, i) => {
+        city.push(onGlass(i / roofs.length, v), onGlass((i + 1) / roofs.length, v));
+    });
+    city.push(onGlass(1, 1));
+
+    shapes.push(shape('polygon', {
+        points: pts(...city),
+        fill: sky.flat ? WINDOW_INK.cityFlat : sky.city_lit > 0 ? WINDOW_INK.cityNight : WINDOW_INK.cityDay,
+        opacity: sky.city_lit > 0 ? 1 : 0.85,
+    }));
+
+    if (sky.city_lit > 0) {
+        roofs.forEach((v, i) => {
+            const [x, y] = onGlass((i + 0.35) / roofs.length, v + 0.06);
+
+            shapes.push(shape('rect', { x, y, width: 4, height: 4, fill: WINDOW_INK.lit, opacity: sky.city_lit }));
+        });
+    }
+
+    const [mt, mb] = [onGlass(0.5, 0), onGlass(0.5, 1)];
+    const [ml, mr] = [onGlass(0, 0.5), onGlass(1, 0.5)];
 
     shapes.push(
-        shape('path', { d: archPath(px, y), fill: 'none', stroke: WINDOW_INK.frame, 'stroke-width': 10 }),
-        shape('line', { x1: px + w / 2, y1: y + top, x2: px + w / 2, y2: y + bottom, stroke: WINDOW_INK.frame, 'stroke-width': 3 }),
+        shape('line', { x1: mt[0], y1: mt[1], x2: mb[0], y2: mb[1], stroke: WINDOW_INK.frame, 'stroke-width': 3 }),
+        shape('line', { x1: ml[0], y1: ml[1], x2: mr[0], y2: mr[1], stroke: WINDOW_INK.frame, 'stroke-width': 3 }),
     );
 
-    return shapes;
+    return { shapes };
 }
 
 /**
- * THE PLATES' WINDOWS, CARRYING THE TIME OF DAY (card#7343 r1, the seat's ruling R1): every storey's four
- * arched windows filled with A17's sky at FULL strength — the reference's windows (`floor-preview.html`'s
- * `floorBody()`), which is where the reference carries the time; the dim backdrop behind the building
- * (`skyBackground()`) is only its foil. The paint is `floor-layout.js`'s `SKY_PAINT` entry for the phase,
- * the one table the floor's windows read too.
+ * `#lobby-building`'s style: the clipping drawing surface the camera looks in while the room is drawn — the room's own
+ * shape, the sheet's dark ground around it where the camera leaves any, and no sky on it — and nothing while it is not
+ * (no snapshot yet), so the page's placeholders flow in the page and every event over them is the browser's
+ * (`wire/camera-gestures.js`, `wire/camera-keys.js`). Every member is set either way, so a lobby whose room goes away
+ * stops clipping.
  *
- * ⭐ WHAT IS TAKEN FROM THE REFERENCE's WINDOW, AND WHAT IS NOT. Taken, because each fits an arch at lobby
- * scale and each is part of how the reference says the time: the gradient `top` to `bot`; seven stars per
- * window at night; the city's roofline — six blocks, lit windows at the phase's `city_lit`, the flat unlit
- * ink when `unset`; ONE moon per storey at night and ONE sun per storey at the phase's `sun_y`, each in its
- * own window as the reference draws one of each per floor; the frame and its mullion. Left out: nothing of
- * the reference's window content — only its rectangle, which is the lobby's arch here, and its size, which
- * is scaled to the arch.
- *
- * ⛔ `unset` (no live feed yet, § 6.5) is the reference's flat treatment: its flat gradient, no stars, no
- * sun, no moon and an unlit city — never a plausible time of day. ⛔ THE PHASE IS A17's VALUE and is not
- * decided here; this reads the scene's rects and the phase, and nothing of any plate — two buildings of one
- * height at one phase have the same windows.
- *
- * @param {{extent: object|null, plates: Array<{rect: object}>}|null} scene `buildingScene()`'s
- * @param {string|null} phase § 6.2 A17's sky phase — `lobby-screen.js`'s frame `sky`
- * @returns {{shapes: Array<object>}|null} `null` where no building is drawn
+ * @param {object|null} scene `lobbyScene()`, or `null` where the room is not drawn
  */
-export function windowArt(scene, phase) {
-    if ((scene?.extent ?? null) === null) {
-        return null;
-    }
-
-    const sky = skyPaint(phase);
+export function surfaceStyle(scene) {
+    const drawn = scene !== null;
 
     return {
-        shapes: [
-            parent('defs', {}, [
-                parent('linearGradient', { id: WINDOW_SKY_ID, x1: 0, y1: 0, x2: 0, y2: 1 }, [
-                    shape('stop', { offset: 0, 'stop-color': sky.top }),
-                    shape('stop', { offset: 1, 'stop-color': sky.bot }),
-                ]),
-            ]),
-            ...windowsOf(scene).flatMap((window) => windowShapes(window, sky)),
-        ],
-    };
-}
-
-/** The cab's own column: `shaftAt()` at its plate's left edge, where `cabStyle()` translates it. */
-const CAB_SHAFT = shaftAt(0);
-
-/**
- * The cab, in scene px from its plate's top-left: a frame around that storey's doors, a lamp on top and
- * the cable it hangs from, down from its storey's ceiling — the reference's cab, which carries no fact: where it stands is the viewer's
- * ride (`lobby/main.js`'s `cab`, § 4.5: navigation is never state), and the plate's label already says
- * *the elevator is here* in words.
- */
-export const CAB = Object.freeze([
-    shape('line', { x1: CAB_SHAFT.mid, y1: 0, x2: CAB_SHAFT.mid, y2: STOREY.door.y - 32, stroke: INK.sign, 'stroke-width': 5 }),
-    shape('rect', { x: CAB_SHAFT.door.x - 14, y: STOREY.door.y - 32, width: CAB_SHAFT.door.w + 28, height: STOREY.door.h + 46, rx: 26, fill: 'none', stroke: '#f2b84b', 'stroke-width': 14 }),
-    shape('rect', { x: CAB_SHAFT.door.mid - 30, y: STOREY.door.y - 52, width: 60, height: 22, rx: 11, fill: '#f2b84b' }),
-]);
-
-/**
- * The cab's style: standing at the plate the elevator is at — `building-model.js`'s `elevator().level`,
- * the viewer's own stop — and gliding there over `ms`, the ride's `glide_ms` (none on any other render,
- * and none under `prefers-reduced-motion`, where the ride's glide is `0` and the cab cuts). A CSS
- * transition on the one cab element: it starts nothing through the animation set and writes no log row,
- * because the ride is navigation (§ 4.6's elevator row: no § 6.2 row). `null` where the cab stands at no
- * plate — nothing composed, or no plate.
- *
- * @param {{plates: Array<{rect: object}>}|null} scene `buildingScene()`'s
- * @param {number|null} level the plate the cab stands at
- * @param {number} ms how long the cab may take to get there — `0` cuts
- */
-export function cabStyle(scene, level, ms) {
-    const plate = level === null ? null : scene?.plates[level] ?? null;
-
-    if (plate === null) {
-        return null;
-    }
-
-    return {
-        transform: `translate(${plate.rect.x}px, ${plate.rect.y}px)`,
-        transition: ms > 0 ? `transform ${ms}ms linear` : 'none',
-    };
-}
-
-/** The drawing surface's height while it draws a building — the drawing's, carrying no fact. */
-export const SURFACE_H = '70vh';
-
-/** The reference's dim treatment: the sky's gradient at this opacity, under `SKY_WASH` … */
-export const SKY_OPACITY = 0.45;
-
-/** … a wash of the reference's night ink at `.55`, over the reference drawing's own ground, `SKY_GROUND`. */
-export const SKY_WASH = 'rgba(18, 20, 31, 0.55)';
-
-/** The ground the reference paints its sky over (`floor-preview.html`'s drawing surface). */
-export const SKY_GROUND = '#1a1724';
-
-/** The night's stars, as points on the surface in percent of its size — after the reference's scatter, 26 of them. */
-const STARS = Object.freeze(Array.from({ length: 26 }, (_, i) => Object.freeze({
-    x: ((i * 181) % 1000) / 10,
-    y: ((i * 97) % 1000) / 10,
-    r: 1.2 + (i % 2),
-})));
-
-/** A `#rrggbb` at `alpha`, as CSS — exported so `label-paint.js` builds its own paint from `INK` rather than a second copy of this conversion. */
-export function rgba(hex, alpha) {
-    const n = Number.parseInt(hex.slice(1), 16);
-
-    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
-}
-
-/**
- * The sky behind the building for a phase, as the surface's CSS background: the stars at night, over the
- * wash, over the phase's gradient at `SKY_OPACITY`, over `SKY_GROUND` — `unset`'s when `phase` is `null`
- * (no live feed yet, § 6.5). The paint is `floor-layout.js`'s `SKY_PAINT`, the one table every sky reads;
- * this is the reference's FOIL behind the building, dimmed, and the time of day is carried by the windows
- * (`windowArt()`), which show the same entry at full strength.
- *
- * @param {string|null} phase § 6.2 A17's sky phase — `lobby-screen.js`'s frame `sky`
- */
-export function skyBackground(phase) {
-    const sky = skyPaint(phase);
-    const stars = sky.stars
-        ? STARS.map((s) => `radial-gradient(circle at ${s.x}% ${s.y}%, rgba(232, 236, 255, 0.5) ${s.r}px, transparent ${s.r + 0.6}px)`)
-        : [];
-
-    return {
-        backgroundColor: SKY_GROUND,
-        backgroundImage: [
-            ...stars,
-            `linear-gradient(${SKY_WASH}, ${SKY_WASH})`,
-            `linear-gradient(to bottom, ${rgba(sky.top, SKY_OPACITY)}, ${rgba(sky.bot, SKY_OPACITY)})`,
-        ].join(', '),
-    };
-}
-
-/**
- * `#lobby-building`'s style for a scene: the clipping drawing surface the camera looks in when the scene
- * has an extent — the sky of `phase` filling it behind the building (`skyBackground()`) — and nothing — the
- * list flowing in the page — when it has none or there is no scene. Every member is set either way, so a
- * lobby whose building goes away stops clipping and loses its sky.
- *
- * ⛔ `transition` IS ALWAYS `none`: A17's sky steps to its new value in both of its columns (§ 6.2 A17,
- * § 6.4), so no cross-fade between two phases is ever drawn — with motion or without.
- *
- * @param {{extent: object|null}|null} scene `buildingScene()`'s, or `null` where nothing is composed
- * @param {string|null} phase § 6.2 A17's sky phase — `lobby-screen.js`'s frame `sky`
- */
-export function surfaceStyle(scene, phase) {
-    const drawn = (scene?.extent ?? null) !== null;
-    const sky = drawn ? skyBackground(phase) : { backgroundColor: '', backgroundImage: '' };
-
-    return {
-        height: drawn ? SURFACE_H : '',
+        aspectRatio: drawn ? `${ROOM.w} / ${ROOM.h}` : '',
+        maxHeight: drawn ? '80vh' : '',
         overflow: drawn ? 'hidden' : '',
+        position: drawn ? 'relative' : '',
         touchAction: drawn ? 'none' : '',
         cursor: drawn ? 'grab' : '',
-        ...sky,
-        transition: 'none',
+        backgroundColor: drawn ? 'var(--ground-deep)' : '',
     };
 }

@@ -49,22 +49,16 @@ import { BUBBLE_PAD, FONT, FONT_NAME, FONT_SCREEN, STOOL_GLYPH, TYPE_ROLES, char
 import { SKY_PAINT } from './floor-layout.js';
 import { ELEVATOR_DOOR } from './scene.js';
 import { RENDER_STATES } from '../lobby/render-state.js';
-import { CAB_STYLE, LANDING, cabTheme, clippedTo, drawCabInterior, node, paintCab, rideLeaves } from './cab-paint.js';
+import { CAB_STYLE, LANDING, THEME_REGISTRY, cabTheme, clippedTo, drawCabInterior, node, paintCab, rideLeaves, themeModule } from './cab-paint.js';
 
 // The cab's drawing is `cab-paint.js`'s since card#12113 (both pages draw it); its names stay readable from here.
-export { CAB, CAB_STYLE, LANDING, LOBBY_VIEW, OFFICE, cabLeaves, cabTheme, drawCabInterior, drawLobbyView, drawOfficeView, paintCab, rideLeaves } from './cab-paint.js';
+export { CAB, CAB_STYLE, LANDING, LOBBY_VIEW, OFFICE, THEME_REGISTRY, cabLeaves, cabTheme, drawCabInterior, drawLobbyView, drawOfficeView, paintCab, rideLeaves, themeModule } from './cab-paint.js';
 
 /** The furniture box — `resources/floor/furniture-box.js`, by the asset route. */
 export const FURNITURE_MODULE = '/art/floor/furniture-box.js';
 
 /** The character tree's entry — `resources/characters/index.js`, by the asset route. */
 export const CHARACTER_TREE = '/art/characters/index.js';
-
-/** The theme registry — `resources/floor/themes/index.js`, by the asset route (FLOOR.md § 10.6 item 1). */
-export const THEME_REGISTRY = '/art/floor/themes/index.js';
-
-/** A theme's module — `resources/floor/themes/<name>/theme.js`, by the asset route (§ 10.6 item 1). */
-export const themeModule = (name) => `/art/floor/themes/${encodeURIComponent(name)}/theme.js`;
 
 /** § 10.4's art contract: a desk's art is drawn in proportion, centred, on its rect's floor line. */
 const MEET = 'xMidYMax meet';

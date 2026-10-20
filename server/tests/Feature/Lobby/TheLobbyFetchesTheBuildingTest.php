@@ -177,15 +177,12 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
             [$record] = $this->scenario($responses, [['do' => 'enter']]);
 
             $this->assertSame([], $record['lobby']['floors'], "$arm: a failed layout request composed a building");
-            $this->assertSame([], $record['building']['plates'], "$arm: the cross-section stacked plates from a failed request");
+            // § 4.1 under F17: the room carries no fact, so it is drawn once the snapshot has applied — with no plaque on
+            // its board, the installs listed unclaimed.
+            $this->assertNotNull($record['room'], "$arm: the room was not drawn under F17 — it carries no fact and needs no layout");
             $this->assertSame([['install_id' => 'aimla', 'href' => '/floor/aimla', 'held' => 1]], $record['lobby']['unclaimed'], $arm);
             $this->assertSame($statement, $record['lobby']['layout_statement'], $arm);
             $this->assertNull($record['lobby']['layout_kept'], "$arm: a cold start claimed a last known layout it never had");
-            // The elevator's dark-case sentences both claim something about the layout ("the layout
-            // composes no floor") that a failed request cannot tell; the ride is refused under F17's own
-            // statement instead.
-            $this->assertSame([], $record['building']['elevator']['notices'], $arm);
-            $this->assertNull($record['building']['elevator']['next'], $arm);
             // Every seat the client holds is still counted, so § 4.1's discrepancy check does not read
             // an uncomposed lobby as one holding no seats — and since card#7341 step 9 the count is the
             // protocol's, which no layout composes.
@@ -205,63 +202,71 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
     }
 
     /**
-     * card#7343 r3 (the seat's ruling): `#lobby-building` is a fixed-height drawing that clips its plates
-     * only while there is a building to draw. With none — F17's cold start, its rooms listed with no floor
-     * claimed — the list flows in the page as the lobby's list always did: a clipping box whose scroll the
-     * camera holds at the origin would put every row past its fold out of sight and out of reach.
+     * § 4.1 (card#12113; card#7343 r3's rule, carried to the room): `#lobby-building` is a clipping drawing only while the
+     * room is drawn, which is once a full snapshot has applied — F17's cold start included, because the room carries no
+     * fact and its board then lists the snapshot's installs unclaimed. Before a snapshot has applied — and on § 9 F4's
+     * refused one — nothing is drawn and the page's placeholders flow in the page, every event over them the browser's.
      */
-    public function test_an_uncomposed_lobby_flows_in_the_page_and_only_a_drawn_building_clips(): void
+    public function test_the_room_is_drawn_once_a_snapshot_has_applied_and_never_before(): void
     {
         $this->aComposedBuilding();
 
         $snapshot = $this->served(self::SNAPSHOT);
-        $composed = [self::SNAPSHOT => [$snapshot], self::BUILDING => [$this->served(self::BUILDING)]];
+        $building = $this->served(self::BUILDING);
+        $composed = [self::SNAPSHOT => [$snapshot], self::BUILDING => [$building]];
         $cold = [self::SNAPSHOT => [$snapshot], self::BUILDING => [['unreachable' => true]]];
 
         [$drawn] = $this->scenario($composed, [['do' => 'enter']]);
+        $this->assertNotNull($drawn['room'], 'a composed lobby drew no room');
         $this->assertSame([], $this->surfaceDefects($drawn));
 
-        [$flowing] = $this->scenario($cold, [['do' => 'enter']]);
-        $this->assertNotSame([], $flowing['lobby']['unclaimed'], 'the cold start listed no room — the flow clause read nothing');
+        [$f17] = $this->scenario($cold, [['do' => 'enter']]);
+        $this->assertNotSame([], $f17['lobby']['unclaimed'], 'the cold start listed no room — the F17 clause read nothing');
+        $this->assertNotNull($f17['room'], 'the room was not drawn under F17');
+        $this->assertSame([], $this->surfaceDefects($f17));
+
+        $user = $this->enrolled();
+        Schema::drop('seat_state');
+        $refused = [self::SNAPSHOT => [['status' => 503, 'body' => $this->actingAs($user)->getJson(self::SNAPSHOT)->assertStatus(503)->json()]], self::BUILDING => [$building]];
+
+        [$flowing] = $this->scenario($refused, [['do' => 'enter']]);
+        $this->assertNull($flowing['room'], 'a lobby whose snapshot was refused drew the room — a calm empty office');
         $this->assertSame([], $this->surfaceDefects($flowing));
 
-        // ⛔ CONTROL — the surface a clipping drawing whether or not there is a building: r3's regression.
-        $clipped = $this->mutatedModules(['building-scene.js', 'const drawn = (scene?.extent ?? null) !== null;', 'const drawn = true;']);
-        [$regressed] = $this->scenario($cold, [['do' => 'enter']], $clipped);
+        // ⛔ CONTROL — the surface a clipping drawing whether or not the room is drawn: r3's regression.
+        $clipped = $this->mutatedModules(['building-scene.js', 'const drawn = scene !== null;', 'const drawn = true;']);
+        [$regressed] = $this->scenario($refused, [['do' => 'enter']], $clipped);
 
-        $this->assertNotSame([], $this->surfaceDefects($regressed),
-            'CONTROL (an uncomposed lobby clipped in a fixed box) did not bite');
+        $this->assertNotSame([], $this->surfaceDefects($regressed), 'CONTROL (an undrawn lobby clipped in a fixed box) did not bite');
 
-        // ⛔ CONTROL — a drawn building that never clips: the plates spill over the page under the camera.
+        // ⛔ CONTROL — a drawn room that never clips: the room spills over the page under the camera.
         $spilled = $this->mutatedModules(['building-scene.js', "overflow: drawn ? 'hidden' : '',", "overflow: '',"]);
         [$unclipped] = $this->scenario($composed, [['do' => 'enter']], $spilled);
 
-        $this->assertNotSame([], $this->surfaceDefects($unclipped),
-            'CONTROL (a drawn building that never clips) did not bite');
+        $this->assertNotSame([], $this->surfaceDefects($unclipped), 'CONTROL (a drawn room that never clips) did not bite');
     }
 
     /**
-     * What is wrong with a record's surface: a building drawn in a surface that neither holds a height nor
-     * clips, or a lobby with no building drawn in a surface that does either.
+     * What is wrong with a record's surface: a drawn room in a surface that neither holds the room's shape nor clips,
+     * or an undrawn lobby in a surface that does either.
      *
      * @return list<string>
      */
     private function surfaceDefects(array $record): array
     {
         $surface = $record['surface'];
-        $drawn = $record['building']['composed'] && $record['building']['plates'] !== [];
 
-        if ($drawn) {
+        if ($record['room'] !== null) {
             return array_values(array_filter([
-                $surface['height'] === '' ? 'a drawn building in a surface with no height of its own' : null,
-                $surface['overflow'] !== 'hidden' ? 'a drawn building whose surface does not clip it' : null,
+                $surface['aspectRatio'] === '' ? 'a drawn room in a surface with no shape of its own' : null,
+                $surface['overflow'] !== 'hidden' ? 'a drawn room whose surface does not clip it' : null,
             ]));
         }
 
         return array_values(array_filter([
-            $surface['height'] !== '' ? "a lobby with no building drawn held in a {$surface['height']} box" : null,
-            $surface['overflow'] !== '' ? "a lobby with no building drawn clipped ({$surface['overflow']})" : null,
-            $surface['touchAction'] !== '' ? "a lobby with no building drawn refusing the page's touch scroll ({$surface['touchAction']})" : null,
+            $surface['aspectRatio'] !== '' ? "a lobby with no room drawn held in a {$surface['aspectRatio']} box" : null,
+            $surface['overflow'] !== '' ? "a lobby with no room drawn clipped ({$surface['overflow']})" : null,
+            $surface['touchAction'] !== '' ? "a lobby with no room drawn refusing the page's touch scroll ({$surface['touchAction']})" : null,
         ]));
     }
 

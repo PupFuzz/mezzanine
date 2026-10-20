@@ -1,11 +1,11 @@
 @extends('layouts.app')
 @section('title', 'Mezzanine')
-{{-- § 4.5's ride from a floor arrives here with the cab's snapshot held until the first drawn building (`layouts/app.blade.php`). --}}
+{{-- § 4.5's ride from a floor arrives here with the cab's snapshot held until the first drawn room (`layouts/app.blade.php`). --}}
 @section('document-attributes', 'data-ride-reveals')
 
 @section('content')
     {{--
-        THE LOBBY — `docs/design/FLOOR.md § 4.1`, Appendix B row 9 (card#7341 step 9).
+        THE LOBBY — `docs/design/FLOOR.md § 4.1`, Appendix B rows 9 and 24 (card#7341 step 9; card#12113).
 
         ⛔ THE ELEMENTS ARE THE CONTRACT WITH `public/js/lobby/main.js`, AND THE IDS ARE CHECKED
         BOTH WAYS. A `getElementById` answering `null` is a silent no-op: the page still renders
@@ -19,14 +19,15 @@
 
         ⚠ WHAT IS NOT HERE, AND WHY — none of it is an oversight:
           · the tiled MAP and the desks — those are the floor page's (`/floor/{floor}`,
-            `docs/design/FLOOR.md` Appendix B step 8, card#7341), which a plate links to and a ride
+            `docs/design/FLOOR.md` Appendix B step 8, card#7341), which a plaque links to and a ride
             arrives at. The maps are served (`GET /api/building/rooms/{install_id}/map`, D2 § 8.7)
             and held by version in `public/js/wire/building.js`; nothing on this page draws one,
-            because a plate names its rooms and never draws a room interior (§ 4.1). The CAMERA is
-            here, at building scale (Appendix B row 16, card#7343): `#lobby-building` below.
-          · every duration / age label — card#9209 published the duration FORMAT (D3 § 2.4, § 12's
-            own row) and left the WORDING for § 5.3's two fleet ages open (§ 14 item 17), so a
-            string picked here would still be the one nobody ratified; none is drawn.
+            because a plaque names its rooms and never draws a room interior (§ 4.1). The CAMERA is
+            here, at room scale (Appendix B row 24, card#12113): `#lobby-building` below.
+          · § 5.3's two FLEET ages — card#9209 published the duration FORMAT (D3 § 2.4, § 12's own
+            row) and left their WORDING open (§ 14 item 17), so a string picked here would still be
+            the one nobody ratified; neither is drawn. (The plaques' ages are § 4.1's own rows,
+            worded by § 14 item 39(7).)
           · the desk, the drill-down and interns — the floor page's and Appendix B step 10's.
 
         ⭐ THIS PAGE RUNS THE CLIENT PROTOCOL (card#7341 step 9): `public/js/lobby/main.js` opens the
@@ -34,8 +35,8 @@
         feed status, the resync count and the client's event record below are live, and § 4.1's
         discrepancy check is the protocol's — this page fetches no snapshot of its own.
     --}}
-    <section class="lobby" aria-labelledby="lobby-heading">
-        <h2 id="lobby-heading">The building</h2>
+    <section id="lobby" class="lobby" aria-labelledby="lobby-heading" data-lobby-href="{{ url('/') }}">
+        <h2 id="lobby-heading">Lobby</h2>
 
         {{-- § 9 F8: "a full-width banner", above everything else on the page. --}}
         <p id="lobby-banner" role="alert" hidden></p>
@@ -55,10 +56,6 @@
             <p><a href="{{ route('login') }}">Sign in</a></p>
         </section>
 
-        {{-- § 4.1 / § 5.5: the feed status with the resync count beside it — this page's own connection. --}}
-        <p id="lobby-feed">feed: waiting for the stream</p>
-        <p id="lobby-resyncs">resyncs: waiting for the stream</p>
-
         {{--
             § 9 F17's statement region: "the building layout could not be loaded — HTTP N", over
             the floors the client already holds labelled *last known layout*, or over the
@@ -68,116 +65,82 @@
         <p id="lobby-layout-statement" role="status" hidden></p>
         <p id="lobby-layout-kept" hidden></p>
 
-        {{--
-            § 4.1 row 1: one row per floor, the row being the link to the floor.
-
-            ⛔ THE LABEL IS REQUIRED, NOT DECORATION. § 2.1 row 5: the per-floor count "is
-            labelled as a count of the seats the client holds", and AT-D3-15's GREEN asserts it
-            in those terms. Unlabelled, the summary reads as a fleet fact — which is the very
-            confusion the discrepancy check below exists to expose. It is stated ONCE over the
-            list rather than repeated on every row.
-        --}}
-        <h3 id="lobby-floors-heading">Floors — each summary counts the seats this client holds</h3>
-        {{--
-            § 4.5's camera at building scale — Appendix B row 16, slice A (card#7343). `#lobby-building`
-            is the drawing surface: the plates stand in it where `public/js/lobby/building-scene.js`
-            puts them, over the building it draws — the roof and its sign, a storey under each plate, the
-            ground lobby and the cab (slice B, which `public/js/lobby/main.js` paints) — and the camera (`public/js/wire/camera.js`, held by `lobby-screen.js`) is one
-            transform on `#lobby-floors` — every plate in view on entry and on the whole-building
-            control, one plate in view on a ride. The wheel or a two-finger scroll pans, Ctrl+wheel or a pinch zooms about the pointer,
-            and one finger or the mouse drags to pan (card#11045), as `#lobby-hint` says; while it frames a building it takes focus, so `+`/`-`
-            or `#lobby-zoom-in`/`#lobby-zoom-out` zoom about its centre and the arrow keys pan — the floor
-            drawing's keys and buttons, in its words (`public/js/wire/camera-keys.js` wires both pages) —
-            and a plate the keyboard's focus lands on outside the view is brought into it. Nothing it
-            does is state. ⛔ It carries no size or clip of its own: it is a fixed-height, clipping drawing
-            only while there is a building to draw (`building-scene.js`'s `surfaceStyle()`, which
-            `lobby/main.js` applies on every render), and with none — no snapshot yet, or § 9 F17's
-            rooms with no floor claimed — the list flows in the page, and the wheel, the keys and a press
-            are the browser's; the zoom buttons and *Whole building* are hidden, and the building is no
-            tab stop and names no `aria-keyshortcuts`, until a camera frames it (`camera-keys.js`'s
-            `offerKeys()`, card#7343 r4b and comment 7692) — the hint with them — so the markup offers none of them.
-        --}}
-        <div id="lobby-building" role="group" aria-label="the building drawing">
-            <ul id="lobby-floors" aria-labelledby="lobby-floors-heading" style="margin: 0; transform-origin: 0 0">
-                <li>waiting for the fleet snapshot</li>
-            </ul>
-        </div>
-        @include('partials.camera-hint', ['id' => 'lobby-hint'])
+        {{-- § 4.5's camera controls — the floor drawing's, in its words — shown only while the camera frames the room. --}}
         <nav aria-label="the camera">
             <button type="button" id="lobby-zoom-in" hidden>Zoom in</button>
             <button type="button" id="lobby-zoom-out" hidden>Zoom out</button>
-            <button type="button" id="lobby-whole-building" hidden>Whole building</button>
+            <button type="button" id="lobby-fit" hidden>Fit the lobby</button>
         </nav>
 
         {{--
-            THE BUILDING LAYOUT — `docs/design/FLOOR.md § 4.6`, card#9267: a room is an install
-            and a floor is an operator-composed set of rooms. ⛔ THIS PAGE CARRIES NONE: the
-            client fetches it from `GET /api/building` (`docs/design/FLEET-STATE.md § 8.7`) after
-            the snapshot (Appendix B row 13, card#9208), because one building on two delivery
-            paths is the *which of the two am I looking at* question D2 § 13 row 41 refuses.
-            `Tests\Feature\Lobby\TheLobbyFetchesTheBuildingTest` reds if a layout comes back here.
+            § 4.1's ROOM, ITS DIRECTORY AND ITS ELEVATOR — Appendix B row 24 (card#12113). `#lobby-building` is the
+            drawing surface and `#lobby-room` the camera's layer in it (`public/js/wire/camera.js`, held by
+            `lobby-screen.js`): `public/js/lobby/main.js` stands the drawn room in it (`building-paint.js`, the
+            elevator the one control on its wall) and the two boxes below at their rects on the room's far wall —
+            the directory at the board's inner rectangle, the building's readings under the board — all moved and
+            scaled by the camera's one transform, the boxes' text counter-scaled to the page's own size
+            (`directory.js`). The wheel or a two-finger scroll pans, Ctrl+wheel or a pinch zooms about the pointer,
+            and one finger or the mouse drags to pan (card#11045), as `#lobby-hint` says; a wheel or a drag begun over
+            the directory scrolls it while it can. ⛔ Nothing here carries a size or a clip of its own: the surface is
+            a clipping drawing only once a full snapshot has applied (`building-scene.js`'s `surfaceStyle()`), and
+            before it everything below flows in the page with its placeholders, each saying it is WAITING.
 
-            A building rearranged after the fetch reaches this page on the stream: a
-            `building.layout` re-fetches the layout (§ 2.5).
+            ⛔ THE ELEMENTS ARE THE CONTRACT WITH `public/js/lobby/main.js`, AND THE IDS ARE CHECKED BOTH WAYS
+            (`Tests\Feature\Lobby\LobbyPageWiringTest`): a `getElementById` answering `null` is a silent no-op.
         --}}
+        <div id="lobby-building" role="group" aria-label="the lobby drawing">
+            <div id="lobby-room">
+                {{--
+                    § 4.1's directory. ⛔ THE TITLE IS REQUIRED, NOT DECORATION (§ 2.1 row 5, AT-D3-15): the per-floor
+                    figures count the seats THIS CLIENT HOLDS, stated once over the list. HTML in the directory's own
+                    counter-scaled face, never a word painted into the drawn board.
+                --}}
+                <section id="lobby-directory" aria-labelledby="lobby-directory-heading">
+                    <div class="lobby-face lobby-directory-face">
+                        <h3 id="lobby-directory-heading"><span class="lobby-directory-title">FLOOR DIRECTORY</span> <span>— counts the seats this client holds</span></h3>
+                        <ol id="lobby-floors" class="lobby-plaques" aria-labelledby="lobby-directory-heading" data-camera-scrolls>
+                            <li>waiting for the fleet snapshot</li>
+                        </ol>
+                    </div>
+                </section>
 
-        {{--
-            § 4.1's ELEVATOR — card#7343: the lobby's ride. The ratified cross-section stacks one
-            floor plate per FLOOR — since card#9267 a composed set of rooms, one room per floor
-            until the layout above says otherwise — "with an elevator as the way between them", and
-            § 4.5 makes that ride a CAMERA move: it is navigation, it renders no fact, and it takes
-            no § 6.2 row. The ride ARRIVES (Appendix B row 16): the cab moves to the next stop, the
-            camera zooms to that plate, and the page goes to `/floor/{key}` — the floor's key, never
-            its label (card#9273). It navigates without `#ride`, so a floor reached by it arrives with
-            its leaves at rest; the floor's own cab (card#11795) arrives with them opening and
-            closing. The lobby's cab becomes a cab of stops in card#11800.
-
-            ⛔ THE CONTROL IS REFUSED WHEN THERE IS NOWHERE TO RIDE, and the reason is written
-            beside it rather than left as a dead button. A building with one floor — which is
-            every deployment until a second install is provisioned — has no ride to offer, and a
-            control that still worked would be the surface faking a floor the fleet does not have.
-            `public/js/lobby/building-model.js` decides both; this is where they are shown.
-        --}}
-        <button type="button" id="lobby-elevator">Ride the elevator</button>
-        <ul id="lobby-elevator-notices" role="status" hidden></ul>
-
-        {{-- § 4.1 row 4: the disagreement, rendered rather than resolved by picking a winner. --}}
-        <p id="lobby-discrepancy" role="status" hidden></p>
-
-        {{-- § 4.1 row 3: `fleet.seats_total` / `fleet.seats_live`, read from the wire. --}}
-        <p id="lobby-totals">waiting for the fleet snapshot</p>
-
-        {{-- § 4.1 row 5 / § 2.3: the membership picture's own age, separate from the state's. --}}
-        <p id="lobby-stamp">waiting for the fleet snapshot</p>
+                {{--
+                    § 4.1's readings under the board: the building's own rows, unchanged in source and wording — the
+                    feed with its resync count and the fleet totals (§ 4.1 row 3, read from the wire), the THREE
+                    SEPARATE INDICATORS, never one aggregate (D2 § 8.2.4), the ingest line and the membership stamp
+                    (§ 2.3), the discrepancy sentence (§ 4.1 row 4), and the client's own event record (§ 5.5).
+                --}}
+                <div id="lobby-readings">
+                    <div class="lobby-face lobby-readings-face" data-camera-scrolls>
+                        <section class="lobby-reading" aria-labelledby="lobby-health-heading">
+                            <h3 id="lobby-health-heading">Building readings</h3>
+                            <p><span id="lobby-feed">feed: waiting for the stream</span> · <span id="lobby-resyncs">resyncs: waiting for the stream</span> · <span id="lobby-totals">waiting for the fleet snapshot</span></p>
+                            <p><span id="lobby-store">store: waiting for the fleet snapshot</span> · <span id="lobby-derivation">derivation: waiting for the fleet snapshot</span> · <span id="lobby-sweep">sweep: waiting for the fleet snapshot</span></p>
+                            <p><span id="lobby-ingest">ingest: waiting for the fleet snapshot</span> · <span id="lobby-stamp">waiting for the fleet snapshot</span></p>
+                            <p id="lobby-discrepancy" role="status" hidden></p>
+                        </section>
+                        <section class="lobby-reading" aria-labelledby="lobby-log-heading">
+                            <h3 id="lobby-log-heading">Event log</h3>
+                            <ol id="lobby-log" aria-labelledby="lobby-log-heading" hidden></ol>
+                        </section>
+                    </div>
+                </div>
+            </div>
+        </div>
+        @include('partials.camera-hint', ['id' => 'lobby-hint'])
         @include('partials.zone-note')
 
         {{--
-            § 4.1 row 6 / § 5.3: THREE SEPARATE INDICATORS, NEVER ONE AGGREGATE, plus § 5.3's
-            own ingest-recency row. They are four sibling elements with four labels: there is no
-            element here that could carry a combined verdict, which is how D2 § 8.2.4's "the wire
-            keeps them apart" is kept by the page's shape rather than by a convention.
-            ⚠ NOT VERIFIED VISUALLY. There is no browser on the build host, so "visually apart"
-            is bought structurally — four separate block elements under their own heading — and
-            nothing here has been laid out or painted by any check.
+            THE BUILDING LAYOUT — `docs/design/FLOOR.md § 4.6`, card#9267. ⛔ THIS PAGE CARRIES NONE: the client
+            fetches it from `GET /api/building` (`docs/design/FLEET-STATE.md § 8.7`) after the snapshot (Appendix B
+            row 13, card#9208); `Tests\Feature\Lobby\TheLobbyFetchesTheBuildingTest` reds if a layout comes back here.
         --}}
-        <section aria-labelledby="lobby-health-heading">
-            <h3 id="lobby-health-heading">Fleet health</h3>
-            <p id="lobby-store">store: waiting for the fleet snapshot</p>
-            <p id="lobby-derivation">derivation: waiting for the fleet snapshot</p>
-            <p id="lobby-sweep">sweep: waiting for the fleet snapshot</p>
-            <p id="lobby-ingest">ingest: waiting for the fleet snapshot</p>
-        </section>
 
         {{-- § 2.3 names "the lobby's refresh control" as a path to a fresh membership picture. --}}
         <button type="button" id="lobby-refresh">Refresh</button>
 
-        {{--
-            § 4.1's last row / § 5.5: the client's own event record, newest first, 200 lines —
-            membership changes, resyncs, reconnects. "The lobby is a renderer of that record and not
-            its home": the record is the client protocol's.
-        --}}
-        <h3 id="lobby-log-heading">This page's event log</h3>
-        <ol id="lobby-log" aria-labelledby="lobby-log-heading" hidden></ol>
+        {{-- § 4.5's ride from the room's elevator: the one cab both pages carry, under the lobby's prefix. --}}
+        @include('partials.ride-cab', ['prefix' => 'lobby'])
     </section>
 
     {{--

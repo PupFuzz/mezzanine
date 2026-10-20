@@ -321,7 +321,9 @@ class TheArtRouteServesOnlyWhatTheGatesJudgedTest extends TestCase
 
     private function painterSource(): string
     {
-        return (string) file_get_contents(__DIR__.'/../../../public/js/floor/painter.js');
+        // `THEME_REGISTRY` is the cab drawing's since card#12113 (`cab-paint.js`), which the painter imports and re-exports.
+        return (string) file_get_contents(__DIR__.'/../../../public/js/floor/painter.js')
+            .(string) file_get_contents(__DIR__.'/../../../public/js/floor/cab-paint.js');
     }
 
     private function floorMd(): string

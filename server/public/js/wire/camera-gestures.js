@@ -36,6 +36,18 @@
  *    can make no further the wheel's way is not consumed, and that wheel is the page's scroll, untouched
  *    and showing nothing (the edge, card#11045 Q3, the operator's ruling of 2026-10-01); a zoom, and a
  *    wheel over a lobby mid-ride, are always consumed — each the screen's answer, never this file's;
+ *  · ⛔ AN ELEMENT INSIDE THE DRAWING THAT DECLARES IT SCROLLS (`data-camera-scrolls` — the lobby's directory, FLOOR.md
+ *    § 4.1, card#12113) HAS THE PAN GESTURE WHILE IT CAN STILL MOVE THE GESTURE's WAY, and the camera has it otherwise —
+ *    the edge rule above, one level in. A plain wheel over it is asked of it first: while it can still scroll the
+ *    wheel's vertical way it scrolls by the wheel's `deltaY` (`deltaMode` normalised as the camera's `pan()` does) and
+ *    the camera does not move; at its end that way the wheel is the camera's, as anywhere on the drawing. A Ctrl+wheel
+ *    is always the camera's zoom. A drag decides AT ITS FIRST MOVE, from the element it began over and the direction it
+ *    moves — mostly vertical, over a scroller that can move that way, is the scroller's, which this wire scrolls by the
+ *    drag's own movement (the scroller is `touch-action: none` like the drawing, so the browser never scrolls it
+ *    natively and cancels the stream, § 4.1) — and keeps that owner until it ends, so a drag never flips from scrolling
+ *    the list to panning the room half-way. A drag that scrolled is no click either. The floor's drawing declares no
+ *    scroller, and nothing there changes. ⚠ The touch half is measured with synthetic pointers only, which bypass
+ *    `touch-action` (§ 14 item 39(4)): unverified on a real device;
  *  · only the primary pointer's primary button starts a drag — a right-click's menu never starts a pan
  *    no `pointerup` of its own would end — and a press is a click until it has moved `DRAG_SLOP_PX`,
  *    when the pointer is captured;
@@ -97,7 +109,7 @@
  * Driven under `node` with a stand-in element by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`.
  */
 
-import { framesNothing } from './camera.js';
+import { LINE_PX, framesNothing } from './camera.js';
 
 /** How far a press must move, in CSS px, before it is a drag and no longer a click. */
 export const DRAG_SLOP_PX = 4;
@@ -130,6 +142,18 @@ export function cameraGestures(element, acts, show) {
 
         return { x: x - r.left, y: y - r.top };
     };
+
+    /** The element inside the drawing that declares it scrolls, from `target` up — `null` when there is none (the header). */
+    const scrollerOf = (target) => {
+        const found = typeof target?.closest === 'function' ? target.closest('[data-camera-scrolls]') : null;
+
+        return found !== null && found !== element && element.contains(found) ? found : null;
+    };
+
+    /** Whether `scroller` can still move by `dy` CSS px — down for a positive `dy`, up for a negative one. */
+    const canScroll = (scroller, dy) => (dy > 0
+        ? scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight - 0.5
+        : dy < 0 && scroller.scrollTop > 0.5);
 
     /** The two fingers' midpoint on the drawing and their spread. */
     const span = () => {
@@ -168,6 +192,20 @@ export function cameraGestures(element, acts, show) {
         // Gate: nothing framed — the wheel is the page's scroll.
         if (unframed()) {
             return;
+        }
+
+        // A plain wheel over an element that declares it scrolls is its own while it can still move the wheel's way.
+        const scroller = event.ctrlKey ? null : scrollerOf(event.target);
+
+        if (scroller !== null) {
+            const dy = event.deltaY * (event.deltaMode === 2 ? scroller.clientHeight : event.deltaMode === 1 ? LINE_PX : 1);
+
+            if (canScroll(scroller, dy)) {
+                event.preventDefault();
+                scroller.scrollTop += dy;
+
+                return;
+            }
         }
 
         const { camera, consumed } = event.ctrlKey
@@ -240,6 +278,8 @@ export function cameraGestures(element, acts, show) {
             pinch = { id: event.pointerId, x: event.clientX, y: event.clientY };
             Object.assign(pinch, span());
             drag.moved = true;
+            // A pinch is the camera's, and so is the drag the finger left down carries on.
+            drag.owner = 'camera';
             capture(drag.id);
             capture(event.pointerId);
 
@@ -248,7 +288,8 @@ export function cameraGestures(element, acts, show) {
 
         dragged = false;
         pinch = null;
-        drag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, captured: [] };
+        // `over` is the scroller the press began over, if any, and `owner` who the drag is — decided at its first move.
+        drag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, captured: [], over: scrollerOf(event.target), owner: null };
         element.style.userSelect = 'none';
         element.style.webkitUserSelect = 'none';
     });
@@ -300,10 +341,20 @@ export function cameraGestures(element, acts, show) {
         if (!drag.moved) {
             drag.moved = true;
             capture(event.pointerId);
+            // The drag's owner, once, at its first move: a mostly vertical drag over a scroller that can move that way is
+            // the scroller's — a finger moving up scrolls the list down — and every other drag is the camera's.
+            drag.owner = drag.over !== null && Math.abs(dy) >= Math.abs(dx) && canScroll(drag.over, -dy) ? drag.over : 'camera';
         }
 
         drag.x = event.clientX;
         drag.y = event.clientY;
+
+        if (drag.owner !== 'camera') {
+            drag.owner.scrollTop -= dy;
+
+            return;
+        }
+
         show(acts.drag(dx, dy));
     });
 
