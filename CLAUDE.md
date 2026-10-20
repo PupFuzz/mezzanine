@@ -1,4 +1,4 @@
-<!-- BEGIN coord:solo-orientation (synced from coord v0.67.0) -->
+<!-- BEGIN coord:solo-orientation (synced from coord v0.68.0) -->
 # Agent Board Framework — solo agent orientation
 
 > **⚠ Only two sections of this file reach a session automatically: `## Who you are` and
@@ -171,6 +171,9 @@ every seat including yours. Nothing here restates it, with one exception, self-f
 no cadence: **any incident or blocker-grade finding traced to a finding the bar declined to mint
 reopens the bar at this install.**
 
+**Writing a card.** Its title and description follow `dispatching-briefs.md § The card's title
+and description` [owns: card-text-format], in the plugin's own `docs/` — read it there.
+
 **`[TASK]` tracking, if used, is plain GitHub issues on the relevant repo.** There is no
 coordination repo for cross-agent issue tracking. Open a GitHub issue on the repo the task
 belongs to, reference it in your PR, close it on merge.
@@ -220,7 +223,8 @@ merge-button intent) using each repo's own conventions. Use it whenever cutting 
 **Merge authority:**
 
 - **Routine code-bearing and docs-only PRs to the integration branch → you self-merge.**
-  There is no PM approval loop. You review your own PR adversarially (per engineering canon
+  There is no PM approval loop. You review your own PR adversarially (`coord-review` records
+  that pass — `SOLO.md § Review records in solo mode` — per engineering canon
   #16), confirm CI is green on the `ci_settled` event of the `ci_await` you registered (one read;
   `coord:gh-wrapper` § Pattern 2b), and merge with **`solo-self-merge <pr#> [--repo <owner/name>]`** —
   the guarded wrapper (installed by `coord:init-solo`) that squash-merges + deletes the branch
@@ -553,7 +557,7 @@ genuine question / gate → banner. The banner spends your human's attention —
 generated, not authored: lanes are declared once in the config and membership is a board query (a
 tag, a gate card's blockers, a swimlane, a filter). The default shape is one lane, `current`,
 holding every open card tagged `sprint:current`. A card leaves the plan by MOVING on the board,
-never by editing the page; re-render with `sprint-burndown.py --html <path> --write-config`
+never by editing the page; re-render with `sprint-burndown.py --html <path>`
 instead. The SessionStart check reds when the committed page no longer matches the
 board, and its UNMEASURED verdict means a read did not happen, not that the sprint is finished.
 Vocabulary, worked configs, why the page and the lanes the census reads cannot drift
