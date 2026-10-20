@@ -12,15 +12,16 @@
  *  · `{ "view": [op, …] }` — a `cameraView()` over a recorder, on a frame clock the ops move. The
  *    cameras are `camera.js`'s own: FROM is a surface of 1280 × 800 framed at fit on a building of
  *    two 1600 × 1000 plates, TO is FROM focused on the first plate, OTHER on the second. Ops:
- *    `{ "op": "glide", "ms", "commit" }` — `glideTo(FROM, TO, ms, done)`, committed or not;
+ *    `{ "op": "glide", "ms" }` — `glideTo(FROM, TO, ms)`;
  *    `{ "op": "frame", "ms" }` — the clock moves `ms` and every frame requested so far runs;
  *    `{ "op": "show" }` — `show(OTHER)`; `{ "op": "glide_other", "ms" }` — `glideTo(FROM, OTHER, …)`.
  *  · `{ "gestures": [event, …], "framed"? }` — `cameraGestures()` on a stand-in element whose box is
  *    at (10, 20), with acts that record their arguments — the wheel's two, `pan` and `zoom`, answering
  *    that they consumed the event, as a framed camera's do off the edge; with `"pan_consumed": false`
- *    the pan answers that it did not, as at an edge (card#11045 Q3); with `"riding": true` the wheel's acts and
- *    the pinch answer the camera a lobby mid-ride holds, `{ "act": "held" }`, the wheel's consuming the event
- *    (card#11045 PR-C) — and a camera that frames a scene — or, with
+ *    the pan answers that it did not, as at an edge (card#11045 Q3); with `"scroller": {scrollTop, clientHeight,
+ *    scrollHeight}` a stand-in element inside the drawing that declares it scrolls, the target of every event
+ *    spec carrying `"over": "scroller"`, its `scrollTop` logged after each event (card#12113) — and a camera
+ *    that frames a scene — or, with
  *    `"framed": false`, frames nothing (`bounds: null`, the uncomposed lobby's). Each event is
  *    `{ "type", …the event's own members }`, dispatched cancelable — except `{ "type": "reframe",
  *    "framed": bool }`, which dispatches nothing: the camera frames a scene, or nothing, from then on
@@ -35,7 +36,7 @@
  *    whether each is hidden, the drawing's `aria-keyshortcuts` and `tabindex` (`null` when it has none), and
  *    `writes` — how many writes `offerKeys()` has made to the drawing and the buttons so far.
  * stdout — JSON: `{ "log": [ … ] }` — for `view`, each camera applied, named `from` / `to` / `other`
- * or `between`, and each `done` run, in order; for `gestures` and `keys`, each act, show, pointer
+ * or `between`, in order; for `gestures` and `keys`, each act, show, pointer
  * capture and capture released (`release`), and for each event whether it was `default_prevented`, had its propagation stopped, and the
  * drawing's `user-select` after it (`user_select`, `""` when none is set) and its prefixed
  * `-webkit-user-select` (`webkit_user_select`, likewise).
@@ -92,10 +93,10 @@ if (payload.view !== undefined) {
     for (const op of payload.view) {
         switch (op.op) {
             case 'glide':
-                view.glideTo(cameras.from, cameras.to, op.ms, () => log.push({ done: 'to' }), { commit: op.commit === true });
+                view.glideTo(cameras.from, cameras.to, op.ms);
                 break;
             case 'glide_other':
-                view.glideTo(cameras.from, cameras.other, op.ms, () => log.push({ done: 'other' }));
+                view.glideTo(cameras.from, cameras.other, op.ms);
                 break;
             case 'show':
                 view.show(cameras.other);
@@ -168,14 +169,20 @@ if (payload.view !== undefined) {
     element.setPointerCapture = (id) => log.push({ capture: id });
     element.releasePointerCapture = (id) => log.push({ release: id });
 
-    // A lobby mid-ride (`"riding": true`) holds its camera: the wheel's acts and the pinch answer the camera
-    // they hold, `{ act: 'held' }`, the wheel's consuming the event (`lobby/lobby-screen.js`'s ride-hold).
-    const held = { act: 'held' };
-    const riding = payload.riding === true;
+    // An element inside the drawing that declares it scrolls (`"scroller": {scrollTop, clientHeight, scrollHeight}`,
+    // the lobby's directory): an event spec with `"over": "scroller"` has it as its target, and the log reads its
+    // `scrollTop` after every event (card#12113).
+    const scroller = payload.scroller === undefined ? null : {
+        ...payload.scroller,
+        closest: (selector) => (selector === '[data-camera-scrolls]' ? scroller : null),
+    };
+
+    element.contains = (node) => node === scroller;
+
     const acts = {
-        pan: (delta) => ({ camera: riding ? held : { act: 'pan', delta }, consumed: riding || payload.pan_consumed !== false }),
-        zoom: (point, delta) => ({ camera: riding ? held : { act: 'zoom', point, delta }, consumed: true }),
-        pinch: (from, to, factor) => (riding ? held : { act: 'pinch', from, to, factor }),
+        pan: (delta) => ({ camera: { act: 'pan', delta }, consumed: payload.pan_consumed !== false }),
+        zoom: (point, delta) => ({ camera: { act: 'zoom', point, delta }, consumed: true }),
+        pinch: (from, to, factor) => ({ act: 'pinch', from, to, factor }),
         zoomStep: (notches) => ({ act: 'zoomStep', notches }),
         drag: (dx, dy) => ({ act: 'drag', dx, dy }),
     };
@@ -191,7 +198,7 @@ if (payload.view !== undefined) {
     }
 
     for (const spec of payload.gestures ?? payload.keys) {
-        const { type, on = 'drawing', ...members } = spec;
+        const { type, on = 'drawing', over = null, ...members } = spec;
 
         if (type === 'reframe') {
             bounds = members.framed ? scene : null;
@@ -201,6 +208,11 @@ if (payload.view !== undefined) {
         }
         const event = Object.assign(new Event(type, { cancelable: true }), members);
 
+        // An event begun over the scroller has it as its target, as a browser's would.
+        if (over === 'scroller') {
+            Object.defineProperty(event, 'target', { value: scroller });
+        }
+
         targets[on].dispatchEvent(event);
         log.push({
             event: type,
@@ -209,6 +221,7 @@ if (payload.view !== undefined) {
             user_select: element.style.userSelect ?? '',
             // The prefixed property, which WebKit engines read and which the module sets and resets beside it.
             webkit_user_select: element.style.webkitUserSelect ?? '',
+            ...(scroller === null ? {} : { scroll_top: scroller.scrollTop }),
         });
     }
 } else {
