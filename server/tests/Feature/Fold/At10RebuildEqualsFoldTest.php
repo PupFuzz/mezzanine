@@ -324,7 +324,10 @@ class At10RebuildEqualsFoldTest extends FoldTestCase
      *                                        produces them in one pass
      *   `current_session_ref`,               surrogate POINTERS at those re-minted rows; the facts
      *   `current_call_ref`,                  they point at ARE compared, as the rows of the three
-     *   `open_attention_ref`                 projection tables — the `id`s cannot be
+     *   `longest_call_ref`,                  projection tables — the `id`s cannot be
+     *   `open_attention_ref`                 (`longest_call_ref`, card#12113, is
+     *                                        `current_call_ref`'s sibling; the call it names is
+     *                                        compared by value in `LongestOpenCallTest`)
      *   `fold_cursor_received_at`            a rebuild deliberately re-enters the never-folded
      *                                        state and leaves it by a different route (§ 2.3), so
      *                                        its cursor clock is the OLDEST REPLAYED event's
@@ -354,7 +357,8 @@ class At10RebuildEqualsFoldTest extends FoldTestCase
         // The list the docblock above closes, in that order.
         unset(
             $state['updated_at'], $state['state_computed_at'], $state['state_version'],
-            $state['current_session_ref'], $state['current_call_ref'], $state['open_attention_ref'],
+            $state['current_session_ref'], $state['current_call_ref'], $state['longest_call_ref'],
+            $state['open_attention_ref'],
             $state['fold_cursor_received_at'],
         );
 

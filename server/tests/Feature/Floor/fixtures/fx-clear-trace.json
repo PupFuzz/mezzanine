@@ -44,6 +44,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "started_received_at": "2026-08-23T14:23:14.201Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
@@ -134,6 +139,11 @@
                         "agent_scope": "main",
                         "parent_call_id": null
                       },
+                      "longest_open_call": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "started_received_at": "2026-08-23T14:23:02.530Z"
+                      },
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [],
@@ -207,6 +217,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -280,6 +291,7 @@
                       "blocked_since": "2026-08-23T14:19:40.006Z",
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -361,12 +373,14 @@
             "at": "2026-08-23T14:23:15.400Z",
             "changed": [
               "action",
+              "longest_open_call",
               "open_calls",
               "subagents",
               "subagents_open"
             ],
             "patch": {
               "action": null,
+              "longest_open_call": null,
               "open_calls": 0,
               "subagents": [],
               "subagents_open": 0
@@ -385,6 +399,7 @@
             "at": "2026-08-23T14:23:16.400Z",
             "changed": [
               "action",
+              "longest_open_call",
               "open_calls",
               "subagents",
               "subagents_open"
@@ -398,6 +413,11 @@
                 "started_received_at": "2026-08-23T14:23:16.400Z",
                 "agent_scope": "main",
                 "parent_call_id": null
+              },
+              "longest_open_call": {
+                "call_id": "01K3TC1A2B3C4D5E6F7G8H9J0K",
+                "tool_name": "Agent",
+                "started_received_at": "2026-08-23T14:23:16.400Z"
               },
               "open_calls": 1,
               "subagents": [
@@ -505,12 +525,14 @@
             "at": "2026-08-23T14:23:20.400Z",
             "changed": [
               "action",
+              "longest_open_call",
               "open_calls",
               "subagents",
               "subagents_open"
             ],
             "patch": {
               "action": null,
+              "longest_open_call": null,
               "open_calls": 0,
               "subagents": [],
               "subagents_open": 0
@@ -628,6 +650,11 @@
             "agent_scope": "main",
             "parent_call_id": null
           },
+          "longest_open_call": {
+            "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+            "tool_name": "Edit",
+            "started_received_at": "2026-08-23T14:23:02.530Z"
+          },
           "open_calls": 1,
           "open_turn": true,
           "subagents": [],
@@ -701,6 +728,7 @@
           "blocked_since": null,
           "idle_since": null,
           "action": null,
+          "longest_open_call": null,
           "open_calls": 0,
           "open_turn": false,
           "subagents": [],
@@ -774,6 +802,7 @@
           "blocked_since": null,
           "idle_since": null,
           "action": null,
+          "longest_open_call": null,
           "open_calls": 0,
           "open_turn": false,
           "subagents": [],
@@ -849,6 +878,7 @@
           "blocked_since": "2026-08-23T14:19:40.006Z",
           "idle_since": null,
           "action": null,
+          "longest_open_call": null,
           "open_calls": 0,
           "open_turn": false,
           "subagents": [],

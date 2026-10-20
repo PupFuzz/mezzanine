@@ -37,6 +37,11 @@
               "agent_scope": "main",
               "parent_call_id": null
             },
+            "longest_open_call": {
+              "call_id": "7BC655J8KF8TH9EWZK4EXDAGBQ",
+              "tool_name": "Bash",
+              "started_received_at": "2026-08-23T14:23:10.400Z"
+            },
             "open_calls": 1,
             "open_turn": true,
             "subagents": [],
@@ -144,6 +149,11 @@
                         "started_received_at": "2026-08-23T14:23:10.400Z",
                         "agent_scope": "main",
                         "parent_call_id": null
+                      },
+                      "longest_open_call": {
+                        "call_id": "7BC655J8KF8TH9EWZK4EXDAGBQ",
+                        "tool_name": "Bash",
+                        "started_received_at": "2026-08-23T14:23:10.400Z"
                       },
                       "open_calls": 1,
                       "open_turn": true,
@@ -257,6 +267,11 @@
             "started_received_at": "2026-08-23T14:23:10.400Z",
             "agent_scope": "main",
             "parent_call_id": null
+          },
+          "longest_open_call": {
+            "call_id": "7BC655J8KF8TH9EWZK4EXDAGBQ",
+            "tool_name": "Bash",
+            "started_received_at": "2026-08-23T14:23:10.400Z"
           },
           "open_calls": 1,
           "open_turn": true,
