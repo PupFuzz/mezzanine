@@ -277,8 +277,8 @@ class BuildingLayoutTest extends TestCase
     {
         // ⛔ WHAT A VIEWER READS IS HTML, NOT BYTES, so the comparison is on the RENDERED form.
         // `server/public/js/lobby/directory.js` writes the plaque's name as a text node, under the page
-        // chrome sheet's `white-space: nowrap` on the plaque's row — which, like the browser's default,
-        // strips that text at both ends and collapses every run of whitespace inside it. A comparison on the BYTES therefore accepts documents whose plates
+        // chrome sheet's default `white-space` on the plaque's row — which strips that text at both ends
+        // and collapses every run of whitespace inside it. A comparison on the BYTES therefore accepts documents whose plates
         // are indistinguishable on the screen — which is exactly the building § 4.6 refuses: "two
         // plates reading alike is a building nobody can navigate".
         //

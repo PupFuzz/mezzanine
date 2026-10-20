@@ -87,8 +87,8 @@ class TheLobbyIsADrawnRoomTest extends TestCase
         $this->assertSame([], $this->scaleDefects($this->paint([])['directory']));
     }
 
-    /** § 4.1: the list scrolls inside its box and declares it; no line wraps; the face is the page's own size; the title is HTML. */
-    public function test_green_the_directory_scrolls_inside_its_box_and_no_line_wraps(): void
+    /** § 4.1: the list scrolls inside its box and declares it; every line wraps and none is cut; the face is the page's own size; the title is HTML. */
+    public function test_green_the_directory_scrolls_inside_its_box_and_every_line_reads_whole(): void
     {
         $this->assertSame([], $this->sheetDefects($this->sheet(), $this->lobbyPage()));
     }
@@ -189,7 +189,11 @@ class TheLobbyIsADrawnRoomTest extends TestCase
         foreach ([
             'a directory that does not scroll' => ["    overflow-y: auto;\n    touch-action: none;\n    display: flex;\n    flex-direction: column;\n    gap: 6px;\n}", "    overflow-y: hidden;\n    touch-action: none;\n    display: flex;\n    flex-direction: column;\n    gap: 6px;\n}"],
             'a directory the browser scrolls natively' => ["    overflow-y: auto;\n    touch-action: none;\n    display: flex;", "    overflow-y: auto;\n    touch-action: auto;\n    display: flex;"],
-            'a row that wraps' => [".lobby .lobby-plaque-row {\n    display: flex;\n    align-items: center;\n    gap: 6px;\n    min-width: 0;\n    white-space: nowrap;", ".lobby .lobby-plaque-row {\n    display: flex;\n    align-items: center;\n    gap: 6px;\n    min-width: 0;\n    white-space: normal;"],
+            'a row that does not wrap' => [".lobby .lobby-plaque-row {\n    display: flex;\n    flex-wrap: wrap;", ".lobby .lobby-plaque-row {\n    display: flex;\n    flex-wrap: nowrap;"],
+            'a row cut at its end' => [".lobby .lobby-plaque-row {\n    display: flex;\n", ".lobby .lobby-plaque-row {\n    white-space: nowrap;\n    text-overflow: ellipsis;\n    display: flex;\n"],
+            'a reading cut at its end' => [".lobby .lobby-reading li {\n    margin: 0;\n", ".lobby .lobby-reading li {\n    margin: 0;\n    white-space: nowrap;\n    text-overflow: ellipsis;\n"],
+            'the agents and desks that shrink' => [".lobby .lobby-plaque-staffing {\n    flex: none;", ".lobby .lobby-plaque-staffing {\n    flex: 0 3 auto;"],
+            'a word never broken' => ["    color: var(--lobby-plaque-ink);\n    overflow-wrap: anywhere;\n}", "    color: var(--lobby-plaque-ink);\n}"],
             'a face of its own size' => [".lobby .lobby-face {\n    box-sizing: border-box;\n    font-size: 1rem;", ".lobby .lobby-face {\n    box-sizing: border-box;\n    font-size: 13px;"],
         ] as $what => [$from, $to]) {
             $planted = str_replace($from, $to, $sheet);
@@ -561,16 +565,42 @@ class TheLobbyIsADrawnRoomTest extends TestCase
             $defects[] = 'the plaques\' list does not scroll inside its box, or the browser may scroll it natively (§ 4.1)';
         }
 
+        // § 4.1: every line is read whole — a line wider than its box wraps, and nothing the plaque or the readings show is
+        // cut at its end; in the name row the name and the agents and desks never shrink, so the rooms line gives way.
         $row = $rule('.lobby .lobby-plaque-row');
 
-        foreach (['white-space: nowrap;', 'text-overflow: ellipsis;', 'overflow: hidden;'] as $d) {
-            if (! str_contains($row, $d)) {
-                $defects[] = "a plaque's row is not one line cut at its end (`{$d}` missing)";
+        if (! str_contains($row, 'flex-wrap: wrap;')) {
+            $defects[] = "a plaque's row does not wrap (`flex-wrap: wrap;` missing)";
+        }
+
+        foreach ([
+            'a plaque\'s row' => $row,
+            'the board\'s title' => $rule('.lobby #lobby-directory-heading'),
+            'a reading' => $rule(".lobby .lobby-reading p,\n.lobby .lobby-reading li"),
+            'the rooms line' => $rule('.lobby .lobby-plaque-rooms'),
+            'the agents and desks' => $rule('.lobby .lobby-plaque-staffing'),
+        ] as $what => $body) {
+            foreach (['white-space: nowrap;', 'text-overflow: ellipsis;'] as $d) {
+                if (str_contains($body, $d)) {
+                    $defects[] = "{$what} is one line cut at its end (`{$d}`)";
+                }
             }
         }
 
-        if (! str_contains($rule('.lobby .lobby-face'), 'font-size: 1rem;')) {
+        foreach (['.lobby .lobby-plaque-name' => 'the floor\'s name', '.lobby .lobby-plaque-staffing' => 'the agents and desks'] as $selector => $what) {
+            if (! str_contains($rule($selector), 'flex: none;')) {
+                $defects[] = "{$what} can shrink on the name row (`flex: none;` missing)";
+            }
+        }
+
+        $face = $rule('.lobby .lobby-face');
+
+        if (! str_contains($face, 'font-size: 1rem;')) {
             $defects[] = 'the directory\'s face is not the page\'s own text size';
+        }
+
+        if (! str_contains($face, 'overflow-wrap: anywhere;')) {
+            $defects[] = 'a word wider than its box is not broken (`overflow-wrap: anywhere;` missing on the face)';
         }
 
         if (preg_match('#<section id="lobby-directory" aria-labelledby="lobby-directory-heading">\s*<div class="lobby-face lobby-directory-face">\s*<h3 id="lobby-directory-heading">(.*?)</h3>\s*<ol id="lobby-floors" class="lobby-plaques" aria-labelledby="lobby-directory-heading" data-camera-scrolls>#s', $page, $m) !== 1

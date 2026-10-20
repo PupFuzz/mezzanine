@@ -34,8 +34,8 @@
  *    the cursor, carrying `deltaY` and `deltaMode`. Either takes the event from the page: its scroll, or
  *    the browser's own page zoom — while the act answers that it `consumed` the event. A pan the camera
  *    can make no further the wheel's way is not consumed, and that wheel is the page's scroll, untouched
- *    and showing nothing (the edge, card#11045 Q3, the operator's ruling of 2026-10-01); a zoom, and a
- *    wheel over a lobby mid-ride, are always consumed — each the screen's answer, never this file's;
+ *    and showing nothing (the edge, card#11045 Q3, the operator's ruling of 2026-10-01); a zoom over a
+ *    framed drawing is always consumed — each the screen's answer, never this file's;
  *  · ⛔ AN ELEMENT INSIDE THE DRAWING THAT DECLARES IT SCROLLS (`data-camera-scrolls` — the lobby's directory, FLOOR.md
  *    § 4.1, card#12113) HAS THE PAN GESTURE WHILE IT CAN STILL MOVE THE GESTURE's WAY, and the camera has it otherwise —
  *    the edge rule above, one level in. A plain wheel over it is asked of it first: while it can still scroll the
@@ -87,8 +87,8 @@
  *    Safari's gesture events"). Each `gesturechange` and the `gestureend` is the screen's `pinch()` — the act
  *    whose `factor` is a ratio, where `zoom()` takes a wheel's `deltaY` — by its `scale` over the last
  *    event's, from the last event's point to its own: about the cursor. Every gesture event over a framed
- *    drawing is taken from the page (its page zoom and its tab overview), under the wheel's one gate, and a
- *    lobby mid-ride answers as its `pinch()` does — the camera it holds. ⛔ ONE PINCH ZOOMS ONCE. macOS
+ *    drawing is taken from the page (its page zoom and its tab overview), under the wheel's one gate, and the
+ *    screen's `pinch()` answers with the camera it leaves. ⛔ ONE PINCH ZOOMS ONCE. macOS
  *    Safari 15 and later ALSO send a Ctrl+wheel for the pinch (WebKit bug 225788) — but after each gesture
  *    event, and only for one left unprevented: WebKit's own `LayoutTests/fast/events/gesture/
  *    wheel-from-gesture.html` holds that a gesture event whose default is prevented is followed by no

@@ -114,9 +114,14 @@
                     <div class="lobby-face lobby-readings-face">
                         <section class="lobby-reading" aria-labelledby="lobby-health-heading" data-camera-scrolls>
                             <h3 id="lobby-health-heading">Building readings</h3>
-                            <p><span id="lobby-feed">feed: waiting for the stream</span> · <span id="lobby-resyncs">resyncs: waiting for the stream</span> · <span id="lobby-totals">waiting for the fleet snapshot</span></p>
-                            <p><span id="lobby-store">store: waiting for the fleet snapshot</span> · <span id="lobby-derivation">derivation: waiting for the fleet snapshot</span> · <span id="lobby-sweep">sweep: waiting for the fleet snapshot</span></p>
-                            <p><span id="lobby-ingest">ingest: waiting for the fleet snapshot</span> · <span id="lobby-stamp">waiting for the fleet snapshot</span></p>
+                            <p><span id="lobby-feed">feed: waiting for the stream</span></p>
+                            <p><span id="lobby-resyncs">resyncs: waiting for the stream</span></p>
+                            <p><span id="lobby-totals">waiting for the fleet snapshot</span></p>
+                            <p><span id="lobby-store">store: waiting for the fleet snapshot</span></p>
+                            <p><span id="lobby-derivation">derivation: waiting for the fleet snapshot</span></p>
+                            <p><span id="lobby-sweep">sweep: waiting for the fleet snapshot</span></p>
+                            <p><span id="lobby-ingest">ingest: waiting for the fleet snapshot</span></p>
+                            <p><span id="lobby-stamp">waiting for the fleet snapshot</span></p>
                             <p id="lobby-discrepancy" role="status" hidden></p>
                         </section>
                         <section class="lobby-reading" aria-labelledby="lobby-log-heading" data-camera-scrolls>

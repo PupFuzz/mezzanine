@@ -3,7 +3,7 @@
 // The contract this holds is `docs/design/FLOOR.md` § 4.1's directory claims; this header states only what this tool
 // checks and how. Node, no dependencies, no network beyond 127.0.0.1 — but a real browser, because the size a glyph is
 // drawn at under two nested transforms, where a box lands under the camera, whether a list scrolls, whether a line
-// wraps and what a glyph stands on are each a composition only a renderer produces. (card#12113 re-aimed this tool at
+// is cut and what a glyph stands on are each a composition only a renderer produces. (card#12113 re-aimed this tool at
 // the plaque's text on the plaque's face; until then it was `lobby-label-contrast.browser.mjs` and measured the
 // cross-section's plate labels.)
 //
@@ -31,7 +31,11 @@
 //   camera's transform, to a px), and its face fills its box, to a px.
 //   **scroll** — the plaques' list scrolls (`overflow-y: auto`) and, on the long directory, holds more than it shows and
 //   reaches its last plaque when scrolled to its end.
-//   **wrap** — every plaque row is one line high (no taller than 1.6 of its line height).
+//   **clip** — no element of the two faces, the faces included, hides part of what it holds: none is wider than its box
+//   (`scrollWidth > clientWidth`) under an overflow that is not `visible` — a line cut at its end, or a list scrolling
+//   sideways — and none is taller than its box under one that only hides (`hidden`, `clip`), but for the
+//   `CLIP_RESIDUALS` declared by run and element. A list or a panel that scrolls DOWN holds its lines; the scroll check
+//   owns it.
 //   **contrast** — each render is captured twice, as drawn and with every face's text transparent; a pixel that differs
 //   is a GLYPH pixel, the second capture is what it stands on, and its WCAG 2.1 ratio (SC 1.4.3) against that pixel and a
 //   ring of pixels 1 and 2 px out from it — kept inside the text's own line box, clipped to what its scroller shows, so
@@ -41,10 +45,12 @@
 // ⛔ NO BROWSER IS A FAILURE, NEVER A SKIP, AND IT IS NOT WIRED IN CI (a stock runner carries no Chromium —
 // `.github/workflows/design-doc-verifiers.yml` names the browser tools and why). Run by hand.
 //
-// ⛔ THE SELFTEST PLANTS ONE DEFECT PER CHECK AND REQUIRES EACH TO RED ON ITS OWN: the plaque's ink paled to its face
-// (contrast); the face's counter-scale dropped (size); the box moved off the board (board); the list made unscrollable
-// (scroll); a row allowed to wrap (wrap). Each check's predicate is also run against the shipped render, a no-op plant,
-// and must NOT catch there.
+// ⛔ THE SELFTEST PLANTS AT LEAST ONE DEFECT PER CHECK AND REQUIRES EACH TO RED ON ITS OWN: the plaque's ink paled to its
+// face (contrast); the face's counter-scale dropped (size); the box moved off the board (board); the list made
+// unscrollable (scroll); and, for clip, each rule card#12113's first review found cutting text re-applied — a plaque row
+// one line cut at its end, the name row's old shrinking rooms line and agents and desks, a reading one line cut at its
+// end, and the title one line at every width. Each check's predicate is also run against the shipped render, a no-op
+// plant, and must NOT catch there.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -60,13 +66,19 @@ const FIXTURE = join(HERE, '..', '..', 'server', 'tests', 'Feature', 'Floor', 'f
 /** WCAG 2.1 SC 1.4.3's figure for normal text. */
 const MIN_RATIO = 4.5;
 
-/** The planted defects, one per check — the header's SELFTEST paragraph. `file` is under `server/public/`. */
+/**
+ * The planted defects, at least one per check — the header's SELFTEST paragraph. `file` is under `server/public/`; a plant
+ * whose name is not its check's names the check it plants for in `check`.
+ */
 const PLANTS = {
   contrast: { file: ['css', 'mezzanine.css'], anchor: '    --lobby-plaque-ink: #3b2f2a;', replacement: '    --lobby-plaque-ink: #e9dccd;' },
   size: { file: ['js', 'lobby', 'directory.js'], anchor: "            transform: drawn ? 'scale(var(--lobby-scale, 1))' : '',", replacement: "            transform: '',"},
   board: { file: ['js', 'lobby', 'directory.js'], anchor: '            left: drawn ? `${rect.x}px` : \'\',', replacement: '            left: drawn ? `${rect.x + 60}px` : \'\',' },
   scroll: { file: ['css', 'mezzanine.css'], anchor: "    overflow-y: auto;\n    touch-action: none;\n    display: flex;", replacement: "    overflow-y: hidden;\n    touch-action: none;\n    display: flex;" },
-  wrap: { file: ['css', 'mezzanine.css'], anchor: ".lobby .lobby-plaque-row {\n    display: flex;\n    align-items: center;\n    gap: 6px;\n    min-width: 0;\n    white-space: nowrap;", replacement: ".lobby .lobby-plaque-row {\n    display: flex;\n    flex-wrap: wrap;\n    align-items: center;\n    gap: 6px;\n    min-width: 0;\n    white-space: normal;" },
+  clip: { file: ['css', 'mezzanine.css'], anchor: ".lobby .lobby-plaque-row {\n    display: flex;\n    flex-wrap: wrap;", replacement: ".lobby .lobby-plaque-row {\n    white-space: nowrap;\n    text-overflow: ellipsis;\n    display: flex;" },
+  'clip (the old name-row rules)': { check: 'clip', file: ['css', 'mezzanine.css'], anchor: ".lobby .lobby-plaque-rooms {\n    flex: 1 1 0;\n    min-width: 6em;\n    color: var(--lobby-plaque-dim);\n}\n\n.lobby .lobby-plaque-staffing {\n    flex: none;\n    max-width: 100%;\n", replacement: ".lobby .lobby-plaque-rooms {\n    flex: 0 5 auto;\n    min-width: 0;\n    white-space: nowrap;\n    overflow: hidden;\n    text-overflow: ellipsis;\n    color: var(--lobby-plaque-dim);\n}\n\n.lobby .lobby-plaque-staffing {\n    flex: 0 3 auto;\n    min-width: 0;\n    white-space: nowrap;\n    overflow: hidden;\n    text-overflow: ellipsis;\n" },
+  'clip (the readings one line)': { check: 'clip', file: ['css', 'mezzanine.css'], anchor: ".lobby .lobby-reading li {\n    margin: 0;", replacement: ".lobby .lobby-reading li {\n    margin: 0;\n    white-space: nowrap;\n    overflow: hidden;\n    text-overflow: ellipsis;" },
+  'clip (the title one line)': { check: 'clip', file: ['css', 'mezzanine.css'], anchor: '@container (width < 15em) {', replacement: '@container (width < 150em) {' },
 };
 
 /** The snapshot and the layout the plaques are the model's over — `lobby_attention`'s, from disk. */
@@ -91,7 +103,7 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8"><link rel="styles
 <div id="lobby-building" role="group"><div id="lobby-room">
 <section id="lobby-directory"><div class="lobby-face lobby-directory-face"><h3 id="lobby-directory-heading"><span class="lobby-directory-title">FLOOR DIRECTORY</span> <span>— counts the seats this client holds</span></h3><ol id="lobby-floors" class="lobby-plaques" data-camera-scrolls></ol></div></section>
 <div id="lobby-readings"><div class="lobby-face lobby-readings-face">
-<section class="lobby-reading" data-camera-scrolls><h3>Building readings</h3><p><span>feed: live</span> · <span>resyncs: 0</span> · <span>7 seats · 6 live</span></p><p><span>store: ok</span> · <span>derivation: ok</span> · <span>sweep: ok</span></p><p><span>ingest: last receipt 14:23:14</span> · <span>membership as of 14:23:14</span></p></section>
+<section class="lobby-reading" data-camera-scrolls><h3>Building readings</h3><p><span>feed: live</span></p><p><span>resyncs: 0</span></p><p><span>7 seats · 6 live</span></p><p><span>store: ok</span></p><p><span>derivation: ok</span></p><p><span>sweep: ok</span></p><p><span>ingest: last receipt 14:23:14</span></p><p><span>membership as of 14:23:14</span></p></section>
 <section class="lobby-reading" data-camera-scrolls><h3>Event log</h3><ol><li>14:23:14 · snapshot applied — 7 desks held</li></ol></section>
 </div></div>
 </div></div></section></main>
@@ -191,10 +203,21 @@ const READ = `(() => {
   const listRect = list.getBoundingClientRect();
   const reached = last !== undefined && last.bottom <= listRect.bottom + 1;
   list.scrollTop = before;
-  const rows = [...document.querySelectorAll('.lobby-plaque-row')].map((r) => ({ text: r.textContent.trim().slice(0, 40), h: r.getBoundingClientRect().height,
-    line: parseFloat(getComputedStyle(r).lineHeight) * (r.closest('.lobby-face').getBoundingClientRect().width / r.closest('.lobby-face').offsetWidth) }));
+  const rows = document.querySelectorAll('.lobby-plaque-row').length;
+  // Every element of the two faces, the faces included, that hides part of what it holds: wider than its box under an
+  // overflow that is not \`visible\` (a cut line, or a list scrolling sideways), or taller than its box under one that
+  // only hides (\`hidden\` or \`clip\` — a list or a panel that SCROLLS down holds its lines, it does not hide them).
+  const cut = [];
+  for (const face of faces) {
+    for (const e of [face, ...face.querySelectorAll('*')]) {
+      const cs = getComputedStyle(e);
+      const wide = cs.overflowX !== 'visible' && e.scrollWidth > e.clientWidth;
+      const tall = (cs.overflowY === 'hidden' || cs.overflowY === 'clip') && e.scrollHeight > e.clientHeight;
+      if (wide || tall) cut.push({ el: e.id ? '#' + e.id : (e.className || e.tagName), text: e.textContent.trim().replace(/\\s+/g, ' ').slice(0, 70), sw: e.scrollWidth, cw: e.clientWidth, sh: e.scrollHeight, ch: e.clientHeight });
+    }
+  }
   return { texts, box: rect(box.getBoundingClientRect()), face: rect(box.firstElementChild.getBoundingClientRect()), expected,
-    list: { overflowY, scrollHeight: list.scrollHeight, clientHeight: list.clientHeight, reached, plaques: list.children.length }, rows,
+    list: { overflowY, scrollHeight: list.scrollHeight, clientHeight: list.clientHeight, reached, plaques: list.children.length }, rows, cut,
     surface: rect(surface) };
 })()`;
 
@@ -254,6 +277,15 @@ const RUNS = [
  */
 const RESIDUALS = [];
 
+/**
+ * ACCEPTED CUTS, each declared by the run it is in and the element it is: § 4.1's phone-width residual, where the fitted
+ * board's face is narrower than § 12's *Directory title wrap width*, so the title is one line cut at its end and the
+ * plaques keep the box. Any other cut reds — in that run too.
+ */
+const CLIP_RESIDUALS = [
+  { match: (run) => run.w === 390 && run.camera === 'fit', el: '#lobby-directory-heading' },
+];
+
 function residualSplit(run, under) {
   const declared = RESIDUALS.filter((res) => res.match(run));
   const unexplained = under.filter((s) => !declared.some((res) => s.text === res.text && s.y >= res.yBand[0] && s.y <= res.yBand[1]));
@@ -284,11 +316,11 @@ async function judge(chrome, plant) {
         const board = near(r.box.l, r.expected.l) && near(r.box.t, r.expected.t) && near(r.box.w, r.expected.w) && near(r.box.h, r.expected.h)
           && near(r.face.l, r.box.l) && near(r.face.t, r.box.t) && near(r.face.w, r.box.w) && near(r.face.h, r.box.h);
         const scroll = r.list.overflowY === 'auto' && r.list.reached && (run.floors < 12 || r.list.scrollHeight > r.list.clientHeight);
-        const wrap = r.rows.filter((row) => row.h > row.line * 1.6).map((row) => `${row.text} ${row.h.toFixed(1)}px`);
+        const clip = r.cut.filter((c) => !CLIP_RESIDUALS.some((res) => res.match(run) && c.el === res.el)).map((c) => `${c.el} "${c.text}" ${c.sw}/${c.cw}w ${c.sh}/${c.ch}h`);
         const { unexplained, ok: contrast } = residualSplit(run, m.under);
-        const measured = r.texts.length > 20 && m.glyphs > 2000 && r.rows.length >= 4 * Math.min(run.floors, 3);
-        results.push({ run, size, board, scroll, wrap, contrast, unexplained, measured, glyphs: m.glyphs, min: m.min, texts: r.texts.length, list: r.list, box: r.box, expected: r.expected,
-          ok: measured && size.length === 0 && board && scroll && wrap.length === 0 && contrast });
+        const measured = r.texts.length > 20 && m.glyphs > 2000 && r.rows >= 4 * Math.min(run.floors, 3);
+        results.push({ run, size, board, scroll, clip, contrast, unexplained, measured, glyphs: m.glyphs, min: m.min, texts: r.texts.length, list: r.list, box: r.box, expected: r.expected,
+          ok: measured && size.length === 0 && board && scroll && clip.length === 0 && contrast });
       } finally {
         b.close();
       }
@@ -301,9 +333,9 @@ async function judge(chrome, plant) {
 
 const report = (r) => `${r.ok ? 'PASS' : 'FAIL'}  ${r.run.w}x${r.run.h} ${String(r.run.floors).padStart(2)} floors ${r.run.camera.padEnd(5)}  `
   + `${r.texts} texts, ${r.glyphs} glyph px, min ${r.min?.toFixed(2)}:1; size-off ${r.size.length}, board ${r.board ? 'on' : 'OFF'}, `
-  + `scroll ${r.scroll ? 'ok' : 'NO'} (${r.list.scrollHeight}/${r.list.clientHeight}, ${r.list.plaques} plaques), wrapped ${r.wrap.length}, `
+  + `scroll ${r.scroll ? 'ok' : 'NO'} (${r.list.scrollHeight}/${r.list.clientHeight}, ${r.list.plaques} plaques), cut ${r.clip.length}, `
   + `contrast ${r.contrast ? 'ok' : 'UNDER'}${r.measured ? '' : '  — NOT MEASURED'}`
-  + `${r.size.length ? `  size e.g. ${JSON.stringify(r.size.slice(0, 3))}` : ''}${r.wrap.length ? `  wrap e.g. ${JSON.stringify(r.wrap.slice(0, 3))}` : ''}`
+  + `${r.size.length ? `  size e.g. ${JSON.stringify(r.size.slice(0, 3))}` : ''}${r.clip.length ? `  cut e.g. ${JSON.stringify(r.clip.slice(0, 6))}` : ''}`
   + `${r.unexplained.length ? `  under e.g. ${JSON.stringify(r.unexplained.slice(0, 4))}` : ''}`
   + `${r.board ? '' : `  box ${JSON.stringify(r.box)} expected ${JSON.stringify(r.expected)}`}`;
 
@@ -317,7 +349,7 @@ if (chrome === null) {
 }
 
 const shipped = await judge(chrome, null);
-console.log('── the shipped lobby directory — size, board, scroll, wrap, contrast');
+console.log('── the shipped lobby directory — size, board, scroll, clip, contrast');
 for (const r of shipped) console.log(report(r));
 
 let failed = shipped.some((r) => !r.ok);
@@ -330,21 +362,22 @@ if (selftest) {
     size: (rs) => rs.some((r) => r.size.length > 0),
     board: (rs) => rs.some((r) => !r.board),
     scroll: (rs) => rs.some((r) => !r.scroll),
-    wrap: (rs) => rs.some((r) => r.wrap.length > 0),
+    clip: (rs) => rs.some((r) => r.clip.length > 0),
   };
 
-  for (const check of Object.keys(PLANTS)) {
+  for (const check of Object.keys(bites)) {
     const vacuous = bites[check](shipped);
     console.log(vacuous ? `CONTROL VACUOUS (${check}) — its predicate already holds on the shipped render` : `CONTROL NOT VACUOUS (${check})`);
     failed = failed || vacuous;
   }
 
-  for (const [check, plant] of Object.entries(PLANTS)) {
+  for (const [name, plant] of Object.entries(PLANTS)) {
+    const check = plant.check ?? name;
     const planted = await judge(chrome, plant);
-    console.log(`── CONTROL (${check}): must FAIL`);
+    console.log(`── CONTROL (${name}): must FAIL`);
     for (const r of planted) console.log(report(r));
     const bit = bites[check](planted);
-    console.log(bit ? `CONTROL CAUGHT (${check})` : `CONTROL NOT CAUGHT (${check}) — the check cannot tell a correct render from this planted one`);
+    console.log(bit ? `CONTROL CAUGHT (${name})` : `CONTROL NOT CAUGHT (${name}) — the check cannot tell a correct render from this planted one`);
     failed = failed || !bit;
   }
 }

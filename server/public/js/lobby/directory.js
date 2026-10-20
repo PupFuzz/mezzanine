@@ -23,7 +23,8 @@
  * list while the list can move that way and to the camera once it cannot. It is `touch-action: none` like the drawing
  * around it, and the gesture wire scrolls it from the drag it owns (§ 4.1 says why).
  *
- * ⛔ NO LINE WRAPS: every row is one line, cut at its end with `text-overflow`, so a plaque's height is its row count.
+ * ⛔ EVERY LINE IS READ WHOLE: this module builds a row per part and the sheet wraps a row wider than its plaque, so a
+ * plaque grows taller rather than hiding a figure (§ 4.1 says which part of the name row gives way).
  */
 
 import { framesNothing } from '../wire/camera.js';

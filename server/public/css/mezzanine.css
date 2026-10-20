@@ -415,18 +415,21 @@ main > section.lobby {
     color: var(--dim);
 }
 
-/* The two faces: the page's own text size, every line one line, cut at its end — a plaque's height is its row count. */
+/* The two faces: the page's own text size, and every line read whole — a line wider than its box wraps, breaking inside a
+   word only where a word alone is wider (FLOOR.md § 4.1), so a plaque grows taller rather than hiding a figure. */
 .lobby .lobby-face {
     box-sizing: border-box;
     font-size: 1rem;
     line-height: 1.3;
     color: var(--lobby-plaque-ink);
+    overflow-wrap: anywhere;
 }
 
 .lobby .lobby-directory-face {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    container-type: inline-size;
 }
 
 .lobby #lobby-directory-heading {
@@ -439,9 +442,17 @@ main > section.lobby {
     font-size: 1rem;
     font-weight: 600;
     text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+}
+
+/* The title wraps — but on a face narrower than the Directory title wrap width (FLOOR.md § 12), the phone's fitted board,
+   a wrapped title would fill the box and leave the plaques none, so there it is one line cut at its end (§ 4.1's
+   residual). */
+@container (width < 15em) {
+    .lobby #lobby-directory-heading {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 }
 
 .lobby .lobby-directory-title {
@@ -478,24 +489,22 @@ main > section.lobby {
 
 .lobby .lobby-plaque-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
+    gap: 2px 6px;
     min-width: 0;
-    white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
 }
 
-/* The name keeps its room: the rooms line gives way first, then the agents and desks; a name wider than the row is cut. */
+/* The name row: the name and the agents and desks never shrink, so the rooms line is the one part that gives way — it
+   takes what the row has left and wraps inside it. Where the name and the figures do not fit side by side, the figures
+   move to a line of their own, still right-aligned; a name wider than the row wraps. */
 .lobby .lobby-plaque-name {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    flex: 0 0 auto;
+    flex: none;
     max-width: 100%;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
     font-weight: 700;
     color: var(--lobby-plaque-ink);
     outline-offset: -2px;
@@ -515,18 +524,14 @@ main > section.lobby {
 }
 
 .lobby .lobby-plaque-rooms {
-    flex: 0 5 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    flex: 1 1 0;
+    min-width: 6em;
     color: var(--lobby-plaque-dim);
 }
 
 .lobby .lobby-plaque-staffing {
-    flex: 0 3 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    flex: none;
+    max-width: 100%;
     margin-left: auto;
     font-weight: 600;
 }
@@ -535,6 +540,8 @@ main > section.lobby {
    always on it (§ 4.1). An unrecognised value is the sheet's unrecognised treatment. */
 .lobby .lobby-chip {
     flex: none;
+    max-width: 100%;
+    box-sizing: border-box;
     padding: 0 8px;
     border-radius: 10px;
     border: 1px solid var(--lobby-plaque-outline);
@@ -613,9 +620,6 @@ main > section.lobby {
 .lobby .lobby-reading p,
 .lobby .lobby-reading li {
     margin: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .lobby .lobby-reading ol {
