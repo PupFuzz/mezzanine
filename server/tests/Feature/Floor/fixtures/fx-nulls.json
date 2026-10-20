@@ -28,6 +28,7 @@
             "blocked_since": null,
             "idle_since": null,
             "action": null,
+            "longest_open_call": null,
             "open_calls": 0,
             "open_turn": false,
             "subagents": [],
@@ -89,6 +90,11 @@
               "started_received_at": "2026-08-23T14:22:54.100Z",
               "agent_scope": null,
               "parent_call_id": null
+            },
+            "longest_open_call": {
+              "call_id": "01K3TC1A2B3C4D5E6F7G8H9J0K",
+              "tool_name": "Bash",
+              "started_received_at": "2026-08-23T14:22:54.100Z"
             },
             "open_calls": 1,
             "open_turn": true,
@@ -198,6 +204,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],
@@ -259,6 +266,11 @@
                         "started_received_at": "2026-08-23T14:22:54.100Z",
                         "agent_scope": null,
                         "parent_call_id": null
+                      },
+                      "longest_open_call": {
+                        "call_id": "01K3TC1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Bash",
+                        "started_received_at": "2026-08-23T14:22:54.100Z"
                       },
                       "open_calls": 1,
                       "open_turn": true,
@@ -374,6 +386,7 @@
                       "blocked_since": null,
                       "idle_since": null,
                       "action": null,
+                      "longest_open_call": null,
                       "open_calls": 0,
                       "open_turn": false,
                       "subagents": [],

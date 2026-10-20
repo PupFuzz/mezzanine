@@ -67,6 +67,7 @@ final class SeatDelta implements FeedMessage
         'blocked_since' => 'blocked_since',
         'idle_since' => 'idle_since',
         'action' => 'action',
+        'longest_open_call' => 'longest_open_call',
         'open_calls' => 'open_calls',
         'open_turn' => 'open_turn',
         'subagents' => 'subagents',
