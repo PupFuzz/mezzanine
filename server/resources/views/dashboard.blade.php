@@ -111,15 +111,15 @@
                     (§ 2.3), the discrepancy sentence (§ 4.1 row 4), and the client's own event record (§ 5.5).
                 --}}
                 <div id="lobby-readings">
-                    <div class="lobby-face lobby-readings-face" data-camera-scrolls>
-                        <section class="lobby-reading" aria-labelledby="lobby-health-heading">
+                    <div class="lobby-face lobby-readings-face">
+                        <section class="lobby-reading" aria-labelledby="lobby-health-heading" data-camera-scrolls>
                             <h3 id="lobby-health-heading">Building readings</h3>
                             <p><span id="lobby-feed">feed: waiting for the stream</span> · <span id="lobby-resyncs">resyncs: waiting for the stream</span> · <span id="lobby-totals">waiting for the fleet snapshot</span></p>
                             <p><span id="lobby-store">store: waiting for the fleet snapshot</span> · <span id="lobby-derivation">derivation: waiting for the fleet snapshot</span> · <span id="lobby-sweep">sweep: waiting for the fleet snapshot</span></p>
                             <p><span id="lobby-ingest">ingest: waiting for the fleet snapshot</span> · <span id="lobby-stamp">waiting for the fleet snapshot</span></p>
                             <p id="lobby-discrepancy" role="status" hidden></p>
                         </section>
-                        <section class="lobby-reading" aria-labelledby="lobby-log-heading">
+                        <section class="lobby-reading" aria-labelledby="lobby-log-heading" data-camera-scrolls>
                             <h3 id="lobby-log-heading">Event log</h3>
                             <ol id="lobby-log" aria-labelledby="lobby-log-heading" hidden></ol>
                         </section>

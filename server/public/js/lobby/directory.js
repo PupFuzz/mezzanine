@@ -114,6 +114,7 @@ export function plaqueRow(doc, plaque, index) {
     const row = el(doc, 'li', 'lobby-plaque');
 
     row.dataset.floor = plaque.floor;
+    row.dataset.key = `floor:${plaque.floor}`;
 
     const head = el(doc, 'div', 'lobby-plaque-row lobby-plaque-head');
     const link = el(doc, 'a', 'lobby-plaque-name');
@@ -179,6 +180,7 @@ export function unclaimedRow(doc, room) {
     const row = el(doc, 'li', 'lobby-plaque unclaimed');
     const link = el(doc, 'a', 'lobby-plaque-name', `${room.install_id} — no floor claimed`);
 
+    row.dataset.key = `room:${room.install_id}`;
     link.href = room.href;
     row.append(link);
 
@@ -213,14 +215,32 @@ function patchPlaque(old, fresh) {
     old.append(...rows);
 }
 
+/** A kept row brought up to date: a plaque in place (`patchPlaque()`), an unclaimed room's link in place, the empty line as it is. */
+function patchRow(old, fresh) {
+    if (old.dataset.key.startsWith('floor:')) {
+        patchPlaque(old, fresh);
+
+        return;
+    }
+
+    if (old.dataset.key.startsWith('room:')) {
+        const link = old.firstElementChild;
+        const freshLink = fresh.firstElementChild;
+
+        link.href = freshLink.href;
+        link.textContent = freshLink.textContent;
+    }
+}
+
 /**
  * The directory's list for one summary: a plaque per floor, in the model's order, or under § 9 F17 the snapshot's
  * installs unclaimed — and, with neither, the fleet's having none IN WORDS, because an empty list and a lobby that
  * failed to draw are the same pixels.
  *
- * ⛔ A RE-RENDER KEEPS THE KEYBOARD's PLACE. Where the list already holds a plaque for every floor, in the same order, each
- * is brought up to date in place (`patchPlaque()`), so a focused plaque link stays focused across every render and every
- * 1 s tick, and the list's scroll stays where the viewer left it. Any other change rebuilds the list.
+ * ⛔ A RE-RENDER KEEPS THE KEYBOARD's PLACE. Where the list already holds the same rows in the same order — a plaque per
+ * floor, or § 9 F17's unclaimed rooms, keyed by `data-key` — each is brought up to date in place (`patchRow()`), so a
+ * focused link stays focused across every render and every 1 s tick, and the list's scroll stays where the viewer left
+ * it. Any other change rebuilds the list.
  *
  * @param {Document} doc the page's `document`, or the probe's stand-in
  * @param {Element} list the plaques' list, `#lobby-floors`
@@ -233,12 +253,15 @@ export function renderDirectory(doc, list, summary) {
     ];
 
     if (rows.length === 0) {
-        rows.push(el(doc, 'li', 'lobby-plaque none', 'no installs are provisioned — the fleet reports none'));
+        const none = el(doc, 'li', 'lobby-plaque none', 'no installs are provisioned — the fleet reports none');
+
+        none.dataset.key = 'none';
+        rows.push(none);
     }
 
     const held = [...list.children];
-    const keys = (items) => items.map((li) => (li.className === 'lobby-plaque' ? li.dataset.floor : null));
-    const same = summary.floors.length > 0 && held.length === rows.length && keys(held).every((k, i) => k !== null && k === keys(rows)[i]);
+    const keyOf = (li) => li.dataset.key ?? null;
+    const same = held.length === rows.length && held.every((li, i) => keyOf(li) !== null && keyOf(li) === keyOf(rows[i]));
 
     if (!same) {
         list.replaceChildren(...rows);
@@ -246,5 +269,5 @@ export function renderDirectory(doc, list, summary) {
         return;
     }
 
-    held.forEach((li, i) => patchPlaque(li, rows[i]));
+    held.forEach((li, i) => patchRow(li, rows[i]));
 }

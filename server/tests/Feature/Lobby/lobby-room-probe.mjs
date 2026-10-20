@@ -174,19 +174,21 @@ const scaled = (camera) => {
     return { ...layer.style.props };
 };
 
-// A re-render over the same floors (the 1 s tick's, or a render's): the list rendered from `rerender[0]`, its first plaque's
-// link marked, then rendered from `rerender[1]` — whether that link is the same element, and the list as it then stands.
+// A re-render over the same rows (the 1 s tick's, or a render's): the list rendered from the summary `rerender[0]`, its
+// first row's link marked, then rendered from `rerender[1]` — whether that link is the same element, and the list as it
+// then stands.
 let rerendered = null;
 
 if (payload.rerender !== undefined) {
     const list = new LobbyNode('ol');
+    const linkOf = (li) => (li?.children[0]?.name === 'a' ? li.children[0] : li?.children[0]?.children[0]) ?? null;
 
-    renderDirectory(document, list, { floors: payload.rerender[0], unclaimed: [] });
-    const first = list.children[0]?.children[0]?.children[0] ?? null;
+    renderDirectory(document, list, payload.rerender[0]);
+    const first = linkOf(list.children[0]);
 
     if (first !== null) first.marked = true;
-    renderDirectory(document, list, { floors: payload.rerender[1], unclaimed: [] });
-    rerendered = { kept: list.children[0]?.children[0]?.children[0]?.marked === true, list: tree(list) };
+    renderDirectory(document, list, payload.rerender[1]);
+    rerendered = { kept: linkOf(list.children[0])?.marked === true, list: tree(list) };
 }
 
 const directoryOut = {

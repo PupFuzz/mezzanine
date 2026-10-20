@@ -90,9 +90,9 @@ function data(floors) {
 const PAGE = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/css/mezzanine.css"></head><body><main><section id="lobby" class="lobby">
 <div id="lobby-building" role="group"><div id="lobby-room">
 <section id="lobby-directory"><div class="lobby-face lobby-directory-face"><h3 id="lobby-directory-heading"><span class="lobby-directory-title">FLOOR DIRECTORY</span> <span>— counts the seats this client holds</span></h3><ol id="lobby-floors" class="lobby-plaques" data-camera-scrolls></ol></div></section>
-<div id="lobby-readings"><div class="lobby-face lobby-readings-face" data-camera-scrolls>
-<section class="lobby-reading"><h3>Building readings</h3><p><span>feed: live</span> · <span>resyncs: 0</span> · <span>7 seats · 6 live</span></p><p><span>store: ok</span> · <span>derivation: ok</span> · <span>sweep: ok</span></p><p><span>ingest: last receipt 14:23:14</span> · <span>membership as of 14:23:14</span></p></section>
-<section class="lobby-reading"><h3>Event log</h3><ol><li>14:23:14 · snapshot applied — 7 desks held</li></ol></section>
+<div id="lobby-readings"><div class="lobby-face lobby-readings-face">
+<section class="lobby-reading" data-camera-scrolls><h3>Building readings</h3><p><span>feed: live</span> · <span>resyncs: 0</span> · <span>7 seats · 6 live</span></p><p><span>store: ok</span> · <span>derivation: ok</span> · <span>sweep: ok</span></p><p><span>ingest: last receipt 14:23:14</span> · <span>membership as of 14:23:14</span></p></section>
+<section class="lobby-reading" data-camera-scrolls><h3>Event log</h3><ol><li>14:23:14 · snapshot applied — 7 desks held</li></ol></section>
 </div></div>
 </div></div></section></main>
 <script type="module">

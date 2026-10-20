@@ -6,7 +6,8 @@
  * motion (`rideLeaves()`, `cabLeaves()`) and the classes all of them paint with (`CAB_STYLE`).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ IT IMPORTS NOTHING. The floor's painter (`floor/painter.js`) draws the scene, the desks and the band, and loads the
+ * ⛔ IT HAS NO STATIC IMPORT, AND ITS ONLY DYNAMIC ONES ARE THE THEME's: `loadHousePalette()` loads the theme registry
+ * and the house theme's module (`resources/floor/themes`), the two the import-graph test follows. The floor's painter (`floor/painter.js`) draws the scene, the desks and the band, and loads the
  * floor's whole scene machinery to do it; the lobby page draws a room and a cab and no desk, so it loads this file and
  * not the painter — which is what keeps the lobby page's import graph on its one path to the animation set
  * (`Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`). The painter imports this file and

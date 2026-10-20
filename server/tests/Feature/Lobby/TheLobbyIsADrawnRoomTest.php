@@ -68,6 +68,17 @@ class TheLobbyIsADrawnRoomTest extends TestCase
     public function test_green_a_re_render_keeps_the_plaques_link_and_redraws_its_rows(): void
     {
         $this->assertSame([], $this->rerenderDefects($this->plaquesOf('lobby_markers')));
+        $this->assertSame([], $this->unclaimedRerenderDefects());
+    }
+
+    /**
+     * § 4.1 / § 2.5: the plaque's ages tick on the 1 s tick (`wire/age-readout.js`'s ticker, the lobby page's `tickView()`)
+     * — the last activity's age moving on, everything else on the plaque as it was — and the tick draws no § 6.2 row and
+     * moves no camera, since a tick is not an apply.
+     */
+    public function test_green_the_plaques_ages_tick_each_second_and_nothing_else_moves(): void
+    {
+        $this->assertSame([], $this->tickDefects($this->tickRun()));
     }
 
     /** § 4.1: the one writer of the counter-scale, the boxes at their rects while the room is drawn, and nothing before it. */
@@ -141,9 +152,19 @@ class TheLobbyIsADrawnRoomTest extends TestCase
     /** A re-render that rebuilds every plaque: the focused link is removed, and the keyboard's place with it, every second. */
     public function test_red_a_re_render_that_rebuilds_the_plaques(): void
     {
-        $dir = $this->mutatedModules(['../lobby/directory.js', '    const same = summary.floors.length > 0 && held.length === rows.length', '    const same = false && held.length === rows.length']);
+        $dir = $this->mutatedModules(['../lobby/directory.js', '    const same = held.length === rows.length && held.every(', '    const same = false && held.every(']);
 
         $this->assertNotSame([], $this->rerenderDefects($this->plaquesOf('lobby_markers'), dirname($dir)), 'RED (a re-render rebuilding every plaque) did not bite');
+        $this->assertNotSame([], $this->unclaimedRerenderDefects(dirname($dir)), 'RED (a re-render rebuilding every unclaimed room) did not bite');
+    }
+
+    /** A tick that re-reads nothing: the ages stand still between renders. */
+    public function test_red_a_tick_that_re_reads_no_age(): void
+    {
+        $dir = $this->mutatedModules(['../lobby/lobby-screen.js', '        this.#drawn = this.#withRide({ ...this.#drawn, summary: this.#summary() }, this.#clock.now());',
+            '        this.#drawn = this.#withRide(this.#drawn, this.#clock.now());']);
+
+        $this->assertNotSame([], $this->tickDefects($this->tickRun($dir)), 'RED (a tick that re-reads no age) did not bite');
     }
 
     public function test_red_a_counter_scale_that_does_not_invert_the_zoom(): void
@@ -405,7 +426,7 @@ class TheLobbyIsADrawnRoomTest extends TestCase
 
             return $p;
         }, $plaques);
-        $payload = escapeshellarg((string) json_encode(['rerender' => [$plaques, $later]], JSON_UNESCAPED_UNICODE));
+        $payload = escapeshellarg((string) json_encode(['rerender' => [['floors' => $plaques, 'unclaimed' => []], ['floors' => $later, 'unclaimed' => []]]], JSON_UNESCAPED_UNICODE));
         $out = [];
         exec('echo '.$payload.' | node '.escapeshellarg(self::PROBE).($jsRoot === null ? '' : ' --js '.escapeshellarg($jsRoot)).' 2>&1', $out, $rc);
         $this->assertSame(0, $rc, "the room probe failed:\n".implode("\n", $out));
@@ -415,6 +436,64 @@ class TheLobbyIsADrawnRoomTest extends TestCase
             ...($r['kept'] ? [] : ['a re-render replaced the plaque\'s link — the keyboard\'s focus on it is lost']),
             ...$this->plaqueDefects($later, $r['list']['children']),
         ];
+    }
+
+    /** § 9 F17's rows across a re-render: an unclaimed room's link is the same element. @return list<string> */
+    private function unclaimedRerenderDefects(?string $jsRoot = null): array
+    {
+        $rooms = [['install_id' => 'aimla', 'href' => '/floor/aimla', 'held' => 1], ['install_id' => 'sola', 'href' => '/floor/sola', 'held' => 1]];
+        $payload = escapeshellarg((string) json_encode(['rerender' => [['floors' => [], 'unclaimed' => $rooms], ['floors' => [], 'unclaimed' => $rooms]]]));
+        $out = [];
+        exec('echo '.$payload.' | node '.escapeshellarg(self::PROBE).($jsRoot === null ? '' : ' --js '.escapeshellarg($jsRoot)).' 2>&1', $out, $rc);
+        $this->assertSame(0, $rc, "the room probe failed:\n".implode("\n", $out));
+        $r = json_decode(implode("\n", $out), true)['directory']['rerendered'];
+
+        return $r['kept'] ? [] : ['a re-render replaced an unclaimed room\'s link — the keyboard\'s focus on it is lost every second'];
+    }
+
+    /** `fx-lobby.json`'s `lobby_plaque` with the 1 s tick on, run past its heartbeat. */
+    private function tickRun(?string $dir = null): array
+    {
+        return $this->replay('lobby_plaque', $dir, ['lobby' => ['tick' => true], 'until_ms' => 5000]);
+    }
+
+    /** @return list<string> */
+    private function tickDefects(array $result): array
+    {
+        $defects = [];
+        $ticks = array_values(array_filter($result['lobby_renders'], static fn (array $r): bool => $r['trigger'] === 'tick' && $r['at'] > 1000));
+        $plain = $this->replay('lobby_plaque', null, ['until_ms' => 5000]);
+
+        if (count($ticks) < 3) {
+            return ['the tick drew '.count($ticks).' frames after the heartbeat — the clause measured little'];
+        }
+
+        $ages = array_map(static fn (array $r): string => $r['frame']['summary']['floors'][0]['floor_totals']['last_activity'] ?? '', $ticks);
+
+        if (count(array_unique($ages)) !== count($ages)) {
+            $defects[] = 'the last activity\'s age did not move on each tick: '.json_encode($ages);
+        }
+
+        // Everything but the ages, as it was: the plaque with its ages and its totals' text taken out.
+        $still = static function (array $r): string {
+            $floors = array_map(static function (array $p): array {
+                unset($p['floor_totals'], $p['attention']);
+
+                return $p;
+            }, $r['frame']['summary']['floors']);
+
+            return json_encode([$floors, $r['frame']['camera']]);
+        };
+
+        if (count(array_unique(array_map($still, $ticks))) !== 1) {
+            $defects[] = 'a tick changed something on the plaque beside its ages, or moved the camera';
+        }
+
+        if ($result['animation_log'] !== $plain['animation_log']) {
+            $defects[] = 'the tick drew a § 6.2 row';
+        }
+
+        return $defects;
     }
 
     /** @return list<string> */

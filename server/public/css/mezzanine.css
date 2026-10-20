@@ -582,13 +582,13 @@ main > section.lobby {
     flex-direction: row;
 }
 
-/* The readings under the board: two brass-edged panels side by side, each scrolling inside its half. */
+/* The readings under the board: two brass-edged panels side by side, each scrolling inside its half and each declaring it
+   (`data-camera-scrolls`), as the directory's list does. */
 .lobby .lobby-readings-face {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     overflow: hidden;
-    touch-action: none;
 }
 
 .lobby .lobby-reading {
@@ -600,6 +600,8 @@ main > section.lobby {
     background: var(--lobby-plaque);
     font-family: var(--face-mono);
     overflow-y: auto;
+    /* A scroller of its own, so `touch-action` does not reach it from the drawing: the gesture wire scrolls it (§ 4.1). */
+    touch-action: none;
 }
 
 .lobby .lobby-reading h3 {
