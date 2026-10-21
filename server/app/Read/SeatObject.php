@@ -21,11 +21,12 @@ use Illuminate\Support\Facades\DB;
  *                              argument is that it must not be written by anything that can
  *                              freeze with the thing it measures.
  *   `badges` / `badges_since`  `Badges::render()` / `Badges::since()`.
- *   `action` / `session` /     `SeatFacts::action()` / `::session()` / `::apiErrorType()` /
- *   `api_error_type` /         `::blockedSince()` / `::openSubagents()` — the same reads the
- *   `blocked_since` /          fold's own version-bearing FINGERPRINT is built from, so the wire
- *   `subagents`                object and the thing that decides whether to emit it cannot
- *                              disagree.
+ *   `action` /                 `SeatFacts::action()` / `::longestOpenCall()` / `::session()` /
+ *   `longest_open_call` /      `::apiErrorType()` / `::blockedSince()` / `::openSubagents()` —
+ *   `session` /                the same reads the fold's own version-bearing FINGERPRINT is
+ *   `api_error_type` /         built from, so the wire object and the thing that decides
+ *   `blocked_since` /          whether to emit it cannot disagree.
+ *   `subagents`
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * THE TEN BOOKKEEPING MEMBERS RIDE THE OBJECT AND ARE NEVER A REASON TO EMIT.
@@ -41,8 +42,9 @@ use Illuminate\Support\Facades\DB;
  * ⚠ `activity`, `delivery`, `reporter` and `derivation` are declared **never null** by § 8.2.1,
  * "with nullable members", and the section says why in terms: § 8.3.1's patch "is a shallow
  * merge that replaces a nested object whole, so an implementer must know whether an unpopulated
- * `activity` is `null` or an object of nulls; it is the second". `action`, `task`, `context`,
- * `session` and `retired` ARE nullable objects. The asymmetry is § 8.2.1's, not a convenience.
+ * `activity` is `null` or an object of nulls; it is the second". `action`, `longest_open_call`,
+ * `task`, `context`, `session` and `retired` ARE nullable objects. The asymmetry is § 8.2.1's,
+ * not a convenience.
  */
 final class SeatObject
 {
@@ -58,6 +60,7 @@ final class SeatObject
     {
         $seatRef = (int) $state->seat_ref;
         $action = SeatFacts::action($state);
+        $longest = SeatFacts::longestOpenCall($state);
         $session = SeatFacts::session($state);
         $subagents = SeatFacts::openSubagents($seatRef);
         // § 8.2.1's `idle_nudge_after_s` (card#9418): the horizon this seat resolves to. The record
@@ -94,6 +97,14 @@ final class SeatObject
                 'started_received_at' => Clock::wire($action->opened_received_at),
                 'agent_scope' => $action->agent_scope,
                 'parent_call_id' => $action->parent_call_id,
+            ],
+            // card#12113: the OLDEST open call, beside `action` (the newest) — the dispatch an
+            // intern's call replaces as `action` while it stays open (§ 10 E3). `StateRecompute`
+            // picks it; this publishes the picked row.
+            'longest_open_call' => $longest === null ? null : [
+                'call_id' => (string) $longest->call_id,
+                'tool_name' => (string) $longest->tool_name,
+                'started_received_at' => Clock::wire($longest->opened_received_at),
             ],
             'open_calls' => (int) $state->open_calls,
             'open_turn' => (bool) $state->open_turn,

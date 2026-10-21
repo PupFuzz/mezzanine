@@ -508,6 +508,14 @@ above is filed as a D1 amendment need in [§ 14](#14-open-questions-for-the-revi
 > background count does not. Both halves are asserted by
 > [AT-D2-2](#at-d2-2-the-clear-trace-mints-no-idle), which is where the difference is checkable
 > rather than argued.
+>
+> **AMENDED (card#11817): a background task CAN outlive its session** — a `/clear` re-homes a running
+> subagent to the new session ([D1 § 8.3](EVENT-SCHEMA.md#83-the-reap-rules), MEASURED 2.1.296).
+> **The rule stands for a different reason:** a subagent that survives the clear is carried as an
+> **open call** and is rule 3's business, so the count's only remaining job — the window before a
+> subagent's first call — is one no session boundary can straddle. Clearing it at `session.end` is
+> still right: while the carried call is open the seat is `working` by rule 3, and when it closes
+> nothing of that session is running.
 
 **Why precedence and not a state machine.** Two of these facts are genuinely simultaneous. A permission
 prompt fires while the tool call it is about is already open ([D1 § 6.12](EVENT-SCHEMA.md#612-attentionrequest):
@@ -606,7 +614,7 @@ facts*. This table is therefore complete by construction: every writer of every 
 | **enter** | the only entry is rule 4 of [§ 4.3](#43-the-derivation-function): a `turn.end(stop_hook, [])` with no open calls and no open turn |
 | **exit** | `turn.start` (→ `working`), `tool.start` (→ `working`), `attention.request` (→ `blocked`) |
 | **exit** | a later turn on any of the seat's sessions ending dirty — `L` is seat-scoped and the newest record wins ([§ 4.3](#43-the-derivation-function)) |
-| **not an exit** | `session.end`, including the flusher's 90-minute `inferred_silence` close. It clears `T`, `C`, `S` and **`L.background_tasks_open`** — the last because a background task cannot outlive its session — and changes no other fact rule 4 reads, so a cleanly-finished seat stays `idle` ([§ 4.3](#43-the-derivation-function), [§ 4.8](#48-what-may-never-mint-a-state) row 5) |
+| **not an exit** | `session.end`, including the flusher's 90-minute `inferred_silence` close. It clears `T`, `C`, `S` and **`L.background_tasks_open`** — the last because a subagent that survives its session is carried as an open call ([D1 § 8.3](EVENT-SCHEMA.md#83-the-reap-rules), card#11817) — and changes no other fact rule 4 reads, so a cleanly-finished seat stays `idle` ([§ 4.3](#43-the-derivation-function), [§ 4.8](#48-what-may-never-mint-a-state) row 5) |
 | **entry** | that same `session.end`, when the seat's last turn was clean apart from an open background task: clearing the count makes rule 4 true, and it **is** true — the session ended, so nothing is running ([§ 4.3](#43-the-derivation-function), card #7337 — this is the transition AT-D2-2 asserts is a PASS rather than a defect) |
 | **not an exit** | a `link_state` change out of `live`. The activity state is **masked, not cleared** — [§ 4.2](#42-render-precedence) renders the transport state and `activity_state` still rides the object ([AT-D2-3](#at-d2-3-stale-offline-and-disabled-are-rendered-never-idle)) |
 
@@ -840,7 +848,8 @@ instead of `idle`.
 
 **These values outrank [§ 4.6.1](#461-the-turn-has-no-timer-of-its-own)'s session-close rule on this
 path, and the order stated above is the reason rather than a preference.** That rule closes whatever
-calls a session close finds still open — but quiescence closes the calls *before* it marks the session
+calls a session close finds still open, except those the `session.end` names in `carried_call_ids`
+([D1 § 8.3](EVENT-SCHEMA.md#83-the-reap-rules), card#11817) — but quiescence closes the calls *before* it marks the session
 ended, in the sequence just given, so here the session close finds none: `last_turn_aborted_count` is
 **0**, `session_close_orphans` does not move, and each of those calls is closed once and counted once,
 by `offline_quiesced_calls`. The turn is this paragraph's for the same reason —
@@ -909,7 +918,10 @@ gap it exposes:
   `last_turn_end_reason: "server_session_close"` with `last_turn_aborted_count` set to the number of
   calls still open at the close** (each of those calls the server closes itself —
   `abort_reason: session_close`, `close_source: server_session_close` — counting
-  `session_close_orphans`, [§ 7.2](#72-this-planes-own-counters-and-badges)) — without which `L` would
+  `session_close_orphans`, [§ 7.2](#72-this-planes-own-counters-and-badges)), **except those the
+  `session.end` names in `carried_call_ids`**, which stay open under their original `session_ref`
+  and are counted `session_close_carried` ([D1 § 8.3](EVENT-SCHEMA.md#83-the-reap-rules), card#11817)
+  — without which `L` would
   stay null, rule 5 would fire and `session_closed_turn_open` would be a member no path can
   select. It therefore derives
   `unknown` / `session_closed_turn_open` — never `idle`, because no `turn.end(stop_hook, [])` was ever
@@ -1760,6 +1772,10 @@ CREATE TABLE seat_state (
                       'session_closed_turn_open') NULL,
   current_session_ref BIGINT UNSIGNED NULL,
   current_call_ref    BIGINT UNSIGNED NULL,           -- newest open call = the rendered action
+  longest_call_ref    BIGINT UNSIGNED NULL,           -- OLDEST open call = § 8.2.1's
+                                                      -- `longest_open_call` (card#12113); a
+                                                      -- second ordering of the same open rows,
+                                                      -- recomputed where current_call_ref is
   open_calls    SMALLINT UNSIGNED NOT NULL DEFAULT 0,
   open_turn     TINYINT(1) NOT NULL DEFAULT 0,
   open_attention_ref BIGINT UNSIGNED NULL,
@@ -2693,6 +2709,17 @@ ingest outage. Three rules, and the first one is the one that gets skipped:
    maintenance-window operation or not at all.
 2. **A projection change needs no `ALTER` on `events` at all** — add the column to the projection, then
    `mezzanine:rebuild`. That is the payoff for keeping `data` opaque and the projections derived.
+   ⚠ **A column the recompute writes on every pass needs no rebuild to be filled, and `longest_call_ref`
+   (card#12113) is one:** its migration adds the column and backfills nothing, because `StateRecompute`
+   writes it on every pass that writes `current_call_ref` and the sweeper recomputes every seat once per
+   `Sweep::CADENCE_S` ([§ 2.1](#21-processes)) — so the first sweep pass after the migration fills
+   every seat it does not find held (one it finds held is filled by the next
+   pass, or by its own next folded event), and the fingerprint change delivers `longest_open_call` on a
+   delta. Until then a seat with an open call publishes `longest_open_call: null` beside a non-zero
+   `open_calls` — the one window in which [§ 8.2.1](#821-the-seat-state-object)'s "`null` exactly when
+   `open_calls` is 0" does not hold. A backfill in the migration would be a second copy of
+   `StateRecompute`'s ordering, free to disagree with it; `mezzanine:rebuild` re-derives the column from
+   the log as it does `current_call_ref`.
 3. **New columns are nullable and additive.** Backfills run in the same bounded-batch shape as the
    purge, never as one statement.
 
@@ -2890,6 +2917,7 @@ for the same reason: a counter with no stated home is a counter two implementers
 | `left_live_cleared_stalls` | `seat_counters` | seat detail | the sweeper cleared a `stalled` flag at the seat's leaving-live boundary — `stale` at 300 s, or `offline` at 900 s on the one-pass jump ([§ 4.5](#45-link-states)) | rising ⇒ seats are going quiet while rate-limited, which is a different story from the stall ending properly |
 | `compaction_ceiling_closed` | `seat_counters` | seat detail | the sweeper closed a `compaction_open_since` at its 15-minute ceiling ([§ 4.6](#46-every-open-fact-has-a-ceiling)) | rising ⇒ `compaction.end` is not arriving; `PostCompact` is one of D1's un-driven hook stubs, so this is the instrument that says so |
 | `session_close_orphans` | `seat_counters` | seat detail | a `session.end` arrived with calls still open server-side and the server closed them (`abort_reason: session_close`, `close_source: server_session_close`) | rising ⇒ reap `tool.end`s are being lost in transit, since D1's reaps should have closed them on the wire first |
+| `session_close_carried` | `seat_counters` | seat detail | a `session.end` named open calls in `carried_call_ids` and the server left them open (card#11817); counted seat-wide over the named ids still open, not by `session_ref` — after a second `/clear` a carried row's `session_ref` still names the session it was opened in | informational; read beside `server_orphan_closes` on `is_dispatch` rows — carried calls that end at the 60-minute ceiling instead of at a `SubagentStop` are carries the harness did not honour |
 | `format_refused.<field>` | `seat_counters`, one row per wire field | seat detail | the fold met a `data` string, destined for an ASCII column of [§ 6.4](#64-ddl), that fails the format D1 publishes for it — a `turn.start`'s `console_url` off [D1 § 6.3](EVENT-SCHEMA.md#63-turnstart)'s pattern, a heartbeat's `protocol_agent_name` that is not a slug, and every other member [§ 6.5](#65-the-fold) names — and stored `NULL` in its place (`INVALID_TOOL_NAME` for `tool_name`, whose column is `NOT NULL`). Once per event and field (card#9346; until then `console_url` alone was checked, as `console_url_refused`) | none rendered; the field is simply absent and the rest of the event lands. A conforming reporter never sends such a value, so a count here is a reporter that does not check the format it owes, or a value that did not come from a reporter — a reason to look at the seat's token |
 | `fold_window_purged` | `seat_counters` | seat detail | the fold's emptiness proof found its unfolded window gone to [§ 6.7](#67-retention-and-purge)'s purge, so the cursor advances to the head that proof covered rather than the seat re-claiming forever ([§ 6.5](#65-the-fold)). Counted on the **proof**, not on the guarded cursor write: a pass that loses the race to an ingest advances nothing and still admits the purge, because the same window is jumped by the ordinary branch on a later pass and that jump must not be silent | non-zero ⇒ that seat's state is honest but shorter, and the fold was down longer than retention; the same admission `rebuild_truncated` makes |
 | `state_rebuilds` / `rebuild_truncated` | `seat_counters` | seat detail | a `mezzanine:rebuild` ran / ran against a window shorter than the seat's history | operator-visible; a truncated rebuild's state is honest but shorter |
@@ -3092,13 +3120,17 @@ snapshot repeats per seat and the delta patches.
 | `action.started_received_at` | rfc3339_ms | no | server clock — what an age is computed from | `"2026-08-23T14:23:14.201Z"` |
 | `action.agent_scope` | enum | **yes** | `main`·`subagent`; a label, never gated on | `"main"` |
 | `action.parent_call_id` | ULID | **yes** | the intern join key | `null` |
+| `longest_open_call` | object | **yes** | the **oldest** open call — the open call with the earliest `opened_received_at` among the rows `action` is the newest of ([§ 6.4](#64-ddl)'s `calls`, `closed_at IS NULL`); `null` when none is open, and **equal to `action`'s call when exactly one is** (card#12113, the prose below). A dispatch call (`Agent`/`Task`) stays this member for as long as it is open, whatever its interns open and close under it — which is the case `action` cannot show, since an intern's call replaces it ([§ 10](#10-worked-example-the-clear-trace-folded-end-to-end) E3) | see below |
+| `longest_open_call.call_id` | ULID | no | 26 chars; joins the timeline as `action.call_id` does | `"01K3TA4E5F6G7H8J9K0M1N2P3Q"` |
+| `longest_open_call.tool_name` | string | no | ≤ 64 B, the same bound and the same ingest enforcement as `action.tool_name` | `"Bash"` |
+| `longest_open_call.started_received_at` | rfc3339_ms | no | server clock — the call's `opened_received_at`, what an age is computed from, as `action.started_received_at` is | `"2026-08-23T14:23:14.201Z"` |
 | `open_calls` | int | no | ≥ 0. **Not** bounded by D1's 64: that is the *reporter's* index cap, which evicts ([D1 § 8.2](EVENT-SCHEMA.md#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)), while the server ledger holds an evicted call open until its 15/60-minute orphan ceiling ([§ 4.6](#46-every-open-fact-has-a-ceiling)) and so can exceed it. The ceiling is the bound: at D1's ~3,000 opens/seat/day a 15-minute window admits ~31 concurrently-open ordinary calls, and the column is `SMALLINT UNSIGNED`, so the bound this field takes in a worst case is **65,535** and not the JS-safe ceiling — its bound is closed, which is the condition rule 4 of the worst-case construction turns on | `1` |
 | `open_turn` | bool | no | — | `true` |
 | `subagents` | array | no | **0…8 elements**, newest first; `subagents_open` carries the true count | see below |
 | `subagents[].call_id` | ULID | no | 26 chars, joins `action`/timeline | `"01K3TA6G7H8J9K0M1N2P3Q4R5T"` |
 | `subagents[].title` | string | **yes** | ≤ 120 B; `null` when the `subagent.spawn` was lost — an honest orphan, **never invented**. A later `subagent.spawn` for the same `call_id` does fill it ([§ 10](#10-worked-example-the-clear-trace-folded-end-to-end) E2 is that path); what is forbidden is deriving a title from anything but that event | `"draft the D1 event schema"` |
 | `subagents[].subagent_type` | string | **yes** | ≤ 32 B | `"coder"` |
-| `subagents[].started_at` | rfc3339_ms | no | seat clock | `"2026-08-23T14:23:31.004Z"` |
+| `subagents[].started_at` | rfc3339_ms | no | seat clock | `"2026-08-23T14:23:01.004Z"` |
 | `subagents_open` | int | no | ≥ 0, on the same footing as `open_calls` above and for the same reason — same ceiling mechanism, same `SMALLINT UNSIGNED` column, same closed bound of **65,535** | `1` |
 | `task` | object | **yes** | [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) | see below |
 | `task.title` | string | no | ≤ 120 B | `"ingest endpoint"` |
@@ -3251,6 +3283,47 @@ any kind**, so a consumer reading it as *since when* would silently re-date a fo
 last thing that happened near it. A blocked seat is a request for a human, the only ordering such a
 request has is how long it has been open, and this is the one member that carries it.
 
+**`longest_open_call` is a second ordering of rows the fold already holds, not a new fact to source
+(card#12113).** `action` is the **newest** open call, and [§ 10](#10-worked-example-the-clear-trace-folded-end-to-end)'s
+trace shows what that costs a consumer asking *how long has this seat's longest call been running*: at E3
+an intern's `Bash` replaces the dispatch `A` as `action` while `A` stays open, so a reader of `action`
+sees a call a few seconds old over a dispatch that may have run for an hour. The rows that answer the
+question are already in `calls` — the seat's open set, `closed_at IS NULL`, which `ix_open (seat_ref,
+closed_at)` selects ([§ 6.4](#64-ddl)), each row carrying its `opened_received_at` — and the fold already
+reads that set once a pass: `StateRecompute` picks the newest open call, ordered by `opened_at` and then
+`id` descending, into `current_call_ref`, and `SeatFacts::action()` then reads that one row by its ref.
+This member is the **same set ordered the other way**, picked beside it in `StateRecompute` into
+`longest_call_ref` and read by `SeatFacts` by that ref: **ordered by `opened_received_at` ascending, then
+`id` ascending** — one key and one tie-break, so two calls received in the same millisecond still have one
+answer. ⚠ **The key differs from the newest pick's on purpose.** `action` orders on the seat's narrative
+`opened_at`, because it answers *what did the agent most recently start* — the seat's own claim, which the
+drill-down shows as one. This member exists to be subtracted from the server clock
+([§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)): it orders on the basis the age is
+computed from, so the call it names is the one whose `started_received_at` yields the largest age, and
+under host skew the two orderings may disagree about which of two close calls is first — each is right
+for its own question, and each member says which clock it is on. **Three
+members and no more**: the `call_id` (so the drill-down's timeline can find it, as it finds `action`),
+the `tool_name` (so a consumer can say *a dispatch* or *Bash*) and the server-clock `started_received_at`
+(so the age is [§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)'s exact one). The
+descriptor, the scope and the parent are deliberately **not** carried: the consumer this serves —
+[D3 § 4.1](FLOOR.md#41-the-lobby--the-building-summary)'s directory plaque — names the seat and the tool,
+and the drill-down reads the full open-call list from [§ 8.2.3](#823-the-seat-detail-response) as it
+always did. It is version-bearing by [§ 6.5](#65-the-fold)'s subtraction — not one of the ten — and
+**it moves only on an edge that already emits a delta**: a call opening or closing moves `open_calls`
+(and usually `action`), so the volume of [§ 8.3](#83-the-websocket-delta-feed) is unchanged, and a
+heartbeat moves it not at all. `null` exactly when `open_calls` is 0, by construction, once the
+recompute has written its column — [§ 6.9](#69-migrations-on-a-live-events-table) rule 2 states the one
+window before that; when `open_calls` is 1 it names the same call `action` names. It costs the store
+one nullable reference column on `seat_state`, placed after `current_call_ref` as [§ 6.4](#64-ddl)'s
+DDL lists it ([§ 6.9](#69-migrations-on-a-live-events-table) rule 2's path, which also states what a
+seat publishes until the column is first written), and the worst-case object the bytes the size table
+below measures. **A delta's `changed[]` is not computed by comparing seat
+objects**: `SeatDelta::between()` walks a hand-kept map, `SeatDelta::WIRE_MEMBER`, from the keys of
+`SeatFacts::versionBearing()`'s fingerprint to the wire members, so the member is added to both the
+fingerprint and the map — the guard test that reds a fingerprint key with no map entry is what catches a
+build that adds one and not the other. A rebuild ([§ 6.6](#66-rebuild-from-the-log))
+re-derives it exactly, as it does `current_call_ref`.
+
 **`idle_since` and `idle_nudge_after_s` are the idle horizon a machine consumer keys on, and both are
 published, not acted on (card#9418).** ⭐ **The contract was agreed with that consumer — the bridge's idle
 watchdog, a `fleet_read` reader of the snapshot ([§ 9](#9-read-side-authentication)) — on the roundtable
@@ -3307,13 +3380,13 @@ insignificant whitespace). Every row below names the block it is measured from, 
 
 | Object | Bytes | How |
 |---|---|---|
-| seat state, typical | **1,963 B** | the seat object of the [§ 8.2.2](#822-worked-snapshot) snapshot, serialized |
-| seat state, worst case | **5,797 B** | the `patch` of the [§ 8.3.2](#832-worked-worst-case-delta) block, serialized |
+| seat state, typical | **2,093 B** | the seat object of the [§ 8.2.2](#822-worked-snapshot) snapshot, serialized |
+| seat state, worst case | **5,986 B** | the `patch` of the [§ 8.3.2](#832-worked-worst-case-delta) block, serialized |
 | snapshot envelope | **302 B** | the [§ 8.2.2](#822-worked-snapshot) snapshot **less** its one seat object: fleet health + one install wrapper |
-| snapshot, 4 seats | **~8.2 KB** typical, **~23 KB** worst | 302 + n × the above |
-| snapshot, 50 seats | **~98 KB** typical, **~290 KB** worst | — |
+| snapshot, 4 seats | **~8.7 KB** typical, **~24 KB** worst | 302 + n × the above |
+| snapshot, 50 seats | **~105 KB** typical, **~300 KB** worst | — |
 | delta, typical | **323 B** | the [§ 8.3.1](#831-worked-delta) example, serialized |
-| delta, worst case | **6,481 B** | the [§ 8.3.2](#832-worked-worst-case-delta) block itself, serialized |
+| delta, worst case | **6,690 B** | the [§ 8.3.2](#832-worked-worst-case-delta) block itself, serialized |
 
 **The worst case is published as an object rather than described as a construction, and that is the
 whole point.** An earlier draft labelled these figures *Measured* while the worst case existed only as a
@@ -3355,11 +3428,11 @@ well as the byte count:
    ceiling is deliberately pessimistic, so the bound cannot be falsified by a fleet that runs longer
    than anyone planned.
 
-The worst-case delta at 6,481 B sits inside the **8 KiB per-message bound** this design holds itself to
-([§ 8.3](#83-the-websocket-delta-feed)) at **1.26×**, with **1,711 B** spare.
+The worst-case delta at 6,690 B sits inside the **8 KiB per-message bound** this design holds itself to
+([§ 8.3](#83-the-websocket-delta-feed)) at **1.22×**, with **1,502 B** spare.
 
-**No pagination, and the threshold at which that stops being true.** A 50-seat snapshot is ~98 KB, which
-is one response. Past **200 seats** (~393 KB typical) the snapshot should page by install — stated now
+**No pagination, and the threshold at which that stops being true.** A 50-seat snapshot is ~105 KB, which
+is one response. Past **200 seats** (~419 KB typical) the snapshot should page by install — stated now
 as the trigger, and deliberately not built, because building pagination for a four-seat fleet is
 mechanism for a case that does not exist and the trigger is one number away from being noticed.
 
@@ -3395,10 +3468,14 @@ mechanism for a case that does not exist and the trigger is one number away from
             "started_received_at": "2026-08-23T14:23:14.201Z",
             "agent_scope": "main", "parent_call_id": null
           },
-          "open_calls": 1, "open_turn": true,
+          "longest_open_call": {
+            "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "tool_name": "Agent",
+            "started_received_at": "2026-08-23T14:23:05.420Z"
+          },
+          "open_calls": 2, "open_turn": true,
           "subagents": [
             { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema",
-              "subagent_type": "coder", "started_at": "2026-08-23T14:23:31.004Z" }
+              "subagent_type": "coder", "started_at": "2026-08-23T14:23:01.004Z" }
           ],
           "subagents_open": 1,
           "task": { "title": "ingest endpoint", "source": "board_card",
@@ -3437,7 +3514,11 @@ mechanism for a case that does not exist and the trigger is one number away from
 Read the object against [§ 3](#3-delivery-is-not-activity): `activity.last_received_at` and
 `delivery.last_receipt_at` are equal here because the newest event *is* an activity event. On a quiet
 seat they diverge, and the divergence is the whole point — `delivery` keeps moving with the heartbeat,
-`activity` does not.
+`activity` does not. And read its two calls against [§ 8.2.1](#821-the-seat-state-object)'s two members
+(card#12113): two calls are open — the `Agent` dispatch, opened first, and the main agent's `Bash`, opened
+eight seconds later — so `action` is the `Bash` (the newest) and `longest_open_call` is the `Agent` (the
+oldest, received at 14:23:05.420), which is what lets a consumer see the dispatch's age while the seat's
+newest call is a short one; the `subagents` entry is that same dispatch, by `call_id`.
 
 #### 8.2.3 The seat detail response
 
@@ -3667,7 +3748,7 @@ one statement whose plan [§ 6.7](#67-retention-and-purge) states, over a table 
 on the average tick and none at all on a quiet fleet — which is the design's own 250 ms rather than a
 number this amendment mints.
 
-**Message bound: 8 KiB.** The worst-case delta is 6,481 B, measured by serializing
+**Message bound: 8 KiB.** The worst-case delta is 6,690 B, measured by serializing
 [§ 8.3.2](#832-worked-worst-case-delta), so the bound cannot bind on a conforming message; it exists so that a future field addition that would
 breach it fails a test rather than a client. SSE imposes no per-message maximum of its own — a `data:`
 line is unbounded by the protocol (DOCS-CITED, WHATWG HTML § *Parsing an event stream*, which states
@@ -4137,7 +4218,7 @@ bound, `"idle_nudge_after_s":86400` — 27 B more — and the worst-case snapsho
   "seat_id": "012345678901234567890123456789012345678901234567",
   "state_version": 9007199254740991,
   "at": "2026-08-23T14:23:09.882Z",
-  "changed": ["action", "activity", "activity_state", "api_error_type", "badges", "badges_since", "blocked_since", "context", "delivery", "derivation", "enabled", "idle_since", "install_id", "link_state", "model_label", "open_calls", "open_turn", "protocol_agent_name", "protocol_agent_name_check", "protocol_agent_role", "render_state", "reporter", "retired", "seat_id", "session", "state_version", "subagents", "subagents_open", "task", "unknown_reason"],
+  "changed": ["action", "activity", "activity_state", "api_error_type", "badges", "badges_since", "blocked_since", "context", "delivery", "derivation", "enabled", "idle_since", "install_id", "link_state", "longest_open_call", "model_label", "open_calls", "open_turn", "protocol_agent_name", "protocol_agent_name_check", "protocol_agent_role", "render_state", "reporter", "retired", "seat_id", "session", "state_version", "subagents", "subagents_open", "task", "unknown_reason"],
   "patch": {
     "install_id": "01234567890123456789012345678901",
     "seat_id": "012345678901234567890123456789012345678901234567",
@@ -4150,6 +4231,7 @@ bound, `"idle_nudge_after_s":86400` — 27 B more — and the worst-case snapsho
     "blocked_since": "2026-08-23T14:23:09.882Z",
     "idle_since": "2026-08-23T14:23:09.882Z",
     "action": {"call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "0123456789012345678901234567890123456789012345678901234567890123", "descriptor": "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "started_at": "2026-08-23T14:23:09.882Z", "started_received_at": "2026-08-23T14:23:09.882Z", "agent_scope": "subagent", "parent_call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q"},
+    "longest_open_call": {"call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "0123456789012345678901234567890123456789012345678901234567890123", "started_received_at": "2026-08-23T14:23:09.882Z"},
     "open_calls": 65535,
     "open_turn": true,
     "subagents": [
@@ -4537,7 +4619,7 @@ A consumer that wants to correlate a rendered state with the wire has both: the 
 newest `(seq_epoch, seq)` the fold has applied.
 
 **Reconnect.** On reconnect the client re-runs [§ 8.4](#84-snapshot-then-deltas) from step 1. A full
-re-snapshot is ~98 KB for a 50-seat fleet, so there is no per-seat delta-replay buffer on the server
+re-snapshot is ~105 KB for a 50-seat fleet, so there is no per-seat delta-replay buffer on the server
 and deliberately so: a replay buffer is a second, stateful copy of recent history whose correctness
 would have to be maintained against the store, to save a request that costs less than the buffer's own
 memory. ⛔ **`feed_outbox` is not that buffer, and [§ 8.3](#83-the-websocket-delta-feed) states the two
@@ -5060,12 +5142,12 @@ transition of its own, and the versions below run 1…10 rather than from an arb
 |---|---|---|---|---|---|---|---|
 | — | *(pre-E0: no events at all)* | none | `unknown` (`no_data_yet`) | `offline` | **`offline`** | 0 | — |
 | E0 | `turn.start` | `T := true` | `working` | `live` | **`working`** | 1 | yes — **transition row 1 of 2**, `offline → working` |
-| E1 | `tool.start` `A` (`Agent`) | call `A` open, `is_dispatch`, `orphan_due_at = +60 min` | `working` | `live` | `working` | 2 | yes — `action` becomes `A`; `subagents` gains a title-less entry |
+| E1 | `tool.start` `A` (`Agent`) | call `A` open, `is_dispatch`, `orphan_due_at = +60 min` | `working` | `live` | `working` | 2 | yes — `action` becomes `A`, and so does `longest_open_call` (card#12113: one call open, the two name it alike); `subagents` gains a title-less entry |
 | E2 | `subagent.spawn` `A` | call `A` gains `title`, `subagent_type` | `working` | `live` | `working` | 3 | yes — the intern's label appears |
-| E3 | `tool.start` `B` (`Bash`, `agent_scope: subagent`, `parent_call_id: A`) | call `B` open, `orphan_due_at = +15 min`; `open_calls = 2` | `working` | `live` | `working` | 4 | yes — `action` becomes `B` |
+| E3 | `tool.start` `B` (`Bash`, `agent_scope: subagent`, `parent_call_id: A`) | call `B` open, `orphan_due_at = +15 min`; `open_calls = 2` | `working` | `live` | `working` | 4 | yes — `action` becomes `B`; `longest_open_call` stays `A`, the older of the two open calls — the case the member exists for |
 | — | *(the operator types `/clear`; the harness SIGKILLs `B`; **no `PostToolUse` and no `PostToolUseFailure` ever fire**)* | — | — | — | — | — | — |
 | E4 | `tool.end` `B` — `aborted` / `session_cleared` / `reap_session_boundary` / `match: reap` | call `B` closed `aborted`; `open_calls = 1` | `working` | `live` | `working` | 5 | yes — `action` reverts to `A` |
-| E5 | `tool.end` `A` — `aborted` / `session_cleared` | call `A` closed `aborted`; `open_calls = 0`; `subagents` empties; **`T` still true** | `working` | `live` | `working` | 6 | yes — `action` becomes `null` |
+| E5 | `tool.end` `A` — `aborted` / `session_cleared` | call `A` closed `aborted`; `open_calls = 0`; `subagents` empties; **`T` still true** | `working` | `live` | `working` | 6 | yes — `action` becomes `null`, and so does `longest_open_call` (nothing open) |
 | E6 | `subagent.stop` `A` — `aborted` / `session_cleared` | the dispatch projection records the stop's outcome | `working` | `live` | `working` | 7 | yes — `subagent.stop` is in [§ 3.2](#32-the-activity-event-set)'s activity set, so `activity.last_kind` moves from `"tool.end"` to `"subagent.stop"` and both activity timestamps advance; none of the three is among [§ 6.5](#65-the-fold)'s ten excluded members, so this is a version-bearing change like any other. The rendered state does not move — a delta is not a transition — and the stop's own detail lands in the drill-down |
 | E7 | `turn.end` — `session_cleared`, `open_calls_at_end: 2`, `aborted_call_ids: [B, A]` | `T := false`; `L := {end_reason: session_cleared, aborted_count: 2}` | **`unknown`** (`turn_killed_by_clear`) | `live` | **`unknown`** | 8 | yes — **transition row 2 of 2**, `working → unknown` |
 | E8 | `session.end` — `clear`, `aborted_calls: 2` | session closed, `closed_by: wire`; no open session | `unknown` (`turn_killed_by_clear`) | `live` | `unknown` | 9 | yes — `session` becomes `null` |
@@ -5189,6 +5271,20 @@ and the gate on trusting the derived signal at all.*
     `session.end` preserve `L.background_tasks_open` → the second half fails and the seat renders
     `unknown` on a genuinely quiet desk. Both REDs are necessary: they fail in opposite directions,
     which is what shows the rule is a discrimination rather than a bias toward one answer.
+- **Case γ — a `/clear` while a background subagent runs (card#11817).** Replay a stream in which the
+  parent dispatches `A` and ends its turn clean with `background_tasks_open: 1`, then
+  `session.end(clear, aborted_calls: 0, carried_call_ids: [A])` and `session.start(clear)` under a new
+  `session_id`, then the subagent's next call and `A`'s own `tool.end`
+  `completed`/`subagent_stop_hook` under the new session. **GREEN:** after the `session.end`, `A` is
+  open, the seat's open dispatch count is 1, `session_close_orphans` is unchanged,
+  `session_close_carried` is 1 and the seat is `working` (rule 3); after `A`'s close, no open dispatch
+  remains, `A`'s `close_source` is `subagent_stop_hook`, no call carries a `server_`-prefixed close,
+  and `late_close_cross_session` is unchanged. **Controls:** `carried_call_ids: []` (an older
+  reporter) → `A` closed `server_session_close` and `session_close_orphans` +1; a non-array value →
+  both sweeps run; a member off the ULID format → ignored, `A` spared; a second clear naming `A`
+  again while its `session_ref` is still the first session → `session_close_carried` +1 again (the
+  count is seat-wide). **RED:** the server ignoring `carried_call_ids` → the GREEN's first half fails,
+  `A` closed `server_session_close` at the `session.end`.
 
 ### AT-D2-3 stale, offline and disabled are rendered, never idle
 
@@ -5942,13 +6038,13 @@ document.
 | Store per seat-day | **~10.0 MB** | **Derived** — 7.9 MB of `events` (10,420 × 756 B) + 2.1 MB of projections (calls 3,000 × 300 B, transitions 1,400 × 160 B, other 1,740 × 200 B, × 1.4, plus `ix_purge` measured at 24 B a transition and at most 29 B on the 1,740) | [§ 6.8](#68-sizing) |
 | Store per seat, 14 days | **~140 MB** | **Derived** — × 14 | [§ 6.8](#68-sizing) |
 | Store, 4 / 12 / 50 seats | **0.56 / 1.7 / 7.0 GB** | **Derived** — × seat count. Inherits D1's volume *estimate*; re-derived from the first week of live data | [§ 6.8](#68-sizing) |
-| Seat-state object | **1,963 B** typical, **5,797 B** worst | **Measured** — the [§ 8.2.2](#822-worked-snapshot) snapshot's seat object and the `patch` of [§ 8.3.2](#832-worked-worst-case-delta), each serialized with no insignificant whitespace. Both artefacts are published in this document precisely so the figures are reproducible, and `tools/design/verify-fleet-state.py` re-derives them | [§ 8.2.1](#821-the-seat-state-object) |
-| Fleet snapshot | **8.2 KB** (4 seats) … **98 KB** (50 seats) | **Measured** — 302 B envelope + n × the above | [§ 8.2.1](#821-the-seat-state-object) |
-| Snapshot pagination trigger | 200 seats (~393 KB) | **Derived** — stated as the trigger, deliberately not built for a four-seat fleet | [§ 8.2.1](#821-the-seat-state-object) |
-| Delta message | **323 B** typical, **6,481 B** worst | **Measured** — [§ 8.3.1](#831-worked-delta) and [§ 8.3.2](#832-worked-worst-case-delta) serialized | [§ 8.3](#83-the-websocket-delta-feed) |
+| Seat-state object | **2,093 B** typical, **5,986 B** worst | **Measured** — the [§ 8.2.2](#822-worked-snapshot) snapshot's seat object and the `patch` of [§ 8.3.2](#832-worked-worst-case-delta), each serialized with no insignificant whitespace. Both artefacts are published in this document precisely so the figures are reproducible, and `tools/design/verify-fleet-state.py` re-derives them | [§ 8.2.1](#821-the-seat-state-object) |
+| Fleet snapshot | **8.7 KB** (4 seats) … **105 KB** (50 seats) | **Measured** — 302 B envelope + n × the above | [§ 8.2.1](#821-the-seat-state-object) |
+| Snapshot pagination trigger | 200 seats (~419 KB) | **Derived** — stated as the trigger, deliberately not built for a four-seat fleet | [§ 8.2.1](#821-the-seat-state-object) |
+| Delta message | **323 B** typical, **6,690 B** worst | **Measured** — [§ 8.3.1](#831-worked-delta) and [§ 8.3.2](#832-worked-worst-case-delta) serialized | [§ 8.3](#83-the-websocket-delta-feed) |
 | Feed traffic per connected client | **~1.6 KiB/s** at 50 seats | **Derived** — 5.20 msg/s × the measured 323 B typical delta = 1,680 B/s | [§ 8.3](#83-the-websocket-delta-feed) |
 | Worst-case integer magnitude | 2⁵³−1 (16 digits) | **Chosen** — the JS-safe ceiling D1 § 6.0 admits, used for every integer whose own bound is open, so the worst-case object cannot be falsified by a fleet that outlives its estimates | [§ 8.2.1](#821-the-seat-state-object) |
-| Feed message bound | 8 KiB | **Chosen** — 1.26× the measured worst case, so a conforming message cannot breach it and a future field addition that would break a test rather than a client. SSE imposes no per-message maximum of its own, and `feed_outbox.message` carries the same figure as a `CHECK` (card#9287) | [§ 8.3](#83-the-websocket-delta-feed) |
+| Feed message bound | 8 KiB | **Chosen** — 1.22× the measured worst case, so a conforming message cannot breach it and a future field addition that would break a test rather than a client. SSE imposes no per-message maximum of its own, and `feed_outbox.message` carries the same figure as a `CHECK` (card#9287) | [§ 8.3](#83-the-websocket-delta-feed) |
 | `subagents` array cap | 8, with `subagents_open` carrying the truth | **Chosen** — D1's index cap admits 64 open calls and a side table rendering 64 interns is a list. The cap is what holds the worst-case object inside the message bound | [§ 8.2.1](#821-the-seat-state-object) |
 | Stream tick | 250 ms | **Derived** — below the ~300 ms at which a human notices added latency, which is D1's own basis for its hook budget and the same order as the status-line debounce D1 records; bounds a stream's delivery at 4 batches/s, and merges nothing (card#9287) | [§ 8.3](#83-the-websocket-delta-feed) |
 | Delta volume | **8,980/seat/day = 0.104 msg/s/seat**; 5.2 msg/s at 50 seats | **Derived** — from D1 § 6.0's kind-table ranges, every kind but the heartbeat: 6,000 tool + 1,200 turn + 1,440 context + 120 subagent + 80 session + 100 attention + 40 compaction, which is D1's own 10,420 ceiling less its 1,440 heartbeats. Ordinary heartbeats are excluded and that exclusion is a design rule, not an omission; the edge-triggered deltas that are not events at all — [§ 6.5](#65-the-fold)'s heartbeat exceptions and the sweeper's own transitions — are single digits a seat-day and this event count does not carry them | [§ 8.3](#83-the-websocket-delta-feed) |
@@ -5992,7 +6088,7 @@ tool actually re-derives, stated so a reader can tell a checked figure from a re
 | Check | What the tool re-derives | Status |
 |---|---|---|
 | **Byte figures** — the seven rows of [§ 8.2.1](#821-the-seat-state-object)'s size table and their restatements here — **and the stream's stall bound** | `json.loads` + `json.dumps(separators)` + `len` over all three published blocks; the worst case is measured from [§ 8.3.2](#832-worked-worst-case-delta), which exists so it can be. And [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound, held equal to [§ 8.3](#83-the-websocket-delta-feed)'s dead-feed figure, to [§ 6.7](#67-retention-and-purge)'s `feed_outbox` retention less one heartbeat interval, and to its two copies that cannot point at it: the `tick_started > N s` comparison in [§ 8.3](#83-the-websocket-delta-feed)'s handler fence, and this section's `Stream stall bound` row, its figure bolded or not — each copy with a control that reds when it cannot be found or read (card#9326) | **tool-checked** |
-| **Field table ↔ worked examples, both directions** | the **79** field names of [§ 8.2.1](#821-the-seat-state-object) against the flattened paths of every seat object in the document, set-differenced each way — **and this row's own count against that table**, because a population size stated in prose beside a tool that re-derives it is a number free to disagree with the document while the tool reports clean, which is what it did for one member's worth of drift | **tool-checked** |
+| **Field table ↔ worked examples, both directions** | the **83** field names of [§ 8.2.1](#821-the-seat-state-object) against the flattened paths of every seat object in the document, set-differenced each way — **and this row's own count against that table**, because a population size stated in prose beside a tool that re-derives it is a number free to disagree with the document while the tool reports clean, which is what it did for one member's worth of drift | **tool-checked** |
 | **DDL `ENUM` member reachability** | every member of every `ENUM` in [§ 6.4](#64-ddl), counted across the rest of the file; a member occurring only in its own declaration is a member no path can produce | **tool-checked** |
 | **Cross-document enum containment** | D2's `abort_reason` / `close_source` / `resolution` / `resolution_source` extension sets against D1's declared sets, with the counts stated in the DDL comments | **tool-checked** |
 | **Feed message-type closure** | every use of a message type in a namespace [§ 8.3](#83-the-websocket-delta-feed)'s own table declares — the namespaces are the ROOTS of that table's types, re-derived per run rather than listed in the tool, and whether an occurrence is a *use* is decided by what this document DOES with the token (a whole token, so a path or a host name is not one; carrying a payload object rather than a scalar value) instead of by whether it is written in backticks, so § 8.3's and § 8.4's fences are inside the population | **tool-checked**, with **two holes declared rather than closed**, both reported on every run: a namespace with **no row in that table at all** is invisible, because the table it would be held against never names it; and a message name written in the `name: scalar` field form reads as a field and is skipped — that skip is **counted** beside the population, and one occurring **inside a fenced block is a failure**, which bounds the hole to prose |
@@ -6074,6 +6170,7 @@ review can reverse it deliberately rather than discover it later.
 | 48 | **Two host conditions — R1, the proxy must not buffer the stream; R2, the FPM pool must hold a worker per browser and release a dead one — are declared as checked deploy requirements with named observables, never assumed** ([§ 8.3](#83-the-websocket-delta-feed)) | assume them and let the first deploy find out; design around them silently — a short stream lifetime the handler ends on a timer, or a chunked-polling fallback | Neither condition can be established from this repository, and a design that assumed either would be reporting a clean that nobody measured. Designing around them silently would cost every browser a reconnect-and-snapshot on the handler's timer, to hedge a host fact an operator can check in one command. Declaring them with a check and an observable is what lets a false one be found on the day it is false, by name | a deploy that skips the checks and meets neither: R1 false renders every floor *feed down* against a healthy fleet with REST green; R2 false takes the console down with the fleet healthy. Both are named in [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F19/F20 so the symptom is recognisable |
 | 49 | **The declared agent-name join is resolved by the CONSUMER against the seat population; this plane publishes the DECLARATION and never a desk reference** ([§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects)) | resolve it server-side and publish `seat_id` on `coord_thread` / `coord_round`, which is where a reader first looks for it | `card#7957`'s (d) rests on **one party knowing both facts**, and that party is the SEAT. This plane knows only what the seat said, so resolving here would move a join whose weaker end is a human-typed string onto objects whose every other field is token-bound or hook-bound — and a consumer could no longer tell which kind it was reading. It would also give one fact N homes: a thread spans desks, so a desk reference per participant per message is a copy free to disagree with the seat object it was copied from, which is [§ 13](#13-decisions-taken-revisable-at-review) row 39's argument one field along | every consumer implements the same three join rules instead of reading one member. [§ 8.3.3](#833-the-coordination-objects) states them once so the implementations are the same, and a consumer that gets them wrong is wrong in its own client rather than in the store |
 | 50 | **A protocol agent name is UNIQUE per install; a name more than one seat declares is a misconfiguration that resolves to nothing and is reported as its own reason** ([§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects), [FLOOR.md § 5.7](FLOOR.md#57-the-coordination-thread-line)) | ⭐ **Operator ruling, 2026-09-12, `card#9296`.** The alternative on the table was the one three surfaces of this document had already written down: a name may resolve to **a set**, because one agent running two seats is two desks and not a collision. A second was a store `UNIQUE KEY` on the name per install, which would refuse the second seat's heartbeat or fail its fold and keep whichever seat arrived first | The set reading legalised a resolution nothing could then govern. [FLOOR.md § 6.2](FLOOR.md#62-the-animation-table--the-closed-set) A18 triggers on participants resolving to *a desk*, singular, and the client's `resolve()` returns one `seat_id` — so the map a builder was told to construct was last-writer-wins over an unordered seat population and A18 drew to whichever seat was folded last. That is the guessed desk § 5.7 clause 1 forbids, arrived at by obeying the documents. Ruling the duplicate a **misconfiguration** removes the pick instead of specifying it | **a seat cannot enforce it.** Its own check asks whether its name is in the roster, and two seats declaring one name both pass — so the invariant is declared on this plane and enforced at the consumer, which is the only party that sees both seats. [AT-D2-24](#at-d2-24-a-coordination-object-names-an-agent-and-never-a-desk)'s sixth and seventh REDs specify the refusal — the seventh for a `checked` seat beside a `disagreed` one, which counts toward the duplicate by the scope [§ 8.3.3](#833-the-coordination-objects) rule 1 states — and nothing runs them until the consumer's join is built |
+| 51 | **`longest_open_call` is published on the seat object — the oldest open call's `call_id`, `tool_name` and server-clock `started_received_at` — because `action` is the NEWEST open call and a consumer asking how long a seat's longest call has run cannot answer it from `action`** ([§ 8.2.1](#821-the-seat-state-object); card#12113, for [D3 § 4.1](FLOOR.md#41-the-lobby--the-building-summary)'s directory plaque) | let D3 read `action.started_received_at` and say so honestly as *the current call has run N*; publish the whole open-call list on the seat object; publish only a timestamp with no tool name | the first under-reports the exact case the operator asked about — a dispatch an hour old under a seconds-old intern call ([§ 10](#10-worked-example-the-clear-trace-folded-end-to-end) E3) — and would have had the lobby's attention line miss every long dispatch; the whole list is [§ 8.2.3](#823-the-seat-detail-response)'s and is priced out of the snapshot there; a bare timestamp leaves the consumer unable to say what is running. The rows already exist in `calls`, selected by `ix_open (seat_ref, closed_at)` and carrying `opened_received_at`, so this is a second ordering of the open set the fold already reads for `action`, moving on edges that already emit a delta | the seat object grows by the bytes [§ 8.2.1](#821-the-seat-state-object)'s size table re-measures (its worst case still inside the 8 KiB bound, [D3 § 8.1](FLOOR.md#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) re-derives the cap's margin from it), and `seat_state` gains one nullable reference column; if a later consumer needs the descriptor or the scope, that is one more member on this object rather than a redesign |
 
 ---
 
@@ -6224,10 +6321,11 @@ operator ruling.
    ([§ 8.2.1](#821-the-seat-state-object)). If D3 wants a different number the cap moves and the
    worst-case byte figure moves with it — measurably now, because the worst case is a published block
    ([§ 8.3.2](#832-worked-worst-case-delta)) and each further subagent adds a **measured 263 B** —
-   the block's own element, 262 B serialized, plus its comma separator — against **1,711 B** of
-   spare under the 8 KiB bound. Six more therefore fit and a seventh does not: **the cap could
-   reach 14**, where the worst-case delta is 8,059 B, and at 15 it is 8,322 B, which **breaches**
-   the 8,192 B bound the same sentence invokes. An earlier revision of this item offered ~16, which
+   the block's own element, 262 B serialized, plus its comma separator — against **1,502 B** of
+   spare under the 8 KiB bound. ⌊spare ÷ 263⌋ more therefore fit and one more does not: **the cap could
+   reach 8 plus that many** — [D3 § 8.1](FLOOR.md#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)
+   carries the figures as measured now and re-derives them on every run — and the next element
+   **breaches** the 8,192 B bound the same sentence invokes. An earlier revision of this item offered ~16, which
    is the wrong side of the boundary it exists to locate. **Closes it:** D3's drill-down design.
 
 10. **✅ CLOSED — a clean turn's `idle` survives its session's `session.end`.**

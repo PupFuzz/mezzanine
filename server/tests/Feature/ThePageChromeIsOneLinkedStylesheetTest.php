@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Feature\Support\HoldsEveryColourMixToAFallback;
 use Tests\TestCase;
 
 /**
@@ -14,7 +15,10 @@ use Tests\TestCase;
  * ⛔ ONE LINK, IN THE LAYOUT, VERSIONED BY THE FILE's OWN MTIME. Every view extends
  * `layouts/app.blade.php`, so the sheet is linked there and nowhere else; a page served without it is
  * a page with no chrome, and a `?v=` that is not the file's mtime is a sheet a browser keeps serving
- * from its cache after a deploy changed it.
+ * from its cache after a deploy changed it. This counts LINKED sheets: the layout's one inline `<style>`
+ * — the elevator ride's view-transition rules and nothing else (card#11795), inline because a linked
+ * opt-in resolved the inbound transition only some of the time — is deliberate, and
+ * `TheRideArrivalIsTheLayoutsTest` holds its shape and its one copy.
  *
  * ⛔ THE PALETTE HAS ONE HOME, AND THE DRAWING READS IT. `public/js/floor/painter.js`'s embedded style
  * names its colours as `var(--…)` tokens; a token the sheet does not declare resolves to nothing and
@@ -27,15 +31,23 @@ use Tests\TestCase;
  *
  * ⛔ THE ELEVATOR's TWO COLOURS ARE COPIES, AND THIS IS THEIR DRIFT CHECK (design review r3 MINOR-7).
  * The lobby's `INK.door` / `INK.doorEdge` (`public/js/lobby/building-scene.js`) are hex constants the
- * lobby does arithmetic on (`label-paint.js` builds an rgba from `INK.wall`), so they cannot read a CSS
- * custom property; the sheet's `--door` / `--door-edge` are the floor's copies of them, and they must
- * stay equal so the floor's elevator and the lobby's cab read as one building.
+ * lobby's room paints as SVG presentation attributes, which read no CSS custom property; the sheet's `--door` / `--door-edge` are the floor's copies of them, and they must
+ * stay equal so the floor's elevator and the lobby's cab read as one building. The sheet's `--lobby-mat`
+ * is `INK.mat`'s copy on the same terms (card#12113: the lobby view behind the cab's doors lays it).
+ *
+ * ⛔ EVERY `color-mix()` HAS A PLAIN FALLBACK, ON THE SHEET AND IN THE PAINTER's STYLE ALIKE (card#12070). A browser
+ * without `color-mix()` keeps a mixed declaration that holds `var()` and paints nothing, so each one sits in an
+ * `@supports (… color-mix(…))` block after a plain rule of its selector that sets the same property to one of the mix's
+ * own colours (`HoldsEveryColourMixToAFallback` owns the shape). A `color-mix()` written anywhere else — a third copy of
+ * the defect card#12052 and card#12070 fixed — reds here. What the popup's fallback colours read as is
+ * `TheCabPanelReconcilesByKeyTest`'s contrast check, in both branches.
  *
  * ⚠ WHAT A GREEN HERE IS NOT: evidence that any page lays out or looks right — there is no browser on
  * the build host. The screenshots on the PR's review round are where the look is checked.
  */
 class ThePageChromeIsOneLinkedStylesheetTest extends TestCase
 {
+    use HoldsEveryColourMixToAFallback;
     use RefreshDatabase;
 
     private const SHEET = 'css/mezzanine.css';
@@ -55,6 +67,38 @@ class ThePageChromeIsOneLinkedStylesheetTest extends TestCase
     public function test_the_floors_elevator_colours_are_the_lobbys(): void
     {
         $this->assertSame([], $this->doorDefects($this->sheet(), $this->buildingSceneJs()));
+    }
+
+    public function test_every_colour_mix_has_a_plain_fallback_on_the_sheet_and_in_the_painters_style(): void
+    {
+        $this->assertSame([], [...$this->colourMixDefects($this->sheet(), 'mezzanine.css'), ...$this->colourMixDefects($this->painterStyle(), 'STYLE')]);
+    }
+
+    /** ⛔ THE CONTROLS for the `color-mix()` fallback — each plants one break of its shape in the sheet, or in the style. */
+    public function test_the_colour_mix_check_goes_red_against_the_defect_it_exists_to_catch(): void
+    {
+        $sheet = $this->sheet();
+
+        foreach ([
+            // The defect itself, as card#12070 found it: the current floor's plate mixed with no fallback.
+            'a mix outside its block' => ["    border-color: var(--scene-ink);\n    background: var(--door);\n}", "    border-color: var(--scene-ink);\n    background: color-mix(in srgb, var(--door) 65%, var(--cab-lamp));\n}", 'outside an @supports'],
+            // PR #344 review F4: a CSS function name is case-insensitive, so a mix in capitals is a mix.
+            'a mix outside its block, in capitals' => ["    border-color: var(--scene-ink);\n    background: var(--door);\n}", "    border-color: var(--scene-ink);\n    background: COLOR-MIX(in srgb, var(--door) 65%, var(--cab-lamp));\n}", 'outside an @supports'],
+            'a mixed rule with no plain rule of its selector' => ["    [role=\"alert\"] {\n        background: color-mix(", "    [role=\"note\"] {\n        background: color-mix(", 'no plain rule'],
+            // PR #343 review F4: the fallback rule is there, but sets another property.
+            'a fallback that sets another property' => ["    --cab-rim: var(--scene-ink);\n", "    --cab-edge: var(--scene-ink);\n", 'sets no `--cab-rim`'],
+            'a fallback off the mix\'s colours' => ['    border-bottom: 1px solid var(--warn);', '    border-bottom: 1px solid var(--alarm);', 'one of its own colours'],
+            'a plain rule after its block' => ["\n.cab-name {", "\n.cab-cap {\n    background: var(--door);\n}\n\n.cab-name {", 'comes after its @supports block'],
+        ] as $what => [$from, $to, $reason]) {
+            $this->assertSame(1, substr_count($sheet, $from), "CONTROL ({$what}): its anchor is not in the sheet exactly once");
+            $defects = $this->colourMixDefects(str_replace($from, $to, $sheet), 'mezzanine.css');
+            $this->assertNotSame([], array_filter($defects, fn (string $d): bool => str_contains($d, $reason)), "CONTROL ({$what}) did not bite for its reason: ".json_encode($defects));
+        }
+
+        $style = $this->painterStyle();
+        $mixed = str_replace('.cab-sill{fill:var(--door-edge)}', '.cab-sill{fill:color-mix(in srgb,var(--door-edge) 50%,var(--door))}', $style);
+        $this->assertNotSame($mixed, $style, 'the style control\'s anchor is gone — it mutated nothing');
+        $this->assertNotSame([], $this->colourMixDefects($mixed, 'STYLE'), 'CONTROL (a mix outside its block in the painter\'s style) did not bite');
     }
 
     /** ⛔ THE CONTROLS — each re-mints one defect this file exists to catch. */
@@ -95,6 +139,12 @@ class ThePageChromeIsOneLinkedStylesheetTest extends TestCase
         $this->assertNotSame($drifted, $sheet, 'the door control\'s anchor is gone — it mutated nothing');
         $this->assertArrayHasKey('door', $this->doorDefects($drifted, $this->buildingSceneJs()),
             'CONTROL (the floor\'s door colour drifted from the lobby\'s) did not bite');
+
+        // card#12113: the lobby view's mat is a copy too.
+        $matDrifted = preg_replace('/--lobby-mat:\s*#[0-9a-f]{6};/i', '--lobby-mat: #ffffff;', $sheet);
+        $this->assertNotSame($matDrifted, $sheet, 'the mat control\'s anchor is gone — it mutated nothing');
+        $this->assertArrayHasKey('door', $this->doorDefects($matDrifted, $this->buildingSceneJs()),
+            'CONTROL (the lobby view\'s mat drifted from the lobby\'s) did not bite');
     }
 
     /** @return array<string, string> */
@@ -155,7 +205,7 @@ class ThePageChromeIsOneLinkedStylesheetTest extends TestCase
         $tokens = $this->rootTokens($sheet);
         $defects = [];
 
-        foreach (['door' => 'door', 'door-edge' => 'doorEdge'] as $token => $ink) {
+        foreach (['door' => 'door', 'door-edge' => 'doorEdge', 'lobby-mat' => 'mat'] as $token => $ink) {
             $this->assertSame(1, preg_match("/^\\s*{$ink}: '(#[0-9a-f]{6})',/mi", $scene, $m), "INK.{$ink} is not in building-scene.js");
 
             if (strtolower($tokens[$token] ?? '') !== strtolower($m[1])) {
@@ -208,9 +258,11 @@ class ThePageChromeIsOneLinkedStylesheetTest extends TestCase
         return (string) file_get_contents(public_path(self::SHEET));
     }
 
+    /** The painter's code — `painter.js` and the cab drawing its `STYLE` carries whole (`cab-paint.js`, card#12113). */
     private function painterJs(): string
     {
-        return (string) file_get_contents(public_path('js/floor/painter.js'));
+        return (string) file_get_contents(public_path('js/floor/painter.js'))
+            .(string) file_get_contents(public_path('js/floor/cab-paint.js'));
     }
 
     private function buildingSceneJs(): string

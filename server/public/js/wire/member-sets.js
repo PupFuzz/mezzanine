@@ -6,8 +6,9 @@
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ ONE COPY EACH, GUARDED. The other three sets already have their one home —
- * `lobby/render-state.js` (`render_state`) and `desk/desk-render.js` (`unknown_reason`,
- * `api_error_type`, whose keys are those sets) — and none of them is repeated here.
+ * `lobby/render-state.js` (`render_state`), `desk/desk-render.js` (`unknown_reason`) and
+ * `desk/state-words.js` (`api_error_type`), the last two as the keys of their phrase tables — and
+ * none of them is repeated here.
  * `Tests\Feature\Floor\AnUnrecognisedMemberRendersAsUnrecognisedTest` re-derives these three from
  * § 7.2's and § 7.6's tables on every run and set-differences both directions, so a member the
  * document gains or drops reds rather than being silently rendered as *unrecognised* or silently

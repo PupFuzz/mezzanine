@@ -31,8 +31,10 @@
  * ⛔ AT-D3-24's PAINTER HALF (card#11046): every character is an `<image>` whose `href` is the tree's
  * SVG document as a `data:image/svg+xml;charset=utf-8,` URI over encodeURIComponent — the rule written
  * here, not imported — `xMidYMax meet`; no canvas is made for a character; a desk of every
- * `(pose, glyph)` pair the desk model asks a character for draws that seat's standing frame (parity); a
- * held loop steps the walk's frames and leaves an intern still; no frame list is copied onto an element;
+ * `(pose, glyph)` pair the desk model asks a character for draws frame 0 of the tree's frames for that pose over
+ * its desk's top edge (§ 10.4's frame contract — the tree here a stub, so the sleeper's own drawing is
+ * `sleeper-probe.mjs`'s); a held loop steps its pose's own frames, every one in order, and leaves an intern
+ * still; no frame list is copied onto an element;
  * and AT-D3-19's two causes — a tree that failed to load, a generator that throws for one intern's key —
  * reach the painter's report, the second for that intern alone, and never throw out of the paint.
  *
@@ -89,12 +91,19 @@ const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD } = await mod('floo
  * Q3) — and the URI from § 10.2's — never imported from the module under test, so a layout that keys
  * interns otherwise, or a painter that makes another URI, reds.
  */
-const asked = { walk: [], chibi: [] };
+const asked = { walk: [], pose: [], chibi: [] };
 const doc = (what) => `<svg xmlns="http://www.w3.org/2000/svg"><title>${what}</title></svg>`;
 const uri = (d) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(d)}`;
 let throwFor = null;
 const characters = {
     walkFrames(installId, seatId) { asked.walk.push(`${installId}/${seatId}`); return [0, 1, 2].map((p) => doc(`${installId}/${seatId}#${p}`)); },
+    // A desk's frames for its pose (§ 10.4's frame contract): the stub names the pose and the desk's top edge it was
+    // asked for in every frame, so a painter that asks for another pose, or drops the edge, draws a frame no
+    // element owes. Four frames, so a loop stepping three reds the held-loop leg.
+    poseFrames(installId, seatId, at) {
+        asked.pose.push(`${installId}/${seatId}`);
+        return [0, 1, 2, 3].map((i) => doc(`${installId}/${seatId}#${at.pose}@${at.deskTop}#${i}`));
+    },
     chibiFrame(installId, key) {
         asked.chibi.push(`${installId}/${key}`);
         if (key === throwFor) throw new Error('a planted generator defect for one key');
@@ -285,6 +294,18 @@ function arcPoints(p, q, radius, large, sweep) {
 }
 
 /**
+ * The desk's top edge across its character's rect, as a share of the rect's height — written here from the
+ * published rule (§ 10.4's frame contract item 4: the edge `deskRects()` derives) over the desk's own painted
+ * elements, never read off the character element under test.
+ */
+function deskTop(key, e) {
+    const desk = byKey.get(key);
+    const sprite = desk.elements.find((x) => x.kind === 'desk-sprite');
+
+    return (sprite.y - e.y) / e.h;
+}
+
+/**
  * What the painter owes one layout element, in order: `[node name, {x, y, w?, h?, text?}, extra check?]`.
  * The offsets are the painter's stated ones — and nothing else may move a node off its element.
  */
@@ -294,10 +315,11 @@ function owed(e, seat, failed, key) {
     switch (e.kind) {
         case 'character':
             // The art's clipping viewport at the element's rect, the image at the viewport's origin — and
-            // the image is the seat's STANDING FRAME as an SVG-document URI, whatever the pose (AT-D3-24).
+            // the image is frame 0 of the tree's frames for the desk's POSE, over the desk's top edge as the
+            // element's own rects place it, as an SVG-document URI (AT-D3-24; § 10.4's frame contract).
             return [['svg', at, (n) => viewport(e)(n) ?? classIs(['character'])(n.children[0])
-                ?? (n.children[0].getAttribute('href') === uri(doc(`${key}#0`)) ? null
-                    : `its image is «${decodeURIComponent(String(n.children[0].getAttribute("href"))).slice(60, 140)}», not the seat's standing frame as an SVG-document URI`)
+                ?? (n.children[0].getAttribute('href') === uri(doc(`${key}#${e.pose}@${deskTop(key, e)}#0`)) ? null
+                    : `its image is «${decodeURIComponent(String(n.children[0].getAttribute("href"))).slice(60, 140)}», not frame 0 of the seat's «${e.pose}» frames over its desk's edge as an SVG-document URI`)
                 ?? (n.children[0].getAttribute('preserveAspectRatio') === 'xMidYMax meet' ? null : 'its image is not drawn xMidYMax meet')]];
         case 'chair':
         case 'desk-sprite':
@@ -335,7 +357,7 @@ function owed(e, seat, failed, key) {
                 return [['rect', glyph, classIs(e.untitled ? ['stool', 'untitled'] : ['stool'])]];
             }
 
-            // § 8 / Q3: the sprite in its clipping viewport, the tree's standing frame under `seat~<call_id>`;
+            // § 8 / Q3: the sprite in its clipping viewport, the tree's chibi frame under `seat~<call_id>`;
             // an untitled intern inside a dashed edge.
             const look = e.untitled ? ['intern', 'untitled'] : ['intern'];
             const want = internFrame(seat.install_id, seat.seat_id, e.call_id);
@@ -573,6 +595,7 @@ if (layer === undefined) {
 
     painter.paint({ ...scene, desks: [] }, { bounds: null });
     asked.walk.length = 0;
+    asked.pose.length = 0;
     asked.chibi.length = 0;
     painter.paint(scene, { bounds: null });
 
@@ -584,8 +607,8 @@ if (layer === undefined) {
             + "an intern's key is minted per dispatch, so frames it keeps grow for the page's life");
     }
 
-    if (asked.walk.length > 0) {
-        defects.push(`the painter asked the tree again for ${asked.walk.length} seat(s) whose frames it held — a repaint re-draws nothing`);
+    if (asked.walk.length + asked.pose.length > 0) {
+        defects.push(`the painter asked the tree again for ${asked.walk.length + asked.pose.length} seat(s) whose frames it held — a repaint re-draws nothing`);
     }
 }
 
@@ -687,8 +710,8 @@ for (const desk of desks) {
     }
 }
 
-// ── AT-D3-24, parity: a desk of every `(pose, glyph)` pair the desk model asks a character for drew that
-// seat's standing frame (the equality above holds each), and every such pair was painted — the population
+// ── AT-D3-24: a desk of every `(pose, glyph)` pair the desk model asks a character for drew frame 0 of that
+// pose's frames (the equality above holds each), and every such pair was painted — the population
 // read from `desk/desk-poses.js`'s DESK and, for A4's THINKING, reached through `deskModel` itself (N5) ──
 const { DESK } = await mod('desk/desk-poses.js');
 const poses = new Set(desks.flatMap((d) => d.elements.filter((e) => e.kind === 'character').map((e) => e.pose)));
@@ -726,7 +749,8 @@ for (const p of owedPoses) {
     }
 }
 
-// ── § 6.2's held loop steps the walk's frames on a moving character, and leaves an intern still ──
+// ── § 6.2's held loop steps a moving character through its own pose's frames — every one of them, as many as
+// the tree drew, and never another drawing's — and leaves an intern still ──
 {
     const desk = desks.find((d) => d.elements.some((e) => e.kind === 'character') && d.elements.some((e) => e.kind === 'stool' && !failedOf.get(d.key).has(e.asset)));
     const moving = {
@@ -749,10 +773,17 @@ for (const p of owedPoses) {
     } else if (loops.length !== 1) {
         defects.push(`a moving held render started ${loops.length} loop(s), not one`);
     } else {
-        loops[0]();
+        const pose = moving.elements.find((e) => e.kind === 'character');
+        const frame = (i) => uri(doc(`${asset}#${pose.pose}@${deskTop(desk.key, pose)}#${i}`));
+        const seen = [];
 
-        if (character.getAttribute('href') !== uri(doc(`${asset}#1`))) {
-            defects.push('the held loop did not step the moving character to the walk\'s next frame');
+        for (let i = 0; i < 4; i++) {
+            loops[0]();
+            seen.push(character.getAttribute('href'));
+        }
+
+        if (seen.join('|') !== [1, 2, 3, 0].map(frame).join('|')) {
+            defects.push(`the held loop did not step the moving character through its pose's four frames in order — it drew ${seen.map((h) => decodeURIComponent(h).match(/#[^<]*#\d/)?.[0] ?? '?').join(', ')}`);
         }
 
         if (intern.getAttribute('href') !== internBefore) {

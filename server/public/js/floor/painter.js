@@ -27,6 +27,18 @@
  * list included — which is the empty office § 9 exists against. A failed import is reported as the
  * failed asset it is (§ 9 F14) and the page keeps every fact.
  *
+ * ⛔ THE ELEVATOR IS A CONTROL (§ 4.5, card#11795): a `role="button"` group over its surround, wired as a
+ * desk is — a click, Enter and Space each call the page's `ride` once — and `aria-disabled` while a ride is in
+ * flight. Its leaves are the RIDE's while the scene carries `scene.ride` (`rideLeaves()`), each phase's door
+ * motion delayed past its fade and placed at the phase's elapsed time so a re-paint neither restarts nor
+ * reorders it; with no ride they are the walks' (`leafAnimation()`), as before. The cab's interior is
+ * `paintCab()`'s (`floor/cab-paint.js` since card#12113, which both pages draw the cab with), into the cab dialog's own element: the room in depth `drawCabInterior()` draws (card#12051), and on
+ * its back wall the door in the house theme's elevator palette, a plain dial, the view of the stop the doors open on
+ * seen through it — the ride's `beyond`: the office (`drawOfficeView()`, card#12052) or the lobby (`drawLobbyView()`,
+ * card#12113) — the two leaves in the building's door colours, and no text — the cab's words are
+ * the page's (`floor/cab-panel.js`); beside the door, a decorative call plate that names, lights and does nothing
+ * (card#12071). The band's leaves open onto the same room, seen from the landing, drawn behind them (card#12052).
+ *
  * ⛔ THE ONE TIMER HERE IS A HELD LOOP's OWN FRAMES, at the interval the scene carries (§ 6.3's
  * second bullet: "except a state-held loop's own frames at the fixed rate"), and it runs only for a
  * character whose held render the animation set drew WITH motion. Decorative motion is the
@@ -37,20 +49,16 @@ import { BUBBLE_PAD, FONT, FONT_NAME, FONT_SCREEN, STOOL_GLYPH, TYPE_ROLES, char
 import { SKY_PAINT } from './floor-layout.js';
 import { ELEVATOR_DOOR } from './scene.js';
 import { RENDER_STATES } from '../lobby/render-state.js';
+import { CAB_STYLE, LANDING, THEME_REGISTRY, cabTheme, clippedTo, drawCabInterior, node, paintCab, rideLeaves, themeModule } from './cab-paint.js';
+
+// The cab's drawing is `cab-paint.js`'s since card#12113 (both pages draw it); its names stay readable from here.
+export { CAB, CAB_STYLE, LANDING, LOBBY_VIEW, OFFICE, THEME_REGISTRY, cabLeaves, cabTheme, drawCabInterior, drawLobbyView, drawOfficeView, paintCab, rideLeaves, themeModule } from './cab-paint.js';
 
 /** The furniture box — `resources/floor/furniture-box.js`, by the asset route. */
 export const FURNITURE_MODULE = '/art/floor/furniture-box.js';
 
 /** The character tree's entry — `resources/characters/index.js`, by the asset route. */
 export const CHARACTER_TREE = '/art/characters/index.js';
-
-/** The theme registry — `resources/floor/themes/index.js`, by the asset route (FLOOR.md § 10.6 item 1). */
-export const THEME_REGISTRY = '/art/floor/themes/index.js';
-
-/** A theme's module — `resources/floor/themes/<name>/theme.js`, by the asset route (§ 10.6 item 1). */
-export const themeModule = (name) => `/art/floor/themes/${encodeURIComponent(name)}/theme.js`;
-
-const SVG = 'http://www.w3.org/2000/svg';
 
 /** § 10.4's art contract: a desk's art is drawn in proportion, centred, on its rect's floor line. */
 const MEET = 'xMidYMax meet';
@@ -79,7 +87,6 @@ text{font:${FONT};fill:var(--scene-ink)}text.role-name{font:${FONT_NAME}}text.ro
 .slab{fill:var(--house-trim)}
 .window{fill:var(--scene-glass)}
 ${Object.keys(SKY_PAINT).map((phase) => `.sky-${phase}{fill:url(#sky-${phase})}`).join('')}
-.elevator-leaf{fill:var(--door);stroke:var(--door-edge);stroke-width:2}.elevator-seam{stroke:var(--door-frame);stroke-width:2}
 .plane{fill:var(--scene-floor)}
 .clock-face{fill:var(--scene-clock-face);stroke:var(--scene-trim);stroke-width:3}.clock.unset .clock-face{stroke-dasharray:6 4}
 .clock.cased .clock-face{fill:none;stroke:none}.clock.cased.unset .clock-face{stroke:var(--scene-trim)}
@@ -117,9 +124,7 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 .fx-walker{animation-name:walk;animation-fill-mode:both}.fx-walker-shown{opacity:0;animation-name:walker-shown;animation-fill-mode:none}
 @keyframes walk{from{transform:translate(var(--from-x),var(--from-y))}to{transform:translate(var(--to-x),var(--to-y))}}
 @keyframes walker-shown{from{opacity:1}to{opacity:1}}
-.elevator-leaf.left{transform-box:fill-box;transform-origin:left center}.elevator-leaf.right{transform-box:fill-box;transform-origin:right center}
-@keyframes leaf-open{from{transform:scaleX(1)}to{transform:scaleX(.12)}}
-@keyframes leaf-close{from{transform:scaleX(.12)}to{transform:scaleX(1)}}
+${CAB_STYLE}
 .fx-broadcast-marker{fill:none;stroke:var(--scene-thread);stroke-width:3}
 `;
 
@@ -193,28 +198,16 @@ export function measurer() {
     };
 }
 
-function node(name, attrs = {}, parent = null) {
-    const el = document.createElementNS(SVG, name);
-
-    for (const [k, v] of Object.entries(attrs)) {
-        if (v !== null && v !== undefined) {
-            el.setAttribute(k, String(v));
-        }
-    }
-
-    parent?.append(el);
-
-    return el;
-}
-
 /**
  * The painter, over the floor view's own drawing element — `#floor-drawing`, which
  * `FloorPageWiringTest` holds to the view in both directions.
  *
  * @param {{characters: object|null, themes: Object<string, object|null>, failed: function(list<string>): void,
- *          select: function(string, string): void}} options `themes` the theme modules `loadArt()` held, by name
+ *          select: function(string, string): void, ride: function(): void, house: string|null}} options `themes`
+ *          the theme modules `loadArt()` held, by name; `ride` the elevator's press (§ 4.5); `house` the house
+ *          theme's name, whose elevator palette the cab is drawn in
  */
-export function createPainter({ characters, themes = {}, failed, select }) {
+export function createPainter({ characters, themes = {}, failed, select, ride = () => {}, house = null }) {
     const host = document.getElementById('floor-drawing');
 
     if (host === null) {
@@ -228,11 +221,12 @@ export function createPainter({ characters, themes = {}, failed, select }) {
             failed([id]);
         }
     };
-    // THE ONE CACHE OF CHARACTER ART: asset → its frame URIs, made once per asset. The character tree
+    // THE ONE CACHE OF CHARACTER ART: asset and drawing → its frame URIs, made once each. The character tree
     // holds none (it is pure, `resources/characters/index.js`), so this Map is the whole of what a page
     // keeps. An intern's key is minted per dispatch, so an intern this paint no longer draws is dropped
-    // from it (`interns` below) — that is what bounds the INTERNS' entries. A seat's entry is kept, as the
-    // pixel tree's cache kept it: those are bounded by the distinct seats a page has drawn, not dropped.
+    // from it (`interns` below) — that is what bounds the INTERNS' entries. A seat's entries are kept, as the
+    // pixel tree's cache kept them: those are bounded by the distinct seats a page has drawn, each in at most
+    // its walk and the drawings the tree has for poses (`poseFrames()`), not dropped.
     const frames = new Map();
     // The interns whose frames are held, and those this paint drew.
     const interns = new Set();
@@ -290,24 +284,32 @@ export function createPainter({ characters, themes = {}, failed, select }) {
     };
 
     /**
-     * A character's frames as image URIs, made once per asset: a seat's walk frames — stand, step-left,
-     * step-right, the first being the standing frame every pose draws (§ 10.4's frame contract) — or an
-     * intern's one chibi frame, the tree handed the intern key (`internKey()`) in the seat's place. A
-     * tree that failed to load, or a generator that throws for this key, is § 9 F14 for this asset and
-     * never a throw out of the paint.
+     * A character's frames as image URIs, made once per asset and drawing: a desk's frames for its pose —
+     * the tree's `poseFrames()`, frame 0 the pose's static form and the rest its held loop (§ 10.4's frame
+     * contract: the sleeper's for `asleep`, the walk's for every other pose) — a walker's walk frames
+     * (`at` null), or an intern's one chibi frame, the tree handed the intern key (`internKey()`) in the
+     * seat's place. The cache key is the asset with the drawing it holds, so a desk asleep and its walker
+     * never share frames. A tree that failed to load, or a generator that throws for this key, is § 9 F14
+     * for this asset and never a throw out of the paint.
+     *
+     * @param {{pose: string, desk_top: number}|null} at a desk's pose and its desk's top edge, or `null`
      */
-    const characterFrames = (installId, seatId, asset, intern = false) => {
+    const characterFrames = (installId, seatId, asset, at = null, intern = false) => {
         if (characters === null) {
             report(asset);
 
             return null;
         }
 
-        if (!frames.has(asset)) {
-            try {
-                const docs = intern ? [characters.chibiFrame(installId, seatId)] : characters.walkFrames(installId, seatId);
+        const key = intern ? asset : at === null ? `${asset}#walk` : `${asset}#${at.pose}@${at.desk_top}`;
 
-                frames.set(asset, docs.map(svgUri));
+        if (!frames.has(key)) {
+            try {
+                const docs = intern ? [characters.chibiFrame(installId, seatId)]
+                    : at === null ? characters.walkFrames(installId, seatId)
+                        : characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top });
+
+                frames.set(key, docs.map(svgUri));
             } catch {
                 report(asset);
 
@@ -315,7 +317,7 @@ export function createPainter({ characters, themes = {}, failed, select }) {
             }
         }
 
-        return frames.get(asset);
+        return frames.get(key);
     };
 
     /** An image in its rect. Tiles stretch to their cell (`none`); the desk's art is `art()`'s. */
@@ -393,7 +395,7 @@ export function createPainter({ characters, themes = {}, failed, select }) {
 
             switch (e.kind) {
                 case 'character': {
-                    const urls = characterFrames(desk.install_id, desk.seat_id, e.asset);
+                    const urls = characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, desk_top: e.desk_top });
 
                     if (urls !== null) {
                         const el = art(g, urls[0], e, e.asset, 'character');
@@ -435,7 +437,7 @@ export function createPainter({ characters, themes = {}, failed, select }) {
                         // dashed (§ 8): its sprite inside a dashed edge at its own 20 × 32 rect — rx 3, no
                         // fill, `--scene-stool` at 1.5 wide, dashed `3 2` — and its fallback glyph below is
                         // dashed `3 2` with no fill (the designer's rulings on card#11058 PR-C).
-                        const urls = characterFrames(e.install_id, e.key, e.asset, true);
+                        const urls = characterFrames(e.install_id, e.key, e.asset, null, true);
 
                         if (urls !== null) {
                             interns.add(e.asset);
@@ -580,7 +582,8 @@ export function createPainter({ characters, themes = {}, failed, select }) {
 
     /**
      * The elevator's leaves (§ 6.2's walk note item 10): open while any walk in flight is in its door
-     * frames — one open-then-close per merged span the scene carries, in frames from this paint.
+     * frames — one open-then-close per merged span the scene carries, in frames from this paint. Not while a
+     * ride holds them (§ 4.5): then they are `rideLeaves()`'s, and a walk's span adds nothing.
      */
     function leafAnimation(doors, interval) {
         const sec = (frames) => (frames * interval) / 1000;
@@ -677,14 +680,56 @@ export function createPainter({ characters, themes = {}, failed, select }) {
             });
 
             // The two-door elevator: its surround is the theme's, its leaves the painter's, in the building's
-            // door colours, opening only inside an A1 or A2 walk (§ 4.2, card#9566).
+            // door colours — the ride's while a ride holds them (§ 4.5, card#11795), else opening only inside an
+            // A1 or A2 walk (§ 4.2, card#9566). The elevator is a CONTROL: a button over its surround, which
+            // rides (§ 4.5) — `aria-disabled` while a ride is in flight, when the screen refuses the press.
             const e = band.elevator;
-            const leaves = (scene.doors ?? []).length === 0 ? null : `animation:${leafAnimation(scene.doors, 1000 / scene.loop_fps)}`;
-
+            const riding = scene.ride !== null && scene.ride !== undefined;
+            const leaves = riding
+                ? rideLeaves(scene.ride)
+                : (scene.doors ?? []).length === 0 ? null : `animation:${leafAnimation(scene.doors, 1000 / scene.loop_fps)}`;
+            // The theme's surround first: the control — its leaves and its hit area — is drawn over it, so a press
+            // anywhere on the surround reaches the control rather than the image under it.
             drawDoc(at(1 + band.windows.length));
-            node('rect', { x: e.x, y: e.y, width: e.seam - e.x - 1, height: e.h, rx: 3, class: 'elevator-leaf left', style: leaves }, g);
-            node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, g);
-            node('line', { x1: e.seam, y1: e.y, x2: e.seam, y2: e.y + e.h, class: 'elevator-seam' }, g);
+
+            // ⛔ THE CAB BEHIND THE LEAVES (card#12052): `drawCabInterior()`'s room fitted to the doorway and clipped to it,
+            // over the surround's recess and under the leaves, so whenever they open — a ride's or a walk's — the cab is
+            // seen inside. It is scenery: drawn once with the band, still, and nothing in the scene says it is there. Its
+            // colours are the dialog's cab's — the house theme's elevator palette (`cabPalette()`), the sheet's door frame
+            // and lamp (`.band-cab`) with none.
+            const palette = cabPalette();
+            const inside = node('g', {
+                class: 'band-cab',
+                'aria-hidden': 'true',
+                style: palette === null ? null : `--cab-frame:${palette.frame};--cab-lamp:${palette.lamp}`,
+            }, g);
+            const doorway = { x: e.x, y: e.y, w: e.w, h: e.h };
+
+            drawCabInterior(clippedTo(inside, node('defs', {}, inside), doorway, 'band-cab'), doorway, 'band-cab', LANDING);
+
+            const control = node('g', {
+                class: 'elevator',
+                'data-key': 'elevator',
+                tabindex: 0,
+                role: 'button',
+                'aria-label': 'the elevator — ride to another floor',
+                'aria-disabled': riding ? 'true' : null,
+            }, g);
+
+            control.addEventListener('click', () => ride());
+            // A `role="button"` activates on Enter and on Space; Space's default would scroll the page.
+            control.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    ride();
+                }
+            });
+
+            // The two leaves meet at the seam, each edged in the door's edge colour: the seam is theirs, so it opens with them.
+            node('rect', { x: e.x, y: e.y, width: e.seam - e.x - 1, height: e.h, rx: 3, class: 'elevator-leaf left', style: leaves }, control);
+            node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, control);
+            // The control's hit area is the surround — frame, header and call buttons — over everything in it.
+            node('rect', { x: e.surround.x, y: e.surround.y, width: e.surround.w, height: e.surround.h, class: 'elevator-hit' }, control);
 
             // The clock: its case is the theme's; its hands and its unset treatment are the painter's (A17),
             // over a plain face that is what is left when the case is not drawn.
@@ -812,14 +857,16 @@ export function createPainter({ characters, themes = {}, failed, select }) {
         const walking = scene.effects.some((fx) => (fx.animation_id === 'A1' || fx.animation_id === 'A2') && fx.frames > 0);
         const interval = scene.desks.find((d) => d.held?.motion)?.held.frame_interval_ms ?? (walking ? 1000 / scene.loop_fps : null);
 
+        // Each character steps through its OWN frames — a walker's walk, a sleeper's loop — so a loop of one
+        // length never draws another drawing's frames.
         if (moving.length > 0 && interval !== null) {
             let tick = 0;
 
             loop = setInterval(() => {
-                tick = (tick + 1) % 3;
+                tick += 1;
 
                 for (const [el, urls] of moving) {
-                    el.setAttribute('href', urls[tick]);
+                    el.setAttribute('href', urls[tick % urls.length]);
                 }
             }, interval);
         }
@@ -846,5 +893,17 @@ export function createPainter({ characters, themes = {}, failed, select }) {
         }
     }
 
-    return { paint, refresh, view };
+    /** The house theme's elevator palette — `{frame, lamp}` — or `null` when that theme did not load. */
+    function cabPalette() {
+        return themes[house]?.PALETTE?.elevator ?? null;
+    }
+
+    return {
+        paint,
+        refresh,
+        view,
+        paintCab,
+        // The page's dialog in this painter's house theme — `cabTheme()` with the palette this painter holds.
+        cabTheme: (el) => cabTheme(el, cabPalette()),
+    };
 }

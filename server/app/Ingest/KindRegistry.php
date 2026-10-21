@@ -116,7 +116,7 @@ final class KindRegistry
 
         // ── § 6.2 ────────────────────────────────────────────────────────────────────────────
         'session.end' => [
-            'fields' => ['end_reason', 'duration_ms', 'turns', 'aborted_calls'],
+            'fields' => ['end_reason', 'duration_ms', 'turns', 'aborted_calls', 'carried_call_ids'],
             'bounds' => [],
             'enums' => [
                 'end_reason' => [

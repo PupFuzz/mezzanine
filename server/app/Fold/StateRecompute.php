@@ -414,6 +414,17 @@ class StateRecompute
             ->orderByDesc('opened_at')->orderByDesc('id')
             ->value('id');
 
+        // § 8.2.1's `longest_open_call` (card#12113): the OLDEST call of the same open set, ordered
+        // the other way — and on a different key, on purpose. `action` orders on the seat's
+        // narrative `opened_at` (what the agent most recently started); this one is subtracted from
+        // the server clock (§ 3.3), so it orders on the basis that age is computed from,
+        // `opened_received_at`, and then `id`, so two calls received in one millisecond still have
+        // one answer.
+        $longestCall = DB::table('calls')
+            ->where('seat_ref', $seatRef)->whereNull('closed_at')
+            ->orderBy('opened_received_at')->orderBy('id')
+            ->value('id');
+
         // The seat's open session. On a seat running two terminals this is the newest of them,
         // which is what § 8.2.1's single `session` object can hold; the derivation itself reads
         // every session of the seat (see SeatFacts), so nothing about the STATE depends on this
@@ -451,6 +462,7 @@ class StateRecompute
             'render_state' => $render,
             'current_session_ref' => $currentSession,
             'current_call_ref' => $currentCall,
+            'longest_call_ref' => $longestCall,
             'open_calls' => $facts->openCalls,
             'open_turn' => $facts->openTurn,
             'open_attention_ref' => $openAttention,

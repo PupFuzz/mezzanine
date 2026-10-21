@@ -248,6 +248,14 @@ class Projector
             $update['stalled_cleared_by'] = 'session_end';
         }
 
+        // D1 § 8.3 (card#11817): a `/clear` does not end a running subagent — the harness re-homes it
+        // to the new session — so the reporter CARRIES its open dispatch call and names it here. Those
+        // calls are the seat's still-running interns, not orphans of this session: both sweeps below
+        // leave them open, and they close on their own `tool.end` under the new session or at the
+        // 60-minute dispatch ceiling. Absent (an older reporter) reads as nothing carried.
+        $raw = Wire::field($e->data, 'carried_call_ids');
+        $carried = is_array($raw) ? array_values(array_filter($raw, [Wire::class, 'isUlid'])) : [];
+
         // § 4.6.1 — the server closes a turn its session closed under, because D1's kind table
         // lists `turn.end` as hook-emitted only and the flusher's `inferred_silence` close is not
         // a hook. Without this, `L` stays null, rule 5 fires, and `session_closed_turn_open` would
@@ -255,6 +263,7 @@ class Projector
         if ($row->turn_open) {
             $orphans = DB::table('calls')
                 ->where('seat_ref', $e->seatRef)->where('session_ref', $ref)->whereNull('closed_at')
+                ->whereNotIn('call_id', $carried)
                 ->get(['id']);
 
             foreach ($orphans as $call) {
@@ -287,6 +296,7 @@ class Projector
         if (! $row->turn_open) {
             $orphans = DB::table('calls')
                 ->where('seat_ref', $e->seatRef)->where('session_ref', $ref)->whereNull('closed_at')
+                ->whereNotIn('call_id', $carried)
                 ->update([
                     'closed_at' => $e->eventTime,
                     'closed_received_at' => $e->receivedAt,
@@ -299,11 +309,21 @@ class Projector
             $this->recordCallCloses($e, false, $orphans);
         }
 
-        // Card #7337, and the asymmetry IS the rule: a background task cannot outlive the session
-        // that spawned it, so this ONE component of `L` is cleared while `end_reason` and the
-        // aborted count survive their session. Keeping it would hold a stale 1 against a genuinely
-        // quiet seat — after a `/clear`, exactly the case the card was about — and render `unknown`
-        // where *idle* is TRUE. AT-D2-2 Case β's second GREEN is this transition.
+        // Seat-wide, not by `session_ref`: after a second `/clear` a carried row's `session_ref` still
+        // names the session it was opened in, which is not the one ending now.
+        if ($carried !== []) {
+            Counters::seat($e->seatRef, 'session_close_carried', DB::table('calls')
+                ->where('seat_ref', $e->seatRef)->whereIn('call_id', $carried)->whereNull('closed_at')->count());
+        }
+
+        // Card #7337, and the asymmetry IS the rule: this ONE component of `L` is cleared while
+        // `end_reason` and the aborted count survive their session. A background subagent CAN outlive
+        // its session — a `/clear` re-homes it (D1 § 8.3, card#11817) — but it is then carried as an
+        // open call, which is rule 3's business, so the count's only remaining job (the window
+        // before a subagent's first call) is one no session boundary can straddle. Keeping it would
+        // hold a stale 1 against a genuinely quiet seat — after a `/clear`, exactly the case the card
+        // was about — and render `unknown` where *idle* is TRUE. AT-D2-2 Case β's second GREEN is
+        // this transition.
         if ($row->last_turn_ended_at !== null || isset($update['last_turn_ended_at'])) {
             $update['last_turn_background_tasks_open'] = 0;
         }

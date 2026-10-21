@@ -92,6 +92,11 @@ const K = {
   TOMBSTONES: 64,                // § 8.2
   SESSIONS: 16,                  // § 8.2
   TOMBSTONE_MS: 900000,          // § 8.2 15 min, == the ordinary orphan timeout
+  CLEAR_PAIR_MS: 30000,          // § 8.4 the window inside which SessionStart(clear) pairs with the latest
+                                 // unpaired clear-ended session; ~12x the largest measured gap (card#11817)
+  CLEAR_GAP_MS: 5000,            // § 8.4 2x the largest measured SessionEnd(clear)->SessionStart(clear) gap
+                                 // (2.49 s, 2.1.296): SessionEnd(clear)'s window for an unpaired clear-started
+                                 // session, and the age past which any pairing counts `clear_pair_late`
   COMPACTION_MS: 600000,         // § 6.10 10 min
   SILENCE_MS: 5400000,           // § 6.2 90 min
   SAMPLE_STALE_MS: 300000,       // § 6.9 300 s
@@ -1023,9 +1028,10 @@ function countSanitizer(r) {
  * Four facts D1 requires elsewhere have no record to carry them, so four are added here. All
  * are REPORTER-INTERNAL — none reaches the wire, so none costs a schema version:
  *   · session_open / session_close  — § 8.2's 16-session cap with eviction-and-reap, § 8.4's
- *     "most-recently-active open session other than its own", § 6.14's `open_sessions`, and
- *     § 6.2's `duration_ms` / `turns` all read a live-session set D1 says the reporter "already
- *     holds" but gives no record for.
+ *     /clear pairing, § 6.14's `open_sessions`, and § 6.2's `duration_ms` / `turns` all read a
+ *     live-session set D1 says the reporter "already holds" but gave no record for. § 8.2's table
+ *     lists both since card#11817, which added `source` / `end_reason` to them and two record
+ *     kinds beside them: `carry` and `pair` (§ 8.3, § 8.4).
  *   · turn_open / turn_close        — § 6.4's `duration_ms` and § 6.2's `turns`.
  *   · compaction_open / compaction_close — § 6.10's two-signal close and the flusher's 10 min
  *     timeout need a compaction to be open across processes.
@@ -1056,15 +1062,43 @@ function emptyIndex() {
 function applyIndexRecord(ix, r, nowMs) {
   const touch = (sid) => { const s = ix.sessions.get(sid); if (s) s.last_active = r.at || s.last_active; };
   switch (r.k) {
-    case 'session_open':
-      if (!ix.sessions.has(r.session_id)) {
-        ix.sessions.set(r.session_id, { session_id: r.session_id, opened_at: r.at, last_active: r.at, turns: 0, aborted_calls: 0 });
-      }
+    case 'session_open': {
+      // § 8.4 — `source` is written only by SessionStart(source=clear), and it may land on a session
+      // an earlier hook already registered (a carried subagent's call, a killed call's close). It
+      // marks that session; nothing here ever clears `paired_from`, so a duplicate record folded
+      // after the pairing cannot make a paired session pairable again (card#11817).
+      const s = ix.sessions.get(r.session_id);
+      if (!s) {
+        ix.sessions.set(r.session_id, {
+          session_id: r.session_id, opened_at: r.at, last_active: r.at, turns: 0, aborted_calls: 0,
+          start_source: r.source || null, paired_from: null,
+        });
+      } else if (r.source) s.start_source = r.source;
       break;
+    }
     case 'session_close':
       ix.sessions.delete(r.session_id); ix.turns.delete(r.session_id);
-      ix.sessionsClosed.set(r.session_id, r.at);
+      ix.sessionsClosed.set(r.session_id, { closed_at: r.at, end_reason: r.end_reason || null, paired_to: null });
       break;
+    case 'carry': {
+      // § 8.3 — a bound dispatch a /clear left open. Applied only while the entry still belongs to
+      // the session the carry names: the fold runs outside the write lock, so a `carry` can be folded
+      // after the `pair` that already re-keyed its entry, and must not re-flag it.
+      const e = ix.calls.get(r.call_id);
+      if (e && e.session_id === r.from_session_id) e.carried_from = r.from_session_id;
+      break;
+    }
+    case 'pair': {
+      // § 8.4 — ONE record per /clear, written by the second of its two signals. Its apply re-keys
+      // whatever carries from the old session exist at this point in the journal: a carried call a
+      // SubagentStop already closed is simply not there.
+      const c = ix.sessionsClosed.get(r.old_session_id); if (c) c.paired_to = r.new_session_id;
+      const s = ix.sessions.get(r.new_session_id); if (s) s.paired_from = r.old_session_id;
+      for (const e of ix.calls.values()) {
+        if (e.carried_from === r.old_session_id) { e.session_id = r.new_session_id; delete e.carried_from; }
+      }
+      break;
+    }
     case 'turn_open':
       ix.turns.set(r.session_id, { prompt_id: r.prompt_id || null, started_at: r.at, tool_calls: 0, failed_calls: 0 });
       { const s = ix.sessions.get(r.session_id); if (s) s.turns += 1; }
@@ -1089,6 +1123,15 @@ function applyIndexRecord(ix, r, nowMs) {
         if (turn && turn.prompt_id === e.prompt_id && r.outcome === 'failed') turn.failed_calls += 1;
         ix.calls.delete(r.call_id);
         touch(e.session_id);
+        // § 8.5 — a dispatch call closed by its SubagentStop keeps its harness reference for the
+        // tombstone window, so the dispatch call's OWN close, when it is the second of the two
+        // signals, matches it exactly and is absorbed (card#11799). Without it that close matched
+        // nothing and fell through to the heuristics: a phantom synthesized `Agent` pair, or a
+        // `sole_open` close of some unrelated running call. Not an abort: `closed_by` is what
+        // tells the PostToolUse handler this entry was closed `completed` by the other signal.
+        if (r.close_source === 'subagent_stop_hook' && e.harness_call_ref) {
+          ix.tombstones.set(r.call_id, Object.assign({}, e, { closed_at: r.at, closed_by: 'subagent_stop_hook' }));
+        }
       }
       break;
     }
@@ -1124,7 +1167,7 @@ function capIndex(ix, nowMs) {
     if (nowMs - Date.parse(tb.closed_at || 0) > K.TOMBSTONE_MS) ix.tombstones.delete(id);
   }
   while (ix.tombstones.size > K.TOMBSTONES) { ix.tombstones.delete(ix.tombstones.keys().next().value); count('open_call_index_overflow'); }
-  for (const [sid, at] of ix.sessionsClosed) if (nowMs - Date.parse(at || 0) > K.TOMBSTONE_MS) ix.sessionsClosed.delete(sid);
+  for (const [sid, c] of ix.sessionsClosed) if (nowMs - Date.parse(c.closed_at || 0) > K.TOMBSTONE_MS) ix.sessionsClosed.delete(sid);
   while (ix.sessions.size > K.SESSIONS) {
     // Eviction is by LEAST-RECENT ACTIVITY, not oldest-opened: a long-lived session that is
     // still emitting is the one worth keeping (§ 8.2).
@@ -1156,7 +1199,11 @@ function foldIndex(spool, nowMs) {
     for (const e of snap.entries || []) ix.calls.set(e.call_id, e);
     for (const t of snap.tombstones || []) ix.tombstones.set(t.call_id, t);
     for (const s of snap.sessions || []) ix.sessions.set(s.session_id, s);
-    for (const c of snap.sessions_closed || []) ix.sessionsClosed.set(c.session_id, c.closed_at);
+    // A snapshot an older flusher wrote has no end_reason / paired_to: such a tombstone loads as
+    // never pairable, and expires in K.TOMBSTONE_MS (card#11817's upgrade note).
+    for (const c of snap.sessions_closed || []) {
+      ix.sessionsClosed.set(c.session_id, { closed_at: c.closed_at, end_reason: c.end_reason || null, paired_to: c.paired_to || null });
+    }
     for (const t of snap.turns || []) ix.turns.set(t.session_id, t);
     for (const a of snap.attention || []) ix.attention.set(a.session_id, a);
     for (const c of snap.compactions || []) ix.compactions.set(c.session_id, c);
@@ -1414,7 +1461,7 @@ function makeEmitter(cfg, spool, take) {
  * ORDER INSIDE ONE INVOCATION IS PART OF THE CONTRACT (§ 8.3): a hook REAPS FIRST — closing
  * every entry the reap table declares aborted, in spool order, ahead of its own event — then
  * emits the boundary events, then the trigger's own event. § 8.7 traces the whole of it for a
- * /clear during a subagent's Bash call: events 4-8 are all produced by ONE SessionEnd hook
+ * /clear during a subagent's Bash call: its whole boundary set is produced by ONE SessionEnd hook
  * invocation, one spool append per event, in that order.
  * ════════════════════════════════════════════════════════════════════════════════════════════ */
 
@@ -1596,6 +1643,44 @@ function durationFor(entry, payload, atMs) {
   return { duration_ms: null, duration_source: 'none' };
 }
 
+/* ── A BACKGROUND DISPATCH OUTLIVES THE CALL THAT LAUNCHED IT (§ 8.5, card#11799) ─────────────
+ * The harness runs a dispatched subagent as a background task: the dispatch tool returns as soon
+ * as the subagent is LAUNCHED, so its PostToolUse fires tens of ms after its PreToolUse while the
+ * subagent runs on for minutes. The tool says so itself — `tool_response.status` is
+ * `"async_launched"` and `tool_response.agentId` is the launched subagent's `agent_id` — which
+ * is the discriminator: a call whose tool returned on LAUNCH has not finished, and closing it
+ * there emptied the floor's side table (an intern IS an open dispatch call). A foreground
+ * dispatch returns `status: "completed"` after its subagent finished and closes exactly as
+ * before. Never a timing heuristic: the harness's own word for the case is what is read. */
+function asyncLaunch(payload) {
+  const tr = payload.tool_response;
+  if (!tr || typeof tr !== 'object' || tr.status !== 'async_launched') return null;
+  const id = tr.agentId;
+  if (typeof id !== 'string' || !id || bytes(id) > 64) {
+    count('payload_key_missing.tool_response.agentId');
+    return { agentId: null };
+  }
+  return { agentId: id };
+}
+
+/* § 8.3 — the selector of a TURN reap (Stop, StopFailure, SubagentStop), given the calls the turn
+ * owns. It drops a dispatch call whose subagent the payload's `background_tasks` lists: the harness
+ * lists a task only while it is `running` or `pending` AND backgrounded, and a launched subagent's
+ * task id IS its `agent_id`. The turn ended, the subagent did not, and its SubagentStop is what
+ * closes that call. A dispatch the list does NOT name is reaped as before — the backstop for a
+ * SubagentStop that never arrives. One primitive for every turn reap, so the rule cannot differ
+ * between the parent's turn and a subagent's. */
+function turnReapScope(ix, payload, ownedByTurn) {
+  const running = new Set();
+  if (Array.isArray(payload.background_tasks)) {
+    for (const t of payload.background_tasks) if (t && typeof t === 'object' && typeof t.id === 'string') running.add(t.id);
+  }
+  const stillRunning = (e) => !!(e.is_dispatch && e.child_agent_id && running.has(e.child_agent_id));
+  const kept = [...ix.calls.values()].filter((e) => ownedByTurn(e) && stillRunning(e)).length;
+  if (kept) count('dispatch_kept_across_turn_reap', kept);
+  return (e) => ownedByTurn(e) && !stillRunning(e);
+}
+
 /* Close one ledger entry as ABORTED and emit its tool.end (+ subagent.stop when it is a
  * dispatch call). Used by every row of § 8.3's reap table. */
 function reapOne(ctx, entry, abortReason, closeSource, atMs) {
@@ -1666,41 +1751,117 @@ function emitTurnEnd(ctx, ix, sessionId, endReason, apiErrorType, openBefore, ab
   ix.turns.delete(sessionId);
 }
 
-/* § 8.3's session-boundary reap, shared by SessionEnd and by SessionStart(source=clear) —
- * ONE primitive, because § 8.7 requires both orders to put the identical events on the wire.
- * "The wire is the same either way; that is what two independent signals, either suffices,
- * buys." Two copies of this would be two chances to make them differ. */
+/* § 8.3's session-boundary reap — ONE primitive for every hook-observed session end: SessionEnd (the
+ * only /clear signal that reaps, since card#11817) and the 16-session eviction, in a hook or in the
+ * flusher. The flusher's 90-minute close shares only its session.end builder (emitSessionEnd).
+ *
+ * A /CLEAR DOES NOT END A RUNNING SUBAGENT; IT RE-HOMES IT (MEASURED twice at 2.1.296, interactive,
+ * 2026-10-13: the subagent's hooks and its new transcript segment carry the NEW session_id, and the
+ * new session's Stop counts it in background_tasks). So for `session_cleared` only, an open dispatch
+ * call with a bound `child_agent_id` is CARRIED instead of reaped: journaled `carry`, named on the
+ * wire in `session.end.carried_call_ids`, left out of `aborted_calls` and of the turn.end's scope,
+ * and re-keyed to the new session by the `pair` record the second /clear signal writes (§ 8.4). A
+ * session that ends for any other reason takes everything it owned. An UNBOUND dispatch is reaped as
+ * before: nothing could ever match its SubagentStop. */
 function reapSessionBoundary(ctx, ix, sessionId, endReasonWire, abortReason, atMs) {
-  const openBefore = [...ix.calls.values()].filter((e) => e.session_id === sessionId).length;
-  const aborted = reap(ctx, ix, (e) => e.session_id === sessionId, abortReason, 'reap_session_boundary', atMs);
+  const carried = (e) => abortReason === 'session_cleared' && e.is_dispatch && !!e.child_agent_id;
+  const select = (e) => e.session_id === sessionId && !carried(e);
+  const carriedIds = [];
+  for (const e of [...ix.calls.values()]) {
+    if (e.session_id !== sessionId || !carried(e)) continue;
+    const rec = { k: 'carry', call_id: e.call_id, from_session_id: sessionId };
+    journal(ctx.spool, rec);
+    applyIndexRecord(ix, rec, atMs);
+    carriedIds.push(e.call_id);
+  }
+  if (carriedIds.length) count('dispatch_carried_across_clear', carriedIds.length);
+  const openBefore = [...ix.calls.values()].filter(select).length;
+  const aborted = reap(ctx, ix, select, abortReason, 'reap_session_boundary', atMs);
   if (ix.turns.has(sessionId)) {
     emitTurnEnd(ctx, ix, sessionId, abortReason === 'session_cleared' ? 'session_cleared' : 'session_ended',
       null, openBefore, aborted, {}, atMs);
   }
-  const s = ix.sessions.get(sessionId);
+  emitSessionEnd(ctx, ix.sessions.get(sessionId), sessionId, endReasonWire, aborted.length, carriedIds, atMs);
+  resolveAttention(ctx, ix, sessionId, 'session_ended', 'session_end', atMs);
+  const close = { k: 'session_close', session_id: sessionId, end_reason: endReasonWire };
+  journal(ctx.spool, close);
+  applyIndexRecord(ix, close, atMs);
+  return aborted;
+}
+
+/* § 6.2 — the ONE builder of `session.end`, for both of its emitters: the boundary reap above and
+ * the flusher's 90-minute `inferred_silence` close. `carried_call_ids` is on every session.end a
+ * current reporter sends, `[]` when nothing was carried, so a consumer reads its absence as an
+ * older reporter and nothing else. */
+function emitSessionEnd(ctx, s, sessionId, endReasonWire, abortedCount, carriedIds, atMs) {
+  let ids = carriedIds;
+  if (ids.length > K.OPEN_CALLS) { count('value_clamped.session.end.carried_call_ids'); ids = ids.slice(0, K.OPEN_CALLS); }
   ctx.emit('session.end', sessionId, {
     end_reason: endReasonWire,
     duration_ms: s && s.opened_at ? Math.max(0, atMs - Date.parse(s.opened_at)) : null,
     turns: s ? s.turns : null,
-    aborted_calls: aborted.length,
+    aborted_calls: abortedCount,
+    carried_call_ids: ids,
   });
-  resolveAttention(ctx, ix, sessionId, 'session_ended', 'session_end', atMs);
-  journal(ctx.spool, { k: 'session_close', session_id: sessionId });
-  ix.sessions.delete(sessionId); ix.turns.delete(sessionId);
-  return aborted;
 }
 
 /* Register the session this hook BELONGS TO. Nothing about session B is ever inferred from a
  * hook belonging to session A (§ 8.3) — two terminals on one seat is an ordinary state, and an
  * earlier draft of D1 reaped on "a hook carrying an unfamiliar session_id", which made *idle*
  * unreachable on both sessions and minted a session.end storm. This registers only the hook's
- * own session, so the seat's live-session set is real without inferring anything. */
-function touchSession(ctx, ix, sessionId) {
+ * own session, so the seat's live-session set is real without inferring anything.
+ * `source` is passed by SessionStart(source=clear) alone, and is journaled even when the session is
+ * already registered: an earlier hook of the new session can precede its SessionStart, and an
+ * unmarked session is one SessionEnd(clear) can never pair with (§ 8.4, card#11817). */
+function touchSession(ctx, ix, sessionId, source = null) {
   if (!sessionId) return;
-  if (!ix.sessions.has(sessionId)) {
-    journal(ctx.spool, { k: 'session_open', session_id: sessionId });
-    ix.sessions.set(sessionId, { session_id: sessionId, opened_at: rfc3339(now()), last_active: rfc3339(now()), turns: 0, aborted_calls: 0 });
+  const s = ix.sessions.get(sessionId);
+  if (s && (!source || s.start_source === source)) return;
+  const rec = source ? { k: 'session_open', session_id: sessionId, source } : { k: 'session_open', session_id: sessionId };
+  journal(ctx.spool, rec);
+  applyIndexRecord(ix, rec, now());
+}
+
+/* § 8.4 — THE TWO /CLEAR SIGNALS PAIR BY TOMBSTONE, NEVER BY ACTIVITY (card#11817, card#11824).
+ * Each signal carries only its own session_id, so whichever arrives second looks for the first one's
+ * mark: SessionStart(clear) for the latest clear-closed session no start has paired yet,
+ * SessionEnd(clear) for the latest clear-started session no end has paired yet. This is pairing by
+ * RECENCY inside a window, not by identity — the hooks carry nothing that ties one to the other —
+ * so the windows are what bound a wrong pick: two terminals' clears overlapping, or one clear whose
+ * own other signal was lost, can pair one terminal's half with the other's. SessionEnd's window is
+ * the narrow one (K.CLEAR_GAP_MS, twice the largest measured gap) because the twin it adopts is a
+ * LIVE session whose calls it re-keys; any pairing older than that window is counted
+ * `clear_pair_late`, and a pick with more than one candidate `clear_pair_ambiguous`. */
+function latestUnpaired(map, unpairedClear, markedAt, windowMs, nowMs) {
+  let twin = null, qualified = 0;
+  for (const [sid, x] of map) {
+    if (!unpairedClear(x)) continue;
+    const age = nowMs - Date.parse(markedAt(x) || 0);
+    if (age > windowMs) continue;
+    qualified += 1;
+    if (!twin || age < twin.age_ms) twin = { session_id: sid, age_ms: age };
   }
+  return twin ? Object.assign(twin, { qualified }) : null;
+}
+const findTwinForStart = (ix, nowMs) => latestUnpaired(ix.sessionsClosed,
+  (c) => c.end_reason === 'clear' && !c.paired_to, (c) => c.closed_at, K.CLEAR_PAIR_MS, nowMs);
+const findTwinForEnd = (ix, nowMs) => latestUnpaired(ix.sessions,
+  (s) => s.start_source === 'clear' && !s.paired_from, (s) => s.opened_at, K.CLEAR_GAP_MS, nowMs);
+
+/* The pairing is REPORTER-INTERNAL: it moves carried index entries and nothing on the wire names it.
+ * `session.start.previous_session_id`, `reap_noop_second_signal`, `clear_second_signal_found_nothing`
+ * and `clear_reap_by_session_end` keep the meanings and values they had before card#11817 — see the
+ * SessionStart and SessionEnd cases — because changing what a wire field MEANS is a schema bump
+ * (docs/VERSIONING.md, wire rule 4). `clear_signals_paired` is the pairing's own, additive counter. */
+function pairClear(ctx, ix, oldSid, newSid, twin) {
+  const rekeyed = [...ix.calls.values()].filter((e) => e.carried_from === oldSid).length;
+  const rec = { k: 'pair', old_session_id: oldSid, new_session_id: newSid };
+  journal(ctx.spool, rec);
+  applyIndexRecord(ix, rec, now());
+  count('clear_signals_paired');
+  if (rekeyed) count('dispatch_rekeyed_to_new_session', rekeyed);
+  if (twin.qualified > 1) count('clear_pair_ambiguous');
+  if (twin.age_ms > K.CLEAR_GAP_MS) count('clear_pair_late');
 }
 
 function handleHook(ctx, hookName, payload, ix, atMs) {
@@ -1709,36 +1870,42 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
   const agentId = typeof payload.agent_id === 'string' ? payload.agent_id : null;
 
   switch (hookName) {
-    /* ── SessionStart (§ 6.1) — and the SECOND of the two /clear signals (§ 8.4) ──────────── */
+    /* ── SessionStart (§ 6.1) — one of the two /clear signals (§ 8.4) ─────────────────────── */
     case 'SessionStart': {
       const source = coerceEnum(key(payload, 'source'), ENUM.session_start_source, 'unknown', 'session.start.source');
       let previous = null;
+      // Registered FIRST, so a `pair` this hook writes finds the new session in the index.
+      touchSession(ctx, ix, sid, source === 'clear' ? 'clear' : null);
       if (source === 'clear') {
-        /* § 8.4 — SessionStart(clear) CANNOT name the session it superseded: its own
-         * session_id is the NEW one and this build carries no previous_session_id key
-         * (MEASURED — an earlier draft keyed this reap on that field and would have reaped
-         * nothing, forever). So the rule keys on the reporter's OWN index: the seat's
-         * most-recently-active open session other than its own. It deliberately does NOT reap
-         * every other session — a seat with two terminals has two legitimately-live sessions. */
+        /* § 8.4 — SessionStart(clear) carries only its own (new) session_id; this build sends no
+         * previous_session_id key (MEASURED). Two separate jobs, and since card#11824 NEITHER reaps:
+         *
+         * 1. THE SELECTION, unchanged from before card#11817: the seat's most-recently-active open
+         *    session other than its own. It sets `previous_session_id`, the predicate's `false`
+         *    branch, and — when it selects none — `reap_noop_second_signal` and
+         *    `clear_second_signal_found_nothing`, exactly as it always has (§ 6.1). It used to REAP
+         *    what it selected; in the measured order the cleared session is already closed, so on a
+         *    seat with a second terminal it selected that terminal and ended it. It now only names.
+         * 2. THE PAIRING (reporter-internal): the latest unpaired clear-closed session, whose carried
+         *    dispatches move to this session. */
         let pick = null;
-        for (const [s, rec] of ix.sessions) {
-          if (s === sid) continue;
-          if (!pick || Date.parse(rec.last_active || 0) > Date.parse(ix.sessions.get(pick).last_active || 0)) pick = s;
+        for (const [x, rec] of ix.sessions) {
+          if (x === sid) continue;
+          if (!pick || Date.parse(rec.last_active || 0) > Date.parse(ix.sessions.get(pick).last_active || 0)) pick = x;
         }
         if (pick) {
           previous = pick;
-          predicate('clear_reap_by_session_end', false);   // this signal got here first
-          reapSessionBoundary(ctx, ix, pick, 'clear', 'session_cleared', atMs);
+          predicate('clear_reap_by_session_end', false);
         } else {
-          // The healthy outcome, not a failure: SessionEnd(clear) already reaped it 144 ms ago.
           count('reap_noop_second_signal');
           count('clear_second_signal_found_nothing');
         }
+        const twin = findTwinForStart(ix, atMs);
+        if (twin) pairClear(ctx, ix, twin.session_id, sid, twin);
       }
       if (source === 'compact') {
         for (const [s] of ix.compactions) { closeCompaction(ctx, ix, s, 'session_start_compact', atMs); break; }
       }
-      touchSession(ctx, ix, sid);
       emit('session.start', sid, {
         source, project_label: projectLabel(payload), harness_label: harnessLabel(ctx.config),
         previous_session_id: previous,
@@ -1750,14 +1917,25 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
     case 'SessionEnd': {
       const reason = coerceEnum(key(payload, 'reason'), ENUM.session_end_reason, 'other', 'session.end.end_reason');
       if (reason === 'clear' && !ix.sessions.has(sid) && ix.sessionsClosed.has(sid)) {
-        // The SessionStart(clear) signal won the race and already emitted events 4-8 for this
-        // session. Emitting a second boundary set would double-close every call it named.
+        // This session's boundary set is already on the wire, and a second one would double-close
+        // every call it named. Since SessionStart(clear) stopped reaping (card#11817) only three
+        // things reach here: a duplicate delivery of this hook, a /clear of a session the flusher
+        // already closed as `inferred_silence`, and one the 16-session cap evicted within the last
+        // K.TOMBSTONE_MS.
         count('reap_noop_second_signal');
         break;
       }
-      if (reason === 'clear') predicate('clear_reap_by_session_end', true);
       touchSession(ctx, ix, sid);
       reapSessionBoundary(ctx, ix, sid, reason, reason === 'clear' ? 'session_cleared' : 'session_ended', atMs);
+      if (reason === 'clear') {
+        // The counter and predicate keep their pre-card#11817 values: before, a SessionStart that
+        // came first had already reaped this session, and this hook counted the no-op instead of
+        // evaluating the predicate. Now the start reaps nothing, and the twin it left is what says it
+        // came first.
+        const twin = findTwinForEnd(ix, atMs);
+        if (twin) { pairClear(ctx, ix, sid, twin.session_id, twin); count('reap_noop_second_signal'); }
+        else predicate('clear_reap_by_session_end', true);
+      }
       break;
     }
 
@@ -1785,7 +1963,9 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
     case 'StopFailure': {
       const isFailure = hookName === 'StopFailure';
       const scope = agentId || 'main';
-      const inScope = (e) => e.session_id === sid && (e.agent_scope_id || 'main') === scope;
+      // A dispatch whose subagent the payload lists as a running background task is not part of
+      // the turn that ended — it is neither reaped nor counted in `open_calls_at_end`.
+      const inScope = turnReapScope(ix, payload, (e) => e.session_id === sid && (e.agent_scope_id || 'main') === scope);
       const openBefore = [...ix.calls.values()].filter(inScope).length;
       const aborted = reap(ctx, ix, inScope, isFailure ? 'api_error' : 'turn_boundary', 'reap_turn_boundary', atMs);
       // § 8.3 — turn.end is emitted ONLY when the triggering payload carries no agent_id: a
@@ -1874,8 +2054,29 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         });
         entry = { call_id: callId, session_id: sid, tool_name: toolName, started_at: rfc3339(atMs), is_dispatch: false, prompt_id: payload.prompt_id || null };
         matchKind = 'synthesized';
+      } else if (m.tombstone && entry.closed_by === 'subagent_stop_hook') {
+        // § 8.5 — the dispatch call's own close arriving SECOND: its SubagentStop already closed
+        // it and put the close on the wire. A second close for one call_id is a duplicate, so
+        // nothing is emitted; only the permission fact it carries is honoured (§ 6.13).
+        count('dispatch_close_after_subagent_stop');
+        if (!failed) grantOnClose(ctx, ix, sid, entry.call_id, atMs);
+        break;
       } else if (m.tombstone) {
         count('tombstone_late_close');   // the reap was too eager for this call
+      }
+      // § 8.5 — a dispatch whose tool returned on LAUNCH stays open: its SubagentStop closes it.
+      const launch = !failed && !m.tombstone && entry.is_dispatch ? asyncLaunch(payload) : null;
+      if (launch) {
+        count('dispatch_background_launch');
+        if (launch.agentId && entry.child_agent_id !== launch.agentId) {
+          // The EXACT binding: the tool names the subagent it launched, so this outranks
+          // SubagentStart's sole-unbound rule and corrects it where that rule guessed.
+          journal(ctx.spool, { k: 'bind', call_id: entry.call_id, child_agent_id: launch.agentId });
+          entry.child_agent_id = launch.agentId;
+          count('agent_bind_launch_ref');
+        }
+        grantOnClose(ctx, ix, sid, entry.call_id, atMs);
+        break;
       }
       /* § 6.6's KILL SIGNATURE — two independent signals, and NEITHER MAY BE PROMOTED TO A SOLE
        * RULE. `is_interrupt` is the harness's own kill-vs-fail discriminator, but it is MEASURED
@@ -1926,11 +2127,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
           duration_ms: d.duration_ms, close_source: failed ? 'post_tool_use_failure' : 'post_tool_use',
         });
       }
-      // § 6.13 rows 2 and 3 — the tool ran, so permission was given.
-      const a = ix.attention.get(sid);
-      if (a && outcome !== 'aborted' && (a.call_id === entry.call_id || a.call_id === null)) {
-        resolveAttention(ctx, ix, sid, 'granted', 'call_close', atMs);
-      }
+      if (outcome !== 'aborted') grantOnClose(ctx, ix, sid, entry.call_id, atMs);
       break;
     }
 
@@ -1941,8 +2138,11 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       // There is NO exact-reference binding row, because the payload carries no reference to
       // bind on: SubagentStart's complete key set at 2.1.240 has no tool_use_id and no
       // parent_tool_use_id (MEASURED). prompt_id does not discriminate — parent and subagent
-      // share it. So the sole-unbound rule carries the fleet, and its ambiguous case is
-      // counted rather than guessed.
+      // share it. So the sole-unbound rule is this hook's only rule, and its ambiguous case is
+      // counted rather than guessed. The EXACT binding comes from elsewhere: a background
+      // launch's own PostToolUse names the agent it launched (§ 8.5, card#11799), and a call it
+      // already bound to THIS agent_id must not have some other call bound to it as well.
+      if ([...ix.calls.values()].some((e) => e.child_agent_id === agentId)) break;
       const unbound = [...ix.calls.values()].filter((e) => e.session_id === sid && e.is_dispatch && !e.child_agent_id);
       if (unbound.length === 1) {
         journal(ctx.spool, { k: 'bind', call_id: unbound[0].call_id, child_agent_id: agentId });
@@ -1964,7 +2164,12 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         //    fires PreToolUse and then no close hook of any kind — had no close rule at all
         //    before its session ended. Inner calls close FIRST so a consumer never sees a
         //    parent close while its children are still open.
-        reap(ctx, ix, (e) => e.session_id === sid && e.agent_scope_id === agentId, 'turn_boundary', 'reap_turn_boundary', atMs);
+        //    A dispatch this subagent launched that the payload lists as a running background task
+        //    is exempt, by the same rule as the Stop reap (card#11799).
+        //    Scoped by agent_id ALONE, in any session: an agent_id is the subagent's own, and after a
+        //    /clear re-homed the subagent its inner calls were opened under a later session_id than
+        //    the one this stop may arrive under (card#11817).
+        reap(ctx, ix, turnReapScope(ix, payload, (e) => e.agent_scope_id === agentId), 'turn_boundary', 'reap_turn_boundary', atMs);
       }
       // 2. BINDING — close the dispatch call this subagent belongs to.
       let entry = null, matchKind = null;
@@ -1972,14 +2177,19 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       if (!entry) {
         // Not a defence against a missing agent_id — the key is always there. It is the
         // recovery path for a LOST bind record (a torn index-journal line), without which that
-        // call would sit open to its 60-minute orphan ceiling.
-        const dispatches = [...ix.calls.values()].filter((e) => e.is_dispatch);
+        // call would sit open to its 60-minute orphan ceiling. So it considers UNBOUND calls
+        // only: a call bound to another agent_id is that agent's by construction, and the
+        // harness fires SubagentStop for agents no dispatch launched far more often than for
+        // dispatches (card#11799) — with a background dispatch open for minutes, an unrestricted
+        // rule closed it at the first such stop.
+        const dispatches = [...ix.calls.values()].filter((e) => e.is_dispatch && !e.child_agent_id);
         if (dispatches.length === 1) { entry = dispatches[0]; matchKind = 'sole_open'; }
       }
       if (!entry) { count('subagent_stop_unmatched'); break; }
       const d = durationFor(entry, {}, atMs);
-      journal(ctx.spool, { k: 'close', call_id: entry.call_id, close_source: 'subagent_stop_hook', outcome: 'completed' });
-      ix.calls.delete(entry.call_id);
+      const closeRec = { k: 'close', call_id: entry.call_id, close_source: 'subagent_stop_hook', outcome: 'completed' };
+      journal(ctx.spool, closeRec);
+      applyIndexRecord(ix, closeRec, atMs);
       // The payload carries agent_id, agent_type, agent_transcript_path, last_assistant_message,
       // stop_hook_active, background_tasks and session_crons — and NO error indicator of any
       // kind (MEASURED). The hook genuinely cannot distinguish a subagent that succeeded from
@@ -2055,6 +2265,14 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       count(`payload_key_missing.unsubscribed_hook.${hookName}`);
       break;
   }
+}
+
+/* § 6.13 rows 2 and 3 — a tool call's own close hook means the tool ran, so permission was given.
+ * One primitive for every PostToolUse branch: the ordinary close, the launch of a background
+ * dispatch (which ran without closing), and a dispatch close absorbed after its SubagentStop. */
+function grantOnClose(ctx, ix, sid, callId, atMs) {
+  const a = ix.attention.get(sid);
+  if (a && (a.call_id === callId || a.call_id === null)) resolveAttention(ctx, ix, sid, 'granted', 'call_close', atMs);
 }
 
 function openAttention(ctx, ix, sid, source, kind, atMs) {
@@ -3078,7 +3296,7 @@ function writeSnapshot(spool, state, ix) {
     entries: [...ix.calls.values()], tombstones: [...ix.tombstones.values()],
     sessions: [...ix.sessions.values()], turns: [...ix.turns.entries()].map(([session_id, t]) => Object.assign({ session_id }, t)),
     attention: [...ix.attention.values()], compactions: [...ix.compactions.values()],
-    sessions_closed: [...ix.sessionsClosed.entries()].map(([session_id, closed_at]) => ({ session_id, closed_at })),
+    sessions_closed: [...ix.sessionsClosed.entries()].map(([session_id, c]) => Object.assign({ session_id }, c)),
   }));
 }
 
@@ -3314,13 +3532,9 @@ function expireOpenFacts(ctx, ix, atMs) {
        * turn.end: it fires in the flusher, which holds no observation of a turn ending. The
        * server closes any turn still open at that boundary itself. A hook-path exception here
        * would put a second writer on a fact one writer already owns. */
-      journal(ctx.spool, { k: 'session_close', session_id: sid });
+      journal(ctx.spool, { k: 'session_close', session_id: sid, end_reason: 'inferred_silence' });
       ix.sessions.delete(sid); ix.turns.delete(sid);
-      ctx.emit('session.end', sid, {
-        end_reason: 'inferred_silence',
-        duration_ms: s.opened_at ? Math.max(0, atMs - Date.parse(s.opened_at)) : null,
-        turns: s.turns, aborted_calls: 0,
-      });
+      emitSessionEnd(ctx, s, sid, 'inferred_silence', 0, [], atMs);
     }
   }
 }
@@ -3600,10 +3814,10 @@ const READS = {
   Stop: { keys: ['session_id', 'hook_event_name', 'prompt_id', 'stop_hook_active', 'background_tasks'], enums: {} },
   StopFailure: { keys: ['session_id', 'hook_event_name', 'error'], enums: { error: ENUM.stopfailure_error } },
   PreToolUse: { keys: ['session_id', 'hook_event_name', 'tool_name', 'tool_input', 'tool_use_id', 'prompt_id', 'agent_id'], enums: {} },
-  PostToolUse: { keys: ['session_id', 'hook_event_name', 'tool_name', 'tool_use_id', 'duration_ms', 'prompt_id'], enums: {} },
+  PostToolUse: { keys: ['session_id', 'hook_event_name', 'tool_name', 'tool_use_id', 'duration_ms', 'prompt_id', 'tool_response'], enums: {} },
   PostToolUseFailure: { keys: ['session_id', 'hook_event_name', 'tool_name', 'tool_use_id', 'duration_ms', 'is_interrupt', 'error', 'prompt_id'], enums: {} },
   SubagentStart: { keys: ['session_id', 'hook_event_name', 'agent_id'], enums: {} },
-  SubagentStop: { keys: ['session_id', 'hook_event_name', 'agent_id'], enums: {} },
+  SubagentStop: { keys: ['session_id', 'hook_event_name', 'agent_id', 'background_tasks'], enums: {} },
   PreCompact: { keys: ['session_id', 'hook_event_name', 'trigger'], enums: { trigger: ENUM.precompact_trigger } },
   PostCompact: { keys: ['session_id', 'hook_event_name'], enums: {} },
   PermissionRequest: { keys: ['session_id', 'hook_event_name', 'tool_name'], enums: {} },

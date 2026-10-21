@@ -354,10 +354,19 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 'export const svgUri = (doc) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(doc)}`;',
                 'export const svgUri = (doc) => `data:image/png;base64,${encodeURIComponent(doc)}`;'],
             'a canvas made for a character' => ['../floor/painter.js',
-                '                frames.set(asset, docs.map(svgUri));', "                document.createElement('canvas');\n                frames.set(asset, docs.map(svgUri));"],
+                '                frames.set(key, docs.map(svgUri));', "                document.createElement('canvas');\n                frames.set(key, docs.map(svgUri));"],
             'a desk that loses its character for a pose it has no frame for' => ['../floor/painter.js',
-                'const urls = characterFrames(desk.install_id, desk.seat_id, e.asset);',
-                "const urls = e.pose === 'asleep' ? null : characterFrames(desk.install_id, desk.seat_id, e.asset);"],
+                'const urls = characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, desk_top: e.desk_top });',
+                "const urls = e.pose === 'asleep' ? null : characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, desk_top: e.desk_top });"],
+            // card#12159 — the desk draws the tree's frames for its POSE: the walk drawn for every pose (the
+            // defect the sleeper was hidden behind), the pose's frames drawn without the desk's edge, and a held
+            // loop stepping the walk's three frames whatever the drawing holds.
+            "a desk drawn in the walk's frames whatever its pose" => ['../floor/painter.js',
+                'characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top })', 'characters.walkFrames(installId, seatId)'],
+            "a pose's frames drawn without the desk's top edge" => ['../floor/desk-layout.js',
+                "desk_top: (R['desk-sprite'].y - R.character.y) / R.character.h,", 'desk_top: 0.5,'],
+            'a held loop that steps three frames whatever the drawing holds' => ['../floor/painter.js',
+                "el.setAttribute('href', urls[tick % urls.length]);", "el.setAttribute('href', urls[tick % 3]);"],
             // N8: a frame list copied onto the element instead of held in the painter's Map.
             "a held loop's frames copied onto the element" => ['../floor/painter.js',
                 "                            stepping.push([el, urls]);\n                        }", "                            el.dataset.frames = JSON.stringify(urls);\n                        }"],

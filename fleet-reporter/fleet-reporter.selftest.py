@@ -2979,40 +2979,48 @@ hook(s87, "SessionStart", {"session_id": NEW, "hook_event_name": "SessionStart",
                            "source": "clear", "cwd": "/home/agent/mezzanine"})
 ev = s87.events()
 kinds = [e["kind"] for e in ev]
-eq("§ 8.7 rows 1-9 arrive in exactly the specified order",
+# Since card#11817 the /clear CARRIES the bound dispatch A (its subagent survives the clear,
+# MEASURED at 2.1.296) — so § 8.7's rows 5 and 6 (A's tool.end, its subagent.stop) do not occur,
+# row 7 names only B, row 8 carries `carried_call_ids: [A]`, and row 9 names the session it paired.
+eq("§ 8.7 rows 1-9 as amended by card#11817 arrive in exactly this order: B is reaped, A is carried",
    ["session.start", "turn.start", "tool.start", "subagent.spawn", "tool.start",
-    "tool.end", "tool.end", "subagent.stop", "turn.end", "session.end", "session.start"], kinds)
+    "tool.end", "turn.end", "session.end", "session.start"], kinds)
 A = ev[2]["data"]["call_id"]
 B = ev[4]["data"]["call_id"]
 eq("  the subagent's inner call names its parent dispatch call", A, ev[4]["data"]["parent_call_id"])
 eq("  … and is labelled agent_scope `subagent`", "subagent", ev[4]["data"]["agent_scope"])
-eq("  the INNER call closes FIRST — a consumer never sees a parent close while a child is open",
-   B, ev[5]["data"]["call_id"])
-for e in (ev[5], ev[6]):
-    eq(f"  {e['data']['tool_name']} closes aborted / session_cleared / reap_session_boundary / reap",
-       ("aborted", "session_cleared", "reap_session_boundary", "reap"),
-       (e["data"]["outcome"], e["data"]["abort_reason"], e["data"]["close_source"], e["data"]["match"]))
-eq("  the dispatch call also emits subagent.stop, aborted", ("aborted", A),
-   (ev[7]["data"]["outcome"], ev[7]["data"]["call_id"]))
-te = ev[8]["data"]
-eq("  turn.end: end_reason session_cleared, open_calls_at_end 2, aborted_call_ids [B, A]",
-   ("session_cleared", 2, [B, A]),
+eq("  the ONE close at the clear is the inner call B, aborted / session_cleared / reap_session_boundary / reap",
+   (B, "aborted", "session_cleared", "reap_session_boundary", "reap"),
+   (ev[5]["data"]["call_id"], ev[5]["data"]["outcome"], ev[5]["data"]["abort_reason"],
+    ev[5]["data"]["close_source"], ev[5]["data"]["match"]))
+eq("  … and NO close and no subagent.stop for the carried dispatch A",
+   [], [e for e in ev if e["kind"] in ("tool.end", "subagent.stop") and e["data"]["call_id"] == A])
+te = [e for e in ev if e["kind"] == "turn.end"][0]["data"]
+eq("  turn.end: end_reason session_cleared, open_calls_at_end 1, aborted_call_ids [B] — the carried "
+   "A is neither counted nor named", ("session_cleared", 1, [B]),
    (te["end_reason"], te["open_calls_at_end"], te["aborted_call_ids"]))
 eq("  … and NO tool.end anywhere reports completed or failed — the whole point of the ledger",
    [], [e for e in ev if e["kind"] == "tool.end" and e["data"]["outcome"] != "aborted"])
 eq("  … and NO turn.end reports stop_hook, so D2-MUST #1 can never mint idle here",
    [], [e for e in ev if e["kind"] == "turn.end" and e["data"]["end_reason"] == "stop_hook"])
-eq("  session.end: clear, 2 aborted calls", ("clear", 2),
-   (ev[9]["data"]["end_reason"], ev[9]["data"]["aborted_calls"]))
+se87 = [e for e in ev if e["kind"] == "session.end"][0]["data"]
+eq("  session.end: clear, 1 aborted call, carried_call_ids [A]", ("clear", 1, [A]),
+   (se87["end_reason"], se87["aborted_calls"], se87.get("carried_call_ids")))
 eq("  the SECOND /clear signal finds nothing and says so exactly once", 1,
    s87.counters().get("reap_noop_second_signal"))
-eq("  … and the predicate records WHICH signal reaped, one evaluation per /clear",
+eq("  … and the predicate records WHICH signal came first, one evaluation per /clear",
    {"true": 1, "false": 0}, s87.predicates().get("clear_reap_by_session_end"))
+eq("  … and the new session.start names no previous session in this order — its value before "
+   "card#11817, kept because a meaning change is a schema bump (VERSIONING wire rule 4)",
+   None, [e for e in ev if e["kind"] == "session.start"][-1]["data"]["previous_session_id"])
+eq("  … while the two signals still paired, internally, exactly once", 1,
+   s87.counters().get("clear_signals_paired"))
 eq("  … with no call closed twice", len({e["data"]["call_id"] for e in ev if e["kind"] == "tool.end"}),
    len([e for e in ev if e["kind"] == "tool.end"]))
 
-# The reverse hook order must put the IDENTICAL events on the wire — that is what "two
-# independent signals, either suffices" actually buys, and D1 specifies both paths.
+# The reverse hook order must put the same event SET on the wire. Since card#11817 SessionStart
+# reaps nothing, so in this order its session.start comes FIRST; it still names the session it
+# selected, as before, and the boundary set follows from SessionEnd, which pairs with it.
 s87r = seat("clear-trace-reverse")
 hook(s87r, "SessionStart", {"session_id": OLD, "hook_event_name": "SessionStart", "source": "startup", "cwd": "/home/agent/mezzanine"})
 hook(s87r, "UserPromptSubmit", {"session_id": OLD, "hook_event_name": "UserPromptSubmit", "prompt_id": "p1", "prompt": "go", "cwd": "/home/agent/mezzanine"})
@@ -3022,9 +3030,9 @@ hook(s87r, "PreToolUse", pre(tool="Bash", ti={"command": "sleep 120"}, tuid="too
 hook(s87r, "SessionStart", {"session_id": NEW, "hook_event_name": "SessionStart", "source": "clear", "cwd": "/home/agent/mezzanine"})
 hook(s87r, "SessionEnd", {"session_id": OLD, "hook_event_name": "SessionEnd", "reason": "clear"})
 evr = s87r.events()
-eq("SessionStart-first produces the same kinds, with the boundary set before the new session.start",
+eq("SessionStart-first produces the same kinds, with the new session.start BEFORE the boundary set",
    ["session.start", "turn.start", "tool.start", "subagent.spawn", "tool.start",
-    "tool.end", "tool.end", "subagent.stop", "turn.end", "session.end", "session.start"],
+    "session.start", "tool.end", "turn.end", "session.end"],
    [e["kind"] for e in evr])
 eq("  … the reap still happened EXACTLY once", 1,
    len([e for e in evr if e["kind"] == "session.end"]))
@@ -3032,8 +3040,10 @@ eq("  … and the second signal (SessionEnd this time) counted the no-op", 1,
    s87r.counters().get("reap_noop_second_signal"))
 eq("  … with the predicate recording the OTHER branch", {"true": 0, "false": 1},
    s87r.predicates().get("clear_reap_by_session_end"))
-eq("  … and the new session.start names the session it superseded", OLD,
+eq("  … and the new session.start names the session it superseded, as before card#11817", OLD,
    [e for e in evr if e["kind"] == "session.start"][-1]["data"]["previous_session_id"])
+eq("  … and SessionEnd did the internal pairing, exactly once", 1,
+   s87r.counters().get("clear_signals_paired"))
 
 # RED — disable the reap and watch the false idle become possible.
 p_noreap = plant_src((r"  const victims = \[\.\.\.ix\.calls\.values\(\)\]\.filter\(select\)\.reverse\(\);",
@@ -3054,11 +3064,11 @@ eq("  … and no tool.end is emitted for either killed call at all", 0,
 redgreen("kill-vs-complete, reporter half (§ 8.7, AT-1)",
          f"reap disabled -> aborted_call_ids=[], 0 tool.end for the two killed calls; "
          f"'turn ended => idle' would mint a false idle",
-         f"§ 8.7's 11 events in exact order, inner call B closing before parent A, both "
-         f"aborted/session_cleared/reap_session_boundary, turn.end open_calls_at_end=2 "
-         f"aborted_call_ids=[B,A], no completed/failed close, no stop_hook turn.end; "
-         f"reverse hook order gives the identical wire with reap_noop_second_signal=1 and the "
-         f"opposite predicate branch")
+         f"§ 8.7's events as amended by card#11817 in exact order: inner call B "
+         f"aborted/session_cleared/reap_session_boundary, the bound dispatch A carried "
+         f"(carried_call_ids=[A], no close), turn.end open_calls_at_end=1 aborted_call_ids=[B], "
+         f"no completed/failed close, no stop_hook turn.end; the reverse hook order gives the same "
+         f"event set with session.start first, reap_noop_second_signal=1 and the opposite predicate branch")
 
 
 print("\n== 13. THE KILL SIGNATURE: exit 137 AND a session boundary, never either alone (§ 6.6) ==")
@@ -4910,7 +4920,710 @@ redgreen("one seat's spool order is its event_time order (D1 § 11.2, card#11563
          "holder is broken and counted write_lock_broken")
 
 
-print("\n== 20. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
+print("\n== 20. A BACKGROUND DISPATCH STAYS OPEN UNTIL ITS SubagentStop (§ 8.5, card#11799) ==")
+# The floor draws an intern for every OPEN dispatch call. The harness now runs a dispatched
+# subagent as a background task: the dispatch tool returns on LAUNCH, so its PostToolUse fires
+# tens of ms after its PreToolUse (MEASURED on this project's seats, 2.1.266-2.1.296: dispatches
+# closed `post_tool_use` with a harness duration of tens of ms) while the subagent runs
+# for minutes. Closing the call there left the side table permanently empty. The tool's own
+# response says which case it is — `status: "async_launched"` with the launched `agentId` —
+# so that is what every case below drives, in BOTH hook orders, plus the backstops that must
+# still close a dispatch whose SubagentStop never comes.
+BGSID = "77777777-2222-4333-8444-000000000001"
+AG1, AG2, FOREIGN = "a0123456789abcdef", "a00000000000000b2", "a99999999999999f9"
+
+
+def bg_pre(tuid, desc="probe the ingest"):
+    return pre(tool="Agent", ti={"description": desc, "subagent_type": "coder", "prompt": "x",
+                                 "run_in_background": True}, tuid=tuid, session_id=BGSID)
+
+
+def bg_post(tuid, agent, *, launched=True, desc="probe the ingest"):
+    # tool_response is the shape a launch records on this project's seats at 2.1.296 (keys read
+    # from the transcripts' recorded tool results); a foreground dispatch's is `completed`.
+    tr = ({"isAsync": True, "status": "async_launched", "agentId": agent, "description": desc,
+           "resolvedModel": "<model id>", "prompt": "x", "outputFile": "/tmp/x.output",
+           "canReadOutputFile": True, "canContinueAgent": True}
+          if launched else {"status": "completed", "agentId": agent, "content": []})
+    p = bg_pre(tuid, desc)
+    p.update(hook_event_name="PostToolUse", tool_response=tr, duration_ms=22 if launched else 4957)
+    return p
+
+
+def bg_tasks(*agents):
+    return [{"id": a, "type": "subagent", "status": "running", "description": "probe",
+             "agent_type": "coder"} for a in agents]
+
+
+def bg_hook(s, name, *, reporter, **kw):
+    base = {"session_id": BGSID, "hook_event_name": name, "prompt_id": "p1", "cwd": "/home/agent/mezzanine"}
+    base.update(kw)
+    return hook(s, name, base, reporter=reporter)
+
+
+STEPS = {
+    "prompt": lambda s, r: bg_hook(s, "UserPromptSubmit", reporter=r, prompt="go"),
+    "pre1": lambda s, r: hook(s, "PreToolUse", bg_pre("toolu_D1"), reporter=r),
+    "pre2": lambda s, r: hook(s, "PreToolUse", bg_pre("toolu_D2", "second"), reporter=r),
+    "start1": lambda s, r: bg_hook(s, "SubagentStart", reporter=r, agent_id=AG1, agent_type="coder"),
+    "start2": lambda s, r: bg_hook(s, "SubagentStart", reporter=r, agent_id=AG2, agent_type="coder"),
+    "launch1": lambda s, r: hook(s, "PostToolUse", bg_post("toolu_D1", AG1), reporter=r),
+    "launch2": lambda s, r: hook(s, "PostToolUse", bg_post("toolu_D2", AG2, desc="second"), reporter=r),
+    "done1": lambda s, r: hook(s, "PostToolUse", bg_post("toolu_D1", AG1, launched=False), reporter=r),
+    "inner1": lambda s, r: hook(s, "PreToolUse", pre(tool="Bash", ti={"command": "ls"}, tuid="toolu_I1",
+                                                     session_id=BGSID, agent_id=AG1), reporter=r),
+    "stop_bg1": lambda s, r: bg_hook(s, "Stop", reporter=r, stop_hook_active=False,
+                                     background_tasks=bg_tasks(AG1), session_crons=[]),
+    "stop_bg12": lambda s, r: bg_hook(s, "Stop", reporter=r, stop_hook_active=False,
+                                      background_tasks=bg_tasks(AG1, AG2), session_crons=[]),
+    "stop_none": lambda s, r: bg_hook(s, "Stop", reporter=r, stop_hook_active=False,
+                                      background_tasks=[], session_crons=[]),
+    "foreign_stop": lambda s, r: bg_hook(s, "SubagentStop", reporter=r, agent_id=FOREIGN, agent_type="x",
+                                         stop_hook_active=False, background_tasks=[], session_crons=[]),
+    "sstop1": lambda s, r: bg_hook(s, "SubagentStop", reporter=r, agent_id=AG1, agent_type="coder",
+                                   stop_hook_active=False, background_tasks=[], session_crons=[]),
+    "sstop2": lambda s, r: bg_hook(s, "SubagentStop", reporter=r, agent_id=AG2, agent_type="coder",
+                                   stop_hook_active=False, background_tasks=[], session_crons=[]),
+    "end": lambda s, r: bg_hook(s, "SessionEnd", reporter=r, reason="other"),
+}
+
+
+def dispatch_trace(name, steps, reporter=REPORTER):
+    """Drive `steps` in order; return (events, counters, {step: [kinds emitted by that step]})."""
+    s = seat(name)
+    bg_hook(s, "SessionStart", reporter=reporter, source="startup")
+    per = {}
+    for st in steps:
+        before = len(s.events())
+        STEPS[st](s, reporter)
+        per.setdefault(st, []).extend(e["kind"] for e in s.events()[before:])
+    return s.events(), s.counters(), per
+
+
+def dispatch_closes(ev, call_id):
+    return [(e["data"]["outcome"], e["data"]["close_source"], e["data"]["match"])
+            for e in ev if e["kind"] == "tool.end" and e["data"]["call_id"] == call_id]
+
+
+def dispatch_ids(ev):
+    return [e["data"]["call_id"] for e in ev if e["kind"] == "subagent.spawn"]
+
+
+BG_MEASURED = ["prompt", "pre1", "start1", "launch1", "inner1", "stop_bg1", "foreign_stop", "sstop1"]
+ev, ctr, per = dispatch_trace("bg-measured", BG_MEASURED)
+D1 = dispatch_ids(ev)[0]
+eq("the MEASURED background order (SubagentStart, then the launch's PostToolUse): the launch "
+   "closes nothing — the dispatch is still open, so the floor draws the intern", [], per["launch1"])
+eq("  … the parent's turn ends while the subagent runs, and its Stop does NOT reap the dispatch "
+   "the payload lists as a running background task", ["turn.end"], per["stop_bg1"])
+te = [e for e in ev if e["kind"] == "turn.end"][0]["data"]
+eq("  … so that turn.end is clean: aborted_call_ids [], open_calls_at_end 0, background_tasks_open 1",
+   ([], 0, 1), (te["aborted_call_ids"], te["open_calls_at_end"], te["background_tasks_open"]))
+eq("  … a SubagentStop for an agent no dispatch launched (the harness fires these far more often "
+   "than dispatches) closes nothing", [], per["foreign_stop"])
+eq("  … the subagent's inner call names its still-open parent", D1,
+   [e for e in ev if e["kind"] == "tool.start" and e["data"]["tool_name"] == "Bash"][0]["data"]["parent_call_id"])
+eq("  … and the dispatch's ONE close is its own SubagentStop, completed, matched by agent_id",
+   [("completed", "subagent_stop_hook", "agent_id")], dispatch_closes(ev, D1))
+eq("  … with exactly one subagent.stop, from the same hook",
+   ["subagent_stop_hook"], [e["data"]["close_source"] for e in ev if e["kind"] == "subagent.stop"])
+eq("  … and the counters say which rule fired", (1, 1, 1),
+   (ctr.get("dispatch_background_launch"), ctr.get("dispatch_kept_across_turn_reap"),
+    ctr.get("subagent_stop_unmatched")))
+
+# RED 1 — the defect as shipped: the launch's PostToolUse closes the dispatch.
+p_close_on_launch = plant(("if (!tr || typeof tr !== 'object' || tr.status !== 'async_launched') return null;",
+                           "return null;"))
+evr, ctrr, perr = dispatch_trace("bg-measured-red-launch", BG_MEASURED, p_close_on_launch)
+D1r = dispatch_ids(evr)[0]
+eq("RED: reading no launch marker closes the dispatch at its launch, ~tens of ms after it opened "
+   "— the empty side table", ["tool.end", "subagent.stop"], perr["launch1"])
+eq("  … and the real SubagentStop then finds nothing to close",
+   [("completed", "post_tool_use", "harness_ref")], dispatch_closes(evr, D1r))
+
+# RED 2 — keep it open but let the turn reap take it: the intern vanishes when the parent's turn
+# ends, minutes before the subagent does.
+p_turn_reaps = plant(("  const stillRunning = (e) => !!(e.is_dispatch && e.child_agent_id && running.has(e.child_agent_id));",
+                      "  const stillRunning = (e) => false;"))
+evt, _, pert = dispatch_trace("bg-measured-red-turnreap", BG_MEASURED, p_turn_reaps)
+eq("RED: a turn reap blind to background_tasks aborts the running subagent's dispatch at the "
+   "parent's Stop", [("aborted", "reap_turn_boundary", "reap")], dispatch_closes(evt, dispatch_ids(evt)[0]))
+
+# RED 3 — the SubagentStop fallback considering BOUND dispatches: the first foreign stop takes it.
+p_any_sole = plant(("const dispatches = [...ix.calls.values()].filter((e) => e.is_dispatch && !e.child_agent_id);",
+                    "const dispatches = [...ix.calls.values()].filter((e) => e.is_dispatch);"))
+evf, _, perf = dispatch_trace("bg-measured-red-foreign", BG_MEASURED, p_any_sole)
+eq("RED: a sole-open fallback over BOUND dispatches lets a foreign agent's SubagentStop close the "
+   "running subagent's dispatch", [("completed", "subagent_stop_hook", "sole_open")],
+   dispatch_closes(evf, dispatch_ids(evf)[0]))
+
+# The OTHER order of launch and binding: the launch's PostToolUse before SubagentStart. The
+# launch's own agentId binds the call exactly, so SubagentStart has nothing left to decide.
+ev2, ctr2, _ = dispatch_trace("bg-launch-first", ["prompt", "pre1", "launch1", "start1", "stop_bg1", "sstop1"])
+eq("launch BEFORE SubagentStart: still one close, by SubagentStop, matched by agent_id",
+   [("completed", "subagent_stop_hook", "agent_id")], dispatch_closes(ev2, dispatch_ids(ev2)[0]))
+eq("  … bound by the launch's own agentId", 1, ctr2.get("agent_bind_launch_ref"))
+
+# Two dispatches in parallel, both launched before either SubagentStart: the sole-unbound rule
+# can bind neither (ambiguous), so only the launch's exact agentId can tie each stop to its call.
+PAR = ["prompt", "pre1", "pre2", "start1", "start2", "launch1", "launch2", "stop_bg12", "sstop2", "sstop1"]
+evp, ctrp, _ = dispatch_trace("bg-parallel", PAR)
+P1, P2 = dispatch_ids(evp)
+eq("two parallel background dispatches each close at their OWN SubagentStop, by agent_id",
+   ([("completed", "subagent_stop_hook", "agent_id")], [("completed", "subagent_stop_hook", "agent_id")]),
+   (dispatch_closes(evp, P1), dispatch_closes(evp, P2)))
+p_no_launch_bind = plant(("          journal(ctx.spool, { k: 'bind', call_id: entry.call_id, child_agent_id: launch.agentId });\n"
+                          "          entry.child_agent_id = launch.agentId;\n",
+                          ""))
+evpr, _, _ = dispatch_trace("bg-parallel-red", PAR, p_no_launch_bind)
+eq("RED: without the launch's exact binding the ambiguous parallel pair is bound to nothing, so "
+   "the parent's Stop cannot see them in background_tasks and aborts both while they run",
+   ([("aborted", "reap_turn_boundary", "reap")], [("aborted", "reap_turn_boundary", "reap")]),
+   tuple(dispatch_closes(evpr, c) for c in dispatch_ids(evpr)))
+
+# SubagentStop BEFORE the dispatch's own PostToolUse — the 2.1.240 / 2.1.247-headless order, and
+# a background launch whose subagent finished inside the launch window. The second signal finds
+# the call closed and puts nothing on the wire (§ 8.5).
+for label, steps in (("foreground", ["prompt", "pre1", "start1", "sstop1", "done1"]),
+                     ("background", ["prompt", "pre1", "start1", "sstop1", "launch1"])):
+    evo, ctro, pero = dispatch_trace(f"order-stop-first-{label}", steps)
+    eq(f"{label}, SubagentStop FIRST: one close, by SubagentStop", [("completed", "subagent_stop_hook", "agent_id")],
+       dispatch_closes(evo, dispatch_ids(evo)[0]))
+    eq(f"  … and the late PostToolUse emits nothing — no synthesized phantom `Agent` call",
+       ([], 0), (pero[steps[-1]], len([e for e in evo if e["data"].get("synthesized")])))
+    eq("  … counted", 1, ctro.get("dispatch_close_after_subagent_stop"))
+p_no_absorb = plant(("        if (r.close_source === 'subagent_stop_hook' && e.harness_call_ref) {",
+                     "        if (false) {"))
+evn, _, pern = dispatch_trace("order-stop-first-red", ["prompt", "pre1", "start1", "sstop1", "done1"], p_no_absorb)
+eq("RED: with no trace of the SubagentStop close, the late PostToolUse synthesizes a phantom "
+   "`Agent` call pair", ["tool.start", "tool.end"], pern["done1"])
+
+# A foreground dispatch whose PostToolUse comes FIRST keeps the behaviour it always had.
+evg, ctrg, _ = dispatch_trace("order-fg-post-first", ["prompt", "pre1", "start1", "done1", "sstop1"])
+eq("foreground, PostToolUse first (status completed): closes at its PostToolUse, exactly as before",
+   [("completed", "post_tool_use", "harness_ref")], dispatch_closes(evg, dispatch_ids(evg)[0]))
+eq("  … and is not counted as a background launch", None, ctrg.get("dispatch_background_launch"))
+
+# THE BACKSTOPS — a dispatch whose SubagentStop never arrives is still closed.
+evs, _, pers = dispatch_trace("bg-backstop-turn", ["prompt", "pre1", "start1", "launch1", "stop_none"])
+Ds = dispatch_ids(evs)[0]
+eq("backstop: a Stop whose background_tasks no longer lists the subagent reaps its dispatch",
+   [("aborted", "reap_turn_boundary", "reap")], dispatch_closes(evs, Ds))
+eq("  … and that turn.end names it", [Ds], [e for e in evs if e["kind"] == "turn.end"][0]["data"]["aborted_call_ids"])
+p_never_reap = plant(("  const stillRunning = (e) => !!(e.is_dispatch && e.child_agent_id && running.has(e.child_agent_id));",
+                      "  const stillRunning = (e) => !!e.is_dispatch;"))
+evsr, _, _ = dispatch_trace("bg-backstop-turn-red", ["prompt", "pre1", "start1", "launch1", "stop_none"], p_never_reap)
+eq("RED: exempting every dispatch from the turn reap leaves it open with nothing listing it",
+   [], dispatch_closes(evsr, dispatch_ids(evsr)[0]))
+eve, _, _ = dispatch_trace("bg-backstop-session", ["prompt", "pre1", "start1", "launch1", "stop_bg1", "end"])
+eq("backstop: the session boundary reaps a background dispatch still open at SessionEnd",
+   [("aborted", "reap_session_boundary", "reap")], dispatch_closes(eve, dispatch_ids(eve)[0]))
+p_session_spares = plant(("  const select = (e) => e.session_id === sessionId && !carried(e);",
+                          "  const select = (e) => e.session_id === sessionId && !carried(e) && !e.child_agent_id;"))
+ever, _, _ = dispatch_trace("bg-backstop-session-red", ["prompt", "pre1", "start1", "launch1", "stop_bg1", "end"], p_session_spares)
+eq("RED: a session reap that spares bound dispatches leaves one open past its session's end",
+   [], dispatch_closes(ever, dispatch_ids(ever)[0]))
+
+redgreen("a background dispatch stays open until its SubagentStop (§ 8.5, card#11799)",
+         "close on the launch's PostToolUse -> dispatch closed tens of ms after opening, no intern; "
+         "turn reap blind to background_tasks -> aborted at the parent's Stop; sole-open over bound "
+         "dispatches -> a foreign SubagentStop closes it; no launch binding -> a parallel pair is "
+         "aborted at the parent's Stop; no SubagentStop trace -> a late PostToolUse synthesizes a phantom Agent pair; "
+         "every-dispatch turn exemption or a session reap sparing bound calls -> a lost SubagentStop "
+         "leaves the dispatch open",
+         "async_launched keeps the call open; its one close is its own SubagentStop (agent_id), in "
+         "both launch/bind orders and for a parallel pair; a Stop listing the subagent leaves it open "
+         "with a clean turn.end; a foreign SubagentStop closes nothing; SubagentStop-first gives one "
+         "close and a silent, counted PostToolUse in both modes; a foreground PostToolUse-first "
+         "dispatch closes as before; Stop not listing it and SessionEnd both still reap it")
+
+
+print("\n== 22. A /clear CARRIES A RUNNING DISPATCH INTO THE NEW SESSION, AND PAIRS BY TOMBSTONE (§ 8.3, § 8.4, card#11817, card#11824) ==")
+# MEASURED twice at 2.1.296, interactive, 2026-10-13: a running background subagent SURVIVES a
+# /clear — its hooks and its new transcript segment carry the NEW session_id, and the new
+# session's Stop counts it in background_tasks. The reporter aborted its dispatch at the clear,
+# so the intern left the floor while the subagent ran on (card#11817). Separately, the second
+# /clear signal (SessionStart) used to reap "the most-recently-active open session other than its
+# own", which in the measured order (SessionEnd first) can only be ANOTHER live terminal's session
+# (card#11824). Every hook below runs on a PINNED clock, a fixed step apart, so the pairing windows
+# (K.CLEAR_PAIR_MS, K.CLEAR_GAP_MS) are crossed exactly where a case says and nowhere else.
+NEWSID = "77777777-2222-4333-8444-000000000002"
+SID2 = "77777777-2222-4333-8444-000000000003"
+N2SID = "77777777-2222-4333-8444-000000000004"
+_K_SRC = REPORTER.read_text(encoding="utf-8")
+
+
+def k_ms(name):
+    m = re.search(rf"\b{name}:\s*(\d+),", _K_SRC)
+    return int(m.group(1)) if m else None
+
+
+CLEAR_PAIR_MS, CLEAR_GAP_MS = k_ms("CLEAR_PAIR_MS"), k_ms("CLEAR_GAP_MS")
+eq("the two pairing windows are constants the reporter declares (K.CLEAR_PAIR_MS, K.CLEAR_GAP_MS), "
+   "and the narrow one is the narrower", True,
+   CLEAR_PAIR_MS is not None and CLEAR_GAP_MS is not None and CLEAR_GAP_MS < CLEAR_PAIR_MS)
+# Only so the cases below can still be DRIVEN (and red) against a reporter that declares neither.
+CLEAR_PAIR_MS, CLEAR_GAP_MS = CLEAR_PAIR_MS or 30000, CLEAR_GAP_MS or 5000
+
+
+def sh(s, name, sid, r, t, **kw):
+    base = {"session_id": sid, "hook_event_name": name, "prompt_id": "p1", "cwd": "/home/agent/mezzanine"}
+    base.update(kw)
+    return hook(s, name, base, reporter=r, FLEET_REPORTER_NOW_MS=t)
+
+
+def sp(s, name, payload, r, t, **kw):
+    payload = dict(payload)
+    payload.update(kw)
+    return hook(s, name, payload, reporter=r, FLEET_REPORTER_NOW_MS=t)
+
+
+def index_append(s, t, rec):
+    """Append one raw index-journal record — a fold UNIT, standing for a record another process
+    journaled out of decision order (the fold runs outside the write lock, D1 § 8.2)."""
+    rec = dict(rec, at=time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(t / 1000)) + ".%03dZ" % (t % 1000))
+    f = sorted((s.spool / "index").glob("*.jsonl"))[-1]
+    with f.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(rec) + "\n")
+
+
+def spawn_id(s, nth=0):
+    return [e["data"]["call_id"] for e in s.events() if e["kind"] == "subagent.spawn"][nth]
+
+
+def stop(sid, *agents, **kw):
+    return dict(stop_hook_active=False, background_tasks=bg_tasks(*agents), session_crons=[], **kw)
+
+
+CSTEPS = {
+    "prompt": lambda s, r, t, b: sh(s, "UserPromptSubmit", BGSID, r, t, prompt="go"),
+    "pre1": lambda s, r, t, b: sp(s, "PreToolUse", bg_pre("toolu_D1"), r, t),
+    "start1": lambda s, r, t, b: sh(s, "SubagentStart", BGSID, r, t, agent_id=AG1, agent_type="coder"),
+    "launch1": lambda s, r, t, b: sp(s, "PostToolUse", bg_post("toolu_D1", AG1), r, t),
+    "inner1": lambda s, r, t, b: sp(s, "PreToolUse", pre(tool="Bash", ti={"command": "ls"}, tuid="toolu_I1",
+                                                          session_id=BGSID, agent_id=AG1), r, t),
+    "stop_bg1": lambda s, r, t, b: sh(s, "Stop", BGSID, r, t, **stop(BGSID, AG1)),
+    "clear_end": lambda s, r, t, b: sh(s, "SessionEnd", BGSID, r, t, reason="clear"),
+    "clear_start": lambda s, r, t, b: sh(s, "SessionStart", NEWSID, r, t, source="clear"),
+    "inner1_new": lambda s, r, t, b: sp(s, "PreToolUse", pre(tool="Bash", ti={"command": "ls"}, tuid="toolu_I1N",
+                                                              session_id=NEWSID, agent_id=AG1), r, t),
+    "sstop1_new": lambda s, r, t, b: sh(s, "SubagentStop", NEWSID, r, t, agent_id=AG1, agent_type="coder", **stop(NEWSID)),
+    "sstop1_old": lambda s, r, t, b: sh(s, "SubagentStop", BGSID, r, t, agent_id=AG1, agent_type="coder", **stop(BGSID)),
+    "stop_new_none": lambda s, r, t, b: sh(s, "Stop", NEWSID, r, t, **stop(NEWSID)),
+    "stop_new_bg1": lambda s, r, t, b: sh(s, "Stop", NEWSID, r, t, **stop(NEWSID, AG1)),
+    "end_new": lambda s, r, t, b: sh(s, "SessionEnd", NEWSID, r, t, reason="other"),
+    # A flusher pass of a flusher that STARTED BEFORE these calls opened — the realistic long-running
+    # one. Its clock is pinned to the trace's base minus 1 s so its start-up reap (§ 8.3's last row,
+    # `reporter_restart`, which selects entries older than the flusher's start) selects nothing, and
+    # the pass is only what this case is about: a fold and a snapshot write between the two signals.
+    "flush": lambda s, r, t, b: flush(s, reporter=r, FLEET_REPORTER_NOW_MS=b - 1000),
+    # The second terminal: session SID2, dispatch D2 bound to AG2, inner call I2 inside it.
+    "start_t2": lambda s, r, t, b: sh(s, "SessionStart", SID2, r, t, source="startup"),
+    "prompt2": lambda s, r, t, b: sh(s, "UserPromptSubmit", SID2, r, t, prompt="go", prompt_id="p2"),
+    "pre2": lambda s, r, t, b: sp(s, "PreToolUse", bg_pre("toolu_D2", "second"), r, t, session_id=SID2, prompt_id="p2"),
+    "start2": lambda s, r, t, b: sh(s, "SubagentStart", SID2, r, t, agent_id=AG2, agent_type="coder", prompt_id="p2"),
+    "launch2": lambda s, r, t, b: sp(s, "PostToolUse", bg_post("toolu_D2", AG2, desc="second"), r, t,
+                                     session_id=SID2, prompt_id="p2"),
+    "inner2": lambda s, r, t, b: sp(s, "PreToolUse", pre(tool="Bash", ti={"command": "ls"}, tuid="toolu_I2",
+                                                          session_id=SID2, agent_id=AG2, prompt_id="p2"), r, t),
+    "stop2_bg2": lambda s, r, t, b: sh(s, "Stop", SID2, r, t, prompt_id="p2", **stop(SID2, AG2)),
+    "sstop2": lambda s, r, t, b: sh(s, "SubagentStop", SID2, r, t, agent_id=AG2, agent_type="coder", **stop(SID2)),
+    "clear2_end": lambda s, r, t, b: sh(s, "SessionEnd", SID2, r, t, reason="clear"),
+    "clear_start2": lambda s, r, t, b: sh(s, "SessionStart", N2SID, r, t, source="clear"),
+    "stop_n2_none": lambda s, r, t, b: sh(s, "Stop", N2SID, r, t, **stop(N2SID)),
+    # Fold units: a record journaled out of decision order.
+    "dup_open_new": lambda s, r, t, b: index_append(s, t, {"k": "session_open", "session_id": NEWSID, "source": "clear"}),
+    "late_carry": lambda s, r, t, b: index_append(s, t, {"k": "carry", "call_id": spawn_id(s), "from_session_id": BGSID}),
+}
+
+
+def clear_trace(name, steps, reporter=REPORTER):
+    """Drive `steps` on a pinned clock (100 ms apart; an int in `steps` advances it by that many
+    ms). Returns (seat, events, counters, predicates, {step: [events that step emitted]})."""
+    s = seat(name)
+    base = int(time.time() * 1000)
+    t = base
+    sh(s, "SessionStart", BGSID, reporter, t, source="startup")
+    per = {}
+    for st in steps:
+        if isinstance(st, int):
+            t += st
+            continue
+        t += 100
+        before = len(s.events())
+        CSTEPS[st](s, reporter, t, base)
+        per.setdefault(st, []).extend(s.events()[before:])
+    return s, s.events(), s.counters(), s.predicates(), per
+
+
+def kinds(evs):
+    return [e["kind"] for e in evs if e["kind"] != "heartbeat"]
+
+
+def closes_of(ev, call_id):
+    return [(e["data"]["outcome"], e["data"]["close_source"], e["data"]["match"], e["data"]["abort_reason"], e["session_id"])
+            for e in ev if e["kind"] == "tool.end" and e["data"]["call_id"] == call_id]
+
+
+def call_of(ev, tuid_tool, sid):
+    """The call_id of the first tool.start of `tuid_tool` in session `sid`."""
+    return [e["data"]["call_id"] for e in ev if e["kind"] == "tool.start"
+            and e["data"]["tool_name"] == tuid_tool and e["session_id"] == sid][0]
+
+
+def only(evs, kind):
+    xs = [e for e in evs if e["kind"] == kind]
+    return xs[0]["data"] if len(xs) == 1 else {"_count": len(xs)}
+
+
+def pairs(s):
+    """The `pair` records the index journal holds, in order — the internal pairing's own record
+    (D1 § 8.2). Nothing on the wire names a pairing, so this is where a case reads which twin a
+    signal paired with. Read before any flusher pass, which may compact the journal."""
+    out = []
+    for f in sorted((s.spool / "index").glob("*.jsonl")):
+        for line in f.read_text(encoding="utf-8").splitlines():
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if r.get("k") == "pair":
+                out.append((r.get("old_session_id"), r.get("new_session_id")))
+    return out
+
+
+def snapshot(s):
+    try:
+        return json.loads((s.spool / "index" / "snapshot.json").read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+C1 = ["prompt", "pre1", "start1", "launch1", "inner1", "stop_bg1", "clear_end", "clear_start"]
+
+
+def c1_view(ev, ctr, prd, per):
+    D = [e["data"]["call_id"] for e in ev if e["kind"] == "subagent.spawn"][0]
+    I = call_of(ev, "Bash", BGSID)
+    se = only(per["clear_end"], "session.end")
+    return {
+        "end_kinds": kinds(per["clear_end"]),
+        "end_closes": [(e["data"]["call_id"] == I, e["data"]["outcome"], e["data"]["abort_reason"])
+                       for e in per["clear_end"] if e["kind"] == "tool.end"],
+        "aborted_calls": se.get("aborted_calls"), "carried": se.get("carried_call_ids") == [D],
+        "start_kinds": kinds(per["clear_start"]),
+        "previous": only(per["clear_start"], "session.start").get("previous_session_id"),
+        "counters": (ctr.get("dispatch_carried_across_clear"), ctr.get("dispatch_rekeyed_to_new_session"),
+                     ctr.get("reap_noop_second_signal"), ctr.get("clear_second_signal_found_nothing")),
+        "predicate": prd.get("clear_reap_by_session_end"),
+        "paired": ctr.get("clear_signals_paired"),
+    }
+
+
+# `previous`, `reap_noop_second_signal`, `clear_second_signal_found_nothing` and the predicate are
+# the values a reporter BEFORE card#11817 put on the wire for this trace: a wire field keeps its
+# meaning (VERSIONING wire rule 4). The pairing is internal and read off `clear_signals_paired`.
+C1_WANT = {
+    "end_kinds": ["tool.end", "session.end"], "end_closes": [(True, "aborted", "session_cleared")],
+    "aborted_calls": 1, "carried": True, "start_kinds": ["session.start"], "previous": None,
+    "counters": (1, 1, 1, 1), "predicate": {"true": 1, "false": 0}, "paired": 1,
+}
+s, ev, ctr, prd, per = clear_trace("clear-c1", C1)
+D1c = spawn_id(s)
+got = c1_view(ev, ctr, prd, per)
+for k in C1_WANT:
+    eq(f"C1 (measured order) {k}", C1_WANT[k], got[k])
+eq("  … and NO close of the dispatch anywhere: it is carried, so the intern stays drawn", [], closes_of(ev, D1c))
+
+# C2 — the carried subagent's next call names its parent, and its SubagentStop under NEW closes it.
+s, ev, ctr, _, per = clear_trace("clear-c2", C1 + ["inner1_new", "sstop1_new"])
+D = spawn_id(s)
+IN = call_of(ev, "Bash", NEWSID)
+eq("C2: the subagent's first post-clear call names the carried dispatch as its parent (it was null)",
+   D, [e for e in ev if e["kind"] == "tool.start" and e["data"]["call_id"] == IN][0]["data"]["parent_call_id"])
+eq("  … the dispatch's ONE close is its SubagentStop, completed, matched by agent_id, under NEW",
+   [("completed", "subagent_stop_hook", "agent_id", None, NEWSID)], closes_of(ev, D))
+eq("  … with exactly one subagent.stop for it", 1,
+   len([e for e in ev if e["kind"] == "subagent.stop" and e["data"]["call_id"] == D]))
+eq("  … and the post-clear inner call is closed by the stop's scope reap first",
+   [("aborted", "reap_turn_boundary", "reap", "turn_boundary", NEWSID)], closes_of(ev, IN))
+
+# C2b — the unverified branch (§ 3): the carried SubagentStop arrives under the OLD id.
+C2B = C1 + ["inner1_new", "sstop1_old"]
+s, ev, _, _, _ = clear_trace("clear-c2b", C2B)
+eq("C2b: a SubagentStop under the OLD id still closes the dispatch, completed, by agent_id",
+   [("completed", "subagent_stop_hook", "agent_id", None, BGSID)], closes_of(ev, spawn_id(s)))
+eq("  … and still closes the inner call the subagent opened under NEW (its scope reap is agent-scoped)",
+   [("aborted", "reap_turn_boundary", "reap", "turn_boundary", NEWSID)], closes_of(ev, call_of(ev, "Bash", NEWSID)))
+
+# C3 — SessionStart first: the start reaps NOTHING; the end carries, and pairs with the start.
+C3 = ["prompt", "pre1", "start1", "launch1", "inner1", "stop_bg1", "clear_start", "clear_end", "stop_new_none"]
+s, ev, ctr, prd, per = clear_trace("clear-c3", C3)
+D = spawn_id(s)
+eq("C3 (SessionStart first): the start emits ONLY its session.start, still naming the session it "
+   "selected (its value before card#11817)",
+   (["session.start"], BGSID), (kinds(per["clear_start"]), only(per["clear_start"], "session.start").get("previous_session_id")))
+eq("  … the end reaps the inner call and carries the dispatch",
+   (["tool.end", "session.end"], [D]), (kinds(per["clear_end"]), only(per["clear_end"], "session.end").get("carried_call_ids")))
+C3_WANT = (1, None, {"true": 0, "false": 1}, [(BGSID, NEWSID)])
+c3_got = lambda s, ctr, prd: (ctr.get("reap_noop_second_signal"), ctr.get("clear_second_signal_found_nothing"),
+                              prd.get("clear_reap_by_session_end"), pairs(s))
+eq("  … the counters and the predicate keep their pre-card#11817 values, and the end pairs once",
+   C3_WANT, c3_got(s, ctr, prd))
+eq("  … and the pairing re-keyed it: NEW's Stop not listing the subagent reaps it under NEW",
+   [("aborted", "reap_turn_boundary", "reap", "turn_boundary", NEWSID)], closes_of(ev, D))
+
+# C3b (review R2-7a) — a hook of NEW lands BEFORE SessionStart(NEW): the session already exists
+# without a source when the start arrives, and the start must still mark it `clear`.
+C3B = ["prompt", "pre1", "start1", "launch1", "stop_bg1", "inner1_new", "clear_start", "clear_end", "stop_new_none"]
+s, ev, ctr, _, per = clear_trace("clear-c3b", C3B)
+eq("C3b: SessionStart(clear) that is NOT the new session's first hook still pairs (the end finds it)",
+   (1, [("aborted", "reap_turn_boundary", "reap", "turn_boundary", NEWSID)]),
+   (ctr.get("dispatch_rekeyed_to_new_session"), closes_of(ev, spawn_id(s))))
+
+# C4 — a real exit of NEW reaps the carried dispatch like any other of NEW's calls.
+s, ev, _, _, per = clear_trace("clear-c4", C1 + ["end_new"])
+D = spawn_id(s)
+C4_WANT = ([("aborted", "reap_session_boundary", "reap", "session_ended", NEWSID)], ["aborted"], [])
+c4_got = lambda ev, per, D: (closes_of(ev, D),
+                              [e["data"]["outcome"] for e in ev if e["kind"] == "subagent.stop" and e["data"]["call_id"] == D],
+                              only(per["end_new"], "session.end").get("carried_call_ids"))
+eq("C4: NEW's real SessionEnd reaps the carried dispatch (session_ended, under NEW), with its "
+   "subagent.stop, and carries nothing", C4_WANT, c4_got(ev, per, D))
+
+# C5 — the turn backstop selects the re-keyed dispatch.
+s, ev, ctr, _, per = clear_trace("clear-c5", C1 + ["stop_new_bg1", "stop_new_none"])
+D = spawn_id(s)
+eq("C5: NEW's Stop listing the subagent keeps it, with a clean turn.end",
+   (["turn.end"], [], 2), (kinds(per["stop_new_bg1"]), only(per["stop_new_bg1"], "turn.end").get("aborted_call_ids"),
+                           ctr.get("dispatch_kept_across_turn_reap")))
+C5_WANT = ([("aborted", "reap_turn_boundary", "reap", "turn_boundary", NEWSID)], [D])
+c5_got = lambda ev, per, D: (closes_of(ev, D), only(per["stop_new_none"], "turn.end").get("aborted_call_ids"))
+eq("  … and NEW's Stop no longer listing it reaps it, named in that turn.end", C5_WANT, c5_got(ev, per, D))
+
+# C6 — an UNBOUND dispatch at the clear is reaped as before (partial: only the field is new).
+C6 = ["prompt", "pre1", "clear_end", "clear_start"]
+s, ev, _, _, per = clear_trace("clear-c6", C6)
+D = spawn_id(s)
+C6_WANT = ([("aborted", "reap_session_boundary", "reap", "session_cleared", BGSID)], ["aborted"], [])
+c6_got = lambda ev, per, D: (closes_of(ev, D),
+                              [e["data"]["outcome"] for e in ev if e["kind"] == "subagent.stop" and e["data"]["call_id"] == D],
+                              only(per["clear_end"], "session.end").get("carried_call_ids"))
+eq("C6: an unbound dispatch at the clear is reaped session_cleared with its subagent.stop; "
+   "carried_call_ids is []", C6_WANT, c6_got(ev, per, D))
+
+# C7 — the SubagentStop lands between the two signals: one close, and the pairing re-keys nothing.
+s, ev, ctr, _, _ = clear_trace("clear-c7", ["prompt", "pre1", "start1", "launch1", "clear_end", "sstop1_new", "clear_start"])
+eq("C7: a SubagentStop between the signals is the ONE close, completed; the pairing still happens "
+   "and re-keys nothing", ([("completed", "subagent_stop_hook", "agent_id", None, NEWSID)], 0, 1),
+   (closes_of(ev, spawn_id(s)), ctr.get("dispatch_rekeyed_to_new_session", 0), ctr.get("clear_signals_paired")))
+# C8 is block 20, run unchanged above: its `bg-backstop-session` GREEN is the control that a
+# session ending for any reason but `clear` still takes every open call it owned.
+
+# C9 / C9b — TWO TERMINALS (card#11824, D1 § 8.4). The other terminal's session, dispatch and inner
+# call are untouched by this terminal's /clear, in both hook orders.
+T2 = ["start_t2", "prompt2", "pre2", "start2", "launch2", "inner2"]
+T1 = ["prompt", "pre1", "start1", "launch1", "stop_bg1"]
+
+
+def two_terminal_view(s, ev, per, first, second):
+    spawns = {e["session_id"]: e["data"]["call_id"] for e in ev if e["kind"] == "subagent.spawn"}
+    D1x, D2x = spawns[BGSID], spawns[SID2]
+    I2x = call_of(ev, "Bash", SID2)
+    window = per[first] + per[second]
+    return {
+        "sid2_events_in_clear": [e["kind"] for e in window if e["session_id"] == SID2],
+        "sid2_session_end": len([e for e in ev if e["kind"] == "session.end" and e["session_id"] == SID2]),
+        "previous": only(per["clear_start"], "session.start").get("previous_session_id"),
+        "pairs": pairs(s),
+        "i2": [c[:2] for c in closes_of(ev, I2x)],
+        "d2": [c[:3] for c in closes_of(ev, D2x)],
+        "d1": closes_of(ev, D1x),
+    }
+
+
+TT_WANT = {
+    "sid2_events_in_clear": [], "sid2_session_end": 0,
+    "i2": [("aborted", "reap_turn_boundary")], "d2": [("completed", "subagent_stop_hook", "agent_id")],
+    "d1": [("aborted", "reap_turn_boundary", "reap", "turn_boundary", NEWSID)],
+    "pairs": [(BGSID, NEWSID)],
+}
+# `previous` is the pre-card#11817 SELECTION, kept as it was: the most-recently-active other open
+# session. In the measured order that is terminal 2's — the same value a reporter before
+# card#11817 sent, when it also ENDED terminal 2. Only the reap is gone.
+C9 = T2 + T1 + ["clear_end", "clear_start", "stop_new_none", "sstop2"]
+s, ev, _, _, per = clear_trace("clear-c9", C9)
+v9 = two_terminal_view(s, ev, per, "clear_end", "clear_start")
+for k, w in dict(TT_WANT, previous=SID2).items():
+    eq(f"C9 (two terminals, measured order) {k}", w, v9[k])
+C9B = T2 + T1 + ["clear_start", "clear_end", "stop_new_none", "sstop2"]
+s, ev, _, _, per = clear_trace("clear-c9b", C9B)
+v9b = two_terminal_view(s, ev, per, "clear_start", "clear_end")
+for k, w in dict(TT_WANT, previous=BGSID).items():
+    eq(f"C9b (two terminals, SessionStart first) {k}", w, v9b[k])
+
+# C10 — a flusher pass (fold + snapshot write) between the two signals loses nothing.
+s, ev, ctr, prd, per = clear_trace("clear-c10", C1[:-1] + ["flush"] + C1[-1:], )
+got = c1_view(ev, ctr, prd, per)
+eq("C10: with a flusher pass between the signals the outcome is C1's exactly", C1_WANT, got)
+snap = snapshot(s)
+eq("  … because the snapshot it wrote persisted the clear tombstone's end_reason and the carry flag",
+   ([("clear", None)], [BGSID]),
+   ([(c.get("end_reason"), c.get("paired_to")) for c in snap.get("sessions_closed", []) if c.get("session_id") == BGSID],
+    [e.get("carried_from") for e in snap.get("entries", []) if e.get("call_id") == spawn_id(s)]))
+
+# C11 — two clear tombstones inside the window when a start arrives: the latest is taken and the
+# guess is COUNTED; the next start pairs the remaining one (review R2-5).
+C11 = T2[:-1] + T1[:-1] + ["clear_end", "clear2_end", "clear_start", "clear_start2"]
+s, ev, ctr, _, per = clear_trace("clear-c11", C11)
+C11_WANT = ([(SID2, NEWSID), (BGSID, N2SID)], 1)
+c11_got = lambda s, ctr: (pairs(s), ctr.get("clear_pair_ambiguous"))
+eq("C11: the first start pairs the LATEST unpaired tombstone, counts clear_pair_ambiguous, and the "
+   "second start pairs the remaining one", C11_WANT, c11_got(s, ctr))
+
+# C12 — the second signal past K.CLEAR_PAIR_MS: no pairing, and the carry stays under OLD.
+C12 = ["prompt", "pre1", "start1", "launch1", "stop_bg1", "clear_end", CLEAR_PAIR_MS, "clear_start",
+       "stop_new_none", "sstop1_new"]
+s, ev, ctr, _, per = clear_trace("clear-c12", C12)
+eq("C12: a start more than K.CLEAR_PAIR_MS after the end pairs nothing",
+   ([], None), (pairs(s), ctr.get("clear_signals_paired")))
+eq("  … the dispatch stays under OLD (NEW's Stop does not select it), and its SubagentStop still "
+   "closes it (the binding lookup is session-agnostic)",
+   ([], [("completed", "subagent_stop_hook", "agent_id", None, NEWSID)]),
+   ([e for e in per["stop_new_none"] if e["kind"] == "tool.end"], closes_of(ev, spawn_id(s))))
+
+# C12b — between K.CLEAR_GAP_MS and K.CLEAR_PAIR_MS a start still pairs its end's tombstone, and
+# the pairing is COUNTED late: it is outside twice the measured gap (review R2-1).
+C12B = ["prompt", "pre1", "start1", "launch1", "stop_bg1", "clear_end", CLEAR_GAP_MS, "clear_start", "stop_new_none"]
+s, ev, ctr, _, per = clear_trace("clear-c12b", C12B)
+eq("C12b: a start K.CLEAR_GAP_MS after its end still pairs it, counted clear_pair_late, and re-keys",
+   ([(BGSID, NEWSID)], 1, [("aborted", "reap_turn_boundary", "reap", "turn_boundary", NEWSID)]),
+   (pairs(s), ctr.get("clear_pair_late"), closes_of(ev, spawn_id(s))))
+
+# C12c — SessionStart first, the end more than K.CLEAR_GAP_MS later: the end does NOT pair.
+C12C = ["prompt", "pre1", "start1", "launch1", "stop_bg1", "clear_start", CLEAR_GAP_MS, "clear_end"]
+s, ev, ctr, _, per = clear_trace("clear-c12c", C12C)
+eq("C12c: an end more than K.CLEAR_GAP_MS after an unpaired clear start does not pair with it",
+   ([], [spawn_id(s)]), (pairs(s), only(per["clear_end"], "session.end").get("carried_call_ids")))
+
+# C13 (review R2-1) — terminal 1's SessionEnd is LOST, so its start N1 sits unpaired; terminal 2
+# clears more than K.CLEAR_GAP_MS later. Terminal 2's end must not adopt N1: its dispatch would be
+# re-keyed into terminal 1's session and reaped at N1's next Stop while its subagent runs.
+C13 = ["start_t2", "prompt2", "pre2", "start2", "launch2", "stop2_bg2", "clear_start", CLEAR_GAP_MS,
+       "clear2_end", "clear_start2", "stop_new_none", "stop_n2_none"]
+s, ev, ctr, _, per = clear_trace("clear-c13", C13)
+D2 = spawn_id(s)
+C13_WANT = ([], [(SID2, N2SID)], [("aborted", "reap_turn_boundary", "reap", "turn_boundary", N2SID)])
+c13_got = lambda s, ev, per, D2: ([e["kind"] for e in per["stop_new_none"] if e["kind"] == "tool.end"],
+                                   pairs(s), closes_of(ev, D2))
+eq("C13: terminal 2's clear does not adopt terminal 1's unpaired start: N1's Stop takes nothing, "
+   "terminal 2's own start pairs it, and its dispatch is re-keyed to that start", C13_WANT, c13_got(s, ev, per, D2))
+
+# C14 (review R2-7b) — a DUPLICATE session_open for NEW folded after the pairing (two concurrent
+# first hooks; the fold runs outside the write lock) must not make NEW pairable again.
+C14 = ["start_t2"] + C1 + ["dup_open_new", "clear2_end"]
+s, ev, ctr, _, per = clear_trace("clear-c14", C14)
+C14_WANT = [(BGSID, NEWSID)]
+c14_got = lambda s: pairs(s)
+eq("C14: after a duplicate session_open, another terminal's clear does NOT pair with the already "
+   "paired NEW (paired_from never resets)", C14_WANT, c14_got(s))
+
+# C15 (F8b) — a `carry` folded AFTER the pairing re-keyed the entry names a session the entry no
+# longer belongs to, and does nothing. Read off the snapshot the next flusher pass persists.
+C15 = C1 + ["late_carry", "flush"]
+s, ev, _, _, _ = clear_trace("clear-c15", C15)
+C15_WANT = [(NEWSID, None)]
+c15_got = lambda s: [(e.get("session_id"), e.get("carried_from")) for e in snapshot(s).get("entries", [])
+                     if e.get("call_id") == spawn_id(s)]
+eq("C15: a late carry for a re-keyed entry does not re-flag it", C15_WANT, c15_got(s))
+
+# ── REDs, each planted on a COPY and shown to flip its GREEN ──────────────────────────────────
+p_r1 = plant(("const carried = (e) => abortReason === 'session_cleared' && e.is_dispatch && !!e.child_agent_id;",
+              "const carried = (e) => e.is_dispatch && !!e.child_agent_id;"))
+s, ev, _, _, per = clear_trace("clear-r1", C1 + ["end_new"], p_r1)
+eq("RED R1: the carry widened to every abort reason — a real exit leaves the dispatch OPEN (C4 flips)",
+   ([], [], [spawn_id(s)]), c4_got(ev, per, spawn_id(s)))
+p_r2 = plant(("if (e.carried_from === r.old_session_id) { e.session_id = r.new_session_id; delete e.carried_from; }",
+              "if (false) { e.session_id = r.new_session_id; delete e.carried_from; }"))
+s, ev, _, _, per = clear_trace("clear-r2", C1 + ["stop_new_bg1", "stop_new_none"], p_r2)
+eq("RED R2: a pair record that does not re-key — NEW's Stop cannot select the dispatch (C5 flips)",
+   ([], []), c5_got(ev, per, spawn_id(s)))
+p_r3 = plant(("    carried_call_ids: ids,\n", ""))
+s, ev, ctr, prd, per = clear_trace("clear-r3", C1, p_r3)
+eq("RED R3: carried_call_ids not emitted — C1's field assertion flips", False, c1_view(ev, ctr, prd, per)["carried"])
+p_r4 = plant(("const carried = (e) => abortReason === 'session_cleared' && e.is_dispatch && !!e.child_agent_id;",
+              "const carried = (e) => abortReason === 'session_cleared' && e.is_dispatch;"))
+s, ev, _, _, per = clear_trace("clear-r4", C6, p_r4)
+eq("RED R4: the carry applied to an UNBOUND dispatch — C6's dispatch is carried, a call no "
+   "SubagentStop can match", ([], [], [spawn_id(s)]), c6_got(ev, per, spawn_id(s)))
+p_r5 = plant(("          previous = pick;\n",
+              "          previous = pick;\n          reapSessionBoundary(ctx, ix, pick, 'clear', 'session_cleared', atMs);\n"))
+s, ev, _, _, per = clear_trace("clear-r5", C9, p_r5)
+eq("RED R5: the activity selection REAPING again, as it did before — terminal 1's clear ENDS terminal 2's session "
+   "(card#11824; C9 flips)", 1, two_terminal_view(s, ev, per, "clear_end", "clear_start")["sid2_session_end"])
+p_r6 = plant(("(c) => c.end_reason === 'clear' && !c.paired_to,", "(c) => c.end_reason === 'clear',"))
+s, ev, ctr, _, per = clear_trace("clear-r6", C11, p_r6)
+eq("RED R6: findTwinForStart ignoring paired_to — the second start pairs the already-paired "
+   "tombstone again (C11 flips)", ([(SID2, NEWSID), (SID2, N2SID)], 2), c11_got(s, ctr))
+p_r7 = plant(("      if (e && e.session_id === r.from_session_id) e.carried_from = r.from_session_id;",
+              "      if (e) e.carried_from = r.from_session_id;"))
+s, ev, _, _, _ = clear_trace("clear-r7", C15, p_r7)
+eq("RED R7: the carry apply guard removed — a late carry re-flags the re-keyed entry (C15 flips)",
+   [(NEWSID, BGSID)], c15_got(s))
+p_r8 = plant(("(e) => e.agent_scope_id === agentId), 'turn_boundary'",
+              "(e) => e.session_id === sid && e.agent_scope_id === agentId), 'turn_boundary'"))
+s, ev, _, _, _ = clear_trace("clear-r8", C2B, p_r8)
+eq("RED R8: the SubagentStop scope reap keeps its session term — under the OLD id it misses the "
+   "inner call opened under NEW (C2b flips)", [], closes_of(ev, call_of(ev, "Bash", NEWSID)))
+p_r9 = plant(("(s) => s.opened_at, K.CLEAR_GAP_MS, nowMs);", "(s) => s.opened_at, K.CLEAR_PAIR_MS, nowMs);"))
+s, ev, _, _, per = clear_trace("clear-r9", C13, p_r9)
+D2r = spawn_id(s)
+eq("RED R9: findTwinForEnd on the wide window — terminal 2's end adopts terminal 1's unpaired "
+   "start and N1's Stop reaps terminal 2's running dispatch (review R2-1; C13 flips)",
+   (["tool.end"], [(SID2, NEWSID)], [("aborted", "reap_turn_boundary", "reap", "turn_boundary", NEWSID)]),
+   c13_got(s, ev, per, D2r))
+p_r10 = plant(("  if (s && (!source || s.start_source === source)) return;",
+               "  if (s) return;"))
+s, ev, ctr, _, _ = clear_trace("clear-r10", C3B, p_r10)
+eq("RED R10: SessionStart(clear) recorded only when it is the session's first hook — C3b never "
+   "pairs (review R2-7a)", None, ctr.get("dispatch_rekeyed_to_new_session"))
+p_r11 = plant(("} else if (r.source) s.start_source = r.source;",
+               "} else if (r.source) { s.start_source = r.source; s.paired_from = null; }"))
+s, ev, ctr, _, _ = clear_trace("clear-r11", C14, p_r11)
+eq("RED R11: a session_open that resets paired_from — the duplicate makes NEW pairable again and "
+   "the other terminal's clear pairs with it (review R2-7b; C14 flips)", [(BGSID, NEWSID), (SID2, NEWSID)], c14_got(s))
+# R12 / R13 — the wire meanings VERSIONING wire rule 4 pins. Each plants the pre-ruling build of
+# this card, which re-meant a field without a schema bump.
+p_r12 = plant(("        if (twin) pairClear(ctx, ix, twin.session_id, sid, twin);\n",
+               "        if (twin) { previous = twin.session_id; pairClear(ctx, ix, twin.session_id, sid, twin); }\n"))
+s, ev, ctr, prd, per = clear_trace("clear-r12", C1, p_r12)
+eq("RED R12: previous_session_id taken from the internal pairing — a meaning change; C1's "
+   "pre-card#11817 value flips from null", BGSID, c1_view(ev, ctr, prd, per)["previous"])
+p_r13 = plant(("        if (twin) { pairClear(ctx, ix, sid, twin.session_id, twin); count('reap_noop_second_signal'); }\n"
+               "        else predicate('clear_reap_by_session_end', true);\n",
+               "        if (twin) pairClear(ctx, ix, sid, twin.session_id, twin);\n"
+               "        predicate('clear_reap_by_session_end', true);\n"))
+s, ev, ctr, prd, per = clear_trace("clear-r13", C3, p_r13)
+eq("RED R13: SessionEnd evaluating the predicate on every clear — C3's counter and predicate leave "
+   "their pre-card#11817 values", (None, None, {"true": 1, "false": 1}, [(BGSID, NEWSID)]), c3_got(s, ctr, prd))
+redgreen("a /clear carries a running dispatch into the new session and pairs by tombstone (§ 8.3, § 8.4, card#11817, card#11824)",
+         "carry on every abort reason -> a real exit leaves the dispatch open; a pair that does not re-key "
+         "-> NEW's Stop cannot select it; no carried_call_ids -> the server would close it; carry on an "
+         "unbound dispatch -> a call no SubagentStop matches; the activity pick -> terminal 1's clear ends "
+         "terminal 2's session; paired_to ignored -> one tombstone pairs twice; no carry guard -> a late "
+         "carry re-flags a re-keyed entry; a session-scoped SubagentStop reap -> an inner call opened under "
+         "NEW stays open; the wide window at the end -> terminal 2's dispatch is re-keyed into terminal 1's "
+         "session and reaped; SessionStart's source dropped when not first -> no pairing; paired_from reset "
+         "by a duplicate session_open -> a second pairing; previous_session_id from the pairing, or the predicate on every "
+         "SessionEnd(clear) -> a wire field leaves its pre-card#11817 value",
+         "both hook orders carry the bound dispatch, name it in carried_call_ids, pair once and re-key it; "
+         "its SubagentStop under NEW or OLD closes it once with its inner calls; NEW's Stop and real exit "
+         "reap it; an unbound dispatch is reaped as before; a second terminal is untouched in both orders; "
+         "a flusher pass between the signals loses nothing; ambiguous and late pairings are counted; past "
+         "either window nothing pairs; previous_session_id, both clear counters and the predicate keep their "
+         "pre-card#11817 values")
+
+print("\n== 21. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
 # WHY THIS IS A CHECK AND NOT JUST A TEARDOWN. Every hook that finds a stale lock forks a real
 # detached flusher (§ 2.3, P-7) — correct reporter behaviour, and nobody's bug in the product —
 # and that process loops until it is signalled. A teardown that quietly reaped them would leave

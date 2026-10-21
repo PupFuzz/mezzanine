@@ -21,8 +21,9 @@
  * test reaches.
  *
  * ⛔ THE STRINGS BELOW RESTATE PUBLISHED TABLES AND ARE GUARDED, NOT TRUSTED. A browser cannot read
- * FLOOR.md, so § 7.1's state sentences, its seven `unknown_reason` sentences and § 7.6's twelve
- * `api_error_type` phrases live here as copies — and
+ * FLOOR.md, so § 7.1's seven `unknown_reason` sentences live here as copies, and § 7.1's state
+ * sentences and § 7.6's twelve `api_error_type` phrases in `./state-words.js`, which this module
+ * re-exports (card#12113 hoisted them there for the lobby) — and
  * `Tests\Feature\Desk\TheDeskSpeaksTheDocumentsWordsTest` re-derives each of them from the
  * document on every run and set-differences both directions. § 7.1's cells are WORKED INSTANCES
  * (its own convention: "never a rule"), so what is copied is each cell's fixed words — the values
@@ -53,35 +54,20 @@ import { NO_DATA_YET, UNTITLED } from '../wire/null-render.js';
 import { SEAT_CLOCK, derivationLagLine, seatClock } from '../wire/age-readout.js';
 import { deskDrawsCharacter, taskBubble } from './task-bubble.js';
 import { DESK } from './desk-poses.js';
+import { API_ERROR_PHRASE, DASH, LABEL, UNRECOGNISED, apiErrorLine, blockedLine } from './state-words.js';
 
-/** § 5.4 / AT-D3-11: an unrecognised member renders as unrecognised, carrying the raw string. */
-export const UNRECOGNISED = 'unrecognised';
+/**
+ * § 7.1's Label stems, § 7.6's twelve `api_error_type` phrases, the separator and the unrecognised word,
+ * re-exported from `./state-words.js` — their one home since card#12113 hoisted them for the lobby's
+ * attention line, the second surface to speak them — so this module stays the desk's one import.
+ */
+export { API_ERROR_PHRASE, DASH, LABEL, UNRECOGNISED };
 
 /**
  * The desk's non-raw form of an unrecognised `unknown_reason` (§ 7.1's `unknown` row, operator ruling
  * 2026-10-02 Q0: no raw unrecognised string is drawn on the desk). ⚠ NOT RATIFIED — a display form.
  */
 export const UNRECOGNISED_REASON = 'unrecognised reason';
-
-/** The separator § 7.1's cells put between a state's sentence and the value that completes it. */
-export const DASH = ' — ';
-
-/**
- * § 7.1's Label line, per member — the FIXED words of each cell. A cell that completes its
- * sentence with a value (an age, a timestamp, an error) has only its stem here; `labelLine()`
- * splices the value in by the rule the cell is a worked instance of. `retired` has no entry: its
- * desk is removed, and it renders no label line on the floor (§ 7.1, § 3.5).
- */
-export const LABEL = Object.freeze({
-    working: 'working',
-    idle: 'finished',
-    blocked: 'waiting on a human since',
-    stalled: 'API error',
-    catching_up: 'replaying history',
-    stale: 'no data since',
-    offline: 'no data since',
-    disabled: 'reporting disabled',
-});
 
 /** § 7.1's seven `unknown_reason` sentences — "one glyph, seven explanations". */
 export const UNKNOWN_REASON = Object.freeze({
@@ -92,22 +78,6 @@ export const UNKNOWN_REASON = Object.freeze({
     stalled_left_live: 'rate-limited, then the seat went quiet',
     stalled_session_ended: 'rate-limited, then the session ended',
     session_closed_turn_open: 'the session closed with a turn still open',
-});
-
-/** § 7.6's twelve `api_error_type` phrases — the plain words beside the raw value, never for it. */
-export const API_ERROR_PHRASE = Object.freeze({
-    rate_limit: 'rate limit',
-    overloaded: 'the API was overloaded',
-    server_error: 'the API returned a server error',
-    authentication_failed: 'authentication failed',
-    billing_error: 'a billing error',
-    invalid_request: 'the request was rejected as invalid',
-    model_not_found: 'the model was not found',
-    max_output_tokens: 'the turn hit its output-token ceiling',
-    oauth_org_not_allowed: 'this organisation is not permitted',
-    account_on_hold: 'the account is on hold',
-    unknown: 'the harness reported the error as unknown',
-    unrecognised: "this reporter did not recognise the harness's error member",
 });
 
 /** § 7.3's `config_invalid` row: "its activity render, with the badge and *sending nothing*". */
@@ -160,11 +130,8 @@ function labelLine(state, seat, ages, dark) {
         case 'idle':
             // "the same readout under the state's own sentence, never a second wording" (§ 2.4).
             return ages.quiet_age === null ? LABEL.idle : LABEL.idle + DASH + ages.quiet_age;
-        case 'blocked': {
-            const since = seatClock(seat.blocked_since ?? null);
-
-            return since === null ? state : `${LABEL.blocked} ${since}`;
-        }
+        case 'blocked':
+            return blockedLine(seat.blocked_since ?? null) ?? state;
         case 'stalled':
             return apiErrorLine(seat.api_error_type ?? null);
         case 'unknown':
@@ -175,21 +142,6 @@ function labelLine(state, seat, ages, dark) {
         default:
             return null;
     }
-}
-
-/**
- * § 7.6's composed line, "published here ONCE": **API error — *the raw value* (*the phrase*)**.
- * An unrecognised value keeps its raw string with *(unrecognised)* in place of the phrase; a null
- * one reads **API error** alone.
- */
-function apiErrorLine(raw) {
-    if (raw === null) {
-        return LABEL.stalled;
-    }
-
-    const phrase = Object.hasOwn(API_ERROR_PHRASE, raw) ? API_ERROR_PHRASE[raw] : UNRECOGNISED;
-
-    return `${LABEL.stalled}${DASH}${raw} (${phrase})`;
 }
 
 /** § 7.1's `unknown` row: "one sentence per `unknown_reason`" — raw and marked when unknown to us. */

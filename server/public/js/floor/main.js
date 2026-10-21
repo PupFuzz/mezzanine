@@ -50,6 +50,16 @@
  * this file's to perform, as the floor segment's redirect already is — a panel a retirement closed
  * takes the seat segment off the URL with it. The panel's strings are `drilldown/main.js`'s slots over
  * the model the frame carries; nothing is fetched here, and no second stream is opened.
+ *
+ * ⛔ THE ELEVATOR RIDES, AND THE PAGE PERFORMS THE RIDE THE SCREEN DECIDES (§ 4.5, card#11795). The drawn
+ * elevator is the painter's control, and its press is the screen's `ride()`; everything after it — each phase's
+ * entry, the ride's one timer, the cab dialog (`#floor-cab`, `partials/ride-cab.blade.php` under the `floor`
+ * prefix), a stop's press, the cab's Escape, and the departing page's one `pageswap` rule — is `wire/ride-page.js`'s,
+ * which the lobby wires with its own dialog (card#12113: one ride, one cab). This file hands it the screen, its
+ * paint, the painter's `paintCab()`, the drawn elevator and the last painted frame's ride, and calls its
+ * `perform()` last in every paint. The arrival is the layout head script's (`wire/ride-arrival.js` says how the
+ * halves meet): the screen is told before its first render, and the hold ends on the first frame that drew a
+ * scene — `revealed()` is called there and nowhere else.
  */
 
 import { livePage } from '../wire/live-page.js';
@@ -62,6 +72,8 @@ import { cameraView } from '../wire/camera-view.js';
 import { cameraGestures } from '../wire/camera-gestures.js';
 import { cameraKeys, offerKeys } from '../wire/camera-keys.js';
 import { deskListRow } from '../desk/desk-list.js';
+import { arrival, revealed } from '../wire/ride-arrival.js';
+import { ridePage } from '../wire/ride-page.js';
 
 /** A missing element throws rather than being guarded past — the lobby's rule, for its reason. */
 function el(id) {
@@ -102,6 +114,15 @@ function list(id, lines) {
 }
 
 const root = el('floor');
+
+/** The document element: the layout head script's record of a ride arrival, and the hold it ended (§ 4.5). */
+const html = document.documentElement;
+
+/** The page's own *Back to the lobby* link — the one source of the cab's lobby stop (§ 4.5). */
+const lobbyHref = document.querySelector('a.floor-home').href;
+
+/** The browser's timers, as the screen's walks and the ride's one timer use them. */
+const timers = { after: (ms, fire) => window.setTimeout(fire, ms), cancel: (id) => window.clearTimeout(id) };
 
 /**
  * The drawing's zoom buttons — handed to `wire/camera-keys.js` to wire — its framing control, *Fit the
@@ -315,17 +336,59 @@ function paint(frame) {
     paintDesks(frame, frame.desks.desks);
     paintPanel(frame.panel);
     list('floor-log', client.eventLog);
+
+    // § 4.5: the arrival's hold ends on the first drawn scene — on nothing else (`wire/ride-arrival.js`).
+    if (frame.scene !== null) {
+        revealed(html);
+    }
+
+    // Last, so a phase performed at once paints its next frame over this one, never under it.
+    cab.perform({
+        ride: frame.ride,
+        cab: frame.scene?.ride ?? null,
+        feed: `feed: ${frame.strip.feed}`,
+        layout: frame.last_known_layout === null || frame.last_known_layout === false ? null : frame.last_known_layout,
+    });
 }
+
+/** The drawn elevator, which the painter rebuilds on every paint. */
+function elevator() {
+    return el('floor-drawing').querySelector('[data-key="elevator"]');
+}
+
+/**
+ * THE ELEVATOR's CAB (§ 4.5, card#11795) — the page's `#floor-cab` dialog, wired to the screen's ride by the module
+ * both pages share (card#12113). The drawing is `cab-paint.js`'s `paintCab()` (the painter's own), from the frame's `scene.ride`, once the
+ * painter has answered.
+ */
+const cab = ridePage({
+    prefix: 'floor',
+    screen: () => screen,
+    paint,
+    paintCab: (host, ride) => painter?.paintCab(host, ride),
+    elevator,
+    lastRide: () => lastFrame?.ride ?? null,
+    timers,
+});
 
 const screen = startFloorScreen(client, pageFetch, clock, log, paint, {
     floor: root.dataset.floor,
     seat: root.dataset.seat === '' ? null : root.dataset.seat,
     reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
     surface: surface(),
+    lobby_href: lobbyHref,
     // § 6.2's walk note item 4: a walk's last frame is a paint-only refresh on the browser's timer — it
     // reaches `paint` and never `screen.render()`, so it drains nothing and writes no animation-log row.
-    timers: { after: (ms, fire) => window.setTimeout(fire, ms), cancel: (id) => window.clearTimeout(id) },
+    timers,
 });
+
+// § 4.5: entered by a ride — the layout head script's record — so the first drawn scene arrives (the screen's
+// `arriving`), told before the first render.
+const rideArrival = arrival(html, performance.now());
+
+if (rideArrival !== null) {
+    screen.arriveByRide(rideArrival);
+}
 
 // § 2.5's 1 s tick: the ages over the desks the last render read — and the open panel's — with
 // nothing drained.
@@ -351,7 +414,12 @@ loadArt().then(({ furniture, characters, registry, themes, failed }) => {
             requestRender();
         },
         select: openDesk,
+        // § 4.5: the drawn elevator's press.
+        ride: () => cab.act(screen.ride()),
+        house: registry?.HOUSE_THEME ?? null,
     });
+    // § 4.5 (card#12039): the cab's drawing and its button popup in the house theme's elevator palette.
+    painter.cabTheme(cab.dialog);
 
     if (furniture !== null) {
         screen.sceneInputs({

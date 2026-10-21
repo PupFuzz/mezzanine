@@ -40,6 +40,13 @@
  * segment into a one-room floor, "because deciding whether a segment is a floor's key or a room on
  * someone else's floor needs the very document that failed".
  *
+ * ⛔ A LAYOUT STILL IN FLIGHT IS NOT F17 (card#11825). Every frame carries `layout` — the building
+ * client's `layoutState`: `pending` until the layout request settles, then `ready` or `failed` — and
+ * the uncomposed render states F17 only on `failed`. A frame drawn while the request is `pending`,
+ * which the page draws on every cold load, composes nothing and states nothing: no statement and no
+ * *no floor claimed* list, both of which say the request failed. A reader that needs to know whether
+ * the layout has answered reads `layout`, never a missing status.
+ *
  * ⛔ THE ROOM DRAWING IS THIS FRAME's `scene` (Appendix B row 14, card#7341 step 11). Once the page
  * has handed this screen the scene's inputs (`sceneInputs()` — the furniture box, its measurer, the
  * character's size and the themes the page holds) every frame carries `floor/scene.js`'s model of what is
@@ -59,6 +66,17 @@
  * first framing alone fits), and the viewer's acts — `pan()`, `zoom()`, `pinch()`, `zoomStep()`, `drag()`, `fitFloor()`
  * — move the camera and nothing else: they drain nothing, draw nothing and write no animation-log
  * row. A navigation act is never state (§ 4.5), and AT-D3-21 reds the day one of them reaches the log.
+ *
+ * ⛔ THE ELEVATOR's RIDE IS THIS SCREEN's STATE TOO (§ 4.5, card#11795), AND IT IS NEVER A FACT. The state
+ * machine is `wire/ride.js`'s `Ride`, which the lobby screen holds too (card#12113: one ride, one module); this
+ * screen constructs it with what is the floor's own — `endsRide()`, the departure's one ending predicate; the
+ * stop the page stands at, its floor's key and name; and the stops' source, `plates()` of the composed floors,
+ * re-derived on every frame — and asks it on every frame for `frame.ride` (`rideFrame()`) and `scene.ride`
+ * (`sceneRide()`, the leaves and the view behind the cab's doors). The press is accepted only on a frame that
+ * drew a scene, and the arrival flag `arriveByRide()` records is consumed by the first render that draws one,
+ * expiring by a clock comparison there (the head script's `t0` bound). The page paints `rideView()` after each
+ * ride method rather than waiting on a render. Its leaves are `scene.ride`, never `scene.doors`, which stays
+ * the walks'.
  */
 
 import { Building } from '../wire/building.js';
@@ -69,6 +87,8 @@ import { coordModel } from '../coord/coord-model.js';
 import { correctedNowMs } from '../wire/duration.js';
 import { floorAgeReadouts } from '../wire/age-readout.js';
 import { floors, heldBody, roomsOf } from '../lobby/lobby-model.js';
+import { plates } from '../lobby/building-model.js';
+import { Ride } from '../wire/ride.js';
 import { buildJoin } from './coord-join.js';
 import { statusStrip } from './status-strip.js';
 import { failureRender } from '../wire/failure-render.js';
@@ -175,6 +195,18 @@ export function resolveRoute(segment, composed) {
 }
 
 /**
+ * THE ONE PREDICATE THAT ENDS A RIDE (§ 4.5, card#11795) — the DEPARTURE's, asked of a frame drawn while a ride
+ * is in flight on the page the viewer is leaving: a redirect, the sign-in prompt, or the floor gone from the
+ * building. A scene has been drawn there, so the layout is held and `floor === null` never means *pending*.
+ * The screen hands it to its `wire/ride.js` `Ride`, which asks it at the press (the refusal: the prompt dims the
+ * drawing but leaves it clickable), at the arrival, and on every drawn frame (the end rule, `observe()`), so no
+ * ride stands over a frame that ends it — and `rideView()`, which re-reads the last drawn frame, never meets one.
+ */
+export function endsRide(frame) {
+    return frame.redirect !== null || frame.failure.sign_in !== null || frame.floor === null;
+}
+
+/**
  * § 11's `cause` for one A16 row (§ 14 item 27).
  *
  * ⛔ THE CAUSE IS THE ARRIVAL THAT NOW HOLDS THE DISPLACED SEAT'S FORMER SLOT. A16 is a
@@ -276,6 +308,9 @@ export class FloorScreen {
     /** The camera (`wire/camera.js`) — the viewer's head, never the fleet's; framed while the floor is drawn. */
     #camera;
 
+    /** The elevator's ride (§ 4.5, card#11795) — `wire/ride.js`'s state machine, over this screen's floor. */
+    #ride;
+
     /**
      * @param {object} client a `FleetClient` — the seats, the journal, the record and the offset
      * @param {object} building a `wire/building.js` `Building` — the layout and each room's map
@@ -301,6 +336,14 @@ export class FloorScreen {
         this.#panel = new DrillDownPanel(client);
         this.#camera = createCamera(options.surface);
         this.#room = new RoomClock(clock, options.local_time);
+        this.#ride = new Ride({
+            clock,
+            reduce: options.reduce === true,
+            lobby_href: options.lobby_href ?? null,
+            endsRide,
+            currentStop: (frame) => ({ current: frame.floor.key, current_name: frame.floor.name }),
+            stops: () => plates(this.#snapshotShape(), this.#building.floors),
+        });
     }
 
     /**
@@ -646,9 +689,14 @@ export class FloorScreen {
 
         const frame = this.#drawFrame(journal);
         const rows = this.#tap.take();
+        const now = this.#clock.now();
+
+        // The ride's end rule (§ 4.5): a frame that ends a ride carries none.
+        this.#ride.observe(frame);
+
         // § 4.5: the room is drawn at every surface size — there is no size below which a frame
         // carries no scene.
-        const scene = this.#scene(frame, rows, journal);
+        const scene = this.#scene(frame, rows, journal, now);
 
         // A frame with nothing to draw — no floor composed yet, the art not yet answered, or a floor
         // with nothing measurable on it (no map held and no desk, where the scene's extent is `null`,
@@ -672,6 +720,8 @@ export class FloorScreen {
             camera: this.#camera,
             // § 9 F21's notices — the scene's, from the maps it drew — beside the floor's own.
             notices: Object.freeze([...frame.notices, ...(scene?.notices ?? [])]),
+            // § 4.5: the elevator's ride, decided here and performed by the page.
+            ride: this.#ride.rideFrame(now),
         };
 
         this.#lastDrawn = Object.freeze({ ...drawn, ...this.#drillDown(drawn) });
@@ -684,15 +734,13 @@ export class FloorScreen {
      * § 6.2's effects in flight laid over it (`#overlay()`). This is a RENDER, so it is the one place a
      * walk is cancelled: the holder asks the walk note's item 6 of it, over this render's journal.
      */
-    #scene(frame, rows, journal = []) {
+    #scene(frame, rows, journal, now) {
         const drawable = this.#sceneInput !== null && frame.floor !== null;
         const plain = drawable ? buildScene(frame, this.#sceneDocs(frame, rows)) : null;
 
         if (drawable) {
             this.#lastFrame = frame;
         }
-
-        const now = this.#clock.now();
 
         // Every render reaches the holder, a render that draws no scene included: it drained its journal
         // once, so a touch it carries is tested now or never. With no scene there is no anchor for any
@@ -711,6 +759,8 @@ export class FloorScreen {
         }
 
         this.#anchors = new Map(Object.entries(plain.anchors));
+        // § 4.5: the arrival flag's one consumer is the first render that draws a scene — this one.
+        this.#ride.arrive(frame, now);
 
         return this.#overlay(frame, plain, now);
     }
@@ -743,6 +793,9 @@ export class FloorScreen {
             // holder's, this render's new ones included.
             effects: Object.freeze([...plain.effects.filter((e) => !(e.frames > 0)), ...this.#inFlight.current(now)]),
             doors: Object.freeze(this.#inFlight.doors(now)),
+            // § 4.5: the elevator's leaves while a ride holds them — the painter draws them from this and
+            // adds nothing for a walk's door span meanwhile; `doors` stays the walks' (AT-D3-23's instrument).
+            ride: this.#ride.sceneRide(now),
         });
     }
 
@@ -807,6 +860,7 @@ export class FloorScreen {
             camera: this.#camera,
             seat: this.#seatSegment,
             panel: this.panelView(this.#lastDrawn.floor?.name ?? null),
+            ride: this.#ride.rideFrame(now),
         });
 
         return this.#lastDrawn;
@@ -831,6 +885,95 @@ export class FloorScreen {
         const plain = buildScene(frame, this.#sceneDocs(frame, []));
 
         return plain === null ? null : this.#overlay(frame, plain, this.#clock.now());
+    }
+
+    /**
+     * THE ELEVATOR's RIDE (§ 4.5, card#11795): the press on the drawn elevator, accepted only on a frame that drew
+     * a scene; the rest of the press's guard — no ride in flight, and no `endsRide()` holding of the frame — is
+     * `wire/ride.js`'s `press()`. Every ride method is synchronous, answers `null` out of phase and `{ phase }`
+     * (the phase it left the ride in, `null` when it ended it) otherwise; the page paints `rideView()` after each
+     * one that answered. Each below is `wire/ride.js`'s method of the same name, which states its phase.
+     *
+     * @returns {{phase: string|null}|null}
+     */
+    ride() {
+        const last = this.#lastDrawn;
+
+        if (last === null || last.scene === null) {
+            return null;
+        }
+
+        return this.#ride.press(last);
+    }
+
+    entered() {
+        return this.#ride.entered();
+    }
+
+    shut() {
+        return this.#ride.shut();
+    }
+
+    choose(key) {
+        return this.#ride.choose(key);
+    }
+
+    opened() {
+        return this.#ride.opened();
+    }
+
+    abandoned() {
+        return this.#ride.abandoned();
+    }
+
+    arrived() {
+        return this.#ride.arrived();
+    }
+
+    returned() {
+        return this.#ride.returned();
+    }
+
+    cabClosed() {
+        return this.#ride.cabClosed();
+    }
+
+    escape(cancelable) {
+        return this.#ride.escape(cancelable);
+    }
+
+    /**
+     * This document was entered by a ride (the layout's head script read it off the navigation; § 4.5): the
+     * first scene drawn before `expires_in_ms` has passed enters `arriving`. Accepted once, before any render.
+     */
+    arriveByRide(arrival) {
+        if (this.#lastDrawn !== null) {
+            return null;
+        }
+
+        return this.#ride.arriveByRide(arrival);
+    }
+
+    /**
+     * The last drawn frame with the ride as it stands now — what the page paints after a ride method, with no
+     * render and no await between the act and its paint. It needs no end rule of its own: `ride()` refuses on a
+     * last drawn frame that ends a ride and `draw()` ends the ride on one, so no ride stands over such a frame.
+     */
+    rideView() {
+        if (this.#lastDrawn === null) {
+            return null;
+        }
+
+        const now = this.#clock.now();
+        const scene = this.#lastDrawn.scene;
+
+        this.#lastDrawn = Object.freeze({
+            ...this.#lastDrawn,
+            ride: this.#ride.rideFrame(now),
+            scene: scene === null ? null : Object.freeze({ ...scene, ride: this.#ride.sceneRide(now) }),
+        });
+
+        return this.#lastDrawn;
     }
 
     /** What the scene reads beside a frame: the inputs, the documents held, and what failed. */
@@ -901,6 +1044,7 @@ export class FloorScreen {
         const at = correctedNowMs(offset, this.#clock.now());
         const composed = this.#composed();
         const failure = this.#building.layoutFailure;
+        const layout = this.#building.layoutState;
 
         // § 9 F6: "ANY read returns 401" — the building surface's two requests included, which go
         // through `wire/building.js` and not through the protocol's own reads.
@@ -926,18 +1070,25 @@ export class FloorScreen {
         this.#room.take(journal);
 
         if (composed === null) {
-            // F17's cold start: no layout was ever read, so nothing is composed. The installs the
-            // client holds are listed as rooms with NO FLOOR CLAIMED.
+            // No layout is held, so nothing is composed. While the request is still in flight that is
+            // all: nothing has failed, so nothing is stated. Once it has failed it is F17's cold
+            // start — the statement, and the installs the client holds listed as rooms with NO FLOOR
+            // CLAIMED.
+            const failed = layout === 'failed';
+
             return Object.freeze({
                 composed: false,
-                statement: layoutFailureStatement(failure?.status ?? null),
+                layout,
+                statement: failed ? layoutFailureStatement(failure.status) : null,
                 last_known_layout: false,
                 floor: null,
                 redirect: null,
-                rooms: Object.freeze(this.#snapshotShape().installs.map((install) => Object.freeze({
-                    install_id: install.install_id,
-                    floor_claimed: false,
-                }))),
+                rooms: failed
+                    ? Object.freeze(this.#snapshotShape().installs.map((install) => Object.freeze({
+                        install_id: install.install_id,
+                        floor_claimed: false,
+                    })))
+                    : Object.freeze([]),
                 room: this.#room.tick,
                 desks: deskFrame,
                 notices: Object.freeze([]),
@@ -950,6 +1101,7 @@ export class FloorScreen {
         if (route.floor === null) {
             return Object.freeze({
                 composed: true,
+                layout,
                 statement: null,
                 last_known_layout: failure !== null,
                 floor: null,
@@ -965,11 +1117,11 @@ export class FloorScreen {
             });
         }
 
-        return this.#drawFloor(route.floor, deskFrame, failure, journal, at, narration);
+        return this.#drawFloor(route.floor, deskFrame, failure, layout, journal, at, narration);
     }
 
     /** One composed floor: its rooms placed, its desks slotted, its band, and its lines. */
-    #drawFloor(floor, deskFrame, failure, journal, at, narration) {
+    #drawFloor(floor, deskFrame, failure, layout, journal, at, narration) {
         const held = new Map();
         const extents = new Map();
 
@@ -1102,6 +1254,7 @@ export class FloorScreen {
 
         return Object.freeze({
             composed: true,
+            layout,
             // § 9 F17 on the floor route: the same statement, over the rooms it already holds.
             statement: failure === null ? null : layoutFailureStatement(failure.status),
             last_known_layout: failure !== null ? LAST_KNOWN_LAYOUT : null,
@@ -1470,5 +1623,19 @@ export function startFloorScreen(client, fetchImpl, clock, log, draw, options = 
         zoomStep: (notches) => screen.zoomStep(notches),
         drag: (dx, dy) => screen.drag(dx, dy),
         fitFloor: () => screen.fitFloor(),
+        // § 4.5's elevator ride (card#11795): each synchronous, each answering `null` out of phase; the page
+        // paints `rideView()` after each that answered.
+        ride: () => screen.ride(),
+        entered: () => screen.entered(),
+        shut: () => screen.shut(),
+        choose: (key) => screen.choose(key),
+        opened: () => screen.opened(),
+        abandoned: () => screen.abandoned(),
+        arrived: () => screen.arrived(),
+        returned: () => screen.returned(),
+        cabClosed: () => screen.cabClosed(),
+        escape: (cancelable) => screen.escape(cancelable),
+        arriveByRide: (arrival) => screen.arriveByRide(arrival),
+        rideView: () => screen.rideView(),
     };
 }

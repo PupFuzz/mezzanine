@@ -569,7 +569,14 @@ export function deskLayout(desk, ctx) {
         rect('chair', 'character', R.chair, { pose: desk.pose, unconfirmed: desk.unconfirmed, occupied: desk.character, doc: doc('chair') });
 
         if (desk.character) {
-            rect('character', 'character', R.character, { asset: characterAsset(desk), pose: desk.pose, animation: desk.held });
+            // `desk_top`: where the desk's top edge crosses the character's rect, as a share of its height — what a
+            // pose that reaches the desk meets (the sleeper's arms and head, § 10.4's frame contract item 4).
+            rect('character', 'character', R.character, {
+                asset: characterAsset(desk),
+                pose: desk.pose,
+                animation: desk.held,
+                desk_top: (R['desk-sprite'].y - R.character.y) / R.character.h,
+            });
         }
 
         rect('desk-sprite', 'lighting', R['desk-sprite'], { lighting: desk.lighting, doc: doc('desk') });

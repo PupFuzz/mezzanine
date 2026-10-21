@@ -1,6 +1,8 @@
 @extends('layouts.app')
 @section('title', 'Mezzanine — floor')
 @section('page-class', 'page-floor')
+{{-- § 4.5's ride arrives here with the cab's snapshot held until the first drawn scene (`layouts/app.blade.php`). --}}
+@section('document-attributes', 'data-ride-reveals')
 
 {{--
     The header's right-hand side: the BUILDING's counts — `fleet.seats_total` · `fleet.seats_live`, the
@@ -33,7 +35,9 @@
 
         ⭐ THE ROOM IS DRAWN (Appendix B row 14, card#7341 step 11): `#floor-drawing` holds the SVG
         `public/js/floor/painter.js` paints from the floor screen's scene (`floor/scene.js`) — tiles,
-        desks, the band, the thread line — and `#floor-art` is § 9 F14's strip line.
+        desks, the band, the thread line — and `#floor-art` is § 9 F14's strip line. The band's
+        elevator is the floor's ride control (§ 4.5, card#11795): the painter draws it as a button,
+        and its cab is `#floor-cab` below (`partials/ride-cab.blade.php`).
 
         ⭐ UNDER THE CAMERA (Appendix B row 15), AT EVERY WINDOW SIZE (§ 4.5; the operator's ruling of
         2026-10-01 on card#7341 — no minimum size and no substitute view): the drawing fills the
@@ -282,8 +286,11 @@
             <p id="floor-not-live"></p>
             <p><a href="{{ route('login') }}">Sign in</a></p>
         </section>
+
+        {{-- § 4.5's CAB (card#11795): the dialog both pages include, under this page's prefix (card#12113). --}}
+        @include('partials.ride-cab', ['prefix' => 'floor'])
     </section>
 
     {{-- Native ES modules, no bundler — the lobby's reason (`dashboard.blade.php`). --}}
-    <script type="module" src="{{ asset('js/floor/main.js') }}"></script>
+    <script type="module" src="{{ \App\Support\PublicAsset::url('js/floor/main.js') }}"></script>
 @endsection

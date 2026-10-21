@@ -188,6 +188,7 @@ final class SeatFacts
         $seat = DB::table('seats')->where('id', $seatRef)->first();
 
         $action = self::action($s);
+        $longest = self::longestOpenCall($s);
         $session = self::session($s);
         $apiErrorType = self::apiErrorType($seatRef, (string) $s->activity_state);
         $blockedSince = self::blockedSince($s);
@@ -209,6 +210,9 @@ final class SeatFacts
             // no writer moves it, and a delta's shallow merge cannot carry a member's absence.
             'idle_since' => $s->idle_since,
             'action' => $action === null ? null : (array) $action,
+            // card#12113: version-bearing by § 6.5's subtraction — not one of the ten. It moves only
+            // on a call opening or closing, an edge `open_calls` already emits a delta on.
+            'longest_open_call' => $longest === null ? null : (array) $longest,
             'open_calls' => (int) $s->open_calls,
             'open_turn' => (bool) $s->open_turn,
             // § 8.2.1 caps the rendered array at 8 with the true count beside it; the cap is a
@@ -270,6 +274,18 @@ final class SeatFacts
             ->where('id', $state->current_call_ref)
             ->first(['call_id', 'tool_name', 'descriptor', 'opened_at', 'opened_received_at',
                 'agent_scope', 'parent_call_id']);
+    }
+
+    /**
+     * § 8.2.1's `longest_open_call` — the seat's OLDEST open call, or null (card#12113). The row
+     * `StateRecompute` picked into `longest_call_ref`; three members and no more, so the fingerprint
+     * moves exactly when the wire member does.
+     */
+    public static function longestOpenCall(object $state): ?object
+    {
+        return $state->longest_call_ref === null ? null : DB::table('calls')
+            ->where('id', $state->longest_call_ref)
+            ->first(['call_id', 'tool_name', 'opened_received_at']);
     }
 
     /** § 8.2.1's `session` — the seat's current open session, or null. */

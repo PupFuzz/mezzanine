@@ -665,6 +665,21 @@ function build(key, force) {
 }
 
 /**
+ * What a built key wears — its hat, its neckwear and its extra — from its recipe's draws over the species'
+ * lists. The one home of the selection, which every frame and `describe()` read.
+ */
+function worn(r, sp, A) {
+  const hats = A.hats || sp.hats;
+  const necks = A.neck ? sp.necks : [];
+  const extra = r.extra === 'satchel' && !A.neck ? 'none' : r.extra;
+  return {
+    hat: ['none', 'none', 'none', ...hats][r.hatDraw % (hats.length + 3)],
+    neck: ['none', 'none', ...necks][r.neckDraw % (necks.length + 2)],
+    extra,
+  };
+}
+
+/**
  * One frame of one key, as a standalone SVG document.
  * @param {string} key the seat key, or an intern key `seat~<call_id>`
  * @param {{ phase?: 0|1|2, chibi?: boolean, species?: string }} [opt] phase 0 is the standing frame
@@ -674,12 +689,7 @@ export function frameDocument(key, opt = {}) {
   const phase = opt.phase ?? 0;
   if (![0, 1, 2].includes(phase)) throw new RangeError(`phase must be 0, 1 or 2, got ${phase}`);
   const { r, sp, pen, c, A } = build(key, opt.species);
-  const hats = A.hats || sp.hats;
-  const hat = ['none', 'none', 'none', ...hats][r.hatDraw % (hats.length + 3)];
-  const necks = A.neck ? sp.necks : [];
-  const neck = ['none', 'none', ...necks][r.neckDraw % (necks.length + 2)];
-  let extra = r.extra;
-  if (extra === 'satchel' && !A.neck) extra = 'none';
+  const { hat, neck, extra } = worn(r, sp, A);
   const F = A.face;
   // The walk: phase 1 lifts the left foot, phase 2 the right; arms swing against the stepping foot.
   const lifted = (s) => (phase === 1 && s === -1) || (phase === 2 && s === 1);
@@ -743,6 +753,139 @@ export function frameDocument(key, opt = {}) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}" width="${vb.w}" height="${vb.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs>${shadow}<g transform="${tf}">${inner}</g></svg>`;
 }
 
+// ---- the sleeper (FLOOR.md § 6.2 A6, § 10.4's frame contract item 4; card#12159) ----
+/**
+ * THE SLEEPER's LOOP — A6's 4 fps loop is this many frames; frame 0 is the static, reduced-motion form.
+ * Only the z's move between frames: the sleeper itself is the same drawing in every one, so nothing sways.
+ */
+export const SLEEP_FRAMES = 4;
+/** The z's in flight at once, and the height of the largest (nearest the head) and the smallest (highest), in units. */
+const SLEEP_ZS = 3;
+const Z_LARGE = 24;
+const Z_SMALL = 11;
+/** How far the sleeper's head rolls onto its arms, in degrees, toward the key's own side. */
+const SLEEP_ROLL = 14;
+/** The lowest a z's rise starts, in units from the frame's top — the least room the z's are given. */
+const Z_RISE = 56;
+const Z_INK = '#4f4380', Z_FILL = '#ece8ff';
+
+/** Closed eyes: a soft downward arc per eye, with a lash at its outer end. */
+function sleepingEyesSvg(F) {
+  const s = F.s, out = [];
+  for (const side of [-1, 1]) {
+    const x = 54 + side * F.es, y = F.y + 0.6 * s;
+    out.push(`<path d="M${f(x - 4.4 * s)} ${f(y)}Q${f(x)} ${f(y + 4.2 * s)} ${f(x + 4.4 * s)} ${f(y)}" stroke="${EYE}" stroke-width="${f(2 * s)}" fill="none" stroke-linecap="round"/>`);
+    out.push(`<path d="M${f(x + side * 4.2 * s)} ${f(y + 0.2 * s)}l${f(side * 1.8 * s)} ${f(-1.2 * s)}" stroke="${EYE}" stroke-width="${f(1.3 * s)}" fill="none" stroke-linecap="round"/>`);
+  }
+  return `<g data-part="eyes-closed">${out.join('')}</g>`;
+}
+
+/** One z, centred at (x, y), `h` tall: a Z stroke in the sleeper's ink with a pale core. */
+function zSvg(x, y, h, opacity, t) {
+  const w = h * 0.8, sw = Math.max(1.4, h * 0.16);
+  const d = `M${f(x - w / 2)} ${f(y - h / 2)}H${f(x + w / 2)}L${f(x - w / 2)} ${f(y + h / 2)}H${f(x + w / 2)}`;
+  const stroke = (col, width) => `<path d="${d}" stroke="${col}" stroke-width="${f(width)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+  return `<g data-part="z" data-t="${f(t)}" data-x="${f(x)}" data-y="${f(y)}" data-h="${f(h)}" opacity="${f(opacity)}">${stroke(Z_INK, sw + 2.6)}${stroke(Z_FILL, sw)}</g>`;
+}
+
+/**
+ * Where each z is in one frame: `SLEEP_ZS` of them evenly spaced along the rise, each a step further up per
+ * frame, so frame `SLEEP_FRAMES` is frame 0 again with every z one place higher — the lowest is born as the
+ * highest fades, and the loop has no seam. Along the rise a z shrinks from `Z_LARGE` to `Z_SMALL` ("ZZzzz"),
+ * drifts a little side to side, and fades in at the bottom and out at the top. Frame 0 sits half a step in,
+ * so the static form shows every z, the largest lowest.
+ * @returns {{t: number, x: number, y: number, h: number, opacity: number}[]} lowest first
+ */
+function sleepZs(frame, from, to) {
+  const phase = ((frame / SLEEP_FRAMES) + 0.5) % 1;
+  const out = [];
+  for (let k = 0; k < SLEEP_ZS; k++) {
+    const t = (k + phase) / SLEEP_ZS;
+    const opacity = Math.min(1, t / 0.15, (1 - t) / 0.4);
+    out.push({
+      t,
+      x: from.x + (to.x - from.x) * t + Math.sin(t * Math.PI * 2) * 3 * Math.sign(to.x - from.x || 1),
+      y: from.y + (to.y - from.y) * t,
+      h: Z_LARGE + (Z_SMALL - Z_LARGE) * t,
+      opacity,
+    });
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+
+/**
+ * The SLEEPER — one frame of a key slumped asleep at its desk, as a standalone SVG document (A6).
+ *
+ * The creature is its own recipe — body, colourway, hat, neckwear, glasses — with its eyes closed and its
+ * brows and held thing put away, its head rolled onto its forearms, which lie along the desk's top edge. The
+ * edge is the CALLER's (`deskTop`, a share of the frame's height, which the floor derives from its desk
+ * rects): the frame has no desk of its own, and everything below the edge is drawn behind the desk the floor
+ * lays over it. Above the head the z's rise (`sleepZs()`).
+ *
+ * @param {string} key the seat key
+ * @param {{ frame?: number, deskTop: number, species?: string }} opt `frame` 0..SLEEP_FRAMES-1
+ * @returns {string}
+ */
+export function sleepDocument(key, opt) {
+  const frame = opt.frame ?? 0;
+  if (!Number.isInteger(frame) || frame < 0 || frame >= SLEEP_FRAMES) throw new RangeError(`frame must be 0..${SLEEP_FRAMES - 1}, got ${frame}`);
+  if (!(opt.deskTop > 0 && opt.deskTop < 1)) throw new RangeError(`deskTop must be a share of the frame's height in (0, 1), got ${opt.deskTop}`);
+  const { r, sp, pen, c, A } = build(key, opt.species);
+  const { hat, neck, extra } = worn(r, sp, A);
+  const F = A.face;
+  const s = r.size;
+  const edge = opt.deskTop * SEAT_VIEWBOX.h;
+  const dir = c.side;
+
+  // The head and the body under it, rolled about the chin, the chin resting just above the edge.
+  const parts = [...c.layers.back, ...c.layers.body];
+  if (neck !== 'none' && extra === 'satchel') parts.push(satchelSvg(pen, A.neck, r.acc2, -c.side));
+  parts.push(...c.layers.front);
+  parts.push(blushSvg(pen, F, r.blush, A.blushDx || 0));
+  parts.push(sleepingEyesSvg(F));
+  parts.push(mouthSvg(F, F.beak ? null : 'tiny'));
+  if (neck !== 'none') parts.push(neckSvg(pen, A.neck, neck, r.acc1, r.acc2, c.side));
+  if (neck === 'none' && extra === 'satchel') parts.push(satchelSvg(pen, A.neck, r.acc2, -c.side));
+  if (extra === 'glasses') parts.push(glassesSvg(F));
+  if (hat !== 'none') parts.push(hatSvg(pen, A.hat, hat, r.acc1, r.acc2));
+  // The roll swings the head's crown toward the key's side; the head slides back by half that swing, so its
+  // middle stays on the frame's centre line and a wide head (a mushroom's cap) is not cut by the frame's side.
+  const { top, chin } = headOf(A);
+  const rest = edge - 4 * s;
+  const roll = dir * SLEEP_ROLL;
+  const rad = roll * Math.PI / 180;
+  const lift = (chin - top) * s;
+  const slide = -Math.sin(rad) * lift / 2;
+  const head = parts.join('');
+  const headTf = `translate(${f(54 + slide)} ${f(rest)}) rotate(${roll}) scale(${s} ${s}) translate(-54 -${f(chin)})`;
+
+  // The forearms, folded along the edge in front of the chin, a paw at each outer end.
+  const col = A.arms ? A.arms.col : c.P[0];
+  const reach = 22 * s, fy = edge - 5 * s;
+  const arms = [-1, 1].map((side) => {
+    const ax = 54 + side * reach;
+    return `<ellipse cx="${f(ax)}" cy="${f(fy)}" rx="${f(19 * s)}" ry="${f(6.6 * s)}" fill="${pen.paint(col)}" stroke="${line(col)}" stroke-width="1.4"/>` +
+      `<ellipse cx="${f(54 + side * (reach + 15 * s))}" cy="${f(fy - 0.6 * s)}" rx="${f(6 * s)}" ry="${f(5.4 * s)}" fill="${pen.paint(tint(col, 0.08))}" stroke="${line(col)}" stroke-width="1.2"/>`;
+  }).join('');
+
+  const markup = `<g data-part="head" transform="${headTf}">${head}</g><g data-part="arms">${arms}</g>`;
+  const drawing = `<g opacity="${RIM_OPACITY}">${rimOf(markup)}</g>${markup}`;
+  // Nothing is drawn below the edge: the desk stands there, and a frame drawn without one stays a sleeper.
+  pen.defs.push(`<clipPath id="c_edge"><rect x="-200" y="-200" width="508" height="${f(edge + 200)}"/></clipPath>`);
+
+  // The z's rise from just above the head toward the frame's top, on the side it rolled to. A head so tall its
+  // crown stands above `Z_RISE` keeps the z's their room: they start there, drawn over the top of the head. And
+  // the top of the closed eyes, rolled with the head, is the line every z stays above, whatever the rest says:
+  // the z's float over the sleeper and never across its face.
+  const crown = rest - Math.cos(rad) * lift;
+  const eyes = rest - Math.cos(rad) * (chin - F.y) * s - (Math.abs(Math.sin(rad)) * F.es + 5 * F.s) * s;
+  const from = { x: 54 + dir * 2, y: Math.min(Math.max(Z_RISE, Math.min(crown - 4, edge - 30)), eyes - Z_LARGE / 2 - 4) };
+  const to = { x: 54 + dir * 46, y: Z_SMALL };
+  const zs = sleepZs(frame, from, to).map((z) => zSvg(z.x, z.y, z.h, z.opacity, z.t)).join('');
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${SEAT_VIEWBOX.x} ${SEAT_VIEWBOX.y} ${SEAT_VIEWBOX.w} ${SEAT_VIEWBOX.h}" width="${SEAT_VIEWBOX.w}" height="${SEAT_VIEWBOX.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs><g data-pose="asleep" data-eyes-y="${f(eyes)}" data-edge="${f(edge)}" clip-path="url(#c_edge)">${drawing}</g><g data-part="zs">${zs}</g></svg>`;
+}
+
 /**
  * The chibi geometry the generator draws a key's intern frame to — its head's top and chin, the squash
  * applied below the chin and the head's resulting share of the drawn height (FLOOR.md § 10.4).
@@ -754,14 +897,5 @@ export function chibiGeometry(key, force) {
 /** What a key resolves to: the recipe plus the worn things, for the sheet and the selftest. */
 export function describe(key, force) {
   const { r, sp, A } = build(key, force);
-  const hats = A.hats || sp.hats;
-  const necks = A.neck ? sp.necks : [];
-  let extra = r.extra;
-  if (extra === 'satchel' && !A.neck) extra = 'none';
-  return {
-    ...r, label: sp.label, kind: sp.kind,
-    hat: ['none', 'none', 'none', ...hats][r.hatDraw % (hats.length + 3)],
-    neck: ['none', 'none', ...necks][r.neckDraw % (necks.length + 2)],
-    extra,
-  };
+  return { ...r, label: sp.label, kind: sp.kind, ...worn(r, sp, A) };
 }

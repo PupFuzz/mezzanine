@@ -1,5 +1,5 @@
 // HEADLESS CHROMIUM OVER THE DEVTOOLS PROTOCOL — the one launcher the hand-run browser tools in this
-// directory share (`floor-preview.browser.mjs` its `findChrome()`; `lobby-label-contrast.browser.mjs`, `floor-chrome.browser.mjs` and `floor-fixture.browser.mjs` both). Node, no
+// directory share (`floor-preview.browser.mjs` its `findChrome()`; `lobby-directory.browser.mjs`, `floor-chrome.browser.mjs`, `floor-fixture.browser.mjs` and `floor-ride.browser.mjs` both). Node, no
 // dependencies: Chromium is spawned with a DevTools port and driven over the platform's own WebSocket.
 // Hoisted at its second caller (card#11045) rather than copied.
 
@@ -83,6 +83,9 @@ async function browser(chrome, width, height, ready = 'drawn', emulate = {}) {
       throw new Error(`the page never drew: ${url}`);
     },
     evaluate,
+    // The page's own DevTools commands — input events, navigation — for a tool that drives the page itself
+    // (`floor-ride.browser.mjs`, card#11795).
+    page,
     shot: async (clip) => `data:image/png;base64,${(await page('Page.captureScreenshot', { format: 'png', ...(clip ? { clip: { ...clip, scale: 1 } } : {}) })).data}`,
     close() { ws.close(); proc.kill(); },
   };

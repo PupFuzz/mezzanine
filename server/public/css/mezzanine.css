@@ -11,14 +11,15 @@
  * `public/js/floor/painter.js`'s embedded style names every colour as `var(--scene-…)`; a token it reads
  * that is not declared below resolves to nothing, so the same test reds on one.
  *
- * ⛔ `--door` / `--door-edge` ARE COPIES OF THE LOBBY's `INK.door` / `INK.doorEdge`
- * (`public/js/lobby/building-scene.js`), which the lobby keeps as hex because it does arithmetic on its
- * palette; the floor's elevator (card#11045 PR-D) reads these, and the same test reds when the two drift.
+ * ⛔ `--door` / `--door-edge` / `--lobby-mat` ARE COPIES OF THE LOBBY's `INK.door` / `INK.doorEdge` / `INK.mat`
+ * (`public/js/lobby/building-scene.js`), which the lobby keeps as hex because its room is SVG shape data painted as
+ * presentation attributes, which read no custom property; the floor's elevator (card#11045 PR-D), the lobby room's
+ * leaves and the lobby view behind the cab's doors (card#12113) read these, and the same test reds when they drift.
  *
- * ⛔ NO TEXT SIZE ON `:root`, `html`, `body`, `*` OR ON ANY TAG A LOBBY PLATE's LABEL IS BUILT FROM, AND
- * NO `!important` TEXT SIZE. A plate's label is `1rem`, which must be the body text size
- * (§ 4.1; `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest` reads this sheet and reds on
- * each). Text sizes below are set on classes and ids, and on headings, summaries and controls.
+ * ⛔ NO TEXT SIZE ON `:root`, `html`, `body`, `*` OR ON ANY TAG THE LOBBY DIRECTORY IS BUILT FROM, AND NO
+ * `!important` TEXT SIZE. The directory's face is `1rem`, which must be the body text size (§ 4.1;
+ * `Tests\Feature\Lobby\TheLobbyIsADrawnRoomTest` reads this sheet and reds on each). Text sizes below are set on
+ * classes and ids, and on headings, summaries and controls.
  *
  * ⛔ THE FLOOR's DRAWING HEIGHT IS ONE MECHANISM, A FLEX COLUMN: on the floor page `main` is a column at
  * least `100dvh − --reveal` tall, and the room's stage (`#floor-drawing`, the gesture hint's row under it,
@@ -30,6 +31,19 @@
  * `--reveal` above the window's bottom edge whenever the drawing is above its floor. `tools/design/floor-chrome.browser.mjs` measures both on a rendered page.
  * The camera's surface is the drawing's own box (`main.js`'s `surface()`, re-read by a `ResizeObserver`
  * on the drawing), so the chrome growing or shrinking is a resize of the drawing the camera sees.
+ *
+ * ⛔ EVERY `color-mix()` HERE SITS IN AN `@supports (color: color-mix(in srgb, currentColor 50%, transparent))`
+ * BLOCK, AFTER A PLAIN RULE OF THE SAME SELECTOR THAT SETS THE SAME PROPERTY (card#12070, the mechanism card#12052
+ * gave the drawing's own style in `painter.js`). A declaration holding `var()` is accepted when it is parsed and
+ * fails only when its value is computed, so a browser without `color-mix()` would keep it and paint nothing — a
+ * `box-shadow` or `border` losing the whole declaration — and a plain value declared before it in the same rule would
+ * be thrown away. The plain rule
+ * is therefore a rule of its own: a browser without `color-mix()` skips the block and keeps it, one with it takes the
+ * block's later rule. Each fallback is the mixed value with every `color-mix()` replaced by ONE OF ITS OWN COLOURS,
+ * picked so the rule still reads (the larger share unless named otherwise beside it).
+ * `Tests\Feature\ThePageChromeIsOneLinkedStylesheetTest` reds on a `color-mix()` outside such a block, here or in
+ * the painter's style, and on a mixed declaration with no plain one before its block; the popup's contrast in this
+ * branch is `TheCabPanelReconcilesByKeyTest`'s.
  *
  * Scoping: the shell's rules are generic; the floor's sit under `#floor`, the lobby's under `.lobby`,
  * the console's under `.console-nav`; a sign-in page gets the shell and nothing else.
@@ -57,6 +71,19 @@
     --door: #dbe5ee;
     --door-edge: #9fb1c4;
     --door-frame: #2b3340;
+    /* The welcome mat the lobby view behind the cab's doors lays before the front doors (card#12113) — a copy of
+       the lobby's `INK.mat`, held equal by the same test. */
+    --lobby-mat: #e7866d;
+    /* The lobby directory's plaque (FLOOR.md § 4.1, card#12113): its cream face — a surface the state chips are measured
+       over (`tools/design/state-chip-colours.py`) — its soft frame, its ink, its dimmer ink, the chips' outline, the brass
+       edge of the readings' panels and the dark of its title bar and numerals. */
+    --lobby-plaque: #fffaf2;
+    --lobby-plaque-edge: #e7b98f;
+    --lobby-plaque-ink: #3b2f2a;
+    --lobby-plaque-dim: #6b5f58;
+    --lobby-plaque-outline: rgba(59, 47, 42, 0.35);
+    --lobby-brass: #c9a873;
+    --lobby-sign: #3b2f4a;
 
     /* The floor's frame's FALLBACK (docs/design/FLOOR.md § 10.6 item 8): what the painter draws under the
        floor's theme on every paint, so it is what is left where a theme's document is not — the band's flat
@@ -281,10 +308,16 @@ pre {
 
 [role="alert"] {
     color: var(--ink);
-    background: color-mix(in srgb, var(--alarm) 30%, var(--panel));
+    background: var(--panel);
     border-left: 4px solid var(--alarm);
     padding: 8px 12px;
     border-radius: 6px;
+}
+
+@supports (color: color-mix(in srgb, currentColor 50%, transparent)) {
+    [role="alert"] {
+        background: color-mix(in srgb, var(--alarm) 30%, var(--panel));
+    }
 }
 
 main > [role="status"] {
@@ -352,27 +385,21 @@ main > form:has(label) input:not([type="checkbox"]):not([type="radio"]) {
 /* ── The lobby ───────────────────────────────────────────────────────────────────────────────── */
 
 /*
- * The lobby keeps the 8 px side margin its page had before this sheet — the surface width every run of
- * `tools/design/lobby-label-contrast.browser.mjs` was measured at. The shell's wider gutter narrowed the
- * building's drawing and moved its plate labels: a night star behind a label's glyph at 1,440 px, and at
- * phone width a label falling back onto its plate under the contrast floor (card#11045 review r1). A
- * different margin is a re-measurement by that tool, not an edit here.
+ * THE LOBBY's DRAWN ROOM AND ITS DIRECTORY (FLOOR.md § 4.1, card#12113). `#lobby-building` is the drawing surface and
+ * `#lobby-room` the camera's layer: its size, its clip and its transform are `public/js/lobby/main.js`'s (from
+ * `building-scene.js`'s `surfaceStyle()` and the camera), never this sheet's, so a placeholder page before the first
+ * snapshot flows as text. The directory's and the readings' FACES are counter-scaled by `--lobby-zoom` /
+ * `--lobby-scale`, which `directory.js`'s `showDirectory()` alone writes on the layer, so their text is the page's own
+ * size at every zoom. ⛔ The plaque's face is a surface `tools/design/state-chip-colours.py` measures the state chips
+ * over (`--lobby-plaque`).
  */
 main > section.lobby {
     margin-inline: 8px;
 }
 
-/*
- * …and the building's plate labels keep the face they were measured in, the browser's own default: the
- * shell's body face changed their glyphs and so which night-sky star stands behind which one (the same
- * review). The labels' type is the lobby's to redesign, with that tool re-run; this sheet does not move it.
- */
+/* A frame that takes no layout: a border would move the room off the box the camera measures. */
 .lobby #lobby-building {
-    font-family: initial;
-}
-
-/* A frame that takes no layout: a border would move the plates off the box the camera measures. */
-.lobby #lobby-building {
+    width: 100%;
     border-radius: var(--radius);
     box-shadow: 0 0 0 1px var(--line);
 }
@@ -384,31 +411,233 @@ main > section.lobby {
     margin: 10px 0;
 }
 
-.lobby > p:not([role]),
-.lobby section[aria-labelledby="lobby-health-heading"] > p {
+.lobby > p:not([role]) {
     color: var(--dim);
 }
 
-.lobby section[aria-labelledby="lobby-health-heading"] {
+/* The two faces: the page's own text size, and every line read whole — a line wider than its box wraps, breaking inside a
+   word only where a word alone is wider (FLOOR.md § 4.1), so a plaque grows taller rather than hiding a figure. */
+.lobby .lobby-face {
+    box-sizing: border-box;
+    font-size: 1rem;
+    line-height: 1.3;
+    color: var(--lobby-plaque-ink);
+    overflow-wrap: anywhere;
+}
+
+.lobby .lobby-directory-face {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    container-type: inline-size;
+}
+
+.lobby #lobby-directory-heading {
+    flex: none;
+    margin: 0;
+    padding: 2px 8px;
+    border-radius: 8px;
+    background: var(--lobby-sign);
+    color: var(--lamp);
+    font-size: 1rem;
+    font-weight: 600;
+    text-align: center;
+}
+
+/* The title wraps — but on a face narrower than the Directory title wrap width (FLOOR.md § 12), the phone's fitted board,
+   a wrapped title would fill the box and leave the plaques none, so there it is one line cut at its end (§ 4.1's
+   residual). */
+@container (width < 15em) {
+    .lobby #lobby-directory-heading {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
+.lobby .lobby-directory-title {
+    font-family: var(--face-display);
+    font-weight: 700;
+    letter-spacing: 0.15em;
+}
+
+/* The plaques' list scrolls inside its box (§ 4.1) — `touch-action: none` like the drawing around it, the gesture wire
+   scrolling it from the drag it owns. */
+.lobby .lobby-plaques {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-y: auto;
+    touch-action: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.lobby .lobby-plaque {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 5px 10px;
+    border: 2px solid var(--lobby-plaque-edge);
+    border-radius: 10px;
+    background: var(--lobby-plaque);
+}
+
+.lobby .lobby-plaque-row {
     display: flex;
     flex-wrap: wrap;
-    align-items: baseline;
-    gap: 4px 18px;
-    padding: 8px 14px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    background: var(--panel);
+    align-items: center;
+    gap: 2px 6px;
+    min-width: 0;
+    overflow: hidden;
 }
 
-.lobby section[aria-labelledby="lobby-health-heading"] > h3 {
-    flex-basis: 100%;
-    margin: 4px 0;
+/* The name row: the name and the agents and desks never shrink, so the rooms line is the one part that gives way — it
+   takes what the row has left and wraps inside it. Where the name and the figures do not fit side by side, the figures
+   move to a line of their own, still right-aligned; a name wider than the row wraps. */
+.lobby .lobby-plaque-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    max-width: 100%;
+    font-weight: 700;
+    color: var(--lobby-plaque-ink);
+    outline-offset: -2px;
 }
 
-.lobby section[aria-labelledby="lobby-health-heading"] > p {
-    margin: 0;
+.lobby .lobby-plaque-numeral {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.4em;
+    height: 1.4em;
+    border-radius: 0.7em;
+    background: var(--lobby-sign);
+    color: var(--lamp);
     font-family: var(--face-mono);
-    font-size: 13px;
+}
+
+.lobby .lobby-plaque-rooms {
+    flex: 1 1 0;
+    min-width: 6em;
+    color: var(--lobby-plaque-dim);
+}
+
+.lobby .lobby-plaque-staffing {
+    flex: none;
+    max-width: 100%;
+    margin-left: auto;
+    font-weight: 600;
+}
+
+/* A chip: its member's fill, a 1 px outline in the plaque's ink at low opacity so a pale fill keeps its edge, its word
+   always on it (§ 4.1). An unrecognised value is the sheet's unrecognised treatment. */
+.lobby .lobby-chip {
+    flex: none;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 0 8px;
+    border-radius: 10px;
+    border: 1px solid var(--lobby-plaque-outline);
+    background: var(--fill);
+    color: var(--state-ink);
+    font-weight: 600;
+}
+
+.lobby .lobby-chip.unrecognised {
+    background: var(--lobby-plaque);
+    border: 1.5px dashed var(--scene-unrecognised);
+    color: var(--lobby-plaque-ink);
+}
+
+/* A marker: a disc for a member that draws a character, a ring for an empty chair (§ 4.1). */
+.lobby .lobby-marker {
+    flex: none;
+    box-sizing: border-box;
+    width: 12px;
+    height: 12px;
+    border-radius: 6px;
+    box-shadow: 0 0 0 1px var(--lobby-plaque-ink);
+}
+
+.lobby .lobby-marker.disc {
+    background: var(--fill);
+}
+
+.lobby .lobby-marker.ring {
+    border: 3px solid var(--fill);
+    background: var(--lobby-plaque);
+}
+
+.lobby .lobby-marker-more {
+    margin-left: 4px;
+    font-family: var(--face-mono);
+}
+
+.lobby .lobby-plaque-totals {
+    color: var(--lobby-plaque-dim);
+}
+
+.lobby .lobby-plaque.unclaimed,
+.lobby .lobby-plaque.none {
+    flex-direction: row;
+}
+
+/* The readings under the board: two brass-edged panels side by side, each scrolling inside its half and each declaring it
+   (`data-camera-scrolls`), as the directory's list does. */
+.lobby .lobby-readings-face {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    overflow: hidden;
+}
+
+.lobby .lobby-reading {
+    box-sizing: border-box;
+    min-height: 0;
+    padding: 4px 10px;
+    border: 2px solid var(--lobby-brass);
+    border-radius: 8px;
+    background: var(--lobby-plaque);
+    font-family: var(--face-mono);
+    overflow-y: auto;
+    /* A scroller of its own, so `touch-action` does not reach it from the drawing: the gesture wire scrolls it (§ 4.1). */
+    touch-action: none;
+}
+
+.lobby .lobby-reading h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: inherit;
+}
+
+.lobby .lobby-reading p,
+.lobby .lobby-reading li {
+    margin: 0;
+}
+
+.lobby .lobby-reading ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* Before the first snapshot nothing is drawn, and the faces flow as the page's own text. */
+.lobby #lobby-room:not([data-drawn]) .lobby-face {
+    color: var(--ink);
+}
+
+.lobby #lobby-room:not([data-drawn]) .lobby-reading,
+.lobby #lobby-room:not([data-drawn]) .lobby-plaque {
+    background: var(--panel);
+    border-color: var(--line);
+    color: var(--ink);
 }
 
 /* ── The floor ───────────────────────────────────────────────────────────────────────────────── */
@@ -499,9 +728,21 @@ main > section.lobby {
 #floor-notices > li,
 #floor-rooms > li {
     padding: 6px var(--gutter);
-    background: color-mix(in srgb, var(--warn) 18%, var(--panel));
-    border-bottom: 1px solid color-mix(in srgb, var(--warn) 45%, var(--panel));
+    background: var(--panel);
+    /* Without color-mix() the edge is the amber itself, so the bar still reads as a statement. */
+    border-bottom: 1px solid var(--warn);
     color: var(--ink);
+}
+
+@supports (color: color-mix(in srgb, currentColor 50%, transparent)) {
+    #floor-statement,
+    #floor-kept,
+    #floor-layout-statement,
+    #floor-notices > li,
+    #floor-rooms > li {
+        background: color-mix(in srgb, var(--warn) 18%, var(--panel));
+        border-bottom: 1px solid color-mix(in srgb, var(--warn) 45%, var(--panel));
+    }
 }
 
 #floor-notices,
@@ -676,6 +917,288 @@ main > section.lobby {
     border-radius: var(--radius);
     background: var(--panel);
     box-shadow: 0 16px 48px rgb(0 0 0 / 0.45);
+}
+
+/*
+ * § 4.5's CAB (card#11795): the elevator's interior, a modal dialog filling the window — the painter's cab
+ * (`#floor-cab-doors`, `paintCab()`) and the button popup, LAID OUT TOGETHER (card#12039): side by side in a
+ * landscape window, the cab over the popup in a portrait one, so the popup never covers the door and the
+ * cab is fitted whole into its own box (`paintCab()`'s `meet`), its door's head and lamp always in view. The
+ * cab is a room drawn in depth, taller than it is wide (card#12051, card#12071), sized to the window's height in a
+ * landscape window and to at most 85% of its width in a portrait one, and
+ * nothing is painted past it: around it is the dialog's own dark background. The dialog's look only:
+ * the ride's view transition is the layout's inline block, never this sheet's (`layouts/app.blade.php`).
+ *
+ * ⛔ THE POPUP IS THE ELEVATOR's OWN BUTTON PANEL, IN THE HOUSE THEME's ELEVATOR PALETTE, AND THIS SHEET
+ * HOLDS NO COPY OF IT. `--cab-frame` and `--cab-lamp` are set on the dialog from the theme module's
+ * `PALETTE.elevator` (`floor/cab-paint.js`'s `cabTheme()`, which also marks the dialog `data-themed`); the defaults
+ * below are only what a theme that did not load leaves, the same tokens the painter's own fallback drew. Its
+ * body is the frame, its words the room's ink, a stop's button the building's door and door edge (`--door` /
+ * `--door-edge`, the leaves' colours), the current floor's call button the lamp.
+ * `tools/design/floor-ride.browser.mjs`'s `cab-palette` row reads each against the theme.
+ *
+ * ⛔ WITH NO THEME THE POPUP IS THE PAGE's OWN PANEL (card#12047): `--cab-body` / `--cab-ink` are `--panel` /
+ * `--ink` until `data-themed` makes them the frame and the room's ink. The door frame's fallback under the room's
+ * ink was 1.01:1, every word in the popup illegible. Every text in the popup holds 4.5:1 on what it sits on, in
+ * both states, over the body's light and shade: `TheCabPanelReconcilesByKeyTest`'s contrast check computes it
+ * from this sheet and the house theme, and `floor-ride.browser.mjs`'s `cab-fallback` row from a page whose theme
+ * failed to load.
+ */
+.floor-cab {
+    --cab-frame: var(--door-frame);
+    --cab-lamp: var(--lamp);
+    --cab-body: var(--panel);
+    --cab-ink: var(--ink);
+    /* The frame's rim — its edges, its rivets and its shadows: the frame darkened toward the room's ink (below). Without
+       color-mix() the rim is the room's ink itself, so the edge and the rivets still show on the frame. */
+    --cab-rim: var(--scene-ink);
+    /* The popup's width — FLOOR.md § 12's *Cab button popup*, held equal to it by `TheCabPanelReconcilesByKeyTest`
+       (with the two layouts' width bound and the stacked one's height bound): its widest, and beside the door a
+       share of the window. */
+    --cab-panel-max: 480px;
+    --cab-panel-w: clamp(280px, 36vw, var(--cab-panel-max));
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    /* The dynamic viewport's height where the browser has it, so a phone's toolbar never covers the popup's foot. */
+    height: 100vh;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: var(--door-frame);
+    color: var(--ink);
+    overflow: hidden;
+}
+
+@supports (color: color-mix(in srgb, currentColor 50%, transparent)) {
+    .floor-cab {
+        --cab-rim: color-mix(in srgb, var(--cab-frame) 55%, var(--scene-ink));
+    }
+}
+
+/* The house theme loaded (`cabTheme()`): the popup is the elevator's frame, and its words the room's ink on it. */
+.floor-cab[data-themed] {
+    --cab-body: var(--cab-frame);
+    --cab-ink: var(--scene-ink);
+}
+
+/* Only an open dialog is laid out: a `display` on the closed one would show it. */
+.floor-cab[open] {
+    display: grid;
+    grid-template-columns: auto var(--cab-panel-w);
+    grid-template-rows: minmax(0, 1fr);
+    justify-content: center;
+    gap: calc(2 * var(--gutter));
+    box-sizing: border-box;
+    padding: var(--gutter);
+    align-items: center;
+}
+
+.floor-cab::backdrop {
+    background: var(--ground-deep);
+}
+
+.floor-cab-doors {
+    align-self: stretch;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* In a landscape window the cab's box is the cab's own shape (`paintCab()` sets `--cab-aspect`), as tall as the
+   window allows less a margin, so the narrow cab and the popup sit together as one centred group. */
+@media (orientation: landscape) and (min-width: 420px) {
+    .floor-cab-doors {
+        height: calc(100vh - 4 * var(--gutter));
+        height: calc(100dvh - 4 * var(--gutter));
+        aspect-ratio: var(--cab-aspect, auto);
+        max-width: calc(100vw - var(--cab-panel-w) - 4 * var(--gutter));
+    }
+}
+
+.floor-cab-panel {
+    box-sizing: border-box;
+    width: var(--cab-panel-w);
+    max-height: 100%;
+    overflow-y: auto;
+    padding: 20px 22px 18px;
+    border: 3px solid var(--cab-rim);
+    border-radius: 28px;
+    background-color: var(--cab-body);
+    /* A rivet in each corner, over the frame's light from the top left. */
+    background-image:
+        radial-gradient(circle at 16px 16px, var(--cab-rim) 0 4px, transparent 4.5px),
+        radial-gradient(circle at calc(100% - 16px) 16px, var(--cab-rim) 0 4px, transparent 4.5px),
+        radial-gradient(circle at 16px calc(100% - 16px), var(--cab-rim) 0 4px, transparent 4.5px),
+        radial-gradient(circle at calc(100% - 16px) calc(100% - 16px), var(--cab-rim) 0 4px, transparent 4.5px),
+        linear-gradient(160deg, rgb(255 255 255 / 0.3), rgb(255 255 255 / 0) 42%, rgb(0 0 0 / 0.1));
+    box-shadow: inset 0 3px 0 rgb(255 255 255 / 0.35), inset 0 -4px 0 rgb(0 0 0 / 0.12), 0 18px 48px rgb(0 0 0 / 0.45);
+    color: var(--cab-ink);
+}
+
+/* A portrait window, or one too narrow to hold the popup beside the cab: the cab above, the popup centred under it. */
+@media (orientation: portrait), (max-width: 419px) {
+    .floor-cab[open] {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr) auto;
+        justify-items: center;
+    }
+
+    /* No wider than 85% of the window, so where the window's width binds (a phone) the cab is still a bounded box with the
+       dialog's background either side of it, never stretched across the window (card#12071's wider cab). */
+    .floor-cab-doors {
+        justify-self: center;
+        width: min(100%, 85vw);
+    }
+
+    .floor-cab-panel {
+        width: min(var(--cab-panel-max), 100%);
+        max-height: 55vh;
+        max-height: 55dvh;
+    }
+}
+
+/* The heading, under the panel's own lamp — the elevator's header plate. */
+.floor-cab-panel h2 {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 14px;
+    font-size: 20px;
+    color: var(--cab-ink);
+    text-align: center;
+}
+
+.floor-cab-panel h2::before {
+    content: "";
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--cab-lamp);
+    box-shadow: 0 0 0 3px var(--cab-rim), 0 0 14px var(--cab-lamp);
+}
+
+.floor-cab-panel ul {
+    display: grid;
+    gap: 10px;
+    margin: 0 0 12px;
+    padding: 0;
+    list-style: none;
+}
+
+/* A stop's button: a plate in the leaves' own door colours. */
+.floor-cab-panel li > button {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 48px;
+    padding: 8px 16px 8px 10px;
+    border: 2px solid var(--door-edge);
+    border-radius: 18px;
+    background: var(--door);
+    color: var(--scene-ink);
+    font-size: 16px;
+    text-align: left;
+    box-shadow: inset 0 -3px 0 var(--door-edge), 0 2px 0 var(--cab-rim);
+}
+
+@supports (color: color-mix(in srgb, currentColor 50%, transparent)) {
+    .floor-cab-panel li > button {
+        box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--door-edge) 55%, transparent), 0 2px 0 var(--cab-rim);
+    }
+}
+
+.floor-cab-panel li > button:hover {
+    border-color: var(--scene-ink);
+}
+
+.floor-cab-panel li > button:active {
+    transform: translateY(2px);
+    box-shadow: inset 0 -1px 0 var(--door-edge);
+}
+
+@supports (color: color-mix(in srgb, currentColor 50%, transparent)) {
+    .floor-cab-panel li > button:active {
+        box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--door-edge) 55%, transparent);
+    }
+}
+
+.floor-cab-panel li > button:focus-visible {
+    /* Drawn on the popup's body, past the button's edge: the body's ink. */
+    outline: 3px solid var(--cab-ink);
+    outline-offset: 3px;
+}
+
+/* A stop's round call button; the current floor's is lit by the lamp, and its plate warmed by it. */
+.cab-cap {
+    flex: none;
+    width: 26px;
+    height: 26px;
+    box-sizing: border-box;
+    border: 3px solid var(--door-edge);
+    border-radius: 50%;
+    background: var(--door);
+    box-shadow: inset 0 2px 2px rgb(255 255 255 / 0.6);
+}
+
+/* Without color-mix() the current floor's plate is the door's and its edge — and its call button's — the room's ink,
+   so the lit call button and the dark edge still pick it out. */
+.floor-cab-panel li.current > button {
+    border-color: var(--scene-ink);
+    background: var(--door);
+}
+
+.floor-cab-panel li.current .cab-cap {
+    border-color: var(--scene-ink);
+    background: var(--cab-lamp);
+    box-shadow: inset 0 2px 2px rgb(255 255 255 / 0.6), 0 0 12px var(--cab-lamp);
+}
+
+@supports (color: color-mix(in srgb, currentColor 50%, transparent)) {
+    .cab-cap {
+        background: color-mix(in srgb, var(--door) 60%, var(--door-edge));
+    }
+
+    .floor-cab-panel li.current > button {
+        border-color: color-mix(in srgb, var(--cab-lamp) 60%, var(--scene-ink));
+        background: color-mix(in srgb, var(--door) 65%, var(--cab-lamp));
+    }
+
+    .floor-cab-panel li.current .cab-cap {
+        border-color: color-mix(in srgb, var(--cab-lamp) 60%, var(--scene-ink));
+    }
+}
+
+.cab-name {
+    font-weight: 600;
+}
+
+/* *— you are here*, on its stop's door-coloured button. */
+.cab-here {
+    color: var(--scene-ink);
+}
+
+/* The status, layout and feed lines, on the popup's body — by class, so the lobby's cab (`#lobby-cab-*`) is styled as the floor's. */
+.floor-cab-status,
+.floor-cab-layout,
+.floor-cab-feed {
+    color: var(--cab-ink);
+}
+
+.floor-cab-status {
+    margin: 0 0 10px;
+    text-align: center;
+}
+
+.floor-cab-feed,
+.floor-cab-layout {
+    margin: 4px 0 0;
+    font-size: 13px;
+    text-align: center;
 }
 
 #floor-signin {

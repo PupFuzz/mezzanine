@@ -59,35 +59,56 @@
  *                                               //  page repaints the drawing's view and renders nothing
  *      "lobby":      true                       // start `lobby/lobby-screen.js` after start(),
  *                                               //  `render()` after every settled event — the
- *                                               //  LOBBY (Appendix B row 9) over this same client
+ *                                               //  LOBBY (Appendix B rows 9 and 24) over this same client
  *                                               //  (`"floor": null` and `"lobby": false` start
  *                                               //  neither: how a test replays a run written for one
  *                                               //  of them under `desk_floor` — the same bytes, on
- *                                               //  another page) — or, for Appendix B row 16's camera
- *                                               //  at building scale, an object: `{ "surface":
- *                                               //  {width, height},` the building's drawing surface
- *                                               //  (absent, `HARNESS_SURFACE`), `"camera": [ { "at_ms": N,
- *                                               //  "act": "ride" } | { "act": "arrive" } | { "act":
- *                                               //  "return" } | { "act": "building" } | { "act":
- *                                               //  "scroll", … } | { "act": "ctrl_wheel", … } | { "act":
- *                                               //  "pinch", … } (the floor's three) | { "act": "zoom",
- *                                               //  "notches" } | { "act": "drag", "dx", "dy" } | {
- *                                               //  "act": "focus", "floor" } | { "act": "resize",
- *                                               //  "width", "height" } ], "local_hours": N,
- *                                               //  "local_minutes": N }` — the last two the viewer's
- *                                               //  civil time for the sky, as the floor's — the ride control (the
- *                                               //  viewer's cab moved to the stop it returns and the
- *                                               //  lobby DRAWN, as the page draws it; nothing
- *                                               //  drained), the ride's glide arriving (the page
- *                                               //  asks for the route, then the screen's
- *                                               //  `returned()` and a draw), the page coming back
- *                                               //  from the back-forward cache (`returned()`, then
- *                                               //  drawn), the whole-building control, the wheel's pan
- *                                               //  and zoom and the touch pinch, a
- *                                               //  key's or a zoom button's zoom, the drag (or an
- *                                               //  arrow key's), the keyboard's focus on a plate
- *                                               //  (`focusPlate()`) and a surface resize, none
- *                                               //  followed by a render
+ *                                               //  another page) — or an object: `{ "surface": {width,
+ *                                               //  height},` the room's drawing surface (absent,
+ *                                               //  `HARNESS_SURFACE`), `"lobby_href": "<url>"` the cab's
+ *                                               //  *Lobby* stop's href, `"tick": true` the 1 s tick
+ *                                               //  (`age-readout.js`'s ticker, the page's `tickView()`
+ *                                               //  painted with the trigger `tick`), `"camera": [ { "at_ms":
+ *                                               //  N, "act": "fit" } | { "act": "focus_elevator" } | {
+ *                                               //  "act": "focus_board" } | { "act": "scroll", … } | {
+ *                                               //  "act": "ctrl_wheel", … } | { "act": "pinch", … } (the
+ *                                               //  floor's three) | { "act": "zoom", "notches" } | {
+ *                                               //  "act": "drag", "dx", "dy" } | { "act": "resize",
+ *                                               //  "width", "height" } ]`, none followed by a render, and
+ *                                               //  `"ride": [ … ]` — the floor's `floor.ride` acts, each
+ *                                               //  the lobby screen's method (`lobby.ride`, card#12113),
+ *                                               //  recorded in `ride_acts[]` and painted into
+ *                                               //  `lobby_renders[]` with the trigger `ride`;
+ *                                               //  `"local_hours": N, "local_minutes": N` the viewer's
+ *                                               //  civil time for the sky, as the floor's
+ *      "floor.lobby_href": "<url>"              // the floor page's own *Back to the lobby* link's href,
+ *                                               //  handed to the screen as the page hands it (§ 4.5's
+ *                                               //  ride, card#11795) — the cab's lobby stop
+ *      "floor.ride": [ { "at_ms": N, "act": "ride" | "entered" | "shut" | "choose", "key": "<floor>"|null
+ *                        | "opened" | "abandoned" | "arrived" | "returned" | "cab_closed" | "escape",
+ *                        "cancelable": bool | "arrive_by_ride", "expires_in_ms": N } ]
+ *                                               //  the elevator ride's acts (§ 4.5): each the screen's
+ *                                               //  method of that name (`cab_closed` its `cabClosed()`,
+ *                                               //  `escape` the cab's `cancel` with its `cancelable`), its
+ *                                               //  answer recorded in `ride_acts[]`, and — when it answered
+ *                                               //  — `rideView()` drawn as the page paints it (`trigger`
+ *                                               //  `ride`). None is followed by a render: a ride act
+ *                                               //  applies nothing
+ *      "arrive_by_ride": { "expires_in_ms": N } // with a `floor` or a `lobby`: the page entered by a ride —
+ *                                               //  the screen's `arriveByRide()` before its first render, as
+ *                                               //  `floor/main.js` and `lobby/main.js` call it from the head
+ *                                               //  script's record
+ *      "scene_inputs_after_enter": true | { "at_ms": N }
+ *                                               // with a `floor.scene`: the scene's inputs supplied AFTER
+ *                                               //  § 4.4's `enter()` and one `render()` (`true`), or as an
+ *                                               //  event at N followed by a render — the art answering
+ *                                               //  after the layout, which a page meets on every cold load:
+ *                                               //  the frames before it carry a floor and no scene
+ *      "render_before_enter": true              // with a `floor`: one `render()` BEFORE § 4.4's
+ *                                               //  `enter()`, as the page draws one while that entry's
+ *                                               //  layout request is still in flight — its
+ *                                               //  ResizeObserver, the stream's events and the art's
+ *                                               //  answer each ask for a render (`floor/main.js`)
  *      "reduce":     true                       // § 6.4's `prefers-reduced-motion: reduce`, as a
  *                                               //  page reads it — every § 6.2 row draws its
  *                                               //  reduced-motion form and logs `motion: false`
@@ -109,17 +130,13 @@
  *      "pending_timers": N, "rejections": [], "age_renders": [ {at, readouts} ],
  *      "streams": [ {opened_at, open_fired, refused, ended_at, closed_at} ],
  *      "desk_renders": [ {at, trigger, frame, …} ], "floor_renders": [ {at, trigger, frame} ] — `trigger`
- *      `render` for a render, `walk end` for a walk's paint-only refresh,
- *      "lobby_renders": [ {at, frame, label} ], "camera_acts": [ {at, act, before, after, glide_ms} ] — on
- *      the lobby, each act also carrying `label: {after, mid}`, and a ride's `ride: {cab, route, resolves_to}`
- *      — `resolves_to` the floor the floor page's `resolveRoute()` finds for the route over the building the
- *      lobby drew — or `null` when the ride was refused. A `label` is `lobby/label-paint.js`'s
- *      `showLabels()`, read back off the custom properties it writes for this camera — `{zoom, scale, side,
- *      left, width, lines, ink, textInk, backing, halo, align}` — under the frame's camera, the camera an
- *      act leaves, and (`mid`, `null` for an act that does not glide) the camera the page shows halfway
- *      through the act's glide; and each ride step's (`ride`, `arrive`, `return`) `riding:
- *      {accessor, frame}` — the screen's `riding()` after the step, beside the `riding` of the last frame
- *      drawn —
+ *      `render` for a render, `walk end` for a walk's paint-only refresh, `ride` for the frame a page paints
+ *      after a ride act (`rideView()`), "ride_acts": [ {at, act, answer, ride, scene_view_ride} ] — each ride act's
+ *      answer, the `ride` of the frame painted after it (`null` when it answered `null` and nothing was painted)
+ *      and the `ride` of the 1 s tick's scene over that frame's desks (`sceneView()`),
+ *      "lobby_renders": [ {at, trigger, frame} ] — `trigger` `render`, `ride` for the frame a page paints
+ *      after a ride act (`rideView()`) and `tick` for the 1 s tick's (`tickView()`) — "camera_acts": [ {at,
+ *      act, before, after, glide_ms} ] on either page —
  *      "animation_log": [ <§ 11 rows> ] }`
  *   and each record
  *   `{ "at", "label", "outcome", "seats", "event_log", "requests", "phase", "clock_offset_ms",
@@ -214,7 +231,6 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { scriptedFetch } from '../Support/scripted-fetch.mjs';
-import { shownLabel } from '../Support/shown-label.mjs';
 import { HARNESS_SURFACE } from '../Support/harness-surface.mjs';
 import { harnessMeasurer } from '../Support/harness-measurer.mjs';
 
@@ -230,20 +246,11 @@ const { startAgeTicker } = await import(pathToFileURL(join(dir, 'age-readout.js'
 const { formatDuration } = await import(pathToFileURL(join(dir, 'duration.js')).href);
 const { createAnimationLog } = await import(pathToFileURL(join(dir, 'animation-log.js')).href);
 const { startDeskFloor } = await import(pathToFileURL(join(dir, '..', 'desk', 'desk-floor.js')).href);
-const { startFloorScreen, resolveRoute } = await import(pathToFileURL(join(dir, '..', 'floor', 'floor-screen.js')).href);
+const { startFloorScreen } = await import(pathToFileURL(join(dir, '..', 'floor', 'floor-screen.js')).href);
 const { statusStrip } = await import(pathToFileURL(join(dir, '..', 'floor', 'status-strip.js')).href);
 const { failureRender } = await import(pathToFileURL(join(dir, 'failure-render.js')).href);
 const { startLobbyScreen } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-screen.js')).href);
 const { healthCounters } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-model.js')).href);
-const { showLabels } = await import(pathToFileURL(join(dir, '..', 'lobby', 'label-paint.js')).href);
-const { between } = await import(pathToFileURL(join(dir, 'camera.js')).href);
-
-/**
- * A camera's plate-label geometry and paint, for the harness's own recording — `Support/shown-label.mjs`'s
- * `shownLabel()`, shared with `plate-row-probe.mjs` (card#7343 r6's fix round, r5 review item 9: the two
- * probes' own copies had drifted in format), bound to this probe's own `showLabels()` import.
- */
-const plateLabel = (camera) => shownLabel(showLabels, camera);
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const furniture = await import(pathToFileURL(join(repoRoot, 'resources', 'floor', 'furniture-box.js')).href);
@@ -486,8 +493,6 @@ async function replay(scenario) {
     let lobby = null;
     // `lobby: true` is the lobby with no camera acts; an object states them (see the header).
     const lobbyRun = scenario.lobby === true ? {} : (typeof scenario.lobby === 'object' && scenario.lobby !== null ? scenario.lobby : null);
-    // The viewer's own cab position, held by the page (`lobby/main.js`) and never by the model.
-    let cab = null;
 
     if ([scenario.desk_floor === true, (scenario.floor ?? null) !== null, lobbyRun !== null].filter(Boolean).length > 1) {
         throw new Error('a scenario names more than one of `desk_floor`, `floor` and `lobby`: two renderers, one journal');
@@ -596,6 +601,7 @@ async function replay(scenario) {
             reduce: scenario.reduce === true,
             local_time: viewerTime(scenario.floor),
             surface: scenario.floor.viewport ?? HARNESS_SURFACE,
+            lobby_href: scenario.floor.lobby_href ?? null,
             // FLOOR § 6.2's walk note item 4: a walk's last frame, on the scenario queue under its own
             // label — a paint-only refresh the screen draws through the same callback as `walk end`,
             // which the loop below never follows with a render.
@@ -621,6 +627,8 @@ async function replay(scenario) {
     // role, the character's size as the fixture states it, and the themes (FLOOR.md § 10.6) through the
     // page's own `themeInputs()`. A run may reject the registry's import (`themes.registry: false`) or a
     // theme's (`themes.reject: [name]`), and each is reported failed as `loadArt()` reports it.
+    let supplyScene = null;
+
     if (screen !== null && scenario.floor.scene !== undefined) {
         const { measurer, character, box, themes: spec = {} } = scenario.floor.scene;
         const { themeInputs, THEME_REGISTRY } = await import(pathToFileURL(join(dir, '..', 'floor', 'painter.js')).href);
@@ -628,13 +636,107 @@ async function replay(scenario) {
         const rejected = registry === null ? [] : registry.THEMES.filter((name) => (spec.reject ?? []).includes(name));
         const modules = registry === null ? {} : Object.fromEntries(registry.THEMES.map((name) => [name, rejected.includes(name) ? null : themeModules[name]]));
 
-        screen.sceneInputs({
-            box: box ?? furniture.FURNITURE_BOX,
-            measure: harnessMeasurer(measurer),
-            character,
-            themes: themeInputs(registry, modules),
+        supplyScene = () => {
+            screen.sceneInputs({
+                box: box ?? furniture.FURNITURE_BOX,
+                measure: harnessMeasurer(measurer),
+                character,
+                themes: themeInputs(registry, modules),
+            });
+            screen.assetsFailed([...(registry === null ? [THEME_REGISTRY] : []), ...rejected.map((name) => `theme:${name}`)]);
+        };
+    }
+
+    // The art's answer (`floor/main.js`'s `loadArt().then(…)`): at once, before the entry — or, under
+    // `scene_inputs_after_enter`, after it, so the frames between carry a floor and no scene (card#11795 m5-3).
+    const sceneLate = scenario.scene_inputs_after_enter ?? null;
+
+    if (supplyScene !== null && sceneLate === null) {
+        supplyScene();
+    }
+
+    if (supplyScene !== null && typeof sceneLate === 'object' && sceneLate !== null) {
+        schedule(sceneLate.at_ms, 'art answered', () => {
+            supplyScene();
+
+            return 'supplied';
         });
-        screen.assetsFailed([...(registry === null ? [THEME_REGISTRY] : []), ...rejected.map((name) => `theme:${name}`)]);
+    }
+
+    // § 4.5's elevator ride (card#11795): each act the screen's method, its answer recorded, and the frame the
+    // page paints after it — `rideView()` — drawn with the trigger `ride`. No render follows (the loop below).
+    const rideActs = [];
+    // The lobby's screen, started below beside the floor's — the ride's methods are the same on both (`wire/ride.js`).
+    if (lobbyRun !== null) {
+        lobby = startLobbyScreen(client, buildingHttp.fetch, clock, log, (frame) => {
+            lobbyRenders.push({ at: now, trigger: 'render', frame: JSON.parse(JSON.stringify(frame)) });
+        }, {
+            surface: lobbyRun.surface ?? HARNESS_SURFACE,
+            reduce: scenario.reduce === true,
+            local_time: viewerTime(lobbyRun),
+            lobby_href: lobbyRun.lobby_href ?? null,
+        });
+    }
+
+    const rider = () => screen ?? lobby;
+    const rideMethod = {
+        ride: () => rider().ride(),
+        entered: () => rider().entered(),
+        shut: () => rider().shut(),
+        choose: (act) => rider().choose(act.key ?? null),
+        opened: () => rider().opened(),
+        abandoned: () => rider().abandoned(),
+        arrived: () => rider().arrived(),
+        returned: () => rider().returned(),
+        cab_closed: () => rider().cabClosed(),
+        escape: (act) => rider().escape(act.cancelable === true),
+        arrive_by_ride: (act) => rider().arriveByRide({ expires_in_ms: act.expires_in_ms }),
+    };
+    const rideAct = (act) => {
+        const method = rideMethod[act.act];
+
+        if (method === undefined) {
+            throw new Error(`unknown ride act ${act.act}`);
+        }
+
+        const answer = method(act);
+        const frame = answer === null ? null : rider().rideView();
+
+        if (frame !== null) {
+            (screen === null ? lobbyRenders : floorRenders).push({ at: now, trigger: 'ride', frame: JSON.parse(JSON.stringify(frame)) });
+        }
+
+        rideActs.push({
+            at: now,
+            act,
+            answer: answer === null ? null : JSON.parse(JSON.stringify(answer)),
+            ride: frame === null ? null : JSON.parse(JSON.stringify(frame.ride)),
+            // The 1 s tick's scene over the same frame, as the page's ticker would draw it now — the floor's `sceneView()`
+            // over its desks, the lobby's `tickView()` (whose scene the tick re-reads).
+            scene_view_ride: frame === null ? null : JSON.parse(JSON.stringify(
+                screen !== null ? screen.sceneView(frame.desks)?.ride ?? null : lobby.tickView()?.scene?.ride ?? null)),
+        });
+
+        return act.act;
+    };
+
+    for (const act of [...(scenario.floor?.ride ?? []), ...(lobbyRun?.ride ?? [])]) {
+        schedule(act.at_ms, `ride ${act.act}`, () => (rider() === null ? 'no screen' : rideAct(act)));
+    }
+
+    if (rider() !== null && scenario.arrive_by_ride !== undefined) {
+        rideAct({ act: 'arrive_by_ride', expires_in_ms: scenario.arrive_by_ride.expires_in_ms });
+    }
+
+    // The lobby's 1 s tick (`lobby/main.js`'s ticker): the directory's ages re-read, nothing drained, no camera moved.
+    if (lobby !== null && lobbyRun.tick === true) {
+        startAgeTicker(client, clock, timersImpl, () => {
+            const frame = lobby.tickView();
+
+            if (frame !== null) {
+                lobbyRenders.push({ at: now, trigger: 'tick', frame: JSON.parse(JSON.stringify(frame)) });
+            }
+        });
     }
 
     // § 9 F14, as the painter reports it — each an event on the scenario queue, followed by a render
@@ -734,58 +836,23 @@ async function replay(scenario) {
         });
     }
 
-    if (lobbyRun !== null) {
-        lobby = startLobbyScreen(client, buildingHttp.fetch, clock, log, (frame) => {
-            lobbyRenders.push({ at: now, frame: JSON.parse(JSON.stringify(frame)), label: plateLabel(frame.camera) });
-        }, {
-            surface: lobbyRun.surface ?? HARNESS_SURFACE,
-            reduce: scenario.reduce === true,
-            local_time: viewerTime(lobbyRun),
-        });
-    }
-
-    // Appendix B row 16's camera acts on the lobby, each an event on the scenario queue, recorded with
-    // the camera before and after it. A ride moves the page's cab and draws the lobby, as `lobby/main.js`
-    // does; nothing else draws, and nothing is followed by a render (see the header).
+    // Appendix B row 24's camera acts on the lobby, each an event on the scenario queue, recorded with the camera before
+    // and after it. None is followed by a render (see the header).
     for (const act of lobbyRun?.camera ?? []) {
         schedule(act.at_ms, `camera ${act.act}`, () => {
             const before = lobby.camera();
-            let after = null;
             let glide = null;
-            let ride;
             let consumed;
 
             switch (act.act) {
-                case 'ride':
-                    ride = lobby.ride();
-
-                    if (ride !== null) {
-                        cab = ride.cab;
-                        glide = ride.glide_ms;
-                        // The camera the ride left, read BEFORE the cab's draw — so a draw that moved it
-                        // is a render moving the viewer, which is what the survival clause reads.
-                        after = lobby.camera();
-                        lobby.draw(cab);
-                        // Where the arrival lands: the route's floor segment as the floor page reads it
-                        // (the server hands it over decoded), resolved by the floor page's own
-                        // `resolveRoute()` against the building the lobby just drew — § 4.4's "a route
-                        // that does not resolve" made observable without leaving the lobby.
-                        const segment = /^\/floor\/([^/]+)$/.exec(ride.route);
-                        const plates = lobbyRenders[lobbyRenders.length - 1].frame.building.plates;
-                        const resolved = segment === null ? null : resolveRoute(decodeURIComponent(segment[1]), plates);
-
-                        ride = { cab: ride.cab, route: ride.route, resolves_to: resolved?.floor?.floor ?? null };
-                    }
+                case 'fit':
+                    glide = lobby.fitLobby().glide_ms;
                     break;
-                case 'arrive':
-                case 'return':
-                    // The ride's glide arrived and the page asked for its route, or the back-forward
-                    // cache restored the page: either way the page ends the ride and draws.
-                    lobby.returned();
-                    lobby.draw(cab);
+                case 'focus_elevator':
+                    glide = lobby.focusElevator()?.glide_ms ?? null;
                     break;
-                case 'building':
-                    glide = lobby.wholeBuilding().glide_ms;
+                case 'focus_board':
+                    glide = lobby.focusBoard()?.glide_ms ?? null;
                     break;
                 case 'scroll':
                     ({ consumed } = lobby.pan(scrollDelta(act)));
@@ -802,9 +869,6 @@ async function replay(scenario) {
                 case 'drag':
                     lobby.drag(act.dx, act.dy);
                     break;
-                case 'focus':
-                    glide = lobby.focusPlate(act.floor)?.glide_ms ?? null;
-                    break;
                 case 'resize':
                     lobby.resize({ width: act.width, height: act.height });
                     break;
@@ -812,19 +876,7 @@ async function replay(scenario) {
                     throw new Error(`unknown lobby camera act ${act.act}`);
             }
 
-            const shown = after ?? lobby.camera();
-            // The plate names under the camera the act leaves, and — for a glide — under the camera the page
-            // shows halfway through it (`wire/camera-view.js` steps a glide through `camera.js`'s `between()`).
-            const label = { after: plateLabel(shown), mid: glide > 0 ? plateLabel(between(before, shown, 0.5)) : null };
-
-            // A ride step's in-flight state as the page reads it — the screen's `riding()`, which `ride-hold.js`
-            // holds plate links on — beside the frame the step leaves, whose `riding` disables the ride control.
-            const riding = ['ride', 'arrive', 'return'].includes(act.act)
-                ? { riding: { accessor: lobby.riding(), frame: lobbyRenders[lobbyRenders.length - 1].frame.riding } }
-                : {};
-
-            cameraActs.push({ at: now, act, before, after: shown, glide_ms: glide, label, ...(act.act === 'ride' ? { ride } : {}), ...riding,
-                ...(consumed === undefined ? {} : { consumed }) });
+            cameraActs.push({ at: now, act, before, after: lobby.camera(), glide_ms: glide, ...(consumed === undefined ? {} : { consumed }) });
 
             return act.act;
         });
@@ -834,16 +886,27 @@ async function replay(scenario) {
     floor?.render();
 
     if (lobby !== null) {
-        await lobby.render(() => cab);
+        await lobby.render();
         await turn();
     }
 
     if (screen !== null) {
+        // The page's frame drawn before the entry has answered (card#11825): on a page the entry and
+        // the renders run concurrently, so a frame can be drawn while the layout is still pending.
+        if (scenario.render_before_enter === true) {
+            await screen.render();
+        }
+
         // § 4.4's floor entry: the layout, then each room's map. It runs after `start()` because
         // "deep-linking to a floor on a cold start runs the whole of § 2.2 first".
         await screen.enter();
         await turn();
         await screen.render();
+
+        if (sceneLate === true && supplyScene !== null) {
+            supplyScene();
+            await screen.render();
+        }
     }
 
     snap('start');
@@ -864,9 +927,10 @@ async function replay(scenario) {
 
         await turn();
 
-        // A tick re-reads ages, a camera act moves the viewer's head, and a walk's end is a paint-only
-        // refresh (FLOOR § 6.2's walk note item 4): none is an apply, and a page renders after none.
-        if (timer.label !== 'age tick' && timer.label !== 'walk end' && !timer.label.startsWith('camera ')) {
+        // A tick re-reads ages, a camera act moves the viewer's head, a ride act is the viewer's own ride
+        // (§ 4.5), and a walk's end is a paint-only refresh (FLOOR § 6.2's walk note item 4): none is an
+        // apply, and a page renders after none.
+        if (timer.label !== 'age tick' && timer.label !== 'walk end' && !timer.label.startsWith('camera ') && !timer.label.startsWith('ride ')) {
             floor?.render();
 
             if (screen !== null) {
@@ -875,7 +939,7 @@ async function replay(scenario) {
             }
 
             if (lobby !== null) {
-                await lobby.render(() => cab);
+                await lobby.render();
                 await turn();
             }
         }
@@ -906,6 +970,7 @@ async function replay(scenario) {
         floor_renders: floorRenders,
         lobby_renders: lobbyRenders,
         camera_acts: cameraActs,
+        ride_acts: rideActs,
         animation_log: log.rows,
     };
 }

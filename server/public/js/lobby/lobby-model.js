@@ -20,6 +20,13 @@
  *                                floor's rooms name, client-computed (§ 2.1 row 5 — the wire
  *                                has no per-install count)
  *   unrecognised remainder ..... the same, § 5.4, carrying the raw string
+ *   the plaque (card#12113) .... § 4.1's rows over the same seats: the tally's chips (`render_state`),
+ *                                agents and desks (`render_state`, through `deskDrawsCharacter()`),
+ *                                the markers (`render_state`, `install_id`, `seat_id`), the attention
+ *                                line (`render_state`, `link_state`, `blocked_since`, `api_error_type`,
+ *                                `activity.last_received_at`, `context.used_pct`, `longest_open_call`)
+ *                                and the floor totals (`task.ref`, `open_calls`, `subagents_open`,
+ *                                `activity.last_received_at`)
  *   fleet totals ............... `fleet.seats_total`, `fleet.seats_live` — NEVER RECOUNTED
  *   discrepancy ................ the two above, as the client protocol compares them (§ 4.1,
  *                                AT-D3-15) — worded here, decided and rendered by
@@ -33,19 +40,30 @@
  * of one fact on a second surface is exactly what § 2.4's one-rendered-form-per-fact rule
  * forbids. The lobby's derivation indicator renders `fleet.fold` and stops there.
  *
- * ⛔ NO DURATION IS RENDERED ANYWHERE IN THIS CLIENT, and card#9209 CHANGED THE REASON WITHOUT
- * CHANGING THE ANSWER. It published the duration FORMAT — D3 § 2.4's one function, § 12's row,
- * § 13 decision 23 — so *there is no format* is no longer true and is no longer why. What is
- * still open is the WORDING: § 5.3 asks for `sweep_last_run_at` and `ingest_last_receipt_at`
- * "as an age" and no section publishes the string either age is spoken in, which is § 14 item 17.
- * A format with no ratified wording still leaves a picked string as the one nobody ratified, so
- * until that item closes this renders each as the LABELLED TIMESTAMP the wire actually carries,
- * in § 4.1's own `HH:MM:SS` form, and subtracts nothing from anything.
+ * ⛔ THE FLEET READOUTS RENDER NO DURATION, and card#9209 CHANGED THE REASON WITHOUT CHANGING THE
+ * ANSWER. It published the duration FORMAT — D3 § 2.4's one function, § 12's row, § 13 decision 23 —
+ * so *there is no format* is no longer true and is no longer why. What is still open is the WORDING:
+ * § 5.3 asks for `sweep_last_run_at` and `ingest_last_receipt_at` "as an age" and no section
+ * publishes the string either age is spoken in, which is § 14 item 17. A format with no ratified
+ * wording still leaves a picked string as the one nobody ratified, so until that item closes this
+ * renders each as the LABELLED TIMESTAMP the wire actually carries, in § 4.1's own `HH:MM:SS` form,
+ * and subtracts nothing from anything.
+ *
+ * ⚠ THE PLAQUE'S AGES ARE THE EXCEPTION, AND § 4.1 IS WHERE THEY ARE WORDED (card#12113, seat rulings
+ * listed at § 14 item 39(7)): the attention line's quiet age and long call in § 2.4's own wordings, and
+ * the totals' *last activity N ago*. Each is the corrected clock less a server-clock instant
+ * (`../wire/age-readout.js`, `../wire/duration.js`), and with no corrected clock — `nowMs` null — none
+ * is drawn and the long-call threshold is not asked.
  */
 
 import { RENDER_STATES, isRenderState } from './render-state.js';
+import { deskDrawsCharacter } from '../desk/task-bubble.js';
+import { DASH, UNRECOGNISED, apiErrorLine, blockedLine } from '../desk/state-words.js';
+import { actionElapsedLine, quietAgeLine } from '../wire/age-readout.js';
 import { clockTime } from '../wire/clock.js';
+import { contextGauge } from '../wire/context-gauge.js';
 import { disagrees } from '../wire/discrepancy-budget.js';
+import { ageFrom, wireMs } from '../wire/duration.js';
 import { NOT_REPORTED } from '../wire/null-render.js';
 
 /**
@@ -66,8 +84,54 @@ export { clockTime };
 export { NOT_REPORTED };
 
 /**
+ * § 12's three directory rows (card#12113, each a seat ruling revisable there): the *Directory marker
+ * cap*, the *Context attention threshold* and the *Long-call threshold*.
+ *
+ * ⛔ RESTATEMENTS OF § 12, GUARDED: a browser cannot read FLOOR.md, so the figures live here, and
+ * `Tests\Feature\Floor\TheDirectoryPlaqueReadsWhatTheClientHoldsTest` parses § 12's rows on every run
+ * and reds when either side moves without the other.
+ */
+export const MARKER_CAP = 12;
+
+export const CONTEXT_ATTENTION_PCT = 80;
+
+export const LONG_CALL_MS = 10 * 60 * 1000;
+
+/** § 4.1's header accessible name on a plaque holding no seat. */
+export const NO_SEATS_HELD = 'no seats held';
+
+/** § 4.1's totals row on a floor whose every `activity.last_received_at` is null — never *0s*. */
+export const NO_ACTIVITY_YET = 'no activity yet';
+
+/**
+ * `n word`/`n words`, agreeing with its count — every count on the plaque and the discrepancy
+ * sentence's desks (§ 4.1). `spelled` is the count as written, where § 4.1 spells it in words.
+ */
+function counted(n, word, spelled = String(n)) {
+    return `${spelled} ${n === 1 ? word : `${word}s`}`;
+}
+
+/** The plaque's order and its tie-break: the lower `(install_id, seat_id)` (§ 4.1, § 14 item 39(5)). */
+function byKey(a, b) {
+    const ka = [String(a.install_id), String(a.seat_id)];
+    const kb = [String(b.install_id), String(b.seat_id)];
+
+    return ka[0] < kb[0] ? -1 : ka[0] > kb[0] ? 1 : ka[1] < kb[1] ? -1 : ka[1] > kb[1] ? 1 : 0;
+}
+
+/**
+ * The one candidate a part names: the least by `order`, ties on the lower `(install_id, seat_id)`.
+ * `null` over an empty population.
+ */
+function pick(seats, order) {
+    return [...seats].sort((a, b) => order(a, b) || byKey(a, b))[0] ?? null;
+}
+
+/**
  * § 4.1's per-floor state summary: "a count per `render_state` member present, e.g. *2 working ·
- * 1 idle · 1 stale*, in § 7.1's fixed member order".
+ * 1 idle · 1 stale*, in § 7.1's fixed member order" — since card#12113 drawn as one CHIP per member,
+ * and this text form the header link's accessible name. `stateChips()` is the derivation and
+ * `floorSummary()` its members joined, so the chips and the line cannot disagree.
  *
  * ⛔ ITERATING § 7.1's ORDER ALONE IS A FILTER, AND A FILTER DROPS A SEAT OUT OF ITS OWN FLOOR'S
  * COUNT. That is card#7943's class arriving through a COUNT instead of through a lookup, and it
@@ -78,8 +142,10 @@ export { NOT_REPORTED };
  *
  * `Object.create(null)` because the keys are wire strings: a seat whose `render_state` is
  * `constructor` must be counted, not silently added to a function.
+ *
+ * @returns {Array<{state: *, count: number, recognised: boolean, text: string}>}
  */
-export function floorSummary(seats) {
+export function stateChips(seats) {
     const rows = Array.isArray(seats) ? seats : [];
     const seen = Object.create(null);
 
@@ -93,10 +159,21 @@ export function floorSummary(seats) {
         .map((seat) => (seat === null || typeof seat !== 'object' ? undefined : seat.render_state))
         .filter((v, i, all) => !isRenderState(v) && all.indexOf(v) === i);
 
+    const chip = (state, recognised) => ({
+        state: state ?? null,
+        count: seen[String(state)],
+        recognised,
+        text: recognised ? `${seen[state]} ${state}` : `${seen[String(state)]} ${unrecognisedWord(state)}`,
+    });
+
     return RENDER_STATES.filter((k) => seen[k])
-        .map((k) => `${seen[k]} ${k}`)
-        .concat(unheard.map((v) => `${seen[String(v)]} unrecognised (${String(v)})`))
-        .join(' · ');
+        .map((k) => chip(k, true))
+        .concat(unheard.map((v) => chip(v, false)));
+}
+
+/** `stateChips()`'s members as § 4.1's one text line — the header link's accessible name's half. */
+export function floorSummary(seats) {
+    return stateChips(seats).map((chip) => chip.text).join(' · ');
 }
 
 /**
@@ -133,7 +210,7 @@ export function floorSummary(seats) {
  * `href` is § 4.4's `/floor/{floor}` route — D3's own published route, served since Appendix B
  * row 8 (card#7341 step 8), and never one minted here. § 4.1 says the row IS the link.
  */
-export function floors(snapshot, layout) {
+export function floors(snapshot, layout, nowMs = null) {
     if (!Array.isArray(layout)) {
         return null;
     }
@@ -190,7 +267,7 @@ export function floors(snapshot, layout) {
         // `hallway`, or neither" (§ 4.6's reader table), and it reads it HERE rather than going
         // back to the raw document, because a second composition of one floor is two answers to
         // *which rooms are on it*.
-        rows.push(plate(String(floor?.floor), label, rooms, held, floor?.hallway ?? null, theme));
+        rows.push(plate(String(floor?.floor), label, rooms, held, floor?.hallway ?? null, theme, nowMs));
     }
 
     for (const install_id of Object.keys(held)) {
@@ -201,7 +278,7 @@ export function floors(snapshot, layout) {
             // An implicit floor is one room and no plan at all (§ 4.6): no `origin` on its room and
             // no `hallway` on it, because "a corridor with no rooms placed along it is a picture of
             // nothing" and nobody placed this one.
-            rows.push(plate(install_id, null, [{ install_id, form: 'open', reported: true }], held, null, null));
+            rows.push(plate(install_id, null, [{ install_id, form: 'open', reported: true }], held, null, null, nowMs));
         }
     }
 
@@ -209,19 +286,30 @@ export function floors(snapshot, layout) {
 }
 
 /**
- * One floor row: its key, its label, the NAME it reads as, its rooms, the link, and § 4.1 row 2's
- * summary over the seats the client holds for EVERY install the floor's rooms name (§ 2.1 row 5),
- * in room order.
+ * One floor row — since card#12113 the directory's PLAQUE: its key, its label, the NAME it reads as,
+ * its rooms, the link, and every row § 4.1's table gives the plaque, each over the seats the client
+ * holds for EVERY install the floor's rooms name (§ 2.1 row 5), in room order, and the corrected clock
+ * `nowMs` (`null` before the client has one, which draws no age and asks no age threshold).
  *
  * ⛔ `name` IS RENDERED AND `floor` IS ROUTED, AND THE TWO ARE SEPARATE MEMBERS FOR THAT REASON
  * (§ 4.6, card#9273). `href` is the KEY whatever the label says, and so is the sort in `floors()`
  * and the cab's stop in `building-model.js` — a label is display text, and the moment anything
  * looked one up by it, editing a label would move a viewer's floor.
+ *
+ * ⛔ THE ROW CARRIES NO SEAT OBJECT, only what is drawn from one (§ 4.1: "the lobby still draws no
+ * desk"). A marker names its seat in its accessible name and carries no `seat_id` member of its own,
+ * so a plate that grew a list of desks is still the defect
+ * `TheBuildingCameraMovesTheViewerAndNeverTheFleetTest` looks for.
  */
-function plate(floor, label, rooms, held, hallway, theme) {
+function plate(floor, label, rooms, held, hallway, theme, nowMs) {
     const seats = rooms.flatMap((room) => held[room.install_id] ?? []);
+    // § 4.1: "on a floor of more than one room the `install_id`, a slash and the `seat_id`" — a
+    // `seat_id` is unique within one install only (D2 § 8.2.1).
+    const seatName = rooms.length > 1
+        ? (seat) => `${seat.install_id}/${seat.seat_id}`
+        : (seat) => String(seat.seat_id);
 
-    return {
+    const row = {
         floor,
         hallway,
         label,
@@ -234,6 +322,177 @@ function plate(floor, label, rooms, held, hallway, theme) {
         href: `/floor/${encodeURIComponent(floor)}`,
         summary: floorSummary(seats),
         held: seats.length,
+    };
+
+    return {
+        ...row,
+        // § 4.1: "The text form survives as the header link's accessible name".
+        accessible_name: `${row.name}, ${row.summary === '' ? NO_SEATS_HELD : row.summary}`,
+        chips: stateChips(seats),
+        staffing: staffing(seats),
+        markers: markers(seats, seatName),
+        attention: attention(seats, seatName, nowMs),
+        floor_totals: floorTotals(seats, nowMs),
+    };
+}
+
+/** § 4.1's word for a `render_state` this client does not know, carrying the raw string (§ 5.4). */
+function unrecognisedWord(state) {
+    return `${UNRECOGNISED} (${String(state)})`;
+}
+
+/**
+ * § 4.1's **agents and desks** — *3 agents · 4 desks*. **Desks** is the held count; **agents** the
+ * seats whose `render_state` draws a character, which is `desk/task-bubble.js`'s `deskDrawsCharacter()`
+ * CALLED — never a second reading of § 7.1's Desk column — so an empty chair (`stale`, `offline`) and
+ * an unrecognised state are desks with nobody counted at them (§ 14 item 39(1)).
+ */
+export function staffing(seats) {
+    const agents = seats.filter((seat) => deskDrawsCharacter(seat?.render_state)).length;
+
+    return { agents, desks: seats.length, text: `${counted(agents, 'agent')} · ${counted(seats.length, 'desk')}` };
+}
+
+/**
+ * § 4.1's **marker row**: one marker per held seat in the floor's rooms' key order and inside a room
+ * by `seat_id` (§ 14 item 39(5)), the first `MARKER_CAP` of them, then *+N more* where N is the held
+ * count less the cap — derived from the two counts, never a third.
+ *
+ * ⛔ THE CAP IS APPLIED AFTER THE SORT: capping the received order would draw twelve seats of the
+ * server's serialisation and call them the floor's first twelve (AT-D3-27).
+ *
+ * A marker is a **disc** where `deskDrawsCharacter()` is true and a **ring** where it is not — the same
+ * predicate as the agents count, so a ring is exactly a desk the count does not staff. Its name is the
+ * seat's name, a comma and the state's word, so the colour is never the only carrier.
+ */
+export function markers(seats, seatName) {
+    const sorted = [...seats].sort(byKey);
+    const shown = sorted.slice(0, MARKER_CAP).map((seat) => {
+        const recognised = isRenderState(seat.render_state);
+        const word = recognised ? seat.render_state : unrecognisedWord(seat.render_state);
+
+        return {
+            state: seat.render_state ?? null,
+            recognised,
+            shape: deskDrawsCharacter(seat.render_state) ? 'disc' : 'ring',
+            name: `${seatName(seat)}, ${word}`,
+        };
+    });
+    const more = seats.length - MARKER_CAP;
+
+    return { shown, more: more > 0 ? `+${more} more` : null };
+}
+
+/**
+ * § 4.1's (b) population: the floor's `live` seats whose `context` is NON-NULL — the seats the
+ * threshold is asked of. A null `context` is excluded here, before any comparison: never read as 0 and
+ * never dereferenced (§ 5.6). Exported because AT-D3-27 asks of the population itself: a null read as
+ * a reported 0 never clears the threshold, so the line alone could not show it entered.
+ */
+export function contextCandidates(seats) {
+    return seats.filter((seat) => seat.link_state === 'live' && seat.context !== null && typeof seat.context === 'object');
+}
+
+/**
+ * § 4.1's **attention line** — the parts that need a look, each a row of its own and each opening with
+ * the seat's name, in the order (a) blocked-else-stalled, (b) context, (c) a long call; `null` when no
+ * part applies, because the element is ABSENT then — never *all quiet*, a claim over seats the client
+ * may not confirm.
+ *
+ * ⛔ KEYED ON `render_state`, NEVER `activity_state` (D2 § 4.2): a `stale` seat whose activity is
+ * `blocked` renders `stale` and is named by no part, where reading the activity would name a person
+ * waiting at a dark desk. (b) and (c) read `live` seats only: they claim something about NOW, which a
+ * dark seat's sample and open call are history for (§ 7.3, § 14 item 39(11)).
+ *
+ * ⛔ `blocked_since` IS A SEAT-CLOCK CLAIM: the earliest is found by comparing the seats' own claims and
+ * is DRAWN as one, *(seat clock)*, never subtracted from the server clock (§ 2.4).
+ *
+ * ⛔ THE LONG CALL IS `longest_open_call`, NEVER `action` (D2 § 8.2.1, card#12113): `action` is the
+ * NEWEST open call, and an intern's call replaces a dispatch there while the dispatch stays open.
+ */
+export function attention(seats, seatName, nowMs) {
+    const parts = [];
+    const line = (part, seat, ...words) => ({ part, text: [seatName(seat), ...words].join(DASH) });
+
+    const blocked = seats.filter((seat) => seat.render_state === 'blocked');
+    const waiting = pick(blocked.filter((seat) => wireMs(seat.blocked_since) !== null),
+        (a, b) => wireMs(a.blocked_since) - wireMs(b.blocked_since));
+
+    if (waiting !== null) {
+        parts.push(line('blocked', waiting, blockedLine(waiting.blocked_since)));
+    } else if (blocked.length === 0) {
+        const stalled = pick(
+            seats.filter((seat) => seat.render_state === 'stalled' && wireMs(seat.activity?.last_received_at) !== null),
+            (a, b) => wireMs(a.activity.last_received_at) - wireMs(b.activity.last_received_at),
+        );
+
+        if (stalled !== null) {
+            // § 7.6's composed line by reference, omitted on the null `api_error_type` a `stalled` seat
+            // never carries (D2 § 8.2.1); the quiet age is § 2.4's, absent with no corrected clock.
+            const words = [
+                ...((stalled.api_error_type ?? null) === null ? [] : [apiErrorLine(stalled.api_error_type)]),
+                ...(nowMs === null ? [] : [quietAgeLine(stalled.activity, nowMs)]),
+            ];
+
+            parts.push(line('stalled', stalled, ...words));
+        }
+    }
+
+    const full = pick(
+        contextCandidates(seats).filter((seat) => contextGauge(seat.context, null).reported
+            && seat.context.used_pct >= CONTEXT_ATTENTION_PCT),
+        (a, b) => b.context.used_pct - a.context.used_pct,
+    );
+
+    if (full !== null) {
+        parts.push(line('context', full, `context ${contextGauge(full.context, null).pct}`));
+    }
+
+    // The seat's OLDEST open call — its one reading here, so no clause below can read `action` instead.
+    const oldest = (seat) => seat.longest_open_call ?? null;
+    const opened = (seat) => wireMs(oldest(seat)?.started_received_at);
+    const long = nowMs === null ? null : pick(
+        seats.filter((seat) => seat.link_state === 'live' && opened(seat) !== null && nowMs - opened(seat) >= LONG_CALL_MS),
+        (a, b) => opened(a) - opened(b),
+    );
+
+    if (long !== null) {
+        parts.push(line('long_call', long, `${oldest(long).tool_name} ${actionElapsedLine(oldest(long), nowMs)}`));
+    }
+
+    return parts.length === 0 ? null : parts;
+}
+
+/**
+ * § 4.1's **floor totals** — *2 cards · 3 open calls · 2 interns · last activity 12s ago* — over EVERY
+ * held seat, dark or live: a count of the picture the client holds (§ 14 item 39(11)).
+ *
+ * ⛔ CARDS ARE DISTINCT NON-NULL `task.ref`s, never seats with a task: two seats on one card are one
+ * card, and a telemetry title with no `ref` is not a card (§ 5.6). ⛔ INTERNS ARE `subagents_open`,
+ * never `subagents[].length`, which is capped (§ 8). OPEN CALLS ARE THE WIRE'S `open_calls`, never a
+ * count of `action` objects.
+ *
+ * *Last activity* is the latest `activity.last_received_at` (server clock) as an age at `nowMs` —
+ * absent with no corrected clock — and *no activity yet* where every seat's is null, never *0s*.
+ */
+export function floorTotals(seats, nowMs) {
+    const cards = new Set(seats.map((seat) => seat.task?.ref ?? null).filter((ref) => ref !== null)).size;
+    const sum = (member) => seats.reduce((n, seat) => n + (Number.isInteger(seat[member]) ? seat[member] : 0), 0);
+    const openCalls = sum('open_calls');
+    const interns = sum('subagents_open');
+    const latest = pick(seats.filter((seat) => wireMs(seat.activity?.last_received_at) !== null),
+        (a, b) => wireMs(b.activity.last_received_at) - wireMs(a.activity.last_received_at));
+    const age = latest === null || nowMs === null ? null : ageFrom(latest.activity.last_received_at, nowMs);
+    const lastActivity = latest === null ? NO_ACTIVITY_YET : (age === null ? null : `last activity ${age} ago`);
+
+    return {
+        cards,
+        open_calls: openCalls,
+        interns,
+        last_activity: lastActivity,
+        text: [counted(cards, 'card'), counted(openCalls, 'open call'), counted(interns, 'intern'), lastActivity]
+            .filter((part) => part !== null)
+            .join(' · '),
     };
 }
 
@@ -308,7 +567,7 @@ const COUNT_WORDS = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eig
 
 /** `n desk`/`n desks`, agreeing with its count. */
 function desks(n, spelled = String(n)) {
-    return `${spelled} ${n === 1 ? 'desk' : 'desks'}`;
+    return counted(n, 'desk', spelled);
 }
 
 /**
@@ -511,11 +770,11 @@ function unclaimedRooms(snapshot) {
  * ⛔ NO LAYOUT HELD COMPOSES NO BUILDING (§ 9 F17). `floors()` decides it and answers `null`, and
  * that `null` is what takes the uncomposed render here: F17's cold-start list, and no floors.
  */
-export function lobbyModel(snapshot, layout, layoutFailure = null) {
+export function lobbyModel(snapshot, layout, layoutFailure = null, nowMs = null) {
     // ONE pass over the installs, and the held count summed from the same rows the lobby
     // renders. Calling `heldSeats()` here as well would build the summaries twice and open the
     // one gap that matters: two counts of one population that can disagree.
-    const composed = floors(snapshot, layout);
+    const composed = floors(snapshot, layout, nowMs);
     const rows = composed ?? [];
     const unclaimed = composed === null ? unclaimedRooms(snapshot) : [];
     const held = [...rows, ...unclaimed].reduce((n, row) => n + row.held, 0);

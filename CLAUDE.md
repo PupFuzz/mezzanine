@@ -1,4 +1,4 @@
-<!-- BEGIN coord:solo-orientation (synced from coord v0.66.0) -->
+<!-- BEGIN coord:solo-orientation (synced from coord v0.68.0) -->
 # Agent Board Framework — solo agent orientation
 
 > **⚠ Only two sections of this file reach a session automatically: `## Who you are` and
@@ -81,7 +81,9 @@ the handoff skeleton's own header, not by this section.
 session start is the state of every board in
 `kanban.boards[]` — scan them in priority order and orient to what is Now → Next →
 Later → Maybe → Done. The bridge will have moved cards based on PR events that occurred
-between sessions; verify the board state reflects actual PR state before proceeding.
+between sessions; verify the board state reflects actual PR state before proceeding — except CI on
+a head `ci-wait live` lists `WAITING`: that registered wait is its state, so it is not read
+(`coord:gh-wrapper` § Pattern 2b).
 
 **Canonical docs to orient from** (wherever `coord:init-solo` placed your config —
 `~/.config/coord/` by default — or in the plugin's own `docs/` directory):
@@ -169,6 +171,9 @@ every seat including yours. Nothing here restates it, with one exception, self-f
 no cadence: **any incident or blocker-grade finding traced to a finding the bar declined to mint
 reopens the bar at this install.**
 
+**Writing a card.** Its title and description follow `dispatching-briefs.md § The card's title
+and description` [owns: card-text-format], in the plugin's own `docs/` — read it there.
+
 **`[TASK]` tracking, if used, is plain GitHub issues on the relevant repo.** There is no
 coordination repo for cross-agent issue tracking. Open a GitHub issue on the repo the task
 belongs to, reference it in your PR, close it on merge.
@@ -218,13 +223,22 @@ merge-button intent) using each repo's own conventions. Use it whenever cutting 
 **Merge authority:**
 
 - **Routine code-bearing and docs-only PRs to the integration branch → you self-merge.**
-  There is no PM approval loop. You review your own PR adversarially (per engineering canon
-  #16), confirm CI is green, and merge with **`solo-self-merge <pr#> [--repo <owner/name>]`** —
+  There is no PM approval loop. You review your own PR adversarially (`coord-review` records
+  that pass — `SOLO.md § Review records in solo mode` — per engineering canon
+  #16), confirm CI is green on the `ci_settled` event of the `ci_await` you registered (one read;
+  `coord:gh-wrapper` § Pattern 2b), and merge with **`solo-self-merge <pr#> [--repo <owner/name>]`** —
   the guarded wrapper (installed by `coord:init-solo`) that squash-merges + deletes the branch
+  (first retargeting any open PR based on it to the merged PR's base — card#9427)
   and **refuses** any PR whose base is the release branch or whose repo you don't own. Prefer
-  it over raw `gh pr merge`: raw `gh pr merge` is auto-mode-gated on every call (it can't tell
-  an integration merge from a release merge, so it prompts), while `solo-self-merge` is the
-  allow-listed safe path that keeps the unattended self-drive loop moving.
+  it over raw `gh pr merge`: where the auto-mode permission classifier runs, raw `gh pr merge`
+  is gated on every call (it can't tell an integration merge from a release merge, so it
+  prompts), while `solo-self-merge` is the allow-listed safe path that keeps the unattended
+  self-drive loop moving. On a seat started with `--dangerously-skip-permissions` (the
+  framework's launcher shim passes it by default — card#11739) the classifier does not run
+  and a raw merge is NOT blocked unless an explicit `permissions.ask` / deny rule matches it —
+  the wrapper is still the only sanctioned path, and `coord-merge-guard` (`docs/MERGE-GUARD.md`)
+  or server-side branch protection is the only gate the framework provides on a merge to the
+  release branch.
 - **Back-merge sync PRs (release → integration) → you self-merge** once **BOTH** hold: the
   underlying release PR is merged (that merge IS the production gate) **and** the two-leg pure-sync
   test measures clean on this PR's head merge commit (the `release-pr` skill, § Step C, owns the
@@ -232,9 +246,11 @@ merge-button intent) using each repo's own conventions. Use it whenever cutting 
   review exemption. Use a **merge commit** (`gh pr merge --merge`,
   **not** `solo-self-merge` — that wrapper is squash-only, so it **refuses** a back-merge sync PR by
   name; back-merge must preserve topology). Note:
-  raw `gh pr merge` is deliberately **not** allow-listed (only `solo-self-merge` is), so this
-  **prompts once** in auto-mode — that's expected and fine here, because a human just merged the
-  release PR that triggered the back-merge (so a human is present). If the sync PR has conflicts,
+  raw `gh pr merge` is deliberately **not** allow-listed (only `solo-self-merge` is), so where
+  auto mode is in effect this **prompts once** — that's expected and fine here, because a human
+  just merged the release PR that triggered the back-merge (so a human is present). On a
+  reference-launcher seat (`--dangerously-skip-permissions`) it does not prompt unless an explicit
+  `permissions.ask` rule matches it. If the sync PR has conflicts,
   that is abnormal — surface to your human before proceeding.
 - **Release PRs (integration → release) → your human merges.** Release PRs are the
   production gate; never self-merge them.
@@ -268,8 +284,8 @@ the next unblocked one from your cross-repo queue (§ Your work loop):
 - **Complete a wake-initiated action's protocol step in the same turn** — never halt between
   merging and confirming the card / closing its issue; an unrecorded action leaves the board one step
   behind reality, with no event left to wake you into fixing it.
-- **Check your context weight at each boundary** (§ Context budget) — momentum never skips a
-  boundary reset.
+- **Run the clear decision at a milestone before rolling on** (§ Context budget) — momentum never
+  skips a milestone's clear check.
 - **Your human's message preempts the queue — answer in your very next output.** A message that
   arrives mid-turn surfaces at a tool-result boundary with "address as you continue"; answer it in
   your **next text output, before resuming any queued work** — never after "one more tool call".
@@ -541,7 +557,7 @@ genuine question / gate → banner. The banner spends your human's attention —
 generated, not authored: lanes are declared once in the config and membership is a board query (a
 tag, a gate card's blockers, a swimlane, a filter). The default shape is one lane, `current`,
 holding every open card tagged `sprint:current`. A card leaves the plan by MOVING on the board,
-never by editing the page; re-render with `sprint-burndown.py --html <path> --write-config`
+never by editing the page; re-render with `sprint-burndown.py --html <path>`
 instead. The SessionStart check reds when the committed page no longer matches the
 board, and its UNMEASURED verdict means a read did not happen, not that the sprint is finished.
 Vocabulary, worked configs, why the page and the lanes the census reads cannot drift
@@ -624,8 +640,21 @@ up.
 
 ## Context budget (self-managed)
 
-In a solo setup there is no PM to report context fill to or receive clear directives from —
-you manage your own context budget. Three signals guide you:
+In a solo setup there is no PM — you manage your own context budget, by the same rule every seat
+in the framework follows (card#11691; plugin `docs/CONTEXT-RESET.md § Roles` owns it):
+
+<!-- MIRROR-BEGIN(milestone-clear: solo-CLAUDE.md) -->
+**At every milestone, run `clear-decision.sh` — every seat, no directive needed (card#11691).** A
+milestone is: a PR merged or a self-merge marker received; a document landed; a rows set approved; a
+card reaching a terminal column. On **KEEP** (or no reading), do not clear: carry on. On **CLEAR**,
+write your handoff — naming every running subagent and its task in it — then clear your own context
+as the **final action of that turn**, without deferring (`clear-decision.sh --exec`, or the
+`clear_context` tool). Do **not** clear mid-review-round, mid-build, or with an unanswered operator
+message in front of you.
+<!-- MIRROR-END(milestone-clear: solo-CLAUDE.md) -->
+<!-- MIRROR: lockstep copy of the rule docs/CONTEXT-RESET.md § Roles owns; edit every copy together (CONTEXT-RESET.md § Mirror registry). -->
+
+Between milestones, these catch a session that grew heavy mid-task:
 
 - **Your harness's context-% indicator** (if your `statusLine` exposes it — `coord:init-solo`
   wires the `context-sensor.sh` statusLine). Watch it; you are your own backstop.
@@ -634,12 +663,10 @@ you manage your own context budget. Three signals guide you:
   `context_budget.backstop_pct` (default 0.80; a coarse near-window catch), and (B) a **throttled
   CLEAR nudge** carrying the clear-decision token-arithmetic verdict + net savings (card#4874, the
   cost-optimal signal). Either way: finish the in-flight step, write your handoff, self-clear at the
-  next clean boundary. Treat it as the cost-ceiling catch, not the routine trigger (the boundary rule
-  below is). Mechanism: `docs/CONTEXT-RESET.md`.
-- **Task boundaries.** The clearest safe clear point is the completion of one independent
-  board item — work is committed/pushed, PR is open or merged — before pulling the next.
+  next clean boundary. Treat it as the cost-ceiling catch, not the routine trigger (the milestone
+  rule above is). Mechanism: `docs/CONTEXT-RESET.md`.
 
-**Clearing your context** between independent tasks keeps per-turn token cost low. To clear
+**Clearing your context** at milestones keeps per-turn token cost low. To clear
 safely: your work must be committed/pushed AND the handoff written (session-end ritual steps
 1–4 above). `/clear` discards your in-context memory; only the branch, your board state, and
 your state handoff survive — so an unanswered question a self-clear eats is unrecoverable. Never
@@ -689,8 +716,8 @@ if `$STY` isn't propagated. The injected `/clear` queues and fires the moment yo
 and the prompt is idle. `SessionStart` re-fires and re-orients you from your handoff +
 boards; any live-wake channel stays live (the process is not restarted).
 
-**Platform:** requires GNU `screen`. A Windows agent has no screen and relies on
-auto-compaction instead. Auto-compaction is the automatic safety net regardless; the directed
+**Platform:** GNU `screen` on Linux. On Windows no screen is needed: `clear-agent.sh` types
+into your own console and refuses (exit 5) if someone is typing there. Auto-compaction is the automatic safety net regardless; the milestone
 clear is the *deliberate* reset that minimizes tokens between independent tasks.
 
 ---

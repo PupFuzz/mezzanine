@@ -203,6 +203,24 @@ check(walkBad.length === 0, `every species draws three distinct walk phases${wal
 const anySeat = roster[0];
 check(C.walkFrames(anySeat.install_id, anySeat.seat_id)[0] === C.standingFrame(anySeat.install_id, anySeat.seat_id), "the walk's phase 0 is the standing frame");
 
+// ---- 7b. the sleeper (card#12159; § 10.4's frame contract item 4) — what a pose draws ----
+// The painter's half, and the sleeper's own legs over every species, are server/tests/Feature/Floor/sleeper-probe.mjs.
+section("7b. a desk's pose frames: the sleeper's for asleep, the walk's for every other pose; every sleeper frame is a document");
+const DESK_TOP = 70 / 96;
+const [si, ss] = [anySeat.install_id, anySeat.seat_id];
+const asleep = C.poseFrames(si, ss, { pose: 'asleep', deskTop: DESK_TOP });
+check(asleep.length === C.SLEEP_FRAMES && asleep.join() === C.sleepFrames(si, ss, DESK_TOP).join(), `asleep draws the sleeper's ${C.SLEEP_FRAMES} frames`);
+check(asleep[0] !== C.standingFrame(si, ss) && /data-pose="asleep"/.test(asleep[0]), 'the sleeper is not the standing frame');
+// Every pose the desk model names (desk-poses.js's DESK, and A4's think pose, which desk-render.js keeps unexported)
+// but the sleeper and the empty chair, which draws no character.
+const { DESK } = await import(pathToFileURL(join(REPO, 'server', 'public', 'js', 'desk', 'desk-poses.js')).href);
+const otherPoses = [...new Set([...Object.values(DESK).map((d) => d.pose), 'leaning-back'])].filter((p) => p !== 'asleep' && p !== 'empty-chair');
+check(otherPoses.every((pose) => C.poseFrames(si, ss, { pose, deskTop: DESK_TOP }).join() === C.walkFrames(si, ss).join()), `every other pose (${otherPoses.join(', ')}) draws the walk, as before`);
+let edgeRefused = 0;
+for (const bad of [undefined, 0, 1, Number.NaN]) { try { C.sleepFrames(si, ss, bad); } catch { edgeRefused++; } }
+check(edgeRefused === 4, "a sleeper with no desk edge inside its frame is refused, never drawn against a guessed one");
+for (const sp of KEYS) docs.set(`sleeper:${sp}`, Array.from({ length: C.SLEEP_FRAMES }, (_, frame) => C.sleepDocument(`sleep/${sp}`, { species: sp, frame, deskTop: DESK_TOP })));
+
 // ---- 8. vector, well-formed, self-contained (N2) ----
 section('8. every frame is one well-formed, self-contained SVG document');
 let docsChecked = 0;
