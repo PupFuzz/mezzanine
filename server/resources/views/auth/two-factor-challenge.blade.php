@@ -4,10 +4,18 @@
 @section('content')
     <p>Enter the six-digit code from your authenticator app.</p>
 
+    {{--
+        Card#12179. Each form carries its own box, because only the form that is submitted is sent:
+        a box shared between the two would reach the server only with one of them. A ticked box on an
+        accepted code lets this browser sign this account in on its password alone until the fixed
+        expiry; `App\Auth\RememberedBrowser` owns the rest.
+    --}}
+
     <form method="POST" action="{{ route('two-factor.login') }}">
         @csrf
         <label for="code">Authentication code</label>
         <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" autofocus>
+        <label for="remember_browser_code"><input id="remember_browser_code" name="{{ \App\Auth\RememberedBrowser::FIELD }}" type="checkbox" value="1"> Remember this browser for {{ \App\Auth\RememberedBrowser::LIFETIME_DAYS }} days</label>
         <button type="submit">Verify</button>
     </form>
 
@@ -17,6 +25,7 @@
         @csrf
         <label for="recovery_code">Recovery code</label>
         <input id="recovery_code" name="recovery_code" type="text" autocomplete="one-time-code">
+        <label for="remember_browser_recovery"><input id="remember_browser_recovery" name="{{ \App\Auth\RememberedBrowser::FIELD }}" type="checkbox" value="1"> Remember this browser for {{ \App\Auth\RememberedBrowser::LIFETIME_DAYS }} days</label>
         <button type="submit">Verify</button>
     </form>
 

@@ -27,6 +27,8 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#12179** — **The two-factor code page offers "Remember this browser for 30 days".** The authenticator-code form and the recovery-code form both have the box. Ticked when the code is accepted, it lets that browser sign that account in on its password alone for 30 days from the tick; using the browser does not extend the 30 days. Every other browser, and any other account signing in on that browser, is still asked for a code, and an unticked box signs in exactly as before. The browser holds a random token in a cookie marked `Secure`, `HttpOnly` and `SameSite=Lax`, so it is kept only over HTTPS, and the host stores only a hash of the token. Every remembered browser for an account is forgotten when its password changes, when its second factor is reset by email, disabled, re-enrolled or moved to a new authenticator, and when the account is retired; emptying the `remembered_browsers` table forgets them all at once. The upgrade's migration adds the table `remembered_browsers`. `README.md` § Remembering a browser describes it.
+
 ## [0.10.0] — 2026-10-21
 
 - **card#12172** — **The build tooling's locked vite moves to 8.3.5, clearing three security advisories.** The `vite` build tool in the server's lockfile moves from 8.3.0 to 8.3.5, within the existing `^8.0.0` range, which clears GHSA-587h-7wmj-h5pm, GHSA-698v-4r3x-3vcv and GHSA-r825-w8mm-5pxw. Those advisories concern vite's bundled editor launcher, reachable only from a developer running the dev server. The served pages are unaffected because they do not run vite. The lockfile's transitive packages that vite depends on move with it; no runtime behaviour changes.

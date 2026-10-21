@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Auth\RememberedBrowser;
 use App\Auth\TwoFactorIssuer;
 use BaconQrCode\Renderer\Color\Rgb;
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
@@ -41,6 +42,33 @@ class User extends Authenticatable
 
     /** @var list<string> */
     public const ROLES = [self::OBSERVER, self::OPERATOR];
+
+    /**
+     * ⛔ CARD#12179 · A CHANGED CREDENTIAL FORGETS EVERY REMEMBERED BROWSER. The trigger is the column
+     * write itself, so it holds for every writer rather than for a list of call sites:
+     *   · `password` — `App\Admin\UserProvisioning::update()`, the console's password change and the
+     *     only one (Fortify's `resetPasswords()` and `updatePasswords()` are off in `config/fortify.php`);
+     *   · `two_factor_secret` / `two_factor_confirmed_at` — Fortify's enable (re-enrol, `force`),
+     *     confirm and disable actions, the emailed reset (`App\Auth\TwoFactorReset::consume()`, through
+     *     Fortify's disable action) and the move to a new authenticator
+     *     (`App\Http\Controllers\Auth\TwoFactorMoveController::confirm()`).
+     * Retirement writes through the query builder, which fires no model event, so
+     * `App\Admin\UserRetirement::retire()` calls the same `RememberedBrowser::forgetAll()` itself.
+     *
+     * ⚠ `two_factor_recovery_codes` IS NOT A TRIGGER: signing in with a recovery code rewrites it
+     * (`replaceRecoveryCode()`), and so does regenerating the codes, and neither changes the factor.
+     * ⚠ A PASSWORD REHASH ON SIGN-IN IS ONE (`config('hashing.rehash_on_login')`, after a change to the
+     * hashing cost): the stored hash changes with the password unchanged, and the account's browsers
+     * are asked for a code once more. That errs towards the challenge.
+     */
+    protected static function booted(): void
+    {
+        static::updated(function (User $user): void {
+            if ($user->wasChanged(['password', 'two_factor_secret', 'two_factor_confirmed_at'])) {
+                RememberedBrowser::forgetAll($user->getKey());
+            }
+        });
+    }
 
     /**
      * Get the attributes that should be cast.

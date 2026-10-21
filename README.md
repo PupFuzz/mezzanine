@@ -215,6 +215,25 @@ change keeps its old `Mezzanine` label, and so does one enrolled before a host c
 rename the entry in the authenticator app, or enrol again with **Move to a new authenticator**
 (below).
 
+### Remembering a browser
+
+The two-factor code page has a **Remember this browser for 30 days** box on its code form and on its recovery-code form.
+Tick it when you enter a code or a recovery code, and that browser signs **that account** in on its
+password alone for the next 30 days, counted from the tick; using it does not extend the 30 days.
+Every other browser, and any other account on that browser, is still asked for a code.
+
+An account's remembered browsers are all forgotten when its password changes, when its second factor
+is reset by email, disabled, re-enrolled or moved to a new authenticator, and when the account is
+retired. The next sign-in on each of them asks for a code again.
+
+The browser holds a random token in a cookie marked `Secure`, `HttpOnly` and `SameSite=Lax`; the
+host stores only a hash of it, in the `remembered_browsers` table. Because the cookie is `Secure`, a
+browser keeps it only over HTTPS. Like every cookie this application sets, it is encrypted with
+`APP_KEY`. To forget every remembered browser at once, empty the `remembered_browsers` table; rotating
+`APP_KEY` does the same only when the old key is left out of `APP_PREVIOUS_KEYS`, which keeps old
+cookies readable. `App\Auth\RememberedBrowser`
+owns the mechanism and the 30-day constant.
+
 ### Losing your authenticator
 
 **Two ways back, and the first needs nothing from the host.**

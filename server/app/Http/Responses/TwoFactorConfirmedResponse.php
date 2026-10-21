@@ -46,7 +46,7 @@ final class TwoFactorConfirmedResponse implements FortifyContract
 
         return redirect()->route('dashboard')->with(
             'status',
-            'Two-factor authentication is on. Each sign-in now asks for a code from your authenticator app.'
+            'Two-factor authentication is on. Each sign-in asks for a code from your authenticator app, except on a browser you choose to remember for 30 days.'
         );
     }
 }

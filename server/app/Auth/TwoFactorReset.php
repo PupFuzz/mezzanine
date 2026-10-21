@@ -49,6 +49,9 @@ use Laravel\Fortify\Actions\DisableTwoFactorAuthentication;
  *   · It is also the better answer for the person this feature exists for: the operator who lost
  *     their authenticator still has their password, and an old browser session that is now pinned
  *     to the enrolment screen is where they want to be.
+ *   · Remembered browsers (card#12179) ARE forgotten by a consumed reset, and not by anything in
+ *     this class: the disable action's write of the two-factor columns fires `App\Models\User`'s
+ *     update hook, which calls `App\Auth\RememberedBrowser::forgetAll()`.
  *
  * ⛔ NO ENUMERATION ORACLE IN THE ANSWER. `request()` returns `void` and takes every path that
  * cannot produce a code — no such address, a RETIRED account, an account with no confirmed second
