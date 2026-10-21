@@ -2,16 +2,18 @@
 
 namespace App\Providers;
 
+use App\Auth\RedirectIfTwoFactorAuthenticatable;
 use App\Http\Responses\RecoveryCodesGeneratedResponse;
 use App\Http\Responses\TwoFactorConfirmedResponse;
+use App\Http\Responses\TwoFactorLoginResponse;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
-use Laravel\Fortify\Actions\RedirectIfTwoFactorAuthenticatable;
 use Laravel\Fortify\Contracts\RecoveryCodesGeneratedResponse as RecoveryCodesGeneratedResponseContract;
 use Laravel\Fortify\Contracts\TwoFactorConfirmedResponse as TwoFactorConfirmedResponseContract;
+use Laravel\Fortify\Contracts\TwoFactorLoginResponse as TwoFactorLoginResponseContract;
 use Laravel\Fortify\Fortify;
 
 /**
@@ -38,10 +40,18 @@ class FortifyServiceProvider extends ServiceProvider
          * See `App\Http\Responses\TwoFactorConfirmedResponse`.
          */
         $this->app->singleton(TwoFactorConfirmedResponseContract::class, TwoFactorConfirmedResponse::class);
+
+        /*
+         * Card#12179, the same mechanism: an accepted challenge with "Remember this browser for 30
+         * days" ticked also sets the remembered-browser cookie. See `App\Http\Responses\TwoFactorLoginResponse`.
+         */
+        $this->app->singleton(TwoFactorLoginResponseContract::class, TwoFactorLoginResponse::class);
     }
 
     public function boot(): void
     {
+        // Card#12179: Fortify's own stage, with one decision changed — a browser remembered for the
+        // account continues past the challenge. `App\Auth\RedirectIfTwoFactorAuthenticatable` owns it.
         Fortify::redirectUserForTwoFactorAuthenticationUsing(RedirectIfTwoFactorAuthenticatable::class);
 
         Fortify::loginView(fn () => view('auth.login'));

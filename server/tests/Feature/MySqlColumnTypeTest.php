@@ -107,6 +107,18 @@ class MySqlColumnTypeTest extends TestCase
         $this->assertStringContainsString("default character set utf8mb4 collate 'utf8mb4_unicode_ci'", $ddl);
     }
 
+    /**
+     * Card#12179's remembered-browser table, the same property: `token_hash` is looked up by equality
+     * and must compare exactly on the store it deploys to.
+     */
+    public function test_the_remembered_browser_table_emits_an_exactly_comparing_identifier_column_on_mysql(): void
+    {
+        $ddl = $this->createTableSqlOnMySql('remembered_browsers');
+
+        $this->assertStringContainsString("`token_hash` char(64) character set ascii collate 'ascii_bin'", $ddl);
+        $this->assertStringContainsString("default character set utf8mb4 collate 'utf8mb4_unicode_ci'", $ddl);
+    }
+
     /** The `CREATE TABLE` this application's migration for `$table` would send to MySQL. */
     private function createTableSqlOnMySql(string $table): string
     {
