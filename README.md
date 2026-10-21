@@ -229,7 +229,9 @@ retired. The next sign-in on each of them asks for a code again.
 The browser holds a random token in a cookie marked `Secure`, `HttpOnly` and `SameSite=Lax`; the
 host stores only a hash of it, in the `remembered_browsers` table. Because the cookie is `Secure`, a
 browser keeps it only over HTTPS. Like every cookie this application sets, it is encrypted with
-`APP_KEY`, so rotating `APP_KEY` also forgets every remembered browser. `App\Auth\RememberedBrowser`
+`APP_KEY`. To forget every remembered browser at once, empty the `remembered_browsers` table; rotating
+`APP_KEY` does the same only when the old key is left out of `APP_PREVIOUS_KEYS`, which keeps old
+cookies readable. `App\Auth\RememberedBrowser`
 owns the mechanism and the 30-day constant.
 
 ### Losing your authenticator
