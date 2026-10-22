@@ -2,7 +2,8 @@
 // THE SLEEPER's Z's — AGAINST ITS OWN HEAD AND AGAINST EACH OTHER — MEASURED ON A RENDER (card#12187;
 // `docs/design/FLOOR.md` § 10.4's frame contract item 4 and § 12's *Sleeper z overlap bound* and *Sleeper z-on-z bound*).
 //
-// For every species and variant of the character tree, at `--keys` keys each, every frame of the sleeper is rasterised
+// For every species and variant of the character tree — at its first `--keys` keys AND at the extremes the population
+// holds (the lowest and highest eye line over `--scan-eyes` keys, the widest crest over `--scan-crest`; see `pickSeats()`) — every frame of the sleeper is rasterised
 // in headless Chromium — once without its z's, and once per z with nothing but that z — and two shares are read pixel
 // by pixel: OVER HEAD, the share of the z's ink that lands on the sleeper's own ink above its eye line (where the ears,
 // leaves and caps are); and Z ON Z, the share of the z's ink covered by two z's or more. The worst frame of the worst
@@ -13,7 +14,9 @@
 //   node tools/design/sleeper-zs.browser.mjs --layout <name>       # re-lay the z's by a LAYOUTS entry and judge that
 //   node tools/design/sleeper-zs.browser.mjs --selftest            # …and require the card#12159 layout to red BOTH bounds
 //   node tools/design/sleeper-zs.browser.mjs --tree <dir>          # judge another tree
-//   node tools/design/sleeper-zs.browser.mjs --keys 4 --phases 16  # keys per species and variant; phases per layout loop
+//   node tools/design/sleeper-zs.browser.mjs --keys 4 --phases 16  # first keys per species and variant (3); phases per layout loop (16)
+//   …and --scan-eyes 400 --scan-crest 100: the keys scanned per species and variant for the EXTREMES the run adds (below)
+//   --shot <png> [--shot-px 108]    # save the sheet of every species; 49 draws it at the floor's fit size on a 1,440 window
 //   …and --chrome <path> or $CHROME, as every browser tool here.
 //
 // ⛔ CANDIDATES AND CONTROLS ARE PLANTED BY SEMANTICS, NOT BY SOURCE EDITS. A `--layout` run keeps the tree's sleeper —
@@ -39,7 +42,10 @@ const args = process.argv.slice(2);
 const arg = (name, fallback) => (args.includes(name) ? args[args.indexOf(name) + 1] : fallback);
 const TREE = arg('--tree', join(ROOT, 'resources', 'characters'));
 const KEYS_PER = Number(arg('--keys', 3));
-const PHASES = Number(arg('--phases', 8));
+const PHASES = Number(arg('--phases', 16));
+/** Keys scanned per species and variant for the extremes of eye line (cheap: no raster) and of crest width (one raster each). */
+const SCAN_EYES = Number(arg('--scan-eyes', 400));
+const SCAN_CREST = Number(arg('--scan-crest', 100));
 const LAYOUT = arg('--layout', null);
 const SHOT = arg('--shot', null);
 /** The sheet's cell width in CSS px: 108 draws a frame unit per px; 49 is the floor's fit at a 1,440 × 900 window (0.90 × 54). */
@@ -177,6 +183,21 @@ function rise(p, phase, from, to) {
 }
 
 // ── the measurement ──────────────────────────────────────────────────────────────────────────────────────────────────
+/** The widest run of ink in any one raster row above `eyesRow`, in frame units. */
+const PAGE_CREST = `async ({ body, w, h, scale, alpha, eyesRow }) => {
+  const img = new Image(); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(body);
+  await img.decode();
+  const c = document.createElement('canvas'); c.width = w * scale; c.height = h * scale;
+  const g = c.getContext('2d'); g.drawImage(img, 0, 0, c.width, c.height);
+  const d = g.getImageData(0, 0, c.width, c.height).data; let best = 0;
+  for (let y = 0; y < Math.min(c.height, Math.floor(eyesRow * scale)); y++) {
+    let lo = -1, hi = -1;
+    for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3] > alpha) { if (lo < 0) lo = x; hi = x; }
+    if (lo >= 0) best = Math.max(best, (hi - lo) / scale);
+  }
+  return best;
+}`;
+
 const PAGE_MEASURE = `async ({ body, eyes, zs, w, h, scale, alpha, eyesRow, clear }) => {
   const mask = async (svg) => {
     const img = new Image(); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
@@ -206,23 +227,52 @@ const PAGE_MEASURE = `async ({ body, eyes, zs, w, h, scale, alpha, eyesRow, clea
   return { any, multi, onTop, onAll, onFace, eyeInk };
 }`;
 
-function seatsOf(C) {
+/**
+ * THE SEATS: not the first few keys — the EXTREMES of the population that matter, per species and variant. For each group
+ * the first `--keys` keys, plus the key with the lowest eye line and the one with the highest among `--scan-eyes` keys
+ * (the eye line sets the size of a seat's z's and the room they have), plus the key with the widest crest — the widest
+ * run of ink above the eye line — among `--scan-crest` keys (the crest is what the z's can overlap). Round 2's review
+ * found the first-three-keys sample missing both: a mushroom key 12 at 55.1 % where keys 0–2 read 46 %.
+ */
+async function pickSeats(b, C) {
+  const VIEW = C.SEAT_VIEWBOX;
   const variantsOf = (sp) => {
     const seen = new Set();
     for (let i = 0; i < 300; i += 1) seen.add(C.recipe(`v/${sp}/${i}`, sp).variant);
     return [...seen].filter((v) => v !== null);
   };
-  const seats = [];
+  const keyOf = (sp, v, k) => {
+    let key = `sleep/${sp}/${v ?? 'any'}/${k}`;
+    for (let i = 0; v !== null && C.recipe(key, sp).variant !== v && i < 400; i += 1) key = `sleep/${sp}/${v}/${k}/${i}`;
+    return v === null || C.recipe(key, sp).variant === v ? key : null;
+  };
+  const seats = [], extremes = [];
   for (const sp of C.SPECIES_KEYS) {
     for (const v of [null, ...variantsOf(sp)]) {
-      for (let k = 0; k < KEYS_PER; k += 1) {
-        let key = `sleep/${sp}/${v ?? 'any'}/${k}`;
-        for (let i = 0; v !== null && C.recipe(key, sp).variant !== v && i < 400; i += 1) key = `sleep/${sp}/${v}/${k}/${i}`;
-        if (v === null || C.recipe(key, sp).variant === v) seats.push({ sp, v: v ?? '-', key });
+      const picked = new Map();
+      const add = (key, why) => { if (key !== null && !picked.has(key)) picked.set(key, why); };
+      for (let k = 0; k < KEYS_PER; k += 1) add(keyOf(sp, v, k), 'first');
+      let lo = null, hi = null, wide = null;
+      for (let k = 0; k < Math.max(SCAN_EYES, SCAN_CREST); k += 1) {
+        const key = keyOf(sp, v, k);
+        if (key === null) continue;
+        const doc = C.sleepDocument(key, { species: sp, frame: 0, deskTop: DESK_TOP });
+        const eyes = poseOf(doc).eyes;
+        if (k < SCAN_EYES) {
+          if (lo === null || eyes < lo.eyes) lo = { key, eyes };
+          if (hi === null || eyes > hi.eyes) hi = { key, eyes };
+        }
+        if (k < SCAN_CREST) {
+          const w = await b.evaluate(`(${PAGE_CREST})(${JSON.stringify({ body: withoutZs(doc), w: VIEW.w, h: VIEW.h, scale: SCALE, alpha: ALPHA, eyesRow: eyes - 8 })})`);
+          if (wide === null || w > wide.w) wide = { key, w };
+        }
       }
+      add(lo.key, 'lowest eye line'); add(hi.key, 'highest eye line'); add(wide.key, 'widest crest');
+      extremes.push({ sp, v: v ?? '-', lo, hi, wide });
+      for (const [key] of picked) seats.push({ sp, v: v ?? '-', key });
     }
   }
-  return seats;
+  return { seats, extremes };
 }
 
 /** Every frame to judge, for one seat: the tree's own, or the base frame's sleeper with a layout's z's at each phase. */
@@ -249,16 +299,19 @@ async function measure(chrome, tree, layout) {
   const b = await browser(chrome, 300, 500, 'ready');
   const rows = [];
   const mirror = [];
+  const picks = [];
   try {
     await b.load('data:text/html,<title>ready</title>');
-    for (const seat of seatsOf(C)) {
+    const { seats, extremes } = await pickSeats(b, C);
+    picks.push(...extremes);
+    for (const seat of seats) {
       const row = { ...seat, overHead: 0, overAll: 0, zOnZ: 0, onFace: 0, eyeInk: Infinity, worstFrame: -1, clipped: 0, zLarge: 0, opaqueLarge: 0, zSmall: Infinity, zpx: 0 };
       const frames = framesOf(C, seat, layout, mirror);
       for (const [i, { doc, pose, zs }] of frames.entries()) {
         for (const z of zs) {
           row.zLarge = Math.max(row.zLarge, z.h);
           row.zSmall = Math.min(row.zSmall, z.h);
-          if (z.o >= 1) row.opaqueLarge = Math.max(row.opaqueLarge, z.h);
+          if (z.o >= 1 && (layout === null || i % (PHASES / 8) === 0)) row.opaqueLarge = Math.max(row.opaqueLarge, z.h);
           const hb = halfBox(z.h);
           if (z.y - hb.h < VIEW.y || z.x - hb.w < VIEW.x || z.x + hb.w > VIEW.x + VIEW.w) row.clipped += 1;
         }
@@ -278,20 +331,22 @@ async function measure(chrome, tree, layout) {
   } finally {
     b.close();
   }
-  return { rows, species: C.SPECIES_KEYS, mirror, framesPer: layout === null ? C.SLEEP_FRAMES : PHASES };
+  return { rows, picks, species: C.SPECIES_KEYS, mirror, framesPer: layout === null ? C.SLEEP_FRAMES : PHASES };
 }
 
-function report(label, { rows, species, mirror, framesPer }, bounds) {
+function report(label, { rows, picks, species, mirror, framesPer }, bounds) {
   const pct = (x) => `${(x * 100).toFixed(1)}%`;
   const worstBy = (k, list = rows) => list.reduce((a, r) => (r[k] > a[k] ? r : a), list[0]);
   const zpx = rows.reduce((a, r) => a + r.zpx, 0);
   const clipped = rows.reduce((a, r) => a + r.clipped, 0);
+  const eyesAll = picks.flatMap((p) => [p.lo.eyes, p.hi.eyes]);
   const measured = rows.length >= species.length * KEYS_PER && zpx > 500 * rows.length * framesPer && rows.every((r) => r.eyeInk > 20);
   const over = worstBy('overHead'), onz = worstBy('zOnZ');
   const face = worstBy('onFace');
   const okOver = over.overHead <= bounds.overHead, okOnz = onz.zOnZ <= bounds.zOnZ, okFace = face.onFace <= bounds.face;
   const ok = measured && okOver && okOnz && okFace && clipped === 0 && mirror.length === 0;
-  console.log(`── ${label}: ${rows.length} seats × ${framesPer} frames, ${zpx} z px read; z heights ${Math.min(...rows.map((r) => r.zSmall)).toFixed(1)}–${Math.max(...rows.map((r) => r.zLarge)).toFixed(1)} units, the largest fully opaque ${Math.min(...rows.map((r) => r.opaqueLarge)).toFixed(1)}–${Math.max(...rows.map((r) => r.opaqueLarge)).toFixed(1)} by seat (the largest drawn ${Math.min(...rows.map((r) => r.zLarge)).toFixed(1)}–${Math.max(...rows.map((r) => r.zLarge)).toFixed(1)}); z boxes leaving the frame ${clipped}`);
+  console.log(`── ${label}: ${rows.length} seats × ${framesPer} frames, ${zpx} z px read; z heights ${Math.min(...rows.map((r) => r.zSmall)).toFixed(1)}–${Math.max(...rows.map((r) => r.zLarge)).toFixed(1)} units, the largest fully opaque AT THE LOOP'S OWN FRAMES ${Math.min(...rows.map((r) => r.opaqueLarge)).toFixed(1)}–${Math.max(...rows.map((r) => r.opaqueLarge)).toFixed(1)} by seat (the largest drawn ${Math.min(...rows.map((r) => r.zLarge)).toFixed(1)}–${Math.max(...rows.map((r) => r.zLarge)).toFixed(1)}); z boxes leaving the frame ${clipped}`);
+  console.log(`   seats: ${rows.length}, chosen by the extremes of ${SCAN_EYES} keys' eye lines (${Math.min(...eyesAll).toFixed(1)}–${Math.max(...eyesAll).toFixed(1)} units over the population) and ${SCAN_CREST} keys' crests (widest ${Math.max(...picks.map((p) => p.wide.w)).toFixed(0)} units)`);
   for (const sp of species) {
     const mine = rows.filter((r) => r.sp === sp);
     console.log(`   ${sp.padEnd(9)} over head ${pct(worstBy('overHead', mine).overHead).padStart(6)}   z on z ${pct(worstBy('zOnZ', mine).zOnZ).padStart(6)}   face ${pct(worstBy('onFace', mine).onFace).padStart(6)}   anywhere on the sleeper ${pct(worstBy('overAll', mine).overAll).padStart(6)}   (${worstBy('overHead', mine).key})`);
