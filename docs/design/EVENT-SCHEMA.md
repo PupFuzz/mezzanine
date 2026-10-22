@@ -567,6 +567,7 @@ with one entry per configured site: `seq_epoch`, `next_seq`, `cursors` (the per-
 [§ 11.1](#111-layout)), the site's delivery counters and their rise dates, the last measured value of
 each network check, the site's persisted `request` (*One request per site*, below), its
 trailing-hour send window ([§ 11.5](#115-retry-and-backoff)), and
+**`identity_sha256`** (the identity rule, below), and
 **`ingest_url_sha256`**, the lowercase hex SHA-256 of **`siteKey(ingest_url)`** (*What the reporter
 enforces*, above) for the URL the entry was built against — the hash of the userinfo-free, normalized
 spelling and never the URL itself, so a URL's userinfo, which the reporter treats as a secret
@@ -634,7 +635,7 @@ this replaces. Four rules decide what an entry is on each start, each the safe d
    The cost is one `seq_epoch_change` per upgraded seat, rendered `epoch_reset`, logged and not
    alarmed ([§ 10.2](#102-ordering-seq-and-gap-detection)) — the existing epoch reset, applied at
    adoption; no other mechanism is added. The adoption happens once per `state.json`: the minted
-   epoch is written by the pre-send save before anything is sent under it, so a start that dies
+   epoch is written by the first save, no later than the pre-send save, so a start that dies
    before that save adopts again with nothing sent under the first mint. The weaker alternative — a
    first build with no heartbeat and the old build's batch size, to reproduce the old last batch — is
    rejected: it reproduces it only until a `413` halving or a dropped bucket, the two changes the old
@@ -653,6 +654,14 @@ this replaces. Four rules decide what an entry is on each start, each the safe d
    waits for it: the site's server sees the seat go `stale`, then `offline`, and retiring the desk
    there is that site's operator act (`FLEET-STATE.md § 4.10`, by pointer; this document imposes
    nothing on it).
+
+**Downgrade is unsupported and safe.** The new `state.json` has no top-level `seq_epoch` or
+`next_seq`, so an earlier build's `loadState` throws on the shape (`fleet-reporter.js`, the
+`!s.seq_epoch` check) and takes the §11.4 reset: a fresh epoch, every bucket from byte 0, `state_reset`
+counted — a re-send, which the dedup window absorbs, and no collision. The persisted requests go with
+the file, their lines still being in the spool. A later re-upgrade finds that build's state and adopts
+it by rule 3 under yet another fresh epoch. Each hop costs the sites one `epoch_reset`, and nothing
+else; the install document does not offer a downgrade.
 
 **One request per site, persisted before it is sent and resent verbatim until the site answers.**
 This is the mechanism every per-site `seq` rule rests on, and it replaces the three that rounds 1–3
@@ -721,7 +730,8 @@ request is then the only thing the lane sends until the site has answered it.
 - **Until the site answers definitively, every attempt sends the persisted request** — after a
   retryable answer and its backoff, after a flusher restart, after an auth stop a restart lifted,
   after a bucket it was built from is dropped. **Definitive** is what `classify`'s one status-and-body
-  table calls definitive ([§ 11.5](#115-retry-and-backoff) owns it): accepted (`200`/`202`); refused
+  table calls definitive ([§ 11.5](#115-retry-and-backoff) owns it): accepted (`202` whose body carries numeric `accepted` and `duplicates` — the one answer the ingest
+  gives, `Acceptance.php`); refused
   on its bytes — `413` on its status, and `400`, `415` or `422` only when the body's `error` is one
   the ingest emits for that status; or refused on its credential by the ingest itself — `401
   unauthenticated` or `403 identity_mismatch`. Every other outcome — a deadline, a transport
@@ -809,25 +819,33 @@ request is then the only thing the lane sends until the site has answered it.
   request with it, and the fresh epoch those rules mint is what makes the discarded request's seqs
   unrepeatable. A legacy entry (rule 3) has none. An entry whose `request` member this build cannot
   read is not a usable entry, and that site starts by rule 1 — a re-send, never a skip.
-- **A request built under an identity pair the config no longer carries is discarded at start,
-  under the age rule's epoch reset.** `install_id` and `seat_id` are seat-wide, and the request
-  fixes them at build. The edit is reachable: an operator re-runs Step 2 for another pair — a token
-  is bound to its pair ([§ 3.3](#33-authentication-and-the-identity-binding-rule)), so a new pair
-  comes with a new token written beside it — or edits the config by hand. Without this rule the
-  request resends the old pair, the ingest answers `403 identity_mismatch`, the lane stops, and the
-  restart that should lift the stop resends the same pair: a stop no config write lifts. So before
-  a lane builds or sends anything it compares the request's pair with the config's, and on a
-  difference clears the request, mints a new `seq_epoch`, resets `next_seq` and counts the
-  heartbeat the request carried, in one save — the age rule's reset, with its counts. The reset and
-  not a bare discard, because the edit can be reverted: back on the first pair, a carried
-  `next_seq` would put new events under seqs that pair's seat may hold from the discarded request's
-  committed attempt. The cursors are kept, because what is behind them reached the old pair's seat
-  and is not the new seat's to receive. What is ahead of them was spooled under the old pair —
-  every spooled line carries the identity it was emitted with, and `buildBatch` copies it into the
-  event — so the ingest refuses those batches `422 invalid_event`
-  (`server/app/Ingest/EventValidator.php`) and they are quarantined and counted on that site, as
-  they were before this card: what an identity edit does to the spool ahead of the cursor is not
-  this card's to change, and it is named here so it is not mistaken for this rule's effect.
+- **A site entry built under an identity pair the config no longer carries is reset at start, with
+  or without a persisted request.** `install_id` and `seat_id` are seat-wide, and the site's epoch
+  and `next_seq` are a fact about *which seat's sequence they continue*, exactly as its cursor is a
+  fact about which server holds the lines. So the entry records **`identity_sha256`**, the lowercase
+  hex SHA-256 of `install_id|seat_id`, beside `ingest_url_sha256`, and `siteEntry` compares it with
+  the config's pair by the same binding shape as rule 2: a difference is the age rule's epoch reset
+  — `request` cleared if one is persisted, a new `seq_epoch`, `next_seq` 1, the heartbeat a cleared
+  request carried counted, the cursors kept, in one save, before anything is built. A legacy entry
+  (rule 3) records no pair, takes the config's at its first save, and adoption has already minted
+  its epoch. The edit is reachable: an operator re-runs Step 2 for another pair — a token is bound
+  to its pair ([§ 3.3](#33-authentication-and-the-identity-binding-rule)), so a new pair comes with
+  a new token written beside it — or edits the config by hand. Keying the reset on a persisted
+  request would miss the common case (round 5's N2): with none persisted the lane would carry its
+  epoch and `next_seq` to the other seat, the spooled lines ahead of the cursor would be refused and
+  quarantined while `next_seq` grew, and reverting to the first pair would continue the first seat's
+  epoch at a `next_seq` far past its last seq. With a request persisted and no rule, the request
+  resends the old pair, the ingest answers `403 identity_mismatch`, the lane stops, and the restart
+  that should lift the stop resends the same pair: a stop no config write lifts. The reset and not
+  a bare discard, because the edit can be reverted: back on the first pair a carried `next_seq`
+  would put new events under seqs that pair's seat may hold from a committed attempt. The cursors
+  are kept, because what is behind them reached the old pair's seat and is not the new seat's to
+  receive. What is ahead of them was spooled under the old pair — every spooled line carries the
+  identity it was emitted with, and `buildBatch` copies it into the event — so the ingest refuses
+  those batches `422 invalid_event` (`server/app/Ingest/EventValidator.php`) and they are
+  quarantined and counted on that site, as they were before this card: what an identity edit does to
+  the spool ahead of the cursor is not this card's to change, and it is named here so it is not
+  mistaken for this rule's effect.
 
 Case K of [AT-28](#at-28-one-seat-several-sites-each-site-gets-everything-and-only-its-own-outcomes)
 is the check, leg by leg: a site that commits and then drops the connection, across a retry and
@@ -4816,7 +4834,7 @@ the two were equal.
 | `events_rejected_dropped` | events lost with a permanently-rejected batch — incremented by that batch's event count at quarantine time | seat badge `lossy`; this is the counter that makes `§ 0` item 9's promise true for the rejection path |
 | `oversize_event_dropped` | a single event over the 4 KiB cap, undeliverable, quarantined | seat badge `lossy` |
 | `batches_rejected` | permanent-status rejections | seat badge `degraded`; the last status and error code are shown |
-| `batches_ok` | a batch the server accepted (`202` or `200`) | informational; the denominator the other batch counters are read against |
+| `batches_ok` | a batch the server accepted (`202` with an ingest body, [§ 11.5](#115-retry-and-backoff)) | informational; the denominator the other batch counters are read against |
 | `batches_retried` | a batch that will be sent again: a retryable status (`408`, `429`, any `5xx`) or a transport failure or timeout ([§ 11.5](#115-retry-and-backoff)) | informational — **no loss**, because the batch stays spooled and a retry commits once ([§ 10.4](#104-batch-level-idempotency)). For a `5xx` it is the reporter's side of the server's `batches_failed.<detail>` ([§ 12.7](#127-server-side-counters)) |
 | `hook_name_mismatch` | `argv[2]` ≠ `hook_event_name` | `degraded`; the harness contract moved |
 | `payload_key_missing.<key>` | a harness payload key the reporter reads was absent: `session_id`, a key a hook handler reads, `agent_id` on `SubagentStart`, or `tool_response.agentId` on a background launch's `PostToolUse` ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)). The family also carries `payload_key_missing.unsubscribed_hook.<name>`, counted when the reporter is run for a hook outside [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s subscribed set, which a seat wired by `fleet-reporter/INSTALL-LINUX.md` Step 4 never is | `degraded`, member `harness_contract_moved`, for **every** key in the family: the reporter matches the `payload_key_missing.` prefix, so a key a later build starts reading raises the member with no edit here. A gap that is expected on a correct install is therefore counted under its own name and never in this family: `harness_label_unset` and `context_window_unavailable` |
@@ -5486,7 +5504,7 @@ name, by the flusher only, and only while it still owns the seat
 | Flush trigger | ≥ 50 queued events **or** 10 s elapsed | 50 events ≈ 25 KB, a batch worth a WAN round-trip; 10 s bounds dashboard latency and holds request rate at ≤ 6/min/seat |
 | Backoff | exponential from **2 s**, ×2, **capped at 120 s**, **full jitter** (uniform in `[0, computed]`) | 2→4→8→16 covers a ~30 s app restart within 4 attempts. The 120 s cap bounds how long a seat stays `stale` *after* connectivity returns ([§ 9.1](#91-the-cadence-and-the-alarm) does that arithmetic and states plainly that a longer outage does trip `stale`, correctly). Full jitter stops N seats re-synchronising into a thundering herd after a server restart |
 | `Retry-After` on `429` | honoured, clamped to ≤ 600 s | a server's explicit instruction outranks the ladder; the clamp stops a bad header parking a seat for hours |
-| Retryable | timeout, DNS/connect failure, TLS failure, `408`, `429`, all `5xx`, **and every status-and-body pair the two rows below do not name** — a status they do not list (`3xx`, `404`, `405`, `409`, `410` and the rest), and a `400`/`401`/`403`/`415`/`422` whose body's `error` is not the ingest's code for it (card#12180; *One classification* below) | transient by nature, or answered by something on the path and not by the ingest; **the retry is the persisted request, resent as built** ([§ 3.1](#sites-one-seat-reporting-to-several-mezzanine-deployments), *One request per site*) |
+| Retryable | timeout, DNS/connect failure, TLS failure, `408`, `429`, all `5xx`, **and every status-and-body pair the two rows below do not name** — including a `200`, and a `202` whose body lacks numeric `accepted` and `duplicates`, which a front end can answer and the ingest does not (accepted is the ingest's `202` and nothing else; round 5's N3) — a status they do not list (`3xx`, `404`, `405`, `409`, `410` and the rest), and a `400`/`401`/`403`/`415`/`422` whose body's `error` is not the ingest's code for it (card#12180; *One classification* below) | transient by nature, or answered by something on the path and not by the ingest; **the retry is the persisted request, resent as built** ([§ 3.1](#sites-one-seat-reporting-to-several-mezzanine-deployments), *One request per site*) |
 | **Not** retryable — the bytes are refused | `413`\*, on its status; `400` with body `error` `malformed_body` or `unsupported_schema_version`; `415` with `unsupported_media_type`; `422` with `invalid_batch` or `invalid_event` — the ingest's own codes for those statuses (`server/app/Ingest/Refusal.php`) | permanent: the same bytes will be refused forever, and retrying hides the error behind an infinite loop instead of surfacing it. The poison-pill rule below |
 | **Not** retryable — the credential is refused | `401` with body `error: unauthenticated`, `403` with body `error: identity_mismatch` — **the body's code, not the status alone** | **an auth stop, per site** (card#12180; before it, these two were poison pills too): the bytes are not what was refused, so the lane keeps its cursor **and its persisted request** and quarantines nothing, counts `auth_refused` on that site, writes the marker and the log, holds `token_accepted` at `fail` on the `401`, and sends nothing and probes nothing on that site until the flusher restarts, which resends the request. The paragraph below |
 | Retry attempts before giving up on a batch | unbounded **while** the condition is retryable | "the server is down for days" is the required-survivable case; the spool bounds, not an attempt count, are what limit growth |
@@ -5511,7 +5529,11 @@ lane's `token_accepted` is `fail`.
 in this class — `Refusal::unauthenticated` (`401`, `error: unauthenticated`) and
 `Refusal::identityMismatch` (`403`, `error: identity_mismatch`; `server/app/Ingest/Refusal.php`,
 raised from `TokenResolver` and `BatchValidator`) — and nothing else on the ingest answers `401` or
-`403`: its two routes carry no middleware (`server/routes/ingest.php`, which says so in its header).
+`403`: its two routes are registered with an explicitly empty route-middleware group
+(`server/bootstrap/app.php`, `Route::middleware([])`; `server/routes/ingest.php` says so in its
+header), so nothing route-level answers either status. The framework's global stack still runs
+before the route, and what it can answer — `503` from maintenance mode and `413` from the post-size
+check — the table already classifies safely, `503` retryable and `413` halving.
 A `401` or `403` whose body does not parse to one of those two codes did not come from the
 ingest: a reverse proxy, a WAF rule or a host's own authentication answered before the request
 reached it, so the bytes were not refused and the credential was not judged. Such an answer is
@@ -5615,8 +5637,9 @@ event.
 above is the whole of it, and `classify` (`fleet-reporter/fleet-reporter.js`) is its one
 implementation: the lane's disposal, the auth stop and the poison pill all read its verdict and
 none re-reads a status. It keys on the body because a status alone does not say who answered:
-the ingest's two routes carry no middleware (`server/routes/ingest.php`), so every refusal the
-ingest makes carries one of `Refusal.php`'s codes, and a refusal without one came from a proxy, a
+the ingest's two routes take no route middleware (the empty group above; the global stack can
+answer `503` and `413` only, both classified by the table), so every `4xx` refusal the ingest makes
+carries one of `Refusal.php`'s codes, and a refusal without one came from a proxy, a
 WAF or a host in front of it, which judged neither the bytes nor the credential. Keying the auth
 stop on the body ([the paragraph below](#115-retry-and-backoff)) and the poison pill on the status
 would be two answers to one question; round 4 (F3) found the second copy, and the table closes the
@@ -5631,7 +5654,7 @@ itself when the path is fixed — the failure direction
 requires. The cost is the converse: a status the ingest never emits stalls the site instead of
 draining it into quarantine, which is the visible failure and not the silent one. Case M of
 [AT-28](#at-28-one-seat-several-sites-each-site-gets-everything-and-only-its-own-outcomes)
-drives a `404`, a proxy's `400` and the ingest's own `422`.
+drives a `404`, a proxy's `400`, a front end's `200` and an empty-bodied `202`, and the ingest's own `422`.
 
 **Draining a full spool takes hours, and the arithmetic belongs here rather than in a surprise.** A
 32 MiB spool at ~500 B/event holds ~67,000 events. The ingest's per-seat ceiling is 20,000 events/hour
@@ -7138,14 +7161,17 @@ property.
   first attempt and drop the connection, and answer the retry `413`. **GREEN:** the next request is
   under a new `seq_epoch`. **The skew leg:** pin `b`'s backoff to 121 s through the suite's seam
   and advance the clock through it before the retry. **GREEN:** the retry's `sent_at` is inside the
-  last second and the stub's `clock_skew_ms` is under 120 s. **The identity-edit leg:** with a
-  request persisted and unanswered, write a config naming another `seat_id` with a token the stub
+  last second and the stub's `clock_skew_ms` is under 120 s. **The identity-edit legs, run twice — once with a request persisted and unanswered, once with none
+  persisted (the lane idle with events acknowledged and `next_seq` past 1):** write a config naming another `seat_id` with a token the stub
   binds to it, and restart. **GREEN:** the first request `b` receives carries the new pair under a
   new `seq_epoch` with `first_seq` 1; the discarded request's heartbeat `event_id` never arrives and
-  `spool_dropped_events` on `b` rose by one for it; `auth_refused` is 0; the spooled lines ahead of
+  `spool_dropped_events` on `b` rose by one for it (in the persisted-request run; by 0 in the other); `auth_refused` is 0; the spooled lines ahead of
   the cursor, emitted under the old pair, are refused `422 invalid_event` and quarantined, counted.
   Revert the config to the first pair and restart: the next request is under yet another epoch and
-  the stub's fold for the first pair counts `seq_collision` 0. **Control:** the commit-then-drop
+  the stub's fold for the first pair counts `seq_collision` 0 **and `seq_gap` 0** — the fold the
+  stub runs includes `StateRecompute`'s `seq_gap` rule, which is what makes the second run
+  discriminate — in both runs, so the assertion does not depend on whether a request happens to be
+  persisted. **Control:** the commit-then-drop
   sequence with the stub answering in time → one request, one attempt, `attempts` 1, and the
   assertions above hold with nothing retried. **REDs, each run before its GREEN is trusted:** a
   reporter that builds the retry from the cursor (every build before this card) → in the
@@ -7160,9 +7186,12 @@ property.
   exceeds 120 s. A reporter that saves `state.json` after the send rather than before → kill the
   flusher between the send and the save in the commit-then-drop leg; the restart builds a different
   request under the committed seqs and the stub counts `seq_collision` ≥ 1. A reporter without the
-  identity rule (design r4) → in the identity-edit leg `b` answers `403 identity_mismatch`, the lane
-  stops, and after a second restart the stub receives the same old-pair request and answers `403`
-  again — the stop no config write lifts, measured.
+  identity rule (design r4) → in the persisted-request run `b` answers `403 identity_mismatch`, the
+  lane stops, and after a second restart the stub receives the same old-pair request and answers
+  `403` again — the stop no config write lifts, measured. **Second RED:** a reporter whose identity
+  rule resets only when a request is persisted (design r5) → in the no-request run the new pair
+  receives the first pair's epoch at its `next_seq`, and after the revert the first pair's fold
+  counts `seq_gap` ≥ 1.
 - **Case L — a second site's credentials are secrets too, and `state.json` is not a second home for
   a URL.** Give `sites[1]` a `proxy_url` of `https://user:PLANTED-PW@127.0.0.1:<port>` through the
   suite's `CONNECT` stub, and an `ingest_url` carrying userinfo `https://PLANTED-U:PLANTED-P@…`, and
@@ -7212,7 +7241,12 @@ property.
   with a stub answering every batch `404` with an HTML body (a mistyped path), and in a further run
   `400` with a proxy's HTML body. **GREEN:** as the intermediary leg — retried, `rejected.b.jsonl`
   absent, cursor and `request` unchanged, the log naming the status; removing the front lands the
-  request byte-identical. **Control:** the real ingest's `422 invalid_batch` body → that one request
+  request byte-identical. **The accepted-means-the-ingest leg (round 5's N3):** front `b` with a stub answering every batch `200`
+  with `{}`, and in a second run `202` with an empty body. **GREEN:** `b`'s cursor does not move,
+  `next_seq` and the persisted `request` are unchanged, `events_sent` and `batches_ok` stay 0,
+  `batches_retried` rises, and the log names the status; removing the front lands the request
+  byte-identical. **RED:** today's `classify` (`200` or `202` on the status) → the cursor advances
+  past events nobody stored. **Control:** the real ingest's `422 invalid_batch` body → that one request
   quarantined, counted `events_rejected_dropped`, and the next built. **RED:** today's `classify`
   (its `permanent` fallback, and `400` keyed on the status) → in the `404` run `rejected.b.jsonl`
   holds every batch of `b`'s backlog. **RED:** the pre-card reporter → `b`'s whole backlog is in `rejected.b.jsonl`,
@@ -7486,7 +7520,7 @@ values no published rule derived.
 | 51 | **card#9416: the seat's console URL rides `turn.start` as `console_url`, read from the transcript's newest deciding record within a 1 MiB tail, pattern-checked at the reporter and again at the fold, and sent only under `descriptors: "full"`** | carry it on `session.start`; or on the heartbeat; or read the whole transcript; or send it under every `descriptors` value | `session.start` fires once and before the transcript holds a bridge record, while the bridge id changes within a session and ends with it; the heartbeat carries no session and its flusher never sees a `transcript_path`; a whole-file read of a many-MiB transcript breaks P-5's budget; and `descriptors` is the seat's one statement of how much it sends, so a seat that asked for less is not sent a link to its live console | a link lags a changed bridge by one prompt; a bridge record more than 1 MiB back is a `null` for that turn, counted; a harness that moves the record makes every value `null`, counted as `console_url_malformed` rather than silent |
 | 52 | **card#11563: every writer reads the clock its events carry under one per-seat write lock, taken at a hook's first emit and before the flusher's index fold, with a bounded wait** | take the lock for a hook's whole section, including its index fold; or stamp each line just before its write with no lock; or leave the order to the server's guards | The whole-section lock held the payload work and the fold as well, measured at ~10× the hold of the appends alone, and every concurrent hook waits on that hold. A late stamp with no lock narrows the window and does not close it. The server's per-group guards converge pairs and cannot converge every composition (card#11561, [D2 § 6.5](FLEET-STATE.md#65-the-fold)) | a writer that waits out 100 ms appends unordered, counted `write_lock_timeout`; a hook's `event_time` is later than its decision clock by its own payload work, so a duration and the difference of two `event_time`s differ by a few ms |
 | 53 | **card#11817, card#11824: a `/clear` carries a bound open dispatch into the new session rather than aborting it, declared on `session.end.carried_call_ids`; the two `/clear` signals pair by `clear` tombstone inside a window, and `SessionStart(clear)` never reaps** | abort it (the pre-#11817 rule); keep it under the old id with no declaration; let the server infer the carry; keep the activity pick as a fallback for an unpaired start | the subagent survives the clear (MEASURED 2.1.296, [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)), so the abort rendered a running intern as gone for the rest of its run; and the activity pick could only land on another live terminal in the measured order — on the first connected seat every `false` evaluation of `clear_reap_by_session_end` was such a pick, except at most as many as that seat's `SessionStart(clear)` evaluations exceed its `SessionEnd(clear)` ones ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) | a dispatch the clear DID kill is reaped at the new session's next `Stop` instead of at the clear; a lost `SessionEnd(clear)` waits for the 90-minute rule; pairing is by recency, so two terminals clearing inside one window, or one terminal's lost signal beside another's clear, can cross a carry into the wrong session, where its next `Stop` reaps it — counted `clear_pair_ambiguous` / `clear_pair_late`, and narrowed by `CLEAR_GAP_MS` on the side that adopts a live session |
-| 54 | **card#12180: one seat reports to up to four Mezzanine sites from one config, one spool and one flusher — a lane per site with its own cursor, epoch, backoff, probe, delivery counters, trailing-hour send window and auth stop; hooks append once and every per-site count takes one primitive; each lane keeps ONE outgoing request persisted in its site's `state.json` entry — every `seq` and `event_id` fixed at build, written and fsynced before the first attempt, resent as built (`sent_at` alone re-stamped) until the site answers definitively — and builds no batch and no heartbeat for that site while one is persisted, a heartbeat due meanwhile being deferred to the next request; the heartbeat is built per site as item 0 of that request and never spooled; retention never waits for a request and never breaks one, and a request older than the residency cap is discarded under an explicit epoch reset; the ingest's own `401 unauthenticated`/`403 identity_mismatch` stop a lane rather than poison its batches, and only a restart on a corrected config lifts the stop; a backfill is paced under the site's event limit, the window counting what the server counts, with the heartbeat's headroom reserved; retention is per seat and loss is counted per site; quarantine is per site; two sites are the same site by one normalized, userinfo-free key; the installer's writer emits the multi-site form only and gains `add-site` and `set-token` modes; the single-site form is read as a site named `default`, its cursor carried under a fresh epoch, and migrates nothing else; one status-and-body classification in `classify` decides every disposal, an unlisted status retryable; an identity edit discards a persisted request under the epoch reset** ([§ 3.1](#sites-one-seat-reporting-to-several-mezzanine-deployments)) | a flusher process per site; a spool per site written by the hooks; a shared `seq_epoch`; a spooled heartbeat patched per site at delivery; a heartbeat built at send time and discarded on failure (round 1); a heartbeat pinned in the entry with an in-flight span and an epoch minted when a retry could not reproduce the attempt (rounds 2–3); a request file beside `state.json`; a heartbeat on every request; rebuilding the request when no bytes were sent; an epoch minted for a dropped bucket a request covered; holding retention for a request; an auth stop keyed on the status alone (round 3); a legacy adoption that carries the old epoch and `next_seq` (round 4); a poison pill keyed on the status, and `classify`'s `permanent` fallback for unlisted statuses (round 4); the persisted request as a string; `401`/`403` as per-site poison pills; an auth stop lifted by a health probe answering `200` (round 2); an empty-events `POST` as an identity probe; rotation by removing and re-adding a site; URL uniqueness on the raw strings (round 2); an unpaced backfill; seat-wide quarantine caps; a credentials verdict outside the `selftest` member table; holding the spool for the slowest site; a `token_file` key; a `best_effort` site flag; a `status` subcommand; server-side fan-out — each with its one-line cost at § 3.1 | the operator's ask is that a site that is down, slow or refusing never delays or loses what another site receives, and that is a property of where the network await sits: one process, one event loop, one lane per site, no shared cursor. The wire keeps its shape, so no schema bump is owed, and § 3.1 names the bytes that do change rather than claiming none do. The persisted request exists because three review rounds found three routes by which a retry rebuilt from the spool differed from the attempt the site had committed — a dropped bucket, a heartbeat built meanwhile, a window that admitted less — and each fix opened the next; a retry that re-reads nothing has no such route, and the collision the server counts stays the two-producer signal. The auth stop exists because a credential mistake must not cost a site's history: the bytes were never what was refused. The pacing exists because rule 1's backfill is the first time a lane drains 8 days against a fresh limiter with the heartbeat behind it. The two bounds that protect the seat's disk stay per seat, and what a lagging site loses past them is counted on that site. The one rule that is new to every seat, single-site included, closes a gap that predates the card: a cursor carried across an `ingest_url` change skipped every line behind it on the new server, uncounted | a seat is capped at four sites by choice, checked against an uplink figure nobody has measured on a real seat; a repointed site or a renamed one re-sends up to 8 days (free, by [§ 10.3](#103-idempotency-and-the-dedup-window)); every upgraded seat shows one `epoch_reset`, the cost of carrying the cursor and not the epoch across the hand-over; an unlisted or proxy-answered refusal stalls a site rather than draining it into quarantine; an identity edit quarantines, counted, the spool ahead of the cursor, as before the card; **a legacy `state.json` adopted as `default` records no URL, so a same-edit repoint of `default` at upgrade skips, uncounted, for one start** (rule 3's accepted residual, measured by AT-28 Case F); a recovering site renders *catching up* from its first post-recovery heartbeat, or from the second where the persisted request carried one stamped at the outage's start; a drop that lands inside a lane's persisted request overstates that site's loss by at most one request, in the safe direction, and costs it nothing else; a retry storm at the send window's edge holds that site's heartbeat until the window rolls; a request unanswered for 8 days is discarded under an `epoch_reset` with its heartbeat counted; `state.json` grows by up to one request per site (≤ 256 KiB each), and the pre-send save is the one fsynced write, which syncs the file and, where the platform has one to sync, its directory; a seat cannot tell a revoked token from a mistyped one and the server will not say; **`token_accepted` cannot see a token issued for another seat's pair — the health route resolves the token and compares no identity — so that mistake passes `selftest` and is caught by the first batch's `403`, the auth stop, the marker and Step 7** (the identity probe that would close it is rejected at § 3.1 for the refusal count it would mint on every healthy seat; AT-28 Cases H and M measure the gap); `token_accepted` rides a heartbeat built before any probe or accepted request measured it as `fail`, for at most one interval on a site whose first probe measured nothing, and it spent the `selftest` cap's headroom; a `401`/`403` that is not the ingest's own is retried rather than stopped, and whether any deployment's front end emits one is not established; every auth-stop recovery is a config write and a restart, because the server offers no act that makes a refused token resolve; and a site that cannot be sent to because of its own config error shows as `stale` then `offline` on that site, which that site cannot tell from a dead seat — the posture every config error already had, now per site. [AT-28](#at-28-one-seat-several-sites-each-site-gets-everything-and-only-its-own-outcomes) is the regression test |
+| 54 | **card#12180: one seat reports to up to four Mezzanine sites from one config, one spool and one flusher — a lane per site with its own cursor, epoch, backoff, probe, delivery counters, trailing-hour send window and auth stop; hooks append once and every per-site count takes one primitive; each lane keeps ONE outgoing request persisted in its site's `state.json` entry — every `seq` and `event_id` fixed at build, written and fsynced before the first attempt, resent as built (`sent_at` alone re-stamped) until the site answers definitively — and builds no batch and no heartbeat for that site while one is persisted, a heartbeat due meanwhile being deferred to the next request; the heartbeat is built per site as item 0 of that request and never spooled; retention never waits for a request and never breaks one, and a request older than the residency cap is discarded under an explicit epoch reset; the ingest's own `401 unauthenticated`/`403 identity_mismatch` stop a lane rather than poison its batches, and only a restart on a corrected config lifts the stop; a backfill is paced under the site's event limit, the window counting what the server counts, with the heartbeat's headroom reserved; retention is per seat and loss is counted per site; quarantine is per site; two sites are the same site by one normalized, userinfo-free key; the installer's writer emits the multi-site form only and gains `add-site` and `set-token` modes; the single-site form is read as a site named `default`, its cursor carried under a fresh epoch, and migrates nothing else; one status-and-body classification in `classify` decides every disposal, an unlisted status retryable; an identity edit discards a persisted request under the epoch reset** ([§ 3.1](#sites-one-seat-reporting-to-several-mezzanine-deployments)) | a flusher process per site; a spool per site written by the hooks; a shared `seq_epoch`; a spooled heartbeat patched per site at delivery; a heartbeat built at send time and discarded on failure (round 1); a heartbeat pinned in the entry with an in-flight span and an epoch minted when a retry could not reproduce the attempt (rounds 2–3); a request file beside `state.json`; a heartbeat on every request; rebuilding the request when no bytes were sent; an epoch minted for a dropped bucket a request covered; holding retention for a request; an auth stop keyed on the status alone (round 3); a legacy adoption that carries the old epoch and `next_seq` (round 4); a poison pill keyed on the status, and `classify`'s `permanent` fallback for unlisted statuses (round 4); the persisted request as a string; `401`/`403` as per-site poison pills; an auth stop lifted by a health probe answering `200` (round 2); an empty-events `POST` as an identity probe; rotation by removing and re-adding a site; URL uniqueness on the raw strings (round 2); an unpaced backfill; seat-wide quarantine caps; a credentials verdict outside the `selftest` member table; holding the spool for the slowest site; a `token_file` key; a `best_effort` site flag; a `status` subcommand; server-side fan-out — each with its one-line cost at § 3.1 | the operator's ask is that a site that is down, slow or refusing never delays or loses what another site receives, and that is a property of where the network await sits: one process, one event loop, one lane per site, no shared cursor. The wire keeps its shape, so no schema bump is owed, and § 3.1 names the bytes that do change rather than claiming none do. The persisted request exists because three review rounds found three routes by which a retry rebuilt from the spool differed from the attempt the site had committed — a dropped bucket, a heartbeat built meanwhile, a window that admitted less — and each fix opened the next; a retry that re-reads nothing has no such route, and the collision the server counts stays the two-producer signal. The auth stop exists because a credential mistake must not cost a site's history: the bytes were never what was refused. The pacing exists because rule 1's backfill is the first time a lane drains 8 days against a fresh limiter with the heartbeat behind it. The two bounds that protect the seat's disk stay per seat, and what a lagging site loses past them is counted on that site. The one rule that is new to every seat, single-site included, closes a gap that predates the card: a cursor carried across an `ingest_url` change skipped every line behind it on the new server, uncounted | a seat is capped at four sites by choice, checked against an uplink figure nobody has measured on a real seat; a repointed site or a renamed one re-sends up to 8 days (free, by [§ 10.3](#103-idempotency-and-the-dedup-window)); every upgraded seat shows one `epoch_reset`, the cost of carrying the cursor and not the epoch across the hand-over; an unlisted or proxy-answered refusal stalls a site rather than draining it into quarantine; an identity edit quarantines, counted, the spool ahead of the cursor, as before the card; **a legacy `state.json` adopted as `default` records no URL, so a same-edit repoint of `default` at upgrade skips, uncounted, for one start** (rule 3's accepted residual, measured by AT-28 Case F); a recovering site renders *catching up* from its first post-recovery heartbeat, or from the second where the persisted request carried one stamped at the outage's start; a drop that lands inside a lane's persisted request overstates that site's loss by at most one request, in the safe direction, and costs it nothing else; a retry storm at the send window's edge holds that site's heartbeat until the window rolls; a request unanswered for 8 days is discarded under an `epoch_reset` with its heartbeat counted; `state.json` grows by up to one request per site, bounded by [§ 3.1](#sites-one-seat-reporting-to-several-mezzanine-deployments)'s derivation, and the pre-send save is the one fsynced write, which syncs the file and, where the platform has one to sync, its directory; a seat cannot tell a revoked token from a mistyped one and the server will not say; **`token_accepted` cannot see a token issued for another seat's pair — the health route resolves the token and compares no identity — so that mistake passes `selftest` and is caught by the first batch's `403`, the auth stop, the marker and Step 7** (the identity probe that would close it is rejected at § 3.1 for the refusal count it would mint on every healthy seat; AT-28 Cases H and M measure the gap); `token_accepted` rides a heartbeat built before any probe or accepted request measured it as `fail`, for at most one interval on a site whose first probe measured nothing, and it spent the `selftest` cap's headroom; a `401`/`403` that is not the ingest's own is retried rather than stopped, and whether any deployment's front end emits one is not established; every auth-stop recovery is a config write and a restart, because the server offers no act that makes a refused token resolve; and a site that cannot be sent to because of its own config error shows as `stale` then `offline` on that site, which that site cannot tell from a dead seat — the posture every config error already had, now per site. [AT-28](#at-28-one-seat-several-sites-each-site-gets-everything-and-only-its-own-outcomes) is the regression test |
 
 **One thing this document deliberately does not contain:** the accepted schema-version set. That set
 lives in exactly one machine-readable place in the ingest's code and is reported by the health
