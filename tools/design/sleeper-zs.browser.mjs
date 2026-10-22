@@ -1,35 +1,43 @@
 #!/usr/bin/env node
-// THE SLEEPER's Z's — AGAINST ITS OWN HEAD AND AGAINST EACH OTHER — MEASURED ON A RENDER (card#12187;
-// `docs/design/FLOOR.md` § 10.4's frame contract item 4 and § 12's *Sleeper z overlap bound* and *Sleeper z-on-z bound*).
+// THE SLEEPER's Z's — ABOVE ITS HEAD, FIXED AND LIT IN TURN — MEASURED ON A RENDER (card#12187; `docs/design/FLOOR.md`
+// § 10.4's frame contract item 4 and § 12's *Sleeper* rows: z's, frame, clearance, brightness, pulse, overlap bound, z-on-z
+// bound, face clearance).
 //
-// For every species and variant of the character tree — at its first `--keys` keys AND at the extremes the population
-// holds (the lowest and highest eye line over `--scan-eyes` keys, the widest crest over `--scan-crest`; see `pickSeats()`) — every frame of the sleeper is rasterised
-// in headless Chromium — once without its z's, and once per z with nothing but that z — and two shares are read pixel
-// by pixel: OVER HEAD, the share of the z's ink that lands on the sleeper's own ink above its eye line (where the ears,
-// leaves and caps are); and Z ON Z, the share of the z's ink covered by two z's or more. The worst frame of the worst
-// key per species is reported; each species is held under § 12's over-head bound or the residual the row names for it,
-// and the worst of all under the z-on-z and face bounds — every bound read from the document, never copied here. A z's box, its outline stroke included, must also stay inside the frame.
+// For every species and variant of the character tree — at its first `--keys` keys AND at the extremes the population holds
+// (the lowest and highest eye line over `--scan-eyes` keys, the widest crest over `--scan-crest`; see `pickSeats()`) — the
+// sleeper's frame is rasterised in headless Chromium, once without its z's, once per z body alone, once for the eyes alone and
+// once for the halos, in the sleeper's WIDENED, RAISED frame (§ 12's *Sleeper frame*, read from the document), and six things
+// are read: OVER HEAD, the z ink on the sleeper's own ink; Z ON Z, the z ink covered by two z's; THE FACE, the z ink near the
+// closed eyes; CLEARANCE, the z ink inside a clear rect (the monitor's frame, the desk's props, the desk, the thought
+// trail's column — read out of `floor/desk-layout.js`, never copied) and the halo ink on the sleeper; and, from the documents
+// and not a raster, THE CHASE (three z's, the same places in every frame, the still at full brightness, the loop's levels
+// § 10.4's table, the brightest z advancing z1, z2, z3, a halo on every lit level in the palette's lamp colour) and THE CREST
+// TABLE (`creatures.js`'s `CREST_TOP` at or under every scanned seat's topmost ink). Every bound is read from FLOOR.md, never
+// copied here.
 //
 //   node tools/design/sleeper-zs.browser.mjs                       # judge the tree's own frames against § 12
-//   node tools/design/sleeper-zs.browser.mjs --layout <name>       # re-lay the z's by a LAYOUTS entry and judge that
-//   node tools/design/sleeper-zs.browser.mjs --selftest            # …and require the card#12159 layout to red BOTH bounds, the over-head one on more than one species
+//   node tools/design/sleeper-zs.browser.mjs --layout above3       # the ruled layout laid on the tree's sleepers (before the build, or against any tree)
+//   node tools/design/sleeper-zs.browser.mjs --layout <name>       # …or any other LAYOUTS / FIXED entry: ruled, card12159, r1-column, diagonal, beside, on-face, above3-reversed, above3-constant
+//   node tools/design/sleeper-zs.browser.mjs --selftest            # …and require every control to red the bound it exists to (below)
 //   node tools/design/sleeper-zs.browser.mjs --tree <dir>          # judge another tree
-//   node tools/design/sleeper-zs.browser.mjs --keys 4 --phases 16  # first keys per species and variant (3); phases per layout loop (16)
-//   …and --scan-eyes 400 --scan-crest 100: the keys scanned per species and variant for the EXTREMES the run adds (below)
-//   --shot <png> [--shot-px 108]    # save the sheet: each species' worst over-head seat at its worst frame; 49 draws it at the floor's fit size on a 1,440 window
+//   node tools/design/sleeper-zs.browser.mjs --keys 3 --phases 16  # first keys per species and variant (3); phases per RISING layout loop (16; a fixed layout is judged on its still)
+//   …and --scan-eyes 400 --scan-crest 100: the keys scanned per species and variant for the EXTREMES the run adds, and for the crest table
+//   --shot <png> [--shot-px 108]    # the sheet: each species' worst seat, the still; 49 draws a frame unit at the floor's fit size on a 1,440 window
+//   --strip <png> [--strip-species fox,frog,rabbit]   # every document a seat draws, the still then the loop, in a row per species
 //   …and --chrome <path> or $CHROME, as every browser tool here.
 //
-// ⛔ CANDIDATES AND CONTROLS ARE PLANTED BY SEMANTICS, NOT BY SOURCE EDITS. A `--layout` run keeps the tree's sleeper —
-// its body, eye line and roll — and REPLACES its z's with the ones a LAYOUTS entry places, drawn by `zMarkup()`, which
-// mirrors `creatures.js`'s `zSvg()`; the mirror is held on every run (each z the tree drew is re-drawn from its own data
-// attributes and must come out the same drawing, every number within the attributes' rounding — `MIRROR DRIFT` otherwise). So the figures § 10.4 and § 12 rest on are
-// re-printed by `--layout card12159`, `--layout r1-column` and `--layout ruled` against any tree, before or after the
-// build, and the selftest's control is the card#12159 layout whatever the tree's own code says.
+// ⛔ CANDIDATES AND CONTROLS ARE PLANTED BY SEMANTICS, NOT BY SOURCE EDITS. A `--layout` run keeps the tree's sleeper — its
+// body, eye line and roll — and REPLACES its z's with the ones a layout places, drawn by `zMarkup()` / `z3Markup()` /
+// `glowMarkup()`, which mirror `creatures.js`'s drawing; the mirror is held on every run (each z the tree drew is re-drawn from
+// its own data attributes and must come out the same drawing, every number within the attributes' rounding — `MIRROR DRIFT`
+// otherwise). So every figure § 10.4 and § 12 rest on is re-printed against any tree, before or after the build, and the
+// selftest's controls — today's two-z column (`ruled`), card#12159's rising path, z's over the eyes, and the pulse reversed or
+// constant — are planted whatever the tree's own code says.
 //
-// ⛔ WHAT IS MEASURED IS INK, NOT BOXES — and what it cannot see is whether the result LOOKS tangled: one figure covers a
-// smooth cap edge and a leaf's tip alike. The figure bounds the worst case; the screenshot (`--shot <png>`, a sheet of
-// every species at one phase) is the last word. ⛔ NO BROWSER IS A FAILURE, NEVER A SKIP, AND THIS IS NOT WIRED IN CI (a
-// stock runner carries no Chromium — `tools/design/README.md` names the browser tools and why).
+// ⛔ WHAT IS MEASURED IS INK, NOT BOXES — and what it cannot see is whether the result LOOKS right: one figure covers a smooth cap
+// edge and a leaf's tip alike. The figure bounds the worst case; the sheet and the strip are the last word. ⛔ NO BROWSER IS A
+// FAILURE, NEVER A SKIP, AND THIS IS NOT WIRED IN CI (a stock runner carries no Chromium — `tools/design/README.md` names the
+// browser tools and why).
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -58,10 +66,20 @@ const SHOT = arg('--shot', null);
 /** The sheet's cell width in CSS px: 108 draws a frame unit per px; 49 is the floor's fit at a 1,440 × 900 window (0.90 × 54). */
 const SHOT_PX = Number(arg('--shot-px', 108));
 const SELFTEST = args.includes('--selftest');
+const STRIP = arg('--strip', null);
+const STRIP_SPECIES = arg('--strip-species', 'fox,frog,rabbit').split(',');
+/** The z's two colours, read out of the tree's own source — the dark outline and the pale core at full brightness. */
+const zColours = readFileSync(join(TREE, 'creatures.js'), 'utf8').match(/const Z_INK = '(#[0-9a-fA-F]{6})', Z_FILL = '(#[0-9a-fA-F]{6})'/);
+if (zColours === null) { console.error('FAIL — creatures.js declares no `const Z_INK = …, Z_FILL = …` line this tool can read'); process.exit(1); }
+const Z_INK_TOOL = zColours[1], Z_FILL_TOOL = zColours[2];
+/** `--lamp` as the stylesheet declares it, and the tree's own copy of it, which must be equal (a halo outside the palette is a defect, not a choice). */
+const cssLamp = readFileSync(join(ROOT, 'server', 'public', 'css', 'mezzanine.css'), 'utf8').match(/--lamp:\s*(#[0-9a-fA-F]{6})/)?.[1] ?? null;
+const treeLamp = readFileSync(join(TREE, 'creatures.js'), 'utf8').match(/const Z_LAMP = '(#[0-9a-fA-F]{6})'/)?.[1] ?? null;
+if (cssLamp === null) { console.error('FAIL — mezzanine.css declares no --lamp'); process.exit(1); }
 /** The desk's top edge as the floor hands it: `deskRects()`'s character rect is 96 tall with the desk's top 70 down it. */
 const DESK_TOP = 70 / 96;
-/** Frame units per raster px. */
-const SCALE = 2;
+/** Raster px per frame unit (the sleeper's frame is 216 × 234 units; one px a unit keeps a run to a few minutes). */
+const SCALE = 1;
 /** A pixel is ink when its alpha is over this — so a z faded under about 0.16 opacity draws no ink at all. */
 const ALPHA = 40;
 
@@ -82,10 +100,44 @@ function boundsFromDocument() {
   const residuals = [...(overRow?.[1] ?? '').matchAll(/the `([a-z]+)` at \*\*(\d+) %\*\*/g)].map((m) => ({ species: m[1], bound: Number(m[2]) / 100 }));
   const face = md.match(/^\| \*\*Sleeper z face clearance\*\* \| \*\*(\d+)\*\* frame units from the closed eyes' ink, holding at most \*\*(\d+) %\*\* /m);
   if (face === null) throw new Error('FLOOR.md § 12 carries no *Sleeper z face clearance* row in the form this tool reads');
-  return { overHead: read('Sleeper z overlap bound'), residuals, zOnZ: read('Sleeper z-on-z bound'), faceClear: Number(face[1]), face: Number(face[2]) / 100 };
+  const frame = md.match(/^\| \*\*Sleeper frame\*\* \| \*\*(\d+) × (\d+)\*\* frame units from \(\*\*(-?\d+)\*\*, \*\*(-?\d+)\*\*\)/m);
+  if (frame === null) throw new Error('FLOOR.md § 12 carries no *Sleeper frame* row in the form this tool reads');
+  const clearRow = md.match(/^\| \*\*Sleeper z clearance\*\* \| \*\*(\d+) %\*\* /m);
+  if (clearRow === null) throw new Error('FLOOR.md § 12 carries no *Sleeper z clearance* row in the form this tool reads');
+  const glow = md.match(/^\| \*\*Sleeper z brightness\*\* \| \*\*4 levels\*\*, the core mixed toward the ink by \*\*(\d+) %\*\*, \*\*(\d+) %\*\*, \*\*(\d+) %\*\* and \*\*(\d+) %\*\*, behind a halo of the palette's lamp colour \*\*([\d.]+)\*\*, \*\*([\d.]+)\*\*, \*\*([\d.]+)\*\* and \*\*([\d.]+)\*\* units wide at \*\*(\d+) %\*\*, \*\*(\d+) %\*\*, \*\*(\d+) %\*\* and \*\*(\d+) %\*\* opacity/m);
+  if (glow === null) throw new Error('FLOOR.md § 12 carries no *Sleeper z brightness* row in the form this tool reads');
+  const pulse = md.match(/^\| \*\*Sleeper z pulse\*\* \| \*\*(\d+)\*\* loop frames\b/m);
+  if (pulse === null) throw new Error('FLOOR.md § 12 carries no *Sleeper z pulse* row in the form this tool reads');
+  return { overHead: read('Sleeper z overlap bound'), residuals, zOnZ: read('Sleeper z-on-z bound'), faceClear: Number(face[1]), face: Number(face[2]) / 100,
+    glow: glow.slice(1, 5).map((v) => Number(v) / 100), halo: glow.slice(5, 9).map(Number), haloOpacity: glow.slice(9, 13).map((v) => Number(v) / 100), pulseFrames: Number(pulse[1]),
+    view: { x: Number(frame[3]), y: Number(frame[4]), w: Number(frame[1]), h: Number(frame[2]) }, clearance: Number(clearRow[1]) / 100 };
 }
 /** How far from the closed eyes' ink a z's ink must stay, in frame units — § 12's *Sleeper z face clearance*. */
 let FACE_CLEAR = NaN;
+/** The sleeper's frame — § 12's *Sleeper frame* — which every document is judged in, whatever viewBox the tree draws it with. */
+let VIEW = null;
+let CLEAR_NAMES = [];
+/** `doc` with its root drawn over `VIEW`: the tree's own frame, or a layout's z's laid on the base sleeper, judged in one frame. */
+const inView = (doc) => doc.replace(/viewBox="[^"]*" width="[^"]*" height="[^"]*"/, `viewBox="${VIEW.x} ${VIEW.y} ${VIEW.w} ${VIEW.h}" width="${VIEW.w}" height="${VIEW.h}"`);
+
+/**
+ * THE CLEAR RECTS — what the z's must stay out of, in frame units, DERIVED FROM THE FLOOR'S OWN LAYOUT and never copied
+ * here: `floor/desk-layout.js`'s `deskRects()` for a desk at the furniture box, the character's rect at one frame unit
+ * per `SEAT_VIEWBOX.w / rect.w`, and the thought trail's column (`thoughtTrail()`'s circles) above it. They are the
+ * monitor's frame, the desk's props, the desk, and the trail — the places a z that rises beyond the character's rect
+ * would be drawn through, or under, something the desk draws.
+ */
+async function clearRects(C) {
+  const { deskRects, thoughtTrail } = await import(pathToFileURL(join(ROOT, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
+  const { FURNITURE_BOX } = await import(pathToFileURL(join(ROOT, 'resources', 'floor', 'furniture-box.js')).href);
+  const character = { w: C.SCENE_W, h: C.SCENE_H };
+  const R = deskRects(FURNITURE_BOX, character);
+  const k = C.SEAT_VIEWBOX.w / R.character.w;
+  const unit = (r) => ({ x: (r.x - R.character.x) * k, y: (r.y - R.character.y) * k, w: r.w * k, h: r.h * k });
+  const trail = thoughtTrail(FURNITURE_BOX, character);
+  const column = { x: trail[0].x - 4, y: Math.min(...trail.map((c) => c.y - c.r)), w: 8, h: R.character.y - Math.min(...trail.map((c) => c.y - c.r)) };
+  return [['monitor', R['monitor-frame']], ['props', R['desk-props']], ['desk', R['desk-sprite']], ['trail', column]].map(([name, r]) => ({ name, ...unit(r) }));
+}
 
 // ── the z's, drawn as creatures.js's zSvg() draws them ──────────────────────────────────────────────────────────────
 const f = (n) => (Math.round(n * 100) / 100).toString();
@@ -110,7 +162,11 @@ function sameDrawing(a, b) {
   return na.length === nb.length && na.every((v, i) => Math.abs(Number(v) - Number(nb[i])) <= 0.03);
 }
 const Z_RE = /<g data-part="z" data-t="([\d.-]+)" data-x="([\d.-]+)" data-y="([\d.-]+)" data-h="([\d.-]+)" opacity="([\d.-]+)"><path d="[^"]*" stroke="([^"]+)"[^>]*\/><path d="[^"]*" stroke="([^"]+)"[^>]*\/><\/g>/g;
-const zsOf = (doc) => [...doc.matchAll(Z_RE)].map((m) => ({ markup: m[0], t: +m[1], x: +m[2], y: +m[3], h: +m[4], o: +m[5], ink: m[6], fill: m[7] }));
+const Z3_RE = /<g data-part="z" data-k="(\d+)" data-level="(\d)" data-x="([\d.-]+)" data-y="([\d.-]+)" data-h="([\d.-]+)"><path d="[^"]*" stroke="([^"]+)"[^>]*\/><path d="[^"]*" stroke="([^"]+)"[^>]*\/><\/g>/g;
+const zsOf = (doc) => [
+  ...[...doc.matchAll(Z_RE)].map((m) => ({ markup: m[0], t: +m[1], x: +m[2], y: +m[3], h: +m[4], o: +m[5], ink: m[6], fill: m[7] })),
+  ...[...doc.matchAll(Z3_RE)].map((m) => ({ markup: m[0], k: +m[1], level: +m[2], x: +m[3], y: +m[4], h: +m[5], o: 1, ink: m[6], core: m[7] })),
+];
 /** The sleeper's closed eyes alone, where its document draws them (the head's own transform kept). */
 function eyesOnly(doc) {
   const head = doc.match(/<g data-part="head" transform="([^"]+)">[\s\S]*?(<g data-part="eyes-closed">(?:<path[^>]*\/>)+<\/g>)/);
@@ -183,6 +239,108 @@ function zLargeFor(eyes) {
   return 8;
 }
 
+/**
+ * § 10.4's THREE z's ABOVE THE HEAD, FIXED, AND LIT IN TURN (card#12187's final rulings, 2026-10-22). The three z's stand
+ * in fixed positions on one path above the head and never move; what moves is a pulse of brightness — a bubble of light
+ * that starts at the character and travels up through z1, then z2, then z3, and repeats (§ 12's *Sleeper z pulse*).
+ * Each z is full opacity in every frame; its brightness is its core's fill, mixed from the ink toward the pale fill by a
+ * level 0–3 (§ 12's *Sleeper z brightness*), its dark outline unchanged, so the shape never leaves the floor's contrast.
+ *
+ * **Where they stand** is the frame minus the floor's own furniture: every box inside `VIEW`, none meeting a clear rect
+ * (`clearRects()`), none below the crown line within the character's own width (`crown`, the species' or variant's
+ * crest top — `creatures.js`'s `CREST_TOP`, held here against the drawing), and no two meeting. **Each seat's size** is
+ * the largest z, in half-unit steps up to `Z3.large`, for which the three fixed boxes hold all of that. The path is a
+ * straight line from `a0` units off the head's centre to `a1` — positive away from the side the head rolled toward — the
+ * z's at `Z3.t0`, the midpoint and `1 - Z3.t0` along it, shrinking from `L` to `Z3.ratio * L`, the lowest box just above
+ * the crown and the path ending with the highest z's box at the frame's raised top (`top`).
+ */
+const Z3 = { count: 3, large: Number(arg('--z-large', 36)), ratio: 0.5, gap: 2, t0: 0.17, a0: -45, a1: 90, top: -42 };
+/**
+ * The brightness levels 0 (dim) to 3 (full), each drawn two ways at once: the core mixed from the pale fill toward the ink by
+ * `GLOW[level]` (a dimmer core), and a warm halo of the palette's `--lamp` behind the z, `HALO[level]` units wider than its
+ * outline each side at `HALO_OPACITY[level]` — § 12's *Sleeper z brightness*.
+ */
+let GLOW = [0.5, 0.3, 0.12, 0];
+let HALO = [0, 1.5, 3, 5];
+let HALO_OPACITY = [0, 0.5, 0.8, 1];
+/** The halo's colour: the palette's `--lamp`, which the tree's own constant is held equal to. */
+let LAMP = '#ffcf7d';
+/** The loop's length in frames: the pulse's cycle (§ 12's *Sleeper z pulse*); the still is one more document ahead of them. */
+let PULSE_FRAMES = 8;
+/** The pulse as the rule states it: the levels of z `k` at loop frame `f` — the bubble reaches z`k+1` at frame `2k`, peaks there, and glows 2, 1 behind it; z1 is 1 the frame before it arrives. */
+const pulseLevels = (f) => Array.from({ length: Z3.count }, (_, k) => {
+  const d = (((f - 2 * k) % PULSE_FRAMES) + PULSE_FRAMES) % PULSE_FRAMES;
+  return d === 0 ? 3 : d === 1 ? 2 : d === 2 ? 1 : d === PULSE_FRAMES - 1 && k === 0 ? 1 : 0;
+});
+
+function above3Fixed(crown, dir, L, clear) {
+  const props = clear.find((c) => c.name === 'props');
+  const S = L * Z3.ratio, out = [];
+  const y0 = Math.min(crown - Z3.gap, props.y - Z3.gap) - halfBox(L).h - HALO[3], y1 = Math.max(Z3.top, VIEW.y) + halfBox(S).h + HALO[3] + 1;
+  for (let k = 0; k < Z3.count; k += 1) {
+    const t = Z3.t0 + (1 - 2 * Z3.t0) * k / (Z3.count - 1), h = L + (S - L) * t, hb = halfBox(h);
+    let x = 54 - dir * (Z3.a0 + (Z3.a1 - Z3.a0) * t);
+    x = Math.min(VIEW.x + VIEW.w - hb.w - 0.5, Math.max(VIEW.x + hb.w + 0.5, x));
+    out.push({ k, x, y: y0 + (y1 - y0) * t, h, hb });
+  }
+  return out;
+}
+
+function above3Ok(crown, dir, L, clear) {
+  const zs = above3Fixed(crown, dir, L, clear);
+  const halo = HALO[3];
+  // The glow must stay in the frame and clear of the sleeper; it may lie over a neighbouring z or a clear rect — drawn behind every z, and under the furniture the desk draws after the character.
+  for (const z of zs) if (z.y - z.hb.h - halo < VIEW.y - 0.01 || z.y + z.hb.h + halo > VIEW.y + VIEW.h) return false;
+  for (let a = 0; a < zs.length; a += 1) for (let b = a + 1; b < zs.length; b += 1) {
+    const A = zs[a], B = zs[b];
+    if (Math.abs(A.x - B.x) < A.hb.w + B.hb.w + 1 && Math.abs(A.y - B.y) < A.hb.h + B.hb.h + 1) return false;
+  }
+  for (const z of zs) {
+    for (const c of clear) if (z.x + z.hb.w > c.x - 1 && z.x - z.hb.w < c.x + c.w + 1 && z.y + z.hb.h > c.y - 1 && z.y - z.hb.h < c.y + c.h + 1) return false;
+    if (z.x + z.hb.w + halo > 0 && z.x - z.hb.w - halo < 108 && z.y + z.hb.h + halo > crown - Z3.gap + 0.01) return false;
+  }
+  return true;
+}
+
+function above3Plan(crown, dir, clear) {
+  for (let L = Z3.large; L >= 10; L -= 0.5) if (above3Ok(crown, dir, L, clear)) return L;
+  return 0;
+}
+
+/** The pulse a FIXED layout runs, by name: the ruled one, its reverse (z3 first) and a constant (every z always full) — the last two are the controls. */
+const FIXED = {
+  above3: { levels: (f) => pulseLevels(f) },
+  'above3-reversed': { levels: (f) => pulseLevels(f).reverse() },
+  'above3-constant': { levels: () => [3, 3, 3] },
+};
+
+/** `ink` mixed toward `fill`'s pale by level: level 3 is `fill`, level 0 is `GLOW[0]` of the way back to `ink`. */
+function mixHex(fill, ink, w) {
+  const c = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const [a, b] = [c(fill), c(ink)];
+  return `#${a.map((v, i) => Math.round(v * (1 - w) + b[i] * w).toString(16).padStart(2, '0')).join('')}`;
+}
+const levelFill = (ink, fill, level) => mixHex(fill, ink, GLOW[level]);
+
+const zPath = (z) => {
+  const w = z.h * 0.8;
+  return `M${f(z.x - w / 2)} ${f(z.y - z.h / 2)}H${f(z.x + w / 2)}L${f(z.x - w / 2)} ${f(z.y + z.h / 2)}H${f(z.x + w / 2)}`;
+};
+/** One FIXED z as the tree draws it — the data attributes the tool reads back, the core mixed by `level`; its halo is `glowMarkup()`'s, drawn behind every z. */
+function z3Markup(z, level, ink, fill) {
+  const s = strokes(z.h), d = zPath(z);
+  const stroke = (col, width) => `<path d="${d}" stroke="${col}" stroke-width="${f(width)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+  return `<g data-part="z" data-k="${z.k}" data-level="${level}" data-x="${f(z.x)}" data-y="${f(z.y)}" data-h="${f(z.h)}">${stroke(ink, s.outline)}${stroke(levelFill(ink, fill, level), s.core)}</g>`;
+}
+/** A FIXED z's halo at `level`: nothing at level 0, else a wider stroke of the lamp colour behind the z, translucent by level. */
+function glowMarkup(z, level) {
+  if (level === 0) return '';
+  const s = strokes(z.h);
+  return `<path data-part="halo" data-k="${z.k}" data-level="${level}" d="${zPath(z)}" stroke="${LAMP}" stroke-width="${f(s.outline + 2 * HALO[level])}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${f(HALO_OPACITY[level])}"/>`;
+}
+const HALO_RE = /<path data-part="halo" data-k="(\d+)" data-level="(\d)" d="[^"]*" stroke="([^"]+)" stroke-width="([\d.]+)"[^>]*opacity="([\d.]+)"\/>/g;
+const halosOf = (doc) => [...doc.matchAll(HALO_RE)].map((m) => ({ markup: m[0], k: +m[1], level: +m[2], colour: m[3], width: +m[4], opacity: +m[5] }));
+
 /** `sleepZs()`'s law: N z's evenly spaced along from → to, shrinking L → S, fading in and out; optionally clamped into the frame. */
 function rise(p, phase, from, to) {
   const out = [];
@@ -197,22 +355,23 @@ function rise(p, phase, from, to) {
 }
 
 // ── the measurement ──────────────────────────────────────────────────────────────────────────────────────────────────
-/** The widest run of ink in any one raster row above `eyesRow`, in frame units. */
-const PAGE_CREST = `async ({ body, w, h, scale, alpha, eyesRow }) => {
+/** The widest run of ink in any one raster row above `eyesRow` and the topmost row of ink, both in frame units (`vy` the frame's top). */
+const PAGE_CREST = `async ({ body, w, h, scale, alpha, eyesRow, vy }) => {
   const img = new Image(); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(body);
   await img.decode();
   const c = document.createElement('canvas'); c.width = w * scale; c.height = h * scale;
   const g = c.getContext('2d'); g.drawImage(img, 0, 0, c.width, c.height);
-  const d = g.getImageData(0, 0, c.width, c.height).data; let best = 0;
-  for (let y = 0; y < Math.min(c.height, Math.floor(eyesRow * scale)); y++) {
+  const d = g.getImageData(0, 0, c.width, c.height).data; let best = 0, top = null;
+  for (let y = 0; y < c.height; y++) {
     let lo = -1, hi = -1;
     for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3] > alpha) { if (lo < 0) lo = x; hi = x; }
-    if (lo >= 0) best = Math.max(best, (hi - lo) / scale);
+    if (lo >= 0 && top === null) top = vy + y / scale;
+    if (lo >= 0 && vy + y / scale < eyesRow) best = Math.max(best, (hi - lo) / scale);
   }
-  return best;
+  return { widest: best, top };
 }`;
 
-const PAGE_MEASURE = `async ({ body, eyes, zs, w, h, scale, alpha, eyesRow, clear }) => {
+const PAGE_MEASURE = `async ({ body, eyes, zs, halos, w, h, scale, alpha, eyesRow, clear, vx, vy, rects }) => {
   const mask = async (svg) => {
     const img = new Image(); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
     await img.decode();
@@ -230,15 +389,21 @@ const PAGE_MEASURE = `async ({ body, eyes, zs, w, h, scale, alpha, eyesRow, clea
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let v = 0; for (let d = -r; d <= r && !v; d++) { const yy = y + d; if (yy >= 0 && yy < H) v = e1[yy * W + x]; } face[y * W + x] = v; }
   let eyeInk = 0; for (const v of e0) eyeInk += v;
   const ms = []; for (const z of zs) ms.push(await mask(z));
-  let any = 0, multi = 0, onTop = 0, onAll = 0, onFace = 0;
+  const hs = []; for (const z of halos) hs.push(await mask(z));
+  let haloOnBody = 0;
+  for (let i = 0; i < b.length; i++) { let n = 0; for (const m of hs) n += m[i]; if (n > 0 && b[i]) haloOnBody++; }
+  let any = 0, multi = 0, onTop = 0, onAll = 0, onFace = 0, inClear = 0;
+  const hit = (x, y) => rects.some((c) => x >= c.x && x < c.x + c.w && y >= c.y && y < c.y + c.h);
   for (let i = 0; i < b.length; i++) {
     let n = 0; for (const m of ms) n += m[i];
     if (n === 0) continue;
     any++; if (n > 1) multi++;
     if (face[i]) onFace++;
-    if (b[i]) { onAll++; if (Math.floor(i / (w * scale)) / scale < eyesRow) onTop++; }
+    const px = vx + (i % W) / scale, py = vy + Math.floor(i / W) / scale;
+    if (hit(px, py)) inClear++;
+    if (b[i]) { onAll++; if (py < eyesRow) onTop++; }
   }
-  return { any, multi, onTop, onAll, onFace, eyeInk };
+  return { any, multi, onTop, onAll, onFace, eyeInk, inClear, haloOnBody };
 }`;
 
 /**
@@ -248,8 +413,7 @@ const PAGE_MEASURE = `async ({ body, eyes, zs, w, h, scale, alpha, eyesRow, clea
  * run of ink above the eye line — among `--scan-crest` keys (the crest is what the z's can overlap). Round 2's review
  * found the first-three-keys sample missing both: a mushroom key 12 at 55.1 % where keys 0–2 read 46 %.
  */
-async function pickSeats(b, C) {
-  const VIEW = C.SEAT_VIEWBOX;
+async function pickSeats(b, C, env) {
   const variantsOf = (sp) => {
     const seen = new Set();
     for (let i = 0; i < 300; i += 1) seen.add(C.recipe(`v/${sp}/${i}`, sp).variant);
@@ -260,7 +424,7 @@ async function pickSeats(b, C) {
     for (let i = 0; v !== null && C.recipe(key, sp).variant !== v && i < 400; i += 1) key = `sleep/${sp}/${v}/${k}/${i}`;
     return v === null || C.recipe(key, sp).variant === v ? key : null;
   };
-  const seats = [], extremes = [];
+  const seats = [], extremes = [], scans = [];
   for (const sp of C.SPECIES_KEYS) {
     for (const v of [null, ...variantsOf(sp)]) {
       const picked = new Map();
@@ -270,15 +434,17 @@ async function pickSeats(b, C) {
       for (let k = 0; k < Math.max(SCAN_EYES, SCAN_CREST); k += 1) {
         const key = keyOf(sp, v, k);
         if (key === null) continue;
-        const doc = C.sleepDocument(key, { species: sp, frame: 0, deskTop: DESK_TOP });
+        const doc = C.sleepDocument(key, { species: sp, frame: 0, deskTop: DESK_TOP, clear: env.clear });
         const eyes = poseOf(doc).eyes;
         if (k < SCAN_EYES) {
           if (lo === null || eyes < lo.eyes) lo = { key, eyes };
           if (hi === null || eyes > hi.eyes) hi = { key, eyes };
         }
         if (k < SCAN_CREST) {
-          const w = await b.evaluate(`(${PAGE_CREST})(${JSON.stringify({ body: withoutZs(doc), w: VIEW.w, h: VIEW.h, scale: SCALE, alpha: ALPHA, eyesRow: eyes - 8 })})`);
-          if (wide === null || w > wide.w) wide = { key, w };
+          const r = await b.evaluate(`(${PAGE_CREST})(${JSON.stringify({ body: withoutZs(inView(doc)), w: VIEW.w, h: VIEW.h, scale: SCALE, alpha: ALPHA, eyesRow: eyes - 8, vy: VIEW.y })})`);
+          if (wide === null || r.widest > wide.w) wide = { key, w: r.widest };
+          const variant = C.recipe(key, sp).variant;
+          scans.push({ tkey: variant ? `${sp}/${variant}` : sp, key, top: r.top });
         }
       }
       add(lo.key, 'lowest eye line'); add(hi.key, 'highest eye line'); add(wide.key, 'widest crest');
@@ -286,69 +452,157 @@ async function pickSeats(b, C) {
       for (const [key] of picked) seats.push({ sp, v: v ?? '-', key });
     }
   }
-  return { seats, extremes };
+  return { seats, extremes, scans };
 }
 
 /** Every frame to judge, for one seat: the tree's own, or the base frame's sleeper with a layout's z's at each phase. */
-function framesOf(C, seat, layout, mirror) {
-  const own = Array.from({ length: C.SLEEP_FRAMES }, (_, frame) => C.sleepDocument(seat.key, { species: seat.sp, frame, deskTop: DESK_TOP }));
-  for (const doc of own) {
-    for (const z of zsOf(doc)) {
-      if (!sameDrawing(zMarkup(z, z.ink, z.fill), z.markup)) mirror.push(`${seat.key}: ${z.markup.slice(0, 120)}…`);
+function framesOf(C, seat, layout, mirror, env) {
+  // The tree's documents: a still and the loop (`SLEEP_LOOP`; the still is document 0) once built for the pulse, else the
+  // card#12159 loop of `SLEEP_FRAMES` rising frames.
+  const total = C.SLEEP_LOOP !== undefined ? C.SLEEP_LOOP + 1 : C.SLEEP_FRAMES;
+  const own = Array.from({ length: total }, (_, frame) => C.sleepDocument(seat.key, { species: seat.sp, frame, deskTop: DESK_TOP, clear: env.clear }));
+  const ownZs = own.map((doc) => { const hs = halosOf(doc); return zsOf(doc).map((z) => ({ ...z, glow: hs.find((h) => h.k === z.k)?.markup ?? '', halo: hs.find((h) => h.k === z.k) ?? null })); });
+  const fixedOwn = ownZs[0].length > 0 && ownZs[0][0].level !== undefined;
+  const pale = fixedOwn ? ownZs[0][0].core : null;
+  own.forEach((doc, i) => {
+    for (const z of ownZs[i]) {
+      const redrawn = z.level !== undefined ? z3Markup({ ...z, k: z.k }, z.level, z.ink, pale) : zMarkup(z, z.ink, z.fill);
+      if (!sameDrawing(redrawn, z.markup)) mirror.push(`${seat.key}: ${z.markup.slice(0, 120)}…`);
+      if (z.level !== undefined && !sameDrawing(glowMarkup(z, z.level), z.glow)) mirror.push(`${seat.key}: halo ${z.glow.slice(0, 100)}…`);
     }
-  }
-  if (layout === null) return own.map((doc) => ({ doc, pose: poseOf(doc), zs: zsOf(doc) }));
-  const base = own[0];
-  const pose = poseOf(base);
-  const [{ ink, fill }] = zsOf(base);
-  return Array.from({ length: PHASES }, (_, i) => {
-    const zs = LAYOUTS[layout](pose, i / PHASES).map((z) => ({ ...z, markup: zMarkup(z, ink, fill) }));
-    return { doc: base.replace(/<g data-part="zs">[\s\S]*<\/g><\/svg>$/, `<g data-part="zs">${zs.map((z) => z.markup).join('')}</g></svg>`), pose, zs };
   });
+  if (layout === null) return own.map((doc, i) => ({ doc: inView(doc), pose: poseOf(doc), zs: ownZs[i], fixed: fixedOwn, raster: !fixedOwn || i === 0 }));
+  const base = inView(own[0]);
+  const pose = poseOf(base);
+  const [first] = ownZs[0];
+  const ink = first.ink, fill = first.fill ?? first.core;
+  const put = (zs) => base.replace(/<g data-part="zs">[\s\S]*<\/g><\/svg>$/, `<g data-part="zs"><g data-part="glow">${zs.map((z) => z.glow ?? '').join('')}</g>${zs.map((z) => z.markup).join('')}</g></svg>`);
+  if (layout in FIXED) {
+    const L = above3Plan(env.crown, pose.dir, env.clear);
+    if (L === 0) throw new Error(`${seat.key}: no fixed three-z layout fits above crown ${env.crown}`);
+    const stand = above3Fixed(env.crown, pose.dir, L, env.clear);
+    const levelsOf = (i) => (i === 0 ? [3, 3, 3] : FIXED[layout].levels(i - 1));
+    return Array.from({ length: PULSE_FRAMES + 1 }, (_, i) => {
+      const zs = stand.map((z, k) => ({ ...z, level: levelsOf(i)[k], o: 1, markup: z3Markup(z, levelsOf(i)[k], ink, fill), glow: glowMarkup(z, levelsOf(i)[k]) }));
+      return { doc: put(zs), pose, zs, fixed: true, raster: i === 0 };
+    });
+  }
+  return Array.from({ length: PHASES }, (_, i) => {
+    const zs = LAYOUTS[layout](pose, i / PHASES, env).map((z) => ({ ...z, markup: zMarkup(z, ink, fill) }));
+    return { doc: put(zs), pose, zs, fixed: false, raster: true };
+  });
+}
+
+/**
+ * THE CHASE, read off a seat's frames as data (no raster): the still is every z at full brightness; every frame has the three
+ * z's; they stand in the SAME places in every frame (the loop moves no z); and the loop's levels equal § 10.4's pulse —
+ * checked as the table AND as the property it exists for, that the brightest z's index advances z1, z2, z3 up the loop.
+ */
+function chaseOf(frames) {
+  const defects = [];
+  const zsAt = frames.map((fr) => [...fr.zs].sort((a, b) => a.k - b.k).map((z) => ({ ...z, halo: z.halo !== undefined ? z.halo : (z.glow ? halosOf(z.glow)[0] ?? null : null) })));
+  if (zsAt.some((zs) => zs.length !== Z3.count)) defects.push('a frame does not draw exactly three z\'s');
+  if (zsAt[0].some((z) => z.level !== 3)) defects.push('the still is not every z at full brightness');
+  const home = zsAt[0].map((z) => `${z.x},${z.y},${z.h}`).join('|');
+  if (zsAt.some((zs) => zs.map((z) => `${z.x},${z.y},${z.h}`).join('|') !== home)) defects.push('a z moves between frames');
+  zsAt.forEach((zs, i) => zs.forEach((z) => {
+    const want = z.level === 0 ? null : z.level;
+    if ((z.halo?.level ?? null) !== want) defects.push(`frame ${i}: z${z.k + 1}'s halo is ${z.halo?.level ?? 'absent'} at level ${z.level}`);
+    else if (z.halo && (z.halo.colour !== LAMP || Math.abs(z.halo.opacity - HALO_OPACITY[z.level]) > 0.011)) defects.push(`frame ${i}: z${z.k + 1}'s halo is not the lamp colour at level ${z.level}'s opacity`);
+  }));
+  const loop = zsAt.slice(1).map((zs) => zs.map((z) => z.level));
+  if (loop.length !== PULSE_FRAMES) defects.push(`the loop has ${loop.length} frames, not ${PULSE_FRAMES}`);
+  loop.forEach((lv, f) => { if (lv.join() !== pulseLevels(f).join()) defects.push(`loop frame ${f} reads ${lv.join('')}, not ${pulseLevels(f).join('')}`); });
+  const peak = (k) => loop.findIndex((lv) => lv[k] === 3);
+  const peaks = [0, 1, 2].map(peak);
+  if (!(peaks[0] >= 0 && peaks[0] < peaks[1] && peaks[1] < peaks[2])) defects.push(`the brightest z does not advance z1, z2, z3 up the loop (first peaks at frames ${peaks.join(', ')})`);
+  return defects;
 }
 
 async function measure(chrome, tree, layout) {
   const C = await import(pathToFileURL(join(tree, 'index.js')).href);
-  const VIEW = C.SEAT_VIEWBOX;
   const b = await browser(chrome, 300, 500, 'ready');
   const rows = [];
   const mirror = [];
   const picks = [];
+  const env = { clear: await clearRects(C) };
+  const chase = new Set();
+  const rects = env.clear.map((c) => ({ x: c.x, y: c.y, w: c.w, h: c.h }));
   try {
     await b.load('data:text/html,<title>ready</title>');
-    const { seats, extremes } = await pickSeats(b, C);
+    const { seats, extremes, scans } = await pickSeats(b, C, env);
     picks.push(...extremes);
+    // The crest table: the topmost ink of each species' (and variant's) sleepers over the scan. A layout is judged on the
+    // table the scan makes; the tree's own frames on its exported `CREST_TOP`, which the scan must never find undercut.
+    const scanTable = {};
+    for (const sc of scans) scanTable[sc.tkey] = Math.min(scanTable[sc.tkey] ?? Infinity, sc.top);
+    const tree_table = C.CREST_TOP ?? null;
+    const crestDefects = tree_table === null ? [] : scans.filter((sc) => !(sc.tkey in tree_table) || sc.top < tree_table[sc.tkey] - 0.01).map((sc) => `${sc.key} reaches ${sc.top} above ${sc.tkey}'s ${tree_table[sc.tkey]}`);
+    const table = layout === null ? tree_table ?? scanTable : scanTable;
     for (const seat of seats) {
-      const row = { ...seat, overHead: 0, overAll: 0, zOnZ: 0, onFace: 0, eyeInk: Infinity, worstFrame: -1, clipped: 0, zLarge: 0, opaqueLarge: 0, zSmall: Infinity, zpx: 0 };
-      const frames = framesOf(C, seat, layout, mirror);
-      for (const [i, { doc, pose, zs }] of frames.entries()) {
+      const variant = C.recipe(seat.key, seat.sp).variant;
+      const crown = table[variant ? `${seat.sp}/${variant}` : seat.sp];
+      const row = { ...seat, framesMeasured: 0, fixed: false, overHead: 0, overAll: 0, zOnZ: 0, onFace: 0, inClear: 0, zCount: Infinity, eyeInk: Infinity, worstFrame: -1, clipped: 0, zLarge: 0, opaqueLarge: 0, zSmall: Infinity, zpx: 0, crown };
+      const frames = framesOf(C, seat, layout, mirror, { ...env, crown });
+      if (frames[0].fixed) for (const d of chaseOf(frames)) chase.add(`${seat.key}: ${d}`);
+      for (const [i, { doc, pose, zs, raster }] of frames.entries()) {
+        row.zCount = Math.min(row.zCount, zs.length);
+        if (!raster) continue;
         for (const z of zs) {
           row.zLarge = Math.max(row.zLarge, z.h);
           row.zSmall = Math.min(row.zSmall, z.h);
           if (z.o >= 1 && (layout === null || i % (PHASES / 8) === 0)) row.opaqueLarge = Math.max(row.opaqueLarge, z.h);
           const hb = halfBox(z.h);
-          if (z.y - hb.h < VIEW.y || z.x - hb.w < VIEW.x || z.x + hb.w > VIEW.x + VIEW.w) row.clipped += 1;
+          if (z.y - hb.h < VIEW.y || z.y + hb.h > VIEW.y + VIEW.h || z.x - hb.w < VIEW.x || z.x + hb.w > VIEW.x + VIEW.w) row.clipped += 1;
         }
         const r = await b.evaluate(`(${PAGE_MEASURE})(${JSON.stringify({
-          body: withoutZs(doc), eyes: eyesOnly(doc), clear: FACE_CLEAR, zs: zs.map((z) => onlyZ(doc, z.markup)), w: VIEW.w, h: VIEW.h, scale: SCALE, alpha: ALPHA, eyesRow: pose.eyes - 8,
+          body: withoutZs(doc), eyes: eyesOnly(doc), clear: FACE_CLEAR, zs: zs.map((z) => onlyZ(doc, z.markup)), halos: zs.filter((z) => z.glow).map((z) => onlyZ(doc, z.glow)), w: VIEW.w, h: VIEW.h, scale: SCALE, alpha: ALPHA, eyesRow: pose.eyes - 8, vx: VIEW.x, vy: VIEW.y, rects,
         })})`);
+        row.framesMeasured += 1;
+        row.fixed = row.fixed || frames[0].fixed;
         row.zpx += r.any;
         const over = r.any ? r.onTop / r.any : 0, onz = r.any ? r.multi / r.any : 0;
         if (over > row.overHead) { row.overHead = over; row.worstFrame = i; }
         row.zOnZ = Math.max(row.zOnZ, onz);
         row.overAll = Math.max(row.overAll, r.any ? r.onAll / r.any : 0);
         row.onFace = Math.max(row.onFace, r.any ? r.onFace / r.any : 0);
+        row.inClear = Math.max(row.inClear, r.any ? r.inClear / r.any : 0);
+        row.haloOnBody = Math.max(row.haloOnBody ?? 0, r.haloOnBody);
         row.eyeInk = Math.min(row.eyeInk, r.eyeInk);
       }
       rows.push(row);
     }
+    return { rows, picks, species: C.SPECIES_KEYS, mirror, framesPer: rows[0]?.framesMeasured ?? 1, table, crestDefects, scanTable, hasTable: tree_table !== null, chase: [...chase], fixed: rows.some((r) => r.fixed) };
   } finally {
     b.close();
   }
-  return { rows, picks, species: C.SPECIES_KEYS, mirror, framesPer: layout === null ? C.SLEEP_FRAMES : PHASES };
 }
 
-function report(label, { rows, picks, species, mirror, framesPer }, bounds) {
+/**
+ * THE BRIGHTNESS RANGE (§ 12's *Sleeper z brightness*): the WCAG contrast of the z's outline and of each level's core against
+ * the house floor, `--scene-floor` read from `mezzanine.css` (a z is read against the floor, so a non-text graphic needs 3 : 1,
+ * SC 1.4.11, even at its dimmest), and that each level is visibly brighter than the one below (the relative luminance of
+ * adjacent cores differs by a ratio of at least 1.15).
+ */
+function brightnessRange() {
+  const css = readFileSync(join(ROOT, 'server', 'public', 'css', 'mezzanine.css'), 'utf8');
+  const floor = css.match(/--scene-floor:\s*(#[0-9a-fA-F]{6})/)?.[1];
+  if (!floor) throw new Error('mezzanine.css declares no --scene-floor the brightness check can read');
+  const lum = (hex) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const ink = Z_INK_TOOL, pale = Z_FILL_TOOL;
+  const cores = [0, 1, 2, 3].map((l) => levelFill(ink, pale, l));
+  const vsFloor = cores.map((c) => ratio(c, floor));
+  const outline = ratio(ink, floor);
+  const steps = [1, 2, 3].map((l) => (lum(cores[l]) + 0.05) / (lum(cores[l - 1]) + 0.05));
+  const ok = outline >= 3 && steps.every((x) => x >= 1.15);
+  return { ok, line: `the outline ${outline.toFixed(2)}:1 against the floor ${floor} at every level (3:1 needed, SC 1.4.11 — the shape is the outline's, and the halo and the core only add to it); cores ${cores.join(' ')} (the dimmest core ${vsFloor[0].toFixed(2)}:1 against the floor, ${ratio(cores[0], ink).toFixed(2)}:1 against its own outline); adjacent cores' luminance ratios ${steps.map((x) => x.toFixed(2)).join(', ')} (1.15 needed)` };
+}
+
+function report(label, { rows, picks, species, mirror, framesPer, crestDefects, hasTable, scanTable, chase, fixed }, bounds) {
   const pct = (x) => `${(x * 100).toFixed(1)}%`;
   const worstBy = (k, list = rows) => list.reduce((a, r) => (r[k] > a[k] ? r : a), list[0]);
   const zpx = rows.reduce((a, r) => a + r.zpx, 0);
@@ -362,19 +616,40 @@ function report(label, { rows, picks, species, mirror, framesPer }, bounds) {
   const overSpecies = species.filter((sp) => rows.some((r) => r.sp === sp && r.overHead > boundFor(sp)));
   const unknownResidual = bounds.residuals.filter((r) => !species.includes(r.species)).map((r) => r.species);
   const okOver = overSpecies.length === 0 && unknownResidual.length === 0, okOnz = onz.zOnZ <= bounds.zOnZ, okFace = face.onFace <= bounds.face;
-  const ok = measured && okOver && okOnz && okFace && clipped === 0 && mirror.length === 0;
+  // § 10.4: THREE z's in every frame, none of whose ink is in the floor's clear rects, over a crest table the drawing holds.
+  const fewest = Math.min(...rows.map((r) => r.zCount));
+  const okCount = fewest === Z3.count;
+  const clear = worstBy('inClear');
+  const okClear = clear.inClear <= bounds.clearance;
+  const okCrest = crestDefects.length === 0;
+  // The chase and the brightness range apply to the FIXED layouts (the tree, once built for the pulse, and the pulse layouts).
+  const okChase = !fixed || chase.length === 0;
+  const haloOnBody = Math.max(...rows.map((r) => r.haloOnBody ?? 0));
+  const okGlow = !fixed || (haloOnBody === 0 && (treeLamp === null || treeLamp === cssLamp));
+  const range = fixed ? brightnessRange() : null;
+  const okRange = !fixed || range.ok;
+  const ok = measured && okOver && okOnz && okFace && okCount && okClear && okCrest && okChase && okRange && okGlow && clipped === 0 && mirror.length === 0;
   console.log(`── ${label}: ${rows.length} seats × ${framesPer} frames, ${zpx} z px read; z heights ${Math.min(...rows.map((r) => r.zSmall)).toFixed(1)}–${Math.max(...rows.map((r) => r.zLarge)).toFixed(1)} units, the largest fully opaque AT THE LOOP'S OWN FRAMES ${Math.min(...rows.map((r) => r.opaqueLarge)).toFixed(1)}–${Math.max(...rows.map((r) => r.opaqueLarge)).toFixed(1)} by seat (the largest drawn ${Math.min(...rows.map((r) => r.zLarge)).toFixed(1)}–${Math.max(...rows.map((r) => r.zLarge)).toFixed(1)}); z boxes leaving the frame ${clipped}`);
   console.log(`   seats: ${rows.length}, chosen by the extremes of ${SCAN_EYES} keys' eye lines (${Math.min(...eyesAll).toFixed(1)}–${Math.max(...eyesAll).toFixed(1)} units over the population) and ${SCAN_CREST} keys' crests (widest ${Math.max(...picks.map((p) => p.wide.w)).toFixed(0)} units)`);
   for (const sp of species) {
     const mine = rows.filter((r) => r.sp === sp);
-    console.log(`   ${sp.padEnd(9)} over head ${pct(worstBy('overHead', mine).overHead).padStart(6)} of ${pct(boundFor(sp)).padStart(6)}${overSpecies.includes(sp) ? ' OVER' : '     '}   z on z ${pct(worstBy('zOnZ', mine).zOnZ).padStart(6)}   face ${pct(worstBy('onFace', mine).onFace).padStart(6)}   anywhere on the sleeper ${pct(worstBy('overAll', mine).overAll).padStart(6)}   (${worstBy('overHead', mine).key})`);
+    console.log(`   ${sp.padEnd(9)} over head ${pct(worstBy('overHead', mine).overHead).padStart(6)} of ${pct(boundFor(sp)).padStart(6)}${overSpecies.includes(sp) ? ' OVER' : '     '}   z on z ${pct(worstBy('zOnZ', mine).zOnZ).padStart(6)}   face ${pct(worstBy('onFace', mine).onFace).padStart(6)}   anywhere on the sleeper ${pct(worstBy('overAll', mine).overAll).padStart(6)}   fully opaque ${Math.min(...mine.map((r) => r.opaqueLarge)).toFixed(1)}–${Math.max(...mine.map((r) => r.opaqueLarge)).toFixed(1)}   (${worstBy('overHead', mine).key})`);
   }
   console.log(`   over head: worst ${pct(over.overHead)} (${over.key}); every species against ${pct(bounds.overHead)}${bounds.residuals.map((r) => `, the ${r.species} a residual at ${pct(r.bound)}`).join('')} — ${okOver ? 'within' : `OVER on ${overSpecies.join(', ') || '—'}`}${unknownResidual.length ? ` — a residual names no species of the tree: ${unknownResidual.join(', ')}` : ''}`);
   console.log(`   z on z:    worst ${pct(onz.zOnZ)} (${onz.key}) against ${pct(bounds.zOnZ)} — ${okOnz ? 'within' : 'OVER'}`);
   console.log(`   the face:  worst ${pct(face.onFace)} of a frame's z ink within ${bounds.faceClear} units of the closed eyes (${face.key}) against ${pct(bounds.face)} — ${okFace ? 'clear' : 'ON THE FACE'}`);
+  console.log(`   the clear rects (${CLEAR_NAMES.join(', ')}): worst ${pct(clear.inClear)} of a frame's z ink inside one (${clear.key}) against ${pct(bounds.clearance)} — ${okClear ? 'clear' : 'IN THE FURNITURE'}`);
+  console.log(`   the count: the fewest z's a frame draws is ${fewest}, against ${Z3.count} — ${okCount ? 'three' : 'NOT THREE'}`);
+  console.log(`   the scan's crest tops (the table a layout is judged on; \`creatures.js\`'s CREST_TOP is held at or under these): ${Object.entries(scanTable).map(([k, v]) => `${k} ${v}`).join(', ')}`);
+  if (fixed) {
+    console.log(`   the chase: ${chase.length === 0 ? 'every seat\'s frames hold the pulse — z\'s fixed, the still at full brightness, the loop\'s levels § 10.4\'s and the brightest z advancing z1, z2, z3' : `${chase.length} defects — ${chase.slice(0, 3).join('; ')}`} — ${okChase ? 'chasing' : 'NOT THE CHASE'}`);
+    console.log(`   the glow: ${haloOnBody} px of a halo on the sleeper (0 allowed); the tree's lamp colour ${treeLamp ?? 'is not declared (a layout is judged on --lamp)'} against --lamp ${cssLamp} — ${okGlow ? 'clear and in the palette' : 'ON THE SLEEPER OR OFF THE PALETTE'}`);
+    console.log(`   the brightness: ${range.line} — ${okRange ? 'legible at the dim end' : 'TOO DIM OR TOO ALIKE'}`);
+  }
+  console.log(`   the crest table: ${hasTable ? `${crestDefects.length} scanned keys reach above the tree's CREST_TOP` : 'the tree exports none (a layout is judged on the scan\'s own)'}${okCrest ? '' : ` — ${crestDefects.slice(0, 3).join('; ')}`}`);
   for (const m of mirror.slice(0, 3)) console.log(`   MIRROR DRIFT — zMarkup() no longer draws what creatures.js's zSvg() drew: ${m}`);
   console.log(`   ${ok ? 'PASS' : 'FAIL'}${measured ? '' : '  — NOT MEASURED (too few seats or z pixels)'}`);
-  return { ok, okOver, okOnz, okFace, measured, overSpecies, rows };
+  return { ok, okOver, okOnz, okFace, okCount, okClear, okCrest, okChase, okRange, okGlow, measured, overSpecies, rows };
 }
 
 /**
@@ -383,12 +658,16 @@ function report(label, { rows, picks, species, mirror, framesPer }, bounds) {
  */
 async function sheet(chrome, tree, layout, out, rows) {
   const C = await import(pathToFileURL(join(tree, 'index.js')).href);
-  const worst = C.SPECIES_KEYS.map((sp) => rows.filter((r) => r.sp === sp).reduce((a, r) => (a === null || r.overHead > a.overHead ? r : a), null)).filter((r) => r !== null);
-  const docs = worst.map((r) => framesOf(C, { sp: r.sp, key: r.key }, layout, [])[Math.max(0, r.worstFrame)].doc);
-  const W = SHOT_PX, H = Math.round(SHOT_PX * 192 / 108);
+  const env = { clear: await clearRects(C) };
+  // The worst seat of a species: the one its z's overlap the sleeper most; for a fixed layout, where none does, the one whose z's are SMALLEST (the least room).
+  const worse = (r, a) => (a === null ? true : r.fixed ? r.zLarge < a.zLarge : r.overHead > a.overHead);
+  const worst = C.SPECIES_KEYS.map((sp) => rows.filter((r) => r.sp === sp).reduce((a, r) => (worse(r, a) ? r : a), null)).filter((r) => r !== null);
+  const docs = worst.map((r) => framesOf(C, { sp: r.sp, key: r.key }, layout, [], { ...env, crown: r.crown })[r.fixed ? 0 : r.worstFrame >= 0 ? r.worstFrame : (layout === null ? 0 : PHASES / 2)].doc);
+  const W = Math.round(SHOT_PX * VIEW.w / 108), H = Math.round(W * VIEW.h / VIEW.w);
+  const cols = 4;
   const cell = (d) => `<div style="background:#efe4d0;border-radius:6px"><img style="width:${W}px;height:${H}px;display:block" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(d)}"></div>`;
-  const html = `<!doctype html><title>x</title><body style="margin:8px;background:#fff;display:grid;grid-template-columns:repeat(8,${W}px);gap:6px">${docs.map(cell).join('')}</body>`;
-  const b = await browser(chrome, 8 * (W + 6) + 16, Math.ceil(docs.length / 8) * (H + 6) + 16, 'ready');
+  const html = `<!doctype html><title>x</title><body style="margin:8px;background:#fff;display:grid;grid-template-columns:repeat(${cols},${W}px);gap:6px">${docs.map(cell).join('')}</body>`;
+  const b = await browser(chrome, cols * (W + 6) + 16, Math.ceil(docs.length / cols) * (H + 6) + 16, 'ready');
   try {
     await b.load(`data:text/html,${encodeURIComponent(html.replace('<title>x</title>', '<title>ready</title>'))}`);
     await new Promise((r) => setTimeout(r, 300));
@@ -397,7 +676,47 @@ async function sheet(chrome, tree, layout, out, rows) {
   } finally {
     b.close();
   }
-  console.log(`sheet: ${out} (${docs.length} sleepers, each species' worst over-head seat at its worst frame: ${worst.map((r) => `${r.key}#${r.worstFrame}`).join(', ')}; ${layout ?? 'the tree\'s own'} z's)`);
+  console.log(`sheet: ${out} (${docs.length} sleepers, each species' worst seat — most over the sleeper, or for a fixed layout the one with the smallest z's — at its worst frame, or at the still / canonical frame when none overlaps: ${worst.map((r) => `${r.key}#${r.worstFrame >= 0 ? r.worstFrame : 'canonical'}`).join(', ')}; ${layout ?? 'the tree\'s own'} z's)`);
+}
+
+/**
+ * A FRAME STRIP: every document a seat draws — the still, then the loop's frames in order — side by side, for each species
+ * named, so the chase can be read as the reader would see it step. The first key of each species, at the frames the tree (or
+ * the named layout) draws; the cells at `SHOT_PX` px per 108 frame units.
+ */
+async function strip(chrome, tree, layout, out, species) {
+  const C = await import(pathToFileURL(join(tree, 'index.js')).href);
+  const env = { clear: await clearRects(C) };
+  const rowsDocs = [];
+  for (const sp of species) {
+    const key = `sleep/${sp}/any/0`;
+    const variant = C.recipe(key, sp).variant;
+    let crown = (C.CREST_TOP ?? {})[variant ? `${sp}/${variant}` : sp];
+    if (crown === undefined) {
+      const probe = await browser(chrome, 300, 500, 'ready');
+      try {
+        await probe.load('data:text/html,<title>ready</title>');
+        const doc = C.sleepDocument(key, { species: sp, frame: 0, deskTop: DESK_TOP, clear: env.clear });
+        crown = (await probe.evaluate(`(${PAGE_CREST})(${JSON.stringify({ body: withoutZs(inView(doc)), w: VIEW.w, h: VIEW.h, scale: SCALE, alpha: ALPHA, eyesRow: poseOf(doc).eyes - 8, vy: VIEW.y })})`)).top;
+      } finally {
+        probe.close();
+      }
+    }
+    rowsDocs.push(framesOf(C, { sp, key }, layout, [], { ...env, crown }).map((fr) => fr.doc));
+  }
+  const W = Math.round(SHOT_PX * VIEW.w / 108), H = Math.round(W * VIEW.h / VIEW.w);
+  const cols = rowsDocs[0].length;
+  const cell = (d, i) => `<div style="background:#e8dcc4;border-radius:4px;position:relative"><img style="width:${W}px;height:${H}px;display:block" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(d)}"><span style="position:absolute;left:3px;top:1px;font:10px sans-serif;color:#3b2f2a">${i === 0 ? 'still' : `f${i - 1}`}</span></div>`;
+  const html = `<!doctype html><title>ready</title><body style="margin:6px;background:#fff;display:grid;grid-template-columns:repeat(${cols},${W}px);gap:4px">${rowsDocs.flatMap((r) => r.map(cell)).join('')}</body>`;
+  const b = await browser(chrome, cols * (W + 4) + 12, rowsDocs.length * (H + 4) + 12, 'ready');
+  try {
+    await b.load(`data:text/html,${encodeURIComponent(html)}`);
+    await new Promise((r) => setTimeout(r, 300));
+    writeFileSync(out, Buffer.from((await b.shot()).split(',')[1], 'base64'));
+  } finally {
+    b.close();
+  }
+  console.log(`strip: ${out} (${species.join(', ')}; ${cols} frames each — the still, then loop frames 0–${cols - 2}; ${layout ?? 'the tree\'s own'} z's)`);
 }
 
 // `--layout two:L,S,fx,tx` — a two-z candidate on the ruled law: from `fx` units off centre on the roll-away side just
@@ -415,8 +734,8 @@ if (col) {
   LAYOUTS[LAYOUT] = ({ dir }, phase) => rise({ N: 2, L, S, amp: 0, clamp: true }, phase,
     { x: 54 - dir * 54, y: Y }, { x: 54 - dir * 54, y: halfBox(S).h + 1 });
 }
-if (LAYOUT !== null && !(LAYOUT in LAYOUTS)) {
-  console.error(`FAIL — no layout «${LAYOUT}»; the layouts are ${Object.keys(LAYOUTS).join(', ')}`);
+if (LAYOUT !== null && !(LAYOUT in LAYOUTS) && !(LAYOUT in FIXED)) {
+  console.error(`FAIL — no layout «${LAYOUT}»; the layouts are ${[...Object.keys(LAYOUTS), ...Object.keys(FIXED)].join(', ')}`);
   process.exit(1);
 }
 const chrome = findChrome();
@@ -427,18 +746,38 @@ if (chrome === null) {
 
 const bounds = boundsFromDocument();
 FACE_CLEAR = bounds.faceClear;
+GLOW = bounds.glow;
+HALO = bounds.halo;
+HALO_OPACITY = bounds.haloOpacity;
+LAMP = cssLamp;
+PULSE_FRAMES = bounds.pulseFrames;
+VIEW = bounds.view;
+CLEAR_NAMES = ['monitor', 'props', 'desk', 'trail'];
 const judged = report(LAYOUT === null ? `the tree's own frames (${TREE})` : `layout «${LAYOUT}» over the tree's sleepers (${TREE})`, await measure(chrome, TREE, LAYOUT), bounds);
 if (SHOT !== null) await sheet(chrome, TREE, LAYOUT, SHOT, judged.rows);
+if (STRIP !== null) await strip(chrome, TREE, LAYOUT, STRIP, STRIP_SPECIES);
 let failed = !judged.ok;
 
 if (SELFTEST) {
-  const control = report('CONTROL — the card#12159 layout; must exceed BOTH bounds', await measure(chrome, TREE, 'card12159'), bounds);
+  const control = report('CONTROL — the card#12159 layout; must exceed the overlap and z-on-z bounds', await measure(chrome, TREE, 'card12159'), bounds);
+  const column = report('CONTROL — today\'s two-z column (round 3\'s `ruled`); must fail the count, the clearance and the overlap', await measure(chrome, TREE, 'ruled'), bounds);
   const onFace = report('CONTROL — z\'s laid over the closed eyes; must fail the face clearance', await measure(chrome, TREE, 'on-face'), bounds);
-  // The overlap control must red on MORE THAN ONE species: a bound only the mushroom's residual can trip would tell the
-  // ruled z's from card#12159's on one cap alone.
-  for (const [name, run, okKey, more] of [['overlap', control, 'okOver', (r) => r.overSpecies.length > 1], ['z-on-z', control, 'okOnz', () => true], ['face', onFace, 'okFace', () => true]]) {
+  const reversed = report('CONTROL — the pulse run top to bottom (z3 first); must fail the chase', await measure(chrome, TREE, 'above3-reversed'), bounds);
+  const constant = report('CONTROL — every z always at full brightness (no pulse); must fail the chase', await measure(chrome, TREE, 'above3-constant'), bounds);
+  // The overlap controls must red on MORE THAN ONE species: a bound one species' cap alone could trip would tell the
+  // ruled z's from the control's on one crest.
+  for (const [name, run, okKey, more] of [
+    ['overlap (card#12159)', control, 'okOver', (r) => r.overSpecies.length > 1],
+    ['z-on-z (card#12159)', control, 'okOnz', () => true],
+    ['face', onFace, 'okFace', () => true],
+    ['count (the two-z column)', column, 'okCount', () => true],
+    ['clearance (the two-z column)', column, 'okClear', () => true],
+    ['overlap (the two-z column)', column, 'okOver', (r) => r.overSpecies.length > 1],
+    ['chase (reversed pulse)', reversed, 'okChase', () => true],
+    ['chase (constant)', constant, 'okChase', () => true],
+  ]) {
     const caught = run.measured && !run[okKey] && more(run);
-    console.log(caught ? `CONTROL CAUGHT (${name})` : `CONTROL NOT CAUGHT (${name}) — the bound cannot tell the ruled z's from the card#12159 path`);
+    console.log(caught ? `CONTROL CAUGHT (${name})` : `CONTROL NOT CAUGHT (${name}) — the bound cannot tell the ruled z's from the control`);
     failed = failed || !caught;
   }
 }
