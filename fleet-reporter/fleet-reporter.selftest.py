@@ -101,10 +101,21 @@ def redgreen(prop: str, red: str, green: str) -> None:
 
 
 # ── seat fixtures ──────────────────────────────────────────────────────────────────────────
+def seat_token(name: str) -> str:
+    """A token of the right shape that is THIS seat's alone. The suite's stub is shared by every seat, and
+    since card#12180 a heartbeat is read off the wire rather than out of the spool (D1 § 6.14), so a seat's
+    requests are told apart by the credential they present."""
+    import base64
+    import hashlib
+    return "mzn_" + base64.urlsafe_b64encode(hashlib.sha256(name.encode()).digest()).decode()[:43]
+
+
 class Seat:
     def __init__(self, root: Path, ingest: str, *, ca: str | None = None,
-                 enabled: bool = True, wrapped: str | None = None, token: str = TOKEN):
+                 enabled: bool = True, wrapped: str | None = None, token: "str | None" = None):
         self.root = root
+        token = token or seat_token(str(root))
+        self.token = token
         self.spool = root / "spool"
         self.spool.mkdir(parents=True, exist_ok=True)
         self.cfg_path = root / "config.json"
@@ -194,7 +205,10 @@ class Seat:
                     out.append(json.loads(line)["e"])
         return out
 
-    def counters(self) -> dict:
+    def counters(self, site: "str | None" = None) -> dict:
+        """The counter sink's deltas, summed. With no `site`, every line's seat-level `c` plus every site's
+        `s` deltas — for a single-site seat the totals a build before card#12180 wrote into `c` alone; with
+        a `site`, that site's `s` deltas only (D1 § 11.1)."""
         c: dict = {}
         d = self.spool / "counters"
         if not d.exists():
@@ -203,8 +217,12 @@ class Seat:
             for line in f.read_text(encoding="utf-8").splitlines():
                 if not line.strip():
                     continue
-                for k, v in json.loads(line).get("c", {}).items():
-                    c[k] = c.get(k, 0) + v
+                rec = json.loads(line)
+                parts = [rec.get("c", {})] + list(rec.get("s", {}).values()) if site is None \
+                    else [rec.get("s", {}).get(site, {})]
+                for part in parts:
+                    for k, v in part.items():
+                        c[k] = c.get(k, 0) + v
         return c
 
     def state(self) -> dict:
@@ -212,6 +230,29 @@ class Seat:
             return json.loads((self.spool / "state.json").read_text(encoding="utf-8"))
         except Exception:
             return {}
+
+    def posted(self) -> list[dict]:
+        """Every batch the shared stub received from THIS seat (by the bearer token it presented)."""
+        return [b["batch"] for b in list(INGEST.batches) if b.get("auth") == f"Bearer {self.token}"]
+
+    def wire_heartbeats(self) -> list[dict]:
+        """This seat's heartbeats as the stub received them, in arrival order (D1 § 6.14: never spooled)."""
+        return [e for b in self.posted() for e in b.get("events", []) if e.get("kind") == "reporter.heartbeat"]
+
+    def entry(self, site: str = "default") -> dict:
+        """One site's `state.json` entry (D1 § 3.1, *State per site*), or {} where there is none."""
+        return (self.state().get("sites") or {}).get(site) or {}
+
+    def site_counters(self, site: str = "default") -> dict:
+        """The folded counters ONE SITE'S heartbeat composes (D1 § 9.3, card#12180): every seat-level
+        total, and for each name in the per-site set that site's total plus the seat-level one. A
+        per-site count lives in the site's entry since card#12180, so a read of the top-level map alone
+        would miss it."""
+        st = self.state()
+        out = dict(st.get("counters") or {})
+        for k, v in (self.entry(site).get("counters") or {}).items():
+            out[k] = out.get(k, 0) + v
+        return out
 
     def predicates(self) -> dict:
         p: dict = {}
@@ -405,6 +446,14 @@ class Ingest:
             def log_message(self, *a):  # keep the suite's output readable
                 pass
 
+            def handle(self):
+                # A client that goes away mid-connection — a flusher the suite killed, a kept-alive socket
+                # dropped at process exit — is not a stub failure, and its traceback is not a finding.
+                try:
+                    super().handle()
+                except (BrokenPipeError, ConnectionResetError, ssl.SSLError):
+                    pass
+
             def _read(self):
                 n = int(self.headers.get("Content-Length", 0))
                 raw = self.rfile.read(n) if n else b""
@@ -596,8 +645,11 @@ r, rep = selftest(s1)
 gets_by_selftest = INGEST.gets - gets_before
 eq("the checks this build declares are exactly the reported set",
    ["config_readable", "harness_payload_keys", "predicate_discrimination",
-    "protocol_agent_name_in_roster", "sanitizer_fixtures", "schema_version_accepted", "tls_verify"],
+    "protocol_agent_name_in_roster", "sanitizer_fixtures", "schema_version_accepted", "tls_verify",
+    "token_accepted"],
    sorted(rep.get("checks", {}).keys()))
+eq("  … and a single-site config reports one site block, `default` (§ 6.14, card#12180)", ["default"],
+   sorted(rep.get("sites", {}).keys()))
 eq("config_readable passes on a valid config", "pass", rep["checks"]["config_readable"])
 eq("sanitizer_fixtures passes", "pass", rep["checks"]["sanitizer_fixtures"])
 eq("harness_payload_keys passes", "pass", rep["checks"]["harness_payload_keys"])
@@ -615,8 +667,8 @@ eq("  … schema_version_accepted passes against an ingest that accepts this rep
 eq("  … tls_verify passes, the ingest reached with verification on through the seat's ca_file", "pass",
    rep["checks"]["tls_verify"])
 eq("  … and the command exits 0 — a correctly configured seat reads green", 0, r.returncode)
-eq("  … with the set it compared against in the detail", [1],
-   rep["detail"]["schema_version_accepted"].get("accepted_schema_versions"))
+eq("  … with the set it compared against in the site's detail", [1],
+   rep["detail"]["sites"]["default"].get("accepted_schema_versions"))
 
 # (b) An ingest that answers and does NOT list this reporter's version: measured, and a fail.
 INGEST.accepted = [999]
@@ -640,7 +692,7 @@ eq("  … and tls_verify is `not_measured` too — no TCP connection, so no TLS 
 eq("  … and the command exits 2, which § 6.14 reserves for no fail and something unmeasured", 2,
    r_dead.returncode)
 eq("  … naming why the probe measured nothing", True,
-   bool(rep_dead["detail"]["tls_verify"].get("probe_error")))
+   bool(rep_dead["detail"]["sites"]["default"].get("probe_error")))
 
 # (d) An answer with no set in it — a refused token, an outage page — is not a refusal of the version.
 INGEST.get_status = 401
@@ -651,7 +703,7 @@ finally:
 eq("NOT MEASURED: a 401 from the health surface leaves schema_version_accepted `not_measured` — the "
    "error body carries no accepted set, so it cannot refuse the version", "not_measured",
    rep_401["checks"]["schema_version_accepted"])
-eq("  … with the status in the detail", 401, rep_401["detail"]["schema_version_accepted"].get("http_status"))
+eq("  … with the status in the site's detail", 401, rep_401["detail"]["sites"]["default"].get("http_status"))
 eq("  … and exits 2", 2, r_401.returncode)
 
 # (e) A host reached whose certificate does not verify: THAT is a measured tls_verify fail.
@@ -664,8 +716,8 @@ eq("  … while schema_version_accepted is `not_measured`, since no answer arriv
 eq("  … and the command exits 1", 1, r_noca.returncode)
 
 # RED — the defect verbatim, planted on a copy: the one-shot that never asks the ingest.
-p_noprobe = plant(("  if (results.config_readable) {\n    const probe = await refreshHealth(",
-                   "  if (false) {\n    const probe = await refreshHealth("))
+p_noprobe = plant(("    if (readable) {\n      const probe = await refreshHealth(",
+                   "    if (false) {\n      const probe = await refreshHealth("))
 r_np, rep_np = selftest(s1, reporter=p_noprobe)
 eq("RED: a one-shot that never probes cannot pass a healthy seat — schema_version_accepted is "
    "not_measured and the exit is non-zero", ("not_measured", True),
@@ -744,27 +796,42 @@ def fast_flusher(*defects) -> Path:
                      *[(re.escape(old), new) for old, new in defects])
 
 
-def heartbeat_selftests(s: Seat) -> list[dict]:
-    """The `selftest` object of every heartbeat spooled so far — complete lines only, because the
-    flusher under observation may be mid-append."""
-    out = []
-    for f in sorted(s.spool.glob("*.jsonl")):
-        raw = f.read_bytes()
-        for line in raw[: raw.rfind(b"\n") + 1].splitlines():
-            e = json.loads(line)["e"] if line.strip() else {}
-            if e.get("kind") == "reporter.heartbeat":
-                out.append(e["data"]["selftest"])
-    return out
+def heartbeat_selftests(mark: int) -> list[dict]:
+    """The `selftest` object of every heartbeat the shared stub received since `mark` (an index into
+    `INGEST.batches`). Since card#12180 a heartbeat is built per site as item 0 of a request and is never
+    spooled (D1 § 6.14), so the wire is the one place it can be read."""
+    return [e["data"]["selftest"] for b in list(INGEST.batches[mark:])
+            for e in b["batch"].get("events", []) if e.get("kind") == "reporter.heartbeat"]
+
+
+CROCK = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+
+def ulid_ms(u: str) -> int:
+    """The millisecond timestamp a ULID was minted at (its first ten Crockford characters, D1 § 6.0)."""
+    t = 0
+    for ch in u[:10]:
+        t = t * 32 + CROCK.index(ch) if ch in CROCK else t * 32
+    return t
+
+
+def wire_heartbeats(mark: int = 0) -> list[dict]:
+    """Every heartbeat EVENT the shared stub received since `mark` (an index into `INGEST.batches`), in
+    arrival order — the one place a heartbeat can be read since card#12180 (D1 § 6.14)."""
+    return [e for b in list(INGEST.batches[mark:]) for e in b["batch"].get("events", [])
+            if e.get("kind") == "reporter.heartbeat"]
 
 
 def drive_probes(name: str, reporter: Path) -> dict:
-    """A long-lived flusher on an `enabled: false` seat (no drain, so the probe is its only request)
-    against scripted health answers: probe 1 accepts this version; probes 2 and 3 are held past the
-    probe deadline; probe 4 answers with a set that lacks the version. Heartbeats are split at the
-    moment a probe ARRIVES at the stub. The flusher is single-threaded and awaits each probe, so a
-    heartbeat spooled after probe k arrived was spooled after probe k-1 resolved."""
+    """A long-lived flusher on an `enabled: false` seat (no spooled event is sent, so the probe is its
+    only GET and every POST is a heartbeat-only request) against scripted health answers: probe 1
+    accepts this version; probes 2 and 3 are held past the probe deadline; probe 4 answers with a set
+    that lacks the version. Heartbeats are split at the moment a probe ARRIVES at the stub. The site's
+    lane awaits each probe before it builds, so a heartbeat received after probe k arrived was built
+    after probe k-1 resolved."""
     s = seat(name, enabled=False)
     (s.spool / "flusher.lock").unlink(missing_ok=True)
+    mark = len(INGEST.batches)
     INGEST.gets = 0
     INGEST.get_script = [{}, {"hold": HOLD_PAST_DEADLINE_S}, {"hold": HOLD_PAST_DEADLINE_S},
                          {"accepted": [999], "hold": REFUSAL_HOLD_S}]
@@ -778,8 +845,8 @@ def drive_probes(name: str, reporter: Path) -> dict:
             for k in (2, 3, 4):
                 if k not in arrived and INGEST.gets >= k:
                     arrived[k] = time.time()
-                    split[k] = len(heartbeat_selftests(s))
-            if 4 in arrived and len(heartbeat_selftests(s)) > split[4]:
+                    split[k] = len(heartbeat_selftests(mark))
+            if 4 in arrived and len(heartbeat_selftests(mark)) > split[4]:
                 break
             if 2 in arrived and 4 not in arrived and time.time() - arrived[2] > WINDOW_S:
                 break
@@ -790,7 +857,7 @@ def drive_probes(name: str, reporter: Path) -> dict:
             p.wait()
         INGEST.get_script = []
         s.freeze_flusher()
-    hbs = heartbeat_selftests(s)
+    hbs = heartbeat_selftests(mark)
     return {"before": hbs[: split.get(2, len(hbs))],
             "after_timeouts": hbs[split.get(2, len(hbs)): split.get(4, len(hbs))],
             "after_refusal": hbs[split[4]:] if 4 in arrived else [],
@@ -819,8 +886,8 @@ eq("GREEN: a later probe that DID measure overwrites — an answer lacking this 
 # RED 1 — the defect verbatim, as #143 round 1 shipped it: every probe's result overwrites, null
 # included, and the cadence is K.HEALTH_MS whatever the probe measured.
 r_f = drive_probes("flusher-keeps-last-red-overwrite", fast_flusher(
-    ("          if (checks[c] === null) unmeasured = true;\n          else selftest[c] = checks[c];",
-     "          selftest[c] = checks[c];"),
+    ("        if (probe.checks[c] === null) unmeasured = true;\n        else lane.entry.selftest[c] = probe.checks[c];",
+     "        lane.entry.selftest[c] = probe.checks[c];"),
     ("healthEveryMs = unmeasured ? K.HEARTBEAT_MS : K.HEALTH_MS;", "healthEveryMs = K.HEALTH_MS;")))
 eq("RED: a flusher that lets a timed-out probe overwrite heartbeats a false fail after it",
    True, ("fail", "fail") in {pair(x) for x in r_f["after_timeouts"]})
@@ -830,7 +897,8 @@ eq("  … and, on a fixed K.HEALTH_MS cadence, does not re-probe inside half of 
 # RED 2 — keep-last read as keep-FIRST: a measured value is never replaced, so a refusal that arrives
 # after a pass is hidden behind it.
 r_k = drive_probes("flusher-keeps-last-red-keepfirst", fast_flusher(
-    ("else selftest[c] = checks[c];", "else if (selftest[c] === null) selftest[c] = checks[c];")))
+    ("else lane.entry.selftest[c] = probe.checks[c];",
+     "else if (lane.entry.selftest[c] === null) lane.entry.selftest[c] = probe.checks[c];")))
 eq("RED: a flusher that never replaces a measured value keeps reporting pass after the ingest "
    "measurably refuses the version", ("pass", "pass"),
    pair(r_k["after_refusal"][-1]) if r_k["after_refusal"] else None)
@@ -898,7 +966,7 @@ def drive_ca_config(name: str, ca: str, reporter: Path = REPORTER) -> dict:
     b0 = len(INGEST.batches)
     flush(s, reporter=reporter, **EXTRA_TRUST)
     d.update(posts=len(INGEST.batches) - b0, log=seat_log(s),
-             config_invalid=s.state().get("counters", {}).get("config_invalid", 0))
+             config_invalid=s.site_counters().get("config_invalid", 0))
     return d
 
 
@@ -932,7 +1000,7 @@ def drive_ca_vanishes(name: str, reporter: Path = REPORTER) -> dict:
         flush(s, reporter=reporter, **EXTRA_TRUST)
     finally:
         INGEST.get_script = []
-    counters = s.state().get("counters", {})
+    counters = s.site_counters()
     d = dict(path=str(ca_copy), posts=len(INGEST.batches) - b0, log=seat_log(s), removed=not ca_copy.exists(),
              config_invalid=counters.get("config_invalid", 0), retried=counters.get("batches_retried", 0),
              rejected=counters.get("batches_rejected", 0))
@@ -1021,7 +1089,7 @@ eq("  … and a heartbeat it sends after that carries config_readable `pass`", T
    "pass" in ca_appears["heartbeat_readable"])
 # RED — the flusher that refuses the file at start and never looks again (the defect verbatim, planted on the
 # scaled copy): the file appears and nothing is delivered.
-red_appears = drive_ca_appears("ca-appears-red", fast_flusher(("      if (caRechecked) {", "      if (false) {")))
+red_appears = drive_ca_appears("ca-appears-red", fast_flusher(("    if (lane.caRechecked) {", "    if (false) {")))
 eq("RED: a flusher that checks ca_file only at start is still alive and delivers nothing after the file appears",
    (True, True, False), (red_appears["refused_at_start"], red_appears["alive"], red_appears["delivered"]))
 redgreen("a flusher started on an unreadable ca_file resumes once the file is readable, with no restart (§ 3.5, card#9500)",
@@ -1117,8 +1185,8 @@ def drive_bad_config(name: str, key: str, value, *, reporter: Path = REPORTER, f
         hook(s, "PreToolUse", pre(tuid=f"toolu_{name}"), reporter=reporter)
         b0 = len(INGEST.batches)
         flush(s, reporter=reporter)
-        c = s.state().get("counters", {})
-        q = s.spool / "quarantine" / "rejected.jsonl"
+        c = s.site_counters()
+        q = s.spool / "quarantine" / "rejected.default.jsonl"
         d.update(posts=len(INGEST.batches) - b0, config_invalid=c.get("config_invalid", 0),
                  retried=c.get("batches_retried", 0), rejected=c.get("batches_rejected", 0),
                  quarantined=q.exists() and q.stat().st_size > 0, log=seat_log(s))
@@ -1151,8 +1219,8 @@ for n, k, v, f in FORMAT_CASES:
 eq("a URL error never echoes the value: one that does not parse is one whose password the seat never "
    "registered for redaction", False,
    any(v in e for n, k, v, _ in FORMAT_CASES if k != "spool_dir" and v for e in fmt[n]["errors"]))
-p_fmt_echo = plant(("errors.push('ingest_url is not a parseable URL (§ 3.1)')",
-                    "errors.push('ingest_url is not a parseable URL (§ 3.1): ' + url)"))
+p_fmt_echo = plant(("errors.push(`${label}ingest_url is not a parseable URL (§ 3.1)`)",
+                    "errors.push(`${label}ingest_url is not a parseable URL (§ 3.1): ` + url)"))
 fmt_echo = drive_bad_config("fmt-ingest-echo-red", "ingest_url", FORMAT_CASES[0][2], reporter=p_fmt_echo, flusher=False)
 eq("RED: … an error that echoes the value is caught by that check", True,
    any(FORMAT_CASES[0][2] in e for e in fmt_echo["errors"]))
@@ -1161,9 +1229,9 @@ eq("RED: … an error that echoes the value is caught by that check", True,
 # `permanent` class for an `ingest_url` that does not parse, no `proxy_url` check, and the non-empty-only
 # `spool_dir` check.
 p_fmt_old = plant(
-    ("  else if (!parsesAsUrl(url)) errors.push('ingest_url is not a parseable URL (§ 3.1)');\n", ""),
-    ("  if (typeof c.proxy_url === 'string' && !(/^https?:\\/\\//.test(c.proxy_url) && parsesAsUrl(c.proxy_url))) {\n"
-     "    errors.push('proxy_url must be an absolute http:// or https:// URL, or null (§ 3.1)');\n  }\n", ""),
+    ("  else if (!parsesAsUrl(url)) errors.push(`${label}ingest_url is not a parseable URL (§ 3.1)`);\n", ""),
+    ("  if (typeof site.proxy_url === 'string' && !(/^https?:\\/\\//.test(site.proxy_url) && parsesAsUrl(site.proxy_url))) {\n"
+     "    errors.push(`${label}proxy_url must be an absolute http:// or https:// URL, or null (§ 3.1)`);\n  }\n", ""),
     ("  const spool = str('spool_dir') && path.isAbsolute(c.spool_dir) ? c.spool_dir : null;\n  if (spool === null) errors.push",
      "  const spool = str('spool_dir');\n  if (!spool) errors.push"),
     ("    if (r.invalid) return { kind: 'refused', status: 0, error: r.invalid };",
@@ -1236,6 +1304,14 @@ redgreen("a relative spool_dir writes nothing under the working directory (card#
 # `ca_file` that vanished after a clean start: requests refused while every heartbeat said `pass`. Driven on the
 # timing-scaled copy: a flusher started on a readable pinned `ca_file` delivers, the file is removed, and then
 # restored.
+#
+# SINCE card#12180 THE HEARTBEAT IS A REQUEST TO ITS SITE (D1 § 6.14), so a lane that has stopped sending
+# because its own config failed sends no heartbeat either: the site sees the seat go `stale`, the posture every
+# config error has (§ 3.1). The property is therefore measured on what reaches the site: NO request BUILT while
+# the file was gone arrives, before or after the restore — a request's `batch_id` is a ULID minted at its build,
+# so its time says when. The defect does: a lane still believing its config good builds a request the missing
+# file refuses, and that request — persisted, resent as built — lands once the file is back, carrying whatever
+# that lane decided while the seat could send nothing (a heartbeat in it says `pass`).
 CA_GONE_PASSES = 160                                    # scaled passes run with the file removed (~4 s, >= 3 heartbeats)
 
 
@@ -1248,8 +1324,10 @@ def drive_ca_gone_live(name: str, reporter: Path) -> dict:
     hook(s, "PreToolUse", pre(tuid="toolu_ca_live_1"), reporter=reporter)
     (s.spool / "flusher.lock").unlink(missing_ok=True)
     b0 = len(INGEST.batches)
-    p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False), cwd=str(HERE),
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # The backoff seam (timing only) makes a lane that does attempt while the file is gone attempt on every pass,
+    # so its count is not left to the ladder's jitter.
+    p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, FLEET_REPORTER_BACKOFF_MAX_MS=0),
+                         cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     d: dict = {"pid": p.pid}
 
     def delivered(since: int) -> bool:
@@ -1261,18 +1339,31 @@ def drive_ca_gone_live(name: str, reporter: Path) -> dict:
             time.sleep(0.02)
         d["delivered_before"] = delivered(b0)
         ca_copy.unlink()
-        hb0 = len(heartbeat_selftests(s))
+        gone_from = time.time()
         b1 = len(INGEST.batches)
         hook(s, "PreToolUse", pre(tuid="toolu_ca_live_2"), reporter=reporter)
         time.sleep(CA_GONE_PASSES * FAST_K["FLUSH_MS"] / 1000)
-        d.update(posts_while_gone=len(INGEST.batches) - b1,
-                 heartbeats_while_gone=[h.get("config_readable") for h in heartbeat_selftests(s)[hb0:]],
-                 logged="ca_file unreadable" in seat_log(s))
+        d.update(posts_while_gone=len(INGEST.batches) - b1, logged="ca_file unreadable" in seat_log(s))
+        gone_to = time.time()
         shutil.copyfile(CA, ca_copy)
         t1, b2 = time.time(), len(INGEST.batches)
         while p.poll() is None and time.time() - t1 < CA_APPEARS_WITHIN_S and not delivered(b2):
             time.sleep(0.02)
-        d.update(alive=p.poll() is None, delivered_after=delivered(b2))
+        time.sleep(4 * FAST_K["FLUSH_MS"] / 1000)
+        # Every request that reached the site, by the clock it was BUILT on (its batch_id), from the removal on,
+        # and the config_readable of any heartbeat inside it.
+        built_gone, readable = [], []
+        for b in INGEST.batches[b1:]:
+            if gone_from + 0.1 < ulid_ms(b["batch"].get("batch_id", "")) / 1000 < gone_to:
+                built_gone.append(b["batch"]["batch_id"])
+                readable += [e["data"]["selftest"].get("config_readable") for e in b["batch"].get("events", [])
+                             if e.get("kind") == "reporter.heartbeat"]
+        d.update(alive=p.poll() is None, delivered_after=delivered(b2), requests_built_while_gone=built_gone,
+                 heartbeats_built_while_gone=readable,
+                 # ATTEMPTS while the file was gone: the request primitive refuses each (`ca_file unreadable`) and
+                 # the lane logs it. A lane whose own verdict is `fail` makes none — but the one pass in flight at
+                 # the removal may have checked the file before it went, so one is the pass's and not a verdict.
+                 attempts_while_gone=seat_log(s).count("batch refused by the config"))
     finally:
         if p.poll() is None:
             p.kill()
@@ -1283,24 +1374,29 @@ def drive_ca_gone_live(name: str, reporter: Path) -> dict:
 
 ca_live = drive_ca_gone_live("ca-gone-live", fast_flusher())
 eq("precondition: a flusher started on a readable pinned ca_file delivers", True, ca_live["delivered_before"])
-# The FIRST heartbeat after the removal is excluded: the pass in flight when the file went may have read
-# it before, and it acts on, and heartbeats, that pass's verdict. A pass emits at most one heartbeat.
-eq("once the file is removed it sends nothing, and every heartbeat from a later pass says config_readable "
-   "`fail`, the verdict it acts on", (0, True, {"fail"}),
-   (ca_live["posts_while_gone"], len(ca_live["heartbeats_while_gone"]) >= 3, set(ca_live["heartbeats_while_gone"][1:])))
+# The 0.1 s margin after the removal excludes the pass in flight when the file went: it may have read it before,
+# and it acts on, and heartbeats, that pass's verdict.
+eq("once the file is removed it sends nothing, attempts nothing past the pass in flight at the removal, and no "
+   "request built while it is gone ever reaches the site — its heartbeat is a request, and the lane that cannot send "
+   "builds none", (0, True, []),
+   (ca_live["posts_while_gone"], ca_live["attempts_while_gone"] <= 1, ca_live["requests_built_while_gone"]))
 eq("  … its log names the unreadable file", True, ca_live["logged"])
 eq("  … and with the file restored the same process delivers again", (True, True), (ca_live["alive"], ca_live["delivered_after"]))
 # RED — the two-verdict flusher verbatim: the file re-checked only while the start refused it.
 red_live = drive_ca_gone_live("ca-gone-live-red", fast_flusher(
-    ("const caRechecked = errors.length === (caError ? 1 : 0) && typeof config.ca_file === 'string';",
-     "const caRechecked = errors.length === 1 && caError !== null;")))
-eq("RED: a flusher that re-checks ca_file only while its start refused it heartbeats `pass` while it sends nothing",
-   (True, 0, True), (red_live["delivered_before"], red_live["posts_while_gone"], "pass" in red_live["heartbeats_while_gone"][1:]))
+    ("caRechecked: errors.length === 0 && site.errors.length === (site.caError ? 1 : 0) && typeof site.ca_file === 'string',",
+     "caRechecked: errors.length === 0 && site.errors.length === 1 && site.caError !== null,")))
+eq("RED: a flusher that re-checks ca_file only while its start refused it reaches nothing while the file is gone, "
+   "and yet goes on ATTEMPTING requests, pass after pass, on a verdict of `pass` — each refused by the request primitive",
+   (True, 0, True), (red_live["delivered_before"], red_live["posts_while_gone"], red_live["attempts_while_gone"] >= 10))
 redgreen("the heartbeat's config_readable is the flusher's own send verdict, from one read (card#9521)",
-         f"re-checked only while refused at start -> file removed: posts {red_live['posts_while_gone']}, "
-         f"heartbeats {red_live['heartbeats_while_gone']}",
-         f"one verdict, re-checked each pass -> file removed: posts {ca_live['posts_while_gone']}, heartbeats "
-         f"{ca_live['heartbeats_while_gone']}, restored: delivered {ca_live['delivered_after']} by the same pid {ca_live['alive']}")
+         f"re-checked only while refused at start -> file removed: posts {red_live['posts_while_gone']}, attempts "
+         f"refused by the config logged {red_live['attempts_while_gone']}, requests built in the window and delivered "
+         f"later {red_live['requests_built_while_gone']}",
+         f"one verdict, re-checked each pass -> file removed: posts {ca_live['posts_while_gone']}, attempts "
+         f"{ca_live['attempts_while_gone']}, requests built in "
+         f"the window {ca_live['requests_built_while_gone']}, restored: delivered {ca_live['delivered_after']} by the "
+         f"same pid {ca_live['alive']}")
 
 # RED — the TLS posture lint AT-15 asks for, made mechanical.
 p_tls = plant(("({ keepAlive: true, maxSockets: 2 })",
@@ -1308,7 +1404,7 @@ p_tls = plant(("({ keepAlive: true, maxSockets: 2 })",
 _, rep_tls = selftest(s1, reporter=p_tls)
 eq("RED: a planted `rejectUnauthorized: false` fails tls_verify", "fail", rep_tls["checks"]["tls_verify"])
 eq("  … even though that copy's probe reached the ingest — reachability never overrides the posture", True,
-   rep_tls["detail"]["tls_verify"].get("reached"))
+   rep_tls["detail"]["sites"]["default"].get("reached"))
 eq("  … and names the forbidden spelling", True,
    len(rep_tls["detail"]["tls_verify"]["forbidden_spellings_present"]) == 1)
 eq("GREEN: the real source carries no verification-disabling spelling", [],
@@ -1441,23 +1537,29 @@ eq("  … and reaches the health surface through it", 1, INGEST.gets - g0)
 eq("  … so tls_verify and schema_version_accepted pass, and the command exits 0",
    ("pass", "pass", 0), (rep_px["checks"]["tls_verify"], rep_px["checks"]["schema_version_accepted"], r_px.returncode))
 
-# GREEN — the flusher's heartbeat, through the proxy. `enabled: false`, so the pass sends no batch and
-# the probe is the only thing that can have set either check (the sender sets tls_verify on delivery).
-c1 = len(PROXY.connects)
+# GREEN — the flusher's heartbeat, through the proxy. `enabled: false`, so the pass sends no spooled event and
+# its one request is the heartbeat, built after the probe and before any request was accepted: the probe is
+# the only thing that can have set either check (an accepted request sets tls_verify, after it).
+c1, m1 = len(PROXY.connects), len(INGEST.batches)
 flush(s_px)
-hb_px = heartbeat_selftests(s_px)
-eq("GREEN: the flusher's probe goes through the proxy too", [DEAD_TARGET], PROXY.connects[c1:])
-eq("  … and the heartbeat it spools reports both network checks pass", ("pass", "pass"),
+hb_px = heartbeat_selftests(m1)
+eq("GREEN: the flusher's probe goes through the proxy too — and so does the heartbeat's request after it",
+   [DEAD_TARGET, DEAD_TARGET], PROXY.connects[c1:])
+eq("  … and the heartbeat it sends reports both network checks pass", ("pass", "pass"),
    pair(hb_px[-1]) if hb_px else None)
 
 # RED — the defect verbatim: the probe's request made without the seat's proxy, as before card#9473.
-p_bypass = plant(("  return ingestRequest(config, { method: 'GET',",
-                  "  return ingestRequest(Object.assign({}, config, { proxy_url: null }), { method: 'GET',"))
+p_bypass = plant(("  return ingestRequest(site, { method: 'GET',",
+                  "  return ingestRequest(Object.assign({}, site, { proxy_url: null }), { method: 'GET',"))
 c2 = len(PROXY.connects)
 r_bp, rep_bp = selftest(s_px, reporter=p_bypass)
 bp_connects = PROXY.connects[c2:]
-flush(s_px, reporter=p_bypass)
-hb_bp = heartbeat_selftests(s_px)
+# A FRESH seat for the flusher leg: a site's last measured checks are kept in its state.json entry across
+# restarts (D1 § 3.1, *State per site*), so the GREEN seat's entry would carry its passes into this run.
+s_px_red = proxied_seat("proxy-probe-red", PROXY, enabled=False)
+m2 = len(INGEST.batches)
+flush(s_px_red, reporter=p_bypass)
+hb_bp = heartbeat_selftests(m2)
 eq("RED: a probe that ignores proxy_url asks the proxy for nothing, and the one-shot reads not_measured, rc 2",
    ([], "not_measured", "not_measured", 2),
    (bp_connects, rep_bp["checks"]["tls_verify"], rep_bp["checks"]["schema_version_accepted"], r_bp.returncode))
@@ -1471,8 +1573,8 @@ eq("GREEN: the sender delivers through the proxy — the batch arrives, and the 
    "tunnels to the ingest's host (the probe's, then the batch's)",
    (True, [DEAD_TARGET, DEAD_TARGET]),
    (any(e.get("kind") == "tool.start" for b in got_ps for e in b["batch"].get("events", [])), conn_ps))
-p_send_bypass = plant(("  return ingestRequest(config, { method: 'POST',",
-                       "  return ingestRequest(Object.assign({}, config, { proxy_url: null }), { method: 'POST',"))
+p_send_bypass = plant(("  return ingestRequest(site, { method: 'POST',",
+                       "  return ingestRequest(Object.assign({}, site, { proxy_url: null }), { method: 'POST',"))
 s_psr = proxied_seat("proxy-send-red", PROXY)
 got_psr, conn_psr = send_one(s_psr, reporter=p_send_bypass)
 eq("RED: a sender that ignores proxy_url delivers nothing, and only the probe's tunnel is asked for",
@@ -1498,21 +1600,25 @@ t_sil = time.monotonic() - t0
 eq("GREEN: against a proxy that never answers CONNECT, the one-shot reports both network checks "
    "not_measured and exits 2", ("not_measured", "not_measured", 2),
    (rep_sil["checks"]["tls_verify"], rep_sil["checks"]["schema_version_accepted"], r_sil.returncode))
-eq("  … naming the connect deadline as why", "connect deadline", rep_sil["detail"]["tls_verify"].get("probe_error"))
+eq("  … naming the connect deadline as why", "connect deadline", rep_sil["detail"]["sites"]["default"].get("probe_error"))
 eq(f"  … having asked that proxy for the tunnel and waited out the connect deadline, not the request "
    f"deadline ({K_CONNECT_S} s <= {t_sil:.1f} s < {DEADLINE_SPLIT_S} s)", (True, True),
    (DEAD_TARGET in SILENT_PROXY.connects, K_CONNECT_S <= t_sil < DEADLINE_SPLIT_S))
+# THE PASS MAKES TWO REQUESTS SINCE card#12180: the probe, and the site's heartbeat, which is a request of its
+# own (D1 § 6.14) built after the probe gave up. Both go through the silent proxy, so each is held for the
+# connect deadline, and the bound is on the two together: two connect deadlines, against two request ones.
 t0 = time.monotonic()
 flush(s_sil)
 t_sil_pass = time.monotonic() - t0
-eq(f"GREEN: a flusher pass on that seat is held by the probe for the connect deadline only "
-   f"({K_CONNECT_S} s <= {t_sil_pass:.1f} s < {DEADLINE_SPLIT_S} s)", True, K_CONNECT_S <= t_sil_pass < DEADLINE_SPLIT_S)
+eq(f"GREEN: a flusher pass on that seat — its probe and its heartbeat's request — is held for two connect "
+   f"deadlines only ({2 * K_CONNECT_S} s <= {t_sil_pass:.1f} s < {2 * DEADLINE_SPLIT_S} s)", True,
+   2 * K_CONNECT_S <= t_sil_pass < 2 * DEADLINE_SPLIT_S)
 p_noconnect = plant(("    connectTimer = setTimeout(() => endByDeadline('connect', 'connect deadline'), K.CONNECT_MS);\n", ""))
 t0 = time.monotonic()
 flush(s_sil, reporter=p_noconnect)
 t_sil_red = time.monotonic() - t0
-eq(f"RED: with no connect deadline the same pass waits out the request deadline "
-   f"({t_sil_red:.1f} s >= {DEADLINE_SPLIT_S} s)", True, t_sil_red >= DEADLINE_SPLIT_S)
+eq(f"RED: with no connect deadline the same pass waits out two request deadlines "
+   f"({t_sil_red:.1f} s >= {2 * DEADLINE_SPLIT_S} s)", True, t_sil_red >= 2 * DEADLINE_SPLIT_S)
 redgreen("the health probe takes the seat's route, proxy_url included, and a silent proxy costs the connect "
          "deadline, not the request deadline (§ 3.5, card#9473)",
          f"probe without the proxy -> CONNECTs {bp_connects}, one-shot "
@@ -1524,7 +1630,7 @@ redgreen("the health probe takes the seat's route, proxy_url included, and a sil
          f"heartbeat {pair(hb_px[-1]) if hb_px else None}; sender -> batches {len(got_ps)}, CONNECTs {conn_ps}; "
          f"no proxy_url -> batches {len(got_d)}, CONNECTs {conn_d}; silent proxy -> one-shot "
          f"{rep_sil['checks']['schema_version_accepted']} rc={r_sil.returncode} "
-         f"'{rep_sil['detail']['tls_verify'].get('probe_error')}' in {t_sil:.1f} s, pass {t_sil_pass:.1f} s")
+         f"'{rep_sil['detail']['sites']['default'].get('probe_error')}' in {t_sil:.1f} s, pass {t_sil_pass:.1f} s")
 PROXY.stop()
 SILENT_PROXY.stop()
 
@@ -1886,19 +1992,24 @@ eq("the spool retains every event through the outage", 30,
    len([e for e in during if e["kind"] == "tool.start"]))
 eq("nothing was dropped (spool_dropped_events stays 0)", 0, s4.counters().get("spool_dropped_events", 0))
 eq("  … and the unreachable ingest is COUNTED as a retry rather than swallowed", True,
-   s4.state().get("counters", {}).get("batches_retried", 0) > 0)
-hb = [e for e in s4.events() if e["kind"] == "reporter.heartbeat"]
-eq("the flusher heartbeats even with the ingest down (silence must never be the signal)",
-   True, len(hb) >= 1)
+   s4.site_counters().get("batches_retried", 0) > 0)
+# Since card#12180 the heartbeat is built per site as item 0 of that site's request and never spooled
+# (D1 § 6.14): with the ingest down it is IN the request persisted in the site's entry, and it is the first
+# thing the site receives on recovery.
+req4 = s4.entry().get("request") or {}
+hb = [e for e in req4.get("events", []) if e.get("kind") == "reporter.heartbeat"]
+eq("the flusher heartbeats even with the ingest down (silence must never be the signal): the heartbeat is "
+   "item 0 of the request persisted for the site", (True, req4.get("heartbeat_event_id")),
+   (len(hb) == 1 and req4["events"][0]["kind"] == "reporter.heartbeat", hb[0]["event_id"] if hb else None))
 eq("  … and the heartbeat reports the backlog rather than hiding it", True,
-   hb[-1]["data"]["spool_lag_events"] > 0 and hb[-1]["data"]["oldest_unsent_age_s"] is not None)
+   bool(hb) and hb[-1]["data"]["spool_lag_events"] > 0 and hb[-1]["data"]["oldest_unsent_age_s"] is not None)
 
-# Now the server comes back: EVERY spooled event must arrive, by id, not by count.
+# Now the server comes back: EVERY spooled event must arrive, by id, not by count. The config now names
+# another server, which § 3.1's rule 2 reads as a repoint: the site's entry — cursor, epoch and the request
+# persisted for the dead address — is discarded, and the whole spool is sent to the server it now names.
 INGEST.batches.clear()
 s4.cfg["ingest_url"] = INGEST.url
 s4.write_cfg()
-# The set is FROZEN before the drain: each flusher pass emits its own heartbeat, so a set
-# re-read after the last pass would always contain one event that pass could not yet have sent.
 target_ids = {e["event_id"] for e in s4.events()}
 for _ in range(8):
     flush(s4)
@@ -1961,7 +2072,7 @@ for i in range(20):
     hook(s4h, "PreToolUse", pre(tuid=f"old_{i}"), reporter=p_small, FLEET_REPORTER_NOW_MS=past)
 before = len(list(s4h.spool.glob("*.jsonl")))
 flush(s4h, reporter=p_small)
-red_dropped = s4h.counters().get("spool_dropped_events", 0) + s4h.state().get("counters", {}).get("spool_dropped_events", 0)
+red_dropped = s4h.counters().get("spool_dropped_events", 0) + s4h.site_counters().get("spool_dropped_events", 0)
 eq("RED: the flusher drops the aged-out oldest bucket AND COUNTS every event in it",
    True, red_dropped > 0)
 s4g = seat("nooverflow", ingest=DEAD)
@@ -1969,7 +2080,7 @@ for i in range(20):
     hook(s4g, "PreToolUse", pre(tuid=f"ng_{i}"), FLEET_REPORTER_NOW_MS=past)
 flush(s4g)
 eq("GREEN (control): under the real 32 MiB bound the same run drops nothing", 0,
-   s4g.counters().get("spool_dropped_events", 0) + s4g.state().get("counters", {}).get("spool_dropped_events", 0))
+   s4g.counters().get("spool_dropped_events", 0) + s4g.site_counters().get("spool_dropped_events", 0))
 redgreen("survives the bridge being down (AT-4)",
          f"2 KiB spool bound, clock pinned mid-hour -> hook defers ({deferred} x "
          f"spool_overflow_deferred, 0 dropped: it may not unlink the live bucket); one hook two "
@@ -2003,7 +2114,7 @@ def drop_case(name: str, *, cursor_lines, path: str, reporter: Path = REPORTER) 
     (s.spool / "state.json").write_text(json.dumps(st), encoding="utf-8")
     if path == "flusher":
         flush(s, reporter=reporter)
-        dropped = s.state().get("counters", {}).get("spool_dropped_events", 0)
+        dropped = s.site_counters().get("spool_dropped_events", 0)
     else:
         # The hook's own event lands in the current hour, so the 2 h-old bucket is the oldest,
         # its hour has ended, and the 2 KiB bound (the bucket alone is over it) makes it drop.
@@ -2046,7 +2157,7 @@ redgreen("a dropped spool bucket counts only its undelivered lines (§ 11.3, car
 print("\n== 5. NO CREDENTIAL REACHES ANY OUTPUT (P-6) — with its negative control FIRST ==")
 # THE CONTROL RUNS BEFORE THE CHECK IS TRUSTED. This check passes by finding NOTHING, and a
 # sweep that cannot find a token it was handed would pass over a real one identically.
-s5 = seat("secrets")
+s5 = seat("secrets", token=TOKEN)
 
 
 def sweep(seat_obj: Seat, extra_streams: list[str]) -> list[str]:
@@ -2069,7 +2180,7 @@ def sweep(seat_obj: Seat, extra_streams: list[str]) -> list[str]:
     return hits
 
 
-control_seat = seat("secrets-control")
+control_seat = seat("secrets-control", token=TOKEN)
 p_leak = plant(("      if (spool) logLine(spool, cmd || 'unknown', `crashed: ${e && e.stack}`);",
                 "      if (spool) logLine(spool, cmd || 'unknown', `crashed: ${e && e.stack}`);"),
                ("function hookMain(hookName) {\n",
@@ -2095,7 +2206,7 @@ for name, payload in [
 r = statusline(s5, {"session_id": SID, "context_window": {"used_percentage": 40, "total_input_tokens": 8, "context_window_size": 20}})
 streams += [r.stdout, r.stderr]
 # A server that echoes the token back in an error body — the reporter writes response bodies to
-# REJECTED.txt and the log, so this is a real path for a secret to come to rest locally.
+# REJECTED.default.txt and the log, so this is a real path for a secret to come to rest locally.
 INGEST.status = 422
 INGEST.body_override = {"error": "invalid_event", "message": f"token {TOKEN} rejected"}
 r = flush(s5)
@@ -2107,8 +2218,8 @@ streams += [r.stdout, r.stderr]
 hits = sweep(s5, streams)
 eq("GREEN: the seat token appears in NO spool file, log, quarantine, marker, or stream", [], hits)
 eq("  … and the rejection WAS surfaced locally (so the sweep swept a real path)", True,
-   (s5.spool / "REJECTED.txt").exists())
-rejected_txt = (s5.spool / "REJECTED.txt").read_text(encoding="utf-8")
+   (s5.spool / "REJECTED.default.txt").exists())
+rejected_txt = (s5.spool / "REJECTED.default.txt").read_text(encoding="utf-8")
 eq("  … with the echoed token redacted in place rather than the file being empty", True,
    "‹redacted:token›" in rejected_txt and TOKEN not in rejected_txt)
 eq("  … and the descriptor built from a command containing the token is redacted", True,
@@ -2169,8 +2280,8 @@ def drive_shapeless(reporter_path: Path, tag: str):
     # vacuous while looking exactly like a real one. What is under test is whether the secret
     # propagates into the files the reporter writes THROUGH redactSecrets.
     sinks = list((sk.spool / "quarantine").glob("*")) + list((sk.spool / "log").glob("*"))
-    if (sk.spool / "REJECTED.txt").exists():
-        sinks.append(sk.spool / "REJECTED.txt")
+    if (sk.spool / "REJECTED.default.txt").exists():
+        sinks.append(sk.spool / "REJECTED.default.txt")
     hits = []
     for pth in sinks:
         try:
@@ -2210,14 +2321,14 @@ redgreen("the known-VALUE redaction leg (P-6, § 20), isolated from the shape le
 redgreen("no credential in output (P-6, D-06)",
          f"planted `fs.appendFileSync(log, token)` -> sweep found {control_hits}",
          f"real reporter across hooks+statusline+flusher+selftest+a 422 body echoing the token -> "
-         f"sweep found {hits}; REJECTED.txt carries '‹redacted:token›' in the token's place")
+         f"sweep found {hits}; REJECTED.default.txt carries '‹redacted:token›' in the token's place")
 
 
 print("\n== 6. SPOOL DURABILITY (AT-9 torn line, AT-10 concurrent append, AT-17 lost state) ==")
 # AT-9 — one torn line never poisons a batch and never wedges the queue.
-# The fixture bucket is written in a PAST UTC hour, deliberately: the flusher appends its own
-# heartbeat to the CURRENT bucket, and a "trailing partial line" left in a live bucket would be
-# glued to by that append. A partial line in a live bucket is a write in progress that lasts
+# The fixture bucket is written in a PAST UTC hour, deliberately: the flusher's own events (a § 6.2
+# close, a reap) append to the CURRENT bucket, and a "trailing partial line" left in a live bucket would be
+# glued to by such an append. A partial line in a live bucket is a write in progress that lasts
 # microseconds; a permanent one only exists in a bucket nothing is writing to any more, which is
 # exactly the state this test is about.
 INGEST.batches.clear()
@@ -2235,7 +2346,7 @@ flush(s6)
 delivered = {e["event_id"] for e in INGEST.events()}
 eq("AT-9: both valid lines are delivered around the torn one", True, set(good_ids) <= delivered)
 eq("  … the truncated line is quarantined and counted exactly once", 1,
-   s6.state().get("counters", {}).get("spool_corrupt_lines", 0))
+   s6.site_counters().get("spool_corrupt_lines", 0))
 eq("  … the quarantine file holds it for inspection", True,
    (s6.spool / "quarantine" / "corrupt.jsonl").exists())
 eq("  … and the trailing partial line (no LF) is UNTOUCHED — a write in progress", True,
@@ -2378,7 +2489,9 @@ s17 = seat("statereset")
 for i in range(6):
     hook(s17, "PreToolUse", pre(tuid=f"sr_{i}"))
 flush(s17)
-first_pass = {e["event_id"] for e in INGEST.events()}
+# The spooled events only: a heartbeat is built per pass and never spooled (D1 § 6.14), so a re-send of
+# the spool cannot carry the first pass's one again.
+first_pass = {e["event_id"] for e in INGEST.events() if e["kind"] != "reporter.heartbeat"}
 eq("AT-17 setup: the first pass delivered the spool", True, len(first_pass) >= 6)
 epoch_before = INGEST.batches[-1]["batch"]["seq_epoch"]
 (s17.spool / "state.json").write_text('{"seq_epoch":"trunc', encoding="utf-8")
@@ -2388,9 +2501,9 @@ resent = {e["event_id"] for e in INGEST.events()}
 eq("AT-17: a corrupt state.json RE-SENDS from the oldest bucket rather than skipping to newest",
    True, first_pass <= resent)
 eq("  … nothing is recorded as dropped, because nothing was discarded", 0,
-   s17.state().get("counters", {}).get("spool_dropped_events", 0))
+   s17.site_counters().get("spool_dropped_events", 0))
 eq("  … state_reset is counted (rendered `epoch_reset`, informational, NOT `lossy`)", True,
-   s17.state().get("counters", {}).get("state_reset", 0) >= 1)
+   s17.site_counters().get("state_reset", 0) >= 1)
 eq("  … under a NEW seq_epoch, so a restarted counter is not read as a 48,000-event gap", True,
    INGEST.batches[-1]["batch"]["seq_epoch"] != epoch_before)
 # Discriminating control: without corrupting state.json, the same run re-sends nothing.
@@ -2399,18 +2512,19 @@ flush(s17)
 eq("  … CONTROL: an uncorrupted run re-sends nothing (so the re-send came from the reset path)",
    0, len([e for e in INGEST.events() if e["event_id"] in first_pass]))
 
-p_skip = plant_src((r"    st\.cursors = \{\};   // every bucket from byte 0.*?\n",
-                    "    st.cursors = {}; for (const f of spoolBuckets(spool)) st.cursors[f.slice(0,10)] = Number.MAX_SAFE_INTEGER;\n"))
+p_skip = plant(("  reconcileSites(state, config, sites, atStart, (m) => startLog.push(m));\n",
+                "  reconcileSites(state, config, sites, atStart, (m) => startLog.push(m));\n"
+                "  if (reset) for (const e of Object.values(state.sites)) for (const f of spoolBuckets(spool)) e.cursors[f.slice(0, 10)] = Number.MAX_SAFE_INTEGER;\n"))
 INGEST.batches.clear()
 s17r = seat("statereset-red")
 for i in range(6):
     hook(s17r, "PreToolUse", pre(tuid=f"rr_{i}"))
 (s17r.spool / "state.json").write_text('{"seq_epoch":"trunc', encoding="utf-8")
 flush(s17r, reporter=p_skip)
-eq("RED: resetting the cursor to the END of the spool silently loses every unsent event", 0,
-   len(INGEST.events()))
+eq("RED: resetting the cursor to the END of the spool silently loses every unsent event — the pass sends "
+   "its heartbeat and nothing of the spool", 0, len([e for e in INGEST.events() if e["kind"] != "reporter.heartbeat"]))
 eq("  … and records NOTHING as dropped — the silent hole this rule designs out", 0,
-   s17r.state().get("counters", {}).get("spool_dropped_events", 0))
+   s17r.site_counters().get("spool_dropped_events", 0))
 
 # A FIRST START IS NOT A STATE RESET (card#9374, D1 § 9.3's `state_reset` row and § 11.4's table).
 # `state_reset` counts a state.json that EXISTS and cannot be used. A missing one is a first start,
@@ -2423,14 +2537,16 @@ eq("  … and records NOTHING as dropped — the silent hole this rule designs o
 # waiting, and one driven by the crontab finds none. Both are driven here.
 def epoch_trace(s: Seat, reporter: Path = REPORTER) -> dict:
     """The seat's next two flusher processes, a start and then a restart, each a real pass against
-    the suite's ingest. Returns what state.json, each start's heartbeat and the wire carry."""
+    the suite's ingest. Returns what state.json, each start's heartbeat and the wire carry. Each start's
+    heartbeat is item 0 of its own first request since card#12180 (D1 § 6.14), so the two are read off
+    the wire, one per start."""
     INGEST.batches.clear()
     runs = (flush(s, reporter=reporter), flush(s, reporter=reporter))
-    hbs = [e["data"] for e in s.events() if e["kind"] == "reporter.heartbeat"][-2:]
     posted = [b["batch"] for b in INGEST.batches]
     wire_hbs = [e["data"] for b in posted for e in b.get("events", []) if e.get("kind") == "reporter.heartbeat"]
+    hbs = wire_hbs[-2:]
     return {"rcs": [r.returncode for r in runs],
-            "state_reset": (s.state().get("counters", {}).get("state_reset", 0),
+            "state_reset": (s.site_counters().get("state_reset", 0),
                             [hb.get("counters", {}).get("state_reset", 0) for hb in hbs]),
             "degraded": [hb.get("degraded") for hb in hbs],
             "wire_degraded": [hb.get("degraded") for hb in wire_hbs],
@@ -2439,7 +2555,7 @@ def epoch_trace(s: Seat, reporter: Path = REPORTER) -> dict:
 
 
 def spooled_ids(s: Seat) -> set:
-    return {e["event_id"] for e in s.events() if e["kind"] != "reporter.heartbeat"}
+    return {e["event_id"] for e in s.events()}
 
 
 FIRST_START = ([0, 0], (0, [0, 0]), [[], []], 1)
@@ -2454,8 +2570,8 @@ t_cron = epoch_trace(fs_cron)
 eq("a first start from the CRONTAB, empty spool and no state.json: across that start and a restart, "
    "`state_reset` is 0 in state.json and on both heartbeats, neither heartbeat is degraded, and both "
    "starts send under one seq_epoch", FIRST_START, first_start_view(t_cron))
-eq("  … and the first start's heartbeat, sent by the restart, reaches the wire with no badge", True,
-   bool(t_cron["wire_degraded"]) and all(d == [] for d in t_cron["wire_degraded"]))
+eq("  … and each start's heartbeat reaches the wire, item 0 of that start's own request, with no badge",
+   (2, True), (len(t_cron["wire_degraded"]), all(d == [] for d in t_cron["wire_degraded"])))
 
 fs_hook = seat("firststart-hook")
 hook(fs_hook, "PreToolUse", pre(tuid="fs_hook"))
@@ -2595,20 +2711,20 @@ flush(s7p)
 posted_once = len(INGEST.batches)
 INGEST.status = 202
 INGEST.body_override = None
-c = s7p.state().get("counters", {})
+c = s7p.site_counters()
 eq("§ 11.5: a 422 batch is rejected and NOT retried", True, posted_once >= 1)
 eq("  … batches_rejected is counted", True, c.get("batches_rejected", 0) >= 1)
 eq("  … and every event it cost is counted in events_rejected_dropped", True,
    c.get("events_rejected_dropped", 0) >= 4)
 eq("  … the batch is quarantined for inspection", True,
-   (s7p.spool / "quarantine" / "rejected.jsonl").exists())
+   (s7p.spool / "quarantine" / "rejected.default.jsonl").exists())
 eq("  … and the refusal is surfaced LOCALLY, where the only person who can fix it will see it",
-   True, (s7p.spool / "REJECTED.txt").exists())
+   True, (s7p.spool / "REJECTED.default.txt").exists())
 INGEST.batches.clear()
 flush(s7p)
 eq("  … the stream continues past it rather than wedging behind one bad batch", True,
    len([b for b in INGEST.batches]) >= 0)
-hb7 = [e for e in s7p.events() if e["kind"] == "reporter.heartbeat"]
+hb7 = wire_heartbeats()
 eq("  … and the seat badges itself `lossy` + `batches_rejected` on the next heartbeat", True,
    "batches_rejected" in hb7[-1]["data"]["degraded"] and "lossy" in hb7[-1]["data"]["degraded"])
 # gzip above 8 KiB (§ 3.5) — below that its CPU and header cost outweigh the WAN saving.
@@ -2635,18 +2751,18 @@ INGEST.status = 202
 INGEST.body_override = None
 eq(f"§ 11.5: a 413 is retried ONCE at half the batch size (event counts posted: {sizes})", True,
    len(sizes) >= 2 and sizes[1] <= max(1, sizes[0] // 2))
-ct = s7t.state().get("counters", {})
+ct = s7t.site_counters()
 eq("  … and a single event that is still too large is quarantined, never retried forever", True,
    ct.get("oversize_event_dropped", 0) >= 1)
 eq("  … counted, because an undeliverable event is a discarded-events path like any other", True,
-   (s7t.spool / "quarantine" / "rejected.jsonl").exists())
+   (s7t.spool / "quarantine" / "rejected.default.jsonl").exists())
 
 redgreen("batch correctness (§ 4.2, § 11.5)",
          "cursor-to-newest reset plant -> 0 of 6 unsent events delivered, spool_dropped_events=0 "
          "(a silent hole); 422 with retry -> the same bytes refused forever",
          f"envelope = {sorted(env.keys())}; per-event = {sorted(ev0.keys())} with seq assigned at "
          f"flush only; 422 -> quarantined once, batches_rejected>=1, events_rejected_dropped="
-         f"{c.get('events_rejected_dropped', 0)}, REJECTED.txt written, degraded="
+         f"{c.get('events_rejected_dropped', 0)}, REJECTED.default.txt written, degraded="
          f"{hb7[-1]['data']['degraded']}")
 
 
@@ -2673,16 +2789,18 @@ for w in range(W):
         env=s16.env(), cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
 for p_ in procs:
     p_.wait()
+m16 = len(INGEST.batches)
 flush(s16)
-hb = [e for e in s16.events() if e["kind"] == "reporter.heartbeat"][-1]["data"]
+hb = wire_heartbeats(m16)[-1]["data"]
 eq(f"AT-16: sanitizer_redactions is EXACTLY {2*W*E} after {W}x{E} concurrent hooks, 2 spans each",
    2 * W * E, hb["counters"].get("sanitizer_redactions"))
 pred = hb["predicates"]["descriptor_allowlisted"]
 eq(f"  … and descriptor_allowlisted's branches sum to exactly {W*E}",
    W * E, pred["true"] + pred["false"])
 before = dict(hb["counters"])
+m16 = len(INGEST.batches)
 flush(s16)
-hb2 = [e for e in s16.events() if e["kind"] == "reporter.heartbeat"][-1]["data"]
+hb2 = wire_heartbeats(m16)[-1]["data"]
 eq("  … a second fold does NOT double them (the per-bucket byte offset is recorded)",
    before["sanitizer_redactions"], hb2["counters"]["sanitizer_redactions"])
 # AT-16's second RED: fold without recording the offset and the totals double on the next pass.
@@ -2690,10 +2808,12 @@ p_nooff = plant_src((r"    state\.counter_offsets\[b\] = from \+ nl \+ 1;", "   
 s16r = seat("countersink-red")
 for i in range(4):
     hook(s16r, "PreToolUse", pre(ti=FIX4, tuid=f"cr_{i}"))
+m16 = len(INGEST.batches)
 flush(s16r, reporter=p_nooff)
-h1 = [e for e in s16r.events() if e["kind"] == "reporter.heartbeat"][-1]["data"]["counters"].get("sanitizer_redactions")
+h1 = wire_heartbeats(m16)[-1]["data"]["counters"].get("sanitizer_redactions")
+m16 = len(INGEST.batches)
 flush(s16r, reporter=p_nooff)
-h2 = [e for e in s16r.events() if e["kind"] == "reporter.heartbeat"][-1]["data"]["counters"].get("sanitizer_redactions")
+h2 = wire_heartbeats(m16)[-1]["data"]["counters"].get("sanitizer_redactions")
 eq(f"RED: without the per-bucket offset the totals grow on a re-fold ({h1} -> {h2})", True, h2 > h1)
 
 # AT-16's third case — the hour-roll straddle. Lines written just after the roll must land in
@@ -2708,8 +2828,9 @@ for i in range(3):
 # Counted BEFORE the flush: the flusher folds and then DELETES a bucket whose hour has ended
 # (§ 11.1's deletion precondition), so a count taken afterwards measures retention, not the split.
 cbuckets = sorted(x.name for x in (s16h.spool / "counters").glob("*.jsonl"))
+m16 = len(INGEST.batches)
 flush(s16h)
-hbh = [e for e in s16h.events() if e["kind"] == "reporter.heartbeat"][-1]["data"]
+hbh = wire_heartbeats(m16)[-1]["data"]
 eq("AT-16 hour-roll: every counter line across the boundary is folded exactly once", 12,
    hbh["counters"].get("sanitizer_redactions"))
 eq("  … and the lines landed in two buckets, split at the roll (write-time derivation)",
@@ -3576,15 +3697,13 @@ OTHER_STARTED = "2000-01-01T00:00:00.000Z"
 HOLD_S = 0.4
 
 
-def owned_seat(name: str, events: int, *, corrupt: bool = False) -> Seat:
+def owned_seat(name: str, events: int) -> Seat:
     s = seat(name)
     hook(s, "PreToolUse", pre(tuid=f"{name}_0"))
     bucket = sorted(s.spool.glob("*.jsonl"))[0]
     rec = next(json.loads(l) for l in bucket.read_text(encoding="utf-8").splitlines()
                if l and json.loads(l)["e"]["kind"] == "tool.start")
     with bucket.open("a", encoding="utf-8") as fh:
-        if corrupt:   # inside batch 1, behind real events: disposed of only once that POST is answered
-            fh.write("{torn line 9393\n")
         for i in range(events):
             rec["e"]["event_id"] = f"01K9393{i:019d}"
             fh.write(json.dumps(rec) + "\n")
@@ -3595,7 +3714,7 @@ def take_over(s: Seat) -> bytes:
     """Do what a second flusher does when it wins: replace the lock, then claim state.json."""
     st = s.state()
     (s.spool / "flusher.lock").write_text(json.dumps(
-        {"pid": OTHER_PID, "started_at": OTHER_STARTED, "seq_epoch": st["seq_epoch"]}), encoding="utf-8")
+        {"pid": OTHER_PID, "started_at": OTHER_STARTED}), encoding="utf-8")
     st["owner_pid"], st["owner_started_at"] = OTHER_PID, OTHER_STARTED
     body = json.dumps(st).encode("utf-8")
     tmp = s.spool / "state.json.takeover.tmp"
@@ -3605,7 +3724,7 @@ def take_over(s: Seat) -> bytes:
 
 
 def drive_pass(s: Seat, reporter: Path, *, takeover: bool, one_pass: bool, exit_within: float,
-               hold_health: bool = False) -> dict:
+               hold_health: bool = False, refuse: bool = False) -> dict:
     """Run a real flusher against the held ingest and observe each POST as it arrives.
 
     For every POST: the wall time it was seen and the lock's mtime at that moment. With
@@ -3620,6 +3739,8 @@ def drive_pass(s: Seat, reporter: Path, *, takeover: bool, one_pass: bool, exit_
     INGEST.batches.clear()
     INGEST.gets = 0
     INGEST.delay_s, INGEST.get_delay_s = (0.0, HOLD_S) if hold_health else (HOLD_S, 0.0)
+    if refuse:   # every POST answered with the ingest's own 422: a disposal that WRITES (the quarantine, the marker)
+        INGEST.status, INGEST.body_override = 422, {"error": "invalid_batch", "field": "events", "reason": "planted"}
     envx = {"FLEET_REPORTER_ONE_PASS": "1"} if one_pass else {}
     p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, **envx),
                          cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -3652,6 +3773,7 @@ def drive_pass(s: Seat, reporter: Path, *, takeover: bool, one_pass: bool, exit_
             p.kill()
             p.wait()
         INGEST.delay_s = INGEST.get_delay_s = 0.0
+        INGEST.status, INGEST.body_override = 202, None
     lost_log = []
     for f in sorted((s.spool / "log").glob("*.log")) if (s.spool / "log").exists() else []:
         lost_log += [l for l in f.read_text(encoding="utf-8").splitlines() if "lost ownership" in l]
@@ -3663,6 +3785,8 @@ def drive_pass(s: Seat, reporter: Path, *, takeover: bool, one_pass: bool, exit_
             "state_bytes": (s.spool / "state.json").read_bytes(),
             "lost_counted": s.counters().get("flusher_lost_ownership", 0), "sink": s.counters(),
             "corrupt_quarantined": _lines(s.spool / "quarantine" / "corrupt.jsonl"),
+            "rejected_quarantined": _lines(s.spool / "quarantine" / "rejected.default.jsonl"),
+            "marker": (s.spool / "REJECTED.default.txt").exists(),
             "lost_log": lost_log, "lock": lock_body}
 
 
@@ -3681,9 +3805,11 @@ N_EVENTS = 2 * int(subprocess.run(
     ["node", "-e", f"process.stdout.write(String(require({json.dumps(str(REPORTER))}).K.BATCH_EVENTS))"],
     capture_output=True, text=True, check=True).stdout) + 1
 
-# GREEN — ownership lost while POST 1 is held, NO one-pass seam: only the loss can end the process.
-g_a = drive_pass(owned_seat("own-lost-green", N_EVENTS, corrupt=True), REPORTER, takeover=True,
-                 one_pass=False, exit_within=1.5)
+# GREEN — ownership lost while POST 1 is held, NO one-pass seam: only the loss can end the process. The
+# ingest REFUSES that POST (its own 422), so acting on the answer would WRITE — the rejected-batch
+# quarantine and the marker — which is what an ex-owner must not do.
+g_a = drive_pass(owned_seat("own-lost-green", N_EVENTS), REPORTER, takeover=True,
+                 one_pass=False, exit_within=1.5, refuse=True)
 eq("GREEN: ownership taken while POST 1 is in flight -> no further POST after that one",
    1, g_a["n_posts"])
 eq("  … state.json still holds the new owner's bytes: the ex-owner wrote nothing after the loss",
@@ -3694,9 +3820,10 @@ eq("  … counting `flusher_lost_ownership` exactly once, in the counter sink th
 eq("  … and logging it exactly once", 1, len(g_a["lost_log"]))
 eq("GREEN: the exiting ex-owner leaves the lock that names the new owner in place",
    OTHER_PID, (g_a["lock"] or {}).get("pid"))
-eq("GREEN: resuming from the answered POST, the ex-owner disposes of nothing in that batch — the "
-   "torn line is neither quarantined nor counted (the new owner disposes of it once)",
-   (0, None), (g_a["corrupt_quarantined"], g_a["sink"].get("spool_corrupt_lines")))
+eq("GREEN: resuming from the answered POST, the ex-owner disposes of nothing in that request — the "
+   "refused batch is neither quarantined nor marked nor counted (the new owner, which finds the request "
+   "persisted in the state.json it claimed, resends it and disposes of it once)",
+   (0, False, None), (g_a["rejected_quarantined"], g_a["marker"], g_a["sink"].get("batches_rejected")))
 
 # GREEN — no takeover, one pass of three held POSTs: the pass outlasts any single touch.
 g_b = drive_pass(owned_seat("own-touch-green", N_EVENTS), REPORTER, takeover=False, one_pass=True,
@@ -3715,14 +3842,14 @@ p_own = plant_src(
      "  if (assertOwner(spool, state) === false) return;\n  atomicWrite(path.join(indexDir(spool), 'snapshot.json')"))
 r_a = drive_pass(owned_seat("own-lost-red", N_EVENTS), p_own, takeover=True, one_pass=False,
                  exit_within=1.5)
-eq("RED: with the loss returned and ignored, the ex-owner keeps POSTing after the takeover",
-   True, r_a["n_posts"] > 1)
-eq("  … and never exits on its own", False, r_a["exited"])
+# Since card#12180 a save that is refused sends nothing — the pre-send save persists the request before any
+# POST (D1 § 3.1) — so this defect no longer POSTs past the takeover; what it still does is the rest of it.
+eq("RED: with the loss returned and ignored, the ex-owner never exits on its own", False, r_a["exited"])
 eq("  … and its count never reaches a surface anyone reads", 0, r_a["lost_counted"])
 
 # RED 2 — the lock renewed once per pass only, as before: no touch between posts.
-p_touch = plant_src((re.escape("    renewLock(spool, state);\n    const res = await postBatch(config, body);"),
-                     "    const res = await postBatch(config, body);"))
+p_touch = plant_src((re.escape("    renewLock(spool, state);\n    const res = await postBatch(lane.site, composeBody(req));"),
+                     "    const res = await postBatch(lane.site, composeBody(req));"))
 r_b = drive_pass(owned_seat("own-touch-red", N_EVENTS), p_touch, takeover=False, one_pass=True,
                  exit_within=1.5)
 eq("RED: renewed once per pass, the lock is NOT refreshed between held posts", True,
@@ -3737,41 +3864,28 @@ eq("RED: an ex-owner that unlinks unconditionally deletes the NEW owner's lock",
 
 # RED 4 — no check on resuming from the POST: the answered batch is disposed of by an ex-owner.
 p_send = plant_src((re.escape("    assertOwner(spool, state);   // resumed from an await: nothing below acts for an ex-owner\n"), ""))
-r_d = drive_pass(owned_seat("own-send-red", N_EVENTS, corrupt=True), p_send, takeover=True,
-                 one_pass=False, exit_within=1.5)
-eq("RED: with no check after the POST's await, the ex-owner quarantines and counts the torn line "
-   "the new owner will dispose of again — posts sent, quarantined, and spool-corrupt sink count",
-   (1, 1, 1),
-   (r_d["n_posts"], r_d["corrupt_quarantined"], r_d["sink"].get("spool_corrupt_lines")))
+r_d = drive_pass(owned_seat("own-send-red", N_EVENTS), p_send, takeover=True,
+                 one_pass=False, exit_within=1.5, refuse=True)
+eq("RED: with no check after the POST's await, the ex-owner quarantines and marks the refused batch "
+   "the new owner will dispose of again — posts sent, quarantined, marker written",
+   (1, 1, True), (r_d["n_posts"], r_d["rejected_quarantined"], r_d["marker"]))
 
-# THE END OF A PASS. The heartbeat, the spool bounds and the bucket reaps run after the pass's
-# awaits; a takeover written while the HEALTH PROBE is held reaches them with no POST in between
-# (the seat is `enabled: false`, so no drain runs and the probe is the pass's one await). The seat
-# holds what makes each of them act: a spool bucket past the 8-day residency (dropped, and counted
-# as spool_dropped_events), a counter bucket as old that the pass's own fold consumes (reaped by
-# this process's offsets, which the new owner's state.json does not carry), and no heartbeat yet.
-STALE_BUCKET = time.strftime("%Y%m%d%H", time.gmtime(time.time() - 9 * 86400))
-HOOK_COUNTER = "x_card9393_hook_count"
-
-
+# AFTER THE PROBE'S AWAIT. Since card#12180 the seat pass — the spool bounds, the bucket reaps, the sink fold —
+# awaits no network and runs before any lane, so it has no await an ex-owner could resume from. A lane's probe
+# is the await that precedes everything a lane does with the spool: what follows it reads the cursor, disposes
+# of a leading unusable line (quarantined and counted), and builds the next request. A takeover written while
+# the probe is held must therefore find the lane doing none of it. The seat holds what makes the lane act: a
+# torn line at the head of its spool, in a bucket whose hour has ended.
 def tail_seat(name: str) -> Seat:
-    s = seat(name, enabled=False)
-    (s.spool / f"{STALE_BUCKET}.jsonl").write_text("".join(
-        json.dumps({"v": 1, "e": {"kind": "tool.start", "event_id": f"01K9393STALE{i:014d}"}}) + "\n"
-        for i in range(3)), encoding="utf-8")
-    (s.spool / "counters").mkdir(exist_ok=True)
-    (s.spool / "counters" / f"{STALE_BUCKET}.jsonl").write_text(json.dumps(
-        {"t": "2000-01-01T00:00:00.000Z", "p": "hook", "c": {HOOK_COUNTER: 5}, "k": {}}) + "\n",
-        encoding="utf-8")
+    s = seat(name)
+    past = time.strftime("%Y%m%d%H", time.gmtime(time.time() - 7200))
+    (s.spool / f"{past}.jsonl").write_text("{torn line 9393\n", encoding="utf-8")
     return s
 
 
 def tail_effects(s: Seat, r: dict) -> dict:
-    return {"spool_bucket_kept": (s.spool / f"{STALE_BUCKET}.jsonl").exists(),
-            "counter_bucket_kept": (s.spool / "counters" / f"{STALE_BUCKET}.jsonl").exists(),
-            "heartbeats_spooled": sum(1 for e in s.events() if e["kind"] == "reporter.heartbeat"),
-            "spool_dropped_events_in_sink": r["sink"].get("spool_dropped_events"),
-            "hook_counter_in_sink": r["sink"].get(HOOK_COUNTER),
+    return {"corrupt_quarantined": r["corrupt_quarantined"], "posts": r["n_posts"],
+            "spool_corrupt_lines_in_sink": r["sink"].get("spool_corrupt_lines"),
             "lost_counted": r["lost_counted"], "exited": r["exited"]}
 
 
@@ -3779,37 +3893,35 @@ T_TAIL = time.time()
 tail_green_seat = tail_seat("own-tail-green")
 g_t = drive_pass(tail_green_seat, REPORTER, takeover=True, one_pass=False, exit_within=1.5, hold_health=True)
 e_gt = tail_effects(tail_green_seat, g_t)
-eq("GREEN: takeover while the health probe is held -> the ex-owner spools no heartbeat, drops no "
-   "spool bucket, reaps no counter bucket, and exits counting the loss once",
-   {"spool_bucket_kept": True, "counter_bucket_kept": True, "heartbeats_spooled": 0,
-    "spool_dropped_events_in_sink": None, "hook_counter_in_sink": 5, "lost_counted": 1, "exited": True},
+eq("GREEN: takeover while the health probe is held -> the ex-owner quarantines nothing, counts nothing, "
+   "sends nothing, and exits counting the loss once",
+   {"corrupt_quarantined": 0, "posts": 0, "spool_corrupt_lines_in_sink": None, "lost_counted": 1, "exited": True},
    e_gt)
 eq("  … state.json still holds the new owner's bytes", g_t["taken"], g_t["state_bytes"])
 
-# RED 5 — no check on resuming from the health probe: the whole end of the pass acts for an ex-owner.
-CHECK_AFTER_HEALTH = re.escape("        assertOwner(spool, state);   // resumed from an await: see assertOwner's header\n")
+# RED 5 — no check on resuming from the health probe: the lane acts for an ex-owner.
+CHECK_AFTER_HEALTH = re.escape("      assertOwner(spool, state);   // resumed from an await: see assertOwner's header\n")
 tail_red_seat = tail_seat("own-tail-red")
 r_t = drive_pass(tail_red_seat, plant_src((CHECK_AFTER_HEALTH, "")), takeover=True, one_pass=False,
                  exit_within=1.5, hold_health=True)
 e_rt = tail_effects(tail_red_seat, r_t)
-eq("RED: with no check after the probe's await, the ex-owner drops the spool bucket, reaps the counter "
-   "bucket the new owner never folded (its hook count reaches no sink), and spools a heartbeat",
-   (False, False, None, 1), (e_rt["spool_bucket_kept"], e_rt["counter_bucket_kept"],
-                             e_rt["hook_counter_in_sink"], e_rt["heartbeats_spooled"]))
-# The same run is the GREEN of the exit path's unfold: it stands in for a takeover landing in the
-# synchronous window after the last check, where the drop happens and then the save throws.
-eq("GREEN: a drop folded into state.counters by a pass whose save then throws still reaches the "
-   "sink (the exit path hands folded-but-unsaved counts back)", 3, e_rt["spool_dropped_events_in_sink"])
+eq("RED: with no check after the probe's await, the ex-owner quarantines the torn line the new owner will "
+   "dispose of again — and the save that follows is what finally stops it, before any request",
+   (1, 0, 1), (e_rt["corrupt_quarantined"], e_rt["posts"], e_rt["lost_counted"]))
+# The same run is the GREEN of the exit path's unfold: the count folded into state.counters by the save
+# that then threw still reaches the sink.
+eq("GREEN: a count folded into state.counters by a save that then throws still reaches the "
+   "sink (the exit path hands folded-but-unsaved counts back)", 1, e_rt["spool_corrupt_lines_in_sink"])
 
-# RED 6 — the same, and the exit path flushes only what is still in C: the drop's count is lost.
+# RED 6 — the same, and the exit path flushes only what is still in C: the count is lost.
 tail_unfold_seat = tail_seat("own-unfold-red")
 r_u = drive_pass(tail_unfold_seat, plant_src((CHECK_AFTER_HEALTH, ""),
                                              (re.escape("  unfoldUnsaved();\n  flushCounters"), "  flushCounters")),
                  takeover=True, one_pass=False, exit_within=1.5, hold_health=True)
 e_ru = tail_effects(tail_unfold_seat, r_u)
-eq("RED: without the unfold, the bucket is dropped and its 3 events are counted nowhere (§ 0 item 9) "
-   "— bucket kept, dropped-events in sink, exited, and lost-ownership count",
-   (False, None, True, 1), (e_ru["spool_bucket_kept"], e_ru["spool_dropped_events_in_sink"], e_ru["exited"], e_ru["lost_counted"]))
+eq("RED: without the unfold, the line is quarantined and counted nowhere (§ 0 item 9) "
+   "— quarantined, corrupt-lines in sink, exited, and lost-ownership count",
+   (1, None, True, 1), (e_ru["corrupt_quarantined"], e_ru["spool_corrupt_lines_in_sink"], e_ru["exited"], e_ru["lost_counted"]))
 T_TAIL = time.time() - T_TAIL
 
 
@@ -3831,19 +3943,18 @@ redgreen("a live flusher's lock is renewed before every request (§ 2.3, card#93
          f"LOCK_STALE_MS inside one live pass",
          f"before every request -> lock age (s) at each POST: {_ages(g_b['posts'])} — bounded by one "
          f"request")
-redgreen("an ex-owner resuming from a POST disposes of nothing in the answered batch (§ 2.3, card#9393)",
-         f"no check after the await -> torn line quarantined {r_d['corrupt_quarantined']}x, "
-         f"spool_corrupt_lines={r_d['sink'].get('spool_corrupt_lines')} in the sink, before the save threw",
-         f"checked on resuming -> quarantined {g_a['corrupt_quarantined']}x, spool_corrupt_lines="
-         f"{g_a['sink'].get('spool_corrupt_lines')}")
-redgreen("the end of a pass does nothing for an ex-owner resuming from the health probe (§ 2.3, § 0 item 9, card#9393)",
+redgreen("an ex-owner resuming from a POST disposes of nothing in the answered request (§ 2.3, card#9393)",
+         f"no check after the await -> the refused batch quarantined {r_d['rejected_quarantined']}x, "
+         f"marker written={r_d['marker']}, before the save threw",
+         f"checked on resuming -> quarantined {g_a['rejected_quarantined']}x, marker written={g_a['marker']}")
+redgreen("a lane does nothing for an ex-owner resuming from the health probe (§ 2.3, § 0 item 9, card#9393, card#12180)",
          f"no check after the await -> {e_rt}",
          f"checked on resuming -> {e_gt} (the three health-probe runs took {T_TAIL:.1f} s)")
 redgreen("counts folded but never saved reach the sink on exit (§ 0 item 9, card#9393)",
-         f"exit flushes only C -> spool bucket kept={e_ru['spool_bucket_kept']}, "
-         f"spool_dropped_events in the sink={e_ru['spool_dropped_events_in_sink']}",
-         f"exit hands back folds since the last landed save -> spool bucket kept={e_rt['spool_bucket_kept']}, "
-         f"spool_dropped_events in the sink={e_rt['spool_dropped_events_in_sink']}")
+         f"exit flushes only C -> torn line quarantined {e_ru['corrupt_quarantined']}x, "
+         f"spool_corrupt_lines in the sink={e_ru['spool_corrupt_lines_in_sink']}",
+         f"exit hands back folds since the last landed save -> quarantined {e_rt['corrupt_quarantined']}x, "
+         f"spool_corrupt_lines in the sink={e_rt['spool_corrupt_lines_in_sink']}")
 redgreen("an exiting ex-owner leaves the new owner's lock alone (§ 2.3, card#9393)",
          f"unconditional unlink -> lock after exit = {r_c['lock']} (a hook would start a third flusher)",
          f"unlink only while the lock names this process -> lock after exit names pid "
@@ -3890,7 +4001,7 @@ def at27_box(name: str, *, declare=AT27_NAME, home=None, coord=None, seat_id=Non
 
 
 def last_heartbeat(s: Seat):
-    hbs = [e for e in s.events() if e["kind"] == "reporter.heartbeat"]
+    hbs = s.wire_heartbeats()
     return hbs[-1]["data"] if hbs else None
 
 
@@ -4002,8 +4113,8 @@ eq(f"a name AT § 6.14's {NAME_BOUND} B bound is a valid declaration: config_rea
 # that fails is `protocol_agent_name_in_roster`, whose `selftest` detail names the value. It is NOT a config
 # error — `config_invalid` means "spooling and sending nothing" to D1 § 9.3 and to D3's badge, so a seat
 # still sending would render falsely. Each seat runs one hook (whose config read would count
-# `config_invalid`) and two flushes against the suite's ingest, whose batches are the wire: a pass
-# spools its heartbeat after it sends, so the first pass's heartbeat reaches the wire on the second.
+# `config_invalid`) and two flushes against the suite's ingest, whose batches are the wire: each pass's
+# heartbeat is item 0 of that pass's request (D1 § 6.14), so both reach the wire.
 def drive_malformed(name: str, declare, reporter: Path = REPORTER) -> dict:
     s, env = box = at27_box(name, declare=declare, home=_bound_roster)
     hook(s, "PreToolUse", pre(), **env)
@@ -4016,7 +4127,7 @@ def drive_malformed(name: str, declare, reporter: Path = REPORTER) -> dict:
     logs = "".join(f.read_text(encoding="utf-8") for f in sorted((s.spool / "log").glob("*.log")))
     d.update(posts=len(posted), posted_wire=wire(hbs[-1]) if hbs else None, posted_text=json.dumps(posted),
              log=logs, config_invalid=(spooled.get("counters", {}).get("config_invalid", 0),
-                                       s.state().get("counters", {}).get("config_invalid", 0),
+                                       s.site_counters().get("config_invalid", 0),
                                        s.counters().get("config_invalid", 0)))
     return d
 
@@ -4046,9 +4157,9 @@ eq("  … and the flusher's start log says the declaration is malformed and was 
    all("protocol_agent_name is not a valid declaration" in d["log"] for d in malformed_seen.values()))
 
 # RED 1 — the round-1 build: a malformed name refused as a config error, so the flusher sends nothing.
-_red_silent = plant(("  return { config: c, errors, caError, spool };\n}",
+_red_silent = plant(("  return { config: c, errors, spool, sites };\n}",
                      "  if (c.protocol_agent_name !== undefined && c.protocol_agent_name !== null && !declaredAgentName(c)) "
-                     "errors.push('protocol_agent_name malformed');\n  return { config: c, errors, caError, spool };\n}"))
+                     "errors.push('protocol_agent_name malformed');\n  return { config: c, errors, spool, sites };\n}"))
 r_silent = drive_malformed("at27-bad-red-silent", "Magento", reporter=_red_silent)
 eq("RED: a malformed name refused as a config error silences the seat — no POST, config_readable failing, "
    "`config_invalid` counted", (0, "fail", True),
@@ -4151,8 +4262,8 @@ else:
        "emission", (True, True), (hb_f is not None, hb_fr is not None))
 
 # ⛔ RED — the silent omission: case B's reporter drops the members rather than emit `unchecked`.
-P_EMIT = ("    protocol_agent_name: declaration.name,\n    protocol_agent_name_check: declaration.check,",
-          "    ...(declaration.check === 'unchecked' ? {} : { protocol_agent_name: declaration.name, "
+P_EMIT = ("      protocol_agent_name: declaration.name,\n      protocol_agent_name_check: declaration.check,",
+          "      ...(declaration.check === 'unchecked' ? {} : { protocol_agent_name: declaration.name, "
           "protocol_agent_name_check: declaration.check }),")
 r_omit = drive_at27(at27_box("at27-red-omission"), reporter=plant(P_EMIT))
 eq("RED: a reporter that drops the members on an unchecked seat puts no name on the wire — the omitted "
@@ -4187,8 +4298,8 @@ eq("RED: on case E's box a reporter reading only the home path finds no roster, 
    (0, "pass", want(AT27_NAME, "unchecked", "pass", unchecked=1)), act(r_path))
 
 # RED — the name in the identity: `config_fingerprint` covering the declaration.
-P_FP = ("    .update(`${cfg.install_id}|${cfg.seat_id}|${cfg.ingest_url}`)",
-        "    .update(`${cfg.install_id}|${cfg.seat_id}|${cfg.ingest_url}|${cfg.protocol_agent_name}`)")
+P_FP = ("    .update(`${cfg.install_id}|${cfg.seat_id}|${site.ingest_url}`)",
+        "    .update(`${cfg.install_id}|${cfg.seat_id}|${site.ingest_url}|${cfg.protocol_agent_name}`)")
 at_pm = drive_at27(at27_box("at27-identity-pm", declare="pm", home=AT27_ROSTER))
 p_fp = plant(P_FP)
 r_fp = (drive_at27(at27_box("at27-identity-red-a", home=AT27_ROSTER), reporter=p_fp)["fingerprint"],
@@ -4227,14 +4338,13 @@ def at27_long_run(name: str, reporter: Path) -> list:
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         t0 = time.time()
-        while time.time() - t0 < 20 and len([e for e in s.events() if e["kind"] == "reporter.heartbeat"]) < 3:
+        while time.time() - t0 < 20 and len(s.wire_heartbeats()) < 3:
             time.sleep(0.1)
     finally:
         proc.kill()
         proc.wait()
         s.freeze_flusher()
-    return [e["data"].get("counters", {}).get("protocol_agent_name_unchecked", 0)
-            for e in s.events() if e["kind"] == "reporter.heartbeat"]
+    return [e["data"].get("counters", {}).get("protocol_agent_name_unchecked", 0) for e in s.wire_heartbeats()]
 
 
 g_long = at27_long_run("at27-per-start", fast_flusher())
@@ -4503,7 +4613,7 @@ NO_RENAME = (r"\n  renameCounters\(state\.counters\);\n\}", "\n}")
 
 
 def hl_heartbeat(s: Seat) -> dict:
-    return [e for e in s.events() if e["kind"] == "reporter.heartbeat"][-1]["data"]
+    return s.wire_heartbeats()[-1]["data"]
 
 
 def hl_start(s: Seat, reporter: Path = REPORTER) -> None:
@@ -4556,7 +4666,7 @@ s19m.write_cfg()
 hl_start(s19m, reporter=p19d_old)
 flush(s19m, reporter=p19d_old)
 eq("the old build saved payload_key_missing.harness_label in state.json", 1,
-   s19m.state().get("counters", {}).get("payload_key_missing.harness_label"))
+   s19m.site_counters().get("payload_key_missing.harness_label"))
 hl_start(s19m, reporter=p19d_old)          # a sink delta under the old name, not folded yet
 flush(s19m)
 hb19m = hl_heartbeat(s19m)
@@ -4662,7 +4772,7 @@ eq("  … a counter that last rose exactly one window ago raises nothing, and on
    "later still raises its member", ["harness_contract_moved"], r19e["deg"])
 
 # RED: derive the members from the totals, which is the build before card#9491.
-p19e = plant(("degraded: buildDegraded(windowedCounters(state, atMs))", "degraded: buildDegraded(all)"))
+p19e = plant(("degraded: buildDegraded(siteWindowed(state, entry, all, atMs))", "degraded: buildDegraded(all)"))
 s19e_r = seat("badge-window-red")
 bw_hook(s19e_r, W0, reporter=p19e)
 bw_flush(s19e_r, W0, reporter=p19e)
@@ -4737,7 +4847,7 @@ s19fm = seat("context-window-upgraded")
 cw_session_start(s19fm, reporter=p19f_old)
 flush(s19fm, reporter=p19f_old)
 eq("the old build saved payload_key_missing.context_window in state.json", 2,
-   s19fm.state().get("counters", {}).get("payload_key_missing.context_window"))
+   s19fm.site_counters().get("payload_key_missing.context_window"))
 statusline(s19fm, CW_NONE, reporter=p19f_old)       # a sink delta under the old name, not folded yet
 flush(s19fm)
 hb19fm = hl_heartbeat(s19fm)
@@ -4820,7 +4930,7 @@ def silence_race(name: str, reporter: Path) -> Seat:
 
 def heartbeat_race(name: str, reporter: Path) -> Seat:
     """A hook that runs while the flusher awaits its health probe, i.e. after the pass's clock was
-    read and before the pass's heartbeat is spooled."""
+    read and before the pass's heartbeat is built."""
     s = seat(name)
     hook(s, "PreToolUse", pre(tuid="hb_race_0"), reporter=reporter)
     INGEST.get_script = [{"run": lambda: hook(s, "PreToolUse", pre(tuid="hb_race_1"), reporter=reporter)}]
@@ -4845,18 +4955,16 @@ eq("GREEN staging: the same race, the same two events", (True, True),
    ("session.end" in kinds_g, "turn.end" in kinds_g))
 eq("GREEN: every event in the spool is in event_time order", [], inversions(g19g_s))
 
-r19g_h = heartbeat_race("order-heartbeat-red", p19g_entry)
-eq("RED staging: the hook ran during the probe, so the spool holds both calls' tool.start",
-   2, len([1 for _, k in spool_times(r19g_h) if k == "tool.start"]))
-eq("RED: a heartbeat stamped before the pass awaited the network is spooled behind the hook that "
-   "ran during the await, with an older event_time", True,
-   any(i.startswith("tool.start@") and "before reporter.heartbeat@" in i for i in inversions(r19g_h)))
+# THE HEARTBEAT LEG OF card#11563 IS RETIRED BY card#12180, and this says so rather than dropping it: the heartbeat
+# is built per site as item 0 of that site's request and is NEVER a spool line (D1 § 6.14), so a hook during the
+# probe has no flusher-stamped line to overtake. What remains checkable is that no heartbeat reaches the spool at
+# all — the spooling defect's own RED is AT-28 Case A's — and that the hook's line is still in event_time order.
 g19g_h = heartbeat_race("order-heartbeat-green", REPORTER)
-eq("GREEN staging: both tool.start and a heartbeat spooled",
-   (2, 1), (len([1 for _, k in spool_times(g19g_h) if k == "tool.start"]),
-            len([1 for _, k in spool_times(g19g_h) if k == "reporter.heartbeat"])))
-eq("GREEN: the heartbeat carries the clock of its own section, so the spool is in event_time order",
-   [], inversions(g19g_h))
+eq("GREEN staging: the hook ran during the probe, so the spool holds both calls' tool.start — and no heartbeat, "
+   "which is never spooled since card#12180", (2, 0),
+   (len([1 for _, k in spool_times(g19g_h) if k == "tool.start"]),
+    len([1 for _, k in spool_times(g19g_h) if k == "reporter.heartbeat"])))
+eq("GREEN: the spool is in event_time order", [], inversions(g19g_h))
 
 # THE LOCK ITSELF. A live holder makes a writer wait — bounded at K.WRITE_LOCK_WAIT_MS, then it
 # proceeds unlocked and COUNTS it, because a hook never holds up the harness for an ordering
@@ -4912,8 +5020,8 @@ eq("a live pid on a lock 10 s old — a reused pid, or a holder hung far past an
                                      s19g_aged.counters().get("write_lock_timeout")))
 redgreen("one seat's spool order is its event_time order (D1 § 11.2, card#11563)",
          "the clock read at process entry: a Stop held between its entry and its append puts "
-         "turn.end behind the flusher's session.end with an older event_time, and a heartbeat "
-         "stamped before the pass's network await lands behind a hook that ran during it; with no "
+         "turn.end behind the flusher's session.end with an older event_time (the heartbeat leg is "
+         "retired: since card#12180 the heartbeat is no spool line); with no "
          "exclusive create a hook ignores a live holder and counts nothing",
          "both interleavings leave the spool in event_time order; a live holder makes the hook "
          "wait to the cap, then spool its event and count write_lock_timeout; a dead or 10 s old "
@@ -5622,6 +5730,2694 @@ redgreen("a /clear carries a running dispatch into the new session and pairs by 
          "a flusher pass between the signals loses nothing; ambiguous and late pairings are counted; past "
          "either window nothing pairs; previous_session_id, both clear counters and the predicate keep their "
          "pre-card#11817 values")
+
+print("\n== 23. ONE SEAT, SEVERAL SITES: EACH SITE GETS EVERYTHING, AND ONLY ITS OWN OUTCOMES (AT-28, D1 § 3.1, card#12180) ==")
+# THE STUBS RUN THE SERVER'S OWN RULES, READ FROM ITS CODE, because the properties under test are what a
+# real site would COUNT: `seq_collision` and `seq_gap` are StateRecompute's, duplicates are BatchWriter's
+# insert-or-ignore, a retry's answer is IngestPipeline's batch_id replay memory, and `clock_skew_ms` is
+# BatchWriter's arrival-minus-`sent_at`. A stub that counted by its own rules would pass against itself.
+# Every case asserts by event id, and every RED is planted on a copy, as the rest of this file does.
+#
+# THE SITE NAMES ARE `sa` AND `sb`, NOT `a` AND `b`: § 3.1 gives a site's `name` `install_id`'s own pattern,
+# `^[a-z0-9][a-z0-9-]{1,31}$`, which needs two characters, so AT-28's one-letter shorthand is not a valid
+# name and the reporter refuses it (measured: `sites[0].name fails …`). The shorthand is the doc's; the rule
+# is the one the reporter enforces.
+_KR = (HERE.parent / "server/app/Ingest/KindRegistry.php").read_text(encoding="utf-8")
+KINDS_KNOWN = set(re.findall(r"^        '([a-z]+\.[a-z_]+)' => \[", _KR, re.M))
+_RL = (HERE.parent / "server/app/Ingest/RateLimiter.php").read_text(encoding="utf-8")
+EVENTS_LIMIT = int(re.search(r"EVENTS_LIMIT = (\d+);", _RL).group(1))
+REQUESTS_LIMIT = int(re.search(r"REQUESTS_LIMIT = (\d+);", _RL).group(1))
+eq("precondition: the stubs' known-kind set is KindRegistry::KINDS' keys, and holds every kind the reporter emits",
+   True, bool(KINDS_KNOWN) and set(re.findall(
+       r"'((?:session|turn|tool|subagent|compaction|context|attention|reporter)\.[a-z]+)'", _prod_src)) <= KINDS_KNOWN)
+
+
+def k_of(src: str, name: str) -> int:
+    """One of the reporter's `K` constants, read from its source: digits and `*` only, so the eval runs
+    nothing but arithmetic."""
+    expr = re.search(rf"\b{name}: ([0-9 *]+),", src).group(1)
+    assert re.fullmatch(r"[0-9 *]+", expr)
+    return int(eval(expr))
+
+
+K_RES_MS = k_of(_prod_src, "RESIDENCY_MS")
+K_HB_MS = k_of(_prod_src, "HEARTBEAT_MS")
+K_BATCH = k_of(_prod_src, "BATCH_EVENTS")
+K_SITE_EPH = k_of(_prod_src, "SITE_EVENTS_PER_HOUR")
+K_HEADROOM = k_of(_prod_src, "HEARTBEAT_HEADROOM")
+
+
+class FoldStore:
+    """One site's store and fold, by the server's rules.
+
+    - an event is STORED once per `event_id` and answered in `duplicates` after that
+      (`server/app/Ingest/BatchWriter.php`, `insertOrIgnore`);
+    - an event of a kind `KindRegistry::KINDS` does not know is not stored (the `$known` filter);
+    - a repeat `batch_id` is answered with the first commit's response and processes nothing
+      (`IngestPipeline.php`, `previousResponse`, § 10.4);
+    - stored rows are folded in id order, PER SEAT — the `(install_id, seat_id)` pair the batch is bound to —
+      by `StateRecompute::writeSnapshotColumns`' rules: a mark `(epoch, seq)`; an epoch other than the mark's
+      counts `seq_epoch_change` and moves the mark without a gap; under the mark's epoch a `seq` past mark + 1
+      counts the difference as `seq_gap`; a stored row of that seat sharing `(epoch, seq)` with a lower id
+      counts `seq_collision`; the mark moves on a change, on a first row, or on a greater `seq` under its epoch.
+    `seat` selects one pair's counters; the default reads the seat this suite's seats use.
+    """
+
+    def __init__(self):
+        self.rows: list[dict] = []
+        self.ids: dict = {}
+        self.keys: set = set()            # (pair, epoch, seq) of every stored row: the collision lookup
+        self.replay: dict = {}
+        self.seats: dict = {}
+        self.gap_by_epoch: dict = {}
+        self.batch_log: list[dict] = []
+        self.ignored_by_epoch: dict = {}
+        self.skews: list[int] = []
+
+    def counter(self, name: str, pair=("aimla", "aimla-pm")) -> int:
+        return self.seats.get(pair, {}).get(name, 0)
+
+    @property
+    def seq_gap(self):
+        return self.counter("seq_gap")
+
+    @property
+    def seq_collision(self):
+        return self.counter("seq_collision")
+
+    @property
+    def seq_epoch_change(self):
+        return self.counter("seq_epoch_change")
+
+    def ingest(self, batch: dict, arrival_ms: int) -> dict:
+        bid = batch.get("batch_id")
+        if bid in self.replay:
+            return dict(self.replay[bid])
+        stored, dup, ignored = [], [], 0
+        ep = batch.get("seq_epoch")
+        pair = (batch.get("install_id"), batch.get("seat_id"))
+        for e in batch.get("events", []):
+            if e.get("kind") not in KINDS_KNOWN:
+                ignored += 1
+                continue
+            if e["event_id"] in self.ids:
+                dup.append(e["seq"])
+                continue
+            row = {"id": len(self.rows) + 1, "event_id": e["event_id"], "epoch": ep, "seq": e["seq"], "pair": pair,
+                   "kind": e["kind"], "batch_id": bid, "event": e}
+            self.rows.append(row)
+            self.ids[e["event_id"]] = row
+            stored.append(e["seq"])
+            self._fold(row)
+        resp = {"batch_id": bid, "accepted": len(stored), "duplicates": len(dup), "ignored_unknown_kinds": ignored,
+                "coerced_enum_values": 0, "server_time": "2026-08-24T00:00:00.000Z"}
+        self.replay[bid] = resp
+        self.batch_log.append({"batch_id": bid, "epoch": ep, "stored": stored, "dup": dup})
+        self.ignored_by_epoch[ep] = self.ignored_by_epoch.get(ep, 0) + ignored
+        try:
+            sent = calendar.timegm(time.strptime(batch["sent_at"][:19], "%Y-%m-%dT%H:%M:%S")) * 1000 + int(batch["sent_at"][20:23])
+            self.skews.append(arrival_ms - sent)
+        except Exception:
+            pass
+        return resp
+
+    def _fold(self, row):
+        st = self.seats.setdefault(row["pair"], {"mark": None, "seq_gap": 0, "seq_collision": 0, "seq_epoch_change": 0})
+        ep, seq, mark = row["epoch"], row["seq"], st["mark"]
+        changed = mark is not None and mark[0] != ep
+        if changed:
+            st["seq_epoch_change"] += 1
+        if mark is not None and mark[0] == ep and seq > mark[1] + 1:
+            g = seq - mark[1] - 1
+            st["seq_gap"] += g
+            self.gap_by_epoch[ep] = self.gap_by_epoch.get(ep, 0) + g
+        key = (row["pair"], ep, seq)
+        if key in self.keys:
+            st["seq_collision"] += 1
+        self.keys.add(key)
+        if changed or mark is None or (mark[0] == ep and seq > mark[1]):
+            st["mark"] = (ep, seq)
+
+    def held(self) -> set:
+        return set(self.ids)
+
+    def epochs(self) -> list:
+        out = []
+        for r in self.rows:
+            if r["epoch"] not in out:
+                out.append(r["epoch"])
+        return out
+
+
+# THE ACCEPTED `seq_gap` RESIDUAL, IN ONE PLACE. D1 § 10.2, *The accepted `seq_gap` residual* — the operator's
+# ruling opq-1792660567-cb5f (2026-10-22, option A): until server card#12210 lands, a fresh-epoch re-send of
+# events the site already holds raises a FALSE `seq_gap`, because the fold counts a gap over STORED rows only
+# and a duplicate is never stored. card#12210 makes the gap counter count every batch the ingest received;
+# when it lands, this constant flips to False and every leg that asserts the residual (AT-17's two legs, Case
+# F's upgrade-boundary leg, Case K's later-attempt `413` leg) expects 0 — here and nowhere else.
+SEQ_GAP_RESIDUAL_UNTIL_12210 = True
+
+
+def residual_seq_gap(store: FoldStore, epoch: str) -> int:
+    """§ 10.2's equality, as the fold counts it: the number of DUPLICATE seqs, over distinct `batch_id` (a
+    retry the replay memory answered processed nothing and is not in the log twice), that lie STRICTLY
+    BETWEEN the lowest and the highest STORED seq of `epoch`. Never a sum of the `duplicates` answers, never a
+    constant. 0 once card#12210 lands (`SEQ_GAP_RESIDUAL_UNTIL_12210`)."""
+    if not SEQ_GAP_RESIDUAL_UNTIL_12210:
+        return 0
+    stored = [r["seq"] for r in store.rows if r["epoch"] == epoch]
+    if not stored:
+        return 0
+    lo, hi = min(stored), max(stored)
+    dups = {d for b in store.batch_log if b["epoch"] == epoch for d in b["dup"]}
+    return len({d for d in dups if lo < d < hi})
+
+
+def assert_residual(label: str, store: FoldStore, epoch: str, sent_ids: set, last_hb: "dict | None") -> int:
+    """Every residual leg's one assertion set (D1 § 10.2, card#12210): the fold's `seq_gap` under the fresh
+    epoch equals the equality, and the equality is not vacuous; no unknown kind was ignored under that epoch,
+    so the figure is not skewed by a hole of another cause; every event id the reporter sent is held, once;
+    and the heartbeat after it raises no `lossy` — the false artifact is the counter and its badge alone."""
+    want = residual_seq_gap(store, epoch)
+    eq(f"{label}: the fold's seq_gap under the fresh epoch is § 10.2's equality — the duplicate seqs strictly "
+       f"between its first and highest stored seq ({want}; card#12210 flips this to 0)",
+       (want, True), (store.gap_by_epoch.get(epoch, 0), want > 0 or not SEQ_GAP_RESIDUAL_UNTIL_12210))
+    eq(f"{label}: … ignored_unknown_kinds is 0 under that epoch, every id sent is held exactly once, and the "
+       "next heartbeat raises no `lossy`", (0, set(), True),
+       (store.ignored_by_epoch.get(epoch, 0), sent_ids - store.held(),
+        last_hb is not None and "lossy" not in last_hb["data"]["degraded"]))
+    return want
+
+
+class SiteStub:
+    """One Mezzanine site: a real TLS server on 127.0.0.1, trusted through `ca_file`, with a FoldStore.
+
+    `script` is a list of per-POST actions consumed in arrival order; `default` applies when it is empty
+    (None = ingest normally and answer the ingest's 202). An action is a dict:
+      {"status": N, "body": obj|str, "headers": {...}}  answer that, storing nothing
+      {"commit_drop": True}                            store the batch, then close without answering
+      {"commit_hang": s}                               store it, then hold the answer `s` seconds and close
+      {"hold": s}                                      hold `s` seconds, then ingest and answer normally
+    `binding` maps a bearer token to the `(install_id, seat_id)` the site issued it for: a batch claiming
+    another pair is `403 identity_mismatch`, and an event claiming another is `422 invalid_event`
+    (BatchValidator, EventValidator). `clock_ms`, when set, is the arrival clock — the reporter's injected
+    one — for `clock_skew_ms`. `limits` enforces RateLimiter's two limits on fixed windows of that clock."""
+
+    def __init__(self, name: str):
+        self.name = name
+        self.store = FoldStore()
+        self.raw: list[bytes] = []
+        self.posts: list[dict] = []
+        self.answers: list = []
+        self.gets = 0
+        self.script: list = []
+        self.default = None
+        self.get_status = 200
+        self.get_body = None
+        self.get_headers = None
+        self.get_script: list = []
+        self.binding: dict = {}
+        # Tokens this site resolves; None resolves every token. A token outside the set is the ingest's own
+        # `401 unauthenticated` — to the probe as well as to a batch unless `post_only_auth`.
+        self.accept_tokens = None
+        self.post_only_auth = False
+        self.clock_ms = None
+        self.limits = False
+        self.windows: dict = {}
+        self.lock = threading.Lock()
+        outer = self
+
+        class H(http.server.BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *a):
+                pass
+
+            def handle(self):
+                try:
+                    super().handle()
+                except (BrokenPipeError, ConnectionResetError, ssl.SSLError):
+                    pass
+
+            def _send(self, status, body, headers=None):
+                data = body if isinstance(body, bytes) else (body.encode() if isinstance(body, str) else json.dumps(body).encode())
+                try:
+                    self.send_response(status)
+                    self.send_header("Content-Type", "application/json")
+                    for k, v in (headers or {}).items():
+                        self.send_header(k, v)
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                except OSError:
+                    pass
+
+            def do_GET(self):
+                with outer.lock:
+                    outer.gets += 1
+                    step = outer.get_script.pop(0) if outer.get_script else {}
+                if step.get("hold"):
+                    time.sleep(step["hold"])
+                st = step.get("status", outer.get_status)
+                body = step.get("body", outer.get_body)
+                tok = self.headers.get("Authorization", "")[7:]
+                if outer.accept_tokens is not None and not outer.post_only_auth and tok not in outer.accept_tokens \
+                        and "status" not in step and outer.get_status == 200:
+                    st, body = 401, {"error": "unauthenticated", "message": "x"}
+                if body is None:
+                    body = ({"accepted_schema_versions": [1], "server_time": "2026-08-24T00:00:00.000Z",
+                             "min_reporter_version": "0.1.0"} if st == 200 else {"error": "unauthenticated", "message": "x"})
+                self._send(st, body, step.get("headers") or outer.get_headers)
+
+            def do_POST(self):
+                n = int(self.headers.get("Content-Length", 0))
+                raw = self.rfile.read(n) if n else b""
+                if self.headers.get("Content-Encoding") == "gzip":
+                    import gzip
+                    raw = gzip.decompress(raw)
+                try:
+                    batch = json.loads(raw)
+                except Exception:
+                    batch = {}
+                auth = self.headers.get("Authorization", "")
+                with outer.lock:
+                    outer.raw.append(raw)
+                    outer.posts.append(batch)
+                    act = outer.script.pop(0) if outer.script else outer.default
+                if act and act.get("run"):
+                    act["run"]()
+                arrival = outer.clock_ms if outer.clock_ms is not None else int(time.time() * 1000)
+                if act and act.get("hold"):
+                    time.sleep(act["hold"])
+                if act and "status" in act:
+                    outer.answers.append(act["status"])
+                    self._send(act["status"], act.get("body", {}), act.get("headers"))
+                    return
+                if outer.accept_tokens is not None and auth[7:] not in outer.accept_tokens:
+                    outer.answers.append(401)
+                    self._send(401, {"error": "unauthenticated", "message": "x"})
+                    return
+                pair = outer.binding.get(auth[7:]) if outer.binding else None
+                if pair and (batch.get("install_id"), batch.get("seat_id")) != pair:
+                    outer.answers.append(403)
+                    self._send(403, {"error": "identity_mismatch", "message": "x", "expected_install_id": pair[0],
+                                     "expected_seat_id": pair[1]})
+                    return
+                if pair:
+                    for i, e in enumerate(batch.get("events", [])):
+                        if (e.get("install_id"), e.get("seat_id")) != pair:
+                            outer.answers.append(422)
+                            self._send(422, {"error": "invalid_event", "message": "x", "index": i, "field": "seat_id",
+                                             "reason": "identity"})
+                            return
+                if outer.limits:
+                    try:
+                        sent = calendar.timegm(time.strptime(batch["sent_at"][:19], "%Y-%m-%dT%H:%M:%S"))
+                    except Exception:
+                        sent = int(time.time())
+                    hk, mk = sent // 3600, sent // 60
+                    with outer.lock:
+                        ev = outer.windows.get(("h", hk), 0) + len(batch.get("events", []))
+                        rq = outer.windows.get(("m", mk), 0) + 1
+                        outer.windows[("h", hk)] = ev
+                        outer.windows[("m", mk)] = rq
+                    if ev > EVENTS_LIMIT or rq > REQUESTS_LIMIT:
+                        outer.answers.append(429)
+                        self._send(429, {"error": "rate_limited", "message": "x", "retry_after_s": 60,
+                                         "limit": EVENTS_LIMIT, "window_s": 3600})
+                        return
+                with outer.lock:
+                    resp = outer.store.ingest(batch, arrival)
+                if act and act.get("commit_drop"):
+                    outer.answers.append("dropped")
+                    self.close_connection = True
+                    try:
+                        self.connection.shutdown(socket.SHUT_RDWR)
+                    except OSError:
+                        pass
+                    return
+                if act and act.get("commit_hang"):
+                    outer.answers.append("hung")
+                    time.sleep(act["commit_hang"])
+                    self.close_connection = True
+                    try:
+                        self.connection.shutdown(socket.SHUT_RDWR)
+                    except OSError:
+                        pass
+                    return
+                outer.answers.append(202)
+                self._send(202, resp)
+
+        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(str(INGEST.crt), str(INGEST.key))
+        self.httpd.socket = ctx.wrap_socket(self.httpd.socket, server_side=True)
+        self.port = self.httpd.server_address[1]
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    @property
+    def url(self) -> str:
+        return f"https://127.0.0.1:{self.port}/api/ingest/events"
+
+    def events(self) -> list[dict]:
+        return [e for b in self.posts for e in b.get("events", [])]
+
+    def heartbeats(self) -> list[dict]:
+        return [e for e in self.events() if e.get("kind") == "reporter.heartbeat"]
+
+    def received_ids(self) -> set:
+        return {e["event_id"] for e in self.events()}
+
+    def stop(self):
+        self.httpd.shutdown()
+
+
+STUBS: list[SiteStub] = []
+
+
+def site_stub(name: str) -> SiteStub:
+    st = SiteStub(name)
+    STUBS.append(st)
+    return st
+
+
+def site_cfg(name: str, url: str, *, token: "str | None" = None, ca: "str | None" = CA, proxy=None) -> dict:
+    return {"name": name, "ingest_url": url, "token": token or seat_token(f"site:{name}:{url}"),
+            "ca_file": ca, "proxy_url": proxy}
+
+
+def multi_seat(name: str, sites: list, **kw) -> Seat:
+    """A seat in § 3.1's multi-site form: the four top-level transport keys removed, `sites` written."""
+    s = seat(name, **kw)
+    for k in ("ingest_url", "token", "ca_file", "proxy_url"):
+        s.cfg.pop(k, None)
+    s.cfg["sites"] = sites
+    s.write_cfg()
+    return s
+
+
+EIDS = iter(range(1, 10**12))
+AT28_T0 = (int(time.time()) // 3600 - 30) * 3600 * 1000 + 1_200_000   # 30 h ago, 20 min into an hour
+
+
+def spool_events(s: Seat, n: int, at_ms: int, *, kind: str = "tool.start", tag: str = "x", pad: int = 0,
+                 install_id: str = "aimla", seat_id: str = "aimla-pm") -> list[str]:
+    """Write `n` spool lines in the reporter's own line format (D1 § 11.2) into the bucket `at_ms` names,
+    and return their event ids. Faster than `n` hook processes, and the flusher reads them identically."""
+    b = time.strftime("%Y%m%d%H", time.gmtime(at_ms / 1000))
+    ids = []
+    with (s.spool / f"{b}.jsonl").open("a", encoding="utf-8") as fh:
+        for i in range(n):
+            t = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime((at_ms + i) / 1000)) + f".{(at_ms + i) % 1000:03d}Z"
+            eid = f"01{tag.upper()[:4]:_<4}{next(EIDS):020d}"
+            ev = {"event_id": eid, "schema_version": 1, "kind": kind, "event_time": t, "install_id": install_id,
+                  "seat_id": seat_id, "session_id": SID,
+                  "data": {"call_id": f"c-{tag}-{i}", "tool_name": "Bash", "pad": "p" * pad}}
+            fh.write(json.dumps({"v": 1, "t": t, "e": ev}) + "\n")
+            ids.append(eid)
+    return ids
+
+
+def fl(s: Seat, at_ms: "int | None" = None, reporter: Path = REPORTER, **envx):
+    """One flusher pass (one seat pass and one drain by every lane) on the injected clock."""
+    if at_ms is not None:
+        envx["FLEET_REPORTER_NOW_MS"] = at_ms
+    return flush(s, reporter=reporter, **envx)
+
+
+def sink_lines(s: Seat) -> list[dict]:
+    d = s.spool / "counters"
+    out = []
+    for f in sorted(d.glob("*.jsonl")) if d.exists() else []:
+        out += [json.loads(l) for l in f.read_text(encoding="utf-8").splitlines() if l.strip()]
+    return out
+
+
+def nlines(f: Path) -> int:
+    return len(f.read_text(encoding="utf-8").splitlines()) if f.exists() else 0
+
+
+def config_errors(cfg_path: Path, reporter: Path = REPORTER) -> dict:
+    """`loadConfig` on a file, through the reporter's own export (the installer's writer's one caller):
+    every error it names, and the sites it read — with no probe, so no name is ever resolved."""
+    r = subprocess.run(["node", "-e", "const m=require(process.argv[1]); const l=m.loadConfig(process.argv[2]);"
+                        "process.stdout.write(JSON.stringify({errors:m.allConfigErrors(l), sites:l.sites.map(s=>s.name)}))",
+                        str(reporter), str(cfg_path)], capture_output=True, text=True, cwd=str(HERE))
+    return json.loads(r.stdout or '{"errors":["<no output>"],"sites":[]}')
+
+
+def events_bytes(raw: bytes) -> bytes:
+    """The `events` member's bytes of one request body. `JSON.stringify` of the envelope puts it last, so it
+    runs from its key to the end: byte-equality of this span is the property § 3.1 states, asserted on the
+    bytes and not on parsed JSON."""
+    return raw[raw.index(b'"events":'):]
+
+
+def fl_bg(s: Seat, at_ms: int, reporter: Path = REPORTER, **envx) -> subprocess.Popen:
+    """A one-pass flusher in the background, so the suite can kill it mid-request (`kill_when`)."""
+    (s.spool / "flusher.lock").unlink(missing_ok=True)
+    return subprocess.Popen(["node", str(reporter), "flusher"],
+                            env=s.env(freeze=False, FLEET_REPORTER_ONE_PASS="1", FLEET_REPORTER_NOW_MS=at_ms, **envx),
+                            cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def kill_when(p: subprocess.Popen, s: Seat, cond, timeout: float = 30.0) -> bool:
+    """SIGKILL `p` the moment `cond()` holds — between a commit the stub made and the save that would
+    record the answer. Returns whether the condition was seen."""
+    t0 = time.time()
+    seen = False
+    while time.time() - t0 < timeout and p.poll() is None:
+        if cond():
+            seen = True
+            break
+        time.sleep(0.005)
+    if p.poll() is None:
+        p.kill()
+    p.wait()
+    s.freeze_flusher()
+    return seen
+
+
+INSTALL_DOC = (HERE / "INSTALL-LINUX.md").read_text(encoding="utf-8")
+WRITER_SRC = re.search(r"cat > \"\$B/write-config\.js\" <<'JS'\n(.*?)\nJS\n", INSTALL_DOC, re.S).group(1)
+
+
+def writer_path() -> Path:
+    """`write-config.js`, RE-EXTRACTED from INSTALL-LINUX.md Step 2's fenced block on every run, so the block
+    the operator saves is the one tested (AT-28 Case P)."""
+    d = tmpdir("fr-writer-")
+    os.chmod(d, 0o700)
+    f = d / "write-config.js"
+    f.write_text(WRITER_SRC, encoding="utf-8")
+    return f
+
+
+def token_file(token: str) -> Path:
+    d = tmpdir("fr-tokfile-")
+    os.chmod(d, 0o700)
+    f = d / "mezzanine-reporter-token"
+    f.write_text(token + "\n", encoding="utf-8")
+    os.chmod(f, 0o600)
+    return f
+
+
+def run_writer(env: dict, *, stdin: str = "", writer: "Path | None" = None, preexec=None) -> subprocess.CompletedProcess:
+    e = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": os.environ.get("HOME", "/tmp")}
+    e.update({k: str(v) for k, v in env.items()})
+    return subprocess.run(["node", str(writer or writer_path())], input=stdin, capture_output=True, text=True,
+                          env=e, cwd=str(HERE), preexec_fn=preexec)
+
+
+def set_token(s: Seat, site: str, token: str) -> subprocess.CompletedProcess:
+    """§ 3.1's `FR_MODE=set-token`, by the carried-file route, over this seat's config."""
+    return run_writer({"FR_MODE": "set-token", "FR_SITE_NAME": site, "FR_CONFIG": s.cfg_path,
+                       "FR_REPORTER": REPORTER, "FR_TOKEN_FILE": token_file(token)})
+
+
+M_K = {"FLUSH_MS": 25, "REQUEST_MS": 300, "HEARTBEAT_MS": 600, "HEALTH_MS": 1500}
+
+
+def m_flusher(*defects) -> Path:
+    """The reporter with its cadences scaled (and nothing else), so three K.HEALTH_MS periods take
+    seconds: FLUSH_MS < REQUEST_MS < HEARTBEAT_MS < HEALTH_MS, production's order."""
+    return plant_src(*[(rf"\b{k}: \d+,", f"{k}: {v},") for k, v in M_K.items()],
+                     *[(re.escape(old), new) for old, new in defects])
+
+
+def live(s: Seat, reporter: Path, **envx) -> subprocess.Popen:
+    (s.spool / "flusher.lock").unlink(missing_ok=True)
+    return subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, **envx), cwd=str(HERE),
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def stop_live(p: subprocess.Popen, s: Seat) -> None:
+    if p.poll() is None:
+        p.terminate()
+        try:
+            p.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            p.wait()
+    s.freeze_flusher()
+
+
+def wait_for(cond, timeout: float = 20.0) -> bool:
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        if cond():
+            return True
+        time.sleep(0.01)
+    return False
+
+
+TRANSPORT_KEYS_PY = ["ingest_url", "token", "ca_file", "proxy_url"]
+
+
+def log_text(s: Seat) -> str:
+    d = s.spool / "log"
+    return "".join(f.read_text(encoding="utf-8") for f in sorted(d.glob("*.log"))) if d.exists() else ""
+
+
+def fp_of(url: str) -> str:
+    import hashlib
+    return hashlib.sha256(f"aimla|aimla-pm|{url}".encode()).hexdigest()[:16]
+
+
+def tree_lines(s: Seat) -> int:
+    """Every line a hook appended: the spool, the index journal and the counter sink (D1 § 2.2 P-4)."""
+    n = 0
+    for pat in ("*.jsonl", "index/*.jsonl", "counters/*.jsonl"):
+        for f in s.spool.glob(pat):
+            n += len([l for l in f.read_text(encoding="utf-8").splitlines() if l])
+    return n
+
+
+# A copy with only the spool's size bound shrunk to 2 KiB, so a hook drops a bucket (§ 11.3) — as AT-4 drives it.
+P_SMALL_BOUND = plant_src((r"SPOOL_BYTES: 33554432,", "SPOOL_BYTES: 2048,"))
+DOWN_503 = {"status": 503, "body": {"error": "server_error", "message": "x", "detail": "store_failed"}}
+
+COMMIT_DROP = {"commit_drop": True}
+TOO_LARGE = {"status": 413, "body": {"error": "batch_too_large", "message": "x", "max_bytes": 1, "received_bytes": 2}}
+
+
+def held_once(st: SiteStub) -> bool:
+    ids = [r["event_id"] for r in st.store.rows]
+    return len(ids) == len(set(ids))
+
+
+# ── Case A — fan-out, written once ────────────────────────────────────────────────────────────────────
+def case_a(tag: str, reporter: Path = REPORTER) -> dict:
+    sa, sb = site_stub(f"a-{tag}"), site_stub(f"b-{tag}")
+    m = multi_seat(f"at28-a-{tag}", [site_cfg("sa", sa.url), site_cfg("sb", sb.url)])
+    one = seat(f"at28-a1-{tag}")
+    walls = {"multi": [], "single": []}
+    for i in range(5):
+        for key, st in (("multi", m), ("single", one)):
+            t0 = time.perf_counter()
+            hook(st, "PreToolUse", pre(tuid=f"a{tag}{i}"), reporter=reporter)
+            walls[key].append((time.perf_counter() - t0) * 1000)
+    d = {"spool_lines": len(m.events()), "single_spool_lines": len(one.events()),
+         "appends": tree_lines(m), "single_appends": tree_lines(one),
+         "wall_ms": {k: round(statistics.median(v)) for k, v in walls.items()}}
+    fl(m, reporter=reporter)
+    fl(m, reporter=reporter)   # a second pass: a spooled heartbeat, if one were spooled, is read by it
+    # Read after the passes: the flusher's start spools closes of its own (§ 8.3's reporter_restart reap).
+    spooled = {e["event_id"] for e in m.events() if e["kind"] != "reporter.heartbeat"}
+    for nm, st in (("sa", sa), ("sb", sb)):
+        d[nm] = {"ids": {e["event_id"] for e in st.events() if e["kind"] != "reporter.heartbeat"},
+                 "fps": sorted({h["data"]["config_fingerprint"] for h in st.heartbeats()}),
+                 "lag": [h["data"]["spool_lag_events"] for h in st.heartbeats()]}
+    d["spooled"] = spooled
+    d["fp"] = {"sa": fp_of(sa.url), "sb": fp_of(sb.url)}
+    return d
+
+
+a_g = case_a("green")
+eq("Case A: each site receives exactly the spooled event-id set — no more, no fewer", (True, True),
+   (a_g["sa"]["ids"] == a_g["spooled"], a_g["sb"]["ids"] == a_g["spooled"]))
+eq("  … the spool holds the events once, not once per site: its line count and every append the hooks made "
+   "(spool, index journal, counter sink) equal a single-site seat's for the same hooks",
+   (a_g["single_spool_lines"], a_g["single_appends"]), (a_g["spool_lines"], a_g["appends"]))
+print(f"  MEASURED  Case A hook wall time, median of 5: multi-site {a_g['wall_ms']['multi']} ms, "
+      f"single-site {a_g['wall_ms']['single']} ms (asserted only by AT-3 under FLEET_REPORTER_PERF)")
+eq("  … each site received heartbeats carrying its OWN config_fingerprint, and none built for the other",
+   ([a_g["fp"]["sa"]], [a_g["fp"]["sb"]]), (a_g["sa"]["fps"], a_g["sb"]["fps"]))
+eq("  … and each heartbeat carries that site's own lag (spool_lag_events per heartbeat, per site)", True,
+   bool(a_g["sa"]["lag"]) and bool(a_g["sb"]["lag"]))
+p_spool_hb = plant(
+    ("  if (heartbeat) lane.lastHeartbeat = atMs;\n",
+     "  if (heartbeat) { lane.lastHeartbeat = atMs; appendLine(path.join(spool, `${utcBucket(now())}.jsonl`), "
+     "JSON.stringify({ v: 1, t: heartbeat.event_time, e: heartbeat }), 'events'); }\n"),
+    ("      if (rec.e.kind === 'reporter.heartbeat' && !(rec.e.data && rec.e.data.config_fingerprint === fingerprint)) {",
+     "      if (false) {"))
+a_r = case_a("red", reporter=p_spool_hb)
+eq("RED: a reporter that SPOOLS the heartbeat (the build before this card) -> site sa receives a heartbeat whose "
+   "fingerprint is sb's", True, a_r["fp"]["sb"] in a_r["sa"]["fps"])
+redgreen("Case A — fan-out, written once (AT-28, D1 § 3.1, § 6.14)",
+         f"heartbeat spooled -> sa received fingerprints {a_r['sa']['fps']} (its own {a_r['fp']['sa']}, sb's {a_r['fp']['sb']})",
+         f"per-site heartbeat -> sa {a_g['sa']['fps']}, sb {a_g['sb']['fps']}; both received the {len(a_g['spooled'])} "
+         f"spooled ids exactly; spool lines {a_g['spool_lines']} = single-site {a_g['single_spool_lines']}, appends "
+         f"{a_g['appends']} = {a_g['single_appends']}")
+
+
+# ── Case C — a permanent refusal is one site's ────────────────────────────────────────────────────────
+REFUSE_422 = {"status": 422, "body": {"error": "invalid_event", "message": "x", "index": 0, "field": "data", "reason": "planted"}}
+
+
+def case_c(tag: str, reporter: Path = REPORTER) -> dict:
+    sa, sb = site_stub(f"c-a-{tag}"), site_stub(f"c-b-{tag}")
+    m = multi_seat(f"at28-c-{tag}", [site_cfg("sa", sa.url), site_cfg("sb", sb.url)])
+    ids = spool_events(m, 250, AT28_T0, tag="c")
+    sb.script = [REFUSE_422]
+    # sa's probe is held, so sb's lane has built, sent and disposed of its refused request before sa's lane
+    # builds its first one: a cursor shared across sites would already have moved past what sa never sent.
+    sa.get_script = [{"hold": 1.0}]
+    fl(m, AT28_T0 + 60_000, reporter=reporter)
+    fl(m, AT28_T0 + 120_000, reporter=reporter)
+    refused = [e["event_id"] for e in sb.posts[0].get("events", [])]
+    hb = {nm: st.heartbeats()[-1]["data"] for nm, st in (("sa", sa), ("sb", sb))}
+    return {"ids": set(ids), "refused": refused,
+            "b": (hb["sb"]["counters"]["batches_rejected"], hb["sb"]["counters"]["events_rejected_dropped"],
+                  "batches_rejected" in hb["sb"]["degraded"]),
+            "a": (hb["sa"]["counters"]["batches_rejected"], hb["sa"]["counters"]["events_rejected_dropped"], hb["sa"]["degraded"]),
+            "a_has_refused": set(refused) - {e["event_id"] for e in sb.posts[0]["events"] if e["kind"] == "reporter.heartbeat"} <= sa.received_ids(),
+            "files": {f: (m.spool / f).exists() for f in ("quarantine/rejected.sb.jsonl", "REJECTED.sb.txt",
+                                                         "quarantine/rejected.sa.jsonl", "REJECTED.sa.txt")},
+            "b_behind": set(ids) - set(refused) <= sb.received_ids(),
+            "a_missing": set(ids) - sa.received_ids()}
+
+
+c_g = case_c("green")
+eq("Case C: sb's heartbeat carries batches_rejected 1, events_rejected_dropped = that batch's event count, and "
+   "`batches_rejected` in degraded", (1, len(c_g["refused"]), True), c_g["b"])
+eq("  … sa's carries 0, 0 and an empty degraded", (0, 0, []), c_g["a"])
+eq("  … sa's received set still holds every event of the batch sb refused", (True, set()), (c_g["a_has_refused"], c_g["a_missing"]))
+eq("  … the record is in rejected.sb.jsonl and the line in REJECTED.sb.txt, and sa has neither file",
+   {"quarantine/rejected.sb.jsonl": True, "REJECTED.sb.txt": True, "quarantine/rejected.sa.jsonl": False,
+    "REJECTED.sa.txt": False}, c_g["files"])
+eq("  … and the events behind the refused batch reach sb", True, c_g["b_behind"])
+p_shared_cursor = plant(("      applyAdvance(spool, entry, req.advance);\n      entry.next_seq += req.count;\n      entry.request = null;\n      lane.attempt = 0; lane.waitUntil = 0;\n      c.persist();",
+                         "      for (const e of Object.values(state.sites)) applyAdvance(spool, e, req.advance);\n      entry.next_seq += req.count;\n      entry.request = null;\n      lane.attempt = 0; lane.waitUntil = 0;\n      c.persist();"))
+c_r = case_c("red", reporter=p_shared_cursor)
+eq("RED: a reporter that advances a seat-level cursor on a rejection -> sa never receives the refused batch's events",
+   True, len(c_r["a_missing"]) > 0)
+redgreen("Case C — a permanent refusal is one site's (AT-28)",
+         f"cursor advanced seat-wide -> sa missing {len(c_r['a_missing'])} of {len(c_r['ids'])} ids",
+         f"per-site cursor -> sb rejected/dropped/badged {c_g['b']}, sa {c_g['a']}, sa missing {len(c_g['a_missing'])}, "
+         f"files {c_g['files']}")
+
+
+# ── Case D — a drop is counted where it was felt ──────────────────────────────────────────────────────
+def case_d(tag: str, reporter: Path = REPORTER) -> dict:
+    sa, sb = site_stub(f"d-a-{tag}"), site_stub(f"d-b-{tag}")
+    m = multi_seat(f"at28-d-{tag}", [site_cfg("sa", sa.url), site_cfg("sb", sb.url)])
+    old = AT28_T0 - 3 * 86400_000
+    old_end = (old // 3600_000 + 1) * 3600_000
+    ids = spool_events(m, 7, old, tag="d")
+    sb.default = DOWN_503
+    # Pass 1 ten minutes before the bucket ages past the residency cap: sa delivers it, and sb's request,
+    # persisted, carries it. Pass 2 ten minutes after: the seat pass drops it, sb still down — its request
+    # is twenty minutes old, far inside the cap, so nothing but the drop happens to it.
+    fl(m, old_end + K_RES_MS - 600_000, reporter=reporter)
+    fl(m, old_end + K_RES_MS + 600_000, reporter=reporter)
+    dropped = not (m.spool / f"{time.strftime('%Y%m%d%H', time.gmtime(old / 1000))}.jsonl").exists()
+    sb.default = None
+    fl(m, old_end + K_RES_MS + 610_000, reporter=reporter)
+    hb = {nm: st.heartbeats()[-1]["data"] for nm, st in (("sa", sa), ("sb", sb))}
+    return {"dropped": dropped, "n": len(ids),
+            "b": (hb["sb"]["counters"]["spool_dropped_events"], "lossy" in hb["sb"]["degraded"]),
+            "a": (hb["sa"]["counters"]["spool_dropped_events"], "lossy" in hb["sa"]["degraded"])}
+
+
+d_g = case_d("green")
+eq("Case D: the aged bucket was dropped by the seat pass", True, d_g["dropped"])
+eq("  … sb's next heartbeat counts that bucket's lines past sb's cursor (all of them: sb received none) and "
+   "badges `lossy`", (d_g["n"], True), d_g["b"])
+eq("  … and sa's, which had received the bucket, counts 0 and no `lossy`", (0, False), d_g["a"])
+
+
+def case_d_hook(tag: str, reporter: Path) -> dict:
+    sa, sb = site_stub(f"dh-a-{tag}"), site_stub(f"dh-b-{tag}")
+    m = multi_seat(f"at28-dh-{tag}", [site_cfg("sa", sa.url), site_cfg("sb", sb.url)])
+    past = int(time.time() * 1000) - 2 * 3600_000
+    spool_events(m, 6, past, tag="dh", pad=400)
+    sb.default = DOWN_503
+    fl(m)                                    # the real bound: sa delivers, nothing is dropped yet
+    before = len(sink_lines(m))
+    hook(m, "PreToolUse", pre(tuid=f"dh{tag}"), reporter=reporter)
+    lines = sink_lines(m)[before:]
+    s_member = {k: v for ln in lines for k, v in (ln.get("s") or {}).items()}
+    return {"sb": (s_member.get("sb") or {}).get("spool_dropped_events"), "sa": "sa" in s_member}
+
+
+dh_g = case_d_hook("green", P_SMALL_BOUND)
+eq("  … a HOOK finding the spool over a (shrunk) size bound writes the drop into its sink line's s.sb, the lines "
+   "sb had not received, and writes no s.sa", (6, False), (dh_g["sb"], dh_g["sa"]))
+ONE_CURSOR = (re.escape("  for (const [name, cursor] of Object.entries(cursorsBySite)) { const n = past(cursor); if (n) count('spool_dropped_events', n, name); }"),
+              "  const one = Object.values(cursorsBySite)[0]; for (const [name] of Object.entries(cursorsBySite)) { const n = past(one); if (n) count('spool_dropped_events', n, name); }")
+d_r = case_d("red", reporter=plant_src(ONE_CURSOR))
+dh_r = case_d_hook("red", plant_src((r"SPOOL_BYTES: 33554432,", "SPOOL_BYTES: 2048,"), ONE_CURSOR))
+eq("RED: a reporter that counts the drop against one cursor (the first site's) -> sb's loss is 0, by the seat "
+   "pass and by the hook", (0, None), (d_r["b"][0], dh_r["sb"]))
+redgreen("Case D — a drop is counted where it was felt (AT-28, D1 § 11.3)",
+         f"one cursor for every site -> sb's heartbeat {d_r['b']}, hook s.sb {dh_r['sb']}",
+         f"each site's own cursor -> sb {d_g['b']}, sa {d_g['a']}; hook s.sb {dh_g['sb']}, s.sa present {dh_g['sa']}")
+
+
+# ── Case E — a corrupt line is disposed of once ───────────────────────────────────────────────────────
+def case_e(tag: str, reporter: Path = REPORTER) -> dict:
+    sa, sb = site_stub(f"e-a-{tag}"), site_stub(f"e-b-{tag}")
+    m = multi_seat(f"at28-e-{tag}", [site_cfg("sa", sa.url), site_cfg("sb", sb.url)])
+    spool_events(m, 3, AT28_T0, tag="e1")
+    b = time.strftime("%Y%m%d%H", time.gmtime(AT28_T0 / 1000))
+    with (m.spool / f"{b}.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write('{"v":1,"t":"2026-08-24T00:00:00.000Z","e":{"kind":"tool.st\n')
+    spool_events(m, 3, AT28_T0 + 1000, tag="e2")
+    fl(m, AT28_T0 + 60_000, reporter=reporter)
+    fl(m, AT28_T0 + 120_000, reporter=reporter)
+    return {"quarantined": nlines(m.spool / "quarantine" / "corrupt.jsonl"),
+            "hb": [st.heartbeats()[-1]["data"]["counters"]["spool_corrupt_lines"] for st in (sa, sb)]}
+
+
+e_g = case_e("green")
+eq("Case E: a torn line both lanes reach is quarantined ONCE, and spool_corrupt_lines is 1 on both sites' heartbeats",
+   (1, [1, 1]), (e_g["quarantined"], e_g["hb"]))
+p_no_mark = plant(("    if (it.start < (state.disposed[it.bucket] || 0)) continue;\n", ""))
+e_r = case_e("red", reporter=p_no_mark)
+eq("RED: a reporter without the per-bucket disposal mark -> quarantined twice, counted 2 on both heartbeats",
+   (2, [2, 2]), (e_r["quarantined"], e_r["hb"]))
+redgreen("Case E — a corrupt line is disposed of once for the seat (AT-28, D1 § 11.4)",
+         f"no disposal mark -> quarantined {e_r['quarantined']}x, heartbeats {e_r['hb']}",
+         f"disposal mark -> quarantined {e_g['quarantined']}x, heartbeats {e_g['hb']}")
+
+
+# ── Case G — a repointed name re-sends ────────────────────────────────────────────────────────────────
+def case_g(tag: str, reporter: Path = REPORTER) -> dict:
+    sa, sb, sc = site_stub(f"g-a-{tag}"), site_stub(f"g-b-{tag}"), site_stub(f"g-c-{tag}")
+    m = multi_seat(f"at28-g-{tag}", [site_cfg("sa", sa.url), site_cfg("sb", sb.url)])
+    ids = set(spool_events(m, 12, AT28_T0, tag="g"))
+    fl(m, AT28_T0 + 60_000, reporter=reporter)
+    epoch_b = m.entry("sb").get("seq_epoch")
+    # Control: the same restart with the URL unchanged re-sends nothing.
+    n_b = len(sb.posts)
+    fl(m, AT28_T0 + 120_000, reporter=reporter)
+    control = [e for b in sb.posts[n_b:] for e in b["events"] if e["kind"] != "reporter.heartbeat"]
+    m.cfg["sites"][1]["ingest_url"] = sc.url
+    m.write_cfg()
+    fl(m, AT28_T0 + 180_000, reporter=reporter)
+    import hashlib
+    return {"ids": ids, "c_missing": ids - sc.received_ids(), "c_epochs": sorted({b["seq_epoch"] for b in sc.posts}),
+            "epoch_b": epoch_b, "control_resent": len(control),
+            "hash_now": m.entry("sb").get("ingest_url_sha256"), "hash_want": hashlib.sha256(sc.url.encode()).hexdigest()}
+
+
+g_g = case_g("green")
+eq("Case G: a name repointed at another server sends that server the WHOLE spool, under a new seq_epoch",
+   (set(), True), (g_g["c_missing"], g_g["epoch_b"] not in g_g["c_epochs"] and len(g_g["c_epochs"]) == 1))
+eq("  … and the entry now binds the new URL's site key", g_g["hash_want"], g_g["hash_now"])
+eq("  … CONTROL: the same restart with the URL unchanged re-sends nothing", 0, g_g["control_resent"])
+p_name_only = plant(("  if (e.ingest_url_sha256 === undefined ? !e.legacy : e.ingest_url_sha256 !== urlBinding(site)) return null;\n", ""))
+g_r = case_g("red", reporter=p_name_only)
+eq("RED: a reporter that keys the entry by name alone -> the third server is missing every id behind sb's old cursor",
+   g_r["ids"], g_r["c_missing"])
+redgreen("Case G — a repointed name re-sends (AT-28, D1 § 3.1 rule 2)",
+         f"entry keyed by name alone -> new server missing {len(g_r['c_missing'])} of {len(g_r['ids'])} ids",
+         f"entry bound to the site key -> new server missing {len(g_g['c_missing'])}, epochs {g_g['c_epochs']} "
+         f"(old {g_g['epoch_b']}); unchanged URL re-sent {g_g['control_resent']}")
+
+
+# ── Case I — the scope of a config error ──────────────────────────────────────────────────────────────
+def case_i(tag: str, reporter: Path = REPORTER) -> dict:
+    sa, sb = site_stub(f"i-a-{tag}"), site_stub(f"i-b-{tag}")
+    m = multi_seat(f"at28-i-{tag}", [site_cfg("sa", sa.url), site_cfg("sb", sb.url, ca=str(TMP / f"no-ca-{tag}.pem"))])
+    before = len(sink_lines(m))
+    hook(m, "PreToolUse", pre(tuid=f"i{tag}"), reporter=reporter)
+    hl = sink_lines(m)[before:]
+    fl(m, reporter=reporter)
+    fl(m, reporter=reporter)
+    r, rep = selftest(m, reporter=reporter)
+    hb = sa.heartbeats()[-1]["data"] if sa.heartbeats() else {"counters": {}, "selftest": {}}
+    return {"a_events": len([e for e in sa.events() if e["kind"] != "reporter.heartbeat"]), "b_posts": len(sb.posts),
+            "a_readable": hb["selftest"].get("config_readable"), "a_config_invalid": hb["counters"].get("config_invalid"),
+            "rc": r.returncode, "names": any(e.startswith("sites[sb].ca_file") for e in rep["detail"]["config_readable"]["errors"]),
+            "hook_s_b": sum((ln.get("s") or {}).get("sb", {}).get("config_invalid", 0) for ln in hl),
+            "hook_c": sum(ln.get("c", {}).get("config_invalid", 0) for ln in hl),
+            "hook_s_a": any("sa" in (ln.get("s") or {}) for ln in hl)}
+
+
+i_g = case_i("green")
+eq("Case I: with sb's ca_file unreadable, sa still receives events, and its heartbeat's config_readable passes "
+   "with no config_invalid member", (True, "pass", None), (i_g["a_events"] > 0, i_g["a_readable"], i_g["a_config_invalid"]))
+eq("  … sb receives nothing, and `selftest` exits 1 naming sites[sb].ca_file", (0, 1, True), (i_g["b_posts"], i_g["rc"], i_g["names"]))
+eq("  … and a hook under that config counts config_invalid in its sink line's s.sb, with no c.config_invalid and "
+   "no s.sa", (1, 0, False), (i_g["hook_s_b"], i_g["hook_c"], i_g["hook_s_a"]))
+
+
+def config_run(tag: str, mutate, reporter: Path = REPORTER) -> dict:
+    stubs = [site_stub(f"ic-{tag}-{i}") for i in range(5)]
+    m = multi_seat(f"at28-ic-{tag}", [site_cfg(f"s{i}", st.url) for i, st in enumerate(stubs[:3])])
+    mutate(m, stubs)
+    m.write_cfg()
+    spool_events(m, 3, AT28_T0, tag="ic")
+    fl(m, AT28_T0 + 60_000, reporter=reporter)
+    r, rep = selftest(m, reporter=reporter)
+    return {"posts": [len(st.posts) for st in stubs], "rc": r.returncode,
+            "errors": rep.get("detail", {}).get("config_readable", {}).get("errors", []),
+            "epochs": [sorted({b["seq_epoch"] for b in st.posts}) for st in stubs]}
+
+
+both = config_run("both", lambda m, st: m.cfg.__setitem__("ca_file", None))
+eq("  … `\"ca_file\": null` at the top level beside sites is BOTH FORMS PRESENT: nothing is sent anywhere, and the "
+   "error names ca_file", ([0, 0, 0, 0, 0], True),
+   (both["posts"], any("top-level ca_file is present beside sites" in e for e in both["errors"])))
+five = config_run("five", lambda m, st: m.cfg.__setitem__("sites", [site_cfg(f"s{i}", x.url) for i, x in enumerate(st)]))
+eq("  … five sites: nothing is sent anywhere, and the error names the rule", ([0] * 5, True),
+   (five["posts"], any("sites must be an array of 1…4" in e for e in five["errors"])))
+dup = config_run("dup", lambda m, st: m.cfg["sites"][1].__setitem__("ingest_url", st[0].url))
+eq("  … two sites sharing a URL: both send nothing while the third does, and the error names both sites",
+   (0, True, True), (dup["posts"][0], dup["posts"][2] > 0,
+                     any(e.startswith("sites[s0].ingest_url names the same server as sites[1]") for e in dup["errors"])
+                     and any(e.startswith("sites[s1].ingest_url names the same server as sites[0]") for e in dup["errors"])))
+
+
+def key_errors(urls: list) -> list:
+    f = tmpdir("fr-at28-key-") / "config.json"
+    f.write_text(json.dumps({"install_id": "aimla", "seat_id": "aimla-pm", "spool_dir": str(f.parent), "enabled": True,
+                             "sites": [site_cfg(f"k{i}", u) for i, u in enumerate(urls)]}), encoding="utf-8")
+    return [e for e in config_errors(f)["errors"] if "same server" in e]
+
+
+k_caps = key_errors(["https://A.example.test:443/api/ingest/events", "https://a.example.test/api/ingest/events"])
+k_user = key_errors(["https://PLANTED-U1:PLANTED-P1@a.example.test/api/ingest/events", "https://a.example.test/api/ingest/events"])
+k_path = key_errors(["https://a.example.test/api/ingest/events", "https://a.example.test/other/ingest/events"])
+eq("  … the URL rule is by SITE KEY: a capitalised host with :443 written out, and a URL with userinfo, are each the "
+   "same server as the plain spelling — refused naming both sites and neither value; two URLs differing in path "
+   "are two sites", (2, 2, 0, False),
+   (len(k_caps), len(k_user), len(k_path), any("example.test" in e or "PLANTED" in e for e in k_caps + k_user)))
+p_raw_key = plant(("      const ka = typeof a.ingest_url === 'string' ? siteKey(a.ingest_url) : null;\n"
+                   "      if (ka !== null && ka === (typeof b.ingest_url === 'string' ? siteKey(b.ingest_url) : null)) {",
+                   "      const ka = typeof a.ingest_url === 'string' ? a.ingest_url : null;\n"
+                   "      if (ka !== null && ka === b.ingest_url) {"))
+two_spellings = config_run("spell-red", lambda m, st: m.cfg["sites"][1].__setitem__(
+    "ingest_url", st[0].url.replace("/api/ingest/events", "/api/ingest/./events")), reporter=p_raw_key)
+k_dot = key_errors([INGEST.url, INGEST.url.replace("/api/ingest/events", "/api/ingest/./events")])
+eq("  … and a dot segment in the path is the same server too (the spelling the RED below sends to a real stub)",
+   2, len(k_dot))
+eq("THIRD RED: a reporter comparing the raw strings passes two spellings of one server as two sites, and the "
+   "server behind them receives two seq streams for one seat", 2, len(two_spellings["epochs"][0]))
+p_all_seat = plant(("    if (!lane.configOk || lane.authStopped) return;",
+                    "    if (!lane.configOk || allErrors.length || lane.authStopped) return;"))
+i_r1 = case_i("red-seat", reporter=p_all_seat)
+eq("RED: a reporter that treats every error as seat-scoped -> sa sends nothing while only sb's file is broken",
+   0, i_r1["a_events"])
+p_hook_seat = plant(("  for (const site of loaded.sites) if (site.errors.length && site.name !== null) count('config_invalid', 1, site.name);",
+                     "  for (const site of loaded.sites) if (site.errors.length && site.name !== null) count('config_invalid');"))
+i_r2 = case_i("red-hook", reporter=p_hook_seat)
+eq("SECOND RED: a reporter whose hook counts config_invalid seat-wide -> sa's next heartbeat carries config_invalid "
+   "for sb's file", True, (i_r2["a_config_invalid"] or 0) > 0)
+redgreen("Case I — the scope of a config error (AT-28, D1 § 3.1)",
+         f"every error seat-scoped -> sa delivered {i_r1['a_events']}; hook counting seat-wide -> sa's heartbeat "
+         f"config_invalid={i_r2['a_config_invalid']}; raw-string URL rule -> one server received epochs {two_spellings['epochs'][0]}",
+         f"site-scoped -> sa delivered {i_g['a_events']} with config_readable {i_g['a_readable']} and no config_invalid, "
+         f"sb received {i_g['b_posts']}, selftest rc {i_g['rc']}; hook s.sb={i_g['hook_s_b']} c={i_g['hook_c']}; both forms "
+         f"present -> posts {both['posts']}; five sites -> {five['posts']}; shared URL -> {dup['posts'][:3]}; site key refuses "
+         f"{len(k_caps)}/{len(k_user)} errors for the spellings, {len(k_path)} for a path difference")
+
+
+# ── Case O — one site's poison stream evicts nothing of another's ─────────────────────────────────────
+def case_o(tag: str, reporter: Path = REPORTER) -> dict:
+    sa, sb = site_stub(f"o-a-{tag}"), site_stub(f"o-b-{tag}")
+    m = multi_seat(f"at28-o-{tag}", [site_cfg("sa", sa.url), site_cfg("sb", sb.url)])
+    spool_events(m, 4000, AT28_T0, tag="o", pad=900)
+    # sb's marker starts AT its 64 KiB cap, so every refusal below is written by its drop-oldest rule.
+    (m.spool / "REJECTED.sb.txt").write_text(("x" * 127 + "\n") * 512, encoding="utf-8")
+    sb.default = REFUSE_422
+    t = AT28_T0 + 60_000
+    for _ in range(4):
+        fl(m, t, reporter=reporter)
+        t += 60_000
+    spool_events(m, 5, AT28_T0 + 3600_000, tag="o2")
+    sa.script = [REFUSE_422]
+    fl(m, t, reporter=reporter)
+    qa = m.spool / "quarantine" / "rejected.sa.jsonl"
+    mk = m.spool / "REJECTED.sa.txt"
+    return {"b_file": (m.spool / "quarantine" / "rejected.sb.jsonl").stat().st_size if (m.spool / "quarantine" / "rejected.sb.jsonl").exists() else 0,
+            "b_marker": (m.spool / "REJECTED.sb.txt").stat().st_size if (m.spool / "REJECTED.sb.txt").exists() else 0,
+            "a_record": qa.exists() and qa.stat().st_size > 0, "a_marker": mk.exists(),
+            "b_dropped": (m.entry("sb").get("counters") or {}).get("quarantine_rejected_dropped", 0),
+            "a_dropped": (m.entry("sa").get("counters") or {}).get("quarantine_rejected_dropped", 0),
+            "shared": (m.spool / "quarantine" / "rejected.jsonl").exists()}
+
+
+Q_CAP = k_of(_prod_src, "Q_REJECTED_CAP")
+o_g = case_o("green")
+eq(f"Case O precondition: sb's refusals filled its quarantine to the {Q_CAP} B cap", True, o_g["b_file"] >= Q_CAP - 300_000 and o_g["b_dropped"] > 0)
+eq("  … sa's one refused record is in rejected.sa.jsonl and its line in REJECTED.sa.txt", (True, True), (o_g["a_record"], o_g["a_marker"]))
+eq("  … sb's cap counted quarantine_rejected_dropped on sb's entry, and sa's is 0", (True, 0), (o_g["b_dropped"] > 0, o_g["a_dropped"]))
+p_one_file = plant(("which === 'corrupt' ? 'corrupt.jsonl' : `rejected.${siteName}.jsonl`", "which === 'corrupt' ? 'corrupt.jsonl' : 'rejected.jsonl'"))
+o_r = case_o("red", reporter=p_one_file)
+eq("RED: a reporter with one rejected.jsonl -> sa's record is dropped at sb's cap, and sa counts the drop", (True, True),
+   (o_r["shared"], o_r["a_dropped"] > 0))
+redgreen("Case O — per-site quarantine caps (AT-28, D1 § 11.1)",
+         f"one shared file -> sa's quarantine_rejected_dropped {o_r['a_dropped']}",
+         f"per-site files -> sb file {o_g['b_file']} B (cap {Q_CAP}), sb drops {o_g['b_dropped']}, sa record kept {o_g['a_record']}, "
+         f"sa drops {o_g['a_dropped']}")
+
+
+# ── Case K — a request the site may hold is resent as built, and nothing else is built under its seqs ──
+# D1 § 3.1, *One request per site, persisted before it is sent and resent verbatim until the site answers*.
+# Every leg asserts `seq_collision` 0 on sb and every event id held once; a leg that expects an epoch reset
+# asserts `seq_epoch_change` 1 and every other leg 0.
+
+
+def k_seat(tag: str):
+    sa, sb = site_stub(f"k-a-{tag}"), site_stub(f"k-b-{tag}")
+    m = multi_seat(f"at28-k-{tag}", [site_cfg("sa", sa.url), site_cfg("sb", sb.url)])
+    return m, sa, sb
+
+
+def req_of(m: Seat, site: str = "sb") -> "dict | None":
+    return m.entry(site).get("request")
+
+
+
+
+# PLANTS, each the defect a leg below exists to catch.
+PLANT_REBUILD = plant(("    lane.attempt += 1;\n    lane.waitUntil = now()",
+                       "    entry.request = null; lane.attempt += 1;\n    lane.waitUntil = now()"))
+PLANT_WINDOW = plant(("    const req = entry.request;\n    // The window and the backoff DELAY a send; neither ever changes one.\n"
+                      "    if (atMs < lane.waitUntil || !windowAdmits(entry, req, atMs)) return;\n",
+                      "    if (atMs < lane.waitUntil) return;\n"
+                      "    if (!windowAdmits(entry, entry.request, atMs)) { entry.request = null; if (!buildRequest(c, lane, atMs)) return; }\n"
+                      "    const req = entry.request;\n"))
+PLANT_413 = plant(("        if (req.attempts > 1) {\n          entry.seq_epoch = ulid(atMs); entry.next_seq = 1;\n",
+                   "        if (false) {\n          entry.seq_epoch = ulid(atMs); entry.next_seq = 1;\n"))
+PLANT_SENTAT = plant(("const composeBody = (r) => JSON.stringify(envelopeOf(r, rfc3339(now())));",
+                      "const composeBody = (r) => JSON.stringify(envelopeOf(r, rfc3339(r.built_at)));"))
+PLANT_SAVE_AFTER = plant(("    if (!c.persist({ sync: true })) { logLine(spool, lane.role, 'the pre-send save of state.json failed — sending nothing'); return; }\n", ""))
+PLANT_NOID = plant(("  return { entry: e, reset: e.identity_sha256 !== undefined && e.identity_sha256 !== identityBinding(cfg) };",
+                    "  return { entry: e, reset: false };"))
+PLANT_ID_REQ = plant(("  return { entry: e, reset: e.identity_sha256 !== undefined && e.identity_sha256 !== identityBinding(cfg) };",
+                      "  return { entry: e, reset: !!e.request && e.identity_sha256 !== undefined && e.identity_sha256 !== identityBinding(cfg) };"))
+
+
+# K1 — commit, then drop the connection: across a retry, and across a restart.
+def k_commit_drop(tag: str, reporter: Path = REPORTER, *, kill: bool = False, control: bool = False) -> dict:
+    m, sa, sb = k_seat(f"cd-{tag}")
+    spool_events(m, 10, AT28_T0, tag="k1")
+    seen_attempts = []
+    snap = lambda: seen_attempts.append((req_of(m) or {}).get("attempts"))   # noqa: E731
+    t = AT28_T0 + 60_000
+    if control:
+        sb.script = [{"run": snap}]
+        fl(m, t, reporter=reporter)
+    elif kill:
+        sb.script = [{"run": snap, "commit_hang": 20}]
+        p = fl_bg(m, t, reporter=reporter)
+        kill_when(p, m, lambda: len(sb.store.rows) > 0)
+    else:
+        sb.script = [{"run": snap, "commit_drop": True}]
+        fl(m, t, reporter=reporter)
+    after_first = req_of(m)
+    if not control:
+        sb.script = [{"run": snap}]
+        fl(m, t + 10_000, reporter=reporter)
+    e = m.entry("sb")
+    return {"raw": list(sb.raw), "posts": list(sb.posts), "attempts_seen": seen_attempts,
+            "after_first": after_first, "after": e.get("request"), "next_seq": e.get("next_seq"),
+            "collision": sb.store.seq_collision, "change": sb.store.seq_epoch_change, "once": held_once(sb)}
+
+
+def k1_view(d: dict) -> tuple:
+    p = d["posts"]
+    first = p[0] if p else {}
+    same = len(d["raw"]) >= 2 and events_bytes(d["raw"][0]) == events_bytes(d["raw"][1]) \
+        and p[0]["batch_id"] == p[1]["batch_id"] and p[1]["sent_at"] > p[0]["sent_at"]
+    # What the lane builds next opens at first_seq + count: the deferred heartbeat, built on the disposal.
+    nxt = p[2]["events"][0]["seq"] if len(p) > 2 else d["next_seq"]
+    return (same, d["attempts_seen"][:2], d["after_first"] is not None, d["after"],
+            nxt == (first.get("events") or [{}])[0].get("seq", 0) + len(first.get("events", [])),
+            d["collision"], d["change"], d["once"])
+
+
+k1 = k_commit_drop("green")
+eq("Case K, commit-then-drop: the retry's `events` bytes and batch_id are byte-equal to the first attempt's and its "
+   "sent_at is later; sb's entry held the request from before the first send until the retry's answer (attempts 1, "
+   "then 2, read as each arrived); after the accept no request is held and next_seq is first_seq + count; "
+   "seq_collision 0, no epoch change, every id held once", (True, [1, 2], True, None, True, 0, 0, True), k1_view(k1))
+k1k = k_commit_drop("kill", kill=True)
+eq("  … and the same across a flusher KILLED between that commit and its save, then restarted — the request and "
+   "next_seq were in state.json before the first send", (True, [1, 2], True, None, True, 0, 0, True), k1_view(k1k))
+k1c = k_commit_drop("control", control=True)
+eq("  CONTROL: the stub answering in time -> one request, one attempt (attempts 1), nothing retried, no request held",
+   (1, [1], None, 0, True), (len(k1c["posts"]), k1c["attempts_seen"], k1c["after"], k1c["collision"], k1c["once"]))
+k1r = k_commit_drop("red-save-after", reporter=PLANT_SAVE_AFTER, kill=True)
+eq("RED: a reporter that saves state.json AFTER the send rather than before -> killed between the send and the save, "
+   "the restart builds a different request under the committed seqs: seq_collision >= 1", True, k1r["collision"] >= 1)
+
+
+# K2 — the deferred heartbeat (round 3's Route A, which must now be unreachable).
+def k_deferred(tag: str, reporter: Path = REPORTER, *, live: bool = False) -> dict:
+    m, sa, sb = k_seat(f"dh-{tag}")
+    spool_events(m, 5, AT28_T0, tag="k2a")
+    t = AT28_T0 + 60_000
+    # The first request (with its heartbeat) is accepted; while it is answered more lines are spooled, so the
+    # lane's next request carries NO heartbeat (its timer was just reset) — and that one is committed and dropped.
+    sb.script = [{"run": lambda: spool_events(m, 5, AT28_T0 + 100, tag="k2b")}, COMMIT_DROP]
+    if live:
+        # Without a restart: a long-lived flusher on the timing-scaled copy, its backoff forced to zero, and the
+        # stub dropping every answer past HEARTBEAT_MS of real time.
+        sb.default = COMMIT_DROP
+        (m.spool / "flusher.lock").unlink(missing_ok=True)
+        pr = subprocess.Popen(["node", str(reporter), "flusher"], env=m.env(freeze=False, FLEET_REPORTER_BACKOFF_MAX_MS=0),
+                              cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(3 * FAST_K["HEARTBEAT_MS"] / 1000)
+        held = req_of(m)
+        sb.default = None
+        t_accept = time.time()
+        time.sleep(2 * FAST_K["HEARTBEAT_MS"] / 1000)
+        pr.kill()
+        pr.wait()
+        m.freeze_flusher()
+    else:
+        fl(m, t, reporter=reporter)
+        held = req_of(m)
+        for i in range(1, 4):        # three restarts across three heartbeat intervals, the request unanswered
+            sb.script = [COMMIT_DROP]
+            fl(m, t + i * (K_HB_MS + 1000), reporter=reporter)
+        t_accept = (t + 4 * (K_HB_MS + 1000)) / 1000
+        fl(m, t + 4 * (K_HB_MS + 1000), reporter=reporter)
+    posts = list(sb.posts)
+    deferred = posts[1:]
+    retries = [b for b in deferred if held and b["batch_id"] == held["batch_id"]]
+    raws = [r for r, b in zip(sb.raw[1:], deferred) if held and b["batch_id"] == held["batch_id"]]
+    after = [b for b in deferred if not held or b["batch_id"] != held["batch_id"]]
+    nxt = after[0]["events"][0] if after and after[0]["events"] else {}
+    return {"held_hb": None if not held else held["heartbeat_event_id"], "n_retries": len(retries),
+            "bytes_same": len({events_bytes(r) for r in raws}) == 1 and len(raws) >= 2,
+            "only_resends": all(b["batch_id"] == held["batch_id"] for b in deferred[:len(retries)]) if held else False,
+            "hb_in_wait": [e for b in retries for e in b["events"] if e["kind"] == "reporter.heartbeat"],
+            "next_hb": (nxt.get("kind"), nxt.get("seq") == (held["first_seq"] + held["count"]) if held else None,
+                        bool(nxt) and nxt.get("event_time", "") >= time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(t_accept - 1))),
+            "collision": sb.store.seq_collision, "once": held_once(sb)}
+
+
+k2 = k_deferred("green")
+eq("Case K, deferred heartbeat (Route A), across restarts: sb's held request carries no heartbeat; sb receives nothing "
+   "but byte-identical resends of it, no heartbeat inside the wait; on the accept the next request carries a "
+   "heartbeat at item 0 under seq = first_seq + count, stamped after the accept; seq_collision 0",
+   (None, True, True, [], ("reporter.heartbeat", True, True), 0, True),
+   (k2["held_hb"], k2["n_retries"] >= 2 and k2["bytes_same"], k2["only_resends"], k2["hb_in_wait"], k2["next_hb"],
+    k2["collision"], k2["once"]))
+k2l = k_deferred("live", fast_flusher(), live=True)
+eq("  … and without a restart (one long-lived flusher, timing scaled on a copy, backoff forced to zero)",
+   (None, True, [], 0, True), (k2l["held_hb"], k2l["n_retries"] >= 2 and k2l["bytes_same"], k2l["hb_in_wait"],
+                              k2l["collision"], k2l["once"]))
+k2r = k_deferred("red", reporter=PLANT_REBUILD)
+eq("RED: round 3's shape — a heartbeat pinned and the retry rebuilt from the cursor, no persisted request -> the "
+   "retry carries a heartbeat at item 0 under the committed first_seq: seq_collision 1 (Route A, measured)",
+   True, k2r["collision"] >= 1)
+
+
+# K3 — the shortened retry (round 3's Route B, which must now be unreachable).
+def k_window(tag: str, reporter: Path = REPORTER) -> dict:
+    m, sa, sb = k_seat(f"win-{tag}")
+    spool_events(m, 300, AT28_T0, tag="k3")
+    t = AT28_T0 + 60_000
+    sb.script = [COMMIT_DROP]
+    fl(m, t, reporter=reporter)
+    first = req_of(m)
+    # Fill the window through the clock: 19,880 − 199 events claimed this minute, the attempt above included.
+    st = m.state()
+    st["sites"]["sb"]["window"] = {str(t // 60000): K_SITE_EPH - K_HEADROOM - (K_BATCH - 1)}
+    (m.spool / "state.json").write_text(json.dumps(st), encoding="utf-8")
+    n0 = len(sb.posts)
+    fl(m, t + 10_000, reporter=reporter)
+    during = len(sb.posts) - n0
+    rolled = t + 3615_000 + 120_000
+    fl(m, rolled, reporter=reporter)
+    later = sb.posts[n0:]
+    first_after = later[0] if later else {}
+    second = later[1] if len(later) > 1 else {}
+    return {"count": first["count"] if first else None, "during": during,
+            "same": bool(first_after) and first_after.get("batch_id") == first["batch_id"]
+            and events_bytes(sb.raw[n0]) == events_bytes(sb.raw[0]),
+            "resent_count": len(first_after.get("events", [])),
+            "next_first": (second.get("events") or [{}])[0].get("seq"), "want_next": first["first_seq"] + K_BATCH if first else None,
+            "collision": sb.store.seq_collision, "once": held_once(sb)}
+
+
+k3 = k_window("green")
+eq(f"Case K, shortened retry (Route B): with a {K_BATCH}-event request unanswered and the window filled to "
+   f"19,880 − {K_BATCH - 1}, no request reaches sb until the window rolls; the one that then does is byte-identical, "
+   f"{K_BATCH} events, not fewer; the request after it opens at first_seq + {K_BATCH}; seq_collision 0",
+   (K_BATCH, 0, True, K_BATCH, k3["want_next"], 0, True),
+   (k3["count"], k3["during"], k3["same"], k3["resent_count"], k3["next_first"], k3["collision"], k3["once"]))
+k3r = k_window("red", reporter=PLANT_WINDOW)
+eq("RED: a reporter that rebuilds the retry under the window -> the retry is shorter than the attempt, and what is "
+   "built after it collides with the committed tail (Route B, measured)", (True, True),
+   (k3r["during"] >= 1, k3r["collision"] >= 1))
+
+
+# K4 — a bucket the request was built from is dropped behind it.
+def k_dropped(tag: str, reporter: Path = REPORTER, *, by_hook: bool = False) -> dict:
+    m, sa, sb = k_seat(f"drop-{tag}")
+    if by_hook:
+        old = int(time.time() * 1000) - 2 * 3600_000
+        n_old = len(spool_events(m, 6, old, tag="k4o", pad=400))
+        spool_events(m, 4, int(time.time() * 1000) - 60_000, tag="k4n")
+        t1 = t2 = None
+    else:
+        old = AT28_T0 - 3 * 86400_000
+        old_end = (old // 3600_000 + 1) * 3600_000
+        n_old = len(spool_events(m, 6, old, tag="k4o"))
+        spool_events(m, 4, old_end + K_RES_MS - 1200_000, tag="k4n")
+        t1, t2 = old_end + K_RES_MS - 600_000, old_end + K_RES_MS + 600_000
+    sb.script = [COMMIT_DROP]
+    fl(m, t1, reporter=reporter)
+    first = req_of(m)
+    a_before = (m.entry("sa").get("seq_epoch"), dict(m.entry("sa").get("counters") or {}))
+    if by_hook:
+        hook(m, "PreToolUse", pre(tuid=f"k4{tag}"), reporter=P_SMALL_BOUND)
+    fl(m, t2, reporter=reporter)
+    retry = sb.posts[1] if len(sb.posts) > 1 else {}
+    a_after = (m.entry("sa").get("seq_epoch"), {k: v for k, v in (m.entry("sa").get("counters") or {}).items()
+                                                  if k not in ("events_sent", "batches_ok")})
+    return {"same": bool(retry) and first is not None and retry.get("batch_id") == first["batch_id"]
+            and events_bytes(sb.raw[1]) == events_bytes(sb.raw[0]) and retry.get("seq_epoch") == first["seq_epoch"],
+            "dropped": (m.entry("sb").get("counters") or {}).get("spool_dropped_events", 0), "n_old": n_old,
+            "lost_but_held": n_old and {e["event_id"] for e in first["events"]} <= sb.store.held() if first else False,
+            "a_epoch_same": a_before[0] == a_after[0],
+            "a_counters_same": {k: v for k, v in a_before[1].items() if k not in ("events_sent", "batches_ok")} == a_after[1],
+            "collision": sb.store.seq_collision, "once": held_once(sb), "change": sb.store.seq_epoch_change}
+
+
+k4 = k_dropped("green")
+eq("Case K, dropped bucket (seat pass, across a restart between the commit and the drop): the retry is byte-identical "
+   "and goes out under the SAME seq_epoch; spool_dropped_events on sb equals the bucket's lines past sb's cursor — "
+   "including the request's own, so sb then holds ids the counter says it lost (the over-count § 11.3 accepts); sa's "
+   "epoch and counters are unchanged; seq_collision 0", (True, k4["n_old"], True, True, True, 0, True, 0),
+   (k4["same"], k4["dropped"], k4["lost_but_held"], k4["a_epoch_same"], k4["a_counters_same"], k4["collision"],
+    k4["once"], k4["change"]))
+print(f"  MEASURED  Case K dropped-bucket over-count: sb's spool_dropped_events {k4['dropped']} for a bucket whose "
+      f"{k4['n_old']} lines sb then holds (§ 11.3's accepted direction)")
+k4h = k_dropped("hook", by_hook=True)
+eq("  … the same with the bucket removed by a HOOK finding the spool over a (shrunk) size bound", (True, k4h["n_old"], 0, True),
+   (k4h["same"], k4h["dropped"], k4h["collision"], k4h["once"]))
+k4r = k_dropped("red", reporter=PLANT_REBUILD)
+eq("RED: a reporter that builds the retry from the cursor (every build before this card) -> the retry's first event "
+   "sits under the committed first_seq with a different event_id: seq_collision >= 1", True, k4r["collision"] >= 1)
+
+
+# K5 — the age reset.
+def k_age(tag: str, reporter: Path = REPORTER) -> dict:
+    m, sa, sb = k_seat(f"age-{tag}")
+    spool_events(m, 3, AT28_T0, tag="k5a")
+    fl(m, AT28_T0 + 60_000, reporter=reporter)                 # sb accepts: its store has seen an epoch
+    n = len(spool_events(m, 5, AT28_T0 + 3600_000, tag="k5b"))
+    sb.default = DOWN_503
+    t1 = AT28_T0 + 3600_000 + 60_000
+    fl(m, t1, reporter=reporter)
+    held = req_of(m)
+    sb.default = None
+    n0 = len(sb.posts)
+    t2 = t1 + K_RES_MS + 3600_000
+    fl(m, t2, reporter=reporter)
+    first = sb.posts[n0] if len(sb.posts) > n0 else {}
+    ev0 = (first.get("events") or [{}])[0]
+    hb = sb.heartbeats()[-1]["data"]
+    return {"epoch_new": bool(first) and first["seq_epoch"] != held["seq_epoch"], "first_seq": ev0.get("seq"),
+            "hb_now": ev0.get("kind") == "reporter.heartbeat" and ev0.get("event_time", "") >= rfc_ms(t2 - 60_000),
+            "discarded_hb_never": held["heartbeat_event_id"] not in sb.store.held()
+            and all(e["event_id"] != held["heartbeat_event_id"] for b in sb.posts[n0:] for e in b["events"]),
+            "dropped": (m.entry("sb").get("counters") or {}).get("spool_dropped_events", 0), "want": n + 1,
+            "lossy": "lossy" in hb["degraded"], "gap": sb.store.seq_gap, "change": sb.store.seq_epoch_change,
+            "collision": sb.store.seq_collision, "once": held_once(sb)}
+
+
+def rfc_ms(ms: int) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ms / 1000)) + f".{ms % 1000:03d}Z"
+
+
+k5 = k_age("green")
+eq("Case K, age reset: past the residency cap the first request sb receives is under a new seq_epoch with first_seq "
+   "1, carrying a heartbeat stamped inside the last minute; the discarded request's heartbeat never arrives; sb's "
+   "spool_dropped_events is the residency drops' per-bucket figure plus exactly one for that heartbeat; `lossy`; "
+   "seq_gap 0 — sb committed nothing (the control for the later-413 leg's figure); one epoch change, no collision",
+   (True, 1, True, True, k5["want"], True, 0, 1, 0, True),
+   (k5["epoch_new"], k5["first_seq"], k5["hb_now"], k5["discarded_hb_never"], k5["dropped"], k5["lossy"], k5["gap"],
+    k5["change"], k5["collision"], k5["once"]))
+
+
+# K6 — the two 413 legs.
+def k_413_first(tag: str, reporter: Path = REPORTER) -> dict:
+    m, sa, sb = k_seat(f"413a-{tag}")
+    spool_events(m, 20, AT28_T0, tag="k6a")
+    sb.script = [TOO_LARGE]
+    fl(m, AT28_T0 + 60_000, reporter=reporter)
+    p0, p1 = sb.posts[0], sb.posts[1]
+    h0, h1 = p0["events"][0], p1["events"][0]
+    c = m.entry("sb").get("counters") or {}
+    return {"half": len(p1["events"]) == len(p0["events"]) // 2, "epoch_same": p1["seq_epoch"] == p0["seq_epoch"],
+            "first_same": h1["seq"] == h0["seq"],
+            "hb_new": h0["kind"] == h1["kind"] == "reporter.heartbeat" and h1["event_id"] != h0["event_id"]
+            and h1["event_time"] >= h0["event_time"],
+            "counted": {k: c.get(k, 0) for k in ("oversize_event_dropped", "batches_rejected", "events_rejected_dropped")}}
+
+
+k6a = k_413_first("green")
+eq("Case K, 413 to a FIRST attempt: the next request carries half the events under the same seq_epoch and the same "
+   "first_seq, with a heartbeat rebuilt fresh (a new event_id, stamped no earlier), and nothing is counted on sb",
+   (True, True, True, True, {"oversize_event_dropped": 0, "batches_rejected": 0, "events_rejected_dropped": 0}),
+   (k6a["half"], k6a["epoch_same"], k6a["first_same"], k6a["hb_new"], k6a["counted"]))
+
+
+def k_413_later(tag: str, reporter: Path = REPORTER) -> dict:
+    m, sa, sb = k_seat(f"413b-{tag}")
+    spool_events(m, 20, AT28_T0, tag="k6b")
+    t = AT28_T0 + 60_000
+    sb.script = [COMMIT_DROP]
+    fl(m, t, reporter=reporter)
+    committed = sb.posts[0]
+    sb.script = [TOO_LARGE]
+    fl(m, t + 10_000, reporter=reporter)
+    rebuilt = sb.posts[2] if len(sb.posts) > 2 else {}
+    gap_trailing = sb.store.gap_by_epoch.get(rebuilt.get("seq_epoch"), 0)
+    fl(m, t + 10_000 + K_HB_MS + 1000, reporter=reporter)       # a later heartbeat, stored behind both halves
+    sent = {e["event_id"] for b in sb.posts for e in b["events"]}
+    return {"m": m, "sb": sb, "committed_hb": committed["events"][0]["kind"] == "reporter.heartbeat",
+            "new_epoch": bool(rebuilt) and rebuilt["seq_epoch"] != committed["seq_epoch"],
+            "rebuilt_hb": bool(rebuilt) and rebuilt["events"][0]["kind"] == "reporter.heartbeat",
+            "epoch": rebuilt.get("seq_epoch"), "gap_trailing": gap_trailing, "sent": sent,
+            "collision": sb.store.seq_collision, "once": held_once(sb), "change": sb.store.seq_epoch_change}
+
+
+k6b = k_413_later("green")
+eq("Case K, 413 to a LATER attempt (the first committed, with a heartbeat — pinned): the next request is under a new "
+   "seq_epoch with the rebuilt heartbeat at item 0; asserted before a later row is stored, both halves trail and "
+   "the fold shows 0; one epoch change, no collision", (True, True, True, 0, 1, 0, True),
+   (k6b["committed_hb"], k6b["new_epoch"], k6b["rebuilt_hb"], k6b["gap_trailing"], k6b["change"], k6b["collision"], k6b["once"]))
+k6b_res = assert_residual("Case K, later-attempt 413", k6b["sb"].store, k6b["epoch"], k6b["sent"],
+                          k6b["sb"].heartbeats()[-1] if k6b["sb"].heartbeats() else None)
+k6r = k_413_later("red", reporter=PLANT_413)
+eq("RED: a reporter that halves after a later-attempt 413 with no new epoch -> seq_collision >= 1", True, k6r["collision"] >= 1)
+
+
+# K7 — clock_skew across a 120 s backoff.
+def k_skew(tag: str, reporter: Path = REPORTER) -> dict:
+    m, sa, sb = k_seat(f"skew-{tag}")
+    spool_events(m, 4, AT28_T0, tag="k7")
+    t = AT28_T0 + 60_000
+    # Refused retryably and NOT committed, so the retry is processed — a replayed batch_id writes nothing and
+    # measures no skew (§ 10.4). The ladder's 121 s is the injected clock's step between the two attempts.
+    sb.script = [DOWN_503]
+    sb.clock_ms = t
+    fl(m, t, reporter=reporter)
+    sb.clock_ms = t + 121_000
+    fl(m, t + 121_000, reporter=reporter)
+    retry = sb.posts[1] if len(sb.posts) > 1 else {}
+    return {"sent_at": retry.get("sent_at", ""), "want_after": rfc_ms(t + 120_000),
+            "skew": sb.store.skews[0] if sb.store.skews else None}
+
+
+k7 = k_skew("green")
+eq("Case K, skew: the retry's sent_at is the retry's own (inside the last second), and the stub's clock_skew_ms is "
+   "under 120 s", (True, True), (k7["sent_at"] >= k7["want_after"], k7["skew"] is not None and abs(k7["skew"]) < 120_000))
+k7r = k_skew("red", reporter=PLANT_SENTAT)
+eq("RED: a reporter that resends sent_at verbatim -> the stub's clock_skew_ms exceeds 120 s", True,
+   k7r["skew"] is not None and k7r["skew"] > 120_000)
+
+
+# K8 — the identity-edit legs, run twice: with a request persisted and unanswered, and with none.
+PAIR_B = "seat-two"
+
+
+def k_identity(tag: str, reporter: Path = REPORTER, *, persisted: bool) -> dict:
+    m, sa, sb = k_seat(f"id-{tag}")
+    tok1 = m.cfg["sites"][1]["token"]
+    tok2 = seat_token(f"pair-b-{tag}")
+    sb.binding = {tok1: ("aimla", "aimla-pm"), tok2: ("aimla", PAIR_B)}
+    spool_events(m, 3, AT28_T0, tag="k8a")
+    t = AT28_T0 + 60_000
+    fl(m, t, reporter=reporter)                                  # sb accepts under pair A
+    spool_events(m, 4, AT28_T0 + 1000, tag="k8b")
+    if persisted:
+        sb.script = [DOWN_503]
+        fl(m, t + 10_000, reporter=reporter)                     # a request persisted, unanswered
+    else:
+        fl(m, t + 10_000, reporter=reporter)                     # acknowledged; the lane is idle
+        spool_events(m, 2, AT28_T0 + 2000, tag="k8c")            # lines ahead of the cursor, under pair A
+    before = m.entry("sb")
+    held = before.get("request")
+    dropped0 = (before.get("counters") or {}).get("spool_dropped_events", 0)
+    m.cfg["seat_id"] = PAIR_B
+    m.cfg["sites"][1]["token"] = tok2
+    m.write_cfg()
+    n0 = len(sb.posts)
+    fl(m, t + 20_000, reporter=reporter)
+    fl(m, t + 30_000, reporter=reporter)
+    after_b = m.entry("sb")
+    first_b = sb.posts[n0] if len(sb.posts) > n0 else {}
+    spool_end = {f.name[:10]: f.stat().st_size for f in m.spool.glob("*.jsonl")}
+    drained = all((after_b.get("cursors") or {}).get(b, 0) >= sz for b, sz in spool_end.items())
+    q = m.spool / "quarantine" / "rejected.sb.jsonl"
+    d = {"first_b": (first_b.get("seat_id"), first_b.get("seq_epoch") != before.get("seq_epoch"),
+                     (first_b.get("events") or [{}])[0].get("seq")),
+         "held_hb_never": held is None or all(e["event_id"] != held["heartbeat_event_id"] for b in sb.posts[n0:] for e in b["events"]),
+         "dropped_rise": (after_b.get("counters") or {}).get("spool_dropped_events", 0) - dropped0,
+         "auth_refused": (after_b.get("counters") or {}).get("auth_refused", 0),
+         "quarantined": q.exists() and q.stat().st_size > 0, "drained": drained,
+         "answers_b": list(sb.answers[n0:])}
+    m.cfg["seat_id"] = "aimla-pm"
+    m.cfg["sites"][1]["token"] = tok1
+    m.write_cfg()
+    n1 = len(sb.posts)
+    fl(m, t + 40_000, reporter=reporter)
+    back = sb.posts[n1] if len(sb.posts) > n1 else {}
+    d.update(back_epoch_new=bool(back) and back.get("seq_epoch") not in (before.get("seq_epoch"), after_b.get("seq_epoch")),
+             collision_a=sb.store.counter("seq_collision"), gap_a=sb.store.counter("seq_gap"),
+             answers_back=list(sb.answers[n1:]), once=held_once(sb))
+    return d
+
+
+for kind in ("persisted", "none"):
+    kd = k_identity(f"green-{kind}", persisted=(kind == "persisted"))
+    eq(f"Case K, identity edit ({kind} request): the first request sb receives carries the new pair under a new "
+       f"seq_epoch with first_seq 1; the discarded request's heartbeat never arrives and spool_dropped_events on sb "
+       f"rose by {1 if kind == 'persisted' else 0} for it; auth_refused 0; the lines spooled under the old pair are "
+       f"refused 422 invalid_event and quarantined; the drain is pinned (sb's cursor at the spool's end)",
+       ((PAIR_B, True, 1), True, 1 if kind == "persisted" else 0, 0, True, True),
+       (kd["first_b"], kd["held_hb_never"], kd["dropped_rise"], kd["auth_refused"], kd["quarantined"], kd["drained"]))
+    eq("  … and reverted to the first pair: the next request is under yet another epoch, and the first pair's fold "
+       "counts seq_collision 0 AND seq_gap 0", (True, 0, 0, True), (kd["back_epoch_new"], kd["collision_a"], kd["gap_a"], kd["once"]))
+kn = k_identity("red-noid", reporter=PLANT_NOID, persisted=True)
+eq("RED: a reporter without the identity rule (design r4) -> the persisted old-pair request meets 403 "
+   "identity_mismatch, the lane stops, and after a second restart the same request meets 403 again — the stop no "
+   "config write lifts", True, kn["answers_b"].count(403) >= 2)
+kq = k_identity("red-idreq", reporter=PLANT_ID_REQ, persisted=False)
+eq("SECOND RED: a reporter whose identity rule resets only when a request is persisted (design r5) -> in the "
+   "no-request run, after the revert, the first pair's fold counts seq_gap >= 1", True, kq["gap_a"] >= 1)
+
+redgreen("Case K — a request the site may hold is resent as built (AT-28, D1 § 3.1 *One request per site*)",
+         f"save after the send -> collision {k1r['collision']}; rebuilt from the cursor -> Route A collision "
+         f"{k2r['collision']}, dropped-bucket collision {k4r['collision']}; rebuilt under the window -> sent "
+         f"{k3r['during']} before the roll, collision {k3r['collision']}; later-413 without a new epoch -> collision "
+         f"{k6r['collision']}; sent_at verbatim -> clock_skew_ms {k7r['skew']}; no identity rule -> answers "
+         f"{kn['answers_b']}; identity rule keyed on a persisted request -> first pair's seq_gap {kq['gap_a']}",
+         f"persisted request -> retry bytes identical across a retry and a kill-restart, attempts "
+         f"{k1['attempts_seen']}/{k1k['attempts_seen']}; Route A retries {k2['n_retries']} identical, no heartbeat in "
+         f"the wait; Route B nothing sent until the roll, then {k3['resent_count']} events; a dropped bucket counted "
+         f"{k4['dropped']} on sb with the retry under the same epoch; age reset dropped {k5['dropped']} = per-bucket "
+         f"+ 1; later-413 residual seq_gap {k6b_res} by § 10.2's equality (card#12210); skew {k7['skew']} ms; every "
+         f"leg seq_collision 0")
+
+
+# ── Case H — `selftest` names the site, and a refused token fails it ─────────────────────────────────
+_other = tmpdir("fr-other-ca-")
+subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(_other / "o.key"),
+                "-out", str(_other / "o.crt"), "-days", "2", "-subj", "/CN=127.0.0.1",
+                "-addext", "subjectAltName=IP:127.0.0.1"], check=True, capture_output=True)
+OTHER_CA = str(_other / "o.crt")
+
+
+def h_selftest(tag: str, sb_cfg, setup=None, reporter: Path = REPORTER):
+    sa = site_stub(f"h-a-{tag}")
+    m = multi_seat(f"at28-h-{tag}", [site_cfg("sa", sa.url), sb_cfg])
+    if setup:
+        setup()
+    r, rep = selftest(m, reporter=reporter)
+    return r.returncode, rep
+
+
+sb_h = site_stub("h-b")
+rc_u, rep_u = h_selftest("unreach", site_cfg("sb", "https://127.0.0.1:9/api/ingest/events"))
+eq("Case H: with sb unreachable — exit 2, checks.tls_verify not_measured, sites.sa.tls_verify pass, "
+   "sites.sb.tls_verify not_measured", (2, "not_measured", "pass", "not_measured"),
+   (rc_u, rep_u["checks"]["tls_verify"], rep_u["sites"]["sa"]["tls_verify"], rep_u["sites"]["sb"]["tls_verify"]))
+rc_c, rep_c = h_selftest("cert", site_cfg("sb", sb_h.url, ca=OTHER_CA))
+eq("  … with sb's certificate not in its ca_file — exit 1, sites.sb.tls_verify fail, sites.sa pass",
+   (1, "fail", "pass"), (rc_c, rep_c["sites"]["sb"]["tls_verify"], rep_c["sites"]["sa"]["tls_verify"]))
+
+
+def deny_all():
+    sb_h.accept_tokens = set()
+
+
+rc_401, rep_401h = h_selftest("401", site_cfg("sb", sb_h.url), setup=deny_all)
+sb_h.accept_tokens = None
+eq("  … with sb answering the probe 401 (the ingest's body) — exit 1, sites.sb.token_accepted fail, "
+   "sites.sb.schema_version_accepted not_measured, sites.sa.token_accepted pass",
+   (1, "fail", "not_measured", "pass"),
+   (rc_401, rep_401h["sites"]["sb"]["token_accepted"], rep_401h["sites"]["sb"]["schema_version_accepted"],
+    rep_401h["sites"]["sa"]["token_accepted"]))
+sb_res = site_stub("h-b-residual")
+sb_res.binding = {seat_token("h-other-seat"): ("aimla", "someone-else")}
+rc_res, rep_res = h_selftest("residual", site_cfg("sb", sb_res.url, token=seat_token("h-other-seat")))
+eq("  THE RESIDUAL, MEASURED: a token the site issued to ANOTHER seat — 200 to the probe, 403 identity_mismatch to "
+   "every batch — passes `selftest`: exit 0, sites.sb.token_accepted pass (Case M is where it is caught)",
+   (0, "pass"), (rc_res, rep_res["sites"]["sb"]["token_accepted"]))
+sb_e = site_stub("h-b-empty401")
+sb_e.get_status, sb_e.get_body = 401, ""
+rc_e, rep_e = h_selftest("empty401", site_cfg("sb", sb_e.url))
+eq("  … a 401 that is NOT the ingest's (an empty body) -> sites.sb.token_accepted not_measured, exit 2",
+   ("not_measured", 2), (rep_e["sites"]["sb"]["token_accepted"], rc_e))
+s_one = seat("at28-h-single")
+_, rep_one = selftest(s_one)
+eq("  … a single-site config reports one block, `default`", ["default"], sorted(rep_one["sites"]))
+
+
+def h_first_heartbeats(tag: str, reporter: Path = REPORTER) -> list:
+    """sb's probe answers 503 on every start (it measures tls_verify — the 503 came over verified TLS — and
+    nothing about the token); every batch is accepted. Two starts, each a heartbeat."""
+    sa, sb = site_stub(f"hf-a-{tag}"), site_stub(f"hf-b-{tag}")
+    m = multi_seat(f"at28-hf-{tag}", [site_cfg("sa", sa.url), site_cfg("sb", sb.url)])
+    sb.get_status, sb.get_body = 503, {"error": "server_error", "message": "x", "detail": "store_failed"}
+    fl(m, AT28_T0, reporter=reporter)
+    fl(m, AT28_T0 + K_HB_MS + 1000, reporter=reporter)
+    return [(h["data"]["selftest"]["token_accepted"], h["data"]["selftest"]["tls_verify"]) for h in sb.heartbeats()], sb.gets
+
+
+hf, hf_gets = h_first_heartbeats("green")
+eq("  THE UNMEASURED FIRST HEARTBEAT (round 3's N4): with every probe answering 503, the first heartbeat sb receives "
+   "carries token_accepted `fail` (unmeasured rides as `fail`) and tls_verify `pass`; the next, built after that "
+   "accepted request, carries token_accepted `pass` — no probe measured it, the accepted request did",
+   [("fail", "pass"), ("pass", "pass")], hf[:2])
+# The design's wording asks for "the stub's probe count still one" at the second heartbeat. On this build a
+# probe that measured nothing re-probes on K.HEARTBEAT_MS (§ 6.14), so the second heartbeat's pass comes no sooner
+# than a second probe; the leg keeps the discriminating half — every probe answered 503, so none of them could
+# have measured the token — and records the count.
+print(f"  MEASURED  Case H: sb was probed {hf_gets} time(s), every one answered 503")
+p_no_tok = plant(("const SELFTEST_CHECKS = ['config_readable', 'tls_verify', 'schema_version_accepted', 'token_accepted',",
+                  "const SELFTEST_CHECKS = ['config_readable', 'tls_verify', 'schema_version_accepted',"),
+                 ("const SITE_CHECKS = ['config_readable', 'tls_verify', 'schema_version_accepted', 'token_accepted'];",
+                  "const SITE_CHECKS = ['config_readable', 'tls_verify', 'schema_version_accepted'];"))
+sb_h.accept_tokens = set()
+rc_nt, rep_nt = h_selftest("red-notoken", site_cfg("sb", sb_h.url), reporter=p_no_tok)
+sb_h.accept_tokens = None
+eq("RED: a reporter without token_accepted -> the 401 run exits 2, a verdict that says nothing is wrong", 2, rc_nt)
+p_probe_only = plant(("      entry.selftest.token_accepted = true;\n", ""))
+hf_r, _ = h_first_heartbeats("red", reporter=p_probe_only)
+eq("SECOND RED: a reporter that measures the checks from the probe alone -> the second heartbeat still carries "
+   "token_accepted `fail`", "fail", hf_r[1][0] if len(hf_r) > 1 else None)
+p_status_only = plant(("        : r.status === 401 && isPlain(probe.body) && probe.body.error === INGEST_AUTH[401] ? false : null,",
+                       "        : r.status === 401 ? false : null,"))
+rc_so, rep_so = h_selftest("red-status", site_cfg("sb", sb_e.url), reporter=p_status_only)
+eq("THIRD RED: a reporter keying token_accepted on the status alone -> the empty-body 401 fails it", "fail",
+   rep_so["sites"]["sb"]["token_accepted"])
+redgreen("Case H — selftest names the site, and a refused token fails it (AT-28, D1 § 6.14)",
+         f"no token_accepted -> 401 run rc {rc_nt}; probe-only -> heartbeats {hf_r}; status-only -> empty-body 401 "
+         f"{rep_so['sites']['sb']['token_accepted']}",
+         f"unreachable rc {rc_u}; bad cert rc {rc_c}; 401 rc {rc_401} token_accepted "
+         f"{rep_401h['sites']['sb']['token_accepted']}; another seat's token rc {rc_res} (the named residual); "
+         f"empty-body 401 {rep_e['sites']['sb']['token_accepted']} rc {rc_e}; first heartbeats {hf}")
+
+
+# ── Case M — a refused credential stops the lane and loses nothing; only the ingest's own refusal stops it ─
+STATE_MEMBERS = sorted(["seq_epoch", "next_seq", "cursors", "counters", "counter_rises", "selftest", "request",
+                        "window", "ingest_url_sha256", "identity_sha256"])
+PERIODS_S = 3 * M_K["HEALTH_MS"] / 1000
+
+
+def m_auth(tag: str, reporter: Path, *, kind: str) -> dict:
+    """kind '401': the probe resolves the token and every batch is refused `401 unauthenticated` (a token
+    revoked between the two); '403': the probe answers 200 and every batch `403 identity_mismatch`."""
+    sa, sb = site_stub(f"m-a-{tag}"), site_stub(f"m-b-{tag}")
+    tok_bad = seat_token(f"m-bad-{tag}")
+    m = multi_seat(f"at28-m-{tag}", [site_cfg("sa", sa.url), site_cfg("sb", sb.url, token=tok_bad)])
+    ids = set(spool_events(m, 30, int(time.time() * 1000) - 3600_000, tag="m"))
+    if kind == "401":
+        sb.accept_tokens, sb.post_only_auth = set(), True
+    else:
+        sb.binding = {tok_bad: ("aimla", "another-seat")}
+    p = live(m, reporter)
+    try:
+        wait_for(lambda: len(sb.answers) >= 1)
+        time.sleep(0.2)
+        n_at = len(sb.posts) + sb.gets
+        entry_at = m.entry("sb")
+        req_at = entry_at.get("request")
+        time.sleep(PERIODS_S)
+        quiet1 = len(sb.posts) + sb.gets - n_at
+        if kind == "401":
+            sb.accept_tokens = {tok_bad}                       # the site now resolves it: no restart
+        else:
+            sb.binding = {}
+        time.sleep(PERIODS_S)
+        quiet2 = len(sb.posts) + sb.gets - n_at - quiet1
+        req_held = m.entry("sb").get("request")
+    finally:
+        stop_live(p, m)
+    marker = (m.spool / "REJECTED.sb.txt").read_text(encoding="utf-8") if (m.spool / "REJECTED.sb.txt").exists() else ""
+    a_hbs = [h["data"]["counters"] for h in sa.heartbeats()]
+    good = seat_token(f"m-good-{tag}")
+    sb.accept_tokens, sb.binding = ({tok_bad, good} if kind == "401" else None), {}
+    w = set_token(m, "sb", good)
+    n_before = len(sb.posts)
+    fl(m, reporter=REPORTER)
+    fl(m, reporter=REPORTER)
+    after = sb.posts[n_before:]
+    first_after_raw = sb.raw[n_before] if len(sb.raw) > n_before else b""
+    return {"answer": sb.answers[0] if sb.answers else None, "quiet": (quiet1, quiet2),
+            "cursor_kept": (entry_at.get("cursors") or {}) == {} and m.entry("sb") is not None,
+            "rejected_file": (m.spool / "quarantine" / "rejected.sb.jsonl").exists(),
+            "marker_lines": len(marker.splitlines()), "marker": marker,
+            "marker_ok": f"status={sb.answers[0] if sb.answers else ''}" in marker and "site=sb" in marker
+            and "Bearer" not in marker and tok_bad not in marker,
+            "auth_refused": (entry_at.get("counters") or {}).get("auth_refused"),
+            "req_kept": req_at is not None and req_held == req_at,
+            "a_clean": all(c.get("auth_refused", 0) == 0 and c.get("config_invalid", 0) == 0 for c in a_hbs),
+            "members": sorted(entry_at), "writer_rc": w.returncode, "writer_out": w.stdout + w.stderr,
+            "first_after_is_held": bool(after) and req_at is not None and after[0]["batch_id"] == req_at["batch_id"]
+            and events_bytes(first_after_raw) == events_bytes(sb.raw[0]),
+            "drained": ids <= sb.store.held(), "dups": sum(b["dup"] != [] for b in sb.store.batch_log)}
+
+
+m401 = m_auth("401", m_flusher(), kind="401")
+eq("Case M (401): sb answered 401; its cursor does not move and rejected.sb.jsonl does not exist; REJECTED.sb.txt "
+   "holds one line naming the status and the site and no Authorization value; auth_refused is 1",
+   (401, True, False, 1, True, 1),
+   (m401["answer"], m401["cursor_kept"], m401["rejected_file"], m401["marker_lines"], m401["marker_ok"], m401["auth_refused"]))
+eq("  … the lane sends sb NOTHING more — no batch, no probe — over three K.HEALTH_MS periods (scaled on a copy), and "
+   "still nothing over three more once the site resolves the token: the stop is not probe-lifted", (0, 0), m401["quiet"])
+eq("  … sb's entry keeps its persisted request through the stop, unchanged, and sa's heartbeats carry no "
+   "auth_refused and no config_invalid", (True, True), (m401["req_kept"], m401["a_clean"]))
+eq("  … `FR_MODE=set-token` and a restart: the first request sb receives is the persisted one, byte-identical, "
+   "then every event behind the cursor, with no duplicate", (0, True, True, 0),
+   (m401["writer_rc"], m401["first_after_is_held"], m401["drained"], m401["dups"]))
+eq("  … and sb's entry, read during the stop, holds exactly § 3.1's member list — the stop left nothing behind for "
+   "the restart to clear", STATE_MEMBERS, m401["members"])
+m403 = m_auth("403", m_flusher(), kind="403")
+eq("Case M (403, the real server's shape: probe 200, every batch identity_mismatch): the first batch starts the stop, "
+   "nothing more is sent over three periods, REJECTED.sb.txt names 403, identity_mismatch and the body's pair; "
+   "set-token with a token bound to this seat and a restart drains the backlog, the persisted request first",
+   (403, (0, 0), True, True, True, True),
+   (m403["answer"], m403["quiet"], "identity_mismatch" in m403["marker"] and "another-seat" in m403["marker"],
+    m403["req_kept"], m403["first_after_is_held"], m403["drained"]))
+
+
+FRONTS = {
+    "waf-403": {"status": 403, "body": "<html><body>Request blocked by the WAF</body></html>",
+                "headers": {"Content-Type": "text/html"}},
+    "host-401": {"status": 401, "body": "", "headers": {"WWW-Authenticate": "Basic realm=\"x\""}},
+    "path-404": {"status": 404, "body": "<html><body>404 Not Found</body></html>", "headers": {"Content-Type": "text/html"}},
+    "proxy-400": {"status": 400, "body": "<html><body>400 Bad Request (proxy)</body></html>", "headers": {"Content-Type": "text/html"}},
+    "front-200": {"status": 200, "body": {}},
+    "empty-202": {"status": 202, "body": ""},
+}
+
+
+def m_front(tag: str, reporter: Path, front: str) -> dict:
+    sa, sb = site_stub(f"mf-a-{tag}"), site_stub(f"mf-b-{tag}")
+    m = multi_seat(f"at28-mf-{tag}", [site_cfg("sa", sa.url), site_cfg("sb", sb.url)])
+    ids = set(spool_events(m, 30, int(time.time() * 1000) - 3600_000, tag="mf"))
+    f = FRONTS[front]
+    sb.default = f
+    sb.get_status, sb.get_body, sb.get_headers = f["status"], f["body"], f.get("headers")
+    p = live(m, reporter, FLEET_REPORTER_BACKOFF_MAX_MS=0)
+    try:
+        wait_for(lambda: len(sb.posts) >= 1)
+        time.sleep(0.3)
+        e0 = m.entry("sb")
+        n0 = len(sb.posts)
+        r0 = (e0.get("counters") or {}).get("batches_retried", 0)
+        time.sleep(PERIODS_S)
+        e1 = m.entry("sb")
+        rising = (len(sb.posts) > n0, (e1.get("counters") or {}).get("batches_retried", 0) > r0)
+        # The request's bytes and bookkeeping, `attempts` aside — the one member each retry records.
+        same_req = (lambda r: {k: v for k, v in (r or {}).items() if k != "attempts"})
+        kept = (not e1.get("cursors"), e0.get("request") is not None and same_req(e1.get("request")) == same_req(e0.get("request")),
+                e1.get("next_seq") == e0.get("next_seq") == 1)
+        counters1 = dict(e1.get("counters") or {})
+        held = e0.get("request")
+        sb.default = None
+        sb.get_status, sb.get_body, sb.get_headers = 200, None, None
+        n_off = len(sb.posts)
+        wait_for(lambda: ids <= sb.store.held(), timeout=15)
+        after = sb.posts[n_off:]
+    finally:
+        stop_live(p, m)
+    marker = (m.spool / "REJECTED.sb.txt").read_text(encoding="utf-8") if (m.spool / "REJECTED.sb.txt").exists() else ""
+    log = log_text(m)
+    return {"auth_refused": counters1.get("auth_refused", 0), "rising": rising, "kept": kept,
+            "sent_ok": (counters1.get("events_sent", 0), counters1.get("batches_ok", 0)),
+            "rejected_file": (m.spool / "quarantine" / "rejected.sb.jsonl").exists(),
+            "rejected_bytes": (m.spool / "quarantine" / "rejected.sb.jsonl").stat().st_size if (m.spool / "quarantine" / "rejected.sb.jsonl").exists() else 0,
+            "named": f"status={f['status']}" in marker and f"status={f['status']}" in log,
+            "body_carried": isinstance(f["body"], str) and f["body"][:40] in marker if f["body"] else True,
+            "lands_identical": bool(after) and held is not None and after[0]["batch_id"] == held["batch_id"]
+            and events_bytes(sb.raw[n_off]) == events_bytes(sb.raw[0]),
+            "drained": ids <= sb.store.held()}
+
+
+fronts = {k: m_front(k, m_flusher(), k) for k in FRONTS}
+for k in ("waf-403", "host-401"):
+    d = fronts[k]
+    eq(f"Case M, intermediary ({k}): auth_refused stays 0; the lane keeps retrying — the front's request count and "
+       f"batches_retried rise across three periods; sb's cursor, next_seq and persisted request are unchanged; the "
+       f"log and REJECTED.sb.txt name the status and carry the body's first 512 B; the front removed, the persisted "
+       f"request lands byte-identical with no restart, then the backlog",
+       (0, (True, True), (True, True, True), True, True, True, True),
+       (d["auth_refused"], d["rising"], d["kept"], d["named"], d["body_carried"], d["lands_identical"], d["drained"]))
+for k in ("path-404", "proxy-400"):
+    d = fronts[k]
+    eq(f"Case M, unlisted status / non-ingest body ({k}): retried, rejected.sb.jsonl absent, cursor and request "
+       f"unchanged, the log naming the status; removing the front lands the request byte-identical",
+       ((True, True), False, (True, True, True), True, True), (d["rising"], d["rejected_file"], d["kept"], d["named"], d["lands_identical"]))
+for k in ("front-200", "empty-202"):
+    d = fronts[k]
+    eq(f"Case M, accepted means the ingest's 202 ({k}): sb's cursor does not move, next_seq and the request are "
+       f"unchanged, events_sent and batches_ok stay 0, batches_retried rises, the log names the status; removing the "
+       f"front lands the request byte-identical", ((True, True, True), (0, 0), (True, True), True, True),
+       (d["kept"], d["sent_ok"], d["rising"], d["named"], d["lands_identical"]))
+
+
+def m_control_422() -> dict:
+    sa, sb = site_stub("mc-a"), site_stub("mc-b")
+    m = multi_seat("at28-mc", [site_cfg("sa", sa.url), site_cfg("sb", sb.url)])
+    spool_events(m, 250, AT28_T0, tag="mc")
+    sb.script = [{"status": 422, "body": {"error": "invalid_batch", "message": "x", "field": "events", "reason": "planted"}}]
+    fl(m, AT28_T0 + 60_000)
+    c = m.entry("sb").get("counters") or {}
+    return {"quarantined": (m.spool / "quarantine" / "rejected.sb.jsonl").exists(),
+            "dropped": c.get("events_rejected_dropped", 0), "next_built": len(sb.posts) >= 2, "first": len(sb.posts[0]["events"])}
+
+
+mc = m_control_422()
+eq("  CONTROL: the real ingest's 422 invalid_batch -> that one request quarantined, counted events_rejected_dropped, "
+   "and the next built", (True, mc["first"], True), (mc["quarantined"], mc["dropped"], mc["next_built"]))
+
+OLD_OK = ("  if (status === 202 && isPlain(parsed) && typeof parsed.accepted === 'number' && typeof parsed.duplicates === 'number') {",
+          "  if (status === 202 || status === 200) {")
+OLD_FALLBACK = ("  return { kind: 'retryable', status, foreign: true, body: parsed, text };",
+                "  return { kind: 'permanent', status, body: parsed, text };")
+OLD_AUTH = ("  if (INGEST_AUTH[status] && INGEST_AUTH[status] === code) return { kind: 'auth', status, body: parsed, text };",
+            "  if (INGEST_AUTH[status]) return { kind: 'permanent', status, body: parsed, text };")
+r_ok = m_front("red-200", m_flusher(OLD_OK), "front-200")
+eq("RED: today's classify (a 200 or 202 accepted on its status) -> the cursor advances past events nobody stored",
+   False, r_ok["kept"][0])
+r_fb = m_front("red-404", m_flusher(OLD_FALLBACK), "path-404")
+eq("RED: today's classify (its `permanent` fallback) -> in the 404 run rejected.sb.jsonl holds b's backlog", True,
+   r_fb["rejected_bytes"] > 0)
+r_pre = m_auth("red-precard", m_flusher(OLD_AUTH), kind="401")
+eq("RED: the pre-card reporter (401/403 as poison pills) -> sb's backlog is quarantined, counted, and never received "
+   "after the token is accepted", (True, False), (r_pre["rejected_file"], r_pre["drained"]))
+PROBE_LIFT = (("    if (!lane.configOk || lane.authStopped) return;\n    if (atMs - lane.lastHealth > lane.healthEveryMs) {",
+               "    if (!lane.configOk) return;\n    if (lane.authStopped && !(atMs - lane.lastHealth > lane.healthEveryMs)) return;\n"
+               "    if (atMs - lane.lastHealth > lane.healthEveryMs) {"),
+              ("      lane.healthEveryMs = unmeasured ? K.HEARTBEAT_MS : K.HEALTH_MS;\n",
+               "      lane.healthEveryMs = unmeasured ? K.HEARTBEAT_MS : K.HEALTH_MS;\n      if (probe.http_status === 200) lane.authStopped = false;\n"))
+
+
+def m_count(tag: str, reporter: Path, kind: str) -> dict:
+    sa, sb = site_stub(f"mc-{tag}-a"), site_stub(f"mc-{tag}-b")
+    tok = seat_token(f"mcount-{tag}")
+    m = multi_seat(f"at28-mcount-{tag}", [site_cfg("sa", sa.url), site_cfg("sb", sb.url, token=tok)])
+    spool_events(m, 10, int(time.time() * 1000) - 3600_000, tag="mcount")
+    if kind == "403":
+        sb.binding = {tok: ("aimla", "another-seat")}
+    elif kind == "401":
+        sb.accept_tokens = set()
+    else:
+        sb.default = FRONTS["waf-403"]
+        sb.get_status, sb.get_body = 403, FRONTS["waf-403"]["body"]
+    p = live(m, reporter, FLEET_REPORTER_BACKOFF_MAX_MS=0)
+    try:
+        wait_for(lambda: len(sb.answers) + sb.gets >= 1)
+        time.sleep(0.2)
+        n0 = len(sb.posts) + sb.gets
+        time.sleep(PERIODS_S + M_K["HEALTH_MS"] / 2000)       # three periods and a half: three whole cycles fit
+        n1 = len(sb.posts) + sb.gets - n0
+        refused = (m.entry("sb").get("counters") or {}).get("auth_refused", 0)
+        if kind == "front":
+            sb.default = None
+            sb.get_status, sb.get_body = 200, None
+            time.sleep(PERIODS_S)
+    finally:
+        stop_live(p, m)
+    return {"count": n1, "auth_refused": refused, "recovered": len(sb.store.rows) > 0}
+
+
+r_lift = m_count("red-lift", m_flusher(*PROBE_LIFT), "403")
+eq("SECOND RED: round 2's probe-lifted stop -> in the 403 run sb receives a probe and a refused batch in every "
+   "K.HEALTH_MS period, at least six requests over three, and auth_refused keeps rising", (True, True),
+   (r_lift["count"] >= 6, r_lift["auth_refused"] > 1))
+r_probe = m_count("red-probe", m_flusher(("    if (!lane.configOk || lane.authStopped) return;", "    if (!lane.configOk) return;")), "401")
+eq("THIRD RED: a reporter that probes under the stop -> the 401 run's request count after the refusal is > 0", True,
+   r_probe["count"] > 0)
+r_status = m_count("red-status", m_flusher(("  if (INGEST_AUTH[status] && INGEST_AUTH[status] === code) return { kind: 'auth', status, body: parsed, text };",
+                                            "  if (INGEST_AUTH[status]) return { kind: 'auth', status, body: parsed, text };"),
+                                           ("        : r.status === 401 && isPlain(probe.body) && probe.body.error === INGEST_AUTH[401] ? false : null,",
+                                            "        : r.status === 401 || r.status === 403 ? false : null,")), "front")
+eq("FOURTH RED: a reporter whose stop keys on the status alone -> in the intermediary run auth_refused on sb is 1, the "
+   "request count after the refusal is zero, and removing the front recovers nothing until a restart",
+   (1, 0, False), (r_status["auth_refused"], r_status["count"], r_status["recovered"]))
+redgreen("Case M — a refused credential stops the lane and loses nothing; only the ingest's own refusal stops it (AT-28, D1 § 11.5)",
+         f"200/202 on status -> cursor kept {r_ok['kept'][0]}; permanent fallback -> {r_fb['rejected_bytes']} B quarantined "
+         f"from a 404; poison pills -> quarantined {r_pre['rejected_file']}, drained after the fix {r_pre['drained']}; "
+         f"probe-lifted -> {r_lift['count']} requests in three periods, auth_refused {r_lift['auth_refused']}; probing "
+         f"under the stop -> {r_probe['count']} requests; status-keyed -> auth_refused {r_status['auth_refused']}, "
+         f"recovered {r_status['recovered']}",
+         f"401 -> quiet {m401['quiet']}, request kept, drained after set-token {m401['drained']}; 403 -> quiet "
+         f"{m403['quiet']}; fronts {', '.join(k + ':' + str(v['rising']) for k, v in fronts.items())} retried, never "
+         f"stopped; 422 control quarantined {mc['quarantined']}")
+
+
+# ── Case P — the writer adds a site without printing a token, and refuses what it must ───────────────
+P_TOK1, P_TOK2, P_TOK3 = (seat_token(f"p-planted-{i}") for i in (1, 2, 3))
+ISSUE_OUT = lambda tok: f" seat aimla / aimla-pm (seat_ref 1)\n prefix {tok[:12]}\n\n  token       {tok}\n"   # noqa: E731
+
+
+def p_single(d: Path) -> Path:
+    f = d / "config.json"
+    f.write_text(json.dumps({"install_id": "aimla", "seat_id": "aimla-pm", "ingest_url": "https://prod.example.test/api/ingest/events",
+                             "token": P_TOK1, "spool_dir": str(d / "spool"), "ca_file": None, "proxy_url": None,
+                             "wrapped_statusline": None, "protocol_agent_name": None, "descriptors": "full",
+                             "enabled": True}, indent=2) + "\n", encoding="utf-8")
+    os.chmod(f, 0o600)
+    return f
+
+
+def no_tmp(d: Path) -> bool:
+    return not any(x.name.endswith(".tmp") for x in d.iterdir())
+
+
+def leaked(r: subprocess.CompletedProcess, *toks) -> bool:
+    return any(t in (r.stdout + r.stderr) for t in toks)
+
+
+pd = tmpdir("fr-at28-p-")
+os.chmod(pd, 0o700)
+pf = p_single(pd)
+orig = pf.read_bytes()
+base_env = {"FR_CONFIG": pf, "FR_REPORTER": REPORTER}
+r_nomode = run_writer({**base_env, "FR_INSTALL": "aimla", "FR_SEAT": "aimla-pm", "FR_URL": "https://x.example.test/api/ingest/events",
+                       "FR_SPOOL": pd / "spool"}, stdin=ISSUE_OUT(P_TOK2))
+eq("Case P: without FR_MODE an existing file is refused and unchanged", (1, orig), (r_nomode.returncode, pf.read_bytes()))
+r_add = run_writer({**base_env, "FR_MODE": "add-site", "FR_SITE_NAME": "sandbox",
+                    "FR_URL": "https://sandbox.example.test/api/ingest/events"}, stdin=ISSUE_OUT(P_TOK2))
+lifted = json.loads(pf.read_text(encoding="utf-8"))
+o = json.loads(orig)
+eq("  … with FR_MODE=add-site the result is the multi-site form with the four top-level keys absent, the lifted site "
+   "named `default` with its four values equal to the original's, the new site appended, mode 0600, and loadConfig "
+   "reports no error", (0, [], ["default", "sandbox"], True, "600", []),
+   (r_add.returncode, [k for k in TRANSPORT_KEYS_PY if k in lifted], [x["name"] for x in lifted.get("sites", [])],
+    all(lifted["sites"][0][k] == o[k] for k in TRANSPORT_KEYS_PY), oct(pf.stat().st_mode & 0o777)[2:],
+    config_errors(pf)["errors"]))
+after_add = pf.read_bytes()
+refusals = {
+    "duplicate name": {"FR_MODE": "add-site", "FR_SITE_NAME": "sandbox", "FR_URL": "https://other.example.test/api/ingest/events"},
+    "duplicate URL": {"FR_MODE": "add-site", "FR_SITE_NAME": "third", "FR_URL": "https://SANDBOX.example.test:443/api/ingest/events"},
+    "malformed URL": {"FR_MODE": "add-site", "FR_SITE_NAME": "third", "FR_URL": "https://bad host/api/ingest/events"},
+    "missing FR_REPORTER": {"FR_MODE": "add-site", "FR_SITE_NAME": "third", "FR_URL": "https://t.example.test/api/ingest/events", "FR_REPORTER": ""},
+}
+for k in ("FR_INSTALL", "FR_SEAT", "FR_SPOOL", "FR_AGENT", "FR_WRAPPED", "FR_DESCRIPTORS"):
+    refusals[f"{k} set"] = {"FR_MODE": "add-site", "FR_SITE_NAME": "third", "FR_URL": "https://t.example.test/api/ingest/events", k: "x"}
+ref_out = {}
+for label, envx in refusals.items():
+    env_ = {**base_env, **envx}
+    if env_.get("FR_REPORTER") == "":
+        env_.pop("FR_REPORTER")
+    r = run_writer(env_, stdin=ISSUE_OUT(P_TOK3))
+    ref_out[label] = (r.returncode, pf.read_bytes() == after_add, no_tmp(pd), leaked(r, P_TOK1, P_TOK2, P_TOK3))
+eq("  … a duplicate name, a duplicate URL (by site key), a malformed URL, a missing FR_REPORTER, and each of the six "
+   "seat keys set: each exits 1, the file unchanged, no temp file left, no planted token printed",
+   {k: (1, True, True, False) for k in refusals}, ref_out)
+eq("  … and no planted token appeared on stdout or stderr of the add itself", False, leaked(r_add, P_TOK1, P_TOK2))
+fd_ = tmpdir("fr-at28-pf-")
+os.chmod(fd_, 0o700)
+r_fresh = run_writer({"FR_CONFIG": fd_ / "config.json", "FR_INSTALL": "aimla", "FR_SEAT": "aimla-pm",
+                      "FR_URL": "https://prod.example.test/api/ingest/events", "FR_SPOOL": fd_ / "spool"}, stdin=ISSUE_OUT(P_TOK1))
+fresh = json.loads((fd_ / "config.json").read_text(encoding="utf-8"))
+eq("  … a fresh-install run writes sites: [{ name: \"default\", … }] with no top-level transport key",
+   (0, ["default"], []), (r_fresh.returncode, [x["name"] for x in fresh["sites"]], [k for k in TRANSPORT_KEYS_PY if k in fresh]))
+# set-token, over the multi-site file and over a single-site file, by both token routes.
+before_set = json.loads(pf.read_text(encoding="utf-8"))
+r_set = run_writer({**base_env, "FR_MODE": "set-token", "FR_SITE_NAME": "sandbox"}, stdin=ISSUE_OUT(P_TOK3))
+after_set = json.loads(pf.read_text(encoding="utf-8"))
+want = json.loads(json.dumps(before_set))
+want["sites"][1]["token"] = P_TOK3
+eq("  set-token (stdin route): sandbox's token is the new value and every other byte of every site is unchanged; mode "
+   "0600; loadConfig clean; `token replaced: sandbox` printed; no token printed",
+   (0, True, "600", [], True, False),
+   (r_set.returncode, after_set == want, oct(pf.stat().st_mode & 0o777)[2:], config_errors(pf)["errors"],
+    "token replaced: sandbox" in r_set.stdout, leaked(r_set, P_TOK1, P_TOK2, P_TOK3)))
+r_setf = run_writer({**base_env, "FR_MODE": "set-token", "FR_SITE_NAME": "sandbox", "FR_TOKEN_FILE": token_file(P_TOK2)})
+eq("  … and by the carried token file", (0, P_TOK2, False),
+   (r_setf.returncode, json.loads(pf.read_text(encoding="utf-8"))["sites"][1]["token"], leaked(r_setf, P_TOK2)))
+ps = tmpdir("fr-at28-ps-")
+os.chmod(ps, 0o700)
+psf = p_single(ps)
+r_set1 = run_writer({"FR_CONFIG": psf, "FR_REPORTER": REPORTER, "FR_MODE": "set-token", "FR_SITE_NAME": "default"},
+                    stdin=ISSUE_OUT(P_TOK2))
+s1 = json.loads(psf.read_text(encoding="utf-8"))
+eq("  … over a single-site file with FR_SITE_NAME=default: the lifted multi-site form, the new token under default",
+   (0, ["default"], P_TOK2, []), (r_set1.returncode, [x["name"] for x in s1["sites"]], s1["sites"][0]["token"],
+                                  [k for k in TRANSPORT_KEYS_PY if k in s1]))
+after_ok = pf.read_bytes()
+set_refusals = {
+    "a name the file does not carry": {"FR_SITE_NAME": "nope"},
+    "FR_URL set": {"FR_SITE_NAME": "sandbox", "FR_URL": "https://x.example.test/api/ingest/events"},
+    "FR_CA_FILE set": {"FR_SITE_NAME": "sandbox", "FR_CA_FILE": "/etc/ssl/x.pem"},
+    "a seat key set": {"FR_SITE_NAME": "sandbox", "FR_SEAT": "x"},
+    "missing FR_REPORTER": {"FR_SITE_NAME": "sandbox", "FR_REPORTER": ""},
+}
+set_out = {}
+for label, envx in set_refusals.items():
+    env_ = {**base_env, "FR_MODE": "set-token", **envx}
+    if env_.get("FR_REPORTER") == "":
+        env_.pop("FR_REPORTER")
+    r = run_writer(env_, stdin=ISSUE_OUT(P_TOK1))
+    set_out[label] = (r.returncode, pf.read_bytes() == after_ok, no_tmp(pd), leaked(r, P_TOK1, P_TOK2, P_TOK3))
+    if label.startswith("a name"):
+        names_listed = "default, sandbox" in r.stderr
+eq("  … a name the file does not carry, FR_URL or FR_CA_FILE set, a seat key set, and a missing FR_REPORTER: each "
+   "exits 1 with the file unchanged and no temp file left, the name error listing the file's site names",
+   ({k: (1, True, True, False) for k in set_refusals}, True), (set_out, names_listed))
+# RED — a writer that leaves `"ca_file": null` at the top level when it lifts.
+w_ca = writer_path()
+w_ca.write_text(WRITER_SRC.replace("for (const k of TRANSPORT) { lifted[k] = k in c ? c[k] : null; delete c[k]; }",
+                                   "for (const k of TRANSPORT) { lifted[k] = k in c ? c[k] : null; if (k !== 'ca_file') delete c[k]; }"),
+                encoding="utf-8")
+pr_ = tmpdir("fr-at28-pr-")
+os.chmod(pr_, 0o700)
+prf = p_single(pr_)
+r_ca = run_writer({"FR_CONFIG": prf, "FR_REPORTER": REPORTER, "FR_MODE": "add-site", "FR_SITE_NAME": "sandbox",
+                   "FR_URL": "https://sandbox.example.test/api/ingest/events"}, stdin=ISSUE_OUT(P_TOK2), writer=w_ca)
+eq("RED: a writer that leaves \"ca_file\": null at the top level when it lifts -> loadConfig names both forms present "
+   "(and the file is left as it was)", (1, True), (r_ca.returncode, "top-level ca_file is present beside sites" in r_ca.stderr))
+
+
+# SECOND RED — a writer that rewrites the config in place, under a file-size limit below the config's length.
+def limited(n: int):
+    def pre_():
+        import resource
+        resource.setrlimit(resource.RLIMIT_FSIZE, (n, n))
+        signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+    return pre_
+
+
+pl = tmpdir("fr-at28-pl-")
+os.chmod(pl, 0o700)
+plf = p_single(pl)
+r_add2 = run_writer({"FR_CONFIG": plf, "FR_REPORTER": REPORTER, "FR_MODE": "add-site", "FR_SITE_NAME": "sandbox",
+                     "FR_URL": "https://sandbox.example.test/api/ingest/events"}, stdin=ISSUE_OUT(P_TOK2))
+plain = plf.read_bytes()
+r_lim = run_writer({"FR_CONFIG": plf, "FR_REPORTER": REPORTER, "FR_MODE": "set-token", "FR_SITE_NAME": "sandbox"},
+                   stdin=ISSUE_OUT(P_TOK3), preexec=limited(len(plain) // 2))
+eq("CONTROL (run first): the temp-and-rename writer under a file-size limit below the config's length fails at the "
+   "temp file, unlinks it, exits 1, and the original is byte-identical", (1, True, True),
+   (r_lim.returncode, plf.read_bytes() == plain, no_tmp(pl)))
+w_inplace = writer_path()
+w_inplace.write_text(WRITER_SRC.replace(
+    '    const fd = fs.openSync(tmp, "wx", 0o600);\n    try { fs.writeSync(fd, JSON.stringify(c, null, 2) + "\\n"); } finally { fs.closeSync(fd); }',
+    '    fs.writeFileSync(e.FR_CONFIG, JSON.stringify(c, null, 2) + "\\n", { mode: 0o600 }); fs.copyFileSync(e.FR_CONFIG, tmp);'),
+    encoding="utf-8")
+assert w_inplace.read_text(encoding="utf-8") != WRITER_SRC, "the in-place plant matched nothing"
+r_inp = run_writer({"FR_CONFIG": plf, "FR_REPORTER": REPORTER, "FR_MODE": "set-token", "FR_SITE_NAME": "sandbox"},
+                   stdin=ISSUE_OUT(P_TOK3), writer=w_inplace, preexec=limited(len(plain) // 2))
+eq("SECOND RED: a writer that rewrites the config in place (writeFileSync over the path, Step 3's shape) under the same "
+   "limit leaves it truncated, and loadConfig refuses it", (True, True),
+   (plf.read_bytes() != plain and len(plf.read_bytes()) <= len(plain) // 2,
+    any("not valid JSON" in x for x in config_errors(plf)["errors"])))
+redgreen("Case P — the writer adds a site and rotates a token without printing one, and refuses what it must (AT-28, D1 § 3.1)",
+         f"lift leaving top-level ca_file -> rc {r_ca.returncode}, both forms named; in-place rewrite under RLIMIT_FSIZE -> "
+         f"config truncated to {len(plf.read_bytes())} of {len(plain)} B",
+         f"add-site rc {r_add.returncode} -> sites {[x['name'] for x in lifted['sites']]}; {len(refusals)} add refusals and "
+         f"{len(set_refusals)} set-token refusals each rc 1 with the file unchanged; set-token by both routes; temp-and-rename "
+         f"under the same limit -> rc {r_lim.returncode}, original byte-identical")
+
+
+# ── Case L — a second site's credentials are secrets too, and state.json is no second home for a URL ──
+PLANTS_L = ("PLANTED-PW", "PLANTED-U", "PLANTED-P")
+
+
+def l_sweep(s: Seat, streams: list) -> list:
+    hits = []
+    files = list((s.spool / "quarantine").glob("*")) + list((s.spool / "log").glob("*")) + list(s.spool.glob("REJECTED.*.txt"))
+    files.append(s.spool / "state.json")
+    for f in files:
+        if f.is_file():
+            t = f.read_text(encoding="utf-8", errors="replace")
+            hits += [f"{f.name}:{p}" for p in PLANTS_L if p in t]
+    for i, st in enumerate(streams):
+        hits += [f"stream[{i}]:{p}" for p in PLANTS_L if p in st]
+    return hits
+
+
+def case_l(tag: str, reporter: Path = REPORTER) -> dict:
+    sa, sb = site_stub(f"l-a-{tag}"), site_stub(f"l-b-{tag}")
+    proxy = ConnectProxy(sb.port)
+    sb_cfg = site_cfg("sb", f"https://PLANTED-U:PLANTED-P@127.0.0.1:{sb.port}/api/ingest/events",
+                      proxy=f"http://user:PLANTED-PW@127.0.0.1:{proxy.port}")
+    m = multi_seat(f"at28-l-{tag}", [site_cfg("sa", sa.url), sb_cfg])
+    spool_events(m, 4, AT28_T0, tag="l")
+    b = time.strftime("%Y%m%d%H", time.gmtime(AT28_T0 / 1000))
+    with (m.spool / f"{b}.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write('{"v":1,"e":{"kind":"tool.st","pw":"PLANTED-PW"\n')
+    spool_events(m, 2, AT28_T0 + 1000, tag="l2")
+    # The refusing site ECHOES all three planted strings in its 422 body: the server body is what the marker and
+    # the log copy, so a skipped registration leaks on a path that exists.
+    sb.script = [{"status": 422, "body": {"error": "invalid_event", "message": "rejected for PLANTED-PW PLANTED-U PLANTED-P",
+                                          "index": 0, "field": "data", "reason": "planted"}}]
+    r_f = fl(m, AT28_T0 + 60_000, reporter=reporter)
+    r_s, _ = selftest(m, reporter=reporter)
+    proxy.stop()
+    marker = (m.spool / "REJECTED.sb.txt").read_text(encoding="utf-8") if (m.spool / "REJECTED.sb.txt").exists() else ""
+    return {"hits": l_sweep(m, [r_f.stdout, r_f.stderr, r_s.stdout, r_s.stderr]), "marker": marker,
+            "log": log_text(m), "via_proxy": len(proxy.connects) > 0, "seat": m,
+            "state_has_url": "127.0.0.1:" + str(sb.port) in (m.spool / "state.json").read_text(encoding="utf-8")}
+
+
+l_g = case_l("green")
+eq("Case L precondition: sb's requests went through its CONNECT proxy, and its 422 was written to the marker", (True, True),
+   (l_g["via_proxy"], bool(l_g["marker"])))
+eq("Case L: none of the planted proxy password, URL username or URL password appears in the log, any quarantine file, "
+   "any REJECTED.<name>.txt, selftest's stdout or stderr, or state.json — which holds the site key's hash and never "
+   "the URL", ([], False), (l_g["hits"], l_g["state_has_url"]))
+eq("  … the marker and the log carry the redaction marker where the stub put them", (True, True),
+   ("‹redacted:token›" in l_g["marker"], "‹redacted:token›" in l_g["log"]))
+ctl = l_g["seat"]
+(ctl.spool / "log" / "control.log").write_text("planted by hand: PLANTED-PW PLANTED-U PLANTED-P\n", encoding="utf-8")
+eq("  NEGATIVE CONTROL: the same sweep catches the strings planted into the log by hand", 3, len(l_sweep(ctl, [])))
+(ctl.spool / "log" / "control.log").unlink()
+p_top_only = plant(("  const holders = [cfg].concat(Array.isArray(cfg.sites) ? cfg.sites.filter((x) => x && typeof x === 'object') : []);",
+                    "  const holders = [cfg];"))
+l_r = case_l("red", reporter=p_top_only)
+eq("RED: a reporter whose registerConfigSecrets reads the top-level keys only -> all three planted strings are in "
+   "REJECTED.sb.txt and in the log line of the refused batch", (True, True),
+   (all(p in l_r["marker"] for p in PLANTS_L), all(p in l_r["log"] for p in PLANTS_L)))
+redgreen("Case L — every site's credentials are registered secrets (AT-28, D1 § 3.1)",
+         f"top-level registration only -> sweep found {l_r['hits']}",
+         f"registration descends into sites -> sweep found {l_g['hits']}; state.json carries the URL: {l_g['state_has_url']}")
+
+
+# ── Case J — a lane that loses ownership stops the process, and its counts leave by the site channel ──
+def j_seat(tag: str):
+    sa, sb = site_stub(f"j-a-{tag}"), site_stub(f"j-b-{tag}")
+    s = seat(f"at28-j-{tag}")
+    for k in TRANSPORT_KEYS_PY:
+        s.cfg.pop(k, None)
+    s.cfg["sites"] = [site_cfg("sa", sa.url)]
+    s.write_cfg()
+    now_ms = int(time.time() * 1000)
+    u_at, f_at = now_ms - 3 * 3600_000, now_ms - 2 * 3600_000
+    spool_events(s, 5, u_at, tag="ju")
+    # A bucket of lines a build before card#12180 spooled, a heartbeat of ANOTHER site's: § 3.1 rule 1 skips them,
+    # uncounted, after reading every one — the synchronous stretch in which the claim below lands.
+    fb = s.spool / f"{time.strftime('%Y%m%d%H', time.gmtime(f_at / 1000))}.jsonl"
+    line = json.dumps({"v": 1, "t": "2026-08-24T00:00:00.000Z", "e": {"kind": "reporter.heartbeat", "event_id": "01J" + "0" * 23,
+                                                                       "data": {"config_fingerprint": "0000000000000000"}}}) + "\n"
+    fb.write_text(line * 150_000, encoding="utf-8")
+    fl(s)                                                    # sa receives the bucket and passes the old heartbeats
+    ub = s.spool / f"{time.strftime('%Y%m%d%H', time.gmtime(u_at / 1000))}.jsonl"
+    os.chmod(ub, 0)                                          # unreadable from here on: sa has every line of it
+    s.cfg["sites"].append(site_cfg("sb", sb.url))
+    s.write_cfg()
+    return s, sa, sb, ub
+
+
+def case_j(tag: str, reporter: Path = REPORTER) -> dict:
+    if os.geteuid() == 0:
+        return {}
+    s, sa, sb, ub = j_seat(tag)
+    q = s.spool / "quarantine" / "corrupt.jsonl"
+    n_sink = len(sink_lines(s))
+    p = live(s, reporter)
+    claimed_at = None
+    if wait_for(lambda: q.exists() and "unreadable_bucket" in q.read_text(encoding="utf-8"), timeout=30):
+        take_over(s)
+        claimed_at = time.time()
+    try:
+        p.wait(timeout=30)
+    except subprocess.TimeoutExpired:
+        p.kill()
+        p.wait()
+    exited_s = None if claimed_at is None else round(time.time() - claimed_at, 1)
+    s.freeze_flusher()
+    os.chmod(ub, 0o600)
+    lines = [ln for ln in sink_lines(s)[n_sink:] if ln.get("p") == "flusher"]
+    lost = sum(ln.get("c", {}).get("flusher_lost_ownership", 0) for ln in lines)
+    s_b = sum((ln.get("s") or {}).get("sb", {}).get("spool_dropped_events", 0) for ln in lines)
+    late = [b for b in sa.posts if claimed_at and ulid_ms(b.get("batch_id", "")) / 1000 > claimed_at]
+    # The new owner: a fresh flusher folds the sink, and each site's heartbeat composes its counters.
+    fl(s)
+    hb_a = sa.heartbeats()[-1]["data"]["counters"] if sa.heartbeats() else {}
+    return {"claimed": claimed_at is not None, "rc": p.returncode, "exited_s": exited_s, "lost": lost, "s_b": s_b,
+            "late_a": len(late), "a_dropped": hb_a.get("spool_dropped_events"),
+            "b_entry": (s.entry("sb").get("counters") or {}).get("spool_dropped_events", 0)}
+
+
+if os.geteuid() == 0:
+    skip("Case J needs a non-root run: its unreadable bucket is a mode-000 file, which root reads — NOT measured")
+else:
+    j_g = case_j("green")
+    eq("Case J: ownership claimed while sb's lane is mid-drain (after it counted an unreadable bucket on sb) -> the "
+       "process exits 0 on its own, flusher_lost_ownership reaches the sink once in `c`, sb's unsaved count reaches it "
+       "in `s.sb`, and sa receives nothing the ex-owner built after the claim", (True, 0, 1, True, 0),
+       (j_g["claimed"], j_g["rc"], j_g["lost"], j_g["s_b"] > 0, j_g["late_a"]))
+    eq("  … the new owner folds it into sb's entry, and sa's heartbeat carries no drop for sb's loss", (True, 0),
+       (j_g["b_entry"] > 0, j_g["a_dropped"]))
+    print(f"  MEASURED  Case J: the ex-owner exited {j_g['exited_s']} s after the claim")
+    p_singly = plant(("    halt();\n    if (lostCounted) return;", "    if (lostCounted) return;"))
+    j_r1 = case_j("red-singly", reporter=p_singly)
+    # THE DESIGN'S STATED OBSERVABLE FOR THIS RED — "a's lane keeps sending under the old owner's seqs" — CANNOT
+    # OCCUR ON THIS BUILD: every send is preceded by the lane's own pre-send save, which checks ownership (§ 2.3,
+    # § 3.1), so a lane the loss did not stop still stops at its next send. What singly-exiting lanes DO cost is the
+    # exit itself: the other loops run on until their own next check, a whole K.FLUSH_MS later.
+    eq(f"RED: a reporter whose loops exit singly keeps the process alive after the claim until every other loop "
+       f"reaches its own check, on its own K.FLUSH_MS nap ({j_r1['exited_s']} s), where the real one exits at once "
+       f"({j_g['exited_s']} s)", True,
+       j_r1["exited_s"] is not None and j_g["exited_s"] is not None
+       and j_r1["exited_s"] >= k_of(_prod_src, "FLUSH_MS") / 2000 > j_g["exited_s"])
+    p_no_s = plant(("  if (Object.keys(CS).length) rec.s = CS;",
+                    "  for (const m of Object.values(CS)) for (const [k, v] of Object.entries(m)) C[k] = (C[k] || 0) + v;"))
+    j_r2 = case_j("red-no-s", reporter=p_no_s)
+    eq("SECOND RED: a reporter whose exit flush writes `c` with no site key -> the new owner folds sb's count into the "
+       "seat-wide total, and sa's next heartbeat carries it", True, (j_r2["a_dropped"] or 0) > 0)
+    redgreen("Case J — a lane's lost ownership stops the process, and its counts leave by the site channel (AT-28, D1 § 2.3, § 11.1)",
+             f"loops exit singly -> exit {j_r1['exited_s']} s after the claim; exit flush without `s` -> sa's heartbeat "
+             f"spool_dropped_events {j_r2['a_dropped']}",
+             f"exit {j_g['exited_s']} s after the claim, rc {j_g['rc']}, lost_ownership {j_g['lost']} in c, s.sb "
+             f"{j_g['s_b']}, sa's heartbeat {j_g['a_dropped']}, sb's entry {j_g['b_entry']}")
+
+
+# ── Case N — a backfill is paced under the site's limit, and the heartbeat still lands ───────────────
+CEILING_PER_DAY = 10_420
+N_DAYS = 7.5        # the last half day of the 8-day residency is the drain's own: no bucket ages out mid-drain
+
+
+def case_n(tag: str, reporter: Path = REPORTER, *, minutes: "int | None" = None) -> dict:
+    """Each flusher run is ONE pass, a minute apart on the injected clock: the heartbeat's cadence, so a run's
+    heartbeat is the lane's one heartbeat of that minute, as the window's headroom is derived for (§ 11.5).
+    A real lane makes a pass every K.FLUSH_MS, six a minute; one a minute sends at most 8 x 200 events a
+    minute, so an unpaced drain here reaches the server's limit in its 13th minute rather than its 2nd."""
+    sa, sb = site_stub(f"n-a-{tag}"), site_stub(f"n-b-{tag}")
+    s = seat(f"at28-n-{tag}")
+    for k in TRANSPORT_KEYS_PY:
+        s.cfg.pop(k, None)
+    s.cfg["sites"] = [site_cfg("sa", sa.url)]
+    s.write_cfg()
+    t0 = (int(time.time() * 1000) // 3600_000) * 3600_000
+    per_h = CEILING_PER_DAY // 24
+    hours = int(N_DAYS * 24)
+    ids = set()
+    for h in range(hours, 0, -1):
+        ids |= set(spool_events(s, per_h, t0 - h * 3600_000 + 60_000, tag="n"))
+    a_t = t0 + 60_000
+    fl(s, a_t)
+    # sa is current: its cursor is set at every bucket's end, as a drain already done would leave it.
+    st = s.state()
+    st["sites"]["sa"]["cursors"] = {f.name[:10]: f.stat().st_size for f in s.spool.glob("*.jsonl")}
+    (s.spool / "state.json").write_text(json.dumps(st), encoding="utf-8")
+    a_t += 60_000
+    s.cfg["sites"].append(site_cfg("sb", sb.url))
+    s.write_cfg()
+    sb.limits = True
+    t = start = a_t
+    hb_minutes, answers429, done_at = set(), [], None
+    limit_t = start + (minutes * 60_000 if minutes else int((len(ids) / (K_SITE_EPH - K_HEADROOM) + 2) * 3600_000))
+    while t < limit_t:
+        n0 = len(sb.posts)
+        fl(s, t, reporter=reporter)
+        new = sb.posts[n0:]
+        if any(e["kind"] == "reporter.heartbeat" for b in new for e in b["events"]) and sb.answers[n0:].count(202):
+            hb_minutes.add((t - start) // 60_000)
+        if 429 in sb.answers[n0:]:
+            answers429.append((t - start) / 60_000)
+        if done_at is None and ids <= sb.store.held():
+            done_at = t
+            if not minutes:
+                break
+        t += 60_000
+    last_minute = (t - start) // 60_000
+    return {"n": len(ids), "first_429": answers429[0] if answers429 else None, "n_429": len(answers429),
+            "hb_minutes": sorted(hb_minutes), "minutes": last_minute,
+            "every_minute": all(mm in hb_minutes for mm in range(last_minute)),
+            "done_h": None if done_at is None else round((done_at - start) / 3600_000, 2),
+            "missing": len(ids - sb.store.held())}
+
+
+n_g = case_n("green")
+bound_h = round(n_g["n"] / (K_SITE_EPH - K_HEADROOM) + 1, 2)
+eq("Case N: an added site's 7.5-day backfill at the ceiling — the stub enforcing RateLimiter's two limits answers no "
+   "429; sb receives an accepted heartbeat in every minute of the drain; every spooled id arrives; and the drain ends "
+   f"within the events-per-hour figure plus one window ({bound_h} h)",
+   (None, True, 0, True),
+   (n_g["first_429"], n_g["every_minute"], n_g["missing"], n_g["done_h"] is not None and n_g["done_h"] <= bound_h))
+print(f"  MEASURED  Case N: {n_g['n']} events drained in {n_g['done_h']} h of the injected clock (bound {bound_h} h)")
+eq(f"  … and the reporter's pin K.SITE_EVENTS_PER_HOUR equals RateLimiter::EVENTS_LIMIT ({EVENTS_LIMIT}) — the pin's check",
+   EVENTS_LIMIT, K_SITE_EPH)
+p_full_rate = plant(("  return windowTotal(entry, atMs) + req.count <= (spooled > 0 ? spooledBound() : K.SITE_EVENTS_PER_HOUR);",
+                     "  return true;"),
+                    ("  const room = Math.min(lane.maxEvents - (due ? 1 : 0), spooledBound() - total - (due ? 1 : 0));",
+                     "  const room = lane.maxEvents - (due ? 1 : 0);"))
+n_r = case_n("red", reporter=p_full_rate, minutes=30)
+FULL_RATE_MIN = -(-EVENTS_LIMIT // (8 * K_BATCH))     # minutes, at one pass of 8 rounds a minute
+eq(f"RED: a reporter that drains at the lane's full rate -> the stub answers 429 as soon as one pass a minute can "
+   f"spend the hour's {EVENTS_LIMIT} events (minute {FULL_RATE_MIN}; a real lane's six passes a minute reach it in "
+   f"its second), and sb's accepted heartbeats stop for the rest of the window", (True, True),
+   (n_r["first_429"] is not None and n_r["first_429"] <= FULL_RATE_MIN,
+    not [mm for mm in n_r["hb_minutes"] if n_r["first_429"] is not None and mm > n_r["first_429"] + 1]))
+print(f"  MEASURED  Case N RED: the first 429 came {n_r['first_429']} min into the drain; accepted heartbeats in "
+      f"minutes {n_r['hb_minutes']}")
+p_pin = plant(("  SITE_EVENTS_PER_HOUR: 20000,", "  SITE_EVENTS_PER_HOUR: 25000,"))
+eq("SECOND RED: a pin edited to 25,000 -> the constant check reds", True,
+   k_of(p_pin.read_text(encoding="utf-8"), "SITE_EVENTS_PER_HOUR") != EVENTS_LIMIT)
+redgreen("Case N — a backfill is paced under the site's limit and the heartbeat still lands (AT-28, D1 § 11.5)",
+         f"full rate -> first 429 at minute {n_r['first_429']}, accepted heartbeats at minutes {n_r['hb_minutes']}; "
+         f"pin 25,000 vs EVENTS_LIMIT {EVENTS_LIMIT}",
+         f"paced -> {n_g['n']} events in {n_g['done_h']} h, 429s {n_g['n_429']}, a heartbeat in each of "
+         f"{len(n_g['hb_minutes'])} minutes")
+
+
+# ── AT-17 — a corrupt or missing state.json loses nothing; the residual it raises, measured ───────────
+def at17_leg(tag: str, kind: str) -> dict:
+    st_ = site_stub(f"at17-{tag}")
+    s = seat(f"at28-at17-{tag}", ingest=st_.url)
+    ids = set(spool_events(s, 3, AT28_T0, tag="b1")) | set(spool_events(s, 3, AT28_T0 + 3600_000, tag="b2"))
+    fl(s, AT28_T0 + 3600_000 + 60_000)
+    epoch1 = st_.posts[-1]["seq_epoch"]
+    if kind == "reset":
+        (s.spool / "state.json").write_text('{"seq_epoch":"trunc', encoding="utf-8")
+        ids |= set(spool_events(s, 3, AT28_T0 + 2 * 3600_000, tag="b3"))
+        fl(s, AT28_T0 + 2 * 3600_000 + 60_000)
+    else:
+        (s.spool / "state.json").unlink()
+        fl(s, AT28_T0 + 2 * 3600_000 + 60_000)
+        trailing = st_.store.gap_by_epoch.get(st_.posts[-1]["seq_epoch"], 0)
+        fl(s, AT28_T0 + 2 * 3600_000 + 60_000 + K_HB_MS + 1000)    # one more stored row: the next heartbeat
+    epoch2 = st_.posts[-1]["seq_epoch"]
+    return {"stub": st_, "epoch": epoch2, "new_epoch": epoch2 != epoch1, "ids": ids, "trailing": None if kind == "reset" else trailing,
+            "dups": sum(len(b["dup"]) for b in st_.store.batch_log if b["epoch"] == epoch2)}
+
+
+for kind in ("reset", "missing"):
+    lg = at17_leg(kind, kind)
+    eq(f"AT-17 ({'an unusable' if kind == 'reset' else 'a deleted'} state.json): the spool is re-sent under a new epoch, "
+       f"answered as duplicates, and the store holds every spooled id once", (True, True, set(), True),
+       (lg["new_epoch"], lg["dups"] > 0, lg["ids"] - lg["stub"].store.held(), held_once(lg["stub"])))
+    if kind == "missing":
+        eq("  … asserted before a later row is stored, the duplicate run trails the heartbeat and the fold shows 0",
+           0, lg["trailing"])
+    assert_residual(f"AT-17 ({kind})", lg["stub"].store, lg["epoch"],
+                    {e["event_id"] for b in lg["stub"].posts for e in b["events"]},
+                    lg["stub"].heartbeats()[-1] if lg["stub"].heartbeats() else None)
+
+
+# ── AT-3, re-measured with four sites each holding a full persisted request ──────────────────────────
+def at3_run(tag: str, n_sites: int) -> dict:
+    stubs = [site_stub(f"at3-{tag}-{i}") for i in range(n_sites)]
+    s = multi_seat(f"at28-at3-{tag}", [site_cfg(f"s{i}", st.url) for i, st in enumerate(stubs)])
+    # A full request persisted for every site: each answers 503, so each lane keeps its 200-event request.
+    spool_events(s, 260, int(time.time() * 1000) - 7200_000, tag="at3", pad=900)
+    for st in stubs:
+        st.default = DOWN_503
+    fl(s)
+    state_bytes = (s.spool / "state.json").stat().st_size
+    full = all((s.entry(f"s{i}").get("request") or {}).get("count") == K_BATCH for i in range(n_sites))
+    walls, lines0 = [], tree_lines(s)
+    for i in range(20):
+        # Each hook finds the spool over the shrunk bound, so each reads state.json for the per-site cursors (§ 11.3).
+        spool_events(s, 4, int(time.time() * 1000) - 7200_000 - (i + 1) * 3600_000, tag=f"at3o{i}", pad=900)
+        t0 = time.perf_counter()
+        hook(s, "PreToolUse", pre(tuid=f"at3{tag}{i}"), reporter=P_SMALL_BOUND)
+        walls.append((time.perf_counter() - t0) * 1000)
+    return {"full": full, "state_bytes": state_bytes, "median": statistics.median(walls),
+            "p99": max(walls), "appends": tree_lines(s) - lines0}
+
+
+at3_1, at3_4 = at3_run("one", 1), at3_run("four", 4)
+eq("AT-3 precondition: every site's entry holds a full 200-event request", (True, True), (at3_1["full"], at3_4["full"]))
+print(f"  MEASURED  AT-3 with the hook's state.json read on every invocation (spool over a shrunk bound): one site — "
+      f"state.json {at3_1['state_bytes']} B, hook median {at3_1['median']:.0f} ms, max {at3_1['p99']:.0f} ms; four sites — "
+      f"state.json {at3_4['state_bytes']} B, hook median {at3_4['median']:.0f} ms, max {at3_4['p99']:.0f} ms")
+eq("AT-3: the hook path appends the same with four sites as with one — nothing per site runs in it but the drop's "
+   "counts, which take the one sink line", at3_1["appends"], at3_4["appends"])
+if PERF:
+    eq(f"PERF: with four full requests in state.json the hook's median stays inside D1's ~190 ms headroom over the "
+       f"interpreter ({at3_4['median']:.0f} ms against baseline {baseline:.0f} ms)", True, at3_4["median"] - baseline < 190)
+
+
+# ── Case F — the single-site form keeps what § 3.1 says it keeps; the upgrade re-sends nothing, collides with nothing ─
+# THE PREVIOUS BUILD IS GENERATED, NEVER HAND-WRITTEN: its state.json and spool are written by running the
+# reporter as it stood before card#12180 — the commit `dev` stood at when the card's design branched — in this
+# suite's own temp seats. It is read out of git history, so the run needs the history: a shallow checkout
+# without that commit reports the case NOT MEASURED rather than passing it (the workflow fetches full history).
+PREVIOUS_BUILD = "0067654623484bcbb0e48320a34a27f6ce9c865c"
+_old_src = subprocess.run(["git", "-C", str(HERE), "show", f"{PREVIOUS_BUILD}:fleet-reporter/fleet-reporter.js"],
+                          capture_output=True, text=True)
+_d1 = (HERE.parent / "docs/design/EVENT-SCHEMA.md").read_text(encoding="utf-8")
+_member_tbl = _d1[_d1.index("**The `selftest` member set, declared here"):]
+_member_tbl = _member_tbl[_member_tbl.index("| Member | Asserts |"):]
+_member_tbl = _member_tbl[:_member_tbl.index("\n\n")]
+SELFTEST_MEMBERS = re.findall(r"^\| `([a-z_]+)` \|", _member_tbl, re.M)
+
+
+def old_reporter() -> Path:
+    d = tmpdir("fr-prev-build-")
+    shutil.copytree(HERE / "fixtures", d / "fixtures")
+    (d / "fleet-reporter.js").write_text(_old_src.stdout, encoding="utf-8")
+    return d / "fleet-reporter.js"
+
+
+def strip_seq(e: dict) -> dict:
+    return {k: v for k, v in e.items() if k != "seq"}
+
+
+ENV_KEPT = ("schema_version", "install_id", "seat_id", "reporter_platform", "runtime_version")
+
+
+def legacy_seat(tag: str, st: SiteStub, old: Path, *, commit_drop_last: bool = False) -> Seat:
+    """A single-site seat whose state.json and spool the PREVIOUS build wrote: two passes delivered, with one
+    spooled heartbeat behind the cursor and one ahead of it, and three hook events ahead."""
+    s = seat(f"at28-f-{tag}", ingest=st.url)
+    for i in range(3):
+        hook(s, "PreToolUse", pre(tuid=f"f{tag}a{i}"), reporter=old)
+    flush(s, reporter=old)                                   # sends 3, spools hb1
+    for i in range(3):
+        hook(s, "PreToolUse", pre(tuid=f"f{tag}b{i}"), reporter=old)
+    if commit_drop_last:
+        st.script = [COMMIT_DROP]
+    flush(s, reporter=old)                                   # sends hb1 + 3, spools hb2 (or: committed, unanswered)
+    for i in range(3):
+        hook(s, "PreToolUse", pre(tuid=f"f{tag}c{i}"), reporter=old)
+    return s
+
+
+def clone_seat(s: Seat, tag: str, url: str) -> Seat:
+    c = seat(f"at28-f-clone-{tag}", ingest=url)
+    shutil.rmtree(c.spool)
+    shutil.copytree(s.spool, c.spool)
+    c.cfg = dict(s.cfg, spool_dir=str(c.spool), ingest_url=url)
+    c.write_cfg()
+    return c
+
+
+if _old_src.returncode != 0:
+    skip(f"Case F needs the previous build from git history ({PREVIOUS_BUILD[:8]}), which this checkout lacks — "
+         "NOT measured, and that is not a pass")
+else:
+    OLD = old_reporter()
+    # F1 — the kept half by equality, the changed half by name.
+    f_st, f_cmp = site_stub("f1"), site_stub("f1-cmp")
+    f1 = legacy_seat("kept", f_st, OLD)
+    legacy_state = f1.state()
+    old_hb = next(e for e in reversed(f1.events()) if e["kind"] == "reporter.heartbeat")
+    pre_ids = {e["event_id"] for e in f1.events()}
+    f1c = clone_seat(f1, "kept", f_cmp.url)
+    flush(f1c, reporter=OLD)                                  # what the previous build sends for the same spool
+    old_batch = f_cmp.posts[-1]
+    n0 = len(f_st.posts)
+    fl(f1)                                                    # the new build, installed over it
+    new_batch = f_st.posts[n0]
+    new_hb = new_batch["events"][0]
+    # The spool's own lines, as both builds found them: each start also reaps the calls its predecessor left open
+    # (§ 8.3), and those closes are minted per start, so they are not "the same spool".
+    kept_old = [json.dumps(strip_seq(e)) for e in old_batch["events"] if e["event_id"] in pre_ids]
+    kept_new = [json.dumps(strip_seq(e)) for e in new_batch["events"][1:] if e["event_id"] in pre_ids]
+    eq("Case F, the kept half: the envelope's fields but batch_id, sent_at, reporter_version and seq_epoch are equal to "
+       "the previous build's for the same spool, and every spooled event, its seq removed, is byte-equal",
+       (True, True, True), ({k: new_batch[k] for k in ENV_KEPT} == {k: old_batch[k] for k in ENV_KEPT},
+                            kept_new == kept_old, len(kept_old) >= 4))
+    eq("  … the heartbeat's field set is the previous build's, its selftest members are § 6.14's table (the previous "
+       "set plus token_accepted), and its config_fingerprint equals the previous build's for the same config",
+       (sorted(old_hb["data"]), sorted(SELFTEST_MEMBERS), sorted(old_hb["data"]["selftest"]) + ["token_accepted"],
+        old_hb["data"]["config_fingerprint"]),
+       (sorted(new_hb["data"]), sorted(new_hb["data"]["selftest"]), sorted(new_hb["data"]["selftest"]),
+        new_hb["data"]["config_fingerprint"]))
+    seqs = [e["seq"] for e in new_batch["events"]]
+    spool_order = [e["event_id"] for e in f1.events()]
+    eq("  … the changed half, by name: the heartbeat is item 0 under seq = first_seq, the batch's seqs are contiguous "
+       "from it, and with the heartbeat removed the spooled events follow spool order",
+       ("reporter.heartbeat", list(range(seqs[0], seqs[0] + len(seqs))), True),
+       (new_hb["kind"], seqs, [x for x in spool_order if x in {e["event_id"] for e in new_batch["events"][1:]}]
+        == [e["event_id"] for e in new_batch["events"][1:]]))
+    eq("  … the first request is under a seq_epoch other than the legacy state's, first_seq 1; the stub counts "
+       "seq_epoch_change 1 and seq_collision 0", (True, 1, 1, 0),
+       (new_batch["seq_epoch"] != legacy_state["seq_epoch"], seqs[0], f_st.store.seq_epoch_change, f_st.store.seq_collision))
+    c0, e0 = f1.entry().get("counters", {}).get("events_sent", 0), f1.state()["counters"].get("events_emitted", 0)
+    h0 = len(f_st.heartbeats())
+    for i in range(2):
+        hook(f1, "PreToolUse", pre(tuid=f"fkd{i}"))
+        fl(f1, int(time.time() * 1000) + (i + 1) * (K_HB_MS + 1000))
+    dsent = f1.entry().get("counters", {}).get("events_sent", 0) - c0
+    demit = f1.state()["counters"].get("events_emitted", 0) - e0
+    hb_times = [h["event_time"] for h in f_st.heartbeats()[h0:]]
+    eq("  … events_sent − events_emitted equals the heartbeats the stub received, one per pass of the heartbeat cadence",
+       (len(hb_times), 2), (dsent - demit, len(hb_times)))
+    st1 = (f1.spool / "state.json").read_text(encoding="utf-8")
+    eq("  … after the restarts: duplicates 0, state_reset 0, and state.json holds no ingest_url anywhere — only "
+       "sites.default.ingest_url_sha256", (0, 0, False, True),
+       (sum(len(b["dup"]) for b in f_st.store.batch_log), f1.state()["counters"].get("state_reset", 0),
+        "127.0.0.1:" in st1 or "ingest_url\"" in st1, bool(f1.entry().get("ingest_url_sha256"))))
+
+    # F2 — the upgrade boundary (round 4's F1): the previous build's last batch committed and unanswered.
+    def f_boundary(tag: str, reporter: Path = REPORTER, *, how: str = "stop") -> dict:
+        st = site_stub(f"f2-{tag}")
+        if how == "kill":
+            s = seat(f"at28-f2-{tag}", ingest=st.url)
+            for i in range(4):
+                hook(s, "PreToolUse", pre(tuid=f"f2{tag}a{i}"), reporter=OLD)
+            p = live(s, OLD)
+            wait_for(lambda: len(st.store.rows) >= 4, timeout=30)
+            for i in range(3):
+                hook(s, "PreToolUse", pre(tuid=f"f2{tag}b{i}"), reporter=OLD)
+            st.script = [{"commit_hang": 60}]
+            seen = wait_for(lambda: len(st.posts) >= 2 and st.answers[-1:] == ["hung"], timeout=40)
+            p.kill()
+            p.wait()
+            s.freeze_flusher()
+        else:
+            s = seat(f"at28-f2-{tag}", ingest=st.url)
+            for i in range(4):
+                hook(s, "PreToolUse", pre(tuid=f"f2{tag}a{i}"), reporter=OLD)
+            flush(s, reporter=OLD)
+            for i in range(3):
+                hook(s, "PreToolUse", pre(tuid=f"f2{tag}b{i}"), reporter=OLD)
+            st.script = [COMMIT_DROP]
+            flush(s, reporter=OLD)
+            seen = True
+        committed = st.posts[-1]
+        legacy = s.state()
+        n_before = len(st.posts)
+        died = None
+        if how == "restart":
+            # A start of the new build that dies before its first save: the spool directory refuses its writes.
+            (s.spool / "flusher.lock").unlink(missing_ok=True)
+            os.chmod(s.spool, 0o500)
+            try:
+                subprocess.run(["node", str(reporter), "flusher"], capture_output=True, text=True, timeout=60,
+                               env=s.env(freeze=False, FLEET_REPORTER_ONE_PASS="1"), cwd=str(HERE))
+            finally:
+                os.chmod(s.spool, 0o700)
+                s.freeze_flusher()
+            died = (len(st.posts) == n_before, s.state() == legacy)
+        t = int(time.time() * 1000)
+        fl(s, t, reporter=reporter)
+        first = st.posts[n_before] if len(st.posts) > n_before else {}
+        fl(s, t + K_HB_MS + 1000, reporter=reporter)               # one more stored row: the next heartbeat
+        sent = {e["event_id"] for b in st.posts for e in b["events"]}
+        return {"seen": seen, "died": died, "st": st, "first": first, "legacy_epoch": legacy.get("seq_epoch"),
+                "new_epoch": first.get("seq_epoch") not in (None, legacy.get("seq_epoch")),
+                "first_seq": (first.get("events") or [{}])[0].get("seq"),
+                "hb0": (first.get("events") or [{}])[0].get("kind") == "reporter.heartbeat",
+                "committed_dup": {e["event_id"] for e in committed["events"]} <= st.store.held()
+                and all(b["dup"] for b in st.store.batch_log if b["batch_id"] == first.get("batch_id")),
+                "collision": st.store.seq_collision, "once": held_once(st), "sent": sent}
+
+    for how in ("stop", "kill", "restart"):
+        fb = f_boundary(how, how=how)
+        if how == "restart":
+            eq("Case F, upgrade boundary — a new-build start that dies before its first save sent nothing and left the "
+               "legacy state.json as it was", (True, True), fb["died"])
+        eq(f"Case F, upgrade boundary ({how}): the new build's first request is under a new seq_epoch with first_seq 1 "
+           f"and a heartbeat at item 0 (pinned: the timer is due at a start); the committed batch's events arrive again "
+           f"and are answered as duplicates; seq_collision 0; every event_id held once",
+           (True, True, 1, True, True, 0, True),
+           (fb["seen"], fb["new_epoch"], fb["first_seq"], fb["hb0"], fb["committed_dup"], fb["collision"], fb["once"]))
+        assert_residual(f"Case F, upgrade boundary ({how})", fb["st"].store, fb["first"].get("seq_epoch"), fb["sent"],
+                        fb["st"].heartbeats()[-1] if fb["st"].heartbeats() else None)
+    p_carry = plant(("    seq_epoch: ulid(atMs), next_seq: 1, cursors: isPlain(s.cursors) ? s.cursors : {}, counters: {}, counter_rises: {},",
+                     "    seq_epoch: s.seq_epoch, next_seq: s.next_seq, cursors: isPlain(s.cursors) ? s.cursors : {}, counters: {}, counter_rises: {},"))
+    fb_r = f_boundary("red-carry", reporter=p_carry)
+    eq("THIRD RED: a reporter that carries the legacy epoch and next_seq (design r4's rule 3) -> its first request puts "
+       "a heartbeat at the committed batch's first seq and each committed event one seq later: seq_collision >= 1",
+       True, fb_r["collision"] >= 1)
+
+    # F3 — old spooled heartbeats go to one site.
+    def f_lift(tag: str, reporter: Path = REPORTER) -> dict:
+        dst, sbx = site_stub(f"f3-d-{tag}"), site_stub(f"f3-s-{tag}")
+        s = legacy_seat(f"lift-{tag}", dst, OLD)
+        old_hbs = {e["event_id"] for e in s.events() if e["kind"] == "reporter.heartbeat"}
+        others = {e["event_id"] for e in s.events() if e["kind"] != "reporter.heartbeat"}
+        url = s.cfg["ingest_url"]
+        for k in TRANSPORT_KEYS_PY:
+            s.cfg.pop(k, None)
+        s.cfg["sites"] = [site_cfg("default", url, token=s.token), site_cfg("sandbox", sbx.url)]
+        s.write_cfg()
+        n0 = len(dst.posts)
+        fl(s, reporter=reporter)
+        got_d = {e["event_id"] for b in dst.posts[n0:] for e in b["events"]}
+        return {"d_old_hbs": old_hbs & got_d, "s_old_hbs": old_hbs & sbx.received_ids(),
+                "s_others": others <= sbx.received_ids(), "old_hbs": old_hbs,
+                "s_dropped": (s.entry("sandbox").get("counters") or {}).get("spool_dropped_events", 0),
+                "s_fps": sorted({h["data"]["config_fingerprint"] for h in sbx.heartbeats()}),
+                "d_fp": fp_of(url), "s_fp": fp_of(sbx.url)}
+
+    fl3 = f_lift("green")
+    eq("Case F, lifted into [default, sandbox]: default receives the previous build's heartbeat lines ahead of its "
+       "cursor (its own); sandbox receives none of them, every other spooled event, and counts spool_dropped_events 0 "
+       "— a skip, not a loss", (True, set(), True, 0, [fl3["s_fp"]]),
+       (bool(fl3["d_old_hbs"]), fl3["s_old_hbs"], fl3["s_others"], fl3["s_dropped"], fl3["s_fps"]))
+    p_every = plant(("      if (rec.e.kind === 'reporter.heartbeat' && !(rec.e.data && rec.e.data.config_fingerprint === fingerprint)) {",
+                     "      if (false) {"))
+    fl3r = f_lift("red", reporter=p_every)
+    eq("SECOND RED: a reporter that delivers an old spooled heartbeat to every site -> sandbox receives a heartbeat whose "
+       "fingerprint is default's", True, fl3r["d_fp"] in fl3r["s_fps"])
+
+    # F4 — the discriminating control: the existing site under another name re-sends; under `default`, it does not.
+    def f_rename(tag: str, name: str) -> dict:
+        st, sbx = site_stub(f"f4-{tag}"), site_stub(f"f4-s-{tag}")
+        s = legacy_seat(f"ren-{tag}", st, OLD)
+        url = s.cfg["ingest_url"]
+        legacy = s.state()
+        for k in TRANSPORT_KEYS_PY:
+            s.cfg.pop(k, None)
+        s.cfg["sites"] = [site_cfg(name, url, token=s.token)] + ([site_cfg("sandbox", sbx.url)] if name == "default" else [])
+        s.write_cfg()
+        spooled = {e["event_id"] for e in s.events()}
+        n0 = len(st.posts)
+        fl(s)
+        new = st.posts[n0:]
+        return {"new_epoch": all(b["seq_epoch"] != legacy["seq_epoch"] for b in new),
+                "dups": sum(len(b["dup"]) for b in st.store.batch_log[n0:]), "union": spooled <= st.store.held(),
+                "resent_behind": len([e for b in new for e in b["events"] if e["kind"] != "reporter.heartbeat"]),
+                "sandbox_backfill": spooled - {e["event_id"] for e in s.events() if e["kind"] == "reporter.heartbeat"} <= sbx.received_ids()}
+
+    fr_prod = f_rename("prod", "prod")
+    eq("Case F CONTROL: the same legacy state under a multi-site config naming the existing site `prod` re-sends from the "
+       "oldest bucket under a new epoch — duplicates > 0, the held set the union", (True, True, True),
+       (fr_prod["new_epoch"], fr_prod["dups"] > 0, fr_prod["union"]))
+    fr_def = f_rename("default", "default")
+    eq("  … named `default` beside a new `sandbox`, it re-sends nothing behind the cursor, and sandbox gets the backfill",
+       (0, True), (fr_def["dups"], fr_def["sandbox_backfill"]))
+
+    # F5 — the rule-3 residual, measured: `default` repointed in the same edit as the upgrade.
+    def f_repoint(tag: str) -> dict:
+        st, sx, sy = site_stub(f"f5-{tag}"), site_stub(f"f5-x-{tag}"), site_stub(f"f5-y-{tag}")
+        s = legacy_seat(f"rep-{tag}", st, OLD)
+        cur = s.state()["cursors"]
+        behind = set()
+        for f in sorted(s.spool.glob("*.jsonl")):
+            off = 0
+            for ln in f.read_bytes().splitlines(keepends=True):
+                off += len(ln)
+                # The previous build's heartbeat lines are owed only to the server whose fingerprint they
+                # carry (§ 3.1 rule 1), so neither new server is owed them: the population is the events.
+                if off <= cur.get(f.name[:10], 0) and json.loads(ln)["e"]["kind"] != "reporter.heartbeat":
+                    behind.add(json.loads(ln)["e"]["event_id"])
+        for k in TRANSPORT_KEYS_PY:
+            s.cfg.pop(k, None)
+        s.cfg["sites"] = [site_cfg("default", sx.url, token=s.token)]
+        s.write_cfg()
+        fl(s)
+        missing_x = behind - sx.received_ids()
+        counted = (s.entry().get("counters") or {}).get("spool_dropped_events", 0)
+        s.cfg["sites"] = [site_cfg("default", sy.url, token=s.token)]
+        s.write_cfg()
+        fl(s)
+        return {"behind": behind, "missing_x": missing_x, "counted": counted,
+                "y_resent": behind <= sy.received_ids()}
+
+    frp = f_repoint("green")
+    eq("Case F, THE RULE-3 RESIDUAL, MEASURED: legacy state under a config whose `default` names another server — that "
+       "server is missing every id behind the legacy cursor, and nothing counts it", (frp["behind"], 0),
+       (frp["missing_x"], frp["counted"]))
+    print(f"  MEASURED  Case F rule-3 residual: {len(frp['missing_x'])} ids skipped, uncounted, on the one start before "
+          "the hash is recorded")
+    eq("  … after that one start the hash is recorded, and the same edit again re-sends: the window is one start",
+       True, frp["y_resent"])
+
+    def f_first_site(tag: str, reporter: Path) -> dict:
+        sbx, sp = site_stub(f"f6-s-{tag}"), site_stub(f"f6-p-{tag}")
+        s = legacy_seat(f"first-{tag}", sbx, OLD)                  # the legacy cursor is the sandbox's
+        spooled = {e["event_id"] for e in s.events() if e["kind"] != "reporter.heartbeat"}
+        for k in TRANSPORT_KEYS_PY:
+            s.cfg.pop(k, None)
+        s.cfg["sites"] = [site_cfg("prod", sp.url), site_cfg("sandbox", sbx.url, token=s.token)]
+        s.write_cfg()
+        fl(s, reporter=reporter)
+        return {"missing": spooled - sp.received_ids(),
+                "counted": (s.entry("prod").get("counters") or {}).get("spool_dropped_events", 0)}
+
+    ff_g = f_first_site("green", REPORTER)
+    eq("  … under [prod, sandbox] with the legacy cursor the sandbox's, prod (a name the state does not hold) gets the "
+       "whole spool", set(), ff_g["missing"])
+    p_first = plant(("  const prior = isPlain(state.sites) ? state.sites : {};",
+                     "  if (isPlain(state.sites) && state.sites.default && state.sites.default.legacy && sites[0] && sites[0].name) "
+                     "state.sites[sites[0].name] = state.sites.default;\n  const prior = isPlain(state.sites) ? state.sites : {};"))
+    ff_r = f_first_site("red", p_first)
+    eq("RED: a reporter that adopts the legacy state for the config's first site whatever its name -> prod is missing "
+       "every id behind that cursor, and nothing counts it (the missing ids, asserted)", (True, 0),
+       (len(ff_r["missing"]) > 0, ff_r["counted"]))
+    print(f"  MEASURED  Case F RED: prod missing {sorted(ff_r['missing'])[:3]}… ({len(ff_r['missing'])} ids)")
+    redgreen("Case F — the single-site form, and the upgrade into this build (AT-28, D1 § 3.1 rule 3)",
+             f"legacy epoch carried -> collision {fb_r['collision']}; old heartbeats to every site -> sandbox fingerprints "
+             f"{fl3r['s_fps']}; legacy adopted by the first site -> prod missing {len(ff_r['missing'])} ids, counted {ff_r['counted']}",
+             f"kept half equal, heartbeat item 0, new epoch first_seq 1, collisions 0 at the boundary (stop, SIGKILL, a "
+             f"dying start); lifted -> sandbox old heartbeats {fl3['s_old_hbs']}; renamed -> re-sent with {fr_prod['dups']} "
+             f"duplicates; repointed default -> {len(frp['missing_x'])} skipped for one start (the named residual)")
+
+
+# ── Case B — a down site stalls nothing and loses nothing, and the bound can fail ─────────────────────
+B_K = {"FLUSH_MS": 2000, "REQUEST_MS": 8000, "HEARTBEAT_MS": 12000, "HEALTH_MS": 48000}
+B_CONNECT = 4000
+EPS_S = B_CONNECT / 5000          # a fifth of the connect deadline: the smallest stall a sequential drain adds
+B_DRIVE_S = 40
+
+
+def b_flusher(*defects) -> Path:
+    return plant_src(*[(rf"\b{k}: \d+,", f"{k}: {v},") for k, v in B_K.items()],
+                     (r"\bCONNECT_MS: \d+,", f"CONNECT_MS: {B_CONNECT},"),
+                     *[(re.escape(old), new) for old, new in defects])
+
+
+class BlackHole:
+    """A listener with backlog 0 that never accepts, its one accept-queue slot held by the suite's own
+    connection: every later SYN is dropped by the kernel, so a connect waits out its deadline."""
+
+    def __init__(self):
+        self.sock = socket.socket()
+        self.sock.bind(("127.0.0.1", 0))
+        self.sock.listen(0)
+        self.port = self.sock.getsockname()[1]
+        self.fill = socket.create_connection(("127.0.0.1", self.port), timeout=2)
+        probe = socket.socket()
+        probe.settimeout(0.5)
+        try:
+            probe.connect(("127.0.0.1", self.port))
+            self.holds = False
+        except (socket.timeout, OSError):
+            self.holds = True
+        finally:
+            probe.close()
+
+    @property
+    def url(self):
+        return f"https://127.0.0.1:{self.port}/api/ingest/events"
+
+    def close(self):
+        self.fill.close()
+        self.sock.close()
+
+
+def case_b(tag: str, reporter: Path, *, blackhole: bool, recover: bool = False) -> dict:
+    sa = site_stub(f"b-a-{tag}")
+    hole = BlackHole() if blackhole else None
+    sb = None if blackhole else site_stub(f"b-b-{tag}")
+    if sb:
+        sb.default = {"hold": 3600}                       # accepts TCP and TLS, never answers
+    m = multi_seat(f"at28-b-{tag}", [site_cfg("sa", sa.url), site_cfg("sb", hole.url if hole else sb.url)])
+    # One hook before the flusher starts, so its first seat pass folds predicate counts into the seat's totals
+    # before any request is built: the bookkeeping a request's heartbeat is composed from then exists, and a
+    # later fold changes it while sb's request is held.
+    hook(m, "PreToolUse", pre(tuid=f"b{tag}pre"))
+    p = live(m, reporter, FLEET_REPORTER_BACKOFF_MAX_MS=0)
+    arrivals, snaps, reqs = [], [], set()
+    t_start = time.time()
+    seen_posts = 0
+    next_hook = t_start
+    try:
+        while time.time() - t_start < B_DRIVE_S:
+            if time.time() >= next_hook:
+                # The live flusher holds the lock: this hook must find it, not have the suite's freeze
+                # replace it (`hook()` freezes the lock for seats with no live flusher).
+                subprocess.run(["node", str(REPORTER), "hook", "PreToolUse"], input=json.dumps(pre(tuid=f"b{tag}{int(next_hook * 10)}")),
+                               capture_output=True, text=True, env=m.env(freeze=False), cwd=str(HERE))
+                next_hook += 1.0
+            if len(sa.posts) > seen_posts:
+                arrivals += [time.time()] * (len(sa.posts) - seen_posts)
+                seen_posts = len(sa.posts)
+            try:
+                snaps.append(json.loads((m.spool / "index" / "snapshot.json").read_text(encoding="utf-8"))["taken_at"])
+            except Exception:
+                pass
+            rq = m.entry("sb").get("request")
+            if rq:
+                reqs.add(rq["batch_id"])
+            time.sleep(0.02)
+        outage_req = m.entry("sb").get("request")
+        d = {}
+        if recover and sb:
+            sb.default = None
+            t_rec = time.time()
+            ids = {e["event_id"] for e in m.events()}
+            wait_for(lambda: ids <= sb.store.held(), timeout=60)
+            first = sb.store.batch_log[0]["batch_id"] if sb.store.batch_log else None
+            first_body = next((b for b in sb.posts if b.get("batch_id") == first), {})
+            same_id = [r for r, b in zip(sb.raw, sb.posts) if b.get("batch_id") == first]
+            d = {"all": ids <= sb.store.held(), "dups": sum(len(b["dup"]) for b in sb.store.batch_log),
+                 "first_is_held": outage_req is not None and first == outage_req["batch_id"],
+                 # The request persisted during the outage, as state.json held it, equals the first attempt; and
+                 # every attempt of it, the one committed after the recovery included, carries the first
+                 # attempt's `events` bytes — through a live process whose folds ran between the attempts.
+                 "held_bytes": outage_req is not None and first_body.get("events") == outage_req["events"]
+                 and len(same_id) >= 2 and len({events_bytes(r) for r in same_id}) == 1,
+                 "one_request": len(reqs) == 1, "t_rec": t_rec}
+            time.sleep(B_K["REQUEST_MS"] / 1000)
+            hbs = [r["event"] for r in sb.store.rows if r["kind"] == "reporter.heartbeat"]
+            d["hbs"] = [(h["event_time"], h["data"]["oldest_unsent_age_s"]) for h in hbs]
+            d["dropped"] = (m.entry("sb").get("counters") or {}).get("spool_dropped_events", 0)
+    finally:
+        stop_live(p, m)
+        if hole:
+            hole.close()
+    gaps = [b - a for a, b in zip(arrivals, arrivals[1:])]
+    ts = sorted({calendar.timegm(time.strptime(x[:19], "%Y-%m-%dT%H:%M:%S")) + int(x[20:23]) / 1000 for x in snaps})
+    sgaps = [b - a for a, b in zip(ts, ts[1:])]
+    hb_t = [calendar.timegm(time.strptime(h["event_time"][:19], "%Y-%m-%dT%H:%M:%S")) for h in sa.heartbeats()]
+    return {"max_gap": round(max(gaps), 2) if gaps else None, "max_snap_gap": round(max(sgaps), 2) if sgaps else None,
+            "max_hb_gap": max([b - a for a, b in zip(hb_t, hb_t[1:])], default=None), "n_a": len(arrivals),
+            "holds": hole.holds if hole else True, "t_start": t_start, **d}
+
+
+FLUSH_S, REQ_S, HB_S = B_K["FLUSH_MS"] / 1000, B_K["REQUEST_MS"] / 1000, B_K["HEARTBEAT_MS"] / 1000
+abort = subprocess.run(["sysctl", "-n", "net.ipv4.tcp_abort_on_overflow"], capture_output=True, text=True).stdout.strip()
+b_g1 = case_b("silent", b_flusher(), blackhole=False, recover=True)
+RTT_S = 0.5      # sa's own round trip and the pass's local work, on a loaded runner — measured well under it
+eq(f"Case B (sb accepts TLS and never answers; timing scaled on a copy, backoff forced to zero): every gap between sa's "
+   f"batches is <= FLUSH_MS + sa's round trip + ε ({FLUSH_S} + {RTT_S} + {EPS_S} s); every gap between snapshot "
+   f"taken_at values is <= FLUSH_MS + ε; sa's heartbeats arrive within HEARTBEAT_MS + FLUSH_MS + ε",
+   (True, True, True, True),
+   (b_g1["n_a"] >= 5, b_g1["max_gap"] is not None and b_g1["max_gap"] <= FLUSH_S + RTT_S + EPS_S,
+    b_g1["max_snap_gap"] is not None and b_g1["max_snap_gap"] <= FLUSH_S + EPS_S + 0.2,
+    b_g1["max_hb_gap"] is not None and b_g1["max_hb_gap"] <= HB_S + FLUSH_S + EPS_S + 1))
+eq("  … on restoring sb: what it commits first is the request persisted during the outage — equal to what state.json "
+   "held, and byte for byte the first attempt's `events` on every attempt — sb's entry having held exactly one request "
+   "throughout; every spooled event arrives, duplicates 0, spool_dropped_events 0",
+   (True, True, True, True, 0, 0),
+   (b_g1.get("first_is_held"), b_g1.get("held_bytes"), b_g1.get("one_request"), b_g1.get("all"), b_g1.get("dups"), b_g1.get("dropped")))
+outage_hb = b_g1.get("hbs", [])
+eq("  … the persisted request's heartbeat is stamped inside the outage's first heartbeat interval, and the next "
+   "request's heartbeat reports the backlog's age (oldest_unsent_age_s >= the outage's length), and no other "
+   "heartbeat stamped inside the outage reaches sb", (True, True, 1),
+   (bool(outage_hb) and outage_hb[0][0] <= time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(b_g1["t_start"] + HB_S + 2)),
+    len(outage_hb) > 1 and (outage_hb[1][1] or 0) >= B_DRIVE_S - HB_S,
+    len([h for h in outage_hb if h[0] < time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(b_g1["t_rec"]))])))
+if abort != "0":
+    skip(f"Case B's black-holed-port leg needs net.ipv4.tcp_abort_on_overflow = 0 (it reads {abort!r}): NOT measured")
+else:
+    b_g2 = case_b("hole", b_flusher(), blackhole=True)
+    if not b_g2["holds"]:
+        skip("Case B's black hole did not hold (a second connect to the backlog-0 listener completed) — NOT measured")
+    else:
+        eq(f"Case B (sb a black-holed port, the connect-deadline path): every gap between sa's batches is <= "
+           f"FLUSH_MS + round trip + ε", True, b_g2["max_gap"] is not None and b_g2["max_gap"] <= FLUSH_S + RTT_S + EPS_S)
+SEQUENTIAL = ("  if (running) await Promise.all([seatMain(), ...lanes.map(laneMain)]);",
+              "  if (running) await Promise.all([seatMain(), (async () => { while (running) { for (const l of lanes) { "
+              "try { await lanePass(l); } catch (e) { if (e instanceof LostOwnership) { lost(e); break; } } } "
+              "if (onePass || !running) break; await nap(K.FLUSH_MS); } })()]);")
+b_r1 = case_b("silent-red", b_flusher(SEQUENTIAL), blackhole=False)
+eq(f"RED: a reporter that drains sites in sequence inside one pass -> sa's inter-batch gap reaches FLUSH_MS + "
+   f"REQUEST_MS (> the bound {FLUSH_S + RTT_S + EPS_S} s)", True,
+   b_r1["max_gap"] is not None and b_r1["max_gap"] >= FLUSH_S + REQ_S * 0.9)
+if abort == "0":
+    b_r2 = case_b("hole-red", b_flusher(SEQUENTIAL), blackhole=True)
+    eq(f"RED: … and FLUSH_MS + CONNECT_MS on the black-holed port (> the bound)", True,
+       b_r2["max_gap"] is not None and b_r2["max_gap"] >= FLUSH_S + B_CONNECT / 1000 * 0.9)
+# THIRD RED — found by this case's first run: the persisted request held as the built object, not as a copy, so
+# the next fold's predicate counts rewrote the heartbeat inside it and every later attempt's bytes moved.
+b_r3 = case_b("silent-red-ref", b_flusher(("  entry.request = JSON.parse(JSON.stringify(built.request));",
+                                           "  entry.request = built.request;")), blackhole=False, recover=True)
+eq("THIRD RED: a reporter that keeps the built request object rather than a copy of it -> a fold between two attempts "
+   "rewrites the heartbeat inside the request, and the retries' bytes are not the first attempt's", False,
+   b_r3.get("held_bytes"))
+redgreen("Case B — a down site stalls nothing and loses nothing (AT-28, D1 § 3.1; timing scaled on a copy)",
+         f"sequential drain -> sa's max inter-batch gap {b_r1['max_gap']} s (silent site); request held by reference -> "
+         f"attempts byte-identical {b_r3.get('held_bytes')}",
+         f"one lane per site -> sa's max gap {b_g1['max_gap']} s, snapshot gap {b_g1['max_snap_gap']} s, sa heartbeat gap "
+         f"{b_g1['max_hb_gap']} s; on recovery sb got the persisted request first and every event, duplicates {b_g1.get('dups')}")
+
 
 print("\n== 21. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
 # WHY THIS IS A CHECK AND NOT JUST A TEARDOWN. Every hook that finds a stale lock forks a real

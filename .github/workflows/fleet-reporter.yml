@@ -51,6 +51,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # FULL HISTORY, because AT-28 Case F runs the PREVIOUS build (the reporter before card#12180,
+          # read with `git show <commit>:fleet-reporter/fleet-reporter.js`) to write the state.json and spool
+          # the upgrade is tested against. A shallow clone lacks that commit, and the suite then reports the
+          # case NOT MEASURED rather than passing it.
+          fetch-depth: 0
 
       # NO setup-node STEP, deliberately, matching how card-token-lint.yml treats python3: the
       # runner's stock `node` is the whole dependency, so there is no third-party action pin to

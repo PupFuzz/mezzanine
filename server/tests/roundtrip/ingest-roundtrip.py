@@ -323,7 +323,8 @@ class Harness:
         """
         deadline = time.time() + timeout
         while time.time() < deadline:
-            if len(self.stored_events()) >= expected:
+            # The spooled events: the heartbeat is no spool line (D1 § 6.14) and must not stand in for one.
+            if len([e for e in self.stored_events() if e["kind"] != "reporter.heartbeat"]) >= expected:
                 return True
             time.sleep(1.0)
         return False
@@ -421,13 +422,18 @@ def check_round_trip(h):
     # letting THAT one deliver is the point: this is the path a real seat runs, end to end, with
     # nothing in it authored by this harness.
     h.wait_for_delivery(len(spooled))
-    stored = h.stored_events()
+    # Since card#12180 the flusher's heartbeat is built per site as item 0 of a request and never spooled
+    # (D1 § 6.14), so the store holds it beside the spooled events and the comparison is on the spooled ones.
+    all_stored = h.stored_events()
+    stored = [e for e in all_stored if e["kind"] != "reporter.heartbeat"]
 
     record(
         "every event the reporter emitted was accepted and stored",
         len(stored) == len(spooled),
         f"spooled={len(spooled)} stored={len(stored)}",
     )
+    record("  … and the site's heartbeat, built for it and never spooled, was stored beside them",
+           any(e["kind"] == "reporter.heartbeat" for e in all_stored))
 
     by_id = {e["event_id"]: e for e in stored}
     mismatched = [
@@ -464,8 +470,8 @@ def check_at9(h):
         spool.mkdir(parents=True)
 
         # A PREVIOUS hour's bucket, deliberately. § 11.1 buckets the spool by UTC hour and the
-        # flusher emits its own `reporter.heartbeat` into the CURRENT one, so a torn bucket built
-        # for the current hour gets a terminated heartbeat line appended immediately after the
+        # flusher's own events (a reap's closes, § 8.3) land in the CURRENT one, so a torn bucket built
+        # for the current hour could get a terminated line appended immediately after the
         # unterminated partial — a state a real seat cannot reach, because every append is one
         # atomic `writeSync` of one whole line and a partial is by definition a write in progress
         # (§ 11.2, § 11.4). Building it an hour back keeps AT-9's stated shape — the partial IS
@@ -566,7 +572,9 @@ def check_at13_reporter_half(h):
     bucket = h.spool / (time.strftime("%Y%m%d%H", time.gmtime()) + ".jsonl")
 
     lines = []
-    for i in range(200):
+    # 199 spooled events and the flusher's heartbeat, which since card#12180 is item 0 of the request
+    # (D1 § 6.14): one 200-event batch, as AT-13 builds it, rather than 200 events spilling into a second.
+    for i in range(199):
         eid = "01K3TB" + "".join("0123456789ABCDEFGHJKMNPQRSTVWXYZ"[(i * 11 + j) % 32] for j in range(20))
         # Event 137 carries `data` over the 3 KiB cap — AT-13's build exactly. A real reporter
         # cannot produce this (§ 6.0 rule 5 clamps first), which is why the spool is written
@@ -583,22 +591,22 @@ def check_at13_reporter_half(h):
 
     h.flush()
 
-    record("AT-13 — 0 of 200 stored", len(h.stored_events()) == 0,
+    record("AT-13 — 0 of 200 stored (199 spooled events and the heartbeat)", len(h.stored_events()) == 0,
            f"{len(h.stored_events())} stored")
 
-    rejected_txt = h.spool / "REJECTED.txt"
-    record("AT-13 — the reporter wrote REJECTED.txt", rejected_txt.exists(),
+    rejected_txt = h.spool / "REJECTED.default.txt"
+    record("AT-13 — the reporter wrote REJECTED.default.txt", rejected_txt.exists(),
            rejected_txt.read_text().splitlines()[0][:100] if rejected_txt.exists() else "")
 
     if rejected_txt.exists():
         text = rejected_txt.read_text()
-        record("AT-13 — REJECTED.txt names the machine-readable error code",
+        record("AT-13 — REJECTED.default.txt names the machine-readable error code",
                "invalid_event" in text)
-        record("AT-13 — REJECTED.txt contains no Authorization header value",
+        record("AT-13 — REJECTED.default.txt contains no Authorization header value",
                h.token not in text and "Bearer" not in text,
                "§ 11.5: the reporter logs the request's status, never its headers")
 
-    quarantined = h.spool / "quarantine" / "rejected.jsonl"
+    quarantined = h.spool / "quarantine" / "rejected.default.jsonl"
     record("AT-13 — the batch is quarantined rather than retried", quarantined.exists())
 
     # The stream continues: a fresh good batch after the poison pill.
@@ -630,7 +638,7 @@ def check_declaration(h):
     dup_roster.write_text(json.dumps({"roster": [{"name": "magento", "role": "impl"}, {"name": "magento", "role": "pm"}]}))
 
     def run(declared, coord_config, script=None):
-        """A fresh spool, two passes: the first spools its heartbeat after its drain, the second sends it."""
+        """A fresh spool, two passes, each sending its own heartbeat as item 0 of its request (D1 § 6.14)."""
         h.stop_background_flusher()
         h.reset_store()
         shutil.rmtree(h.spool, ignore_errors=True)
@@ -654,7 +662,7 @@ def check_declaration(h):
         triples = sorted({(b.get("protocol_agent_name"), b.get("protocol_agent_name_check"),
                            b.get("protocol_agent_role", "<absent>")) for b in beats}, key=str)
         record(f"a `{label}` heartbeat is accepted and stored with the pair and role the reporter built",
-               bool(beats) and triples == [(declared, state, role)] and not (h.spool / "REJECTED.txt").exists(),
+               bool(beats) and triples == [(declared, state, role)] and not (h.spool / "REJECTED.default.txt").exists(),
                f"stored (name, check, role)={triples}")
         h.artisan("mezzanine:fold", "--once")
         folded = h.query("select protocol_agent_name, protocol_agent_name_check, protocol_agent_role from seat_state")
@@ -666,26 +674,26 @@ def check_declaration(h):
     defective = h.work / "fleet-reporter-bad-check.js"
     src = REPORTER.read_text()
     # The heartbeat's member, and not `runSelftestChecks`' detail object, which spells the same key.
-    anchor = "    protocol_agent_name_check: declaration.check,\n    // § 6.14's relayed role"
+    anchor = "      protocol_agent_name_check: declaration.check,\n      // § 6.14's relayed role"
     if not record("declaration RED plant found its target in fleet-reporter.js", src.count(anchor) == 1,
                   "the heartbeat's check member moved; the RED below is not evidence"):
         return
-    defective.write_text(src.replace(anchor, "    protocol_agent_name_check: 'verified',\n    // § 6.14's relayed role", 1))
+    defective.write_text(src.replace(anchor, "      protocol_agent_name_check: 'verified',\n      // § 6.14's relayed role", 1))
     beats = run("magento", str(roster), script=defective)
-    record("declaration RED — a check value outside § 3.1's set is refused: nothing stored, REJECTED.txt written",
-           not beats and (h.spool / "REJECTED.txt").exists(), f"{len(beats)} heartbeats stored")
+    record("declaration RED — a check value outside § 3.1's set is refused: nothing stored, REJECTED.default.txt written",
+           not beats and (h.spool / "REJECTED.default.txt").exists(), f"{len(beats)} heartbeats stored")
 
     # card#11144's RED: a reporter relaying a role past § 6.14's 48 B figure. The ingest refuses the
     # heartbeat by that figure, so the batch is quarantined rather than the role reaching D2's column.
-    role_anchor = "    protocol_agent_role: declaration.role,\n"
+    role_anchor = "      protocol_agent_role: declaration.role,\n"
     if not record("role RED plant found its target in fleet-reporter.js", src.count(role_anchor) == 1,
                   "the heartbeat's role member moved; the RED below is not evidence"):
         return
     over = h.work / "fleet-reporter-over-bound-role.js"
-    over.write_text(src.replace(role_anchor, "    protocol_agent_role: 'a'.repeat(49),\n", 1))
+    over.write_text(src.replace(role_anchor, "      protocol_agent_role: 'a'.repeat(49),\n", 1))
     beats = run("magento", str(roster), script=over)
-    record("role RED — a role one byte past § 6.14's bound is refused: nothing stored, REJECTED.txt written",
-           not beats and (h.spool / "REJECTED.txt").exists(), f"{len(beats)} heartbeats stored")
+    record("role RED — a role one byte past § 6.14's bound is refused: nothing stored, REJECTED.default.txt written",
+           not beats and (h.spool / "REJECTED.default.txt").exists(), f"{len(beats)} heartbeats stored")
 
 
 def check_auth_over_the_wire(h):

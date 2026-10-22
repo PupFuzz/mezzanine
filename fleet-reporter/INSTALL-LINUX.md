@@ -147,6 +147,34 @@ exits 0 and prints nothing (`rc=0`). So hooks may be wired before the config exi
 is not safe. A settings entry whose script path does not exist yet makes `node` exit non-zero on every
 tool call, and the harness puts that error in the transcript.
 
+**Upgrading a seat that already reports: install the artifact first, then stop the flusher** (D1 § 3.1,
+card#12180). Make an attempt directory with Step 0 and save Step 5's two helpers into it first. Run the
+`install` lines above over the running seat, then stop the flusher with Step 5's `stop-flusher.js`, then let cron's next minute or the next hook start it, then check with Step 5's
+`flusher-ancestry.js` that the lock holder started after the artifact was installed:
+
+```bash
+node "$B/stop-flusher.js" /home/mezzanine/.local/state/fleet-reporter /home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js
+sleep 70
+node "$B/flusher-ancestry.js" /home/mezzanine/.local/state/fleet-reporter /home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js
+```
+
+The order is load-bearing. A hook starts a flusher whenever it finds no live one, and it runs the path
+the hook was given, so stopping first lets a hook that fires before the install start the **old**
+artifact, which then runs until it is stopped again. Installing first leaves only the seconds between
+the two commands, in which a hook already runs the new artifact beside the old flusher; a per-site count
+a hook takes in those seconds is folded past by the old flusher and lost, uncounted, and nothing else
+is. The last command prints `FAIL: … before the artifact was installed` when the flusher holding the lock
+started before the new artifact did (one the stop missed, or one a hook started before the install), and
+the times it compares are whole seconds, so a holder started within a second of the install can read as
+older; stop it again in either case. The first start of the new build adopts the old `state.json`: it
+keeps the delivery cursor and mints a new `seq_epoch`, which the server shows once as `epoch_reset`.
+⚠ **Not yet performed on the sandbox seat.** The start-time check was driven on a scratch copy with a
+stand-in flusher: started before a `touch` of the artifact it printed `FAIL: the lock holder started
+2026-10-22T20:43:36.900Z, before the artifact was installed at 2026-10-22T20:43:38.850Z: it runs the
+previous build`, and started after it, `the lock holder started 2026-10-22T20:43:40.200Z, after the
+artifact's 2026-10-22T20:43:38.850Z` (and then its cron check's `FAIL`, there being no cron). Card#12180's
+install step performs the upgrade on the seat and records its output here.
+
 ## Step 2 — issue the seat token into the config, on this host or through a carried file
 
 On a seat on the Mezzanine server's own host, the issue command pipes straight into the config. When
@@ -204,17 +232,34 @@ const fs = require("fs"), path = require("path");
 const e = process.env, out = [], TOKEN = /^\s*token\s+(mzn_[A-Za-z0-9_-]{43})\s*$/, SHAPE = /mzn_[A-Za-z0-9_-]{43}/g;
 const FILE_TOKEN = /^mzn_[A-Za-z0-9_-]{43}\n?$/;
 const DESCRIPTORS = e.FR_DESCRIPTORS || "full";
+const TRANSPORT = ["ingest_url", "token", "ca_file", "proxy_url"];
+const SEAT_KEYS = ["FR_INSTALL", "FR_SEAT", "FR_SPOOL", "FR_AGENT", "FR_WRAPPED", "FR_DESCRIPTORS"];
+const MODE = e.FR_MODE || "";
 const die = (why) => { console.error(why + ": NOTHING WRITTEN"); process.exit(1); };
+if (!["", "add-site", "set-token"].includes(MODE)) die("FR_MODE must be add-site or set-token, or unset");
 if (!["full", "paths", "none"].includes(DESCRIPTORS)) die("FR_DESCRIPTORS must be full, paths or none");
 for (const k of ["FR_TOKEN_FILE", "FR_TOKEN_OUT"]) if (k in e && !e[k]) die(k + " is set but empty");
 if (e.FR_TOKEN_FILE && e.FR_TOKEN_OUT) die("FR_TOKEN_FILE and FR_TOKEN_OUT are two different steps; set one");
+if (e.FR_CA_FILE && !path.isAbsolute(e.FR_CA_FILE)) die("FR_CA_FILE must be an absolute path");
+if (MODE) {
+  // The two modes change `sites` and nothing else: the seat's keys come from the file.
+  for (const k of SEAT_KEYS) if (k in e) die(k + " is set, and FR_MODE=" + MODE + " takes the seat's keys from the file");
+  if (e.FR_TOKEN_OUT) die("FR_TOKEN_OUT is the issuer's step; FR_MODE writes a config");
+  if (!e.FR_REPORTER) die("FR_REPORTER must name the installed fleet-reporter.js, whose loadConfig validates the result");
+  if (!e.FR_SITE_NAME) die("FR_MODE=" + MODE + " needs FR_SITE_NAME");
+  if (MODE === "add-site" && !e.FR_URL) die("FR_MODE=add-site needs FR_URL");
+  if (MODE === "set-token") for (const k of ["FR_URL", "FR_CA_FILE"]) if (k in e) die(k + " is set, and FR_MODE=set-token changes one token and nothing else");
+  if (!fs.existsSync(e.FR_CONFIG)) die("FR_MODE=" + MODE + " changes a config that exists, and " + e.FR_CONFIG + " does not");
+}
 const mode = (st) => (st.mode & 0o777).toString(8);
+const siteOf = (name, url, token) => ({ name, ingest_url: url, token, ca_file: e.FR_CA_FILE || null, proxy_url: null });
 function writeConfig(token) {
+  // A fresh install writes the multi-site form, one site, and never the single-site form (D1 § 3.1).
   const cfg = {
-    install_id: e.FR_INSTALL, seat_id: e.FR_SEAT, ingest_url: e.FR_URL, token,
-    spool_dir: e.FR_SPOOL, ca_file: null, proxy_url: null,
+    install_id: e.FR_INSTALL, seat_id: e.FR_SEAT, spool_dir: e.FR_SPOOL,
     wrapped_statusline: e.FR_WRAPPED || null, protocol_agent_name: e.FR_AGENT || null,
     descriptors: DESCRIPTORS, enabled: true,
+    sites: [siteOf(e.FR_SITE_NAME || "default", e.FR_URL, token)],
   };
   fs.mkdirSync(path.dirname(e.FR_CONFIG), { recursive: true, mode: 0o700 });
   fs.chmodSync(path.dirname(e.FR_CONFIG), 0o700);
@@ -222,6 +267,39 @@ function writeConfig(token) {
   fs.writeSync(fd, JSON.stringify(cfg, null, 2) + "\n"); fs.closeSync(fd);
   console.log("wrote " + e.FR_CONFIG + " (mode " + mode(fs.statSync(e.FR_CONFIG)) + ")");
 }
+function changeSites(token) {
+  // Read, lift a single-site file into `sites` under FR_LIFT_NAME, change the one site, then write a 0600
+  // temp file beside the config, validate it with the reporter's own loadConfig, and rename it into place.
+  let c;
+  try { c = JSON.parse(fs.readFileSync(e.FR_CONFIG, "utf8")); } catch (err) { die("cannot read " + e.FR_CONFIG + " as JSON (" + (err.code || "not JSON") + ")"); }
+  if (!c || typeof c !== "object" || Array.isArray(c)) die(e.FR_CONFIG + " is not a JSON object");
+  if (!("sites" in c)) {
+    const lifted = { name: e.FR_LIFT_NAME || "default" };
+    for (const k of TRANSPORT) { lifted[k] = k in c ? c[k] : null; delete c[k]; }
+    c.sites = [lifted];
+  }
+  if (!Array.isArray(c.sites)) die(e.FR_CONFIG + "'s sites is not an array");
+  const names = c.sites.map((x) => (x && typeof x.name === "string" ? x.name : "<unnamed>"));
+  if (MODE === "add-site") c.sites.push(siteOf(e.FR_SITE_NAME, e.FR_URL, token));
+  else {
+    const at = names.indexOf(e.FR_SITE_NAME);
+    if (at < 0) die("FR_SITE_NAME " + e.FR_SITE_NAME + " is not a site in " + e.FR_CONFIG + ", whose sites are: " + names.join(", "));
+    c.sites[at].token = token;
+  }
+  const tmp = path.join(path.dirname(e.FR_CONFIG), "." + path.basename(e.FR_CONFIG) + "." + process.pid + ".tmp");
+  try {
+    const fd = fs.openSync(tmp, "wx", 0o600);
+    try { fs.writeSync(fd, JSON.stringify(c, null, 2) + "\n"); } finally { fs.closeSync(fd); }
+  } catch (err) { try { fs.unlinkSync(tmp); } catch (e2) {} die("could not write " + tmp + " (" + err.code + ")"); }
+  let errors;
+  try { const m = require(path.resolve(e.FR_REPORTER)); const l = m.loadConfig(tmp); errors = m.allConfigErrors(l); }
+  catch (err) { errors = ["cannot load the reporter at " + e.FR_REPORTER + " (" + (err.code || err.message) + ")"]; }
+  if (errors.length) { fs.unlinkSync(tmp); for (const x of errors) console.error("config error: " + x); die("the result does not validate"); }
+  fs.renameSync(tmp, e.FR_CONFIG);
+  console.log("wrote " + e.FR_CONFIG + " (mode " + mode(fs.statSync(e.FR_CONFIG)) + "), sites: " + c.sites.map((x) => x.name).join(", "));
+  if (MODE === "set-token") console.log("token replaced: " + e.FR_SITE_NAME);
+}
+const place = (token) => { try { (MODE ? changeSites : writeConfig)(token); } catch (err) { die("could not write " + e.FR_CONFIG + " (" + err.code + ")"); } };
 if (e.FR_TOKEN_FILE) {
   // The seat end of a hand delivery: the token comes from the carried file, never from stdin.
   let st;
@@ -235,7 +313,7 @@ if (e.FR_TOKEN_FILE) {
   const body = fs.readFileSync(e.FR_TOKEN_FILE, "utf8");
   if (!FILE_TOKEN.test(body)) die("the token file " + e.FR_TOKEN_FILE + " does not hold exactly one well-formed mzn_ token");
   console.log("read the token from " + e.FR_TOKEN_FILE + " (mode 600)");
-  try { writeConfig(body.trimEnd()); } catch (err) { die("could not write " + e.FR_CONFIG + " (" + err.code + ")"); }
+  place(body.trimEnd());
 } else {
   let raw = ""; process.stdin.setEncoding("utf8");
   process.stdin.on("data", (d) => { raw += d; });
@@ -255,9 +333,7 @@ if (e.FR_TOKEN_FILE) {
         fs.writeSync(fd, token + "\n"); fs.closeSync(fd);
       } catch (err) { die("could not write " + e.FR_TOKEN_OUT + " (" + err.code + ")"); }
       console.log("wrote " + e.FR_TOKEN_OUT + " (mode " + mode(fs.statSync(e.FR_TOKEN_OUT)) + ")");
-    } else {
-      try { writeConfig(token); } catch (err) { die("could not write " + e.FR_CONFIG + " (" + err.code + ")"); }
-    }
+    } else place(token);
   });
 }
 JS
@@ -267,6 +343,24 @@ JS
 Before this ran for real, the writer was driven three ways: with a fabricated issue output, which wrote
 the file at mode `600` in a `700` directory; against a config that already existed, which refused
 (`'wx'`) and wrote nothing; and with output that had no token line, which exited 1 and wrote nothing.
+
+**Since card#12180 the writer writes D1 § 3.1's multi-site form, and only that form**: `install_id`,
+`seat_id`, `spool_dir` and the seat's other keys at the top level, and a `sites` list holding the one
+site, `{ name, ingest_url, token, ca_file, proxy_url }`. `FR_SITE_NAME` names the site and defaults to
+`default`, so a seat with one site never has to choose one; `FR_CA_FILE` sets its `ca_file` (an absolute
+path; unset, `null`); `proxy_url` stays `null`, a hand edit as before, because a proxy URL can carry a
+password. A config the reporter wrote before card#12180, with the four keys at the top level, keeps
+working unchanged. The writer has two modes, which are the only ways it touches a file that exists:
+`FR_MODE=add-site` ([Adding a site](#adding-a-site)) and `FR_MODE=set-token`
+([Rotating a site's token](#rotating-a-sites-token)). Each reads the config, lifts a file written before
+card#12180 into the `sites` form under `FR_LIFT_NAME` (default `default`), changes one site, writes the
+result to a `0600` temp file beside the config, checks it with the installed reporter's own `loadConfig`
+(`FR_REPORTER` names that file), and renames it into place only when it has no error; on any error it
+removes the temp file, prints each error and leaves the config as it was. Each refuses `FR_INSTALL`,
+`FR_SEAT`, `FR_SPOOL`, `FR_AGENT`, `FR_WRAPPED` and `FR_DESCRIPTORS`, because a mode changes `sites` and
+nothing else, and prints the site names and nothing of any value. The acceptance suite re-extracts this
+block and drives it (AT-28 Case P): the fresh form, a lift, every refusal, both token routes, and a
+file-size limit that the temp-and-rename write survives with the config byte-identical.
 The writer reads the token from one of two places and writes it to one of two places. On the same host,
 which is the pipeline below, it reads the issue command's output on stdin and writes the config.
 When the server is on another host, the token makes two hops through the same writer. `FR_TOKEN_OUT`
@@ -321,8 +415,45 @@ takes it, and Step 8 needs it.
   the pipeline again.
 - **If the server is on another host**, the pipe cannot cross between machines. Carry the token in the
   one named file the next section describes.
-- **Rotation.** D1 § 3.3's order applies: issue the new token, write it into the config, and only then
-  revoke the old one.
+- **Rotation.** [Rotating a site's token](#rotating-a-sites-token), below, runs D1 § 3.3's order.
+
+#### Adding a site
+
+A second Mezzanine site (D1 § 3.1, *Sites*) is added in the order in which a refusal fails safe:
+
+1. **Issue the token on the new site for the seat's existing pair**, `php artisan mezzanine:ingest-token:issue
+   <install_id> <seat_id>`, on that site's host, and read back the `seat <install_id> / <seat_id>` line it
+   prints: a pair mistyped here is a `403 identity_mismatch` on the first batch, which `selftest` cannot see
+   (D1 § 6.14). A site on another host carries the token by [the hand delivery](#when-the-server-is-on-another-host-carry-the-token-in-one-named-file),
+   steps (a) and (b).
+2. **Write the site with the writer**, by the carried file or by piping the issue command into it:
+   `FR_MODE=add-site FR_SITE_NAME=<name> FR_URL=<the site's ingest URL> FR_CA_FILE=<optional> FR_REPORTER=/home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js FR_CONFIG=/home/mezzanine/.config/fleet-reporter/config.json FR_TOKEN_FILE=<the carried file> node "$B/write-config.js"`.
+   It refuses a name or a URL the file already has (two spellings of one server are one URL), and prints
+   the site names.
+3. **Check the file** with Step 3, then **run Step 6**, reading the new site's block in `sites`.
+4. **Restart the flusher** with Step 5's `stop-flusher.js`, and let cron's next minute or a hook start it.
+5. **Verify with Step 7** against the new site's store, then shred the token file with step (d).
+
+The new site receives the spool's whole history, up to 8 days of it, paced under that site's event limit
+(D1 § 11.5): a full spool takes about 3.4 hours, during which the new site's floor shows the desk
+*catching up*. The sites already reporting see nothing of it: each site has its own cursor, requests and
+backoff, and a site that is slow, down or refusing delays no other. To take a site off a seat without
+uninstalling, see Step 8.
+
+#### Rotating a site's token
+
+Rotate in D1 § 3.3's order, with the refusable step first: **issue** the new token on the site; **write**
+it with `FR_MODE=set-token FR_SITE_NAME=<name> FR_REPORTER=… FR_CONFIG=…` and either token route, which
+replaces that site's token and nothing else and prints `token replaced: <name>` (on a file written before
+card#12180 the site is `default`); **restart** the flusher (Step 5's `stop-flusher.js`, then cron or a
+hook), because a running flusher keeps presenting the token it started with; and only then **revoke** the
+old token by its prefix. The revoke comes after the restart because issuing revokes nothing, so both
+tokens resolve until it, and a revoked token is a `401` that stops the site's sending. The same route is
+the recovery from that stop: `REJECTED.<name>.txt` and the log name the site and the status, a `401`
+meaning the token does not resolve there (mistyped, swapped with another site's, revoked) and a `403
+identity_mismatch` meaning it was issued for another pair, whose `expected_install_id` and
+`expected_seat_id` the line carries. The stopped site sends nothing until the flusher restarts on a
+corrected token; it keeps every event, and resends the request it was refused first.
 
 #### When the server is on another host, carry the token in one named file
 
@@ -432,11 +563,12 @@ between two hosts: the first real hand delivery exercises both.
 
 ```bash
 stat -c '%a %n' /home/mezzanine/.config/fleet-reporter /home/mezzanine/.config/fleet-reporter/config.json
-node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); for (const [k,v] of Object.entries(c)) console.log(k, k==="token" ? "<" + (/^mzn_[A-Za-z0-9_-]{43}$/.test(v) ? "well-formed" : "MALFORMED") + ">" : JSON.stringify(v))' /home/mezzanine/.config/fleet-reporter/config.json
+node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); const show=(p,o)=>{for (const [k,v] of Object.entries(o)) { if (k==="sites" && Array.isArray(v)) { v.forEach((x,i)=>show("sites["+(x&&x.name||i)+"].",x||{})); continue; } console.log(p+k, k==="token" ? "<" + (/^mzn_[A-Za-z0-9_-]{43}$/.test(v) ? "well-formed" : "MALFORMED") + ">" : JSON.stringify(v)); }}; show("",c)' /home/mezzanine/.config/fleet-reporter/config.json
 ```
 
 On the sandbox this printed `700` and `600`, and then every key with the token shown only as
-`<well-formed>`.
+`<well-formed>`. Since card#12180 the printer also descends into `sites` and masks every site's token
+the same way, printing each site's keys as `sites[<name>].<key>`.
 
 **Choose what the descriptor carries: the `descriptors` key.** Each tool call reaches the floor with a
 short label built from its arguments, after the reporter has replaced the credential, host-name, IP,
@@ -633,10 +765,14 @@ First save the two helpers it uses. Step 8 uses them too. `stop-flusher.js` send
 `flusher.lock` names, but only if that pid is running this artifact's `flusher`. A stale lock's pid may
 have been reused by an unrelated process. The script then polls until the process exits, and derives
 how long to wait from the artifact's own constants rather than from a figure written here. After
-SIGTERM the loop finishes its current pass and then its `K.FLUSH_MS` sleep. A pass awaits one health
-request and `drainOnce`'s rounds, each round at most two `postBatch` calls (the 413 retry), and every
-request is bounded by `K.REQUEST_MS`. `flusher-ancestry.js` walks the lock holder's parents and says
-whether cron's start runs it:
+SIGTERM every loop of the process finishes the pass it is in, and its `K.FLUSH_MS` sleep ends at once.
+Since card#12180 the slowest of those is one site's lane, whose pass awaits one health request and
+`laneDrain`'s rounds, one `postBatch` each (a `413` is answered by the next round's smaller request),
+and the lanes run at the same time; every request is bounded by `K.REQUEST_MS`. The bound the script
+computes still allows two requests a round, as it did for the build before, so it is an upper bound
+with a round's margin. `flusher-ancestry.js` walks the lock holder's parents and says whether cron's
+start runs it; since card#12180 it also says whether the holder started after the artifact was
+installed, which is the check Step 1's upgrade order ends with:
 
 ```bash
 ( set -euo pipefail
@@ -646,7 +782,7 @@ const [spool, js] = process.argv.slice(2);
 const src = fs.readFileSync(js, "utf8");
 const num = (re, what) => { const m = re.exec(src); if (!m) { console.error("cannot read " + what + " from " + js + ": no bound, NOTHING SENT"); process.exit(2); } return Number(m[1]); };
 const FLUSH_MS = num(/\bFLUSH_MS:\s*(\d+)/, "K.FLUSH_MS"), REQUEST_MS = num(/\bREQUEST_MS:\s*(\d+)/, "K.REQUEST_MS");
-const ROUNDS = num(/for \(let round = 0; round < (\d+);/, "drainOnce's round cap");
+const ROUNDS = num(/for \(let round = 0; round < (\d+);/, "laneDrain's round cap");
 const boundMs = FLUSH_MS + REQUEST_MS * (1 + 2 * ROUNDS);
 let pid;
 try { pid = JSON.parse(fs.readFileSync(path.join(spool, "flusher.lock"), "utf8")).pid; } catch (e) { console.log("no readable flusher.lock: no flusher to stop"); process.exit(0); }
@@ -658,7 +794,7 @@ process.kill(pid, "SIGTERM");
 const t0 = Date.now();
 const poll = setInterval(() => {
   if (!fs.existsSync("/proc/" + pid)) { clearInterval(poll); console.log("flusher pid " + pid + " exited " + Math.round((Date.now() - t0) / 1000) + " s after SIGTERM"); process.exit(0); }
-  if (Date.now() - t0 > boundMs) { clearInterval(poll); console.error("flusher pid " + pid + " still running " + boundMs / 1000 + " s after SIGTERM, past K.FLUSH_MS + K.REQUEST_MS x (1 + 2 x drainOnce rounds): NOT STOPPED"); process.exit(1); }
+  if (Date.now() - t0 > boundMs) { clearInterval(poll); console.error("flusher pid " + pid + " still running " + boundMs / 1000 + " s after SIGTERM, past K.FLUSH_MS + K.REQUEST_MS x (1 + 2 x laneDrain rounds): NOT STOPPED"); process.exit(1); }
 }, 1000);
 JS
   cat > "$B/flusher-ancestry.js" <<'JS'
@@ -676,6 +812,14 @@ for (let p = pid; p > 1;) {
 }
 for (const c of chain) console.log(String(c.p).padStart(8) + "  " + c.comm.padEnd(8) + " " + c.cmd.slice(0, 150));
 if (!chain.length || !chain[0].cmd.includes(js + " flusher")) { console.log("FAIL: flusher.lock names pid " + pid + ", which is not a running " + js + " flusher"); process.exit(1); }
+// The holder's start (field 22 of /proc/<pid>/stat, clock ticks since boot) against the artifact's mtime: a
+// holder older than the artifact runs the build that was there before it (card#12180, Step 1).
+const ticks = Number(fs.readFileSync("/proc/" + pid + "/stat", "utf8").replace(/^.*\) /s, "").split(" ")[19]);
+const btime = Number(/^btime (\d+)$/m.exec(fs.readFileSync("/proc/stat", "utf8"))[1]);
+const hz = Number(require("child_process").execFileSync("getconf", ["CLK_TCK"]).toString().trim());
+const startedMs = (btime + ticks / hz) * 1000, builtMs = fs.statSync(js).mtimeMs;
+if (startedMs < builtMs) { console.log("FAIL: the lock holder started " + new Date(startedMs).toISOString() + ", before the artifact was installed at " + new Date(builtMs).toISOString() + ": it runs the previous build"); process.exit(1); }
+console.log("the lock holder started " + new Date(startedMs).toISOString() + ", after the artifact's " + new Date(builtMs).toISOString());
 const flock = chain[1] && chain[1].comm === "flock" && chain[1].cmd.includes(js);
 const cron = chain.some((c) => /^cron$/i.test(c.comm));
 if (flock && cron) { console.log("PASS: the lock holder was started by cron through flock"); process.exit(0); }
@@ -798,15 +942,24 @@ went stale, and it took over. It kept the existing `state.json`, so no second st
 node /home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js selftest; echo "selftest rc=$?"
 ```
 
-The command measures both network checks itself, with the flusher's own health probe against the
-config's `ingest_url` and `ca_file` (card#9373), through `proxy_url` when the config sets one, the
-route the batches take (card#9473). Read its exit code by D1 § 6.14:
+The command measures the network checks itself, with the flusher's own health probe against each site's
+`ingest_url` and `ca_file` (card#9373), through that site's `proxy_url` when it sets one, the route the
+batches take (card#9473). Since card#12180 the report carries a `sites` object, one block per site keyed
+by its name (`default` for a config written before card#12180), with that site's `config_readable`,
+`tls_verify`, `schema_version_accepted` and `token_accepted`, and `detail.sites.<name>` with its errors and
+its probe's `reached`, `probe_error`, `http_status` and accepted set. `checks` aggregates the four: `fail`
+when any site fails, else `not_measured` when any site is unmeasured, else `pass`. Read its exit code by
+D1 § 6.14:
 
 - **`rc=0`** — every check passed. The install is verified.
-- **`rc=1`** — a check failed; `checks` names it and `detail` says why. A `tls_verify` fail with an
-  empty `detail.tls_verify.forbidden_spellings_present` means a TCP connection was made and the TLS
-  handshake failed; `detail.tls_verify.probe_error` names the error, and the usual cause is a
-  `ca_file` that does not trust the ingest's certificate.
+- **`rc=1`** — a check failed; `checks` names it, `sites` names the site, and `detail` says why. A
+  `tls_verify` fail with an empty `detail.tls_verify.forbidden_spellings_present` means a TCP connection
+  was made and the TLS handshake failed; `detail.sites.<name>.probe_error` names the error, and the usual
+  cause is a `ca_file` that does not trust the ingest's certificate. A `token_accepted` fail is a site
+  that answered the probe `401`: its token does not resolve there, mistyped, swapped with another site's,
+  or revoked; rotate it ([Rotating a site's token](#rotating-a-sites-token)). ⚠ A token the site issued
+  for another seat's pair passes this check (the probe compares no identity) and is refused on the first
+  batch; Step 7 is where that shows.
 - **`rc=1` with `config_readable` failing** — `detail.config_readable.errors` names each rule the
   config breaks, and the command runs no probe. `ca_file unreadable at <path>: <errno>` means the seat
   cannot read the CA file its config pins: it was moved, its permissions changed, or the path has a
@@ -838,10 +991,11 @@ route the batches take (card#9473). Read its exit code by D1 § 6.14:
   The same detail's `roster_role` shows the role the seat relays from its roster entry (card#11144),
   or why it relays `null`: *no role: the entry carries none*, *not a slug: …*, or *ambiguous: N
   entries named X* when two roster entries share the declared name. None of those fails the command.
-- **`rc=2`** — no check failed and at least one is `not_measured`. The probe reached no ingest
-  (`detail.tls_verify.probe_error`), or the ingest answered without its accepted set
-  (`detail.schema_version_accepted.http_status`; a `401` is the ingest refusing the config's token,
-  D1 § 4.1). Re-run once the ingest answers.
+- **`rc=2`** — no check failed and at least one is `not_measured`. A site's probe reached no ingest
+  (`detail.sites.<name>.probe_error`), or the ingest answered without its accepted set
+  (`detail.sites.<name>.http_status`): an outage page, or a `401`/`403` something in front of the ingest
+  gave rather than the ingest itself. A `401` from the ingest is `rc=1`, above. Re-run once the ingest
+  answers.
 
 **The roster check reads the environment the command runs in** (D1 § 3.1). The flusher gets
 `$COORD_CONFIG` from Step 5's crontab line, and a shell that has not exported it makes `selftest` read
@@ -859,7 +1013,12 @@ real host, and on the sandbox every check there was `pass`.
 
 ## Step 7 — verify that events arrive
 
-**On the seat.** The spool fills and drains, and the flusher logs to its own directory:
+**Run this step for each site**, against that site's own store. Since card#12180 it is also the check for
+the one token mistake Step 6 cannot see, a token issued for another seat's pair: such a site shows no
+events from this seat, and the seat's `REJECTED.<name>.txt` holds a `403 identity_mismatch` line.
+
+**On the seat.** The spool fills and drains, and the flusher logs to its own directory, each site's
+lines prefixed `flusher[<name>]`:
 
 ```bash
 ls -la /home/mezzanine/.local/state/fleet-reporter/ && tail -5 /home/mezzanine/.local/state/fleet-reporter/log/*.log
@@ -885,7 +1044,8 @@ run is Step 5's kill test. At that point the snapshot below showed the seat `lin
 **Since the hooks were wired**, a session that does work adds activity rows. The seat's own spool
 shows them from 20:37:56 UTC on 2026-09-13: `tool.start`, `tool.end`, `turn.start`, `turn.end`,
 `subagent.spawn`, `subagent.stop`, `attention.request` and `attention.resolved`. A later heartbeat's
-counters had `events_sent` equal to `events_emitted`, with `batches_rejected` at 0. No `session.start`
+counters had `events_sent` equal to `events_emitted`, with `batches_rejected` at 0 (on that build: since
+card#12180 the heartbeat is no spool line, so `events_sent` exceeds `events_emitted` by the heartbeats sent). No `session.start`
 has appeared yet, because the session running then had started before the hooks were wired. That
 reading is from the seat. The store query above was not re-run for the hook events.
 
@@ -927,14 +1087,24 @@ the pre-hooks `settings.json`, and `20260913T193245Z` for item 2, the crontab. I
    It prints how long the exit took, or `NOT STOPPED` once the bound derived from the artifact's
    constants has passed. Do not go on to item 4 while a flusher runs. It checks the pid rather than
    pattern-matching process names, so it cannot match its own shell.
-4. **Revoke the token on the server**, by prefix, on the Mezzanine host:
+4. **Revoke each site's token on the server that issued it**, by its prefix, on that site's Mezzanine host:
    `php artisan mezzanine:ingest-token:revoke mzn_YTRScmlE --reason='uninstall'`. To take the desk off the
    floor as well, run `php artisan mezzanine:retire --seat=mezzanine/mezzanine-solo --by=<operator> --reason=<why>`
-   (FLEET-STATE § 4.10). Revocation leaves the seat's rows, and retirement is what hides the desk.
+   on each site (FLEET-STATE § 4.10). Revocation leaves the seat's rows, and retirement is what hides the desk.
 5. **Remove the seat's files**:
    `rm -rf /home/mezzanine/.config/fleet-reporter /home/mezzanine/.local/state/fleet-reporter /home/mezzanine/.local/share/fleet-reporter /home/mezzanine/.local/state/fleet-reporter-flusher.flock`.
    If the token was carried from another host, also run Step 2 (d)'s block on the Mezzanine host with
    `F` set to `mezzanine-reporter-token` in the attempt directory that issued it. It must print `gone`.
+
+**Removing one site without uninstalling** (card#12180): rewrite the config without that site, with the
+mode kept, then restart the flusher with item 3's command and let cron or a hook start it; the next start
+drops that site's `state.json` entry (D1 § 3.1 rule 4), and that site sees the seat go `stale`, then
+`offline`, until its operator retires the desk there. Revoke that site's token by item 4 after the restart.
+`selftest` names a file the edit breaks:
+
+```bash
+node -e 'const fs=require("fs"),f=process.argv[1],n=process.argv[2]; const c=JSON.parse(fs.readFileSync(f,"utf8")); if (!Array.isArray(c.sites) || !c.sites.some((x)=>x.name===n)) throw new Error("no site named "+n); if (c.sites.length===1) throw new Error("the last site: uninstall instead"); c.sites=c.sites.filter((x)=>x.name!==n); fs.writeFileSync(f, JSON.stringify(c,null,2)+"\n", {mode:0o600}); console.log("sites:", c.sites.map((x)=>x.name).join(", "))' /home/mezzanine/.config/fleet-reporter/config.json <name>
+```
 
 ⚠ **As of card#9368, only the non-destructive part of this rollback has been run.** On the first
 install, item 2's `sed` ran into a file. The `diff` against Step 0's backup printed nothing, the
@@ -1019,6 +1189,18 @@ processes, as Step 5 reports.
   `SubagentStop` or the server's 60-minute dispatch ceiling. The restart itself closes every call open
   at that moment as `reporter_restart` (D1 § 8.3's last row), carried ones included. Install the
   server change first: a server without it closes a carried call at the `session.end`, as before.
+- **One seat reports to several sites only on a build that includes card#12180** (D1 § 3.1, *Sites*). An
+  older build reads only the single-site form and refuses a `sites` list. Upgrade with Step 1's order,
+  install first and stop second. The upgrade shows on the floor as one `epoch_reset` per seat, and until
+  server card#12210 a seat whose last batch before the upgrade was committed but unanswered — and any site
+  renamed, or named other than `default`, when the file is lifted to the multi-site form — shows a false
+  `seq_gap` badge for 24 h (D1 § 10.2's accepted residual); no event is lost or doubled. **To repoint the
+  existing site at upgrade, name it anything but `default`**: a `state.json` from an older build records no
+  URL, so a `default` repointed in the same edit carries a cursor the new server never earned (D1 § 3.1
+  rule 3). Downgrading is not offered; an older build reads the new `state.json` as unusable, takes D1 § 11.4's
+  reset and re-sends. The marker and the rejected-batch quarantine are named per site from this build on
+  (`REJECTED.default.txt`, `quarantine/rejected.default.jsonl`); an older build's `REJECTED.txt` and
+  `quarantine/rejected.jsonl` stay as history until Step 8 removes the spool directory.
 - **No context gauge** while Step 4(b) is not applied, which is the sandbox's state.
 - **No Windows procedure exists yet.** One is owed when the Windows agent seat onboards, a real
   Windows machine. By operator ruling on 2026-09-13, D1 § 13's Windows validation is not required
