@@ -421,7 +421,8 @@ export function windowArt(phase) {
  * shape, the sheet's dark ground around it where the camera leaves any, and no sky on it — and nothing while it is not
  * (no snapshot yet), so the page's placeholders flow in the page and every event over them is the browser's
  * (`wire/camera-gestures.js`, `wire/camera-keys.js`). Every member is set either way, so a lobby whose room goes away
- * stops clipping.
+ * stops clipping. ⛔ It writes no `touch-action`: that is `lobby/directory.js`'s `dockingEntry()`'s, `none` only while
+ * the boxes stand on the board (card#12187, decision 72).
  *
  * @param {object|null} scene `lobbyScene()`, or `null` where the room is not drawn
  */
@@ -433,7 +434,6 @@ export function surfaceStyle(scene) {
         maxHeight: drawn ? '80vh' : '',
         overflow: drawn ? 'hidden' : '',
         position: drawn ? 'relative' : '',
-        touchAction: drawn ? 'none' : '',
         cursor: drawn ? 'grab' : '',
         backgroundColor: drawn ? 'var(--ground-deep)' : '',
     };

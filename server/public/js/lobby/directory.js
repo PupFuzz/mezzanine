@@ -10,24 +10,31 @@
  * the frame's. A figure computed here would be a second derivation free to disagree with the model, which is
  * AT-D3-15's whole subject.
  *
- * ⛔ THE TEXT IS AT THE PAGE's OWN SIZE AND IS NEVER SCALED BY THE CAMERA (§ 4.1, decision 37). The directory's box and
- * the readings' box stand in the camera's layer at their rects in scene px (`building-scene.js`'s `lobbyScene()`), so
- * they stay on the board at every zoom and pan; inside each, a FACE is counter-scaled — its size the box's at the
+ * ⭐ THE BOXES HAVE THREE HOMES, AND ONE ENTRY WRITES WHICH (§ 4.1, decision 72; card#12187). `dockingEntry()` is the ONE
+ * writer of every state the dock changes: where each box stands, its `data-home` — `board` in the camera's layer,
+ * `dock` in the page's flow under the drawn room, `flow` in the page's flow with no room drawn (the markup ships
+ * `flow`) — and the drawing surface's `touch-action`, `none` only while the boxes stand on the board, where the gesture
+ * wire listens. Every style that depends on where a box stands is keyed on its own `data-home` (`mezzanine.css`).
+ *
+ * ⛔ THE TEXT IS AT THE PAGE's OWN SIZE AND IS NEVER SCALED BY THE CAMERA (§ 4.1, decision 37). On the board the
+ * directory's box and the readings' box stand in the camera's layer at their rects in scene px (`building-scene.js`'s
+ * `lobbyScene()`), so they stay on the board at every zoom and pan; inside each, a FACE is counter-scaled — its size the box's at the
  * camera's zoom, `scale()` by the zoom's inverse — so its text lays out at `1rem` on the screen. ONE WRITER:
  * `showDirectory()` sets the two custom properties every face reads (`--lobby-zoom`, `--lobby-scale`), called by the
  * page's camera hook (`lobby/main.js`'s `view()`) on every camera the page shows and never from a render, so a face can
  * never go stale between a render and the camera moves that follow it.
  *
- * ⛔ THE DIRECTORY SCROLLS INSIDE ITS BOX, AND DECLARES IT (§ 4.1). The plaques' list is `overflow-y: auto` and carries
- * `data-camera-scrolls`, the declaration `wire/camera-gestures.js` reads to give a wheel or a drag begun over it to the
- * list while the list can move that way and to the camera once it cannot. It is `touch-action: none` like the drawing
- * around it, and the gesture wire scrolls it from the drag it owns (§ 4.1 says why).
+ * ⛔ ON THE BOARD THE DIRECTORY SCROLLS INSIDE ITS BOX, AND DECLARES IT (§ 4.1). The plaques' list is `overflow-y: auto`
+ * and carries `data-camera-scrolls`, the declaration `wire/camera-gestures.js` reads to give a wheel or a drag begun over
+ * it to the list while the list can move that way and to the camera once it cannot. On the board it is `touch-action:
+ * none` like the drawing around it, and the gesture wire scrolls it from the drag it owns (§ 4.1 says why); docked it is
+ * no scroller, the page is, and the browser owns every touch.
  *
  * ⛔ EVERY LINE IS READ WHOLE: this module builds a row per part and the sheet wraps a row wider than its plaque, so a
  * plaque grows taller rather than hiding a figure (§ 4.1 says which part of the name row gives way).
  */
 
-import { framesNothing } from '../wire/camera.js';
+import { fitZoom, framesNothing } from '../wire/camera.js';
 
 /** The directory's title line (§ 4.1, AT-D3-15's label): the board's heading and the plaques' list's name. */
 export const DIRECTORY_TITLE = 'FLOOR DIRECTORY';
@@ -56,12 +63,13 @@ export function showDirectory(layer, camera) {
 }
 
 /**
- * A box's style for the room's scene — at its rect in scene px while the room is drawn (`scene` non-null), and nothing
- * while it is not, so it flows in the page; its face's, sized to the box on the screen and counter-scaled by the two
- * properties `showDirectory()` writes. Every member is set either way.
+ * A box's style for its home — at its rect in scene px while it stands on the board, and nothing while it is docked or
+ * flows with no room drawn, so it stands in the page; its face's, on the board, sized to the box on the screen and
+ * counter-scaled by the two properties `showDirectory()` writes, and docked or flowing at the page's text size with no
+ * counter-scale. Every member is set either way. Written by `dockingEntry()` alone.
  *
  * @param {{x: number, y: number, w: number, h: number}} rect the box's rect, in scene px
- * @param {boolean} drawn whether the room is drawn
+ * @param {boolean} drawn whether the box stands on the board (`data-home="board"`)
  * @returns {{box: object, face: object}}
  */
 export function boxStyles(rect, drawn) {
@@ -81,6 +89,98 @@ export function boxStyles(rect, drawn) {
             transformOrigin: drawn ? '0 0' : '',
         },
     };
+}
+
+/**
+ * § 12's *Directory dock width*: the least the directory's face may be at the room's fit — in `em` of the page's own
+ * text size — for the boxes to stand on the board. Under either figure the lobby docks them under the room.
+ */
+export const DOCK_BOUND = Object.freeze({ w: 24, h: 15 });
+
+/**
+ * Where the boxes stand (§ 4.1, decision 72): `flow` with no room drawn; with it drawn, `dock` when the directory's
+ * face at the room's fit — the camera's fit zoom over the room's extent, times the box's rect — is narrower than
+ * `DOCK_BOUND.w` or shorter than `DOCK_BOUND.h` at the page's `rem`, and `board` otherwise.
+ *
+ * @param {boolean} drawn whether the room is drawn
+ * @param {{width: number, height: number}} surface the drawing surface in CSS px
+ * @param {number} rem the page's `1rem` in CSS px
+ * @param {{extent: object, directory: object}} scene `building-scene.js`'s `lobbyScene()`
+ * @returns {'flow'|'dock'|'board'}
+ */
+export function homeFor(drawn, surface, rem, scene) {
+    if (!drawn) {
+        return 'flow';
+    }
+
+    const zoom = fitZoom(surface, scene.extent);
+
+    return scene.directory.w * zoom < DOCK_BOUND.w * rem || scene.directory.h * zoom < DOCK_BOUND.h * rem ? 'dock' : 'board';
+}
+
+/**
+ * ⭐ THE DOCKING ENTRY — the ONE writer of every state the dock changes (§ 4.1, decision 72; canon #5: one writer, so no
+ * second module derives the predicate). `place(drawn)` asks `homeFor()` over the surface as it measures now and the
+ * page's `1rem` as a probe measures it, and then, for each box in order: moves it — into the camera's layer for
+ * `board`, into the page's flow after the surface (the directory first) otherwise — only when its parent is not already
+ * the right one, so a render that keeps the home moves nothing; writes its `data-home`; and writes its box's and its
+ * face's styles (`boxStyles()`). Last it writes the surface's `touch-action`: `none` on the board, where the gesture
+ * wire reads the drags, and `auto` docked and with no room drawn, where the browser owns every touch. The home is
+ * re-asked on every `resize` and on every change of the page's text size — which fires no `resize` — through a
+ * `ResizeObserver` on a hidden `1rem` probe, so an `em` bound never goes stale.
+ *
+ * @param {Window} win the page's window (its `ResizeObserver` and its `resize`)
+ * @param {Document} doc the page's document
+ * @param {{building: Element, layer: Element, boxes: Array<[Element, object]>, scene: object}} at the surface, the
+ *   camera's layer, each box with its scene rect in page order, and the room's scene
+ * @returns {{place: function(boolean=): string, home: function(): (string|null)}}
+ */
+export function dockingEntry(win, doc, { building, layer, boxes, scene }) {
+    const probe = doc.createElement('span');
+
+    probe.setAttribute('aria-hidden', 'true');
+    Object.assign(probe.style, { position: 'absolute', width: '1rem', height: '1rem', visibility: 'hidden', pointerEvents: 'none' });
+    building.parentElement.append(probe);
+
+    let drawn = false;
+    let home = null;
+
+    const place = (isDrawn = drawn) => {
+        drawn = isDrawn;
+        const next = homeFor(drawn, { width: building.clientWidth, height: building.clientHeight }, probe.getBoundingClientRect().height, scene);
+        let after = building;
+
+        for (const [box, rect] of boxes) {
+            if (next === 'board') {
+                if (box.parentElement !== layer) {
+                    layer.append(box);
+                }
+            } else {
+                if (box.parentElement !== building.parentElement) {
+                    after.after(box);
+                }
+
+                after = box;
+            }
+
+            box.setAttribute('data-home', next);
+
+            const styles = boxStyles(rect, next === 'board');
+
+            Object.assign(box.style, styles.box);
+            Object.assign(box.firstElementChild.style, styles.face);
+        }
+
+        building.style.touchAction = next === 'board' ? 'none' : 'auto';
+        home = next;
+
+        return next;
+    };
+
+    new win.ResizeObserver(() => place()).observe(probe);
+    win.addEventListener('resize', () => place());
+
+    return { place, home: () => home };
 }
 
 /** An element of `tag` with `className` and, where given, its text. */

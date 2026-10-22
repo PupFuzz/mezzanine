@@ -21,8 +21,11 @@
  *
  * ⭐ THE ROOM, THE DIRECTORY AND THE CAMERA (§ 4.1, § 4.5). `#lobby-building` is the drawing surface — a clipping
  * drawing only while the room is drawn (`building-scene.js`'s `surfaceStyle()`) — and `#lobby-room` the camera's layer
- * in it: the room's drawing (`building-paint.js`'s `roomDrawing()`), the directory's box at the board's rect and the
- * readings' box under it (`directory.js`'s `boxStyles()`), all moved and scaled by the camera's one transform. The
+ * in it: the room's drawing (`building-paint.js`'s `roomDrawing()`) and, while the room is drawn and the board's fitted
+ * face is not under § 12's *Directory dock width*, the directory's box at the board's rect and the readings' box under
+ * it, all moved and scaled by the camera's one transform. Under the bound — a phone, a tablet, a laptop — the boxes dock
+ * in the page's flow under the surface. Where the boxes stand, their `data-home` and the surface's `touch-action` are
+ * `directory.js`'s `dockingEntry()`'s alone, which this file calls on every paint (decision 72). The
  * camera hook, `view()`, is the one place a camera is shown — fit, wheel, pinch, key, drag, every glide step, resize —
  * and it calls `directory.js`'s `showDirectory()`, the one writer of the directory's counter-scale, on every camera it
  * shows and never from a render. The wheel, the drag, the pinch, the keys, the zoom buttons and *Fit the lobby* are
@@ -53,7 +56,7 @@ import { cabTheme, loadHousePalette, paintCab } from '../floor/cab-paint.js';
 import { startLobbyScreen } from './lobby-screen.js';
 import { lobbyScene, surfaceStyle } from './building-scene.js';
 import { paintRoom, roomDrawing, themeRoomCab } from './building-paint.js';
-import { boxStyles, renderDirectory, showDirectory } from './directory.js';
+import { dockingEntry, renderDirectory, showDirectory } from './directory.js';
 
 /**
  * ⛔ A MISSING ELEMENT THROWS RATHER THAN BEING GUARDED PAST. The guarded form — `if (node === null) return;` at every
@@ -105,6 +108,12 @@ const layer = el('lobby-room');
 const directoryBox = el('lobby-directory');
 const readingsBox = el('lobby-readings');
 const scene = lobbyScene();
+
+/**
+ * THE DOCKING ENTRY (§ 4.1, decision 72) — the one writer of where the two boxes stand, their `data-home` and the
+ * surface's `touch-action`, re-asked on every paint, every resize and every change of the page's text size.
+ */
+const dock = dockingEntry(window, document, { building, layer, boxes: [[directoryBox, scene.directory], [readingsBox, scene.readings]], scene });
 
 /** The room's drawing surface in CSS px — the element the room is drawn and the camera looks in. */
 function surface() {
@@ -168,15 +177,12 @@ function paintScene(frame) {
         ? { position: 'relative', width: `${scene.extent.w}px`, height: `${scene.extent.h}px`, transformOrigin: '0 0' }
         : { position: '', width: '', height: '', transformOrigin: '' });
 
-    for (const [box, rect] of [[directoryBox, scene.directory], [readingsBox, scene.readings]]) {
-        const styles = boxStyles(rect, drawn);
-
-        Object.assign(box.style, styles.box);
-        Object.assign(box.firstElementChild.style, styles.face);
-    }
+    // Where the boxes stand — on the board, docked, or flowing with no room drawn — over the surface as just styled.
+    dock.place(drawn);
 
     room.art.style.display = drawn ? 'block' : 'none';
-    // The sheet's plaques and panels are the board's colours only on the drawn room (`mezzanine.css`'s lobby block).
+    // The layer's record that the room is drawn, which a browser tool waits on (`tools/design/floor-ride.browser.mjs`);
+    // no style reads it — the boxes' colours are keyed on their own `data-home`.
     layer.toggleAttribute('data-drawn', drawn);
 
     if (drawn) {
