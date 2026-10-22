@@ -753,20 +753,24 @@ export function frameDocument(key, opt = {}) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}" width="${vb.w}" height="${vb.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs>${shadow}<g transform="${tf}">${inner}</g></svg>`;
 }
 
-// ---- the sleeper (FLOOR.md § 6.2 A6, § 10.4's frame contract item 4; card#12159) ----
+// ---- the sleeper (FLOOR.md § 6.2 A6, § 10.4's frame contract item 4; card#12159, card#12187) ----
 /**
- * THE SLEEPER's LOOP — A6's 4 fps loop is this many frames; frame 0 is the static, reduced-motion form.
- * Only the z's move between frames: the sleeper itself is the same drawing in every one, so nothing sways.
+ * THE SLEEPER's LOOP — A6's 4 fps loop is this many frames; frame 0 is the static, reduced-motion form, the same
+ * canonical frame for every seat (the painter starts a MOVING loop at the seat's own offset — `index.js`'s
+ * `loopOffset()`). Only the z's move between frames: the sleeper itself is the same drawing in every one, so nothing
+ * sways. Eight since card#12187, so each place of the rise is two seconds and a z lives four.
  */
-export const SLEEP_FRAMES = 4;
-/** The z's in flight at once, and the height of the largest (nearest the head) and the smallest (highest), in units. */
-const SLEEP_ZS = 3;
-const Z_LARGE = 24;
-const Z_SMALL = 11;
+export const SLEEP_FRAMES = 8;
+/** The z's in flight at once (card#12187: two — FLOOR.md § 10.4 item 4 gives the arithmetic that refuses three). */
+export const SLEEP_ZS = 2;
+/** The largest a sleeper's largest z may be, in frame units; each seat's own is `zLargeFor()` of its eye line. */
+export const Z_LARGE = 36;
+/** The gap between the lowest z's box, its outline included, and the sleeper's eye line, in frame units. */
+export const Z_EYE_GAP = 2;
+/** A z at least this opaque counts as seen for `zLargeFor()`'s boxes-never-meet rule. */
+const Z_SEEN = 0.3;
 /** How far the sleeper's head rolls onto its arms, in degrees, toward the key's own side. */
 const SLEEP_ROLL = 14;
-/** The lowest a z's rise starts, in units from the frame's top — the least room the z's are given. */
-const Z_RISE = 56;
 const Z_INK = '#4f4380', Z_FILL = '#ece8ff';
 
 /** Closed eyes: a soft downward arc per eye, with a lash at its outer end. */
@@ -780,34 +784,81 @@ function sleepingEyesSvg(F) {
   return `<g data-part="eyes-closed">${out.join('')}</g>`;
 }
 
+/** A z `h` tall's two stroke widths: its pale core's and its dark outline's. */
+function zStrokes(h) {
+  const core = Math.max(1.4, h * 0.16);
+  return { core, outline: core + 2.6 };
+}
+
+/** A z `h` tall's half extent across and down, its outline's half-width included — its box about its centre. */
+function zHalf(h) {
+  const o = zStrokes(h).outline / 2;
+  return { w: h * 0.4 + o, h: h / 2 + o };
+}
+
+/** How opaque a z is at `t` along its rise, in [0, 1): it fades in at the bottom and out at the top. */
+const zFade = (t) => Math.min(1, t / 0.15, (1 - t) / 0.4);
+
 /** One z, centred at (x, y), `h` tall: a Z stroke in the sleeper's ink with a pale core. */
 function zSvg(x, y, h, opacity, t) {
-  const w = h * 0.8, sw = Math.max(1.4, h * 0.16);
+  const w = h * 0.8, sw = zStrokes(h);
   const d = `M${f(x - w / 2)} ${f(y - h / 2)}H${f(x + w / 2)}L${f(x - w / 2)} ${f(y + h / 2)}H${f(x + w / 2)}`;
   const stroke = (col, width) => `<path d="${d}" stroke="${col}" stroke-width="${f(width)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
-  return `<g data-part="z" data-t="${f(t)}" data-x="${f(x)}" data-y="${f(y)}" data-h="${f(h)}" opacity="${f(opacity)}">${stroke(Z_INK, sw + 2.6)}${stroke(Z_FILL, sw)}</g>`;
+  return `<g data-part="z" data-t="${f(t)}" data-x="${f(x)}" data-y="${f(y)}" data-h="${f(h)}" opacity="${f(opacity)}">${stroke(Z_INK, sw.outline)}${stroke(Z_FILL, sw.core)}</g>`;
+}
+
+/** Where the two z's of the rise are, for a largest `large`: the lowest box `Z_EYE_GAP` above the eye line, the highest at the frame's top. */
+function zRise(eyes, large) {
+  const small = large / 2;
+  return { large, small, from: eyes - Z_EYE_GAP - zHalf(large).h, to: SEAT_VIEWBOX.y + zHalf(small).h + 1 };
 }
 
 /**
- * Where each z is in one frame: `SLEEP_ZS` of them evenly spaced along the rise, each a step further up per
- * frame, so frame `SLEEP_FRAMES` is frame 0 again with every z one place higher — the lowest is born as the
- * highest fades, and the loop has no seam. Along the rise a z shrinks from `Z_LARGE` to `Z_SMALL` ("ZZzzz"),
- * drifts a little side to side, and fades in at the bottom and out at the top. Frame 0 sits half a step in,
- * so the static form shows every z, the largest lowest.
+ * THE SEAT's OWN z SIZE (FLOOR.md § 10.4 item 4, § 12's *Sleeper's z's*): the largest z, in half-unit steps up to
+ * `Z_LARGE`, for which the two z's of the rise above eye line `eyes` — the higher half the lower's size — never have
+ * their boxes, outlines included, meet at any of 64 phases of the loop while both are at least `Z_SEEN` opaque. The
+ * frame above the eye line holds only so much, so a sleeper whose eyes sit high has the smallest.
+ * @param {number} eyes the sleeper's eye line, in frame units from the frame's top @returns {number}
+ */
+export function zLargeFor(eyes) {
+  for (let large = Z_LARGE; large > 8; large -= 0.5) {
+    const r = zRise(eyes, large);
+    let meets = false;
+    for (let i = 0; i < 64 && !meets; i += 1) {
+      const zs = Array.from({ length: SLEEP_ZS }, (_, k) => {
+        const t = ((k + i / 64) % SLEEP_ZS) / SLEEP_ZS;
+        return { h: r.large + (r.small - r.large) * t, y: r.from + (r.to - r.from) * t, o: zFade(t) };
+      }).filter((z) => z.o >= Z_SEEN);
+      meets = zs.length === 2 && Math.abs(zs[0].y - zs[1].y) < zHalf(zs[0].h).h + zHalf(zs[1].h).h;
+    }
+    if (!meets) return large;
+  }
+  return 8;
+}
+
+/**
+ * Where each z is in one frame: `SLEEP_ZS` of them evenly spaced along the rise, in a column at the frame's edge on
+ * the side `away` names (-1 the left, 1 the right — the side the head rolled away from), each z's box clamped to touch
+ * that edge. Frame `f` draws the rise at phase `f / SLEEP_FRAMES + 0.5`, so frame 0 shows both z's, the larger lower,
+ * and frame `SLEEP_FRAMES` is frame 0 again with every z one place higher — the lowest is born as the highest fades,
+ * and the loop has no seam. Along the rise a z shrinks from the seat's largest to half it ("Zz") and fades in at the
+ * bottom and out at the top.
  * @returns {{t: number, x: number, y: number, h: number, opacity: number}[]} lowest first
  */
-function sleepZs(frame, from, to) {
-  const phase = ((frame / SLEEP_FRAMES) + 0.5) % 1;
+function sleepZs(frame, eyes, away) {
+  const r = zRise(eyes, zLargeFor(eyes));
+  const phase = frame / SLEEP_FRAMES + 0.5;
   const out = [];
   for (let k = 0; k < SLEEP_ZS; k++) {
-    const t = (k + phase) / SLEEP_ZS;
-    const opacity = Math.min(1, t / 0.15, (1 - t) / 0.4);
+    const t = ((k + phase) % SLEEP_ZS) / SLEEP_ZS;
+    const h = r.large + (r.small - r.large) * t;
+    const hw = zHalf(h).w + 0.5;
     out.push({
       t,
-      x: from.x + (to.x - from.x) * t + Math.sin(t * Math.PI * 2) * 3 * Math.sign(to.x - from.x || 1),
-      y: from.y + (to.y - from.y) * t,
-      h: Z_LARGE + (Z_SMALL - Z_LARGE) * t,
-      opacity,
+      x: away < 0 ? SEAT_VIEWBOX.x + hw : SEAT_VIEWBOX.x + SEAT_VIEWBOX.w - hw,
+      y: r.from + (r.to - r.from) * t,
+      h,
+      opacity: zFade(t),
     });
   }
   return out.sort((a, b) => a.t - b.t);
@@ -820,7 +871,8 @@ function sleepZs(frame, from, to) {
  * brows and held thing put away, its head rolled onto its forearms, which lie along the desk's top edge. The
  * edge is the CALLER's (`deskTop`, a share of the frame's height, which the floor derives from its desk
  * rects): the frame has no desk of its own, and everything below the edge is drawn behind the desk the floor
- * lays over it. Above the head the z's rise (`sleepZs()`).
+ * lays over it. Beside the head, at the frame's edge on the side it rolled away from, the z's rise (`sleepZs()`), drawn
+ * in front of the sleeper.
  *
  * @param {string} key the seat key
  * @param {{ frame?: number, deskTop: number, species?: string }} opt `frame` 0..SLEEP_FRAMES-1
@@ -873,15 +925,12 @@ export function sleepDocument(key, opt) {
   // Nothing is drawn below the edge: the desk stands there, and a frame drawn without one stays a sleeper.
   pen.defs.push(`<clipPath id="c_edge"><rect x="-200" y="-200" width="508" height="${f(edge + 200)}"/></clipPath>`);
 
-  // The z's rise from just above the head toward the frame's top, on the side it rolled to. A head so tall its
-  // crown stands above `Z_RISE` keeps the z's their room: they start there, drawn over the top of the head. And
-  // the top of the closed eyes, rolled with the head, is the line every z stays above, whatever the rest says:
-  // the z's float over the sleeper and never across its face.
-  const crown = rest - Math.cos(rad) * lift;
+  // The z's rise beside the head, in the frame's edge column on the side the head rolled AWAY from — the roll swings
+  // the crown toward the roll's side and slides the head back by half the swing, so the far edge is the frame's
+  // freest — from just above the closed eyes' line, rolled with the head, to the frame's top: the z's float beside the
+  // sleeper and never across its face.
   const eyes = rest - Math.cos(rad) * (chin - F.y) * s - (Math.abs(Math.sin(rad)) * F.es + 5 * F.s) * s;
-  const from = { x: 54 + dir * 2, y: Math.min(Math.max(Z_RISE, Math.min(crown - 4, edge - 30)), eyes - Z_LARGE / 2 - 4) };
-  const to = { x: 54 + dir * 46, y: Z_SMALL };
-  const zs = sleepZs(frame, from, to).map((z) => zSvg(z.x, z.y, z.h, z.opacity, z.t)).join('');
+  const zs = sleepZs(frame, eyes, -dir).map((z) => zSvg(z.x, z.y, z.h, z.opacity, z.t)).join('');
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${SEAT_VIEWBOX.x} ${SEAT_VIEWBOX.y} ${SEAT_VIEWBOX.w} ${SEAT_VIEWBOX.h}" width="${SEAT_VIEWBOX.w}" height="${SEAT_VIEWBOX.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs><g data-pose="asleep" data-eyes-y="${f(eyes)}" data-edge="${f(edge)}" clip-path="url(#c_edge)">${drawing}</g><g data-part="zs">${zs}</g></svg>`;
 }

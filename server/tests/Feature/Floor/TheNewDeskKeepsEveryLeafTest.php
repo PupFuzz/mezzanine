@@ -366,10 +366,13 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
             "a pose's frames drawn without the desk's top edge" => ['../floor/desk-layout.js',
                 "desk_top: (R['desk-sprite'].y - R.character.y) / R.character.h,", 'desk_top: 0.5,'],
             'a held loop that steps three frames whatever the drawing holds' => ['../floor/painter.js',
-                "el.setAttribute('href', urls[tick % urls.length]);", "el.setAttribute('href', urls[tick % 3]);"],
+                "el.setAttribute('href', urls[(tick + offset) % urls.length]);", "el.setAttribute('href', urls[(tick + offset) % 3]);"],
+            // card#12187 — § 6.2's per-seat loop phase: a moving loop started at frame 0 whatever its seat's offset.
+            "a moving held loop started at frame 0, not at its seat's offset" => ['../floor/painter.js',
+                "const el = art(g, urls[offset], e, e.asset, 'character');", "const el = art(g, urls[0], e, e.asset, 'character');"],
             // N8: a frame list copied onto the element instead of held in the painter's Map.
             "a held loop's frames copied onto the element" => ['../floor/painter.js',
-                "                            stepping.push([el, urls]);\n                        }", "                            el.dataset.frames = JSON.stringify(urls);\n                        }"],
+                "                            stepping.push([el, urls, offset]);\n                        }", "                            el.dataset.frames = JSON.stringify(urls);\n                        }"],
             // § 9 F14's two causes for a code-drawn character (§ 10.2): unreported, or thrown out of the paint.
             'a tree that failed to load left unreported' => ['../floor/painter.js',
                 "        if (characters === null) {\n            report(asset);", "        if (characters === null) {\n            void asset;"],

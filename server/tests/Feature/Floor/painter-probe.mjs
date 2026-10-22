@@ -91,7 +91,12 @@ const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD } = await mod('floo
  * Q3) — and the URI from § 10.2's — never imported from the module under test, so a layout that keys
  * interns otherwise, or a painter that makes another URI, reds.
  */
-const asked = { walk: [], pose: [], chibi: [] };
+const asked = { walk: [], pose: [], chibi: [], offset: [] };
+/**
+ * The offset the stub's `loopOffset()` answers for every seat (§ 6.2's per-seat loop phase, card#12187): not 0, so a
+ * painter that starts a moving loop at frame 0, or a still desk anywhere but frame 0, draws a frame no element owes.
+ */
+const STUB_OFFSET = 2;
 const doc = (what) => `<svg xmlns="http://www.w3.org/2000/svg"><title>${what}</title></svg>`;
 const uri = (d) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(d)}`;
 let throwFor = null;
@@ -103,6 +108,10 @@ const characters = {
     poseFrames(installId, seatId, at) {
         asked.pose.push(`${installId}/${seatId}`);
         return [0, 1, 2, 3].map((i) => doc(`${installId}/${seatId}#${at.pose}@${at.deskTop}#${i}`));
+    },
+    loopOffset(installId, seatId, length) {
+        asked.offset.push([`${installId}/${seatId}`, length]);
+        return STUB_OFFSET % length;
     },
     chibiFrame(installId, key) {
         asked.chibi.push(`${installId}/${key}`);
@@ -305,6 +314,9 @@ function deskTop(key, e) {
     return (sprite.y - e.y) / e.h;
 }
 
+/** The frame a desk's character is first painted at: 0 when its held render is still, the stub's offset when it moves. */
+const startOf = (e) => (e.animation?.motion === true && e.animation.frame_interval_ms !== null ? STUB_OFFSET % 4 : 0);
+
 /**
  * What the painter owes one layout element, in order: `[node name, {x, y, w?, h?, text?}, extra check?]`.
  * The offsets are the painter's stated ones — and nothing else may move a node off its element.
@@ -315,11 +327,12 @@ function owed(e, seat, failed, key) {
     switch (e.kind) {
         case 'character':
             // The art's clipping viewport at the element's rect, the image at the viewport's origin — and
-            // the image is frame 0 of the tree's frames for the desk's POSE, over the desk's top edge as the
-            // element's own rects place it, as an SVG-document URI (AT-D3-24; § 10.4's frame contract).
+            // the image is the tree's frame for the desk's POSE, over the desk's top edge as the element's own
+            // rects place it, as an SVG-document URI (AT-D3-24; § 10.4's frame contract): frame 0 when the held
+            // render is still, the seat's loop offset when it moves (§ 6.2's per-seat loop phase, card#12187).
             return [['svg', at, (n) => viewport(e)(n) ?? classIs(['character'])(n.children[0])
-                ?? (n.children[0].getAttribute('href') === uri(doc(`${key}#${e.pose}@${deskTop(key, e)}#0`)) ? null
-                    : `its image is «${decodeURIComponent(String(n.children[0].getAttribute("href"))).slice(60, 140)}», not frame 0 of the seat's «${e.pose}» frames over its desk's edge as an SVG-document URI`)
+                ?? (n.children[0].getAttribute('href') === uri(doc(`${key}#${e.pose}@${deskTop(key, e)}#${startOf(e)}`)) ? null
+                    : `its image is «${decodeURIComponent(String(n.children[0].getAttribute("href"))).slice(60, 140)}», not frame ${startOf(e)} of the seat's «${e.pose}» frames over its desk's edge as an SVG-document URI`)
                 ?? (n.children[0].getAttribute('preserveAspectRatio') === 'xMidYMax meet' ? null : 'its image is not drawn xMidYMax meet')]];
         case 'chair':
         case 'desk-sprite':
@@ -776,14 +789,25 @@ for (const p of owedPoses) {
         const pose = moving.elements.find((e) => e.kind === 'character');
         const frame = (i) => uri(doc(`${asset}#${pose.pose}@${deskTop(desk.key, pose)}#${i}`));
         const seen = [];
+        const start = character.getAttribute('href');
+        // § 6.2's per-seat loop phase (card#12187): the moving loop starts at the seat's offset and steps on from it.
+        const owedSteps = [1, 2, 3, 4].map((i) => (i + STUB_OFFSET) % 4);
 
         for (let i = 0; i < 4; i++) {
             loops[0]();
             seen.push(character.getAttribute('href'));
         }
 
-        if (seen.join('|') !== [1, 2, 3, 0].map(frame).join('|')) {
-            defects.push(`the held loop did not step the moving character through its pose's four frames in order — it drew ${seen.map((h) => decodeURIComponent(h).match(/#[^<]*#\d/)?.[0] ?? '?').join(', ')}`);
+        if (start !== frame(STUB_OFFSET % 4)) {
+            defects.push(`the moving character was first painted at «${decodeURIComponent(start).match(/#[^<]*#\d/)?.[0] ?? '?'}», not at its seat's loop offset, frame ${STUB_OFFSET % 4}`);
+        }
+
+        if (!asked.offset.some(([k, n]) => k === asset && n === 4)) {
+            defects.push(`the painter never asked the tree for the moving seat's loop offset over its four frames — it asked ${JSON.stringify(asked.offset)}`);
+        }
+
+        if (seen.join('|') !== owedSteps.map(frame).join('|')) {
+            defects.push(`the held loop did not step the moving character through its pose's four frames in order from its offset — it drew ${seen.map((h) => decodeURIComponent(h).match(/#[^<]*#\d/)?.[0] ?? '?').join(', ')}, not frames ${owedSteps.join(', ')}`);
         }
 
         if (intern.getAttribute('href') !== internBefore) {

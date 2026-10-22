@@ -3,24 +3,31 @@
  * item 4): the probe `AnIdleDeskDrawsItsSleeperTest` reads, under `node` over the painter's fake DOM, with the
  * REAL character tree — never a stub — so what it reads is the drawing the page shows.
  *
- * ⛔ IT READS WHAT WAS DRAWN, NOT WHAT THE MODEL SAYS. The model has named `idle` → pose `asleep`, monitor
- * `dimmed` since the desk render landed, and the floor drew an upright, open-eyed character stepping the walk's
+ * ⛔ IT READS WHAT WAS DRAWN, NOT WHAT THE MODEL SAYS. The model named `idle` → pose `asleep` (and, until card#12187,
+ * monitor `dimmed`) since the desk render landed, and the floor drew an upright, open-eyed character stepping the walk's
  * frames side to side the whole time (card#12159). So every leg below reads the painted `<image>`'s `href`,
  * decodes the SVG document behind it, and reads the sleeper's parts off that document by their `data-*` marks.
  *
  * The legs, each named in its defect line:
- *   model     — the idle desk's model: pose `asleep`, monitor `dimmed`, held A6 with motion (and without, reduced).
+ *   model     — the idle desk's model: pose `asleep`, monitor `off`, held A6 with motion (and without, reduced).
  *   sleeper   — the painted character is the tree's sleeper over its desk's own top edge: `data-pose="asleep"`,
  *               closed eyes, the head resting at the edge the desk's rects place.
- *   monitor   — the painted monitor is the dimmed one.
- *   zs        — in every frame, at least three z's, every one above the closed eyes and inside the frame, the
- *               largest lowest and each higher one smaller ("ZZzzz"), the highest fading.
+ *   monitor   — the painted monitor is off (card#12187): the unlit screen, carrying no text.
+ *   zs        — in every frame, two z's (card#12187), the larger lower and the higher smaller; over the loop, the
+ *               highest fading as it leaves;
+ *               every z's box, its outline included, at least `Z_EYE_GAP` above the closed eyes, inside the frame and
+ *               touching its edge on the side the head rolled AWAY from; and over the frames, the largest fully opaque
+ *               z at least § 12's *Sleeper's z's* least figure and within the seat's own `zLargeFor()`.
  *   rise      — frame to frame every z rises: the loop advances each z up its path, and the frame after the last
  *               is frame 0 again.
  *   still     — the held loop steps ONLY the sleeper's own frames, and the sleeper itself is the same drawing in
  *               every one (no sway, no walk); only the z's change.
  *   reduced   — § 6.4: with reduced motion no loop runs and the static frame is frame 0 — the slumped sleeper,
  *               its z's drawn once.
+ *   stagger   — § 6.2's per-seat loop phase (card#12187): for two idle seats whose loop offsets differ, frame 0 draws
+ *               its z's at the same place of the rise for both and is what each paints under reduced motion, and the
+ *               painter's first moving frame is each seat's own offset — so the two differ. The offset is read by the
+ *               published rule, `draw(seatKey, 'loop-phase') % length` (`seed.js`), never by the tree's own function.
  *   chair     — AT-D3-5's comparison, on the drawing: the `stale` desk painted beside it draws no character at
  *               all, where the `idle` desk draws its sleeper (§ 7.5).
  *   species   — every species and variant of the tree draws a sleeper meeting the sleeper, zs, rise and still
@@ -62,6 +69,30 @@ const C = await import(pathToFileURL(join(TREE, 'index.js')).href);
 // A tree with no sleeper is this probe's first finding, not a crash: every leg still reads what the page draws.
 const SLEEPS = typeof C.sleepDocument === 'function';
 const FRAMES = SLEEPS ? C.SLEEP_FRAMES : 4;
+const { draw, seatKey } = await import(pathToFileURL(join(TREE, 'seed.js')).href);
+/** § 6.2's per-seat loop phase, by the published rule (FLOOR.md § 10.4 item 4). */
+const offsetOf = (installId, seatId, length) => draw(seatKey(installId, seatId), 'loop-phase') % length;
+/** § 10.4 item 4's gap between the lowest z's box and the eye line, in frame units — read from the document, never the tree. */
+const EYE_GAP = (() => {
+    const m = readFileSync(join(REPO, 'docs', 'design', 'FLOOR.md'), 'utf8').match(/the lowest born with its box `Z_EYE_GAP` \((\d+) units\)\s+above\s+the\s+eye\s+line/);
+
+    if (m === null) {
+        throw new Error('FLOOR.md § 10.4 item 4 names no `Z_EYE_GAP` in the form this probe reads');
+    }
+
+    return Number(m[1]);
+})();
+/** § 12's *Sleeper's z's*: the least fully opaque largest z a seat draws at the loop's own frames — read from the document. */
+const OPAQUE_LEAST = (() => {
+    const md = readFileSync(join(REPO, 'docs', 'design', 'FLOOR.md'), 'utf8');
+    const m = md.match(/^\| \*\*Sleeper's z's\*\* \|.*?fully opaque AT THE LOOP'S OWN 8 FRAMES \*\*([\d.]+)–([\d.]+)\*\*/m);
+
+    if (m === null) {
+        throw new Error("FLOOR.md § 12 carries no *Sleeper's z's* row in the form this probe reads");
+    }
+
+    return Number(m[1]);
+})();
 const { wellFormed, vectorDefect } = await import(pathToFileURL(join(REPO, 'tools', 'design', 'svg-document.mjs')).href);
 const { deskModel } = await mod('desk/desk-render.js');
 const { placeDesk } = await mod('floor/scene.js');
@@ -84,8 +115,11 @@ const attr = (doc, name) => {
 
     return m === null ? null : m[1];
 };
-const zsOf = (doc) => [...doc.matchAll(/<g data-part="z" data-t="([\d.-]+)" data-x="([\d.-]+)" data-y="([\d.-]+)" data-h="([\d.-]+)" opacity="([\d.-]+)">/g)]
-    .map((m) => ({ t: +m[1], x: +m[2], y: +m[3], h: +m[4], opacity: +m[5] }));
+// Each z with its outline's stroke width, read off its first path — so its box is the drawing's, never a constant here.
+const zsOf = (doc) => [...doc.matchAll(/<g data-part="z" data-t="([\d.-]+)" data-x="([\d.-]+)" data-y="([\d.-]+)" data-h="([\d.-]+)" opacity="([\d.-]+)"><path [^>]*stroke-width="([\d.]+)"/g)]
+    .map((m) => ({ t: +m[1], x: +m[2], y: +m[3], h: +m[4], opacity: +m[5], hw: +m[4] * 0.4 + +m[6] / 2, hh: +m[4] / 2 + +m[6] / 2 }));
+/** The side the head rolled to: the sign of its rotation (1 its right, -1 its left). */
+const rollOf = (doc) => Math.sign(Number((doc.match(/<g data-part="head" transform="[^"]*rotate\((-?[\d.]+)\)/) ?? [])[1])) || 1;
 const withoutZs = (doc) => doc.replace(/<g data-part="zs">[\s\S]*<\/g><\/svg>$/, '</svg>');
 const VIEW = C.SEAT_VIEWBOX;
 
@@ -130,19 +164,29 @@ function sleeperLegs(where, docs, edge) {
 
         counts.zs += zs.length;
 
-        if (zs.length < 3) {
-            out.push(`zs: ${at} draws ${zs.length} z's, not the rising ZZzzz of three or more`);
+        if (zs.length !== 2) {
+            out.push(`zs: ${at} draws ${zs.length} z's, not § 10.4's two`);
 
             return;
         }
 
+        // The side the head rolled AWAY from is the z's column: their boxes touch the frame's edge there.
+        const away = -rollOf(doc);
+        const gap = EYE_GAP;
+
         for (const z of zs) {
-            if (!(z.y + z.h / 2 < eyes)) {
-                out.push(`zs: ${at} draws a z (bottom ${(z.y + z.h / 2).toFixed(1)}) that is not above the sleeper's closed eyes (${eyes})`);
+            if (!(z.y + z.hh <= eyes - gap + 0.02)) {
+                out.push(`zs: ${at} draws a z whose box (bottom ${(z.y + z.hh).toFixed(2)}) is not ${gap} units above the sleeper's closed eyes (${eyes})`);
             }
 
-            if (z.y - z.h / 2 < VIEW.y || z.x - z.h * 0.4 < VIEW.x || z.x + z.h * 0.4 > VIEW.x + VIEW.w) {
-                out.push(`zs: ${at} draws a z at (${z.x}, ${z.y}) that leaves the character's frame`);
+            if (z.y - z.hh < VIEW.y || z.x - z.hw < VIEW.x - 0.01 || z.x + z.hw > VIEW.x + VIEW.w + 0.01) {
+                out.push(`zs: ${at} draws a z whose box leaves the character's frame (centre ${z.x}, ${z.y})`);
+            }
+
+            const edgeGap = away < 0 ? z.x - z.hw - VIEW.x : VIEW.x + VIEW.w - (z.x + z.hw);
+
+            if (!(edgeGap >= -0.01 && edgeGap <= 0.6)) {
+                out.push(`zs: ${at} draws a z ${edgeGap.toFixed(2)} units off the frame's ${away < 0 ? 'left' : 'right'} edge — the side its head rolled away from, where the z's column touches the edge`);
             }
         }
 
@@ -151,14 +195,34 @@ function sleeperLegs(where, docs, edge) {
                 out.push(`zs: ${at}'s z's do not shrink as they rise — the z at ${zs[k].y} is ${zs[k].h} tall, the one below it ${zs[k - 1].h}`);
             }
         }
-
-        const highest = zs[zs.length - 1];
-        const fullest = Math.max(...zs.map((z) => z.opacity));
-
-        if (!(highest.opacity < fullest)) {
-            out.push(`zs: ${at}'s highest z does not fade (opacity ${highest.opacity}, the frame's fullest ${fullest})`);
-        }
     });
+
+    // zs: the largest fully opaque z over the loop's frames — the size § 12's *Sleeper's z's* asserts — at least the
+    // row's least figure, and within the seat's own `zLargeFor()` of its eye line.
+    const asleep = docs.filter((d) => attr(d, 'data-pose') === 'asleep');
+
+    if (asleep.length > 0 && zsOf(asleep[0]).length > 0) {
+        const opaque = Math.max(0, ...asleep.flatMap((d) => zsOf(d).filter((z) => z.opacity >= 1).map((z) => z.h)));
+        const largest = Math.max(...asleep.flatMap((d) => zsOf(d).map((z) => z.h)));
+        const own = SLEEPS && typeof C.zLargeFor === 'function' ? C.zLargeFor(Number(attr(asleep[0], 'data-eyes-y'))) : NaN;
+
+        if (!(opaque >= OPAQUE_LEAST - 0.05)) {
+            out.push(`zs: ${where}'s largest fully opaque z is ${opaque.toFixed(2)} units — under § 12's least, ${OPAQUE_LEAST}`);
+        }
+
+        // The eye line is read off the document at two places, so `zLargeFor()` of it may land one half-unit step off.
+        if (!(Math.abs(largest - own) <= 0.5 + 1e-6 && opaque >= 0.9 * largest)) {
+            out.push(`zs: ${where}'s z's are not the seat's own size — the largest drawn ${largest.toFixed(2)}, the largest fully opaque ${opaque.toFixed(2)}, against zLargeFor() ${own}`);
+        }
+    }
+
+    // zs: the highest fades as it leaves — over the loop, every z past 0.6 of its rise is under full opacity, and the
+    // loop draws one there. (With two z's a frame's higher one can be the fuller, while the lower fades in.)
+    const leaving = docs.flatMap((d) => zsOf(d)).filter((z) => z.t > 0.6);
+
+    if (leaving.length === 0 || leaving.some((z) => !(z.opacity < 1))) {
+        out.push(`zs: ${where}'s highest z does not fade as it leaves — past 0.6 of the rise its opacities are ${leaving.map((z) => z.opacity).join(', ') || 'never drawn'}`);
+    }
 
     // rise: every z moves up its path frame to frame, along one path on which a later z is higher and smaller.
     const path = docs.flatMap((d) => zsOf(d)).sort((a, b) => a.t - b.t);
@@ -237,8 +301,8 @@ const edgeOf = (d) => {
     const m = deskModel(idle, deskAgeReadout(idle, NOW_MS), {}, {});
     const r = deskModel(idle, deskAgeReadout(idle, NOW_MS), {}, { reduce: true });
 
-    if (m.pose !== 'asleep' || m.monitor.lit !== 'dimmed' || m.held?.animation_id !== 'A6' || m.held?.motion !== true) {
-        defects.push(`model: the idle desk's model is pose ${m.pose}, monitor ${m.monitor.lit}, held ${m.held?.animation_id} motion ${m.held?.motion} — not § 7.1's asleep, dimmed, A6 moving`);
+    if (m.pose !== 'asleep' || m.monitor.lit !== 'off' || m.held?.animation_id !== 'A6' || m.held?.motion !== true) {
+        defects.push(`model: the idle desk's model is pose ${m.pose}, monitor ${m.monitor.lit}, held ${m.held?.animation_id} motion ${m.held?.motion} — not § 7.1's asleep, off, A6 moving`);
     }
 
     if (r.held?.motion !== false) {
@@ -258,8 +322,14 @@ const edgeOf = (d) => {
     } else {
         const monitor = g.children.find((n) => n.name === 'rect' && (n.getAttribute('class') ?? '').split(' ').includes('monitor'));
 
-        if (!(monitor?.getAttribute('class') ?? '').split(' ').includes('lit-dimmed')) {
-            defects.push(`monitor: the idle desk's monitor is painted «${monitor?.getAttribute('class')}», not the dimmed screen`);
+        if (!(monitor?.getAttribute('class') ?? '').split(' ').includes('lit-off')) {
+            defects.push(`monitor: the idle desk's monitor is painted «${monitor?.getAttribute('class')}», not the screen off`);
+        }
+
+        const screenText = g.children.filter((n) => n.name === 'text' && (n.getAttribute('class') ?? '').split(' ').includes('t-monitor-text'));
+
+        if (screenText.length > 0) {
+            defects.push(`monitor: the idle desk's screen, off, carries text («${screenText.map((n) => n.textContent).join(' ')}»)`);
         }
 
         const first = image.getAttribute('href');
@@ -276,6 +346,11 @@ const edgeOf = (d) => {
         }
 
         const docs = [first, ...stepped.slice(0, FRAMES - 1)].map(decode);
+        const own = SLEEPS ? C.sleepFrames(placed.install_id, placed.seat_id, edge / VIEW.h) : [];
+
+        if (SLEEPS && first !== own[offsetOf(placed.install_id, placed.seat_id, own.length)] && decode(first) !== own[offsetOf(placed.install_id, placed.seat_id, own.length)]) {
+            defects.push(`stagger: the moving idle desk was first painted at frame ${own.indexOf(decode(first))}, not at its seat's loop offset ${offsetOf(placed.install_id, placed.seat_id, own.length)}`);
+        }
 
         defects.push(...sleeperLegs('the idle desk', docs, edge));
 
@@ -304,7 +379,7 @@ const edgeOf = (d) => {
     } else {
         const doc = decode(image.getAttribute('href'));
 
-        if (attr(doc, 'data-pose') !== 'asleep' || zsOf(doc).length < 3) {
+        if (attr(doc, 'data-pose') !== 'asleep' || zsOf(doc).length !== 2) {
             defects.push(`reduced: the idle desk's static frame is not the slumped sleeper with its z's drawn (pose ${attr(doc, 'data-pose')}, ${zsOf(doc).length} z's)`);
         }
 
@@ -313,6 +388,55 @@ const edgeOf = (d) => {
 
         if (doc !== zero) {
             defects.push('reduced: the idle desk\'s static frame is not the sleeper\'s frame 0');
+        }
+    }
+}
+
+// stagger — § 6.2's per-seat loop phase over two idle seats whose offsets differ
+if (SLEEPS) {
+    const ids = [];
+
+    for (let i = 0; ids.length < 2 && i < 64; i++) {
+        const id = i === 0 ? idle.seat_id : `${idle.seat_id}-${i}`;
+
+        if (ids.every((o) => offsetOf(idle.install_id, o, FRAMES) !== offsetOf(idle.install_id, id, FRAMES))) {
+            ids.push(id);
+        }
+    }
+
+    const read = (seatId, reduce) => {
+        const placed = desk({ ...idle, seat_id: seatId }, reduce, 0);
+        const [g] = paint([placed]);
+        const image = g === undefined ? undefined : characterOf(g);
+
+        return { placed, href: image === undefined ? null : decode(image.getAttribute('href')), frames: C.sleepFrames(placed.install_id, placed.seat_id, edgeOf(placed) / VIEW.h) };
+    };
+    const seats = ids.map((id) => ({ id, still: read(id, true), moving: read(id, false) }));
+    const tsOf = (doc) => zsOf(doc).map((z) => z.t).join(',');
+
+    counts.stagger = seats.length;
+
+    if (seats.length < 2) {
+        defects.push('stagger: no two seat ids with different loop offsets were found — the leg read nothing');
+    } else {
+        if (tsOf(seats[0].still.frames[0]) !== tsOf(seats[1].still.frames[0])) {
+            defects.push(`stagger: frame 0 is not the same canonical frame for two seats — their z's stand at t ${tsOf(seats[0].still.frames[0])} and ${tsOf(seats[1].still.frames[0])}`);
+        }
+
+        const firsts = seats.map((s) => s.moving.frames.indexOf(s.moving.href));
+
+        for (const [i, s] of seats.entries()) {
+            if (s.still.href !== s.still.frames[0]) {
+                defects.push(`stagger: ${s.id} under reduced motion is not painted at frame 0`);
+            }
+
+            if (firsts[i] !== offsetOf(s.moving.placed.install_id, s.moving.placed.seat_id, FRAMES)) {
+                defects.push(`stagger: ${s.id}'s moving loop starts at frame ${firsts[i]}, not its loop offset ${offsetOf(s.moving.placed.install_id, s.moving.placed.seat_id, FRAMES)}`);
+            }
+        }
+
+        if (firsts[0] === firsts[1]) {
+            defects.push(`stagger: two seats whose offsets differ both start their moving loop at frame ${firsts[0]} — they step in lockstep`);
         }
     }
 }

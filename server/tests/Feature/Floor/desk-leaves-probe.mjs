@@ -681,6 +681,23 @@ function renderedList(m) {
     return deskListLines(m).map((line) => textOf(line.role, line.text));
 }
 
+/**
+ * THE BASELINE's LEAVES A LATER RULING RE-VALUED — each by its kind, its exact old value and the seats it applies to,
+ * citing the ruling. The fact is still owed by the panel and the list; what is owed is the value the ruling gave it (`to`,
+ * or `null` for a leaf owed nowhere, with the reason beside it). A leaf not named here is owed as the baseline recorded it.
+ */
+const RULED_SINCE = [
+    // card#12187, FLOOR.md decision 71: an `idle` desk's monitor is off, so its list row and drill-down read *monitor
+    // off* where the baseline's idle desk read *monitor dimmed* — the dimmed screen is retired (§ 10.6).
+    { kind: 'monitor.lit', from: 'monitor dimmed', to: 'monitor off', applies: (seat) => seat.render_state === 'idle' },
+    // …and the screen, off, draws no text. On every seat D2 can publish as `idle` that text was the label line, which the
+    // label row still carries: `idle` is entered only once no call is open (FLEET-STATE.md § 4.4's exit → `idle`, `C ==
+    // 0`) and `action` is `null` when none is (§ 8.2.1). A planted seat varies `render_state` over one body that holds
+    // an open call, so its baseline idle screen showed that call's descriptor — a seat D2 cannot produce. That one leaf
+    // is owed nowhere (`to: null`); the descriptor of any seat that CAN hold an open call is owed as recorded.
+    { kind: 'monitor-text', from: null, to: null, applies: (seat, value) => seat.render_state === 'idle' && seat.action !== null && value === (seat.action.descriptor ?? seat.action.tool_name) },
+];
+
 function ruleOne(key, entry) {
     const seat = baseline.seats[entry.seat];
     const v = entry.variant;
@@ -700,8 +717,11 @@ function ruleOne(key, entry) {
     const drawnBadges = [];
     let badgeTag = false;
 
-    for (const [kind, member, value] of entry.leaves) {
-        if (kind === 'placeholder') {
+    for (const [kind, member, recorded] of entry.leaves) {
+        const ruled = RULED_SINCE.find((r) => r.kind === kind && (r.from === null || r.from === recorded) && r.applies(seat, recorded));
+        const value = ruled === undefined ? recorded : ruled.to;
+
+        if (kind === 'placeholder' || value === null) {
             continue;
         }
 

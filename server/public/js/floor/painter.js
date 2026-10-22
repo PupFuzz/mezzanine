@@ -91,8 +91,8 @@ ${Object.keys(SKY_PAINT).map((phase) => `.sky-${phase}{fill:url(#sky-${phase})}`
 .clock-face{fill:var(--scene-clock-face);stroke:var(--scene-trim);stroke-width:3}.clock.unset .clock-face{stroke-dasharray:6 4}
 .clock.cased .clock-face{fill:none;stroke:none}.clock.cased.unset .clock-face{stroke:var(--scene-trim)}
 .hand{stroke:var(--scene-ink);stroke-linecap:round}.hand.hour{stroke-width:4}.hand.minute{stroke-width:2}
-.monitor{fill:var(--scene-monitor)}.monitor.lit-on{fill:var(--scene-monitor-on)}.monitor.lit-dimmed{fill:var(--scene-monitor-dim)}
-.t-monitor-text.lit-on{fill:var(--state-ink)}.t-monitor-text.lit-dimmed{fill:var(--scene-screen-ink-dim)}
+.monitor{fill:var(--scene-monitor)}.monitor.lit-on{fill:var(--scene-monitor-on)}
+.t-monitor-text.lit-on{fill:var(--state-ink)}
 .placeholder{fill:var(--scene-placeholder);stroke:var(--scene-placeholder-edge);stroke-dasharray:4 3}
 .stool{fill:var(--scene-stool)}.stool.untitled{fill:none;stroke:var(--scene-stool);stroke-dasharray:3 2}
 .intern-edge{fill:none;stroke:var(--scene-stool);stroke-width:1.5;stroke-dasharray:3 2}
@@ -231,8 +231,9 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     // The interns whose frames are held, and those this paint drew.
     const interns = new Set();
     let drawnInterns = new Set();
-    // The characters a held loop or a walk steps this paint, each with its frames (never a copy of the
-    // URIs on the element: a frame is kilobytes, and a tick would parse every one of them).
+    // The characters a held loop or a walk steps this paint, each with its frames and the offset it steps them from
+    // (the seat's own for a held loop, 0 for a walk) — never a copy of the URIs on the element: a frame is
+    // kilobytes, and a tick would parse every one of them.
     let stepping = [];
     let loop = null;
     let svg = null;
@@ -398,10 +399,15 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                     const urls = characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, desk_top: e.desk_top });
 
                     if (urls !== null) {
-                        const el = art(g, urls[0], e, e.asset, 'character');
+                        // § 6.2's per-seat loop phase (card#12187): a held render that MOVES starts at the seat's own
+                        // offset into its loop, so two desks in one state never step in lockstep; one that does not
+                        // move is frame 0, the canonical, reduced-motion form, whatever its offset.
+                        const moves = e.animation?.motion === true && e.animation.frame_interval_ms !== null;
+                        const offset = moves ? characters.loopOffset(desk.install_id, desk.seat_id, urls.length) : 0;
+                        const el = art(g, urls[offset], e, e.asset, 'character');
 
-                        if (e.animation?.motion === true && e.animation.frame_interval_ms !== null) {
-                            stepping.push([el, urls]);
+                        if (moves) {
+                            stepping.push([el, urls, offset]);
                         }
                     }
 
@@ -577,7 +583,8 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
 
         const el = image(g, urls[0], -fx.size.w / 2, -fx.size.h, fx.size.w, fx.size.h, asset, { class: 'character', preserveAspectRatio: MEET });
 
-        stepping.push([el, urls]);
+        // A walk starts at its stand frame: A1's and A2's walks take no loop offset (§ 10.4 item 4).
+        stepping.push([el, urls, 0]);
     }
 
     /**
@@ -858,15 +865,16 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         const interval = scene.desks.find((d) => d.held?.motion)?.held.frame_interval_ms ?? (walking ? 1000 / scene.loop_fps : null);
 
         // Each character steps through its OWN frames — a walker's walk, a sleeper's loop — so a loop of one
-        // length never draws another drawing's frames.
+        // length never draws another drawing's frames, from the offset it was pushed with: the seat's own for a held
+        // loop, 0 for a walk.
         if (moving.length > 0 && interval !== null) {
             let tick = 0;
 
             loop = setInterval(() => {
                 tick += 1;
 
-                for (const [el, urls] of moving) {
-                    el.setAttribute('href', urls[tick % urls.length]);
+                for (const [el, urls, offset] of moving) {
+                    el.setAttribute('href', urls[(tick + offset) % urls.length]);
                 }
             }, interval);
         }

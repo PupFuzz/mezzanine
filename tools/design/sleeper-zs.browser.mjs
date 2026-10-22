@@ -7,16 +7,16 @@
 // in headless Chromium — once without its z's, and once per z with nothing but that z — and two shares are read pixel
 // by pixel: OVER HEAD, the share of the z's ink that lands on the sleeper's own ink above its eye line (where the ears,
 // leaves and caps are); and Z ON Z, the share of the z's ink covered by two z's or more. The worst frame of the worst
-// key per species is reported, and the worst of all is held under the two bounds § 12 states — read from the document,
-// never copied here. A z's box, its outline stroke included, must also stay inside the frame.
+// key per species is reported; each species is held under § 12's over-head bound or the residual the row names for it,
+// and the worst of all under the z-on-z and face bounds — every bound read from the document, never copied here. A z's box, its outline stroke included, must also stay inside the frame.
 //
 //   node tools/design/sleeper-zs.browser.mjs                       # judge the tree's own frames against § 12
 //   node tools/design/sleeper-zs.browser.mjs --layout <name>       # re-lay the z's by a LAYOUTS entry and judge that
-//   node tools/design/sleeper-zs.browser.mjs --selftest            # …and require the card#12159 layout to red BOTH bounds
+//   node tools/design/sleeper-zs.browser.mjs --selftest            # …and require the card#12159 layout to red BOTH bounds, the over-head one on more than one species
 //   node tools/design/sleeper-zs.browser.mjs --tree <dir>          # judge another tree
 //   node tools/design/sleeper-zs.browser.mjs --keys 4 --phases 16  # first keys per species and variant (3); phases per layout loop (16)
 //   …and --scan-eyes 400 --scan-crest 100: the keys scanned per species and variant for the EXTREMES the run adds (below)
-//   --shot <png> [--shot-px 108]    # save the sheet of every species; 49 draws it at the floor's fit size on a 1,440 window
+//   --shot <png> [--shot-px 108]    # save the sheet: each species' worst over-head seat at its worst frame; 49 draws it at the floor's fit size on a 1,440 window
 //   …and --chrome <path> or $CHROME, as every browser tool here.
 //
 // ⛔ CANDIDATES AND CONTROLS ARE PLANTED BY SEMANTICS, NOT BY SOURCE EDITS. A `--layout` run keeps the tree's sleeper —
@@ -43,6 +43,13 @@ const arg = (name, fallback) => (args.includes(name) ? args[args.indexOf(name) +
 const TREE = arg('--tree', join(ROOT, 'resources', 'characters'));
 const KEYS_PER = Number(arg('--keys', 3));
 const PHASES = Number(arg('--phases', 16));
+// The loop draws its frames at phase f / 8 + 0.5 (§ 10.4 item 4); with two z's the set of z places that draws over a
+// loop is the set phases j / 8 draw, so a layout's phases include the loop's own frames only when 8 divides them —
+// which the fully-opaque figure (`opaqueLarge`, read at every PHASES / 8-th phase) rests on.
+if (!(Number.isInteger(PHASES) && PHASES > 0 && PHASES % 8 === 0)) {
+  console.error(`FAIL — --phases must be a positive multiple of 8 (the loop's own frames), got ${PHASES}`);
+  process.exit(1);
+}
 /** Keys scanned per species and variant for the extremes of eye line (cheap: no raster) and of crest width (one raster each). */
 const SCAN_EYES = Number(arg('--scan-eyes', 400));
 const SCAN_CREST = Number(arg('--scan-crest', 100));
@@ -58,7 +65,12 @@ const SCALE = 2;
 /** A pixel is ink when its alpha is over this — so a z faded under about 0.16 opacity draws no ink at all. */
 const ALPHA = 40;
 
-/** § 12's two bounds, read from the document — never a copy here. */
+/**
+ * § 12's bounds, read from the document — never a copy here: the over-head bound held PER SPECIES, with its RESIDUALS —
+ * each a species named in the row's first cell with a bound of its own (`the \`mushroom\` at **60 %**`), the pattern
+ * `lobby-directory.browser.mjs`'s `RESIDUALS` uses: a residual is declared by name and capped, never a wider global
+ * bound — and the z-on-z and face bounds.
+ */
 function boundsFromDocument() {
   const md = readFileSync(join(ROOT, 'docs', 'design', 'FLOOR.md'), 'utf8');
   const read = (row) => {
@@ -66,9 +78,11 @@ function boundsFromDocument() {
     if (m === null) throw new Error(`FLOOR.md § 12 carries no *${row}* row in the form this tool reads`);
     return Number(m[1]) / 100;
   };
+  const overRow = md.match(/^\| \*\*Sleeper z overlap bound\*\* \| ([^|]*) \|/m);
+  const residuals = [...(overRow?.[1] ?? '').matchAll(/the `([a-z]+)` at \*\*(\d+) %\*\*/g)].map((m) => ({ species: m[1], bound: Number(m[2]) / 100 }));
   const face = md.match(/^\| \*\*Sleeper z face clearance\*\* \| \*\*(\d+)\*\* frame units from the closed eyes' ink, holding at most \*\*(\d+) %\*\* /m);
   if (face === null) throw new Error('FLOOR.md § 12 carries no *Sleeper z face clearance* row in the form this tool reads');
-  return { overHead: read('Sleeper z overlap bound'), zOnZ: read('Sleeper z-on-z bound'), faceClear: Number(face[1]), face: Number(face[2]) / 100 };
+  return { overHead: read('Sleeper z overlap bound'), residuals, zOnZ: read('Sleeper z-on-z bound'), faceClear: Number(face[1]), face: Number(face[2]) / 100 };
 }
 /** How far from the closed eyes' ink a z's ink must stay, in frame units — § 12's *Sleeper z face clearance*. */
 let FACE_CLEAR = NaN;
@@ -343,26 +357,34 @@ function report(label, { rows, picks, species, mirror, framesPer }, bounds) {
   const measured = rows.length >= species.length * KEYS_PER && zpx > 500 * rows.length * framesPer && rows.every((r) => r.eyeInk > 20);
   const over = worstBy('overHead'), onz = worstBy('zOnZ');
   const face = worstBy('onFace');
-  const okOver = over.overHead <= bounds.overHead, okOnz = onz.zOnZ <= bounds.zOnZ, okFace = face.onFace <= bounds.face;
+  // The over-head bound is held per species: the global bound, or the species' declared residual.
+  const boundFor = (sp) => bounds.residuals.find((r) => r.species === sp)?.bound ?? bounds.overHead;
+  const overSpecies = species.filter((sp) => rows.some((r) => r.sp === sp && r.overHead > boundFor(sp)));
+  const unknownResidual = bounds.residuals.filter((r) => !species.includes(r.species)).map((r) => r.species);
+  const okOver = overSpecies.length === 0 && unknownResidual.length === 0, okOnz = onz.zOnZ <= bounds.zOnZ, okFace = face.onFace <= bounds.face;
   const ok = measured && okOver && okOnz && okFace && clipped === 0 && mirror.length === 0;
   console.log(`── ${label}: ${rows.length} seats × ${framesPer} frames, ${zpx} z px read; z heights ${Math.min(...rows.map((r) => r.zSmall)).toFixed(1)}–${Math.max(...rows.map((r) => r.zLarge)).toFixed(1)} units, the largest fully opaque AT THE LOOP'S OWN FRAMES ${Math.min(...rows.map((r) => r.opaqueLarge)).toFixed(1)}–${Math.max(...rows.map((r) => r.opaqueLarge)).toFixed(1)} by seat (the largest drawn ${Math.min(...rows.map((r) => r.zLarge)).toFixed(1)}–${Math.max(...rows.map((r) => r.zLarge)).toFixed(1)}); z boxes leaving the frame ${clipped}`);
   console.log(`   seats: ${rows.length}, chosen by the extremes of ${SCAN_EYES} keys' eye lines (${Math.min(...eyesAll).toFixed(1)}–${Math.max(...eyesAll).toFixed(1)} units over the population) and ${SCAN_CREST} keys' crests (widest ${Math.max(...picks.map((p) => p.wide.w)).toFixed(0)} units)`);
   for (const sp of species) {
     const mine = rows.filter((r) => r.sp === sp);
-    console.log(`   ${sp.padEnd(9)} over head ${pct(worstBy('overHead', mine).overHead).padStart(6)}   z on z ${pct(worstBy('zOnZ', mine).zOnZ).padStart(6)}   face ${pct(worstBy('onFace', mine).onFace).padStart(6)}   anywhere on the sleeper ${pct(worstBy('overAll', mine).overAll).padStart(6)}   (${worstBy('overHead', mine).key})`);
+    console.log(`   ${sp.padEnd(9)} over head ${pct(worstBy('overHead', mine).overHead).padStart(6)} of ${pct(boundFor(sp)).padStart(6)}${overSpecies.includes(sp) ? ' OVER' : '     '}   z on z ${pct(worstBy('zOnZ', mine).zOnZ).padStart(6)}   face ${pct(worstBy('onFace', mine).onFace).padStart(6)}   anywhere on the sleeper ${pct(worstBy('overAll', mine).overAll).padStart(6)}   (${worstBy('overHead', mine).key})`);
   }
-  console.log(`   over head: worst ${pct(over.overHead)} (${over.key}) against ${pct(bounds.overHead)} — ${okOver ? 'within' : 'OVER'}`);
+  console.log(`   over head: worst ${pct(over.overHead)} (${over.key}); every species against ${pct(bounds.overHead)}${bounds.residuals.map((r) => `, the ${r.species} a residual at ${pct(r.bound)}`).join('')} — ${okOver ? 'within' : `OVER on ${overSpecies.join(', ') || '—'}`}${unknownResidual.length ? ` — a residual names no species of the tree: ${unknownResidual.join(', ')}` : ''}`);
   console.log(`   z on z:    worst ${pct(onz.zOnZ)} (${onz.key}) against ${pct(bounds.zOnZ)} — ${okOnz ? 'within' : 'OVER'}`);
   console.log(`   the face:  worst ${pct(face.onFace)} of a frame's z ink within ${bounds.faceClear} units of the closed eyes (${face.key}) against ${pct(bounds.face)} — ${okFace ? 'clear' : 'ON THE FACE'}`);
   for (const m of mirror.slice(0, 3)) console.log(`   MIRROR DRIFT — zMarkup() no longer draws what creatures.js's zSvg() drew: ${m}`);
   console.log(`   ${ok ? 'PASS' : 'FAIL'}${measured ? '' : '  — NOT MEASURED (too few seats or z pixels)'}`);
-  return { ok, okOver, okOnz, okFace, measured };
+  return { ok, okOver, okOnz, okFace, measured, overSpecies, rows };
 }
 
-/** A sheet of one frame per species, the z's as judged — the picture the figures stand for. */
-async function sheet(chrome, tree, layout, out) {
+/**
+ * A sheet of the WORST over-head seat of every species, at the frame it measured worst — from the measured rows, so the
+ * picture is the case the figure stands for, never a seat the figure did not pick.
+ */
+async function sheet(chrome, tree, layout, out, rows) {
   const C = await import(pathToFileURL(join(tree, 'index.js')).href);
-  const docs = C.SPECIES_KEYS.flatMap((sp) => [0, 1].map((k) => framesOf(C, { sp, key: `sleep/${sp}/any/${k}` }, layout, [])[layout === null ? 0 : Math.floor(PHASES * 0.3)].doc));
+  const worst = C.SPECIES_KEYS.map((sp) => rows.filter((r) => r.sp === sp).reduce((a, r) => (a === null || r.overHead > a.overHead ? r : a), null)).filter((r) => r !== null);
+  const docs = worst.map((r) => framesOf(C, { sp: r.sp, key: r.key }, layout, [])[Math.max(0, r.worstFrame)].doc);
   const W = SHOT_PX, H = Math.round(SHOT_PX * 192 / 108);
   const cell = (d) => `<div style="background:#efe4d0;border-radius:6px"><img style="width:${W}px;height:${H}px;display:block" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(d)}"></div>`;
   const html = `<!doctype html><title>x</title><body style="margin:8px;background:#fff;display:grid;grid-template-columns:repeat(8,${W}px);gap:6px">${docs.map(cell).join('')}</body>`;
@@ -375,7 +397,7 @@ async function sheet(chrome, tree, layout, out) {
   } finally {
     b.close();
   }
-  console.log(`sheet: ${out} (${docs.length} sleepers, ${layout ?? 'the tree\'s own'} z's)`);
+  console.log(`sheet: ${out} (${docs.length} sleepers, each species' worst over-head seat at its worst frame: ${worst.map((r) => `${r.key}#${r.worstFrame}`).join(', ')}; ${layout ?? 'the tree\'s own'} z's)`);
 }
 
 // `--layout two:L,S,fx,tx` — a two-z candidate on the ruled law: from `fx` units off centre on the roll-away side just
@@ -405,15 +427,17 @@ if (chrome === null) {
 
 const bounds = boundsFromDocument();
 FACE_CLEAR = bounds.faceClear;
-if (SHOT !== null) await sheet(chrome, TREE, LAYOUT, SHOT);
 const judged = report(LAYOUT === null ? `the tree's own frames (${TREE})` : `layout «${LAYOUT}» over the tree's sleepers (${TREE})`, await measure(chrome, TREE, LAYOUT), bounds);
+if (SHOT !== null) await sheet(chrome, TREE, LAYOUT, SHOT, judged.rows);
 let failed = !judged.ok;
 
 if (SELFTEST) {
   const control = report('CONTROL — the card#12159 layout; must exceed BOTH bounds', await measure(chrome, TREE, 'card12159'), bounds);
   const onFace = report('CONTROL — z\'s laid over the closed eyes; must fail the face clearance', await measure(chrome, TREE, 'on-face'), bounds);
-  for (const [name, run, okKey] of [['overlap', control, 'okOver'], ['z-on-z', control, 'okOnz'], ['face', onFace, 'okFace']]) {
-    const caught = run.measured && !run[okKey];
+  // The overlap control must red on MORE THAN ONE species: a bound only the mushroom's residual can trip would tell the
+  // ruled z's from card#12159's on one cap alone.
+  for (const [name, run, okKey, more] of [['overlap', control, 'okOver', (r) => r.overSpecies.length > 1], ['z-on-z', control, 'okOnz', () => true], ['face', onFace, 'okFace', () => true]]) {
+    const caught = run.measured && !run[okKey] && more(run);
     console.log(caught ? `CONTROL CAUGHT (${name})` : `CONTROL NOT CAUGHT (${name}) — the bound cannot tell the ruled z's from the card#12159 path`);
     failed = failed || !caught;
   }
