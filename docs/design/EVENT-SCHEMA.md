@@ -271,7 +271,8 @@ The heartbeat is only a liveness signal if its absence means something. Two mech
 
 **Flusher exclusivity is mandatory, not advisory.** `flusher.lock` is created with
 `O_CREAT|O_EXCL` (`fs.openSync(path, 'wx')`), which is atomic on both platforms: exactly one process
-can win it. It holds `{"pid":…,"started_at":…,"seq_epoch":…}`, and its `mtime` is touched on item 2's cadence.
+can win it. It holds `{"pid":…,"started_at":…}` — since card#12180 a `seq_epoch` is a site's, held in that
+site's `state.json` entry, so the lock names none — and its `mtime` is touched on item 2's cadence.
 A flusher that exits removes the lock only while its body still names that flusher's own `pid` and
 `started_at`; a lock that names another flusher is left in place, because removing it lets the next
 hook start a third. A starting flusher that loses the create reads the lock: if the `mtime` is newer than 90 s
@@ -404,13 +405,12 @@ declared once in this file, and each site binds its own token to that same pair
 site issuing it a token, and on no other site by it. What becomes per site is the transport half of
 the table above: `ingest_url`, `token`, `ca_file` and `proxy_url`. Everything a site is told is told
 by this subsection and the sections it points at; nothing a site receives changes shape (*The wire
-is unchanged*, below). **Status: designed on card#12180 and not yet built** — `fleet-reporter.js`
-on `dev` reads the single-site form only, and the writer embedded in `fleet-reporter/INSTALL-LINUX.md`
-Step 2 writes it (`write-config.js`, which opens the config with `wx` and refuses a file that exists).
-The implementing change flips this sentence, adds the amendment row to `fleet-reporter/README.md`,
-rewrites the writer and the install steps as *The installer's writer* below states, and performs the
-install step; until it lands, every present-tense sentence in this subsection and in the sections it
-amends describes the contract and not the shipped reporter.
+is unchanged*, below). **Status: built on card#12180.** `fleet-reporter.js` reads both forms and runs
+one lane per site, `fleet-reporter/README.md` carries the amendment row, and the writer embedded in
+`fleet-reporter/INSTALL-LINUX.md` Step 2 writes the multi-site form with the two modes *The installer's
+writer* below states; AT-28 is the acceptance suite's. The install steps that subsection lists are
+written into the install document, and performing them on the sandbox seat — the record the runbook
+keeps of every step — is the card's install step, which the document says is owed where it is.
 
 **Two shapes, a file holds exactly one of them, and only one of them is ever written.** The
 **single-site form** is the table above as it stood before this card: the four transport keys at the
@@ -3645,9 +3645,8 @@ object carries two values (the field row above), and `not_measured` exists only 
 report. The flusher runs the same probe for the heartbeat — each site's lane against its own site, on
 its own cadence (card#12180). A probe that measures a check replaces that
 check's value, `fail` included. **An accepted request measures `tls_verify` and `token_accepted` as
-`pass` for that site** before the lane builds its next heartbeat — the answer proves both, and
-`drainOnce`'s accepted path already sets `tls_verify` so (`flusherMain`); `token_accepted` joins it
-(card#12180). A probe that measures nothing for a check (its `not_measured` column
+`pass` for that site** before the lane builds its next heartbeat — the answer proves both, and the
+lane's accepted path (`laneDrain`) sets both (card#12180). A probe that measures nothing for a check (its `not_measured` column
 above: a deadline, a dropped connection, an answer carrying no set) leaves the value the last measuring
 probe set, so a probe that falsified nothing never puts a `fail` on the wire. A check no probe has
 measured yet rides the wire as `fail`. While the last probe left either check unmeasured, the flusher
