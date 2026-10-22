@@ -130,8 +130,14 @@ class TheDeskRenderNeverDrawsANullAsAZeroTest extends TestCase
             $d[] = 'a null task drew a thought bubble: '.json_encode($desk['bubble']);
         }
 
-        if ($desk['monitor']['text'] !== $desk['label_line'] || in_array($desk['monitor']['text'], [null, ''], true)) {
-            $d[] = 'the monitor does not show the state line: '.json_encode($desk['monitor']);
+        // § 5.6's `action` row: a null action is no monitor content — a lit monitor shows the desk's state line, and an off
+        // one (`disabled`'s, and `idle`'s since card#12187 — `nulls-a` is idle) draws no text, the state line standing on
+        // the facts plate's label line alone. Either way the state line is drawn, never an empty or zeroed action.
+        $off = ($desk['monitor']['lit'] ?? null) === 'off';
+
+        if ($off ? ($desk['monitor']['text'] !== null || in_array($desk['label_line'], [null, ''], true))
+            : ($desk['monitor']['text'] !== $desk['label_line'] || in_array($desk['monitor']['text'], [null, ''], true))) {
+            $d[] = 'the monitor does not show the state line, nor an off monitor leave it to the label line: '.json_encode([$desk['monitor'], $desk['label_line']]);
         }
 
         if ($desk['model_label'] !== null) {
