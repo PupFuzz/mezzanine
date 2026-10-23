@@ -4779,8 +4779,19 @@ only. This subsection says where the creatures come from and what they replaced;
   carrot, eggplant, pumpkin and potato. Pure SVG, seeded per key. The sheet was a prototype in the seat's
   scratch space and is not in the repository, so **the reference that survives is the generator itself
   and the sheet it draws** — `tools/characters/`'s harness, rebuilt over the creature tree (Appendix B row
-  19) — and the operator's screenshots of 2026-10-05 are what that sheet is compared against before the
-  build merges. **Two changes to the approved look are the seat's, named so nobody reads them as the
+  19), and `tools/characters/sheet.browser.mjs`, which captures the same sheet to a PNG from headless
+  Chromium, every species in every frame — and the operator's screenshots of 2026-10-05 are what that sheet
+  is compared against before the build merges. **The species added since are the seat's own drawing to the
+  same look**, each marked `added` with its card in the generator: card#12212's (the operator's *"design
+  additional new cute characters based different animals and vegetables"*) are a penguin-ish, snail-ish,
+  sheep-ish and deer-ish creature, and a corn, broccoli, bell pepper and cabbage, appended to the list under
+  [§ 10.4](#104-the-art-direction-as-a-specification)'s growth bullet, which owns what appending does to the
+  seats already drawn; `SPECIES_KEYS` filtered by `kind` is the one derivation of how many of each there are.
+  An added species is held to the approved sheet's own frame envelope — its ink leaves its frame in no kind of
+  frame by more than the approved species' does ([AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom)'s
+  frame-bounds leg, which re-derives that envelope from the generator on every run; what the approved species
+  themselves do at the frame's edge is [§ 14](#14-open-questions-for-the-review-loop) item 33(6)).
+  **Two changes to the approved look are the seat's, named so nobody reads them as the
   operator's:** a faint light rim on every silhouette, so the dark colourways (a charcoal bear, a dark
   otter, a deep eggplant) do not sink into what they stand on ([§ 10.4](#104-the-art-direction-as-a-specification)'s
   rim bullet, where the edge is eye-judged); and softer, curved hedgehog spines, so the back does not read as a saw-blade at 4× and
@@ -5256,7 +5267,7 @@ creature generator's sheet is their worked example.
 
   | Dimension | Members | What it draws |
   |---|---|---|
-  | **species** — the body | **16**: 8 animal, 8 vegetable ([§ 10.2](#102-characters-original-creatures-drawn-by-code)) | the silhouette, the ears or leaves, the face's placement; salted (the salt bullet below) |
+  | **species** — the body | **24**: 12 animal, 12 vegetable ([§ 10.2](#102-characters-original-creatures-drawn-by-code)) — the approved sheet's and the ones added since, `SPECIES_KEYS` by `kind` | the silhouette, the ears or leaves, the face's placement; salted (the salt bullet below), and grown by appending (the growth bullet below) |
   | **colourway** | per species: **5**; the pea-pod, the radish and the turnip **4** (the last two after the operator's ruling of 2026-10-06 withheld one each, § 14 item 33(1)) | the body's paint, light falling top-left; one eggplant and one pumpkin colourway is striped |
   | **variant** | the rabbit **2** (upright, or lop at 1 in 3); the mushroom **3** caps (dome, wide, bell); every other species none | a body shape inside its species |
   | **girth** | **3** | the body's profile, widened or narrowed |
@@ -5271,7 +5282,7 @@ creature generator's sheet is their worked example.
   | **extra** | none at 2 slots, plus the species' list of **1–4** | glasses, a satchel (only where the species has a neck to hang it from), a mug, a book |
   | **accents** | **2** draws over **8** colours | the colours of whatever is worn or held, so drawn only where something is |
   | **side** | **2** | mirrors the asymmetric parts — a tail, a flopped ear, a scarf's tail, a satchel |
-  | **details** | a named draw each, per species | the bear's chest mark, the upright rabbit's flopped ear, the frog's spots, the radish's fourth leaf, the leaf green of the radish, turnip and carrot, the mushroom's speckle, the pumpkin's leaf, the potato's lumps, dimples and sprout |
+  | **details** | a named draw each, per species | the bear's chest mark, the upright rabbit's flopped ear, the frog's spots, the radish's fourth leaf, the leaf green of the radish, turnip and carrot, the mushroom's speckle, the pumpkin's leaf, the potato's lumps, dimples and sprout, the deer's spots |
 
   ⚠ **No figure for the size of the whole space is written here, and none is owed.** The prototype's own
   `spaceSize()` multiplies a subset of these lists — it leaves out the accents, the side and the details,
@@ -5317,11 +5328,15 @@ creature generator's sheet is their worked example.
     dispatch, so the population does not exist until the dispatches do — which is why *(b)* is a
     measurement over a synthetic population and never a searched guarantee.
 - ⭐ **The salt is a design choice, and this is the rule that must survive this document's author.**
-  One field carries it: **species**, drawn under the field name `species:s1`. It was **searched once**
-  against a roster so that every room of that roster no larger than the species list renders
-  all-distinct bodies, and picked as the
-  first salt that passes. **Determinism is untouched** — one salt, picked once, fixed forever; the
-  function stays pure and the appearance stays a function of the key alone. **If the operator reports
+  One field carries it: **species**, drawn under the field name the generator's `SPECIES_FIELD` holds —
+  `species:s3` since card#12212, `species:s1` before it. A salt is **searched once per list**: against a
+  roster, so that every room of that roster no larger than the species list renders all-distinct bodies,
+  and picked as the first field name that passes — `:s1` over the approved sixteen (card#11046), and
+  `:s3` over the twenty-four the list grew to, the first that passes the roster and the control both
+  (card#12212, the operator's ruling of 2026-10-23, [§ 14](#14-open-questions-for-the-review-loop) item
+  33(5); the growth bullet below says why the list's growth voided `:s1`). **Determinism is untouched** —
+  one salt, fixed until the list next grows and a re-pick is ordered and surfaced; the function stays
+  pure and the appearance stays a function of the key alone. **If the operator reports
   visible repetition, the response is to widen the space or re-pick the salt — never to special-case a
   seat.** A special-cased seat is a *stored appearance wearing a disguise*: it breaks
   [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s property that two browsers agree with nothing
@@ -5338,8 +5353,48 @@ creature generator's sheet is their worked example.
   roster on every run; and because that fleet is too small to tell a salted draw from an unsalted one,
   the search sample is committed beside it as the salt leg's labelled CONTROL, which the leg's
   discrimination half reads ([§ 14](#14-open-questions-for-the-review-loop) item 33(2), the seat's ruling
-  of 2026-10-06). A fleet roster on which `:s1` fails is surfaced with the before and after — a re-pick
-  re-draws approved bodies — and never a silent re-pick.
+  of 2026-10-06). A fleet roster on which the salt fails is surfaced with the before and after — a re-pick
+  re-draws approved bodies — and never a silent re-pick; the growth bullet's table is the one re-pick so
+  far, surfaced that way.
+- ⭐ **The list GROWS BY APPENDING, and every key draws its species by the one draw over the whole list**
+  (card#12212 — the operator's ruling of 2026-10-22, *"Just add them to the list"*,
+  [decision 73](#13-decisions-taken-revisable-at-review)). The species draw is a modulus **over the list's
+  length**, so appending a species re-draws the keys already placed: a seat the approved sheet drew may change
+  body when the list grows — to one of the added species, or to another of the approved ones — and the
+  operator accepted that. A key's species stays a pure function of the key with nothing stored
+  ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)), so no growth could have changed NO existing seat: a
+  species reachable by any key is reachable by a seat that already exists, and the function cannot tell an
+  old seat from a new one. The alternative the operator declined — `species:s1` kept over the approved
+  sixteen and each later addition one draw of its own, so that no approved seat moved to another approved
+  body, at a third of keys moved instead of two in three — was this branch's first design, and nothing of it
+  ships. **And the salt does not survive a growth on its own:** a salt is a pass over one list, so the list
+  the salt was searched over is the list it holds on, and `:s1`, searched over the sixteen, drawn over the
+  twenty-four repeated the radish in the committed roster's aimla room (`aimla-impl-1` kept it and
+  `aimla-impl-2` moved onto it) — the repetition the salt exists to prevent, and what the salt bullet
+  says a failed roster gets: **a re-pick, surfaced, never silent.** The operator, shown that table beside
+  the re-pick's, ruled the re-pick on 2026-10-23 ([§ 14](#14-open-questions-for-the-review-loop) item 33(5)):
+  `SPECIES_FIELD` is `species:s3`, the first field under which every room of the roster and of the control
+  draws distinct bodies over the grown list (the search: `species:s<n>` for rising `n`, the salt leg's own
+  two predicates; `:s2` passes the roster and not the control). ⚠ **What the growth and the re-pick did to
+  the seats already drawn, surfaced as the salt bullet asks.** Each seat of the committed roster
+  (`tools/characters/roster.json`): its species before this card — `:s1` over the approved sixteen,
+  `pick(key, 'species:s1', SPECIES_KEYS.slice(0, 16))` — and after it, `speciesOf(key)`, read from the
+  generator at this card's build:
+
+  | Seat | `:s1` over the sixteen (before) | `:s3` over the twenty-four (after) |
+  |---|---|---|
+  | `aimla/aimla-pm` | owl | **snail** |
+  | `aimla/aimla-impl-1` | radish | **broccoli** |
+  | `aimla/aimla-impl-2` | fox | **frog** |
+  | `aimla/aimla-review` | mole | **deer** |
+  | `kanban/kanban-solo` | eggplant | **owl** |
+  | `mezzanine/mezzanine-solo` | fox | **eggplant** |
+
+  Every roster seat changes body, as a fresh salt over a grown list must move all but about one key in
+  twenty-four; over [AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom)'s
+  synthetic keys the share is re-derived by that predicate on every reading and is not written here. The
+  salt leg's guarantee and control run over the grown list under `:s3` on every run, unchanged in their
+  assertions, and are green.
 - **The collision acceptance is MEASURED, not asserted.** Two keys **collide** when the generator draws
   them as **the same drawing**: the frame document each is actually drawn in — a seat's **standing
   frame**, an intern's **chibi frame** ([§ 10.4](#104-the-art-direction-as-a-specification)'s frame
@@ -5550,8 +5605,12 @@ creature generator's sheet is their worked example.
      as the tool scans it over 100 keys each (1 unit a raster pixel): `bear` 53, `carrot` 31, `eggplant` 39, `fox` 34,
      `frog` 73, `hedgehog` 67, `mole` 60, `mushroom/bell` 15, `mushroom/dome` 25, `mushroom/wide` 38, `otter` 63,
      `owl` 49, `peapod` 44, `potato` 56, `pumpkin` 47, `rabbit/lop` 62, `rabbit/upright` 20, `radish` 25 and
-     `turnip` 27 — and the tool holds every scanned seat's drawing at or below it (an undercut table reds, naming
-     the key). This is the table decision 70's earlier round declined as unheld; the tool is the gate that holds it.
+     `turnip` 27, and, for card#12212's species, as the floor of the topmost ink `tools/design/svg-document.mjs`'s
+     `inkBounds` finds over the sleeper's own documents without their z's: `broccoli` 15, `cabbage` 47, `corn` 45,
+     `deer` 37, `penguin` 56, `pepper` 42, `sheep` 68 and `snail` 64 — and the tool holds every scanned seat's drawing at or below it
+     (an undercut table reds, naming the key), while
+     [AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom)'s frame-bounds leg holds every
+     species' and variant's entry, over its own keys, at or above that ink on every run. This is the table decision 70's earlier round declined as unheld; the tool is the gate that holds it.
      **Where they stand — the law, exactly as the tool computes it** (`above3Fixed()`, `above3Why()` and `above3Plan()`
      in `tools/design/sleeper-zs.browser.mjs`, which `creatures.js`'s `zStand()` and `zLargeFor()` must equal to the
      digit; the tool holds the tree's own z's to them — *the law*, below). For a seat of crest top `crown` (`CREST_TOP`'s,
@@ -8310,7 +8369,7 @@ painter's legs in `server/tests/Feature/Floor/painter-probe.mjs`.*
   range (so a list inside a range is held only at the range's ends, and that is the leg's stated limit), and every member of every list is drawn by some key of a synthetic population —
   with the control below that proves the reach assertion can fail.
 - **GREEN — the salt, two halves over two populations** (§ 14 item 33(2), the seat's ruling of
-  2026-10-06): *the guarantee* — under `species:s1`, every room of the committed fleet roster that holds no
+  2026-10-06): *the guarantee* — under the salt's field (`SPECIES_FIELD`, `species:s3`), every room of the committed fleet roster that holds no
   more seats than there are species draws all-distinct species (a larger room cannot, by pigeonhole, and
   is held to nothing here), and every key on that roster states its source; *the discrimination* — over
   `tools/characters/salt-control.json`, the sample the salt was searched over, committed and labelled as a
@@ -8348,6 +8407,18 @@ painter's legs in `server/tests/Feature/Floor/painter-probe.mjs`.*
   draws → the crest-table leg names the key that reaches above it; `AnIdleDeskDrawsItsSleeperTest` plants it.
 - **RED — the loop's start dropped (card#12187):** the painter steps `urls[tick % urls.length]` and not from
   `loopFrom` → a moving sleeper shows the still as one of its loop frames, and the painter's leg names the desk.
+- **GREEN — the frame holds the ink** (card#12212): for every species, over keys enough to vary tilt, girth,
+  size, side, hat, neckwear and extra, the ink of the standing frame, both walk phases, the chibi frame and every
+  sleeper document — the still and the loop, each against the sleeper's own raised, widened frame
+  (`SLEEP_VIEWBOX`), the others against theirs — is measured against its viewBox by `tools/design/svg-document.mjs`'s `inkBounds` — curves
+  sampled along their length, strokes widened by half their width, clip paths honoured — and every species drawn
+  after the approved sheet (`added`) leaves its frame in each kind of frame by no more than the approved sheet's
+  own worst species in that kind, an envelope re-derived from the generator on every run and never written down;
+  the approved species' own overshoot is printed by name and gates nothing (§ 14 item 33(6)). ⚠ The reader's
+  limit, stated: a clipped shape is cut to its clip path's BOX in the frame's axes, so a clip rotated with its
+  shape is read a few units wide on the rolled side of a sleeper (measured against rendered pixels on 2026-10-23:
+  within 0.3 units on every upright frame, up to 4 units wide on a rolled sleeper's rolled side) — an
+  over-reading, never an under-reading, and the same for an added species as for an approved one.
 - **GREEN — vector and well-formed (N2):** every frame is one standalone SVG document that parses as
   strict XML — every tag closed, every `&` an entity — with an `<svg>` root carrying
   `xmlns="http://www.w3.org/2000/svg"`, and carries no `<image`, no `data:` URI and no reference that
@@ -8363,6 +8434,10 @@ painter's legs in `server/tests/Feature/Floor/painter-probe.mjs`.*
   draw from an unsalted one, so a pass over it would report nothing about the salt.
 - **RED — the seat's body on its intern:** remove the intern re-draw → some synthetic intern wears its
   seat's species, and the interns leg names the key.
+- **RED — a part past the frame:** push a standing frame's drawing 30 units sideways (the leg's own control, on
+  every run) → it is past its frame by more than the approved envelope, and the leg says so; and the snail's shell
+  as first drawn, its centre 31 units off the centre line with a radius of 37, failed this leg in every kind of
+  frame before it was redrawn (watched 2026-10-23, with the cabbage's side leaves and the broccoli's satchel).
 - **RED — a desk that loses its character:** have the painter draw nothing for a pose it has no frame
   for (`asleep`, say) → that desk draws no character, and the parity leg names the pair; a sleeper drawn
   as an empty desk is [§ 7.5](#75-what-a-degraded-desk-may-never-look-like)'s defect.
@@ -9036,6 +9111,7 @@ review can reverse it deliberately rather than discover it later.
 | 71 | **Decided 2026-10-22 — card#12187, the operator's request: an `idle` desk's monitor is off, and the dimmed screen is retired from the lit member set** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme), [§ 7.1](#71-the-render-per-state)) | **(A)** a darker *dimmed* — a slate-teal with a fainter ink; **(B)** off with a small standby mark on the frame; **(C)** a new `asleep` member drawing a dark screen with a faint glow | (A) keeps the defect: any lit colour reads as on, and the text it kept is the label line the facts plate already carries; (B) adds an element to the desk's ruled set for one state; (C) is a third member for a screen that is, in the product's own word, off. `disabled` has drawn `off` since row 20, so `idle` draws the member that exists | A screen-reader or a screenshot reads an idle desk's state from its chip and label line alone, as it already did; and if a reviewer finds `idle` and `disabled` too alike with motion off, the difference is the sleeper under full light against a present character under dimmed light — [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion) asserts it |
 | 72 | **Decided 2026-10-22 — card#12187, the operator's request, amended at review rounds 1 and 2: under [§ 12](#12-every-number-and-where-it-comes-from)'s *Directory dock width* the directory and the readings dock under the room in the page's flow, natively scrolled and natively zoomed, the room still drawn at fit above them; the bound is a CHOSEN size of the fitted face (24 × 15 em) and a real laptop's page viewport docks under it; one entry, `lobby/directory.js`'s, writes every state the dock changes — the boxes' home, their `data-home` (shipped as `flow` in the markup) and the surface's `touch-action`; and `touch-action: none` applies only under `[data-home="board"]`, where the wire listens, `auto` everywhere else** ([§ 4.1](#41-the-lobby--the-building-summary)) | **(A)** a phone camera that opens on the board instead of the room — a 366 × 231 px box on a 390 px phone holding one plaque, the readings off screen, every scroll an inner one through the gesture wire's unverified touch half; **(B)** a second, phone-only directory in the markup, shown by a media query — two copies of one list, the drift canon #5 names; **(C)** scale the plaque's type down on the board at phone widths — decision 37 refused scaled text once and a 117 px face holds no type a phone can read; **(D)** a bound derived from a readability target — the title and one whole plaque in the fitted face — which the 1,280 × 800 and 1,366 × 768 viewports card#12113 measured already miss (0.95 and 0.81 of the tallest plaque), so it would dock them too — which, since a real laptop's viewport is the shorter one, it does anyway; **(E)** `touch-action: pan-y` on the docked surface so a swipe from the room scrolls the page — round 1's rule, withdrawn: it refuses the browser's pinch-zoom (WCAG 2.2 SC 1.4.4) | The faces already flow in the page before the first snapshot (the un-drawn state), so docking is that state with the room drawn: one list, one renderer, native scrolling and zooming where the touch half is least verified, and the board untouched on a window tall enough to hold a 15 em face. Inverting `touch-action` — `none` only where the wire listens — makes the dock the default and the board the exception, so a box that leaves the layer cannot keep a rule written for the layer | **Real laptops dock** (the seat's ruling on round 2's N3, revisable): a 1,366 × 768 laptop's page viewport is about 1,366 × 657 and a 1,280 × 800's about 1,280 × 690, both under the 15 em the face needs, so a viewer who learned the board on a desktop window finds the directory under the room on a laptop, at the page's text size, in full. The board's remaining home is a window about 1,440 × 760 or taller. **The docked room's camera is driven by its buttons and keys on touch** — a drag or pinch that begins on the drawing scrolls or zooms the page — and both halves of the touch contract stay unverified until a real phone runs them (§ 14 item 39(4)) |
 | 69 | **Decided 2026-10-20 — the operator's ruling on card#12113: the lobby's elevator is the floor's control and rides through the floor's cab — one ride, one cab dialog, one panel module, one state machine hoisted to a shared module; and through the cab's open doors is the stop the doors open on, the lobby drawn as a view of its own front doors and windows** ([§ 4.5](#45-the-viewport-rule-and-the-camera), [§ 4.4](#44-routes-and-what-each-one-fetches)) | keep the lobby's one-button next-stop ride and add the floor's cab beside it; a lobby cab of its own, built from the floor's as a copy; one view behind the doors for every stop | the operator's words — *just like the other floors* — and § 14 item 37's own condition (*reuses `cab-panel.js`, no floor-specific import*); two cabs would be two implementations of one behaviour, the defect canon names, and a next-stop button beside a cab is two rides on one page. One view for every stop would show an office when the doors open on the lobby, which the operator's third reading refuses by name | the floor screen gives up a state machine it owned alone, and a defect in the shared module reaches both pages at once — which is also what makes a fix reach both; the lobby page loads the house theme module for the cab's palette, one request it did not make before |
+| 73 | **Decided 2026-10-22 — the operator's ruling on card#12212: the species added after the approved sheet join the one list every key draws its species from — *"Just add them to the list"* — and seats already drawn may change body, to an added species or to another approved one** ([§ 10.2](#102-characters-original-creatures-drawn-by-code), [§ 10.4](#104-the-art-direction-as-a-specification)'s growth bullet) | a growth that kept `species:s1` over the approved sixteen and gave each later addition one draw of its own, so no approved seat moved to another approved body (this branch's first design, put to the operator with its measurement) | One list, one draw, one modulus: the generator stays the function it was, with nothing per generation to carry forward on the next addition, and the operator took the re-draw of existing seats over the mechanism that avoided part of it. | The growth re-draws most seats already placed (§ 10.4's growth bullet has the measurement, and which roster seats, before and after), and `:s1`, searched over sixteen, is not a passing salt over twenty-four: drawn over twenty-four it repeated the radish in the committed roster's aimla room, so the salt was re-picked to `species:s3` on the operator's ruling of 2026-10-23 ([§ 14](#14-open-questions-for-the-review-loop) item 33(5)) — the cost of being wrong is one more re-pick, surfaced the same way. |
 
 ---
 
@@ -9945,6 +10021,8 @@ reason to leave two readings live.
     room distinct and the unsalted draw repeats a body in aimla and sola, which is what the salt RED is
     watched failing on. `:s1` stands as approved. If the fleet roster ever repeats a body under `:s1`, the
     rule above stands: widen or re-pick, surfaced with the before and after, never a silent re-pick.
+    ⚠ *Superseded in one particular by (5), 2026-10-23: the salt is `species:s3` since card#12212 grew the list;
+    this item's rule is what (5) applied, and `:s1` is the salt it was searched over the approved sixteen as.*
 
     *(3)* ✅ **CLOSED — the silhouette's edge is eye-judged; no contrast bound holds it.** The seat's
     ruling, 2026-10-06: the operator approved the look with the approved outline, seen on a tan floor
@@ -9959,6 +10037,37 @@ reason to leave two readings live.
     frame contract) that no approval covers yet; the build sends screenshots of each at 1× and 4×, on the
     real floor behind the desks — among them **one full side table at the cap**, because a repeated body among siblings is the common case there (§ 10.4) and is what the operator should see — before it merges, under the card's own *screenshots to the operator at each step*. **Closes it:** the operator's
     answer on those screenshots.
+
+    *(5)* ✅ **CLOSED — the operator's ruling of 2026-10-23 on card#12212, option (b): the salt is re-picked
+    over the grown list, to `species:s3`.** The ruling of 2026-10-22 that the eight added species join the
+    one list ([decision 73](#13-decisions-taken-revisable-at-review)) grew the list `species:s1` was drawn
+    over, and `:s1` was searched over the sixteen: drawn over the twenty-four it repeated the radish in the
+    committed fleet roster's aimla room (`aimla-impl-1`, which drew it before, and `aimla-impl-2`, which drew
+    the fox) — the repetition the salt exists to prevent, and the case item (2) names: *re-pick, surfaced,
+    never silent*. The question put to the operator carried the roster three ways — before the card, under
+    `:s1` over the twenty-four, and under `:s3` — with the two options: *(a)* accept the repeat, the
+    guarantee half becoming a printed measurement; *(b)* re-pick, one constant, every roster seat re-drawn
+    once more (a change the first ruling had accepted in kind), the room distinct again. The operator chose
+    *(b)*. `species:s3` is the first field under which every room of the roster and of the control draws
+    distinct bodies (`:s2` passes the roster and not the control); [§ 10.4](#104-the-art-direction-as-a-specification)'s
+    growth bullet carries the before and after per roster seat, and the salt leg's two halves run under it
+    with their assertions unchanged. Item (2) stands as written: its rule is what this item applied.
+
+    *(6)* **⇢ Maintainer — the approved bodies at the frame's edge, surfaced by card#12212's frame-bounds leg.**
+    Measuring every species' ink against its viewBox ([AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom)'s
+    frame-bounds leg) found that the frame's own composition carries APPROVED bodies past the frame's side: the
+    key's tilt and the walk's lean (together up to five degrees about the foot) swing a tall part — the rabbit's
+    flopped ear, the hedgehog's spines, the mushroom's cap, the pumpkin's — a few units past the side of the
+    standing, walking and chibi frames; the leg prints each by name with its units on every run, and the painter's
+    clipping viewport cuts that ink on the floor (a few floor pixels of a walking rabbit's ear). The sleeper is no
+    longer in this list: card#12187 draws it in its own raised, widened frame (§ 12's *Sleeper frame*), which holds
+    the rolled body whole, and the leg measures it against that frame. It predates this card and nothing in it
+    changed: the added species are held to that envelope, not under it. **The options:** *(a)* accept — the cut is
+    at the frame's edge, a few pixels, on a tilted pose; *(b)* give the frame's transform the margin it needs — a
+    tilt pivot above the foot, or a tilt that shrinks with the part's height — which changes the approved frames'
+    look and is the operator's to see; *(c)* redraw the approved bodies narrower, which the port rule forbids.
+    **Recommendation:** *(b)*, put to the operator with before-and-after sheets; the gate widens to every species
+    when it lands. **Closes it:** the maintainer's ruling and, under *(b)*, the leg's gate over all species.
 
 34. **⇢ Follow-up, unscheduled — pose art. `asleep` is drawn since card#12159** ([§ 10.4](#104-the-art-direction-as-a-specification)'s
     frame contract item 4: the sleeper, its z's, A6's loop and its reduced form); **every other pose is still
