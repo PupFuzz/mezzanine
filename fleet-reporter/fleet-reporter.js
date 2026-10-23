@@ -12,7 +12,8 @@
  * FOUR SUBCOMMANDS (§ 2.1):
  *   node fleet-reporter.js hook <HookName>   one-shot: read stdin, append, exit 0
  *   node fleet-reporter.js statusline        one-shot: sample context, pass the status line through
- *   node fleet-reporter.js flusher           long-lived: own the cursor, POST batches, heartbeat
+ *   node fleet-reporter.js flusher           long-lived, one per seat: a lane per site (§ 3.1) — its cursor,
+ *                                            its one persisted request, its heartbeat
  *   node fleet-reporter.js selftest          one-shot: the § 6.14 checks this build implements
  *
  * THE SIX RULES THAT PROTECT THE SEAT (§ 2.2) ARE THE POINT OF THIS FILE, not a feature of it.
@@ -122,6 +123,12 @@ const K = {
   LOG_RETAIN_DAYS: 2,            // § 11.1
   CONSOLE_TAIL_BYTES: 1048576,   // § 6.3 1 MiB — the most of a transcript's tail one hook reads
   CONSOLE_CHUNK_BYTES: 65536,    // § 6.3 the step that walk takes back from the end
+  SITES_MAX: 4,                  // § 3.1 / § 14 "Sites per seat" — Chosen: 2x the two deployment targets,
+                                 // checked against § 3.5's uplink (10.4 s of a 15 s deadline at 4)
+  SITE_EVENTS_PER_HOUR: 20000,   // § 12.3 / § 11.5 — the server's per-seat event limit, PINNED here to pace
+                                 // a drain; the acceptance suite holds it equal to RateLimiter::EVENTS_LIMIT
+  SEND_WINDOW_MS: 3615000,       // § 11.5 / § 14 — Derived: the server's 3,600 s window + one 15 s request deadline
+  HEARTBEAT_HEADROOM: 120,       // § 11.5 / § 14 — Chosen: 2x the 60 heartbeats an hour holds
 };
 
 /* ── Harness-sourced enum value sets (§ 6.0). ─────────────────────────────────────────────────
@@ -199,9 +206,20 @@ const PREDICATES = ['attention_source_permission_hook', 'descriptor_allowlisted'
 
 /* The `selftest` checks § 6.14's member table declares — the same set the subcommand runs and
  * the heartbeat reports, so the two cannot drift apart. */
-const SELFTEST_CHECKS = ['config_readable', 'tls_verify', 'schema_version_accepted',
+const SELFTEST_CHECKS = ['config_readable', 'tls_verify', 'schema_version_accepted', 'token_accepted',
   'sanitizer_fixtures', 'predicate_discrimination', 'harness_payload_keys',
   'protocol_agent_name_in_roster'];
+/* The checks that are a fact about ONE SITE (§ 6.14, card#12180): each lane measures its own, and the
+ * one-shot subcommand reports a block per site and aggregates these four into `checks`. */
+const SITE_CHECKS = ['config_readable', 'tls_verify', 'schema_version_accepted', 'token_accepted'];
+const NETWORK_CHECKS = ['tls_verify', 'schema_version_accepted', 'token_accepted'];
+
+/* § 9.3's PER-SITE delivery set (card#12180): kept in each site's `state.json` entry under these names,
+ * and the subset rule 3 moves out of a legacy `state.json`'s top-level totals into `default`'s entry. A
+ * heartbeat carries, for each, that site's total plus the seat-level total of the same name. */
+const PER_SITE_COUNTERS = ['events_sent', 'batches_ok', 'batches_retried', 'batches_rejected',
+  'events_rejected_dropped', 'oversize_event_dropped', 'spool_dropped_events',
+  'quarantine_rejected_dropped', 'config_invalid', 'auth_refused'];
 
 /* Always-present delivery counters — serialized FIRST under § 6.14's reduction rule, so a seat
  * with too many kinds of trouble to fit 1.5 KiB still reports the ones delivery depends on. */
@@ -282,7 +300,68 @@ function parsesAsUrl(s) {
   try { new URL(s); return true; } catch (e) { return false; }
 }
 
-/* Returns {config, errors[], caError, spool}. `spool` is the ONE answer to "where may this process write":
+/* § 3.1's four TRANSPORT keys: the single-site form carries them at the top level, the multi-site form
+ * inside each element of `sites`, and a file carries exactly one of the two (card#12180). */
+const TRANSPORT_KEYS = ['ingest_url', 'token', 'ca_file', 'proxy_url'];
+
+/* § 3.1's SITE KEY, and the one function of it (card#12180): `new URL(u)` with its userinfo cleared, read
+ * back as `href`, so a host in capitals, a `:443` written out or left implicit, and a userinfo that differs
+ * or is absent all key one server. It has exactly two uses — the uniqueness rule in `loadConfig` and the
+ * hash `state.json` binds a site's entry to (`siteEntry`) — and nowhere else. Returns null for a URL that
+ * does not parse, which `validateSite` has already refused by field name. */
+function siteKey(u) {
+  try { const x = new URL(u); x.username = ''; x.password = ''; return x.href; } catch (e) { return null; }
+}
+const sha256hex = (s) => crypto.createHash('sha256').update(s).digest('hex');
+/* What a site's entry is bound to (§ 3.1, *State per site*): the hash of the site key — never the URL,
+ * whose userinfo is a secret — and the hash of the seat's identity pair. */
+const urlBinding = (site) => { const k = siteKey(site.ingest_url); return k === null ? null : sha256hex(k); };
+const identityBinding = (cfg) => sha256hex(`${cfg.install_id}|${cfg.seat_id}`);
+
+/* ONE SITE'S TRANSPORT RULES (§ 3.1's top-level rows, run per site — the same code under either form, so
+ * the two cannot disagree about what a valid URL, token, CA file or proxy is). `label` is the scope every
+ * error names: `sites[<name>].` or, for an element with no valid name, `sites[<index>].`. Returns the
+ * errors and the one a running flusher re-checks (`caError`). */
+function validateSite(site, label) {
+  const errors = [];
+  const str = (k) => (typeof site[k] === 'string' ? site[k] : null);
+  const url = str('ingest_url') || '';
+  // § 3.5: an http:// ingest_url is REFUSED at install and at runtime. Fail closed, loudly, on
+  // the client's own surface — the bearer token rides the header and cleartext broadcasts it.
+  // The prefix alone is not § 3.1's "absolute https:// URL": `https://` and `https://ingest example.org/`
+  // pass it, and every request then fails to parse the URL it names (card#9521). The URL errors name
+  // the field and never echo the value: a URL that does not parse is one `registerConfigSecrets` could
+  // not take a password out of, so the value would reach `selftest`'s output and the log unredacted.
+  if (!/^https:\/\//.test(url)) errors.push(`${label}ingest_url must be an absolute https:// URL (§ 3.5 — http is refused, not downgraded)`);
+  else if (!parsesAsUrl(url)) errors.push(`${label}ingest_url is not a parseable URL (§ 3.1)`);
+  else if (bytes(url) > 256) errors.push(`${label}ingest_url exceeds 256 B`);
+  if (!TOKEN_RE.test(str('token') || '')) errors.push(`${label}token must be mzn_ + 43 base64url characters`);
+  for (const k of ['ca_file', 'proxy_url']) {
+    if (site[k] !== undefined && site[k] !== null && typeof site[k] !== 'string') errors.push(`${label}${k} must be a string or null`);
+  }
+  // Only `null` or an absent key means no proxy (card#9521). The empty string read as unset sent direct
+  // around the proxy a network may require; a value that does not parse failed every request as a
+  // retryable proxy error, so the seat retried forever and delivered nothing; and a value with no
+  // `http://` or `https://` scheme (`proxy.corp:3128` parses, as the scheme `proxy.corp:`) named no proxy host.
+  if (typeof site.proxy_url === 'string' && !(/^https?:\/\//.test(site.proxy_url) && parsesAsUrl(site.proxy_url))) {
+    errors.push(`${label}proxy_url must be an absolute http:// or https:// URL, or null (§ 3.1)`);
+  }
+  // § 3.5: a `ca_file` that is not an absolute path (the empty string included), or that the seat
+  // cannot read, is REFUSED at install and at runtime, like an http:// ingest_url — never replaced by
+  // the default trust store (card#9500).
+  const ca = typeof site.ca_file === 'string' ? readCaFile(site).error : null;
+  const caError = ca ? `${label}${ca}` : null;
+  if (caError) errors.push(caError);
+  return { errors, caError };
+}
+
+/* Returns {config, errors[], spool, sites[]}. `errors` holds the SEAT-SCOPED errors only, and each of
+ * `sites` carries its own (§ 3.1, *What the reporter enforces, and the scope of every error*): a seat
+ * error means nothing is sent to any site, a site error means that site's lane sends nothing and every
+ * other site is unaffected. `sites` is the configured sites NORMALISED — the single-site form is read as
+ * one site named `default`, so nothing downstream ever asks which form a file was in (card#12180) — each
+ * `{ name, ingest_url, token, ca_file, proxy_url, errors, caError }`.
+ * `spool` is the ONE answer to "where may this process write":
  * the absolute `spool_dir`, or null when the config names none a process can use — absent, empty or
  * relative — and then nothing writes anything (card#9521). Every writer takes it from here, never from
  * `config.spool_dir`. NEVER throws: a hook with an unreadable config still exits 0 and
@@ -292,24 +371,14 @@ function loadConfig(p) {
   const errors = [];
   let raw;
   try { raw = fs.readFileSync(p, 'utf8'); }
-  catch (e) { return { config: null, errors: [`config unreadable at ${p}: ${e.code || e.message}`] }; }
+  catch (e) { return { config: null, errors: [`config unreadable at ${p}: ${e.code || e.message}`], spool: null, sites: [] }; }
   let c;
   try { c = JSON.parse(raw); }
-  catch (e) { return { config: null, errors: [`config is not valid JSON: ${e.message}`] }; }
+  catch (e) { return { config: null, errors: [`config is not valid JSON: ${e.message}`], spool: null, sites: [] }; }
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return { config: null, errors: ['config is not a JSON object'], spool: null, sites: [] };
   const str = (k) => (typeof c[k] === 'string' ? c[k] : null);
   if (!SLUG_INSTALL.test(str('install_id') || '')) errors.push('install_id fails ^[a-z0-9][a-z0-9-]{1,31}$');
   if (!SLUG_SEAT.test(str('seat_id') || '')) errors.push('seat_id fails ^[a-z0-9][a-z0-9-]{1,47}$');
-  const url = str('ingest_url') || '';
-  // § 3.5: an http:// ingest_url is REFUSED at install and at runtime. Fail closed, loudly, on
-  // the client's own surface — the bearer token rides the header and cleartext broadcasts it.
-  // The prefix alone is not § 3.1's "absolute https:// URL": `https://` and `https://ingest example.org/`
-  // pass it, and every request then fails to parse the URL it names (card#9521). The URL errors name
-  // the field and never echo the value: a URL that does not parse is one `registerConfigSecrets` could
-  // not take a password out of, so the value would reach `selftest`'s output and the log unredacted.
-  if (!/^https:\/\//.test(url)) errors.push('ingest_url must be an absolute https:// URL (§ 3.5 — http is refused, not downgraded)');
-  else if (!parsesAsUrl(url)) errors.push('ingest_url is not a parseable URL (§ 3.1)');
-  else if (bytes(url) > 256) errors.push('ingest_url exceeds 256 B');
-  if (!TOKEN_RE.test(str('token') || '')) errors.push('token must be mzn_ + 43 base64url characters');
   // A relative `spool_dir` resolves against the process's working directory, which a hook inherits from
   // the agent's project directory: hooks in two projects spool into two directories, the flusher reads
   // neither, and the files land in the agent's project, where they can be committed (card#9521). So it is
@@ -317,29 +386,69 @@ function loadConfig(p) {
   const spool = str('spool_dir') && path.isAbsolute(c.spool_dir) ? c.spool_dir : null;
   if (spool === null) errors.push('spool_dir must be an absolute path (§ 3.1)');
   if (typeof c.enabled !== 'boolean') errors.push('enabled must be a boolean');
-  for (const k of ['ca_file', 'proxy_url', 'wrapped_statusline']) {
-    if (c[k] !== undefined && c[k] !== null && typeof c[k] !== 'string') errors.push(`${k} must be a string or null`);
-  }
-  // Only `null` or an absent key means no proxy (card#9521). The empty string read as unset sent direct
-  // around the proxy a network may require; a value that does not parse failed every request as a
-  // retryable proxy error, so the seat retried forever and delivered nothing; and a value with no
-  // `http://` or `https://` scheme (`proxy.corp:3128` parses, as the scheme `proxy.corp:`) named no proxy host.
-  if (typeof c.proxy_url === 'string' && !(/^https?:\/\//.test(c.proxy_url) && parsesAsUrl(c.proxy_url))) {
-    errors.push('proxy_url must be an absolute http:// or https:// URL, or null (§ 3.1)');
+  if (c.wrapped_statusline !== undefined && c.wrapped_statusline !== null && typeof c.wrapped_statusline !== 'string') {
+    errors.push('wrapped_statusline must be a string or null');
   }
   if (c.descriptors !== undefined && !DESCRIPTOR_MODES.includes(c.descriptors)) {
     errors.push('descriptors must be "full", "paths" or "none" (absent means "full")');
   }
-  // § 3.5: a `ca_file` that is not an absolute path (the empty string included), or that the seat
-  // cannot read, is REFUSED at install and at runtime, like an http:// ingest_url — never replaced by
-  // the default trust store (card#9500).
-  // `caError` is that error, also in `errors`: the one a running flusher re-checks (flusherMain).
-  const caError = typeof c.ca_file === 'string' ? readCaFile(c).error : null;
-  if (caError) errors.push(caError);
+
+  /* THE FORM (§ 3.1, card#12180). "Present" means a member of the top-level object, whatever its value:
+   * `"ca_file": null` beside `sites` is both forms present, because the writer removes all four keys when
+   * it lifts a file, so a file that still carries one was half-migrated by hand, and the error that names
+   * the key is the one that fixes it. */
+  const sites = [];
+  const top = TRANSPORT_KEYS.filter((k) => Object.prototype.hasOwnProperty.call(c, k));
+  if (Object.prototype.hasOwnProperty.call(c, 'sites')) {
+    for (const k of top) errors.push(`top-level ${k} is present beside sites — remove it (§ 3.1: a file holds one form)`);
+    if (!Array.isArray(c.sites) || c.sites.length < 1 || c.sites.length > K.SITES_MAX) {
+      errors.push(`sites must be an array of 1…${K.SITES_MAX} site objects (§ 3.1)`);
+    } else {
+      c.sites.forEach((el, i) => {
+        if (!el || typeof el !== 'object' || Array.isArray(el)) { errors.push(`sites[${i}] is not an object (§ 3.1)`); return; }
+        const named = typeof el.name === 'string' && SLUG_INSTALL.test(el.name);
+        const label = named ? `sites[${el.name}].` : `sites[${i}].`;
+        const site = { name: named ? el.name : null, index: i, label, ingest_url: el.ingest_url, token: el.token,
+          ca_file: el.ca_file === undefined ? null : el.ca_file, proxy_url: el.proxy_url === undefined ? null : el.proxy_url };
+        const v = validateSite(el, label);
+        site.errors = v.errors; site.caError = v.caError;
+        if (!named) site.errors.unshift(`${label}name fails ^[a-z0-9][a-z0-9-]{1,31}$ (§ 3.1)`);
+        sites.push(site);
+      });
+    }
+  } else if (top.length === 0) {
+    errors.push('neither form is present: the config carries no ingest_url/token and no sites (§ 3.1)');
+  } else {
+    // The single-site form, read as ONE SITE NAMED `default` — not migrated, never rewritten here.
+    const site = { name: 'default', index: 0, label: '', ingest_url: c.ingest_url, token: c.token,
+      ca_file: c.ca_file === undefined ? null : c.ca_file, proxy_url: c.proxy_url === undefined ? null : c.proxy_url };
+    const v = validateSite(c, '');
+    site.errors = v.errors; site.caError = v.caError;
+    sites.push(site);
+  }
+  /* The two uniqueness rules, each naming BOTH sites that share the value and neither value: a name, and
+   * a site key — two URLs for one server are one site (§ 3.1). */
+  for (let i = 0; i < sites.length; i++) {
+    for (let j = i + 1; j < sites.length; j++) {
+      const a = sites[i], b = sites[j];
+      if (a.name !== null && a.name === b.name) {
+        const why = `name is shared by sites[${a.index}] and sites[${b.index}] — a name keys one site (§ 3.1)`;
+        a.errors.push(`${a.label}${why}`); b.errors.push(`${b.label}${why}`);
+      }
+      const ka = typeof a.ingest_url === 'string' ? siteKey(a.ingest_url) : null;
+      if (ka !== null && ka === (typeof b.ingest_url === 'string' ? siteKey(b.ingest_url) : null)) {
+        a.errors.push(`${a.label}ingest_url names the same server as sites[${b.index}] — one server is one site (§ 3.1)`);
+        b.errors.push(`${b.label}ingest_url names the same server as sites[${a.index}] — one server is one site (§ 3.1)`);
+      }
+    }
+  }
   // `protocol_agent_name` is deliberately NOT validated here: a malformed one declares nothing, and
   // the seat keeps sending (`declaredAgentName` below, § 3.1's state table).
-  return { config: c, errors, caError, spool };
+  return { config: c, errors, spool, sites };
 }
+
+/* Every error this read produced, the seat's and every site's, each already naming its scope. */
+const allConfigErrors = (r) => r.errors.concat(...r.sites.map((s) => s.errors));
 
 /* THE ONE READ OF `ca_file` (card#9500): the config check above and every request (`ingestRequest`)
  * both go through here, so the two cannot disagree about what "readable" means. `ca` REPLACES the
@@ -478,17 +587,25 @@ function registerSecret(v) { if (typeof v === 'string' && v.length >= 8 && !SECR
  * credential this process holds in memory, so by § 20's test — can a secret VALUE reach an
  * output stream, a log, or a traceback — it is registered here rather than enumerated at each
  * sink, because the next sink has not been written yet. */
+/* UNDER EITHER FORM, AND FOR EVERY SITE (§ 3.1, card#12180): the top-level keys a single-site file
+ * carries and every element of `sites` a multi-site file carries, read from the raw file rather than from
+ * `loadConfig`'s normalised list, so an element that failed validation still has its secrets registered
+ * before anything names it in a line. Reading the top level alone registered nothing under the
+ * multi-site form, and a site's proxy password reached the marker's copy of a server body unredacted. */
 function registerConfigSecrets(cfg) {
-  if (!cfg) return;
-  registerSecret(cfg.token);
-  for (const key of ['proxy_url', 'ingest_url']) {
-    const raw = cfg[key];
-    if (typeof raw !== 'string') continue;
-    try {
-      const u = new URL(raw);
-      if (u.password) registerSecret(decodeURIComponent(u.password));
-      if (u.username) registerSecret(decodeURIComponent(u.username));
-    } catch (e) { /* not a parseable URL: `loadConfig` refuses it by field name and never echoes the value (card#9521) */ }
+  if (!cfg || typeof cfg !== 'object') return;
+  const holders = [cfg].concat(Array.isArray(cfg.sites) ? cfg.sites.filter((x) => x && typeof x === 'object') : []);
+  for (const h of holders) {
+    registerSecret(h.token);
+    for (const key of ['proxy_url', 'ingest_url']) {
+      const raw = h[key];
+      if (typeof raw !== 'string') continue;
+      try {
+        const u = new URL(raw);
+        if (u.password) registerSecret(decodeURIComponent(u.password));
+        if (u.username) registerSecret(decodeURIComponent(u.username));
+      } catch (e) { /* not a parseable URL: `loadConfig` refuses it by field name and never echoes the value (card#9521) */ }
+    }
   }
 }
 /* § 7.3 RULE 3's SHAPE LIST, and the ONE copy of it: the sanitizer runs this regex as rule 3 and the
@@ -603,14 +720,35 @@ function appendCapped(file, line, cap, tree) {
   return appendLine(file, line, tree);
 }
 
-function atomicWrite(file, text) {
+/* `sync` is for ONE caller, the pre-send save of a site's request (§ 3.1, *One request per site*): the
+ * one `state.json` write whose loss to a power cut puts seqs on a wire the restarted seat cannot see. It
+ * fsyncs the temp file before the rename and the directory after it where the platform can open a
+ * directory (Linux); where it cannot, the file alone is synced and the write goes on (§ 15 row 54). */
+function atomicWrite(file, text, opts) {
   // .tmp + rename with a UNIQUE temp name (§ 11.1): one fixed temp name is a lost-update
   // generator the moment two processes race, which is exactly what § 8.2 removed from the index.
   const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+  const sync = !!(opts && opts.sync);
   try {
     ensureDir(path.dirname(file));
-    fs.writeFileSync(tmp, text, { encoding: 'utf8', mode: 0o600 });
+    if (sync) {
+      const fd = fs.openSync(tmp, 'wx', 0o600);
+      try {
+        // `writeSync` may write fewer bytes than it was given; the loop writes the rest before the sync.
+        const buf = Buffer.from(text, 'utf8');
+        for (let off = 0; off < buf.length;) off += fs.writeSync(fd, buf, off, buf.length - off);
+        fs.fsyncSync(fd);
+      } finally { fs.closeSync(fd); }
+    } else {
+      fs.writeFileSync(tmp, text, { encoding: 'utf8', mode: 0o600 });
+    }
     fs.renameSync(tmp, file); // atomic-replace on both platforms
+    if (sync) {
+      let dfd = -1;
+      try { dfd = fs.openSync(path.dirname(file), 'r'); fs.fsyncSync(dfd); }
+      catch (e) { /* no directory to sync on this platform: the file alone was synced */ }
+      finally { if (dfd >= 0) { try { fs.closeSync(dfd); } catch (e) { /* nothing left to do */ } } }
+    }
     return true;
   } catch (e) {
     try { fs.unlinkSync(tmp); } catch (e2) { /* the temp file is already gone */ }
@@ -626,7 +764,8 @@ function atomicWrite(file, text) {
  * an implementer could not construct.                                                        */
 const C = Object.create(null);   // counter deltas for THIS process
 const P = Object.create(null);   // predicate branch deltas for THIS process
-const FOLDED_UNSAVED = { c: Object.create(null), p: Object.create(null) };   // the flusher's folds not yet saved: see foldLocalCounters
+const CS = Object.create(null);  // PER-SITE counter deltas for THIS process: {site name: {counter: n}} (§ 11.1's `s`)
+const FOLDED_UNSAVED = { c: Object.create(null), p: Object.create(null), s: Object.create(null) };   // the flusher's folds not yet saved: see foldLocalCounters
 
 /* A DIAGNOSTIC MUST NOT MOVE AN OPERATIONAL COUNTER. `selftest` runs § 7.5's descriptor fixtures
  * through the real sanitizer, and the flusher runs `selftest` at startup — so without this the
@@ -634,9 +773,17 @@ const FOLDED_UNSAVED = { c: Object.create(null), p: Object.create(null) };   // 
  * flusher start. That is a fleet-visible number rendered on the floor, and inflating it by a
  * self-check makes it a wrong number that no operator could account for. */
 let COUNTING_SUSPENDED = false;
-function count(name, n) {
+/* THE ONE PRIMITIVE EVERY PROCESS COUNTS THROUGH (§ 3.1, § 9.3, card#12180). A delta given a `site`
+ * is a fact about that site alone and lands in the sink line's `s` member under its name, which the
+ * flusher folds into that site's `state.json` entry; a delta given none lands in `c` and is the seat's.
+ * There is no second route by which a site-scoped fact reaches a seat-wide total, which is what keeps a
+ * site `b` error off site `a`'s heartbeat. */
+function count(name, n, site) {
   if (COUNTING_SUSPENDED) return;
-  C[name] = (C[name] || 0) + (n === undefined ? 1 : n);
+  const d = n === undefined ? 1 : n;
+  if (site === undefined || site === null) { C[name] = (C[name] || 0) + d; return; }
+  const m = CS[site] || (CS[site] = Object.create(null));
+  m[name] = (m[name] || 0) + d;
 }
 function predicate(name, branch) {
   if (COUNTING_SUSPENDED) return;
@@ -654,9 +801,13 @@ function predicate(name, branch) {
 function flushCounters(spoolDir, role, atMs) {
   // No spool, no sink: a relative path joined here would land in the working directory (card#9521).
   if (!spoolDir) return;
-  if (!Object.keys(C).length && !Object.keys(P).length) return;
+  if (!Object.keys(C).length && !Object.keys(P).length && !Object.keys(CS).length) return;
   const t = atMs === undefined ? now() : atMs;
-  const line = JSON.stringify({ t: rfc3339(t), p: role, c: C, k: P });
+  // `s` only when a site counted something: a line without it is one from a process that counted
+  // nothing per site, which is every line a build before card#12180 wrote (§ 11.1).
+  const rec = { t: rfc3339(t), p: role, c: C, k: P };
+  if (Object.keys(CS).length) rec.s = CS;
+  const line = JSON.stringify(rec);
   // § 11.1 — the bucket is derived immediately before the write, from the clock, never from a
   // timestamp captured at process entry. See the primitive's header.
   if (!appendLine(path.join(spoolDir, 'counters', `${utcBucket(now())}.jsonl`), line, 'counters')) {
@@ -2368,35 +2519,51 @@ function spoolBytes(spool) {
  * one, and a hook would unlink a file other hooks are appending to and the flusher is
  * mid-read — losing events that were never counted, on the one path § 0 item 9 promises is
  * always counted. */
-function enforceSpoolBoundFromHook(spool, atMs) {
+function enforceSpoolBoundFromHook(spool, atMs, config, sites) {
   if (spoolBytes(spool) <= K.SPOOL_BYTES) return;
   const cur = utcBucket(atMs);
   const buckets = spoolBuckets(spool);
   const oldest = buckets[0];
   if (!oldest || oldest.slice(0, 10) === cur) { count('spool_overflow_deferred'); return; }
   if (atMs < bucketEndMs(oldest.slice(0, 10)) + K.BUCKET_GRACE_MS) { count('spool_overflow_deferred'); return; }
-  /* A hook holds no state, so it reads the cursor from the flusher's state.json, read-only: the
-   * flusher writes it by atomic rename, so the read is never torn, and a missing or unusable
-   * file gives no cursor, which counts the whole bucket. The saved cursor can only lag what the
-   * flusher has disposed of, never lead it, so a stale read over-counts and never hides a loss. */
-  dropSpoolBucket(spool, oldest, loadState(spool, atMs).state.cursors[oldest.slice(0, 10)]);
+  /* A hook holds no state, so it reads each site's cursor from the flusher's state.json, read-only and
+   * through the one entry predicate the flusher uses (§ 3.1, card#12180): the flusher writes it by
+   * atomic rename, so the read is never torn, and a site with no usable entry gives no cursor, which
+   * counts the whole bucket. The hook WRITES NOTHING to state.json — an entry marked for reset is read
+   * with its kept cursors unchanged — and its counts leave by the sink's `s` member. The saved cursor
+   * can only lag what the flusher has disposed of, never lead it, so a stale read over-counts and never
+   * hides a loss. */
+  const state = loadState(spool, atMs).state;
+  const b = oldest.slice(0, 10);
+  const cursorsBySite = nameMap();
+  for (const site of sites) {
+    if (site.name === null) continue;
+    const found = siteEntry(state, site, config);
+    cursorsBySite[site.name] = found ? found.entry.cursors[b] : undefined;
+  }
+  dropSpoolBucket(spool, oldest, cursorsBySite);
 }
 
-/* § 11.3 — `spool_dropped_events` counts the lines of the dropped bucket PAST ITS DELIVERY
- * CURSOR, the byte offset up to which every line has been delivered or already counted under its
- * own loss counter (corrupt, rejected, oversize, unreadable). With no cursor, nothing of the
- * bucket was disposed of and every line counts. Counting the whole file made a seat whose spool
- * sits at its bound with delivered history render `lossy` on every drop with nothing lost
- * (card#11548). */
-function dropSpoolBucket(spool, file, cursor) {
+/* § 11.3 — `spool_dropped_events` counts the lines of the dropped bucket PAST EACH SITE'S DELIVERY
+ * CURSOR (card#12180), the byte offset up to which every line has been delivered to that site or already
+ * counted under its own loss counter (corrupt, rejected, oversize, unreadable). A site with no cursor had
+ * nothing of the bucket disposed of and counts every line. Each site's loss is counted on that site, so
+ * `lossy` is raised where the loss was felt and nowhere else; counting the whole file made a seat whose
+ * spool sits at its bound with delivered history render `lossy` on every drop with nothing lost
+ * (card#11548). Neither caller touches any site's persisted request: it carries its own bytes. */
+function dropSpoolBucket(spool, file, cursorsBySite) {
   const p = path.join(spool, file);
-  let lines = 0;
-  try {
-    const buf = fs.readFileSync(p);
-    for (let i = cursor || 0; i < buf.length; i++) if (buf[i] === 0x0A) lines += 1;
-  } catch (e) { lines = 0; }
-  try { fs.unlinkSync(p); count('spool_dropped_events', lines); }
-  catch (e) { /* ENOENT or EBUSY: leave it for the next pass rather than throwing */ }
+  let buf = null;
+  try { buf = fs.readFileSync(p); } catch (e) { buf = null; }
+  const past = (cursor) => {
+    let lines = 0;
+    if (buf) for (let i = cursor || 0; i < buf.length; i++) if (buf[i] === 0x0A) lines += 1;
+    return lines;
+  };
+  try { fs.unlinkSync(p); }
+  catch (e) { return false; /* ENOENT or EBUSY: leave it for the next pass rather than throwing */ }
+  for (const [name, cursor] of Object.entries(cursorsBySite)) { const n = past(cursor); if (n) count('spool_dropped_events', n, name); }
+  return true;
 }
 
 /* ════════════════════════════════════════════════════════════════════════════════════════════
@@ -2408,12 +2575,24 @@ function dropSpoolBucket(spool, file, cursor) {
  * harness's BLOCK signal and every other non-zero puts our stderr in the transcript.
  * ════════════════════════════════════════════════════════════════════════════════════════════ */
 
+/* `config_invalid` BY SCOPE (§ 3.1, § 9.3, card#12180): a seat-scoped error counts the seat-level total,
+ * which every site's heartbeat carries; a site-scoped one counts on the site it names and on no other. A
+ * site element with no valid name has no entry to hold a count, and is named by its index in the log and
+ * in `selftest`, which is where it shows. Returns every error, for the caller's one log line. */
+function countConfigErrors(loaded) {
+  if (loaded.errors.length) count('config_invalid');
+  for (const site of loaded.sites) if (site.errors.length && site.name !== null) count('config_invalid', 1, site.name);
+  return allConfigErrors(loaded);
+}
+
 function hookMain(hookName) {
   const cp = configPath();
-  const { config, errors, spool } = loadConfig(cp);
+  const loaded = loadConfig(cp);
+  const { config, spool } = loaded;
   if (!config) return;                                   // nothing to spool to, and nothing to say
   registerConfigSecrets(config);
-  if (errors.length) { count('config_invalid'); logLine(spool, 'hook', `config invalid: ${errors.join('; ')}`); }
+  const errors = countConfigErrors(loaded);
+  if (errors.length) logLine(spool, 'hook', `config invalid: ${errors.join('; ')}`);
   if (!spool || !config.install_id || !config.seat_id) { flushCounters(spool, 'hook'); return; }
   // § 3.1/§ 6.14 — `enabled: false` is the ONLY switch that stops emission. The hooks go quiet
   // and the flusher keeps heartbeating with enabled:false, so the desk renders *disabled*
@@ -2442,7 +2621,7 @@ function hookMain(hookName) {
     handleHook(ctx, hookName, payload, ix, sectionAt);
     return sectionAt;
   });
-  enforceSpoolBoundFromHook(spool, at);
+  enforceSpoolBoundFromHook(spool, at, config, loaded.sites);
   maybeRespawnFlusher(spool, cp);
   flushCounters(spool, 'hook', at);
 }
@@ -2456,11 +2635,12 @@ function hookMain(hookName) {
  * direction (zero vs non-zero), never for arithmetic. */
 function statuslineMain() {
   const cp = configPath();
-  const { config, errors, spool } = loadConfig(cp);
+  const loaded = loadConfig(cp);
+  const { config, spool } = loaded;
   const raw = readStdin();
   if (!config) { return; }
   registerConfigSecrets(config);
-  if (errors.length) count('config_invalid');
+  countConfigErrors(loaded);
 
   try {
     if (spool && config.install_id && config.seat_id && config.enabled !== false) {
@@ -2583,41 +2763,100 @@ const statePath = (spool) => path.join(spool, 'state.json');
 
 function newState(spool, atMs) {
   return {
-    seq_epoch: ulid(atMs), next_seq: 1,
     owner_pid: process.pid, owner_started_at: rfc3339(atMs),
     started_at: rfc3339(atMs),
-    /* A PER-BUCKET offset map, not a single (bucket, offset) cursor. A single cursor has to
-     * decide what to do with a bucket OLDER than the one it points at, and every answer is
-     * wrong: skipping it loses events silently, re-reading it re-sends them. And an older
-     * bucket does receive late writes — that is the whole reason § 11.1 puts a 5 s grace on
-     * bucket deletion. A writer descheduled between deriving its bucket name and its writeSync
-     * lands in the previous hour after the flusher has moved on, and under a single cursor its
-     * events would never be delivered and never be counted as dropped, which is the one loss
-     * shape § 0 item 9 forbids. One offset per bucket has no such case. */
-    cursors: {},
     counter_offsets: {}, counters: {}, counter_rises: {}, predicates: {},
     last_hook_at: null, last_session_activity: {},
+    /* § 11.4's per-bucket corrupt-line DISPOSAL MARK (card#12180): the offset up to which a bucket's
+     * unusable lines have been quarantined and counted, whichever site's lane reached them first, so a
+     * torn line is disposed of once for the seat and not once per site. */
+    disposed: {},
+    /* ONE ENTRY PER SITE, keyed by the site's name (§ 3.1, *State per site*) — and read ONLY through
+     * `siteEntry`. The seat-level members above stay at the top level. There is deliberately no top-level
+     * `seq_epoch`/`next_seq`: a build before card#12180 reads this file as the wrong shape and takes
+     * § 11.4's reset (a fresh epoch, a re-send), which is what makes a downgrade safe. */
+    sites: nameMap(),
   };
+}
+
+/* A NEW SITE ENTRY (§ 3.1 rule 1): a fresh `seq_epoch`, `next_seq` 1 and NO cursors — every bucket from
+ * byte 0, which is the one cursor-initialisation rule this document has, whether the site was just added,
+ * repointed, or its entry could not be read. The entry is bound to its site's key and the seat's pair.
+ *
+ * A PER-BUCKET offset map, not a single (bucket, offset) cursor. A single cursor has to
+ * decide what to do with a bucket OLDER than the one it points at, and every answer is
+ * wrong: skipping it loses events silently, re-reading it re-sends them. And an older
+ * bucket does receive late writes — that is the whole reason § 11.1 puts a 5 s grace on
+ * bucket deletion. A writer descheduled between deriving its bucket name and its writeSync
+ * lands in the previous hour after the flusher has moved on, and under a single cursor its
+ * events would never be delivered and never be counted as dropped, which is the one loss
+ * shape § 0 item 9 forbids. One offset per bucket has no such case. */
+function newEntry(site, cfg, atMs) {
+  return {
+    seq_epoch: ulid(atMs), next_seq: 1, cursors: {}, counters: {}, counter_rises: {},
+    selftest: { tls_verify: null, schema_version_accepted: null, token_accepted: null },
+    request: null, window: {},
+    ingest_url_sha256: urlBinding(site), identity_sha256: identityBinding(cfg),
+  };
+}
+
+const isPlain = (o) => !!o && typeof o === 'object' && !Array.isArray(o);
+/* A map keyed by a SITE NAME has no prototype: a name is the operator's text, and `constructor` is a valid one
+ * (§ 3.1's slug pattern admits it) that a plain `{}` already "holds" through Object.prototype. Every site-name map
+ * is built here or copied through here, and read by own-property only (`hasOwn`). */
+const nameMap = (from) => Object.assign(Object.create(null), from || {});
+const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+
+/* § 3.1 rule 3 — A `state.json` WRITTEN BEFORE CARD#12180 is read as the entry of the site named
+ * `default`, under either config form. ONLY THE CURSORS AND THE PER-SITE COUNTERS ARE CARRIED: the old
+ * build rebuilt every retry from the cursor and persisted nothing of an attempt, so its last batch may be
+ * committed with the answer lost, and its `next_seq` may name seqs the site holds — under which this
+ * build's first request would put different events (review round 4's F1). A fresh `seq_epoch`, `next_seq`
+ * 1 and no request make that collision unreachable; the lines ahead of the carried cursor arrive again
+ * and are answered as duplicates. The cost is one `epoch_reset` per upgraded seat, and § 10.2's accepted
+ * `seq_gap` residual where the hand-over's last batch was committed (card#12210). The entry records no
+ * URL until the flusher's first save; `legacy` (not serialized) is what `siteEntry` reads that by. */
+function adoptLegacyState(s, atMs) {
+  const counters = isPlain(s.counters) ? s.counters : {};
+  const rises = isPlain(s.counter_rises) ? s.counter_rises : {};
+  const entry = {
+    seq_epoch: ulid(atMs), next_seq: 1, cursors: isPlain(s.cursors) ? s.cursors : {}, counters: {}, counter_rises: {},
+    selftest: { tls_verify: null, schema_version_accepted: null, token_accepted: null },
+    request: null, window: {},
+  };
+  for (const k of PER_SITE_COUNTERS) {
+    if (k in counters) { entry.counters[k] = counters[k]; delete counters[k]; }
+    if (k in rises) { entry.counter_rises[k] = rises[k]; delete rises[k]; }
+  }
+  Object.defineProperty(entry, 'legacy', { value: true, enumerable: false });
+  delete s.seq_epoch; delete s.next_seq; delete s.cursors;
+  s.counters = counters; s.counter_rises = rises;
+  s.sites = nameMap();
+  s.sites.default = entry;
 }
 
 function loadState(spool, atMs) {
   try {
     const s = JSON.parse(fs.readFileSync(statePath(spool), 'utf8'));
-    if (!s || typeof s !== 'object' || !s.seq_epoch || typeof s.next_seq !== 'number') throw new Error('shape');
-    s.counters = s.counters || {}; s.predicates = s.predicates || {};
+    if (!isPlain(s)) throw new Error('shape');
+    if (s.sites !== undefined) { if (!isPlain(s.sites)) throw new Error('shape'); s.sites = nameMap(s.sites); }
+    else if (typeof s.seq_epoch === 'string' && s.seq_epoch && typeof s.next_seq === 'number') adoptLegacyState(s, atMs);
+    else throw new Error('shape');
+    s.counters = isPlain(s.counters) ? s.counters : {}; s.predicates = isPlain(s.predicates) ? s.predicates : {};
     // A state.json an earlier build saved has no `counter_rises`. Its first heartbeat records every
     // non-zero total as rising then (`windowedCounters`), so an upgrade keeps each badge it showed
     // for one window and the next save writes the map.
-    s.counter_rises = s.counter_rises || {};
-    s.counter_offsets = s.counter_offsets || {}; s.cursors = s.cursors || {};
+    s.counter_rises = isPlain(s.counter_rises) ? s.counter_rises : {};
+    s.counter_offsets = isPlain(s.counter_offsets) ? s.counter_offsets : {};
     s.last_session_activity = s.last_session_activity || {};
+    s.disposed = isPlain(s.disposed) ? s.disposed : {};
     return { state: s, reset: false, minted: false };
   } catch (e) {
     /* § 11.4 — A MINTED STATE RE-SENDS; IT DOES NOT SKIP. Both branches below get the same
-     * state: a fresh seq_epoch, and the cursor set to the start of the OLDEST bucket still on
-     * disk, not the newest. An earlier draft of D1 did the opposite and the cost was severe and
-     * silent: up to a full spool of unsent events — days of them — discarded with no counter
-     * incremented, while § 0 item 9 promises a counter for every discarded event and
+     * state: no site entries, so every site starts by § 3.1 rule 1 — a fresh seq_epoch, and every
+     * bucket still on disk from byte 0, the oldest included. An earlier draft of D1 did the opposite and
+     * the cost was severe and silent: up to a full spool of unsent events — days of them — discarded with
+     * no counter incremented, while § 0 item 9 promises a counter for every discarded event and
      * seq_epoch_change is explicitly never alarmed. A corrupt 200-byte file would have deleted a
      * week of a seat's history invisibly. Re-sending is nearly free and provably safe: every
      * event carries a unique event_id and the server's 10-day dedup window exceeds the spool's
@@ -2632,10 +2871,110 @@ function loadState(spool, atMs) {
      * respawns the flusher, so a first start usually finds data waiting. Lost state on a seat
      * that has already reported is still visible, as the server's `seq_epoch_change` on the new
      * epoch minted here (§ 10.2). */
-    const st = newState(spool, atMs);
-    st.cursors = {};   // every bucket from byte 0 — the re-send § 11.4 requires
-    return { state: st, reset: e.code !== 'ENOENT', minted: true };
+    return { state: newState(spool, atMs), reset: e.code !== 'ENOENT', minted: true };
   }
+}
+
+/* The persisted request's member set, EXACTLY (§ 3.1, *One request per site*). An entry whose `request`
+ * is anything else is not one this build can resend, so it is not a usable entry. */
+const REQUEST_KEYS = ['events', 'batch_id', 'schema_version', 'seq_epoch', 'install_id', 'seat_id',
+  'reporter_version', 'reporter_platform', 'runtime_version', 'first_seq', 'count', 'advance',
+  'heartbeat_event_id', 'built_at', 'attempts'];
+
+function readableRequest(r, e) {
+  if (r === null) return true;
+  if (!isPlain(r)) return false;
+  const keys = Object.keys(r);
+  if (keys.length !== REQUEST_KEYS.length || !REQUEST_KEYS.every((k) => keys.includes(k))) return false;
+  return Array.isArray(r.events) && r.events.length > 0 && r.events.every(isPlain) && r.events.length === r.count
+    && typeof r.batch_id === 'string' && typeof r.schema_version === 'number' && r.seq_epoch === e.seq_epoch
+    && ['install_id', 'seat_id', 'reporter_version', 'reporter_platform', 'runtime_version'].every((k) => typeof r[k] === 'string')
+    && r.first_seq === e.next_seq && isPlain(r.advance) && Object.values(r.advance).every((v) => typeof v === 'number')
+    && (r.heartbeat_event_id === null || typeof r.heartbeat_event_id === 'string')
+    && Number.isFinite(r.built_at) && Number.isInteger(r.attempts) && r.attempts >= 0;
+}
+
+function usableEntry(e) {
+  if (!isPlain(e) || typeof e.seq_epoch !== 'string' || !e.seq_epoch || !Number.isInteger(e.next_seq) || e.next_seq < 1) return false;
+  if (!isPlain(e.cursors) || !Object.values(e.cursors).every((v) => typeof v === 'number')) return false;
+  if (e.request === undefined || !readableRequest(e.request, e)) return false;
+  e.counters = isPlain(e.counters) ? e.counters : {};
+  e.counter_rises = isPlain(e.counter_rises) ? e.counter_rises : {};
+  e.window = isPlain(e.window) ? e.window : {};
+  const st = isPlain(e.selftest) ? e.selftest : {};
+  e.selftest = {};
+  for (const c of NETWORK_CHECKS) e.selftest[c] = typeof st[c] === 'boolean' ? st[c] : null;
+  return true;
+}
+
+/* § 3.1's ONE ENTRY PREDICATE, shared by the flusher and the hook — and the only reader of `state.sites`.
+ * Three outcomes: `{ entry, reset: false }`, the entry this site owns (its `ingest_url_sha256` is the hash
+ * of the configured site key, or it is a legacy adoption whose hash is not recorded yet); `{ entry, reset:
+ * true }`, the same entry MARKED FOR RESET because it was built under an identity pair the config no longer
+ * carries — the flusher's start performs the reset and nothing else does, and the hook reads its kept
+ * cursors unchanged; or `null`: no entry, an unusable one, or one bound to another server (rule 2). */
+function siteEntry(state, site, cfg) {
+  if (!state || !isPlain(state.sites) || site.name === null || !Object.prototype.hasOwnProperty.call(state.sites, site.name)) return null;
+  const e = state.sites[site.name];
+  if (!usableEntry(e)) return null;
+  // A configured URL that does not parse is that site's config error (§ 3.1: the site sends nothing), not a
+  // repoint: there is no site key to compare, so the entry stays the site's — its cursors still the best
+  // statement of what that server holds — until a URL that parses decides. Replacing it would re-send the
+  // whole spool the moment the typo is fixed.
+  if (urlBinding(site) === null) return { entry: e, reset: false };
+  if (e.ingest_url_sha256 === undefined ? !e.legacy : e.ingest_url_sha256 !== urlBinding(site)) return null;
+  return { entry: e, reset: e.identity_sha256 !== undefined && e.identity_sha256 !== identityBinding(cfg) };
+}
+
+/* THE EXPLICIT EPOCH RESET of a site (§ 3.1, *One request per site*): the age rule's, and the identity
+ * rule's, which reuses it unchanged. The persisted request is cleared — its heartbeat, an undelivered event
+ * the reset discards, counted one `spool_dropped_events` on that site; its spooled events are still behind
+ * the cursor — a new `seq_epoch` is minted and `next_seq` reset, the cursors kept. The caller saves. */
+function resetSiteEpoch(entry, atMs) {
+  if (entry.request && entry.request.heartbeat_event_id !== null) entry.counters.spool_dropped_events = (entry.counters.spool_dropped_events || 0) + 1;
+  entry.request = null;
+  entry.seq_epoch = ulid(atMs);
+  entry.next_seq = 1;
+}
+
+/* THE FLUSHER'S START, per site (§ 3.1 rules 1–4): each configured site gets its entry through the one
+ * predicate — an entry marked for reset is reset here, before anything is built; an entry the predicate
+ * refuses is replaced by a new one (rule 1, rule 2); a legacy entry records its bindings at this first
+ * save — and an entry for a name the config no longer carries is dropped, logged by name (rule 4). */
+function reconcileSites(state, cfg, sites, atMs, log) {
+  const prior = isPlain(state.sites) ? state.sites : nameMap();
+  const kept = nameMap();
+  for (const site of sites) {
+    if (site.name === null || hasOwn(kept, site.name)) continue;
+    const found = siteEntry(state, site, cfg);
+    let entry;
+    if (found && urlBinding(site) === null) {
+      // Kept exactly as it was: no binding is rewritten from a URL that names no server (above).
+      log(`site ${site.name}: its ingest_url does not parse — its state entry is kept unchanged, and the site sends nothing until the config is fixed (§ 3.1)`);
+      kept[site.name] = found.entry;
+      continue;
+    }
+    if (!found) {
+      if (hasOwn(prior, site.name)) log(`site ${site.name}: its state entry is unusable or bound to another server — new seq_epoch, sending from the oldest bucket (§ 3.1)`);
+      entry = newEntry(site, cfg, atMs);
+    } else {
+      entry = found.entry;
+      if (entry.legacy) log(`site ${site.name}: adopted the state.json of a build before card#12180 — cursors carried, new seq_epoch (§ 3.1 rule 3)`);
+      if (found.reset) {
+        log(`site ${site.name}: the config names another identity pair than this entry was built under — new seq_epoch, cursors kept (§ 3.1)`);
+        resetSiteEpoch(entry, atMs);
+      }
+      entry.ingest_url_sha256 = urlBinding(site);
+      entry.identity_sha256 = identityBinding(cfg);
+    }
+    kept[site.name] = entry;
+  }
+  for (const name of Object.keys(prior)) {
+    if (hasOwn(kept, name)) continue;
+    if (prior[name] && prior[name].legacy) log('the state.json of a build before card#12180 is read as site `default`, and no site is named `default`: its cursor is not carried, and every site sends from the oldest bucket (§ 3.1 rule 3)');
+    else log(`site ${name}: no longer configured — its state entry is dropped (§ 3.1 rule 4)`);
+  }
+  state.sites = kept;
 }
 
 /* § 2.3 — ONE ANSWER TO "AM I STILL THE OWNER", AND ONE OUTCOME WHEN IT IS NO.
@@ -2653,10 +2992,10 @@ function loadState(spool, atMs) {
  * awaits the network — the health probe and each batch POST — and an await is where a takeover
  * lands: a new owner claims state.json while this process is suspended. What the pass does on
  * resuming is ownership-sensitive whether or not it writes state.json: it disposes of corrupt
- * lines and quarantines rejected batches the new owner will dispose of too, drops spool buckets,
- * reaps counter buckets by offsets the new owner has not folded, and spools a heartbeat. So the
- * check runs on resuming from each await (`refreshHealth` in `flusherMain`, `send` in
- * `drainOnce`), before any of those. What remains is the synchronous work after a check: no
+ * lines and quarantines rejected batches the new owner will dispose of too, advances a site's
+ * cursor, and builds that site's next request. So the check runs on resuming from each await (the
+ * probe in a lane's pass, the POST in `laneDrain`), before any of those — in every lane, since the
+ * lanes share one process and one `state.json` (card#12180). What remains is the synchronous work after a check: no
  * await, local file operations only, but a new owner can still claim state.json inside it — see
  * the exit path in `flusherMain` for what that window can and cannot cost. */
 class LostOwnership extends Error {}
@@ -2669,10 +3008,10 @@ function assertOwner(spool, state) {
   throw new LostOwnership(`state.json names pid ${on.owner_pid} started ${on.owner_started_at}`);
 }
 
-function saveState(spool, state) {
+function saveState(spool, state, opts) {
   assertOwner(spool, state);
-  if (!atomicWrite(statePath(spool), JSON.stringify(state))) return false;
-  FOLDED_UNSAVED.c = Object.create(null); FOLDED_UNSAVED.p = Object.create(null);
+  if (!atomicWrite(statePath(spool), JSON.stringify(state), opts)) return false;
+  FOLDED_UNSAVED.c = Object.create(null); FOLDED_UNSAVED.p = Object.create(null); FOLDED_UNSAVED.s = Object.create(null);
   return true;
 }
 
@@ -2682,7 +3021,7 @@ function saveState(spool, state) {
  * create is retried exactly once. Losing that retry is also an immediate exit 0. */
 function acquireLock(spool, state) {
   const lock = path.join(spool, 'flusher.lock');
-  const body = JSON.stringify({ pid: process.pid, started_at: state.owner_started_at, seq_epoch: state.seq_epoch });
+  const body = JSON.stringify({ pid: process.pid, started_at: state.owner_started_at });
   ensureDir(spool);
   const tryCreate = () => {
     try { const fd = fs.openSync(lock, 'wx'); fs.writeSync(fd, Buffer.from(body, 'utf8')); fs.closeSync(fd); return true; }
@@ -2751,6 +3090,13 @@ function foldCounterSink(spool, state) {
       if (!line) continue;
       let r; try { r = JSON.parse(line); } catch (e) { continue; }
       for (const [k, v] of Object.entries(r.c || {})) if (typeof v === 'number') state.counters[k] = (state.counters[k] || 0) + v;
+      /* `s`, the per-site deltas (§ 11.1, card#12180), into that site's entry. A name the config no
+       * longer carries has no entry — rule 4 dropped it at start — and its deltas go with it. */
+      for (const [name, deltas] of Object.entries(isPlain(r.s) ? r.s : {})) {
+        const e = Object.prototype.hasOwnProperty.call(state.sites, name) ? state.sites[name] : null;
+        if (!e || !isPlain(deltas)) continue;
+        for (const [k, v] of Object.entries(deltas)) if (typeof v === 'number') e.counters[k] = (e.counters[k] || 0) + v;
+      }
       for (const [k, v] of Object.entries(r.k || {})) {
         if (!state.predicates[k]) state.predicates[k] = { true: 0, false: 0 };
         state.predicates[k].true += (v && v.true) || 0;
@@ -2833,33 +3179,53 @@ function reapOldBuckets(spool, state, atMs) {
 /* § 11.3 — both bounds are evaluated on every pass. Drop-oldest, one whole hour bucket at a
  * time: the dashboard's value is CURRENT state, and a week-old queued event has no consumer
  * left, while dropping newest would discard exactly the events that still matter. */
-function enforceSpoolBounds(spool, state, atMs) {
+function enforceSpoolBounds(spool, state, atMs, sites, cfg) {
+  /* PER SITE (card#12180): a dropped bucket counts its lines past EACH site's cursor on that site,
+   * through the one entry predicate (an entry marked for reset is read with its kept cursors), and every
+   * site's cursor for it goes with it. The bounds themselves are the seat's and wait for no lagging site
+   * (§ 11.3); no site's persisted request is read or touched, because it carries its own bytes. */
+  const drop = (f) => {
+    const b = f.slice(0, 10);
+    const cursorsBySite = nameMap();
+    for (const site of sites) {
+      if (site.name === null) continue;
+      const found = siteEntry(state, site, cfg);
+      cursorsBySite[site.name] = found ? found.entry.cursors[b] : undefined;
+    }
+    if (!dropSpoolBucket(spool, f, cursorsBySite)) return;
+    for (const e of Object.values(state.sites)) delete e.cursors[b];
+    delete state.disposed[b];
+  };
   for (const f of spoolBuckets(spool)) {
     const b = f.slice(0, 10);
-    if (atMs - bucketEndMs(b) > K.RESIDENCY_MS && deletableBucket(b, atMs)) {
-      dropSpoolBucket(spool, f, state.cursors[b]);
-      delete state.cursors[b];
-    }
+    if (atMs - bucketEndMs(b) > K.RESIDENCY_MS && deletableBucket(b, atMs)) drop(f);
   }
   let guard = 0;
   while (spoolBytes(spool) > K.SPOOL_BYTES && guard++ < 64) {
     const buckets = spoolBuckets(spool);
     const oldest = buckets[0];
     if (!oldest || !deletableBucket(oldest.slice(0, 10), atMs)) { count('spool_overflow_deferred'); break; }
-    dropSpoolBucket(spool, oldest, state.cursors[oldest.slice(0, 10)]);
-    delete state.cursors[oldest.slice(0, 10)];
+    drop(oldest);
   }
 }
 
-/* Read pending spool lines from the cursor forward. A trailing partial line (no final LF) is a
- * write in progress and is NOT consumed — it is picked up next pass (§ 11.4). */
-function collectPending(spool, state, limit) {
+/* Read pending spool lines from ONE SITE'S cursor forward. A trailing partial line (no final LF) is a
+ * write in progress and is NOT consumed — it is picked up next pass (§ 11.4).
+ *
+ * § 3.1 rule 1's ONE SKIPPED CLASS: a `reporter.heartbeat` line a build before card#12180 spooled, whose
+ * `config_fingerprint` is not this site's own, is one site's liveness statement and was never owed to any
+ * other site. It is returned as a `pass` item — its cursor advances past it, it consumes no `seq`, and
+ * nothing counts it, because nothing was lost. The site whose fingerprint it carries delivers it. */
+function collectPending(spool, entry, siteName, fingerprint, limit) {
   const items = [];
   const buckets = spoolBuckets(spool);
   for (const f of buckets) {
     const b = f.slice(0, 10);
-    const from = state.cursors[b] || 0;
+    const from = entry.cursors[b] || 0;
     let text = '', size = 0;
+    // A bucket this site already has every line of is nothing it can lose, readable or not: the size is
+    // read before the open, so an unreadable bucket counts only on the sites that had not received it.
+    try { size = fs.statSync(path.join(spool, f)).size; if (size <= from) continue; } catch (e) { /* the open below says why */ }
     try {
       const fd = fs.openSync(path.join(spool, f), 'r');
       try {
@@ -2870,39 +3236,43 @@ function collectPending(spool, state, limit) {
         text = buf.toString('utf8');
       } finally { fs.closeSync(fd); }
     } catch (e) {
-      /* § 11.4 — an entire bucket unreadable: record it, skip it, continue. Counted into
+      /* § 11.4 — an entire bucket unreadable: record it, skip it, continue. Counted into this site's
        * spool_dropped_events (an ESTIMATE that says so) and NOT into spool_corrupt_lines,
        * which counts LINES the flusher read and could not use — one loss, one counter.
        * THE CURSOR IS ADVANCED PAST IT IMMEDIATELY. Nothing here is deliverable, so the
        * disposal is committed now rather than on a delivery that can never happen — otherwise
        * every retry pass of an outage re-counts the same loss. */
       quarantine(spool, 'corrupt', JSON.stringify({ at: rfc3339(now()), unreadable_bucket: f }));
-      count('spool_dropped_events', Math.max(1, Math.round((size || 512) / 512)));
-      state.cursors[b] = Number.MAX_SAFE_INTEGER;
+      count('spool_dropped_events', Math.max(1, Math.round((size || 512) / 512)), siteName);
+      entry.cursors[b] = Number.MAX_SAFE_INTEGER;
       continue;
     }
     const nl = text.lastIndexOf('\n');
     if (nl < 0) continue;
     let pos = from;
     for (const line of text.slice(0, nl).split('\n')) {
+      const start = pos;
       const end = pos + Buffer.byteLength(line, 'utf8') + 1;
       pos = end;
       if (!line) continue;
       if (Buffer.byteLength(line, 'utf8') > K.EVENT_CAP) {
-        items.push({ skip: true, raw: line, bucket: b, endOffset: end }); continue;
+        items.push({ skip: true, raw: line, bucket: b, start, endOffset: end }); continue;
       }
       let rec;
       try { rec = JSON.parse(line); } catch (e) {
         // ONE TORN LINE NEVER POISONS A BATCH and never wedges the queue: bounded to the line,
         // counted, quarantined for inspection — never "abort the batch", which would let one
-        // bad byte stop a seat's telemetry indefinitely. The counting happens at the COMMIT
-        // (`disposeSkips`), not here: collectPending runs again on every retry pass, so
-        // counting at read time would multiply one torn line by the length of an outage — and
-        // `spool_corrupt_lines` is a number the floor RENDERS beside a `lossy` badge.
-        items.push({ skip: true, raw: line, bucket: b, endOffset: end }); continue;
+        // bad byte stop a seat's telemetry indefinitely. The counting happens when a request
+        // that spans it is BUILT (`disposeSkips`), not here, and once per seat by the disposal mark:
+        // collectPending runs again on every build of every site, and `spool_corrupt_lines` is a
+        // number the floor RENDERS beside a `lossy` badge.
+        items.push({ skip: true, raw: line, bucket: b, start, endOffset: end }); continue;
       }
       if (!rec || typeof rec !== 'object' || !rec.e || typeof rec.e !== 'object' || !rec.e.kind) {
-        items.push({ skip: true, raw: line, bucket: b, endOffset: end }); continue;
+        items.push({ skip: true, raw: line, bucket: b, start, endOffset: end }); continue;
+      }
+      if (rec.e.kind === 'reporter.heartbeat' && !(rec.e.data && rec.e.data.config_fingerprint === fingerprint)) {
+        items.push({ pass: true, bucket: b, endOffset: end }); continue;
       }
       items.push({ v: rec.v || SCHEMA_VERSION, t: rec.t, e: rec.e, bucket: b, endOffset: end });
       if (items.length >= limit) return items;
@@ -2911,66 +3281,125 @@ function collectPending(spool, state, limit) {
   return items;
 }
 
-/* Quarantine and count every unusable line in items[0..upTo], exactly once. Called when their
- * disposal is COMMITTED — either because they sit at the cursor with nothing undelivered before
- * them, or because a batch spanning them was accepted. */
-function disposeSkips(spool, items, upTo) {
+/* Quarantine and count every unusable line in items[0..upTo] ONCE FOR THE SEAT (§ 11.4, card#12180):
+ * `state.disposed[bucket]` is the offset up to which a bucket's unusable lines have been disposed of, by
+ * whichever site's lane reached them first, and a lane disposes only of lines that start past it. Every
+ * lane walks a bucket in order, so the mark only grows. Called when the lines' disposal is COMMITTED — at
+ * the cursor with nothing undelivered before them, or inside a request being built and persisted. */
+function disposeSkips(spool, state, items, upTo) {
   for (let i = 0; i <= upTo && i < items.length; i++) {
     const it = items[i];
     if (!it.skip || it.disposed) continue;
     it.disposed = true;
+    if (it.start < (state.disposed[it.bucket] || 0)) continue;
+    state.disposed[it.bucket] = it.endOffset;
     quarantine(spool, 'corrupt', it.raw);
     count('spool_corrupt_lines');
   }
 }
 
-/* Record every bucket touched by items[0..upTo] at its consumed offset. */
-function advanceCursors(state, items, upTo) {
+/* The cursor advance items[0..upTo] earn: every bucket they touch, at its consumed offset. */
+function advanceOf(items, upTo) {
+  const adv = {};
   for (let i = 0; i <= upTo && i < items.length; i++) {
     const it = items[i];
-    state.cursors[it.bucket] = Math.max(state.cursors[it.bucket] || 0, it.endOffset);
+    adv[it.bucket] = Math.max(adv[it.bucket] || 0, it.endOffset);
+  }
+  return adv;
+}
+
+/* Apply an advance map to a site's cursors — for buckets STILL ON DISK: a bucket dropped while a request
+ * spanning it was out earns no cursor entry, because there is nothing left for the cursor to describe. */
+function applyAdvance(spool, entry, adv) {
+  const onDisk = new Set(spoolBuckets(spool).map((f) => f.slice(0, 10)));
+  for (const [b, off] of Object.entries(adv)) if (onDisk.has(b)) entry.cursors[b] = Math.max(entry.cursors[b] || 0, off);
+}
+
+/* The quarantine files (§ 11.1): `corrupt.jsonl` is the seat's — a line is disposed of once — and the
+ * rejected-batch file is ONE PER SITE, each under its own cap, so one site's poison stream evicts nothing
+ * of another's (card#12180). A capped write is counted on the site whose file refused it. */
+function quarantine(spool, which, line, siteName) {
+  const file = path.join(spool, 'quarantine', which === 'corrupt' ? 'corrupt.jsonl' : `rejected.${siteName}.jsonl`);
+  const cap = which === 'corrupt' ? K.Q_CORRUPT_CAP : K.Q_REJECTED_CAP;
+  if (!appendCapped(file, redactSecrets(line), cap, 'quarantine')) {
+    if (which === 'corrupt') count('quarantine_corrupt_dropped');
+    else count('quarantine_rejected_dropped', 1, siteName);
   }
 }
 
-function quarantine(spool, which, line) {
-  const file = path.join(spool, 'quarantine', which === 'corrupt' ? 'corrupt.jsonl' : 'rejected.jsonl');
-  const cap = which === 'corrupt' ? K.Q_CORRUPT_CAP : K.Q_REJECTED_CAP;
-  if (!appendCapped(file, redactSecrets(line), cap, 'quarantine')) count(which === 'corrupt' ? 'quarantine_corrupt_dropped' : 'quarantine_rejected_dropped');
+/* The batch envelope's fixed members, IN TODAY'S KEY ORDER, so a single-site seat's envelope stays
+ * byte-equal to the previous build's but for the members that differ per batch (§ 3.1, AT-28 Case F). */
+const platformName = () => (['linux', 'win32', 'darwin'].includes(process.platform) ? process.platform : 'other');
+function envelopeOf(r, sentAt) {
+  return {
+    schema_version: r.schema_version, batch_id: r.batch_id,
+    install_id: r.install_id, seat_id: r.seat_id,
+    reporter_version: r.reporter_version,
+    // `other` is the unknown member for any process.platform outside the three (§ 4.2).
+    reporter_platform: r.reporter_platform,
+    runtime_version: r.runtime_version,
+    seq_epoch: r.seq_epoch, sent_at: sentAt, events: r.events,
+  };
 }
+/* THE BODY OF ONE ATTEMPT (§ 3.1): the persisted request, with `sent_at` stamped at the send and nothing
+ * else varying. `events` is a parsed JSON value, so `JSON.stringify` reproduces its bytes on every attempt
+ * and after every restart. `sent_at` is a transport stamp the server measures `clock_skew_ms` from (§ 10.1):
+ * resent verbatim after a 120 s backoff it would badge every seat that ever retried. */
+const composeBody = (r) => JSON.stringify(envelopeOf(r, rfc3339(now())));
 
-/* Build ONE batch from contiguous same-version items. The flusher groups contiguous same-`v`
- * runs so a reporter upgraded mid-spool drains cleanly — old lines go out under the old
- * version, which the ingest still accepts inside its N/N-1 window (§ 11.2). */
-function buildBatch(config, state, items, maxEvents) {
+/* BUILD ONE REQUEST for a site (§ 3.1, *One request per site*), from contiguous same-`v` items: the
+ * heartbeat, when one is given, at item 0 under `seq = next_seq`, the spooled events behind it in spool
+ * order, every `seq` and `event_id` fixed here and never again. The flusher groups contiguous same-`v`
+ * runs so a reporter upgraded mid-spool drains cleanly — old lines go out under the old version, which the
+ * ingest still accepts inside its N/N-1 window (§ 11.2).
+ *
+ * THE BUDGET IS THE INGEST'S UNIT: UTF-8 bytes of the whole body, envelope included
+ * (`BodyReader::MAX_BYTES` against `strlen`) — `K.BATCH_BYTES` less the serialized envelope, spent in
+ * `Buffer.byteLength(JSON.stringify(ev)) + 1` per event. Summing `.length` counted UTF-16 code units of
+ * the events alone, so a batch of non-ASCII text, or a full one plus its envelope, could draw the `413`
+ * the cap exists to rule out. Returns `{ request, lastIdx }`, `request` null when nothing was built. */
+function buildBatch(cfg, entry, items, maxEvents, heartbeat, atMs) {
   const events = [];
-  let used = null, lastIdx = -1, size = 512;
+  let used = heartbeat ? heartbeat.schema_version : null, lastIdx = -1;
+  const base = {
+    schema_version: null, batch_id: ulid(atMs), install_id: cfg.install_id, seat_id: cfg.seat_id,
+    reporter_version: REPORTER_VERSION, reporter_platform: platformName(), runtime_version: process.version,
+    seq_epoch: entry.seq_epoch,
+  };
+  const envelopeBytes = bytes(JSON.stringify(envelopeOf(Object.assign({}, base, { schema_version: SCHEMA_VERSION, events: [] }), rfc3339(atMs))));
+  let size = envelopeBytes;
+  const take = (ev) => {
+    const cost = bytes(JSON.stringify(ev)) + 1;
+    if (events.length && (events.length >= maxEvents || size + cost > K.BATCH_BYTES)) return false;
+    events.push(ev); size += cost; return true;
+  };
+  if (heartbeat) {
+    take({ event_id: heartbeat.event_id, schema_version: heartbeat.schema_version, kind: heartbeat.kind,
+      event_time: heartbeat.event_time, seq: entry.next_seq, install_id: heartbeat.install_id,
+      seat_id: heartbeat.seat_id, session_id: null, data: heartbeat.data });
+  }
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
-    if (it.skip) { lastIdx = i; continue; }
+    if (it.skip || it.pass) { lastIdx = i; continue; }
     if (used === null) used = it.v;
     if (it.v !== used) break;
     const ev = {
       event_id: it.e.event_id, schema_version: it.v, kind: it.e.kind, event_time: it.e.event_time,
-      seq: state.next_seq + events.length,
+      seq: entry.next_seq + events.length,
       install_id: it.e.install_id, seat_id: it.e.seat_id, session_id: it.e.session_id === undefined ? null : it.e.session_id,
       data: it.e.data,
     };
     if (it.e.oversize) ev.oversize = true;
-    const s = JSON.stringify(ev).length + 1;
-    if (events.length && (events.length >= maxEvents || size + s > K.BATCH_BYTES)) break;
-    events.push(ev); size += s; lastIdx = i;
+    if (!take(ev)) break;
+    lastIdx = i;
   }
-  if (!events.length) return { events: [], lastIdx, body: null, version: used };
-  const batch = {
-    schema_version: used, batch_id: ulid(now()),
-    install_id: config.install_id, seat_id: config.seat_id,
-    reporter_version: REPORTER_VERSION,
-    // `other` is the unknown member for any process.platform outside the three (§ 4.2).
-    reporter_platform: ['linux', 'win32', 'darwin'].includes(process.platform) ? process.platform : 'other',
-    runtime_version: process.version,
-    seq_epoch: state.seq_epoch, sent_at: rfc3339(now()), events,
-  };
-  return { events, lastIdx, body: JSON.stringify(batch), version: used, batch };
+  if (!events.length) return { request: null, lastIdx };
+  const request = Object.assign(base, {
+    schema_version: used, events, first_seq: entry.next_seq, count: events.length,
+    advance: advanceOf(items, lastIdx), heartbeat_event_id: heartbeat ? heartbeat.event_id : null,
+    built_at: atMs, attempts: 0,
+  });
+  return { request, lastIdx };
 }
 
 /* ── Transport (§ 3.5) — WAN, ALWAYS ─────────────────────────────────────────────────────────
@@ -2986,8 +3415,9 @@ function buildBatch(config, state, items, maxEvents) {
  * card#9500).
  * Loosening verification to make a sandbox work is the classic constraint-weakening fix, and it
  * ships to production seats. `selftest` and the acceptance suite both lint for it. */
-let _agent = null;
-const getAgent = () => (_agent || (_agent = new (lazy('https').Agent)({ keepAlive: true, maxSockets: 2 })));
+/* ONE KEEP-ALIVE AGENT PER SITE (card#12180), created on that site's first request: a kept-alive socket
+ * is a connection to one server, and a lane holds at most one request in flight. */
+const getAgent = (site) => (site.agent || (site.agent = new (lazy('https').Agent)({ keepAlive: true, maxSockets: 2 })));
 
 /* THE ONE OUTBOUND REQUEST PRIMITIVE (card#9473). Every request this process makes to the ingest
  * goes through here — the batch POST (`postBatch`) and the health probe (`refreshHealth`), which the
@@ -2997,8 +3427,8 @@ const getAgent = () => (_agent || (_agent = new (lazy('https').Agent)({ keepAliv
  * sent over a direct connection anyway (see `delete opts.agent` below).
  *
  * What it owns, so no caller restates it (§ 3.5):
- *   - ROUTE: `config.proxy_url` set ⇒ an HTTP CONNECT tunnel to the ingest host through that proxy;
- *     null ⇒ direct, on the shared keep-alive agent. `config.proxy_url` ONLY — HTTP(S)_PROXY
+ *   - ROUTE: the site's `proxy_url` set ⇒ an HTTP CONNECT tunnel to the ingest host through that proxy;
+ *     null ⇒ direct, on the site's keep-alive agent. The site's `proxy_url` ONLY — HTTP(S)_PROXY
  *     environment variables are IGNORED, § 3.4 rule 1: no transport decision from ambient environment.
  *   - TLS: `https://` ingest only, verification on, `ca_file` as the TLS `ca` option, which replaces
  *     the default trust store (the seat trusts only that file). It is read per request, and one that
@@ -3018,7 +3448,7 @@ const getAgent = () => (_agent || (_agent = new (lazy('https').Agent)({ keepAliv
  * send (a `ca_file` that is not an absolute path or cannot be read), and the two stages a
  * caller needs to tell a refused certificate from nothing learned: `tcp` (a connection to the ingest
  * — through a proxy, the CONNECT answered 200) and `secured` (the TLS handshake with it completed). */
-function ingestRequest(config, { method, path: pathOf, headers, body }) {
+function ingestRequest(site, { method, path: pathOf, headers, body }) {
   return new Promise((resolve) => {
     const out = { status: null, headers: null, body: null, error: null, deadline: null, invalid: null, tcp: false, secured: false };
     let settled = false, connectTimer = null, requestTimer = null;
@@ -3030,9 +3460,9 @@ function ingestRequest(config, { method, path: pathOf, headers, body }) {
       resolve(out);
     };
     let url;
-    try { url = new URL(config.ingest_url); } catch (e) { out.invalid = 'bad ingest_url'; done(out.invalid); return; }
+    try { url = new URL(site.ingest_url); } catch (e) { out.invalid = 'bad ingest_url'; done(out.invalid); return; }
     if (url.protocol !== 'https:') { out.invalid = 'ingest_url is not https'; done(out.invalid); return; }
-    const { ca, error: caError } = readCaFile(config);
+    const { ca, error: caError } = readCaFile(site);
     if (caError) { out.invalid = caError; done(out.invalid); return; }
 
     const endByDeadline = (which, error) => {
@@ -3048,7 +3478,7 @@ function ingestRequest(config, { method, path: pathOf, headers, body }) {
     const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(url.hostname) || url.hostname.includes(':');
     const opts = {
       host: url.hostname, port, path: pathOf(url), method,
-      headers: Object.assign({ Authorization: `Bearer ${config.token}` }, headers), agent: getAgent(),
+      headers: Object.assign({ Authorization: `Bearer ${site.token}` }, headers), agent: getAgent(site),
     };
     if (!isIp) opts.servername = url.hostname;
     if (ca) opts.ca = ca;
@@ -3072,10 +3502,10 @@ function ingestRequest(config, { method, path: pathOf, headers, body }) {
       req.end(body);
     };
 
-    if (!config.proxy_url) { send(); return; }
+    if (!site.proxy_url) { send(); return; }
     let connect;
     try {
-      const u = new URL(config.proxy_url);
+      const u = new URL(site.proxy_url);
       connect = lazy(u.protocol === 'https:' ? 'https' : 'http').request({
         host: u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80),
         method: 'CONNECT', path: `${url.hostname}:${port}`, headers: { Host: `${url.hostname}:${port}` }, agent: false,
@@ -3108,14 +3538,14 @@ function ingestRequest(config, { method, path: pathOf, headers, body }) {
   });
 }
 
-function postBatch(config, body) {
+function postBatch(site, body) {
   const headers = { 'Content-Type': 'application/json; charset=utf-8' };
   let payload = Buffer.from(body, 'utf8');
   if (payload.length > K.GZIP_MIN) {
     try { payload = lazy('zlib').gzipSync(payload); headers['Content-Encoding'] = 'gzip'; } catch (e) { payload = Buffer.from(body, 'utf8'); }
   }
   headers['Content-Length'] = String(payload.length);
-  return ingestRequest(config, { method: 'POST', path: (u) => u.pathname + u.search, headers, body: payload }).then((r) => {
+  return ingestRequest(site, { method: 'POST', path: (u) => u.pathname + u.search, headers, body: payload }).then((r) => {
     // A request the config forbids — an ingest_url that is not an https:// URL or does not parse, a `ca_file` that
     // is not absolute or cannot be read — is `refused`: config_invalid, keep spooling, send nothing (§ 3.5). Never
     // `permanent`: that quarantines the batch, and a config typo would cost the events it holds (card#9521).
@@ -3127,26 +3557,55 @@ function postBatch(config, body) {
   });
 }
 
+/* § 11.5's ONE STATUS-AND-BODY TABLE, and its one implementation (card#12180): the lane's disposal, the
+ * auth stop and the poison pill all read this verdict and none re-reads a status. It keys on the BODY
+ * because a status alone does not say who answered: the ingest's routes take no route middleware, so every
+ * `4xx` refusal the ingest makes carries one of `Refusal.php`'s codes, and one without came from a proxy, a
+ * WAF or a host in front of it, which judged neither the bytes nor the credential.
+ *   ok          a `202` whose body carries numeric `accepted` and `duplicates` — the one answer the ingest
+ *               gives (`Acceptance.php`); a `200`, or a `202` without that body, is a front end's
+ *   too_large   `413`, on its status, whoever answered: a path's own body limit is about size too
+ *   permanent   `400` malformed_body|unsupported_schema_version, `415` unsupported_media_type,
+ *               `422` invalid_batch|invalid_event — the bytes are refused
+ *   auth        `401` unauthenticated, `403` identity_mismatch — the credential is refused (the auth stop)
+ *   retryable   everything else: `408`, `429` (with its `Retry-After`), any `5xx`, a status the table does
+ *               not list, and a listed status whose body is not the ingest's. `foreign` marks an answer
+ *               something other than the ingest gave — the lane surfaces its body — where today's
+ *               `permanent` fallback quarantined a mistyped path's whole backlog (a deliberate change). */
+const INGEST_REFUSALS = {
+  400: ['malformed_body', 'unsupported_schema_version'], 415: ['unsupported_media_type'],
+  422: ['invalid_batch', 'invalid_event'],
+};
+const INGEST_AUTH = { 401: 'unauthenticated', 403: 'identity_mismatch' };
 function classify(status, headers, text) {
   let parsed = null; try { parsed = JSON.parse(text); } catch (e) { parsed = null; }
-  if (status === 202 || status === 200) return { kind: 'ok', status, body: parsed, text };
-  // NOT retryable — the same bytes will be refused forever, and retrying hides the error
-  // behind an infinite loop instead of surfacing it.
-  if ([400, 401, 403, 415, 422].includes(status)) return { kind: 'permanent', status, body: parsed, text };
+  const code = isPlain(parsed) && typeof parsed.error === 'string' ? parsed.error : null;
+  if (status === 202 && isPlain(parsed) && typeof parsed.accepted === 'number' && typeof parsed.duplicates === 'number') {
+    return { kind: 'ok', status, body: parsed, text };
+  }
   if (status === 413) return { kind: 'too_large', status, body: parsed, text };
+  if (INGEST_REFUSALS[status] && INGEST_REFUSALS[status].includes(code)) return { kind: 'permanent', status, body: parsed, text };
+  if (INGEST_AUTH[status] && INGEST_AUTH[status] === code) return { kind: 'auth', status, body: parsed, text };
   if (status === 429) {
-    let after = parsed && typeof parsed.retry_after_s === 'number' ? parsed.retry_after_s : null;
+    let after = isPlain(parsed) && typeof parsed.retry_after_s === 'number' ? parsed.retry_after_s : null;
     if (after === null && headers && headers['retry-after']) { const n = Number(headers['retry-after']); if (Number.isFinite(n)) after = n; }
     // A server's explicit instruction outranks the ladder; the clamp stops a bad header
     // parking a seat for hours.
     return { kind: 'retryable', status, retry_after_s: after === null ? null : Math.min(K.RETRY_AFTER_CAP_S, Math.max(0, after)), body: parsed, text };
   }
   if (status === 408 || status >= 500) return { kind: 'retryable', status, body: parsed, text };
-  return { kind: 'permanent', status, body: parsed, text };
+  return { kind: 'retryable', status, foreign: true, body: parsed, text };
 }
 
+/* A TIMING-ONLY TEST SEAM, beside FLEET_REPORTER_NOW_MS and as inert (AT-28 Cases B and M): it lowers the
+ * ladder's cap so a lane in backoff attempts on every pass, and gates nothing else. */
+const BACKOFF_CAP_MS = (() => {
+  const v = process.env.FLEET_REPORTER_BACKOFF_MAX_MS;
+  const n = v === undefined || v === '' ? NaN : Number(v);
+  return Number.isFinite(n) && n >= 0 ? Math.min(n, K.BACKOFF_MAX_MS) : K.BACKOFF_MAX_MS;
+})();
 function backoffDelay(attempt) {
-  const computed = Math.min(K.BACKOFF_MAX_MS, K.BACKOFF_BASE_MS * Math.pow(2, Math.max(0, attempt - 1)));
+  const computed = Math.min(BACKOFF_CAP_MS, K.BACKOFF_BASE_MS * Math.pow(2, Math.max(0, attempt - 1)));
   // FULL jitter, uniform in [0, computed]: it stops N seats re-synchronising into a thundering
   // herd after a server restart.
   return Math.floor(Math.random() * computed);
@@ -3218,19 +3677,22 @@ function buildDegraded(all) {
   return on;   // one of each, in § 9.3's order — which is why the array's bound IS this table
 }
 
-function configFingerprint(cfg) {
+function configFingerprint(cfg, site) {
   // The TOKEN IS EXCLUDED, deliberately: a fingerprint that covered the secret would let anyone
   // holding the event stream confirm a guessed token by comparing hashes. It exists so an
-  // operator can tell "this seat was reconfigured" from "this seat is a different seat".
+  // operator can tell "this seat was reconfigured" from "this seat is a different seat". The URL is
+  // the RAW one of the site receiving the heartbeat (§ 6.14, card#12180), so a single-site seat's
+  // fingerprint is byte-identical to the one the previous build sent.
   return crypto.createHash('sha256')
-    .update(`${cfg.install_id}|${cfg.seat_id}|${cfg.ingest_url}`).digest('hex').slice(0, 16);
+    .update(`${cfg.install_id}|${cfg.seat_id}|${site.ingest_url}`).digest('hex').slice(0, 16);
 }
 
-function spoolLag(spool, state) {
+/* What is behind ONE SITE'S cursor (§ 6.14's `spool_lag_events` and `oldest_unsent_age_s`, per site). */
+function spoolLag(spool, entry) {
   let lines = 0, oldest = null;
   for (const f of spoolBuckets(spool)) {
     const b = f.slice(0, 10);
-    const from = state.cursors[b] || 0;
+    const from = entry.cursors[b] || 0;
     try {
       const size = fs.statSync(path.join(spool, f)).size;
       if (size <= from) continue;
@@ -3249,44 +3711,78 @@ function spoolLag(spool, state) {
   return { lines, oldest };
 }
 
-function emitHeartbeat(ctx, state, ix, selftest, declaration, atMs) {
-  const { config: cfg, spool } = ctx;
-  const all = state.counters;
+/* THE COUNTERS ONE SITE'S HEARTBEAT CARRIES (§ 9.3, card#12180): every seat-level total, and for each
+ * name in the per-site set that site's total PLUS the seat-level total of the same name — `config_invalid`
+ * is the case, a seat-scoped error being every site's. A site-scoped fact never reaches a seat total, so a
+ * site `b` count is on `b`'s heartbeat and on no other. */
+function siteCounters(state, entry) {
+  const all = Object.assign({}, state.counters);
+  for (const k of PER_SITE_COUNTERS) {
+    const v = (state.counters[k] || 0) + (entry.counters[k] || 0);
+    if (v || k in all) all[k] = v;
+  }
+  return all;
+}
+
+/* `degraded`, PER SITE: the badge window of `windowedCounters` over that site's composed counters. A rise
+ * of a per-site name is that site's fact and is dated in its entry; a rise of a seat counter is one fact for
+ * every site and is dated at the top level, whichever site's heartbeat first observed it. */
+function siteWindowed(state, entry, all, atMs) {
+  const rises = Object.assign({}, state.counter_rises, entry.counter_rises);
+  const recent = windowedCounters({ counters: all, counter_rises: rises }, atMs);
+  const seat = {}, own = {};
+  for (const [k, v] of Object.entries(rises)) (PER_SITE_COUNTERS.includes(k) ? own : seat)[k] = v;
+  state.counter_rises = seat; entry.counter_rises = own;
+  return recent;
+}
+
+/* THE HEARTBEAT, BUILT FOR ONE SITE AND NEVER SPOOLED (§ 6.14, card#12180). It becomes item 0 of that
+ * site's next request (`buildBatch`), so every member carries the value true OF THAT SITE where one is the
+ * site's — its lag, its fingerprint, its three network checks, its `config_readable`, its delivery counters
+ * and the `degraded` composed from them — and the seat's value at build for every other member. It is
+ * stamped from the clock now, OUTSIDE the seat write lock: it is no longer a spool line, its position in
+ * the batch is the one it has, and § 6.14 states why that orders nothing that matters. */
+function buildHeartbeat(cfg, spool, state, ix, site, entry, selftest, declaration, atMs) {
+  const all = siteCounters(state, entry);
   const { counters, counters_omitted } = buildCounters(all);
-  if (counters_omitted > 0) all['data_truncated.reporter.heartbeat.counters'] = (all['data_truncated.reporter.heartbeat.counters'] || 0) + 1;
-  const lag = spoolLag(spool, state);
+  if (counters_omitted > 0) state.counters['data_truncated.reporter.heartbeat.counters'] = (state.counters['data_truncated.reporter.heartbeat.counters'] || 0) + 1;
+  const lag = spoolLag(spool, entry);
   const predicates = {};
   for (const p of PREDICATES) predicates[p] = state.predicates[p] || { true: 0, false: 0 };
   const st = {};
-  // The wire object carries two values (§ 6.14's field row), so a check no probe of this flusher has
+  // The wire object carries two values (§ 6.14's field row), so a check no probe or accepted request has
   // yet measured (null) rides it as `fail`; only the one-shot subcommand reports `not_measured`. Once
-  // measured, a check holds its last measured value (flusherMain), never null again.
+  // measured, a check holds its last measured value, never null again.
   for (const c of SELFTEST_CHECKS) st[c] = selftest[c] === true ? 'pass' : 'fail';
-  ctx.emit('reporter.heartbeat', null, {
-    uptime_s: Math.max(0, Math.round((atMs - Date.parse(state.started_at)) / 1000)),
-    spool_bytes: Math.min(spoolBytes(spool), K.SPOOL_BYTES),
-    spool_files: Math.min(spoolBuckets(spool).length, 400),
-    spool_lag_events: lag.lines,
-    oldest_unsent_age_s: lag.oldest ? Math.max(0, Math.round((atMs - Date.parse(lag.oldest)) / 1000)) : null,
-    last_hook_at: state.last_hook_at || null,
-    open_calls: ix.calls.size, open_sessions: ix.sessions.size, open_attention: ix.attention.size,
-    // A deliberately-disabled seat must be distinguishable from a dead one: the hooks stop
-    // emitting and the flusher keeps heartbeating with enabled:false, so the desk renders
-    // *disabled* rather than sliding through stale into offline and looking broken.
-    enabled: cfg.enabled !== false,
-    // § 6.14's declaration pair: one row of § 3.1's state table on EVERY heartbeat, so the check is
-    // never omitted and the name is null exactly when the check is `undeclared`. Resolved once, at
-    // flusher start — never per flush.
-    protocol_agent_name: declaration.name,
-    protocol_agent_name_check: declaration.check,
-    // § 6.14's relayed role (card#11144): the selected roster entry's `role`, and `null` whenever
-    // the check is not `checked`, the name selects more than one entry, or the entry carries no
-    // slug-shaped role. Resolved with the name, at flusher start.
-    protocol_agent_role: declaration.role,
-    degraded: buildDegraded(windowedCounters(state, atMs)).slice(0, K.DEGRADED_MAX),
-    counters, counters_omitted, predicates, selftest: st,
-    config_fingerprint: configFingerprint(cfg),
-  });
+  return {
+    event_id: ulid(atMs), schema_version: SCHEMA_VERSION, kind: 'reporter.heartbeat', event_time: rfc3339(atMs),
+    install_id: cfg.install_id, seat_id: cfg.seat_id, session_id: null,
+    data: {
+      uptime_s: Math.max(0, Math.round((atMs - Date.parse(state.started_at)) / 1000)),
+      spool_bytes: Math.min(spoolBytes(spool), K.SPOOL_BYTES),
+      spool_files: Math.min(spoolBuckets(spool).length, 400),
+      spool_lag_events: lag.lines,
+      oldest_unsent_age_s: lag.oldest ? Math.max(0, Math.round((atMs - Date.parse(lag.oldest)) / 1000)) : null,
+      last_hook_at: state.last_hook_at || null,
+      open_calls: ix.calls.size, open_sessions: ix.sessions.size, open_attention: ix.attention.size,
+      // A deliberately-disabled seat must be distinguishable from a dead one: the hooks stop
+      // emitting and the flusher keeps heartbeating with enabled:false, so the desk renders
+      // *disabled* rather than sliding through stale into offline and looking broken.
+      enabled: cfg.enabled !== false,
+      // § 6.14's declaration pair: one row of § 3.1's state table on EVERY heartbeat, so the check is
+      // never omitted and the name is null exactly when the check is `undeclared`. Resolved once, at
+      // flusher start — never per flush.
+      protocol_agent_name: declaration.name,
+      protocol_agent_name_check: declaration.check,
+      // § 6.14's relayed role (card#11144): the selected roster entry's `role`, and `null` whenever
+      // the check is not `checked`, the name selects more than one entry, or the entry carries no
+      // slug-shaped role. Resolved with the name, at flusher start.
+      protocol_agent_role: declaration.role,
+      degraded: buildDegraded(siteWindowed(state, entry, all, atMs)).slice(0, K.DEGRADED_MAX),
+      counters, counters_omitted, predicates, selftest: st,
+      config_fingerprint: configFingerprint(cfg, site),
+    },
+  };
 }
 
 function writeSnapshot(spool, state, ix) {
@@ -3299,8 +3795,6 @@ function writeSnapshot(spool, state, ix) {
     sessions_closed: [...ix.sessionsClosed.entries()].map(([session_id, c]) => Object.assign({ session_id }, c)),
   }));
 }
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* The flusher's own process-local counters are part of the same totals the hook processes
  * contribute through the sink.
@@ -3327,6 +3821,16 @@ function foldLocalCounters(state) {
     FOLDED_UNSAVED.p[k].true += v.true; FOLDED_UNSAVED.p[k].false += v.false;
     delete P[k];
   }
+  // A lane's per-site counts, into that site's entry (§ 9.3: one primitive, two writers). A name with no
+  // entry is a site the config does not carry, and its count goes with it, as the sink fold's does.
+  for (const [name, m] of Object.entries(CS)) {
+    const e = Object.prototype.hasOwnProperty.call(state.sites, name) ? state.sites[name] : null;
+    if (e) {
+      const u = FOLDED_UNSAVED.s[name] || (FOLDED_UNSAVED.s[name] = Object.create(null));
+      for (const [k, v] of Object.entries(m)) { e.counters[k] = (e.counters[k] || 0) + v; u[k] = (u[k] || 0) + v; }
+    }
+    delete CS[name];
+  }
 }
 
 function unfoldUnsaved() {
@@ -3335,12 +3839,24 @@ function unfoldUnsaved() {
     if (!P[k]) P[k] = { true: 0, false: 0 };
     P[k].true += v.true; P[k].false += v.false;
   }
-  FOLDED_UNSAVED.c = Object.create(null); FOLDED_UNSAVED.p = Object.create(null);
+  for (const [name, m] of Object.entries(FOLDED_UNSAVED.s)) for (const [k, v] of Object.entries(m)) count(k, v, name);
+  FOLDED_UNSAVED.c = Object.create(null); FOLDED_UNSAVED.p = Object.create(null); FOLDED_UNSAVED.s = Object.create(null);
 }
 
+/* THE FLUSHER: ONE PROCESS, ONE LOCK, ONE `state.json`, ONE LANE PER SITE (§ 3.1, card#12180).
+ *
+ * THE SEAT PASS, every K.FLUSH_MS, owns the seat-level duties — the lock, the counter sink, the index fold
+ * and its snapshot, the reaps and the § 6.2 close, the spool bounds, the bucket reaps, the save — and
+ * awaits no network. EACH LANE is its own loop in this process, with its own cursor, epoch, backoff,
+ * probe cadence, heartbeat timer, persisted request, send window and auth stop, and awaits only its own
+ * site: a site that is down, slow, rate-limiting or refusing holds its own lane and holds nothing else.
+ * That isolation is a property of WHERE THE AWAIT IS, and one event loop gives it without a second process.
+ * OWNERSHIP IS THE SEAT'S: a lane that finds another owner stops EVERY loop, and the process exits as § 2.3
+ * says, because the new owner runs every lane. */
 async function flusherMain() {
   const cp = configPath();
-  const { config, errors, caError, spool } = loadConfig(cp);
+  const loaded = loadConfig(cp);
+  const { config, errors, spool, sites } = loaded;
   if (!config || !spool) { return; }   // no spool_dir a process can use: nowhere to write, so nothing runs
   registerConfigSecrets(config);
   ensureDir(spool);
@@ -3348,6 +3864,9 @@ async function flusherMain() {
   const { state, reset, minted } = loadState(spool, atStart);
   state.owner_pid = process.pid; state.owner_started_at = rfc3339(atStart); state.started_at = rfc3339(atStart);
   if (!acquireLock(spool, state)) { logLine(spool, 'flusher', 'another flusher owns the lock; exiting'); return; }
+  // § 3.1 rules 1–4, decided once at start and persisted by the claim below, before anything is built.
+  const startLog = [];
+  reconcileSites(state, config, sites, atStart, (m) => startLog.push(m));
   /* CLAIM state.json before any ownership-checked write. Winning the exclusive create IS the
    * grant (§ 2.3); the ownership field is what protects the writes AFTER it. Without this claim
    * the check compares this process against the PREVIOUS owner's record, never matches, and
@@ -3360,153 +3879,197 @@ async function flusherMain() {
     releaseLock(spool, state);
     return;
   }
+  for (const m of startLog) logLine(spool, 'flusher', m);
   if (reset) { count('state_reset'); logLine(spool, 'flusher', 'state.json unreadable — new seq_epoch, re-sending from the oldest bucket'); }
   else if (minted) logLine(spool, 'flusher', 'no state.json (a first start, or lost state) — new seq_epoch, sending from the oldest bucket');
-  if (errors.length) { count('config_invalid'); logLine(spool, 'flusher', `config invalid: ${errors.join('; ')} — spooling, sending nothing`); }
-  /* ONE VERDICT, `configOk`, FROM ONE READ (card#9521). It decides whether this flusher probes and sends,
-   * and it IS the heartbeat's `config_readable`: `runSelftestChecks` is handed this read's errors rather
-   * than reading the file again, and every pass below writes both together. Two reads could disagree: a
-   * `ca_file` rotation landing between them left a delivering seat heartbeating `fail` until restart. And
-   * a file that vanished after a clean start was never re-checked, so a seat whose requests all refused
-   * heartbeat `pass`.
-   *
-   * A `ca_file` the seat cannot read is the ONE config error a running flusher outlives (card#9500): what
-   * changes is the file — a delete-and-recreate rotation, a mount that comes up late — and not the config
-   * this process loaded. So while every other rule passes, each pass re-reads it through `readCaFile`, the
-   * read every request makes: the first pass that finds it readable probes and drains, and the first that
-   * finds it gone sends nothing and heartbeats `fail`. Any other config error holds until the flusher
-   * restarts on a corrected config, and so does a `ca_file` that is not an absolute path: its re-check
-   * fails every pass. */
-  let configOk = errors.length === 0;
-  const caRechecked = errors.length === (caError ? 1 : 0) && typeof config.ca_file === 'string';
+  const allErrors = countConfigErrors(loaded);
+  if (allErrors.length) logLine(spool, 'flusher', `config invalid: ${allErrors.join('; ')} — spooling, sending nothing to the site(s) each error scopes to`);
 
   // Flusher start finds index entries older than its own start time: those calls belong to a
   // reporter that is no longer running (§ 8.3's last row). The SELECTION keys on `atStart`; the
   // fold and the closes run under the seat write lock, on its stamp (§ 11.2).
   withSeatWriter(config, spool, (ctx) => {
     const at = ctx.take();
-    const ix = foldIndex(spool, at);
-    reap(ctx, ix, (e) => Date.parse(e.started_at || 0) < atStart, 'reporter_restart', 'reap_reporter_restart', at);
+    const fx = foldIndex(spool, at);
+    reap(ctx, fx, (e) => Date.parse(e.started_at || 0) < atStart, 'reporter_restart', 'reap_reporter_restart', at);
   });
 
-  const started = runSelftestChecks(config, cp, errors);
-  let selftest = started.results;
+  const started = runSelftestChecks(config, cp, allErrors);
+  const seatChecks = started.results;   // the seat's own checks; each lane carries its site's four over them
   const declaration = started.declaration;   // § 3.1: read at flusher start, and never again per flush
   // Loud on the seat's own surface, once per start, and WITHOUT the value: D1 § 3.1 gives the value
   // one home, the `selftest` subcommand's detail.
   if (declaration.malformed !== null) logLine(spool, 'flusher', 'protocol_agent_name is not a valid declaration (§ 3.1) — heartbeating as undeclared; `selftest` names the value');
-  let lastHeartbeat = 0, lastHealth = 0, healthEveryMs = K.HEALTH_MS, attempt = 0, waitUntil = 0, running = true;
-  const stop = () => { running = false; };
+
+  let running = true, lostCounted = false, ix = null;
+  const onePass = !!process.env.FLEET_REPORTER_ONE_PASS;
+  /* THE LOOPS' SLEEP ENDS EARLY WHEN THE PROCESS STOPS. Several loops share this process, and a stop —
+   * a signal, or ownership lost in any lane — must not wait out another loop's K.FLUSH_MS before the
+   * process can exit: an ex-owner lingering 10 s holds nothing, but it is 10 s in which § 2.3's exit has
+   * not happened. */
+  const sleepers = new Set();
+  const nap = (ms) => new Promise((resolve) => {
+    const done = () => { clearTimeout(t); sleepers.delete(done); resolve(); };
+    const t = setTimeout(done, ms);
+    sleepers.add(done);
+  });
+  const halt = () => { running = false; for (const done of [...sleepers]) done(); };
+  const stop = () => halt();
   process.on('SIGTERM', stop); process.on('SIGINT', stop);
+  const lost = (e) => {
+    /* § 2.3 — another flusher owns the seat: stop every loop, send nothing, write nothing, exit 0. The
+     * count reaches the heartbeat through the counter sink at exit, never through state.json, which is
+     * no longer this process's to write — once, however many lanes found it. */
+    halt();
+    if (lostCounted) return;
+    lostCounted = true;
+    count('flusher_lost_ownership');
+    logLine(spool, 'flusher', `lost ownership: ${e.message}; sending nothing more, writing nothing more, exiting`);
+  };
+  const persist = (opts) => { foldLocalCounters(state); return saveState(spool, state, opts); };
 
-  while (running) {
-    const atMs = now();
-    try {
-      renewLock(spool, state);
-      foldCounterSink(spool, state);
-      foldLocalCounters(state);
+  const seatPass = (atMs) => {
+    renewLock(spool, state);
+    foldCounterSink(spool, state);
+    foldLocalCounters(state);
+    /* THE FOLD, THE DECISIONS AND THEIR EMITS HOLD THE SEAT WRITE LOCK TOGETHER (§ 11.2,
+     * card#11563): `take()` comes before the fold, and its stamp is the decision clock too. The
+     * 90-minute inferred close then decides against an index holding every hook section that
+     * emitted before it, and its `session.end` cannot be appended ahead of an older event. A hook
+     * that has not emitted yet stamps after this section, so it lands after it in both orders.
+     * `atMs` stays the pass's clock for cadences only. */
+    ix = withSeatWriter(config, spool, (ctx) => {
+      const at = ctx.take();
+      const fx = foldIndex(spool, at);
+      for (const evicted of fx.evicted) reapSessionBoundary(ctx, fx, evicted, 'inferred_silence', 'session_ended', at);
+      expireOpenFacts(ctx, fx, at);
+      return fx;
+    });
+    writeSnapshot(spool, state, ix);
+    enforceSpoolBounds(spool, state, atMs, sites, config);
+    reapOldBuckets(spool, state, atMs);
+    // FOLD AGAIN, AT THE END. Everything above can raise a counter — a dropped bucket, a
+    // lost quarantine write, a corrupt line — and folding only at the START of a pass leaves
+    // those in process memory until a NEXT pass that a shutdown may never run. The loss is
+    // invisible by construction: the counter that would have reported it is the one lost.
+    persist();
+  };
 
-      /* THE FOLD, THE DECISIONS AND THEIR EMITS HOLD THE SEAT WRITE LOCK TOGETHER (§ 11.2,
-       * card#11563): `take()` comes before the fold, and its stamp is the decision clock too. The
-       * 90-minute inferred close then decides against an index holding every hook section that
-       * emitted before it, and its `session.end` cannot be appended ahead of an older event. A hook
-       * that has not emitted yet stamps after this section, so it lands after it in both orders.
-       * `atMs` stays the pass's clock for cadences only. */
-      const ix = withSeatWriter(config, spool, (ctx) => {
-        const at = ctx.take();
-        const fx = foldIndex(spool, at);
-        for (const evicted of fx.evicted) reapSessionBoundary(ctx, fx, evicted, 'inferred_silence', 'session_ended', at);
-        expireOpenFacts(ctx, fx, at);
-        return fx;
-      });
-      writeSnapshot(spool, state, ix);
-
-      if (caRechecked) {
-        const caNow = readCaFile(config).error;
-        if ((caNow === null) !== configOk) {
-          configOk = caNow === null;
-          selftest.config_readable = configOk;
-          if (configOk) logLine(spool, 'flusher', `ca_file readable at ${config.ca_file} — probing and sending resume`);
-          else { count('config_invalid'); logLine(spool, 'flusher', `config invalid: ${caNow} — spooling, sending nothing`); }
-        }
-      }
-
-      if (configOk && atMs - lastHealth > healthEveryMs) {
-        lastHealth = atMs; renewLock(spool, state);
-        const { checks } = await refreshHealth(config);
-        assertOwner(spool, state);   // resumed from an await: see assertOwner's header
-        /* KEEP THE LAST MEASUREMENT (card#9373). The heartbeat carries two values, so a check held
-         * at null rides the wire as `fail` and the seat shows a failure. A probe that measured a
-         * check overwrites it, `false` included; a probe that measured nothing for it (a deadline, a
-         * dropped kept-alive socket, an answer carrying no set) has falsified nothing, so the value
-         * the last measuring probe left stays. Before any probe has measured a check it is null and
-         * rides as `fail`. While anything went unmeasured the next probe comes no sooner than one
-         * heartbeat interval after this one began rather than K.HEALTH_MS: the heartbeat is where the
-         * result is read, so probing more often changes nothing on the wire. */
-        let unmeasured = false;
-        for (const c of Object.keys(checks)) {
-          if (checks[c] === null) unmeasured = true;
-          else selftest[c] = checks[c];
-        }
-        healthEveryMs = unmeasured ? K.HEARTBEAT_MS : K.HEALTH_MS;
-      }
-
-      if (atMs >= waitUntil && configOk && config.enabled !== false) {
-        const drained = await drainOnce(config, spool, state, atMs);
-        if (drained.retry) { attempt += 1; waitUntil = now() + (drained.retry_after_s !== undefined && drained.retry_after_s !== null ? drained.retry_after_s * 1000 : backoffDelay(attempt)); }
-        else { attempt = 0; if (drained.sent) selftest.tls_verify = tlsVerifyResult(true); }
-      }
-
-      if (atMs - lastHeartbeat >= K.HEARTBEAT_MS) {
-        lastHeartbeat = atMs;
-        // Its own section: the pass's `atMs` was read before the drain awaited the network, and a
-        // heartbeat stamped with it would land behind every hook event spooled during the drain
-        // while carrying an older event_time than all of them.
-        withSeatWriter(config, spool, (ctx, sectionAt) => emitHeartbeat(ctx, state, ix, selftest, declaration, sectionAt));
-      }
-
-      enforceSpoolBounds(spool, state, atMs);
-      reapOldBuckets(spool, state, atMs);
-      // FOLD AGAIN, AT THE END. Everything above can raise a counter — a dropped bucket, a
-      // lost quarantine write, a corrupt line — and folding only at the START of a pass leaves
-      // those in process memory until a NEXT pass that a shutdown may never run. The loss is
-      // invisible by construction: the counter that would have reported it is the one lost.
-      foldLocalCounters(state);
-      saveState(spool, state);
-    } catch (e) {
-      if (e instanceof LostOwnership) {
-        /* § 2.3 — another flusher owns the seat: stop sending, write nothing, exit 0. The
-         * count reaches the heartbeat through the counter sink below, never through state.json,
-         * which is no longer this process's to write. */
-        count('flusher_lost_ownership');
-        logLine(spool, 'flusher', `lost ownership: ${e.message}; sending nothing more, writing nothing more, exiting`);
-        break;
-      }
-      logLine(spool, 'flusher', `pass failed: ${e && e.message}`);
-    }
-    // A TEST SEAM, and a deliberately inert one: it breaks the loop after a completed pass and
-    // changes no logic inside it, which is what lets the acceptance suite assert a pass's
-    // effects deterministically instead of polling a background process and flaking.
-    if (process.env.FLEET_REPORTER_ONE_PASS) break;
-    await sleep(K.FLUSH_MS);
+  const lanes = [];
+  for (const site of sites) {
+    if (site.name === null || lanes.some((l) => l.name === site.name)) continue;
+    /* ONE VERDICT PER SITE, `configOk`, FROM ONE READ (card#9521, card#12180). It decides whether this
+     * lane probes and sends, and it IS that site's heartbeat `config_readable`: the seat's errors and that
+     * site's own, from the read this process started on. Two reads could disagree: a `ca_file` rotation
+     * landing between them left a delivering seat heartbeating `fail` until restart.
+     *
+     * A `ca_file` the seat cannot read is the ONE config error a running flusher outlives (card#9500): what
+     * changes is the file — a delete-and-recreate rotation, a mount that comes up late — and not the config
+     * this process loaded. So while every other rule passes, each pass re-reads it through `readCaFile`, the
+     * read every request makes: the first pass that finds it readable probes and drains, and the first that
+     * finds it gone sends nothing and heartbeats `fail`. Any other config error holds until the flusher
+     * restarts on a corrected config, and so does a `ca_file` that is not an absolute path: its re-check
+     * fails every pass. */
+    lanes.push({
+      site, name: site.name, entry: state.sites[site.name], role: `flusher[${site.name}]`,
+      fingerprint: configFingerprint(config, site),
+      configOk: errors.length === 0 && site.errors.length === 0,
+      caRechecked: errors.length === 0 && site.errors.length === (site.caError ? 1 : 0) && typeof site.ca_file === 'string',
+      attempt: 0, waitUntil: 0, lastHealth: 0, healthEveryMs: K.HEALTH_MS, lastHeartbeat: 0,
+      authStopped: false, maxEvents: K.BATCH_EVENTS,
+    });
   }
+  const ctxOf = { config, spool, state, persist, seatChecks, declaration, ix: () => ix };
+
+  const lanePass = async (lane) => {
+    const atMs = now();
+    if (lane.caRechecked) {
+      const caNow = readCaFile(lane.site).error;
+      if ((caNow === null) !== lane.configOk) {
+        lane.configOk = caNow === null;
+        if (lane.configOk) logLine(spool, lane.role, `ca_file readable at ${lane.site.ca_file} — probing and sending resume`);
+        else { count('config_invalid', 1, lane.name); logLine(spool, lane.role, `config invalid: ${caNow} — spooling, sending nothing to this site`); }
+      }
+    }
+    // The auth stop: nothing sent and nothing probed until a restart on a corrected config (§ 11.5).
+    if (!lane.configOk || lane.authStopped) return;
+    if (atMs - lane.lastHealth > lane.healthEveryMs) {
+      lane.lastHealth = atMs; renewLock(spool, state);
+      const probe = await refreshHealth(lane.site);
+      assertOwner(spool, state);   // resumed from an await: see assertOwner's header
+      /* KEEP THE LAST MEASUREMENT (card#9373), per site. The heartbeat carries two values, so a check
+       * held at null rides the wire as `fail` and the seat shows a failure. A probe that measured a
+       * check overwrites it, `false` included; a probe that measured nothing for it (a deadline, a
+       * dropped kept-alive socket, an answer carrying no set) has falsified nothing, so the value
+       * the last measuring probe left stays. While anything went unmeasured the next probe comes no
+       * sooner than one heartbeat interval after this one began rather than K.HEALTH_MS: the
+       * heartbeat is where the result is read, so probing more often changes nothing on the wire. */
+      let unmeasured = false;
+      for (const c of NETWORK_CHECKS) {
+        if (probe.checks[c] === null) unmeasured = true;
+        else lane.entry.selftest[c] = probe.checks[c];
+      }
+      lane.healthEveryMs = unmeasured ? K.HEARTBEAT_MS : K.HEALTH_MS;
+      // A probe the ingest refused `401 unauthenticated` is a measured `token_accepted` fail, and it
+      // starts the same auth stop a refused batch does (§ 6.14, § 11.5).
+      if (probe.checks.token_accepted === false) authStop(ctxOf, lane, { status: probe.http_status, text: probe.text, body: probe.body }, 'probe');
+    }
+    if (lane.authStopped) return;
+    await laneDrain(ctxOf, lane);
+  };
+
+  const laneMain = async (lane) => {
+    while (running) {
+      try { await lanePass(lane); }
+      catch (e) {
+        if (e instanceof LostOwnership) { lost(e); break; }
+        logLine(spool, lane.role, `pass failed: ${e && e.message}`);
+      }
+      // A TEST SEAM, and a deliberately inert one: one seat pass and one drain by every lane, then exit.
+      // It changes no logic inside a pass, which is what lets the acceptance suite assert a pass's effects
+      // deterministically instead of polling a background process and flaking.
+      if (onePass || !running) break;
+      await nap(K.FLUSH_MS);
+    }
+  };
+
+  const seatMain = async () => {
+    for (let first = true; running; first = false) {
+      if (!first) {
+        try { seatPass(now()); }
+        catch (e) {
+          if (e instanceof LostOwnership) { lost(e); break; }
+          logLine(spool, 'flusher', `pass failed: ${e && e.message}`);
+        }
+      }
+      if (onePass || !running) break;
+      await nap(K.FLUSH_MS);
+    }
+  };
+
+  // The first seat pass runs before any lane starts: a lane's heartbeat reads the index it folds.
+  try { seatPass(now()); }
+  catch (e) {
+    if (e instanceof LostOwnership) lost(e);
+    else logLine(spool, 'flusher', `pass failed: ${e && e.message}`);
+  }
+  if (running) await Promise.all([seatMain(), ...lanes.map(laneMain)]);
   /* Counts that never reached a state.json this process wrote go to the counter sink the next
-   * owner folds, the path hook processes use: those still in `C`, and those folded out of it since
-   * the last save that landed (`unfoldUnsaved`). After a clean pass that is nothing, because the
-   * pass folds before its save. After a lost-ownership exit it is the loss itself plus whatever
-   * the abandoned passes counted. Some of that may describe work the new owner redoes and counts
-   * again (a corrupt line it re-disposes); that over-count is the tolerable direction, because
-   * discarding it would also discard losses nobody redoes.
+   * owner folds, the path hook processes use: those still in `C`/`CS`, and those folded out of them
+   * since the last save that landed (`unfoldUnsaved`) — a lane's per-site counts leave by the sink's `s`
+   * member, like a hook's. After a clean pass that is nothing, because the pass folds before its save.
+   * After a lost-ownership exit it is the loss itself plus whatever the abandoned passes counted. Some of
+   * that may describe work the new owner redoes and counts again (a corrupt line it re-disposes); that
+   * over-count is the tolerable direction, because discarding it would also discard losses nobody redoes.
    *
    * WHAT THE OWNERSHIP CHECKS DO NOT COVER. Every await is followed by one (see assertOwner's
    * header), so an ex-owner resuming from a request acts on nothing. The synchronous work between
-   * a pass's last check and its save — the heartbeat, `enforceSpoolBounds`, `reapOldBuckets` — has
+   * a pass's last check and its save — `enforceSpoolBounds`, `reapOldBuckets` — has
    * no await and does local file operations only, but a new owner can still claim state.json
    * inside it, and the save then throws. Of what that pass did: a spool bucket it dropped is
    * still COUNTED, because the fold's count comes back here and reaches the sink. A counter
    * bucket it reaped by offsets the new owner had not folded is LOST, and uncounted: the hook
-   * counter lines in it reach no total. A heartbeat it spooled, carrying this process's totals,
-   * is sent by the new owner. That window is narrowed to one pass's local work, not closed. */
+   * counter lines in it reach no total. That window is narrowed to one pass's local work, not closed. */
   unfoldUnsaved();
   flushCounters(spool, 'flusher');
   releaseLock(spool, state);
@@ -3539,116 +4102,44 @@ function expireOpenFacts(ctx, ix, atMs) {
   }
 }
 
-/* One drain pass. Returns {retry, retry_after_s, sent}. The flush trigger is >= 50 queued
- * events OR 10 s elapsed (§ 11.5); the loop's own cadence supplies the second half, so a pass
- * always attempts whatever is pending. */
-async function drainOnce(config, spool, state, atMs) {
-  let sent = false;
-  /* EVERY request is preceded by the ownership check and the lock renewal (§ 2.3). The check
-   * does not close the race, it narrows it to one request: a new owner can claim state.json
-   * after this check and before the ingest answers, and that one in-flight batch then carries
-   * seqs the new owner may also assign. The ownership check after the await throws before
-   * anything acts on the answer, so an ex-owner disposes of nothing and sends no second request,
-   * and D2's `seq_collision` counts what the one request can still cause. */
-  const send = async (body) => {
-    renewLock(spool, state);
-    const res = await postBatch(config, body);
-    assertOwner(spool, state);   // resumed from an await: nothing below acts for an ex-owner
-    return res;
-  };
-  for (let round = 0; round < 8; round++) {
-    const items = collectPending(spool, state, K.BATCH_EVENTS);
-    if (!items.length) return { retry: false, sent };
-    // Leading unusable lines have nothing undelivered before them, so their disposal is
-    // committed now and the cursor moves past them whether or not the POST that follows
-    // succeeds. Without this an unreachable ingest re-reads and re-counts them every pass.
-    let lead = -1;
-    while (lead + 1 < items.length && items[lead + 1].skip) lead += 1;
-    if (lead >= 0) {
-      disposeSkips(spool, items, lead);
-      advanceCursors(state, items, lead);
-      saveState(spool, state);
-      items.splice(0, lead + 1);
-      if (!items.length) continue;
-    }
-    let maxEvents = K.BATCH_EVENTS;
-    let built = buildBatch(config, state, items, maxEvents);
-    if (!built.events.length) {
-      // Only unusable lines remain in this run: dispose and advance past them.
-      disposeSkips(spool, items, built.lastIdx);
-      advanceCursors(state, items, built.lastIdx >= 0 ? built.lastIdx : items.length - 1);
-      continue;
-    }
-    let res = await send(built.body);
+/* ── One lane's drain (§ 3.1, *One request per site*; § 11.5) ──────────────────────────────────────────
+ * THE INVARIANT EVERY PER-SITE `seq` RULE RESTS ON: a site never receives two different events under one
+ * `(seq_epoch, seq)`, because the seat never builds two different requests under one `next_seq`. A `seq`
+ * is assigned once, when a request is built; the request is persisted in the site's entry and fsynced
+ * BEFORE its first attempt; and it is then the only thing the lane sends to that site until the site
+ * answers definitively. NO SECOND REQUEST IS BUILT WHILE ONE IS PERSISTED — not a batch, and not a
+ * heartbeat: a timer due meanwhile is deferred to the request built on the disposal. The retry IS the
+ * persisted request: the send window may delay it and never shortens it, a bucket drop never touches it,
+ * and a restart resends it. The one disposal that re-uses `next_seq` is a `413` to a request's FIRST
+ * attempt, which the ingest answers before any write. Rounds 1–3 of this card's review each patched a
+ * route by which a retry REBUILT from the spool differed from its attempt; there is no rebuild left. */
 
-    if (res.kind === 'too_large') {
-      // § 11.5 — 413 gets exactly ONE adaptive retry: halve the batch and resend. If a SINGLE
-      // event still exceeds the limit it can never be delivered, so it is quarantined and
-      // counted rather than blocking every event behind it forever.
-      if (built.events.length > 1) {
-        built = buildBatch(config, state, items, Math.max(1, Math.floor(built.events.length / 2)));
-        res = await send(built.body);
-      }
-      if (res.kind === 'too_large' && built.events.length === 1) {
-        quarantine(spool, 'rejected', JSON.stringify(built.events[0]));
-        count('oversize_event_dropped');
-        advanceCursors(state, items, built.lastIdx);
-        state.next_seq += 1;
-        continue;
-      }
-    }
-
-    if (res.kind === 'ok') {
-      disposeSkips(spool, items, built.lastIdx);
-      advanceCursors(state, items, built.lastIdx);
-      state.next_seq += built.events.length;
-      state.counters.events_sent = (state.counters.events_sent || 0) + built.events.length;
-      state.counters.batches_ok = (state.counters.batches_ok || 0) + 1;
-      sent = true;
-      saveState(spool, state);
-      continue;
-    }
-
-    if (res.kind === 'retryable') {
-      state.counters.batches_retried = (state.counters.batches_retried || 0) + 1;
-      logLine(spool, 'flusher', `batch retryable: status=${res.status} ${res.error || ''}`);
-      return { retry: true, retry_after_s: res.retry_after_s, sent };
-    }
-    if (res.kind === 'refused') {
-      // config_invalid: keep spooling and send nothing. Fail closed, loudly, on the client's
-      // own surface (§ 3.5), naming what the config got wrong.
-      count('config_invalid');
-      logLine(spool, 'flusher', `batch refused by the config, sending nothing: ${res.error}`);
-      return { retry: true, sent };
-    }
-
-    /* THE POISON-PILL RULE (§ 11.5). A batch refused with a permanent status is NEVER retried:
-     * quarantined, cursor advanced, counted, surfaced locally, and the flusher moves to the
-     * next batch. One bad batch costs its own events, never the stream behind it — and the
-     * events it costs ARE COUNTED, because a rejected batch is a discarded-events path like
-     * any other. The reporter does not rely on hook stderr being displayed by the harness: a
-     * surfacing mechanism that might silently not exist is not a surfacing mechanism. */
-    quarantine(spool, 'rejected', built.body);
-    state.counters.batches_rejected = (state.counters.batches_rejected || 0) + 1;
-    state.counters.events_rejected_dropped = (state.counters.events_rejected_dropped || 0) + built.events.length;
-    // The Authorization header value is EXCLUDED: the reporter logs the request's status,
-    // never its headers.
-    const marker = `${rfc3339(now())} status=${res.status} code=${(res.body && res.body.error) || 'unknown'} events=${built.events.length} body=${redactSecrets(String(res.text || '').slice(0, 512))}`;
-    appendRejectedMarker(spool, marker);
-    logLine(spool, 'flusher', `batch REJECTED permanently: ${marker}`);
-    disposeSkips(spool, items, built.lastIdx);
-    advanceCursors(state, items, built.lastIdx);
-    state.next_seq += built.events.length;
-    saveState(spool, state);
+/* The trailing send window (§ 11.5): per-minute counts of every event a request to the site CLAIMED,
+ * recorded before the request — what `RateLimiter::check` counts at step 5, the heartbeat, a retry's
+ * second copy and a refused request included. A minute is in the window while any part of it is (the
+ * over-count direction); the rest are pruned. */
+function windowTotal(entry, atMs) {
+  let total = 0;
+  for (const [m, n] of Object.entries(entry.window)) {
+    if ((Number(m) + 1) * 60000 > atMs - K.SEND_WINDOW_MS) total += n;
+    else delete entry.window[m];
   }
-  return { retry: false, sent };
+  return total;
+}
+/* A batch carrying spooled events is admitted while the total stays within the limit less the heartbeat
+ * headroom; a heartbeat-only batch while it stays within the limit (§ 11.5, § 14). */
+const spooledBound = () => K.SITE_EVENTS_PER_HOUR - K.HEARTBEAT_HEADROOM;
+function windowAdmits(entry, req, atMs) {
+  const spooled = req.count - (req.heartbeat_event_id === null ? 0 : 1);
+  return windowTotal(entry, atMs) + req.count <= (spooled > 0 ? spooledBound() : K.SITE_EVENTS_PER_HOUR);
 }
 
-/* REJECTED.txt caps at 64 KiB and DROPS OLDEST — a human opening it wants the most recent
+/* REJECTED.<site>.txt caps at 64 KiB and DROPS OLDEST — a human opening it wants the most recent
  * refusal. It is the one capped file here that rewrites rather than stops, and it is safe to
- * rewrite because the flusher is its only writer. */
-function appendRejectedMarker(spool, line) {
-  const p = path.join(spool, 'REJECTED.txt');
+ * rewrite because the flusher is its only writer. One per site, so one site's refusals evict nothing
+ * of another's (§ 11.1). */
+function appendRejectedMarker(spool, siteName, line) {
+  const p = path.join(spool, `REJECTED.${siteName}.txt`);
   let prev = '';
   try { prev = fs.readFileSync(p, 'utf8'); } catch (e) { prev = ''; }
   let text = prev + line + '\n';
@@ -3656,16 +4147,197 @@ function appendRejectedMarker(spool, line) {
   atomicWrite(p, text);
 }
 
+/* The marker line, with the Authorization header value EXCLUDED: the reporter writes the answer's status,
+ * code and body — through `redactSecrets` — and never the request's headers. */
+const markerLine = (siteName, res, count) =>
+  `${rfc3339(now())} site=${siteName} status=${res.status} code=${(isPlain(res.body) && res.body.error) || 'unknown'}`
+  + `${count === undefined ? '' : ` events=${count}`} body=${redactSecrets(String(res.text || '').slice(0, 512))}`;
+
+/* THE AUTH STOP (§ 11.5): the ingest's own `401 unauthenticated` or `403 identity_mismatch`, to a batch or
+ * (the `401`) to the probe. The bytes are not what was refused, so the cursor and the persisted request
+ * stay and nothing is quarantined; `auth_refused` counts on the site, the marker and the log say which, and
+ * the lane sends nothing and probes nothing until the flusher restarts — every recovery is a config write,
+ * so a restart is the one thing that can lift it. Lane state, never saved. */
+function authStop(c, lane, res, what) {
+  lane.authStopped = true;
+  lane.entry.counters.auth_refused = (lane.entry.counters.auth_refused || 0) + 1;
+  if (res.status === 401) lane.entry.selftest.token_accepted = false;
+  const line = markerLine(lane.name, res);
+  appendRejectedMarker(c.spool, lane.name, line);
+  logLine(c.spool, lane.role, `${what} refused on its credential — this site's lane stops until the flusher restarts on a corrected config (a 401 is the token, a 403 the pair it was issued for): ${line}`);
+  c.persist();
+}
+
+/* BUILD THE NEXT REQUEST (step 3): only when none is persisted. The heartbeat is item 0 when its timer is
+ * due; the spooled events behind it are what the send window admits, from this site's cursor. Leading
+ * unusable lines have nothing undelivered before them, so their disposal is committed now and the cursor
+ * moves past them whether or not a request follows. Returns whether a request is now persisted in memory. */
+function buildRequest(c, lane, atMs) {
+  const { config, spool, state } = c;
+  const entry = lane.entry;
+  const total = windowTotal(entry, atMs);
+  const due = atMs - lane.lastHeartbeat >= K.HEARTBEAT_MS;
+  const room = Math.min(lane.maxEvents - (due ? 1 : 0), spooledBound() - total - (due ? 1 : 0));
+  let items = [];
+  // Under `enabled: false` a lane builds heartbeat-only requests, so the desk renders *disabled* (§ 6.14).
+  if (config.enabled !== false && room >= 1) items = collectPending(spool, entry, lane.name, lane.fingerprint, room);
+  let lead = -1;
+  while (lead + 1 < items.length && (items[lead + 1].skip || items[lead + 1].pass)) lead += 1;
+  if (lead >= 0) {
+    disposeSkips(spool, state, items, lead);
+    applyAdvance(spool, entry, advanceOf(items, lead));
+    c.persist();
+    items = items.slice(lead + 1);
+  }
+  const hb = due && total + 1 <= K.SITE_EVENTS_PER_HOUR;
+  if (!items.length && !hb) return false;
+  const heartbeat = hb
+    ? buildHeartbeat(config, spool, state, c.ix(), lane.site, entry,
+      Object.assign({}, c.seatChecks, { config_readable: lane.configOk }, entry.selftest), c.declaration, atMs)
+    : null;
+  const built = buildBatch(config, entry, items, lane.maxEvents, heartbeat, atMs);
+  if (!built.request) {
+    // Only unusable lines remain in this run: dispose and advance past them.
+    if (built.lastIdx >= 0) { disposeSkips(spool, state, items, built.lastIdx); applyAdvance(spool, entry, advanceOf(items, built.lastIdx)); c.persist(); }
+    return false;
+  }
+  // The unusable lines inside the request are disposed of now — it is persisted with their mark.
+  disposeSkips(spool, state, items, built.lastIdx);
+  if (heartbeat) lane.lastHeartbeat = atMs;
+  /* THE REQUEST IS A VALUE, COPIED OUT OF EVERYTHING IT WAS BUILT FROM. Its heartbeat was composed from the
+   * seat's live bookkeeping (the predicate branch counts are objects the next fold adds to), so holding the
+   * built object would let a later fold rewrite the bytes of a request already sent — a retry that is not
+   * the attempt it repeats, the defect the persisted request exists to rule out. A JSON round-trip is also
+   * exactly what a restart reads back from state.json, so a resend is the same whether or not one came. */
+  entry.request = JSON.parse(JSON.stringify(built.request));
+  return true;
+}
+
+/* One drain by one lane: up to 8 rounds, one request each — the literal loop below is the one
+ * `fleet-reporter/INSTALL-LINUX.md` Step 5's `stop-flusher.js` derives its wait bound from. */
+async function laneDrain(c, lane) {
+  const { spool, state } = c;
+  const entry = lane.entry;
+  for (let round = 0; round < 8; round++) {
+    if (lane.authStopped) return;
+    let atMs = now();
+    // THE ONE RETENTION PRESSURE THAT REACHES A REQUEST IS ITS OWN AGE: past the residency cap its lines
+    // are older than the dedup window protects, so it is discarded under an explicit epoch reset of the
+    // site, in one save, before anything is built under the new epoch (§ 3.1).
+    if (entry.request && atMs - entry.request.built_at > K.RESIDENCY_MS) {
+      resetSiteEpoch(entry, atMs);
+      logLine(spool, lane.role, 'a request unanswered past the residency cap is discarded — new seq_epoch, its heartbeat counted (§ 3.1)');
+      c.persist();
+    }
+    if (!entry.request && !buildRequest(c, lane, atMs)) return;
+    const req = entry.request;
+    // The window and the backoff DELAY a send; neither ever changes one.
+    if (atMs < lane.waitUntil || !windowAdmits(entry, req, atMs)) return;
+    // THE PRE-SEND SAVE: the attempt and its claimed count recorded, the request persisted, fsynced. A
+    // save that is refused sends nothing.
+    req.attempts += 1;
+    const minute = Math.floor(atMs / 60000);
+    entry.window[minute] = (entry.window[minute] || 0) + req.count;
+    if (!c.persist({ sync: true })) { logLine(spool, lane.role, 'the pre-send save of state.json failed — sending nothing'); return; }
+    /* EVERY request is preceded by the ownership check and the lock renewal (§ 2.3), and followed by
+     * the check, so an ex-owner disposes of nothing; a new owner that claimed state.json meanwhile finds
+     * this request persisted and resends the same bytes under the same seqs — a duplicate, not a
+     * collision. */
+    renewLock(spool, state);
+    const res = await postBatch(lane.site, composeBody(req));
+    assertOwner(spool, state);   // resumed from an await: nothing below acts for an ex-owner
+    atMs = now();
+
+    if (res.kind === 'ok') {
+      applyAdvance(spool, entry, req.advance);
+      entry.next_seq += req.count;
+      entry.counters.events_sent = (entry.counters.events_sent || 0) + req.count;
+      entry.counters.batches_ok = (entry.counters.batches_ok || 0) + 1;
+      entry.request = null;
+      // An accepted request measures both, for this site, before its next heartbeat is built (§ 6.14).
+      entry.selftest.tls_verify = tlsVerifyResult(true);
+      entry.selftest.token_accepted = true;
+      lane.attempt = 0; lane.waitUntil = 0; lane.maxEvents = K.BATCH_EVENTS;
+      c.persist();
+      continue;
+    }
+    if (res.kind === 'permanent') {
+      /* THE POISON-PILL RULE (§ 11.5). A request refused on its bytes is NEVER retried:
+       * quarantined in this site's file, cursor advanced, counted, surfaced locally, and the lane
+       * moves to the next request. One bad batch costs its own events, never the stream behind it —
+       * and the events it costs ARE COUNTED, on this site; every other site still has them queued. */
+      quarantine(spool, 'rejected', composeBody(req), lane.name);
+      entry.counters.batches_rejected = (entry.counters.batches_rejected || 0) + 1;
+      entry.counters.events_rejected_dropped = (entry.counters.events_rejected_dropped || 0) + req.count;
+      const line = markerLine(lane.name, res, req.count);
+      appendRejectedMarker(spool, lane.name, line);
+      logLine(spool, lane.role, `batch REJECTED permanently: ${line}`);
+      applyAdvance(spool, entry, req.advance);
+      entry.next_seq += req.count;
+      entry.request = null;
+      lane.attempt = 0; lane.waitUntil = 0;
+      c.persist();
+      continue;
+    }
+    if (res.kind === 'too_large') {
+      if (req.count === 1) {
+        // A SINGLE event over every limit can never be delivered: quarantined and counted, rather than
+        // blocking every event behind it forever.
+        quarantine(spool, 'rejected', JSON.stringify(req.events[0]), lane.name);
+        count('oversize_event_dropped', 1, lane.name);
+        applyAdvance(spool, entry, req.advance);
+        entry.next_seq += 1;
+      } else {
+        /* § 11.5's one adaptive retry, BUILT rather than resent: the request is discarded uncounted —
+         * its spooled events are still behind the cursor, and a heartbeat it carried is rebuilt fresh,
+         * its timer left due — and the next build is halved. Under the same `next_seq` only after a FIRST
+         * attempt, which the ingest answers at § 12.1 step 2 before any write; a `413` to a later attempt
+         * follows one the site may have committed, so the site gets a new epoch first. */
+        if (req.attempts > 1) {
+          entry.seq_epoch = ulid(atMs); entry.next_seq = 1;
+          logLine(spool, lane.role, 'a 413 to a later attempt — new seq_epoch before the halved build (§ 3.1)');
+        }
+        if (req.heartbeat_event_id !== null) lane.lastHeartbeat = 0;
+        lane.maxEvents = Math.max(1, Math.floor(req.count / 2));
+      }
+      entry.request = null;
+      c.persist();
+      continue;
+    }
+    if (res.kind === 'auth') { authStop(c, lane, res, 'batch'); return; }
+    if (res.kind === 'refused') {
+      // config_invalid: keep spooling and send nothing. Fail closed, loudly, on the client's
+      // own surface (§ 3.5), naming what the config got wrong. The request stays persisted.
+      count('config_invalid', 1, lane.name);
+      logLine(spool, lane.role, `batch refused by the config, sending nothing: ${res.error}`);
+    } else {
+      // Retryable: the request stays persisted and is resent, as built, on the ladder.
+      entry.counters.batches_retried = (entry.counters.batches_retried || 0) + 1;
+      if (res.foreign) {
+        // Answered by something other than the ingest — a front end, a WAF, a mistyped path: retried,
+        // and the operator reads what answered (§ 11.5).
+        const line = markerLine(lane.name, res, req.count);
+        appendRejectedMarker(spool, lane.name, line);
+        logLine(spool, lane.role, `batch retryable, not an ingest answer: ${line}`);
+      } else logLine(spool, lane.role, `batch retryable: status=${res.status} ${res.error || ''}`);
+    }
+    lane.attempt += 1;
+    lane.waitUntil = now() + (res.retry_after_s !== undefined && res.retry_after_s !== null ? res.retry_after_s * 1000 : backoffDelay(lane.attempt));
+    c.persist();
+    return;
+  }
+}
+
 /* GET /api/ingest/health — the accepted schema-version set is read from the RUNNING ingest, and
  * this document deliberately restates no accepted set anywhere (VERSIONING.md rule 2).
  *
- * THE ONE PROBE BEHIND BOTH NETWORK CHECKS, for the flusher's heartbeat and for the one-shot
+ * THE ONE PROBE BEHIND THE THREE NETWORK CHECKS, per site, for each lane's heartbeat and for the one-shot
  * `selftest` alike (card#9373: the one-shot used to run none, so `schema_version_accepted` read
  * false and the install-time verification exited 1 on every correctly configured seat). It returns the
  * probe, whose `checks` is the MEASUREMENT; each caller decides what to do with it (the one-shot
- * reports it as it stands, the flusher keeps a previous value over a null). It asks through
- * `ingestRequest`, the sender's own primitive, so it takes the seat's route — `proxy_url` included —
- * and its deadlines (card#9473). Each of the two checks is true, false, or null — NOT MEASURED, which
+ * reports it as it stands, a lane keeps a previous value over a null). It asks through
+ * `ingestRequest`, the sender's own primitive, so it takes the site's route — `proxy_url` included —
+ * and its deadlines (card#9473). Each check is true, false, or null — NOT MEASURED, which
  * § 6.14 keeps distinct from a fail:
  *   - tls_verify: an HTTP answer arrived with verification on ⇒ reached. A connection to the ingest
  *     (through a proxy: a CONNECT answered 200) whose TLS handshake failed ⇒ refused (false). No such
@@ -3674,22 +4346,30 @@ function appendRejectedMarker(spool, line) {
  *     posture is the check's other half, and `tlsVerifyResult` composes the two.
  *   - schema_version_accepted: a 200 carrying an `accepted_schema_versions` array ⇒ whether it holds
  *     SCHEMA_VERSION. Any other answer (a 401 for a refused token, an outage page) carries no set, so
- *     it cannot refuse the version ⇒ null. */
-function refreshHealth(config) {
-  return ingestRequest(config, { method: 'GET', path: (u) => u.pathname.replace(/\/events$/, '/health') }).then((r) => {
-    const probe = { reached: null, http_status: r.status, accepted_schema_versions: null, error: r.error, checks: null };
+ *     it cannot refuse the version ⇒ null.
+ *   - token_accepted (card#12180): the health route is authenticated, so a 200 ⇒ the site's token
+ *     resolves there; a 401 WHOSE BODY'S `error` IS `unauthenticated` — the one 401 the ingest emits ⇒
+ *     it does not; any other answer or none ⇒ null, because a 5xx page, or a 401/403 something in front of
+ *     the ingest gave, says nothing about the token. The route compares no identity, so a token bound to
+ *     another seat is `true` here and meets `403 identity_mismatch` on the first batch (§ 6.14). */
+function refreshHealth(site) {
+  return ingestRequest(site, { method: 'GET', path: (u) => u.pathname.replace(/\/events$/, '/health') }).then((r) => {
+    const probe = { reached: null, http_status: r.status, accepted_schema_versions: null, error: r.error, checks: null, body: null, text: null };
     if (r.status !== null) probe.reached = true;
     else if (r.error && !r.deadline && r.tcp && !r.secured) probe.reached = false;
-    if (r.status === 200 && r.body) {
-      try {
-        const body = JSON.parse(r.body.toString('utf8'));
-        if (body && Array.isArray(body.accepted_schema_versions)) probe.accepted_schema_versions = body.accepted_schema_versions;
-      } catch (e) { /* no readable set: schema_version_accepted stays unmeasured */ }
+    if (r.body) {
+      probe.text = r.body.toString('utf8').slice(0, 4096);
+      try { probe.body = JSON.parse(probe.text); } catch (e) { probe.body = null; }
+    }
+    if (r.status === 200 && isPlain(probe.body) && Array.isArray(probe.body.accepted_schema_versions)) {
+      probe.accepted_schema_versions = probe.body.accepted_schema_versions;
     }
     probe.checks = {
       tls_verify: tlsVerifyResult(probe.reached),
       schema_version_accepted: Array.isArray(probe.accepted_schema_versions)
         ? probe.accepted_schema_versions.includes(SCHEMA_VERSION) : null,
+      token_accepted: r.status === 200 ? true
+        : r.status === 401 && isPlain(probe.body) && probe.body.error === INGEST_AUTH[401] ? false : null,
     };
     return probe;
   });
@@ -3915,6 +4595,8 @@ function runSelftestChecks(config, cp, errors) {
   detail.tls_verify = Object.assign({ reached: null }, t.detail);
   results.schema_version_accepted = null;
   detail.schema_version_accepted = { reporter_schema_version: SCHEMA_VERSION, accepted_schema_versions: null, http_status: null };
+  results.token_accepted = null;
+  detail.token_accepted = { http_status: null };
   // § 6.14: `fail` on `disagreed` and on a malformed declaration, and on nothing else — a `pass` states
   // that no disagreement was found, and `protocol_agent_name_check` says whether a roster was read at
   // all. With no config there is no declaration to check, so nothing was measured (only the subcommand
@@ -3929,23 +4611,47 @@ function runSelftestChecks(config, cp, errors) {
   return { results, detail, declaration };
 }
 
+/* `true`/`false`/`null` to the subcommand's three values. */
+const verdict = (v) => (v === true ? 'pass' : v === false ? 'fail' : 'not_measured');
+
 async function selftestMain() {
   const cp = configPath();
-  const { config, errors } = loadConfig(cp);
+  const loaded = loadConfig(cp);
+  const { config } = loaded;
   registerConfigSecrets(config);   // null-guarded internally
+  const errors = allConfigErrors(loaded);
   const { results, detail } = runSelftestChecks(config, cp, errors);
-  // The install-time verification measures the network checks with the flusher's own probe (the
-  // sender's route and TLS path — `proxy_url`, `ca_file` — and deadlines, card#9473), once — and
-  // only on a config that passed validation, because an invalid one names no ingest this command
-  // may trust with the token (card#9373).
-  if (results.config_readable) {
-    const probe = await refreshHealth(config);
-    Object.assign(results, probe.checks);
-    Object.assign(detail.tls_verify, { reached: probe.reached, probe_error: probe.error });
-    Object.assign(detail.schema_version_accepted, { accepted_schema_versions: probe.accepted_schema_versions, http_status: probe.http_status });
+  /* PER SITE (§ 6.14, card#12180): every site the config carries gets a block, keyed by its name (its
+   * index where it has no valid one), with its own `config_readable` and the three network checks its own
+   * probe measures — the flusher's probe (the sender's route and TLS path — `proxy_url`, `ca_file` — and
+   * deadlines, card#9473), once, and only for a site whose config passed: an invalid one names no ingest
+   * this command may trust with the token (card#9373). `checks` keeps its shape and aggregates the four by
+   * one rule — `fail` when any site fails, else `not_measured` when any is unmeasured, else `pass`. */
+  const sites = nameMap(), siteDetail = nameMap();
+  for (const site of loaded.sites) {
+    const key = site.name !== null ? site.name : String(site.index);
+    const readable = !!config && loaded.errors.length === 0 && site.errors.length === 0;
+    const r = { config_readable: readable, tls_verify: readable ? null : tlsVerifyResult(null), schema_version_accepted: null, token_accepted: null };
+    const d = { errors: site.errors, reached: null, probe_error: null, http_status: null, accepted_schema_versions: null };
+    if (readable) {
+      const probe = await refreshHealth(site);
+      Object.assign(r, probe.checks);
+      Object.assign(d, { reached: probe.reached, probe_error: probe.error, http_status: probe.http_status, accepted_schema_versions: probe.accepted_schema_versions });
+    }
+    sites[key] = {};
+    for (const c of SITE_CHECKS) sites[key][c] = verdict(r[c]);
+    siteDetail[key] = d;
   }
-  const report = { reporter_version: REPORTER_VERSION, schema_version: SCHEMA_VERSION, checks: {}, detail };
-  for (const c of SELFTEST_CHECKS) report.checks[c] = results[c] === true ? 'pass' : results[c] === false ? 'fail' : 'not_measured';
+  for (const c of SITE_CHECKS) {
+    const vs = Object.values(sites).map((b) => b[c]);
+    if (c === 'config_readable') { results[c] = results[c] && vs.every((v) => v === 'pass'); continue; }
+    if (results[c] === false || vs.includes('fail')) results[c] = false;
+    else if (!vs.length || vs.includes('not_measured')) results[c] = null;
+    else results[c] = true;
+  }
+  detail.sites = siteDetail;
+  const report = { reporter_version: REPORTER_VERSION, schema_version: SCHEMA_VERSION, checks: {}, sites, detail };
+  for (const c of SELFTEST_CHECKS) report.checks[c] = verdict(results[c]);
   process.stdout.write(redactSecrets(JSON.stringify(report, null, 2)) + '\n');
   // § 6.14's exit rule: 0 every check passed; 1 at least one failed; 2 none failed and at least one
   // was not measured — a verification that did not happen is neither a pass nor a fail.
@@ -3994,4 +4700,9 @@ if (require.main === module) main();
  * calls the primitive directly, in a tight loop, from concurrent processes. */
 module.exports = { sanitize, buildDescriptor, truncateBytes, ulid, buildCounters, buildDegraded,
   windowedCounters,
-  appendLine, K, ENUM, SANITIZER_FIXTURES, SELFTEST_CHECKS, CRED_PREFIX_RE };
+  appendLine, K, ENUM, SANITIZER_FIXTURES, SELFTEST_CHECKS, CRED_PREFIX_RE,
+  /* `loadConfig` is exported for ONE caller, the installer's writer (`INSTALL-LINUX.md` Step 2,
+   * `write-config.js`), which validates the file it is about to rename into place with the reader's own
+   * rules, so the two cannot disagree about a valid site, a duplicate name or URL, or both forms present
+   * (§ 3.1, *The installer's writer*). Requiring this file runs nothing: `main` is guarded above. */
+  loadConfig, allConfigErrors };

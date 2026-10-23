@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * WHICH HALF OF AT-13's GREEN IS THIS CARD'S, stated so the other half is not silently claimed.
- * `events_rejected_dropped`, the `lossy` badge, `REJECTED.txt` and "never retried" are all
+ * `events_rejected_dropped`, the `lossy` badge, `REJECTED.<site>.txt` and "never retried" are all
  * REPORTER-side (D1 § 9.3, § 11.5) and belong to `fleet-reporter`. They are exercised for real —
  * against this endpoint, by the real flusher — in `tests/roundtrip/ingest-roundtrip.py`, which
  * drives this same 200-event batch and reads the reporter's own quarantine afterwards. What is

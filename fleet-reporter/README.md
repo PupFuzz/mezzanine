@@ -16,7 +16,8 @@ restates none of it.** Where a rule is cited below it is cited by section, never
 ```
 node fleet-reporter.js hook <HookName>   # one process per hook fire: read stdin, append, exit 0
 node fleet-reporter.js statusline        # sample context, pass the seat's status line through
-node fleet-reporter.js flusher           # one long-lived process per seat: POST batches, heartbeat
+node fleet-reporter.js flusher           # one long-lived process per seat, however many sites: a lane per site —
+                                         # its cursor, its one persisted request, its heartbeat (§ 3.1)
 node fleet-reporter.js selftest          # the § 6.14 checks this build implements; § 6.14 states its exit code
 ```
 
@@ -46,6 +47,17 @@ Linux/macOS `~/.config/fleet-reporter/config.json` (0600), Windows
 from the environment, so a wrong path is a loud `config_readable` failure rather than a silently
 different identity.
 
+**One seat, one or more sites (§ 3.1, *Sites*, card#12180).** A config holds one of two forms: the
+single-site form, the four transport keys `ingest_url`, `token`, `ca_file` and `proxy_url` at the top
+level, which the reporter reads as one site named `default`; or the multi-site form, a `sites` array of
+1 to 4 elements, each `{ name, ingest_url, token, ca_file, proxy_url }`, with none of those four keys at
+the top level. A file carrying both forms (a top-level key present beside `sites`, `null` included) is a
+config error that names the key. The installer's writer (`INSTALL-LINUX.md` Step 2) writes the
+multi-site form only, and adds a site (`FR_MODE=add-site`) or replaces one site's token
+(`FR_MODE=set-token`) in place, validating the result with the reporter's own `loadConfig`. § 3.1 states
+every rule, the error scopes and what each site's `state.json` entry holds; the hooks append once
+whatever the site count, and each site is told everything and only its own outcomes.
+
 The one key the reporter reads beyond § 3.1's table is marked as such in the code:
 `harness_label` (see "What D1 left open", below).
 
@@ -69,12 +81,18 @@ is not `full`; a value of any other shape is dropped and counted `console_url_ma
 python3 fleet-reporter/fleet-reporter.selftest.py
 ```
 
-Python 3 stdlib plus `node` and `openssl` on PATH. It takes a few minutes: it drives the real
-script as real subprocesses several thousand times, and stands up a TLS ingest stub on
-127.0.0.1 with a throwaway self-signed certificate, trusted through the reporter's **own**
+Python 3 stdlib plus `node` and `openssl` on PATH, and `git` with this repository's history: AT-28 Case F
+runs the reporter as it stood before card#12180 (read with `git show`) to write the state an upgrade starts
+from, and reports the case not measured where the history is absent. The run took 23 minutes on the sandbox
+host on 2026-10-22, under a load average near 15: it drives the real script as real subprocesses several
+thousand times — AT-28's backfill case alone runs a flusher pass per injected minute of a 3-hour drain — and
+stands up TLS ingest stubs on 127.0.0.1 with a throwaway self-signed certificate, trusted through the reporter's **own**
 `ca_file` key — so the transport path runs with certificate verification ON rather than being
 proven by turning it off. A `CONNECT` proxy stub in front of it drives the `proxy_url` route against
-an ingest address the seat cannot reach directly, for the health probe and the sender alike.
+an ingest address the seat cannot reach directly, for the health probe and the sender alike. AT-28's
+site stubs (card#12180) also run the server's own store and fold rules — insert-or-ignore by `event_id`,
+the `batch_id` replay memory, the per-seat `seq` mark with its gap and collision counts, `clock_skew_ms`
+and the rate limiter's two limits — read from `server/app`, so what they count is what a site would.
 
 **The last block signals processes, and only ever its own.** § 2.3 has every hook fork a real
 detached flusher when it finds no live one, so a run can leave live daemons behind; the suite
@@ -108,6 +126,7 @@ unilateral divergences left standing, and each says what would have broken.
 | **Amendment — § 3.1 did not say which of its rows the reporter enforces**, and the reporter enforced less than the rows published (card#9521) | § 3.1 now lists the rules `loadConfig` enforces. `ingest_url` must parse as a URL, `proxy_url` must be `null` or a parseable `http(s)://` URL, and `spool_dir` must be absolute; each was accepted before and failed later (quarantined batches, endless retries, a bypassed proxy, a spool in each hook's working directory). A `spool_dir` that is not absolute is treated like an absent one: `loadConfig` returns no spool, and the hooks and the flusher write nothing. The 256 B `spool_dir` and 512 B `wrapped_statusline` bounds are stated as installer limits the reporter does not enforce: neither reaches the wire and nothing fails on a longer value, while a config error would stop a working seat sending |
 | **Amendment — § 8.5 said the design did not depend on which of a dispatch call's two closes arrived first** (card#11799) | It did. The harness runs a dispatched subagent as a background task, so the dispatch tool's `PostToolUse` fires on LAUNCH, and closing the call there left the floor with no intern on any seat. A `PostToolUse` whose `tool_response.status` is `async_launched` now closes nothing: it binds the call to `tool_response.agentId` exactly, and the subagent's `SubagentStop` closes it. Three rules change with it, in the same commit, each stated in D1: the turn reap (§ 8.3) skips a dispatch whose subagent the payload's `background_tasks` lists as running, so the parent ending its turn does not abort it; the `SubagentStop` sole-open fallback (§ 8.5) considers unbound calls only, because the harness fires `SubagentStop` for agents no dispatch launched; and a dispatch close arriving after its `SubagentStop` emits nothing, where it used to synthesize a phantom `Agent` call. A dispatch whose `SubagentStop` never comes is still reaped at the next `Stop` that does not list it, and at its session's end |
 | **Amendment — § 8.3 aborted a running subagent's dispatch at a `/clear`, and § 8.4's second `/clear` signal reaped the seat's most-recently-active other session** (card#11817, card#11824) | A `/clear` does not end a running subagent — the harness re-homes it to the new session (MEASURED 2.1.296) — so the intern left the floor while the subagent ran on. And in the measured hook order (`SessionEnd` first) the cleared session was already closed when `SessionStart(clear)` picked, so on a seat with a second terminal it ended THAT terminal's session. Now the `session_cleared` reap carries every bound open dispatch (journaled `carry`, named in `session.end.carried_call_ids`); the two signals pair by `clear` tombstone (`session_close` records `end_reason`, `SessionStart(clear)` records `source`), and the second of them journals one `pair` record that re-keys the carried calls to the new session; `SessionStart(clear)` reaps nothing. The pairing is internal: `previous_session_id`, `reap_noop_second_signal`, `clear_second_signal_found_nothing` and `clear_reap_by_session_end` keep the values they had before (D1 § 6.1, § 8.4), because a wire meaning change is a schema bump. Pairing is by recency inside `K.CLEAR_PAIR_MS` (start side) and the narrower `K.CLEAR_GAP_MS` (end side, which adopts a live session), and a crossed or late pick is counted `clear_pair_ambiguous` / `clear_pair_late`. `SubagentStop`'s inner reap is scoped by `agent_id` alone. **Upgrade:** restart the flusher with the new binary (INSTALL-LINUX.md Step 5) — until it restarts, the old flusher's every pass drops the new records from its snapshot, and a carried call stays under its old session |
+| **Amendment — card#12180: one seat reports to up to four Mezzanine sites** (D1 § 2.1, § 2.3, § 3.1 *Sites*, § 6.14, § 9.3, § 10.2–10.4, § 11.1–11.5, § 12.2, § 13 AT-17 and AT-28, § 14, § 15 rows 18 and 54, § 16 row 3a) | One flusher runs a lane per site with its own cursor, epoch, backoff, probe, delivery counters, trailing-hour send window and auth stop; each lane keeps ONE outgoing request persisted in its site's `state.json` entry, fsynced before the first attempt and resent as built until the site answers. **What a single-site seat sees change:** the heartbeat is built per site as item 0 of the site's request and is never a spool line, so `counters.events_sent` now exceeds `counters.events_emitted` by the heartbeats sent, and a site that was down receives no backlog of stale heartbeats on recovery; a retry carries its first attempt's `batch_id` and bytes, `sent_at` alone re-stamped; `state.json` holds the outgoing request, so it grows by up to one batch per site; `selftest` gains `token_accepted` and a `sites` block, and a refused token exits `1`; the quarantine and marker files carry the site's name (`rejected.default.jsonl`, `REJECTED.default.txt`); and a `401`/`403`/`400`/`415`/`422` whose body is not the ingest's own, or any status the ingest never sends (a `404` from a mistyped path), now stalls the site visibly and is retried, where it used to quarantine the site's batches. **Upgrading:** install the artifact first, then stop the flusher, then let cron or a hook start it (`INSTALL-LINUX.md` Step 1, which says why the other order can leave the old build running). Each upgraded seat shows one `epoch_reset`: the previous build's cursor is carried and its `seq_epoch` and `next_seq` are not, because its last batch may have been committed with the answer lost. Until server card#12210, a seat whose last pre-upgrade batch was committed and unanswered — and any site renamed, or named other than `default`, while the file is lifted to the multi-site form — shows a false `seq_gap` badge for the 24 h badge window (D1 § 10.2, *The accepted `seq_gap` residual*); no event is lost or doubled |
 | `harness_label`'s source (§ 6.1 mandates `claude-code/<version>` but names no source; no hook payload carries one and no `CLAUDE_CODE_VERSION` exists in a hook-visible environment) | read from a `harness_label` config key written at install time; honestly `null` plus a counter while none is written. [`INSTALL-LINUX.md`](INSTALL-LINUX.md) deliberately writes none, because a version written once goes stale at the harness's next self-update |
 | The index journal has no record for sessions, turns or compactions, but § 8.2's 16-session cap, § 8.4's superseded-session rule, § 6.2's `turns` and § 6.4's `duration_ms` all need them | four reporter-internal record kinds added (`session_open`/`session_close`, `turn_open`/`turn_close`, `compaction_open`/`compaction_close`), plus `prompt_id` on `open` and `outcome` on `close`. None reaches the wire, so none costs a schema version |
 | A hook with multiple captured payload shapes (§ 17 reproduces 3 for `PreToolUse`) cannot be "the payload verbatim" in one file | the fixture is `{"_source": …, "shapes": [ …verbatim payloads… ]}`, and the key check asserts against the union |

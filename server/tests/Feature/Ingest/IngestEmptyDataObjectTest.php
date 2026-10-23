@@ -130,7 +130,7 @@ class IngestEmptyDataObjectTest extends IngestTestCase
      * decode: `"events": {}` is an OBJECT where § 12.1 step 8 requires an array. Under an
      * associative decode it arrived as `[]`, passed `array_is_list`, and was refused one line
      * later for being EMPTY — the right status for the wrong reason, which is what a reporter's
-     * operator reads out of `REJECTED.txt`.
+     * operator reads out of `REJECTED.<site>.txt`.
      */
     public function test_an_events_object_is_refused_as_a_non_array_and_not_as_an_empty_one(): void
     {
