@@ -185,7 +185,11 @@ adopted the state.json of a build before card#12180 — cursors carried, new seq
 the server's store, the old epoch's last event was seq 203284, received at 02:00:50; the new epoch's
 first heartbeat was seq 1 at 02:01:01, and its heartbeats then arrived 60 s apart with contiguous seqs.
 The snapshot's `badges` for the seat read `["epoch_reset"]`, and nothing else: the old build's last batch
-had been answered, so no `seq_gap` followed. Step 6 and Step 7 below record the checks that followed.
+had been answered, so no `seq_gap` followed. Step 6 and Step 7 below record the checks that followed. After
+the site steps below, the artifact was replaced by the build of card#12180's closing PR in the same order, in
+attempt `20261023T023534Z-upgrade-12180-final`: installed at 02:35:35, the stop took 1 s, a hook's start held
+the lock at 02:35:54 and the start-time check read it as after the artifact, `state.json`'s `default` entry
+kept its `seq_epoch` (one build of this card to the next adopts nothing), and Step 6 exited `rc=0` again.
 
 ## Step 2 — issue the seat token into the config, on this host or through a carried file
 
@@ -1180,9 +1184,9 @@ node -e 'const fs=require("fs"),path=require("path"),[f,n,js]=process.argv.slice
 **What removing a site showed on the sandbox seat**, on 2026-10-23, for the stub site of [Adding a
 site](#adding-a-site). With `stub` as the name it printed `sites: default`, the config stayed mode `600`, and
 no temp file was left; that run used the command as it stood one edit earlier, when its two refusals threw
-before the error handler and printed a stack trace. Run with `default`, the last site, the command above
-printed `the last site: uninstall instead:
-NOTHING WRITTEN` and exited 1 with the config's md5 unchanged. After `stop-flusher.js` and a hook's start, the
+before the error handler and printed a stack trace. Run later with `default`, the last site, the command
+above printed `the last site: uninstall instead: NOTHING WRITTEN` and exited 1 with the config's md5
+unchanged. After the removal, `stop-flusher.js` and a hook's start, the
 log read `site stub: no longer configured — its state entry is dropped (§ 3.1 rule 4)`, `state.json` held the
 entry `default` alone under the `seq_epoch` Step 1 started, and the stub received no request after that
 start. The stub's last token needs no revoke, because no server issued it.
