@@ -1,5 +1,5 @@
 {
-  "note": "THE COMMITTED ROSTER the species salt is checked against (docs/design/FLOOR.md § 10.4's salt bullet, card#11046). Every key states its source: a fixture's seat, or a seat the fleet is known to run, read from a record that can be cited. No key is invented to make a salt pass. Grow it as the fleet grows; a roster on which `species:s1` fails is § 14 item 33(2)'s question, never a silent re-pick.",
+  "note": "THE COMMITTED ROSTER the species salt is checked against (docs/design/FLOOR.md § 10.4's salt bullet, card#11046). Every key states its source: a fixture's seat, or a seat the fleet is known to run, read from a record that can be cited. No key is invented to make a salt pass. Grow it as the fleet grows; a roster on which the salt (`SPECIES_FIELD` — `species:s3` since card#12212, `species:s1` before it) fails is § 14 item 33(2)'s question, never a silent re-pick.",
   "seats": [
     { "install_id": "aimla", "seat_id": "aimla-pm", "source": "fx-snapshot-4 (server/tests/Feature/Floor/fixtures) and docs/PLAN.md § 5: aimla's four seats" },
     { "install_id": "aimla", "seat_id": "aimla-impl-1", "source": "fx-snapshot-4 and docs/PLAN.md § 5: aimla's four seats" },

@@ -22,7 +22,7 @@ const REPO = join(HERE, '..', '..');
 const TREE = join(REPO, 'resources', 'characters');
 const C = await import(pathToFileURL(join(TREE, 'index.js')).href);
 const { draw, pick } = await import(pathToFileURL(join(TREE, 'seed.js')).href);
-const { wellFormed, vectorDefect } = await import(pathToFileURL(join(REPO, 'tools', 'design', 'svg-document.mjs')).href);
+const { wellFormed, vectorDefect, inkBounds } = await import(pathToFileURL(join(REPO, 'tools', 'design', 'svg-document.mjs')).href);
 
 const SEED = 11046;          // the synthetic populations' seed — printed with every measurement
 const CAP = 8;               // § 8.1's cap of interns drawn (desk-layout.js's STOOL_CAP), read below
@@ -262,6 +262,70 @@ for (const f of ['index.js', 'seed.js', 'creatures.js']) {
   check(!/data:image\//.test(src) && !/\b(fetch|XMLHttpRequest|new Image|import\(|localStorage|Math\.random|Date\.now|new Date)/.test(code),
     `${f}: no data:image/ text, no request, no clock, no random source, no storage`);
 }
+
+// ---- 8b. the frame holds the ink (card#12212; FLOOR.md § 10.4's frame contract) ----
+// A frame is shown in a clipping viewport, so ink outside its viewBox is cut off on the floor. What the frame's
+// own composition promises is measured here, never assumed: every species' documents — the standing frame, both
+// walk phases, the chibi frame and every sleeper document, the sleeper's against its own raised, widened frame
+// (SLEEP_VIEWBOX, which the floor draws into the overdraw) — over keys enough to vary tilt, girth, size, side, hat,
+// neckwear and extra, read by `inkBounds` (curves sampled, strokes widened, clips honoured). THE GATE binds the
+// species drawn after the approved sheet (`added`), which this repository may redraw: each leaves its frame by no
+// more than the approved sheet's own species do in the same kind of frame — that envelope is re-derived from the
+// generator on every run, never written down. The approved species' own overshoot (the tilt, the walk's lean and
+// the sleeper's roll carry wide or tall approved bodies past the frame's side by a few units) predates this card,
+// is printed by name, and gates nothing here: redrawing an approved body or changing the frame's transforms is a
+// design decision, not a test's.
+section("8b. the frame holds the ink: a species drawn after the approved sheet leaves its frame by no more than the approved sheet's own species do");
+const BOUNDS_KEYS = 16;
+const overshoot = (doc, vb) => { const b = inkBounds(doc); return b === null ? 0 : Math.max(0, vb.x - b.x0, b.x1 - (vb.x + vb.w), vb.y - b.y0, b.y1 - (vb.y + vb.h)); };
+const framesOf = (sp, key) => [
+  ['standing', C.frameDocument(key, { species: sp, phase: 0 }), C.SEAT_VIEWBOX],
+  ['walking', C.frameDocument(key, { species: sp, phase: 1 }), C.SEAT_VIEWBOX],
+  ['walking', C.frameDocument(key, { species: sp, phase: 2 }), C.SEAT_VIEWBOX],
+  ['chibi', C.frameDocument(`${key}~intern`, { species: sp, chibi: true }), C.CHIBI_VIEWBOX],
+  ...Array.from({ length: C.SLEEP_LOOP + 1 }, (_, frame) => ['asleep', C.sleepDocument(key, { species: sp, frame, deskTop: DESK_TOP, clear: CLEAR }), C.SLEEP_VIEWBOX]),
+];
+const worstOf = (sp) => {
+  const w = {};
+  for (let i = 0; i < BOUNDS_KEYS; i++) for (const [kind, doc, vb] of framesOf(sp, `bounds/${sp}/${i}`)) {
+    const o = overshoot(doc, vb);
+    if (!w[kind] || o > w[kind].over) w[kind] = { over: o, key: `bounds/${sp}/${i}` };
+  }
+  return w;
+};
+const worst = Object.fromEntries(KEYS.map((sp) => [sp, worstOf(sp)]));
+const approvedSpecies = KEYS.filter((sp) => !SP[sp].added), addedSpecies = KEYS.filter((sp) => SP[sp].added);
+const FRAME_KINDS = ['standing', 'walking', 'chibi', 'asleep'];
+const envelope = Object.fromEntries(FRAME_KINDS.map((kind) => [kind, approvedSpecies.map((sp) => [sp, worst[sp][kind].over]).sort((a, b) => b[1] - a[1])[0]]));
+measure(`the approved sheet's own worst overshoot per frame, in units outside the frame (gates nothing; predates card#12212): ${FRAME_KINDS.map((k) => `${k} ${envelope[k][1].toFixed(1)} (${envelope[k][0]})`).join(', ')} — over ${BOUNDS_KEYS} keys per species`);
+measure(`every approved species past its frame by more than 2 units: ${approvedSpecies.flatMap((sp) => FRAME_KINDS.filter((k) => worst[sp][k].over > 2).map((k) => `${sp} ${k} ${worst[sp][k].over.toFixed(1)}`)).join(', ') || 'none'}`);
+for (const sp of addedSpecies) for (const kind of FRAME_KINDS) {
+  const w = worst[sp][kind], e = envelope[kind];
+  check(w.over <= e[1] + 0.25, `${sp}, ${kind}: ink past the frame by ${w.over.toFixed(1)} units at most (${w.key}); the approved sheet's worst there is ${e[1].toFixed(1)} (${e[0]})`);
+}
+// THE CREST TABLE, held by the same reader (§ 10.4 item 4; card#12187's CREST_TOP): for every species and variant, the
+// sleeper's topmost ink WITHOUT its z's — the document cut before its `zs` group — lies at or under the crest top the
+// tree declares, within 1 unit (the table is stated in whole units, and 1 unit stays inside Z_GAP's 2, the gap the z's
+// keep above the crest line). The tool's raster scan holds the seats it picks; this holds every species on every run.
+const crestFault = [];
+for (const sp of KEYS) for (const v of (variantsOf(sp).length ? variantsOf(sp) : [null])) {
+  const name = v === null ? sp : `${sp}/${v}`;
+  let top = Infinity, who = '';
+  for (let i = 0, n = 0; n < BOUNDS_KEYS && i < 2000; i++) {
+    const k = `bounds/${sp}/${i}`;
+    if (C.recipe(k, sp).variant !== v) continue;
+    n++;
+    const d = C.sleepDocument(k, { species: sp, frame: 0, deskTop: DESK_TOP, clear: CLEAR });
+    const b = inkBounds(d.slice(0, d.indexOf('<g data-part="zs">')) + '</svg>');
+    if (b.y0 < top) { top = b.y0; who = k; }
+  }
+  if (!(C.CREST_TOP[name] <= top + 1)) crestFault.push(`${name}: CREST_TOP ${C.CREST_TOP[name]} but ${who} draws up to ${top.toFixed(1)}`);
+}
+check(crestFault.length === 0, `CREST_TOP is at or above every species' and variant's topmost sleeper ink (within 1 unit) over ${BOUNDS_KEYS} keys each${crestFault.length ? ` — ${crestFault.slice(0, 3).join('; ')}` : ''}`);
+// the control: the same leg over a frame whose drawing is pushed 30 units sideways reds — so a part drawn past the frame is a thing this leg sees
+const pushed = C.frameDocument('bounds/control', { species: addedSpecies[0] ?? KEYS[0] }).replace('<g transform="translate(54 ', '<g transform="translate(84 ');
+const pushedOver = overshoot(pushed, C.SEAT_VIEWBOX);
+check(pushedOver > envelope.standing[1] + 0.25, `CONTROL — a standing frame pushed 30 units sideways is past its frame by ${pushedOver.toFixed(1)}, beyond the envelope, so the leg can tell a part outside the frame from one inside`);
 
 // ---- 9. the controls — each leg above is known to be able to say both things ----
 section('9. controls');
