@@ -1282,7 +1282,9 @@ processes, as Step 5 reports.
   `seq_gap` badge for 24 h (D1 § 10.2's accepted residual); no event is lost or doubled. **To repoint the
   existing site at upgrade, name it anything but `default`**: a `state.json` from an older build records no
   URL, so a `default` repointed in the same edit carries a cursor the new server never earned (D1 § 3.1
-  rule 3). Downgrading is not offered; an older build reads the new `state.json` as unusable, takes D1 § 11.4's
+  rule 3). The same holds while the upgraded flusher has only ever started under an `ingest_url` that does
+  not parse: it records the URL at its first start under one that does, so fix such a typo to the same
+  server, and repoint by a new name. Downgrading is not offered; an older build reads the new `state.json` as unusable, takes D1 § 11.4's
   reset and re-sends. The marker and the rejected-batch quarantine are named per site from this build on
   (`REJECTED.default.txt`, `quarantine/rejected.default.jsonl`); an older build's `REJECTED.txt` and
   `quarantine/rejected.jsonl` stay as history until Step 8 removes the spool directory.

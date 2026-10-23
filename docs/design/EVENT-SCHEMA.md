@@ -652,8 +652,10 @@ this replaces. Four rules decide what an entry is on each start, each the safe d
    site by rule 1: a re-send, never a skip. ⚠ **A known residual, accepted rather than closed:** a legacy entry records no URL, so
    rule 2 cannot check it — an operator who, in the same edit as the upgrade, both repoints the
    existing site at a different server and keeps its name `default` carries a cursor the new server
-   never earned, and the lines behind it are skipped there, uncounted. The window is one start: the
-   first save records the hash and rule 2 holds from then on. It is accepted because closing it means
+   never earned, and the lines behind it are skipped there, uncounted. The window closes at the first
+   start whose URL parses: its save records the hash and rule 2 holds from then on. A start under a URL that does
+   not parse sends nothing and records nothing, so the window stays open across it, and a repoint made
+   while fixing that typo is the same edit (delta review N1). It is accepted because closing it means
    refusing every legacy adoption (re-sending 8 days to every upgraded seat and spending ~3.4 h of
    each site's limiter) to cover an edit the install document
    tells the operator not to make: *to repoint the existing site at upgrade, name it anything but
