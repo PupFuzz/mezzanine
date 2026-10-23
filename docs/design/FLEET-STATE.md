@@ -169,6 +169,7 @@ checked deploy requirement** rather than a sizing note.
 | **board poll** | scheduled command (`mezzanine:board-poll`) | every **5 min** | read every configured kanban board's cards once, join `assigned_user_id` to a seat through `seats.board_user_id`, and upsert `seat_board_task` for every mapped, unretired seat in one transaction — the tier-1 INPUT the fold and the sweeper derive `task_*` from ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here), `BOARD-TASK.md`), counting `board_poll_ok`. ⛔ It never writes `seat_state`, and a degraded read writes **nothing at all** — `board_poll_failed` increments and not one row moves | `observed_at` stops moving, every tier-1 title is dropped at its 30-minute bound and `task.degraded` goes true per seat — a degradation that is rendered rather than silent. A poller that NEVER ran is the one case that signal cannot show, and `board_poll_ok` at `0` on `GET /api/fleet/health` is its instrument |
 | **seat→board-user** | operator command (`mezzanine:seat-board-user --seat=<install>/<seat> --board-user=<id> \| --clear`) | on demand | the **only** writer of `seats.board_user_id`, and **any** write of that column — setting it or clearing it — deletes that seat's `seat_board_task` row in the same transaction, so a re-mapped seat cannot go on answering from the previous user's card for a poll cadence | no seat is a tier-1 candidate, which is the arrival state; the merge falls through to tier 3 with `task.degraded` false |
 | **retire** | operator command (`mezzanine:retire --seat=<install>/<seat> --by= --reason=`), or the admin console's agent module — two entry points, ONE implementation (card#9070; [§ 4.10](#410-retirement-is-a-rendered-state) carries the amendment) | on demand | the **only** writer of retirement, and it does the whole of it in one transaction: set `seats.retired_at` / `retired_by` / `retired_reason`, recompute `render_state` (which [§ 4.2](#42-render-precedence) collapses to `retired`), write the transition row with `cause: operator`, bump `state_version`, publish the `seat.retired` message and the delta, and **clear the seat's board-user mapping** — `board_user_id` back to `NULL` and the seat's `seat_board_task` row deleted ([§ 4.10](#410-retirement-is-a-rendered-state), [§ 6.7](#67-retention-and-purge)) | nothing retires — which is correct, because retirement is an operator act and no timeout may ever stand in for one. Re-running it on an already-retired seat is a no-op |
+| **coordination receipt** | HTTP request (PHP-FPM) — `POST /api/ingest/github/{hook}` ([D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)), card#12239 | per delivery | validate in D1 § 18.8's order, derive per [D1 § 18.6](EVENT-SCHEMA.md#186-coordthread) / [§ 18.7](EVENT-SCHEMA.md#187-coordround), and write `coord_deliveries`, `coord_threads`, `coord_posts` and the `coord.thread` / `coord.round` outbox rows in **one** transaction ([§ 6.12](#612-the-coordination-store)) — the digest committed with the derivation or not at all — then return `202`. No seat lock, no fold, no daemon: a delivery is not a seat event ([D1 § 18.9](EVENT-SCHEMA.md#189-why-this-does-not-ride-the-batch-contract)) and its derivation is one pure function over one JSON object | GitHub **does not retry** and records the failure (DOCS-CITED, `docs/design/COORD-STORE.md § 2.3`); the operator's Redeliver — reaching **3 days** back — is the retry, and it derives only because a failed receipt committed no digest. A thread whose deliveries are all lost appears on its next post, derived from the `issue` object that post carries ([§ 6.12](#612-the-coordination-store)) |
 
 **15 s sweep cadence, derived.** The tightest deadline any time-derived transition has is the `stale`
 threshold, 300 s ([D1 § 9.1](EVENT-SCHEMA.md#91-the-cadence-and-the-alarm)). A 15 s cadence bounds
@@ -221,6 +222,8 @@ is in neither.
 | **Read-token verification** | the token store is unreachable | **CLOSED** — `503`, never a cached or assumed grant | A read token gates the whole fleet's activity picture. There is no posture in which "we could not check, so we allowed it" is correct. |
 | **Building surface read** ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | the store unreachable | **CLOSED** — `503 fleet_unavailable`, **never the shipped default served in its place** | A default served on a failed read is a room the operator authored rendering as one they did not, with confidence — the clean-zero shape one surface over from the snapshot's. The client draws the failure by name ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F16) and keeps every desk's facts |
 | **Building surface read** | the store reachable, **no authored map for the room** | **OPEN, labelled** — `200` with the shipped default, `source: "default"`, `map_version: null` | An unauthored room is a state and not a failure: the default is what every room starts from, and the label is what keeps it distinguishable from an authored map on the same shape. This is the row an implementer gets wrong by answering `404`, which would make every new install a broken room |
+| **Coordination receipt write** ([§ 6.12](#612-the-coordination-store)) | the store unreachable or the transaction fails | **CLOSED** — `503 server_error` in [D1 § 12.2](EVENT-SCHEMA.md#122-error-responses)'s shape with the ingest write's own `detail` set (`store_contended` / `store_failed` / `internal`), **nothing committed and no digest written**, so GitHub records a failed delivery and an operator Redeliver derives it ([D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order) step 9). GitHub's own bound on the answer is **10 s** (DOCS-CITED, `docs/design/COORD-STORE.md § 2.3`): past it the delivery is a failure whatever the status, which is why the write takes no seat lock and is an insert, an upsert and an insert | A digest committed ahead of a failed derivation would absorb the one retry this route has, and a `202` for a delivery that was not stored is the clean-zero shape at the write side: GitHub would show success and the floor would show nothing. Refusing is the posture that keeps the operator's Redeliver meaningful |
+| **Coordination backfill read** (`GET /api/fleet/coord`, [§ 8.2](#82-rest)) | the store unreachable | **CLOSED** — `503 fleet_unavailable`, **never `200` with an empty `envelopes[]`** | an empty backfill is indistinguishable from a fleet with no current thread, which is the snapshot's own argument one surface over; the client keeps whatever it holds and draws the failure by name |
 | **Purge job** | dead | **OPEN** — data accumulates; alarm on table size at the stated threshold | Retaining too much costs disk; deleting on a broken assumption costs the dedup guarantee ([§ 6.7](#67-retention-and-purge)). The safe direction is to keep. |
 | **Clock (NTP) on the Mezzanine host** | skewed | **OPEN, visible** — `received_at` remains the authority ([D1 § 10.1](EVENT-SCHEMA.md#101-two-clocks-and-which-is-authoritative-for-what)) and every seat's `clock_skew_ms` moves together | A fleet-wide skew shows up as *every* seat badging `clock_skew` in the same direction, which is a legible signature. Nothing else can produce it, so no extra instrument is needed — but the reading is stated here so it is not mis-read as a fleet of broken seats. ⚠ **The feed is the exception, and it has its own instrument** (card#9467): [§ 8.3](#83-the-websocket-delta-feed)'s visible prefix compares a writer's `feed_outbox.created_at` with a reader's clock, so a clock stepped backwards — or two app hosts that disagree — holds every open stream's delivery for the size of the difference, and past [§ 6.7](#67-retention-and-purge)'s outbox retention the purge takes rows no stream read. `feed_prefix_future` and `feed_outbox_boundary_stalled` ([§ 7.2](#72-this-planes-own-counters-and-badges)) say so; [§ 6.1](#61-deployment-posture)'s application-clock row states the requirement. |
 
@@ -2001,6 +2004,136 @@ CREATE TABLE feed_outbox (
                                                 -- is needed); the handler's rows are a PK range
 ) ENGINE=InnoDB;
 
+-- ── THE COORDINATION STORE (§ 6.12, card#12239). Written by ONE process — the coordination receipt
+-- request (§ 2.1) — and read by the backfill (§ 8.2) and the purge (§ 6.7). The fold never reads it and
+-- a rebuild never touches it: a delivery is not a seat event (D1 § 18.9), so no row here carries a
+-- `seat_ref`, and D1 § 18.8's raw body is stored NOWHERE (D1 § 18.10) — the derived objects ARE the
+-- record.
+
+CREATE TABLE coord_hooks (
+  id            SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  hook_id       CHAR(26)     CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+                                            -- `mzh_` + 22 base64url chars: the PUBLIC selector in the
+                                            -- route's path (D1 § 18.8). Never a secret, never evidence
+  install_ref   SMALLINT UNSIGNED NOT NULL,
+  scope         ENUM('install') NOT NULL DEFAULT 'install',
+                                            -- the one member this slice mints; card#12240's
+                                            -- between-rooms binding adds `fleet` as a member here and
+                                            -- never a second receipt route (COORD-STORE.md § 10 Q1)
+  repository    VARCHAR(140) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+                                            -- `<owner>/<repo>`, the binding D1 § 18.8 step 6 holds the
+                                            -- payload's claim against
+  roster        JSON         NOT NULL,      -- D1 § 18.3.1's install-facts input, member 1: the copied
+                                            -- roster names in the roster's order; consulted only to
+                                            -- expand `all` (D1 § 18.7)
+  shared_identity BOOLEAN    NOT NULL,      -- member 2
+  roster_copied_from VARCHAR(255) NULL,     -- the revision or date the operator copied the roster at —
+                                            -- D1 § 18.3.1's staleness axis, operator-typed
+  created_at    DATETIME(3)  NOT NULL,
+  created_by    VARCHAR(64)  NOT NULL,
+  revoked_at    DATETIME(3)  NULL,          -- a revoked binding has no secret: D1 § 18.8 step 3 refuses
+  last_delivery_at DATETIME(3) NULL,        -- the operator's liveness read per binding
+  UNIQUE KEY uq_hook (hook_id),
+  UNIQUE KEY uq_binding (install_ref, repository),
+  CONSTRAINT fk_hook_install FOREIGN KEY (install_ref) REFERENCES installs (id)
+) ENGINE=InnoDB;
+
+CREATE TABLE coord_hook_secrets (
+  id            SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  hook_ref      SMALLINT UNSIGNED NOT NULL,
+  secret_ciphertext VARBINARY(512) NOT NULL,
+                                            -- the HMAC key, encrypted under the application key: a key
+                                            -- that must be RECOVERED to verify a signature cannot be
+                                            -- hashed like `ingest_tokens.token_hash` (COORD-STORE.md
+                                            -- § 10 Q4 is the operator's say on this choice)
+  prefix        CHAR(8)      CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+                                            -- the operator's handle for `coord-hook:revoke --secret=`
+  created_at    DATETIME(3)  NOT NULL,
+  revoked_at    DATETIME(3)  NULL,          -- rotation: issue the new, re-key the hook on GitHub's
+                                            -- side, revoke the old — D1 § 3.3's order, with overlap;
+                                            -- verification tries every unrevoked secret of the binding
+  KEY ix_hook (hook_ref, revoked_at),
+  CONSTRAINT fk_secret_hook FOREIGN KEY (hook_ref) REFERENCES coord_hooks (id)
+) ENGINE=InnoDB;
+
+CREATE TABLE coord_deliveries (
+  id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  hook_ref      SMALLINT UNSIGNED NOT NULL,
+  digest        CHAR(64)     CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+                                            -- SHA-256 of the SIGNED body: D1 § 18.8 step 7's
+                                            -- idempotency key. Committed only WITH a derivation
+                                            -- (steps 7 and 9 together); an ignored delivery leaves no
+                                            -- row (step 8); a failed one leaves none (§ 2.2)
+  delivery_label VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+                                            -- `X-GitHub-Delivery`, an operator-facing label (step 4):
+                                            -- never compared, never keyed on
+  event         VARCHAR(32)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,  -- `issues` | `issue_comment`
+  action        VARCHAR(32)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  received_at   DATETIME(3)  NOT NULL,      -- the receipt clock; the retention column (§ 6.7)
+  UNIQUE KEY uq_digest (digest),
+  KEY ix_received (received_at),
+  CONSTRAINT fk_delivery_hook FOREIGN KEY (hook_ref) REFERENCES coord_hooks (id)
+) ENGINE=InnoDB;
+
+CREATE TABLE coord_threads (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  hook_ref      SMALLINT UNSIGNED NOT NULL,
+  install_ref   SMALLINT UNSIGNED NOT NULL, -- the binding's install, copied here so the backfill's read
+                                            -- and § 9's filter key need no join through the binding
+  thread_ref    VARCHAR(256) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,  -- `<owner>/<repo>#<n>`
+  lifecycle     ENUM('opened','closed','reopened') NOT NULL,
+                                            -- the CURRENT state, moved by the delivery with the greatest
+                                            -- `state_at` and never by arrival (§ 6.12). An ENUM by
+                                            -- § 6.3's criterion: its one writer produces exactly the
+                                            -- three members D1 § 18.8 step 8 admits — the same three
+                                            -- D1 § 18.6's two comment-carried triggers produce
+  state_at      DATETIME(3)  NULL,          -- the payload's `issue.updated_at` behind `lifecycle`; NULL
+                                            -- only on a row written from a payload carrying none, which
+                                            -- arrival order then orders
+  carrier       VARCHAR(16)  CHARACTER SET ascii COLLATE ascii_bin NULL,
+  subject       VARCHAR(200) NULL,          -- sanitized at the receiver (D1 § 18.10)
+  subject_truncated BOOLEAN  NOT NULL,
+  opened_by     VARCHAR(48)  CHARACTER SET ascii COLLATE ascii_bin NULL,
+  attribution   ENUM('resolved','unresolved','unattributable') NOT NULL,
+                                            -- the opener's; D1 § 18.6's three states, written only by
+                                            -- this plane's one derivation
+  participants  JSON         NOT NULL,      -- the union, sorted, `all` verbatim (D1 § 18.6); follows
+                                            -- the newest `issue` object seen, whichever delivery
+                                            -- carried it (§ 6.12)
+  posted_at     DATETIME(3)  NULL,          -- `issue.created_at`
+  received_at   DATETIME(3)  NOT NULL,      -- the receipt that last MOVED `lifecycle`: what the
+                                            -- backfill's `coord_thread.received_at` carries
+  closed_received_at DATETIME(3) NULL,      -- set when `lifecycle` becomes `closed`, cleared when it
+                                            -- becomes `opened` or `reopened`: the retention column
+  created_at    DATETIME(3)  NOT NULL,
+  UNIQUE KEY uq_thread (thread_ref),
+  KEY ix_install_recent (install_ref, received_at),
+  KEY ix_closed (closed_received_at),
+  CONSTRAINT fk_thread_hook FOREIGN KEY (hook_ref) REFERENCES coord_hooks (id),
+  CONSTRAINT fk_thread_install FOREIGN KEY (install_ref) REFERENCES installs (id)
+) ENGINE=InnoDB;
+
+CREATE TABLE coord_posts (
+  id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  thread_id     INT UNSIGNED NOT NULL,      -- → coord_threads.id; a post never outlives its thread
+  install_ref   SMALLINT UNSIGNED NOT NULL,
+  post_ref      VARCHAR(256) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+                                            -- `<thread_ref>` or `<thread_ref>-c<comment id>` (D1 § 18.7)
+  from_name     VARCHAR(48)  CHARACTER SET ascii COLLATE ascii_bin NULL,  -- the wire's `from`
+  attribution   ENUM('resolved','unresolved','unattributable') NOT NULL,
+  to_names      JSON         NOT NULL,      -- the wire's `to`, as written
+  targets       JSON         NULL,          -- NULL is D1 § 18.7's *not resolvable here*, distinct from
+                                            -- `[]`, and kept distinct at the column
+  carrier       VARCHAR(16)  CHARACTER SET ascii COLLATE ascii_bin NULL,
+  declares_close BOOLEAN     NOT NULL,
+  posted_at     DATETIME(3)  NULL,
+  received_at   DATETIME(3)  NOT NULL,
+  UNIQUE KEY uq_post (post_ref),
+  KEY ix_thread_recent (thread_id, received_at),
+  CONSTRAINT fk_post_thread FOREIGN KEY (thread_id) REFERENCES coord_threads (id) ON DELETE CASCADE,
+  CONSTRAINT fk_post_install FOREIGN KEY (install_ref) REFERENCES installs (id)
+) ENGINE=InnoDB;
+
 -- ── THE AUTHORED BUILDING STORE (§ 6.11) — card#9208's reversal, 2026-09-12. Three tables the fold
 -- never reads and a rebuild never touches: an operator writes them in the admin console, § 8.7
 -- serves them. `floors` shipped with card#9085 and is sketched here because it gained a reader;
@@ -2561,7 +2694,10 @@ rather than a silently shortened history.
 | `sessions`, `calls`, `attention_requests` | **14 days** after the row closed; open rows are never purged | a closed fact older than the log it was derived from cannot be re-derived, so purging it early would make a rebuild produce a *different* answer than the live fold — breaking [AT-D2-10](#at-d2-10-rebuild-equals-fold)'s equality for a reason that is not a defect |
 | `seat_state_transitions` | **14 days** | the drill-down's history horizon; same number, one home |
 | `feed_outbox` | **60 s** after `created_at` | **the only transient table in this store, and the only one whose retention is measured in seconds.** It is [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound plus one [§ 8.3](#83-the-websocket-delta-feed) heartbeat interval, each figure stated at its own section: a stream that resumes at the edge of its bound finds every row it may still deliver, and a stream past it has already been ended and never reads again — which is a property of WHERE the bound is checked, not only of its value: [§ 8.3](#83-the-websocket-delta-feed)'s handler tests it **before** its read, so a stream that was blocked longer than this retention ends instead of advancing its cursor over a row the purge took. Were the test after the read, this row's number would have to bound something no clock in the handler measures. It is **not** a replay buffer — no stream starts below the head it connected at ([§ 8.3](#83-the-websocket-delta-feed)) — so no reader ever needs a row older than the longest a reader may lag, and 60 s is that figure with the margin stated. **A row nobody consumed is the ordinary case** — no browser open, and the writers write regardless, as the heartbeat daemon always did — **and it is purged unread**: the fact it announced lives in `seat_state` and the projections and reaches a later reader at its snapshot. The one message class no store holds, the coordination objects, is lost to an absent reader exactly as § 8.5 already says it is lost to a dropped one. ⚠ **The predicate is the row's age and nothing else — never whether a stream read it** (card#9467). A row an open stream has not yet read because [§ 8.3](#83-the-websocket-delta-feed)'s visible prefix is held below it — which only a `created_at` from a reader's future does for longer than the lag — is deleted at this retention like any other; the sweeper counts `feed_outbox_boundary_stalled` ([§ 7.2](#72-this-planes-own-counters-and-badges)) when such a row is one lag short of it |
-| `seat_state`, `seat_counters`, `global_counters`, `seat_predicates`, `installs`, `seats`, `feed_tokens` | **never** | current state and monotonic counters. A seat row outlives its events deliberately: a provisioned seat that has never reported must render, not vanish. A **retired** seat is likewise never purged; it drops out of the read surfaces **at** `retired_at` by a query filter (card#9078), not by a deletion ([§ 4.10](#410-retirement-is-a-rendered-state)), so an operator question about why it went can still be answered |
+| `coord_deliveries` | **14 days** after `received_at` | the digest store ([§ 6.12](#612-the-coordination-store)). The floor is GitHub's documented redelivery reach — **3 days** (DOCS-CITED 2026-10-23, `docs/design/COORD-STORE.md § 2.3`) — because D1 § 18.8 step 7's absorption *is* the unique key on this table: a digest purged earlier than GitHub can redeliver re-derives one real post as two. 14 = the same figure as `events`, chosen so the purge pass has one retention and the margin over the floor is 11 days of a dead purge job before the guarantee is at risk. This closes [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) row 9 |
+| `coord_threads` **open** (`closed_received_at IS NULL`), and their `coord_posts` | **never** | current state, like `seat_state`: an open thread is a line the floor may draw, however old. Its posts go with it, because a thread's bead count is a count of its posts and a purged post is a count that silently shrank ([FLOOR.md § 5.7](FLOOR.md#57-the-coordination-thread-line)). Bounded by traffic on open threads — measured on this fleet's one coordination repository at ~100 posts a day across all threads (`docs/design/COORD-STORE.md § 2.2`), under 1 KB a row |
+| `coord_threads` **closed**, and their `coord_posts` (`ON DELETE CASCADE`) | **14 days** after `closed_received_at` | a closed thread is rendered *ended* and then is history; 14 is the one retention this store has. A thread that reopens inside the window clears the column and leaves the pass ([§ 6.12](#612-the-coordination-store)). The backfill therefore serves open threads and threads closed within 14 days, under its cap |
+| `seat_state`, `seat_counters`, `global_counters`, `seat_predicates`, `installs`, `seats`, `feed_tokens`, `coord_hooks`, `coord_hook_secrets` | **never** | current state and monotonic counters. A seat row outlives its events deliberately: a provisioned seat that has never reported must render, not vanish. A **retired** seat is likewise never purged; it drops out of the read surfaces **at** `retired_at` by a query filter (card#9078), not by a deletion ([§ 4.10](#410-retirement-is-a-rendered-state)), so an operator question about why it went can still be answered |
 | `seat_board_task` | **never**, like `seats` | **Not traffic-bounded**: one row per mapped, unretired seat, so the population is the fleet and not its traffic. Purged by nothing; a row leaves in exactly two ways, both of them operator acts with a writer named — any write of `seats.board_user_id` by the seat→board-user command, `--clear` or `--board-user`, and the seat's **retirement**, which deletes it in the transaction that sets `retired_at` ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)) |
 | `floors`, `building_layout`, `authored_revisions` | **never** | **Not traffic-bounded**: a row is written by an operator's save in the admin console and by nothing else, so the population is the number of times a person pressed *save* — [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions) sizes it — and a revision purged is exactly the prior layout the recovery rule there exists to keep retrievable. Purged by nothing; a room's map is **removed** by a revision that records the removal, never by deleting its history |
 
@@ -2576,6 +2712,17 @@ spool residency  8 days   (D1 § 11.3, the oldest event a seat can still deliver
 If any of the three moves, all three are re-checked in the same change. A retention below the dedup
 window silently re-ingests re-sent events as new ones — the single most confusing possible corruption of
 a timeline, and the reason D1 states the first half of this chain at all.
+
+**The coordination digest's chain is the same shape with the vendor at the far end** (card#12239):
+
+```
+GitHub redelivery reach  3 days   (DOCS-CITED — the oldest delivery an operator can still redeliver)
+      <  digest retention   14 days  (this document, `coord_deliveries`)
+```
+
+The first figure is GitHub's and nothing here can move it; if the vendor lengthens it past the second,
+the digest retention moves with it in the same change, and `App\Sweep\Purge`'s guard is extended to
+refuse a pass whose digest retention is below the reach it is pinned to.
 
 **Purge mechanics.** `DELETE FROM events WHERE received_at < ? ORDER BY received_at, id LIMIT 5000`, looped until it
 deletes fewer than the limit or a **60-second wall-clock budget** expires, then the next table. Bounded
@@ -2834,13 +2981,106 @@ bound, and the refusal names it. A thousand
 saves across a building would be under half a gigabyte at the bound and, at a realistic ~25 KB per
 CSV-encoded map, about 25 MB; [§ 6.8](#68-sizing)'s figures do not move.
 
+### 6.12 The coordination store
+
+**This is the slice [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) rows 8–9
+and [§ 14](#14-open-questions-for-the-review-loop) item 14 handed to *"the slice that designs the
+coordination store"* — card#12239's design, 2026-10-23.** The problem, the fleet-specific findings, the
+failure modes, the plan and the operator questions are `docs/design/COORD-STORE.md`'s; this section
+owns the store's rules, because this document owns the store ([§ 1.1](#11-what-this-document-owns)).
+The tables are [§ 6.4](#64-ddl)'s five; their retention is [§ 6.7](#67-retention-and-purge)'s; the
+receipt is [§ 2.1](#21-processes)'s process row and [§ 2.2](#22-fail-posture-per-path)'s posture.
+
+**One writer, one transaction, the request's.** After [D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)
+steps 1–8 have admitted a delivery:
+
+1. `SELECT 1 FROM coord_deliveries WHERE digest = ?` — present ⇒ `202` with `status: "duplicate"`,
+   `coord_delivery_duplicate`, nothing else happens. The read is outside the transaction because a
+   duplicate is the common retry case and should cost one indexed read.
+2. `App\Feed\Outbox::transaction()` — the primitive every other writer of this plane already uses
+   ([§ 8.3](#83-the-websocket-delta-feed)): insert the `coord_deliveries` row (its `UNIQUE` digest is the
+   race arbiter — two identical deliveries in flight at once commit one row, and the loser's failed insert
+   is answered as a duplicate, counted once); derive per [D1 § 18.6](EVENT-SCHEMA.md#186-coordthread) /
+   [§ 18.7](EVENT-SCHEMA.md#187-coordround); apply the thread rule and the post rule below; enqueue one
+   `coord.thread` and/or `coord.round` per object derived; commit — the outbox rows last, by the primitive.
+3. Any throw ⇒ rollback, `503 server_error` ([§ 2.2](#22-fail-posture-per-path)'s row) and **no digest**,
+   which is what makes GitHub's Redeliver a real second chance (D1 § 18.8 step 9).
+
+**The thread rule — last writer by the payload's own clock, never by arrival.** `state_at` holds the
+`issue.updated_at` of the delivery that last moved `lifecycle`:
+
+- an `issues.opened|closed|reopened` delivery on an **unheld** `thread_ref` inserts the row with
+  `lifecycle` = the action; on a **held** row it moves `lifecycle`, `state_at`, `received_at` and the
+  membership fields (`participants`, `subject`, `subject_truncated`, `carrier`) **iff** its
+  `issue.updated_at` is later than the held `state_at` (or the held `state_at` is null). A delivery that
+  is **not** later leaves the row untouched and counts `coord_thread_stale_lifecycle` — the out-of-order
+  `reopened`-after-`closed` D1 § 18.13 row 2(b) named, now a counted non-event in the store. ⚠ **The
+  feed object is emitted either way**, carrying that delivery's own `lifecycle` verbatim, because D1 § 18.6
+  publishes one object per delivery; a connected client therefore holds arrival order until its next
+  connect, and `docs/design/COORD-STORE.md § 11` names the one-field closure (`state_at` on the wire).
+- an `issue_comment.created` on an **unheld** `thread_ref` inserts the thread **from the `issue` object
+  the delivery carries** — D1 § 18.6 trigger *(i)*: `lifecycle` `opened` for `state: open`, `reopened`
+  for `state: open` with `state_reason: reopened`, `closed` for `state: closed`; `state_at` =
+  `issue.updated_at` — and inserts the thread's **opening post** from the same object (D1 § 18.7), then
+  the comment's post; it emits the `coord.thread` and both `coord.round`s and counts
+  `coord_thread_from_post`. This is how the threads that predate a hook reach the floor: GitHub
+  redelivers 3 days back and nothing else, so the first post on an old thread is the only delivery that
+  will ever describe it.
+- an `issue_comment.created` on a **held** thread whose `issue.state` **contradicts** the held
+  `lifecycle` — `closed` against a held `opened`/`reopened`, or `open` against a held `closed` — moves
+  `lifecycle` to `closed` or `reopened` respectively under the same `updated_at` test, emits a
+  `coord.thread` with `attribution: "unattributable"`, `opened_by: null`, `posted_at: null` (D1 § 18.6
+  trigger *(ii)*), and counts `coord_thread_reconciled`. Every comment delivery also refreshes the
+  membership fields from its `issue` under the same test, because a `to:` label added after the thread
+  opened is carried by the next comment's `issue.labels` and by nothing D1's `issues` triggers see.
+- every move **to** `closed` sets `closed_received_at = now()`; every move to `opened` or `reopened`
+  clears it ([§ 6.7](#67-retention-and-purge)'s column).
+
+**The post rule.** `post_ref` is `UNIQUE`; a post already held — a comment reached through a second
+distinct digest, which is a Redeliver outside the digest's retention or a re-serialized payload — is not
+re-inserted and is counted `coord_delivery_duplicate` (the same fact, detected one key later); its feed
+object is still emitted, and the client's identity dedupe draws nothing new ([§ 8.3.3](#833-the-coordination-objects)).
+
+**The backfill selection — `GET /api/fleet/coord` ([§ 8.2](#82-rest)) serves what a client connected
+since the store's first row would hold under [FLOOR.md § 12](FLOOR.md#12-every-number-and-where-it-comes-from)'s
+*Held coordination envelopes* cap, which is `fleet-client.js`'s own eviction read from the server's end:**
+
+```
+threads  := held threads (open, or closed within § 6.7's window), ordered by the receipt time of
+            their NEWEST envelope — GREATEST(thread.received_at, MAX(posts.received_at)) — newest first
+budget   := 1,000 envelopes                       -- FLOOR.md § 12, Cited
+for each thread, in that order:
+  n := 1 + its post count
+  if n <= budget:         serve its coord_thread and every post; budget -= n
+  else if nothing has been served yet:            -- the one thread that alone exceeds the cap
+                          serve its coord_thread and its NEWEST (budget - 1) posts;
+                          name it in truncated_threads[]; stop
+  else:                   stop                    -- the client would have evicted it whole
+envelopes are returned in ascending received_at, in § 8.3's envelope shape (`t`, `coord_thread{}` /
+`coord_round{}`), each `coord_thread` carrying the HELD lifecycle and the thread's own received_at
+```
+
+A thread the cap drops whole and a thread never seen render alike — no line until its next post —
+which is the property FLOOR.md § 5.7 already states for the client's eviction, so the backfill adds no
+render state. Measured on this fleet's coordination repository: two open threads carry 2,010 and 948
+posts (`docs/design/COORD-STORE.md § 2.2`), so the truncation branch is a path, not a guard. Every
+response counts `coord_backfill_served`.
+
+**What this store deliberately is not.** It is not rebuilt by `mezzanine:rebuild` and it keeps no log
+to rebuild from: D1 § 18.10 forbids storing the raw delivery, so the derived rows are the record, a
+derivation defect is fixed forward, and GitHub's 3-day Redeliver is the only replay. It mints no seat
+state, moves no `state_version` and is read by nothing in [§ 4](#4-the-seat-state-model)
+([§ 4.8](#48-what-may-never-mint-a-state)'s row). It holds no GitHub credential: the binding is written
+by an operator command and the hook is registered on GitHub's side by the operator
+(`docs/design/COORD-STORE.md § 3.2`), which is D-10 kept.
+
 ---
 
 ## 7. Counters
 
 ### 7.1 D1's server-side counters — where they live
 
-[D1 § 12.7](EVENT-SCHEMA.md#127-server-side-counters) defines **nineteen** counters the ingest and the
+[D1 § 12.7](EVENT-SCHEMA.md#127-server-side-counters) defines **thirty** counters the ingest and the
 derivation keep — plus one gauge, `clock_skew_ms`, which the table below also has to place — each with
 the condition that increments it and the consequence it carries. **Those definitions are not restated
 here.** This section says only where each one is stored, which surface exposes it, and which badge it
@@ -2874,6 +3114,17 @@ is now re-derived from D1 on every run in both places.
 | `auth_failed_by_ip` | `global_counters`, plus a per-IP window in the cache | fleet health | none — a token that resolves to nothing names no seat |
 | `revoked_token_presented` | `global_counters` | fleet health, **operator alert** | none — same reason |
 | `clock_skew_ms` *(gauge)* | `batches` column, latest into `seat_state` | snapshot | **`clock_skew`** past ±120 s |
+| `coord_delivery_received` | `global_counters`, one row per binding's install: `coord_delivery_received.<install_id>` — a delivery names a binding and never a seat ([§ 6.12](#612-the-coordination-store)) | fleet health | — ; the **alarmed, unenforced** rate control D1 § 18.8 keeps in place of a limit |
+| `coord_signature_invalid` | `global_counters`, plus the per-`(route, source IP)` window in the cache that D1 § 12.3's failed-auth limit keys on | fleet health | — |
+| `coord_delivery_duplicate` | `global_counters` | fleet health | — |
+| `coord_delivery_ignored.<event_type>` | `global_counters`, one row per subscribed event type (`issues`, `issue_comment`, and `ping`) | fleet health | — |
+| `coord_attribution_unresolved` | `global_counters` | fleet health | — |
+| `coord_name_malformed` | `global_counters` | fleet health | — |
+| `coord_targets_unresolved` | `global_counters` | fleet health, **operator alert** | — ; every broadcast on that install is losing its fan-out |
+| `coord_roster_unknown_name` | `global_counters` | fleet health, **operator alert** | — ; the drift guard on the copied roster |
+| `coord_participants_unlabelled` | `global_counters` | fleet health | — |
+| `coord_participants_label_only` | `global_counters` | fleet health | — |
+| `coord_to_from_labels` | `global_counters` | fleet health | — |
 
 Two properties of this mapping are load-bearing and easy to get wrong:
 
@@ -2932,6 +3183,10 @@ for the same reason: a counter with no stated home is a counter two implementers
 | `feed_outbox_boundary_stalled` | `global_counters` | fleet health | a sweep pass found a committed `feed_outbox` row outside the visible prefix whose `created_at` is [§ 6.7](#67-retention-and-purge)'s outbox retention less one visibility lag in the past (`App\Feed\VisiblePrefix::STALLED_AGE_S`, computed from the two constants). Counted **once per pass that finds one**, not per row | non-zero ⇒ rows are one lag from being purged unread — deltas no open stream will deliver; read beside `feed_prefix_future`, which names the cause |
 | `board_poll_ok` | `global_counters` | fleet health | a board poll completed and wrote its transaction ([§ 2.1](#21-processes)) | **Stuck at `0` is the only signal that the board integration NEVER worked** — a poller that stopped after working is visible per seat as `task.degraded` |
 | `board_poll_failed` | `global_counters` | fleet health | a board poll was degraded — credential, transport, status, shape, pagination or the store — and therefore wrote nothing (`BOARD-TASK.md § 9`) | none on its own: the per-seat consequence arrives at [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)'s bound as `task.degraded`, and this counter is what says the cause was the poll rather than the board |
+| `coord_thread_stale_lifecycle` | `global_counters` | fleet health | a lifecycle-moving delivery arrived whose `issue.updated_at` is not later than the held `state_at`, so the store kept its lifecycle ([§ 6.12](#612-the-coordination-store)) | informational; the out-of-order pair [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) row 2(b) named, made a counted non-event. Rising steadily ⇒ deliveries are arriving badly out of order |
+| `coord_thread_reconciled` | `global_counters` | fleet health | a comment's `issue.state` contradicted the held lifecycle and the store moved it ([§ 6.12](#612-the-coordination-store)) | each one is a lost `issues.closed` or `issues.reopened` delivery repaired by the next post; rising ⇒ lifecycle deliveries are being lost, and GitHub's delivery list for the hook says why |
+| `coord_thread_from_post` | `global_counters` | fleet health | a thread was first seen through a comment and derived from the `issue` object it carried ([§ 6.12](#612-the-coordination-store)) | expected to be high in a binding's first weeks (every thread older than the hook arrives this way) and to fall toward zero after; rising later ⇒ `issues.opened` deliveries are being lost |
+| `coord_backfill_served` | `global_counters` | fleet health | a `GET /api/fleet/coord` was served ([§ 8.2](#82-rest)) | fleet health; its `503` twin is the snapshot's `snapshot_denied` shape and is not a second counter — the refusal is counted by the read gate's own path |
 | `idle_horizon_malformed` | `global_counters` | fleet health | a snapshot or seat response was served while `MEZZANINE_IDLE_NUDGE_AFTER_S` is set to something other than a whole number from 1 to 86,400, so it withheld `idle_nudge_after_s` as undeclared ([§ 8.2.1](#821-the-seat-state-object), card#9418). Counted **once per such response**, with one log line naming the key and never its value | non-zero and rising ⇒ the install's idle horizon is malformed and every consumer reads it as undeclared; fix the value and refresh the config |
 
 **Which table, and why the split is not arbitrary.** A counter goes in `seat_counters` when a seat can
@@ -3050,7 +3305,7 @@ upgrades on its own schedule, this row is wrong and the row above it applies.
 
 ### 8.2 REST
 
-All four fleet endpoints require authentication ([§ 9](#9-read-side-authentication)). All responses
+All five fleet endpoints require authentication ([§ 9](#9-read-side-authentication)). All responses
 are `application/json; charset=utf-8` and carry `server_time`.
 
 | Method | Path | Auth | Purpose |
@@ -3059,9 +3314,14 @@ are `application/json; charset=utf-8` and carry `server_time`.
 | `GET` | `/api/fleet/seats/{install_id}/{seat_id}?resync_from=<state_version>` | session+MFA **or** `mzr_` token | one seat: its state object plus the drill-down extras (counters, predicates, open calls, session). `resync_from` is **optional** and is the client's last applied `state_version`: when it is present and the seat's current version exceeds it by more than 1, the server increments `feed_gap_detected` ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)). It changes nothing about the response |
 | `GET` | `/api/fleet/seats/{install_id}/{seat_id}/timeline?limit=&before=` | session+MFA | the recent-activity window for D3's drill-down: the seat's renderable events, newest first, `limit` ≤ 200, default 50 |
 | `GET` | `/api/fleet/health` | session+MFA **or** `mzr_` token | fleet-level health only, no seat data: store, fold, sweep, ingest recency, counts — **plus the fleet-scoped counters**, which this endpoint alone carries ([§ 8.2.4](#824-the-fleet-health-object)) |
+| `GET` | `/api/fleet/coord` | session+MFA | **the coordination backfill** (card#12239, [§ 6.12](#612-the-coordination-store)): the `coord.thread` / `coord.round` envelopes a client connected since the store's first row would hold under FLOOR.md § 12's cap — whole threads, newest first, up to **1,000**, plus `truncated_threads[]` for the one thread that alone exceeds it — in [§ 8.3](#83-the-websocket-delta-feed)'s envelope shape so the client applies them through the path the stream's own arrive by. **Browser-only, like the timeline**, and deliberately: the one consumer ships with the server, so no consumer upgrades on its own schedule and [D1 § 18.7](EVENT-SCHEMA.md#187-coordround)'s enum-classification trigger — *publication across a deploy boundary* — does not fire; an `mzr_` token is refused `401` as the timeline refuses one. Counts `coord_backfill_served`; fails CLOSED ([§ 2.2](#22-fail-posture-per-path)) |
 
-**There is no fifth FLEET endpoint, and the fleet plane still serves no floor map — but a map IS
-served, on a surface of its own, and the sentence that stood here until 2026-09-12 is REVERSED.**
+**The fifth FLEET endpoint is the coordination backfill, since card#12239's design (2026-10-23) — and
+the sentence that stood here from card#9208 until then, *there is no fifth FLEET endpoint*, is
+REVERSED for the reason [§ 13](#13-decisions-taken-revisable-at-review) row 40 gave for refusing one:
+the store it would read is now designed ([§ 6.12](#612-the-coordination-store)). The fleet plane still
+serves no floor map — but a map IS served, on a surface of its own, and the sentence that stood here
+until 2026-09-12 is REVERSED too.**
 ⭐ **Operator ruling, card#9208 (2026-09-12)** ([§ 13](#13-decisions-taken-revisable-at-review) row 38),
 reversing the same card's ruling of 2026-09-09: the authored floor map is **served at runtime from the
 admin console's store**, and each floor is separately configurable, room design included. The read
@@ -3570,7 +3830,7 @@ a consumer that assumed the three were identical would read a missing `counters`
 | `max_fold_lag_ms` | int | no | ≥ 0, the maximum over **the same population `seats_total` counts** — every seat no operator has retired, not only the live ones. One population, named once, because `fleet.fold`'s thresholds ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) are stated over *any* seat and two fields of one object reading two populations can disagree: a `stale` seat 117 s behind would set `fleet.fold` to `lagging` while `max_fold_lag_ms` read `0`. A silent seat contributes `0` on its own once its cursor catches up, so widening the population costs nothing and closes that gap | `117` |
 | `seats_total` | int | no | ≥ 0, excluding retired seats — which leave this count at `retired_at`, in the same transaction that takes their desk off the floor ([§ 4.10](#410-retirement-is-a-rendered-state)) | `4` |
 | `seats_live` | int | no | ≥ 0, `link_state == "live"` | `4` |
-| `counters` | object | **yes** | **`GET /api/fleet/health` only.** Every fleet-scoped counter whose `Exposed` cell names this surface — `batches_failed.<detail>`'s global rows (one member per [D1 § 12.2](EVENT-SCHEMA.md#122-error-responses) `server_error` `detail`), `unattributed_refusals`, `auth_failed_by_ip`, `revoked_token_presented` ([§ 7.1](#71-d1s-server-side-counters--where-they-live)) and `feed_resync_required`, `feed_gap_detected`, `snapshot_served`, `snapshot_denied`, `token_wrong_surface`, `purge_backlog_rows`, `feed_prefix_future`, `feed_outbox_boundary_stalled`, `board_poll_ok`, `board_poll_failed`, `idle_horizon_malformed` ([§ 7.2](#72-this-planes-own-counters-and-badges)) — one `BIGINT UNSIGNED` member each, read from `global_counters`, monotonic and never reset. Whenever the object is present **every one of them is**, each at `0` before its first increment: a per-member omission is forbidden, because an omitted counter and a zero counter are the same wire shape to a consumer and only one of them is true. It is `null` — and **only** — when `db` is `down`, because they live in the store and a response that could not reach it cannot report them; reporting `0` there would be `docs/KANBAN.md § G-1`'s clean zero on the very surface [§ 2.2](#22-fail-posture-per-path) built its read posture to keep honest. `null` says *we could not read these*; `0` would say *nothing has happened* | `{"purge_backlog_rows": 0, "token_wrong_surface": 0, …}` |
+| `counters` | object | **yes** | **`GET /api/fleet/health` only.** Every fleet-scoped counter whose `Exposed` cell names this surface — `batches_failed.<detail>`'s global rows (one member per [D1 § 12.2](EVENT-SCHEMA.md#122-error-responses) `server_error` `detail`), `unattributed_refusals`, `auth_failed_by_ip`, `revoked_token_presented` ([§ 7.1](#71-d1s-server-side-counters--where-they-live)) and `feed_resync_required`, `feed_gap_detected`, `snapshot_served`, `snapshot_denied`, `token_wrong_surface`, `purge_backlog_rows`, `feed_prefix_future`, `feed_outbox_boundary_stalled`, `board_poll_ok`, `board_poll_failed`, `idle_horizon_malformed`, `coord_thread_stale_lifecycle`, `coord_thread_reconciled`, `coord_thread_from_post`, `coord_backfill_served` ([§ 7.2](#72-this-planes-own-counters-and-badges)), and the coordination route's eleven ([§ 7.1](#71-d1s-server-side-counters--where-they-live), card#12239): `coord_delivery_received` (one member per binding's install, as `coord_delivery_received.<install_id>`, the member set being the bindings `coord_hooks` holds), `coord_signature_invalid`, `coord_delivery_duplicate`, `coord_delivery_ignored.<event_type>` (one member per subscribed event type), `coord_attribution_unresolved`, `coord_name_malformed`, `coord_targets_unresolved`, `coord_roster_unknown_name`, `coord_participants_unlabelled`, `coord_participants_label_only`, `coord_to_from_labels` — one `BIGINT UNSIGNED` member each, read from `global_counters`, monotonic and never reset. Whenever the object is present **every one of them is**, each at `0` before its first increment: a per-member omission is forbidden, because an omitted counter and a zero counter are the same wire shape to a consumer and only one of them is true. It is `null` — and **only** — when `db` is `down`, because they live in the store and a response that could not reach it cannot report them; reporting `0` there would be `docs/KANBAN.md § G-1`'s clean zero on the very surface [§ 2.2](#22-fail-posture-per-path) built its read posture to keep honest. `null` says *we could not read these*; `0` would say *nothing has happened* | `{"purge_backlog_rows": 0, "token_wrong_surface": 0, …}` |
 
 **Why `counters` is on the endpoint and not on the object.** [§ 7.1](#71-d1s-server-side-counters--where-they-live)
 declares that its tables answer *where each counter is stored, which surface exposes it, and which badge
@@ -3661,7 +3921,7 @@ reconnect cadence is the client's ([FLOOR.md § 2.2](FLOOR.md#22-connect-snapsho
 | `seat.retired` | server → client | the retirement act ran, from either of its operator entry points ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)) — one implementation, so one producer. ⭐ **This message is a REMOVAL instruction**: the consumer drops the seat ([FLOOR.md § 3.5](FLOOR.md#35-retirement-and-the-only-removal)), and it is the only message on this feed that does | `install_id`, `seat_id`, `reason`, `at` |
 | `fleet.reload` | server → client | a deploy — written by `mezzanine:feed-reload` ([§ 2.1](#21-processes)) before the deploy's opcache wait — no deploy reloads PHP-FPM, and the deploy user cannot — carrying the release's `feed_version` whether or not it changed, because the deploy is the one act that knows the code moved. ⛔ **Terminal**: the handler ends the stream after delivering it — **and writes `feed.close{reason:"reload"}` first**, so the end is a stated server decision rather than the unexplained silence [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F3 routes to the dead-feed render (the `feed.close` row below owns that member) — which is what takes an open stream off the previous release's code, since opcache revalidation reaches new requests only. ⚠ **The message is written on every deploy; the client's RELOAD BANNER is not raised by every one** — it is raised on a `feed_version` the client does not know ([§ 8.1](#81-two-surfaces-two-compatibility-postures), [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F8), which is unchanged by this row. An unchanged `feed_version` after a deploy means **the wire did not move**, and a client whose bundle is one release old is by that definition still correct on it — so it reconnects, keeps rendering, and is asked to reload only when the wire actually changes. Reading the terminal end as a reload prompt would put a banner in front of every viewer on every deploy | `feed_version`, `reason` |
 | `fleet.health` | server → client | **on connect** — the handler's first yield, read from the store before the outbox is opened, `db: "down"` when that read fails — and whenever `db`, `fold` or `sweep` changes value ([§ 2.1](#21-processes)'s heartbeat daemon writes the change) | `fleet{}` ([§ 8.2.4](#824-the-fleet-health-object)) |
-| `coord.thread` | server → client | a coordination thread is opened, closed or reopened on a repository bound to this install ([D1 § 18.6](EVENT-SCHEMA.md#186-coordthread)) | `coord_thread{}` ([§ 8.3.3](#833-the-coordination-objects)) |
+| `coord.thread` | server → client | a coordination thread is opened, closed or reopened on a repository bound to this install ([D1 § 18.6](EVENT-SCHEMA.md#186-coordthread)) — and, since card#12239's design, when the first post on a thread the store does not hold describes it, or a post's `issue.state` contradicts the lifecycle the store holds (D1 § 18.6's triggers *(i)* and *(ii)*, [§ 6.12](#612-the-coordination-store)) | `coord_thread{}` ([§ 8.3.3](#833-the-coordination-objects)) |
 | `coord.round` | server → client | a post is made on such a thread — the opening post and every comment ([D1 § 18.7](EVENT-SCHEMA.md#187-coordround)) | `coord_round{}` ([§ 8.3.3](#833-the-coordination-objects)) |
 | `room.map` | server → client | a room's map was **saved, restored or removed** in the admin console ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) — one implementation, written on commit of the revision it announces, carrying the room's `install_id`, and delivered on the one stream — a client's rendered set is the snapshot's installs and never the layout's ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)), and an authored room need not be among them, which under the retired per-install channels was why this row had to fan out to every channel; the stream has nothing to fan out to | `install_id`, `map_version` (`null` after a removal: the room is back on the shipped default), `at` |
 | `building.layout` | server → client | the building layout — the floor plan included, card#9292 — was saved or restored in the admin console ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)), one row on the stream, as `feed.heartbeat` is — a layout change concerns every floor | `layout_version`, `at` |
@@ -4299,7 +4559,9 @@ restated here, once, because a reader who reaches the ruling and not D1 § 18 is
 producer that design forbids.
 
 **`coord.thread` — the thread as a lifecycle object.** One per `issues` delivery whose action is
-`opened`, `closed` or `reopened`.
+`opened`, `closed` or `reopened` — and, since card#12239's design, one on each of
+[D1 § 18.6](EVENT-SCHEMA.md#186-coordthread)'s two comment-carried triggers, which produce the same three
+`lifecycle` values and no fourth.
 
 | Field | Type | Null? | Bounds | Example |
 |---|---|---|---|---|
@@ -4317,7 +4579,9 @@ producer that design forbids.
 
 **`coord.round` — the post.** One per `issue_comment.created`, and one for the `issues.opened`
 delivery that also produces a thread: the opening post **is** a post, and modelling it as only a
-lifecycle edge would lose the thread's first round.
+lifecycle edge would lose the thread's first round — or, when the first delivery that describes a
+thread is a comment, one for that opening post derived from the comment's `issue` object
+([D1 § 18.7](EVENT-SCHEMA.md#187-coordround), card#12239).
 
 | Field | Type | Null? | Bounds | Example |
 |---|---|---|---|---|
@@ -4427,8 +4691,9 @@ a consumer has instead is **identity**: `post_ref` is unique per post and `threa
 bead count is a count of distinct `post_ref` and a repeat draws nothing new. Duplicate suppression
 happens at receipt on the delivery digest (D1 § 18.8 step 7); the one path that reaches this feed twice
 for one real post is an operator Redeliver older than the digest store's retention
-([D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish), last row), and it arrives
-carrying the same `post_ref`.
+([D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish), last row) — which since
+card#12239 is **14 days** against GitHub's documented **3-day** reach ([§ 6.7](#67-retention-and-purge)),
+so that path needs a payload held outside GitHub — and it arrives carrying the same `post_ref`.
 
 **What is deliberately NOT published, each with the finding that killed it** — stated as a table so a
 consumer meeting the ruling's element list can see which of them has no field rather than inferring it
@@ -4471,17 +4736,23 @@ wild older than the server. The declination therefore transposes and these table
 [§ 8.2](#82-rest)'s REST surface, whose consumers upgrade on their own schedule, the enum-classification
 obligation attaches at that change.
 
-**No snapshot member, no fifth endpoint — and that is derived, not a preference.**
-[§ 8.4](#84-snapshot-then-deltas)'s snapshot half is a read of **stored** state, so a coordination
-snapshot is a read over a coordination store, and that store is explicitly a later slice:
-[D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish)'s last two rows hand both of its
-open decisions — where the receipt route's counters live, and what bounds the idempotency digest's
-retention — to *"the slice that designs the coordination store"*, which is not this one. Specifying a
-read over a store nobody has designed would put a guessed rule in a contract. So the feed carries these
-objects, `GET /api/fleet/snapshot` does not, and no endpoint joins [§ 8.2](#82-rest)'s four. **The cost
-is stated rather than left to be met:** a client that has just connected draws no thread line until the
-next post on that thread. [§ 14](#14-open-questions-for-the-review-loop) item 14 carries the closure
-act.
+**No snapshot member — and a fifth endpoint, since card#12239's design (2026-10-23).** Until then this
+paragraph refused both, and the refusal was derived rather than preferred: [§ 8.4](#84-snapshot-then-deltas)'s
+snapshot half is a read of **stored** state, so a coordination snapshot is a read over a coordination
+store, and that store was explicitly a later slice — [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish)'s
+last two rows handed both of its open decisions to *"the slice that designs the coordination store"*, and
+specifying a read over a store nobody had designed would have put a guessed rule in a contract. That
+slice is [§ 6.12](#612-the-coordination-store), so the reason expired with it. **What stands:** the feed
+carries these objects and `GET /api/fleet/snapshot` still does not — the snapshot is the watchdog's
+machine interface, sized at ~91 KB, and a thousand envelopes on every five-minute poll is the wrong
+surface. **What changed:** `GET /api/fleet/coord` ([§ 8.2](#82-rest)) serves a just-connected client the
+envelopes a long-connected one would hold, under the same cap and the same whole-thread rule
+([§ 6.12](#612-the-coordination-store)), **browser-only** so that the two objects are still never
+published across a deploy boundary and D1 § 18.7's enum obligation still does not attach. The cost
+this paragraph used to state — *a client that has just connected draws no thread line until the next
+post on that thread* — is now the cost of a thread the cap dropped, and of nothing else.
+[§ 14](#14-open-questions-for-the-review-loop) item 14 is closed; [§ 13](#13-decisions-taken-revisable-at-review)
+rows 40 and 53 carry the reversal.
 
 **Authentication and scope are unchanged and are not restated:** these ride the one stream like every
 other message on this feed, each row carrying the `install_id` of its hook binding, under
@@ -4575,12 +4846,29 @@ something else changes it — which on a quiet desk is never.
 step 5 exact rather than approximate, and it is why the snapshot must carry the version on every seat
 rather than one snapshot-wide sequence number.
 
-**The coordination messages have no snapshot half, and the asymmetry is stated here rather than met at step 3.**
-Steps 2–5 are about seat state and its per-seat watermark. [§ 8.3.3](#833-the-coordination-objects)'s objects
-carry no `state_version` and are not in `GET /api/fleet/snapshot`, so this protocol neither buffers nor discards
-them: a client applies each as it arrives from the moment it connects, and holds nothing about a thread whose
-last post predates its connection. That is a real cost and § 8.3.3 prices it; what it is **not** is a window of
-the kind step 5 closes, because there is no snapshot for a delta to be older than.
+**The coordination messages have a snapshot half of their own since card#12239's design, and its watermark
+is IDENTITY plus the receipt clock rather than a version.** Steps 2–5 are about seat state and its per-seat
+`state_version`; [§ 8.3.3](#833-the-coordination-objects)'s objects carry none and are not in
+`GET /api/fleet/snapshot`. Their protocol runs beside it, in the same shape:
+
+```
+2c. client BUFFERS every coord.thread / coord.round from the moment the stream opened
+3c. client GETs /api/fleet/coord              -> the envelopes a long-connected client would hold (§ 6.12)
+4c. client applies them, WITHOUT animation    -> a backfill is a snapshot (FLOOR.md § 6.5)
+5c. client drains the coordination buffer:   a coord.round whose post_ref is already held is DISCARDED;
+                                              a coord.thread whose received_at is not later than the held
+                                              thread's is DISCARDED; the rest are applied in order
+```
+
+The watermark works because a `coord.round` is identified by `post_ref` and a `coord.thread`'s
+`received_at` is the server clock at the receipt that last moved the thread, which the backfill carries
+for the held state ([§ 6.12](#612-the-coordination-store)); a buffered `coord.thread` from that same
+receipt therefore compares equal and is discarded, and one from a later receipt is applied. ⚠ What this
+watermark does **not** order is two lifecycle deliveries against each other by the payload's clock — a
+connected client holds arrival order until its next connect, which `docs/design/COORD-STORE.md § 11`
+names with its closure. Before this slice the paragraph here said the objects had no snapshot half and
+that a client *"holds nothing about a thread whose last post predates its connection"*; that is now the
+cost of a thread the cap dropped, and of nothing else.
 
 ### 8.5 Gaps, reconnect, and why `state_version` is not `seq`
 
@@ -4935,6 +5223,7 @@ CSPRNG, SHA-256 at rest, a greppable prefix — and cites it rather than re-deri
 | the floor, the drill-down, the stream, and REST from a browser | **Laravel session + MFA** (Fortify + TOTP, D-04; card #7334) | `docs/PLAN.md § 3`: MFA gates the page, the feed **and** the REST snapshot — and on the stream the gate is re-applied every **15 s** for as long as it is open, below |
 | REST from a machine consumer | **`Authorization: Bearer mzr_<43 base64url chars>`** | scope `fleet_read`, read-only. **Never valid on the ingest**, and an `mzn_` ingest token is never valid here: distinct prefixes, distinct tables, and a token presented on the wrong surface is `401`, counting `token_wrong_surface`, and an operator alert |
 | the stream, from a machine consumer | **not supported** | refused by operator ruling, 2026-09-13 ([§ 14](#14-open-questions-for-the-review-loop) item 15); the reason it was first refused is gone — see below |
+| the coordination backfill — `GET /api/fleet/coord` ([§ 8.2](#82-rest), card#12239) | **Laravel session + MFA only** | browser-only like the timeline, and for the reason the endpoint row states: a machine consumer on its own upgrade schedule is the publication that would attach D1 § 18.7's enum obligation to the two objects. An `mzr_` token is `401` and not `token_wrong_surface` — the token is on the read side, on a route the read side reserves for a session |
 | the building surface — `GET /api/building` and `GET /api/building/rooms/{install_id}/map` ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | **Laravel session + MFA only** | browser-only, like the timeline: an `mzr_` token presented to it is refused `401` exactly as the timeline refuses one, and it is **not** `token_wrong_surface` — the token is on the read side, on a route the read side reserves for a session. The map is furniture and would be harmless in a machine's hands; what refusing buys is one fewer surface with a compatibility window, which is [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s reason for its posture |
 
 **The stream re-checks its own authorization every 15 s, so revocation on an open connection is a
@@ -5998,6 +6287,66 @@ cursor, one table over, with a stream as the reader. The fold closes it with the
   with the tick's prefix restored and the connect alone on the filter, the connecting stream starts
   above both and receives neither.
 
+### AT-D2-26 the coordination backfill is what a long-connected client holds
+
+**Property:** [§ 6.12](#612-the-coordination-store)'s selection rule and `fleet-client.js`'s eviction
+are one rule read from two ends, so a page that loads and a page that stayed open hold the same threads.
+
+- **Fixture:** a store written by replaying, through the receipt route, a sequence of signed deliveries
+  that produces more than 1,000 envelopes across several threads, one of them alone exceeding the cap
+  (the shape this fleet's coordination repository measurably has), with closes and a reopen among them.
+- **GREEN:** the set of `(t, identity)` pairs `GET /api/fleet/coord` returns equals the set the client
+  protocol holds after applying every envelope the replay put on the feed, in order, under `COORD_CAP`;
+  `truncated_threads[]` names exactly the threads the client's `coordTruncated` names; every
+  `coord_thread` in the response carries the **held** lifecycle and the receipt that moved it.
+- **RED:** order the backfill's threads by `posted_at` instead of by the newest envelope's `received_at`
+  → the two sets differ on the first thread whose last post predates a newer thread's open. **Second
+  RED:** truncate the over-cap thread oldest-first in the response → the client holds its newest rounds
+  and the response its oldest. **Third RED:** serve the response with an `mzr_` token accepted → the
+  route answers a machine consumer, which is the publication this document says never happens.
+
+### AT-D2-27 the digest, the derivation and the feed rows commit together or not at all
+
+**Property:** D1 § 18.8 step 9's *"steps 7 and 9 commit together"*, as a property of
+`App\Feed\Outbox::transaction()` rather than of a call site.
+
+- **GREEN:** a delivery whose derivation throws after the digest insert leaves **no** `coord_deliveries`
+  row, no thread, no post and no outbox row, and answers `503 server_error`; the same body re-posted
+  afterwards derives and is `202`. A Redeliver of a committed delivery inside 14 days is `202` with
+  `status: "duplicate"`, `coord_delivery_duplicate` moves and nothing else does; two byte-identical
+  deliveries posted concurrently commit one row and one set of objects.
+- **RED:** commit the digest in its own transaction before the derivation → the failed delivery's
+  Redeliver is absorbed as a duplicate and the post is lost forever, which is the exact shape step 9
+  forbids. **Second RED:** purge `coord_deliveries` at 2 days and redeliver a 3-day-old delivery → the
+  post is derived twice and the feed carries two `coord.round`s with one `post_ref`
+  ([§ 6.7](#67-retention-and-purge)'s chain, broken on purpose).
+
+### AT-D2-28 the held lifecycle follows the payload's clock, not arrival
+
+**Property:** [§ 6.12](#612-the-coordination-store)'s thread rule.
+
+- **GREEN:** deliver `issues.reopened` (`updated_at` T2) and then `issues.closed` (`updated_at` T1 < T2)
+  for one thread → the held `lifecycle` is `reopened`, `coord_thread_stale_lifecycle` is 1, and the
+  feed carried **both** objects with their own actions. Deliver `issue_comment.created` whose `issue.state`
+  is `closed` on a thread held `opened` → the held lifecycle is `closed`, `closed_received_at` is set, a
+  `coord.thread{closed, unattributable}` is on the feed, `coord_thread_reconciled` is 1.
+- **RED:** apply lifecycle in arrival order → the pair above leaves `closed`. **Second RED:** skip the
+  comment's `issue.state` → the lost-close thread stays open with no counter moving.
+
+### AT-D2-29 a thread first seen through a comment is a thread
+
+**Property:** D1 § 18.6 trigger *(i)* and [§ 6.12](#612-the-coordination-store)'s unheld-thread rule.
+
+- **GREEN:** with no `issues.opened` ever delivered, one `issue_comment.created` whose `issue` carries a
+  body `FROM:` line, labels and `state: open` yields one `coord_threads` row (`lifecycle: opened`,
+  `participants` the union, `opened_by` resolved from the body), two `coord_posts` rows — the opening
+  post with `post_ref = thread_ref` and the comment — three feed objects, and
+  `coord_thread_from_post` at 1. The same with `state: closed` yields `closed`; with `state: open` and
+  `state_reason: reopened` yields `reopened`.
+- **RED:** derive the thread from `issues` deliveries only → the comment yields a post for a thread no
+  row holds, the backfill serves a round with no thread, and the client draws beads with no lifecycle to
+  draw a line by.
+
 ---
 
 ## 12. Every number, and where it comes from
@@ -6012,6 +6361,11 @@ document.
 
 | Value | Number | Basis | Where |
 |---|---|---|---|
+| `coord_deliveries` retention | 14 days | **Derived** — the event retention, reused so the purge pass has one history retention; its floor is the row below | [§ 6.7](#67-retention-and-purge) |
+| Closed coordination thread retention | 14 days | **Derived** — the same figure, for the same pass | [§ 6.7](#67-retention-and-purge) |
+| GitHub redelivery reach | 3 days | **Cited** — the vendor's documentation (DOCS-CITED, `docs/design/COORD-STORE.md § 2.3`); the floor under the digest retention | [§ 6.7](#67-retention-and-purge) |
+| GitHub delivery response bound | 10 s | **Cited** — the vendor's documentation (DOCS-CITED); bounds the receipt write | [§ 2.2](#22-fail-posture-per-path) |
+| Coordination backfill cap | 1,000 envelopes | **Cited** — FLOOR.md § 12's *Held coordination envelopes*, the client's own hold, served from the server's end | [§ 6.12](#612-the-coordination-store) |
 | Seat `stale` threshold | 300 s | **Cited** — D1 § 9.1 | [§ 4.5](#45-link-states) |
 | Seat `offline` threshold | 900 s | **Cited** — D1 § 9.1 | [§ 4.5](#45-link-states) |
 | `catching_up` threshold | `oldest_unsent_age_s > 300` | **Cited** — D1 § 9.1 states the obligation and the number | [§ 4.5](#45-link-states) |
@@ -6159,7 +6513,7 @@ review can reverse it deliberately rather than discover it later.
 | 37 | **A D2 verifier ships with this document** | leave it to the build phase, as an earlier draft of [§ 14](#14-open-questions-for-the-review-loop) item 8 recommended | The review that produced this revision found four blockers and nineteen majors, of which ten were single-surface edits to multi-surface facts — a class a set-difference catches in milliseconds and a reader catches on the third pass, if ever. Deferring the guard until after the facts had been fixed by hand would be deferring it past the moment it was most needed | one more script to keep true, and every figure in this document is now a figure a change must move in all its homes at once |
 | 38 | **The floor map is SERVED AT RUNTIME from the admin console's store, on a surface of its own ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)); the fleet plane still publishes no map member, and the seat→desk binding is still the whole of what it declares for a floor** ([§ 8.2](#82-rest), [§ 8.2.1](#821-the-seat-state-object)) — ⚠ **REVERSED by operator ruling, card#9208 (2026-09-12)**; this row previously decided the opposite — *a build artifact of the client, never served at runtime* — and the alternative column is where that reading now lives, beside the two shapes the first ruling also declined | **the first ruling's shape (2026-09-09)**: the map is a build artifact shipped with the client, never served, and a floor edit is a redeploy; **(c)** the map riding the snapshot as an additive member; **(a′)** a map endpoint under `/api/fleet/` rather than under a prefix of its own | The reason the first ruling was taken — a map that changes is a design act, not a runtime event — was answered by the operator at the product level: floors ARE to be configured at runtime, separately, and the scope widened from a map of desk slots to **room design** — walls, furniture, the layout itself — which is authoring, and authoring wants a save to take effect without a deploy. That is a reason that was not on the table on 2026-09-09, which is the bar [FLOOR.md § 14](FLOOR.md#14-open-questions-for-the-review-loop) item 16 set for a reversal. (c) is still refused for the reason it was refused then — bytes that change on a designer's schedule on every snapshot of every seat, and a watchdog paying for furniture; (a′) is refused because an authored document on the fleet plane looks like something the fleet reported ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)) | **Floor layout leaves version control** — no diff, no review, no revert and no blame for free — and the answer to that is designed rather than defaulted: [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)'s append-only revisions give back three of the four and say which one they do not. A second irreplaceable population joins `events` in the store ([§ 6.10](#610-durability-posture)). And the read plane gains a surface, a compatibility posture ([§ 8.1](#81-two-surfaces-two-compatibility-postures)) and two feed messages, each priced in § 8.7 |
 | 39 | **The coordination objects are first-class objects on the existing feed, not members of the seat object** ([§ 8.3.3](#833-the-coordination-objects)) | a `coord` member on [§ 8.2.1](#821-the-seat-state-object)'s seat object, replicated onto each participant's desk | A thread spans desks and its participants may name agents no desk holds, so a per-seat copy is one fact with N homes, free to disagree with itself and free to make a seat object's size a function of another plane's traffic. The ruling's own words are that **the thread is the object on the wire**, and [§ 4.8](#48-what-may-never-mint-a-state) is where the corollary is written — a coordination fact touches no seat state — added there in this same change rather than asserted here, so the rule sits with the rules of its kind | a consumer wanting *this desk's threads* filters `participants` itself, over whatever the feed has delivered since it connected — over names that resolve to a desk only where that desk's seat **declared** the name (`card#7957`'s (d), built on the server's side on `card#9296` and on the reporter's on `card#9375`; [§ 8.3.3](#833-the-coordination-objects)), and to no desk at all where none did |
-| 40 | **The coordination objects ride the delta feed only — no snapshot member, no fifth endpoint** ([§ 8.3.3](#833-the-coordination-objects)) | a `threads[]` member on `GET /api/fleet/snapshot`, or a coordination endpoint beside [§ 8.2](#82-rest)'s four | A snapshot is a read of stored state, and the coordination store is explicitly a later slice: [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) hands both of its open decisions — the receipt route's counters, and the idempotency digest's retention — to *"the slice that designs the coordination store"*. Specifying a read over a store nobody has designed is how a guessed rule enters a contract | a client that has just connected draws no thread line until the next post on that thread. Priced at § 8.3.3 and carried as [§ 14](#14-open-questions-for-the-review-loop) item 14, rather than discovered when the floor is built |
+| 40 | ⚠ **REVERSED IN PART on card#12239's design (2026-10-23) — row 53 is the decision now in force: no snapshot member still, and a fifth endpoint, `GET /api/fleet/coord`, because the store this row's reason waited on is [§ 6.12](#612-the-coordination-store).** Was: **The coordination objects ride the delta feed only — no snapshot member, no fifth endpoint** ([§ 8.3.3](#833-the-coordination-objects)) | a `threads[]` member on `GET /api/fleet/snapshot`, or a coordination endpoint beside [§ 8.2](#82-rest)'s four | A snapshot is a read of stored state, and the coordination store is explicitly a later slice: [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) hands both of its open decisions — the receipt route's counters, and the idempotency digest's retention — to *"the slice that designs the coordination store"*. Specifying a read over a store nobody has designed is how a guessed rule enters a contract | a client that has just connected draws no thread line until the next post on that thread. Priced at § 8.3.3 and carried as [§ 14](#14-open-questions-for-the-review-loop) item 14, rather than discovered when the floor is built |
 | 41 | **The building surface is its own REST prefix, `/api/building/*`, browser-only — not a fleet endpoint and not a snapshot member** ([§ 8.1](#81-two-surfaces-two-compatibility-postures), [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | a fifth row in [§ 8.2](#82-rest)'s table; `installs[].map_version` and the layout as additive snapshot members; the layout inlined with the page and only the map fetched | An authored document is not a fact the fleet reported, and putting it on the fleet plane would make it look like one ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)) — and the fleet plane has a machine consumer with a support window that furniture must not be billed to. A snapshot member would put a designer's bytes on every seat of every snapshot, which is (c)'s cost under another name. Inlining the layout with the page while fetching the map from an endpoint gives one building two delivery paths, which is the *which of the two am I looking at* question that section refuses | two more routes behind one gate, and a client that fetches three things on connect instead of one. If a machine consumer ever wants the map, [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s third row says which row it moves to and what that costs |
 | 42 | **A client learns that a map or the layout changed from a feed notification carrying the new version, and then fetches — never by polling, never by `fleet.reload`, and the message never carries the document** ([§ 8.3](#83-the-websocket-delta-feed), [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | poll `/api/building` on a cadence; publish `fleet.reload` on every save; carry the document on the message; a `private-building` channel of its own | Polling is N seconds of a wrong building per save and a request per client per N seconds for a document that changes on a designer's schedule. `fleet.reload` ends every open stream, and on a changed `feed_version` demands a reload, which is the right response to a deploy and the wrong one to furniture. The document cannot ride the message: 512 KiB against an 8 KiB bound. A channel of its own was one more subscription and one more authorization for two messages that already had a home — both rode every channel, as the heartbeat did, `room.map` too, because the client's subscriptions were the snapshot's installs and the room just drawn may have no seat reporting — and since card#9287 there are no channels: both ride the one fleet-wide stream ([§ 8.3](#83-the-websocket-delta-feed)), so the alternative has no referent | a client in polling mode (F1) sees neither message and holds the old building until it reconnects, stated in § 8.7 rather than met on a floor; and each save is one message on the one stream, which every client receives once and fetches on by version. **And `room.map` spends a property**: it is the one message carrying another install's `install_id` to every subscriber, so a per-install ACL, should [§ 14](#14-open-questions-for-the-review-loop) item 7 reopen, must filter it per subscriber — and the fleet-wide `fleet{}` every subscriber receives is that ACL's other unanswered question, recorded on that item beside it |
 | 43 | **Recovery is an append-only revision log: every save is a revision, a restore is a forward revision that copies an older one, a removal is a revision with no document, and nothing is ever purged** ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)) | *the database is the record* — the current row and nothing else; a ring of the last N revisions; export-only, with the repository as the one history | The ruling owes an answer on recovery and refuses the default. The current row alone is what the console shipped with (card#9085) and it loses a layout on the first bad save. A ring bounds a population that is already bounded by a person pressing *save* and would purge exactly the revision someone wants back. Export-only puts the history where an operator has to remember to put it. Append-only with restore-as-forward keeps the log a log: nothing rewrites it, and *undo* is a row rather than a deletion | the store grows by one document per save, forever ([§ 6.7](#67-retention-and-purge)) — costed in § 6.11 and small; and **review is not recovered**, said in that section's own table rather than implied by the word *revisions* |
@@ -6171,6 +6525,10 @@ review can reverse it deliberately rather than discover it later.
 | 49 | **The declared agent-name join is resolved by the CONSUMER against the seat population; this plane publishes the DECLARATION and never a desk reference** ([§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects)) | resolve it server-side and publish `seat_id` on `coord_thread` / `coord_round`, which is where a reader first looks for it | `card#7957`'s (d) rests on **one party knowing both facts**, and that party is the SEAT. This plane knows only what the seat said, so resolving here would move a join whose weaker end is a human-typed string onto objects whose every other field is token-bound or hook-bound — and a consumer could no longer tell which kind it was reading. It would also give one fact N homes: a thread spans desks, so a desk reference per participant per message is a copy free to disagree with the seat object it was copied from, which is [§ 13](#13-decisions-taken-revisable-at-review) row 39's argument one field along | every consumer implements the same three join rules instead of reading one member. [§ 8.3.3](#833-the-coordination-objects) states them once so the implementations are the same, and a consumer that gets them wrong is wrong in its own client rather than in the store |
 | 50 | **A protocol agent name is UNIQUE per install; a name more than one seat declares is a misconfiguration that resolves to nothing and is reported as its own reason** ([§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects), [FLOOR.md § 5.7](FLOOR.md#57-the-coordination-thread-line)) | ⭐ **Operator ruling, 2026-09-12, `card#9296`.** The alternative on the table was the one three surfaces of this document had already written down: a name may resolve to **a set**, because one agent running two seats is two desks and not a collision. A second was a store `UNIQUE KEY` on the name per install, which would refuse the second seat's heartbeat or fail its fold and keep whichever seat arrived first | The set reading legalised a resolution nothing could then govern. [FLOOR.md § 6.2](FLOOR.md#62-the-animation-table--the-closed-set) A18 triggers on participants resolving to *a desk*, singular, and the client's `resolve()` returns one `seat_id` — so the map a builder was told to construct was last-writer-wins over an unordered seat population and A18 drew to whichever seat was folded last. That is the guessed desk § 5.7 clause 1 forbids, arrived at by obeying the documents. Ruling the duplicate a **misconfiguration** removes the pick instead of specifying it | **a seat cannot enforce it.** Its own check asks whether its name is in the roster, and two seats declaring one name both pass — so the invariant is declared on this plane and enforced at the consumer, which is the only party that sees both seats. [AT-D2-24](#at-d2-24-a-coordination-object-names-an-agent-and-never-a-desk)'s sixth and seventh REDs specify the refusal — the seventh for a `checked` seat beside a `disagreed` one, which counts toward the duplicate by the scope [§ 8.3.3](#833-the-coordination-objects) rule 1 states — and nothing runs them until the consumer's join is built |
 | 51 | **`longest_open_call` is published on the seat object — the oldest open call's `call_id`, `tool_name` and server-clock `started_received_at` — because `action` is the NEWEST open call and a consumer asking how long a seat's longest call has run cannot answer it from `action`** ([§ 8.2.1](#821-the-seat-state-object); card#12113, for [D3 § 4.1](FLOOR.md#41-the-lobby--the-building-summary)'s directory plaque) | let D3 read `action.started_received_at` and say so honestly as *the current call has run N*; publish the whole open-call list on the seat object; publish only a timestamp with no tool name | the first under-reports the exact case the operator asked about — a dispatch an hour old under a seconds-old intern call ([§ 10](#10-worked-example-the-clear-trace-folded-end-to-end) E3) — and would have had the lobby's attention line miss every long dispatch; the whole list is [§ 8.2.3](#823-the-seat-detail-response)'s and is priced out of the snapshot there; a bare timestamp leaves the consumer unable to say what is running. The rows already exist in `calls`, selected by `ix_open (seat_ref, closed_at)` and carrying `opened_received_at`, so this is a second ordering of the open set the fold already reads for `action`, moving on edges that already emit a delta | the seat object grows by the bytes [§ 8.2.1](#821-the-seat-state-object)'s size table re-measures (its worst case still inside the 8 KiB bound, [D3 § 8.1](FLOOR.md#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) re-derives the cap's margin from it), and `seat_state` gains one nullable reference column; if a later consumer needs the descriptor or the scope, that is one more member on this object rather than a redesign |
+| 52 | **card#12239: the coordination store is five tables of its own, written synchronously by the receipt request in one outbox transaction — no `events` row and no fold step** ([§ 6.12](#612-the-coordination-store), [§ 6.4](#64-ddl)) | a synthetic `events` row with a nullable `seat_ref` folded by `mezzanine:fold`; or a raw-delivery table drained by a daemon | the first widens the primitive every seat event depends on — the seat lock, D2-MUST #3's per-seat dedup, `ix_fold` — to admit a producer that fails all nine of [D1 § 18.9](EVENT-SCHEMA.md#189-why-this-does-not-ride-the-batch-contract)'s invariants; the second adds a daemon (a supervision row, a lag badge, [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)'s frozen-fold class) for a derivation that is one pure function over one JSON object, and it would store the raw body D1 § 18.10 forbids storing | no rebuild from a log: a derivation defect is fixed forward, and GitHub's 3-day Redeliver is the only replay. Accepted and stated at § 6.12 |
+| 53 | **card#12239: a fifth fleet endpoint, `GET /api/fleet/coord`, browser-only, serving the client's own cap from the server's end** ([§ 8.2](#82-rest), [§ 6.12](#612-the-coordination-store)) | a `threads[]` member on the snapshot; or no backfill, as row 40 had it | the snapshot is the watchdog's machine interface at ~91 KB and a thousand envelopes on every five-minute poll is the wrong surface — and a machine consumer on its own upgrade schedule is the publication that attaches D1 § 18.7's enum obligation; no backfill leaves every just-loaded page drawing no line until the next post, which on a fleet posting ~100 times a day is minutes of a floor that lies by omission | one more endpoint behind the read gate, session-only; a page load costs one more request |
+| 54 | **card#12239: a thread the store does not hold is derived from the first comment that names it, and a comment whose `issue.state` contradicts the held lifecycle reconciles it** ([§ 6.12](#612-the-coordination-store), D1 § 18.6) | derive threads from `issues.opened` only; or backfill open threads through GitHub's REST API at binding time | observed: every `issue_comment` delivery carries the whole `issue`; measured: 95 threads open on this fleet's coordination repository the day this was designed, and GitHub redelivers 3 days back — `opened`-only would draw none of them until each closed. A REST backfill needs a credential for a repository Mezzanine only observes (D-10), and the default identity on this box cannot read that repository at all | a thread's first appearance may be mid-conversation, with its opening post derived from the issue body rather than from the `opened` delivery — the same derivation over the same keys; `coord_thread_from_post` says how often |
+| 55 | **card#12239: the held lifecycle is moved by the payload's `issue.updated_at`, never by arrival; the feed object stays per-delivery** ([§ 6.12](#612-the-coordination-store)) | last-arrival-wins in the store too; or a feed object carrying the held state instead of the delivery's | arrival order is the hazard D1 § 18.13 row 2(b) named and GitHub documents no ordering; a feed object carrying held state would break D1 § 18.6's *verbatim* and make a message say something its delivery did not | a connected client can hold a stale lifecycle until its next connect; the one-field closure (`state_at` on the wire) is deferred to review, `docs/design/COORD-STORE.md § 11` |
 
 ---
 
@@ -6377,7 +6735,14 @@ operator ruling.
     decision-register row rather than a section number, so no marker convention in D1 can reach it.
     The tool prints that residue per row on every run rather than folding it into a pass count.
 
-14. **⇢ The slice that designs the coordination store — a snapshot half for the coordination objects.**
+14. **✅ CLOSED (card#12239 design, 2026-10-23) — the slice that designs the coordination store is
+    [§ 6.12](#612-the-coordination-store), and it answers all three things this item said it owed: the
+    store and its retention ([§ 6.4](#64-ddl), [§ 6.7](#67-retention-and-purge) — open threads never,
+    closed threads and the digest 14 days), the counters' home ([§ 7.1](#71-d1s-server-side-counters--where-they-live)),
+    and the digest's bound (14 days against GitHub's documented 3-day redelivery reach). The snapshot
+    half is `GET /api/fleet/coord` ([§ 8.2](#82-rest)), browser-only so the enum obligation named below
+    does not attach. The item's text stays as the record of what was owed:** ⇢ The slice that designs
+    the coordination store — a snapshot half for the coordination objects.
     [§ 8.3.3](#833-the-coordination-objects) puts both objects on the delta feed and on no REST
     surface, because a snapshot is a read of stored state and that store is
     [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish)'s named later slice.
@@ -6513,7 +6878,7 @@ prints by name on every run rather than reporting a clean over it.
 | S13 | § 10.2 | A missing `seq` inside an epoch is a real gap → `seq_gap`, seat `lossy`; a spool-overflow drop produces **no** gap and the two losses must not be conflated | [§ 7.1](#71-d1s-server-side-counters--where-they-live), [AT-D2-18](#at-d2-18-seq-gaps-collisions-and-epoch-resets-are-visible) |
 | S14 | § 10.4 | `batch_id` remembered for 24 h; a repeat returns the previous response; per-event dedup remains the correctness mechanism | [§ 6.4](#64-ddl) `batches` (a timestamp comparison, never a deletion) |
 | S15 | § 12.5 | Orphan timeouts 15 min / 60 min; the close is **server-side only, with no wire event synthesized**; a late `completed`/`failed` carrying `tombstone_ref` **overrides** the abort and counts `late_completion` | [§ 4.6](#46-every-open-fact-has-a-ceiling), [§ 4.8](#48-what-may-never-mint-a-state), [AT-D2-16](#at-d2-16-server-side-closes-write-no-wire-events) |
-| S16 | § 12.7 | The nineteen server-side counters (and the `clock_skew_ms` gauge), each with its consequence | [§ 7.1](#71-d1s-server-side-counters--where-they-live) (one row each: storage, surface, badge) |
+| S16 | § 12.7 | The thirty server-side counters (and the `clock_skew_ms` gauge), each with its consequence — eleven of them the coordination route's, enrolled there by pointer on card#12239 | [§ 7.1](#71-d1s-server-side-counters--where-they-live) (one row each: storage, surface, badge) |
 | S17 | § 6.14 | `enabled: false` renders **disabled** — a seat that is off and a seat that is gone must not look alike | [§ 4.2](#42-render-precedence), [§ 4.5](#45-link-states) |
 | S18 | § 6.14, § 9.3 | The `degraded` array is the badge source so a consumer never re-derives badges from raw counters; twelve members, closed | [§ 7.2](#72-this-planes-own-counters-and-badges) (server badges kept **separate**, never merged into D1's array), [§ 7.3](#73-how-the-reporters-own-counters-are-handled) |
 | S19 | § 6.2, § 12.7 | An event for a session closed by `inferred_silence` **re-opens it** server-side and counts `session_reopened`. An event also re-opens a session the sweeper closed when its seat went offline (`closed_by = server_offline`), and that reopen is not counted ([§ 4.6](#46-every-open-fact-has-a-ceiling)). Either reopen needs an event stamped after the close: an older one is history from the live session (card#11561) | [§ 4.6](#46-every-open-fact-has-a-ceiling), [§ 6.4](#64-ddl) (`sessions.reopened`) |
@@ -6579,6 +6944,8 @@ everything from step 3 onward.
 | 9 | ✅ **BUILT — card#9300 (2026-09-13).** The stream handler and `feed_outbox` — the on-connect `fleet.health`, deltas in `id` order as a visible prefix bounded by the visibility lag (card#9467), the feed heartbeat, the stall bound, the session re-check — are `App\Feed\FeedStream` behind `GET /api/fleet/stream` (session + MFA), `App\Feed\Outbox` (every writer's row as its transaction's last statement: the fold, the sweeper, the retirement act, the heartbeat daemon, the console's room-map and layout saves — no coordination receipt route exists yet, so nothing writes `coord.*`), the migration, `mezzanine:purge`'s 60 s pass, and `mezzanine:feed-reload`. `bin/deploy.sh`'s edit — the Reverb unit was already retired, with systemd (`docs/PLAN.md § 5`) — runs `mezzanine:feed-reload` immediately **before** the opcache wait, where the ⚑ marker stood, and then drains the stream pool ([§ 2.1](#21-processes)'s feed-reload row; [§ 14](#14-open-questions-for-the-review-loop) item 17, closed). ⭐ **The R1/R2 ini and pool gate IS in this row now**, and was built only after its measurement landed, which is the rule [§ 8.3](#83-the-websocket-delta-feed) R1 states: `fpm_code_reload_ready` refuses `zlib.output_compression`, `output_handler` and `ignore_user_abort` on the stream pool, a stream pool that is not the deploy user's, has a non-zero `request_terminate_timeout`, or lacks `pm.status_path` / `pm.status_listen`, and a status that does not answer; `output_buffering`, measured defeated by the handler's flush, is reported and never refused. R1's **wire** half is `bin/feed-stream-check.sh`, an operator runbook step (`docs/PLAN.md § 5`), seen PASS/FAIL/FAIL/PASS against a proxy before it was trusted. The retirement of the previous transport's wiring is done: `->withBroadcasting()`, `/broadcasting/auth`, `routes/channels.php`, the `ShouldBroadcastNow` markers (`App\Events\SeatRetired` moved to `App\Feed`), `CapturingBroadcaster` and `BROADCAST_CONNECTION` are gone; the MFA-stack assertions MOVED to the stream route (`AuthSurfaceTest`, `MfaGateTest`, `IngestAuthSeparationTest`); and every test that reached the broadcaster — re-derived with `grep -rlF '$this->wire->' server/tests` and, because that grep misses them, `grep -rl 'SeatRetired' server/tests` — was re-pointed to `feed_outbox` rows and a consumed `text/event-stream` in the commit BEFORE the one that deleted it. ⚠ **What the gates below reach and what they cannot**: AT-D2-7 and AT-D2-8 consume the route's stream; AT-D2-15's slow leg and the frozen leg's in-process half run two concurrent streams on one clock, and the frozen leg's worker return (the proxy's send timeout) and the stalled worker's RSS need a real deployment; AT-D2-19's stream legs inject the failed read at the handler's boundary rather than revoking a grant; AT-D2-25 runs its race on the real MariaDB connections `At25ConcurrentWriterTest::CONNECTIONS` names, on a clock that only moves forward — so its original legs never reverse stamp order against id order; card#9467's reversed-stamp leg does, by taking one writer's stamp before a wait and inserting after it (card#9398 closed the reversal for the fold) | [AT-D2-7](#at-d2-7-snapshot-then-deltas-has-no-window), [AT-D2-8](#at-d2-8-a-delta-gap-is-detected-and-resynced), [AT-D2-15](#at-d2-15-feed-backpressure-closes-one-connection-and-no-others), **[AT-D2-19](#at-d2-19-read-side-auth-refuses-correctly) — its stream legs, which step 8 scopes out of its own gate because the handler does not exist until this row**, [AT-D2-25](#at-d2-25-a-concurrent-writer-cannot-strand-a-message-behind-a-streams-cursor) |
 | 10 | `mezzanine:purge`, the size alarm, `fold_lag` fleet health | [AT-D2-17](#at-d2-17-dedup-retention-and-the-chain-between-them), [AT-D2-21](#at-d2-21-a-frozen-fold-cannot-look-healthy) |
 | 11 | **retirement** — the three columns, the recomputed render, the `cause: operator` transition row and the two publishes, in one transaction, behind whichever operator entry points § 2.1 lists ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)). It comes after step 9 because it publishes on the feed. ⚠ **And it therefore DEPENDED on what step 9 deleted**: its gate AT-D2-23 drove step 9's `CapturingBroadcaster`. ✅ Step 9 (card#9300) re-pointed every AT-D2-23 test — the store half and the wire half — to `feed_outbox` rows and a consumed stream BEFORE deleting the class, so this row's gate runs against the transport that ships | [AT-D2-23](#at-d2-23-a-retired-seats-desk-goes-and-only-an-announcement-removes-it) |
+| 12 | **the coordination store** (card#12239, design awaiting the operator): the five tables of [§ 6.4](#64-ddl), the binding commands, the receipt route in D1 § 18.8's order with the `{hook}` selector, the derivation, the one-transaction write and the counters' homes ([§ 6.12](#612-the-coordination-store), [§ 7.1](#71-d1s-server-side-counters--where-they-live)); `App\Sweep\Purge` gains the three retention rows | D1's **AT-23**, **AT-24**, **AT-25**, **AT-26**; [AT-D2-27](#at-d2-27-the-digest-the-derivation-and-the-feed-rows-commit-together-or-not-at-all), [AT-D2-28](#at-d2-28-the-held-lifecycle-follows-the-payloads-clock-not-arrival), [AT-D2-29](#at-d2-29-a-thread-first-seen-through-a-comment-is-a-thread); [AT-D2-17](#at-d2-17-dedup-retention-and-the-chain-between-them) extended with the digest chain. The build order and each test's RED plant are `docs/design/COORD-STORE.md § 9`'s |
+| 13 | **the coordination backfill** — `GET /api/fleet/coord` and the client's steps 2c–5c ([§ 8.2](#82-rest), [§ 8.4](#84-snapshot-then-deltas)), after step 12 because it reads the store | [AT-D2-26](#at-d2-26-the-coordination-backfill-is-what-a-long-connected-client-holds); FLOOR.md's AT-D3-29 for the client half |
 
 **Three of these are hard requirements before anything downstream may treat this state as true:**
 **AT-D2-2** (the `/clear` trace mints no idle — the D2 half of D1's headline test, and the reason both
