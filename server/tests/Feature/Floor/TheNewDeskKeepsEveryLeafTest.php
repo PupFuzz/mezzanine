@@ -379,6 +379,11 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 'characters.loopOffset(desk.install_id, desk.seat_id, uris.length - loopFrom)', 'characters.loopOffset(desk.install_id, desk.seat_id, uris.length)'],
             "a sleeper drawn in its element's rect, not its overdraw" => ['../floor/painter.js',
                 'art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw ?? e,', 'art(g, moves ? uris[loopFrom + offset] : uris[0], e,'],
+            // card#12187 impl review N5: a walk stepped from past its stand frame, and a desk's frames cached without its pose.
+            "a walker's walk stepped from loopFrom 1" => ['../floor/painter.js',
+                'stepping.push([el, drawn.uris, drawn.loopFrom, 0]);', 'stepping.push([el, drawn.uris, 1, 0]);'],
+            "a desk's frames cached without its pose" => ['../floor/painter.js',
+                '`${asset}#${at.pose}@${at.desk_top}`', '`${asset}#@${at.desk_top}`'],
             // N8: a frame list copied onto the element instead of held in the painter's Map.
             "a held loop's frames copied onto the element" => ['../floor/painter.js',
                 "                            stepping.push([el, uris, loopFrom, offset]);\n                        }", "                            el.dataset.frames = JSON.stringify(uris);\n                        }"],

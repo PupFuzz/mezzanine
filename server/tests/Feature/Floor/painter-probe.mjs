@@ -862,6 +862,74 @@ function heldLoop(desk, withIntern) {
     }
 }
 
+/** Every node under `n`, `n` first. */
+function walkOf(n) {
+    return [n, ...n.children.flatMap(walkOf)];
+}
+
+// ── A1's walk steps its walker through the walk's three frames from its stand frame (§ 10.4 item 4: a walk is the
+// whole list, `loopFrom` 0, and takes no offset) — so a walker tuple that skips frame 0, or starts past it, reds ──
+{
+    const walk = {
+        animation_id: 'A1', frames: 12, frame_interval_ms: 250, elapsed_frames: 0, install_id: 'walk-room', seat_id: 'walker',
+        shown: { start: 0, frames: 12 }, walk: { start: 0, frames: 12 }, from: { x: 0, y: 0 }, to: { x: 40, y: 0 }, size: { w: 54, h: 96 },
+    };
+
+    loops.length = 0;
+    asked.walk.length = 0;
+    createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} })
+        .paint({ ...scene, desks: [], effects: [walk], loop_fps: 4 }, { bounds: null });
+
+    const walker = walkOf(host.children[0]).find((n) => n.name === 'image' && classes(n).includes('character'));
+    const phase = (i) => uri(doc(`walk-room/walker#${i}`));
+
+    if (walker === undefined || loops.length !== 1) {
+        defects.push(`the A1 walk painted ${walker === undefined ? 'no walker' : `${loops.length} loop(s), not one`} — the walk leg reads nothing`);
+    } else {
+        const seen = [walker.getAttribute('href')];
+
+        for (let i = 0; i < 6; i++) {
+            loops[0]();
+            seen.push(walker.getAttribute('href'));
+        }
+
+        const owed = [0, 1, 2, 0, 1, 2, 0].map(phase);
+
+        if (seen.join('|') !== owed.join('|')) {
+            defects.push(`the A1 walker did not step the walk's three frames from its stand frame — it drew ${seen.map((h) => decodeURIComponent(h).match(/#(\d+)<\/title>/)?.[1] ?? '?').join(', ')}, not 0, 1, 2, 0, 1, 2, 0`);
+        }
+    }
+}
+
+// ── A desk's frames are cached BY POSE (§ 10.4's frame contract): one painter drawing a seat asleep, then the same seat
+// in another pose, draws the second pose's frames — never the first's from a cache keyed without the pose ──
+{
+    const sleeping = desks.find((d) => d.elements.some((e) => e.kind === 'character' && e.pose === 'asleep'));
+    const awake = {
+        ...sleeping,
+        elements: sleeping.elements.map((e) => {
+            if (e.kind !== 'character') {
+                return e;
+            }
+
+            const { overdraw, clear, ...rest } = e;
+
+            return { ...rest, pose: 'present' };
+        }),
+    };
+    const one = createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} });
+    const characterHref = () => walkOf(host.children[0]).find((n) => n.name === 'image' && classes(n).includes('character'))?.getAttribute('href');
+
+    one.paint({ ...scene, desks: [sleeping] }, { bounds: null });
+    one.paint({ ...scene, desks: [awake] }, { bounds: null });
+
+    const pose = awake.elements.find((e) => e.kind === 'character');
+
+    if (characterHref() !== poseFrame(sleeping.key, pose, startOf(pose))) {
+        defects.push(`a seat drawn asleep and then present by one painter drew «${decodeURIComponent(String(characterHref())).match(/#[a-z-]+@/)?.[0] ?? '?'}» frames the second time — the painter's frames are not keyed by pose`);
+    }
+}
+
 // ── AT-D3-19's two causes for a code-drawn character (§ 10.2): a tree that failed to load reports every
 // character's and every intern's asset; a generator that throws for one intern's key reports that
 // intern alone; neither throws out of the paint ──

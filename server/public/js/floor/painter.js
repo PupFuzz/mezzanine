@@ -306,6 +306,9 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             return null;
         }
 
+        // `at.clear` is not in the key: a sleeper's clear rects are `sleeperOverdraw()`'s of the one furniture box and
+        // the character's size, the same for every desk, so the pose and the desk's top edge already name the drawing.
+        // A layout whose clear rects differ by desk must add them here.
         const key = intern ? asset : at === null ? `${asset}#walk` : `${asset}#${at.pose}@${at.desk_top}`;
 
         if (!frames.has(key)) {

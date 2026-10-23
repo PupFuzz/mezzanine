@@ -31,7 +31,7 @@
 // `glowMarkup()`, which mirror `creatures.js`'s drawing; the mirror is held on every run (each z the tree drew is re-drawn from
 // its own data attributes and must come out the same drawing, every number within the attributes' rounding — `MIRROR DRIFT`
 // otherwise). So every figure § 10.4 and § 12 rest on is re-printed against any tree, before or after the build, and the
-// selftest's controls — today's two-z column (`ruled`), card#12159's rising path, z's over the eyes, and the pulse reversed or
+// selftest's controls — round 3's two-z column (`ruled`), card#12159's rising path, z's over the eyes, and the pulse reversed or
 // constant — are planted whatever the tree's own code says.
 //
 // ⛔ WHAT IS MEASURED IS INK, NOT BOXES — and what it cannot see is whether the result LOOKS right: one figure covers a smooth cap
@@ -109,7 +109,11 @@ function boundsFromDocument() {
   if (glow === null) throw new Error('FLOOR.md § 12 carries no *Sleeper z brightness* row in the form this tool reads');
   const pulse = md.match(/^\| \*\*Sleeper z pulse\*\* \| \*\*(\d+)\*\* loop frames\b/m);
   if (pulse === null) throw new Error('FLOOR.md § 12 carries no *Sleeper z pulse* row in the form this tool reads');
-  return { overHead: read('Sleeper z overlap bound'), residuals, zOnZ: read('Sleeper z-on-z bound'), faceClear: Number(face[1]), face: Number(face[2]) / 100,
+  // The adjacent cores' luminance ratios FLOOR.md states — § 10.4 item 4's and § 12's *Sleeper z brightness* row's — which
+  // the brightness check holds equal to what it measures, so a restated figure cannot drift from the measurement.
+  const stated = [...md.matchAll(/adjacent cores(?:' luminance ratios| differ in luminance by) ([\d.]+), ([\d.]+) and ([\d.]+)/g)].map((m) => m.slice(1, 4).join(', '));
+  if (stated.length !== 2) throw new Error(`FLOOR.md states the adjacent cores' luminance ratios ${stated.length} time(s), not the two this tool reads (§ 10.4 item 4, § 12's *Sleeper z brightness*)`);
+  return { stepsStated: stated, overHead: read('Sleeper z overlap bound'), residuals, zOnZ: read('Sleeper z-on-z bound'), faceClear: Number(face[1]), face: Number(face[2]) / 100,
     glow: glow.slice(1, 5).map((v) => Number(v) / 100), halo: glow.slice(5, 9).map(Number), haloOpacity: glow.slice(9, 13).map((v) => Number(v) / 100), pulseFrames: Number(pulse[1]),
     view: { x: Number(frame[3]), y: Number(frame[4]), w: Number(frame[1]), h: Number(frame[2]) }, clearance: Number(clearRow[1]) / 100 };
 }
@@ -185,7 +189,7 @@ const fade = (t) => Math.min(1, t / 0.15, (1 - t) / 0.4);
 /**
  * THE LAYOUTS — each a pure function of the sleeper's eye line and roll side and of the loop's phase in [0, 1), placing
  * every z. `card12159` is the path the card replaced (three z's from over the head on the roll's side, 24 → 11 units;
- * its start is today's `min(56, eyes - 16)`, the crown term dropped — the crown is not in the document); `r1-column`
+ * its start is card#12159's `min(56, eyes - 16)`, the crown term dropped — the crown is not in the document); `r1-column`
  * is round 1's ruling (three z's, 40 → 20, in a column on the roll-away side), which the z-on-z bound refused;
  * `diagonal` (two z's crossing the frame) and `beside` (two z's born at a fixed height beside the head) are decision
  * 70's alternatives (C) and (D); `on-face` is the face control; `ruled` is § 10.4 item 4's: two z's sized per seat by
@@ -262,6 +266,8 @@ let HALO_OPACITY = [0, 0.5, 0.8, 1];
 let LAMP = '#ffcf7d';
 /** The loop's length in frames: the pulse's cycle (§ 12's *Sleeper z pulse*); the still is one more document ahead of them. */
 let PULSE_FRAMES = 8;
+/** The adjacent cores' luminance ratios as FLOOR.md states them (`boundsFromDocument()`), each `a, b, c`. */
+let STEPS_STATED = [];
 /** The pulse as the rule states it: the levels of z `k` at loop frame `f` — the bubble reaches z`k+1` at frame `2k`, peaks there, and glows 2, 1 behind it; z1 is 1 the frame before it arrives. */
 const pulseLevels = (f) => Array.from({ length: Z3.count }, (_, k) => {
   const d = (((f - 2 * k) % PULSE_FRAMES) + PULSE_FRAMES) % PULSE_FRAMES;
@@ -464,9 +470,10 @@ async function pickSeats(b, C, env) {
 
 /** Every frame to judge, for one seat: the tree's own, or the base frame's sleeper with a layout's z's at each phase. */
 function framesOf(C, seat, layout, mirror, env) {
-  // The tree's documents: a still and the loop (`SLEEP_LOOP`; the still is document 0) once built for the pulse, else the
-  // card#12159 loop of `SLEEP_FRAMES` rising frames.
-  const total = C.SLEEP_LOOP !== undefined ? C.SLEEP_LOOP + 1 : C.SLEEP_FRAMES;
+  // The tree's documents: a still and the loop (`SLEEP_LOOP`; the still is document 0). A tree that exports no `SLEEP_LOOP`
+  // is not one this tool judges.
+  if (!Number.isInteger(C.SLEEP_LOOP)) throw new Error('the tree exports no SLEEP_LOOP — its sleeper is not the still and the pulse this tool judges');
+  const total = C.SLEEP_LOOP + 1;
   const own = Array.from({ length: total }, (_, frame) => C.sleepDocument(seat.key, { species: seat.sp, frame, deskTop: DESK_TOP, clear: env.clear }));
   const ownZs = own.map((doc) => { const hs = halosOf(doc); return zsOf(doc).map((z) => ({ ...z, glow: hs.find((h) => h.k === z.k)?.markup ?? '', halo: hs.find((h) => h.k === z.k) ?? null })); });
   const fixedOwn = ownZs[0].length > 0 && ownZs[0][0].level !== undefined;
@@ -594,15 +601,17 @@ function surfaceHexes() {
  * outline, and that each level is visibly brighter than the one below (adjacent cores' luminance ratio at least 1.15). The
  * options are the controls' to plant: another mix, another ink.
  */
-function brightnessRange({ glow = GLOW, ink = Z_INK_TOOL, pale = Z_FILL_TOOL, surfaces = surfaceHexes() } = {}) {
+function brightnessRange({ glow = GLOW, ink = Z_INK_TOOL, pale = Z_FILL_TOOL, surfaces = surfaceHexes(), stated = STEPS_STATED } = {}) {
   const floor = surfaces[0][1];
   const cores = [0, 1, 2, 3].map((l) => mixHex(pale, ink, glow[l]));
   const outlines = surfaces.map(([name, hex]) => ({ name, hex, r: ratio(ink, hex) }));
   const worstOutline = outlines.reduce((a, o) => (o.r < a.r ? o : a));
   const vsFloor = cores.map((c) => ratio(c, floor));
   const steps = [1, 2, 3].map((l) => (lum(cores[l]) + 0.05) / (lum(cores[l - 1]) + 0.05));
-  const ok = worstOutline.r >= 3 && steps.every((x) => x >= 1.15);
-  return { ok, cores, line: `the outline ${ratio(ink, floor).toFixed(2)}:1 against the floor ${floor}, and at the worst of ${outlines.length} surfaces (the house floor and every shipped theme's) ${worstOutline.r.toFixed(2)}:1 against ${worstOutline.name} ${worstOutline.hex} (3:1 needed, SC 1.4.11 — the shape is the outline's, at every level, and the halo and the core only add to it); cores ${cores.join(' ')} (the dimmest core ${vsFloor[0].toFixed(2)}:1 against the floor, ${ratio(cores[0], ink).toFixed(2)}:1 against its own outline); adjacent cores' luminance ratios ${steps.map((x) => x.toFixed(2)).join(', ')} (1.15 needed)` };
+  const measured = steps.map((x) => x.toFixed(2)).join(', ');
+  const drift = stated.filter((st) => st !== measured);
+  const ok = worstOutline.r >= 3 && steps.every((x) => x >= 1.15) && drift.length === 0;
+  return { ok, cores, line: `the outline ${ratio(ink, floor).toFixed(2)}:1 against the floor ${floor}, and at the worst of ${outlines.length} surfaces (the house floor and every shipped theme's) ${worstOutline.r.toFixed(2)}:1 against ${worstOutline.name} ${worstOutline.hex} (3:1 needed, SC 1.4.11 — the shape is the outline's, at every level, and the halo and the core only add to it); cores ${cores.join(' ')} (the dimmest core ${vsFloor[0].toFixed(2)}:1 against the floor, ${ratio(cores[0], ink).toFixed(2)}:1 against its own outline); adjacent cores' luminance ratios ${measured} (1.15 needed)${drift.length ? ` — FLOOR.md STATES ${drift.join(' / ')}, not what is measured` : ', as FLOOR.md states them'}` };
 }
 
 /**
@@ -872,6 +881,7 @@ HALO_OPACITY = bounds.haloOpacity;
 if (arg('--halo-max', null) !== null) HALO[3] = Number(arg('--halo-max', null));
 LAMP = cssLamp;
 PULSE_FRAMES = bounds.pulseFrames;
+STEPS_STATED = bounds.stepsStated;
 VIEW = bounds.view;
 CLEAR_NAMES = ['monitor', 'props', 'desk', 'trail'];
 const judged = report(LAYOUT === null ? `the tree's own frames (${TREE})` : `layout «${LAYOUT}» over the tree's sleepers (${TREE})`, await measure(chrome, TREE, LAYOUT), bounds);
@@ -881,7 +891,7 @@ let failed = !judged.ok;
 
 if (SELFTEST) {
   const control = report('CONTROL — the card#12159 layout; must exceed the overlap and z-on-z bounds', await measure(chrome, TREE, 'card12159'), bounds);
-  const column = report('CONTROL — today\'s two-z column (round 3\'s `ruled`); must fail the count, the clearance and the overlap', await measure(chrome, TREE, 'ruled'), bounds);
+  const column = report('CONTROL — round 3\'s two-z column (`ruled`); must fail the count, the clearance and the overlap', await measure(chrome, TREE, 'ruled'), bounds);
   const onFace = report('CONTROL — z\'s laid over the closed eyes; must fail the face clearance', await measure(chrome, TREE, 'on-face'), bounds);
   const reversed = report('CONTROL — the pulse run top to bottom (z3 first); must fail the chase', await measure(chrome, TREE, 'above3-reversed'), bounds);
   const constant = report('CONTROL — every z always at full brightness (no pulse); must fail the chase', await measure(chrome, TREE, 'above3-constant'), bounds);
@@ -918,6 +928,7 @@ if (SELFTEST) {
   const pure = [
     ['brightness (cores too alike)', !brightnessRange({ glow: [0.02, 0.05, 0.08, 0], surfaces }).ok, brightnessRange({ surfaces }).ok],
     ['brightness (an outline too pale for the floor)', !brightnessRange({ ink: '#b0a8d0', surfaces }).ok, true],
+    ['brightness (FLOOR.md stating ratios the tool does not measure)', !brightnessRange({ surfaces, stated: ['1.43, 1.35, 1.20'] }).ok, brightnessRange({ surfaces }).ok],
     ['crest table (a tree that exports none, judged on its own frames)', crestCheck(null, [], null).defects.length > 0, crestCheck(null, [], 'above3').defects.length === 0],
     ['crest table (a top 20 units under the drawing\'s)', crestCheck({ fox: 54 }, [{ tkey: 'fox', key: 'sleep/fox/any/0', top: 34 }], null).defects.length === 1, crestCheck({ fox: 34 }, [{ tkey: 'fox', key: 'sleep/fox/any/0', top: 34 }], null).defects.length === 0],
     ['flash (every z flashing each frame, huge)', !flashCheck({ levelsOf: (f) => (f % 2 ? [0, 0, 0] : [3, 3, 3]), cores: brightnessRange({ surfaces }).cores, sizes: [320, 260, 200] }).ok, flashCheck({ cores: brightnessRange({ surfaces }).cores, sizes: [33, 27, 21] }).ok],
