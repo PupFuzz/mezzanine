@@ -203,8 +203,8 @@ what the client does would have been right to refuse a rule stated nowhere in th
 
 ⛔ **THE COORDINATION LAYER COMPUTES, AND ITS COMPUTATIONS ARE GOVERNED BY
 [§ 5.7](#57-the-coordination-thread-line) RATHER THAN BY THIS TABLE — written here, outside it,
-because this list says *and nothing else* and that claim has to stay true.** Three of them exist:
-the **bead count** (*"a count of distinct `post_ref`"*), the **room filter** that drops a message
+because this list says *and nothing else* and that claim has to stay true.** Two of them exist since card#12239 r2 retired the bead count with the thread line (a third until then):
+the **room filter** that drops an `install`-scope message
 whose `install_id` is not this room's, and — since card#9296 — the **participant→desk resolution**,
 a name matched against the `protocol_agent_name` of the seats this client already holds. None is a
 row here and none should be: rows 1–6 are computations about **a seat** and row 7 is the client
@@ -241,23 +241,14 @@ it opens — installs the client has never heard of included — and the per-ins
     -- ⛔ ONE named listener, and `onmessage` is NEVER used: see the paragraph below
  2. BUFFER every seat.delta from this moment, keyed by (install_id, seat_id) -- an install the
     client does not yet hold is buffered like any other, never dropped
- 2c. BUFFER every coord.thread / coord.round from this moment too (D2 § 8.4 step 2c, card#12239)
  3. GET /api/fleet/snapshot            -> installs[], each seat with its own state_version
  3b. GET /api/building                -> the layout, and every authored room's map_version
                                          (D2 § 8.7); a room's map is fetched on entering its floor
                                          (§ 4.4), and again on a room.map that names a new version
- 3c. GET /api/fleet/coord              -> the coordination backfill (D2 § 8.2, § 6.12): the
-                                         envelopes a long-connected client would hold under § 12's
-                                         cap, and truncated_threads[] for § 5.7's N+ bead count
- 4. render the world as delivered      -> NO animation fires on this render (§ 6.5) -- the
-                                         backfill's threads and rounds included: held, journalled
-                                         `backfilled`, and no A19 / A20 edge for any of them
+ 4. render the world as delivered      -> NO animation fires on this render (§ 6.5)
  5. DRAIN the buffer: discard any delta whose state_version <= that seat's snapshot version,
     apply the rest in ascending order; a buffered delta for a seat the snapshot did not carry
     takes § 2.3 row 1's path (fetch the whole object, then drain against it)
- 5c. DRAIN the coordination buffer (D2 § 8.4 step 5c): discard a coord.round whose post_ref is
-    held and a coord.thread whose received_at is not later than the held thread's; apply the
-    rest in order -- these DO fire A19 / A20, because they arrived on the live feed
  6. steady state: apply deltas as they arrive, iff delta.state_version == local + 1
       greater  -> resync THAT seat: GET /api/fleet/seats/<i>/<s>?resync_from=<last applied>
       <=       -> discard (duplicate or straggler)
@@ -2463,34 +2454,32 @@ polling mode holds no stream, sees no `building.layout`, and draws the old build
 reconnects** — and it is not a thing a client can be silently wrong about, because the floor a viewer
 is standing on keeps its identity and its desks, and a re-keyed floor redirects rather than vanishes.
 
-**⚠ DESIGNED HERE, AND SINCE card#12239's DESIGN (operator 2026-10-23) BUILT FOR: a thread line
-between rooms.** The operator wants roundtable messages between a PM and a solo agent to be visible
-flowing between them. Until card#12239 the producer that would carry them was another card's and
-[D2](FLEET-STATE.md) published no coordination object without a single `install_id`; **now it does** —
-a `coord.thread` / `coord.round` with `scope: "fleet"` and `install_id: null`
-([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)), whose names resolve through the seat's
-`roundtable_agent_name` declaration across every install the client holds (D2 § 8.3.3 rule 1's fleet
-arm), and `docs/design/COORD-STORE.md § 6.1` is the per-floor rule that applies the form below to it.
-⛔ **The two [§ 6.2](#62-the-animation-table--the-closed-set) rows the marker form needs — a held
-marker and an edge that rings it — are specified there with reserved ids and are NOT in § 6.2 yet**:
-`server/tests/Feature/Floor/TheAnimationSetIsTheDocumentsClosedSetTest.php` holds that table and the
-shipped `wire/animation-set.js` equal in both directions, so the rows land in the commit that lands the
-module, and a design that wrote them first would red the suite against a renderer that does not exist.
-What this section owed, and still states, is the **form**, so that it is not invented at the moment it
-is needed:
+**⚠ DESIGNED HERE — and RE-SCOPED by the operator on 2026-10-23 (card#12239 r2): the between-rooms
+form is TRANSIENT, per message, and nothing is held.** The operator wants roundtable messages between a
+PM and a solo agent to be visible flowing between them, and ruled the same day: *"I do not want to show
+the open connection because there are too many open connections. I only want to show the message
+animations. I choose the bird carrying the envelope."* The object that carries such a message is
+[D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)'s `coord.round` with `scope: "fleet"` and
+`install_id: null`, whose names resolve through the seat's `roundtable_agent_name` declaration across
+every install the client holds (D2 § 8.3.3 rule 1's fleet arm); `docs/design/COORD-STORE.md § 6.1` is
+the per-floor rule, and [§ 5.7](#57-the-coordination-thread-line) is the render map. The form:
 
-- **On one floor, it is already [§ 5.7](#57-the-coordination-thread-line)'s line.** Two rooms on one
-  floor are two desk sets on one screen, so a line between a desk in one and a desk in the other is
-  the existing render with its endpoints in different rooms. No new element, and this is the case the
-  room model exists to make natural.
-- **Across floors, the form is a CALL MARKER at each end that resolves, and the line is its
-  co-located case.** One round has N ends; on the floor being viewed, every end that resolves to a
-  desk **on that floor** is drawn, and every end that does not is drawn as a marker carrying the
-  thread's `thread_ref` and the far participant's protocol agent name **as written**. Two resolved
-  ends on one floor collapse into the line above — the line is a pair of markers that happen to share
-  a screen, not a second primitive. Each end renders its own half of an event that really happened,
-  which is [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean)'s rule satisfied rather than
-  stretched: nothing claims a transit nobody observed.
+- **On one floor, it is [§ 5.7](#57-the-coordination-thread-line)'s traveller.** Two rooms on one floor
+  are two desk sets on one screen, so [A19](#62-the-animation-table--the-closed-set)'s traveller from a
+  desk in one room to a desk in the other is the existing edge with its ends in different rooms. No new
+  element, and this is the case the room model exists to make natural. ⛔ **No line is held between
+  them afterwards** — the thread line that stood in this bullet until the ruling is retired, and so is
+  the call marker that stood in the next.
+- **Across floors, the form is the same traveller cut at the floor's edge — transient at each end,
+  held at neither.** On the floor being viewed, a resolved **origin** whose destination resolves to a
+  desk on another floor sends the traveller from its desk **toward the floor's elevator** and it leaves;
+  a resolved **destination** whose origin is on another floor receives it **arriving from the elevator**
+  at its desk. Each end renders its own half of an event that really happened, which is
+  [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean)'s rule satisfied rather than stretched:
+  nothing claims a transit nobody observed, and nothing stays on screen to claim a connection. The
+  [§ 6.2](#62-the-animation-table--the-closed-set) row for it is **reserved** at
+  `docs/design/COORD-STORE.md § 6.1` and lands with the module that draws it, because the suite holds
+  that table and `wire/animation-set.js` equal in both directions.
 - **Rejected: the lobby draws the line between plaques** (plates, when this was weighed; the argument
   is unchanged by card#12113). A plaque **is** a floor, and a floor of
   several rooms is one plaque naming them ([§ 4.1](#41-the-lobby--the-building-summary) row 1,
@@ -2939,201 +2928,100 @@ version-bearing one and is therefore delivered; the panel's is `fetch-fresh` and
 
 ### 5.7 The coordination thread line
 
-[D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)'s two objects are the only things this page
-renders that are **not** about a seat, and the thread line is the only render drawn **between** desks
-rather than at one. This section is their render map, and it carries **its own null column** rather
-than rows in [§ 5.6](#56-the-null-render-for-every-nullable-member): that table's population is
-[D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s nullable members, closed against it in both
-directions, so a coordination member added there would be a null render bound to a member that
-population does not contain. ⚠ **Two rows below are the exception that proves it, and they are
-labelled as such**: the join's rows name `protocol_agent_name` and `protocol_agent_name_check`,
-which ARE [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) members and DO have
-[§ 5.6](#56-the-null-render-for-every-nullable-member) rows — and the two tables answer different
-questions rather than one twice. § 5.6 answers *what does this SEAT's desk render when the member is
-null*; this table answers *what does a PARTICIPANT render when no seat resolves it*. A seat that
-declares nothing draws nothing different at its own desk and still takes no part in any line.
+⭐ **The heading is kept for its anchor, and the line it names is RETIRED — operator ruling,
+2026-10-23 (card#12239 r2), verbatim: *"I do not want to show the open connection because there are
+too many open connections. I only want to show the message animations. I choose the bird carrying the
+envelope."*** This section is now the render map of the **one** coordination object this page draws,
+[D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)'s `coord.round`, and every render of it is an
+**edge** fired on arrival: [A19](#62-the-animation-table--the-closed-set), the traveller — which
+card#12241 draws as a bluebird carrying an envelope from the sender's desk to **each** resolved
+recipient's desk — [A20](#62-the-animation-table--the-closed-set), the broadcast ring, and, for a
+fleet-scope post whose other end is on another floor, the **transient cross-floor form** whose
+[§ 6.2](#62-the-animation-table--the-closed-set) row `docs/design/COORD-STORE.md § 6.1` reserves
+until its module exists. **Nothing coordination-related is HELD on this page**: no thread line, no
+label, no bead, no carrier tag, no *ended* treatment, no call marker, no participant list.
+`coord.thread` is not published ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)) and this
+client's branch for it is ignore-and-count. The drawing — the bird, the envelope, its path, its frames
+— is card#12241's; this section fixes what fires, from which desk to which, and what absence means.
 
 **Four properties bind every row below, and not one of them is this document's to soften.**
 
-1. ⛔ **RESOLVE, OR RENDER UNRESOLVED — never a guessed desk.** Every name on both objects is a
-   **protocol agent name**, and D2 publishes a mapping from one to a desk — but only where a seat
-   **declared** itself that agent: *"the mapping from one to a desk now EXISTS — on the SEAT object,
-   as a DECLARATION, and nowhere else"*, and *"equality between an agent name and a `seat_id` remains
-   a coincidence this plane cannot check"*
-   ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)). So the resolve arm resolves, by the
-   rule D2 states and this document does not re-derive: **a name resolves to the one seat of this
-   room's `install_id` whose `protocol_agent_name` equals it and whose `protocol_agent_name_check` is
-   `checked` or `unchecked`, provided no other seat of the room declares it at all** — **0 or 1
-   desks, never a set**, because a protocol agent name is
-   unique per install (operator ruling, card#9296;
-   [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rule 1). **For a `fleet`-scope object the
-   same sentence reads over `roundtable_agent_name` and its check, across every seat of every install
-   this client holds** — D2 § 8.3.3 rule 1's fleet arm (card#12239), selected by the object's `scope`
-   and never by the look of the name; the two arms never cross.
-   card#7957's ruling *(2)* governs the empty case and is permanent: a name that does not resolve
-   **draws no line** — never to a guessed desk, never to nothing — **is reported as unresolved**, and
-   **does not suppress the rest of the object**, so a round with one resolved and one unresolved
-   participant renders what it can.
-   ⛔ **A name MORE THAN ONE seat of this room declares takes that same arm for a different
-   reason, and the reason is rendered** — whatever each seat's check state, `disagreed` included:
-   which seats count is [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rule 1's, and it is
-   not restated here. The uniqueness invariant is violated, which is an **install
-   misconfiguration** rather than one agent at two desks; the client **never picks** — every
-   candidate claims the name, so any pick is precisely the guessed desk this clause forbids — so
-   the name resolves to nothing and draws no line. ⚠ **What it renders is not the same word.** D2
-   names the two unresolved reasons `no_declaring_seat` and `duplicate_declaration`, and this
-   surface renders the second in words beside the name — *declared by more than one seat* — for the
-   same reason an `unchecked` endpoint carries a word rather than a second line treatment. Rendering
-   it as a plain *unresolved* would show a misconfiguration as *no seat may resolve it*, which is the
-   opposite diagnosis and the one an operator would act on wrongly. ⛔ **This client is the only
-   party that can report it**: a seat's own check asks whether its name is in the roster and two
-   seats declaring one name both pass ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)), and
-   D2 mints no state from it, so the report is made here or nowhere.
-   ⚠ **Until card#9296 there was no join at all, and this clause read that every name renders
-   unresolved and no line is drawn on any floor. That sentence is now false as a statement about the
-   DESIGN and may still be true of a FLEET** — a fleet whose seats declare nothing resolves nothing
-   and draws no line, which is the same honest render it always was rather than a degradation of one.
-   So does a fleet whose seats declare a name in config but run a reporter build that does not include
-   card#9375: its heartbeat carries neither declaration member, and the seat object publishes both as
-   `null` ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)).
-   What changed is where the answer comes from: it is a property of how an install's seats are
-   provisioned — the declaration in each seat's config, sent by a seat running a build that includes
-   card#9375 ([D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) row 6) — which an
-   operator can act on, and no longer a property of a missing artifact, which nobody could.
-   ⛔ **A resolved endpoint whose declaration was never checked is rendered AS ONE.** Where the
-   resolving seat's `protocol_agent_name_check` is `unchecked` — the seat declared, and no roster was
-   readable on its box to check it against ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)) —
-   the participant carries the word *unchecked* beside it. **Same line, same endpoints, and no second
-   line treatment**: a dashed or faded line would need a row in [§ 6.2](#62-the-animation-table--the-closed-set)'s
-   closed table for a fact that is about the **declaration** rather than about the post, and the
-   honest place to say *nobody verified this name* is in words next to the name.
+1. ⛔ **RESOLVE, OR DRAW NOTHING — never a guessed desk.** Every name on the object is a protocol-level
+   name — an install's agent name on an `install`-scope post, a roundtable identity on a `fleet`-scope
+   one — and D2 publishes a mapping from one to a desk only where a seat **declared** itself that name
+   ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rule 1, the two arms selected by the
+   object's `scope`; card#9296's uniqueness ruling; card#12239's roundtable declaration). The resolve
+   arm resolves by the rule D2 states and this document does not re-derive: **a name resolves to the
+   one seat whose declaration of the arm's kind equals it with a check of `checked` or `unchecked`,
+   provided no other seat of the arm's population declares it at all** — the install's seats for the
+   install arm, every install's seats for the fleet arm — **0 or 1 desks, never a set**. card#7957's
+   ruling *(2)* governs the empty case and is permanent: an end that does not resolve gets **no
+   traveller and no ring** — never one to a guessed desk — **is reported as unresolved** in the client's
+   own event log line for that post ([§ 5.5](#55-the-clients-own-narration)), with D2's reason beside it
+   (`no_declaring_seat`, or `duplicate_declaration` rendered in words as *declared by more than one
+   seat*, because an install misconfiguration must not read as *no seat may resolve it*), and **does
+   not suppress the rest of the object**: a post with one resolved and two unresolved destinations
+   sends one traveller. ⛔ **An end that resolves through an `unchecked` declaration is drawn as any
+   other and the word *unchecked* rides the same log line** — a dashed bird would need a row for a fact
+   about the declaration rather than the post. The two arms never cross: a fleet-scope name is never
+   looked up among protocol agent names, however alike the strings.
 2. ⛔ **No coordination fact touches a desk.** None of these members mints, clears or masks a seat
    state, moves a character, changes a currency label or raises a badge — that is
-   [D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state)'s rule, cited and not restated. A desk
-   an unresolved line could not reach looks exactly as it looked before the post arrived, which is
-   the property that makes clause 1's *no line* safe to render.
-3. ⛔ **An `install`-scope round is drawn in the ROOM its own `install_id` names and in no other.** That
-   member comes from the hook binding rather than from the payload, so *"a broadcast's reach equals the
-   install's, and a renderer that draws wider is drawing past its event"*
-   ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)). **A `fleet`-scope object has no room**
-   (`install_id: null`, card#12239): it is drawn wherever its names resolve, by
-   [§ 4.6](#46-the-building-layout)'s between-rooms form — the line when two or more resolved ends are
-   on the floor being viewed, the call marker at a resolved end whose counterpart is on another floor —
-   and its reach is still its own `targets`, resolved against the binding's set, never the building. ⚠ **This clause said *floor* until
-   card#9267's ruling, and leaving the word would have WIDENED it** — a floor is now a composed set
-   of rooms ([§ 4.6](#46-the-building-layout)), so *the floor its `install_id` names* would reach
-   every other room on that floor, which is the drawing-past-your-event the quotation forbids. The
-   rule's reach is unchanged; only the unit it is stated in is now the right one. A line between
-   rooms is [§ 4.6](#46-the-building-layout)'s named-but-unbuilt form, and it needs an object D2
-   does not publish.
-4. ⛔ **Nothing here is rendered as a duration, and the reason is a WORDING gap rather than a format
-   one.** [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s function is closed and would format a
-   coordination age correctly, but that section fixes one rendered **wording** per fact and publishes
-   none for these; a surface meeting that gap takes it to
-   [§ 14](#14-open-questions-for-the-review-loop) item 17 *"rather than filled by whichever surface
-   reaches them first"*. So the two receipt clocks render as **labelled server-clock timestamps** in
-   [§ 4.1](#41-the-lobby--the-building-summary)'s *HH:MM:SS* form and nothing on this surface is
-   subtracted from anything — the same call card#7341's lobby made at the same item, and the second
-   surface to make it.
+   [D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state)'s rule, cited and not restated. A desk a
+   traveller could not reach looks exactly as it looked before the post arrived.
+3. ⛔ **An `install`-scope post animates in the ROOM its `install_id` names and in no other; a
+   `fleet`-scope post has no room and animates where its ends resolve.** The member comes from the hook
+   binding rather than from the payload, so *"a broadcast's reach equals the install's, and a renderer
+   that draws wider is drawing past its event"* ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)).
+   For a fleet-scope post, two resolved ends on one floor — in one room or two — take the same
+   traveller; an end whose counterpart resolves to a desk on **another** floor takes the transient
+   cross-floor form [§ 4.6](#46-the-building-layout) states: the traveller leaves the origin desk toward
+   the floor's elevator, or arrives from it at the destination desk. Nothing is held at either end.
+4. ⛔ **Nothing here is rendered as a duration, and nothing here is rendered as a timestamp.** The
+   object's two clocks (`posted_at`, `received_at`) drive no render on this surface: an edge is drawn
+   when the message arrives and the animation log ([§ 11](#11-acceptance-tests)) records the server time
+   of the row, which is where a reader finds *when*.
 
 | Rendered element | D2 field | Example | Null / unresolved render |
 |---|---|---|---|
-| the thread the line belongs to, and the key its rounds are grouped under | `coord_thread.thread_ref`, `coord_round.thread_ref` | `"AIMLA-org/aimla-coordination#742"` | never null on either object. It is the thread's **identity**, so two messages carrying it are one thread and not two |
-| the object's reach — one room, or the building | `coord_thread.scope`, `coord_round.scope` | `"install"` | never null, rendered as the arm it selects and never as a word: `install` takes the row below and the install arm of the join; `fleet` takes [§ 4.6](#46-the-building-layout)'s between-rooms form and the fleet arm (property 1, property 3). A value this client has not met is shown raw and selects no arm, so it resolves nothing ([§ 5.4](#54-what-is-never-rendered)) |
-| the room the line is drawn in — and the only one | `coord_thread.install_id`, `coord_round.install_id` | `"aimla"` | null **iff** `scope` is `fleet`, and then the object has no room and property 3's between-rooms form applies — never a default room and never the first participant's. On an `install`-scope object it is never null; a message whose install the client does not hold is [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)'s case and draws nothing here |
-| the line's lifecycle treatment | `coord_thread.lifecycle` | `"closed"` | never null, and rendered **verbatim** — this document publishes no member set for it, because D2 declines to enum it and a second home for those three words is a second home free to disagree. The **ended** treatment is applied on `closed` and on no other value; a value this client has not met is still shown, raw, and never mapped to the nearest one it knows ([§ 5.4](#54-what-is-never-rendered)). ⛔ *ended* is **never** *converged* — [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) publishes no `converged` flag and says why, and *"a consumer must not treat `closed` as terminal"* |
-| the line's label | `coord_thread.subject`, `coord_thread.subject_truncated` | `"the coordination-event producer"` | a null `subject` draws **no label** — never a placeholder, never the last subject the client held. A true `subject_truncated` draws the truncation **mark**, because *"a silently clipped string is read as the whole string"*; the flag is the wire's and the mark is not a re-measurement of the text |
-| the carrier tag, on the line and on each bead | `coord_thread.carrier`, `coord_round.carrier` | `"announce"` | null ⇒ **no tag**, never a default carrier. D2 validates it *"with no set consulted"*, so this renders it raw for the same reason the lifecycle cell does |
-| who opened the thread | `coord_thread.opened_by`, `coord_thread.attribution` | `null`, `"unattributable"` | the two are read **together, always**: D2 states that *"a consumer reading `opened_by` without reading this renders **nobody** where the honest render is **not recoverable**"*. So a null `opened_by` renders the state its attribution names — raw — and never an empty opener |
-| whether a participant resolves to a desk, and to which | `coord_thread.participants`, `coord_round.from`, `coord_round.targets` joined against `protocol_agent_name` and `protocol_agent_name_check` on the **seat** objects this client already holds ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)) | `"pm"` → the desk of the seat declaring `"pm"` in this room | **unresolved**, by property 1, in every case but a live declaration: a name no seat of this room declares; a name a seat declares with `protocol_agent_name_check` of `disagreed` or `undeclared`; a name that merely **equals a `seat_id`**; and a name declared only by a seat of some **other** install. A seat whose `protocol_agent_name` is null is in no join at all and is never a default endpoint. ⛔ A name **more than one** seat of this room declares — in any check state, `disagreed` included ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rule 1) — also resolves to nothing — but renders *declared by more than one seat* and never a plain **unresolved**, because the two carry different reasons and an install misconfiguration must not read as *no seat may resolve it* (clause 1) |
-| that a resolved endpoint rests on an UNCHECKED declaration | `protocol_agent_name_check` | `"unchecked"` | `checked` draws nothing extra — the ordinary case carries no marker, or every line would carry one. A `null` check is a seat that has not heartbeated, or whose last heartbeat carried neither declaration member — for example from a reporter that predates [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s fields: either way it resolves nothing, so there is no endpoint to mark. The marker is property 1's, and it is words beside the participant rather than a second line treatment |
-| the thread's named participants | `coord_thread.participants` | `["pm","all"]` | an empty array draws **no participant list** — never *nobody*. `all` is a literal member and is **never expanded here**; each member is bound by clause 1 and the unresolved ones are named as unresolved |
-| a bead per post | `coord_round.post_ref` | `"AIMLA-org/aimla-coordination#742"` | never null. **The bead count is a count of distinct `post_ref`** and a repeat draws nothing new — D2's own words, and the whole of what a consumer may count, because these messages carry no `seq` and *"a lost coordination message is not detectable"*. On the one thread the held population's cap cuts (below), the count is rendered as a lower bound, *N+* |
-| the envelope's origin | `coord_round.from`, `coord_round.attribution` | `"pm"`, `"resolved"` | read together, exactly as the opener is. A null `from` is *this post evidences no agent* and is not a desk; an origin that resolves under clause 1 is where [A19](#62-the-animation-table--the-closed-set)'s envelope departs from |
-| the address the envelope carries, as written | `coord_round.to` | `["all"]` | an empty array is *addressed to nobody as written*, which is a fact about the **post** and not about its reach — the reach is the row below, and this row's members are never resolved to desks in its place. `all` appears **verbatim**, and that literal — never a boolean, which D2 refuses — is the member [A20](#62-the-animation-table--the-closed-set)'s trigger reads. ⚠ **It is not the whole of that trigger** — the ring is anchored at a desk the address cannot name — and [§ 6.2](#62-the-animation-table--the-closed-set)'s row is the one statement of what else it takes, restated in no cell here |
-| the envelope's destination desks | `coord_round.targets` | `["magento","platform","moodle"]` | ⛔ **`null` and `[]` are different answers and render differently.** `[]` is *this post reached nobody*; `null` is *the fan-out is not resolvable here* and renders as that, never as an empty fan-out and never with the address standing in for it |
-| the *declared the close* marker on a bead | `coord_round.declares_close` | `false` | never null. It renders that **somebody performed the close act**, and ⛔ **never a convergence** — [D1 § 18.5](EVENT-SCHEMA.md#185-the-three-findings-the-audit-turns-on)'s finding B, carried into D2's not-published table: convergence is a quorum and no object here carries the ledger one would need |
-| the thread's and the post's receipt stamps | `coord_thread.received_at`, `coord_round.received_at` | `"2026-08-27T16:02:11.775Z"` | never null. The receipt clock, and *"the only clock on this object an age may be computed from"* — rendered as a **labelled timestamp** under property 4, so no age is computed from it here either |
-| when the post says it was made | `coord_thread.posted_at`, `coord_round.posted_at` | `null`, `"2026-08-27T09:14:02.000Z"` | null ⇒ the line **omits** it — a thread's is null at `closed` and `reopened` by construction — never substituting the receipt stamp. It is **GitHub's clock, a third clock**, reconciled with neither of [D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)'s two, so it is labelled as the poster's own and **subtracted from nothing**, exactly as [§ 5.1](#51-the-desk) treats a seat clock |
+| the object's reach — one room, or the building | `coord_round.scope` | `"install"` | never null, rendered as the arm and the room rule it selects (properties 1 and 3) and never as a word; a value this client has not met selects no arm, so nothing resolves and nothing is drawn ([§ 5.4](#54-what-is-never-rendered)) |
+| the room the post animates in | `coord_round.install_id` | `"aimla"` | null **iff** `scope` is `fleet`, and then property 3's floor-wide rule applies — never a default room and never the first participant's. On an `install`-scope post a room the client does not hold is [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)'s case and draws nothing |
+| the post, drawn once | `coord_round.post_ref` | `"AIMLA-org/aimla-coordination#742-c1561"` | never null. **A repeat draws nothing**: the client remembers the last **1,000** `post_ref`s it drew ([§ 12](#12-every-number-and-where-it-comes-from)'s *Remembered coordination post identities*) and a message carrying one of them fires no edge; a redelivery older than that memory animates again, which is accepted and stated rather than guarded against with a store this page does not have |
+| the traveller's origin, and the ring's centre | `coord_round.from`, `coord_round.attribution` | `"pm"`, `"resolved"` | read **together, always**: a null `from` is *this post evidences no agent* and is not a desk; an origin that does not resolve under property 1 fires **no** A19 and **no** A20, and the log line names the attribution state and the unresolved reason |
+| the address, as written | `coord_round.to` | `["all"]` | an empty array is *addressed to nobody as written*, a fact about the post and not about its reach; `all` appears **verbatim** and is the member A20's trigger reads — not the whole trigger, which [§ 6.2](#62-the-animation-table--the-closed-set)'s row states once |
+| the traveller's destinations | `coord_round.targets` | `["magento","platform","moodle"]` | ⛔ **`null` and `[]` are different answers**: `[]` is *this post reached nobody* — no traveller, by the wire's own word; `null` is *the fan-out is not resolvable here* — no traveller either, and the log line says so rather than letting the address stand in. Each member that resolves to a desk on this floor gets its own traveller (A19); one that resolves to a desk on another floor gets the transient cross-floor form; one that does not resolve gets nothing and is logged |
+| whether an end resolves, and to which desk | `coord_round.from`, `coord_round.targets`, joined against `protocol_agent_name` / `protocol_agent_name_check` (install arm) or `roundtable_agent_name` / `roundtable_agent_name_check` (fleet arm) on the **seat** objects this client already holds ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)) | `"pm"` → the desk of the seat declaring `"pm"` in this room | **unresolved**, by property 1, in every case but a live declaration of the arm's kind: a name no seat declares; a name a seat declares with a check of `disagreed` or `undeclared`; a name that merely **equals a `seat_id`**; a name declared under the other arm; and a name **more than one** seat of the arm's population declares, whatever each seat's check state, which renders *declared by more than one seat* in the log line and never a plain *unresolved* |
 
-**Three animations render this surface and they are [§ 6.2](#62-the-animation-table--the-closed-set)'s,
-under [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean)'s rule unchanged:**
-[A18](#62-the-animation-table--the-closed-set) is the line itself, **held** by
-`coord_thread.lifecycle` for as long as the thread is open;
-[A19](#62-the-animation-table--the-closed-set) is the envelope, an **edge** fired by one applied
-`coord.round`; and [A20](#62-the-animation-table--the-closed-set) is the broadcast pulse, an **edge**
-fired by a `coord.round` whose address carries `all` and whose origin resolves. ⚠ **All three were
-unreachable until the join landed — on the server's side on card#9296, and on the reporter's on
-card#9375** — a line needs two
-resolved endpoints and nothing resolved — and all three are reachable now, wherever the seats a
-thread names have declared themselves in config **and** run a build that includes card#9375.
-**What still gates them is how an install's seats are provisioned rather than this design** — both
-halves, the config and the build
-([D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) row 6): on a fleet whose
-seats declare nothing, nothing resolves and none of the three fires, which is clause 1's permanent
-arm and not a stub; on a fleet whose seats declare but run a build older than card#9375, the
-heartbeat carries no name and the render is the same until each seat's artifact is replaced and its
-flusher restarted. None of them
-was stubbed, softened or given a fallback endpoint while they were unreachable, which is why nothing
-here changes shape now that they are. **A19 and A20 both fire on one broadcast post and that is not one fact drawn twice**: the
-ring is a statement about the **address as written**, the envelopes are a statement about the
-**resolved fan-out**, and D2 keeps those two members apart precisely so a reader can see them
-disagree.
+**Two animations render this surface today and a third is reserved; all under
+[§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean)'s rule unchanged.**
+[A19](#62-the-animation-table--the-closed-set) is the traveller, an **edge** fired by one applied
+`coord.round` whose origin resolves to a desk and at least one of whose destinations resolves to a desk
+on this floor — one traveller per such destination; [A20](#62-the-animation-table--the-closed-set) is
+the broadcast ring, an **edge** fired by a `coord.round` whose address carries `all` and whose origin
+resolves to a desk on this floor; the **transient cross-floor form** is the edge a fleet-scope post
+fires at an end on this floor whose counterpart is on another floor, specified with a reserved id at
+`docs/design/COORD-STORE.md § 6.1` and added to [§ 6.2](#62-the-animation-table--the-closed-set) with
+the module that draws it, because the suite holds that table and `wire/animation-set.js` equal.
+⛔ **[A18](#62-the-animation-table--the-closed-set), the thread line, is RETIRED by the ruling above**:
+its row stays in § 6.2 until that same build removes it with its module entry, its trigger cell says
+it never fires, and no surface of this document renders it. A19 and A20 both fire on one broadcast post
+and that is not one fact drawn twice: the ring is a statement about the **address as written**, the
+travellers a statement about the **resolved fan-out**, and D2 keeps those two members apart precisely so
+a reader can see them disagree.
 
-**What a reader will look for here and not find, [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)'s
-own table answers and this one does not.** The escalation flare, a `converged` flag, a round
-**number**, an `is_broadcast` boolean and the delivery digest each have a row there naming the finding
-that killed it. This document adds nothing to that list and repeats none of it: a second copy of a
-won't-do is a second thing to keep true. What [§ 1.3](#13-the-boundary-stated-as-a-rule) corollary 2
-requires here is the interim render, and the table above carries one for every member — including the
-two weaker facts that **are** true where a convergence is not, `lifecycle` and `declares_close`,
-rendered as exactly what they are.
+**Nothing is held, so nothing is backfilled and nothing is evicted.** A page that has just loaded draws
+no coordination fact — not because it has not yet been told, but because a snapshot never animates
+([§ 6.5](#65-a-snapshot-never-animates)) and every coordination render is an animation; the same holds
+for a reconnect and a resync. What the client keeps is the `post_ref` memory above, trimmed to its
+bound, and the animation log's rows. An empty coordination layer is therefore the **ordinary** state
+of every page between posts and is never rendered as *quiet* or *no coordination*.
 
-**One consequence of D2's no-snapshot ruling, stated here so the client is built to it rather than
-found lacking it — and AMENDED on card#12239's design (2026-10-23), when the ruling's reason expired.**
-Until then these objects rode the feed and no REST surface carried them, so *"a client that has just
-connected draws no thread line until the next post on that thread"*, and an empty coordination layer
-was the ordinary state of a page that had just loaded. **Now the client fetches
-[D2 § 8.2](FLEET-STATE.md#82-rest)'s `GET /api/fleet/coord` at [§ 2.2](#22-connect-snapshot-deltas)
-step 3c** — the envelopes a long-connected client would hold under [§ 12](#12-every-number-and-where-it-comes-from)'s
-cap, selected by the server by the same whole-thread rule this section's eviction uses
-([D2 § 6.12](FLEET-STATE.md#612-the-coordination-store)) — and applies them **as a snapshot**
-([§ 6.5](#65-a-snapshot-never-animates)): held, drawn, and firing no [A19](#62-the-animation-table--the-closed-set)
-or [A20](#62-the-animation-table--the-closed-set) edge, with the line
-[A18](#62-the-animation-table--the-closed-set) holds drawn static as any held render is. What is
-unchanged is the rule about emptiness: an empty layer **after** a successful backfill says that no
-thread the server holds is current on this room, and it is still **never** rendered as *quiet* or as
-*no coordination* — the server holds open threads and threads closed within its retention, under a cap
-that can drop a whole thread, so absence here is absence from a bounded hold, not silence on the fleet.
-A page whose backfill **fails** keeps the empty layer and draws the failure by name, as
-[§ 9](#9-failure-paths-and-their-observables) draws every other failed read, and treats the next
-successful connect as its first. [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop)
-item 14 is closed; [§ 14](#14-open-questions-for-the-review-loop) item 40 carries this surface's half.
-
-**The held population is bounded, and it is evicted by whole threads** — doc-owner ruling, card#7341
-step 8, [§ 14](#14-open-questions-for-the-review-loop) item 25. Because the objects ride the feed alone,
-the client protocol HOLDS every one it applies, and a page left open on a busy fleet would otherwise
-hold every post it was ever sent. So the protocol holds at most **1,000** coordination envelopes —
-`coord.thread` and `coord.round` together, a bound built at
-[Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 8, the step whose page is the
-first to stay open — and [§ 12](#12-every-number-and-where-it-comes-from)'s *Held coordination
-envelopes* row says why that figure and what re-derives it.
-
-- ⛔ **Eviction is whole threads, least recently received first.** A thread — its envelopes grouped by
-  `thread_ref`, the key the table above groups rounds under — leaves whole: its `coord.thread` and
-  every one of its rounds together, the thread whose newest envelope arrived longest ago going first.
-  An evicted thread then renders exactly as the paragraph above already renders one a just-connected
-  client has not seen — no thread line until the next post on it — so eviction adds **no new render
-  state**, and every thread that survives keeps a complete bead count. Evicting single posts is the
-  alternative this rejects: it would leave a thread without its `coord.thread`, and so without a
-  lifecycle to render the line by.
-- ⚠ **The one case whole-thread eviction cannot satisfy is a single thread that alone exceeds the
-  cap.** That thread keeps its `coord.thread` and drops its **oldest rounds**, and its bead count is
-  then rendered as a **lower bound**, *N+*: the bead count is *a count of distinct `post_ref`*
-  (the table above), and a count that silently shrank would be a false number.
-- **The floor screen's record of already-animated posts takes no figure of its own.** It is trimmed to
-  the `post_ref`s the protocol still holds. The cost is accepted and stated: a post redelivered after
-  its thread was evicted animates again, because nothing held says it was drawn before.
+**What a reader will look for here and not find.** The thread line, its label, its carrier tag, its
+beads and its *ended* treatment — retired by the ruling above. The call marker — the held form of the
+between-rooms render, retired with it ([§ 4.6](#46-the-building-layout)). A `converged` flag, an
+escalation flare, a round number, an `is_broadcast` boolean and the delivery digest — each has a row in
+[D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)'s not-published table naming the finding that
+killed it, and this document repeats none of them.
 
 ---
 
@@ -3281,9 +3169,9 @@ it carries the same fact.
 | **A15** | `held` | `catching-up` — a replay marker sweeps the monitor, 4 fps loop | desk | `render_state` | `render_state == "catching_up"` — D2 derives it from `delivery.oldest_unsent_age_s > 300`, but that input is one of [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s ten and a held copy of it freezes, so the **delivered** collapse is what holds this render | when it is not | a static replay marker and the *replaying* label | the seat's spool is not draining |
 | **A16** | `edge` | `desk-move` — a displaced character walks to its new desk | floor | the rendered seat set, `protocol_agent_role` | a seat entering the set displaces an incumbent ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)), or a retirement's ANNOUNCEMENT takes a seat out of it and an incumbent re-probes into the slot it frees ([§ 3.5](#35-retirement-and-the-only-removal)), or a delta or seat-set change changes which seat the room's reserved desk seats — the holder walks in or out, and the chain through the slot it takes or leaves re-probes ([§ 3.2](#32-the-desk-slot-function), card#11144) | on arrival | the desk appears in its new slot on the next render | no arrival collided, no announced retirement freed a slot, and no delivered change moved the reserved desk's holder |
 | **A17** | `edge` | `room-tick` — the wall clock's hands step to the viewer's current minute and the windows' sky is re-evaluated for that time | the **floor's room render** — the drawn interior, and not [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s room key (card#9267): its wall clock, and the sky in its windows ([§ 4.2](#42-the-floor)). **On the lobby it is this row or nothing:** [§ 4.1](#41-the-lobby--the-building-summary)'s directory renders a per-floor *summary*, and the fleet's rooms only by **name**, so it draws no desk and no wall clock at all; the lobby's own drawn room has one window, and the sky in it (card#12113; behind the building until then — the operator's ruling on card#7343, 2026-09-30) is this row's, on this row's driver (`floor/floor-layout.js`'s `RoomClock`, the floor screen's own), and never a second one of its own — A17 is the lobby's one row | `feed.heartbeat` | each `feed.heartbeat` message received on the one stream. **The same trigger as A14, and the pairing is the design rather than a duplication** — the note below is where that is argued | at the new time and the new sky value: one step, no tween | the hands **jump** to position and the sky **steps** to its new value with no cross-fade — the same fact, without the transition ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)) | **no message has arrived** — which at 45 s is the feed-down condition itself ([§ 9](#9-failure-paths-and-their-observables) F1). **A stopped clock is that condition in the form every viewer reads without being told**, which is why this row exists at all |
-| **A18** | `held` | `thread-line` — a line drawn between the desks a thread's participants resolve to, held for as long as the thread is open ([§ 5.7](#57-the-coordination-thread-line)) | floor | `coord_thread.lifecycle` | the last `coord.thread` this client holds for that `thread_ref` says a value other than `closed`, **and at least two of its participants resolve to a desk** — one endpoint is not a line, and a guessed second endpoint is what [§ 5.7](#57-the-coordination-thread-line) clause 1 forbids | when a `coord.thread` arrives whose lifecycle is `closed`, or when the resolved endpoints fall below two | the line is drawn **static** — same line, same endpoints, no travel along it | no open thread on this floor has two participants that resolve to a desk — which is **every** thread on a fleet whose seats declare no protocol agent name or run a reporter build that does not include card#9375, and since card#9296 and card#9375 that is a fact about how an install's seats are provisioned — each seat's config and the build it runs — rather than about a join nothing owns ([§ 5.7](#57-the-coordination-thread-line) clause 1) |
-| **A19** | `edge` | `envelope` — an envelope travels the line once, from the origin desk to each destination desk | floor | `coord.round`, `coord_round.targets` | one `coord.round` message applied, whose `install_id` is this floor's, whose origin resolves to a desk and at least one of whose destinations does. A destination that does not resolve gets **no envelope and no line**, and the ones that do still get theirs | on arrival at the destination desk | the bead is simply present at the destination end, with no travel | no post arrived that this client can draw between two desks. ⛔ **It is not** *the post reached nobody*: that is a `targets` of `[]`, and a `null` `targets` is *the fan-out is not resolvable here* — three states the wire keeps apart and this row does not collapse |
-| **A20** | `edge` | `broadcast-pulse` — one ring expands from the origin desk across the floor | floor | `coord_round.to`, `coord_round.from` | one `coord.round` whose `to` carries the literal `all`, verbatim off the wire, **and whose origin resolves to a desk** ([§ 5.7](#57-the-coordination-thread-line) clause 1) — the ring expands **from** that desk, so a post whose origin resolves to nothing has no desk to expand from and draws none, exactly as A19 has none to depart from. ⛔ **The address is not the whole trigger, and reading it as one is how a ring lands on a guessed desk** — it is also what [§ 5.7](#57-the-coordination-thread-line) already says of this row, *"all three were unreachable until the join landed"*, which is false of an address-only trigger. D2 publishes no `is_broadcast` boolean because *"`to` carries `all` verbatim and `targets` carries the resolved fan-out"*, so this row reads the member D2 kept rather than a flag it refused | at the floor's edge — one expansion, and never a repeating ring | the origin desk carries a **static broadcast marker** for that post | the post was addressed to named agents rather than to `all`, or its origin resolves to no desk. The ring says the ADDRESS was a broadcast; it never says how far the post got, which is `coord_round.targets`' answer and A19's render |
+| **A18** | `held` | `thread-line` — a line drawn between the desks a thread's participants resolve to, held for as long as the thread is open ([§ 5.7](#57-the-coordination-thread-line)) | floor | `coord_thread.lifecycle` — ⛔ **not published** ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)) | ⛔ **RETIRED by operator ruling 2026-10-23 (card#12239 r2): this row NEVER FIRES.** The floor holds no coordination state and `coord.thread` is not published, so no condition below can be met. The row and its `wire/animation-set.js` entry are removed **together** in that card's build, because `TheAnimationSetIsTheDocumentsClosedSetTest` holds this table and the module equal in both directions and a design PR must not red the suite; until then the row stands as a retired member, named so nobody reads it as a render ([§ 5.7](#57-the-coordination-thread-line)) | — | the line is drawn **static** — same line, same endpoints, no travel along it | nothing: a retired row is absent by design |
+| **A19** | `edge` | `envelope` — an envelope travels the line once, from the origin desk to each destination desk | floor | `coord.round`, `coord_round.scope`, `coord_round.from`, `coord_round.targets` | one `coord.round` message applied — an `install`-scope one whose `install_id` is a room of this floor, or a `fleet`-scope one (`install_id` null) whose origin resolves to a desk on this floor — whose origin resolves to a desk and at least one of whose destinations resolves to a desk **on this floor**: **one traveller per such destination**, drawn by card#12241 as the bird carrying the envelope (the drawing is that card's; the trigger is this row's). A destination that resolves to a desk on **another** floor takes the transient cross-floor form `docs/design/COORD-STORE.md § 6.1` reserves (its row lands with its module); one that does not resolve gets **nothing** and is logged ([§ 5.7](#57-the-coordination-thread-line) property 1), and the ones that do still get theirs. ⚠ *the line* in the Animation cell is the traveller's path, not a held render: the thread line is retired | on arrival at the destination desk | the bead is simply present at the destination end, with no travel | no post arrived that this client can draw between two desks on this floor. ⛔ **It is not** *the post reached nobody*: that is a `targets` of `[]`, and a `null` `targets` is *the fan-out is not resolvable here* — three states the wire keeps apart and this row does not collapse |
+| **A20** | `edge` | `broadcast-pulse` — one ring expands from the origin desk across the floor | floor | `coord_round.to`, `coord_round.from` | one `coord.round` whose `to` carries the literal `all`, verbatim off the wire, **and whose origin resolves to a desk on this floor** ([§ 5.7](#57-the-coordination-thread-line) property 1; for a `fleet`-scope post that is the one floor its origin resolves to, and the ring is drawn there alone) — the ring expands **from** that desk, so a post whose origin resolves to nothing has no desk to expand from and draws none, exactly as A19 has none to depart from. ⛔ **The address is not the whole trigger, and reading it as one is how a ring lands on a guessed desk** — it is also what [§ 5.7](#57-the-coordination-thread-line) already says of this row, *"all three were unreachable until the join landed"*, which is false of an address-only trigger. D2 publishes no `is_broadcast` boolean because *"`to` carries `all` verbatim and `targets` carries the resolved fan-out"*, so this row reads the member D2 kept rather than a flag it refused | at the floor's edge — one expansion, and never a repeating ring | the origin desk carries a **static broadcast marker** for that post | the post was addressed to named agents rather than to `all`, or its origin resolves to no desk. The ring says the ADDRESS was a broadcast; it never says how far the post got, which is `coord_round.targets`' answer and A19's render |
 
 **A1 and A2 — the walk to and from the elevator (card#9566).** The operator's request, verbatim
 (2026-09-14): *"when a desk transitions from staffed to empty, have the person walk from their desk to
@@ -3875,14 +3763,10 @@ literal causes before it could be added.
 
 ### 6.5 A snapshot never animates
 
-A snapshot, a poll response, a resync fetch, a per-seat insert, a reconnect — and, since card#12239's
-design, the coordination backfill of [§ 2.2](#22-connect-snapshot-deltas) step 3c — all render the
-world **as delivered**, with **no `edge`-class animation** ([§ 6.2](#62-the-animation-table--the-closed-set)).
-A backfilled `coord.round` is journalled with outcome `backfilled` rather than `applied`, which is what
-keeps it out of the population [A19](#62-the-animation-table--the-closed-set) and
-[A20](#62-the-animation-table--the-closed-set) fire from; a backfilled `coord.thread` is held, and the
-line [A18](#62-the-animation-table--the-closed-set) holds for it is drawn static, as every held render
-is on a snapshot. **A
+A snapshot, a poll response, a resync fetch, a per-seat insert and a reconnect all render the world **as
+delivered**, with **no `edge`-class animation** ([§ 6.2](#62-the-animation-table--the-closed-set)) — and
+since every coordination render is an edge ([§ 5.7](#57-the-coordination-thread-line), card#12239 r2),
+a page that connects draws no coordination fact at all until the next post arrives on the live feed. **A
 ride's arrival is not a snapshot animating** (card#11795): its cause is the navigation the viewer made, read
 from that navigation ([§ 4.5](#45-the-viewport-rule-and-the-camera)), and a reload or a traverse into the
 same floor draws its leaves at rest.
@@ -5277,7 +5161,7 @@ creature generator's sheet is their worked example.
   5. **Light** comes from the top-left, one corner for the whole scene (slynyrd); contact shadows are soft
      and sit at the foot. *Eye-judged.*
   6. **Not scene objects:** the nameplate and its plate, the state chip, the badges and the flag, the
-     facts column and its plate, the bubble and its trail, the thread line and its label, the
+     facts column and its plate, the bubble and its trail, the thread line and its label (both retired by card#12239 r2, drawn by nothing), the
      [§ 6.2](#62-the-animation-table--the-closed-set) effects, the F14 placeholder and the overflow strip's
      header are **labels over the scene** and obey no projection; they are [§ 5.1](#51-the-desk)'s and
      [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s.
@@ -6281,7 +6165,7 @@ is the creature tree's drawing of the seat's identity, painted among the art.
 
 **Beyond one desk, as today:** the floor paints the band, the slab, the tiles (planes, scenery and their glows),
 the thread lines, then every desk group, the overflow strip's header and the § 6.2 effects (`painter.js`'s
-`paint()`), so no plane or scenery art can cover a desk's fact. **Thread lines run under desk groups**, so a desk's
+`paint()`), so no plane or scenery art can cover a desk's fact. **Thread lines run under desk groups** (a layer retired by card#12239 r2 and removed with A18), so a desk's
 art hides a thread only where the thread enters that desk — the line's anchor sits on the character's centre line at
 **the desk's own mid-height, box y 158** (`deskAnchor()`; card#11468 moved it from the box's mid-height, y 114,
 which lies inside the facts stack's rows), below every facts plate (whose bottom is y 144), so a line between two
@@ -6306,7 +6190,7 @@ every other desk's box by AT-D3-20 *(b)*, and that box includes the new art.
   is a rect that is not the table's, which AT-D3-25's table leg names.
 - ⭐ **The bubble's anchor follows the creature** — [§ 5.1](#51-the-desk) rule 3 anchors the bubble to the
   character, and the scene anchored it at the art column's centre only because the character stood there. The
-  anchor is the character rect's centre line, and so is the desk's anchor for the thread line and the walks:
+  anchor is the character rect's centre line, and so is the desk's anchor for the traveller (and, until card#12239 r2 retired it, the thread line) and the walks:
   today every site that reads it is found by `grep -n 'ART_W / 2' server/public/js/floor/scene.js` (in
   `placeBubbles()` and `anchorOf()`), and row 20 makes them ONE primitive over `deskRects()`, so the walker arrives where it sits. The prototype kept the tail at the
   column's centre; that is one of the disagreements the amendment resolves toward the document. Since
@@ -7883,6 +7767,13 @@ buffering and the line the record gains are the protocol's and are observable at
 
 ### AT-D3-18 the coordination thread line resolves or renders unresolved, never a guessed desk
 
+⚠ **Re-scoped by card#12239 r2 (operator 2026-10-23): A18 is retired, so every assertion below about
+`T1`'s LINE — its `entered` row, its endpoints, the words beside its participants — is removed with A18
+in that card's build. What survives, and moves onto [A19](#62-the-animation-table--the-closed-set)'s
+origin and destinations, is the JOIN this test exists for: which names resolve to which desk, which do
+not, and with which reason. Until the build lands the suite still holds the shipped code to this text,
+which is why it is annotated rather than rewritten; AT-D3-29 states the rules the build is held to.**
+
 *[§ 14](#14-open-questions-for-the-review-loop) item 24 (Q8): no other acceptance test binds
 [§ 5.7](#57-the-coordination-thread-line)'s render map, so this document had a headline render with no
 gate. Gated at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 7, beside
@@ -8923,35 +8814,45 @@ and back, and the doors held half open on each page showing the view the stop ow
   stop and the band's leaves in the floor's band, exactly as [AT-D3-26](#at-d3-26-the-floors-ride-is-navigation)
   holds them.
 
-### AT-D3-29 the coordination backfill is held, drawn, and animates nothing
+### AT-D3-29 a coordination post animates on arrival, once, and nothing is held
 
-*[§ 14](#14-open-questions-for-the-review-loop) item 40 (card#12239): the client half of the
-coordination backfill. Gated at [Appendix B](#appendix-b--what-an-implementer-builds-from-this)
-step 7 beside [AT-D3-18](#at-d3-18-the-coordination-thread-line-resolves-or-renders-unresolved-never-a-guessed-desk),
+*[§ 14](#14-open-questions-for-the-review-loop) item 40 (card#12239 r2): the client half under the
+operator's ruling. Gated at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 7 beside
+[AT-D3-18](#at-d3-18-the-coordination-thread-line-resolves-or-renders-unresolved-never-a-guessed-desk),
 whose fixture and join it reuses.*
 
 - **Build:** apply `fx-snapshot-4` and `fx-coord`'s declarations exactly as
   [AT-D3-18](#at-d3-18-the-coordination-thread-line-resolves-or-renders-unresolved-never-a-guessed-desk)
-  does; then, instead of replaying `fx-coord`'s messages on the stream, serve them as the body of
-  `GET /api/fleet/coord` at [§ 2.2](#22-connect-snapshot-deltas) step 3c, with `T1` named in
-  `truncated_threads[]`; then deliver on the stream one **duplicate** of `R2` (same `post_ref`), one
-  `coord.thread` for `T1` whose `received_at` equals the backfilled one, and one new round `R5`
-  (`from: "pm"`, `to: ["coder"]`, `targets: ["coder"]`); collect the animation log. **Reads:** **the
-  harness**, the **floor layout**, the **animation set**, the **animation log**.
-- **GREEN:** after step 4 the model holds `T1` with its four rounds and `T1`'s line is drawn — an
-  [A18](#62-the-animation-table--the-closed-set) `entered` row, **static** — and the log carries **no**
-  [A19](#62-the-animation-table--the-closed-set) and **no** [A20](#62-the-animation-table--the-closed-set)
-  row for `R1`–`R4`; the journal's lines for the four rounds read `backfilled`; `T1`'s bead count renders
-  *4+*. After step 5c the duplicate `R2` and the equal-stamp `coord.thread` are journalled `discarded`
-  and draw nothing new, and `R5` fires exactly one A19 from `aimla-pm`'s desk to `aimla-impl-1`'s.
-- **RED:** journal the backfilled rounds `applied` → four A19/A20 rows fire on a page load, which is
-  [§ 6.5](#65-a-snapshot-never-animates)'s forbidden render. **Second RED:** drain the buffer without the
-  identity rule → the duplicate `R2` fires a second A19 for a post that happened once. **Third RED:**
-  ignore `truncated_threads[]` → `T1` renders *4* where the server said the count is a lower bound.
-- **Discriminating control:** the same `fx-coord` messages replayed on the **stream** instead of the
-  backfill, with `fx-snapshot-4` applied first, fire the A19 and A20 rows
-  [AT-D3-18](#at-d3-18-the-coordination-thread-line-resolves-or-renders-unresolved-never-a-guessed-desk)
-  asserts — the two tests differ only in which surface delivered the same envelopes.
+  does; replay `fx-coord`'s `coord.round` messages `R1`–`R4` on the stream in order, then a **duplicate**
+  of `R2` (same `post_ref`), then a reconnect that re-runs [§ 2.2](#22-connect-snapshot-deltas) steps
+  1–5; then a **fleet-scope** variant — the same four rounds with `scope: "fleet"`, `install_id: null`,
+  `from`/`to`/`targets` naming `pm-solo` and `coder-solo`, against the same seats given
+  `roundtable_agent_name` declarations `pm-solo` (`aimla-pm`, `checked`) and `coder-solo`
+  (`aimla-impl-1`, `unchecked`), with `aimla-impl-1` then moved to a room on a **different** floor;
+  collect the animation log. **Reads:** **the harness**, the **floor layout**, the **animation set**,
+  the **animation log**.
+- **GREEN:** `R1` fires one [A20](#62-the-animation-table--the-closed-set) from `aimla-pm`'s desk and
+  no A19; `R2` fires nothing (its origin `helper` is a duplicate declaration, logged
+  `duplicate_declaration`); `R3` fires one A19 from `aimla-impl-1`'s desk to `aimla-pm`'s and none
+  toward `helper`, which the log names unresolved; `R4` fires nothing (`targets: []`, logged *reached
+  nobody*). **No [A18](#62-the-animation-table--the-closed-set) row exists in the log at any point**, no
+  line, label, bead or marker is drawn, and the `coord.thread` `T1` — if the harness offers one — is
+  journalled `ignored` and counted. The duplicate `R2` fires nothing and is journalled `discarded`
+  (`post_ref` remembered). After the reconnect the floor draws no coordination fact and the log gained
+  no edge. In the fleet variant, `R3` resolves through the roundtable arm — `coder-solo` to
+  `aimla-impl-1`, with *unchecked* on its log line — and, with that desk on another floor, fires the
+  cross-floor form's edge at **each** end once its row exists, and until then fires A19 on neither
+  floor and logs the two ends as *on another floor*; a fleet-scope `FROM: pm` (the install vocabulary)
+  resolves **nothing**.
+- **RED:** hold the last `coord.thread` and draw a line → an A18 row appears after `T1`. **Second RED:**
+  drain the duplicate `R2` as new → a second A19 for a post that happened once. **Third RED:** replay the
+  four rounds as a backfill on connect and fire their edges → four edges on a page load, which
+  [§ 6.5](#65-a-snapshot-never-animates) forbids. **Fourth RED:** resolve the fleet-scope `coder-solo`
+  through `protocol_agent_name` by stripping `-solo` → a traveller to a desk no declaration named.
+- **Discriminating control:** the same `R1`–`R4` on the stream under the shipped code today fire the
+  A19 and A20 rows [AT-D3-18](#at-d3-18-the-coordination-thread-line-resolves-or-renders-unresolved-never-a-guessed-desk)
+  asserts, so the edge triggers this test holds are the ones already built; only the held row and the
+  fleet arm are new.
 
 ---
 
@@ -9057,7 +8958,7 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | Gate 2's embedded-literal bound | **1,024 B** | **Chosen**, and **re-derived against the real tree rather than an intent**: the longest look-encoded run of base64's own alphabet anywhere under `resources/` is **107 B**, in the whitespace-stripped prose of `resources/floor/LINEAGE.md` and, at the same length, in the whitespace-stripped path data of the floor plane's `resources/floor/tiles/floor-plane/rug.svg` — its row of tassel strokes, `M6 37v2M14 37v2…`, once the spaces go (re-measured 2026-09-25, when the first-party floor plane was drawn — the lineage file alone held it on 2026-09-12, when the tileset was vendored, and it was 62 B in `index.js` on 2026-08-27; this row's own trigger is what moved it each time). Still an order of magnitude under the ceiling and far below the smallest useful sprite sheet, so clause 2 cannot fire on the tree and cannot miss a vendored asset. ⚠ **Note what the longest run now IS:** English prose with its spaces removed, and an SVG path's stroke list with the same treatment — drawing commands, not a picture's bytes — which is the residue [§ 10.1](#101-the-manifest-and-the-two-gates) clause 2 already names, observed rather than supposed. **What re-derives it:** the same measurement, whenever art is added. ⚠ **The bound is not what keeps clause 2 off legitimate SVG — the ALPHABET is** ([§ 10.1](#101-the-manifest-and-the-two-gates)): minified path data can exceed 1,024 B easily and is excluded because `.`, `-`, `,` and spaces are not base64 characters | [§ 10.1](#101-the-manifest-and-the-two-gates) |
 | D2 § 8.2.1's nullable members | **44** | **Cited** — the rows [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes`; the population `fx-nulls` must cover, and the reason it is two seats rather than one | [§ 11](#11-acceptance-tests) |
 | Client event-log length | **200 lines** | **Chosen** — enough to hold a reconnect storm's worth of membership and resync lines; it is a narration of the client, not a record, and D2's own surfaces hold the durable history. **What re-derives it:** the line count one measured reconnect storm writes — every line has a named producer in [§ 5.5](#55-the-clients-own-narration), so it is measurable as soon as a client exists, and a storm that fills the log is the trigger | [§ 4.1](#41-the-lobby--the-building-summary), [§ 5.5](#55-the-clients-own-narration) |
-| Held coordination envelopes | **1,000 envelopes** | **Chosen** — five times the client event-log length's 200 lines, because a thread line consumes one envelope per post and a thread with 100+ posts is observed on this fleet's own roundtable, so a bound sized like the record's would evict a single busy thread's own history. Eviction is by whole threads, least recently received first ([§ 14](#14-open-questions-for-the-review-loop) item 25). **What re-derives it:** the envelope count a measured busy day delivers to one open page | [§ 5.7](#57-the-coordination-thread-line) |
+| Remembered coordination post identities | **1,000** `post_ref`s | **Chosen** — the figure the retired envelope hold used (card#7341 step 8, [§ 14](#14-open-questions-for-the-review-loop) item 25), kept for the one job that survives card#12239 r2's ruling: a repeat of a post the client already drew fires no edge. Five times the event log's 200 lines, so a redelivery inside GitHub's 3-day reach on a day of ~100 posts is still remembered. **What re-derives it:** the post count a measured busy day delivers to one open page | [§ 5.7](#57-the-coordination-thread-line) |
 | A page's animation-log retention | **2,000 rows** | **Chosen** — a ceiling on what the page holds rather than a sizing for a reader, because no on-page reader of the log exists yet: the floor page writes an A14 and an A17 row on every `feed.heartbeat` ([§ 6.2](#62-the-animation-table--the-closed-set)) and the lobby an A17 row (its sky, card#7343), so an unbounded log grows at up to twice the heartbeat rate for as long as a page is open. One figure for both pages, applied by `wire/live-page.js`. It binds the pages alone — the harness and every acceptance test construct the log with no bound ([§ 14](#14-open-questions-for-the-review-loop) item 26). **What re-derives it:** the rows the drill-down ([Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 10), the first on-page reader of the log, actually needs to display | [§ 11](#11-acceptance-tests) |
 
 **The 1,280 × 800 reference viewport is Chosen and rests on no criterion, by design:** it is the size
@@ -9732,7 +9633,7 @@ reason to leave two readings live.
     its line would read *0s behind*. The *1m 57s* exemplar is 117,000 ms, and so is this fixture's
     figure. D2's `117` is coherent with its own `fleet.fold` of `ok`, so this is no D2 defect.
     **Reopens:** a test that needs the lag figure on a retirement announcement.
-24. **✅ CLOSED — Q8: [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 7 builds
+24. **⚠ The line this item closed is RETIRED by card#12239 r2 (operator 2026-10-23); item 40 carries what step 7 renders now. The ruling stands as the record.** ✅ CLOSED — Q8: [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 7 builds
     [§ 5.7](#57-the-coordination-thread-line)'s coordination line, gated by a new acceptance test,
     [AT-D3-18](#at-d3-18-the-coordination-thread-line-resolves-or-renders-unresolved-never-a-guessed-desk).**
     Doc-owner ruling, card#7341 step 7. Raised in card#7341 comment 5557 ("no Appendix B row builds
@@ -9827,8 +9728,8 @@ reason to leave two readings live.
 
     **Reopens:** a second render of coordination facts (a lobby-level summary, a drill-down panel row)
     that reads the same objects and needs its own gate.
-25. **✅ CLOSED — the held coordination envelopes are bounded at 1,000, evicted by whole threads, least
-    recently received first.** Doc-owner ruling, card#7341 step 8, raised by that step's build audit:
+25. **⚠ RE-SCOPED by card#12239 r2 (operator 2026-10-23): the hold itself is retired with the thread line — the client holds no coordination envelope at all now, and what [§ 12](#12-every-number-and-where-it-comes-from)'s row bounds is the memory of `post_ref`s already drawn ([§ 5.7](#57-the-coordination-thread-line)). The ruling below stands as the record of the hold it bounded.** ✅ CLOSED — the held coordination envelopes are bounded at 1,000, evicted by whole threads, least
+    recently received first. Doc-owner ruling, card#7341 step 8, raised by that step's build audit:
     the client protocol holds every `coord.thread` and `coord.round` it applies, because no REST
     surface carries them ([§ 5.7](#57-the-coordination-thread-line)), and this document published no
     bound for that population — so a page left open on a busy fleet held every post it was ever sent,
@@ -10300,22 +10201,26 @@ reason to leave two readings live.
     so the member was added upstream rather than the attention line restated as *the current call has run
     N* — the alternative recorded there.
 
-40. **⇢ Review — the coordination backfill's client half (card#12239, design awaiting the operator).**
-    [D2 § 8.2](FLEET-STATE.md#82-rest)'s `GET /api/fleet/coord` gives the coordination objects the
-    snapshot half [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 14 owed, and this
-    document's half is three things, each decided here and revisable at review: *(1)* the connect
-    sequence gains steps 2c, 3c and 5c ([§ 2.2](#22-connect-snapshot-deltas)), the coordination buffer
-    drained by **identity and receipt clock** rather than by a version — a round by `post_ref`, a thread
-    by `received_at` — because the objects carry no `state_version` and D2 publishes none; *(2)* a
-    backfilled envelope is a snapshot ([§ 6.5](#65-a-snapshot-never-animates)): journalled `backfilled`,
-    never `applied`, so no [A19](#62-the-animation-table--the-closed-set) or
-    [A20](#62-the-animation-table--the-closed-set) edge fires on a page load and the floor's record of
-    already-animated posts is seeded from it; *(3)* `truncated_threads[]` seeds `coordTruncated`, so
-    [§ 5.7](#57-the-coordination-thread-line)'s *N+* bead count is right on the first render and not
-    only after the client's own eviction has run. **Blocks:** nothing — the renderer is built and the
-    rows are unchanged; what waits is the server (D2 Appendix B rows 12–13). **Closes it:** AT-D3-29 green
-    on the client half, and the one residual named at `docs/design/COORD-STORE.md § 11` — a connected
-    client holding a stale lifecycle after an out-of-order pair — decided at the design review.
+40. **⇢ Review — the coordination client half under the operator's re-scope (card#12239 r2, design
+    awaiting the operator).** The operator ruled on 2026-10-23 that the floor shows message animations
+    and no held coordination state, so this document's half is four things, each decided here and
+    revisable at review: *(1)* [§ 5.7](#57-the-coordination-thread-line) is the render map of
+    `coord.round` alone, every render an edge; the thread line, its label, beads, carrier tag and ended
+    treatment, and the call marker, are retired. *(2)* [A18](#62-the-animation-table--the-closed-set)'s
+    row stays in [§ 6.2](#62-the-animation-table--the-closed-set) with a trigger cell that says it never
+    fires, and leaves with its `wire/animation-set.js` entry in the build — the suite holds the two equal
+    in both directions, so a design PR cannot remove either alone; the same coupling is why the
+    transient cross-floor form's row is reserved at `docs/design/COORD-STORE.md § 6.1` rather than
+    written here. *(3)* [A19](#62-the-animation-table--the-closed-set)'s trigger reads the object's
+    `scope`: one traveller per destination that resolves to a desk on this floor, through the arm the
+    scope selects; a fleet-scope post whose other end is on another floor takes the cross-floor form at
+    each end ([§ 4.6](#46-the-building-layout)). *(4)* Nothing is held, so there is no backfill and no
+    eviction; the client keeps the `post_ref`s it drew, bounded by [§ 12](#12-every-number-and-where-it-comes-from)'s
+    repurposed row, and an unresolved end is reported in the event log line rather than drawn. The look
+    — the bluebird, the envelope, the elevator departure and arrival — is card#12241's. **Blocks:**
+    nothing on this document; what waits is the server (D2 Appendix B rows 12–13) and the build that
+    removes A18 and adds the reserved row. **Closes it:** AT-D3-29 green, and AT-D3-18's line
+    assertions removed with A18 in that build.
 
 ## Appendix A — every obligation addressed to this document
 
@@ -10443,7 +10348,7 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 | 4 | ✅ landed 2026-09-22 (card#7341 step 4) — every **age readout**, over the clock offset the client protocol holds from step 3 ([§ 2.4](#24-the-clock-and-every-age-on-the-page)): the desk's quiet age, action elapsed, `dark-only` receipt age and gauge age, each seat-clock instant as its labelled claim, and the 1 s tick that re-renders them ([§ 2.5](#25-what-re-renders-and-when)) — `server/public/js/wire/age-readout.js`, whose wordings the drill-down draws from too. The fleet's sweep and ingest ages are not in it: they have no published wording ([§ 14](#14-open-questions-for-the-review-loop) item 17) and sit on step 8's status strip | [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(floor half)** |
 | 5 | ✅ landed 2026-09-22 (card#7341 step 5) — the **desk render**: the render map, the ten state renders, and the desk's **side table** ([§ 5.1](#51-the-desk), [§ 7.1](#71-the-render-per-state), [§ 8](#8-interns--subagent-rendering-and-the-cap)) — `server/public/js/desk/desk-render.js`, one desk from the held seat object and the ages step 4's tick renders, and `server/public/js/desk/desk-floor.js`, which runs it over every held seat, re-renders ages on step 4's 1 s tick, and hands each frame to step 6's animation set, which is what enters and leaves each desk's `held` render in the animation log — this row entered and left them itself until step 6 landed, and the path MOVED rather than gaining a second copy. The *as of* stamp on the lag line is the `server_time` that delivered the seat's `derivation` block, which the client protocol now holds per member ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s stamp rule). Its page is step 8's floor page, which runs it through the floor screen | [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded), [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) **(desk half)** |
 | 6 | ✅ landed 2026-09-23 (card#7341 step 6) — the **animation set** ([§ 6.2](#62-the-animation-table--the-closed-set)): A1 through A20 as the renderer's own artifact — each row's class, its [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation) form, whether it loops at all, and the one entry every row is started through — `server/public/js/wire/animation-set.js`, writing step 2's animation log. `desk/desk-floor.js` hands it the WIRE JOURNAL `wire/fleet-client.js` now keeps (what the protocol did with each message, and the `changed[]`, `before` and `after` every `edge` condition is written over) beside the frame step 5's desk render draws, and holds no episode state of its own: step 5's held-render path MOVED into the set rather than being copied, because a second way into the log is a second implementation of the one record [AT-D3-1](#at-d3-1-no-animation-without-its-event) reads. ⚠ **Four rows are declared here and fired by no caller in this step, each for a stated reason.** A16's trigger is [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)'s displacement, which is a fact about step 7's slot function, so the set exposes the entry that step calls and A16's own log row is fully specified. A18, A19 and A20's triggers are already built — `coord/coord-model.js`'s `threadAnimations()` and `roundAnimations()` (card#8300) — and what is missing is the LOG ROW rather than the trigger: [§ 11](#11-acceptance-tests)'s `cause` column named four causing messages at this step and a `coord.round` was none of them, so this step writes no row for them and § 11 states instead what the first consumer that applies one will write — **which is step 7, where all three rows are written and that set becomes six**. Its page is step 8's floor page, which constructs the log with § 12's retention bound | **[AT-D3-1](#at-d3-1-no-animation-without-its-event)** and **[AT-D3-2](#at-d3-2-the-clear-trace-shows-no-idle-anywhere)** — the two hard gates on trusting the floor at all — plus [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion), whose whole claim is about motion and is unobservable before there is any, and the render halves of [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) **(render half)** and [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) **(render half)** |
-| 7 | ✅ landed 2026-09-23 (card#7341 step 7) — the **floor layout**: the map, the slot function, overflow (card #7341). The map is what DEFINES the room interior the desks stand in — its drawing is row 14's — fetched from [D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)'s surface since card#9208's reversal, with the **shipped default** `resources/floor/default.tmj` as what every room renders until it is authored ([§ 10.3](#103-the-floor-map)); **the wall clock and the windows** are the FLOOR's one room render, drawn once for it rather than once per room's map ([§ 4.2](#42-the-floor), card#9267) — named here because a room element nobody schedules is a room element nobody builds. Step 6's set is what *moves* them ([§ 6.2](#62-the-animation-table--the-closed-set) A17); this step computes them — the clock's value and the windows' phase, carried in the frame and set on first render, which is not an animation ([§ 6.5](#65-a-snapshot-never-animates)) — and row 14 draws them; and the floor's composition — each room's grid at its `origin` over the floor's `hallway`, or the default arrangement at § 12's gap, the floor's extent as their union, and F18's named overlap ([§ 4.6](#46-the-building-layout), [§ 4.2](#42-the-floor), card#9292). **The coordination thread line** ([§ 5.7](#57-the-coordination-thread-line), [§ 14](#14-open-questions-for-the-review-loop) item 24 — Q8): drawn between two desks, so it needs this step's own artifact, the floor's desk positions, exactly as A17's clock and windows are computed here though step 6's set is what moves them and row 14 what draws them. **What landed is** `server/public/js/floor/floor-layout.js` — [§ 3.2](#32-the-desk-slot-function)'s hash, probe and overflow, [§ 10.3](#103-the-floor-map)'s `desks` layer read as `S` and as each slot's position, [§ 4.6](#46-the-building-layout)'s composition and F18's half-open footprints, [§ 4.2](#42-the-floor)'s one back-wall band and A17's minute-resolution value — `server/public/js/floor/coord-join.js`, the `protocol_agent_name` → `seat_id` join [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rules 1 and 2 specify and which nothing built until now, and `server/public/js/floor/floor-screen.js`, which runs them over the protocol: it owns § 2.5's drain for this screen and hands `desk/desk-floor.js` what it drained, calls step 6's `displaced()` for A16, writes A18/A19/A20 through that same set, applies the two layout acts through `wire/building.js`, and renders F16, F17, F18, the overflow row and every notice [§ 5.5](#55-the-clients-own-narration) publishes for them. The protocol now HOLDS [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)'s two objects, because no REST surface carries them and a renderer that did not hold them could draw a thread only while one message was in flight. This is the floor route's renderer; its route is step 8's floor page | [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart), [AT-D3-18](#at-d3-18-the-coordination-thread-line-resolves-or-renders-unresolved-never-a-guessed-desk), [AT-D3-29](#at-d3-29-the-coordination-backfill-is-held-drawn-and-animates-nothing) — the last added on card#12239's design and runnable only once D2 Appendix B row 13's backfill exists; until then it is the one test on this row that has no surface to drive |
+| 7 | ✅ landed 2026-09-23 (card#7341 step 7) — the **floor layout**: the map, the slot function, overflow (card #7341). The map is what DEFINES the room interior the desks stand in — its drawing is row 14's — fetched from [D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)'s surface since card#9208's reversal, with the **shipped default** `resources/floor/default.tmj` as what every room renders until it is authored ([§ 10.3](#103-the-floor-map)); **the wall clock and the windows** are the FLOOR's one room render, drawn once for it rather than once per room's map ([§ 4.2](#42-the-floor), card#9267) — named here because a room element nobody schedules is a room element nobody builds. Step 6's set is what *moves* them ([§ 6.2](#62-the-animation-table--the-closed-set) A17); this step computes them — the clock's value and the windows' phase, carried in the frame and set on first render, which is not an animation ([§ 6.5](#65-a-snapshot-never-animates)) — and row 14 draws them; and the floor's composition — each room's grid at its `origin` over the floor's `hallway`, or the default arrangement at § 12's gap, the floor's extent as their union, and F18's named overlap ([§ 4.6](#46-the-building-layout), [§ 4.2](#42-the-floor), card#9292). **The coordination thread line** ([§ 5.7](#57-the-coordination-thread-line), [§ 14](#14-open-questions-for-the-review-loop) item 24 — Q8): drawn between two desks, so it needs this step's own artifact, the floor's desk positions, exactly as A17's clock and windows are computed here though step 6's set is what moves them and row 14 what draws them. **What landed is** `server/public/js/floor/floor-layout.js` — [§ 3.2](#32-the-desk-slot-function)'s hash, probe and overflow, [§ 10.3](#103-the-floor-map)'s `desks` layer read as `S` and as each slot's position, [§ 4.6](#46-the-building-layout)'s composition and F18's half-open footprints, [§ 4.2](#42-the-floor)'s one back-wall band and A17's minute-resolution value — `server/public/js/floor/coord-join.js`, the `protocol_agent_name` → `seat_id` join [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rules 1 and 2 specify and which nothing built until now, and `server/public/js/floor/floor-screen.js`, which runs them over the protocol: it owns § 2.5's drain for this screen and hands `desk/desk-floor.js` what it drained, calls step 6's `displaced()` for A16, writes A18/A19/A20 through that same set, applies the two layout acts through `wire/building.js`, and renders F16, F17, F18, the overflow row and every notice [§ 5.5](#55-the-clients-own-narration) publishes for them. The protocol now HOLDS [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)'s two objects, because no REST surface carries them and a renderer that did not hold them could draw a thread only while one message was in flight. This is the floor route's renderer; its route is step 8's floor page | [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart), [AT-D3-18](#at-d3-18-the-coordination-thread-line-resolves-or-renders-unresolved-never-a-guessed-desk), [AT-D3-29](#at-d3-29-a-coordination-post-animates-on-arrival-once-and-nothing-is-held) — the last added on card#12239 r2; its edge legs run against the shipped code today and its fleet-arm and cross-floor legs once D2 Appendix B row 13 and the reserved row land |
 | 8 | ✅ landed 2026-09-24 (card#7341 step 8) — the **failure renders** and the **status strip** ([§ 9](#9-failure-paths-and-their-observables)), and the **stream recovery**: [§ 2.2](#22-connect-snapshot-deltas) steps 7–9 — dead-feed detection, the re-open on the 10 s cadence and on the backed-off one, the reload grace, and the re-run from step 1. ⛔ No page constructs the client protocol before this step: a page holding a real `EventSource` without the stream recovery inherits the browser's own reconnect ([§ 2.2](#22-connect-snapshot-deltas)), which re-runs none of steps 1–5, so a seat whose delta fell in the drop holds its old state for as long as it stays quiet. ⇒ **the floor page** is this step's artifact too, because recovery and the first real `EventSource` must arrive together (doc-owner ruling, card#7341 step 8): the `/floor/{floor}` web route inside the `auth`+`mfa` middleware group ([§ 4.4](#44-routes-and-what-each-one-fetches)), its Blade view, and a DOM entry that constructs `FleetClient` with a real `EventSource`, `startFloorScreen`, and the status strip. It is the first caller of everything steps 3 and 5–7 built with no page, and it is where two bounds the page needs and the harness must not have are applied: the page constructs the animation log with [§ 12](#12-every-number-and-where-it-comes-from)'s retention bound ([§ 11](#11-acceptance-tests), [§ 14](#14-open-questions-for-the-review-loop) item 26), and the client protocol holds its coordination envelopes to [§ 5.7](#57-the-coordination-thread-line)'s cap ([§ 14](#14-open-questions-for-the-review-loop) item 25). What landed is the stream recovery in `server/public/js/wire/fleet-client.js` — driven by a scheduler the constructing caller injects, so a client built without one (the harness's pre-recovery replay) recovers nothing and the page always passes one: § 9 F1's 45 s detection, the poll and re-open on the 10 s cadence as one re-run from step 1, F3's four `feed.close` reasons (`unavailable` on the backed-off cadence, `reload` inside the grace, `session` re-opening nothing), F4's snapshot retry, F6's *any read returns 401* at the one read primitive, F8 on an unknown `feed_version`, F19 and F20, and the ESTABLISHMENT the journal now carries so that § 6.5's room is set by a live feed and never by a poll; the failure renders in `server/public/js/wire/failure-render.js`, which the lobby's own refusal words moved into rather than being copied; the status strip in `server/public/js/floor/status-strip.js`, over the lobby's own `indicators()`; § 5.4's membership tests for every one of § 7.6's six sets, with § 7.2's badges and § 7.6's two remaining sets in `server/public/js/wire/member-sets.js`; the two bounds; and the floor page — `/floor/{floor}`, `resources/views/floor.blade.php` and `server/public/js/floor/main.js`, which draws each desk as a line of text: the drawing layer that paints a room, and so § 9 F14, was not built at this step (row 14 has since built it). ⭐ **Rows 14–16 build it** — the room drawing, the camera and the building cross-section (card#7341, the design round after this step) — and this page's text render is what row 15 has turned into [§ 4.5](#45-the-viewport-rule-and-the-camera)'s list view (slice A) — a headless model over every fact the desk model emits, which this page only paints, below the drawing at every window size ([§ 4.5](#45-the-viewport-rule-and-the-camera), the operator's ruling of 2026-10-01 on card#7341) | [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) **(floor half)**, [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office), [AT-D3-11](#at-d3-11-an-unrecognised-member-renders-as-unrecognised) **(desk-model half)**, and [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) **(strip half)** — plus the floor page's own gate, asserted by `Tests\Feature\Floor\FloorPageWiringTest`, shaped like `Tests\Feature\Lobby\LobbyPageWiringTest`: every element the DOM entry addresses exists on the Blade view and every element the view declares is written into, the view serves the entry as a module whose every import resolves, and a control plants each defect the check exists to catch and watches it red. It reads the floor page alone, so it names no fixture and not the harness |
 | 9 | ✅ landed 2026-09-25 (card#7341 step 9) — the **lobby** ([§ 4.1](#41-the-lobby--the-building-summary)) — which renders the record's *membership changes* lines ([§ 5.5](#55-the-clients-own-narration)) for a seat or an install a discovery fetch adds, written by the client protocol in `server/public/js/wire/fleet-client.js` at this step, and replaces `server/public/js/lobby/main.js`'s own discrepancy trigger with the protocol's. What landed is `server/public/js/lobby/lobby-screen.js`, the lobby as a model over the client protocol: the stacked floors and their per-floor summaries over the seats the protocol HOLDS, the fleet totals from the `fleet{}` it holds, [§ 4.1](#41-the-lobby--the-building-summary)'s two ratified sentences worded over the very `(N, M)` pair the protocol compares (`discrepancyState()`) and silent while the client has applied no full snapshot, the membership stamp from the last full snapshot the protocol applied, the feed status with its resync count from step 8's status strip, [§ 9](#9-failure-paths-and-their-observables)'s failure renders, and the record itself; `server/public/js/lobby/main.js`, which constructs the protocol with its stream recovery through `server/public/js/wire/live-page.js` — the floor page's own construction, hoisted at this second caller rather than copied — and draws each frame; and, in the protocol, the membership lines — *room added to the building* and *seat added to the floor* — written at the one insert every row passes through, so a seat or a room a discovery, a recovery poll or the lobby's Refresh adds has a written cause exactly as a seat fetch's always had. ⛔ One trigger: the lobby fetches no snapshot of its own: the one-fetch-per-distinct-`(N, M)` budget, the failed fetch that spends nothing and the one fetch in flight are the protocol's alone, so a lobby holding the protocol spends one request on a disagreement rather than one from each trigger. The lobby's other behaviours from its one-shot entry are kept, each now over the protocol: the layout is fetched after the snapshot ([§ 4.4](#44-routes-and-what-each-one-fetches)'s `/` row), on the first render that finds a full snapshot applied; the Refresh control is one full snapshot through the protocol (`FleetClient#refresh`), then the layout; and a snapshot whose `fleet{}` says `db: "down"` is [§ 9](#9-failure-paths-and-their-observables) F4's statement, which the protocol now holds off a snapshot as it always held it off a `fleet.health`. A `building.layout` on the lobby's stream re-fetches the layout ([§ 2.5](#25-what-re-renders-and-when)) | [AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count) — asserted by `Tests\Feature\Floor\TheLobbyNeverInventsACountTest`, which drives the lobby over the harness |
 | 10 | ✅ landed 2026-09-25 (card#7342 step 10) — the **drill-down**, and its **uncapped intern list** ([§ 8](#8-interns--subagent-rendering-and-the-cap)) (card #7342). What landed is the panel over the floor page ([§ 4.3](#43-the-desk-drill-down-panel)), opened by selecting a desk and served at `/floor/{floor}/{seat_id}` ([§ 4.4](#44-routes-and-what-each-one-fetches)): `server/public/js/drilldown/drilldown-panel.js` issues § 4.3's two requests through the client protocol's one read path, takes the version-bearing members from the protocol's held seat as deltas patch it, and holds each `fetch-fresh` block under the stamp of whatever last delivered it — the open fetch, a whole-object patch, and every full snapshot's row for the seat, a same-version poll included, which is what re-stamps the blocks on each poll; `drilldown-model.js` renders every section of § 4.3's table — the header, the task with its reference as plain text, the action, the context gauge, the interns, the recent activity paged with `before`, and the transport, derivation, reporter, badge, session, counter and raw blocks, the badges in § 7.2's lines with D1's *since reporter start* framing — and § 9 F10 and F11; `drilldown/main.js` writes them into the floor page's `data-panel-*` slots. In the client protocol `seat.retired` is applied: the announcement — the message or the retiring delta, whichever arrives first — removes the seat once, writes one record line naming the seat, the reason and the time and no operator, fires A13 once and closes a panel open on it, and a desk that shared its collision chain moves back as A16 with the departed seat's key as its cause ([§ 3.5](#35-retirement-and-the-only-removal)). [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 4's backstop landed with it: a full snapshot removes a held seat it omits, with one line, unless the client inserted that seat after the snapshot was requested. § 5.3's fleet-counters render for the operator health view is decided in `lobby/lobby-model.js` (`healthCounters`); no row builds that view | [AT-D3-4](#at-d3-4-the-subagent-cap-boundary), [AT-D3-16](#at-d3-16-retirement-removes-the-desk-and-the-removal-is-explained), and the panel halves of [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) **(panel half)**, [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(panel half)** and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) **(panel half)** ([§ 11](#11-acceptance-tests)'s ordering rule) — asserted by `Tests\Feature\Floor\TheInternListIsUncappedWhereTheSideTableIsCappedTest`, `Tests\Feature\Floor\RetirementRemovesTheDeskAndExplainsTheRemovalTest`, `Tests\Feature\Floor\TheDrillDownIsRestampedByEachPollTest`, `Tests\Feature\Floor\TheDrillDownReadsItsAgesFromTheServerClockTest` and `Tests\Feature\Floor\TheDrillDownNeverDrawsANullAsAZeroTest`, each driving the floor and the panel over the harness |
