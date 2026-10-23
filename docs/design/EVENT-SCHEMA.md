@@ -338,7 +338,7 @@ Written once, at install time, by the installer. It is the **only** source of th
 | `wrapped_statusline` | string | **yes** | the seat's previously configured statusLine command, ≤ 512 B, or `null` | `"/home/agent/bin/my-statusline.sh"` |
 | `descriptors` | string | no — **absent** means `"full"` | `"full"`, `"paths"` or `"none"`; any other value is a config error, and the events spooled under it are built as under `"none"` | `"full"` |
 | `protocol_agent_name` | slug | **yes** | the **protocol agent name this seat declares itself to be** — the `slug` pattern and the byte bound [§ 18.6](#186-coordthread) gives such a name on the wire, pointed at rather than restated: a name this file could hold and no `coord.*` field could carry would join nothing. Absent or `null` when the seat declares none | `"pm"` |
-| `roundtable_agent_name` | slug | **yes** | the **identity this seat posts under on the fleet's cross-install coordination repository** — the roundtable — which on a solo or PM seat is a different string from the row above (`mezzanine-solo` beside `mezzanine`; operator, 2026-10-23, card#12239). Same pattern, same bound, same four check states, checked against a different key of the same config (the subsection *`roundtable_agent_name`* below). Absent or `null` when the seat declares none | `"pm-solo"` |
+| `roundtable_agent_name` | slug | **yes** | the **identity this seat posts under on the fleet's cross-install coordination repository** — the roundtable — which on a solo or PM seat is a different string from the row above (in the generator spec's vocabulary, `pm-solo` beside `pm`; operator, 2026-10-23, card#12239). Same pattern, same bound, same four check states, checked against a different key of the same config (the subsection *`roundtable_agent_name`* below). Absent or `null` when the seat declares none | `"pm-solo"` |
 | `enabled` | bool | no | — | `true` |
 
 **What the reporter enforces of this table.** `loadConfig` checks every row at each read except
@@ -1375,9 +1375,9 @@ declaration joins, here and at every consumer downstream.
 #### `roundtable_agent_name` — the same declaration, for the fleet's cross-install repository
 
 **Why a second row and not a second meaning for the first.** A seat posts under **two** names: on its
-own install's coordination repository under its roster name (`mezzanine`), and on the fleet's
+own install's coordination repository under its roster name (`pm`, in the generator spec's vocabulary), and on the fleet's
 cross-install repository — the roundtable — under the identity its framework's `cross_project.identity`
-holds (`mezzanine-solo`). A coordination object bound at `fleet` scope ([§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order))
+holds (`pm-solo`). A coordination object bound at `fleet` scope ([§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order))
 names the second, and the join's rule that nothing infers one name from another
 (`card#7957`; the consumer rule at [§ 18.11](#1811-one-producer-and-the-one-consumer-it-serves)) holds
 for a suffix as much as for a seat id. So the seat declares the second name too, and the floor joins

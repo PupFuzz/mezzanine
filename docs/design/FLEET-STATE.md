@@ -2039,6 +2039,10 @@ CREATE TABLE coord_hooks (
                                             -- the uniqueness key's spelling of "no install": a UNIQUE
                                             -- over a NULL admits duplicates, and two fleet bindings on
                                             -- one repository would be two secrets for one hook
+  active_key    SMALLINT UNSIGNED AS (IF(revoked_at IS NULL, 0, id)) STORED,
+                                            -- the key's spelling of "unrevoked": a revoked binding keeps
+                                            -- its row for the digests that reference it and must not
+                                            -- block re-issuing the same repository (r3 MINOR-4)
   repository    VARCHAR(140) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
                                             -- `<owner>/<repo>`, the binding D1 § 18.8 step 6 holds the
                                             -- payload's claim against
@@ -2054,7 +2058,7 @@ CREATE TABLE coord_hooks (
                                             -- No last_delivery_at: nothing reads one, and it would be a
                                             -- per-binding activity record of another fleet (r2 MAJOR-4)
   UNIQUE KEY uq_hook (hook_id),
-  UNIQUE KEY uq_binding (repository, install_key),
+  UNIQUE KEY uq_binding (repository, install_key, active_key),
   CONSTRAINT fk_hook_install FOREIGN KEY (install_ref) REFERENCES installs (id)
 ) ENGINE=InnoDB;
 
@@ -2088,7 +2092,9 @@ CREATE TABLE coord_deliveries (
                                             -- ONLY other column: no event, no action, no delivery
                                             -- GUID (r2 MAJOR-4) — a row says "this signed body was
                                             -- derived at this time" and nothing about what it was
-  UNIQUE KEY uq_digest (digest),
+  UNIQUE KEY uq_digest (hook_ref, digest),      -- per BINDING, not global: one body delivered to two
+                                                -- bindings of one repository (an install's and the
+                                                -- fleet's) is two deliveries (r3 MINOR-4)
   KEY ix_received (received_at),
   CONSTRAINT fk_delivery_hook FOREIGN KEY (hook_ref) REFERENCES coord_hooks (id)
 ) ENGINE=InnoDB;
@@ -2968,14 +2974,15 @@ safe is named, because a check-then-insert is not one (r1 F3).** After
 [D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)
 steps 1–8 have admitted a delivery:
 
-1. `SELECT 1 FROM coord_deliveries WHERE digest = ?` — present ⇒ `202` with `status: "duplicate"`,
+1. `SELECT 1 FROM coord_deliveries WHERE hook_ref = ? AND digest = ?` — present ⇒ `202` with `status: "duplicate"`,
    `coord_delivery_duplicate`, nothing else happens. A cheap read for the common retry case; it decides
    nothing on its own, because step 2 re-asks under the key.
 2. `App\Feed\Outbox::transaction($work, attempts: 3)` — the primitive every other writer of this plane
    already uses ([§ 8.3](#83-the-websocket-delta-feed)), with its own retry from a clean rollback on a
    concurrency error (`1020` / `1205` / `1213`; card#9466), three attempts in all. Inside it:
-   **`INSERT … ON DUPLICATE KEY UPDATE id = id` the `coord_deliveries` row and read the affected row
-   count** — `0` means a byte-identical twin committed first, and this request answers `202`
+   **`INSERT … ON DUPLICATE KEY UPDATE id = id` the `coord_deliveries` row under its `(hook_ref,
+   digest)` key and read the affected row count** — `0` means a byte-identical twin for this binding
+   committed first, and this request answers `202`
    `status: "duplicate"` and enqueues nothing (⛔ never `503`: a lost race is not a fault, and GitHub
    would not retry it); derive the `coord.round`(s) per [D1 § 18.7](EVENT-SCHEMA.md#187-coordround)
    with the binding's `scope` and install (or none) copied onto each — a fleet-scope binding's outbox
@@ -3013,12 +3020,18 @@ row). It holds no GitHub credential: the binding is written by an operator comma
 registered on GitHub's side by the operator or with the operator's go (`docs/design/COORD-STORE.md § 3.2`,
 § 10 NQ1), which is D-10 kept. A binding holds at most **two** unrevoked secrets, and
 `coord-hook:issue --hook` **refuses** a third until one is revoked (r1 F16) — the overlap is a rotation,
-not a ring. And it holds **no text, no membership, no event name, no action and no delivery identifier of any
-fleet's threads**: for the roundtable binding the whole of what Mezzanine retains of a shared private
-repository is **one row per derived delivery — a 64-byte SHA-256 of the signed body and the time it
-was received — for 14 days**, which is a record of *that something was posted, and when*, and of
-nothing else; that sentence is what [§ 10](COORD-STORE.md#10-operator-questions)'s NQ1 asks the fleet
-to agree to, and [§ 6.4](#64-ddl)'s DDL is what makes it exactly true.
+not a ring. A **revoked** binding keeps its row (its digests reference it) and does not block issuing
+the same repository again — [§ 6.4](#64-ddl)'s `active_key` (r3 MINOR-4). And it holds **no text, no membership, no event name, no action and no delivery identifier of any
+fleet's threads**. For the fleet binding, the whole of what Mezzanine retains of a shared private
+repository is — column by column, so the sentence is exactly as true as [§ 6.4](#64-ddl)'s DDL
+(r3 MINOR-3): in `coord_deliveries`, **one row per derived delivery with four columns** — a row id, the
+binding's id, a 64-byte SHA-256 of the signed body, and the time it was received — for 14 days; in
+`coord_hooks`, the binding row with the repository's name, the scope, the **identity set the operator
+copied at issue** (`roster[]`, the names in the repository's `from:`/`to:` vocabulary) and the revision
+it was copied at; in `coord_hook_secrets`, the hook's secret, encrypted; and on the feed, transiently,
+each post's addressing — delivered to open streams within seconds and resident in `feed_outbox` until
+the **hourly** purge removes rows older than 60 s, so for up to about an hour ([§ 6.7](#67-retention-and-purge)).
+That list is what [§ 10](COORD-STORE.md#10-operator-questions)'s NQ1 asks the fleet to agree to.
 
 ---
 
@@ -6240,7 +6253,9 @@ cursor, one table over, with a stream as the reader. The fold closes it with the
   answers `503` with `store_contended` / `store_failed`); the same body re-posted
   afterwards derives and is `202`. A Redeliver of a committed delivery inside 14 days is `202` with
   `status: "duplicate"`, `coord_delivery_duplicate` moves and nothing else does; two byte-identical
-  deliveries posted concurrently commit one row and one set of objects and **both answer `202`**.
+  deliveries posted concurrently to one binding commit one row and one set of objects and **both answer
+  `202`**; **the same body posted to two bindings of one repository** (an install's and the fleet's)
+  commits two rows and two `coord.round` outbox rows, and neither counts a duplicate (r3 MINOR-4).
   **The concurrent pair (r1 F3):** two **distinct** comment deliveries on one thread, posted at the same
   instant → both `202`, two digest rows, two `coord.round` outbox rows, zero `503`s; and a forced
   `QueryException` on the **outbox insert** — the statement whose bindings are the serialized message —
@@ -6250,7 +6265,9 @@ cursor, one table over, with a stream as the reader. The fold closes it with the
   pre-check and post one delivery twice concurrently → one copy answers `503` on `1062` and is never
   retried by GitHub. **RED (the leak):** rethrow the outbox insert's `QueryException` as `StoreFault`'s
   `previous` → the log line carries the message's bindings, which is the leak the GREEN forbids; a plant
-  on the digest insert cannot show it, because that statement's only binding is the digest.
+  on the digest insert cannot show it, because that statement's only binding is the digest. **RED (the
+  key):** make the digest `UNIQUE` on its own → the second binding's delivery is absorbed as a duplicate
+  of the first's and its floor never sees the post.
 - **RED:** commit the digest in its own transaction before the derivation → the failed delivery's
   Redeliver is absorbed as a duplicate and the post is lost forever, which is the exact shape step 9
   forbids. **Second RED:** purge `coord_deliveries` at 2 days and redeliver a 3-day-old delivery → the
