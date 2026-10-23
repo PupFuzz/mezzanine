@@ -1186,6 +1186,95 @@ no fact and are not [§ 12](#12-every-number-and-where-it-comes-from) rows — t
   browser with synthetic pointers, as the camera's gestures are — and synthetic pointers **bypass
   `touch-action`**, so that measurement cannot see the native-scroll cancellation the rule exists to avoid:
   **the touch half is declared unverified until a real device has run it**, and stays so in item 39(4).
+- ⭐ **At a phone's or a tablet's width the directory leaves the board and DOCKS under the room — the
+  operator's request of 2026-10-22 (card#12187): *"the lobby directory is unreadable on a phone without
+  zooming"*, with the room's board left as it is on the desktop and laptop surfaces card#12113 measured.** The
+  board's box is a fixed share of the room — its inner rectangle is 488 of the room's 1,440 scene px across and
+  308 of 772 down — so at fit its face is that share of the surface: on a phone of 360–430 CSS px the surface is
+  344–414 px wide after the section's 8 px margins, so the face is 117–140 px wide and 74–88 px tall, which
+  holds a fraction of one plaque at `1rem` (**B**'s 390 × 700 run at fit, read on the shipped build on
+  2026-10-22: a list 1,230 px tall in a scroller 49 px tall), and the board view the camera can bring it to is
+  366 × 231 px holding one plaque with the readings off the screen. No counter-scale makes a 117 px box read, so
+  **below a bound the lobby stops standing the directory on the board**: docked, the directory's box and the
+  readings' box stand in the page's own flow under the drawing surface — the directory first, the full width of
+  the section, then the two readings panels stacked one under the other — at the page's text size with no
+  counter-scale, the plaques' list no scroller of its own, and the page scrolled by the browser. The room stays
+  drawn above them at fit — its board an empty honey face, the directory now under the room: on a laptop-height
+  viewport (1,366 × 657, the surface capped at 80 vh, 526 px tall, under the page's header) the first screen shows
+  the room and its empty board, and the directory stands below the fold, reached by scrolling the page (review F6) — with its elevator still the one control (its surround is 193 × 294 scene px,
+  46 × 70 CSS px at a 344 px surface's fit), its window still A17's, and the camera's keys, buttons and *Fit the
+  lobby* as they are.
+  **The bound is CHOSEN, and it is a size of the fitted face, not of the window**: the lobby docks when the
+  directory's face at the room's fit — the camera's fit zoom, `min(surface.w / extent.w, surface.h / extent.h)`,
+  times the box's 488 × 308 scene px — is narrower than **24 em** or shorter than **15 em**, which at a 16 px
+  rem is a surface narrower than 1,133 CSS px or shorter than 608 — the width figure binds first on a short
+  surface too, because the box's 488 : 308 is narrower than 24 : 15, so a face 15 em tall is already under 24 em
+  wide ([§ 12](#12-every-number-and-where-it-comes-from)'s *Directory dock width*, which carries the measurement it
+  rests on). It is chosen rather than derived from a readability target because the target the review asked
+  for — the title and one whole plaque inside the fitted face — is not met by the desktop board card#12113
+  shipped either: **B**'s fit runs over the attention fixture hold 1.22 of its tallest plaque at a 1,440 × 900
+  viewport, 0.95 at 1,280 × 800 and 0.81 at 1,366 × 768, scrolling the rest. The bound is drawn under the
+  1,366 × 768 *viewport* — and **a real laptop's page viewport is shorter than its screen**: a browser's tab and
+  address bars take 80–110 px, so a 1,366 × 768 laptop shows about 1,366 × 657 and a 1,280 × 800 one about
+  1,280 × 690, where the surface's 80 vh cap makes the fit height-limited and the face shorter than 15 em. **Those
+  laptops dock, and that is the ruling** (the seat's, on round 2's N3, revisable, recorded in decision 72): the
+  docked layout is the readable one — the directory the section's full width at the page's text size — so
+  docking the laptop serves the request more than keeping the board does. What stays on the board is the
+  surface tall enough for a 1,440-wide face of 15 em: a window about 1,440 × 760 or taller (**24.6 × 15.6 em** at 1,440 × 780, which **B** runs). It
+  is re-asked on every resize **and on every change of the page's text size** (a change the browser fires no
+  `resize` for: the docking entry observes a `1rem` probe with a `ResizeObserver`, so an `em` bound never goes
+  stale), and the boxes move back onto the board when the face grows past it — the one move that drops a
+  keyboard's focus on a plaque, named in [§ 14](#14-open-questions-for-the-review-loop) item 39(4).
+  **What docks is the DOM, and ONE entry writes every state the dock changes** — `lobby/directory.js`'s
+  docking entry (canon #5: one writer, so no second module derives the predicate). The two boxes live in the
+  page markup after the surface and are moved into the camera's layer only while the room is drawn and the face
+  is not under the bound; the move is made only when the box's parent is not already the right one, so a render
+  and the 1 s tick move nothing. With the move the entry writes **`data-home` on each box — `board`, `dock` or
+  `flow`** — and **the surface's `touch-action`**. **The markup ships `data-home="flow"` on both boxes** (the
+  Blade page, `dashboard.blade.php`'s boxes), so the placeholder *waiting for the fleet snapshot* is styled for
+  the page's ground from the first paint and with no script run, rather than from a state only the module
+  writes — the entry's one job at load is to move a box OUT of `flow` once a room is drawn, and back when it is
+  not (round 2's N6). Every style that depends on where a box stands is keyed on the box's own `data-home` and
+  never on an ancestor it may leave: the un-drawn placeholder colours that card#12113 keyed on
+  `#lobby-room:not([data-drawn])` move to `[data-home="flow"]` (on the layer they read nothing once the boxes
+  stand outside it, and the placeholder would be the board's dark plaque ink on the page's dark ground,
+  ≈ 1.3 : 1 — review round 1's F2), and `building-scene.js`'s `surfaceStyle()` stops writing `touchAction`,
+  which the entry now owns (review round 1's F9).
+  **`touch-action` is `none` ONLY where the wire listens, and `auto` everywhere else — the primitive inverted**
+  (round 2's N2 and N5). The one primitive is a rule keyed on `data-home`: **`none` under
+  `[data-home="board"]`** for the list and the two readings panels, and **`none` on the surface only while a
+  box is on the board** (the entry writes it), because the wire reads those drags and a native scroll or zoom
+  would cancel the pointer stream it hand-off rests on; **`auto` under `dock` and `flow`**, the surface
+  included, because the browser, not the wire, owns every touch there. Not `pan-y`: a `pan-y` element refuses
+  the browser's pinch-zoom (per round 2's review of Pointer Events 3 § 8.3), which would strip the page's zoom
+  from a phone reader — a failure of WCAG 2.2 SC 1.4.4 *Resize Text* (Level AA), the one the docked layout
+  exists to serve — so no element a docked finger can touch says `none` **or `pan-y`**.
+  **Fingers.** Docked, a one-finger drag on the directory, the readings or the page around them scrolls the page
+  natively, with the browser's own momentum, and a two-finger pinch zooms the page, because every element from
+  the touched one up is `auto` (a browser pans only when each one allows it — review round 1's F1). The gesture
+  wire never sees those drags — the boxes stand outside the surface it listens on — so there is no inner scroll
+  to hand off and this section's drag hand-off applies on the board alone. The readings' two panels keep a native
+  inner scroll each, capped at ten of their lines, so a 200-line event log does not stand ten screens tall, and
+  a finger scrolls that panel and then, at its end, the page. **The docked room is the browser's too**: its
+  surface is `auto`, so on touch a drag or pinch that begins on the drawing scrolls or zooms the PAGE and the
+  wire sees a `pointercancel` (which it already treats as no click) — the room's camera is then driven by its
+  zoom buttons, *Fit the lobby* and the keys, and on a mouse or a pen by the wire as ever. That is the cost of
+  not stealing the page's zoom; the room is the top quarter of a phone's page (184 px tall at a 344 px surface,
+  the room's 1,440 : 772) and nothing on it is read by dragging. (Round 1's `pan-y` rule for the surface is
+  withdrawn with the pinch sentence that rested on it: on a `pan-y` surface a two-finger pinch does reach the
+  wire — `wire/camera-gestures.js`'s pinch branch reads the second pointer — so the earlier claim that its
+  zoom was *unpromised* was wrong in the other direction, and the page's zoom was the casualty.) **Taps.** A
+  plaque's floor name is its link and opens its floor, as on the board; docked, the link's box is at least
+  **24 × 24 CSS px** (WCAG 2.2 SC 2.5.8 *Target Size (Minimum)*, Level AA, read at
+  `https://www.w3.org/TR/WCAG22/#target-size-minimum` on 2026-10-22 — its *inline* exception would otherwise
+  excuse a link in a line of text, so the floor is declared rather than relied on), by a minimum height on the
+  link under `[data-home="dock"]` and nowhere else; the elevator rides as the floor's does. **The title wraps**
+  on a docked face — a phone of 360 px gives it 344 px, 21.5 em — and no board face is under 24 em, so the
+  one-line cut the board's phone face needed is retired with the container rule that made it, and no figure of
+  the directory is cut at any width (claim 10 below, with no residual). ⚠ **The touch half stays declared until
+  a real phone has run it** — synthetic pointers bypass `touch-action`, as above, which is why claim 14 reads the
+  COMPUTED `touch-action` of everything a docked finger can touch rather than driving a finger — and the
+  operator's own phone is where the card asks for it to be run (item 39(4)).
 - **Under [§ 9](#9-failure-paths-and-their-observables) F17** — no layout held — the room and its board
   are drawn once a full snapshot has applied (the room carries no fact), and the directory lists the
   snapshot's installs as F17 says, each a plain link *`install_id` — no floor claimed* with no plaque
@@ -1225,16 +1314,19 @@ CI). How each is done is the code's own docblocks'.
    rect — the board's inner rectangle — in scene px, clipping its face, and the face fills the box on the screen at every
    camera; with no room drawn neither carries a style. (held by: T::test_green_the_text_is_counter_scaled_by_one_writer_inside_boxes_on_the_board;
    T::test_green_the_room_is_drawn_from_nothing_and_its_only_words_are_the_signs; B check 'board')
-5. **It scrolls inside its box.** The plaques' list is `overflow-y: auto` and `touch-action: none`, and declares
+5. **It scrolls inside its box — on the board.** The plaques' list is `overflow-y: auto` and `touch-action: none`, and declares
    `data-camera-scrolls`; a long directory holds more than it shows and reaches its last plaque when scrolled to its end.
+   Docked (claim 14) the list is no scroller: the page is.
    (held by: T::test_green_the_directory_scrolls_inside_its_box_and_every_line_reads_whole; B check 'scroll')
 6. **The hand-off.** A wheel begun over an element that declares it scrolls moves it while it can move the wheel's way and
    the camera once it cannot; a Ctrl+wheel there is the camera's zoom; a drag decides its owner at its first move and keeps
    it, and a drag that scrolled is no click. (held by:
    `server/tests/Feature/Floor/TheCameraWireIsOneForBothPagesTest.php`::test_green_a_gesture_over_a_scroller_is_its_own_while_it_can_move)
-7. **The touch half.** A real finger's drag over the directory reaches the gesture wire whole — the browser never scrolls
-   the list natively and cancels the pointer stream. (declared, unchecked: synthetic pointers bypass `touch-action`, so
-   only a real device can show it — § 14 item 39(4))
+7. **The touch half.** On the board, a real finger's drag over the directory reaches the gesture wire whole — the browser
+   never scrolls the list natively and cancels the pointer stream; docked (claim 14), a finger's drag on the directory, the
+   readings or the page scrolls the page natively, a pinch zooms the page, and the room is the browser's on touch
+   (`touch-action: auto` everywhere off the board).
+   (declared, unchecked: synthetic pointers bypass `touch-action`, so only a real device can show either half — § 14 item 39(4))
 8. **The name and the link.** A plaque's one link is its `href` — the key's route — named by its `accessible_name`, the
    floor's name, a comma and the tally's text form. (held by: T::test_green_each_plaque_is_painted_as_the_model_decided_it)
 9. **Every row as decided, in order.** The name row (the numeral, the link, the rooms where the plaque names any, the agents
@@ -1247,10 +1339,12 @@ CI). How each is done is the code's own docblocks'.
     desks or a reading is `white-space: nowrap` cut by `text-overflow: ellipsis`; on the name row the name and the agents and desks are `flex: none`, so the rooms line
     is the one part that gives way. In every one of B's `RUNS` no element of the two faces is wider than its box under an
     overflow that is not `visible`, or taller than it under one that only hides — except the `CLIP_RESIDUALS` B declares,
-    each by run and element: the title at a phone's width at fit, claim 14. (held by:
+    each by run and element, a list card#12187 empties: the title's one-line cut on the phone's fitted board goes with
+    that board (claim 14), and the container rule that cut it is retired. (held by:
     T::test_green_the_directory_scrolls_inside_its_box_and_every_line_reads_whole; B check 'clip')
-11. **Focus brings the board.** The keyboard's focus on a plaque's link with the board not wholly in view brings the camera
-    to the board's rect, and moves nothing when it is in view. (held by:
+11. **Focus brings the board — on the board.** The keyboard's focus on a plaque's link with the board not wholly in view
+    brings the camera to the board's rect, and moves nothing when it is in view; docked (claim 14) the camera moves nothing
+    and the browser scrolls the page to the link. (held by:
     `server/tests/Feature/Floor/TheBuildingCameraMovesTheViewerAndNeverTheFleetTest.php`::test_green_a_focus_out_of_view_is_brought_into_it_and_one_in_view_moves_nothing)
 12. **Focus scrolls the list.** The same focus scrolls the directory's list to the plaque — the browser's own
     scroll-into-view inside the list's box. (declared, unchecked: the browser's own behaviour; no check drives a keyboard
@@ -1258,9 +1352,35 @@ CI). How each is done is the code's own docblocks'.
 13. **Contrast.** In every one of B's `RUNS`, every glyph pixel of the directory's text reads at least B's `MIN_RATIO`
     (WCAG 2.1 SC 1.4.3) against what it stands on and a ring of pixels inside its own line box — except the `RESIDUALS` B
     declares, each by run, line and band, with a cap. (held by: B check 'contrast')
-14. **Known: phone width.** At a phone's width the fitted board's box holds less than one plaque, so the directory scrolls
-    almost at once; there the face is narrower than § 12's *Directory title wrap width*, so the title is one line cut at
-    its end (`@container (width < 15em)`). (declared, unchecked: known and accepted — § 14 item 39(4))
+14. **Phone, tablet and laptop width: the directory docks under the room.** When the fitted board's face would be under
+    § 12's *Directory dock width* (24 em wide or 15 em tall), the directory's box and the readings' box stand in the
+    page's flow under the drawing surface, each carrying `data-home="dock"`, the directory the section's full width and
+    the readings' panels stacked, their text at `1rem` with no counter-scale; the plaques' list is no scroller and holds
+    every plaque in flow, the page scrolls to the last plaque, each panel of the readings scrolls natively inside a
+    ten-line cap, the computed `touch-action` of the list, both panels and the surface is **neither `none` nor `pan-y`
+    and allows the browser's pinch-zoom** (`auto`), every plaque link's box is at least 24 × 24 CSS px, and the title
+    wraps uncut; above the bound the board stands exactly as claims 1–13 say (`data-home="board"`, the surface and the
+    board's list and panels `none`), and the boxes move between the homes only when the face crosses it — a resize or a
+    change of the page's text size alike. With no room drawn each box is `data-home="flow"` at every width, **shipped in
+    the markup and so true with no script run**, and its text meets 4.5 : 1 on the page's own ground. In B this is:
+    **docked runs** at 360 × 640, 390 × 844 and 430 × 932 upright, 932 × 430 sideways, 768 × 1024, 1,100 × 700 and the
+    two real laptops' viewports, 1,366 × 657 and 1,280 × 690, with the short and the long directory; **board runs** at
+    1,440 × 900, 1,440 × 780 and 1,366 × 768 that must NOT dock; **undrawn runs** at 1,440 × 900 and 390 × 844, one
+    captured with script execution disabled (before the module runs at all) and one after a fetch that returns no
+    snapshot; and **a transition run**, which loads at 390 × 844, resizes to 1,440 × 900, back to 390 × 844, to
+    1,440 × 900 again, and there sets the root font size to 28 px — where that window's face is under the bound, so
+    the step docks only if the `1rem` probe sees it (review F3) — asserting after each step the boxes' `data-home`,
+    the surface's computed `touch-action` and that the counter-scale is unset on the dock and set on the board. The checks are `dock`, `flow`,
+    `touch`, `tap`, `undrawn` and `transition`, replacing `board` and `scroll` on the docked runs, each with a planted
+    control: the bound set to nothing (the box back on the board at 390), the bound set to 30 em (the 1,440 × 780 board
+    docked), the docked list left a scroller, the readings left side by side, `touch-action: none` left on the docked
+    list, **`pan-y` left on the docked list and the surface (the two the `touch` check refuses by name)**, a link's
+    minimum height removed, the un-drawn colours keyed back on `#lobby-room`, the markup's `data-home="flow"` removed,
+    the `ResizeObserver` on the `1rem` probe removed (the font-size step then reds), the entry's surface rewrite
+    skipped (the 1,440 step then reds), and the board's own `none` rule removed (a board run's `touch` then reds,
+    review F5). (held by: B check 'dock', B check 'flow', B check 'touch', B check 'tap', B check 'undrawn',
+    B check 'transition'; T::test_green_the_docking_entry_docks_the_boxes_under_the_bound;
+    T::test_green_the_directory_scrolls_inside_its_box_and_every_line_reads_whole)
 15. **What a screen reader reads.** A screen reader reads each plaque's link by its accessible name, each marker by its
     name, and the rows in document order. (declared, unchecked: not wired — a check could read the browser's
     accessibility tree; none is built)
@@ -2750,7 +2870,7 @@ it.
 | `unknown_reason` | the *why we do not know* line is not drawn. Null on every seat whose `activity_state` is not `unknown`, which is the ordinary case |
 | `api_error_type` | the rate-limit line is not drawn, and the `stalled` desk carries its pose and label without one. Null on every seat that is not `stalled` |
 | `blocked_since` | the *waiting since* line is not drawn, and the desk carries no *since* at all rather than a *since —* or a *waiting on a human* with nothing after it. Null on every seat that is not `blocked`, which is the ordinary case; on a `blocked` seat it cannot be null, because [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) ties the two together and D2's own entry edge is what sets it |
-| `action` | no monitor content: the monitor shows the desk's **state line**, never a stale last action ([§ 5.1](#51-the-desk)) |
+| `action` | no monitor content: the monitor shows the desk's **state line**, never a stale last action ([§ 5.1](#51-the-desk)); an **off** monitor — `disabled`'s, and since card#12187 `idle`'s ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)) — draws no text, and the state line is the facts plate's label line alone |
 | `action.descriptor` | the monitor shows `action.tool_name` alone. **Never a descriptor synthesized from the tool name** — *"Bash"* and *"Bash: composer test"* are different claims, and only one of them was sent |
 | `action.agent_scope` | no *this is a subagent's call* marker. Never defaulted to `main`: a defaulted scope would attribute a call to the seat's main agent or to an intern on a field the wire left empty. The drill-down's intern list does not read this field — it selects on the dispatch calls ([§ 5.2](#52-the-drill-down)) |
 | `action.parent_call_id` | no parent is named. The call is not drawn as an intern on the strength of a missing field |
@@ -3107,7 +3227,7 @@ it carries the same fact.
 | **A3** | `held` | `work` — typing at the keyboard, with the eye **blink** and the gentle in-place **wiggle**, 4 fps loop | desk | `render_state` | `render_state == "working"` **and not** A4's condition — the two are exclusive, and stating it here is what makes *the held rows this table predicts* a single answer rather than two ([§ 7.1](#71-the-render-per-state)'s `working` row says the same thing in prose) | when it is not | a *working* pose, static, with the glyph | the seat is not working **now** |
 | **A4** | `held` | `think` — leaning back, watching the monitor, with the same **blink** and **wiggle**, 4 fps loop | desk | `open_calls`, `open_turn` | `render_state == "working"` **and** `open_calls == 0` **and** `open_turn == true` | when either fact changes | a *thinking* pose, static | there is an open call, so A3 runs instead |
 | **A5** | `edge` | `tool-swap` — the monitor's glyph changes, one 250 ms cross-fade | desk monitor | `action.tool_name` | a delta whose `changed[]` contains `action` and whose `action.tool_name` differs from the held one | after one tick | the glyph changes with no fade | the action did not change |
-| **A6** | `held` | `idle` — the character is **slumped asleep on the desk**, the monitor dimmed, with **z**'s rising above its head — the largest lowest, each higher one smaller and fading (*ZZzzz*), 4 fps loop | desk | `render_state` | `render_state == "idle"` | when it is not | the **static slumped pose**, z's drawn once and still | the seat has not cleanly finished a turn. **A sleeper is never a gone seat** — [§ 7.5](#75-what-a-degraded-desk-may-never-look-like) owns that rule |
+| **A6** | `held` | `idle` — the character is **slumped asleep on the desk**, the monitor off, with three **z**'s standing above its head, still, and lit in turn — a pulse of brightness that starts at the character and travels up through z1, z2, z3 (*ZZz*), phase-offset per seat, 4 fps loop | desk | `render_state` | `render_state == "idle"` | when it is not | the **static slumped pose**, the three z's drawn once, every one at full brightness, and still | the seat has not cleanly finished a turn. **A sleeper is never a gone seat** — [§ 7.5](#75-what-a-degraded-desk-may-never-look-like) owns that rule |
 | **A7** | `held` | `attention` — a raised hand and a marker above the desk, 4 fps loop | desk | `render_state` | `render_state == "blocked"` | when it is not | a static raised-hand pose and the marker | no `attention.request` is open ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)) |
 | **A8** | `held` | `stalled` — head in hands, static, with the `api_error_type` line | desk | `render_state`, `api_error_type` | `render_state == "stalled"` | when it is not | identical | no `turn.end(api_error)` is standing |
 | **A9** | `held` | `unknown` — a question marker over an occupied desk | desk | `render_state`, `unknown_reason` | `render_state == "unknown"` | when it is not | identical | the seat's last turn record supports a positive reading |
@@ -3852,7 +3972,7 @@ the answer was for D2 to publish one (card#8075, below).
 | `render_state` | Desk | Label line | Animation | Never |
 |---|---|---|---|---|
 | `working` | character at the keyboard | *working* — the state's own sentence, and the whole of what this line carries for this member. It is **not** the action's descriptor: [§ 5.1](#51-the-desk) assigns that to the **monitor**, and the same row sends a null `action` back to *"the desk's state line"*, which is this one — so a Label line repeating the descriptor would leave that fallback pointing at a copy of the thing it exists to stand in for, and would say nothing at all for the A4 seat whose turn is open with no call, where `action` is null and no descriptor exists. It is also not *turn open, no call*, nor any other wording of `open_turn` / `open_calls`: [§ 6.2](#62-the-animation-table--the-closed-set)'s A3 / A4 pose already renders that pair, and a second wording of it here is [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one-rendered-form-per-fact rule broken by the element that was meant to fix it. **A bare state word is the only string that renders `render_state` and no second fact** — and a label line this state must have, because [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded) and [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion) both assert that all ten are pairwise distinguishable **by label line**, which is why *a `working` desk draws no label line* was the option refused rather than the one taken | A3, or A4 when the turn is open with no call | rendered without its currency treatment when the seat is not `live` |
-| `idle` | **character present, slumped asleep on the desk**, monitor dimmed | *finished — nothing done for 4m 12s*, the quiet age in [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one stated form | A6 | rendered as absent, and **never as an empty desk** ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like)) **while the client can confirm the seat** ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 5). Idle is a **positive observation**, not a silence ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)) — and once the client's own read of this seat has failed enough to leave it unconfirmed, that positive observation can no longer be read at all, so row 5's empty chair is what renders instead, never a stale `idle` character |
+| `idle` | **character present, slumped asleep on the desk**, monitor **off** (card#12187; dimmed until then) | *finished — nothing done for 4m 12s*, the quiet age in [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one stated form | A6 | rendered as absent, and **never as an empty desk** ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like)) **while the client can confirm the seat** ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 5). Idle is a **positive observation**, not a silence ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)) — and once the client's own read of this seat has failed enough to leave it unconfirmed, that positive observation can no longer be read at all, so row 5's empty chair is what renders instead, never a stale `idle` character |
 | `blocked` | raised hand, marker above the desk | *waiting on a human since 14:31 (seat clock)* — the timestamp is **`blocked_since`** ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)), the instant the open attention request was raised, drawn by [§ 5.1](#51-the-desk)'s *waiting since* line as the seat's own labelled claim and **never subtracted into an age** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) | A7 | shown as working, whatever `open_calls` says ([D2 § 4.3](FLEET-STATE.md#43-the-derivation-function): `blocked` outranks `working`) |
 | `stalled` | head in hands | *API error — rate_limit (rate limit)* — a **worked instance** of the composed line [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable) publishes, which is where its order and its separators are stated; the raw wire value is on the line and § 7.6's phrase is beside it | A8 | folded into `unknown`; `api_error_type` is always on the line — **which the Label line cell beside this one denied from this document's first revision onward**, publishing the phrase with the raw value elided. One row contradicting itself is the cheapest proof available, and [§ 5.4](#54-what-is-never-rendered), [§ 5.1](#51-the-desk) and § 7.6's own column heading all say the same thing louder |
 | `unknown` | character present, question marker | one sentence per `unknown_reason` (below) | A9 | rendered as `idle`, and never as seven different desks |
@@ -5345,7 +5465,9 @@ creature generator's sheet is their worked example.
   so whatever the art draws past its own frame is cut at the rect it was given and never reaches a
   neighbouring element or the box's edge. `server/tests/Feature/Floor/painter-probe.mjs` (driven by
   `Tests\Feature\Floor\TheNewDeskKeepsEveryLeafTest`) holds every node the painter draws for a desk at
-  its layout element's own rect, the viewport included. Since row 22 (card#11046, [§ 10.6](#106-themes--a-floors-design-and-the-house-theme))
+  its layout element's own rect, the viewport included — **but for a sleeper's image, whose viewport is its
+  `overdraw` rect** (card#12187, item 4 below): the character element's rect is unchanged, the nested `<svg>`
+  is the widened, raised one the layout states beside it, and the probe holds that node at the overdraw. Since row 22 (card#11046, [§ 10.6](#106-themes--a-floors-design-and-the-house-theme))
   the chair (behind every creature), the desk's back, the monitor's frame, the desk props and the side table
   with its seats are each the floor's theme's document in its own rect, all five drawn or none (§ 10.6 item 8);
   the screen (88 × 31, in its three lit states) inside the frame and the plate stay the painter's shapes,
@@ -5370,8 +5492,9 @@ creature generator's sheet is their worked example.
   the painter drew the walk's standing frame for whatever pose the desk asked for, stepping the walk's frames
   where a held loop moved, so no pose the desk model names was drawn — and an `idle` desk showed an upright,
   open-eyed character swaying side to side under an *asleep* chip. Since card#12159 a desk asks the tree for
-  **its pose's frames** (`resources/characters/index.js`'s `poseFrames()`, handed the pose and the desk's top
-  edge), draws frame 0, and steps that pose's own frames where its held loop moves:
+  **its pose's frames** (`resources/characters/index.js`'s `poseFrames()`, handed the pose, the desk's top
+  edge and, for a sleeper, the clear rects; it returns `{ frames, loopFrom }`), draws `frames[0]`, and steps that
+  pose's own held loop, `frames[loopFrom ..]`, where its render moves (item 4's *tree → painter interface*):
   1. **One standing frame per key, and every pose but `asleep` draws it.** Whatever other `(pose, glyph)` the
      desk model asks for — `server/public/js/desk/desk-poses.js`'s `DESK`, and A4's think pose, which
      `desk-render.js` keeps unexported as `THINKING` and the tests reach through `deskModel()` itself
@@ -5389,15 +5512,206 @@ creature generator's sheet is their worked example.
      card#12159).** The key's own creature slumped asleep on its desk: its eyes closed, its brows and any held
      thing put away, its head rolled onto its forearms, which lie along the desk's top edge — an edge the
      floor hands the tree as a share of the character's rect (`floor/desk-layout.js` derives it from
-     `deskRects()`), because the frame draws no desk and nothing below that edge. Above the head the
-     **z's rise — *ZZzzz***: the largest lowest, each higher one smaller, the highest fading as it leaves the
-     frame's top, every one above the closed eyes and inside the character's rect, over the loop's frames
-     (`creatures.js`'s `SLEEP_FRAMES`) at A6's fixed 4 fps; between frames only the z's move, so the sleeper never sways. **Frame 0 is the
-     reduced-motion form** ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)): the
-     static slumped pose with its z's drawn once and still. The z's are a fixed loop and say nothing about the
-     seat — not the quiet age, not how long it has slept ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)).
-     `server/tests/Feature/Floor/AnIdleDeskDrawsItsSleeperTest.php` reads every one of these off the painted
-     drawing, for every species and variant, each with a planted control.
+     `deskRects()`), because the frame draws no desk and nothing below that edge. **Three z's stand ABOVE the
+     head, fixed, and are lit in turn** — the operator's two rulings of 2026-10-22 on card#12187, which supersede
+     card#12187's earlier two z's in an edge column and card#12159's rising z's: *"I want THREE z's ABOVE each
+     sleeping character's head"* and *"I want the Z's to be animated (brightness cycled through) so that it looks
+     like bubbles of brightness start from the character and move through the Z's"*. The z's do not rise and do not
+     fade: they stand in three places on one path above the head, each full opacity in every frame, and what moves
+     is a pulse of brightness (below).
+     **The frame is widened and raised for them.** The sleeper's drawing is `SLEEP_VIEWBOX`, § 12's *Sleeper
+     frame*: the character's 108 × 192 frame widened by half its width each side and raised 42 units, 216 × 234 from
+     (−54, −42) — because the character's own frame has little room above a crest (`CREST_TOP`, below: its top lies 15 to 73 units under the character frame's top), and a z drawn in the
+     scene beside and above it has room: 21 px of the desk's box lies between the character's rect and the
+     bubble's band, which is the thought trail's height (`TRAIL_RADII` and `TRAIL_GAP`), and the art column leaves
+     51 px to the character rect's left and 111 px to its right. **As an element** the sleeper's image is drawn in an **overdraw
+     rect**, the character's 54 × 96 px rect widened 27 px each side and raised 21 px — 108 × 117 px, at box
+     (24, 37) on the furniture box (the bubble band's foot is box y 36, so the frame's top is one pixel under it) —
+     which `floor/desk-layout.js`'s `sleeperOverdraw(box, character)` returns beside the **`clear` rects**; the
+     character element's own rect, and so every overlap rule that reads element rects, is unchanged, and
+     `floor/scene.js`'s `placeDesk()` moves the overdraw with the element; `floor/painter.js`'s art viewport (the
+     nested `<svg>` that clips *whatever the art draws past its own frame*, § 10.4's art contract) is the overdraw
+     rect for a sleeper and the element's rect for everything else. The overdraw lies wholly inside the box (box
+     x 24–132 of 440, y 37–154 of 228), so *everything the scene draws for the desk at rest is laid out inside it*
+     still holds.
+     **What the z's keep out of** is the floor's own furniture, handed to the tree in frame units as the `clear`
+     argument of `sleepFrames()` and `sleepDocument()` so that no figure of the desk is copied into the tree:
+     the monitor's frame (x 102–294, y 48–140 units), the desk's props (x −90–46, y 72–172), the desk
+     (y 140–260) and the thought trail's column (x 46–62, y −42–0) — read out of `deskRects()` and
+     `thoughtTrail()` by the same function, so a re-laid desk moves them. **The painter draws the z's with the
+     character, before the desk, the monitor, the props, the bubble and the trail**, so a halo that reaches one is
+     under it and never drawn over it; a z's body is kept out of every rect all the same, and
+     `tools/design/sleeper-zs.browser.mjs` reads the share of z ink inside any of them (§ 12's *Sleeper z
+     clearance*). **A z never enters the bubble's band or the trail's column**, which an idle desk draws whenever
+     its seat has a task — the common case.
+     **The crest table.** "Above the head" needs the head's top, which the character's recipe does not state (an
+     ear, a leaf, a cap or a hat is drawn by the species and no bounding box is kept), so `creatures.js` declares
+     **`CREST_TOP`**: the topmost ink of a sleeper, in frame units, per species and per variant where it has them —
+     as the tool scans it over 100 keys each (1 unit a raster pixel): `bear` 53, `carrot` 31, `eggplant` 39, `fox` 34,
+     `frog` 73, `hedgehog` 67, `mole` 60, `mushroom/bell` 15, `mushroom/dome` 25, `mushroom/wide` 38, `otter` 63,
+     `owl` 49, `peapod` 44, `potato` 56, `pumpkin` 47, `rabbit/lop` 62, `rabbit/upright` 20, `radish` 25 and
+     `turnip` 27 — and the tool holds every scanned seat's drawing at or below it (an undercut table reds, naming
+     the key). This is the table decision 70's earlier round declined as unheld; the tool is the gate that holds it.
+     **Where they stand — the law, exactly as the tool computes it** (`above3Fixed()`, `above3Why()` and `above3Plan()`
+     in `tools/design/sleeper-zs.browser.mjs`, which `creatures.js`'s `zStand()` and `zLargeFor()` must equal to the
+     digit; the tool holds the tree's own z's to them — *the law*, below). For a seat of crest top `crown` (`CREST_TOP`'s,
+     for its species and variant) and roll `dir` (+1 when the head rolled toward +x), and a size `L`: z `k` (k = 0, 1, 2, so
+     z1 is k = 0) stands at `t_k = Z_T0 + (1 − 2·Z_T0)·k/2` along the path — `Z_T0` is 0.17, so 0.17, 0.5 and 0.83 — and is
+     `h_k = L + (L/2 − L)·t_k` tall (0.915 `L`, 0.75 `L`, 0.585 `L`), at
+     `x_k = 54 − dir·(Z_A0 + (Z_A1 − Z_A0)·t_k)` with `Z_A0` 10 and `Z_A1` 108 — away from the side the head rolled to, **never
+     clamped** — and `y_k = y_0 + (y_1 − y_0)·t_k`, where `y_0 = min(crown − Z_GAP, props_y − Z_GAP) − hb(L).h − G` and
+     `y_1 = max(Z_TOP, frame top) + hb(L/2).h + G + 1`; `Z_GAP` is 2, `Z_TOP` −42, `G` the brightest glow's width (5, § 12's
+     *Sleeper z brightness*), `props_y` the props rect's top and `hb(h)` the half extent of a z's body box, outline included
+     (`0.4h + o` wide, `0.5h + o` tall, `o` half the outline's stroke, which is `max(1.4, 0.16h) + 2.6` wide). **The path's ends
+     are imaginary z's**: at t = 0 a z of size `L` whose box and glow stand `Z_GAP` above the crest line (or the props line
+     where that is higher), at t = 1 one of size `L/2` whose box and glow end one unit under the raised frame's top. The real
+     z's stand at 0.17, 0.5 and 0.83 along it, so z1's box is clear of the crest line by more than `Z_GAP` and z3's glow clear of
+     the frame's top by more than a unit — **the law is these formulas and not a prose summary of them**. **`L` is the
+     seat's own**: `zLargeFor(crown, dir, clear)` is the largest, in half-unit steps from `Z_LARGE` (36) down to 10, for which
+     none of four rules breaks — (1) the brightest glow lies inside the frame on all four sides (so no z is clamped into it
+     and no glow is cut by it); (2) no two bodies' boxes meet, a unit apart in x or in y; (3) no body's box meets a clear
+     rect, a unit apart (the trail's column is one); (4) no z, its glow included, lies below the crest line within the
+     character's own 108 units.
+     **Where the path runs, and what that cost.** It runs on the side AWAY from the head's roll and clear of the thought
+     trail's column (x 46–62), which the trail's dots occupy above the head's centre; for a roll toward +x the three z's stand
+     at x 27, −5 and −37, toward −x at 81, 113 and 145. The path this replaces ran from 45 units on the roll's side across
+     the head's centre (`Z_A0` −45, `Z_A1` 90), so z1 and z2 flanked the trail's dots; **re-measured by the same tool
+     (`--a0 -45 --a1 90`), what stops its next half unit of `L` is the trail's column at every seat** — not the third
+     z and not the glow, as this paragraph said of it — and `L` there was 26.5–33.5. The new path's next half unit is stopped by
+     two z's meeting, and `L` is the same at every seat. **That is `L` 35.5 at every seat the tool picks (its `seats:` line), both rolls:
+     z1 32.5, z2 26.6 and z3 20.8 units, which are 14.6, 12.0 and 9.3 CSS px at a 1,440-wide window's fit (0.9 × 0.5 =
+     0.45 px a unit)** — `node tools/design/sleeper-zs.browser.mjs --layout above3` prints the line, *the sizes*.
+     ⚠ **Said plainly against the sizes the operator has seen:** card#12159's largest z was 21.8 units, 9.8 CSS px
+     (`--layout card12159` prints it), so z1 is 49 % taller, z2 22 % taller and **z3 5 % SHORTER than that largest z** — the
+     smallest of the three is still a little under the size the operator called too small; the round-3 build's two z's were
+     24.0–32.2 units. Before this path, the same law gave z1 24.2–30.7, z2 19.9–25.1 and z3 15.5–19.6 units
+     (10.9–13.8, 8.9–11.3 and 7.0–8.8 CSS px). **The cost of clearing the trail**: for a roll toward +x only z1 stands within the
+     character's own 0–108 units; z2 and z3 stand up and beyond that frame's far edge, in the widened frame's margin (their
+     glow inside it: rule 1). They are above and beside the head, not over it, and they never cross the trail. They are
+     drawn in front of the sleeper, a pale core on a dark outline.
+     **How a z is lit.** Every z has a **brightness level 0–3**, drawn two ways at once, both inside the
+     palette: the **core** is `creatures.js`'s own `mix(Z_FILL, Z_INK, w)` — each channel `round(fill + (ink − fill)·w)` — for
+     `w` 50 %, 30 %, 12 % and 0 % (level 0 the dimmest), and **a halo of the palette's `--lamp` (`#ffcf7d`)** stands behind
+     it, 0, 1.5, 3 and 5 units wider than the outline each side at 0, 50, 80 and 100 % opacity — § 12's *Sleeper z
+     brightness*. The dark outline is the same at every level, so **the z's shape keeps its contrast with the floor at the dim
+     end**: 6.32 : 1 against `--scene-floor` and **3.06 : 1 at the worst of the surfaces a desk can stand on** — the house
+     floor and every colour of every shipped theme's `surfaces()` (`tools/floor-themes/surfaces.mjs`), the worst being the
+     studio theme's `accent-darkest` #b49573, against 3 : 1, WCAG 2.2 SC 1.4.11's floor for a graphic — the dimmest core
+     3.10 : 1 against its own outline, and adjacent cores' luminance ratios 1.44, 1.34 and 1.20, all measured by the tool
+     (*the brightness*), which also holds the tree's copy of the lamp colour equal to the stylesheet's `--lamp`. Brightness is
+     not opacity: a z faded to read as dim would lose the contrast the outline gives it on a floor the theme chooses. All
+     halos are drawn first, as one group behind every z, so a halo that reaches a neighbour is under that neighbour's body.
+     **The pulse** (§ 12's *Sleeper z pulse*). **Two indices, kept apart:** a **loop frame f** (0 to `SLEEP_LOOP` − 1) is a
+     step of the pulse, and a **document n** is an entry of what the tree returns — document 0 the still, document n the
+     loop frame n − 1. A bubble of brightness starts at the character and travels up the z's — z1 at loop frame 0, z2 at
+     2, z3 at 4 — each peaking at level 3 when it arrives, glowing 2 and 1 in the loop frames behind, and z1 at level 1
+     in the cycle's last loop frame, the bubble leaving the character before it arrives; so the loop's levels, z1 z2 z3, are
+     `300 200 130 020 013 002 001 100` by loop frame, and the brightest z's index advances 1, 2, 3 and starts again. **"Up" is
+     held by position and by index both**: z1 is the lowest z and each next z stands higher (y strictly decreasing with `k`),
+     so a tree that numbers its z's from the top, which would run the pulse DOWN while reading z1, z2, z3 by index, reds
+     (*the chase*).
+     **The documents are a still and then the loop**: document 0 is the **still** — every z at level 3, the
+     reduced-motion form ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)) — and documents
+     1 to `SLEEP_LOOP` are the loop frames in order.
+     **The tree → painter interface, explicit.** `poseFrames(installId, seatId, { pose, deskTop, clear })` returns
+     **`{ frames, loopFrom }`** for every pose — `clear` the character element's clear rects, which it hands
+     `sleepFrames()` for `asleep` — and `sleepFrames()` the same shape: `frames` the documents, `frames[0 .. loopFrom − 1]`
+     the static forms and `frames[loopFrom ..]` the held loop; the sleeper's is `loopFrom` 1 over `SLEEP_LOOP + 1` documents,
+     and every other pose's is the walk's frames with `loopFrom` 0 (the held loop is the whole walk, frame 0 the static form
+     as it was). `walkFrames()` and `chibiFrame()` keep returning what they did and the painter wraps them with a `loopFrom` of
+     zero. The painter keeps `loopFrom` with the frames, since a property on the list `.map()` returns is lost:
+     `characterFrames()` caches `{ uris, loopFrom }` and returns it, a moving character's offset is
+     `loopOffset(installId, seatId, uris.length − loopFrom)` — the loop's length, never the list's, or an offset drawn over
+     the list's length can start past its end — its image starts at `uris[loopFrom + offset]`, the stepping tuple
+     is `[el, uris, loopFrom, offset]`, and every tick shows `uris[loopFrom + ((tick + offset) % (uris.length − loopFrom))]`; a render that
+     does not move shows `uris[0]`, the still, whatever its offset, and a walk (A1, A2) is `loopFrom` 0, offset 0.
+     **The pulse runs at A6's fixed 4 fps and is quantised**: a loop frame a quarter second apart, four levels — a step in
+     brightness every loop frame, never a tween, which is
+     [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s rule for a loop at the stream's tick —
+     so a pulse cycle is `SLEEP_LOOP` loop frames at that rate. Read off the table, z2 and z3 are lit (level 1 or more) in
+     three consecutive loop frames of a cycle and z1 in four (loop frames 7, 0, 1 and 2).
+     **Is the pulse a flash (WCAG 2.2 SC 2.3.1)? Derived, and held by the tool** (*the flash*), not declared. A z's core swings
+     from the dimmest level's luminance to the brightest's (0.329 to 0.828 relative luminance, a 0.50 swing, the darker side
+     under 0.80), so each z's peak IS a general flash by luminance; the content passes on either of SC 2.3.1's thresholds, and
+     passes on both for one sleeper: **at most three peaks in any one second** of the loop (the peaks of z1, z2 and z3 are two
+     loop frames, half a second, apart; three are allowed), and **the area** — the boxes of the three z's, glow included,
+     cover 4,094 px² at the fit for up to four sleepers in one 10-degree field and 20,218 px² at the zoom ceiling
+     (`ZOOM_CEILING`, 4) for one, against 21,824 px², a quarter of the 341 × 256 CSS px field. The area leg is a bounding-box
+     bound with the three z's all counted as flashing together, and is the thin one at the ceiling (93 % of it); the rate
+     leg is not. **What it does not settle**: sleepers counted together across a floor can give more than three peaks in
+     one second, which only the area leg then holds, and a field that holds two sleepers at the ceiling is not possible
+     (a desk's box is wider than the field there). The tool prints both legs and reds when neither holds.
+     The z's stand still: the moving part is the brightness, at a fixed rate, with an amplitude that is the row's
+     own and a phase that is identity (below), and it says nothing about the seat — not the quiet age, not how
+     long it has slept ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)).
+     **The per-seat stagger is the pulse's phase.** [§ 6.2](#62-the-animation-table--the-closed-set)'s per-seat loop
+     phase rule, which no drawn loop had yet honoured: the painter starts a seat's loop at its own offset into the
+     pulse — `resources/characters/index.js`'s `loopOffset(installId, seatId, length)`, `seed.js`'s
+     `draw(seatKey, 'loop-phase') % length`, `length` the loop's frame count, `SLEEP_LOOP` — so two sleepers' bubbles of
+     light are at different z's on every tick unless their keys draw the same of eight offsets; the offset is the
+     same on every reload (a pure function of the key), no frame draws anything random, and the one fixed rate is
+     untouched. **The offset is the painter's, for every character whose held render moves** — the working and
+     thinking typists, the sleeper, the raised hand (A15's replay marker is not a character and is not stepped, so no
+     offset reaches it) — **and not for A1's or A2's walks**, which start at their stand frame; it is one primitive
+     in the one stepping loop (canon #5), because § 6.2's rule states the offset for every loop in the table. The
+     cost is that the typists' blink and wiggle desynchronise as well, which § 6.2 already says they must. **How
+     often two sleepers still agree**: a pair draws the same offset one time in eight, so on a floor with three
+     sleeping desks two of them have their light at the same z on some tick 34 % of the time, with four 59 % — the
+     stagger breaks lockstep, it does not guarantee that every sleeper differs, and is not meant to; a three-frame
+     typing loop has three offsets, a pair agreeing one time in three.
+     **The still is the reduced-motion form**: the static slumped pose with its three z's drawn once, every one at full
+     brightness, and still — unchanged by the offset, which only a moving loop reads.
+     **Measured, and held.** Figures hold the layout, each bounded in
+     [§ 12](#12-every-number-and-where-it-comes-from) and read by `tools/design/sleeper-zs.browser.mjs` in headless
+     Chromium over **the seats it picks by the extremes** (`seats:` in its output) — per species and variant the first three
+     keys, the lowest and highest eye line among 400 keys and the widest crest among 100: *over head*, the share of a
+     frame's z ink on the sleeper's own ink; *z on z*, the share covered by two z's or more; *the face*, the share within
+     6 units of the closed eyes' own drawing; *clearance*, the share inside a clear rect — and, read off the documents
+     and not a raster: *the chase* (every seat's frames hold three z's in the same places in every document, the still at
+     full brightness, the loop's levels the table above, the brightest z's index advancing z1, z2, z3, **and z1 the lowest with
+     y strictly decreasing as `k` rises**, the halos on the levels that have one, in the lamp colour), *the law* (**the
+     tree's own z's, x, y and size, equal to `above3Fixed()` of the tree's own crest top at the size `above3Plan()` gives**, so a
+     tree that builds another layout reds though every ink bound passes), *the glow* (no halo ink on the sleeper) and *the crest
+     table* (`CREST_TOP` at or under every scanned seat's topmost ink; **a tree that exports none REDS the tree's own frames**,
+     and a layout judged beside a tree with none says *NOT CHECKED* aloud). **The ruled layout** (`--layout above3`, and the
+     tree's own frames once built) measures 0.0 % on the four ink figures and 0 px of glow on the sleeper at every seat.
+     **Its controls are planted by SEMANTICS** — the tool keeps the tree's sleeper and draws the layout's z's itself, in a
+     mirror of the tree's z drawing that it holds against every z the tree drew (the core colour is `mix()`'s arithmetic to
+     the digit) — so no figure rests on a source edit nobody can see. `--selftest` requires every control caught,
+     each by the check it exists for: **round 3's two-z column** (`--layout ruled`) reds the count, the clearance and the overlap;
+     **card#12159's rising path** (`--layout card12159`) the overlap and z-on-z; **z's over the eyes** the face;
+     **the pulse reversed or constant** (`above3-reversed`, `above3-constant`) the chase; **z1 and z3 exchanged in place**
+     (`above3-swapped`, the pulse still by index) the order and the law; **z2 moved 7 units** (`above3-moved`) the law alone;
+     **z2 on the trail's column** (`above3-on-trail`, the trail's rect the only one judged) the clearance; **a halo 60 units
+     wide** (`above3-halo-wide`) the glow; **a halo off the palette** (`above3-red-halo`) the chase; and, as pure functions on
+     planted inputs, **cores too alike**, **an outline too pale**, **a tree with no crest table**, **a crest top 20 units under
+     the drawing's** and **a flash every frame at a size ten times as large**, each beside the faithful input that must pass.
+     The tool has also been run against a tree built to this section (`--tree`, a scratch build): every figure above held
+     and the law check named each z of a tree whose `Z_A0` was moved by 3.
+     **The build, file by file** — what makes the tree and the floor what this item says, each with its check:
+     `resources/characters/creatures.js` (the three fixed z's by the law above, `zStand()`, `zLargeFor()`, `CREST_TOP`, the core by
+     `mix()`, `SLEEP_LOOP`, the halos behind the z's) and `index.js` (`sleepFrames()` and `poseFrames()` returning
+     `{ frames, loopFrom }`, the walk's with `loopFrom` 0); `server/public/js/floor/desk-layout.js`'s `sleeperOverdraw()`, which
+     a sleeping character element carries, and `floor/scene.js`'s `placeDesk()`, which moves the overdraw with its desk;
+     `server/public/js/floor/painter.js` — `characterFrames()`, which caches `{ uris, loopFrom }`, the desk character's offset
+     over the loop's length and its first image, its stepping tuple, the walker's tuple and the stepping loop, and the art
+     viewport, which is the overdraw for a sleeper; `server/tests/Feature/Floor/painter-probe.mjs` — its `poseFrames` stub
+     returns `{ frames, loopFrom }` (the sleeper's five documents with `loopFrom` 1 beside four with 0, so a loop stepped from
+     document 0, or an offset drawn over the list's length, reds), `loopOffset`'s recorded length is the loop's, and the
+     walker's walk is stepped from its stand frame; **`server/tests/Feature/Floor/sleeper-probe.mjs`**, the check
+     `AnIdleDeskDrawsItsSleeperTest` runs, which reads `L` and each z's share from the *Sleeper's z's* row, the pulse table, the
+     frame, the overdraw, the clear rects and the crest table from this document, never from the tree;
+     **`tools/characters/selftest.mjs` § 7b**, which CI runs — `asleep.loopFrom === 1`,
+     `asleep.frames.length === 1 + C.SLEEP_LOOP`, the other poses' `{ frames, loopFrom: 0 }`, the refused desk edges and clear
+     rects, the overdraw in frame units equal to `SLEEP_VIEWBOX` and `desk-layout.js`'s `FRAME_UNITS_PER_PX` equal to the tree's,
+     and `sleepDocument` built for `0 .. SLEEP_LOOP`; `wire/animation-set.js`'s A6 cells.
+     `server/tests/Feature/Floor/AnIdleDeskDrawsItsSleeperTest.php` reads off the painted drawing, for every species
+     and variant, what needs no browser — three z's in each document at the same places; **z1 the lowest, y strictly
+     decreasing with `k`, with a planted control that swaps two z's positions and keeps their indices**; the still every z at
+     level 3 and the loop's levels the table; `CREST_TOP` declared for every species and variant; every z body inside
+     `SLEEP_VIEWBOX`; the halo behind every z; the overdraw rect, the `clear` rects and the loop's start in the painter's output —
+     each with a planted control (the pulse reversed; a z moved between frames; `loopFrom` dropped, so the moving loop shows
+     the still; a crest top set 20 units under the drawing's) — and the monitor painted off.
 
   **The projection every one of them obeys** is the projection bullet's item 2 and item 5, restated
   nowhere: flat and straight-on, no top, the foot on the rect's floor line with its soft contact shadow
@@ -5789,7 +6103,7 @@ box does **not** move: every new rect lies inside it at the cap, so the box-base
 | the chair | 51, 90, 54 × 64 [81, 90] | follows the character; drawn **behind every creature** at every desk with art — until row 20 it was drawn only for an empty desk |
 | the desk | 18, 128, 180 × 60 [unchanged] | the desk's back (the house table) |
 | the monitor's frame | 102, 82, 96 × 46 [the whole monitor was 136, 84, 64 × 44] | its right edge is the desk's; the operator's *wider* (comment 10127), at the prototype's 96 × 46 |
-| the screen | 106, 86, 88 × 31 [the monitor's rect] | the monitor element the lit state is drawn on — `--scene-monitor-on`, `--scene-monitor-dim`, `--scene-monitor` as today — inside the frame |
+| the screen | 106, 86, 88 × 31 [the monitor's rect] | the monitor element the lit state is drawn on — `--scene-monitor-on`, `--scene-monitor` (and `--scene-monitor-dim`, retired by card#12187 with the dimmed screen) — inside the frame |
 | the screen's text | 109, 95, 82 wide [140, 100, 56 wide] | inside the screen, in the **screen** type role below |
 | the desk props | 6, 94, 68 × 50 [new] | the desk's left third: the lamp and its light, the mug or the plant |
 | the side table | 212, 146, 228 × 42 [212, 124 from row 20 until card#11468; 220, 168, 220 × 8 before row 20, drawn only with interns] | under the facts plate and over the *+N more* row (box y 190); drawn at every desk with art; **its foot line is its rect's bottom edge, box y 188 — the desk's own foot line (card#11468) and the interns'** — the interns' rects (20 × 32 on a 24 px pitch from 220, 156) stand in front of it |
@@ -5944,6 +6258,39 @@ every other desk's box by AT-D3-20 *(b)*, and that box includes the new art.
   so they gate nothing: the theme half PRINTS them for every theme over every colour its `surfaces()` returns
   (the figures above are over the house oat floor's base), because a lighter or darker floor moves them and a
   pattern pinned to one floor would red a later theme for a legitimate colour.
+  ⭐ **Since card#12187 no state draws a dimmed screen.** The operator's reading of card#12159's build (2026-10-22):
+  the idle desk's dimmed mid-teal *"can still look switched on"*. An `idle` desk's monitor is now **off** —
+  `desk/desk-poses.js`'s `DESK.idle.monitor`, the member `disabled` has drawn since row 20: the screen is the unlit
+  `--scene-monitor` slate and **draws no text**. The text it drew was the state line (`desk/desk-render.js`'s
+  `monitor()` shows the label on a desk with no open call, and an `idle` seat has none), which the facts plate's
+  label line carries at full contrast beside it, so the screen loses no fact and the desk draws the one string once.
+  Off is what the operator asked for in the product's own word; a darker *dimmed* was the alternative and keeps the
+  defect — a lit screen of any colour reads as on. The lit member set is therefore `on` / `off`: the *dimmed,
+  cream* row above stands as the record of what row 20 measured, and everything that names the member retires
+  with it. **The population is re-printed by an anchored selector, never by the word** — the bare *dimmed* also
+  names the desk's `lighting` member, which survives (`stale` and every unconfirmed seat draw under it):
+  `grep -rnE "lit-dimmed|monitor-dim|screen-ink-dim|monitor: 'dimmed'|lit !== 'dimmed'|'dimmed' => 'lit-dimmed'" server/public server/tests tools resources`.
+  Read on this amendment's base, it names: `desk/desk-poses.js`'s `DESK.idle` (the member itself);
+  `mezzanine.css`'s `--scene-monitor-dim` and `--scene-screen-ink-dim`; `floor/painter.js`'s `.monitor.lit-dimmed`
+  and `.t-monitor-text.lit-dimmed`; `tools/floor-themes/selftest.mjs`'s dimmed screen pair; and the tests that
+  plant or read it — `TheDeskIsReLaidTest`'s dimmed-screen RED and its `'dimmed' => 'lit-dimmed'` map,
+  `AnIdleDeskDrawsItsSleeperTest`'s monitor mutation, `EveryStateIsLegibleWithoutMotionTest`'s `DESK.idle`
+  mutation anchor (its line, not its intent: it plants the idle desk's pose, and its anchor string carries the
+  member), and `sleeper-probe.mjs`'s model and monitor legs. After the build the selector prints nothing.
+  **Sentences the selector cannot find, because they say *dimmed*, *above its head* and *beside its head* in words,
+  are moved by the same build**: `wire/animation-set.js:60`'s A6 `animation` and `reduced` cells (the module's copy
+  of § 6.2's row, which `TheAnimationSetIsTheDocumentsClosedSetTest` holds equal to it — red the moment § 6.2's
+  cells change, which card#12187's final rulings did) read the row's text exactly, *monitor off … three
+  z's standing above its head, still, and lit in turn … phase-offset per seat* and *the three z's drawn once, every
+  one at full brightness, and still*; and the docblocks on `resources/characters/index.js`'s `sleepFrames()` and
+  `creatures.js`'s `sleepDocument()` and `SLEEP_ZS` describe the three z's above the head, lit in turn.
+  **Two text surfaces no selector finds**, because they print the member rather than name it:
+  `desk/desk-list.js`'s row head and `drilldown/drilldown-model.js`'s *monitor* fact both render
+  `` `${MONITOR} ${lit}` ``, so an idle desk's list row and drill-down now read *monitor off*, as a disabled
+  desk's do — true of both screens, and the two states stay told apart on those surfaces by their state chip
+  and label line, which differ. `idle` and `disabled` are still told apart on the floor with motion off
+  ([AT-D3-13](#at-d3-13-every-state-is-legible-without-motion)): one is a sleeper under full light, the other a
+  present character under dimmed light with the *monitor-off* glyph on its chip.
 
 #### The retirements
 
@@ -7981,10 +8328,26 @@ painter's legs in `server/tests/Feature/Floor/painter-probe.mjs`.*
 - **GREEN — the frames:** for a key of every species and variant the standing frame, the walk's
   three phases — distinct from each other, phase 0 the standing frame — and the chibi frame all draw;
   a desk's pose frames are the sleeper's for `asleep` and the walk's for every other pose; and through the
-  painter, a desk of every `(pose, glyph)` pair draws frame 0 of its pose's frames over its desk's top edge,
-  and a held loop that moves steps that pose's own frames, every one in order (§ 10.4's frame contract). The
-  sleeper's own legs — every species asleep, its z's, its loop and its reduced form, painted — are
-  `server/tests/Feature/Floor/AnIdleDeskDrawsItsSleeperTest.php`'s (card#12159).
+  painter, a desk of every `(pose, glyph)` pair draws its pose's frames over its desk's top edge — frame 0 when
+  its held render is still, and the seat's loop offset when it moves (card#12187, § 6.2's per-seat loop phase) —
+  and a held loop that moves steps that pose's own frames, every one in order from that offset (§ 10.4's frame
+  contract) — for a sleeper that is the still, document 0, when its render is still and the loop's documents
+  from `loopFrom` plus the seat's offset when it moves. The
+  sleeper's own legs — every species asleep, its three z's above the head, fixed and lit in turn, its still and its
+  loop, painted — are `server/tests/Feature/Floor/AnIdleDeskDrawsItsSleeperTest.php`'s (card#12159, rewritten by
+  card#12187), and the layout's measured legs — over head, z on z, the face, clearance, the glow, the chase and the
+  crest table, over the seats it picks by the extremes — are `tools/design/sleeper-zs.browser.mjs`'s, run by hand, which
+  is not wired in CI ([§ 12](#12-every-number-and-where-it-comes-from)'s *Sleeper* rows give each bound).
+- **RED — the pulse reversed or constant (card#12187):** run the bubble of brightness from z3 down to z1, or leave
+  every z at full brightness in every frame → the chase leg names the seat and the frame whose levels are not the
+  table's (`tools/design/sleeper-zs.browser.mjs --selftest`: `above3-reversed` and `above3-constant`).
+- **RED — round 3's two-z column, and card#12159's rising path (card#12187):** draw two z's in the edge column, or let
+  three rise and fade along card#12159's path → the count, the clearance and the over-head legs name the seat
+  (`--layout ruled` and `--layout card12159`, which `--selftest` requires caught on more than one species).
+- **RED — a crest top under the drawing's (card#12187):** set one `CREST_TOP` entry 20 units under what the species
+  draws → the crest-table leg names the key that reaches above it; `AnIdleDeskDrawsItsSleeperTest` plants it.
+- **RED — the loop's start dropped (card#12187):** the painter steps `urls[tick % urls.length]` and not from
+  `loopFrom` → a moving sleeper shows the still as one of its loop frames, and the painter's leg names the desk.
 - **GREEN — vector and well-formed (N2):** every frame is one standalone SVG document that parses as
   strict XML — every tag closed, every `&` an entity — with an `<svg>` root carrying
   `xmlns="http://www.w3.org/2000/svg"`, and carries no `<image`, no `data:` URI and no reference that
@@ -8159,7 +8522,9 @@ and AT-D3-19's test and `TheFloorDrawsItsFrameTest` holding the failure leg's sc
   interns' → the table leg names the desk and which.
 - **RED — the dimmed screen, today's defect:** draw the screen's text in `--scene-ink` on `--scene-monitor-dim`
   → the screen leg fails at 2.25:1 at full light; it is watched red once, because it is the defect this test was
-  written after.
+  written after. ⚠ **Retired by card#12187**: no state draws a dimmed screen any more ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)),
+  so there is no screen to plant this on; the lit screen's half of the leg stands, and the record above stands as
+  written.
 - **RED — the screen text in the facts' role:** draw it in the fact role while `fit()` cuts it in the screen
   role, or the reverse → the screen leg names the desk and the role.
 - **RED — the anchor left behind:** stand the bubble's trail on `ART_W / 2`, the art column's centre where the
@@ -8467,7 +8832,8 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | **Office view** | **520 × 900 × 280 cm** wide × deep × high, its left wall 220 cm left of the door's centre line, the eye 120 cm from the doorway | **Chosen** (card#12052) — the office the cab's open doors look out on ([§ 4.5](#45-the-viewport-rule-and-the-camera)'s *cab's look*): a one-point perspective of an open-plan room about a real one's size, seen through the cab's doorway (*Cab interior*'s door, 110 × 200 cm) with the eye at *Cab interior*'s height, so its vanishing point is the cab's; the eye is the rider's in the cab (*Cab interior*'s 120 cm from the doors' wall; `OFFICE.view` is `CAB.back`, card#12071), so the office and the cab are one view from one point, and the far wall is 280 × 120 / (120 + 900) cm high, about a sixth of the doorway's height, and the side walls show with their windows. The room stands off-centre so its two walls are not a mirror of each other. **What re-derives it:** the operator's request of 2026-10-19 — *when the elevator door opens, render a 3D perspective of the office outside*. Its code home is `server/public/js/floor/cab-paint.js`'s `OFFICE` (re-exported by `floor/painter.js`), read by `drawOfficeView()`, held equal to this cell by `Tests\Feature\Floor\TheElevatorIsAControlOnTheDrawingTest`'s `test_green_section_12s_office_view_is_office`; that test's `test_the_cab_doors_open_onto_the_office` holds what is drawn, and `tools/design/floor-ride.browser.mjs`'s `through-doors` row measures it through the half-open doors, run by hand | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
 | **Lobby view** | **1,000 × 1,400 × 320 cm** wide × deep × high, its front doors **240 × 260 cm** centred on the cab's door line, one window **160 cm** wide either side of them, the eye **120 cm** from the doorway; its ceiling panels **120 × 100 cm** on **250 cm** centres across and **200 cm** centres in depth | **Chosen** (card#12113; the ceiling grid a seat ruling read off the reference drawing `docs/design/lobby-preview/Lobby2H.dc.html`, after the operator's request of 2026-10-20 for *evenly spaced rectangular lights in a grid pattern* — four columns and seven rows over the room, each panel a lit rectangle, foreshortened with the ceiling) — the lobby the cab's open doors look out on when the stop is the lobby ([§ 4.5](#45-the-viewport-rule-and-the-camera)'s *cab's look*): a one-point perspective of a building lobby about a real one's size, seen through *Cab interior*'s door from *Cab interior*'s eye — `OFFICE.view`'s 120 cm, so the lobby and the cab are one view from one point, as the office is — its far wall the street wall with the front doors and a window either side, its side walls bare but for the rail and the skirting ([§ 4.5](#45-the-viewport-rule-and-the-camera) says why), the far wall 320 × 120 / (120 + 1,400) cm high, about an eighth of the doorway's height, so the doors and windows read as the far end of a long room. The doors' 240 × 260 are a real double door's; the windows' 160 is wide enough to carry daylight at that distance. **What re-derives it:** the operator's request of 2026-10-20 — *when the elevator door opens at the Lobby, we should see the building front door and windows (from an interior view)*. Its code home is `server/public/js/floor/cab-paint.js`'s `LOBBY_VIEW` (re-exported by `floor/painter.js`), read by `drawLobbyView()`, held equal to this cell by `Tests\Feature\Floor\TheElevatorIsAControlOnTheDrawingTest`'s `test_green_section_12s_lobby_view_is_lobby_view` as `OFFICE` is; that test's `test_the_cab_doors_open_onto_the_lobby` holds what is drawn — the ceiling's panels one per centre the room's width and depth hold at these pitches — and its `test_the_cab_doors_open_onto_the_view_the_ride_names` that it is drawn for the lobby's stop and the office for a floor's. The street wall's other measures — the windows centred 300 cm either side of the door line, their sill at 90 cm and head at 250 cm, the arch rising 40 cm over the doors, the mat 200 × 100 cm against the wall, the rail at 95 cm — are the drawing's, chosen after the reference drawing, and carry no fact | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
 | **Lobby room drawing** | **1,440 × 772** scene px; its ceiling panels **4** across × **3** deep | **Chosen** (card#12113; the ceiling grid a seat ruling read off the reference drawing `docs/design/lobby-preview/Lobby2G.dc.html` after the operator's request of 2026-10-20 — four 360-unit bays across with a 200-unit panel centred in each, three equal bays in depth, foreshortened to the ceiling's vanishing point; the floor's own cab interior, `drawCabInterior()`, draws no ceiling light from the rider's lens and is unchanged by this card unless the operator asks) — the size of the lobby's drawn room ([§ 4.1](#41-the-lobby--the-building-summary)) in the camera's scene units: the artboard the operator accepted was drawn at 1,440 × 900 CSS px with 128 px of page chrome in all above and below the room, and the room is kept at the size it was accepted at rather than re-proportioned, so a window of that width at fit shows it one scene px to one CSS px. The figure carries no fact; it is the drawing's own, as `PLATE_W` / `PLATE_H` were the cross-section's. Its code home is `server/public/js/lobby/building-scene.js`'s `ROOM` and `CEILING_GRID`, held equal to this cell by `Tests\Feature\Lobby\TheLobbyIsADrawnRoomTest`'s `test_green_the_room_is_section_12s_size_and_its_ceiling_an_even_grid_of_panels`, which also holds the panels to an even grid receding toward the far wall. **What re-derives it:** the operator's reading of the lobby on the sandbox | [§ 4.1](#41-the-lobby--the-building-summary) |
-| **Directory title wrap width** | **15em** | **Chosen** (card#12113 review round 1, a seat ruling) — the narrowest the directory's face may be for its title, *FLOOR DIRECTORY — counts the seats this client holds*, to wrap ([§ 4.1](#41-the-lobby--the-building-summary)); narrower, the title is one line cut at its end. Among the runs `tools/design/lobby-directory.browser.mjs` measures, the title wrapped takes two lines on the desktop's and the laptop's fitted boards and three on the phone's board view (a face 18em wide), leaving the plaques most of the box; on the phone's fitted board, the one face narrower than this among those runs, a wrapped title filled the whole box and left the plaques no room at all. Between those two faces the line is a judgement, not a measurement. In `em`, so it moves with the viewer's text size as the title does. **What re-derives it:** a change to the title's wording or the board's proportions | [§ 4.1](#41-the-lobby--the-building-summary) |
+| **Directory title wrap width** | **15em** | **Chosen** (card#12113 review round 1, a seat ruling) — the narrowest the directory's face may be for its title, *FLOOR DIRECTORY — counts the seats this client holds*, to wrap ([§ 4.1](#41-the-lobby--the-building-summary)); narrower, the title is one line cut at its end. Among the runs `tools/design/lobby-directory.browser.mjs` measures, the title wrapped takes two lines on the desktop's and the laptop's fitted boards and three on the phone's board view (a face 18em wide), leaving the plaques most of the box; on the phone's fitted board, the one face narrower than this among those runs, a wrapped title filled the whole box and left the plaques no room at all. Between those two faces the line is a judgement, not a measurement. In `em`, so it moves with the viewer's text size as the title does. ⚠ **Since card#12187 no board face is narrower than this**: a face under the *Directory dock width* row's 24 em is docked, so the one-line cut and its container rule are retired and the title wraps everywhere. **What re-derives it:** a change to the title's wording or the board's proportions | [§ 4.1](#41-the-lobby--the-building-summary) |
+| **Directory dock width** | the fitted board's face under **24 em** wide or **15 em** tall — a surface narrower than ≈ 70.8 em (**1,133** CSS px at a 16 px rem) or shorter than ≈ 37.97 em (**608** px: on a height-limited fit the width figure binds first, the box's 488 : 308 being narrower than 24 : 15) | **Chosen** (card#12187, review round 1's F4: it was written as derived from the title wrap width, and that width is a judgement about cutting a title, not a measure of reading a plaque) — the directory docks under the room when the box's size at the room's fit zoom (`wire/camera.js`'s `fitZoom()` times `building-scene.js`'s `directory` rect, 488 × 308 scene px) is under either figure; the surface figures follow from the room's 1,440 × 772 ([§ 4.1](#41-the-lobby--the-building-summary)'s *Lobby room drawing* row), and `surfaceStyle()`'s 80 vh cap is why a short window docks by the second. **What it rests on**, measured with `tools/design/lobby-directory.browser.mjs`'s renderer over its attention fixture (2026-10-22), as the PAGE viewport the browser gives the page: the fitted face is **28.4 × 17.9 em** (holding 1.22 of the fixture's tallest plaque) at 1,440 × 900, **24.6 × 15.6 em** (0.83) at 1,440 × 780, **24.0 × 15.2 em** at 1,440 × 760, **24.3 × 15.3 em** (0.81) at 1,366 × 768 and **25.3 × 15.9 em** (0.95) at 1,280 × 800 — all on the board — and **20.8 × 13.1 em** (0.61) at **1,366 × 657**, **21.8 × 13.8 em** (0.71) at **1,280 × 690**, 0.72 at 1,100 × 700, 0.34 at 700 × 700 and 0.23 at 600 × 700 — all docked. **A real laptop's page viewport is its screen less the browser's bars, 80–110 px: a 1,366 × 768 laptop shows about 1,366 × 657 and a 1,280 × 800 one about 1,280 × 690, so the real laptops dock** (the seat's ruling on round 2's N3, decision 72) and the board's remaining home is a window about 1,440 × 760 or taller; the bound is drawn just under the 1,366 × 768 viewport's face and is not a reading target, which no fitted face below 1,440 × 900 reaches (none holds one whole tallest plaque). `lobby/directory.js`'s docking entry evaluates it at the page's own rem on every resize and every change of the text size, and B's docked runs (360, 390, 430 and 768 px wide, 932 × 430, 1,100 × 700, 1,366 × 657, 1,280 × 690) and board runs (1,440 × 900, 1,440 × 780, 1,366 × 768) measure which side of it each lands. **What re-derives it:** the operator's reading of the board on a desktop, or a change to the room's scene size, the board's rect or the plaque | [§ 4.1](#41-the-lobby--the-building-summary) |
 | **Directory marker cap** | **12** | **Chosen** (card#12113, a seat ruling) — the markers a plaque's marker row draws before *+N more* ([§ 4.1](#41-the-lobby--the-building-summary)). Twelve small markers with their gaps fit a plaque's width at the page's own text size with room for the tag, and the fleet this install draws has fewer seats on any floor than the cap, so the cap is reached only on a floor larger than any today; the seats past the cap are the tag's count and are read on the floor page the plaque's link opens, never on the plaque. **What re-derives it:** the operator's reading of a floor that reaches it | [§ 4.1](#41-the-lobby--the-building-summary) |
 | **Context attention threshold** | **80 %** | **Chosen** (card#12113, a seat ruling) — the `context.used_pct` at or above which a plaque's attention line names a seat ([§ 4.1](#41-the-lobby--the-building-summary)). Equal to the coordination framework's `context_budget.backstop_pct` default as read on 2026-10-20 (0.80, the coord plugin's `docs/CONTEXT-RESET.md`) — a figure borrowed for familiarity, not a contract: that repository may move its default without this row moving, and this row claims nothing about what any seat's tooling does at it. **What re-derives it:** the operator's reading of the line | [§ 4.1](#41-the-lobby--the-building-summary) |
 | **Long-call threshold** | **10 min** | **Chosen** (card#12113, a seat ruling) — the age of a seat's **oldest** open call, `server_time − longest_open_call.started_received_at` ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)), at or above which a plaque's attention line names it ([§ 4.1](#41-the-lobby--the-building-summary)). Two thirds of [D2 § 4.6](FLEET-STATE.md#46-every-open-fact-has-a-ceiling)'s 15-minute ceiling on an ordinary open call — early enough that a viewer can look before the server orphan-closes the call, and past the longest ordinary tool call this install's agents run (a full test suite, measured by eye on the sandbox at a few minutes). A dispatch call (a subagent) runs under a 60-minute ceiling and is the seat's oldest open call for as long as it is open, whatever its interns do, so it is named at the same threshold once it has run ten minutes — a deliberate over-report, since a dispatch running ten minutes is common and the line names the tool (*Agent*), so a viewer can read it as one. **What re-derives it:** the operator's reading of the line over a working day | [§ 4.1](#41-the-lobby--the-building-summary) |
@@ -8510,6 +8876,14 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | **The shipped default's grid** | **1,576 × 544 px** | **Measured** — `width × tilewidth` by `height × tileheight` of `resources/floor/default.tmj` ([§ 10.3](#103-the-floor-map)'s grid row, the room's footprint on a planned floor), read out of the file by `tools/design/verify-floor.py` on every run and held against § 10.3's sentence, which also holds every `desks` object at least the box above. **What it is made of** is the map's own composition (§ 10.3): across, the boxes per row the viewport row below states and the gate re-derives, the 32 px aisles between them and a 96 px scenery strip at each side; in height, the rows of the box the viewport row states, the 40 px aisle between them and 24 px at the back and the front. **What re-derives it:** the map — a re-authoring moves this row, and the gate is what makes that mandatory rather than remembered. ⚠ **A building planned against an older footprint is not re-checked:** an unauthored room's footprint is this grid, measured from that room's `origin`, so any room — authored or not — that now shares a pixel with an unauthored room's 1,576 × 544 px overlaps it. The footprint was 1,836 × 200 px until slice B and 3,024 × 496 px until card#11045; the six-desk default is narrower than the second but 48 px taller, so a room placed 496 to 543 px below an unauthored room, and within 1,576 px of it across, overlaps it from that change on. While any two rooms overlap, the console refuses every room map save, restore or removal that leaves an overlap standing (`App\Floor\Floors` runs `App\Building\Layouts::refuseOverlaps` at each, over the pending map's own extent — so a save whose map clears the overlap is accepted), refuses re-saving the layout unchanged as a no-op, and the floor draws the rooms overlapping under [§ 9](#9-failure-paths-and-their-observables) F18's notice. The way out is either: move the rooms apart and save the layout, or save a smaller map for one of the overlapping rooms ([§ 4.6](#46-the-building-layout), [D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)) | [§ 10.3](#103-the-floor-map) |
 | **Desk element rects** | the table `deskRects()` derives from the furniture box | **Measured** — `server/public/js/floor/desk-layout.js`'s exported table, derived from the box above, read by [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor) on every run (card#11058) | [§ 5.1](#51-the-desk) |
 | **Character rect** | **54 × 96** px | **Chosen** — sized by card#11058 as 3 × the interim pixel character's 18 × 32 (`CHARACTER_SCALE`), and kept when the creatures replaced it: the operator's ruling of 2026-10-05 is that the desk box does not change (card#11046). The creature art draws into it with no native pixel size at all — vector, at two drawing units per floor pixel — so what re-derives this row is the box, never the art | [§ 5.1](#51-the-desk) |
+| **Sleeper's z's** | **3** z's, fixed, above the head, on one path: **`Z_A0` 10** and **`Z_A1` 108** units, at **0.17**, **0.5** and **0.83** along it, sized **`L` 35.5** at every seat, `L` at most **36**, z1 **0.915** `L`, z2 **0.75** `L` and z3 **0.585** `L` | **Chosen** (card#12187, the operator's two rulings of 2026-10-22: *"THREE z's ABOVE each sleeping character's head"*, and the brightness cycled through them; the path re-fitted in round 5 to clear the thought trail). The formulas are [§ 10.4](#104-the-art-direction-as-a-specification) item 4's *Where they stand*, which is the tool's `above3Fixed()`, `above3Why()` and `above3Plan()`; **`L` is the largest in half-unit steps that breaks none of its four rules**, and the tool prints it as *the sizes*: `node tools/design/sleeper-zs.browser.mjs --layout above3`. **At every seat it picks (its `seats:` line): z1 32.5, z2 26.6 and z3 20.8 units = 14.6, 12.0 and 9.3 CSS px at the floor's fit** (`min(surface.w / extent.w, surface.h / extent.h)`, `wire/camera.js`'s `fitZoom()`, ≈ 0.90 on a 1,440 × 900 window over the shipped default room; the frame draws two units to a scene px, so 0.45 px a unit). **What stops the next half unit is two z's meeting** (the same output); on the path this replaces (`Z_A0` −45, `Z_A1` 90) it was the thought trail's column, `L` 26.5–33.5 (z1 24.2–30.7, z2 19.9–25.1, z3 15.5–19.6 units). **Said against the sizes the operator has seen**: card#12159's largest z was 21.8 units, 9.8 CSS px (`--layout card12159`), so **z1 is 49 % taller, z2 22 % taller and z3 5 % shorter**; the round-3 build's two z's were 24.0–32.2 units. **They are above and beside the head**: for a roll toward +x only z1 stands within the character's own 0–108 units. `creatures.js`'s `SLEEP_ZS`, `Z_LARGE`, `Z_A0`, `Z_A1` and `zLargeFor()`. **What re-derives it:** the operator's reading of a sleeping desk at fit, a change to the furniture the z's keep out of, or to the glow's width — and `Z_RATIO` (0.5), which decision 70 (H) measures | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| **Sleeper frame** | **216 × 234** frame units from (**-54**, **-42**) | **Chosen** (card#12187) — the character's 108 × 192 frame widened by half its width each side and raised 42 units, so the z's have room above a crest whose top lies 15 to 73 units under the character frame's top (`CREST_TOP`'s own range). As an element rect: the 54 × 96 px character rect widened 27 px each side and raised 21 px, 108 × 117 px (`desk-layout.js`'s `sleeperOverdraw()`); 21 px is the thought trail's height between the character's rect and the bubble's band (`TRAIL_RADII` and `TRAIL_GAP`), so the frame's top is box y 37, one pixel under the band's foot at 36. **What re-derives it:** the character rect, the trail's radii or the bubble band | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| **Sleeper z clearance** | **0 %** of a frame's z ink inside a clear rect, and no halo ink on the sleeper | **Chosen** (card#12187) — the clear rects are the monitor's frame, the desk's props, the desk and the thought trail's column, read out of `deskRects()` and `thoughtTrail()` ([§ 10.4](#104-the-art-direction-as-a-specification) item 4 gives their figures), never copied into the tool. Measured with `tools/design/sleeper-zs.browser.mjs` over the seats it picks: **0.0 %** and **0 px** for the ruled layout, with a control that plants a z on the trail's column and judges that rect alone; round 3's two-z column measures 39.0 % (its edge column sits in the monitor's frame once the frame is widened) and a layout over the eyes 14.1 %. **What re-derives it:** a change to the desk's furniture | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| **Sleeper z brightness** | **4 levels**, the core mixed toward the ink by **50 %**, **30 %**, **12 %** and **0 %**, behind a halo of the palette's lamp colour **0**, **1.5**, **3** and **5** units wide at **0 %**, **50 %**, **80 %** and **100 %** opacity | **Chosen** (card#12187, the operator's *"brightness cycled through"*) — drawn two ways so that it reads on the oat floor and keeps the z's shape: the core's lightness (50 % toward the ink is the dimmest the core goes, so the dim z is a mid-lavender and not a hole) and a warm halo in `--lamp`, `#ffcf7d`, the palette's own light, which `creatures.js`'s `Z_LAMP` is held equal to by the tool. The outline is the same at every level, **6.32 : 1** against `--scene-floor` and **3.06 : 1 at the worst of the surfaces** (the house floor and every colour of every shipped theme's `surfaces()`, the worst the studio theme's `accent-darkest` #b49573 — the tool reads them through `tools/floor-themes/surfaces.mjs`, as `state-chip-colours.py` does); the dimmest core is 3.10 : 1 against its own outline and adjacent cores differ in luminance by 1.44, 1.34 and 1.20 (1.15 needed, so each step is visible). **Not opacity**: a faded z loses the outline's contrast on a floor the theme chooses. **Five units is the halo's cost and its limit**, re-measured round 5 under the law as it stands (`--halo-max 8`): at eight units, wide enough to read at the fit, `L` falls from 35.5 to 26.0 on the adopted path — the frame's side stops it, the glow of z3 reaching the frame's edge — while on the path it replaces it did not change at all (26.5–33.5, the trail's column stopping it); round 4's *`L` 11.5 for every seat* was measured under a law that kept the glow clear of every clear rect and is withdrawn. A halo of five is about 2.3 CSS px at the 1,440 fit, a glow and not a ring. **What re-derives it:** the operator's reading of the pulse at fit, or a theme with a darker floor | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| **Sleeper z pulse** | **8** loop frames, one **4** fps step each — a cycle of **2** s — behind a still | **Chosen** (card#12187) — a bubble of brightness reaches z1 at loop frame 0, z2 at 2 and z3 at 4, each peaking at level 3 and glowing 2 and 1 in the loop frames behind, z1 at level 1 the loop frame before it arrives; the levels by loop frame are `300 200 130 020 013 002 001 100` ([§ 10.4](#104-the-art-direction-as-a-specification) item 4). The length is the least that gives each z its peak and two loop frames of afterglow at an arrival every two loop frames, and a seat's stagger is one of that many offsets. The rate is [§ 6.2](#62-the-animation-table--the-closed-set) rule 2's fixed **4** fps — four levels, a step a frame, never a tween. **What re-derives it:** the operator's reading of the pulse's pace | [§ 6.2](#62-the-animation-table--the-closed-set) |
+| **Sleeper z overlap bound** | **2 %** of a frame's z ink over the sleeper's own ink, worst frame, worst seat, for EVERY species | **Chosen** (card#12187; the final rulings re-chose it for z's that stand above the crest) — `tools/design/sleeper-zs.browser.mjs`, which rasterises each seat's frame without its z's and with each z alone, over seats it PICKS rather than takes: per species and variant the first three keys, the lowest and highest eye line among 400 keys and the widest crest among 100 (the count is its `seats:` line). The ruled layout measures **0.0 %** at every seat — the z's are above the crest table's line by construction and the tool reads the drawing against it; round 3's two-z column measures **55.4 %** (`mushroom` key 12) and card#12159's rising path **78.6 %** (`mushroom`'s bell), each over the bound on more than one species, which `--selftest` requires. The bound is two percent and not zero so that the rasteriser's edge pixels at one raster pixel a unit do not red a clean seat. **What re-derives it:** a species whose crest changes, which the crest table's own check names first | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| **Sleeper z-on-z bound** | **1 %** of a frame's z ink covered by two z's or more, worst frame, worst seat | **Chosen** (card#12187, review round 1's F3, re-measured for the fixed z's) — the same tool: the ruled z's measure **0.0 %**, their bodies never meeting; round 1's three-z column measured 21.2 %, card#12159's rising path 12.4 % and round 3's two-z column 1.7 %. The halos are not z ink for this figure: they are drawn behind every z's body, so a halo that reaches a neighbour is under it. **What re-derives it:** a change to the count or the sizes | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| **Sleeper z face clearance** | **6** frame units from the closed eyes' ink, holding at most **1 %** of a frame's z ink | **Chosen** (card#12187) — the same tool dilates the sleeper's own `eyes-closed` drawing by 6 units and counts the z ink inside it: the ruled z's measure **0.0 %** over the seats it picks, a layout of z's laid over the eyes 33.3 % (`--selftest`'s face control). It is the measured form of *the z's float over the sleeper and never across its face*. **What re-derives it:** a species with wider eyes | [§ 10.4](#104-the-art-direction-as-a-specification) |
 | **Intern head share** | **at least 1/2** of the chibi frame's drawn height | **Chosen** (card#11046) — the operator's *"A"*: an oversized head on a tiny body, so the face reads at 20 × 32. Half is the least at which the head is the larger part. **What re-derives it:** the operator's reading of the first drawn side table | [§ 10.4](#104-the-art-direction-as-a-specification) |
 | **Monitor frame / screen / screen text** | **96 × 46** / **88 × 31** / **82** px wide | **Chosen** (card#11046) — the operator's *"I think the monitors need to be wider to show a little more text"* (2026-10-06), at the prototype's 96 × 46 in the picture the operator approved; the screen inset 4 px inside the frame and the text 3 px inside the screen. Built at row 20 into `deskRects()`, which [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text)'s re-laid half holds to [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s table. **What re-derives it:** the operator's reading of the built monitors | [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) |
 | **Screen type size** | **8 px**, a third measured type role | **Chosen** (card#11046) — the operator's *"The monitor screen text can be smaller so that more letters can fit"* (2026-10-07): the smallest size at which every fixture monitor read at 1:1 at the default fit on a device-scale-1 screen, measured in headless Chromium at the reference viewport; 7 px did not ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) gives the method and the glyph counts). Built at row 20 (`desk-layout.js`'s `FONT_SCREEN`, the screen role of `TYPE_ROLES`). **What re-derives it:** the same reading on a real laptop, which is row 22's screenshot step | [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) |
@@ -8657,7 +9031,10 @@ review can reverse it deliberately rather than discover it later.
 | 65 | **Decided 2026-10-17 — card#11795, on the operator's mechanism ruling of 2026-10-13: the floor's ride ends in a real navigation, the cab carried across it by a cross-document view transition, and the destination knows it was entered by a ride from that navigation alone** ([§ 4.5](#45-the-viewport-rule-and-the-camera), [§ 4.4](#44-routes-and-what-each-one-fetches)) | an in-page re-target of the floor screen to the chosen floor; carrying *ride* in view-transition `types` or the Navigation API's `state`; a `sessionStorage` or cookie flag | an in-page re-target keeps floor-scoped state — `FloorScreen`, `Building`, the animation set — that a page load discards, and the design's second review found the frames that state draws false (r2's B1, B2, M1, M4, M7); `types` and `state` were measured not to reach the inbound document; a stored flag survives the navigation it describes and replays on a reload no gate can see. **The parameter is `#ride`**, read by a classic inline script in the layout's `<head>` under two gates (the fragment, on a `navigate`) and stripped inside the `pagereveal` handler; **the opt-in and the transition's rules are an inline `<style>`**. Measurements decide that shape, each reproduced by `tools/design/floor-ride.browser.mjs`: a listener in the module graph misses `pagereveal`; the opt-in in the linked sheet alone resolved the transition only some of the time; and the new image is painted over the old, so the hold hides it. The design also measured a strip before `pagereveal` dropping the inbound transition; that tool did not reproduce it on the headless shell it runs (the transition held with the strip moved before the event, three runs of three), so the strip stays in the handler because it costs nothing there, and that it must be there is not shown. **The hold's exit is a positive fact or the clock — the first drawn scene or *Cab hold* — never a failure predicate**: the design's r4 ended it on a frame with no floor and the frame drawn before the layout answers satisfied that on every cold load (B4-1), and the outside read adopted then is the reasoning. **The departing page's one `pageswap` listener skips the transition unless the ride is `leaving` with its cab open** and touches no element: a late commit after the bound would otherwise hold A's torn-down floor over B (review r4's measured TTFB case), and a cab the browser closed would carry A's bare floor (review r5's M5-1, r6's m6-1) | `#ride` is a parameter, not state: it drives no fact and is gone before the first frame; a typed or bookmarked `…#ride` plays one door animation and draws no fact |
 | 66 | **Decided 2026-10-17 — card#11795, the operator's rulings of 2026-10-13 (Q1–Q4, Q6, Q7 and its addendum) and the seat's ruling of 2026-10-17** ([§ 4.5](#45-the-viewport-rule-and-the-camera), [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)) | — | Q1: the current floor is a stop, marked, and pressing it or Escape is a stay; Q2: *Lobby* last; Q3: stops are named, never numbered; Q4: no special case for a one-floor building; Q6: the cab is a whole-window modal with the feed's own line; Q7 and its addendum: the departure and the arrival are animated across the navigation, the destination's leaves drawn open and then closing, as § 6.3's scoped exception. **The seat's ruling of 2026-10-17** on the r4 tripwire, adopting the outside read: a failed or slow destination shows the cab for up to *Cab hold* and then the page's own truthful chrome, with no door animation | the cost of the bound is stated in § 12's *Cab hold* row: on a slow round trip every ride reaches it |
 | 67 | **Decided 2026-10-20 — the operator's ruling on card#12113 (closing card#11800): the lobby is a drawn room facing the elevator wall, with a floor directory mounted beside the elevator — concept G of the second lobby round — and the building cross-section, its plates, its gliding cab and every cab-position indicator retire** ([§ 4.1](#41-the-lobby--the-building-summary), [§ 10.4](#104-the-art-direction-as-a-specification)) | the six other concepts of that round — a directory wall (A), a front desk with a status display (B), the elevator's lamp strip as the directory (C), a security monitor bank (D), one camera monitor with a floor list (E), a you-are-here building map with the car drawn where it is (F) — and keeping the cross-section with a directory added beside it | the operator chose G after seeing all seven drawn, and gave two readings with it that settle what a lobby is for here: a place one stands in and leaves by the elevator, whose wall says what needs a look. F was the nearest alternative and was refused by the operator's own second reading — a car drawn where it is, or any *at:* sign, is a cab position, and the cab no longer has one: a ride ends on a page. The cross-section-plus-directory option draws two renderings of the floor list on one screen, which is [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one-rendered-form rule broken for the summary. Every source in § 4.1's table is unchanged; the plaque reads more of what the client already holds and nothing it does not | the lobby loses the picture of the building's height — how many floors, at a glance — which the directory's plaque count carries only as a list. If the operator misses it, the you-are-here map of F is one wall element away, drawn without its car; nothing in § 4.1's sources moves |
-| 68 | **Decided 2026-10-20 — card#12113, a SEAT RULING recorded on the card, revisable: the directory stands in the camera's layer at the board's rect, its text at the page's own size and never scaled by the camera (decision 37), and it scrolls inside its box when the plaques are taller than the box; a pan gesture begun over it — a wheel, or a one-finger or primary-button drag — is the directory's while the directory can move that way and the camera's otherwise, a drag deciding its owner at its first move and keeping it; the directory is `touch-action: none` and the gesture wire scrolls it, because a scroll container does not inherit an ancestor's `touch-action` and a native scroll would cancel the pointer stream** ([§ 4.1](#41-the-lobby--the-building-summary)) | **(A)** the directory outside the camera — a fixed panel over the drawing, page-scrolled, the room zooming behind it; **(B)** the directory in the camera's layer with its text scaled as scene text, zoom to read; **(C)** the room drawn taller for every floor so the board never fills | (A) detaches the directory from the board the operator drew it on at the first zoom; (B) is what decision 37 refused, and the lobby's one job is to be read before any zoom; (C) is a room whose ceiling rises with the fleet, a drawing of nothing. The inner scroll is the ordinary answer to a list taller than its frame, and the wheel rule is the one § 4.5 already states for the drawing's edge, one level in — a rule the viewer has already learned | a wheel over the directory that reaches its end hands the next notch to the camera and pans the room — the same hand-off the drawing's edge makes to the page, so a viewer who has learned one has learned the other; a drag that began over the directory at its end pans the room from its first move and never scrolls, which a viewer expecting a list's rubber-band may read as the list refusing them |
+| 68 | **Decided 2026-10-20 — card#12113, a SEAT RULING recorded on the card, revisable: the directory stands in the camera's layer at the board's rect, its text at the page's own size and never scaled by the camera (decision 37), and it scrolls inside its box when the plaques are taller than the box; a pan gesture begun over it — a wheel, or a one-finger or primary-button drag — is the directory's while the directory can move that way and the camera's otherwise, a drag deciding its owner at its first move and keeping it; the directory is `touch-action: none` and the gesture wire scrolls it, because a scroll container does not inherit an ancestor's `touch-action` and a native scroll would cancel the pointer stream** ([§ 4.1](#41-the-lobby--the-building-summary)) | **(A)** the directory outside the camera — a fixed panel over the drawing, page-scrolled, the room zooming behind it; **(B)** the directory in the camera's layer with its text scaled as scene text, zoom to read; **(C)** the room drawn taller for every floor so the board never fills | (A) detaches the directory from the board the operator drew it on at the first zoom; (B) is what decision 37 refused, and the lobby's one job is to be read before any zoom; (C) is a room whose ceiling rises with the fleet, a drawing of nothing. The inner scroll is the ordinary answer to a list taller than its frame, and the wheel rule is the one § 4.5 already states for the drawing's edge, one level in — a rule the viewer has already learned | a wheel over the directory that reaches its end hands the next notch to the camera and pans the room — the same hand-off the drawing's edge makes to the page, so a viewer who has learned one has learned the other; a drag that began over the directory at its end pans the room from its first move and never scrolls, which a viewer expecting a list's rubber-band may read as the list refusing them. **Amended 2026-10-22 (card#12187, decision 72): on the board only** — below [§ 12](#12-every-number-and-where-it-comes-from)'s *Directory dock width* the directory docks under the room, which is (A) at the one width where the board cannot be read at all |
+| 70 | **Decided 2026-10-22 — card#12187, the operator's two final rulings: the sleeper's z's are THREE, fixed in place ABOVE the head, lit in turn by a bubble of brightness from the character up through z1, z2, z3; drawn in a frame widened and raised for them, clear of the furniture, at the largest each seat's room allows** ([§ 10.4](#104-the-art-direction-as-a-specification)'s frame contract item 4, [§ 12](#12-every-number-and-where-it-comes-from)'s *Sleeper* rows). It supersedes the rounds' earlier z's — card#12159's rising three, round 1's column of three, round 2–3's two in the roll-away edge column — and every figure below was measured by `tools/design/sleeper-zs.browser.mjs`, not judged | **(A)** the three z's inside the character's own 108 × 192 frame — measured with the same five-unit glow, three z's do not fit above the `carrot`, the `radish`, the `turnip`, the upright `rabbit` or the `mushroom`'s bell and dome at all, and are 10.5 units on the `fox` and 14.5 on the `eggplant` and the wide `mushroom`, under card#12159's 21.8; **(B)** two z's in the roll-away edge column (round 3's build) — it cannot be three (round 1's three in that column covered 21.2 % of their own ink), measures 55.4 % over the sleeper and 39.0 % in the furniture once the frame is wider; **(C)** the same three z's rising and fading along a path, lit by nothing — card#12159's, 78.6 % over the head; **(D)** the pulse as a fade — each z's opacity cycled — it loses the outline's contrast on a floor the theme chooses, and a z faded to 35 % is under 3 : 1; **(E)** brightness by the core alone (dark when dim, pale when lit) — larger z's, 29.4–31.8 units, but on a light floor the lit z reads as hollow among dark ones, which the frame strip shows (`--strip`); **(F)** a halo wide enough to read, eight units — re-measured in round 5 (`--halo-max 8`): `L` 26.0 at every seat on the adopted path (z1 23.8, z2 19.5, z3 15.2 units; the frame's side stops it), and unchanged on the path before it (26.5–33.5); round 4's *11.5* was measured under a law that kept the glow clear of every clear rect, and is withdrawn; **(G)** a per-species table of sizes or paths in place of one path and a per-seat `L` — figures nothing derives; **(H)** round 5, the path before it (`Z_A0` −45, `Z_A1` 90), the z's flanking the trail's dots — the trail's column stops its `L` at every seat (26.5–33.5, z3 15.5–19.6 units), which round 4 had put on the third z and the glow, and that was wrong; **(I)** the same path family re-fitted to straddle the trail (`--a0 -52 --a1 100`) — `L` 36 at every seat (z1 32.9, z2 27.0, z3 21.1 units, all ink figures 0.0 %), z1 and z2 over the head, but each glow reaches under the trail's dots, which is what the seat's ruling of round 5 refused; **(J)** the adopted side with the 5-unit glow also kept off the trail's column (`--a0 15 --a1 108`) — `L` 33.5 (z1 30.7, z2 25.1, z3 19.6), the frame's side stopping it; **(K)** `Z_RATIO` 0.7 in place of 0.5 (`--a0 9 --a1 105 --z-ratio 0.7`) — `L` 32.5, **z1 30.8, z2 27.6, z3 24.4 units = 13.9, 12.4, 11.0 CSS px: every z larger than card#12159's largest (21.8 units, 9.8 px)**, all ink figures 0.0 %, the flash's area leg 96 % of its bound — **not adopted**: a different size gradient is a look the round-5 ruling did not ask for, left as one constant (`Z_RATIO`) for a reading to move | The frame above the crest is the only room that is neither the head nor the face, and widening and raising the frame takes the z's out of it into the 21 px of the desk's box the trail's height already reserves and the art column's margins; a fixed layout lets every z be full opacity at every moment, so three of them fit where a rising three cannot, and the brightness is the one thing that moves; the core mixed toward the ink and a halo in `--lamp` read as light on the oat floor and the outline keeps the shape at 6.32 : 1; the crest table is a table, and the tool is the browser that holds it | **The path clears the thought trail and the z's are larger** (round 5, the seat's ruling): `L` 35.5 at every seat — z1 32.5, z2 26.6, z3 20.8 units, 14.6, 12.0 and 9.3 CSS px at the fit — against 26.5–33.5 before (z1 24.2–30.7, z2 19.9–25.1, z3 15.5–19.6 units); against card#12159's largest z (21.8 units, 9.8 px) z1 is 49 % taller, z2 22 % and **z3 5 % shorter** — the smallest z is still under the size the operator called too small, which (K) measures a way past. The cost is position: for a roll toward +x only z1 stands within the character's own 0–108 units, and z2 and z3 stand beyond that frame's far edge. **The overdraw is a new thing the desk draws past its character's rect**, 27 px each side and 21 px up, inside the box; AT-D3-20's overlap rules read element rects and are unchanged, and what the overdraw may touch is held by the tool's clearance bound and by the painter's draw order. **They stand above and beside the head, not over it.** **On touch and reduced motion** the still (every z at full brightness) is the form. A render of the chase beside the shipped build is the operator's to read (`--strip`, and the floor shot), and the pulse's pace, the halo's width and `Z_RATIO` are the figures a reading would move |
+| 71 | **Decided 2026-10-22 — card#12187, the operator's request: an `idle` desk's monitor is off, and the dimmed screen is retired from the lit member set** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme), [§ 7.1](#71-the-render-per-state)) | **(A)** a darker *dimmed* — a slate-teal with a fainter ink; **(B)** off with a small standby mark on the frame; **(C)** a new `asleep` member drawing a dark screen with a faint glow | (A) keeps the defect: any lit colour reads as on, and the text it kept is the label line the facts plate already carries; (B) adds an element to the desk's ruled set for one state; (C) is a third member for a screen that is, in the product's own word, off. `disabled` has drawn `off` since row 20, so `idle` draws the member that exists | A screen-reader or a screenshot reads an idle desk's state from its chip and label line alone, as it already did; and if a reviewer finds `idle` and `disabled` too alike with motion off, the difference is the sleeper under full light against a present character under dimmed light — [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion) asserts it |
+| 72 | **Decided 2026-10-22 — card#12187, the operator's request, amended at review rounds 1 and 2: under [§ 12](#12-every-number-and-where-it-comes-from)'s *Directory dock width* the directory and the readings dock under the room in the page's flow, natively scrolled and natively zoomed, the room still drawn at fit above them; the bound is a CHOSEN size of the fitted face (24 × 15 em) and a real laptop's page viewport docks under it; one entry, `lobby/directory.js`'s, writes every state the dock changes — the boxes' home, their `data-home` (shipped as `flow` in the markup) and the surface's `touch-action`; and `touch-action: none` applies only under `[data-home="board"]`, where the wire listens, `auto` everywhere else** ([§ 4.1](#41-the-lobby--the-building-summary)) | **(A)** a phone camera that opens on the board instead of the room — a 366 × 231 px box on a 390 px phone holding one plaque, the readings off screen, every scroll an inner one through the gesture wire's unverified touch half; **(B)** a second, phone-only directory in the markup, shown by a media query — two copies of one list, the drift canon #5 names; **(C)** scale the plaque's type down on the board at phone widths — decision 37 refused scaled text once and a 117 px face holds no type a phone can read; **(D)** a bound derived from a readability target — the title and one whole plaque in the fitted face — which the 1,280 × 800 and 1,366 × 768 viewports card#12113 measured already miss (0.95 and 0.81 of the tallest plaque), so it would dock them too — which, since a real laptop's viewport is the shorter one, it does anyway; **(E)** `touch-action: pan-y` on the docked surface so a swipe from the room scrolls the page — round 1's rule, withdrawn: it refuses the browser's pinch-zoom (WCAG 2.2 SC 1.4.4) | The faces already flow in the page before the first snapshot (the un-drawn state), so docking is that state with the room drawn: one list, one renderer, native scrolling and zooming where the touch half is least verified, and the board untouched on a window tall enough to hold a 15 em face. Inverting `touch-action` — `none` only where the wire listens — makes the dock the default and the board the exception, so a box that leaves the layer cannot keep a rule written for the layer | **Real laptops dock** (the seat's ruling on round 2's N3, revisable): a 1,366 × 768 laptop's page viewport is about 1,366 × 657 and a 1,280 × 800's about 1,280 × 690, both under the 15 em the face needs, so a viewer who learned the board on a desktop window finds the directory under the room on a laptop, at the page's text size, in full. The board's remaining home is a window about 1,440 × 760 or taller. **The docked room's camera is driven by its buttons and keys on touch** — a drag or pinch that begins on the drawing scrolls or zooms the page — and both halves of the touch contract stay unverified until a real phone runs them (§ 14 item 39(4)) |
 | 69 | **Decided 2026-10-20 — the operator's ruling on card#12113: the lobby's elevator is the floor's control and rides through the floor's cab — one ride, one cab dialog, one panel module, one state machine hoisted to a shared module; and through the cab's open doors is the stop the doors open on, the lobby drawn as a view of its own front doors and windows** ([§ 4.5](#45-the-viewport-rule-and-the-camera), [§ 4.4](#44-routes-and-what-each-one-fetches)) | keep the lobby's one-button next-stop ride and add the floor's cab beside it; a lobby cab of its own, built from the floor's as a copy; one view behind the doors for every stop | the operator's words — *just like the other floors* — and § 14 item 37's own condition (*reuses `cab-panel.js`, no floor-specific import*); two cabs would be two implementations of one behaviour, the defect canon names, and a next-stop button beside a cab is two rides on one page. One view for every stop would show an office when the doors open on the lobby, which the operator's third reading refuses by name | the floor screen gives up a state machine it owned alone, and a defect in the shared module reaches both pages at once — which is also what makes a fix reach both; the lobby page loads the house theme module for the cab's palette, one request it did not make before |
 
 ---
@@ -9594,7 +9971,7 @@ reason to leave two readings live.
     that parity rather than adding the art ([§ 10.4](#104-the-art-direction-as-a-specification)'s frame
     contract; the seat's ruling of 2026-10-06). What a follow-up owes, so it is not re-derived: a drawing
     per `(pose, glyph)` pair with its marker inside the character's rect ([§ 7.1](#71-the-render-per-state)'s
-    note — A15's replay marker is the monitor's); a held loop's frames, frame 0 the pose's static and
+    note — A15's replay marker is the monitor's); a held loop's frames, document 0 the pose's static and
     reduced-motion form, nothing lifting the character off its foot; poses that reach the desk meeting the
     desk's top edge derived from `deskRects()`; every pose of a key a distinct drawing; operator screenshots.
     **Blocks:** nothing — every state is legible without the character today (chip, label line, monitor;
@@ -9685,6 +10062,18 @@ reason to leave two readings live.
     ([decision 68](#13-decisions-taken-revisable-at-review)), with two declared residuals: a phone-width
     board that scrolls almost at once, its title one line cut at its end, and the **touch half unverified** — the headless check's synthetic
     pointers bypass `touch-action`, so only a real device can show the native scroll stays out of the way.
+    **card#12187 closes the first residual and widens the second**: below [§ 12](#12-every-number-and-where-it-comes-from)'s
+    *Directory dock width* the directory docks under the room ([decision 72](#13-decisions-taken-revisable-at-review)),
+    so no board face is narrower than the title wrap width and no title is cut; what stays unverified is now both
+    halves — on the board, that a finger's drag reaches the wire; docked, that a finger scrolls the page and the
+    readings' panels natively and that a pinch zooms the PAGE (the surface and every box are `auto` there, so the
+    page's zoom is kept — round 2's N2 — and the room is the browser's on touch) — and the move between the two
+    homes drops a keyboard's focus on a plaque when a resize or a text-size change crosses the bound. **Closes
+    it:** the operator's own phone, which the card asks to be used: open the lobby at its natural width, scroll the
+    directory to its last plaque, tap a floor's name, ride the elevator; pinch the page and see it zoom; then turn
+    the phone sideways (932 × 430 — its surface is capped at 80 vh, so the fit is height-limited and it stays
+    docked) and watch the directory stay docked; enlarge the browser's text size and watch the dock re-asked; and
+    on a desktop window past the bound (about 1,440 × 760 or taller) watch it return to the board.
     *(14)* **The ceiling grids** — 4 × 3 panels in the lobby room, 120 × 100 cm panels on 250 × 200 cm
     centres in the lobby view — are read off the reference drawings after the operator's request of
     2026-10-20 ([§ 12](#12-every-number-and-where-it-comes-from)'s two lobby rows); the counts and pitches

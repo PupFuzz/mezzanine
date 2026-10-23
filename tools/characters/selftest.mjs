@@ -205,21 +205,42 @@ check(C.walkFrames(anySeat.install_id, anySeat.seat_id)[0] === C.standingFrame(a
 
 // ---- 7b. the sleeper (card#12159; § 10.4's frame contract item 4) — what a pose draws ----
 // The painter's half, and the sleeper's own legs over every species, are server/tests/Feature/Floor/sleeper-probe.mjs.
-section("7b. a desk's pose frames: the sleeper's for asleep, the walk's for every other pose; every sleeper frame is a document");
+section("7b. a desk's pose frames: { frames, loopFrom } — the sleeper's still and loop for asleep, the walk's for every other pose; every sleeper document is a document");
+// The floor's own desk edge and clear rects, from the one function that hands them to the tree (§ 10.4 item 4).
+const { sleeperOverdraw, deskRects, FRAME_UNITS_PER_PX, CHARACTER_SCALE } = await import(pathToFileURL(join(REPO, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
+const { FURNITURE_BOX } = await import(pathToFileURL(join(REPO, 'resources', 'floor', 'furniture-box.js')).href);
+const { overdraw, clear: CLEAR } = sleeperOverdraw(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H });
 const DESK_TOP = 70 / 96;
+// The floor states the tree's frame units per pixel (it cannot import the tree); held equal to the tree's own, and the
+// overdraw, in those units from the character rect's top-left, is the sleeper's frame (§ 12's *Sleeper frame*).
+const charRect = { w: C.SCENE_W * CHARACTER_SCALE, h: C.SCENE_H * CHARACTER_SCALE };
+check(C.SEAT_VIEWBOX.w / charRect.w === FRAME_UNITS_PER_PX && C.SEAT_VIEWBOX.h / charRect.h === FRAME_UNITS_PER_PX,
+  `desk-layout.js's FRAME_UNITS_PER_PX (${FRAME_UNITS_PER_PX}) is the tree's frame units per character-rect pixel (${C.SEAT_VIEWBOX.w / charRect.w})`);
+const sitter = deskRects(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H }).character;
+const odUnits = { x: (overdraw.x - sitter.x) * FRAME_UNITS_PER_PX, y: (overdraw.y - sitter.y) * FRAME_UNITS_PER_PX, w: overdraw.w * FRAME_UNITS_PER_PX, h: overdraw.h * FRAME_UNITS_PER_PX };
+check(['x', 'y', 'w', 'h'].every((k) => odUnits[k] === C.SLEEP_VIEWBOX[k]), `the overdraw in frame units (${JSON.stringify(odUnits)}) is SLEEP_VIEWBOX (${JSON.stringify(C.SLEEP_VIEWBOX)})`);
 const [si, ss] = [anySeat.install_id, anySeat.seat_id];
-const asleep = C.poseFrames(si, ss, { pose: 'asleep', deskTop: DESK_TOP });
-check(asleep.length === C.SLEEP_FRAMES && asleep.join() === C.sleepFrames(si, ss, DESK_TOP).join(), `asleep draws the sleeper's ${C.SLEEP_FRAMES} frames`);
-check(asleep[0] !== C.standingFrame(si, ss) && /data-pose="asleep"/.test(asleep[0]), 'the sleeper is not the standing frame');
+const asleep = C.poseFrames(si, ss, { pose: 'asleep', deskTop: DESK_TOP, clear: CLEAR });
+const own = C.sleepFrames(si, ss, DESK_TOP, CLEAR);
+check(asleep.loopFrom === 1 && asleep.frames.length === 1 + C.SLEEP_LOOP && asleep.frames.join() === own.frames.join() && own.loopFrom === 1,
+  `asleep draws the sleeper's still and its ${C.SLEEP_LOOP} loop frames, loopFrom 1 (got ${asleep.frames?.length} documents, loopFrom ${asleep.loopFrom})`);
+check(asleep.frames[0] !== C.standingFrame(si, ss) && /data-pose="asleep"/.test(asleep.frames[0]), 'the sleeper is not the standing frame');
 // Every pose the desk model names (desk-poses.js's DESK, and A4's think pose, which desk-render.js keeps unexported)
 // but the sleeper and the empty chair, which draws no character.
 const { DESK } = await import(pathToFileURL(join(REPO, 'server', 'public', 'js', 'desk', 'desk-poses.js')).href);
 const otherPoses = [...new Set([...Object.values(DESK).map((d) => d.pose), 'leaning-back'])].filter((p) => p !== 'asleep' && p !== 'empty-chair');
-check(otherPoses.every((pose) => C.poseFrames(si, ss, { pose, deskTop: DESK_TOP }).join() === C.walkFrames(si, ss).join()), `every other pose (${otherPoses.join(', ')}) draws the walk, as before`);
+check(otherPoses.every((pose) => { const p = C.poseFrames(si, ss, { pose, deskTop: DESK_TOP, clear: CLEAR }); return p.loopFrom === 0 && p.frames.join() === C.walkFrames(si, ss).join(); }),
+  `every other pose (${otherPoses.join(', ')}) draws the walk, as before, { frames, loopFrom: 0 }`);
 let edgeRefused = 0;
-for (const bad of [undefined, 0, 1, Number.NaN]) { try { C.sleepFrames(si, ss, bad); } catch { edgeRefused++; } }
+for (const bad of [undefined, 0, 1, Number.NaN]) { try { C.sleepFrames(si, ss, bad, CLEAR); } catch { edgeRefused++; } }
 check(edgeRefused === 4, "a sleeper with no desk edge inside its frame is refused, never drawn against a guessed one");
-for (const sp of KEYS) docs.set(`sleeper:${sp}`, Array.from({ length: C.SLEEP_FRAMES }, (_, frame) => C.sleepDocument(`sleep/${sp}`, { species: sp, frame, deskTop: DESK_TOP })));
+let clearRefused = 0;
+for (const bad of [undefined, [], CLEAR.filter((c) => c.name !== 'props')]) { try { C.sleepFrames(si, ss, DESK_TOP, bad); } catch { clearRefused++; } }
+check(clearRefused === 3, "a sleeper handed no clear rects, or none for the desk's props, is refused, never drawn against guessed furniture");
+let docRefused = 0;
+for (const bad of [-1, C.SLEEP_LOOP + 1, 0.5]) { try { C.sleepDocument('sleep/x', { frame: bad, deskTop: DESK_TOP, clear: CLEAR }); } catch { docRefused++; } }
+check(docRefused === 3, `a document outside 0..SLEEP_LOOP (${C.SLEEP_LOOP}) is refused`);
+for (const sp of KEYS) docs.set(`sleeper:${sp}`, Array.from({ length: C.SLEEP_LOOP + 1 }, (_, frame) => C.sleepDocument(`sleep/${sp}`, { species: sp, frame, deskTop: DESK_TOP, clear: CLEAR })));
 
 // ---- 8. vector, well-formed, self-contained (N2) ----
 section('8. every frame is one well-formed, self-contained SVG document');

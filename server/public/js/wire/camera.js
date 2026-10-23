@@ -371,7 +371,13 @@ function panRange(camera) {
     return [axis(camera.surface.width / camera.zoom, b.x, b.w), axis(camera.surface.height / camera.zoom, b.y, b.h)];
 }
 
-function fitZoom(surface, bounds) {
+/**
+ * The zoom at which `bounds` just fits `surface` — the fit's (§ 4.5), and the zoom the lobby's dock bound sizes the
+ * directory's face at (`lobby/directory.js`, FLOOR.md § 12's *Directory dock width*).
+ *
+ * @param {{width: number, height: number}} surface @param {{w: number, h: number}} bounds
+ */
+export function fitZoom(surface, bounds) {
     return Math.min(surface.width / bounds.w, surface.height / bounds.h);
 }
 

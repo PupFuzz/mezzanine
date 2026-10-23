@@ -57,7 +57,7 @@ export const ANIMATION_SET = Object.freeze({
     A3: Object.freeze({ class: 'held', animation: 'work — typing at the keyboard, with the eye blink and the gentle in-place wiggle, 4 fps loop', reduced: 'a working pose, static, with the glyph' }),
     A4: Object.freeze({ class: 'held', animation: 'think — leaning back, watching the monitor, with the same blink and wiggle, 4 fps loop', reduced: 'a thinking pose, static' }),
     A5: Object.freeze({ class: 'edge', animation: "tool-swap — the monitor's glyph changes, one 250 ms cross-fade", reduced: 'the glyph changes with no fade' }),
-    A6: Object.freeze({ class: 'held', animation: "idle — the character is slumped asleep on the desk, the monitor dimmed, with z's rising above its head — the largest lowest, each higher one smaller and fading (ZZzzz), 4 fps loop", reduced: "the static slumped pose, z's drawn once and still" }),
+    A6: Object.freeze({ class: 'held', animation: "idle — the character is slumped asleep on the desk, the monitor off, with three z's standing above its head, still, and lit in turn — a pulse of brightness that starts at the character and travels up through z1, z2, z3 (ZZz), phase-offset per seat, 4 fps loop", reduced: "the static slumped pose, the three z's drawn once, every one at full brightness, and still" }),
     A7: Object.freeze({ class: 'held', animation: 'attention — a raised hand and a marker above the desk, 4 fps loop', reduced: 'a static raised-hand pose and the marker' }),
     A8: Object.freeze({ class: 'held', animation: 'stalled — head in hands, static, with the api_error_type line', reduced: 'identical' }),
     A9: Object.freeze({ class: 'held', animation: 'unknown — a question marker over an occupied desk', reduced: 'identical' }),

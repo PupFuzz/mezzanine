@@ -83,7 +83,7 @@ globalThis.clearInterval = () => {};
 const { deskModel } = await mod('desk/desk-render.js');
 const { placeDesk, placeBubbles } = await mod('floor/scene.js');
 const { createPainter, measurer, STYLE } = await mod('floor/painter.js');
-const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD } = await mod('floor/desk-layout.js');
+const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_BAND } = await mod('floor/desk-layout.js');
 
 /**
  * The character tree, stubbed: a frame is an SVG document naming the `(install, seat key, frame)` it was
@@ -91,18 +91,31 @@ const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD } = await mod('floo
  * Q3) — and the URI from § 10.2's — never imported from the module under test, so a layout that keys
  * interns otherwise, or a painter that makes another URI, reds.
  */
-const asked = { walk: [], pose: [], chibi: [] };
+const asked = { walk: [], pose: [], chibi: [], offset: [] };
+/**
+ * The offset the stub's `loopOffset()` answers for every seat (§ 6.2's per-seat loop phase, card#12187): not 0, so a
+ * painter that starts a moving loop at frame 0, or a still desk anywhere but frame 0, draws a frame no element owes.
+ */
+const STUB_OFFSET = 2;
 const doc = (what) => `<svg xmlns="http://www.w3.org/2000/svg"><title>${what}</title></svg>`;
 const uri = (d) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(d)}`;
 let throwFor = null;
 const characters = {
     walkFrames(installId, seatId) { asked.walk.push(`${installId}/${seatId}`); return [0, 1, 2].map((p) => doc(`${installId}/${seatId}#${p}`)); },
-    // A desk's frames for its pose (§ 10.4's frame contract): the stub names the pose and the desk's top edge it was
-    // asked for in every frame, so a painter that asks for another pose, or drops the edge, draws a frame no
-    // element owes. Four frames, so a loop stepping three reds the held-loop leg.
+    // A desk's frames for its pose — the tree → painter interface, `{ frames, loopFrom }` (§ 10.4's frame contract
+    // item 4): the stub names the pose, the desk's top edge and the clear rects it was asked for in every frame, so a
+    // painter that asks for another pose, or drops the edge or the clear rects, draws a frame no element owes. The
+    // sleeper's is FIVE documents with `loopFrom` 1 — a still, then a loop of four — and every other pose's FOUR with
+    // `loopFrom` 0: so a loop stepping three, a loop stepped from document 0, or an offset drawn over the list's length
+    // rather than the loop's, reds the held-loop leg.
     poseFrames(installId, seatId, at) {
         asked.pose.push(`${installId}/${seatId}`);
-        return [0, 1, 2, 3].map((i) => doc(`${installId}/${seatId}#${at.pose}@${at.deskTop}#${i}`));
+        const loopFrom = at.pose === 'asleep' ? 1 : 0;
+        return { frames: Array.from({ length: loopFrom + 4 }, (_, i) => doc(`${installId}/${seatId}#${at.pose}@${at.deskTop}~${JSON.stringify(at.clear ?? null)}#${i}`)), loopFrom };
+    },
+    loopOffset(installId, seatId, length) {
+        asked.offset.push([`${installId}/${seatId}`, length]);
+        return STUB_OFFSET % length;
     },
     chibiFrame(installId, key) {
         asked.chibi.push(`${installId}/${key}`);
@@ -305,6 +318,33 @@ function deskTop(key, e) {
     return (sprite.y - e.y) / e.h;
 }
 
+/** Where a pose's held loop starts in the stub's frames, written from the stub's own rule above: 1 for the sleeper, else 0. */
+const loopFromOf = (pose) => (pose === 'asleep' ? 1 : 0);
+
+/**
+ * The document a desk's character is first painted at: 0 — the still — when its held render is still; when it moves,
+ * the loop's start plus the stub's offset into the loop of four (§ 10.4 item 4's `uris[loopFrom + offset]`).
+ */
+const startOf = (e) => (e.animation?.motion === true && e.animation.frame_interval_ms !== null ? loopFromOf(e.pose) + (STUB_OFFSET % 4) : 0);
+
+/** A stub frame of a desk's character, as the painter is owed to draw it (the stub's naming, above). */
+const poseFrame = (key, e, i) => uri(doc(`${key}#${e.pose}@${deskTop(key, e)}~${JSON.stringify(e.clear ?? null)}#${i}`));
+
+/**
+ * The art viewport a desk's character is owed — written here from the published rule (§ 10.4 item 4, § 12's *Sleeper
+ * frame*), never read off the element under test: a sleeper's is its OVERDRAW, the character's rect widened by half its
+ * width each side and raised to one pixel under the bubble's band; every other character's is its element's rect.
+ */
+function characterPort(key, e) {
+    if (e.pose !== 'asleep') {
+        return { x: e.x, y: e.y, w: e.w, h: e.h };
+    }
+
+    const top = byKey.get(key).box.y + BUBBLE_BAND + 1;
+
+    return { x: e.x - e.w / 2, y: top, w: 2 * e.w, h: e.y + e.h - top };
+}
+
 /**
  * What the painter owes one layout element, in order: `[node name, {x, y, w?, h?, text?}, extra check?]`.
  * The offsets are the painter's stated ones — and nothing else may move a node off its element.
@@ -315,11 +355,14 @@ function owed(e, seat, failed, key) {
     switch (e.kind) {
         case 'character':
             // The art's clipping viewport at the element's rect, the image at the viewport's origin — and
-            // the image is frame 0 of the tree's frames for the desk's POSE, over the desk's top edge as the
-            // element's own rects place it, as an SVG-document URI (AT-D3-24; § 10.4's frame contract).
-            return [['svg', at, (n) => viewport(e)(n) ?? classIs(['character'])(n.children[0])
-                ?? (n.children[0].getAttribute('href') === uri(doc(`${key}#${e.pose}@${deskTop(key, e)}#0`)) ? null
-                    : `its image is «${decodeURIComponent(String(n.children[0].getAttribute("href"))).slice(60, 140)}», not frame 0 of the seat's «${e.pose}» frames over its desk's edge as an SVG-document URI`)
+            // the image is the tree's frame for the desk's POSE, over the desk's top edge as the element's own
+            // rects place it, as an SVG-document URI (AT-D3-24; § 10.4's frame contract): frame 0 when the held
+            // render is still, the seat's loop offset when it moves (§ 6.2's per-seat loop phase, card#12187).
+            // A sleeper's viewport is its overdraw (§ 10.4 item 4, card#12187), and its image the still or its loop's
+            // document; its pose's frames are handed its clear rects.
+            return [['svg', characterPort(key, e), (n) => viewport(characterPort(key, e))(n) ?? classIs(['character'])(n.children[0])
+                ?? (n.children[0].getAttribute('href') === poseFrame(key, e, startOf(e)) ? null
+                    : `its image is «${decodeURIComponent(String(n.children[0].getAttribute("href"))).slice(60, 200)}», not document ${startOf(e)} of the seat's «${e.pose}» frames over its desk's edge and clear rects as an SVG-document URI`)
                 ?? (n.children[0].getAttribute('preserveAspectRatio') === 'xMidYMax meet' ? null : 'its image is not drawn xMidYMax meet')]];
         case 'chair':
         case 'desk-sprite':
@@ -749,10 +792,11 @@ for (const p of owedPoses) {
     }
 }
 
-// ── § 6.2's held loop steps a moving character through its own pose's frames — every one of them, as many as
-// the tree drew, and never another drawing's — and leaves an intern still ──
-{
-    const desk = desks.find((d) => d.elements.some((e) => e.kind === 'character') && d.elements.some((e) => e.kind === 'stool' && !failedOf.get(d.key).has(e.asset)));
+// ── § 6.2's held loop steps a moving character through its own pose's held loop — every frame of it, as many as the
+// tree drew, from the loop's start (`loopFrom`, § 10.4 item 4) and never another drawing's — and leaves an intern still.
+// Read twice: a desk whose pose's loop is the whole list (`loopFrom` 0) with an intern beside it, and a sleeper, whose
+// still stands ahead of its loop (`loopFrom` 1) and never steps ──
+function heldLoop(desk, withIntern) {
     const moving = {
         ...desk,
         held: { ...(desk.held ?? {}), motion: true, frame_interval_ms: 250 },
@@ -760,6 +804,7 @@ for (const p of owedPoses) {
     };
 
     loops.length = 0;
+    asked.offset.length = 0;
     createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} }).paint({ ...scene, desks: [moving] }, { bounds: null });
 
     const g = host.children[0].children.find((n) => n.getAttribute('class') === 'desks').children[0];
@@ -767,28 +812,121 @@ for (const p of owedPoses) {
     const intern = g.children.find((n) => n.name === 'svg' && n.children[0] && classes(n.children[0]).includes('intern'))?.children[0];
     const internBefore = intern?.getAttribute('href');
     const asset = moving.key;
+    const pose = moving.elements.find((e) => e.kind === 'character');
+    const from = loopFromOf(pose.pose);
 
-    if (character === undefined || intern === undefined) {
-        defects.push('the held-loop desk painted no character sprite or no intern sprite to step');
+    if (character === undefined || (withIntern && intern === undefined)) {
+        defects.push(`the held-loop desk (${pose.pose}) painted no character sprite${withIntern ? ' or no intern sprite' : ''} to step`);
     } else if (loops.length !== 1) {
-        defects.push(`a moving held render started ${loops.length} loop(s), not one`);
+        defects.push(`a moving held render (${pose.pose}) started ${loops.length} loop(s), not one`);
     } else {
-        const pose = moving.elements.find((e) => e.kind === 'character');
-        const frame = (i) => uri(doc(`${asset}#${pose.pose}@${deskTop(desk.key, pose)}#${i}`));
+        const frame = (i) => poseFrame(desk.key, pose, i);
         const seen = [];
+        const start = character.getAttribute('href');
+        // § 6.2's per-seat loop phase (card#12187): the moving loop starts at the seat's offset into the LOOP of four
+        // and steps on from it — documents `from + ((tick + offset) % 4)`, never the still ahead of the loop.
+        const owedSteps = [1, 2, 3, 4, 5, 6, 7, 8].map((i) => from + ((i + STUB_OFFSET) % 4));
 
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < 8; i++) {
             loops[0]();
             seen.push(character.getAttribute('href'));
         }
 
-        if (seen.join('|') !== [1, 2, 3, 0].map(frame).join('|')) {
-            defects.push(`the held loop did not step the moving character through its pose's four frames in order — it drew ${seen.map((h) => decodeURIComponent(h).match(/#[^<]*#\d/)?.[0] ?? '?').join(', ')}`);
+        if (start !== frame(from + (STUB_OFFSET % 4))) {
+            defects.push(`the moving ${pose.pose} character was first painted at «${decodeURIComponent(start).match(/#\d+<\/title>/)?.[0] ?? '?'}», not at its loop's start plus its seat's offset, document ${from + (STUB_OFFSET % 4)}`);
         }
 
-        if (intern.getAttribute('href') !== internBefore) {
+        if (!asked.offset.some(([k, n]) => k === asset && n === 4)) {
+            defects.push(`the painter never asked the tree for the moving ${pose.pose} seat's loop offset over its loop's four frames — it asked ${JSON.stringify(asked.offset)}`);
+        }
+
+        if (seen.join('|') !== owedSteps.map(frame).join('|')) {
+            defects.push(`the held loop did not step the moving ${pose.pose} character through its loop's four frames in order from its offset — it drew ${seen.map((h) => decodeURIComponent(h).match(/#(\d+)<\/title>/)?.[1] ?? '?').join(', ')}, not documents ${owedSteps.join(', ')}`);
+        }
+
+        if (withIntern && intern.getAttribute('href') !== internBefore) {
             defects.push('the held loop stepped an intern — an intern stands still (§ 8)');
         }
+    }
+}
+
+{
+    const typist = desks.find((d) => d.elements.some((e) => e.kind === 'character' && e.pose !== 'asleep') && d.elements.some((e) => e.kind === 'stool' && !failedOf.get(d.key).has(e.asset)));
+    const sleeper = desks.find((d) => d.elements.some((e) => e.kind === 'character' && e.pose === 'asleep'));
+
+    if (typist === undefined || sleeper === undefined) {
+        defects.push(`the planted desks hold no ${typist === undefined ? 'moving desk with an intern' : 'sleeper'} — the held-loop leg reads nothing`);
+    } else {
+        heldLoop(typist, true);
+        heldLoop(sleeper, false);
+    }
+}
+
+/** Every node under `n`, `n` first. */
+function walkOf(n) {
+    return [n, ...n.children.flatMap(walkOf)];
+}
+
+// ── A1's walk steps its walker through the walk's three frames from its stand frame (§ 10.4 item 4: a walk is the
+// whole list, `loopFrom` 0, and takes no offset) — so a walker tuple that skips frame 0, or starts past it, reds ──
+{
+    const walk = {
+        animation_id: 'A1', frames: 12, frame_interval_ms: 250, elapsed_frames: 0, install_id: 'walk-room', seat_id: 'walker',
+        shown: { start: 0, frames: 12 }, walk: { start: 0, frames: 12 }, from: { x: 0, y: 0 }, to: { x: 40, y: 0 }, size: { w: 54, h: 96 },
+    };
+
+    loops.length = 0;
+    asked.walk.length = 0;
+    createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} })
+        .paint({ ...scene, desks: [], effects: [walk], loop_fps: 4 }, { bounds: null });
+
+    const walker = walkOf(host.children[0]).find((n) => n.name === 'image' && classes(n).includes('character'));
+    const phase = (i) => uri(doc(`walk-room/walker#${i}`));
+
+    if (walker === undefined || loops.length !== 1) {
+        defects.push(`the A1 walk painted ${walker === undefined ? 'no walker' : `${loops.length} loop(s), not one`} — the walk leg reads nothing`);
+    } else {
+        const seen = [walker.getAttribute('href')];
+
+        for (let i = 0; i < 6; i++) {
+            loops[0]();
+            seen.push(walker.getAttribute('href'));
+        }
+
+        const owed = [0, 1, 2, 0, 1, 2, 0].map(phase);
+
+        if (seen.join('|') !== owed.join('|')) {
+            defects.push(`the A1 walker did not step the walk's three frames from its stand frame — it drew ${seen.map((h) => decodeURIComponent(h).match(/#(\d+)<\/title>/)?.[1] ?? '?').join(', ')}, not 0, 1, 2, 0, 1, 2, 0`);
+        }
+    }
+}
+
+// ── A desk's frames are cached BY POSE (§ 10.4's frame contract): one painter drawing a seat asleep, then the same seat
+// in another pose, draws the second pose's frames — never the first's from a cache keyed without the pose ──
+{
+    const sleeping = desks.find((d) => d.elements.some((e) => e.kind === 'character' && e.pose === 'asleep'));
+    const awake = {
+        ...sleeping,
+        elements: sleeping.elements.map((e) => {
+            if (e.kind !== 'character') {
+                return e;
+            }
+
+            const { overdraw, clear, ...rest } = e;
+
+            return { ...rest, pose: 'present' };
+        }),
+    };
+    const one = createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} });
+    const characterHref = () => walkOf(host.children[0]).find((n) => n.name === 'image' && classes(n).includes('character'))?.getAttribute('href');
+
+    one.paint({ ...scene, desks: [sleeping] }, { bounds: null });
+    one.paint({ ...scene, desks: [awake] }, { bounds: null });
+
+    const pose = awake.elements.find((e) => e.kind === 'character');
+
+    if (characterHref() !== poseFrame(sleeping.key, pose, startOf(pose))) {
+        defects.push(`a seat drawn asleep and then present by one painter drew «${decodeURIComponent(String(characterHref())).match(/#[a-z-]+@/)?.[0] ?? '?'}» frames the second time — the painter's frames are not keyed by pose`);
     }
 }
 

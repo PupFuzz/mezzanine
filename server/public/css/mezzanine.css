@@ -102,8 +102,6 @@
     --scene-clock-face: #fffaf2;
     --scene-monitor: #2d3342;
     --scene-monitor-on: #7fd3c4;
-    --scene-monitor-dim: #4c6b73;
-    --scene-screen-ink-dim: #fff6e6;
     --scene-placeholder: #f1ece6;
     --scene-placeholder-edge: #b8a99a;
     --scene-stool: #c98b5b;
@@ -429,7 +427,6 @@ main > section.lobby {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    container-type: inline-size;
 }
 
 .lobby #lobby-directory-heading {
@@ -444,16 +441,8 @@ main > section.lobby {
     text-align: center;
 }
 
-/* The title wraps — but on a face narrower than the Directory title wrap width (FLOOR.md § 12), the phone's fitted board,
-   a wrapped title would fill the box and leave the plaques none, so there it is one line cut at its end (§ 4.1's
-   residual). */
-@container (width < 15em) {
-    .lobby #lobby-directory-heading {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-}
+/* The title wraps at every width: no board face is narrower than the Directory title wrap width (FLOOR.md § 12), because a
+   face under the Directory dock width docks (card#12187), so the phone's one-line cut and its container rule are retired. */
 
 .lobby .lobby-directory-title {
     font-family: var(--face-display);
@@ -461,16 +450,14 @@ main > section.lobby {
     letter-spacing: 0.15em;
 }
 
-/* The plaques' list scrolls inside its box (§ 4.1) — `touch-action: none` like the drawing around it, the gesture wire
-   scrolling it from the drag it owns. */
+/* The plaques' list. Docked, and with no room drawn, it is no scroller — the page is — and the browser owns every touch on
+   it (`touch-action` is `auto`). */
 .lobby .lobby-plaques {
     flex: 1 1 auto;
     min-height: 0;
     margin: 0;
     padding: 0;
     list-style: none;
-    overflow-y: auto;
-    touch-action: none;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -590,7 +577,8 @@ main > section.lobby {
 }
 
 /* The readings under the board: two brass-edged panels side by side, each scrolling inside its half and each declaring it
-   (`data-camera-scrolls`), as the directory's list does. */
+   (`data-camera-scrolls`), as the directory's list does — stacked one under the other docked and with no room drawn
+   (below). */
 .lobby .lobby-readings-face {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -607,8 +595,6 @@ main > section.lobby {
     background: var(--lobby-plaque);
     font-family: var(--face-mono);
     overflow-y: auto;
-    /* A scroller of its own, so `touch-action` does not reach it from the drawing: the gesture wire scrolls it (§ 4.1). */
-    touch-action: none;
 }
 
 .lobby .lobby-reading h3 {
@@ -628,13 +614,53 @@ main > section.lobby {
     list-style: none;
 }
 
-/* Before the first snapshot nothing is drawn, and the faces flow as the page's own text. */
-.lobby #lobby-room:not([data-drawn]) .lobby-face {
+/*
+ * WHERE A BOX STANDS IS ITS OWN `data-home` (FLOOR.md § 4.1, decision 72; card#12187) — `board` in the camera's layer,
+ * `dock` in the page's flow under the drawn room, `flow` with no room drawn, the markup's own value — written by
+ * `lobby/directory.js`'s `dockingEntry()` alone. Every rule below that depends on it is keyed on the box's own
+ * attribute, never on an ancestor the box may leave.
+ *
+ * ⛔ `touch-action: none` ONLY WHERE THE GESTURE WIRE LISTENS — on the board, where a native scroll or zoom would cancel the
+ * pointer stream its hand-off rests on, and a scroller of its own does not inherit `none` from the drawing (§ 4.1). Docked
+ * and flowing everything is `auto`, never `none` and never `pan-y`, so a finger scrolls and pinch-zooms the page (WCAG 2.2
+ * SC 1.4.4).
+ */
+.lobby [data-home="board"] .lobby-plaques {
+    overflow-y: auto;
+    touch-action: none;
+}
+
+.lobby [data-home="board"] .lobby-reading {
+    touch-action: none;
+}
+
+/* Docked and flowing: the readings' two panels stacked, each a native inner scroll capped at ten of its lines. */
+.lobby #lobby-readings:not([data-home="board"]) {
+    margin-top: 8px;
+}
+
+.lobby :not([data-home="board"]) > .lobby-readings-face {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.lobby :not([data-home="board"]) > .lobby-readings-face .lobby-reading {
+    max-height: calc(10 * 1.3em + 12px);
+}
+
+/* Docked, a plaque's link is a tap target of at least 24 × 24 CSS px (WCAG 2.2 SC 2.5.8), declared rather than left to
+   the inline exception. */
+.lobby [data-home="dock"] .lobby-plaque-name {
+    min-width: 24px;
+    min-height: 24px;
+}
+
+/* With no room drawn the faces flow as the page's own text, on the page's own ground. */
+.lobby [data-home="flow"] .lobby-face {
     color: var(--ink);
 }
 
-.lobby #lobby-room:not([data-drawn]) .lobby-reading,
-.lobby #lobby-room:not([data-drawn]) .lobby-plaque {
+.lobby [data-home="flow"] .lobby-reading,
+.lobby [data-home="flow"] .lobby-plaque {
     background: var(--panel);
     border-color: var(--line);
     color: var(--ink);

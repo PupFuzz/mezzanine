@@ -753,21 +753,61 @@ export function frameDocument(key, opt = {}) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}" width="${vb.w}" height="${vb.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs>${shadow}<g transform="${tf}">${inner}</g></svg>`;
 }
 
-// ---- the sleeper (FLOOR.md § 6.2 A6, § 10.4's frame contract item 4; card#12159) ----
+// ---- the sleeper (FLOOR.md § 6.2 A6, § 10.4's frame contract item 4; card#12159, card#12187) ----
 /**
- * THE SLEEPER's LOOP — A6's 4 fps loop is this many frames; frame 0 is the static, reduced-motion form.
- * Only the z's move between frames: the sleeper itself is the same drawing in every one, so nothing sways.
+ * THE SLEEPER's PULSE — A6's 4 fps loop is this many LOOP FRAMES (FLOOR.md § 12's *Sleeper z pulse*). The tree draws a
+ * sleeper as `SLEEP_LOOP + 1` DOCUMENTS: document 0 is the STILL — every z at full brightness, the reduced-motion form,
+ * the same for every seat — and document n is loop frame n − 1. Only the z's brightness changes between documents: the
+ * sleeper and its z's stand still in every one (§ 10.4 item 4's *The documents are a still and then the loop*).
  */
-export const SLEEP_FRAMES = 4;
-/** The z's in flight at once, and the height of the largest (nearest the head) and the smallest (highest), in units. */
-const SLEEP_ZS = 3;
-const Z_LARGE = 24;
-const Z_SMALL = 11;
+export const SLEEP_LOOP = 8;
+/** The z's a sleeper draws: three, fixed above its head (the operator's ruling of 2026-10-22, card#12187). */
+export const SLEEP_ZS = 3;
+/** The largest a seat's `L` may be, in frame units; each seat's own is `zLargeFor()`'s. */
+export const Z_LARGE = 36;
+/** The least `L` the search goes down to; a seat whose room holds no `L` this large is refused, never drawn clamped. */
+const Z_LEAST = 10;
+/** The path's two ends, in frame units off the head's centre AWAY from the side it rolled to (§ 10.4 item 4). */
+export const Z_A0 = 10;
+export const Z_A1 = 108;
+/** The path's last z is `Z_RATIO` of its first's size: it shrinks from `L` to `Z_RATIO · L` along the path. */
+export const Z_RATIO = 0.5;
+/** Where z1 stands along the path; z3 stands at `1 − Z_T0` and z2 halfway. */
+export const Z_T0 = 0.17;
+/** The gap between the path's start — its imaginary z's box and glow — and the crest line (or the props' line), in frame units. */
+export const Z_GAP = 2;
+/** The raised frame's top, in frame units: the path's end stands its imaginary z's box and glow a unit under it. */
+export const Z_TOP = -42;
+/**
+ * THE SLEEPER's FRAME (FLOOR.md § 12's *Sleeper frame*): the character's 108 × 192 frame widened by half its width each
+ * side and raised 42 units, so the z's have room above and beside the crest. The floor draws it into the character's
+ * overdraw rect (`floor/desk-layout.js`'s `sleeperOverdraw()`), whose aspect is this frame's.
+ */
+export const SLEEP_VIEWBOX = Object.freeze({ x: -54, y: Z_TOP, w: 216, h: 234 });
+/**
+ * THE BRIGHTNESS LEVELS 0 (dim) to 3 (full), FLOOR.md § 12's *Sleeper z brightness*: the core is the pale fill mixed
+ * toward the ink by `Z_GLOW[level]`, and behind the z stands a halo of the palette's `--lamp` (`Z_LAMP`), `Z_HALO[level]`
+ * units wider than the outline each side at `Z_HALO_OPACITY[level]`. The outline is the ink at every level.
+ */
+export const Z_GLOW = Object.freeze([0.5, 0.3, 0.12, 0]);
+export const Z_HALO = Object.freeze([0, 1.5, 3, 5]);
+export const Z_HALO_OPACITY = Object.freeze([0, 0.5, 0.8, 1]);
+const Z_LAMP = '#ffcf7d';
 /** How far the sleeper's head rolls onto its arms, in degrees, toward the key's own side. */
 const SLEEP_ROLL = 14;
-/** The lowest a z's rise starts, in units from the frame's top — the least room the z's are given. */
-const Z_RISE = 56;
 const Z_INK = '#4f4380', Z_FILL = '#ece8ff';
+
+/**
+ * THE CREST TABLE (FLOOR.md § 10.4 item 4): the topmost ink of a sleeper, in frame units from the character frame's
+ * top, per species and per variant where it has them — `<species>` or `<species>/<variant>`. The recipe keeps no
+ * bounding box of an ear, a leaf, a cap or a hat, so the table states "above the head" for the law below, and
+ * `tools/design/sleeper-zs.browser.mjs` holds every scanned seat's drawing at or below it.
+ */
+export const CREST_TOP = Object.freeze({
+  bear: 53, carrot: 31, eggplant: 39, fox: 34, frog: 73, hedgehog: 67, mole: 60,
+  'mushroom/bell': 15, 'mushroom/dome': 25, 'mushroom/wide': 38, otter: 63, owl: 49, peapod: 44, potato: 56,
+  pumpkin: 47, 'rabbit/lop': 62, 'rabbit/upright': 20, radish: 25, turnip: 27,
+});
 
 /** Closed eyes: a soft downward arc per eye, with a lash at its outer end. */
 function sleepingEyesSvg(F) {
@@ -780,62 +820,131 @@ function sleepingEyesSvg(F) {
   return `<g data-part="eyes-closed">${out.join('')}</g>`;
 }
 
-/** One z, centred at (x, y), `h` tall: a Z stroke in the sleeper's ink with a pale core. */
-function zSvg(x, y, h, opacity, t) {
-  const w = h * 0.8, sw = Math.max(1.4, h * 0.16);
-  const d = `M${f(x - w / 2)} ${f(y - h / 2)}H${f(x + w / 2)}L${f(x - w / 2)} ${f(y + h / 2)}H${f(x + w / 2)}`;
+/** A z `h` tall's two stroke widths: its pale core's and its dark outline's. */
+function zStrokes(h) {
+  const core = Math.max(1.4, h * 0.16);
+  return { core, outline: core + 2.6 };
+}
+
+/** A z `h` tall's half extent across and down, its outline's half-width included — its body box about its centre. */
+function zHalf(h) {
+  const o = zStrokes(h).outline / 2;
+  return { w: h * 0.4 + o, h: h / 2 + o };
+}
+
+/** A z's Z stroke, centred at (x, y), `h` tall. */
+function zPath(x, y, h) {
+  const w = h * 0.8;
+  return `M${f(x - w / 2)} ${f(y - h / 2)}H${f(x + w / 2)}L${f(x - w / 2)} ${f(y + h / 2)}H${f(x + w / 2)}`;
+}
+
+/** One fixed z at brightness `level`: the dark outline, and the core mixed from the pale fill toward the ink by the level. */
+function zSvg(z, level) {
+  const sw = zStrokes(z.h), d = zPath(z.x, z.y, z.h);
   const stroke = (col, width) => `<path d="${d}" stroke="${col}" stroke-width="${f(width)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
-  return `<g data-part="z" data-t="${f(t)}" data-x="${f(x)}" data-y="${f(y)}" data-h="${f(h)}" opacity="${f(opacity)}">${stroke(Z_INK, sw + 2.6)}${stroke(Z_FILL, sw)}</g>`;
+  return `<g data-part="z" data-k="${z.k}" data-level="${level}" data-x="${f(z.x)}" data-y="${f(z.y)}" data-h="${f(z.h)}">${stroke(Z_INK, sw.outline)}${stroke(mix(Z_FILL, Z_INK, Z_GLOW[level]), sw.core)}</g>`;
+}
+
+/** A fixed z's halo at `level`: none at level 0, else a wider stroke of the lamp colour, translucent by level. */
+function haloSvg(z, level) {
+  if (level === 0) return '';
+  return `<path data-part="halo" data-k="${z.k}" data-level="${level}" d="${zPath(z.x, z.y, z.h)}" stroke="${Z_LAMP}" stroke-width="${f(zStrokes(z.h).outline + 2 * Z_HALO[level])}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${f(Z_HALO_OPACITY[level])}"/>`;
 }
 
 /**
- * Where each z is in one frame: `SLEEP_ZS` of them evenly spaced along the rise, each a step further up per
- * frame, so frame `SLEEP_FRAMES` is frame 0 again with every z one place higher — the lowest is born as the
- * highest fades, and the loop has no seam. Along the rise a z shrinks from `Z_LARGE` to `Z_SMALL` ("ZZzzz"),
- * drifts a little side to side, and fades in at the bottom and out at the top. Frame 0 sits half a step in,
- * so the static form shows every z, the largest lowest.
- * @returns {{t: number, x: number, y: number, h: number, opacity: number}[]} lowest first
+ * THE PULSE (FLOOR.md § 10.4 item 4, § 12's *Sleeper z pulse*): the levels of z1, z2, z3 at loop frame `f` — a bubble of
+ * brightness reaches z`k+1` at loop frame `2k`, peaks there at 3 and glows 2 and 1 in the loop frames behind it, and z1
+ * is 1 in the loop frame before the bubble arrives: `300 200 130 020 013 002 001 100`.
+ * @param {number} f a loop frame, 0..SLEEP_LOOP-1 @returns {number[]} a level 0–3 per z, z1 first
  */
-function sleepZs(frame, from, to) {
-  const phase = ((frame / SLEEP_FRAMES) + 0.5) % 1;
-  const out = [];
-  for (let k = 0; k < SLEEP_ZS; k++) {
-    const t = (k + phase) / SLEEP_ZS;
-    const opacity = Math.min(1, t / 0.15, (1 - t) / 0.4);
-    out.push({
-      t,
-      x: from.x + (to.x - from.x) * t + Math.sin(t * Math.PI * 2) * 3 * Math.sign(to.x - from.x || 1),
-      y: from.y + (to.y - from.y) * t,
-      h: Z_LARGE + (Z_SMALL - Z_LARGE) * t,
-      opacity,
-    });
-  }
-  return out.sort((a, b) => a.t - b.t);
+export function zLevels(f) {
+  return Array.from({ length: SLEEP_ZS }, (_, k) => {
+    const d = (((f - 2 * k) % SLEEP_LOOP) + SLEEP_LOOP) % SLEEP_LOOP;
+    return d === 0 ? 3 : d === 1 ? 2 : d === 2 ? 1 : d === SLEEP_LOOP - 1 && k === 0 ? 1 : 0;
+  });
 }
 
 /**
- * The SLEEPER — one frame of a key slumped asleep at its desk, as a standalone SVG document (A6).
+ * WHERE THE THREE z's STAND for a crest top `crown`, a roll `dir` (+1 when the head rolled toward +x) and a size `L` —
+ * FLOOR.md § 10.4 item 4's law, exactly as `tools/design/sleeper-zs.browser.mjs`'s `above3Fixed()` computes it. The path
+ * runs from an imaginary z of size `L` whose box and brightest glow stand `Z_GAP` above the crest line (or the props'
+ * line, where that is higher) to one of size `Z_RATIO · L` whose box and glow end a unit under the raised frame's top;
+ * z `k` stands at `t_k` along it, `x_k = 54 − dir·(Z_A0 + (Z_A1 − Z_A0)·t_k)`, never clamped.
+ * @param {number} crown @param {number} dir @param {number} L @param {{name: string, y: number}[]} clear the floor's clear rects
+ * @returns {{k: number, x: number, y: number, h: number}[]} z1 first, the lowest
+ */
+export function zStand(crown, dir, L, clear) {
+  const props = clear.find((c) => c.name === 'props');
+  const S = L * Z_RATIO, G = Z_HALO[3];
+  const y0 = Math.min(crown - Z_GAP, props.y - Z_GAP) - zHalf(L).h - G;
+  const y1 = Math.max(Z_TOP, SLEEP_VIEWBOX.y) + zHalf(S).h + G + 1;
+  return Array.from({ length: SLEEP_ZS }, (_, k) => {
+    const t = Z_T0 + (1 - 2 * Z_T0) * k / (SLEEP_ZS - 1);
+    return { k, x: 54 - dir * (Z_A0 + (Z_A1 - Z_A0) * t), y: y0 + (y1 - y0) * t, h: L + (S - L) * t };
+  });
+}
+
+/**
+ * Whether a stand of size `L` keeps § 10.4 item 4's four rules — `above3Why()`'s, rule by rule: (1) the brightest glow
+ * inside the frame on all four sides; (2) no two bodies' boxes meeting, a unit apart; (3) no body's box meeting a clear
+ * rect, a unit apart; (4) no z, its glow included, below the crest line within the character's own 108 units.
+ */
+function zStandKeeps(crown, dir, L, clear) {
+  const zs = zStand(crown, dir, L, clear).map((z) => ({ ...z, hb: zHalf(z.h) }));
+  const G = Z_HALO[3], V = SLEEP_VIEWBOX;
+  for (const z of zs) if (z.y - z.hb.h - G < V.y - 0.01 || z.y + z.hb.h + G > V.y + V.h) return false;
+  for (const z of zs) if (z.x - z.hb.w - G < V.x - 0.01 || z.x + z.hb.w + G > V.x + V.w + 0.01) return false;
+  for (let a = 0; a < zs.length; a += 1) for (let b = a + 1; b < zs.length; b += 1) {
+    const A = zs[a], B = zs[b];
+    if (Math.abs(A.x - B.x) < A.hb.w + B.hb.w + 1 && Math.abs(A.y - B.y) < A.hb.h + B.hb.h + 1) return false;
+  }
+  for (const z of zs) {
+    for (const c of clear) if (z.x + z.hb.w > c.x - 1 && z.x - z.hb.w < c.x + c.w + 1 && z.y + z.hb.h > c.y - 1 && z.y - z.hb.h < c.y + c.h + 1) return false;
+    if (z.x + z.hb.w + G > 0 && z.x - z.hb.w - G < 108 && z.y + z.hb.h + G > crown - Z_GAP + 0.01) return false;
+  }
+  return true;
+}
+
+/**
+ * THE SEAT's OWN SIZE `L` (FLOOR.md § 10.4 item 4, § 12's *Sleeper's z's*): the largest, in half-unit steps from `Z_LARGE`
+ * down to 10, whose stand keeps all four rules — `above3Plan()`'s `L`. A seat with no room for even the least is refused
+ * (a RangeError the painter reports as § 9 F14), never drawn with z's clamped into the furniture.
+ * @param {number} crown @param {number} dir @param {object[]} clear @returns {number}
+ */
+export function zLargeFor(crown, dir, clear) {
+  for (let L = Z_LARGE; L >= Z_LEAST; L -= 0.5) if (zStandKeeps(crown, dir, L, clear)) return L;
+  throw new RangeError(`no three z's of size ${Z_LEAST} or more fit above crest ${crown}`);
+}
+
+/**
+ * The SLEEPER — one document of a key slumped asleep at its desk, as a standalone SVG document (A6).
  *
  * The creature is its own recipe — body, colourway, hat, neckwear, glasses — with its eyes closed and its
  * brows and held thing put away, its head rolled onto its forearms, which lie along the desk's top edge. The
- * edge is the CALLER's (`deskTop`, a share of the frame's height, which the floor derives from its desk
+ * edge is the CALLER's (`deskTop`, a share of the character frame's height, which the floor derives from its desk
  * rects): the frame has no desk of its own, and everything below the edge is drawn behind the desk the floor
- * lays over it. Above the head the z's rise (`sleepZs()`).
+ * lays over it. Above the head stand three z's (`zStand()`), each lit at its level for the document — every z at 3 in
+ * document 0, the still, and `zLevels(n − 1)` in document n — all halos first, behind every z, and the z's in front of
+ * the sleeper. `clear` is the floor's furniture in frame units (`floor/desk-layout.js`'s `sleeperOverdraw()`), which
+ * no z's body enters.
  *
  * @param {string} key the seat key
- * @param {{ frame?: number, deskTop: number, species?: string }} opt `frame` 0..SLEEP_FRAMES-1
+ * @param {{ frame?: number, deskTop: number, clear: object[], species?: string }} opt `frame` the document, 0..SLEEP_LOOP
  * @returns {string}
  */
 export function sleepDocument(key, opt) {
   const frame = opt.frame ?? 0;
-  if (!Number.isInteger(frame) || frame < 0 || frame >= SLEEP_FRAMES) throw new RangeError(`frame must be 0..${SLEEP_FRAMES - 1}, got ${frame}`);
+  if (!Number.isInteger(frame) || frame < 0 || frame > SLEEP_LOOP) throw new RangeError(`frame must be 0..${SLEEP_LOOP}, got ${frame}`);
   if (!(opt.deskTop > 0 && opt.deskTop < 1)) throw new RangeError(`deskTop must be a share of the frame's height in (0, 1), got ${opt.deskTop}`);
+  if (!Array.isArray(opt.clear) || !opt.clear.some((c) => c.name === 'props')) throw new RangeError("clear must be the floor's clear rects, the desk's props among them");
   const { r, sp, pen, c, A } = build(key, opt.species);
   const { hat, neck, extra } = worn(r, sp, A);
   const F = A.face;
   const s = r.size;
   const edge = opt.deskTop * SEAT_VIEWBOX.h;
   const dir = c.side;
+  const crown = CREST_TOP[r.variant === null ? r.species : `${r.species}/${r.variant}`];
+  if (crown === undefined) throw new RangeError(`CREST_TOP declares no crest for ${r.species}${r.variant === null ? '' : `/${r.variant}`}`);
 
   // The head and the body under it, rolled about the chin, the chin resting just above the edge.
   const parts = [...c.layers.back, ...c.layers.body];
@@ -873,17 +982,16 @@ export function sleepDocument(key, opt) {
   // Nothing is drawn below the edge: the desk stands there, and a frame drawn without one stays a sleeper.
   pen.defs.push(`<clipPath id="c_edge"><rect x="-200" y="-200" width="508" height="${f(edge + 200)}"/></clipPath>`);
 
-  // The z's rise from just above the head toward the frame's top, on the side it rolled to. A head so tall its
-  // crown stands above `Z_RISE` keeps the z's their room: they start there, drawn over the top of the head. And
-  // the top of the closed eyes, rolled with the head, is the line every z stays above, whatever the rest says:
-  // the z's float over the sleeper and never across its face.
-  const crown = rest - Math.cos(rad) * lift;
+  // The closed eyes' line, rolled with the head — stated on the document for the measuring tool's seat picks.
   const eyes = rest - Math.cos(rad) * (chin - F.y) * s - (Math.abs(Math.sin(rad)) * F.es + 5 * F.s) * s;
-  const from = { x: 54 + dir * 2, y: Math.min(Math.max(Z_RISE, Math.min(crown - 4, edge - 30)), eyes - Z_LARGE / 2 - 4) };
-  const to = { x: 54 + dir * 46, y: Z_SMALL };
-  const zs = sleepZs(frame, from, to).map((z) => zSvg(z.x, z.y, z.h, z.opacity, z.t)).join('');
+  // The three z's, fixed above the head on the side AWAY from its roll, lit at the document's levels.
+  const zs = zStand(crown, dir, zLargeFor(crown, dir, opt.clear), opt.clear);
+  const levels = frame === 0 ? zs.map(() => 3) : zLevels(frame - 1);
+  const halos = zs.map((z) => haloSvg(z, levels[z.k])).join('');
+  const bodies = zs.map((z) => zSvg(z, levels[z.k])).join('');
+  const V = SLEEP_VIEWBOX;
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${SEAT_VIEWBOX.x} ${SEAT_VIEWBOX.y} ${SEAT_VIEWBOX.w} ${SEAT_VIEWBOX.h}" width="${SEAT_VIEWBOX.w}" height="${SEAT_VIEWBOX.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs><g data-pose="asleep" data-eyes-y="${f(eyes)}" data-edge="${f(edge)}" clip-path="url(#c_edge)">${drawing}</g><g data-part="zs">${zs}</g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${V.x} ${V.y} ${V.w} ${V.h}" width="${V.w}" height="${V.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs><g data-pose="asleep" data-eyes-y="${f(eyes)}" data-edge="${f(edge)}" data-crown="${crown}" clip-path="url(#c_edge)">${drawing}</g><g data-part="zs"><g data-part="glow">${halos}</g>${bodies}</g></svg>`;
 }
 
 /**

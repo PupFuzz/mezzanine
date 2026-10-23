@@ -573,7 +573,8 @@ function surfacesLeg(o) {
 /** § 10.6's contrast table's floor-dependent columns, PRINTED for every theme over its surfaces — gating nothing. */
 function printScreenInk(o) {
     const css = readFileSync(o.t.css, 'utf8');
-    const screens = [['lit', token(css, 'state-ink'), token(css, 'scene-monitor-on')], ['dimmed', token(css, 'scene-screen-ink-dim'), token(css, 'scene-monitor-dim')]];
+    // The lit screen alone: since card#12187 no state draws a dimmed screen (FLOOR.md § 10.6).
+    const screens = [['lit', token(css, 'state-ink'), token(css, 'scene-monitor-on')]];
 
     for (const [name, theme] of Object.entries(o.themes)) {
         for (const [screen, ink, fill] of screens) {

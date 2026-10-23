@@ -63,8 +63,8 @@ globalThis.document = {
 
 const url = (file) => pathToFileURL(join(JS, file)).href;
 const { ELEVATOR_NAME, paintRoom, roomDrawing, themeRoomCab } = await import(url('lobby/building-paint.js'));
-const { CEILING_GRID, INK, ROOM, lobbyScene, roomArt, windowArt } = await import(url('lobby/building-scene.js'));
-const { boxStyles, plaqueRow, renderDirectory, showDirectory, unclaimedRow } = await import(url('lobby/directory.js'));
+const { CEILING_GRID, INK, ROOM, lobbyScene, roomArt, surfaceStyle, windowArt } = await import(url('lobby/building-scene.js'));
+const { DOCK_BOUND, boxStyles, dockingEntry, homeFor, plaqueRow, renderDirectory, showDirectory, unclaimedRow } = await import(url('lobby/directory.js'));
 const { createCamera, frameOn, unframe } = await import(url('wire/camera.js'));
 
 /** Every node under `n`, depth first. */
@@ -200,4 +200,112 @@ const directoryOut = {
     boxes: { drawn: boxStyles(lobbyScene().directory, true), undrawn: boxStyles(lobbyScene().directory, false) },
 };
 
-process.stdout.write(JSON.stringify({ room: roomOut, directory: directoryOut }, null, 2));
+// ── The docking entry (§ 4.1, decision 72; card#12187) ───────────────────────────────────────
+//
+// `payload.dock` — a list of steps, each `{ drawn, surface: {width, height}, rem, via }`: the surface measured and the
+// page's `1rem` the probe reads at that step, and how the entry is asked — `place` (a paint), `resize` (the window's
+// event) or `text` (the `1rem` probe's ResizeObserver, a change of the text size the browser fires no resize for). After
+// each step: each box's home as its parent says it (`layer`, `page` — the section, after the surface — or elsewhere), its `data-home`,
+// its face's counter-scale, the surface's `touch-action`, and how many moves the entry made.
+
+/** A stand-in element: a parent, ordered children, attributes, a style object, a measured size. */
+class Box {
+    constructor(name) { this.name = name; this.parentElement = null; this.children = []; this.attrs = {}; this.style = {}; this.listeners = {}; this.size = { width: 0, height: 0 }; }
+
+    get firstElementChild() { return this.children[0] ?? null; }
+
+    get clientWidth() { return this.size.width; }
+
+    get clientHeight() { return this.size.height; }
+
+    getBoundingClientRect() { return { width: this.size.width, height: this.size.height }; }
+
+    setAttribute(k, v) { this.attrs[k] = String(v); }
+
+    getAttribute(k) { return this.attrs[k] ?? null; }
+
+    detach() { if (this.parentElement !== null) { this.parentElement.children.splice(this.parentElement.children.indexOf(this), 1); } }
+
+    append(...nodes) { for (const n of nodes) { n.detach(); n.parentElement = this; this.children.push(n); moves.count++; } }
+
+    after(...nodes) { const p = this.parentElement; let at = p.children.indexOf(this) + 1; for (const n of nodes) { n.detach(); n.parentElement = p; p.children.splice(at, 0, n); at++; moves.count++; } }
+}
+
+const moves = { count: 0 };
+let dockOut = null;
+
+if (payload.dock !== undefined) {
+    const section = new Box('section');
+    const building = new Box('building');
+    const layer = new Box('layer');
+    const directory = new Box('directory');
+    const readings = new Box('readings');
+    let probe = null;
+    const observed = [];
+    const win = {
+        listeners: {},
+        addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn); },
+        ResizeObserver: class { constructor(fn) { this.fn = fn; } observe(el) { observed.push({ el, fn: this.fn }); } },
+    };
+    const doc = { createElement: (name) => { probe = new Box(name); return probe; } };
+
+    section.append(building, directory, readings);
+    building.append(layer);
+    directory.append(new Box('face'));
+    readings.append(new Box('face'));
+    directory.setAttribute('data-home', 'flow');
+    readings.setAttribute('data-home', 'flow');
+    moves.count = 0;
+
+    const scene = lobbyScene();
+    const entry = dockingEntry(win, doc, { building, layer, boxes: [[directory, scene.directory], [readings, scene.readings]], scene });
+    const homeOf = (box) => (box.parentElement === layer ? 'layer' : box.parentElement === section ? 'page' : 'elsewhere');
+    const steps = [];
+    let drawn = false;
+
+    for (const step of payload.dock) {
+        building.size = step.surface;
+
+        if (probe !== null) {
+            probe.size = { width: step.rem, height: step.rem };
+        }
+
+        const before = moves.count;
+
+        if (step.via === 'resize') {
+            (win.listeners.resize ?? []).forEach((fn) => fn({}));
+        } else if (step.via === 'text') {
+            observed.filter((o) => o.el === probe).forEach((o) => o.fn([]));
+        } else {
+            drawn = step.drawn;
+            entry.place(drawn);
+        }
+
+        steps.push({
+            step,
+            homes: [directory, readings].map(homeOf),
+            order: section.children.filter((c) => c === directory || c === readings).map((c) => c.name),
+            after_surface: section.children.indexOf(directory) === section.children.indexOf(building) + 1,
+            data_home: [directory, readings].map((b) => b.getAttribute('data-home')),
+            face_transform: [directory, readings].map((b) => b.firstElementChild.style.transform ?? null),
+            box_position: [directory, readings].map((b) => b.style.position ?? null),
+            touch_action: building.style.touchAction ?? null,
+            moves: moves.count - before,
+            entry_home: entry.home(),
+        });
+    }
+
+    dockOut = {
+        bound: DOCK_BOUND,
+        probe: probe === null ? null : { parent: probe.parentElement === section, style: { ...probe.style }, hidden: probe.getAttribute('aria-hidden') },
+        observes_probe: observed.some((o) => o.el === probe),
+        listens_resize: (win.listeners.resize ?? []).length > 0,
+        steps,
+        // The predicate alone, at the faces the bound is drawn between (`homeFor()`), for the test to hold against § 12.
+        predicate: (payload.dock_faces ?? []).map((f) => ({ ...f, home: homeFor(true, f.surface, f.rem, lobbyScene()) })),
+        // The surface's own style writes no `touch-action`: the entry is its one writer (review round 1's F9).
+        surface_keys: [...new Set([...Object.keys(surfaceStyle(lobbyScene())), ...Object.keys(surfaceStyle(null))])],
+    };
+}
+
+process.stdout.write(JSON.stringify({ room: roomOut, directory: directoryOut, dock: dockOut }, null, 2));

@@ -91,8 +91,8 @@ ${Object.keys(SKY_PAINT).map((phase) => `.sky-${phase}{fill:url(#sky-${phase})}`
 .clock-face{fill:var(--scene-clock-face);stroke:var(--scene-trim);stroke-width:3}.clock.unset .clock-face{stroke-dasharray:6 4}
 .clock.cased .clock-face{fill:none;stroke:none}.clock.cased.unset .clock-face{stroke:var(--scene-trim)}
 .hand{stroke:var(--scene-ink);stroke-linecap:round}.hand.hour{stroke-width:4}.hand.minute{stroke-width:2}
-.monitor{fill:var(--scene-monitor)}.monitor.lit-on{fill:var(--scene-monitor-on)}.monitor.lit-dimmed{fill:var(--scene-monitor-dim)}
-.t-monitor-text.lit-on{fill:var(--state-ink)}.t-monitor-text.lit-dimmed{fill:var(--scene-screen-ink-dim)}
+.monitor{fill:var(--scene-monitor)}.monitor.lit-on{fill:var(--scene-monitor-on)}
+.t-monitor-text.lit-on{fill:var(--state-ink)}
 .placeholder{fill:var(--scene-placeholder);stroke:var(--scene-placeholder-edge);stroke-dasharray:4 3}
 .stool{fill:var(--scene-stool)}.stool.untitled{fill:none;stroke:var(--scene-stool);stroke-dasharray:3 2}
 .intern-edge{fill:none;stroke:var(--scene-stool);stroke-width:1.5;stroke-dasharray:3 2}
@@ -231,8 +231,10 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     // The interns whose frames are held, and those this paint drew.
     const interns = new Set();
     let drawnInterns = new Set();
-    // The characters a held loop or a walk steps this paint, each with its frames (never a copy of the
-    // URIs on the element: a frame is kilobytes, and a tick would parse every one of them).
+    // The characters a held loop or a walk steps this paint, each `[el, uris, loopFrom, offset]`: its frames, where its
+    // held loop starts in them (`loopFrom`, § 10.4 item 4) and the offset into that loop it steps from (the seat's own
+    // for a held loop, 0 for a walk) — never a copy of the URIs on the element: a frame is kilobytes, and a tick would
+    // parse every one of them.
     let stepping = [];
     let loop = null;
     let svg = null;
@@ -284,15 +286,18 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     };
 
     /**
-     * A character's frames as image URIs, made once per asset and drawing: a desk's frames for its pose —
-     * the tree's `poseFrames()`, frame 0 the pose's static form and the rest its held loop (§ 10.4's frame
-     * contract: the sleeper's for `asleep`, the walk's for every other pose) — a walker's walk frames
-     * (`at` null), or an intern's one chibi frame, the tree handed the intern key (`internKey()`) in the
-     * seat's place. The cache key is the asset with the drawing it holds, so a desk asleep and its walker
-     * never share frames. A tree that failed to load, or a generator that throws for this key, is § 9 F14
-     * for this asset and never a throw out of the paint.
+     * A character's frames as image URIs with where its held loop starts in them, `{ uris, loopFrom }`, made once per
+     * asset and drawing: a desk's frames for its pose — the tree's `poseFrames()`, `uris[0]` the pose's static form and
+     * `uris[loopFrom ..]` its held loop (§ 10.4's frame contract: the sleeper's for `asleep`, its still ahead of the
+     * loop, the walk's for every other pose) — a walker's walk frames (`at` null), or an intern's one chibi frame, the
+     * tree handed the intern key (`internKey()`) in the seat's place; both of the last with `loopFrom` 0. `loopFrom`
+     * is kept beside the URIs because a property on the list `.map()` returns is lost. The cache key is the asset with
+     * the drawing it holds, so a desk asleep and its walker never share frames. A tree that failed to load, or a
+     * generator that throws for this key, is § 9 F14 for this asset and never a throw out of the paint.
      *
-     * @param {{pose: string, desk_top: number}|null} at a desk's pose and its desk's top edge, or `null`
+     * @param {{pose: string, desk_top: number, clear?: object[]}|null} at a desk's pose, its desk's top edge and, for
+     *        a sleeper, the clear rects its z's keep out of (`sleeperOverdraw()`), or `null`
+     * @returns {{uris: string[], loopFrom: number}|null}
      */
     const characterFrames = (installId, seatId, asset, at = null, intern = false) => {
         if (characters === null) {
@@ -301,15 +306,18 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             return null;
         }
 
+        // `at.clear` is not in the key: a sleeper's clear rects are `sleeperOverdraw()`'s of the one furniture box and
+        // the character's size, the same for every desk, so the pose and the desk's top edge already name the drawing.
+        // A layout whose clear rects differ by desk must add them here.
         const key = intern ? asset : at === null ? `${asset}#walk` : `${asset}#${at.pose}@${at.desk_top}`;
 
         if (!frames.has(key)) {
             try {
-                const docs = intern ? [characters.chibiFrame(installId, seatId)]
-                    : at === null ? characters.walkFrames(installId, seatId)
-                        : characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top });
+                const drawn = intern ? { frames: [characters.chibiFrame(installId, seatId)], loopFrom: 0 }
+                    : at === null ? { frames: characters.walkFrames(installId, seatId), loopFrom: 0 }
+                        : characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top, clear: at.clear });
 
-                frames.set(key, docs.map(svgUri));
+                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });
             } catch {
                 report(asset);
 
@@ -395,13 +403,22 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
 
             switch (e.kind) {
                 case 'character': {
-                    const urls = characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, desk_top: e.desk_top });
+                    const drawn = characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, desk_top: e.desk_top, clear: e.clear });
 
-                    if (urls !== null) {
-                        const el = art(g, urls[0], e, e.asset, 'character');
+                    if (drawn !== null) {
+                        // § 6.2's per-seat loop phase (card#12187): a held render that MOVES starts at the seat's own
+                        // offset into its LOOP — `uris[loopFrom ..]`, whose length is the loop's, never the list's — so
+                        // two desks in one state never step in lockstep; one that does not move is `uris[0]`, the
+                        // still, the canonical reduced-motion form, whatever its offset.
+                        const { uris, loopFrom } = drawn;
+                        const moves = e.animation?.motion === true && e.animation.frame_interval_ms !== null;
+                        const offset = moves ? characters.loopOffset(desk.install_id, desk.seat_id, uris.length - loopFrom) : 0;
+                        // § 10.4 item 4: a sleeper's art viewport is its overdraw, past the element's rect, so its z's
+                        // stand above and beside its head; every other character's is the element's rect.
+                        const el = art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw ?? e, e.asset, 'character');
 
-                        if (e.animation?.motion === true && e.animation.frame_interval_ms !== null) {
-                            stepping.push([el, urls]);
+                        if (moves) {
+                            stepping.push([el, uris, loopFrom, offset]);
                         }
                     }
 
@@ -437,12 +454,12 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                         // dashed (§ 8): its sprite inside a dashed edge at its own 20 × 32 rect — rx 3, no
                         // fill, `--scene-stool` at 1.5 wide, dashed `3 2` — and its fallback glyph below is
                         // dashed `3 2` with no fill (the designer's rulings on card#11058 PR-C).
-                        const urls = characterFrames(e.install_id, e.key, e.asset, null, true);
+                        const drawn = characterFrames(e.install_id, e.key, e.asset, null, true);
 
-                        if (urls !== null) {
+                        if (drawn !== null) {
                             interns.add(e.asset);
                             drawnInterns.add(e.asset);
-                            art(g, urls[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern');
+                            art(g, drawn.uris[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern');
 
                             if (e.untitled) {
                                 node('rect', { x: e.x, y: e.y, width: e.w, height: e.h, rx: 3, class: 'intern-edge' }, g);
@@ -566,18 +583,20 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         g.style.setProperty('--to-y', `${fx.to.y}px`);
 
         const asset = characterAsset({ install_id: fx.install_id, seat_id: fx.seat_id });
-        const urls = characterFrames(fx.install_id, fx.seat_id, asset);
+        const drawn = characterFrames(fx.install_id, fx.seat_id, asset);
 
-        if (urls === null) {
+        if (drawn === null) {
             // § 9 F14: the art failed, so the walker is the placeholder rectangle at the character's size.
             node('rect', { x: -fx.size.w / 2, y: -fx.size.h, width: fx.size.w, height: fx.size.h, class: 'placeholder' }, g);
 
             return;
         }
 
-        const el = image(g, urls[0], -fx.size.w / 2, -fx.size.h, fx.size.w, fx.size.h, asset, { class: 'character', preserveAspectRatio: MEET });
+        const el = image(g, drawn.uris[0], -fx.size.w / 2, -fx.size.h, fx.size.w, fx.size.h, asset, { class: 'character', preserveAspectRatio: MEET });
 
-        stepping.push([el, urls]);
+        // A walk starts at its stand frame: A1's and A2's walks are the whole list, `loopFrom` 0, and take no loop
+        // offset (§ 10.4 item 4).
+        stepping.push([el, drawn.uris, drawn.loopFrom, 0]);
     }
 
     /**
@@ -857,16 +876,17 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         const walking = scene.effects.some((fx) => (fx.animation_id === 'A1' || fx.animation_id === 'A2') && fx.frames > 0);
         const interval = scene.desks.find((d) => d.held?.motion)?.held.frame_interval_ms ?? (walking ? 1000 / scene.loop_fps : null);
 
-        // Each character steps through its OWN frames — a walker's walk, a sleeper's loop — so a loop of one
-        // length never draws another drawing's frames.
+        // Each character steps through its OWN held loop — a walker's walk, a sleeper's pulse after its still — so a
+        // loop of one length never draws another drawing's frames, from the offset it was pushed with: the seat's own
+        // for a held loop, 0 for a walk. The loop is `uris[loopFrom ..]` (§ 10.4 item 4), so the still never steps.
         if (moving.length > 0 && interval !== null) {
             let tick = 0;
 
             loop = setInterval(() => {
                 tick += 1;
 
-                for (const [el, urls] of moving) {
-                    el.setAttribute('href', urls[tick % urls.length]);
+                for (const [el, uris, loopFrom, offset] of moving) {
+                    el.setAttribute('href', uris[loopFrom + ((tick + offset) % (uris.length - loopFrom))]);
                 }
             }, interval);
         }

@@ -17,7 +17,7 @@
  */
 export const DESK = Object.freeze({
     working: { pose: 'at-keyboard', glyph: 'working', lighting: 'full', monitor: 'on' },
-    idle: { pose: 'asleep', glyph: 'asleep', lighting: 'full', monitor: 'dimmed' },
+    idle: { pose: 'asleep', glyph: 'asleep', lighting: 'full', monitor: 'off' },
     blocked: { pose: 'raised-hand', glyph: 'attention', lighting: 'full', monitor: 'on' },
     stalled: { pose: 'head-in-hands', glyph: 'stalled', lighting: 'full', monitor: 'on' },
     unknown: { pose: 'present', glyph: 'question', lighting: 'full', monitor: 'on' },
