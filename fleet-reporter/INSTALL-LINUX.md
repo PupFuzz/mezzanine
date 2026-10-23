@@ -563,12 +563,13 @@ between two hosts: the first real hand delivery exercises both.
 
 ```bash
 stat -c '%a %n' /home/mezzanine/.config/fleet-reporter /home/mezzanine/.config/fleet-reporter/config.json
-node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); const show=(p,o)=>{for (const [k,v] of Object.entries(o)) { if (k==="sites" && Array.isArray(v)) { v.forEach((x,i)=>show("sites["+(x&&x.name||i)+"].",x||{})); continue; } console.log(p+k, k==="token" ? "<" + (/^mzn_[A-Za-z0-9_-]{43}$/.test(v) ? "well-formed" : "MALFORMED") + ">" : JSON.stringify(v)); }}; show("",c)' /home/mezzanine/.config/fleet-reporter/config.json
+node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); const show=(p,o)=>{for (const [k,v] of Object.entries(o)) { if (k==="sites" && Array.isArray(v)) { v.forEach((x,i)=>show("sites["+(x&&x.name||i)+"].",x||{})); continue; } const u=(x)=>{try{const w=new URL(x);if(w.username||w.password){w.username="USER";w.password="";return w.href.replace("USER@","<userinfo>@");}}catch(e){}return x;}; console.log(p+k, k==="token" ? "<" + (/^mzn_[A-Za-z0-9_-]{43}$/.test(v) ? "well-formed" : "MALFORMED") + ">" : JSON.stringify(typeof v==="string" && /_url$/.test(k) ? u(v) : v)); }}; show("",c)' /home/mezzanine/.config/fleet-reporter/config.json
 ```
 
 On the sandbox this printed `700` and `600`, and then every key with the token shown only as
 `<well-formed>`. Since card#12180 the printer also descends into `sites` and masks every site's token
-the same way, printing each site's keys as `sites[<name>].<key>`.
+the same way, printing each site's keys as `sites[<name>].<key>`, and prints a URL that carries a user or a
+password (an `ingest_url` or a `proxy_url` with `user:pass@`) with that part shown only as `<userinfo>`.
 
 **Choose what the descriptor carries: the `descriptors` key.** Each tool call reaches the floor with a
 short label built from its arguments, after the reporter has replaced the credential, host-name, IP,
@@ -1096,14 +1097,16 @@ the pre-hooks `settings.json`, and `20260913T193245Z` for item 2, the crontab. I
    If the token was carried from another host, also run Step 2 (d)'s block on the Mezzanine host with
    `F` set to `mezzanine-reporter-token` in the attempt directory that issued it. It must print `gone`.
 
-**Removing one site without uninstalling** (card#12180): rewrite the config without that site, with the
-mode kept, then restart the flusher with item 3's command and let cron or a hook start it; the next start
+**Removing one site without uninstalling** (card#12180): rewrite the config without that site — the command
+below writes the result to a `0600` temp file beside the config, checks it with the installed reporter's own
+`loadConfig`, and renames it into place only when it has no error, so a failed write leaves the config as it
+was — then restart the flusher with item 3's command and let cron or a hook start it; the next start
 drops that site's `state.json` entry (D1 § 3.1 rule 4), and that site sees the seat go `stale`, then
 `offline`, until its operator retires the desk there. Revoke that site's token by item 4 after the restart.
-`selftest` names a file the edit breaks:
+The acceptance suite re-extracts the command and drives it (AT-28 Case P):
 
 ```bash
-node -e 'const fs=require("fs"),f=process.argv[1],n=process.argv[2]; const c=JSON.parse(fs.readFileSync(f,"utf8")); if (!Array.isArray(c.sites) || !c.sites.some((x)=>x.name===n)) throw new Error("no site named "+n); if (c.sites.length===1) throw new Error("the last site: uninstall instead"); c.sites=c.sites.filter((x)=>x.name!==n); fs.writeFileSync(f, JSON.stringify(c,null,2)+"\n", {mode:0o600}); console.log("sites:", c.sites.map((x)=>x.name).join(", "))' /home/mezzanine/.config/fleet-reporter/config.json <name>
+node -e 'const fs=require("fs"),path=require("path"),[f,n,js]=process.argv.slice(1); const c=JSON.parse(fs.readFileSync(f,"utf8")); if (!Array.isArray(c.sites) || !c.sites.some((x)=>x.name===n)) throw new Error("no site named "+n); if (c.sites.length===1) throw new Error("the last site: uninstall instead"); c.sites=c.sites.filter((x)=>x.name!==n); const t=path.join(path.dirname(f),"."+path.basename(f)+"."+process.pid+".tmp"); try { const d=fs.openSync(t,"wx",0o600); try { fs.writeSync(d, JSON.stringify(c,null,2)+"\n"); } finally { fs.closeSync(d); } const m=require(path.resolve(js)), e=m.allConfigErrors(m.loadConfig(t)); if (e.length) throw new Error(e.join("; ")); } catch (err) { try { fs.unlinkSync(t); } catch (e2) {} console.error(String(err.message||err)+": NOTHING WRITTEN"); process.exit(1); } fs.renameSync(t,f); console.log("sites:", c.sites.map((x)=>x.name).join(", "))' /home/mezzanine/.config/fleet-reporter/config.json <name> /home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js
 ```
 
 ⚠ **As of card#9368, only the non-destructive part of this rollback has been run.** On the first

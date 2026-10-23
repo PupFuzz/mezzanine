@@ -13,7 +13,7 @@ use Illuminate\Http\JsonResponse;
  * because an error code minted at a call site is a code no reporter was told to expect.
  *
  * `batch_id` rides every refusal that has one. § 12.2's worked `unsupported_schema_version`
- * example carries it, and it is what lets a reporter tie the refusal in its `REJECTED.txt` to
+ * example carries it, and it is what lets a reporter tie the refusal in its `REJECTED.<site>.txt` to
  * the batch it quarantined (§ 11.5).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────

@@ -6624,6 +6624,73 @@ redgreen("Case I — the scope of a config error (AT-28, D1 § 3.1)",
          f"{len(k_caps)}/{len(k_user)} errors for the spellings, {len(k_path)} for a path difference")
 
 
+# ── A site name is the operator's text, and no name reaches a map's prototype (card#12180 review F1) ────
+def proto_names(tag: str, reporter: Path = REPORTER) -> dict:
+    sc, sb = site_stub(f"pn-c-{tag}"), site_stub(f"pn-b-{tag}")
+    m = multi_seat(f"at28-pn-{tag}", [site_cfg("constructor", sc.url), site_cfg("sb", sb.url)])
+    ids = set(spool_events(m, 5, AT28_T0, tag="pn"))
+    fl(m, AT28_T0 + 60_000, reporter=reporter)
+    return {"c_got": ids <= sc.store.held(), "b_got": ids <= sb.store.held(),
+            "entry": "constructor" in (m.state().get("sites") or {})}
+
+
+pn_g = proto_names("green")
+eq("a site named `constructor` — a valid slug, and a key every plain object inherits — receives every spooled event "
+   "and has its own state.json entry, beside a site named sb", (True, True, True),
+   (pn_g["c_got"], pn_g["b_got"], pn_g["entry"]))
+_pf = tmpdir("fr-at28-proto-") / "config.json"
+_pf.write_text(json.dumps({"install_id": "aimla", "seat_id": "aimla-pm", "spool_dir": str(_pf.parent), "enabled": True,
+                           "sites": [site_cfg("__proto__", "https://p.example.test/api/ingest/events"),
+                                     site_cfg("toString", "https://t.example.test/api/ingest/events"),
+                                     site_cfg("sb", "https://b.example.test/api/ingest/events")]}), encoding="utf-8")
+_pe = config_errors(_pf)
+eq("  … `__proto__` and `toString` fail the name rule, each refused by its index, and the valid site beside them is "
+   "untouched", (True, True, False),
+   (any(e.startswith("sites[0].name fails") for e in _pe["errors"]), any(e.startswith("sites[1].name fails") for e in _pe["errors"]),
+    any(e.startswith("sites[sb].") for e in _pe["errors"])))
+pn_r = proto_names("red", reporter=plant(
+    ("  const kept = nameMap();\n  for (const site of sites) {\n    if (site.name === null || hasOwn(kept, site.name)) continue;",
+     "  const kept = {};\n  for (const site of sites) {\n    if (site.name === null || kept[site.name]) continue;")))
+eq("RED: the build reviewed (a plain `{}` keyed by site name) -> the site named `constructor` never sends", False, pn_r["c_got"])
+redgreen("a site name never reaches a map's prototype (card#12180 review F1)",
+         f"plain-object maps -> `constructor` received everything: {pn_r['c_got']}",
+         f"prototype-free maps -> `constructor` received everything: {pn_g['c_got']}, its entry kept: {pn_g['entry']}")
+
+
+# ── A URL that does not parse is that site's config error, and its entry survives the typo (review F8) ───
+def url_typo(tag: str, reporter: Path = REPORTER) -> dict:
+    sa, sb = site_stub(f"ut-a-{tag}"), site_stub(f"ut-b-{tag}")
+    m = multi_seat(f"at28-ut-{tag}", [site_cfg("sa", sa.url), site_cfg("sb", sb.url, token=seat_token(f"ut-{tag}"))])
+    spool_events(m, 6, AT28_T0, tag="ut")
+    fl(m, AT28_T0 + 60_000, reporter=reporter)
+    before = m.entry("sb")
+    good = m.cfg["sites"][1]["ingest_url"]
+    m.cfg["sites"][1]["ingest_url"] = good.replace("https://127.0.0.1", "https://bad host")
+    m.write_cfg()
+    n0 = len(sb.posts)
+    fl(m, AT28_T0 + 120_000, reporter=reporter)
+    mid = json.loads(json.dumps(m.entry("sb")))
+    # The one change § 3.1 makes to it: the site-scoped error counted on the site it names.
+    raised = mid.get("counters", {}).pop("config_invalid", 0)
+    during = (len(sb.posts) - n0, mid == before, raised)
+    m.cfg["sites"][1]["ingest_url"] = good
+    m.write_cfg()
+    fl(m, AT28_T0 + 180_000, reporter=reporter)
+    resent = [e for b in sb.posts[n0:] for e in b["events"] if e["kind"] != "reporter.heartbeat"]
+    return {"during": during, "resent": len(resent), "epoch_same": m.entry("sb").get("seq_epoch") == before.get("seq_epoch")}
+
+
+ut_g = url_typo("green")
+eq("an ingest_url typo that does not parse: the site sends nothing, and its state entry is kept unchanged but for the "
+   "one `config_invalid` § 3.1 counts on it; the typo fixed, it re-sends nothing and keeps its epoch — a config error "
+   "scoped to the site, never a repoint", ((0, True, 1), 0, True), (ut_g["during"], ut_g["resent"], ut_g["epoch_same"]))
+ut_r = url_typo("red", reporter=plant(("  if (urlBinding(site) === null) return { entry: e, reset: false };\n", "")))
+eq("RED: the build reviewed (the unparseable URL read as a repoint) -> the fixed typo re-sends the whole spool under a "
+   "new epoch", (True, False), (ut_r["resent"] >= 6, ut_r["epoch_same"]))
+redgreen("an unparseable ingest_url keeps its site's entry (card#12180 review F8)",
+         f"read as a repoint -> {ut_r['resent']} events re-sent after the fix, epoch kept {ut_r['epoch_same']}",
+         f"site-scoped error -> nothing sent during {ut_g['during']}, {ut_g['resent']} re-sent after the fix, epoch kept {ut_g['epoch_same']}")
+
 # ── Case O — one site's poison stream evicts nothing of another's ─────────────────────────────────────
 def case_o(tag: str, reporter: Path = REPORTER) -> dict:
     sa, sb = site_stub(f"o-a-{tag}"), site_stub(f"o-b-{tag}")
@@ -7627,6 +7694,47 @@ redgreen("Case P — the writer adds a site and rotates a token without printing
          f"under the same limit -> rc {r_lim.returncode}, original byte-identical")
 
 
+# Step 8's REMOVE-ONE-SITE command, re-extracted from INSTALL-LINUX.md: temp file, loadConfig, rename (review F6).
+REMOVE_JS = re.search(r"^node -e '(const fs=require\(\"fs\"\),path=require\(\"path\"\),\[f,n,js\].*?)' ", INSTALL_DOC, re.M).group(1)
+
+
+def run_remove(cfg: Path, name: str, js_src: str = REMOVE_JS, preexec=None) -> subprocess.CompletedProcess:
+    return subprocess.run(["node", "-e", js_src, str(cfg), name, str(REPORTER)], capture_output=True, text=True,
+                          cwd=str(HERE), preexec_fn=preexec)
+
+
+rd = tmpdir("fr-at28-rm-")
+os.chmod(rd, 0o700)
+rf = p_single(rd)
+run_writer({"FR_CONFIG": rf, "FR_REPORTER": REPORTER, "FR_MODE": "add-site", "FR_SITE_NAME": "sandbox",
+            "FR_URL": "https://sandbox.example.test/api/ingest/events"}, stdin=ISSUE_OUT(P_TOK2))
+two = rf.read_bytes()
+r_lim_rm = run_remove(rf, "sandbox", preexec=limited(len(two) // 3))
+eq("Case P, remove-site (Step 8): under a file-size limit below the result's length it fails at the temp file, exits 1, "
+   "and the config is byte-identical with no temp file left (the control, run first)", (1, True, True),
+   (r_lim_rm.returncode, rf.read_bytes() == two, no_tmp(rd)))
+r_unk = run_remove(rf, "nope")
+eq("  … a name the file does not carry is refused, the file unchanged", (True, True), (r_unk.returncode != 0, rf.read_bytes() == two))
+r_rm = run_remove(rf, "sandbox")
+after_rm = json.loads(rf.read_text(encoding="utf-8"))
+eq("  … it removes the site: the other sites unchanged, mode 0600, loadConfig clean, no temp file", (0, ["default"], "600", [], True),
+   (r_rm.returncode, [x["name"] for x in after_rm["sites"]], oct(rf.stat().st_mode & 0o777)[2:], config_errors(rf)["errors"], no_tmp(rd)))
+one = rf.read_bytes()
+r_last = run_remove(rf, "default")
+eq("  … and refuses the last site, the file unchanged", True, r_last.returncode != 0 and rf.read_bytes() == one)
+OLD_REMOVE_JS = ('const fs=require("fs"),f=process.argv[1],n=process.argv[2]; const c=JSON.parse(fs.readFileSync(f,"utf8")); '
+                 'if (!Array.isArray(c.sites) || !c.sites.some((x)=>x.name===n)) throw new Error("no site named "+n); '
+                 'if (c.sites.length===1) throw new Error("the last site: uninstall instead"); c.sites=c.sites.filter((x)=>x.name!==n); '
+                 'fs.writeFileSync(f, JSON.stringify(c,null,2)+"\\n", {mode:0o600}); console.log("sites:", c.sites.map((x)=>x.name).join(", "))')
+rf.write_bytes(two)
+r_old = run_remove(rf, "sandbox", js_src=OLD_REMOVE_JS, preexec=limited(len(two) // 3))
+eq("RED: the reviewed one-liner, which rewrites the config in place, leaves it truncated under the same limit and "
+   "loadConfig refuses it", (True, True),
+   (rf.read_bytes() != two and len(rf.read_bytes()) <= len(two) // 3, any("not valid JSON" in x for x in config_errors(rf)["errors"])))
+redgreen("Step 8's remove-site command is atomic (card#12180 review F6)",
+         f"in-place rewrite under RLIMIT_FSIZE -> config truncated to {len(rf.read_bytes())} of {len(two)} B",
+         f"temp-and-rename -> rc {r_lim_rm.returncode}, original byte-identical; removal rc {r_rm.returncode}")
+
 # ── Case L — a second site's credentials are secrets too, and state.json is no second home for a URL ──
 PLANTS_L = ("PLANTED-PW", "PLANTED-U", "PLANTED-P")
 
@@ -7994,8 +8102,11 @@ def clone_seat(s: Seat, tag: str, url: str) -> Seat:
 
 
 if _old_src.returncode != 0:
-    skip(f"Case F needs the previous build from git history ({PREVIOUS_BUILD[:8]}), which this checkout lacks — "
-         "NOT measured, and that is not a pass")
+    # On CI the workflow fetches the full history for exactly this case, so a missing commit there is a broken
+    # checkout and FAILS the run; elsewhere it is a measurement this checkout cannot make, reported as one.
+    (bad if os.environ.get("CI") else skip)(
+        f"Case F needs the previous build from git history ({PREVIOUS_BUILD[:8]}), which this checkout lacks — "
+        "NOT measured, and that is not a pass")
 else:
     OLD = old_reporter()
     # F1 — the kept half by equality, the changed half by name.
@@ -8233,9 +8344,9 @@ else:
     ff_g = f_first_site("green", REPORTER)
     eq("  … under [prod, sandbox] with the legacy cursor the sandbox's, prod (a name the state does not hold) gets the "
        "whole spool", set(), ff_g["missing"])
-    p_first = plant(("  const prior = isPlain(state.sites) ? state.sites : {};",
+    p_first = plant(("  const prior = isPlain(state.sites) ? state.sites : nameMap();",
                      "  if (isPlain(state.sites) && state.sites.default && state.sites.default.legacy && sites[0] && sites[0].name) "
-                     "state.sites[sites[0].name] = state.sites.default;\n  const prior = isPlain(state.sites) ? state.sites : {};"))
+                     "state.sites[sites[0].name] = state.sites.default;\n  const prior = isPlain(state.sites) ? state.sites : nameMap();"))
     ff_r = f_first_site("red", p_first)
     eq("RED: a reporter that adopts the legacy state for the config's first site whatever its name -> prod is missing "
        "every id behind that cursor, and nothing counts it (the missing ids, asserted)", (True, 0),

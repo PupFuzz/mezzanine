@@ -733,7 +733,12 @@ function atomicWrite(file, text, opts) {
     ensureDir(path.dirname(file));
     if (sync) {
       const fd = fs.openSync(tmp, 'wx', 0o600);
-      try { fs.writeSync(fd, text, null, 'utf8'); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+      try {
+        // `writeSync` may write fewer bytes than it was given; the loop writes the rest before the sync.
+        const buf = Buffer.from(text, 'utf8');
+        for (let off = 0; off < buf.length;) off += fs.writeSync(fd, buf, off, buf.length - off);
+        fs.fsyncSync(fd);
+      } finally { fs.closeSync(fd); }
     } else {
       fs.writeFileSync(tmp, text, { encoding: 'utf8', mode: 0o600 });
     }
@@ -2530,7 +2535,7 @@ function enforceSpoolBoundFromHook(spool, atMs, config, sites) {
    * hides a loss. */
   const state = loadState(spool, atMs).state;
   const b = oldest.slice(0, 10);
-  const cursorsBySite = {};
+  const cursorsBySite = nameMap();
   for (const site of sites) {
     if (site.name === null) continue;
     const found = siteEntry(state, site, config);
@@ -2770,7 +2775,7 @@ function newState(spool, atMs) {
      * `siteEntry`. The seat-level members above stay at the top level. There is deliberately no top-level
      * `seq_epoch`/`next_seq`: a build before card#12180 reads this file as the wrong shape and takes
      * § 11.4's reset (a fresh epoch, a re-send), which is what makes a downgrade safe. */
-    sites: {},
+    sites: nameMap(),
   };
 }
 
@@ -2796,6 +2801,11 @@ function newEntry(site, cfg, atMs) {
 }
 
 const isPlain = (o) => !!o && typeof o === 'object' && !Array.isArray(o);
+/* A map keyed by a SITE NAME has no prototype: a name is the operator's text, and `constructor` is a valid one
+ * (§ 3.1's slug pattern admits it) that a plain `{}` already "holds" through Object.prototype. Every site-name map
+ * is built here or copied through here, and read by own-property only (`hasOwn`). */
+const nameMap = (from) => Object.assign(Object.create(null), from || {});
+const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
 /* § 3.1 rule 3 — A `state.json` WRITTEN BEFORE CARD#12180 is read as the entry of the site named
  * `default`, under either config form. ONLY THE CURSORS AND THE PER-SITE COUNTERS ARE CARRIED: the old
@@ -2821,14 +2831,15 @@ function adoptLegacyState(s, atMs) {
   Object.defineProperty(entry, 'legacy', { value: true, enumerable: false });
   delete s.seq_epoch; delete s.next_seq; delete s.cursors;
   s.counters = counters; s.counter_rises = rises;
-  s.sites = { default: entry };
+  s.sites = nameMap();
+  s.sites.default = entry;
 }
 
 function loadState(spool, atMs) {
   try {
     const s = JSON.parse(fs.readFileSync(statePath(spool), 'utf8'));
     if (!isPlain(s)) throw new Error('shape');
-    if (s.sites !== undefined) { if (!isPlain(s.sites)) throw new Error('shape'); }
+    if (s.sites !== undefined) { if (!isPlain(s.sites)) throw new Error('shape'); s.sites = nameMap(s.sites); }
     else if (typeof s.seq_epoch === 'string' && s.seq_epoch && typeof s.next_seq === 'number') adoptLegacyState(s, atMs);
     else throw new Error('shape');
     s.counters = isPlain(s.counters) ? s.counters : {}; s.predicates = isPlain(s.predicates) ? s.predicates : {};
@@ -2906,6 +2917,11 @@ function siteEntry(state, site, cfg) {
   if (!state || !isPlain(state.sites) || site.name === null || !Object.prototype.hasOwnProperty.call(state.sites, site.name)) return null;
   const e = state.sites[site.name];
   if (!usableEntry(e)) return null;
+  // A configured URL that does not parse is that site's config error (§ 3.1: the site sends nothing), not a
+  // repoint: there is no site key to compare, so the entry stays the site's — its cursors still the best
+  // statement of what that server holds — until a URL that parses decides. Replacing it would re-send the
+  // whole spool the moment the typo is fixed.
+  if (urlBinding(site) === null) return { entry: e, reset: false };
   if (e.ingest_url_sha256 === undefined ? !e.legacy : e.ingest_url_sha256 !== urlBinding(site)) return null;
   return { entry: e, reset: e.identity_sha256 !== undefined && e.identity_sha256 !== identityBinding(cfg) };
 }
@@ -2926,14 +2942,20 @@ function resetSiteEpoch(entry, atMs) {
  * refuses is replaced by a new one (rule 1, rule 2); a legacy entry records its bindings at this first
  * save — and an entry for a name the config no longer carries is dropped, logged by name (rule 4). */
 function reconcileSites(state, cfg, sites, atMs, log) {
-  const prior = isPlain(state.sites) ? state.sites : {};
-  const kept = {};
+  const prior = isPlain(state.sites) ? state.sites : nameMap();
+  const kept = nameMap();
   for (const site of sites) {
-    if (site.name === null || kept[site.name]) continue;
+    if (site.name === null || hasOwn(kept, site.name)) continue;
     const found = siteEntry(state, site, cfg);
     let entry;
+    if (found && urlBinding(site) === null) {
+      // Kept exactly as it was: no binding is rewritten from a URL that names no server (above).
+      log(`site ${site.name}: its ingest_url does not parse — its state entry is kept unchanged, and the site sends nothing until the config is fixed (§ 3.1)`);
+      kept[site.name] = found.entry;
+      continue;
+    }
     if (!found) {
-      if (Object.prototype.hasOwnProperty.call(prior, site.name)) log(`site ${site.name}: its state entry is unusable or bound to another server — new seq_epoch, sending from the oldest bucket (§ 3.1)`);
+      if (hasOwn(prior, site.name)) log(`site ${site.name}: its state entry is unusable or bound to another server — new seq_epoch, sending from the oldest bucket (§ 3.1)`);
       entry = newEntry(site, cfg, atMs);
     } else {
       entry = found.entry;
@@ -2948,7 +2970,7 @@ function reconcileSites(state, cfg, sites, atMs, log) {
     kept[site.name] = entry;
   }
   for (const name of Object.keys(prior)) {
-    if (kept[name]) continue;
+    if (hasOwn(kept, name)) continue;
     if (prior[name] && prior[name].legacy) log('the state.json of a build before card#12180 is read as site `default`, and no site is named `default`: its cursor is not carried, and every site sends from the oldest bucket (§ 3.1 rule 3)');
     else log(`site ${name}: no longer configured — its state entry is dropped (§ 3.1 rule 4)`);
   }
@@ -3164,7 +3186,7 @@ function enforceSpoolBounds(spool, state, atMs, sites, cfg) {
    * (§ 11.3); no site's persisted request is read or touched, because it carries its own bytes. */
   const drop = (f) => {
     const b = f.slice(0, 10);
-    const cursorsBySite = {};
+    const cursorsBySite = nameMap();
     for (const site of sites) {
       if (site.name === null) continue;
       const found = siteEntry(state, site, cfg);
@@ -4605,7 +4627,7 @@ async function selftestMain() {
    * deadlines, card#9473), once, and only for a site whose config passed: an invalid one names no ingest
    * this command may trust with the token (card#9373). `checks` keeps its shape and aggregates the four by
    * one rule — `fail` when any site fails, else `not_measured` when any is unmeasured, else `pass`. */
-  const sites = {}, siteDetail = {};
+  const sites = nameMap(), siteDetail = nameMap();
   for (const site of loaded.sites) {
     const key = site.name !== null ? site.name : String(site.index);
     const readable = !!config && loaded.errors.length === 0 && site.errors.length === 0;

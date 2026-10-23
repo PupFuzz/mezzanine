@@ -30,6 +30,11 @@ on:
       # the likeliest way it breaks again is an edit to THIS file, not to the reporter. Without
       # this path the drift check only runs on the side that did not drift.
       - 'docs/design/EVENT-SCHEMA.md'
+      # AT-28's site stubs read the server's own rules: KindRegistry's kinds and RateLimiter's limits (read from
+      # the files), and the store, replay memory and fold StateRecompute implements (mirrored by the stub). A
+      # change to either side must run the suite that holds them together.
+      - 'server/app/Ingest/**'
+      - 'server/app/Fold/StateRecompute.php'
   push:
     branches: [dev, main]
     paths:
@@ -41,6 +46,11 @@ on:
       # the likeliest way it breaks again is an edit to THIS file, not to the reporter. Without
       # this path the drift check only runs on the side that did not drift.
       - 'docs/design/EVENT-SCHEMA.md'
+      # AT-28's site stubs read the server's own rules: KindRegistry's kinds and RateLimiter's limits (read from
+      # the files), and the store, replay memory and fold StateRecompute implements (mirrored by the stub). A
+      # change to either side must run the suite that holds them together.
+      - 'server/app/Ingest/**'
+      - 'server/app/Fold/StateRecompute.php'
 
 permissions:
   contents: read
@@ -48,6 +58,9 @@ permissions:
 jobs:
   acceptance:
     runs-on: ubuntu-latest
+    # The suite runs twice below (about 25 minutes each on a loaded host, measured for card#12180), so the bound
+    # is generous; a run past it is hung, not slow.
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -97,6 +110,7 @@ jobs:
       # gate — it just cannot share a run with anything else, because the measurement is
       # load-sensitive enough that a concurrent step turns it into a coin flip. Running it as a
       # separate step on an otherwise-idle job is what makes its verdict mean something. It
-      # re-runs the whole suite, which is cheap relative to being unable to trust the number.
+      # re-runs the WHOLE suite — the suite has no way to run the latency legs alone — which doubles the job's
+      # time (about 25 minutes a run since card#12180's AT-28); that is the price of a number that can be trusted.
       - name: Latency gate (P-5, asserted — runs alone so the measurement is about the code)
         run: FLEET_REPORTER_PERF=1 python3 fleet-reporter/fleet-reporter.selftest.py

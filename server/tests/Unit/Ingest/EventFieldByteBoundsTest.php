@@ -78,7 +78,7 @@ class EventFieldByteBoundsTest extends TestCase
         ], $result->context);
 
         // The human-readable half is asserted too, because `message` is what a reporter's
-        // operator reads out of `REJECTED.txt` (§ 11.5) — the context keys are what its code
+        // operator reads out of `REJECTED.<site>.txt` (§ 11.5) — the context keys are what its code
         // branches on, and neither substitutes for the other.
         $this->assertStringContainsString("data.{$field}", $result->message);
         $this->assertStringContainsString("{$kind}.{$field} is bounded at {$maxBytes} bytes", $result->message);
