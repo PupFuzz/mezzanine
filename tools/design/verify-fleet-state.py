@@ -1380,8 +1380,8 @@ else:
         if not d1_gauges:
             fail.append("G8 CONTROL: no gauge found in D1 section 12.7, so the counter count below "
                         "is being taken over a population that still includes one")
-        for pat, where in [(r"defines \*\*(\w+)\*\* counters the ingest", "section 7.1"),
-                           (r"\| The (\w+) server-side counters", "Appendix A row S16")]:
+        for pat, where in [(r"defines \*\*([\w-]+)\*\* counters the ingest", "section 7.1"),
+                           (r"\| The ([\w-]+) server-side counters", "Appendix A row S16")]:
             m = re.search(pat, raw)
             if not m:
                 fail.append(f"G8: {where} no longer states how many counters D1 section 12.7 "
