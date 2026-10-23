@@ -164,16 +164,28 @@ artifact, which then runs until it is stopped again. Installing first leaves onl
 the two commands, in which a hook already runs the new artifact beside the old flusher; a per-site count
 a hook takes in those seconds is folded past by the old flusher and lost, uncounted, and nothing else
 is. The last command prints `FAIL: … before the artifact was installed` when the flusher holding the lock
-started before the new artifact did (one the stop missed, or one a hook started before the install), and
-the times it compares are whole seconds, so a holder started within a second of the install can read as
-older; stop it again in either case. The first start of the new build adopts the old `state.json`: it
-keeps the delivery cursor and mints a new `seq_epoch`, which the server shows once as `epoch_reset`.
-⚠ **Not yet performed on the sandbox seat.** The start-time check was driven on a scratch copy with a
-stand-in flusher: started before a `touch` of the artifact it printed `FAIL: the lock holder started
-2026-10-22T20:43:36.900Z, before the artifact was installed at 2026-10-22T20:43:38.850Z: it runs the
-previous build`, and started after it, `the lock holder started 2026-10-22T20:43:40.200Z, after the
-artifact's 2026-10-22T20:43:38.850Z` (and then its cron check's `FAIL`, there being no cron). Card#12180's
-install step performs the upgrade on the seat and records its output here.
+started before the new artifact did (one the stop missed, or one a hook started before the install); stop
+it again. The start time it reads from `/proc` can come out a second or two early, because `/proc/stat`'s
+`btime` is whole seconds and the wall clock drifts from the boot clock: on the sandbox it read 0.9 s and
+2.1 s before the flusher's own `started_at` in `flusher.lock`. So a holder started within two seconds of
+the install can also read as older, and stopping it again is right in that case too. The first start of
+the new build adopts the old `state.json`: it keeps the delivery cursor and mints a new `seq_epoch`, which
+the server shows once as `epoch_reset`.
+
+**What the upgrade showed on the sandbox seat**, on 2026-10-23, from the build of card#11817 (`4d7f317e`)
+to card#12180's first build (`e62ccfc4`), in attempt directory `20261023T015956Z-upgrade-12180`. The
+`install` lines ran at 02:00:54 UTC. Run before the stop, `flusher-ancestry.js` printed the running
+flusher, started by cron the previous day, and `FAIL: the lock holder started 2026-10-22T02:29:59.050Z,
+before the artifact was installed at 2026-10-23T02:00:54.912Z: it runs the previous build`. The stop
+printed `flusher pid 901 exited 5 s after SIGTERM`. Cron's 02:01 start took the lock, and
+`flusher-ancestry.js` printed `node` ← `flock -n …` ← `/bin/sh -c COORD_CONFIG=… flock -n …` ← `CRON`,
+then `the lock holder started 2026-10-23T02:01:00.250Z, after the artifact's 2026-10-23T02:00:54.912Z` and
+`PASS: the lock holder was started by cron through flock`. The new flusher's log opened with `site default:
+adopted the state.json of a build before card#12180 — cursors carried, new seq_epoch (§ 3.1 rule 3)`. In
+the server's store, the old epoch's last event was seq 203284, received at 02:00:50; the new epoch's
+first heartbeat was seq 1 at 02:01:01, and its heartbeats then arrived 60 s apart with contiguous seqs.
+The snapshot's `badges` for the seat read `["epoch_reset"]`, and nothing else: the old build's last batch
+had been answered, so no `seq_gap` followed. Step 6 and Step 7 below record the checks that followed.
 
 ## Step 2 — issue the seat token into the config, on this host or through a carried file
 
@@ -289,13 +301,13 @@ function changeSites(token) {
   const tmp = path.join(path.dirname(e.FR_CONFIG), "." + path.basename(e.FR_CONFIG) + "." + process.pid + ".tmp");
   try {
     const fd = fs.openSync(tmp, "wx", 0o600);
-    try { fs.writeSync(fd, JSON.stringify(c, null, 2) + "\n"); } finally { fs.closeSync(fd); }
+    try { fs.writeSync(fd, JSON.stringify(c, null, 2) + "\n"); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
   } catch (err) { try { fs.unlinkSync(tmp); } catch (e2) {} die("could not write " + tmp + " (" + err.code + ")"); }
   let errors;
   try { const m = require(path.resolve(e.FR_REPORTER)); const l = m.loadConfig(tmp); errors = m.allConfigErrors(l); }
   catch (err) { errors = ["cannot load the reporter at " + e.FR_REPORTER + " (" + (err.code || err.message) + ")"]; }
   if (errors.length) { fs.unlinkSync(tmp); for (const x of errors) console.error("config error: " + x); die("the result does not validate"); }
-  fs.renameSync(tmp, e.FR_CONFIG);
+  try { fs.renameSync(tmp, e.FR_CONFIG); } catch (err) { try { fs.unlinkSync(tmp); } catch (e2) {} die("could not rename " + tmp + " over " + e.FR_CONFIG + " (" + err.code + ")"); }
   console.log("wrote " + e.FR_CONFIG + " (mode " + mode(fs.statSync(e.FR_CONFIG)) + "), sites: " + c.sites.map((x) => x.name).join(", "));
   if (MODE === "set-token") console.log("token replaced: " + e.FR_SITE_NAME);
 }
@@ -354,9 +366,10 @@ working unchanged. The writer has two modes, which are the only ways it touches 
 `FR_MODE=add-site` ([Adding a site](#adding-a-site)) and `FR_MODE=set-token`
 ([Rotating a site's token](#rotating-a-sites-token)). Each reads the config, lifts a file written before
 card#12180 into the `sites` form under `FR_LIFT_NAME` (default `default`), changes one site, writes the
-result to a `0600` temp file beside the config, checks it with the installed reporter's own `loadConfig`
-(`FR_REPORTER` names that file), and renames it into place only when it has no error; on any error it
-removes the temp file, prints each error and leaves the config as it was. Each refuses `FR_INSTALL`,
+result to a `0600` temp file beside the config and flushes it to disk, checks it with the installed
+reporter's own `loadConfig` (`FR_REPORTER` names that file), and renames it into place only when it has no
+error; on any error, a failed rename included, it removes the temp file, prints each error and leaves the
+config as it was. Each refuses `FR_INSTALL`,
 `FR_SEAT`, `FR_SPOOL`, `FR_AGENT`, `FR_WRAPPED` and `FR_DESCRIPTORS`, because a mode changes `sites` and
 nothing else, and prints the site names and nothing of any value. The acceptance suite re-extracts this
 block and drives it (AT-28 Case P): the fresh form, a lift, every refusal, both token routes, and a
@@ -440,6 +453,32 @@ The new site receives the spool's whole history, up to 8 days of it, paced under
 backoff, and a site that is slow, down or refusing delays no other. To take a site off a seat without
 uninstalling, see Step 8.
 
+**What adding a site showed on the sandbox seat**, on 2026-10-23, right after the upgrade in Step 1. The
+second site was a stub ingest, not a second Mezzanine deployment: a TLS server on `127.0.0.1:18443` with a
+self-signed certificate, named as the site's `ca_file`, which answers the health probe with the accepted
+set, answers every batch `202`, resolves a bearer token by its SHA-256, and logs each request's envelope
+and seq range and never the token. Step 1 of the list above was the stub's: the token was minted into the
+named carried file, mode `0600`, and its hash given to the stub. Two refusals ran first against the live
+config: `FR_SITE_NAME=default` printed `config error: sites[default].name is shared by sites[0] and
+sites[1] — a name keys one site (§ 3.1)` and the live site's URL printed `config error:
+sites[default].ingest_url names the same server as sites[1] — one server is one site (§ 3.1)`, each with
+`the result does not validate: NOTHING WRITTEN`, rc 1 and the config's md5 unchanged. Then the add printed
+`read the token from …/mezzanine-reporter-token (mode 600)` and `wrote …/config.json (mode 600), sites:
+default, stub`. Step 3 printed `700` and `600`, the seat's keys, and `sites[default].…` and `sites[stub].…`
+with both tokens `<well-formed>`. Step 6 exited `rc=0`, `sites.default` and `sites.stub` each `pass` on all
+four checks. After the restart, which a hook won (so `flusher-ancestry.js` printed its `FAIL` for a holder
+cron did not start, as Step 5 describes), the stub received its first batch at 02:03:48 and was current at
+02:06:05: 15,162 events in about 2 min 20 s, under one `seq_epoch` with no break in its seqs, from the
+oldest bucket that held anything but heartbeats. The spool's older buckets, 2026-10-15 to 2026-10-18,
+held only heartbeats the previous build had spooled for `default`, and the new site skipped them, as
+D1 § 3.1 rule 1 states. That backlog fitted inside one hour's event limit, so no pacing showed; a spool at
+its byte bound is what the 3.4 hours above is for. ⚠ The stub was restarted once during that drain to add
+seq logging; the flusher's next request continued at the next seq. **The first site saw nothing of it:**
+over the same minutes `default`'s heartbeats arrived 60 s apart, its seqs stayed contiguous under the
+epoch Step 1 started, and its `seq_epoch`, token and URL were unchanged by every write in this section.
+⚠ A stub renders no floor, so what the new site's floor shows during the drain, *catching up*, was not
+observed here. Step (d) then printed `token file gone`.
+
 #### Rotating a site's token
 
 Rotate in D1 § 3.3's order, with the refusable step first: **issue** the new token on the site; **write**
@@ -454,6 +493,17 @@ meaning the token does not resolve there (mistyped, swapped with another site's,
 identity_mismatch` meaning it was issued for another pair, whose `expected_install_id` and
 `expected_seat_id` the line carries. The stopped site sends nothing until the flusher restarts on a
 corrected token; it keeps every event, and resends the request it was refused first.
+
+**What rotation showed on the sandbox seat**, on 2026-10-23, against the stub site the section above added.
+The new token was issued (minted into the carried file, its hash given to the stub beside the old one). Two
+refusals ran first: with `FR_URL` set it printed `FR_URL is set, and FR_MODE=set-token changes one token and
+nothing else: NOTHING WRITTEN`, and with `FR_SITE_NAME=nosuch` it printed `FR_SITE_NAME nosuch is not a site in
+…/config.json, whose sites are: default, stub: NOTHING WRITTEN`, each rc 1 with the config's md5 unchanged.
+The write printed `wrote …/config.json (mode 600), sites: default, stub` and `token replaced: stub`, and the
+`default` site's token and URL compared equal, by hash, to the config backed up before the upgrade.
+`stop-flusher.js` printed `flusher pid 959448 exited 1 s after SIGTERM`, a hook started the next flusher, and
+only then was the old token's hash removed from the stub. Every request the stub received after that
+resolved, so the running flusher presents the new token, and step (d) printed `token file gone`.
 
 #### When the server is on another host, carry the token in one named file
 
@@ -1003,9 +1053,18 @@ D1 § 6.14:
 the home path instead. `detail.protocol_agent_name_in_roster.read_via` says which it read. To check
 the roster the flusher reads, run the command with the value Step 5 resolved in the environment.
 
-⚠ **This corrected command has not yet been run on the sandbox seat.** It is exercised against the
-acceptance suite's TLS ingest stub (`fleet-reporter.selftest.py` § 1). The card#9368 run on the sandbox
-used the build before card#9373. There five checks passed: `config_readable`, `tls_verify`,
+**On the sandbox seat, 2026-10-23**, run with `COORD_CONFIG` set to Step 5's value, around Step 1's upgrade.
+The build of card#11817 (`4d7f317e`) exited `rc=0` with seven checks `pass`: `config_readable`,
+`tls_verify`, `schema_version_accepted`, `sanitizer_fixtures`, `predicate_discrimination`,
+`harness_payload_keys` and `protocol_agent_name_in_roster`, and no `sites` member. Card#12180's build, on
+the same config, exited `rc=0` with the same seven `pass` and `token_accepted` `pass` beside them, and
+`sites.default` holding `config_readable`, `tls_verify`, `schema_version_accepted` and `token_accepted`, each
+`pass`; `detail.sites.default` read `reached: true`, `probe_error: null`, `http_status: 200`,
+`accepted_schema_versions: [1]`. With the stub site added ([Adding a site](#adding-a-site)) it exited `rc=0`
+with `sites.stub` the same. No output carried a token.
+
+Before card#9373 the one-shot was exercised against the acceptance suite's TLS ingest stub only
+(`fleet-reporter.selftest.py` § 1). The card#9368 run on the sandbox used the build before card#9373. There five checks passed: `config_readable`, `tls_verify`,
 `sanitizer_fixtures`, `predicate_discrimination` and `harness_payload_keys`, the last for every hook in
 the fixture set. `schema_version_accepted` was `fail` and the command exited `rc=1`, because that build's
 one-shot never probed the ingest and so failed the check on every seat. Its `tls_verify` pass checked
@@ -1022,8 +1081,11 @@ events from this seat, and the seat's `REJECTED.<name>.txt` holds a `403 identit
 lines prefixed `flusher[<name>]`:
 
 ```bash
-ls -la /home/mezzanine/.local/state/fleet-reporter/ && tail -5 /home/mezzanine/.local/state/fleet-reporter/log/*.log
+ls -la /home/mezzanine/.local/state/fleet-reporter/ && tail -n 5 /home/mezzanine/.local/state/fleet-reporter/log/*.log
 ```
+
+The count is written `-n 5`: this host's `tail` is uutils coreutils 0.10.0, which refuses the older `-5`
+spelling once the glob names more than one log file (`error: unexpected argument '-5' found`).
 
 **In the server's store** (read-only):
 
@@ -1049,6 +1111,12 @@ counters had `events_sent` equal to `events_emitted`, with `batches_rejected` at
 card#12180 the heartbeat is no spool line, so `events_sent` exceeds `events_emitted` by the heartbeats sent). No `session.start`
 has appeared yet, because the session running then had started before the hooks were wired. That
 reading is from the seat. The store query above was not re-run for the hook events.
+
+**Per site, on 2026-10-23**, after Step 1's upgrade. For `default`, the store query above printed every
+kind with its latest arrival, and the three newest heartbeats, seq 149, 157 and 168, 60 s apart, each with
+`degraded=[]` and every `selftest` member `pass`, `token_accepted` among them; the seat's log names no
+refusal and the spool holds no `REJECTED.*.txt`. The stub site of [Adding a site](#adding-a-site) has no
+store, so its request log stood in for this query, as that section reports.
 
 **The snapshot.** The REST route `GET /api/fleet/snapshot` serves `App\Read\Snapshot::build`
 (`FleetController::snapshot`). It accepts a `mzr_` fleet_read token or an MFA session (FLEET-STATE
@@ -1098,16 +1166,26 @@ the pre-hooks `settings.json`, and `20260913T193245Z` for item 2, the crontab. I
    `F` set to `mezzanine-reporter-token` in the attempt directory that issued it. It must print `gone`.
 
 **Removing one site without uninstalling** (card#12180): rewrite the config without that site — the command
-below writes the result to a `0600` temp file beside the config, checks it with the installed reporter's own
-`loadConfig`, and renames it into place only when it has no error, so a failed write leaves the config as it
-was — then restart the flusher with item 3's command and let cron or a hook start it; the next start
+below writes the result to a `0600` temp file beside the config and flushes it to disk, checks it with the
+installed reporter's own `loadConfig`, and renames it into place only when it has no error, so a failed write
+or rename leaves the config as it was and removes the temp file — then restart the flusher with item 3's command and let cron or a hook start it; the next start
 drops that site's `state.json` entry (D1 § 3.1 rule 4), and that site sees the seat go `stale`, then
 `offline`, until its operator retires the desk there. Revoke that site's token by item 4 after the restart.
 The acceptance suite re-extracts the command and drives it (AT-28 Case P):
 
 ```bash
-node -e 'const fs=require("fs"),path=require("path"),[f,n,js]=process.argv.slice(1); const c=JSON.parse(fs.readFileSync(f,"utf8")); if (!Array.isArray(c.sites) || !c.sites.some((x)=>x.name===n)) throw new Error("no site named "+n); if (c.sites.length===1) throw new Error("the last site: uninstall instead"); c.sites=c.sites.filter((x)=>x.name!==n); const t=path.join(path.dirname(f),"."+path.basename(f)+"."+process.pid+".tmp"); try { const d=fs.openSync(t,"wx",0o600); try { fs.writeSync(d, JSON.stringify(c,null,2)+"\n"); } finally { fs.closeSync(d); } const m=require(path.resolve(js)), e=m.allConfigErrors(m.loadConfig(t)); if (e.length) throw new Error(e.join("; ")); } catch (err) { try { fs.unlinkSync(t); } catch (e2) {} console.error(String(err.message||err)+": NOTHING WRITTEN"); process.exit(1); } fs.renameSync(t,f); console.log("sites:", c.sites.map((x)=>x.name).join(", "))' /home/mezzanine/.config/fleet-reporter/config.json <name> /home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js
+node -e 'const fs=require("fs"),path=require("path"),[f,n,js]=process.argv.slice(1); const t=path.join(path.dirname(f),"."+path.basename(f)+"."+process.pid+".tmp"); let c; try { c=JSON.parse(fs.readFileSync(f,"utf8")); if (!Array.isArray(c.sites) || !c.sites.some((x)=>x.name===n)) throw new Error("no site named "+n); if (c.sites.length===1) throw new Error("the last site: uninstall instead"); c.sites=c.sites.filter((x)=>x.name!==n); const d=fs.openSync(t,"wx",0o600); try { fs.writeSync(d, JSON.stringify(c,null,2)+"\n"); fs.fsyncSync(d); } finally { fs.closeSync(d); } const m=require(path.resolve(js)), e=m.allConfigErrors(m.loadConfig(t)); if (e.length) throw new Error(e.join("; ")); fs.renameSync(t,f); } catch (err) { try { fs.unlinkSync(t); } catch (e2) {} console.error(String(err.message||err)+": NOTHING WRITTEN"); process.exit(1); } console.log("sites:", c.sites.map((x)=>x.name).join(", "))' /home/mezzanine/.config/fleet-reporter/config.json <name> /home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js
 ```
+
+**What removing a site showed on the sandbox seat**, on 2026-10-23, for the stub site of [Adding a
+site](#adding-a-site). With `stub` as the name it printed `sites: default`, the config stayed mode `600`, and
+no temp file was left; that run used the command as it stood one edit earlier, when its two refusals threw
+before the error handler and printed a stack trace. Run with `default`, the last site, the command above
+printed `the last site: uninstall instead:
+NOTHING WRITTEN` and exited 1 with the config's md5 unchanged. After `stop-flusher.js` and a hook's start, the
+log read `site stub: no longer configured — its state entry is dropped (§ 3.1 rule 4)`, `state.json` held the
+entry `default` alone under the `seq_epoch` Step 1 started, and the stub received no request after that
+start. The stub's last token needs no revoke, because no server issued it.
 
 ⚠ **As of card#9368, only the non-destructive part of this rollback has been run.** On the first
 install, item 2's `sed` ran into a file. The `diff` against Step 0's backup printed nothing, the

@@ -2815,7 +2815,9 @@ const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
  * 1 and no request make that collision unreachable; the lines ahead of the carried cursor arrive again
  * and are answered as duplicates. The cost is one `epoch_reset` per upgraded seat, and § 10.2's accepted
  * `seq_gap` residual where the hand-over's last batch was committed (card#12210). The entry records no
- * URL until the flusher's first save; `legacy` (not serialized) is what `siteEntry` reads that by. */
+ * URL until a flusher start whose configured URL parses binds it; `legacy` (not serialized) is what `siteEntry`
+ * reads that by, set here at the adoption and again by `markUnbound` at every later read of an entry saved before
+ * that binding — a first start under an unparseable URL saves the entry unbound (delta review N1). */
 function adoptLegacyState(s, atMs) {
   const counters = isPlain(s.counters) ? s.counters : {};
   const rises = isPlain(s.counter_rises) ? s.counter_rises : {};
@@ -2835,11 +2837,21 @@ function adoptLegacyState(s, atMs) {
   s.sites.default = entry;
 }
 
+/* An entry with NO `ingest_url_sha256` member is a legacy adoption not bound yet: `adoptLegacyState` is the only
+ * writer of an entry without it (`newEntry` always writes the member, `null` under a URL that does not parse), and
+ * the binding is written only at a start whose URL parses (`reconcileSites`). So the marker the adoption set, which
+ * no save serializes, is re-read from that absence, and fixing the URL later still finds the adopted cursor. */
+function markUnbound(sites) {
+  for (const e of Object.values(sites)) {
+    if (isPlain(e) && !hasOwn(e, 'ingest_url_sha256')) Object.defineProperty(e, 'legacy', { value: true, enumerable: false });
+  }
+}
+
 function loadState(spool, atMs) {
   try {
     const s = JSON.parse(fs.readFileSync(statePath(spool), 'utf8'));
     if (!isPlain(s)) throw new Error('shape');
-    if (s.sites !== undefined) { if (!isPlain(s.sites)) throw new Error('shape'); s.sites = nameMap(s.sites); }
+    if (s.sites !== undefined) { if (!isPlain(s.sites)) throw new Error('shape'); s.sites = nameMap(s.sites); markUnbound(s.sites); }
     else if (typeof s.seq_epoch === 'string' && s.seq_epoch && typeof s.next_seq === 'number') adoptLegacyState(s, atMs);
     else throw new Error('shape');
     s.counters = isPlain(s.counters) ? s.counters : {}; s.predicates = isPlain(s.predicates) ? s.predicates : {};
