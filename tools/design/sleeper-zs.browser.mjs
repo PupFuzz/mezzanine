@@ -39,6 +39,7 @@
 // FAILURE, NEVER A SKIP, AND THIS IS NOT WIRED IN CI (a stock runner carries no Chromium — `tools/design/README.md` names the
 // browser tools and why).
 
+import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -133,6 +134,7 @@ async function clearRects(C) {
   const character = { w: C.SCENE_W, h: C.SCENE_H };
   const R = deskRects(FURNITURE_BOX, character);
   const k = C.SEAT_VIEWBOX.w / R.character.w;
+  UNIT_PX = 1 / k;
   const unit = (r) => ({ x: (r.x - R.character.x) * k, y: (r.y - R.character.y) * k, w: r.w * k, h: r.h * k });
   const trail = thoughtTrail(FURNITURE_BOX, character);
   const column = { x: trail[0].x - 4, y: Math.min(...trail.map((c) => c.y - c.r)), w: 8, h: R.character.y - Math.min(...trail.map((c) => c.y - c.r)) };
@@ -254,7 +256,7 @@ function zLargeFor(eyes) {
  * z's at `Z3.t0`, the midpoint and `1 - Z3.t0` along it, shrinking from `L` to `Z3.ratio * L`, the lowest box just above
  * the crown and the path ending with the highest z's box at the frame's raised top (`top`).
  */
-const Z3 = { count: 3, large: Number(arg('--z-large', 36)), ratio: 0.5, gap: 2, t0: 0.17, a0: -45, a1: 90, top: -42 };
+const Z3 = { count: 3, large: Number(arg('--z-large', 36)), ratio: Number(arg('--z-ratio', 0.5)), gap: 2, t0: 0.17, a0: Number(arg('--a0', 10)), a1: Number(arg('--a1', 108)), top: -42 };
 /**
  * The brightness levels 0 (dim) to 3 (full), each drawn two ways at once: the core mixed from the pale fill toward the ink by
  * `GLOW[level]` (a dimmer core), and a warm halo of the palette's `--lamp` behind the z, `HALO[level]` units wider than its
@@ -279,32 +281,38 @@ function above3Fixed(crown, dir, L, clear) {
   const y0 = Math.min(crown - Z3.gap, props.y - Z3.gap) - halfBox(L).h - HALO[3], y1 = Math.max(Z3.top, VIEW.y) + halfBox(S).h + HALO[3] + 1;
   for (let k = 0; k < Z3.count; k += 1) {
     const t = Z3.t0 + (1 - 2 * Z3.t0) * k / (Z3.count - 1), h = L + (S - L) * t, hb = halfBox(h);
-    let x = 54 - dir * (Z3.a0 + (Z3.a1 - Z3.a0) * t);
-    x = Math.min(VIEW.x + VIEW.w - hb.w - 0.5, Math.max(VIEW.x + hb.w + 0.5, x));
-    out.push({ k, x, y: y0 + (y1 - y0) * t, h, hb });
+    out.push({ k, x: 54 - dir * (Z3.a0 + (Z3.a1 - Z3.a0) * t), y: y0 + (y1 - y0) * t, h, hb });
   }
   return out;
 }
 
-function above3Ok(crown, dir, L, clear) {
+/**
+ * The first rule a stand of size `L` breaks, or `null` when it keeps them all — § 10.4 item 4's law, rule by rule: the
+ * brightest glow inside the frame on all four sides (a glow is never cut by the frame, so no z is clamped into it); no two
+ * bodies' boxes meeting (a unit apart); no body's box meeting a clear rect (a unit apart; the trail's column is one of them);
+ * and no z, its glow included, below the crown line within the character's own 108 units. A glow may lie over a neighbouring
+ * z or a clear rect: it is drawn behind every z, and under the furniture the desk draws after the character.
+ */
+function above3Why(crown, dir, L, clear) {
   const zs = above3Fixed(crown, dir, L, clear);
   const halo = HALO[3];
-  // The glow must stay in the frame and clear of the sleeper; it may lie over a neighbouring z or a clear rect — drawn behind every z, and under the furniture the desk draws after the character.
-  for (const z of zs) if (z.y - z.hb.h - halo < VIEW.y - 0.01 || z.y + z.hb.h + halo > VIEW.y + VIEW.h) return false;
+  for (const z of zs) if (z.y - z.hb.h - halo < VIEW.y - 0.01 || z.y + z.hb.h + halo > VIEW.y + VIEW.h) return 'the frame (top or bottom)';
+  for (const z of zs) if (z.x - z.hb.w - halo < VIEW.x - 0.01 || z.x + z.hb.w + halo > VIEW.x + VIEW.w + 0.01) return 'the frame (a side)';
   for (let a = 0; a < zs.length; a += 1) for (let b = a + 1; b < zs.length; b += 1) {
     const A = zs[a], B = zs[b];
-    if (Math.abs(A.x - B.x) < A.hb.w + B.hb.w + 1 && Math.abs(A.y - B.y) < A.hb.h + B.hb.h + 1) return false;
+    if (Math.abs(A.x - B.x) < A.hb.w + B.hb.w + 1 && Math.abs(A.y - B.y) < A.hb.h + B.hb.h + 1) return 'two z\'s meeting';
   }
   for (const z of zs) {
-    for (const c of clear) if (z.x + z.hb.w > c.x - 1 && z.x - z.hb.w < c.x + c.w + 1 && z.y + z.hb.h > c.y - 1 && z.y - z.hb.h < c.y + c.h + 1) return false;
-    if (z.x + z.hb.w + halo > 0 && z.x - z.hb.w - halo < 108 && z.y + z.hb.h + halo > crown - Z3.gap + 0.01) return false;
+    for (const c of clear) if (z.x + z.hb.w > c.x - 1 && z.x - z.hb.w < c.x + c.w + 1 && z.y + z.hb.h > c.y - 1 && z.y - z.hb.h < c.y + c.h + 1) return `the ${c.name}`;
+    if (z.x + z.hb.w + halo > 0 && z.x - z.hb.w - halo < 108 && z.y + z.hb.h + halo > crown - Z3.gap + 0.01) return 'the crown line';
   }
-  return true;
+  return null;
 }
 
+/** A seat's `L`: the largest in half-unit steps up to `Z3.large` that breaks no rule, and what stops the next half unit (`'the cap'` when nothing does, `null` when nothing fits). */
 function above3Plan(crown, dir, clear) {
-  for (let L = Z3.large; L >= 10; L -= 0.5) if (above3Ok(crown, dir, L, clear)) return L;
-  return 0;
+  for (let L = Z3.large; L >= 10; L -= 0.5) if (above3Why(crown, dir, L, clear) === null) return { L, bound: L === Z3.large ? 'the cap' : above3Why(crown, dir, L + 0.5, clear) };
+  return { L: 0, bound: null };
 }
 
 /** The pulse a FIXED layout runs, by name: the ruled one, its reverse (z3 first) and a constant (every z always full) — the last two are the controls. */
@@ -312,13 +320,19 @@ const FIXED = {
   above3: { levels: (f) => pulseLevels(f) },
   'above3-reversed': { levels: (f) => pulseLevels(f).reverse() },
   'above3-constant': { levels: () => [3, 3, 3] },
+  // The controls on the layout itself, planted by semantics on the stand the law computes: the pulse is § 10.4's in each.
+  'above3-swapped': { levels: (f) => pulseLevels(f), stand: (zs) => zs.map((z, i) => ({ ...zs[zs.length - 1 - i], k: z.k })) },
+  'above3-moved': { levels: (f) => pulseLevels(f), stand: (zs) => zs.map((z) => (z.k === 1 ? { ...z, x: z.x + 7 } : z)) },
+  'above3-on-trail': { levels: (f) => pulseLevels(f), stand: (zs) => zs.map((z) => (z.k === 1 ? { ...z, x: 54, y: -20 } : z)), onlyRects: ['trail'] },
+  'above3-halo-wide': { levels: (f) => pulseLevels(f), halo: { widen: 60 } },
+  'above3-red-halo': { levels: (f) => pulseLevels(f), halo: { colour: '#e03030' } },
 };
 
-/** `ink` mixed toward `fill`'s pale by level: level 3 is `fill`, level 0 is `GLOW[0]` of the way back to `ink`. */
+/** `fill` mixed toward `ink` by `w`, as `creatures.js`'s own `mix(a, b, t)` computes it — each channel `round(a + (b - a) * t)`, clamped — so the tool's core colours are the tree's to the digit. */
 function mixHex(fill, ink, w) {
   const c = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
   const [a, b] = [c(fill), c(ink)];
-  return `#${a.map((v, i) => Math.round(v * (1 - w) + b[i] * w).toString(16).padStart(2, '0')).join('')}`;
+  return `#${a.map((v, i) => Math.max(0, Math.min(255, Math.round(v + (b[i] - v) * w))).toString(16).padStart(2, '0')).join('')}`;
 }
 const levelFill = (ink, fill, level) => mixHex(fill, ink, GLOW[level]);
 
@@ -333,10 +347,10 @@ function z3Markup(z, level, ink, fill) {
   return `<g data-part="z" data-k="${z.k}" data-level="${level}" data-x="${f(z.x)}" data-y="${f(z.y)}" data-h="${f(z.h)}">${stroke(ink, s.outline)}${stroke(levelFill(ink, fill, level), s.core)}</g>`;
 }
 /** A FIXED z's halo at `level`: nothing at level 0, else a wider stroke of the lamp colour behind the z, translucent by level. */
-function glowMarkup(z, level) {
+function glowMarkup(z, level, over = {}) {
   if (level === 0) return '';
   const s = strokes(z.h);
-  return `<path data-part="halo" data-k="${z.k}" data-level="${level}" d="${zPath(z)}" stroke="${LAMP}" stroke-width="${f(s.outline + 2 * HALO[level])}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${f(HALO_OPACITY[level])}"/>`;
+  return `<path data-part="halo" data-k="${z.k}" data-level="${level}" d="${zPath(z)}" stroke="${over.colour ?? LAMP}" stroke-width="${f(s.outline + 2 * (over.widen ?? HALO[level]))}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${f(HALO_OPACITY[level])}"/>`;
 }
 const HALO_RE = /<path data-part="halo" data-k="(\d+)" data-level="(\d)" d="[^"]*" stroke="([^"]+)" stroke-width="([\d.]+)"[^>]*opacity="([\d.]+)"\/>/g;
 const halosOf = (doc) => [...doc.matchAll(HALO_RE)].map((m) => ({ markup: m[0], k: +m[1], level: +m[2], colour: m[3], width: +m[4], opacity: +m[5] }));
@@ -478,12 +492,13 @@ function framesOf(C, seat, layout, mirror, env) {
   const ink = first.ink, fill = first.fill ?? first.core;
   const put = (zs) => base.replace(/<g data-part="zs">[\s\S]*<\/g><\/svg>$/, `<g data-part="zs"><g data-part="glow">${zs.map((z) => z.glow ?? '').join('')}</g>${zs.map((z) => z.markup).join('')}</g></svg>`);
   if (layout in FIXED) {
-    const L = above3Plan(env.crown, pose.dir, env.clear);
+    const { L } = above3Plan(env.crown, pose.dir, env.clear);
     if (L === 0) throw new Error(`${seat.key}: no fixed three-z layout fits above crown ${env.crown}`);
-    const stand = above3Fixed(env.crown, pose.dir, L, env.clear);
+    const law = above3Fixed(env.crown, pose.dir, L, env.clear);
+    const stand = FIXED[layout].stand ? FIXED[layout].stand(law) : law;
     const levelsOf = (i) => (i === 0 ? [3, 3, 3] : FIXED[layout].levels(i - 1));
     return Array.from({ length: PULSE_FRAMES + 1 }, (_, i) => {
-      const zs = stand.map((z, k) => ({ ...z, level: levelsOf(i)[k], o: 1, markup: z3Markup(z, levelsOf(i)[k], ink, fill), glow: glowMarkup(z, levelsOf(i)[k]) }));
+      const zs = stand.map((z, k) => ({ ...z, level: levelsOf(i)[k], o: 1, markup: z3Markup(z, levelsOf(i)[k], ink, fill), glow: glowMarkup(z, levelsOf(i)[k], FIXED[layout].halo) }));
       return { doc: put(zs), pose, zs, fixed: true, raster: i === 0 };
     });
   }
@@ -503,6 +518,9 @@ function chaseOf(frames) {
   const zsAt = frames.map((fr) => [...fr.zs].sort((a, b) => a.k - b.k).map((z) => ({ ...z, halo: z.halo !== undefined ? z.halo : (z.glow ? halosOf(z.glow)[0] ?? null : null) })));
   if (zsAt.some((zs) => zs.length !== Z3.count)) defects.push('a frame does not draw exactly three z\'s');
   if (zsAt[0].some((z) => z.level !== 3)) defects.push('the still is not every z at full brightness');
+  // "Up" is held by POSITION: the pulse reaches z1 first, so z1 must be the lowest and each next z higher — a tree that numbers
+  // its z's from the top runs the pulse DOWN and still reads z1, z2, z3 by index.
+  zsAt[0].forEach((z, k) => { if (k > 0 && !(z.y < zsAt[0][k - 1].y)) defects.push(`z${k + 1} (y ${z.y}) is not above z${k} (y ${zsAt[0][k - 1].y}) — the pulse would not travel up`); });
   const home = zsAt[0].map((z) => `${z.x},${z.y},${z.h}`).join('|');
   if (zsAt.some((zs) => zs.map((z) => `${z.x},${z.y},${z.h}`).join('|') !== home)) defects.push('a z moves between frames');
   zsAt.forEach((zs, i) => zs.forEach((z) => {
@@ -519,15 +537,121 @@ function chaseOf(frames) {
   return defects;
 }
 
-async function measure(chrome, tree, layout) {
+/**
+ * THE LAW, held on the drawing: the three z's of document 0 (the loop moves none) stand where `above3Fixed()` puts them
+ * for the seat's own crest top and roll, at the size `above3Plan()` gives — within the data attributes' rounding. This
+ * is what makes § 10.4's layout a contract on the tree and not a description of the tool: a tree that builds another layout
+ * (another path, another size, another crest line) passes every ink bound and red here, naming the z and the position.
+ */
+function lawOf(frames, crown, clear) {
+  const pose = frames[0].pose;
+  const { L } = above3Plan(crown, pose.dir, clear);
+  const want = above3Fixed(crown, pose.dir, L, clear);
+  const got = [...frames[0].zs].sort((a, b) => a.k - b.k);
+  const defects = [];
+  if (got.length !== want.length) return [`the still draws ${got.length} z's, the law ${want.length}`];
+  got.forEach((z, k) => {
+    const w = want[k];
+    if (Math.abs(z.x - w.x) > 0.011 || Math.abs(z.y - w.y) > 0.011 || Math.abs(z.h - w.h) > 0.011) {
+      defects.push(`z${k + 1} stands at (${f(z.x)}, ${f(z.y)}) ${f(z.h)} tall, not above3Fixed's (${f(w.x)}, ${f(w.y)}) ${f(w.h)} tall for crest ${crown}, roll ${pose.dir > 0 ? '+' : '-'} (L ${L})`);
+    }
+  });
+  return defects;
+}
+
+/**
+ * THE CREST TABLE'S CHECK, as a pure function so its controls can plant what the raster cannot: the tree's `CREST_TOP`
+ * held at or under every scanned key's topmost ink. A tree that exports none is NOT a clean table — judging the tree's own
+ * frames it is a defect (nothing holds the table the sizes rest on); judging a layout it is NOT CHECKED, said aloud, because
+ * a layout is judged on the scan's own table and the tree's has not been built.
+ */
+function crestCheck(treeTable, scans, layout) {
+  if (treeTable === null) return { defects: layout === null ? ['the tree exports no CREST_TOP — nothing holds the table the sizes rest on'] : [], checked: false };
+  return { defects: scans.filter((sc) => !(sc.tkey in treeTable) || sc.top < treeTable[sc.tkey] - 0.01).map((sc) => `${sc.key} reaches ${sc.top} above ${sc.tkey}'s ${treeTable[sc.tkey]}`), checked: true };
+}
+
+/** CSS px per frame unit at the floor's fit zoom on a 1,440 × 900 window: the character rect is `SEAT_VIEWBOX.w / R.character.w` units a scene px. */
+let UNIT_PX = NaN;
+const FIT_ZOOM = Number(arg('--fit', 0.9));
+const ZOOM_CEILING = Number(readFileSync(join(ROOT, 'server', 'public', 'js', 'wire', 'camera.js'), 'utf8').match(/export const ZOOM_CEILING = ([\d.]+);/)?.[1] ?? NaN);
+
+/** WCAG's relative luminance and contrast ratio. */
+const lum = (hex) => {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+
+/**
+ * The surfaces a z is read against: the house floor's `--scene-floor` and every colour of every shipped theme's `surfaces()`
+ * (`tools/floor-themes/surfaces.mjs`, read the way `state-chip-colours.py` reads it, never transcribed) — a theme's own
+ * floor is a floor the desk stands on.
+ */
+function surfaceHexes() {
+  const css = readFileSync(join(ROOT, 'server', 'public', 'css', 'mezzanine.css'), 'utf8');
+  const floor = css.match(/--scene-floor:\s*(#[0-9a-fA-F]{6})/)?.[1];
+  if (!floor) throw new Error('mezzanine.css declares no --scene-floor the brightness check can read');
+  const themes = JSON.parse(execFileSync('node', [join(ROOT, 'tools', 'floor-themes', 'surfaces.mjs')], { encoding: 'utf8' }));
+  return [['--scene-floor', floor], ...Object.entries(themes).flatMap(([t, ss]) => Object.entries(ss).map(([n, hex]) => [`${t}/${n}`, hex]))];
+}
+
+/**
+ * THE BRIGHTNESS RANGE (§ 12's *Sleeper z brightness*): the WCAG contrast of the z's outline against EVERY surface a desk can
+ * stand on (3 : 1, SC 1.4.11 — the shape is the outline's, at every level), of each level's core against the floor and its own
+ * outline, and that each level is visibly brighter than the one below (adjacent cores' luminance ratio at least 1.15). The
+ * options are the controls' to plant: another mix, another ink.
+ */
+function brightnessRange({ glow = GLOW, ink = Z_INK_TOOL, pale = Z_FILL_TOOL, surfaces = surfaceHexes() } = {}) {
+  const floor = surfaces[0][1];
+  const cores = [0, 1, 2, 3].map((l) => mixHex(pale, ink, glow[l]));
+  const outlines = surfaces.map(([name, hex]) => ({ name, hex, r: ratio(ink, hex) }));
+  const worstOutline = outlines.reduce((a, o) => (o.r < a.r ? o : a));
+  const vsFloor = cores.map((c) => ratio(c, floor));
+  const steps = [1, 2, 3].map((l) => (lum(cores[l]) + 0.05) / (lum(cores[l - 1]) + 0.05));
+  const ok = worstOutline.r >= 3 && steps.every((x) => x >= 1.15);
+  return { ok, cores, line: `the outline ${ratio(ink, floor).toFixed(2)}:1 against the floor ${floor}, and at the worst of ${outlines.length} surfaces (the house floor and every shipped theme's) ${worstOutline.r.toFixed(2)}:1 against ${worstOutline.name} ${worstOutline.hex} (3:1 needed, SC 1.4.11 — the shape is the outline's, at every level, and the halo and the core only add to it); cores ${cores.join(' ')} (the dimmest core ${vsFloor[0].toFixed(2)}:1 against the floor, ${ratio(cores[0], ink).toFixed(2)}:1 against its own outline); adjacent cores' luminance ratios ${steps.map((x) => x.toFixed(2)).join(', ')} (1.15 needed)` };
+}
+
+/**
+ * THE FLASH (WCAG 2.2 SC 2.3.1, derived — never declared): the pulse is a general flash BY LUMINANCE when a z's core swings by
+ * 0.10 or more of the maximum luminance with the darker side under 0.80, so the content passes on EITHER of SC 2.3.1's
+ * thresholds — no more than three flashes in any one second, or the area of flashes in any 10-degree field (341 × 256 CSS px
+ * at the guidance's 1,024 × 768 reference, so 25 % of it is 21,824 px²) at most a quarter of it. Both are computed here from the
+ * pulse table and the sizes: the rate by counting each z's peaks (a rise to level 3 then a fall) in every one-second window
+ * of the loop at `1000 / interval` fps, the area as the boxes of the three z's, glow included, at the fit and at the zoom ceiling
+ * — one sleeper in the ceiling's field (a desk's box is wider than the field there), up to four in the fit's.
+ */
+function flashCheck({ levelsOf = pulseLevels, frames = PULSE_FRAMES, fps = 4, cores, sizes, unitPx = UNIT_PX, ceiling = ZOOM_CEILING, halo = HALO[3] } = {}) {
+  const swing = lum(cores[3]) - lum(cores[0]);
+  const byLuminance = swing >= 0.10 && lum(cores[0]) < 0.80;
+  // peaks: loop frame f is a peak of z k when its level is 3 and the next frame's is lower (a rise then a fall)
+  const peaks = Array.from({ length: Z3.count }, (_, k) => Array.from({ length: frames }, (_, f) => levelsOf(f)[k] === 3 && levelsOf((f + 1) % frames)[k] < 3));
+  let worstRate = 0;
+  for (let f = 0; f < frames; f += 1) {
+    let n = 0;
+    for (let j = 0; j <= fps; j += 1) n += peaks.reduce((a, pk) => a + (pk[(f + j) % frames] ? 1 : 0), 0);
+    worstRate = Math.max(worstRate, n);
+  }
+  const boxPx = (h, zoom) => { const o = strokes(h).outline / 2 + halo; return (h * 0.8 + 2 * o) * (h + 2 * o) * (unitPx * zoom) ** 2; };
+  const area = (zoom) => sizes.reduce((a, h) => a + boxPx(h, zoom), 0);
+  const field = 341 * 256 * 0.25;
+  const atFit = 4 * area(FIT_ZOOM), atCeiling = area(ceiling);
+  const rateOk = worstRate <= 3, areaOk = atFit <= field && atCeiling <= field;
+  const ok = !byLuminance || rateOk || areaOk;
+  return { ok, line: `${byLuminance ? `each z's core swings ${lum(cores[0]).toFixed(3)} to ${lum(cores[3]).toFixed(3)} (${swing.toFixed(2)} of the maximum, darker side under 0.80: a general flash by luminance)` : `the core swings ${swing.toFixed(2)}, not a general flash by luminance`}; at most ${worstRate} peaks in any one second of the loop (3 allowed); the three z's and glows cover ${atFit.toFixed(0)} px² at the fit for up to four sleepers in one 10-degree field and ${atCeiling.toFixed(0)} px² at the zoom ceiling ${ceiling} for one, of ${field.toFixed(0)} px² (a quarter of 341 × 256)` };
+}
+
+async function measure(chrome, tree, layout, opts = {}) {
   const C = await import(pathToFileURL(join(tree, 'index.js')).href);
   const b = await browser(chrome, 300, 500, 'ready');
   const rows = [];
   const mirror = [];
   const picks = [];
   const env = { clear: await clearRects(C) };
-  const chase = new Set();
-  const rects = env.clear.map((c) => ({ x: c.x, y: c.y, w: c.w, h: c.h }));
+  const chase = new Set(), law = new Set();
+  // A control may judge one clear rect alone (`onlyRects`), so the ink it plants can only be caught by THAT rect.
+  const only = FIXED[layout]?.onlyRects ?? opts.only ?? null;
+  const rects = env.clear.filter((c) => only === null || only.includes(c.name)).map((c) => ({ x: c.x, y: c.y, w: c.w, h: c.h }));
   try {
     await b.load('data:text/html,<title>ready</title>');
     const { seats, extremes, scans } = await pickSeats(b, C, env);
@@ -537,14 +661,19 @@ async function measure(chrome, tree, layout) {
     const scanTable = {};
     for (const sc of scans) scanTable[sc.tkey] = Math.min(scanTable[sc.tkey] ?? Infinity, sc.top);
     const tree_table = C.CREST_TOP ?? null;
-    const crestDefects = tree_table === null ? [] : scans.filter((sc) => !(sc.tkey in tree_table) || sc.top < tree_table[sc.tkey] - 0.01).map((sc) => `${sc.key} reaches ${sc.top} above ${sc.tkey}'s ${tree_table[sc.tkey]}`);
+    const crestDefects = crestCheck(tree_table, scans, layout).defects;
     const table = layout === null ? tree_table ?? scanTable : scanTable;
     for (const seat of seats) {
       const variant = C.recipe(seat.key, seat.sp).variant;
       const crown = table[variant ? `${seat.sp}/${variant}` : seat.sp];
       const row = { ...seat, framesMeasured: 0, fixed: false, overHead: 0, overAll: 0, zOnZ: 0, onFace: 0, inClear: 0, zCount: Infinity, eyeInk: Infinity, worstFrame: -1, clipped: 0, zLarge: 0, opaqueLarge: 0, zSmall: Infinity, zpx: 0, crown };
       const frames = framesOf(C, seat, layout, mirror, { ...env, crown });
-      if (frames[0].fixed) for (const d of chaseOf(frames)) chase.add(`${seat.key}: ${d}`);
+      if (frames[0].fixed) {
+        for (const d of chaseOf(frames)) chase.add(`${seat.key}: ${d}`);
+        for (const d of lawOf(frames, crown, env.clear)) law.add(`${seat.key}: ${d}`);
+        const plan = above3Plan(crown, frames[0].pose.dir, env.clear);
+        row.plan = { ...plan, h: above3Fixed(crown, frames[0].pose.dir, plan.L, env.clear).map((z) => z.h) };
+      }
       for (const [i, { doc, pose, zs, raster }] of frames.entries()) {
         row.zCount = Math.min(row.zCount, zs.length);
         if (!raster) continue;
@@ -572,37 +701,13 @@ async function measure(chrome, tree, layout) {
       }
       rows.push(row);
     }
-    return { rows, picks, species: C.SPECIES_KEYS, mirror, framesPer: rows[0]?.framesMeasured ?? 1, table, crestDefects, scanTable, hasTable: tree_table !== null, chase: [...chase], fixed: rows.some((r) => r.fixed) };
+    return { rows, picks, species: C.SPECIES_KEYS, mirror, framesPer: rows[0]?.framesMeasured ?? 1, table, crestDefects, scanTable, hasTable: tree_table !== null, chase: [...chase], law: [...law], layout, scans, fixed: rows.some((r) => r.fixed) };
   } finally {
     b.close();
   }
 }
 
-/**
- * THE BRIGHTNESS RANGE (§ 12's *Sleeper z brightness*): the WCAG contrast of the z's outline and of each level's core against
- * the house floor, `--scene-floor` read from `mezzanine.css` (a z is read against the floor, so a non-text graphic needs 3 : 1,
- * SC 1.4.11, even at its dimmest), and that each level is visibly brighter than the one below (the relative luminance of
- * adjacent cores differs by a ratio of at least 1.15).
- */
-function brightnessRange() {
-  const css = readFileSync(join(ROOT, 'server', 'public', 'css', 'mezzanine.css'), 'utf8');
-  const floor = css.match(/--scene-floor:\s*(#[0-9a-fA-F]{6})/)?.[1];
-  if (!floor) throw new Error('mezzanine.css declares no --scene-floor the brightness check can read');
-  const lum = (hex) => {
-    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  };
-  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
-  const ink = Z_INK_TOOL, pale = Z_FILL_TOOL;
-  const cores = [0, 1, 2, 3].map((l) => levelFill(ink, pale, l));
-  const vsFloor = cores.map((c) => ratio(c, floor));
-  const outline = ratio(ink, floor);
-  const steps = [1, 2, 3].map((l) => (lum(cores[l]) + 0.05) / (lum(cores[l - 1]) + 0.05));
-  const ok = outline >= 3 && steps.every((x) => x >= 1.15);
-  return { ok, line: `the outline ${outline.toFixed(2)}:1 against the floor ${floor} at every level (3:1 needed, SC 1.4.11 — the shape is the outline's, and the halo and the core only add to it); cores ${cores.join(' ')} (the dimmest core ${vsFloor[0].toFixed(2)}:1 against the floor, ${ratio(cores[0], ink).toFixed(2)}:1 against its own outline); adjacent cores' luminance ratios ${steps.map((x) => x.toFixed(2)).join(', ')} (1.15 needed)` };
-}
-
-function report(label, { rows, picks, species, mirror, framesPer, crestDefects, hasTable, scanTable, chase, fixed }, bounds) {
+function report(label, { rows, picks, species, mirror, framesPer, crestDefects, hasTable, scanTable, chase, law, layout, fixed }, bounds) {
   const pct = (x) => `${(x * 100).toFixed(1)}%`;
   const worstBy = (k, list = rows) => list.reduce((a, r) => (r[k] > a[k] ? r : a), list[0]);
   const zpx = rows.reduce((a, r) => a + r.zpx, 0);
@@ -622,13 +727,19 @@ function report(label, { rows, picks, species, mirror, framesPer, crestDefects, 
   const clear = worstBy('inClear');
   const okClear = clear.inClear <= bounds.clearance;
   const okCrest = crestDefects.length === 0;
+  const okLaw = !fixed || law.length === 0;
   // The chase and the brightness range apply to the FIXED layouts (the tree, once built for the pulse, and the pulse layouts).
   const okChase = !fixed || chase.length === 0;
   const haloOnBody = Math.max(...rows.map((r) => r.haloOnBody ?? 0));
   const okGlow = !fixed || (haloOnBody === 0 && (treeLamp === null || treeLamp === cssLamp));
   const range = fixed ? brightnessRange() : null;
   const okRange = !fixed || range.ok;
-  const ok = measured && okOver && okOnz && okFace && okCount && okClear && okCrest && okChase && okRange && okGlow && clipped === 0 && mirror.length === 0;
+  const planned = rows.filter((r) => r.plan !== undefined);
+  const zOf = (k) => planned.map((r) => r.plan.h[k]);
+  const lo = (xs) => Math.min(...xs), hi = (xs) => Math.max(...xs);
+  const flash = fixed && planned.length > 0 ? flashCheck({ cores: range.cores, sizes: [hi(zOf(0)), hi(zOf(1)), hi(zOf(2))] }) : null;
+  const okFlash = !fixed || (flash !== null && flash.ok);
+  const ok = measured && okOver && okOnz && okFace && okCount && okClear && okCrest && okChase && okLaw && okRange && okFlash && okGlow && clipped === 0 && mirror.length === 0;
   console.log(`── ${label}: ${rows.length} seats × ${framesPer} frames, ${zpx} z px read; z heights ${Math.min(...rows.map((r) => r.zSmall)).toFixed(1)}–${Math.max(...rows.map((r) => r.zLarge)).toFixed(1)} units, the largest fully opaque AT THE LOOP'S OWN FRAMES ${Math.min(...rows.map((r) => r.opaqueLarge)).toFixed(1)}–${Math.max(...rows.map((r) => r.opaqueLarge)).toFixed(1)} by seat (the largest drawn ${Math.min(...rows.map((r) => r.zLarge)).toFixed(1)}–${Math.max(...rows.map((r) => r.zLarge)).toFixed(1)}); z boxes leaving the frame ${clipped}`);
   console.log(`   seats: ${rows.length}, chosen by the extremes of ${SCAN_EYES} keys' eye lines (${Math.min(...eyesAll).toFixed(1)}–${Math.max(...eyesAll).toFixed(1)} units over the population) and ${SCAN_CREST} keys' crests (widest ${Math.max(...picks.map((p) => p.wide.w)).toFixed(0)} units)`);
   for (const sp of species) {
@@ -643,13 +754,21 @@ function report(label, { rows, picks, species, mirror, framesPer, crestDefects, 
   console.log(`   the scan's crest tops (the table a layout is judged on; \`creatures.js\`'s CREST_TOP is held at or under these): ${Object.entries(scanTable).map(([k, v]) => `${k} ${v}`).join(', ')}`);
   if (fixed) {
     console.log(`   the chase: ${chase.length === 0 ? 'every seat\'s frames hold the pulse — z\'s fixed, the still at full brightness, the loop\'s levels § 10.4\'s and the brightest z advancing z1, z2, z3' : `${chase.length} defects — ${chase.slice(0, 3).join('; ')}`} — ${okChase ? 'chasing' : 'NOT THE CHASE'}`);
+    if (planned.length > 0) {
+      const bounds2 = [...new Set(planned.map((r) => r.plan.bound))].join('; ');
+      const px = (u) => (u * UNIT_PX * FIT_ZOOM).toFixed(1);
+      const span = (xs, d = 1) => (lo(xs) === hi(xs) ? lo(xs).toFixed(d) : `${lo(xs).toFixed(d)}–${hi(xs).toFixed(d)}`);
+      console.log(`   the sizes: L ${span(planned.map((r) => r.plan.L))} over ${planned.length} seats; z1 ${span(zOf(0))}, z2 ${span(zOf(1))}, z3 ${span(zOf(2))} units = ${px(lo(zOf(0)))}${lo(zOf(0)) === hi(zOf(0)) ? '' : `–${px(hi(zOf(0)))}`}, ${px(lo(zOf(1)))}${lo(zOf(1)) === hi(zOf(1)) ? '' : `–${px(hi(zOf(1)))}`}, ${px(lo(zOf(2)))}${lo(zOf(2)) === hi(zOf(2)) ? '' : `–${px(hi(zOf(2)))}`} CSS px at the fit (${FIT_ZOOM} × ${UNIT_PX} = ${(FIT_ZOOM * UNIT_PX).toFixed(3)} px a unit); the next half unit is stopped by: ${bounds2}`);
+    }
+    console.log(`   the law: ${law.length === 0 ? 'every seat\'s three z\'s stand where above3Fixed puts them for the seat\'s crest top and roll' : `${law.length} defects — ${law.slice(0, 3).join('; ')}`} — ${okLaw ? 'held' : 'NOT THE LAW'}`);
     console.log(`   the glow: ${haloOnBody} px of a halo on the sleeper (0 allowed); the tree's lamp colour ${treeLamp ?? 'is not declared (a layout is judged on --lamp)'} against --lamp ${cssLamp} — ${okGlow ? 'clear and in the palette' : 'ON THE SLEEPER OR OFF THE PALETTE'}`);
     console.log(`   the brightness: ${range.line} — ${okRange ? 'legible at the dim end' : 'TOO DIM OR TOO ALIKE'}`);
+    if (flash !== null) console.log(`   the flash (SC 2.3.1): ${flash.line} — ${okFlash ? 'within' : 'FLASHES'}`);
   }
-  console.log(`   the crest table: ${hasTable ? `${crestDefects.length} scanned keys reach above the tree's CREST_TOP` : 'the tree exports none (a layout is judged on the scan\'s own)'}${okCrest ? '' : ` — ${crestDefects.slice(0, 3).join('; ')}`}`);
+  console.log(`   the crest table: ${hasTable ? `${crestDefects.length} scanned keys reach above the tree's CREST_TOP` : layout === null ? 'the tree exports none' : 'NOT CHECKED — the tree exports no CREST_TOP, so a layout is judged on the scan\'s own table and nothing holds the tree\'s'}${okCrest ? '' : ` — ${crestDefects.slice(0, 3).join('; ')}`}`);
   for (const m of mirror.slice(0, 3)) console.log(`   MIRROR DRIFT — zMarkup() no longer draws what creatures.js's zSvg() drew: ${m}`);
-  console.log(`   ${ok ? 'PASS' : 'FAIL'}${measured ? '' : '  — NOT MEASURED (too few seats or z pixels)'}`);
-  return { ok, okOver, okOnz, okFace, okCount, okClear, okCrest, okChase, okRange, okGlow, measured, overSpecies, rows };
+  console.log(`   ${ok ? 'PASS' : 'FAIL'}${measured ? '' : '  — NOT MEASURED (too few seats or z pixels)'}${ok && !hasTable ? '  (the tree\'s crest table NOT CHECKED: the tree exports none)' : ''}`);
+  return { ok, okOver, okOnz, okFace, okCount, okClear, okCrest, okChase, okLaw, okRange, okFlash, okGlow, measured, overSpecies, rows, chase, law };
 }
 
 /**
@@ -749,6 +868,7 @@ FACE_CLEAR = bounds.faceClear;
 GLOW = bounds.glow;
 HALO = bounds.halo;
 HALO_OPACITY = bounds.haloOpacity;
+if (arg('--halo-max', null) !== null) HALO[3] = Number(arg('--halo-max', null));
 LAMP = cssLamp;
 PULSE_FRAMES = bounds.pulseFrames;
 VIEW = bounds.view;
@@ -764,6 +884,11 @@ if (SELFTEST) {
   const onFace = report('CONTROL — z\'s laid over the closed eyes; must fail the face clearance', await measure(chrome, TREE, 'on-face'), bounds);
   const reversed = report('CONTROL — the pulse run top to bottom (z3 first); must fail the chase', await measure(chrome, TREE, 'above3-reversed'), bounds);
   const constant = report('CONTROL — every z always at full brightness (no pulse); must fail the chase', await measure(chrome, TREE, 'above3-constant'), bounds);
+  const swapped = report('CONTROL — z1 and z3 exchanged in place (the pulse runs DOWN by position, up by index); must fail the order and the law', await measure(chrome, TREE, 'above3-swapped'), bounds);
+  const moved = report('CONTROL — z2 moved 7 units off the law; must fail the law alone', await measure(chrome, TREE, 'above3-moved'), bounds);
+  const onTrail = report('CONTROL — z2 laid on the thought trail\'s column, the trail the only clear rect judged; must fail the clearance', await measure(chrome, TREE, 'above3-on-trail'), bounds);
+  const haloWide = report('CONTROL — a halo 60 units wide, over the sleeper; must fail the glow', await measure(chrome, TREE, 'above3-halo-wide'), bounds);
+  const redHalo = report('CONTROL — a halo off the palette\'s lamp colour; must fail the chase', await measure(chrome, TREE, 'above3-red-halo'), bounds);
   // The overlap controls must red on MORE THAN ONE species: a bound one species' cap alone could trip would tell the
   // ruled z's from the control's on one crest.
   for (const [name, run, okKey, more] of [
@@ -775,10 +900,31 @@ if (SELFTEST) {
     ['overlap (the two-z column)', column, 'okOver', (r) => r.overSpecies.length > 1],
     ['chase (reversed pulse)', reversed, 'okChase', () => true],
     ['chase (constant)', constant, 'okChase', () => true],
+    ['order (positions swapped, indices kept)', swapped, 'okChase', (r) => r.chase.some((d) => /is not above/.test(d))],
+    ['law (positions swapped)', swapped, 'okLaw', () => true],
+    ['law (a z moved)', moved, 'okLaw', (r) => r.law.length > 0 && r.okChase && r.okClear],
+    ['clearance (the trail\'s rect alone)', onTrail, 'okClear', () => true],
+    ['glow (a halo on the sleeper)', haloWide, 'okGlow', () => true],
+    ['glow (a halo off the palette)', redHalo, 'okChase', (r) => r.chase.some((d) => /lamp colour/.test(d))],
   ]) {
     const caught = run.measured && !run[okKey] && more(run);
     console.log(caught ? `CONTROL CAUGHT (${name})` : `CONTROL NOT CAUGHT (${name}) — the bound cannot tell the ruled z's from the control`);
     failed = failed || !caught;
+  }
+  // The checks that are pure functions are controlled by planting what they read: each must red on its plant, and the
+  // faithful input beside it must not (a check that reds on everything is no check either).
+  const surfaces = surfaceHexes();
+  const pure = [
+    ['brightness (cores too alike)', !brightnessRange({ glow: [0.02, 0.05, 0.08, 0], surfaces }).ok, brightnessRange({ surfaces }).ok],
+    ['brightness (an outline too pale for the floor)', !brightnessRange({ ink: '#b0a8d0', surfaces }).ok, true],
+    ['crest table (a tree that exports none, judged on its own frames)', crestCheck(null, [], null).defects.length > 0, crestCheck(null, [], 'above3').defects.length === 0],
+    ['crest table (a top 20 units under the drawing\'s)', crestCheck({ fox: 54 }, [{ tkey: 'fox', key: 'sleep/fox/any/0', top: 34 }], null).defects.length === 1, crestCheck({ fox: 34 }, [{ tkey: 'fox', key: 'sleep/fox/any/0', top: 34 }], null).defects.length === 0],
+    ['flash (every z flashing each frame, huge)', !flashCheck({ levelsOf: (f) => (f % 2 ? [0, 0, 0] : [3, 3, 3]), cores: brightnessRange({ surfaces }).cores, sizes: [320, 260, 200] }).ok, flashCheck({ cores: brightnessRange({ surfaces }).cores, sizes: [33, 27, 21] }).ok],
+  ];
+  for (const [name, caught, faithful] of pure) {
+    const good = caught && faithful;
+    console.log(good ? `CONTROL CAUGHT (${name})` : `CONTROL NOT CAUGHT (${name}) — ${caught ? 'the faithful input reds as well' : 'the check passes the plant'}`);
+    failed = failed || !good;
   }
 }
 
