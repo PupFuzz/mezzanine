@@ -206,8 +206,8 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 "    if (!ctx.placeholder) rect('monitor', 'monitor', R.monitor, { lit: desk.monitor.lit });\n"], 'ii-missing', 'monitor.lit'],
             'the dimming lost (the placed desk lit full)' => [['../floor/scene.js', "        lighting: model.lighting,\n        bubble_model: bubble,",
                 "        lighting: 'full',\n        bubble_model: bubble,"], 'ii-missing', 'group.lighting'],
-            'motion forced' => [['../floor/scene.js', 'const moved = elements.map((e) => Object.freeze({ ...e, x: at.x + e.x, y: at.y + e.y }));',
-                "const moved = elements.map((e) => Object.freeze({ ...e, ...(e.kind === 'character' ? { animation: { ...e.animation, motion: true } } : {}), x: at.x + e.x, y: at.y + e.y }));"],
+            'motion forced' => [['../floor/scene.js', "    const moved = elements.map((e) => Object.freeze({\n        ...e,\n",
+                "    const moved = elements.map((e) => Object.freeze({\n        ...e,\n        ...(e.kind === 'character' ? { animation: { ...e.animation, motion: true } } : {}),\n"],
                 'ii-missing', 'character.motion'],
         ];
 
@@ -340,39 +340,48 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 'stroke:var(--scene-stool);stroke-width:1.5;stroke-dasharray:3 2}', 'stroke:var(--scene-stool);stroke-dasharray:3 2}'],
             'an intern drawn as the glyph with its art intact' => ['../floor/painter.js', '                    if (e.art) {', '                    if (false) {'],
             "an intern's sprite outside its clipping viewport" => ['../floor/painter.js',
-                "art(g, urls[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern');",
-                "image(g, urls[0], e.x, e.y, e.w, e.h, e.asset, { class: e.untitled ? 'intern untitled' : 'intern' });"],
+                "art(g, drawn.uris[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern');",
+                "image(g, drawn.uris[0], e.x, e.y, e.w, e.h, e.asset, { class: e.untitled ? 'intern untitled' : 'intern' });"],
             // An intern's key is minted per dispatch: the painter drops the frames of each one it no longer
             // draws — its Map is the only cache (card#11046: the tree holds none, and has no forget()).
             "an intern no longer drawn kept in the painter's frames" => ['../floor/painter.js',
                 "                interns.delete(asset);\n                frames.delete(asset);", '                interns.delete(asset);'],
             'an intern animated' => ['../floor/painter.js',
-                "art(g, urls[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern');",
-                "stepping.push([art(g, urls[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern'), [urls[0], 'x', 'y']]);"],
+                "art(g, drawn.uris[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern');",
+                "stepping.push([art(g, drawn.uris[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern'), [drawn.uris[0], 'x', 'y'], 0, 0]);"],
             // card#11046 — AT-D3-24's painter half, each planted in the shipped painter.
             'a character shown through an image that is not an SVG document (a raster frame)' => ['../floor/painter.js',
                 'export const svgUri = (doc) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(doc)}`;',
                 'export const svgUri = (doc) => `data:image/png;base64,${encodeURIComponent(doc)}`;'],
             'a canvas made for a character' => ['../floor/painter.js',
-                '                frames.set(key, docs.map(svgUri));', "                document.createElement('canvas');\n                frames.set(key, docs.map(svgUri));"],
+                '                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });', "                document.createElement('canvas');\n                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });"],
             'a desk that loses its character for a pose it has no frame for' => ['../floor/painter.js',
-                'const urls = characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, desk_top: e.desk_top });',
-                "const urls = e.pose === 'asleep' ? null : characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, desk_top: e.desk_top });"],
+                'const drawn = characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, desk_top: e.desk_top, clear: e.clear });',
+                "const drawn = e.pose === 'asleep' ? null : characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, desk_top: e.desk_top, clear: e.clear });"],
             // card#12159 — the desk draws the tree's frames for its POSE: the walk drawn for every pose (the
             // defect the sleeper was hidden behind), the pose's frames drawn without the desk's edge, and a held
             // loop stepping the walk's three frames whatever the drawing holds.
             "a desk drawn in the walk's frames whatever its pose" => ['../floor/painter.js',
-                'characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top })', 'characters.walkFrames(installId, seatId)'],
+                'characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top, clear: at.clear })', '{ frames: characters.walkFrames(installId, seatId), loopFrom: 0 }'],
             "a pose's frames drawn without the desk's top edge" => ['../floor/desk-layout.js',
                 "desk_top: (R['desk-sprite'].y - R.character.y) / R.character.h,", 'desk_top: 0.5,'],
             'a held loop that steps three frames whatever the drawing holds' => ['../floor/painter.js',
-                "el.setAttribute('href', urls[(tick + offset) % urls.length]);", "el.setAttribute('href', urls[(tick + offset) % 3]);"],
+                "el.setAttribute('href', uris[loopFrom + ((tick + offset) % (uris.length - loopFrom))]);", "el.setAttribute('href', uris[loopFrom + ((tick + offset) % 3)]);"],
             // card#12187 — § 6.2's per-seat loop phase: a moving loop started at frame 0 whatever its seat's offset.
             "a moving held loop started at frame 0, not at its seat's offset" => ['../floor/painter.js',
-                "const el = art(g, urls[offset], e, e.asset, 'character');", "const el = art(g, urls[0], e, e.asset, 'character');"],
+                'art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw ?? e,', 'art(g, uris[0], e.overdraw ?? e,'],
+            // card#12187 — § 10.4 item 4's tree → painter interface: the loop's start dropped (the moving loop steps the
+            // still as one of its frames), the offset drawn over the list's length and not the loop's, and a sleeper's
+            // image drawn in its element's rect instead of its overdraw.
+            "the held loop's start dropped" => ['../floor/painter.js',
+                "el.setAttribute('href', uris[loopFrom + ((tick + offset) % (uris.length - loopFrom))]);", "el.setAttribute('href', uris[(tick + offset) % uris.length]);"],
+            "a loop offset drawn over the list's length, not the loop's" => ['../floor/painter.js',
+                'characters.loopOffset(desk.install_id, desk.seat_id, uris.length - loopFrom)', 'characters.loopOffset(desk.install_id, desk.seat_id, uris.length)'],
+            "a sleeper drawn in its element's rect, not its overdraw" => ['../floor/painter.js',
+                'art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw ?? e,', 'art(g, moves ? uris[loopFrom + offset] : uris[0], e,'],
             // N8: a frame list copied onto the element instead of held in the painter's Map.
             "a held loop's frames copied onto the element" => ['../floor/painter.js',
-                "                            stepping.push([el, urls, offset]);\n                        }", "                            el.dataset.frames = JSON.stringify(urls);\n                        }"],
+                "                            stepping.push([el, uris, loopFrom, offset]);\n                        }", "                            el.dataset.frames = JSON.stringify(uris);\n                        }"],
             // § 9 F14's two causes for a code-drawn character (§ 10.2): unreported, or thrown out of the paint.
             'a tree that failed to load left unreported' => ['../floor/painter.js',
                 "        if (characters === null) {\n            report(asset);", "        if (characters === null) {\n            void asset;"],

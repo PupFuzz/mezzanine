@@ -11,14 +11,15 @@
 // ⛔ Every entry point returns standalone SVG DOCUMENTS. The painter turns each into a
 // SVG `data:` URI (UTF-8, encodeURIComponent) — this tree carries no URI, and no text naming one.
 
-import { SLEEP_FRAMES, frameDocument, sleepDocument } from './creatures.js';
+import { SLEEP_LOOP, frameDocument, sleepDocument } from './creatures.js';
 import { draw, seatKey } from './seed.js';
 
 export { seatKey, fnv1a32, draw } from './seed.js';
 export {
   SPECIES, SPECIES_KEYS, SPECIES_FIELD, WITHHELD, EYES, MOUTHS, BLUSH, BROWS, SIZES, STOUT, TILTS, ACCENTS, GREENS,
   RIM, RIM_W, SEAT_VIEWBOX, CHIBI_VIEWBOX, CHIBI_HEAD_SHARE, speciesOf, recipe, describe, chibiGeometry, frameDocument,
-  SLEEP_FRAMES, SLEEP_ZS, Z_LARGE, Z_EYE_GAP, zLargeFor, sleepDocument,
+  SLEEP_LOOP, SLEEP_ZS, SLEEP_VIEWBOX, Z_LARGE, Z_A0, Z_A1, Z_RATIO, Z_T0, Z_GAP, Z_TOP, Z_GLOW, Z_HALO, Z_HALO_OPACITY,
+  CREST_TOP, zLevels, zStand, zLargeFor, sleepDocument,
 } from './creatures.js';
 
 /**
@@ -61,35 +62,40 @@ export function chibiFrame(installId, internKey) {
 }
 
 /**
- * THE SLEEPER — A6's loop (FLOOR.md § 6.2, § 10.4's frame contract item 4): `SLEEP_FRAMES` documents of the
- * seat slumped asleep on its desk with its eyes closed and the z's rising beside its head; frame 0 is the
- * static, reduced-motion form, the same canonical frame for every seat (a moving loop starts at `loopOffset()`). `deskTop` is where the desk's top edge crosses the character's rect, as a
- * share of the rect's height — the floor's to say (`floor/desk-layout.js`), because the frame draws no desk.
- * @param {string} installId @param {string} seatId @param {number} deskTop @returns {string[]}
+ * THE SLEEPER — A6 (FLOOR.md § 6.2, § 10.4's frame contract item 4): the seat slumped asleep on its desk with its eyes
+ * closed and three z's fixed above its head, lit in turn by a pulse of brightness. `frames` is `SLEEP_LOOP + 1`
+ * documents — document 0 the STILL, every z at full brightness, the reduced-motion form and the same for every seat;
+ * documents 1.. the loop's frames in order — and `loopFrom` is 1: the held loop is `frames[1 ..]`, which a moving
+ * render steps from the seat's own offset (`loopOffset()`). `deskTop` is where the desk's top edge crosses the
+ * character's rect, as a share of the rect's height, and `clear` the floor's furniture in frame units — both the
+ * floor's to say (`floor/desk-layout.js`), because the frame draws no desk.
+ * @param {string} installId @param {string} seatId @param {number} deskTop @param {object[]} clear
+ * @returns {{frames: string[], loopFrom: number}}
  */
-export function sleepFrames(installId, seatId, deskTop) {
+export function sleepFrames(installId, seatId, deskTop, clear) {
   const key = seatKey(installId, seatId);
-  return Array.from({ length: SLEEP_FRAMES }, (_, frame) => sleepDocument(key, { frame, deskTop }));
+  return { frames: Array.from({ length: SLEEP_LOOP + 1 }, (_, frame) => sleepDocument(key, { frame, deskTop, clear })), loopFrom: 1 };
 }
 
 /**
- * WHAT A DESK DRAWS FOR A POSE — the frames a desk's character is drawn in, frame 0 its static form and the
- * rest the held loop it steps when its render moves: the sleeper's for `asleep`; for every other pose the walk,
- * as before (§ 10.4's frame contract item 1). The one place a pose becomes a drawing: the painter asks, and
+ * WHAT A DESK DRAWS FOR A POSE — the tree → painter interface (§ 10.4 item 4): `{ frames, loopFrom }`, `frames[0]` the
+ * pose's static form and `frames[loopFrom ..]` the held loop it steps when its render moves — the sleeper's for `asleep`
+ * (`loopFrom` 1, its still ahead of the loop); for every other pose the walk, as before, with `loopFrom` 0 (the held
+ * loop is the whole walk, frame 0 the static form). The one place a pose becomes a drawing: the painter asks, and
  * decides nothing.
- * @param {string} installId @param {string} seatId @param {{pose: string, deskTop: number}} at
- * @returns {string[]}
+ * @param {string} installId @param {string} seatId @param {{pose: string, deskTop: number, clear: object[]}} at
+ * @returns {{frames: string[], loopFrom: number}}
  */
-export function poseFrames(installId, seatId, { pose, deskTop }) {
-  return pose === 'asleep' ? sleepFrames(installId, seatId, deskTop) : walkFrames(installId, seatId);
+export function poseFrames(installId, seatId, { pose, deskTop, clear }) {
+  return pose === 'asleep' ? sleepFrames(installId, seatId, deskTop, clear) : { frames: walkFrames(installId, seatId), loopFrom: 0 };
 }
 
 /**
  * THE SEAT's LOOP OFFSET (FLOOR.md § 6.2's per-seat loop phase rule, § 10.4 item 4; card#12187): the frame a seat's
  * MOVING held loop starts at, of a loop `length` frames long — `draw(seatKey, 'loop-phase') % length`, a pure
- * function of the key, so it is the same on every reload and draws nothing random. The painter steps every character
- * whose held render moves from it (`floor/painter.js`); frame 0 stays the canonical, reduced-motion form, which no
- * offset reads.
+ * function of the key, so it is the same on every reload and draws nothing random. `length` is the LOOP's, never the
+ * frame list's — `frames.length − loopFrom` (`poseFrames()`). The painter steps every character whose held render
+ * moves from it (`floor/painter.js`); frame 0 stays the canonical, reduced-motion form, which no offset reads.
  * @param {string} installId @param {string} seatId @param {number} length @returns {number} in 0..length-1
  */
 export function loopOffset(installId, seatId, length) {

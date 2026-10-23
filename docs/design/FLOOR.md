@@ -5612,8 +5612,9 @@ creature generator's sheet is their worked example.
      **The documents are a still and then the loop**: document 0 is the **still** — every z at level 3, the
      reduced-motion form ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)) — and documents
      1 to `SLEEP_LOOP` are the loop frames in order.
-     **The tree → painter interface, explicit.** `poseFrames(installId, seatId, { pose, deskTop })` returns
-     **`{ frames, loopFrom }`** for every pose, and `sleepFrames()` the same shape: `frames` the documents, `frames[0 .. loopFrom − 1]`
+     **The tree → painter interface, explicit.** `poseFrames(installId, seatId, { pose, deskTop, clear })` returns
+     **`{ frames, loopFrom }`** for every pose — `clear` the character element's clear rects, which it hands
+     `sleepFrames()` for `asleep` — and `sleepFrames()` the same shape: `frames` the documents, `frames[0 .. loopFrom − 1]`
      the static forms and `frames[loopFrom ..]` the held loop; the sleeper's is `loopFrom` 1 over `SLEEP_LOOP + 1` documents,
      and every other pose's is the walk's frames with `loopFrom` 0 (the held loop is the whole walk, frame 0 the static form
      as it was). `walkFrames()` and `chibiFrame()` keep returning what they did and the painter wraps them with a `loopFrom` of

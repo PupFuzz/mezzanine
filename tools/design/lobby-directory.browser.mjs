@@ -463,6 +463,16 @@ function verdicts(run, r, contrastOk) {
   return out;
 }
 
+/** Until the page's stylesheet has loaded and applied — its `<link>`'s sheet parsed and the document complete — or a throw. */
+async function sheetApplied(b) {
+  const ready = `(() => { const l = document.querySelector('link[rel="stylesheet"]'); try { return l !== null && l.sheet !== null && l.sheet.cssRules.length > 0 && document.readyState === 'complete'; } catch { return false; } })()`;
+  for (let i = 0; i < 200; i += 1) {
+    if (await b.evaluate(ready)) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error('the page\'s stylesheet never applied');
+}
+
 /** Every run, measured; each result carries each check's verdict and `ok`. */
 async function judge(chrome, plant) {
   const server = await serve(plant);
@@ -473,6 +483,10 @@ async function judge(chrome, plant) {
       try {
         if (run.mode === 'noscript') await b.page('Emulation.setScriptExecutionDisabled', { value: true });
         await b.load(`http://127.0.0.1:${server.address().port}/index.html?floors=${run.floors}&camera=${run.camera ?? 'fit'}&mode=${run.mode ?? 'drawn'}`);
+        // With no script, the title the loader waits on is the markup's, which parses before the stylesheet has applied:
+        // the page is read only once its sheet is (card#12187 review N1 — read early, the text measured at the browser's
+        // own sizes about one run in eight).
+        if (run.mode === 'noscript') await sheetApplied(b);
         await b.evaluate(KILL_DECORATION);
         const r = await b.evaluate(READ);
         const drawn = await b.shot();

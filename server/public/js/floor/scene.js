@@ -646,7 +646,13 @@ export function buildScene(frame, input) {
  */
 export function placeDesk(model, key, installId, slot, at, ctx, extra) {
     const { elements, bubble } = deskLayout(model, ctx);
-    const moved = elements.map((e) => Object.freeze({ ...e, x: at.x + e.x, y: at.y + e.y }));
+    // A sleeper's overdraw (§ 10.4 item 4) moves with its element; its clear rects are frame units and do not.
+    const moved = elements.map((e) => Object.freeze({
+        ...e,
+        x: at.x + e.x,
+        y: at.y + e.y,
+        ...(e.overdraw === undefined ? {} : { overdraw: Object.freeze({ ...e.overdraw, x: at.x + e.overdraw.x, y: at.y + e.overdraw.y }) }),
+    }));
 
     return {
         key,

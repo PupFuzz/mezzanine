@@ -348,6 +348,43 @@ export function thoughtTrail(box, character) {
 }
 
 /**
+ * The character tree's frame units per floor pixel: a seat's 108 × 192-unit frame is drawn into the character's
+ * 54 × 96 px rect (`resources/characters/index.js`'s `SCENE_W` note). The floor cannot import the tree (it loads
+ * apart, and may fail — § 9 F14), so the figure is stated here and held equal to the tree's own
+ * (`SEAT_VIEWBOX.w ÷ (SCENE_W × CHARACTER_SCALE)`) by `tools/characters/selftest.mjs` § 7b.
+ */
+export const FRAME_UNITS_PER_PX = 2;
+
+/**
+ * THE SLEEPER's OVERDRAW AND ITS CLEAR RECTS (FLOOR.md § 10.4's frame contract item 4, § 12's *Sleeper frame*,
+ * card#12187). The sleeper's z's stand above and beside its head, past the character's rect, so its image is drawn in
+ * the OVERDRAW — the character's rect widened by half its width each side and raised to the thought trail's top, one
+ * pixel under the bubble's band — while the character element's own rect, which every overlap rule reads, is
+ * unchanged. Beside it the CLEAR rects: the floor's furniture the z's keep out of — the monitor's frame, the desk's
+ * props, the desk and the thought trail's column — in the tree's frame units from the character frame's top-left, so
+ * no figure of the desk is copied into the tree. One function, read by the layout, the tree's caller and the
+ * measuring tool alike (`tools/design/sleeper-zs.browser.mjs`).
+ *
+ * @returns {{overdraw: {x: number, y: number, w: number, h: number}, clear: list<{name: string, x: number, y: number, w: number, h: number}>}}
+ *          the overdraw box-relative in px, the clear rects in frame units
+ */
+export function sleeperOverdraw(box, character) {
+    const R = deskRects(box, character);
+    const c = R.character;
+    const trail = thoughtTrail(box, character);
+    const top = Math.min(...trail.map((t) => t.y - t.r));
+    const reach = Math.max(...TRAIL_RADII);
+    const column = { x: trail[0].x - reach, y: top, w: 2 * reach, h: c.y - top };
+    const unit = (r) => Object.freeze({ x: (r.x - c.x) * FRAME_UNITS_PER_PX, y: (r.y - c.y) * FRAME_UNITS_PER_PX, w: r.w * FRAME_UNITS_PER_PX, h: r.h * FRAME_UNITS_PER_PX });
+
+    return Object.freeze({
+        overdraw: Object.freeze({ x: c.x - c.w / 2, y: top, w: 2 * c.w, h: c.y + c.h - top }),
+        clear: Object.freeze([['monitor', R['monitor-frame']], ['props', R['desk-props']], ['desk', R['desk-sprite']], ['trail', column]]
+            .map(([name, r]) => Object.freeze({ name, ...unit(r) }))),
+    });
+}
+
+/**
  * THE CLOUD (§ 5.1, card#11468 — "drawn like a cloud"): the bubble's outline, a scalloped edge of half-circle
  * puffs laid round the rect inset by `CLOUD_PUFF`, each bulging outward. An edge of length L takes
  * ⌈L ÷ 2·CLOUD_PUFF⌉ puffs of equal width, so a puff's radius is at most `CLOUD_PUFF` and its crown at most the
@@ -576,6 +613,9 @@ export function deskLayout(desk, ctx) {
                 pose: desk.pose,
                 animation: desk.held,
                 desk_top: (R['desk-sprite'].y - R.character.y) / R.character.h,
+                // § 10.4 item 4 (card#12187): a sleeper's image is drawn in its overdraw, past the element's rect, and
+                // its z's keep out of the clear rects the tree is handed.
+                ...(desk.pose === 'asleep' ? sleeperOverdraw(ctx.box, ctx.character) : {}),
             });
         }
 

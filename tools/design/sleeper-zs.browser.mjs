@@ -123,22 +123,15 @@ const inView = (doc) => doc.replace(/viewBox="[^"]*" width="[^"]*" height="[^"]*
 
 /**
  * THE CLEAR RECTS — what the z's must stay out of, in frame units, DERIVED FROM THE FLOOR'S OWN LAYOUT and never copied
- * here: `floor/desk-layout.js`'s `deskRects()` for a desk at the furniture box, the character's rect at one frame unit
- * per `SEAT_VIEWBOX.w / rect.w`, and the thought trail's column (`thoughtTrail()`'s circles) above it. They are the
- * monitor's frame, the desk's props, the desk, and the trail — the places a z that rises beyond the character's rect
- * would be drawn through, or under, something the desk draws.
+ * here: `floor/desk-layout.js`'s `sleeperOverdraw()` for a desk at the furniture box — the one function the floor hands
+ * the tree its clear rects by — the monitor's frame, the desk's props, the desk, and the thought trail's column: the
+ * places a z that stands beyond the character's rect would be drawn through, or under, something the desk draws.
  */
 async function clearRects(C) {
-  const { deskRects, thoughtTrail } = await import(pathToFileURL(join(ROOT, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
+  const { sleeperOverdraw, FRAME_UNITS_PER_PX } = await import(pathToFileURL(join(ROOT, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
   const { FURNITURE_BOX } = await import(pathToFileURL(join(ROOT, 'resources', 'floor', 'furniture-box.js')).href);
-  const character = { w: C.SCENE_W, h: C.SCENE_H };
-  const R = deskRects(FURNITURE_BOX, character);
-  const k = C.SEAT_VIEWBOX.w / R.character.w;
-  UNIT_PX = 1 / k;
-  const unit = (r) => ({ x: (r.x - R.character.x) * k, y: (r.y - R.character.y) * k, w: r.w * k, h: r.h * k });
-  const trail = thoughtTrail(FURNITURE_BOX, character);
-  const column = { x: trail[0].x - 4, y: Math.min(...trail.map((c) => c.y - c.r)), w: 8, h: R.character.y - Math.min(...trail.map((c) => c.y - c.r)) };
-  return [['monitor', R['monitor-frame']], ['props', R['desk-props']], ['desk', R['desk-sprite']], ['trail', column]].map(([name, r]) => ({ name, ...unit(r) }));
+  UNIT_PX = 1 / FRAME_UNITS_PER_PX;
+  return sleeperOverdraw(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H }).clear.map((c) => ({ ...c }));
 }
 
 // ── the z's, drawn as creatures.js's zSvg() draws them ──────────────────────────────────────────────────────────────
@@ -186,7 +179,7 @@ function poseOf(doc) {
   return { eyes, dir: Math.sign(roll) || 1, crown: Number.isFinite(top) ? top : null };
 }
 
-/** The opacity law `sleepZs()` fades a z by along its rise `t` in [0, 1). */
+/** The opacity law the round-3 tree's `sleepZs()` (retired by the fixed z's) faded a z by along its rise `t` in [0, 1) — the rising layouts' controls keep it. */
 const fade = (t) => Math.min(1, t / 0.15, (1 - t) / 0.4);
 
 /**
@@ -355,7 +348,7 @@ function glowMarkup(z, level, over = {}) {
 const HALO_RE = /<path data-part="halo" data-k="(\d+)" data-level="(\d)" d="[^"]*" stroke="([^"]+)" stroke-width="([\d.]+)"[^>]*opacity="([\d.]+)"\/>/g;
 const halosOf = (doc) => [...doc.matchAll(HALO_RE)].map((m) => ({ markup: m[0], k: +m[1], level: +m[2], colour: m[3], width: +m[4], opacity: +m[5] }));
 
-/** `sleepZs()`'s law: N z's evenly spaced along from → to, shrinking L → S, fading in and out; optionally clamped into the frame. */
+/** The round-3 tree's `sleepZs()` law (retired; the rising controls keep it): N z's evenly spaced along from → to, shrinking L → S, fading in and out; optionally clamped into the frame. */
 function rise(p, phase, from, to) {
   const out = [];
   for (let k = 0; k < p.N; k += 1) {
