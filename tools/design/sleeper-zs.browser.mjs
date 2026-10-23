@@ -765,6 +765,14 @@ function report(label, { rows, picks, species, mirror, framesPer, crestDefects, 
 }
 
 /**
+ * Until every image on the page has decoded — a capture taken after a fixed delay showed a strip's last rows blank while
+ * their data URIs were still decoding (card#12187). An image that cannot decode throws, never captures as a blank.
+ */
+async function allDecoded(b) {
+  await b.evaluate('Promise.all([...document.images].map((i) => i.decode())).then(() => true)');
+}
+
+/**
  * A sheet of the WORST over-head seat of every species, at the frame it measured worst — from the measured rows, so the
  * picture is the case the figure stands for, never a seat the figure did not pick.
  */
@@ -782,7 +790,7 @@ async function sheet(chrome, tree, layout, out, rows) {
   const b = await browser(chrome, cols * (W + 6) + 16, Math.ceil(docs.length / cols) * (H + 6) + 16, 'ready');
   try {
     await b.load(`data:text/html,${encodeURIComponent(html.replace('<title>x</title>', '<title>ready</title>'))}`);
-    await new Promise((r) => setTimeout(r, 300));
+    await allDecoded(b);
     const png = await b.shot();
     writeFileSync(out, Buffer.from(png.split(',')[1], 'base64'));
   } finally {
@@ -823,7 +831,7 @@ async function strip(chrome, tree, layout, out, species) {
   const b = await browser(chrome, cols * (W + 4) + 12, rowsDocs.length * (H + 4) + 12, 'ready');
   try {
     await b.load(`data:text/html,${encodeURIComponent(html)}`);
-    await new Promise((r) => setTimeout(r, 300));
+    await allDecoded(b);
     writeFileSync(out, Buffer.from((await b.shot()).split(',')[1], 'base64'));
   } finally {
     b.close();
