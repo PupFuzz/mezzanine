@@ -621,7 +621,9 @@ this replaces. Four rules decide what an entry is on each start, each the safe d
    site.
 3. **A `state.json` written before this card** — top-level `seq_epoch`, `next_seq` and `cursors`, no
    `sites` — is read as the entry of the site named `default`, **under either config form**, with
-   `ingest_url_sha256` absent until the flusher's first save records the hash of the configured site key. The
+   `ingest_url_sha256` absent until a flusher start whose configured URL parses records the hash of the
+   configured site key; a start under a URL that does not parse saves the entry still without it, and an entry
+   without the member is read as the same unbound adoption on every later start (delta review N1). The
    per-site subset of its top-level `counters` and `counter_rises`
    ([§ 9.3](#93-degradation-counters) names the subset) moves into that entry at the same read, the
    way `renameCounters` already moves a counter an earlier build filed under another name. A seat
@@ -650,8 +652,10 @@ this replaces. Four rules decide what an entry is on each start, each the safe d
    site by rule 1: a re-send, never a skip. ⚠ **A known residual, accepted rather than closed:** a legacy entry records no URL, so
    rule 2 cannot check it — an operator who, in the same edit as the upgrade, both repoints the
    existing site at a different server and keeps its name `default` carries a cursor the new server
-   never earned, and the lines behind it are skipped there, uncounted. The window is one start: the
-   first save records the hash and rule 2 holds from then on. It is accepted because closing it means
+   never earned, and the lines behind it are skipped there, uncounted. The window closes at the first
+   start whose URL parses: its save records the hash and rule 2 holds from then on. A start under a URL that does
+   not parse sends nothing and records nothing, so the window stays open across it, and a repoint made
+   while fixing that typo is the same edit (delta review N1). It is accepted because closing it means
    refusing every legacy adoption (re-sending 8 days to every upgraded seat and spending ~3.4 h of
    each site's limiter) to cover an edit the install document
    tells the operator not to make: *to repoint the existing site at upgrade, name it anything but
@@ -7175,7 +7179,7 @@ property.
 - **Case H — `selftest` names the site, and a refused token fails it.** With `sb` unreachable: exit
   `2`, `checks.tls_verify` `not_measured`, `sites.sa.tls_verify` `pass`, `sites.sb.tls_verify`
   `not_measured`. With `sb`'s certificate not in its `ca_file`: exit `1`, `sites.sb.tls_verify` `fail`,
-  `sites.a` `pass`. **With `sb` answering the probe `401`: exit `1`, `sites.sb.token_accepted` `fail`,
+  `sites.sa.tls_verify` `pass`. **With `sb` answering the probe `401`: exit `1`, `sites.sb.token_accepted` `fail`,
   `sites.sb.schema_version_accepted` `not_measured`, `sites.sa.token_accepted` `pass`.** **The
   residual, measured:** with `sb`'s stub behaving as the real server does for a token issued to
   another seat — `200` to the health probe, `403 identity_mismatch` to every batch — `selftest` exits

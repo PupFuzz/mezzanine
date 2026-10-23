@@ -6691,6 +6691,47 @@ redgreen("an unparseable ingest_url keeps its site's entry (card#12180 review F8
          f"read as a repoint -> {ut_r['resent']} events re-sent after the fix, epoch kept {ut_r['epoch_same']}",
          f"site-scoped error -> nothing sent during {ut_g['during']}, {ut_g['resent']} re-sent after the fix, epoch kept {ut_g['epoch_same']}")
 
+
+# ── … and so does a LEGACY adoption: a pre-card state.json first read under an unparseable URL (delta review N1) ──
+def legacy_typo(tag: str, reporter: Path = REPORTER) -> dict:
+    """A single-site seat whose state.json a build before card#12180 wrote (top-level seq_epoch, next_seq and a
+    cursor at the end of the one bucket: every line delivered), started for the first time under a typo'd URL, for
+    two passes — each saving state.json — and then with the URL fixed."""
+    st = site_stub(f"lt-{tag}")
+    m = seat(f"at28-lt-{tag}", ingest=st.url)
+    spool_events(m, 6, AT28_T0, tag="lt")
+    bucket = time.strftime("%Y%m%d%H", time.gmtime(AT28_T0 / 1000))
+    written = (m.spool / f"{bucket}.jsonl").stat().st_size
+    (m.spool / "state.json").write_text(json.dumps({
+        "seq_epoch": "01LEGACYTYPO0000000000000", "next_seq": 7, "cursors": {bucket: written}}), encoding="utf-8")
+    good = m.cfg["ingest_url"]
+    m.cfg["ingest_url"] = good.replace("https://127.0.0.1", "https://bad host")
+    m.write_cfg()
+    fl(m, AT28_T0 + 60_000, reporter=reporter)
+    fl(m, AT28_T0 + 120_000, reporter=reporter)
+    during = (len(st.posts), m.entry("default").get("cursors", {}).get(bucket))
+    m.cfg["ingest_url"] = good
+    m.write_cfg()
+    fl(m, AT28_T0 + 180_000, reporter=reporter)
+    resent = [e for b in st.posts for e in b["events"] if e["kind"] != "reporter.heartbeat"]
+    return {"during": during, "resent": len(resent), "bound": m.entry("default").get("ingest_url_sha256") is not None,
+            "cursor": m.entry("default").get("cursors", {}).get(bucket), "written": written}
+
+
+lt_g = legacy_typo("green")
+_lt_end = lt_g["written"]
+eq("a pre-card state.json first read under an unparseable ingest_url: two passes send nothing and save the adopted "
+   "cursor; the typo fixed, the entry binds to the URL and re-sends none of the six delivered lines",
+   ((0, _lt_end), 0, True, _lt_end), (lt_g["during"], lt_g["resent"], lt_g["bound"], lt_g["cursor"]))
+lt_r = legacy_typo("red", reporter=plant((
+    "    if (s.sites !== undefined) { if (!isPlain(s.sites)) throw new Error('shape'); s.sites = nameMap(s.sites); markUnbound(s.sites); }",
+    "    if (s.sites !== undefined) { if (!isPlain(s.sites)) throw new Error('shape'); s.sites = nameMap(s.sites); }")))
+eq("RED: the build reviewed (the adoption marker lost at the typo pass's save) -> the fixed URL reads the entry as "
+   "bound to another server and re-sends all six lines", 6, lt_r["resent"])
+redgreen("a legacy adoption survives an unparseable ingest_url (card#12180 delta review N1)",
+         f"marker lost at the save -> {lt_r['resent']} lines re-sent after the fix",
+         f"the unbound entry re-read as the adoption -> {lt_g['resent']} re-sent, bound after the fix: {lt_g['bound']}")
+
 # ── Case O — one site's poison stream evicts nothing of another's ─────────────────────────────────────
 def case_o(tag: str, reporter: Path = REPORTER) -> dict:
     sa, sb = site_stub(f"o-a-{tag}"), site_stub(f"o-b-{tag}")
@@ -7676,7 +7717,7 @@ eq("CONTROL (run first): the temp-and-rename writer under a file-size limit belo
    (r_lim.returncode, plf.read_bytes() == plain, no_tmp(pl)))
 w_inplace = writer_path()
 w_inplace.write_text(WRITER_SRC.replace(
-    '    const fd = fs.openSync(tmp, "wx", 0o600);\n    try { fs.writeSync(fd, JSON.stringify(c, null, 2) + "\\n"); } finally { fs.closeSync(fd); }',
+    '    const fd = fs.openSync(tmp, "wx", 0o600);\n    try { fs.writeSync(fd, JSON.stringify(c, null, 2) + "\\n"); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }',
     '    fs.writeFileSync(e.FR_CONFIG, JSON.stringify(c, null, 2) + "\\n", { mode: 0o600 }); fs.copyFileSync(e.FR_CONFIG, tmp);'),
     encoding="utf-8")
 assert w_inplace.read_text(encoding="utf-8") != WRITER_SRC, "the in-place plant matched nothing"
