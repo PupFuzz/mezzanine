@@ -1801,6 +1801,18 @@ CREATE TABLE seat_state (
   spool_lag_events          INT UNSIGNED NULL,
   oldest_unsent_age_s       INT UNSIGNED NULL,
   enabled                   TINYINT(1) NULL,
+  roundtable_agent_name     VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NULL,
+                                         -- D1 § 3.1's DECLARED roundtable name (card#12239): the
+                                         -- identity this seat posts under on the fleet's cross-install
+                                         -- repository, last heartbeat's value, verbatim. NULL on the
+                                         -- same three conditions as `protocol_agent_name` below, and
+                                         -- on a reporter that predates the field. A REPORTED label,
+                                         -- never an identity, exactly as its sibling
+  roundtable_agent_name_check ENUM('checked','unchecked','disagreed','undeclared') NULL,
+                                         -- D1 § 3.1's four states, verbatim, produced by the same
+                                         -- table applied to `cross_project.identity`; this plane adds
+                                         -- none. ⛔ Only `checked` and `unchecked` resolve a
+                                         -- FLEET-scope name to this desk (§ 8.3.3 rule 1's fleet arm)
   protocol_agent_name       VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NULL,
                                          -- D1 § 3.1's DECLARED protocol agent name, last
                                          -- heartbeat's value, verbatim. NULL = no heartbeat yet; a
@@ -2015,11 +2027,18 @@ CREATE TABLE coord_hooks (
   hook_id       CHAR(26)     CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
                                             -- `mzh_` + 22 base64url chars: the PUBLIC selector in the
                                             -- route's path (D1 § 18.8). Never a secret, never evidence
-  install_ref   SMALLINT UNSIGNED NOT NULL,
-  scope         ENUM('install') NOT NULL DEFAULT 'install',
-                                            -- the one member this slice mints; card#12240's
-                                            -- between-rooms binding adds `fleet` as a member here and
-                                            -- never a second receipt route (COORD-STORE.md § 10 Q1)
+  scope         ENUM('install','fleet') NOT NULL,
+                                            -- set by the operator at issue (COORD-STORE.md § 3.1):
+                                            -- `install` names one install below; `fleet` names none —
+                                            -- the cross-install repository whose threads span rooms.
+                                            -- An ENUM by § 6.3: the issue command is the only writer
+                                            -- and produces exactly these two
+  install_ref   SMALLINT UNSIGNED NULL,     -- NULL iff `scope` = 'fleet'; the objects then carry
+                                            -- `install_id: null` (D1 § 18.6)
+  install_key   SMALLINT UNSIGNED AS (COALESCE(install_ref, 0)) STORED,
+                                            -- the uniqueness key's spelling of "no install": a UNIQUE
+                                            -- over a NULL admits duplicates, and two fleet bindings on
+                                            -- one repository would be two secrets for one hook
   repository    VARCHAR(140) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
                                             -- `<owner>/<repo>`, the binding D1 § 18.8 step 6 holds the
                                             -- payload's claim against
@@ -2034,7 +2053,7 @@ CREATE TABLE coord_hooks (
   revoked_at    DATETIME(3)  NULL,          -- a revoked binding has no secret: D1 § 18.8 step 3 refuses
   last_delivery_at DATETIME(3) NULL,        -- the operator's liveness read per binding
   UNIQUE KEY uq_hook (hook_id),
-  UNIQUE KEY uq_binding (install_ref, repository),
+  UNIQUE KEY uq_binding (repository, install_key),
   CONSTRAINT fk_hook_install FOREIGN KEY (install_ref) REFERENCES installs (id)
 ) ENGINE=InnoDB;
 
@@ -2078,8 +2097,10 @@ CREATE TABLE coord_deliveries (
 CREATE TABLE coord_threads (
   id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   hook_ref      SMALLINT UNSIGNED NOT NULL,
-  install_ref   SMALLINT UNSIGNED NOT NULL, -- the binding's install, copied here so the backfill's read
-                                            -- and § 9's filter key need no join through the binding
+  scope         ENUM('install','fleet') NOT NULL,  -- the binding's, copied (D1 § 18.6's `scope`)
+  install_ref   SMALLINT UNSIGNED NULL,     -- the binding's install, copied here so the backfill's read
+                                            -- and § 9's filter key need no join through the binding;
+                                            -- NULL iff `scope` = 'fleet'
   thread_ref    VARCHAR(256) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,  -- `<owner>/<repo>#<n>`
   lifecycle     ENUM('opened','closed','reopened') NOT NULL,
                                             -- the CURRENT state, moved by the delivery with the greatest
@@ -2116,7 +2137,8 @@ CREATE TABLE coord_threads (
 CREATE TABLE coord_posts (
   id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   thread_id     INT UNSIGNED NOT NULL,      -- → coord_threads.id; a post never outlives its thread
-  install_ref   SMALLINT UNSIGNED NOT NULL,
+  scope         ENUM('install','fleet') NOT NULL,  -- the thread's, copied
+  install_ref   SMALLINT UNSIGNED NULL,     -- NULL iff `scope` = 'fleet'
   post_ref      VARCHAR(256) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
                                             -- `<thread_ref>` or `<thread_ref>-c<comment id>` (D1 § 18.7)
   from_name     VARCHAR(48)  CHARACTER SET ascii COLLATE ascii_bin NULL,  -- the wire's `from`
@@ -2373,7 +2395,7 @@ of facts outside the ten, and the closed list means each of them is version-bear
 | `enabled` | the flag is *only ever* learned from a heartbeat ([§ 4.5](#45-link-states) rule 4), so no other event can move it |
 | `badges` · `badges_since` | D1's twelve `degraded` members ride the heartbeat ([§ 7.3](#73-how-the-reporters-own-counters-are-handled)); a badge onset or clear is a rendered change |
 | `reporter.selftest_failed` | the `selftest` object is a member of the heartbeat's own `data` ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)) and of no other event's; a failing self-test is exactly what a consumer must be told |
-| `protocol_agent_name` · `protocol_agent_name_check` · `protocol_agent_role` | all three are config-derived and ride the heartbeat alone ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)), so no other event can move them. The edge is a seat editing its declaration, a roster appearing or vanishing under it, or the roster entry's `role` being edited — single digits per seat-*lifetime*, not per day — and it changes which desk a thread line reaches and which desk a role reservation seats, which is as rendered as a change gets |
+| `protocol_agent_name` · `protocol_agent_name_check` · `protocol_agent_role` · `roundtable_agent_name` · `roundtable_agent_name_check` | all five are config-derived and ride the heartbeat alone ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)), so no other event can move them. The edge is a seat editing its declaration, a roster appearing or vanishing under it, or the roster entry's `role` being edited — single digits per seat-*lifetime*, not per day — and it changes which desk a thread line reaches and which desk a role reservation seats, which is as rendered as a change gets |
 | `delivery.seq_epoch` | changes on an epoch reset ([D1 § 10.2](EVENT-SCHEMA.md#102-ordering-seq-and-gap-detection)), which a heartbeat can be the first event to carry |
 | `link_state` · `render_state` · `delivery.no_data_since` | derived, not carried: a receipt is what ends `stale`/`offline` and clears `no_data_since`, and `oldest_unsent_age_s` past 300 s is what enters and leaves `catching_up` ([§ 4.5](#45-link-states), [AT-D2-20](#at-d2-20-catching-up-is-not-current-and-not-stale)) — the excluded members are the *inputs*, and a derived value computed from an excluded input is not itself excluded |
 
@@ -2998,7 +3020,9 @@ steps 1–8 have admitted a delivery:
    `coord_delivery_duplicate`, nothing else happens. The read is outside the transaction because a
    duplicate is the common retry case and should cost one indexed read.
 2. `App\Feed\Outbox::transaction()` — the primitive every other writer of this plane already uses
-   ([§ 8.3](#83-the-websocket-delta-feed)): insert the `coord_deliveries` row (its `UNIQUE` digest is the
+   ([§ 8.3](#83-the-websocket-delta-feed)): copy the binding's `scope` and install (or none) onto every
+   row and object written below — a fleet-scope binding's outbox rows carry `install_id NULL`, and
+   `FeedMessage::installId()` answers `null` for them; insert the `coord_deliveries` row (its `UNIQUE` digest is the
    race arbiter — two identical deliveries in flight at once commit one row, and the loser's failed insert
    is answered as a duplicate, counted once); derive per [D1 § 18.6](EVENT-SCHEMA.md#186-coordthread) /
    [§ 18.7](EVENT-SCHEMA.md#187-coordround); apply the thread rule and the post rule below; enqueue one
@@ -3428,6 +3452,8 @@ snapshot repeats per seat and the delta patches.
 | `badges` | array\<string\> | no | **0…18** — the union of D1's 12 `degraded` members and [§ 7.2](#72-this-planes-own-counters-and-badges)'s 7, of which `epoch_reset` is in both. The bound is that union's size and moves only when one of the two tables moves; no duplicates; D1's members first, in D1 § 9.3's order, then this document's, in § 7.2's | `["lossy"]` |
 | `badges_since` | rfc3339_ms | **yes** | when the oldest currently-present badge first appeared | `"2026-08-23T09:14:02.118Z"` |
 | `enabled` | bool | **yes** | last heartbeat's value; `null` before the first heartbeat | `true` |
+| `roundtable_agent_name` | slug | **yes** | ≤ 48 B — the protocol agent name's bound, which D1 § 6.14 gives this member too. The seat's own DECLARATION of the identity it posts under on the fleet's cross-install repository ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)'s *`roundtable_agent_name`*, card#12239), last heartbeat's value; `null` before the first heartbeat, after a heartbeat that carried neither of its two members (a reporter that predates them), and when the seat declares none. **A protocol-level label, never an identity**: the join [§ 8.3.3](#833-the-coordination-objects) rule 1's fleet arm makes through it resolves a **fleet-scope** object's name and nothing else | `"pm-solo"` |
+| `roundtable_agent_name_check` | enum | **yes** | `checked`·`unchecked`·`disagreed`·`undeclared` — D1's four members, published unchanged and re-derived nowhere on this plane; `null` on the same conditions as the member above | `"checked"` |
 | `protocol_agent_name` | slug | **yes** | ≤ 48 B — D1's bound for a protocol agent name, carried beside the field it bounds and held to it, with § 6.4's column, by `tools/design/verify-event-schema.py`. The seat's own DECLARATION ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)), last heartbeat's value; `null` before the first heartbeat, after a heartbeat that carried neither declaration member (for example from a reporter that predates [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s fields), **and** on a seat that declares none — `protocol_agent_name_check` is `undeclared` only on the seat that declares none, and `delivery.last_heartbeat_at` is null only before the first heartbeat | `"pm"` |
 | `protocol_agent_name_check` | enum | **yes** | `checked`·`unchecked`·`disagreed`·`undeclared` — D1's four members, published unchanged and re-derived nowhere on this plane; `null` before the first heartbeat, exactly as `enabled`, **and** after a heartbeat that carried neither declaration member (for example from a reporter that predates [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s fields) — `delivery.last_heartbeat_at` is null only before the first heartbeat | `"checked"` |
 | `protocol_agent_role` | slug | **yes** | ≤ 48 B — the protocol agent name's bound, which D1 § 6.14 gives this member too, held equal to it, with § 6.4's column, by `tools/design/verify-event-schema.py`. The coordination roster entry's `role` the seat's declared name selects, RELAYED by the reporter ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)) and carried verbatim — this plane interprets no role. Last heartbeat's value; `null` before the first heartbeat, after a heartbeat that omitted it (for example from a reporter that predates it), **and** whenever the reporter relays none: `protocol_agent_name_check` is not `checked`, the entry carries no slug-shaped `role`, or the declared name matches more than one roster entry — `protocol_agent_name_check` tells the first of those apart, and the seat's `selftest` detail names the other two | `"pm"` |
@@ -3640,13 +3666,13 @@ insignificant whitespace). Every row below names the block it is measured from, 
 
 | Object | Bytes | How |
 |---|---|---|
-| seat state, typical | **2,093 B** | the seat object of the [§ 8.2.2](#822-worked-snapshot) snapshot, serialized |
-| seat state, worst case | **5,986 B** | the `patch` of the [§ 8.3.2](#832-worked-worst-case-delta) block, serialized |
+| seat state, typical | **2,167 B** | the seat object of the [§ 8.2.2](#822-worked-snapshot) snapshot, serialized |
+| seat state, worst case | **6,104 B** | the `patch` of the [§ 8.3.2](#832-worked-worst-case-delta) block, serialized |
 | snapshot envelope | **302 B** | the [§ 8.2.2](#822-worked-snapshot) snapshot **less** its one seat object: fleet health + one install wrapper |
-| snapshot, 4 seats | **~8.7 KB** typical, **~24 KB** worst | 302 + n × the above |
-| snapshot, 50 seats | **~105 KB** typical, **~300 KB** worst | — |
+| snapshot, 4 seats | **~9.0 KB** typical, **~25 KB** worst | 302 + n × the above |
+| snapshot, 50 seats | **~109 KB** typical, **~306 KB** worst | — |
 | delta, typical | **323 B** | the [§ 8.3.1](#831-worked-delta) example, serialized |
-| delta, worst case | **6,690 B** | the [§ 8.3.2](#832-worked-worst-case-delta) block itself, serialized |
+| delta, worst case | **6,862 B** | the [§ 8.3.2](#832-worked-worst-case-delta) block itself, serialized |
 
 **The worst case is published as an object rather than described as a construction, and that is the
 whole point.** An earlier draft labelled these figures *Measured* while the worst case existed only as a
@@ -3688,11 +3714,11 @@ well as the byte count:
    ceiling is deliberately pessimistic, so the bound cannot be falsified by a fleet that runs longer
    than anyone planned.
 
-The worst-case delta at 6,690 B sits inside the **8 KiB per-message bound** this design holds itself to
-([§ 8.3](#83-the-websocket-delta-feed)) at **1.22×**, with **1,502 B** spare.
+The worst-case delta at 6,862 B sits inside the **8 KiB per-message bound** this design holds itself to
+([§ 8.3](#83-the-websocket-delta-feed)) at **1.19×**, with **1,330 B** spare.
 
-**No pagination, and the threshold at which that stops being true.** A 50-seat snapshot is ~105 KB, which
-is one response. Past **200 seats** (~419 KB typical) the snapshot should page by install — stated now
+**No pagination, and the threshold at which that stops being true.** A 50-seat snapshot is ~109 KB, which
+is one response. Past **200 seats** (~434 KB typical) the snapshot should page by install — stated now
 as the trigger, and deliberately not built, because building pagination for a four-seat fleet is
 mechanism for a case that does not exist and the trigger is one number away from being noticed.
 
@@ -3759,6 +3785,7 @@ mechanism for a case that does not exist and the trigger is one number away from
           "badges": ["lossy"], "badges_since": "2026-08-23T09:14:02.118Z", "enabled": true,
           "protocol_agent_name": "pm", "protocol_agent_name_check": "checked",
           "protocol_agent_role": "pm",
+          "roundtable_agent_name": "pm-solo", "roundtable_agent_name_check": "checked",
           "reporter": { "version": "0.1.0", "platform": "linux", "uptime_s": 401150,
                         "selftest_failed": [] },
           "retired": null,
@@ -4008,7 +4035,7 @@ one statement whose plan [§ 6.7](#67-retention-and-purge) states, over a table 
 on the average tick and none at all on a quiet fleet — which is the design's own 250 ms rather than a
 number this amendment mints.
 
-**Message bound: 8 KiB.** The worst-case delta is 6,690 B, measured by serializing
+**Message bound: 8 KiB.** The worst-case delta is 6,862 B, measured by serializing
 [§ 8.3.2](#832-worked-worst-case-delta), so the bound cannot bind on a conforming message; it exists so that a future field addition that would
 breach it fails a test rather than a client. SSE imposes no per-message maximum of its own — a `data:`
 line is unbounded by the protocol (DOCS-CITED, WHATWG HTML § *Parsing an event stream*, which states
@@ -4478,7 +4505,7 @@ bound, `"idle_nudge_after_s":86400` — 27 B more — and the worst-case snapsho
   "seat_id": "012345678901234567890123456789012345678901234567",
   "state_version": 9007199254740991,
   "at": "2026-08-23T14:23:09.882Z",
-  "changed": ["action", "activity", "activity_state", "api_error_type", "badges", "badges_since", "blocked_since", "context", "delivery", "derivation", "enabled", "idle_since", "install_id", "link_state", "longest_open_call", "model_label", "open_calls", "open_turn", "protocol_agent_name", "protocol_agent_name_check", "protocol_agent_role", "render_state", "reporter", "retired", "seat_id", "session", "state_version", "subagents", "subagents_open", "task", "unknown_reason"],
+  "changed": ["action", "activity", "activity_state", "api_error_type", "badges", "badges_since", "blocked_since", "context", "delivery", "derivation", "enabled", "idle_since", "install_id", "link_state", "longest_open_call", "model_label", "open_calls", "open_turn", "protocol_agent_name", "protocol_agent_name_check", "protocol_agent_role", "roundtable_agent_name", "roundtable_agent_name_check", "render_state", "reporter", "retired", "seat_id", "session", "state_version", "subagents", "subagents_open", "task", "unknown_reason"],
   "patch": {
     "install_id": "01234567890123456789012345678901",
     "seat_id": "012345678901234567890123456789012345678901234567",
@@ -4517,6 +4544,8 @@ bound, `"idle_nudge_after_s":86400` — 27 B more — and the worst-case snapsho
     "protocol_agent_name": "012345678901234567890123456789012345678901234567",
     "protocol_agent_name_check": "undeclared",
     "protocol_agent_role": "012345678901234567890123456789012345678901234567",
+    "roundtable_agent_name": "012345678901234567890123456789012345678901234567",
+    "roundtable_agent_name_check": "undeclared",
     "reporter": {
       "version": "012345678901234567890123",
       "platform": "darwin",
@@ -4566,7 +4595,8 @@ producer that design forbids.
 | Field | Type | Null? | Bounds | Example |
 |---|---|---|---|---|
 | `coord_thread.thread_ref` | string | no | ≤ 256 B, `<owner>/<repo>#<n>` — the thread's identity, and the key every round carries back to it | `"AIMLA-org/aimla-coordination#742"` |
-| `coord_thread.install_id` | slug | no | ≤ 32 B, from the **hook binding** and never from the payload's own repository claim ([D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)); it is the outbox row's filter key ([§ 8.3](#83-the-websocket-delta-feed)) | `"aimla"` |
+| `coord_thread.scope` | slug | no | ≤ 16 B — `install` or `fleet`, the binding's scope ([D1 § 18.6](EVENT-SCHEMA.md#186-coordthread), card#12239). It selects which declaration a consumer joins the object's names through (rule 1 below) and whether the object has a room at all | `"install"` |
+| `coord_thread.install_id` | slug | **yes** | ≤ 32 B, from the **hook binding** and never from the payload's own repository claim ([D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)); it is the outbox row's filter key ([§ 8.3](#83-the-websocket-delta-feed)). `null` **iff** `scope` is `fleet` — the object belongs to no room, and the outbox row carries the `NULL` [§ 6.4](#64-ddl) reserves for a fleet-wide message | `"aimla"` |
 | `coord_thread.lifecycle` | slug | no | ≤ 32 B — `opened` · `closed` · `reopened`, the three actions D1 § 18.8 step 8 admits, verbatim. A closed thread can reopen, so a consumer must not treat `closed` as terminal | `"closed"` |
 | `coord_thread.carrier` | slug | **yes** | ≤ 16 B — the title's leading bracketed token, lowercased and slug-validated with **no set consulted** ([D1 § 18.3.1](EVENT-SCHEMA.md#1831-the-install-facts-input-declared-once)); `null` when the title leads with none, or when the token fails validation | `"announce"` |
 | `coord_thread.subject` | string | **yes** | ≤ 200 B — the issue title less its addressing preamble, sanitized at the receiver ([D1 § 18.10](EVENT-SCHEMA.md#1810-sanitization-at-the-coordination-producer)). **The only free-text field either object carries**; no body text transits at any length | `"the coordination-event producer"` |
@@ -4587,7 +4617,8 @@ thread is a comment, one for that opening post derived from the comment's `issue
 |---|---|---|---|---|
 | `coord_round.post_ref` | string | no | ≤ 256 B — `<thread_ref>` for the opening post, `<thread_ref>-c<comment id>` for a comment. **The post's identity, and the key a consumer counts beads by** | `"AIMLA-org/aimla-coordination#742"` |
 | `coord_round.thread_ref` | string | no | ≤ 256 B — the thread this post is on; the join back to `coord_thread` | `"AIMLA-org/aimla-coordination#742"` |
-| `coord_round.install_id` | slug | no | ≤ 32 B, from the hook binding, as above | `"aimla"` |
+| `coord_round.scope` | slug | no | ≤ 16 B — the thread's scope, repeated so a post is legible alone | `"install"` |
+| `coord_round.install_id` | slug | **yes** | ≤ 32 B, from the hook binding, as above; `null` iff `scope` is `fleet` | `"aimla"` |
 | `coord_round.from` | slug | **yes** | ≤ 48 B — the **protocol agent name** this post evidences; `null` when it evidences none | `"pm"` |
 | `coord_round.attribution` | slug | no | ≤ 16 B — the same three states, for the same reason | `"resolved"` |
 | `coord_round.to` | array\<slug\> | no | 0…32 members, each ≤ 48 B — the address **as written**: the body `TO:` line, else the thread's `to:` labels. `all` appears here verbatim, which is what makes a broadcast legible without a boolean | `["all"]` |
@@ -4623,10 +4654,18 @@ argument is untouched by a join existing. A consumer resolves against the seat p
 holds; this plane asserts no endpoint for it. Three rules, and the third is the one an implementer
 gets wrong:
 
-1. **The join is `(install_id, protocol_agent_name)` → the ONE seat of that install declaring that
-   name, and it resolves to 0 or 1 desks — never to a set.** Scoped to the install because every
-   object here carries the `install_id` of its hook binding and *"a broadcast's reach equals the
-   install's"*; a name declared in another install is another install's fact.
+1. **The join has two arms, and the object's `scope` selects one.** For an **`install`-scope** object
+   it is `(install_id, protocol_agent_name)` → the ONE seat of that install declaring that name, and it
+   resolves to 0 or 1 desks — never to a set. Scoped to the install because such an object carries the
+   `install_id` of its hook binding and *"a broadcast's reach equals the install's"*; a name declared in
+   another install is another install's fact. For a **`fleet`-scope** object (card#12239, operator
+   2026-10-23) it is `roundtable_agent_name` over **every seat of every install the client holds** → the
+   ONE seat declaring that roundtable name, 0 or 1 desks, never a set: a roundtable identity is unique
+   across the fleet by that repository's own construction, so the duplicate arm below spans installs for
+   this arm exactly as it spans one install for the other. ⛔ **The arms never cross**: a fleet-scope
+   name is never looked up among `protocol_agent_name`s, however alike the strings, and a seat whose
+   `roundtable_agent_name` is null is in no fleet-scope join — which is every seat today, and renders
+   as the empty arm below.
    ⭐ **A protocol agent name is unique per install** — operator ruling, `card#9296`
    ([§ 8.2.1](#821-the-seat-state-object), [§ 13](#13-decisions-taken-revisable-at-review) row 50).
    So the rule has **two** unresolved arms and not one, and ⛔ **they are decided in this order —
@@ -4744,7 +4783,7 @@ last two rows handed both of its open decisions to *"the slice that designs the 
 specifying a read over a store nobody had designed would have put a guessed rule in a contract. That
 slice is [§ 6.12](#612-the-coordination-store), so the reason expired with it. **What stands:** the feed
 carries these objects and `GET /api/fleet/snapshot` still does not — the snapshot is the watchdog's
-machine interface, sized at ~91 KB, and a thousand envelopes on every five-minute poll is the wrong
+machine interface, sized at ~109 KB, and a thousand envelopes on every five-minute poll is the wrong
 surface. **What changed:** `GET /api/fleet/coord` ([§ 8.2](#82-rest)) serves a just-connected client the
 envelopes a long-connected one would hold, under the same cap and the same whole-thread rule
 ([§ 6.12](#612-the-coordination-store)), **browser-only** so that the two objects are still never
@@ -4907,7 +4946,7 @@ A consumer that wants to correlate a rendered state with the wire has both: the 
 newest `(seq_epoch, seq)` the fold has applied.
 
 **Reconnect.** On reconnect the client re-runs [§ 8.4](#84-snapshot-then-deltas) from step 1. A full
-re-snapshot is ~105 KB for a 50-seat fleet, so there is no per-seat delta-replay buffer on the server
+re-snapshot is ~109 KB for a 50-seat fleet, so there is no per-seat delta-replay buffer on the server
 and deliberately so: a replay buffer is a second, stateful copy of recent history whose correctness
 would have to be maintained against the store, to save a request that costs less than the buffer's own
 memory. ⛔ **`feed_outbox` is not that buffer, and [§ 8.3](#83-the-websocket-delta-feed) states the two
@@ -6392,13 +6431,13 @@ document.
 | Store per seat-day | **~10.0 MB** | **Derived** — 7.9 MB of `events` (10,420 × 756 B) + 2.1 MB of projections (calls 3,000 × 300 B, transitions 1,400 × 160 B, other 1,740 × 200 B, × 1.4, plus `ix_purge` measured at 24 B a transition and at most 29 B on the 1,740) | [§ 6.8](#68-sizing) |
 | Store per seat, 14 days | **~140 MB** | **Derived** — × 14 | [§ 6.8](#68-sizing) |
 | Store, 4 / 12 / 50 seats | **0.56 / 1.7 / 7.0 GB** | **Derived** — × seat count. Inherits D1's volume *estimate*; re-derived from the first week of live data | [§ 6.8](#68-sizing) |
-| Seat-state object | **2,093 B** typical, **5,986 B** worst | **Measured** — the [§ 8.2.2](#822-worked-snapshot) snapshot's seat object and the `patch` of [§ 8.3.2](#832-worked-worst-case-delta), each serialized with no insignificant whitespace. Both artefacts are published in this document precisely so the figures are reproducible, and `tools/design/verify-fleet-state.py` re-derives them | [§ 8.2.1](#821-the-seat-state-object) |
-| Fleet snapshot | **8.7 KB** (4 seats) … **105 KB** (50 seats) | **Measured** — 302 B envelope + n × the above | [§ 8.2.1](#821-the-seat-state-object) |
-| Snapshot pagination trigger | 200 seats (~419 KB) | **Derived** — stated as the trigger, deliberately not built for a four-seat fleet | [§ 8.2.1](#821-the-seat-state-object) |
-| Delta message | **323 B** typical, **6,690 B** worst | **Measured** — [§ 8.3.1](#831-worked-delta) and [§ 8.3.2](#832-worked-worst-case-delta) serialized | [§ 8.3](#83-the-websocket-delta-feed) |
+| Seat-state object | **2,167 B** typical, **6,104 B** worst | **Measured** — the [§ 8.2.2](#822-worked-snapshot) snapshot's seat object and the `patch` of [§ 8.3.2](#832-worked-worst-case-delta), each serialized with no insignificant whitespace. Both artefacts are published in this document precisely so the figures are reproducible, and `tools/design/verify-fleet-state.py` re-derives them | [§ 8.2.1](#821-the-seat-state-object) |
+| Fleet snapshot | **9.0 KB** (4 seats) … **109 KB** (50 seats) | **Measured** — 302 B envelope + n × the above | [§ 8.2.1](#821-the-seat-state-object) |
+| Snapshot pagination trigger | 200 seats (~434 KB) | **Derived** — stated as the trigger, deliberately not built for a four-seat fleet | [§ 8.2.1](#821-the-seat-state-object) |
+| Delta message | **323 B** typical, **6,862 B** worst | **Measured** — [§ 8.3.1](#831-worked-delta) and [§ 8.3.2](#832-worked-worst-case-delta) serialized | [§ 8.3](#83-the-websocket-delta-feed) |
 | Feed traffic per connected client | **~1.6 KiB/s** at 50 seats | **Derived** — 5.20 msg/s × the measured 323 B typical delta = 1,680 B/s | [§ 8.3](#83-the-websocket-delta-feed) |
 | Worst-case integer magnitude | 2⁵³−1 (16 digits) | **Chosen** — the JS-safe ceiling D1 § 6.0 admits, used for every integer whose own bound is open, so the worst-case object cannot be falsified by a fleet that outlives its estimates | [§ 8.2.1](#821-the-seat-state-object) |
-| Feed message bound | 8 KiB | **Chosen** — 1.22× the measured worst case, so a conforming message cannot breach it and a future field addition that would break a test rather than a client. SSE imposes no per-message maximum of its own, and `feed_outbox.message` carries the same figure as a `CHECK` (card#9287) | [§ 8.3](#83-the-websocket-delta-feed) |
+| Feed message bound | 8 KiB | **Chosen** — 1.19× the measured worst case, so a conforming message cannot breach it and a future field addition that would break a test rather than a client. SSE imposes no per-message maximum of its own, and `feed_outbox.message` carries the same figure as a `CHECK` (card#9287) | [§ 8.3](#83-the-websocket-delta-feed) |
 | `subagents` array cap | 8, with `subagents_open` carrying the truth | **Chosen** — D1's index cap admits 64 open calls and a side table rendering 64 interns is a list. The cap is what holds the worst-case object inside the message bound | [§ 8.2.1](#821-the-seat-state-object) |
 | Stream tick | 250 ms | **Derived** — below the ~300 ms at which a human notices added latency, which is D1's own basis for its hook budget and the same order as the status-line debounce D1 records; bounds a stream's delivery at 4 batches/s, and merges nothing (card#9287) | [§ 8.3](#83-the-websocket-delta-feed) |
 | Delta volume | **8,980/seat/day = 0.104 msg/s/seat**; 5.2 msg/s at 50 seats | **Derived** — from D1 § 6.0's kind-table ranges, every kind but the heartbeat: 6,000 tool + 1,200 turn + 1,440 context + 120 subagent + 80 session + 100 attention + 40 compaction, which is D1's own 10,420 ceiling less its 1,440 heartbeats. Ordinary heartbeats are excluded and that exclusion is a design rule, not an omission; the edge-triggered deltas that are not events at all — [§ 6.5](#65-the-fold)'s heartbeat exceptions and the sweeper's own transitions — are single digits a seat-day and this event count does not carry them | [§ 8.3](#83-the-websocket-delta-feed) |
@@ -6442,7 +6481,7 @@ tool actually re-derives, stated so a reader can tell a checked figure from a re
 | Check | What the tool re-derives | Status |
 |---|---|---|
 | **Byte figures** — the seven rows of [§ 8.2.1](#821-the-seat-state-object)'s size table and their restatements here — **and the stream's stall bound** | `json.loads` + `json.dumps(separators)` + `len` over all three published blocks; the worst case is measured from [§ 8.3.2](#832-worked-worst-case-delta), which exists so it can be. And [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound, held equal to [§ 8.3](#83-the-websocket-delta-feed)'s dead-feed figure, to [§ 6.7](#67-retention-and-purge)'s `feed_outbox` retention less one heartbeat interval, and to its two copies that cannot point at it: the `tick_started > N s` comparison in [§ 8.3](#83-the-websocket-delta-feed)'s handler fence, and this section's `Stream stall bound` row, its figure bolded or not — each copy with a control that reds when it cannot be found or read (card#9326) | **tool-checked** |
-| **Field table ↔ worked examples, both directions** | the **83** field names of [§ 8.2.1](#821-the-seat-state-object) against the flattened paths of every seat object in the document, set-differenced each way — **and this row's own count against that table**, because a population size stated in prose beside a tool that re-derives it is a number free to disagree with the document while the tool reports clean, which is what it did for one member's worth of drift | **tool-checked** |
+| **Field table ↔ worked examples, both directions** | the **85** field names of [§ 8.2.1](#821-the-seat-state-object) against the flattened paths of every seat object in the document, set-differenced each way — **and this row's own count against that table**, because a population size stated in prose beside a tool that re-derives it is a number free to disagree with the document while the tool reports clean, which is what it did for one member's worth of drift | **tool-checked** |
 | **DDL `ENUM` member reachability** | every member of every `ENUM` in [§ 6.4](#64-ddl), counted across the rest of the file; a member occurring only in its own declaration is a member no path can produce | **tool-checked** |
 | **Cross-document enum containment** | D2's `abort_reason` / `close_source` / `resolution` / `resolution_source` extension sets against D1's declared sets, with the counts stated in the DDL comments | **tool-checked** |
 | **Feed message-type closure** | every use of a message type in a namespace [§ 8.3](#83-the-websocket-delta-feed)'s own table declares — the namespaces are the ROOTS of that table's types, re-derived per run rather than listed in the tool, and whether an occurrence is a *use* is decided by what this document DOES with the token (a whole token, so a path or a host name is not one; carrying a payload object rather than a scalar value) instead of by whether it is written in backticks, so § 8.3's and § 8.4's fences are inside the population | **tool-checked**, with **two holes declared rather than closed**, both reported on every run: a namespace with **no row in that table at all** is invisible, because the table it would be held against never names it; and a message name written in the `name: scalar` field form reads as a field and is skipped — that skip is **counted** beside the population, and one occurring **inside a fenced block is a failure**, which bounds the hole to prose |
@@ -6526,9 +6565,11 @@ review can reverse it deliberately rather than discover it later.
 | 50 | **A protocol agent name is UNIQUE per install; a name more than one seat declares is a misconfiguration that resolves to nothing and is reported as its own reason** ([§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects), [FLOOR.md § 5.7](FLOOR.md#57-the-coordination-thread-line)) | ⭐ **Operator ruling, 2026-09-12, `card#9296`.** The alternative on the table was the one three surfaces of this document had already written down: a name may resolve to **a set**, because one agent running two seats is two desks and not a collision. A second was a store `UNIQUE KEY` on the name per install, which would refuse the second seat's heartbeat or fail its fold and keep whichever seat arrived first | The set reading legalised a resolution nothing could then govern. [FLOOR.md § 6.2](FLOOR.md#62-the-animation-table--the-closed-set) A18 triggers on participants resolving to *a desk*, singular, and the client's `resolve()` returns one `seat_id` — so the map a builder was told to construct was last-writer-wins over an unordered seat population and A18 drew to whichever seat was folded last. That is the guessed desk § 5.7 clause 1 forbids, arrived at by obeying the documents. Ruling the duplicate a **misconfiguration** removes the pick instead of specifying it | **a seat cannot enforce it.** Its own check asks whether its name is in the roster, and two seats declaring one name both pass — so the invariant is declared on this plane and enforced at the consumer, which is the only party that sees both seats. [AT-D2-24](#at-d2-24-a-coordination-object-names-an-agent-and-never-a-desk)'s sixth and seventh REDs specify the refusal — the seventh for a `checked` seat beside a `disagreed` one, which counts toward the duplicate by the scope [§ 8.3.3](#833-the-coordination-objects) rule 1 states — and nothing runs them until the consumer's join is built |
 | 51 | **`longest_open_call` is published on the seat object — the oldest open call's `call_id`, `tool_name` and server-clock `started_received_at` — because `action` is the NEWEST open call and a consumer asking how long a seat's longest call has run cannot answer it from `action`** ([§ 8.2.1](#821-the-seat-state-object); card#12113, for [D3 § 4.1](FLOOR.md#41-the-lobby--the-building-summary)'s directory plaque) | let D3 read `action.started_received_at` and say so honestly as *the current call has run N*; publish the whole open-call list on the seat object; publish only a timestamp with no tool name | the first under-reports the exact case the operator asked about — a dispatch an hour old under a seconds-old intern call ([§ 10](#10-worked-example-the-clear-trace-folded-end-to-end) E3) — and would have had the lobby's attention line miss every long dispatch; the whole list is [§ 8.2.3](#823-the-seat-detail-response)'s and is priced out of the snapshot there; a bare timestamp leaves the consumer unable to say what is running. The rows already exist in `calls`, selected by `ix_open (seat_ref, closed_at)` and carrying `opened_received_at`, so this is a second ordering of the open set the fold already reads for `action`, moving on edges that already emit a delta | the seat object grows by the bytes [§ 8.2.1](#821-the-seat-state-object)'s size table re-measures (its worst case still inside the 8 KiB bound, [D3 § 8.1](FLOOR.md#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) re-derives the cap's margin from it), and `seat_state` gains one nullable reference column; if a later consumer needs the descriptor or the scope, that is one more member on this object rather than a redesign |
 | 52 | **card#12239: the coordination store is five tables of its own, written synchronously by the receipt request in one outbox transaction — no `events` row and no fold step** ([§ 6.12](#612-the-coordination-store), [§ 6.4](#64-ddl)) | a synthetic `events` row with a nullable `seat_ref` folded by `mezzanine:fold`; or a raw-delivery table drained by a daemon | the first widens the primitive every seat event depends on — the seat lock, D2-MUST #3's per-seat dedup, `ix_fold` — to admit a producer that fails all nine of [D1 § 18.9](EVENT-SCHEMA.md#189-why-this-does-not-ride-the-batch-contract)'s invariants; the second adds a daemon (a supervision row, a lag badge, [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)'s frozen-fold class) for a derivation that is one pure function over one JSON object, and it would store the raw body D1 § 18.10 forbids storing | no rebuild from a log: a derivation defect is fixed forward, and GitHub's 3-day Redeliver is the only replay. Accepted and stated at § 6.12 |
-| 53 | **card#12239: a fifth fleet endpoint, `GET /api/fleet/coord`, browser-only, serving the client's own cap from the server's end** ([§ 8.2](#82-rest), [§ 6.12](#612-the-coordination-store)) | a `threads[]` member on the snapshot; or no backfill, as row 40 had it | the snapshot is the watchdog's machine interface at ~91 KB and a thousand envelopes on every five-minute poll is the wrong surface — and a machine consumer on its own upgrade schedule is the publication that attaches D1 § 18.7's enum obligation; no backfill leaves every just-loaded page drawing no line until the next post, which on a fleet posting ~100 times a day is minutes of a floor that lies by omission | one more endpoint behind the read gate, session-only; a page load costs one more request |
+| 53 | **card#12239: a fifth fleet endpoint, `GET /api/fleet/coord`, browser-only, serving the client's own cap from the server's end** ([§ 8.2](#82-rest), [§ 6.12](#612-the-coordination-store)) | a `threads[]` member on the snapshot; or no backfill, as row 40 had it | the snapshot is the watchdog's machine interface at ~109 KB and a thousand envelopes on every five-minute poll is the wrong surface — and a machine consumer on its own upgrade schedule is the publication that attaches D1 § 18.7's enum obligation; no backfill leaves every just-loaded page drawing no line until the next post, which on a fleet posting ~100 times a day is minutes of a floor that lies by omission | one more endpoint behind the read gate, session-only; a page load costs one more request |
 | 54 | **card#12239: a thread the store does not hold is derived from the first comment that names it, and a comment whose `issue.state` contradicts the held lifecycle reconciles it** ([§ 6.12](#612-the-coordination-store), D1 § 18.6) | derive threads from `issues.opened` only; or backfill open threads through GitHub's REST API at binding time | observed: every `issue_comment` delivery carries the whole `issue`; measured: 95 threads open on this fleet's coordination repository the day this was designed, and GitHub redelivers 3 days back — `opened`-only would draw none of them until each closed. A REST backfill needs a credential for a repository Mezzanine only observes (D-10), and the default identity on this box cannot read that repository at all | a thread's first appearance may be mid-conversation, with its opening post derived from the issue body rather than from the `opened` delivery — the same derivation over the same keys; `coord_thread_from_post` says how often |
 | 55 | **card#12239: the held lifecycle is moved by the payload's `issue.updated_at`, never by arrival; the feed object stays per-delivery** ([§ 6.12](#612-the-coordination-store)) | last-arrival-wins in the store too; or a feed object carrying the held state instead of the delivery's | arrival order is the hazard D1 § 18.13 row 2(b) named and GitHub documents no ordering; a feed object carrying held state would break D1 § 18.6's *verbatim* and make a message say something its delivery did not | a connected client can hold a stale lifecycle until its next connect; the one-field closure (`state_at` on the wire) is deferred to review, `docs/design/COORD-STORE.md § 11` |
+| 56 | **card#12239 (operator 2026-10-23): the two coordination objects carry a `scope`, and a fleet-scope object has `install_id: null` and rides the outbox as a fleet-wide row** ([§ 8.3.3](#833-the-coordination-objects), [§ 6.4](#64-ddl)) | a second object pair for the fleet's repository; or `install_id` set to the first participant's install | a second pair is two formats for one fact, the defect this document refuses everywhere; a borrowed `install_id` would put a cross-install thread in one room and make [§ 9](#9-read-side-authentication)'s future per-install ACL filter it wrongly in both directions | a consumer reads `scope` before it reads `install_id`; the ACL question for fleet-scope objects is named at `docs/design/COORD-STORE.md § 11` and decided when that ACL is |
+| 57 | **card#12239 (operator 2026-10-23): the join gains a fleet arm through a second seat declaration, `roundtable_agent_name`, and the arms never cross** ([§ 8.3.3](#833-the-coordination-objects) rule 1, [§ 8.2.1](#821-the-seat-state-object)) | derive the roundtable name from the protocol agent name by a suffix rule; or a mapping table the operator keeps; or resolve fleet-scope names through `protocol_agent_name` where the strings happen to match | each is the guessed join card#7957 refused, one surface over: the only party that knows both names is the seat, and `card#7957`'s (d) says the seat declares. A string match between vocabularies is a coincidence this plane cannot check, exactly as `seat_id` equality is | two declarations per seat, two columns, two members; a fleet whose seats declare no roundtable name draws no roundtable line, which is today's render and a supported state |
 
 ---
 
@@ -6679,7 +6720,7 @@ operator ruling.
    ([§ 8.2.1](#821-the-seat-state-object)). If D3 wants a different number the cap moves and the
    worst-case byte figure moves with it — measurably now, because the worst case is a published block
    ([§ 8.3.2](#832-worked-worst-case-delta)) and each further subagent adds a **measured 263 B** —
-   the block's own element, 262 B serialized, plus its comma separator — against **1,502 B** of
+   the block's own element, 262 B serialized, plus its comma separator — against **1,330 B** of
    spare under the 8 KiB bound. ⌊spare ÷ 263⌋ more therefore fit and one more does not: **the cap could
    reach 8 plus that many** — [D3 § 8.1](FLOOR.md#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)
    carries the figures as measured now and re-derives them on every run — and the next element
