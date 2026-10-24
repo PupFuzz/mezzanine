@@ -851,7 +851,7 @@ if [ "$rc" -ne 0 ] && has "$out" 'SOURCE2 axios@1.19.0 GHSA-542g-h47m-68v8' \
 else
   fail "axios 1.19.0 should red with findings=$AXIOS_WANT_FINDINGS (derived from the fixture) including GHSA-r4gj-5m52-g5wh, not on GHSA-42h9-826w-cgv3, and errors=0 with GHSA-rm8p-cx58-hcvx absent (rc=$rc, findings='$(pop findings)', errors='$(pop errors)'): $out"
 fi
-# card#11434 (backend, sola-coordination#1912 c-6031665181) within card#11604: GHSA-rm8p-cx58-hcvx
+# card#11434 (backend) within card#11604: GHSA-rm8p-cx58-hcvx
 # writes the bare version "1.10.0", patched 1.11.0, and its reviewed global record was withdrawn on
 # 2025-07-24. Between the bare version and the fix no reading of it agrees, so the withdrawn record
 # is reached, and a withdrawn advisory is not a finding and not an error: it is printed as a NOTICE

@@ -6899,8 +6899,9 @@ one that shipped.
   alone"*, so it passes under **every** rule that reads the body, including the body-only rule that is
   itself the defect. A suite carrying only the first four is green on a derivation that drops real
   participants, which is precisely how the body-only rule shipped past five passing gates.
-  - **Fixture — a live thread, not a hand-written one.** Issue `#635` at `AIMLA-org/aimla-coordination`
-    ([§ 18.6](#186-coordthread)): body head `FROM: pm` / `TO: magento`, labels `from:pm`, `to:pm`,
+  - **Fixture — a live thread's state, not a hand-written one.** The body head and labels are copied
+    from a real thread on an install's own coordination repository ([§ 18.6](#186-coordthread)),
+    not invented: body head `FROM: pm` / `TO: magento`, labels `from:pm`, `to:pm`,
     `to:magento`, `to:platform`, `to:moodle`. Feed its `issues.closed` delivery with those labels on
     `issue.labels[].name` and that body on `issue.body`. **A synthesised near-miss is not a
     substitute** — the fixture's whole property is that a real protocol repository produces this
@@ -6908,7 +6909,7 @@ one that shipped.
   - **GREEN:** `participants == ["magento","moodle","platform","pm"]` — the union — **and**
     `coord_participants_label_only` incremented by one, **and** `coord_participants_unlabelled` did
     **not**. ⛔ **Assert the counter as well as the array.** The array assertion alone passes under a
-    hypothetical "read labels only" rule on this fixture, because `#635`'s labels happen to be a
+    hypothetical "read labels only" rule on this fixture, because that thread's labels happen to be a
     superset of its body names; it is the pair of counters that pins the union rather than either
     single source.
   - **RED:** derive `participants` from the body's `FROM:`/`TO:` lines alone → the value is
@@ -8450,7 +8451,7 @@ they are withdrawn with it and recorded at `docs/design/COORD-STORE.md § 13`.
 
 | Field | Type | Null? | Bounds | Example |
 |---|---|---|---|---|
-| `thread_ref` | string | no | ≤ 256 B, `<owner>/<repo>#<n>` | `"AIMLA-org/aimla-coordination#742"` |
+| `thread_ref` | string | no | ≤ 256 B, `<owner>/<repo>#<n>` | `"synthetic-org/coordination-fixture#900742"` |
 | `scope` | slug | no | ≤ 16 B — the binding's scope, `install` or `fleet` ([§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)): set by the operator at issue and copied from the binding, never read from a payload. `install` is a coordination repository that belongs to one install; `fleet` is one whose threads span installs — this fleet's roundtable. Operator, 2026-10-23 (card#12239) | `"install"` |
 | `install_id` | slug | **yes** | ≤ 32 B — from the **hook binding**, never from `repository.full_name`, per [§ 3.3](#33-authentication-and-the-identity-binding-rule)'s rule applied to this wire. `null` **iff** `scope` is `fleet`: a fleet-scope binding names no install, and a `null` here is that fact and not a missing one | `"aimla"` |
 | `lifecycle` | slug | no | ≤ 32 B — the delivery's own `action`, verbatim. Exactly three values would reach this field — `opened`, `closed`, `reopened` — the three thread actions this object is specified over; since the ruling above, [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) step 8 derives this object from none of them | `"closed"` |
@@ -8551,7 +8552,7 @@ a roster member — which matters for what the union may publish and is disposit
 below rather than twice.
 
 ⇒ **the body-only rule is not merely unproven — it is strictly LOSSIER than the rule it replaced, on
-36 real threads, and richer on none.** Issue `#635` is the worked case: body head `FROM: pm` /
+36 real threads, and richer on none.** One of them is the worked case: body head `FROM: pm` /
 `TO: magento`, labels `from:pm, to:pm, to:magento, to:platform, to:moodle`. Body-derived yields
 `pm, magento`; the union yields `magento, moodle, platform, pm`. **Two real participants would
 otherwise be dropped on the floor, by a delivery that carries `issue.labels[].name` naming both.**
@@ -8658,8 +8659,8 @@ number space, and `thread_ref` is `<owner>/<repo>#<n>` either way — the bridge
 
 | Field | Type | Null? | Bounds | Example |
 |---|---|---|---|---|
-| `post_ref` | string | no | ≤ 256 B — `<thread_ref>` for the opening post, `<thread_ref>-c<comment id>` for a comment | `"AIMLA-org/aimla-coordination#742-c1561"` |
-| `thread_ref` | string | no | ≤ 256 B | `"AIMLA-org/aimla-coordination#742"` |
+| `post_ref` | string | no | ≤ 256 B — `<thread_ref>` for the opening post, `<thread_ref>-c<comment id>` for a comment | `"synthetic-org/coordination-fixture#900742-c1561"` |
+| `thread_ref` | string | no | ≤ 256 B | `"synthetic-org/coordination-fixture#900742"` |
 | `scope` | slug | no | ≤ 16 B — the binding's scope, as [§ 18.6](#186-coordthread) | `"install"` |
 | `install_id` | slug | **yes** | ≤ 32 B, from the hook binding; `null` iff `scope` is `fleet` ([§ 18.6](#186-coordthread)) | `"aimla"` |
 | `from` | slug | **yes** | ≤ 48 B — the author this post evidences; `null` when it evidences none | `"pm"` |
@@ -8766,8 +8767,8 @@ and not derived (card#12239 r5) — read off the rule above rather than asserted
 
 ```json
 {
-  "post_ref": "AIMLA-org/aimla-coordination#742",
-  "thread_ref": "AIMLA-org/aimla-coordination#742",
+  "post_ref": "synthetic-org/coordination-fixture#900742",
+  "thread_ref": "synthetic-org/coordination-fixture#900742",
   "scope": "install",
   "install_id": "aimla",
   "from": "pm",
@@ -8790,7 +8791,7 @@ produce, which is how a worked example becomes a second, disagreeing specificati
 
 ```json
 {
-  "thread_ref": "AIMLA-org/aimla-coordination#742",
+  "thread_ref": "synthetic-org/coordination-fixture#900742",
   "scope": "install",
   "install_id": "aimla",
   "lifecycle": "closed",
