@@ -3000,8 +3000,8 @@ steps 1–8 have admitted a delivery:
    through the chain — which is `App\Ingest\ServerFault`'s discipline one route over.
 
 **The message object is the whole of what crosses to a reader.** `coord.round` carries the post's
-identity, its scope and install, its origin and address and resolved fan-out
-([§ 8.3.3](#833-the-coordination-objects)); the floor resolves origin and fan-out to desks through the
+identity, its scope and install, its origin, its address and its `targets` — `null` on a broadcast
+([§ 8.3.3](#833-the-coordination-objects)); the floor resolves origin and `targets` to desks through the
 declaration the scope selects and fires its edges. ⭐ **`coord.thread` is derived from nothing and
 published to nobody since the ruling** ([§ 8.3](#83-the-websocket-delta-feed)'s row says so): every
 fact on it — lifecycle, membership, subject — is a held fact, and the floor holds none. Its D1 § 18.6
@@ -4586,9 +4586,13 @@ gets wrong:
    across the fleet by that repository's own construction, so the duplicate arm below spans installs for
    this arm exactly as it spans one install for the other. ⛔ **On the fleet arm only a `checked`
    declaration resolves** (card#12239 r4 MINOR-6): an `unchecked` roundtable name is a string any seat
-   of any install could type with no roster on its box to refuse it, so it would let one install claim —
-   or blank, as a duplicate — another install's identity; it still **counts** for the duplicate arm, and
-   resolves nothing. The install arm keeps rule 2 as written, because an `unchecked` protocol agent name
+   of any install could type with no roster on its box to refuse it, so it would let one install claim
+   another install's identity; it still **counts** for the duplicate arm, and resolves nothing — so an
+   `unchecked` declaration can still **blank** a name by duplicating it, and that is accepted: a blank
+   is a bird not drawn, a claim is a bird at the wrong desk. **The trust this rests on, stated:** `checked`
+   is the reporter's own attestation that its config's `cross_project.identity` equals the name, carried
+   on a heartbeat bound to that seat's token — the server verifies the seat, not the claim, and a seat
+   that lies in its own config is trusted exactly as it is for `protocol_agent_name`. The install arm keeps rule 2 as written, because an `unchecked` protocol agent name
    can only ever claim a desk inside its own install. ⛔ **The arms never cross**: a fleet-scope
    name is never looked up among `protocol_agent_name`s, however alike the strings, and a seat whose
    `roundtable_agent_name` is null is in no fleet-scope join — which is every seat today, and renders
@@ -4672,7 +4676,7 @@ from an absence:
 | a `needs_human` escalation flare | [D1 § 18.5](EVENT-SCHEMA.md#185-the-three-findings-the-audit-turns-on) finding C, a won't-do on the record: the banner is chat-output only and reaches no thread, so there is no field to read and a permanently-false one reads as *no seat is ever waiting on a human*. The rendered fact already has exactly one source on this plane — `activity_state: "blocked"`, minted by `attention.request` alone ([§ 4.4](#44-activity-states-every-entry-and-exit-edge)) — and a second source for one rendered state is the defect this document refuses everywhere |
 | a `converged` flag | [D1 § 18.5](EVENT-SCHEMA.md#185-the-three-findings-the-audit-turns-on) finding B: convergence is a **quorum** over required participants, and neither object carries an observer-CC marker, a required-participant set or a per-participant ledger. The two weaker facts that *are* true ride instead — `lifecycle: "closed"` (the thread ended) and `declares_close` (somebody performed the close act, and here is who) |
 | a round **number** | [D1 § 18.4](EVENT-SCHEMA.md#184-the-observable-audit) row 2: the number lives in a prose heading, is per-author, and identifies no comment on a multi-party thread. A bead per post is true at the granularity the wire has |
-| an `is_broadcast` boolean | [D1 § 18.6](EVENT-SCHEMA.md#186-coordthread): `to` carries `all` verbatim and `targets` carries the resolved fan-out, so a boolean would be a third representation of one fact |
+| an `is_broadcast` boolean | [D1 § 18.6](EVENT-SCHEMA.md#186-coordthread): `to` carries `all` verbatim and `targets` is `null` on exactly that post (card#12239 r5), so a boolean would be a third representation of one fact |
 
 ⇒ **Consequence for the render layer, stated here so it is met at design time rather than at build
 time**, because a renderer reads this document and not that audit. The **escalation flare** has no field
@@ -4687,8 +4691,8 @@ delivers and merges nothing — for seat patches because § 8.5's plus-one rule 
 objects because they are posts, and merging two posts loses one. **They are therefore never
 coalesced** — which is also
 how the ruling's anti-requirement (*no silent cap*) becomes a property of the data rather than a promise
-by the renderer: a broadcast is **one** `coord.round` whose `targets` is the resolved fan-out, so there
-is no set of N messages for anything to cap. They are outside § 8.3's per-seat-day delta figure, which
+by the renderer: a broadcast is **one** `coord.round` whose `targets` is `null` — one ring and no
+enumerated fan-out (card#12239 r5) — so there is no set of N messages for anything to cap. They are outside § 8.3's per-seat-day delta figure, which
 counts the state-changing events of D1's kind table and is unmoved by this section. Both objects sit
 inside the **8 KiB** message bound and not near it: the largest term in either is a 32 × 48 B array of
 names — a round carries **two**, `to` and `targets` — beside two references bounded at 256 B.
@@ -4728,8 +4732,8 @@ conditions neither end can establish locally are named **by name** at
 [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish). ⚠ **Under D1 § 18.1's
 correction this wire crosses no repository boundary at all** — producer, store and reader are one
 deployment — so the cross-boundary seam the ruling's three obligations were written for has one end
-rather than two. The one input that *is* copied across a boundary is D1 § 18.3.1's install-facts roster,
-which is declared, guarded and dated there.
+rather than two. The one input that *is* copied across a boundary is D1 § 18.3.1's `shared_identity` flag,
+which is declared there (its roster member is specified and not provisioned since card#12239 r5).
 
 **Worked examples**, transcribed from D1 § 18.6's and § 18.7's own worked objects less the
 receipt-internal digest, in this feed's envelope ([§ 8.3](#83-the-websocket-delta-feed)):
@@ -4746,7 +4750,7 @@ receipt-internal digest, in this feed's envelope ([§ 8.3](#83-the-websocket-del
     "from": "pm",
     "attribution": "resolved",
     "to": ["all"],
-    "targets": ["magento", "platform", "moodle"],
+    "targets": null,
     "carrier": "announce",
     "declares_close": false,
     "posted_at": "2026-08-27T09:14:02.000Z",
@@ -6137,7 +6141,7 @@ receipt route with signed deliveries and reads what reaches a connected client
   matches no `seat_id` on the fleet, and one that matches a `seat_id` byte for byte.
 - **GREEN — the objects arrive whole:** a `coord.thread` and a `coord.round`, each carrying exactly the
   members [§ 8.3.3](#833-the-coordination-objects) declares and no others; `participants` carries both
-  names **as written** with `all` unexpanded, and the round's `targets` carries the resolved fan-out.
+  names **as written** with `all` unexpanded, and the round's `targets` is its `to` less the author (the fixture's `to` names the two agents; a broadcast would carry `null`).
 - **GREEN — nothing about the seat moved:** the seat's `state_version` is unchanged, no `seat.delta`
   was published, and its `render_state`, `activity_state`, `badges` and `task` are identical to their
   pre-delivery values ([§ 4.8](#48-what-may-never-mint-a-state)).
@@ -6280,13 +6284,16 @@ cursor, one table over, with a stream as the reader. The fold closes it with the
 
 **Property:** [§ 8.3.3](#833-the-coordination-objects)'s `scope` and nullable `install_id`, end to end.
 
-- **GREEN:** post one synthetic delivery to a `fleet`-scope binding and the byte-identical body to an
-  `install`-scope binding for install `aimla`; open [§ 8.3](#83-the-websocket-delta-feed)'s stream with
-  a session whose snapshot holds **no** install, read the two `coord.round` frames off it, and assert on
-  the frames (not on the store): the first carries `scope: "fleet"`, `install_id: null` and `targets`
-  equal to its `to` less the author (the fixture's `to` names seats; a `to: ["all"]` variant carries
-  `targets: null`, r5); the second `scope: "install"`, `install_id: "aimla"` and the same `targets`. The two `feed_outbox` rows read
-  `install_id` `NULL` and `aimla` respectively.
+- **GREEN:** the spec holds **two** synthetic repositories, one per binding (one unrevoked binding per
+  repository, card#12239 r4 MINOR-2); post one synthetic delivery from the spec's fleet repository to its
+  `fleet`-scope binding and a **distinct** body from the spec's install repository to an `install`-scope
+  binding for install `aimla`; open [§ 8.3](#83-the-websocket-delta-feed)'s stream with a session whose
+  snapshot holds **no** install, read the two `coord.round` frames off it, and assert on the frames (not
+  on the store): the first carries `scope: "fleet"`, `install_id: null` and `targets` equal to its `to`
+  less the author (the fixture's `to` names seats; a `to: ["all"]` variant carries `targets: null`,
+  r5); the second `scope: "install"`, `install_id: "aimla"` and its own `targets`. The two
+  `feed_outbox` rows read `install_id` `NULL` and `aimla` respectively. A body naming the other
+  binding's repository is D1 § 18.8 step 6's `403`, so the two deliveries cannot be one body.
 - **RED:** have the receipt fill a fleet-scope row's `install_id` from the first row of `installs` when
   the binding has none → the frame carries a room and [§ 9](#9-read-side-authentication)'s per-install
   filter, when one exists, routes a fleet post to one room; the GREEN's `null` assertion is what catches

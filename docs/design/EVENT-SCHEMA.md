@@ -8199,11 +8199,12 @@ is the better one:**
   measured population is 8 B, so the bound has 2× headroom on real traffic and is a guard rather than
   a path.
 - **`participants` needs no roster, and reading one into it was a second expansion rule.** It carries
-  the thread's addressees **as written**, including a literal `all`. Expanding `all` is
-  [`coord.round`](#187-coordround)`.targets`' job and is stated once there; a second expansion here
-  would be one behaviour written twice, free to disagree with itself.
+  the thread's addressees **as written**, including a literal `all`. Expanding `all` would be
+  [`coord.round`](#187-coordround)`.targets`' job alone — and since card#12239 r5 it is specified there
+  and not derived (`targets` is `null` on a broadcast); a second expansion here would be one behaviour
+  written twice, free to disagree with itself.
 
-**What genuinely remains is ONE input with TWO members, and it is declared here rather than reached
+**What genuinely remains is ONE input with TWO members — one of them, `shared_identity`, provisioned; the other, `roster[]`, specified and not provisioned since card#12239 r5 — and it is declared here rather than reached
 for:**
 
 | Member | What it is for | Absent or unreadable ⇒ |
@@ -8220,10 +8221,11 @@ alternative and it was rejected: it is a live cross-repo coupling of exactly the
 [decision 40](#15-decisions-taken-revisable-at-review) declines.
 
 **Its basis, and its staleness axis, stated the way [§ 18.2](#182-the-basis-convention-for-coordination-facts)
-states the revision axis.** These two members are a **copy** of facts another repository owns, so the
-input carries the revision of `coordination.config.json` it was copied at, and it is stale from the
-commit that next moves that file. **Mezzanine cannot see that commit** — that is the condition this
-end cannot establish, and it is named here rather than assumed away.
+states the revision axis.** The provisioned member is a **copy** of a fact another repository owns, and
+it is stale from the commit that next moves `coordination.config.json`. **Mezzanine cannot see that
+commit** — that is the condition this end cannot establish, and it is named here rather than assumed
+away; since card#12239 r5 no revision is stored with the binding (the column that dated the roster
+copy went with the roster), so a stale `shared_identity` is caught only at re-provisioning.
 
 ⛔ *Specified, not derived, since card#12239 r5 — the roster member above is not provisioned and `targets` is `null` on every broadcast by design, so this guard has nothing to read; the text stands as the specification a consumer that provisions the roster would build.* **It is a restatement, so it gets a GUARD rather than a second pointer.** A pointer is unavailable —
 there is no runtime read to point at — so the drift is caught from data the producer already receives:
@@ -8660,8 +8662,10 @@ number space, and `thread_ref` is `<owner>/<repo>#<n>` either way — the bridge
 requirement and it is right: `to` is what the author wrote, and is the honest label; `targets` is who
 it reaches, and is what a fan-out animation may draw. Collapsing them would make a broadcast
 indistinguishable from an enumeration, and would make the reach of the animation a renderer's guess.
-**`targets` is resolved against this install's roster and no other**, which is what makes the
-operator's floor-scoping ruling a property of the event rather than of the picture. **`null` and `[]`
+**`targets` enumerates no fan-out beyond what the author wrote — `to` less the author, and `null` on a
+broadcast** (card#12239 r5), which is what makes the operator's floor-scoping ruling a property of the
+event rather than of the picture: a broadcast reaches its own floor as one ring and nothing resolves it
+further. **`null` and `[]`
 are different answers and the field keeps them apart**: `[]` says *this post reached nobody*, `null`
 says *the fan-out is not resolvable here* — the same distinction `attribution` draws for a name, for
 the same reason.
@@ -8676,14 +8680,13 @@ parts of it carry their own reason rather than being left for a reader to infer 
   `null` belongs to the broadcast case alone: a `to` that names seats asks the roster nothing, so there
   is no unreadable input for it to fail on and the field always resolves. The two halves of that used to
   sit in two places with neither saying the other follows from it.
-- **A named addressee is never filtered out.** A member of `to` the copied roster does not know is
-  **carried**, because the roster is an expansion input and not a membership test. Where that member came
-  from the body, [§ 18.3.1](#1831-the-install-facts-input-declared-once)'s drift guard already alarms it
-  by name — `coord_roster_unknown_name`, on that seat's first post — so filtering it would delete the
-  evidence the guard exists to raise. ⚠ **Where it came from the LABEL fallback, nothing alarms it at
-  all** — that guard is scoped to names derived from a body `FROM:`/`TO:` line, and `to` falls back to
-  labels on the residual the paragraph below measures — which makes carrying the name the only option
-  that loses nothing: filtering would drop a member with no counter moving at either source, and
+- **A named addressee is never filtered out.** A member of `to` is **carried** whether or not any
+  roster knows it — there is no roster here to test membership against (card#12239 r5), and were one
+  provisioned it would be an expansion input and not a membership test; the drift guard that would alarm
+  an unknown body-derived name by name (`coord_roster_unknown_name`) is specified and not derived. ⚠
+  **A name from the LABEL fallback is alarmed by nothing either** — `to` falls back to labels on the
+  residual the paragraph below measures — which makes carrying the name the only option that loses
+  nothing: filtering would drop a member with no counter moving at either source, and
   [§ 18.12](#1812-the-anti-requirements-checked-against-the-derivation)'s no-silent-cap anti-requirement
   enumerates the two paths that may drop a fan-out — the counted truncation at 32 members, and
   `targets: null` — each of them reported. A roster-filtered name would be a third, reported by nothing.
@@ -8693,8 +8696,8 @@ parts of it carry their own reason rather than being left for a reader to infer 
   reads as *this post reached nobody*, which is exactly what the paragraph above pins it to.
 
 **The first worked example below therefore follows from this field's spec rather than standing beside
-it.** Expanding `all` against the roster and then removing the author is what leaves that example's
-array, so a reader re-derives it instead of taking it on the example's word. That is the failure the
+it.** Its `to` is `all`, so its `targets` is `null` by the field's own row — the expansion is specified
+and not derived — and a reader re-derives that instead of taking it on the example's word. That is the failure the
 second example's `participants` note names one field over — *"a worked example becomes a second,
 disagreeing specification"* — and this rule is what keeps `targets` off that list.
 
@@ -8744,9 +8747,8 @@ classification obligation attaches then** — and the trigger for it is that pub
 round.
 
 **Worked example — a broadcast round on a thread that is later closed.** The `[ANNOUNCE]` is opened
-by `pm` addressed to `all`; expanding `all` against this install's roster and then removing the author
-`pm` leaves its implementation seats, which is the `targets` below — read off the rule above rather
-than asserted here.
+by `pm` addressed to `all`; its `to` carries `all`, so `targets` is `null` — the expansion is specified
+and not derived (card#12239 r5) — read off the rule above rather than asserted here.
 
 ```json
 {
@@ -8756,7 +8758,7 @@ than asserted here.
   "from": "pm",
   "attribution": "resolved",
   "to": ["all"],
-  "targets": ["magento", "platform", "moodle"],
+  "targets": null,
   "carrier": "announce",
   "declares_close": false,
   "posted_at": "2026-08-27T09:14:02.000Z",
@@ -9144,8 +9146,8 @@ Card #7897 carries three anti-requirements. Each survives, and each is now ancho
 this section rather than to intent:
 
 - **No silent cap.** Upstream's `MAX_ENVELOPES=16` drops messages under broadcast with no indicator.
-  Nothing here caps a message set: a broadcast is **one** `coord.round` whose `targets` is the
-  resolved fan-out, so there is no set of N objects to cap. Coalescing under burst is a rendering
+  Nothing here caps a message set: a broadcast is **one** `coord.round` whose `targets` is `null` —
+  one ring, no enumerated fan-out (card#12239 r5) — so there is no set of N objects to cap. Coalescing under burst is a rendering
   decision over objects that all exist, and a count badge is derivable by counting them. The one
   bound that could drop information — `targets` at 32 members — is a **counted** truncation on an
   array whose real population is a roster of four at this install, and it is reported rather than
