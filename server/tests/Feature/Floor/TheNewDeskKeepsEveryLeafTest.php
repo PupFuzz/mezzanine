@@ -340,15 +340,15 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 'stroke:var(--scene-stool);stroke-width:1.5;stroke-dasharray:3 2}', 'stroke:var(--scene-stool);stroke-dasharray:3 2}'],
             'an intern drawn as the glyph with its art intact' => ['../floor/painter.js', '                    if (e.art) {', '                    if (false) {'],
             "an intern's sprite outside its clipping viewport" => ['../floor/painter.js',
-                "art(g, drawn.uris[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern');",
+                "art(g, drawn.uris[0], e.overdraw, e.asset, e.untitled ? 'intern untitled' : 'intern');",
                 "image(g, drawn.uris[0], e.x, e.y, e.w, e.h, e.asset, { class: e.untitled ? 'intern untitled' : 'intern' });"],
             // An intern's key is minted per dispatch: the painter drops the frames of each one it no longer
             // draws — its Map is the only cache (card#11046: the tree holds none, and has no forget()).
             "an intern no longer drawn kept in the painter's frames" => ['../floor/painter.js',
                 "                interns.delete(asset);\n                frames.delete(asset);", '                interns.delete(asset);'],
             'an intern animated' => ['../floor/painter.js',
-                "art(g, drawn.uris[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern');",
-                "stepping.push([art(g, drawn.uris[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern'), [drawn.uris[0], 'x', 'y'], 0, 0]);"],
+                "art(g, drawn.uris[0], e.overdraw, e.asset, e.untitled ? 'intern untitled' : 'intern');",
+                "stepping.push([art(g, drawn.uris[0], e.overdraw, e.asset, e.untitled ? 'intern untitled' : 'intern'), [drawn.uris[0], 'x', 'y'], 0, 0]);"],
             // card#11046 — AT-D3-24's painter half, each planted in the shipped painter.
             'a character shown through an image that is not an SVG document (a raster frame)' => ['../floor/painter.js',
                 'export const svgUri = (doc) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(doc)}`;',
@@ -369,7 +369,7 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 "el.setAttribute('href', uris[loopFrom + ((tick + offset) % (uris.length - loopFrom))]);", "el.setAttribute('href', uris[loopFrom + ((tick + offset) % 3)]);"],
             // card#12187 — § 6.2's per-seat loop phase: a moving loop started at frame 0 whatever its seat's offset.
             "a moving held loop started at frame 0, not at its seat's offset" => ['../floor/painter.js',
-                'art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw ?? e,', 'art(g, uris[0], e.overdraw ?? e,'],
+                'art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw,', 'art(g, uris[0], e.overdraw,'],
             // card#12187 — § 10.4 item 4's tree → painter interface: the loop's start dropped (the moving loop steps the
             // still as one of its frames), the offset drawn over the list's length and not the loop's, and a sleeper's
             // image drawn in its element's rect instead of its overdraw.
@@ -378,7 +378,7 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
             "a loop offset drawn over the list's length, not the loop's" => ['../floor/painter.js',
                 'characters.loopOffset(desk.install_id, desk.seat_id, uris.length - loopFrom)', 'characters.loopOffset(desk.install_id, desk.seat_id, uris.length)'],
             "a sleeper drawn in its element's rect, not its overdraw" => ['../floor/painter.js',
-                'art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw ?? e,', 'art(g, moves ? uris[loopFrom + offset] : uris[0], e,'],
+                'art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw,', 'art(g, moves ? uris[loopFrom + offset] : uris[0], e,'],
             // card#12187 impl review N5: a walk stepped from past its stand frame, and a desk's frames cached without its pose.
             "a walker's walk stepped from loopFrom 1" => ['../floor/painter.js',
                 'stepping.push([el, drawn.uris, drawn.loopFrom, 0]);', 'stepping.push([el, drawn.uris, 1, 0]);'],
