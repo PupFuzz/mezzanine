@@ -90,7 +90,7 @@ MANIFEST=(
   "bin/pr-body-lint.selftest.py|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e|4b72d0d6ca8c563cc623d2014bda01d5adbd7f9ae804b946dcf415814439dc9b"
   ".github/workflows/dependency-audit.yml|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|71b68902619fe84a14990a124a1af335f5afd0de41f348d20f6f9d3d10054239"
   ".github/workflows/dependency-ref-matrix.yml|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|1a867e8435290a5d0f1d385c9501e09d65d4a4e841fb61b1951e6eae57d29705"
-  "bin/dependency-audit.selftest.sh|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|0fecc24fce3182dbc4faf04ba569c6acf06ed2ceef0cc5fe3a33b7ba3b001361"
+  "bin/dependency-audit.selftest.sh|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|2c82aab9280da78d93fc8423ba5050915e067edd42b9104eef316c60be2a4241"
 )
 
 # --- The declared local edits: <repo-relative path>|<what the site is>|<unbroken fragment>
@@ -119,6 +119,7 @@ FRAGMENTS=(
   ".github/workflows/dependency-ref-matrix.yml|(1) the uses: slug names this repo|uses: PupFuzz/mezzanine/.github/workflows/dependency-audit.yml@dev"
   "bin/dependency-audit.selftest.sh|(1) the callee path under .github/workflows/|ROOT/.github/workflows/dependency-audit.yml\""
   "bin/dependency-audit.selftest.sh|(1) the fixtures path bin/dependency-audit-fixtures/|HERE/dependency-audit-fixtures\""
+  "bin/dependency-audit.selftest.sh|(2) the card#11434 comment carries no private coordination reference|# card#11434 (backend) within card#11604:"
 )
 
 # The ONE spelling of the body rule. Both files use it; the failure message quotes it verbatim

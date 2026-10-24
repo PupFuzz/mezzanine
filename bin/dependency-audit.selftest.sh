@@ -18,6 +18,9 @@
 #       .github/workflows/, fixtures in bin/dependency-audit-fixtures/ (fragments:
 #       `ROOT/.github/workflows/dependency-audit.yml"` from the CALLEE line and
 #       `HERE/dependency-audit-fixtures"` from the FIX line).
+#   (2) a body comment that cited another team's private coordination repository by issue and
+#       comment id names only the card, so this public repository carries no reference to it
+#       (card#12292; fragment: `# card#11434 (backend) within card#11604:`).
 #   The two workflow paths in upstream's own header below are re-pointed too; that is header
 #   text and is not pinned. ShellCheck's findings on this file are recorded in
 #   bin/shell-lint.baseline.tsv rather than annotated in the body, so the body stays upstream's.
