@@ -6138,8 +6138,6 @@ members: raised while the counter rose within the last 24 h
 | `coord_delivery_ignored.<event_type>` | [§ 18.8.1](#1881-the-counters-this-route-mints) | [§ 18.8.1](#1881-the-counters-this-route-mints)'s row |
 | `coord_attribution_unresolved` | [§ 18.8.1](#1881-the-counters-this-route-mints) | [§ 18.8.1](#1881-the-counters-this-route-mints)'s row |
 | `coord_name_malformed` | [§ 18.8.1](#1881-the-counters-this-route-mints) | [§ 18.8.1](#1881-the-counters-this-route-mints)'s row |
-| `coord_targets_unresolved` | [§ 18.8.1](#1881-the-counters-this-route-mints) | [§ 18.8.1](#1881-the-counters-this-route-mints)'s row — **operator alert** |
-| `coord_roster_unknown_name` | [§ 18.8.1](#1881-the-counters-this-route-mints) | [§ 18.8.1](#1881-the-counters-this-route-mints)'s row — the drift guard |
 | `coord_to_from_labels` | [§ 18.8.1](#1881-the-counters-this-route-mints) | [§ 18.8.1](#1881-the-counters-this-route-mints)'s row |
 
 **The coordination route's DERIVED counters are in this table by POINTER since card#12239's design
@@ -7722,6 +7720,7 @@ values no published rule derived.
 | 57 | **card#12239 r2 (operator 2026-10-23): `coord.thread` is specified and not published, and step 8 derives from `issues.opened` (for its post) and `issue_comment.created` only** ([§ 18.6](#186-coordthread), [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)) | derive and publish the thread object anyway, for a consumer that may come; or delete § 18.6 | publishing a held fact to a floor that holds none is machinery for nothing, and a client branch that ignores-and-counts it costs the same as one that never receives it; deleting the derivation throws away measured work (finding A's union, the attribution split) that a future consumer would re-derive wrongly | the first consumer of a thread fact re-opens step 8's set and the feed row, which is a code change and no re-registration — the subscription was written wide for exactly this |
 | 58 | **card#12239 r3: `to`'s label fallback is the union of the thread's `from:` and `to:` labels less the author** ([§ 18.7](#187-coordround)) | the `to:` labels alone, as the first draft had it | the opener is a `from:` label; a `to:`-only fallback addressed the addressee's reply to nobody once the author was removed, which the floor drew as nothing for the commonest reply (review r2 MAJOR-7) | a reply without a `TO:` line now addresses every other labelled member, including observers — which is what the thread's membership says and the author did not narrow; the fraction of fallback posts this changes is unmeasured (no corpus) and bounded by the 30.1% fallback rate |
 | 59 | **card#12239 r3: a comment on a pull request is derived as any other post** ([§ 18.7](#187-coordround)) | ignore comments whose `issue` carries `pull_request` | a PR on a coordination repository is a thread of the same number space; the bridge classifies `pull_request.opened` as authoring | `thread_ref` names a PR as it names an issue; nothing distinguishes them on the wire, and nothing needs to |
+| 60 | **card#12239 r5: the `all` expansion is specified and not derived — `targets` is `null` on every broadcast, no roster is provisioned with a binding, and `coord_targets_unresolved` / `coord_roster_unknown_name` are specified and not derived** ([§ 18.7](#187-coordround), [§ 18.3.1](#1831-the-install-facts-input-declared-once), [§ 18.8.1](#1881-the-counters-this-route-mints)) | provision the roster and expand `all` anyway | the operator ruled a broadcast is the ring and sends no traveller, so an enumerated fan-out has no consumer; a copied roster is a restatement of another repository's config with a one-directional drift guard, kept for nothing | a consumer that later wants the fan-out provisions the roster and switches the expansion on — the rule is written and the counters are declared |
 
 **One thing this document deliberately does not contain:** the accepted schema-version set. That set
 lives in exactly one machine-readable place in the ingest's code and is reported by the health
@@ -8209,7 +8208,7 @@ for:**
 
 | Member | What it is for | Absent or unreadable ⇒ |
 |---|---|---|
-| `roster[]` — for an **`install`-scope** binding the install's roster names; for a **`fleet`-scope** binding the cross-install repository's identity set (its `from:`/`to:` vocabulary), copied at issue the same way (card#12239, `docs/design/COORD-STORE.md § 3.1`) | expanding `all` into [`coord.round`](#187-coordround)`.targets` | `targets` is `null` — *the fan-out is not resolvable here* — and `coord_targets_unresolved` counts it. Not `[]`, which reads as *it reached nobody* |
+| `roster[]` — ⛔ **specified, not provisioned** (card#12239 r5): its one consumer, the `all` expansion of [`coord.round`](#187-coordround)`.targets`, is not derived since the broadcast renders as a ring, so no binding carries a roster copy and the two counters that guarded it are likewise specified and not derived ([§ 18.8.1](#1881-the-counters-this-route-mints)). Were it provisioned: for an **`install`-scope** binding the install's roster names; for a **`fleet`-scope** binding the cross-install repository's identity set | expanding `all` into [`coord.round`](#187-coordround)`.targets` | `targets` is `null` — *the fan-out is not resolvable here* — and `coord_targets_unresolved` counts it. Not `[]`, which reads as *it reached nobody* |
 | `shared_identity` | whether `sender.login` can name an actor on a **non**-authoring action ([§ 18.6](#186-coordthread)) | assumed **true**, so `attribution` is `unattributable` on `closed` and `reopened`. That is the direction the bridge's own allow-list is built in — *"a widening can only lose a name, never invent one"* |
 
 **Where it comes from: the hook registration, not a cross-repo read.** It is provisioned by the same
@@ -8226,7 +8225,7 @@ input carries the revision of `coordination.config.json` it was copied at, and i
 commit that next moves that file. **Mezzanine cannot see that commit** — that is the condition this
 end cannot establish, and it is named here rather than assumed away.
 
-**It is a restatement, so it gets a GUARD rather than a second pointer.** A pointer is unavailable —
+⛔ *Specified, not derived, since card#12239 r5 — the roster member above is not provisioned and `targets` is `null` on every broadcast by design, so this guard has nothing to read; the text stands as the specification a consumer that provisions the roster would build.* **It is a restatement, so it gets a GUARD rather than a second pointer.** A pointer is unavailable —
 there is no runtime read to point at — so the drift is caught from data the producer already receives:
 **every name derived from a body `FROM:`/`TO:` line that is absent from the copied roster increments
 `coord_roster_unknown_name` and is alarmed on.** A seat added to the roster and not to this input
@@ -8543,7 +8542,9 @@ otherwise be dropped on the floor, by a delivery that carries `issue.labels[].na
 
 ⚠ **The label vocabulary is closed and roster-bounded on this install, which is why the union cannot
 publish a name the derivation would not otherwise accept** — but that is a property of the population,
-not a guarantee, and `coord_roster_unknown_name` is what says so if it stops holding: a label-derived
+not a guarantee, and `coord_roster_unknown_name` is what would say so if it stopped holding — were it
+derived; since card#12239 r5 it is specified only ([§ 18.8.1](#1881-the-counters-this-route-mints)), so
+the property is **unguarded and named as such**: a label-derived
 name absent from [§ 18.3.1](#1831-the-install-facts-input-declared-once)'s copied roster reds it
 exactly as a body-derived one does.
 
@@ -8648,7 +8649,7 @@ number space, and `thread_ref` is `<owner>/<repo>#<n>` either way — the bridge
 | `from` | slug | **yes** | ≤ 48 B — the author this post evidences; `null` when it evidences none | `"pm"` |
 | `attribution` | slug | no | ≤ 16 B — as [§ 18.6](#186-coordthread) | `"resolved"` |
 | `to` | array\<slug\> | no | 0…32 members, each ≤ 48 B — the address **as written**: the body `TO:` line; else — ⭐ card#12239 r3 — the **union of the thread's `from:` and `to:` labels, less the author**. The earlier fallback read the `to:` labels alone, which addressed the commonest reply — the addressee answering the opener without a `TO:` line — to nobody but itself: the opener is a `from:` label and was never in the set. `all` appears here verbatim | `["all"]` |
-| `targets` | array\<slug\> | **yes** | 0…32 members, each ≤ 48 B — the **resolved** fan-out, and it is derived from `to` in full: **take `to` in its own order, replace the literal `all` with [§ 18.3.1](#1831-the-install-facts-input-declared-once)'s `roster[]` in the roster's order, remove **every** occurrence of `from`, and keep the first occurrence of each name** — a `null` `from` removes nothing. Every other member of `to` is carried unchanged, **including one the roster does not know**. `null` — never `[]` — when `to` contains `all` and that roster is unreadable, and that is the **only** path to `null`: the roster is consulted only to expand `all`, so a `to` naming seats needs none and always resolves | `["magento","platform","moodle"]` |
+| `targets` | array\<slug\> | **yes** | 0…32 members, each ≤ 48 B — ⛔ **the `all` expansion is SPECIFIED, NOT DERIVED** (card#12239 r5): since the operator's ruling that a `to:all` post renders as the broadcast ring and enumerates no destination, no roster is provisioned with a binding, so `targets` is **`null` on every post whose `to` contains `all`** — *the fan-out is not resolved here*, by design and not by failure — and on every other post it is `to` in its own order with the author removed, each name kept whether or not any roster knows it. The rule below is the specification a consumer that provisions a roster would build; it is the **resolved** fan-out, and it is derived from `to` in full: **take `to` in its own order, replace the literal `all` with [§ 18.3.1](#1831-the-install-facts-input-declared-once)'s `roster[]` in the roster's order, remove **every** occurrence of `from`, and keep the first occurrence of each name** — a `null` `from` removes nothing. Every other member of `to` is carried unchanged, **including one the roster does not know**. `null` — never `[]` — when `to` contains `all` and that roster is unreadable, and that is the **only** path to `null`: the roster is consulted only to expand `all`, so a `to` naming seats needs none and always resolves | `["magento","platform","moodle"]` |
 | `carrier` | slug | **yes** | ≤ 16 B — the thread's leading bracketed token, repeated so a post is legible alone | `"brief"` |
 | `declares_close` | bool | no | — this post carries the protocol's `[CLOSE]` token, anchored past the addressing preamble and any leading markdown marks. **Not** a convergence: [§ 18.5](#185-the-three-findings-the-audit-turns-on) | `false` |
 | `posted_at` | rfc3339_ms | **yes** | the comment's own timestamp; `null` when the payload carries none | `"2026-08-27T13:17:33.000Z"` |
@@ -8668,7 +8669,9 @@ the same reason.
 **The derivation is stated on the field because a worked example is not a specification**, and three
 parts of it carry their own reason rather than being left for a reader to infer from the example below:
 
-- **The roster is consulted only to expand `all`.** That is the one job
+- **The roster is consulted only to expand `all`** — and since card#12239 r5 neither happens: the
+  roster is not provisioned and the expansion is not derived, so the two bullets below describe the
+  specification, and the derived rule is the one in the field's own row. That is the one job
   [§ 18.3.1](#1831-the-install-facts-input-declared-once)'s table gives `roster[]`, and it is *why*
   `null` belongs to the broadcast case alone: a `to` that names seats asks the roster nothing, so there
   is no unreadable input for it to fail on and the field always resolves. The two halves of that used to
@@ -8984,8 +8987,8 @@ four of them in sentences and put none in a table, which is a counter an impleme
 | `coord_delivery_ignored.<event_type>` | a delivery passes every check and is of an action this producer derives nothing from ([§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) step 8), which on the declared subscription means any `issues` action outside `opened` and any `issue_comment` action outside `created` | informational; a hook subscribed far wider than it reads is a subscription to narrow, not a failure. **It counts deliveries, not distinct ones** — step 8 commits no digest, so a GitHub retry of an ignored delivery is counted again rather than absorbed |
 | `coord_attribution_unresolved` | an authoring action carried neither a body `FROM:` line nor a `from:` label ([§ 18.7](#187-coordround)) | informational; the event is kept with `attribution: "unresolved"` |
 | `coord_name_malformed` | **the one definition, covering both callers and both causes** — a value that IS present fails validation: either a **name** read from a body `FROM:`/`TO:` line, or the **`carrier`** token read from a title ([§ 18.10](#1810-sanitization-at-the-coordination-producer) states why a title token is a body-shaped value), failing the `slug` pattern **or** exceeding its field's byte bound. A value that is simply **absent** is not malformed and is not counted here: a missing `FROM:` line is `coord_attribution_unresolved`, and a title leading with no bracketed token is a plain `null` | the field becomes `null` and is **never truncated**, because half a name and half a carrier each read as a different, real one. A rising count means titles or bodies are being written in a shape the protocol does not describe |
-| `coord_targets_unresolved` | `to` contains `all` and [§ 18.3.1](#1831-the-install-facts-input-declared-once)'s roster is unreadable | `targets` is `null` rather than `[]`; **operator alert**, because every broadcast on that install is losing its fan-out |
-| `coord_roster_unknown_name` | a name derived from a body is absent from the copied roster ([§ 18.3.1](#1831-the-install-facts-input-declared-once)) | **the drift guard on the copy**: a seat added upstream and not here announces itself on its first post. One-directional — it cannot see a removal |
+| `coord_targets_unresolved` | ⛔ **Specified, not derived** (card#12239 r5): the `all` expansion it instruments is not derived and `targets` is `null` on every broadcast by design. Were it derived: `to` contains `all` and [§ 18.3.1](#1831-the-install-facts-input-declared-once)'s roster is unreadable | `targets` is `null` rather than `[]`; **operator alert**, because every broadcast on that install is losing its fan-out |
+| `coord_roster_unknown_name` | ⛔ **Specified, not derived** (card#12239 r5): no roster is copied, so there is nothing for a name to be absent from. Were it derived: a name derived from a body is absent from the copied roster ([§ 18.3.1](#1831-the-install-facts-input-declared-once)) | **the drift guard on the copy**: a seat added upstream and not here announces itself on its first post. One-directional — it cannot see a removal |
 | `coord_participants_unlabelled` | ⛔ **Specified, not derived** (card#12239 r3): its subject is [`coord.thread`](#186-coordthread)'s `participants`, which the producer derives from nothing since the operator's ruling of 2026-10-23; it has no row on the store's counter plane and no build step until a consumer of the thread object exists. Were it derived: an `issues` delivery that carries **neither** `FROM:`/`TO:` body lines **nor** any `to:`/`from:` label, at any of the three lifecycle moments ([§ 18.6](#186-coordthread)) | `participants` is `[]` with a reason rather than silently. It counts a thread with **no membership record in either source**, which is the only case the union leaves empty, and it is the coordination repo's own structural hard-fail (*"missing `FROM:` line at start of body"*), so a rising count is a protocol violation upstream and not a derivation defect here. ⚠ **Its live population is 0 of 729** (2026-08-28), and it is **not** the counter that catches a label-widened thread — the row below is. It is kept because it guards a boundary, not because it has traffic |
 | `coord_participants_label_only` | ⛔ **Specified, not derived** (card#12239 r3), as the row above and for the same reason — and its *zero means a regression* reading holds only once it is derived at all. Were it derived: an `issues` delivery whose `to:`/`from:` labels name at least one member the `FROM:`/`TO:` body lines do not — the **union's disagreement case** ([§ 18.6](#186-coordthread)) | informational, and the watch on this field's correction. **Its live population is 36 of 729 threads, 4.9%** (2026-08-28), so it has a known non-zero expectation: a drop to **zero** means the derivation has regressed to body-only and is silently dropping members the delivery carried, and a rise toward **everything** means the body-line parser has broken. Neither failure is visible in `participants` itself, which is exactly how the body-only rule shipped past a green gate |
 | `coord_to_from_labels` | a post carries no body `TO:` line and `to` falls back to the thread's labels ([§ 18.7](#187-coordround)) | informational, and **expected to be large** — measured at 30.1% of protocol posts. It is the residual of finding A, made watchable rather than inferred |
@@ -9150,14 +9153,16 @@ this section rather than to intent:
   resolved ([§ 18.3.1](#1831-the-install-facts-input-declared-once)); it satisfies the same
   anti-requirement the same way — `null` is a distinct value from `[]`, and
   `coord_targets_unresolved` alarms rather than counting quietly, because an install broadcasting
-  into an unreadable roster is losing every fan-out it has.
+  into an unreadable roster is losing every fan-out it has — as specified; since card#12239 r5 every
+  broadcast carries `null` by design and the counter is not derived, so the anti-requirement is met by
+  the ring being the broadcast's whole render rather than by a fan-out at all.
 - **The event lands before any animation.** This section is the event. It states no animation, and
   the animation rows are a later slice by construction.
 - **Broadcast is floor-scoped.** The operator's ruling (2026-08-27) is now a property of the data:
-  `targets` is resolved against **this binding's** set and against no other — an install's roster for
-  an `install`-scope binding, the cross-install repository's identity set for a `fleet`-scope one
-  ([§ 18.3.1](#1831-the-install-facts-input-declared-once), card#12239) — so the reach of the event
-  equals the reach of the binding and a broadcast's fan-out is enumerated rather than implied. A
+  a broadcast's `targets` is `null` — the fan-out is not enumerated, because since card#12239 r5 no
+  roster is provisioned and the floor renders a broadcast as one ring on the origin's floor alone — and
+  a named post's `targets` is its `to` less the author, so the reach of a named post is exactly what its
+  author wrote and the reach of a broadcast on a floor is that floor. A
   renderer that draws wider is drawing past its event, which is a defect a reviewer can now name by
   pointing at a field.
 

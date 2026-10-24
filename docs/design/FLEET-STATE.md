@@ -2035,10 +2035,6 @@ CREATE TABLE coord_hooks (
                                             -- and produces exactly these two
   install_ref   SMALLINT UNSIGNED NULL,     -- NULL iff `scope` = 'fleet'; the objects then carry
                                             -- `install_id: null` (D1 § 18.6)
-  install_key   SMALLINT UNSIGNED AS (COALESCE(install_ref, 0)) STORED,
-                                            -- the uniqueness key's spelling of "no install": a UNIQUE
-                                            -- over a NULL admits duplicates, and two fleet bindings on
-                                            -- one repository would be two secrets for one hook
   active_key    SMALLINT UNSIGNED AS (IF(revoked_at IS NULL, 0, id)) STORED,
                                             -- the key's spelling of "unrevoked": a revoked binding keeps
                                             -- its row for the digests that reference it and must not
@@ -2046,19 +2042,20 @@ CREATE TABLE coord_hooks (
   repository    VARCHAR(140) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
                                             -- `<owner>/<repo>`, the binding D1 § 18.8 step 6 holds the
                                             -- payload's claim against
-  roster        JSON         NOT NULL,      -- D1 § 18.3.1's install-facts input, member 1: the copied
-                                            -- roster names in the roster's order; consulted only to
-                                            -- expand `all` (D1 § 18.7)
-  shared_identity BOOLEAN    NOT NULL,      -- member 2
-  roster_copied_from VARCHAR(255) NULL,     -- the revision or date the operator copied the roster at —
-                                            -- D1 § 18.3.1's staleness axis, operator-typed
+  shared_identity BOOLEAN    NOT NULL,      -- D1 § 18.3.1's install-facts input — its one PROVISIONED
+                                            -- member since card#12239 r5: the roster is specified and
+                                            -- not provisioned, because the `all` expansion it served is
+                                            -- not derived (D1 § 18.7)
   created_at    DATETIME(3)  NOT NULL,
   created_by    VARCHAR(64)  NOT NULL,
   revoked_at    DATETIME(3)  NULL,          -- a revoked binding has no secret: D1 § 18.8 step 3 refuses.
                                             -- No last_delivery_at: nothing reads one, and it would be a
                                             -- per-binding activity record of another fleet (r2 MAJOR-4)
   UNIQUE KEY uq_hook (hook_id),
-  UNIQUE KEY uq_binding (repository, install_key, active_key),
+  UNIQUE KEY uq_binding (repository, active_key),  -- ONE unrevoked binding per repository, whatever its
+                                                   -- scope (r4 MINOR-2): two scopes on one repository
+                                                   -- would be two messages on the server and one bird
+                                                   -- on the client, decided by arrival order
   CONSTRAINT fk_hook_install FOREIGN KEY (install_ref) REFERENCES installs (id)
 ) ENGINE=InnoDB;
 
@@ -3026,9 +3023,9 @@ fleet's threads**. For the fleet binding, the whole of what Mezzanine retains of
 repository is — column by column, so the sentence is exactly as true as [§ 6.4](#64-ddl)'s DDL
 (r3 MINOR-3): in `coord_deliveries`, **one row per derived delivery with four columns** — a row id, the
 binding's id, a 64-byte SHA-256 of the signed body, and the time it was received — for 14 days; in
-`coord_hooks`, the binding row with the repository's name, the scope, the **identity set the operator
-copied at issue** (`roster[]`, the names in the repository's `from:`/`to:` vocabulary) and the revision
-it was copied at; in `coord_hook_secrets`, the hook's secret, encrypted; and on the feed, transiently,
+`coord_hooks`, the binding row with the repository's name, its scope and its `shared_identity` flag —
+and **no roster**: the `all` expansion a copied identity set would serve is specified and not derived
+(card#12239 r5), so no list of any fleet's agent identities is stored; in `coord_hook_secrets`, the hook's secret, encrypted; and on the feed, transiently,
 each post's addressing — delivered to open streams within seconds and resident in `feed_outbox` until
 the **hourly** purge removes rows older than 60 s, so for up to about an hour ([§ 6.7](#67-retention-and-purge)).
 That list is what [§ 10](COORD-STORE.md#10-operator-questions)'s NQ1 asks the fleet to agree to.
@@ -3039,7 +3036,7 @@ That list is what [§ 10](COORD-STORE.md#10-operator-questions)'s NQ1 asks the f
 
 ### 7.1 D1's server-side counters — where they live
 
-[D1 § 12.7](EVENT-SCHEMA.md#127-server-side-counters) defines **twenty-eight** counters the ingest and the
+[D1 § 12.7](EVENT-SCHEMA.md#127-server-side-counters) defines **twenty-six** counters the ingest and the
 derivation keep — plus one gauge, `clock_skew_ms`, which the table below also has to place — each with
 the condition that increments it and the consequence it carries. **Those definitions are not restated
 here.** This section says only where each one is stored, which surface exposes it, and which badge it
@@ -3079,8 +3076,6 @@ is now re-derived from D1 on every run in both places.
 | `coord_delivery_ignored.<event_type>` | `global_counters`, one row per subscribed event type (`issues`, `issue_comment`, and `ping`) | fleet health | — |
 | `coord_attribution_unresolved` | `global_counters` | fleet health | — |
 | `coord_name_malformed` | `global_counters` | fleet health | — |
-| `coord_targets_unresolved` | `global_counters` | fleet health, **operator alert** | — ; every broadcast on that install is losing its fan-out |
-| `coord_roster_unknown_name` | `global_counters` | fleet health, **operator alert** | — ; the drift guard on the copied roster |
 | `coord_to_from_labels` | `global_counters` | fleet health | — |
 
 Two properties of this mapping are load-bearing and easy to get wrong:
@@ -3784,7 +3779,7 @@ a consumer that assumed the three were identical would read a missing `counters`
 | `max_fold_lag_ms` | int | no | ≥ 0, the maximum over **the same population `seats_total` counts** — every seat no operator has retired, not only the live ones. One population, named once, because `fleet.fold`'s thresholds ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) are stated over *any* seat and two fields of one object reading two populations can disagree: a `stale` seat 117 s behind would set `fleet.fold` to `lagging` while `max_fold_lag_ms` read `0`. A silent seat contributes `0` on its own once its cursor catches up, so widening the population costs nothing and closes that gap | `117` |
 | `seats_total` | int | no | ≥ 0, excluding retired seats — which leave this count at `retired_at`, in the same transaction that takes their desk off the floor ([§ 4.10](#410-retirement-is-a-rendered-state)) | `4` |
 | `seats_live` | int | no | ≥ 0, `link_state == "live"` | `4` |
-| `counters` | object | **yes** | **`GET /api/fleet/health` only.** Every fleet-scoped counter whose `Exposed` cell names this surface — `batches_failed.<detail>`'s global rows (one member per [D1 § 12.2](EVENT-SCHEMA.md#122-error-responses) `server_error` `detail`), `unattributed_refusals`, `auth_failed_by_ip`, `revoked_token_presented` ([§ 7.1](#71-d1s-server-side-counters--where-they-live)) and `feed_resync_required`, `feed_gap_detected`, `snapshot_served`, `snapshot_denied`, `token_wrong_surface`, `purge_backlog_rows`, `feed_prefix_future`, `feed_outbox_boundary_stalled`, `board_poll_ok`, `board_poll_failed`, `idle_horizon_malformed`, and the coordination route's derived counters ([§ 7.1](#71-d1s-server-side-counters--where-they-live), card#12239 — every D1 § 18.8.1 row not marked *specified, not derived*): `coord_delivery_received` (one member per binding, as `coord_delivery_received.<hook>`, the member set being the bindings `coord_hooks` holds), `coord_signature_invalid`, `coord_delivery_duplicate`, `coord_delivery_ignored.<event_type>` (one member per subscribed event type), `coord_attribution_unresolved`, `coord_name_malformed`, `coord_targets_unresolved`, `coord_roster_unknown_name`, `coord_to_from_labels` — one `BIGINT UNSIGNED` member each, read from `global_counters`, monotonic and never reset. Whenever the object is present **every one of them is**, each at `0` before its first increment: a per-member omission is forbidden, because an omitted counter and a zero counter are the same wire shape to a consumer and only one of them is true. It is `null` — and **only** — when `db` is `down`, because they live in the store and a response that could not reach it cannot report them; reporting `0` there would be `docs/KANBAN.md § G-1`'s clean zero on the very surface [§ 2.2](#22-fail-posture-per-path) built its read posture to keep honest. `null` says *we could not read these*; `0` would say *nothing has happened* | `{"purge_backlog_rows": 0, "token_wrong_surface": 0, …}` |
+| `counters` | object | **yes** | **`GET /api/fleet/health` only.** Every fleet-scoped counter whose `Exposed` cell names this surface — `batches_failed.<detail>`'s global rows (one member per [D1 § 12.2](EVENT-SCHEMA.md#122-error-responses) `server_error` `detail`), `unattributed_refusals`, `auth_failed_by_ip`, `revoked_token_presented` ([§ 7.1](#71-d1s-server-side-counters--where-they-live)) and `feed_resync_required`, `feed_gap_detected`, `snapshot_served`, `snapshot_denied`, `token_wrong_surface`, `purge_backlog_rows`, `feed_prefix_future`, `feed_outbox_boundary_stalled`, `board_poll_ok`, `board_poll_failed`, `idle_horizon_malformed`, and the coordination route's derived counters ([§ 7.1](#71-d1s-server-side-counters--where-they-live), card#12239 — every D1 § 18.8.1 row not marked *specified, not derived*): `coord_delivery_received` (one member per binding, as `coord_delivery_received.<hook>`, the member set being the bindings `coord_hooks` holds), `coord_signature_invalid`, `coord_delivery_duplicate`, `coord_delivery_ignored.<event_type>` (one member per subscribed event type), `coord_attribution_unresolved`, `coord_name_malformed`, `coord_to_from_labels` — one `BIGINT UNSIGNED` member each, read from `global_counters`, monotonic and never reset. Whenever the object is present **every one of them is**, each at `0` before its first increment: a per-member omission is forbidden, because an omitted counter and a zero counter are the same wire shape to a consumer and only one of them is true. It is `null` — and **only** — when `db` is `down`, because they live in the store and a response that could not reach it cannot report them; reporting `0` there would be `docs/KANBAN.md § G-1`'s clean zero on the very surface [§ 2.2](#22-fail-posture-per-path) built its read posture to keep honest. `null` says *we could not read these*; `0` would say *nothing has happened* | `{"purge_backlog_rows": 0, "token_wrong_surface": 0, …}` |
 
 **Why `counters` is on the endpoint and not on the object.** [§ 7.1](#71-d1s-server-side-counters--where-they-live)
 declares that its tables answer *where each counter is stored, which surface exposes it, and which badge
@@ -4549,7 +4544,7 @@ lifecycle edge would lose the thread's first round.
 | `coord_round.from` | slug | **yes** | ≤ 48 B — the **protocol agent name** this post evidences; `null` when it evidences none | `"pm"` |
 | `coord_round.attribution` | slug | no | ≤ 16 B — the same three states, for the same reason | `"resolved"` |
 | `coord_round.to` | array\<slug\> | no | 0…32 members, each ≤ 48 B — the address **as written**: the body `TO:` line, else the union of the thread's `from:` and `to:` labels less the author ([D1 § 18.7](EVENT-SCHEMA.md#187-coordround), card#12239 r3). `all` appears here verbatim, which is what makes a broadcast legible without a boolean | `["all"]` |
-| `coord_round.targets` | array\<slug\> | **yes** | 0…32 members, each ≤ 48 B — the **resolved** fan-out, derived exactly as [D1 § 18.7](EVENT-SCHEMA.md#187-coordround) states it and deliberately not re-derived here. ⛔ **`null` and `[]` are different answers**: `[]` says *this post reached nobody*, `null` says *the fan-out is not resolvable here* | `["magento","platform","moodle"]` |
+| `coord_round.targets` | array\<slug\> | **yes** | 0…32 members, each ≤ 48 B — the **resolved** fan-out, derived exactly as [D1 § 18.7](EVENT-SCHEMA.md#187-coordround) states it and deliberately not re-derived here — which since card#12239 r5 is `to` less the author on a named post and **`null` on every post whose `to` carries `all`**: the `all` expansion is specified and not derived, because the floor renders a broadcast as one ring and enumerates no destination. ⛔ **`null` and `[]` are different answers**: `[]` says *this post reached nobody*, `null` says *the fan-out is not resolved here* — on a broadcast, by design | `["magento","platform","moodle"]` |
 | `coord_round.carrier` | slug | **yes** | ≤ 16 B — the thread's leading bracketed token, repeated so a post is legible alone | `"announce"` |
 | `coord_round.declares_close` | bool | no | — this post carries the protocol's `[CLOSE]` token, anchored past the addressing preamble. ⛔ **Not a convergence** ([D1 § 18.5](EVENT-SCHEMA.md#185-the-three-findings-the-audit-turns-on)), and the not-published table below says what that costs a renderer | `false` |
 | `coord_round.posted_at` | rfc3339_ms | **yes** | the comment's own timestamp, GitHub's clock; `null` when the payload carries none | `"2026-08-27T09:14:02.000Z"` |
@@ -4589,7 +4584,12 @@ gets wrong:
    2026-10-23) it is `roundtable_agent_name` over **every seat of every install the client holds** → the
    ONE seat declaring that roundtable name, 0 or 1 desks, never a set: a roundtable identity is unique
    across the fleet by that repository's own construction, so the duplicate arm below spans installs for
-   this arm exactly as it spans one install for the other. ⛔ **The arms never cross**: a fleet-scope
+   this arm exactly as it spans one install for the other. ⛔ **On the fleet arm only a `checked`
+   declaration resolves** (card#12239 r4 MINOR-6): an `unchecked` roundtable name is a string any seat
+   of any install could type with no roster on its box to refuse it, so it would let one install claim —
+   or blank, as a duplicate — another install's identity; it still **counts** for the duplicate arm, and
+   resolves nothing. The install arm keeps rule 2 as written, because an `unchecked` protocol agent name
+   can only ever claim a desk inside its own install. ⛔ **The arms never cross**: a fleet-scope
    name is never looked up among `protocol_agent_name`s, however alike the strings, and a seat whose
    `roundtable_agent_name` is null is in no fleet-scope join — which is every seat today, and renders
    as the empty arm below.
@@ -4629,8 +4629,9 @@ gets wrong:
    surface that can see it; this plane mints no counter and no state for it, which
    [§ 8.2.1](#821-the-seat-state-object)'s *"this plane performs no check of its own"* is unchanged
    by. [FLOOR.md § 5.7](FLOOR.md#57-the-coordination-thread-line) clause 1 owns the render.
-2. **Only `checked` and `unchecked` resolve.** `disagreed` is a seat whose own check failed against
-   the roster on its box; `undeclared` is a seat that said nothing. Neither is a declaration anything
+2. **Only `checked` and `unchecked` resolve — on the install arm; on the fleet arm, `checked` alone
+   (rule 1).** `disagreed` is a seat whose own check failed against the roster on its box; `undeclared`
+   is a seat that said nothing. Neither is a declaration anything
    may rest on, and the check state travels with the name so a consumer can always say which of the
    two a resolved endpoint rests on.
 3. ⛔ **This plane still mints NO fallback join.** Equality between an agent name and a `seat_id`
@@ -6254,8 +6255,9 @@ cursor, one table over, with a stream as the reader. The fold closes it with the
   afterwards derives and is `202`. A Redeliver of a committed delivery inside 14 days is `202` with
   `status: "duplicate"`, `coord_delivery_duplicate` moves and nothing else does; two byte-identical
   deliveries posted concurrently to one binding commit one row and one set of objects and **both answer
-  `202`**; **the same body posted to two bindings of one repository** (an install's and the fleet's)
-  commits two rows and two `coord.round` outbox rows, and neither counts a duplicate (r3 MINOR-4).
+  `202`**; **a second unrevoked binding for a repository that already has one is refused at issue**, whatever
+  its scope (r4 MINOR-2: two bindings on one repository would be two messages on the server and one bird
+  on the client), and after the first is revoked the second is issued.
   **The concurrent pair (r1 F3):** two **distinct** comment deliveries on one thread, posted at the same
   instant → both `202`, two digest rows, two `coord.round` outbox rows, zero `503`s; and a forced
   `QueryException` on the **outbox insert** — the statement whose bindings are the serialized message —
@@ -6266,8 +6268,8 @@ cursor, one table over, with a stream as the reader. The fold closes it with the
   retried by GitHub. **RED (the leak):** rethrow the outbox insert's `QueryException` as `StoreFault`'s
   `previous` → the log line carries the message's bindings, which is the leak the GREEN forbids; a plant
   on the digest insert cannot show it, because that statement's only binding is the digest. **RED (the
-  key):** make the digest `UNIQUE` on its own → the second binding's delivery is absorbed as a duplicate
-  of the first's and its floor never sees the post.
+  key):** key `uq_binding` on `(repository, install_key, active_key)` as r3 had it → a repository is
+  bound at both scopes, one body yields two messages, and the client draws one bird by arrival order.
 - **RED:** commit the digest in its own transaction before the derivation → the failed delivery's
   Redeliver is absorbed as a duplicate and the post is lost forever, which is the exact shape step 9
   forbids. **Second RED:** purge `coord_deliveries` at 2 days and redeliver a 3-day-old delivery → the
@@ -6282,8 +6284,8 @@ cursor, one table over, with a stream as the reader. The fold closes it with the
   `install`-scope binding for install `aimla`; open [§ 8.3](#83-the-websocket-delta-feed)'s stream with
   a session whose snapshot holds **no** install, read the two `coord.round` frames off it, and assert on
   the frames (not on the store): the first carries `scope: "fleet"`, `install_id: null` and `targets`
-  equal to the fleet binding's copied set less the author; the second `scope: "install"`,
-  `install_id: "aimla"` and the install's set less the author. The two `feed_outbox` rows read
+  equal to its `to` less the author (the fixture's `to` names seats; a `to: ["all"]` variant carries
+  `targets: null`, r5); the second `scope: "install"`, `install_id: "aimla"` and the same `targets`. The two `feed_outbox` rows read
   `install_id` `NULL` and `aimla` respectively.
 - **RED:** have the receipt fill a fleet-scope row's `install_id` from the first row of `installs` when
   the binding has none → the frame carries a room and [§ 9](#9-read-side-authentication)'s per-install
@@ -6832,7 +6834,7 @@ prints by name on every run rather than reporting a clean over it.
 | S13 | § 10.2 | A missing `seq` inside an epoch is a real gap → `seq_gap`, seat `lossy`; a spool-overflow drop produces **no** gap and the two losses must not be conflated | [§ 7.1](#71-d1s-server-side-counters--where-they-live), [AT-D2-18](#at-d2-18-seq-gaps-collisions-and-epoch-resets-are-visible) |
 | S14 | § 10.4 | `batch_id` remembered for 24 h; a repeat returns the previous response; per-event dedup remains the correctness mechanism | [§ 6.4](#64-ddl) `batches` (a timestamp comparison, never a deletion) |
 | S15 | § 12.5 | Orphan timeouts 15 min / 60 min; the close is **server-side only, with no wire event synthesized**; a late `completed`/`failed` carrying `tombstone_ref` **overrides** the abort and counts `late_completion` | [§ 4.6](#46-every-open-fact-has-a-ceiling), [§ 4.8](#48-what-may-never-mint-a-state), [AT-D2-16](#at-d2-16-server-side-closes-write-no-wire-events) |
-| S16 | § 12.7 | The twenty-eight server-side counters (and the `clock_skew_ms` gauge), each with its consequence — the coordination route's derived ones among them, enrolled there by pointer on card#12239; the set is re-derived by the gate, never counted by hand | [§ 7.1](#71-d1s-server-side-counters--where-they-live) (one row each: storage, surface, badge) |
+| S16 | § 12.7 | The twenty-six server-side counters (and the `clock_skew_ms` gauge), each with its consequence — the coordination route's derived ones among them, enrolled there by pointer on card#12239; the set is re-derived by the gate, never counted by hand | [§ 7.1](#71-d1s-server-side-counters--where-they-live) (one row each: storage, surface, badge) |
 | S17 | § 6.14 | `enabled: false` renders **disabled** — a seat that is off and a seat that is gone must not look alike | [§ 4.2](#42-render-precedence), [§ 4.5](#45-link-states) |
 | S18 | § 6.14, § 9.3 | The `degraded` array is the badge source so a consumer never re-derives badges from raw counters; twelve members, closed | [§ 7.2](#72-this-planes-own-counters-and-badges) (server badges kept **separate**, never merged into D1's array), [§ 7.3](#73-how-the-reporters-own-counters-are-handled) |
 | S19 | § 6.2, § 12.7 | An event for a session closed by `inferred_silence` **re-opens it** server-side and counts `session_reopened`. An event also re-opens a session the sweeper closed when its seat went offline (`closed_by = server_offline`), and that reopen is not counted ([§ 4.6](#46-every-open-fact-has-a-ceiling)). Either reopen needs an event stamped after the close: an older one is history from the live session (card#11561) | [§ 4.6](#46-every-open-fact-has-a-ceiling), [§ 6.4](#64-ddl) (`sessions.reopened`) |

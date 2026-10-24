@@ -557,6 +557,20 @@ for column in ("protocol_agent_name", "protocol_agent_role"):
         f"ingest registry `{column}`": int(reg.group(1)) if reg else None,
         f"migration {mig[0] if mig else '(none sizes the column)'} `{column}`": mig[1] if mig else None,
     })
+# card#12239 r5: the DECLARED roundtable name shares the bound, and its two store/wire homes exist in
+# the documents before the build adds its registry and migration homes -- so the three doc homes are
+# held now, and the code homes join the loop above when build step 5 writes them.
+for column in ("roundtable_agent_name",):
+    hb_row = next((l for l in (sec614.group(0) if sec614 else "").splitlines()
+                   if l.startswith(f"| `{column}` |")), None)
+    d2_ddl = re.search(rf"^\s*{column}\s+VARCHAR\((\d+)\)", d2_sec64.group(0) if d2_sec64 else "", re.M)
+    d2_row = next((l for l in (d2_sec821.group(0) if d2_sec821 else "").splitlines()
+                   if l.startswith(f"| `{column}` |")), None)
+    name_bounds.update({
+        f"D1 § 6.14 `{column}`": first_byte_bound(hb_row),
+        f"D2 § 6.4 `{column} VARCHAR`": int(d2_ddl.group(1)) if d2_ddl else None,
+        f"D2 § 8.2.1 `{column}`": first_byte_bound(d2_row),
+    })
 # card#9346: the FOLD refuses a name or role off its slug pattern (`FoldEvent::conforming()`), and the
 # pattern it refuses with -- `Slug::AGENT_NAME`, one body for both members -- carries the bound as its
 # quantifier's upper limit, so it is a home like the others: narrower, and the fold stores `null` for a
