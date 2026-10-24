@@ -14,7 +14,10 @@ use Illuminate\Support\Facades\DB;
  * ⛔ THE BINDING'S `scope` IS SET AT ISSUE AND NEVER READ FROM A PAYLOAD. `install` names one install
  * and one repository; `fleet` names one repository and NO install, and every object it derives carries
  * `install_id: null` (D1 § 18.6). The payload's `repository.full_name` is a claim held against
- * `repository` for equality (D1 § 18.8 step 6) and never routed on.
+ * `repository` for equality (D1 § 18.8 step 6) and never routed on. ⛔ `repository` IS STORED LOWERCASED
+ * and step 6 compares case-insensitively, because GitHub's names are: an operator who issued `Org/Repo`
+ * while GitHub reports `org/repo` is the same repository, and `uq_binding`'s byte-exact key then keeps one
+ * binding per repository across casings.
  *
  * ⛔ ONE UNREVOKED BINDING PER REPOSITORY, AT ANY SCOPE (r4 MINOR-2), and the store's key is what says
  * so (`uq_binding`): two bindings on one repository would be two messages on the server for one post
@@ -98,6 +101,8 @@ final class HookBinding
         if (preg_match('~^'.self::REPOSITORY_PATTERN.'$~D', $repository) !== 1) {
             throw new BindingRefused(sprintf('repository %s is not `<owner>/<repo>`', json_encode($repository)));
         }
+
+        $repository = strtolower($repository);
 
         if ($scope === 'fleet' && $installId !== null) {
             throw new BindingRefused('--scope=fleet names no install: a fleet-scope binding carries `install_id: null` (D1 § 18.6)');

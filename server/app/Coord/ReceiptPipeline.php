@@ -26,7 +26,7 @@ use Illuminate\Http\Request;
  *   4. `X-GitHub-Event` and `X-GitHub-Delivery` present → else `400`. The delivery header is REQUIRED
  *      AND UNUSED, and never stored (card#12239 r3): it is outside the signature.
  *   5. the body parses as a JSON OBJECT → else `400`.
- *   6. `repository.full_name` equals the binding's → else `403`.
+ *   6. `repository.full_name` equals the binding's, case-insensitively → else `403`.
  *   7. the digest — SHA-256 of the signed body — is the idempotency key (`App\Coord\Receipt`).
  *   8. the event is one `Derive` derives from → else `202`, counted `coord_delivery_ignored.<event>`,
  *      and NO digest committed.
@@ -88,7 +88,11 @@ final class ReceiptPipeline
             $payload = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
 
             // ── step 6 ─────────────────────────────────────────────────────────────────────────────
-            if (($payload['repository']['full_name'] ?? null) !== $binding->repository) {
+            // Compared case-insensitively: GitHub's owner and repository names are, and the binding
+            // stores its repository lowercased at issue (`HookBinding::issue()`).
+            $claimed = $payload['repository']['full_name'] ?? null;
+
+            if (! is_string($claimed) || strtolower($claimed) !== $binding->repository) {
                 return Refusal::repositoryMismatch($binding->repository)->toResponse();
             }
 
@@ -159,9 +163,18 @@ final class ReceiptPipeline
         return Refusal::unauthenticated()->toResponse();
     }
 
-    /** An event name as a counter suffix: GitHub's own slug, or `other` for anything off that shape. */
+    /** `global_counters.name`'s width (`string('name', 64)`, the fleet-store migration). */
+    private const COUNTER_NAME_MAX = 64;
+
+    /**
+     * An event name as a counter suffix: GitHub's own slug, or `other` for anything off that shape or too
+     * long for `coord_delivery_ignored.` + it to fit the counter's name column — a name past it would turn a
+     * validly signed delivery into a write error.
+     */
     private static function eventName(string $event): string
     {
-        return preg_match('/^[a-z_]{1,48}$/D', $event) === 1 ? $event : 'other';
+        $room = self::COUNTER_NAME_MAX - strlen(CoordCounters::IGNORED);
+
+        return preg_match('/^[a-z_]{1,'.$room.'}$/D', $event) === 1 ? $event : 'other';
     }
 }

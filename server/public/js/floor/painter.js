@@ -112,7 +112,6 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 .strip-header{font-weight:bold}
 .decor{fill:var(--lamp);opacity:.25}.decor-moving{animation:decor ease-in-out infinite alternate}
 @keyframes decor{from{opacity:.12}to{opacity:.34}}
-.fx-ring{fill:none;stroke:var(--scene-thread);stroke-width:4;transform-box:fill-box;transform-origin:center;transform:scale(0)}
 @keyframes ring-reach{from{transform:scale(0)}to{transform:scale(1)}}
 @keyframes ring-fade{from{transform:scale(1);opacity:1}to{transform:scale(1);opacity:0}}
 .fx-flash{fill:var(--scene-flash);opacity:0;animation-name:flash}
@@ -121,7 +120,6 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 @keyframes walk{from{transform:translate(var(--from-x),var(--from-y))}to{transform:translate(var(--to-x),var(--to-y))}}
 @keyframes walker-shown{from{opacity:1}to{opacity:1}}
 ${CAB_STYLE}
-.fx-broadcast-marker{fill:none;stroke:var(--scene-thread);stroke-width:3}
 .fx-bird{offset-rotate:0deg;animation-name:fly;animation-fill-mode:forwards}
 @keyframes fly{from{offset-distance:0%;opacity:1}99%{opacity:1}to{offset-distance:100%;opacity:0}}
 .wing-up{animation:flap-up steps(1) infinite}.wing-down{animation:flap-down steps(1) infinite}
@@ -617,6 +615,8 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                     }, perch), ringShapes(fx.radius));
                     bird(node('g', { class: 'fx-perch', style: `${style}` }, perch), 0, (2 * fx.frame_interval_ms) / 1000, 'open');
                 } else {
+                    // The class names the element and styles nothing: a stroke set here would be inherited by
+                    // every bird shape that sets none of its own (the belly, eye, highlight and blush).
                     const still = bird(node('g', { class: 'fx-broadcast-marker' }, perch), 0, null, 'open');
 
                     shapes(still, stillNotes());

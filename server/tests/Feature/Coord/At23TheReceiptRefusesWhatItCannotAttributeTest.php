@@ -68,6 +68,18 @@ class At23TheReceiptRefusesWhatItCannotAttributeTest extends CoordTestCase
         $this->assertSame([], $this->rounds());
     }
 
+    /**
+     * An event name too long for `coord_delivery_ignored.<event>` to fit the counter's 64-byte name is
+     * counted as `other`, never written past the column (which would turn a signed delivery into a 500).
+     */
+    public function test_an_event_name_too_long_for_its_counter_is_counted_as_other(): void
+    {
+        $this->deliver('opened', $this->install, values: ['event' => str_repeat('x', 48)])->assertStatus(202);
+
+        $this->assertSame(1, $this->counter(CoordCounters::IGNORED.'other'));
+        $this->assertSame([], DB::table('global_counters')->where('name', 'like', CoordCounters::IGNORED.'x%')->pluck('name')->all());
+    }
+
     public function test_an_unknown_or_revoked_hook_is_a_counted_step_3_refusal(): void
     {
         $unknown = ['hook' => 'mzh_'.str_repeat('A', 22), 'secret' => $this->install['secret']];

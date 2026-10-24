@@ -155,6 +155,30 @@ class AtD2_27TheDigestAndTheFeedRowsCommitTogetherTest extends CoordTestCase
             'the revoked binding keeps its row for the digests that reference it');
     }
 
+    /**
+     * ONE BINDING PER REPOSITORY ACROSS CASINGS, and a binding issued in another casing still receives:
+     * GitHub's names are case-insensitive, so `issue()` stores the repository lowercased and step 6
+     * compares case-insensitively. The RED for each half is the shipped code without that half.
+     */
+    public function test_a_repository_is_one_binding_whatever_its_casing_and_receives_in_any_casing(): void
+    {
+        $upper = strtoupper($this->spec()->repository('fleet'));
+
+        // Half one: the same repository in another casing is the binding that already exists.
+        $this->artisanIssue($upper, ['--scope' => 'fleet'])
+            ->expectsOutputToContain('already has an unrevoked binding')->assertFailed();
+
+        // Half two: issued in another casing, it is stored lowercased and receives the delivery GitHub
+        // signs with the repository's own casing.
+        $this->artisan('mezzanine:coord-hook:revoke', ['hook' => $this->install['hook']])->assertSuccessful();
+        [$hook, $secret] = HookBinding::issue(strtoupper($this->spec()->repository('install')), 'install', 'one', true, 'suite');
+
+        $this->assertSame($this->spec()->repository('install'), DB::table('coord_hooks')->where('hook_id', $hook)->value('repository'),
+            'the binding did not store its repository lowercased');
+        $this->deliver('opened', ['hook' => $hook, 'secret' => $secret])->assertStatus(202);
+        $this->assertCount(1, $this->rounds(), 'a delivery for the binding\'s repository in another casing was refused');
+    }
+
     /** The key the refusal rests on, read off the engine: `(repository, active_key)` and nothing wider. */
     public function test_the_binding_key_is_repository_and_active_key(): void
     {

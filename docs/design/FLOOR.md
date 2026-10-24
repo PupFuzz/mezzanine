@@ -3285,7 +3285,9 @@ logged.
    in [§ 2.5](#25-what-re-renders-and-when)'s sense or in [Appendix B](#appendix-b--what-an-implementer-builds-from-this)
    row 15's. [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s timer
    bullet admits it as an edge row's own bounded frames, and its tween bullet states the one pose
-   exception it makes.
+   exception it makes. ⚠ **The same refresh ends every other effect in flight** (card#12239): one
+   end-timer covers walks, a traveller's rest and a reduced form shown for its duration — A19's and
+   A22's still envelope — so on a quiet feed the envelope is gone at its last frame, never held.
 5. **Frame by frame.** A2: the walker stands at the desk's anchor and walks the segment; at the
    threshold the leaves open over **2** frames, the walker steps into the doorway over **1** and is no
    longer drawn, and the leaves close over **2** (§ 12's *Elevator leaves* row). A1 in reverse: the

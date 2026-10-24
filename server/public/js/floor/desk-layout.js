@@ -459,7 +459,7 @@ export function stackRows(rows, table) {
 
 /**
  * THE DESK's ANCHOR — the character rect's centre line, box-relative (FLOOR.md § 10.6: the bubble is
- * anchored to the character, § 5.1 rule 3, and the thread line and the walks meet the desk where its
+ * anchored to the character, § 5.1 rule 3, and the coordination birds and the walks meet the desk where its
  * sitter sits). The one primitive every anchor reads, so a re-laid character moves them all.
  */
 export function characterCentre(box, character) {

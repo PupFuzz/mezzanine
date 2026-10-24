@@ -677,8 +677,8 @@ export function placeDesk(model, key, installId, slot, at, ctx, extra) {
         ...extra,
         slot_rect: slot === null ? null : Object.freeze(slot),
         box: Object.freeze({ x: at.x, y: at.y, w: ctx.box.width, h: ctx.box.height }),
-        // FLOOR.md § 10.6: where the bubble, the thread line and the walks meet this desk — its sitter's
-        // centre line, through the one primitive (`characterCentre()`), and the height the lines and the walks
+        // FLOOR.md § 10.6: where the bubble, the coordination birds and the walks meet this desk — its sitter's
+        // centre line, through the one primitive (`characterCentre()`), and the height the birds and the walks
         // meet it at, the desk's own mid-height, below every facts plate (`deskAnchor()`, card#11468).
         anchor_x: at.x + characterCentre(ctx.box, ctx.character),
         anchor_y: at.y + deskAnchor(ctx.box, ctx.character).y,

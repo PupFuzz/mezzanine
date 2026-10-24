@@ -797,7 +797,7 @@ export class FloorScreen {
         });
     }
 
-    /** One timer at a time, for the next walk in flight to end — a paint-only refresh, never a render. */
+    /** One timer at a time, for the next effect in flight to end (`nextEnd()`) — a paint-only refresh, never a render. */
     #armWalkEnd(now) {
         const timers = this.#options.timers ?? null;
 
@@ -810,7 +810,7 @@ export class FloorScreen {
             this.#walkTimer = null;
         }
 
-        const ms = this.#inFlight.nextWalkEnd(now);
+        const ms = this.#inFlight.nextEnd(now);
 
         if (ms !== null) {
             this.#walkTimer = timers.after(ms, () => {

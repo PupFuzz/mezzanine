@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Schema;
  * building this card). The replacement keeps the property and needs no id: every unrevoked row of a
  * repository carries `1`, so a second one collides on `uq_binding`; a revoked row carries `NULL`, and a
  * unique index admits any number of `NULL`s, so revoked rows never collide with each other or with
- * the live one. `CoordinationStoreKeysOneBindingPerRepositoryTest` exercises both halves on the engine.
+ * the live one. `Tests\Feature\Coord\AtD2_27TheDigestAndTheFeedRowsCommitTogetherTest` exercises both halves on the engine (its one-unrevoked-binding, casing and binding-key tests).
  */
 return new class extends Migration
 {

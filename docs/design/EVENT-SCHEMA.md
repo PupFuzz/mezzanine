@@ -8894,7 +8894,7 @@ silence.
    step 6, which reads `repository.full_name` and so already presupposes the object this step
    failed to require. The object test is **shape only**; an empty object `{}` passes it and is
    refused at step 6 for the binding it has nowhere to carry.
-6. `repository.full_name` equals the hook binding's repository → else `403`.
+6. `repository.full_name` equals the hook binding's repository, compared case-insensitively — GitHub's owner and repository names are, so the binding stores its repository lowercased at issue and one binding per repository holds across casings → else `403`.
 7. `delivery_digest` — SHA-256 of the signed body — is the **idempotency key**, and step 4 is why it
    is not the header. The header's value is **not stored** (card#12239 r3): a per-delivery label would be a
    record of another fleet's activity the digest store need not keep, and an operator finds a delivery

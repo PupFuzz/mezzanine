@@ -1671,7 +1671,7 @@
           }
         }
       ],
-      "until_ms": 2000,
+      "until_ms": 6000,
       "floor": {
         "key": "aimla",
         "local_hours": 9,

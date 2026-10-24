@@ -60,6 +60,16 @@ class TheSceneDrawsOnlyWhatTheSetLoggedTest extends TestCase
         }
     }
 
+    /**
+     * ⛔ THE STILL ENVELOPE IS GONE AFTER ITS DURATION WITH NO FURTHER RENDER (§ 6.2 A19's reduced cell:
+     * *"then gone — never held"*). The floor screen's one end-timer re-paints when any effect in flight
+     * ends, so on a quiet feed the paint-only refresh at `still_frames` frames takes the envelope off.
+     */
+    public function test_under_reduced_motion_the_still_envelope_is_gone_after_its_duration(): void
+    {
+        $this->assertSame([], $this->stillEnvelopeDefects($this->floorRun(self::COORD, null, ['reduce' => true])));
+    }
+
     public function test_decorative_motion_is_data_bounded_by_section_6_3_and_on_no_desk(): void
     {
         $this->assertSame([], $this->decorativeDefects($this->sceneOf(self::ROOM)));
@@ -126,6 +136,55 @@ class TheSceneDrawsOnlyWhatTheSetLoggedTest extends TestCase
                 }
             }
         }
+
+        return $defects;
+    }
+
+    /**
+     * Every still envelope a render drew, against the run's later frames: by `still_frames` loop frames
+     * after the render that drew it there must be a frame with no render in between — the paint-only
+     * refresh — that no longer draws it.
+     *
+     * @return list<string>
+     */
+    private function stillEnvelopeDefects(array $result): array
+    {
+        $renders = $result['floor_renders'];
+        $defects = [];
+        $seen = 0;
+        $first = [];
+
+        foreach ($renders as $i => $render) {
+            foreach ($render['frame']['scene']['effects'] ?? [] as $fx) {
+                // The render that first drew it — a later render keeps drawing the same envelope in flight.
+                if ($fx['animation_id'] !== 'A19' || ($fx['still_frames'] ?? 0) <= 0 || isset($first[$fx['cause']])) {
+                    continue;
+                }
+
+                $first[$fx['cause']] = true;
+                $seen++;
+                $end = $render['at'] + $fx['still_frames'] * $fx['frame_interval_ms'];
+                $gone = null;
+
+                foreach (array_slice($renders, $i + 1) as $later) {
+                    if ($later['at'] > $end) {
+                        break;
+                    }
+
+                    $still = array_filter($later['frame']['scene']['effects'] ?? [], static fn (array $e): bool => $e['animation_id'] === 'A19' && $e['cause'] === $fx['cause']);
+
+                    if ($later['trigger'] === 'walk end' && $later['at'] === $end && $still === []) {
+                        $gone = $later;
+                    }
+                }
+
+                if ($gone === null) {
+                    $defects[] = "{$fx['cause']}'s still envelope, drawn at {$render['at']} ms for {$fx['still_frames']} frames, is not taken off by a paint-only refresh at {$end} ms";
+                }
+            }
+        }
+
+        $this->assertGreaterThan(0, $seen, 'no still envelope was drawn — the check read nothing');
 
         return $defects;
     }

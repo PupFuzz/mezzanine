@@ -15,9 +15,10 @@
  * held without the stream recovery inherits the browser's own reconnect, which re-runs none of
  * § 2.2's steps 1–5; the wiring test reds if this page stops constructing it there.
  *
- * ⛔ THE TWO BOUNDS A PAGE NEEDS AND THE HARNESS MUST NOT HAVE ARE APPLIED FOR IT: the animation log
- * is `wire/live-page.js`'s, constructed with § 12's retention (`ANIMATION_LOG_RETENTION`, § 14 item
- * 26), and the protocol holds its coordination envelopes to § 5.7's cap on its own (§ 14 item 25).
+ * ⛔ THE BOUND A PAGE NEEDS AND THE HARNESS MUST NOT HAVE IS APPLIED FOR IT: the animation log is
+ * `wire/live-page.js`'s, constructed with § 12's retention (`ANIMATION_LOG_RETENTION`, § 14 item 26).
+ * The floor screen's `post_ref` memory is bounded by § 12's *Remembered coordination post identities*
+ * inside the screen itself (`coord/post-memory.js`, card#12239), so a harness run carries it too.
  *
  * ⛔ A RENDER FOLLOWS EVERY THING THAT CAN CHANGE WHAT THE PROTOCOL HOLDS, coalesced into one
  * `screen.render()` at a time (`wire/live-page.js` says why). The 1 s age tick re-draws the desks'
