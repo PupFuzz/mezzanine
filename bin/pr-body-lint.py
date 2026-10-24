@@ -3,8 +3,15 @@
 #
 # pr-body-lint.py — the FLEET's PR-body linter, vendored so this repository's CI can run the real
 # check instead of a mezzanine-local re-implementation of part of it. Everything below this header
-# is upstream's file, byte-for-byte; mezzanine has made NO edit to it, and `bin/vendor-pin-check.sh`
-# holds that claim to a sha256 so it cannot quietly stop being true.
+# is upstream's file, byte-for-byte, EXCEPT ONE DECLARED SITE, and `bin/vendor-pin-check.sh` holds
+# that claim to a sha256 so it cannot quietly stop being true.
+#
+#   DECLARED LOCAL EDITS — this is the COMPLETE list. Anything else below is a defect.
+#     (1) card#12260 — the docstring's ratification sentence, the line carrying
+#         `operator (once in fleet coordination, and again on 2026-09-09`. Upstream's
+#         cites the coordination thread by number; this public repository carries no reference
+#         to the fleet's private coordination repository, so this one drops the number.
+#         Docstring only — no rule and no output moves.
 #
 #   upstream repo     PupFuzz/agent-board-framework  (PRIVATE — a public CI runner cannot clone it,
 #                     which is why this is a vendored copy and not an install step)
@@ -45,7 +52,10 @@
 #
 # RE-VENDORING. Take the fresh upstream file, put this header back on top of it with all three
 # provenance figures re-derived, re-vendor the sibling `.selftest.py` and `pr-body-lint-fixtures/`
-# from the SAME commit, then follow the steps `bin/vendor-pin-check.sh` prints on a red.
+# from the SAME commit, re-apply every declared local edit in all three (or drop one ON PURPOSE,
+# from its list AND from `bin/vendor-pin-check.sh`'s FRAGMENTS table), then follow the steps
+# `bin/vendor-pin-check.sh` prints on a red. `bin/no-roundtable-refs.py` reds if a re-vendor
+# brings a coordination-repository reference back.
 #
 # ── END OF MEZZANINE'S HEADER ─────────────────────────────────────────────────────────────────
 r"""pr-body-lint.py — the PR-body standard, ENFORCED instead of described (card#9073 leg B).
@@ -53,7 +63,7 @@ r"""pr-body-lint.py — the PR-body standard, ENFORCED instead of described (car
 THE MEASURED DEFECT. `skills/release-pr/SKILL.md § PR body — write it for the software installer`
 is the standard for what a PR body may contain — its closed section set and scope line on a
 RELEASE PR only (the ⛔ RELEASE-SCOPE block below owns that split) — it is ratified twice by the
-operator (roundtable #255, and again on 2026-09-09 naming the READER), and until this file NOTHING
+operator (once in fleet coordination, and again on 2026-09-09 naming the READER), and until this file NOTHING
 CHECKED IT.
 `review-prep.py` and the wrappers around it checked field PRESENCE — `Built:`,
 `**Coordinated in:**` — never the ABSENCE of narration, so a body could carry every required

@@ -209,6 +209,10 @@ row:
 | r4 (3) | the portal is **the birdhouse on a bracket, to the right of the clock**; card#12241's designer owns its placement and drawing | [§ 6.1](#61-what-the-floor-renders-and-what-it-no-longer-does); D3 § 4.6 |
 | reduced motion | *"a still envelope that disappears after some time"* | A22's reduced form now, and A19's with the build (its cell is held equal to the module) |
 | NQ5 | *"No real roundtable references should be in repo"* | no issue number, link, quote, private repository name or live identity in this card's text; card#12260 scrubs the existing references and owns the repo-wide guard |
+| NQ1 (2026-10-24) | (a) — announce first; then the operator issues the binding and registers the hook at their terminal | the announcement is posted; the operator's terminal act of [§ 3.2](#32-provisioning--one-operator-terminal-act) follows the fleet's window, and [§ 9](#9-implementation-plan) step 4 waits on it ([§ 10](#10-operator-questions) NQ1) |
+| NQ2 (2026-10-24) | (a) — ask `<the kanban seat>` to declare its `roundtable_agent_name` | asked in the same announcement; until that seat's heartbeat carries the name its end is no desk ([§ 9](#9-implementation-plan) step 4; [§ 10](#10-operator-questions) NQ2) |
+| NQ3 (2026-10-24) | (b) — keep the two rooms on separate floors first | the first live traveller between the two declared seats is A22 through each floor's birdhouse ([§ 9](#9-implementation-plan) step 5); composing the rooms onto one floor is a later admin-console act ([§ 10](#10-operator-questions) NQ3) |
+| NQ4 (2026-10-24) | (a) — accept the `install` scope by replay | [§ 9](#9-implementation-plan) step 3 is the `install` scope's acceptance, as step 7 says ([§ 10](#10-operator-questions) NQ4) |
 
 ⚠ The card's own comment c13244 numbers the first three questions Q1/Q3/Q2; this document numbers them
 as the operator answered them (r1 hygiene).
@@ -670,7 +674,10 @@ production; every outward act is marked and waits on its question):
 ## 10. Operator questions
 
 **Answered 2026-10-23** — Q1–Q4, the render scope, NQ5, NQ6, and the two r4 answers (*"A"*; *"do as you
-recommended"*; the birdhouse). **Open:**
+recommended"*; the birdhouse). **Answered 2026-10-24** — NQ1 (a), NQ2 (a), NQ3 (b), NQ4 (a), each recorded
+in [§ 2.4](#24-what-the-operator-decided-on-2026-10-23-verbatim-on-the-card)'s table; the design is
+approved on those answers. **Open: nothing.** The four questions stand below as they were put, each with
+its answer under it, because D2 § 6.12 and the review dispositions cite them by number:
 
 **NQ1 — Registering Mezzanine's hook on the `<roundtable repository>`: what the fleet is asked to
 accept, and who acts.** Context (r1 F14, r2 MAJOR-4/5, r3 MINOR-3): the `<roundtable repository>` is a
@@ -705,6 +712,9 @@ terminal act** ([§ 3.2](#32-provisioning--one-operator-terminal-act)).
   thread; the store's row is already the minimum.
 - **Recommendation: (a)** — this seat posts the announcement (its routine coordination traffic); the
   operator issues and registers at their terminal once the window closes, recorded on the card.
+- **Answered 2026-10-24: (a).** The announcement is posted to the fleet's PMs (a coordination thread, not
+  cited here, by NQ5); the operator issues the binding and registers the hook at their terminal once its
+  window closes ([§ 3.2](#32-provisioning--one-operator-terminal-act)), which is the act [§ 9](#9-implementation-plan) step 4 waits on.
 
 **NQ2 — `<the kanban seat>`'s end of the bird.** Context: the join resolves a roundtable name only to a
 seat that **declares** it; that seat's config and reporter are its own operator's to change. Until it
@@ -716,6 +726,8 @@ declares, its end is **no desk**: a direct post between the two seats draws **no
 - *(b) Accept no bird between the two for now.* Cost: the operator's stated want — the bird between the
   two — is not visible until (a) happens anyway.
 - **Recommendation: (a)**, with NQ1's post.
+- **Answered 2026-10-24: (a).** The ask to `<the kanban seat>` rides NQ1's announcement; until that seat's
+  heartbeat carries `roundtable_agent_name`, [§ 9](#9-implementation-plan) step 4's rule holds — its end is no desk.
 
 **NQ3 — Compose the `kanban` room onto the *Mezzanine* floor?** Context: the sandbox layout holds one
 authored floor with one room ([§ 2.1](#21-installs-and-seats-on-the-sandbox)). With the rooms on
@@ -729,6 +741,9 @@ the operator's.
   acceptance passes.
 - **Recommendation: (b)** — restored from r2: with *outside the building* drawing nothing, these two
   rooms on two floors are the one place the birdhouse can be seen working on the sandbox.
+- **Answered 2026-10-24: (b).** The two rooms stay on separate floors; the first live traveller between
+  the two declared seats is A22 through each floor's birdhouse ([§ 9](#9-implementation-plan) step 5), and composing the rooms onto
+  one floor is a later admin-console act of the operator's.
 
 **NQ4 — The `install` scope has no live repository here.** Context: by Q1 it is built and replay-tested;
 no PM-and-impl install reports to this Mezzanine, so step 7 of the acceptance is a replay.
@@ -738,6 +753,8 @@ no PM-and-impl install reports to this Mezzanine, so step 7 of the acceptance is
 - *(b) Onboard one of the fleet's multi-agent installs to the sandbox first.* Cost: another fleet's
   operator act, and credentials for its seats on this Mezzanine.
 - **Recommendation: (a)**; (b) is a fleet question.
+- **Answered 2026-10-24: (a).** [§ 9](#9-implementation-plan) step 3's replay is the `install` scope's acceptance (step 7); a
+  multi-agent install's onboarding is a separate operator act when one wants a floor here.
 
 ---
 

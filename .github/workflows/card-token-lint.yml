@@ -47,8 +47,8 @@
 #
 # IT ALSO GUARDS EVERY VENDORED FILE'S DECLARED PROVENANCE (`bin/vendor-pin-check.sh`, the first
 # step of each job; its MANIFEST is the list) — the mover the card-token gate extracts its grammar
-# from declares in its header exactly what its body is, and until PupFuzz/agent-roundtable#463
-# nothing checked that declaration.
+# from declares in its header exactly what its body is, and until 2026-09-11 nothing checked
+# that declaration.
 #
 # WHAT IT DOES. Reads this PR's TITLE and HEAD BRANCH — the two surfaces the kanban webhook
 # bridge parses — and fails if either carries something that LOOKS like a card reference but

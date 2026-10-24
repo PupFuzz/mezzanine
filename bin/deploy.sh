@@ -6,17 +6,17 @@
 # at all, so every prod change would have been a hand-deploy by construction.
 #
 # ⚑ PROVENANCE — READ THIS BEFORE ASSUMING THE PATTERN WAS COPIED.
-#   card#7459 names a sample: `share/issue-347/kanban-solo/kanban-board-deploy.sh @ ee7df9b9`, in
-#   the roundtable share tree. THAT FILE IS NOT REACHABLE FROM THIS SEAT — no such path exists on
-#   this host and `PupFuzz/agent-roundtable` answers 404 to this credential. So the sample's LINES
-#   were not copied. What is adopted is the card's own enumeration of the sample's load-bearing
-#   properties (the rt#347 close comment is the ruling of record):
+#   card#7459 names a sample: kanban-solo's `kanban-board-deploy.sh @ ee7df9b9`, in a fleet share
+#   tree. THAT FILE IS NOT REACHABLE FROM THIS SEAT — no such path exists on this host and the
+#   repository holding it answers 404 to this credential. So the sample's LINES were not copied.
+#   What is adopted is the card's own enumeration of the sample's load-bearing properties (the
+#   card records the binding handover items; a fleet coordination thread is the ruling of record):
 #     forward-only migrations (MySQL/MariaDB DDL is non-transactional) · the load-bearing
 #     cache-rebuild order · down-and-stay-down on failure for operator review ·
 #     re-exec-after-checkout · every "fails once, then silently succeeds on a bare re-run" state
 #     made LOUD, never idempotent by accident.
 #   Each is implemented below with its reasoning stated AT the step, which is what handover item 2
-#   asked for. ⚠ This script has NOT been diffed against the sample; rt#347 item 5 — take the
+#   asked for. ⚠ This script has NOT been diffed against the sample; handover item 5 — take the
 #   adapted draft to kanban-solo on a fresh thread once the P2 host exists — is the review that
 #   has not happened, and no line here should be read as "the way kanban-board does it".
 #
@@ -139,7 +139,7 @@
 # answerable): card#7459 (this script) · card#9287 (the feed re-pinned to SSE; no Reverb daemon) · card#7344 (CI
 # lanes) · D-08 (separate prod host; named 2026-09-14, never deployed to) · D-13 (prod moves only by this script) ·
 # D-15 (the store; MariaDB per its 2026-09-09 amendment, TLS only to another host per its 2026-09-14 one) · D-16 (the app
-# lives in server/) · rt#347 (the sample and the binding handover) · `docs/design/FLEET-STATE.md § 2.1` (the daemons), `§ 6.1` (store posture),
+# lives in server/) · `docs/design/FLEET-STATE.md § 2.1` (the daemons), `§ 6.1` (store posture),
 # `§ 6.9` (migrations on a live `events` table), `§ 8.3` (the heartbeat) · `docs/PLAN.md § 5`.
 
 set -Eeuo pipefail

@@ -4144,7 +4144,7 @@ reaches any emitted event. The planted-string corpus reuses rule 3's prefixes.
 
 ### 8.1 The problem, restated
 
-**Measured upstream (roundtable #341/#340, 26 of 26 events): a `/clear` on a seat SIGKILLs an
+**Measured upstream by fleet seats (26 of 26 events): a `/clear` on a seat SIGKILLs an
 in-flight subagent's tool call.** A consumer that treats the next turn boundary as "the turn
 finished" therefore mints a **false idle transition**, and it does so on exactly the seats that are
 busiest, because those are the seats running subagents when someone clears. A dashboard whose idle

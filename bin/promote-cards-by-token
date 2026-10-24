@@ -9,7 +9,8 @@
 # listed next. (1) and (2) arrived in this repo's #51 (2026-08-31) for one reason: upstream's
 # "first-ever release" wording is FALSE here — mezzanine HAS released, so explaining an empty
 # range as a first-ever release misdirects the only person who will ever read it. (3) is
-# card#11527's. Each site is located by a distinctive unbroken fragment of its own text, NEVER
+# card#11527's. (4) is card#12260's: this repository is public and carries no reference to the
+# fleet's private coordination repository. Each site is located by a distinctive unbroken fragment of its own text, NEVER
 # by a line number: line numbers rot, and this list has to survive the next re-vendor.
 #   DECLARED LOCAL EDITS — this is the COMPLETE list. Anything else below is a defect.
 #     (1) the false-all-clear COMMENT on the `..HEAD` refusal — the three lines carrying
@@ -29,15 +30,18 @@
 #         card read, so one card token naming another board's card stopped a whole release
 #         (v0.8.0, Actions run 37707232205). Upstream carries the same defect; a re-vendor
 #         keeps (3) until upstream's own body tells a foreign 403 from a lost credential.
-#         (3) also carries the 200-SHAPE REFUSALS (card#11527 follow-up, rt#606): the card read's
+#         (3) also carries the 200-SHAPE REFUSALS (card#11527 follow-up): the card read's
 #         field check, located by `A 200 is a card only if it carries`, and the board-scoped
 #         lookup's `no data array` check. A 200 missing a field a verdict reads exits 2 instead of
 #         being skipped as foreign, stage-guarded, or moved as live.
+#     (4) the FLAT-WRITE COMMENT (card#12260) — the line carrying `Ratified flat write
+#         contract, upstream's;`. Upstream's cites the coordination thread that ratified the
+#         contract by number; this one drops the number. Comment only — no behaviour moves.
 # ⛔ THIS HEADER USED TO CLAIM THE WHOLE BODY WAS BYTE-FOR-BYTE and called that "a one-diff
 # check". Nobody ran the diff. #51's two edits had been sitting in the body for eleven days and
 # the claim went on reading as true — a declaration with NO CHECK, which is worse than silence:
-# it hands the next reader confidence where a question was owed. Found by
-# PupFuzz/agent-roundtable#463 (2026-09-11). The two edits are CORRECT and were KEPT; what was
+# it hands the next reader confidence where a question was owed. Found in fleet coordination
+# on 2026-09-11. The two edits are CORRECT and were KEPT; what was
 # wrong was the declaration, so the declaration was made true and given a check.
 # ⚑ THE CHECK: `bin/vendor-pin-check.sh` pins the sha256 of this file's BODY (the first line
 # after the shebang that is neither blank nor a comment, through EOF — so this header may grow
@@ -71,8 +75,7 @@
 #   `bin/promote-cards-by-token.selftest.sh`.
 #
 # WHY THIS MOVER AND NOT THE TOOLKIT'S GENERIC ONE — RULED 2026-09-14: KEEP THIS ONE.
-# Record: PupFuzz/agent-roundtable#444 (disposition 5661169892 carries every derivation; its
-# correction 5661266111 is part of the ruling) and card#9146. This repo keeps this vendored
+# Record: card#9146; the ruling was made in fleet coordination on 2026-09-14. This repo keeps this vendored
 # token mover rather than adopting agent-board-toolkit's `promote-released-cards`. Provenance,
 # pin and the upstream-first rule stay exactly as declared at the top of this header.
 #   THE KEY. The generic mover correlates a card's `payload.pr_number` / `payload.dl_number` stamp
@@ -732,7 +735,7 @@ for m in ${TO_MOVE[@]+"${TO_MOVE[@]}"}; do
     echo "  → card#$id: would move $cur → $STAGE"; moved=$((moved + 1)); continue
   fi
   # FLAT top-level write body — never a `{"task": {...}}` resource wrapper (kanban
-  # v0.36.0 / DL-219 strict-rejects it). Ratified flat write contract, roundtable #119;
+  # v0.36.0 / DL-219 strict-rejects it). Ratified flat write contract, upstream's;
   # this is the bash authority's shape and the selftest pins it.
   code="$(api PATCH "$API/tasks/$id.json" "$(jq -nc --argjson s "$STAGE" '{workflow_stage_id: $s}')")"
   case "$code" in

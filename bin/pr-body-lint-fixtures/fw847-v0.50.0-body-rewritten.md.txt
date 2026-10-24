@@ -1,7 +1,7 @@
 **`dev → main` release PR — v0.50.0.** Bundles 71 commit(s) since v0.49.0.
 
 **Built:** dispatched (coder ×3 / mechanic ×0)
-**Coordinated in:** card#9026 (board 13) · rt#283
+**Coordinated in:** card#9026 (board 13)
 
 ## Highlights
 
@@ -111,11 +111,11 @@
 - **#836** refactor(kanban): card#8604 — one board-stage reader in coord.kanban_common
 - **#835** fix(memory-pack-lint): card#8503 card#8504 card#8505 — split the dead-pointer report by class, make the prescribed --fix true, and sweep area 0 for vendored toolkit copies
 - **#648** docs(dispatch): hoist the parallel-dispatch doctrine to a role-agnostic doc all three seats read (card#6751)
-- **#618** feat(hooks): scratchpad-hygiene doctrine + dead-session janitor (card#7945, roundtable #264, authored by aimla-pm)
+- **#618** feat(hooks): scratchpad-hygiene doctrine + dead-session janitor (card#7945, authored by aimla-pm)
 - **#651** fix(ci): no Windows job ran the OTHER registration-gating hook selftests (card#6689)
 - **#803** fix(context-reset): one read_or_sentinel primitive for every git read in TERMs 1 and 5 — a failed read may not produce a pass (card#8634, supersedes #655)
 - **#824** docs(kanban): terminal_columns is DUAL-VOCABULARY — document both spellings (card#8623)
-- **#631** docs(review): four-tag review-severity vocabulary — ESOTERIC · MINOR w/ required disposition · HYGIENE (rt#257 §6 owed row)
+- **#631** docs(review): four-tag review-severity vocabulary — ESOTERIC · MINOR w/ required disposition · HYGIENE (§6 owed row)
 - **#822** feat(security): card#8541 — record and classify each push to `main` the runner sees, with its blind spots stated and their count guarded; prove the release-base refusal per tool
 - **#764** fix(merge): the unattended CI gate answers the merge-gate contract, not a second copy of it (card-6735)
 - **#826** feat(coord-thread-read): card#8501 — carry the body: `body` in every `--json` row + a `--body` text flag, so the sanctioned reader can say WHAT was posted, not only WHO

@@ -13,8 +13,8 @@ use Tests\Feature\Feed\FeedTestCase;
  * card#9418 — § 8.2.1's `idle_since` and `idle_nudge_after_s`, driven through the real ingest, fold
  * and read plane, with the VALUES asserted.
  *
- * The contract was agreed with the consumer (the bridge's idle watchdog) on rt#478 ask 2 and rt#479
- * and is recorded on the card: `idle_since` is the SERVER-clock instant the fold entered `idle` — the
+ * The contract was agreed with the consumer (the bridge's idle watchdog) and is
+ * recorded on the card: `idle_since` is the SERVER-clock instant the fold entered `idle` — the
  * `received_at` of the event whose fold minted the edge — minted fresh on every entry and null on
  * every other state; `idle_nudge_after_s` is the install's configured horizon, and its KEY IS ABSENT
  * when nothing is configured, so a consumer can tell an undeclared horizon from a declared one.
@@ -188,7 +188,7 @@ class IdleSinceAndHorizonTest extends FeedTestCase
             $this->assertArrayHasKey('idle_nudge_after_s', $seat, "{$surface}: a configured horizon is missing");
             $this->assertSame(900, $seat['idle_nudge_after_s'], "{$surface}: the resolved horizon, as an int");
 
-            // Siblings of `blocked_since` on the seat object (rt#479).
+            // Siblings of `blocked_since` on the seat object (card#9418).
             $keys = array_keys($seat);
             $at = array_search('blocked_since', $keys, true);
             $this->assertSame(['idle_since', 'idle_nudge_after_s'], array_slice($keys, $at + 1, 2),
