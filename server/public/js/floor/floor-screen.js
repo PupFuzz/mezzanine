@@ -107,7 +107,6 @@ import {
     RoomClock,
 } from './floor-layout.js';
 
-
 /**
  * § 5.5's *floor map is short N desks* — bare on a one-room floor, whose single map needs no
  * naming, and suffixed with the room on a floor of several, because *which map is short* is the
