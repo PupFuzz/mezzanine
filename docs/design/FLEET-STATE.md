@@ -113,7 +113,7 @@ contract every consumer reads.
 | **The wire schema, ingest auth, validation, error bodies, rate limits, the atomic-batch rule** | [D1](EVENT-SCHEMA.md). This document consumes an accepted batch; it does not re-specify how a batch becomes accepted. Card #7338 builds the ingest from D1; card #7339 builds everything here. |
 | **Anything rendered** — desks, floors, sprites, animation, the identity→desk mapping | D3 (`docs/design/FLOOR.md`). This document ends at a JSON object and a state name. Where D1 or this document says "renders", it is naming the **obligation** D3 inherits, not the pixels. |
 | **Ingest of kanban board events, and the coordination receipt route itself** | ⚠ **Half of this row went stale when D1 § 18 landed and it is repaired rather than reworded.** The **kanban poller** is designed in [`docs/design/BOARD-TASK.md`](BOARD-TASK.md) (D4) — *outside* this contract, which is where this row has always placed it — and what this document adds is the store column its output lands in ([§ 6.4](#64-ddl)) and the merge that reads it ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)), never a second derivation of it. The **GitHub coordination receipt is designed** — [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer) owns its endpoint, authentication, validation order and every derived fact — and what this document adds is the read surface those facts reach a reader on ([§ 8.3.3](#833-the-coordination-objects)), never a second derivation of them. [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) specifies the *merge rule and the columns* — which are state-model questions and therefore D2's — and carries what is still open about the board producer with its cost, rather than inventing it. |
-| **The autonomy watchdog** | Roundtable #341, a separate track. Mezzanine's contribution is the REST snapshot ([`docs/PLAN.md § 3`](../PLAN.md#3-work-breakdown)), and this document specifies it as a first-class consumer. |
+| **The autonomy watchdog** | A separate fleet track. Mezzanine's contribution is the REST snapshot ([`docs/PLAN.md § 3`](../PLAN.md#3-work-breakdown)), and this document specifies it as a first-class consumer. |
 | **MFA and the browser session** | Card #7334 (Fortify + a stock TOTP package, D-04). This document states *which* surfaces MFA gates and what a failed gate returns; it does not specify the second factor. |
 | **Alerting, paging, e-mail** | There is no notifier here. Every degraded condition surfaces as a counter, a badge and a rendered state. A fleet that wants a pager reads the REST snapshot. |
 | **Historical analytics beyond the retention window** | Retention is 14 days ([§ 6.7](#67-retention-and-purge)). There is no warehouse, no roll-up table and no trend history, deliberately: the product answers *what is happening now*, and a second, slower copy of the data with its own schema is a second thing to keep true. |
@@ -303,12 +303,10 @@ interval plus one pass, ~1 s, so both thresholds sit two to three orders of magn
 
 ### 3.1 The rule
 
-> **A stamp that refreshes only when a seat posts corroborates; it cannot exonerate.**
->
-> — sola-pm, roundtable [`PupFuzz/agent-roundtable#341`](https://github.com/PupFuzz/agent-roundtable/issues/341),
-> 2026-08-23; a design maxim from the fleet's PM channel, quoted verbatim.
+**A timestamp that moves only when a seat posts can confirm the seat was alive at that moment; a
+stale or missing one cannot show that the seat is idle.**
 
-The context, restated so the rule does not depend on the thread: the fleet already had a per-seat
+The context: the fleet already had a per-seat
 context-percentage stamp that refreshed **when the seat posted a coordination comment**. It was
 proposed as a liveness signal, and it cannot be one — a seat working silently for an hour carries a
 stale stamp and reads as quiet. A fresh stamp proves the pipe worked; a missing stamp proves nothing
@@ -1280,11 +1278,9 @@ victim heuristic.
 
 ### 6.2 Database names, pinned and published
 
-**The origin, cited rather than recalled.** Roundtable
-[`PupFuzz/agent-roundtable#349`](https://github.com/PupFuzz/agent-roundtable/issues/349) (2026-08-23):
-three tenants' test suites collided on one shared host — one seat's suite was reading and writing a
-Redis database another seat's suite calls `FLUSHDB` on before every test. The measured findings from
-that thread that this section acts on, each one someone else's measurement:
+**The origin.** In 2026-08 three tenants' test suites collided on one shared host — one seat's
+suite was reading and writing a Redis database another seat's suite calls `FLUSHDB` on before every
+test. The findings this section acts on, each measured by the fleet seats that hit the collision:
 
 1. An unforced `<env>` pin in `phpunit.xml` **does** beat `.env` (Laravel's Dotenv repository is
    immutable and PHPUnit writes first). What defeats it is a variable already **exported** into the
@@ -1315,7 +1311,7 @@ may be a shared box — so the pinning is adopted from birth, before it costs an
 | **sandbox** | **`mezzanine_sandbox`** | **11 / 10** (distinct host) | `.env` on the sandbox host |
 | **test** | **`mezzanine_test`** | **11 / 10** | `phpunit.xml`, pinned, paired, forced |
 
-Redis 11 and 10 are chosen against the fleet's published claims on #349 — 14/15 and 13/12
+Redis 11 and 10 are chosen against the values other fleet seats have claimed — 14/15 and 13/12
 (kanban-solo), 15/14 and 2/3 (sola) — and against the defaults every unpinned seat gets (`0` and `1`).
 **11, 10 and the three database names above are hereby claimed for Mezzanine**; a future seat reading
 this document has them.
@@ -1377,8 +1373,8 @@ SECTION'S OWN BLOCK is checked against the file it owns"* says how, and what eac
   and a `<server>`, and the two agree. That catches the silent-divergence mode where one line of the
   pair is edited.
 - **That test's own population is asserted too, and is not a hand-written list it is trusted to keep
-  current** (card#9742, taking the shape kanban-solo published on rt#506 after hitting it in their copy
-  of the same guard). It iterates a constant, so without this leg it reported on whatever subset that
+  current** (card#9742, taking the shape kanban-solo offered after hitting it in their copy of the same
+  guard). It iterates a constant, so without this leg it reported on whatever subset that
   constant happened to name: a pin added to `phpunit.xml` and not to the constant was never
   visited, and the suite stayed green while the NEWEST pin — the one most likely to be wrong — was the
   one it could silently omit. The key set read from the file must therefore equal the guarded set
@@ -3326,8 +3322,8 @@ re-derives it exactly, as it does `current_call_ref`.
 
 **`idle_since` and `idle_nudge_after_s` are the idle horizon a machine consumer keys on, and both are
 published, not acted on (card#9418).** ⭐ **The contract was agreed with that consumer — the bridge's idle
-watchdog, a `fleet_read` reader of the snapshot ([§ 9](#9-read-side-authentication)) — on the roundtable
-(rt#478 ask 2, rt#479).** It nudges a seat that has sat `idle` past a horizon with work pending; the
+watchdog, a `fleet_read` reader of the snapshot ([§ 9](#9-read-side-authentication)) — in fleet
+coordination.** It nudges a seat that has sat `idle` past a horizon with work pending; the
 pending-work signal and the nudge are the bridge's, and this plane mints nothing from either member — the
 non-goal of [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith) holds. Four
 properties, each one the consumer depends on:
@@ -6071,7 +6067,7 @@ document.
 | Task-title tier staleness | 30 min | **Chosen** — six × the **5-minute board poll cadence** (`BOARD-TASK.md § 3.2`, and [§ 2.1](#21-processes)), so five consecutive failed polls are tolerated before a title is dropped, with a hard floor of *more than two cadences* because at two a single transient failure clears every tier-1 title on the floor at once. ⛔ **Chosen and not Derived, and the distinction is this table's own**: the cadence this figure is a multiple of is itself a judgement call, made in another document, so the figure is computed from no number in this table and none in D1. ⭐ **Re-derived on `card#7582` as this row previously asked, and the figure did not move — only its basis did**, which is evidence the original judgement was sound rather than evidence nobody checked; **it is re-derived again whenever the cadence moves**, which is the standing homework this row now carries in place of the one it discharged | [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) |
 | Predicate criteria | constant-`false` over ≥ 5,760/7 d (`seat_live`), constant over ≥ 5,760/7 d (`activity_recent`), 0 % or 100 % over ≥ 200/24 h (`turn_clean`), ≥ 5 % server-closed over ≥ 1,000/24 h, over the last COMPLETED window (`call_closed_by_wire`), constant-`false` for 2 consecutive passes (`ingest_receiving`, `fold_current`) — one clause per row of [§ 5](#5-server-side-predicates-and-their-controls), transcribed rather than summarised | **Chosen provisionally** — each is reachable by its own predicate's evaluation rate, which is the property review must preserve; every one is re-picked from the first week of live per-predicate counts | [§ 5](#5-server-side-predicates-and-their-controls) |
 | Store version floor | 11.8.6 | **Ruled** — operator, card#7523 (2026-09-09), replacing MySQL ≥ 8.0.12. The features under it are DOCS-CITED to the MariaDB Knowledge Base: `SKIP LOCKED` (10.6.0), `ALGORITHM=INSTANT` (10.3.2/10.4 by operation), `DATETIME(3)`, and `JSON` as a `LONGTEXT` alias rather than a binary type; **verified at provisioning** | [§ 6.1](#61-deployment-posture) |
-| Redis test databases | 11 / 10 | **Chosen** — against the fleet's published claims (14/15, 13/12, 15/14, 2/3 on roundtable #349) and clear of the `0`/`1` defaults every unpinned seat gets | [§ 6.2](#62-database-names-pinned-and-published) |
+| Redis test databases | 11 / 10 | **Chosen** — against the values other fleet seats have claimed (14/15, 13/12, 15/14, 2/3) and clear of the `0`/`1` defaults every unpinned seat gets | [§ 6.2](#62-database-names-pinned-and-published) |
 
 **Three figures rest on an estimate and say so at their definition:** everything derived from D1's
 10,420 events/seat/day ceiling (the store sizing, the delta volume, the fold's batch-size reasoning).
@@ -6145,7 +6141,7 @@ review can reverse it deliberately rather than discover it later.
 | 23 | **An ordinary heartbeat emits no delta** — one that moves nothing but the six `delivery` bookkeeping members and `reporter.uptime_s` — which is enforced by naming the version-bearing field set as a subtraction ([§ 6.5](#65-the-fold)) rather than as "any field of the object" | a delta per heartbeat so clients always hold fresh ages | 1,440/seat/day of messages carrying no rendered change — a 16 % traffic increase for nothing. Clients compute ages from `server_time` plus stored timestamps instead, and every quantity rendered from an excluded member is one that cannot be moving when it is read ([§ 6.5](#65-the-fold)). Stated for the *ordinary* heartbeat because the subtraction is closed both ways: a heartbeat that carries **news** does move a version-bearing member and does emit — edge-triggered, single digits a seat-day, and [§ 6.5](#65-the-fold) is where that set is named, once, rather than enumerated again here | a client that ignores `feed.heartbeat`'s `server_time` renders ages against its own clock; the protocol requires it not to, and [§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by) says why |
 | 24 | **Every counter-derived badge is windowed at 24 h — the reporter's `degraded` members and this plane's counter-derived badges** (operator ruling 2026-09-14, card#9491) | render the members as "since reporter start" with `reporter.uptime_s` beside them, which is what this row said until card#9491 | The counters persist across flusher restarts and are never reset server-side, so "since reporter start" was false and an all-time badge made a seat that had one bad minute look permanently broken. The window lets a badge clear while its total stays readable ([§ 7.2](#72-this-planes-own-counters-and-badges), [§ 7.3](#73-how-the-reporters-own-counters-are-handled)) | a condition that recurs less often than once a day shows as clear between occurrences; its total still records each one. The window is the ruling's starting figure and moves in one row of [§ 12](#12-every-number-and-where-it-comes-from) and one of D1 § 14 |
 | 25 | **The task-title merge is specified here; its producers are not** — ⚠ **narrowed since, three times**: tier 2's producer was designed at [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer); then ⭐ **tier 2 itself was RETIRED by operator ruling, card#9234 (2026-09-10)**; and then tier 1's board poller was designed too, in [`docs/design/BOARD-TASK.md`](BOARD-TASK.md) (`card#7582`, ratified 2026-09-12). ⇒ **this row's decision stands and its waiting is over**: every producer is designed OUTSIDE this document, which is the decision, and what this document gained is the store column and the merge ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here), [§ 6.4](#64-ddl)) | specify the GitHub/board ingest here too, or specify nothing | The merge is a state-model question and is D2's; the producers are a separate plane with their own auth, cadence and failure modes. And **the proposal's three-tier status fallback is not in this repo** — writing tiers from the phrase alone would put a guessed rule in a contract | an implementer building today gets tier 3 only, which needs nothing new and renders correctly — tier 1 is designed and built (`card#11289`) rather than unspecified, and `BOARD-TASK.md § 10` names the three conditions that keep it dark. ⛔ Retiring tier 2 did **not** retire the coordination producer: it removed the second consumer of one producer, and [§ 8.3.3](#833-the-coordination-objects) is the first one, unchanged |
-| 26 | **Database names and Redis databases are pinned, paired and published in this document** | pin them in `phpunit.xml` at build time, as every seat believed it had already done | Roundtable #349 measured three separate mechanisms that leave a pin looking correct while it resolves wrong: an exported variable, `force="true"` without `<server>`, and a `_URL` key replacing the parts. Publishing the values is what let two seats discover a mutual collision in four minutes | the claimed values (`mezzanine`, `mezzanine_sandbox`, `mezzanine_test`, Redis 11/10) constrain other seats not to take them, which is the point of publishing |
+| 26 | **Database names and Redis databases are pinned, paired and published in this document** | pin them in `phpunit.xml` at build time, as every seat believed it had already done | The shared-host collision measured three separate mechanisms that leave a pin looking correct while it resolves wrong: an exported variable, `force="true"` without `<server>`, and a `_URL` key replacing the parts. Publishing the values is what let two seats discover a mutual collision in four minutes | the claimed values (`mezzanine`, `mezzanine_sandbox`, `mezzanine_test`, Redis 11/10) constrain other seats not to take them, which is the point of publishing |
 | 27 | **The guard asserts the resolved value (`config()`), not the declaration** | assert the `phpunit.xml` contents | All three mechanisms above leave the declaration correct. Reading `getenv()` would have shown `force="true"` "working" in the measurement that disproved it | one extra bootstrap assertion, and a hostile-export run in CI |
 | 28 | **`DB_CONNECTION` is deliberately not forced** | force every DB variable | Forcing a variable a CI matrix exports to select a backend silently re-runs every leg on the wrong backend: green, testing nothing. Nothing in this repo does that today, and the absence is commented as load-bearing so nobody "fixes" it | if a future matrix does select by export, this comment is what stops the next person forcing it |
 | 29 | **The read plane exposes no field D1 did not send** | enrich the snapshot with server-side context (host names, IPs, token identifiers) | D1 minimizes at the reporter so a secret cannot transit even if the server misbehaves; a read surface that adds fields the wire never carried would reintroduce exactly what that buys | the drill-down cannot show anything the seat did not report, which is the correct constraint |

@@ -48,8 +48,7 @@ specific to Mezzanine and has no counterpart there.
    [`docs/changelog/`](changelog/)`v<version>.md`, one file per tag**, moved there verbatim by
    [step 13](#release-flow). The tag is the archive's unit precisely because this rule makes the
    tag the unit that owes the entry. **This policy owns the obligation and not the format**:
-   roundtable #344 settled headings, ordering and per-PR
-   versus at-release authorship, and `docs/PLAN.md § 4` is where that answer was adopted,
+   `docs/PLAN.md § 4` owns headings, ordering and per-PR versus at-release authorship,
    including the card-level entry rule and the size gate this project added to it. Read § 4
    before writing an entry; it is deliberately not restated here.
 4. **Tags are minted by CI on `main`. Nobody hand-tags.** After a human merges the release PR
@@ -213,7 +212,7 @@ it, and it is why the release gate asks *what* is merged rather than *who* merge
 > rule 5's `main` → `dev` back-merge lands as a merge commit**, and nothing else in this repository
 > depends on it. The values behind each of those sentences are settings: the re-derive command at
 > the end of this block prints them, and it is what to believe when the two disagree. This is
-> deliberately the model sola-pm uses (PupFuzz/agent-roundtable#385/#386).
+> deliberately the model sola-pm uses.
 >
 > - **How the back-merge lands:** the admin identity merges the `sync/main-to-dev-post-v<version>`
 >   PR with `gh pr merge <N> --merge`. **Not `solo-self-merge`**: it always squashes, which is what

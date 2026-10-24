@@ -480,7 +480,7 @@ class StateRecompute
 
     /**
      * § 8.2.1's `idle_since` — the SERVER-clock instant the seat entered `idle` (card#9418, the
-     * contract agreed with the bridge's idle watchdog on rt#478 / rt#479).
+     * contract agreed with the bridge's idle watchdog and recorded on the card).
      *
      * ⛔ AN EDGE, SO IT READS THE STORED PREVIOUS STATE, as `badge_first_seen` does for a badge's
      * onset. § 4.3's `activity_state` is a pure function of five facts and holds no memory; WHEN it
