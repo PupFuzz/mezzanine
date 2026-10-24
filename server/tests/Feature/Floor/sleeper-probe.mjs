@@ -13,7 +13,7 @@
  *   model     — the idle desk's model: pose `asleep`, monitor `off`, held A6 with motion (and without, reduced).
  *   sleeper   — the painted character is the tree's sleeper over its desk's own top edge: `data-pose="asleep"`,
  *               closed eyes, the head resting at the edge the desk's rects place; its document drawn in § 12's
- *               *Sleeper frame*.
+ *               *Character frame*.
  *   monitor   — the painted monitor is off (card#12187): the unlit screen, carrying no text.
  *   zs        — in every document, THREE z's (card#12187's final rulings), z1 to z3, each its share of § 12's `L` tall
  *               (*Sleeper's z's*: z1 0.915 `L`, z2 0.75, z3 0.585), every body inside the frame, every z on the side the
@@ -102,9 +102,9 @@ const SHARES = read(/z1 \*\*([\d.]+)\*\* `L`, z2 \*\*([\d.]+)\*\* `L` and z3 \*\
 const PULSE = read(/^\| \*\*Sleeper z pulse\*\* \|.*?the levels by loop frame are `([0-3 ]+)`/m, '§ 12 *Sleeper z pulse* table')[1]
     .split(' ').map((t) => [...t].map(Number));
 const LOOP = PULSE.length;
-/** § 12's *Sleeper frame*. */
+/** § 12's *Character frame* — the frame of every seat document since card#12259. */
 const FRAME = (() => {
-    const m = read(/^\| \*\*Sleeper frame\*\* \| \*\*(\d+) × (\d+)\*\* frame units from \(\*\*(-?\d+)\*\*, \*\*(-?\d+)\*\*\)/m, '§ 12 *Sleeper frame* row');
+    const m = read(/^\| \*\*Character frame\*\* \| \*\*(\d+) × (\d+)\*\* frame units from \(\*\*(-?\d+)\*\*, \*\*(-?\d+)\*\*\)/m, '§ 12 *Character frame* row');
 
     return { x: num(m[3]), y: num(m[4]), w: num(m[1]), h: num(m[2]) };
 })();
@@ -157,7 +157,7 @@ const halosOf = (doc) => [...doc.matchAll(/<path data-part="halo" data-k="(\d+)"
 /** The side the head rolled to: the sign of its rotation (1 its right, -1 its left). */
 const rollOf = (doc) => Math.sign(Number((doc.match(/<g data-part="head" transform="[^"]*rotate\((-?[\d.]+)\)/) ?? [])[1])) || 1;
 const withoutZs = (doc) => doc.replace(/<g data-part="zs">[\s\S]*<\/g><\/svg>$/, '</svg>');
-const VIEW = C.SEAT_VIEWBOX;
+const VIEW = C.SEAT_RECT;   // the desk's top edge is a share of the character's RECT, not of the widened frame
 
 /**
  * The sleeper's own legs over ONE drawing's documents — `sleeper`, `zs`, `order`, `pulse`, `halo`, `still`, `crest` —
@@ -190,7 +190,7 @@ function sleeperLegs(where, docs, edge, crestKey) {
         }
 
         if (attr(doc, 'viewBox') !== `${FRAME.x} ${FRAME.y} ${FRAME.w} ${FRAME.h}`) {
-            out.push(`sleeper: ${at} is drawn in viewBox «${attr(doc, 'viewBox')}», not § 12's *Sleeper frame* ${FRAME.w} × ${FRAME.h} from (${FRAME.x}, ${FRAME.y})`);
+            out.push(`sleeper: ${at} is drawn in viewBox «${attr(doc, 'viewBox')}», not § 12's *Character frame* ${FRAME.w} × ${FRAME.h} from (${FRAME.x}, ${FRAME.y})`);
         }
 
         if (Math.abs(Number(attr(doc, 'data-edge')) - edge) > 0.01) {

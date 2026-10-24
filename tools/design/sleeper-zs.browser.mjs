@@ -6,7 +6,7 @@
 // For every species and variant of the character tree — at its first `--keys` keys AND at the extremes the population holds
 // (the lowest and highest eye line over `--scan-eyes` keys, the widest crest over `--scan-crest`; see `pickSeats()`) — the
 // sleeper's frame is rasterised in headless Chromium, once without its z's, once per z body alone, once for the eyes alone and
-// once for the halos, in the sleeper's WIDENED, RAISED frame (§ 12's *Sleeper frame*, read from the document), and six things
+// once for the halos, in the sleeper's WIDENED, RAISED frame (§ 12's *Character frame*, read from the document), and six things
 // are read: OVER HEAD, the z ink on the sleeper's own ink; Z ON Z, the z ink covered by two z's; THE FACE, the z ink near the
 // closed eyes; CLEARANCE, the z ink inside a clear rect (the monitor's frame, the desk's props, the desk, the thought
 // trail's column — read out of `floor/desk-layout.js`, never copied) and the halo ink on the sleeper; and, from the documents
@@ -101,8 +101,8 @@ function boundsFromDocument() {
   const residuals = [...(overRow?.[1] ?? '').matchAll(/the `([a-z]+)` at \*\*(\d+) %\*\*/g)].map((m) => ({ species: m[1], bound: Number(m[2]) / 100 }));
   const face = md.match(/^\| \*\*Sleeper z face clearance\*\* \| \*\*(\d+)\*\* frame units from the closed eyes' ink, holding at most \*\*(\d+) %\*\* /m);
   if (face === null) throw new Error('FLOOR.md § 12 carries no *Sleeper z face clearance* row in the form this tool reads');
-  const frame = md.match(/^\| \*\*Sleeper frame\*\* \| \*\*(\d+) × (\d+)\*\* frame units from \(\*\*(-?\d+)\*\*, \*\*(-?\d+)\*\*\)/m);
-  if (frame === null) throw new Error('FLOOR.md § 12 carries no *Sleeper frame* row in the form this tool reads');
+  const frame = md.match(/^\| \*\*Character frame\*\* \| \*\*(\d+) × (\d+)\*\* frame units from \(\*\*(-?\d+)\*\*, \*\*(-?\d+)\*\*\)/m);
+  if (frame === null) throw new Error('FLOOR.md § 12 carries no *Character frame* row in the form this tool reads');
   const clearRow = md.match(/^\| \*\*Sleeper z clearance\*\* \| \*\*(\d+) %\*\* /m);
   if (clearRow === null) throw new Error('FLOOR.md § 12 carries no *Sleeper z clearance* row in the form this tool reads');
   const glow = md.match(/^\| \*\*Sleeper z brightness\*\* \| \*\*4 levels\*\*, the core mixed toward the ink by \*\*(\d+) %\*\*, \*\*(\d+) %\*\*, \*\*(\d+) %\*\* and \*\*(\d+) %\*\*, behind a halo of the palette's lamp colour \*\*([\d.]+)\*\*, \*\*([\d.]+)\*\*, \*\*([\d.]+)\*\* and \*\*([\d.]+)\*\* units wide at \*\*(\d+) %\*\*, \*\*(\d+) %\*\*, \*\*(\d+) %\*\* and \*\*(\d+) %\*\* opacity/m);
@@ -119,7 +119,7 @@ function boundsFromDocument() {
 }
 /** How far from the closed eyes' ink a z's ink must stay, in frame units — § 12's *Sleeper z face clearance*. */
 let FACE_CLEAR = NaN;
-/** The sleeper's frame — § 12's *Sleeper frame* — which every document is judged in, whatever viewBox the tree draws it with. */
+/** The sleeper's frame — § 12's *Character frame* — which every document is judged in, whatever viewBox the tree draws it with. */
 let VIEW = null;
 let CLEAR_NAMES = [];
 /** `doc` with its root drawn over `VIEW`: the tree's own frame, or a layout's z's laid on the base sleeper, judged in one frame. */
@@ -127,15 +127,15 @@ const inView = (doc) => doc.replace(/viewBox="[^"]*" width="[^"]*" height="[^"]*
 
 /**
  * THE CLEAR RECTS — what the z's must stay out of, in frame units, DERIVED FROM THE FLOOR'S OWN LAYOUT and never copied
- * here: `floor/desk-layout.js`'s `sleeperOverdraw()` for a desk at the furniture box — the one function the floor hands
+ * here: `floor/desk-layout.js`'s `characterOverdraw()` for a desk at the furniture box — the one function the floor hands
  * the tree its clear rects by — the monitor's frame, the desk's props, the desk, and the thought trail's column: the
  * places a z that stands beyond the character's rect would be drawn through, or under, something the desk draws.
  */
 async function clearRects(C) {
-  const { sleeperOverdraw, FRAME_UNITS_PER_PX } = await import(pathToFileURL(join(ROOT, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
+  const { characterOverdraw, FRAME_UNITS_PER_PX } = await import(pathToFileURL(join(ROOT, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
   const { FURNITURE_BOX } = await import(pathToFileURL(join(ROOT, 'resources', 'floor', 'furniture-box.js')).href);
   UNIT_PX = 1 / FRAME_UNITS_PER_PX;
-  return sleeperOverdraw(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H }).clear.map((c) => ({ ...c }));
+  return characterOverdraw(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H }).clear.map((c) => ({ ...c }));
 }
 
 // ── the z's, drawn as creatures.js's zSvg() draws them ──────────────────────────────────────────────────────────────
@@ -570,7 +570,7 @@ function crestCheck(treeTable, scans, layout) {
   return { defects: scans.filter((sc) => !(sc.tkey in treeTable) || sc.top < treeTable[sc.tkey] - 0.01).map((sc) => `${sc.key} reaches ${sc.top} above ${sc.tkey}'s ${treeTable[sc.tkey]}`), checked: true };
 }
 
-/** CSS px per frame unit at the floor's fit zoom on a 1,440 × 900 window: the character rect is `SEAT_VIEWBOX.w / R.character.w` units a scene px. */
+/** CSS px per frame unit at the floor's fit zoom on a 1,440 × 900 window: the character rect is `SEAT_RECT.w / R.character.w` units a scene px. */
 let UNIT_PX = NaN;
 const FIT_ZOOM = Number(arg('--fit', 0.9));
 const ZOOM_CEILING = Number(readFileSync(join(ROOT, 'server', 'public', 'js', 'wire', 'camera.js'), 'utf8').match(/export const ZOOM_CEILING = ([\d.]+);/)?.[1] ?? NaN);

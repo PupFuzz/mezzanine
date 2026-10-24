@@ -31,7 +31,7 @@
 <body>
 <h1>The creature sheet</h1>
 <p>Every body (forced), each at 2x: its standing frame, the walk's two steps, the chibi intern frame — then at
-true size (54 x 96 and 20 x 32) on the floor's plank colour.</p>
+true size (a seat's frame 108 x 117 over its 54 x 96 rect, an intern's 24 x 32 over its 20 x 32) on the floor's plank colour.</p>
 <div id="catalogue"></div>
 <h2>The committed roster (tools/characters/roster.json) — what the fleet draws</h2>
 <div id="roster" class="row floor"></div>
@@ -41,22 +41,24 @@ true size (54 x 96 and 20 x 32) on the floor's plank colour.</p>
   import * as C from '../../resources/characters/index.js';
   const uri = (doc) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(doc)}`;
   const img = (doc, w, h, cap = '') => `<figure><img width="${w}" height="${h}" src="${uri(doc)}" alt=""><figcaption>${cap}</figcaption></figure>`;
+  // every seat frame is SEAT_VIEWBOX, the intern's CHIBI_VIEWBOX (card#12259); at 1x a seat frame is its overdraw, 108 × 117 floor px, an intern's 24 × 32
+  const SV = C.SEAT_VIEWBOX, CV = C.CHIBI_VIEWBOX;
   let html = '';
   for (const sp of C.SPECIES_KEYS) {
     const key = `catalogue/${sp}`;
     html += `<h2>${C.SPECIES[sp].label}</h2><div class="row">`;
-    for (const phase of [0, 1, 2]) html += img(C.frameDocument(key, { species: sp, phase }), 108, 192, ['standing', 'step-left', 'step-right'][phase]);
-    html += img(C.frameDocument(`${key}~intern`, { species: sp, chibi: true }), 108, 172.8, 'chibi');
-    html += `<div class="floor row">${img(C.frameDocument(key, { species: sp }), 54, 96, '1x')}${img(C.frameDocument(`${key}~intern`, { species: sp, chibi: true }), 20, 32, '1x intern')}</div>`;
+    for (const phase of [0, 1, 2]) html += img(C.frameDocument(key, { species: sp, phase }), SV.w, SV.h, ['standing', 'step-left', 'step-right'][phase]);
+    html += img(C.frameDocument(`${key}~intern`, { species: sp, chibi: true }), CV.w, CV.h, 'chibi');
+    html += `<div class="floor row">${img(C.frameDocument(key, { species: sp }), SV.w / 2, SV.h / 2, '1x')}${img(C.frameDocument(`${key}~intern`, { species: sp, chibi: true }), CV.w / 5.4, CV.h / 5.4, '1x intern')}</div>`;
     html += '</div>';
   }
   document.getElementById('catalogue').innerHTML = html;
   const roster = await (await fetch('roster.json')).json();
-  document.getElementById('roster').innerHTML = roster.seats.map((s) => img(C.standingFrame(s.install_id, s.seat_id), 54, 96, `${s.install_id}/${s.seat_id}`)).join('');
+  document.getElementById('roster').innerHTML = roster.seats.map((s) => img(C.standingFrame(s.install_id, s.seat_id), SV.w / 2, SV.h / 2, `${s.install_id}/${s.seat_id}`)).join('');
   const seat = ['aimla', 'aimla-impl-1'];
   const interns = Array.from({ length: 8 }, (_, i) => `${seat[1]}~01JD3K${String(i).padStart(2, '0')}ZQ4T6W2N9XG5HV7RB`);
-  document.getElementById('table').innerHTML = img(C.standingFrame(...seat), 54, 96, seat.join('/'))
-    + interns.map((k) => img(C.chibiFrame(seat[0], k), 20, 32, '')).join('');
+  document.getElementById('table').innerHTML = img(C.standingFrame(...seat), SV.w / 2, SV.h / 2, seat.join('/'))
+    + interns.map((k) => img(C.chibiFrame(seat[0], k), CV.w / 5.4, CV.h / 5.4, '')).join('');
 </script>
 </body>
 </html>

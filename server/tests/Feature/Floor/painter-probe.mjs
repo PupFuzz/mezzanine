@@ -83,7 +83,7 @@ globalThis.clearInterval = () => {};
 const { deskModel } = await mod('desk/desk-render.js');
 const { placeDesk, placeBubbles } = await mod('floor/scene.js');
 const { createPainter, measurer, STYLE } = await mod('floor/painter.js');
-const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_BAND } = await mod('floor/desk-layout.js');
+const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_BAND, STOOL_PITCH } = await mod('floor/desk-layout.js');
 
 /**
  * The character tree, stubbed: a frame is an SVG document naming the `(install, seat key, frame)` it was
@@ -336,13 +336,16 @@ const poseFrame = (key, e, i) => uri(doc(`${key}#${e.pose}@${deskTop(key, e)}~${
  * width each side and raised to one pixel under the bubble's band; every other character's is its element's rect.
  */
 function characterPort(key, e) {
-    if (e.pose !== 'asleep') {
-        return { x: e.x, y: e.y, w: e.w, h: e.h };
-    }
-
+    // § 10.4's frame contract (card#12187, card#12259): every character's viewport is its overdraw — the rect widened
+    // by half its width each side and raised to one pixel under the bubble's band — whatever its pose.
     const top = byKey.get(key).box.y + BUBBLE_BAND + 1;
 
     return { x: e.x - e.w / 2, y: top, w: 2 * e.w, h: e.y + e.h - top };
+}
+
+/** § 10.4's frame contract item 3 (card#12259): an intern's viewport is its stool's rect widened to the row's pitch. */
+function internPort(e) {
+    return { x: e.x - (STOOL_PITCH - e.w) / 2, y: e.y, w: STOOL_PITCH, h: e.h };
 }
 
 /**
@@ -400,13 +403,15 @@ function owed(e, seat, failed, key) {
                 return [['rect', glyph, classIs(e.untitled ? ['stool', 'untitled'] : ['stool'])]];
             }
 
-            // § 8 / Q3: the sprite in its clipping viewport, the tree's chibi frame under `seat~<call_id>`;
-            // an untitled intern inside a dashed edge.
+            // § 8 / Q3: the sprite in its clipping viewport — the stool's overdraw, the rect widened to the row's pitch
+            // (§ 10.4's frame contract item 3, card#12259) — the tree's chibi frame under `seat~<call_id>`; an untitled
+            // intern with a dashed edge at its own rect.
             const look = e.untitled ? ['intern', 'untitled'] : ['intern'];
             const want = internFrame(seat.install_id, seat.seat_id, e.call_id);
-            const sprite = ['svg', at, (n) => {
+            const port = internPort(e);
+            const sprite = ['svg', port, (n) => {
                 const img = n.children[0];
-                const shape = viewport(e)(n);
+                const shape = viewport(port)(n);
 
                 return shape ?? classIs(['art'])(n) ?? classIs(look)(img)
                     ?? (img.getAttribute('href') === want ? null : `its sprite is the tree's «${img.getAttribute('href')}», not the intern key's «${want}»`)
@@ -872,7 +877,7 @@ function walkOf(n) {
 {
     const walk = {
         animation_id: 'A1', frames: 12, frame_interval_ms: 250, elapsed_frames: 0, install_id: 'walk-room', seat_id: 'walker',
-        shown: { start: 0, frames: 12 }, walk: { start: 0, frames: 12 }, from: { x: 0, y: 0 }, to: { x: 40, y: 0 }, size: { w: 54, h: 96 },
+        shown: { start: 0, frames: 12 }, walk: { start: 0, frames: 12 }, from: { x: 0, y: 0 }, to: { x: 40, y: 0 }, size: { w: 54, h: 96 }, frame: { w: 108, h: 117 },
     };
 
     loops.length = 0;
@@ -912,9 +917,8 @@ function walkOf(n) {
                 return e;
             }
 
-            const { overdraw, clear, ...rest } = e;
-
-            return { ...rest, pose: 'present' };
+            // Every pose carries the overdraw and the clear rects since card#12259; only the pose changes.
+            return { ...e, pose: 'present' };
         }),
     };
     const one = createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} });

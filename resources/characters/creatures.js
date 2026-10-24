@@ -11,7 +11,7 @@
 // tree carries one (FLOOR.md § 10.1 clause 2). It makes no request of any kind, holds no cache and
 // reads no clock or random source.
 //
-// Drawing space: viewBox 0 0 108 192 for a seat (2 units per floor pixel in the 54 x 96 character rect);
+// Drawing space: SEAT_RECT (0 0 108 192, 2 units per floor pixel in the 54 x 96 character rect), drawn in SEAT_VIEWBOX;
 // the foot line is y = 188, the centre line x = 54.
 
 import { draw, pick, chance } from './seed.js';
@@ -817,9 +817,25 @@ function rimOf(markup) {
 }
 
 // ---- the frames ----
-/** A frame's drawing space: a seat's 108 x 192, an intern's 108 x 172.8 (its 20 x 32 rect's aspect). */
-export const SEAT_VIEWBOX = Object.freeze({ x: 0, y: 0, w: 108, h: 192 });
-export const CHIBI_VIEWBOX = Object.freeze({ x: 0, y: 19.2, w: 108, h: 172.8 });
+/**
+ * THE CHARACTER's RECT, in frame units: a seat's 108 × 192 — two units per floor pixel of its 54 × 96 px rect
+ * (`floor/desk-layout.js`'s `FRAME_UNITS_PER_PX`) — the space every body is drawn into, x 54 its centre and the
+ * foot line at its bottom. Since card#12259 it is NO document's viewBox: every seat document is drawn in
+ * `SEAT_VIEWBOX` (below, beside the sleeper's z's), which is this rect with a margin on three sides, because the
+ * frame's own composition — the key's tilt, the walk's lean, and the widest girth at the largest size — carries
+ * approved bodies past this rect's side by up to a dozen units, and the painter clips at the frame's edge
+ * (FLOOR.md § 10.4's frame contract; § 14 item 33(6)). What is held to this rect is the floor's element rect,
+ * which every overlap rule reads, and the foot line.
+ */
+export const SEAT_RECT = Object.freeze({ x: 0, y: 0, w: 108, h: 192 });
+/**
+ * THE INTERN's CHIBI FRAME: the 20 × 32 px intern rect's 108 × 172.8 units (the rect's aspect, the last 172.8 units
+ * above the foot) widened to the stool PITCH the floor lays interns at — 24 px for a 20 px rect, so the frame is
+ * `108 × 24 / 20` = 129.6 units wide, 10.8 each side past the rect — the margin the chibi frame's tilt needs and all
+ * the room a row of interns has (two frames meet at the pitch and never overlap). The floor draws it into the intern's
+ * overdraw rect (`floor/desk-layout.js`'s `internOverdraw()`); the two are held equal by `tools/characters/selftest.mjs` § 7b.
+ */
+export const CHIBI_VIEWBOX = Object.freeze({ x: -10.8, y: 19.2, w: 129.6, h: 172.8 });
 const FOOT = 188;
 
 /** The chibi frame's least head share — FLOOR.md § 12's *Intern head share* row. */
@@ -925,7 +941,9 @@ export function frameDocument(key, opt = {}) {
   const s = r.size;   // girth lives in the profile (st), so the scale stays uniform
   const lean = phase === 0 ? 0 : (phase === 1 ? -2 : 2);
   const tf = `translate(54 ${FOOT}) scale(${s} ${s}) rotate(${r.tilt + lean}) translate(-54 -${FOOT})`;
-  const shadow = `<ellipse cx="54" cy="187.5" rx="${f(A.shadow * s)}" ry="4.6" fill="${pen.soft('#1c1424', 0.42)}"/>`;
+  // The shadow ends ON the foot line (187.5 + 4.5 = 192, the rect's bottom): at ry 4.6 it reached a tenth of a unit
+  // under it in every frame, the one bottom-edge overshoot the frame-bounds leg found (card#12259).
+  const shadow = `<ellipse cx="54" cy="187.5" rx="${f(A.shadow * s)}" ry="4.5" fill="${pen.soft('#1c1424', 0.42)}"/>`;
   let inner = drawing, vb = SEAT_VIEWBOX;
 
   if (opt.chibi) {
@@ -973,11 +991,17 @@ export const Z_GAP = 2;
 /** The raised frame's top, in frame units: the path's end stands its imaginary z's box and glow a unit under it. */
 export const Z_TOP = -42;
 /**
- * THE SLEEPER's FRAME (FLOOR.md § 12's *Sleeper frame*): the character's 108 × 192 frame widened by half its width each
- * side and raised 42 units, so the z's have room above and beside the crest. The floor draws it into the character's
- * overdraw rect (`floor/desk-layout.js`'s `sleeperOverdraw()`), whose aspect is this frame's.
+ * THE SEAT's FRAME (FLOOR.md § 12's *Character frame*; § 10.4's frame contract) — the viewBox of EVERY seat document:
+ * the character's 108 × 192 rect (`SEAT_RECT`) widened by half its width each side and raised 42 units, 216 × 234
+ * from (−54, −42). card#12187 widened and raised it for the sleeper, so the z's have room above and beside the
+ * crest; card#12259 draws the standing and walking frames in the same frame, so the composition's tilt and lean,
+ * and the widest girth at the largest size, never carry an approved body past the edge the painter clips at (the
+ * margin they need is measured by `tools/characters/selftest.mjs` § 8b, never written down; the frame's is 54 a
+ * side). The floor draws every seat document into the character's overdraw rect (`floor/desk-layout.js`'s
+ * `characterOverdraw()`), whose aspect is this frame's; the sleeper's z-stand still reads the character's own
+ * 0–108 units as the body's column (`zStandKeeps()`).
  */
-export const SLEEP_VIEWBOX = Object.freeze({ x: -54, y: Z_TOP, w: 216, h: 234 });
+export const SEAT_VIEWBOX = Object.freeze({ x: -54, y: Z_TOP, w: 216, h: 234 });
 /**
  * THE BRIGHTNESS LEVELS 0 (dim) to 3 (full), FLOOR.md § 12's *Sleeper z brightness*: the core is the pale fill mixed
  * toward the ink by `Z_GLOW[level]`, and behind the z stands a halo of the palette's `--lamp` (`Z_LAMP`), `Z_HALO[level]`
@@ -1075,7 +1099,7 @@ export function zStand(crown, dir, L, clear) {
   const props = clear.find((c) => c.name === 'props');
   const S = L * Z_RATIO, G = Z_HALO[3];
   const y0 = Math.min(crown - Z_GAP, props.y - Z_GAP) - zHalf(L).h - G;
-  const y1 = Math.max(Z_TOP, SLEEP_VIEWBOX.y) + zHalf(S).h + G + 1;
+  const y1 = Math.max(Z_TOP, SEAT_VIEWBOX.y) + zHalf(S).h + G + 1;
   return Array.from({ length: SLEEP_ZS }, (_, k) => {
     const t = Z_T0 + (1 - 2 * Z_T0) * k / (SLEEP_ZS - 1);
     return { k, x: 54 - dir * (Z_A0 + (Z_A1 - Z_A0) * t), y: y0 + (y1 - y0) * t, h: L + (S - L) * t };
@@ -1089,7 +1113,7 @@ export function zStand(crown, dir, L, clear) {
  */
 function zStandKeeps(crown, dir, L, clear) {
   const zs = zStand(crown, dir, L, clear).map((z) => ({ ...z, hb: zHalf(z.h) }));
-  const G = Z_HALO[3], V = SLEEP_VIEWBOX;
+  const G = Z_HALO[3], V = SEAT_VIEWBOX;
   for (const z of zs) if (z.y - z.hb.h - G < V.y - 0.01 || z.y + z.hb.h + G > V.y + V.h) return false;
   for (const z of zs) if (z.x - z.hb.w - G < V.x - 0.01 || z.x + z.hb.w + G > V.x + V.w + 0.01) return false;
   for (let a = 0; a < zs.length; a += 1) for (let b = a + 1; b < zs.length; b += 1) {
@@ -1123,7 +1147,7 @@ export function zLargeFor(crown, dir, clear) {
  * rects): the frame has no desk of its own, and everything below the edge is drawn behind the desk the floor
  * lays over it. Above the head stand three z's (`zStand()`), each lit at its level for the document — every z at 3 in
  * document 0, the still, and `zLevels(n − 1)` in document n — all halos first, behind every z, and the z's in front of
- * the sleeper. `clear` is the floor's furniture in frame units (`floor/desk-layout.js`'s `sleeperOverdraw()`), which
+ * the sleeper. `clear` is the floor's furniture in frame units (`floor/desk-layout.js`'s `characterOverdraw()`), which
  * no z's body enters.
  *
  * @param {string} key the seat key
@@ -1139,7 +1163,7 @@ export function sleepDocument(key, opt) {
   const { hat, neck, extra } = worn(r, sp, A);
   const F = A.face;
   const s = r.size;
-  const edge = opt.deskTop * SEAT_VIEWBOX.h;
+  const edge = opt.deskTop * SEAT_RECT.h;
   const dir = c.side;
   const crown = CREST_TOP[r.variant === null ? r.species : `${r.species}/${r.variant}`];
   if (crown === undefined) throw new RangeError(`CREST_TOP declares no crest for ${r.species}${r.variant === null ? '' : `/${r.variant}`}`);
@@ -1187,7 +1211,7 @@ export function sleepDocument(key, opt) {
   const levels = frame === 0 ? zs.map(() => 3) : zLevels(frame - 1);
   const halos = zs.map((z) => haloSvg(z, levels[z.k])).join('');
   const bodies = zs.map((z) => zSvg(z, levels[z.k])).join('');
-  const V = SLEEP_VIEWBOX;
+  const V = SEAT_VIEWBOX;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${V.x} ${V.y} ${V.w} ${V.h}" width="${V.w}" height="${V.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs><g data-pose="asleep" data-eyes-y="${f(eyes)}" data-edge="${f(edge)}" data-crown="${crown}" clip-path="url(#c_edge)">${drawing}</g><g data-part="zs"><g data-part="glow">${halos}</g>${bodies}</g></svg>`;
 }
