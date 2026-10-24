@@ -87,7 +87,7 @@ text{font:${FONT};fill:var(--scene-ink)}text.role-name{font:${FONT_NAME}}text.ro
 .wall{fill:url(#house-wall)}.wall-top{stop-color:var(--house-wall)}.wall-bottom{stop-color:var(--house-wall-2)}
 .slab{fill:var(--house-trim)}
 .window{fill:var(--scene-glass)}
-.portal-hole{fill:#3d2b3c}
+.portal-hole{fill:var(--scene-glass)}
 ${Object.keys(SKY_PAINT).map((phase) => `.sky-${phase}{fill:url(#sky-${phase})}`).join('')}
 .plane{fill:var(--scene-floor)}
 .clock-face{fill:var(--scene-clock-face);stroke:var(--scene-trim);stroke-width:3}.clock.unset .clock-face{stroke-dasharray:6 4}
@@ -118,9 +118,6 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 .fx-ring{fill:none;stroke:var(--scene-thread);stroke-width:4;transform-box:fill-box;transform-origin:center;transform:scale(0)}
 @keyframes ring-reach{from{transform:scale(0)}to{transform:scale(1)}}
 @keyframes ring-fade{from{transform:scale(1);opacity:1}to{transform:scale(1);opacity:0}}
-.fx-envelope{animation-name:travel;animation-fill-mode:forwards}
-@keyframes travel{from{transform:translate(var(--from-x),var(--from-y)) rotate(var(--heading))}to{transform:translate(var(--to-x),var(--to-y)) rotate(var(--heading))}}
-.fx-bead{transform:translate(var(--to-x),var(--to-y))}.envelope{fill:var(--scene-paper);stroke:var(--scene-thread)}
 .fx-flash{fill:var(--scene-flash);opacity:0;animation-name:flash}
 @keyframes flash{from{opacity:.8}to{opacity:0}}
 .fx-walker{animation-name:walk;animation-fill-mode:both}.fx-walker-shown{opacity:0;animation-name:walker-shown;animation-fill-mode:none}
@@ -605,7 +602,8 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                 // far corner over `reach_frames`, and only then fades over `fade_frames`. card#12241: the
                 // bird perches at the sender's desk and SINGS — its beak open — and the ring is one ring of
                 // notes. Reduced motion: the perched bird, beak open, with three still notes.
-                const perch = node('g', { transform: `translate(${fx.at.x} ${fx.at.y})` }, layer);
+                const origin = fx.at;
+                const perch = node('g', { transform: `translate(${origin.x} ${origin.y})` }, layer);
 
                 if (fx.frames > 0) {
                     const reach = (fx.reach_frames * fx.frame_interval_ms) / 1000;

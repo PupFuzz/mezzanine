@@ -4,6 +4,7 @@ namespace Tests\Feature\Coord;
 
 use App\Coord\CoordCounters;
 use Illuminate\Support\Facades\DB;
+use Tests\Feature\Support\PinsTheRateLimitWindow;
 
 /**
  * D1 AT-23 — the coordination receipt's gate is a check rather than a decoration, and its idempotency
@@ -16,6 +17,9 @@ use Illuminate\Support\Facades\DB;
  */
 class At23TheReceiptRefusesWhatItCannotAttributeTest extends CoordTestCase
 {
+    /** The failed-signature bucket is `App\Support\FixedWindow`'s, an absolute window (card#9223). */
+    use PinsTheRateLimitWindow;
+
     public function test_green_a_signed_opened_delivery_derives_its_opening_post_and_no_thread(): void
     {
         $this->deliver('opened', $this->install)->assertStatus(202)->assertJson(['status' => 'accepted']);
