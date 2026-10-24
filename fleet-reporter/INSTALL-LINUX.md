@@ -1183,7 +1183,8 @@ exits 0.
 
 *Check:* `NO-OP` ends the upgrade here; skip to U8 and reply. Every change to what an update ships moves
 `REPORTER_VERSION` (`bin/reporter-version-guard.py` holds a PR to that), so a seat whose artifact and
-fixtures equal the checkout's has nothing else to apply. Otherwise note the rows' touches: they decide
+fixtures equal the checkout's has nothing else to apply, provided it applied every step of the update
+that installed them. Otherwise note the rows' touches: they decide
 whether U4 and U5 run. A seat installed before `0.2.0` reads `0.1.0`, which names every build before
 it, so it applies every step.
 
