@@ -1,4 +1,4 @@
-<!-- BEGIN coord:solo-orientation (synced from coord v0.68.0) -->
+<!-- BEGIN coord:solo-orientation (synced from coord v0.69.0) -->
 # Agent Board Framework — solo agent orientation
 
 > **⚠ Only two sections of this file reach a session automatically: `## Who you are` and
@@ -148,16 +148,24 @@ item regardless of which repo it lives in. Work it. Then move to the next.
 4. **Doc-sync every code PR** (per `doc-sync.md`). Every PR that changes code audits and
    updates affected docs in the same PR — doc drift is not a follow-up. For an
    architecture-state change, first ask whether the change **mints** an obligation no doc has
-   ever stated (no sweep finds that one), then grep the inverted term **and** re-read the
+   ever stated (no sweep finds that one). Then list the changed claims before you search —
+   `claim-ledger.py --base <integration branch>` lists the prose, comment, string and
+   assertion lines the diff deletes, each needing a `claim:` row or a `not-a-claim:` note, and you add a row for each
+   claim you add or make only in code — and sweep each row on its subject and predicate
+   across all tracked text, `tests/` included, re-run every build round (`doc-sync.md`
+   § Shape-1 method owns the method, its planted controls and `--check`). Also re-read the
    affected subsystem (a clean grep is not a clean audit), and name the legs you covered —
-   the repo tree and the work tracker are different populations. When a review pass corrects a code-state claim, grep that
-   claim across all that repo's docs and fix every stale instance in the same PR, recording the
-   regex + per-file decisions on the item's tracking issue or card (Rule X1).
+   the repo tree and the work tracker are different populations. When a review pass corrects a
+   code-state claim, add it to the ledger as a row, sweep it the same way and fix every stale
+   instance in the same PR, recording the rows, regexes and per-file decisions on the item's
+   tracking issue or card (Rule X1).
 5. **PR to the integration branch** (`branch_model.integration`, `dev` by default). Releases
    flow integration → release (`branch_model.release`, `main` by default). A single-branch
    project sets both to the same value.
 6. **The bridge moves that repo's card** on PR events — Backlog → In Review → Shipped →
-   Released — automatically. You confirm card state is accurate after each bridge-driven
+   Released — automatically. The move to Shipped happens only when the PR **title** closes the
+   card (`closes card#<id>`, the bridge's DL-436, card#10851): write it on the PR that finishes
+   the card and on no earlier leg. You confirm card state is accurate after each bridge-driven
    transition.
 
 **You are your own mint gate — the triage doctrine's bar.** Nobody else triages what reaches your
@@ -554,12 +562,13 @@ genuine question / gate → banner. The banner spends your human's attention —
   cutting a release PR on any owned repo.
 
 **Sprint burn-down (if this install declares a `sprint` block).** Your sprint plan is
-generated, not authored: lanes are declared once in the config and membership is a board query (a
-tag, a gate card's blockers, a swimlane, a filter). The default shape is one lane, `current`,
+generated, not authored: lanes are declared once in the config and membership is a board query
+(one tag or one swimlane per lane). The default shape is one lane, `current`,
 holding every open card tagged `sprint:current`. A card leaves the plan by MOVING on the board,
-never by editing the page; re-render with `sprint-burndown.py --html <path>`
-instead. The SessionStart check reds when the committed page no longer matches the
-board, and its UNMEASURED verdict means a read did not happen, not that the sprint is finished.
+never by editing the page; render it with `sprint-burndown.py --html <path>` when someone wants
+to read it. The page is output, not state: nothing owes a re-render and nothing reports it stale.
+The SessionStart check reports what is about the board, and its UNMEASURED verdict means a read
+did not happen, not that the sprint is finished.
 Vocabulary, worked configs, why the page and the lanes the census reads cannot drift
 apart, and the exit codes: **`docs/SPRINT.md`** — which owns those claims; do not restate them
 here.
