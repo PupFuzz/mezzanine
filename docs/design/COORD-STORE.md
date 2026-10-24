@@ -402,7 +402,7 @@ card#12260's.
    | File | Rule | Match | Disposition |
    |---|---|---|---|
    | `bin/pr-body-lint.selftest.py` | `bare` | a planted PR body with a `FROM:` and a `TO:` line (L245–246) | **exempt** `(path, bare)` — the attribution-line rule's RED fixture |
-   | `bin/pr-body-lint.selftest.py` | `quoted` | the same shape inside string literals (L551, L563, L581, L607, L613–614) | **exempt** `(path, quoted)` — the same fixture's one-line forms |
+   | `bin/pr-body-lint.selftest.py` | `quoted` | the same shape inside string literals (L551, L563, L581, L607, L613, L614, L909, L1101 — the pinned regex over `origin/dev:bin/pr-body-lint.selftest.py` prints them) | **exempt** `(path, quoted)` — the same fixture's one-line forms |
    | `bin/pr-body-lint-fixtures/fw891-v0.51.0-body-2026-09-10T140853Z.md.txt` | `bare` | a `FROM:` line (L1) | **exempt** `(path, bare)` — a recorded PR body the linter's fixtures hold |
    | `bin/change-pr-body.selftest.py` | `quoted` | a `"FROM: …"` literal (L239) | **exempt** `(path, quoted)` — the PR-body generator's attribution test; its `bare` rule stays live |
    | — | `header` | no file | — |
