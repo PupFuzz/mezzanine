@@ -32,7 +32,7 @@
 import { ANIMATION_SET, LOOP_FPS, loops } from '../wire/animation-set.js';
 import { footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layout.js';
 import { readEmbedded, splitGid, tilesetUrl } from './tileset.js';
-import { BUBBLE_BAND, BUBBLE_PAD, CHARACTER_SCALE, LINE, characterCentre, cloudOutline, deskAnchor, deskLayout, fit, furnitureAsset, thoughtTrail, union } from './desk-layout.js';
+import { BUBBLE_BAND, BUBBLE_PAD, CHARACTER_SCALE, LINE, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, fit, furnitureAsset, thoughtTrail, union } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
 
 /**
@@ -282,9 +282,9 @@ export function threshold(band) {
  * walk's last frame. `shown` is the frames the walker is drawn in, `walk` the frames it moves in, `door`
  * the frames the leaves are not shut in. With no motion, or no desk on this floor, it draws nothing.
  */
-function walkEffect(base, id, desk, door, motion, character) {
+function walkEffect(base, id, desk, door, motion, character, box) {
     if (!motion || desk === null || door === null) {
-        return Object.freeze({ ...base, from: null, to: null, frames: 0, walk: null, shown: null, door: null, size: null });
+        return Object.freeze({ ...base, from: null, to: null, frames: 0, walk: null, shown: null, door: null, size: null, frame: null });
     }
 
     const [from, to] = id === 'A2' ? [desk, door] : [door, desk];
@@ -300,8 +300,11 @@ function walkEffect(base, id, desk, door, motion, character) {
         from,
         to,
         ...timing,
-        // The walker is the desk's character at its drawn size, its feet on the segment.
+        // The walker is the desk's character at its drawn size, its feet on the segment: `size` its rect (the
+        // placeholder's, § 9 F14), `frame` the size its image is drawn at — the character's overdraw, the frame every
+        // seat document is drawn in (§ 10.4's frame contract, card#12259), centred on the feet as the desk's is.
         size: Object.freeze({ w: character.w * CHARACTER_SCALE, h: character.h * CHARACTER_SCALE }),
+        frame: Object.freeze((({ w, h }) => ({ w, h }))(characterOverdraw(box, character).overdraw)),
         frames: Math.max(timing.walk.start + timing.walk.frames, timing.door.start + timing.door.frames),
     });
 }
@@ -618,7 +621,7 @@ export function buildScene(frame, input) {
 
     // ── The § 6.2 forms this render draws ──────────────────────────────────────────────────────
     const anchors = new Map(desks.map((desk) => [desk.key, anchorOf(desk)]));
-    const effects = buildEffects(input.effects ?? [], frame, anchors, input.previous ?? new Map(), extent, band, input.reduce === true, input.character);
+    const effects = buildEffects(input.effects ?? [], frame, anchors, input.previous ?? new Map(), extent, band, input.reduce === true, input.character, box);
 
     // § 9 F14: every asset the scene asked to be drawn that the painter reported failed, and every
     // tileset that could not be fetched or read.
@@ -659,7 +662,7 @@ export function buildScene(frame, input) {
  */
 export function placeDesk(model, key, installId, slot, at, ctx, extra) {
     const { elements, bubble } = deskLayout(model, ctx);
-    // A sleeper's overdraw (§ 10.4 item 4) moves with its element; its clear rects are frame units and do not.
+    // A character's or an intern's overdraw (§ 10.4's frame contract) moves with its element; a sleeper's clear rects are frame units and do not.
     const moved = elements.map((e) => Object.freeze({
         ...e,
         x: at.x + e.x,
@@ -1238,7 +1241,7 @@ function travel(base, from, to, moving, rest) {
  * Every § 6.2 edge row this render WROTE, as the frames to draw — at § 12's loop rate, from where
  * the fact happened to where it ends. Rows are the animation set's; nothing here fires one.
  */
-function buildEffects(rows, frame, anchors, previous, extent, band, reduce, character) {
+function buildEffects(rows, frame, anchors, previous, extent, band, reduce, character, box) {
     const interval = 1000 / LOOP_FPS;
     const effects = [];
     const seen = new Set();
@@ -1373,7 +1376,7 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce, char
         const before = key === null ? null : previous.get(key) ?? null;
 
         if (id === 'A1' || id === 'A2') {
-            effects.push(walkEffect(base, id, now, threshold(band), motion && !reduce, character));
+            effects.push(walkEffect(base, id, now, threshold(band), motion && !reduce, character, box));
 
             continue;
         }

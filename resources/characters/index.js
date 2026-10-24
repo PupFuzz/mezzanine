@@ -17,8 +17,8 @@ import { draw, seatKey } from './seed.js';
 export { seatKey, fnv1a32, draw } from './seed.js';
 export {
   SPECIES, SPECIES_KEYS, SPECIES_FIELD, WITHHELD, EYES, MOUTHS, BLUSH, BROWS, SIZES, STOUT, TILTS, ACCENTS, GREENS,
-  RIM, RIM_W, SEAT_VIEWBOX, CHIBI_VIEWBOX, CHIBI_HEAD_SHARE, speciesOf, recipe, describe, chibiGeometry, frameDocument,
-  SLEEP_LOOP, SLEEP_ZS, SLEEP_VIEWBOX, Z_LARGE, Z_A0, Z_A1, Z_RATIO, Z_T0, Z_GAP, Z_TOP, Z_GLOW, Z_HALO, Z_HALO_OPACITY,
+  RIM, RIM_W, SEAT_RECT, SEAT_VIEWBOX, CHIBI_VIEWBOX, CHIBI_HEAD_SHARE, speciesOf, recipe, describe, chibiGeometry, frameDocument,
+  SLEEP_LOOP, SLEEP_ZS, Z_LARGE, Z_A0, Z_A1, Z_RATIO, Z_T0, Z_GAP, Z_TOP, Z_GLOW, Z_HALO, Z_HALO_OPACITY,
   CREST_TOP, zLevels, zStand, zLargeFor, sleepDocument,
 } from './creatures.js';
 
@@ -26,8 +26,9 @@ export {
  * The character's footprint unit, in floor pixels: the character rect is `CHARACTER_SCALE` (3) times
  * this — 54 x 96 (`floor/desk-layout.js`, FLOOR.md § 12's *Character rect*). The creatures are vector
  * and have no native size; this is the rect's aspect and scale unit, kept from the pixel tree so the
- * box and every rect stay where they are (Appendix B row 19). A seat's frame draws 108 x 192 units into
- * it — two per floor pixel.
+ * box and every rect stay where they are (Appendix B row 19). A seat's body is drawn into 108 x 192 units
+ * over it — two per floor pixel (`SEAT_RECT`) — and its frame document is `SEAT_VIEWBOX`, that rect with a
+ * margin, drawn into the character's overdraw rect (card#12259; FLOOR.md § 10.4's frame contract).
  */
 export const SCENE_W = 18;
 export const SCENE_H = 32;

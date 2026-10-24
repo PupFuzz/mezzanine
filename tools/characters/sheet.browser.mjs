@@ -12,7 +12,8 @@
 // one column per frame the frame contract
 // names (FLOOR.md § 10.4): the standing frame (every pose but asleep draws it), the walk's step-left and step-right,
 // the intern's chibi frame, and every document of the sleeper — the still, then the loop — in the sleeper's own raised, widened
-// frame with the floor's clear rects, over a desk edge drawn at the floor's own share
+// frame with the floor's clear rects, over a desk edge drawn at the floor's own share — every seat frame in the same
+// widened, raised frame since card#12259
 // (`--desk-top`, default 70/96, the share `tools/characters/selftest.mjs` draws at); then `--variants` more standing
 // frames of other keys, so the colourways, hats, neckwear and extras show. Each frame is an <img> over the tree's SVG
 // document as a data: URI under encodeURIComponent — exactly how `floor/painter.js` shows it.
@@ -58,32 +59,32 @@ const PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>
 </style></head><body><table id="t"></table>
 <script type="module">
   import * as C from '/resources/characters/index.js';
-  import { sleeperOverdraw } from '/server/public/js/floor/desk-layout.js';
+  import { characterOverdraw } from '/server/public/js/floor/desk-layout.js';
   import { FURNITURE_BOX } from '/resources/floor/furniture-box.js';
-  const { clear } = sleeperOverdraw(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H });
-  const SV = C.SLEEP_VIEWBOX;
+  const { clear } = characterOverdraw(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H });
+  const SV = C.SEAT_VIEWBOX, CV = C.CHIBI_VIEWBOX;
   const q = new URLSearchParams(location.search);
   const U = Number(q.get('unit')), V = Number(q.get('variants')), deskTop = Number(q.get('deskTop'));
-  const W = 108 * U, H = 192 * U, CH = 172.8 * U;
+  // every seat frame is SEAT_VIEWBOX (the sleeper's widened, raised frame, card#12259); the chibi frame CHIBI_VIEWBOX
+  const W = SV.w * U, H = SV.h * U, CW = CV.w * U, CH = CV.h * U;
   const kind = q.get('kind'), onlyNew = q.get('new') === '1';
   const keys = C.SPECIES_KEYS.filter((k) => (kind === 'all' || C.SPECIES[k].kind === kind) && (!onlyNew || C.SPECIES[k].added));
   const uri = (doc) => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(doc);
   const img = (doc, w, h, extra = '') => '<span class="cell"><img width="' + w + '" height="' + h + '" src="' + uri(doc) + '" alt="">' + extra + '</span>';
-  const desk = '<span class="desk" style="top:' + (deskTop * H).toFixed(1) + 'px;bottom:0"></span>';
   const head = ['species', 'standing / working', 'walk: step-left', 'walk: step-right', 'intern (chibi)'];
   head.push('asleep: the still'); for (let i = 1; i <= C.SLEEP_LOOP; i++) head.push('asleep loop ' + i);
   for (let i = 0; i < V; i++) head.push('variant ' + (i + 1));
   const total = C.SPECIES_KEYS.length, added = C.SPECIES_KEYS.filter((k) => C.SPECIES[k].added).length;
   let html = '<caption>Mezzanine — the character sheet: ' + keys.length + ' of ' + total + ' species (' + (total - added) + ' of the approved sheet + ' + added + ' added since), every frame the tree draws'
-    + '<small>Rendered by tools/characters/sheet.browser.mjs from resources/characters/ at ' + U + ' px per frame unit (a seat\\'s rect is 54 × 96 floor px = 108 × 192 units). Sleeper frames over a desk edge at ' + deskTop.toFixed(3) + ' of the rect. Variant columns are other keys of the same species, so colourway, hat, neckwear and extra vary.</small></caption>';
+    + '<small>Rendered by tools/characters/sheet.browser.mjs from resources/characters/ at ' + U + ' px per frame unit (a seat\\'s rect is 54 × 96 floor px = 108 × 192 units; its frame is drawn ' + SV.w + ' × ' + SV.h + ' units from (' + SV.x + ', ' + SV.y + '), the intern\\'s ' + CV.w + ' × ' + CV.h + '). Sleeper frames over a desk edge at ' + deskTop.toFixed(3) + ' of the rect. Variant columns are other keys of the same species, so colourway, hat, neckwear and extra vary.</small></caption>';
   html += '<tr>' + head.map((h) => '<th>' + h + '</th>').join('') + '</tr>';
   for (const sp of keys) {
     const S = C.SPECIES[sp], key = 'sheet/' + sp;
     const d = C.describe(key, sp);
     html += '<tr class="' + (S.added ? 'new' : '') + '"><td class="name"><b>' + S.label + '</b><small>' + sp + ' · ' + S.kind + (S.added ? ' · added by ' + S.added : '') + '<br>' + S.pals.length + ' colourways · hats ' + S.hats.join(', ') + '<br>necks ' + (S.necks.join(', ') || '—') + ' · extras ' + S.extras.join(', ') + '</small></td>';
     for (const phase of [0, 1, 2]) html += '<td>' + img(C.frameDocument(key, { species: sp, phase }), W, H) + '</td>';
-    html += '<td>' + img(C.frameDocument(key + '~intern', { species: sp, chibi: true }), W, CH) + '</td>';
-    // the sleeper's documents are drawn in the sleeper's own raised, widened frame (SLEEP_VIEWBOX), at the same scale, the desk edge where the character frame's share puts it
+    html += '<td>' + img(C.frameDocument(key + '~intern', { species: sp, chibi: true }), CW, CH) + '</td>';
+    // the sleeper's documents, in the same frame, with the desk edge drawn where the character rect's share puts it
     for (let fr = 0; fr <= C.SLEEP_LOOP; fr++) html += '<td>' + img(C.sleepDocument(key, { species: sp, frame: fr, deskTop, clear }), SV.w * U, SV.h * U, '<span class="desk" style="top:' + ((deskTop * 192 - SV.y) * U).toFixed(1) + 'px;bottom:0"></span>') + '</td>';
     // variants: other keys, chosen so each shows a colourway not yet shown in the row where the species has one left
     const shown = new Set([d.pal]);

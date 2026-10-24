@@ -62,7 +62,12 @@ const crypto = require('crypto');
  *      act rather than an innocent-looking call to something already in scope. */
 const lazy = (name) => require(name);
 
-const REPORTER_VERSION = '0.1.0';
+/* THE ARTIFACT'S OWN VERSION LINE, independent of the repository's `VERSION` and of `SCHEMA_VERSION`
+ * (docs/VERSIONING.md § The reporter's own version owns how it is sized). It moves in the same PR as any
+ * change to a file a reporter update ships, and `bin/reporter-version-guard.py` fails a PR that changes
+ * one without moving it, so two different builds never report the same version. Each version's row in
+ * `fleet-reporter/UPDATES.md` says what an upgrading seat must apply. */
+const REPORTER_VERSION = '0.2.0';
 const SCHEMA_VERSION = 1;
 
 /* ── Every number, from § 14 and the section that derives it ──────────────────────────────── */
