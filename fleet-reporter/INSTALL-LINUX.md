@@ -24,6 +24,11 @@ the seat's own run are the checkout path, written `<checkout>`, and the attempt 
 restates none of it. The config keys are § 3.1, the hook set is § 6.0, the install directory is § 2.1,
 and the flusher's two starts are § 2.3.
 
+**A seat that runs the reporter applies every reporter update**, with
+[Upgrading an existing seat](#upgrading-an-existing-seat). An update is the artifact plus any new hook
+fixtures, hook wiring, config keys or crontab line it brings, and what each version brings is its row in
+[`UPDATES.md`](UPDATES.md). New functionality ships enabled, with no per-seat opt-in.
+
 ## The values to substitute
 
 | What | On the sandbox seat | What constrains it |
@@ -100,7 +105,9 @@ so the next start runs with the new value. That is § 3.1's rewrite and restart.
 
 The install edits two things other software depends on. `~/.claude/settings.json` holds this account's
 Claude Code hooks, which every session on the account runs, including the coord framework's own. The
-crontab runs the server's daemons. Copy both into a new attempt directory before anything else:
+crontab runs the server's daemons. An upgrade also replaces the reporter's own files: the artifact and
+its fixtures (Step 1), and, when an update says so, the config (Step 2). Copy all of them into a new
+attempt directory before anything else:
 
 ```bash
 B=/home/mezzanine/.local/state/fleet-reporter-install/$(date -u +%Y%m%dT%H%M%SZ)
@@ -111,11 +118,22 @@ mkdir -p /home/mezzanine/.local/state/fleet-reporter-install && mkdir -m 0700 "$
   crontab -l > "$B/crontab.txt"
   chmod 0600 "$B/crontab.txt"
   cmp /home/mezzanine/.claude/settings.json "$B/settings.json"
+  if [ -d /home/mezzanine/.local/share/fleet-reporter ]; then
+    cp -pr /home/mezzanine/.local/share/fleet-reporter "$B/artifact"
+    diff -r /home/mezzanine/.local/share/fleet-reporter "$B/artifact" && echo "artifact and fixtures copied"
+  else echo "no artifact installed yet: nothing to copy"; fi
+  if [ -f /home/mezzanine/.config/fleet-reporter/config.json ]; then
+    cp -p /home/mezzanine/.config/fleet-reporter/config.json "$B/config.json"
+    cmp /home/mezzanine/.config/fleet-reporter/config.json "$B/config.json" && echo "config copied, mode $(stat -c %a "$B/config.json")"
+  else echo "no config written yet: nothing to copy"; fi
   crontab -l | md5sum )                       # record it: Step 8 must return the crontab to exactly this
 ```
 
 `mkdir -m 0700` without `-p` fails if the directory already exists, so an attempt never reuses
-another's directory. On the sandbox, the first attempt was `20260913T193245Z`, and the crontab's md5
+another's directory. The config holds the seat's token, so `cp -p` keeps its `0600` mode, inside a
+directory only the seat account can enter. To put a backed-up artifact back, run Step 1's `install`
+lines with `<checkout>/fleet-reporter` replaced by `$B/artifact`, then restart the flusher with
+[the upgrade's](#upgrading-an-existing-seat) step U6. On the sandbox, the first attempt was `20260913T193245Z`, and the crontab's md5
 was `bcd71d369c6c73ed8e61c819e3e2fb4d`. The hooks were applied later, in attempt `20260913T203739Z-hooks`,
 which backed up `settings.json` alone.
 
@@ -148,22 +166,17 @@ is not safe. A settings entry whose script path does not exist yet makes `node` 
 tool call, and the harness puts that error in the transcript.
 
 **Upgrading a seat that already reports: install the artifact first, then stop the flusher** (D1 § 3.1,
-card#12180). Make an attempt directory with Step 0 and save Step 5's two helpers into it first. Run the
-`install` lines above over the running seat, then stop the flusher with Step 5's `stop-flusher.js`, then let cron's next minute or the next hook start it, then check with Step 5's
-`flusher-ancestry.js` that the lock holder started after the artifact was installed:
-
-```bash
-node "$B/stop-flusher.js" /home/mezzanine/.local/state/fleet-reporter /home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js
-sleep 70
-node "$B/flusher-ancestry.js" /home/mezzanine/.local/state/fleet-reporter /home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js
-```
+card#12180). [Upgrading an existing seat](#upgrading-an-existing-seat) is the whole procedure, in order:
+the `install` lines above run over the running seat in its step U3, and the stop, the wait and the
+`flusher-ancestry.js --upgrade` check that the lock holder started after the artifact was installed are
+its step U6. This paragraph owns why the order is that one, and what the check's `FAIL` means.
 
 The order is load-bearing. A hook starts a flusher whenever it finds no live one, and it runs the path
 the hook was given, so stopping first lets a hook that fires before the install start the **old**
 artifact, which then runs until it is stopped again. Installing first leaves only the seconds between
 the two commands, in which a hook already runs the new artifact beside the old flusher; a per-site count
 a hook takes in those seconds is folded past by the old flusher and lost, uncounted, and nothing else
-is. The last command prints `FAIL: … before the artifact was installed` when the flusher holding the lock
+is. Step U6's `flusher-ancestry.js --upgrade` prints `FAIL: … before the artifact was installed` when the flusher holding the lock
 started before the new artifact did (one the stop missed, or one a hook started before the install); stop
 it again. The start time it reads from `/proc` can come out a second or two early, because `/proc/stat`'s
 `btime` is whole seconds and the wall clock drifts from the boot clock: on the sandbox it read 0.9 s and
@@ -827,7 +840,9 @@ and the lanes run at the same time; every request is bounded by `K.REQUEST_MS`. 
 computes still allows two requests a round, as it did for the build before, so it is an upper bound
 with a round's margin. `flusher-ancestry.js` walks the lock holder's parents and says whether cron's
 start runs it; since card#12180 it also says whether the holder started after the artifact was
-installed, which is the check Step 1's upgrade order ends with:
+installed, which is the check Step 1's upgrade order ends with. Given `--upgrade` as a third argument
+it asks only that second question, and passes whoever started the holder (card#11818), because after
+an upgrade's stop a hook usually starts the flusher before cron does:
 
 ```bash
 ( set -euo pipefail
@@ -854,7 +869,8 @@ const poll = setInterval(() => {
 JS
   cat > "$B/flusher-ancestry.js" <<'JS'
 const fs = require("fs"), path = require("path");
-const [spool, js] = process.argv.slice(2);
+const [spool, js, mode] = process.argv.slice(2);
+if (mode !== undefined && mode !== "--upgrade") { console.error("unknown mode [" + mode + "]: the only one is --upgrade"); process.exit(2); }
 let pid;
 try { pid = JSON.parse(fs.readFileSync(path.join(spool, "flusher.lock"), "utf8")).pid; } catch (e) { console.log("FAIL: no readable flusher.lock, so no flusher holds the lock"); process.exit(1); }
 const chain = [];
@@ -875,6 +891,9 @@ const hz = Number(require("child_process").execFileSync("getconf", ["CLK_TCK"]).
 const startedMs = (btime + ticks / hz) * 1000, builtMs = fs.statSync(js).mtimeMs;
 if (startedMs < builtMs) { console.log("FAIL: the lock holder started " + new Date(startedMs).toISOString() + ", before the artifact was installed at " + new Date(builtMs).toISOString() + ": it runs the previous build"); process.exit(1); }
 console.log("the lock holder started " + new Date(startedMs).toISOString() + ", after the artifact's " + new Date(builtMs).toISOString());
+// --upgrade asks only whether the flusher runs the new build. Who started it is Step 5's question: after a stop, a
+// hook's start usually wins the race to the lock before cron's next minute, and that is correct (card#11818).
+if (mode === "--upgrade") { console.log("PASS: the lock holder runs the artifact installed at " + new Date(builtMs).toISOString() + "; who started it is not checked in --upgrade mode (Step 5's check is the one for cron's line)"); process.exit(0); }
 const flock = chain[1] && chain[1].comm === "flock" && chain[1].cmd.includes(js);
 const cron = chain.some((c) => /^cron$/i.test(c.comm));
 if (flock && cron) { console.log("PASS: the lock holder was started by cron through flock"); process.exit(0); }
@@ -1135,6 +1154,119 @@ echo json_encode(["fleet" => $b["fleet"], "seats" => array_merge(...array_map(fn
 
 ⚠ **The HTTP leg was not exercised by this install**: the route's authentication, and the JSON as sent.
 Checking it takes a read credential from `mezzanine:feed-token:issue`, which is a separate grant.
+
+## Upgrading an existing seat
+
+**Every seat running the reporter applies every reporter update** ([README § Updating a seat](README.md#updating-a-seat--every-update-is-required)).
+An update is the artifact plus whatever it brings with it: new hook fixtures, hook wiring, config keys or a
+crontab line. Its new functionality ships enabled, so there is nothing to opt in to. What one version
+touches is its row in [`UPDATES.md`](UPDATES.md); a seat several versions behind applies the union of the
+rows newer than the version it runs. The steps below run in this order, in one shell, from a checkout of
+the release, written `<checkout>` as in the rest of this runbook. Each says what proves it worked.
+
+**U0 — back up.** Run [Step 0](#step-0--back-up-what-the-install-touches-and-make-the-attempt-directory)'s
+block. It makes `$B` and copies the settings, the crontab, the artifact with its fixtures, and the config.
+*Check:* it prints `artifact and fixtures copied`, `config copied, mode 600` and the crontab's md5, and
+exits 0.
+
+**U1 — read what this update touches, and whether the seat already has it:**
+
+```bash
+( C=<checkout>/fleet-reporter; I=/home/mezzanine/.local/share/fleet-reporter
+  v() { grep -o "^const REPORTER_VERSION = '[^']*'" "$1" | cut -d"'" -f2; }
+  echo "installed $(v "$I/fleet-reporter.js"), this checkout $(v "$C/fleet-reporter.js")"
+  sha256sum "$C/fleet-reporter.js" "$I/fleet-reporter.js"
+  if cmp -s "$C/fleet-reporter.js" "$I/fleet-reporter.js" && diff -r "$C/fixtures" "$I/fixtures" > /dev/null
+  then echo "NO-OP: this seat already runs this checkout's artifact and fixtures"
+  else echo "UPDATE NEEDED: apply the UPDATES.md rows newer than the installed version"; fi )
+```
+
+*Check:* `NO-OP` ends the upgrade here; skip to U8 and reply. Every change to what an update ships moves
+`REPORTER_VERSION` (`bin/reporter-version-guard.py` holds a PR to that), so a seat whose artifact and
+fixtures equal the checkout's has nothing else to apply, provided it applied every step of the update
+that installed them. Otherwise note the rows' touches: they decide
+whether U4 and U5 run. A seat installed before `0.2.0` reads `0.1.0`, which names every build before
+it, so it applies every step.
+
+**U2 — extract the helpers, without re-running the install.** Steps 2, 4 and 5 save their helpers from
+blocks of this runbook. This copies each one out of the checkout's runbook into `$B`, byte for byte as
+the block would write it, and refuses a name the runbook does not hold exactly once:
+
+```bash
+( set -euo pipefail
+  for h in coord-config.js wire-hooks.js check-preserved.js stop-flusher.js flusher-ancestry.js; do
+    start="cat > \"\$B/$h\" <<'JS'"
+    awk -v s="$start" 'on && $0 == "JS" { on = 0; n++; next } on { print; next } { t = $0; sub(/^ +/, "", t) } t == s { on = 1 } END { exit n == 1 ? 0 : 1 }' \
+      <checkout>/fleet-reporter/INSTALL-LINUX.md > "$B/$h" || { echo "$h: not exactly one block in the runbook: NOT EXTRACTED" >&2; exit 1; }
+    node --check "$B/$h"
+  done
+  echo helpers-extracted )
+```
+
+*Check:* it prints `helpers-extracted`. Add `write-config.js` to the list when a row's `config` touch
+names Step 2's writer.
+
+**U3 — the artifact and its fixtures.** Run [Step 1](#step-1--prerequisites-and-the-artifact)'s
+`install` lines over the running seat; that step says why they come before the flusher stops.
+*Check:* Step 1's `sha256sum` prints one hash twice, and its `diff -r` prints `fixtures-match`.
+
+**U4 — the hook wiring, when a row lists `hooks`.** The fixture set changed, so the hook set does.
+Run [Step 4](#step-4--wire-the-hooks-and-optionally-the-statusline) procedure (a)'s block; it adds the new
+hooks and changes no existing entry. *Check:* `wire-hooks.js` names the new hooks after `added:`,
+`check-preserved.js` prints `every other key and every existing hook entry is unchanged`, and the block
+prints `applied`. Run without a `hooks` touch it prints `added: nothing`, which is the same check.
+
+**U5 — the crontab, when a row lists `cron`, and the config, when a row lists `config`.** For `cron`, run
+[Step 5](#step-5--supervise-the-flusher-from-the-user-crontab)'s write block. *Check:* it prints the
+diff and `installed: <md5>`, or `crontab already current`. For `config`, make the change the row names
+with the command it names (Step 2's writer or Step 3's one-key rewrite). *Check:* Step 3's printer shows
+the new value, and Step 6 below passes `config_readable`. The flusher reads its config only when it
+starts, so U6's restart applies the change.
+
+**U6 — restart the flusher on the new build:**
+
+```bash
+node "$B/stop-flusher.js" /home/mezzanine/.local/state/fleet-reporter /home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js
+sleep 70
+node "$B/flusher-ancestry.js" /home/mezzanine/.local/state/fleet-reporter /home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js --upgrade
+```
+
+*Check:* the last line prints `PASS: the lock holder runs the artifact installed at …`. Its `FAIL: …
+before the artifact was installed` means the old build still holds the lock: [Step 1](#step-1--prerequisites-and-the-artifact)
+says why, and the fix is to run the three lines again.
+
+**A `FAIL: … no flock and no cron` here is expected, and benign.** It comes from a copy of the helper
+saved before card#11818, or from running it without `--upgrade`. The helper then goes on to ask
+[Step 5](#step-5--supervise-the-flusher-from-the-user-crontab)'s question, whether cron's line started the
+lock holder, and on a seat whose sessions are working a hook usually starts the flusher in the seconds
+after the stop, before cron's next minute. That flusher runs the same artifact and holds the same lock,
+so the upgrade is done when the line above the `FAIL` reads `the lock holder started …, after the
+artifact's …`. `--upgrade` stops there. Cron's line needs its own check only when U5 changed it: run
+Step 5's check after a `stop-flusher.js` at a moment when no session on the account is working.
+
+**U7 — selftest.** Run [Step 6](#step-6--selftest)'s command, with `COORD_CONFIG` set to Step 5's value.
+*Check:* `selftest rc=0`. Step 6 reads every other code.
+
+**U8 — reply.** Answer the update's announcement ([`UPDATES.md` § Announcing an update](UPDATES.md#announcing-an-update))
+with the seat, the installed hash (`sha256sum /home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js`)
+and U7's `selftest rc=` line, naming every check that is not `pass`.
+
+**What was run for card#11818**, on the sandbox host on 2026-10-24, without changing the live seat:
+
+- **U2** against this runbook: each of the five helpers came out byte-identical (`cmp`) to what its block
+  writes when run, and a list naming a helper the runbook lacks printed `NOT EXTRACTED` and exited 1.
+- **U1** against the live install printed `installed 0.1.0, this checkout 0.2.0`, two different hashes and
+  `UPDATE NEEDED`; pointed at Step 0's copy of an install, it printed `NO-OP`.
+- **U6's check, read-only, against the live flusher**, which a hook had started after the previous
+  upgrade's stop. Without `--upgrade` it printed `the lock holder started 2026-10-23T02:35:54.070Z, after
+  the artifact's 2026-10-23T02:35:35.433Z` and then `FAIL: the lock holder's parents include no flock and
+  no cron`, exit 1: the expected case above. With `--upgrade` it printed the same first line and `PASS:
+  the lock holder runs the artifact installed at …`, exit 0. An unknown mode exited 2.
+- **U0**, Step 0's block with its paths pointed at a scratch home: with an artifact and a config in place
+  it printed both `copied` lines and `config.json` kept mode `600`; with neither, it printed both
+  `nothing to copy` lines. Both runs exited 0.
+
+The whole sequence has not yet been run on a seat.
 
 ## Step 8 — uninstall and roll back
 
