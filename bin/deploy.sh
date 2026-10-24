@@ -10,7 +10,7 @@
 #   tree. THAT FILE IS NOT REACHABLE FROM THIS SEAT — no such path exists on this host and the
 #   repository holding it answers 404 to this credential. So the sample's LINES were not copied.
 #   What is adopted is the card's own enumeration of the sample's load-bearing properties (the
-#   card's handover is the ruling of record):
+#   card records the binding handover items; a fleet coordination thread is the ruling of record):
 #     forward-only migrations (MySQL/MariaDB DDL is non-transactional) · the load-bearing
 #     cache-rebuild order · down-and-stay-down on failure for operator review ·
 #     re-exec-after-checkout · every "fails once, then silently succeeds on a bare re-run" state
