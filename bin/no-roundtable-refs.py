@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""no-roundtable-refs.py — red on any reference to the fleet's PRIVATE coordination repository in a
-tracked file of this PUBLIC one (card#12260).
+"""no-roundtable-refs.py — red on any reference to the fleet's PRIVATE coordination repositories in
+a tracked file of this PUBLIC one (card#12260, card#12292).
 
 WHY IT EXISTS. This repository is public; the fleet's cross-project coordination repository is
 private. The operator ruled on 2026-10-23 that no real reference to it may sit in this repository:
@@ -10,22 +10,38 @@ CLAUDE.md — because a public reader reads all of them alike. Before this check
 accumulated across every one of those kinds of file; `--root` over a checkout of an earlier commit
 re-prints where.
 
+The operator ruled again on 2026-10-24 that two other teams' coordination repositories, also
+private, get the same treatment: their names, and the organisation that holds one of them, are
+replaced by made-up placeholders (`synthetic-org/coordination-fixture`, the placeholder the
+coordination test fixtures already use), and this check reds on them too (card#12292).
+
 WHAT A HIT IS. One of the `FORMS` below, matched case-insensitively over the whole text of a file,
 so a form split across a line break still matches:
 
-  repo-name      the private repository's name, its words joined by `-`, `_` or a space — which
-                 also catches every link into it
+  repo-name      the private repository's name, its words joined by any run of `-`, `_` or
+                 whitespace (a line break included) — which also catches every link into it
   thread-number  the word for that repository, up to three non-word characters (a line break
                  included), an optional `thread`, `post` or `issue`, an optional `#`, then a number
   rt-number      the fleet's two-letter short form for a thread of it, then any run of spaces,
                  `#`, `:` or `-` (none included, so the glued form counts), then a number
   share-path     a path into the fleet share tree, which is keyed by that repository's issue number
+  private-repo-name  the name of another team's private coordination repository (`PRIVATE_REPOS`),
+                 its words joined by any run of `-`, `_` or whitespace (a line break included) — which
+                 also catches every link into it
+  private-org-name   the name of the organisation that holds one of them (`PRIVATE_ORGS`), its words
+                 joined the same way; an org name is how a reference into it is written on GitHub
 
-The forms are the shapes the 2026-10-23 sweep found; `--selftest` plants one of each and watches it
-red. WHAT IT CANNOT SEE: a thread cited by a bare `#N` with no form word beside it (that is
-indistinguishable from a PR or issue number of this repository), a bare comment id, and a quotation
-of a post that names neither the repository nor a thread. Those were cleaned by hand in card#12260;
-review is what catches a new one.
+ADDING ANOTHER PRIVATE REPOSITORY OR ORGANISATION is a one-line edit: append its words, as a tuple, to
+`PRIVATE_REPOS` or `PRIVATE_ORGS`. Spell them split, as `_W` is, so this file is never a hit on itself.
+
+The forms are the shapes the 2026-10-23 and 2026-10-24 sweeps found; `--selftest` plants one of each
+and watches it red, and checks that the placeholder does not. WHAT IT CANNOT SEE: a thread cited by a
+bare `#N` with no form word beside it (that is indistinguishable from a PR or issue number of this
+repository), a bare comment id, a quotation of a post that names neither the repository nor a thread,
+and a private repository or organisation that is not in `PRIVATE_REPOS` / `PRIVATE_ORGS`. A team's
+bare name is no hit: it is also the install id, seat names and floor slug this repository uses as
+example values, so only the joined repository and organisation names are matched. The bare-number
+cases were cleaned by hand in card#12260 and card#12292; review is what catches a new one.
 
 THE POPULATION. `git ls-files` — every tracked file — read as UTF-8 with replacement; a file holding
 a NUL byte is binary and skipped (a binary can still carry the text, and that is not seen here).
@@ -52,12 +68,31 @@ import tempfile
 # The word for the repository, spelled so this file's own text is never a hit.
 _W = "round" + "table"
 
+# Other teams' private coordination repositories, and the organisation that holds one, each as its
+# words (joined by any run of `-`, `_` or whitespace when matched). Spelled split so this file is never a hit on
+# itself. Adding one is one line here. See the module docstring.
+PRIVATE_REPOS = (
+    ("so" + "la", "coordination"),
+    ("aim" + "la", "coordination"),
+)
+PRIVATE_ORGS = (
+    ("aim" + "la", "org"),
+)
+
+
+def _joined(names: tuple[tuple[str, ...], ...]) -> re.Pattern[str]:
+    alts = "|".join(r"[\s_-]+".join(re.escape(w) for w in words) for words in names)
+    return re.compile(r"\b(?:" + alts + r")\b", re.IGNORECASE)
+
+
 FORMS = {
-    "repo-name": re.compile(r"agent[ _-]" + _W, re.IGNORECASE),
+    "repo-name": re.compile(r"agent[\s_-]+" + _W, re.IGNORECASE),
     "thread-number": re.compile(r"\b" + _W + r"\b[^\w]{0,3}(?:(?:thread|post|issue)\s*)?#?\s*\d+",
                                 re.IGNORECASE),
     "rt-number": re.compile(r"\brt[\s#:-]*\d+", re.IGNORECASE),
     "share-path": re.compile(r"\bshare/issue-\d+", re.IGNORECASE),
+    "private-repo-name": _joined(PRIVATE_REPOS),
+    "private-org-name": _joined(PRIVATE_ORGS),
 }
 
 # (repo-relative path, exact matched text, reason and owner). See the module docstring: only shrinks.
@@ -152,6 +187,7 @@ def selftest() -> int:
         "repo-name (link)": "https://github.com/PupFuzz/agent-" + _W + "/issues/9001",
         "repo-name (underscore)": "the agent_" + _W.upper() + " repo",
         "repo-name (space)": "the Agent " + _W.capitalize() + " repository",
+        "repo-name (line break)": "the agent-\n" + _W + " repository",
         "thread-number": "ratified on " + _W.capitalize() + " #9002.",
         "thread-number (no #)": "as " + _W + " 9003 measured",
         "thread-number (line break)": "cited. " + _W.capitalize() + "\n[#9004](x)",
@@ -166,6 +202,19 @@ def selftest() -> int:
         "rt-number (dash)": "per r" + "t-9013",
         "share-path": "`share/" + "issue-9014/kanban-solo/deploy.sh`",
     }
+    # One plant per PRIVATE_REPOS / PRIVATE_ORGS entry, in each separator and a case variant, so a
+    # name added to either tuple is planted here with no further edit.
+    for kind, names in (("private-repo-name", PRIVATE_REPOS), ("private-org-name", PRIVATE_ORGS)):
+        for words in names:
+            label = "%s %s" % (kind, "+".join(w[:2] + "…" for w in words))
+            planted[label + " (dash, ref)"] = "see Org/" + "-".join(words) + "#9022 for it"
+            planted[label + " (underscore, upper)"] = "the " + "_".join(words).upper() + " repo"
+            planted[label + " (space, title)"] = "the " + " ".join(w.capitalize() for w in words) + " one"
+            planted[label + " (line break)"] = "the " + "\n".join(words) + " one"
+            planted[label + " (wrapped dash)"] = "the " + "-\n  ".join(words) + " one"
+            planted[label + " (link)"] = ("https://github.com/x/" + "-".join(words) + "/issues/9023"
+                                          if kind == "private-repo-name" else
+                                          "https://github.com/" + "-".join(words) + "/x/issues/9023")
     for name, body in planted.items():
         d = repo(dict(exempt_file, **{"docs/x.md": (body + "\n").encode()}))
         failures, _ = scan(d)
@@ -178,6 +227,17 @@ def selftest() -> int:
     d = repo(dict(exempt_file, **{"docs/x.md": clean.encode()}))
     failures, _ = scan(d)
     expect("control: concept mentions and lookalikes pass", failures == [], repr(failures))
+
+    # Control: the placeholder the private names were replaced by, and each team's bare name as the
+    # install id / seat / floor slug this repository uses as example values, must pass.
+    teams = sorted({words[0] for words in PRIVATE_REPOS + PRIVATE_ORGS})
+    placeholder = ('"thread_ref": "synthetic-org/coordination-fixture#900742", '
+                   '"post_ref": "synthetic-org/coordination-fixture#900742-c900743"; '
+                   + "; ".join("install %s, seat %s-pm, the %s floor, %scoordination, %s-orgs"
+                               % (t, t, t, t, t) for t in teams) + "\n")
+    d = repo(dict(exempt_file, **{"docs/x.md": placeholder.encode()}))
+    failures, _ = scan(d)
+    expect("control: the placeholder and bare team names pass", failures == [], repr(failures))
 
     # The exemption covers exactly one occurrence, in exactly its file.
     d = repo({"CLAUDE.md": ("x " + ex_text + " y\nz " + ex_text + "\n").encode()})

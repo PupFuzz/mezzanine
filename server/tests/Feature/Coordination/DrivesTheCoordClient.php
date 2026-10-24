@@ -132,7 +132,7 @@ trait DrivesTheCoordClient
             't' => 'coord.thread',
             'server_time' => '2026-08-27T16:02:11.802Z',
             'coord_thread' => array_merge([
-                'thread_ref' => 'AIMLA-org/aimla-coordination#742',
+                'thread_ref' => 'synthetic-org/coordination-fixture#900742',
                 'scope' => 'install',
                 'install_id' => 'aimla',
                 'lifecycle' => 'closed',
@@ -162,8 +162,8 @@ trait DrivesTheCoordClient
             't' => 'coord.round',
             'server_time' => '2026-08-27T09:14:03.501Z',
             'coord_round' => array_merge([
-                'post_ref' => 'AIMLA-org/aimla-coordination#742',
-                'thread_ref' => 'AIMLA-org/aimla-coordination#742',
+                'post_ref' => 'synthetic-org/coordination-fixture#900742',
+                'thread_ref' => 'synthetic-org/coordination-fixture#900742',
                 'scope' => 'install',
                 'install_id' => 'aimla',
                 'from' => 'pm',

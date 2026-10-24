@@ -4518,7 +4518,7 @@ renders none of its members.
 
 | Field | Type | Null? | Bounds | Example |
 |---|---|---|---|---|
-| `coord_thread.thread_ref` | string | no | ≤ 256 B, `<owner>/<repo>#<n>` — the thread's identity, and the key every round carries back to it | `"AIMLA-org/aimla-coordination#742"` |
+| `coord_thread.thread_ref` | string | no | ≤ 256 B, `<owner>/<repo>#<n>` — the thread's identity, and the key every round carries back to it | `"synthetic-org/coordination-fixture#900742"` |
 | `coord_thread.scope` | slug | no | ≤ 16 B — `install` or `fleet`, the binding's scope ([D1 § 18.6](EVENT-SCHEMA.md#186-coordthread), card#12239). It selects which declaration a consumer joins the object's names through (rule 1 below) and whether the object has a room at all | `"install"` |
 | `coord_thread.install_id` | slug | **yes** | ≤ 32 B, from the **hook binding** and never from the payload's own repository claim ([D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)); it is the outbox row's filter key ([§ 8.3](#83-the-websocket-delta-feed)). `null` **iff** `scope` is `fleet` — the object belongs to no room, and the outbox row carries the `NULL` [§ 6.4](#64-ddl) reserves for a fleet-wide message | `"aimla"` |
 | `coord_thread.lifecycle` | slug | no | ≤ 32 B — `opened` · `closed` · `reopened`, the three actions D1 § 18.8 step 8 admits, verbatim. A closed thread can reopen, so a consumer must not treat `closed` as terminal | `"closed"` |
@@ -4537,8 +4537,8 @@ lifecycle edge would lose the thread's first round.
 
 | Field | Type | Null? | Bounds | Example |
 |---|---|---|---|---|
-| `coord_round.post_ref` | string | no | ≤ 256 B — `<thread_ref>` for the opening post, `<thread_ref>-c<comment id>` for a comment. **The post's identity, and the key a consumer counts beads by** | `"AIMLA-org/aimla-coordination#742"` |
-| `coord_round.thread_ref` | string | no | ≤ 256 B — the thread this post is on; the join back to `coord_thread` | `"AIMLA-org/aimla-coordination#742"` |
+| `coord_round.post_ref` | string | no | ≤ 256 B — `<thread_ref>` for the opening post, `<thread_ref>-c<comment id>` for a comment. **The post's identity, and the key a consumer counts beads by** | `"synthetic-org/coordination-fixture#900742"` |
+| `coord_round.thread_ref` | string | no | ≤ 256 B — the thread this post is on; the join back to `coord_thread` | `"synthetic-org/coordination-fixture#900742"` |
 | `coord_round.scope` | slug | no | ≤ 16 B — the thread's scope, repeated so a post is legible alone | `"install"` |
 | `coord_round.install_id` | slug | **yes** | ≤ 32 B, from the hook binding, as above; `null` iff `scope` is `fleet` | `"aimla"` |
 | `coord_round.from` | slug | **yes** | ≤ 48 B — the **protocol agent name** this post evidences; `null` when it evidences none | `"pm"` |
@@ -4744,8 +4744,8 @@ receipt-internal digest, in this feed's envelope ([§ 8.3](#83-the-websocket-del
   "t": "coord.round",
   "server_time": "2026-08-27T09:14:03.501Z",
   "coord_round": {
-    "post_ref": "AIMLA-org/aimla-coordination#742",
-    "thread_ref": "AIMLA-org/aimla-coordination#742",
+    "post_ref": "synthetic-org/coordination-fixture#900742",
+    "thread_ref": "synthetic-org/coordination-fixture#900742",
     "scope": "install",
     "install_id": "aimla",
     "from": "pm",
@@ -4770,7 +4770,7 @@ The close of that same thread, which names nobody — `opened_by` is `null` and 
   "t": "coord.thread",
   "server_time": "2026-08-27T16:02:11.802Z",
   "coord_thread": {
-    "thread_ref": "AIMLA-org/aimla-coordination#742",
+    "thread_ref": "synthetic-org/coordination-fixture#900742",
     "scope": "install",
     "install_id": "aimla",
     "lifecycle": "closed",

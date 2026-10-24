@@ -1,13 +1,14 @@
 # no-roundtable-refs.yml — red when a tracked file carries a reference to the fleet's PRIVATE
-# coordination repository (card#12260).
+# coordination repositories (card#12260, card#12292).
 #
 # WHAT IT DOES. Runs `bin/no-roundtable-refs.py` over this checkout, after its own `--selftest`
 # has planted one of each reference form and watched it red. The forms, the population, what it
 # cannot see and the exemption list (which only shrinks) are owned by that script's docstring and
 # are not restated here — a workflow comment is not a place a rule can live.
 #
-# WHY IT EXISTS. This repository is public and the coordination repository is not; the operator
-# ruled on 2026-10-23 that no real reference to it may sit in any tracked file.
+# WHY IT EXISTS. This repository is public and the coordination repositories are not; the operator
+# ruled on 2026-10-23 that no real reference to the cross-project one may sit in any tracked file,
+# and on 2026-10-24 that two other teams' coordination repositories get the same treatment.
 #
 # NO `paths:` FILTER, DELIBERATELY. Any file can carry a reference, and a path-filtered workflow
 # that produces no run reads as pending rather than passed (`docs/VERSIONING.md § Branch model`).

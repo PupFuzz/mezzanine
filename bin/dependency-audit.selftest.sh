@@ -18,6 +18,9 @@
 #       .github/workflows/, fixtures in bin/dependency-audit-fixtures/ (fragments:
 #       `ROOT/.github/workflows/dependency-audit.yml"` from the CALLEE line and
 #       `HERE/dependency-audit-fixtures"` from the FIX line).
+#   (2) a body comment that cited another team's private coordination repository by issue and
+#       comment id names only the card, so this public repository carries no reference to it
+#       (card#12292; fragment: `# card#11434 (backend) within card#11604:`).
 #   The two workflow paths in upstream's own header below are re-pointed too; that is header
 #   text and is not pinned. ShellCheck's findings on this file are recorded in
 #   bin/shell-lint.baseline.tsv rather than annotated in the body, so the body stays upstream's.
@@ -851,7 +854,7 @@ if [ "$rc" -ne 0 ] && has "$out" 'SOURCE2 axios@1.19.0 GHSA-542g-h47m-68v8' \
 else
   fail "axios 1.19.0 should red with findings=$AXIOS_WANT_FINDINGS (derived from the fixture) including GHSA-r4gj-5m52-g5wh, not on GHSA-42h9-826w-cgv3, and errors=0 with GHSA-rm8p-cx58-hcvx absent (rc=$rc, findings='$(pop findings)', errors='$(pop errors)'): $out"
 fi
-# card#11434 (backend, sola-coordination#1912 c-6031665181) within card#11604: GHSA-rm8p-cx58-hcvx
+# card#11434 (backend) within card#11604: GHSA-rm8p-cx58-hcvx
 # writes the bare version "1.10.0", patched 1.11.0, and its reviewed global record was withdrawn on
 # 2025-07-24. Between the bare version and the fix no reading of it agrees, so the withdrawn record
 # is reached, and a withdrawn advisory is not a finding and not an error: it is printed as a NOTICE
