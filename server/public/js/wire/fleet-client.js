@@ -124,13 +124,10 @@ export const BACKOFF_CEILING_MS = 80000;
 /** § 2.2's reload grace, derived at § 12's row of that name. */
 export const RELOAD_GRACE_MS = 60000;
 
-/** § 5.7 / § 12's *Held coordination envelopes*: the most this client holds (§ 14 item 25). */
-export const COORD_CAP = 1000;
-
 /** Every `t` D2 § 8.3 publishes. Anything else is D2's forward-compatibility case: ignore and count. */
 const KNOWN_TYPES = new Set([
     'seat.delta', 'seat.retired', 'fleet.health', 'feed.heartbeat', 'fleet.reload', 'feed.close',
-    'room.map', 'building.layout', 'coord.thread', 'coord.round',
+    'room.map', 'building.layout', 'coord.round',
 ]);
 
 /**
@@ -147,13 +144,6 @@ function retiredLine(k, reason, at) {
     const when = typeof at === 'string' && at !== '' ? at : 'not reported';
 
     return `seat retired: ${k} — reason: ${why} — at ${when}`;
-}
-
-/** The thread an envelope belongs to — § 5.7's grouping key, and the eviction unit. */
-function threadOf(envelope) {
-    const body = envelope.t === 'coord.round' ? envelope.coord_round : envelope.coord_thread;
-
-    return body !== null && typeof body === 'object' ? (body.thread_ref ?? null) : null;
 }
 
 /**
@@ -225,25 +215,6 @@ export class FleetClient {
     #log = [];
 
     /**
-     * D2 § 8.3.3's two COORDINATION OBJECTS, in arrival order — the envelopes this client applied,
-     * which `coord/coord-model.js` renders and `floor/floor-screen.js` draws the line from
-     * (§ 5.7). card#7341 step 7 is the first consumer that applies them.
-     *
-     * ⛔ THEY RIDE THE FEED AND NO REST SURFACE CARRIES THEM (D2's no-snapshot ruling), so this
-     * list starts EMPTY on every connect and "a client that has just connected draws no thread line
-     * until the next post on that thread" (§ 5.7). An empty coordination layer is therefore never
-     * evidence that the fleet is not talking, and nothing may render it as *quiet*.
-     *
-     * ⛔ NO DEDUPLICATION HERE, deliberately. Identity is `post_ref` / `thread_ref` and what a
-     * consumer may do with a repeat is D2's own rule, which `coordModel()` already implements over
-     * a list — a second implementation here would be two homes for one rule (the defect card#7341
-     * step 6 removed one class up).
-     *
-     * ⛔ HELD TO `COORD_CAP`, EVICTED BY WHOLE THREADS (§ 5.7, § 14 item 25) — `#holdCoord()`.
-     */
-    #coord = [];
-
-    /**
      * THE WIRE JOURNAL: every message this client handled and every seat row it took from a REST
      * surface, in handling order, with what it DID with each. It is the renderer's one honest
      * source for *did the client apply this, and what did it carry* — and every input
@@ -269,9 +240,6 @@ export class FleetClient {
 
     /** key → the browser clock's reading of when this client last trusted an apply for the key. */
     #confirmedAt = new Map();
-
-    /** The `thread_ref`s whose oldest rounds `COORD_CAP` dropped — § 5.7's *N+* bead count. */
-    #coordTruncated = new Set();
 
     /** The injected scheduler, or `null` for the harness's pre-recovery replay (see the header). */
     #timers = null;
@@ -418,11 +386,6 @@ export class FleetClient {
         return this.#fleet === null ? null : JSON.parse(JSON.stringify(this.#fleet));
     }
 
-    /** § 5.7's *N+*: the threads `COORD_CAP` cut, whose bead count is a lower bound. */
-    get coordTruncated() {
-        return [...this.#coordTruncated];
-    }
-
     /** § 5.5's *membership as of*: the last full snapshot's `server_time`, or `null` before one. */
     get membershipAsOf() {
         return this.#membershipAt;
@@ -493,11 +456,6 @@ export class FleetClient {
     /** § 5.5's record, newest first, at most `LOG_CAP` lines — a copy, for the same reason. */
     get eventLog() {
         return [...this.#log];
-    }
-
-    /** D2 § 8.3.3's coordination envelopes this client has applied, oldest first — a copy. */
-    get coordMessages() {
-        return [...this.#coord];
     }
 
     /**
@@ -1390,25 +1348,24 @@ export class FleetClient {
                 // is acted on (operator ruling A4).
                 this.#note(envelope.t, 'applied', { server_time: envelope.server_time, feed_version: envelope.feed_version });
                 break;
-            case 'coord.thread':
             case 'coord.round':
-                // ⛔ THESE ARE HELD, NOT MERELY SEEN (D2 § 8.3.3). No REST surface carries them, so
-                // the stream is the only place they exist and a renderer that did not hold them
-                // could draw a thread only for as long as one message was in flight. § 5.7 clause 3
-                // scopes each to the room its own `install_id` names, which is the RENDERER's
-                // filter and not a reason to drop one here: a floor draws several rooms.
-                this.#holdCoord(envelope);
+                // ⛔ APPLIED, NOT HELD (card#12239; D2 § 8.3.3, FLOOR.md § 5.7). The floor holds no
+                // coordination state: a post is an EDGE fired on arrival, so the journal carries the
+                // round itself and the renderer draws it from there, once. Nothing here keeps it, and a
+                // page that connects later draws nothing for it (§ 6.5). `coord.thread` is not published
+                // and is not a type this client knows: the default branch ignores and counts it.
+            {
+                const round = this.#coordBody(envelope);
+
                 this.#note(envelope.t, 'applied', {
                     server_time: envelope.server_time,
-                    install_id: this.#coordBody(envelope)?.install_id ?? null,
-                    // § 11's `cause` for A18/A19/A20 — the identity of the message that caused the
-                    // row, which is the whole of what D2 publishes as *the identities a consumer
-                    // needs*.
-                    coord_ref: envelope.t === 'coord.round'
-                        ? (this.#coordBody(envelope)?.post_ref ?? null)
-                        : (this.#coordBody(envelope)?.thread_ref ?? null),
+                    install_id: round?.install_id ?? null,
+                    // § 11's `cause` for A19/A20/A22 — the post's identity.
+                    coord_ref: round?.post_ref ?? null,
+                    round,
                 });
                 break;
+            }
             default:
                 // D2 § 8.3: an unrecognised `t` is ignored AND COUNTED. Every known `t` has its own
                 // case above, so what reaches here is unrecognised.
@@ -1421,50 +1378,9 @@ export class FleetClient {
         }
     }
 
-    /**
-     * § 5.7's bound on the coordination envelopes this client holds (§ 14 item 25): at most
-     * `COORD_CAP`, evicting WHOLE THREADS, least recently received first.
-     *
-     * ⛔ A THREAD LEAVES WHOLE — its `coord.thread` and every round together — so an evicted thread
-     * renders exactly as one a just-connected client has not seen, and every surviving thread keeps
-     * a complete bead count. The one case that unit cannot satisfy is a single thread that alone
-     * exceeds the cap: it keeps its newest `coord.thread` and drops its OLDEST rounds, and its bead
-     * count becomes a lower bound (`coordTruncated`, rendered *N+*).
-     */
-    #holdCoord(envelope) {
-        this.#coord.push(envelope);
-
-        while (this.#coord.length > COORD_CAP) {
-            // Recency is the index of a thread's newest envelope: the list is in arrival order.
-            const newest = new Map();
-
-            this.#coord.forEach((e, i) => newest.set(threadOf(e), i));
-
-            if (newest.size > 1) {
-                const victim = [...newest.entries()].sort((a, b) => a[1] - b[1])[0][0];
-
-                this.#coord = this.#coord.filter((e) => threadOf(e) !== victim);
-                this.#coordTruncated.delete(victim);
-
-                continue;
-            }
-
-            // One thread alone over the cap: drop its oldest envelope that is not its newest
-            // `coord.thread` — the object the line's lifecycle is rendered from.
-            const lastThread = this.#coord.findLastIndex((e) => e.t === 'coord.thread');
-            const drop = this.#coord.findIndex((e, i) => i !== lastThread);
-
-            if (this.#coord[drop].t === 'coord.round') {
-                this.#coordTruncated.add(threadOf(this.#coord[drop]));
-            }
-
-            this.#coord.splice(drop, 1);
-        }
-    }
-
-    /** The object under a coordination envelope — D2 § 8.3.3's two member names, and no third. */
+    /** The object under a `coord.round` envelope — D2 § 8.3.3's member name. */
     #coordBody(envelope) {
-        const body = envelope.t === 'coord.round' ? envelope.coord_round : envelope.coord_thread;
+        const body = envelope.coord_round;
 
         return body !== null && typeof body === 'object' ? body : null;
     }

@@ -370,7 +370,7 @@ class FloorPageWiringTest extends TestCase
 
         foreach ([
             'a section left open' => ['<details class="floor-section">', '<details class="floor-section" open>'],
-            'a list root outside its section' => ['<ul id="floor-coord" aria-labelledby="floor-coord-heading" hidden></ul>', ''],
+            'a list root outside its section' => ['<ul id="floor-overflow" aria-labelledby="floor-overflow-heading" hidden></ul>', ''],
             'a heading outside its summary' => ['<summary><h2 id="floor-log-heading">', '<summary><h2>'],
         ] as $what => [$from, $to]) {
             $planted = str_replace($from, $to, $html);
@@ -756,7 +756,7 @@ class FloorPageWiringTest extends TestCase
         libxml_use_internal_errors($previous);
 
         $defects = [];
-        $sections = ['floor-desks', 'floor-overflow', 'floor-coord', 'floor-log'];
+        $sections = ['floor-desks', 'floor-overflow', 'floor-log'];
 
         foreach ($sections as $id) {
             $root = $dom->getElementById($id);

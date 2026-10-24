@@ -4365,6 +4365,7 @@
             "server_time": "2026-08-23T14:23:14.800Z",
             "coord_thread": {
               "thread_ref": "T1",
+              "scope": "install",
               "install_id": "aimla",
               "lifecycle": "opened",
               "subject": "the coordination-event producer",

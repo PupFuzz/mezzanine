@@ -3383,7 +3383,7 @@ snapshot repeats per seat and the delta patches.
 | `reporter.version` | semver | **yes** | ≤ 24 B | `"0.1.0"` |
 | `reporter.platform` | enum | **yes** | D1's 4 members | `"linux"` |
 | `reporter.uptime_s` | int | **yes** | ≥ 0 — the flusher-restart discriminator | `401150` |
-| `reporter.selftest_failed` | array\<string\> | no | **0…8**, the failing check names — bounded by [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s arithmetic and **not** by its member table: D1 declares that key set **open at the ingest**, so a conforming reporter may ship a check the table does not yet name and take no `422`, and a consumer validating against the table's current membership would reject valid data. 8 is D1's derived ceiling, not a count of its table. The names total ≤ 175 B across 8, which is what D1's 256 B serialized cap on `selftest` leaves | `[]` |
+| `reporter.selftest_failed` | array\<string\> | no | **0…9**, the failing check names — bounded by [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s arithmetic and **not** by its member table: D1 declares that key set **open at the ingest**, so a conforming reporter may ship a check the table does not yet name and take no `422`, and a consumer validating against the table's current membership would reject valid data. 9 is D1's derived ceiling, not a count of its table (card#12239's `rt_name_ok` is the ninth, and D1 § 6.14 states no tenth fits). The names total ≤ 165 B across 9, which is what D1's 256 B serialized cap on `selftest` leaves — and nine names that long serialize shorter than the eight 175 B names the worst-case block below already prices, so the bound below stands as the byte worst case | `[]` |
 | `retired` | object | **yes** | `null` unless `seats.retired_at` is set — which, since card#9078, no seat the read surfaces select ever is: the only object carrying a non-null `retired` is the announcement's own delta ([§ 4.10](#410-retirement-is-a-rendered-state)), which is what tells a client what left and why | `null` |
 | `retired.at` | rfc3339_ms | no | server clock | `"2026-08-20T09:11:04.000Z"` |
 | `retired.by` | string | no | ≤ 64 B, the operator | `"aimla-pm"` |
@@ -4746,6 +4746,7 @@ receipt-internal digest, in this feed's envelope ([§ 8.3](#83-the-websocket-del
   "coord_round": {
     "post_ref": "AIMLA-org/aimla-coordination#742",
     "thread_ref": "AIMLA-org/aimla-coordination#742",
+    "scope": "install",
     "install_id": "aimla",
     "from": "pm",
     "attribution": "resolved",
@@ -4770,6 +4771,7 @@ The close of that same thread, which names nobody — `opened_by` is `null` and 
   "server_time": "2026-08-27T16:02:11.802Z",
   "coord_thread": {
     "thread_ref": "AIMLA-org/aimla-coordination#742",
+    "scope": "install",
     "install_id": "aimla",
     "lifecycle": "closed",
     "carrier": "announce",

@@ -315,10 +315,8 @@ function paint(frame) {
     list('floor-notices', [...frame.notices]);
     list('floor-rooms', frame.composed ? [] : frame.rooms.map((r) => `${r.install_id} — no floor claimed`));
     list('floor-overflow', [...(frame.overflow ?? [])]);
-    list('floor-coord', Object.values(frame.coord ?? {}).flatMap((model) => model.threads.map((thread) => (
-        `${thread.thread_ref} — ${thread.lifecycle} — ${thread.beads_label} posts`
-        + (thread.unresolved.length > 0 ? ` — unresolved: ${thread.unresolved.join(', ')}` : '')
-    ))));
+    // card#12239: no coordination list — nothing coordination-related is held on this page (FLOOR.md
+    // § 5.7); each post is an edge drawn on arrival, and an end it could not draw is a line of the log.
 
     // § 9 F6/F7: the floor beneath the sign-in prompt is dimmed, never blanked — the drawing as the list.
     el('floor-drawing').dataset.dimmed = String(frame.failure.sign_in !== null);

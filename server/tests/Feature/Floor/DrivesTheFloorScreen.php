@@ -90,28 +90,6 @@ trait DrivesTheFloorScreen
     }
 
     /**
-     * The frame in which one room's coordination LINE is drawn.
-     *
-     * ⛔ IT IS NOT THE LAST FRAME, AND THAT IS § 5.7's OWN LIFECYCLE RATHER THAN A QUIRK OF THIS
-     * RIG. A18 is HELD: a run that opens a thread and closes it ends with the line gone, so a test
-     * reading the last frame reads the render AFTER the hold and would find no endpoints — which is
-     * the correct render of a closed thread and the wrong frame to assert a drawn line on.
-     *
-     * @param  array<string, mixed>  $result
-     * @return array<string, mixed>
-     */
-    protected function floorWithLine(array $result, string $installId): array
-    {
-        foreach (array_reverse($result['floor_renders']) as $render) {
-            if (($render['frame']['coord'][$installId]['drawn_lines'] ?? 0) > 0) {
-                return $render['frame'];
-            }
-        }
-
-        $this->fail("no frame of this run drew a coordination line in the room `{$installId}`");
-    }
-
-    /**
      * `key => slot` for one room of a frame — the assignment § 3.2 calls a pure function of the
      * rendered seat set.
      *

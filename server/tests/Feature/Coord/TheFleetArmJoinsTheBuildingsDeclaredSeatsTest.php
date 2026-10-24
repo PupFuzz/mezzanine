@@ -13,9 +13,9 @@ use Tests\TestCase;
  * variants D3 AT-D3-29 states: (i) `coder-solo` declared twice, (ii) `one-coder`'s cleared — the
  * cross-floor case, (iii) `two-reviewer`'s cleared — the same-floor control.
  *
- * ⚠ THE PORTAL HALVES ARE ASSERTED AS DATA. Their § 6.2 row is COORD-STORE.md § 6.1's reserved A22, which
- * this build does not add (see the card), so the floor fires nothing for them; what is held here is that
- * the model names them exactly where the rule says, and A19 nowhere they are.
+ * ⛔ THE ROWS ARE ASSERTED AS THE FLOOR FIRES THEM: `edgesOf()` is the one list `floor/floor-screen.js`
+ * writes through the animation set, so the A22 departure and arrival — D3 § 6.2's portal bird — and the
+ * room each is logged against are held here per floor, beside the data they are decided from.
  */
 class TheFleetArmJoinsTheBuildingsDeclaredSeatsTest extends TestCase
 {
@@ -96,8 +96,12 @@ class TheFleetArmJoinsTheBuildingsDeclaredSeatsTest extends TestCase
 
         $one = $out['floors']['one'][$this->ref('F1')];
         $two = $out['floors']['two'][$this->ref('F1')];
-        $this->assertSame([[], true, ['two/two-reviewer']], [$one['animations'], $one['departure'], $one['elsewhere']]);
+        $this->assertSame([[], true, []], [$one['animations'], $one['departure'], $one['arrivals']]);
         $this->assertSame([[], false, ['two/two-reviewer']], [$two['animations'], $two['departure'], $two['arrivals']]);
+
+        // AT-D3-29 (ii): one departure from floor one's birdhouse and one arrival at floor two's — and no A19.
+        $this->assertSame([['animation_id' => 'A22', 'install_id' => 'one']], $one['edges'], 'floor one does not fire exactly one portal departure');
+        $this->assertSame([['animation_id' => 'A22', 'install_id' => 'two']], $two['edges'], 'floor two does not fire exactly one portal arrival');
 
         $f2 = $out['floors']['one'][$this->ref('F2')];
         $this->assertSame(['one/one-pm'], $f2['arrivals'], 'F2 (the reverse) arrives at one-pm\'s desk from floor one\'s portal');
@@ -111,6 +115,8 @@ class TheFleetArmJoinsTheBuildingsDeclaredSeatsTest extends TestCase
 
         $one = $out['floors']['one'][$this->ref('F1')];
         $this->assertSame([['A19'], ['one/one-coder'], false, []], [$one['animations'], $one['travellers'], $one['departure'], $one['arrivals']]);
+        $this->assertSame([['animation_id' => 'A19', 'install_id' => 'one']], $one['edges'], 'the same-floor control does not fire exactly one traveller and no portal bird');
+        $this->assertSame([], $out['floors']['two'][$this->ref('F1')]['edges'], 'floor two fired a row for a post with no end on it');
         $this->assertSame([[], false, []], [$out['floors']['two'][$this->ref('F1')]['animations'],
             $out['floors']['two'][$this->ref('F1')]['departure'], $out['floors']['two'][$this->ref('F1')]['arrivals']]);
     }
@@ -167,5 +173,30 @@ class TheFleetArmJoinsTheBuildingsDeclaredSeatsTest extends TestCase
             $this->mutatedModules(['coord-join.js', "const FLEET_RESOLVING_CHECKS = Object.freeze(['checked']);",
                 "const FLEET_RESOLVING_CHECKS = Object.freeze(['checked', 'unchecked']);"]));
         $this->assertSame('two/two-reviewer', $loose['join']['coder-solo'] ?? null, 'the unchecked plant did not bite');
+    }
+
+    /**
+     * AT-D3-29's portal REDs, against the rows the floor fires: (seventh) a departure for a destination
+     * that resolves to NO desk — `F1` in variant (i) — is a bird leaving for nobody; (fifth) an unhoused
+     * origin sent through the birdhouse — `F4` — is a bird arriving for an agent the building does not
+     * house. Each is planted in `fleetAnimations()` and seen to fire an A22 the shipped tree does not.
+     */
+    public function test_reds_a_bird_leaving_for_nobody_and_one_arriving_from_outside(): void
+    {
+        $nobody = $this->drive($this->seats(), $this->mutatedModules(['../coord/coord-model.js',
+            '    const departure = originHere && far.length > 0;',
+            '    const departure = originHere && (far.length > 0 || round.targets.members.some((m) => !m.resolved));']));
+        $this->assertSame([['animation_id' => 'A22', 'install_id' => 'one']], $nobody['floors']['one'][$this->ref('F1')]['edges'],
+            'the seventh RED did not bite: a departure toward an unresolved destination fired no portal bird');
+        $this->assertSame([], $this->drive($this->seats())['floors']['one'][$this->ref('F1')]['edges'],
+            'the shipped tree sends a bird for a destination that resolves to no desk');
+
+        $outsider = $this->drive($this->seats(), $this->mutatedModules(['../coord/coord-model.js',
+            '    const arrivals = origin !== null && !originHere ? local : [];',
+            '    const arrivals = !originHere ? local : [];']));
+        $this->assertSame([['animation_id' => 'A22', 'install_id' => 'one']], $outsider['floors']['one'][$this->ref('F4')]['edges'],
+            'the fifth RED did not bite: an unhoused origin was not sent through the birdhouse');
+        $this->assertSame([], $this->drive($this->seats())['floors']['one'][$this->ref('F4')]['edges'],
+            'the shipped tree draws a bird for an agent this building does not house');
     }
 }

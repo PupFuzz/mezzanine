@@ -1398,10 +1398,11 @@ roundtable to compare against, which is not a disagreement; `undeclared` when th
 or malformed, under the malformed-name paragraph above applied to this key. The state rides every
 heartbeat as `roundtable_agent_name_check` ([§ 6.14](#614-reporterheartbeat)); the counters are
 `roundtable_agent_name_unchecked` and `roundtable_agent_name_disagreed` ([§ 9.3](#93-degradation-counters)).
-⚠ **The `selftest` member that mirrors `protocol_agent_name_in_roster` is added by the build that
-carries this field, not by its design**: [§ 6.14](#614-reporterheartbeat)'s `selftest` object is a
-capped object whose bound `tools/design/verify-event-schema.py` re-derives from its member table, and a
-member added on paper moves a figure the gate holds against the reporter that does not yet send it.
+**The act a disagreement fails is `selftest`'s `rt_name_ok`** ([§ 6.14](#614-reporterheartbeat)), the
+sibling of `protocol_agent_name_in_roster`: `fail` on `disagreed` and on a malformed declaration, and on
+nothing else. Its name is 10 B because the `selftest` object is capped and its ninth member fits only
+under 12 B — the arithmetic is [§ 6.14](#614-reporterheartbeat)'s, re-derived by
+`tools/design/verify-event-schema.py` (card#12239's build, the seat's ruling: no cap moves).
 
 **Where `cross_project.identity` lives is the framework's decision, not this document's**, exactly as
 the roster's path is: the key is read from the resolved config and compared, and a config shaped
@@ -3459,7 +3460,7 @@ split of the fields is stated under the table.
 | `open_attention` | int | — | no | 0…16, requests awaiting an `attention.resolved`; one per session, so the session cap bounds it | `0` |
 | `enabled` | bool | — | no | `config.enabled` ([§ 3.1](#31-the-seat-config-file)) | `true` |
 | `roundtable_agent_name` | slug | — | **yes** | `config.roundtable_agent_name` ([§ 3.1](#31-the-seat-config-file)'s *`roundtable_agent_name`*) verbatim; ≤ 48 B — the same bound as the protocol agent name's, for the same reason: a fleet-scope `coord.*` name is bounded at 48 B and a longer declaration could join nothing. `null` when the seat declares none, and absent from a reporter that predates the field (card#12239) | `"pm-solo"` |
-| `roundtable_agent_name_check` | enum | — | **yes** | `checked` \| `unchecked` \| `disagreed` \| `undeclared` — the four states of the row below, produced by [§ 3.1](#31-the-seat-config-file)'s *`roundtable_agent_name`* subsection against `cross_project.identity`; null or absent means a reporter that predates this field | `"checked"` |
+| `roundtable_agent_name_check` | enum | — | **yes** | `checked` \| `unchecked` \| `disagreed` \| `undeclared` — the four states of the row below, produced by [§ 3.1](#31-the-seat-config-file)'s *roundtable agent name* subsection against `cross_project.identity`; null or absent means a reporter that predates this field | `"checked"` |
 | `protocol_agent_name` | slug | — | **yes** | `config.protocol_agent_name` ([§ 3.1](#31-the-seat-config-file)) verbatim; ≤ 48 B — the bound [§ 18.6](#186-coordthread) gives a protocol agent name, which that row points at. It is a **figure** here and not a pointer because [§ 12.1](#121-validation-order) step 10 refuses only a bound this table states: left as a pointer, an over-long name would pass the ingest and fail at the fold against [D2 § 6.4](FLEET-STATE.md#64-ddl)'s 48 B column instead. `tools/design/verify-event-schema.py` holds this figure — and D2's column, D2 § 8.2.1's row and the store's migration — equal to § 18.6's; `null` on a seat that declares none, and absent from a reporter that predates this field — the paragraph below this table separates what the ingest accepts from what a current reporter owes | `"pm"` |
 | `protocol_agent_name_check` | enum | — | **yes** | `checked` \| `unchecked` \| `disagreed` \| `undeclared` — [§ 3.1](#31-the-seat-config-file)'s state table owns the set and the rule that produces each member; null or absent means a reporter that predates this field — the paragraph below this table separates what the ingest accepts from what a current reporter owes | `"checked"` |
 | `protocol_agent_role` | slug | — | **yes** | the coordination roster entry's `role`, relayed verbatim beside the name ([§ 3.1](#31-the-seat-config-file)'s *`protocol_agent_role`*); ≤ 48 B — the name's own pattern and bound, a **figure** here for the same reason as the row above, and held equal to it, with D2's column, D2 § 8.2.1's row, the store's migration and the ingest's registry, by `tools/design/verify-event-schema.py`; `null` unless `protocol_agent_name_check` is `checked` and the declared name selects exactly one entry carrying a slug-shaped `role`, and absent from a reporter that predates this field (card#11144) | `"pm"` |
@@ -3467,7 +3468,7 @@ split of the fields is stated under the table.
 | `counters` | object | — | no | ≤ 1.5 KiB serialized, all cumulative totals that persist across flusher restarts ([§ 9.3](#93-degradation-counters)); reduction rule below | see below |
 | `counters_omitted` | int | — | no | ≥ 0, counters dropped to fit the cap | `0` |
 | `predicates` | object | — | no | ≤ 512 B, `{name:{true:int,false:int}}`; one member per [§ 9.4](#94-the-predicate-constant-alarm) predicate, worst case **316 B** — **no reduction rule, and none owed** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5's named exemption; the arithmetic is below) | see below |
-| `selftest` | object | — | no | ≤ 256 B, `{name:"pass"\|"fail"}`, every key matching `^[a-z][a-z0-9_]*$` and ≤ 32 B; one member per check the member table below declares, worst case **234 B** — **no reduction rule, and none owed** (same exemption) | see below |
+| `selftest` | object | — | no | ≤ 256 B, `{name:"pass"\|"fail"}`, every key matching `^[a-z][a-z0-9_]*$` and ≤ 32 B; one member per check the member table below declares, worst case **254 B** — **no reduction rule, and none owed** (same exemption) | see below |
 | `config_fingerprint` | string | — | no | 16 hex chars = SHA-256 of `install_id\|seat_id\|ingest_url`, **token excluded** — the `ingest_url` of the site receiving the heartbeat, so a single-site seat's fingerprint is what it was before card#12180 | `"9f2c41a7be03d518"` |
 
 **Which members are the site's and which are the seat's (card#12180).** A heartbeat is built for one
@@ -3614,15 +3615,16 @@ written here.
   9,007,199,254,740,991**, a value no seat reaches and one rule 5's own clamp forbids exceeding. A
   fifth predicate fits while its name is ≤ 142 B. (Card#9527 retired a fifth,
   `attention_resolved_by_hook`, with the attention timeout it counted.)
-- **`selftest` — 234 B worst case, 256 B cap.** One member per check the table below declares. A
+- **`selftest` — 254 B worst case, 256 B cap.** One member per check the table below declares. A
   member serializes as `"name":"pass"` — 9 B plus the name — and both values are 4 B, so every
-  combination of results costs the same. The eight names total 153 B, so: `2 + 8×9 + 153 + 7 = 234 B`,
-  **22 B under the cap**. ⚠ Card#12180's `token_accepted` spent the headroom the previous sentence
-  here offered ("one further check fits at the 32 B per-key bound"): a ninth check now fits only
-  while its name is ≤ 12 B (`256 − 234 − 10`), and D2's `selftest_failed` column is bounded at 8
-  names by this cap ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)) — so the next check added to
-  this table owes a reduction rule or a wider cap, which is a rule-4 change, and this sentence is
-  the one that says so before that happens.
+  combination of results costs the same. The nine names total 163 B, so: `2 + 9×9 + 163 + 8 = 254 B`,
+  **2 B under the cap**. ⚠ Card#12180's `token_accepted` spent the headroom one sentence here used to
+  offer, and card#12239's `rt_name_ok` spent the 12 B that was left for a ninth check (`256 − 234 − 10`),
+  by its 10 B name rather than by a wider cap (the seat's ruling). D2's `selftest_failed` therefore holds
+  up to **9** names, **≤ 165 B** of them (`256 − 2 − 9×9 − 8`), which serializes shorter than the 8 names
+  of 175 B its worst-case block already prices ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)) —
+  so no worst-case figure moves. **No tenth check fits**: the next one owes a reduction rule or a wider
+  cap, which is a rule-4 change, and this sentence is the one that says so before that happens.
 
 **The `selftest` member set, declared here because it was declared nowhere.** [§ 2.1](#21-one-file-four-subcommands)
 says what the `selftest` subcommand asserts; this is the wire object it reports through, one member
@@ -3641,6 +3643,7 @@ against `degraded` — a member set stated nowhere is not implementable — one 
 | `predicate_discrimination` | every predicate in [§ 9.4](#94-the-predicate-constant-alarm)'s table is present in `predicates` and has a criterion its own volume can reach | [§ 9.4](#94-the-predicate-constant-alarm) |
 | `harness_payload_keys` | every payload key this reporter reads is present in that hook's vendored fixture, and every enum value it recognises is a member of the declared set | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s `SELFTEST-MUST` |
 | `protocol_agent_name_in_roster` | the declared protocol agent name is a member of the coordination roster **where one is readable on this box** — `fail` on `disagreed` and on a **malformed** declaration ([§ 3.1](#31-the-seat-config-file)'s state table: `undeclared`, with the value named in the subcommand's `detail` and never on the wire), and on nothing else, so this is the act a disagreement between the two identity surfaces fails. ⚠ A `pass` states that no disagreement was found, which on an `unchecked` seat is not a verification; `protocol_agent_name_check` is the field that says which. The relayed role ([§ 3.1](#31-the-seat-config-file), card#11144) never moves this verdict; the subcommand's `detail.roster_role` says what the role read found | [§ 3.1](#31-the-seat-config-file) |
+| `rt_name_ok` | the declared roundtable name equals `cross_project.identity` **where the coordination config carries one** — `fail` on `disagreed` and on a **malformed** declaration ([§ 3.1](#31-the-seat-config-file)'s *roundtable agent name* subsection), and on nothing else. A `pass` on an `unchecked` or `undeclared` seat states only that no disagreement was found; `roundtable_agent_name_check` says which. Short by necessity: the ninth member fits the object's cap only under 12 B (the arithmetic above, card#12239) | [§ 3.1](#31-the-seat-config-file) |
 
 **A check the subcommand could not measure is `not_measured`, and it is neither a pass nor a fail.**
 `tls_verify` and `schema_version_accepted` are measured by one `GET /api/ingest/health`
@@ -3771,7 +3774,7 @@ case, which is what makes this exemption checkable rather than asserted.
     "selftest":{"sanitizer_fixtures":"pass","harness_payload_keys":"pass",
                 "config_readable":"pass","tls_verify":"pass",
                 "schema_version_accepted":"pass","predicate_discrimination":"pass",
-                "protocol_agent_name_in_roster":"pass"},
+                "protocol_agent_name_in_roster":"pass","rt_name_ok":"pass"},
     "config_fingerprint":"9f2c41a7be03d518"} }
 ```
 
@@ -4931,7 +4934,7 @@ the two were equal.
 | `config_invalid` | the config failed validation at runtime (e.g. a non-`https` or unparseable `ingest_url`, a `proxy_url` that is not an `http(s)://` URL, or a `ca_file` that is not an absolute path or that the seat cannot read; [§ 3.1](#31-the-seat-config-file) lists every rule). Kept per site: a site-scoped error counts on the site it names, a seat-scoped error on every site ([§ 3.1](#sites-one-seat-reporting-to-several-mezzanine-deployments)) | `degraded`; the flusher keeps spooling and sends nothing **to the site(s) the error scopes to** — nothing at all for a seat-scoped error, and nothing to that site alone for a site-scoped one, while every other site keeps receiving and carries no member for it |
 | `auth_refused` | a site's ingest answered a batch `401 unauthenticated` (the token does not resolve there) or `403 identity_mismatch` (it resolves but is bound to another seat's identity), or a health probe `401 unauthenticated` (the probe cannot answer `403`, [§ 6.14](#614-reporterheartbeat)) — **the body's `error`, not the status alone**: a `401`/`403` whose body is not the ingest's is an intermediary's answer and is retried, not stopped ([§ 11.5](#115-retry-and-backoff)) — so that site's lane entered § 11.5's **auth stop**: cursor kept, the persisted request kept, nothing quarantined, nothing sent and nothing probed until the flusher restarts on a corrected config (card#12180). Per site | **the lane stops**, and the surfaces are local: `REJECTED.<site>.txt` and the log carry the status and the site — a `401` means the token, a `403` means the pair it was issued for — and `selftest`'s `token_accepted` is `fail` for a `401`. ⚠ **It raises no `degraded` member, deliberately**: the one site that could render it is the one refusing the heartbeat that would carry it, and the other sites' heartbeats carry no fact about it (per site), so a member here could never be observed — a check that cannot fire is a decoration |
 | `roundtable_agent_name_unchecked` | the seat declares a roundtable name and no coordination config, or none carrying `cross_project.identity`, was readable on this box to check it against ([§ 3.1](#31-the-seat-config-file)'s *`roundtable_agent_name`*, card#12239) | informational, the sibling of the row two below: the fleet-scope join rests on the declaration alone |
-| `roundtable_agent_name_disagreed` | a `cross_project.identity` **was** readable here and the declared roundtable name differs from it ([§ 3.1](#31-the-seat-config-file)'s *`roundtable_agent_name`*) | the build's `selftest` member fails on it, as `protocol_agent_name_in_roster` fails on `protocol_agent_name_disagreed`; the heartbeat carries the name as declared and `disagreed`, and no fleet-scope object resolves to this desk |
+| `roundtable_agent_name_disagreed` | a `cross_project.identity` **was** readable here and the declared roundtable name differs from it ([§ 3.1](#31-the-seat-config-file)'s *`roundtable_agent_name`*) | `selftest`'s `rt_name_ok` fails on it, as `protocol_agent_name_in_roster` fails on `protocol_agent_name_disagreed`; the heartbeat carries the name as declared and `disagreed`, and no fleet-scope object resolves to this desk |
 | `protocol_agent_name_unchecked` | the seat declares a protocol agent name and **no coordination roster was readable on this box** to check it against ([§ 3.1](#31-the-seat-config-file)) | informational, and the fleet-wide measurement of how much of the join rests on an unchecked declaration. **It raises no `degraded` member on purpose**: the state rides every heartbeat as `protocol_agent_name_check`, dated by `uptime_s` beside it, which is strictly more than a badge carries |
 | `protocol_agent_name_disagreed` | a roster **was** readable here and the declared name is not a member of it — the two identity surfaces disagree ([§ 3.1](#31-the-seat-config-file)) | the `selftest` check `protocol_agent_name_in_roster` **fails**, so the act fails visibly and `selftest` carries the failure on every heartbeat; the name is emitted exactly as declared and **resolves to no desk**. **It raises no `degraded` member, deliberately**: the reporter is not degraded — it is reporting a coordination-config defect correctly — and badging the seat's own health would name the wrong subject |
 | `project_label_home_suppressed` | a `cwd` equal to the home directory, whose basename is the OS username, so `project_label` was sent as `null` ([§ 6.1](#61-sessionstart)) | informational, and the record that the § 1 non-goal is enforced rather than merely stated. It also distinguishes this `null` from a `null` caused by an absent `cwd` |
@@ -5277,8 +5280,8 @@ batch. Retrying is correct; the duplicates it creates must be free.
 > days, but a **quiet** seat — one emitting little more than its 1,440 daily heartbeats — takes far
 > longer. A heartbeat is not a ~500 B typical event: its `data` alone allows 1.5 KiB of counters plus
 > 512 B of predicates plus 256 B of selftest, and the worked example in
-> [§ 6.14](#614-reporterheartbeat) serializes to **1,567 B**. At 1,567 B, 1,440/day is
-> **~2.26 MB/day**, so a heartbeat-only seat fills 32 MiB in **~14.87 days**. Two earlier readings of
+> [§ 6.14](#614-reporterheartbeat) serializes to **1,587 B**. At 1,587 B, 1,440/day is
+> **~2.29 MB/day**, so a heartbeat-only seat fills 32 MiB in **~14.68 days**. Two earlier readings of
 > this same paragraph were wrong in the same direction — 50+ days from a 500 B assumption, then
 > ~25 days from a "~900 B" measurement of the worked example **taken with its 524 B `counters` object
 > left out**, which is why the third one is *measured by the gate* rather than read off:
@@ -5292,8 +5295,8 @@ batch. Retrying is correct; the duplicates it creates must be free.
 > `card#11144` added to this event ([§ 6.14](#614-reporterheartbeat)), after the two `card#9296`
 > added — and widened once, when card#9527 retired the `predicates` member
 > `attention_resolved_by_hook`, which is the gate re-measuring rather than a reader re-reading —
-> which argues for holding the age cap rather than relaxing it: 14.87 days still leaves the oldest
-> event 4.87 days past a 10-day dedup window while it is still queued, and a spool *line* carries the
+> which argues for holding the age cap rather than relaxing it: 14.68 days still leaves the oldest
+> event 4.68 days past a 10-day dedup window while it is still queued, and a spool *line* carries the
 > event plus its `v`/`t` wrapper ([§ 11.2](#112-spool-line-format)), so the real fill is marginally
 > faster than the event bytes alone. Residency has to be bounded by age, and the age bound is the
 > one the coupling is stated against.
@@ -7548,7 +7551,7 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | `reporter.heartbeat.degraded` length | 12 elements | **Derived** — not chosen: the array carries at most one of each declared member, so its bound *is* the size of [§ 9.3](#93-degradation-counters)'s member table and moves only when that table moves | [§ 9.3](#93-degradation-counters) |
 | `reporter.heartbeat.counters` cap | 1.5 KiB | **Chosen** — above [§ 9.3](#93-degradation-counters)'s ~30 named counters at ~32 B an entry, and below what its open-ended counter families can reach. It is the one heartbeat object a seat can grow past its cap, which is why it is the one that states a reduction rule | [§ 6.14](#614-reporterheartbeat) |
 | `reporter.heartbeat.predicates` cap | 512 B; worst case **316 B** | **Derived** — one member per [§ 9.4](#94-the-predicate-constant-alarm) predicate: `2 + 4×(21 + 32) + 99 + 3`, both branch counts at the 16-digit JS-safe-integer ceiling. 196 B spare, so the cap is a guard rather than a path and the field owes no reduction rule ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5). Re-derived by `tools/design/verify-event-schema.py`, never trusted as written | [§ 6.14](#614-reporterheartbeat) |
-| `reporter.heartbeat.selftest` cap | 256 B; worst case **234 B** | **Derived** — one member per check [§ 6.14](#614-reporterheartbeat)'s member table declares: `2 + 8×9 + 153 + 7`. 22 B spare, same exemption, re-derived by the same tool; card#12180's `token_accepted` is the eighth, and § 6.14 states what the ninth would owe | [§ 6.14](#614-reporterheartbeat) |
+| `reporter.heartbeat.selftest` cap | 256 B; worst case **254 B** | **Derived** — one member per check [§ 6.14](#614-reporterheartbeat)'s member table declares: `2 + 9×9 + 163 + 8`. 2 B spare, same exemption, re-derived by the same tool; card#12180's `token_accepted` is the eighth and card#12239's `rt_name_ok` the ninth, and § 6.14 states that no tenth fits | [§ 6.14](#614-reporterheartbeat) |
 | Worst-case heartbeat `data` | 2,923 B of the 3 KiB cap | **Derived** — every field at its worst at once, each integer at its own stated bound; [§ 6.14](#614-reporterheartbeat) owns that composition and it is deliberately not restated here. 149 B spare, so the counters reduction rule alone is what keeps a maximally-degraded heartbeat inside [§ 4.3](#43-common-per-event-fields)'s cap. Unlike the two rows above, this figure is **hand-verified**: `tools/design/verify-event-schema.py` does not re-derive it | [§ 6.14](#614-reporterheartbeat) |
 | Wire enum fields, and how many are classified | all of them — the figure is deliberately not written here: `python3 tools/design/verify-event-schema.py` prints it on every run, as `enum fields re-derived: N, M classified` | **Derived** — re-derived from [§ 6](#6-event-kinds)'s field tables by `tools/design/verify-event-schema.py` on every run, which fails on any row absent from [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s classification table. Stated as a population, never as a maintained list | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
 | Session `inferred_silence` | 90 min | Derived — 1.5× the 60 min `Task` orphan ceiling, the longest legitimate silence inside a live session **that is not waiting on a human**; a session holding an open attention request is never closed by it (card#9527). Cheap to be wrong now that an early close is reversible (`session_reopened` re-derives it) | [§ 6.2](#62-sessionend) |
@@ -8765,6 +8768,7 @@ and not derived (card#12239 r5) — read off the rule above rather than asserted
 {
   "post_ref": "AIMLA-org/aimla-coordination#742",
   "thread_ref": "AIMLA-org/aimla-coordination#742",
+  "scope": "install",
   "install_id": "aimla",
   "from": "pm",
   "attribution": "resolved",
@@ -8787,6 +8791,7 @@ produce, which is how a worked example becomes a second, disagreeing specificati
 ```json
 {
   "thread_ref": "AIMLA-org/aimla-coordination#742",
+  "scope": "install",
   "install_id": "aimla",
   "lifecycle": "closed",
   "carrier": "announce",

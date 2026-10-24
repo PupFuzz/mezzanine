@@ -208,7 +208,7 @@ const PREDICATES = ['attention_source_permission_hook', 'descriptor_allowlisted'
  * the heartbeat reports, so the two cannot drift apart. */
 const SELFTEST_CHECKS = ['config_readable', 'tls_verify', 'schema_version_accepted', 'token_accepted',
   'sanitizer_fixtures', 'predicate_discrimination', 'harness_payload_keys',
-  'protocol_agent_name_in_roster'];
+  'protocol_agent_name_in_roster', 'rt_name_ok'];
 /* The checks that are a fact about ONE SITE (§ 6.14, card#12180): each lane measures its own, and the
  * one-shot subcommand reports a block per site and aggregates these four into `checks`. */
 const SITE_CHECKS = ['config_readable', 'tls_verify', 'schema_version_accepted', 'token_accepted'];
@@ -592,16 +592,21 @@ function readCrossProjectIdentity(file) {
 
 function resolveRoundtable(cfg) {
   const name = declaredRoundtableName(cfg);
-  if (name === null) return { name: null, check: 'undeclared' };
+  const v = cfg.roundtable_agent_name;
+  // Present and not a valid declaration: it declares nothing, the seat keeps reporting, and `rt_name_ok`
+  // fails with the value named in the subcommand's detail and nowhere else — the protocol name's rule.
+  const malformed = name === null && v !== undefined && v !== null
+    ? (typeof v === 'string' ? v : `<${Array.isArray(v) ? 'array' : typeof v}>`) : null;
+  if (name === null) return { name: null, check: 'undeclared', malformed };
   const site = rosterSite();
   const read = site.path === null ? { identity: null } : readCrossProjectIdentity(site.path);
   if (read.identity === null) {
     count('roundtable_agent_name_unchecked');
-    return { name, check: 'unchecked' };
+    return { name, check: 'unchecked', malformed: null, config: site.path, read_error: read.error ?? null };
   }
-  if (read.identity === name) return { name, check: 'checked' };
+  if (read.identity === name) return { name, check: 'checked', malformed: null, config: site.path };
   count('roundtable_agent_name_disagreed');
-  return { name, check: 'disagreed' };
+  return { name, check: 'disagreed', malformed: null, config: site.path, identity: read.identity };
 }
 
 /* ── P-6: a secret VALUE must never reach an output stream, a log, a traceback or an argv ────
@@ -4663,6 +4668,14 @@ function runSelftestChecks(config, cp, errors) {
       read_via: declaration.via, roster_error: declaration.error, roster_names: declaration.roster_names,
       roster_role: declaration.roster_role, malformed_declaration: declaration.malformed }
     : { declared: null, protocol_agent_name_check: null, reason: 'no readable config' };
+  // § 6.14's `rt_name_ok` (card#12239): `fail` on `disagreed` and on a malformed declaration, and on
+  // nothing else — `protocol_agent_name_in_roster`'s rule, against the config's `cross_project.identity`.
+  const rt = declaration ? declaration.roundtable : null;
+  results.rt_name_ok = rt ? rt.check !== 'disagreed' && rt.malformed === null : null;
+  detail.rt_name_ok = rt
+    ? { declared: rt.name, roundtable_agent_name_check: rt.check, config: rt.config ?? null,
+      cross_project_identity: rt.identity ?? null, read_error: rt.read_error ?? null, malformed_declaration: rt.malformed }
+    : { declared: null, roundtable_agent_name_check: null, reason: 'no readable config' };
   return { results, detail, declaration };
 }
 

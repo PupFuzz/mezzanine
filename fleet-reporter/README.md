@@ -73,9 +73,10 @@ selects as `protocol_agent_role` on every heartbeat (§ 3.1, card#11144): verbat
 fleet's cross-install coordination repository. On the same config read the reporter compares it with
 that config's `cross_project.identity` and sends the name and the check's state
 (`roundtable_agent_name_check`) on every heartbeat, counting `roundtable_agent_name_unchecked` or
-`roundtable_agent_name_disagreed`. `selftest` gains no check for it in this build: the ninth member
-D1 § 6.14 describes for it does not fit the `selftest` object's 256 B cap (§ 6.14's own arithmetic), so
-a disagreement shows on the heartbeat's check state alone until that cap is re-derived.
+`roundtable_agent_name_disagreed`. `selftest`'s `rt_name_ok` fails when that identity is readable and
+differs, or when the key holds a malformed name, and passes otherwise; its detail names the config read
+and the identity found. The name is 10 B because it is the `selftest` object's ninth member, which fits
+the object's 256 B cap only under 12 B (§ 6.14's arithmetic).
 
 Every `turn.start` carries `console_url` (§ 6.3, card#9416): the address of the session's console on
 claude.ai, read from the tail of the file the hook's `transcript_path` names — the newest

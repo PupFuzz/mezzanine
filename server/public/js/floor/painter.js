@@ -14,7 +14,7 @@
  * A rule found here that is not in the scene is in the wrong file.
  *
  * ⛔ ONE SPACE: SVG (§ 13 row 15 leaves the surface to the builder). Tiles, desks, nameplates,
- * bubbles and the thread line are drawn into one `<svg>` whose `viewBox` is the camera's view
+ * bubbles and the coordination birds are drawn into one `<svg>` whose `viewBox` is the camera's view
  * (`wire/camera.js`, Appendix B row 15) over the scene's space, so the camera scales them together — the lesson `docs/design/floor-preview/README.md`
  * records of a bubble no gate measured. SVG is resolution-independent, which is § 4.5's property;
  * the bridge tileset's raster tiles resample, and that is their residue (§ 10.3), not the layer's. The
@@ -109,9 +109,6 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 .gauge-track{fill:var(--scene-gauge-track)}.gauge-fill{fill:var(--scene-gauge-fill)}
 .bubble{fill:var(--scene-paper);stroke:var(--scene-trim)}.bubble-trail{fill:var(--scene-paper);stroke:var(--scene-trim)}.bubble-source{fill:var(--scene-bubble-source)}
 .lighting-dimmed{opacity:.72}.lighting-dark{opacity:.45}.lighting-desaturated{filter:saturate(.3)}
-.thread{fill:none;stroke:var(--scene-thread);stroke-width:3}.thread.ended{stroke-dasharray:8 6;opacity:.6}
-.thread.thread-moving{stroke-dasharray:4 8;stroke-linecap:round;animation-name:thread-flow;animation-iteration-count:infinite}
-@keyframes thread-flow{from{stroke-dashoffset:12}to{stroke-dashoffset:0}}
 .strip-header{font-weight:bold}
 .decor{fill:var(--lamp);opacity:.25}.decor-moving{animation:decor ease-in-out infinite alternate}
 @keyframes decor{from{opacity:.12}to{opacity:.34}}
@@ -574,12 +571,14 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                 continue;
             }
 
-            if (fx.animation_id === 'A19') {
+            if (fx.animation_id === 'A19' || fx.animation_id === 'A22') {
                 // card#12241: the bird carries the envelope along its own arc, the wing alternating every
                 // frame, and on touchdown sets the envelope down on the desk, where it rests and fades —
                 // nothing persists. Reduced motion (§ 6.4): the still envelope at the desk for the moving
                 // form's own duration, then gone (the operator: *"a still envelope that disappears after
-                // some time"*).
+                // some time"*). A22's portal bird is the same flight (`scene.js`'s `travel()`): to the
+                // birdhouse's hole with no rest, where its reduced form is the still envelope at the
+                // portal, or from the hole to the desk.
                 const restAt = { x: fx.to.x + 14, y: fx.to.y - 4 };
                 const rest = (n) => node('g', { transform: `translate(${restAt.x} ${restAt.y}) rotate(-8)`, ...n }, layer);
 
@@ -884,22 +883,6 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                 class: d.motion ? `decor decor-${d.decoration} decor-moving` : `decor decor-${d.decoration}`,
                 style: d.motion ? `animation-duration:${d.cycle_ms / 1000}s` : null,
             }, tiles);
-        }
-
-        const lines = node('g', { class: 'coord' }, svg);
-
-        for (const line of scene.lines) {
-            node('polyline', {
-                points: line.ends.map((p) => `${p.x},${p.y}`).join(' '),
-                class: [line.ended ? 'thread ended' : 'thread', line.motion ? 'thread-moving' : null].filter(Boolean).join(' '),
-                style: line.frames > 0
-                    ? `animation-duration:${(line.frames * line.frame_interval_ms) / 1000}s;animation-timing-function:steps(${line.frames})`
-                    : null,
-            }, lines);
-
-            if (line.label !== null) {
-                text(lines, { x: line.label.x, y: line.label.y, text: line.label.text }, 'thread-label');
-            }
         }
 
         const desks = node('g', { class: 'desks' }, svg);

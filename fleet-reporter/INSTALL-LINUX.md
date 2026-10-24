@@ -1047,6 +1047,11 @@ D1 § 6.14:
   The same detail's `roster_role` shows the role the seat relays from its roster entry (card#11144),
   or why it relays `null`: *no role: the entry carries none*, *not a slug: …*, or *ambiguous: N
   entries named X* when two roster entries share the declared name. None of those fails the command.
+- **`rc=1` with `rt_name_ok` failing** — the declared `roundtable_agent_name` differs from
+  `cross_project.identity` in the coordination config the command read, or the key holds a value that is
+  not a valid name (card#12239). `detail.rt_name_ok` names the config (`config`), the identity it found
+  (`cross_project_identity`) and, for an invalid value, `malformed_declaration`. Copy the identity into
+  the reporter config, or remove the key; the seat keeps reporting either way.
 - **`rc=2`** — no check failed and at least one is `not_measured`. A site's probe reached no ingest
   (`detail.sites.<name>.probe_error`), or the ingest answered without its accepted set
   (`detail.sites.<name>.http_status`): an outage page, or a `401`/`403` something in front of the ingest

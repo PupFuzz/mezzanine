@@ -81,9 +81,10 @@
 
 import { Building } from '../wire/building.js';
 import { DeskFloor } from '../desk/desk-floor.js';
-import { LOOP_FPS, heldRendering } from '../wire/animation-set.js';
+import { LOOP_FPS } from '../wire/animation-set.js';
 import { DrillDownPanel } from '../drilldown/drilldown-panel.js';
-import { coordModel, fleetModel } from '../coord/coord-model.js';
+import { coordModel, edgesOf, fleetModel, unresolvedEnds } from '../coord/coord-model.js';
+import { PostMemory } from '../coord/post-memory.js';
 import { correctedNowMs } from '../wire/duration.js';
 import { floorAgeReadouts } from '../wire/age-readout.js';
 import { floors, heldBody, roomsOf } from '../lobby/lobby-model.js';
@@ -105,6 +106,7 @@ import {
     placeRooms,
     RoomClock,
 } from './floor-layout.js';
+
 
 /**
  * § 5.5's *floor map is short N desks* — bare on a one-room floor, whose single map needs no
@@ -265,11 +267,8 @@ export class FloorScreen {
     /** § 4.2's wall clock and sky — A17's driver (`floor-layout.js`'s `RoomClock`), `null` until a LIVE feed (§ 6.5). */
     #room;
 
-    /**
-     * The `post_ref`s whose A19/A20 rows have been written, so a redelivery draws nothing new —
-     * trimmed on every draw to the posts the protocol still holds (`#coordinate`, § 14 item 25).
-     */
-    #drawn = new Set();
+    /** The posts this page has already drawn (`coord/post-memory.js`; FLOOR.md § 5.7, § 12). */
+    #drawn = new PostMemory();
 
     /** The tapped log — the one AT-D3-1 reads, with this render's rows kept for the scene. */
     #tap;
@@ -1407,156 +1406,71 @@ export class FloorScreen {
     }
 
     /**
-     * § 5.7's coordination layer, PER ROOM — "a round is drawn in the ROOM its own `install_id`
-     * names and in no other" (clause 3), and a floor is N rooms, so the model is run once per room
-     * against that room's own join.
+     * § 5.7's coordination layer over the posts THIS render applied — every coordination render is an
+     * edge fired by one `coord.round` on arrival, and nothing is held (card#12239). An install-scope post
+     * is drawn in its own room through the install arm of the join; a fleet-scope post through the fleet
+     * arm, over every held seat, each end a desk on this floor or on another (`fleetModel()`).
      */
     #coordinate(floor, seatsByRoom, positions, journal, at) {
-        const messages = this.#client.coordMessages;
+        const messages = journal
+            .filter((entry) => entry.t === 'coord.round' && entry.outcome === 'applied' && entry.round !== null && entry.round !== undefined)
+            .map((entry) => ({ t: 'coord.round', coord_round: entry.round }));
         const rooms = {};
-        const threads = [];
 
         for (const room of floor.rooms) {
-            const { join, reasons, checks } = buildJoin(seatsByRoom.get(room.install_id) ?? []);
-            const model = coordModel(messages, {
-                install_id: room.install_id,
-                join,
-                reasons,
-                checks,
-                truncated: this.#client.coordTruncated,
-            });
+            const model = coordModel(messages, { install_id: room.install_id, ...buildJoin(seatsByRoom.get(room.install_id) ?? []) });
 
-            // The line's endpoints are DESK POSITIONS, which is why this render is step 7's at all:
-            // "drawing a line between two desks needs their floor positions" (§ 14 item 24).
-            //
-            // ⛔ `held` IS A18's RENDERING, DECIDED ONCE HERE AS A DESK's IS IN ITS DESK RENDER: the
-            // set logs it and the scene draws it, so neither can answer `motion` differently. A floor
-            // § 9 F6 stilled withholds permission exactly as it does for a desk's loop — "a frozen
-            // floor that still animates" — and the desk floor's own stilled reading is the one read.
-            const lines = model.threads.map((thread) => Object.freeze({
-                ...thread,
-                held: thread.animations.includes('A18')
-                    ? Object.freeze(heldRendering('A18', !this.#desks.stilled, this.#set.reduce))
-                    : null,
-                ends: Object.freeze(thread.endpoints.map((seatId) => {
-                    const at_desk = positions.get(`${room.install_id}/${seatId}`) ?? null;
+            rooms[room.install_id] = model;
 
-                    return Object.freeze({
-                        seat_id: seatId,
-                        x: at_desk?.x ?? null,
-                        y: at_desk?.y ?? null,
-                    });
-                })),
-            }));
+            for (const round of model.rounds) {
+                if (!this.#drawn.first(round.post_ref)) {
+                    continue;
+                }
 
-            rooms[room.install_id] = Object.freeze({ ...model, threads: Object.freeze(lines) });
-            threads.push(...lines);
-
-            this.#roundRows(room.install_id, model, journal, at);
-        }
-
-        // § 6.2 A18 over every thread on the floor: entered while the thread is open with two
-        // endpoints that resolve, left when either stops being true.
-        this.#set.lines(threads, at);
-
-        // § 5.7 / § 14 item 25: the record of animated posts takes no figure of its own — it is
-        // trimmed to the `post_ref`s the protocol still holds, so it is bounded by the protocol's
-        // cap. The stated cost: a post redelivered after its thread was evicted animates again,
-        // because nothing held says it was drawn before.
-        const held = new Set(messages
-            .filter((m) => m.t === 'coord.round')
-            .map((m) => m.coord_round?.post_ref ?? null));
-
-        for (const ref of this.#drawn) {
-            if (!held.has(ref)) {
-                this.#drawn.delete(ref);
+                this.#logUnresolved(round);
+                this.#fire(edgesOf(round, room.install_id), round.post_ref, at);
             }
         }
 
-        // card#12239: the FLEET-scope posts, which belong to no room. Their names join through every held
-        // seat's `roundtable_agent_name` (D2 § 8.3.3 rule 1's fleet arm), and an end is on this floor when
-        // its desk was drawn here — `positions` is keyed `install_id/seat_id`, the fleet arm's own key.
+        // The FLEET-scope posts, which belong to no room: names join through every held seat's
+        // `roundtable_agent_name` (D2 § 8.3.3 rule 1's fleet arm), and an end is on this floor when its
+        // desk was drawn here — `positions` is keyed `install_id/seat_id`, the fleet arm's own key.
         const fleet = fleetModel(messages, { ...buildFleetJoin(this.#client.seats.values()), here: new Set(positions.keys()) });
 
-        this.#fleetRows(fleet, journal, at);
+        for (const round of fleet.rounds) {
+            if (!this.#drawn.first(round.post_ref)) {
+                continue;
+            }
+
+            this.#logUnresolved(round);
+            this.#fire(edgesOf(round), round.post_ref, at);
+        }
 
         return { rooms: Object.freeze(rooms), fleet };
     }
 
     /**
-     * A19 and A20's rows for the FLEET-scope `coord.round`s this journal carried (card#12239) — the
-     * install-scope rule below, through the fleet arm: one traveller per destination desk on this floor
-     * from an origin desk on this floor, one ring for a broadcast from an origin desk here and nothing
-     * else. Each row names the ORIGIN desk's room, the room the edge leaves from.
-     *
-     * The portal halves (`portal.departure`, `portal.arrivals`) fire nothing: their row is COORD-STORE.md
-     * § 6.1's reserved A22, which is not in the animation set (D3 AT-D3-29: until the row exists the
-     * post fires nothing for them).
+     * Write one drawn post's § 6.2 rows — the list `edgesOf()` decided — through the animation set's
+     * entry point for each: A19's traveller, A20's ring, A22's portal bird.
      */
-    #fleetRows(fleet, journal, at) {
-        for (const entry of journal) {
-            if (entry.t !== 'coord.round' || entry.outcome !== 'applied' || entry.install_id !== null) {
-                continue;
-            }
+    #fire(edges, postRef, at) {
+        const entry = { A19: 'envelope', A20: 'broadcast', A22: 'portal' };
 
-            const round = fleet.rounds.find((r) => r.post_ref === entry.coord_ref);
-
-            if (round === undefined || this.#drawn.has(entry.coord_ref) || round.animations.length === 0) {
-                continue;
-            }
-
-            this.#drawn.add(entry.coord_ref);
-
-            const room = round.origin.agent.seat_id.split('/')[0];
-
-            if (round.animations.includes('A19')) {
-                for (let i = 0; i < round.travellers.length; i++) {
-                    this.#set.envelope(room, round.post_ref, at);
-                }
-            }
-
-            if (round.animations.includes('A20')) {
-                this.#set.broadcast(room, round.post_ref, at);
-            }
+        for (const edge of edges) {
+            this.#set[entry[edge.animation_id]](edge.install_id, postRef, at);
         }
     }
 
     /**
-     * A19 and A20's rows for the `coord.round` messages this journal carried.
-     *
-     * ⛔ ONE ENVELOPE PER RESOLVED DESTINATION (§ 6.2 A19: "from the origin desk to EACH destination
-     * desk"), and "a destination that does not resolve gets no envelope and no line, and the ones
-     * that do still get theirs". ONE ring per broadcast post (A20).
-     *
-     * ⛔ A REDELIVERED POST DRAWS NOTHING NEW. D2 publishes no `seq` for these messages, so
-     * `post_ref` is the whole of a post's identity and a repeat is the one path that reaches this
-     * feed twice for one real post. The set below is *which posts have been ANIMATED*, which is a
-     * different question from `coordModel()`'s own dedupe of a message LIST and is why it is not a
-     * second copy of it.
+     * § 5.7 property 1's event-log line for a post just drawn: every end that resolves to no desk, with
+     * D2's reason in words, or that rests on an `unchecked` declaration. A post every end of which
+     * resolved writes no line.
      */
-    #roundRows(installId, model, journal, at) {
-        for (const entry of journal) {
-            if (entry.t !== 'coord.round' || entry.outcome !== 'applied' || entry.install_id !== installId) {
-                continue;
-            }
+    #logUnresolved(round) {
+        const ends = unresolvedEnds(round);
 
-            const round = model.rounds.find((r) => r.post_ref === entry.coord_ref);
-
-            if (round === undefined || this.#drawn.has(entry.coord_ref)) {
-                continue;
-            }
-
-            this.#drawn.add(entry.coord_ref);
-
-            if (round.animations.includes('A19')) {
-                for (let i = 0; i < round.targets.desks.length; i++) {
-                    this.#set.envelope(installId, round.post_ref, at);
-                }
-            }
-
-            if (round.animations.includes('A20')) {
-                this.#set.broadcast(installId, round.post_ref, at);
-            }
+        if (ends.length > 0) {
+            this.#client.record(`coordination post ${round.post_ref}: ${ends.map((e) => `${e.name} ${e.words}`).join('; ')}`);
         }
     }
 }

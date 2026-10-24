@@ -645,7 +645,7 @@ r, rep = selftest(s1)
 gets_by_selftest = INGEST.gets - gets_before
 eq("the checks this build declares are exactly the reported set",
    ["config_readable", "harness_payload_keys", "predicate_discrimination",
-    "protocol_agent_name_in_roster", "sanitizer_fixtures", "schema_version_accepted", "tls_verify",
+    "protocol_agent_name_in_roster", "rt_name_ok", "sanitizer_fixtures", "schema_version_accepted", "tls_verify",
     "token_accepted"],
    sorted(rep.get("checks", {}).keys()))
 eq("  … and a single-site config reports one site block, `default` (§ 6.14, card#12180)", ["default"],
@@ -4475,6 +4475,7 @@ def drive_rt(box, reporter: Path = REPORTER) -> dict:
     s, _env = box
     hb = last_heartbeat(s) or {}
     c = hb.get("counters", {})
+    d["rt_ok"] = (d["rc"], (hb.get("selftest") or {}).get("rt_name_ok", "<absent>"))
     d["rt"] = {"name": hb["roundtable_agent_name"] if "roundtable_agent_name" in hb else "<absent>",
                "check": hb["roundtable_agent_name_check"] if "roundtable_agent_name_check" in hb else "<absent>",
                "unchecked": c.get("roundtable_agent_name_unchecked", 0),
@@ -4522,6 +4523,17 @@ r_unval = drive_rt(rt_box("red-unvalidated", declare="PM Solo"), reporter=plant(
     ("  const v = cfg.roundtable_agent_name;\n  return typeof v === 'string' && AGENT_NAME_RE.test(v) ? v : null;",
      "  const v = cfg.roundtable_agent_name;\n  return typeof v === 'string' ? v : null;")))
 eq("RED: a reporter that skips the slug check puts `PM Solo` on the wire", "PM Solo", r_unval["rt"]["name"])
+
+# § 6.14's `rt_name_ok`: the act a disagreement fails, and nothing else fails it (the exit code and the
+# heartbeat's member). `selftest` exits 1 on `disagreed` and on a malformed declaration, 0 otherwise.
+eq("rt_name_ok — passes on checked, unchecked (two ways) and undeclared; FAILS on disagreed and on a malformed "
+   "declaration, with selftest's exit 1",
+   [(0, "pass"), (1, "fail"), (0, "pass"), (0, "pass"), (0, "pass"), (1, "fail")],
+   [x["rt_ok"] for x in (rt_checked, rt_disagreed, rt_no_block, rt_no_config, rt_absent, rt_bad)])
+r_nofail = drive_rt(rt_box("red-rt-never-fails", coord=dict(AT27_ROSTER, cross_project={"identity": "coder-solo"})), reporter=plant(
+    ("  results.rt_name_ok = rt ? rt.check !== 'disagreed' && rt.malformed === null : null;",
+     "  results.rt_name_ok = rt ? true : null;")))
+eq("RED: a reporter whose rt_name_ok never fails passes a disagreement silently", (0, "pass"), r_nofail["rt_ok"])
 
 redgreen("a declared roundtable name is checked against cross_project.identity, in four states (D1 § 3.1, card#12239)",
          f"checked against the roster -> {r_wrong_key['rt']['check']!r}; null omitted -> {r_omit['rt']['name']!r}; "
@@ -8250,9 +8262,9 @@ else:
     # card#12239 adds § 6.14's roundtable declaration pair to every heartbeat, by name — the one addition
     # to the field set since the previous build, and the only one this comparison admits.
     eq("  … the heartbeat's field set is the previous build's plus card#12239's roundtable pair, its selftest "
-       "members are § 6.14's table (the previous set plus token_accepted), and its config_fingerprint equals the "
+       "members are § 6.14's table (the previous set plus token_accepted and card#12239's rt_name_ok), and its config_fingerprint equals the "
        "previous build's for the same config",
-       (sorted(list(old_hb["data"]) + ["roundtable_agent_name", "roundtable_agent_name_check"]), sorted(SELFTEST_MEMBERS), sorted(old_hb["data"]["selftest"]) + ["token_accepted"],
+       (sorted(list(old_hb["data"]) + ["roundtable_agent_name", "roundtable_agent_name_check"]), sorted(SELFTEST_MEMBERS), sorted(sorted(old_hb["data"]["selftest"]) + ["token_accepted", "rt_name_ok"]),
         old_hb["data"]["config_fingerprint"]),
        (sorted(new_hb["data"]), sorted(new_hb["data"]["selftest"]), sorted(new_hb["data"]["selftest"]),
         new_hb["data"]["config_fingerprint"]))
