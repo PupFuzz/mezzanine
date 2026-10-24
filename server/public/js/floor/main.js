@@ -15,9 +15,10 @@
  * held without the stream recovery inherits the browser's own reconnect, which re-runs none of
  * § 2.2's steps 1–5; the wiring test reds if this page stops constructing it there.
  *
- * ⛔ THE TWO BOUNDS A PAGE NEEDS AND THE HARNESS MUST NOT HAVE ARE APPLIED FOR IT: the animation log
- * is `wire/live-page.js`'s, constructed with § 12's retention (`ANIMATION_LOG_RETENTION`, § 14 item
- * 26), and the protocol holds its coordination envelopes to § 5.7's cap on its own (§ 14 item 25).
+ * ⛔ THE BOUND A PAGE NEEDS AND THE HARNESS MUST NOT HAVE IS APPLIED FOR IT: the animation log is
+ * `wire/live-page.js`'s, constructed with § 12's retention (`ANIMATION_LOG_RETENTION`, § 14 item 26).
+ * The floor screen's `post_ref` memory is bounded by § 12's *Remembered coordination post identities*
+ * inside the screen itself (`coord/post-memory.js`, card#12239), so a harness run carries it too.
  *
  * ⛔ A RENDER FOLLOWS EVERY THING THAT CAN CHANGE WHAT THE PROTOCOL HOLDS, coalesced into one
  * `screen.render()` at a time (`wire/live-page.js` says why). The 1 s age tick re-draws the desks'
@@ -315,10 +316,8 @@ function paint(frame) {
     list('floor-notices', [...frame.notices]);
     list('floor-rooms', frame.composed ? [] : frame.rooms.map((r) => `${r.install_id} — no floor claimed`));
     list('floor-overflow', [...(frame.overflow ?? [])]);
-    list('floor-coord', Object.values(frame.coord ?? {}).flatMap((model) => model.threads.map((thread) => (
-        `${thread.thread_ref} — ${thread.lifecycle} — ${thread.beads_label} posts`
-        + (thread.unresolved.length > 0 ? ` — unresolved: ${thread.unresolved.join(', ')}` : '')
-    ))));
+    // card#12239: no coordination list — nothing coordination-related is held on this page (FLOOR.md
+    // § 5.7); each post is an edge drawn on arrival, and an end it could not draw is a line of the log.
 
     // § 9 F6/F7: the floor beneath the sign-in prompt is dimmed, never blanked — the drawing as the list.
     el('floor-drawing').dataset.dimmed = String(frame.failure.sign_in !== null);

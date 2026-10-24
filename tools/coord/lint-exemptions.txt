@@ -1,0 +1,14 @@
+# The narrow coordination-fixture lint's exemptions — `docs/design/COORD-STORE.md § 3.5` item 5 (card#12239).
+#
+# One `(path, rule)` pair per line: `<path> <rule> # <reason>`. A pair silences ONE rule in ONE file and
+# never the others. A pair whose file no longer matches its rule reds `synthesize-fixtures.py --lint`,
+# so this list only shrinks. The rules are `header`, `bare` and `quoted`, defined in that script.
+#
+# The four pairs below are the predicate's every hit over `origin/dev` as the design measured it: the
+# PR-body attribution rule's own material, none of it coordination content. The files this card added
+# (the synthesizer, its selftest, the spec helper, the capture tool, the round-trip script) read the
+# vocabulary from the spec rather than spelling it, so none of them needs a pair.
+bin/pr-body-lint.selftest.py bare # the attribution-line rule's RED fixture: a planted PR body with header lines
+bin/pr-body-lint.selftest.py quoted # the same fixture's one-line forms, inside string literals
+bin/pr-body-lint-fixtures/fw891-v0.51.0-body-2026-09-10T140853Z.md.txt bare # a recorded PR body the linter's fixtures hold
+bin/change-pr-body.selftest.py quoted # the PR-body generator's attribution test; its bare rule stays live

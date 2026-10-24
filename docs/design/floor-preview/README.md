@@ -35,9 +35,9 @@ is a ruling, because the floor is built once, by card#7341.** The design rulings
   it, a null `task` draws nothing, and a desk with no character (`stale` / `offline` / `retired`)
   has nothing to anchor one to. It is **static by rule**: `FLOOR.md` § 5.1 owns the six rules and
   the upstream fade/linger/fade state machine it refuses, and they are not restated here;
-- the **staged communication layer** (thread-as-object with round beads, kind-shaped carriers,
-  floor-clipped broadcast pulse, convergence spark, escalation flare) — every element maps to a
-  bridge-observable and **ships only behind the `coord.*` event family** (card#7897).
+- **no coordination layer**: the thread line, its round beads and the waiting-post tether this preview
+  once drew are retired with A18 (card#12239; `FLOOR.md` § 5.7, § 6.2) — the shipped floor draws each
+  coordination post as a bird that flies once, and this preview draws none.
 
 - **every `render_state` member has a render, and a member this client does not know renders as
   UNRECOGNISED** — `FLOOR.md` § 7.1's ten, plus § 5.4's eleventh case, in **one table** whose rows

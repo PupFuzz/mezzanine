@@ -369,6 +369,48 @@ it on:
 Until the board and the bridge carry live comment delivery (`docs/design/BOARD-TASK.md § 15.2` lists
 the three conditions), a comment reaches the agent the next time it reads its card.
 
+### Coordination posts on the floor
+
+When one agent posts to another on a coordination repository, the floor draws it as a message: a bird
+carries an envelope from the sender's desk to each recipient's desk, and a post to everyone sends one ring
+of notes out from the sender. Nothing stays drawn after a message, and a post from or to an agent with no
+desk in this building draws nothing (`docs/design/COORD-STORE.md`, which owns every rule below). Every
+floor's back wall carries a birdhouse right of the clock: a post between desks on different floors flies
+into the sender's floor's birdhouse and out of the recipient's, so each floor shows its own half. A post is
+drawn once; an end the floor cannot place on a desk is written to the page's event log with the reason.
+
+Mezzanine receives the posts itself, as GitHub webhook deliveries to `POST /api/ingest/github/{hook}`.
+Each repository gets **one binding**: `install` scope for an install's own coordination repository, or
+`fleet` scope for a repository whose threads span installs. Issuing one is an **operator act at your own
+terminal**, because the secret must stay out of every transcript and command line:
+
+```sh
+# on the Mezzanine host, as the deploy user; both output paths outside any git checkout
+php artisan mezzanine:coord-hook:issue <owner>/<repo> --scope=fleet --shared-identity=true \
+    --by=<you> --secret-out ~/coord-secret --hook-request-out ~/coord-hook.json
+#   …or --scope=install --install=<install_id> for an install's own repository
+
+# register the hook with YOUR GitHub credential (admin on that repository)
+gh api repos/<owner>/<repo>/hooks --input ~/coord-hook.json
+
+shred -u ~/coord-secret ~/coord-hook.json
+```
+
+The command prints the hook's URL and the secret's 8-character prefix, and writes the secret only to the
+two `0600` files; it refuses a path inside a git checkout and a repository that already has a binding.
+To rotate, add a second secret with `--hook=<mzh_…>` (a third is refused while two are live), re-key the
+hook on GitHub, then `php artisan mezzanine:coord-hook:revoke <mzh_…> --secret=<prefix>`; revoking
+without `--secret` ends the binding. `GET /api/fleet/health` counts the route's traffic
+(`coord_delivery_received.<hook>`, `coord_signature_invalid`, `coord_delivery_duplicate`,
+`coord_delivery_ignored.<event>`, and the derivation's counters), and the store keeps one digest row per
+delivery for 14 days and nothing of its text.
+
+A desk joins a post through a **declaration in its seat's reporter config**: `protocol_agent_name` for
+posts on its install's own repository, and `roundtable_agent_name` — the identity the seat posts under on
+the fleet's cross-install repository, which must equal `cross_project.identity` in the coordination config
+`$COORD_CONFIG` names — for fleet-scope posts (`fleet-reporter/INSTALL-LINUX.md`'s config table). Only a
+`checked` roundtable name joins a desk; the seat object shows the check's state.
+
 ### The idle horizon
 
 Every seat object on the read API carries `idle_since`, the server-clock instant the seat last went

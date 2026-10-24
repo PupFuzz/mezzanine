@@ -250,6 +250,9 @@ final class SeatFacts
             'protocol_agent_name_check' => $s->protocol_agent_name_check,
             // card#11144: the relayed role is version-bearing on the same subtraction (§ 6.5's table).
             'protocol_agent_role' => $s->protocol_agent_role,
+            // card#12239: the roundtable declaration pair is version-bearing on the same subtraction.
+            'roundtable_agent_name' => $s->roundtable_agent_name,
+            'roundtable_agent_name_check' => $s->roundtable_agent_name_check,
             'reporter_version' => $s->reporter_version,
             'reporter_platform' => $s->reporter_platform,
             'selftest_failed' => $s->selftest_failed,

@@ -1,6 +1,6 @@
 /**
  * The drawing surface a probe hands a screen when its run states none — the floor's
- * (`../Floor/fleet-client-probe.mjs`, `../Floor/coord-cap-probe.mjs`) and the lobby's
+ * (`../Floor/fleet-client-probe.mjs`) and the lobby's
  * (`../Lobby/lobby-probe.mjs`, `../Floor/fleet-client-probe.mjs`'s building runs).
  *
  * ⛔ A HARNESS CHOICE AND NOT A RULE OF THE PRODUCT. The floor draws at every surface size (FLOOR.md

@@ -37,6 +37,7 @@ fixtures, hook wiring, config keys or crontab line it brings, and what each vers
 | `install_id` | `mezzanine` | D1 § 3.1's slug pattern |
 | `seat_id` | `mezzanine-solo` | D1 § 3.1's slug pattern. The token is bound to the pair (§ 3.3), so a second seat is a second token |
 | `protocol_agent_name` | `mezzanine` | D1 § 3.1: the name must be a member of the roster at `$COORD_CONFIG`, or the check is `disagreed` and the name resolves to no desk. This seat's roster holds `mezzanine` and not `mezzanine-solo`, which is why the name is not the `seat_id` ([Step 2](#step-2--issue-the-seat-token-into-the-config-on-this-host-or-through-a-carried-file)) |
+| `roundtable_agent_name` (optional) | the value of `cross_project.identity` in the file `$COORD_CONFIG` names — read it there, never copied from this page | D1 § 3.1's *`roundtable_agent_name`* (card#12239): equal to that value ⇒ `checked`, different ⇒ `disagreed`, no `cross_project` block on the box ⇒ `unchecked`. Only a `checked` name joins this desk to the fleet's cross-install coordination posts on the floor. Add the key to the config by hand after Step 2 and restart the flusher (Step 5); a config without it keeps working and joins no such post |
 | `$COORD_CONFIG` | `/home/mezzanine/.config/coord/coordination.config.json`, read from `~/.claude/settings.local.json` | resolved by Step 2's `coord-config.js`, never typed. Claude Code's settings precedence puts project-local `settings.local.json` over `settings.json` (<https://code.claude.com/docs/en/settings>, *Settings precedence*). The seat's sessions run with `$HOME` as the project, so the two files are `~/.claude/settings.local.json` and `~/.claude/settings.json`. An empty result means none is set, and § 3.1 then says to deliver nothing |
 | `node` | `/usr/bin/node` | `readlink -f "$(command -v node)"`, resolved when Step 5 runs. Cron's `PATH` is not the login shell's, so the crontab names `node` absolutely |
 | ingest URL | `https://sandboxmezzanine.neeba.com/api/ingest/events` | `https://` only (§ 3.5) |
@@ -1065,6 +1066,11 @@ D1 § 6.14:
   The same detail's `roster_role` shows the role the seat relays from its roster entry (card#11144),
   or why it relays `null`: *no role: the entry carries none*, *not a slug: …*, or *ambiguous: N
   entries named X* when two roster entries share the declared name. None of those fails the command.
+- **`rc=1` with `rt_name_ok` failing** — the declared `roundtable_agent_name` differs from
+  `cross_project.identity` in the coordination config the command read, or the key holds a value that is
+  not a valid name (card#12239). `detail.rt_name_ok` names the config (`config`), the identity it found
+  (`cross_project_identity`) and, for an invalid value, `malformed_declaration`. Copy the identity into
+  the reporter config, or remove the key; the seat keeps reporting either way.
 - **`rc=2`** — no check failed and at least one is `not_measured`. A site's probe reached no ingest
   (`detail.sites.<name>.probe_error`), or the ingest answered without its accepted set
   (`detail.sites.<name>.http_status`): an outage page, or a `401`/`403` something in front of the ingest

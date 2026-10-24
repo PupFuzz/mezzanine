@@ -352,6 +352,50 @@ PLANTS = [
         "bounds a protocol agent name at",
     ),
     (
+        # card#12239.  The DECLARED roundtable name shares the protocol agent name's bound, and check 12
+        # holds every home of it: the three document homes the design held from r5, and the registry
+        # and migration homes its build step 5 wrote.  One plant per home, one parser each.
+        "verify-event-schema.py",
+        "docs/design/EVENT-SCHEMA.md",
+        r"(\*`roundtable_agent_name`\*\) verbatim; ≤ )(48)( B)",
+        "bump",
+        "D1 § 6.14's `roundtable_agent_name` byte bound, held by check 12 to § 18.6's (card#12239)",
+        "bounds a protocol agent name at",
+    ),
+    (
+        "verify-event-schema.py",
+        "docs/design/FLEET-STATE.md",
+        r"(\n  roundtable_agent_name +VARCHAR\()(\d+)(\))",
+        "bump",
+        "D2 § 6.4's `roundtable_agent_name` column width, the same check-12 equality (card#12239)",
+        "bounds a protocol agent name at",
+    ),
+    (
+        "verify-event-schema.py",
+        "docs/design/FLEET-STATE.md",
+        r"(\| `roundtable_agent_name` \| slug \| \*\*yes\*\* \| ≤ )(\d+)( B)",
+        "bump",
+        "D2 § 8.2.1's `roundtable_agent_name` byte bound, the same check-12 equality on the read surface "
+        "(card#12239)",
+        "bounds a protocol agent name at",
+    ),
+    (
+        "verify-event-schema.py",
+        "server/app/Ingest/KindRegistry.php",
+        r"('roundtable_agent_name' => )(\d+)(,)",
+        "bump",
+        "the ingest registry's `roundtable_agent_name` bound, held by check 12 to § 18.6's (card#12239)",
+        "bounds a protocol agent name at",
+    ),
+    (
+        "verify-event-schema.py",
+        "server/database/migrations/2026_10_24_000000_add_roundtable_agent_name_columns_to_seat_state.php",
+        r"(string\('roundtable_agent_name', )(\d+)(\))",
+        "bump",
+        "the store migration's `roundtable_agent_name` width, the check-12 equality's code home (card#12239)",
+        "bounds a protocol agent name at",
+    ),
+    (
         # card#11144.  § 3.1's DECLARED leg names the roster members this design reads; a member named
         # anywhere else in D1 is a read the contract published to the framework's owner does not cover.
         "verify-event-schema.py",

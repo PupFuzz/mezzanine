@@ -512,13 +512,21 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         $this->assertNotSame([], array_merge(...array_map(fn ($r) => $this->walks($r['frame']), $this->drawn($result))));
     }
 
-    /** The first walk-end paint of a run. */
+    /**
+     * The paint-only refresh at a run's first walk's end: the first refresh that draws no walk after a
+     * frame that drew one. The refresh also fires when any other effect in flight ends (card#12239: one
+     * end-timer over every held effect), so the first refresh is not necessarily a walk's.
+     */
     private function walkEnd(array $result): int
     {
+        $walking = false;
+
         foreach ($result['floor_renders'] as $r) {
-            if ($r['trigger'] === 'walk end') {
+            if ($walking && $r['trigger'] === 'walk end' && $this->walks($r['frame']) === []) {
                 return $r['at'];
             }
+
+            $walking = $walking || $this->walks($r['frame']) !== [];
         }
 
         $this->fail('the run has no walk-end refresh');

@@ -6,7 +6,7 @@ use Tests\TestCase;
 
 /**
  * **The room drawing's motion is the set's, and its decoration is data** — `docs/design/FLOOR.md`
- * Appendix B row 14: § 5.7's line and A18–A20's forms "between the positions step 7 resolved —
+ * Appendix B row 14: § 5.7's coordination forms "between the positions step 7 resolved —
  * under the operator's QA rulings on them (card#7341 scope addition 3): A20's ring spans the whole
  * floor before it fades, reach first and fade after, never dissipating mid-office; A19's envelope's
  * nose points along its direction of travel"; "⛔ The scene starts no claim-bearing motion … decorative
@@ -14,11 +14,12 @@ use Tests\TestCase;
  * decoration under § 6.3's bound".
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⚠ THIS ROW's GATE CELL NAMES NO AT FOR THESE — AT-D3-18 holds the line's resolution at step 7 and
- * AT-D3-1 the log — so what row 14 adds to them, the DRAWING, is held here, the way rows 11–13 are
- * held by their own tests. The runs are `fx-coord`'s `coord` (a thread, a broadcast and an envelope
- * on the floor) and the shipped default map's `scene_default`, whose lamps carry the tileset's
- * `decoration` property.
+ * ⚠ THIS ROW's GATE CELL NAMES NO AT FOR THESE — AT-D3-18 holds the join at step 7 and AT-D3-1 the
+ * log — so what row 14 adds to them, the DRAWING, is held here, the way rows 11–13 are held by their
+ * own tests. The runs are `fx-coord`'s `coord` (a broadcast and a traveller on one floor) and the
+ * shipped default map's `scene_default`, whose lamps carry the tileset's `decoration` property. The
+ * thread line and its motion checks went with A18 (card#12239); A22's portal drawing is AT-D3-29's,
+ * over the two-floor fixture.
  */
 class TheSceneDrawsOnlyWhatTheSetLoggedTest extends TestCase
 {
@@ -27,8 +28,6 @@ class TheSceneDrawsOnlyWhatTheSetLoggedTest extends TestCase
     private const COORD = 'coord';
 
     private const ROOM = 'scene_default';
-
-    private const STILLED = 'refusal_401_line';
 
     public function test_every_form_the_scene_draws_is_a_row_the_set_logged(): void
     {
@@ -53,33 +52,22 @@ class TheSceneDrawsOnlyWhatTheSetLoggedTest extends TestCase
             $this->assertSame(0, $fx['frames'], "{$fx['animation_id']} moves under reduced motion");
             $this->assertFalse($fx['motion']);
         }
-    }
 
-    public function test_the_thread_line_is_drawn_between_the_desks_its_participants_resolve_to(): void
-    {
-        $result = $this->floorRun(self::COORD);
-        $frame = $this->floorWithLine($result, 'aimla');
-        $scene = $frame['scene'];
-
-        $this->assertNotSame([], $scene['lines'], 'the frame drew a line and the scene did not');
-
-        foreach ($scene['lines'] as $line) {
-            $thread = collect($frame['coord']['aimla']['threads'])->firstWhere('thread_ref', $line['thread_ref']);
-            $ends = array_map(fn ($seat) => $scene['anchors']["aimla/{$seat}"], $thread['endpoints']);
-
-            $this->assertSame($ends, $line['ends'], 'the line is not drawn between its resolved desks');
+        // ⛔ AND THE TRAVELLER's REDUCED FORM IS TRANSIENT (the operator: *"a still envelope that
+        // disappears after some time"*): shown for a number of frames, never held.
+        foreach (array_filter($effects, static fn (array $fx): bool => $fx['animation_id'] === 'A19') as $fx) {
+            $this->assertGreaterThan(0, $fx['still_frames'], 'the reduced envelope is shown for no frames — it is absent, not transient');
         }
     }
 
     /**
-     * The line moves as the set logged it: flowing on a live floor, static once § 9 F6 stills the
-     * floor under it (`fx-refusals`' `refusal_401_line`, card#7341), and static throughout under reduced
-     * motion. The motion is the line's `held` rendering, the one the A18 row was logged at.
+     * ⛔ THE STILL ENVELOPE IS GONE AFTER ITS DURATION WITH NO FURTHER RENDER (§ 6.2 A19's reduced cell:
+     * *"then gone — never held"*). The floor screen's one end-timer re-paints when any effect in flight
+     * ends, so on a quiet feed the paint-only refresh at `still_frames` frames takes the envelope off.
      */
-    public function test_the_thread_line_moves_only_where_the_set_logged_it_moving(): void
+    public function test_under_reduced_motion_the_still_envelope_is_gone_after_its_duration(): void
     {
-        $this->assertSame([], $this->lineMotionDefects($this->floorRun(self::STILLED), true));
-        $this->assertSame([], $this->lineMotionDefects($this->floorRun(self::COORD, null, ['reduce' => true]), false));
+        $this->assertSame([], $this->stillEnvelopeDefects($this->floorRun(self::COORD, null, ['reduce' => true])));
     }
 
     public function test_decorative_motion_is_data_bounded_by_section_6_3_and_on_no_desk(): void
@@ -99,14 +87,9 @@ class TheSceneDrawsOnlyWhatTheSetLoggedTest extends TestCase
             'CONTROL (a ring that fades mid-office) did not bite');
 
         $noseless = $this->mutatedModules(['../floor/scene.js',
-            'heading_deg: Math.atan2(to.y - origin.y, to.x - origin.x) * 180 / Math.PI,', 'heading_deg: 90,']);
+            'heading_deg: Math.atan2(to.y - from.y, to.x - from.x) * 180 / Math.PI,', 'heading_deg: 90,']);
         $this->assertNotSame([], $this->formDefects($this->floorRun(self::COORD, $noseless)),
             'CONTROL (an envelope whose nose does not point along its travel) did not bite');
-
-        $unstilled = $this->mutatedModules(['../floor/scene.js',
-            "...form('A18', !thread.held.motion),", "...form('A18', input.reduce === true),"]);
-        $this->assertNotSame([], $this->lineMotionDefects($this->floorRun(self::STILLED, $unstilled), true),
-            'CONTROL (a line drawn moving on the floor § 9 F6 stilled) did not bite');
 
         $invented = $this->mutatedModules(['../floor/scene.js',
             "        if (row.class !== 'edge') {\n            continue;\n        }\n", '']);
@@ -158,41 +141,50 @@ class TheSceneDrawsOnlyWhatTheSetLoggedTest extends TestCase
     }
 
     /**
-     * Every A18 line the run drew, against the floor it was drawn on: a moving line flows (frames to
-     * step) and a static one does not, and a line on a stilled floor — or under reduced motion — is
-     * static. `$live` is whether the run's live floor draws the line moving at all.
+     * Every still envelope a render drew, against the run's later frames: by `still_frames` loop frames
+     * after the render that drew it there must be a frame with no render in between — the paint-only
+     * refresh — that no longer draws it.
+     *
+     * @return list<string>
      */
-    private function lineMotionDefects(array $result, bool $live): array
+    private function stillEnvelopeDefects(array $result): array
     {
+        $renders = $result['floor_renders'];
         $defects = [];
-        $seen = [];
+        $seen = 0;
+        $first = [];
 
-        foreach ($result['floor_renders'] as $render) {
-            $stilled = $render['frame']['failure']['sign_in'] !== null;
-
-            foreach ($render['frame']['scene']['lines'] ?? [] as $line) {
-                $want = $live && ! $stilled;
-                $seen[$stilled ? 'stilled' : 'live'] = true;
-
-                if ($line['motion'] !== $want) {
-                    $defects[] = "{$line['thread_ref']} is drawn ".($line['motion'] ? 'moving' : 'static')
-                        .' on a '.($stilled ? 'stilled' : 'live').' floor'.($live ? '' : ' under reduced motion');
+        foreach ($renders as $i => $render) {
+            foreach ($render['frame']['scene']['effects'] ?? [] as $fx) {
+                // The render that first drew it — a later render keeps drawing the same envelope in flight.
+                if ($fx['animation_id'] !== 'A19' || ($fx['still_frames'] ?? 0) <= 0 || isset($first[$fx['cause']])) {
+                    continue;
                 }
 
-                // A line carrying no `frames` at all is a scene that states no flow for the painter.
-                $frames = $line['frames'] ?? null;
+                $first[$fx['cause']] = true;
+                $seen++;
+                $end = $render['at'] + $fx['still_frames'] * $fx['frame_interval_ms'];
+                $gone = null;
 
-                if (($frames > 0) !== $line['motion']) {
-                    $defects[] = "{$line['thread_ref']}'s flow frames (".json_encode($frames).') disagree with its motion';
+                foreach (array_slice($renders, $i + 1) as $later) {
+                    if ($later['at'] > $end) {
+                        break;
+                    }
+
+                    $still = array_filter($later['frame']['scene']['effects'] ?? [], static fn (array $e): bool => $e['animation_id'] === 'A19' && $e['cause'] === $fx['cause']);
+
+                    if ($later['trigger'] === 'walk end' && $later['at'] === $end && $still === []) {
+                        $gone = $later;
+                    }
+                }
+
+                if ($gone === null) {
+                    $defects[] = "{$fx['cause']}'s still envelope, drawn at {$render['at']} ms for {$fx['still_frames']} frames, is not taken off by a paint-only refresh at {$end} ms";
                 }
             }
         }
 
-        $this->assertArrayHasKey('live', $seen, 'no line was drawn on a live floor — the check read nothing');
-
-        if ($live) {
-            $this->assertArrayHasKey('stilled', $seen, 'no line was drawn on the stilled floor — the check read nothing');
-        }
+        $this->assertGreaterThan(0, $seen, 'no still envelope was drawn — the check read nothing');
 
         return $defects;
     }

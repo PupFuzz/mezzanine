@@ -14,7 +14,7 @@
  * A rule found here that is not in the scene is in the wrong file.
  *
  * ⛔ ONE SPACE: SVG (§ 13 row 15 leaves the surface to the builder). Tiles, desks, nameplates,
- * bubbles and the thread line are drawn into one `<svg>` whose `viewBox` is the camera's view
+ * bubbles and the coordination birds are drawn into one `<svg>` whose `viewBox` is the camera's view
  * (`wire/camera.js`, Appendix B row 15) over the scene's space, so the camera scales them together — the lesson `docs/design/floor-preview/README.md`
  * records of a bubble no gate measured. SVG is resolution-independent, which is § 4.5's property;
  * the bridge tileset's raster tiles resample, and that is their residue (§ 10.3), not the layer's. The
@@ -48,6 +48,7 @@
 import { BUBBLE_PAD, FONT, FONT_NAME, FONT_SCREEN, STOOL_GLYPH, TYPE_ROLES, characterAsset } from './desk-layout.js';
 import { SKY_PAINT } from './floor-layout.js';
 import { ELEVATOR_DOOR } from './scene.js';
+import { BIRD_LIFT, arcPath, birdShapes, birdhouseShapes, envelopeShapes, legShapes, ringShapes, stillNotes } from './bird.js';
 import { RENDER_STATES } from '../lobby/render-state.js';
 import { CAB_STYLE, LANDING, THEME_REGISTRY, cabTheme, clippedTo, drawCabInterior, node, paintCab, rideLeaves, themeModule } from './cab-paint.js';
 
@@ -86,6 +87,7 @@ text{font:${FONT};fill:var(--scene-ink)}text.role-name{font:${FONT_NAME}}text.ro
 .wall{fill:url(#house-wall)}.wall-top{stop-color:var(--house-wall)}.wall-bottom{stop-color:var(--house-wall-2)}
 .slab{fill:var(--house-trim)}
 .window{fill:var(--scene-glass)}
+.portal-hole{fill:var(--scene-glass)}
 ${Object.keys(SKY_PAINT).map((phase) => `.sky-${phase}{fill:url(#sky-${phase})}`).join('')}
 .plane{fill:var(--scene-floor)}
 .clock-face{fill:var(--scene-clock-face);stroke:var(--scene-trim);stroke-width:3}.clock.unset .clock-face{stroke-dasharray:6 4}
@@ -107,25 +109,26 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 .gauge-track{fill:var(--scene-gauge-track)}.gauge-fill{fill:var(--scene-gauge-fill)}
 .bubble{fill:var(--scene-paper);stroke:var(--scene-trim)}.bubble-trail{fill:var(--scene-paper);stroke:var(--scene-trim)}.bubble-source{fill:var(--scene-bubble-source)}
 .lighting-dimmed{opacity:.72}.lighting-dark{opacity:.45}.lighting-desaturated{filter:saturate(.3)}
-.thread{fill:none;stroke:var(--scene-thread);stroke-width:3}.thread.ended{stroke-dasharray:8 6;opacity:.6}
-.thread.thread-moving{stroke-dasharray:4 8;stroke-linecap:round;animation-name:thread-flow;animation-iteration-count:infinite}
-@keyframes thread-flow{from{stroke-dashoffset:12}to{stroke-dashoffset:0}}
 .strip-header{font-weight:bold}
 .decor{fill:var(--lamp);opacity:.25}.decor-moving{animation:decor ease-in-out infinite alternate}
 @keyframes decor{from{opacity:.12}to{opacity:.34}}
-.fx-ring{fill:none;stroke:var(--scene-thread);stroke-width:4;transform-box:fill-box;transform-origin:center;transform:scale(0)}
 @keyframes ring-reach{from{transform:scale(0)}to{transform:scale(1)}}
 @keyframes ring-fade{from{transform:scale(1);opacity:1}to{transform:scale(1);opacity:0}}
-.fx-envelope{animation-name:travel;animation-fill-mode:forwards}
-@keyframes travel{from{transform:translate(var(--from-x),var(--from-y)) rotate(var(--heading))}to{transform:translate(var(--to-x),var(--to-y)) rotate(var(--heading))}}
-.fx-bead{transform:translate(var(--to-x),var(--to-y))}.envelope{fill:var(--scene-paper);stroke:var(--scene-thread)}
 .fx-flash{fill:var(--scene-flash);opacity:0;animation-name:flash}
 @keyframes flash{from{opacity:.8}to{opacity:0}}
 .fx-walker{animation-name:walk;animation-fill-mode:both}.fx-walker-shown{opacity:0;animation-name:walker-shown;animation-fill-mode:none}
 @keyframes walk{from{transform:translate(var(--from-x),var(--from-y))}to{transform:translate(var(--to-x),var(--to-y))}}
 @keyframes walker-shown{from{opacity:1}to{opacity:1}}
 ${CAB_STYLE}
-.fx-broadcast-marker{fill:none;stroke:var(--scene-thread);stroke-width:3}
+.fx-bird{offset-rotate:0deg;animation-name:fly;animation-fill-mode:forwards}
+@keyframes fly{from{offset-distance:0%;opacity:1}99%{opacity:1}to{offset-distance:100%;opacity:0}}
+.wing-up{animation:flap-up steps(1) infinite}.wing-down{animation:flap-down steps(1) infinite}
+@keyframes flap-up{0%{opacity:1}50%{opacity:0}}@keyframes flap-down{0%{opacity:0}50%{opacity:1}}
+.fx-rest{opacity:0;animation-name:rest;animation-fill-mode:forwards}
+@keyframes rest{from{opacity:1}88%{opacity:1}89%{opacity:.5}99%{opacity:.5}to{opacity:0}}
+.fx-perch{animation-name:perch;animation-fill-mode:forwards}
+@keyframes perch{from{opacity:1}99%{opacity:1}to{opacity:0}}
+.fx-notes{transform-box:fill-box;transform-origin:center;transform:scale(0)}
 `;
 
 /**
@@ -520,6 +523,41 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         }
     }
 
+    /** card#12241's drawings, from `bird.js`'s shape lists — `[tag, attributes, children?]` — into `parent`. */
+    function shapes(parent, list) {
+        for (const [tag, attrs, children] of list) {
+            const el = node(tag, attrs, parent);
+
+            if (Array.isArray(children)) {
+                shapes(el, children);
+            }
+        }
+
+        return parent;
+    }
+
+    /**
+     * The bird carrying its envelope, facing its heading (flipped when that points left) and drawn
+     * `BIRD_LIFT` px above its flight's point. `flap` alternates the wing every loop frame at the floor's
+     * rate; without it the wing is drawn still, down.
+     */
+    function bird(parent, headingDeg, flapSeconds, beak = 'closed') {
+        const left = Math.abs(headingDeg) > 90;
+        const g = node('g', { transform: `translate(0 ${-BIRD_LIFT})${left ? ' scale(-1 1)' : ''}` }, parent);
+
+        shapes(node('g', { transform: 'translate(0 12)' }, g), envelopeShapes());
+        shapes(g, legShapes());
+
+        if (flapSeconds === null) {
+            shapes(g, birdShapes('down', beak));
+        } else {
+            shapes(node('g', { class: 'wing-up', style: `animation-duration:${flapSeconds}s` }, g), birdShapes('up', beak));
+            shapes(node('g', { class: 'wing-down', style: `animation-duration:${flapSeconds}s` }, g), birdShapes('down', beak));
+        }
+
+        return g;
+    }
+
     function paintEffects(layer, effects) {
         for (const fx of effects) {
             const seconds = (fx.frames * fx.frame_interval_ms) / 1000;
@@ -534,30 +572,55 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                 continue;
             }
 
-            if (fx.animation_id === 'A19') {
-                const g = node('g', { class: fx.frames > 0 ? 'fx-envelope' : 'fx-bead', style }, layer);
+            if (fx.animation_id === 'A19' || fx.animation_id === 'A22') {
+                // card#12241: the bird carries the envelope along its own arc, the wing alternating every
+                // frame, and on touchdown sets the envelope down on the desk, where it rests and fades —
+                // nothing persists. Reduced motion (§ 6.4): the still envelope at the desk for the moving
+                // form's own duration, then gone (the operator: *"a still envelope that disappears after
+                // some time"*). A22's portal bird is the same flight (`scene.js`'s `travel()`): to the
+                // birdhouse's hole with no rest, where its reduced form is the still envelope at the
+                // portal, or from the hole to the desk.
+                const restAt = { x: fx.to.x + 14, y: fx.to.y - 4 };
+                const rest = (n) => node('g', { transform: `translate(${restAt.x} ${restAt.y}) rotate(-8)`, ...n }, layer);
 
-                g.style.setProperty('--from-x', `${fx.from.x}px`);
-                g.style.setProperty('--from-y', `${fx.from.y}px`);
-                g.style.setProperty('--to-x', `${fx.to.x}px`);
-                g.style.setProperty('--to-y', `${fx.to.y}px`);
-                g.style.setProperty('--heading', `${fx.heading_deg}deg`);
-                node('path', { d: 'M -8 -5 L 8 0 L -8 5 Z', class: 'envelope' }, g);
+                if (fx.frames > 0) {
+                    const flap = (2 * fx.frame_interval_ms) / 1000;
+                    const g = node('g', { class: 'fx-bird', style: `${style};offset-path:path('${arcPath(fx.from, fx.to)}')` }, layer);
+
+                    bird(g, fx.heading_deg, flap);
+
+                    if ((fx.rest_frames ?? 0) > 0) {
+                        const restS = (fx.rest_frames * fx.frame_interval_ms) / 1000;
+
+                        shapes(rest({ class: 'fx-rest', style: `animation-duration:${restS}s;animation-timing-function:steps(${fx.rest_frames});animation-delay:${seconds - ago}s` }), envelopeShapes());
+                    }
+                } else {
+                    shapes(rest({ class: 'fx-still' }), envelopeShapes());
+                }
             } else if (fx.animation_id === 'A20') {
                 // The operator's QA ruling, drawn as the scene counted it: the ring reaches the floor's
-                // far corner over `reach_frames`, and only then fades over `fade_frames`.
-                const reach = (fx.reach_frames * fx.frame_interval_ms) / 1000;
-                const fade = (fx.fade_frames * fx.frame_interval_ms) / 1000;
+                // far corner over `reach_frames`, and only then fades over `fade_frames`. card#12241: the
+                // bird perches at the sender's desk and SINGS — its beak open — and the ring is one ring of
+                // notes. Reduced motion: the perched bird, beak open, with three still notes.
+                const origin = fx.at;
+                const perch = node('g', { transform: `translate(${origin.x} ${origin.y})` }, layer);
 
-                node('circle', {
-                    cx: fx.at.x,
-                    cy: fx.at.y,
-                    r: fx.frames > 0 ? fx.radius : 10,
-                    class: fx.frames > 0 ? 'fx-ring' : 'fx-broadcast-marker',
-                    style: fx.frames > 0
-                        ? `animation:ring-reach ${reach}s steps(${fx.reach_frames}) ${-ago}s forwards,ring-fade ${fade}s steps(${fx.fade_frames}) ${reach - ago}s forwards`
-                        : null,
-                }, layer);
+                if (fx.frames > 0) {
+                    const reach = (fx.reach_frames * fx.frame_interval_ms) / 1000;
+                    const fade = (fx.fade_frames * fx.frame_interval_ms) / 1000;
+
+                    shapes(node('g', {
+                        class: 'fx-notes',
+                        style: `animation:ring-reach ${reach}s steps(${fx.reach_frames}) ${-ago}s forwards,ring-fade ${fade}s steps(${fx.fade_frames}) ${reach - ago}s forwards`,
+                    }, perch), ringShapes(fx.radius));
+                    bird(node('g', { class: 'fx-perch', style: `${style}` }, perch), 0, (2 * fx.frame_interval_ms) / 1000, 'open');
+                } else {
+                    // The class names the element and styles nothing: a stroke set here would be inherited by
+                    // every bird shape that sets none of its own (the belly, eye, highlight and blush).
+                    const still = bird(node('g', { class: 'fx-broadcast-marker' }, perch), 0, null, 'open');
+
+                    shapes(still, stillNotes());
+                }
             } else if (fx.at !== null && fx.at !== undefined && fx.frames > 0) {
                 node('circle', { cx: fx.at.x, cy: fx.at.y, r: 12, class: `fx-flash fx-${fx.animation_id}`, style }, layer);
             }
@@ -777,6 +840,14 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                 node('line', { x1: cx, y1: cy, x2: cx, y2: cy - c.w * 0.25, class: 'hand hour', transform: `rotate(${c.hour_angle_deg} ${cx} ${cy})` }, face);
                 node('line', { x1: cx, y1: cy, x2: cx, y2: cy - c.w * 0.4, class: 'hand minute', transform: `rotate(${c.minute_angle_deg} ${cx} ${cy})` }, face);
             }
+
+            // card#12241: THE BIRD PORTAL — the birdhouse on its bracket right of the clock, on every floor,
+            // its hole painted with the windows' sky. Still: no idle motion, and nothing in the scene says
+            // it is there but the frame (COORD-STORE.md § 6.1).
+            if (band.portal !== undefined && band.portal !== null) {
+                shapes(node('g', { class: 'portal', role: 'img', 'aria-label': 'the bird portal' }, g),
+                    birdhouseShapes(band.portal, band.portal.sky));
+            }
         }
 
         if (scene.slab !== null) {
@@ -818,22 +889,6 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                 class: d.motion ? `decor decor-${d.decoration} decor-moving` : `decor decor-${d.decoration}`,
                 style: d.motion ? `animation-duration:${d.cycle_ms / 1000}s` : null,
             }, tiles);
-        }
-
-        const lines = node('g', { class: 'coord' }, svg);
-
-        for (const line of scene.lines) {
-            node('polyline', {
-                points: line.ends.map((p) => `${p.x},${p.y}`).join(' '),
-                class: [line.ended ? 'thread ended' : 'thread', line.motion ? 'thread-moving' : null].filter(Boolean).join(' '),
-                style: line.frames > 0
-                    ? `animation-duration:${(line.frames * line.frame_interval_ms) / 1000}s;animation-timing-function:steps(${line.frames})`
-                    : null,
-            }, lines);
-
-            if (line.label !== null) {
-                text(lines, { x: line.label.x, y: line.label.y, text: line.label.text }, 'thread-label');
-            }
         }
 
         const desks = node('g', { class: 'desks' }, svg);

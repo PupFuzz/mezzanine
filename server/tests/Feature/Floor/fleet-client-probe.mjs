@@ -130,7 +130,7 @@
  *      "pending_timers": N, "rejections": [], "age_renders": [ {at, readouts} ],
  *      "streams": [ {opened_at, open_fired, refused, ended_at, closed_at} ],
  *      "desk_renders": [ {at, trigger, frame, …} ], "floor_renders": [ {at, trigger, frame} ] — `trigger`
- *      `render` for a render, `walk end` for a walk's paint-only refresh, `ride` for the frame a page paints
+ *      `render` for a render, `walk end` for the paint-only refresh at the end of a walk or of any other effect in flight, `ride` for the frame a page paints
  *      after a ride act (`rideView()`), "ride_acts": [ {at, act, answer, ride, scene_view_ride} ] — each ride act's
  *      answer, the `ride` of the frame painted after it (`null` when it answered `null` and nothing was painted)
  *      and the `ride` of the 1 s tick's scene over that frame's desks (`sceneView()`),

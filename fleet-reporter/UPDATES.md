@@ -23,6 +23,7 @@ across several versions applies the union of the touches of every row newer than
 <!-- reporter-updates:ledger BEGIN -->
 | Version | Touches | What a seat sees change |
 |---|---|---|
+| 0.3.0 | artifact | New: the seat config's optional `roundtable_agent_name` key — the name the seat posts under on the cross-project coordination channel, so a post there can reach its desk. The reporter checks it against the readable coordination config's `cross_project.identity` and sends it, with its check state, on every heartbeat; a seat that does not set it reports it as undeclared and nothing else changes. `selftest` gains a ninth check, `rt_name_ok`, which fails, and makes the command exit 1, when the declared name disagrees with that identity or is malformed. |
 | 0.2.0 | artifact, fixtures, hooks, cron | The first version that differs from the one before it. Every build before it reported `0.1.0`, so a seat on `0.1.0` may run any of them: apply every step of the upgrade, each of which reports that nothing changed where the seat is already current. |
 <!-- reporter-updates:ledger END -->
 

@@ -166,15 +166,13 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
                 "{$id} carries a frame interval under `reduce`, which is a rate nothing is using");
             $this->assertFalse($rendering['treated']['motion'],
                 "{$id} draws motion with § 7.3's treatment refusing it");
-            // ⛔ WHETHER A HELD ROW MOVES IS ITS REDUCED CELL AND NOT ITS LOOP, and the two part
-            // company at A18 (card#7341 step 7). § 6.4's reduced form REPLACES the motion, so a cell
-            // reading *identical* is a row with no motion to replace — § 11's *two states with no
-            // motion by design* — while A18's says *drawn static … no travel along it*, which is a
-            // removal and therefore a row that moves without running frames at § 12's rate. Reading
-            // `loops()` here answers *does it run frames* and logged that line as drawn still,
-            // claiming one of § 11's three reasons for no motion where none applied.
+            // ⛔ WHETHER A HELD ROW MOVES IS ITS REDUCED CELL AND NOT ITS LOOP (card#7341 step 7).
+            // § 6.4's reduced form REPLACES the motion, so a cell reading *identical* is a row with no
+            // motion to replace — § 11's *two states with no motion by design*. ⛔ AND A `retired` ROW
+            // NEVER MOVES (card#12239): it has no form at all, so whatever its cells say it draws
+            // nothing, and the set answers *no motion* for it in every state.
             $this->assertSame(
-                $row['class'] === 'edge' || $row['reduced'] !== 'identical',
+                $row['class'] !== 'retired' && ($row['class'] === 'edge' || $row['reduced'] !== 'identical'),
                 $rendering['permitted']['motion'],
                 "{$id}'s ordinary rendering disagrees with whether its own § 6.2 cells name motion",
             );
@@ -205,8 +203,17 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
 
         $this->assertSame(array_keys($document), array_keys($shipped['fired_by']),
             'the set\'s FIRED_BY is not total over § 6.2\'s rows');
-        $this->assertSame([], array_diff(array_values($shipped['fired_by']), ['delta', 'heartbeat', 'desk', 'slot', 'coord']),
+        $this->assertSame([], array_diff(array_values($shipped['fired_by']), ['delta', 'heartbeat', 'desk', 'slot', 'coord', 'retired']),
             'FIRED_BY names a trigger class this test does not know about');
+
+        // ⛔ `retired` IS A DEDICATED, EXPLICIT STATUS (card#12239, the seat's ruling): the rows FIRED_BY
+        // calls retired are exactly the rows § 6.2's Class column calls retired — never a live row
+        // excused from having a trigger, and never a retired row given one.
+        $this->assertSame(
+            array_keys(array_filter($document, static fn (array $row): bool => $row['class'] === 'retired')),
+            array_keys(array_filter($shipped['fired_by'], static fn (string $by): bool => $by === 'retired')),
+            'the rows FIRED_BY calls retired are not the rows § 6.2 calls retired',
+        );
 
         // § 11: the two rows that belong to no seat are the two the heartbeat fires, and § 6.2's own
         // note says they are the only rows conditional on no seat's state at all.
@@ -451,23 +458,33 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
 
         // CONTROL 5 — § 6.4's condition removed from the one place it decides: every row would then
         // draw motion under `reduce`, which is AT-D3-13's own claim broken at its source.
-        $moving = $this->plantedSet("    if (cls === null || !permitted || reduce) {\n        return false;\n    }",
-            "    if (cls === null || !permitted) {\n        return false;\n    }");
+        $moving = $this->plantedSet("    if (cls === null || cls === 'retired' || !permitted || reduce) {\n        return false;\n    }",
+            "    if (cls === null || cls === 'retired' || !permitted) {\n        return false;\n    }");
         $this->assertTrue($this->shippedSet([], $moving)['held_renderings']['A3']['permitted_reduced']['motion'],
             'CONTROL 5 did not bite: § 6.4\'s condition was removed and A3 still drew no motion under `reduce`');
 
-        // CONTROL 6 — a held row's motion derived from its LOOP rather than from its reduced cell,
-        // which is the defect card#7341 step 7 corrected: A18 moves along its length and runs no
-        // frames, so under this plant the line is drawn static and the log claims it was.
-        $byLoop = $this->plantedSet('return cls === \'edge\' || !staticByDesign(animationId);',
-            'return cls === \'edge\' || loops(animationId);');
-        $planted = $this->shippedSet([], $byLoop);
-        $this->assertFalse($planted['held_renderings']['A18']['permitted']['motion'],
-            'CONTROL 6 mutated nothing — `motionOf` is not spelled the way this plant anchors on');
-        $this->assertTrue($this->shippedSet()['held_renderings']['A18']['permitted']['motion'],
-            'the shipped set draws A18 static, so § 11\'s two-states-with-no-motion population has a third member');
-        $this->assertFalse($planted['held_renderings']['A8']['permitted']['motion'],
-            'CONTROL 6 moved a row the correction must not move: A8 is static by design under either derivation');
+        // CONTROL 6 — a RETIRED row given motion (card#12239): `motionOf()` without its retired clause
+        // derives A18's motion from cells that name no form, and the rendering assertion must red.
+        $unretired = $this->plantedSet("    if (cls === null || cls === 'retired' || !permitted || reduce) {",
+            '    if (cls === null || !permitted || reduce) {');
+        $this->assertTrue($this->shippedSet([], $unretired)['held_renderings']['A18']['permitted']['motion'],
+            'CONTROL 6 did not bite: the retired clause was removed and A18 still drew no motion');
+        $this->assertFalse($this->shippedSet()['held_renderings']['A18']['permitted']['motion'],
+            'the shipped set draws motion for a retired row');
+
+        // CONTROL 7 — a retired row given a live trigger: FIRED_BY's retired set must stop matching
+        // § 6.2's Class column.
+        $fired = $this->shippedSet([], $this->plantedSet("    A18: 'retired',", "    A18: 'coord',"))['fired_by'];
+        $this->assertSame('coord', $fired['A18'], 'CONTROL 7 mutated nothing — FIRED_BY\'s A18 entry is not spelled the way this plant anchors on');
+        $this->assertNotSame(
+            array_keys(array_filter($this->documentAnimationRows(), static fn (array $row): bool => $row['class'] === 'retired')),
+            array_keys(array_filter($fired, static fn (string $by): bool => $by === 'retired')),
+            'CONTROL 7 did not bite: A18 was given a live trigger and FIRED_BY\'s retired rows still matched § 6.2\'s',
+        );
+
+        // ⚠ The earlier CONTROL 6 (a held row's motion derived from its loop) is gone with A18's held
+        // form: it was the one held row whose loop and reduced cell disagreed, so no row is left on
+        // which the two derivations part company and the plant could only mutate nothing.
     }
 
     /**

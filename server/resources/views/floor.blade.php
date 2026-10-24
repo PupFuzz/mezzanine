@@ -264,11 +264,6 @@
                 <ul id="floor-overflow" aria-labelledby="floor-overflow-heading" hidden></ul>
             </details>
 
-            <details class="floor-section">
-                <summary><h2 id="floor-coord-heading">Coordination threads</h2></summary>
-                <ul id="floor-coord" aria-labelledby="floor-coord-heading" hidden></ul>
-            </details>
-
             {{-- § 5.5's record: this client's own narration, newest first, 200 lines. --}}
             <details class="floor-section">
                 <summary><h2 id="floor-log-heading">This page's event log</h2></summary>

@@ -67,7 +67,7 @@ const lazy = (name) => require(name);
  * change to a file a reporter update ships, and `bin/reporter-version-guard.py` fails a PR that changes
  * one without moving it, so two different builds never report the same version. Each version's row in
  * `fleet-reporter/UPDATES.md` says what an upgrading seat must apply. */
-const REPORTER_VERSION = '0.2.0';
+const REPORTER_VERSION = '0.3.0';
 const SCHEMA_VERSION = 1;
 
 /* ── Every number, from § 14 and the section that derives it ──────────────────────────────── */
@@ -213,7 +213,7 @@ const PREDICATES = ['attention_source_permission_hook', 'descriptor_allowlisted'
  * the heartbeat reports, so the two cannot drift apart. */
 const SELFTEST_CHECKS = ['config_readable', 'tls_verify', 'schema_version_accepted', 'token_accepted',
   'sanitizer_fixtures', 'predicate_discrimination', 'harness_payload_keys',
-  'protocol_agent_name_in_roster'];
+  'protocol_agent_name_in_roster', 'rt_name_ok'];
 /* The checks that are a fact about ONE SITE (§ 6.14, card#12180): each lane measures its own, and the
  * one-shot subcommand reports a block per site and aggregates these four into `checks`. */
 const SITE_CHECKS = ['config_readable', 'tls_verify', 'schema_version_accepted', 'token_accepted'];
@@ -568,6 +568,50 @@ function resolveDeclaration(cfg) {
   }
   count('protocol_agent_name_disagreed');
   return { name, check: 'disagreed', role: null, roster_role: null, roster: site.path, via: site.via, error: null, roster_names: roster.names, malformed: null };
+}
+
+/* ── The declared ROUNDTABLE name, and its check (§ 3.1's *`roundtable_agent_name`*, card#12239) ─────
+ * The same declaration as the protocol agent name above, one key over: the identity this seat posts
+ * under on the fleet's cross-install coordination repository. The same four states, the same bound and
+ * the same malformed-declares-nothing rule, checked against a DIFFERENT key of the SAME config — that
+ * config's `cross_project.identity`, read through `rosterSite()`'s one resolution order. Resolved with
+ * the protocol name, at flusher start and on `selftest`, never per flush.
+ *
+ * `unchecked` when no config is readable, or the readable one carries no `cross_project` block (or
+ * one with no string `identity`): this box knows of no roundtable to compare against, which is not a
+ * disagreement. Never throws. */
+function declaredRoundtableName(cfg) {
+  const v = cfg.roundtable_agent_name;
+  return typeof v === 'string' && AGENT_NAME_RE.test(v) ? v : null;
+}
+
+function readCrossProjectIdentity(file) {
+  let doc;
+  try { doc = JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch (e) { return { identity: null, error: e.code || 'not valid JSON' }; }
+  const cp = doc && typeof doc === 'object' ? doc.cross_project : undefined;
+  if (!cp || typeof cp !== 'object') return { identity: null, error: 'no cross_project block' };
+  if (typeof cp.identity !== 'string') return { identity: null, error: 'no cross_project.identity' };
+  return { identity: cp.identity, error: null };
+}
+
+function resolveRoundtable(cfg) {
+  const name = declaredRoundtableName(cfg);
+  const v = cfg.roundtable_agent_name;
+  // Present and not a valid declaration: it declares nothing, the seat keeps reporting, and `rt_name_ok`
+  // fails with the value named in the subcommand's detail and nowhere else — the protocol name's rule.
+  const malformed = name === null && v !== undefined && v !== null
+    ? (typeof v === 'string' ? v : `<${Array.isArray(v) ? 'array' : typeof v}>`) : null;
+  if (name === null) return { name: null, check: 'undeclared', malformed };
+  const site = rosterSite();
+  const read = site.path === null ? { identity: null } : readCrossProjectIdentity(site.path);
+  if (read.identity === null) {
+    count('roundtable_agent_name_unchecked');
+    return { name, check: 'unchecked', malformed: null, config: site.path, read_error: read.error ?? null };
+  }
+  if (read.identity === name) return { name, check: 'checked', malformed: null, config: site.path };
+  count('roundtable_agent_name_disagreed');
+  return { name, check: 'disagreed', malformed: null, config: site.path, identity: read.identity };
 }
 
 /* ── P-6: a secret VALUE must never reach an output stream, a log, a traceback or an argv ────
@@ -3789,6 +3833,10 @@ function buildHeartbeat(cfg, spool, state, ix, site, entry, selftest, declaratio
       // § 6.14's declaration pair: one row of § 3.1's state table on EVERY heartbeat, so the check is
       // never omitted and the name is null exactly when the check is `undeclared`. Resolved once, at
       // flusher start — never per flush.
+      // § 6.14's roundtable pair (card#12239), the same rules one key over: present on EVERY
+      // heartbeat, the name null exactly when the check is `undeclared`; resolved at flusher start.
+      roundtable_agent_name: declaration.roundtable.name,
+      roundtable_agent_name_check: declaration.roundtable.check,
       protocol_agent_name: declaration.name,
       protocol_agent_name_check: declaration.check,
       // § 6.14's relayed role (card#11144): the selected roster entry's `role`, and `null` whenever
@@ -4618,13 +4666,21 @@ function runSelftestChecks(config, cp, errors) {
   // that no disagreement was found, and `protocol_agent_name_check` says whether a roster was read at
   // all. With no config there is no declaration to check, so nothing was measured (only the subcommand
   // can reach that: the flusher never starts without a config).
-  const declaration = config ? resolveDeclaration(config) : null;
+  const declaration = config ? Object.assign(resolveDeclaration(config), { roundtable: resolveRoundtable(config) }) : null;
   results.protocol_agent_name_in_roster = declaration ? declaration.check !== 'disagreed' && declaration.malformed === null : null;
   detail.protocol_agent_name_in_roster = declaration
     ? { declared: declaration.name, protocol_agent_name_check: declaration.check, roster: declaration.roster,
       read_via: declaration.via, roster_error: declaration.error, roster_names: declaration.roster_names,
       roster_role: declaration.roster_role, malformed_declaration: declaration.malformed }
     : { declared: null, protocol_agent_name_check: null, reason: 'no readable config' };
+  // § 6.14's `rt_name_ok` (card#12239): `fail` on `disagreed` and on a malformed declaration, and on
+  // nothing else — `protocol_agent_name_in_roster`'s rule, against the config's `cross_project.identity`.
+  const rt = declaration ? declaration.roundtable : null;
+  results.rt_name_ok = rt ? rt.check !== 'disagreed' && rt.malformed === null : null;
+  detail.rt_name_ok = rt
+    ? { declared: rt.name, roundtable_agent_name_check: rt.check, config: rt.config ?? null,
+      cross_project_identity: rt.identity ?? null, read_error: rt.read_error ?? null, malformed_declaration: rt.malformed }
+    : { declared: null, roundtable_agent_name_check: null, reason: 'no readable config' };
   return { results, detail, declaration };
 }
 

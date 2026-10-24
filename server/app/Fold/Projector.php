@@ -1128,6 +1128,15 @@ class Projector
             // value verbatim under the same rules as the pair above — heartbeat-only, an omitted key
             // writes `null`, and the name's own slug pattern and bound hold it (D1 § 6.14).
             'protocol_agent_role' => $e->conforming('protocol_agent_role', Slug::AGENT_NAME),
+            // card#12239: the seat's DECLARED roundtable name and its check against the same config's
+            // `cross_project.identity` (D1 § 3.1's *`roundtable_agent_name`*), under exactly the rules
+            // of the name pair above — heartbeat-only, an omitted key writes `null`, the name's slug
+            // pattern and bound hold it, and the check's member set is read from the registry.
+            'roundtable_agent_name' => $e->conforming('roundtable_agent_name', Slug::AGENT_NAME),
+            'roundtable_agent_name_check' => $e->enum(
+                'roundtable_agent_name_check',
+                KindRegistry::KINDS['reporter.heartbeat']['enums']['roundtable_agent_name_check']['members'],
+            ),
             'reporter_uptime_s' => $e->int('uptime_s'),
             // § 7.3: stored VERBATIM as a snapshot, never summed and never merged into
             // `seat_counters`. They are cumulative totals that persist across flusher restarts, so

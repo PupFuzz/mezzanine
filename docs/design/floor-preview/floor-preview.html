@@ -102,9 +102,6 @@
     .env{animation:fly 7.5s ease-in-out infinite}
     @keyframes fly{0%,52%{opacity:0;left:var(--x0);top:var(--y0)}58%{opacity:1}
       86%{opacity:1;left:var(--x1);top:var(--y1)}92%,100%{opacity:0;left:var(--x1);top:var(--y1)}}
-    .threadline{animation:dash 2.8s linear infinite}
-    @keyframes dash{to{stroke-dashoffset:-13}}
-    .beadpulse{animation:pl 2s ease-in-out infinite}
     .annring{animation:ann 9s ease-out infinite}
     @keyframes ann{0%,64%{opacity:0;transform:translate(-50%,-50%) scale(.15)}66%{opacity:.9}88%{opacity:.3;transform:translate(-50%,-50%) scale(48)}94%{opacity:0;transform:translate(-50%,-50%) scale(52)}100%{opacity:0}}
     .star{animation:conv 12s ease-in-out infinite}
@@ -122,7 +119,7 @@
   }
   /* A14's reduced-motion form is the *last message HH:MM:SS* readout on the strip, which is
      always there — so the pulse simply goes, and the fact is still carried (§ 6.4). */
-  @media (prefers-reduced-motion:reduce){.env{opacity:.9;left:var(--x1)!important;top:var(--y1)!important}.annring,.star,.folder{display:none}.threadline{animation:none}.blink,.busywiggle{animation:none}.sleepz{animation:none;opacity:.6}.dot.pulse{animation:none}}
+  @media (prefers-reduced-motion:reduce){.env{opacity:.9;left:var(--x1)!important;top:var(--y1)!important}.annring,.star,.folder{display:none}.blink,.busywiggle{animation:none}.sleepz{animation:none;opacity:.6}.dot.pulse{animation:none}}
 
   .strip{display:flex;gap:16px;font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:11px;flex-wrap:wrap}
   .strip code{color:var(--dim)}
@@ -1029,18 +1026,9 @@ function floorBody(inst,T,P){
      they are below the floor, in `floorBand`. */
   const bySlot={};for(const p of P.placed)if(p.slot)bySlot[p.slot]=p.seat;
   for(const id of Object.keys(T.desks)) g+=deskSVG(T,T.desks[id],bySlot[id]||null);
-  if(inst==="aimla"){
-    g+=`<path class="threadline" d="M 330 378 C 420 296 500 296 572 342" stroke="#b9a8f5" stroke-width="2.5" fill="none" opacity=".8"/>`;
-    const beads=[[380,338],[430,318],[482,314],[534,326]];
-    beads.forEach((b,i)=>{g+=`<circle cx="${b[0]}" cy="${b[1]}" r="4" fill="#cbb3f0" stroke="#8f7ff0" stroke-width="1.2"${i===beads.length-1?' class="beadpulse"':''}/>`;});
-    g+=`<text x="455" y="288" text-anchor="middle" font-family="Quicksand,sans-serif" font-weight="600" font-size="13" fill="#cbb3f0">#725 · query · round 4 · open</text>`;
-  }
-  if(inst==="sola"){
-    const bd=T.desks.b1, fx=bd.x+bd.w*0.62;
-    g+=`<line class="threadline" x1="${fx}" y1="${bd.y-32}" x2="${fx}" y2="46" stroke="#f0b455" stroke-width="2.5" opacity=".8" stroke-dasharray="5 6"/>`;
-    g+=`<circle class="beadpulse" cx="${fx}" cy="38" r="9" fill="#ffd07a"/><circle cx="${fx}" cy="38" r="16" fill="#ffd07a" opacity=".25"/>`;
-    g+=`<text x="${fx}" y="24" text-anchor="middle" font-family="Quicksand,sans-serif" font-weight="600" font-size="13" fill="#ffd07a">needs a human — tethered until answered</text>`;
-  }
+  /* card#12239: no coordination render is held on a floor — the thread line, its beads and label,
+     and the tether that once marked a waiting post are retired with A18 (FLOOR.md § 5.7, § 6.2). A
+     post is a bird that flies once; the shipped floor draws it, this preview does not. */
   return g;
 }
 

@@ -31,8 +31,9 @@ class AnimationLogClassPopulationMatchesTheDocumentTest extends TestCase
         $classes = $this->documentAnimationClasses();
 
         // A CONTROL ON THE PARSER FIRST: an empty parse makes every assertion below vacuous. The
-        // ids must run A1…An with no gap — a row the parse skipped is a gap — and both classes
-        // must be present, because § 6.2 says the table carries two.
+        // ids must run A1…An with no gap — a row the parse skipped is a gap — and all three classes
+        // must be present: `edge`, `held`, and since card#12239 `retired` (an id kept and never
+        // renumbered, which nothing fires).
         $this->assertNotSame([], $classes, '§ 6.2\'s table did not parse — the population is unread');
         $this->assertSame(
             array_map(static fn (int $n): string => "A{$n}", range(1, count($classes))),
@@ -41,7 +42,7 @@ class AnimationLogClassPopulationMatchesTheDocumentTest extends TestCase
         );
         $seen = array_values(array_unique($classes));
         sort($seen);
-        $this->assertSame(['edge', 'held'], $seen, '§ 6.2\'s Class column did not parse to both `edge` and `held`');
+        $this->assertSame(['edge', 'held', 'retired'], $seen, '§ 6.2\'s Class column did not parse to `edge`, `held` and `retired`');
 
         $this->assertSame([], $this->classDefects($classes),
             'a § 6.2 row driven through its own class\'s entry point wrote a row of another class');
@@ -89,6 +90,12 @@ class AnimationLogClassPopulationMatchesTheDocumentTest extends TestCase
             if ($class === 'edge') {
                 $ops[] = ['op' => 'edge', 'args' => $args];
 
+                continue;
+            }
+
+            // A `retired` row has no entry point to drive: nothing fires it, and the animation set
+            // carries no method for it (`TheAnimationSetIsTheDocumentsClosedSetTest` holds that half).
+            if ($class === 'retired') {
                 continue;
             }
 

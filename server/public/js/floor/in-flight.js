@@ -87,12 +87,16 @@ export class EffectsInFlight {
         }
 
         for (const effect of effects) {
-            if (!(effect.frames > 0)) {
+            if (!(effect.frames > 0) && !(effect.still_frames > 0)) {
                 continue;
             }
 
             if (!WALK_ROWS.includes(effect.animation_id)) {
-                this.#held.push({ effect, at: now, frames: effect.frames, key: null });
+                // An edge with a tail (A19's arrival rest, card#12241) is held through it; a reduced form
+                // with a duration (A19's still envelope) is held for that duration, then gone.
+                const frames = effect.frames > 0 ? effect.frames + (effect.rest_frames ?? 0) : effect.still_frames;
+
+                this.#held.push({ effect, at: now, frames, key: null });
 
                 continue;
             }
@@ -134,10 +138,15 @@ export class EffectsInFlight {
             .map((h) => h.key));
     }
 
-    /** Milliseconds until the next walk in flight ends, or `null` with none. */
-    nextWalkEnd(now) {
+    /**
+     * Milliseconds until the next effect in flight ends — a walk, a traveller's rest, a ring, or a
+     * reduced form shown for its duration (A19's and A22's still envelope) — or `null` with none. Every
+     * held effect, because an effect whose end nothing re-paints stays drawn on a quiet feed, which is a
+     * held render § 6.2's transient cells refuse (card#12239).
+     */
+    nextEnd(now) {
         const ends = this.#held
-            .filter((h) => h.key !== null && !this.#ended(h, now))
+            .filter((h) => !this.#ended(h, now))
             .map((h) => h.at + h.frames * this.#intervalMs - now);
 
         return ends.length === 0 ? null : Math.max(0, Math.min(...ends));

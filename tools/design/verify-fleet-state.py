@@ -112,7 +112,7 @@ WORD = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 
         "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
         "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
         "nineteen": 19, "twenty": 20,
-        "twenty-eight": 28, "twenty-nine": 29, "thirty": 30, "thirty-three": 33,
+        "twenty-six": 26, "twenty-eight": 28, "twenty-nine": 29, "thirty": 30, "thirty-three": 33,
         "thirty-four": 34}
 
 
@@ -1380,8 +1380,8 @@ else:
         if not d1_gauges:
             fail.append("G8 CONTROL: no gauge found in D1 section 12.7, so the counter count below "
                         "is being taken over a population that still includes one")
-        for pat, where in [(r"defines \*\*(\w+)\*\* counters the ingest", "section 7.1"),
-                           (r"\| The (\w+) server-side counters", "Appendix A row S16")]:
+        for pat, where in [(r"defines \*\*([\w-]+)\*\* counters the ingest", "section 7.1"),
+                           (r"\| The ([\w-]+) server-side counters", "Appendix A row S16")]:
             m = re.search(pat, raw)
             if not m:
                 fail.append(f"G8: {where} no longer states how many counters D1 section 12.7 "

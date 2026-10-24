@@ -461,11 +461,21 @@ else:
                     f"animation with no event wearing a field name")
     if len(anim_ids) < 10:
         fail.append(f"G1 CONTROL: only {len(anim_ids)} animation rows parsed from section 6.2")
-    bad_class = sorted(a for a, k in anim_class.items() if k not in ("edge", "held"))
+    # card#12239: `retired` is the closed set's THIRD class — a row whose id is kept and never renumbered,
+    # that never fires and writes no log row. It is a dedicated status, not a widened one: a retired row
+    # must say so in its trigger cell (`RETIRED`) and end nowhere (`—`), or it is a live row mislabelled.
+    bad_class = sorted(a for a, k in anim_class.items() if k not in ("edge", "held", "retired"))
     for a in bad_class:
-        fail.append(f"G1: animation {a}'s Class cell reads `{anim_class[a]}`, which is neither `edge` "
-                    f"nor `held` — the log's causality rule is selected by that cell, so a row "
-                    f"outside the two classes is a row whose animation-log contract is undefined")
+        fail.append(f"G1: animation {a}'s Class cell reads `{anim_class[a]}`, which is not `edge`, `held` "
+                    f"or `retired` — the log's causality rule is selected by that cell, so a row "
+                    f"outside the three classes is a row whose animation-log contract is undefined")
+    for r in anim_rows:
+        c = cells(r)
+        m = re.match(r"^\*\*(A\d+)\*\*$", c[0])
+        if m and anim_class.get(m.group(1)) == "retired":
+            if len(c) < 7 or "RETIRED" not in c[5] or c[6].strip() != "—":
+                fail.append(f"G1: animation {m.group(1)} is `retired` but its trigger cell does not say "
+                            f"RETIRED or its Ends cell is not `—` — a retired row fires nothing")
     if not bad_class and len({k for k in anim_class.values()}) < 2:
         fail.append("G1 CONTROL: section 6.2's rows are all one class — the split the log's two "
                     "causality rules rest on would be unexercised, and every held render would be "
