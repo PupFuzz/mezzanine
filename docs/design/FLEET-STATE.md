@@ -3163,10 +3163,11 @@ about itself, which is why they are separate from D1's twelve-member `degraded` 
 into it:
 
 `seq_gap` · `seq_collision` · `clock_skew` · `epoch_reset` · `reporter_ahead` · `fold_lag` ·
-`derivation_error` — **seven declared, six of them new**, because `epoch_reset` is shared with D1's set.
+`derivation_error` · `reporter_outdated` — **eight declared, seven of them new**, because `epoch_reset` is shared with D1's set.
 Every badge [§ 7.1](#71-d1s-server-side-counters--where-they-live)'s "Badge raised" column names is a
-member of this list; that is what makes [§ 8.2.1](#821-the-seat-state-object)'s `badges` bound of
-**18** a bound over the right population rather than over a list plus some prose.
+member of this list; that is what makes [§ 8.2.1](#821-the-seat-state-object)'s `badges` bound a bound
+over the right population rather than over a list plus some prose — the bound is the size of the union
+that section states, and `tools/design/verify-fleet-state.py` G4 re-derives it from this list and D1 § 9.3's table.
 
 **A counter-derived badge is windowed at 24 h** (operator ruling 2026-09-14, card#9491). `seq_gap`,
 `seq_collision`, `epoch_reset` and `reporter_ahead` are raised while a counter that raises them
@@ -3180,16 +3181,58 @@ seat every pass ([§ 2.1](#21-processes)), so a badge clears within one sweep ca
 end, on a seat that sends nothing as well. A rise is dated at the receipt of its evidence, never at the
 fold's own clock, so a fold catching up after an outage dates an old gap when it arrived rather than when
 the fold reached it. [§ 6.6](#66-rebuild-from-the-log)'s rebuild writes no counter, so it leaves every
-`last_increased_at` where the live pipeline left it and moves no badge (AT-D2-10). The other three are not counter-derived and are not windowed:
-`clock_skew` and `fold_lag` are current gauges, and `derivation_error` reads `seat_state.fold_errors`,
+`last_increased_at` where the live pipeline left it and moves no badge (AT-D2-10). The other four are not counter-derived and are not windowed:
+`clock_skew` and `fold_lag` are current gauges, `derivation_error` reads `seat_state.fold_errors`,
 which states that the derived state is missing an event until a rebuild clears it, a condition that
-holds until then rather than an event that happened once. [D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters)
+holds until then rather than an event that happened once, and `reporter_outdated` is a comparison of the
+seat's last reported build against the server's (below) that holds until the seat reports a build that
+is not behind. The operator's ruling of 2026-09-14 windows badges raised by a counter, so that one bad
+minute does not mark a seat for life; a comparison has no rise to date and nothing to let lapse — a
+seat still running the old build at hour 25 is exactly as behind as it was at hour 1. [D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters)
 windows the reporter's own members at the same 24 h.
 
 `catching_up` is deliberately **not** a badge: it is a `link_state`
 ([§ 4.5](#45-link-states)), and a fact with two homes is a fact free to disagree with itself.
 
 `epoch_reset` appears in both sets, and deliberately: D1's reporter raises it from its own `state_reset` counter, and the server raises it independently from `seq_epoch_change`. The two are independent observers of different causes (D1 § 10.2), so which side raised the badge names the cause. The reporter counts only a `state.json` that exists and cannot be used; the server counts any new epoch on a seat that has already sent under one. So the server's badge alone means state lost with the file after the seat reported, the reporter's alone means an unusable `state.json` on a seat that had not yet reported, and both together mean an unusable `state.json` on a seat that had. A first start raises neither. ⚠ A seat installed from a reporter build before card#9374 raised the reporter's badge at its first start, because that build counted a missing `state.json` as a reset, and that count persists across flusher restarts. From a reporter build that includes card#9491 the reporter's badge clears one window after the count last rose.
+
+**`reporter_outdated` — the seat's last reported reporter build is behind the one this server was built
+with** (card#11818 part 2; the operator's rule that every seat applies every reporter update,
+`fleet-reporter/README.md § Updating a seat`). **Where the current version lives:** the server carries it
+as `App\Ingest\SchemaVersions::CURRENT_REPORTER_VERSION`, beside `ACCEPTED` and `MIN_REPORTER_VERSION` —
+the one machine-readable place `docs/VERSIONING.md § Wire compatibility` rule 2 already names, not a
+sibling of it — and it is held equal to `fleet-reporter/fleet-reporter.js`'s `REPORTER_VERSION` in the
+same tree by a unit test (`Tests\Unit\Ingest\CurrentReporterVersionIsPinnedToTheArtifactTest`, which
+reads the artifact's one `const REPORTER_VERSION = '…';` line with the guard's own pattern) and by
+`bin/reporter-version-guard.py` on every PR (the `reporter-version` check, required on `dev`), which
+reds when the two differ at the head whether or not the PR touches the reporter. It is also published as
+`current_reporter_version` on `GET /api/ingest/health` beside `min_reporter_version`
+([D1 § 4.1](EVENT-SCHEMA.md#41-endpoints)), so a seat's operator can read it from the seat with the token
+the seat already holds. **How the badge is judged:** `Badges::serverFor()` compares
+`seat_state.reporter_version` — the last batch envelope's `reporter_version`, which the fold writes from
+the `batches` row ([§ 6.5](#65-the-fold)) — against that constant through one predicate,
+`SchemaVersions::reporterIsOutdated(?string)`, whose four answers are the whole rule: **null ⇒ not
+raised** — the seat has sent no batch, [§ 4.5](#45-link-states) rule 1 already renders it `offline`
+with *no data yet*, and there is no reporter to be out of date; **a value the version grammar does not
+accept ⇒ raised** — the grammar is `bin/reporter-version-guard.py`'s `parse_version`, three
+non-negative integers with no leading zero, and a build this version line cannot name is not a released
+build of it, so reading it as current would hide exactly the seat the rule exists for; **a lower
+`x.y.z` ⇒ raised**, by numeric precedence per component, never by string order; **equal or greater ⇒
+not raised** — a seat ahead of the server is the server lagging its own deploy, which is not the seat's
+omission and is not this badge (`reporter_ahead` is a different fact, values this server does not know,
+and the two are never merged). **When it moves:** it CLEARS on the first event of any kind whose batch
+carries a version that is not behind — `StateRecompute::after()` writes `reporter_version` and recomputes
+the badge set in the same pass, so the clear needs no sweep — and it is RE-JUDGED for every seat on every
+sweep pass ([§ 2.1](#21-processes)), so a deploy that raises the constant badges every seat behind it
+within one sweep cadence with no batch from the seat, a silent seat included. It is version-bearing like
+every badge, so both edges emit a delta whose `changed[]` names `badges`. **The seats it can never appear
+on**, by construction: a seat with no batch yet (`reporter.version` null) and a retired seat, which has
+no desk ([§ 4.10](#410-retirement-is-a-rendered-state)). **What it deliberately does not do:** it refuses
+nothing. `ACCEPTED` alone refuses and `MIN_REPORTER_VERSION` keeps its informational meaning, so an older
+reporter's batches land exactly as before — a refusal would blank the stale seat's floor presence within
+900 s, the opposite of making it visible, and under D1 § 11.5's poison-pill rule it would be permanent
+for the batch ([§ 13](#13-decisions-taken-revisable-at-review) row 59). What it costs the stale seat is one
+badge on its desk, with the build it runs readable beside it in the drill-down's reporter block.
 
 ### 7.3 How the reporter's own counters are handled
 
@@ -3371,7 +3414,7 @@ snapshot repeats per seat and the delta patches.
 | `delivery.oldest_unsent_age_s` | int | **yes** | ≥ 0; **> 300 ⇒ `catching_up`** | `null` |
 | `delivery.seq_epoch` | ULID | **yes** | 26 chars | `"01K3T0000A5N7M2X9V4B6D0FGH"` |
 | `delivery.last_seq` | int | **yes** | ≥ 1 | `48211` |
-| `badges` | array\<string\> | no | **0…18** — the union of D1's 12 `degraded` members and [§ 7.2](#72-this-planes-own-counters-and-badges)'s 7, of which `epoch_reset` is in both. The bound is that union's size and moves only when one of the two tables moves; no duplicates; D1's members first, in D1 § 9.3's order, then this document's, in § 7.2's | `["lossy"]` |
+| `badges` | array\<string\> | no | **0…19** — the union of D1's 12 `degraded` members and [§ 7.2](#72-this-planes-own-counters-and-badges)'s 8, of which `epoch_reset` is in both. The bound is that union's size and moves only when one of the two tables moves; no duplicates; D1's members first, in D1 § 9.3's order, then this document's, in § 7.2's | `["lossy"]` |
 | `badges_since` | rfc3339_ms | **yes** | when the oldest currently-present badge first appeared | `"2026-08-23T09:14:02.118Z"` |
 | `enabled` | bool | **yes** | last heartbeat's value; `null` before the first heartbeat | `true` |
 | `roundtable_agent_name` | slug | **yes** | ≤ 48 B — the protocol agent name's bound, which D1 § 6.14 gives this member too. The seat's own DECLARATION of the identity it posts under on the fleet's cross-install repository ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)'s *`roundtable_agent_name`*, card#12239), last heartbeat's value; `null` before the first heartbeat, after a heartbeat that carried neither of its two members (a reporter that predates them), and when the seat declares none. **A protocol-level label, never an identity**: the join [§ 8.3.3](#833-the-coordination-objects) rule 1's fleet arm makes through it resolves a **fleet-scope** object's name and nothing else | `"pm-solo"` |
@@ -3589,12 +3632,12 @@ insignificant whitespace). Every row below names the block it is measured from, 
 | Object | Bytes | How |
 |---|---|---|
 | seat state, typical | **2,167 B** | the seat object of the [§ 8.2.2](#822-worked-snapshot) snapshot, serialized |
-| seat state, worst case | **6,104 B** | the `patch` of the [§ 8.3.2](#832-worked-worst-case-delta) block, serialized |
+| seat state, worst case | **6,124 B** | the `patch` of the [§ 8.3.2](#832-worked-worst-case-delta) block, serialized |
 | snapshot envelope | **302 B** | the [§ 8.2.2](#822-worked-snapshot) snapshot **less** its one seat object: fleet health + one install wrapper |
 | snapshot, 4 seats | **~9.0 KB** typical, **~25 KB** worst | 302 + n × the above |
-| snapshot, 50 seats | **~109 KB** typical, **~306 KB** worst | — |
+| snapshot, 50 seats | **~109 KB** typical, **~307 KB** worst | — |
 | delta, typical | **323 B** | the [§ 8.3.1](#831-worked-delta) example, serialized |
-| delta, worst case | **6,862 B** | the [§ 8.3.2](#832-worked-worst-case-delta) block itself, serialized |
+| delta, worst case | **6,882 B** | the [§ 8.3.2](#832-worked-worst-case-delta) block itself, serialized |
 
 **The worst case is published as an object rather than described as a construction, and that is the
 whole point.** An earlier draft labelled these figures *Measured* while the worst case existed only as a
@@ -3636,8 +3679,8 @@ well as the byte count:
    ceiling is deliberately pessimistic, so the bound cannot be falsified by a fleet that runs longer
    than anyone planned.
 
-The worst-case delta at 6,862 B sits inside the **8 KiB per-message bound** this design holds itself to
-([§ 8.3](#83-the-websocket-delta-feed)) at **1.19×**, with **1,330 B** spare.
+The worst-case delta at 6,882 B sits inside the **8 KiB per-message bound** this design holds itself to
+([§ 8.3](#83-the-websocket-delta-feed)) at **1.19×**, with **1,310 B** spare.
 
 **No pagination, and the threshold at which that stops being true.** A 50-seat snapshot is ~109 KB, which
 is one response. Past **200 seats** (~434 KB typical) the snapshot should page by install — stated now
@@ -3957,7 +4000,7 @@ one statement whose plan [§ 6.7](#67-retention-and-purge) states, over a table 
 on the average tick and none at all on a quiet fleet — which is the design's own 250 ms rather than a
 number this amendment mints.
 
-**Message bound: 8 KiB.** The worst-case delta is 6,862 B, measured by serializing
+**Message bound: 8 KiB.** The worst-case delta is 6,882 B, measured by serializing
 [§ 8.3.2](#832-worked-worst-case-delta), so the bound cannot bind on a conforming message; it exists so that a future field addition that would
 breach it fails a test rather than a client. SSE imposes no per-message maximum of its own — a `data:`
 line is unbounded by the protocol (DOCS-CITED, WHATWG HTML § *Parsing an event stream*, which states
@@ -4412,7 +4455,7 @@ This block exists so the two worst-case figures of [§ 8.2.1](#821-the-seat-stat
 seat object's size is its `patch` serialized. It is built by the four rules stated at
 [§ 8.2.1](#821-the-seat-state-object), and the filler strings are decimal rulers so a reader can count a
 bound rather than trust it. **It is not a reachable seat state** — a retired seat with an open call and
-all eighteen badges is a size bound, not a scenario — and that is stated rather than left to be noticed.
+every badge at once is a size bound, not a scenario — and that is stated rather than left to be noticed.
 **It carries no `idle_nudge_after_s`, because no delta does** ([§ 6.5](#65-the-fold)). A snapshot's seat
 object can, so the worst-case seat object a SNAPSHOT serves is this `patch` plus that member at its
 bound, `"idle_nudge_after_s":86400` — 27 B more — and the worst-case snapshot rows of
@@ -4460,7 +4503,7 @@ bound, `"idle_nudge_after_s":86400` — 27 B more — and the worst-case snapsho
     "session": {"session_id": "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567", "started_at": "2026-08-23T14:23:09.882Z", "source": "startup", "project_label": "012345678901234567890123456789012345678901234567", "harness_label": "01234567890123456789012345678901"},
     "activity": {"last_event_time": "2026-08-23T14:23:09.882Z", "last_received_at": "2026-08-23T14:23:09.882Z", "last_kind": "01234567890123456789012345678901"},
     "delivery": {"last_receipt_at": "2026-08-23T14:23:09.882Z", "last_heartbeat_at": "2026-08-23T14:23:09.882Z", "no_data_since": "2026-08-23T14:23:09.882Z", "clock_skew_ms": -9007199254740991, "spool_lag_events": 9007199254740991, "oldest_unsent_age_s": 9007199254740991, "seq_epoch": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "last_seq": 9007199254740991},
-    "badges": ["lossy", "batches_rejected", "harness_contract_moved", "reporter_behind", "value_clamped", "counters_omitted", "index_overflow", "invalid_tool_name", "bad_session_id", "config_invalid", "statusline_degraded", "epoch_reset", "seq_gap", "seq_collision", "clock_skew", "reporter_ahead", "fold_lag", "derivation_error"],
+    "badges": ["lossy", "batches_rejected", "harness_contract_moved", "reporter_behind", "value_clamped", "counters_omitted", "index_overflow", "invalid_tool_name", "bad_session_id", "config_invalid", "statusline_degraded", "epoch_reset", "seq_gap", "seq_collision", "clock_skew", "reporter_ahead", "fold_lag", "derivation_error", "reporter_outdated"],
     "badges_since": "2026-08-23T14:23:09.882Z",
     "enabled": true,
     "protocol_agent_name": "012345678901234567890123456789012345678901234567",
@@ -6311,6 +6354,45 @@ cursor, one table over, with a stream as the reader. The fold closes it with the
 - **RED:** drop the refusal → a third secret is issued and verification tries three HMACs per
   unauthenticated request.
 
+### AT-D2-30 an out-of-date reporter is badged, a current one is not, and nothing is refused
+
+**Property:** [§ 7.2](#72-this-planes-own-counters-and-badges)'s `reporter_outdated` and its four-answer
+predicate (card#11818 part 2).
+
+- **Build:** a live store, with `SchemaVersions::CURRENT_REPORTER_VERSION` read from the class under
+  test; five seats. Three are fed one batch each whose envelope carries a lower `x.y.z`, the constant's
+  own value, and a higher one — the higher one with a **two-digit component** (`0.10.0` against a
+  constant of `0.9.0`-shape, or the constant's minor plus ten), which is the value a string comparison
+  misorders; a fourth is provisioned and never fed; a fifth is fed a batch whose `reporter_version` is a
+  string the grammar rejects (`"0.3.0-dev"`), which [D1 § 4.2](EVENT-SCHEMA.md#42-batch-envelope-fields)'s
+  1…24-byte bound admits.
+- **GREEN:** after the fold, the lower seat and the unparseable seat carry `reporter_outdated` in
+  `badges`, and the delta that raised it on each names `badges` in `changed[]`; the equal, the higher
+  and the never-fed seats do not carry it; every fed batch was `202` and no `batches_refused.*` row
+  moved on any seat. Feed the lower seat one hook event in a batch at the constant's value → the badge
+  is gone from its seat object on that event's recompute, before any sweep pass runs. Then the
+  deploy case, by its mechanism rather than by rebinding a constant: with every seat quiet, write a
+  lower `x.y.z` straight into the equal seat's `seat_state.reporter_version` (what a raised constant
+  leaves behind is exactly a stored version that is now lower, with no batch to recompute on) and run
+  **one** sweep pass → that seat is badged, no batch having arrived, and
+  `badge_first_seen.reporter_outdated` on it is that pass's clock. `GET /api/ingest/health` with a
+  valid seat token carries `current_reporter_version` equal to the constant.
+  `Tests\Unit\Ingest\CurrentReporterVersionIsPinnedToTheArtifactTest` reads
+  `fleet-reporter/fleet-reporter.js` from the repository tree, extracts its one `REPORTER_VERSION`
+  line with the pattern `bin/reporter-version-guard.py` uses, and asserts it equals the constant.
+- **RED — the comparison as a string:** compare the two versions with `strcmp` → the higher seat's
+  `0.10.0` reads as behind and is badged; the two-digit component is what makes this RED reachable, so a
+  fixture without one is a fixture that cannot see it.
+- **Second RED — the unreadable version read as current:** make the predicate answer *not outdated* for
+  a value the grammar rejects → the fifth seat is unbadged, and a seat running a hand-built reporter
+  looks current on the floor.
+- **Third RED — the judgement frozen in the fold:** raise the badge in the fold's recompute only, never
+  in the sweeper's → the deploy leg fails: the constant moves, no batch arrives, no pass re-judges, and
+  the raised constant badges nobody until each seat next speaks — a silent seat never.
+- **Fourth RED — the drifting constant:** bump `REPORTER_VERSION` in the artifact alone → the pin test
+  reds, and `bin/reporter-version-guard.py` exits 1 naming `CURRENT_REPORTER_VERSION` (its selftest
+  plants exactly this as `plant-bump-server-constant-stale`).
+
 ---
 
 ## 12. Every number, and where it comes from
@@ -6354,10 +6436,10 @@ document.
 | Store per seat-day | **~10.0 MB** | **Derived** — 7.9 MB of `events` (10,420 × 756 B) + 2.1 MB of projections (calls 3,000 × 300 B, transitions 1,400 × 160 B, other 1,740 × 200 B, × 1.4, plus `ix_purge` measured at 24 B a transition and at most 29 B on the 1,740) | [§ 6.8](#68-sizing) |
 | Store per seat, 14 days | **~140 MB** | **Derived** — × 14 | [§ 6.8](#68-sizing) |
 | Store, 4 / 12 / 50 seats | **0.56 / 1.7 / 7.0 GB** | **Derived** — × seat count. Inherits D1's volume *estimate*; re-derived from the first week of live data | [§ 6.8](#68-sizing) |
-| Seat-state object | **2,167 B** typical, **6,104 B** worst | **Measured** — the [§ 8.2.2](#822-worked-snapshot) snapshot's seat object and the `patch` of [§ 8.3.2](#832-worked-worst-case-delta), each serialized with no insignificant whitespace. Both artefacts are published in this document precisely so the figures are reproducible, and `tools/design/verify-fleet-state.py` re-derives them | [§ 8.2.1](#821-the-seat-state-object) |
+| Seat-state object | **2,167 B** typical, **6,124 B** worst | **Measured** — the [§ 8.2.2](#822-worked-snapshot) snapshot's seat object and the `patch` of [§ 8.3.2](#832-worked-worst-case-delta), each serialized with no insignificant whitespace. Both artefacts are published in this document precisely so the figures are reproducible, and `tools/design/verify-fleet-state.py` re-derives them | [§ 8.2.1](#821-the-seat-state-object) |
 | Fleet snapshot | **9.0 KB** (4 seats) … **109 KB** (50 seats) | **Measured** — 302 B envelope + n × the above | [§ 8.2.1](#821-the-seat-state-object) |
 | Snapshot pagination trigger | 200 seats (~434 KB) | **Derived** — stated as the trigger, deliberately not built for a four-seat fleet | [§ 8.2.1](#821-the-seat-state-object) |
-| Delta message | **323 B** typical, **6,862 B** worst | **Measured** — [§ 8.3.1](#831-worked-delta) and [§ 8.3.2](#832-worked-worst-case-delta) serialized | [§ 8.3](#83-the-websocket-delta-feed) |
+| Delta message | **323 B** typical, **6,882 B** worst | **Measured** — [§ 8.3.1](#831-worked-delta) and [§ 8.3.2](#832-worked-worst-case-delta) serialized | [§ 8.3](#83-the-websocket-delta-feed) |
 | Feed traffic per connected client | **~1.6 KiB/s** at 50 seats | **Derived** — 5.20 msg/s × the measured 323 B typical delta = 1,680 B/s | [§ 8.3](#83-the-websocket-delta-feed) |
 | Worst-case integer magnitude | 2⁵³−1 (16 digits) | **Chosen** — the JS-safe ceiling D1 § 6.0 admits, used for every integer whose own bound is open, so the worst-case object cannot be falsified by a fleet that outlives its estimates | [§ 8.2.1](#821-the-seat-state-object) |
 | Feed message bound | 8 KiB | **Chosen** — 1.19× the measured worst case, so a conforming message cannot breach it and a future field addition that would break a test rather than a client. SSE imposes no per-message maximum of its own, and `feed_outbox.message` carries the same figure as a `CHECK` (card#9287) | [§ 8.3](#83-the-websocket-delta-feed) |
@@ -6494,6 +6576,7 @@ review can reverse it deliberately rather than discover it later.
 | 56 | **card#12239 (operator 2026-10-23): the two coordination objects carry a `scope`, and a fleet-scope object has `install_id: null` and rides the outbox as a fleet-wide row** ([§ 8.3.3](#833-the-coordination-objects), [§ 6.4](#64-ddl)) | a second object pair for the fleet's repository; or `install_id` set to the first participant's install | a second pair is two formats for one fact, the defect this document refuses everywhere; a borrowed `install_id` would put a cross-install thread in one room and make [§ 9](#9-read-side-authentication)'s future per-install ACL filter it wrongly in both directions | a consumer reads `scope` before it reads `install_id`; the ACL question for fleet-scope objects is named at `docs/design/COORD-STORE.md § 11` and decided when that ACL is |
 | 57 | **card#12239 (operator 2026-10-23): the join gains a fleet arm through a second seat declaration, `roundtable_agent_name`, and the arms never cross** ([§ 8.3.3](#833-the-coordination-objects) rule 1, [§ 8.2.1](#821-the-seat-state-object)) | derive the roundtable name from the protocol agent name by a suffix rule; or a mapping table the operator keeps; or resolve fleet-scope names through `protocol_agent_name` where the strings happen to match | each is the guessed join card#7957 refused, one surface over: the only party that knows both names is the seat, and `card#7957`'s (d) says the seat declares. A string match between vocabularies is a coincidence this plane cannot check, exactly as `seat_id` equality is | two declarations per seat, two columns, two members; a fleet whose seats declare no roundtable name draws no roundtable line, which is today's render and a supported state |
 | 58 | ⚠ **WITHDRAWN at r2 — moot: r1 F1/F7's thread object and client thread hold served the thread line the operator retired the same day.** The surviving part of r1 is the receipt's concurrency primitive and fault discipline (F3), now at [§ 6.12](#612-the-coordination-store) | — | — | — |
+| 59 | **card#11818 part 2 (seat ruling, reversible): a seat whose last reported reporter build is behind the server's `CURRENT_REPORTER_VERSION` is BADGED `reporter_outdated` and its batches are still accepted; `MIN_REPORTER_VERSION` keeps its informational meaning and `ACCEPTED` alone refuses** ([§ 7.2](#72-this-planes-own-counters-and-badges)) | raise `MIN_REPORTER_VERSION` to the current build and refuse a lower reporter at the ingest, in the shape of D1 § 12.1 step 6's schema refusal | the operator's rule is that a seat which skipped an update is VISIBLE. A refusal empties the one surface the rule asks for: the refused seat's desk goes dark within 900 s, and under D1 § 11.5 the refusal is permanent for that batch. A badge marks the seat while it keeps reporting, the drill-down names the build it runs, and the badge survives the seat going quiet. The badge is a current comparison rather than a windowed counter because the condition has no rise to date and does not lapse | an operator finds a stale seat by reading the floor or the seat object, never from an ingest counter; a seat that is behind AND dark shows the badge on an empty chair, which is the honest picture. Reversible by moving one constant, which its docblock already calls a release act |
 
 ---
 
@@ -6644,7 +6727,7 @@ operator ruling.
    ([§ 8.2.1](#821-the-seat-state-object)). If D3 wants a different number the cap moves and the
    worst-case byte figure moves with it — measurably now, because the worst case is a published block
    ([§ 8.3.2](#832-worked-worst-case-delta)) and each further subagent adds a **measured 263 B** —
-   the block's own element, 262 B serialized, plus its comma separator — against **1,330 B** of
+   the block's own element, 262 B serialized, plus its comma separator — against **1,310 B** of
    spare under the 8 KiB bound. ⌊spare ÷ 263⌋ more therefore fit and one more does not: **the cap could
    reach 8 plus that many** — [D3 § 8.1](FLOOR.md#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)
    carries the figures as measured now and re-derives them on every run — and the next element
@@ -6784,7 +6867,7 @@ operator ruling.
 ## Appendix A — every D1 obligation, and where it is discharged
 
 [D1 § 12.6](EVENT-SCHEMA.md#126-the-five-d2-must-constraints) carries **five numbered `D2-MUST`
-constraints**. D1 also addresses this document in **thirty** further places — a `D2` mention, a
+constraints**. D1 also addresses this document in **thirty-one** further places — a `D2` mention, a
 "constraining D2" note, a server-side rule that only this plane can implement. All of them are
 enumerated here, because an obligation a downstream document did not notice is indistinguishable from
 one it declined. The two counts above and the two tables' row counts are checked against each other by
@@ -6792,7 +6875,7 @@ one it declined. The two counts above and the two tables' row counts are checked
 
 **The population had two halves and only one was machine-derivable; D1's marker convention has since
 collapsed the gap, and the remainder is stated because that is where the last miss was.**
-**Twenty-nine** of the thirty cite a D1 section carrying a marker on the obligation sentence
+**Thirty** of the thirty-one cite a D1 section carrying a marker on the obligation sentence
 itself — `D2-MUST`, a `D2:` prefix, or a *constraining D2* note, the convention
 [D1 § 1](EVENT-SCHEMA.md#1-non-goals) declares; the remaining **one** is S25, whose D1-source column
 names a decision-register row rather than a section number, so no marker anywhere in D1 can reach it.
@@ -6824,7 +6907,7 @@ prints by name on every run rather than reporting a clean over it.
 | **4** | **Transitions ordered by `(event_time, seq)`, never arrival order; `received_at` the only clock for liveness, retention and cross-seat comparison; a repeated `(seq_epoch, seq)` with differing `event_id`s counted as `seq_collision`, not silently applied** | [§ 6.5](#65-the-fold) (the LWW comparator, with `seq_epoch` inserted — a refinement, filed at [§ 14](#14-open-questions-for-the-review-loop) item 4), [§ 4.7](#47-which-clock-each-ceiling-is-measured-from), [§ 6.7](#67-retention-and-purge), [§ 7.1](#71-d1s-server-side-counters--where-they-live) | [AT-D2-11](#at-d2-11-out-of-order-batches-converge), [AT-D2-18](#at-d2-18-seq-gaps-collisions-and-epoch-resets-are-visible) |
 | **5** | *(D1 § 12.6, stated in full at D1 § 6.13 with its resolution edges)* **Blocked only from `attention.request`, cleared only by its matching `attention.resolved` (by `request_id`), the session ending, that session's next activity event or any session on the seat starting — never by a clock and never by the seat going quiet; no second predicate over `notification_kind` is needed or wanted** | [§ 4.4](#44-activity-states-every-entry-and-exit-edge) `blocked` (all three exits, and the rows that say leaving live, offline quiescence and time are **not** exits — card#9527), [§ 4.5](#45-link-states) (the leaving-live clear touches the `stalled` flag only), [§ 4.3](#43-the-derivation-function) (precedence rule 1), [§ 6.4](#64-ddl) (`notification_kind` has three members and no `other`) | [AT-D2-5](#at-d2-5-blocked-has-an-exit-including-when-the-exit-event-is-lost) |
 
-### The thirty further obligations
+### The thirty-one further obligations
 
 | # | D1 source | Obligation | Discharged in |
 |---|---|---|---|
@@ -6858,6 +6941,7 @@ prints by name on every run rather than reporting a clean over it.
 | S28 | § 9.3, § 11.3 | `spool_dropped_events` badges the seat `lossy` **and the number is rendered** — a loss is never a badge alone | [§ 7.3](#73-how-the-reporters-own-counters-are-handled) (badges render with their counter value and `uptime_s`), [§ 7.1](#71-d1s-server-side-counters--where-they-live) (no server counter writes `lossy`, so the rendered number always belongs to the badge beside it) |
 | S29 | § 6.2 | **A consumer must not read `end_reason: "other"` as a degradation signal** — it is "a common value, not a residue", the majority of D1's own capture run, and what a non-interactive `claude -p` session ends with | [§ 6.4](#64-ddl) (`sessions.end_reason` carries `other` as an ordinary member), [§ 4.8](#48-what-may-never-mint-a-state) (the explicit row: no badge, no degradation, no rule reads it), [AT-D2-1](#at-d2-1-idle-is-minted-by-exactly-one-rule) (a `clean_turn_then_exit` with `end_reason: other` leaves `badges` empty and moves no counter) |
 | S30 | § 6.3 | `console_url` is stored against its session as of the newest `turn.start`, a value failing D1's pattern is refused at the fold, and the member reaches an **operator** only — never the seat object, the snapshot or the stream (card#9416) | [§ 6.4](#64-ddl) (`sessions.console_url`), [§ 7.2](#72-this-planes-own-counters-and-badges) (`console_url_refused`), [§ 8.2.3](#823-the-seat-detail-response) (`detail.console_url`, gated) |
+| S31 | § 4.1 | a seat whose last reported `reporter_version` is behind `current_reporter_version` — the server's copy of the build it was built with, pinned to the artifact — is badged `reporter_outdated`, and neither reporter-version member refuses a batch (card#11818 part 2) | [§ 7.2](#72-this-planes-own-counters-and-badges) (the predicate, where the constant lives, what it never refuses), [§ 13](#13-decisions-taken-revisable-at-review) row 59 |
 
 **Nothing in D1 addressed to D2 is undischarged.** Four obligations were discharged with a stated
 divergence rather than literally, and each was filed as a D1 amendment need in
@@ -6911,6 +6995,7 @@ everything from step 3 onward.
 | 11 | **retirement** — the three columns, the recomputed render, the `cause: operator` transition row and the two publishes, in one transaction, behind whichever operator entry points § 2.1 lists ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)). It comes after step 9 because it publishes on the feed. ⚠ **And it therefore DEPENDED on what step 9 deleted**: its gate AT-D2-23 drove step 9's `CapturingBroadcaster`. ✅ Step 9 (card#9300) re-pointed every AT-D2-23 test — the store half and the wire half — to `feed_outbox` rows and a consumed stream BEFORE deleting the class, so this row's gate runs against the transport that ships | [AT-D2-23](#at-d2-23-a-retired-seats-desk-goes-and-only-an-announcement-removes-it) |
 | 12 | ✅ **BUILT — card#12239 (2026-10-24).** **the coordination receipt** (card#12239, design approved 2026-10-24): the three tables of [§ 6.4](#64-ddl), the binding commands with the two-secret rule, the receipt route in D1 § 18.8's order with the `{hook}` selector, the `coord.round` derivation, the one-transaction write with its `ON DUPLICATE KEY` primitive and fault discipline, and the counters' homes ([§ 6.12](#612-the-coordination-store), [§ 7.1](#71-d1s-server-side-counters--where-they-live)); `App\Sweep\Purge` gains the digest row and the 3-day floor | D1's **AT-23**, **AT-24**'s round half, **AT-25**, **AT-26**; [AT-D2-26](#at-d2-26-the-receipt-publishes-the-message-and-holds-nothing), [AT-D2-27](#at-d2-27-the-digest-the-derivation-and-the-feed-rows-commit-together-or-not-at-all), [AT-D2-28](#at-d2-28-a-fleet-scope-message-reaches-every-client-carrying-no-room), [AT-D2-29](#at-d2-29-a-binding-holds-at-most-two-secrets); [AT-D2-17](#at-d2-17-dedup-retention-and-the-chain-between-them) extended with the digest chain. The build order and each test's RED plant are `docs/design/COORD-STORE.md § 9`'s |
 | 13 | ✅ **BUILT — card#12239 (2026-10-24).** **the roundtable-name declaration, server half** — the two `seat_state` columns, the ingest registry rows, the fold, `SeatDelta`'s map and the two seat-object members ([§ 6.4](#64-ddl), [§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects) rule 1's fleet arm) | `SeatObjectMatchesTheDocumentTest`'s delta-map leg and the heartbeat registry test, each red on the member missing; FLOOR.md's AT-D3-29 for the consumer's arm |
+| 14 | **the reporter-outdated badge, server half** (card#11818 part 2; `docs/design/plan-11818-reporter-outdated.md` is the build plan): `SchemaVersions::CURRENT_REPORTER_VERSION` with its pin test, `SchemaVersions::reporterIsOutdated()`, the `reporter_outdated` member of `Badges::SERVER` raised in `serverFor()` ([§ 7.2](#72-this-planes-own-counters-and-badges)), `current_reporter_version` on `GET /api/ingest/health` ([D1 § 4.1](EVENT-SCHEMA.md#41-endpoints)), and `bin/reporter-version-guard.py`'s constant-equality leg. No column, no migration: the badge is derived into `seat_state.server_badges` as the other seven are | [AT-D2-30](#at-d2-30-an-out-of-date-reporter-is-badged-a-current-one-is-not-and-nothing-is-refused) RED on each of its plants, then GREEN; `SeatObjectMatchesTheDocumentTest` on [§ 8.2.1](#821-the-seat-state-object)'s `badges` bound; FLOOR.md's AT-D3-30 for the consumer's half |
 
 **Three of these are hard requirements before anything downstream may treat this state as true:**
 **AT-D2-2** (the `/clear` trace mints no idle — the D2 half of D1's headline test, and the reason both

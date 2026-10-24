@@ -1541,7 +1541,7 @@ anything — no unix socket, no shared filesystem, no "it's local so a retry is 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | `POST` | `/api/ingest/events` | `Authorization: Bearer` | submit one batch |
-| `GET` | `/api/ingest/health` | `Authorization: Bearer` | report the accepted schema-version set and server time |
+| `GET` | `/api/ingest/health` | `Authorization: Bearer` | report the accepted schema-version set, the server time, and the reporter version line's minimum and current values |
 | `POST` | `/api/ingest/github` | **HMAC** (`X-Hub-Signature-256`) | receive one GitHub webhook delivery from a coordination repository — a **third auth mode** on a route of its own, whose envelope, validation order and rate limit are [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)'s and **not** this section's ([§ 18.9](#189-why-this-does-not-ride-the-batch-contract) says why it cannot ride the batch contract). Listed here so this table is the whole endpoint surface; every rule below in § 4 is about the two Bearer routes |
 
 - `Content-Type: application/json; charset=utf-8` is **required** on `POST /api/ingest/events`; any
@@ -1552,10 +1552,16 @@ anything — no unix socket, no shared filesystem, no "it's local so a retry is 
   path version would be a second, silently divergent version line for one contract.
 - `GET /api/ingest/health` requires a valid seat token — the accepted-version set is fleet-internal
   and every party who needs it (a seat, an operator debugging a seat) already holds a token. It
-  returns `{"accepted_schema_versions":[…],"server_time":"…","min_reporter_version":"…"}`, read from
+  returns `{"accepted_schema_versions":[…],"server_time":"…","min_reporter_version":"…","current_reporter_version":"…"}`, read from
   the single machine-readable declaration required by
   [`docs/VERSIONING.md § Wire compatibility` rule 2](../VERSIONING.md#the-rules) — this document
-  deliberately does not restate the accepted set anywhere.
+  deliberately does not restate the accepted set anywhere. `current_reporter_version` (card#11818
+  part 2) is the reporter build this server was built with — equal to `REPORTER_VERSION` in the same
+  tree, held so by a test and by the `reporter-version` check. **D2:** a seat whose last reported
+  `reporter_version` is behind it is badged `reporter_outdated`
+  ([D2 § 7.2](FLEET-STATE.md#72-this-planes-own-counters-and-badges)), and neither reporter-version
+  member refuses a batch — the accepted set alone does. It is published here so a seat's operator can
+  read it with the token the seat already holds.
 
 ### 4.2 Batch envelope fields
 
