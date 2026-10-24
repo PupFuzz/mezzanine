@@ -67,7 +67,7 @@ const lazy = (name) => require(name);
  * change to a file a reporter update ships, and `bin/reporter-version-guard.py` fails a PR that changes
  * one without moving it, so two different builds never report the same version. Each version's row in
  * `fleet-reporter/UPDATES.md` says what an upgrading seat must apply. */
-const REPORTER_VERSION = '0.2.0';
+const REPORTER_VERSION = '0.3.0';
 const SCHEMA_VERSION = 1;
 
 /* ── Every number, from § 14 and the section that derives it ──────────────────────────────── */
