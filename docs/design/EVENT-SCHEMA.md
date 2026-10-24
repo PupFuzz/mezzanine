@@ -8659,7 +8659,7 @@ number space, and `thread_ref` is `<owner>/<repo>#<n>` either way — the bridge
 
 | Field | Type | Null? | Bounds | Example |
 |---|---|---|---|---|
-| `post_ref` | string | no | ≤ 256 B — `<thread_ref>` for the opening post, `<thread_ref>-c<comment id>` for a comment | `"synthetic-org/coordination-fixture#900742-c1561"` |
+| `post_ref` | string | no | ≤ 256 B — `<thread_ref>` for the opening post, `<thread_ref>-c<comment id>` for a comment | `"synthetic-org/coordination-fixture#900742-c900743"` |
 | `thread_ref` | string | no | ≤ 256 B | `"synthetic-org/coordination-fixture#900742"` |
 | `scope` | slug | no | ≤ 16 B — the binding's scope, as [§ 18.6](#186-coordthread) | `"install"` |
 | `install_id` | slug | **yes** | ≤ 32 B, from the hook binding; `null` iff `scope` is `fleet` ([§ 18.6](#186-coordthread)) | `"aimla"` |

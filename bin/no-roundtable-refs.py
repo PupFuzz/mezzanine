@@ -18,15 +18,16 @@ coordination test fixtures already use), and this check reds on them too (card#1
 WHAT A HIT IS. One of the `FORMS` below, matched case-insensitively over the whole text of a file,
 so a form split across a line break still matches:
 
-  repo-name      the private repository's name, its words joined by `-`, `_` or a space — which
-                 also catches every link into it
+  repo-name      the private repository's name, its words joined by any run of `-`, `_` or
+                 whitespace (a line break included) — which also catches every link into it
   thread-number  the word for that repository, up to three non-word characters (a line break
                  included), an optional `thread`, `post` or `issue`, an optional `#`, then a number
   rt-number      the fleet's two-letter short form for a thread of it, then any run of spaces,
                  `#`, `:` or `-` (none included, so the glued form counts), then a number
   share-path     a path into the fleet share tree, which is keyed by that repository's issue number
   private-repo-name  the name of another team's private coordination repository (`PRIVATE_REPOS`),
-                 its words joined by `-`, `_` or a space — which also catches every link into it
+                 its words joined by any run of `-`, `_` or whitespace (a line break included) — which
+                 also catches every link into it
   private-org-name   the name of the organisation that holds one of them (`PRIVATE_ORGS`), its words
                  joined the same way; an org name is how a reference into it is written on GitHub
 
@@ -68,7 +69,7 @@ import tempfile
 _W = "round" + "table"
 
 # Other teams' private coordination repositories, and the organisation that holds one, each as its
-# words (joined by `-`, `_` or a space when matched). Spelled split so this file is never a hit on
+# words (joined by any run of `-`, `_` or whitespace when matched). Spelled split so this file is never a hit on
 # itself. Adding one is one line here. See the module docstring.
 PRIVATE_REPOS = (
     ("so" + "la", "coordination"),
@@ -80,12 +81,12 @@ PRIVATE_ORGS = (
 
 
 def _joined(names: tuple[tuple[str, ...], ...]) -> re.Pattern[str]:
-    alts = "|".join(r"[ _-]".join(re.escape(w) for w in words) for words in names)
+    alts = "|".join(r"[\s_-]+".join(re.escape(w) for w in words) for words in names)
     return re.compile(r"\b(?:" + alts + r")\b", re.IGNORECASE)
 
 
 FORMS = {
-    "repo-name": re.compile(r"agent[ _-]" + _W, re.IGNORECASE),
+    "repo-name": re.compile(r"agent[\s_-]+" + _W, re.IGNORECASE),
     "thread-number": re.compile(r"\b" + _W + r"\b[^\w]{0,3}(?:(?:thread|post|issue)\s*)?#?\s*\d+",
                                 re.IGNORECASE),
     "rt-number": re.compile(r"\brt[\s#:-]*\d+", re.IGNORECASE),
@@ -186,6 +187,7 @@ def selftest() -> int:
         "repo-name (link)": "https://github.com/PupFuzz/agent-" + _W + "/issues/9001",
         "repo-name (underscore)": "the agent_" + _W.upper() + " repo",
         "repo-name (space)": "the Agent " + _W.capitalize() + " repository",
+        "repo-name (line break)": "the agent-\n" + _W + " repository",
         "thread-number": "ratified on " + _W.capitalize() + " #9002.",
         "thread-number (no #)": "as " + _W + " 9003 measured",
         "thread-number (line break)": "cited. " + _W.capitalize() + "\n[#9004](x)",
@@ -208,6 +210,8 @@ def selftest() -> int:
             planted[label + " (dash, ref)"] = "see Org/" + "-".join(words) + "#9022 for it"
             planted[label + " (underscore, upper)"] = "the " + "_".join(words).upper() + " repo"
             planted[label + " (space, title)"] = "the " + " ".join(w.capitalize() for w in words) + " one"
+            planted[label + " (line break)"] = "the " + "\n".join(words) + " one"
+            planted[label + " (wrapped dash)"] = "the " + "-\n  ".join(words) + " one"
             planted[label + " (link)"] = ("https://github.com/x/" + "-".join(words) + "/issues/9023"
                                           if kind == "private-repo-name" else
                                           "https://github.com/" + "-".join(words) + "/x/issues/9023")
@@ -228,7 +232,7 @@ def selftest() -> int:
     # install id / seat / floor slug this repository uses as example values, must pass.
     teams = sorted({words[0] for words in PRIVATE_REPOS + PRIVATE_ORGS})
     placeholder = ('"thread_ref": "synthetic-org/coordination-fixture#900742", '
-                   '"post_ref": "synthetic-org/coordination-fixture#900742-c1561"; '
+                   '"post_ref": "synthetic-org/coordination-fixture#900742-c900743"; '
                    + "; ".join("install %s, seat %s-pm, the %s floor, %scoordination, %s-orgs"
                                % (t, t, t, t, t) for t in teams) + "\n")
     d = repo(dict(exempt_file, **{"docs/x.md": placeholder.encode()}))
