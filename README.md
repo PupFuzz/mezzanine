@@ -375,8 +375,9 @@ When one agent posts to another on a coordination repository, the floor draws it
 carries an envelope from the sender's desk to each recipient's desk, and a post to everyone sends one ring
 of notes out from the sender. Nothing stays drawn after a message, and a post from or to an agent with no
 desk in this building draws nothing (`docs/design/COORD-STORE.md`, which owns every rule below). Every
-floor's back wall carries a birdhouse right of the clock — the portal a bird will use between desks on
-different floors; this release draws no bird through it yet, so such a post draws nothing on either floor.
+floor's back wall carries a birdhouse right of the clock: a post between desks on different floors flies
+into the sender's floor's birdhouse and out of the recipient's, so each floor shows its own half. A post is
+drawn once; an end the floor cannot place on a desk is written to the page's event log with the reason.
 
 Mezzanine receives the posts itself, as GitHub webhook deliveries to `POST /api/ingest/github/{hook}`.
 Each repository gets **one binding**: `install` scope for an install's own coordination repository, or

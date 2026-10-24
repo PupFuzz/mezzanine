@@ -7500,9 +7500,13 @@
               "from": "helper",
               "attribution": "resolved",
               "to": [
-                "all"
+                "pm",
+                "coder"
               ],
-              "targets": null,
+              "targets": [
+                "pm",
+                "coder"
+              ],
               "carrier": "announce",
               "declares_close": false,
               "received_at": "2026-08-23T14:23:18.000Z",
@@ -7553,7 +7557,7 @@
           }
         }
       },
-      "note": "repaint's A19 variant over `fx-coord`: its round R2, whose envelopes reach two resolved desks, in flight when a `feed.heartbeat` lands. `aimla-review` declares `reviewer` rather than fx-coord's deliberate duplicate `helper`, so the install is valid and R2's `helper` resolves."
+      "note": "repaint's A19 variant over `fx-coord`: its round R2 — a named post to `pm` and `coder` (card#12239 r5: a `to:all` post is the ring alone and sends no traveller) — whose envelopes reach two resolved desks, in flight when a `feed.heartbeat` lands. `aimla-review` declares `reviewer` rather than fx-coord's deliberate duplicate `helper`, so the install is valid and R2's `helper` resolves."
     },
     "stilled": {
       "http": {

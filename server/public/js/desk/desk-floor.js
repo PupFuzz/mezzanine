@@ -95,7 +95,7 @@ export class DeskFloor {
 
     /**
      * Whether the last `render()` drew the floor stilled (§ 9 F6) — read by a screen above this one
-     * for what it draws beside the desks (`floor/floor-screen.js`'s A18 line), so the floor is
+     * for what it draws beside the desks (`floor/floor-screen.js`'s effects in flight), so the floor is
      * stilled by one derivation and not by a second reading of the feed.
      */
     get stilled() {

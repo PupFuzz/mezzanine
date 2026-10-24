@@ -22,7 +22,7 @@
  * `render()` for the desk-only rig step 5 built and this module calls `renderWith()`. One drain per
  * apply on either path, and the two paths are mutually exclusive.
  *
- * ⛔ ONE ANIMATION SET, WHICH IS THE DESK FLOOR'S. A18/A19/A20 and A16 are written through the same
+ * ⛔ ONE ANIMATION SET, WHICH IS THE DESK FLOOR'S. A19/A20/A22 and A16 are written through the same
  * `wire/animation-set.js` instance the desks' held renders go through, because "a second way into
  * the log is a second implementation of the one record AT-D3-1 reads" (step 6's own argument, one
  * screen up).

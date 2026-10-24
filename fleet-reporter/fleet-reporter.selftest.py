@@ -4509,8 +4509,8 @@ eq("roundtable — a malformed declaration declares nothing: null and `undeclare
 # ⛔ RED — the check reads the protocol roster instead of cross_project.identity: `pm-solo` is no roster
 # member, so a reporter checking against the wrong key reports `disagreed` for a correct declaration.
 r_wrong_key = drive_rt(rt_box("red-wrong-key"), reporter=plant(
-    ("  if (read.identity === name) return { name, check: 'checked' };",
-     "  if (readRosterNames(site.path).names?.includes(name)) return { name, check: 'checked' };")))
+    ("  if (read.identity === name) return { name, check: 'checked', malformed: null, config: site.path };",
+     "  if (readRosterNames(site.path).names?.includes(name)) return { name, check: 'checked', malformed: null, config: site.path };")))
 eq("RED: a reporter checking the roundtable name against the roster reports a correct declaration `disagreed`",
    "disagreed", r_wrong_key["rt"]["check"])
 # ⛔ RED — the null omitted rather than sent on an undeclared seat.

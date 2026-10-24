@@ -3204,7 +3204,7 @@ it carries the same fact.
 | **A16** | `edge` | `desk-move` — a displaced character walks to its new desk | floor | the rendered seat set, `protocol_agent_role` | a seat entering the set displaces an incumbent ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)), or a retirement's ANNOUNCEMENT takes a seat out of it and an incumbent re-probes into the slot it frees ([§ 3.5](#35-retirement-and-the-only-removal)), or a delta or seat-set change changes which seat the room's reserved desk seats — the holder walks in or out, and the chain through the slot it takes or leaves re-probes ([§ 3.2](#32-the-desk-slot-function), card#11144) | on arrival | the desk appears in its new slot on the next render | no arrival collided, no announced retirement freed a slot, and no delivered change moved the reserved desk's holder |
 | **A17** | `edge` | `room-tick` — the wall clock's hands step to the viewer's current minute and the windows' sky is re-evaluated for that time | the **floor's room render** — the drawn interior, and not [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s room key (card#9267): its wall clock, and the sky in its windows ([§ 4.2](#42-the-floor)). **On the lobby it is this row or nothing:** [§ 4.1](#41-the-lobby--the-building-summary)'s directory renders a per-floor *summary*, and the fleet's rooms only by **name**, so it draws no desk and no wall clock at all; the lobby's own drawn room has one window, and the sky in it (card#12113; behind the building until then — the operator's ruling on card#7343, 2026-09-30) is this row's, on this row's driver (`floor/floor-layout.js`'s `RoomClock`, the floor screen's own), and never a second one of its own — A17 is the lobby's one row | `feed.heartbeat` | each `feed.heartbeat` message received on the one stream. **The same trigger as A14, and the pairing is the design rather than a duplication** — the note below is where that is argued | at the new time and the new sky value: one step, no tween | the hands **jump** to position and the sky **steps** to its new value with no cross-fade — the same fact, without the transition ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)) | **no message has arrived** — which at 45 s is the feed-down condition itself ([§ 9](#9-failure-paths-and-their-observables) F1). **A stopped clock is that condition in the form every viewer reads without being told**, which is why this row exists at all |
 | **A18** | `retired` | `thread-line` — retired by the operator's ruling of 2026-10-23 (card#12239); never drawn | floor | `coord_thread.lifecycle` — ⛔ **not published** ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)) | ⛔ **RETIRED — this row never fires and no module draws it**: the floor holds no coordination state, and `coord.thread` is not published. The id stays where it is and is never renumbered (the seat's ruling, card#12239's build); a `retired` row is the closed set's third class, carried by `wire/animation-set.js` with that class and no entry point. What drew a thread between floors is now [A22](#62-the-animation-table--the-closed-set)'s, per message | — | none — a retired row has no form | nothing: a retired row is absent by design |
-| **A19** | `edge` | `envelope` — an envelope travels the line once, from the origin desk to each destination desk | floor | `coord.round`, `coord_round.scope`, `coord_round.from`, `coord_round.targets` | one `coord.round` message applied — an `install`-scope one whose `install_id` is a room of this floor, or a `fleet`-scope one (`install_id` null) whose origin resolves to a desk on this floor — **whose `to` does not carry the literal `all`** (a broadcast is A20's ring and sends no traveller — operator, card#12239 round 4), whose origin resolves to a desk and at least one of whose destinations resolves to a desk **on this floor**: **one traveller per such destination**, drawn by card#12241 as the bird carrying the envelope (the drawing is that card's; the trigger is this row's). A destination that resolves to a desk on another floor of this building takes the portal bird `docs/design/COORD-STORE.md § 6.1` reserves (its row lands with its module; [§ 4.6](#46-the-building-layout) owns the portal rule); one that resolves to **no** desk — an agent this building does not house included — gets **nothing** and is logged ([§ 5.7](#57-the-coordination-thread-line) property 1), and the ones that do still get theirs. ⚠ *the line* in the Animation cell is the traveller's path, not a held render: the thread line is retired | on arrival at the destination desk | a still envelope at the destination desk for the moving form's duration, then gone — never held | no post arrived that this client can draw between two desks on this floor. ⛔ **It is not** *the post reached nobody*: that is a `targets` of `[]`, and a `null` `targets` is *the fan-out is not resolvable here* — three states the wire keeps apart and this row does not collapse |
+| **A19** | `edge` | `envelope` — an envelope travels the line once, from the origin desk to each destination desk | floor | `coord.round`, `coord_round.scope`, `coord_round.from`, `coord_round.targets` | one `coord.round` message applied — an `install`-scope one whose `install_id` is a room of this floor, or a `fleet`-scope one (`install_id` null) whose origin resolves to a desk on this floor — **whose `to` does not carry the literal `all`** (a broadcast is A20's ring and sends no traveller — operator, card#12239 round 4), whose origin resolves to a desk and at least one of whose destinations resolves to a desk **on this floor**: **one traveller per such destination**, drawn by card#12241 as the bird carrying the envelope (the drawing is that card's; the trigger is this row's). A destination that resolves to a desk on another floor of this building takes the portal bird, [A22](#62-the-animation-table--the-closed-set) ([§ 4.6](#46-the-building-layout) owns the portal rule); one that resolves to **no** desk — an agent this building does not house included — gets **nothing** and is logged ([§ 5.7](#57-the-coordination-thread-line) property 1), and the ones that do still get theirs. ⚠ *the line* in the Animation cell is the traveller's path, not a held render: the thread line is retired | on arrival at the destination desk | a still envelope at the destination desk for the moving form's duration, then gone — never held | no post arrived that this client can draw between two desks on this floor. ⛔ **It is not** *the post reached nobody*: that is a `targets` of `[]`, and a `null` `targets` is *the fan-out is not resolvable here* — three states the wire keeps apart and this row does not collapse |
 | **A20** | `edge` | `broadcast-pulse` — one ring expands from the origin desk across the floor | floor | `coord_round.to`, `coord_round.from` | one `coord.round` whose `to` carries the literal `all`, verbatim off the wire, **and whose origin resolves to a desk on this floor** ([§ 5.7](#57-the-coordination-thread-line) property 1; for a `fleet`-scope post that is the one floor its origin resolves to, and the ring is drawn there alone) — the ring expands **from** that desk, so a post whose origin resolves to nothing has no desk to expand from and draws none, exactly as A19 has none to depart from. ⛔ **The address is not the whole trigger, and reading it as one is how a ring lands on a guessed desk** — it is also what [§ 5.7](#57-the-coordination-thread-line) already says of this row, *"all three were unreachable until the join landed"*, which is false of an address-only trigger. D2 publishes no `is_broadcast` boolean because *"`to` carries `all` verbatim and `targets` is `null` on exactly that post"*, so this row reads the member D2 kept rather than a flag it refused | at the floor's edge — one expansion, and never a repeating ring | the origin desk carries a **static broadcast marker** for that post | the post was addressed to named agents rather than to `all`, or its origin resolves to no desk. The ring says the ADDRESS was a broadcast; it never says how far the post got, which is `coord_round.targets`' answer and A19's render |
 | **A21** | `retired` | `call-marker` — retired before it was built (card#12239's design round 1); never drawn | floor | `coord_round.targets` | ⛔ **RETIRED — never built and never fired.** card#12239's first design round proposed a call marker held at each end of a thread that crossed floors; the operator's ruling of 2026-10-23 retired every held coordination render before it was built. The id is kept so no later row reuses it, and the cross-floor form is [A22](#62-the-animation-table--the-closed-set) | — | none — a retired row has no form | nothing: a retired row is absent by design |
 | **A22** | `edge` | `portal-bird` — the bird carries the envelope from a resolved origin desk on this floor to the floor's bird portal and leaves, or arrives from the portal at a resolved destination desk on this floor, for a post whose other end resolves to a desk on another floor of this building | desk, floor | `coord.round`, `coord_round.scope`, `coord_round.from`, `coord_round.targets` | one `coord.round` applied whose `to` does not carry `all`, with this desk resolving as its origin or as a member of its `targets`, and the counterpart end resolving to a desk **of this building on another floor**; one departure per post for an origin here, one arrival per resolved destination here. A counterpart that resolves to **no** desk fires nothing ([§ 5.7](#57-the-coordination-thread-line) property 1). Specified at `docs/design/COORD-STORE.md § 6.1`, the birdhouse is [§ 4.2](#42-the-floor)'s | at the portal (departure) or at the desk (arrival) | a still envelope at the portal or at the desk for the moving form's duration, then gone | no post crossed floors between two desks of this building to or from a desk here |
@@ -6755,6 +6755,11 @@ desk* clause in the amendment [§ 14](#14-open-questions-for-the-review-loop) it
 `roundAnimations()` had gone on firing on the address alone — the defect that test's Third RED plants,
 running as shipped code because the row had no caller to exercise it.**
 
+⚠ **Retired with A18 (card#12239's build).** The two paragraphs below record how the thread line was
+logged on a stilled floor and on an endpoint's removal; no A18 row is written since that build, so they
+describe a row that never fires, and [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office) now asserts
+that the stilled floor writes none. They are kept as the record rather than rewritten.
+
 ✅ **An A18 line takes the stilled floor as a desk does, and its exit on it is the literal
 `stilled`** (card#7341, [§ 14](#14-open-questions-for-the-review-loop) item 29; PR #240's design
 review routed the shape to [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's
@@ -7804,12 +7809,15 @@ buffering and the line the record gains are the protocol's and are observable at
 
 ### AT-D3-18 the coordination thread line resolves or renders unresolved, never a guessed desk
 
-⚠ **Re-scoped by card#12239 r2 (operator 2026-10-23): A18 is retired, so every assertion below about
-`T1`'s LINE — its `entered` row, its endpoints, the words beside its participants — is removed with A18
-in that card's build. What survives, and moves onto [A19](#62-the-animation-table--the-closed-set)'s
-origin and destinations, is the JOIN this test exists for: which names resolve to which desk, which do
-not, and with which reason. Until the build lands the suite still holds the shipped code to this text,
-which is why it is annotated rather than rewritten; AT-D3-29 states the rules the build is held to.**
+⚠ **Re-scoped by card#12239 r2 (operator 2026-10-23), and built: A18 is retired, so every assertion
+below about `T1`'s LINE — its `entered` row, its endpoints, the words beside its participants — was
+removed from the suite with A18 in that card's build. What survives is the JOIN this test exists for —
+which names resolve to which desk, which do not, and with which reason — asserted on
+[A19](#62-the-animation-table--the-closed-set)'s origin and destinations, A20's origin and the event-log
+line an unresolved end writes (`tests/Feature/Floor/TheCoordinationJoinResolvesOrReportsUnresolvedTest.php`).
+`"reviewer"` and `"aimla-impl-2"` were `T1`'s participants and no round names them, so the seat-id RED
+is held at the model and by AT-D3-29 instead. The text below is kept as annotated rather than rewritten;
+AT-D3-29 states the rules the build is held to.**
 
 *[§ 14](#14-open-questions-for-the-review-loop) item 24 (Q8): no other acceptance test binds
 [§ 5.7](#57-the-coordination-thread-line)'s render map, so this document had a headline render with no
@@ -8874,13 +8882,12 @@ live labels (card#12239 r3 MINOR-8).*
   (`targets: []`, logged *reached nobody*). **No [A18](#62-the-animation-table--the-closed-set) row
   exists in the log at any point**, no line, label, bead or marker is drawn, and a `coord.thread` — if
   the harness offers one — is journalled `ignored` and counted. The duplicate `R3` fires nothing and is
-  journalled `discarded` (`post_ref` remembered). After the reconnect the floor draws no coordination
+  draws nothing (its `post_ref` is in the floor's memory, `coord/post-memory.js`). After the reconnect the floor draws no coordination
   fact and the log gained no edge. **Fleet (i):** `F1` resolves `pm-solo` to `one-pm` and `coder-solo`
   to **nothing** (`duplicate_declaration`), so nothing fires on either floor. **Fleet (ii), cross-floor:**
-  `F1` fires, once the portal row exists, **one** departure from `one-pm`'s desk to floor `one`'s
-  birdhouse and **one** arrival from floor `two`'s birdhouse at `two-reviewer`'s desk, and **no A19 on
-  either floor**; until the row exists it fires nothing and logs both ends as *on another floor*; `F2` is
-  the same in reverse. **Fleet (iii), same floor:** `F1` fires **one A19** from `one-pm`'s desk to
+  `F1` fires **one** [A22](#62-the-animation-table--the-closed-set) departure from `one-pm`'s desk to floor
+  `one`'s birdhouse and **one** A22 arrival from floor `two`'s birdhouse at `two-reviewer`'s desk, and
+  **no A19 on either floor**; `F2` is the same in reverse. **Fleet (iii), same floor:** `F1` fires **one A19** from `one-pm`'s desk to
   `one-coder`'s on floor `one` and **no portal edge on any floor** — the control that the portal form is the
   cross-floor form and nothing else. In every variant: `F3` fires one A20 from `one-pm`'s desk and **no**
   departure and **no** traveller (`targets: null`); `F4` fires **nothing** on any floor (its origin
@@ -10265,10 +10272,11 @@ reason to leave two readings live.
     `coord.round` alone, every render an edge; the thread line, its label, beads, carrier tag and ended
     treatment, and the call marker, are retired. *(2)* [A18](#62-the-animation-table--the-closed-set)'s
     row stays in [§ 6.2](#62-the-animation-table--the-closed-set) with a trigger cell that says it never
-    fires, and leaves with its `wire/animation-set.js` entry in the build — the suite holds the two equal
-    in both directions, so a design PR cannot remove either alone; the same coupling is why the
-    transient cross-floor form's row is reserved at `docs/design/COORD-STORE.md § 6.1` rather than
-    written here. *(3)* [A19](#62-the-animation-table--the-closed-set)'s trigger reads the object's
+    fires — and, by the seat's ruling at card#12239's build, it STAYS, in § 6.2 and in
+    `wire/animation-set.js` alike, with the class `retired` and its id never renumbered, as does A21; the
+    suite holds the two equal in both directions, so they moved together. The transient cross-floor form,
+    reserved at `docs/design/COORD-STORE.md § 6.1` while that coupling held, landed with the build as
+    [A22](#62-the-animation-table--the-closed-set). *(3)* [A19](#62-the-animation-table--the-closed-set)'s trigger reads the object's
     `scope`: one traveller per destination that resolves to a desk on this floor, through the arm the
     scope selects; a post whose other end is a desk on another floor of this building flies through the floor's
     **birdhouse** — the operator's ruling, replacing the seat's elevator reading and, at round 4, the
@@ -10277,9 +10285,11 @@ reason to leave two readings live.
     eviction; the client keeps the `post_ref`s it drew, bounded by [§ 12](#12-every-number-and-where-it-comes-from)'s
     repurposed row, and an unresolved end is reported in the event log line rather than drawn. The look
     — the bluebird, the envelope, the portal and its placement — is card#12241's. **Blocks:**
-    nothing on this document; what waits is the server (D2 Appendix B rows 12–13) and the build that
-    removes A18 and adds the reserved row. **Closes it:** AT-D3-29 green, and AT-D3-18's line
-    assertions removed with A18 in that build.
+    nothing on this document; the server (D2 Appendix B rows 12–13) and the build that retired A18 and
+    added A22 landed on card#12239. **Closes it:** AT-D3-29 green, and AT-D3-18's line assertions removed
+    with A18 in that build — both done there, AT-D3-29's floor legs at the model and fired-row level
+    (`tests/Feature/Coord/TheFleetArmJoinsTheBuildingsDeclaredSeatsTest.php`), not yet through a two-floor
+    floor-screen replay.
 
 ## Appendix A — every obligation addressed to this document
 
