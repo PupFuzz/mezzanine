@@ -67,7 +67,7 @@ very fact it exists to check.
 
 | Path | Origin | Source URL | Author | SPDX | Retrieved | SHA-256 |
 |---|---|---|---|---|---|---|
-| `resources/characters/creatures.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-23 | `ec806bad75813d7a947c7f3b999e72e58126a30868c56a5478486332aea5bcbd` |
+| `resources/characters/creatures.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-23 | `befa3d6ef9d1277b29b04d7bd84c89b0ca69b60828029dcf8bdbe4c46f61c6c5` |
 | `resources/characters/seed.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-06 | `cc2545e8fc6a13cae58f6887a44919a93823ae47d732bea7b71efdfbb467a709` |
 | `resources/characters/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-23 | `0e21ae2803fedd6ade6dc4cc10cd2012bba1f4b356129c15b1b0dd2c5f140c8f` |
 | `resources/floor/tiles/floor-plane.tsx` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `71fef94ccfb339af81d98b33ced640a0d256611340c591e160df06a9a2311890` |

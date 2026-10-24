@@ -11,7 +11,7 @@
 // tree carries one (FLOOR.md § 10.1 clause 2). It makes no request of any kind, holds no cache and
 // reads no clock or random source.
 //
-// Drawing space: viewBox 0 0 108 192 for a seat (2 units per floor pixel in the 54 x 96 character rect);
+// Drawing space: SEAT_RECT (0 0 108 192, 2 units per floor pixel in the 54 x 96 character rect), drawn in SEAT_VIEWBOX;
 // the foot line is y = 188, the centre line x = 54.
 
 import { draw, pick, chance } from './seed.js';
