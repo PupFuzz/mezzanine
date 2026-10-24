@@ -5,8 +5,8 @@
 re-opening of 2026-10-23 after round 3 stopped under the stopping rule and folds reviews r1–r3
 ([§ 13](#13-design-review-r1--disposition-per-finding), [§ 14](#14-design-review-r2--disposition-per-finding),
 [§ 15](#15-design-review-r3--disposition-per-finding)) and the operator's answers of the same day. The build awaits the operator's go on the questions in
-[§ 10](#10-operator-questions). Nothing in this document is built. Rebased onto `origin/dev` at
-card#12212 (no conflicts).**
+[§ 10](#10-operator-questions). Rebased onto `origin/dev` at card#12212 (no conflicts). **The build is
+partial, and [§ 17](#17-build-state) says which steps landed, which did not, and why.**
 
 > **What this document is, and what it is not.** D1 § 18 owns the coordination-event **producer** — the
 > receipt route's authentication, validation order and the derivation of `coord.thread` / `coord.round`
@@ -418,8 +418,10 @@ card#12260's.
    precedes `FROM:`), and r4's reading that it was exempt is withdrawn with it. The reviewer's r3 hits
    (`At15BackpressureTest`, `At25ConcurrentWriterTest`, `VisiblePrefixTest`, `coord-cap-probe.mjs`) were
    hits of the **broad** lint's `coord.*` sniffing; the narrow predicate does not reach them, which is
-   the point of narrowing. **Exemptions this design names for files the build adds**, each as the pair
-   it needs and no wider: `tools/coord/synthesize-fixtures.py` (`header`, `bare`, `quoted` — it writes
+   the point of narrowing. **Exemptions this design named for files the build adds** — ⚠ *the build needed none of them*
+   ([§ 17](#17-build-state)): each of those files reads the header names and the body-line templates
+   from the spec rather than spelling them, so none matches a rule and an exemption for it would be a
+   stale pair the lint reds. The pairs as designed, kept as the record: `tools/coord/synthesize-fixtures.py` (`header`, `bare`, `quoted` — it writes
    all three from the spec), `tools/coord/synthesize-fixtures.selftest.py` (the same three — it plants
    them), `tools/coord/capture-delivery.py` (`header` — it strips the signature headers by name),
    `server/tests/roundtrip/coord-roundtrip.py` (`header` — it signs), `server/tests/Support/CoordSpec.php`
@@ -919,3 +921,21 @@ Report: `~/.cache/coord/card-12239/review-r5confirm.md`, on `34eed6f6`. Folded e
 | MINOR-D | *or blank* dropped — an `unchecked` duplicate can still blank a name, and that is accepted (a blank is a bird not drawn); the trust stated: `checked` is the reporter's own attestation on a token-bound heartbeat, trusted as `protocol_agent_name`'s is | D2 § 8.3.3 rule 1 |
 | MINOR-E | the *not restated here* clause dropped from the `fx-coord-seats` row | D3 § 11 |
 | HYGIENE | step 9 points at the round-trip script's `(path, header)` pair | [§ 9](#9-implementation-plan) step 9 |
+
+---
+
+## 17. Build state
+
+card#12239's build PR, 2026-10-24. Each row is [§ 9](#9-implementation-plan)'s step; *built* means its code
+and its gate's tests landed, each RED planted and seen to fail.
+
+| Step | State | What landed, or why not |
+|---|---|---|
+| 0a | built, but for the floor fixtures | the spec, the synthesizer (`--check`, `--lint`), `tools/coord/lint-exemptions.txt` with the four `origin/dev` pairs and no others (see [§ 3.5](#35-synthetic-fixtures-mechanically) item 5), the selftest, the capture tool, `coord-fixtures.yml`, `Tests\Support\CoordSpec`. **Not done:** moving `fx-coord`, `fx-elevator` and `fx-refusals` onto generated arrays and `DrivesTheCoordClient`'s helpers onto the spec — those fixtures are the thread line's, and they move with step 8 |
+| 0b | built | the three tables; `active_key` is `IF(revoked_at IS NULL, 1, NULL)` because MariaDB refuses a generated column that reads `AUTO_INCREMENT` (D2 § 6.4 carries it); the purge's digest row on the 14-day retention |
+| 1–4 | built | the two commands, the receipt route, `App\Coord\Derive` (the round only), the one-transaction write |
+| 5 | built, but for the `selftest` member | the reporter's read, check, heartbeat members and counters; the registry, fold, columns, seat object and delta map; the bound loop's code homes. **Not done:** `roundtable_agent_name_matches` — D1 § 6.14 leaves the `selftest` object 22 B under its 256 B cap and a ninth check room for a name of at most 12 B, and D2's `selftest_failed` is bounded at 8 names; this name is 29 B, so adding it moves both caps and the seat object's 15-byte headroom ([§ 11](#11-what-this-design-does-not-establish)) — a re-derivation the design deferred to the gate and an operator-visible wire change |
+| 6 | built | the fleet arm (`buildFleetJoin()`), and `fleetModel()` selecting it by `scope`, held by `TheFleetArmJoinsTheBuildingsDeclaredSeatsTest` over AT-D3-29's three variants; the floor screen writes A19 and A20 rows for a fleet-scope post whose ends are on the viewed floor and the scene draws them — that wiring is exercised by no floor-harness run yet (AT-D3-29's floor legs, step 8) |
+| 7 | built | the derived counters on `GET /api/fleet/health`, one `coord_delivery_received` member per binding |
+| 8 | partial | **landed:** the birdhouse right of the raised clock on every floor (`ZONE_W` 332), card#12241's bird carrying the envelope with its arrival rest, the singing perch and ring of notes, A19's reduced form as the transient still envelope (cell moved in D3 § 6.2 and the module together). **Not done, each a test the design's plan cannot satisfy as written:** A18's removal and A22's addition — `TheAnimationSetIsTheDocumentsClosedSetTest` holds § 6.2's ids contiguous `A1…An`, so a table of A1–A17, A19, A20, A22 reds it; the hold's removal — `TheCoordinationEnvelopesAreHeldToTheirCapTest` and `CoordMemberSetMatchesTheDocumentTest` are already red against this document (§ 12's renamed row; eleven members where § 8.3.3 now has twelve) and the dispatch held both unedited; the unresolved-end log line and AT-D3-29's floor-harness legs |
+| 9 | partial | README's operator runbook, the CHANGELOG bullet, the verifiers green, D3 § 4.2 and § 12's zone, the round-trip script (run against a local server on a private store: every generated delivery for both scopes accepted, the re-post absorbed). **Not done:** D1 § 6.14's `selftest` member (step 5), D3 § 6.2's A18 and A22 rows (step 8) |

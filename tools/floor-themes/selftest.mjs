@@ -633,8 +633,10 @@ const PLANTS = [
         (t) => edit(t.tileset, '<property name="kind" value="cushion"/>', '<property name="note" value="cushion"/>')],
     ['the palette drifts: the house floor back to direction A\'s', 'drift', "floor: the table states #d9c7a5, the module's PALETTE holds #c99a6b",
         (t) => edit(THEME(t), "floor: Object.freeze({ boards: '#d9c7a5' }),", "floor: Object.freeze({ boards: '#c99a6b' }),")],
+    // card#12241 widened the zone 60 px for the birdhouse and raised the clock to the band's top, so the plant
+    // grows the side margin far enough (160 px) for the first window's surround to reach the clock's face.
     ['a surround too wide', 'band', "surround meets the clock's face",
-        (t) => edit(join(t.js, 'floor', 'scene.js'), 'export const SURROUND = Object.freeze({ side: 32,', 'export const SURROUND = Object.freeze({ side: 64,')],
+        (t) => edit(join(t.js, 'floor', 'scene.js'), 'export const SURROUND = Object.freeze({ side: 32,', 'export const SURROUND = Object.freeze({ side: 160,')],
     ['the dark fallback: --scene-floor as the drawing\'s --ground', 'surfaces', 'the fallback --scene-floor #171a28',
         (t) => edit(t.css, '--scene-floor: #e8dcc4;', '--scene-floor: #171a28;')],
     ['text in a theme: the seat\'s id in the chair', 'wellFormedness', 'chair — a <text>',

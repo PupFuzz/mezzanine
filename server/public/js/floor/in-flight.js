@@ -87,12 +87,16 @@ export class EffectsInFlight {
         }
 
         for (const effect of effects) {
-            if (!(effect.frames > 0)) {
+            if (!(effect.frames > 0) && !(effect.still_frames > 0)) {
                 continue;
             }
 
             if (!WALK_ROWS.includes(effect.animation_id)) {
-                this.#held.push({ effect, at: now, frames: effect.frames, key: null });
+                // An edge with a tail (A19's arrival rest, card#12241) is held through it; a reduced form
+                // with a duration (A19's still envelope) is held for that duration, then gone.
+                const frames = effect.frames > 0 ? effect.frames + (effect.rest_frames ?? 0) : effect.still_frames;
+
+                this.#held.push({ effect, at: now, frames, key: null });
 
                 continue;
             }

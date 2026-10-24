@@ -7752,6 +7752,17 @@ one of them is optional.
 | 9 | the coordination **derivation**: the two objects, their attribution states, the body-line address rules, [§ 18.6](#186-coordthread)'s **membership union**, and the install-facts input the fan-out resolves against ([§ 18.3.1](#1831-the-install-facts-input-declared-once), [§ 18.6](#186-coordthread), [§ 18.7](#187-coordround)) | **AT-24** and **AT-25** RED then GREEN. AT-25's unlabelled fixture is the primary case and its labelled twin is the control; a suite carrying only the labelled one passes while the derivation is wrong on the deliveries that actually occur. **AT-25's FIFTH red is the one to build first**: the other four all pass under a body-only derivation, which is the derivation that shipped |
 | 10 | the **close signal**, last of the three because it is the one whose defect is invisible per-post ([§ 18.5](#185-the-three-findings-the-audit-turns-on)) | **AT-26** RED then GREEN, and its first RED is a **rate** assertion over a replayed corpus rather than a per-post one. Built before the corpus exists, this row's test passes under the wrong implementation and under the right one alike |
 
+⭐ **Rows 8–10 under card#12239 (2026-10-24).** Row 8 is built: the receipt at
+`POST /api/ingest/github/{hook}` in [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)'s
+order, and AT-23 with its three REDs (`server/tests/Feature/Coord/`). Row 9 is built for
+[`coord.round`](#187-coordround) alone — the object the floor renders — with AT-24's round half and AT-25's
+`to` fallback half; [`coord.thread`](#186-coordthread) is specified and not derived since the operator's ruling
+of 2026-10-23, so AT-24's close and AT-25's membership REDs have no derivation to hold. Row 10's per-post
+half — the `[CLOSE]` anchor, both directions — is built; its rate RED over a replayed corpus is not, and will
+not be in this repository: no real coordination post may enter it (the operator's answer to
+`docs/design/COORD-STORE.md § 10` Q3), so the corpus that RED needs cannot exist here. Every coordination
+fixture is generated from `server/tests/fixtures/coord/spec.json`.
+
 These are hard requirements before anything downstream may treat this telemetry as true:
 **AT-1** (`docs/PLAN.md § 3`, card #7337 — a real `/clear` against a real subagent tool call); a
 **real install on a seat**, because every file, path and process assumption in

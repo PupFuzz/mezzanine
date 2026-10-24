@@ -70,6 +70,9 @@ class TheDrillDownNeverDrawsANullAsAZeroTest extends TestCase
         'protocol_agent_name' => null,
         'protocol_agent_name_check' => null,
         'protocol_agent_role' => null,
+        // card#12239: the roundtable declaration, a desk member the panel draws nowhere (§ 5.6's rows).
+        'roundtable_agent_name' => null,
+        'roundtable_agent_name_check' => null,
         'unknown_reason' => null,
         'api_error_type' => null,
         'blocked_since' => null,

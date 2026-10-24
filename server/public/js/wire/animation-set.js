@@ -70,7 +70,7 @@ export const ANIMATION_SET = Object.freeze({
     A16: Object.freeze({ class: 'edge', animation: 'desk-move — a displaced character walks to its new desk', reduced: 'the desk appears in its new slot on the next render' }),
     A17: Object.freeze({ class: 'edge', animation: "room-tick — the wall clock's hands step to the viewer's current minute and the windows' sky is re-evaluated for that time", reduced: 'the hands jump to position and the sky steps to its new value with no cross-fade — the same fact, without the transition (§ 6.4)' }),
     A18: Object.freeze({ class: 'held', animation: "thread-line — a line drawn between the desks a thread's participants resolve to, held for as long as the thread is open (§ 5.7)", reduced: 'the line is drawn static — same line, same endpoints, no travel along it' }),
-    A19: Object.freeze({ class: 'edge', animation: 'envelope — an envelope travels the line once, from the origin desk to each destination desk', reduced: 'the bead is simply present at the destination end, with no travel' }),
+    A19: Object.freeze({ class: 'edge', animation: 'envelope — an envelope travels the line once, from the origin desk to each destination desk', reduced: 'a still envelope at the destination desk for the moving form\'s duration, then gone — never held' }),
     A20: Object.freeze({ class: 'edge', animation: 'broadcast-pulse — one ring expands from the origin desk across the floor', reduced: 'the origin desk carries a static broadcast marker for that post' }),
 });
 

@@ -231,6 +231,9 @@ export function roundRender(round, join, meta = EMPTY_META) {
     return Object.freeze({
         post_ref: typeof r.post_ref === 'string' ? r.post_ref : null,
         thread_ref: typeof r.thread_ref === 'string' ? r.thread_ref : null,
+        // D2 § 8.3.3: which declaration joins this post's names, and whether it has a room at all
+        // (card#12239). Raw: a value this client has not met selects no arm (§ 5.7's `scope` row).
+        scope: typeof r.scope === 'string' ? r.scope : null,
         install_id: typeof r.install_id === 'string' ? r.install_id : null,
         origin: attributedName(r.from, r.attribution, join, meta),
         // The address AS WRITTEN. `all` is a literal member and is never expanded here.
@@ -330,8 +333,18 @@ export function coordModel(messages, options) {
 
         const body = m.t === COORD_THREAD_MESSAGE ? m.coord_thread : m.coord_round;
         const install = body === null || typeof body !== 'object' ? null : body.install_id;
+        // ⛔ A ROOM's MODEL IS THE INSTALL ARM's (D2 § 8.3.3 rule 1): a `fleet`-scope post has no room
+        // and is `fleetModel()`'s, and a scope this client has not met selects no arm at all. An
+        // object that names no scope predates card#12239 and is the install arm's, as it always was.
+        const scope = body === null || typeof body !== 'object' ? null : (body.scope ?? INSTALL_SCOPE);
 
         if (floor !== null && install !== floor) {
+            off_floor += 1;
+
+            continue;
+        }
+
+        if (scope !== INSTALL_SCOPE) {
             off_floor += 1;
 
             continue;
@@ -423,6 +436,100 @@ export function coordModel(messages, options) {
         // be wrong on exactly that case.
         empty: lines.length === 0 && rounds.length === 0,
     });
+}
+
+/** D2 § 8.3.3's two `scope` values (card#12239). */
+export const INSTALL_SCOPE = 'install';
+
+export const FLEET_SCOPE = 'fleet';
+
+/** § 5.7's log words for an end that resolves to a desk of this building on ANOTHER floor. */
+export const ON_ANOTHER_FLOOR = 'on another floor';
+
+/**
+ * The FLEET-scope posts of D2 § 8.3.3, rendered for ONE floor (card#12239; COORD-STORE.md § 6.1, D3 § 5.7
+ * property 3). Every name joins through the fleet arm — `floor/coord-join.js`'s `buildFleetJoin()`, whose
+ * map is name → `install_id/seat_id` — and each resolved end is then a desk ON THIS FLOOR (its key is in
+ * `options.here`) or a desk on another floor of the building. An end with no desk anchors nothing.
+ *
+ * Per post, the rules the operator ruled and nothing else:
+ *   - A20 when `to` carries `all` and the origin is a desk here — the ring, and nothing else: no traveller
+ *     and no portal departure (r3 MINOR-2, settled by the operator);
+ *   - otherwise A19 when the origin is a desk here, once per destination desk here;
+ *   - the PORTAL halves (COORD-STORE.md § 6.1's reserved A22) when BOTH ends resolve and one is on
+ *     another floor: `portal.departure` for an origin here with a destination elsewhere (once per post),
+ *     `portal.arrivals` for each destination here whose origin is elsewhere. They are DATA: the row that
+ *     would draw them is reserved and not in the animation set, so until it lands the floor fires nothing
+ *     for them and logs each end *on another floor* (D3 AT-D3-29).
+ *
+ * @param {list<object>} messages the feed's envelopes, in arrival order
+ * @param {{join: object, reasons: object, checks: object, here: Set<string>}} options
+ */
+export function fleetModel(messages, options) {
+    const opts = options === null || typeof options !== 'object' ? {} : options;
+    const join = opts.join === null || typeof opts.join !== 'object' ? null : opts.join;
+    const meta = Object.freeze({
+        reasons: opts.reasons === null || typeof opts.reasons !== 'object' ? EMPTY_META.reasons : opts.reasons,
+        checks: opts.checks === null || typeof opts.checks !== 'object' ? EMPTY_META.checks : opts.checks,
+    });
+    const here = opts.here instanceof Set ? opts.here : new Set();
+    const rounds = [];
+    const seen = new Set();
+
+    for (const message of Array.isArray(messages) ? messages : []) {
+        const body = message?.t === COORD_ROUND_MESSAGE ? message.coord_round : null;
+
+        if (body === null || typeof body !== 'object' || body.scope !== FLEET_SCOPE) {
+            continue;
+        }
+
+        const rendered = roundRender(body, join, meta);
+
+        if (rendered.post_ref !== null && seen.has(rendered.post_ref)) {
+            continue;
+        }
+
+        if (rendered.post_ref !== null) {
+            seen.add(rendered.post_ref);
+        }
+
+        rounds.push(Object.freeze({ ...rendered, ...fleetAnimations(rendered, here) }));
+    }
+
+    return Object.freeze({ rounds: Object.freeze(rounds) });
+}
+
+/** One fleet-scope round's edges on this floor — `fleetModel()`'s rules, from the rendered round alone. */
+export function fleetAnimations(round, here) {
+    const origin = round.origin.agent !== null && round.origin.agent.resolved ? round.origin.agent.seat_id : null;
+    const originHere = origin !== null && here.has(origin);
+    const desks = round.targets.desks.map((d) => d.seat_id);
+    const local = desks.filter((key) => here.has(key));
+    const far = desks.filter((key) => !here.has(key));
+    const animations = [];
+
+    if (round.broadcast) {
+        if (originHere) {
+            animations.push('A20');
+        }
+
+        return { animations, travellers: [], portal: Object.freeze({ departure: false, arrivals: [] }), elsewhere: [] };
+    }
+
+    if (originHere && local.length > 0) {
+        animations.push('A19');
+    }
+
+    const departure = originHere && far.length > 0;
+    const arrivals = origin !== null && !originHere ? local : [];
+
+    return {
+        animations,
+        travellers: originHere ? local : [],
+        portal: Object.freeze({ departure, arrivals: Object.freeze(arrivals) }),
+        // The ends on another floor of this building, for the log line — never drawn toward.
+        elsewhere: Object.freeze([...(departure ? far : []), ...(arrivals.length > 0 ? [origin] : [])]),
+    };
 }
 
 /** The member sets, re-exported so the probe reads one module. */

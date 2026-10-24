@@ -1,7 +1,10 @@
 /**
- * THE JOIN — one room's `protocol_agent_name` → `seat_id` map, built from the seat population this
- * client already holds. `docs/design/FLEET-STATE.md § 8.3.3` rules 1 and 2, and
- * `docs/design/FLOOR.md § 5.7` clause 1's render. Appendix B row 7, card#7341 step 7.
+ * THE JOIN — D2 § 8.3.3 rule 1's two ARMS, built from the seat population this client already holds:
+ * the INSTALL arm, one room's `protocol_agent_name` → `seat_id` map (`buildJoin()`), and since card#12239
+ * the FLEET arm, every install's `roundtable_agent_name` → `install_id/seat_id` map (`buildFleetJoin()`),
+ * selected by a coordination object's `scope`. Both are one primitive (`joinArm()`) with a different
+ * declaration, resolving set and key. `docs/design/FLEET-STATE.md § 8.3.3` rules 1 and 2, and
+ * `docs/design/FLOOR.md § 5.7` property 1's render. Appendix B row 7, card#7341 step 7.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THIS IS THE MAP `coord/coord-model.js` HAS TAKEN AS A PARAMETER SINCE card#8300 AND NOTHING
@@ -32,8 +35,16 @@
  * from the returned map, so `resolve()` answers unresolved for it without having to know why.
  */
 
-/** D2 § 8.2.1's check states that RESOLVE — rule 2, and the whole of it. */
+/** D2 § 8.2.1's check states that RESOLVE on the INSTALL arm — rule 2, and the whole of it. */
 const RESOLVING_CHECKS = Object.freeze(['checked', 'unchecked']);
+
+/**
+ * The check state that resolves on the FLEET arm (D2 § 8.3.3 rule 1, card#12239 r4 MINOR-6): `checked`
+ * alone. An `unchecked` roundtable name is a string any seat of any install could type with no roster
+ * on its box to refuse it, so resolving it would let one install claim another's identity; it still
+ * COUNTS for the duplicate arm.
+ */
+const FLEET_RESOLVING_CHECKS = Object.freeze(['checked']);
 
 /** The one check state that is not a declaration at all (rule 1's *only an `undeclared` seat*). */
 const NOT_A_DECLARATION = 'undeclared';
@@ -56,23 +67,20 @@ export const DUPLICATE_WORDS = 'declared by more than one seat';
 export const UNCHECKED_WORDS = 'unchecked';
 
 /**
- * Build one room's join.
+ * THE ONE JOIN PRIMITIVE — count every declarer of every name, then bind, in D2 § 8.3.3 rule 1's order.
+ * Both arms are this function with a different declaration, a different resolving set and a different
+ * key for a resolved seat (canon #5: one behaviour, one implementation).
  *
- * @param {Iterable<object>} seats the seat objects of ONE install — D2 § 8.2.1 objects, as the
- *        client protocol holds them. Scoping is the caller's: a name declared in another install is
- *        another install's fact (rule 1), and § 5.7 clause 3 draws a round in one room only.
- * @returns {{join: Record<string, string>, reasons: Record<string, string>, checks: Record<string, string>}}
- *          `join` is `resolve()`'s map; `reasons` carries D2's token for every name that declared
- *          and did not resolve; `checks` carries the resolving seat's own check state per bound
- *          name, which is what § 5.7's *rests on an UNCHECKED declaration* row renders.
+ * @param {Iterable<object>} seats the population the arm spans
+ * @param {{name: string, check: string, resolving: readonly string[], key: function(object): string}} arm
  */
-export function buildJoin(seats) {
+function joinArm(seats, arm) {
     // Phase 1 — COUNT. Every declaring seat of every name, before any name is bound.
     const declarers = new Map();
 
     for (const seat of seats) {
-        const name = seat?.protocol_agent_name;
-        const check = seat?.protocol_agent_name_check ?? null;
+        const name = seat?.[arm.name];
+        const check = seat?.[arm.check] ?? null;
 
         if (typeof name !== 'string' || name === '' || check === NOT_A_DECLARATION) {
             continue;
@@ -82,10 +90,10 @@ export function buildJoin(seats) {
             declarers.set(name, []);
         }
 
-        declarers.get(name).push({ seat_id: seat.seat_id, check });
+        declarers.get(name).push({ key: arm.key(seat), check });
     }
 
-    // Phase 2 — BIND. The duplicate arm first, then rule 2's filter on the one seat left.
+    // Phase 2 — BIND. The duplicate arm first, then the arm's resolving filter on the one seat left.
     const join = {};
     const reasons = {};
     const checks = {};
@@ -99,19 +107,58 @@ export function buildJoin(seats) {
 
         const [claim] = claims;
 
-        if (!RESOLVING_CHECKS.includes(claim.check)) {
-            // A lone `disagreed` declarer, and a seat whose last heartbeat carried no check state:
-            // each DECLARES and neither resolves, so the arm is named for its outcome (rule 1).
+        if (!arm.resolving.includes(claim.check)) {
+            // A lone declarer whose check does not resolve on this arm: it DECLARES and does not
+            // resolve, so the arm is named for its outcome (rule 1).
             reasons[name] = NO_DECLARING_SEAT;
 
             continue;
         }
 
-        join[name] = claim.seat_id;
+        join[name] = claim.key;
         checks[name] = claim.check;
     }
 
     return Object.freeze({ join: Object.freeze(join), reasons: Object.freeze(reasons), checks: Object.freeze(checks) });
+}
+
+/**
+ * Build one room's join — the INSTALL arm (D2 § 8.3.3 rule 1, `install`-scope objects).
+ *
+ * @param {Iterable<object>} seats the seat objects of ONE install — D2 § 8.2.1 objects, as the
+ *        client protocol holds them. Scoping is the caller's: a name declared in another install is
+ *        another install's fact (rule 1), and § 5.7 property 3 animates an install-scope post in one room.
+ * @returns {{join: Record<string, string>, reasons: Record<string, string>, checks: Record<string, string>}}
+ *          `join` is `resolve()`'s map, name → `seat_id`; `reasons` carries D2's token for every name
+ *          that declared and did not resolve; `checks` carries the resolving seat's own check state.
+ */
+export function buildJoin(seats) {
+    return joinArm(seats, {
+        name: 'protocol_agent_name',
+        check: 'protocol_agent_name_check',
+        resolving: RESOLVING_CHECKS,
+        key: (seat) => seat.seat_id,
+    });
+}
+
+/**
+ * Build the building's FLEET-arm join (D2 § 8.3.3 rule 1, `fleet`-scope objects, card#12239): every
+ * seat of EVERY install the client holds, keyed by its declared `roundtable_agent_name`, resolving
+ * `checked` alone, with duplicates counted across installs. A resolved name maps to the seat's full
+ * `install_id/seat_id` key, because the arm spans rooms.
+ *
+ * ⛔ THE ARMS NEVER CROSS: nothing here reads `protocol_agent_name`, so a fleet-scope name is never
+ * looked up among protocol agent names, however alike the strings.
+ *
+ * @param {Iterable<object>} seats every held seat, of every install
+ */
+export function buildFleetJoin(seats) {
+    return joinArm(seats, {
+        name: 'roundtable_agent_name',
+        check: 'roundtable_agent_name_check',
+        resolving: FLEET_RESOLVING_CHECKS,
+        key: (seat) => `${seat.install_id}/${seat.seat_id}`,
+    });
 }
 
 /**

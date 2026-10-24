@@ -68,9 +68,22 @@ export const BAND_H = 160;
  * (design review r3 MINOR-1): the formula's *at least one* holds from that width up, and under it a
  * window — or its sill — could only be drawn inside the zone. A stored map can be that narrow (F21).
  */
-const ZONE_W = 272;
+const ZONE_W = 332;
 const ELEVATOR = { dx: 32, w: 84, h: 144, frame: 6, header: 14 };
-const CLOCK = { dx: 164, size: 64 };
+/**
+ * The wall clock, RAISED 44 px to the top of the band (card#12241, the operator's ruling of 2026-10-23:
+ * *"I want the clock raised to the height of the current birdhouse"*): its rect's top is `dy` under the
+ * band's top, where it was centred in the band's 160 px.
+ */
+const CLOCK = { dx: 164, size: 64, dy: 4 };
+/**
+ * THE BIRD PORTAL (card#12241, COORD-STORE.md § 6.1) — the birdhouse on a bracket to the RIGHT of the clock,
+ * with `gap` px of clear wall between the clock face and the roof, the roof's peak level with the clock's
+ * top. A fixture of the FRAME, on every floor and never of a map, so no authored furniture meets it and a
+ * floor without one cannot occur. `ZONE_W` grows by the gap and the roof's width (272 → 332), so the first
+ * window keeps from the birdhouse the clearance it kept from the clock.
+ */
+const PORTAL = { gap: 16, roof_w: 44, body: 34, bracket_w: 40, bracket_h: 3, hole_r: 8 };
 const WINDOW = { margin: 24, pitch: 360, w: 208, min_w: 96, gap: 24, h: 80, dy: 22 };
 
 /**
@@ -239,6 +252,14 @@ function roomSuffix(installId, seats) {
  */
 export const WALK_PX_PER_FRAME = 48;
 const ENVELOPE_PX_PER_FRAME = 96;
+
+/**
+ * card#12241's arrival, RULED (the operator's "A"): from touchdown the bird sets the envelope on the desk and
+ * lifts away, and the envelope RESTS for eight frames, is drawn at half opacity for one, and is gone —
+ * eleven frames from touchdown, so nothing persists. Reduced motion draws the still envelope for the moving
+ * form's whole duration, flight and rest (§ 6.2 A19's reduced cell).
+ */
+const ARRIVAL_REST_FRAMES = 11;
 const RING_PX_PER_FRAME = 240;
 const RING_FADE_FRAMES = 2;
 
@@ -1141,10 +1162,10 @@ export function backWall(span, room) {
             seam: lift.x + lift.w / 2,
         }),
         // § 6.5: a room with no value is drawn as having none — `set: false`, never a plausible time.
-        // Hung at mid-wall, in the zone, right of the elevator.
+        // Hung in the zone right of the elevator, raised to the band's top (card#12241).
         clock: Object.freeze({
             x: span.x + CLOCK.dx,
-            y: y + (BAND_H - CLOCK.size) / 2,
+            y: y + CLOCK.dy,
             w: CLOCK.size,
             h: CLOCK.size,
             set: room !== null,
@@ -1153,7 +1174,31 @@ export function backWall(span, room) {
             text: room?.text ?? null,
             label: room?.label ?? null,
         }),
+        portal: birdPortal(span.x, y, room?.sky ?? null),
         windows: Object.freeze(windows),
+    });
+}
+
+/**
+ * The birdhouse's geometry, band-relative to `left` and the band's top `top` (card#12241's measured layout):
+ * its centre `c` is 22 px right of the roof's left edge, the roof's left edge `PORTAL.gap` px right of the
+ * clock face; `c.y` is 28 px under the clock's top, so the roof's 28 px gable peaks level with it. The MOUTH
+ * is the hole's centre — where a portal bird enters and leaves (COORD-STORE.md § 6.1). `sky` is the room's sky
+ * phase, `null` when the room has no value (§ 6.5).
+ */
+function birdPortal(left, top, sky) {
+    const cx = left + CLOCK.dx + CLOCK.size + PORTAL.gap + PORTAL.roof_w / 2;
+    const cy = top + CLOCK.dy + 28;
+
+    return Object.freeze({
+        x: cx,
+        y: cy,
+        roof: Object.freeze({ x: cx - PORTAL.roof_w / 2, w: PORTAL.roof_w, peak_y: cy - 28, eave_y: cy - 12 }),
+        body: Object.freeze({ x: cx - PORTAL.body / 2, y: cy - 12, w: PORTAL.body, h: PORTAL.body }),
+        bracket: Object.freeze({ x: cx - PORTAL.bracket_w / 2, y: cy + 22, w: PORTAL.bracket_w, h: PORTAL.bracket_h }),
+        mouth: Object.freeze({ x: cx, y: cy + 2, r: PORTAL.hole_r }),
+        // The hole shows the windows' own sky (A17's value), so the portal never shows a second time of day.
+        sky,
     });
 }
 
@@ -1261,27 +1306,38 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce, char
 
             seen.add(tag);
 
-            const round = frame.coord?.[row.install_id]?.rounds.find((r) => r.post_ref === row.cause) ?? null;
-            const origin = round?.origin.agent?.resolved ? anchors.get(`${row.install_id}/${round.origin.agent.seat_id}`) ?? null : null;
+            // An install-scope post is its room's; a fleet-scope one (card#12239) is the floor's, and its
+            // ends are already `install_id/seat_id` keys, its travellers only the destinations drawn here.
+            const local = frame.coord?.[row.install_id]?.rounds.find((r) => r.post_ref === row.cause) ?? null;
+            const fleet = local === null ? (frame.coord_fleet?.rounds.find((r) => r.post_ref === row.cause) ?? null) : null;
+            const round = local ?? fleet;
+            const keyOf = (seatId) => (fleet === null ? `${row.install_id}/${seatId}` : seatId);
+            const origin = round?.origin.agent?.resolved ? anchors.get(keyOf(round.origin.agent.seat_id)) ?? null : null;
+            const destinations = round === null ? [] : fleet === null ? round.targets.desks.map((d) => d.seat_id) : round.travellers;
 
             if (id === 'A19' && round !== null && origin !== null) {
-                for (const target of round.targets.desks) {
-                    const to = anchors.get(`${row.install_id}/${target.seat_id}`) ?? null;
+                for (const target of destinations) {
+                    const to = anchors.get(keyOf(target)) ?? null;
 
                     if (to === null) {
                         continue;
                     }
 
                     const length = Math.hypot(to.x - origin.x, to.y - origin.y);
+                    const flight = Math.max(1, Math.ceil(length / ENVELOPE_PX_PER_FRAME));
+                    const moving = motion && !reduce;
 
                     effects.push(Object.freeze({
                         ...base,
                         from: origin,
                         to,
-                        // The operator's QA ruling (card#7341 scope addition 3): the envelope's nose
-                        // points along its direction of travel.
+                        // The operator's QA ruling (card#7341 scope addition 3): the traveller faces its
+                        // direction of travel — card#12241's bird flips to it.
                         heading_deg: Math.atan2(to.y - origin.y, to.x - origin.x) * 180 / Math.PI,
-                        frames: motion && !reduce ? Math.max(1, Math.ceil(length / ENVELOPE_PX_PER_FRAME)) : 0,
+                        frames: moving ? flight : 0,
+                        rest_frames: moving ? ARRIVAL_REST_FRAMES : 0,
+                        // The reduced form is transient too: shown for the moving form's own duration.
+                        still_frames: moving ? 0 : flight + ARRIVAL_REST_FRAMES,
                     }));
                 }
             }

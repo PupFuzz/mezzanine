@@ -83,13 +83,13 @@ import { Building } from '../wire/building.js';
 import { DeskFloor } from '../desk/desk-floor.js';
 import { LOOP_FPS, heldRendering } from '../wire/animation-set.js';
 import { DrillDownPanel } from '../drilldown/drilldown-panel.js';
-import { coordModel } from '../coord/coord-model.js';
+import { coordModel, fleetModel } from '../coord/coord-model.js';
 import { correctedNowMs } from '../wire/duration.js';
 import { floorAgeReadouts } from '../wire/age-readout.js';
 import { floors, heldBody, roomsOf } from '../lobby/lobby-model.js';
 import { plates } from '../lobby/building-model.js';
 import { Ride } from '../wire/ride.js';
-import { buildJoin } from './coord-join.js';
+import { buildFleetJoin, buildJoin } from './coord-join.js';
 import { statusStrip } from './status-strip.js';
 import { failureRender } from '../wire/failure-render.js';
 import { buildScene, threshold } from './scene.js';
@@ -791,7 +791,7 @@ export class FloorScreen {
             // The static forms this render's own rows drew (§ 6.4: frames 0 — a bead, a broadcast
             // marker) are this paint's alone, as they always were; everything with frames to run is the
             // holder's, this render's new ones included.
-            effects: Object.freeze([...plain.effects.filter((e) => !(e.frames > 0)), ...this.#inFlight.current(now)]),
+            effects: Object.freeze([...plain.effects.filter((e) => !(e.frames > 0) && !(e.still_frames > 0)), ...this.#inFlight.current(now)]),
             doors: Object.freeze(this.#inFlight.doors(now)),
             // § 4.5: the elevator's leaves while a ride holds them — the painter draws them from this and
             // adds nothing for a walk's door span meanwhile; `doors` stays the walks' (AT-D3-23's instrument).
@@ -1250,7 +1250,7 @@ export class FloorScreen {
 
         this.#displacements(assignments, journal, at);
 
-        const coord = this.#coordinate(floor, seatsByRoom, positions, journal, at);
+        const { rooms: coord, fleet: coordFleet } = this.#coordinate(floor, seatsByRoom, positions, journal, at);
 
         return Object.freeze({
             composed: true,
@@ -1285,6 +1285,9 @@ export class FloorScreen {
             desks: deskFrame,
             desk_positions: Object.fromEntries(positions),
             coord,
+            // card#12239: the floor's FLEET-scope posts — D2 § 8.3.3 rule 1's fleet arm over every held
+            // seat, each end a desk on this floor or on another (`coord/coord-model.js`'s `fleetModel()`).
+            coord_fleet: coordFleet,
             notices: Object.freeze(notices),
             ...narration,
         });
@@ -1470,7 +1473,52 @@ export class FloorScreen {
             }
         }
 
-        return Object.freeze(rooms);
+        // card#12239: the FLEET-scope posts, which belong to no room. Their names join through every held
+        // seat's `roundtable_agent_name` (D2 § 8.3.3 rule 1's fleet arm), and an end is on this floor when
+        // its desk was drawn here — `positions` is keyed `install_id/seat_id`, the fleet arm's own key.
+        const fleet = fleetModel(messages, { ...buildFleetJoin(this.#client.seats.values()), here: new Set(positions.keys()) });
+
+        this.#fleetRows(fleet, journal, at);
+
+        return { rooms: Object.freeze(rooms), fleet };
+    }
+
+    /**
+     * A19 and A20's rows for the FLEET-scope `coord.round`s this journal carried (card#12239) — the
+     * install-scope rule below, through the fleet arm: one traveller per destination desk on this floor
+     * from an origin desk on this floor, one ring for a broadcast from an origin desk here and nothing
+     * else. Each row names the ORIGIN desk's room, the room the edge leaves from.
+     *
+     * The portal halves (`portal.departure`, `portal.arrivals`) fire nothing: their row is COORD-STORE.md
+     * § 6.1's reserved A22, which is not in the animation set (D3 AT-D3-29: until the row exists the
+     * post fires nothing for them).
+     */
+    #fleetRows(fleet, journal, at) {
+        for (const entry of journal) {
+            if (entry.t !== 'coord.round' || entry.outcome !== 'applied' || entry.install_id !== null) {
+                continue;
+            }
+
+            const round = fleet.rounds.find((r) => r.post_ref === entry.coord_ref);
+
+            if (round === undefined || this.#drawn.has(entry.coord_ref) || round.animations.length === 0) {
+                continue;
+            }
+
+            this.#drawn.add(entry.coord_ref);
+
+            const room = round.origin.agent.seat_id.split('/')[0];
+
+            if (round.animations.includes('A19')) {
+                for (let i = 0; i < round.travellers.length; i++) {
+                    this.#set.envelope(room, round.post_ref, at);
+                }
+            }
+
+            if (round.animations.includes('A20')) {
+                this.#set.broadcast(room, round.post_ref, at);
+            }
+        }
     }
 
     /**
