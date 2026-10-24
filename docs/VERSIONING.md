@@ -271,6 +271,31 @@ version lines with different consumers (see
 Moving the accepted schema set makes a release *at least* minor, but the schema's own number
 is not derived from the repo's and never tracks it.
 
+### The reporter's own version
+
+`REPORTER_VERSION` in `fleet-reporter/fleet-reporter.js` is a third version line. It names the
+**build a seat runs**, and every batch and `selftest` report carries it as `reporter_version`. It is
+neither the repo's `VERSION` nor the wire schema's: seats upgrade on their own schedule, a reporter
+change lands on `dev` long before a release collects it, and most reporter changes move no schema.
+
+- **It moves in the same PR as any change to what a reporter update ships**: the files
+  `fleet-reporter/INSTALL-LINUX.md` Step 1 installs, and the crontab entry its Step 5 writes. The
+  next version is strictly greater than `dev`'s, so no two builds report one version.
+  `bin/reporter-version-guard.py` (workflow `reporter-version`, on every PR) enforces it, and owns
+  that population.
+- **It is sized by [§ Bump sizing](#bump-sizing) from the seat's side.** Patch: a fix or internal
+  change that alters nothing a seat must do or can see. Minor: new functionality, or anything that
+  brings a seat a step (a new hook fixture, hook wiring, crontab line or config key). Pre-1.0 a
+  break is a minor, stated in its row.
+- **Its row in `fleet-reporter/UPDATES.md`** says what an upgrading seat applies, and the same PR
+  adds it.
+- **`SchemaVersions::MIN_REPORTER_VERSION` does not follow it.** That value is published for an
+  operator to read and enforced nowhere (its docblock says why), and an older reporter's batches stay
+  accepted.
+
+`0.1.0` named every build up to card#11818, which moved the line to `0.2.0`, a minor: the builds
+behind it added hooks, config forms and the multi-site flusher.
+
 ---
 
 ## The release-PR head hazard — never PR `dev` directly into `main`
