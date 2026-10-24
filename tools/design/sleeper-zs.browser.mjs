@@ -127,15 +127,15 @@ const inView = (doc) => doc.replace(/viewBox="[^"]*" width="[^"]*" height="[^"]*
 
 /**
  * THE CLEAR RECTS — what the z's must stay out of, in frame units, DERIVED FROM THE FLOOR'S OWN LAYOUT and never copied
- * here: `floor/desk-layout.js`'s `sleeperOverdraw()` for a desk at the furniture box — the one function the floor hands
+ * here: `floor/desk-layout.js`'s `characterOverdraw()` for a desk at the furniture box — the one function the floor hands
  * the tree its clear rects by — the monitor's frame, the desk's props, the desk, and the thought trail's column: the
  * places a z that stands beyond the character's rect would be drawn through, or under, something the desk draws.
  */
 async function clearRects(C) {
-  const { sleeperOverdraw, FRAME_UNITS_PER_PX } = await import(pathToFileURL(join(ROOT, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
+  const { characterOverdraw, FRAME_UNITS_PER_PX } = await import(pathToFileURL(join(ROOT, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
   const { FURNITURE_BOX } = await import(pathToFileURL(join(ROOT, 'resources', 'floor', 'furniture-box.js')).href);
   UNIT_PX = 1 / FRAME_UNITS_PER_PX;
-  return sleeperOverdraw(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H }).clear.map((c) => ({ ...c }));
+  return characterOverdraw(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H }).clear.map((c) => ({ ...c }));
 }
 
 // ── the z's, drawn as creatures.js's zSvg() draws them ──────────────────────────────────────────────────────────────
@@ -570,7 +570,7 @@ function crestCheck(treeTable, scans, layout) {
   return { defects: scans.filter((sc) => !(sc.tkey in treeTable) || sc.top < treeTable[sc.tkey] - 0.01).map((sc) => `${sc.key} reaches ${sc.top} above ${sc.tkey}'s ${treeTable[sc.tkey]}`), checked: true };
 }
 
-/** CSS px per frame unit at the floor's fit zoom on a 1,440 × 900 window: the character rect is `SEAT_VIEWBOX.w / R.character.w` units a scene px. */
+/** CSS px per frame unit at the floor's fit zoom on a 1,440 × 900 window: the character rect is `SEAT_RECT.w / R.character.w` units a scene px. */
 let UNIT_PX = NaN;
 const FIT_ZOOM = Number(arg('--fit', 0.9));
 const ZOOM_CEILING = Number(readFileSync(join(ROOT, 'server', 'public', 'js', 'wire', 'camera.js'), 'utf8').match(/export const ZOOM_CEILING = ([\d.]+);/)?.[1] ?? NaN);

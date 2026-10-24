@@ -141,8 +141,8 @@ class AnIdleDeskDrawsItsSleeperTest extends TestCase
                 '    return { k, x: 54 - dir * (Z_A0 + (Z_A1 - Z_A0) * t), y: y0 + (y1 - y0) * t, h: L + (S - L) * t };',
                 '    return { k, x: 54 + dir * (Z_A0 + (Z_A1 - Z_A0) * t), y: y0 + (y1 - y0) * t, h: L + (S - L) * t };'], ['zs:']],
             "the sleeper drawn in a frame other than § 12's" => ['tree', ['creatures.js',
-                'export const SLEEP_VIEWBOX = Object.freeze({ x: -54, y: Z_TOP, w: 216, h: 234 });',
-                'export const SLEEP_VIEWBOX = Object.freeze({ x: -54, y: Z_TOP, w: 216, h: 200 });'], ['sleeper:']],
+                'export const SEAT_VIEWBOX = Object.freeze({ x: -54, y: Z_TOP, w: 216, h: 234 });',
+                'export const SEAT_VIEWBOX = Object.freeze({ x: -54, y: Z_TOP, w: 216, h: 200 });'], ['sleeper:']],
         ];
     }
 

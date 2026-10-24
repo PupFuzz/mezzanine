@@ -296,7 +296,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
      * generator that throws for this key, is § 9 F14 for this asset and never a throw out of the paint.
      *
      * @param {{pose: string, desk_top: number, clear?: object[]}|null} at a desk's pose, its desk's top edge and, for
-     *        a sleeper, the clear rects its z's keep out of (`sleeperOverdraw()`), or `null`
+     *        a sleeper, the clear rects its z's keep out of (`characterOverdraw()`), or `null`
      * @returns {{uris: string[], loopFrom: number}|null}
      */
     const characterFrames = (installId, seatId, asset, at = null, intern = false) => {
@@ -306,7 +306,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             return null;
         }
 
-        // `at.clear` is not in the key: a sleeper's clear rects are `sleeperOverdraw()`'s of the one furniture box and
+        // `at.clear` is not in the key: a sleeper's clear rects are `characterOverdraw()`'s of the one furniture box and
         // the character's size, the same for every desk, so the pose and the desk's top edge already name the drawing.
         // A layout whose clear rects differ by desk must add them here.
         const key = intern ? asset : at === null ? `${asset}#walk` : `${asset}#${at.pose}@${at.desk_top}`;
@@ -413,9 +413,10 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                         const { uris, loopFrom } = drawn;
                         const moves = e.animation?.motion === true && e.animation.frame_interval_ms !== null;
                         const offset = moves ? characters.loopOffset(desk.install_id, desk.seat_id, uris.length - loopFrom) : 0;
-                        // § 10.4 item 4: a sleeper's art viewport is its overdraw, past the element's rect, so its z's
-                        // stand above and beside its head; every other character's is the element's rect.
-                        const el = art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw ?? e, e.asset, 'character');
+                        // § 10.4's frame contract (card#12187, card#12259): every character's art viewport is its
+                        // overdraw, past the element's rect — a sleeper's z's stand above and beside its head, and a
+                        // standing or walking body's tilted parts reach past the rect's side — never the rect itself.
+                        const el = art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw, e.asset, 'character');
 
                         if (moves) {
                             stepping.push([el, uris, loopFrom, offset]);
@@ -450,16 +451,18 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                     if (e.art) {
                         // § 8 / Q3: the intern's sprite in its clipping viewport — the tree's chibi frame
                         // under its own key, face-on, `xMidYMax meet`, foot on the rect's floor
-                        // line; static, because an intern takes no § 6.2 row. An untitled intern is drawn
-                        // dashed (§ 8): its sprite inside a dashed edge at its own 20 × 32 rect — rx 3, no
-                        // fill, `--scene-stool` at 1.5 wide, dashed `3 2` — and its fallback glyph below is
-                        // dashed `3 2` with no fill (the designer's rulings on card#11058 PR-C).
+                        // line; static, because an intern takes no § 6.2 row. The viewport is the stool's
+                        // overdraw (§ 10.4's frame contract item 3, card#12259): the rect widened to the row's
+                        // pitch, so a tilted frame's ear or cap is not cut at the rect's side. An untitled
+                        // intern is drawn dashed (§ 8): its sprite with a dashed edge at its own 20 × 32 rect —
+                        // rx 3, no fill, `--scene-stool` at 1.5 wide, dashed `3 2` — and its fallback glyph
+                        // below is dashed `3 2` with no fill (the designer's rulings on card#11058 PR-C).
                         const drawn = characterFrames(e.install_id, e.key, e.asset, null, true);
 
                         if (drawn !== null) {
                             interns.add(e.asset);
                             drawnInterns.add(e.asset);
-                            art(g, drawn.uris[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern');
+                            art(g, drawn.uris[0], e.overdraw, e.asset, e.untitled ? 'intern untitled' : 'intern');
 
                             if (e.untitled) {
                                 node('rect', { x: e.x, y: e.y, width: e.w, height: e.h, rx: 3, class: 'intern-edge' }, g);
@@ -592,7 +595,10 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             return;
         }
 
-        const el = image(g, drawn.uris[0], -fx.size.w / 2, -fx.size.h, fx.size.w, fx.size.h, asset, { class: 'character', preserveAspectRatio: MEET });
+        // § 10.4's frame contract (card#12259): the walker's image is the character's frame at its overdraw size,
+        // centred on the feet — the standing frame is drawn in the widened frame, so the image is the same width
+        // the desk's viewport is; `fx.size` stays the character's rect, the placeholder's size above.
+        const el = image(g, drawn.uris[0], -fx.frame.w / 2, -fx.frame.h, fx.frame.w, fx.frame.h, asset, { class: 'character', preserveAspectRatio: MEET });
 
         // A walk starts at its stand frame: A1's and A2's walks are the whole list, `loopFrom` 0, and take no loop
         // offset (§ 10.4 item 4).

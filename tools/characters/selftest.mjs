@@ -188,8 +188,8 @@ for (const sp of KEYS) {
 }
 const chibiRoot = C.chibiFrame('desk-0', desks[0].interns[0]).match(/^<svg[^>]*>/)[0];
 const vb = C.CHIBI_VIEWBOX;
-check(chibiRoot.includes(`viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}"`) && Math.abs(vb.w / vb.h - 20 / 32) < 1e-9 && vb.y + vb.h >= 188,
-  `the chibi frame's viewBox has the 20 x 32 rect's aspect and holds the foot line (${vb.x} ${vb.y} ${vb.w} ${vb.h})`);
+check(chibiRoot.includes(`viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}"`) && vb.y + vb.h >= 188,
+  `the chibi frame's viewBox is CHIBI_VIEWBOX and holds the foot line (${vb.x} ${vb.y} ${vb.w} ${vb.h}); § 7b holds it to the intern's overdraw`);
 
 // ---- 7. the frames, at parity (the node half; the painter half is painter-probe.mjs) ----
 section('7. the frames: a standing frame, three distinct walk phases (phase 0 the standing frame), a chibi frame');
@@ -207,18 +207,28 @@ check(C.walkFrames(anySeat.install_id, anySeat.seat_id)[0] === C.standingFrame(a
 // The painter's half, and the sleeper's own legs over every species, are server/tests/Feature/Floor/sleeper-probe.mjs.
 section("7b. a desk's pose frames: { frames, loopFrom } — the sleeper's still and loop for asleep, the walk's for every other pose; every sleeper document is a document");
 // The floor's own desk edge and clear rects, from the one function that hands them to the tree (§ 10.4 item 4).
-const { sleeperOverdraw, deskRects, FRAME_UNITS_PER_PX, CHARACTER_SCALE } = await import(pathToFileURL(join(REPO, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
+const { characterOverdraw, internOverdraw, deskRects, FRAME_UNITS_PER_PX, CHARACTER_SCALE } = await import(pathToFileURL(join(REPO, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
 const { FURNITURE_BOX } = await import(pathToFileURL(join(REPO, 'resources', 'floor', 'furniture-box.js')).href);
-const { overdraw, clear: CLEAR } = sleeperOverdraw(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H });
+const { overdraw, clear: CLEAR } = characterOverdraw(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H });
 const DESK_TOP = 70 / 96;
-// The floor states the tree's frame units per pixel (it cannot import the tree); held equal to the tree's own, and the
-// overdraw, in those units from the character rect's top-left, is the sleeper's frame (§ 12's *Sleeper frame*).
+// The floor states the tree's frame units per pixel (it cannot import the tree); held equal to the tree's own over the
+// character's RECT, and the overdraw, in those units from the rect's top-left, is the frame every seat document is
+// drawn in (§ 12's *Character frame*; card#12187, card#12259).
 const charRect = { w: C.SCENE_W * CHARACTER_SCALE, h: C.SCENE_H * CHARACTER_SCALE };
-check(C.SEAT_VIEWBOX.w / charRect.w === FRAME_UNITS_PER_PX && C.SEAT_VIEWBOX.h / charRect.h === FRAME_UNITS_PER_PX,
-  `desk-layout.js's FRAME_UNITS_PER_PX (${FRAME_UNITS_PER_PX}) is the tree's frame units per character-rect pixel (${C.SEAT_VIEWBOX.w / charRect.w})`);
-const sitter = deskRects(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H }).character;
+check(C.SEAT_RECT.w / charRect.w === FRAME_UNITS_PER_PX && C.SEAT_RECT.h / charRect.h === FRAME_UNITS_PER_PX,
+  `desk-layout.js's FRAME_UNITS_PER_PX (${FRAME_UNITS_PER_PX}) is the tree's frame units per character-rect pixel (${C.SEAT_RECT.w / charRect.w})`);
+const rects = deskRects(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H });
+const sitter = rects.character;
 const odUnits = { x: (overdraw.x - sitter.x) * FRAME_UNITS_PER_PX, y: (overdraw.y - sitter.y) * FRAME_UNITS_PER_PX, w: overdraw.w * FRAME_UNITS_PER_PX, h: overdraw.h * FRAME_UNITS_PER_PX };
-check(['x', 'y', 'w', 'h'].every((k) => odUnits[k] === C.SLEEP_VIEWBOX[k]), `the overdraw in frame units (${JSON.stringify(odUnits)}) is SLEEP_VIEWBOX (${JSON.stringify(C.SLEEP_VIEWBOX)})`);
+check(['x', 'y', 'w', 'h'].every((k) => odUnits[k] === C.SEAT_VIEWBOX[k]), `the character's overdraw in frame units (${JSON.stringify(odUnits)}) is SEAT_VIEWBOX (${JSON.stringify(C.SEAT_VIEWBOX)}), the frame of every seat document`);
+check(/viewBox="-54 -42 216 234"/.test(C.standingFrame(roster[0].install_id, roster[0].seat_id)) && C.walkFrames(roster[0].install_id, roster[0].seat_id).every((d) => d.includes(`viewBox="${C.SEAT_VIEWBOX.x} ${C.SEAT_VIEWBOX.y} ${C.SEAT_VIEWBOX.w} ${C.SEAT_VIEWBOX.h}"`)),
+  'the standing frame and every walk frame are drawn in SEAT_VIEWBOX, the sleeper\'s widened, raised frame (card#12259)');
+// The intern: its chibi frame is the stool's rect widened to the row's pitch, in the chibi frame's units (the rect's
+// 108 units over its px), from the stool rect's top-left at the frame's top (CHIBI_VIEWBOX.y).
+const stool = rects.stool, io = internOverdraw(stool), upp = C.SEAT_RECT.w / stool.w;
+const ioUnits = { x: (io.x - stool.x) * upp, y: C.CHIBI_VIEWBOX.y + (io.y - stool.y) * upp, w: io.w * upp, h: io.h * upp };
+check(['x', 'y', 'w', 'h'].every((k) => Math.abs(ioUnits[k] - C.CHIBI_VIEWBOX[k]) < 1e-9) && io.w > stool.w,
+  `the intern's overdraw in chibi-frame units (${JSON.stringify(ioUnits)}) is CHIBI_VIEWBOX (${JSON.stringify(C.CHIBI_VIEWBOX)}), wider than the ${stool.w} x ${stool.h} rect`);
 const [si, ss] = [anySeat.install_id, anySeat.seat_id];
 const asleep = C.poseFrames(si, ss, { pose: 'asleep', deskTop: DESK_TOP, clear: CLEAR });
 const own = C.sleepFrames(si, ss, DESK_TOP, CLEAR);
@@ -263,45 +273,69 @@ for (const f of ['index.js', 'seed.js', 'creatures.js']) {
     `${f}: no data:image/ text, no request, no clock, no random source, no storage`);
 }
 
-// ---- 8b. the frame holds the ink (card#12212; FLOOR.md § 10.4's frame contract) ----
-// A frame is shown in a clipping viewport, so ink outside its viewBox is cut off on the floor. What the frame's
-// own composition promises is measured here, never assumed: every species' documents — the standing frame, both
-// walk phases, the chibi frame and every sleeper document, the sleeper's against its own raised, widened frame
-// (SLEEP_VIEWBOX, which the floor draws into the overdraw) — over keys enough to vary tilt, girth, size, side, hat,
-// neckwear and extra, read by `inkBounds` (curves sampled, strokes widened, clips honoured). THE GATE binds the
-// species drawn after the approved sheet (`added`), which this repository may redraw: each leaves its frame by no
-// more than the approved sheet's own species do in the same kind of frame — that envelope is re-derived from the
-// generator on every run, never written down. The approved species' own overshoot (the tilt, the walk's lean and
-// the sleeper's roll carry wide or tall approved bodies past the frame's side by a few units) predates this card,
-// is printed by name, and gates nothing here: redrawing an approved body or changing the frame's transforms is a
-// design decision, not a test's.
-section("8b. the frame holds the ink: a species drawn after the approved sheet leaves its frame by no more than the approved sheet's own species do");
-const BOUNDS_KEYS = 16;
-const overshoot = (doc, vb) => { const b = inkBounds(doc); return b === null ? 0 : Math.max(0, vb.x - b.x0, b.x1 - (vb.x + vb.w), vb.y - b.y0, b.y1 - (vb.y + vb.h)); };
-const framesOf = (sp, key) => [
-  ['standing', C.frameDocument(key, { species: sp, phase: 0 }), C.SEAT_VIEWBOX],
-  ['walking', C.frameDocument(key, { species: sp, phase: 1 }), C.SEAT_VIEWBOX],
-  ['walking', C.frameDocument(key, { species: sp, phase: 2 }), C.SEAT_VIEWBOX],
-  ['chibi', C.frameDocument(`${key}~intern`, { species: sp, chibi: true }), C.CHIBI_VIEWBOX],
-  ...Array.from({ length: C.SLEEP_LOOP + 1 }, (_, frame) => ['asleep', C.sleepDocument(key, { species: sp, frame, deskTop: DESK_TOP, clear: CLEAR }), C.SLEEP_VIEWBOX]),
-];
-const worstOf = (sp) => {
-  const w = {};
-  for (let i = 0; i < BOUNDS_KEYS; i++) for (const [kind, doc, vb] of framesOf(sp, `bounds/${sp}/${i}`)) {
-    const o = overshoot(doc, vb);
-    if (!w[kind] || o > w[kind].over) w[kind] = { over: o, key: `bounds/${sp}/${i}` };
+// ---- 8b. the frame holds the ink (card#12212, card#12259; FLOOR.md § 10.4's frame contract) ----
+// A frame is shown in a clipping viewport, so ink outside its viewBox is cut off on the floor. What the frame's own
+// composition promises is measured here, never assumed: for every species and variant, the standing frame, both walk
+// phases, the chibi frame and every sleeper document, each against ITS OWN viewBox — the seat frame (SEAT_VIEWBOX,
+// which the floor draws into the character's overdraw) and the chibi frame (CHIBI_VIEWBOX, the intern's overdraw) —
+// read by `inkBounds` (curves sampled, strokes widened, clips honoured). THE GATE is ZERO ink past any side, for
+// EVERY species: card#12259 drew every seat document in the sleeper's widened, raised frame, and the chibi frame to
+// the stool's pitch, on the operator's ruling of 2026-10-23 (§ 14 item 33(6)), after the measurement below showed that
+// no change of the tilt's pivot reaches zero — the widest girth at the largest size carries the lop rabbit's ear and
+// the wide mushroom's cap past the character's own rect with no tilt at all.
+// THE POPULATION is derived on the run: BOUNDS_KEYS keys per species, and WIDE_KEYS more drawn at the composition's
+// widest — the largest size, the widest girth and a non-zero tilt, read off the recipe's own lists — because that is
+// where the tilt and the lean carry the widest bodies furthest.
+// THE MEASUREMENT beside the gate: how far each frame's ink reaches past the character's own RECT (SEAT_RECT — the
+// frame every seat document was drawn in before card#12259, and the edge the floor would cut at without the margin),
+// per frame kind and by name where it is more than 0, so the margin the frame actually needs is re-derived on every
+// run and never written down; and the least margin left on any side of the frame, so a body creeping toward the edge
+// is seen before it reaches it. The sleeper has always been drawn in the widened frame, so its rect IS its frame.
+section("8b. the frame holds the ink: no species' ink leaves its frame on any side");
+const BOUNDS_KEYS = 16, WIDE_KEYS = 8;
+const widest = { size: Math.max(...C.SIZES), stout: Math.max(...C.STOUT), tilt: Math.max(...C.TILTS.map(Math.abs)) };
+const keysOf = (sp) => {
+  const keys = Array.from({ length: BOUNDS_KEYS }, (_, i) => `bounds/${sp}/${i}`);
+  for (let i = 0, n = 0; n < WIDE_KEYS && i < 6000; i++) {
+    const k = `wide/${sp}/${i}`, r = C.recipe(k, sp);
+    if (r.size === widest.size && r.stout === widest.stout && Math.abs(r.tilt) === widest.tilt) { keys.push(k); n++; }
   }
-  return w;
+  return keys;
 };
-const worst = Object.fromEntries(KEYS.map((sp) => [sp, worstOf(sp)]));
-const approvedSpecies = KEYS.filter((sp) => !SP[sp].added), addedSpecies = KEYS.filter((sp) => SP[sp].added);
+const CHIBI_RECT = { x: 0, y: C.CHIBI_VIEWBOX.y, w: C.SEAT_RECT.w, h: C.CHIBI_VIEWBOX.h };
+const past = (b, box) => b === null ? -Infinity : Math.max(box.x - b.x0, b.x1 - (box.x + box.w), box.y - b.y0, b.y1 - (box.y + box.h));
+// the margin sides: left, right and top — the bottom is the foot line, which the shadow sits on by construction
+const pastMargin = (b, box) => b === null ? -Infinity : Math.max(box.x - b.x0, b.x1 - (box.x + box.w), box.y - b.y0);
+const framesOf = (sp, key) => [
+  ['standing', C.frameDocument(key, { species: sp, phase: 0 }), C.SEAT_VIEWBOX, C.SEAT_RECT],
+  ['walking', C.frameDocument(key, { species: sp, phase: 1 }), C.SEAT_VIEWBOX, C.SEAT_RECT],
+  ['walking', C.frameDocument(key, { species: sp, phase: 2 }), C.SEAT_VIEWBOX, C.SEAT_RECT],
+  ['chibi', C.frameDocument(`${key}~intern`, { species: sp, chibi: true }), C.CHIBI_VIEWBOX, CHIBI_RECT],
+  ...Array.from({ length: C.SLEEP_LOOP + 1 }, (_, frame) => ['asleep', C.sleepDocument(key, { species: sp, frame, deskTop: DESK_TOP, clear: CLEAR }), C.SEAT_VIEWBOX, C.SEAT_VIEWBOX]),
+];
 const FRAME_KINDS = ['standing', 'walking', 'chibi', 'asleep'];
-const envelope = Object.fromEntries(FRAME_KINDS.map((kind) => [kind, approvedSpecies.map((sp) => [sp, worst[sp][kind].over]).sort((a, b) => b[1] - a[1])[0]]));
-measure(`the approved sheet's own worst overshoot per frame, in units outside the frame (gates nothing; predates card#12212): ${FRAME_KINDS.map((k) => `${k} ${envelope[k][1].toFixed(1)} (${envelope[k][0]})`).join(', ')} — over ${BOUNDS_KEYS} keys per species`);
-measure(`every approved species past its frame by more than 2 units: ${approvedSpecies.flatMap((sp) => FRAME_KINDS.filter((k) => worst[sp][k].over > 2).map((k) => `${sp} ${k} ${worst[sp][k].over.toFixed(1)}`)).join(', ') || 'none'}`);
-for (const sp of addedSpecies) for (const kind of FRAME_KINDS) {
-  const w = worst[sp][kind], e = envelope[kind];
-  check(w.over <= e[1] + 0.25, `${sp}, ${kind}: ink past the frame by ${w.over.toFixed(1)} units at most (${w.key}); the approved sheet's worst there is ${e[1].toFixed(1)} (${e[0]})`);
+const worst = {};   // species → kind → { over: past the frame, cut: past the rect, key }
+let boundsDocs = 0;
+for (const sp of KEYS) {
+  const w = worst[sp] = {};
+  for (const key of keysOf(sp)) for (const [kind, doc, vb, rect] of framesOf(sp, key)) {
+    boundsDocs++;
+    const b = inkBounds(doc), over = past(b, vb), cut = past(b, rect);
+    const e = w[kind] ??= { over: -Infinity, cut: -Infinity, side: -Infinity, key, cutKey: key, sideKey: key };
+    if (over > e.over) { e.over = over; e.key = key; }
+    if (cut > e.cut) { e.cut = cut; e.cutKey = key; }
+    const side = pastMargin(b, vb);
+    if (side > e.side) { e.side = side; e.sideKey = key; }
+  }
+}
+const label = (sp, key) => { const v = C.recipe(key, sp).variant; return v ? `${sp}/${v}` : sp; };
+const worstBy = (kind, f) => KEYS.map((sp) => [sp, worst[sp][kind]]).sort((x, y) => f(y[1]) - f(x[1]))[0];
+measure(`what the character's own rect would cut, per frame kind — the frame before card#12259, gates nothing — in units past it: ${FRAME_KINDS.filter((k) => k !== 'asleep').map((k) => { const [sp, e] = worstBy(k, (e) => e.cut); return `${k} ${e.cut.toFixed(1)} (${label(sp, e.cutKey)}, ${e.cutKey})`; }).join(', ')} — over ${BOUNDS_KEYS} keys per species and ${WIDE_KEYS} at size ${widest.size}, girth ${widest.stout}, tilt ±${widest.tilt}`);
+measure(`every species past its rect: ${KEYS.flatMap((sp) => FRAME_KINDS.filter((k) => k !== 'asleep' && worst[sp][k].cut > 0).map((k) => `${label(sp, worst[sp][k].cutKey)} ${k} ${worst[sp][k].cut.toFixed(1)}`)).join(', ') || 'none'}`);
+measure(`least margin left at the frame's sides and top, per frame kind: ${FRAME_KINDS.map((k) => { const [sp, e] = worstBy(k, (e) => e.side); return `${k} ${(-e.side).toFixed(1)} (${label(sp, e.sideKey)}, ${e.sideKey})`; }).join(', ')} — over ${boundsDocs} documents`);
+for (const kind of FRAME_KINDS) {
+  const out = KEYS.filter((sp) => worst[sp][kind].over > 0).map((sp) => `${label(sp, worst[sp][kind].key)} ${worst[sp][kind].over.toFixed(1)} (${worst[sp][kind].key})`);
+  check(out.length === 0, `${kind}: no species' ink leaves its frame on any side${out.length ? ` — past it: ${out.join(', ')}` : ''}`);
 }
 // THE CREST TABLE, held by the same reader (§ 10.4 item 4; card#12187's CREST_TOP): for every species and variant, the
 // sleeper's topmost ink WITHOUT its z's — the document cut before its `zs` group — lies at or under the crest top the
@@ -322,10 +356,15 @@ for (const sp of KEYS) for (const v of (variantsOf(sp).length ? variantsOf(sp) :
   if (!(C.CREST_TOP[name] <= top + 1)) crestFault.push(`${name}: CREST_TOP ${C.CREST_TOP[name]} but ${who} draws up to ${top.toFixed(1)}`);
 }
 check(crestFault.length === 0, `CREST_TOP is at or above every species' and variant's topmost sleeper ink (within 1 unit) over ${BOUNDS_KEYS} keys each${crestFault.length ? ` — ${crestFault.slice(0, 3).join('; ')}` : ''}`);
-// the control: the same leg over a frame whose drawing is pushed 30 units sideways reds — so a part drawn past the frame is a thing this leg sees
-const pushed = C.frameDocument('bounds/control', { species: addedSpecies[0] ?? KEYS[0] }).replace('<g transform="translate(54 ', '<g transform="translate(84 ');
-const pushedOver = overshoot(pushed, C.SEAT_VIEWBOX);
-check(pushedOver > envelope.standing[1] + 0.25, `CONTROL — a standing frame pushed 30 units sideways is past its frame by ${pushedOver.toFixed(1)}, beyond the envelope, so the leg can tell a part outside the frame from one inside`);
+// the control: the same leg over a frame whose drawing is pushed sideways by more than the frame's margin reds — so a
+// part drawn past the frame is a thing this leg sees. The push is the margin plus a third of the rect, read off the
+// constants, never a figure.
+const PUSH = (C.SEAT_RECT.x - C.SEAT_VIEWBOX.x) + C.SEAT_RECT.w / 3;
+const pushed = C.frameDocument('bounds/control', { species: KEYS[0] }).replace('<g transform="translate(54 ', `<g transform="translate(${54 + PUSH} `);
+const pushedOver = past(inkBounds(pushed), C.SEAT_VIEWBOX);
+check(pushedOver > 0, `CONTROL — a standing frame pushed ${PUSH} units sideways is past its frame by ${pushedOver.toFixed(1)}, so the leg can tell a part outside the frame from one inside`);
+const unpushedOver = past(inkBounds(C.frameDocument('bounds/control', { species: KEYS[0] })), C.SEAT_VIEWBOX);
+check(unpushedOver <= 0, `CONTROL — the same frame unpushed is inside (${unpushedOver.toFixed(1)}), so the push alone made the difference`);
 
 // ---- 9. the controls — each leg above is known to be able to say both things ----
 section('9. controls');

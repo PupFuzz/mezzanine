@@ -176,7 +176,7 @@ const STOOL_W = 20;
 
 const STOOL_H = 32;
 
-const STOOL_PITCH = 24;
+export const STOOL_PITCH = 24;
 
 /**
  * § 9 F14's per-stool fallback: the glyph an intern whose art failed is drawn as, inside its sprite
@@ -351,24 +351,26 @@ export function thoughtTrail(box, character) {
  * The character tree's frame units per floor pixel: a seat's 108 × 192-unit frame is drawn into the character's
  * 54 × 96 px rect (`resources/characters/index.js`'s `SCENE_W` note). The floor cannot import the tree (it loads
  * apart, and may fail — § 9 F14), so the figure is stated here and held equal to the tree's own
- * (`SEAT_VIEWBOX.w ÷ (SCENE_W × CHARACTER_SCALE)`) by `tools/characters/selftest.mjs` § 7b.
+ * (`SEAT_RECT.w ÷ (SCENE_W × CHARACTER_SCALE)`) by `tools/characters/selftest.mjs` § 7b.
  */
 export const FRAME_UNITS_PER_PX = 2;
 
 /**
- * THE SLEEPER's OVERDRAW AND ITS CLEAR RECTS (FLOOR.md § 10.4's frame contract item 4, § 12's *Sleeper frame*,
- * card#12187). The sleeper's z's stand above and beside its head, past the character's rect, so its image is drawn in
- * the OVERDRAW — the character's rect widened by half its width each side and raised to the thought trail's top, one
- * pixel under the bubble's band — while the character element's own rect, which every overlap rule reads, is
- * unchanged. Beside it the CLEAR rects: the floor's furniture the z's keep out of — the monitor's frame, the desk's
- * props, the desk and the thought trail's column — in the tree's frame units from the character frame's top-left, so
- * no figure of the desk is copied into the tree. One function, read by the layout, the tree's caller and the
- * measuring tool alike (`tools/design/sleeper-zs.browser.mjs`).
+ * THE CHARACTER's OVERDRAW AND ITS CLEAR RECTS (FLOOR.md § 10.4's frame contract, § 12's *Character frame*;
+ * card#12187 for the sleeper, card#12259 for every pose). Every seat document is drawn in the OVERDRAW — the
+ * character's rect widened by half its width each side and raised to the thought trail's top, one pixel under the
+ * bubble's band — while the character element's own rect, which every overlap rule reads, is unchanged. The sleeper's
+ * z's stand above and beside its head, past the rect; a standing or walking body's tilt and lean carry its widest parts
+ * past the rect's side, which the painter's viewport would clip (§ 14 item 33(6)). Beside it the CLEAR rects: the
+ * floor's furniture the z's keep out of — the monitor's frame, the desk's props, the desk and the thought trail's
+ * column — in the tree's frame units from the character rect's top-left, so no figure of the desk is copied into the
+ * tree. One function, read by the layout, the tree's caller and the measuring tool alike
+ * (`tools/design/sleeper-zs.browser.mjs`).
  *
  * @returns {{overdraw: {x: number, y: number, w: number, h: number}, clear: list<{name: string, x: number, y: number, w: number, h: number}>}}
  *          the overdraw box-relative in px, the clear rects in frame units
  */
-export function sleeperOverdraw(box, character) {
+export function characterOverdraw(box, character) {
     const R = deskRects(box, character);
     const c = R.character;
     const trail = thoughtTrail(box, character);
@@ -382,6 +384,23 @@ export function sleeperOverdraw(box, character) {
         clear: Object.freeze([['monitor', R['monitor-frame']], ['props', R['desk-props']], ['desk', R['desk-sprite']], ['trail', column]]
             .map(([name, r]) => Object.freeze({ name, ...unit(r) }))),
     });
+}
+
+/**
+ * THE INTERN's OVERDRAW (FLOOR.md § 8, § 10.4's frame contract item 3; card#12259): the intern's chibi frame is drawn
+ * in its stool's rect widened to the row's PITCH — `(STOOL_PITCH − STOOL_W) / 2` px each side, the whole gap between
+ * two interns, so two frames meet at the pitch and never overlap — while the stool element's own rect, which the
+ * dashed edge of an untitled intern and every overlap rule read, is unchanged. The tree's `CHIBI_VIEWBOX` is this
+ * rect in the chibi frame's units (the rect's 108 units over its `STOOL_W` px), held equal to it by
+ * `tools/characters/selftest.mjs` § 7b.
+ *
+ * @param {{x: number, y: number, w: number, h: number}} stool the intern's rect, box-relative
+ * @returns {{x: number, y: number, w: number, h: number}} the overdraw, box-relative in px
+ */
+export function internOverdraw(stool) {
+    const margin = (STOOL_PITCH - STOOL_W) / 2;
+
+    return Object.freeze({ x: stool.x - margin, y: stool.y, w: stool.w + 2 * margin, h: stool.h });
 }
 
 /**
@@ -613,9 +632,10 @@ export function deskLayout(desk, ctx) {
                 pose: desk.pose,
                 animation: desk.held,
                 desk_top: (R['desk-sprite'].y - R.character.y) / R.character.h,
-                // § 10.4 item 4 (card#12187): a sleeper's image is drawn in its overdraw, past the element's rect, and
-                // its z's keep out of the clear rects the tree is handed.
-                ...(desk.pose === 'asleep' ? sleeperOverdraw(ctx.box, ctx.character) : {}),
+                // § 10.4's frame contract (card#12187, card#12259): every character image is drawn in its overdraw,
+                // past the element's rect — a sleeper's z's and a standing or walking body's tilted parts both
+                // reach past it — and a sleeper's z's keep out of the clear rects the tree is handed.
+                ...characterOverdraw(ctx.box, ctx.character),
             });
         }
 
@@ -736,10 +756,15 @@ export function deskLayout(desk, ctx) {
 
         // Q3: the sprite is keyed by the intern's call, never by its place in the row; § 9 F14: an
         // intern whose art failed falls back to the glyph, that stool alone.
-        rect('stool', 'side_table', { ...R.stool, x: R.stool.x + i * STOOL_PITCH }, {
+        const at = { ...R.stool, x: R.stool.x + i * STOOL_PITCH };
+
+        rect('stool', 'side_table', at, {
             call_id: stool.call_id,
             untitled: stool.untitled,
             index: i,
+            // § 10.4's frame contract item 3 (card#12259): the sprite is drawn in the stool's overdraw, the rect widened
+            // to the row's pitch, so a tilted chibi frame's ear or cap is not clipped at the rect's side.
+            overdraw: internOverdraw(at),
             // What the character tree is handed — the install and the intern key in the seat's place —
             // from the same model the asset id is, so the two can never name different interns.
             install_id: desk.install_id,
