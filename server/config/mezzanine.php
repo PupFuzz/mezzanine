@@ -36,7 +36,7 @@ return [
      * acts on it nowhere.
      *
      * RAW, AND NEVER VALIDATED HERE: `App\Read\IdleHorizon` resolves it. Unset or empty is
-     * undeclared and the member is absent, never a default (rt#479). A value that is not a whole
+     * undeclared and the member is absent, never a default (card#9418). A value that is not a whole
      * number from 1 to 86400 is undeclared too, counted as `idle_horizon_malformed` on fleet health
      * and logged — a throw here would stop every process that loads uncached config.
      */

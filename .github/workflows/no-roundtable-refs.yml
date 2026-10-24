@@ -1,0 +1,39 @@
+# no-roundtable-refs.yml — red when a tracked file carries a reference to the fleet's PRIVATE
+# coordination repository (card#12260).
+#
+# WHAT IT DOES. Runs `bin/no-roundtable-refs.py` over this checkout, after its own `--selftest`
+# has planted one of each reference form and watched it red. The forms, the population, what it
+# cannot see and the exemption list (which only shrinks) are owned by that script's docstring and
+# are not restated here — a workflow comment is not a place a rule can live.
+#
+# WHY IT EXISTS. This repository is public and the coordination repository is not; the operator
+# ruled on 2026-10-23 that no real reference to it may sit in any tracked file.
+#
+# NO `paths:` FILTER, DELIBERATELY. Any file can carry a reference, and a path-filtered workflow
+# that produces no run reads as pending rather than passed (`docs/VERSIONING.md § Branch model`).
+#
+# NEEDS NO CREDENTIAL AND NO NETWORK. Python stdlib and `git ls-files` against the checkout.
+
+name: No coordination-repository references
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  no-roundtable-refs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Self-test (every reference form planted and seen red; controls pass)
+        run: python3 bin/no-roundtable-refs.py --selftest
+
+      - name: Check every tracked file
+        run: python3 bin/no-roundtable-refs.py

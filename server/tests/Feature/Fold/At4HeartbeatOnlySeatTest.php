@@ -9,9 +9,9 @@ use App\Fold\Clock;
  *
  * "The mechanised form of § 3 (delivery is not activity), and the maxim's test."
  *
- * The maxim, quoted verbatim in § 3.1 from roundtable #341: *a stamp that refreshes only when a
- * seat posts corroborates; it cannot exonerate.* Mezzanine's entire value proposition is the
- * difference between those two readings.
+ * The rule, as § 3.1 states it: a timestamp that moves only when a seat posts can confirm the
+ * seat was alive, and a stale or missing one cannot show that the seat is idle. Mezzanine's entire
+ * value proposition is the difference between those two readings.
  */
 class At4HeartbeatOnlySeatTest extends FoldTestCase
 {

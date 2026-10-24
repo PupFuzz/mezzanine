@@ -63,10 +63,10 @@ final class SeatObject
         $longest = SeatFacts::longestOpenCall($state);
         $session = SeatFacts::session($state);
         $subagents = SeatFacts::openSubagents($seatRef);
-        // § 8.2.1's `idle_nudge_after_s` (card#9418): the horizon this seat resolves to. The record
-        // contract (rt#478 ask 2) makes it the RESOLVED per-seat value, "seat override else install
-        // default; where it comes from is ours" — this install has no per-seat override, so every
-        // seat resolves to the configured install value (null when unset or malformed —
+        // § 8.2.1's `idle_nudge_after_s` (card#9418): the horizon this seat resolves to. The contract
+        // recorded on the card makes it the RESOLVED per-seat value: a per-seat override where one
+        // exists, else the install default, resolved on this side — this install has no per-seat
+        // override, so every seat resolves to the configured install value (null when unset or malformed —
         // `IdleHorizon`). CONFIGURATION, not state, so it is read
         // here and never fingerprinted: § 6.5 names why it rides no delta.
         $idleNudgeAfterS = IdleHorizon::seconds();
@@ -84,7 +84,7 @@ final class SeatObject
             // card#9418: the server-clock instant the fold entered `idle`, null on every other
             // state — written on the edge by `StateRecompute`, published here as stored.
             'idle_since' => Clock::wire($state->idle_since),
-            // ⛔ ABSENT, NOT NULL, WHEN NO HORIZON IS DECLARED (rt#479): a consumer tells a declared
+            // ⛔ ABSENT, NOT NULL, WHEN NO HORIZON IS DECLARED (card#9418): a consumer tells a declared
             // horizon from an undeclared one by the key's presence, so no default is ever emitted.
             // Snapshot and detail only — § 6.5 keeps it out of the delta.
             ...($idleNudgeAfterS === null ? [] : ['idle_nudge_after_s' => $idleNudgeAfterS]),
