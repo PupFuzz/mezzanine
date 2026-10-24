@@ -1,0 +1,21 @@
+{
+  "feed_version": 1,
+  "t": "coord.round",
+  "server_time": "2026-01-02T03:24:37.000Z",
+  "coord_round": {
+    "post_ref": "synthetic-org/coordination-fixture#900020-c9000000000032",
+    "thread_ref": "synthetic-org/coordination-fixture#900020",
+    "scope": "install",
+    "install_id": "one",
+    "from": "pm",
+    "attribution": "resolved",
+    "to": [
+      "pm"
+    ],
+    "targets": [],
+    "carrier": null,
+    "declares_close": true,
+    "posted_at": "2026-01-02T03:24:37.000Z",
+    "received_at": "2026-01-02T03:24:37.000Z"
+  }
+}

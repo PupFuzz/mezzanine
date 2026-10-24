@@ -3,6 +3,7 @@
 namespace App\Read;
 
 use App\Board\BoardPoll;
+use App\Coord\CoordCounters;
 use App\Fold\Clock;
 use App\Fold\SeatFacts;
 use App\Ingest\Counters;
@@ -93,6 +94,17 @@ final class FleetHealth
         BoardPoll::OK,
         BoardPoll::FAILED,
         IdleHorizon::MALFORMED,
+        // § 7.1 — the coordination route's derived counters (card#12239), every D1 § 18.8.1 row not
+        // marked *specified, not derived*. `coord_delivery_received.<hook>` is the one family whose
+        // members are data — one per binding — and `members()` places it ahead of these.
+        CoordCounters::SIGNATURE_INVALID,
+        CoordCounters::DUPLICATE,
+        CoordCounters::IGNORED.'issues',
+        CoordCounters::IGNORED.'issue_comment',
+        CoordCounters::IGNORED.'ping',
+        CoordCounters::ATTRIBUTION_UNRESOLVED,
+        CoordCounters::NAME_MALFORMED,
+        CoordCounters::TO_FROM_LABELS,
     ];
 
     /**
@@ -182,16 +194,34 @@ final class FleetHealth
         )->get(['seat_state.*']);
     }
 
+    /**
+     * Every member the endpoint owes: the constant above, then the coordination route's derived set
+     * (§ 7.1, card#12239) — whose `coord_delivery_received.<hook>` family is one member per binding
+     * `coord_hooks` holds, revoked ones included, so it is read from the store and is the one part of
+     * this list that is data. Every member is present at `0` before its first increment.
+     *
+     * @return list<string>
+     */
+    public static function members(): array
+    {
+        $hooks = DB::table('coord_hooks')->orderBy('id')->pluck('hook_id')
+            ->map(fn ($h) => CoordCounters::RECEIVED.$h)->all();
+        $at = array_search(CoordCounters::SIGNATURE_INVALID, self::COUNTERS, true);
+
+        return array_merge(array_slice(self::COUNTERS, 0, $at), $hooks, array_slice(self::COUNTERS, $at));
+    }
+
     /** @return array<string, int> */
     private static function counters(): array
     {
+        $members = self::members();
         $stored = DB::table('global_counters')
-            ->whereIn('name', self::COUNTERS)
+            ->whereIn('name', $members)
             ->pluck('value', 'name');
 
         $out = [];
 
-        foreach (self::COUNTERS as $name) {
+        foreach ($members as $name) {
             $out[$name] = (int) ($stored[$name] ?? 0);
         }
 

@@ -84,10 +84,19 @@ final class RateLimiter
         return null;
     }
 
-    public function hitFailedAuth(string $ip): int
+    /**
+     * D1 § 12.3's failed-authentication bucket, keyed `(route, source IP)`.
+     *
+     * `$route` is the bucket's ROUTE half (card#12239): the coordination receipt passes `coord`, so its
+     * step-3 refusals spend a budget of their own — D1 § 18.8: "reusing a limit's value must not
+     * silently widen who is in its population", and that route is reachable by anyone on the
+     * internet. The default is the seat planes' one shared bucket (the ingest and the read plane,
+     * `App\Http\Middleware\FleetReadGate`), whose key is unchanged.
+     */
+    public function hitFailedAuth(string $ip, string $route = 'ingest'): int
     {
         return $this->hit(
-            'ingest:authfail:'.hash('sha256', $ip),
+            $route.':authfail:'.hash('sha256', $ip),
             TokenResolver::FAILED_AUTH_WINDOW_S,
             1,
         );

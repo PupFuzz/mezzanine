@@ -1806,8 +1806,8 @@ CREATE TABLE seat_state (
   roundtable_agent_name_check ENUM('checked','unchecked','disagreed','undeclared') NULL,
                                          -- D1 § 3.1's four states, verbatim, produced by the same
                                          -- table applied to `cross_project.identity`; this plane adds
-                                         -- none. ⛔ Only `checked` and `unchecked` resolve a
-                                         -- FLEET-scope name to this desk (§ 8.3.3 rule 1's fleet arm)
+                                         -- none. ⛔ Only `checked` resolves a FLEET-scope name to
+                                         -- this desk (§ 8.3.3 rule 1's fleet arm, r4 MINOR-6)
   protocol_agent_name       VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NULL,
                                          -- D1 § 3.1's DECLARED protocol agent name, last
                                          -- heartbeat's value, verbatim. NULL = no heartbeat yet; a
@@ -2031,10 +2031,14 @@ CREATE TABLE coord_hooks (
                                             -- and produces exactly these two
   install_ref   SMALLINT UNSIGNED NULL,     -- NULL iff `scope` = 'fleet'; the objects then carry
                                             -- `install_id: null` (D1 § 18.6)
-  active_key    SMALLINT UNSIGNED AS (IF(revoked_at IS NULL, 0, id)) STORED,
+  active_key    TINYINT UNSIGNED AS (IF(revoked_at IS NULL, 1, NULL)) STORED,
                                             -- the key's spelling of "unrevoked": a revoked binding keeps
                                             -- its row for the digests that reference it and must not
-                                            -- block re-issuing the same repository (r3 MINOR-4)
+                                            -- block re-issuing the same repository (r3 MINOR-4) — a
+                                            -- unique index admits any number of NULLs, so revoked rows
+                                            -- never collide. ⚠ Built as this, not the design's first
+                                            -- `IF(…, 0, id)`: MariaDB refuses a generated column that
+                                            -- reads an AUTO_INCREMENT column (ERROR 1901, card#12239)
   repository    VARCHAR(140) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
                                             -- `<owner>/<repo>`, the binding D1 § 18.8 step 6 holds the
                                             -- payload's claim against
