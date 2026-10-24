@@ -85,6 +85,8 @@ final class SeatDelta implements FeedMessage
         'protocol_agent_name' => 'protocol_agent_name',
         'protocol_agent_name_check' => 'protocol_agent_name_check',
         'protocol_agent_role' => 'protocol_agent_role',
+        'roundtable_agent_name' => 'roundtable_agent_name',
+        'roundtable_agent_name_check' => 'roundtable_agent_name_check',
         'reporter_version' => 'reporter',
         'reporter_platform' => 'reporter',
         'selftest_failed' => 'reporter',

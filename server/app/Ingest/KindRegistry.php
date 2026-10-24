@@ -380,11 +380,15 @@ final class KindRegistry
             'fields' => [
                 'uptime_s', 'spool_bytes', 'spool_files', 'spool_lag_events',
                 'oldest_unsent_age_s', 'last_hook_at', 'open_calls', 'open_sessions',
-                'open_attention', 'enabled', 'protocol_agent_name', 'protocol_agent_name_check',
+                'open_attention', 'enabled', 'roundtable_agent_name', 'roundtable_agent_name_check',
+                'protocol_agent_name', 'protocol_agent_name_check',
                 'protocol_agent_role', 'degraded', 'counters', 'counters_omitted', 'predicates', 'selftest',
                 'config_fingerprint',
             ],
             'bounds' => [
+                // card#12239: D1 § 6.14 states the roundtable name's bound as the same figure as the
+                // protocol agent name's, for the same reason — a longer declaration could join nothing.
+                'roundtable_agent_name' => 48,
                 // card#9296 round 3: § 6.14 states this as a figure precisely so this step can
                 // refuse it. A name over it is a reporter bug — § 3.1's own config row carries the
                 // same bound, so a conforming reporter cannot load one — and without the refusal it
@@ -399,6 +403,13 @@ final class KindRegistry
                 'selftest' => 256,
             ],
             'enums' => [
+                // card#12239: D1 § 3.1's four states, applied to the same config's
+                // `cross_project.identity` (§ 6.0's row). Reporter-minted, so no unknown member.
+                'roundtable_agent_name_check' => [
+                    'members' => ['checked', 'unchecked', 'disagreed', 'undeclared'],
+                    'unknown' => null,
+                    'array' => false,
+                ],
                 // Reporter-minted (§ 6.0: "a read of the seat config against the coordination
                 // roster"), so no unknown member: a value outside § 3.1's state table is a reporter
                 // bug and a 422, exactly as § 6.0 says of every reporter-minted set.

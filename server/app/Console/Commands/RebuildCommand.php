@@ -254,6 +254,8 @@ class RebuildCommand extends Command
             'protocol_agent_name' => null,
             'protocol_agent_name_check' => null,
             'protocol_agent_role' => null,
+            'roundtable_agent_name' => null,
+            'roundtable_agent_name_check' => null,
             'reporter_uptime_s' => null,
             'reporter_version' => null,
             'reporter_platform' => null,

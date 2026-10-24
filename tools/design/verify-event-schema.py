@@ -536,8 +536,10 @@ def migration_width(column):
 # card#11144: the relayed `protocol_agent_role` is a slug by the NAME's own pattern and bound (§ 3.1),
 # so every home that states its figure is held to the same § 18.6 reference as the name's -- the same
 # five homes, plus the ingest's registry for both members, which is what actually refuses.
+# card#12239: the DECLARED roundtable name shares the bound. Its three document homes were held from
+# the design's r5; build step 5 wrote its registry and migration homes, so it joins this loop whole.
 name_bounds = {"D1 § 18.6 `opened_by`": first_byte_bound(wire_name_row)}
-for column in ("protocol_agent_name", "protocol_agent_role"):
+for column in ("protocol_agent_name", "protocol_agent_role", "roundtable_agent_name"):
     hb_row = next((l for l in (sec614.group(0) if sec614 else "").splitlines()
                    if l.startswith(f"| `{column}` |")), None)
     d2_ddl = re.search(rf"^\s*{column}\s+VARCHAR\((\d+)\)", d2_sec64.group(0) if d2_sec64 else "", re.M)
@@ -556,20 +558,6 @@ for column in ("protocol_agent_name", "protocol_agent_role"):
         f"D2 § 8.2.1 `{column}`": first_byte_bound(d2_row),
         f"ingest registry `{column}`": int(reg.group(1)) if reg else None,
         f"migration {mig[0] if mig else '(none sizes the column)'} `{column}`": mig[1] if mig else None,
-    })
-# card#12239 r5: the DECLARED roundtable name shares the bound, and its two store/wire homes exist in
-# the documents before the build adds its registry and migration homes -- so the three doc homes are
-# held now, and the code homes join the loop above when build step 5 writes them.
-for column in ("roundtable_agent_name",):
-    hb_row = next((l for l in (sec614.group(0) if sec614 else "").splitlines()
-                   if l.startswith(f"| `{column}` |")), None)
-    d2_ddl = re.search(rf"^\s*{column}\s+VARCHAR\((\d+)\)", d2_sec64.group(0) if d2_sec64 else "", re.M)
-    d2_row = next((l for l in (d2_sec821.group(0) if d2_sec821 else "").splitlines()
-                   if l.startswith(f"| `{column}` |")), None)
-    name_bounds.update({
-        f"D1 § 6.14 `{column}`": first_byte_bound(hb_row),
-        f"D2 § 6.4 `{column} VARCHAR`": int(d2_ddl.group(1)) if d2_ddl else None,
-        f"D2 § 8.2.1 `{column}`": first_byte_bound(d2_row),
     })
 # card#9346: the FOLD refuses a name or role off its slug pattern (`FoldEvent::conforming()`), and the
 # pattern it refuses with -- `Slug::AGENT_NAME`, one body for both members -- carries the bound as its

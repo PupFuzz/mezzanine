@@ -174,6 +174,10 @@ final class SeatObject
             'badges' => Badges::render($state),
             'badges_since' => Clock::wire(Badges::since($state)),
             'enabled' => $state->enabled === null ? null : (bool) $state->enabled,
+            // card#12239: the seat's DECLARED roundtable name and its check, verbatim (§ 8.2.1) — the
+            // declaration a FLEET-scope coordination object joins through (§ 8.3.3 rule 1's fleet arm).
+            'roundtable_agent_name' => $state->roundtable_agent_name,
+            'roundtable_agent_name_check' => $state->roundtable_agent_name_check,
             // § 8.2.1: the seat's DECLARATION and its check's outcome, carried VERBATIM — this plane
             // performs no check of its own and re-derives neither. Both are null before the first
             // heartbeat; the name is also null on a seat that declares none, and the check is what

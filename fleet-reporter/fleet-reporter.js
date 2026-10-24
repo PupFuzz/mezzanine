@@ -565,6 +565,45 @@ function resolveDeclaration(cfg) {
   return { name, check: 'disagreed', role: null, roster_role: null, roster: site.path, via: site.via, error: null, roster_names: roster.names, malformed: null };
 }
 
+/* ── The declared ROUNDTABLE name, and its check (§ 3.1's *`roundtable_agent_name`*, card#12239) ─────
+ * The same declaration as the protocol agent name above, one key over: the identity this seat posts
+ * under on the fleet's cross-install coordination repository. The same four states, the same bound and
+ * the same malformed-declares-nothing rule, checked against a DIFFERENT key of the SAME config — that
+ * config's `cross_project.identity`, read through `rosterSite()`'s one resolution order. Resolved with
+ * the protocol name, at flusher start and on `selftest`, never per flush.
+ *
+ * `unchecked` when no config is readable, or the readable one carries no `cross_project` block (or
+ * one with no string `identity`): this box knows of no roundtable to compare against, which is not a
+ * disagreement. Never throws. */
+function declaredRoundtableName(cfg) {
+  const v = cfg.roundtable_agent_name;
+  return typeof v === 'string' && AGENT_NAME_RE.test(v) ? v : null;
+}
+
+function readCrossProjectIdentity(file) {
+  let doc;
+  try { doc = JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch (e) { return { identity: null, error: e.code || 'not valid JSON' }; }
+  const cp = doc && typeof doc === 'object' ? doc.cross_project : undefined;
+  if (!cp || typeof cp !== 'object') return { identity: null, error: 'no cross_project block' };
+  if (typeof cp.identity !== 'string') return { identity: null, error: 'no cross_project.identity' };
+  return { identity: cp.identity, error: null };
+}
+
+function resolveRoundtable(cfg) {
+  const name = declaredRoundtableName(cfg);
+  if (name === null) return { name: null, check: 'undeclared' };
+  const site = rosterSite();
+  const read = site.path === null ? { identity: null } : readCrossProjectIdentity(site.path);
+  if (read.identity === null) {
+    count('roundtable_agent_name_unchecked');
+    return { name, check: 'unchecked' };
+  }
+  if (read.identity === name) return { name, check: 'checked' };
+  count('roundtable_agent_name_disagreed');
+  return { name, check: 'disagreed' };
+}
+
 /* ── P-6: a secret VALUE must never reach an output stream, a log, a traceback or an argv ────
  * The control is that the token is never PASSED to a writer — but "never passed" is a property
  * of every call site, and one future call site is all it takes. So the log writer redacts at
@@ -3784,6 +3823,10 @@ function buildHeartbeat(cfg, spool, state, ix, site, entry, selftest, declaratio
       // § 6.14's declaration pair: one row of § 3.1's state table on EVERY heartbeat, so the check is
       // never omitted and the name is null exactly when the check is `undeclared`. Resolved once, at
       // flusher start — never per flush.
+      // § 6.14's roundtable pair (card#12239), the same rules one key over: present on EVERY
+      // heartbeat, the name null exactly when the check is `undeclared`; resolved at flusher start.
+      roundtable_agent_name: declaration.roundtable.name,
+      roundtable_agent_name_check: declaration.roundtable.check,
       protocol_agent_name: declaration.name,
       protocol_agent_name_check: declaration.check,
       // § 6.14's relayed role (card#11144): the selected roster entry's `role`, and `null` whenever
@@ -4613,7 +4656,7 @@ function runSelftestChecks(config, cp, errors) {
   // that no disagreement was found, and `protocol_agent_name_check` says whether a roster was read at
   // all. With no config there is no declaration to check, so nothing was measured (only the subcommand
   // can reach that: the flusher never starts without a config).
-  const declaration = config ? resolveDeclaration(config) : null;
+  const declaration = config ? Object.assign(resolveDeclaration(config), { roundtable: resolveRoundtable(config) }) : null;
   results.protocol_agent_name_in_roster = declaration ? declaration.check !== 'disagreed' && declaration.malformed === null : null;
   detail.protocol_agent_name_in_roster = declaration
     ? { declared: declaration.name, protocol_agent_name_check: declaration.check, roster: declaration.roster,

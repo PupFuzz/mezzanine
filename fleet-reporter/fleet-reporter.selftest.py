@@ -4454,6 +4454,82 @@ redgreen("the roster entry's role is relayed, and is null whenever nothing selec
          f"{len(relay_bound['role'] or '')} B; open vocabulary {relay_open['role']!r}")
 
 
+print("\n== 19h. A DECLARED ROUNDTABLE NAME IS CHECKED AGAINST cross_project.identity (D1 § 3.1, card#12239) ==")
+# D1 § 3.1's *`roundtable_agent_name`*: the same four states as the protocol agent name, checked against a
+# DIFFERENT key of the SAME config — `cross_project.identity` — read through the same resolution order.
+# Every value here is the generator spec's synthetic vocabulary (`pm-solo`), never a live identity.
+RT_NAME = "pm-solo"
+RT_DOC = dict(AT27_ROSTER, cross_project={"identity": RT_NAME})
+
+
+def rt_box(tag: str, *, declare=RT_NAME, coord=RT_DOC):
+    s, env = at27_box(f"rt-{tag}", coord=coord)
+    if declare is not ABSENT:
+        s.cfg["roundtable_agent_name"] = declare
+    s.write_cfg()
+    return s, env
+
+
+def drive_rt(box, reporter: Path = REPORTER) -> dict:
+    d = drive_at27(box, reporter=reporter)
+    s, _env = box
+    hb = last_heartbeat(s) or {}
+    c = hb.get("counters", {})
+    d["rt"] = {"name": hb["roundtable_agent_name"] if "roundtable_agent_name" in hb else "<absent>",
+               "check": hb["roundtable_agent_name_check"] if "roundtable_agent_name_check" in hb else "<absent>",
+               "unchecked": c.get("roundtable_agent_name_unchecked", 0),
+               "disagreed": c.get("roundtable_agent_name_disagreed", 0)}
+    return d
+
+
+def rt_want(name, check, unchecked=0, disagreed=0) -> dict:
+    return {"name": name, "check": check, "unchecked": unchecked, "disagreed": disagreed}
+
+
+rt_checked = drive_rt(rt_box("checked"))
+eq("roundtable — the config's cross_project.identity equals the declaration: `checked`, both counters 0, "
+   "and the protocol pair is untouched beside it",
+   (rt_want(RT_NAME, "checked"), "checked"), (rt_checked["rt"], (rt_checked["wire"] or {}).get("check")))
+rt_disagreed = drive_rt(rt_box("disagreed", coord=dict(AT27_ROSTER, cross_project={"identity": "coder-solo"})))
+eq("roundtable — a readable identity that differs: the name as declared, `disagreed`, and its counter 1",
+   rt_want(RT_NAME, "disagreed", disagreed=1), rt_disagreed["rt"])
+rt_no_block = drive_rt(rt_box("no-block", coord=AT27_ROSTER))
+eq("roundtable — a readable config with no cross_project block: `unchecked`, never `disagreed`",
+   rt_want(RT_NAME, "unchecked", unchecked=1), rt_no_block["rt"])
+rt_no_config = drive_rt(rt_box("no-config", coord="missing"))
+eq("roundtable — no readable config at all: `unchecked`", rt_want(RT_NAME, "unchecked", unchecked=1), rt_no_config["rt"])
+rt_absent = drive_rt(rt_box("absent", declare=ABSENT))
+eq("roundtable — no key: the name PRESENT and null, `undeclared`, both counters 0",
+   rt_want(None, "undeclared"), rt_absent["rt"])
+rt_bad = drive_rt(rt_box("malformed", declare="PM Solo"))
+eq("roundtable — a malformed declaration declares nothing: null and `undeclared`, the seat still reporting",
+   (rt_want(None, "undeclared"), "pass"), (rt_bad["rt"], rt_bad["config_readable"]))
+
+# ⛔ RED — the check reads the protocol roster instead of cross_project.identity: `pm-solo` is no roster
+# member, so a reporter checking against the wrong key reports `disagreed` for a correct declaration.
+r_wrong_key = drive_rt(rt_box("red-wrong-key"), reporter=plant(
+    ("  if (read.identity === name) return { name, check: 'checked' };",
+     "  if (readRosterNames(site.path).names?.includes(name)) return { name, check: 'checked' };")))
+eq("RED: a reporter checking the roundtable name against the roster reports a correct declaration `disagreed`",
+   "disagreed", r_wrong_key["rt"]["check"])
+# ⛔ RED — the null omitted rather than sent on an undeclared seat.
+r_omit = drive_rt(rt_box("red-omit", declare=ABSENT), reporter=plant(
+    ("      roundtable_agent_name: declaration.roundtable.name,",
+     "      ...(declaration.roundtable.name === null ? {} : { roundtable_agent_name: declaration.roundtable.name }),")))
+eq("RED: a reporter that omits a null roundtable name leaves the member ABSENT", "<absent>", r_omit["rt"]["name"])
+# ⛔ RED — an unvalidated declaration reaches the wire.
+r_unval = drive_rt(rt_box("red-unvalidated", declare="PM Solo"), reporter=plant(
+    ("  const v = cfg.roundtable_agent_name;\n  return typeof v === 'string' && AGENT_NAME_RE.test(v) ? v : null;",
+     "  const v = cfg.roundtable_agent_name;\n  return typeof v === 'string' ? v : null;")))
+eq("RED: a reporter that skips the slug check puts `PM Solo` on the wire", "PM Solo", r_unval["rt"]["name"])
+
+redgreen("a declared roundtable name is checked against cross_project.identity, in four states (D1 § 3.1, card#12239)",
+         f"checked against the roster -> {r_wrong_key['rt']['check']!r}; null omitted -> {r_omit['rt']['name']!r}; "
+         f"unvalidated -> {r_unval['rt']['name']!r}",
+         f"checked {rt_checked['rt']}; disagreed {rt_disagreed['rt']}; no block {rt_no_block['rt']['check']}; "
+         f"no config {rt_no_config['rt']['check']}; absent {rt_absent['rt']['check']}; malformed {rt_bad['rt']['check']}")
+
+
 print("\n== 19c. THE SEAT'S CONSOLE URL IS READ FROM THE TRANSCRIPT'S TAIL, AND NOTHING ELSE REACHES THE WIRE (D1 § 6.3, card#9416) ==")
 # Every id below is SYNTHETIC. A real session id is a link to a live console, so none is ever
 # written into a fixture, a log or a report.
@@ -8171,9 +8247,12 @@ else:
        "the previous build's for the same spool, and every spooled event, its seq removed, is byte-equal",
        (True, True, True), ({k: new_batch[k] for k in ENV_KEPT} == {k: old_batch[k] for k in ENV_KEPT},
                             kept_new == kept_old, len(kept_old) >= 4))
-    eq("  … the heartbeat's field set is the previous build's, its selftest members are § 6.14's table (the previous "
-       "set plus token_accepted), and its config_fingerprint equals the previous build's for the same config",
-       (sorted(old_hb["data"]), sorted(SELFTEST_MEMBERS), sorted(old_hb["data"]["selftest"]) + ["token_accepted"],
+    # card#12239 adds § 6.14's roundtable declaration pair to every heartbeat, by name — the one addition
+    # to the field set since the previous build, and the only one this comparison admits.
+    eq("  … the heartbeat's field set is the previous build's plus card#12239's roundtable pair, its selftest "
+       "members are § 6.14's table (the previous set plus token_accepted), and its config_fingerprint equals the "
+       "previous build's for the same config",
+       (sorted(list(old_hb["data"]) + ["roundtable_agent_name", "roundtable_agent_name_check"]), sorted(SELFTEST_MEMBERS), sorted(old_hb["data"]["selftest"]) + ["token_accepted"],
         old_hb["data"]["config_fingerprint"]),
        (sorted(new_hb["data"]), sorted(new_hb["data"]["selftest"]), sorted(new_hb["data"]["selftest"]),
         new_hb["data"]["config_fingerprint"]))
