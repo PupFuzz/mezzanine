@@ -124,11 +124,16 @@ export class EffectsInFlight {
         return cancelled;
     }
 
-    /** Every effect still in flight at `now`, each with the frame it has reached. */
+    /**
+     * Every effect still in flight at `now`, each with the frame it has reached, the instant it started on the
+     * page's clock (`started_at`) and the milliseconds since — `elapsed_ms`, the exact instant a CONTINUOUS motion
+     * (A19's and A22's flight, card#12345) is drawn at, so a repaint mid-frame continues the flight where it is
+     * rather than snapping it back to the start of its frame.
+     */
     current(now) {
         return this.#held
             .filter((h) => !this.#ended(h, now))
-            .map((h) => Object.freeze({ ...h.effect, elapsed_frames: this.#elapsed(h, now) }));
+            .map((h) => Object.freeze({ ...h.effect, elapsed_frames: this.#elapsed(h, now), started_at: h.at, elapsed_ms: Math.max(0, now - h.at) }));
     }
 
     /** The seats whose A1 walker is still on its way to the desk at `now`. */
