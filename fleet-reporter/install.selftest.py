@@ -203,7 +203,20 @@ VALUES = ["--site", INGEST.site, "--install-id", "selftest-install", "--seat-id"
           "--ca-file", str(INGEST.crt)]
 
 
+_last_run = [0.0]
+
+
+def spaced() -> None:
+    """Step 0 names each attempt directory by the UTC second and refuses one that exists, so two runs of the
+    script never start within one second of each other here (a fast runner otherwise collides)."""
+    wait = _last_run[0] + 1.1 - time.time()
+    if wait > 0:
+        time.sleep(wait)
+    _last_run[0] = time.time()
+
+
 def sh(*args: str, script: Path = SCRIPT, env: "dict | None" = None, **kw) -> subprocess.CompletedProcess:
+    spaced()
     r = subprocess.run(["bash", str(script), *args], capture_output=True, text=True, env=env or ENV,
                        stdin=subprocess.DEVNULL, start_new_session=True, timeout=420, **kw)
     OUTPUTS.append(r.stdout + r.stderr)
@@ -355,6 +368,7 @@ echo_off = False
 
 def strace_run(argv: list[str], log: Path, answer: "bytes | None") -> tuple[int, bytes]:
     """Run argv under strace at a pseudo-terminal, typing `answer` at the token prompt."""
+    spaced()
     pid, fd = pty.fork()
     if pid == 0:
         os.chdir(str(TMP))
@@ -449,6 +463,11 @@ try:
 
     # ── 3. the second run ────────────────────────────────────────────────────────────────────────
     print("== 3. a second run is a no-op ==")
+    # The install's Step 5 stops the flusher it found; the cron thread starts the next one within seconds. The
+    # no-op is measured against a RUNNING flusher, so wait for one to hold the lock first.
+    t0 = time.time()
+    while not (lock_pid() and lock_pid() in our_flushers()) and time.time() - t0 < 30:
+        time.sleep(0.5)
     before, calls, pid, n_attempts = snapshot(), len(crontab_calls()), lock_pid(), len(list(ATTEMPTS.iterdir()))
     r = sh(*VALUES)
     check("the second run exits 0 and reports ALREADY CURRENT", r.returncode == 0 and "ALREADY CURRENT" in r.stdout,
