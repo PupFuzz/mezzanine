@@ -62,8 +62,10 @@ WHAT IT CANNOT SEE: a thread cited by a bare `#N` with no form word beside it (t
 indistinguishable from a PR or issue number of this repository), a bare comment id, a quotation of a
 post that names neither the repository nor a thread, a private name whose digest is not listed, a
 name of more than `_MAX_WORDS` words, a name written camelCase or glued (`acmeRepo` is one word, not
-two), a name with non-ASCII letters, and private information that is not a name at all (a quoted
-post, a person's detail). A team's bare name is no hit: it is also the install id, seat names and
+two), a name with non-ASCII letters (fullwidth forms included), a multi-word name whose words are
+joined by `/`, `.` or percent-encoding or split by a zero-width character, a name in a file's PATH
+rather than its text, and private information that is not a name at all (a quoted post, a person's
+detail). A team's bare name is no hit: it is also the install id, seat names and
 floor slug this repository uses as example values, so only the joined repository and organisation
 names are matched. The bare-number cases were cleaned by hand in card#12260 and card#12292; review
 is what catches a new one.
