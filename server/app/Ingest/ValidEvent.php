@@ -16,9 +16,10 @@ final class ValidEvent
     private function __construct(
         public readonly bool $known,
         public readonly string $kind,
+        /** Every event carries one, an ignored unknown kind included (card#12210). */
+        public readonly int $seq,
         public readonly ?string $eventId = null,
         public readonly ?\DateTimeImmutable $eventTime = null,
-        public readonly ?int $seq = null,
         public readonly ?string $sessionId = null,
         public readonly bool $oversize = false,
         /**
@@ -33,9 +34,14 @@ final class ValidEvent
         public readonly int $ignoredUnknownFields = 0,
     ) {}
 
-    public static function ignoredUnknownKind(string $kind): self
+    /**
+     * `$seq` is carried because the event was RECEIVED: it consumed a `seq` on the reporter, and the
+     * ingest's gap rule (card#12210) counts it among the seqs the batch carried, or every
+     * `reporter_ahead` would mint a false `seq_gap` beside it. Step 9 has range-checked it already.
+     */
+    public static function ignoredUnknownKind(string $kind, int $seq): self
     {
-        return new self(known: false, kind: $kind);
+        return new self(known: false, kind: $kind, seq: $seq);
     }
 
     public static function accepted(

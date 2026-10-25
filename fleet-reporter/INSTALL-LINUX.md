@@ -1512,10 +1512,8 @@ processes, as Step 5 reports.
   server change first: a server without it closes a carried call at the `session.end`, as before.
 - **One seat reports to several sites only on a build that includes card#12180** (D1 § 3.1, *Sites*). An
   older build reads only the single-site form and refuses a `sites` list. Upgrade with Step 1's order,
-  install first and stop second. The upgrade shows on the floor as one `epoch_reset` per seat, and until
-  server card#12210 a seat whose last batch before the upgrade was committed but unanswered — and any site
-  renamed, or named other than `default`, when the file is lifted to the multi-site form — shows a false
-  `seq_gap` badge for 24 h (D1 § 10.2's accepted residual); no event is lost or doubled. **To repoint the
+  install first and stop second. The upgrade shows on the floor as one `epoch_reset` per seat; no event is
+  lost or doubled. **To repoint the
   existing site at upgrade, name it anything but `default`**: a `state.json` from an older build records no
   URL, so a `default` repointed in the same edit carries a cursor the new server never earned (D1 § 3.1
   rule 3). The same holds while the upgraded flusher has only ever started under an `ingest_url` that does

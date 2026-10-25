@@ -27,10 +27,16 @@ class RebuildLeavesCountersUnchangedTest extends FoldTestCase
         'attention_request_duplicate_server',
         'format_refused.console_url',
         'session_close_orphans',
-        'seq_gap',
         'seq_collision',
         'seq_epoch_change',
     ];
+
+    /**
+     * The ingest-derived counter the same fixture raises: `seq_gap` is counted by `BatchWriter` once
+     * per received batch (card#12210), so the rebuild has no rule of its own to replay for it — it
+     * must still leave the row as the ingest left it.
+     */
+    private const INGEST_DERIVED = ['seq_gap'];
 
     /**
      * Every row, value AND `last_increased_at`, is identical across the rebuild except the two the
@@ -43,7 +49,7 @@ class RebuildLeavesCountersUnchangedTest extends FoldTestCase
 
         $before = $this->counterRows();
 
-        foreach (self::FOLD_DERIVED as $name) {
+        foreach ([...self::FOLD_DERIVED, ...self::INGEST_DERIVED] as $name) {
             $this->assertGreaterThan(0, $this->counter($name), 'the fixture did not raise '.$name);
         }
 
@@ -102,8 +108,8 @@ class RebuildLeavesCountersUnchangedTest extends FoldTestCase
         $this->assertSame(4, $this->counter('seq_gap'));
     }
 
-    /** The replay's silence ends with the replay: the live fold counts the next gap as before. */
-    public function test_the_live_fold_counts_again_after_a_rebuild(): void
+    /** The replay's silence ends with the replay: the ingest counts the next gap as before. */
+    public function test_the_ingest_counts_a_gap_again_after_a_rebuild(): void
     {
         $this->deliver([$this->seqEvent(1000)]);
         $this->deliver([$this->seqEvent(1005)]);

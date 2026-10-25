@@ -642,9 +642,9 @@ this replaces. Four rules decide what an entry is on each start, each the safe d
    arrive again and are answered as `duplicates` ([§ 10.3](#103-idempotency-and-the-dedup-window)).
    The cost is one `seq_epoch_change` per upgraded seat, rendered `epoch_reset`, logged and not
    alarmed ([§ 10.2](#102-ordering-seq-and-gap-detection)) — the existing epoch reset, applied at
-   adoption; no other mechanism is added — and, where the hand-over's last batch was committed and
-   unanswered, a false `seq_gap` on that seat until card#12210: § 10.2's accepted residual (operator
-   ruling opq-1792660567-cb5f, 2026-10-22). The adoption happens once per `state.json`: the minted
+   adoption; no other mechanism is added. Where the hand-over's last batch was committed and
+   unanswered, its lines return as `duplicates` and count no `seq_gap` (§ 10.2, *How the server
+   counts `seq_gap`*). The adoption happens once per `state.json`: the minted
    epoch is written by the first save, no later than the pre-send save, so a start that dies
    before that save adopts again with nothing sent under the first mint. The weaker alternative — a
    first build with no heartbeat and the old build's batch size, to reproduce the old last batch — is
@@ -673,7 +673,7 @@ this replaces. Four rules decide what an entry is on each start, each the safe d
 counted — a re-send, which the dedup window absorbs, and no collision. The persisted requests go with
 the file, their lines still being in the spool. A later re-upgrade finds that build's state and adopts
 it by rule 3 under yet another fresh epoch. Each hop costs the sites one `epoch_reset`, and the
-re-upgrade, being rule 3, carries rule 3's `seq_gap` residual until card#12210
+re-upgrade, being rule 3, re-sends as rule 3 does and counts no `seq_gap`
 ([§ 10.2](#102-ordering-seq-and-gap-detection)); the install document does not offer a downgrade.
 
 **One request per site, persisted before it is sent and resent verbatim until the site answers.**
@@ -790,9 +790,8 @@ request is then the only thing the lane sends until the site has answered it.
   item 0 — halves `maxEvents` for the next build, and builds under the same `next_seq`. A
   `413` to a later attempt follows an earlier attempt the site may have committed (a body limit on
   the path lowered between two attempts of one request), so the lane mints a new `seq_epoch` for
-  the site before that build — a fresh epoch over lines the site may hold, one of
-  [§ 10.2](#102-ordering-seq-and-gap-detection)'s accepted `seq_gap` residual routes until
-  card#12210. A request of one event that is still `413` is quarantined and counted
+  the site before that build — a fresh epoch over lines the site may hold, which return as
+  `duplicates` and count no `seq_gap` ([§ 10.2](#102-ordering-seq-and-gap-detection)). A request of one event that is still `413` is quarantined and counted
   `oversize_event_dropped`, `next_seq += 1`, as today.
 - **Retention never waits for a request and never breaks one.** The request carries its own bytes,
   so a bucket it was built from may be dropped — by the size bound or the residency cap, by the seat
@@ -812,9 +811,9 @@ request is then the only thing the lane sends until the site has answered it.
   ([§ 0](#0-overview) item 9); its spooled events are **not** discarded by it: they are still behind
   the cursor, and either the next build under the new epoch carries them or the residency drop of
   their bucket has counted them, never both. The site counts `seq_epoch_change` and renders
-  `epoch_reset`, logged, not alarmed ([§ 10.2](#102-ordering-seq-and-gap-detection)) — and, where
-  the discarded attempt was committed and its answer lost, a false `seq_gap` until card#12210
-  (§ 10.2's accepted residual). By age, a
+  `epoch_reset`, logged, not alarmed ([§ 10.2](#102-ordering-seq-and-gap-detection)); where the
+  discarded attempt was committed and its answer lost, its lines return as `duplicates` and count no
+  `seq_gap`. By age, a
   reset is reachable only after a site has left a request unanswered for the residency cap, 8 days;
   the identity rule below is the one other trigger, and it reuses this reset unchanged.
 - **The send window gates every attempt and shortens none.** A request is sent, first attempt and
@@ -5153,8 +5152,7 @@ that went ahead without it.
   reported is badged by the server's `seq_epoch_change` alone.
 - The ordering key is `(seq_epoch, seq)`. A **missing `seq`** within an epoch is a real gap — events
   lost after the flusher counted them — and the server counts `seq_gap` and raises its **own**
-  `seq_gap` badge on that seat (until card#12210 a fresh-epoch re-send of lines the site already
-  holds raises it too — *The accepted `seq_gap` residual* below). **D2:** that badge belongs to the server's vocabulary
+  `seq_gap` badge on that seat (*How the server counts `seq_gap`*, below, says which batches count). **D2:** that badge belongs to the server's vocabulary
   ([§ 12.7](#127-server-side-counters)) and is **not** a `lossy` member of
   [§ 9.3](#93-degradation-counters)'s array: the reporter cannot observe its own gaps, so it can
   never raise `lossy` for one, and a server-written `lossy` would appear beside a
@@ -5175,72 +5173,64 @@ that went ahead without it.
   different losses and must not be conflated: a gap means the network or the server lost something a
   seat successfully queued.
 
-⚠ **The accepted `seq_gap` residual — ruled by the operator (opq-1792660567-cb5f, 2026-10-22, option
-A): until card#12210 lands on the server, a fresh-epoch re-send of events the site already holds
-raises a FALSE `seq_gap` on that seat** (review round 5's N1). The mechanism is two server rules read
-together. `server/app/Ingest/BatchWriter.php:191` stores a batch with `insertOrIgnore`, so an event
-the site holds under its `event_id` is answered in `duplicates` and never stored
-([§ 10.3](#103-idempotency-and-the-dedup-window)); `server/app/Fold/StateRecompute.php:327-333`
-counts `seq_gap` whenever a stored event's `seq` exceeds the seat's mark by more than one **under the
-same `seq_epoch`**, and on an epoch change sets the mark without counting. Before card#12180 the two
-rules never met: the heartbeat was a spool line, so the first STORED row under a fresh epoch was the
-first event the site had not seen, the epoch-change branch set the mark there, and the duplicates
-ahead of it were invisible to the gap rule. Since card#12180 the heartbeat is item 0 of the request
-and a new event, so under a fresh epoch it is stored at `seq` 1, the re-sent duplicates behind it are
-not, and the first event the site had not seen lands at a `seq` the fold reads as a gap. **The fold
-counts exactly this, and the assertions below are defined by it:** rows are visited in `id` order
-(`server/app/Fold/Fold.php`, `readable`), the gap rule fires only under the epoch the mark already
-holds, and the epoch-change branch sets the mark without counting — so `seq_gap` under a fresh epoch
-equals the number of duplicate seqs that lie **strictly between the epoch's first stored `seq` and
-its highest stored `seq`**, the duplicates taken over distinct `batch_id`. Three consequences a test
-must respect: a duplicate run ahead of the first stored row counts nothing; a run behind the highest
-stored row counts nothing until a later row is stored; and a retried request counts once — within
-24 h the `batch_id` memory answers the retry with the first commit's `accepted` and `duplicates` and
-stores nothing (`server/app/Ingest/IngestPipeline.php`, `previousResponse`;
-[§ 10.4](#104-batch-level-idempotency)), so summing a stub's answers would count it twice. An event
-of a kind the ingest does not know is not stored either (`BatchWriter.php`, the `$known` filter) and
-would leave the same hole; the reporter emits only known kinds — compare
-`grep -oE "'(session|turn|tool|subagent|compaction|context|attention|reporter)\.[a-z]+'" fleet-reporter/fleet-reporter.js | sort -u`
-with `KindRegistry::KINDS`' keys — and every asserting leg holds the stub's `ignored_unknown_kinds`
-at 0 under the fresh epoch, so a fixture that breaks that reds rather than skews the figure.
-**Every route to it is a fresh epoch over lines the site holds:** rule 3's adoption
-([§ 3.1](#sites-one-seat-reporting-to-several-mezzanine-deployments)) where the old build's last
-batch was committed and unanswered (round 4's F1, Case F's upgrade-boundary leg); rule 1's start for
-a name the state does not hold where the server behind that name already holds the lines — a renamed
-site, or legacy state whose existing site is named anything but `default` (Case F's control) — a
-re-send of up to 8 days behind a stored heartbeat, so the figure can reach that whole run;
-[§ 11.4](#114-corruption-the-torn-last-line-and-a-missing-or-unreadable-statejson)'s state reset and
-its missing-file re-send after lost state — the re-send from the oldest bucket
-([AT-17](#at-17-a-corrupt-statejson-loses-nothing), both legs); rule 2's re-point where the server
-the name now points at holds the lines — a re-point back, or a second spelling of one server that
-the site key does not normalize; the age reset and the later-attempt `413` reset of § 3.1's *One
-request per site*, where the discarded request's attempt was committed and its answer lost; a
-downgrade followed by a re-upgrade, whose re-upgrade is rule 3 again; and the identity rule's
-**revert** — the edit to a new pair is not a route, since that pair holds none of the lines ahead of
-the cursor, but reverting to the first pair is one where the first pair committed the discarded
-request and the cursor has not passed its lines (the other pair unreachable, so nothing drained):
-the first request back is a heartbeat and that request's lines, which the first pair holds.
-[AT-28](#at-28-one-seat-several-sites-each-site-gets-everything-and-only-its-own-outcomes) Case K's
-identity-edit legs keep their `seq_gap` 0 because pair B drains — the `422` quarantine moves the
-cursor past those lines — and the leg pins that drain. **What the viewer sees:** the server's
-`seq_gap` badge on that seat for the badge window — 24 h from the counter's last rise
-([§ 12.7](#127-server-side-counters), `FLEET-STATE.md § 7.2`) — and the drill-down's line for it,
-*N events the reporter sent did not arrive* (`server/public/js/drilldown/drilldown-model.js`, the
-`seq_gap` origin line), where N is the counter's cumulative total (the model reads
-`counters.seq_gap`), so it carries any earlier real gap as well as this residual's figure; the
-counter is monotonic, so the figure stays on the seat detail after the badge clears. **What it is not:** no event is lost and none is doubled — the
-duplicates are counted in the answer's `duplicates`, the heartbeat is stored once, the cursor advances
-on the `202`, `spool_dropped_events` does not move and `lossy` is not raised; the false artifacts are
-the `seq_gap` counter and its badge, and nothing else. **Why it is not closed here:** no reporter-side
-move closes it — the reporter cannot know which of its lines the site holds, and a heartbeat placed
-behind the duplicates moves the gap to the first later batch that carries one — so the fix is the
-server's, filed as **card#12210**: the gap counter counts every batch the ingest RECEIVED, not only
-the rows it stored, so a duplicate run advances the mark the way a stored run does. Until that card
-lands, AT-17 and AT-28 Cases F and K assert the residual by the equality above — the duplicate seqs
-the stub itself ignored, strictly between its first and highest stored `seq` under the fresh epoch,
-every `event_id` held once — each leg first pinning a stored heartbeat at item 0 and then driving one
-more stored row, so the figure is measured and not a surprise; card#12210 is the card that flips
-those assertions to `seq_gap` 0.
+**How the server counts `seq_gap` — once per RECEIVED batch, at the ingest (card#12210).** The gap
+rule runs in `server/app/Ingest/BatchWriter.php` (`receivedGap()`), inside the batch's transaction
+and under the seat lock, over the **distinct** `seq`s of every event the accepted batch carried —
+the events it stored, the ones it answered as `duplicates`
+([§ 10.3](#103-idempotency-and-the-dedup-window)), and the ones of a kind the ingest does not know
+and ignores ([§ 12.1](#121-validation-order) step 9), since each of them was received and consumed
+a `seq` on the reporter. It keeps a per-seat **received mark** (`seat_state.last_received_seq_epoch`,
+`last_received_seq`) and applies three rules:
+
+- **A different `seq_epoch` from the mark** — a re-numbering, not a loss — sets the mark to the
+  batch's highest `seq` and counts nothing. The fold still counts that epoch change as
+  `seq_epoch_change` on the first stored row under it.
+- **Under the mark's epoch, a batch reaching past the mark** counts as `seq_gap` the seqs in
+  `(mark, highest]` that no event of the batch carried, and moves the mark to its highest `seq`. A
+  hole inside one batch counts too.
+- **A batch at or below the mark** — a late batch, or a re-send — moves nothing: the mark never goes
+  backwards, and a gap already counted stays counted (the counter is monotonic).
+
+So a fresh-epoch re-send of events the site already holds counts **nothing**: the duplicates advance
+the mark exactly as stored events do, however many requests the re-send spans and whether or not a
+request carries a heartbeat. Every route that re-sends under a fresh epoch — rule 3's adoption
+([§ 3.1](#sites-one-seat-reporting-to-several-mezzanine-deployments)), rule 1's start for a name the
+state does not hold, rule 2's re-point, [§ 11.4](#114-corruption-the-torn-last-line-and-a-missing-or-unreadable-statejson)'s
+state reset and missing-file re-send, the age and later-attempt `413` resets of *One request per
+site*, a downgrade then re-upgrade, and the identity rule's revert — shows `epoch_reset` and no
+`seq_gap`. A retried request is answered from the `batch_id` memory before the rule is reached
+([§ 10.4](#104-batch-level-idempotency)), so it counts nothing twice.
+
+The mark is trusted only while `seat_state.last_received_seq_at` equals `last_receipt_at`: both are
+written by the ingest's one `seat_state` update, on every accepted batch, and nothing else writes
+`last_receipt_at`. A batch accepted by a server build that does not maintain the mark — a rollback
+to an earlier release, or a revert of card#12210 — leaves the two unequal, and the next batch re-sets
+the mark and counts nothing, rather than counting everything received meanwhile as lost.
+
+**Losses this rule does not count, accepted:**
+
+- **A REFUSED batch's run is still a gap.** A `4xx`-refused batch is not received — it writes nothing
+  — while the reporter still consumes its seqs, so the next accepted batch counts that run as
+  `seq_gap`, beside the refusal's own counters.
+- **The first accepted batch per seat after a move onto a build that maintains the mark** — the
+  deploy that first ships card#12210, and every later roll-forward or re-land after a rollback or
+  revert — sets the mark and is checked against nothing, so a real loss between the last batch the
+  earlier build accepted and that first batch is **not counted**, on every such move.
+- **A loss that straddles an epoch change** is not counted, as no epoch-change rule could count it.
+  The rule changes the mark on **every accepted batch** under a different epoch, including a batch
+  that stores nothing (all duplicates, or all unknown kinds); the fold's earlier rule changed its
+  mark only on stored rows. So where batches under two epochs interleave on one seat — two configured
+  sites that are one server under two spellings the site key does not normalize, each lane holding
+  its own epoch — the mark flips on every interleave, a real loss on either lane is not counted, and
+  this rule misses at least the losses the fold's rule missed there, plus those behind a lane's
+  heartbeat-less all-duplicate request. No false gap arises in these cases.
+
+History: until card#12210 the rule ran in the fold, once per **stored** event, so a duplicate run
+between a fresh epoch's stored heartbeat and its next stored row read as a gap and the floor badged
+a false `seq_gap` for 24 h — the residual the operator accepted for card#12180 (opq-1792660567-cb5f,
+2026-10-22, option A). `docs/CHANGELOG.md`'s card#12210 entry records the change; counts the fold
+added before it are never reset (`FLEET-STATE.md § 7.2`), and their badges clear one window after
+their last rise.
 
 **Events can arrive out of `event_time` order.** The flusher sends the spool in append order and
 re-sends a retried batch before anything after it. A reporter older than card#11563 read a hook's
@@ -5593,10 +5583,10 @@ and the anomaly is flagged rather than silently producing a negative open-call c
 | A line longer than 4 KiB | quarantine | `spool_corrupt_lines` |
 | An entire bucket file unreadable | record the filename in `quarantine/corrupt.jsonl`, skip it, continue | **`spool_dropped_events`** += the bucket's estimated line count (its byte size ÷ the ~500 B typical event size, [§ 4.4](#44-size-caps-and-their-derivations)); badge `lossy` |
 | A torn or unparseable **index journal** line | skipped by the fold, counted `spool_corrupt_lines`; a lost `open` record makes its close `synthesized`, a lost `close` makes the entry reapable — both already-handled paths | `lossy` |
-| `state.json` present but unusable: a read error other than a missing file, or empty, truncated, unparseable, or the wrong shape | **state reset** — see below | `state_reset`, badge `epoch_reset`; `seq_epoch_change` server-side on a seat that has already reported — and, until card#12210, a false `seq_gap` beside it where the re-send covers lines the site holds ([§ 10.2](#102-ordering-seq-and-gap-detection)'s accepted residual) |
-| `state.json` missing: a first start, or state lost with the file (a reinstall, a wiped state dir, a deleted file) | a new `seq_epoch` and the same re-send from the oldest bucket, **not** a state reset | none from the reporter. On a seat that has already reported, the server's `seq_epoch_change` and its badge `epoch_reset`, and until card#12210 the same false `seq_gap` ([§ 10.2](#102-ordering-seq-and-gap-detection)); a first start raises nothing |
-| `state.json` readable, but a configured site has no usable entry in it — a site just added, a name other than `default` under a `state.json` from before card#12180, or an entry whose `ingest_url_sha256` is not the hash of the config's URL for that name | that site alone: a new `seq_epoch` and the re-send from the oldest bucket, **not** a state reset; every other site's entry is untouched ([§ 3.1](#sites-one-seat-reporting-to-several-mezzanine-deployments)'s rules 1–3, through the one entry predicate) | none from the reporter. That site's server counts `seq_epoch_change` only where it had already received an earlier epoch — the repointed-name case — and nothing for a site that is new to the seat; and, until card#12210, where the server behind the name already holds the re-sent lines — a renamed site, a legacy site named other than `default`, a re-point back — the false `seq_gap` of [§ 10.2](#102-ordering-seq-and-gap-detection)'s accepted residual |
-| `state.json` from before card#12180 — top-level `seq_epoch`, `next_seq`, `cursors` and no `sites` — read under **either** config form | adopted as the entry of the site named `default`, its hash recorded at the first save; the cursor carries, so the upgrade re-sends nothing, and the epoch and seq do not — a fresh `seq_epoch` and `next_seq` 1, because the old build's last batch may be committed and unanswered, which the site renders once as `epoch_reset` (rule 3, with its stated residual: a same-edit repoint of `default` is not detectable at that one start) and, where the old build's last batch was committed and unanswered, as [§ 10.2](#102-ordering-seq-and-gap-detection)'s false `seq_gap` until card#12210 | none |
+| `state.json` present but unusable: a read error other than a missing file, or empty, truncated, unparseable, or the wrong shape | **state reset** — see below | `state_reset`, badge `epoch_reset`; `seq_epoch_change` server-side on a seat that has already reported |
+| `state.json` missing: a first start, or state lost with the file (a reinstall, a wiped state dir, a deleted file) | a new `seq_epoch` and the same re-send from the oldest bucket, **not** a state reset | none from the reporter. On a seat that has already reported, the server's `seq_epoch_change` and its badge `epoch_reset`; a first start raises nothing |
+| `state.json` readable, but a configured site has no usable entry in it — a site just added, a name other than `default` under a `state.json` from before card#12180, or an entry whose `ingest_url_sha256` is not the hash of the config's URL for that name | that site alone: a new `seq_epoch` and the re-send from the oldest bucket, **not** a state reset; every other site's entry is untouched ([§ 3.1](#sites-one-seat-reporting-to-several-mezzanine-deployments)'s rules 1–3, through the one entry predicate) | none from the reporter. That site's server counts `seq_epoch_change` only where it had already received an earlier epoch — the repointed-name case — and nothing for a site that is new to the seat |
+| `state.json` from before card#12180 — top-level `seq_epoch`, `next_seq`, `cursors` and no `sites` — read under **either** config form | adopted as the entry of the site named `default`, its hash recorded at the first save; the cursor carries, so the upgrade re-sends nothing, and the epoch and seq do not — a fresh `seq_epoch` and `next_seq` 1, because the old build's last batch may be committed and unanswered, which the site renders once as `epoch_reset` (rule 3, with its stated residual: a same-edit repoint of `default` is not detectable at that one start) | none |
 | a corrupt spool line reached by one site's lane, after another site's lane already disposed of it | quarantined and counted **once**: a per-bucket disposal mark in `state.json` records the offset up to which skips have been quarantined, and a lane quarantines and counts only skips past it | `spool_corrupt_lines` rises by one per line, however many sites |
 
 **One torn line never poisons a batch and never wedges the queue.** The failure is bounded to the
@@ -5616,8 +5606,8 @@ server's dedup window (10 days) exceeds the spool's residency cap (8 days) **by 
 ([§ 10.3](#103-idempotency-and-the-dedup-window)), so already-delivered events return in
 `"duplicates"` and change nothing. The cost is one extra drain — bounded by the same arithmetic as an
 outage recovery ([§ 11.5](#115-retry-and-backoff)) — and the visible signal is `state_reset` plus a
-non-zero `duplicates` on the next batches, and until card#12210 the server's false `seq_gap` for
-that duplicate run ([§ 10.2](#102-ordering-seq-and-gap-detection)'s accepted residual). If a bucket cannot be read at all during that re-send it
+non-zero `duplicates` on the next batches, which count no `seq_gap`
+([§ 10.2](#102-ordering-seq-and-gap-detection)). If a bucket cannot be read at all during that re-send it
 follows the unreadable-bucket row above: counted into `spool_dropped_events`, badge `lossy`. Nothing
 is discarded uncounted. A missing `state.json` takes the same path and counts no `state_reset`: a
 first start has delivered nothing, so there is nothing to duplicate, and after lost state the signal
@@ -6132,7 +6122,7 @@ members: raised while the counter rose within the last 24 h
 | `late_close_cross_session` | a `match: "tombstone_ref"` close arrived under a **different** `session_id` than its call was opened in, and was **refused** ([§ 8.6](#86-server-side-interpretation-of-open-call-state)) | **the kill's own volume**: on this build every `/clear` that kills a call produces one, so it is expected to track `/clear`s rather than to sit at zero. It is separated from `late_completion` precisely so that signal keeps meaning "a reap is too eager" — folded together, the eagerness instrument would read one-per-clear forever and could never report |
 | `orphan_timeout_closes` | the ledger closed a call nobody ever closed | informational per seat; a spike means the reporter stopped closing calls |
 | `session_reopened` | an event arrived for a session closed by `inferred_silence`. An event also re-opens a session the sweeper closed when its seat went offline (`closed_by = server_offline`), and that reopen is **not** counted here ([D2 § 4.6](FLEET-STATE.md#46-every-open-fact-has-a-ceiling)) | **re-derives the 90-minute rule** ([§ 6.2](#62-sessionend)) |
-| `seq_gap` | a missing `seq` inside an epoch — and, until card#12210, a fresh-epoch re-send of events the site holds ([§ 10.2](#102-ordering-seq-and-gap-detection)'s accepted residual, operator-ruled) | the **server's own** `seq_gap` badge on that seat, per the rule above — **not** a `lossy` member of [§ 9.3](#93-degradation-counters)'s array, which only the reporter mints ([§ 10.2](#102-ordering-seq-and-gap-detection)) |
+| `seq_gap` | a missing `seq` inside an epoch, counted by the ingest over every batch it received, duplicates included ([§ 10.2](#102-ordering-seq-and-gap-detection), card#12210) | the **server's own** `seq_gap` badge on that seat, per the rule above — **not** a `lossy` member of [§ 9.3](#93-degradation-counters)'s array, which only the reporter mints ([§ 10.2](#102-ordering-seq-and-gap-detection)) |
 | `seq_collision` | one `(seq_epoch, seq)` carrying two different `event_id`s | seat badge `degraded`; the only mechanism that produces it is two flushers ([§ 2.3](#23-the-flusher-must-be-alive-whenever-the-seat-is)) |
 | `seq_epoch_change` | a batch arrived under a new `seq_epoch` on a seat that has already sent under an earlier one; a seat's first epoch is not a change | seat renders `epoch_reset`, informational — a re-numbering, not a loss |
 | `batches_refused.<error>` | any 4xx refusal, keyed by error code | counted **against the token's binding** ([§ 12.1](#121-validation-order)). A permanent refusal renders the seat degraded by one route, the reporter's own `batches_rejected` member ([§ 9.3](#93-degradation-counters)), raised when it quarantines the batch; the server raises **no** badge for this counter ([FLEET-STATE.md § 7.1](FLEET-STATE.md#71-d1s-server-side-counters--where-they-live)), so the preamble's server-badge reading does not apply to this row |
@@ -6586,14 +6576,14 @@ alarm — the structural backstop — is built on sand.*
   bucket**; the server's stored event-id set for that seat is **exactly** the union of all three
   buckets, each event present once; `duplicates` on the re-sent batches is > 0 (proving the re-send
   actually happened); `spool_dropped_events == 0`; the seat renders `epoch_reset`, informational, and
-  **not** `lossy`. **The residual, measured until card#12210:** the server's fold counts `seq_gap` by
-  [§ 10.2](#102-ordering-seq-and-gap-detection)'s equality — the duplicate seqs strictly between the
-  first and the highest stored `seq` under the new epoch, over distinct `batch_id`: the heartbeat at
-  item 0 of the first re-sent batch is stored (the heartbeat timer is due at a flusher start), the
-  two accepted buckets' lines behind it are not, and bucket 3's rows follow them — computed from the
-  stub's own record of which seqs it ignored and which it stored, never a constant, with
-  `ignored_unknown_kinds` 0 under that epoch and `lossy` still absent; card#12210 flips this
-  assertion to `seq_gap` 0.
+  **not** `lossy`. **The re-send counts no `seq_gap`** ([§ 10.2](#102-ordering-seq-and-gap-detection),
+  card#12210): `seq_gap` under the new epoch is 0, beside a precondition that the leg produced the
+  run that matters — duplicate seqs strictly between the first and the highest stored `seq` under the
+  new epoch, over distinct `batch_id`, is non-zero (the heartbeat at item 0 of the first re-sent batch
+  is stored, the heartbeat timer being due at a flusher start; the two accepted buckets' lines behind
+  it are not; bucket 3's rows follow them) — computed from the stub's own record of which seqs it
+  ignored and which it stored, never a constant, with `ignored_unknown_kinds` 0 under that epoch and
+  `lossy` still absent.
 - **RED — the defect this replaced:** set the cursor to the start of the newest bucket instead → the
   events of the first two buckets are absent from the server's id set, `spool_dropped_events` is still
   0, no badge appears, and nothing anywhere records the loss. Assert the missing ids explicitly; that
@@ -6603,10 +6593,9 @@ alarm — the structural backstop — is built on sand.*
 - **A missing `state.json` is not a reset:** a first start with an empty spool, a first start whose
   spool already holds a hook event, and a `state.json` deleted after the seat reported each count
   `state_reset == 0` through a start and a restart, and no heartbeat carries `epoch_reset`; the
-  deleted one sends under a new `seq_epoch` and re-sends the spool, and until card#12210 counts
-  `seq_gap` by the same equality as the GREEN above once one more row is stored under the new
-  epoch (the clock past `K.HEARTBEAT_MS`, one pass — the duplicate run is trailing until then, as
-  AT-28 Case F states). An empty, truncated,
+  deleted one sends under a new `seq_epoch`, re-sends the spool, and counts `seq_gap` 0 with the
+  same precondition as the GREEN above once one more row is stored under the new epoch (the clock
+  past `K.HEARTBEAT_MS`, one pass — the row that puts the duplicate run inside the stored range). An empty, truncated,
   unparseable, wrong-shaped or unreadable `state.json` counts `state_reset` exactly once.
   **RED:** count a missing file as a reset → every first start carries `epoch_reset` for good.
 
@@ -7205,14 +7194,12 @@ property.
   order — install, stop, start. **GREEN:** the new build's first request is under a new
   `seq_epoch` with `first_seq` 1; the committed batch's events arrive again and are answered as
   `duplicates`; the stub counts `seq_collision` 0 and holds every `event_id` once. **Then pin the
-  residual's preconditions and measure it:** assert that the new build's first request carries a
-  heartbeat at item 0 (the timer is due at start, so it does), advance the injected clock past
-  `K.HEARTBEAT_MS` and run a pass so one more row — the next heartbeat — is stored under the new
-  epoch; only then, until card#12210, assert `seq_gap` by
-  [§ 10.2](#102-ordering-seq-and-gap-detection)'s equality — the committed batch's seqs, which now
-  lie between the two stored heartbeats — and `ignored_unknown_kinds` 0. Asserted before that second
-  stored row the fold shows 0, because the duplicate run is trailing; the ordering is part of the
-  leg, not a hint. card#12210 flips this assertion to `seq_gap` 0. Repeat with
+  re-send's preconditions and assert it counts no gap:** assert that the new build's first request
+  carries a heartbeat at item 0 (the timer is due at start, so it does), advance the injected clock
+  past `K.HEARTBEAT_MS` and run a pass so one more row — the next heartbeat — is stored under the new
+  epoch; then assert that the committed batch's seqs lie between the two stored heartbeats as
+  duplicates (the precondition, non-zero) and that `seq_gap` under the new epoch is 0
+  ([§ 10.2](#102-ordering-seq-and-gap-detection)), with `ignored_unknown_kinds` 0. Repeat with
   `SIGKILL` in place of the stop, and with a restart of the new build before its first save —
   same assertions, and the second start mints again with nothing sent under the first mint.
   **Old spooled heartbeats go to one site:** lift the same seat into `[default, sandbox]`; `default`
@@ -7341,19 +7328,18 @@ property.
   rose by exactly one for it beyond what the residency drops of its buckets counted — assert the
   total against the drops' per-bucket figures, so a double count of the request's spooled lines
   reds; `lossy` is in `sb`'s `degraded`; and `seq_gap` is 0 — `sb` committed nothing, so this leg is
-  the control for the later-`413` leg's figure below. **The `413` legs:** make `sb` answer `413` to a request's
+  the control for the later-`413` leg's duplicate run below. **The `413` legs:** make `sb` answer `413` to a request's
   first attempt. **GREEN:** the next request `sb` receives carries half the events under the same
   `seq_epoch` and the same `first_seq`, a heartbeat with a new `event_id` and a later `event_time`
   where the discarded request carried one, and nothing is counted on `sb`. Then make `sb` commit the
   first attempt — a request that carries a heartbeat, which the leg pins — and drop the connection,
   and answer the retry `413`. **GREEN:** the next request is under a new `seq_epoch` with the rebuilt
   heartbeat at item 0 (assert it); let both halves go out, advance the injected clock past
-  `K.HEARTBEAT_MS` and run a pass so a later heartbeat is stored behind them; then, until card#12210,
-  the stub's fold counts `seq_gap` by [§ 10.2](#102-ordering-seq-and-gap-detection)'s equality — the
-  committed attempt's seqs between the two stored heartbeats, over distinct `batch_id`, so the
-  retry the `batch_id` memory answered is not counted twice — with `ignored_unknown_kinds` 0.
-  Asserted before that later stored row, both halves are trailing and the fold shows 0. card#12210
-  flips the `413` assertion to `seq_gap` 0. **The skew leg:** pin `sb`'s backoff to 121 s through the suite's seam
+  `K.HEARTBEAT_MS` and run a pass so a later heartbeat is stored behind them; then assert that the
+  committed attempt's seqs lie between the two stored heartbeats as duplicates, over distinct
+  `batch_id` so the retry the `batch_id` memory answered is not counted twice (the precondition,
+  non-zero), and that `seq_gap` under the new epoch is 0
+  ([§ 10.2](#102-ordering-seq-and-gap-detection)), with `ignored_unknown_kinds` 0. **The skew leg:** pin `sb`'s backoff to 121 s through the suite's seam
   and advance the clock through it before the retry. **GREEN:** the retry's `sent_at` is inside the
   last second and the stub's `clock_skew_ms` is under 120 s. **The identity-edit legs, run twice — once with a request persisted and unanswered, once with none
   persisted (the lane idle with events acknowledged and `next_seq` past 1):** write a config naming another `seat_id` with a token the stub
@@ -7364,10 +7350,10 @@ property.
   **Pin the drain before the revert:** every line spooled under pair B has been disposed of — assert
   from `state.json` that `sb`'s cursor is at the spool's end — so no refused batch lands behind a
   stored row and no line the first pair committed is still ahead of the cursor;
-  [§ 10.2](#102-ordering-seq-and-gap-detection) names the undrained revert as a residual route, and
-  this leg is deliberately not it. Revert the config to the first pair and restart: the next request is under yet another epoch and
-  the stub's fold for the first pair counts `seq_collision` 0 **and `seq_gap` 0** — the fold the
-  stub runs includes `StateRecompute`'s `seq_gap` rule, which is what makes the second run
+  [§ 10.2](#102-ordering-seq-and-gap-detection) lists the undrained revert among the fresh-epoch
+  re-send routes, and this leg is deliberately not it. Revert the config to the first pair and restart: the next request is under yet another epoch and
+  the stub for the first pair counts `seq_collision` 0 **and `seq_gap` 0** — the stub runs
+  `BatchWriter`'s received-batch `seq_gap` rule, which is what makes the second run
   discriminate — in both runs, so the assertion does not depend on whether a request happens to be
   persisted. **Control:** the commit-then-drop
   sequence with the stub answering in time → one request, one attempt, `attempts` 1, and the
@@ -7724,7 +7710,7 @@ values no published rule derived.
 | 51 | **card#9416: the seat's console URL rides `turn.start` as `console_url`, read from the transcript's newest deciding record within a 1 MiB tail, pattern-checked at the reporter and again at the fold, and sent only under `descriptors: "full"`** | carry it on `session.start`; or on the heartbeat; or read the whole transcript; or send it under every `descriptors` value | `session.start` fires once and before the transcript holds a bridge record, while the bridge id changes within a session and ends with it; the heartbeat carries no session and its flusher never sees a `transcript_path`; a whole-file read of a many-MiB transcript breaks P-5's budget; and `descriptors` is the seat's one statement of how much it sends, so a seat that asked for less is not sent a link to its live console | a link lags a changed bridge by one prompt; a bridge record more than 1 MiB back is a `null` for that turn, counted; a harness that moves the record makes every value `null`, counted as `console_url_malformed` rather than silent |
 | 52 | **card#11563: every writer reads the clock its events carry under one per-seat write lock, taken at a hook's first emit and before the flusher's index fold, with a bounded wait** | take the lock for a hook's whole section, including its index fold; or stamp each line just before its write with no lock; or leave the order to the server's guards | The whole-section lock held the payload work and the fold as well, measured at ~10× the hold of the appends alone, and every concurrent hook waits on that hold. A late stamp with no lock narrows the window and does not close it. The server's per-group guards converge pairs and cannot converge every composition (card#11561, [D2 § 6.5](FLEET-STATE.md#65-the-fold)) | a writer that waits out 100 ms appends unordered, counted `write_lock_timeout`; a hook's `event_time` is later than its decision clock by its own payload work, so a duration and the difference of two `event_time`s differ by a few ms |
 | 53 | **card#11817, card#11824: a `/clear` carries a bound open dispatch into the new session rather than aborting it, declared on `session.end.carried_call_ids`; the two `/clear` signals pair by `clear` tombstone inside a window, and `SessionStart(clear)` never reaps** | abort it (the pre-#11817 rule); keep it under the old id with no declaration; let the server infer the carry; keep the activity pick as a fallback for an unpaired start | the subagent survives the clear (MEASURED 2.1.296, [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)), so the abort rendered a running intern as gone for the rest of its run; and the activity pick could only land on another live terminal in the measured order — on the first connected seat every `false` evaluation of `clear_reap_by_session_end` was such a pick, except at most as many as that seat's `SessionStart(clear)` evaluations exceed its `SessionEnd(clear)` ones ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) | a dispatch the clear DID kill is reaped at the new session's next `Stop` instead of at the clear; a lost `SessionEnd(clear)` waits for the 90-minute rule; pairing is by recency, so two terminals clearing inside one window, or one terminal's lost signal beside another's clear, can cross a carry into the wrong session, where its next `Stop` reaps it — counted `clear_pair_ambiguous` / `clear_pair_late`, and narrowed by `CLEAR_GAP_MS` on the side that adopts a live session |
-| 54 | **card#12180: one seat reports to up to four Mezzanine sites from one config, one spool and one flusher — a lane per site with its own cursor, epoch, backoff, probe, delivery counters, trailing-hour send window and auth stop; hooks append once and every per-site count takes one primitive; each lane keeps ONE outgoing request persisted in its site's `state.json` entry — every `seq` and `event_id` fixed at build, written and fsynced before the first attempt, resent as built (`sent_at` alone re-stamped) until the site answers definitively — and builds no batch and no heartbeat for that site while one is persisted, a heartbeat due meanwhile being deferred to the next request; the heartbeat is built per site as item 0 of that request and never spooled; retention never waits for a request and never breaks one, and a request older than the residency cap is discarded under an explicit epoch reset; the ingest's own `401 unauthenticated`/`403 identity_mismatch` stop a lane rather than poison its batches, and only a restart on a corrected config lifts the stop; a backfill is paced under the site's event limit, the window counting what the server counts, with the heartbeat's headroom reserved; retention is per seat and loss is counted per site; quarantine is per site; two sites are the same site by one normalized, userinfo-free key; the installer's writer emits the multi-site form only and gains `add-site` and `set-token` modes; the single-site form is read as a site named `default`, its cursor carried under a fresh epoch, and migrates nothing else; one status-and-body classification in `classify` decides every disposal, an unlisted status retryable; an identity edit resets the site's entry under the epoch reset, with or without a persisted request, cursors kept** ([§ 3.1](#sites-one-seat-reporting-to-several-mezzanine-deployments)) | a flusher process per site; a spool per site written by the hooks; a shared `seq_epoch`; a spooled heartbeat patched per site at delivery; a heartbeat built at send time and discarded on failure (round 1); a heartbeat pinned in the entry with an in-flight span and an epoch minted when a retry could not reproduce the attempt (rounds 2–3); a request file beside `state.json`; a heartbeat on every request; rebuilding the request when no bytes were sent; an epoch minted for a dropped bucket a request covered; holding retention for a request; an auth stop keyed on the status alone (round 3); a legacy adoption that carries the old epoch and `next_seq` (round 4); a poison pill keyed on the status, and `classify`'s `permanent` fallback for unlisted statuses (round 4); the persisted request as a string; `401`/`403` as per-site poison pills; an auth stop lifted by a health probe answering `200` (round 2); an empty-events `POST` as an identity probe; rotation by removing and re-adding a site; URL uniqueness on the raw strings (round 2); an unpaced backfill; seat-wide quarantine caps; a credentials verdict outside the `selftest` member table; holding the spool for the slowest site; a `token_file` key; a `best_effort` site flag; a `status` subcommand; server-side fan-out — each with its one-line cost at § 3.1 | the operator's ask is that a site that is down, slow or refusing never delays or loses what another site receives, and that is a property of where the network await sits: one process, one event loop, one lane per site, no shared cursor. The wire keeps its shape, so no schema bump is owed, and § 3.1 names the bytes that do change rather than claiming none do. The persisted request exists because three review rounds found three routes by which a retry rebuilt from the spool differed from the attempt the site had committed — a dropped bucket, a heartbeat built meanwhile, a window that admitted less — and each fix opened the next; a retry that re-reads nothing has no such route, and the collision the server counts stays the two-producer signal. The auth stop exists because a credential mistake must not cost a site's history: the bytes were never what was refused. The pacing exists because rule 1's backfill is the first time a lane drains 8 days against a fresh limiter with the heartbeat behind it. The two bounds that protect the seat's disk stay per seat, and what a lagging site loses past them is counted on that site. The one rule that is new to every seat, single-site included, closes a gap that predates the card: a cursor carried across an `ingest_url` change skipped every line behind it on the new server, uncounted | a seat is capped at four sites by choice, checked against an uplink figure nobody has measured on a real seat; a repointed site or a renamed one re-sends up to 8 days (free of loss, by [§ 10.3](#103-idempotency-and-the-dedup-window), and until card#12210 badged by § 10.2's false `seq_gap` where the server already holds the lines); every upgraded seat shows one `epoch_reset`, the cost of carrying the cursor and not the epoch across the hand-over; **until card#12210 a fresh epoch over lines the site holds — that hand-over with its last batch committed and unanswered, a renamed or non-`default` legacy site, a state reset, a re-point back, an age or later-`413` reset, an identity revert over a committed undrained request — shows a false `seq_gap` for the badge window** ([§ 10.2](#102-ordering-seq-and-gap-detection)'s accepted residual, operator ruling opq-1792660567-cb5f of 2026-10-22, measured by AT-17 and AT-28 Cases F and K); an unlisted or proxy-answered refusal stalls a site rather than draining it into quarantine; an identity edit quarantines, counted, the spool ahead of the cursor, as before the card; **a legacy `state.json` adopted as `default` records no URL, so a same-edit repoint of `default` at upgrade skips, uncounted, for one start** (rule 3's accepted residual, measured by AT-28 Case F); a recovering site renders *catching up* from its first post-recovery heartbeat, or from the second where the persisted request carried one stamped at the outage's start; a drop that lands inside a lane's persisted request overstates that site's loss by at most one request, in the safe direction, and costs it nothing else; a retry storm at the send window's edge holds that site's heartbeat until the window rolls; a request unanswered for 8 days is discarded under an `epoch_reset` with its heartbeat counted; `state.json` grows by up to one request per site, bounded by [§ 3.1](#sites-one-seat-reporting-to-several-mezzanine-deployments)'s derivation, and the pre-send save is the one fsynced write, which syncs the file and, where the platform has one to sync, its directory; a seat cannot tell a revoked token from a mistyped one and the server will not say; **`token_accepted` cannot see a token issued for another seat's pair — the health route resolves the token and compares no identity — so that mistake passes `selftest` and is caught by the first batch's `403`, the auth stop, the marker and Step 7** (the identity probe that would close it is rejected at § 3.1 for the refusal count it would mint on every healthy seat; AT-28 Cases H and M measure the gap); `token_accepted` rides a heartbeat built before any probe or accepted request measured it as `fail`, for at most one interval on a site whose first probe measured nothing, and it spent the `selftest` cap's headroom; a `401`/`403` that is not the ingest's own is retried rather than stopped, and whether any deployment's front end emits one is not established; every auth-stop recovery is a config write and a restart, because the server offers no act that makes a refused token resolve; and a site that cannot be sent to because of its own config error shows as `stale` then `offline` on that site, which that site cannot tell from a dead seat — the posture every config error already had, now per site. [AT-28](#at-28-one-seat-several-sites-each-site-gets-everything-and-only-its-own-outcomes) is the regression test |
+| 54 | **card#12180: one seat reports to up to four Mezzanine sites from one config, one spool and one flusher — a lane per site with its own cursor, epoch, backoff, probe, delivery counters, trailing-hour send window and auth stop; hooks append once and every per-site count takes one primitive; each lane keeps ONE outgoing request persisted in its site's `state.json` entry — every `seq` and `event_id` fixed at build, written and fsynced before the first attempt, resent as built (`sent_at` alone re-stamped) until the site answers definitively — and builds no batch and no heartbeat for that site while one is persisted, a heartbeat due meanwhile being deferred to the next request; the heartbeat is built per site as item 0 of that request and never spooled; retention never waits for a request and never breaks one, and a request older than the residency cap is discarded under an explicit epoch reset; the ingest's own `401 unauthenticated`/`403 identity_mismatch` stop a lane rather than poison its batches, and only a restart on a corrected config lifts the stop; a backfill is paced under the site's event limit, the window counting what the server counts, with the heartbeat's headroom reserved; retention is per seat and loss is counted per site; quarantine is per site; two sites are the same site by one normalized, userinfo-free key; the installer's writer emits the multi-site form only and gains `add-site` and `set-token` modes; the single-site form is read as a site named `default`, its cursor carried under a fresh epoch, and migrates nothing else; one status-and-body classification in `classify` decides every disposal, an unlisted status retryable; an identity edit resets the site's entry under the epoch reset, with or without a persisted request, cursors kept** ([§ 3.1](#sites-one-seat-reporting-to-several-mezzanine-deployments)) | a flusher process per site; a spool per site written by the hooks; a shared `seq_epoch`; a spooled heartbeat patched per site at delivery; a heartbeat built at send time and discarded on failure (round 1); a heartbeat pinned in the entry with an in-flight span and an epoch minted when a retry could not reproduce the attempt (rounds 2–3); a request file beside `state.json`; a heartbeat on every request; rebuilding the request when no bytes were sent; an epoch minted for a dropped bucket a request covered; holding retention for a request; an auth stop keyed on the status alone (round 3); a legacy adoption that carries the old epoch and `next_seq` (round 4); a poison pill keyed on the status, and `classify`'s `permanent` fallback for unlisted statuses (round 4); the persisted request as a string; `401`/`403` as per-site poison pills; an auth stop lifted by a health probe answering `200` (round 2); an empty-events `POST` as an identity probe; rotation by removing and re-adding a site; URL uniqueness on the raw strings (round 2); an unpaced backfill; seat-wide quarantine caps; a credentials verdict outside the `selftest` member table; holding the spool for the slowest site; a `token_file` key; a `best_effort` site flag; a `status` subcommand; server-side fan-out — each with its one-line cost at § 3.1 | the operator's ask is that a site that is down, slow or refusing never delays or loses what another site receives, and that is a property of where the network await sits: one process, one event loop, one lane per site, no shared cursor. The wire keeps its shape, so no schema bump is owed, and § 3.1 names the bytes that do change rather than claiming none do. The persisted request exists because three review rounds found three routes by which a retry rebuilt from the spool differed from the attempt the site had committed — a dropped bucket, a heartbeat built meanwhile, a window that admitted less — and each fix opened the next; a retry that re-reads nothing has no such route, and the collision the server counts stays the two-producer signal. The auth stop exists because a credential mistake must not cost a site's history: the bytes were never what was refused. The pacing exists because rule 1's backfill is the first time a lane drains 8 days against a fresh limiter with the heartbeat behind it. The two bounds that protect the seat's disk stay per seat, and what a lagging site loses past them is counted on that site. The one rule that is new to every seat, single-site included, closes a gap that predates the card: a cursor carried across an `ingest_url` change skipped every line behind it on the new server, uncounted | a seat is capped at four sites by choice, checked against an uplink figure nobody has measured on a real seat; a repointed site or a renamed one re-sends up to 8 days (free of loss, by [§ 10.3](#103-idempotency-and-the-dedup-window)); every upgraded seat shows one `epoch_reset`, the cost of carrying the cursor and not the epoch across the hand-over; an unlisted or proxy-answered refusal stalls a site rather than draining it into quarantine; an identity edit quarantines, counted, the spool ahead of the cursor, as before the card; **a legacy `state.json` adopted as `default` records no URL, so a same-edit repoint of `default` at upgrade skips, uncounted, for one start** (rule 3's accepted residual, measured by AT-28 Case F); a recovering site renders *catching up* from its first post-recovery heartbeat, or from the second where the persisted request carried one stamped at the outage's start; a drop that lands inside a lane's persisted request overstates that site's loss by at most one request, in the safe direction, and costs it nothing else; a retry storm at the send window's edge holds that site's heartbeat until the window rolls; a request unanswered for 8 days is discarded under an `epoch_reset` with its heartbeat counted; `state.json` grows by up to one request per site, bounded by [§ 3.1](#sites-one-seat-reporting-to-several-mezzanine-deployments)'s derivation, and the pre-send save is the one fsynced write, which syncs the file and, where the platform has one to sync, its directory; a seat cannot tell a revoked token from a mistyped one and the server will not say; **`token_accepted` cannot see a token issued for another seat's pair — the health route resolves the token and compares no identity — so that mistake passes `selftest` and is caught by the first batch's `403`, the auth stop, the marker and Step 7** (the identity probe that would close it is rejected at § 3.1 for the refusal count it would mint on every healthy seat; AT-28 Cases H and M measure the gap); `token_accepted` rides a heartbeat built before any probe or accepted request measured it as `fail`, for at most one interval on a site whose first probe measured nothing, and it spent the `selftest` cap's headroom; a `401`/`403` that is not the ingest's own is retried rather than stopped, and whether any deployment's front end emits one is not established; every auth-stop recovery is a config write and a restart, because the server offers no act that makes a refused token resolve; and a site that cannot be sent to because of its own config error shows as `stale` then `offline` on that site, which that site cannot tell from a dead seat — the posture every config error already had, now per site. [AT-28](#at-28-one-seat-several-sites-each-site-gets-everything-and-only-its-own-outcomes) is the regression test |
 | 55 | **card#12239: the coordination receipt's hook binding is selected by a public path segment, `POST /api/ingest/github/{hook}`, and authenticated by that binding's secret alone** ([§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)) | try every active secret against the body; or look the secret up by the body's `repository.full_name` before verifying | with more than one hook registered nothing inside the HMAC names the secret to try. Trying every secret spends an HMAC over up to 1 MiB per binding on an unauthenticated request — the budget the step-3 limit exists to bound; a body lookup parses untrusted bytes before authenticating them and routes a key choice on the claim [§ 3.3](#33-authentication-and-the-identity-binding-rule) says is validated for equality and never routed on. A path segment is one URL per binding — which GitHub's hook configuration already holds — costs no parse before auth, and makes an unknown binding an ordinary step-3 refusal | `{hook}` is visible in GitHub's hook settings and in access logs, so it is designed as a selector and not a secret, and knowing one buys an attacker exactly the 60 refusals an hour the step-3 limit already prices |
 | 56 | **card#12239 (operator 2026-10-23): a binding carries a `scope` — `install`, naming one install, or `fleet`, naming none — and the two objects carry it with a nullable `install_id`; one producer, one route, one derivation for both** ([§ 18.6](#186-coordthread), [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)) | a second message pair for the fleet's objects; or a second route for the roundtable; or binding the roundtable to one install | a second pair is two formats for one fact — [§ 18.1](#181-two-corrections-this-section-carries-and-the-boundary-it-keeps) correction 2's own refusal; a second route is a second HMAC path and a second derivation, which [§ 18.11](#1811-one-producer-and-the-one-consumer-it-serves) forbids; one install would place every cross-install thread in one room with its other ends unresolved | a consumer must read `scope` to know which declaration joins a name and which room, if any, an object belongs to; the render layer's own document owns what that costs it |
 | 57 | **card#12239 r2 (operator 2026-10-23): `coord.thread` is specified and not published, and step 8 derives from `issues.opened` (for its post) and `issue_comment.created` only** ([§ 18.6](#186-coordthread), [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)) | derive and publish the thread object anyway, for a consumer that may come; or delete § 18.6 | publishing a held fact to a floor that holds none is machinery for nothing, and a client branch that ignores-and-counts it costs the same as one that never receives it; deleting the derivation throws away measured work (finding A's union, the attribution split) that a future consumer would re-derive wrongly | the first consumer of a thread fact re-opens step 8's set and the feed row, which is a code change and no re-registration — the subscription was written wide for exactly this |
