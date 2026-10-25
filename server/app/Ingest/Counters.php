@@ -45,10 +45,12 @@ final class Counters
      * `$at` is when the evidence for the increment was RECEIVED, on the server clock, and it moves
      * the row's `last_increased_at` — the time `Badges::serverFor()` windows a counter-derived badge
      * against (D2 § 7.2, card#9491). It defaults to now, which is the receipt for a counter the
-     * ingest or the sweeper writes. The fold passes the event's own `received_at` for the counters
-     * that raise a badge, because the fold can run well after the receipt: a fold catching up
-     * after an outage that stamped `now()` would date an old `seq_gap` to the catch-up and hold its
-     * badge for a window the gap was never in. The column only ever moves forward. A rebuild's
+     * ingest or the sweeper writes; the ingest passes its batch's `received_at` for `seq_gap`
+     * (card#12210), the same stamp the batch's other columns carry. The fold passes the event's own
+     * `received_at` for the counters that raise a badge (`seq_collision`, `seq_epoch_change`),
+     * because the fold can run well after the receipt: a fold catching up after an outage that
+     * stamped `now()` would date an old epoch change to the catch-up and hold its badge for a
+     * window the change was never in. The column only ever moves forward. A rebuild's
      * replay writes nothing here at all (`replaying()`).
      *
      * A call for the seat `replaying()` is replaying is dropped.
@@ -73,7 +75,7 @@ final class Counters
      *
      * THE COUNTERS ARE THE RECORD OF WHAT THE LIVE PIPELINE OBSERVED, AND A REPLAY OBSERVES
      * NOTHING NEW. The rebuild runs the fold's own code over events the live fold already applied,
-     * so every fold rule that counts (`seq_gap`, `seq_collision`, `seq_epoch_change`, every
+     * so every fold rule that counts (`seq_collision`, `seq_epoch_change`, every
      * `Projector` counter, and `fold_lag_alarm_entered`, which the replay's rewound cursor would
      * raise as a lag episode that never happened) would count each of them a second time. § 7.2
      * says the counters are never reset, so clearing the fold's rows first is no answer: a row

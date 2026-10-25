@@ -5821,7 +5821,8 @@ redgreen("a /clear carries a running dispatch into the new session and pairs by 
 
 print("\n== 23. ONE SEAT, SEVERAL SITES: EACH SITE GETS EVERYTHING, AND ONLY ITS OWN OUTCOMES (AT-28, D1 § 3.1, card#12180) ==")
 # THE STUBS RUN THE SERVER'S OWN RULES, READ FROM ITS CODE, because the properties under test are what a
-# real site would COUNT: `seq_collision` and `seq_gap` are StateRecompute's, duplicates are BatchWriter's
+# real site would COUNT: `seq_collision` is StateRecompute's, `seq_gap` is BatchWriter's received-batch rule
+# (card#12210), duplicates are BatchWriter's
 # insert-or-ignore, a retry's answer is IngestPipeline's batch_id replay memory, and `clock_skew_ms` is
 # BatchWriter's arrival-minus-`sent_at`. A stub that counted by its own rules would pass against itself.
 # Every case asserts by event id, and every RED is planted on a copy, as the rest of this file does.
@@ -5863,11 +5864,18 @@ class FoldStore:
     - an event of a kind `KindRegistry::KINDS` does not know is not stored (the `$known` filter);
     - a repeat `batch_id` is answered with the first commit's response and processes nothing
       (`IngestPipeline.php`, `previousResponse`, § 10.4);
-    - stored rows are folded in id order, PER SEAT — the `(install_id, seat_id)` pair the batch is bound to —
-      by `StateRecompute::writeSnapshotColumns`' rules: a mark `(epoch, seq)`; an epoch other than the mark's
-      counts `seq_epoch_change` and moves the mark without a gap; under the mark's epoch a `seq` past mark + 1
-      counts the difference as `seq_gap`; a stored row of that seat sharing `(epoch, seq)` with a lower id
-      counts `seq_collision`; the mark moves on a change, on a first row, or on a greater `seq` under its epoch.
+    - every batch the ingest ACCEPTS runs `BatchWriter::receivedGap()`'s rule (card#12210), PER SEAT — the
+      `(install_id, seat_id)` pair the batch is bound to — over the DISTINCT seqs of all its events, stored,
+      duplicate and unknown-kind alike: a received mark `(epoch, seq)`; no mark or an epoch other than the
+      mark's sets it to the batch's highest seq and counts nothing; under the mark's epoch a batch reaching
+      past it counts the seqs in `(mark, highest]` it did not carry as `seq_gap` and moves the mark; a batch at
+      or below the mark moves nothing. The server also trusts its mark only while a stamp equals the seat's
+      last receipt — a guard against a build that does not maintain the mark, which this stub, one build,
+      never is, so it has no stamp;
+    - stored rows are folded in id order, per seat, by `StateRecompute::writeSnapshotColumns`' rules: an
+      applied mark `(epoch, seq)`; an epoch other than the mark's counts `seq_epoch_change`; a stored row of
+      that seat sharing `(epoch, seq)` with a lower id counts `seq_collision`; the mark moves on a change, on a
+      first row, or on a greater `seq` under its epoch.
     `seat` selects one pair's counters; the default reads the seat this suite's seats use.
     """
 
@@ -5904,6 +5912,7 @@ class FoldStore:
         stored, dup, ignored = [], [], 0
         ep = batch.get("seq_epoch")
         pair = (batch.get("install_id"), batch.get("seat_id"))
+        self._received(pair, ep, {e["seq"] for e in batch.get("events", [])})
         for e in batch.get("events", []):
             if e.get("kind") not in KINDS_KNOWN:
                 ignored += 1
@@ -5929,16 +5938,31 @@ class FoldStore:
             pass
         return resp
 
+    def _seat(self, pair) -> dict:
+        return self.seats.setdefault(pair, {"mark": None, "recv": None, "seq_gap": 0, "seq_collision": 0,
+                                            "seq_epoch_change": 0})
+
+    def _received(self, pair, ep, seqs: set):
+        if not seqs:
+            return
+        st = self._seat(pair)
+        hi, recv = max(seqs), st["recv"]
+        if recv is None or recv[0] != ep:
+            st["recv"] = (ep, hi)
+            return
+        if hi <= recv[1]:
+            return
+        g = (hi - recv[1]) - len({s for s in seqs if s > recv[1]})
+        st["seq_gap"] += g
+        self.gap_by_epoch[ep] = self.gap_by_epoch.get(ep, 0) + g
+        st["recv"] = (ep, hi)
+
     def _fold(self, row):
-        st = self.seats.setdefault(row["pair"], {"mark": None, "seq_gap": 0, "seq_collision": 0, "seq_epoch_change": 0})
+        st = self._seat(row["pair"])
         ep, seq, mark = row["epoch"], row["seq"], st["mark"]
         changed = mark is not None and mark[0] != ep
         if changed:
             st["seq_epoch_change"] += 1
-        if mark is not None and mark[0] == ep and seq > mark[1] + 1:
-            g = seq - mark[1] - 1
-            st["seq_gap"] += g
-            self.gap_by_epoch[ep] = self.gap_by_epoch.get(ep, 0) + g
         key = (row["pair"], ep, seq)
         if key in self.keys:
             st["seq_collision"] += 1
@@ -5957,22 +5981,21 @@ class FoldStore:
         return out
 
 
-# THE ACCEPTED `seq_gap` RESIDUAL, IN ONE PLACE. D1 § 10.2, *The accepted `seq_gap` residual* — the operator's
-# ruling opq-1792660567-cb5f (2026-10-22, option A): until server card#12210 lands, a fresh-epoch re-send of
-# events the site already holds raises a FALSE `seq_gap`, because the fold counts a gap over STORED rows only
-# and a duplicate is never stored. card#12210 makes the gap counter count every batch the ingest received;
-# when it lands, this constant flips to False and every leg that asserts the residual (AT-17's two legs, Case
-# F's upgrade-boundary leg, Case K's later-attempt `413` leg) expects 0 — here and nowhere else.
-SEQ_GAP_RESIDUAL_UNTIL_12210 = True
+# A FRESH-EPOCH RE-SEND COUNTS NO `seq_gap`, IN ONE PLACE. D1 § 10.2, *How the server counts `seq_gap`*: since
+# card#12210 the server counts a gap over every batch it RECEIVED, duplicates included, so a re-send of events
+# the site already holds advances the received mark and counts nothing. Until then the fold counted over
+# STORED rows only and those legs measured a false `seq_gap` (the residual the operator accepted for
+# card#12180, opq-1792660567-cb5f). Each leg that re-sends under a fresh epoch (AT-17's two legs, Case F's
+# upgrade-boundary leg, Case K's later-attempt `413` leg) asserts 0 here — beside a precondition that the
+# leg really produced the duplicate run that used to be miscounted, so a fixture drift cannot turn the
+# assertion vacuous.
 
 
-def residual_seq_gap(store: FoldStore, epoch: str) -> int:
-    """§ 10.2's equality, as the fold counts it: the number of DUPLICATE seqs, over distinct `batch_id` (a
-    retry the replay memory answered processed nothing and is not in the log twice), that lie STRICTLY
-    BETWEEN the lowest and the highest STORED seq of `epoch`. Never a sum of the `duplicates` answers, never a
-    constant. 0 once card#12210 lands (`SEQ_GAP_RESIDUAL_UNTIL_12210`)."""
-    if not SEQ_GAP_RESIDUAL_UNTIL_12210:
-        return 0
+def inner_duplicate_run(store: FoldStore, epoch: str) -> int:
+    """The number of DUPLICATE seqs, over distinct `batch_id` (a retry the replay memory answered processed
+    nothing and is not in the log twice), that lie STRICTLY BETWEEN the lowest and the highest STORED seq of
+    `epoch` — exactly the run the fold's old stored-row rule counted as a gap. Never a sum of the `duplicates`
+    answers, never a constant."""
     stored = [r["seq"] for r in store.rows if r["epoch"] == epoch]
     if not stored:
         return 0
@@ -5981,20 +6004,19 @@ def residual_seq_gap(store: FoldStore, epoch: str) -> int:
     return len({d for d in dups if lo < d < hi})
 
 
-def assert_residual(label: str, store: FoldStore, epoch: str, sent_ids: set, last_hb: "dict | None") -> int:
-    """Every residual leg's one assertion set (D1 § 10.2, card#12210): the fold's `seq_gap` under the fresh
-    epoch equals the equality, and the equality is not vacuous; no unknown kind was ignored under that epoch,
-    so the figure is not skewed by a hole of another cause; every event id the reporter sent is held, once;
-    and the heartbeat after it raises no `lossy` — the false artifact is the counter and its badge alone."""
-    want = residual_seq_gap(store, epoch)
-    eq(f"{label}: the fold's seq_gap under the fresh epoch is § 10.2's equality — the duplicate seqs strictly "
-       f"between its first and highest stored seq ({want}; card#12210 flips this to 0)",
-       (want, True), (store.gap_by_epoch.get(epoch, 0), want > 0 or not SEQ_GAP_RESIDUAL_UNTIL_12210))
+def assert_resend_counts_no_gap(label: str, store: FoldStore, epoch: str, sent_ids: set, last_hb: "dict | None") -> int:
+    """Every fresh-epoch re-send leg's one assertion set (D1 § 10.2, card#12210): the leg produced a duplicate
+    run inside the fresh epoch's stored range (the precondition, so the leg is not vacuous) and `seq_gap`
+    under that epoch is 0; no unknown kind was ignored under that epoch; every event id the reporter sent is
+    held, once; and the heartbeat after it raises no `lossy`."""
+    run = inner_duplicate_run(store, epoch)
+    eq(f"{label}: a duplicate run lies inside the fresh epoch's stored seqs ({run}), and seq_gap under that "
+       "epoch is 0 — the re-send counts no gap", (True, 0), (run > 0, store.gap_by_epoch.get(epoch, 0)))
     eq(f"{label}: … ignored_unknown_kinds is 0 under that epoch, every id sent is held exactly once, and the "
        "next heartbeat raises no `lossy`", (0, set(), True),
        (store.ignored_by_epoch.get(epoch, 0), sent_ids - store.held(),
         last_hb is not None and "lossy" not in last_hb["data"]["degraded"]))
-    return want
+    return run
 
 
 class SiteStub:
@@ -7178,22 +7200,20 @@ def k_413_later(tag: str, reporter: Path = REPORTER) -> dict:
     sb.script = [TOO_LARGE]
     fl(m, t + 10_000, reporter=reporter)
     rebuilt = sb.posts[2] if len(sb.posts) > 2 else {}
-    gap_trailing = sb.store.gap_by_epoch.get(rebuilt.get("seq_epoch"), 0)
     fl(m, t + 10_000 + K_HB_MS + 1000, reporter=reporter)       # a later heartbeat, stored behind both halves
     sent = {e["event_id"] for b in sb.posts for e in b["events"]}
     return {"m": m, "sb": sb, "committed_hb": committed["events"][0]["kind"] == "reporter.heartbeat",
             "new_epoch": bool(rebuilt) and rebuilt["seq_epoch"] != committed["seq_epoch"],
             "rebuilt_hb": bool(rebuilt) and rebuilt["events"][0]["kind"] == "reporter.heartbeat",
-            "epoch": rebuilt.get("seq_epoch"), "gap_trailing": gap_trailing, "sent": sent,
+            "epoch": rebuilt.get("seq_epoch"), "sent": sent,
             "collision": sb.store.seq_collision, "once": held_once(sb), "change": sb.store.seq_epoch_change}
 
 
 k6b = k_413_later("green")
 eq("Case K, 413 to a LATER attempt (the first committed, with a heartbeat — pinned): the next request is under a new "
-   "seq_epoch with the rebuilt heartbeat at item 0; asserted before a later row is stored, both halves trail and "
-   "the fold shows 0; one epoch change, no collision", (True, True, True, 0, 1, 0, True),
-   (k6b["committed_hb"], k6b["new_epoch"], k6b["rebuilt_hb"], k6b["gap_trailing"], k6b["change"], k6b["collision"], k6b["once"]))
-k6b_res = assert_residual("Case K, later-attempt 413", k6b["sb"].store, k6b["epoch"], k6b["sent"],
+   "seq_epoch with the rebuilt heartbeat at item 0; one epoch change, no collision", (True, True, True, 1, 0, True),
+   (k6b["committed_hb"], k6b["new_epoch"], k6b["rebuilt_hb"], k6b["change"], k6b["collision"], k6b["once"]))
+k6b_res = assert_resend_counts_no_gap("Case K, later-attempt 413", k6b["sb"].store, k6b["epoch"], k6b["sent"],
                           k6b["sb"].heartbeats()[-1] if k6b["sb"].heartbeats() else None)
 k6r = k_413_later("red", reporter=PLANT_413)
 eq("RED: a reporter that halves after a later-attempt 413 with no new epoch -> seq_collision >= 1", True, k6r["collision"] >= 1)
@@ -7284,7 +7304,7 @@ for kind in ("persisted", "none"):
        f"refused 422 invalid_event and quarantined; the drain is pinned (sb's cursor at the spool's end)",
        ((PAIR_B, True, 1), True, 1 if kind == "persisted" else 0, 0, True, True),
        (kd["first_b"], kd["held_hb_never"], kd["dropped_rise"], kd["auth_refused"], kd["quarantined"], kd["drained"]))
-    eq("  … and reverted to the first pair: the next request is under yet another epoch, and the first pair's fold "
+    eq("  … and reverted to the first pair: the next request is under yet another epoch, and the first pair's site "
        "counts seq_collision 0 AND seq_gap 0", (True, 0, 0, True), (kd["back_epoch_new"], kd["collision_a"], kd["gap_a"], kd["once"]))
 kn = k_identity("red-noid", reporter=PLANT_NOID, persisted=True)
 eq("RED: a reporter without the identity rule (design r4) -> the persisted old-pair request meets 403 "
@@ -7292,7 +7312,7 @@ eq("RED: a reporter without the identity rule (design r4) -> the persisted old-p
    "config write lifts", True, kn["answers_b"].count(403) >= 2)
 kq = k_identity("red-idreq", reporter=PLANT_ID_REQ, persisted=False)
 eq("SECOND RED: a reporter whose identity rule resets only when a request is persisted (design r5) -> in the "
-   "no-request run, after the revert, the first pair's fold counts seq_gap >= 1", True, kq["gap_a"] >= 1)
+   "no-request run, after the revert, the first pair's site counts seq_gap >= 1", True, kq["gap_a"] >= 1)
 
 redgreen("Case K — a request the site may hold is resent as built (AT-28, D1 § 3.1 *One request per site*)",
          f"save after the send -> collision {k1r['collision']}; rebuilt from the cursor -> Route A collision "
@@ -7304,7 +7324,7 @@ redgreen("Case K — a request the site may hold is resent as built (AT-28, D1 �
          f"{k1['attempts_seen']}/{k1k['attempts_seen']}; Route A retries {k2['n_retries']} identical, no heartbeat in "
          f"the wait; Route B nothing sent until the roll, then {k3['resent_count']} events; a dropped bucket counted "
          f"{k4['dropped']} on sb with the retry under the same epoch; age reset dropped {k5['dropped']} = per-bucket "
-         f"+ 1; later-413 residual seq_gap {k6b_res} by § 10.2's equality (card#12210); skew {k7['skew']} ms; every "
+         f"+ 1; later-413 re-send of {k6b_res} duplicate seqs counts seq_gap 0 (card#12210); skew {k7['skew']} ms; every "
          f"leg seq_collision 0")
 
 
@@ -8112,7 +8132,7 @@ redgreen("Case N — a backfill is paced under the site's limit and the heartbea
          f"{len(n_g['hb_minutes'])} minutes")
 
 
-# ── AT-17 — a corrupt or missing state.json loses nothing; the residual it raises, measured ───────────
+# ── AT-17 — a corrupt or missing state.json loses nothing, and its re-send counts no seq_gap ───────────
 def at17_leg(tag: str, kind: str) -> dict:
     st_ = site_stub(f"at17-{tag}")
     s = seat(f"at28-at17-{tag}", ingest=st_.url)
@@ -8126,10 +8146,9 @@ def at17_leg(tag: str, kind: str) -> dict:
     else:
         (s.spool / "state.json").unlink()
         fl(s, AT28_T0 + 2 * 3600_000 + 60_000)
-        trailing = st_.store.gap_by_epoch.get(st_.posts[-1]["seq_epoch"], 0)
         fl(s, AT28_T0 + 2 * 3600_000 + 60_000 + K_HB_MS + 1000)    # one more stored row: the next heartbeat
     epoch2 = st_.posts[-1]["seq_epoch"]
-    return {"stub": st_, "epoch": epoch2, "new_epoch": epoch2 != epoch1, "ids": ids, "trailing": None if kind == "reset" else trailing,
+    return {"stub": st_, "epoch": epoch2, "new_epoch": epoch2 != epoch1, "ids": ids,
             "dups": sum(len(b["dup"]) for b in st_.store.batch_log if b["epoch"] == epoch2)}
 
 
@@ -8138,10 +8157,7 @@ for kind in ("reset", "missing"):
     eq(f"AT-17 ({'an unusable' if kind == 'reset' else 'a deleted'} state.json): the spool is re-sent under a new epoch, "
        f"answered as duplicates, and the store holds every spooled id once", (True, True, set(), True),
        (lg["new_epoch"], lg["dups"] > 0, lg["ids"] - lg["stub"].store.held(), held_once(lg["stub"])))
-    if kind == "missing":
-        eq("  … asserted before a later row is stored, the duplicate run trails the heartbeat and the fold shows 0",
-           0, lg["trailing"])
-    assert_residual(f"AT-17 ({kind})", lg["stub"].store, lg["epoch"],
+    assert_resend_counts_no_gap(f"AT-17 ({kind})", lg["stub"].store, lg["epoch"],
                     {e["event_id"] for b in lg["stub"].posts for e in b["events"]},
                     lg["stub"].heartbeats()[-1] if lg["stub"].heartbeats() else None)
 
@@ -8363,7 +8379,7 @@ else:
            f"and are answered as duplicates; seq_collision 0; every event_id held once",
            (True, True, 1, True, True, 0, True),
            (fb["seen"], fb["new_epoch"], fb["first_seq"], fb["hb0"], fb["committed_dup"], fb["collision"], fb["once"]))
-        assert_residual(f"Case F, upgrade boundary ({how})", fb["st"].store, fb["first"].get("seq_epoch"), fb["sent"],
+        assert_resend_counts_no_gap(f"Case F, upgrade boundary ({how})", fb["st"].store, fb["first"].get("seq_epoch"), fb["sent"],
                         fb["st"].heartbeats()[-1] if fb["st"].heartbeats() else None)
     p_carry = plant(("    seq_epoch: ulid(atMs), next_seq: 1, cursors: isPlain(s.cursors) ? s.cursors : {}, counters: {}, counter_rises: {},",
                      "    seq_epoch: s.seq_epoch, next_seq: s.next_seq, cursors: isPlain(s.cursors) ? s.cursors : {}, counters: {}, counter_rises: {},"))

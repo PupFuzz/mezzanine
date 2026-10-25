@@ -49,19 +49,29 @@ use Illuminate\Support\Facades\DB;
  *                              dead, which is only true if a different process writes it
  *   `clock_skew_ms`            § 7.1 places the gauge "`batches` column, latest into `seat_state`"
  *   `updated_at`               the row's own timestamp
+ *   `last_received_seq_epoch`  the RECEIVED seq mark (card#12210, § 6.4's DELIVERY block): the
+ *   `last_received_seq`        mark D1 § 10.2's gap rule counts `seq_gap` against, over every
+ *   `last_received_seq_at`     `seq` an accepted batch carried (`receivedGap()`). The stamp is
+ *                              written with `last_receipt_at`'s value on every batch, and the mark
+ *                              is trusted only while the two are equal — so a batch accepted by a
+ *                              build that does not maintain the mark (a rollback, a revert) makes
+ *                              the next batch re-set it instead of counting the interval as lost
  *
  * EVERYTHING ELSE ON `seat_state` IS CARD #7339's, INCLUDING THE ONES THAT LOOK EASY. Notably
  * `last_event_seq` / `last_event_seq_epoch` are NOT written here even though the batch envelope
- * carries both, because writing them correctly means answering "is this batch newer than the one
- * that set them", and out-of-order delivery is the ordinary case (AT-12). Advancing them on
- * arrival order would move them BACKWARDS on a late batch, and the counters keyed off them —
- * `seq_gap`, `seq_epoch_change` — would then report a gap that arrival order invented. Those
- * three are derived over the stored `(seq_epoch, seq)` population, which is the fold's job and
- * `docs/design/FLEET-STATE.md § 7.1` puts all three on the fold's side of the table.
+ * carries both. They are the APPLIED mark — the newest `(seq_epoch, seq)` the fold has applied,
+ * which `delivery.last_seq` publishes — derived by the fold over the stored rows it applies.
+ * Out-of-order delivery is the ordinary case (AT-12), and advancing them here on arrival would
+ * publish a position the fold has not reached. `seq_epoch_change` and `seq_collision` stay the
+ * fold's for the same reason. The RECEIVED mark above is a different fact: what this site has received, written here
+ * with a never-backwards guard, which is all a gap needs — the fold's gap rule it replaced was
+ * already arrival-ordered (`events.id` order is this lock's commit order), and it could not see a
+ * duplicate, which is the whole of card#12210.
  *
  * `state_version` is likewise untouched: § 6.4 defines it as +1 per change to a version-bearing
- * field of the § 8.2.1 wire object, and every column above is one of the ten delivery/derivation
- * members that section excludes precisely so a heartbeat does not mint a delta.
+ * field of the § 8.2.1 wire object; the delivery columns above are among the delivery/derivation
+ * members that section excludes precisely so a heartbeat does not mint a delta, and the received
+ * mark is not on the wire at all.
  */
 final class BatchWriter
 {
@@ -120,11 +130,20 @@ final class BatchWriter
             $unknownFields += $event->ignoredUnknownFields;
         }
 
+        // card#12210 — every `seq` the body carried, known and unknown kinds alike: an ignored kind
+        // was received and consumed a `seq` on the reporter. DISTINCT, so a `(seq_epoch, seq)`
+        // collision inside the batch cannot stand in for a missing seq. Never empty — a batch with
+        // no events is refused before step 11.
+        $seqs = array_values(array_unique(array_map(fn (ValidEvent $e) => $e->seq, $events)));
+
         return DB::transaction(function () use (
-            $binding, $batch, $known, $ignoredUnknownKinds, $coerced, $unknownFields, $clockSkewMs,
+            $binding, $batch, $known, $seqs, $ignoredUnknownKinds, $coerced, $unknownFields, $clockSkewMs,
         ) {
-            // FIRST — see the class docblock. Nothing is inserted before this returns.
-            DB::table('seat_state')->where('seat_ref', $binding->seatRef)->lockForUpdate()->value('seat_ref');
+            // FIRST — see the class docblock. Nothing is inserted before this returns. It also reads
+            // the received mark and the receipt it is checked against, under the same lock.
+            $mark = DB::table('seat_state')->where('seat_ref', $binding->seatRef)->lockForUpdate()->first([
+                'last_receipt_at', 'last_received_seq_epoch', 'last_received_seq', 'last_received_seq_at',
+            ]);
 
             if (self::$afterLock !== null) {
                 (self::$afterLock)($binding->seatRef);
@@ -208,6 +227,8 @@ final class BatchWriter
             // on a fully-duplicate replay too is the seat's actual maximum.
             $head = (int) (DB::table('events')->where('seat_ref', $binding->seatRef)->max('id') ?? 0);
 
+            [$markSeq, $gap] = self::receivedGap($mark, $batch->seqEpoch, $seqs);
+
             DB::table('seat_state')
                 ->where('seat_ref', $binding->seatRef)
                 ->update([
@@ -215,7 +236,19 @@ final class BatchWriter
                     'last_receipt_at' => $receivedAtSql,
                     'clock_skew_ms' => $clockSkewMs,
                     'updated_at' => $receivedAtSql,
+                    // The received mark: its epoch and seq move only as `receivedGap()` says; its
+                    // stamp moves on EVERY accepted batch, to the value `last_receipt_at` takes, so
+                    // a batch that does not move the mark still keeps it trusted.
+                    'last_received_seq_epoch' => $markSeq === null ? $mark->last_received_seq_epoch : $batch->seqEpoch,
+                    'last_received_seq' => $markSeq ?? $mark->last_received_seq,
+                    'last_received_seq_at' => $receivedAtSql,
                 ]);
+
+            // A real gap: seqs the reporter sent that no accepted batch carried. This raises the
+            // `seq_gap` badge and NEVER D1's `lossy` — `lossy` means the reporter discarded events
+            // and counted them; a gap means this site did not receive what the reporter says it
+            // sent. Dated at this batch's receipt, as D2 § 7.2 dates every rise.
+            Counters::seat($binding->seatRef, 'seq_gap', $gap, $receivedAtSql);
 
             // § 2.3's one-shot seed: "in the same transaction that first raises `head_event_id`
             // above `0`, and only where `fold_cursor_received_at` is still `NULL`". The
@@ -245,5 +278,42 @@ final class BatchWriter
                 serverTime: $receivedAt,
             );
         });
+    }
+
+    /**
+     * D1 § 10.2's gap rule, over what this site RECEIVED (card#12210). Returns the seq the mark moves
+     * to under the batch's epoch — null when it does not move — and the gap to count.
+     *
+     * The mark is trusted only while `last_received_seq_at` equals `last_receipt_at`: both are
+     * written by the one `seat_state` UPDATE in `write()`, and `last_receipt_at` has no other
+     * writer, so a batch accepted by any build that does not maintain the mark (a rollback, a
+     * revert) leaves the two unequal. An untrusted mark, no mark, or a different epoch (a
+     * re-numbering, not a loss) is re-set to this batch and counts nothing. Under the mark's epoch
+     * a batch reaching past it counts the seqs in `(mark, max]` it did not carry; a late or re-sent
+     * batch (`max <= mark`) moves nothing — the mark never goes backwards.
+     *
+     * @param  list<int>  $seqs  the batch's DISTINCT seqs
+     * @return array{?int, int}
+     */
+    private static function receivedGap(object $mark, string $epoch, array $seqs): array
+    {
+        $hi = max($seqs);
+
+        if ($mark->last_received_seq_epoch === null
+            || $mark->last_received_seq_at === null
+            || $mark->last_received_seq_at !== $mark->last_receipt_at
+            || $mark->last_received_seq_epoch !== $epoch) {
+            return [$hi, 0];
+        }
+
+        $m = (int) $mark->last_received_seq;
+
+        if ($hi <= $m) {
+            return [null, 0];
+        }
+
+        $above = count(array_filter($seqs, fn (int $s) => $s > $m));
+
+        return [$hi, ($hi - $m) - $above];
     }
 }

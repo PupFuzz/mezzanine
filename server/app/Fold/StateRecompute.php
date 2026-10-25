@@ -312,9 +312,13 @@ class StateRecompute
             $update['last_activity_kind'] = $e->kind;
         }
 
-        // The ordering key's own high-water mark, plus D1 § 10.2's three counters. Advanced only
-        // on a greater `(seq_epoch, seq)`: a batch older than the seat's newest processed `seq` is
-        // "history, not a conflict" and must not drag the mark backwards or invent a gap.
+        // The ordering key's own high-water mark — the APPLIED mark `delivery.last_seq` publishes —
+        // plus D1 § 10.2's `seq_epoch_change` and `seq_collision`. Advanced only on a greater
+        // `(seq_epoch, seq)`: a batch older than the seat's newest processed `seq` is "history, not a
+        // conflict" and must not drag the mark backwards. `seq_gap` is not counted here: a gap is a
+        // property of what the site RECEIVED, duplicates included, and the fold sees only stored
+        // rows — the ingest counts it once per accepted batch (`BatchWriter::receivedGap()`,
+        // card#12210).
         $epochChanged = $state->last_event_seq_epoch !== null && $state->last_event_seq_epoch !== $e->seqEpoch;
 
         if ($epochChanged) {
@@ -322,14 +326,6 @@ class StateRecompute
             // deliberately not alarmed. Without a new epoch a reset counter would look like a
             // 48,000-event gap.
             Counters::seat($e->seatRef, 'seq_epoch_change', at: $e->receivedAt);
-        }
-
-        if ($state->last_event_seq_epoch === $e->seqEpoch && $e->seq > (int) $state->last_event_seq + 1) {
-            // A real gap: events lost AFTER the flusher counted them. This raises this plane's own
-            // `seq_gap` badge and NEVER D1's `lossy` — `lossy` means the reporter discarded events
-            // and counted them, a server-side gap means we did not receive what the reporter says
-            // it sent, and writing both onto one member makes them indistinguishable.
-            Counters::seat($e->seatRef, 'seq_gap', $e->seq - (int) $state->last_event_seq - 1, $e->receivedAt);
         }
 
         // An ordering-key COLLISION, which `D2-MUST` #4 forbids and this checks rather than

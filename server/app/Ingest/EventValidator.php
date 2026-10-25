@@ -147,7 +147,7 @@ final class EventValidator
             // say nothing about, and storing it under a kind no consumer knows would put a row
             // in `events` that the fold must then skip forever. The count is what makes the
             // seat render `reporter_ahead` (§ 12.7) rather than the fact vanishing.
-            return ValidEvent::ignoredUnknownKind($kind);
+            return ValidEvent::ignoredUnknownKind($kind, $seq);
         }
 
         $spec = KindRegistry::KINDS[$kind];
