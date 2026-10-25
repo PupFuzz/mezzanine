@@ -174,6 +174,9 @@ const variantKey = (v) => `${v.missing ? 'unconfirmed' : 'confirmed'}${v.stilled
 // model and the variant by the RULINGS' words, never by calling the layout. A row with no ruling fails.
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
 const TREATMENT = ['config_invalid', 'fold_lag'];
+// FLOOR.md § 13 row 75 (card#11818 part 2, the operator's ruling (C) of 2026-10-25 amending Q1 (B)'s order): `update_required` follows the
+// treatment badges and precedes every other badge.
+const PINNED = ['update_required'];
 const BADGES_ON_DESK = 2;
 const INTERN_CAP = 8;
 const rawOf = (m, field) => m.unrecognised.find((u) => u.startsWith(`${field}: `))?.slice(field.length + 2) ?? null;
@@ -202,12 +205,16 @@ function nonRawCurrency(m) {
     return m.currency_label !== null && raw !== null ? m.currency_label.replace(`was: ${raw}`, 'was: unrecognised') : m.currency_label;
 }
 
-/** Q1 (B) + Q0: the badge row's ORDER — treatment badges, then recognised badges in the wire's order. */
+/** Q1 (B) + row 75 + Q0: the badge row's ORDER — treatment badges, then `PINNED`, then recognised badges in the wire's order. */
 function badgeOrder(m) {
     const unknown = new Set(m.unrecognised.filter((u) => u.startsWith('badges: ')).map((u) => u.slice(8)));
     const known = m.badges.filter((b) => !unknown.has(b));
 
-    return [...known.filter((b) => TREATMENT.includes(b)), ...known.filter((b) => !TREATMENT.includes(b))];
+    return [
+        ...known.filter((b) => TREATMENT.includes(b)),
+        ...known.filter((b) => PINNED.includes(b)),
+        ...known.filter((b) => !TREATMENT.includes(b) && !PINNED.includes(b)),
+    ];
 }
 
 /**
@@ -249,7 +256,7 @@ export const EXPECTED = [
     { kind: 'group.lighting', when: () => true, value: (m) => m.lighting, ruling: 'Q0 (a) — warning treatments: § 7.3\'s dimming' },
     { kind: 'gauge-bar', when: (m) => m.gauge.reported, value: (m) => String(m.gauge.bar), ruling: 'Q1 (B) — the context bar' },
     { kind: 'gauge-pct', when: (m) => m.gauge.reported, value: (m) => m.gauge.pct, ruling: 'Q1 (B) — the context % (the model\'s own string, criterion 8)' },
-    { kind: 'badge', when: (m) => badgeOrder(m).length > 0, value: (m) => badgeOrder(m).slice(0, BADGES_ON_DESK), ruling: 'Q1 (B) — up to two badges, treatment first; Q0 (a) — the two treatment badges; no unrecognised id' },
+    { kind: 'badge', when: (m) => badgeOrder(m).length > 0, value: (m) => badgeOrder(m).slice(0, BADGES_ON_DESK), ruling: 'Q1 (B) — up to two badges, treatment first; row 75 — `update_required` next; Q0 (a) — the two treatment badges; no unrecognised id' },
     { kind: 'flag', when: (m) => flagN(m) > 0, value: (m) => `⚠ +${flagN(m)}`, ruling: 'Q0 (a) — one flag ⚠ +N for anything else unusual (N as design § 2.2 defines it)' },
     {
         kind: 'side-table',

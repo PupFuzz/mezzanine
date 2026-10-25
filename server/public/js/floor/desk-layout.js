@@ -197,11 +197,11 @@ const PLATE_TEXT_W = 148;
 export const TREATMENT_BADGES = Object.freeze(['config_invalid', 'fold_lag']);
 
 /**
- * The badges drawn after the treatment badges and ahead of every other — `FLOOR.md § 13` row 75 (a seat
- * ruling over row 44's order, awaiting the operator as § 14 item 41): `update_required`, so the mark the
+ * The badges drawn after the treatment badges and ahead of every other — `FLOOR.md § 13` row 75 (the
+ * operator's ruling (C) of 2026-10-25, amending row 44's order): `update_required`, so the mark the
  * operator's rule asks for is folded into the flag only when both treatment badges are present. NOT a
- * treatment: the desk is not treated as not-current for it (§ 7.2). Reversing the ruling to the wire's
- * order empties this list and moves nothing else.
+ * treatment: the desk is not treated as not-current for it (§ 7.2). Row 75 lists what reversing the
+ * ruling to the wire's order would cost; in this module it empties this list and moves nothing else.
  */
 export const PINNED_BADGES = Object.freeze(['update_required']);
 

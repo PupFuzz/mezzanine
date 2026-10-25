@@ -435,9 +435,9 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
      * (e), over one run's last scene and the desk models that drew it: every string the box gives a
      * width is cut with the mark (and only a cut one carries it); every intern up to § 8's cap is drawn
      * and the *+N more* tag beside it; the descriptor and the nameplate at their bounds are cut; the
-     * badge row draws its two — the treatment badges, then recognised badges in the wire's order — and
-     * the flag `⚠ +N` counts every unusual item it does not (N as § 5.1's *the glance set* defines it);
-     * and no raw unrecognised string is drawn on the desk (the operator's ruling of 2026-10-02, Q0).
+     * badge row draws its two — the treatment badges, then `update_required` (§ 13 row 75), then
+     * recognised badges in the wire's order — and the flag `⚠ +N` counts every unusual item it does not
+     * (N as § 5.1's *the glance set* defines it); and no raw unrecognised string is drawn on the desk (the operator's ruling of 2026-10-02, Q0).
      */
     private function boundDefects(string $run, ?string $dir = null): array
     {
@@ -503,8 +503,10 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
                 array_values(array_filter($model['unrecognised'], static fn (string $u): bool => str_starts_with($u, 'badges: '))));
             $known = array_values(array_filter($model['badges'], static fn (string $b): bool => ! in_array($b, $unknownBadges, true)));
             $treatment = ['config_invalid', 'fold_lag'];
+            $pinned = ['update_required'];   // § 13 row 75
             $order = [...array_values(array_filter($known, fn ($b) => in_array($b, $treatment, true))),
-                ...array_values(array_filter($known, fn ($b) => ! in_array($b, $treatment, true)))];
+                ...array_values(array_filter($known, fn ($b) => in_array($b, $pinned, true))),
+                ...array_values(array_filter($known, fn ($b) => ! in_array($b, $treatment, true) && ! in_array($b, $pinned, true)))];
             $row = array_column($this->elementsOf($desk, 'badge'), 'badge');
             $n = count($model['unrecognised']) + count($order) - min(2, count($order));
 

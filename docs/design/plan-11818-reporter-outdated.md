@@ -268,14 +268,15 @@ against the tree it was built from and declares that tree's version on the healt
 neither end can verify locally: that the seat's declared version is the build it runs. That is named
 above as undefended and is what the announcement reply's hash exists for.
 
-## 7. The question for the operator
+## 7. The question for the operator — Decided 2026-10-25 — operator ruling (C)
 
-**The badge row's order** — `FLOOR.md § 14` item 41, decision 75. The seat ruling pins
+**The badge row's order** — `FLOOR.md § 14` item 41 (closed), decision 75. The pin puts
 `update_required` between the treatment badges and the wire's order; the operator's 2026-10-02 ruling
 (Q1 B) ordered the row *treatment first, then the wire's order*. The letters are `FLOOR.md § 13`
 row 75's, which owns their text: **(A)** keep the ruled wire order, **(B)** a separate mark outside the
-row (its own card), **(C)** the pin as designed. **Recommendation: (C)**, built now; (B) can be added
-beside it later without undoing anything, and (A) costs what row 75 lists.
+row (its own card), **(C)** the pin as designed. The operator chose **(C)** on 2026-10-25, the order this
+build implements; (B) can still be added beside it later without undoing anything, and reversing to (A)
+would cost what row 75 lists.
 
 ## 8. Out of scope, named
 
