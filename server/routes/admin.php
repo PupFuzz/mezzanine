@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\ConsoleController;
 use App\Http\Controllers\Admin\FloorController;
 use App\Http\Controllers\Admin\LayoutController;
 use App\Http\Controllers\Admin\SeatController;
+use App\Http\Controllers\Admin\SeatTokenController;
 use App\Http\Controllers\Admin\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -38,10 +39,15 @@ use Illuminate\Support\Facades\Route;
 | dashboard it administers. `Tests\Feature\Admin\ConsoleShellTest` observes it refusing a
 | password-only session before it observes it allowing anything.
 |
-| ⛔ NO SEAT-CREATE ROUTE, AND ITS ABSENCE IS THE DESIGN. `docs/design/FLOOR.md § 3.4`: a seat
-| exists because it REPORTED. Hand-authoring one would store a fact the system currently derives,
-| which is the (b) class the operator deferred to `card#9071`. The agent module therefore surfaces
-| exactly two things: reading seat state, and the existing `mezzanine:retire` operator act.
+| ⛔ A SEAT IS PROVISIONED BY ONE ACT, AND THIS CONSOLE NOW HAS IT — card#12331. Issuing a seat's
+| token creates the install, the seat and its provisioned-but-silent state in one transaction
+| (`App\Fleet\SeatTokens`), and a seat exists on the floor from that moment
+| (`docs/design/FLOOR.md § 3.4`). The *Seat tokens* module below performs that act — the CLI's own,
+| through the same primitive — and the "no add an agent" posture this paragraph used to state
+| (card#9070) is superseded by the operator's request of 2026-10-25. What stays out is
+| `card#9071`'s ruling, untouched: nothing here pins a seat to a desk or authors a fact the floor
+| derives. The agent module itself still surfaces exactly two things: reading seat state, and the
+| `mezzanine:retire` operator act.
 */
 
 Route::get('/', [ConsoleController::class, 'index'])->name('index');
@@ -81,12 +87,12 @@ Route::post('/agents/{install_id}/{seat_id}/retire', [SeatController::class, 're
  * in `Tests\Feature\Admin\FloorConsoleTest`, at the route table and at the schema, because the
  * edit that would cross this line is one column and one form field.
  *
- * ⛔ AND NO ROUTE CREATES AN INSTALL. A floor IS an install (§ 3.1), and an install row is written
- * by one act — `mezzanine:ingest-token:issue`, where issuing the credential and creating the row
- * are the same step, which is what makes "no token, no seat" true by construction. `card#9071`'s
- * ruling keeps that on the CLI behind shell access, exactly as the agent module has no seat-create
- * path. "Add a floor" here means give an existing floor its map, and the write refuses an install
- * the snapshot does not render.
+ * ⛔ AND NO FLOORS ROUTE CREATES AN INSTALL. A floor IS an install (§ 3.1), and an install row is
+ * written by one act — issuing a seat's token (`App\Fleet\SeatTokens::issue()`, from the *Seat
+ * tokens* module below or `mezzanine:ingest-token:issue`), where issuing the credential and creating
+ * the row are the same step, which is what makes "no token, no seat" true by construction. "Add a
+ * floor" here means give an existing floor its map, and the write refuses an install the snapshot
+ * does not render.
  *
  * REMOVAL IS A `POST` TO A NAMED ACT, matching the shape D2 chose for retirement — but for a
  * different reason, stated at `App\Http\Controllers\Admin\FloorController::remove()` rather than
@@ -149,3 +155,27 @@ Route::get('/layout/revisions/{revision}/export', [LayoutController::class, 'exp
     ->whereNumber('revision')->name('layout.export');
 Route::post('/layout/revisions/{revision}/restore', [LayoutController::class, 'restore'])
     ->whereNumber('revision')->name('layout.restore');
+
+/*
+ * THE SEAT TOKENS MODULE — card#12331. Issue a seat's reporter token (creating the install and the
+ * seat if they are new), shown once on the issue response, and revoke one by its prefix.
+ * `App\Http\Controllers\Admin\SeatTokenController` owns the show-once argument.
+ *
+ * ⛔ `password.confirm` ON THE WHOLE MODULE, GET INCLUDED, on top of the console's three gates: the
+ * page mints credentials, so a session cookie alone must not reach it — the same middleware the
+ * recovery codes and the authenticator move sit behind (`routes/web.php`). The password is asked for
+ * before the page is reached, so a POST inside the window succeeds; a POST after it lapses is sent
+ * to the confirmation and dropped, never replayed, and nothing is written.
+ * `ConsoleShellTest::test_the_console_exposes_no_seat_create_and_no_user_delete` asserts the issue
+ * route carries it.
+ *
+ * Issue is throttled per account (`seat-token-issue`, `App\Providers\AppServiceProvider`); revoke is
+ * not — it creates nothing and is idempotent. The prefix is the only token material in a URL.
+ */
+Route::middleware('password.confirm')->group(function () {
+    Route::get('/tokens', [SeatTokenController::class, 'index'])->name('tokens.index');
+    Route::post('/tokens', [SeatTokenController::class, 'issue'])
+        ->middleware('throttle:seat-token-issue')->name('tokens.issue');
+    Route::post('/tokens/{prefix}/revoke', [SeatTokenController::class, 'revoke'])
+        ->where('prefix', 'mzn_[A-Za-z0-9_-]{8}')->name('tokens.revoke');
+});

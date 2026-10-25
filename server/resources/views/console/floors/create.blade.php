@@ -4,10 +4,10 @@
     @if ($installs === [])
         <p>
             Every floor this deploy renders already has a map. To give a map to a floor that does
-            not render yet, provision a seat for its install first
-            (<code>php artisan mezzanine:ingest-token:issue</code>) — the console does not create
-            an install, because issuing the credential and creating the row are one act
-            (<code>card#9071</code>'s ruling).
+            not render yet, provision a seat for its install first — issue its token on the
+            <a href="{{ route('admin.tokens.index') }}">Seat tokens</a> page (or with
+            <code>php artisan mezzanine:ingest-token:issue</code>). This page does not create an
+            install, because issuing the credential and creating the row are one act.
         </p>
     @else
         <form method="POST" action="{{ route('admin.floors.store') }}">

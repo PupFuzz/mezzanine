@@ -48,13 +48,15 @@ use Illuminate\Validation\Rule;
  * ROLE, never for a seat: the map says which desk a role sits at, and which seat holds that role
  * is still the fleet's to say, never the map's.
  *
- * ⛔ AND THERE IS NO "CREATE AN INSTALL" EITHER, for the same reason the agent module has no
- * "add a seat". A floor IS an install (`§ 3.1`), an install row is written by exactly one act —
- * `mezzanine:ingest-token:issue`, where issuing the credential and creating the row are one
- * step — and `card#9071`'s ruling keeps that on the CLI, behind shell access. What "add a floor"
- * means here is therefore precise and is the whole of what (a) asked for: **give a floor its
- * map.** A map may only be authored for an install the snapshot renders, so this module can never
- * mint a floor that does not exist.
+ * ⛔ AND THERE IS NO "CREATE AN INSTALL" HERE. A floor IS an install (`§ 3.1`), and an install row
+ * is written by exactly one act — issuing a seat's token (`App\Fleet\SeatTokens::issue()`, from
+ * the console's *Seat tokens* module or `mezzanine:ingest-token:issue`), where issuing the
+ * credential and creating the row are one step. (This paragraph used to say `card#9071`'s ruling
+ * kept that on the CLI behind shell access; that was the "no add an agent" posture of card#9070,
+ * which card#12331 superseded on the operator's 2026-10-25 request — card#9071's ruling is about
+ * pinning a seat to a desk and is untouched.) What "add a floor" means here is therefore precise
+ * and is the whole of what (a) asked for: **give a floor its map.** A map may only be authored for
+ * an install the snapshot renders, so this module can never mint a floor that does not exist.
  *
  * ⚠ THE STORE'S REFUSALS ARE CAUGHT AND RENDERED, NOT LET THROUGH AS A 500. A map can be refused
  * by `App\Floor\FloorMap` at validation time (the form rule), and it can be refused by the WRITE
@@ -97,9 +99,10 @@ class FloorController extends Controller
             ],
             [
                 'install_id.in' => 'No floor with that install id renders on this deploy. A floor '
-                    .'is an install, and an install exists because a seat was provisioned for it '
-                    .'with `php artisan mezzanine:ingest-token:issue` — the console does not '
-                    .'create one (docs/design/FLOOR.md § 3.1, § 3.4).',
+                    .'is an install, and an install exists once a seat is provisioned for it — '
+                    .'issue the seat a token on the Seat tokens page (or with '
+                    .'`php artisan mezzanine:ingest-token:issue`), then give its floor a map here '
+                    .'(docs/design/FLOOR.md § 3.1, § 3.4).',
             ],
         );
 

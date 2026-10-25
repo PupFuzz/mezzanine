@@ -182,8 +182,8 @@ Route::middleware(['auth', 'mfa'])->group(function () {
  * THE ADMIN CONSOLE (card#9070) — mounted here, inside GATE 1's stack, because it is a browser
  * page like the dashboard and earns the same two middleware for the same reason, plus a third:
  * `can:operate` (card#9415), which refuses an observer `403`. Its own routes, and the whole
- * argument for its authorization model and for what it deliberately does NOT expose (a
- * seat-create path), are in `routes/admin.php`.
+ * argument for its authorization model — including the extra `password.confirm` on the seat
+ * tokens module (card#12331) — are in `routes/admin.php`.
  *
  * The prefix and the name prefix are stated HERE rather than inside that file so that every URL
  * and every route name the console owns is decided in one line, beside the middleware that

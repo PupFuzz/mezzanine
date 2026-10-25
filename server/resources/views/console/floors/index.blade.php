@@ -153,7 +153,8 @@
             @empty
                 <tr><td colspan="6">
                     No install has been provisioned yet, so there is no room to give a map to.
-                    An install exists once a seat is provisioned for it with
+                    An install exists once a seat is provisioned for it — by issuing the seat's token on the
+                    <a href="{{ route('admin.tokens.index') }}">Seat tokens</a> page or with
                     <code>php artisan mezzanine:ingest-token:issue</code>.
                 </td></tr>
             @endforelse

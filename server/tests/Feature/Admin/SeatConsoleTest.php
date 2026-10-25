@@ -24,8 +24,7 @@ use Tests\Feature\Sweep\SweepTestCase;
  * file asserts the same four things AT-D2-23 asserts of the command, through the HTTP route.
  *
  * It extends `SweepTestCase` for the real rig: fixtures are POSTed through the real ingest and
- * folded, so the seat this retires is a seat that reported — which, per
- * `docs/design/FLOOR.md § 3.4`, is the only way a seat comes to exist.
+ * folded, so the seat this retires is a seat that reported, as a live seat being retired has.
  */
 class SeatConsoleTest extends SweepTestCase
 {

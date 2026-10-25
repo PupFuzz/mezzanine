@@ -6,7 +6,7 @@ namespace App\Admin;
  * ⛔ THE CONSOLE'S MODULE LIST — ONE PLACE, BECAUSE USERS ARE THE FIRST MODULE AND NOT THE ONLY
  * ONE. Card#9070's operator direction is an admin console covering **users, agents and floors**,
  * split across three cards in dependency order; card#9070 built the shell and the first two
- * modules; `card#9085` added floors with the schema that card owns.
+ * modules; `card#9085` added floors with the schema that card owns; card#12331 added seat tokens.
  *
  * A module is added by adding an entry HERE — the navigation, the console's landing page and the
  * "which module am I in" highlight all read this list. The alternative, and the reason this class
@@ -56,6 +56,13 @@ final class ConsoleModules
                 'route' => 'admin.agents.index',
                 'blurb' => 'Seats reporting to this install: their current state, and the '
                     .'operator retirement act that takes one off the floor.',
+            ],
+            [
+                'key' => 'tokens',
+                'label' => 'Seat tokens',
+                'route' => 'admin.tokens.index',
+                'blurb' => 'Add a seat by issuing its reporter token, shown once to copy into the '
+                    .'reporter; revoke a token later. Asks for your password first.',
             ],
         ];
     }

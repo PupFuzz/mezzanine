@@ -1080,7 +1080,9 @@ session + MFA) performs the same act, and the transaction described below moved 
 unchanged**: retirement is an operator act, no timeout stands in for one, and nothing else writes those
 three columns. What the extraction prevents is the thing this section was written against — a second
 copy of the act that sets the columns and skips the recompute, the `cause: operator` row and the
-publish. There is no seat-CREATE path on that console, by [FLOOR.md § 3.4](FLOOR.md#34-a-new-seats-first-appearance).
+publish. The console's agent module creates no seat; a seat is provisioned by issuing its token — on
+the console's *Seat tokens* page or by the CLI, one act (card#12331) — and exists on the floor from that
+moment, by [FLOOR.md § 3.4](FLOOR.md#34-a-new-seats-first-appearance).
 
 **The command is named because three of the four things retirement is supposed to produce had no
 producer.** `render_state` is a stored column with two writers: the fold, which claims only seats with
@@ -1489,7 +1491,7 @@ CREATE TABLE seats (
   UNIQUE KEY uq_seat_board_user (board_user_id),
   CONSTRAINT fk_seat_install FOREIGN KEY (install_ref) REFERENCES installs (id)
 ) ENGINE=InnoDB;
--- A seat row is created at ingest-token issue time (D1 § 3.3), which is why the row can exist
+-- A seat row is created at seat-token issue time (CLI or console; D1 § 3.3), which is why the row can exist
 -- before any event arrives: a provisioned-but-silent seat renders `offline`/`no_data_yet`
 -- rather than being invisible. The token rows themselves live in the ingest's own table
 -- (card #7338, D1 § 3.3) and are never read by anything in this document.
