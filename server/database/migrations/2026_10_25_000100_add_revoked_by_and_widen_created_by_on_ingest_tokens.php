@@ -25,6 +25,10 @@ use Illuminate\Support\Facades\Schema;
  *
  * ⚠ `change()` REDEFINES THE COLUMN IN FULL, so `created_by` restates NOT NULL (the create
  * migration's `string('created_by', 64)` carries no `nullable()`).
+ *
+ * ⚠ `down()` CANNOT NARROW A ROW THE CONSOLE WROTE. Once an operator email longer than 64
+ * characters is in `created_by`, the narrowing fails and the column stays at 255, part-way through
+ * the rollback. Rolling back past this migration means shortening those rows first.
  */
 return new class extends Migration
 {
