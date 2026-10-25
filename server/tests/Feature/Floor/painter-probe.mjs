@@ -199,6 +199,8 @@ const svg = host.children[0];
 const layer = svg?.children.find((n) => n.getAttribute('class') === 'desks');
 const byKey = new Map(desks.map((d) => [d.key, d]));
 const defects = [];
+// The A2 walker leg's readings (card#12194): whether it painted, and which frames its two images drew on each pair of ticks.
+const walker_ = { painted: false, frames: null };
 let painted = 0;
 let bubbles = 0;
 const fade = { faded: 0, full: 0, opacity: FOLD_LAG_OPACITY };
@@ -908,38 +910,105 @@ function walkOf(n) {
     return [n, ...n.children.flatMap(walkOf)];
 }
 
-// ── A1's walk steps its walker through the walk's three frames from its stand frame (§ 10.4 item 4: a walk is the
-// whole list, `loopFrom` 0, and takes no offset) — so a walker tuple that skips frame 0, or starts past it, reds ──
+// ── card#12194 — an A2 walker (§ 6.2's walk note items 5 and 9): its floor element is a child of the floor stack (the
+// desks layer, never `effects`), its cab element a descendant of the band's cab clip group after the room and before the
+// leaves; neither takes a pointer (H19); and the floor image strides only inside its walk leg — the same phase-0 frame on
+// two ticks of its wait, differing frames on two ticks of its walk — while the cab image never strides (H21). The loop's
+// time is `performance.now() − began`, so the probe stubs `performance.now()` and places each tick inside a leg ──
 {
-    const walk = {
-        animation_id: 'A1', frames: 12, frame_interval_ms: 250, elapsed_frames: 0, install_id: 'walk-room', seat_id: 'walker',
-        shown: { start: 0, frames: 12 }, walk: { start: 0, frames: 12 }, from: { x: 0, y: 0 }, to: { x: 40, y: 0 }, size: { w: 54, h: 96 }, frame: { w: 108, h: 117 },
+    const { backWall, threshold } = await mod('floor/scene.js');
+    const { backWallBand } = await mod('floor/floor-layout.js');
+    const band = backWall(backWallBand({ x: 0, y: 0, width: 1200 }), null);
+    const T = threshold(band);
+    const I = 250;
+    const walker = {
+        animation_id: 'A2', cause: 77, install_id: 'walk-room', seat_id: 'walker', class: 'edge', motion: true, frame_interval_ms: I,
+        route: 'routed', side: 'empty', lattice_key: 'k', frames: 25, door: { start: 20, frames: 5 },
+        legs: [
+            { kind: 'walk', start: 0, frames: 8, points: [{ x: 300, y: 200 }, { x: 200, y: 100 }, T], length: 0 },
+            { kind: 'stand', start: 8, frames: 12, at: T, why: 'wait' },
+            { kind: 'stand', start: 20, frames: 2, at: T, why: 'door' },
+            { kind: 'cab', start: 22, frames: 3, at: T },
+        ],
+        size: { w: 54, h: 96 }, frame: { w: 108, h: 117 },
+        elapsed_frames: 0, elapsed_ms: 0, started_at: 5000,
     };
+    let perf = 100000;
+    const realPerformance = globalThis.performance;
 
+    Object.defineProperty(globalThis, 'performance', { value: { now: () => perf }, configurable: true });
     loops.length = 0;
     asked.walk.length = 0;
-    createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} })
-        .paint({ ...scene, desks: [], effects: [walk], loop_fps: 4 }, { bounds: null });
+    createPainter({ characters, themes: { studio: theme }, failed() {}, select() {}, clock: { now: () => 5000 } })
+        .paint({ ...scene, band, desks: desks.slice(0, 2), effects: [walker], doors: [], loop_fps: 4 }, { bounds: null });
 
-    const walker = walkOf(host.children[0]).find((n) => n.name === 'image' && classes(n).includes('character'));
+    const drawing = host.children[0];
+    const stackLayer = drawing.children.find((n) => n.getAttribute('class') === 'desks');
+    const effectsLayer = drawing.children.find((n) => n.getAttribute('class') === 'effects');
+    const shownOf = (n) => classes(n).includes('fx-walker-shown');
+    const floorEl = stackLayer.children.find(shownOf);
+    const cabEl = walkOf(drawing).find((n) => classes(n).includes('fx-walker-cab'));
+    const cabGroup = walkOf(drawing).find((n) => n.getAttribute('class') === 'band-cab');
+    const imageIn = (n) => (n === undefined ? undefined : walkOf(n).find((m) => m.name === 'image' && classes(m).includes('character')));
+    const floorImage = imageIn(floorEl);
+    const cabImage = imageIn(cabEl);
     const phase = (i) => uri(doc(`walk-room/walker#${i}`));
+    const frameOf = (h) => decodeURIComponent(String(h)).match(/#(\d+)<\/title>/)?.[1] ?? '?';
 
-    if (walker === undefined || loops.length !== 1) {
-        defects.push(`the A1 walk painted ${walker === undefined ? 'no walker' : `${loops.length} loop(s), not one`} — the walk leg reads nothing`);
+    walker_.painted = floorEl !== undefined;
+
+    if (floorEl === undefined || walkOf(effectsLayer).some(shownOf)) {
+        defects.push('the A2 walker is not a child of the floor stack (the desks layer) — or a walker element is in the effects layer');
+    }
+
+    if (stackLayer.children.filter((n) => classes(n).includes('desk')).length !== 2) {
+        defects.push('the floor stack does not hold the two desks beside the walker');
+    }
+
+    if (cabEl === undefined || cabGroup === undefined || !walkOf(cabGroup).includes(cabEl)) {
+        defects.push("the A2 walker's cab element is not inside the band's cab clip group");
     } else {
-        const seen = [walker.getAttribute('href')];
+        const order = walkOf(drawing);
+        const firstLeaf = order.findIndex((n) => classes(n).includes('elevator-leaf'));
 
-        for (let i = 0; i < 6; i++) {
-            loops[0]();
-            seen.push(walker.getAttribute('href'));
-        }
-
-        const owed = [0, 1, 2, 0, 1, 2, 0].map(phase);
-
-        if (seen.join('|') !== owed.join('|')) {
-            defects.push(`the A1 walker did not step the walk's three frames from its stand frame — it drew ${seen.map((h) => decodeURIComponent(h).match(/#(\d+)<\/title>/)?.[1] ?? '?').join(', ')}, not 0, 1, 2, 0, 1, 2, 0`);
+        if (!(order.indexOf(cabEl) < firstLeaf)) {
+            defects.push("the A2 walker's cab element is drawn after the elevator's leaves — over them");
         }
     }
+
+    // § 1.2's pointer rule: every walker element, its placeholder and its images are under a `pointer-events:none` group.
+    if (!/\.fx-walker-shown\{[^}]*pointer-events:none/.test(STYLE)) {
+        defects.push('the sheet does not draw `.fx-walker-shown` with `pointer-events:none` — a walker takes the presses meant for the elevator and the desks');
+    }
+
+    if (floorImage === undefined || cabImage === undefined || loops.length !== 1) {
+        defects.push(`the A2 walker painted ${floorImage === undefined ? 'no floor image' : cabImage === undefined ? 'no cab image' : `${loops.length} loop(s), not one`}`);
+    } else {
+        const tick = (ms) => { perf = 100000 + ms; loops[0](); return [floorImage.getAttribute('href'), cabImage.getAttribute('href')]; };
+        // Inside the walk leg (0 … 8 frames), inside the wait (8 … 20), inside the cab (22 … 25).
+        const walk1 = tick(2 * I + 10);
+        const walk2 = tick(3 * I + 10);
+        const wait1 = tick(10 * I + 10);
+        const wait2 = tick(11 * I + 10);
+        const cab1 = tick(22 * I + 10);
+        const cab2 = tick(23 * I + 10);
+
+        walker_.frames = { walk: [walk1[0], walk2[0]].map(frameOf), wait: [wait1[0], wait2[0]].map(frameOf), cab: [cab1[1], cab2[1]].map(frameOf) };
+
+        if (walk1[0] === walk2[0]) {
+            defects.push(`the A2 walker did not stride inside its walk leg — two ticks drew frame ${frameOf(walk1[0])} both times`);
+        }
+
+        if (wait1[0] !== phase(0) || wait2[0] !== phase(0)) {
+            defects.push(`the A2 walker walked in place while it waited — it drew frames ${frameOf(wait1[0])}, ${frameOf(wait2[0])}, not its phase-0 stand frame on both ticks`);
+        }
+
+        if ([walk1, walk2, wait1, wait2, cab1, cab2].some(([, c]) => c !== phase(0))) {
+            defects.push('the A2 walker\'s cab image stepped — it is never stepped, standing in the cab at its phase-0 frame');
+        }
+    }
+
+    Object.defineProperty(globalThis, 'performance', { value: realPerformance, configurable: true });
 }
 
 // ── A desk's frames are cached BY POSE (§ 10.4's frame contract): one painter drawing a seat asleep, then the same seat
@@ -1070,4 +1139,4 @@ function walkOf(n) {
     }
 }
 
-console.log(JSON.stringify({ desks: desks.length, painted, bubbles, interns, fade, poses: [...poses].sort(), defects }));
+console.log(JSON.stringify({ desks: desks.length, painted, bubbles, interns, fade, poses: [...poses].sort(), walker: walker_, defects }));

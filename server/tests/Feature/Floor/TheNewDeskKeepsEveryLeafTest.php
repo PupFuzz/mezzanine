@@ -390,7 +390,7 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 'art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw,', 'art(g, moves ? uris[loopFrom + offset] : uris[0], e,'],
             // card#12187 impl review N5: a walk stepped from past its stand frame, and a desk's frames cached without its pose.
             "a walker's walk stepped from loopFrom 1" => ['../floor/painter.js',
-                'stepping.push([el, drawn.uris, drawn.loopFrom, 0]);', 'stepping.push([el, drawn.uris, 1, 0]);'],
+                'stepping.push([el, drawn.uris, drawn.loopFrom, 0, window]);', 'stepping.push([el, drawn.uris, 1, 0, window]);'],
             "a desk's frames cached without its pose" => ['../floor/painter.js',
                 '`${asset}#${at.pose}@${at.desk_top}`', '`${asset}#@${at.desk_top}`'],
             // N8: a frame list copied onto the element instead of held in the painter's Map.

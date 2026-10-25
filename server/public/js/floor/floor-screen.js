@@ -94,7 +94,7 @@ import { buildFleetJoin, buildJoin } from './coord-join.js';
 import { statusStrip } from './status-strip.js';
 import { failureRender } from '../wire/failure-render.js';
 import { buildScene, threshold } from './scene.js';
-import { EffectsInFlight, inboundDesk } from './in-flight.js';
+import { EffectsInFlight, inboundDesk, walkSide } from './in-flight.js';
 import { createCamera, fit, frameOn, glideMs, pan, panBy, pinch, resize, zoom, zoomStep } from '../wire/camera.js';
 import { TilesetLoader, tilesetUrl } from './tileset.js';
 import {
@@ -749,8 +749,18 @@ export class FloorScreen {
             threshold: threshold(plain?.band),
             unconfirmed: (key) => frame.desks?.desks?.[key]?.unconfirmed ?? null,
             stilled: (frame.failure?.sign_in ?? null) !== null,
+            side: (key) => walkSide(frame.desks?.desks?.[key]?.render_state?.value),
+            lattice_key: plain?.lattice_key ?? null,
         });
         this.#armWalkEnd(now);
+
+        // § 5.5's line for a desk inside a room that has no open route to the elevator (§ 6.2's walk note item 7):
+        // its row is drawn without the walk, and the map's defect is named once per firing.
+        for (const effect of plain?.effects ?? []) {
+            if (effect.no_route === true) {
+                this.#client.record(`${effect.install_id}/${effect.seat_id}: no open route between its desk and the elevator — drawn without the walk`);
+            }
+        }
 
         if (plain === null) {
             return null;
@@ -981,6 +991,7 @@ export class FloorScreen {
             maps: new Map(frame.rooms.map((room) => [room.install_id, this.#building.room(room.install_id)?.held?.map ?? null])),
             hallway: this.#target()?.hallway ?? null,
             tilesets: this.#tilesets?.held ?? new Map(),
+            layout_version: this.#building.layoutVersion,
             failed: this.#failed,
             reduce: this.#options.reduce === true,
             effects,

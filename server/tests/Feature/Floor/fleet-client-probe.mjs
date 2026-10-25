@@ -255,6 +255,8 @@ const { healthCounters } = await import(pathToFileURL(join(dir, '..', 'lobby', '
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const furniture = await import(pathToFileURL(join(repoRoot, 'resources', 'floor', 'furniture-box.js')).href);
 const themeRegistry = await import(pathToFileURL(join(repoRoot, 'resources', 'floor', 'themes', 'index.js')).href);
+// The character tree's seeded draw, from disk, as the page hands the scene the tree's (a departure's wait, card#12194).
+const { draw: seededDraw } = await import(pathToFileURL(join(repoRoot, 'resources', 'characters', 'index.js')).href);
 // FLOOR.md § 10.6 item 1: every theme the registry names, from disk, as the page imports each by the asset route.
 const themeModules = Object.fromEntries(await Promise.all(themeRegistry.THEMES.map(async (name) => [
     name,
@@ -641,6 +643,7 @@ async function replay(scenario) {
                 box: box ?? furniture.FURNITURE_BOX,
                 measure: harnessMeasurer(measurer),
                 character,
+                draw: seededDraw,
                 themes: themeInputs(registry, modules),
             });
             screen.assetsFailed([...(registry === null ? [THEME_REGISTRY] : []), ...rejected.map((name) => `theme:${name}`)]);
