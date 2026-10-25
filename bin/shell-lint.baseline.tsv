@@ -62,6 +62,7 @@
 #pop	bin/shell-lint.sh
 #pop	bin/supervision.sh
 #pop	bin/vendor-pin-check.sh
+#pop	fleet-reporter/install.sh
 bin/dependency-audit.selftest.sh	SC2015	54
 bin/dependency-audit.selftest.sh	SC2016	92
 bin/dependency-audit.selftest.sh	SC2018	1

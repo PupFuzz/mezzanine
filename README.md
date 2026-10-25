@@ -44,7 +44,7 @@ server/                     the Laravel host + MFA-gated shell   ← exists
 server/public/js/            the pages' ES modules — floor/, lobby/, desk/, wire/ (the camera: wire/camera.js)
 resources/characters/       the creature generator (first-party, vector) ← exists
 resources/floor/            the floor's themes (first-party, vector), its tileset of kinds and the shipped default map ← exists
-fleet-reporter/             cross-platform hook bundle + by-hand Linux install runbook
+fleet-reporter/             cross-platform hook bundle + Linux install runbook, script and agent guide
 docs/                       design notes, feed schema, CHANGELOG, ATTRIBUTION
 docs/changelog/             archived releases, one file per tag (v0.2.0.md, …)
 bin/, tools/                prod deploy (bin/deploy.sh), kanban + design-doc
@@ -334,6 +334,15 @@ A revoked token is refused on the seat's next request, and the list keeps who re
 why. A retired seat is refused a token; its replacement takes a new seat id. The same act runs from a
 shell as `php artisan mezzanine:ingest-token:issue <install_id> <seat_id>` and
 `mezzanine:ingest-token:revoke <prefix> --reason=…`.
+
+**To install the reporter on a Linux seat, ask the seat's Claude Code agent in one sentence**, for
+example *"Install the Mezzanine reporter from github.com/PupFuzz/mezzanine on this machine."* The agent
+follows [`fleet-reporter/AGENT-INSTALL.md`](fleet-reporter/AGENT-INSTALL.md): it asks for the site's URL
+and a seat name, runs `fleet-reporter/install.sh`, has you issue the seat's token on the Seat tokens page
+and type it at a hidden prompt, so the token never passes through the agent, and finishes when the site
+has accepted the seat's first batch and reports its build current. No coordination framework is needed
+on the seat. The script runs the blocks of `fleet-reporter/INSTALL-LINUX.md`, which is also the
+procedure by hand.
 
 ⛔ **There is no "delete a user", and the absence is deliberate.** An account stops working by being
 retired, and its record survives so that everything it did still resolves.

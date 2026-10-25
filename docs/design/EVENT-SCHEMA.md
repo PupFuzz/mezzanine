@@ -2017,8 +2017,8 @@ fed reads zero forever, and nothing reds. The obligations, both binding:
    > **Every capture records the harness version it was taken from, read from the running binary and
    > not from configuration.** Three sources disagree in practice and only one of them is the fact:
    > `harness_label` in the reporter's config is a value **written once, by hand, if at all**, and
-   > cannot see an upgrade — there is no installer (card #7336 is won't-do), and
-   > `fleet-reporter/INSTALL-LINUX.md` Step 3 leaves the key unset on purpose for exactly that
+   > cannot see an upgrade — `fleet-reporter/install.sh` (card #7336) writes the config the runbook
+   > writes, and `fleet-reporter/INSTALL-LINUX.md` Step 3 leaves the key unset on purpose for exactly that
    > reason, so on a seat installed that way the field is `null`; a `claude --version` taken before
    > a run can be stale by the time it matters — an
    > auto-update landed **mid-experiment** during card #7337's own runs, so events labelled
