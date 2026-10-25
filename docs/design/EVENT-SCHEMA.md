@@ -1558,7 +1558,7 @@ anything — no unix socket, no shared filesystem, no "it's local so a retry is 
   deliberately does not restate the accepted set anywhere. `current_reporter_version` (card#11818
   part 2) is the reporter build this server was built with — equal to `REPORTER_VERSION` in the same
   tree, held so by a test and by the `reporter-version` check. **D2:** a seat whose last reported
-  `reporter_version` is behind it is badged `reporter_outdated`
+  `reporter_version` is behind it is badged `update_required`
   ([D2 § 7.2](FLEET-STATE.md#72-this-planes-own-counters-and-badges)), and neither reporter-version
   member refuses a batch — the accepted set alone does. It is published here so a seat's operator can
   read it with the token the seat already holds.

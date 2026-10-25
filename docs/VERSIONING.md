@@ -294,7 +294,7 @@ change lands on `dev` long before a release collects it, and most reporter chang
   `Tests\Unit\Ingest\CurrentReporterVersionIsPinnedToTheArtifactTest` and by
   `bin/reporter-version-guard.py` on every PR (card#11818 part 2 — `docs/design/FLEET-STATE.md`
   Appendix B row 14 says whether it has landed); a seat whose last reported version
-  is behind it is badged `reporter_outdated` on the floor and in the drill-down
+  is behind it is badged `update_required` on the floor and in the drill-down
   (`docs/design/FLEET-STATE.md § 7.2`), and its batches are still accepted.
 - **`SchemaVersions::MIN_REPORTER_VERSION` does not follow it.** That value is published for an
   operator to read and enforced nowhere (its docblock says why), and an older reporter's batches stay
