@@ -39,6 +39,9 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
 
     private const SCENE = '../floor/scene.js';
 
+    /** two-walkers' second render, `aimla-impl-1`'s delta: the first instant both walks are in flight. */
+    private const BOTH_WALKING_MS = 1750;
+
     // ── § 12's two rows, read out of the document ────────────────────────────────────────────
 
     private function walkSpeed(): int
@@ -306,7 +309,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         }
 
         $two = $this->floorRun('two-walkers');
-        $both = $this->frameAt($two, 1000);
+        $both = $this->frameAt($two, self::BOTH_WALKING_MS);
         $this->assertCount(2, $this->walks($both), 'two-walkers does not draw both walks');
         $this->assertCount(1, $both['scene']['doors'], 'the leaves open more than once over two overlapping door spans');
 
@@ -497,7 +500,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     {
         $dir = $this->mutatedModules([self::IN_FLIGHT, "            this.#held.push({\n                effect,\n                at: now,",
             "            this.#held.push({\n                effect: Object.freeze({ ...effect, frames: effect.frames + 5 * this.#held.filter((x) => x.key !== null).length }),\n                at: now,"]);
-        $both = $this->frameAt($this->floorRun('two-walkers', $dir), 1000);
+        $both = $this->frameAt($this->floorRun('two-walkers', $dir), self::BOTH_WALKING_MS);
         $door = array_sum($this->door());
 
         $this->assertNotSame([], array_filter($this->walks($both), static fn ($w) => $w['frames'] !== $w['walk']['frames'] + $door),

@@ -4158,8 +4158,8 @@
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
-            "seat_id": "aimla-impl-1",
-            "state_version": 31108,
+            "seat_id": "aimla-review",
+            "state_version": 15033,
             "at": "2026-08-23T14:23:15.400Z",
             "changed": [
               "render_state",
@@ -4172,15 +4172,15 @@
           }
         },
         {
-          "at_ms": 1000,
+          "at_ms": 1750,
           "envelope": {
             "feed_version": 1,
             "t": "seat.delta",
-            "server_time": "2026-08-23T14:23:15.400Z",
+            "server_time": "2026-08-23T14:23:16.150Z",
             "install_id": "aimla",
-            "seat_id": "aimla-review",
-            "state_version": 15033,
-            "at": "2026-08-23T14:23:15.400Z",
+            "seat_id": "aimla-impl-1",
+            "state_version": 31108,
+            "at": "2026-08-23T14:23:16.150Z",
             "changed": [
               "render_state",
               "link_state"
@@ -4216,7 +4216,7 @@
           }
         }
       },
-      "note": "`aimla-impl-1` and `aimla-review` go `→ offline` at one instant, a render apart: two walks of different lengths whose door frames overlap, the leaves opening once over both."
+      "note": "`aimla-review` goes `→ offline`, and `aimla-impl-1`, the nearer desk, three loop frames later: two walks of different lengths whose door frames overlap, the leaves opening once over both. The stagger is what makes them overlap — the two desks' walks differ by more frames than the door's opening and step at § 12's *Walk speed* (card#12337)."
     },
     "repaint": {
       "http": {
