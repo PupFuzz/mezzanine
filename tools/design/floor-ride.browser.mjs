@@ -6,7 +6,7 @@
 // art, and one checked-in fixture run (`floor_rides`, `fx-camera.json`) answering every page's `/api/…` requests.
 //
 //   node tools/design/floor-ride.browser.mjs              every row, each once
-//   node tools/design/floor-ride.browser.mjs --row <id>   one row
+//   node tools/design/floor-ride.browser.mjs --row <id>   one row (`--row starts --selftest` is what CI runs, card#12326)
 //   node tools/design/floor-ride.browser.mjs --selftest   every row, then every row again under each of its PLANTs, each of
 //                                                         which must red (the bookmark row documents a residual and plants nothing)
 //   node tools/design/floor-ride.browser.mjs --shots <dir>  also save the cab rows' windows, and the doors held open, as PNGs under <dir>
@@ -106,7 +106,7 @@ const STAGE = (run, apiDelay, layoutStatus) => `<script>
   const html = document.documentElement;
   const T = () => Math.round(performance.now());
   // The instruments: every class change on <html>, every pagereveal, the first drawn scene and the chrome's changes.
-  const R = window.__ride = { classes: [], reveals: [], errors: [], scene: null, chrome: [], requests: [] };
+  const R = window.__ride = { classes: [], reveals: [], errors: [], scene: null, chrome: [], requests: [], streams: [] };
   new MutationObserver(() => R.classes.push([T(), html.className, location.hash])).observe(html, { attributes: true, attributeFilter: ['class'] });
   addEventListener('pagereveal', (e) => {
     const rec = { at: T(), vt: e.viewTransition !== null, finished: null };
@@ -173,6 +173,7 @@ const STAGE = (run, apiDelay, layoutStatus) => `<script>
   class RunEventSource {
     constructor(url) {
       this.url = url; this.readyState = 0; this.listeners = {};
+      R.streams.push([T(), String(url)]);
       const opened = performance.now() - start;
       setTimeout(() => { this.readyState = 1; this.fire('open', {}); }, 0);
       for (const m of RUN.messages ?? []) {
@@ -1329,6 +1330,46 @@ const ROWS = {
       if (after.open || inert) d.push('the cab stayed over the prompt');
       if (pressed.open) d.push('the elevator opened a cab under the prompt');
       return { defects: d, facts: { after, pressed } };
+    })),
+
+  // ⭐ THE PAGES START (card#12326) — the browser smoke CI runs on every pull request (`design-doc-verifiers.yml`'s
+  // `browser-smoke` job, `--row starts --selftest`). card#12187 merged green with a lobby that threw before it opened
+  // its stream, for every visitor: nothing in CI had loaded the page in a browser. This row loads the lobby and a floor
+  // as a visitor does, one navigation each, and asks only whether each STARTED — its stream asked for, its first scene
+  // drawn — and threw nothing the DevTools protocol reports as an uncaught exception (`Runtime.exceptionThrown`, the
+  // event Playwright's `pageerror` is built on). It drives no ride, no timing and no input, so no viewer-clock race decides it. Each plant is a
+  // shape the row exists for: the card#12187 defect itself, its sibling on the floor, a page that never asks for its
+  // stream and throws nothing, an exception thrown after a clean start, an unhandled rejection, and an error in the
+  // layout's head script.
+  starts: row('the lobby and a floor each start: the stream asked for, the first scene drawn, and no uncaught exception on either page', {},
+    [
+      { plant: [{ file: 'js/lobby/main.js', from: "    const drawn = layer.hasAttribute('data-drawn');", to: '    const drawn = true;' }] },
+      { plant: [{ file: MAIN, from: '    surface: surface(),\n    lobby_href: lobbyHref,', to: '    surface: { width: 0, height: 0 },\n    lobby_href: lobbyHref,' }] },
+      { plant: [{ file: 'js/wire/fleet-client.js', from: "    start() {\n        this.#phase = 'connecting';\n        this.#open();\n", to: "    start() {\n        this.#phase = 'connecting';\n" }] },
+      { plant: [{ file: MAIN, from: 'if (rideArrival !== null) {\n    screen.arriveByRide(rideArrival);\n}\n', to: "if (rideArrival !== null) {\n    screen.arriveByRide(rideArrival);\n}\nsetTimeout(() => { throw new Error('planted after the start'); }, 0);\n" }] },
+      { plant: [{ file: MAIN, from: 'if (rideArrival !== null) {\n    screen.arriveByRide(rideArrival);\n}\n', to: "if (rideArrival !== null) {\n    screen.arriveByRide(rideArrival);\n}\nPromise.reject(new Error('planted rejection'));\n" }] },
+      { plant: [{ file: 'page', from: 'var CAB_HOLD_MS = ', to: 'null.planted; var CAB_HOLD_MS = ' }] },
+    ],
+    (chrome, c) => within(chrome, c, async (s, srv) => {
+      const thrown = [];
+      s.b.on('Runtime.exceptionThrown', ({ exceptionDetails: x }) => thrown.push(x.exception?.description?.split('\n')[0] ?? x.text));
+      await s.page('Runtime.enable');
+      const d = [];
+      const facts = {};
+      for (const path of ['/dashboard', '/floor/aimla']) {
+        const from = thrown.length;
+        await s.page('Page.navigate', { url: srv.base + path });
+        // Settled when it has started, or as soon as it has thrown; a page that does neither is waited on to the bound.
+        await until(() => thrown.length > from || s.ev("document.readyState === 'complete' && window.__ride?.streams.length > 0 && window.__ride?.scene !== null"), 10000, '').catch(() => {});
+        await s.ev('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))').catch(() => {});
+        const r = await s.record().catch(() => null);
+        const errors = thrown.slice(from);
+        facts[path] = { streams: r?.streams ?? null, scene: r?.scene?.at ?? null, errors };
+        if (errors.length > 0) d.push(`${path} threw: ${JSON.stringify(errors)}`);
+        if (r === null || r.streams.length === 0) d.push(`${path} never asked for its stream`);
+        if (r === null || r.scene === null) d.push(`${path} drew no scene`);
+      }
+      return { defects: d, facts };
     })),
 
   errors: row('no error and no unhandled rejection on either page across a ride', {},

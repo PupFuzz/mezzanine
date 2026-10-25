@@ -63,8 +63,8 @@
 //   scroller shows, and to the surface on the board or the window off it — must reach `MIN_RATIO`, but for the
 //   `RESIDUALS` declared by name, line and band.
 //
-// ⛔ NO BROWSER IS A FAILURE, NEVER A SKIP, AND IT IS NOT WIRED IN CI (a stock runner carries no Chromium —
-// `.github/workflows/design-doc-verifiers.yml` names the browser tools and why). Run by hand.
+// ⛔ NO BROWSER IS A FAILURE, NEVER A SKIP, AND IT IS NOT WIRED IN CI (`.github/workflows/design-doc-verifiers.yml`
+// names the browser tools and why). Run by hand.
 //
 // ⛔ THE SELFTEST PLANTS AT LEAST ONE DEFECT PER CHECK AND REQUIRES EACH TO RED ON ITS OWN — `PLANTS`, each an edit to
 // what is SERVED (a module, the sheet or the markup): for the card#12113 checks, the plaque's ink paled to its face

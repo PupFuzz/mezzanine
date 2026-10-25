@@ -1,4 +1,4 @@
-// HEADLESS CHROMIUM OVER THE DEVTOOLS PROTOCOL — the one launcher the hand-run browser tools in this
+// HEADLESS CHROMIUM OVER THE DEVTOOLS PROTOCOL — the one launcher the browser tools in this
 // directory share (`floor-preview.browser.mjs` its `findChrome()`; `lobby-directory.browser.mjs`, `floor-chrome.browser.mjs`, `floor-fixture.browser.mjs` and `floor-ride.browser.mjs` both). Node, no
 // dependencies: Chromium is spawned with a DevTools port and driven over the platform's own WebSocket.
 // Hoisted at its second caller (card#11045) rather than copied.
@@ -48,12 +48,16 @@ async function browser(chrome, width, height, ready = 'drawn', emulate = {}) {
   await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
   let seq = 0;
   const pending = new Map();
+  /** `method → [handler]`: the page's DevTools events a tool listens for (`on()` below). */
+  const listeners = new Map();
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     if (msg.id !== undefined && pending.has(msg.id)) {
       const { resolve, reject } = pending.get(msg.id);
       pending.delete(msg.id);
       if (msg.error) reject(new Error(`${msg.error.message}`)); else resolve(msg.result);
+    } else if (msg.method !== undefined) {
+      for (const handler of listeners.get(msg.method) ?? []) handler(msg.params);
     }
   };
   const send = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
@@ -86,6 +90,9 @@ async function browser(chrome, width, height, ready = 'drawn', emulate = {}) {
     // The page's own DevTools commands — input events, navigation — for a tool that drives the page itself
     // (`floor-ride.browser.mjs`, card#11795).
     page,
+    // A DevTools event on the page — e.g. `Runtime.exceptionThrown` once `Runtime.enable` is sent, the event Playwright's
+    // `pageerror` is built on (`floor-ride.browser.mjs`'s `starts` row, card#12326).
+    on(method, handler) { listeners.set(method, [...(listeners.get(method) ?? []), handler]); },
     shot: async (clip) => `data:image/png;base64,${(await page('Page.captureScreenshot', { format: 'png', ...(clip ? { clip: { ...clip, scale: 1 } } : {}) })).data}`,
     close() { ws.close(); proc.kill(); },
   };
