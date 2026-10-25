@@ -18,7 +18,15 @@ THE POPULATION — what a reporter update ships, read from the runbook rather th
   * THE CRONTAB ENTRY. The runbook's `LINE="…"` assignment and the `printf` that writes the
     `# BEGIN/END fleet-reporter-flusher` block (Step 5): a change there is CRON.
 Read from the HEAD's runbook, so a new `install` line joins the population in the PR that adds it. A
-runbook with no `install` line or no crontab entry is unmeasurable: exit 2, never a pass.
+runbook with no `install` line or no crontab entry is unmeasurable: exit 2, never a pass. So is a line
+that installs from `<checkout>/` in any other form (`install -m 0640 <checkout>/…`, say): a reworded
+line would otherwise drop out of the population silently, and the files it copies with it.
+
+THE SERVER'S COPY OF THE VERSION, on EVERY PR whatever it touches: the head's
+`server/app/Ingest/SchemaVersions.php` declares `CURRENT_REPORTER_VERSION` exactly once, equal to the
+head's `REPORTER_VERSION` (card#11818 part 2; `docs/design/FLEET-STATE.md § 7.2` says what it badges).
+Unequal is a finding (exit 1), so a PR that bumps the artifact alone and a PR that edits the constant
+alone both fail; a missing file or a declaration other than once is unmeasurable (exit 2).
 
 WHAT IT ASSERTS, when the PR changes any member of the population against the merge base:
   * the head's `REPORTER_VERSION` is an `x.y.z` strictly greater than the BASE TIP's, by numeric
@@ -57,13 +65,16 @@ import tempfile
 RUNBOOK = "fleet-reporter/INSTALL-LINUX.md"
 SCRIPT = "fleet-reporter/fleet-reporter.js"
 LEDGER = "fleet-reporter/UPDATES.md"
+SERVER_VERSIONS = "server/app/Ingest/SchemaVersions.php"
 TOUCHES = ("artifact", "fixtures", "hooks", "cron", "config")
 
 INSTALL_RE = re.compile(r"^install -m 0600 <checkout>/(\S+) ", re.M)
+INSTALL_ANY_RE = re.compile(r"^install\b.*<checkout>/.*$", re.M)
 LINE_RE = re.compile(r'^\s*LINE="(.+)"\s*$', re.M)
 CRON_BLOCK_RE = re.compile(r"^\s*printf '%s\\n' '# BEGIN fleet-reporter-flusher'.*?'# END fleet-reporter-flusher'.*?$",
                            re.M | re.S)
 VERSION_RE = re.compile(r"^const REPORTER_VERSION = '([^']*)';$", re.M)
+CURRENT_RE = re.compile(r"^\s*public const CURRENT_REPORTER_VERSION = '([^']*)';$", re.M)
 LEDGER_RE = re.compile(r"<!-- reporter-updates:ledger BEGIN -->\n(.*?)<!-- reporter-updates:ledger END -->", re.S)
 ROW_RE = re.compile(r"^\|\s*(\S+)\s*\|\s*([^|]*?)\s*\|")
 
@@ -117,6 +128,16 @@ def version_at(repo: str, rev: str) -> str:
     return found[0]
 
 
+def current_at(repo: str, rev: str) -> str:
+    src = show(repo, rev, SERVER_VERSIONS)
+    if src is None:
+        raise Unmeasurable(f"{SERVER_VERSIONS} is not at {rev}: CURRENT_REPORTER_VERSION is declared there")
+    found = CURRENT_RE.findall(src)
+    if len(found) != 1:
+        raise Unmeasurable(f"{SERVER_VERSIONS} at {rev} declares CURRENT_REPORTER_VERSION {len(found)} times, not once")
+    return found[0]
+
+
 def judge(repo: str, base_rev: str, head_rev: str) -> "tuple[int, list[str]]":
     out: list = []
     head_doc = show(repo, head_rev, RUNBOOK)
@@ -128,6 +149,18 @@ def judge(repo: str, base_rev: str, head_rev: str) -> "tuple[int, list[str]]":
         raise Unmeasurable(f"{RUNBOOK} at {head_rev} has no `install -m 0600 <checkout>/…` line: no population")
     if not LINE_RE.search(head_doc) or not CRON_BLOCK_RE.search(head_doc):
         raise Unmeasurable(f"{RUNBOOK} at {head_rev} has no crontab entry (`LINE=` and its `printf` block)")
+    reworded = [l for l in INSTALL_ANY_RE.findall(head_doc) if not INSTALL_RE.match(l)]
+    if reworded:
+        raise Unmeasurable(f"{RUNBOOK} at {head_rev} installs from <checkout>/ in a line not in the form the guard "
+                           f"reads (`install -m 0600 <checkout>/<path> …`), so its files are outside the population: "
+                           + " | ".join(reworded))
+    # The constant leg holds on every PR, so it is judged before the not-applicable return below.
+    findings = []
+    hv, sv = version_at(repo, head_rev), current_at(repo, head_rev)
+    if sv != hv:
+        findings.append(f"{SERVER_VERSIONS} declares CURRENT_REPORTER_VERSION '{sv}' and {SCRIPT} declares "
+                        f"REPORTER_VERSION '{hv}' at the head: they move together, in the same PR "
+                        "(docs/VERSIONING.md § The reporter's own version)")
     mb = git(repo, "merge-base", base_rev, head_rev).strip()
     out.append(f"population, from {RUNBOOK} at the head: {', '.join(patterns)}; the crontab entry")
     b, h = blobs(repo, mb), blobs(repo, head_rev)
@@ -148,11 +181,14 @@ def judge(repo: str, base_rev: str, head_rev: str) -> "tuple[int, list[str]]":
         need.add("cron")
         out.append("  changed: the crontab entry Step 5 writes (cron)")
     if not need:
+        if findings:
+            out += ["FAIL: " + f for f in findings]
+            return 1, out
+        out.append(f"CURRENT_REPORTER_VERSION equals REPORTER_VERSION at the head: '{hv}'")
         out.append("NOT APPLICABLE: this PR changes nothing a reporter update ships")
         return 0, out
 
-    findings = []
-    hv, bv = version_at(repo, head_rev), version_at(repo, base_rev)
+    bv = version_at(repo, base_rev)
     hp_, bp_ = parse_version(hv), parse_version(bv)
     if hp_ is None:
         findings.append(f"REPORTER_VERSION '{hv}' at the head is not an x.y.z version")
@@ -231,7 +267,7 @@ def selftest() -> int:
     results = []
     try:
         g("init", "-q", "-b", "base")
-        for rel in (RUNBOOK, SCRIPT, LEDGER):
+        for rel in (RUNBOOK, SCRIPT, LEDGER, SERVER_VERSIONS):
             wr(rel, open(os.path.join(here, rel), encoding="utf-8").read())
         fx = "fleet-reporter/fixtures/hooks"
         for n in sorted(os.listdir(os.path.join(here, fx))):
@@ -242,8 +278,14 @@ def selftest() -> int:
         x, y, z = parse_version(cur)
         nxt = f"{x}.{y}.{z + 1}"
 
-        def bump(v):
+        # Every bump moves the server's constant with the artifact, as a real bump PR must; the one case
+        # that plants the constant left behind uses `bump_artifact_only`.
+        def bump_artifact_only(v):
             wr(SCRIPT, VERSION_RE.sub(f"const REPORTER_VERSION = '{v}';", rd(SCRIPT)))
+
+        def bump(v):
+            bump_artifact_only(v)
+            wr(SERVER_VERSIONS, CURRENT_RE.sub(f"    public const CURRENT_REPORTER_VERSION = '{v}';", rd(SERVER_VERSIONS)))
 
         def row(v, touches):
             wr(LEDGER, rd(LEDGER).replace("<!-- reporter-updates:ledger END -->",
@@ -282,6 +324,12 @@ def selftest() -> int:
         case("plant-touch-unknown", 1, "outside", lambda: (js_edit(), bump(nxt), row(nxt, "artifact, everything")))
         case("plant-no-population", 2, "no `install -m 0600",
              lambda: wr(RUNBOOK, rd(RUNBOOK).replace("install -m 0600 <checkout>/", "install -m 0644 <checkout>/")))
+        case("plant-install-line-reworded", 2, "not in the form the guard reads",
+             lambda: wr(RUNBOOK, rd(RUNBOOK).replace("install -m 0600 <checkout>/", "install -m 0640 <checkout>/", 1)))
+        case("plant-bump-server-constant-stale", 1, "CURRENT_REPORTER_VERSION",
+             lambda: (js_edit(), bump_artifact_only(nxt), row(nxt, "artifact")))
+        case("plant-server-constant-missing", 2, "CURRENT_REPORTER_VERSION 0 times",
+             lambda: wr(SERVER_VERSIONS, CURRENT_RE.sub("", rd(SERVER_VERSIONS))))
 
         # Two bumps on one branch, as a release PR carries: the diff's touches are owed across both rows.
         nn = f"{x}.{y}.{z + 2}"

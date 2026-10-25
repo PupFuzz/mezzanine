@@ -21,7 +21,8 @@ name: Reporter version
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize]
+    # `edited` includes a base retarget, which changes the base this guard judges against, so it re-runs.
+    types: [opened, reopened, synchronize, edited]
 
 permissions:
   contents: read
