@@ -8703,6 +8703,38 @@ eq("  … and no block of the runbook is a `( set -e … )` subshell", [],
    [INSTALL_DOC[:m.start()].count("\n") + 1 for m in SUBSHELL_E.finditer(INSTALL_DOC)])
 
 
+# THE GUARD MUST SEE A BLOCK THAT IS NOT YET IN THE FORM (review of PR #371, F1 and F4). The checks above read
+# the blocks already in the separate-bash form, so a state-writing block left in any third form — U6's bare
+# stop / sleep / check lines were one — was outside their population. This one reads EVERY fenced bash block:
+# outside its `<<'SH'` heredoc, a block of more than one command line that runs a command writing state is a
+# finding. "Writes state" is STATEFUL below: the file, directory, process and crontab writers the runbook uses,
+# and a redirect into a file. ⚠ Its limits, by name: a writer not on that list is not seen, a one-line block is
+# not judged (it has no line to carry on to), and commands quoted inline in prose are outside the population.
+STATEFUL = re.compile(r"(?:^|[\s;&|(])(?:install|cp|mv|rm|shred|mkdir|chmod|chown|ln|kill|tee|truncate)\s"
+                      r"|\bcrontab\s+(?:-r\b|-(?:\s|$)|[^-\s(])|stop-flusher\.js|\bsed\s+-i\b"
+                      r"|(?<![=>-])>>?\s*(?!/dev/null|&)[\"$/~\w]", re.M)
+
+
+def loose_stateful_blocks(doc: str) -> list[int]:
+    out = []
+    for m in re.finditer(r"^```bash\n(.*?)^```$", doc, re.M | re.S):
+        outer = re.sub(r"^bash -euo pipefail <<'SH'\n.*?^SH$", "bash -euo pipefail <<'SH'", m.group(1), flags=re.M | re.S)
+        # A <placeholder> is the reader's to fill, never a redirect: `<checkout>/x` would otherwise read as `> /x`.
+        lines = [re.sub(r"<[a-z_ ]+>", "X", ln) for ln in outer.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+        if len(lines) >= 2 and any(STATEFUL.search(ln) for ln in lines):
+            out.append(doc[:m.start()].count("\n") + 1)
+    return out
+
+
+PLANTED = ("\n```bash\nnode \"$B/stop-flusher.js\" $HOME/.local/state/fleet-reporter $HOME/.local/share/fleet-reporter/fleet-reporter.js\n"
+           "sleep 70\nnode \"$B/flusher-ancestry.js\" $HOME/.local/state/fleet-reporter $HOME/.local/share/fleet-reporter/fleet-reporter.js --upgrade\n```\n"
+           "\n```bash\nF=$HOME/x\nif [ -f \"$F\" ]; then shred -u -- \"$F\"; fi\n```\n")
+eq("RED: two blocks planted in the form U6 and Step 2 (d) had before the review (a bare stop / sleep / check, and a "
+   "bare shred) are both found", 2, len(loose_stateful_blocks(INSTALL_DOC + PLANTED)) - len(loose_stateful_blocks(INSTALL_DOC)))
+eq("  … and the runbook has no block that writes state outside the separate-bash form", [],
+   loose_stateful_blocks(INSTALL_DOC))
+
+
 def tool_run(cmd: str, env: "dict | None" = None) -> subprocess.CompletedProcess:
     """`cmd` as an agent's shell tool runs it: the left side of `&&`."""
     return subprocess.run(["bash", "-c", TOOL_WRAP, "tool", cmd], capture_output=True, text=True, env=env)
@@ -8743,7 +8775,9 @@ CR_B = cr / "B"
 NODE_DIR = os.path.dirname(shutil.which("node") or "/usr/bin/node")
 
 
-def cron_state(installed: "str | None", broken: bool = False) -> None:
+def cron_state(installed: "str | None", broken: bool = False, *, make_b: bool = True) -> None:
+    """The stub's crontab and a fresh attempt directory. `make_b=False` leaves `$B` for Step 0's block to make,
+    as the runbook has it do; `put_helpers()` saves Step 5's helpers into it after."""
     for f in ("installed", "broken", "calls.log"):
         (cr / f).unlink(missing_ok=True)
     if installed is not None:
@@ -8751,7 +8785,12 @@ def cron_state(installed: "str | None", broken: bool = False) -> None:
     if broken:
         (cr / "broken").write_text("", encoding="utf-8")
     shutil.rmtree(CR_B, ignore_errors=True)
-    CR_B.mkdir(mode=0o700)
+    if make_b:
+        put_helpers()
+
+
+def put_helpers() -> None:
+    CR_B.mkdir(mode=0o700, exist_ok=True)
     for h in ("coord-config.js", "stop-flusher.js"):
         src = re.search(r"cat > \"\$B/" + re.escape(h) + r"\" <<'JS'\n(.*?)\nJS\n", INSTALL_DOC, re.S).group(1)
         (CR_B / h).write_text(src + "\n", encoding="utf-8")
@@ -8780,13 +8819,13 @@ def cron_run(marker: str, *, block: "str | None" = None) -> "tuple[subprocess.Co
 
 S0, S5, S8 = 'md5sum < "$B/crontab.txt"', 'read_crontab > "$B/crontab.before"', '"$B/crontab.rollback"'
 OTHER = "# BEGIN mezzanine-supervision\n* * * * * cd /x && php artisan mezzanine:fold\n# END mezzanine-supervision\n"
-cron_state(None)
+cron_state(None, make_b=False)
 r0, c0, _ = cron_run(S0)
 eq("Step 0 on a seat with no crontab: it says so, backs up an empty crontab, prints the empty file's md5 and exits 0",
    (True, "", True, "rc=0"),
    ("no crontab installed" in r0.stdout, (CR_B / "crontab.txt").read_text(encoding="utf-8"),
     "d41d8cd98f00b204e9800998ecf8427e  -" in r0.stdout, r0.stdout.strip().splitlines()[-1]))
-cron_state(OTHER, broken=True)
+cron_state(OTHER, broken=True, make_b=False)
 r0b, c0b, _ = cron_run(S0)
 eq("  … and a `crontab -l` that fails any other way stops it at the read, with the error shown and rc 1",
    (True, "rc=1", False), ("Permission denied" in r0b.stderr, r0b.stdout.strip().splitlines()[-1], "-  " in r0b.stdout))
@@ -8809,14 +8848,15 @@ eq("RED: the block as it stood before card#12334, under the same tool wrapper an
    "carries on past the failed read and installs the reporter's block over the crontab, exit 0",
    (True, True, "rc=0"), (any(c.startswith("crontab /") for c in c5o),
                           i5o is not None and "mezzanine-supervision" not in i5o, r5o.stdout.strip().splitlines()[-1]))
-cron_state(None)
+cron_state(None, make_b=False)
 cron_run(S0)
+put_helpers()
 cron_run(S5)
 r8, c8, i8 = cron_run(S8)
 eq("Step 8 item 2 on a seat that had no crontab at Step 0: the diff is empty, it removes the crontab, and the md5 it "
    "prints last is Step 0's", (None, True, True, "rc=0"),
    (i8, "crontab -r" in c8, "d41d8cd98f00b204e9800998ecf8427e  -" in r8.stdout, r8.stdout.strip().splitlines()[-1]))
-cron_state(None)
+cron_state(None, make_b=False)
 cron_run(S0)
 r8n, c8n, i8n = cron_run(S8)
 eq("  … with no crontab at all by then it removes nothing, says so, and exits 0",

@@ -55,8 +55,9 @@ into a newline. Step 5 refuses such a path.
 **Run the steps in one shell, and paste each block whole.** Step 0 sets and exports `$B`, and
 [Step 2's values block](#step-2--issue-the-seat-token-into-the-config-on-this-host-or-through-a-carried-file)
 exports the seat's own values. A later shell, which includes every new call of an agent's shell tool,
-runs `export B=<the attempt directory>` and that values block again before it continues. Each block that writes state is its own `bash -euo pipefail <<'SH'` … `SH`
-process, so it stops at its first failed command, and a staged write that fails stops the block before
+runs `export B=<the attempt directory>` and that values block again before it continues. Each block that writes anything but the current shell's own variables is its
+own `bash -euo pipefail <<'SH'` … `SH` process (the two that set those, Step 0's first line and Step 2's
+values block, run in the current shell because they export into it), so it stops at its first failed command, and a staged write that fails stops the block before
 anything runs or installs the file. The block reads `$B` and the seat's values from the environment: a `B` that
 is set and not exported is unset there, and the block stops with `B: unbound variable` before it does
 anything; a seat value that is unset stops it with a line naming that value. A block takes nothing
@@ -134,8 +135,10 @@ attempt directory before anything else:
 
 ```bash
 export B=$HOME/.local/state/fleet-reporter-install/$(date -u +%Y%m%dT%H%M%SZ)
-mkdir -p $HOME/.local/state/fleet-reporter-install && mkdir -m 0700 "$B" && echo "B=$B"
 bash -euo pipefail <<'SH'
+  mkdir -p $HOME/.local/state/fleet-reporter-install
+  mkdir -m 0700 "$B"
+  echo "B=$B"
   { [ -O "$B" ] && [ "$(stat -c %a "$B")" = 700 ]; } || { echo "\$B is not a new 0700 directory of the seat's own: NOTHING COPIED" >&2; exit 1; }
   read_crontab() { crontab -l 2> "$B/crontab.err" || grep -q '^no crontab for ' "$B/crontab.err" || { cat "$B/crontab.err" >&2; return 1; }; }
   cp -p $HOME/.claude/settings.json "$B/settings.json"
@@ -246,7 +249,8 @@ routes use the same resolver, identity check and writer, which come first.
 **Set the seat's values first.** Every block of this step reads them from here, so no block below is
 edited by hand. Fill each `<…>` from [the values to substitute](#the-values-to-substitute); the
 sandbox's values are in the comments. `SEAT_AGENT` may be empty, for a seat that declares no
-`protocol_agent_name`. `SEAT_WRAPPED` is read from the seat's settings, not typed. When the server is on
+`protocol_agent_name`. `SEAT_WRAPPED` is read from the seat's settings, not typed, and a settings file it cannot read leaves it
+unset. When the server is on
 another host, run the block on that host too: the hand delivery's step (a) reads `SEAT_INSTALL_ID`,
 `SEAT_ID`, `SEAT_BY` and `SEAT_SERVER` there.
 
@@ -257,11 +261,13 @@ export SEAT_AGENT=<protocol_agent_name>       # sandbox: mezzanine
 export SEAT_URL=<ingest_url>                  # sandbox: https://sandboxmezzanine.neeba.com/api/ingest/events
 export SEAT_BY=<issued_by>                    # who issues the token, for the server's record; sandbox: card-9368
 export SEAT_SERVER=<server_checkout>          # where php artisan runs; sandbox: /home/mezzanine/mezzanine/server
-export SEAT_WRAPPED="$(node -e 'let s = {}; try { s = JSON.parse(require("fs").readFileSync(process.env.HOME + "/.claude/settings.json", "utf8")); } catch (e) { if (e.code !== "ENOENT") throw e; } console.log((s.statusLine && s.statusLine.command) || "")')"
+export SEAT_WRAPPED; SEAT_WRAPPED="$(node -e 'let s = {}; try { s = JSON.parse(require("fs").readFileSync(process.env.HOME + "/.claude/settings.json", "utf8")); } catch (e) { if (e.code !== "ENOENT") throw e; } console.log((s.statusLine && s.statusLine.command) || "")')" || unset SEAT_WRAPPED
 env | grep '^SEAT_' | sort
 ```
 
-A `<…>` left unfilled makes its line fail with `No such file or directory`, and the variable stays unset.
+A `<…>` left unfilled is a syntax error. Pasted whole, or saved and run with `bash <file>`, the block
+then runs no line at all and sets no value; typed into a terminal line by line, that line alone fails and
+its value stays unset. Either way the blocks below stop on the value that is missing.
 
 **Resolve `$COORD_CONFIG` the way the seat's sessions see it.** Save the resolver. It reads each
 settings file in precedence order, lowest first, so the last file that sets the value wins. It prints
@@ -600,7 +606,8 @@ It holds the token and nothing else, one line, `mzn_` and 43 characters of `[A-Z
 only from (a), which writes it, to (d), which shreds it on both hosts.
 
 **(a) On the Mezzanine host, issue the token into a 0600 file.** Make an attempt directory there the
-way Step 0 makes `$B`, with its first two lines and the issuing account's home in place of the seat's,
+way Step 0 makes `$B`, with Step 0's first line and the first three lines of its block, and the issuing
+account's home in place of the seat's,
 save the writer into it with the block above, and run the values block at the top of this step. Then pipe the issue command into the writer with
 `FR_TOKEN_OUT` set. The writer prints the issue output with the token line replaced, so the **prefix**
 stays on screen, and writes the token alone to the file with mode `0600`. It refuses a file that
@@ -626,8 +633,10 @@ with mode `0600`, in a directory with mode `0700` that holds no config yet. On t
 directory first if it is not there:
 
 ```bash
-install -d -m 0700 $HOME/.config/fleet-reporter
-stat -c '%a %U %n' $HOME/.config/fleet-reporter $HOME/.config/fleet-reporter/mezzanine-reporter-token
+bash -euo pipefail <<'SH'
+  install -d -m 0700 $HOME/.config/fleet-reporter
+  stat -c '%a %U %n' $HOME/.config/fleet-reporter $HOME/.config/fleet-reporter/mezzanine-reporter-token
+SH
 ```
 
 Both lines must show the seat account, `700` on the directory and `600` on the file.
@@ -662,10 +671,12 @@ For a symlink it removes the link alone and names the file it pointed at, which 
 and is the operator's to inspect and shred. It ends by printing `gone` or `PRESENT` for `F`:
 
 ```bash
-F=$HOME/.config/fleet-reporter/mezzanine-reporter-token
-if [ -L "$F" ]; then echo "$F is a symlink to $(readlink -f -- "$F"): the link is removed and that file is left for you to inspect and shred" >&2; rm -- "$F"
-elif [ -f "$F" ]; then shred -u -- "$F"; fi
-if [ -e "$F" ] || [ -L "$F" ]; then echo "token file PRESENT: $F"; else echo "token file gone: $F"; fi
+bash -euo pipefail <<'SH'
+  F=$HOME/.config/fleet-reporter/mezzanine-reporter-token
+  if [ -L "$F" ]; then echo "$F is a symlink to $(readlink -f -- "$F"): the link is removed and that file is left for you to inspect and shred" >&2; rm -- "$F"
+  elif [ -f "$F" ]; then shred -u -- "$F"; fi
+  if [ -e "$F" ] || [ -L "$F" ]; then echo "token file PRESENT: $F"; else echo "token file gone: $F"; fi
+SH
 ```
 
 Both hosts must print `gone`. `shred -u` overwrites the file and then removes it. `man shred` names file
@@ -1331,9 +1342,11 @@ restarted the flusher; U6's stop is then a second stop, expected and harmless. R
 is what proves the lock holder runs the installed artifact:
 
 ```bash
-node "$B/stop-flusher.js" $HOME/.local/state/fleet-reporter $HOME/.local/share/fleet-reporter/fleet-reporter.js
-sleep 70
-node "$B/flusher-ancestry.js" $HOME/.local/state/fleet-reporter $HOME/.local/share/fleet-reporter/fleet-reporter.js --upgrade
+bash -euo pipefail <<'SH'
+  node "$B/stop-flusher.js" $HOME/.local/state/fleet-reporter $HOME/.local/share/fleet-reporter/fleet-reporter.js
+  sleep 70
+  node "$B/flusher-ancestry.js" $HOME/.local/state/fleet-reporter $HOME/.local/share/fleet-reporter/fleet-reporter.js --upgrade
+SH
 ```
 
 *Check:* the last line prints `PASS: the lock holder runs the artifact installed at …`. Before it,
@@ -1342,7 +1355,8 @@ there was no flusher to stop), and `flusher-ancestry.js` prints the lock holder'
 per process with its pid, the new flusher first and its parents after it, then `the lock holder started
 …, after the artifact's …`. Those lines are the check's evidence, not errors. The check's `FAIL: …
 before the artifact was installed` means the old build still holds the lock: [Step 1](#step-1--prerequisites-and-the-artifact)
-says why, and the fix is to run the three lines again.
+says why, and the fix is to run the block again. A stop that fails, `NOT STOPPED` or `NOTHING SENT`,
+ends the block there, before the wait.
 
 **A `FAIL: … no flock and no cron` here is expected, and benign.** It comes from a copy of the helper
 saved before card#11818, or from running it without `--upgrade`. The helper then goes on to ask
