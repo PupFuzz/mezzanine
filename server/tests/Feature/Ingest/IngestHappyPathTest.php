@@ -100,10 +100,12 @@ class IngestHappyPathTest extends IngestTestCase
 
     public function test_the_ingest_does_not_write_the_columns_card_7339_owns(): void
     {
-        // Not a tidiness assertion. `last_event_seq` advanced on ARRIVAL order would move
-        // backwards on a late batch, and `seq_gap` derived from it would report a gap that
-        // arrival order invented — AT-12's defect, one column over. `state_version` bumped here
-        // would mint a feed delta for a heartbeat, which D2 § 6.4 excludes by construction.
+        // Not a tidiness assertion. `last_event_seq` is the APPLIED mark — the newest
+        // `(seq_epoch, seq)` the fold has applied, which `delivery.last_seq` publishes — and the
+        // ingest moving it on arrival would publish a position the fold has not reached and move
+        // it backwards on a late batch (AT-12's defect, one column over). The ingest writes its own
+        // RECEIVED mark instead (card#12210), asserted below. `state_version` bumped here would
+        // mint a feed delta for a heartbeat, which D2 § 6.4 excludes by construction.
         $this->postBatch($this->validBatch())->assertStatus(202);
 
         $row = DB::table('seat_state')->where('seat_ref', $this->seatRef)->first();
@@ -114,6 +116,13 @@ class IngestHappyPathTest extends IngestTestCase
         $this->assertSame(0, (int) $row->fold_cursor_event_id);
         $this->assertNull($row->last_activity_event_time);
         $this->assertNull($row->last_activity_kind);
+
+        // card#12210 — the received mark: the batch's epoch, its highest `seq`, and the row's own
+        // receipt, so the next batch trusts it.
+        $this->assertSame('01K3T0000A5N7M2X9V4B6D0FGH', $row->last_received_seq_epoch);
+        $this->assertSame(48209, (int) $row->last_received_seq);
+        $this->assertNotNull($row->last_receipt_at);
+        $this->assertSame($row->last_receipt_at, $row->last_received_seq_at);
     }
 
     public function test_the_batch_row_records_the_per_batch_counters_and_the_skew_gauge(): void

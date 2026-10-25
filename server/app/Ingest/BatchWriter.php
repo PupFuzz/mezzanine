@@ -120,11 +120,20 @@ final class BatchWriter
             $unknownFields += $event->ignoredUnknownFields;
         }
 
+        // card#12210 — every `seq` the body carried, known and unknown kinds alike: an ignored kind
+        // was received and consumed a `seq` on the reporter. DISTINCT, so a `(seq_epoch, seq)`
+        // collision inside the batch cannot stand in for a missing seq. Never empty — a batch with
+        // no events is refused before step 11.
+        $seqs = array_values(array_unique(array_map(fn (ValidEvent $e) => $e->seq, $events)));
+
         return DB::transaction(function () use (
-            $binding, $batch, $known, $ignoredUnknownKinds, $coerced, $unknownFields, $clockSkewMs,
+            $binding, $batch, $known, $seqs, $ignoredUnknownKinds, $coerced, $unknownFields, $clockSkewMs,
         ) {
-            // FIRST — see the class docblock. Nothing is inserted before this returns.
-            DB::table('seat_state')->where('seat_ref', $binding->seatRef)->lockForUpdate()->value('seat_ref');
+            // FIRST — see the class docblock. Nothing is inserted before this returns. It also reads
+            // the received mark and the receipt it is checked against, under the same lock.
+            $mark = DB::table('seat_state')->where('seat_ref', $binding->seatRef)->lockForUpdate()->first([
+                'last_receipt_at', 'last_received_seq_epoch', 'last_received_seq', 'last_received_seq_at',
+            ]);
 
             if (self::$afterLock !== null) {
                 (self::$afterLock)($binding->seatRef);
@@ -208,6 +217,8 @@ final class BatchWriter
             // on a fully-duplicate replay too is the seat's actual maximum.
             $head = (int) (DB::table('events')->where('seat_ref', $binding->seatRef)->max('id') ?? 0);
 
+            [$markSeq, $gap] = self::receivedGap($mark, $batch->seqEpoch, $seqs);
+
             DB::table('seat_state')
                 ->where('seat_ref', $binding->seatRef)
                 ->update([
@@ -215,7 +226,19 @@ final class BatchWriter
                     'last_receipt_at' => $receivedAtSql,
                     'clock_skew_ms' => $clockSkewMs,
                     'updated_at' => $receivedAtSql,
+                    // The received mark: its epoch and seq move only as `receivedGap()` says; its
+                    // stamp moves on EVERY accepted batch, to the value `last_receipt_at` takes, so
+                    // a batch that does not move the mark still keeps it trusted.
+                    'last_received_seq_epoch' => $markSeq === null ? $mark->last_received_seq_epoch : $batch->seqEpoch,
+                    'last_received_seq' => $markSeq ?? $mark->last_received_seq,
+                    'last_received_seq_at' => $receivedAtSql,
                 ]);
+
+            // A real gap: seqs the reporter sent that no accepted batch carried. This raises the
+            // `seq_gap` badge and NEVER D1's `lossy` — `lossy` means the reporter discarded events
+            // and counted them; a gap means this site did not receive what the reporter says it
+            // sent. Dated at this batch's receipt, as D2 § 7.2 dates every rise.
+            Counters::seat($binding->seatRef, 'seq_gap', $gap, $receivedAtSql);
 
             // § 2.3's one-shot seed: "in the same transaction that first raises `head_event_id`
             // above `0`, and only where `fold_cursor_received_at` is still `NULL`". The
@@ -245,5 +268,42 @@ final class BatchWriter
                 serverTime: $receivedAt,
             );
         });
+    }
+
+    /**
+     * D1 § 10.2's gap rule, over what this site RECEIVED (card#12210). Returns the seq the mark moves
+     * to under the batch's epoch — null when it does not move — and the gap to count.
+     *
+     * The mark is trusted only while `last_received_seq_at` equals `last_receipt_at`: both are
+     * written by the one `seat_state` UPDATE in `write()`, and `last_receipt_at` has no other
+     * writer, so a batch accepted by any build that does not maintain the mark (a rollback, a
+     * revert) leaves the two unequal. An untrusted mark, no mark, or a different epoch (a
+     * re-numbering, not a loss) is re-set to this batch and counts nothing. Under the mark's epoch
+     * a batch reaching past it counts the seqs in `(mark, max]` it did not carry; a late or re-sent
+     * batch (`max <= mark`) moves nothing — the mark never goes backwards.
+     *
+     * @param  list<int>  $seqs  the batch's DISTINCT seqs
+     * @return array{?int, int}
+     */
+    private static function receivedGap(object $mark, string $epoch, array $seqs): array
+    {
+        $hi = max($seqs);
+
+        if ($mark->last_received_seq_epoch === null
+            || $mark->last_received_seq_at === null
+            || $mark->last_received_seq_at !== $mark->last_receipt_at
+            || $mark->last_received_seq_epoch !== $epoch) {
+            return [$hi, 0];
+        }
+
+        $m = (int) $mark->last_received_seq;
+
+        if ($hi <= $m) {
+            return [null, 0];
+        }
+
+        $above = count(array_filter($seqs, fn (int $s) => $s > $m));
+
+        return [$hi, ($hi - $m) - $above];
     }
 }
