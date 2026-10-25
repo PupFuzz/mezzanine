@@ -49,19 +49,29 @@ use Illuminate\Support\Facades\DB;
  *                              dead, which is only true if a different process writes it
  *   `clock_skew_ms`            § 7.1 places the gauge "`batches` column, latest into `seat_state`"
  *   `updated_at`               the row's own timestamp
+ *   `last_received_seq_epoch`  the RECEIVED seq mark (card#12210, § 6.4's DELIVERY block): the
+ *   `last_received_seq`        mark D1 § 10.2's gap rule counts `seq_gap` against, over every
+ *   `last_received_seq_at`     `seq` an accepted batch carried (`receivedGap()`). The stamp is
+ *                              written with `last_receipt_at`'s value on every batch, and the mark
+ *                              is trusted only while the two are equal — so a batch accepted by a
+ *                              build that does not maintain the mark (a rollback, a revert) makes
+ *                              the next batch re-set it instead of counting the interval as lost
  *
  * EVERYTHING ELSE ON `seat_state` IS CARD #7339's, INCLUDING THE ONES THAT LOOK EASY. Notably
  * `last_event_seq` / `last_event_seq_epoch` are NOT written here even though the batch envelope
- * carries both, because writing them correctly means answering "is this batch newer than the one
- * that set them", and out-of-order delivery is the ordinary case (AT-12). Advancing them on
- * arrival order would move them BACKWARDS on a late batch, and the counters keyed off them —
- * `seq_gap`, `seq_epoch_change` — would then report a gap that arrival order invented. Those
- * three are derived over the stored `(seq_epoch, seq)` population, which is the fold's job and
- * `docs/design/FLEET-STATE.md § 7.1` puts all three on the fold's side of the table.
+ * carries both. They are the APPLIED mark — the newest `(seq_epoch, seq)` the fold has applied,
+ * which `delivery.last_seq` publishes — derived by the fold over the stored rows it applies. Out-of-
+ * order delivery is the ordinary case (AT-12), and advancing them here on arrival would publish a
+ * position the fold has not reached. `seq_epoch_change` and `seq_collision` stay the fold's for the same
+ * reason. The RECEIVED mark above is a different fact: what this site has received, written here
+ * with a never-backwards guard, which is all a gap needs — the fold's gap rule it replaced was
+ * already arrival-ordered (`events.id` order is this lock's commit order), and it could not see a
+ * duplicate, which is the whole of card#12210.
  *
  * `state_version` is likewise untouched: § 6.4 defines it as +1 per change to a version-bearing
- * field of the § 8.2.1 wire object, and every column above is one of the ten delivery/derivation
- * members that section excludes precisely so a heartbeat does not mint a delta.
+ * field of the § 8.2.1 wire object; the delivery columns above are among the delivery/derivation
+ * members that section excludes precisely so a heartbeat does not mint a delta, and the received
+ * mark is not on the wire at all.
  */
 final class BatchWriter
 {
