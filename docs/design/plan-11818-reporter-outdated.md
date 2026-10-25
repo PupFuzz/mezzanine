@@ -253,7 +253,7 @@ prints `NOT APPLICABLE` on this PR (no artifact, fixture or crontab change) and 
   `version_compare` compares numerically. A 24-byte `x.y.z` is a seat lying about its build, and it is
   compared like any other.
 - **Both treatment badges present AND behind.** The update mark is in the flag (*⚠ +1*): named in
-  decision 75 as the one residual, on a desk already hatched and dimmed, whose panel names it.
+  decision 75 as the one residual, on a desk already faded and dimmed, whose panel names it.
 - **The operator reverses decision 75** (chooses (A)). The badge and every other surface stand; the cost
   is `PINNED_BADGES` emptied, AT-D3-30's GREEN inverted and its first RED turned into the GREEN's clause,
   and the doc rows `FLOOR.md § 13` row 75 lists. Choosing (B) undoes none of it.
