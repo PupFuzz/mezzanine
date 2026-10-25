@@ -8724,6 +8724,7 @@ cr_home = cr / "home"
 (cr_home / ".local" / "share" / "fleet-reporter").mkdir(parents=True)
 shutil.copy(REPORTER, cr_home / ".local" / "share" / "fleet-reporter" / "fleet-reporter.js")
 CR_B = cr / "B"
+NODE_DIR = os.path.dirname(shutil.which("node") or "/usr/bin/node")
 
 
 def cron_state(installed: "str | None", broken: bool = False) -> None:
@@ -8745,11 +8746,16 @@ def cron_block(marker: str) -> str:
     if len(found) != 1:
         raise AssertionError(f"{len(found)} runbook blocks hold {marker!r}, not one (the check would be vacuous)")
     # The stub is asserted to be what `crontab` resolves to before the block runs: the real one is never reached.
-    return f'[ "$(command -v crontab)" = {STUB} ] || {{ echo "STUB NOT ON PATH" >&2; exit 99; }}\n{found[0]}\necho rc=$?'
+    # `node` too, by name: the blocks run it, and a block that cannot find it fails for a reason no assertion names.
+    return (f'[ "$(command -v crontab)" = {STUB} ] || {{ echo "STUB NOT ON PATH" >&2; exit 99; }}\n'
+            f'command -v node > /dev/null || {{ echo "NO node ON PATH" >&2; exit 98; }}\n{found[0]}\necho rc=$?')
 
 
 def cron_run(marker: str, *, block: "str | None" = None) -> "tuple[subprocess.CompletedProcess, list[str], str | None]":
-    env = {"PATH": f"{cr / 'bin'}:/usr/bin:/bin", "HOME": str(cr_home), "B": str(CR_B)}
+    # The PATH holds the stub, then the directory of the `node` this suite runs, then the system's. `node` is not
+    # in /usr/bin on every host — on the CI runner it is /usr/local/bin/node — so a PATH of the stub and
+    # /usr/bin:/bin alone left the blocks with no `node` there (card#12334, PR #371's first CI run).
+    env = {"PATH": f"{cr / 'bin'}:{NODE_DIR}:/usr/bin:/bin", "HOME": str(cr_home), "B": str(CR_B)}
     r = tool_run(block or cron_block(marker), env)
     calls = (cr / "calls.log").read_text(encoding="utf-8").splitlines() if (cr / "calls.log").exists() else []
     inst = (cr / "installed").read_text(encoding="utf-8") if (cr / "installed").exists() else None
