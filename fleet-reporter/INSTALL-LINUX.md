@@ -983,7 +983,8 @@ node "$B/flusher-ancestry.js" $HOME/.local/state/fleet-reporter $HOME/.local/sha
 ```
 
 `PASS` needs the lock holder's parent to be `flock` running this artifact, and `cron` among its
-ancestors. On the sandbox, read-only on 2026-09-13, it printed `node` ← `flock -n …` ←
+ancestors. Before its verdict it prints the lock holder's process chain, one line per process with its pid,
+the flusher first, then whether the holder started after the artifact was installed. On the sandbox, read-only on 2026-09-13, it printed `node` ← `flock -n …` ←
 `/bin/sh -c COORD_CONFIG=… flock -n …` ← `CRON`, and `PASS`. Its control was a stand-in `node … flusher`
 started from a shell and named by a scratch lock, and it printed `FAIL`.
 
@@ -1116,7 +1117,11 @@ ls -la $HOME/.local/state/fleet-reporter/ && tail -n 5 $HOME/.local/state/fleet-
 The count is written `-n 5`: this host's `tail` is uutils coreutils 0.10.0, which refuses the older `-5`
 spelling once the glob names more than one log file (`error: unexpected argument '-5' found`).
 
-**In the server's store** (read-only):
+**In the server's store** (read-only). ⚠ **This runs on the server's host only**: `$HOME/mezzanine/server`
+is the sandbox's server checkout and `mezzanine` / `mezzanine-solo` are its `install_id` and `seat_id`
+([The values to substitute](#the-values-to-substitute)). A seat on another host has no such checkout; its
+reading is the seat-side check above and [the upgrade's U8](#upgrading-an-existing-seat), which asks the
+server for the build it holds current, and the server's operator runs this query for it:
 
 ```bash
 cd $HOME/mezzanine/server && php artisan tinker --execute='
@@ -1147,7 +1152,7 @@ kind with its latest arrival, and the three newest heartbeats, seq 149, 157 and 
 refusal and the spool holds no `REJECTED.*.txt`. The stub site of [Adding a site](#adding-a-site) has no
 store, so its request log stood in for this query, as that section reports.
 
-**The snapshot.** The REST route `GET /api/fleet/snapshot` serves `App\Read\Snapshot::build`
+**The snapshot**, on the server's host as well. The REST route `GET /api/fleet/snapshot` serves `App\Read\Snapshot::build`
 (`FleetController::snapshot`). It accepts a `mzr_` fleet_read token or an MFA session (FLEET-STATE
 § 9). This install issued no read credential, so it read the same object directly:
 
@@ -1196,7 +1201,7 @@ git clone https://github.com/PupFuzz/mezzanine "$B/checkout" && git -C "$B/check
   else echo "UPDATE NEEDED: apply the UPDATES.md rows newer than the installed version"; fi )
 ```
 
-*Check:* `NO-OP` ends the upgrade here; skip to U8 and reply. Every change to what an update ships moves
+*Check:* `NO-OP` ends the upgrade here; skip to U8, which confirms the server agrees, and U9's reply. Every change to what an update ships moves
 `REPORTER_VERSION` (`bin/reporter-version-guard.py` holds a PR to that), so a seat whose artifact and
 fixtures equal the checkout's has nothing else to apply, provided it applied every step of the update
 that installed them. Otherwise note the rows' touches: they decide
@@ -1248,7 +1253,11 @@ sleep 70
 node "$B/flusher-ancestry.js" $HOME/.local/state/fleet-reporter $HOME/.local/share/fleet-reporter/fleet-reporter.js --upgrade
 ```
 
-*Check:* the last line prints `PASS: the lock holder runs the artifact installed at …`. Its `FAIL: …
+*Check:* the last line prints `PASS: the lock holder runs the artifact installed at …`. Before it,
+`stop-flusher.js` prints `flusher pid <pid> exited <n> s after SIGTERM`, naming the old flusher (or says
+there was no flusher to stop), and `flusher-ancestry.js` prints the lock holder's process chain, one line
+per process with its pid, the new flusher first and its parents after it, then `the lock holder started
+…, after the artifact's …`. Those lines are the check's evidence, not errors. The check's `FAIL: …
 before the artifact was installed` means the old build still holds the lock: [Step 1](#step-1--prerequisites-and-the-artifact)
 says why, and the fix is to run the three lines again.
 
@@ -1264,9 +1273,80 @@ Step 5's check after a `stop-flusher.js` at a moment when no session on the acco
 **U7 — selftest.** Run [Step 6](#step-6--selftest)'s command, with `COORD_CONFIG` set to Step 5's value.
 *Check:* `selftest rc=0`. Step 6 reads every other code.
 
-**U8 — reply.** Answer the update's announcement ([`UPDATES.md` § Announcing an update](UPDATES.md#announcing-an-update))
-with the seat, the installed hash (`sha256sum $HOME/.local/share/fleet-reporter/fleet-reporter.js`)
-and U7's `selftest rc=` line, naming every check that is not `pass`.
+**U8 — confirm that the server sees this build as current.** The server publishes the reporter build it
+was built with as `current_reporter_version` on `GET /api/ingest/health`, which answers a valid seat token
+with `accepted_schema_versions`, `server_time`, `min_reporter_version` and `current_reporter_version`
+([D1 § 4.1](../docs/design/EVENT-SCHEMA.md#41-endpoints)). This block asks each site for it and compares
+it with the installed artifact's `REPORTER_VERSION`, read as U1 reads it. It reads each site's
+`ingest_url`, `token` and `ca_file` through the artifact's own config reader, puts the token in the
+request's header and nowhere else, and prints no token:
+
+```bash
+( I=$HOME/.local/share/fleet-reporter
+  v() { grep -o "^const REPORTER_VERSION = '[^']*'" "$1" | cut -d"'" -f2; }
+  node -e '
+const https = require("https"), fs = require("fs");
+const [js, cfg, want] = process.argv.slice(1);
+if (!want) { console.log("no installed REPORTER_VERSION was read: NOT MEASURED"); process.exit(2); }
+const { sites } = require(js).loadConfig(cfg);
+if (!sites.length) { console.log("the config holds no site: NOT MEASURED, Step 6 names why"); process.exit(2); }
+let behind = false, unmeasured = false;
+const one = (s) => new Promise((done) => {
+  let said = false;
+  const say = (m, rc) => { if (said) return; said = true; if (rc === 1) behind = true; if (rc === 2) unmeasured = true; console.log((s.name || "sites[" + s.index + "]") + ": " + m); done(); };
+  if (s.errors.length) return say("the site has a config error: NOT MEASURED, Step 6 names it", 2);
+  if (s.proxy_url !== null) return say("the site routes through proxy_url, which this command does not: NOT MEASURED", 2);
+  const u = new URL(s.ingest_url); u.pathname = u.pathname.replace(/\/events$/, "/health");
+  const req = https.get(u, { headers: { Authorization: "Bearer " + s.token, Accept: "application/json" }, ca: s.ca_file === null ? undefined : fs.readFileSync(s.ca_file), timeout: 15000 }, (r) => {
+    let b = ""; r.setEncoding("utf8"); r.on("data", (d) => { b += d; });
+    r.on("end", () => {
+      let j = null; try { j = JSON.parse(b); } catch (e) { /* not JSON: an outage page, or something in front of the ingest */ }
+      const cur = r.statusCode === 200 && j && typeof j.current_reporter_version === "string" ? j.current_reporter_version : null;
+      if (cur === null) return say("HTTP " + r.statusCode + (j && typeof j.error === "string" ? " " + j.error : "") + " with no current_reporter_version: NOT MEASURED", 2);
+      say("installed " + want + ", server current " + cur + (cur === want ? ": current" : ": NOT CURRENT"), cur === want ? 0 : 1);
+    });
+  });
+  req.on("timeout", () => req.destroy(new Error("no answer within 15 s")));
+  req.on("error", (e) => say("no answer (" + (e.code || e.message) + "): NOT MEASURED", 2));
+});
+(async () => { for (const s of sites) await one(s); process.exit(behind ? 1 : unmeasured ? 2 : 0); })();
+' "$I/fleet-reporter.js" $HOME/.config/fleet-reporter/config.json "$(v "$I/fleet-reporter.js")"; echo "health rc=$?" )
+```
+
+*Check:* each site prints `installed <version>, server current <version>: current`, and the block ends
+`health rc=0`. The other codes:
+
+- **`rc=1`** — a site printed `NOT CURRENT`: the two builds differ. An installed build lower than the
+  server's means the seat is still behind it, and its desk keeps the `update_required` badge: run U1 again
+  against the announcement's commit. An installed build higher than the server's means the server runs a
+  build older than that commit. The seat is then not badged, because the badge marks only a seat behind
+  the server ([`docs/design/FLEET-STATE.md` § 7.2](../docs/design/FLEET-STATE.md#72-this-planes-own-counters-and-badges)),
+  and the server's operator deploys the newer build.
+- **`rc=2`** — a site printed `NOT MEASURED`: no version was read from it. `HTTP 401 unauthenticated` is a
+  token the site does not resolve ([Rotating a site's token](#rotating-a-sites-token)); a config error is
+  [Step 6](#step-6--selftest)'s to name; a site with a `proxy_url` is not asked, because this block sends
+  no request through a proxy. Step 6's `selftest` asks the same route through the proxy, and its report
+  carries no `current_reporter_version`.
+
+**When the `update_required` badge clears.** It is a comparison, not a windowed counter: the server
+judges it again at every recompute of the seat's state, from the `reporter_version` of the batch the seat's
+last folded event arrived in, so it clears when the fold applies the first event of a batch the new build
+sent. The flusher sends a heartbeat every 60 s (D1 § 9.1), so on a seat that reports this is about a
+minute after U6's restart. The badges a counter raises are different: each one stays on the desk for
+24 h after its counter last rose (FLEET-STATE § 7.2 lists them), so one of those still showing after the
+upgrade, `epoch_reset` for example, is its window running out and says nothing about the build.
+
+**How the seat sees the badge.** The badge is drawn on the floor and in the seat's drill-down, which take a
+floor login with MFA, and it is in the snapshot, which also takes a `mzr_` fleet read token; the seat's own
+token opens none of them. From the seat, U8's `current` together
+with [Step 7](#step-7--verify-that-events-arrive)'s seat-side check, a log that names no refusal and no
+`REJECTED.*.txt`, shows the condition the badge is judged on: the seat sends the build the server holds
+current, and the server accepts it. Reading the badge itself is for someone holding one of those, usually
+the server's operator, and U9's reply carries U8's lines for them.
+
+**U9 — reply.** Answer the update's announcement ([`UPDATES.md` § Announcing an update](UPDATES.md#announcing-an-update))
+with the seat, the installed hash (`sha256sum $HOME/.local/share/fleet-reporter/fleet-reporter.js`),
+U7's `selftest rc=` line, naming every check that is not `pass`, and U8's lines with its `health rc=`.
 
 **What was run for card#11818**, on the sandbox host on 2026-10-24, without changing the live seat:
 
@@ -1283,7 +1363,14 @@ and U7's `selftest rc=` line, naming every check that is not `pass`.
   it printed both `copied` lines and `config.json` kept mode `600`; with neither, it printed both
   `nothing to copy` lines. Both runs exited 0.
 
-The whole sequence has not yet been run on a seat.
+**The whole sequence**, U0 to U7, ran on the sandbox seat on 2026-10-25, from `0.1.0` to `0.3.0`, and
+every step's check passed; the floor then showed no `update_required` on its desk.
+
+**U8, run for card#12329** on the sandbox seat on 2026-10-25, after that upgrade: it printed `default:
+installed 0.3.0, server current 0.3.0: current` and `health rc=0`. With the expected version swapped for
+`0.2.0` it printed `NOT CURRENT` and `health rc=1`, and against a copy of the config holding a token the
+site does not resolve it printed `HTTP 401 unauthenticated … NOT MEASURED` and `health rc=2`. No output
+carried a token.
 
 ## Step 8 — uninstall and roll back
 

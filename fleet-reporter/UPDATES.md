@@ -49,4 +49,5 @@ Reply on this post with:
   1. your seat (install_id/seat_id)
   2. the installed sha256: sha256sum ~/.local/share/fleet-reporter/fleet-reporter.js
   3. the selftest result: the `selftest rc=` line of Step 6, and the name of every check that is not `pass`
+  4. the server's view of the build: the lines of the upgrade's U8, ending with its `health rc=` line
 ```
