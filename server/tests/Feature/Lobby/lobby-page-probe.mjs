@@ -6,8 +6,9 @@
  * argv: the lobby's module directory (the shipped `public/js/lobby`, or a mutated copy's). stdin: JSON
  * `{ "ids": [<every id the page declares>], "hidden": [<each id it ships hidden>], "surface": { "width": n, "height": n } }` — `surface` is what
  * `#lobby-building` measures WHILE THE ROOM's STYLE IS ON IT (`building-scene.js`'s `surfaceStyle()` sets an
- * `aspectRatio`). stdout: JSON — what the script threw at startup, the streams it opened, the reads it made, and the
- * text the page shows after it.
+ * `aspectRatio`). stdout: JSON — what the script threw at startup, the streams it opened and `#lobby-building`'s
+ * `surfaceStyle()` members as each opened (card#12319 review F1: the un-drawn style put back after the startup's
+ * measure, read before any render could re-write it), the reads it made, and the text the page shows after it.
  *
  * ⛔ THE ONE LAYOUT FACT THIS STAND-IN MODELS IS THE ONE card#12319 TURNED ON, AS MEASURED IN CHROMIUM: un-drawn,
  * `#lobby-building` holds only the empty camera's layer and has no height of its own, so it measures ZERO high at its
@@ -154,8 +155,14 @@ globalThis.matchMedia = () => ({ matches: false, addEventListener() {} });
 globalThis.innerWidth = 1400;
 globalThis.innerHeight = 1000;
 globalThis.ResizeObserver = class { observe() {} disconnect() {} };
+/** The surface's style members `building-scene.js`'s `surfaceStyle()` writes — the room's, or none. */
+const SURFACE_MEMBERS = ['aspectRatio', 'maxHeight', 'overflow', 'position', 'cursor', 'backgroundColor'];
+const surfaceStyleNow = () => Object.fromEntries(SURFACE_MEMBERS.map((k) => [k, byId.get('lobby-building')?.style[k] ?? null]));
+/** `#lobby-building`'s style as each stream opened: after the startup's `surface()` reads, before any render. */
+const styleAtStream = [];
+
 globalThis.EventSource = class {
-    constructor(url) { streams.push(String(url)); this.readyState = 0; }
+    constructor(url) { streams.push(String(url)); styleAtStream.push(surfaceStyleNow()); this.readyState = 0; }
 
     addEventListener() {}
 
@@ -184,6 +191,7 @@ const shown = (id) => {
 process.stdout.write(JSON.stringify({
     threw,
     streams,
+    style_at_stream: styleAtStream,
     reads,
     start_failure: shown('lobby-start-failure'),
     feed: shown('lobby-feed'),

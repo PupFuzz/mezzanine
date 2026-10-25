@@ -61,6 +61,17 @@ class TheLobbyStartsBeforeItsRoomIsDrawnTest extends TestCase
         $this->assertSame([], $this->failureDefects($run), 'the planted defect did not take the page to its stated failure');
     }
 
+    /** The control for review F1: the measure's put-back removed — the un-drawn surface keeps the room's style. */
+    public function test_control_the_measure_left_on_the_undrawn_surface_is_caught(): void
+    {
+        $planted = $this->mutatedModules(['main.js', "    if (!drawn) {\n        Object.assign(building.style, surfaceStyle(null));\n    }\n", '']);
+
+        $defects = $this->startDefects($this->start(self::SURFACES['laptop'], $planted));
+
+        $this->assertCount(1, $defects, 'the measure left on the un-drawn surface was not caught, or was caught with something else: '.implode('; ', $defects));
+        $this->assertStringStartsWith('the un-drawn surface kept the room\'s style', $defects[0]);
+    }
+
     /** The control for the failure leg: a page that swallows the throw and says nothing is caught. */
     public function test_control_a_silent_start_failure_is_caught(): void
     {
@@ -84,6 +95,17 @@ class TheLobbyStartsBeforeItsRoomIsDrawnTest extends TestCase
 
         if (count($run['streams']) !== 1) {
             $defects[] = 'the page opened '.count($run['streams']).' streams, not one';
+        }
+
+        // The startup measures the surface under the room's style; with no room drawn it must put the un-drawn
+        // style back (review F1), or an empty surface keeps the room's aspect, its 80vh cap, its clip and its grab
+        // cursor until the first render. Read as the stream opened — before any render could re-write it.
+        foreach ($run['style_at_stream'] as $style) {
+            $kept = array_keys(array_filter($style, static fn ($v): bool => $v !== ''));
+
+            if ($kept !== []) {
+                $defects[] = 'the un-drawn surface kept the room\'s style after the startup measured it: '.implode(', ', $kept);
+            }
         }
 
         if ($run['reads'] === []) {
