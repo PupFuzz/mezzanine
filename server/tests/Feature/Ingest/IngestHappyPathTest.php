@@ -3,6 +3,7 @@
 namespace Tests\Feature\Ingest;
 
 use App\Ingest\BatchWriter;
+use App\Ingest\SchemaVersions;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -166,6 +167,9 @@ class IngestHappyPathTest extends IngestTestCase
         ]))->assertOk()->assertJson([
             'accepted_schema_versions' => [1],
             'min_reporter_version' => '0.1.0',
+            // The constant itself, never a literal: a literal here would be a copy of the version
+            // every reporter bump must edit, which neither the pin test nor the guard watches.
+            'current_reporter_version' => SchemaVersions::CURRENT_REPORTER_VERSION,
         ]);
     }
 
