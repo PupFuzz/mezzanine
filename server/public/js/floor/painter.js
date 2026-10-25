@@ -41,13 +41,15 @@
  *
  * ⛔ THE ONE TIMER HERE IS A HELD LOOP's OWN FRAMES, at the interval the scene carries (§ 6.3's
  * second bullet: "except a state-held loop's own frames at the fixed rate"), and it runs only for a
- * character whose held render the animation set drew WITH motion. Decorative motion is the
- * stylesheet's, at the cycle the scene states.
+ * character whose held render the animation set drew WITH motion, or while an A1 or A2 walker is in
+ * flight — its stride and its place among the desks, an edge row's own bounded frames (card#12194).
+ * Decorative motion is the stylesheet's, at the cycle the scene states.
  */
 
 import { BUBBLE_PAD, FONT, FONT_NAME, FONT_SCREEN, STOOL_GLYPH, TYPE_ROLES, characterAsset } from './desk-layout.js';
 import { SKY_PAINT } from './floor-layout.js';
 import { ELEVATOR_DOOR } from './scene.js';
+import { floorStackOrder, pointAt } from './route.js';
 import { BIRD_LIFT, arcPath, birdShapes, birdhouseShapes, envelopeShapes, legShapes, ringShapes, stillNotes } from './bird.js';
 import { RENDER_STATES } from '../lobby/render-state.js';
 import { CAB_STYLE, LANDING, THEME_REGISTRY, cabTheme, clippedTo, drawCabInterior, node, paintCab, rideLeaves, themeModule } from './cab-paint.js';
@@ -115,8 +117,8 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 @keyframes ring-fade{from{transform:scale(1);opacity:1}to{transform:scale(1);opacity:0}}
 .fx-flash{fill:var(--scene-flash);opacity:0;animation-name:flash}
 @keyframes flash{from{opacity:.8}to{opacity:0}}
-.fx-walker{animation-name:walk;animation-fill-mode:both}.fx-walker-shown{opacity:0;animation-name:walker-shown;animation-fill-mode:none}
-@keyframes walk{from{transform:translate(var(--from-x),var(--from-y))}to{transform:translate(var(--to-x),var(--to-y))}}
+.fx-walker{offset-rotate:0deg;animation-name:glide;animation-timing-function:linear;animation-fill-mode:both}.fx-walker-shown{opacity:0;pointer-events:none;animation-name:walker-shown;animation-fill-mode:none}
+@keyframes glide{from{offset-distance:0%}to{offset-distance:100%}}
 @keyframes walker-shown{from{opacity:1}to{opacity:1}}
 ${CAB_STYLE}
 .fx-bird{offset-rotate:0deg;opacity:0;animation-name:fly;animation-timing-function:linear}
@@ -200,11 +202,20 @@ export function measurer() {
     };
 }
 
+/** The § 6.2 rows drawn as a walker (card#9566, card#12194). */
+const isWalk = (fx) => fx.animation_id === 'A1' || fx.animation_id === 'A2';
+
 /**
- * One bird flight's identity across paints (card#12345): its row, its post, its leg and its two ends — what
- * `scene.js`'s `travel()` drew it from, so two flights of one post (one per destination) stay apart.
+ * One continuous motion's identity across paints (card#12345, card#12194). A bird flight: its row, its post, its leg
+ * and its two ends — what `scene.js`'s `travel()` drew it from, so two flights of one post (one per destination) stay
+ * apart. A walk: its row, its seat and its causing row — one walk per seat per row, so a later walk of the same seat
+ * never inherits a cancelled one's origin.
  */
-function flightKey(fx) {
+function effectKey(fx) {
+    if (isWalk(fx)) {
+        return `${fx.animation_id} ${fx.install_id}/${fx.seat_id} ${fx.cause}`;
+    }
+
     return `${fx.animation_id} ${fx.install_id} ${fx.cause} ${fx.leg ?? ''} ${fx.from.x},${fx.from.y}>${fx.to.x},${fx.to.y}`;
 }
 
@@ -216,7 +227,7 @@ function flightKey(fx) {
  *          select: function(string, string): void, ride: function(): void, house: string|null,
  *          clock: {now: function(): number}}} options `themes` the theme modules `loadArt()` held, by name; `ride`
  *          the elevator's press (§ 4.5); `house` the house theme's name, whose elevator palette the cab is drawn in;
- *          `clock` the page's clock, the one a flight's `started_at` was read from (`pinFlights()`)
+ *          `clock` the page's clock, the one a bird's or a walker's `started_at` was read from (`pinEffects()`)
  */
 export function createPainter({ characters, themes = {}, failed, select, ride = () => {}, house = null, clock = { now: () => Date.now() } }) {
     const host = document.getElementById('floor-drawing');
@@ -242,19 +253,23 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     // The interns whose frames are held, and those this paint drew.
     const interns = new Set();
     let drawnInterns = new Set();
-    // The characters a held loop or a walk steps this paint, each `[el, uris, loopFrom, offset]`: its frames, where its
-    // held loop starts in them (`loopFrom`, § 10.4 item 4) and the offset into that loop it steps from (the seat's own
-    // for a held loop, 0 for a walk) — never a copy of the URIs on the element: a frame is kilobytes, and a tick would
-    // parse every one of them.
+    // The characters a held loop or a walk steps this paint, each `[el, uris, loopFrom, offset, window]`: its frames,
+    // where its held loop starts in them (`loopFrom`, § 10.4 item 4), the offset into that loop it steps from (the
+    // seat's own for a held loop, 0 for a walk), and for a walker the window it strides in — `{ entry, from_ms, to_ms }`,
+    // its walk leg's span in effect time against its pinned origin; a held loop has none and steps every tick — never a
+    // copy of the URIs on the element: a frame is kilobytes, and a tick would parse every one of them.
     let stepping = [];
     let loop = null;
     let svg = null;
-    // card#12345: where on the document timeline each bird flight in flight began, keyed by the flight
-    // (`flightKey()`), so every rebuild of the drawing draws the flight from ONE origin (`pinFlights()`).
-    // Bounded by the flights in flight: a flight this paint does not draw is dropped.
-    let flightStarts = new Map();
-    // The flights this paint drew, each `[key, its start on the page's clock, elapsed ms at this paint, its animated nodes]`.
-    let flights = [];
+    // card#12345, card#12194: where on the document timeline each continuous motion in flight began — a bird's flight,
+    // a walker's glide — keyed by the effect (`effectKey()`), so every rebuild of the drawing draws it from ONE origin
+    // (`pinEffects()`). Bounded by the effects in flight: an effect this paint does not draw is dropped.
+    let origins = new Map();
+    // The continuous motions this paint drew, each `{ key, started_at, elapsed_ms, nodes, began }`: its start on the
+    // page's clock, elapsed ms at this paint, its animated nodes, and its origin on the document timeline.
+    let pinned = [];
+    // This paint's origins as they are recorded, so two effects of one key in one paint share one.
+    let starts = new Map();
     // THE ONE CACHE OF THEME DOCUMENTS (FLOOR.md § 10.6 item 2): a document's URI, KEYED ON ITS INPUTS — the
     // theme, the function and every input — and never on its asset id, because a map re-save changes a
     // plane's grid, slots and runs under the same asset id, and a cache keyed on the id would draw the old
@@ -546,6 +561,8 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                 text(group, { x: b.x + BUBBLE_PAD, y: b.y + BUBBLE_PAD + TYPE_ROLES[FACT].line, text: b.second, id: `${desk.key}:bubble2` }, 'bubble-source');
             }
         }
+
+        return group;
     }
 
     /** card#12241's drawings, from `bird.js`'s shape lists — `[tag, attributes, children?]` — into `parent`. */
@@ -584,59 +601,87 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     }
 
     /**
-     * card#12345: a bird flight drawn by a later paint continues from where the earlier paint's bird was. Every
-     * paint rebuilds the drawing, and a rebuilt CSS animation starts when the browser first styles it — a moment
-     * that differs from paint to paint by however long each paint took — so a negative delay alone redraws the
-     * flight from a new origin each time, and the bird jumps (the live floor measured several rebuilds of one
-     * flight inside two seconds). So the first paint of a flight records, on the document timeline, the instant
-     * the flight began, and every paint of it pins its nodes' animations to that instant: the bird and its
-     * resting envelope are one function of the timeline across every rebuild. Run once the drawing is in the
-     * document, where its animations exist.
+     * card#12345, card#12194: a continuous motion drawn by a later paint continues from where the earlier paint drew it.
+     * Every paint rebuilds the drawing, and a rebuilt CSS animation starts when the browser first styles it — a moment
+     * that differs from paint to paint by however long each paint took — so a negative delay alone redraws the motion
+     * from a new origin each time, and the bird or the walker jumps (the live floor measured several rebuilds of one
+     * flight inside two seconds). So the first paint of an effect records, on the document timeline, the instant the
+     * effect began (`origin()`), and every paint of it pins its nodes' animations to that instant (`pin()`): the motion
+     * is one function of the timeline across every rebuild. Pinned once the drawing is in the document, where its
+     * animations exist.
      *
-     * That instant is the flight's own start (`started_at`, on the page's clock) carried onto the timeline by a
-     * LIVE reading of both clocks — `performance.now()` is the document timeline's clock, read now. Never
-     * `document.timeline.currentTime`: it holds the last frame's time for as long as a task runs, so a paint at
-     * the end of a long task would date the flight up to that task's length early, before its post arrived, and
-     * the bird's first drawn point would be that far along its arc. A browser with no `getAnimations()`, or a
-     * timeline with no time (an inactive document), pins nothing and keeps the negative delay alone.
+     * That instant is the effect's own start (`started_at`, on the page's clock) carried onto the timeline by a LIVE
+     * reading of both clocks — `performance.now()` is the document timeline's clock, read now. Never
+     * `document.timeline.currentTime`: it holds the last frame's time for as long as a task runs, so a paint at the end
+     * of a long task would date the effect up to that task's length early, before its row arrived, and the motion's
+     * first drawn point would be that far along. The origin is computed whether or not the browser can pin, so the
+     * walker's stride and its depth reconcile read one clock everywhere; a browser with no `getAnimations()`, or a
+     * timeline with no time (an inactive document), pins nothing and keeps the negative delay alone (`canPin()`).
      */
-    function pinFlights() {
-        const starts = new Map();
+    function origin(entry) {
+        entry.began = origins.get(entry.key) ?? starts.get(entry.key) ?? performance.now() - (clock.now() - entry.started_at);
+        starts.set(entry.key, entry.began);
+        pinned.push(entry);
 
+        return entry;
+    }
+
+    /** Whether this browser can pin an animation's start: `Element.getAnimations()` and a timeline with a time. */
+    function canPin() {
         if (typeof host.getAnimations !== 'function' || !Number.isFinite(document.timeline?.currentTime)) {
-            flightStarts = starts;
+            return false;
+        }
 
+        return true;
+    }
+
+    /**
+     * One effect's nodes pinned to its origin. Each node's CSS delay already carries this paint's `elapsed_ms`, so the
+     * start that makes the delayed animation read the timeline from `began` is `began + elapsed_ms`. Called for every
+     * effect after the drawing is in the document (`pinEffects()`), and again for a walker whose node the depth
+     * reconcile moved, because a re-inserted node's animations are new.
+     */
+    function pin(entry) {
+        for (const el of entry.nodes) {
+            for (const animation of el.getAnimations()) {
+                animation.startTime = entry.began + entry.elapsed_ms;
+            }
+        }
+    }
+
+    function pinEffects() {
+        origins = starts;
+
+        if (!canPin()) {
             return;
         }
 
-        for (const [key, startedAt, elapsedMs, nodes] of flights) {
-            const began = flightStarts.get(key) ?? starts.get(key) ?? performance.now() - (clock.now() - startedAt);
-
-            starts.set(key, began);
-
-            // Each node's CSS delay already carries this paint's `elapsed_ms`, so the start that makes the
-            // delayed animation read the timeline from `began` is `began + elapsedMs`.
-            for (const el of nodes) {
-                for (const animation of el.getAnimations()) {
-                    animation.startTime = began + elapsedMs;
-                }
-            }
+        for (const entry of pinned) {
+            pin(entry);
         }
-
-        flightStarts = starts;
     }
 
-    function paintEffects(layer, effects) {
+    /**
+     * Every § 6.2 effect this paint draws: the birds, the ring and the flashes into the `effects` layer, which has no
+     * depth; each walker into `floor` — its floor element into the floor stack, its cab element into the band's cab.
+     * Returns the walkers, for the stack's order and the loop's reconcile.
+     */
+    function paintEffects(layer, effects, floor) {
+        const walkers = [];
+
         for (const fx of effects) {
             const seconds = (fx.frames * fx.frame_interval_ms) / 1000;
             // § 6.2's walk note item 8: an effect still in flight from an earlier render is drawn at the
-            // frame it has reached — a negative delay — never restarted. A bird's flight is drawn at the
-            // instant it has reached instead (`elapsed_ms`, and `pinFlights()`), because it moves continuously.
+            // frame it has reached — a negative delay — never restarted. A continuous motion — a bird's flight, a
+            // walker's glide — is drawn at the instant it has reached instead (`elapsed_ms`, and `pinEffects()`).
             const ago = ((fx.elapsed_frames ?? 0) * fx.frame_interval_ms) / 1000;
             const style = fx.frames > 0 ? `animation-duration:${seconds}s;animation-timing-function:steps(${fx.frames});animation-delay:${-ago}s` : null;
 
-            if ((fx.animation_id === 'A1' || fx.animation_id === 'A2') && fx.frames > 0) {
-                paintWalker(layer, fx, ago);
+            if (isWalk(fx)) {
+                // A walk drawn without its motion (no route, no desk, no band — walk note item 7) has no legs and no frames.
+                if (fx.frames > 0 && (fx.legs ?? []).length > 0) {
+                    walkers.push(paintWalker(floor, fx));
+                }
 
                 continue;
             }
@@ -675,7 +720,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                         animated.push(shapes(rest({ class: 'fx-rest', style: `animation-duration:${restS}s;animation-timing-function:steps(${fx.rest_frames});animation-delay:${seconds - flown}s` }), envelopeShapes()));
                     }
 
-                    flights.push([flightKey(fx), fx.started_at, fx.elapsed_ms, animated]);
+                    origin({ key: effectKey(fx), started_at: fx.started_at, elapsed_ms: fx.elapsed_ms, nodes: animated });
                 } else {
                     shapes(rest({ class: 'fx-still' }), envelopeShapes());
                 }
@@ -707,47 +752,79 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                 node('circle', { cx: fx.at.x, cy: fx.at.y, r: 12, class: `fx-flash fx-${fx.animation_id}`, style }, layer);
             }
         }
+
+        return walkers;
     }
 
     /**
-     * One A1 or A2 walker (§ 6.2's walk note items 3–5): the seat's character in its walk frames, moving
-     * along the scene's segment in the walk's frames and drawn only in its shown frames — the scene
-     * decided every number, and `ago` is how far into the walk this paint lands.
+     * One A1 or A2 walker (§ 6.2's walk note items 3–5, card#12194): the seat's character, its feet on the scene's
+     * routed path, as TWO elements — the scene decided every number, and `elapsed_ms` is how far into the walk this
+     * paint lands. Neither is ever a pointer target (`.fx-walker-shown`'s `pointer-events:none`): the elevator under a
+     * waiting walker and a desk it stands in front of keep every press.
+     *
+     * - THE FLOOR ELEMENT, in the floor stack: `g.fx-walker-shown` is drawn only through the walker's floor legs (its
+     *   `walker-shown` run), and inside it `g.fx-walker` GLIDES the walk leg — `offset-distance` 0 → 100 % along the
+     *   path, `linear`, `fill-mode: both`, so before the leg it stands at the path's first point and after it at its
+     *   last, which is where every `stand` leg stands.
+     * - THE CAB ELEMENT, in the band's cab behind the leaves, still at the threshold and drawn only through the `cab`
+     *   leg — so the opening leaves reveal it and the closing ones cover it.
+     *
+     * The three animated groups are pinned together to one origin (`origin()`); the floor image strides only inside
+     * the walk leg (its `stepping` window) and stands at its phase-0 frame outside it; the cab image never strides.
      */
-    function paintWalker(layer, fx, ago) {
-        const sec = (frames) => (frames * fx.frame_interval_ms) / 1000;
-        const shown = node('g', {
-            class: 'fx-walker-shown',
-            style: `animation-duration:${sec(fx.shown.frames)}s;animation-delay:${sec(fx.shown.start) - ago}s`,
-        }, layer);
-        const g = node('g', {
+    function paintWalker(floor, fx) {
+        const I = fx.frame_interval_ms;
+        const sec = (ms) => ms / 1000;
+        const elapsed = fx.elapsed_ms ?? 0;
+        const walk = fx.legs.find((l) => l.kind === 'walk');
+        const onFloor = fx.legs.filter((l) => l.kind !== 'cab');
+        const inCab = fx.legs.filter((l) => l.kind === 'cab');
+        const span = (legs) => (legs.length === 0 ? null : {
+            from: Math.min(...legs.map((l) => l.start)) * I,
+            to: Math.max(...legs.map((l) => l.start + l.frames)) * I,
+        });
+        const shownStyle = (s) => `animation-duration:${sec(s.to - s.from)}s;animation-delay:${sec(s.from - elapsed)}s`;
+        const floorSpan = span(onFloor);
+        const cabSpan = span(inCab);
+        const path = `M ${walk.points.map((p) => `${p.x} ${p.y}`).join(' L ')}`;
+        const shown = node('g', { class: 'fx-walker-shown', style: shownStyle(floorSpan) }, floor.stack);
+        const glide = node('g', {
             class: 'fx-walker',
-            style: `animation-duration:${sec(fx.walk.frames)}s;animation-timing-function:steps(${fx.walk.frames});animation-delay:${sec(fx.walk.start) - ago}s`,
+            style: `offset-path:path('${path}');animation-duration:${sec(walk.frames * I)}s;animation-delay:${sec(walk.start * I - elapsed)}s`,
         }, shown);
-
-        g.style.setProperty('--from-x', `${fx.from.x}px`);
-        g.style.setProperty('--from-y', `${fx.from.y}px`);
-        g.style.setProperty('--to-x', `${fx.to.x}px`);
-        g.style.setProperty('--to-y', `${fx.to.y}px`);
-
+        const cab = cabSpan === null || floor.cab === null ? null : node('g', {
+            class: 'fx-walker-shown fx-walker-cab',
+            style: shownStyle(cabSpan),
+        }, floor.cab);
+        const door = inCab[0]?.at ?? null;
+        const inner = cab === null ? null : node('g', { transform: `translate(${door.x} ${door.y})` }, cab);
+        const entry = origin({ key: effectKey(fx), started_at: fx.started_at, elapsed_ms: elapsed, nodes: cab === null ? [shown, glide] : [shown, glide, cab] });
         const asset = characterAsset({ install_id: fx.install_id, seat_id: fx.seat_id });
         const drawn = characterFrames(fx.install_id, fx.seat_id, asset);
 
         if (drawn === null) {
             // § 9 F14: the art failed, so the walker is the placeholder rectangle at the character's size.
-            node('rect', { x: -fx.size.w / 2, y: -fx.size.h, width: fx.size.w, height: fx.size.h, class: 'placeholder' }, g);
+            for (const parent of [glide, inner].filter((p) => p !== null)) {
+                node('rect', { x: -fx.size.w / 2, y: -fx.size.h, width: fx.size.w, height: fx.size.h, class: 'placeholder' }, parent);
+            }
+        } else {
+            // § 10.4's frame contract (card#12259): the walker's image is the character's frame at its overdraw size,
+            // centred on the feet — the standing frame is drawn in the widened frame, so the image is the same width
+            // the desk's viewport is; `fx.size` stays the character's rect, the placeholder's size above.
+            const at = (parent) => image(parent, drawn.uris[0], -fx.frame.w / 2, -fx.frame.h, fx.frame.w, fx.frame.h, asset, { class: 'character', preserveAspectRatio: MEET });
+            const el = at(glide);
+            const window = { entry, from_ms: walk.start * I, to_ms: (walk.start + walk.frames) * I };
 
-            return;
+            // A walk starts at its stand frame: A1's and A2's walks are the whole list, `loopFrom` 0, and take no loop
+            // offset (§ 10.4 item 4); it strides only inside its walk leg. The cab's image is never stepped.
+            stepping.push([el, drawn.uris, drawn.loopFrom, 0, window]);
+
+            if (inner !== null) {
+                at(inner);
+            }
         }
 
-        // § 10.4's frame contract (card#12259): the walker's image is the character's frame at its overdraw size,
-        // centred on the feet — the standing frame is drawn in the widened frame, so the image is the same width
-        // the desk's viewport is; `fx.size` stays the character's rect, the placeholder's size above.
-        const el = image(g, drawn.uris[0], -fx.frame.w / 2, -fx.frame.h, fx.frame.w, fx.frame.h, asset, { class: 'character', preserveAspectRatio: MEET });
-
-        // A walk starts at its stand frame: A1's and A2's walks are the whole list, `loopFrom` 0, and take no loop
-        // offset (§ 10.4 item 4).
-        stepping.push([el, drawn.uris, drawn.loopFrom, 0]);
+        return { key: `${fx.install_id}/${fx.seat_id}`, fx, entry, node: shown };
     }
 
     /**
@@ -822,6 +899,8 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         drawnDocuments = new Set();
 
         const band = scene.band;
+        // The band's cab clip group, over the cab's room and under the leaves — where a walker in its `cab` legs is drawn.
+        let cabLayer = null;
 
         if (band !== null) {
             const g = node('g', { class: 'band' }, svg);
@@ -871,7 +950,8 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             }, g);
             const doorway = { x: e.x, y: e.y, w: e.w, h: e.h };
 
-            drawCabInterior(clippedTo(inside, node('defs', {}, inside), doorway, 'band-cab'), doorway, 'band-cab', LANDING);
+            cabLayer = clippedTo(inside, node('defs', {}, inside), doorway, 'band-cab');
+            drawCabInterior(cabLayer, doorway, 'band-cab', LANDING);
 
             const control = node('g', {
                 class: 'elevator',
@@ -969,14 +1049,15 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             }, tiles);
         }
 
+        // ⛔ THE FLOOR STACK (§ 6.2's walk note item 9, card#12194): the desks in the scene's order — never re-sorted, so
+        // § 10.4 item 3's draw order and the keyboard's tab order hold — with each walker's floor element placed among
+        // them by its feet's depth (`floorStackOrder()`). Desk nodes are made here and never re-inserted afterwards.
         const desks = node('g', { class: 'desks' }, svg);
 
         drawnInterns = new Set();
         stepping = [];
 
-        for (const desk of scene.desks) {
-            paintDesk(desks, desk);
-        }
+        const deskNodes = new Map(scene.desks.map((desk) => [desk.key, paintDesk(desks, desk)]));
 
         for (const asset of interns) {
             if (!drawnInterns.has(asset)) {
@@ -995,11 +1076,19 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             text(svg, scene.strip.header, 'strip-header');
         }
 
-        flights = [];
-        paintEffects(node('g', { class: 'effects' }, svg), scene.effects);
+        pinned = [];
+        starts = new Map();
+
+        const effectsLayer = node('g', { class: 'effects' }, svg);
+        const walkers = paintEffects(effectsLayer, scene.effects, { stack: desks, cab: cabLayer });
+        const depths = scene.desks.map((desk) => ({ key: desk.key, depth_y: desk.depth_y }));
+        const deskNode = (key) => deskNodes.get(key);
+
+        // Each walker where its feet stand at this instant, before the drawing is in the document.
+        stack(desks, depths, deskNode, walkers, performance.now(), false);
 
         host.replaceChildren(svg);
-        pinFlights();
+        pinEffects();
 
         // The desk the keyboard was on, rebuilt; a desk the render removed leaves focus on the drawing
         // itself, where the camera's keys still reach, rather than dropping it to the page's body.
@@ -1011,25 +1100,76 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             (svg.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`) ?? host).focus({ preventScroll: true });
         }
 
-        // § 6.2's held loops, at the interval the scene carries — one interval for the whole floor,
-        // stepping every character whose render the set drew with motion.
+        // ⛔ ONE LOOP, ONE CLOCK (card#12194): § 6.2's held loops and the walkers' stride and depth, at the interval the
+        // scene carries — one interval for the whole floor. Each character steps through its OWN held loop — a walker's
+        // walk, a sleeper's pulse after its still — so a loop of one length never draws another drawing's frames, from the
+        // offset it was pushed with: the seat's own for a held loop, 0 for a walk. The loop is `uris[loopFrom ..]`
+        // (§ 10.4 item 4), so the still never steps. A walker strides only inside its walk leg and stands at its phase-0
+        // frame outside it, its time `performance.now() − began` — the origin its pinned animations read.
         const moving = stepping;
-        const walking = scene.effects.some((fx) => (fx.animation_id === 'A1' || fx.animation_id === 'A2') && fx.frames > 0);
+        const walking = walkers.length > 0;
         const interval = scene.desks.find((d) => d.held?.motion)?.held.frame_interval_ms ?? (walking ? 1000 / scene.loop_fps : null);
 
-        // Each character steps through its OWN held loop — a walker's walk, a sleeper's pulse after its still — so a
-        // loop of one length never draws another drawing's frames, from the offset it was pushed with: the seat's own
-        // for a held loop, 0 for a walk. The loop is `uris[loopFrom ..]` (§ 10.4 item 4), so the still never steps.
-        if (moving.length > 0 && interval !== null) {
+        if ((moving.length > 0 || walking) && interval !== null) {
             let tick = 0;
 
             loop = setInterval(() => {
                 tick += 1;
 
-                for (const [el, uris, loopFrom, offset] of moving) {
+                const now = performance.now();
+
+                for (const [el, uris, loopFrom, offset, window = null] of moving) {
+                    if (window !== null && !strides(window, now)) {
+                        el.setAttribute('href', uris[loopFrom]);
+
+                        continue;
+                    }
+
                     el.setAttribute('href', uris[loopFrom + ((tick + offset) % (uris.length - loopFrom))]);
                 }
+
+                // The depth reconcile: a walker whose place in the order changed is moved and re-pinned. A browser
+                // that cannot pin moves none — a move would restart its glide with nothing to put it back.
+                if (walking && canPin()) {
+                    stack(desks, depths, deskNode, walkers, now, true);
+                }
             }, interval);
+        }
+    }
+
+    /** Whether a walker strides at `now`: inside its walk leg, on its pinned origin. */
+    function strides(window, now) {
+        const t = now - window.entry.began;
+
+        return t >= window.from_ms && t < window.to_ms;
+    }
+
+    /**
+     * Each walker's floor element placed in the floor stack where `floorStackOrder()` puts it at `now`: before the
+     * desk or walker that follows it in that order. Only a walker whose next sibling is wrong is moved, from the back
+     * of the order forward, so every walker ends immediately before its successor and the desks — never moved — keep
+     * their order. A moved node is removed and re-inserted, which restarts its animations, so when the drawing is live
+     * (`repin`) every move is followed by `pin()` (card#12194's design r3 MJ2).
+     */
+    function stack(layer, depths, deskNode, walkers, now, repin) {
+        const order = floorStackOrder(depths, walkers.map((w) => ({ key: w.key, y: pointAt(w.fx, now - w.entry.began).y, walker: w })));
+        const nodeOf = (o) => (o === undefined ? null : o.kind === 'desk' ? deskNode(o.key) : o.item.walker.node);
+
+        for (let i = order.length - 1; i >= 0; i--) {
+            if (order[i].kind !== 'walker') {
+                continue;
+            }
+
+            const el = order[i].item.walker.node;
+            const next = nodeOf(order[i + 1]);
+
+            if (el.nextSibling !== next) {
+                layer.insertBefore(el, next);
+
+                if (repin) {
+                    pin(order[i].item.walker.entry);
+                }
+            }
         }
     }
 

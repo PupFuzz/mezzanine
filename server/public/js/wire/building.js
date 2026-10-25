@@ -157,6 +157,11 @@ export class Building {
         return this.#layout === null ? null : this.#layout.floors;
     }
 
+    /** The `layout_version` of the layout held, or `null` when none is — part of what a walk's route reads (`floor/scene.js`). */
+    get layoutVersion() {
+        return this.#layout === null ? null : this.#layout.layout_version;
+    }
+
     /** `{ status }` when the last layout request failed, else `null`. */
     get layoutFailure() {
         return this.#layoutFailure;

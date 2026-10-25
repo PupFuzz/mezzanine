@@ -453,6 +453,137 @@ const NO_MIX = [
   { file: 'css/mezzanine.css', from: 'color-mix(', to: 'no-such-mix(' },
 ];
 
+/**
+ * card#12194's walker sampler, installed before the page's first script and run on every animation frame for the first
+ * `ms`: each `.fx-walker` (the gliding group) — its path, its point and feet `y` from its computed `offset-distance`, whether
+ * its shown group draws it, its node (a rebuild is a new one) and its place among the floor stack's children (a move is a
+ * new place for the same node), its glide's timing function and start on the timeline — and, per frame, the floor stack:
+ * each desk's key, place and foot line (its desk sprite's viewport `y + height`), each walker's place, which element has
+ * focus, any walker element outside the stack, a walker shown in the cab outside the band's cab or after its leaves, and any
+ * point under a shown walker that is a walker element.
+ */
+const WALKER_SAMPLER = (ms) => `(window.__walkers = { samples: [], frames: [] }, (() => {
+  const ids = new WeakMap(); let next = 0; const paths = new Map(); const t0 = performance.now();
+  const curve = (d) => { if (!paths.has(d)) { const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', d); paths.set(d, p); } return paths.get(d); };
+  const id = (el) => { if (!ids.has(el)) ids.set(el, next++); return ids.get(el); };
+  const tick = (now) => {
+    const stack = document.querySelector('#floor-drawing .desks');
+    const kids = stack === null ? [] : [...stack.children];
+    const frame = { t: now - t0, desks: [], walkers: [], loose: [], cabBad: false, hit: [], focus: document.activeElement?.closest('[data-key]')?.getAttribute('data-key') ?? null };
+    kids.forEach((k, i) => {
+      if (k.classList.contains('desk')) {
+        const art = k.querySelector('image.desk-sprite')?.closest('svg');
+        frame.desks.push({ key: k.getAttribute('data-key'), index: i, depth: art === null || art === undefined ? null : Number(art.getAttribute('y')) + Number(art.getAttribute('height')) });
+      }
+    });
+    for (const el of document.querySelectorAll('#floor-drawing .fx-walker')) {
+      const shownEl = el.parentNode;
+      const d = /path\\("?'?([^"')]+)/.exec(el.style.offsetPath)?.[1] ?? null;
+      if (d === null) continue;
+      const cs = getComputedStyle(el);
+      const p = curve(d); const len = p.getTotalLength(); const pct = parseFloat(cs.offsetDistance);
+      const at = p.getPointAtLength(len * pct / 100);
+      const glide = el.getAnimations().find((a) => a.animationName === 'glide');
+      const origin = glide === undefined || glide.startTime === null ? null : glide.startTime + glide.effect.getTiming().delay - t0;
+      const shown = Number(getComputedStyle(shownEl).opacity) > 0;
+      const index = kids.indexOf(shownEl);
+      if (index === -1) frame.loose.push('walker in ' + (shownEl.parentNode?.getAttribute('class') ?? '?'));
+      frame.walkers.push({ y: at.y, index, shown });
+      window.__walkers.samples.push({ t: now - t0, d, el: id(shownEl), index, pct, len, x: at.x, y: at.y, shown, origin, timing: cs.animationTimingFunction, ms: parseFloat(cs.animationDuration) * 1000 });
+      if (shown) {
+        const img = el.querySelector('image, rect');
+        if (img !== null) {
+          const r = img.getBoundingClientRect();
+          const e = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+          if (e !== null && e.closest('.fx-walker-shown') !== null) frame.hit.push(e.tagName + '.' + (e.getAttribute('class') ?? ''));
+        }
+      }
+    }
+    for (const cab of document.querySelectorAll('#floor-drawing .fx-walker-cab')) {
+      if (Number(getComputedStyle(cab).opacity) === 0) continue;
+      const band = cab.closest('.band-cab');
+      const leaf = document.querySelector('#floor-drawing .elevator-leaf');
+      if (band === null || leaf === null || !(cab.compareDocumentPosition(leaf) & Node.DOCUMENT_POSITION_FOLLOWING)) frame.cabBad = true;
+    }
+    window.__walkers.frames.push(frame);
+    if (now - t0 < ${ms}) requestAnimationFrame(tick);
+  };
+  window.__walkers.t0 = t0;
+  requestAnimationFrame(tick); })())`;
+
+/** The samples of one walker sampler run, by walk (one `offset-path` per walk). */
+const byPath = (all) => {
+  const walks = new Map();
+  for (const x of all) { if (!walks.has(x.d)) walks.set(x.d, []); walks.get(x.d).push(x); }
+  return walks;
+};
+
+/**
+ * One walk's glide judged over its samples while it moves (shown, strictly between its ends): `linear`, never a step
+ * back past `SLACK` px, never a step longer than its own speed covers in the frame gap plus `SLACK`. Pushes its defects
+ * onto `d` and answers the walk's facts — its rebuilds (nodes) and its moves (one node at a new place in the stack).
+ */
+function glideDefects(path, xs, d) {
+  const SLACK = 3;
+  const tag = path.slice(0, 40);
+  const moving = xs.filter((x) => x.shown && x.pct > 0 && x.pct < 100);
+  const speed = xs[0].len / xs[0].ms;
+  let worstBack = 0;
+  let worstStep = 0;
+  let moves = 0;
+  if (moving.some((x) => x.timing !== 'linear')) d.push(`${tag}: the walker's glide is ${moving.find((x) => x.timing !== 'linear').timing}, not linear`);
+  for (let i = 1; i < moving.length; i++) {
+    const a = moving[i - 1];
+    const b = moving[i];
+    const back = (a.pct - b.pct) * a.len / 100;
+    const step = Math.hypot(b.x - a.x, b.y - a.y);
+    if (a.el === b.el && a.index !== b.index) moves++;
+    worstBack = Math.max(worstBack, back);
+    worstStep = Math.max(worstStep, step - speed * (b.t - a.t));
+    if (back > SLACK) d.push(`${tag}: the walker stepped ${back.toFixed(1)} px BACK at ${Math.round(b.t)} ms (node ${a.el}@${a.index} → ${b.el}@${b.index})`);
+    if (step > speed * (b.t - a.t) + SLACK) d.push(`${tag}: the walker jumped ${step.toFixed(1)} px in ${Math.round(b.t - a.t)} ms at ${Math.round(b.t)} ms, over the ${(speed * (b.t - a.t)).toFixed(1)} px its speed covers`);
+  }
+  return { len: Math.round(xs[0].len), ms: xs[0].ms, samples: moving.length, rebuilds: new Set(moving.map((x) => x.el)).size, moves, worstBack: Number(worstBack.toFixed(2)), worstStepOverSpeed: Number(worstStep.toFixed(2)) };
+}
+
+/**
+ * MEASUREMENT (card#12194's design r4, item a): a walker's node re-inserted where it stands by `insertBefore` — does
+ * Chromium restart its running CSS animations? Read on the shown walker standing in its wait: each animation's object,
+ * start time and current time before; the same after one animation frame; and whether the objects are the same ones.
+ */
+const REINSERT = `(async () => {
+  const g = [...document.querySelectorAll('#floor-drawing .fx-walker-shown')].find((n) => getComputedStyle(n).opacity !== '0' && n.parentNode.classList.contains('desks'));
+  if (g === undefined) return null;
+  const read = (as) => as.map((a) => ({ name: a.animationName, start: a.startTime === null ? null : Math.round(a.startTime), current: a.currentTime === null ? null : Math.round(a.currentTime) }));
+  const nodes = [g, g.querySelector('.fx-walker')];
+  const before = nodes.flatMap((n) => n.getAnimations());
+  const was = read(before);
+  g.parentNode.insertBefore(g, g.nextSibling);
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const after = nodes.flatMap((n) => n.getAnimations());
+  return { before: was, after: read(after), same_objects: before.length === after.length && before.every((a, i) => a === after[i]), restarted: read(after).some((a, i) => was[i] !== undefined && a.current !== null && was[i].current !== null && a.current < was[i].current) };
+})()`;
+
+/**
+ * MEASUREMENT (card#12194's design r4, item b): does a re-inserted walker's `<image>` flicker — miss a composited frame
+ * while its data URI is decoded again? The standing walker's clip is captured, then the node is re-inserted with its
+ * animations put back on their start (as `pin()` does), and the clip captured again at once, eight times; each clip is
+ * compared with the first by its pixels, so a frame drawn without the walker reads as a large difference.
+ */
+async function flicker(s) {
+  const box = await s.ev(`(() => { const g = [...document.querySelectorAll('#floor-drawing .fx-walker-shown')].find((n) => getComputedStyle(n).opacity !== '0' && n.parentNode.classList.contains('desks')); if (g === undefined) return null; const r = g.getBoundingClientRect(); return { x: Math.max(0, r.x), y: Math.max(0, r.y), width: Math.max(1, r.width), height: Math.max(1, r.height), scale: 1 }; })()`);
+  if (box === null) return null;
+  const grab = async () => (await s.page('Page.captureScreenshot', { format: 'png', clip: box })).data;
+  const diff = (a, b) => s.ev(`Promise.all([${JSON.stringify(a)}, ${JSON.stringify(b)}].map((d) => new Promise((ok) => { const i = new Image(); i.onload = () => { const c = document.createElement('canvas'); c.width = i.width; c.height = i.height; const x = c.getContext('2d'); x.drawImage(i, 0, 0); ok(x.getImageData(0, 0, i.width, i.height).data); }; i.src = 'data:image/png;base64,' + d; }))).then(([p, q]) => { let n = 0; for (let k = 0; k < Math.min(p.length, q.length); k += 4) { if (Math.abs(p[k] - q[k]) + Math.abs(p[k + 1] - q[k + 1]) + Math.abs(p[k + 2] - q[k + 2]) > 60) n++; } return n / (p.length / 4); })`);
+  const base = await grab();
+  const out = [];
+  for (let i = 0; i < 8; i++) {
+    await s.ev(`(() => { const g = [...document.querySelectorAll('#floor-drawing .fx-walker-shown')].find((n) => getComputedStyle(n).opacity !== '0' && n.parentNode.classList.contains('desks')); const nodes = [g, g.querySelector('.fx-walker')]; const starts = nodes.map((n) => n.getAnimations().map((a) => a.startTime)); g.parentNode.insertBefore(g, g.nextSibling); nodes.forEach((n, j) => n.getAnimations().forEach((a, k) => { if (starts[j][k] !== undefined) a.startTime = starts[j][k]; })); return true; })()`);
+    out.push(Number((await diff(base, await grab())).toFixed(4)));
+  }
+  return { changed_fraction_per_reinsert: out, worst: Math.max(...out) };
+}
+
 /** One session on one server, closed whatever the row does. */
 async function within(chrome, c, fn) {
   const srv = await serve(c);
@@ -595,7 +726,7 @@ const ROWS = {
   // continuity is measured ACROSS a rebuild and not only within one node. Which arc is which leg, and where it starts,
   // is the suite's to hold (`ABirdFliesToItsDestinationTest`); here every arc is judged alike.
   // The PLANTs: the stepped flight the card replaced, the whole-frame delay that snapped the bird back on a repaint, and
-  // a painter that draws each rebuild from its own delay without pinning it to the flight's one start (`pinFlights()`),
+  // a painter that draws each rebuild from its own delay without pinning it to the flight's one start (`pinEffects()`),
   // and one that dates the flight from `document.timeline.currentTime` — the last frame's time, behind the page's clock
   // by however long the tasks since that frame have run — on a page busy for 40 ms as each post lands (a long task, as
   // the live floor has), so its flight starts that much before its post arrived — and a flight
@@ -604,9 +735,9 @@ const ROWS = {
     [
       { plant: [{ file: 'js/floor/painter.js', from: 'style: `animation-duration:${seconds}s;animation-delay:${-flown}s;offset-path', to: 'style: `animation-duration:${seconds}s;animation-timing-function:steps(${fx.frames});animation-delay:${-flown}s;offset-path' }] },
       { plant: [{ file: 'js/floor/painter.js', from: 'const flown = fx.elapsed_ms / 1000;', to: 'const flown = (fx.elapsed_frames * fx.frame_interval_ms) / 1000;' }] },
-      { plant: [{ file: 'js/floor/painter.js', from: '        host.replaceChildren(svg);\n        pinFlights();\n', to: '        host.replaceChildren(svg);\n' }] },
+      { plant: [{ file: 'js/floor/painter.js', from: '        host.replaceChildren(svg);\n        pinEffects();\n', to: '        host.replaceChildren(svg);\n' }] },
       { plant: [
-        { file: 'js/floor/painter.js', from: 'performance.now() - (clock.now() - startedAt)', to: 'document.timeline.currentTime - elapsedMs' },
+        { file: 'js/floor/painter.js', from: 'performance.now() - (clock.now() - entry.started_at)', to: 'document.timeline.currentTime - entry.elapsed_ms' },
         { file: 'page', from: 'R.delivered.push(performance.now());', to: 'for (const until = performance.now() + 40; performance.now() < until;); R.delivered.push(performance.now());' },
       ] },
       { plant: [{ file: 'js/floor/painter.js', from: '@keyframes fly{from{offset-distance:0%;', to: '@keyframes fly{from{offset-distance:10%;' }] },
@@ -669,7 +800,7 @@ const ROWS = {
           if (first.origin === null) d.push(`${arcD}: the bird's first drawn node has no started animation`);
           else if (post === undefined) d.push(`${arcD}: no post was delivered before the bird was first drawn`);
           else {
-            // 2 ms: `pinFlights()` reads the page's clock and the timeline's one after the other, and a real page clock is whole ms.
+            // 2 ms: `pinEffects()` reads the page's clock and the timeline's one after the other, and a real page clock is whole ms.
             if (first.origin < post - 2) d.push(`${arcD}: the flight starts ${(post - first.origin).toFixed(1)} ms BEFORE its post was delivered`);
             if (first.origin > first.t + 2) d.push(`${arcD}: the flight starts ${(first.origin - first.t).toFixed(1)} ms after its first drawn point`);
             const owed = xs[0].len * Math.min(1, Math.max(0, (first.t - first.origin) / xs[0].ms));
@@ -689,6 +820,152 @@ const ROWS = {
         if (nodes < 2) d.push(`${arcD}: no repaint landed during the flight (one node) — continuity across a rebuild was not measured`);
         facts.push({ len: Math.round(xs[0].len), ms: xs[0].ms, samples: shown.length, nodes, firstAfterPostMs: lag, short: short === null ? null : Number(short.toFixed(2)), worstBack: Number(worstBack.toFixed(2)), worstStepOverSpeed: Number(worstStep.toFixed(2)) });
       }
+      return { defects: d.slice(0, 6), facts };
+    })),
+
+  // ⭐ THE WALKER GLIDES (card#12194, FLOOR.md § 6.2's walk note items 8 and 9). The operator's *"For walking characters,
+  // make them glide smoothly too"*: over `fx-elevator`'s `repaint` run — an A2 whose walk a `feed.heartbeat`'s render
+  // rebuilds mid-walk — every drawn `.fx-walker` (the gliding group) is sampled on every animation frame from the page's
+  // first script: its point on its own path (its computed `offset-distance` along its `offset-path`), whether it is shown,
+  // its timing function, and its walk's own start on the timeline (its `glide` animation's start time plus its delay — an
+  // A2's walk leg starts with the walk). Judged per walk: its timing function `linear`; its start no earlier than the
+  // delivery of the delta that drew it (less 2 ms, two clock reads) and no later than its first drawn point; no step back
+  // by more than `SLACK` px and no step longer than § 12's speed covers in the frame gap (plus `SLACK`); and at least one
+  // rebuild (a new node) inside the walk. The PLANTs: `steps(frames)`, the glide's delay in whole frames under a pin that
+  // reads the exact instant, and the start dated from `document.timeline.currentTime` on a page busy 40 ms per delivery
+  // (the bird row's PLANT 4).
+  'walker-glide': row('a walker glides along its routed path across a repaint, never in steps, from its walk\'s own start', { run: 'repaint', stream: 2000 },
+    [
+      { plant: [{ file: 'js/floor/painter.js', from: "animation-duration:${sec(walk.frames * I)}s;animation-delay", to: "animation-duration:${sec(walk.frames * I)}s;animation-timing-function:steps(${walk.frames});animation-delay" }] },
+      // The glide's delay in whole frames while its pin reads the exact instant, the bird row's second PLANT's form: handed
+      // to BOTH, the whole-frame elapsed cancels inside the pin (`began + elapsed` against `walk.start × I − elapsed`), so
+      // a pinning browser draws it right — measured, NOT CAUGHT — and the defect a pinning browser can show is the mismatch.
+      { plant: [{ file: 'js/floor/painter.js', from: 'animation-delay:${sec(walk.start * I - elapsed)}s`', to: 'animation-delay:${sec(walk.start * I - (fx.elapsed_frames ?? 0) * I)}s`' }] },
+      { plant: [
+        { file: 'js/floor/painter.js', from: 'performance.now() - (clock.now() - entry.started_at)', to: 'document.timeline.currentTime - entry.elapsed_ms' },
+        { file: 'page', from: 'R.delivered.push(performance.now());', to: 'for (const until = performance.now() + 40; performance.now() < until;); R.delivered.push(performance.now());' },
+      ] },
+    ],
+    (chrome, c) => within(chrome, c, async (s) => {
+      const SAMPLE_MS = 9000;
+      await s.page('Page.addScriptToEvaluateOnNewDocument', { source: WALKER_SAMPLER(SAMPLE_MS) });
+      await s.open('/floor/aimla');
+      await until(() => s.ev(`performance.now() > ${SAMPLE_MS + 100}`), SAMPLE_MS + 5000, 'the page never reached the end of the sample');
+      const all = await s.ev('window.__walkers.samples');
+      const t0 = await s.ev('window.__walkers.t0');
+      const delivered = (await s.ev('window.__ride.delivered')).map((x) => x - t0);
+      const d = [];
+      const facts = [];
+      const walks = byPath(all);
+      if (walks.size === 0) d.push('no walker was drawn — the row measured nothing');
+      for (const [path, xs] of walks) {
+        const f = glideDefects(path, xs, d);
+        const shown = xs.filter((x) => x.shown && x.pct > 0 && x.pct < 100);
+        const first = shown[0];
+        if (first !== undefined) {
+          const post = delivered.filter((t) => t <= xs[0].t + 17).at(-1);
+          if (first.origin === null) d.push(`${path.slice(0, 40)}: the walker's first drawn node has no started glide`);
+          else if (post === undefined) d.push(`${path.slice(0, 40)}: no delta was delivered before the walker was first drawn`);
+          else {
+            if (first.origin < post - 2) d.push(`${path.slice(0, 40)}: the walk starts ${(post - first.origin).toFixed(1)} ms BEFORE its delta was delivered`);
+            if (first.origin > first.t + 2) d.push(`${path.slice(0, 40)}: the walk starts ${(first.origin - first.t).toFixed(1)} ms after its first drawn point`);
+          }
+          f.firstAfterPostMs = post === undefined ? null : Number((first.t - post).toFixed(1));
+        }
+        if (f.rebuilds < 2) d.push(`${path.slice(0, 40)}: no repaint landed during the walk (one node) — continuity across a rebuild was not measured`);
+        facts.push(f);
+      }
+      return { defects: d.slice(0, 6), facts };
+    })),
+
+  // ⭐ WALKERS CROSS IN DEPTH (card#12194, FLOOR.md § 6.2's walk note items 9 and 10). Over `fx-elevator`'s `crossing` run —
+  // `aimla-review` departing to the elevator while `aimla-impl-1` arrives and walks down past the back row's foot line —
+  // with keyboard focus placed on `aimla-impl-1`'s desk, every animation frame reads: each walker's point and node (H20 —
+  // no step back, no jump, across the tick that MOVES its node, and the row reds unless a move landed inside a walk); the
+  // floor stack's order — every walker after each desk whose foot line (its desk sprite's `y + h`) is at or above its feet
+  // and before each deeper one, walkers among themselves by feet `y`, a pair inside one loop frame of travel (24 px) of a
+  // crossing excused as § 6.2 item 9's stated lag (H16); the desks' relative order and `document.activeElement` unchanged
+  // (H18); every walker element a child of the floor stack, and a walker shown in the cab inside the band's cab clip group
+  // before the leaves (H8); and that the point under each shown walker is never a walker element (H19). Then, with
+  // `aimla-review` standing in its wait on the threshold: its image draws one frame on two ticks (H21), and a click on the
+  // leaves' centre — under the waiting walker — opens the cab (H19). Two MEASUREMENTS are reported as facts: whether
+  // `insertBefore` of a walker's node restarts its running animations (`reinsert`), and whether a re-inserted walker's
+  // `<image>` is missing from the next composited frame (`flicker`, the walker's clip compared before and after).
+  // The PLANTs: no `pin()` after a move (H20), the walker drawn in the effects layer (H16), every stack child re-appended
+  // per tick (H18), the pointer rule dropped (H19), a walker stepped unconditionally (H21), and the cab element in the
+  // effects layer (H8).
+  'walker-crossing': row('two walkers cross in depth: the nearer in front, gliding through every stack move, focus kept, the elevator still pressable under a waiting walker', { run: 'crossing', stream: 2000 },
+    [
+      { plant: [{ file: 'js/floor/painter.js', from: "                if (repin) {\n                    pin(order[i].item.walker.entry);\n                }\n", to: '' }] },
+      // The shipped order: walkers appended to the effects layer, above every desk, and never placed among them.
+      { plant: [
+        { file: 'js/floor/painter.js', from: '{ stack: desks, cab: cabLayer }', to: '{ stack: effectsLayer, cab: cabLayer }' },
+        { file: 'js/floor/painter.js', from: '    function stack(layer, depths, deskNode, walkers, now, repin) {\n', to: '    function stack(layer, depths, deskNode, walkers, now, repin) {\n        return;\n' },
+      ] },
+      { plant: [{ file: 'js/floor/painter.js', from: '                if (walking && canPin()) {\n', to: '                for (const n of [...desks.children]) {\n                    desks.append(n);\n                }\n\n                if (walking && canPin()) {\n' }] },
+      { plant: [{ file: 'js/floor/painter.js', from: 'opacity:0;pointer-events:none;animation-name:walker-shown', to: 'opacity:0;animation-name:walker-shown' }] },
+      { plant: [{ file: 'js/floor/painter.js', from: 'if (window !== null && !strides(window, now)) {', to: 'if (false) {' }] },
+      { plant: [{ file: 'js/floor/painter.js', from: '{ stack: desks, cab: cabLayer }', to: '{ stack: desks, cab: effectsLayer }' }] },
+    ],
+    (chrome, c) => within(chrome, c, async (s) => {
+      const SAMPLE_MS = 15500;
+      await s.page('Page.addScriptToEvaluateOnNewDocument', { source: WALKER_SAMPLER(SAMPLE_MS) });
+      await s.open('/floor/aimla');
+      await s.ev(`(() => { const d = document.querySelector('#floor-drawing [data-key="aimla/aimla-impl-1"]'); d.focus(); window.__walkers.focusAt = performance.now() - window.__walkers.t0; return true; })()`);
+      await until(() => s.ev(`performance.now() > ${SAMPLE_MS + 100}`), SAMPLE_MS + 8000, 'the page never reached the end of the sample');
+      const all = await s.ev('window.__walkers.samples');
+      const focusAt = await s.ev('window.__walkers.focusAt');
+      const frames = await s.ev('window.__walkers.frames');
+      const d = [];
+      const facts = { walks: [], moves: 0, frames: frames.length };
+      const walks = byPath(all);
+      if (walks.size < 2) d.push(`${walks.size} walker(s) drawn — the crossing measured nothing`);
+      for (const [path, xs] of walks) {
+        const f = glideDefects(path, xs, d);
+        facts.walks.push(f);
+        facts.moves += f.moves;
+      }
+      if (facts.moves === 0) d.push('no walker\'s node moved in the floor stack inside its walk — continuity across a move was not measured');
+      // H16, H18, H8, H19 on every frame.
+      const LAG = 24 + 3;
+      let deskOrder = null;
+      for (const fr of frames) {
+        if (fr.loose.length > 0) { d.push(`at ${Math.round(fr.t)} ms a walker element is outside the floor stack: ${fr.loose.join(', ')}`); break; }
+        if (fr.cabBad) { d.push(`at ${Math.round(fr.t)} ms a walker shown in the cab is not inside the band's cab before the leaves`); break; }
+        if (fr.hit.length > 0) { d.push(`at ${Math.round(fr.t)} ms the point under a shown walker is a walker element: ${fr.hit[0]}`); break; }
+        // The desks' order is read once the page has settled (focus placed), and must never change after it.
+        if (deskOrder === null && fr.t > focusAt) deskOrder = fr.desks.map((x) => x.key).join(' ');
+        if (deskOrder !== null && fr.desks.map((x) => x.key).join(' ') !== deskOrder) { d.push(`at ${Math.round(fr.t)} ms the desks were re-ordered: ${fr.desks.map((x) => x.key).join(' ')}`); break; }
+        if (fr.t > focusAt + 20 && fr.focus !== 'aimla/aimla-impl-1') { d.push(`at ${Math.round(fr.t)} ms focus is on ${fr.focus}, not the desk it was placed on`); break; }
+        const bad = [];
+        for (const w of fr.walkers.filter((x) => x.shown)) {
+          for (const desk of fr.desks) {
+            if (desk.depth === null || Math.abs(w.y - desk.depth) <= LAG) continue;
+            if ((w.y >= desk.depth) !== (w.index > desk.index)) bad.push(`walker at y ${w.y.toFixed(1)} is ${w.index > desk.index ? 'after' : 'before'} ${desk.key} (foot line ${desk.depth})`);
+          }
+          for (const v of fr.walkers.filter((x) => x.shown && x !== w && x.y - w.y > LAG)) {
+            if (v.index < w.index) bad.push(`the nearer walker (y ${v.y.toFixed(1)}) is behind the farther (y ${w.y.toFixed(1)})`);
+          }
+        }
+        if (bad.length > 0) { d.push(`at ${Math.round(fr.t)} ms: ${bad[0]}`); break; }
+      }
+      // H21: the waiting walker stands at one frame; then measure, then H19: the press under it.
+      const review = await s.ev(`(() => { const w = [...document.querySelectorAll('#floor-drawing .fx-walker')].find((g) => getComputedStyle(g.parentNode).opacity !== '0' && getComputedStyle(g).offsetDistance === '100%'); return w === undefined ? null : w.querySelector('image')?.getAttribute('href').length ?? null; })()`);
+      const hrefs = [];
+      for (let i = 0; i < 3; i++) {
+        hrefs.push(await s.ev(`(() => { const w = [...document.querySelectorAll('#floor-drawing .fx-walker')].find((g) => getComputedStyle(g.parentNode).opacity !== '0' && getComputedStyle(g).offsetDistance === '100%'); return w === undefined ? null : w.querySelector('image')?.getAttribute('href') ?? null; })()`));
+        await sleep(300);
+      }
+      if (review === null || hrefs.some((h) => h === null)) d.push('no walker stood on the threshold in its wait to read');
+      else if (new Set(hrefs).size !== 1) d.push(`the waiting walker drew ${new Set(hrefs).size} different frames on three ticks — it walks in place`);
+      facts.reinsert = await s.ev(REINSERT);
+      facts.flicker = await flicker(s);
+      await s.click('#floor-drawing .elevator-leaf.left');
+      const leaf = await s.ev(`(() => { const l = document.querySelector('#floor-drawing .elevator-leaf.left').getBoundingClientRect(); const e = document.elementFromPoint(l.x + l.width / 2, l.y + l.height / 2); return e === null ? null : e.tagName + '.' + (e.getAttribute('class') ?? ''); })()`);
+      const opened = await until(async () => (await s.cab()).open, RIDE_DOOR_MS + 1500, 'never').then(() => true, () => false);
+      const cab = await s.cab();
+      facts.press = { under: leaf, cab: cab.open, opened };
+      if (!cab.open) d.push(`a press on the leaves under the waiting walker did not open the cab (the point is ${leaf})`);
       return { defects: d.slice(0, 6), facts };
     })),
 

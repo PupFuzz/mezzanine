@@ -52,8 +52,8 @@ import { isRenderState } from '../lobby/render-state.js';
  * links followed to their own text, emphasis and backticks dropped, whitespace collapsed.
  */
 export const ANIMATION_SET = Object.freeze({
-    A1: Object.freeze({ class: 'edge', animation: "arrive — the elevator's leaves open, the character steps out, walks to its desk and sits", reduced: 'the character is simply present' }),
-    A2: Object.freeze({ class: 'edge', animation: 'depart — the character stands, walks to the elevator, the leaves open, it steps in and is gone, and the leaves close, leaving the chair empty', reduced: 'the chair is empty and labelled' }),
+    A1: Object.freeze({ class: 'edge', animation: "arrive — the elevator's leaves open on the character standing in the cab, it steps out, walks its routed path to its desk and sits", reduced: 'the character is simply present' }),
+    A2: Object.freeze({ class: 'edge', animation: 'depart — the character stands, walks its routed path to the elevator, waits there for up to a minute, the leaves open, it steps into the cab, and the leaves close over it, leaving the chair empty', reduced: 'the chair is empty and labelled' }),
     A3: Object.freeze({ class: 'held', animation: 'work — typing at the keyboard, with the eye blink and the gentle in-place wiggle, 4 fps loop', reduced: 'a working pose, static, with the glyph' }),
     A4: Object.freeze({ class: 'held', animation: 'think — leaning back, watching the monitor, with the same blink and wiggle, 4 fps loop', reduced: 'a thinking pose, static' }),
     A5: Object.freeze({ class: 'edge', animation: "tool-swap — the monitor's glyph changes, one 250 ms cross-fade", reduced: 'the glyph changes with no fade' }),
@@ -287,8 +287,9 @@ const retiring = (before, after) => after.render_state === 'retired';
  * § 7.1's *Desk* column's empty chair, read off `desk/desk-poses.js`'s `DESK` — the column itself, in a
  * module of its own so this file imports nothing that imports it back.
  */
-const emptyChair = (state) => isRenderState(state) && DESK[state]?.pose === 'empty-chair';
-const staffed = (state) => deskDrawsCharacter(state);
+export const emptyChair = (state) => isRenderState(state) && DESK[state]?.pose === 'empty-chair';
+/** § 7.1's *Desk* column draws a character for it — exported with `emptyChair` for the walk's side (`floor/in-flight.js`). */
+export const staffed = (state) => deskDrawsCharacter(state);
 
 const DELTA_ROWS = Object.freeze([
     // A1's and A2's exclusions of A13 (§ 6.2) hold by construction rather than by a clause: `retired` is

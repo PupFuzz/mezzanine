@@ -117,15 +117,15 @@ class ABirdFliesToItsDestinationTest extends TestCase
         $this->assertNotSame([], $this->paintDefects($this->paint($flights, $eased)), 'CONTROL (an unmodelled timing function) did not bite');
 
         // A painter that pins nothing: every node's start is the browser's, which a rebuild moves.
-        $unpinned = $this->mutatedModules([self::PAINTER, 'animation.startTime = began + elapsedMs;', '']);
+        $unpinned = $this->mutatedModules([self::PAINTER, 'animation.startTime = entry.began + entry.elapsed_ms;', '']);
         $this->assertNotSame([], $this->paintDefects($this->paint($flights, $unpinned)), 'CONTROL (no pinned start) did not bite');
 
         // A start re-derived at every paint instead of recorded at the flight's first: a clock step moves it.
-        $perPaint = $this->mutatedModules([self::PAINTER, 'flightStarts.get(key) ?? starts.get(key) ?? ', '']);
+        $perPaint = $this->mutatedModules([self::PAINTER, 'origins.get(entry.key) ?? starts.get(entry.key) ?? ', '']);
         $this->assertNotSame([], $this->paintDefects($this->paint($flights, $perPaint)), 'CONTROL (a start per paint) did not bite');
 
         // The start dated from the last frame's time: the flight starts before its render, by however long the task ran.
-        $stale = $this->mutatedModules([self::PAINTER, 'performance.now() - (clock.now() - startedAt)', 'document.timeline.currentTime - elapsedMs']);
+        $stale = $this->mutatedModules([self::PAINTER, 'performance.now() - (clock.now() - entry.started_at)', 'document.timeline.currentTime - entry.elapsed_ms']);
         $this->assertNotSame([], $this->paintDefects($this->paint($flights, $stale)), 'CONTROL (the start from document.timeline.currentTime) did not bite');
     }
 

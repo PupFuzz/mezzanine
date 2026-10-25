@@ -32,8 +32,9 @@
 import { ANIMATION_SET, LOOP_FPS, loops } from '../wire/animation-set.js';
 import { footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layout.js';
 import { readEmbedded, splitGid, tilesetUrl } from './tileset.js';
-import { BUBBLE_BAND, BUBBLE_PAD, CHARACTER_SCALE, LINE, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, fit, furnitureAsset, thoughtTrail, union } from './desk-layout.js';
+import { BUBBLE_BAND, BUBBLE_PAD, CHARACTER_SCALE, LINE, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, thoughtTrail, union } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
+import { cellCentre, lattice, polylineLength, route } from './route.js';
 
 /**
  * The back-wall band's height (§ 4.2) — "its height is a drawing layer's" (`floor-layout.js`): a wall
@@ -270,44 +271,162 @@ const RING_FADE_FRAMES = 2;
  */
 export const ELEVATOR_DOOR = Object.freeze({ open: 2, step: 1, close: 2 });
 
+/**
+ * The longest a departing character waits at the elevator before the leaves open (§ 12's *Elevator wait* row,
+ * card#12194 — the operator's *"random wait time up to 1 minute"*), in seconds, and in loop frames at § 12's rate.
+ */
+export const ELEVATOR_WAIT_S = 60;
+export const WAIT_MAX_FRAMES = ELEVATOR_WAIT_S * LOOP_FPS;
+
 /** Where every A1 and A2 walk meets the elevator: the leaves' seam, at their foot (§ 6.2's walk note item 3). */
 export function threshold(band) {
     return band === null || band === undefined ? null : Object.freeze({ x: band.elevator.seam, y: band.elevator.y + band.elevator.h });
 }
 
 /**
- * One A1 or A2 walk (FLOOR § 6.2's walk note items 3 and 5): A16's straight-segment rule between the
- * desk's anchor and the elevator's threshold, `⌈length ÷ WALK_PX_PER_FRAME⌉` frames, and the door's
- * frames around it. A2 walks to the threshold, the leaves open, the walker steps in and is gone, the
- * leaves close; A1 is the reverse, the leaves closing behind it while it walks, and it sits on the
- * walk's last frame. `shown` is the frames the walker is drawn in, `walk` the frames it moves in, `door`
- * the frames the leaves are not shut in. With no motion, or no desk on this floor, it draws nothing.
+ * The Desk-column SIDE an A1 or A2 row delivers (§ 6.2's walk note item 6, clause 1): A2 leaves the desk drawing the
+ * empty chair, A1 a character. A render whose model draws the seat's desk on another side cancels the walk.
  */
-function walkEffect(base, id, desk, door, motion, character, box) {
-    if (!motion || desk === null || door === null) {
-        return Object.freeze({ ...base, from: null, to: null, frames: 0, walk: null, shown: null, door: null, size: null, frame: null });
+const WALK_SIDE = Object.freeze({ A1: 'staffed', A2: 'empty' });
+
+/**
+ * One A1 or A2 walk (FLOOR § 6.2's walk note items 3 and 5, card#12194): a ROUTED path through open floor between
+ * the desk's anchor and the elevator's threshold, as legs in frame order — A2 walks to the threshold, WAITS there for
+ * its seeded wait, stands while the leaves open on it, and steps into the cab, where the closing leaves cover it; A1
+ * is revealed in the cab by the opening leaves, steps out, and walks to its desk while they close behind it, sitting
+ * on its walk's last frame. `door` is the frames the leaves are not shut in. With no motion, no desk on this floor,
+ * no band, or no open route, the row is drawn without its walk: no legs, frames 0 (walk note item 7).
+ */
+function walkEffect(base, id, anchor, door, motion, character, box, walking) {
+    const key = `${base.install_id}/${base.seat_id}`;
+    const none = (narrate) => Object.freeze({
+        ...base,
+        route: 'none',
+        side: WALK_SIDE[id],
+        lattice_key: walking.key,
+        frames: 0,
+        legs: Object.freeze([]),
+        door: null,
+        size: null,
+        frame: null,
+        // § 5.5's line, for a desk inside a room that cannot reach the elevator — a defect of the map, never an
+        // overflow desk, which stands on no grid (walk note item 7).
+        no_route: narrate,
+    });
+
+    if (!motion || anchor === null || door === null) {
+        return none(false);
     }
 
-    const [from, to] = id === 'A2' ? [desk, door] : [door, desk];
-    const steps = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / WALK_PX_PER_FRAME));
+    const [from, to] = id === 'A2' ? [anchor, door] : [door, anchor];
+    const cells = walking.route(key, anchor, from, to);
+
+    if (cells === null) {
+        return none(walking.inRoom(key));
+    }
+
+    // The route's cell centres, bracketed by the walk's two ends.
+    const points = Object.freeze([from, ...cells.map((c) => walking.centre(c)), to].map((p) => Object.freeze({ x: p.x, y: p.y })));
+    const length = polylineLength(points);
+    const steps = Math.max(1, Math.ceil(length / WALK_PX_PER_FRAME));
     const D = ELEVATOR_DOOR;
-    const doorFrames = D.open + D.step + D.close;
-    const timing = id === 'A2'
-        ? { walk: { start: 0, frames: steps }, shown: { start: 0, frames: steps + D.open + D.step }, door: { start: steps, frames: doorFrames } }
-        : { walk: { start: D.open + D.step, frames: steps }, shown: { start: D.open, frames: D.step + steps }, door: { start: 0, frames: doorFrames } };
+    const at = Object.freeze({ x: door.x, y: door.y });
+    const walk = (start) => Object.freeze({ kind: 'walk', start, frames: steps, points, length });
+    const stand = (start, frames, why) => Object.freeze({ kind: 'stand', start, frames, at, why });
+    const cab = (start, frames) => Object.freeze({ kind: 'cab', start, frames, at });
+    let legs;
+    let doorSpan;
+
+    if (id === 'A2') {
+        const wait = walking.wait(key, base.cause);
+
+        legs = [walk(0), stand(steps, wait, 'wait'), stand(steps + wait, D.open, 'door'), cab(steps + wait + D.open, D.step + D.close)];
+        doorSpan = { start: steps + wait, frames: D.open + D.step + D.close };
+    } else {
+        legs = [cab(0, D.open), stand(D.open, D.step, 'step'), walk(D.open + D.step)];
+        doorSpan = { start: 0, frames: D.open + D.step + D.close };
+    }
 
     return Object.freeze({
         ...base,
-        from,
-        to,
-        ...timing,
-        // The walker is the desk's character at its drawn size, its feet on the segment: `size` its rect (the
+        route: 'routed',
+        side: WALK_SIDE[id],
+        lattice_key: walking.key,
+        legs: Object.freeze(legs),
+        door: Object.freeze(doorSpan),
+        no_route: false,
+        // The walker is the desk's character at its drawn size, its feet on the path: `size` its rect (the
         // placeholder's, § 9 F14), `frame` the size its image is drawn at — the character's overdraw, the frame every
         // seat document is drawn in (§ 10.4's frame contract, card#12259), centred on the feet as the desk's is.
         size: Object.freeze({ w: character.w * CHARACTER_SCALE, h: character.h * CHARACTER_SCALE }),
         frame: Object.freeze((({ w, h }) => ({ w, h }))(characterOverdraw(box, character).overdraw)),
-        frames: Math.max(timing.walk.start + timing.walk.frames, timing.door.start + timing.door.frames),
+        frames: Math.max(...legs.map((l) => l.start + l.frames), doorSpan.start + doorSpan.frames),
     });
+}
+
+/**
+ * The LATTICE KEY (§ 6.2's walk note item 6, clause 4): a fingerprint of exactly what the walkable model reads — the
+ * layout's version, each rendered room's install, origin, map version and whether its map is drawn, the hallway's
+ * presence, the theme registry's kinds as held, and each tileset the maps name with its status in the loader. A
+ * render whose key differs from a walk's cancels it: the walk was routed on a floor no longer drawn. What the painter
+ * drew (its failed assets, the theme's `drawn`) is deliberately not in it — the lattice reads the map's cells.
+ */
+function latticeKey(frame, input, grids, kinds) {
+    const status = (url) => {
+        const held = input.tilesets.get(url);
+
+        return held === undefined ? 'absent' : held.pending === true ? 'pending' : held.failure !== undefined ? 'failure' : 'tileset';
+    };
+    const urls = [...new Set(grids.flatMap((g) => (Array.isArray(g.map.tilesets) ? g.map.tilesets : [])
+        .filter((entry) => typeof entry?.source === 'string')
+        .map((entry) => tilesetUrl(entry.source))))].sort();
+
+    return JSON.stringify([
+        input.layout_version ?? null,
+        frame.rooms.map((room) => [room.install_id, room.origin?.x ?? null, room.origin?.y ?? null, room.map?.map_version ?? null, room.mapless === true]),
+        grids.some((g) => g.install_id === null),
+        kinds,
+        urls.map((url) => [url, status(url)]),
+    ]);
+}
+
+/**
+ * The routing the walks of ONE render share (walk note item 3): the lattice, built at the first walk that asks and
+ * never on a render that carries none, every route over it, and each departure's seeded wait.
+ */
+function walkRouting({ key, extent, cell, obstacles, desks, draw }) {
+    let grid;
+    const desksByKey = new Map(desks.map((d) => [d.key, d]));
+    const built = () => {
+        if (grid === undefined) {
+            grid = extent === null || cell === null ? null : lattice({
+                extent,
+                cell,
+                obstacles,
+                desks: desks.map((d) => ({ key: d.key, rects: [d.slot_rect, d.box].filter((r) => r !== null) })),
+            });
+        }
+
+        return grid;
+    };
+
+    return {
+        key,
+        route: (seat, anchor, from, to) => {
+            const g = built();
+
+            return g === null ? null : route(g, from, to, { key: seat, anchor });
+        },
+        centre: (c) => cellCentre(grid, c),
+        inRoom: (seat) => (desksByKey.get(seat)?.slot_rect ?? null) !== null,
+        // § 5.1 of card#12194's design: a deterministic per-event draw over the character's own key — the character
+        // tree's ONE seeded draw (`resources/characters/seed.js`'s `draw()`, § 10.4) — uniform over `0 … WAIT_MAX_FRAMES`.
+        // With no character tree held there is no seeded draw, and the walker waits none (§ 9 F14's viewer).
+        wait: (seat, cause) => (typeof draw === 'function' ? draw(seat, `elevator-wait:${cause}`) % (WAIT_MAX_FRAMES + 1) : 0),
+        get lattice() {
+            return built();
+        },
+    };
 }
 
 /** A § 6.2 edge row's single-frame forms — the 250 ms fades and eases, one loop frame each. */
@@ -317,11 +436,12 @@ const ONE_FRAME = new Set(['A5', 'A11', 'A12', 'A14', 'A17']);
  * The scene for one floor frame, or `null` when the frame composed no floor.
  *
  * @param {object} frame `FloorScreen#draw()`'s frame
- * @param {object} input `{ box, measure, character, themes, maps, hallway, tilesets, failed,
- *        reduce, effects, previous }` — `themes` is `painter.js`'s `themeInputs()`; `maps` is
- *        install_id → the held map document or `null`; `tilesets` is `TilesetLoader#held`; `failed` the
- *        asset ids the painter reported; `effects` the animation-log rows this render wrote; `previous`
- *        key → the box the last scene drew
+ * @param {object} input `{ box, measure, character, draw, themes, maps, hallway, tilesets, layout_version,
+ *        failed, reduce, effects, previous }` — `draw` the character tree's seeded draw (`seed.js`'s `draw()`, or
+ *        `null` where the tree failed to load); `themes` is `painter.js`'s `themeInputs()`; `maps` is
+ *        install_id → the held map document or `null`; `tilesets` is `TilesetLoader#held`; `layout_version` the
+ *        building layout's version held; `failed` the asset ids the painter reported; `effects` the animation-log
+ *        rows this render wrote; `previous` key → the box the last scene drew
  */
 export function buildScene(frame, input) {
     if (frame.floor === null || frame.floor === undefined || frame.rooms.length === 0) {
@@ -407,6 +527,9 @@ export function buildScene(frame, input) {
         return grid === null || f === null ? null : { x: f.x, y: f.y, w: f.width, h: f.height, cell: { w: grid.tilewidth, h: grid.tileheight } };
     });
     const landingAt = extents.findLastIndex((e, i) => e !== null && holds(grids[i], e));
+    // The walkable model's obstacles (§ 6.2's walk note item 3): every `wall` tile and every standing kind's tile, at
+    // the rect the floor would draw it, read from the map's cells — whether or not the theme draws them.
+    const obstacles = [];
 
     grids.forEach((g, i) => {
         const extent = extents[i];
@@ -416,6 +539,12 @@ export function buildScene(frame, input) {
         }
 
         const cells = mapTiles(g.map, g.origin, tilesetFor, g.install_id);
+
+        for (const c of cells) {
+            if (c.kind === 'wall' || standing.includes(c.kind)) {
+                obstacles.push(Object.freeze({ x: c.x, y: c.y, w: c.w, h: c.h }));
+            }
+        }
         const of = (kind) => tileRegions(cells.filter((c) => c.kind === kind))
             .flatMap((region) => region.rects)
             .map((r) => Object.freeze({ x: r.x - extent.x, y: r.y - extent.y, w: r.w, h: r.h }));
@@ -530,7 +659,7 @@ export function buildScene(frame, input) {
             // native size from that anchor, past the slot's edge (F21), neither scaled nor clipped.
             const at = slot === null
                 ? { x: room.origin.x + d.grid_index * W, y: room.origin.y }
-                : { x: slot.x, y: slot.y + slot.h - H };
+                : slotOrigin(slot, box);
 
             desks.push(placeDesk(model, d.key, installId, slot, at, {
                 box,
@@ -622,7 +751,17 @@ export function buildScene(frame, input) {
 
     // ── The § 6.2 forms this render draws ──────────────────────────────────────────────────────
     const anchors = new Map(desks.map((desk) => [desk.key, anchorOf(desk)]));
-    const effects = buildEffects(input.effects ?? [], frame, anchors, input.previous ?? new Map(), extent, band, input.reduce === true, input.character, box);
+    // The lattice's cell: the smallest tile edge over the floor's grids, the hallway's included (walk note item 3).
+    const sizes = extents.filter((e) => e !== null).flatMap((e) => [e.cell.w, e.cell.h]);
+    const walking = walkRouting({
+        key: latticeKey(frame, input, grids, theme.kinds),
+        extent: extent === null ? null : { x: extent.x, y: extent.y, width: extent.width, height: extent.height },
+        cell: sizes.length === 0 ? null : Math.min(...sizes),
+        obstacles,
+        desks,
+        draw: input.draw ?? null,
+    });
+    const effects = buildEffects(input.effects ?? [], frame, anchors, input.previous ?? new Map(), extent, band, input.reduce === true, input.character, box, walking);
 
     // § 9 F14: every asset the scene asked to be drawn that the painter reported failed, and every
     // tileset that could not be fetched or read.
@@ -653,8 +792,19 @@ export function buildScene(frame, input) {
         art_failed: failedAssets.length > 0,
         // Where each desk's travellers and walks meet it — what the NEXT render's walks start from.
         anchors: Object.freeze(Object.fromEntries(anchors)),
+        // What the walkable model reads, fingerprinted — every render's, so the holder can cancel a walk routed on another.
+        lattice_key: walking.key,
         loop_fps: LOOP_FPS,
     });
+}
+
+/**
+ * Where a desk's box stands in its slot: the slot's bottom-left — the floor line its author drew — so a slot at least
+ * the box's size holds it, and an undersized one's desk is drawn at native size from that anchor, past the slot's
+ * edge (F21). Exported for the route probe, which places the shipped default's desks by the same rule.
+ */
+export function slotOrigin(slot, box) {
+    return { x: slot.x, y: slot.y + slot.h - box.height };
 }
 
 /**
@@ -678,6 +828,9 @@ export function placeDesk(model, key, installId, slot, at, ctx, extra) {
         ...extra,
         slot_rect: slot === null ? null : Object.freeze(slot),
         box: Object.freeze({ x: at.x, y: at.y, w: ctx.box.width, h: ctx.box.height }),
+        // The desk's DEPTH KEY (§ 6.2's walk note item 9, § 12's *Depth key*): its furniture foot line — the line the
+        // side table and the interns stand on — which a walker's feet are compared with to stack it in front or behind.
+        depth_y: at.y + (({ y, h }) => y + h)(deskRects(ctx.box, ctx.character)['desk-sprite']),
         // FLOOR.md § 10.6: where the bubble, the coordination birds and the walks meet this desk — its sitter's
         // centre line, through the one primitive (`characterCentre()`), and the height the birds and the walks
         // meet it at, the desk's own mid-height, below every facts plate (`deskAnchor()`, card#11468).
@@ -1242,7 +1395,7 @@ function travel(base, from, to, moving, rest) {
  * Every § 6.2 edge row this render WROTE, as the frames to draw — at § 12's loop rate, from where
  * the fact happened to where it ends. Rows are the animation set's; nothing here fires one.
  */
-function buildEffects(rows, frame, anchors, previous, extent, band, reduce, character, box) {
+function buildEffects(rows, frame, anchors, previous, extent, band, reduce, character, box, walking) {
     const interval = 1000 / LOOP_FPS;
     const effects = [];
     const seen = new Set();
@@ -1377,7 +1530,7 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce, char
         const before = key === null ? null : previous.get(key) ?? null;
 
         if (id === 'A1' || id === 'A2') {
-            effects.push(walkEffect(base, id, now, threshold(band), motion && !reduce, character, box));
+            effects.push(walkEffect(base, id, now, threshold(band), motion && !reduce, character, box, walking));
 
             continue;
         }

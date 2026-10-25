@@ -13,17 +13,31 @@
  * until the next one: a heartbeat or any seat's delta cut A19's envelope and A20's ring short, and a
  * walk drawn the same way would be cut too. One holder, every multi-frame row (item 8).
  *
- * ⛔ AT MOST ONE WALK PER SEAT, AND A RENDER THAT TOUCHES THE SEAT CANCELS IT (item 6). A render
- * touches seat S, with a walk in flight, iff its journal applied an entry for S, S's § 2.3 row 5
- * condition or the floor's stilled condition changed, S's desk anchor differs from the one the walk
- * was computed against (the applying render's), or the elevator's threshold moved. No walk starts from
- * a cancelled one, and a render whose journal fires two walk rows for one seat draws neither — the
- * second delta touched the first walk. The 1 s age tick and the paint-only refresh are not renders and
- * never reach `render()`.
+ * ⛔ AT MOST ONE WALK PER SEAT, AND A RENDER THAT TOUCHES THE SEAT CANCELS IT (item 6, card#12194). A
+ * render touches seat S, with a walk in flight, iff its journal applied a NON-DELTA entry for S (a snapshot,
+ * resync, insert or reconnect replacing S's object, or S's removal); its model draws S's desk on another SIDE of
+ * § 7.1's *Desk* column than the walk delivered (staffed, empty or neither — `walkSide()`), or its rows carry an
+ * A1 or A2 for S; S's § 2.3 row 5 condition or the floor's stilled condition changed; S's desk anchor differs from
+ * the one the walk was computed against (the applying render's); the elevator's threshold moved; or the floor's
+ * lattice key differs from the one the walk was routed on. A same-side delta — `working ↔ idle`, an action or a
+ * context change under an A1, `stale → offline` under an A2 — leaves the walker on its way: under a walk the desk
+ * draws every fact of the applied object but the character, and the walker IS that character. No walk starts from
+ * a cancelled one, and a render whose journal fires two walk rows for one seat draws neither. The 1 s age tick and
+ * the paint-only refresh are not renders and never reach `render()`.
  */
+
+import { emptyChair, staffed } from '../wire/animation-set.js';
 
 /** The § 6.2 rows drawn as a walk, one per seat at most. */
 export const WALK_ROWS = Object.freeze(['A1', 'A2']);
+
+/**
+ * The SIDE of § 7.1's *Desk* column a `render_state` draws (item 6, clause 1): `staffed`, `empty`, or `neither`
+ * (`retired`, an unrecognised value, or no desk) — through the two predicates A1 and A2 fire on, never a copy.
+ */
+export function walkSide(renderState) {
+    return staffed(renderState) ? 'staffed' : emptyChair(renderState) ? 'empty' : 'neither';
+}
 
 /** The held walks' seat keys. */
 const keyOf = (effect) => `${effect.install_id}/${effect.seat_id}`;
@@ -31,7 +45,7 @@ const keyOf = (effect) => `${effect.install_id}/${effect.seat_id}`;
 const samePoint = (a, b) => a !== null && b !== null && a !== undefined && b !== undefined && a.x === b.x && a.y === b.y;
 
 export class EffectsInFlight {
-    /** `{ effect, at, frames, key, anchor, threshold, unconfirmed, stilled }`, oldest first. */
+    /** `{ effect, at, frames, key, anchor, threshold, unconfirmed, stilled, side, lattice_key }`, oldest first. */
     #held = [];
 
     #intervalMs;
@@ -47,13 +61,18 @@ export class EffectsInFlight {
      *
      * @param {list<object>} effects the scene's effects for the rows this render wrote
      * @param {number} now the browser's clock, ms
-     * @param {object} ctx `{ journal, anchors: Map, threshold, unconfirmed: function(key): boolean|null, stilled }`
+     * @param {object} ctx `{ journal, anchors: Map, threshold, unconfirmed: function(key): boolean|null, stilled,
+     *        side: function(key): string, lattice_key }`
      * @returns {list<string>} the keys whose walk this render cancelled
      */
     render(effects, now, ctx) {
+        // A delta touches a walk only through the side it draws (clause 1); every other applied entry replaces the
+        // seat's object or removes it, and touches it as it always did (clause 2).
         const touchedKeys = new Set((ctx.journal ?? [])
-            .filter((entry) => entry.outcome === 'applied' && typeof entry.seat_id === 'string')
+            .filter((entry) => entry.outcome === 'applied' && entry.t !== 'seat.delta' && typeof entry.seat_id === 'string')
             .map((entry) => `${entry.install_id}/${entry.seat_id}`));
+        // Two opposite edges applied in one render leave the side unchanged and still cancel: their rows are here.
+        const rowKeys = new Set(effects.filter((effect) => WALK_ROWS.includes(effect.animation_id)).map(keyOf));
         const cancelled = [];
 
         this.#held = this.#held.filter((h) => {
@@ -66,6 +85,9 @@ export class EffectsInFlight {
             }
 
             const touched = touchedKeys.has(h.key)
+                || rowKeys.has(h.key)
+                || ctx.side(h.key) !== h.side
+                || ctx.lattice_key !== h.lattice_key
                 || ctx.unconfirmed(h.key) !== h.unconfirmed
                 || ctx.stilled !== h.stilled
                 || !samePoint(ctx.anchors.get(h.key) ?? null, h.anchor)
@@ -118,6 +140,8 @@ export class EffectsInFlight {
                 threshold: ctx.threshold,
                 unconfirmed: ctx.unconfirmed(key),
                 stilled: ctx.stilled,
+                side: effect.side,
+                lattice_key: effect.lattice_key,
             });
         }
 
