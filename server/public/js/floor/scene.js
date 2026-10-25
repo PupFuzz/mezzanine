@@ -247,11 +247,12 @@ function roomSuffix(installId, seats) {
 
 /**
  * The walk and the travel speeds the edge rows' frames are counted from, in scene pixels per frame
- * at § 12's loop rate. They decide how many frames a walk takes and carry no fact: every walk of
- * one length takes the same number of frames, whatever the seat.
+ * at § 12's loop rate (§ 12's *Walk speed* and *Envelope speed* rows). They decide how many frames a walk or
+ * a flight takes and carry no fact: every walk or flight of one length takes the same number of frames,
+ * whatever the seat.
  */
 export const WALK_PX_PER_FRAME = 24;
-const ENVELOPE_PX_PER_FRAME = 96;
+const ENVELOPE_PX_PER_FRAME = 48;
 
 /**
  * card#12241's arrival, RULED (the operator's "A"): from touchdown the bird sets the envelope on the desk and

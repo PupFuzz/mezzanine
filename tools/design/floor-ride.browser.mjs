@@ -12,6 +12,9 @@
 //   node tools/design/floor-ride.browser.mjs --shots <dir>  also save the cab rows' windows, and the doors held open, as PNGs under <dir>
 //   …and --chrome <path> or $CHROME, as every browser tool here.
 //
+// It also carries the floor page's other real-browser rows that need its served pages and fixture runs: `starts` (the
+// CI smoke) and `bird-flight` (card#12345, the coordination bird's flight across repaints).
+//
 // ⛔ THE PAGES ARE THE SERVED ONES, AND THE TOOL CARRIES NO COPY OF THE READER. Every page is rendered by
 // `render-floor-view.php`; every absolute origin the view prints (the app URL, the sandbox host included) is
 // rewritten to this tool's server. A plant edits what is SERVED — a module, the sheet, or the rendered page —
@@ -98,11 +101,12 @@ for (const [v, html] of Object.entries(VIEWS)) {
  * The page's own scripted world and the tool's instruments, installed right after the layout's head script and
  * style — so the reader stays the first script on the page — and before the stylesheet link and every module.
  */
-const STAGE = (run, apiDelay, layoutStatus) => `<script>
+const STAGE = (run, apiDelay, layoutStatus, streamDelay = 0) => `<script>
 (() => {
   const RUN = ${JSON.stringify(run).replace(/</g, '\\u003c')};
   const API_DELAY = ${JSON.stringify(apiDelay)};
   const LAYOUT_STATUS = ${JSON.stringify(layoutStatus)};
+  const STREAM_DELAY = ${JSON.stringify(streamDelay)};
   const html = document.documentElement;
   const T = () => Math.round(performance.now());
   // The instruments: every class change on <html>, every pagereveal, the first drawn scene and the chrome's changes.
@@ -176,7 +180,7 @@ const STAGE = (run, apiDelay, layoutStatus) => `<script>
       R.streams.push([T(), String(url)]);
       const opened = performance.now() - start;
       setTimeout(() => { this.readyState = 1; this.fire('open', {}); }, 0);
-      for (const m of RUN.messages ?? []) {
+      for (const m of (RUN.messages ?? []).map((x) => ({ ...x, at_ms: x.at_ms + STREAM_DELAY }))) {
         if (m.at_ms < opened) continue;
         setTimeout(() => {
           if (this.readyState === 2) return;
@@ -202,7 +206,8 @@ const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'te
  * on every static `/js` and `/css` answer), `doc` (`path → ms` before a document is answered, or `'gate'` to hold it
  * until `/release`), `redirect` (`path → target`), `api` (`path → ms` added to the run's answer), `layout`
  * (`document path → status` for that page's `/api/building`), `media` (emulated), `missing` (paths answered 404 — an
- * asset that failed to load); and
+ * asset that failed to load), `stream` (ms added to every message's `at_ms`, so a run's messages land after the page
+ * has settled on a slow host); and
  * `plant` — `[{ file, from, to }]` edits to what is served, `file` a path under `server/public` or `page` (every
  * rendered page).
  */
@@ -217,7 +222,7 @@ function serve(c = {}) {
     let html = VIEWS[view];
     if (view === 'floor') html = html.replace(/data-floor="[^"]*"/, `data-floor="${key}"`).replace(/data-seat="[^"]*"/, `data-seat="${seat}"`);
     const at = html.indexOf('<link rel="stylesheet"');
-    return edit('page', edit(`page:${view}`, html.slice(0, at) + STAGE(run, c.api ?? {}, c.layout ?? {}) + html.slice(at)));
+    return edit('page', edit(`page:${view}`, html.slice(0, at) + STAGE(run, c.api ?? {}, c.layout ?? {}, c.stream ?? 0) + html.slice(at)));
   };
   const beacons = [];
   let release = null;
@@ -571,6 +576,88 @@ const ROWS = {
       if (wall === null || wall.leaves.length !== 2) d.push(`the cab has no back wall or not two leaves: ${JSON.stringify(wall)}`);
       else wall.leaves.forEach((l, i) => { if (!(l.l >= wall.back.l - 0.5 && l.r <= wall.back.r + 0.5 && l.t >= wall.back.t - 0.5 && l.b <= wall.back.b + 0.5)) d.push(`the cab's leaf ${i} is off its back wall: ${JSON.stringify(l)} on ${JSON.stringify(wall.back)}`); });
       return { defects: d, facts: { band: distinct(band), cab: distinct(cab), frames: r.gaps.length, long_frames: r.gaps.slice(1).filter(([, g]) => g > 34), rebuilds: r.rebuilds, bandEnd, wall } };
+    })),
+
+  // ⭐ THE BIRD GLIDES (card#12345). The operator's reading on the sandbox, 2026-10-25: *"It is a little too fast and is
+  // not smooth (the bird jumps locations)"*, and *"When a bird goes to the bird house, it disappears before it reaches
+  // the birdhouse."* Over `fx-coord`'s `coord_portal` run — A22's departure into this floor's birdhouse, A22's arrival
+  // from it, and two A19 travellers, each post a render that lands while the earlier birds fly — every drawn `.fx-bird`
+  // is sampled on every animation frame from the page's first script: its point on its own arc, read from its computed
+  // `offset-distance`, and whether it is drawn. Judged per flight (one arc): its first drawn point within one step of
+  // the arc's start (the desk, or the hole for an arrival), no step backward, no step longer than the flight's own speed
+  // covers in the frame gap (plus `SLACK` px), its last drawn point within one such step of the arc's end (the desk, or
+  // the hole for a departure), and at least one repaint (a new `.fx-bird` node) inside the flight, so the continuity is
+  // measured ACROSS a rebuild and not only within one node. Which arc is which leg is the suite's to hold
+  // (`ABirdFliesToItsDestinationTest`); here every arc is judged alike.
+  // The PLANTs: the stepped flight the card replaced, the whole-frame delay that snapped the bird back on a repaint, and
+  // a painter that draws each rebuild from its own delay without pinning it to the flight's one start (`pinFlights()`).
+  'bird-flight': row('a coordination bird glides along its arc across repaints, from its start to its destination — the desk or the birdhouse\'s hole', { run: 'coord_portal', stream: 3000 },
+    [
+      { plant: [{ file: 'js/floor/painter.js', from: 'style: `animation-duration:${seconds}s;animation-delay:${-flown}s;offset-path', to: 'style: `animation-duration:${seconds}s;animation-timing-function:steps(${fx.frames});animation-delay:${-flown}s;offset-path' }] },
+      { plant: [{ file: 'js/floor/painter.js', from: 'const flown = fx.elapsed_ms / 1000;', to: 'const flown = (fx.elapsed_frames * fx.frame_interval_ms) / 1000;' }] },
+      { plant: [{ file: 'js/floor/painter.js', from: '        host.replaceChildren(svg);\n        pinFlights();\n', to: '        host.replaceChildren(svg);\n' }] },
+    ],
+    (chrome, c) => within(chrome, c, async (s) => {
+      // The sampler is installed before the page's first script, so a flight the run fires before the page settles is
+      // sampled from its start; it runs on every animation frame for the run's first `SAMPLE_MS`.
+      const SAMPLE_MS = 9000;
+      await s.page('Page.addScriptToEvaluateOnNewDocument', { source: `(window.__birds = { samples: [] }, (() => {
+        const ids = new WeakMap(); let next = 0; const paths = new Map(); const t0 = performance.now();
+        const arc = (d) => { if (!paths.has(d)) { const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', d); paths.set(d, p); } return paths.get(d); };
+        const tick = (now) => {
+          for (const el of document.querySelectorAll('#floor-drawing .fx-bird')) {
+            if (!ids.has(el)) ids.set(el, next++);
+            const cs = getComputedStyle(el);
+            const d = /path\\("?'?([^"')]+)/.exec(el.style.offsetPath)?.[1] ?? null;
+            if (d === null) continue;
+            const p = arc(d); const len = p.getTotalLength(); const pct = parseFloat(cs.offsetDistance);
+            const at = p.getPointAtLength(len * pct / 100); const end = p.getPointAtLength(len); const start = p.getPointAtLength(0);
+            window.__birds.samples.push({ t: now - t0, d, el: ids.get(el), pct, len, x: at.x, y: at.y, end: [end.x, end.y], start: [start.x, start.y], shown: Number(cs.opacity) > 0, ms: parseFloat(cs.animationDuration) * 1000 });
+          }
+          if (now - t0 < ${SAMPLE_MS}) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick); })())` });
+      await s.open('/floor/aimla');
+      await until(() => s.ev(`performance.now() > ${SAMPLE_MS + 100}`), SAMPLE_MS + 5000, 'the page never reached the end of the sample');
+      const all = await s.ev('window.__birds.samples');
+      const SLACK = 3;
+      const flights = new Map();
+      for (const x of all) { if (!flights.has(x.d)) flights.set(x.d, []); flights.get(x.d).push(x); }
+      const d = [];
+      const facts = [];
+      if (flights.size === 0) d.push('no bird was drawn — the row measured nothing');
+      for (const [arcD, xs] of flights) {
+        const shown = xs.filter((x) => x.shown);
+        const speed = xs[0].len / xs[0].ms;   // scene px per ms, the flight's own
+        let worstStep = 0;
+        let worstBack = 0;
+        for (let i = 1; i < shown.length; i++) {
+          const a = shown[i - 1];
+          const b = shown[i];
+          const step = Math.hypot(b.x - a.x, b.y - a.y);
+          const back = (a.pct - b.pct) * a.len / 100;
+          worstBack = Math.max(worstBack, back);
+          if (back > SLACK) d.push(`${arcD}: the bird stepped ${back.toFixed(1)} px BACK at ${Math.round(b.t)} ms (node ${a.el} → ${b.el})`);
+          if (step > speed * (b.t - a.t) + SLACK) d.push(`${arcD}: the bird jumped ${step.toFixed(1)} px in ${Math.round(b.t - a.t)} ms at ${Math.round(b.t)} ms, over the ${(speed * (b.t - a.t)).toFixed(1)} px its speed covers`);
+          worstStep = Math.max(worstStep, step - speed * (b.t - a.t));
+        }
+        const first = shown[0];
+        if (first !== undefined) {
+          const lead = Math.hypot(first.x - first.start[0], first.y - first.start[1]);
+          const before = xs.filter((x) => x.t < first.t).at(-1);
+          if (lead > speed * (before === undefined ? 17 : first.t - before.t) + SLACK) d.push(`${arcD}: the bird's first drawn point is ${lead.toFixed(1)} px past its start`);
+        }
+        const last = shown.at(-1);
+        const after = last === undefined ? undefined : xs.find((x) => x.t > last.t);
+        const gap = after === undefined ? 17 : after.t - last.t;
+        const short = last === undefined ? null : Math.hypot(last.end[0] - last.x, last.end[1] - last.y);
+        if (last === undefined) d.push(`${arcD}: the bird was never drawn`);
+        else if (short > speed * gap + SLACK) d.push(`${arcD}: the bird's last drawn point is ${short.toFixed(1)} px short of its destination`);
+        const nodes = new Set(shown.map((x) => x.el)).size;
+        if (nodes < 2) d.push(`${arcD}: no repaint landed during the flight (one node) — continuity across a rebuild was not measured`);
+        facts.push({ len: Math.round(xs[0].len), ms: xs[0].ms, samples: shown.length, nodes, short: short === null ? null : Number(short.toFixed(2)), worstBack: Number(worstBack.toFixed(2)), worstStepOverSpeed: Number(worstStep.toFixed(2)) });
+      }
+      return { defects: d.slice(0, 6), facts };
     })),
 
   focus: row('inside, focus is on the current floor\'s button, and stays there across a render', {}, { plant: [{ file: PANEL, from: '            const held = new Map([...list.children].map((li) => [li.dataset.stop, li]));', to: "            [...list.children].forEach((li) => li.remove());\n            const held = new Map();" }] },

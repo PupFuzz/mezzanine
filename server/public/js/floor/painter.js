@@ -119,8 +119,8 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 @keyframes walk{from{transform:translate(var(--from-x),var(--from-y))}to{transform:translate(var(--to-x),var(--to-y))}}
 @keyframes walker-shown{from{opacity:1}to{opacity:1}}
 ${CAB_STYLE}
-.fx-bird{offset-rotate:0deg;animation-name:fly;animation-fill-mode:forwards}
-@keyframes fly{from{offset-distance:0%;opacity:1}99%{opacity:1}to{offset-distance:100%;opacity:0}}
+.fx-bird{offset-rotate:0deg;opacity:0;animation-name:fly;animation-timing-function:linear}
+@keyframes fly{from{offset-distance:0%;opacity:1}to{offset-distance:100%;opacity:1}}
 .wing-up{animation:flap-up steps(1) infinite}.wing-down{animation:flap-down steps(1) infinite}
 @keyframes flap-up{0%{opacity:1}50%{opacity:0}}@keyframes flap-down{0%{opacity:0}50%{opacity:1}}
 .fx-rest{opacity:0;animation-name:rest;animation-fill-mode:forwards}
@@ -201,6 +201,14 @@ export function measurer() {
 }
 
 /**
+ * One bird flight's identity across paints (card#12345): its row, its post, its leg and its two ends — what
+ * `scene.js`'s `travel()` drew it from, so two flights of one post (one per destination) stay apart.
+ */
+function flightKey(fx) {
+    return `${fx.animation_id} ${fx.install_id} ${fx.cause} ${fx.leg ?? ''} ${fx.from.x},${fx.from.y}>${fx.to.x},${fx.to.y}`;
+}
+
+/**
  * The painter, over the floor view's own drawing element — `#floor-drawing`, which
  * `FloorPageWiringTest` holds to the view in both directions.
  *
@@ -240,6 +248,12 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     let stepping = [];
     let loop = null;
     let svg = null;
+    // card#12345: where on the document timeline each bird flight in flight began, keyed by the flight
+    // (`flightKey()`), so every rebuild of the drawing draws the flight from ONE origin (`pinFlights()`).
+    // Bounded by the flights in flight: a flight this paint does not draw is dropped.
+    let flightStarts = new Map();
+    // The flights this paint drew, each `[key, elapsed ms at this paint, its animated nodes]`.
+    let flights = [];
     // THE ONE CACHE OF THEME DOCUMENTS (FLOOR.md § 10.6 item 2): a document's URI, KEYED ON ITS INPUTS — the
     // theme, the function and every input — and never on its asset id, because a map re-save changes a
     // plane's grid, slots and runs under the same asset id, and a cache keyed on the id would draw the old
@@ -568,11 +582,42 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         return g;
     }
 
+    /**
+     * card#12345: a bird flight drawn by a later paint continues from where the earlier paint's bird was. Every
+     * paint rebuilds the drawing, and a rebuilt CSS animation starts when the browser first styles it — a moment
+     * that differs from paint to paint by however long each paint took — so a negative delay alone redraws the
+     * flight from a new origin each time, and the bird jumps (the live floor measured several rebuilds of one
+     * flight inside two seconds). So the first paint of a flight records, on the document timeline, the instant
+     * the flight began, and every paint of it pins its nodes' animations to that instant: the bird and its
+     * resting envelope are one function of the timeline across every rebuild. Run once the drawing is in the
+     * document, where its animations exist.
+     */
+    function pinFlights() {
+        const starts = new Map();
+
+        for (const [key, elapsedMs, nodes] of flights) {
+            const began = flightStarts.get(key) ?? starts.get(key) ?? document.timeline.currentTime - elapsedMs;
+
+            starts.set(key, began);
+
+            // Each node's CSS delay already carries this paint's `elapsed_ms`, so the start that makes the
+            // delayed animation read the timeline from `began` is `began + elapsedMs`.
+            for (const el of nodes) {
+                for (const animation of el.getAnimations()) {
+                    animation.startTime = began + elapsedMs;
+                }
+            }
+        }
+
+        flightStarts = starts;
+    }
+
     function paintEffects(layer, effects) {
         for (const fx of effects) {
             const seconds = (fx.frames * fx.frame_interval_ms) / 1000;
             // § 6.2's walk note item 8: an effect still in flight from an earlier render is drawn at the
-            // frame it has reached — a negative delay — never restarted.
+            // frame it has reached — a negative delay — never restarted. A bird's flight is drawn at the
+            // instant it has reached instead (`elapsed_ms`, and `pinFlights()`), because it moves continuously.
             const ago = ((fx.elapsed_frames ?? 0) * fx.frame_interval_ms) / 1000;
             const style = fx.frames > 0 ? `animation-duration:${seconds}s;animation-timing-function:steps(${fx.frames});animation-delay:${-ago}s` : null;
 
@@ -594,16 +639,29 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                 const rest = (n) => node('g', { transform: `translate(${restAt.x} ${restAt.y}) rotate(-8)`, ...n }, layer);
 
                 if (fx.frames > 0) {
+                    // card#12345 (the operator, 2026-10-25: *"It is a little too fast and is not smooth (the bird
+                    // jumps locations)"*): the flight moves CONTINUOUSLY along its arc — `linear`, never `steps()` —
+                    // so its last drawn position is the desk or the hole, and it is drawn at the exact instant it has
+                    // reached (`elapsed_ms`), so a repaint mid-flight continues it rather than snapping it back to its
+                    // frame's start. The bird is drawn only while it flies (`.fx-bird`'s opacity outside its run).
+                    const flown = fx.elapsed_ms / 1000;
                     const flap = (2 * fx.frame_interval_ms) / 1000;
-                    const g = node('g', { class: 'fx-bird', style: `${style};offset-path:path('${arcPath(fx.from, fx.to)}')` }, layer);
+                    const g = node('g', {
+                        class: 'fx-bird',
+                        style: `animation-duration:${seconds}s;animation-delay:${-flown}s;offset-path:path('${arcPath(fx.from, fx.to)}')`,
+                    }, layer);
 
                     bird(g, fx.heading_deg, flap);
+
+                    const animated = [g];
 
                     if ((fx.rest_frames ?? 0) > 0) {
                         const restS = (fx.rest_frames * fx.frame_interval_ms) / 1000;
 
-                        shapes(rest({ class: 'fx-rest', style: `animation-duration:${restS}s;animation-timing-function:steps(${fx.rest_frames});animation-delay:${seconds - ago}s` }), envelopeShapes());
+                        animated.push(shapes(rest({ class: 'fx-rest', style: `animation-duration:${restS}s;animation-timing-function:steps(${fx.rest_frames});animation-delay:${seconds - flown}s` }), envelopeShapes()));
                     }
+
+                    flights.push([flightKey(fx), fx.elapsed_ms, animated]);
                 } else {
                     shapes(rest({ class: 'fx-still' }), envelopeShapes());
                 }
@@ -923,9 +981,11 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             text(svg, scene.strip.header, 'strip-header');
         }
 
+        flights = [];
         paintEffects(node('g', { class: 'effects' }, svg), scene.effects);
 
         host.replaceChildren(svg);
+        pinFlights();
 
         // The desk the keyboard was on, rebuilt; a desk the render removed leaves focus on the drawing
         // itself, where the camera's keys still reach, rather than dropping it to the page's body.

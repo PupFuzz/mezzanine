@@ -36,4 +36,7 @@ export class Node {
     querySelector() { return null; }
 
     querySelectorAll() { return []; }
+
+    // One animation per node, whose `startTime` the painter may pin (a bird flight's, card#12345) and a probe reads.
+    getAnimations() { return (this.animations ??= [{ startTime: null }]); }
 }
