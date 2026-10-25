@@ -262,7 +262,13 @@ def check(root: str) -> int:
 
 
 def selftest() -> int:
-    """Plant one of each form into a throwaway git repo and see each red; then the controls."""
+    """Plant one of each form into a throwaway git repo and see each red; then the controls. Every
+    throwaway repo sits under one temporary directory, removed when the run ends."""
+    with tempfile.TemporaryDirectory(prefix="no-rt-refs-") as scratch:
+        return _selftest(scratch)
+
+
+def _selftest(scratch: str) -> int:
     bad = 0
 
     def expect(name: str, ok: bool, detail: str = "") -> None:
@@ -272,7 +278,7 @@ def selftest() -> int:
             bad += 1
 
     def repo(files: dict[str, bytes]) -> str:
-        d = tempfile.mkdtemp(prefix="no-rt-refs-")
+        d = tempfile.mkdtemp(dir=scratch)
         subprocess.run(["git", "init", "-q", d], check=True)
         for rel, data in files.items():
             p = os.path.join(d, rel)
