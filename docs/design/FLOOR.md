@@ -1240,6 +1240,16 @@ no fact and are not [§ 12](#12-every-number-and-where-it-comes-from) rows — t
   stand outside it, and the placeholder would be the board's dark plaque ink on the page's dark ground,
   ≈ 1.3 : 1 — review round 1's F2), and `building-scene.js`'s `surfaceStyle()` stops writing `touchAction`,
   which the entry now owns (review round 1's F9).
+  **The camera's surface is the surface as the room is drawn in it, measured even while the room is not drawn**
+  (card#12319). With the boxes in the page's flow the un-drawn surface holds only the empty camera's layer and
+  measures zero high at every window size, a surface `wire/camera.js` refuses; `lobby/main.js`'s `surface()`
+  measures it under `surfaceStyle()`'s drawn style and puts the un-drawn style back in the same synchronous call,
+  so the screen's camera starts, and the stream opens, before the first snapshot. A lobby whose script cannot
+  start says *the lobby could not start — <cause>; reload the page to try again* in the building readings and
+  the directory, in place of their *waiting* placeholders (`lobby-model.js`'s `startFailure()`), and the error
+  still reaches the console. `Tests\Feature\Lobby\TheLobbyStartsBeforeItsRoomIsDrawnTest` holds both over the
+  page's own script, with a planted control for each; `tools/design/floor-ride.browser.mjs`'s lobby rows load
+  the served page in headless Chromium.
   **`touch-action` is `none` ONLY where the wire listens, and `auto` everywhere else — the primitive inverted**
   (round 2's N2 and N5). The one primitive is a rule keyed on `data-home`: **`none` under
   `[data-home="board"]`** for the list and the two readings panels, and **`none` on the surface only while a

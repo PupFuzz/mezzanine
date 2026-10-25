@@ -54,6 +54,7 @@ import { arrival, revealed } from '../wire/ride-arrival.js';
 import { ridePage } from '../wire/ride-page.js';
 import { cabTheme, loadHousePalette, paintCab } from '../floor/cab-paint.js';
 import { startLobbyScreen } from './lobby-screen.js';
+import { startFailure } from './lobby-model.js';
 import { lobbyScene, surfaceStyle } from './building-scene.js';
 import { paintRoom, roomDrawing, themeRoomCab } from './building-paint.js';
 import { dockingEntry, renderDirectory, showDirectory } from './directory.js';
@@ -115,9 +116,32 @@ const scene = lobbyScene();
  */
 const dock = dockingEntry(window, document, { building, layer, boxes: [[directoryBox, scene.directory], [readingsBox, scene.readings]], scene });
 
-/** The room's drawing surface in CSS px — the element the room is drawn and the camera looks in. */
+/**
+ * The room's drawing surface in CSS px AS THE ROOM IS DRAWN IN IT — the element the camera looks in, at the size the
+ * camera frames the room at.
+ *
+ * ⛔ WHILE THE ROOM IS NOT DRAWN THE SURFACE HAS NO SIZE OF ITS OWN, so it is measured under the drawn style and put
+ * back (card#12319). Un-drawn, `#lobby-building` holds only the empty camera's layer — the two boxes flow after it
+ * (card#12187) — and `surfaceStyle(null)` gives it no height, so it measures ZERO high in every browser at every
+ * window size; and `wire/camera.js` rightly refuses a surface with no area. Read as it stood, the page's first read —
+ * the screen's camera, before any snapshot — threw, and the lobby never opened its stream. Both writes are in this
+ * one synchronous call, so no frame is ever painted with the drawn style on an un-drawn page; `surfaceStyle()` sets
+ * every member either way, so the put-back is exactly `paintScene()`'s un-drawn style.
+ */
 function surface() {
-    return { width: building.clientWidth, height: building.clientHeight };
+    const drawn = layer.hasAttribute('data-drawn');
+
+    if (!drawn) {
+        Object.assign(building.style, surfaceStyle(scene));
+    }
+
+    const size = { width: building.clientWidth, height: building.clientHeight };
+
+    if (!drawn) {
+        Object.assign(building.style, surfaceStyle(null));
+    }
+
+    return size;
 }
 
 /**
@@ -283,12 +307,42 @@ const cab = ridePage({
     timers,
 });
 
+/** The placeholders that say the page is WAITING — for the stream, or for the fleet snapshot it brings. */
+const WAITING = ['lobby-feed', 'lobby-resyncs', 'lobby-totals', 'lobby-store', 'lobby-derivation', 'lobby-sweep', 'lobby-ingest', 'lobby-stamp'];
+
+/**
+ * ⛔ A LOBBY THAT CANNOT START SAYS SO, AND NEVER WAITS (card#12319). The screen — its camera included — is built
+ * before the stream is opened, so a throw there leaves no stream and no render, and every placeholder would say
+ * *waiting for the fleet snapshot* for as long as the page is open. The building readings and the directory say
+ * instead that the lobby could not start, and why (`lobby-model.js`'s `startFailure()`); the error is re-thrown, so
+ * the console carries it as well.
+ */
+function cannotStart(error) {
+    const statement = startFailure(error);
+
+    say('lobby-start-failure', statement);
+
+    for (const id of WAITING) {
+        say(id, null);
+    }
+
+    list('lobby-floors', [statement]);
+}
+
 const { client, clock, fetch: pageFetch, requestRender, log } = livePage(() => screen.render());
-const screen = startLobbyScreen(client, pageFetch, clock, log, paint, {
-    surface: surface(),
-    reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-    lobby_href: el('lobby').dataset.lobbyHref,
-});
+let screen;
+
+try {
+    screen = startLobbyScreen(client, pageFetch, clock, log, paint, {
+        surface: surface(),
+        reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+        lobby_href: el('lobby').dataset.lobbyHref,
+    });
+} catch (error) {
+    cannotStart(error);
+
+    throw error;
+}
 
 // The room's drawing stands first in the camera's layer, under the directory's and the readings' boxes.
 layer.prepend(room.art);

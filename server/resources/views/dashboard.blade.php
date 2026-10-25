@@ -118,11 +118,14 @@
             feed with its resync count and the fleet totals (§ 4.1 row 3, read from the wire), the THREE
             SEPARATE INDICATORS, never one aggregate (D2 § 8.2.4), the ingest line and the membership stamp
             (§ 2.3), the discrepancy sentence (§ 4.1 row 4), and the client's own event record (§ 5.5).
+            First, hidden until it is needed: the statement that the lobby's script could not start
+            (card#12319), which `public/js/lobby/main.js` writes in place of the WAITING placeholders.
         --}}
         <div id="lobby-readings" data-home="flow">
             <div class="lobby-face lobby-readings-face">
                 <section class="lobby-reading" aria-labelledby="lobby-health-heading" data-camera-scrolls>
                     <h3 id="lobby-health-heading">Building readings</h3>
+                    <p id="lobby-start-failure" role="alert" hidden></p>
                     <p><span id="lobby-feed">feed: waiting for the stream</span></p>
                     <p><span id="lobby-resyncs">resyncs: waiting for the stream</span></p>
                     <p><span id="lobby-totals">waiting for the fleet snapshot</span></p>
