@@ -78,5 +78,13 @@ class AppServiceProvider extends ServiceProvider
          * The route is behind `auth`, so the account is always there.
          */
         RateLimiter::for('compose', fn (Request $request) => Limit::perMinute(10)->by('compose:'.$request->user()->id));
+
+        /*
+         * `seat-token-issue` — card#12331's limiter for `admin.tokens.issue`, for `compose`'s reason:
+         * per ACCOUNT, never per IP. A person issuing by hand cannot reach it; a stuck client or a
+         * pasted loop that would mint token rows without bound does. Revoke has none — it creates
+         * nothing and is idempotent.
+         */
+        RateLimiter::for('seat-token-issue', fn (Request $request) => Limit::perMinute(10)->by('seat-token-issue:'.$request->user()->id));
     }
 }

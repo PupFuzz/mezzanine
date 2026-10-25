@@ -41,7 +41,7 @@ fixtures, hook wiring, config keys or crontab line it brings, and what each vers
 | `$COORD_CONFIG` | `/home/mezzanine/.config/coord/coordination.config.json`, read from `~/.claude/settings.local.json` | resolved by Step 2's `coord-config.js`, never typed. Claude Code's settings precedence puts project-local `settings.local.json` over `settings.json` (<https://code.claude.com/docs/en/settings>, *Settings precedence*). The seat's sessions run with `$HOME` as the project, so the two files are `~/.claude/settings.local.json` and `~/.claude/settings.json`. An empty result means none is set, and § 3.1 then says to deliver nothing |
 | `node` | `/usr/bin/node` | `readlink -f "$(command -v node)"`, resolved when Step 5 runs. Cron's `PATH` is not the login shell's, so the crontab names `node` absolutely |
 | ingest URL | `https://sandboxmezzanine.neeba.com/api/ingest/events` | `https://` only (§ 3.5) |
-| server checkout | `/home/mezzanine/mezzanine/server` | where `php artisan` runs. On the sandbox it is the same host; on another host, the token is issued there into a `0600` file and carried by hand to the seat as `~/.config/fleet-reporter/mezzanine-reporter-token` (Step 2, [hand delivery](#when-the-server-is-on-another-host-carry-the-token-in-one-named-file)) |
+| server checkout | `/home/mezzanine/mezzanine/server` | where `php artisan` runs. On the sandbox it is the same host; on another host, the token is issued there into a `0600` file and carried by hand to the seat as `~/.config/fleet-reporter/mezzanine-reporter-token` (Step 2, [hand delivery](#when-the-server-is-on-another-host-carry-the-token-in-one-named-file)). With no shell on the server, none is needed: an operator issues the token on the site's *Seat tokens* page and the seat takes it into that same file (Step 2, [from the site](#when-the-token-is-issued-on-the-sites-seat-tokens-page)) |
 | artifact | `/home/mezzanine/.local/share/fleet-reporter/` | § 2.1's Linux install directory |
 | config | `/home/mezzanine/.config/fleet-reporter/config.json` | § 3.1: mode `0600`, directory `0700` |
 | spool | `/home/mezzanine/.local/state/fleet-reporter` | § 3.1's example location |
@@ -243,8 +243,11 @@ kept its `seq_epoch` (one build of this card to the next adopts nothing), and St
 
 On a seat on the Mezzanine server's own host, the issue command pipes straight into the config. When
 the server is on another host, the token reaches the seat in one named file the operator carries
-([the hand delivery](#when-the-server-is-on-another-host-carry-the-token-in-one-named-file)). Both
-routes use the same resolver, identity check and writer, which come first.
+([the hand delivery](#when-the-server-is-on-another-host-carry-the-token-in-one-named-file)). With no
+shell on the server at all, an operator issues the token on the site's *Seat tokens* page
+(`/admin/tokens`), and the seat takes it into that same named file at a hidden prompt
+([from the site](#when-the-token-is-issued-on-the-sites-seat-tokens-page)). All three routes use the
+same resolver, identity check and writer, which come first.
 
 **Set the seat's values first.** Every block of this step reads them from here, so no block below is
 edited by hand. Fill each `<…>` from [the values to substitute](#the-values-to-substitute); the
@@ -311,7 +314,8 @@ On the sandbox it printed `mezzanine`. The seat declares `mezzanine`, so the che
 Declaring `mezzanine-solo` would have been `disagreed`.
 
 **The token is a credential, and it must never reach a terminal, an argv, a shell history or a log.**
-`mezzanine:ingest-token:issue` prints the plaintext once and stores only its SHA-256. So the issue
+`mezzanine:ingest-token:issue` prints the plaintext once and stores only its SHA-256 (the site's *Seat
+tokens* page performs the same act and shows it once, in the browser). So the issue
 command is piped straight into a small writer. On the same host the writer takes the token off the pipe,
 writes the config with mode `0600`, and prints every other line of the command's output, with the token
 line replaced. It receives the token, so it lives in `$B` and nowhere another account can write. Save
@@ -522,10 +526,11 @@ takes it, and Step 8 needs it.
 A second Mezzanine site (D1 § 3.1, *Sites*) is added in the order in which a refusal fails safe:
 
 1. **Issue the token on the new site for the seat's existing pair**, `php artisan mezzanine:ingest-token:issue
-   <install_id> <seat_id>`, on that site's host, and read back the `seat <install_id> / <seat_id>` line it
-   prints: a pair mistyped here is a `403 identity_mismatch` on the first batch, which `selftest` cannot see
+   <install_id> <seat_id>`, on that site's host, or on that site's *Seat tokens* page, and read back the
+   `seat <install_id> / <seat_id>` line it prints (the page's heading names the pair the same way): a pair
+   mistyped here is a `403 identity_mismatch` on the first batch, which `selftest` cannot see
    (D1 § 6.14). A site on another host carries the token by [the hand delivery](#when-the-server-is-on-another-host-carry-the-token-in-one-named-file),
-   steps (a) and (b).
+   steps (a) and (b); a token from the page reaches the seat by [the hidden prompt](#when-the-token-is-issued-on-the-sites-seat-tokens-page).
 2. **Write the site with the writer**, by the carried file or by piping the issue command into it:
    `FR_MODE=add-site FR_SITE_NAME=<name> FR_URL=<the site's ingest URL> FR_CA_FILE=<optional> FR_REPORTER=$HOME/.local/share/fleet-reporter/fleet-reporter.js FR_CONFIG=$HOME/.config/fleet-reporter/config.json FR_TOKEN_FILE=<the carried file> node "$B/write-config.js"`.
    It refuses a name or a URL the file already has (two spellings of one server are one URL), and prints
@@ -707,6 +712,37 @@ and left the token file in place for the retry. (d) left no file behind, and run
 removed the link and left the file it pointed at intact, byte for byte. In every case the token
 appeared on neither stdout nor stderr. ⚠ The run used neither the real issue command nor a carry
 between two hosts: the first real hand delivery exercises both.
+
+#### When the token is issued on the site's Seat tokens page
+
+No shell on the Mezzanine host is needed. An operator signs in to the site, opens the admin console's
+*Seat tokens* page (`/admin/tokens`, which asks for the password again), types the seat's `install_id`
+and `seat_id` from [the values to substitute](#the-values-to-substitute), and issues. A new pair creates
+the install and the seat. The page shows the token once, with its **prefix**: keep the prefix, as the
+hand delivery's step (a) does, because Step 8 and every failure below need it. The token then takes the
+hand delivery's path from step (c) on, through the same named file:
+
+**(a′) On the seat, write the token into the named file at a hidden prompt.** The token is read from
+the terminal with echo off, so it reaches neither the screen nor an argv nor the shell history, and it
+is written with mode `0600` into the `0700` directory. The block refuses a file that already exists:
+
+```bash
+bash -euo pipefail <<'SH'
+  install -d -m 0700 $HOME/.config/fleet-reporter
+  F=$HOME/.config/fleet-reporter/mezzanine-reporter-token
+  if [ -e "$F" ] || [ -L "$F" ]; then echo "$F already exists: NOTHING WRITTEN" >&2; exit 1; fi
+  printf 'Paste the token from the Seat tokens page (it is not shown), then press Enter: ' >/dev/tty
+  IFS= read -rs T </dev/tty; printf '\n' >/dev/tty
+  umask 077; set -o noclobber; printf '%s\n' "$T" > "$F"
+  stat -c '%a %U %n' $HOME/.config/fleet-reporter "$F"
+SH
+```
+
+Both lines must show the seat account, `700` on the directory and `600` on the file. Then run the hand
+delivery's **(c)**, which checks that the file holds one well-formed token and nothing else before it
+writes the config, and **(d)** on the seat only: this route leaves no file on the Mezzanine host. If (c)
+refuses the content, the paste was not the token: run (d), then (a′) again. If the token was not copied
+before the page was left, it cannot be shown again: revoke its prefix on the same page and issue another.
 
 ## Step 3 — check the config file
 

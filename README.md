@@ -281,8 +281,10 @@ observer is refused it with a `403` and the dashboard does not link it (card#941
 edit, retire), **agents** (read seat state, the `mezzanine:retire` operator act, and the
 **retired seats** record — a removed seat's desk goes from the floor immediately, so the console is
 where *who retired it, when and why* lives, `card#9078`), **floors** (each room's Tiled map: how
-many desks it has and where they sit, `card#9085`) and the **building layout** (which rooms share a
-floor, what each floor is called, and where each room is drawn on a planned one, `card#9208`).
+many desks it has and where they sit, `card#9085`), the **building layout** (which rooms share a
+floor, what each floor is called, and where each room is drawn on a planned one, `card#9208`) and
+**seat tokens** (issue a seat's reporter token, shown once to copy, and revoke one later,
+`card#12331`).
 Pinning a named seat to a chosen desk was ruled out on `card#9071` (2026-09-12) because it would
 store a fact `docs/design/FLOOR.md § 3.2` derives — and a desk object carrying any property but
 `reserved_for` is refused at the write so that a seat's name cannot arrive as one. `reserved_for`
@@ -321,8 +323,19 @@ the first time an account must exist that may NOT administer other accounts — 
 with the operator's ruling on card#9415. `server/routes/admin.php` carries the same account beside
 the middleware.
 
-⛔ **There is no "add an agent" and no "delete a user", and both absences are deliberate.** A seat
-exists because it *reported* (`docs/design/FLOOR.md § 3.4`); an account stops working by being
+**A seat is added on the Seat tokens page** (`/admin/tokens`, card#12331). It asks for your password
+again before it opens. Type the install id and the seat id — a new one creates the install and the
+seat — and the page shows the seat's reporter token once: copy it into the seat's reporter config
+(`fleet-reporter/INSTALL-LINUX.md` Step 2) right away, because only its SHA-256 is kept and the page
+cannot show it again. The seat is on the floor from that moment, as *no data yet*, until its first
+batch (`docs/design/FLOOR.md § 3.4`). A seat that already holds a token gets a second one beside it,
+which is a rotation: revoke the old prefix on the same page once the seat's config holds the new one.
+A revoked token is refused on the seat's next request, and the list keeps who revoked it, when and
+why. A retired seat is refused a token; its replacement takes a new seat id. The same act runs from a
+shell as `php artisan mezzanine:ingest-token:issue <install_id> <seat_id>` and
+`mezzanine:ingest-token:revoke <prefix> --reason=…`.
+
+⛔ **There is no "delete a user", and the absence is deliberate.** An account stops working by being
 retired, and its record survives so that everything it did still resolves.
 
 ### The board card on a desk

@@ -34,6 +34,9 @@ class FixedWindowPinCoverageTest extends TestCase
             'hit rather than at an absolute boundary, so its loop cannot straddle. It also calls '.
             'travelBack(), which would tear a pin down mid-test.',
         'Tests\Feature\TwoFactorResetSurfaceTest' => 'asserts throttle WIRING, not a limit driven to its ceiling — it runs no request loop.',
+        'Tests\Feature\Admin\SeatTokenConsoleTest' => "`throttle:seat-token-issue` is a named limiter on Laravel's own ".
+            'Illuminate\\Cache\\RateLimiter, whose TTL starts at the FIRST hit, so its loop cannot straddle. '.
+            'The class also calls travel() to age an issue key past its window.',
     ];
 
     public function test_every_class_asserting_a_429_runs_on_a_pinned_clock(): void

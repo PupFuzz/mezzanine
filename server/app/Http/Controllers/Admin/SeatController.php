@@ -16,11 +16,14 @@ use Illuminate\Http\Request;
  * the three: **manage and remove only.**
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ THERE IS NO SEAT-CREATE ACTION, AND ITS ABSENCE IS THE DESIGN RATHER THAN AN UNFINISHED EDGE.
- * `docs/design/FLOOR.md § 3.4`: a seat exists because it REPORTED; retirement is an explicit
- * operator act and there is no "add a seat". Hand-authoring one would store a fact the system
- * currently derives — the class the operator deferred to `card#9071` — so this module reads state
- * and performs the one existing act.
+ * ⛔ THIS MODULE CREATES NO SEAT; THE SEAT TOKENS MODULE DOES. A seat is provisioned by issuing its
+ * token (`App\Fleet\SeatTokens::issue()`, from `App\Http\Controllers\Admin\SeatTokenController`
+ * or `mezzanine:ingest-token:issue`), and `docs/design/FLOOR.md § 3.4` puts it on the floor from
+ * that moment. This docblock used to say a seat exists because it REPORTED and that there is no
+ * "add a seat" — card#9070's posture, which § 3.4 never stated and which card#12331 superseded on
+ * the operator's 2026-10-25 request. What stays out of this module is `card#9071`'s ruling: nothing
+ * here pins a seat to a desk or authors a fact the floor derives. It reads state and performs the
+ * one act it owns, retirement.
  *
  * ⛔ THE RETIREMENT IT PERFORMS IS `mezzanine:retire`'s, NOT A COPY OF IT. Both call
  * `App\Fleet\SeatRetirement`, which is the single writer § 4.10 requires; a console that set the

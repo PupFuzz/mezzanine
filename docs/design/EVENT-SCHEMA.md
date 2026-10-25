@@ -5682,8 +5682,9 @@ drives it.
 **What lifts it: a flusher restart, and nothing else — because every recovery is a config write.**
 No act on the server makes the token the config holds acceptable again: `mezzanine:ingest-token:issue`
 mints a new plaintext and stores only its hash, so the new value exists nowhere but on the issuer's
-screen until the seat's file is written; `revoke` is permanent; and there is no re-bind
-(`server/app/Console/Commands` holds `issue` and `revoke` and no third command). A `401` is fixed by a
+screen — the CLI's, or the console's *Seat tokens* page, which performs the same act (card#12331) —
+until the seat's file is written; `revoke`, from the CLI or that page, is permanent; and there is no re-bind (`server/app/Console/Commands` holds `issue`
+and `revoke` and no third command, and the page is not a command). A `401` is fixed by a
 token that resolves and a `403` by one issued for this seat's pair — both reach the file by the
 writer's `set-token` mode and the running flusher by Step 5's restart
 ([§ 3.1](#sites-one-seat-reporting-to-several-mezzanine-deployments), *The installer's writer*). So
