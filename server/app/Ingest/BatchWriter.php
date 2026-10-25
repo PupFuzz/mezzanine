@@ -60,10 +60,10 @@ use Illuminate\Support\Facades\DB;
  * EVERYTHING ELSE ON `seat_state` IS CARD #7339's, INCLUDING THE ONES THAT LOOK EASY. Notably
  * `last_event_seq` / `last_event_seq_epoch` are NOT written here even though the batch envelope
  * carries both. They are the APPLIED mark — the newest `(seq_epoch, seq)` the fold has applied,
- * which `delivery.last_seq` publishes — derived by the fold over the stored rows it applies. Out-of-
- * order delivery is the ordinary case (AT-12), and advancing them here on arrival would publish a
- * position the fold has not reached. `seq_epoch_change` and `seq_collision` stay the fold's for the same
- * reason. The RECEIVED mark above is a different fact: what this site has received, written here
+ * which `delivery.last_seq` publishes — derived by the fold over the stored rows it applies.
+ * Out-of-order delivery is the ordinary case (AT-12), and advancing them here on arrival would
+ * publish a position the fold has not reached. `seq_epoch_change` and `seq_collision` stay the
+ * fold's for the same reason. The RECEIVED mark above is a different fact: what this site has received, written here
  * with a never-backwards guard, which is all a gap needs — the fold's gap rule it replaced was
  * already arrival-ordered (`events.id` order is this lock's commit order), and it could not see a
  * duplicate, which is the whole of card#12210.
