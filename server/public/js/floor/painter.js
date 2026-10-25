@@ -213,11 +213,12 @@ function flightKey(fx) {
  * `FloorPageWiringTest` holds to the view in both directions.
  *
  * @param {{characters: object|null, themes: Object<string, object|null>, failed: function(list<string>): void,
- *          select: function(string, string): void, ride: function(): void, house: string|null}} options `themes`
- *          the theme modules `loadArt()` held, by name; `ride` the elevator's press (§ 4.5); `house` the house
- *          theme's name, whose elevator palette the cab is drawn in
+ *          select: function(string, string): void, ride: function(): void, house: string|null,
+ *          clock: {now: function(): number}}} options `themes` the theme modules `loadArt()` held, by name; `ride`
+ *          the elevator's press (§ 4.5); `house` the house theme's name, whose elevator palette the cab is drawn in;
+ *          `clock` the page's clock, the one a flight's `started_at` was read from (`pinFlights()`)
  */
-export function createPainter({ characters, themes = {}, failed, select, ride = () => {}, house = null }) {
+export function createPainter({ characters, themes = {}, failed, select, ride = () => {}, house = null, clock = { now: () => Date.now() } }) {
     const host = document.getElementById('floor-drawing');
 
     if (host === null) {
@@ -252,7 +253,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     // (`flightKey()`), so every rebuild of the drawing draws the flight from ONE origin (`pinFlights()`).
     // Bounded by the flights in flight: a flight this paint does not draw is dropped.
     let flightStarts = new Map();
-    // The flights this paint drew, each `[key, elapsed ms at this paint, its animated nodes]`.
+    // The flights this paint drew, each `[key, its start on the page's clock, elapsed ms at this paint, its animated nodes]`.
     let flights = [];
     // THE ONE CACHE OF THEME DOCUMENTS (FLOOR.md § 10.6 item 2): a document's URI, KEYED ON ITS INPUTS — the
     // theme, the function and every input — and never on its asset id, because a map re-save changes a
@@ -591,12 +592,25 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
      * the flight began, and every paint of it pins its nodes' animations to that instant: the bird and its
      * resting envelope are one function of the timeline across every rebuild. Run once the drawing is in the
      * document, where its animations exist.
+     *
+     * That instant is the flight's own start (`started_at`, on the page's clock) carried onto the timeline by a
+     * LIVE reading of both clocks — `performance.now()` is the document timeline's clock, read now. Never
+     * `document.timeline.currentTime`: it holds the last frame's time for as long as a task runs, so a paint at
+     * the end of a long task would date the flight up to that task's length early, before its post arrived, and
+     * the bird's first drawn point would be that far along its arc. A browser with no `getAnimations()`, or a
+     * timeline with no time (an inactive document), pins nothing and keeps the negative delay alone.
      */
     function pinFlights() {
         const starts = new Map();
 
-        for (const [key, elapsedMs, nodes] of flights) {
-            const began = flightStarts.get(key) ?? starts.get(key) ?? document.timeline.currentTime - elapsedMs;
+        if (typeof host.getAnimations !== 'function' || !Number.isFinite(document.timeline?.currentTime)) {
+            flightStarts = starts;
+
+            return;
+        }
+
+        for (const [key, startedAt, elapsedMs, nodes] of flights) {
+            const began = flightStarts.get(key) ?? starts.get(key) ?? performance.now() - (clock.now() - startedAt);
 
             starts.set(key, began);
 
@@ -661,7 +675,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                         animated.push(shapes(rest({ class: 'fx-rest', style: `animation-duration:${restS}s;animation-timing-function:steps(${fx.rest_frames});animation-delay:${seconds - flown}s` }), envelopeShapes()));
                     }
 
-                    flights.push([flightKey(fx), fx.elapsed_ms, animated]);
+                    flights.push([flightKey(fx), fx.started_at, fx.elapsed_ms, animated]);
                 } else {
                     shapes(rest({ class: 'fx-still' }), envelopeShapes());
                 }

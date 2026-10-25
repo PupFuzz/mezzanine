@@ -109,8 +109,9 @@ const STAGE = (run, apiDelay, layoutStatus, streamDelay = 0) => `<script>
   const STREAM_DELAY = ${JSON.stringify(streamDelay)};
   const html = document.documentElement;
   const T = () => Math.round(performance.now());
-  // The instruments: every class change on <html>, every pagereveal, the first drawn scene and the chrome's changes.
-  const R = window.__ride = { classes: [], reveals: [], errors: [], scene: null, chrome: [], requests: [], streams: [] };
+  // The instruments: every class change on <html>, every pagereveal, the first drawn scene and the chrome's changes,
+  // and when each stream message was delivered (\`delivered\`, unrounded on \`performance.now()\`).
+  const R = window.__ride = { classes: [], reveals: [], errors: [], scene: null, chrome: [], requests: [], streams: [], delivered: [] };
   new MutationObserver(() => R.classes.push([T(), html.className, location.hash])).observe(html, { attributes: true, attributeFilter: ['class'] });
   addEventListener('pagereveal', (e) => {
     const rec = { at: T(), vt: e.viewTransition !== null, finished: null };
@@ -185,6 +186,7 @@ const STAGE = (run, apiDelay, layoutStatus, streamDelay = 0) => `<script>
         setTimeout(() => {
           if (this.readyState === 2) return;
           if (m.end === true) { this.readyState = 2; this.fire('error', {}); return; }
+          R.delivered.push(performance.now());
           this.fire('mezzanine', { data: JSON.stringify(m.envelope) });
         }, m.at_ms - (performance.now() - start));
       }
@@ -583,19 +585,31 @@ const ROWS = {
   // the birdhouse."* Over `fx-coord`'s `coord_portal` run — A22's departure into this floor's birdhouse, A22's arrival
   // from it, and two A19 travellers, each post a render that lands while the earlier birds fly — every drawn `.fx-bird`
   // is sampled on every animation frame from the page's first script: its point on its own arc, read from its computed
-  // `offset-distance`, and whether it is drawn. Judged per flight (one arc): its first drawn point within one step of
-  // the arc's start (the desk, or the hole for an arrival), no step backward, no step longer than the flight's own speed
-  // covers in the frame gap (plus `SLACK` px), its last drawn point within one such step of the arc's end (the desk, or
-  // the hole for a departure), and at least one repaint (a new `.fx-bird` node) inside the flight, so the continuity is
-  // measured ACROSS a rebuild and not only within one node. Which arc is which leg is the suite's to hold
-  // (`ABirdFliesToItsDestinationTest`); here every arc is judged alike.
+  // `offset-distance`, whether it is drawn, and the flight's own start on the timeline (its `fly` animation's start
+  // time plus its delay). Judged per flight (one arc): its start no earlier than the delivery of the post that drew it
+  // and no later than its first drawn point; its first drawn point within one frame's travel (plus `SLACK` px) of
+  // where a flight from that start, at its own duration, has reached at that sample — a bird first drawn at a paint
+  // after its start is legitimately that far along its arc; no step backward, no step longer than the flight's own
+  // speed covers in the frame gap (plus `SLACK` px), its last drawn point within one such step of the arc's end (the
+  // desk, or the hole for a departure), and at least one repaint (a new `.fx-bird` node) inside the flight, so the
+  // continuity is measured ACROSS a rebuild and not only within one node. Which arc is which leg, and where it starts,
+  // is the suite's to hold (`ABirdFliesToItsDestinationTest`); here every arc is judged alike.
   // The PLANTs: the stepped flight the card replaced, the whole-frame delay that snapped the bird back on a repaint, and
-  // a painter that draws each rebuild from its own delay without pinning it to the flight's one start (`pinFlights()`).
+  // a painter that draws each rebuild from its own delay without pinning it to the flight's one start (`pinFlights()`),
+  // and one that dates the flight from `document.timeline.currentTime` — the last frame's time, behind the page's clock
+  // by however long the tasks since that frame have run — on a page busy for 40 ms as each post lands (a long task, as
+  // the live floor has), so its flight starts that much before its post arrived — and a flight
+  // whose keyframes start a tenth of the way along its arc, so the bird is first drawn past where its start has it.
   'bird-flight': row('a coordination bird glides along its arc across repaints, from its start to its destination — the desk or the birdhouse\'s hole', { run: 'coord_portal', stream: 3000 },
     [
       { plant: [{ file: 'js/floor/painter.js', from: 'style: `animation-duration:${seconds}s;animation-delay:${-flown}s;offset-path', to: 'style: `animation-duration:${seconds}s;animation-timing-function:steps(${fx.frames});animation-delay:${-flown}s;offset-path' }] },
       { plant: [{ file: 'js/floor/painter.js', from: 'const flown = fx.elapsed_ms / 1000;', to: 'const flown = (fx.elapsed_frames * fx.frame_interval_ms) / 1000;' }] },
       { plant: [{ file: 'js/floor/painter.js', from: '        host.replaceChildren(svg);\n        pinFlights();\n', to: '        host.replaceChildren(svg);\n' }] },
+      { plant: [
+        { file: 'js/floor/painter.js', from: 'performance.now() - (clock.now() - startedAt)', to: 'document.timeline.currentTime - elapsedMs' },
+        { file: 'page', from: 'R.delivered.push(performance.now());', to: 'for (const until = performance.now() + 40; performance.now() < until;); R.delivered.push(performance.now());' },
+      ] },
+      { plant: [{ file: 'js/floor/painter.js', from: '@keyframes fly{from{offset-distance:0%;', to: '@keyframes fly{from{offset-distance:10%;' }] },
     ],
     (chrome, c) => within(chrome, c, async (s) => {
       // The sampler is installed before the page's first script, so a flight the run fires before the page settles is
@@ -612,14 +626,21 @@ const ROWS = {
             if (d === null) continue;
             const p = arc(d); const len = p.getTotalLength(); const pct = parseFloat(cs.offsetDistance);
             const at = p.getPointAtLength(len * pct / 100); const end = p.getPointAtLength(len); const start = p.getPointAtLength(0);
-            window.__birds.samples.push({ t: now - t0, d, el: ids.get(el), pct, len, x: at.x, y: at.y, end: [end.x, end.y], start: [start.x, start.y], shown: Number(cs.opacity) > 0, ms: parseFloat(cs.animationDuration) * 1000 });
+            const fly = el.getAnimations().find((a) => a.animationName === 'fly');
+            const origin = fly === undefined || fly.startTime === null ? null : fly.startTime + fly.effect.getTiming().delay - t0;
+            window.__birds.samples.push({ t: now - t0, origin, d, el: ids.get(el), pct, len, x: at.x, y: at.y, end: [end.x, end.y], start: [start.x, start.y], shown: Number(cs.opacity) > 0, ms: parseFloat(cs.animationDuration) * 1000 });
           }
           if (now - t0 < ${SAMPLE_MS}) requestAnimationFrame(tick);
         };
+        window.__birds.t0 = t0;
         requestAnimationFrame(tick); })())` });
       await s.open('/floor/aimla');
       await until(() => s.ev(`performance.now() > ${SAMPLE_MS + 100}`), SAMPLE_MS + 5000, 'the page never reached the end of the sample');
       const all = await s.ev('window.__birds.samples');
+      const t0 = await s.ev('window.__birds.t0');
+      // When each post reached the page, on the samples' clock; a flight's post is the last delivered by a frame after its first sample.
+      const delivered = (await s.ev('window.__ride.delivered')).map((x) => x - t0);
+      const FRAME = 17;
       const SLACK = 3;
       const flights = new Map();
       for (const x of all) { if (!flights.has(x.d)) flights.set(x.d, []); flights.get(x.d).push(x); }
@@ -642,20 +663,31 @@ const ROWS = {
           worstStep = Math.max(worstStep, step - speed * (b.t - a.t));
         }
         const first = shown[0];
+        let lag = null;
         if (first !== undefined) {
-          const lead = Math.hypot(first.x - first.start[0], first.y - first.start[1]);
-          const before = xs.filter((x) => x.t < first.t).at(-1);
-          if (lead > speed * (before === undefined ? 17 : first.t - before.t) + SLACK) d.push(`${arcD}: the bird's first drawn point is ${lead.toFixed(1)} px past its start`);
+          const post = delivered.filter((t) => t <= xs[0].t + FRAME).at(-1);
+          if (first.origin === null) d.push(`${arcD}: the bird's first drawn node has no started animation`);
+          else if (post === undefined) d.push(`${arcD}: no post was delivered before the bird was first drawn`);
+          else {
+            // 2 ms: `pinFlights()` reads the page's clock and the timeline's one after the other, and a real page clock is whole ms.
+            if (first.origin < post - 2) d.push(`${arcD}: the flight starts ${(post - first.origin).toFixed(1)} ms BEFORE its post was delivered`);
+            if (first.origin > first.t + 2) d.push(`${arcD}: the flight starts ${(first.origin - first.t).toFixed(1)} ms after its first drawn point`);
+            const owed = xs[0].len * Math.min(1, Math.max(0, (first.t - first.origin) / xs[0].ms));
+            const along = xs[0].len * first.pct / 100;
+            const before = xs.filter((x) => x.t < first.t).at(-1);
+            lag = Number((first.t - post).toFixed(1));
+            if (Math.abs(along - owed) > speed * (before === undefined ? FRAME : first.t - before.t) + SLACK) d.push(`${arcD}: the bird's first drawn point is ${along.toFixed(1)} px along its arc, where a flight from its start has reached ${owed.toFixed(1)} px`);
+          }
         }
         const last = shown.at(-1);
         const after = last === undefined ? undefined : xs.find((x) => x.t > last.t);
-        const gap = after === undefined ? 17 : after.t - last.t;
+        const gap = after === undefined ? FRAME : after.t - last.t;
         const short = last === undefined ? null : Math.hypot(last.end[0] - last.x, last.end[1] - last.y);
         if (last === undefined) d.push(`${arcD}: the bird was never drawn`);
         else if (short > speed * gap + SLACK) d.push(`${arcD}: the bird's last drawn point is ${short.toFixed(1)} px short of its destination`);
         const nodes = new Set(shown.map((x) => x.el)).size;
         if (nodes < 2) d.push(`${arcD}: no repaint landed during the flight (one node) — continuity across a rebuild was not measured`);
-        facts.push({ len: Math.round(xs[0].len), ms: xs[0].ms, samples: shown.length, nodes, short: short === null ? null : Number(short.toFixed(2)), worstBack: Number(worstBack.toFixed(2)), worstStepOverSpeed: Number(worstStep.toFixed(2)) });
+        facts.push({ len: Math.round(xs[0].len), ms: xs[0].ms, samples: shown.length, nodes, firstAfterPostMs: lag, short: short === null ? null : Number(short.toFixed(2)), worstBack: Number(worstBack.toFixed(2)), worstStepOverSpeed: Number(worstStep.toFixed(2)) });
       }
       return { defects: d.slice(0, 6), facts };
     })),

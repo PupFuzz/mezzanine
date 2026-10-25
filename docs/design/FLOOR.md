@@ -3366,8 +3366,10 @@ logged.
    render that wrote it computed and its start instant, and every paint before its last frame draws it
    at its elapsed frame. A coordination bird's flight, which moves continuously (§ 6.1 rule 2), is drawn
    at its elapsed INSTANT rather than its elapsed frame, and every paint of one flight draws it from the
-   one start the first paint recorded on the document timeline (`floor/painter.js`'s `pinFlights()`,
-   card#12345) — so a repaint mid-flight neither restarts the bird nor snaps it to its frame's start.
+   one start the first paint recorded on the document timeline — the flight's own start instant, carried
+   onto the timeline by a live reading of both clocks (`floor/painter.js`'s `pinFlights()`, card#12345) —
+   so a repaint mid-flight neither restarts the bird nor snaps it to its frame's start, and a bird first
+   drawn a moment after its start is drawn that far along its arc.
    The same holder ends the truncation of
    [A19](#62-the-animation-table--the-closed-set)'s envelope and
    [A20](#62-the-animation-table--the-closed-set)'s ring that today's next render causes.

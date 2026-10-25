@@ -17,12 +17,12 @@ use Tests\TestCase;
  * is drawn at each instant: read through `bird-paint-probe.mjs`, which paints each of the run's flights twice
  * over a fake DOM, and modelled here from the CSS the painter wrote — its timing function, its keyframes, its
  * duration, its delay and the start it pinned. A timing function the model does not know is a defect, never read
- * as linear.
+ * as linear, and so is a flight the painter did not pin.
  *
  * ⚠ WHAT THIS DOES NOT SEE: when a real browser starts a rebuilt animation, which is what made the live bird jump
- * at every repaint even between frames. The fake starts each animation at its paint's instant, so a painter that
- * pins nothing reads continuous here. `tools/design/floor-ride.browser.mjs`'s `bird-flight` row samples the drawn
- * bird on every animation frame across repaints, with that plant among its controls.
+ * at every repaint even between frames. Here a pin is required and its value checked against the flight's own
+ * start; what a real engine then draws is `tools/design/floor-ride.browser.mjs`'s `bird-flight` row, which samples
+ * the drawn bird on every animation frame across repaints.
  */
 class ABirdFliesToItsDestinationTest extends TestCase
 {
@@ -34,8 +34,17 @@ class ABirdFliesToItsDestinationTest extends TestCase
 
     private const PAINTER = '../floor/painter.js';
 
-    /** The two paints of every flight: the second a repaint 480 ms on, neither on a frame boundary. */
-    private const PAINTS = [['timeline_ms' => 10000, 'elapsed_ms' => 130], ['timeline_ms' => 10480, 'elapsed_ms' => 610]];
+    /**
+     * The two paints of every flight: the second a repaint 480 ms on, neither on a frame boundary. Each flight started
+     * at 0 on the page's clock, so at the first paint its own start on the timeline is `timeline_ms - clock_ms`.
+     * `frame_ms` is `document.timeline.currentTime`, the last frame's time, trailing the live timeline as it does at
+     * the end of a long task; and between the paints the page's clock steps 40 ms ahead of the timeline (a wall-clock
+     * adjustment), so a start re-derived at the repaint is not the flight's start.
+     */
+    private const PAINTS = [
+        ['timeline_ms' => 10000, 'frame_ms' => 9950, 'clock_ms' => 130, 'elapsed_ms' => 130],
+        ['timeline_ms' => 10480, 'frame_ms' => 10470, 'clock_ms' => 650, 'elapsed_ms' => 610],
+    ];
 
     /** § 12's *Envelope speed*, read out of the document. */
     private function envelopeSpeed(): int
@@ -106,6 +115,47 @@ class ABirdFliesToItsDestinationTest extends TestCase
         // A timing function the model below does not know is a defect, never read as linear.
         $eased = $this->mutatedModules([self::PAINTER, 'animation-name:fly;animation-timing-function:linear}', 'animation-name:fly;animation-timing-function:ease-in}']);
         $this->assertNotSame([], $this->paintDefects($this->paint($flights, $eased)), 'CONTROL (an unmodelled timing function) did not bite');
+
+        // A painter that pins nothing: every node's start is the browser's, which a rebuild moves.
+        $unpinned = $this->mutatedModules([self::PAINTER, 'animation.startTime = began + elapsedMs;', '']);
+        $this->assertNotSame([], $this->paintDefects($this->paint($flights, $unpinned)), 'CONTROL (no pinned start) did not bite');
+
+        // A start re-derived at every paint instead of recorded at the flight's first: a clock step moves it.
+        $perPaint = $this->mutatedModules([self::PAINTER, 'flightStarts.get(key) ?? starts.get(key) ?? ', '']);
+        $this->assertNotSame([], $this->paintDefects($this->paint($flights, $perPaint)), 'CONTROL (a start per paint) did not bite');
+
+        // The start dated from the last frame's time: the flight starts before its render, by however long the task ran.
+        $stale = $this->mutatedModules([self::PAINTER, 'performance.now() - (clock.now() - startedAt)', 'document.timeline.currentTime - elapsedMs']);
+        $this->assertNotSame([], $this->paintDefects($this->paint($flights, $stale)), 'CONTROL (the start from document.timeline.currentTime) did not bite');
+    }
+
+    /**
+     * A browser with no `Element.getAnimations()`, or a timeline with no time, still gets its bird: the painter skips
+     * the pin and keeps the negative delay (card#12345's review, F4). The control drops that guard: with no
+     * `getAnimations()` the paint then throws, and with no timeline time it pins a start anyway.
+     */
+    public function test_a_browser_that_cannot_pin_still_draws_the_bird(): void
+    {
+        $effects = $this->effects($this->floorRun(self::RUN));
+        $unguarded = $this->mutatedModules([self::PAINTER, "if (typeof host.getAnimations !== 'function' || !Number.isFinite(document.timeline?.currentTime)) {", 'if (false) {']);
+
+        foreach (['no-get-animations', 'no-timeline'] as $degraded) {
+            $payload = ['effects' => $effects, 'paints' => self::PAINTS, 'degraded' => $degraded];
+            $out = $this->probe($payload, dirname($this->moduleDir()), __DIR__.'/bird-paint-probe.mjs');
+
+            foreach ($out['flights'] as $f) {
+                foreach ($f['paints'] as $i => $p) {
+                    $this->assertNotNull($p['bird'], "{$degraded}: paint {$i} of {$f['animation_id']} {$f['cause']} drew no bird");
+                    $this->assertNull($p['bird']['start'], "{$degraded}: paint {$i} of {$f['animation_id']} {$f['cause']} pinned a start");
+                }
+            }
+
+            [$status, $stdout] = $this->runProbe($payload, dirname($unguarded), __DIR__.'/bird-paint-probe.mjs');
+            $bit = $degraded === 'no-get-animations'
+                ? $status !== 0
+                : $status === 0 && in_array(false, array_map(static fn (array $f) => $f['paints'][0]['bird']['start'] === null, json_decode($stdout, true)['flights']), true);
+            $this->assertTrue($bit, "CONTROL ({$degraded} with the guard removed) did not bite");
+        }
     }
 
     // ── The checks ─────────────────────────────────────────────────────────────────────────────
@@ -194,22 +244,27 @@ class ABirdFliesToItsDestinationTest extends TestCase
         return array_values($xs);
     }
 
-    /** The run's flights through the painter, each painted at both of `PAINTS`. */
-    private function paint(array $result, ?string $dir = null): array
+    /** The run's flights as the painter is handed them, without this test's scene notes. */
+    private function effects(array $result): array
     {
-        $effects = array_map(static function (array $fx): array {
+        return array_map(static function (array $fx): array {
             unset($fx['scene']);
 
             return $fx;
         }, array_values($this->firstFlights($result)));
+    }
 
-        return $this->probe(['effects' => $effects, 'paints' => self::PAINTS], dirname($dir ?? $this->moduleDir()), __DIR__.'/bird-paint-probe.mjs');
+    /** The run's flights through the painter, each painted at both of `PAINTS`. */
+    private function paint(array $result, ?string $dir = null): array
+    {
+        return $this->probe(['effects' => $this->effects($result), 'paints' => self::PAINTS], dirname($dir ?? $this->moduleDir()), __DIR__.'/bird-paint-probe.mjs');
     }
 
     /**
      * The painter's half, from what it wrote: where the bird is drawn at each instant of its flight, and on which
-     * arc. Its first drawn point is the arc's start and its last the arc's end — the desk or the hole — and a
-     * repaint draws it where the paint before had it.
+     * arc. Its first drawn point is the arc's start and its last the arc's end — the desk or the hole — every paint
+     * pins it to one start on the timeline, that start is the flight's own (`started_at` carried onto the timeline at
+     * its first paint), and a repaint draws it where the paint before had it.
      */
     private function paintDefects(array $out): array
     {
@@ -228,10 +283,29 @@ class ABirdFliesToItsDestinationTest extends TestCase
                 continue;
             }
 
+            if (in_array(null, array_column($nodes, 'start'), true)) {
+                $defects[] = "{$key}: a paint did not pin the flight's start";
+
+                continue;
+            }
+
             $timing = [];
+            $origins = [];
 
             foreach ($nodes as $i => $n) {
-                $timing[$i] = $this->timing($n['style'], $rule) + ['start' => $n['start'] ?? self::PAINTS[$i]['timeline_ms']];
+                $timing[$i] = $this->timing($n['style'], $rule) + ['start' => $n['start']];
+                // Where the node's animation reads the flight from: its pinned start plus its (negative) delay.
+                $origins[$i] = $n['start'] + $timing[$i]['delay'];
+            }
+
+            $own = self::PAINTS[0]['timeline_ms'] - self::PAINTS[0]['clock_ms'];
+
+            if (abs($origins[0] - $own) > 0.5) {
+                $defects[] = "{$key}: the first paint dates the flight from {$origins[0]} ms on the timeline, not its own start at {$own} ms";
+            }
+
+            if (abs($origins[0] - $origins[1]) > 0.5) {
+                $defects[] = "{$key}: the paints date the flight from {$origins[0]} ms and {$origins[1]} ms on the timeline, not one start";
             }
 
             $arc = $timing[0]['arc'];

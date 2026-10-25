@@ -416,6 +416,7 @@ loadArt().then(({ furniture, characters, registry, themes, failed }) => {
         // § 4.5: the drawn elevator's press.
         ride: () => cab.act(screen.ride()),
         house: registry?.HOUSE_THEME ?? null,
+        clock,
     });
     // § 4.5 (card#12039): the cab's drawing and its button popup in the house theme's elevator palette.
     painter.cabTheme(cab.dialog);
