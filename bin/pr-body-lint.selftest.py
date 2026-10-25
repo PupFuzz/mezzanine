@@ -2,8 +2,8 @@
 # ── VENDORED — DO NOT EDIT ANYTHING BELOW THIS HEADER ─────────────────────────────────────────
 #
 # pr-body-lint.selftest.py — `bin/pr-body-lint.py`'s own controls, vendored from the same commit as
-# the tool. Everything below this header is upstream's file, byte-for-byte, EXCEPT ONE DECLARED
-# SITE, and `bin/vendor-pin-check.sh` pins its body.
+# the tool. Everything below this header is upstream's file, byte-for-byte, EXCEPT THE DECLARED
+# SITES BELOW, and `bin/vendor-pin-check.sh` pins its body.
 #
 #   DECLARED LOCAL EDITS — this is the COMPLETE list. Anything else below is a defect.
 #     (1) card#12260 — every sha256 figure in the `FIXTURES` table, re-derived after the
@@ -11,6 +11,11 @@
 #         names each struck string). Located by the fragment
 #         `a7c1a1b4df5763c51f7dc18078035b06b981a03e70a4b50cccd3addc715f922d` (the fw#847 positive's
 #         figure). No arm, rule or assertion moves; the suite runs green on the struck bodies.
+#     (2) card#12325 — arm I's citation of another team's private implementation repository and
+#         of a heading its PR template carries. The section-I comment, the `FEATURE_BODY` heading
+#         and its line, the row (1) label and the row (7) control label say "a fleet impl repo" and
+#         `## Boundary check` instead. Located by the fragment `A fleet impl repo mandates`. The
+#         heading stays one the release allow-set does not admit, so every arm asserts what it did.
 #
 #   upstream repo     PupFuzz/agent-board-framework  (PRIVATE)
 #   upstream path     plugins/coord/templates/bin/pr-body-lint.selftest.py
@@ -1029,8 +1034,8 @@ def arm_h_bot_author(mod, td):
 # I — THE RELEASE SCOPE (card#10493): the release standard judges RELEASE PRs, and only them
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 # THE KNOWN POSITIVE IS A SHAPE card#10493 MEASURED, NOT ONE INVENTED HERE — the measurement is the
-# card author's (sola-pm), cited, not re-taken. `BWtek-Medical/sola-device` mandates
-# `## Summary`, `## SaMD boundary check` and `## CI action-pin resync check` on its feature PRs (its
+# card author's (sola-pm), cited, not re-taken. A fleet impl repo mandates
+# `## Summary`, `## Boundary check` and `## CI action-pin resync check` on its feature PRs (its
 # own PR template and `pr_body_shape_guard.py`), and each of its PRs card#10493 lists spent a
 # review finding on this lint's `heading-not-allowed` rows for exactly those headings. The body
 # below carries them — the SECTION CONTENT under them is hand-written, because that repo is not
@@ -1039,9 +1044,9 @@ FEATURE_BODY = """## Summary
 
 Adds the retry window to the sync daemon.
 
-## SaMD boundary check
+## Boundary check
 
-No change to the SaMD boundary.
+No change to the boundary.
 
 ## CI action-pin resync check
 
@@ -1062,7 +1067,7 @@ def arm_i_release_scope(mod, td):
     # (1) THE DEFECT, CLOSED — a feature PR in its own repo's shape is not judged against the
     # release allow-set, and says nothing about `## Summary`.
     got = rules_on(mod, FEATURE_BODY, title=FEATURE_TITLE)
-    check("I a FEATURE PR's body carrying its own repo's `## Summary` / `## SaMD boundary check` / "
+    check("I a FEATURE PR's body carrying its own repo's `## Summary` / `## Boundary check` / "
           "`## CI action-pin resync check` is NOT red — the release allow-set does not reach it",
           got == [], got)
 
@@ -1144,7 +1149,7 @@ def arm_i_release_scope(mod, td):
            if f.rule == "heading-not-allowed"]
     if check("I CONTROL: with the scope predicate forced to RELEASE — the pre-card#10493 lint — the "
              "feature body reds on `heading-not-allowed` for `## Summary`, the finding each "
-             "sola-device PR card#10493 lists carried", any(f.text == "## Summary" for f in got),
+             "fleet impl repo PR card#10493 lists carried", any(f.text == "## Summary" for f in got),
              [f.text for f in got]):
         seen_red("I the release scope, driven red by a copy that judges every PR as a release and "
                  "reds a feature body's own `## Summary`")
