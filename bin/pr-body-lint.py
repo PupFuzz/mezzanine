@@ -3,8 +3,8 @@
 #
 # pr-body-lint.py — the FLEET's PR-body linter, vendored so this repository's CI can run the real
 # check instead of a mezzanine-local re-implementation of part of it. Everything below this header
-# is upstream's file, byte-for-byte, EXCEPT ONE DECLARED SITE, and `bin/vendor-pin-check.sh` holds
-# that claim to a sha256 so it cannot quietly stop being true.
+# is upstream's file, byte-for-byte, EXCEPT THE DECLARED SITES BELOW, and `bin/vendor-pin-check.sh`
+# holds that claim to a sha256 so it cannot quietly stop being true.
 #
 #   DECLARED LOCAL EDITS — this is the COMPLETE list. Anything else below is a defect.
 #     (1) card#12260 — the docstring's ratification sentence, the line carrying
@@ -12,6 +12,11 @@
 #         cites the coordination thread by number; this public repository carries no reference
 #         to the fleet's private coordination repository, so this one drops the number.
 #         Docstring only — no rule and no output moves.
+#     (2) card#12325 — the ⛔ RELEASE-SCOPE block's measurement sentence, the line carrying
+#         `repo's feature PRs card#10493 lists each spent a review finding on`. Upstream's names
+#         another team's private implementation repository and quotes a heading of its PR
+#         template; this public repository carries neither, so this one says "a fleet impl repo"
+#         and `## Boundary check`. Docstring only — no rule and no output moves.
 #
 #   upstream repo     PupFuzz/agent-board-framework  (PRIVATE — a public CI runner cannot clone it,
 #                     which is why this is a vendored copy and not an install step)
@@ -160,9 +165,9 @@ red the author can see, never a silent pass.
 
 ⛔ THE RELEASE STANDARD JUDGES RELEASE PRs, AND ONLY THEM (card#10493). `ALLOWED_H2`'s members are
 RELEASE nouns — `Bundled` and `Release artifacts` mean nothing on a feature PR — so while every
-rule ran on every body, a feature PR failed this lint BY CONSTRUCTION. Measured: the
-`BWtek-Medical/sola-device` feature PRs card#10493 lists each spent a review finding on
-`heading-not-allowed` for `## Summary` / `## SaMD boundary check` / `## CI action-pin resync
+rule ran on every body, a feature PR failed this lint BY CONSTRUCTION. Measured: a fleet impl
+repo's feature PRs card#10493 lists each spent a review finding on
+`heading-not-allowed` for `## Summary` / `## Boundary check` / `## CI action-pin resync
 check`, headings that repo's own PR template and shape guard REQUIRE. A non-release PR's section
 shape is its repo's to define, so only the rules that model that SHAPE are scoped:
   * RELEASE ONLY — `scope-line` and `heading-not-allowed`. They are § PR body's IN table read as a
