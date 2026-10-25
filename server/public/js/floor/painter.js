@@ -98,7 +98,6 @@ ${Object.keys(SKY_PAINT).map((phase) => `.sky-${phase}{fill:url(#sky-${phase})}`
 .placeholder{fill:var(--scene-placeholder);stroke:var(--scene-placeholder-edge);stroke-dasharray:4 3}
 .stool{fill:var(--scene-stool)}.stool.untitled{fill:none;stroke:var(--scene-stool);stroke-dasharray:3 2}
 .intern-edge{fill:none;stroke:var(--scene-stool);stroke-width:1.5;stroke-dasharray:3 2}
-.lag-overlay{fill:url(#hatch);opacity:.6}.hatch{fill:var(--scene-trim)}
 .badge{fill:var(--scene-badge);stroke:var(--scene-badge-edge)}
 ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});stroke:var(--state-${state})}`).join('')}
 .chip.unconfirmed{fill:var(--scene-paper);stroke-width:1.5;stroke-dasharray:3 2}.chip.unrecognised{fill:var(--scene-paper);stroke:var(--scene-unrecognised);stroke-width:1.5;stroke-dasharray:3 2}
@@ -368,7 +367,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     };
 
     function paintDesk(layer, desk) {
-        const g = node('g', {
+        const group = node('g', {
             class: `desk lighting-${desk.lighting}${desk.placeholder ? ' placeholder' : ''}`,
             'data-key': desk.key,
             tabindex: 0,
@@ -376,9 +375,9 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             'aria-label': desk.seat_id,
         }, layer);
 
-        g.addEventListener('click', () => select(desk.install_id, desk.seat_id));
+        group.addEventListener('click', () => select(desk.install_id, desk.seat_id));
         // A `role="button"` activates on Enter and on Space; Space's default would scroll the page.
-        g.addEventListener('keydown', (event) => {
+        group.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
                 select(desk.install_id, desk.seat_id);
@@ -391,8 +390,20 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         const uris = furniture.length === 0 ? [] : themeUris(furniture[0].doc.set, furniture[0].doc.theme, furniture.map((e) => e.doc));
         const docOf = new Map(uris === null ? [] : furniture.map((e, i) => [e, uris[i]]));
 
+        // § 7.4's fade (card#12346): a run of elements the layout fades is drawn into ONE group at its opacity, so the
+        // run is composited once — the faded character does not show the chair and the desk through it.
+        let faded = null;
+
         desk.elements.forEach((e, i) => {
             const id = `${desk.key}:${i}`;
+
+            if (e.opacity === undefined) {
+                faded = null;
+            } else if (faded === null) {
+                faded = node('g', { class: 'fold-lag', opacity: e.opacity }, group);
+            }
+
+            const g = faded ?? group;
 
             if (e.doc !== undefined) {
                 // The chair's back, the desk's back, the monitor's frame, the desk props and the side table
@@ -489,7 +500,6 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                 case 'monitor':
                 case 'placeholder':
                 case 'plate':
-                case 'lag-overlay':
                     node('rect', {
                         x: e.x,
                         y: e.y,
@@ -511,14 +521,14 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
 
             // § 5.1 (card#11468): the thought trail, smallest first, then the cloud the scene traced round the rect.
             for (const c of b.trail) {
-                node('circle', { cx: c.x, cy: c.y, r: c.r, class: 'bubble-trail' }, g);
+                node('circle', { cx: c.x, cy: c.y, r: c.r, class: 'bubble-trail' }, group);
             }
 
-            node('path', { d: b.cloud.d, class: 'bubble' }, g);
-            text(g, { x: b.x + BUBBLE_PAD, y: b.y + BUBBLE_PAD, text: b.text, id: `${desk.key}:bubble` }, 'bubble-text');
+            node('path', { d: b.cloud.d, class: 'bubble' }, group);
+            text(group, { x: b.x + BUBBLE_PAD, y: b.y + BUBBLE_PAD, text: b.text, id: `${desk.key}:bubble` }, 'bubble-text');
 
             if (b.second !== null) {
-                text(g, { x: b.x + BUBBLE_PAD, y: b.y + BUBBLE_PAD + TYPE_ROLES[FACT].line, text: b.second, id: `${desk.key}:bubble2` }, 'bubble-source');
+                text(group, { x: b.x + BUBBLE_PAD, y: b.y + BUBBLE_PAD + TYPE_ROLES[FACT].line, text: b.second, id: `${desk.key}:bubble2` }, 'bubble-source');
             }
         }
     }
@@ -719,13 +729,9 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         view(camera);
         node('style', {}, svg).textContent = STYLE;
 
-        const pattern = node('pattern', { id: 'hatch', width: 6, height: 6, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' }, node('defs', {}, svg));
-
-        node('rect', { width: 3, height: 6, class: 'hatch' }, pattern);
-
         // The band's flat fallback fill, one gradient top to bottom — the stops' colours are tokens (the style
         // above), so the palette keeps its one home. It is drawn on every paint, under the theme's wall.
-        const defs = pattern.parentNode;
+        const defs = node('defs', {}, svg);
         const gradient = node('linearGradient', { id: 'house-wall', x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
 
         node('stop', { offset: 0, class: 'wall-top' }, gradient);

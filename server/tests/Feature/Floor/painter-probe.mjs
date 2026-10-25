@@ -20,6 +20,13 @@
  * chip and its text, the badge and the flag and each one's text, the plate, and every intern node.
  * Containment is kept beside it.
  *
+ * ⛔ § 7.4's FADE (card#12346, the operator's ruling of 2026-10-25): on a desk whose seat carries `fold_lag` every
+ * node painted for an art element — § 10.6's art kinds and § 9 F14's placeholder, written here from the document —
+ * is drawn inside ONE `g.fold-lag` group at the layout's `FOLD_LAG_OPACITY`, which is a fade (above 0, below 1;
+ * `TheNewDeskKeepsEveryLeafTest` holds the figure to § 12's row); every other node of that desk, and every node of
+ * a desk without the badge, is at full opacity — no `fold-lag` group on it at all. `fade.faded` / `fade.full` count
+ * the desks each half read, and `fade.opacity` is the layout's figure.
+ *
  * ⛔ THE INTERNS (card#11058 PR-C): each is its sprite in a clipping viewport — static, the character
  * tree's chibi frame drawn under the intern key `seat~<call_id>`, which this probe writes from the
  * published rule rather than importing it — inside a dashed edge when untitled; or, where its art
@@ -42,7 +49,7 @@
  * the badges, the nulls) confirmed, unconfirmed and as the placeholder, each placed at its own box on a
  * row, through the real `placeDesk()` / `placeBubbles()`.
  *
- * argv: `--js <tree>` (default: the shipped tree). stdout: `{ desks, painted, interns, defects: [ … ] }`
+ * argv: `--js <tree>` (default: the shipped tree). stdout: `{ desks, painted, interns, fade, defects: [ … ] }`
  * — `interns` counts each form painted, so a leg that painted nothing reads as such.
  */
 
@@ -83,7 +90,7 @@ globalThis.clearInterval = () => {};
 const { deskModel } = await mod('desk/desk-render.js');
 const { placeDesk, placeBubbles } = await mod('floor/scene.js');
 const { createPainter, measurer, STYLE } = await mod('floor/painter.js');
-const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_BAND, STOOL_PITCH } = await mod('floor/desk-layout.js');
+const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_BAND, STOOL_PITCH, FOLD_LAG_OPACITY } = await mod('floor/desk-layout.js');
 
 /**
  * The character tree, stubbed: a frame is an SVG document naming the `(install, seat key, frame)` it was
@@ -194,6 +201,7 @@ const byKey = new Map(desks.map((d) => [d.key, d]));
 const defects = [];
 let painted = 0;
 let bubbles = 0;
+const fade = { faded: 0, full: 0, opacity: FOLD_LAG_OPACITY };
 const EPS = 1e-6;
 const num = (n, k) => Number(n.getAttribute(k));
 const same = (a, b) => Number.isFinite(a) && Math.abs(a - b) <= EPS;
@@ -430,7 +438,6 @@ function owed(e, seat, failed, key) {
             return [['rect', at, (n) => classIs(['facts-plate'])(n) ?? (n.getAttribute('rx') === String(e.rx) ? null : `its corners are rx «${n.getAttribute('rx')}», not ${e.rx}`)]];
         case 'monitor':
         case 'placeholder':
-        case 'lag-overlay':
             return [['rect', at]];
         default:
             return typeof e.text === 'string' ? [['text', { ...at, text: e.text }]] : [];
@@ -439,6 +446,9 @@ function owed(e, seat, failed, key) {
 
 /** § 10.6's art elements and the character — every other element of a desk is a fact, painted after them. */
 const PAINT_ART = new Set(['chair', 'character', 'desk-sprite', 'monitor-frame', 'desk-props', 'side-table']);
+
+/** What § 7.4's fade draws at `FOLD_LAG_OPACITY` on a `fold_lag` desk: the art kinds, or F14's placeholder for them. */
+const FADED_ART = new Set([...PAINT_ART, 'placeholder']);
 
 /** The facts § 10.6 puts on the facts plate (card#11468), written here from the document, not imported. */
 const PLATED = new Set(['label', 'currency', 'lag', 'gauge-bar', 'gauge-pct', 'badge', 'flag', 'quiet-age']);
@@ -504,7 +514,10 @@ for (const g of layer?.children ?? []) {
     const key = g.getAttribute('data-key');
     const desk = byKey.get(key);
     const b = desk.box;
-    const nodes = [...g.children];
+    // § 7.4's fade group is read through: its nodes are the desk's, in place, each carrying the group's opacity.
+    const fadeGroups = g.children.filter((n) => n.name === 'g' && classes(n).includes('fold-lag'));
+    const opacityOf = new Map(fadeGroups.flatMap((f) => f.children.map((n) => [n, Number(f.getAttribute('opacity'))])));
+    const nodes = g.children.flatMap((n) => (fadeGroups.includes(n) ? n.children : [n]));
     let next = 0;
     const paintedKind = [];
 
@@ -516,6 +529,29 @@ for (const g of layer?.children ?? []) {
             next++;
         }
     });
+
+    // ── § 7.4's fade leg (card#12346): driven by the BADGE, as § 7.4 drives the whole treatment ──
+    const lagged = (seatOf.get(key).badges ?? []).includes('fold_lag');
+
+    if (lagged && !(FOLD_LAG_OPACITY > 0 && FOLD_LAG_OPACITY < 1)) {
+        defects.push(`${key}: the fold-lag opacity is ${FOLD_LAG_OPACITY}, which is not a fade`);
+    }
+
+    nodes.forEach((n, i) => {
+        const want = lagged && FADED_ART.has(paintedKind[i]) ? FOLD_LAG_OPACITY : 1;
+        const got = opacityOf.get(n) ?? 1;
+
+        if (got !== want) {
+            defects.push(`${key}: § 7.4's fade — the painted ${label(n)} for ${paintedKind[i] ?? 'no element'} is at opacity ${got}, not ${want}`
+                + (lagged ? ' on a fold_lag desk' : ' on a desk without fold_lag'));
+        }
+    });
+
+    if (fadeGroups.length !== (lagged ? 1 : 0)) {
+        defects.push(`${key}: § 7.4's fade — ${fadeGroups.length} fold-lag group(s) on a desk ${lagged ? 'with' : 'without'} fold_lag, not ${lagged ? 1 : 0}`);
+    }
+
+    fade[lagged ? 'faded' : 'full']++;
 
     // ── FLOOR.md § 10.6's rule 2, the paint-order leg (AT-D3-25's re-laid half): every node painted for a
     // fact element comes after every node painted for an art element or the character. The art kinds are
@@ -1034,4 +1070,4 @@ function walkOf(n) {
     }
 }
 
-console.log(JSON.stringify({ desks: desks.length, painted, bubbles, interns, poses: [...poses].sort(), defects }));
+console.log(JSON.stringify({ desks: desks.length, painted, bubbles, interns, fade, poses: [...poses].sort(), defects }));
