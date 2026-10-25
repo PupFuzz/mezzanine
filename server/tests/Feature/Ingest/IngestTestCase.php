@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Ingest;
 
+use App\Ingest\SchemaVersions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
@@ -83,7 +84,9 @@ abstract class IngestTestCase extends TestCase
             'batch_id' => $this->ulid(),
             'install_id' => self::INSTALL,
             'seat_id' => self::SEAT,
-            'reporter_version' => '0.1.0',
+            // The build this server was built with: a fixture seat is a CURRENT reporter unless a test
+            // says otherwise, so it carries no `update_required` (D2 § 7.2) it never asked for.
+            'reporter_version' => SchemaVersions::CURRENT_REPORTER_VERSION,
             'reporter_platform' => 'linux',
             'runtime_version' => 'v22.11.0',
             'seq_epoch' => '01K3T0000A5N7M2X9V4B6D0FGH',

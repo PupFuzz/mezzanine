@@ -469,8 +469,12 @@ class StateRecompute
             'idle_since' => $this->idleSince($state, $activity, $edgeAt ?? $nowSql),
             'server_badges' => json_encode($badges),
             'badge_first_seen' => json_encode(
+                // The NEW server set over the stored row — the new set on the LEFT, because `+` keeps
+                // the left operand's key: the stored set on the left judged the map one recompute
+                // late, so a server badge carried no first-seen time (and the seat no `badges_since`)
+                // until the recompute after the one that raised it (card#11818 part 2, AT-D2-30).
                 Badges::firstSeen($state->badge_first_seen, Badges::render((object) (
-                    (array) $state + ['server_badges' => json_encode($badges)]
+                    ['server_badges' => json_encode($badges)] + (array) $state
                 )), $nowSql)
             ),
             'state_computed_at' => $nowSql,
