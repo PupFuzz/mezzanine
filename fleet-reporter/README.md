@@ -47,7 +47,10 @@ procedure is [`INSTALL-LINUX.md` § Upgrading an existing seat](INSTALL-LINUX.md
 **Each update moves `REPORTER_VERSION`**, which every batch and every `selftest` report carries, so a seat
 and the server can both tell which build a seat runs. `bin/reporter-version-guard.py` fails a PR that
 changes a file an update ships without moving it, and [`UPDATES.md`](UPDATES.md) holds what each version
-touches. How the version is sized is `docs/VERSIONING.md` § The reporter's own version.
+touches. How the version is sized is `docs/VERSIONING.md` § The reporter's own version. A seat whose last
+reported version is behind the server's `current_reporter_version` (on `GET /api/ingest/health`) is badged
+`update_required` on the floor and in the drill-down, and its batches still land
+(`docs/design/FLEET-STATE.md` § 7.2).
 
 ## Configuration
 
