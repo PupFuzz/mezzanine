@@ -2,12 +2,14 @@
 
 namespace App\Fold;
 
+use App\Ingest\SchemaVersions;
 use Illuminate\Support\Facades\DB;
 
 /**
  * `docs/design/FLEET-STATE.md § 7.2`'s server-derived badge set, and § 8.2.1's rendered union.
  *
- * SEVEN ARE DECLARED and this class now raises ALL SEVEN. `fold_lag` was left out by card #7339
+ * THIS CLASS RAISES EVERY MEMBER § 7.2's LIST DECLARES — `SERVER` below is that list, held to it in both
+ * directions by `Tests\Unit\Fold\BadgesServerMatchesTheDocumentTest`. `fold_lag` was left out by card #7339
  * Part A on the reading that it "belongs to the read side, which is Part B's", and the SWEEPER
  * (card #7712, § 2.1) is what makes that reading unnecessary — it does not make it wrong, and the
  * distinction is the whole of § 2.3:
@@ -37,7 +39,7 @@ final class Badges
     /** § 7.2's set, in the document's own order. */
     public const SERVER = [
         'seq_gap', 'seq_collision', 'clock_skew', 'epoch_reset', 'reporter_ahead',
-        'fold_lag', 'derivation_error',
+        'fold_lag', 'derivation_error', 'update_required',
     ];
 
     /** D1 § 10.1 / § 12.7 — the gauge badges past ±120 s. */
@@ -129,6 +131,14 @@ final class Badges
             $badges[] = 'fold_lag';
         }
 
+        // § 7.2's `update_required`: the seat's last reported build is behind the one this server was
+        // built with. A COMPARISON, not a counter, so it is not windowed; re-judged on every recompute,
+        // so the sweeper badges a quiet seat within one pass of a deploy that raised the constant, and
+        // the first event at a build that is not behind clears it.
+        if (SchemaVersions::reporterIsOutdated($state->reporter_version)) {
+            $badges[] = 'update_required';
+        }
+
         // Ordered as § 7.2 lists them, so the array is a set with a stable rendering and two equal
         // sets can never compare unequal in the version-bearing fingerprint.
         return array_values(array_intersect(self::SERVER, $badges));
@@ -136,7 +146,7 @@ final class Badges
 
     /**
      * § 8.2.1's rendered `badges`: D1's twelve first, in § 9.3's order, then this document's, in
-     * § 7.2's — bounded at 18, the size of the union, `epoch_reset` being in both.
+     * § 7.2's — bounded by the size of the union § 8.2.1 states, `epoch_reset` being in both.
      *
      * @return list<string>
      */

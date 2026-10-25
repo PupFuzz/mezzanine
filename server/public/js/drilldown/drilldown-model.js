@@ -112,7 +112,7 @@ export const RUNNING_TOTALS = 'running totals, kept across reporter restarts';
 
 /**
  * D2 § 7.2's counter-derived badges, windowed like D1's twelve. The rest of D2's set — `clock_skew`,
- * `fold_lag`, `derivation_error` — are current conditions and carry no window. A GUARDED COPY of
+ * `fold_lag`, `derivation_error`, `update_required` — are current conditions and carry no window. A GUARDED COPY of
  * `App\Fold\Badges::COUNTER_BADGES`'s keys: `Tests\Feature\Floor\TheDrillDownWindowsTheServersCounterBadgesTest`
  * reds when the two differ.
  */
@@ -122,7 +122,7 @@ export const WINDOWED_SERVER_BADGES = Object.freeze(['seq_gap', 'seq_collision',
  * § 7.2's **Drill-down line** column, one per badge — the first italic span of each cell, verbatim,
  * with its `N` where the cell has one. Its **Origin** column beside it.
  *
- * ⛔ A GUARDED COPY, NOT A TRUSTED ONE. A browser cannot read FLOOR.md, so the eighteen lines live
+ * ⛔ A GUARDED COPY, NOT A TRUSTED ONE. A browser cannot read FLOOR.md, so a line for every row of its table lives
  * here — each cell's words, with the code quotes the document sets them in dropped — — and `Tests\Feature\Floor\TheDrillDownSpeaksTheDocumentsBadgeLinesTest` re-derives both
  * columns from § 7.2's table on every run and set-differences both directions, so a line edited in
  * either place reds.
@@ -146,6 +146,7 @@ export const BADGE_LINE = Object.freeze({
     reporter_ahead: Object.freeze({ origin: 'D2', line: 'this seat is sending values this server does not know' }),
     fold_lag: Object.freeze({ origin: 'D2', line: 'this state is N behind the events that produced it' }),
     derivation_error: Object.freeze({ origin: 'D2', line: 'an event could not be projected; this seat\'s state is missing it' }),
+    update_required: Object.freeze({ origin: 'D2', line: 'reporter out of date — update required' }),
 });
 
 /**
@@ -719,8 +720,8 @@ function badgeCount(badge, seat, raising) {
  *
  * ⛔ A COUNTER-DERIVED BADGE IS *ITS COUNTER ROSE WITHIN THE LAST 24 h* (§ 7.2, card#9491): D1's
  * twelve and D2's counter-derived badges carry that window beside the counters that raised them, whose values are the
- * seat's running totals and not the size of the recent rise. `clock_skew`, `fold_lag` and
- * `derivation_error` are current conditions and are drawn as such. `epoch_reset` is in both (§ 7.2),
+ * seat's running totals and not the size of the recent rise. `clock_skew`, `fold_lag`,
+ * `derivation_error` and `update_required` are current conditions and are drawn as such. `epoch_reset` is in both (§ 7.2),
  * so its line says which side observed it.
  *
  * ⛔ AN UNRECOGNISED BADGE CARRIES ITS RAW STRING AND SAYS SO (§ 5.4, § 9 F9), never the nearest line.

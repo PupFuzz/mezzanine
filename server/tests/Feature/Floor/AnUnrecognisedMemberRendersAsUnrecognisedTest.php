@@ -89,7 +89,7 @@ class AnUnrecognisedMemberRendersAsUnrecognisedTest extends TestCase
     }
 
     /**
-     * § 7.2's 18 badges and § 7.6's two five-member sets, from the document, against the module.
+     * § 7.2's badges and § 7.6's two five-member sets, from the document, against the module.
      */
     public function test_the_three_member_sets_are_the_documents_in_both_directions(): void
     {

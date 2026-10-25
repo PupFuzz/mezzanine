@@ -1,6 +1,6 @@
 /**
  * `docs/design/FLOOR.md § 7.2` and `§ 7.6`'s published member sets that no other module carries —
- * the 18 badges, the five `link_state`s and the five `activity_state`s — so that § 5.4's
+ * the badges, the five `link_state`s and the five `activity_state`s — so that § 5.4's
  * unrecognised-member rule and § 9 F9 are MEMBERSHIP TESTS against a set, as § 7.6 requires:
  * "*a member the client does not know* is unimplementable against a set that lives nowhere".
  *
@@ -18,7 +18,7 @@
  * is iterated; these are sets, and only `has()` is read.
  */
 
-/** § 7.2 — D1's twelve `degraded` members plus D2's seven server-derived badges, `epoch_reset` in both. */
+/** § 7.2 — D1's twelve `degraded` members plus D2's server-derived badges (D2 § 7.2's list), `epoch_reset` in both. */
 export const BADGES = Object.freeze(new Set([
     'lossy',
     'batches_rejected',
@@ -38,6 +38,7 @@ export const BADGES = Object.freeze(new Set([
     'reporter_ahead',
     'fold_lag',
     'derivation_error',
+    'update_required',
 ]));
 
 /** § 7.6 — `link_state`, five members. */

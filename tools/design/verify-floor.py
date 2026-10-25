@@ -1408,12 +1408,20 @@ if len(ur_m) != 7:
                 f"seven it declares — the extractor is broken")
 
 # The LONGEST `badges` array D2 publishes: § 8.2.2's snapshot carries one member and § 8.3.2's
-# worst-case block carries all eighteen, so taking the first match reads the wrong population.
+# worst-case block carries every member, so taking the first match reads the wrong population.
 cands = re.findall(prose(r'"badges": \[(.*?)\]'), d2_raw, re.S)
 badge_m = set(re.findall(r'"([a-z_]+)"', max(cands, key=len))) if cands else set()
-if len(badge_m) != 18:
+# The bound is READ from D2 § 8.2.1's own `badges` row rather than pinned here: a literal 18 held the
+# control to a figure the document moves (card#11818 part 2 made it 19), and a control that has to be
+# edited by hand on every move is one that gets edited to pass. D2's G4 holds that cell to the union
+# it states; this reads the cell D2 has already checked.
+_bound = re.search(r"^\| `badges` \| array\\<string\\> \| no \| \*\*0…(\d+)\*\*", d2_raw, re.M)
+if not _bound:
+    fail.append("G7 CONTROL: D2 § 8.2.1's `badges` row no longer states its bound as `**0…N**`, so the "
+                "worst-case block's member count has nothing to be held to")
+elif len(badge_m) != int(_bound.group(1)):
     fail.append(f"G7 CONTROL: {len(badge_m)} badges parsed from D2 § 8.3.2's worst-case block, not "
-                f"the 18 § 8.2.1 bounds the array at")
+                f"the {_bound.group(1)} § 8.2.1 bounds the array at")
 
 def rendered_members(header_re):
     out = set()

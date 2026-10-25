@@ -80,18 +80,23 @@ class TheDrillDownSpeaksTheDocumentsBadgeLinesTest extends TestCase
         $this->assertNotFalse($start, "§ 7.2's badge table was not found");
 
         $lines = [];
+        $members = 0;
 
         foreach (explode("\n", substr($doc, $start)) as $i => $row) {
             if ($i > 1 && ! str_starts_with($row, '|')) {
                 break;
             }
 
+            $members += str_starts_with($row, '| `') ? 1 : 0;
+
             if (preg_match('/^\| `([a-z_]+)` \| (D1|D2|both) \| [^|]+ \| \*([^*]+)\*/', $row, $m) === 1) {
                 $lines[$m[1]] = ['origin' => $m[2], 'line' => str_replace('`', '', $m[3])];
             }
         }
 
-        $this->assertCount(18, $lines, "§ 7.2's table did not parse to its 18 badges");
+        // Every member row of the table parsed: the count is the table's own, never a figure written here.
+        $this->assertGreaterThan(0, $members, "§ 7.2's table has no member row");
+        $this->assertCount($members, $lines, "a row of § 7.2's table did not parse to a line and an origin");
         ksort($lines);
 
         return $lines;

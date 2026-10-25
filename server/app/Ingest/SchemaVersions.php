@@ -33,18 +33,62 @@ final class SchemaVersions
     public const ACCEPTED = [1];
 
     /**
-     * Reported by `GET /api/ingest/health` (D1 § 4.1) and nothing else.
+     * Published on `GET /api/ingest/health` (D1 § 4.1); no code path in this server reads it.
      *
      * INFORMATIONAL, NOT ENFORCED, and that is deliberate. D1 names this key in the health body
      * and specifies no behaviour anywhere for a reporter below it — no status, no counter, no
-     * badge. Enforcing an unstated floor would refuse a seat for a reason the contract never
-     * gave, and under D1 § 11.5's poison-pill rule that refusal is permanent. So it is published
-     * for an operator to read and the ingest branches on `ACCEPTED` alone.
+     * badge of its own. Enforcing an unstated floor would refuse a seat for a reason the contract
+     * never gave, and under D1 § 11.5's poison-pill rule that refusal is permanent. So it is
+     * published for an operator to read and the ingest branches on `ACCEPTED` alone. The badge a
+     * seat behind the fleet's build carries is judged against `CURRENT_REPORTER_VERSION`, never
+     * against this value.
      */
     public const MIN_REPORTER_VERSION = '0.1.0';
+
+    /**
+     * The reporter build this server was built with — `docs/design/FLEET-STATE.md § 7.2`'s
+     * `update_required` compares each seat's last reported `reporter_version` against it.
+     *
+     * IT FOLLOWS THE ARTIFACT, EXACTLY, IN THE SAME PR: it equals `REPORTER_VERSION` in
+     * `fleet-reporter/fleet-reporter.js` of the same tree (`docs/VERSIONING.md § The reporter's own
+     * version`). `Tests\Unit\Ingest\CurrentReporterVersionIsPinnedToTheArtifactTest` and
+     * `bin/reporter-version-guard.py` both red when the two differ, so moving it is the reporter
+     * bump's own act and never a separate one. Published on `GET /api/ingest/health` as
+     * `current_reporter_version` (D1 § 4.1), so a seat's operator can read it with the seat's token.
+     *
+     * IT REFUSES NOTHING. A seat behind it is badged and its batches land exactly as before;
+     * `ACCEPTED` alone refuses (D2 § 13 row 59 says why a refusal would hide the very seat the badge
+     * exists to show).
+     */
+    public const CURRENT_REPORTER_VERSION = '0.3.0';
 
     public static function accepts(mixed $version): bool
     {
         return is_int($version) && in_array($version, self::ACCEPTED, true);
+    }
+
+    /**
+     * D2 § 7.2's predicate for `update_required` — its four answers are the whole rule:
+     *
+     *   - null ⇒ false: the seat has no reported build to be behind (it has sent no batch, or a
+     *     rebuild found no retained batch for it);
+     *   - a value the version grammar rejects ⇒ true: three non-negative integers with no leading
+     *     zero is `bin/reporter-version-guard.py`'s `parse_version`, and a build this version line
+     *     cannot name is not a released build of it, so reading it as current would hide exactly
+     *     the seat the rule is for;
+     *   - a lower `x.y.z` ⇒ true, by numeric precedence per component, never by string order;
+     *   - equal or greater ⇒ false: a seat ahead of the server is the server lagging its own deploy.
+     */
+    public static function reporterIsOutdated(?string $version): bool
+    {
+        if ($version === null) {
+            return false;
+        }
+
+        if (preg_match('/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/D', $version) !== 1) {
+            return true;
+        }
+
+        return version_compare($version, self::CURRENT_REPORTER_VERSION, '<');
     }
 }

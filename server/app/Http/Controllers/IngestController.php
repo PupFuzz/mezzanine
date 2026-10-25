@@ -32,7 +32,8 @@ class IngestController extends Controller
     }
 
     /**
-     * `GET /api/ingest/health` — "report the accepted schema-version set and server time".
+     * `GET /api/ingest/health` — "report the accepted schema-version set, the server time, and the
+     * reporter version line's minimum and current values" (D1 § 4.1).
      *
      * IT REQUIRES A VALID SEAT TOKEN, and D1 § 4.1 gives the reason rather than leaving it to
      * taste: "the accepted-version set is fleet-internal and every party who needs it (a seat, an
@@ -65,6 +66,7 @@ class IngestController extends Controller
             'accepted_schema_versions' => SchemaVersions::ACCEPTED,
             'server_time' => now()->utc()->format('Y-m-d\TH:i:s.v\Z'),
             'min_reporter_version' => SchemaVersions::MIN_REPORTER_VERSION,
+            'current_reporter_version' => SchemaVersions::CURRENT_REPORTER_VERSION,
         ]);
     }
 }

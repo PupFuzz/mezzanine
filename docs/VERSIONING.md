@@ -289,6 +289,13 @@ change lands on `dev` long before a release collects it, and most reporter chang
   break is a minor, stated in its row.
 - **Its row in `fleet-reporter/UPDATES.md`** says what an upgrading seat applies, and the same PR
   adds it.
+- **`SchemaVersions::CURRENT_REPORTER_VERSION` follows it, exactly, in the same PR.** It is the
+  server's copy of the build it was built with, held equal to `REPORTER_VERSION` by
+  `Tests\Unit\Ingest\CurrentReporterVersionIsPinnedToTheArtifactTest` and by
+  `bin/reporter-version-guard.py` on every PR (card#11818 part 2 — `docs/design/FLEET-STATE.md`
+  Appendix B row 14 says whether it has landed); a seat whose last reported version
+  is behind it is badged `update_required` on the floor and in the drill-down
+  (`docs/design/FLEET-STATE.md § 7.2`), and its batches are still accepted.
 - **`SchemaVersions::MIN_REPORTER_VERSION` does not follow it.** That value is published for an
   operator to read and enforced nowhere (its docblock says why), and an older reporter's batches stay
   accepted.
