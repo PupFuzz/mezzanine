@@ -16,7 +16,8 @@ use Tests\TestCase;
  * screen's camera from that measurement before it opened the stream; `wire/camera.js` refused the surface (rightly),
  * the module threw, and the lobby sat on *waiting for the fleet snapshot* with no stream and no read, on every load at
  * every window size. Nothing in CI ran the page's script: the module probes drive the screen and the paint, never
- * `main.js`, and the browser tools that do load the page (`tools/design/floor-ride.browser.mjs`) are not wired into CI.
+ * `main.js`, and the browser tools that do load the page (`tools/design/floor-ride.browser.mjs`) were not wired into CI
+ * (card#12326 since wired that tool's `starts` row, which loads the page in headless Chromium on every pull request).
  * This test runs the script itself, and its control plants exactly that read.
  *
  * ⛔ AND WHAT THE PAGE SAYS WHEN IT CANNOT START: the building readings and the directory carry `lobby-model.js`'s

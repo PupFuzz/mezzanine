@@ -1306,8 +1306,8 @@ above, and are not a second copy here.
 **The directory plaque.** The directory's text — its title, each plaque's rows and the readings under the board — is read
 at the page's own size because the lobby exists to pick a floor before any zoom ([decision 37](#13-decisions-taken-revisable-at-review)).
 Each claim below names the check that holds it: **T** is `server/tests/Feature/Lobby/TheLobbyIsADrawnRoomTest.php`, and
-**B** is `tools/design/lobby-directory.browser.mjs`, run by hand in headless Chromium over its own `RUNS` (no browser in
-CI). How each is done is the code's own docblocks'.
+**B** is `tools/design/lobby-directory.browser.mjs`, run by hand in headless Chromium over its own `RUNS` (not wired
+in CI: `tools/design/README.md`). How each is done is the code's own docblocks'.
 
 1. **Size.** `directory.js`'s `showDirectory()` keeps every text of the directory — the title, a plaque's rows, the
    readings — at `1rem` on the screen at every camera: each is laid out in a face whose font size is `1rem`, sized to its
@@ -1628,7 +1628,7 @@ those two figures and the palette are `server/public/css/mezzanine.css`'s, the o
 layout links, and the camera's surface is the drawing's own box, re-read whenever the chrome above it
 changes ([§ 12](#12-every-number-and-where-it-comes-from)'s reference-viewport row says which surface
 its figure is). Only the chrome reflows in a narrow window; the drawing is the same at every size.
-`tools/design/floor-chrome.browser.mjs`, run by hand (no browser on the build host), renders this view
+`tools/design/floor-chrome.browser.mjs`, run by hand (not wired in CI: `tools/design/README.md`), renders this view
 under that sheet across a sweep of window sizes and reds on any gap between the drawing, the hint's row and
 the first section, a hint row that is not its 24 px, a reveal that is not the sheet's, a drill-down over the strip or the camera row, or a drawing
 narrower than the page; `--selftest` plants each in a copy of the sheet and watches it red.
@@ -8697,7 +8697,9 @@ DOM), `Tests\Feature\Floor\TheCabPanelReconcilesByKeyTest` (`cab-panel-probe.mjs
 the page the layout rendered, under stand-ins), and the page halves in `FloorPageWiringTest`, `LobbyPageWiringTest`
 and `Tests\Feature\TheRideArrivalIsTheLayoutsTest`. **The browser half is hand-run**:
 `tools/design/floor-ride.browser.mjs` drives real navigations in headless Chromium, each row but the bookmark residual's
-with a plant under `--selftest`, and is named absent in CI with the other browser tools (`tools/design/README.md`).*
+with a plant under `--selftest`, and is named absent in CI with the other browser tools (`tools/design/README.md`) —
+all but its `starts` row (card#12326), which loads the lobby and a floor and which CI runs with its plants on every
+pull request.*
 
 - **Build:** replay the `floor_ride*` runs — `fx-snapshot-4`'s seats under a layout of three floors — driving the
   ride with the screen's own methods on the scenario clock, each answer recorded with the frame the page paints

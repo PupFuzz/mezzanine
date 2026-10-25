@@ -36,8 +36,7 @@
 //
 // ⛔ WHAT IS MEASURED IS INK, NOT BOXES — and what it cannot see is whether the result LOOKS right: one figure covers a smooth cap
 // edge and a leaf's tip alike. The figure bounds the worst case; the sheet and the strip are the last word. ⛔ NO BROWSER IS A
-// FAILURE, NEVER A SKIP, AND THIS IS NOT WIRED IN CI (a stock runner carries no Chromium — `tools/design/README.md` names the
-// browser tools and why).
+// FAILURE, NEVER A SKIP, AND THIS IS NOT WIRED IN CI (`tools/design/README.md` names the browser tools and why).
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
