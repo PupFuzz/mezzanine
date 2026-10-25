@@ -30,14 +30,15 @@ MZI_RUNBOOK=$MZI_HERE/INSTALL-LINUX.md
 # Every block this script runs, by its anchor name. `--check-runbook` holds this list and the runbook's
 # `run` anchors to each other, both ways.
 MZI_BLOCKS=(prereqs backup u1 artifact values resolver identity writer token-prompt token-config token-rotate
-  token-shred config-check hooks-scripts hooks-apply cron-helpers cron-write cron-ancestry restart selftest
-  health arrival)
+  token-shred config-check hooks-scripts hooks-apply cron-helpers cron-write cron-ancestry holder restart
+  selftest health arrival)
 # Text this script reads in a block's output, as `<block>|<text>`. `--check-runbook` holds each to the
 # block's own source, so a reworded message reds the check instead of being read as the other outcome.
 MZI_MARKERS=(
   "u1|NO-OP: this seat already runs"
   "hooks-apply|already wired: nothing applied"
   "cron-write|crontab already current"
+  "cron-helpers|it runs the previous build"
   "identity|is not a member: disagreed"
   "token-config|pipeline rc="
   "token-rotate|pipeline rc="
@@ -196,7 +197,8 @@ trap 'rm -rf -- "$MZI_OUT"' EXIT
 token_command() {
   local c
   printf -v c 'bash %q --set-token' "$MZI_HERE/install.sh"
-  c="$c --site ${MZI_SITE:-<site URL>} --install-id $MZI_INSTALL_ID --seat-id ${MZI_SEAT_ID:-<seat id>}"
+  if [ -n "$MZI_SITE" ]; then c="$c --site $(printf %q "$MZI_SITE")"; else c="$c --site <site URL>"; fi
+  c="$c --install-id $MZI_INSTALL_ID --seat-id ${MZI_SEAT_ID:-<seat id>}"
   [ -z "$MZI_AGENT" ] || c="$c --agent-name $MZI_AGENT"
   [ -z "$MZI_CA" ] || c="$c --ca-file $(printf %q "$MZI_CA")"
   printf '%s\n' "$c"
@@ -259,7 +261,7 @@ set_token() {
   if [ "$wrote" = 1 ] || [ "$carried" = 0 ]; then
     run token-shred || die "the token file could not be removed: remove $MZI_TOKEN_FILE yourself"
   fi
-  [ "$wrote" = 1 ] || die "the config was not written (the writer's line above says why). $([ "$carried" = 1 ] && echo "The carried token file is left in place." || echo "The token file is removed: run this command again and paste the token again.")"
+  [ "$wrote" = 1 ] || die "the config was not written (the writer's line above says why). $([ "$carried" = 1 ] && echo "The token file at $MZI_TOKEN_FILE, which was there before this run, is left in place: if it is not the token, delete it and run this command again to be asked for the token." || echo "The token file is removed: run this command again and paste the token again.")"
   run config-check || die "the config check failed"
   if [ "$rotate" = 1 ]; then
     run cron-helpers || die "Step 5's helpers could not be saved"
@@ -267,14 +269,14 @@ set_token() {
     say "the token of site ${SEAT_SITE} is replaced. Revoke the old token by its prefix on the site's Seat tokens page once install.sh reports the site current"
   else
     say "the token is in the config. Next: run install.sh with the same values, which installs the rest:"
-    say "  bash $(printf %q "$MZI_HERE/install.sh") --site $MZI_SITE --install-id $MZI_INSTALL_ID --seat-id $MZI_SEAT_ID${MZI_AGENT:+ --agent-name $MZI_AGENT}${MZI_CA:+ --ca-file $MZI_CA}"
+    say "  bash $(printf %q "$MZI_HERE/install.sh") --site $(printf %q "$MZI_SITE") --install-id $MZI_INSTALL_ID --seat-id $MZI_SEAT_ID${MZI_AGENT:+ --agent-name $MZI_AGENT}${MZI_CA:+ --ca-file $(printf %q "$MZI_CA")}"
   fi
 }
 
 # ── install / upgrade / re-check ─────────────────────────────────────────────────────────────────
 
 install() {
-  local upgrade=0 artifact=0 changed=0 cc st h a v verdict=0 id
+  local artifact=0 changed=0 cc st h a v verdict=0 id
   run prereqs || die "a prerequisite is missing (the line above names it): NOTHING INSTALLED"
   if [ ! -f "$MZI_CFG" ]; then
     if [ -z "$MZI_URL" ] || [ -z "$MZI_SEAT_ID" ]; then die "no config at $MZI_CFG yet: pass --site and --seat-id, and install.sh names the token step: NOTHING RUN"; fi
@@ -294,7 +296,7 @@ install() {
   run backup || die "Step 0 failed: NOTHING INSTALLED"
   if [ -f "$MZI_JS" ]; then
     run u1 || die "the installed artifact could not be compared with this checkout's"
-    said u1 "NO-OP: this seat already runs" || { upgrade=1; artifact=1; }
+    said u1 "NO-OP: this seat already runs" || artifact=1
   else
     artifact=1
   fi
@@ -306,7 +308,13 @@ install() {
   run cron-helpers || die "Step 5's helpers could not be saved"
   run cron-write || die "Step 5 refused or failed (above)"
   said cron-write "crontab already current" || changed=1
-  if [ "$upgrade" = 1 ]; then run restart "stops the flusher, waits 70 s for its next start, and checks it" || die "the flusher does not yet run the new build (above): run install.sh again"; fi
+  # U6 is owed when the RUNNING flusher is older than the installed artifact, whichever run installed it:
+  # U1 compares files only, so a run that installed the artifact and failed before U6 leaves it NO-OP.
+  run holder || true
+  if said holder "it runs the previous build"; then
+    run restart "stops the flusher, waits 70 s for its next start, and checks it" || die "the flusher does not yet run the new build (above): run install.sh again"
+    changed=1
+  fi
   run config-check || die "the config check failed"
 
   # Step 6 and U7 read the roster through $COORD_CONFIG as the flusher has it: Step 5's resolved value.

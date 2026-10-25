@@ -110,8 +110,9 @@ config to read, and nothing is installed until it is:
    With no terminal to read from, it refuses before it writes anything, and names the command to run in
    one.
 3. `install.sh` with the same values, or none: Step 0; U1, and Step 1 when the seat's artifact is absent
-   or differs from the checkout's; Step 4 (a); Step 5's block; U6 when Step 1 replaced an artifact a seat
-   was already running; Step 3; Step 6, U8, and [Step 7's arrival check](#step-7--verify-that-events-arrive);
+   or differs from the checkout's; Step 4 (a); Step 5's block; the read-only check under U6 of what the
+   running flusher runs, and U6 when it runs an older build than the installed artifact, so a run that
+   installed the artifact and failed before U6 is finished by the next; Step 3; Step 6, U8, and [Step 7's arrival check](#step-7--verify-that-events-arrive);
    then, when the run changed anything, Step 5's check of who started the flusher, which it reports and
    does not judge (a flusher a hook started holds the same lock, as that check says).
 
@@ -1559,6 +1560,18 @@ per process with its pid, the new flusher first and its parents after it, then `
 before the artifact was installed` means the old build still holds the lock: [Step 1](#step-1--prerequisites-and-the-artifact)
 says why, and the fix is to run the block again. A stop that fails, `NOT STOPPED` or `NOTHING SENT`,
 ends the block there, before the wait.
+
+**Whether U6 is owed, asked without stopping anything.** An upgrade that stopped after U3 and before U6
+leaves the new artifact installed under a flusher still running the old build, and U1 then reads `NO-OP`,
+because it compares files and not the running process. This asks the running process instead, read-only:
+`FAIL: … before the artifact was installed …: it runs the previous build` means U6 is owed. Any other
+`FAIL` is no live flusher holding the lock, which cron's next minute or a hook starts on the installed
+build, so nothing is owed:
+
+<!-- install.sh: run holder -->
+```bash
+node "$B/flusher-ancestry.js" $HOME/.local/state/fleet-reporter $HOME/.local/share/fleet-reporter/fleet-reporter.js --upgrade
+```
 
 **A `FAIL: … no flock and no cron` here is expected, and benign.** It comes from a copy of the helper
 saved before card#11818, or from running it without `--upgrade`. The helper then goes on to ask

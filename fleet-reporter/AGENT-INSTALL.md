@@ -84,8 +84,11 @@ Relay the two steps the script printed, in its words, and add that you will wait
 
 Do not go on until the user says it is done. Success ends with `the token is in the config`, after
 Step 3's check of the config, which shows the token only as `<well-formed>`. If the script printed `does
-not hold exactly one well-formed mzn_ token`, the paste was something else: the token file is already
-removed, and the user runs the command again and pastes the token again.
+not hold exactly one well-formed mzn_ token`, what it read was not the token. When it had prompted for
+it, the paste was something else: the token file is already removed, and the user runs the command
+again and pastes the token again. When it printed `a token file is already at …` instead of prompting,
+it read a file left there earlier and leaves it in place: the user deletes that file,
+`~/.config/fleet-reporter/mezzanine-reporter-token`, and runs the command again to be asked for the token.
 
 ## 6. Run the install
 

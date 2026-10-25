@@ -44,6 +44,7 @@ import pty
 import re
 import secrets
 import select
+import shlex
 import shutil
 import signal
 import ssl
@@ -202,8 +203,8 @@ VALUES = ["--site", INGEST.site, "--install-id", "selftest-install", "--seat-id"
           "--ca-file", str(INGEST.crt)]
 
 
-def sh(*args: str, script: Path = SCRIPT, **kw) -> subprocess.CompletedProcess:
-    r = subprocess.run(["bash", str(script), *args], capture_output=True, text=True, env=ENV,
+def sh(*args: str, script: Path = SCRIPT, env: "dict | None" = None, **kw) -> subprocess.CompletedProcess:
+    r = subprocess.run(["bash", str(script), *args], capture_output=True, text=True, env=env or ENV,
                        stdin=subprocess.DEVNULL, start_new_session=True, timeout=420, **kw)
     OUTPUTS.append(r.stdout + r.stderr)
     return r
@@ -318,6 +319,22 @@ check("RED: install.sh in a checkout whose runbook lost a block refuses, NOTHING
       r.returncode == 1 and "NOTHING RUN" in r.stderr and snapshot() == before and not ATTEMPTS.exists(),
       r.stdout + r.stderr)
 shutil.rmtree(TMP / "diverged")
+
+# The commands the script prints for the user to copy are shell-quoted: a URL holding `&`, `;` or `$(…)`
+# comes back as one word, unexpanded (review F2). Run in a HOME of its own, with no config.
+home2 = TMP / "home-quoting"
+(home2 / ".claude").mkdir(parents=True)
+odd = "https://example.test/x?a=1&b=2;c$(id)"
+r = sh("--site", odd, "--seat-id", "quoted-seat", "--install-id", "quoted-install", env={**ENV, "HOME": str(home2)})
+cmd = next((ln[ln.index("bash "):] for ln in r.stdout.splitlines() if "install.sh --set-token" in ln and "bash " in ln), "")
+# bash parses the printed line as the user's shell would: its program is swapped for one that prints its words.
+head = "bash " + shlex.quote(str(SCRIPT)) + " "
+words = subprocess.run(["bash", "-c", "args() { printf '%s\\n' \"$@\"; }; args " + cmd[len(head):]],
+                       capture_output=True, text=True, env=ENV).stdout.splitlines() if cmd.startswith(head) else []
+check("the printed --set-token command, for a site URL holding & ; and $(…), parses in bash back to that URL as "
+      "one word", r.returncode == 3 and "--site" in words and words[words.index("--site") + 1] == odd,
+      cmd + "\n" + str(words))
+shutil.rmtree(home2)
 
 # ── 2. the install ───────────────────────────────────────────────────────────────────────────────
 print("== 2. a fresh install on a HOME with the user's own hooks ==")
@@ -454,6 +471,22 @@ try:
           r.returncode == 0 and "INSTALLED:" in r.stdout and JS.read_bytes() == (HERE / "fleet-reporter.js").read_bytes()
           and "PASS: the lock holder runs the artifact installed at" in r.stdout and lock_pid() not in (None, pid),
           (r.stdout + r.stderr)[-4000:])
+
+    # ── 5b. an upgrade that dies after Step 1 is finished by the next run (review F1) ────────────
+    print("== 5b. an upgrade that fails after installing the artifact is finished by the next run ==")
+    good = SETTINGS.read_text()
+    JS.write_text(JS.read_text() + "\n// an older build\n")
+    pid = lock_pid()
+    SETTINGS.write_text("{ not json\n")         # Step 4's merge fails on it, after Step 1 has installed
+    r1 = sh(*VALUES)
+    SETTINGS.write_text(good)
+    check("precondition: the first run installed the new artifact, then failed before restarting the flusher",
+          r1.returncode == 1 and JS.read_bytes() == (HERE / "fleet-reporter.js").read_bytes() and lock_pid() == pid,
+          (r1.stdout + r1.stderr)[-3000:])
+    r2 = sh(*VALUES)
+    check("  … and the rerun, with the cause fixed, restarts the flusher on the installed build and exits 0",
+          r2.returncode == 0 and "PASS: the lock holder runs the artifact installed at" in r2.stdout
+          and lock_pid() not in (None, pid), (r2.stdout + r2.stderr)[-4000:])
 
     # ── 6. a rotation, from a carried token file ─────────────────────────────────────────────────
     print("== 6. --set-token over a config replaces the token, from a carried file, and restarts the flusher ==")
