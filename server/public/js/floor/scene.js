@@ -250,7 +250,7 @@ function roomSuffix(installId, seats) {
  * at § 12's loop rate. They decide how many frames a walk takes and carry no fact: every walk of
  * one length takes the same number of frames, whatever the seat.
  */
-export const WALK_PX_PER_FRAME = 48;
+export const WALK_PX_PER_FRAME = 24;
 const ENVELOPE_PX_PER_FRAME = 96;
 
 /**
