@@ -149,7 +149,7 @@ class TheDeskIsReLaidTest extends TestCase
     public function test_red_the_trail_missing_or_not_growing(): void
     {
         foreach ([
-            'the trail not painted' => ['../floor/painter.js', "                node('circle', { cx: c.x, cy: c.y, r: c.r, class: 'bubble-trail' }, g);\n", '', 'paints 0 circles'],
+            'the trail not painted' => ['../floor/painter.js', "                node('circle', { cx: c.x, cy: c.y, r: c.r, class: 'bubble-trail' }, group);\n", '', 'paints 0 circles'],
             'two circles only' => ['../floor/desk-layout.js', 'export const TRAIL_RADII = Object.freeze([2, 3, 4]);', 'export const TRAIL_RADII = Object.freeze([2, 3]);', 'paints 2 circles'],
             'largest at the creature' => ['../floor/desk-layout.js', 'export const TRAIL_RADII = Object.freeze([2, 3, 4]);', 'export const TRAIL_RADII = Object.freeze([4, 3, 2]);', 'does not grow'],
             'one size' => ['../floor/desk-layout.js', 'export const TRAIL_RADII = Object.freeze([2, 3, 4]);', 'export const TRAIL_RADII = Object.freeze([3, 3, 3]);', 'does not grow'],
