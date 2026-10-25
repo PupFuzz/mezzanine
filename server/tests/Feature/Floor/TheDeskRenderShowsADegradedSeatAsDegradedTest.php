@@ -267,7 +267,8 @@ class TheDeskRenderShowsADegradedSeatAsDegradedTest extends TestCase
             $d['disabled'][] = 'the disabled desk is drawn as the offline desk — off looks like gone';
         }
 
-        // The `fold_lag` seat: its pose, the hatched overlay, *1m 57s behind* with its own *as of*
+        // The `fold_lag` seat: its pose, § 7.4's treatment (the art's fade is the layout's, held by
+        // `TheNewDeskKeepsEveryLeafTest`), *1m 57s behind* with its own *as of*
         // stamp that does NOT move with the clock, and the held episode entered static.
         $key = $roles['fold_lag'];
         $seat = $this->seat('fold_lag');
@@ -277,8 +278,8 @@ class TheDeskRenderShowsADegradedSeatAsDegradedTest extends TestCase
         foreach (['first' => $first, 'last' => $last] as $when => $frame) {
             $desk = $frame['desks'][$key];
 
-            if (($desk['lag']['overlay'] ?? null) !== 'hatched') {
-                $d['fold_lag'][] = "the fold_lag desk carries no hatched overlay at the {$when} frame";
+            if (! is_array($desk['lag'] ?? null)) {
+                $d['fold_lag'][] = "the fold_lag desk carries no § 7.4 treatment at the {$when} frame";
             }
 
             if (($desk['lag']['line'] ?? null) !== $want) {

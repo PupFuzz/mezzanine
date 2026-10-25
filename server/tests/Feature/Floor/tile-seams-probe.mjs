@@ -18,7 +18,7 @@
  *     of another region it overlaps;
  *   - NO SEAM (the cases marked `seamless`): two cells of one kind and size sharing an edge are one region.
  * And over a painted scene: the painter writes no `<image>` that is not a `data:` URI a theme or the character
- * tree made, and no `<pattern>` but the hatch — no tile's image reaches the drawing.
+ * tree made, and no `<pattern>` at all — no tile's image reaches the drawing.
  *
  * ⛔ THE INPUTS: the SHIPPED default room (`resources/floor/default.tmj` through the shipped tileset reader and
  * `mapTiles()`), its `wall` and its `accent` cells; planted lattices of one kind; two neighbours differing in
@@ -217,7 +217,7 @@ const walk = (n) => {
         images.push(String(n.getAttribute('href')));
     }
 
-    if (n.name === 'pattern' && n.getAttribute('id') !== 'hatch') {
+    if (n.name === 'pattern') {
         defects.push(`the painter writes a <pattern> «${n.getAttribute('id')}» — a tile's image reaches the drawing`);
     }
 

@@ -225,6 +225,10 @@ const flagN = (m) => m.unrecognised.length + badgeOrder(m).length - Math.min(BAD
 
 const internsMore = (m) => (m.side_table.more ?? 0) + Math.max(0, m.side_table.stools.length - INTERN_CAP);
 const art = (v) => !v.placeholder;
+/** § 7.4's fade (card#12346): the art pass a `fold_lag` desk draws faded — § 10.6's art kinds, or F14's placeholder. */
+const fadedArt = (m, v) => (art(v)
+    ? ['chair', ...(m.character ? ['character'] : []), 'desk-sprite', 'monitor-frame', 'desk-props', 'side-table']
+    : ['placeholder']).join(' ');
 
 export const EXPECTED = [
     { kind: 'placeholder', when: (m, v) => v.placeholder, value: () => 'present', ruling: '§ 9 F14 — the placeholder stands in for the images only (spec)' },
@@ -252,7 +256,7 @@ export const EXPECTED = [
     { kind: 'label', when: (m) => nonRawLabel(m) !== null, value: nonRawLabel, ruling: 'the desk\'s state text — Q1 (B)\'s carrier of the state (FLAGGED for the operator at B1\'s checkpoint); Q0 — non-raw' },
     { kind: 'currency', when: (m) => nonRawCurrency(m) !== null, value: nonRawCurrency, ruling: 'Q0 (a) — warning treatments: § 7.3\'s currency label (FLAGGED for the operator at B1\'s checkpoint)' },
     { kind: 'lag', when: (m) => (m.lag?.line ?? null) !== null, value: (m) => m.lag.line, ruling: 'Q0 (a) — warning treatments: § 7.4\'s lag line (FLAGGED for the operator at B1\'s checkpoint)' },
-    { kind: 'lag-overlay', when: (m) => m.lag !== null, value: () => 'present', ruling: 'Q0 (a) — warning treatments: § 7.4\'s hatch' },
+    { kind: 'fold-lag.fade', when: (m) => m.lag !== null, value: fadedArt, ruling: 'Q0 (a) — warning treatments: § 7.4\'s fade of the art (the operator\'s ruling of 2026-10-25, card#12346)' },
     { kind: 'group.lighting', when: () => true, value: (m) => m.lighting, ruling: 'Q0 (a) — warning treatments: § 7.3\'s dimming' },
     { kind: 'gauge-bar', when: (m) => m.gauge.reported, value: (m) => String(m.gauge.bar), ruling: 'Q1 (B) — the context bar' },
     { kind: 'gauge-pct', when: (m) => m.gauge.reported, value: (m) => m.gauge.pct, ruling: 'Q1 (B) — the context % (the model\'s own string, criterion 8)' },
@@ -312,7 +316,6 @@ function adapt(desk) {
             case 'desk-sprite':
             case 'plate':
             case 'facts-plate':
-            case 'lag-overlay':
             case 'placeholder':
                 add(e.kind, 'present');
                 break;
@@ -334,6 +337,13 @@ function adapt(desk) {
                 // chip — and anything else the layout draws, which the expected set then names extra.
                 add(e.kind, typeof e.text === 'string' ? e.text : 'present');
         }
+    }
+
+    // § 7.4's fade: the kinds the layout draws faded, in its order — one entry, or none on a desk drawn at full opacity.
+    const faded = desk.elements.filter((e) => e.opacity !== undefined).map((e) => e.kind);
+
+    if (faded.length > 0) {
+        add('fold-lag.fade', faded.join(' '));
     }
 
     // The group's lighting: the placed desk's own, which `painter.js` classes the whole desk by.

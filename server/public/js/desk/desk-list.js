@@ -102,10 +102,6 @@ export const NOT_LISTED = Object.freeze({
             + 'would be one fact twice',
         carried_by: 'label_line',
     },
-    'lag.overlay': {
-        reason: "§ 7.4's hatch is drawn over the art, and the list has no art; § 7.4's text on this row is the "
-            + 'lag line, beside the `fold_lag` badge',
-    },
     'gauge.bar': {
         reason: "the bar's length; the same `used_pct` is on the row as the gauge's percentage",
     },

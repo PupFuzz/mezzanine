@@ -8,7 +8,7 @@
  * the monitor and its text, the nameplate on its plate, the state chip, the label line, the currency
  * label, the lag line, the context bar and its %, a badge row of two (the treatment badges, then
  * `PINNED_BADGES`, then recognised badges in the wire's order), ONE flag `⚠ +N` for every unusual item whose raw form is
- * not drawn, the interns, the quiet age, § 7.4's hatch, § 7.3's dimming and the bubble. Every other
+ * not drawn, the interns, the quiet age, § 7.4's fade, § 7.3's dimming and the bubble. Every other
  * fact — and every raw unrecognised string — is the drill-down's and the desk list's
  * (`drilldown/main.js`, `desk/desk-list.js`). `Tests\Feature\Floor\TheNewDeskKeepsEveryLeafTest` holds
  * both halves: every leaf the desk drew before card#11058 is carried by the panel AND the list, and
@@ -109,13 +109,21 @@ export const BUBBLE_BAND = 2 * LINE + 2 * BUBBLE_PAD;
 /** The art column's width — the character, the desk, the monitor, the chip and the plate (§ 2.2: Chosen). */
 export const ART_W = 216;
 
+/**
+ * § 7.4's FOLD-LAG FADE (card#12346, the operator's ruling of 2026-10-25 — FLOOR.md § 12's *Fold-lag fade*
+ * row): the opacity a `fold_lag` desk's art pass — the chair, the character, the desk, the monitor's frame, the
+ * desk props and the side table, or § 9 F14's placeholder standing in for them — is drawn at. Every fact stays
+ * at full opacity, the nameplate and the lag line among them.
+ */
+export const FOLD_LAG_OPACITY = 0.5;
+
 /** The gap between the art column and the facts column. */
 export const GUTTER = 4;
 
 /**
  * THE FACTS PLATE (§ 10.6's *The desk, re-laid*, card#11468 — the operator's "A is fine", 2026-10-07): the
  * facts column's one soft rounded backdrop. Its padding across is 4, so its left edge is the art column's edge
- * (`ART_W`) and § 7.4's hatch, which covers the art column, never reaches it; 6 down; its corners `FACTS_PLATE_RX`.
+ * (`ART_W`); 6 down; its corners `FACTS_PLATE_RX`.
  */
 export const FACTS_PLATE_PAD = 4;
 
@@ -328,7 +336,6 @@ export function deskRects(box, character) {
         // bottom edge) is the desk's and the interns', so they stand in front of it.
         'side-table': table,
         'stool-more': { x: colB, y: foot + 2, w: widthB, h: LINE },
-        'lag-overlay': { x: 0, y: top, w: ART_W, h: H - top },
         plate: { x: mid - 80, y: H - 36, w: 160, h: 18 },
     });
 }
@@ -514,7 +521,7 @@ export const DRAWN_MEMBERS = Object.freeze({
     render_state: ['chip'],
     desk_label: ['label', 'monitor-text'],
     desk_currency: ['currency'],
-    lag: ['lag-overlay', 'lag'],
+    lag: ['lag'],
     monitor: ['monitor', 'monitor-text', 'monitor-frame'],
     quiet_age: ['quiet-age'],
     gauge: ['gauge-bar', 'gauge-pct'],
@@ -554,8 +561,8 @@ export const NOT_DRAWN_MEMBERS = Object.freeze({
 /**
  * One desk's elements, relative to its box's top-left, in § 2.2's layer order (bottom first): the
  * painter draws them in this order — the art pass first (the chair, the character, the desk, the
- * monitor's frame, the desk props, the side table), then every fact (FLOOR.md § 10.6's rule 2) — so the
- * hatch is over the art and the chip, and the plate is above the hatch.
+ * monitor's frame, the desk props, the side table), then every fact (FLOOR.md § 10.6's rule 2) — so a
+ * `fold_lag` desk's faded art (§ 7.4, `FOLD_LAG_OPACITY`) is all under the facts, which keep full opacity.
  *
  * @param {object} desk one desk model (`desk/desk-render.js`'s `deskModel()`)
  * @param {object} ctx `{ box: {width, height}, measure, character: {w, h}, theme: string|null,
@@ -670,6 +677,14 @@ export function deskLayout(desk, ctx) {
     // facts' backdrop) and before every fact it is drawn behind. It is as wide as the widest fact it holds, which is
     // known once the facts are cut, so it is spliced in at this index after them.
     const plateAt = elements.length;
+
+    // § 7.4's fade (card#12346): on a `fold_lag` desk every element of the art pass above — and only those — is drawn
+    // at `FOLD_LAG_OPACITY`; the facts below, the lag line and the nameplate among them, keep full opacity.
+    if (desk.lag !== null) {
+        for (const e of elements) {
+            e.opacity = FOLD_LAG_OPACITY;
+        }
+    }
 
     // The monitor is a fact (its light, Q1 B's task text), drawn on the placeholder too.
     rect('monitor', 'monitor', R.monitor, { lit: desk.monitor.lit });
@@ -809,12 +824,7 @@ export function deskLayout(desk, ctx) {
         });
     }
 
-    // ── Layer 5: § 7.4's hatch over the art and the chip ────────────────────────────────────────
-    if (desk.lag !== null) {
-        rect('lag-overlay', 'lag', R['lag-overlay'], { overlay: desk.lag.overlay });
-    }
-
-    // ── Layer 6: the plate and the nameplate, above the hatch ───────────────────────────────────
+    // ── Layer 5: the plate and the nameplate ────────────────────────────────────────────────────
     rect('plate', 'nameplate', R.plate);
 
     // Q2: the nameplate is the one string in the name role — measured, cut and centred in it.

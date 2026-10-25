@@ -31,6 +31,12 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
 
     private const DATA = __DIR__.'/desk-leaves';
 
+    /** `desk-layout.js`'s § 7.4 fade (card#12346) — the anchor its controls replace. */
+    private const FADE = "    if (desk.lag !== null) {\n        for (const e of elements) {\n            e.opacity = FOLD_LAG_OPACITY;\n        }\n    }\n";
+
+    /** The treatment the fade replaced, planted back: § 7.4's hatched overlay over the art column, the art at full opacity. */
+    private const HATCH = "    if (desk.lag !== null) {\n        rect('lag-overlay', 'lag', { x: 0, y: 0, w: ART_W, h: 200 });\n    }\n";
+
     /** How many `node` processes judge a batch of mutated trees at once. */
     private const PARALLEL = 4;
 
@@ -185,7 +191,10 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
     {
         $layout = '../floor/desk-layout.js';
         $plants = [
-            'the hatch' => [[$layout, "        rect('lag-overlay', 'lag', R['lag-overlay'], { overlay: desk.lag.overlay });\n", ''], 'ii-missing', 'lag-overlay'],
+            // § 7.4's fade (card#12346): dropped, drawn on a desk without the badge, and the old hatch drawn in its place.
+            'the fade' => [[$layout, "            e.opacity = FOLD_LAG_OPACITY;\n", ''], 'ii-missing', 'fold-lag.fade'],
+            'the fade on every desk' => [[$layout, "    if (desk.lag !== null) {\n        for (const e of elements) {", "    if (true) {\n        for (const e of elements) {"], 'ii-extra', 'fold-lag.fade'],
+            'the hatch drawn back' => [[$layout, self::FADE, self::HATCH], 'ii-extra', 'lag-overlay'],
             'the descriptor' => [[$layout, "        text('monitor-text', 'monitor', desk.action === null ? desk.desk_label : desk.monitor.text, R['monitor-text'],\n            { role: 'screen', lit: desk.monitor.lit });\n", ''], 'ii-missing', 'monitor-text'],
             'the quiet age' => [[$layout, "    text('quiet-age', 'quiet_age', desk.quiet_age, R['quiet-age']);\n", ''], 'ii-missing', 'quiet-age'],
             'the flag off by one' => [[$layout, 'const n = flagCount(desk, row);', 'const n = flagCount(desk, row) + 1;'], 'ii-missing', 'flag'],
@@ -409,6 +418,60 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                     "CONTROL ({$what}) left the box — it is planted to stay inside it, where containment alone reads clean");
             }
         }
+    }
+
+    /**
+     * § 7.4's fade (card#12346, the operator's ruling of 2026-10-25): a desk whose seat carries `fold_lag` draws its art —
+     * the chair, the character, the desk, the monitor's frame, the desk props and the side table, or F14's placeholder —
+     * in one group at `FOLD_LAG_OPACITY`, and every fact at full opacity; a desk without the badge draws every node at
+     * full opacity. `painter-probe.mjs` reads it on what was painted, and the figure is held to § 12's *Fold-lag fade* row.
+     */
+    public function test_a_fold_lagged_desk_draws_its_art_faded_and_a_healthy_desk_at_full_opacity(): void
+    {
+        $fadeDefects = fn (array $run): array => array_values(array_filter($run['defects'], fn (string $d): bool => str_contains($d, "§ 7.4's fade")));
+        $shipped = $this->painterRun();
+
+        $this->assertGreaterThan(0, $shipped['fade']['faded'], 'no fold_lag desk was painted — the faded half reads nothing');
+        $this->assertGreaterThan(0, $shipped['fade']['full'], 'no desk without fold_lag was painted — the full-opacity half reads nothing');
+        $this->assertSame([], $fadeDefects($shipped));
+        $this->assertSame($this->foldLagFadeRow(), $shipped['fade']['opacity'], "desk-layout.js's FOLD_LAG_OPACITY is not § 12's *Fold-lag fade* figure");
+
+        // The old treatment planted back — the hatch drawn over the art column, the art at full opacity.
+        $hatched = $this->mutatedModules(['../floor/desk-layout.js', self::FADE, self::HATCH]);
+        $painter = dirname($hatched).'/floor/painter.js';
+        $this->assertSame(1, substr_count((string) file_get_contents($painter), "                case 'plate':\n"), "the hatch control's painter anchor is not in painter.js exactly once");
+        file_put_contents($painter, str_replace("                case 'plate':\n", "                case 'plate':\n                case 'lag-overlay':\n", (string) file_get_contents($painter)));
+
+        $controls = [
+            'the old hatch planted back' => [dirname($hatched), 'at opacity 1, not '],
+            'the facts faded with the art' => [dirname($this->mutatedModules(['../floor/painter.js',
+                "            if (e.opacity === undefined) {\n                faded = null;", "            if (false) {\n                faded = null;"])), 'not 1 on a fold_lag desk'],
+            'the fade on a desk without fold_lag' => [dirname($this->mutatedModules(['../floor/desk-layout.js',
+                "    if (desk.lag !== null) {\n        for (const e of elements) {", "    if (true) {\n        for (const e of elements) {"])), 'on a desk without fold_lag'],
+            'each faded element in a group of its own' => [dirname($this->mutatedModules(['../floor/painter.js',
+                '            } else if (faded === null) {', '            } else {'])), 'fold-lag group(s) on a desk with fold_lag'],
+        ];
+
+        foreach ($controls as $what => [$tree, $needle]) {
+            $hit = array_filter($fadeDefects($this->painterRun($tree)), fn (string $d): bool => str_contains($d, $needle));
+
+            $this->assertNotSame([], $hit, "CONTROL ({$what}) did not red the fade leg with «{$needle}»");
+        }
+
+        // The pin's own control: the figure moved in the layout alone reds against § 12's row.
+        $moved = $this->painterRun(dirname($this->mutatedModules(['../floor/desk-layout.js',
+            'export const FOLD_LAG_OPACITY = 0.5;', 'export const FOLD_LAG_OPACITY = 0.6;'])));
+        $this->assertNotSame($this->foldLagFadeRow(), $moved['fade']['opacity'], 'CONTROL (the fade figure moved in the layout alone) did not red the § 12 pin');
+    }
+
+    /** § 12's *Fold-lag fade* figure, read from the document. */
+    private function foldLagFadeRow(): float
+    {
+        $doc = (string) file_get_contents(__DIR__.'/../../../../docs/design/FLOOR.md');
+
+        $this->assertSame(1, preg_match('/^\| \*\*Fold-lag fade\*\* \| \*\*(\d+(?:\.\d+)?)\*\* opacity\b/m', $doc, $m), '§ 12 carries no *Fold-lag fade* row');
+
+        return (float) $m[1];
     }
 
     /**
