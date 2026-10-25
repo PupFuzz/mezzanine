@@ -52,10 +52,32 @@ D1 § 2.1 explains why an unexpanded `~` in a settings command is the quietest f
 No path that goes into the crontab may contain whitespace or `%`, because cron turns an unescaped `%`
 into a newline. Step 5 refuses such a path.
 
-**Run the steps in one shell.** Step 0 sets `$B`. Each block that stages a file and then uses it
-runs in a `( set -euo pipefail … )` subshell, so a staged write that fails stops the block before
-anything runs or installs the file. A later shell sets `B=` to the attempt directory again before it
-continues.
+**Run the steps in one shell, and paste each block whole.** Step 0 sets and exports `$B`, and
+[Step 2's values block](#step-2--issue-the-seat-token-into-the-config-on-this-host-or-through-a-carried-file)
+exports the seat's own values. A later shell, which includes every new call of an agent's shell tool,
+runs `export B=<the attempt directory>` and that values block again before it continues. Each block that writes state is its own `bash -euo pipefail <<'SH'` … `SH`
+process, so it stops at its first failed command, and a staged write that fails stops the block before
+anything runs or installs the file. The block reads `$B` and the seat's values from the environment: a `B` that
+is set and not exported is unset there, and the block stops with `B: unbound variable` before it does
+anything; a seat value that is unset stops it with a line naming that value. A block takes nothing
+after its last line, so it runs the same pasted, or saved to a file and run with `bash <file>`. The
+block is that `bash`'s standard input, so no command inside one reads input of its own; the issue
+commands read `/dev/null`.
+
+**Why a separate `bash`, and not a `( set -euo pipefail … )` subshell** (card#12334). bash ignores
+`set -e` in a command that runs as the left side of `&&` or `||`, as an `if` or `while` condition, or
+after `!`, and in every command that a subshell or function in that position runs, even one that sets
+`-e` itself (bash(1), the `-e` option of `set`). Claude Code's Bash tool runs the command it is given
+as `eval '<command>' && pwd -P …`, which is the tool's own command line, read from `/proc` on
+2026-10-25. A subshell block pasted there carries on past a failed command and exits 0:
+`( set -e; false; echo continued ); echo rc=$?` prints `continued` and `rc=0`. A new `bash` process
+starts with its own `-e` in force, whatever runs it.
+
+**A seat with no crontab is an empty crontab.** `crontab -l` exits 1 with `no crontab for <user>`
+on an account that has never installed one. Every block that reads the crontab does it through
+`read_crontab`, defined on the block's first lines, which reads exactly that case as empty and fails on
+any other `crontab -l` failure, the predicate `bin/supervision.sh` uses for the same read. A crontab
+this runbook cannot read is never replaced.
 
 ## Why cron supervises the flusher, and not a `systemd --user` unit
 
@@ -111,27 +133,32 @@ its fixtures (Step 1), and, when an update says so, the config (Step 2). Copy al
 attempt directory before anything else:
 
 ```bash
-B=$HOME/.local/state/fleet-reporter-install/$(date -u +%Y%m%dT%H%M%SZ)
+export B=$HOME/.local/state/fleet-reporter-install/$(date -u +%Y%m%dT%H%M%SZ)
 mkdir -p $HOME/.local/state/fleet-reporter-install && mkdir -m 0700 "$B" && echo "B=$B"
-( set -euo pipefail
+bash -euo pipefail <<'SH'
   { [ -O "$B" ] && [ "$(stat -c %a "$B")" = 700 ]; } || { echo "\$B is not a new 0700 directory of the seat's own: NOTHING COPIED" >&2; exit 1; }
+  read_crontab() { crontab -l 2> "$B/crontab.err" || grep -q '^no crontab for ' "$B/crontab.err" || { cat "$B/crontab.err" >&2; return 1; }; }
   cp -p $HOME/.claude/settings.json "$B/settings.json"
-  crontab -l > "$B/crontab.txt"
+  read_crontab > "$B/crontab.txt"
   chmod 0600 "$B/crontab.txt"
+  [ -s "$B/crontab.txt" ] || echo "no crontab installed: the crontab backup is empty"
   cmp $HOME/.claude/settings.json "$B/settings.json"
   if [ -d $HOME/.local/share/fleet-reporter ]; then
     cp -pr $HOME/.local/share/fleet-reporter "$B/artifact"
-    diff -r $HOME/.local/share/fleet-reporter "$B/artifact" && echo "artifact and fixtures copied"
+    diff -r $HOME/.local/share/fleet-reporter "$B/artifact"; echo "artifact and fixtures copied"
   else echo "no artifact installed yet: nothing to copy"; fi
   if [ -f $HOME/.config/fleet-reporter/config.json ]; then
     cp -p $HOME/.config/fleet-reporter/config.json "$B/config.json"
-    cmp $HOME/.config/fleet-reporter/config.json "$B/config.json" && echo "config copied, mode $(stat -c %a "$B/config.json")"
+    cmp $HOME/.config/fleet-reporter/config.json "$B/config.json"; echo "config copied, mode $(stat -c %a "$B/config.json")"
   else echo "no config written yet: nothing to copy"; fi
-  crontab -l | md5sum )                       # record it: Step 8 must return the crontab to exactly this
+  # record the md5 it prints: Step 8 must return the crontab to exactly this
+  md5sum < "$B/crontab.txt"
+SH
 ```
 
 `mkdir -m 0700` without `-p` fails if the directory already exists, so an attempt never reuses
-another's directory. The config holds the seat's token, so `cp -p` keeps its `0600` mode, inside a
+another's directory. On a seat with no crontab the block prints `no crontab installed`, and the md5
+is the empty file's, `d41d8cd98f00b204e9800998ecf8427e`. The config holds the seat's token, so `cp -p` keeps its `0600` mode, inside a
 directory only the seat account can enter. To put a backed-up artifact back, run Step 1's `install`
 lines with `<checkout>/fleet-reporter` replaced by `$B/artifact`, then restart the flusher with
 [the upgrade's](#upgrading-an-existing-seat) step U6. On the sandbox, the first attempt was `20260913T193245Z`, and the crontab's md5
@@ -150,19 +177,23 @@ node --version && command -v node flock crontab && readlink -f "$(command -v nod
 The artifact is two things from a checkout of PupFuzz/mezzanine: `fleet-reporter/fleet-reporter.js`, and
 `fleet-reporter/fixtures/hooks/*.json`. The fixtures ship with the script for two reasons. `selftest`
 reads them on the seat (README, D1 § 2.1). And Step 4 derives the hook set from their names, because
-D1 § 2.1 vendors one file per subscribed hook. The sandbox used a checkout of `dev` at `4ce0a19`:
+D1 § 2.1 vendors one file per subscribed hook. The block's lines start in the first column, because
+`bin/reporter-version-guard.py` reads its `install` lines from that column. The sandbox used a
+checkout of `dev` at `4ce0a19`:
 
 ```bash
+bash -euo pipefail <<'SH'
 install -d -m 0700 $HOME/.local/share/fleet-reporter $HOME/.local/share/fleet-reporter/fixtures $HOME/.local/share/fleet-reporter/fixtures/hooks
 install -m 0600 <checkout>/fleet-reporter/fleet-reporter.js $HOME/.local/share/fleet-reporter/fleet-reporter.js
 install -m 0600 <checkout>/fleet-reporter/fixtures/hooks/*.json $HOME/.local/share/fleet-reporter/fixtures/hooks/
 sha256sum <checkout>/fleet-reporter/fleet-reporter.js $HOME/.local/share/fleet-reporter/fleet-reporter.js
-diff -r <checkout>/fleet-reporter/fixtures $HOME/.local/share/fleet-reporter/fixtures && echo fixtures-match
-printf '{}' | node $HOME/.local/share/fleet-reporter/fleet-reporter.js hook PostToolUse; echo "rc=$?"
+diff -r <checkout>/fleet-reporter/fixtures $HOME/.local/share/fleet-reporter/fixtures; echo fixtures-match
+printf '{}' | node $HOME/.local/share/fleet-reporter/fleet-reporter.js hook PostToolUse; echo "rc=0"
+SH
 ```
 
 The last line proves something about ordering. With the artifact in place and no config yet, a hook
-exits 0 and prints nothing (`rc=0`). So hooks may be wired before the config exists. The reverse order
+exits 0 and prints nothing (`rc=0`; a hook that exits otherwise stops the block with its own code). So hooks may be wired before the config exists. The reverse order
 is not safe. A settings entry whose script path does not exist yet makes `node` exit non-zero on every
 tool call, and the harness puts that error in the transcript.
 
@@ -212,14 +243,35 @@ the server is on another host, the token reaches the seat in one named file the 
 ([the hand delivery](#when-the-server-is-on-another-host-carry-the-token-in-one-named-file)). Both
 routes use the same resolver, identity check and writer, which come first.
 
+**Set the seat's values first.** Every block of this step reads them from here, so no block below is
+edited by hand. Fill each `<…>` from [the values to substitute](#the-values-to-substitute); the
+sandbox's values are in the comments. `SEAT_AGENT` may be empty, for a seat that declares no
+`protocol_agent_name`. `SEAT_WRAPPED` is read from the seat's settings, not typed. When the server is on
+another host, run the block on that host too: the hand delivery's step (a) reads `SEAT_INSTALL_ID`,
+`SEAT_ID`, `SEAT_BY` and `SEAT_SERVER` there.
+
+```bash
+export SEAT_INSTALL_ID=<install_id>           # sandbox: mezzanine
+export SEAT_ID=<seat_id>                      # sandbox: mezzanine-solo
+export SEAT_AGENT=<protocol_agent_name>       # sandbox: mezzanine
+export SEAT_URL=<ingest_url>                  # sandbox: https://sandboxmezzanine.neeba.com/api/ingest/events
+export SEAT_BY=<issued_by>                    # who issues the token, for the server's record; sandbox: card-9368
+export SEAT_SERVER=<server_checkout>          # where php artisan runs; sandbox: /home/mezzanine/mezzanine/server
+export SEAT_WRAPPED="$(node -e 'let s = {}; try { s = JSON.parse(require("fs").readFileSync(process.env.HOME + "/.claude/settings.json", "utf8")); } catch (e) { if (e.code !== "ENOENT") throw e; } console.log((s.statusLine && s.statusLine.command) || "")')"
+env | grep '^SEAT_' | sort
+```
+
+A `<…>` left unfilled makes its line fail with `No such file or directory`, and the variable stays unset.
+
 **Resolve `$COORD_CONFIG` the way the seat's sessions see it.** Save the resolver. It reads each
 settings file in precedence order, lowest first, so the last file that sets the value wins. It prints
 the value, or an empty line when no file sets it:
 
 ```bash
-( set -euo pipefail
+bash -euo pipefail <<'SH'
   cat > "$B/coord-config.js" <<'JS'
 const fs = require("fs");
+if (process.argv.length < 3) { console.error("usage: node coord-config.js <settings file>...: NOTHING READ"); process.exit(2); }
 let v = "";
 for (const f of process.argv.slice(2)) {
   let s;
@@ -228,7 +280,8 @@ for (const f of process.argv.slice(2)) {
 }
 console.log(v);
 JS
-  node "$B/coord-config.js" $HOME/.claude/settings.json $HOME/.claude/settings.local.json )
+  node "$B/coord-config.js" $HOME/.claude/settings.json $HOME/.claude/settings.local.json
+SH
 ```
 
 On the sandbox it printed `/home/mezzanine/.config/coord/coordination.config.json`, from
@@ -237,12 +290,15 @@ On the sandbox it printed `/home/mezzanine/.config/coord/coordination.config.jso
 **Check the identity.** `install_id` and `seat_id` must match D1 § 3.1's patterns, and the issue
 command refuses a value that does not. `protocol_agent_name` must be a member of the roster the
 reporter reads. D1 § 3.1 reads `$COORD_CONFIG` first and, on Linux, the home path second. This prints
-the names that roster holds:
+the names that roster holds, and what `SEAT_AGENT` is against it:
 
 ```bash
-( set -euo pipefail
+bash -euo pipefail <<'SH'
+  : "${SEAT_AGENT?is not set: run the values block at the top of Step 2 first}"
   CC=$(node "$B/coord-config.js" $HOME/.claude/settings.json $HOME/.claude/settings.local.json)
-  node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); for (const r of c.roster||[]) console.log(r.name)' "${CC:-$HOME/.config/coord/coordination.config.json}" )
+  export ROSTER="${CC:-$HOME/.config/coord/coordination.config.json}"
+  node -e 'const f = process.env.ROSTER, a = process.env.SEAT_AGENT; const c = JSON.parse(require("fs").readFileSync(f, "utf8")); const names = (c.roster || []).map((r) => r.name); for (const n of names) console.log(n); console.log(a === "" ? "SEAT_AGENT is empty: undeclared" : "SEAT_AGENT " + a + (names.includes(a) ? " is a member: checked" : " is not a member: disagreed"))'
+SH
 ```
 
 On the sandbox it printed `mezzanine`. The seat declares `mezzanine`, so the check is `checked`.
@@ -256,7 +312,7 @@ line replaced. It receives the token, so it lives in `$B` and nowhere another ac
 it:
 
 ```bash
-( set -euo pipefail
+bash -euo pipefail <<'SH'
   cat > "$B/write-config.js" <<'JS'
 const fs = require("fs"), path = require("path");
 const e = process.env, out = [], TOKEN = /^\s*token\s+(mzn_[A-Za-z0-9_-]{43})\s*$/, SHAPE = /mzn_[A-Za-z0-9_-]{43}/g;
@@ -279,12 +335,14 @@ if (MODE) {
   if (!e.FR_SITE_NAME) die("FR_MODE=" + MODE + " needs FR_SITE_NAME");
   if (MODE === "add-site" && !e.FR_URL) die("FR_MODE=add-site needs FR_URL");
   if (MODE === "set-token") for (const k of ["FR_URL", "FR_CA_FILE"]) if (k in e) die(k + " is set, and FR_MODE=set-token changes one token and nothing else");
+  if (!e.FR_CONFIG) die("FR_CONFIG must name the config file FR_MODE=" + MODE + " changes");
   if (!fs.existsSync(e.FR_CONFIG)) die("FR_MODE=" + MODE + " changes a config that exists, and " + e.FR_CONFIG + " does not");
 }
 const mode = (st) => (st.mode & 0o777).toString(8);
 const siteOf = (name, url, token) => ({ name, ingest_url: url, token, ca_file: e.FR_CA_FILE || null, proxy_url: null });
 function writeConfig(token) {
   // A fresh install writes the multi-site form, one site, and never the single-site form (D1 § 3.1).
+  for (const k of ["FR_CONFIG", "FR_INSTALL", "FR_SEAT", "FR_URL", "FR_SPOOL"]) if (!e[k]) die(k + " is not set, and a fresh config needs it");
   const cfg = {
     install_id: e.FR_INSTALL, seat_id: e.FR_SEAT, spool_dir: e.FR_SPOOL,
     wrapped_statusline: e.FR_WRAPPED || null, protocol_agent_name: e.FR_AGENT || null,
@@ -367,7 +425,8 @@ if (e.FR_TOKEN_FILE) {
   });
 }
 JS
-  node --check "$B/write-config.js" && echo writer-saved )
+  node --check "$B/write-config.js" && echo writer-saved
+SH
 ```
 
 Before this ran for real, the writer was driven three ways: with a fabricated issue output, which wrote
@@ -403,8 +462,8 @@ below runs both, and says what card#11331's scratch run of them showed.
 it is unset), `paths` or `none`. D1 § 3.1 defines the three values, and Step 3 says how to change it later.
 The writer refuses any other value before it writes anything.
 
-`FR_WRAPPED` is the statusLine command the seat has **now**, read from `statusLine.command` in
-`~/.claude/settings.json`. On the sandbox it was the coord framework's context sensor. It is recorded
+`FR_WRAPPED` is the statusLine command the seat has **now**, `statusLine.command` in
+`~/.claude/settings.json`, which the values block reads into `SEAT_WRAPPED`. On the sandbox it was the coord framework's context sensor. It is recorded
 even though the sandbox has not applied the wrap: D1 § 6.11's passthrough needs it only if Step 4(b)
 is applied, and (b) refuses unless the live statusLine still equals it.
 
@@ -418,11 +477,15 @@ pointed at a `0755` directory it printed `NOTHING RUN`, and `php` was never call
 `NOTHING RUN`, and the stub `php` was never called:
 
 ```bash
-( set -euo pipefail
+bash -euo pipefail <<'SH'
   { [ -O "$B" ] && [ "$(stat -c %a "$B")" = 700 ] && [ -f "$B/write-config.js" ] && [ -O "$B/write-config.js" ]; } || { echo "\$B is not the seat's own 0700 directory holding its writer: NOTHING RUN" >&2; exit 1; }
   command -v node >/dev/null || { echo "no node on PATH, so the writer cannot take the token: NOTHING RUN" >&2; exit 1; }
-  cd $HOME/mezzanine/server
-  php artisan mezzanine:ingest-token:issue mezzanine mezzanine-solo --by=card-9368 2>&1 | FR_CONFIG=$HOME/.config/fleet-reporter/config.json FR_INSTALL=mezzanine FR_SEAT=mezzanine-solo FR_URL=https://sandboxmezzanine.neeba.com/api/ingest/events FR_SPOOL=$HOME/.local/state/fleet-reporter FR_AGENT=mezzanine FR_WRAPPED="bash ~/.local/bin/context-sensor.sh ''" node "$B/write-config.js" ); echo "pipeline rc=$?"
+  for v in SEAT_INSTALL_ID SEAT_ID SEAT_URL SEAT_BY SEAT_SERVER; do [ -n "${!v:-}" ] || { echo "$v is not set: run the values block at the top of Step 2 first: NOTHING RUN" >&2; exit 1; }; done
+  : "${SEAT_AGENT?is not set: run the values block at the top of Step 2 first}" "${SEAT_WRAPPED?is not set: run the values block at the top of Step 2 first}"
+  cd "$SEAT_SERVER"
+  php artisan mezzanine:ingest-token:issue "$SEAT_INSTALL_ID" "$SEAT_ID" --by="$SEAT_BY" < /dev/null 2>&1 | FR_CONFIG=$HOME/.config/fleet-reporter/config.json FR_INSTALL="$SEAT_INSTALL_ID" FR_SEAT="$SEAT_ID" FR_URL="$SEAT_URL" FR_SPOOL=$HOME/.local/state/fleet-reporter FR_AGENT="$SEAT_AGENT" FR_WRAPPED="$SEAT_WRAPPED" node "$B/write-config.js"
+SH
+echo "pipeline rc=$?"
 ```
 
 What it printed on the sandbox (the first install ran the same pipeline with the writer at a path
@@ -538,17 +601,20 @@ only from (a), which writes it, to (d), which shreds it on both hosts.
 
 **(a) On the Mezzanine host, issue the token into a 0600 file.** Make an attempt directory there the
 way Step 0 makes `$B`, with its first two lines and the issuing account's home in place of the seat's,
-and save the writer into it with the block above. Then pipe the issue command into the writer with
+save the writer into it with the block above, and run the values block at the top of this step. Then pipe the issue command into the writer with
 `FR_TOKEN_OUT` set. The writer prints the issue output with the token line replaced, so the **prefix**
 stays on screen, and writes the token alone to the file with mode `0600`. It refuses a file that
 already exists. The guard on the first line is the same-host pipeline's:
 
 ```bash
-( set -euo pipefail
+bash -euo pipefail <<'SH'
   { [ -O "$B" ] && [ "$(stat -c %a "$B")" = 700 ] && [ -f "$B/write-config.js" ] && [ -O "$B/write-config.js" ]; } || { echo "\$B is not this account's own 0700 directory holding its writer: NOTHING RUN" >&2; exit 1; }
   command -v node >/dev/null || { echo "no node on PATH, so the writer cannot take the token: NOTHING RUN" >&2; exit 1; }
-  cd <server checkout>
-  php artisan mezzanine:ingest-token:issue <install_id> <seat_id> --by=<operator> 2>&1 | FR_TOKEN_OUT="$B/mezzanine-reporter-token" node "$B/write-config.js" ); echo "pipeline rc=$?"
+  for v in SEAT_INSTALL_ID SEAT_ID SEAT_BY SEAT_SERVER; do [ -n "${!v:-}" ] || { echo "$v is not set: run the values block at the top of Step 2 first: NOTHING RUN" >&2; exit 1; }; done
+  cd "$SEAT_SERVER"
+  php artisan mezzanine:ingest-token:issue "$SEAT_INSTALL_ID" "$SEAT_ID" --by="$SEAT_BY" < /dev/null 2>&1 | FR_TOKEN_OUT="$B/mezzanine-reporter-token" node "$B/write-config.js"
+SH
+echo "pipeline rc=$?"
 ```
 
 Keep the prefix: Step 8 needs it, and so does every failure below.
@@ -566,8 +632,8 @@ stat -c '%a %U %n' $HOME/.config/fleet-reporter $HOME/.config/fleet-reporter/mez
 
 Both lines must show the seat account, `700` on the directory and `600` on the file.
 
-**(c) On the seat, write the config from the file.** Make `$B` with Step 0 and save the writer into it
-with the block above, as on a same-host seat. The pipeline is the same-host one with the issue command
+**(c) On the seat, write the config from the file.** Make `$B` with Step 0, save the writer into it
+with the block above and run the values block at the top of this step, as on a same-host seat. The pipeline is the same-host one with the issue command
 taken out: `FR_TOKEN_FILE` names the carried file, and the writer reads the token from it rather than
 from stdin. It writes the config exactly as the same-host pipeline does, with the same keys and mode
 `0600`. Before it writes anything, it confirms that the file is a regular file the seat account owns,
@@ -576,9 +642,13 @@ that its mode is exactly `0600`, that its directory is one the seat account owns
 name the file and never print what it holds:
 
 ```bash
-( set -euo pipefail
+bash -euo pipefail <<'SH'
   { [ -O "$B" ] && [ "$(stat -c %a "$B")" = 700 ] && [ -f "$B/write-config.js" ] && [ -O "$B/write-config.js" ]; } || { echo "\$B is not the seat's own 0700 directory holding its writer: NOTHING RUN" >&2; exit 1; }
-  FR_TOKEN_FILE=$HOME/.config/fleet-reporter/mezzanine-reporter-token FR_CONFIG=$HOME/.config/fleet-reporter/config.json FR_INSTALL=mezzanine FR_SEAT=mezzanine-solo FR_URL=https://sandboxmezzanine.neeba.com/api/ingest/events FR_SPOOL=$HOME/.local/state/fleet-reporter FR_AGENT=mezzanine FR_WRAPPED="bash ~/.local/bin/context-sensor.sh ''" node "$B/write-config.js" ); echo "pipeline rc=$?"
+  for v in SEAT_INSTALL_ID SEAT_ID SEAT_URL; do [ -n "${!v:-}" ] || { echo "$v is not set: run the values block at the top of Step 2 first: NOTHING RUN" >&2; exit 1; }; done
+  : "${SEAT_AGENT?is not set: run the values block at the top of Step 2 first}" "${SEAT_WRAPPED?is not set: run the values block at the top of Step 2 first}"
+  FR_TOKEN_FILE=$HOME/.config/fleet-reporter/mezzanine-reporter-token FR_CONFIG=$HOME/.config/fleet-reporter/config.json FR_INSTALL="$SEAT_INSTALL_ID" FR_SEAT="$SEAT_ID" FR_URL="$SEAT_URL" FR_SPOOL=$HOME/.local/state/fleet-reporter FR_AGENT="$SEAT_AGENT" FR_WRAPPED="$SEAT_WRAPPED" node "$B/write-config.js"
+SH
+echo "pipeline rc=$?"
 ```
 
 On success it prints two lines, `read the token from …/mezzanine-reporter-token (mode 600)` and
@@ -630,8 +700,11 @@ between two hosts: the first real hand delivery exercises both.
 ## Step 3 — check the config file
 
 ```bash
-stat -c '%a %n' $HOME/.config/fleet-reporter $HOME/.config/fleet-reporter/config.json
-node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); const show=(p,o)=>{for (const [k,v] of Object.entries(o)) { if (k==="sites" && Array.isArray(v)) { v.forEach((x,i)=>show("sites["+(x&&x.name||i)+"].",x||{})); continue; } const u=(x)=>{try{const w=new URL(x);if(w.username||w.password){w.username="USER";w.password="";return w.href.replace("USER@","<userinfo>@");}}catch(e){}return x;}; console.log(p+k, k==="token" ? "<" + (/^mzn_[A-Za-z0-9_-]{43}$/.test(v) ? "well-formed" : "MALFORMED") + ">" : JSON.stringify(typeof v==="string" && /_url$/.test(k) ? u(v) : v)); }}; show("",c)' $HOME/.config/fleet-reporter/config.json
+bash -euo pipefail <<'SH'
+  export FR_CONFIG=$HOME/.config/fleet-reporter/config.json
+  stat -c '%a %n' "$(dirname "$FR_CONFIG")" "$FR_CONFIG"
+  node -e 'const f = process.env.FR_CONFIG; if (!f) { console.error("FR_CONFIG must name the config file: NOTHING READ"); process.exit(2); } const c=JSON.parse(require("fs").readFileSync(f,"utf8")); const show=(p,o)=>{for (const [k,v] of Object.entries(o)) { if (k==="sites" && Array.isArray(v)) { v.forEach((x,i)=>show("sites["+(x&&x.name||i)+"].",x||{})); continue; } const u=(x)=>{try{const w=new URL(x);if(w.username||w.password){w.username="USER";w.password="";return w.href.replace("USER@","<userinfo>@");}}catch(e){}return x;}; console.log(p+k, k==="token" ? "<" + (/^mzn_[A-Za-z0-9_-]{43}$/.test(v) ? "well-formed" : "MALFORMED") + ">" : JSON.stringify(typeof v==="string" && /_url$/.test(k) ? u(v) : v)); }}; show("",c)'
+SH
 ```
 
 On the sandbox this printed `700` and `600`, and then every key with the token shown only as
@@ -657,7 +730,7 @@ until the value is fixed. The events spooled meanwhile are built as under `"none
 the config's mode kept. This reads and writes the file without printing it:
 
 ```bash
-node -e 'const fs=require("fs"),f=process.argv[1],v=process.argv[2]; if(!["full","paths","none"].includes(v)) throw new Error("full, paths or none"); const c=JSON.parse(fs.readFileSync(f,"utf8")); c.descriptors=v; fs.writeFileSync(f, JSON.stringify(c,null,2)+"\n", {mode:0o600}); console.log("descriptors =", v)' $HOME/.config/fleet-reporter/config.json none
+FR_CONFIG=$HOME/.config/fleet-reporter/config.json FR_DESCRIPTORS=none node -e 'const fs=require("fs"),f=process.env.FR_CONFIG,v=process.env.FR_DESCRIPTORS; if (!f) { console.error("FR_CONFIG must name the config file: NOTHING WRITTEN"); process.exit(2); } if(!["full","paths","none"].includes(v)) { console.error("FR_DESCRIPTORS must be full, paths or none: NOTHING WRITTEN"); process.exit(2); } const c=JSON.parse(fs.readFileSync(f,"utf8")); c.descriptors=v; fs.writeFileSync(f, JSON.stringify(c,null,2)+"\n", {mode:0o600}); console.log("descriptors =", v)'
 ```
 
 Every hook reads the config when it fires, so the next tool call uses the new value. Nothing needs a
@@ -694,10 +767,11 @@ A second script checks the result against the original: every top-level key othe
 reporter's, and a changed statusLine can only be the reporter.
 
 ```bash
-( set -euo pipefail
+bash -euo pipefail <<'SH'
   cat > "$B/wire-hooks.js" <<'JS'
 const fs = require("fs"), path = require("path");
 const [src, dst, js, prior] = process.argv.slice(2);
+if (!src || !dst || !js) { console.error("usage: node wire-hooks.js <settings.json> <output> <fleet-reporter.js> [<prior statusLine command>]: NOTHING WRITTEN"); process.exit(2); }
 const fixtures = path.join(path.dirname(js), "fixtures", "hooks");
 const set = fs.readdirSync(fixtures).filter((f) => f.endsWith(".json")).sort().map((f) => {
   const shapes = JSON.parse(fs.readFileSync(path.join(fixtures, f), "utf8")).shapes;
@@ -733,6 +807,7 @@ JS
   cat > "$B/check-preserved.js" <<'JS'
 const fs = require("fs");
 const [before, after, js] = process.argv.slice(2);
+if (!before || !after || !js) { console.error("usage: node check-preserved.js <before.json> <after.json> <fleet-reporter.js>: NOTHING CHECKED"); process.exit(2); }
 const a = JSON.parse(fs.readFileSync(before, "utf8")), b = JSON.parse(fs.readFileSync(after, "utf8"));
 const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
 const bad = [];
@@ -759,16 +834,18 @@ console.log("existing hook entries kept in place: " + kept + "; reporter entries
 if (bad.length) { console.error("NOT PRESERVED:\n  " + bad.join("\n  ")); process.exit(1); }
 console.log("every other key and every existing hook entry is unchanged");
 JS
-  node --check "$B/wire-hooks.js" && node --check "$B/check-preserved.js" && echo scripts-saved )
+  node --check "$B/wire-hooks.js" && node --check "$B/check-preserved.js" && echo scripts-saved
+SH
 ```
 
 **(a) Hooks only**, staged in `$B`, checked, and only then copied over the live file:
 
 ```bash
-( set -euo pipefail
+bash -euo pipefail <<'SH'
   node "$B/wire-hooks.js" $HOME/.claude/settings.json "$B/settings.wired.json" $HOME/.local/share/fleet-reporter/fleet-reporter.js
   node "$B/check-preserved.js" $HOME/.claude/settings.json "$B/settings.wired.json" $HOME/.local/share/fleet-reporter/fleet-reporter.js
-  cp "$B/settings.wired.json" $HOME/.claude/settings.json && echo applied )
+  cp "$B/settings.wired.json" $HOME/.claude/settings.json && echo applied
+SH
 ```
 
 **(b) Hooks plus the statusLine wrap.** This is the same block with the prior statusLine command as a
@@ -846,10 +923,11 @@ it asks only that second question, and passes whoever started the holder (card#1
 an upgrade's stop a hook usually starts the flusher before cron does:
 
 ```bash
-( set -euo pipefail
+bash -euo pipefail <<'SH'
   cat > "$B/stop-flusher.js" <<'JS'
 const fs = require("fs"), path = require("path");
 const [spool, js] = process.argv.slice(2);
+if (!spool || !js) { console.error("usage: node stop-flusher.js <spool dir> <fleet-reporter.js>: NOTHING SENT"); process.exit(2); }
 const src = fs.readFileSync(js, "utf8");
 const num = (re, what) => { const m = re.exec(src); if (!m) { console.error("cannot read " + what + " from " + js + ": no bound, NOTHING SENT"); process.exit(2); } return Number(m[1]); };
 const FLUSH_MS = num(/\bFLUSH_MS:\s*(\d+)/, "K.FLUSH_MS"), REQUEST_MS = num(/\bREQUEST_MS:\s*(\d+)/, "K.REQUEST_MS");
@@ -871,6 +949,7 @@ JS
   cat > "$B/flusher-ancestry.js" <<'JS'
 const fs = require("fs"), path = require("path");
 const [spool, js, mode] = process.argv.slice(2);
+if (!spool || !js) { console.error("usage: node flusher-ancestry.js <spool dir> <fleet-reporter.js> [--upgrade]"); process.exit(2); }
 if (mode !== undefined && mode !== "--upgrade") { console.error("unknown mode [" + mode + "]: the only one is --upgrade"); process.exit(2); }
 let pid;
 try { pid = JSON.parse(fs.readFileSync(path.join(spool, "flusher.lock"), "utf8")).pid; } catch (e) { console.log("FAIL: no readable flusher.lock, so no flusher holds the lock"); process.exit(1); }
@@ -901,13 +980,14 @@ if (flock && cron) { console.log("PASS: the lock holder was started by cron thro
 console.log("FAIL: the lock holder's parents include " + (flock ? "flock" : "no flock") + " and " + (cron ? "cron" : "no cron") + ". A flusher cron did not start holds the lock (a hook's, or one run by hand), so cron's line is NOT verified");
 process.exit(1);
 JS
-  node --check "$B/stop-flusher.js" && node --check "$B/flusher-ancestry.js" && echo helpers-saved )
+  node --check "$B/stop-flusher.js" && node --check "$B/flusher-ancestry.js" && echo helpers-saved
+SH
 ```
 
 Then write the block:
 
 ```bash
-( set -euo pipefail
+bash -euo pipefail <<'SH'
   JS=$HOME/.local/share/fleet-reporter/fleet-reporter.js
   SPOOL=$HOME/.local/state/fleet-reporter
   FLOCK=$HOME/.local/state/fleet-reporter-flusher.flock
@@ -915,7 +995,8 @@ Then write the block:
   CC=$(node "$B/coord-config.js" $HOME/.claude/settings.json $HOME/.claude/settings.local.json)
   case "$JS$FLOCK$NODE$CC" in *[[:space:]%]*) echo "a crontab path holds whitespace or %: NOTHING WRITTEN" >&2; exit 1 ;; esac
   LINE="${CC:+COORD_CONFIG=$CC }flock -n $FLOCK $NODE $JS flusher >/dev/null 2>&1"
-  crontab -l > "$B/crontab.before"
+  read_crontab() { crontab -l 2> "$B/crontab.err" || grep -q '^no crontab for ' "$B/crontab.err" || { cat "$B/crontab.err" >&2; return 1; }; }
+  read_crontab > "$B/crontab.before"
   begins=$(grep -c '^# BEGIN fleet-reporter-flusher$' "$B/crontab.before" || true)
   ends=$(grep -c '^# END fleet-reporter-flusher$' "$B/crontab.before" || true)
   [ "$begins" = "$ends" ] || { echo "BEGIN/END fleet-reporter-flusher markers do not pair ($begins/$ends): NOTHING WRITTEN" >&2; exit 1; }
@@ -928,7 +1009,8 @@ Then write the block:
   crontab "$B/crontab.new"
   crontab -l | cmp - "$B/crontab.new"
   echo "installed: $(crontab -l | md5sum)"
-  node "$B/stop-flusher.js" "$SPOOL" "$JS" )
+  node "$B/stop-flusher.js" "$SPOOL" "$JS"
+SH
 ```
 
 On the first install, the block was appended by hand with the same lines, and the md5 went from
@@ -1213,14 +1295,15 @@ blocks of this runbook. This copies each one out of the checkout's runbook into 
 the block would write it, and refuses a name the runbook does not hold exactly once:
 
 ```bash
-( set -euo pipefail
+bash -euo pipefail <<'SH'
   for h in coord-config.js wire-hooks.js check-preserved.js stop-flusher.js flusher-ancestry.js; do
     start="cat > \"\$B/$h\" <<'JS'"
     awk -v s="$start" 'on && $0 == "JS" { on = 0; n++; next } on { print; next } { t = $0; sub(/^ +/, "", t) } t == s { on = 1 } END { exit n == 1 ? 0 : 1 }' \
       <checkout>/fleet-reporter/INSTALL-LINUX.md > "$B/$h" || { echo "$h: not exactly one block in the runbook: NOT EXTRACTED" >&2; exit 1; }
     node --check "$B/$h"
   done
-  echo helpers-extracted )
+  echo helpers-extracted
+SH
 ```
 
 *Check:* it prints `helpers-extracted`. Add `write-config.js` to the list when a row's `config` touch
@@ -1284,9 +1367,10 @@ request's header and nowhere else, and prints no token:
 ```bash
 ( I=$HOME/.local/share/fleet-reporter
   v() { grep -o "^const REPORTER_VERSION = '[^']*'" "$1" | cut -d"'" -f2; }
-  node -e '
+  FR_REPORTER="$I/fleet-reporter.js" FR_CONFIG=$HOME/.config/fleet-reporter/config.json FR_WANT="$(v "$I/fleet-reporter.js")" node -e '
 const https = require("https"), fs = require("fs");
-const [js, cfg, want] = process.argv.slice(1);
+const js = process.env.FR_REPORTER, cfg = process.env.FR_CONFIG, want = process.env.FR_WANT;
+if (!js || !cfg) { console.log("FR_REPORTER and FR_CONFIG must each be set: NOT MEASURED"); process.exit(2); }
 if (!want) { console.log("no installed REPORTER_VERSION was read: NOT MEASURED"); process.exit(2); }
 const { sites } = require(js).loadConfig(cfg);
 if (!sites.length) { console.log("the config holds no site: NOT MEASURED, Step 6 names why"); process.exit(2); }
@@ -1310,7 +1394,7 @@ const one = (s) => new Promise((done) => {
   req.on("error", (e) => say("no answer (" + (e.code || e.message) + "): NOT MEASURED", 2));
 });
 (async () => { for (const s of sites) await one(s); process.exit(behind ? 1 : unmeasured ? 2 : 0); })();
-' "$I/fleet-reporter.js" $HOME/.config/fleet-reporter/config.json "$(v "$I/fleet-reporter.js")"; echo "health rc=$?" )
+'; echo "health rc=$?" )
 ```
 
 *Check:* each site prints `installed <version>, server current <version>: current`, and the block ends
@@ -1376,29 +1460,44 @@ carried a token.
 
 Do these in this order. Hooks go first, because while they stay wired every tool call respawns the
 flusher (§ 2.3). The token goes last, because revoking it first leaves a running flusher posting with a
-dead credential, which § 11.5 quarantines as permanent. Before each item, set `B=` to the attempt
+dead credential, which § 11.5 quarantines as permanent. Before each item, run `export B=` with the attempt
 directory that holds what the item restores. On the sandbox that is `20260913T203739Z-hooks` for item 1,
 the pre-hooks `settings.json`, and `20260913T193245Z` for item 2, the crontab. Item 3 uses Step 5's
 `stop-flusher.js`. If the attempt directory does not hold it, save it first with Step 5's helper block.
 
 1. **Unwire the hooks.** If nothing else has changed `settings.json` since the hooks were applied,
    restore that attempt's backup, then check it is valid JSON:
-   `cp -p "$B/settings.json" "$HOME/.claude/settings.json" && node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$HOME/.claude/settings.json"`.
+   `cp -p "$B/settings.json" "$HOME/.claude/settings.json" && node -e 'JSON.parse(require("fs").readFileSync(process.env.HOME + "/.claude/settings.json","utf8")); console.log("valid JSON")'`.
    If something else has changed it, remove only the entries whose command contains
    `share/fleet-reporter/fleet-reporter.js`. If Step 4(b) was applied, also set `statusLine.command`
    back to the config's `wrapped_statusline`.
-2. **Remove the crontab block**, and nothing else. It is staged in `$B` and installed only if the
-   `diff` against Step 0's backup is empty:
-   `( set -euo pipefail; crontab -l | sed '/^# BEGIN fleet-reporter-flusher$/,/^# END fleet-reporter-flusher$/d' > "$B/crontab.rollback"; diff "$B/crontab.txt" "$B/crontab.rollback"; crontab "$B/crontab.rollback"; crontab -l | md5sum )`.
-   The md5 must be Step 0's.
+2. **Remove the crontab block**, and nothing else, with the block below. It is staged in `$B` and
+   installed only if the `diff` against Step 0's backup is empty. A result with no line left removes the
+   crontab (`crontab -r`), which is the state of a seat that had none at Step 0; a seat that has no
+   crontab at all by then has nothing to remove. The md5 it prints last must be Step 0's.
+
+```bash
+bash -euo pipefail <<'SH'
+  read_crontab() { crontab -l 2> "$B/crontab.err" || grep -q '^no crontab for ' "$B/crontab.err" || { cat "$B/crontab.err" >&2; return 1; }; }
+  read_crontab > "$B/crontab.current"
+  sed '/^# BEGIN fleet-reporter-flusher$/,/^# END fleet-reporter-flusher$/d' "$B/crontab.current" > "$B/crontab.rollback"
+  diff "$B/crontab.txt" "$B/crontab.rollback"
+  if [ -s "$B/crontab.rollback" ]; then crontab "$B/crontab.rollback"
+  elif ! grep -q '^no crontab for ' "$B/crontab.err"; then crontab -r
+  else echo "no crontab installed: nothing to remove"; fi
+  read_crontab | md5sum
+SH
+```
+
 3. **Stop the flusher cleanly**, so it removes its own lock, and wait until it has exited:
    `node "$B/stop-flusher.js" $HOME/.local/state/fleet-reporter $HOME/.local/share/fleet-reporter/fleet-reporter.js`.
    It prints how long the exit took, or `NOT STOPPED` once the bound derived from the artifact's
    constants has passed. Do not go on to item 4 while a flusher runs. It checks the pid rather than
    pattern-matching process names, so it cannot match its own shell.
 4. **Revoke each site's token on the server that issued it**, by its prefix, on that site's Mezzanine host:
-   `php artisan mezzanine:ingest-token:revoke mzn_YTRScmlE --reason='uninstall'`. To take the desk off the
-   floor as well, run `php artisan mezzanine:retire --seat=mezzanine/mezzanine-solo --by=<operator> --reason=<why>`
+   `php artisan mezzanine:ingest-token:revoke <prefix> --reason='uninstall'` (the sandbox's prefix is
+   `mzn_YTRScmlE`). To take the desk off the floor as well, run
+   `php artisan mezzanine:retire --seat="$SEAT_INSTALL_ID/$SEAT_ID" --by=<operator> --reason=<why>`
    on each site (FLEET-STATE § 4.10). Revocation leaves the seat's rows, and retirement is what hides the desk.
 5. **Remove the seat's files**:
    `rm -rf $HOME/.config/fleet-reporter $HOME/.local/state/fleet-reporter $HOME/.local/share/fleet-reporter $HOME/.local/state/fleet-reporter-flusher.flock`.
@@ -1414,7 +1513,7 @@ drops that site's `state.json` entry (D1 § 3.1 rule 4), and that site sees the 
 The acceptance suite re-extracts the command and drives it (AT-28 Case P):
 
 ```bash
-node -e 'const fs=require("fs"),path=require("path"),[f,n,js]=process.argv.slice(1); const t=path.join(path.dirname(f),"."+path.basename(f)+"."+process.pid+".tmp"); let c; try { c=JSON.parse(fs.readFileSync(f,"utf8")); if (!Array.isArray(c.sites) || !c.sites.some((x)=>x.name===n)) throw new Error("no site named "+n); if (c.sites.length===1) throw new Error("the last site: uninstall instead"); c.sites=c.sites.filter((x)=>x.name!==n); const d=fs.openSync(t,"wx",0o600); try { fs.writeSync(d, JSON.stringify(c,null,2)+"\n"); fs.fsyncSync(d); } finally { fs.closeSync(d); } const m=require(path.resolve(js)), e=m.allConfigErrors(m.loadConfig(t)); if (e.length) throw new Error(e.join("; ")); fs.renameSync(t,f); } catch (err) { try { fs.unlinkSync(t); } catch (e2) {} console.error(String(err.message||err)+": NOTHING WRITTEN"); process.exit(1); } console.log("sites:", c.sites.map((x)=>x.name).join(", "))' $HOME/.config/fleet-reporter/config.json <name> $HOME/.local/share/fleet-reporter/fleet-reporter.js
+FR_CONFIG=$HOME/.config/fleet-reporter/config.json FR_SITE_NAME=<name> FR_REPORTER=$HOME/.local/share/fleet-reporter/fleet-reporter.js node -e 'const fs=require("fs"),path=require("path"),f=process.env.FR_CONFIG,n=process.env.FR_SITE_NAME,js=process.env.FR_REPORTER; if (!f || !n || !js) { console.error("FR_CONFIG, FR_SITE_NAME and FR_REPORTER must each be set: NOTHING WRITTEN"); process.exit(2); } const t=path.join(path.dirname(f),"."+path.basename(f)+"."+process.pid+".tmp"); let c; try { c=JSON.parse(fs.readFileSync(f,"utf8")); if (!Array.isArray(c.sites) || !c.sites.some((x)=>x.name===n)) throw new Error("no site named "+n); if (c.sites.length===1) throw new Error("the last site: uninstall instead"); c.sites=c.sites.filter((x)=>x.name!==n); const d=fs.openSync(t,"wx",0o600); try { fs.writeSync(d, JSON.stringify(c,null,2)+"\n"); fs.fsyncSync(d); } finally { fs.closeSync(d); } const m=require(path.resolve(js)), e=m.allConfigErrors(m.loadConfig(t)); if (e.length) throw new Error(e.join("; ")); fs.renameSync(t,f); } catch (err) { try { fs.unlinkSync(t); } catch (e2) {} console.error(String(err.message||err)+": NOTHING WRITTEN"); process.exit(1); } console.log("sites:", c.sites.map((x)=>x.name).join(", "))'
 ```
 
 **What removing a site showed on the sandbox seat**, on 2026-10-23, for the stub site of [Adding a

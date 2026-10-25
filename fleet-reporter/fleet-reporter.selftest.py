@@ -7824,12 +7824,17 @@ redgreen("Case P — the writer adds a site and rotates a token without printing
 
 
 # Step 8's REMOVE-ONE-SITE command, re-extracted from INSTALL-LINUX.md: temp file, loadConfig, rename (review F6).
-REMOVE_JS = re.search(r"^node -e '(const fs=require\(\"fs\"\),path=require\(\"path\"\),\[f,n,js\].*?)' ", INSTALL_DOC, re.M).group(1)
+# Since card#12334 it takes its three values from FR_CONFIG, FR_SITE_NAME and FR_REPORTER at the front of the line.
+REMOVE_JS = re.search(r"^FR_CONFIG=\S+ FR_SITE_NAME=\S+ FR_REPORTER=\S+ node -e '(const fs=require\(\"fs\"\),path=require\(\"path\"\),f=process\.env\.FR_CONFIG.*?)'$",
+                      INSTALL_DOC, re.M).group(1)
 
 
 def run_remove(cfg: Path, name: str, js_src: str = REMOVE_JS, preexec=None) -> subprocess.CompletedProcess:
+    # The values go both ways: in the environment, which the runbook's command reads, and as argv, which the
+    # reviewed one-liner below (OLD_REMOVE_JS, the RED) read.
     return subprocess.run(["node", "-e", js_src, str(cfg), name, str(REPORTER)], capture_output=True, text=True,
-                          cwd=str(HERE), preexec_fn=preexec)
+                          cwd=str(HERE), preexec_fn=preexec,
+                          env={**os.environ, "FR_CONFIG": str(cfg), "FR_SITE_NAME": name, "FR_REPORTER": str(REPORTER)})
 
 
 rd = tmpdir("fr-at28-rm-")
@@ -8660,6 +8665,180 @@ redgreen("Case B — a down site stalls nothing and loses nothing (AT-28, D1 § 
          f"attempts byte-identical {b_r3.get('held_bytes')}",
          f"one lane per site -> sa's max gap {b_g1['max_gap']} s, snapshot gap {b_g1['max_snap_gap']} s, sa heartbeat gap "
          f"{b_g1['max_hb_gap']} s; on recovery sb got the persisted request first and every event, duplicates {b_g1.get('dups')}")
+
+
+print("\n== 24. THE RUNBOOK'S BLOCKS STOP AT THEIR FIRST FAILURE, AND NO CRONTAB READS AS EMPTY (card#12334) ==")
+# An agent's shell tool runs what it is given as `eval '<command>' && …` (INSTALL-LINUX.md § The values to
+# substitute, the paragraph after the table). bash ignores `set -e` in every command the left side of `&&` runs,
+# a subshell that sets it itself included, so a `( set -euo pipefail … )` block pasted there carried on past a
+# failed `crontab -l` and installed a crontab holding the reporter's block alone. Each block is now its own
+# `bash -euo pipefail <<'SH'` process. Everything here is READ OUT OF THE RUNBOOK and run under that same
+# `eval … &&` wrapper, and every `crontab` it runs is a stub on PATH: the real one is never called.
+TOOL_WRAP = 'eval "$1" && :'
+SH_BLOCKS = re.findall(r"^(bash -euo pipefail <<'SH'\n.*?\nSH)$", INSTALL_DOC, re.M | re.S)
+SUBSHELL_E = re.compile(r"^\s*\(\s*set -e", re.M)
+eq("precondition: the runbook has blocks in the separate-bash form, and every one parses (`bash -n`, "
+   "with each <placeholder> filled)", (True, []),
+   (bool(SH_BLOCKS), [b.splitlines()[1][:60] for b in SH_BLOCKS if subprocess.run(
+       ["bash", "-n"], input=re.sub(r"<[a-z_ ]+>", "X", b), capture_output=True, text=True).returncode != 0]))
+eq("RED: the subshell detector finds the old block shape", True,
+   bool(SUBSHELL_E.search("```bash\n( set -euo pipefail\n  false )\n```")))
+eq("  … and no block of the runbook is a `( set -e … )` subshell", [],
+   [INSTALL_DOC[:m.start()].count("\n") + 1 for m in SUBSHELL_E.finditer(INSTALL_DOC)])
+
+
+def tool_run(cmd: str, env: "dict | None" = None) -> subprocess.CompletedProcess:
+    """`cmd` as an agent's shell tool runs it: the left side of `&&`."""
+    return subprocess.run(["bash", "-c", TOOL_WRAP, "tool", cmd], capture_output=True, text=True, env=env)
+
+
+HEAD = SH_BLOCKS[0].splitlines()[0] if SH_BLOCKS else "bash -euo pipefail <<'SH'"
+r_old = tool_run("( set -euo pipefail\n  false\n  echo continued )\necho rc=$?")
+r_new = tool_run(f"{HEAD}\n  false\n  echo continued\nSH\necho rc=$?")
+eq("RED: under the tool's `eval … &&`, the old subshell block runs on past `false` and exits 0", "continued\nrc=0\n",
+   r_old.stdout)
+eq("  … the runbook's block form stops at the `false`", "rc=1\n", r_new.stdout)
+
+READS = sorted(set(re.findall(r"^  (read_crontab\(\) \{.*\})$", INSTALL_DOC, re.M)))
+eq("every block that reads the crontab defines `read_crontab` identically (one definition, however many copies)", 1,
+   len(READS))
+cr = tmpdir("fr-cron-")
+os.chmod(cr, 0o700)
+(cr / "bin").mkdir()
+STUB = cr / "bin" / "crontab"
+STUB.write_text(f"""#!/bin/sh
+D={cr}
+echo "crontab $*" >> $D/calls.log
+if [ -e $D/broken ] && [ "$1" = -l ]; then echo "crontab: cannot open the spool: Permission denied" >&2; exit 2; fi
+case "$1" in
+  -l) [ -e $D/installed ] || {{ echo "no crontab for $(id -un)" >&2; exit 1; }}; cat $D/installed ;;
+  -r) [ -e $D/installed ] || {{ echo "no crontab for $(id -un)" >&2; exit 1; }}; rm $D/installed ;;
+  -) cat > $D/installed ;;
+  *) cp "$1" $D/installed ;;
+esac
+""", encoding="utf-8")
+os.chmod(STUB, 0o700)
+cr_home = cr / "home"
+(cr_home / ".claude").mkdir(parents=True)
+(cr_home / ".claude" / "settings.json").write_text("{}\n", encoding="utf-8")
+(cr_home / ".local" / "share" / "fleet-reporter").mkdir(parents=True)
+shutil.copy(REPORTER, cr_home / ".local" / "share" / "fleet-reporter" / "fleet-reporter.js")
+CR_B = cr / "B"
+
+
+def cron_state(installed: "str | None", broken: bool = False) -> None:
+    for f in ("installed", "broken", "calls.log"):
+        (cr / f).unlink(missing_ok=True)
+    if installed is not None:
+        (cr / "installed").write_text(installed, encoding="utf-8")
+    if broken:
+        (cr / "broken").write_text("", encoding="utf-8")
+    shutil.rmtree(CR_B, ignore_errors=True)
+    CR_B.mkdir(mode=0o700)
+    for h in ("coord-config.js", "stop-flusher.js"):
+        src = re.search(r"cat > \"\$B/" + re.escape(h) + r"\" <<'JS'\n(.*?)\nJS\n", INSTALL_DOC, re.S).group(1)
+        (CR_B / h).write_text(src + "\n", encoding="utf-8")
+
+
+def cron_block(marker: str) -> str:
+    found = [b for b in SH_BLOCKS if marker in b]
+    if len(found) != 1:
+        raise AssertionError(f"{len(found)} runbook blocks hold {marker!r}, not one (the check would be vacuous)")
+    # The stub is asserted to be what `crontab` resolves to before the block runs: the real one is never reached.
+    return f'[ "$(command -v crontab)" = {STUB} ] || {{ echo "STUB NOT ON PATH" >&2; exit 99; }}\n{found[0]}\necho rc=$?'
+
+
+def cron_run(marker: str, *, block: "str | None" = None) -> "tuple[subprocess.CompletedProcess, list[str], str | None]":
+    env = {"PATH": f"{cr / 'bin'}:/usr/bin:/bin", "HOME": str(cr_home), "B": str(CR_B)}
+    r = tool_run(block or cron_block(marker), env)
+    calls = (cr / "calls.log").read_text(encoding="utf-8").splitlines() if (cr / "calls.log").exists() else []
+    inst = (cr / "installed").read_text(encoding="utf-8") if (cr / "installed").exists() else None
+    return r, calls, inst
+
+
+S0, S5, S8 = 'md5sum < "$B/crontab.txt"', 'read_crontab > "$B/crontab.before"', '"$B/crontab.rollback"'
+OTHER = "# BEGIN mezzanine-supervision\n* * * * * cd /x && php artisan mezzanine:fold\n# END mezzanine-supervision\n"
+cron_state(None)
+r0, c0, _ = cron_run(S0)
+eq("Step 0 on a seat with no crontab: it says so, backs up an empty crontab, prints the empty file's md5 and exits 0",
+   (True, "", True, "rc=0"),
+   ("no crontab installed" in r0.stdout, (CR_B / "crontab.txt").read_text(encoding="utf-8"),
+    "d41d8cd98f00b204e9800998ecf8427e  -" in r0.stdout, r0.stdout.strip().splitlines()[-1]))
+cron_state(OTHER, broken=True)
+r0b, c0b, _ = cron_run(S0)
+eq("  … and a `crontab -l` that fails any other way stops it at the read, with the error shown and rc 1",
+   (True, "rc=1", False), ("Permission denied" in r0b.stderr, r0b.stdout.strip().splitlines()[-1], "-  " in r0b.stdout))
+cron_state(None)
+r5, c5, i5 = cron_run(S5)
+eq("Step 5 on a seat with no crontab installs a crontab holding the reporter's block alone, and exits 0",
+   (True, "rc=0"), (i5 is not None and i5.startswith("# BEGIN fleet-reporter-flusher\n")
+                    and i5.endswith("# END fleet-reporter-flusher\n") and i5.count("\n") == 5,
+                    r5.stdout.strip().splitlines()[-1]))
+cron_state(OTHER, broken=True)
+r5b, c5b, i5b = cron_run(S5)
+eq("  … and on a crontab it cannot read it stops at the read: no install call, the crontab untouched, rc 1",
+   (["crontab -l"], OTHER, "rc=1"), (c5b, i5b, r5b.stdout.strip().splitlines()[-1]))
+old5 = cron_block(S5).replace(f"{HEAD}\n", "( set -euo pipefail\n").replace(
+    f"  {READS[0] if READS else ''}\n", "").replace(S5, 'crontab -l > "$B/crontab.before"').replace(
+    '"$JS"\nSH\n', '"$JS" )\n')
+cron_state(OTHER, broken=True)
+r5o, c5o, i5o = cron_run(S5, block=old5)
+eq("RED: the block as it stood before card#12334, under the same tool wrapper and the same unreadable crontab, "
+   "carries on past the failed read and installs the reporter's block over the crontab, exit 0",
+   (True, True, "rc=0"), (any(c.startswith("crontab /") for c in c5o),
+                          i5o is not None and "mezzanine-supervision" not in i5o, r5o.stdout.strip().splitlines()[-1]))
+cron_state(None)
+cron_run(S0)
+cron_run(S5)
+r8, c8, i8 = cron_run(S8)
+eq("Step 8 item 2 on a seat that had no crontab at Step 0: the diff is empty, it removes the crontab, and the md5 it "
+   "prints last is Step 0's", (None, True, True, "rc=0"),
+   (i8, "crontab -r" in c8, "d41d8cd98f00b204e9800998ecf8427e  -" in r8.stdout, r8.stdout.strip().splitlines()[-1]))
+cron_state(None)
+cron_run(S0)
+r8n, c8n, i8n = cron_run(S8)
+eq("  … with no crontab at all by then it removes nothing, says so, and exits 0",
+   (None, False, True, "rc=0"),
+   (i8n, any(c in ("crontab -r",) or c.startswith("crontab /") for c in c8n), "nothing to remove" in r8n.stdout,
+    r8n.stdout.strip().splitlines()[-1]))
+redgreen("the runbook's blocks stop at a failed command under an agent's shell tool, and a seat with no crontab "
+         "installs (card#12334)",
+         f"`( set -euo pipefail … )` under `eval … &&` -> {r_old.stdout.strip()!r}; Step 5 as it stood, over an "
+         f"unreadable crontab -> stub calls {c5o}, the other block gone",
+         f"`bash -euo pipefail <<'SH'` -> {r_new.stdout.strip()!r}; Step 5 over the same crontab -> calls {c5b}, "
+         f"untouched; no crontab -> Steps 0, 5 and 8 each rc 0, the rollback's md5 Step 0's")
+
+
+# A MISSING VALUE IS NAMED, NEVER A TypeError. Each helper the runbook saves, given no arguments, and each
+# `node -e` command that reads FR_CONFIG, given none, exits 2 with a line naming what it needs (card#12334: an
+# agent ran Step 3's printer saved to a file, lost its trailing argument, and got a readFileSync TypeError).
+HELPERS = ("coord-config.js", "wire-hooks.js", "check-preserved.js", "stop-flusher.js", "flusher-ancestry.js")
+ARGLESS = {}
+for h in HELPERS:
+    src = re.search(r"cat > \"\$B/" + re.escape(h) + r"\" <<'JS'\n(.*?)\nJS\n", INSTALL_DOC, re.S).group(1)
+    r = subprocess.run(["node", "-e", src], capture_output=True, text=True, cwd=str(cr))
+    ARGLESS[h] = (r.returncode, r.stderr.startswith("usage: "), "TypeError" in r.stderr)
+eq("each helper the runbook saves, run with no arguments, exits 2 with its usage line and no TypeError",
+   {h: (2, True, False) for h in HELPERS}, ARGLESS)
+sf = re.search(r"cat > \"\$B/stop-flusher\.js\" <<'JS'\n(.*?)\nJS\n", INSTALL_DOC, re.S).group(1)
+sf_red = re.sub(r"^if \(!spool \|\| !js\).*\n", "", sf, count=1, flags=re.M)
+r_sf_red = subprocess.run(["node", "-e", sf_red], capture_output=True, text=True, cwd=str(cr))
+eq("RED: stop-flusher.js without its usage line, run with no arguments, dies on a TypeError", (True, True),
+   (sf_red != sf, "TypeError" in r_sf_red.stderr))
+ENV_CMDS = re.findall(r"node -e '((?:const f = process\.env\.FR_CONFIG|const fs=require\(\"fs\"\)(?:,path=require\(\"path\"\))?,f=process\.env\.FR_CONFIG).*?)'(?:$|\n)",
+                      INSTALL_DOC, re.M)
+# The population, re-derived: every `node -e` line of the runbook that reads FR_CONFIG, so a command the
+# extraction above misses is a count mismatch, not a silent pass.
+N_ENV_CMDS = len(re.findall(r"node -e '[^\n]*process\.env\.FR_CONFIG", INSTALL_DOC))
+eq("precondition: the runbook has `node -e` commands that read FR_CONFIG", True, N_ENV_CMDS > 0)
+env_out = {}
+for c in ENV_CMDS:
+    r = subprocess.run(["node", "-e", c], capture_output=True, text=True, cwd=str(cr),
+                       env={k: v for k, v in os.environ.items() if not k.startswith("FR_")})
+    env_out[c[:50]] = (r.returncode, "must" in r.stderr and "FR_CONFIG" in r.stderr, "TypeError" in r.stderr)
+eq("the runbook's `node -e` commands that read FR_CONFIG (Step 3's printer and one-key rewrite, Step 8's site "
+   "removal) each exit 2 naming FR_CONFIG when it is unset, and none dies on a TypeError",
+   (N_ENV_CMDS, {k: (2, True, False) for k in env_out}), (len(env_out), env_out))
 
 
 print("\n== 21. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
