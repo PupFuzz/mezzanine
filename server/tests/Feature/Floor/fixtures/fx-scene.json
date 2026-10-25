@@ -5124,7 +5124,7 @@
       }
     },
     "interns_cap": {
-      "note": "§ 11's `fx-interns` cap leg: fx-snapshot-4 with `aimla-impl-1` and `aimla-impl-2` each at § 8's cap of 8 stools, `subagents_open` 9, every intern title at 120 B; `aimla-impl-1`'s descriptor at 200 B; `aimla-impl-2` badged with D2's bound of 18 plus one member outside § 7.2's set, `fold_lag` among them with a `fold_lag_ms`; every `task.title` at 120 B — on the shipped default.",
+      "note": "§ 11's `fx-interns` cap leg: fx-snapshot-4 with `aimla-impl-1` and `aimla-impl-2` each at § 8's cap of 8 stools, `subagents_open` 9, every intern title at 120 B; `aimla-impl-1`'s descriptor at 200 B; `aimla-impl-2` badged with D2's bound — every member of § 7.2's set — plus one member outside it, `fold_lag` among them with a `fold_lag_ms`; every `task.title` at 120 B — on the shipped default.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -5503,6 +5503,7 @@
                         "reporter_ahead",
                         "fold_lag",
                         "derivation_error",
+                        "update_required",
                         "not_a_published_badge"
                       ],
                       "badges_since": "2026-08-23T09:14:02.118Z",
@@ -6036,6 +6037,7 @@
                         "reporter_ahead",
                         "fold_lag",
                         "derivation_error",
+                        "update_required",
                         "not_a_published_badge"
                       ],
                       "badges_since": "2026-08-23T09:14:02.118Z",

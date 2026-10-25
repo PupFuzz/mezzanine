@@ -7,7 +7,7 @@
  * ⛔ THE DESK DRAWS EXACTLY THE RULED SET AND NOTHING ELSE: the character (or the chair), the desk,
  * the monitor and its text, the nameplate on its plate, the state chip, the label line, the currency
  * label, the lag line, the context bar and its %, a badge row of two (the treatment badges, then
- * recognised badges in the wire's order), ONE flag `⚠ +N` for every unusual item whose raw form is
+ * `PINNED_BADGES`, then recognised badges in the wire's order), ONE flag `⚠ +N` for every unusual item whose raw form is
  * not drawn, the interns, the quiet age, § 7.4's hatch, § 7.3's dimming and the bubble. Every other
  * fact — and every raw unrecognised string — is the drill-down's and the desk list's
  * (`drilldown/main.js`, `desk/desk-list.js`). `Tests\Feature\Floor\TheNewDeskKeepsEveryLeafTest` holds
@@ -151,9 +151,9 @@ export const SIDE_TABLE_SEATS = 4;
 const SEAT_H = 6;
 
 /**
- * D2 § 8.2.1's bound on `badges` — "the union of D1's 12 `degraded` members and § 7.2's 7, of
- * which `epoch_reset` is in both" — which is exactly the published member set, so it is that set's
- * size rather than a second number (§ 12's *`badges` bound* row).
+ * D2 § 8.2.1's bound on `badges` — the union of D1's `degraded` members and D2 § 7.2's server-derived
+ * badges, of which `epoch_reset` is in both — which is exactly the published member set, so it is that
+ * set's size rather than a second number (§ 12's *`badges` bound* row).
  */
 export const BADGE_BOUND = BADGES.size;
 
@@ -195,6 +195,15 @@ const PLATE_TEXT_W = 148;
 
 /** The badges a § 7 treatment reads — § 7.3's `config_invalid` and § 7.4's `fold_lag`. */
 export const TREATMENT_BADGES = Object.freeze(['config_invalid', 'fold_lag']);
+
+/**
+ * The badges drawn after the treatment badges and ahead of every other — `FLOOR.md § 13` row 75 (a seat
+ * ruling over row 44's order, awaiting the operator as § 14 item 41): `update_required`, so the mark the
+ * operator's rule asks for is folded into the flag only when both treatment badges are present. NOT a
+ * treatment: the desk is not treated as not-current for it (§ 7.2). Reversing the ruling to the wire's
+ * order empties this list and moves nothing else.
+ */
+export const PINNED_BADGES = Object.freeze(['update_required']);
 
 /**
  * § 5.1's open-call count, which the model carries as a number.
@@ -706,7 +715,7 @@ export function deskLayout(desk, ctx) {
         text('gauge-pct', 'gauge', gauge.pct, R['gauge-pct']);
     }
 
-    // Q1 (B): the badge row — the treatment badges, then recognised badges in the wire's order.
+    // Q1 (B), row 75: the badge row — the treatment badges, the pinned ones, then the wire's order.
     const row = badgeRow;
 
     row.forEach((badge, i) => {
@@ -827,8 +836,9 @@ export function deskLayout(desk, ctx) {
 }
 
 /**
- * The badge row's order (§ 10.3's cut order, amended by the ruling of 2026-10-02): the badges a § 7
- * treatment reads first, then the RECOGNISED badges in the wire's own order. An unrecognised badge is
+ * The badge row's order (§ 10.3's cut order, amended by the ruling of 2026-10-02 and by § 13 row 75):
+ * the badges a § 7 treatment reads first, then `PINNED_BADGES`, then the other RECOGNISED badges in the
+ * wire's own order. An unrecognised badge is
  * never in it — its raw id is not drawn on the desk (Q0); it is counted into the flag through its
  * `badges: <id>` line.
  *
@@ -842,7 +852,8 @@ export function clusterOrder(desk) {
 
     return [
         ...known.filter((id) => TREATMENT_BADGES.includes(id)),
-        ...known.filter((id) => !TREATMENT_BADGES.includes(id)),
+        ...known.filter((id) => PINNED_BADGES.includes(id)),
+        ...known.filter((id) => !TREATMENT_BADGES.includes(id) && !PINNED_BADGES.includes(id)),
     ];
 }
 

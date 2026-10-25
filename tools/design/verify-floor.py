@@ -1408,7 +1408,7 @@ if len(ur_m) != 7:
                 f"seven it declares — the extractor is broken")
 
 # The LONGEST `badges` array D2 publishes: § 8.2.2's snapshot carries one member and § 8.3.2's
-# worst-case block carries all eighteen, so taking the first match reads the wrong population.
+# worst-case block carries every member, so taking the first match reads the wrong population.
 cands = re.findall(prose(r'"badges": \[(.*?)\]'), d2_raw, re.S)
 badge_m = set(re.findall(r'"([a-z_]+)"', max(cands, key=len))) if cands else set()
 # The bound is READ from D2 § 8.2.1's own `badges` row rather than pinned here: a literal 18 held the
