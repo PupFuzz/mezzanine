@@ -1,8 +1,12 @@
-# Installing `fleet-reporter` on a Linux seat, by hand and without root
+# Installing `fleet-reporter` on a Linux seat, without root
 
-There is no installer. Card #7336 is won't-do, so this runbook is how a Linux agent seat starts
-reporting to a Mezzanine server. It was written by performing it on the sandbox host on 2026-09-13
-(card#9368), for the seat `mezzanine` / `mezzanine-solo`, and the seat has reported since.
+This runbook is how a Linux agent seat starts reporting to a Mezzanine server, and it owns every
+command that does it. [`install.sh`](install.sh), beside it, runs those commands for you: it reads each
+block it needs out of this file and runs it unchanged
+([Running it with `install.sh`](#running-it-with-installsh), card#7336), and
+[`AGENT-INSTALL.md`](AGENT-INSTALL.md) is the guide a Claude Code agent follows to run it. The runbook
+was written by performing it on the sandbox host on 2026-09-13 (card#9368), for the seat `mezzanine` /
+`mezzanine-solo`, and the seat has reported since.
 
 **What is live on that seat, and what is not:**
 
@@ -80,6 +84,68 @@ on an account that has never installed one. Every block that reads the crontab d
 any other `crontab -l` failure, the predicate `bin/supervision.sh` uses for the same read. A crontab
 this runbook cannot read is never replaced.
 
+## Running it with `install.sh`
+
+[`install.sh`](install.sh) runs this runbook's blocks for you, from the checkout that holds it. Every
+` ```bash ` block below carries an anchor on the line above it: `<!-- install.sh: run <name> -->` for a
+block the script runs, or `<!-- install.sh: skip — <reason> -->` for one it does not, with the reason.
+The script reads each block it names out of this file and runs it **unchanged**, with each `<placeholder>`
+filled by a reference to a shell variable rather than by a pasted value. What the script itself owns is
+the order the blocks run in, when each runs, and how it reads what each printed. [`AGENT-INSTALL.md`](AGENT-INSTALL.md)
+is the guide a Claude Code agent follows to run it, and states what the agent asks the user.
+
+**The three runs of a fresh install.** The token is written first, because every later step needs a
+config to read, and nothing is installed until it is:
+
+1. `install.sh --site <url> --seat-id <id> [--install-id <id>]` with no config yet runs the
+   prerequisites line, installs nothing, prints the command for step 2 with this run's values, and exits
+   `3`. `<url>` is the site's address, `https://<host>`, or its ingest URL; the script appends
+   `/api/ingest/events` to an address. `--install-id` defaults to this account's name, as a slug.
+2. `install.sh --set-token` with the same values: Step 0, Step 2's values block and writer, then
+   [(a′)'s hidden prompt](#when-the-token-is-issued-on-the-sites-seat-tokens-page), (c) and (d), then
+   Step 3. A token file already at `~/.config/fleet-reporter/mezzanine-reporter-token`, which
+   [the hand delivery](#when-the-server-is-on-another-host-carry-the-token-in-one-named-file) carries, is
+   used as it is and no prompt is shown. `--agent-name` declares `protocol_agent_name` and runs Step 2's
+   identity check first, refusing a name the roster does not hold; `--ca-file` sets the site's `ca_file`.
+   With no terminal to read from, it refuses before it writes anything, and names the command to run in
+   one.
+3. `install.sh` with the same values, or none: Step 0; U1, and Step 1 when the seat's artifact is absent
+   or differs from the checkout's; Step 4 (a); Step 5's block; the read-only check under U6 of what the
+   running flusher runs, and U6 when it runs an older build than the installed artifact, so a run that
+   installed the artifact and failed before U6 is finished by the next; Step 3; Step 6, U8, and [Step 7's arrival check](#step-7--verify-that-events-arrive);
+   then, when the run changed anything, Step 5's check of who started the flusher, which it reports and
+   does not judge (a flusher a hook started holds the same lock, as that check says).
+
+**A later run is the upgrade, and the re-check.** Run from a checkout of the ref an update names (U0's
+clone, or a `git pull` of the checkout), run 3 is [Upgrading an existing seat](#upgrading-an-existing-seat)
+U0 to U8 for the touches `artifact`, `fixtures`, `hooks` and `cron`. A row's `config` touch is still
+applied by hand, with the command the row names. A run that changes nothing writes nothing: U1 prints
+`NO-OP`, Step 4 (a) prints `already wired: nothing applied` and Step 5 prints `crontab already current`,
+so `settings.json`, the crontab, the artifact and the config keep their bytes and their mtimes and the
+flusher is not restarted. The checks still run, and the run then removes the attempt directory its Step 0
+made, which holds copies of a state it did not change. A run whose config names another `install_id`,
+`seat_id` or site than the ones given refuses before it changes anything.
+
+**`--set-token` over an existing config replaces the token.** It runs
+[Rotating a site's token](#rotating-a-sites-token)'s write for the site `--site-name` names, `default`
+when it is unset, then (d) and U6. Revoking the old token on the site comes after, as that section says.
+
+**Exit codes.** `0`: every check passed, or nothing needed changing. `1`: the script refused, a block
+failed, or a check failed; the block's own lines say which. `2`: installed, and a check could not be
+measured (a site that did not answer, or no flusher within the arrival check's wait). `3`: the token
+comes first, and the output names its command.
+
+**The script and this runbook cannot drift apart unseen.** Before it runs anything, `install.sh` checks
+this file against itself, and `install.sh --check-runbook` runs that check alone. It refuses unless every
+` ```bash ` block here carries an anchor, every block it runs has exactly one `run` anchor, every `run`
+anchor names a block it runs, and every message it reads in a block's output is in that block's own
+source. So a step added here without an anchor, or a reworded message the script would misread, stops the
+script and reds CI. [`install.selftest.py`](install.selftest.py) plants each of those divergences and
+watches the check fail, then installs, re-runs and upgrades a seat in a throwaway home, against a TLS
+ingest stub and a stub `crontab`. ⚠ The check sees an anchor, a block and a message; it does not see
+prose. A new manual step written here in prose alone is invisible to it, as it is to
+`bin/reporter-version-guard.py`.
+
 ## Why cron supervises the flusher, and not a `systemd --user` unit
 
 D1 § 2.3 needs the flusher to run whenever the seat does, and gives it two starts: a supervised start,
@@ -133,6 +199,7 @@ crontab runs the server's daemons. An upgrade also replaces the reporter's own f
 its fixtures (Step 1), and, when an update says so, the config (Step 2). Copy all of them into a new
 attempt directory before anything else:
 
+<!-- install.sh: run backup -->
 ```bash
 export B=$HOME/.local/state/fleet-reporter-install/$(date -u +%Y%m%dT%H%M%SZ)
 bash -euo pipefail <<'SH'
@@ -141,6 +208,7 @@ bash -euo pipefail <<'SH'
   echo "B=$B"
   { [ -O "$B" ] && [ "$(stat -c %a "$B")" = 700 ]; } || { echo "\$B is not a new 0700 directory of the seat's own: NOTHING COPIED" >&2; exit 1; }
   read_crontab() { crontab -l 2> "$B/crontab.err" || grep -q '^no crontab for ' "$B/crontab.err" || { cat "$B/crontab.err" >&2; return 1; }; }
+  if [ ! -e $HOME/.claude/settings.json ]; then mkdir -p $HOME/.claude; ( umask 077; printf '{}\n' > $HOME/.claude/settings.json ); echo "no settings.json yet: created it as {}"; fi
   cp -p $HOME/.claude/settings.json "$B/settings.json"
   read_crontab > "$B/crontab.txt"
   chmod 0600 "$B/crontab.txt"
@@ -160,7 +228,9 @@ SH
 ```
 
 `mkdir -m 0700` without `-p` fails if the directory already exists, so an attempt never reuses
-another's directory. On a seat with no crontab the block prints `no crontab installed`, and the md5
+another's directory. An account on which Claude Code has never written a `~/.claude/settings.json` gets
+one holding `{}`, which is how Claude Code reads a missing file, so Step 4 has a file to merge into and
+Step 8's restore puts back that same empty file. On a seat with no crontab the block prints `no crontab installed`, and the md5
 is the empty file's, `d41d8cd98f00b204e9800998ecf8427e`. The config holds the seat's token, so `cp -p` keeps its `0600` mode, inside a
 directory only the seat account can enter. To put a backed-up artifact back, run Step 1's `install`
 lines with `<checkout>/fleet-reporter` replaced by `$B/artifact`, then restart the flusher with
@@ -173,9 +243,13 @@ which backed up `settings.json` alone.
 You need `node` 18 or later (D1 § 2.1), plus `flock` and `crontab`, on the seat account's PATH. The
 sandbox had `v22.22.1`, `/usr/bin/flock` and `/usr/bin/crontab`, and `node` resolved to `/usr/bin/node`:
 
+<!-- install.sh: run prereqs -->
 ```bash
-node --version && command -v node flock crontab && readlink -f "$(command -v node)"
+node --version && command -v node flock crontab && readlink -f "$(command -v node)" && node -e 'const v = process.versions.node; if (Number(v.split(".")[0]) < 18) { console.error("node " + v + " is older than 18 (D1 § 2.1): NOTHING INSTALLED"); process.exit(1); }'
 ```
+
+Each command prints what it found, and a missing one ends the line there with a non-zero exit, so a
+`node` older than 18 is named here, before anything is installed.
 
 The artifact is two things from a checkout of PupFuzz/mezzanine: `fleet-reporter/fleet-reporter.js`, and
 `fleet-reporter/fixtures/hooks/*.json`. The fixtures ship with the script for two reasons. `selftest`
@@ -184,6 +258,7 @@ D1 § 2.1 vendors one file per subscribed hook. The block's lines start in the f
 `bin/reporter-version-guard.py` reads its `install` lines from that column. The sandbox used a
 checkout of `dev` at `4ce0a19`:
 
+<!-- install.sh: run artifact -->
 ```bash
 bash -euo pipefail <<'SH'
 install -d -m 0700 $HOME/.local/share/fleet-reporter $HOME/.local/share/fleet-reporter/fixtures $HOME/.local/share/fleet-reporter/fixtures/hooks
@@ -257,6 +332,7 @@ unset. When the server is on
 another host, run the block on that host too: the hand delivery's step (a) reads `SEAT_INSTALL_ID`,
 `SEAT_ID`, `SEAT_BY` and `SEAT_SERVER` there.
 
+<!-- install.sh: run values -->
 ```bash
 export SEAT_INSTALL_ID=<install_id>           # sandbox: mezzanine
 export SEAT_ID=<seat_id>                      # sandbox: mezzanine-solo
@@ -276,6 +352,7 @@ its value stays unset. Either way the blocks below stop on the value that is mis
 settings file in precedence order, lowest first, so the last file that sets the value wins. It prints
 the value, or an empty line when no file sets it:
 
+<!-- install.sh: run resolver -->
 ```bash
 bash -euo pipefail <<'SH'
   cat > "$B/coord-config.js" <<'JS'
@@ -301,6 +378,7 @@ command refuses a value that does not. `protocol_agent_name` must be a member of
 reporter reads. D1 § 3.1 reads `$COORD_CONFIG` first and, on Linux, the home path second. This prints
 the names that roster holds, and what `SEAT_AGENT` is against it:
 
+<!-- install.sh: run identity -->
 ```bash
 bash -euo pipefail <<'SH'
   : "${SEAT_AGENT?is not set: run the values block at the top of Step 2 first}"
@@ -321,6 +399,7 @@ writes the config with mode `0600`, and prints every other line of the command's
 line replaced. It receives the token, so it lives in `$B` and nowhere another account can write. Save
 it:
 
+<!-- install.sh: run writer -->
 ```bash
 bash -euo pipefail <<'SH'
   cat > "$B/write-config.js" <<'JS'
@@ -486,6 +565,7 @@ pointed at a `0755` directory it printed `NOTHING RUN`, and `php` was never call
 `php` was called. Card#11331 drove the `node` line the same way: with no `node` on `PATH` it printed
 `NOTHING RUN`, and the stub `php` was never called:
 
+<!-- install.sh: skip — the issue command runs on the Mezzanine host; install.sh takes the token from the Seat tokens page or a carried file -->
 ```bash
 bash -euo pipefail <<'SH'
   { [ -O "$B" ] && [ "$(stat -c %a "$B")" = 700 ] && [ -f "$B/write-config.js" ] && [ -O "$B/write-config.js" ]; } || { echo "\$B is not the seat's own 0700 directory holding its writer: NOTHING RUN" >&2; exit 1; }
@@ -586,6 +666,25 @@ identity_mismatch` meaning it was issued for another pair, whose `expected_insta
 `expected_seat_id` the line carries. The stopped site sends nothing until the flusher restarts on a
 corrected token; it keeps every event, and resends the request it was refused first.
 
+**The write, from the token file.** With the new token in the named file of
+[the hand delivery](#when-the-server-is-on-another-host-carry-the-token-in-one-named-file), carried there or
+written at [the hidden prompt](#when-the-token-is-issued-on-the-sites-seat-tokens-page), this block
+replaces the token of the site `SEAT_SITE` names, `default` when it is unset. Its guard is (c)'s, and the
+writer's own checks of the file are the ones (c) states. Run (d) after it, then restart the flusher with
+[the upgrade's](#upgrading-an-existing-seat) step U6:
+
+<!-- install.sh: run token-rotate -->
+```bash
+bash -euo pipefail <<'SH'
+  { [ -O "$B" ] && [ "$(stat -c %a "$B")" = 700 ] && [ -f "$B/write-config.js" ] && [ -O "$B/write-config.js" ]; } || { echo "\$B is not the seat's own 0700 directory holding its writer: NOTHING RUN" >&2; exit 1; }
+  FR_MODE=set-token FR_SITE_NAME="${SEAT_SITE:-default}" FR_TOKEN_FILE=$HOME/.config/fleet-reporter/mezzanine-reporter-token FR_REPORTER=$HOME/.local/share/fleet-reporter/fleet-reporter.js FR_CONFIG=$HOME/.config/fleet-reporter/config.json node "$B/write-config.js"
+SH
+echo "pipeline rc=$?"
+```
+
+On success it prints `read the token from …/mezzanine-reporter-token (mode 600)`, `wrote …/config.json
+(mode 600), sites: …`, `token replaced: <name>` and `pipeline rc=0`.
+
 **What rotation showed on the sandbox seat**, on 2026-10-23, against the stub site the section above added.
 The new token was issued (minted into the carried file, its hash given to the stub beside the old one). Two
 refusals ran first: with `FR_URL` set it printed `FR_URL is set, and FR_MODE=set-token changes one token and
@@ -618,6 +717,7 @@ save the writer into it with the block above, and run the values block at the to
 stays on screen, and writes the token alone to the file with mode `0600`. It refuses a file that
 already exists. The guard on the first line is the same-host pipeline's:
 
+<!-- install.sh: skip — step (a) runs on the Mezzanine host -->
 ```bash
 bash -euo pipefail <<'SH'
   { [ -O "$B" ] && [ "$(stat -c %a "$B")" = 700 ] && [ -f "$B/write-config.js" ] && [ -O "$B/write-config.js" ]; } || { echo "\$B is not this account's own 0700 directory holding its writer: NOTHING RUN" >&2; exit 1; }
@@ -637,6 +737,7 @@ means. It arrives at `~/.config/fleet-reporter/mezzanine-reporter-token` in the 
 with mode `0600`, in a directory with mode `0700` that holds no config yet. On the seat, make the
 directory first if it is not there:
 
+<!-- install.sh: skip — the carry is the operator's; (a′) makes this directory, and (c) checks the file and its directory -->
 ```bash
 bash -euo pipefail <<'SH'
   install -d -m 0700 $HOME/.config/fleet-reporter
@@ -655,6 +756,7 @@ that its mode is exactly `0600`, that its directory is one the seat account owns
 `0700`, and that it holds one well-formed token and nothing else. Its messages
 name the file and never print what it holds:
 
+<!-- install.sh: run token-config -->
 ```bash
 bash -euo pipefail <<'SH'
   { [ -O "$B" ] && [ "$(stat -c %a "$B")" = 700 ] && [ -f "$B/write-config.js" ] && [ -O "$B/write-config.js" ]; } || { echo "\$B is not the seat's own 0700 directory holding its writer: NOTHING RUN" >&2; exit 1; }
@@ -675,6 +777,7 @@ regular file and not a symlink, because `shred` follows a link and overwrites wh
 For a symlink it removes the link alone and names the file it pointed at, which may hold the token
 and is the operator's to inspect and shred. It ends by printing `gone` or `PRESENT` for `F`:
 
+<!-- install.sh: run token-shred -->
 ```bash
 bash -euo pipefail <<'SH'
   F=$HOME/.config/fleet-reporter/mezzanine-reporter-token
@@ -726,6 +829,7 @@ hand delivery's path from step (c) on, through the same named file:
 the terminal with echo off, so it reaches neither the screen nor an argv nor the shell history, and it
 is written with mode `0600` into the `0700` directory. The block refuses a file that already exists:
 
+<!-- install.sh: run token-prompt -->
 ```bash
 bash -euo pipefail <<'SH'
   install -d -m 0700 $HOME/.config/fleet-reporter
@@ -746,6 +850,7 @@ before the page was left, it cannot be shown again: revoke its prefix on the sam
 
 ## Step 3 — check the config file
 
+<!-- install.sh: run config-check -->
 ```bash
 bash -euo pipefail <<'SH'
   export FR_CONFIG=$HOME/.config/fleet-reporter/config.json
@@ -776,6 +881,7 @@ Any other value is a config error: `selftest`'s `config_readable` fails and the 
 until the value is fixed. The events spooled meanwhile are built as under `"none"`. To change the value on an installed seat, rewrite the one key with
 the config's mode kept. This reads and writes the file without printing it:
 
+<!-- install.sh: skip — an optional later change; install.sh writes the default, full -->
 ```bash
 FR_CONFIG=$HOME/.config/fleet-reporter/config.json FR_DESCRIPTORS=none node -e 'const fs=require("fs"),f=process.env.FR_CONFIG,v=process.env.FR_DESCRIPTORS; if (!f) { console.error("FR_CONFIG must name the config file: NOTHING WRITTEN"); process.exit(2); } if(!["full","paths","none"].includes(v)) { console.error("FR_DESCRIPTORS must be full, paths or none: NOTHING WRITTEN"); process.exit(2); } const c=JSON.parse(fs.readFileSync(f,"utf8")); c.descriptors=v; fs.writeFileSync(f, JSON.stringify(c,null,2)+"\n", {mode:0o600}); console.log("descriptors =", v)'
 ```
@@ -813,6 +919,7 @@ A second script checks the result against the original: every top-level key othe
 `statusLine` is unchanged, every existing hook entry is still in place, every added entry is the
 reporter's, and a changed statusLine can only be the reporter.
 
+<!-- install.sh: run hooks-scripts -->
 ```bash
 bash -euo pipefail <<'SH'
   cat > "$B/wire-hooks.js" <<'JS'
@@ -847,7 +954,8 @@ if (prior !== undefined) {
   }
 }
 console.log("hook set, from " + fixtures + ": " + set.map((h) => h.hook + (h.tool ? "(*)" : "")).join(" "));
-fs.writeFileSync(dst, JSON.stringify(s, null, 2) + "\n");
+// Nothing to add: the output is the input byte for byte, so the apply step finds nothing to copy.
+if (added.length) fs.writeFileSync(dst, JSON.stringify(s, null, 2) + "\n"); else fs.copyFileSync(src, dst);
 JSON.parse(fs.readFileSync(dst, "utf8"));
 console.log("valid JSON written to " + dst + "; added: " + (added.join(", ") || "nothing"));
 JS
@@ -887,13 +995,18 @@ SH
 
 **(a) Hooks only**, staged in `$B`, checked, and only then copied over the live file:
 
+<!-- install.sh: run hooks-apply -->
 ```bash
 bash -euo pipefail <<'SH'
   node "$B/wire-hooks.js" $HOME/.claude/settings.json "$B/settings.wired.json" $HOME/.local/share/fleet-reporter/fleet-reporter.js
   node "$B/check-preserved.js" $HOME/.claude/settings.json "$B/settings.wired.json" $HOME/.local/share/fleet-reporter/fleet-reporter.js
-  cp "$B/settings.wired.json" $HOME/.claude/settings.json && echo applied
+  if cmp -s "$B/settings.wired.json" $HOME/.claude/settings.json; then echo "already wired: nothing applied"
+  else cp "$B/settings.wired.json" $HOME/.claude/settings.json && echo applied; fi
 SH
 ```
+
+When `wire-hooks.js` adds nothing it copies the file byte for byte, so on a seat already wired the block
+prints `already wired: nothing applied` and leaves the live file untouched, its bytes and its mtime.
 
 **(b) Hooks plus the statusLine wrap.** This is the same block with the prior statusLine command as a
 fourth argument to `wire-hooks.js`. On the sandbox that argument would be `"bash ~/.local/bin/context-sensor.sh ''"`,
@@ -969,6 +1082,7 @@ installed, which is the check Step 1's upgrade order ends with. Given `--upgrade
 it asks only that second question, and passes whoever started the holder (card#11818), because after
 an upgrade's stop a hook usually starts the flusher before cron does:
 
+<!-- install.sh: run cron-helpers -->
 ```bash
 bash -euo pipefail <<'SH'
   cat > "$B/stop-flusher.js" <<'JS'
@@ -1033,6 +1147,7 @@ SH
 
 Then write the block:
 
+<!-- install.sh: run cron-write -->
 ```bash
 bash -euo pipefail <<'SH'
   JS=$HOME/.local/share/fleet-reporter/fleet-reporter.js
@@ -1096,6 +1211,7 @@ it supervises that sits outside its block, and the flusher block contains no `ar
 run as that script would run it, which writes nothing. A control then fed it one hand-staged `artisan
 mezzanine:fold` line, to show the refusal can fire:
 
+<!-- install.sh: skip — whether bin/supervision.sh still accepts the crontab, which matters on the server's own host -->
 ```bash
 cd <checkout> && source bin/supervision.sh
 ( supervision_install_plan /home/mezzanine/mezzanine /usr/bin/php8.5 > /dev/null ); echo "plan rc=$?"        # -> plan rc=0
@@ -1107,6 +1223,7 @@ cd <checkout> && source bin/supervision.sh
 hook spawned holds the same lock and heartbeats just as well, so it can hide a cron line that never
 works. After the next minute boundary:
 
+<!-- install.sh: run cron-ancestry -->
 ```bash
 node "$B/flusher-ancestry.js" $HOME/.local/state/fleet-reporter $HOME/.local/share/fleet-reporter/fleet-reporter.js
 ```
@@ -1143,6 +1260,7 @@ went stale, and it took over. It kept the existing `state.json`, so no second st
 
 ## Step 6 — selftest
 
+<!-- install.sh: run selftest -->
 ```bash
 node $HOME/.local/share/fleet-reporter/fleet-reporter.js selftest; echo "selftest rc=$?"
 ```
@@ -1239,6 +1357,7 @@ events from this seat, and the seat's `REJECTED.<name>.txt` holds a `403 identit
 **On the seat.** The spool fills and drains, and the flusher logs to its own directory, each site's
 lines prefixed `flusher[<name>]`:
 
+<!-- install.sh: skip — install.sh reads the same state with the arrival block below -->
 ```bash
 ls -la $HOME/.local/state/fleet-reporter/ && tail -n 5 $HOME/.local/state/fleet-reporter/log/*.log
 ```
@@ -1246,12 +1365,54 @@ ls -la $HOME/.local/state/fleet-reporter/ && tail -n 5 $HOME/.local/state/fleet-
 The count is written `-n 5`: this host's `tail` is uutils coreutils 0.10.0, which refuses the older `-5`
 spelling once the glob names more than one log file (`error: unexpected argument '-5' found`).
 
+**Whether each site has accepted a batch, from the seat** (card#7336). Every site's entry in the
+flusher's `state.json` counts the batches that site answered as accepted (`batches_ok`, D1 § 9.3), and a
+site that refused one is named by `REJECTED.<name>.txt` in the spool (D1 § 11.5). This reads both, for
+every site of the config, through the artifact's own config reader. It waits up to `FR_WAIT_S` seconds,
+long enough for cron's next minute to start a flusher after Step 5 stopped one, and prints no token:
+
+<!-- install.sh: run arrival -->
+```bash
+( FR_REPORTER=$HOME/.local/share/fleet-reporter/fleet-reporter.js FR_CONFIG=$HOME/.config/fleet-reporter/config.json FR_WAIT_S=150 node -e '
+const fs = require("fs"), path = require("path");
+const js = process.env.FR_REPORTER, cfg = process.env.FR_CONFIG, wait = Number(process.env.FR_WAIT_S);
+if (!js || !cfg || !(wait >= 0)) { console.log("FR_REPORTER, FR_CONFIG and FR_WAIT_S must each be set: NOT MEASURED"); process.exit(2); }
+const { spool, sites } = require(js).loadConfig(cfg);
+if (!spool || !sites.length) { console.log("the config names no spool or no site: NOT MEASURED, Step 6 names why"); process.exit(2); }
+const t0 = Date.now();
+const state = () => { try { return JSON.parse(fs.readFileSync(path.join(spool, "state.json"), "utf8")); } catch (e) { return null; } };
+const look = () => {
+  const st = state(), lines = [];
+  let waiting = 0, refused = 0;
+  for (const s of sites) {
+    const name = s.name || "sites[" + s.index + "]";
+    const e = st && st.sites && s.name && Object.prototype.hasOwnProperty.call(st.sites, s.name) ? st.sites[s.name] : null;
+    const ok = (e && e.counters && e.counters.batches_ok) || 0;
+    if (s.name && fs.existsSync(path.join(spool, "REJECTED." + s.name + ".txt"))) { refused += 1; lines.push(name + ": a batch was REFUSED; REJECTED." + s.name + ".txt in " + spool + " names the status"); }
+    else if (ok) lines.push(name + ": " + ok + " batch(es) accepted: events arrive");
+    else { waiting += 1; lines.push(name + ": no batch accepted yet: NOT ARRIVED"); }
+  }
+  if (!refused && waiting && Date.now() - t0 < wait * 1000) return setTimeout(look, 5000);
+  for (const l of lines) console.log(l);
+  process.exit(refused ? 1 : waiting ? 2 : 0);
+};
+look();
+'; echo "arrival rc=$?" )
+```
+
+*Check:* every site prints `batch(es) accepted: events arrive`, and the block ends `arrival rc=0`. `rc=1`
+is a site that refused a batch: the file it names carries the status, and [Rotating a site's
+token](#rotating-a-sites-token) reads a `401` and a `403 identity_mismatch`. `rc=2` is a site that has
+accepted nothing within the wait: no flusher ran, or the site did not answer. The log above, and
+[Step 5](#step-5--supervise-the-flusher-from-the-user-crontab)'s check of who started the flusher, say which.
+
 **In the server's store** (read-only). ⚠ **This runs on the server's host only**: `$HOME/mezzanine/server`
 is the sandbox's server checkout and `mezzanine` / `mezzanine-solo` are its `install_id` and `seat_id`
 ([The values to substitute](#the-values-to-substitute)). A seat on another host has no such checkout; its
 reading is the seat-side check above and [the upgrade's U8](#upgrading-an-existing-seat), which asks the
 server for the build it holds current, and the server's operator runs this query for it:
 
+<!-- install.sh: skip — the store query runs on the server's host -->
 ```bash
 cd $HOME/mezzanine/server && php artisan tinker --execute='
 $s = DB::table("seats")->join("installs", "installs.id", "=", "seats.install_ref")->where("installs.install_id", "mezzanine")->where("seats.seat_id", "mezzanine-solo")->first(["seats.id", "seats.created_at"]);
@@ -1285,6 +1446,7 @@ store, so its request log stood in for this query, as that section reports.
 (`FleetController::snapshot`). It accepts a `mzr_` fleet_read token or an MFA session (FLEET-STATE
 § 9). This install issued no read credential, so it read the same object directly:
 
+<!-- install.sh: skip — the snapshot read runs on the server's host -->
 ```bash
 cd $HOME/mezzanine/server && php artisan tinker --execute='
 $b = App\Read\Snapshot::build((int) floor(microtime(true) * 1000));
@@ -1311,6 +1473,7 @@ block. It makes `$B` and copies the settings, the crontab, the artifact with its
 exits 0. Then clone the repository into `$B` at the commit the announcement names, `<commit>` (a
 commit, which `git clone --branch` cannot take, hence the detached checkout):
 
+<!-- install.sh: skip — install.sh runs from the checkout that holds it, so the checkout is the target ref -->
 ```bash
 git clone https://github.com/PupFuzz/mezzanine "$B/checkout" && git -C "$B/checkout" checkout --detach <commit> && git -C "$B/checkout" rev-parse HEAD
 ```
@@ -1320,6 +1483,7 @@ git clone https://github.com/PupFuzz/mezzanine "$B/checkout" && git -C "$B/check
 
 **U1 — read what this update touches, and whether the seat already has it:**
 
+<!-- install.sh: run u1 -->
 ```bash
 ( C=<checkout>/fleet-reporter; I=$HOME/.local/share/fleet-reporter
   v() { grep -o "^const REPORTER_VERSION = '[^']*'" "$1" | cut -d"'" -f2; }
@@ -1341,6 +1505,7 @@ it, so it applies every step.
 blocks of this runbook. This copies each one out of the checkout's runbook into `$B`, byte for byte as
 the block would write it, and refuses a name the runbook does not hold exactly once:
 
+<!-- install.sh: skip — install.sh saves each helper by running the block that saves it -->
 ```bash
 bash -euo pipefail <<'SH'
   for h in coord-config.js wire-hooks.js check-preserved.js stop-flusher.js flusher-ancestry.js; do
@@ -1364,7 +1529,8 @@ names Step 2's writer.
 Run [Step 4](#step-4--wire-the-hooks-and-optionally-the-statusline) procedure (a)'s block; it adds the new
 hooks and changes no existing entry. *Check:* `wire-hooks.js` names the new hooks after `added:`,
 `check-preserved.js` prints `every other key and every existing hook entry is unchanged`, and the block
-prints `applied`. Run without a `hooks` touch it prints `added: nothing`, which is the same check.
+prints `applied`. Run without a `hooks` touch it prints `added: nothing` and `already wired: nothing
+applied`, which is the same check.
 
 **U5 — the crontab, when a row lists `cron`, and the config, when a row lists `config`.** For `cron`, run
 [Step 5](#step-5--supervise-the-flusher-from-the-user-crontab)'s write block. *Check:* it prints the
@@ -1377,6 +1543,7 @@ starts, so U6's restart applies the change.
 restarted the flusher; U6's stop is then a second stop, expected and harmless. Run it, because its check
 is what proves the lock holder runs the installed artifact:
 
+<!-- install.sh: run restart -->
 ```bash
 bash -euo pipefail <<'SH'
   node "$B/stop-flusher.js" $HOME/.local/state/fleet-reporter $HOME/.local/share/fleet-reporter/fleet-reporter.js
@@ -1393,6 +1560,18 @@ per process with its pid, the new flusher first and its parents after it, then `
 before the artifact was installed` means the old build still holds the lock: [Step 1](#step-1--prerequisites-and-the-artifact)
 says why, and the fix is to run the block again. A stop that fails, `NOT STOPPED` or `NOTHING SENT`,
 ends the block there, before the wait.
+
+**Whether U6 is owed, asked without stopping anything.** An upgrade that stopped after U3 and before U6
+leaves the new artifact installed under a flusher still running the old build, and U1 then reads `NO-OP`,
+because it compares files and not the running process. This asks the running process instead, read-only:
+`FAIL: … before the artifact was installed …: it runs the previous build` means U6 is owed. Any other
+`FAIL` is no live flusher holding the lock, which cron's next minute or a hook starts on the installed
+build, so nothing is owed:
+
+<!-- install.sh: run holder -->
+```bash
+node "$B/flusher-ancestry.js" $HOME/.local/state/fleet-reporter $HOME/.local/share/fleet-reporter/fleet-reporter.js --upgrade
+```
 
 **A `FAIL: … no flock and no cron` here is expected, and benign.** It comes from a copy of the helper
 saved before card#11818, or from running it without `--upgrade`. The helper then goes on to ask
@@ -1414,6 +1593,7 @@ it with the installed artifact's `REPORTER_VERSION`, read as U1 reads it. It rea
 `ingest_url`, `token` and `ca_file` through the artifact's own config reader, puts the token in the
 request's header and nowhere else, and prints no token:
 
+<!-- install.sh: run health -->
 ```bash
 ( I=$HOME/.local/share/fleet-reporter
   v() { grep -o "^const REPORTER_VERSION = '[^']*'" "$1" | cut -d"'" -f2; }
@@ -1526,6 +1706,7 @@ the pre-hooks `settings.json`, and `20260913T193245Z` for item 2, the crontab. I
    crontab (`crontab -r`), which is the state of a seat that had none at Step 0; a seat that has no
    crontab at all by then has nothing to remove. The md5 it prints last must be Step 0's.
 
+<!-- install.sh: skip — uninstall is by hand -->
 ```bash
 bash -euo pipefail <<'SH'
   read_crontab() { crontab -l 2> "$B/crontab.err" || grep -q '^no crontab for ' "$B/crontab.err" || { cat "$B/crontab.err" >&2; return 1; }; }
@@ -1562,6 +1743,7 @@ drops that site's `state.json` entry (D1 § 3.1 rule 4), and that site sees the 
 `offline`, until its operator retires the desk there. Revoke that site's token by item 4 after the restart.
 The acceptance suite re-extracts the command and drives it (AT-28 Case P):
 
+<!-- install.sh: skip — removing a site is by hand -->
 ```bash
 FR_CONFIG=$HOME/.config/fleet-reporter/config.json FR_SITE_NAME=<name> FR_REPORTER=$HOME/.local/share/fleet-reporter/fleet-reporter.js node -e 'const fs=require("fs"),path=require("path"),f=process.env.FR_CONFIG,n=process.env.FR_SITE_NAME,js=process.env.FR_REPORTER; if (!f || !n || !js) { console.error("FR_CONFIG, FR_SITE_NAME and FR_REPORTER must each be set: NOTHING WRITTEN"); process.exit(2); } const t=path.join(path.dirname(f),"."+path.basename(f)+"."+process.pid+".tmp"); let c; try { c=JSON.parse(fs.readFileSync(f,"utf8")); if (!Array.isArray(c.sites) || !c.sites.some((x)=>x.name===n)) throw new Error("no site named "+n); if (c.sites.length===1) throw new Error("the last site: uninstall instead"); c.sites=c.sites.filter((x)=>x.name!==n); const d=fs.openSync(t,"wx",0o600); try { fs.writeSync(d, JSON.stringify(c,null,2)+"\n"); fs.fsyncSync(d); } finally { fs.closeSync(d); } const m=require(path.resolve(js)), e=m.allConfigErrors(m.loadConfig(t)); if (e.length) throw new Error(e.join("; ")); fs.renameSync(t,f); } catch (err) { try { fs.unlinkSync(t); } catch (e2) {} console.error(String(err.message||err)+": NOTHING WRITTEN"); process.exit(1); } console.log("sites:", c.sites.map((x)=>x.name).join(", "))'
 ```
