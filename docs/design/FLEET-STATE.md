@@ -5345,23 +5345,34 @@ this design refuses (the whole fleet's activity picture delivered to a session n
 and the client's own next act settles it: a reconnect re-runs the route's middleware against the same
 unreadable table and is refused there.
 
-⚠ **A consequence of re-reading the session that is this design's to state rather than an
-implementer's to discover: an open stream does not keep a session alive, so a floor left open is signed
-out on the session's own schedule.** The framework writes the session record once per request, when the
-response is returned — for a stream that is at connect, before the body has streamed a single byte —
-and a client with a healthy stream makes no other request, because [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables)
-F1's 10 s poll runs only while the feed is **down**. So `last_activity` is stamped at connect and never
-again, and at `SESSION_LIFETIME` after connecting — **120 minutes** on this application's configuration
-(`server/config/session.php`, `database` driver) — the re-check finds the session expired and ends the
-stream, which [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F6 renders as a sign-in
-over a dimmed floor. **The tick deliberately does not touch `last_activity`**, and that is the decision
-rather than an oversight: touching it would make an unattended tab immortal and defeat idle expiry on
-exactly the screen this product leaves on a wall, which is a security property nobody has ruled may be
-spent. The cost is the other half — an operator's floor asks for MFA again every two hours — and it is
-filed, not absorbed: [§ 14](#14-open-questions-for-the-review-loop) item 16 holds it, because the fix (a
-longer lifetime for this route, a kiosk credential, a re-auth that does not blank the floor) is an
-authorization decision and not a render. The operator **deferred** that decision on 2026-09-13 until
-the floor exists, with a kiosk credential as the likely shape, so this behaviour stands until then.
+⭐ **A connected page keeps its session alive, and the stream itself does not.** The operator ruled on
+2026-10-26 (card#12434, [§ 14](#14-open-questions-for-the-review-loop) item 16): *"As long as the browser
+is connected, the login should not time out."* The stream cannot do it alone. The framework writes the
+session record once per request, when the response is returned; for a stream, that is at connect, before
+the body has streamed a single byte. The session **cookie** is also re-issued only on a response, with
+`Expires` one lifetime later, because `expire_on_close` is false. So the client keeps the session alive
+with a request of its own. While its stream is connected, it asks for `GET /api/session/keepalive` once
+every quarter of `SESSION_LIFETIME`. That route sits in the browser pages' `auth` + `mfa` group, outside
+the read plane, and answers `204`. The session middleware every response passes through then saves the
+row's `last_activity` and re-issues the cookie. The page carries the lifetime
+(`layouts/app.blade.php`), because it is this install's configuration and not a constant; the interval
+and its derivation are `KEEPALIVE_SHARE` in `server/public/js/wire/fleet-client.js`. A `401` on the
+keepalive is [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F6, by F6's own trigger, and a
+signed-out client sends nothing more.
+
+**What still expires.** A closed tab sends nothing, so its session expires `SESSION_LIFETIME` after its
+last request, as before: **120 minutes** on this application's configuration
+(`server/config/session.php`, `database` driver). A page whose stream is down sends no keepalive. Its
+recovery's own polls and re-opens are requests, and they refresh the session while they are answered;
+a browser that cannot reach the server refreshes nothing. Logout, a password reset and a retired account
+still end an open stream within this section's 15 s re-check, which is unchanged.
+
+⛔ **The tick still does not touch `last_activity`.** It could not fix the cookie, which only a
+response re-issues. And it would write the session copy the stream loaded at connect, which still
+carries the login, from the one request a logout does not end, racing that logout's destroy of the row.
+The keepalive is an ordinary short request, so it meets a logout the way every other request does: the
+`database` driver updates a row it read by id, and an update to a row the logout has since destroyed
+changes nothing.
 
 ⚠ **The live feed stays browser-only, and the reason has changed, which is stated so nobody reads the
 old reason as still standing.** The refusal rested on *no revocation story on an open connection*; that
@@ -6831,20 +6842,20 @@ operator ruling.
     rather than a person. It would land as one row in § 9's surface table, the token re-check on the
     tick, and a per-token stream cap, in one change.
 
-16. **⇢ Operator — DEFERRED by operator ruling, 2026-09-13: a floor left open re-authenticates every
-    `SESSION_LIFETIME`.** ⭐ The operator will revisit this once the floor exists, and the likely shape is
-    **a kiosk credential with its own expiry**. **Meanwhile the current behaviour stands:**
-    [§ 9](#9-read-side-authentication)'s 15 s re-check reads the session from the store and deliberately
-    does **not** refresh it, so an open stream does not keep a session alive, and a floor on a wall asks
-    for MFA again 120 minutes after it connected, every time. Touching `last_activity` on the tick stays
-    refused: it would make an unattended tab immortal and spend an idle-expiry property on the screen
-    most likely to be unattended. **Blocks:** nothing; the floor renders
-    [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F6 correctly and an operator signs in.
-    **Closes it:** that revisit. The three shapes priced for it were a longer lifetime for this route
-    only, a kiosk credential with its own expiry, or a re-auth that restores the stream without blanking
-    the floor. ⚠ The number is **this application's configuration, not a constant**: it is
-    `SESSION_LIFETIME` in `server/.env`, and a deployment that changes it changes this item's answer
-    without touching this document.
+16. **✅ CLOSED — a connected page keeps its operator signed in.** ⭐ **Operator ruling, 2026-10-26
+    (card#12434):** *"As long as the browser is connected, the login should not time out."* It had been
+    deferred on 2026-09-13 until the floor existed, with a kiosk credential as the likely shape. The ruling
+    knowingly spends the idle-expiry property this item used to protect: a page left open and connected
+    stays signed in for as long as it stays connected. **What it changes:** while its stream is
+    connected, the client asks for `GET /api/session/keepalive` once every quarter of `SESSION_LIFETIME`,
+    and that request refreshes the session row and re-issues the cookie.
+    [§ 9](#9-read-side-authentication) states the mechanism and why the 15 s tick still writes nothing.
+    **What still expires:** a closed tab's session, `SESSION_LIFETIME` after its last request; and a
+    session the keepalive cannot reach, on a page whose browser cannot reach the server. Logout, a
+    password reset and a retired account still end an open stream within the 15 s re-check. ⚠ The
+    lifetime is **this application's configuration, not a constant**: it is `SESSION_LIFETIME` in
+    `server/.env`. The page carries it to the client, so a deployment that changes it changes the
+    keepalive interval with it.
 
 17. **✅ CLOSED (card#9300, 2026-09-13, operator ruling D15: decide it when the feed is built) — what ends a
     stream that misses `fleet.reload`: the deploy SIGTERMs it, found through the stream pool's status.**

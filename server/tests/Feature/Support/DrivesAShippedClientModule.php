@@ -246,7 +246,12 @@ trait DrivesAShippedClientModule
      * construct `FleetClient` with its scheduler — of the two files handed in, so a control can plant
      * the defect in either.
      *
-     * @return array<string, string> `['recovery' => why]`, or empty
+     * ⭐ AND WITH THE SESSION LIFETIME (card#12434): `livePage()` hands `FleetClient` the lifetime it reads
+     * off the layout's `<meta>`, which is what turns the session keepalive on. A client constructed
+     * without it keeps no session alive, and nothing on the page would show that until the operator was
+     * signed out. `'keepalive'` names that defect.
+     *
+     * @return array<string, string> `['recovery' => why]` or `['keepalive' => why]`, or empty
      */
     protected function livePageDefects(string $entryJs, ?string $livePageJs = null): array
     {
@@ -258,9 +263,14 @@ trait DrivesAShippedClientModule
             return ['recovery' => 'the page does not take its client protocol from wire/live-page.js'];
         }
 
-        if (preg_match('/new FleetClient\(\s*\w+,\s*\w+,\s*\w+,\s*timers\s*\)/', $livePageJs) !== 1
+        if (preg_match('/new FleetClient\(\s*\w+,\s*\w+,\s*\w+,\s*timers\s*[,)]/', $livePageJs) !== 1
             || preg_match('/const timers = \{\s*after:/', $livePageJs) !== 1) {
             return ['recovery' => 'the client protocol is not constructed with its scheduler'];
+        }
+
+        if (preg_match('/new FleetClient\(\s*\w+,\s*\w+,\s*\w+,\s*timers,\s*\{\s*sessionLifetimeMs:\s*sessionLifetimeMs\(\)\s*\}\s*\)/', $livePageJs) !== 1
+            || ! str_contains($livePageJs, "document.querySelector('meta[name=\"mezzanine-session-lifetime-s\"]')")) {
+            return ['keepalive' => 'the client protocol is not constructed with the session lifetime the layout carries'];
         }
 
         return [];

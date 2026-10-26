@@ -3,6 +3,13 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    {{--
+        THE SESSION LIFETIME, IN SECONDS — card#12434. `public/js/wire/live-page.js` reads it and hands it
+        to the client protocol, which derives its session-keepalive interval from it
+        (`wire/fleet-client.js`, `KEEPALIVE_SHARE`). It is `SESSION_LIFETIME` from this install's
+        configuration and not a constant in the script, because an installer can change it.
+    --}}
+    <meta name="mezzanine-session-lifetime-s" content="{{ (int) config('session.lifetime') * 60 }}">
     <title>@yield('title', config('app.name'))</title>
     {{--
         THE ELEVATOR RIDE's ARRIVAL READER — `docs/design/FLOOR.md` § 4.5, card#11795. A ride ends in a real

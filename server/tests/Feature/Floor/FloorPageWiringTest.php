@@ -191,10 +191,16 @@ class FloorPageWiringTest extends TestCase
         // The construction moved to `wire/live-page.js` at the lobby's step (card#7341 step 9), so the
         // scheduler plant is planted THERE, and a second plant is the page walking around it.
         $livePage = (string) file_get_contents($this->jsRoot().'/wire/live-page.js');
-        $unscheduled = str_replace('new FleetClient(pageFetch, PageEventSource, clock, timers)', 'new FleetClient(pageFetch, PageEventSource, clock)', $livePage);
+        $unscheduled = str_replace('new FleetClient(pageFetch, PageEventSource, clock, timers, ', 'new FleetClient(pageFetch, PageEventSource, clock, null, ', $livePage);
         $this->assertNotSame($unscheduled, $livePage);
         $this->assertArrayHasKey('recovery', $this->livePageDefects($js, $unscheduled),
             'CONTROL (the protocol constructed without its scheduler) did not bite');
+
+        // card#12434: the protocol constructed without the session lifetime keeps no session alive.
+        $unkept = str_replace('clock, timers, { sessionLifetimeMs: sessionLifetimeMs() })', 'clock, timers)', $livePage);
+        $this->assertNotSame($unkept, $livePage);
+        $this->assertArrayHasKey('keepalive', $this->livePageDefects($js, $unkept),
+            'CONTROL (the protocol constructed without the session lifetime) did not bite');
 
         $bypassed = str_replace('livePage(() => screen.render())', 'new FleetClient(fetch, EventSource, { now: Date.now }) && livePage(() => screen.render())', $js);
         $this->assertNotSame($bypassed, $js);
