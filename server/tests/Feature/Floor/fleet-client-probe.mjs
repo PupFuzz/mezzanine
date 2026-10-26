@@ -122,6 +122,9 @@
  *      "stream_refusals": [ {from_ms, until_ms} ] // an `EventSource` constructed inside a window
  *                                               //  errors before `open` — the `503` a maintenance
  *                                               //  window answers a re-open with (AT-D3-8)
+ *      "session_lifetime_ms": N                 // with `recovery`: the session lifetime a page hands
+ *                                               //  the client (card#12434), which turns its session
+ *                                               //  keepalive on. Absent, the client sends none
  *    }`
  *   A message entry `{ "at_ms": N, "end": true }` ends the current stream at N — the server closing
  *   it, which a browser reports as `error` — rather than delivering an envelope.
@@ -482,7 +485,8 @@ async function replay(scenario) {
         },
     };
 
-    const client = new FleetClient(http.fetch, FakeEventSource, clock, recovery ? recoveryTimers : null);
+    const client = new FleetClient(http.fetch, FakeEventSource, clock, recovery ? recoveryTimers : null,
+        { sessionLifetimeMs: scenario.session_lifetime_ms ?? null });
     const records = [];
     const ageRenders = [];
     const deskRenders = [];

@@ -124,6 +124,37 @@ export const BACKOFF_CEILING_MS = 80000;
 /** § 2.2's reload grace, derived at § 12's row of that name. */
 export const RELOAD_GRACE_MS = 60000;
 
+/**
+ * The session keepalive's route (card#12434, `routes/web.php`): `204` and nothing else. It goes through
+ * the session middleware, which saves the session row and re-issues the cookie.
+ */
+export const KEEPALIVE_PATH = '/api/session/keepalive';
+
+/**
+ * The keepalive interval is the session lifetime divided by this figure, and only while the stream is
+ * connected. The operator ruled on 2026-10-26: "As long as the browser is connected, the login should
+ * not time out" (D2 § 14 item 16).
+ *
+ * ⛔ WHY A SHARE OF THE LIFETIME AND NOT A FIXED FIGURE. The lifetime is `SESSION_LIFETIME`, which an
+ * installer sets. The page carries it (`layouts/app.blade.php`'s `mezzanine-session-lifetime-s`), so
+ * the interval follows the install. A fixed figure would silently stop keeping the session alive on
+ * an install whose lifetime is shorter than that figure.
+ *
+ * ⛔ WHY 4. The session and its cookie both expire one lifetime after the last request that reached
+ * the server. A quarter-lifetime interval means three keepalives in a row can fail (a network blip, a
+ * proxy restart) and the fourth still lands before expiry. It also keeps the request rate low: on the
+ * default 120-minute lifetime it is one request every 30 minutes per open page, beside the stream's
+ * own session re-read every 15 s.
+ */
+export const KEEPALIVE_SHARE = 4;
+
+/**
+ * The longest delay a browser's `setTimeout` honours: the HTML standard reads the delay as a signed 32-bit
+ * integer, and a larger one fires at once. A lifetime above about 99 days would otherwise turn the
+ * keepalive into a request loop, so the interval is capped here.
+ */
+const MAX_TIMER_MS = 2147483647;
+
 /** Every `t` D2 § 8.3 publishes. Anything else is D2's forward-compatibility case: ignore and count. */
 const KNOWN_TYPES = new Set([
     'seat.delta', 'seat.retired', 'fleet.health', 'feed.heartbeat', 'fleet.reload', 'feed.close',
@@ -266,6 +297,11 @@ export class FleetClient {
 
     #graceTimer = null;
 
+    /** The session keepalive's interval in ms, or `null` when the page handed no lifetime (the harness). */
+    #keepaliveMs = null;
+
+    #keepaliveTimer = null;
+
     /** The next backed-off interval. */
     #backoff = CADENCE_MS;
 
@@ -342,12 +378,19 @@ export class FleetClient {
      *   offset is refreshed
      * @param {{after: function(number, Function): *, cancel: function(*): void}|null} [timersImpl]
      *   the stream recovery's scheduler. Absent, this client recovers nothing (see the header).
+     * @param {{sessionLifetimeMs?: number|null}} [options] `sessionLifetimeMs` is the install's session
+     *   lifetime, which `wire/live-page.js` reads off the page. With it and a scheduler, this client
+     *   sends the session keepalive while its stream is connected (`KEEPALIVE_SHARE`). Without it, the
+     *   client sends no keepalive. That is the harness's replay, never a page's configuration.
      */
-    constructor(fetchImpl, EventSourceImpl, clockImpl, timersImpl = null) {
+    constructor(fetchImpl, EventSourceImpl, clockImpl, timersImpl = null, { sessionLifetimeMs = null } = {}) {
         this.#fetch = fetchImpl;
         this.#EventSourceImpl = EventSourceImpl;
         this.#clock = clockImpl;
         this.#timers = timersImpl;
+        this.#keepaliveMs = Number.isFinite(sessionLifetimeMs) && sessionLifetimeMs > 0
+            ? Math.min(sessionLifetimeMs / KEEPALIVE_SHARE, MAX_TIMER_MS)
+            : null;
     }
 
     /**
@@ -624,6 +667,10 @@ export class FleetClient {
         this.#phase = 'connecting';
         this.#open();
         this.#initialSnapshot();
+
+        if (this.#keepaliveMs !== null) {
+            this.#armKeepalive();
+        }
     }
 
     /**
@@ -1008,9 +1055,42 @@ export class FleetClient {
         this.#cancel(this.#silenceTimer);
         this.#cancel(this.#retryTimer);
         this.#cancel(this.#graceTimer);
+        this.#cancel(this.#keepaliveTimer);
         this.#silenceTimer = null;
         this.#retryTimer = null;
         this.#graceTimer = null;
+        this.#keepaliveTimer = null;
+    }
+
+    /** The next keepalive, one interval from now. */
+    #armKeepalive() {
+        this.#keepaliveTimer = this.#after(this.#keepaliveMs, () => this.#keepalive());
+    }
+
+    /**
+     * card#12434: keep the session alive while the browser is connected. A healthy stream makes no
+     * other request, and its own response saved the session and set the cookie only at connect.
+     *
+     * ⛔ IT IS SENT ONLY WHILE THE STREAM IS CONNECTED. A tab whose stream is down keeps its timer and
+     * sends no keepalive. Its recovery's polls and re-opens are requests of their own, and they refresh
+     * the session while the server answers them.
+     *
+     * ⛔ IT GOES THROUGH `#get`, SO A `401` IS F6. That covers logout, an expired session and a
+     * retired account. Both terminal modes (F6's `#endSession`, F8's `#reloadRequired`) call
+     * `#stopRecovery`, which cancels the next keepalive. Nothing else arms one, so a stopped client
+     * sends nothing more. Any other failure is ignored: the next interval tries again, and
+     * `KEEPALIVE_SHARE` is sized so a few can fail.
+     */
+    #keepalive() {
+        this.#keepaliveTimer = null;
+
+        const stream = this.#stream;
+
+        if (stream !== null && stream.opened && !stream.ended) {
+            this.#get(KEEPALIVE_PATH);
+        }
+
+        this.#armKeepalive();
     }
 
     /** The next attempt, replacing any pending one. */
