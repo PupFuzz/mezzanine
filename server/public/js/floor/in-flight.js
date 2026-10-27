@@ -114,11 +114,13 @@ export class EffectsInFlight {
             }
 
             if (!WALK_ROWS.includes(effect.animation_id)) {
-                // An edge with a tail (A19's arrival rest, card#12241) is held through it; a reduced form
-                // with a duration (A19's still envelope) is held for that duration, then gone.
-                const frames = effect.frames > 0 ? effect.frames + (effect.rest_frames ?? 0) : effect.still_frames;
+                // An edge with a tail (A19's arrival rest, card#12241; A22's ledge dwell and hop, card#12445) is held
+                // through its whole span — a ring's frames are its whole span; a reduced form with a duration (A19's
+                // still envelope) is held for that duration, then gone.
+                const admitted = (effect.perch ?? null) !== null ? this.#onTheLedge(effect, now) : effect;
+                const frames = admitted.frames > 0 ? (admitted.span_frames ?? admitted.frames) : admitted.still_frames;
 
-                this.#held.push({ effect, at: now, frames, key: null });
+                this.#held.push({ effect: admitted, at: now, frames, key: null });
 
                 continue;
             }
@@ -208,6 +210,49 @@ export class EffectsInFlight {
         }
 
         return merged.map((s) => Object.freeze(s));
+    }
+
+    /**
+     * card#12445: THE LEDGE HOLDS ONE BIRD. A portal bird stands on the birdhouse's perch from its ledge part's first
+     * frame — the hop out coming in, the dwell going out — to the end of its hop in or its dwell, and a bird whose
+     * ledge part would meet a held bird's on the same perch WAITS: every part of it starts `wait_frames` later, the
+     * fewest whole frames that clear every held bird's — so the second of two birds at once is never drawn on the
+     * first. A bird coming in waits inside the house; one going out leaves its desk that much later.
+     */
+    #onTheLedge(effect, now) {
+        const I = this.#intervalMs;
+        const part = (fx) => {
+            const p = fx.perch;
+            const from = Math.min(p.dwell_start, p.hop_start);
+
+            return { from, to: Math.max(p.dwell_start + p.dwell_frames, p.hop_start + p.hop_frames) };
+        };
+        const own = part(effect);
+        const taken = this.#held
+            .filter((h) => (h.effect.perch ?? null) !== null && samePoint(h.effect.perch.point, effect.perch.point))
+            .map((h) => {
+                const p = part(h.effect);
+
+                return { from: h.at + (h.effect.wait_frames + p.from) * I, to: h.at + (h.effect.wait_frames + p.to) * I };
+            });
+        let wait = 0;
+        let moved = true;
+
+        while (moved) {
+            moved = false;
+
+            for (const t of taken) {
+                const from = now + (wait + own.from) * I;
+                const to = now + (wait + own.to) * I;
+
+                if (from < t.to && t.from < to) {
+                    wait = Math.ceil((t.to - now) / I) - own.from;
+                    moved = true;
+                }
+            }
+        }
+
+        return wait === 0 ? effect : Object.freeze({ ...effect, wait_frames: wait, span_frames: effect.span_frames + wait });
     }
 
     #elapsed(h, now) {
