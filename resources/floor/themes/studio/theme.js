@@ -974,7 +974,9 @@ export function deskProps({ install_id: installId, seat_id: seatId }) {
  * 20 wide on a 24 px pitch from 8 px in — the interns' row, which `desk-layout.js` lays the same way, so an
  * intern stands in front of its seat.
  */
-const TABLE = Object.freeze({ w: 228, h: 42, seat_x: 8, seat_pitch: 24, seat_w: 20 });
+// card#12444 SAMPLE: the interns' row moved to 25 px stools on a 28 px pitch from 4 px in (`desk-layout.js`); this is a
+// COPY of those figures, which the real build must derive or guard (canon #16) rather than re-sync by hand.
+const TABLE = Object.freeze({ w: 228, h: 42, seat_x: 4, seat_pitch: 28, seat_w: 25 });
 
 /**
  * THE SIDE TABLE, at every desk with art: a low tea table with a teapot at its far end and cushion seats in

@@ -922,7 +922,9 @@ export const SEAT_RECT = Object.freeze({ x: 0, y: 0, w: 108, h: 192 });
  * the room a row of interns has (two frames meet at the pitch and never overlap). The floor draws it into the intern's
  * overdraw rect (`floor/desk-layout.js`'s `internOverdraw()`); the two are held equal by `tools/characters/selftest.mjs` § 7b.
  */
-export const CHIBI_VIEWBOX = Object.freeze({ x: -10.8, y: 19.2, w: 129.6, h: 172.8 });
+// card#12444 SAMPLE: the intern's rect is 25 × 40 px on a 28 px pitch (`desk-layout.js`), so the frame is 108 × 28 / 25 =
+// 120.96 units wide, 6.48 each side past the rect; the rect's own 108 × 172.8 units are unchanged (the aspect is kept).
+export const CHIBI_VIEWBOX = Object.freeze({ x: -6.48, y: 19.2, w: 120.96, h: 172.8 });
 const FOOT = 188;
 
 /** The chibi frame's least head share — FLOOR.md § 12's *Intern head share* row. */

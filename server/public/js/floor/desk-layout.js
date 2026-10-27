@@ -188,11 +188,18 @@ const BADGE_PITCH = 108;
 const BADGE_PAD = 3;
 
 /** One intern's sprite rect, and the pitch the row lays them at (§ 8, § 10.4's art contract). */
-const STOOL_W = 20;
+// card#12444 SAMPLE (the operator's "Subagent characters also need to be taller", 2026-10-26): the intern's rect +25 %,
+// 20 × 32 → 25 × 40, the aspect kept so the chibi frame's units are unchanged (108 over the rect's width). The row's pitch
+// is what the box's width leaves: eight stools from the side table's inset (box x 216) to the box's edge (440) is 224 px,
+// a 28 px pitch — a 3 px gap, 1.5 px (6.5 chibi units) of tilt margin a side against the 2 px (10.8 units) there was.
+const STOOL_W = 25;
 
-const STOOL_H = 32;
+const STOOL_H = 40;
 
-export const STOOL_PITCH = 24;
+export const STOOL_PITCH = 28;
+
+/** Where the stool row starts, left of the facts column by this much: the side table's own inset (card#12444 sample). */
+const STOOL_INSET = 4;
 
 /**
  * § 9 F14's per-stool fallback: the glyph an intern whose art failed is drawn as, inside its sprite
@@ -417,7 +424,7 @@ export function deskRects(box, character) {
         badge: { x: colB, y: rowY.badge, w: BADGE_W, h: LINE },
         flag: { x: colB, y: rowY.flag, w: widthB, h: LINE },
         'quiet-age': { x: colB, y: rowY['quiet-age'], w: widthB, h: LINE },
-        stool: { x: colB, y: foot - STOOL_H, w: STOOL_W, h: STOOL_H },
+        stool: { x: colB - STOOL_INSET, y: foot - STOOL_H, w: STOOL_W, h: STOOL_H },
         // § 10.6: drawn at every desk with art, under the facts and over the *+N more* row; its foot line (its
         // bottom edge) is the desk's and the interns', so they stand in front of it.
         'side-table': table,
