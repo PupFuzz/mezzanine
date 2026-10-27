@@ -442,7 +442,15 @@ function owed(e, seat, failed, key) {
         case 'placeholder':
             return [['rect', at]];
         default:
-            return typeof e.text === 'string' ? [['text', { ...at, text: e.text }]] : [];
+            if (typeof e.text !== 'string') {
+                return [];
+            }
+
+            // A wrapped text (the screen's, card#12446): one painted text a line, each on the role's line below the
+            // last and as wide as its own measured line — never one text holding every line.
+            return e.lines === undefined
+                ? [['text', { ...at, text: e.text }]]
+                : e.lines.map((line, i) => ['text', { x: e.x, y: e.y + i * TYPE_ROLES[e.role ?? 'fact'].line, w: line.w, h: TYPE_ROLES[e.role ?? 'fact'].line, text: line.text }]);
     }
 }
 
