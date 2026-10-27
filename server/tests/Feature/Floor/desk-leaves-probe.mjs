@@ -714,7 +714,7 @@ const RULED_SINCE = [
     // an open call, so its baseline idle screen showed that call's descriptor — a seat D2 cannot produce. That one leaf
     // is owed nowhere (`to: null`); the descriptor of any seat that CAN hold an open call is owed as recorded.
     { kind: 'monitor-text', from: null, to: null, applies: (seat, value) => seat.render_state === 'idle' && seat.action !== null && value === (seat.action.descriptor ?? seat.action.tool_name) },
-    // card#12444, FLOOR.md decision 81: `unknown`'s question marker pulses with the sleeper's pulse (A9's Animation cell
+    // card#12444, FLOOR.md decision 82: `unknown`'s question marker pulses with the sleeper's pulse (A9's Animation cell
     // names a 4 fps loop), so where its held render may move — no treatment, no stilled floor, no reduced motion — the
     // character the baseline recorded `still` is `moving`; under any of those it is still, as recorded.
     { kind: 'character.motion', from: 'still', to: 'moving', applies: (seat, value, m) => seat.render_state === 'unknown' && m.held?.motion === true },

@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Support\SeatRows;
 use Tests\TestCase;
 
 /**
@@ -75,9 +76,7 @@ class FloorConsoleTest extends TestCase
         $installRef = DB::table('installs')->where('install_id', $installId)->value('id')
             ?? DB::table('installs')->insertGetId(['install_id' => $installId, 'created_at' => $now]);
 
-        $seatRef = DB::table('seats')->insertGetId([
-            'install_ref' => $installRef,
-            'seat_id' => $seatId,
+        $seatRef = SeatRows::insert($installRef, $seatId, [
             'created_at' => $now,
             'retired_at' => $retiredAt,
             'retired_by' => $retiredAt === null ? null : 'ops@example.com',

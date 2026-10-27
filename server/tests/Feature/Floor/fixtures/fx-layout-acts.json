@@ -20,6 +20,9 @@
           {
             "install_id": "aimla",
             "seat_id": "aimla-layout",
+            "character": {
+              "species": "frog"
+            },
             "state_version": 5501,
             "render_state": "working",
             "link_state": "live",
@@ -135,6 +138,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-layout",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 5501,
                       "render_state": "working",
                       "link_state": "live",
@@ -231,7 +237,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "room.map",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -242,7 +248,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "building.layout",
             "server_time": "2026-08-23T14:23:16.400Z",
             "layout_version": 7,
@@ -255,6 +261,9 @@
         "aimla/aimla-layout": {
           "install_id": "aimla",
           "seat_id": "aimla-layout",
+          "character": {
+            "species": "frog"
+          },
           "state_version": 5501,
           "render_state": "working",
           "link_state": "live",

@@ -1,8 +1,10 @@
 // The creature generator — first-party, card#11046 (docs/design/FLOOR.md § 10.2, § 10.4).
 //
 // Every character is an original animal or vegetable creature, drawn as a STANDALONE SVG DOCUMENT per
-// frame and selected from its key alone through seed.js's draw — the same key, the same document, on
-// every engine and every reload, with nothing stored. The species of the operator-approved design sheet
+// frame and selected from its key through seed.js's draw — the same key, the same document, on every
+// engine and every reload. The one exception is the BODY of a seat on a floor: the species the server
+// allocated it and delivers (`character.species`, card#12443), which the painter hands in as `force` /
+// `species`; everything else is still the key's draw. The species of the operator-approved design sheet
 // (2026-10-05) are ported and not redesigned; the seat's two additions to them are the faint light rim (`RIM`)
 // and the hedgehog's softer, curved spines. The species marked `added` (card#12212) are the seat's own drawing to
 // the same look, appended to the one list every key draws its species from (FLOOR.md § 10.4's growth bullet).
@@ -617,10 +619,18 @@ export const SPECIES = Object.freeze(Object.fromEntries(Object.entries(APPROVED)
 
 /**
  * The species list, in its one fixed order: the approved sheet's species in the order the salt was searched over,
- * then the species each later card added, appended in the order they were drawn. The species draw is a modulus over
- * this list's length, so appending to it re-draws the keys already placed (FLOOR.md § 10.4's growth bullet).
+ * then the species each later card added, appended in the order they were drawn.
+ *
+ * ⛔ ONE LITERAL LINE, AND THE SERVER READS IT (card#12443). `App\Characters\SpeciesList` parses exactly this line —
+ * `export const SPECIES_KEYS = Object.freeze([ … ]);`, single-quoted ASCII keys of at most 16 bytes (the width of
+ * `seats.species`) — to allocate each seat's body (docs/design/FLEET-STATE.md § 6.13), so the list has one source and
+ * two readers, and `TheSpeciesListHasOneSourceTest` holds the PHP reading equal to what `node` imports. Keep it on one
+ * line and written out. `tools/characters/selftest.mjs` holds it equal, in order, to `Object.keys(SPECIES)`.
+ *
+ * The list GROWS BY APPENDING and never shrinks under a seat: a seat's species is stored at its creation, so an
+ * appended species moves no seat (FLOOR.md § 10.4's growth bullet); removing one is D2 § 6.13's process rule.
  */
-export const SPECIES_KEYS = Object.freeze(Object.keys(SPECIES));
+export const SPECIES_KEYS = Object.freeze(['fox', 'bear', 'rabbit', 'owl', 'frog', 'mole', 'hedgehog', 'otter', 'radish', 'turnip', 'mushroom', 'peapod', 'carrot', 'eggplant', 'pumpkin', 'potato', 'penguin', 'snail', 'sheep', 'deer', 'corn', 'broccoli', 'pepper', 'cabbage']);
 
 // ---- the shared dimensions (closed populations) ----
 export const EYES = ['round', 'sparkle', 'happy', 'sleepy', 'bead'];
@@ -644,9 +654,10 @@ export const ACCENTS = ['#c8553d', '#e0a43a', '#7f9f6a', '#6f8fb0', '#94627e', '
 export const SPECIES_FIELD = 'species:s3';
 
 /**
- * The species a key draws. An intern's key (`seat~<call_id>`, § 10.4) never draws its seat's: where its
- * own draw lands there, it is re-drawn under a field of its own over the other species — a pure function
- * of the intern's key, because that key carries its seat's (decision 54).
+ * The species a key draws — since card#12443 the server's PREFERENCE for a seat (D2 § 6.13 allocates the body it
+ * delivers, starting from this draw) and the harness's own sheet; the painter never draws a seat from it. An
+ * intern's key (`seat~<call_id>`, § 10.4) never draws its seat's body: `internSpeciesOf()` below, handed here the
+ * seat key's own draw, which is what a sheet with nothing delivered shows.
  * @param {string} key @returns {string}
  */
 export function speciesOf(key) {
@@ -657,17 +668,36 @@ export function speciesOf(key) {
     return own;
   }
 
-  const seat = speciesOf(key.slice(0, cut));
+  return internSpeciesOf(key, speciesOf(key.slice(0, cut)));
+}
 
-  if (own !== seat) {
+/**
+ * The species an intern draws beside a seat whose body is `seatSpecies` — on a floor, the seat's DELIVERED species
+ * (`character.species`, card#12443), never the seat key's own draw. Its own draw, and where that lands on the seat's
+ * body, a re-draw under a field of its own over the other species: a pure function of the intern's key and that one
+ * value (decision 54), reading no sibling.
+ * @param {string} key the intern key `seat~<call_id>` @param {string} seatSpecies @returns {string}
+ */
+export function internSpeciesOf(key, seatSpecies) {
+  const own = pick(key, SPECIES_FIELD, SPECIES_KEYS);
+
+  if (own !== seatSpecies) {
     return own;
   }
 
-  return pick(key, 'species-redraw', SPECIES_KEYS.filter((s) => s !== seat));
+  return pick(key, 'species-redraw', SPECIES_KEYS.filter((s) => s !== seatSpecies));
 }
 
-/** A key's recipe: one independent draw per named field (seed.js's `draw`). */
+/**
+ * A key's recipe: one independent draw per named field (seed.js's `draw`). `force` is the species to draw the body as —
+ * a seat's DELIVERED species (`character.species`, card#12443) — and every other field is still the key's own draw.
+ * A forced species this tree does not hold is a throw naming it, which the painter draws as FLOOR.md § 9 F14's
+ * placeholder; it never falls back to the key's own body.
+ */
 export function recipe(key, force) {
+  if (force !== undefined && force !== null && !Object.hasOwn(SPECIES, force)) {
+    throw new RangeError(`no species "${force}" in this character tree (SPECIES_KEYS); the seat object names a body this tree cannot draw`);
+  }
   const species = force || speciesOf(key);
   const sp = SPECIES[species];
   const variant = sp.variant ? sp.variant(key) : null;

@@ -4,6 +4,7 @@ namespace App\Read;
 
 use App\Board\BoardPoll;
 use App\Coord\CoordCounters;
+use App\Fleet\CharacterAllocation;
 use App\Fold\Clock;
 use App\Fold\SeatFacts;
 use App\Ingest\Counters;
@@ -94,6 +95,7 @@ final class FleetHealth
         BoardPoll::OK,
         BoardPoll::FAILED,
         IdleHorizon::MALFORMED,
+        CharacterAllocation::FLOOR_UNREAD,
         // § 7.1 — the coordination route's derived counters (card#12239), every D1 § 18.8.1 row not
         // marked *specified, not derived*. `coord_delivery_received.<hook>` is the one family whose
         // members are data — one per binding — and `members()` places it ahead of these.

@@ -339,13 +339,19 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
      * the drawing it holds, so a desk asleep and its walker never share frames. A tree that failed to load, or a
      * generator that throws for this key, is § 9 F14 for this asset and never a throw out of the paint.
      *
+     * ⛔ `species` IS THE BODY, AND IT IS IN THE CACHE KEY (card#12443). For a seat it is the seat object's delivered
+     * `character.species`, handed to the tree's forced-species path; for an intern it is its seat's, which the tree
+     * keeps the intern off. A frame cached under the asset alone would keep a desk in its old body after a snapshot
+     * moved it. A species that is not a string — a seat object with no `character` — or one the tree does not hold
+     * (a throw) is § 9 F14 for this asset: the placeholder, and never the key's own body.
+     *
      * @param {{pose: string, glyph?: string, desk_top: number, clear?: object[]}|null} at a desk's pose, its § 7.1 glyph,
      *        its desk's top edge and the clear rects a sleeper's z's and a marker keep out of (`characterOverdraw()`), or
      *        `null`
      * @returns {{uris: string[], loopFrom: number}|null}
      */
-    const characterFrames = (installId, seatId, asset, at = null, intern = false) => {
-        if (characters === null) {
+    const characterFrames = (installId, seatId, asset, species, at = null, intern = false) => {
+        if (characters === null || typeof species !== 'string') {
             report(asset);
 
             return null;
@@ -355,13 +361,13 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         // furniture box and the character's size, the same for every desk, so the pose, its glyph and the desk's top edge
         // already name the drawing.
         // A layout whose clear rects differ by desk must add them here.
-        const key = intern ? asset : at === null ? `${asset}#walk` : `${asset}#${at.pose}/${at.glyph ?? ''}@${at.desk_top}`;
+        const key = `${intern ? asset : at === null ? `${asset}#walk` : `${asset}#${at.pose}/${at.glyph ?? ''}@${at.desk_top}`}~${species}`;
 
         if (!frames.has(key)) {
             try {
-                const drawn = intern ? { frames: [characters.chibiFrame(installId, seatId)], loopFrom: 0 }
-                    : at === null ? { frames: characters.walkFrames(installId, seatId), loopFrom: 0 }
-                        : characters.poseFrames(installId, seatId, { pose: at.pose, glyph: at.glyph ?? null, deskTop: at.desk_top, clear: at.clear });
+                const drawn = intern ? { frames: [characters.chibiFrame(installId, seatId, species)], loopFrom: 0 }
+                    : at === null ? { frames: characters.walkFrames(installId, seatId, species), loopFrom: 0 }
+                        : characters.poseFrames(installId, seatId, { pose: at.pose, glyph: at.glyph ?? null, deskTop: at.desk_top, clear: at.clear, species });
 
                 frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });
             } catch {
@@ -472,7 +478,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
 
             switch (e.kind) {
                 case 'character': {
-                    const drawn = characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, glyph: e.glyph, desk_top: e.desk_top, clear: e.clear });
+                    const drawn = characterFrames(desk.install_id, desk.seat_id, e.asset, e.species, { pose: e.pose, glyph: e.glyph, desk_top: e.desk_top, clear: e.clear });
 
                     if (drawn !== null) {
                         // § 6.2's per-seat loop phase (card#12187): a held render that MOVES starts at the seat's own
@@ -526,7 +532,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                         // intern is drawn dashed (§ 8): its sprite with a dashed edge at its own stool rect —
                         // rx 3, no fill, `--scene-stool` at 1.5 wide, dashed `3 2` — and its fallback glyph
                         // below is dashed `3 2` with no fill (the designer's rulings on card#11058 PR-C).
-                        const drawn = characterFrames(e.install_id, e.key, e.asset, null, true);
+                        const drawn = characterFrames(e.install_id, e.key, e.asset, e.seat_species, null, true);
 
                         if (drawn !== null) {
                             interns.add(e.asset);
@@ -848,7 +854,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         const inner = cab === null ? null : node('g', { transform: `translate(${door.x} ${door.y})` }, cab);
         const entry = origin({ key: effectKey(fx), started_at: fx.started_at, elapsed_ms: elapsed, nodes: cab === null ? [shown, glide] : [shown, glide, cab] });
         const asset = characterAsset({ install_id: fx.install_id, seat_id: fx.seat_id });
-        const drawn = characterFrames(fx.install_id, fx.seat_id, asset);
+        const drawn = characterFrames(fx.install_id, fx.seat_id, asset, fx.species);
 
         if (drawn === null) {
             // § 9 F14: the art failed, so the walker is the placeholder rectangle at the character's size.
@@ -1110,7 +1116,11 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         for (const asset of interns) {
             if (!drawnInterns.has(asset)) {
                 interns.delete(asset);
-                frames.delete(asset);
+
+                // An intern's frames are held under its asset and the body it was kept off (`characterFrames()`).
+                for (const key of [...frames.keys()].filter((k) => k.startsWith(`${asset}~`))) {
+                    frames.delete(key);
+                }
             }
         }
 

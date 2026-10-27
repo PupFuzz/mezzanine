@@ -337,7 +337,9 @@ const ownFrames = (placed) => {
     }
 
     try {
-        return C.sleepFrames(placed.install_id, placed.seat_id, edgeOf(placed) / VIEW.h, characterElement(placed)?.clear);
+        // card#12443: in the seat's delivered body, which its character element carries and the painter is handed —
+        // that the element carries the seat object's `character.species` is painter-probe.mjs's body legs.
+        return C.sleepFrames(placed.install_id, placed.seat_id, edgeOf(placed) / VIEW.h, characterElement(placed)?.clear, characterElement(placed)?.species);
     } catch (e) {
         defects.push(`sleeper: the tree draws no sleeper for ${placed.key}'s character element — ${e.message}`);
 

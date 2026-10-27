@@ -12,6 +12,11 @@
 //
 // The populations are DERIVED ON THE RUN from a seeded generator whose seed is printed, never stored:
 // the committed roster (`roster.json`), a synthetic roster of 50 seats, synthetic desks at § 8.1's cap.
+//
+// Since card#12443 a seat's BODY is the species D2 allocates and delivers (`character.species`, FLEET-STATE.md
+// § 6.13): the tree draws the species it is handed. Section 4 holds that, and section 6 holds an intern off the
+// seat's DELIVERED body. Each synthetic seat and desk is DELIVERED a species apart from its key's own draw, on
+// purpose, so a drawing taken from the key is seen.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -21,7 +26,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..');
 const TREE = join(REPO, 'resources', 'characters');
 const C = await import(pathToFileURL(join(TREE, 'index.js')).href);
-const { draw, pick } = await import(pathToFileURL(join(TREE, 'seed.js')).href);
+const { draw } = await import(pathToFileURL(join(TREE, 'seed.js')).href);
 const { wellFormed, vectorDefect, inkBounds } = await import(pathToFileURL(join(REPO, 'tools', 'design', 'svg-document.mjs')).href);
 
 const SEED = 11046;          // the synthetic populations' seed — printed with every measurement
@@ -131,28 +136,38 @@ function coverage(drawFn) {
 }
 for (const [f, hit, total] of coverage(draw)) check(hit === total, `${f}: ${hit}/${total} members reached`);
 
-// ---- 4. the salt (FLOOR.md § 10.4; § 14 item 33(2), the seat's ruling of 2026-10-06, option (b)) ----
-// Two halves, two populations. THE GUARANTEE reads the committed fleet roster: every room of it no larger
-// than the species list draws distinct bodies. THE DISCRIMINATION reads `salt-control.json`, the sample
-// the salt was searched over, committed as a CONTROL and never as fleet: over it the salted draw keeps
-// every room distinct and the unsalted draw does not, so this leg is known able to tell them apart.
-section(`4. the salt: under ${C.SPECIES_FIELD}, every room no larger than the species list draws distinct bodies`);
+// ---- 4. the delivered body (card#12443; FLOOR.md § 10.4, D2 § 6.13) ----
+// The salt's guarantee — every room of the committed roster draws distinct bodies — retired with card#12443: the server
+// allocates the body over the live population, which AT-D2-31 holds, and the salt is only its preference order. What
+// the tree owes now is to draw EXACTLY the species it is handed, keep every other field the key's own draw, and refuse
+// a species it does not hold, by name — never fall back to the key's body.
+section('4. the delivered body: the tree draws the species it is handed, and only the body moves');
 check(roster.every((s) => typeof s.source === 'string' && s.source.length > 0), `every key of the committed roster states its source (${roster.length} keys)`);
-const roomsOf = (keys) => { const m = new Map(); for (const [i, s] of keys) m.set(i, [...(m.get(i) ?? []), s]); return m; };
-const repeated = (rooms, fn) => [...rooms].filter(([, seats]) => seats.length <= KEYS.length)
-  .filter(([inst, seats]) => new Set(seats.map((s) => fn(`${inst}/${s}`))).size < seats.length).map(([inst]) => inst);
-const fleetRooms = roomsOf(roster.map((s) => [s.install_id, s.seat_id]));
-const salted = repeated(fleetRooms, (k) => C.speciesOf(k));
-check(salted.length === 0, `THE FLEET: every eligible room of the committed roster draws distinct species${salted.length ? ` — repeats in ${salted.join(', ')}` : ''}`);
-const control = JSON.parse(readFileSync(join(HERE, 'salt-control.json'), 'utf8'));
-check(/CONTROL/.test(control.note ?? ''), 'salt-control.json is labelled a CONTROL, not fleet');
-const controlRooms = roomsOf(control.seats.map((k) => k.split('/')));
-const controlSalted = repeated(controlRooms, (k) => C.speciesOf(k));
-const controlUnsalted = repeated(controlRooms, (k) => pick(k, 'species', KEYS));
-check(controlSalted.length === 0, `THE CONTROL: under ${C.SPECIES_FIELD} every eligible room of the search sample draws distinct species${controlSalted.length ? ` — repeats in ${controlSalted.join(', ')}` : ''}`);
-check(controlUnsalted.length > 0, controlUnsalted.length > 0
-  ? `THE CONTROL: the unsalted draw repeats a body in ${controlUnsalted.join(', ')}, so the leg discriminates a salted draw from an unsalted one`
-  : 'THE CONTROL IS TOO SMALL TO DISCRIMINATE: the unsalted draw repeats no body in it either, so a pass above reports nothing about the salt (FLOOR.md § 11 AT-D3-24)');
+const literal = readFileSync(join(TREE, 'creatures.js'), 'utf8').match(/^export const SPECIES_KEYS = Object\.freeze\(\[([^\]\n]*)\]\);$/m);
+const literalKeys = literal === null ? null : [...literal[1].matchAll(/'([a-z0-9_-]+)'/g)].map((m) => m[1]);
+check(JSON.stringify(literalKeys) === JSON.stringify(Object.keys(C.SPECIES)) && JSON.stringify(KEYS) === JSON.stringify(literalKeys),
+  `SPECIES_KEYS is one literal line (the server's reader parses it) and equals the drawn species, in order (${literalKeys?.length ?? 'no'} keys)`);
+const delivered = (inst, seat) => KEYS[(KEYS.indexOf(C.speciesOf(`${inst}/${seat}`)) + 1) % KEYS.length];
+const OWN = ['eyes', 'mouth', 'blush', 'brows', 'size', 'stout', 'tilt', 'acc1', 'acc2'];
+let bodyBad = [], ownBad = [];
+for (const [i, s] of [...synthetic, ...desks.map((d) => d.seat)]) {
+  const sp = delivered(i, s), key = `${i}/${s}`;
+  const frames = [C.standingFrame(i, s, sp), ...C.walkFrames(i, s, sp)];
+  const want = [C.frameDocument(key, { species: sp, phase: 0 }), ...[0, 1, 2].map((phase) => C.frameDocument(key, { species: sp, phase }))];
+  if (frames.join() !== want.join() || frames[0] === C.standingFrame(i, s) || C.describe(key, sp).species !== sp) bodyBad.push(key);
+  const forced = C.recipe(key, sp), own = C.recipe(key);
+  if (OWN.some((f) => forced[f] !== own[f])) ownBad.push(key);
+}
+check(bodyBad.length === 0, `every synthetic seat delivered a species apart from its own draw is drawn in that species, standing and walking, and not in its own${bodyBad.length ? ` — not: ${bodyBad.slice(0, 3).join(', ')}` : ''}`);
+check(ownBad.length === 0, `forcing the body moves no other field of the key's draw (${OWN.join(', ')})${ownBad.length ? ` — moved: ${ownBad.slice(0, 3).join(', ')}` : ''}`);
+const [di, ds] = synthetic[0];
+const sleepSp = delivered(di, ds);
+const slept = C.poseFrames(di, ds, { pose: 'asleep', deskTop: 70 / 96, clear: [{ name: 'props', x: 0, y: 0, w: 1, h: 1 }], species: sleepSp });
+check(slept.frames[0] === C.sleepDocument(`${di}/${ds}`, { species: sleepSp, frame: 0, deskTop: 70 / 96, clear: [{ name: 'props', x: 0, y: 0, w: 1, h: 1 }] }),
+  'a sleeping desk is drawn asleep in the delivered species');
+let unheld = null;
+try { C.standingFrame(di, ds, 'no-such-species'); } catch (e) { unheld = e; }
+check(unheld instanceof RangeError && /no-such-species/.test(unheld.message), `a species the tree does not hold is a throw naming it — the painter's F14 — never the key's own body${unheld ? '' : ' (it drew one)'}`);
 
 // ---- 5. collisions, measured (FLOOR.md § 10.4, § 12's *Full-drawing collisions*) ----
 section('5. collisions: no two keys draw the same document, each in the frame it is drawn in');
@@ -165,18 +180,21 @@ check(fleetCollisions === 0, `the synthetic ${FLEET}-seat roster: ${fleetCollisi
 
 // ---- 6. the interns ----
 section("6. the interns: never the seat's body; no two drawings of a desk alike; the chibi head share");
-let sameBody = 0, deskDup = 0, bodyRepeat = 0, bodyColourRepeat = 0;
+let sameBody = 0, deskDup = 0, chibiBad = 0, bodyRepeat = 0, bodyColourRepeat = 0;
 for (const { seat, interns } of desks) {
-  const seatSpecies = C.speciesOf(`${seat[0]}/${seat[1]}`);
-  const bodies = interns.map((k) => C.recipe(`${seat[0]}/${k}`));
+  // The seat's DELIVERED body (card#12443), apart from its key's own draw: the one an intern must not wear.
+  const seatSpecies = delivered(...seat);
+  const bodies = interns.map((k) => C.recipe(`${seat[0]}/${k}`, C.internSpeciesOf(`${seat[0]}/${k}`, seatSpecies)));
   sameBody += bodies.filter((r) => r.species === seatSpecies).length;
-  const drawings = [C.standingFrame(...seat), ...interns.map((k) => C.chibiFrame(seat[0], k))];
+  const drawings = [C.standingFrame(...seat, seatSpecies), ...interns.map((k) => C.chibiFrame(seat[0], k, seatSpecies))];
+  chibiBad += interns.filter((k, n) => drawings[n + 1] !== C.frameDocument(`${seat[0]}/${k}`, { chibi: true, species: bodies[n].species })).length;
   if (new Set(drawings).size < drawings.length) deskDup++;
   if (new Set(bodies.map((r) => r.species)).size < bodies.length) bodyRepeat++;
   if (new Set(bodies.map((r) => `${r.species}/${r.pal}`)).size < bodies.length) bodyColourRepeat++;
 }
-check(sameBody === 0, `no intern of ${DESKS * CAP} wears its seat's species (${sameBody} do)`);
+check(sameBody === 0, `no intern of ${DESKS * CAP} wears its seat's delivered species (${sameBody} do)`);
 check(deskDup === 0, `no desk of ${DESKS} draws two identical documents (${deskDup} do)`);
+check(chibiBad === 0, `every intern is drawn as its own chibi frame in the body it is kept to beside its seat's delivered one (${chibiBad} are not)`);
 measure(`sibling repeat rates at the cap of ${CAP} (gate nothing): a repeated body on ${bodyRepeat}/${DESKS} desks (${(bodyRepeat / DESKS).toFixed(3)}), a repeated body and colourway on ${bodyColourRepeat}/${DESKS} (${(bodyColourRepeat / DESKS).toFixed(3)}), seed ${SEED}`);
 for (const sp of KEYS) {
   for (const v of [null, ...variantsOf(sp)]) {
@@ -510,6 +528,10 @@ check(unpushedOver <= 0, `CONTROL — the same frame unpushed is inside (${unpus
 // ---- 9. the controls — each leg above is known to be able to say both things ----
 section('9. controls');
 const gaps = coverage(() => 0).filter(([, hit, total]) => hit !== total);
+// The interns leg's control (card#12443): kept off the seat key's OWN draw rather than its delivered body, some intern
+// wears the body its seat was allocated — so the leg above, reading the delivered body, is one that can fail.
+const keyedOff = desks.reduce((n, { seat, interns }) => n + interns.filter((k) => C.speciesOf(`${seat[0]}/${k}`) === delivered(...seat)).length, 0);
+check(keyedOff > 0, `CONTROL — interns kept off the seat key's own draw wear the seat's delivered body ${keyedOff} time(s), so section 6 discriminates`);
 check(gaps.length > 0, `CONTROL — a constant draw leaves ${gaps.length} list(s) unreached, so the reach assertion can fail`);
 check(wellFormed('<svg xmlns="http://www.w3.org/2000/svg"><g>a & b</g></svg>') !== null, 'CONTROL — an unescaped "&" is refused');
 check(wellFormed('<svg xmlns="http://www.w3.org/2000/svg"><g></svg>') !== null, 'CONTROL — an unclosed <g> is refused');

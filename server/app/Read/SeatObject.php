@@ -74,6 +74,9 @@ final class SeatObject
         return [
             'install_id' => (string) $seat->install_id,
             'seat_id' => (string) $seat->seat_id,
+            // card#12443 (§ 6.13): the species this seat was allocated at its creation and keeps for life. An
+            // object, so a second server-allocated appearance fact is a member and not a rename.
+            'character' => ['species' => (string) $seat->species],
             'state_version' => (int) $state->state_version,
             'render_state' => (string) $state->render_state,
             'link_state' => (string) $state->link_state,
@@ -227,7 +230,7 @@ final class SeatObject
         $seat = DB::table('seats')
             ->join('installs', 'installs.id', '=', 'seats.install_ref')
             ->where('seats.id', $seatRef)
-            ->first(['installs.install_id', 'seats.seat_id', 'seats.retired_at',
+            ->first(['installs.install_id', 'seats.seat_id', 'seats.species', 'seats.retired_at',
                 'seats.retired_by', 'seats.retired_reason']);
 
         $state = DB::table('seat_state')->where('seat_ref', $seatRef)->first();

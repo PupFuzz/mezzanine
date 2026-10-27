@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Feed;
 
+use App\Feed\FleetReload;
 use App\Feed\Outbox;
 use App\Feed\VisiblePrefix;
 use App\Fold\Clock;
@@ -186,7 +187,7 @@ class VisiblePrefixTest extends FeedTestCase
             'created_at' => $createdAt,
             't' => 'coord.round',
             'install_id' => self::INSTALL,
-            'message' => json_encode(['feed_version' => 1, 't' => 'coord.round', 'server_time' => Clock::wire($createdAt), 'coord_round' => ['post_ref' => $mark]]),
+            'message' => json_encode(['feed_version' => FleetReload::FEED_VERSION, 't' => 'coord.round', 'server_time' => Clock::wire($createdAt), 'coord_round' => ['post_ref' => $mark]]),
         ]);
     }
 

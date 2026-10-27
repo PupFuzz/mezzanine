@@ -749,6 +749,8 @@ export const DRAWN_MEMBERS = Object.freeze({
     side_table: ['side-table', 'stool', 'stool-more'],
     bubble: ['bubble'],
     held: ['character'],
+    // card#12443: the delivered body the character is drawn in, and the body each intern is kept off.
+    species: ['character', 'stool'],
     // Drawn on the chip's hollow dashed form; the desk's dimming is the group's lighting class (FLOOR.md decision 63).
     unconfirmed: ['chip'],
 });
@@ -873,6 +875,8 @@ export function deskLayout(desk, ctx) {
             // pose that reaches the desk meets (the sleeper's arms and head, § 10.4's frame contract item 4).
             rect('character', 'character', R.character, {
                 asset: characterAsset(desk),
+                // card#12443: the delivered body (`character.species`), which the painter hands the tree.
+                species: desk.species,
                 pose: desk.pose,
                 // § 7.1's glyph reaches the tree with the pose (card#12444): `present` with `question` draws the question's
                 // face and its `?` marker, which one pose cannot say alone.
@@ -1025,6 +1029,8 @@ export function deskLayout(desk, ctx) {
             // from the same model the asset id is, so the two can never name different interns.
             install_id: desk.install_id,
             key: internKey(desk.seat_id, stool.call_id),
+            // card#12443: the body the intern must not wear — its seat's DELIVERED species, never the seat key's draw.
+            seat_species: desk.species,
             asset,
             art: !ctx.failed.has(asset),
         });

@@ -46,7 +46,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -64,7 +64,7 @@
         {
           "at_ms": 15000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.400Z",
             "fleet": {
@@ -82,7 +82,7 @@
         {
           "at_ms": 30000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:44.400Z",
             "fleet": {
@@ -104,7 +104,7 @@
         {
           "at_ms": 65100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:24:19.500Z",
             "fleet": {
@@ -122,7 +122,7 @@
         {
           "at_ms": 80000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:24:34.400Z",
             "fleet": {
@@ -140,7 +140,7 @@
         {
           "at_ms": 95000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:24:49.400Z",
             "fleet": {
@@ -202,7 +202,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -220,7 +220,7 @@
         {
           "at_ms": 15000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.400Z",
             "fleet": {
@@ -238,7 +238,7 @@
         {
           "at_ms": 30000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:44.400Z",
             "fleet": {
@@ -256,7 +256,7 @@
         {
           "at_ms": 45000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:59.400Z",
             "fleet": {
@@ -274,7 +274,7 @@
         {
           "at_ms": 60000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:24:14.400Z",
             "fleet": {
@@ -331,7 +331,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -349,7 +349,7 @@
         {
           "at_ms": 15000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.400Z",
             "fleet": {
@@ -367,7 +367,7 @@
         {
           "at_ms": 25000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:39.400Z",
             "reason": "session",
