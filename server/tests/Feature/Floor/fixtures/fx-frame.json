@@ -456,7 +456,7 @@
       }
     },
     "frame_sparse": {
-      "note": "card#11045 PR-D, a SPARSE map: eight desk objects at the furniture box spread over a 2,400 × 600 grid, with `fx-snapshot-4`'s four seats — four slots stand unused, and the operator's Q1 ruling (2026-10-01) is that an unused slot is plain floor: no spare desk is drawn there.",
+      "note": "card#11045 PR-D, a SPARSE map: eight desk objects at the furniture box spread over a grid 2,400 px wide and two rows of the box tall with their gaps (the second row and the grid from `@box.height`, so a taller box moves them — card#12444), with `fx-snapshot-4`'s four seats — four slots stand unused, and the operator's Q1 ruling (2026-10-01) is that an unused slot is plain floor: no spare desk is drawn there.",
       "messages": [],
       "until_ms": 100,
       "floor": {
@@ -866,7 +866,7 @@
                 "renderorder": "right-down",
                 "infinite": false,
                 "width": 2400,
-                "height": 600,
+                "height": "@box.height*2+100",
                 "tilewidth": 1,
                 "tileheight": 1,
                 "nextlayerid": 2,
@@ -934,7 +934,7 @@
                         "rotation": 0,
                         "visible": true,
                         "x": 40,
-                        "y": 340,
+                        "y": "@box.height+60",
                         "width": "@box.width",
                         "height": "@box.height"
                       },
@@ -945,7 +945,7 @@
                         "rotation": 0,
                         "visible": true,
                         "x": 600,
-                        "y": 340,
+                        "y": "@box.height+60",
                         "width": "@box.width",
                         "height": "@box.height"
                       },
@@ -956,7 +956,7 @@
                         "rotation": 0,
                         "visible": true,
                         "x": 1160,
-                        "y": 340,
+                        "y": "@box.height+60",
                         "width": "@box.width",
                         "height": "@box.height"
                       },
@@ -967,7 +967,7 @@
                         "rotation": 0,
                         "visible": true,
                         "x": 1720,
-                        "y": 340,
+                        "y": "@box.height+60",
                         "width": "@box.width",
                         "height": "@box.height"
                       }

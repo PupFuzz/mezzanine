@@ -596,8 +596,15 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
                 $defects[] = "{$at} is drawn as the fallback glyph on a run that failed no art";
             }
 
-            if ($i > 0 && ($e['y'] !== $stools[0]['y'] || $e['x'] <= $stools[$i - 1]['x'])) {
-                $defects[] = "{$at} is off the row, or out of the wire's order";
+            // card#12444's ruling D: two rows, row-major — the front row left to right, then the row behind it, each row
+            // as long as the front one
+            $perRow = count(array_filter($stools, static fn (array $s): bool => $s['y'] === $stools[0]['y']));
+            $prev = $stools[$i - 1] ?? null;
+
+            if ($prev !== null && ($i % $perRow === 0
+                ? ! ($e['y'] < $prev['y'] && $e['x'] === $stools[0]['x'])
+                : ! ($e['y'] === $prev['y'] && $e['x'] > $prev['x']))) {
+                $defects[] = "{$at} is off its row, or out of the wire's row-major order";
             }
 
             foreach ($desk['elements'] as $other) {

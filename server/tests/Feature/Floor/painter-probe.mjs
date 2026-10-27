@@ -90,7 +90,7 @@ globalThis.clearInterval = () => {};
 const { deskModel } = await mod('desk/desk-render.js');
 const { placeDesk, placeBubbles } = await mod('floor/scene.js');
 const { createPainter, measurer, STYLE } = await mod('floor/painter.js');
-const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_BAND, stoolSlots, FOLD_LAG_OPACITY } = await mod('floor/desk-layout.js');
+const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_BAND, TRAIL_RADII, TRAIL_GAP, stoolSlots, FOLD_LAG_OPACITY } = await mod('floor/desk-layout.js');
 
 /**
  * The character tree, stubbed: a frame is an SVG document naming the `(install, seat key, frame)` it was
@@ -343,13 +343,14 @@ const poseFrame = (key, e, i) => uri(doc(`${key}#${e.pose}@${deskTop(key, e)}~${
 
 /**
  * The art viewport a desk's character is owed — written here from the published rule (§ 10.4 item 4, § 12's *Sleeper
- * frame*), never read off the element under test: a sleeper's is its OVERDRAW, the character's rect widened by half its
- * width each side and raised to one pixel under the bubble's band; every other character's is its element's rect.
+ * frame*), never read off the element under test: every character's is its OVERDRAW, the character's rect widened by
+ * half its width each side and raised by the thought trail's height (one pixel under the bubble's band at card#12259's
+ * box; card#12444's taller box lowers the desk and leaves the band where it is).
  */
 function characterPort(key, e) {
     // § 10.4's frame contract (card#12187, card#12259): every character's viewport is its overdraw — the rect widened
-    // by half its width each side and raised to one pixel under the bubble's band — whatever its pose.
-    const top = byKey.get(key).box.y + BUBBLE_BAND + 1;
+    // by half its width each side and raised by the trail's height, `TRAIL_RADII` and `TRAIL_GAP` — whatever its pose.
+    const top = e.y - TRAIL_RADII.reduce((h, r) => h + 2 * r + TRAIL_GAP, 0);
 
     return { x: e.x - e.w / 2, y: top, w: 2 * e.w, h: e.y + e.h - top };
 }

@@ -87,9 +87,9 @@ class TheBuildingSurfaceTest extends FeedTestCase
         // The worked example's building: `aimla` alone and open; `sola` and `zeta` planned side by
         // side, 448 px wide each and so 480 px apart, over a hallway; all three authored.
         $this->author('aimla', FloorMapFixture::valid(12));
-        $this->author('sola', FloorMapFixture::sized(14, 8));
-        $this->author('sola', FloorMapFixture::sized(14, 9));
-        $this->author('zeta', FloorMapFixture::sized(14, 8));
+        $this->author('sola', FloorMapFixture::sized(14, FloorMapFixture::boxRows()));
+        $this->author('sola', FloorMapFixture::sized(14, FloorMapFixture::boxRows() + 1));
+        $this->author('zeta', FloorMapFixture::sized(14, FloorMapFixture::boxRows()));
 
         $hallway = FloorMapFixture::hallway();
 
@@ -169,8 +169,8 @@ class TheBuildingSurfaceTest extends FeedTestCase
         // ⛔ PINNED against the output of `dev` before card#9322: § 8.7's worked building — a label,
         // origins, and a hallway carried whole — whose every object is non-empty, so nothing in it
         // is a spelling the associative decode lost.
-        $this->author('sola', FloorMapFixture::sized(14, 8));
-        $this->author('zeta', FloorMapFixture::sized(14, 8));
+        $this->author('sola', FloorMapFixture::sized(14, FloorMapFixture::boxRows()));
+        $this->author('zeta', FloorMapFixture::sized(14, FloorMapFixture::boxRows()));
 
         $hallway = FloorMapFixture::hallway();
 
@@ -199,7 +199,7 @@ class TheBuildingSurfaceTest extends FeedTestCase
         // card#9322 comment 5265: the hallway is served whole, and an associative decode turned an
         // authored `{}` in it into `[]` — a document the operator did not write, which is the room
         // map endpoint's own rule below (§ 8.7, "byte for byte what was authored").
-        $this->author('sola', FloorMapFixture::sized(14, 8));
+        $this->author('sola', FloorMapFixture::sized(14, FloorMapFixture::boxRows()));
 
         $hallway = FloorMapFixture::hallway();
         $hallway['editorsettings'] = new \stdClass;

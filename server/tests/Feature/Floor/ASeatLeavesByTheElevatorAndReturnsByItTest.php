@@ -718,7 +718,8 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
 
     /**
      * The PM office's front wall in the shipped default's `walls` layer, re-derived: the row carrying the most wall cells
-     * right of the reserved desk's slot's left edge, and the open cells of that row between its first and last wall cell.
+     * from the office's partition (the first wall cell left of the reserved slot) rightward, and the open cells of that
+     * row between its first and last wall cell.
      *
      * @return array{row: int, gap: list<int>}
      */
@@ -728,7 +729,14 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         $walls = array_values(array_filter($map['layers'], static fn ($l) => $l['name'] === 'walls'))[0]['data'];
         $w = $map['width'];
         $slot = array_values(array_filter(array_values(array_filter($map['layers'], static fn ($l) => $l['name'] === 'desks'))[0]['objects'], fn ($o) => $o['id'] === $this->reservedDeskId()))[0];
-        $from = intdiv($slot['x'], $map['tilewidth']) - 2;
+        // the office's partition: the first wall cell left of the reserved slot on the slot's top row (card#12444 stood it
+        // against the middle back slot, a walker's gap from the reserved one)
+        $top = intdiv($slot['y'], $map['tileheight']);
+        $from = intdiv($slot['x'], $map['tilewidth']);
+
+        while ($from > 0 && $walls[$top * $w + $from] === 0) {
+            $from--;
+        }
         $best = null;
 
         for ($y = 0; $y < $map['height']; $y++) {

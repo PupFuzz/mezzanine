@@ -144,6 +144,17 @@ final class FloorMapFixture
     /** Tall enough in 32 px tiles to hold one row of desks at the furniture box. */
     private static function tilesHigh(): int
     {
+        return self::boxRows();
+    }
+
+    /**
+     * The least whole 32 px tiles a room is tall to hold one row of desks at the furniture box — never under the 8
+     * the control map has always declared. A test sizing a room by hand reads it here rather than writing the 8 that
+     * held the box until card#12444 grew it, so a taller box grows the rooms rather than earning card#9292's
+     * outside-the-grid refusal.
+     */
+    public static function boxRows(): int
+    {
         return max(8, (int) ceil(self::box()->height / 32));
     }
 

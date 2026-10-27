@@ -58,12 +58,12 @@ class FloorMapTest extends TestCase
         $box = FurnitureBox::current();
         $tiles = (int) ceil(6 * $box->width / 32);
 
-        $this->assertSame(['width' => $tiles, 'height' => 8, 'tilewidth' => 32, 'tileheight' => 32], $map->grid);
+        $this->assertSame(['width' => $tiles, 'height' => FloorMapFixture::boxRows(), 'tilewidth' => 32, 'tileheight' => 32], $map->grid);
 
         // § 4.6 rule 1: the room's FOOTPRINT on a planned floor is exactly this, and it is the
         // only home of a room's extent — the plan carries no size.
         $this->assertSame($tiles * 32, $map->pixelWidth());
-        $this->assertSame(256, $map->pixelHeight());
+        $this->assertSame(FloorMapFixture::boxRows() * 32, $map->pixelHeight());
 
         // The slots the walk admitted, as `App\Floor\DeskSlots` reads them: named as every
         // refusal names them, in the layer's order, each exactly the box.
@@ -123,12 +123,12 @@ class FloorMapTest extends TestCase
 
     public function test_an_integer_valued_float_is_read_as_the_integer_it_is(): void
     {
-        // Tiled writes these as JSON numbers, so `8.0` is the same authored value as `8` and
+        // Tiled writes these as JSON numbers, so `N.0` is the same authored value as `N` and
         // refusing it would be this reader refusing a document its own exporter can produce.
         $map = FloorMapFixture::decoded();
-        $map['height'] = 8.0;
+        $map['height'] = (float) FloorMapFixture::boxRows();
 
-        $this->assertSame(8, FloorMap::parse(FloorMapFixture::encode($map))->grid['height']);
+        $this->assertSame(FloorMapFixture::boxRows(), FloorMap::parse(FloorMapFixture::encode($map))->grid['height']);
     }
 
     public function test_a_projection_other_than_orthogonal_is_refused_by_name(): void

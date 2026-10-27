@@ -127,9 +127,10 @@ class TheDeskIsReLaidTest extends TestCase
 
     public function test_red_a_facts_row_over_the_table(): void
     {
-        // The stack laid from 12 px BELOW the table's top rather than above it (card#11468).
+        // The stack laid from 40 px BELOW the top of the interns' rows rather than above them, down onto the side table
+        // (card#11468; card#12444 anchored the stack above the back row, whose top is above the table's).
         $dir = $this->mutatedModules(['../floor/desk-layout.js',
-            'const bottom = table.y - 2 - FACTS_PLATE_PAD_Y;', 'const bottom = table.y + 12 - FACTS_PLATE_PAD_Y;']);
+            'const bottom = table.y - 2 - FACTS_PLATE_PAD_Y;', 'const bottom = table.y + 40 - FACTS_PLATE_PAD_Y;']);
         $defects = $this->bareDefects($this->sceneOf(self::SHIPPED, $dir));
 
         foreach (['facts-plate', 'quiet-age'] as $kind) {
@@ -186,17 +187,18 @@ class TheDeskIsReLaidTest extends TestCase
     public function test_red_the_anchor_back_at_the_box_mid_height(): void
     {
         $dir = $this->mutatedModules(['../floor/scene.js',
-            '    return Object.freeze({ x: desk.anchor_x, y: desk.anchor_y });', '    return Object.freeze({ x: desk.anchor_x, y: desk.box.y + desk.box.h / 2 });']);
+            '    return Object.freeze({ x: desk.anchor_x, y: desk.anchor_y });', '    return Object.freeze({ x: desk.anchor_x, y: desk.box.y + desk.box.h / 4 });']);
 
+        // a quarter of the box's height: inside the plate's rows (card#12444's taller box put its mid-height under them)
         $this->assertNotSame([], $this->anchorHeightDefects($this->sceneOf(self::SHIPPED, $dir)),
-            'RED (the thread anchor back at the box\'s mid-height, inside the plate\'s rows) did not fail the anchor-height leg');
+            'RED (the thread anchor up in the box, inside the plate\'s rows) did not fail the anchor-height leg');
     }
 
     public function test_red_the_tables_seats_and_feet(): void
     {
         foreach ([
             'the empty table with no seats' => ['const seats = Math.max(SIDE_TABLE_SEATS, shown.length);', 'const seats = shown.length;', 'seats'],
-            'its foot line 4 px above the interns\'' => ['const table = { x: colB - 8, y: foot - 42, w: W - colB + 8, h: 42 };', 'const table = { x: colB - 8, y: foot - 46, w: W - colB + 8, h: 42 };', 'foot line'],
+            'its foot line 4 px above the interns\'' => ['const table = { x: colB - 8, y: foot - 42 - (STOOL_ROWS - 1) * rowStep,', 'const table = { x: colB - 8, y: foot - 46 - (STOOL_ROWS - 1) * rowStep,', 'foot line'],
         ] as $what => [$from, $to, $says]) {
             $defects = $this->tableDefects($this->sceneOf(self::CAP, $this->mutatedModules(['../floor/desk-layout.js', $from, $to])));
 
@@ -291,7 +293,7 @@ class TheDeskIsReLaidTest extends TestCase
             }
 
             // The side table: § 12's least seat count, one more per intern drawn past it, and its foot line —
-            // its bottom edge — the interns' own.
+            // its bottom edge — the front row's own, each row behind it a whole row's step higher (card#12444's ruling D).
             $table0 = $this->elementsOf($desk, 'side-table')[0] ?? null;
             $stools = $this->elementsOf($desk, 'stool');
 
@@ -300,9 +302,14 @@ class TheDeskIsReLaidTest extends TestCase
                     $defects[] = "{$desk['key']}'s side table has {$table0['seats']} seats, not max(4, ".count($stools).')';
                 }
 
-                foreach ($stools as $s) {
-                    if (abs(($s['y'] + $s['h']) - ($table0['y'] + $table0['h'])) > 1e-6) {
-                        $defects[] = "{$desk['key']}'s intern {$s['index']} does not end on the side table's foot line";
+                $perRow = count(array_filter($stools, static fn (array $x): bool => $x['y'] === ($stools[0]['y'] ?? null)));
+                $step = isset($stools[$perRow]) ? $stools[0]['y'] - $stools[$perRow]['y'] : 0;
+
+                foreach ($stools as $i => $s) {
+                    $row = $perRow > 0 ? intdiv($i, $perRow) : 0;
+
+                    if (abs(($s['y'] + $s['h']) - ($table0['y'] + $table0['h'] - $row * $step)) > 1e-6) {
+                        $defects[] = "{$desk['key']}'s intern {$s['index']} does not end on the side table's foot line, a whole row's step up for its row";
                     }
                 }
             }

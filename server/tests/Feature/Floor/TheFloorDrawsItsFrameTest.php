@@ -669,7 +669,7 @@ JS;
                 continue;
             }
 
-            $slot = ['x' => $room['origin']['x'] + $object['x'], 'y' => $room['origin']['y'] + $object['y'], 'w' => $box['width'], 'h' => $box['height']];
+            $slot = ['x' => $room['origin']['x'] + $this->boxRef($object['x'], $box), 'y' => $room['origin']['y'] + $this->boxRef($object['y'], $box), 'w' => $box['width'], 'h' => $box['height']];
 
             foreach ($scene['desks'] as $desk) {
                 if ($this->intersect($this->furniture($desk), $slot)) {
@@ -679,6 +679,24 @@ JS;
         }
 
         return $defects;
+    }
+
+    /**
+     * A fixture figure as the probe resolves it (`fleet-client-probe.mjs`'s `@box.` reference): a number as it is, or
+     * `@box.width` / `@box.height`, optionally `*N` and then `+N` or `-N`, by the furniture box.
+     *
+     * @param  array{width: int, height: int}  $box
+     */
+    private function boxRef(int|float|string $v, array $box): int|float
+    {
+        if (! is_string($v)) {
+            return $v;
+        }
+
+        $this->assertSame(1, preg_match('/^@box\.(width|height)(?:\*(\d+))?(?:([+-])(\d+))?$/', $v, $m), "the fixture figure «{$v}» is not a box reference");
+        $n = $box[$m[1]] * (isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 1);
+
+        return isset($m[3]) && $m[3] !== '' ? ($m[3] === '+' ? $n + (int) $m[4] : $n - (int) $m[4]) : $n;
     }
 
     /** § 9 F13: the bench wraps — every overflow desk inside the strip, the strip no wider than the floor or one box. @return list<string> */
