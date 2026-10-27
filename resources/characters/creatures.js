@@ -1122,7 +1122,7 @@ const Z_INK = '#4f4380', Z_FILL = '#ece8ff';
  * `tools/design/sleeper-zs.browser.mjs` holds every scanned seat's drawing at or below it.
  */
 export const CREST_TOP = Object.freeze({
-  bear: 53, carrot: 31, eggplant: 39, fox: 34, frog: 73, hedgehog: 67, mole: 60,
+  bear: 53, carrot: 31, eggplant: 39, fox: 34, frog: 73, hedgehog: 66, mole: 60,
   'mushroom/bell': 15, 'mushroom/dome': 25, 'mushroom/wide': 38, otter: 63, owl: 49, peapod: 44, potato: 56,
   pumpkin: 47, 'rabbit/lop': 62, 'rabbit/upright': 20, radish: 25, turnip: 27,
   // card#12212's species: each the floor of the topmost ink `tools/design/svg-document.mjs`'s inkBounds reads over the
@@ -1222,8 +1222,9 @@ export function markerLevel(f) {
 const MARKERS = Object.freeze({
   '?': Object.freeze({ ink: '#2f4f8f', fill: '#e6eeff', w: 0.32,
     d: (h) => `M${f(-0.3 * h)} ${f(-0.22 * h)}C${f(-0.3 * h)} ${f(-0.592 * h)} ${f(0.32 * h)} ${f(-0.592 * h)} ${f(0.32 * h)} ${f(-0.25 * h)}C${f(0.32 * h)} ${f(-0.04 * h)} 0 ${f(-0.06 * h)} 0 ${f(0.14 * h)}M0 ${f(0.5 * h)}l0 0` }),
-  '!': Object.freeze({ ink: '#a33a26', fill: '#ffeee6', w: 0,
-    d: (h) => `M0 ${f(-0.5 * h)}V${f(0.16 * h)}M0 ${f(0.5 * h)}l0 0` }),
+  // the bar is two strokes a little apart, wider at the top, which the round caps and the core merge into one tapering bar
+  '!': Object.freeze({ ink: '#a33a26', fill: '#ffeee6', w: 0.07,
+    d: (h) => `M${f(-0.07 * h)} ${f(-0.5 * h)}L${f(-0.025 * h)} ${f(0.16 * h)}M${f(0.07 * h)} ${f(-0.5 * h)}L${f(0.025 * h)} ${f(0.16 * h)}M0 ${f(0.5 * h)}l0 0` }),
 });
 /** A marker's half extent across and down about its centre, its outline included — `zHalf()`'s, for the widest glyph. */
 function markerHalf(h) {
@@ -1247,9 +1248,12 @@ function markerStand(key, r, A, dir, clear) {
   if (crown === undefined) throw new RangeError(`CREST_TOP declares no crest for ${r.species}${r.variant === null ? '' : `/${r.variant}`}`);
   const h = zStand(crown, dir, zLargeFor(crown, dir, clear), clear)[0].h;
   const hb = markerHalf(h), G = Z_HALO[3], V = SEAT_VIEWBOX;
-  const x = V.x + V.w - 1 - G - hb.w;
+  // `e`: the document writes coordinates to the hundredth (`f()`), so the stand keeps that much further in, and a rounding
+  // never carries the glow onto the unit it keeps from an edge
+  const e = 0.01;
+  const x = V.x + V.w - 1 - G - hb.w - e;
   const under = clear.filter((c) => c.x < x + hb.w + G + 1 && c.x + c.w > x - hb.w - G - 1).map((c) => c.y);
-  const lo = V.y + 1 + G + hb.h, hi = Math.min(V.y + V.h, ...under) - 1 - G - hb.h;
+  const lo = V.y + 1 + G + hb.h + e, hi = Math.min(V.y + V.h, ...under) - 1 - G - hb.h - e;
   if (hi < lo) throw new RangeError(`no room for a marker ${f(h)} units tall beside ${key}`);
   const foot = FOOT + (A.hat.y - FOOT) * r.size;
   return { x, y: Math.min(hi, Math.max(lo, foot - hb.h)), h };

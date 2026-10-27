@@ -104,19 +104,19 @@ const PULSE = read(/^\| \*\*Sleeper z pulse\*\* \|.*?the levels by loop frame ar
 const LOOP = PULSE.length;
 /** § 12's *Character frame* — the frame of every seat document since card#12259. */
 const FRAME = (() => {
-    const m = read(/^\| \*\*Character frame\*\* \| \*\*(\d+) × (\d+)\*\* frame units from \(\*\*(-?\d+)\*\*, \*\*(-?\d+)\*\*\)/m, '§ 12 *Character frame* row');
+    const m = read(/^\| \*\*Character frame\*\* \| \*\*([\d.]+) × ([\d.]+)\*\* frame units from \(\*\*(-?[\d.]+)\*\*, \*\*(-?[\d.]+)\*\*\)/m, '§ 12 *Character frame* row');
 
     return { x: num(m[3]), y: num(m[4]), w: num(m[1]), h: num(m[2]) };
 })();
 /** § 10.4 item 4's overdraw: its size and its place on the furniture box, in px. */
 const OVERDRAW = (() => {
-    const m = read(/(\d+) × (\d+) px, at box\s+\((\d+), (\d+)\)/, '§ 10.4 item 4 overdraw rect');
+    const m = read(/([\d.]+) × ([\d.]+) px, at box\s+\(([\d.]+), ([\d.]+)\)/, '§ 10.4 item 4 overdraw rect');
 
     return { x: num(m[3]), y: num(m[4]), w: num(m[1]), h: num(m[2]) };
 })();
 /** § 10.4 item 4's clear rects, in frame units: x and y ranges (the desk's by its y range alone, as the document states it). */
 const CLEAR = (() => {
-    const m = read(/the monitor's frame \(x ([−\d-]+)–([−\d-]+), y ([−\d-]+)–([−\d-]+) units\), the desk's props \(x ([−\d-]+)–([−\d-]+), y ([−\d-]+)–([−\d-]+)\),\s+the desk\s+\(y ([−\d-]+)–([−\d-]+)\) and the thought trail's column \(x ([−\d-]+)–([−\d-]+), y ([−\d-]+)–([−\d-]+)\)/, '§ 10.4 item 4 clear rects');
+    const m = read(/the monitor's frame \(x ([−\d.-]+)–([−\d.-]+), y ([−\d.-]+)–([−\d.-]+) units\), the desk's props \(x ([−\d.-]+)–([−\d.-]+), y ([−\d.-]+)–([−\d.-]+)\),\s+the desk\s+\(y ([−\d.-]+)–([−\d.-]+)\) and the thought trail's column \(x ([−\d.-]+)–([−\d.-]+), y ([−\d.-]+)–([−\d.-]+)\)/, '§ 10.4 item 4 clear rects');
     const v = m.slice(1).map(num);
 
     return { monitor: { x: [v[0], v[1]], y: [v[2], v[3]] }, props: { x: [v[4], v[5]], y: [v[6], v[7]] }, desk: { y: [v[8], v[9]] }, trail: { x: [v[10], v[11]], y: [v[12], v[13]] } };

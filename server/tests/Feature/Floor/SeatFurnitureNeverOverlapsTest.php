@@ -214,9 +214,9 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
     public function test_red_the_stool_rects(): void
     {
         foreach ([
-            'the pitch narrower than the sprite' => ['const STOOL_PITCH = 24;', 'const STOOL_PITCH = 16;', 'meets the desk\'s stool'],
+            'the pitch narrower than the sprite' => ['export const STOOL_PITCH = 28;', 'export const STOOL_PITCH = 16;', 'meets the desk\'s stool'],
             'the intern keyed by its place' => ['key: internKey(desk.seat_id, stool.call_id),', 'key: internKey(desk.seat_id, `intern${i}`),', 'is keyed'],
-            'the sprite drawn at the glyph\'s size' => ['const STOOL_W = 20;', 'const STOOL_W = 8;', 'not the art contract\'s 20 × 32'],
+            'the sprite drawn at the glyph\'s size' => ['const STOOL_W = 25;', 'const STOOL_W = 8;', 'not the art contract\'s'],
         ] as $what => [$from, $to, $says]) {
             $defects = $this->boundDefects(self::CAP, $this->mutatedModules(['../floor/desk-layout.js', $from, $to]));
 
@@ -545,9 +545,23 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
     }
 
     /**
-     * (e)'s stool rects (card#11058 PR-C): each intern is drawn as a sprite in its own 20 × 32 rect — the
-     * size `docs/design/FLOOR.md` § 10.4's art-contract bullet (*The desk's art contract*) and § 8's
-     * first row (*one intern per open subagent*) state — keyed
+     * The intern's rect as § 8's first row states it — *its foot on its W × H rect's floor line* — read from the
+     * document, so the layout's `STOOL_W` × `STOOL_H` is held to the art contract rather than to a copy here.
+     *
+     * @return array{0: int, 1: int}
+     */
+    private function artContractStool(): array
+    {
+        $this->assertSame(1, preg_match('/^\| one intern per open subagent .*? its foot on its (\d+) × (\d+) rect\'s floor line/m', $this->floorMd(), $m),
+            '§ 8\'s first row states no intern rect in the form this check reads');
+
+        return [(int) $m[1], (int) $m[2]];
+    }
+
+    /**
+     * (e)'s stool rects (card#11058 PR-C): each intern is drawn as a sprite in its own stool rect — the
+     * size `docs/design/FLOOR.md` § 8's first row (*one intern per open subagent*) states, read from it
+     * (`artContractStool()`; 25 × 40 since card#12444) — keyed
      * `seat~<call_id>` by the intern the wire put at that place (Q3), on one row in the wire's order, no two
      * meeting and none meeting another FACT element of its desk — the art it stands in front of (the side table)
      * is painted first, which is FLOOR.md § 10.6's rule 2 and AT-D3-25's to hold. These runs fail no art, so every intern is the
@@ -559,6 +573,8 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
      */
     private function stoolRectDefects(array $desk, array $seat): array
     {
+        $this->artContractStool();
+
         $defects = [];
         $stools = $this->elementsOf($desk, 'stool');
 
@@ -566,8 +582,10 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
             $call = $seat['subagents'][$i]['call_id'] ?? null;
             $at = "{$desk['key']}'s intern {$i}";
 
-            if ([$e['w'], $e['h']] !== [20, 32]) {
-                $defects[] = "{$at} is drawn {$e['w']} × {$e['h']}, not the art contract's 20 × 32";
+            [$w, $h] = $this->artContractStool();
+
+            if ([$e['w'], $e['h']] !== [$w, $h]) {
+                $defects[] = "{$at} is drawn {$e['w']} × {$e['h']}, not the art contract's {$w} × {$h}";
             }
 
             if ($e['call_id'] !== $call || $e['key'] !== "{$seat['seat_id']}~{$call}") {

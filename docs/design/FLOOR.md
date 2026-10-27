@@ -2234,8 +2234,8 @@ operator's way out is the one F18 names — one layout save that moves a room.
 
 | The operator's floor | The rooms' maps — extent ([§ 10.3](#103-the-floor-map)) | The floor's entry — position (this section) |
 |---|---|---|
-| *a hallway with 5 office rooms for solo agents* | five installs, `sola` … `zeta`, each `office`; each map a 14 × 8 grid of 32 px tiles — 448 × 256 px — with one `desks` object at [§ 12](#12-every-number-and-where-it-comes-from)'s furniture box, 440 × 228 px (a room holds at least one desk at the box, [§ 14](#14-open-questions-for-the-review-loop) item 28(1)) | `rooms`: the *i*-th office at `{x: 480·i, y: 160}` — 32 px between neighbours, the plan's own spacing, which [§ 12](#12-every-number-and-where-it-comes-from)'s default gap does not govern; `hallway`: a 75 × 5 grid of corridor tiles, 2,400 × 160 px, along the top. The floor's extent is their union, 2,400 × 416 px; the corridor is scenery and the offices' own walls are their maps' |
-| *a big room for PM+3impl agents and a small room for PM+1impl agent* | `aimla`, four seats, a 42 × 15 grid of 32 px tiles — 1,344 × 480 px — with `S = 6`, two rows of three desks at the furniture box; `beta`, two seats, a 42 × 8 grid of the same tiles — 1,344 × 256 px — with `S = 3`, one row of three | `rooms`: `aimla` at `{x: 0, y: 0}`, `beta` at `{x: 1408, y: 0}`; no `hallway` — the gap between them is the plan's own and is the floor's bare background. *Big* and *small* are the maps' grids; the entry says only which is left. A seventh `aimla` seat is [§ 3.2](#32-the-desk-slot-function)'s overflow row, plan or no plan |
+| *a hallway with 5 office rooms for solo agents* | five installs, `sola` … `zeta`, each `office`; each map a 14 × 8 grid of 32 px tiles — 448 × 256 px — with one `desks` object at [§ 12](#12-every-number-and-where-it-comes-from)'s furniture box, 440 × 252 px (a room holds at least one desk at the box, [§ 14](#14-open-questions-for-the-review-loop) item 28(1)) | `rooms`: the *i*-th office at `{x: 480·i, y: 160}` — 32 px between neighbours, the plan's own spacing, which [§ 12](#12-every-number-and-where-it-comes-from)'s default gap does not govern; `hallway`: a 75 × 5 grid of corridor tiles, 2,400 × 160 px, along the top. The floor's extent is their union, 2,400 × 416 px; the corridor is scenery and the offices' own walls are their maps' |
+| *a big room for PM+3impl agents and a small room for PM+1impl agent* | `aimla`, four seats, a 42 × 16 grid of 32 px tiles — 1,344 × 512 px — with `S = 6`, two rows of three desks at the furniture box; `beta`, two seats, a 42 × 8 grid of the same tiles — 1,344 × 256 px — with `S = 3`, one row of three | `rooms`: `aimla` at `{x: 0, y: 0}`, `beta` at `{x: 1408, y: 0}`; no `hallway` — the gap between them is the plan's own and is the floor's bare background. *Big* and *small* are the maps' grids; the entry says only which is left. A seventh `aimla` seat is [§ 3.2](#32-the-desk-slot-function)'s overflow row, plan or no plan |
 
 **⛔ A floor has no authored id — it IS its rooms, its key is derived, and that one fact buys an
 entire defect class.** The obvious alternative is a floor id the operator writes, and it comes in two
@@ -2600,7 +2600,7 @@ replaces this paragraph's earlier *the desk never reflows: its rows are fixed, a
 empty* — a property of the floating column the ruling retired, not of the glance set
 ([decision 64](#13-decisions-taken-revisable-at-review)). The rects are a table
 `server/public/js/floor/desk-layout.js` derives from the furniture box (`deskRects()`): the character
-54 × 96, the monitor beside it, the chip and the plate under them, the facts in one column to their
+67.5 × 120 ([§ 12](#12-every-number-and-where-it-comes-from)'s *Character rect*), the monitor beside it, the chip and the plate under them, the facts in one column to their
 right, stacked on their plate ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk,
 re-laid*). ⚠ Three of the set's places are the ruling read rather than the ruling's words, and await the
 operator's confirmation: the **label line** (the desk's state text, Q1 (B)'s carrier of the state), the
@@ -4496,7 +4496,7 @@ four steps after the tables that carry them.
 
 | Rendered | Source | Rule |
 |---|---|---|
-| one intern per open subagent — a sprite on the desk, up to the cap and none hidden | `subagents[]`, newest first ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)), each by its `call_id` | the array is a **reduction**, not the truth. **The sprite is keyed by the intern's call**: the character tree draws it under the key `seat~<call_id>` ([§ 10.4](#104-the-art-direction-as-a-specification); operator ruling 2026-10-02, card#11058 Q3), so an intern keeps its look when the array reorders or a sibling leaves. It is drawn **static** — its chibi frame ([§ 10.4](#104-the-art-direction-as-a-specification)'s frame contract item 3), its foot on its 20 × 32 rect's floor line, shown in the stool's overdraw (the rect widened to the row's pitch, card#12259) and clipped there; arrival and departure are A10's — and an intern whose art fails to load is drawn as [§ 9](#9-failure-paths-and-their-observables) F14's glyph in its own rect, that stool alone |
+| one intern per open subagent — a sprite on the desk, up to the cap and none hidden | `subagents[]`, newest first ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)), each by its `call_id` | the array is a **reduction**, not the truth. **The sprite is keyed by the intern's call**: the character tree draws it under the key `seat~<call_id>` ([§ 10.4](#104-the-art-direction-as-a-specification); operator ruling 2026-10-02, card#11058 Q3), so an intern keeps its look when the array reorders or a sibling leaves. It is drawn **static** — its chibi frame ([§ 10.4](#104-the-art-direction-as-a-specification)'s frame contract item 3), its foot on its 25 × 40 rect's floor line (20 × 32 until card#12444), shown in the stool's overdraw (the rect widened to the row's pitch, card#12259) and clipped there; arrival and departure are A10's — and an intern whose art fails to load is drawn as [§ 9](#9-failure-paths-and-their-observables) F14's glyph in its own rect, that stool alone |
 | the intern's label — **drill-down and list**; the desk draws the intern's sprite | `subagents[].title` | from the `subagent.spawn` event's `title` — the dispatch's own description, **programmatic**, sanitized at the reporter ([D1 § 6.7](EVENT-SCHEMA.md#67-subagentspawn)). ≤ 120 B, one line |
 | a **title-less** intern | `subagents[].title == null` | renders **untitled** in the list and the drill-down, with the `call_id` in the drill-down, and a **dashed** intern on the desk — its sprite inside a dashed edge, or the glyph dashed where its art failed — both edges dashed `3 2` in `--scene-stool` with no fill, the sprite's at rx 3 and 1.5 wide ([§ 10.4](#104-the-art-direction-as-a-specification)). The spawn was lost; D1 and D2 both call this an honest orphan and forbid inventing a title ([D1 § 6.8](EVENT-SCHEMA.md#68-subagentstop), [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)). **A later `subagent.spawn` for the same `call_id` fills it**, and the label appears then |
 | the intern's type — **drill-down and list** | `subagents[].subagent_type` | a small tag beside the label, e.g. `coder` |
@@ -4931,7 +4931,9 @@ person.** The operator's rulings of 2026-10-05, as card#11046 records them (comm
 *"Instead of people I want cute variations of animal and vegetable characters in the Studio Ghibili
 style"*, *"I also want drawings done in full resolution, not Minecraft block style"*, and, on the design
 sheet the seat drew from them, *"yes, I love them"* — with *"A"* to the question of the interns: they stay
-20 × 32 and become **chibi**, and the desk box does not change. *Studio Ghibli* names the feel and never the
+20 × 32 and become **chibi**, and the desk box does not change. ⚠ **Both size halves of that ruling are superseded** by
+the operator's ask of 2026-10-26 (card#12444, [decision 81](#13-decisions-taken-revisable-at-review)): the characters and
+the interns are 25 % taller and the box grew to hold them; *chibi* stands. *Studio Ghibli* names the feel and never the
 content: [§ 10.5](#105-the-ip-line--stated-and-unenforceable-by-gate)'s line holds, original creatures
 only. This subsection says where the creatures come from and what they replaced;
 [§ 10.4](#104-the-art-direction-as-a-specification) says what they look like and how a key selects one.
@@ -5104,7 +5106,7 @@ belong here, because they are this document's rulings:
   map — the **shipped default** below, since card#9208's reversal — was **card#9269's** and is in the
   tree; between the tileset landing and the map landing `tools/design/verify-floor.py` held the absence,
   because its sweep is for Tiled's two **map** spellings and a `.tsx` is neither.
-- **The furniture box at the cap is 440 px wide and 228 px tall** (`resources/floor/furniture-box.js`) —
+- **The furniture box at the cap is 440 px wide and 252 px tall** (`resources/floor/furniture-box.js`) —
   the box's one source ([Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14, slice A:
   the scene takes it as an input and `App\Floor\FurnitureBox` parses the same line), stated here so that
   [§ 12](#12-every-number-and-where-it-comes-from)'s Measured row has a sentence to bind to, and read out of
@@ -5125,14 +5127,17 @@ belong here, because they are this document's rulings:
   room's two side edges, and a partition with a front return and a doorway around the reserved desk, as
   top-edge strips: cells of the tileset's `wall` tile on a tile layer named `walls` between `accent` and
   `furniture`, one cell wide, every cell outside every slot (held by `tools/design/verify-floor.py` G-walls),
-  the doorway a 96 px gap in the front return facing the room, and the floor's theme draws each straight
+  the front return on the one whole row of cells between the two rows of slots and the doorway a 96 px gap in it,
+  its west jamb the partition's foot, so it opens onto the aisle between the rows' slots (card#12444 moved both down
+  with the taller box), and the floor's theme draws each straight
   stretch as one strip ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 6). An author marks
   walls the same way: the `wall` tile painted on any tile layer (`walls` by convention — the renderer looks
   for no layer name), one cell wide, a doorway left unpainted, every cell kept out of every `desks` object (a
   cell inside one is hidden under the desk, not refused). It is laid out from the desks
   outward: three boxes across with 32 px aisles between them and a 96 px strip at each side
-  (96 + 3 × 440 + 2 × 32 + 96 = 1,576), two rows with a 40 px aisle between them and 24 px at the back and
-  the front (24 + 2 × 228 + 40 + 24 = 544) — how many rows and how many slots each is
+  (96 + 3 × 440 + 2 × 32 + 96 = 1,576), two rows with a 16 px aisle between them, 24 px at the back and none at
+  the front (24 + 2 × 252 + 16 = 544; card#12444 kept the grid and the rows' places, at y 24 and 292, when the box grew
+  24 px, so the aisle between the rows was 40 px and the front 24 px until it) — how many rows and how many slots each is
   [§ 12](#12-every-number-and-where-it-comes-from)'s viewport row's to state, and the gate re-derives both
   from the file. The scenery is small and only around the desks — standing pieces of the tileset's kinds the
   floor's theme draws, as [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The shipped default*
@@ -5438,8 +5443,8 @@ creature generator's sheet is their worked example.
   | **colourway** | per species: **5**; the pea-pod, the radish and the turnip **4** (the last two after the operator's ruling of 2026-10-06 withheld one each, § 14 item 33(1)) | the body's paint, light falling top-left; one eggplant and one pumpkin colourway is striped |
   | **variant** | the rabbit **2** (upright, or lop at 1 in 3); the mushroom **3** caps (dome, wide, bell); every other species none | a body shape inside its species |
   | **girth** | **3** | the body's profile, widened or narrowed |
-  | **size** | **5** | a uniform scale about the foot |
-  | **tilt** | **3** | −3°, 0 or +3° about the foot |
+  | **size** | **3** | a uniform scale about the foot, within 6 % of the largest (card#12444; it spanned 16 % before) |
+  | **tilt** | **3** | −3°, 0 or +3° about the foot; an intern stands upright (the frame contract's item 3) |
   | **eyes** | **5** | round, sparkle, happy, sleepy, bead |
   | **mouth** | **5** | smile, open, cat, tiny, grin — the owl draws its beak instead |
   | **blush** | **3** | none, light, full |
@@ -5465,8 +5470,8 @@ creature generator's sheet is their worked example.
   ever a seat's. One sprite **per open subagent**; the cap and its arithmetic are § 8.1's and are **not**
   changed by anything here. Three things are the creatures' (card#11046):
   - **An intern is CHIBI** — the operator's *"A"* of 2026-10-05: an oversized head on a tiny body, so the
-    face reads in [§ 8](#8-interns--subagent-rendering-and-the-cap)'s **20 × 32** rect, which does not
-    change. It is the intern's own frame, drawn by the generator from the same recipe as a seat's — same
+    face reads in [§ 8](#8-interns--subagent-rendering-and-the-cap)'s stool rect — 20 × 32 until the operator's
+    ask of 2026-10-26 made it 25 % taller (card#12444; `desk-layout.js`'s `STOOL_W` and `STOOL_H`). It is the intern's own frame, drawn by the generator from the same recipe as a seat's — same
     species, colourway, face and worn things — and re-proportioned rather than shrunk: **the head takes at
     least half the frame's drawn height**, measured from the generator's own geometry (the head's top to
     its chin, over the head's top to the foot line) for every species and variant, and the foot sits on
@@ -5680,9 +5685,9 @@ creature generator's sheet is their worked example.
 - **The desk's art contract — where a desk's art is drawn, and the clip that holds it there** (card#11058).
   A desk's art — the character and its floor's theme's furniture set — is drawn into the rects
   `server/public/js/floor/desk-layout.js`'s `deskRects()` derives from the furniture box
-  ([§ 12](#12-every-number-and-where-it-comes-from)'s *Desk element rects* row): the character 54 × 96,
-  the chair 54 × 64, the desk 180 × 60, the monitor's frame 96 × 46, the desk props 68 × 50 and the side
-  table 228 × 42. Each is drawn `xMidYMax meet` — kept in proportion, centred and standing on its
+  ([§ 12](#12-every-number-and-where-it-comes-from)'s *Desk element rects* row): the character, the chair, the
+  desk, the monitor's frame, the desk props and the side table, each at the size `deskRects()` gives it
+  ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk, re-laid* prints them). Each is drawn `xMidYMax meet` — kept in proportion, centred and standing on its
   rect's floor line — inside a **clipping viewport**, a nested `<svg>` at the rect with `overflow: hidden`,
   so whatever the art draws past its own frame is cut at the rect it was given and never reaches a
   neighbouring element or the box's edge. `server/tests/Feature/Floor/painter-probe.mjs` (driven by
@@ -5702,8 +5707,8 @@ creature generator's sheet is their worked example.
   unconfirmed seat is drawn on the hollow chip and its dimmed desk, which is what the product does, and
   `DRAWN_MEMBERS` maps `unconfirmed` to the chip.
   Each intern is its chibi frame under its key `seat~<call_id>` (the interns bullet above), drawn
-  `xMidYMax meet` in its own 20 × 32 rect inside a clipping viewport, static; an untitled one is that
-  frame inside a dashed edge at its own 20 × 32 rect — rx 3, no fill, `--scene-stool` at 1.5 wide, dashed
+  `xMidYMax meet` in its own stool rect inside a clipping viewport, static; an untitled one is that
+  frame inside a dashed edge at its own stool rect — rx 3, no fill, `--scene-stool` at 1.5 wide, dashed
   `3 2` — face-on, its foot on the rect's floor line; one whose art fails is
   [§ 9](#9-failure-paths-and-their-observables) F14's glyph in that rect, that stool alone. **The
   character's art is a vector document shown as an image** ([§ 10.2](#102-characters-original-creatures-drawn-by-code)):
@@ -5719,35 +5724,46 @@ creature generator's sheet is their worked example.
   **its pose's frames** (`resources/characters/index.js`'s `poseFrames()`, handed the pose, the desk's top
   edge and, for a sleeper, the clear rects; it returns `{ frames, loopFrom }`), draws `frames[0]`, and steps that
   pose's own held loop, `frames[loopFrom ..]`, where its render moves (item 4's *tree → painter interface*):
-  1. **One standing frame per key, and every pose but `asleep` draws it.** Whatever other `(pose, glyph)` the
-     desk model asks for — `server/public/js/desk/desk-poses.js`'s `DESK`, and A4's think pose, which
+  1. **One standing frame per key, drawn in its pose's EXPRESSION, for every pose but `asleep`.** Whatever other
+     `(pose, glyph)` the desk model asks for — `server/public/js/desk/desk-poses.js`'s `DESK`, and A4's think pose, which
      `desk-render.js` keeps unexported as `THINKING` and the tests reach through `deskModel()` itself
      (a `working` seat with `open_calls` 0 and `open_turn` true, N5) —
      a desk with a character draws this one frame; `empty-chair` still draws none
-     ([§ 7.1](#71-the-render-per-state)). A held loop that moves steps the walk's frames (item 2).
+     ([§ 7.1](#71-the-render-per-state)). **Since card#12444 the frame wears the pose's face**: `creatures.js`'s
+     `EXPRESSIONS`, keyed by `expressionOf(pose, glyph)` (the glyph reaches the tree with the pose, because `present`
+     draws `unknown`'s question and two other states' plain presence), override the key's own eyes, brows and mouth
+     where the state must show — eyes on the keyboard for `working`, looking up for the think pose, wide with one brow
+     raised and a round mouth for the question, wide and calling with a paw raised for `blocked`, lids down and brows
+     worried with the paws at the cheeks for `stalled` — and keep the key's own everywhere else, so a seat is its own
+     creature in every pose. The question and the raised hand also carry their **state marker** (item 5). A held loop
+     that moves steps the walk's frames in the pose's expression (item 2), or the marker's pulse where the pose has one.
      **Every seat document — this frame, the walk's and the sleeper's — is drawn in ONE frame, `SEAT_VIEWBOX`**
      (card#12259; [§ 12](#12-every-number-and-where-it-comes-from)'s *Character frame*): the character's 108 × 192
-     rect (`SEAT_RECT`, two units per floor pixel of the 54 × 96 px rect) widened by half its width each side and
-     raised 42 units, the frame card#12187 built for the sleeper's z's (item 4), shown in the character's overdraw
-     rect. The body is drawn in the rect, its foot on the rect's foot line, and the margin is what the frame's own
+     rect (`SEAT_RECT`, `desk-layout.js`'s `FRAME_UNITS_PER_PX` units per floor pixel of the character rect) widened by
+     half its width each side and raised to `Z_TOP` (the thought trail's height, in frame units), the frame card#12187
+     built for the sleeper's z's (item 4), shown in the character's overdraw rect. The body is drawn in the rect, its foot on the rect's foot line, and the margin is what the frame's own
      COMPOSITION needs: the key's tilt (±3°) and the walk's lean (±2°) about the foot, and the widest girth at the
      largest size, carry the lop rabbit's ear, the wide mushroom's cap, the hedgehog's spines and the turnip's body
      past the rect's side — the four widest with no tilt at all — and the painter clipped that ink on the floor until
      this card ([§ 14](#14-open-questions-for-the-review-loop) item 33(6); how far each frame kind reaches past the
      rect, and the margin left in the frame, is [AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom)'s
      frame-bounds leg's measurement, re-derived on every run and written nowhere). **The transforms are unchanged**:
-     the approved frames tilt and walk exactly as they did, and nothing of them is cut. **A state
-     but `idle` is told from another by its chip, its label line and its monitor, not by the character**;
-     drawing the remaining poses is [§ 14](#14-open-questions-for-the-review-loop) item 34's, unscheduled.
+     the approved frames tilt and walk exactly as they did, and nothing of them is cut. **A state is still told from
+     another by its chip, its label line and its monitor first**; the expression says the same thing again on the
+     character, and the posture of each pose (a body typing, leaning back, slumped) is still
+     [§ 14](#14-open-questions-for-the-review-loop) item 34's, unscheduled.
   2. **The walk: three phases** — stand, step-left, step-right — **front-facing**, which A1's and A2's
      walker draws (`resources/characters/index.js`'s `walkFrames()`, which `floor/painter.js`'s `characterFrames()` caches) and A16 needs when it is walked; phase 0
      is item 1's standing frame. No back view is drawn; the walker has never used one
      ([§ 10.2](#102-characters-original-creatures-drawn-by-code)).
   3. **The intern's chibi frame** (the interns bullet above), static, as [§ 8](#8-interns--subagent-rendering-and-the-cap) draws it —
      drawn in `CHIBI_VIEWBOX` (card#12259; [§ 12](#12-every-number-and-where-it-comes-from)'s *Intern frame*): the
-     20 × 32 rect's 108 × 172.8 units widened to the row's pitch, `108 × 24 / 20` = 129.6 wide, 10.8 each side past
-     the rect, shown in the stool's overdraw (`desk-layout.js`'s `internOverdraw()`) — the whole gap between two
-     interns, two frames meeting at the pitch, for item 1's reason: the chibi frame carries the key's tilt too.
+     stool rect's 108 × 172.8 units widened to the row's pitch, `108 × STOOL_PITCH / STOOL_W` units wide, shown in the
+     stool's overdraw (`desk-layout.js`'s `internOverdraw()`) — the whole gap between two interns, two frames meeting at
+     the pitch. **The chibi frame is drawn UPRIGHT** (card#12444): an intern carries no tilt. The interns grew 25 % with
+     the seats and their row's pitch is what the box's width leaves for the cap of eight, so the margin each side shrank,
+     and the key's tilt carried the dome mushroom's cap 1.8 units past it (measured on the sample build); upright, the
+     widest head keeps inside it, and the frame-bounds leg prints the margin left on every run.
   4. **The sleeper — `asleep`, the pose `idle` draws ([§ 6.2](#62-the-animation-table--the-closed-set) A6,
      card#12159).** The key's own creature slumped asleep on its desk: its eyes closed, its brows and any held
      thing put away, its head rolled onto its forearms, which lie along the desk's top edge — an edge the
@@ -5761,23 +5777,23 @@ creature generator's sheet is their worked example.
      is a pulse of brightness (below).
      **The frame is widened and raised for them.** The sleeper's drawing is `SEAT_VIEWBOX`, § 12's *Character
      frame* — since card#12259 the frame of every seat document (item 1): the character's 108 × 192 rect widened by
-     half its width each side and raised 42 units, 216 × 234 from (−54, −42) — because the character's own frame has little room above a crest (`CREST_TOP`, below: its top lies 15 to 73 units under the character frame's top), and a z drawn in the
+     half its width each side and raised to `Z_TOP`, 216 × 225.6 from (−54, −33.6) (216 × 234 from (−54, −42) until card#12444) — because the character's own frame has little room above a crest (`CREST_TOP`, below: its top lies 15 to 73 units under the character frame's top), and a z drawn in the
      scene beside and above it has room: 21 px of the desk's box lies between the character's rect and the
      bubble's band, which is the thought trail's height (`TRAIL_RADII` and `TRAIL_GAP`), and the art column leaves
-     51 px to the character rect's left and 111 px to its right. **As an element** every character's image is drawn in an **overdraw
-     rect**, the character's 54 × 96 px rect widened 27 px each side and raised 21 px — 108 × 117 px, at box
-     (24, 37) on the furniture box (the bubble band's foot is box y 36, so the frame's top is one pixel under it) —
+     room either side of the character's rect (`deskRects()`). **As an element** every character's image is drawn in an **overdraw
+     rect**, the character's rect widened by half its width each side and raised 21 px — 135 × 141 px, at box
+     (10.5, 37) on the furniture box (the bubble band's foot is box y 36, so the frame's top is one pixel under it) —
      which `floor/desk-layout.js`'s `characterOverdraw(box, character)` returns beside the **`clear` rects**; the
      character element's own rect, and so every overlap rule that reads element rects, is unchanged, and
      `floor/scene.js`'s `placeDesk()` moves the overdraw with the element; `floor/painter.js`'s art viewport (the
      nested `<svg>` that clips *whatever the art draws past its own frame*, § 10.4's art contract) is the overdraw
-     rect for every character (card#12259; until it, for a sleeper alone). The overdraw lies wholly inside the box (box
-     x 24–132 of 440, y 37–154 of 228), so *everything the scene draws for the desk at rest is laid out inside it*
-     still holds.
+     rect for every character (card#12259; until it, for a sleeper alone). The overdraw lies wholly inside the box — its
+     edges are the trail's top, the character rect's foot and half the rect's width past each side, all inside the box
+     `deskRects()` lays — so *everything the scene draws for the desk at rest is laid out inside it* still holds.
      **What the z's keep out of** is the floor's own furniture, handed to the tree in frame units as the `clear`
      argument of `sleepFrames()` and `sleepDocument()` so that no figure of the desk is copied into the tree:
-     the monitor's frame (x 102–294, y 48–140 units), the desk's props (x −90–46, y 72–172), the desk
-     (y 140–260) and the thought trail's column (x 46–62, y −42–0) — read out of `deskRects()` and
+     the monitor's frame (x 92.4–246, y 76.8–150.4 units), the desk's props (x −61.2–47.6, y 96–176), the desk
+     (y 150.4–246.4) and the thought trail's column (x 47.6–60.4, y −33.6–0) — read out of `deskRects()` and
      `thoughtTrail()` by the same function, so a re-laid desk moves them. **The painter draws the z's with the
      character, before the desk, the monitor, the props, the bubble and the trail**, so a halo that reaches one is
      under it and never drawn over it; a z's body is kept out of every rect all the same, and
@@ -5788,7 +5804,7 @@ creature generator's sheet is their worked example.
      ear, a leaf, a cap or a hat is drawn by the species and no bounding box is kept), so `creatures.js` declares
      **`CREST_TOP`**: the topmost ink of a sleeper, in frame units, per species and per variant where it has them —
      as the tool scans it over 100 keys each (1 unit a raster pixel): `bear` 53, `carrot` 31, `eggplant` 39, `fox` 34,
-     `frog` 73, `hedgehog` 67, `mole` 60, `mushroom/bell` 15, `mushroom/dome` 25, `mushroom/wide` 38, `otter` 63,
+     `frog` 73, `hedgehog` 66 (67 until card#12444's narrower sizes drew a larger one), `mole` 60, `mushroom/bell` 15, `mushroom/dome` 25, `mushroom/wide` 38, `otter` 63,
      `owl` 49, `peapod` 44, `potato` 56, `pumpkin` 47, `rabbit/lop` 62, `rabbit/upright` 20, `radish` 25 and
      `turnip` 27, and, for card#12212's species, as the floor of the topmost ink `tools/design/svg-document.mjs`'s
      `inkBounds` finds over the sleeper's own documents without their z's: `broccoli` 15, `cabbage` 47, `corn` 45,
@@ -5804,7 +5820,7 @@ creature generator's sheet is their worked example.
      `h_k = L + (L/2 − L)·t_k` tall (0.915 `L`, 0.75 `L`, 0.585 `L`), at
      `x_k = 54 − dir·(Z_A0 + (Z_A1 − Z_A0)·t_k)` with `Z_A0` 10 and `Z_A1` 108 — away from the side the head rolled to, **never
      clamped** — and `y_k = y_0 + (y_1 − y_0)·t_k`, where `y_0 = min(crown − Z_GAP, props_y − Z_GAP) − hb(L).h − G` and
-     `y_1 = max(Z_TOP, frame top) + hb(L/2).h + G + 1`; `Z_GAP` is 2, `Z_TOP` −42, `G` the brightest glow's width (5, § 12's
+     `y_1 = max(Z_TOP, frame top) + hb(L/2).h + G + 1`; `Z_GAP` is 2, `Z_TOP` −33.6 (the trail's 21 px in frame units), `G` the brightest glow's width (5, § 12's
      *Sleeper z brightness*), `props_y` the props rect's top and `hb(h)` the half extent of a z's body box, outline included
      (`0.4h + o` wide, `0.5h + o` tall, `o` half the outline's stroke, which is `max(1.4, 0.16h) + 2.6` wide). **The path's ends
      are imaginary z's**: at t = 0 a z of size `L` whose box and glow stand `Z_GAP` above the crest line (or the props line
@@ -5822,9 +5838,12 @@ creature generator's sheet is their worked example.
      the head's centre (`Z_A0` −45, `Z_A1` 90), so z1 and z2 flanked the trail's dots; **re-measured by the same tool
      (`--a0 -45 --a1 90`), what stops its next half unit of `L` is the trail's column at every seat** — not the third
      z and not the glow, as this paragraph said of it — and `L` there was 26.5–33.5. The new path's next half unit is stopped by
-     two z's meeting, and `L` is the same at every seat. **That is `L` 35.5 at every seat the tool picks (its `seats:` line), both rolls:
-     z1 32.5, z2 26.6 and z3 20.8 units, which are 14.6, 12.0 and 9.3 CSS px at a 1,440-wide window's fit (0.9 × 0.5 =
-     0.45 px a unit)** — `node tools/design/sleeper-zs.browser.mjs --layout above3` prints the line, *the sizes*.
+     two z's meeting, and `L` is the same at every seat. **That is `L` 35.5 at every seat the tool picks (its `seats:` line), both rolls,
+     but the broccoli's, 29.0: z1 32.5, z2 26.6 and z3 20.8 units, which are 18.3, 15.0 and 11.7 CSS px at a 1,440-wide
+     window's fit (0.9 × 0.625 = 0.563 px a unit, card#12444's 1.6 units a scene px; 14.6, 12.0 and 9.3 CSS px at the 2
+     units a px before it)** — `node tools/design/sleeper-zs.browser.mjs --layout above3` prints the line, *the sizes*. ⚠ **The
+     broccoli's crest is the highest (15), and card#12444's lower raise (`Z_TOP` −33.6 for −42) brought the frame's top
+     down onto its stand: its `L` is 29.0, z1 26.5, z2 21.8 and z3 17.0 units**, where it was 35.5 with every other seat's.
      ⚠ **Said plainly against the sizes the operator has seen:** card#12159's largest z was 21.8 units, 9.8 CSS px
      (`--layout card12159` prints it), so z1 is 49 % taller, z2 22 % taller and **z3 5 % SHORTER than that largest z** — the
      smallest of the three is still a little under the size the operator called too small; the round-3 build's two z's were
@@ -5879,10 +5898,11 @@ creature generator's sheet is their worked example.
      under 0.80), so each z's peak IS a general flash by luminance; the content passes on either of SC 2.3.1's thresholds, and
      passes on both for one sleeper: **at most three peaks in any one second** of the loop (the peaks of z1, z2 and z3 are two
      loop frames, half a second, apart; three are allowed), and **the area** — the boxes of the three z's, glow included,
-     cover 4,094 px² at the fit for up to four sleepers in one 10-degree field and 20,218 px² at the zoom ceiling
+     cover 6,397 px² at the fit for up to four sleepers in one 10-degree field and 31,591 px² at the zoom ceiling
      (`ZOOM_CEILING`, 4) for one, against 21,824 px², a quarter of the 341 × 256 CSS px field. The area leg is a bounding-box
-     bound with the three z's all counted as flashing together, and is the thin one at the ceiling (93 % of it); the rate
-     leg is not. **What it does not settle**: sleepers counted together across a floor can give more than three peaks in
+     bound with the three z's all counted as flashing together; ⚠ **since card#12444's taller characters it no longer
+     holds at the ceiling** (145 % of it; it was 4,094 and 20,218 px², 93 %, at the 2 units a px before), so there the
+     content passes on the rate leg alone, which still holds. **What it does not settle**: sleepers counted together across a floor can give more than three peaks in
      one second, which only the area leg then holds, and a field that holds two sleepers at the ceiling is not possible
      (a desk's box is wider than the field there). The tool prints both legs and reds when neither holds.
      The z's stand still: the moving part is the brightness, at a fixed rate, with an amplitude that is the row's
@@ -5956,6 +5976,29 @@ creature generator's sheet is their worked example.
      `SEAT_VIEWBOX`; the halo behind every z; the overdraw rect, the `clear` rects and the loop's start in the painter's output —
      each with a planted control (the pulse reversed; a z moved between frames; `loopFrom` dropped, so the moving loop shows
      the still; a crest top set 20 units under the drawing's) — and the monitor painted off.
+  5. **The state markers — `unknown`'s `?` and `blocked`'s `!` ([§ 6.2](#62-the-animation-table--the-closed-set) A9
+     and A7, card#12444).** The operator's ask of 2026-10-26: *"the question '?' and blocked '!' signs need to be much
+     bigger, similar to the size of the ZZz's. I also want the ? and ! to blink on and off, or have a backglow on and off
+     similar to how the glow travels through Zzzs"*. The marker is a stroked glyph drawn the way a z is, through **one
+     primitive**, `creatures.js`'s `glowSvg()`, which draws the sleeper's z's too: a dark outline in the marker's own ink
+     (the question's blue, the raised hand's red), a pale core over it mixed toward the ink by `Z_GLOW[level]`, and behind
+     it the lamp-colour halo, `Z_HALO[level]` wider than the outline at `Z_HALO_OPACITY[level]` — item 4's *How a z is
+     lit*, unchanged. **Its size is the seat's own z's**: as tall as the first z the same seat draws asleep — z1 of the
+     stand `zLargeFor()` finds for the key's crest, roll side and clear rects — outline included, so a marker is the z's
+     size wherever the z's are. **Where it stands** (`markerStand()`): in the frame's margin on the side away from the
+     raised paw (the +x side), its glow a unit inside the frame's edge, its glyph's foot at the key's crown line (the hat
+     anchor at the key's size), held between a unit under the frame's top and a unit over any clear rect beneath it —
+     the monitor's frame, in practice — so it never meets the monitor, the props, the desk or the trail's column (and
+     the bubble, which stands above the frame); a key whose frame leaves it no such place is refused (§ 9 F14), never
+     drawn clamped. It is drawn in the frame, outside the body's transform: it neither tilts nor scales with the key.
+     **It pulses with the z's pulse**: `poseFrames()` returns a marked pose's standing frame `SLEEP_LOOP + 1` times —
+     document 0 the STILL, the marker at level 3, the reduced-motion form, and document n the marker at
+     `markerLevel(n − 1)`, which is z1's level in the same table (`3 2 1 0 0 0 0 1`), so the glow comes on and goes off
+     at the z's pace, phase-offset per seat by the same `loopOffset()`, and nothing but the marker's brightness changes
+     between documents (`loopFrom` 1). The rate is A6's 4 fps and the steps are quantised; a marker peaks once a cycle of
+     `SLEEP_LOOP` loop frames. ⚠ Item 4's flash measurement reads sleepers only and has not been run over a marker. **Held by** [AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom)'s
+     marker legs (`tools/characters/selftest.mjs` § 7c — the size against the seat's own z1, the pulse, the one glow,
+     the clearance — and the frame-bounds leg, which draws every expression's frame at full brightness).
 
   **The projection every one of them obeys** is the projection bullet's item 2 and item 5, restated
   nowhere: flat and straight-on, no top, the foot on the rect's floor line with its soft contact shadow
@@ -6105,7 +6148,7 @@ theme draws INTO and never moves.
      cell of the contrast table below falls to 4.44:1 over the glow and 4.47:1 over the landing, under the bar
      by hundredths. On the shipped default the landing (about 72 px either side of the threshold and 26 px deep)
      and its glow (about 52 px deep) reach only into the top-left desk object's bubble band, its top 30 px, where
-     no chip, no facts plate and no fact stands — the facts plate begins at box y 48 at the cap (card#11468; every fact on it lower), the one bare text, the *+N more* tag, at box y 190, and the chip's rect at box y 212 (`deskRects()`'s `chip.y`, the box's height less 16); that is measured by
+     no chip, no facts plate and no fact stands — the facts plate begins at box y 72 at the cap (card#11468; every fact on it lower), the one bare text, the *+N more* tag, at box y 214, and the chip's rect at box y 236 (`deskRects()`'s `chip.y`, the box's height less 16); that is measured by
      hand on the default's grid and held by no check. The chip tool reads `surfaces()` through
      one node step, `tools/floor-themes/surfaces.mjs`, which imports every theme the registry names and prints
      `{theme: {name: colour}}` as JSON on its standard output — the Python tool never parses a module. The house theme is **`studio`** — A2+C, below. Like the creature tree it is **pure, total and
@@ -6338,31 +6381,31 @@ operator ([§ 14](#14-open-questions-for-the-review-loop) item 36).
 
 #### The desk, re-laid
 
-**`deskRects()` at the 440 × 228 box, box-relative, today's value in brackets; built at row 20.** The furniture
-box does **not** move: every new rect lies inside it at the cap, so the box-based re-validation of § 14 item
+**`deskRects()` at the 440 × 252 box, box-relative, earlier values in brackets; built at row 20, re-laid by card#12444's
+taller characters** (`node -e` over `deskRects(FURNITURE_BOX, { w: SCENE_W, h: SCENE_H })` re-prints every figure; nothing re-checks the table against it). At row 20 the furniture box did **not** move: every new rect lies inside it at the cap, so the box-based re-validation of § 14 item
 28(1)(iii) does not fire, the box is re-confirmed rather than re-measured, and AT-D3-20 *(a)* holds as written.
 
 | Element | Rect (x, y, w × h) | Rule |
 |---|---|---|
-| the character | 51, 58, 54 × 96 [81, 58] | its centre at a third of the desk's width — the desk's left edge plus a third of its width, the operator's ruling (comment 10128) |
-| the chair | 51, 90, 54 × 64 [81, 90] | follows the character; drawn **behind every creature** at every desk with art — until row 20 it was drawn only for an empty desk |
-| the desk | 18, 128, 180 × 60 [unchanged] | the desk's back (the house table) |
-| the monitor's frame | 102, 82, 96 × 46 [the whole monitor was 136, 84, 64 × 44] | its right edge is the desk's; the operator's *wider* (comment 10127), at the prototype's 96 × 46 |
-| the screen | 106, 86, 88 × 31 [the monitor's rect] | the monitor element the lit state is drawn on — `--scene-monitor-on`, `--scene-monitor` (and `--scene-monitor-dim`, retired by card#12187 with the dimmed screen) — inside the frame |
-| the screen's text | 109, 89, 82 × 25 [109, 95, 82 wide on one line until card#12446; 140, 100, 56 wide before row 20] | inside the screen, 3 px in on every side, in the **screen** type role below, wrapped to the lines its height holds |
-| the desk props | 6, 94, 68 × 50 [new] | the desk's left third: the lamp and its light, the mug or the plant |
-| the side table | 212, 146, 228 × 42 [212, 124 from row 20 until card#11468; 220, 168, 220 × 8 before row 20, drawn only with interns] | under the facts plate and over the *+N more* row (box y 190); drawn at every desk with art; **its foot line is its rect's bottom edge, box y 188 — the desk's own foot line (card#11468) and the interns'** — the interns' rects (20 × 32 on a 24 px pitch from 220, 156) stand in front of it |
+| the character | 44.25, 58, 67.5 × 120 [51, 58, 54 × 96 until card#12444; 81, 58 before row 20] | its foot line 26 px under the desk's top, where it has always stood, so the taller rect grows upward (card#12444); its centre at a third of the desk's width — the desk's left edge plus a third of its width, the operator's ruling (comment 10128) |
+| the chair | 44.25, 114, 67.5 × 64 [51, 90, 54 × 64 until card#12444; 81, 90 before row 20] | follows the character; drawn **behind every creature** at every desk with art — until row 20 it was drawn only for an empty desk |
+| the desk | 18, 152, 180 × 60 [18, 128 until card#12444] | the desk's back (the house table) |
+| the monitor's frame | 102, 106, 96 × 46 [102, 82 until card#12444; the whole monitor was 136, 84, 64 × 44] | its right edge is the desk's; the operator's *wider* (comment 10127), at the prototype's 96 × 46 |
+| the screen | 106, 110, 88 × 31 [106, 86 until card#12444; the monitor's rect] | the monitor element the lit state is drawn on — `--scene-monitor-on`, `--scene-monitor` (and `--scene-monitor-dim`, retired by card#12187 with the dimmed screen) — inside the frame |
+| the screen's text | 109, 113, 82 × 25 [109, 89 until card#12444; 109, 95, 82 wide on one line until card#12446; 140, 100, 56 wide before row 20] | inside the screen, 3 px in on every side, in the **screen** type role below, wrapped to the lines its height holds |
+| the desk props | 6, 118, 68 × 50 [6, 94 until card#12444] | the desk's left third: the lamp and its light, the mug or the plant |
+| the side table | 212, 170, 228 × 42 [212, 146 until card#12444; 212, 124 from row 20 until card#11468; 220, 168, 220 × 8 before row 20, drawn only with interns] | under the facts plate and over the *+N more* row (box y 214); drawn at every desk with art; **its foot line is its rect's bottom edge, box y 212 — the desk's own foot line (card#11468) and the interns'** — the interns' rects (25 × 40 on a 28 px pitch from 216, 172; 20 × 32 on a 24 px pitch from 220 until card#12444) stand in front of it, its seats under them (`tools/floor-themes/selftest.mjs`'s seats leg holds the theme's seat row to the layout's) |
 
 **The facts column, stacked on its plate** (card#11468, the operator's ruling of 2026-10-07 — [§ 5.1](#51-the-desk)'s
 *the glance set* states the rule and this states its geometry). The facts column's rows — the label line, the
 currency label, the lag line, the gauge (the bar at x 220, the % at x 284), the badge row (two 104 px chips on a
 108 px pitch), the flag, the quiet age — are each a 12 px line at x 220, cut to 216 px; a desk lays the rows it
-carries in that order **up from the side table**, the last ending at box y 138, so a full stack of seven starts at
-y 54 and no row ever meets the table (`stackRows()`). `deskRects()` states the stack at the cap, every row present;
+carries in that order **up from the side table**, the last ending at box y 162, so a full stack of seven starts at
+y 78 and no row ever meets the table (`stackRows()`). `deskRects()` states the stack at the cap, every row present;
 `deskLayout()` lays each desk's own. Behind them, the **facts plate** — kind `facts-plate`, a fact element with no
 member of its own, like F14's placeholder — is one rect padded 4 px across and 6 px down round the rows it holds,
 as wide as the widest of them and corners at radius 8: its left edge is box x 216, the art column's edge; its
-bottom is box y 144 whatever the desk carries, 2 px above the side table; at the cap its top is y 48, below the
+bottom is box y 168 whatever the desk carries, 2 px above the side table; at the cap its top is y 72, below the
 bubble's band. It is drawn in the nameplate's paper, `--scene-plate`, opaque, with a soft `--scene-plate-edge` rim,
 and a desk with no row draws none. The *+N more* tag is the one text left on the floor, under the side table.
 
@@ -8254,7 +8297,7 @@ the same reason: no browser on the build host.*
   the title at the bound is drawn truncated with a mark (rule 4); *(e)* on the cap leg and on the bound seat,
   every string the `fx-interns` row puts at its bound is drawn inside the box, truncated with a mark and never
   past the edge, every one of the cap's interns is drawn as a sprite and the *+N more* tag drawn, none hidden —
-  each in its own 20 × 32 rect, keyed `seat~<call_id>` by the intern the wire put at that place, on one row in
+  each in its own stool rect, keyed `seat~<call_id>` by the intern the wire put at that place, on one row in
   the wire's order, meeting neither a sibling nor another FACT element of its desk — the side table it stands in front of is art,
   painted first ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s rule 2, card#11046 row 20);
   the badge row draws its two — the treatment badges, then `update_required`, then recognised badges in the wire's order (row 75) — and the flag
@@ -8680,10 +8723,12 @@ painter's legs in `server/tests/Feature/Floor/painter-probe.mjs`.*
   interns' chibi frames; and the sibling body-repeat and body-and-colourway-repeat rates are printed, the
   build's measurement, and gate nothing (§ 10.4). Every species' and variant's chibi frame gives the head at least half its drawn
   height — [§ 12](#12-every-number-and-where-it-comes-from)'s *Intern head share* row — measured from the
-  generator's own head and foot geometry, and stands on the 20 × 32 rect's floor line.
+  generator's own head and foot geometry, and stands on the stool rect's floor line.
 - **GREEN — the frames:** for a key of every species and variant the standing frame, the walk's
   three phases — distinct from each other, phase 0 the standing frame — and the chibi frame all draw;
-  a desk's pose frames are the sleeper's for `asleep` and the walk's for every other pose; and through the
+  a desk's pose frames are the sleeper's for `asleep`, the marker's still and pulse for a pose whose expression
+  carries a marker (the frame contract's item 5), and the walk in the pose's expression for every other pose — the
+  neutral one the walk itself, each expressed pose a face of its own; and through the
   painter, a desk of every `(pose, glyph)` pair draws its pose's frames over its desk's top edge — frame 0 when
   its held render is still, and the seat's loop offset when it moves (card#12187, § 6.2's per-seat loop phase) —
   and a held loop that moves steps that pose's own frames, every one in order from that offset (§ 10.4's frame
@@ -8718,10 +8763,22 @@ painter's legs in `server/tests/Feature/Floor/painter-probe.mjs`.*
   shape is read a few units wide on the rolled side of a sleeper (measured against rendered pixels on 2026-10-23:
   within 0.3 units on every upright frame, up to 4 units wide on a rolled sleeper's rolled side) — an
   over-reading, never an under-reading, and the same for an added species as for an approved one.
-- **RED — a frame's margin removed (card#12259):** draw the chibi frame from x 0 instead of −10.8, or the seat frame
+- **RED — a frame's margin removed (card#12259):** draw the chibi frame from x 0 instead of `CHIBI_VIEWBOX.x`, or the seat frame
   at the rect's own 108 × 192 → the frame-bounds leg names each species whose ink leaves the frame, with its units and
   key; its control pushes a standing frame sideways by more than the frame's margin and holds the same leg red, and
   holds the unpushed frame inside.
+- **GREEN — the markers (card#12444, `tools/characters/selftest.mjs` § 7c):** for every species and variant, the
+  question's and the raised hand's marker, outline included and glow not, is as tall as the same key's first z asleep
+  within half a unit; the marked poses draw a still with the marker at full brightness and `SLEEP_LOOP` documents with
+  the marker lit at z1's level of the pulse, `loopFrom` 1, nothing but the marker changing; every level's halo is the
+  z's; the marker at its brightest keeps a unit inside the frame and off every clear rect; and the frame-bounds leg draws
+  every expression's frame.
+- **RED — the markers (card#12444), each watched failing on the sampled build the card started from, whose marker was
+  a 16-unit text glyph in a cream puff:** the SIZE leg names every species whose marker is not its z1's height (the
+  sample's puff measured 26.6 units against z1's 33.4–40.3, and its text glyph is no ink the reader can see at all); the
+  PULSE leg names a marked pose drawn as the walk (`loopFrom` 0, no marker level) and one whose drawing changes under
+  the marker; the ONE GLOW leg names a marker with no glyph outline or a halo off the z's widths. The CLEAR leg's RED is
+  planted by hand: a stand moved into the monitor's frame names the monitor.
 - **GREEN — vector and well-formed (N2):** every frame is one standalone SVG document that parses as
   strict XML — every tag closed, every `&` an entity — with an `<svg>` root carrying
   `xmlns="http://www.w3.org/2000/svg"`, and carries no `<image`, no `data:` URI and no reference that
@@ -9354,20 +9411,21 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | Back wall's reserved zone | **332 px** | **Chosen** (card#11045; widened by card#12241) — the band's left, holding the two-door elevator, the wall clock and, right of the clock, the birdhouse with 16 px of clear wall before its 44 px roof, so no window is ever laid over the clock or the birdhouse and the first window keeps from the birdhouse the 24 px it kept from the clock. **What re-derives it:** the elevator's, the clock's and the birdhouse's own widths and the gap, which move it with them. `scene.js`'s `ZONE_W` is its other home, held equal to this cell by the same test | [§ 4.2](#42-the-floor) |
 | Window pitch / glazing | **360 px** / **208 × 80 px** | **Chosen** — the pitch by card#11045, one window per 360 px of wall past the zone; the glazing by [decision 61](#13-decisions-taken-revisable-at-review) (card#11046, the seat's ruling of 2026-10-07): the approved A2+C picture's 208 by 80 px, 22 px below the band's top, short windows above a rail and a sage lower wall, kept from the jail card#11045 refused by their curtains and sills ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)). Card#11045's 200 × 124 stood until row 22. **What re-derives it:** the operator's reading of the band as drawn. `scene.js`'s `WINDOW` is their other home, held equal to this cell by the same test | [§ 4.2](#42-the-floor) |
 | Wall strip width | **one cell, 8 px** | **Derived** — the map's `tilewidth`: every wall but the band shows only its top edge, a strip one grid cell wide ([§ 10.4](#104-the-art-direction-as-a-specification)'s projection rule, item 4), so the width moves with the grid and mints no number of its own. **What re-derives it:** the grid ([§ 10.3](#103-the-floor-map)'s `tilewidth` row) | [§ 10.4](#104-the-art-direction-as-a-specification) |
-| **Furniture box at the cap** | **440 × 228 px** | **Measured** — the one `FURNITURE_BOX` declaration line of `resources/floor/furniture-box.js`, the box's one source ([§ 10.3](#103-the-floor-map); the scene takes it as an input and `App\Floor\FurnitureBox` parses the same line), read out of the file by `tools/design/verify-floor.py` on every run and held against § 10.3's sentence — both the numbers and the path re-derived from that sentence — and the number [§ 14](#14-open-questions-for-the-review-loop) item 28(1)'s console refusal reads and [§ 9](#9-failure-paths-and-their-observables) F21 compares every `desks` object against. It is what the scene draws for one desk at rest, except the bubble, at the worst case — the art at its drawn size, [§ 8](#8-interns--subagent-rendering-and-the-cap)'s cap of interns with its tag, the badge row of two with the flag, and every string cut to fit. **The rects are `server/public/js/floor/desk-layout.js`'s exported table (`deskRects()`), derived from the box** (card#11058), and [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor) reds when the box shrinks below the table at the cap. ⚠ It holds the BRIDGE tileset's sprite and the character rects (which the creatures keep, card#11046), so [§ 10.4](#104-the-art-direction-as-a-specification)'s art re-measures it (item 28(1)(iii)), and every stored map is validated against the figure of the day ⚠ **Row 22's furniture re-confirms the box and does not re-measure it** — every rect of [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk, re-laid* lies inside it at the cap | [§ 10.3](#103-the-floor-map) |
-| **The shipped default's grid** | **1,576 × 544 px** | **Measured** — `width × tilewidth` by `height × tileheight` of `resources/floor/default.tmj` ([§ 10.3](#103-the-floor-map)'s grid row, the room's footprint on a planned floor), read out of the file by `tools/design/verify-floor.py` on every run and held against § 10.3's sentence, which also holds every `desks` object at least the box above. **What it is made of** is the map's own composition (§ 10.3): across, the boxes per row the viewport row below states and the gate re-derives, the 32 px aisles between them and a 96 px scenery strip at each side; in height, the rows of the box the viewport row states, the 40 px aisle between them and 24 px at the back and the front. **What re-derives it:** the map — a re-authoring moves this row, and the gate is what makes that mandatory rather than remembered. ⚠ **A building planned against an older footprint is not re-checked:** an unauthored room's footprint is this grid, measured from that room's `origin`, so any room — authored or not — that now shares a pixel with an unauthored room's 1,576 × 544 px overlaps it. The footprint was 1,836 × 200 px until slice B and 3,024 × 496 px until card#11045; the six-desk default is narrower than the second but 48 px taller, so a room placed 496 to 543 px below an unauthored room, and within 1,576 px of it across, overlaps it from that change on. While any two rooms overlap, the console refuses every room map save, restore or removal that leaves an overlap standing (`App\Floor\Floors` runs `App\Building\Layouts::refuseOverlaps` at each, over the pending map's own extent — so a save whose map clears the overlap is accepted), refuses re-saving the layout unchanged as a no-op, and the floor draws the rooms overlapping under [§ 9](#9-failure-paths-and-their-observables) F18's notice. The way out is either: move the rooms apart and save the layout, or save a smaller map for one of the overlapping rooms ([§ 4.6](#46-the-building-layout), [D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)) | [§ 10.3](#103-the-floor-map) |
+| **Furniture box at the cap** | **440 × 252 px** | **Measured** — the one `FURNITURE_BOX` declaration line of `resources/floor/furniture-box.js`, the box's one source ([§ 10.3](#103-the-floor-map); the scene takes it as an input and `App\Floor\FurnitureBox` parses the same line), read out of the file by `tools/design/verify-floor.py` on every run and held against § 10.3's sentence — both the numbers and the path re-derived from that sentence — and the number [§ 14](#14-open-questions-for-the-review-loop) item 28(1)'s console refusal reads and [§ 9](#9-failure-paths-and-their-observables) F21 compares every `desks` object against. It is what the scene draws for one desk at rest, except the bubble, at the worst case — the art at its drawn size, [§ 8](#8-interns--subagent-rendering-and-the-cap)'s cap of interns with its tag, the badge row of two with the flag, and every string cut to fit. **The rects are `server/public/js/floor/desk-layout.js`'s exported table (`deskRects()`), derived from the box** (card#11058), and [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor) reds when the box shrinks below the table at the cap. ⚠ It holds the BRIDGE tileset's sprite and the character rects (which the creatures keep, card#11046), so [§ 10.4](#104-the-art-direction-as-a-specification)'s art re-measures it (item 28(1)(iii)), and every stored map is validated against the figure of the day — card#12444's taller characters re-measured it, 24 px taller ([decision 81](#13-decisions-taken-revisable-at-review)) ⚠ **Row 22's furniture re-confirms the box and does not re-measure it** — every rect of [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk, re-laid* lies inside it at the cap | [§ 10.3](#103-the-floor-map) |
+| **The shipped default's grid** | **1,576 × 544 px** | **Measured** — `width × tilewidth` by `height × tileheight` of `resources/floor/default.tmj` ([§ 10.3](#103-the-floor-map)'s grid row, the room's footprint on a planned floor), read out of the file by `tools/design/verify-floor.py` on every run and held against § 10.3's sentence, which also holds every `desks` object at least the box above. **What it is made of** is the map's own composition (§ 10.3): across, the boxes per row the viewport row below states and the gate re-derives, the 32 px aisles between them and a 96 px scenery strip at each side; in height, the rows of the box the viewport row states, the 16 px aisle between them, 24 px at the back and none at the front (40 px between and 24 px at the front until card#12444's taller box). **What re-derives it:** the map — a re-authoring moves this row, and the gate is what makes that mandatory rather than remembered. ⚠ **A building planned against an older footprint is not re-checked:** an unauthored room's footprint is this grid, measured from that room's `origin`, so any room — authored or not — that now shares a pixel with an unauthored room's 1,576 × 544 px overlaps it. The footprint was 1,836 × 200 px until slice B and 3,024 × 496 px until card#11045; the six-desk default is narrower than the second but 48 px taller, so a room placed 496 to 543 px below an unauthored room, and within 1,576 px of it across, overlaps it from that change on. While any two rooms overlap, the console refuses every room map save, restore or removal that leaves an overlap standing (`App\Floor\Floors` runs `App\Building\Layouts::refuseOverlaps` at each, over the pending map's own extent — so a save whose map clears the overlap is accepted), refuses re-saving the layout unchanged as a no-op, and the floor draws the rooms overlapping under [§ 9](#9-failure-paths-and-their-observables) F18's notice. The way out is either: move the rooms apart and save the layout, or save a smaller map for one of the overlapping rooms ([§ 4.6](#46-the-building-layout), [D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)) | [§ 10.3](#103-the-floor-map) |
 | **Desk element rects** | the table `deskRects()` derives from the furniture box | **Measured** — `server/public/js/floor/desk-layout.js`'s exported table, derived from the box above, read by [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor) on every run (card#11058) | [§ 5.1](#51-the-desk) |
-| **Character rect** | **54 × 96** px | **Chosen** — sized by card#11058 as 3 × the interim pixel character's 18 × 32 (`CHARACTER_SCALE`), and kept when the creatures replaced it: the operator's ruling of 2026-10-05 is that the desk box does not change (card#11046). The creature art draws into it with no native pixel size at all — vector, at two drawing units per floor pixel — so what re-derives this row is the box, never the art | [§ 5.1](#51-the-desk) |
-| **Sleeper's z's** | **3** z's, fixed, above the head, on one path: **`Z_A0` 10** and **`Z_A1` 108** units, at **0.17**, **0.5** and **0.83** along it, sized **`L` 35.5** at every seat, `L` at most **36**, z1 **0.915** `L`, z2 **0.75** `L` and z3 **0.585** `L` | **Chosen** (card#12187, the operator's two rulings of 2026-10-22: *"THREE z's ABOVE each sleeping character's head"*, and the brightness cycled through them; the path re-fitted in round 5 to clear the thought trail). The formulas are [§ 10.4](#104-the-art-direction-as-a-specification) item 4's *Where they stand*, which is the tool's `above3Fixed()`, `above3Why()` and `above3Plan()`; **`L` is the largest in half-unit steps that breaks none of its four rules**, and the tool prints it as *the sizes*: `node tools/design/sleeper-zs.browser.mjs --layout above3`. **At every seat it picks (its `seats:` line): z1 32.5, z2 26.6 and z3 20.8 units = 14.6, 12.0 and 9.3 CSS px at the floor's fit** (`min(surface.w / extent.w, surface.h / extent.h)`, `wire/camera.js`'s `fitZoom()`, ≈ 0.90 on a 1,440 × 900 window over the shipped default room; the frame draws two units to a scene px, so 0.45 px a unit). **What stops the next half unit is two z's meeting** (the same output); on the path this replaces (`Z_A0` −45, `Z_A1` 90) it was the thought trail's column, `L` 26.5–33.5 (z1 24.2–30.7, z2 19.9–25.1, z3 15.5–19.6 units). **Said against the sizes the operator has seen**: card#12159's largest z was 21.8 units, 9.8 CSS px (`--layout card12159`), so **z1 is 49 % taller, z2 22 % taller and z3 5 % shorter**; the round-3 build's two z's were 24.0–32.2 units. **They are above and beside the head**: for a roll toward +x only z1 stands within the character's own 0–108 units. `creatures.js`'s `SLEEP_ZS`, `Z_LARGE`, `Z_A0`, `Z_A1` and `zLargeFor()`. **What re-derives it:** the operator's reading of a sleeping desk at fit, a change to the furniture the z's keep out of, or to the glow's width — and `Z_RATIO` (0.5), which decision 70 (H) measures | [§ 10.4](#104-the-art-direction-as-a-specification) |
-| **Character frame** | **216 × 234** frame units from (**-54**, **-42**) | **Chosen** (card#12187 for the sleeper, card#12259 for every pose) — the character's 108 × 192 rect widened by half its width each side and raised 42 units: raised so the sleeper's z's have room above a crest whose top lies 15 to 73 units under the rect's top (`CREST_TOP`'s own range), and the one frame for the standing and walking frames too, so the frame's own composition — the key's tilt, the walk's lean, the widest girth at the largest size — never carries an approved body past the edge the painter clips at; how much of the margin each frame kind uses is [AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom)'s frame-bounds leg's measurement on every run ([§ 14](#14-open-questions-for-the-review-loop) item 33(6), [decision 74](#13-decisions-taken-revisable-at-review)). As an element rect: the 54 × 96 px character rect widened 27 px each side and raised 21 px, 108 × 117 px (`desk-layout.js`'s `characterOverdraw()`); 21 px is the thought trail's height between the character's rect and the bubble's band (`TRAIL_RADII` and `TRAIL_GAP`), so the frame's top is box y 37, one pixel under the band's foot at 36. **What re-derives it:** the character rect, the trail's radii or the bubble band | [§ 10.4](#104-the-art-direction-as-a-specification) |
-| **Intern frame** | **129.6 × 172.8** frame units from (**-10.8**, **19.2**) | **Chosen** (card#12259) — the intern's 20 × 32 px rect's 108 × 172.8 units (the rect's aspect, the last 172.8 units above the foot) widened to the row's pitch: `STOOL_PITCH` 24 px for a `STOOL_W` 20 px rect, so `108 × 24 / 20` wide, two frames meeting at the pitch and never overlapping — the whole room a row of interns has, and more than the chibi frame's tilt uses (the same leg prints the margin left). As an element rect: the stool's rect widened 2 px each side, 24 × 32 px (`desk-layout.js`'s `internOverdraw()`); the dashed edge of an untitled intern stays at the 20 × 32 rect, so a tilted ear may cross it by up to those 2 px. **What re-derives it:** the stool's rect or the row's pitch | [§ 10.4](#104-the-art-direction-as-a-specification), [§ 8](#8-interns--subagent-rendering-and-the-cap) |
+| **Character rect** | **67.5 × 120** px | **Chosen** — `CHARACTER_SCALE` × the tree's 18 × 32 footprint unit: sized by card#11058 at 3 × (54 × 96) and kept when the creatures replaced it, then made 25 % taller (3.75) by the operator's ask of 2026-10-26, *"The character sizes are good"* (card#12444, [decision 81](#13-decisions-taken-revisable-at-review)), its foot line where it stood. The creature art draws into it with no native pixel size at all — vector, at `FRAME_UNITS_PER_PX` (1.6) drawing units per floor pixel, held equal to the tree's own by `tools/characters/selftest.mjs` § 7b. **What re-derives it:** the operator's reading of the characters at the floor's fit, and then the box | [§ 5.1](#51-the-desk) |
+| **Sleeper's z's** | **3** z's, fixed, above the head, on one path: **`Z_A0` 10** and **`Z_A1` 108** units, at **0.17**, **0.5** and **0.83** along it, sized **`L` 35.5** at every seat but the broccoli's (29.0), `L` at most **36**, z1 **0.915** `L`, z2 **0.75** `L` and z3 **0.585** `L` | **Chosen** (card#12187, the operator's two rulings of 2026-10-22: *"THREE z's ABOVE each sleeping character's head"*, and the brightness cycled through them; the path re-fitted in round 5 to clear the thought trail). The formulas are [§ 10.4](#104-the-art-direction-as-a-specification) item 4's *Where they stand*, which is the tool's `above3Fixed()`, `above3Why()` and `above3Plan()`; **`L` is the largest in half-unit steps that breaks none of its four rules**, and the tool prints it as *the sizes*: `node tools/design/sleeper-zs.browser.mjs --layout above3`. **At every seat it picks (its `seats:` line) but the broccoli's: z1 32.5, z2 26.6 and z3 20.8 units = 18.3, 15.0 and 11.7 CSS px at the floor's fit** (`min(surface.w / extent.w, surface.h / extent.h)`, `wire/camera.js`'s `fitZoom()`, ≈ 0.90 on a 1,440 × 900 window over the shipped default room; the frame draws `FRAME_UNITS_PER_PX`, 1.6, units to a scene px since card#12444, so 0.563 px a unit); the broccoli's, its crest the highest, are 26.5, 21.8 and 17.0 units, the frame's top stopping its stand (card#12444's lower raise). **What stops the next half unit is two z's meeting**, and for the broccoli the frame's top (the same output); on the path this replaces (`Z_A0` −45, `Z_A1` 90) it was the thought trail's column, `L` 26.5–33.5 (z1 24.2–30.7, z2 19.9–25.1, z3 15.5–19.6 units). **Said against the sizes the operator has seen**: card#12159's largest z was 21.8 units, 9.8 CSS px (`--layout card12159`), so **z1 is 49 % taller, z2 22 % taller and z3 5 % shorter**; the round-3 build's two z's were 24.0–32.2 units. **They are above and beside the head**: for a roll toward +x only z1 stands within the character's own 0–108 units. `creatures.js`'s `SLEEP_ZS`, `Z_LARGE`, `Z_A0`, `Z_A1` and `zLargeFor()`. **What re-derives it:** the operator's reading of a sleeping desk at fit, a change to the furniture the z's keep out of, or to the glow's width — and `Z_RATIO` (0.5), which decision 70 (H) measures | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| **Character frame** | **216 × 225.6** frame units from (**-54**, **-33.6**) | **Chosen** (card#12187 for the sleeper, card#12259 for every pose) — the character's 108 × 192 rect widened by half its width each side and raised by the thought trail's 21 px in frame units (`Z_TOP`; 42 units at card#12259's 2 units per px): raised so the sleeper's z's have room above a crest whose top lies 15 to 73 units under the rect's top (`CREST_TOP`'s own range), and the one frame for the standing and walking frames too, so the frame's own composition — the key's tilt, the walk's lean, the widest girth at the largest size — never carries an approved body past the edge the painter clips at; how much of the margin each frame kind uses is [AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom)'s frame-bounds leg's measurement on every run ([§ 14](#14-open-questions-for-the-review-loop) item 33(6), [decision 74](#13-decisions-taken-revisable-at-review)). As an element rect: the character rect widened by half its width each side and raised 21 px, 135 × 141 px (`desk-layout.js`'s `characterOverdraw()`; 108 × 117 px until card#12444); 21 px is the thought trail's height between the character's rect and the bubble's band (`TRAIL_RADII` and `TRAIL_GAP`), so the frame's top is box y 37, one pixel under the band's foot at 36. **What re-derives it:** the character rect, the trail's radii or the bubble band | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| **Intern frame** | **120.96 × 172.8** frame units from (**-6.48**, **19.2**) | **Chosen** (card#12259; card#12444) — the intern's 25 × 40 px stool rect's 108 × 172.8 units (the rect's aspect, the last 172.8 units above the foot) widened to the row's pitch: `STOOL_PITCH` 28 px for a `STOOL_W` 25 px rect, so `108 × 28 / 25` wide, two frames meeting at the pitch and never overlapping — the whole room a row of interns has. The pitch is what the box's width leaves for `STOOL_CAP` stools from `STOOL_INSET` left of the facts column, and the upright chibi frame fits it (the frame contract's item 3; the frame-bounds leg prints the margin left). As an element rect: the stool's rect widened 1.5 px each side, 28 × 40 px (`desk-layout.js`'s `internOverdraw()`); the dashed edge of an untitled intern stays at the stool rect. Until card#12444: a 20 × 32 rect on a 24 px pitch, 129.6 units wide from −10.8. **What re-derives it:** the stool's rect or the row's pitch | [§ 10.4](#104-the-art-direction-as-a-specification), [§ 8](#8-interns--subagent-rendering-and-the-cap) |
 | **Sleeper z clearance** | **0 %** of a frame's z ink inside a clear rect, and no halo ink on the sleeper | **Chosen** (card#12187) — the clear rects are the monitor's frame, the desk's props, the desk and the thought trail's column, read out of `deskRects()` and `thoughtTrail()` ([§ 10.4](#104-the-art-direction-as-a-specification) item 4 gives their figures), never copied into the tool. Measured with `tools/design/sleeper-zs.browser.mjs` over the seats it picks: **0.0 %** and **0 px** for the ruled layout, with a control that plants a z on the trail's column and judges that rect alone; round 3's two-z column measures 39.0 % (its edge column sits in the monitor's frame once the frame is widened) and a layout over the eyes 14.1 %. **What re-derives it:** a change to the desk's furniture | [§ 10.4](#104-the-art-direction-as-a-specification) |
 | **Sleeper z brightness** | **4 levels**, the core mixed toward the ink by **50 %**, **30 %**, **12 %** and **0 %**, behind a halo of the palette's lamp colour **0**, **1.5**, **3** and **5** units wide at **0 %**, **50 %**, **80 %** and **100 %** opacity | **Chosen** (card#12187, the operator's *"brightness cycled through"*) — drawn two ways so that it reads on the oat floor and keeps the z's shape: the core's lightness (50 % toward the ink is the dimmest the core goes, so the dim z is a mid-lavender and not a hole) and a warm halo in `--lamp`, `#ffcf7d`, the palette's own light, which `creatures.js`'s `Z_LAMP` is held equal to by the tool. The outline is the same at every level, **6.32 : 1** against `--scene-floor` and **3.06 : 1 at the worst of the surfaces** (the house floor and every colour of every shipped theme's `surfaces()`, the worst the studio theme's `accent-darkest` #b49573 — the tool reads them through `tools/floor-themes/surfaces.mjs`, as `state-chip-colours.py` does); the dimmest core is 3.10 : 1 against its own outline and adjacent cores differ in luminance by 1.44, 1.34 and 1.20 (1.15 needed, so each step is visible). **Not opacity**: a faded z loses the outline's contrast on a floor the theme chooses. **Five units is the halo's cost and its limit**, re-measured round 5 under the law as it stands (`--halo-max 8`): at eight units, wide enough to read at the fit, `L` falls from 35.5 to 26.0 on the adopted path — the frame's side stops it, the glow of z3 reaching the frame's edge — while on the path it replaces it did not change at all (26.5–33.5, the trail's column stopping it); round 4's *`L` 11.5 for every seat* was measured under a law that kept the glow clear of every clear rect and is withdrawn. A halo of five is about 2.3 CSS px at the 1,440 fit, a glow and not a ring. **What re-derives it:** the operator's reading of the pulse at fit, or a theme with a darker floor | [§ 10.4](#104-the-art-direction-as-a-specification) |
 | **Sleeper z pulse** | **8** loop frames, one **4** fps step each — a cycle of **2** s — behind a still | **Chosen** (card#12187) — a bubble of brightness reaches z1 at loop frame 0, z2 at 2 and z3 at 4, each peaking at level 3 and glowing 2 and 1 in the loop frames behind, z1 at level 1 the loop frame before it arrives; the levels by loop frame are `300 200 130 020 013 002 001 100` ([§ 10.4](#104-the-art-direction-as-a-specification) item 4). The length is the least that gives each z its peak and two loop frames of afterglow at an arrival every two loop frames, and a seat's stagger is one of that many offsets. The rate is [§ 6.2](#62-the-animation-table--the-closed-set) rule 2's fixed **4** fps — four levels, a step a frame, never a tween. **What re-derives it:** the operator's reading of the pulse's pace | [§ 6.2](#62-the-animation-table--the-closed-set) |
 | **Sleeper z overlap bound** | **2 %** of a frame's z ink over the sleeper's own ink, worst frame, worst seat, for EVERY species | **Chosen** (card#12187; the final rulings re-chose it for z's that stand above the crest) — `tools/design/sleeper-zs.browser.mjs`, which rasterises each seat's frame without its z's and with each z alone, over seats it PICKS rather than takes: per species and variant the first three keys, the lowest and highest eye line among 400 keys and the widest crest among 100 (the count is its `seats:` line). The ruled layout measures **0.0 %** at every seat — the z's are above the crest table's line by construction and the tool reads the drawing against it; round 3's two-z column measures **55.4 %** (`mushroom` key 12) and card#12159's rising path **78.6 %** (`mushroom`'s bell), each over the bound on more than one species, which `--selftest` requires. The bound is two percent and not zero so that the rasteriser's edge pixels at one raster pixel a unit do not red a clean seat. **What re-derives it:** a species whose crest changes, which the crest table's own check names first | [§ 10.4](#104-the-art-direction-as-a-specification) |
 | **Sleeper z-on-z bound** | **1 %** of a frame's z ink covered by two z's or more, worst frame, worst seat | **Chosen** (card#12187, review round 1's F3, re-measured for the fixed z's) — the same tool: the ruled z's measure **0.0 %**, their bodies never meeting; round 1's three-z column measured 21.2 %, card#12159's rising path 12.4 % and round 3's two-z column 1.7 %. The halos are not z ink for this figure: they are drawn behind every z's body, so a halo that reaches a neighbour is under it. **What re-derives it:** a change to the count or the sizes | [§ 10.4](#104-the-art-direction-as-a-specification) |
 | **Sleeper z face clearance** | **6** frame units from the closed eyes' ink, holding at most **1 %** of a frame's z ink | **Chosen** (card#12187) — the same tool dilates the sleeper's own `eyes-closed` drawing by 6 units and counts the z ink inside it: the ruled z's measure **0.0 %** over the seats it picks, a layout of z's laid over the eyes 33.3 % (`--selftest`'s face control). It is the measured form of *the z's float over the sleeper and never across its face*. **What re-derives it:** a species with wider eyes | [§ 10.4](#104-the-art-direction-as-a-specification) |
-| **Intern head share** | **at least 1/2** of the chibi frame's drawn height | **Chosen** (card#11046) — the operator's *"A"*: an oversized head on a tiny body, so the face reads at 20 × 32. Half is the least at which the head is the larger part. **What re-derives it:** the operator's reading of the first drawn side table | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| **State marker** | as tall as the seat's own **z1** asleep, outline included; lit at **z1's level** of the *Sleeper z pulse* table | **Chosen** (card#12444, the operator's ask of 2026-10-26: *"much bigger, similar to the size of the ZZz's"* and *"a backglow on and off similar to how the glow travels through Zzzs"*) — `unknown`'s `?` and `blocked`'s `!`, a stroked glyph drawn through the z's glow (`creatures.js`'s `glowSvg()`), at the frame's +x side with its glow a unit inside the frame's edge, its foot at the crown line and held a unit clear of the clear rects ([§ 10.4](#104-the-art-direction-as-a-specification)'s frame contract item 5). Its height is the seat's, never a figure: `zLargeFor()`'s z1 for the key's crest, roll and the floor's clear rects. `tools/characters/selftest.mjs` § 7c prints the markers' heights beside the same keys' z1 and reds a marker half a unit off its z1, a pulse that is not z1's, a halo that is not the z's, or a marker meeting a clear rect or the frame's edge. **What re-derives it:** the operator's reading of a question or a blocked desk at fit, or a change to the z's | [§ 10.4](#104-the-art-direction-as-a-specification), [§ 6.2](#62-the-animation-table--the-closed-set) A7, A9 |
+| **Intern head share** | **at least 1/2** of the chibi frame's drawn height | **Chosen** (card#11046) — the operator's *"A"*: an oversized head on a tiny body, so the face reads at the stool rect's size (20 × 32 then, 25 × 40 since card#12444). Half is the least at which the head is the larger part. **What re-derives it:** the operator's reading of the first drawn side table | [§ 10.4](#104-the-art-direction-as-a-specification) |
 | **Monitor frame / screen / screen text** | **96 × 46** / **88 × 31** / **82 × 25** px | **Chosen** (card#11046) — the operator's *"I think the monitors need to be wider to show a little more text"* (2026-10-06), at the prototype's 96 × 46 in the picture the operator approved; the screen inset 4 px inside the frame and the text 3 px inside the screen on every side (`SCREEN_INSET`), so since card#12446 the text rect is the screen less the inset — its height is what the *Screen type size* row derives the lines from; until then it was one 12 px line 9 px down the screen. Built at row 20 into `deskRects()`, which [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text)'s re-laid half holds to [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s table. **What re-derives it:** the operator's reading of the built monitors | [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) |
 | **Screen type size** | **7 px** on an **8 px** line, **3** lines | **Chosen** (card#12446) — the operator's ruling of 2026-10-26, *"Reduce monitor font size by 1 point and allow text to wrap lines to fill the entire screen (probably 3 or 4 lines)"*: one pixel under the 8 px it was, on an 8 px line (`desk-layout.js`'s `FONT_SCREEN` and `LINE_SCREEN`, the screen role of `TYPE_ROLES`), the text wrapped at word boundaries by `wrap()`; the lines are DERIVED, ⌊the screen's text rect's height ÷ the line⌋ = ⌊25 ÷ 8⌋ = 3 (the *Monitor frame / screen / screen text* row's rect), and `Tests\Feature\Floor\TheMonitorTextFillsItsScreenTest` holds this cell, the constants and the derivation equal. ⚠ It overrides the reading that chose 8 px, which follows. Until card#12446 it was 8 px on the facts' 12 px line, one line — **Chosen** (card#11046) — the operator's *"The monitor screen text can be smaller so that more letters can fit"* (2026-10-07): the smallest size at which every fixture monitor read at 1:1 at the default fit on a device-scale-1 screen, measured in headless Chromium at the reference viewport; 7 px did not ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) gives the method and the glyph counts). Built at row 20 (`desk-layout.js`'s `FONT_SCREEN`, the screen role of `TYPE_ROLES`). **What re-derives it:** the operator's reading of the wrapped 7 px screen on card#12446's screenshots, and the same reading on a real laptop | [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) |
 | **The creature's centre** | **a third** of the desk's width from its left edge | **Chosen** — the operator's ruling of 2026-10-06 (*"the character can be moved to 1/3 of the desk width"*); the chair follows it; the 3 px it shares with the monitor's frame is allowed by [§ 10.6](#106-themes--a-floors-design-and-the-house-theme). **What re-derives it:** the operator | [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) |
@@ -9528,6 +9586,7 @@ review can reverse it deliberately rather than discover it later.
 | 78 | **Decided 2026-10-25 — this seat as the repository's maintainer, card#12194 (R3) — revised 2026-10-27 by [row 80](#13-decisions-taken-revisable-at-review) (every desk of the shipped default now routes at the `clear` tier): the shipped default is not a defect under row 76** — every `desks` object routes to the elevator, the PM through its office doorway ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 7) | widen the default's one-cell corridors | `test_green_the_shipped_default_routes_every_desk` holds every desk routable on every run, so a default that stops routing reds | none while it holds |
 | 79 | **Decided 2026-10-25 — the operator's ruling (R4), card#12194: walkers glide** — *"For walking characters, make them glide smoothly too"*: a walker's position is continuous along its routed polyline, a pure function of `(now − at)` and its leg's duration, drawn through the one pin primitive the coordination bird is drawn by (`floor/painter.js`'s `pinEffects()`, card#12345), its negative delay pinned to the walk's start on the document timeline ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 8) | a per-frame trail stepped by the painter's loop; an unpinned glide from its negative delay alone | a trail jumps once a loop frame, and an unpinned glide redraws from a new origin at every rebuild — the jump card#12345 measured | a browser with no `getAnimations()` draws the walker from its delay alone and moves no walker node after its paint |
 | 80 | **Decided 2026-10-27 — the operator's approval (answer A1, *"I accept your recommendations"*), relayed by the coordinator, card#12442, of the seat's recommendation on the operator's report of 2026-10-26 that a walker *"didn't stay in the walkways and instead walked on top of the cubicle walls"*: the walker's drawn BODY keeps clear of walls and standing furniture beside or in front of its feet, with a margin, and keeps to the middle of a walkway; a wall behind it in the three-quarter view is not an overlap; routing falls back by tier, so every desk keeps walking; and the shipped default's elevator room and PM office are re-furnished so every desk routes at the full clearance** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 3, [§ 12](#12-every-number-and-where-it-comes-from)'s *Walker clearance* and *Walkway centring*). It revises row 76's *inflation* and *the shipped default is kept as it is*; row 76's overdraw in a narrow aisle stays, as the `feet` tier | the feet rule alone (row 76, as shipped); inflation with no fallback — measured on card#12442, it leaves no desk of the operator's cubicle floor routable at the 108 px frame and its front row unroutable at the full drawn height; the drawn HEIGHT counted above the feet — a 96 px walkway in front of a partition cannot hold a 96 px figure | the feet rule lets a route hug a wall one cell away while the body is painted on it; the body's width round the feet is what a person keeps from a wall beside them, and the three-quarter view already draws a wall behind a person behind them; the tiers keep row 76's every routable desk routable | the shipped default's large plant and bookcase leave the elevator room's one body-wide exit for its lower-left corner, whose floor lamp and cushions join the lower-right corner, and the PM office's plant becomes a narrow plant against the office's right wall — every room on the shipped default shows the move; a desk whose own lane is narrower than the body and both margins walks at `snug` (the cubicle fixture's second desk, beside its large plant) |
+| 81 | **Decided 2026-10-26 — the operator's ask on card#12444, *"The character sizes are good"*: the characters and the interns 25 % taller, the furniture box with them; this SUPERSEDES the 2026-10-05 rulings' size halves** ([§ 10.2](#102-characters-original-creatures-drawn-by-code): the box fixed, the interns 20 × 32) — `CHARACTER_SCALE` 3 → 3.75 with the foot line pinned, so a character grows upward; `FURNITURE_BOX` 440 × 228 → 440 × 252 and `Z_TOP` −42 → −33.6 (the trail's 21 px at 1.6 units per px); the interns 25 × 40 on a 28 px pitch, drawn upright; `SIZES` narrowed to a 6 % spread; larger eyes, brows and mouths with a lash line and a face per pose; the shipped default's `desks` objects resized in place at their rows' places, its PM office's front return moved between the rows. The seat's rulings on the parts the ask left open (the sampler's recommendations) are reversible: the size spread, the interns' pitch and upright frame, the faces, and the map's re-lay | keep the box and draw the characters larger past it; scale the whole desk | the box is what every element rect and every stored map is held to, so the art grows only with it; a larger desk would re-measure every room the operator authored at once rather than one dimension | every stored room map is re-validated against the taller box ([§ 14](#14-open-questions-for-the-review-loop) item 28(1)(iii)) and a map whose desks are 228 px tall is F21's undersized line until its author resizes them; the shipped default's aisle between its rows is 16 px |
 
 ---
 
@@ -10492,8 +10551,10 @@ reason to leave two readings live.
     for every species, which prints beside its gate what the old frame would have cut, by species and frame kind.
 
 34. **⇢ Follow-up, unscheduled — pose art. `asleep` is drawn since card#12159** ([§ 10.4](#104-the-art-direction-as-a-specification)'s
-    frame contract item 4: the sleeper, its z's, A6's loop and its reduced form); **every other pose is still
-    owed**, as below. The record below stands as written. The desk model names a pose for every state it draws a
+    frame contract item 4: the sleeper, its z's, A6's loop and its reduced form), **and since card#12444 every other
+    pose draws its face and the question and the raised hand their marker** (items 1 and 5: `EXPRESSIONS`, the raised
+    paw, the paws at the cheeks, the `?` and the `!` through the z's glow, A7's and A9's pulse); **the postures are still
+    owed** — a body typing at the keyboard, leaning back, its head in its hands — as below. The record below stands as written. The desk model names a pose for every state it draws a
     character in (`desk/desk-poses.js`'s `DESK`, `desk/desk-render.js`'s `THINKING`), and
     [§ 6.2](#62-the-animation-table--the-closed-set)'s A3, A4, A6 and A7 describe loops over them — the
     keyboard, the lean back, the sleeper slumped on the desk with its z's, the raised hand — and § 7.1's
