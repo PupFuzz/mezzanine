@@ -1893,9 +1893,9 @@ A Windows agent seat is Claude Code on Windows, whose shell tool is Git Bash (`M
 in the state Steps 0 to 8 reach on Linux, with one difference the operator ruled on 2026-10-25 (Option A):
 **nothing supervises the flusher on Windows.** There is no Scheduled Task, no cron analogue and no other
 supervisor. The reporter's own hooks are the flusher's only start: every hook that finds no fresh lock
-spawns one (`maybeRespawnFlusher` in `fleet-reporter.js`, D1 § 2.3). So a seat on which no Claude Code
-session has fired a hook for `K.LOCK_STALE_MS` and a heartbeat interval reads `offline` on the floor, by
-design. [`install.sh`](install.sh) does not run on Windows: its blocks are this runbook's Linux blocks. An
+spawns one (`maybeRespawnFlusher` in `fleet-reporter.js`, D1 § 2.3). So once the flusher stops (at logoff,
+and on [W5](#w5--the-flusher-the-sessions-next-hook-is-its-start)'s claim when the session that started it
+ends), the seat reads `offline` on the floor until a session's next hook starts another, by design. [`install.sh`](install.sh) does not run on Windows: its blocks are this runbook's Linux blocks. An
 agent on a Windows seat runs the blocks of this section itself, one Bash tool call each.
 
 Each sub-step below says only what differs from the Linux step of the same number, and points at it for the

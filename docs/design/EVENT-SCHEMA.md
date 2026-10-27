@@ -239,7 +239,8 @@ if a real seat exceeds it, the fix is in the reporter, not in the number.
 
 ### 2.3 The flusher must be alive whenever the seat is
 
-The heartbeat is only a liveness signal if its absence means something. Two mechanisms, both required:
+The heartbeat is only a liveness signal if its absence means something. Two mechanisms, both required
+on Linux; on Windows only the second is built (item 1 says why):
 
 1. **Supervised start** — the flusher is registered with a supervisor that runs as the seat's own
    account and needs no root. **On Linux, for a seat without root or lingering (this project's Linux
@@ -250,8 +251,13 @@ The heartbeat is only a liveness signal if its absence means something. Two mech
    account's last logout (`loginctl(1)`, `enable-linger`). The Linux seat installed so far (card#9368)
    runs on the sandbox host, which the no-root, no-sudo, no-systemd ruling covers (`docs/PLAN.md § 5`). A Linux seat that **has**
    lingering may use a `systemd --user` unit instead, and the contract below binds that unit the same
-   way. **On Windows** it is a Scheduled Task at logon, and those mechanics are owed when the Windows
-   agent seat onboards. The Linux crontab mechanics are `fleet-reporter/INSTALL-LINUX.md`'s
+   way. **On Windows there is no supervised start** (Option A, the operator's ruling of 2026-10-25,
+   card#12335): no Scheduled Task and no other supervisor, so item 2's respawn is the flusher's only
+   start. A Windows seat therefore reads `offline` from the moment its flusher stops — at logoff or a
+   reboot, and possibly when the session whose hook started it ends, which card#12335 did not measure —
+   until a session's next hook starts another: the cost [§ 15](#15-decisions-taken-revisable-at-review)
+   row 9 names. The Windows procedure is `fleet-reporter/INSTALL-LINUX.md` § Installing on a Windows
+   seat. The Linux crontab mechanics are `fleet-reporter/INSTALL-LINUX.md`'s
    (card#9368), which also derives how long a restart takes. The *contract* is
    here. ⚠ **That start inherits nothing from the harness's settings**, so the
    contract includes the start's launch delivering `$COORD_CONFIG` to the flusher
@@ -1255,8 +1261,8 @@ framework's, in another repository, and it can move without a single check here 
   [§ 2.3](#23-the-flusher-must-be-alive-whenever-the-seat-is)'s **opportunistic respawn** —
   `fleet-reporter/fleet-reporter.js` spawns it with a copy of the hook's own environment.
   ⛔ **§ 2.3's SUPERVISED START inherits none of that, and on a healthy seat it is the flusher that
-  runs.** Its supervisor launches it, the user crontab on Linux or a Scheduled Task at logon on
-  Windows, from an environment the harness's settings never reach; and because the flusher lock is exclusive and a
+  runs.** Its supervisor launches it, the user crontab on Linux (Windows has no supervised start,
+  below), from an environment the harness's settings never reach; and because the flusher lock is exclusive and a
   hook respawns a flusher only once the lock has gone stale, the OS-started flusher is the one that
   reads the roster and emits every heartbeat for as long as it stays up. A contract that reached
   hooks alone would leave the steady-state heartbeat reading the home path — `unchecked` — on exactly
@@ -1266,15 +1272,21 @@ framework's, in another repository, and it can move without a single check here 
   branch. It is not assumed to be an environment the start definition carries of its own: a start
   definition need not carry one. **On Linux the route is the crontab entry's own `COORD_CONFIG=<path>`
   assignment**, written by `fleet-reporter/INSTALL-LINUX.md`'s supervision step (card#9368). **On
-  Windows the route is owed**: the Scheduled Task's launch delivering the value, built and validated
-  when the Windows agent seat onboards ([§ 16](#16-what-an-implementer-builds-from-this)'s Windows
-  precondition, as ruled 2026-09-13).
+  Windows there is no supervised start to deliver it** (Option A, card#12335): every flusher is one a
+  hook spawned, so the route is the harness's settings `env` block, which the hook inherits and hands
+  to the flusher it spawns. The install reads `COORD_CONFIG` from those settings and sets nothing of
+  its own (`fleet-reporter/INSTALL-LINUX.md` § Installing on a Windows seat). Whether a hook Claude
+  Code runs on Windows carries that `env` block was not measured before card#12335 merged; the
+  heartbeat's `read_via` reports which roster the flusher read
+  ([§ 16](#16-what-an-implementer-builds-from-this)'s Windows precondition).
   ⚠ **A value resolved once goes stale when the coordination config moves.** The launch goes on
   delivering the path as it stood at install, so the same contract requires the install to
   **rewrite the start definition and restart the flusher when that value changes**. A running
   flusher keeps the environment it was launched with, so a rewrite alone changes nothing until that
   process exits. On Linux that means re-running the runbook's supervision step, which replaces its
-  crontab block and stops the running flusher. Until it
+  crontab block and stops the running flusher. On Windows there is no start definition to rewrite:
+  the new value reaches a flusher spawned by a hook after the settings changed, so the running one
+  must exit first, and the Windows section's upgrade step U6 stops it. Until it
   does, the flusher reads the old path: `unchecked` where nothing remains there, or a check against a
   roster nothing else on the box still reads where a copy does. Neither fails an act, which is why
   [§ 18.13](#1813-what-this-section-does-not-establish) row 6 names it. ⛔ **The flusher does not
@@ -7666,7 +7678,7 @@ values no published rule derived.
 | 6 | **`attention.request` exists**, ~~classified client-side from `Notification`~~ **mapped from the harness's `notification_type`** | omit it; let D2 derive *blocked* from its status tiers | `docs/PLAN.md § 7` requires *blocked* as a rendered state and no other hook supplies it | **Amended 2026-08-23 (round 2):** *blocked* is now a **pair** — `attention.request` / `attention.resolved` ([§ 6.13](#613-attentionresolved)). The original had an entry event and no exit event, so a seat entered *blocked* once and rendered it forever. **Amended 2026-08-23 (round 3):** the "knowingly-fragile classifier, instrumented rather than trusted" is **deleted**. It matched English wording against a payload that carries `notification_type` — a harness-supplied field naming the kind directly — so it would have returned `other` on every real notification and its watching predicate would have gone constant on day one. Instrumenting a fragile classifier is the wrong move when the field that removes the need for one is in the same payload (canon: read the field, do not instrument the guess). The hook is now also **gated** on that field, which is the one carve-out to [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 2 — see row 29 |
 | 7 | **`turn.start` carries `prompt_chars`** | carry nothing about the prompt | a length is a size, not content, and distinguishes a nudge from a pasted brief | if review reads a length as content-adjacent, deleting the field is compatible |
 | 8 | **The `lifo_tool_name` match fallback** exists at all | require a harness call reference; drop the close if absent | dropping a close would put an unmatched call into the ledger — the failure this design forbids | can swap two concurrent same-tool calls' ids and durations; **cannot** affect counts or outcomes, so `D2-MUST` #1 is untouched. **Amended 2026-08-23:** `tool_use_id` is documented on **both** `PreToolUse` and `PostToolUse`, so `harness_ref` is expected to win essentially always; the fallback is now a backstop whose *use* is a defect signal, and tombstone matching sits between it and synthesis |
-| 9 | **The flusher is OS-supervised *and* hook-respawned** | hook-respawn only (no OS integration) | respawn-only means an idle seat stops heartbeating and renders `offline` while it is merely quiet — destroying the idle/offline distinction the product depends on | install complexity on two platforms: on Linux `fleet-reporter/INSTALL-LINUX.md`, and on Windows mechanics owed when the Windows agent seat onboards |
+| 9 | **The flusher is OS-supervised *and* hook-respawned** | hook-respawn only (no OS integration) | respawn-only means an idle seat stops heartbeating and renders `offline` while it is merely quiet — destroying the idle/offline distinction the product depends on | install complexity on two platforms: on Linux `fleet-reporter/INSTALL-LINUX.md`. **Amended 2026-10-25 (Option A, card#12335): on Windows the alternative is taken** — hook-respawn only, no Scheduled Task — so a Windows seat whose flusher has stopped (at logoff or a reboot) renders `offline` rather than idle until a session's next hook starts one, the cost this row names; the procedure is `fleet-reporter/INSTALL-LINUX.md` § Installing on a Windows seat ([§ 2.3](#23-the-flusher-must-be-alive-whenever-the-seat-is) item 1) |
 | 10 | **`GET /api/ingest/health` requires a seat token** | unauthenticated health surface | the accepted-version set is fleet-internal, and everyone who needs it already holds a token | an operator without a token must read the deployed declaration instead |
 | 11 | **`session.end` is an observation from the `SessionEnd` hook**, with one inferred member (`inferred_silence`, 90 min) | keep the four-way inference (`cleared` / `superseded` / `compacted` / 6 h stale) that an earlier draft built on the premise that no session-end hook exists | the premise was false — `SessionEnd` exists with a documented `reason` set. Reading a session's end from the harness that ended it is strictly better than inferring it from three side effects | if `SessionEnd` does not fire on some path, that path closes on the 90-minute silence rule instead, and `session_reopened` says so. The inference did not become *less* available; it became the fallback |
 | 12 | **Every reap and index rule is keyed by `session_id`**, and the supersede-on-different-session rule is deleted | keep reaping whenever a hook carries an unfamiliar `session_id` | two terminals on one seat is ordinary (`open_sessions` is bounded at 16), and under the old rule each session aborted the other's healthy calls, making *idle* unreachable on both and minting a `session.end` storm | a session that genuinely ends without a `SessionEnd` now waits for the 90-minute rule rather than being closed by its successor's first hook — and the second `/clear` signal's activity pick, kept then, is deleted by row 53 |
@@ -7766,11 +7778,16 @@ These are hard requirements before anything downstream may treat this telemetry 
 [§ 11](#11-the-spool-and-the-flusher) is cross-platform by design and unproven until then; and
 **AT-21**, because a schema this document transcribed from another product is only as good as the
 check that reds when it moves — and this document has already shipped that transcription wrong twice.
-⚠ **The install precondition's Windows leg is deferred, by operator ruling on 2026-09-13.** Windows
-validation is not required now: the validated Linux install (`fleet-reporter/INSTALL-LINUX.md`,
-card#9368) satisfies the precondition for the present. A real install on a Windows seat is owed when
-the Windows agent seat onboards, which is a real Windows machine, and until then every Windows-specific
-assumption above (`%LOCALAPPDATA%`, `%APPDATA%`, the Scheduled Task, `windowsHide`) stays unproven.
+⚠ **The install precondition's Windows leg: a procedure exists, a real install is still owed.** The
+operator's ruling of 2026-09-13 deferred Windows validation, with the validated Linux install
+(`fleet-reporter/INSTALL-LINUX.md`, card#9368) satisfying the precondition meanwhile; the request of
+2026-10-25 lifted that deferral (card#12335). The procedure is `fleet-reporter/INSTALL-LINUX.md`
+§ Installing on a Windows seat, with no supervised start ([§ 2.3](#23-the-flusher-must-be-alive-whenever-the-seat-is)
+item 1). Before it merged it was performed on a Windows seat against a scratch install through W5,
+with each hook run by hand rather than fired by a session. A real install on a Windows seat, from the
+merged runbook, is the measurement that remains, and until it lands the Windows-specific assumptions
+above (`%LOCALAPPDATA%`, `%APPDATA%`, `windowsHide`, and a session-fired hook carrying the settings'
+`env` block) stay unproven at a real site.
 
 **A re-capture is part of a harness upgrade, not a follow-up to one.**
 [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) obligation 2 **owns the trigger and its
