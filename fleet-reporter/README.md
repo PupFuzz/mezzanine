@@ -38,9 +38,10 @@ runbook it does not match, and a second run on a current seat changes nothing. A
 to install the reporter follows [`AGENT-INSTALL.md`](AGENT-INSTALL.md), which has the user enter the seat
 token at a hidden prompt so it never passes through the agent. The install needs no root, and the user
 crontab supervises the flusher. That runbook was performed to connect the first reporting seat
-(card#9368), and it argues why cron and not a `systemd --user` unit. **No Windows procedure exists
-yet.** One is owed when the Windows agent seat onboards; until then, by operator ruling on 2026-09-13,
-D1 § 16 does not require Windows validation (D1 § 3.1 names the Windows route owed).
+(card#9368), and it argues why cron and not a `systemd --user` unit. **On Windows, the procedure is
+[`INSTALL-LINUX.md` § Installing on a Windows seat](INSTALL-LINUX.md#installing-on-a-windows-seat-option-a-hooks-start-the-flusher)**
+(card#12335). The hooks are the flusher's only start there, with no supervisor (Option A, operator ruling
+on 2026-10-25), so a Windows seat on which no Claude Code session is running reads `offline`, by design.
 
 ## Updating a seat — every update is required
 

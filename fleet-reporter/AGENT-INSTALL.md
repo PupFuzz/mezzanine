@@ -2,7 +2,8 @@
 
 **You are a Claude Code agent, and the user has asked you to install the Mezzanine reporter on this
 machine.** Follow this page from top to bottom. It needs no coordination framework, no root and no
-`sudo`, and it works on Linux only. At the end the user's Claude Code activity on this account reaches
+`sudo`. The procedure on this page runs on Linux; on Windows, [step 1](#1-check-the-machine) sends you
+to the Windows section of `INSTALL-LINUX.md` instead. At the end the user's Claude Code activity on this account reaches
 their Mezzanine site, where it appears as a desk on the floor.
 
 The reporter, `fleet-reporter`, is a set of Claude Code hooks plus one background process. The install
@@ -26,8 +27,10 @@ terminal, so that command refuses to run from your Bash tool: it is the user's t
 uname -s && git --version
 ```
 
-It must print `Linux`. On macOS or Windows, stop and tell the user that this install is Linux only;
-`INSTALL-LINUX.md` names what is owed for Windows. `install.sh` checks `node` (18 or later), `flock` and
+It must print `Linux`. **On Windows, do not run `install.sh`**: it runs the runbook's Linux bash blocks.
+Follow [the Windows section of `INSTALL-LINUX.md`](INSTALL-LINUX.md#installing-on-a-windows-seat-option-a-hooks-start-the-flusher)
+instead, in which the operator carries the token to the seat. On macOS, stop and tell the user that this
+install does not cover it. `install.sh` checks `node` (18 or later), `flock` and
 `crontab` itself, and names any that is missing.
 
 ## 2. Get the code

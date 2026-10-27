@@ -371,7 +371,7 @@ overlap where the dependency arrows allow. "Accept:" lines are the review floor,
 | | D2 fleet-state + feed (new card) | D1 | review; snapshot+delta contract explicit |
 | | D3 floor UI spec (card#7457) | D2 draft | review; identity mapping defined |
 | **P1 telemetry** | `fleet-reporter` core: spool + flusher (#7335) | D1 | hermetic selftest; **never blocks the agent**; survives server down; sanitizer has RED fixtures |
-| | installer, Linux (#7336): `fleet-reporter/install.sh` runs `fleet-reporter/INSTALL-LINUX.md`'s blocks (card#9368's runbook), and a Claude Code agent runs it by `fleet-reporter/AGENT-INSTALL.md`. A Windows procedure is owed when the Windows agent seat onboards | #7335 | a real install on a seat before anything trusts the signal. **Operator ruling 2026-09-13:** Windows validation is not required now, the validated Linux install satisfies this for the present, and Windows validation is owed at the Windows agent seat's onboarding (D1 § 16) |
+| | installer, Linux (#7336): `fleet-reporter/install.sh` runs `fleet-reporter/INSTALL-LINUX.md`'s blocks (card#9368's runbook), and a Claude Code agent runs it by `fleet-reporter/AGENT-INSTALL.md`. A Windows seat installs by `fleet-reporter/INSTALL-LINUX.md` § Installing on a Windows seat (card#12335, Option A: no supervised start) | #7335 | a real install on a seat before anything trusts the signal. **Operator ruling 2026-09-13:** Windows validation is not required now, the validated Linux install satisfies this for the present, and Windows validation is owed at the Windows agent seat's onboarding (D1 § 16); a real install from the Windows section is that validation |
 | | kill-vs-idle proof (#7337) | #7335 | the D1-specified test, run for real against a `/clear` |
 | **P2 server** | Laravel skeleton + MFA on stock packages (#7334, re-scoped per D-04) | — | Fortify + TOTP; MFA gates page, **the feed** (SSE since card#9287), and REST snapshot; seat-token ingest is separate and never browser-facing |
 | | ingest endpoint (#7338) | D1, skeleton | rejects unknown schema loudly; per-seat tokens; rate limits; statusLine sampled not streamed |
@@ -762,9 +762,11 @@ rule violations anyone could have committed at the time.
   unreadable or gone, `chmod` restores an unreadable one in place, a GONE one is replaced by swapping
   `.git` alone out of a `git clone --no-checkout` then `checkout --force`, and
   `repack -a -d` confirms — it refuses outright if anything reachable cannot be read. It says outright that
-  `git fetch` CANNOT bring that object back (fetch negotiates from refs, and this checkout's refs already
-  claim the commit, so the remote is never asked — measured, git 2.53.0: exit 0 and nothing transferred with
-  the object unreadable, exit 0 and the object still gone with it deleted), and it says outright not to
+  `git fetch` CANNOT bring that object back (fetch asks the remote only for the tips of its refs that this
+  checkout lacks, so whether this checkout's refs already claim the commit or no ref names it at all, the
+  remote is never asked for the objects behind it — measured, git 2.53.0: exit 0 and nothing transferred with
+  the object unreadable, exit 0 and the object still gone with it deleted; git 2.56.0 refuses that fetch
+  outright, exit 128, when the object is one it reads while negotiating — card#12477), and it says outright not to
   re-clone the deploy root: `server/.env` is created on the host and is in no commit, so its `APP_KEY` and
   `DB_PASSWORD` exist nowhere else, and a fresh clone would take `server/storage/` and the `.deploy-failed`
   marker — the logs and the marker the failure banner sends the operator to — with it. And **a release
