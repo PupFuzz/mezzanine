@@ -1511,7 +1511,7 @@ CREATE TABLE seats (
 -- ⏳ And one one-row table the same migration seeds, the allocation MUTEX (§ 6.13):
 --   CREATE TABLE species_allocation_lock (id TINYINT UNSIGNED NOT NULL PRIMARY KEY) with its one
 --   row `id = 1`, locked FOR UPDATE as the first statement of every allocation, and locked by
---   allocations only.
+--   `issue()` and the migration's backfill only.
 
 CREATE TABLE seat_board_task (
   seat_ref        INT UNSIGNED NOT NULL PRIMARY KEY,
@@ -3163,8 +3163,7 @@ shared fixture helper rather than three hand-written inserts (Appendix B row 15)
 
 **Concurrency — two seats created at once, on this store's one login: a one-row MUTEX, because seat
 creation is a rare operator act** (`SELECT DATE(created_at), COUNT(*) FROM seats GROUP BY 1` re-prints
-its rate; on the sandbox store on 2026-10-27 it read creations on five days of the store's life, in
-bursts of an operator's session)**.** The migration seeds a one-row table, `species_allocation_lock`
+its rate — a handful of creation days in a store's life, in bursts of an operator's session)**.** The migration seeds a one-row table, `species_allocation_lock`
 ([§ 6.4](#64-ddl)'s ⏳ comment), and every allocation — `issue()`'s insert path and the migration's own
 backfill — takes `SELECT id FROM species_allocation_lock WHERE id = 1 FOR UPDATE` as **the transaction's
 FIRST statement, on every path**, before the `uq_seat` lookup `issue()` already makes. The live population
@@ -6707,32 +6706,50 @@ predicate (card#11818 part 2).
 *Designed for card#12443 (revised at design review r1, 2026-10-27) —
 [§ 6.13](#613-the-character-allocation--one-species-per-seat-allocated-at-creation-and-kept-for-life)'s
 five rules, its preference order, its mutex, its lazy layout read and its two-pass migration, each a
-property of this plane's own code. Its home is
-`server/tests/Feature/Fleet/ASeatsCharacterIsAllocatedOnceTest.php`, **its own class on the
-real-commit rig `Tests\Feature\Fold\CommittedSeatTestCase`** — the shape of
-`SeatRetirementLockOrderTest` — because the concurrency legs need a probe connection that sees
-committed rows and contends for real locks, which `RefreshDatabase`'s transaction cannot give; the rig's
-`tearDown()` resets `SeatTokens::$afterMutex` beside the seams it already resets. The pure function's
-legs are a unit test over `CharacterAllocation::choose()` with no store.*
+property of this plane's own code. **Two homes, split by what each needs from the store:**
+`server/tests/Feature/Fleet/ASeatsCharacterIsAllocatedOnceTest.php` on `RefreshDatabase` carries the
+rules, the floor, the unreadable-layout, the wire and the migration legs — they commit a second
+install's seats, a refused global `building_layout` row, `authored_revisions` and `global_counters`,
+which a rig that cleans only its own install would leak into every later test and into this test's own
+exhaustion arithmetic, and `RefreshDatabase`'s transaction discards all of it; and
+`server/tests/Feature/Fleet/SeatCharacterAllocationLockOrderTest.php`, **its own class on the
+real-commit rig `Tests\Feature\Fold\CommittedSeatTestCase`** in `SeatRetirementLockOrderTest`'s shape,
+carries the two concurrency legs only, within the rig's single install — a probe connection that sees
+committed rows and contends for real locks is what `RefreshDatabase` cannot give. The rig's `tearDown()`
+resets `SeatTokens::$afterMutex` beside the seams it already resets. The pure function's legs are a unit
+test over `CharacterAllocation::choose()` with no store.*
 
-- **Build:** the rig's store as `CommittedSeatTestCase` leaves it — the subclass's own install, every
-  row of it deleted in `tearDown()` and again in `setUp()` for a run that crashed before — and the
-  generator's list, read through `App\Characters\SpeciesList`. Issue
+- **Build (`RefreshDatabase` half):** an empty store inside the test's transaction and the generator's
+  list, read through `App\Characters\SpeciesList`. Issue
   tokens for `SPECIES_KEYS.length` seats across two installs, then one more; retire the seat holding the
   list's first species (`SPECIES_KEYS[0]`); issue another; re-issue a token to an existing seat. For the
   floor leg, save a layout composing the two installs onto one floor and repeat the over-full step. For the
   unreadable-layout leg, write a `building_layout` row the parser refuses (`"floors": {}`) and repeat
-  both an under-full and an over-full issue. For the concurrency legs, [AT-D2-22](#at-d2-22-concurrent-ingest-cannot-strand-an-event-behind-the-cursor)'s
-  **position pattern**, twice: one issue for a NEW seat run through a test seam placed right after the
-  mutex lock (`SeatTokens::$afterMutex`, the shape of `SeatRetirement::$beforeRetire`), at which a PROBE
-  connection *(presence)* runs `SELECT id FROM species_allocation_lock WHERE id = 1 FOR UPDATE NOWAIT`,
-  and, in a second run, *(outcome)* **commits a live seat of the same install holding the issuing
-  seat's own draw** — a test-only insert, since no application path inserts a seat without the mutex —
-  and lets the issue proceed. No second issue, no interleaving to schedule, nothing for a lock wait
-  to exhaust; the outcome run is what tells *the mutex is held* from *the mutex is held FIRST*. For the migration leg, two `seats` fixtures run through the migration's backfill: one whose keys
+  both an under-full and an over-full issue. For the migration leg, two `seats` fixtures run through
+  the migration's backfill: one whose keys
   collide under `speciesOf` (two seats drawing one species, the later created second), and **the cascade
   fixture** — seat A and seat B drawing one species, and seat C, created after B, whose unique draw is
   the species B's preference order reaches first.
+- **Build (committed-rig half):** the rig's store as `CommittedSeatTestCase` leaves it — its one
+  install, holding the `<install>-pm` seat the rig provisions through the real issue command, every row
+  of that install deleted in `tearDown()` and again in `setUp()` for a run that crashed before; nothing
+  of any other install is touched or cleaned, which is why only these legs live here. Then
+  [AT-D2-22](#at-d2-22-concurrent-ingest-cannot-strand-an-event-behind-the-cursor)'s **position
+  pattern**, twice: one issue for a NEW seat of the rig's install run through a test seam placed right
+  after the mutex lock (`SeatTokens::$afterMutex`, the shape of `SeatRetirement::$beforeRetire`), at
+  which a PROBE connection — its session pinned to `innodb_lock_wait_timeout = 1`, as
+  `FoldLockFirstTest` pins its gap connection's — *(presence)* runs `SELECT id FROM
+  species_allocation_lock WHERE id = 1 FOR UPDATE NOWAIT`, and, in a second run, *(outcome)* **commits a
+  live seat of the rig's install holding the issuing seat's own draw**, its `seat_id` chosen to sort
+  into the issuing seat's `uq_seat` gap (`(install_ref, seat_id)` adjacent to it) — a test-only insert,
+  since no application path inserts a seat without the mutex — and lets the issue proceed.
+  **Precondition, asserted before the seam:** the issuing seat's own draw is free, and the live
+  population of the store — the rig's `<install>-pm` seat counted — is below `SPECIES_KEYS.length`, so
+  the leg is reading rule 1 and not rule 2 or 3. No second issue and no interleaving to schedule; the
+  probe's one-second wait is what bounds a plant that makes it wait, and `FoldLockFirstTest`'s
+  `recordFoldTransactions()` statement-position assertion is the optional third witness that the mutex
+  statement came first. The outcome run is what tells *the mutex is held* from *the mutex is held
+  FIRST*.
 - **GREEN — rule 1:** the first `SPECIES_KEYS.length` seats hold all-distinct species, and each whose
   own draw (`Draw::pick` at `SPECIES_FIELD`) was free at its creation holds exactly that draw; and
   while rule 1 answers, `Layouts::read()` is not called (a spy on the reader, or the unreadable row left
@@ -6783,10 +6800,13 @@ legs are a unit test over `CharacterAllocation::choose()` with no store.*
   population's plain read above the mutex lock → the presence leg still passes (the lock is held at the
   seam), and the **outcome leg reds on species**: the issuing seat is allocated its own draw, the one
   the probe's committed seat holds, because its snapshot predates the probe. Its sibling plant — the
-  `uq_seat` lookup moved above the mutex — reds the outcome leg by a different route, a `1213` broken
-  by the server, as the design review measured on MariaDB 11.8.6 under REPEATABLE READ (round 4); the
-  leg reports whichever it meets by name, and the plant that moves the seam instead of the code is
-  the one this RED deliberately is not.
+  `uq_seat` lookup moved above the mutex — reds the outcome leg by one of two routes **in this
+  harness**: the probe's insert into the issuing seat's `uq_seat` gap waits on that lookup's gap lock
+  and times out at its pinned one second (`1205`), or, where the server lets it through, the issuing
+  seat is allocated the probe's species and the leg reds on species. (The `1213` the review measured on
+  MariaDB 11.8.6 under REPEATABLE READ in round 4 is the two-creations shape, which this one-issue
+  harness does not form.) The leg reports whichever it meets by name, and the plant that moves the seam
+  instead of the code is the one this RED deliberately is not.
 - **Third RED — the floor read as the install:** resolve rule 2's population from the seat's install
   alone with the composed layout saved → the over-full seat takes a species its floor-mate holds.
 - **Fourth RED — the layout read eagerly:** call `Layouts::read()` before rule 1 → with the refused row
@@ -7004,7 +7024,7 @@ review can reverse it deliberately rather than discover it later.
 | 58 | ⚠ **WITHDRAWN at r2 — moot: r1 F1/F7's thread object and client thread hold served the thread line the operator retired the same day.** The surviving part of r1 is the receipt's concurrency primitive and fault discipline (F3), now at [§ 6.12](#612-the-coordination-store) | — | — | — |
 | 59 | **card#11818 part 2 (seat ruling, reversible): a seat whose last reported reporter build is behind the server's `CURRENT_REPORTER_VERSION` is BADGED `update_required` and its batches are still accepted; `MIN_REPORTER_VERSION` keeps its informational meaning and `ACCEPTED` alone refuses** ([§ 7.2](#72-this-planes-own-counters-and-badges)) | raise `MIN_REPORTER_VERSION` to the current build and refuse a lower reporter at the ingest, in the shape of D1 § 12.1 step 6's schema refusal | the operator's rule is that a seat which skipped an update is VISIBLE. A refusal empties the one surface the rule asks for: the refused seat's desk goes dark within 900 s, and under D1 § 11.5 the refusal is permanent for that batch. A badge marks the seat while it keeps reporting, the drill-down names the build it runs, and the badge survives the seat going quiet. The badge is a current comparison rather than a windowed counter because the condition has no rise to date and does not lapse | an operator finds a stale seat by reading the floor or the seat object, never from an ingest counter; a seat that is behind AND dark shows the badge on an empty chair for as long as the store still holds one of its batches, which is the honest picture; after a rebuild that finds none (dark past `batches` retention) the badge is gone with the version it was judged on, the same loss every batch-sourced reporter field carries, and no fallback is built for it. Reversible: moving `CURRENT_REPORTER_VERSION` is a release act its docblock already names, and removing the badge is a change to `Badges::SERVER` and its one comparison |
 | 60 | **card#12210 (operator ruling opq-1792660567-cb5f, 2026-10-22, option A): the `seq_gap` rule runs at the ingest, once per accepted batch, over every `seq` the batch carried — stored, duplicate and ignored unknown kinds — against a received mark the ingest keeps on `seat_state`** ([D1 § 10.2](EVENT-SCHEMA.md#102-ordering-seq-and-gap-detection)) | keep the rule in the fold and give it each batch's received range (`batches.seq_min` / `seq_max`) read beside `reporter_version` | the fold visits stored rows only: a request that is all duplicates and carries no heartbeat stores no row, so the fold never visits it and its range never advances the mark — the false gap moves to the next stored row. Closing that from the fold needs a running maximum over earlier batches per event and a new index; the ingest already holds every `seq` of the batch, under the seat lock, exactly once | one more rule on the request path (a max and one count over a batch's seqs, a counter write only when a gap exists) and three `seat_state` columns in an update the transaction already makes. Not counted: a refused batch's run is still a gap; a real loss between the last batch a build that does not maintain the mark accepted and the first batch one that does accepts (the first deploy, every roll-forward or re-land after a rollback or revert) — that batch sets the mark; and a loss across an epoch change, which on a seat fed by two lanes under two epochs (one server under two spellings) is every loss there, since the mark changes on every accepted batch of the other epoch, stored rows or not |
-| 61 | **Designed for card#12443 (2026-10-26), the operator's ask: a seat's SPECIES is allocated by this plane at the seat's creation, stored on `seats.species`, unique among live seats while the list allows, then unique on the seat's floor, then least-used; kept for life; freed by retirement through the read filter** ([§ 6.13](#613-the-character-allocation--one-species-per-seat-allocated-at-creation-and-kept-for-life), [§ 6.4](#64-ddl), [§ 8.2.1](#821-the-seat-state-object)) | **(A)** keep the pure hash and re-search the salt whenever the live fleet repeats a body — the mechanism FLOOR.md § 10.4's salt bullet names; **(B)** allocate in the client — each browser picks a free species over the snapshot it holds; **(C)** a `UNIQUE` index over `(species, live)` as the guarantee; **(D)** a table of its own, `seat_characters`, with the allocation's time and the rule that fired; **(E)** a named lock (`GET_LOCK`) for the concurrency instead of the one-row mutex | (A) cannot hold the property: a salt is one pass over one roster, the fleet is unbounded and seats are minted after any search — the sandbox repeated three bodies within four days of the last re-pick, and each re-pick re-draws approved bodies (decision 73's cost, paid twice already). (B) makes two browsers disagree — the one property FLOOR.md § 3.1 holds for the character — and a reload would re-pick. (C) enforces what rules 2 and 3 deliberately relax: once the list is exhausted a repeat is correct, so uniqueness is a preference and the store must not refuse it. (D) is a second row per seat to free, join and retain for one value that is freed by the seat's own `retired_at`; a column on `seats` is freed by the predicate every read already applies, and the allocation's own time is the seat's `created_at`. (E) is a second serialisation primitive beside the row-lock form `Layouts::serialise()` already uses for the building layout, with nothing the one-row mutex lacks — the allocation rate is the seat-creation rate, re-printed by `SELECT DATE(created_at), COUNT(*) FROM seats GROUP BY 1` (five creation days in the sandbox store's life on 2026-10-27, bursty), so what the mutex costs (one row lock per rare operator act) is the right size | two columns and a one-row mutex table, one row lock at seat creation — **the mutex replaced a full-scan locking read after three review rounds each found a defect in the concurrency class (r1: lock order against `issue()`'s own `uq_seat` gap lock; r2: a test asserting the absence of an error; r3: a harness in which that test could neither pass nor discriminate), at which the review's pre-committed tripwire stopped the patching and re-derived upstream: seat creation is a rare operator act, so it needs a mutex, not next-key semantics** — a `feed_version` bump so a page from before the release banners instead of drawing the key's bodies, two field rows and the bytes [§ 8.2.1](#821-the-seat-state-object)'s size table re-measures, a strict parse of the generator's list and a PHP port of its draw, each guarded against `node`; and the first stored appearance fact, which FLOOR.md § 10.4 called a disguise — it is not one, because it is stored for every seat on the one plane every browser reads, and the rest of the appearance stays a pure function of the key. Reversing it is dropping the column and the two rows and restoring `speciesOf` as the body's source, with the repeats that implies |
+| 61 | **Designed for card#12443 (2026-10-26), the operator's ask: a seat's SPECIES is allocated by this plane at the seat's creation, stored on `seats.species`, unique among live seats while the list allows, then unique on the seat's floor, then least-used; kept for life; freed by retirement through the read filter** ([§ 6.13](#613-the-character-allocation--one-species-per-seat-allocated-at-creation-and-kept-for-life), [§ 6.4](#64-ddl), [§ 8.2.1](#821-the-seat-state-object)) | **(A)** keep the pure hash and re-search the salt whenever the live fleet repeats a body — the mechanism FLOOR.md § 10.4's salt bullet names; **(B)** allocate in the client — each browser picks a free species over the snapshot it holds; **(C)** a `UNIQUE` index over `(species, live)` as the guarantee; **(D)** a table of its own, `seat_characters`, with the allocation's time and the rule that fired; **(E)** a named lock (`GET_LOCK`) for the concurrency instead of the one-row mutex | (A) cannot hold the property: a salt is one pass over one roster, the fleet is unbounded and seats are minted after any search — the sandbox repeated three bodies within four days of the last re-pick, and each re-pick re-draws approved bodies (decision 73's cost, paid twice already). (B) makes two browsers disagree — the one property FLOOR.md § 3.1 holds for the character — and a reload would re-pick. (C) enforces what rules 2 and 3 deliberately relax: once the list is exhausted a repeat is correct, so uniqueness is a preference and the store must not refuse it. (D) is a second row per seat to free, join and retain for one value that is freed by the seat's own `retired_at`; a column on `seats` is freed by the predicate every read already applies, and the allocation's own time is the seat's `created_at`. (E) is a second serialisation primitive beside the row-lock form `Layouts::serialise()` already uses for the building layout, with nothing the one-row mutex lacks — the allocation rate is the seat-creation rate, re-printed by `SELECT DATE(created_at), COUNT(*) FROM seats GROUP BY 1` (a handful of creation days in a store's life, bursty), so what the mutex costs (one row lock per rare operator act) is the right size | two columns and a one-row mutex table, one row lock at seat creation — **the mutex replaced a full-scan locking read after three review rounds each found a defect in the concurrency class (r1: lock order against `issue()`'s own `uq_seat` gap lock; r2: a test asserting the absence of an error; r3: a harness in which that test could neither pass nor discriminate), at which the review's pre-committed tripwire stopped the patching and re-derived upstream: seat creation is a rare operator act, so it needs a mutex, not next-key semantics** — a `feed_version` bump so a page from before the release banners instead of drawing the key's bodies, two field rows and the bytes [§ 8.2.1](#821-the-seat-state-object)'s size table re-measures, a strict parse of the generator's list and a PHP port of its draw, each guarded against `node`; and the first stored appearance fact, which FLOOR.md § 10.4 called a disguise — it is not one, because it is stored for every seat on the one plane every browser reads, and the rest of the appearance stays a pure function of the key. Reversing it is dropping the column and the two rows and restoring `speciesOf` as the body's source, with the repeats that implies |
 
 ---
 
