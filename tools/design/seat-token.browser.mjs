@@ -21,7 +21,7 @@
 //   back       navigating away and pressing Back shows no token
 //   bfcache    whether that Back was a back/forward-cache restore (`pageshow.persisted`): when it was, the token
 //              element must read as blanked; when it was not, the row reports NOT MEASURED, never a pass
-//   revoke     the row's revoke form with a reason revokes it and the list names the operator
+//   revoke     the row's revoke form, which takes no reason, revokes it and the list names the operator
 //
 // ⛔ THE TOKEN IS NEVER PRINTED. Rows print its prefix and its length; the plaintext stays inside the browser.
 
@@ -147,10 +147,10 @@ try {
   else row('bfcache', null, `pageshow.persisted=${persisted}; ${restored ? `not restored: ${restored.reasons.join(', ') || 'no reason given'}` : 'no restore reported'}`);
 
   await go(`${BASE}/admin/tokens`);
-  await submit(`form[action$="/admin/tokens/${prefix}/revoke"]`, { reason: 'browser walk' });
+  await submit(`form[action$="/admin/tokens/${prefix}/revoke"]`, {});
   const status = await evaluate('document.querySelector("[role=status]")?.textContent.trim() ?? ""');
   const record = await evaluate(`[...document.querySelectorAll('tbody tr')].find((r) => r.textContent.includes('${prefix}'))?.textContent.replace(/\\s+/g, ' ').trim() ?? ''`);
-  row('revoke', status.startsWith(`Revoked ${prefix}`) && record.includes(`by ${EMAIL}`) && record.includes('browser walk'),
+  row('revoke', status.startsWith(`Revoked ${prefix}`) && record.includes(`by ${EMAIL}`),
     `status "${status}"; row "${record.slice(0, 160)}"`);
 } catch (e) {
   row('walk', false, e.message);

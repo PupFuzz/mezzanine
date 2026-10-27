@@ -23,8 +23,7 @@ use Illuminate\Support\Facades\DB;
 class RevokeFeedToken extends Command
 {
     protected $signature = 'mezzanine:feed-token:revoke
-                            {prefix : the token prefix shown at issue time, e.g. mzr_kQ7aB2xZ}
-                            {--reason= : why, for the audit trail}';
+                            {prefix : the token prefix shown at issue time, e.g. mzr_kQ7aB2xZ}';
 
     protected $description = 'Revoke a fleet_read token by its prefix';
 
@@ -51,10 +50,7 @@ class RevokeFeedToken extends Command
         DB::table('feed_tokens')
             ->whereIn('id', $active->pluck('id'))
             ->whereNull('revoked_at')
-            ->update([
-                'revoked_at' => Clock::sql(now()),
-                'revoked_reason' => $this->option('reason') ?: null,
-            ]);
+            ->update(['revoked_at' => Clock::sql(now())]);
 
         foreach ($active as $row) {
             $this->line(sprintf('  revoked %s — %s', $prefix, $row->name));

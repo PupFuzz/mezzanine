@@ -330,10 +330,10 @@ seat — and the page shows the seat's reporter token once: copy it into the sea
 cannot show it again. The seat is on the floor from that moment, as *no data yet*, until its first
 batch (`docs/design/FLOOR.md § 3.4`). A seat that already holds a token gets a second one beside it,
 which is a rotation: revoke the old prefix on the same page once the seat's config holds the new one.
-A revoked token is refused on the seat's next request, and the list keeps who revoked it, when and
-why. A retired seat is refused a token; its replacement takes a new seat id. The same act runs from a
+A revoked token is refused on the seat's next request, and the list keeps who revoked it and when;
+a revocation takes no reason. A retired seat is refused a token; its replacement takes a new seat id. The same act runs from a
 shell as `php artisan mezzanine:ingest-token:issue <install_id> <seat_id>` and
-`mezzanine:ingest-token:revoke <prefix> --reason=…`.
+`mezzanine:ingest-token:revoke <prefix>`.
 
 **To install the reporter on a Linux seat, ask the seat's Claude Code agent in one sentence**, for
 example *"Install the Mezzanine reporter from github.com/PupFuzz/mezzanine on this machine."* The agent

@@ -89,7 +89,6 @@ class At19ReadAuthTest extends FeedTestCase
 
         $this->artisan('mezzanine:feed-token:revoke', [
             'prefix' => substr($token, 0, 12),
-            '--reason' => 'rotated',
         ])->assertSuccessful();
 
         $revokedAt = DB::table('feed_tokens')->value('revoked_at');

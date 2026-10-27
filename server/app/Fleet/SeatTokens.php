@@ -155,7 +155,7 @@ final class SeatTokens
      * the new token darkens the seat — it takes `401 unauthenticated`, which EVENT-SCHEMA § 11.5
      * makes the reporter's auth stop.
      */
-    public static function revoke(string $prefix, string $by, ?string $reason): SeatTokenRevocation
+    public static function revoke(string $prefix, string $by): SeatTokenRevocation
     {
         $rows = DB::table('ingest_tokens')
             ->join('seats', 'seats.id', '=', 'ingest_tokens.seat_ref')
@@ -186,14 +186,13 @@ final class SeatTokens
         $now = now()->format('Y-m-d H:i:s.v');
 
         // Guarded on `revoked_at IS NULL`, so a concurrent revocation of the same row is a no-op
-        // and the first author, time and reason are the ones kept.
+        // and the first author and time are the ones kept.
         DB::table('ingest_tokens')
             ->whereIn('id', $active->pluck('id'))
             ->whereNull('revoked_at')
             ->update([
                 'revoked_at' => $now,
                 'revoked_by' => $by,
-                'revoked_reason' => $reason ?: null,
             ]);
 
         $revoked = [];
@@ -215,7 +214,7 @@ final class SeatTokens
     /**
      * The console page's list: every token row joined to its seat and install, by install and seat,
      * newest first within a seat. Revoked rows stay, for the reason retired users stay on theirs:
-     * the row IS the record of who issued and revoked a token, when and why — there is no audit
+     * the row IS the record of who issued and revoked a token, and when — there is no audit
      * table (the `revoked_by` migration's docblock). `token_hash` and `last_used_ip` are not
      * selected.
      */
@@ -238,7 +237,6 @@ final class SeatTokens
                 'ingest_tokens.last_used_at',
                 'ingest_tokens.revoked_at',
                 'ingest_tokens.revoked_by',
-                'ingest_tokens.revoked_reason',
             ]);
     }
 }

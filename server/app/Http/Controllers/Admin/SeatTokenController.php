@@ -116,17 +116,10 @@ class SeatTokenController extends Controller
         return $this->page($request, $result);
     }
 
+    /** Records the operator and the time; a revocation takes no reason (card#12441). */
     public function revoke(Request $request, string $prefix): RedirectResponse
     {
-        $validator = Validator::make($request->only('reason'), [
-            'reason' => ['required', 'string', 'max:255'],
-        ]);
-
-        if ($validator->fails()) {
-            return redirect()->route('admin.tokens.index')->withErrors($validator, 'revoke');
-        }
-
-        $result = SeatTokens::revoke($prefix, (string) $request->user()->email, (string) $request->input('reason'));
+        $result = SeatTokens::revoke($prefix, (string) $request->user()->email);
 
         $back = redirect()->route('admin.tokens.index');
 

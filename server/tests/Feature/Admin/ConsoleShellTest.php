@@ -228,7 +228,7 @@ class ConsoleShellTest extends TestCase
             'admin.tokens.issue' => ['post', route('admin.tokens.issue'), [
                 'issue_key' => 'x', 'install_id' => 'aimla', 'seat_id' => 'aimla-pm',
             ]],
-            'admin.tokens.revoke' => ['post', route('admin.tokens.revoke', 'mzn_abcdefgh'), ['reason' => 'x']],
+            'admin.tokens.revoke' => ['post', route('admin.tokens.revoke', 'mzn_abcdefgh'), []],
         ];
     }
 
