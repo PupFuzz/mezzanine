@@ -90,7 +90,7 @@ globalThis.clearInterval = () => {};
 const { deskModel } = await mod('desk/desk-render.js');
 const { placeDesk, placeBubbles } = await mod('floor/scene.js');
 const { createPainter, measurer, STYLE } = await mod('floor/painter.js');
-const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_BAND, STOOL_PITCH, FOLD_LAG_OPACITY } = await mod('floor/desk-layout.js');
+const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_BAND, stoolSlots, FOLD_LAG_OPACITY } = await mod('floor/desk-layout.js');
 
 /**
  * The character tree, stubbed: a frame is an SVG document naming the `(install, seat key, frame)` it was
@@ -356,7 +356,10 @@ function characterPort(key, e) {
 
 /** § 10.4's frame contract item 3 (card#12259): an intern's viewport is its stool's rect widened to the row's pitch. */
 function internPort(e) {
-    return { x: e.x - (STOOL_PITCH - e.w) / 2, y: e.y, w: STOOL_PITCH, h: e.h };
+    // the row's pitch, as the layout derives it from the box (`stoolSlots()`, card#12444's two rows)
+    const pitch = stoolSlots(BOX, { w: 18, h: 32 })[0].pitch;
+
+    return { x: e.x - (pitch - e.w) / 2, y: e.y, w: pitch, h: e.h };
 }
 
 /**

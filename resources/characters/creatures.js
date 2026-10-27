@@ -911,13 +911,13 @@ function rimOf(markup) {
 export const SEAT_RECT = Object.freeze({ x: 0, y: 0, w: 108, h: 192 });
 /**
  * THE INTERN's CHIBI FRAME: the intern rect's 108 × 172.8 units (the rect's aspect, the last 172.8 units above the foot)
- * widened to the stool PITCH the floor lays interns at — `108 × pitch / width` units wide, `floor/desk-layout.js`'s
- * `STOOL_PITCH` over its `STOOL_W` (card#12444: 25 px stools on a 28 px pitch) — all the room a row of interns has (two
- * frames meet at the pitch and never overlap), which the upright chibi frame's widest heads fit (`frameDocument()`;
- * `tools/characters/selftest.mjs` § 8b measures the margin left). The floor draws it into the intern's overdraw rect
- * (`internOverdraw()`); the two are held equal by `tools/characters/selftest.mjs` § 7b.
+ * widened to the PITCH the floor lays interns at — `108 × pitch / width` units wide, the pitch `floor/desk-layout.js`'s
+ * `stoolSlots()` derives over its `STOOL_W` (card#12444's ruling D: 40 px stools, four to a row, a 56 px pitch) — all the
+ * room a row of interns has (two frames meet at the pitch and never overlap), which the upright chibi frame's widest heads
+ * fit (`frameDocument()`; `tools/characters/selftest.mjs` § 8b measures the margin left). The floor draws it into the
+ * intern's overdraw rect (`internOverdraw()`); the two are held equal by `tools/characters/selftest.mjs` § 7b.
  */
-export const CHIBI_VIEWBOX = Object.freeze({ x: -6.48, y: 19.2, w: 120.96, h: 172.8 });
+export const CHIBI_VIEWBOX = Object.freeze({ x: -21.6, y: 19.2, w: 151.2, h: 172.8 });
 const FOOT = 188;
 
 /** The chibi frame's least head share — FLOOR.md § 12's *Intern head share* row. */

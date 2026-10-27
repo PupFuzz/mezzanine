@@ -5124,7 +5124,7 @@ authored, and what the floor reads of it is [FLOOR.md § 10.3](FLOOR.md#103-the-
            "tilesets": [ { "firstgid": 1, "source": "tiles/floor-plane.tsx" } ],
            "layers": [ { "type": "tilelayer", "name": "floor", "data": [ 4, 4, 4 ] },
                        { "type": "objectgroup", "name": "desks",
-                         "objects": [ { "id": 1, "x": 64, "y": 96, "width": 440, "height": 252 } ] } ] }
+                         "objects": [ { "id": 1, "x": 64, "y": 96, "width": 440, "height": 307 } ] } ] }
 }
 ```
 

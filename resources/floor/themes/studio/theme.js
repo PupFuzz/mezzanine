@@ -970,12 +970,13 @@ export function deskProps({ install_id: installId, seat_id: seatId }) {
 }
 
 /**
- * The side table's rect (its foot line its bottom edge) and the seats' row: § 12's seats, one under each intern's place
- * on the interns' row `desk-layout.js` lays (`STOOL_W`, `STOOL_PITCH`, from the table's inset). A theme is handed the
- * seat count and nothing else (FLOOR.md § 10.6 item 2), so the row is stated here, and `tools/floor-themes/selftest.mjs`
- * holds the seats this module draws under the layout's own intern rects — a row that drifts from the layout's reds.
+ * The side table's rect (its foot line its bottom edge) and the seats' rows: § 12's seats, one under each intern's place
+ * on the interns' rows `desk-layout.js` lays (`stoolSlots()`: `per_row` to a row at `seat_pitch` from the table's
+ * inset, each row behind the front one `row_dy` higher; card#12444's ruling D). A theme is handed the seat count and
+ * nothing else (FLOOR.md § 10.6 item 2), so the rows are stated here, and `tools/floor-themes/selftest.mjs` holds them to
+ * the layout's own slots — a row that drifts from the layout's reds. The table itself is the rect's bottom 42 px.
  */
-const TABLE = Object.freeze({ w: 228, h: 42, seat_x: 4, seat_pitch: 28, seat_w: 25 });
+const TABLE = Object.freeze({ w: 228, h: 110, seat_x: 4, seat_pitch: 56, seat_w: 40, per_row: 4, row_dy: 68 });
 
 /**
  * THE SIDE TABLE, at every desk with art: a low tea table with a teapot at its far end and cushion seats in
@@ -993,8 +994,8 @@ export function sideTable({ install_id: installId, seat_id: seatId, seats }) {
     const foot = TABLE.h;
     const top = foot - 24;
     const x = 0;
-    // as wide as its seats need and never wider than its rect, so the teapot at its far end is never cut (card#12444)
-    const tw = Math.min(TABLE.w, Math.max(64, seats * TABLE.seat_pitch + 20));
+    // as wide as its front row of seats needs and never wider than its rect, so the teapot at its far end is never cut
+    const tw = Math.min(TABLE.w, Math.max(64, Math.min(seats, TABLE.per_row) * TABLE.seat_pitch + 20));
     const s = [];
     const m = [];
 
@@ -1020,12 +1021,14 @@ export function sideTable({ install_id: installId, seat_id: seatId, seats }) {
         s.push(pottedPlant(pen, x + tw + 18, foot - 2, pick(key, 'theme:table-pot', P.pots), pick(key, 'theme:table-leaf', P.leaves), shape === 'monstera' ? 0.55 : 0.85, shape, stream(key, 'theme:table-plant-shape')));
     }
 
-    // the cushion seats along the foot line, one under each intern's place
-    for (let i = 0; i < seats; i++) {
+    // the cushion seats, one under each intern's place: the front row along the foot line, each row behind it
+    // `row_dy` higher; the back rows first, so a front cushion is drawn over any it meets
+    for (let i = seats - 1; i >= 0; i--) {
         const c = P.seats[i % P.seats.length];
-        const sx = TABLE.seat_x + i * TABLE.seat_pitch + TABLE.seat_w / 2;
+        const sx = TABLE.seat_x + (i % TABLE.per_row) * TABLE.seat_pitch + TABLE.seat_w / 2;
+        const sy = foot - Math.floor(i / TABLE.per_row) * TABLE.row_dy;
 
-        s.push(rimmed(`<ellipse cx="${sx}" cy="${foot - 3.5}" rx="9" ry="3.4" fill="${pen.paint(c, 0.35)}" stroke="${line(c)}" stroke-width=".7"/><path d="M${sx - 4} ${foot - 5}q4 -1.6 8 0" stroke="${tint(c, 0.5)}" stroke-width="1" fill="none" opacity=".7"/>`));
+        s.push(rimmed(`<ellipse cx="${sx}" cy="${sy - 3.5}" rx="14" ry="3.6" fill="${pen.paint(c, 0.35)}" stroke="${line(c)}" stroke-width=".7"/><path d="M${sx - 6} ${sy - 5}q6 -1.8 12 0" stroke="${tint(c, 0.5)}" stroke-width="1" fill="none" opacity=".7"/>`));
     }
 
     return doc(pen, TABLE.w, TABLE.h, s.join(''));

@@ -154,7 +154,7 @@ export const PLATED_KINDS = Object.freeze(['label', 'currency', 'lag', 'gauge-ba
  * tree and kept when the vector creatures replaced it (card#11046): they have no native size, so the unit is
  * the rect's aspect and this its scale. The operator's ask of 2026-10-26 (card#12444, *"The character sizes are
  * good"*) made the characters 25 % taller: 3.75, the rect growing UPWARD from a foot line that does not move
- * (`deskRects()`), and the furniture box 24 px taller to hold it (`resources/floor/furniture-box.js`).
+ * (`deskRects()`), and the furniture box is the least that holds the desk (`leastBoxHeight()`).
  */
 export const CHARACTER_SCALE = 3.75;
 
@@ -189,19 +189,26 @@ const BADGE_PITCH = 108;
 const BADGE_PAD = 3;
 
 /**
- * One intern's sprite rect, and the pitch the row lays them at (§ 8, § 10.4's art contract). card#12444, the operator's
- * *"Subagent characters also need to be taller"* (2026-10-26): the rect is 25 % larger than card#11058's, its aspect kept
- * so the chibi frame's units are unchanged (`CHIBI_VIEWBOX`, 108 over the rect's width), and the pitch is what the box's
- * width leaves: `STOOL_CAP` stools from `STOOL_INSET` left of the facts column to the box's edge. AT-D3-20 holds the row
- * at the cap inside the box, and the studio theme's seat row is held to this one by `tools/floor-themes/selftest.mjs`.
+ * One intern's sprite rect (§ 8, § 10.4's art contract): twice card#11058's 20 × 32, the operator's ruling of 2026-10-27
+ * on card#12444 (option D, *"D"*: *"subagents are 2× today's size"*), its aspect kept so the chibi frame's units are
+ * unchanged (`CHIBI_VIEWBOX`, 108 over the rect's width).
  */
-const STOOL_W = 25;
+const STOOL_W = 40;
 
-const STOOL_H = 40;
+const STOOL_H = 64;
 
-export const STOOL_PITCH = 28;
+/**
+ * THE INTERNS' ROWS (the same ruling): `STOOL_CAP` interns in `STOOL_ROWS` rows of `STOOL_CAP / STOOL_ROWS`, the front row
+ * on the desk's foot line and each row behind it `STOOL_H + STOOL_ROW_GAP` higher, so no two interns' rects meet. The
+ * pitch is DERIVED, never stated: what the box's width leaves from `STOOL_INSET` left of the facts column to the box's
+ * edge, over a row's interns (`stoolSlots()`). AT-D3-20 holds the rows at the cap inside the box, and the studio theme's
+ * seat rows are held to these by `tools/floor-themes/selftest.mjs`.
+ */
+export const STOOL_ROWS = 2;
 
-/** Where the stool row starts, left of the facts column by this much: the side table's own inset (card#12444). */
+export const STOOL_ROW_GAP = 4;
+
+/** Where the stool rows start, left of the facts column by this much: the side table's own inset (card#12444). */
 const STOOL_INSET = 4;
 
 /**
@@ -403,8 +410,16 @@ export function deskRects(box, character) {
     // rects are the stack AT THE CAP — every row present — and `deskLayout()` lays the rows a desk carries
     // bottom-up from the same foot (`stackRows()`).
     const foot = desk.y + desk.h;
-    const table = { x: colB - 8, y: foot - 42, w: W - colB + 8, h: 42 };
-    const rowY = stackRows(FACT_ROWS, table);
+    // The interns' rows (ruling D, card#12444): the front row on the foot line, the rest behind it; the facts stack up
+    // from just above the back row, and the side table runs from the back row's foot line down to the desk's, so every
+    // intern stands at a seat of it.
+    const perRow = STOOL_CAP / STOOL_ROWS;
+    const rowStep = STOOL_H + STOOL_ROW_GAP;
+    const stoolX = colB - STOOL_INSET;
+    const rows = { x: stoolX, y: foot - STOOL_ROWS * STOOL_H - (STOOL_ROWS - 1) * STOOL_ROW_GAP, w: W - stoolX, h: 0 };
+    rows.h = foot - rows.y;
+    const table = { x: colB - 8, y: foot - 42 - (STOOL_ROWS - 1) * rowStep, w: W - colB + 8, h: 42 + (STOOL_ROWS - 1) * rowStep };
+    const rowY = stackRows(FACT_ROWS, rows);
 
     return Object.freeze({
         // THE FOOT LINE is pinned 26 px under the desk's slab, where card#11058's rect stood it (card#12444): a taller
@@ -427,9 +442,11 @@ export function deskRects(box, character) {
         badge: { x: colB, y: rowY.badge, w: BADGE_W, h: LINE },
         flag: { x: colB, y: rowY.flag, w: widthB, h: LINE },
         'quiet-age': { x: colB, y: rowY['quiet-age'], w: widthB, h: LINE },
-        stool: { x: colB - STOOL_INSET, y: foot - STOOL_H, w: STOOL_W, h: STOOL_H },
+        // the first slot of `stoolSlots()` — the front row's left — and the rows it heads (`perRow` a row)
+        stool: { x: stoolX, y: foot - STOOL_H, w: STOOL_W, h: STOOL_H, per_row: perRow, row_step: rowStep },
+        'stool-rows': rows,
         // § 10.6: drawn at every desk with art, under the facts and over the *+N more* row; its foot line (its
-        // bottom edge) is the desk's and the interns', so they stand in front of it.
+        // bottom edge) is the desk's and the front row's, and its seats stand under every row (ruling D).
         'side-table': table,
         'stool-more': { x: colB, y: foot + 2, w: widthB, h: LINE },
         plate: { x: mid - 80, y: H - 36, w: 160, h: 18 },
@@ -501,7 +518,7 @@ export function characterOverdraw(box, character) {
 
 /**
  * THE INTERN's OVERDRAW (FLOOR.md § 8, § 10.4's frame contract item 3; card#12259): the intern's chibi frame is drawn
- * in its stool's rect widened to the row's PITCH — `(STOOL_PITCH − STOOL_W) / 2` px each side, the whole gap between
+ * in its stool's rect widened to the row's PITCH — `(pitch − STOOL_W) / 2` px each side (`stoolSlots()`), the whole gap between
  * two interns, so two frames meet at the pitch and never overlap — while the stool element's own rect, which the
  * dashed edge of an untitled intern and every overlap rule read, is unchanged. The tree's `CHIBI_VIEWBOX` is this
  * rect in the chibi frame's units (the rect's 108 units over its `STOOL_W` px), held equal to it by
@@ -510,10 +527,56 @@ export function characterOverdraw(box, character) {
  * @param {{x: number, y: number, w: number, h: number}} stool the intern's rect, box-relative
  * @returns {{x: number, y: number, w: number, h: number}} the overdraw, box-relative in px
  */
-export function internOverdraw(stool) {
-    const margin = (STOOL_PITCH - STOOL_W) / 2;
+export function internOverdraw(stool, pitch) {
+    const margin = (pitch - stool.w) / 2;
 
     return Object.freeze({ x: stool.x - margin, y: stool.y, w: stool.w + 2 * margin, h: stool.h });
+}
+
+/**
+ * THE INTERNS' SLOTS (ruling D, card#12444) — the `STOOL_CAP` places a desk lays interns at, as an ORDERED list, row-major:
+ * the front row left to right, then the row behind it, so a stable slot index (card#12450's per-call slot) is a place
+ * on the table. Each slot is the intern's rect, box-relative, with `row`, `col`, `index`, the derived `pitch` (what the
+ * box's width leaves from the rows' inset to its edge, over a row's interns) and its `overdraw` (`internOverdraw()`).
+ *
+ * @returns {list<{x: number, y: number, w: number, h: number, index: number, row: number, col: number, pitch: number,
+ *          overdraw: object}>}
+ */
+export function stoolSlots(box, character) {
+    const R = deskRects(box, character);
+    const { per_row: perRow, row_step: rowStep } = R.stool;
+    const pitch = (box.width - R.stool.x) / perRow;
+
+    return Object.freeze(Array.from({ length: STOOL_CAP }, (_, index) => {
+        const row = Math.floor(index / perRow);
+        const col = index % perRow;
+        const at = { x: R.stool.x + col * pitch, y: R.stool.y - row * rowStep, w: R.stool.w, h: R.stool.h };
+
+        return Object.freeze({ ...at, index, row, col, pitch, overdraw: internOverdraw(at, pitch) });
+    }));
+}
+
+/**
+ * THE LEAST FURNITURE BOX for a width (ruling D, card#12444: *"the desk area grows taller again to hold the second
+ * row"*, by what the layout needs and no more): the smallest whole-pixel height at which both columns clear the bubble's
+ * band by a pixel at the cap — the character's overdraw (its trail's top) and the facts plate over the full stack of
+ * rows above the interns' back row. `resources/furniture-box.js`'s height is held equal to it for its width by
+ * `tools/characters/selftest.mjs` § 7b, so the box is derived, never guessed.
+ *
+ * @returns {number}
+ */
+export function leastBoxHeight(width, character) {
+    for (let height = BUBBLE_BAND; height < 4096; height++) {
+        const box = { width, height };
+        const R = deskRects(box, character);
+        const od = characterOverdraw(box, character).overdraw;
+
+        if (od.y >= BUBBLE_BAND + 1 && R.label.y - FACTS_PLATE_PAD_Y >= BUBBLE_BAND + 1) {
+            return height;
+        }
+    }
+
+    throw new RangeError(`no furniture box ${width} wide holds the desk`);
 }
 
 /**
@@ -671,10 +734,11 @@ export const NOT_DRAWN_MEMBERS = Object.freeze({
 export function deskLayout(desk, ctx) {
     const { measure } = ctx;
     const R = { ...deskRects(ctx.box, ctx.character) };
+    const slots = stoolSlots(ctx.box, ctx.character);
     const elements = [];
 
     // card#11468: the facts column STACKED — the rows this desk carries, in `FACT_ROWS`' order, bottom-up from
-    // just above the side table, with no empty row for one it does not carry. Same facts, same widths; only
+    // just above the interns' back row (ruling D, card#12444), with no empty row for one it does not carry. Same facts, same widths; only
     // their y is the stack's. A row is carried exactly when its element is emitted below.
     const badgeRow = clusterOrder(desk).slice(0, BADGES_SHOWN);
     const carried = {
@@ -687,7 +751,7 @@ export function deskLayout(desk, ctx) {
         'quiet-age': present(desk.quiet_age),
     };
     const rows = FACT_ROWS.filter((row) => carried[row]);
-    const rowY = stackRows(rows, R['side-table']);
+    const rowY = stackRows(rows, R['stool-rows']);
 
     for (const row of rows) {
         if (row === 'gauge') {
@@ -769,14 +833,14 @@ export function deskLayout(desk, ctx) {
         // § 10.6: the side table at every desk with art, with its seats — at least SIDE_TABLE_SEATS, one
         // more per intern drawn past them, so its width says nothing the row of interns does not. The theme
         // is handed the seat count and nothing else about the seat; it lays each seat under an intern's
-        // place, the row `seat_dx` states as offsets inside the table (the interns stand from `STOOL_PITCH`'s
-        // row at `R.stool.x`).
+        // place, which `seat_at` states as offsets inside the table (the interns stand at `stoolSlots()`).
         const seats = Math.max(SIDE_TABLE_SEATS, shown.length);
 
         rect('side-table', 'side_table', R['side-table'], {
             seats,
-            seat_dx: Array.from({ length: seats }, (_, i) => R.stool.x - R['side-table'].x + i * STOOL_PITCH),
-            seat: { dy: R['side-table'].h - SEAT_H, w: STOOL_W, h: SEAT_H },
+            // each seat under its slot, row-major as the interns take them (`stoolSlots()`), offsets inside the table
+            seat_at: slots.slice(0, seats).map((slot) => ({ dx: slot.x - R['side-table'].x, dy: slot.y + slot.h - SEAT_H - R['side-table'].y })),
+            seat: { w: STOOL_W, h: SEAT_H },
             doc: doc('sideTable', { ...key, seats }),
         });
     }
@@ -888,15 +952,16 @@ export function deskLayout(desk, ctx) {
 
         // Q3: the sprite is keyed by the intern's call, never by its place in the row; § 9 F14: an
         // intern whose art failed falls back to the glyph, that stool alone.
-        const at = { ...R.stool, x: R.stool.x + i * STOOL_PITCH };
+        const { x, y, w, h } = slots[i];
+        const at = { x, y, w, h };
 
         rect('stool', 'side_table', at, {
             call_id: stool.call_id,
             untitled: stool.untitled,
             index: i,
             // § 10.4's frame contract item 3 (card#12259): the sprite is drawn in the stool's overdraw, the rect widened
-            // to the row's pitch, so a tilted chibi frame's ear or cap is not clipped at the rect's side.
-            overdraw: internOverdraw(at),
+            // to the row's pitch, so a chibi frame's widest head is not clipped at the rect's side.
+            overdraw: slots[i].overdraw,
             // What the character tree is handed — the install and the intern key in the seat's place —
             // from the same model the asset id is, so the two can never name different interns.
             install_id: desk.install_id,

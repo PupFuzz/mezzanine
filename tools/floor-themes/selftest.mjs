@@ -595,13 +595,22 @@ function printScreenInk(o) {
  * The side table's seat row against the interns' (card#12444): a theme is handed the seat count and nothing else
  * (§ 10.6 item 2), so a theme that seats the table states the row itself — `TABLE` in its module — and this holds that
  * declaration to the layout's own: the table's rect and the stool row `deskRects()` lays at the furniture box, the
- * seat's inset from the table, its width and the pitch (`STOOL_PITCH`), so an intern always stands over its seat.
+ * seat's inset from the table, its width, the pitch, a row's count and the rows' step (`stoolSlots()`), so an intern
+ * always stands over its seat.
  */
 async function seatsLeg(o) {
     const defects = [];
     const { FURNITURE_BOX } = await load(join(REPO, 'resources', 'floor', 'furniture-box.js'));
-    const R = o.deskLayout.deskRects(FURNITURE_BOX, { w: o.characters.SCENE_W, h: o.characters.SCENE_H });
-    const want = { w: R['side-table'].w, h: R['side-table'].h, seat_x: R.stool.x - R['side-table'].x, seat_pitch: o.deskLayout.STOOL_PITCH, seat_w: R.stool.w };
+    const ch = { w: o.characters.SCENE_W, h: o.characters.SCENE_H };
+    const R = o.deskLayout.deskRects(FURNITURE_BOX, ch);
+    const slots = o.deskLayout.stoolSlots(FURNITURE_BOX, ch);
+    const perRow = slots.filter((slot) => slot.row === 0).length;
+    const want = { w: R['side-table'].w, h: R['side-table'].h, seat_x: slots[0].x - R['side-table'].x, seat_pitch: slots[1].x - slots[0].x,
+        seat_w: slots[0].w, per_row: perRow, row_dy: slots[0].y - slots[perRow].y };
+    // the table's foot line is the front row's
+    if (R['side-table'].y + R['side-table'].h !== slots[0].y + slots[0].h) {
+        defects.push(`the side table's foot line (${R['side-table'].y + R['side-table'].h}) is not the front row's (${slots[0].y + slots[0].h})`);
+    }
 
     for (const name of Object.keys(o.themes)) {
         const src = readFileSync(join(o.t.themes, name, 'theme.js'), 'utf8');
@@ -687,10 +696,10 @@ const PLANTS = [
         (t) => edit(THEME(t), "floor: Object.freeze({ boards: '#d9c7a5' }),", "floor: Object.freeze({ boards: '#8f8070' }),")],
     ['the floor too dark for the facts\' ink: the chip tool\'s ink gate', 'surfaces', "--check fails over the surfaces: check: --scene-ink holds",
         (t) => edit(THEME(t), "floor: Object.freeze({ boards: '#d9c7a5' }),", "floor: Object.freeze({ boards: '#8f8070' }),")],
-    ['the seat row drifts from the interns\': the theme\'s pitch left at card#11058\'s', 'seats', 'TABLE.seat_pitch is 24 and the layout\'s is 28',
-        (t) => edit(THEME(t), 'seat_pitch: 28,', 'seat_pitch: 24,')],
-    ['the interns move and the seats do not: the layout\'s pitch narrowed', 'seats', 'TABLE.seat_pitch is 28 and the layout\'s is 26',
-        (t) => edit(join(t.js, 'floor', 'desk-layout.js'), 'export const STOOL_PITCH = 28;', 'export const STOOL_PITCH = 26;')],
+    ['the seat row drifts from the interns\': the theme\'s pitch left at card#11058\'s', 'seats', 'TABLE.seat_pitch is 24 and the layout\'s is 56',
+        (t) => edit(THEME(t), 'seat_pitch: 56,', 'seat_pitch: 24,')],
+    ['the interns move and the seats do not: the layout\'s rows a step further apart', 'seats', 'TABLE.row_dy is 68 and the layout\'s is 72',
+        (t) => edit(join(t.js, 'floor', 'desk-layout.js'), 'export const STOOL_ROW_GAP = 4;', 'export const STOOL_ROW_GAP = 8;')],
     ['a draw that is not the key\'s: Math.random() for one seeded choice', 'totality', 'is not one document per input',
         (t) => edit(THEME(t), "const c = pick(deskKey(installId, seatId), 'theme:chair', PALETTE.chair.colours);", 'const c = PALETTE.chair.colours[Math.floor(Math.random() * PALETTE.chair.colours.length)];')],
 ];

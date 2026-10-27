@@ -207,7 +207,7 @@ check(C.walkFrames(anySeat.install_id, anySeat.seat_id)[0] === C.standingFrame(a
 // The painter's half, and the sleeper's own legs over every species, are server/tests/Feature/Floor/sleeper-probe.mjs.
 section("7b. a desk's pose frames: { frames, loopFrom } — the sleeper's still and loop for asleep, the marker's for a marked pose, the walk in its expression for every other; every sleeper document is a document");
 // The floor's own desk edge and clear rects, from the one function that hands them to the tree (§ 10.4 item 4).
-const { characterOverdraw, internOverdraw, deskRects, FRAME_UNITS_PER_PX, CHARACTER_SCALE } = await import(pathToFileURL(join(REPO, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
+const { characterOverdraw, deskRects, stoolSlots, leastBoxHeight, STOOL_ROWS, FRAME_UNITS_PER_PX, CHARACTER_SCALE } = await import(pathToFileURL(join(REPO, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
 const { FURNITURE_BOX } = await import(pathToFileURL(join(REPO, 'resources', 'floor', 'furniture-box.js')).href);
 const { overdraw, clear: CLEAR } = characterOverdraw(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H });
 // The floor states the tree's frame units per pixel (it cannot import the tree); held equal to the tree's own over the
@@ -227,12 +227,30 @@ check(['x', 'y', 'w', 'h'].every((k) => Math.abs(odUnits[k] - C.SEAT_VIEWBOX[k])
 const seatVb = `viewBox="${C.SEAT_VIEWBOX.x} ${C.SEAT_VIEWBOX.y} ${C.SEAT_VIEWBOX.w} ${C.SEAT_VIEWBOX.h}"`;
 check([C.standingFrame(roster[0].install_id, roster[0].seat_id), ...C.walkFrames(roster[0].install_id, roster[0].seat_id)].every((d) => d.includes(seatVb)),
   `the standing frame and every walk frame are drawn in SEAT_VIEWBOX (${seatVb}), the sleeper's widened, raised frame (card#12259)`);
-// The intern: its chibi frame is the stool's rect widened to the row's pitch, in the chibi frame's units (the rect's
-// 108 units over its px), from the stool rect's top-left at the frame's top (CHIBI_VIEWBOX.y).
-const stool = rects.stool, io = internOverdraw(stool), upp = C.SEAT_RECT.w / stool.w;
-const ioUnits = { x: (io.x - stool.x) * upp, y: C.CHIBI_VIEWBOX.y + (io.y - stool.y) * upp, w: io.w * upp, h: io.h * upp };
-check(['x', 'y', 'w', 'h'].every((k) => Math.abs(ioUnits[k] - C.CHIBI_VIEWBOX[k]) < 1e-9) && io.w > stool.w,
-  `the intern's overdraw in chibi-frame units (${JSON.stringify(ioUnits)}) is CHIBI_VIEWBOX (${JSON.stringify(C.CHIBI_VIEWBOX)}), wider than the ${stool.w} x ${stool.h} rect`);
+// The interns: every slot's chibi frame is its rect widened to the row's pitch, in the chibi frame's units (the rect's
+// 108 units over its px), from the rect's top-left at the frame's top (CHIBI_VIEWBOX.y) — the same for every slot.
+const slots = stoolSlots(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H });
+const slotBad = slots.filter((slot) => {
+  const io = slot.overdraw, upp = C.SEAT_RECT.w / slot.w;
+  const u = { x: (io.x - slot.x) * upp, y: C.CHIBI_VIEWBOX.y + (io.y - slot.y) * upp, w: io.w * upp, h: io.h * upp };
+  return !(['x', 'y', 'w', 'h'].every((k) => Math.abs(u[k] - C.CHIBI_VIEWBOX[k]) < 1e-9) && io.w > slot.w);
+});
+check(slots.length === CAP && slotBad.length === 0,
+  `each of the ${slots.length} interns' overdraws in chibi-frame units is CHIBI_VIEWBOX (${JSON.stringify(C.CHIBI_VIEWBOX)}), wider than its ${slots[0].w} x ${slots[0].h} rect${slotBad.length ? ` — not slot ${slotBad.map((x) => x.index).join(', ')}` : ''}`);
+// The slots (card#12444's ruling D): row-major — the front row on the desk's foot line first, left to right — no two
+// rects meeting, every one inside the box, its overdraw too, in STOOL_ROWS rows of CAP / STOOL_ROWS.
+const meet = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+const inside = (r) => r.x >= 0 && r.y >= 0 && r.x + r.w <= FURNITURE_BOX.width + 1e-9 && r.y + r.h <= FURNITURE_BOX.height;
+const order = slots.every((slot, i) => slot.index === i && slot.row === Math.floor(i / (CAP / STOOL_ROWS)) && (i === 0 || (slot.row === slots[i - 1].row ? slot.x > slots[i - 1].x : slot.y < slots[i - 1].y)));
+check(order && slots[0].y + slots[0].h === rects['desk-sprite'].y + rects['desk-sprite'].h && new Set(slots.map((x) => x.row)).size === STOOL_ROWS,
+  `the slots are row-major in ${STOOL_ROWS} rows of ${CAP / STOOL_ROWS}, the front row first and on the desk's foot line, each row left to right`);
+check(slots.every((a, i) => slots.every((b, j) => i === j || !meet(a, b))) && slots.every((x) => inside(x) && inside(x.overdraw)),
+  `no two of the ${slots.length} slots meet, and every slot and its overdraw lies inside the ${FURNITURE_BOX.width} x ${FURNITURE_BOX.height} box`);
+// The box is derived (card#12444): its height is the least the desk needs for its width (`leastBoxHeight()`'s search
+// from below, so a pixel less is a box the layout does not fit).
+const least = leastBoxHeight(FURNITURE_BOX.width, { w: C.SCENE_W, h: C.SCENE_H });
+check(FURNITURE_BOX.height === least,
+  `furniture-box.js's height (${FURNITURE_BOX.height}) is leastBoxHeight() for its width (${least}) — the box is the desk's need, not a guess`);
 const [si, ss] = [anySeat.install_id, anySeat.seat_id];
 const asleep = C.poseFrames(si, ss, { pose: 'asleep', deskTop: DESK_TOP, clear: CLEAR });
 const own = C.sleepFrames(si, ss, DESK_TOP, CLEAR);

@@ -3488,7 +3488,7 @@
               "map_version": null,
               "map": {
                 "compressionlevel": -1,
-                "height": 68,
+                "height": 92,
                 "infinite": false,
                 "layers": [
                   {
@@ -3506,7 +3506,7 @@
                         "name": "desks",
                         "objects": [
                           {
-                            "height": 252,
+                            "height": 307,
                             "id": 1,
                             "name": "",
                             "rotation": 0,
@@ -3517,18 +3517,18 @@
                             "y": 24
                           },
                           {
-                            "height": 252,
+                            "height": 307,
                             "id": 2,
                             "name": "",
                             "rotation": 0,
                             "type": "",
                             "visible": true,
                             "width": 440,
-                            "x": 568,
+                            "x": 616,
                             "y": 24
                           },
                           {
-                            "height": 252,
+                            "height": 307,
                             "id": 3,
                             "name": "",
                             "properties": [
@@ -3542,11 +3542,11 @@
                             "type": "",
                             "visible": true,
                             "width": 440,
-                            "x": 1040,
+                            "x": 1136,
                             "y": 24
                           },
                           {
-                            "height": 252,
+                            "height": 307,
                             "id": 4,
                             "name": "",
                             "rotation": 0,
@@ -3554,29 +3554,29 @@
                             "visible": true,
                             "width": 440,
                             "x": 96,
-                            "y": 292
+                            "y": 400
                           },
                           {
-                            "height": 252,
+                            "height": 307,
                             "id": 5,
                             "name": "",
                             "rotation": 0,
                             "type": "",
                             "visible": true,
                             "width": 440,
-                            "x": 568,
-                            "y": 292
+                            "x": 616,
+                            "y": 400
                           },
                           {
-                            "height": 252,
+                            "height": 307,
                             "id": 6,
                             "name": "",
                             "rotation": 0,
                             "type": "",
                             "visible": true,
                             "width": 440,
-                            "x": 1040,
-                            "y": 292
+                            "x": 1136,
+                            "y": 400
                           }
                         ],
                         "opacity": 1,
@@ -3603,7 +3603,7 @@
                 "tilewidth": 8,
                 "type": "map",
                 "version": "1.10",
-                "width": 197
+                "width": 209
               }
             }
           }
@@ -4005,7 +4005,7 @@
               "map_version": null,
               "map": {
                 "compressionlevel": -1,
-                "height": 68,
+                "height": 92,
                 "infinite": false,
                 "layers": [
                   {
@@ -4014,7 +4014,7 @@
                     "name": "desks",
                     "objects": [
                       {
-                        "height": 252,
+                        "height": 307,
                         "id": 1,
                         "name": "",
                         "rotation": 0,
@@ -4025,18 +4025,18 @@
                         "y": 24
                       },
                       {
-                        "height": 252,
+                        "height": 307,
                         "id": 2,
                         "name": "",
                         "rotation": 0,
                         "type": "",
                         "visible": true,
                         "width": 440,
-                        "x": 568,
+                        "x": 616,
                         "y": 24
                       },
                       {
-                        "height": 252,
+                        "height": 307,
                         "id": 3,
                         "name": "",
                         "properties": [
@@ -4050,11 +4050,11 @@
                         "type": "",
                         "visible": true,
                         "width": 440,
-                        "x": 1040,
+                        "x": 1136,
                         "y": 24
                       },
                       {
-                        "height": 252,
+                        "height": 307,
                         "id": 4,
                         "name": "",
                         "rotation": 0,
@@ -4062,29 +4062,29 @@
                         "visible": true,
                         "width": 440,
                         "x": 96,
-                        "y": 292
+                        "y": 400
                       },
                       {
-                        "height": 252,
+                        "height": 307,
                         "id": 5,
                         "name": "",
                         "rotation": 0,
                         "type": "",
                         "visible": true,
                         "width": 440,
-                        "x": 568,
-                        "y": 292
+                        "x": 616,
+                        "y": 400
                       },
                       {
-                        "height": 252,
+                        "height": 307,
                         "id": 6,
                         "name": "",
                         "rotation": 0,
                         "type": "",
                         "visible": true,
                         "width": 440,
-                        "x": 1040,
-                        "y": 292
+                        "x": 1136,
+                        "y": 400
                       }
                     ],
                     "opacity": 1,
@@ -4109,7 +4109,7 @@
                 "tilewidth": 8,
                 "type": "map",
                 "version": "1.10",
-                "width": 197
+                "width": 209
               }
             }
           }
