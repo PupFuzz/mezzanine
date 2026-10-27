@@ -255,7 +255,7 @@ class SeatTokenConsoleTest extends TestCase
         $prefix = substr($token, 0, 12);
         $this->assertSame($email, DB::table('ingest_tokens')->where('prefix', $prefix)->value('created_by'));
 
-        $this->post(route('admin.tokens.revoke', $prefix), ['reason' => 'rotated'])->assertRedirect();
+        $this->post(route('admin.tokens.revoke', $prefix))->assertRedirect();
         $this->assertSame($email, DB::table('ingest_tokens')->where('prefix', $prefix)->value('revoked_by'));
     }
 
@@ -279,38 +279,60 @@ class SeatTokenConsoleTest extends TestCase
 
     // ── Revoke ──────────────────────────────────────────────────────────────────────────────
 
-    public function test_revoking_records_the_operator_the_time_and_the_reason_and_names_a_dark_seat(): void
+    /**
+     * card#12441 (operator ruling 2026-10-26): the console's revoke asks for no reason. The form
+     * has no reason field, a revoke with an empty body succeeds, and the row records the operator and
+     * the time, which is all the list shows.
+     */
+    public function test_revoking_records_the_operator_and_the_time_with_no_reason_and_names_a_dark_seat(): void
     {
         $operator = $this->confirmedOperator();
         $prefix = substr($this->plaintextIn($this->issueOnPage('aimla', 'aimla-pm')), 0, 12);
 
-        $this->post(route('admin.tokens.revoke', $prefix), ['reason' => 'laptop lost'])
+        $form = $this->get(route('admin.tokens.index'))->assertOk();
+        $form->assertSee('Revoke '.$prefix, false);
+        $form->assertDontSee('name="reason"', false);
+
+        $this->post(route('admin.tokens.revoke', $prefix))
             ->assertRedirect(route('admin.tokens.index'))
+            ->assertSessionHasNoErrors()
             ->assertSessionHas('status', fn (string $s) => str_contains($s, "Revoked $prefix — aimla / aimla-pm.")
                 && str_contains($s, 'aimla / aimla-pm now has NO active token and cannot post.'));
 
         $row = DB::table('ingest_tokens')->where('prefix', $prefix)->first();
         $this->assertNotNull($row->revoked_at);
         $this->assertSame($operator->email, $row->revoked_by);
-        $this->assertSame('laptop lost', $row->revoked_reason);
+        $this->assertObjectNotHasProperty('revoked_reason', $row, 'a token row has no reason column (card#12441)');
 
         $page = $this->get(route('admin.tokens.index'));
-        $page->assertSee('laptop lost')->assertSee('by '.$operator->email);
+        $page->assertSee('by '.$operator->email);
         $page->assertDontSee('Revoke '.$prefix, false);
+        $page->assertDontSee($operator->email.' —', false);
 
         // Again: a no-op that keeps the first record.
-        $this->post(route('admin.tokens.revoke', $prefix), ['reason' => 'second'])
+        $this->post(route('admin.tokens.revoke', $prefix))
             ->assertSessionHas('status', fn (string $s) => str_contains($s, 'already revoked'));
-        $this->assertSame('laptop lost', DB::table('ingest_tokens')->where('prefix', $prefix)->value('revoked_reason'));
+        $this->assertSame(1, DB::table('ingest_tokens')->where('prefix', $prefix)->whereNotNull('revoked_at')->count());
     }
 
-    public function test_revoke_needs_a_reason_and_an_unknown_prefix_revokes_nothing(): void
+    /** A reason posted anyway (an old form, a hand-made request) is ignored: the revoke still succeeds. */
+    public function test_a_reason_posted_to_the_console_revoke_is_ignored(): void
     {
         $this->confirmedOperator();
         $prefix = substr($this->plaintextIn($this->issueOnPage('aimla', 'aimla-pm')), 0, 12);
 
-        $this->post(route('admin.tokens.revoke', $prefix), ['reason' => ''])->assertSessionHasErrors('reason', null, 'revoke');
-        $this->post(route('admin.tokens.revoke', 'mzn_nothere1'), ['reason' => 'x'])->assertSessionHasErrors('revoke');
+        $this->post(route('admin.tokens.revoke', $prefix), ['reason' => 'laptop lost'])->assertSessionHasNoErrors();
+
+        $this->assertNotNull(DB::table('ingest_tokens')->where('prefix', $prefix)->value('revoked_at'));
+        $this->get(route('admin.tokens.index'))->assertDontSee('laptop lost');
+    }
+
+    public function test_an_unknown_prefix_revokes_nothing(): void
+    {
+        $this->confirmedOperator();
+        $this->issueOnPage('aimla', 'aimla-pm');
+
+        $this->post(route('admin.tokens.revoke', 'mzn_nothere1'))->assertSessionHasErrors('revoke');
 
         $this->assertSame(0, DB::table('ingest_tokens')->whereNotNull('revoked_at')->count());
     }
@@ -320,7 +342,7 @@ class SeatTokenConsoleTest extends TestCase
         Artisan::call('mezzanine:ingest-token:issue', ['install_id' => 'aimla', 'seat_id' => 'aimla-pm', '--by' => 'suite']);
         $prefix = (string) DB::table('ingest_tokens')->value('prefix');
 
-        $this->artisan('mezzanine:ingest-token:revoke', ['prefix' => $prefix, '--by' => 'ops-shell', '--reason' => 'r'])
+        $this->artisan('mezzanine:ingest-token:revoke', ['prefix' => $prefix, '--by' => 'ops-shell'])
             ->assertSuccessful();
 
         $this->assertSame('ops-shell', DB::table('ingest_tokens')->where('prefix', $prefix)->value('revoked_by'));
@@ -334,13 +356,12 @@ class SeatTokenConsoleTest extends TestCase
     {
         Artisan::call('mezzanine:ingest-token:issue', ['install_id' => 'aimla', 'seat_id' => 'aimla-pm', '--by' => 'suite']);
         DB::table('ingest_tokens')->update([
-            'revoked_at' => now()->format('Y-m-d H:i:s.v'), 'revoked_by' => null, 'revoked_reason' => 'old rotation',
+            'revoked_at' => now()->format('Y-m-d H:i:s.v'), 'revoked_by' => null,
         ]);
 
         $this->confirmedOperator();
 
         $this->get(route('admin.tokens.index'))->assertOk()
-            ->assertSee('old rotation')
             ->assertSee('by not recorded');
     }
 }

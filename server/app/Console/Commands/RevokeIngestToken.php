@@ -32,7 +32,6 @@ class RevokeIngestToken extends Command
 {
     protected $signature = 'mezzanine:ingest-token:revoke
                             {prefix : the token prefix shown at issue time, e.g. mzn_kQ7aB2xZ}
-                            {--reason= : why, for the audit trail}
                             {--by= : who revoked it; defaults to the OS user}';
 
     protected $description = 'Revoke a seat ingest token by its prefix';
@@ -44,7 +43,6 @@ class RevokeIngestToken extends Command
         $result = SeatTokens::revoke(
             $prefix,
             (string) ($this->option('by') ?: (get_current_user() ?: 'unknown')),
-            $this->option('reason') ?: null,
         );
 
         if ($result->outcome === SeatTokenRevocation::NO_SUCH_PREFIX) {

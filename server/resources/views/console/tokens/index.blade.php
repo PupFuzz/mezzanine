@@ -98,15 +98,12 @@
                             @else
                                 <x-utc-time :at="$token->revoked_at" />
                                 by {{ $token->revoked_by ?? 'not recorded' }}
-                                @if ($token->revoked_reason !== null) — {{ $token->revoked_reason }} @endif
                             @endif
                         </td>
                         <td>
                             @if ($token->revoked_at === null)
                                 <form method="POST" action="{{ route('admin.tokens.revoke', $token->prefix) }}">
                                     @csrf
-                                    <label for="reason-{{ $token->prefix }}">Reason</label>
-                                    <input id="reason-{{ $token->prefix }}" name="reason" type="text" required maxlength="255">
                                     <button type="submit">Revoke {{ $token->prefix }}</button>
                                 </form>
                             @endif
@@ -122,8 +119,8 @@
     <p>
         Revoking is permanent and takes effect on the seat's next request: its reporter is refused
         (<code>401</code>), stops sending to this site and records why, and the seat goes stale and then offline
-        on the floor. A seat with no active token cannot post. Revoked tokens stay listed with who revoked them,
-        when and why.
+        on the floor. A seat with no active token cannot post. Revoked tokens stay listed with who revoked them
+        and when.
     </p>
 
     <script type="module" src="{{ \App\Support\PublicAsset::url('js/console/seat-token.js') }}"></script>

@@ -1726,7 +1726,7 @@ SH
    constants has passed. Do not go on to item 4 while a flusher runs. It checks the pid rather than
    pattern-matching process names, so it cannot match its own shell.
 4. **Revoke each site's token on the server that issued it**, by its prefix, on that site's Mezzanine host:
-   `php artisan mezzanine:ingest-token:revoke <prefix> --reason='uninstall'` (the sandbox's prefix is
+   `php artisan mezzanine:ingest-token:revoke <prefix>` (the sandbox's prefix is
    `mzn_YTRScmlE`). To take the desk off the floor as well, run
    `php artisan mezzanine:retire --seat="$SEAT_INSTALL_ID/$SEAT_ID" --by=<operator> --reason=<why>`
    on each site (FLEET-STATE § 4.10). Revocation leaves the seat's rows, and retirement is what hides the desk.

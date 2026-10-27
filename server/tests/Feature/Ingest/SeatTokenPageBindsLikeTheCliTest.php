@@ -62,7 +62,7 @@ final class SeatTokenPageBindsLikeTheCliTest extends IngestTestCase
         // The control: before the revocation it is accepted.
         $this->postBatch($this->validBatch(), token: $web)->assertStatus(202);
 
-        $this->post(route('admin.tokens.revoke', substr($web, 0, 12)), ['reason' => 'rotated'])->assertRedirect();
+        $this->post(route('admin.tokens.revoke', substr($web, 0, 12)))->assertRedirect();
 
         $before = $this->globalCounter(Counters::REVOKED_TOKEN_PRESENTED);
 
