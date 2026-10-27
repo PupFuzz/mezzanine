@@ -32,7 +32,8 @@
  * ⛔ EVERY STRING GOES THROUGH `fit()` AND NO DRAWING SITE CUTS ONE ITSELF (§ 10.3). A string the
  * fixtures never stretch — the currency label, the lag line, the gauge's % — is cut by the same code
  * as the ones they do, which is the only reason AT-D3-20's second RED,
- * planted in `fit()`, can speak for them.
+ * planted in `fit()`, can speak for them. The monitor's text, the one string laid on more than one line
+ * (card#12446), goes through `wrap()`, which breaks the lines and leaves the cut on the last to `fit()`.
  *
  * ⛔ THE STRINGS ARE THE DESK MODEL's (`desk/desk-render.js`), each as that model decided it. What
  * this module adds is WHERE: which column, which row, how wide. Three strings the model leaves as
@@ -67,10 +68,13 @@ export const LINE_NAME = 16;
 /**
  * The SCREEN role (FLOOR.md § 10.6's *The desk, re-laid*, card#11046 — the operator's "The monitor screen
  * text can be smaller so that more letters can fit"): the one string the desk draws in it is the monitor's
- * text, measured and drawn at 8 px on the facts' 12 px line (§ 12's *Screen type size* row — the smallest
- * that read at fit on a device-scale-1 screen, measured in headless Chromium).
+ * text, measured and drawn at 7 px on an 8 px line, wrapped to as many lines as the screen's text rect holds
+ * (§ 12's *Screen type size* row). It was 8 px on the facts' 12 px line, one line, until card#12446 — the
+ * operator's "Reduce monitor font size by 1 point and allow text to wrap lines to fill the entire screen".
  */
-export const FONT_SCREEN = '8px sans-serif';
+export const FONT_SCREEN = '7px sans-serif';
+
+export const LINE_SCREEN = 8;
 
 /**
  * THE DESK's THREE TYPE ROLES — the facts, the nameplate (Q2) and the monitor's screen (card#11046) — the
@@ -82,8 +86,11 @@ export const FONT_SCREEN = '8px sans-serif';
 export const TYPE_ROLES = Object.freeze({
     fact: Object.freeze({ font: FONT, line: LINE, baseline: LINE - 2 }),
     name: Object.freeze({ font: FONT_NAME, line: LINE_NAME, baseline: LINE_NAME - 3 }),
-    screen: Object.freeze({ font: FONT_SCREEN, line: LINE, baseline: 9 }),
+    screen: Object.freeze({ font: FONT_SCREEN, line: LINE_SCREEN, baseline: 6 }),
 });
+
+/** The screen's text inset, every side, from the screen's rect (§ 12's monitor row). */
+export const SCREEN_INSET = 3;
 
 /**
  * The bubble's inner padding — the text's inset from the bubble's rect — and the band at the top of the box the
@@ -275,6 +282,80 @@ export function fit(text, width, measure, role = 'fact') {
 }
 
 /**
+ * THE SCENE's ONE WRAP (card#12446): `text` laid on at most `maxLines` lines of `width`, measured in `role` by the
+ * page's measurer as `fit()` is. A line breaks at a word boundary — a space, which the break drops — and where one
+ * word is wider than a whole line (a path, a URL) inside the word, by code point, so no line is drawn past the
+ * width. The last line is `fit()`'s: whatever does not fit on it is cut there with the mark, so a wrapped string is
+ * truncated visibly or not at all, by the same primitive as every other desk string.
+ *
+ * @param {number} maxLines at least 1
+ * @returns {{text: string, lines: list<{text: string, w: number}>, truncated: boolean, w: number, h: number}}
+ *          `text` is what the lines draw read as one string: the whole of `text`, or, cut, the prefix the lines hold
+ *          and the mark; `w` the widest line; `h` the lines on the role's line (`TYPE_ROLES`)
+ */
+export function wrap(text, width, measure, role, maxLines) {
+    const points = [...text];
+    const lines = [];
+    let start = 0;
+    let last = 0;
+    let truncated = false;
+
+    while (lines.length < maxLines && start < points.length) {
+        const rest = points.slice(start).join('');
+
+        last = start;
+
+        if (lines.length === maxLines - 1 || measure(rest, role).w <= width) {
+            const cut = fit(rest, width, measure, role);
+
+            lines.push({ text: cut.text, w: cut.w });
+            truncated = cut.truncated;
+            break;
+        }
+
+        // The longest run from `start` that fits — at least one code point, so a glyph wider than the line still
+        // moves on — then back to the last space inside it; a run with no space in it is broken where it stops.
+        const end = start + Math.max(1, longestRun(points, start, width, measure, role));
+        const space = points[end] === ' ' ? end : points.lastIndexOf(' ', end - 1);
+        const stop = space > start ? space : end;
+        const line = points.slice(start, stop).join('');
+
+        lines.push({ text: line, w: measure(line, role).w });
+        start = stop;
+
+        while (points[start] === ' ') {
+            start++;
+        }
+    }
+
+    return {
+        text: truncated ? points.slice(0, last).join('') + lines[lines.length - 1].text : text,
+        lines,
+        truncated,
+        w: Math.max(0, ...lines.map((l) => l.w)),
+        h: lines.length * TYPE_ROLES[role].line,
+    };
+}
+
+/** The most code points of `points` from `start` whose run measures within `width` in `role` — a binary search. */
+function longestRun(points, start, width, measure, role) {
+    let lo = 0;
+    let hi = points.length - start;
+
+    while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+
+        if (measure(points.slice(start, start + mid).join(''), role).w <= width) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+
+    return lo;
+}
+
+/**
  * THE DESK's RECT TABLE — § 2.2's, derived from the box (`resources/floor/furniture-box.js`'s one
  * declaration): every element's rect relative to the box's top-left — the art from the desk's slab, the
  * facts column stacked up from the side table on the desk's foot line, the hatch and the placeholder from the
@@ -302,8 +383,10 @@ export function deskRects(box, character) {
     const desk = { x: mid - 90, y: slab, w: 180, h: 60 };
     const sitter = desk.x + desk.w / 3 - cw / 2;
     // The monitor's frame: 96 × 46, its right edge the desk's, standing on the desk's top; the screen
-    // inset 4 px inside it and 31 px tall; the text 3 px inside the screen (§ 12's monitor row).
+    // inset 4 px inside it and 31 px tall; the text `SCREEN_INSET` inside the screen on every side, so its
+    // rect's height is what decides how many lines the screen holds (§ 12's monitor row, card#12446).
     const frame = { x: desk.x + desk.w - 96, y: slab - 46, w: 96, h: 46 };
+    const screen = { x: frame.x + 4, y: frame.y + 4, w: 88, h: 31 };
     // § 10.6 (card#11468): the side table stands on the desk's own foot line, its interns in front of it and the
     // *+N more* tag under it; the facts stack upward from just above it, inside the plate's padding. These row
     // rects are the stack AT THE CAP — every row present — and `deskLayout()` lays the rows a desk carries
@@ -320,8 +403,8 @@ export function deskRects(box, character) {
         'monitor-frame': frame,
         // The desk's left third: the lamp and its light, the mug or the plant (§ 10.6).
         'desk-props': { x: desk.x - 12, y: slab - 34, w: 68, h: 50 },
-        monitor: { x: frame.x + 4, y: frame.y + 4, w: 88, h: 31 },
-        'monitor-text': { x: frame.x + 7, y: frame.y + 13, w: 82, h: LINE },
+        monitor: screen,
+        'monitor-text': { x: screen.x + SCREEN_INSET, y: screen.y + SCREEN_INSET, w: screen.w - 2 * SCREEN_INSET, h: screen.h - 2 * SCREEN_INSET },
         chip: { x: mid, y: H - 16, w: CHIP_MAX_W, h: 14 },
         label: { x: colB, y: rowY.label, w: widthB, h: LINE },
         currency: { x: colB, y: rowY.currency, w: widthB, h: LINE },
@@ -610,8 +693,16 @@ export function deskLayout(desk, ctx) {
             return null;
         }
 
-        const cut = fit(String(value), r.w, measure, extra.role ?? 'fact');
-        const e = { kind, member, x: r.x, y: r.y, w: cut.w, h: cut.h, text: cut.text, truncated: cut.truncated, ...extra };
+        // A rect taller than one line of its role holds as many lines as fit in it (the screen's, card#12446),
+        // wrapped; every other text is one line, cut.
+        const role = extra.role ?? 'fact';
+        const rows = Math.floor(r.h / TYPE_ROLES[role].line);
+        const cut = rows > 1 ? wrap(String(value), r.w, measure, role, rows) : fit(String(value), r.w, measure, role);
+        const e = {
+            kind, member, x: r.x, y: r.y, w: cut.w, h: cut.h, text: cut.text, truncated: cut.truncated,
+            ...(rows > 1 ? { lines: cut.lines } : {}),
+            ...extra,
+        };
 
         elements.push(e);
 
