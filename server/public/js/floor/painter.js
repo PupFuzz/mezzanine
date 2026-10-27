@@ -50,7 +50,7 @@ import { BUBBLE_PAD, FONT, FONT_NAME, FONT_SCREEN, STOOL_GLYPH, TYPE_ROLES, char
 import { SKY_PAINT } from './floor-layout.js';
 import { ELEVATOR_DOOR } from './scene.js';
 import { floorStackOrder, pointAt } from './route.js';
-import { BIRD_LIFT, arcPath, birdShapes, birdhouseShapes, envelopeShapes, legShapes, ringShapes, stillNotes } from './bird.js';
+import { BIRD_LIFT, arcPath, birdShapes, birdhouseShapes, envelopeShapes, legShapes, ringShapes, standingLegShapes, stillNotes } from './bird.js';
 import { RENDER_STATES } from '../lobby/render-state.js';
 import { CAB_STYLE, LANDING, THEME_REGISTRY, cabTheme, clippedTo, drawCabInterior, node, paintCab, rideLeaves, themeModule } from './cab-paint.js';
 
@@ -125,6 +125,10 @@ ${CAB_STYLE}
 @keyframes fly{from{offset-distance:0%;opacity:1}to{offset-distance:100%;opacity:1}}
 .wing-up{animation:flap-up steps(1) infinite}.wing-down{animation:flap-down steps(1) infinite}
 @keyframes flap-up{0%{opacity:1}50%{opacity:0}}@keyframes flap-down{0%{opacity:0}50%{opacity:1}}
+.fx-perched{opacity:0;animation-name:perched;animation-timing-function:linear}
+@keyframes perched{from{opacity:1}to{opacity:1}}
+.fx-hop{opacity:0;animation-name:hop;animation-timing-function:ease-in-out}.fx-hop.hop-out{animation-direction:reverse}
+@keyframes hop{from{opacity:1;transform:translate(0px,-${BIRD_LIFT}px) scale(1) translate(0px,${BIRD_LIFT}px)}70%{opacity:1}to{opacity:0;transform:translate(var(--hole-x),var(--hole-y)) scale(.35) translate(0px,${BIRD_LIFT}px)}}
 .fx-rest{opacity:0;animation-name:rest;animation-fill-mode:forwards}
 @keyframes rest{from{opacity:1}88%{opacity:1}89%{opacity:.5}99%{opacity:.5}to{opacity:0}}
 .fx-perch{animation-name:perch;animation-fill-mode:forwards}
@@ -581,14 +585,15 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     /**
      * The bird carrying its envelope, facing its heading (flipped when that points left) and drawn
      * `BIRD_LIFT` px above its flight's point. `flap` alternates the wing every loop frame at the floor's
-     * rate; without it the wing is drawn still, down.
+     * rate; without it the wing is drawn still, down. `standing` (card#12445, the portal bird on the birdhouse's
+     * perch): it stands on its longer legs, its feet on the perch, so it holds the envelope in its beak rather than under it.
      */
-    function bird(parent, headingDeg, flapSeconds, beak = 'closed') {
+    function bird(parent, headingDeg, flapSeconds, beak = 'closed', standing = false) {
         const left = Math.abs(headingDeg) > 90;
         const g = node('g', { transform: `translate(0 ${-BIRD_LIFT})${left ? ' scale(-1 1)' : ''}` }, parent);
 
-        shapes(node('g', { transform: 'translate(0 12)' }, g), envelopeShapes());
-        shapes(g, legShapes());
+        shapes(node('g', { transform: standing ? 'translate(15 3) rotate(14) scale(0.8)' : 'translate(0 12)' }, g), envelopeShapes());
+        shapes(g, standing ? standingLegShapes() : legShapes());
 
         if (flapSeconds === null) {
             shapes(g, birdShapes('down', beak));
@@ -692,32 +697,53 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                 // nothing persists. Reduced motion (§ 6.4): the still envelope at the desk for the moving
                 // form's own duration, then gone (the operator: *"a still envelope that disappears after
                 // some time"*). A22's portal bird is the same flight (`scene.js`'s `travel()`): to the
-                // birdhouse's hole with no rest, where its reduced form is the still envelope at the
-                // portal, or from the hole to the desk.
+                // birdhouse's perch with no rest, where its reduced form is the still envelope at the
+                // portal, or from the perch to the desk.
                 const restAt = { x: fx.to.x + 14, y: fx.to.y - 4 };
                 const rest = (n) => node('g', { transform: `translate(${restAt.x} ${restAt.y}) rotate(-8)`, ...n }, layer);
 
                 if (fx.frames > 0) {
                     // card#12345 (the operator, 2026-10-25: *"It is a little too fast and is not smooth (the bird
                     // jumps locations)"*): the flight moves CONTINUOUSLY along its arc — `linear`, never `steps()` —
-                    // so its last drawn position is the desk or the hole, and it is drawn at the exact instant it has
+                    // so its last drawn position is the desk or the perch, and it is drawn at the exact instant it has
                     // reached (`elapsed_ms`), so a repaint mid-flight continues it rather than snapping it back to its
                     // frame's start. The bird is drawn only while it flies (`.fx-bird`'s opacity outside its run).
+                    // Every part starts where the scene put it, from the effect's start, and `wait_frames` later.
                     const flown = fx.elapsed_ms / 1000;
+                    const at = (frame) => ((fx.wait_frames + frame) * fx.frame_interval_ms) / 1000 - flown;
                     const flap = (2 * fx.frame_interval_ms) / 1000;
                     const g = node('g', {
                         class: 'fx-bird',
-                        style: `animation-duration:${seconds}s;animation-delay:${-flown}s;offset-path:path('${arcPath(fx.from, fx.to)}')`,
+                        style: `animation-duration:${seconds}s;animation-delay:${at(fx.flight_start)}s;offset-path:path('${arcPath(fx.from, fx.to)}')`,
                     }, layer);
 
                     bird(g, fx.heading_deg, flap);
 
                     const animated = [g];
 
-                    if ((fx.rest_frames ?? 0) > 0) {
+                    if (fx.perch !== null) {
+                        // card#12445 (the operator, 2026-10-26): the portal bird STANDS on the birdhouse's perch for
+                        // the ledge dwell — its feet on the peg (`perchPoint()`), the wing still — and hops between
+                        // the perch and the hole: up into it, shrinking out of sight, going out; out of it onto the
+                        // perch coming in (the same hop, reversed). It faces the way it flies.
+                        const p = fx.perch;
+                        const frame = (n) => (n * fx.frame_interval_ms) / 1000;
+                        const ledge = node('g', { transform: `translate(${p.at.x} ${p.at.y})` }, layer);
+                        const perched = node('g', { class: 'fx-perched', style: `animation-duration:${frame(p.dwell_frames)}s;animation-delay:${at(p.dwell_start)}s` }, ledge);
+                        const hop = node('g', {
+                            class: `fx-hop hop-${p.hop}`,
+                            style: `animation-duration:${frame(p.hop_frames)}s;animation-delay:${at(p.hop_start)}s;--hole-x:${p.hole.x - p.at.x}px;--hole-y:${p.hole.y - p.at.y}px`,
+                        }, ledge);
+
+                        bird(perched, fx.heading_deg, null, 'closed', true);
+                        bird(hop, fx.heading_deg, flap, 'closed', true);
+                        animated.push(perched, hop);
+                    }
+
+                    if (fx.rest_frames > 0) {
                         const restS = (fx.rest_frames * fx.frame_interval_ms) / 1000;
 
-                        animated.push(shapes(rest({ class: 'fx-rest', style: `animation-duration:${restS}s;animation-timing-function:steps(${fx.rest_frames});animation-delay:${seconds - flown}s` }), envelopeShapes()));
+                        animated.push(shapes(rest({ class: 'fx-rest', style: `animation-duration:${restS}s;animation-timing-function:steps(${fx.rest_frames});animation-delay:${at(fx.flight_start + fx.frames)}s` }), envelopeShapes()));
                     }
 
                     origin({ key: effectKey(fx), started_at: fx.started_at, elapsed_ms: fx.elapsed_ms, nodes: animated });

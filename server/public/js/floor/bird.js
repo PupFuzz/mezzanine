@@ -100,6 +100,30 @@ export function legShapes() {
     ];
 }
 
+/** Where a STANDING bird's feet are, in its own coordinates (`standingLegShapes()`): card#12445's perched portal bird. */
+export const FOOT_Y = 11;
+
+/**
+ * card#12445: the legs of a bird standing on the birdhouse's perch — longer than in flight, so they show under the
+ * body's rim, each with a toe forward, ending at `FOOT_Y`.
+ */
+export function standingLegShapes() {
+    return [
+        ['path', { d: `M -2 6.5 L -2 ${FOOT_Y} L 0.5 ${FOOT_Y} M 2 6.5 L 2 ${FOOT_Y} L 4.5 ${FOOT_Y}`, stroke: P.bird_outline, 'stroke-width': 1, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }],
+    ];
+}
+
+/**
+ * card#12445: the point of a bird's flight at which it STANDS on the birdhouse's peg perch — its standing feet
+ * (`FOOT_Y`, the bird drawn `BIRD_LIFT` px above its flight's point) on the peg's tip, the end nearest the viewer.
+ * The portal bird lands here going out and stands here coming in (`floor/scene.js`'s `travel()`).
+ *
+ * @param {{x: number, top: number, tip: number}} perch the portal's `perch` (`floor/scene.js`'s `birdPortal()`)
+ */
+export function perchPoint(perch) {
+    return Object.freeze({ x: perch.x, y: perch.tip + BIRD_LIFT - FOOT_Y });
+}
+
 /** One eighth-note at the origin, with its cream rim. */
 function note() {
     return [
@@ -132,14 +156,15 @@ export function stillNotes() {
 /**
  * THE BIRDHOUSE, at the band's `portal` (`floor/scene.js`'s `birdPortal()`): a gabled house, its body cream
  * edged brown, a wooden roof with a dark eave line, a round hole painted with the windows' own sky (A17's
- * paint, so it never shows a second time of day), a peg perch under the hole and a bracket under the body.
+ * paint, so it never shows a second time of day), a peg perch under the hole (the portal's `perch`, where a portal
+ * bird stands — `perchPoint()`) and a bracket under the body.
  * Still: it has no idle motion.
  *
  * @param {object} portal the scene's portal geometry
  * @param {string|null} sky the windows' sky phase, or null when the room has no value (§ 6.5)
  */
 export function birdhouseShapes(portal, sky) {
-    const { roof, body, bracket, mouth } = portal;
+    const { roof, body, bracket, mouth, perch } = portal;
     const ridge = `M ${roof.x} ${roof.eave_y} L ${portal.x} ${roof.peak_y} L ${roof.x + roof.w} ${roof.eave_y} Z`;
 
     return [
@@ -149,6 +174,6 @@ export function birdhouseShapes(portal, sky) {
         ['path', { d: ridge, fill: P.portal_wood, stroke: P.portal_outline, 'stroke-width': 1.4, 'stroke-linejoin': 'round' }],
         ['path', { d: `M ${roof.x + 3} ${roof.eave_y + 1} L ${roof.x + roof.w - 3} ${roof.eave_y + 1}`, stroke: P.portal_outline, 'stroke-width': 1.2 }],
         ['circle', { cx: mouth.x, cy: mouth.y, r: mouth.r, class: `portal-hole sky-${sky ?? 'unset'}`, stroke: P.portal_outline, 'stroke-width': 1.2 }],
-        ['path', { d: `M ${mouth.x} ${mouth.y + mouth.r + 3} L ${mouth.x} ${mouth.y + mouth.r + 8}`, stroke: P.portal_outline, 'stroke-width': 2, 'stroke-linecap': 'round' }],
+        ['path', { d: `M ${perch.x} ${perch.top} L ${perch.x} ${perch.tip}`, stroke: P.portal_outline, 'stroke-width': 2, 'stroke-linecap': 'round' }],
     ];
 }

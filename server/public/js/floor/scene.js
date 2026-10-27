@@ -35,6 +35,7 @@ import { readEmbedded, splitGid, tilesetUrl } from './tileset.js';
 import { BUBBLE_BAND, BUBBLE_PAD, CHARACTER_SCALE, LINE, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, thoughtTrail, union } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
 import { cellCentre, lattice, polylineLength, route } from './route.js';
+import { perchPoint } from './bird.js';
 
 /**
  * The back-wall band's height (§ 4.2) — "its height is a drawing layer's" (`floor-layout.js`): a wall
@@ -262,6 +263,19 @@ const ENVELOPE_PX_PER_FRAME = 48;
  * form's whole duration, flight and rest (§ 6.2 A19's reduced cell).
  */
 const ARRIVAL_REST_FRAMES = 11;
+
+/**
+ * card#12445's ledge dwell, RULED (the operator, 2026-10-26: *"When the bird reaches the birdhouse, it should stop there
+ * on the birdhouse ledge for a second before hopping into the hole. When it arrives, it should come out of the hole and
+ * wait on the ledge for 1 second before flying."*): the portal bird stands on the birdhouse's perch this long going out
+ * and coming in — FLOOR.md § 12's *Ledge dwell* row — in seconds, and in loop frames at § 12's rate.
+ */
+export const LEDGE_DWELL_S = 1;
+export const LEDGE_DWELL_FRAMES = LEDGE_DWELL_S * LOOP_FPS;
+
+/** card#12445: the hop between the perch and the hole, in loop frames (§ 12's *Hole hop* row). Chosen; it carries no fact. */
+export const HOLE_HOP_FRAMES = 2;
+
 const RING_PX_PER_FRAME = 240;
 const RING_FADE_FRAMES = 2;
 
@@ -1332,8 +1346,8 @@ export function backWall(span, room) {
  * The birdhouse's geometry, band-relative to `left` and the band's top `top` (card#12241's measured layout):
  * its centre `c` is 22 px right of the roof's left edge, the roof's left edge `PORTAL.gap` px right of the
  * clock face; `c.y` is 28 px under the clock's top, so the roof's 28 px gable peaks level with it. The MOUTH
- * is the hole's centre — where a portal bird enters and leaves (COORD-STORE.md § 6.1). `sky` is the room's sky
- * phase, `null` when the room has no value (§ 6.5).
+ * is the hole's centre — where a portal bird enters and leaves (COORD-STORE.md § 6.1), hopping between it and the
+ * `perch` under it (card#12445). `sky` is the room's sky phase, `null` when the room has no value (§ 6.5).
  */
 function birdPortal(left, top, sky) {
     const cx = left + CLOCK.dx + CLOCK.size + PORTAL.gap + PORTAL.roof_w / 2;
@@ -1346,6 +1360,9 @@ function birdPortal(left, top, sky) {
         body: Object.freeze({ x: cx - PORTAL.body / 2, y: cy - 12, w: PORTAL.body, h: PORTAL.body }),
         bracket: Object.freeze({ x: cx - PORTAL.bracket_w / 2, y: cy + 22, w: PORTAL.bracket_w, h: PORTAL.bracket_h }),
         mouth: Object.freeze({ x: cx, y: cy + 2, r: PORTAL.hole_r }),
+        // The peg perch under the hole, seen end-on: from the wall (`top`) to its tip nearest the viewer (`tip`), where a
+        // portal bird stands (card#12445, `bird.js`'s `perchPoint()`).
+        perch: Object.freeze({ x: cx, top: cy + 2 + PORTAL.hole_r + 3, tip: cy + 2 + PORTAL.hole_r + 8 }),
         // The hole shows the windows' own sky (A17's value), so the portal never shows a second time of day.
         sky,
     });
@@ -1373,9 +1390,27 @@ function form(animationId, reduce) {
  * portal bird share it, so the two forms cannot drift apart. `rest` is how many frames the envelope rests
  * where the bird set it down (none when it flies into the birdhouse). With no motion it is the still
  * envelope at `to`, shown for the moving form's own duration (§ 6.2's reduced cells).
+ *
+ * card#12445: `portal` — `{ ledge, hole, leg }` for A22's bird, `null` for A19's — puts the bird on the birdhouse's
+ * perch for § 12's *Ledge dwell* and hops it between the perch and the hole: going out it flies to the perch, stands,
+ * and hops in (flight → dwell → hop); coming in it hops out onto the perch, stands, and flies (hop → dwell → flight).
+ * `perch` carries each part's first frame from the effect's start, so the painter draws the timeline and decides
+ * none of it; `span_frames` is the whole moving form. `wait_frames` is the in-flight holder's — the frames the bird
+ * waits for the ledge another bird holds (`EffectsInFlight`) — and every part starts that much later.
  */
-function travel(base, from, to, moving, rest) {
+function travel(base, from, to, moving, rest, portal = null) {
     const flight = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / ENVELOPE_PX_PER_FRAME));
+    const out = portal?.leg === 'departure';
+    const perch = portal === null ? null : Object.freeze({
+        at: portal.ledge,
+        hole: portal.hole,
+        hop: out ? 'in' : 'out',
+        dwell_start: out ? flight : HOLE_HOP_FRAMES,
+        dwell_frames: LEDGE_DWELL_FRAMES,
+        hop_start: out ? flight + LEDGE_DWELL_FRAMES : 0,
+        hop_frames: HOLE_HOP_FRAMES,
+    });
+    const atPerch = perch === null ? 0 : LEDGE_DWELL_FRAMES + HOLE_HOP_FRAMES;
 
     return Object.freeze({
         ...base,
@@ -1385,9 +1420,13 @@ function travel(base, from, to, moving, rest) {
         // travel — card#12241's bird flips to it.
         heading_deg: Math.atan2(to.y - from.y, to.x - from.x) * 180 / Math.PI,
         frames: moving ? flight : 0,
+        flight_start: moving && portal !== null && !out ? atPerch : 0,
         rest_frames: moving ? rest : 0,
+        perch: moving ? perch : null,
+        wait_frames: 0,
+        span_frames: moving ? flight + rest + atPerch : 0,
         // The reduced form is transient too: shown for the moving form's own duration.
-        still_frames: moving ? 0 : flight + rest,
+        still_frames: moving ? 0 : flight + rest + atPerch,
     });
 }
 
@@ -1490,7 +1529,9 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce, char
 
             seen.add(tag);
 
-            const portal = Object.freeze({ x: mouth.x, y: mouth.y });
+            // card#12445: the bird flies to and from the birdhouse's perch, and hops between it and the hole.
+            const ledge = perchPoint(band.portal.perch);
+            const hole = Object.freeze({ x: mouth.x, y: mouth.y });
             const moving = motion && !reduce;
 
             if (round.portal.departure) {
@@ -1498,7 +1539,7 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce, char
 
                 if (from !== null) {
                     // It goes in: no envelope is left at the hole, so it has no rest.
-                    effects.push(Object.freeze({ ...travel(base, from, portal, moving, 0), leg: 'departure' }));
+                    effects.push(Object.freeze({ ...travel(base, from, ledge, moving, 0, { ledge, hole, leg: 'departure' }), leg: 'departure' }));
                 }
             }
 
@@ -1506,7 +1547,7 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce, char
                 const to = anchors.get(key) ?? null;
 
                 if (to !== null) {
-                    effects.push(Object.freeze({ ...travel(base, portal, to, moving, ARRIVAL_REST_FRAMES), leg: 'arrival' }));
+                    effects.push(Object.freeze({ ...travel(base, ledge, to, moving, ARRIVAL_REST_FRAMES, { ledge, hole, leg: 'arrival' }), leg: 'arrival' }));
                 }
             }
 

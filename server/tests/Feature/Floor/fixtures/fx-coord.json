@@ -4052,7 +4052,7 @@
       }
     },
     "coord_portal": {
-      "note": "card#12345's portal birds: `coord`'s snapshot with three seats declaring a `roundtable_agent_name` (`aimla-pm`, `aimla-impl-1` and `win-1`, all `checked`) and four fleet-scope posts: P1 from `aimla-pm` to `win-1`, another floor's seat (A22's departure into this floor's birdhouse), P2 from `win-1` to `aimla-impl-1` (A22's arrival from it), and P3 and P4 between the two `aimla` seats (A19 travellers, and renders that land while the portal birds fly).",
+      "note": "card#12345's portal birds: `coord`'s snapshot with three seats declaring a `roundtable_agent_name` (`aimla-pm`, `aimla-impl-1` and `win-1`, all `checked`) and four fleet-scope posts: P1 from `aimla-pm` to `win-1`, another floor's seat (A22's departure into this floor's birdhouse), P2 from `win-1` to `aimla-impl-1` (A22's arrival from it), and P3 and P4 between the two `aimla` seats (A19 travellers, and renders that land while the portal birds fly); then a `feed.heartbeat` every 800 ms from 2000 ms to the run's end (card#12445), so a render still lands inside every flight now that the portal birds stand a second on the birdhouse's ledge and fly that much later.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -5226,6 +5226,60 @@
               "posted_at": "2026-08-23T14:23:20.000Z",
               "received_at": "2026-08-23T14:23:20.000Z"
             }
+          }
+        },
+        {
+          "at_ms": 2000,
+          "envelope": {
+            "feed_version": 1,
+            "t": "feed.heartbeat",
+            "server_time": "2026-08-23T14:23:21.000Z",
+            "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
+          }
+        },
+        {
+          "at_ms": 2800,
+          "envelope": {
+            "feed_version": 1,
+            "t": "feed.heartbeat",
+            "server_time": "2026-08-23T14:23:22.000Z",
+            "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
+          }
+        },
+        {
+          "at_ms": 3600,
+          "envelope": {
+            "feed_version": 1,
+            "t": "feed.heartbeat",
+            "server_time": "2026-08-23T14:23:23.000Z",
+            "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
+          }
+        },
+        {
+          "at_ms": 4400,
+          "envelope": {
+            "feed_version": 1,
+            "t": "feed.heartbeat",
+            "server_time": "2026-08-23T14:23:24.000Z",
+            "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
+          }
+        },
+        {
+          "at_ms": 5200,
+          "envelope": {
+            "feed_version": 1,
+            "t": "feed.heartbeat",
+            "server_time": "2026-08-23T14:23:25.000Z",
+            "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
+          }
+        },
+        {
+          "at_ms": 6000,
+          "envelope": {
+            "feed_version": 1,
+            "t": "feed.heartbeat",
+            "server_time": "2026-08-23T14:23:26.000Z",
+            "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
           }
         }
       ],

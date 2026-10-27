@@ -8,7 +8,12 @@ use Tests\TestCase;
  * **A coordination bird glides to its destination** — card#12345, the operator's two readings on the sandbox,
  * 2026-10-25: *"It is a little too fast and is not smooth (the bird jumps locations)"*, and *"When a bird goes to
  * the bird house, it disappears before it reaches the birdhouse."* `docs/design/FLOOR.md` § 6.1 (what a flight
- * may mean), § 6.2's A19 and A22 rows and § 12's *Envelope speed* row.
+ * may mean), § 6.2's A19 and A22 rows and § 12's *Envelope speed* row. **And the portal bird waits on the ledge** —
+ * card#12445, the operator, 2026-10-26: *"When the bird reaches the birdhouse, it should stop there on the birdhouse
+ * ledge for a second before hopping into the hole. When it arrives, it should come out of the hole and wait on the
+ * ledge for 1 second before flying."* — § 12's *Ledge dwell* and *Hole hop* rows: going out it flies to the perch,
+ * stands there for the dwell and hops into the hole; coming in it hops out onto the perch, stands there for the dwell
+ * and flies; its feet are on the peg; and the ledge holds one bird (`EffectsInFlight`, read through `ledge-probe.mjs`).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ TWO HALVES, EACH READ WHERE IT IS DECIDED. The SCENE decides a flight's ends and its frames (`travel()`,
@@ -46,6 +51,33 @@ class ABirdFliesToItsDestinationTest extends TestCase
         ['timeline_ms' => 10480, 'frame_ms' => 10470, 'clock_ms' => 650, 'elapsed_ms' => 610],
     ];
 
+    /** § 12's *Loop frame rate*, frames per second. */
+    private function loopFps(): int
+    {
+        $this->assertSame(1, preg_match('/^\| \*\*Loop frame rate\*\* \| \*\*(\d+) fps\*\* \|/m', $this->floorMd(), $m),
+            '§ 12 carries no *Loop frame rate* row in the form this test reads');
+
+        return (int) $m[1];
+    }
+
+    /** § 12's *Ledge dwell*, in loop frames: its seconds at § 12's rate. */
+    private function dwellFrames(): int
+    {
+        $this->assertSame(1, preg_match('/^\| \*\*Ledge dwell\*\* \| \*\*(\d+) s\*\* \|/m', $this->floorMd(), $m),
+            '§ 12 carries no *Ledge dwell* row in the form this test reads');
+
+        return (int) $m[1] * $this->loopFps();
+    }
+
+    /** § 12's *Hole hop*, in loop frames. */
+    private function hopFrames(): int
+    {
+        $this->assertSame(1, preg_match('/^\| \*\*Hole hop\*\* \| \*\*(\d+) frames\*\* \|/m', $this->floorMd(), $m),
+            '§ 12 carries no *Hole hop* row in the form this test reads');
+
+        return (int) $m[1];
+    }
+
     /** § 12's *Envelope speed*, read out of the document. */
     private function envelopeSpeed(): int
     {
@@ -63,6 +95,18 @@ class ABirdFliesToItsDestinationTest extends TestCase
         $this->assertSame($this->envelopeSpeed(), (int) $m[1], '§ 12\'s *Envelope speed* is not scene.js\'s ENVELOPE_PX_PER_FRAME');
     }
 
+    /** card#12445: § 12's *Ledge dwell* and *Hole hop* are the scene's constants. */
+    public function test_green_section_12s_ledge_dwell_and_hole_hop_are_the_scenes_constants(): void
+    {
+        $source = (string) file_get_contents($this->moduleDir().'/'.self::SCENE);
+
+        $this->assertSame(1, preg_match('/^export const LEDGE_DWELL_S = (\d+);$/m', $source, $d));
+        $this->assertSame(1, preg_match('/^export const LEDGE_DWELL_FRAMES = LEDGE_DWELL_S \* LOOP_FPS;$/m', $source));
+        $this->assertSame(1, preg_match('/^export const HOLE_HOP_FRAMES = (\d+);$/m', $source, $h));
+        $this->assertSame($this->dwellFrames(), (int) $d[1] * $this->loopFps(), '§ 12\'s *Ledge dwell* is not scene.js\'s LEDGE_DWELL_S');
+        $this->assertSame($this->hopFrames(), (int) $h[1], '§ 12\'s *Hole hop* is not scene.js\'s HOLE_HOP_FRAMES');
+    }
+
     public function test_every_flight_runs_from_its_start_to_its_destination_at_section_12s_speed(): void
     {
         $this->assertSame([], $this->sceneDefects($this->floorRun(self::RUN)));
@@ -77,10 +121,48 @@ class ABirdFliesToItsDestinationTest extends TestCase
         $this->assertSame(array_keys($moving), array_keys($still), 'the reduced run drew other flights than the moving one');
 
         foreach ($still as $key => $fx) {
+            $perch = $moving[$key]['perch'];
+            // card#12445: the portal bird's moving form includes its ledge dwell and its hop.
+            $ledge = $perch === null ? 0 : $perch['dwell_frames'] + $perch['hop_frames'];
+
             $this->assertSame(0, $fx['frames'], "{$key} moves under reduced motion");
-            $this->assertSame($moving[$key]['frames'] + $moving[$key]['rest_frames'], $fx['still_frames'],
-                "{$key}'s still envelope is not shown for its moving form's flight and rest");
+            $this->assertNull($fx['perch'], "{$key} stands on the ledge under reduced motion");
+            $this->assertSame($moving[$key]['frames'] + $moving[$key]['rest_frames'] + $ledge, $fx['still_frames'],
+                "{$key}'s still envelope is not shown for its moving form's flight, rest, ledge dwell and hop");
         }
+    }
+
+    /**
+     * card#12445: THE TIMELINE, AS THE SCENE DECIDES IT. Going out: the flight, then the bird stands on the perch for § 12's
+     * *Ledge dwell*, then hops into the hole for § 12's *Hole hop* — each part starting on the frame the one before it
+     * ends. Coming in: the hop out of the hole, the dwell, then the flight and the envelope's rest. A19's traveller never
+     * meets the birdhouse. The whole moving form is the sum of its parts.
+     */
+    public function test_the_portal_bird_stands_on_the_ledge_for_the_dwell_then_goes_in_and_the_reverse_coming_out(): void
+    {
+        $this->assertSame([], $this->timelineDefects($this->floorRun(self::RUN)));
+    }
+
+    /**
+     * card#12445: THE TIMELINE, AS THE PAINTER DRAWS IT, from what it wrote: the standing bird is drawn on the ledge for
+     * exactly the dwell, the flight ends where it begins (going out) and starts where it ends (coming in), the hop runs
+     * into the hole going out and out of it coming in — and the standing bird's feet are on the peg's tip, under the hole.
+     */
+    public function test_the_painted_bird_stands_on_the_peg_for_the_dwell_and_hops_through_the_hole(): void
+    {
+        $result = $this->floorRun(self::RUN);
+
+        $this->assertSame([], $this->ledgeDefects($this->paint($result), $result));
+    }
+
+    /**
+     * card#12445: THE LEDGE HOLDS ONE BIRD. Two portal birds whose ledge parts would meet: the second waits the fewest
+     * whole frames that clear the first's, so the two are never drawn on the perch together; a bird that meets no other
+     * waits nothing.
+     */
+    public function test_a_second_bird_waits_for_the_ledge_rather_than_standing_on_the_first(): void
+    {
+        $this->assertSame([], $this->queueDefects($this->queue($this->floorRun(self::RUN))));
     }
 
     public function test_the_painted_bird_is_drawn_from_its_start_to_its_destination_and_across_a_repaint(): void
@@ -94,18 +176,42 @@ class ABirdFliesToItsDestinationTest extends TestCase
         $fast = $this->mutatedModules([self::SCENE, 'const ENVELOPE_PX_PER_FRAME = 48;', 'const ENVELOPE_PX_PER_FRAME = 96;']);
         $this->assertNotSame([], $this->sceneDefects($this->floorRun(self::RUN, $fast)), 'CONTROL (the bird at its old speed) did not bite');
 
-        $short = $this->mutatedModules([self::SCENE, 'travel(base, from, portal, moving, 0)', 'travel(base, from, { x: portal.x, y: portal.y + 40 }, moving, 0)']);
-        $this->assertNotSame([], $this->sceneDefects($this->floorRun(self::RUN, $short)), 'CONTROL (a departure that stops under the hole) did not bite');
+        $short = $this->mutatedModules([self::SCENE, 'travel(base, from, ledge, moving, 0, ', 'travel(base, from, { x: ledge.x, y: ledge.y + 40 }, moving, 0, ']);
+        $this->assertNotSame([], $this->sceneDefects($this->floorRun(self::RUN, $short)), 'CONTROL (a departure that stops under the perch) did not bite');
 
-        $outside = $this->mutatedModules([self::SCENE, 'travel(base, portal, to, moving, ARRIVAL_REST_FRAMES)', 'travel(base, { x: portal.x + 40, y: portal.y }, to, moving, ARRIVAL_REST_FRAMES)']);
-        $this->assertNotSame([], $this->sceneDefects($this->floorRun(self::RUN, $outside)), 'CONTROL (an arrival that starts beside the hole) did not bite');
+        $outside = $this->mutatedModules([self::SCENE, 'travel(base, ledge, to, moving, ARRIVAL_REST_FRAMES, ', 'travel(base, { x: ledge.x + 40, y: ledge.y }, to, moving, ARRIVAL_REST_FRAMES, ']);
+        $this->assertNotSame([], $this->sceneDefects($this->floorRun(self::RUN, $outside)), 'CONTROL (an arrival that starts beside the perch) did not bite');
+
+        $beside = $this->mutatedModules([self::SCENE, 'const hole = Object.freeze({ x: mouth.x, y: mouth.y });', 'const hole = Object.freeze({ x: mouth.x + 30, y: mouth.y });']);
+        $this->assertNotSame([], $this->sceneDefects($this->floorRun(self::RUN, $beside)), 'CONTROL (a hop into the wall beside the hole) did not bite');
+
+        // card#12445's timeline: the dev tree's bird went straight into the hole and straight out of it.
+        $noDwell = $this->mutatedModules([self::SCENE, '        dwell_frames: LEDGE_DWELL_FRAMES,', '        dwell_frames: 0,']);
+        $this->assertNotSame([], $this->timelineDefects($this->floorRun(self::RUN, $noDwell)), 'CONTROL (no ledge dwell) did not bite');
+
+        $order = $this->mutatedModules([self::SCENE, '        hop_start: out ? flight + LEDGE_DWELL_FRAMES : 0,', '        hop_start: out ? flight : 0,']);
+        $this->assertNotSame([], $this->timelineDefects($this->floorRun(self::RUN, $order)), 'CONTROL (going in before the dwell ends) did not bite');
+
+        $early = $this->mutatedModules([self::SCENE, '        flight_start: moving && portal !== null && !out ? atPerch : 0,', '        flight_start: 0,']);
+        $this->assertNotSame([], $this->timelineDefects($this->floorRun(self::RUN, $early)), 'CONTROL (flying off while it still stands on the ledge) did not bite');
+
+        $floating = $this->mutatedModules(['../floor/bird.js', 'y: perch.tip + BIRD_LIFT - FOOT_Y }', 'y: perch.tip + BIRD_LIFT - FOOT_Y - 6 }']);
+        $floated = $this->floorRun(self::RUN, $floating);
+        $this->assertNotSame([], $this->ledgeDefects($this->paint($floated, $floating), $floated), 'CONTROL (a bird standing 6 px above the peg) did not bite');
+
+        $painted = $this->floorRun(self::RUN);
+        $late = $this->mutatedModules([self::PAINTER, 'animation-delay:${at(p.dwell_start)}s', 'animation-delay:${at(p.dwell_start + 1)}s']);
+        $this->assertNotSame([], $this->ledgeDefects($this->paint($painted, $late), $painted), 'CONTROL (a painter drawing the dwell a frame late) did not bite');
+
+        $stacked = $this->mutatedModules(['../floor/in-flight.js', '? this.#onTheLedge(effect, now) : effect;', '? effect : effect;']);
+        $this->assertNotSame([], $this->queueDefects($this->queue($painted, $stacked)), 'CONTROL (two birds on the ledge at once) did not bite');
 
         $flights = $this->floorRun(self::RUN);
 
         // The form the card replaced: a flight in `steps(frames)`, whose last drawn point is one step short.
         $stepped = $this->mutatedModules([self::PAINTER,
-            'style: `animation-duration:${seconds}s;animation-delay:${-flown}s;offset-path',
-            'style: `animation-duration:${seconds}s;animation-timing-function:steps(${fx.frames});animation-delay:${-flown}s;offset-path']);
+            'style: `animation-duration:${seconds}s;animation-delay:${at(fx.flight_start)}s;offset-path',
+            'style: `animation-duration:${seconds}s;animation-timing-function:steps(${fx.frames});animation-delay:${at(fx.flight_start)}s;offset-path']);
         $this->assertNotSame([], $this->paintDefects($this->paint($flights, $stepped)), 'CONTROL (the stepped flight) did not bite');
 
         // The delay in whole frames: a repaint mid-frame draws the bird back at its frame's start.
@@ -178,7 +284,7 @@ class ABirdFliesToItsDestinationTest extends TestCase
                 }
 
                 $key = "{$fx['animation_id']} {$fx['cause']} ".($fx['leg'] ?? '-')." {$fx['to']['x']},{$fx['to']['y']}";
-                $out[$key] ??= $fx + ['scene' => ['anchors' => $scene['anchors'], 'mouth' => $scene['band']['portal']['mouth'] ?? null]];
+                $out[$key] ??= $fx + ['scene' => ['anchors' => $scene['anchors'], 'mouth' => $scene['band']['portal']['mouth'] ?? null, 'perch' => $scene['band']['portal']['perch'] ?? null]];
             }
         }
 
@@ -187,7 +293,10 @@ class ABirdFliesToItsDestinationTest extends TestCase
         return $out;
     }
 
-    /** The scene's half: each flight's ends — the desks, and the birdhouse's hole for A22 — and its frames. */
+    /**
+     * The scene's half: each flight's ends — the desks, and for A22 the bird's place on the birdhouse's perch, straight
+     * under the hole, which its hop runs to and from — and its frames.
+     */
     private function sceneDefects(array $result): array
     {
         $speed = $this->envelopeSpeed();
@@ -204,13 +313,25 @@ class ABirdFliesToItsDestinationTest extends TestCase
             $to = [$fx['to']['x'], $fx['to']['y']];
             $legs[] = $fx['animation_id'] === 'A22' ? $fx['leg'] : 'A19';
             [$start, $end] = match ($fx['animation_id'] === 'A22' ? $fx['leg'] : 'A19') {
-                'departure' => ['a desk', 'the hole'],
-                'arrival' => ['the hole', 'a desk'],
+                'departure' => ['a desk', 'the perch'],
+                'arrival' => ['the perch', 'a desk'],
                 default => ['a desk', 'a desk'],
             };
+            $perch = $fx['perch'] === null ? null : [$fx['perch']['at']['x'], $fx['perch']['at']['y']];
+
+            if ($fx['animation_id'] === 'A22') {
+                // card#12445: the place it stands is straight under the hole, and its hop runs to and from the hole.
+                if ($perch === null || $mouth === null || $perch[0] !== $mouth[0] || $perch[1] <= $mouth[1]) {
+                    $defects[] = "{$key} stands at ".json_encode($perch).', not under the hole at '.json_encode($mouth);
+                } elseif ([$fx['perch']['hole']['x'], $fx['perch']['hole']['y']] !== $mouth) {
+                    $defects[] = "{$key} hops to ".json_encode($fx['perch']['hole']).', not the hole at '.json_encode($mouth);
+                }
+            } elseif ($fx['perch'] !== null) {
+                $defects[] = "{$key}: an A19 traveller stands on the birdhouse's perch";
+            }
 
             foreach ([[$start, $from, 'starts'], [$end, $to, 'ends']] as [$where, $point, $verb]) {
-                $ok = $where === 'the hole' ? $point === $mouth : in_array($point, $anchors, true);
+                $ok = $where === 'the perch' ? $perch !== null && $point === $perch : in_array($point, $anchors, true);
 
                 if (! $ok) {
                     $defects[] = "{$key} {$verb} at ".json_encode($point).", not at {$where}";
@@ -232,6 +353,259 @@ class ABirdFliesToItsDestinationTest extends TestCase
         // The run's population, so a run that stopped drawing one leg reads as such.
         $this->assertSame(['A19', 'arrival', 'departure'], $this->sorted(array_unique($legs)),
             'the run did not draw a departure, an arrival and a traveller');
+
+        return $defects;
+    }
+
+    /**
+     * card#12445: the scene's timeline for each portal bird, against § 12's *Ledge dwell* and *Hole hop* — never against
+     * the effect's own figures, so a bird that carries a wrong dwell reds rather than certifying itself.
+     */
+    private function timelineDefects(array $result): array
+    {
+        $dwell = $this->dwellFrames();
+        $hop = $this->hopFrames();
+        $defects = [];
+        $legs = [];
+
+        foreach ($this->firstFlights($result) as $key => $fx) {
+            $p = $fx['perch'];
+            $f = $fx['frames'];
+
+            if ($fx['animation_id'] === 'A19') {
+                if ($p !== null || $fx['flight_start'] !== 0 || $fx['span_frames'] !== $fx['wait_frames'] + $f + $fx['rest_frames']) {
+                    $defects[] = "{$key}: an A19 traveller does not simply fly and rest";
+                }
+
+                continue;
+            }
+
+            $legs[] = $fx['leg'];
+
+            if ($p === null) {
+                $defects[] = "{$key} never stands on the ledge";
+
+                continue;
+            }
+
+            // Each part's first frame from the effect's start: going out flight → dwell → hop in; coming in hop out → dwell → flight.
+            $owed = $fx['leg'] === 'departure'
+                ? ['flight_start' => 0, 'dwell_start' => $f, 'hop_start' => $f + $dwell, 'hop' => 'in']
+                : ['flight_start' => $hop + $dwell, 'dwell_start' => $hop, 'hop_start' => 0, 'hop' => 'out'];
+            $drawn = ['flight_start' => $fx['flight_start'], 'dwell_start' => $p['dwell_start'], 'hop_start' => $p['hop_start'], 'hop' => $p['hop']];
+
+            if ($drawn !== $owed) {
+                $defects[] = "{$key}: its parts start at ".json_encode($drawn).', not '.json_encode($owed);
+            }
+
+            if ($p['dwell_frames'] !== $dwell || $p['hop_frames'] !== $hop) {
+                $defects[] = "{$key} stands {$p['dwell_frames']} frames and hops {$p['hop_frames']}, not § 12's {$dwell} and {$hop}";
+            }
+
+            if ($fx['span_frames'] !== $fx['wait_frames'] + $f + $fx['rest_frames'] + $dwell + $hop) {
+                $defects[] = "{$key} spans {$fx['span_frames']} frames, not its wait, flight, rest, dwell and hop";
+            }
+        }
+
+        $this->assertSame(['arrival', 'departure'], $this->sorted(array_unique($legs)), 'the run did not draw a departure and an arrival');
+
+        return $defects;
+    }
+
+    /**
+     * card#12445: the painter's half of the ledge, from what it wrote for each portal bird. The standing bird's window on
+     * the timeline is exactly § 12's dwell, the hop's exactly § 12's hop, each where the order puts it from the flight's
+     * own start — going out, the dwell from the flight's last instant and the hop from the dwell's; coming in, the dwell
+     * from the hop's last instant and the flight from the dwell's — and so on every paint. The standing bird is drawn at
+     * the flight's end (going out) or start (coming in), so it never jumps; its feet are on the peg's tip, its legs
+     * either side of the peg; the hop runs to the hole, into it going out and out of it coming in.
+     */
+    private function ledgeDefects(array $out, array $result): array
+    {
+        $dwell = $this->dwellFrames();
+        $hop = $this->hopFrames();
+        $style = $out['style'];
+        $defects = [];
+        $portal = null;
+
+        foreach ($result['floor_renders'] as $render) {
+            $portal ??= $render['frame']['scene']['band']['portal'] ?? null;
+        }
+
+        $this->assertNotNull($portal, 'the run drew no birdhouse');
+        $this->assertSame(1, preg_match('/@keyframes hop\{from\{[^}]*\}(?:[^{}]*\{[^}]*\})*to\{[^}]*translate\(var\(--hole-x\),var\(--hole-y\)\)[^}]*\}\}/', $style),
+            'the sheet\'s hop keyframes do not end on the hole (`--hole-x`, `--hole-y`)');
+
+        $seen = 0;
+
+        foreach ($out['flights'] as $f) {
+            if ($f['animation_id'] !== 'A22') {
+                continue;
+            }
+
+            $key = "{$f['animation_id']} {$f['cause']} {$f['leg']}";
+            $I = $f['frame_interval_ms'];
+            $start = self::PAINTS[0]['timeline_ms'] - self::PAINTS[0]['clock_ms'] + $f['wait_frames'] * $I;
+            $flight = $f['frames'] * $I;
+            $seen++;
+
+            foreach ($f['paints'] as $i => $paint) {
+                foreach (['bird', 'perched', 'hop'] as $part) {
+                    if ($paint[$part] === null || $paint[$part]['start'] === null) {
+                        $defects[] = "{$key}: paint {$i} drew no pinned {$part}";
+
+                        continue 3;
+                    }
+                }
+
+                $window = function (array $n): array {
+                    $d = $this->declarations(preg_replace("/offset-path:path\\('[^']*'\\)/", '', $n['style']));
+                    $from = $n['start'] + (float) $d['animation-delay'] * 1000;
+
+                    return [round($from, 3), round($from + (float) $d['animation-duration'] * 1000, 3)];
+                };
+                [$flyFrom, $flyTo] = $window($paint['bird']);
+                $got = ['perched' => $window($paint['perched']), 'hop' => $window($paint['hop']), 'flight' => [$flyFrom, $flyTo]];
+                $owed = $f['leg'] === 'departure'
+                    ? ['perched' => [$start + $flight, $start + $flight + $dwell * $I], 'hop' => [$start + $flight + $dwell * $I, $start + $flight + ($dwell + $hop) * $I], 'flight' => [$start, $start + $flight]]
+                    : ['perched' => [$start + $hop * $I, $start + ($hop + $dwell) * $I], 'hop' => [$start, $start + $hop * $I], 'flight' => [$start + ($hop + $dwell) * $I, $start + ($hop + $dwell) * $I + $flight]];
+
+                foreach ($owed as $part => [$a, $b]) {
+                    if (abs($got[$part][0] - $a) > 0.5 || abs($got[$part][1] - $b) > 0.5) {
+                        $defects[] = sprintf('%s: paint %d draws its %s from %.1f to %.1f ms on the timeline, not %.1f to %.1f', $key, $i, $part, $got[$part][0], $got[$part][1], $a, $b);
+                    }
+                }
+
+                $direction = $f['leg'] === 'departure' ? 'hop-in' : 'hop-out';
+
+                if ($paint['hop']['class'] !== "fx-hop {$direction}") {
+                    $defects[] = "{$key}: its hop is `{$paint['hop']['class']}`, not {$direction}";
+                }
+            }
+
+            // Where it stands: the flight's end going out, its start coming in — and its feet on the peg.
+            $n = $f['paints'][0]['perched'];
+            $this->assertSame(1, preg_match('/^translate\(([-\d.]+) ([-\d.]+)\)$/', (string) $n['at'], $at), "{$key}: the ledge is not placed by a translate");
+            $this->assertSame(1, preg_match('/^translate\(0 ([-\d.]+)\)( scale\(-1 1\))?$/', (string) $n['bird'], $lift), "{$key}: the standing bird is not lifted by a translate");
+            $stands = [(float) $at[1], (float) $at[2]];
+            $end = $f['leg'] === 'departure' ? $f['to'] : $f['from'];
+
+            if ($stands !== [(float) $end['x'], (float) $end['y']]) {
+                $defects[] = "{$key} stands at ".json_encode($stands).', not where its flight '.($f['leg'] === 'departure' ? 'ends' : 'starts').' at '.json_encode($end);
+            }
+
+            preg_match_all('/([-\d.]+) ([-\d.]+)/', (string) $n['legs'], $pairs, PREG_SET_ORDER);
+            $points = array_map(static fn (array $m): array => [(float) $m[1], (float) $m[2]], $pairs);
+            $foot = max(array_column($points, 1));
+            $legXs = array_map(static fn (array $q): float => ($lift[2] ?? '') === '' ? $q[0] : -$q[0], array_filter($points, static fn (array $q): bool => $q[1] < $foot));
+            $feetY = $stands[1] + (float) $lift[1] + $foot;
+            $peg = $portal['perch']['x'] - $stands[0];
+
+            if ($points === [] || abs($feetY - $portal['perch']['tip']) > 0.01) {
+                $defects[] = sprintf('%s: the standing bird\'s feet are at y %.2f, not on the peg\'s tip at %.2f', $key, $feetY, $portal['perch']['tip']);
+            } elseif ($peg < min($legXs) || $peg > max($legXs)) {
+                $defects[] = sprintf('%s: the peg is %.1f px from its legs\' middle, not between them', $key, $peg);
+            }
+
+            $this->assertSame(1, preg_match('/--hole-x:([-\d.]+)px;--hole-y:([-\d.]+)px/', (string) $f['paints'][0]['hop']['style'], $hole), "{$key}: its hop names no hole");
+
+            if ([(float) $hole[1], (float) $hole[2]] !== [(float) $portal['mouth']['x'] - $stands[0], (float) $portal['mouth']['y'] - $stands[1]]) {
+                $defects[] = "{$key} hops to ({$hole[1]}, {$hole[2]}) from where it stands, not to the hole";
+            }
+        }
+
+        $this->assertGreaterThanOrEqual(2, $seen, 'the painter was handed fewer than two portal birds — the check read no departure or no arrival');
+
+        return $defects;
+    }
+
+    /**
+     * card#12445: the run's portal birds admitted to a fresh holder by the instants that test the ledge — the same bird
+     * twice one frame apart (both going out), a bird coming in admitted as one going out lands, and the two far apart.
+     * Each is the scene's effect as it was before any holder made it wait.
+     */
+    private function queue(array $result, ?string $dir = null): array
+    {
+        $birds = [];
+
+        foreach ($this->firstFlights($result) as $fx) {
+            if ($fx['animation_id'] === 'A22') {
+                unset($fx['scene'], $fx['elapsed_frames'], $fx['elapsed_ms'], $fx['started_at']);
+                $fx['span_frames'] -= $fx['wait_frames'];
+                $fx['wait_frames'] = 0;
+                $birds[$fx['leg']] = $fx;
+            }
+        }
+
+        $this->assertSame(['arrival', 'departure'], $this->sorted(array_keys($birds)), 'the run drew no departure or no arrival to queue');
+
+        $I = $birds['departure']['frame_interval_ms'];
+        $out = $birds['departure'];
+        $in = $birds['arrival'];
+        $twin = ['cause' => $out['cause'].'-twin'] + $out;
+        $lands = $out['frames'] * $I;
+
+        return $this->probe(['interval_ms' => $I, 'scenarios' => [
+            ['name' => 'two going out, a frame apart', 'admit' => [['at_ms' => 0, 'effect' => $out], ['at_ms' => $I, 'effect' => $twin]]],
+            ['name' => 'one coming in as one going out lands', 'admit' => [['at_ms' => 0, 'effect' => $out], ['at_ms' => $lands, 'effect' => $in]]],
+            ['name' => 'one coming in after one going out has gone in', 'admit' => [['at_ms' => 0, 'effect' => $out], ['at_ms' => $lands + ($this->dwellFrames() + $this->hopFrames()) * $I, 'effect' => $in]]],
+        ]], dirname($dir ?? $this->moduleDir()), __DIR__.'/ledge-probe.mjs') + ['interval_ms' => $I];
+    }
+
+    /**
+     * Each scenario's birds on the ledge: the parts the painter draws there (the dwell and the hop, from the scene's
+     * frames, `wait_frames` later) never overlap between two birds; a bird that waited could not have waited a frame
+     * less; one that met no other waited nothing; and each is held through its whole span, its wait included.
+     */
+    private function queueDefects(array $out): array
+    {
+        $I = $out['interval_ms'];
+        $defects = [];
+        $ledge = static function (array $b) use ($I): array {
+            $p = $b['perch'];
+            $from = min($p['dwell_start'], $p['hop_start']);
+            $to = max($p['dwell_start'] + $p['dwell_frames'], $p['hop_start'] + $p['hop_frames']);
+
+            return [$b['started_at'] + ($b['wait_frames'] + $from) * $I, $b['started_at'] + ($b['wait_frames'] + $to) * $I];
+        };
+        $meets = static fn (array $a, array $b): bool => $a[0] < $b[1] && $b[0] < $a[1];
+
+        foreach ($out['scenarios'] as $sc) {
+            [$first, $second] = $sc['held'] + [null, null];
+
+            if ($first === null || $second === null) {
+                $defects[] = "{$sc['name']}: the holder holds ".count($sc['held']).' birds, not two';
+
+                continue;
+            }
+
+            if ($first['wait_frames'] !== 0) {
+                $defects[] = "{$sc['name']}: the first bird waited {$first['wait_frames']} frames with the ledge free";
+            }
+
+            [$a, $b] = [$ledge($first), $ledge($second)];
+
+            if ($meets($a, $b)) {
+                $defects[] = sprintf('%s: both birds are on the ledge from %.0f to %.0f ms', $sc['name'], max($a[0], $b[0]), min($a[1], $b[1]));
+            }
+
+            if ($second['wait_frames'] > 0 && ! $meets($a, $ledge(['wait_frames' => $second['wait_frames'] - 1] + $second))) {
+                $defects[] = "{$sc['name']}: the second bird waited {$second['wait_frames']} frames where one fewer clears the ledge";
+            }
+
+            foreach ($sc['held'] as $bird) {
+                if (! $bird['held_at_end']) {
+                    $defects[] = "{$sc['name']}: {$bird['cause']} is dropped before its span — wait included — ends";
+                }
+            }
+        }
+
+        $waits = array_map(static fn (array $sc): int => $sc['held'][1]['wait_frames'] ?? -1, $out['scenarios']);
+
+        // The population: the first two scenarios meet on the ledge, the third does not.
+        if ($waits[0] < 1 || $waits[1] < 1 || $waits[2] !== 0) {
+            $defects[] = 'the second birds waited '.json_encode($waits).' frames — the first two scenarios must wait and the third must not';
+        }
 
         return $defects;
     }
@@ -298,7 +672,9 @@ class ABirdFliesToItsDestinationTest extends TestCase
                 $origins[$i] = $n['start'] + $timing[$i]['delay'];
             }
 
-            $own = self::PAINTS[0]['timeline_ms'] - self::PAINTS[0]['clock_ms'];
+            // card#12445: the flight starts `flight_start` frames into the effect (after the hop out and the dwell, coming
+            // in), and `wait_frames` later where it waited for the ledge.
+            $own = self::PAINTS[0]['timeline_ms'] - self::PAINTS[0]['clock_ms'] + ($f['wait_frames'] + $f['flight_start']) * $f['frame_interval_ms'];
 
             if (abs($origins[0] - $own) > 0.5) {
                 $defects[] = "{$key}: the first paint dates the flight from {$origins[0]} ms on the timeline, not its own start at {$own} ms";

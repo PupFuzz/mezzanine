@@ -20,8 +20,9 @@
  * argv[2]: the module tree's root (`server/public/js` or a mutated copy). stdin: `{ effects, paints, degraded }` —
  * the flights as the scene emitted them, `[{ timeline_ms, frame_ms, clock_ms, elapsed_ms }, …]`, and optionally
  * `degraded`: `'no-get-animations'` (a browser with no `Element.getAnimations()`) or `'no-timeline'` (a timeline
- * with no time). stdout: `{ style, flights: [{ key, paints: [{ bird, rest }] }] }`, each node `{ style, start }` or
- * `null`.
+ * with no time). stdout: `{ style, flights: [{ key, paints: [{ bird, rest, perched, hop }] }] }`, each node
+ * `{ style, start }` or `null`; `perched` and `hop` (card#12445, the portal bird on the birdhouse's ledge) also carry
+ * their `class`, the ledge's `translate` (`at`), and their bird's `transform` and leg path.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -59,6 +60,18 @@ const find = (n, cls) => [
     ...n.children.flatMap((c) => find(c, cls)),
 ];
 const read = (n) => (n === undefined ? null : { style: n.attrs.style ?? null, start: n.animations?.[0]?.startTime ?? null });
+// card#12445: a node on the birdhouse's ledge — its class, its timing, the ledge's `translate` (its parent's), and its
+// bird's feet: the bird group's `transform` and the leg path the feet end on.
+const ledge = (n) => {
+    if (n === undefined) {
+        return null;
+    }
+
+    const bird = n.children[0];
+    const legs = bird.children.find((c) => c.name === 'path' && String(c.attrs.d ?? '').startsWith('M -2 6.5'));
+
+    return { ...read(n), class: n.attrs.class, at: n.parentNode?.attrs.transform ?? null, bird: bird.attrs.transform ?? null, legs: legs?.attrs.d ?? null };
+};
 
 const flights = [];
 
@@ -78,10 +91,11 @@ for (const fx of input.effects) {
         };
 
         painter.paint(scene, { bounds: null, view: null });
-        paints.push({ bird: read(find(host, 'fx-bird')[0]), rest: read(find(host, 'fx-rest')[0]) });
+        paints.push({ bird: read(find(host, 'fx-bird')[0]), rest: read(find(host, 'fx-rest')[0]), perched: ledge(find(host, 'fx-perched')[0]), hop: ledge(find(host, 'fx-hop')[0]) });
     }
 
-    flights.push({ cause: fx.cause, animation_id: fx.animation_id, leg: fx.leg ?? null, from: fx.from, to: fx.to, frames: fx.frames, frame_interval_ms: fx.frame_interval_ms, paints });
+    flights.push({ cause: fx.cause, animation_id: fx.animation_id, leg: fx.leg ?? null, from: fx.from, to: fx.to, frames: fx.frames, frame_interval_ms: fx.frame_interval_ms,
+        flight_start: fx.flight_start, wait_frames: fx.wait_frames, rest_frames: fx.rest_frames, perch: fx.perch, paints });
 }
 
 process.stdout.write(JSON.stringify({ style: STYLE, flights }));

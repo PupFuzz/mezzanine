@@ -722,7 +722,8 @@ const ROWS = {
   // where a flight from that start, at its own duration, has reached at that sample — a bird first drawn at a paint
   // after its start is legitimately that far along its arc; no step backward, no step longer than the flight's own
   // speed covers in the frame gap (plus `SLACK` px), its last drawn point within one such step of the arc's end (the
-  // desk, or the hole for a departure), and at least one repaint (a new `.fx-bird` node) inside the flight, so the
+  // desk, or the birdhouse's perch for a portal bird — card#12445's ledge dwell and hop are other nodes, `.fx-perched`
+  // and `.fx-hop`, which this row does not sample), and at least one repaint (a new `.fx-bird` node) inside the flight, so the
   // continuity is measured ACROSS a rebuild and not only within one node. Which arc is which leg, and where it starts,
   // is the suite's to hold (`ABirdFliesToItsDestinationTest`); here every arc is judged alike.
   // The PLANTs: the stepped flight the card replaced, the whole-frame delay that snapped the bird back on a repaint, and
@@ -731,9 +732,9 @@ const ROWS = {
   // by however long the tasks since that frame have run — on a page busy for 40 ms as each post lands (a long task, as
   // the live floor has), so its flight starts that much before its post arrived — and a flight
   // whose keyframes start a tenth of the way along its arc, so the bird is first drawn past where its start has it.
-  'bird-flight': row('a coordination bird glides along its arc across repaints, from its start to its destination — the desk or the birdhouse\'s hole', { run: 'coord_portal', stream: 3000 },
+  'bird-flight': row('a coordination bird glides along its arc across repaints, from its start to its destination — the desk or the birdhouse\'s perch', { run: 'coord_portal', stream: 3000 },
     [
-      { plant: [{ file: 'js/floor/painter.js', from: 'style: `animation-duration:${seconds}s;animation-delay:${-flown}s;offset-path', to: 'style: `animation-duration:${seconds}s;animation-timing-function:steps(${fx.frames});animation-delay:${-flown}s;offset-path' }] },
+      { plant: [{ file: 'js/floor/painter.js', from: 'style: `animation-duration:${seconds}s;animation-delay:${at(fx.flight_start)}s;offset-path', to: 'style: `animation-duration:${seconds}s;animation-timing-function:steps(${fx.frames});animation-delay:${at(fx.flight_start)}s;offset-path' }] },
       { plant: [{ file: 'js/floor/painter.js', from: 'const flown = fx.elapsed_ms / 1000;', to: 'const flown = (fx.elapsed_frames * fx.frame_interval_ms) / 1000;' }] },
       { plant: [{ file: 'js/floor/painter.js', from: '        host.replaceChildren(svg);\n        pinEffects();\n', to: '        host.replaceChildren(svg);\n' }] },
       { plant: [
