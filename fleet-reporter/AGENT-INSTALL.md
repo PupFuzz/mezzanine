@@ -2,7 +2,8 @@
 
 **You are a Claude Code agent, and the user has asked you to install the Mezzanine reporter on this
 machine.** Follow this page from top to bottom. It needs no coordination framework, no root and no
-`sudo`, and it works on Linux only. At the end the user's Claude Code activity on this account reaches
+`sudo`. The procedure on this page runs on Linux; on Windows, [step 1](#1-check-the-machine) sends you
+to the Windows section of `INSTALL-LINUX.md` instead. At the end the user's Claude Code activity on this account reaches
 their Mezzanine site, where it appears as a desk on the floor.
 
 The reporter, `fleet-reporter`, is a set of Claude Code hooks plus one background process. The install
