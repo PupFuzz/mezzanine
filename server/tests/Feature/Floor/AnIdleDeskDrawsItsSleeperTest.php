@@ -63,8 +63,8 @@ class AnIdleDeskDrawsItsSleeperTest extends TestCase
         return [
             // Each anchored edit plants one defect § 10.4 item 4 or § 6.2 names; the legs it must red are the probe's.
             "the walk's frames drawn for every pose" => ['client', ['../floor/painter.js',
-                'characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top, clear: at.clear })',
-                '{ frames: characters.walkFrames(installId, seatId), loopFrom: 0 }'], ['sleeper:', 'reduced:']],
+                'characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top, clear: at.clear, species })',
+                '{ frames: characters.walkFrames(installId, seatId, species), loopFrom: 0 }'], ['sleeper:', 'reduced:']],
             'a held loop stepping three frames whatever the drawing holds' => ['client', ['../floor/painter.js',
                 "el.setAttribute('href', uris[loopFrom + ((tick + offset) % (uris.length - loopFrom))]);",
                 "el.setAttribute('href', uris[loopFrom + ((tick + offset) % 3)]);"], ['loop:']],

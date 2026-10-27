@@ -669,6 +669,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -766,6 +769,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -854,6 +860,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -930,6 +939,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -1640,7 +1652,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -2330,6 +2342,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -2427,6 +2442,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -2515,6 +2533,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -2591,6 +2612,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -3301,7 +3325,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -3365,6 +3389,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -3462,6 +3489,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -3550,6 +3580,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -3626,6 +3659,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -4342,7 +4378,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -4360,7 +4396,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "coord.thread",
             "server_time": "2026-08-23T14:23:14.800Z",
             "coord_thread": {
@@ -5028,7 +5064,7 @@
         {
           "at_ms": 50,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.450Z",
             "fleet": {
@@ -5046,7 +5082,7 @@
         {
           "at_ms": 60,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:14.460Z",
             "reason": "unavailable",
@@ -5090,6 +5126,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -5187,6 +5226,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -5275,6 +5317,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -5351,6 +5396,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -6053,7 +6101,7 @@
         {
           "at_ms": 50,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.450Z",
             "fleet": {
@@ -6071,7 +6119,7 @@
         {
           "at_ms": 60,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:14.460Z",
             "reason": "unavailable",
@@ -6115,6 +6163,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -6212,6 +6263,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -6300,6 +6354,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -6376,6 +6433,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -7078,7 +7138,7 @@
         {
           "at_ms": 50,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.450Z",
             "fleet": {
@@ -7126,6 +7186,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -7223,6 +7286,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -7311,6 +7377,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -7387,6 +7456,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -8089,7 +8161,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -8107,7 +8179,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -8125,7 +8197,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.reload",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload"
@@ -8134,7 +8206,7 @@
         {
           "at_ms": 2100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:16.500Z",
             "install_id": "aimla",
@@ -8154,7 +8226,7 @@
         {
           "at_ms": 2200,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:16.600Z",
             "reason": "reload",
@@ -8198,6 +8270,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -8295,6 +8370,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -8383,6 +8461,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -8459,6 +8540,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -9162,7 +9246,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -9180,7 +9264,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -9198,7 +9282,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.reload",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload"
@@ -9207,7 +9291,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload",
@@ -9221,7 +9305,7 @@
         {
           "at_ms": 12100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:26.500Z",
             "fleet": {
@@ -9275,6 +9359,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -9372,6 +9459,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -9460,6 +9550,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -9536,6 +9629,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -10239,7 +10335,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -10257,7 +10353,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -10275,7 +10371,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.reload",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload"
@@ -10284,7 +10380,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload",
@@ -10298,7 +10394,7 @@
         {
           "at_ms": 52100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:24:06.500Z",
             "fleet": {
@@ -10352,6 +10448,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -10449,6 +10548,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -10537,6 +10639,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -10613,6 +10718,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -11316,7 +11424,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -11334,7 +11442,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -11352,7 +11460,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.reload",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload"
@@ -11361,7 +11469,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload",
@@ -11411,6 +11519,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -11508,6 +11619,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -11596,6 +11710,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -11672,6 +11789,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -12375,7 +12495,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -12393,7 +12513,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -12445,6 +12565,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -12542,6 +12665,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -12630,6 +12756,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -12706,6 +12835,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -13408,7 +13540,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -13426,7 +13558,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -13474,6 +13606,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -13571,6 +13706,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -13659,6 +13797,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -13735,6 +13876,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -14438,7 +14582,7 @@
         {
           "at_ms": 50,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.450Z",
             "fleet": {
@@ -14456,7 +14600,7 @@
         {
           "at_ms": 60,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:14.460Z",
             "reason": "unavailable",
@@ -14470,7 +14614,7 @@
         {
           "at_ms": 230160,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:27:04.560Z",
             "fleet": {
@@ -14488,7 +14632,7 @@
         {
           "at_ms": 231000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.close",
             "server_time": "2026-08-23T14:27:05.400Z",
             "reason": "unavailable",
@@ -14542,6 +14686,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -14639,6 +14786,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -14727,6 +14877,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -14803,6 +14956,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -15535,6 +15691,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -15632,6 +15791,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -15720,6 +15882,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -15796,6 +15961,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -16499,7 +16667,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -16517,7 +16685,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:15.400Z",
             "reason": "stalled",
@@ -16531,7 +16699,7 @@
         {
           "at_ms": 11100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:25.500Z",
             "fleet": {

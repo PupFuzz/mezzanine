@@ -256,6 +256,9 @@ final class SeatFacts
             'reporter_version' => $s->reporter_version,
             'reporter_platform' => $s->reporter_platform,
             'selftest_failed' => $s->selftest_failed,
+            // card#12443 (§ 6.13): version-bearing by the subtraction — not one of the ten. No runtime writer
+            // moves it: it is written once, at the seat's creation, and a deploy's migration is the one thing that can.
+            'species' => $seat->species,
             'retired' => $seat->retired_at === null
                 ? null
                 : [$seat->retired_at, $seat->retired_by, $seat->retired_reason],

@@ -110,7 +110,7 @@ const MISSING_AFTER = 2;
  * FEED_VERSION` — and `Tests\Feature\Floor\TheStreamRecoveryIsTheDocumentsTest` reds if the two
  * disagree. An envelope carrying any other value is § 9 F8.
  */
-export const FEED_VERSION = 1;
+export const FEED_VERSION = 2;
 
 /** § 9 F1: "no message of any kind for 45 s" — D2 § 8.3's three heartbeat intervals. */
 export const SILENCE_MS = 45000;

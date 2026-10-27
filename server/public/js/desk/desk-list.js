@@ -70,6 +70,10 @@ export const UNRECOGNISED_PREFIX = 'unrecognised: ';
  * value, and the guard checks that containment on every desk rather than taking the reason's word for it.
  */
 export const NOT_LISTED = Object.freeze({
+    species: {
+        reason: "the character's body (card#12443, D2 § 6.13) — the creature the desk is drawn as, which is appearance and not "
+            + 'a fact about the seat; the row names the seat, and the console\'s agents page lists each seat\'s species',
+    },
     seat_id: {
         reason: 'printed as the nameplate, which is the same string (§ 5.1)',
         carried_by: 'nameplate',

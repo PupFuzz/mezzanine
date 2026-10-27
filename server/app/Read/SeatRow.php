@@ -25,7 +25,7 @@ final class SeatRow
                 ->where('installs.install_id', $installId)
                 ->where('seats.seat_id', $seatId)
         )->first([
-            'seat_state.*', 'installs.install_id', 'seats.seat_id',
+            'seat_state.*', 'installs.install_id', 'seats.seat_id', 'seats.species',
             'seats.retired_at', 'seats.retired_by', 'seats.retired_reason', 'seats.board_user_id',
         ]);
     }
