@@ -97,6 +97,13 @@ const read = (re, what) => {
 };
 /** § 12's *Sleeper's z's*: the seat's `L`, and each z's share of it, z1 first. */
 const L = num(read(/sized \*\*`L` ([\d.]+)\*\* at every seat/, "§ 12 *Sleeper's z's* `L`")[1]);
+/**
+ * …and the seats the row names with an `L` of their own (card#12444: the highest crests, whose stands the frame's top
+ * stops), each as `the \`<species or species/variant>\` at **<L>**` in the row's first cells, the pattern
+ * `sleeper-zs.browser.mjs`'s residuals use — read here, never copied.
+ */
+const L_OWN = Object.fromEntries([...read(/^\| \*\*Sleeper's z's\*\* \| ([^|]*) \|/m, "§ 12 *Sleeper's z's* row")[1]
+    .matchAll(/the `([a-z/]+)` at \*\*([\d.]+)\*\*/g)].map((m) => [m[1], num(m[2])]));
 const SHARES = read(/z1 \*\*([\d.]+)\*\* `L`, z2 \*\*([\d.]+)\*\* `L` and z3 \*\*([\d.]+)\*\* `L`/, "§ 12 *Sleeper's z's* shares").slice(1).map(num);
 /** § 12's *Sleeper z pulse*: the levels of z1 z2 z3 by loop frame. */
 const PULSE = read(/^\| \*\*Sleeper z pulse\*\* \|.*?the levels by loop frame are `([0-3 ]+)`/m, '§ 12 *Sleeper z pulse* table')[1]
@@ -216,9 +223,11 @@ function sleeperLegs(where, docs, edge, crestKey) {
 
         const away = -rollOf(doc);
 
+        const seatL = L_OWN[crestKey] ?? L;
+
         for (const z of zs) {
-            if (Math.abs(z.h - SHARES[z.k] * L) > 0.02) {
-                out.push(`zs: ${at}'s z${z.k + 1} is ${z.h} units tall, not ${SHARES[z.k]} of § 12's L ${L} (${(SHARES[z.k] * L).toFixed(2)})`);
+            if (Math.abs(z.h - SHARES[z.k] * seatL) > 0.02) {
+                out.push(`zs: ${at}'s z${z.k + 1} is ${z.h} units tall, not ${SHARES[z.k]} of § 12's L ${seatL} for ${crestKey} (${(SHARES[z.k] * seatL).toFixed(2)})`);
             }
 
             if (z.y - z.hh < FRAME.y - 0.01 || z.y + z.hh > FRAME.y + FRAME.h + 0.01 || z.x - z.hw < FRAME.x - 0.01 || z.x + z.hw > FRAME.x + FRAME.w + 0.01) {
@@ -384,10 +393,13 @@ const ownFrames = (placed) => {
 
         const clear = characterElement(placed)?.clear ?? [];
         const byName = Object.fromEntries(clear.map((c) => [c.name, c]));
+        // to 1e-9: the rects are px times a non-integer units-per-px (card#12444's 1.6), float products the document's
+        // decimal figures need not equal bit for bit
+        const ne = (a, b) => Math.abs(a - b) > 1e-9;
         const off = Object.entries(CLEAR).filter(([name, r]) => {
             const c = byName[name];
 
-            return c === undefined || (r.x !== undefined && (c.x !== r.x[0] || c.x + c.w !== r.x[1])) || c.y !== r.y[0] || c.y + c.h !== r.y[1];
+            return c === undefined || (r.x !== undefined && (ne(c.x, r.x[0]) || ne(c.x + c.w, r.x[1]))) || ne(c.y, r.y[0]) || ne(c.y + c.h, r.y[1]);
         }).map(([name]) => name);
 
         if (clear.length !== 4 || off.length > 0) {

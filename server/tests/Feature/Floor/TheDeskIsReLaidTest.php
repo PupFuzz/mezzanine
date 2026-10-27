@@ -244,10 +244,11 @@ class TheDeskIsReLaidTest extends TestCase
         $section = substr($doc, $start, (int) strpos($doc, '**How a desk', $start) - $start);
         $rows = [];
 
-        preg_match_all('/^\| (the [^|]+?) \| (\d+), (\d+), (\d+)(?: × (\d+)| wide)/mu', $section, $m, PREG_SET_ORDER);
+        // decimals admitted: card#12444's character rect is 67.5 px wide, so its x and width are halves
+        preg_match_all('/^\| (the [^|]+?) \| ([\d.]+), ([\d.]+), ([\d.]+)(?: × ([\d.]+)| wide)/mu', $section, $m, PREG_SET_ORDER);
 
         foreach ($m as $row) {
-            $rows[$row[1]] = [(int) $row[2], (int) $row[3], (int) $row[4], isset($row[5]) && $row[5] !== '' ? (int) $row[5] : null];
+            $rows[$row[1]] = [0 + $row[2], 0 + $row[3], 0 + $row[4], isset($row[5]) && $row[5] !== '' ? 0 + $row[5] : null];
         }
 
         $this->assertSame(array_keys(self::TABLE_KINDS), array_keys($rows), "§ 10.6's table names other elements than the ones this leg reads");
