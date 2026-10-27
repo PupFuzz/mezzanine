@@ -17,7 +17,7 @@ import { draw, seatKey } from './seed.js';
 export { seatKey, fnv1a32, draw } from './seed.js';
 export {
   SPECIES, SPECIES_KEYS, SPECIES_FIELD, WITHHELD, EYES, MOUTHS, BLUSH, BROWS, SIZES, STOUT, TILTS, ACCENTS, GREENS,
-  RIM, RIM_W, SEAT_RECT, SEAT_VIEWBOX, CHIBI_STOOL, CHIBI_VIEWBOX, CHIBI_HEAD_SHARE, speciesOf, internSpeciesOf, recipe, describe, chibiGeometry, frameDocument,
+  RIM, RIM_W, FOOT, SEAT_RECT, SEAT_VIEWBOX, CHIBI_STOOL, CHIBI_VIEWBOX, CHIBI_HEAD_SHARE, speciesOf, internSpeciesOf, recipe, describe, chibiGeometry, frameDocument,
   EYE_K, BROW_K, MOUTH_K, EXPRESSIONS, expressionOf,
   SLEEP_LOOP, SLEEP_ZS, Z_LARGE, Z_A0, Z_A1, Z_RATIO, Z_T0, Z_GAP, Z_TOP, Z_GLOW, Z_HALO, Z_HALO_OPACITY,
   CREST_TOP, STAND_TOP, standEntry, crestOfKey, MARKER_WEIGHT, MARKER_SPREAD, zLevels, markerLevel, zStand, zLargeFor, sleepDocument,

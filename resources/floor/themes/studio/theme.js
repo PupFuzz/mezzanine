@@ -3,7 +3,7 @@
 // It DRAWS, as code, every piece of a floor that carries no fact: the band's wall, the window, elevator and
 // clock surrounds, each grid's plane (its floor, its light, its accent region, its walls and the landing),
 // the standing scenery, and a desk's furniture set (the chair's back, the desk's back, the monitor's frame,
-// the desk props, the side table and its seats).
+// the desk props, the side seating — a low couch a row — and its seats).
 //
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // ⛔ PURE, TOTAL, NO I/O (§ 10.6 item 1). Every function returns one standalone SVG DOCUMENT for its inputs
@@ -57,8 +57,8 @@ export const PALETTE = Object.freeze({
         pool: '#fff3d6',
     }),
     'side-table': Object.freeze({
-        wood: '#c48d5c', teapot: '#7f9f6a', lid: '#e0a43a',
-        seats: Object.freeze(['#c98b8f', '#d9a54a', '#8fa66b', '#6f9a9a', '#c8714f']),
+        wood: '#c48d5c',
+        couch: Object.freeze(['#c98b8f', '#d9a54a', '#8fa66b', '#6f9a9a', '#c8714f']),
         pots: Object.freeze(['#e9d8c4', '#6f8fb0', '#c8714f', '#d9a54a']),
         leaves: Object.freeze(['#79a85a', '#6b9a52', '#8db55e']),
     }),
@@ -970,18 +970,24 @@ export function deskProps({ install_id: installId, seat_id: seatId }) {
 }
 
 /**
- * The side table's rect (its foot line its bottom edge) and the seats' rows: § 12's seats, one under each intern's place
- * on the interns' rows `desk-layout.js` lays (`stoolSlots()`: `per_row` to a row at `seat_pitch` from the table's
- * inset, each row behind the front one `row_dy` higher; card#12444's ruling D). A theme is handed the seat count and
- * nothing else (FLOOR.md § 10.6 item 2), so the rows are stated here, and `tools/floor-themes/selftest.mjs` holds them to
- * the layout's own slots — a row that drifts from the layout's reds. The table itself is the rect's bottom 42 px.
+ * The side seating's rect (its foot line its bottom edge) and the seats' rows: § 12's seats, one under each intern's
+ * place on the interns' rows `desk-layout.js` lays (`stoolSlots()`: `per_row` to a row at `seat_pitch` from the rect's
+ * inset, each row behind the front one `row_dy` higher). A theme is handed the seat count and nothing else (FLOOR.md
+ * § 10.6 item 2), so the rows are stated here, and `tools/floor-themes/selftest.mjs` holds them to the layout's own slots
+ * — a row that drifts from the layout's reds. `foot_lift` is how far above a row's foot line an intern's feet stand —
+ * the chibi frame's foot line (`resources/characters`' `FOOT`) under its 108 units over `seat_w` px, which the same leg
+ * holds — so the cushion's top ends where the feet are and an intern sits ON its cushion.
  */
-const TABLE = Object.freeze({ w: 228, h: 98, seat_x: 4, seat_pitch: 38, seat_w: 35, per_row: 4, row_dy: 56 });
+const TABLE = Object.freeze({ w: 228, h: 98, seat_x: 4, seat_pitch: 38, seat_w: 35, per_row: 4, row_dy: 56, foot_lift: 1.3 });
 
 /**
- * THE SIDE TABLE, at every desk with art: a low tea table with a teapot at its far end and cushion seats in
- * front of it, as many as it is handed — so an empty table shows its seats — and a plant beside it where
- * the table leaves room.
+ * THE SIDE SEATING, at every desk with art — a LOW COUCH per row of interns (the operator's ruling of 2026-10-27 on
+ * card#12444, *"Couch A"*, in place of the tea table, which *"doesn't make sense … behind the subagents"*): one cushioned
+ * sofa under and behind each row's interns, as long as that row's places (`seat_pitch` apart from `seat_x`, so it
+ * shortens or lengthens with the pitch), with a low back rising to under their chins, one seat cushion per place whose
+ * top ends at the interns' feet, round arms at its ends and little wooden feet; the back row's first, so the front couch
+ * is drawn over it. As many places as it is handed — so an empty desk shows its front couch — and a plant beside the front
+ * couch where the rect leaves room. The table's teapot went with the table.
  *
  * @param {{install_id: string, seat_id: string, seats: number}} input the desk's key and the seat count
  */
@@ -991,44 +997,59 @@ export function sideTable({ install_id: installId, seat_id: seatId, seats }) {
     const pen = new Pen();
     const key = deskKey(installId, seatId);
     const P = PALETTE['side-table'];
-    const foot = TABLE.h;
-    const top = foot - 24;
-    const x = 0;
-    // as wide as its front row of seats needs and never wider than its rect, so the teapot at its far end is never cut
-    const tw = Math.min(TABLE.w, Math.max(64, Math.min(seats, TABLE.per_row) * TABLE.seat_pitch + 20));
+    const c = pick(key, 'theme:couch', P.couch);
+    const rows = Math.ceil(seats / TABLE.per_row);
+    const gap = TABLE.seat_pitch - TABLE.seat_w;
     const s = [];
-    const m = [];
+    let frontEnd = 0;
 
-    s.push(shadow(pen, tw / 2 + 4, foot - 1, tw * 0.6, 4, 0.26));
+    for (let row = rows - 1; row >= 0; row--) {
+        const n = Math.min(TABLE.per_row, seats - row * TABLE.per_row);
+        const foot = TABLE.h - row * TABLE.row_dy;
+        const seat = foot - TABLE.foot_lift;
+        // the couch spans its places: from the first's left edge to the last's right edge, the arms just outside
+        const x0 = TABLE.seat_x - 1;
+        const w = (n - 1) * TABLE.seat_pitch + TABLE.seat_w + 2;
+        const m = [];
 
-    for (const lx of [x + 6, x + tw - 10]) {
-        m.push(`<path d="M${f(lx)} ${top + 8}h4l-.6 ${foot - top - 11}h-2.8Z" fill="${pen.face(shade(P.wood, 0.1))}" stroke="${line(P.wood)}" stroke-width=".6"/>`);
+        // the back, low, rising behind the interns to under their chins, buttoned once a place
+        m.push(`<path d="${rr(x0 + 2, foot - 24, w - 4, 16, 7)}" fill="${pen.paint(c, 0.28)}" stroke="${line(c)}" stroke-width=".9"/>`);
+
+        for (let i = 0; i < n; i++) {
+            m.push(`<circle cx="${f(TABLE.seat_x + i * TABLE.seat_pitch + TABLE.seat_w / 2)}" cy="${f(foot - 18)}" r="1" fill="${line(c)}" opacity=".55"/>`);
+        }
+
+        // one seat cushion a place, its top ending at the interns' feet and its front at the foot line
+        for (let i = 0; i < n; i++) {
+            const left = i === 0 ? x0 + 1 : TABLE.seat_x + i * TABLE.seat_pitch - gap / 2;
+            const right = i === n - 1 ? x0 + w - 1 : TABLE.seat_x + i * TABLE.seat_pitch + TABLE.seat_w + gap / 2;
+
+            m.push(`<path d="${rr(left, seat - 9, right - left, 9, 3.5)}" fill="${pen.face(tint(c, 0.14), 0.2, 0.1)}" stroke="${line(c)}" stroke-width=".7"/>`);
+            m.push(`<path d="${rr(left + 0.5, seat - 1.5, right - left - 1, foot - seat + 1.5, 1)}" fill="${pen.face(shade(c, 0.12))}"/>`);
+        }
+
+        // the arms, round and low, at each end
+        for (const ax of [x0 - 3, x0 + w - 5]) {
+            m.push(`<path d="${rr(ax, foot - 18, 8, 15, 4)}" fill="${pen.paint(c, 0.32)}" stroke="${line(c)}" stroke-width=".9"/>`);
+        }
+
+        // little wooden feet
+        for (const lx of [x0 + 2, x0 + w - 4]) {
+            m.push(`<path d="M${f(lx)} ${f(foot - 3)}h2.4l-.4 3h-1.6Z" fill="${pen.face(shade(P.wood, 0.1))}" stroke="${line(P.wood)}" stroke-width=".5"/>`);
+        }
+
+        s.push(shadow(pen, x0 + w / 2, foot - 0.5, w * 0.52, 3, 0.24) + rimmed(m.join('')));
+
+        if (row === 0) {
+            frontEnd = x0 + w;
+        }
     }
 
-    m.push(`<path d="${rr(x, top, tw, 7, 3)}" fill="${pen.face(tint(P.wood, 0.3), 0.3, 0.05)}" stroke="${line(P.wood)}" stroke-width=".8"/>`);
-    m.push(`<path d="${rr(x + 2, top + 6, tw - 4, 6, 2)}" fill="${pen.face(P.wood, 0.05, 0.2)}" stroke="${line(P.wood)}" stroke-width=".7"/>`);
-    s.push(rimmed(m.join('')));
-
-    // the teapot at the table's far end
-    const tx = x + tw - 16;
-
-    s.push(rimmed(`<g transform="translate(${f(tx)} ${top + 1})"><path d="M-8 0Q-10 -11 0 -12Q10 -11 8 0Z" fill="${pen.paint(P.teapot)}" stroke="${line(P.teapot)}" stroke-width=".7"/><path d="M7.5 -6q6 -2 7 -6" stroke="${line(P.teapot)}" stroke-width="1.8" fill="none" stroke-linecap="round"/><path d="M-8 -7q-5 1 -4 5" stroke="${line(P.teapot)}" stroke-width="1.6" fill="none"/><ellipse cx="0" cy="-12.3" rx="2.6" ry="1.5" fill="${pen.paint(P.lid)}"/></g>`));
-
-    // a plant beside the table, where it leaves room
-    if (tw + 40 <= TABLE.w) {
+    // a plant beside the front couch, where the rect leaves room
+    if (frontEnd + 30 <= TABLE.w) {
         const shape = ['tall', 'round', 'monstera'][draw(key, 'theme:table-plant') % 3];
 
-        s.push(pottedPlant(pen, x + tw + 18, foot - 2, pick(key, 'theme:table-pot', P.pots), pick(key, 'theme:table-leaf', P.leaves), shape === 'monstera' ? 0.55 : 0.85, shape, stream(key, 'theme:table-plant-shape')));
-    }
-
-    // the cushion seats, one under each intern's place: the front row along the foot line, each row behind it
-    // `row_dy` higher; the back rows first, so a front cushion is drawn over any it meets
-    for (let i = seats - 1; i >= 0; i--) {
-        const c = P.seats[i % P.seats.length];
-        const sx = TABLE.seat_x + (i % TABLE.per_row) * TABLE.seat_pitch + TABLE.seat_w / 2;
-        const sy = foot - Math.floor(i / TABLE.per_row) * TABLE.row_dy;
-
-        s.push(rimmed(`<ellipse cx="${sx}" cy="${sy - 3.5}" rx="14" ry="3.6" fill="${pen.paint(c, 0.35)}" stroke="${line(c)}" stroke-width=".7"/><path d="M${sx - 6} ${sy - 5}q6 -1.8 12 0" stroke="${tint(c, 0.5)}" stroke-width="1" fill="none" opacity=".7"/>`));
+        s.push(pottedPlant(pen, frontEnd + 16, TABLE.h - 2, pick(key, 'theme:table-pot', P.pots), pick(key, 'theme:table-leaf', P.leaves), shape === 'monstera' ? 0.55 : 0.85, shape, stream(key, 'theme:table-plant-shape')));
     }
 
     return doc(pen, TABLE.w, TABLE.h, s.join(''));

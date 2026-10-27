@@ -628,6 +628,15 @@ async function seatsLeg(o) {
                 defects.push(`${name}: TABLE.${k} is ${got[k]} and the layout's is ${v}`);
             }
         }
+
+        // an intern sits ON its cushion (card#12444's couch): the cushion's top ends where the interns' feet stand, the
+        // chibi frame's foot line above its bottom in floor px — read off the tree, to the twentieth of a pixel
+        const cv = o.characters.CHIBI_VIEWBOX;
+        const lift = (cv.y + cv.h - o.characters.FOOT) * want.seat_w / o.characters.SEAT_RECT.w;
+
+        if (!(Math.abs(got.foot_lift - lift) <= 0.05)) {
+            defects.push(`${name}: TABLE.foot_lift is ${got.foot_lift} and the interns' feet stand ${lift.toFixed(2)} px over the foot line`);
+        }
     }
 
     return defects;
@@ -702,6 +711,8 @@ const PLANTS = [
         (t) => edit(join(t.js, 'floor', 'desk-layout.js'), 'export const STOOL_ROW_GAP = 0;', 'export const STOOL_ROW_GAP = 4;')],
     ['the interns spread and the seats do not: the layout\'s pitch a pixel wider', 'seats', 'TABLE.seat_pitch is 38 and the layout\'s is 39',
         (t) => edit(join(t.js, 'floor', 'desk-layout.js'), 'export const STOOL_PITCH = 38;', 'export const STOOL_PITCH = 39;')],
+    ['the couch\'s cushion under the interns\' feet: its top at the foot line', 'seats', 'TABLE.foot_lift is 0 and the interns\' feet stand',
+        (t) => edit(THEME(t), 'row_dy: 56, foot_lift: 1.3 });', 'row_dy: 56, foot_lift: 0 });')],
     ['a draw that is not the key\'s: Math.random() for one seeded choice', 'totality', 'is not one document per input',
         (t) => edit(THEME(t), "const c = pick(deskKey(installId, seatId), 'theme:chair', PALETTE.chair.colours);", 'const c = PALETTE.chair.colours[Math.floor(Math.random() * PALETTE.chair.colours.length)];')],
 ];

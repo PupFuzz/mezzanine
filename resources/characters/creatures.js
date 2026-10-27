@@ -961,7 +961,8 @@ export const CHIBI_VIEWBOX = Object.freeze({
   x: nano(-CHIBI_UPP * (CHIBI_STOOL.frame - CHIBI_STOOL.w) / 2), y: nano(192 - CHIBI_UPP * CHIBI_STOOL.h),
   w: nano(CHIBI_UPP * CHIBI_STOOL.frame), h: nano(CHIBI_UPP * CHIBI_STOOL.h),
 });
-const FOOT = 188;
+/** The foot line every body stands on, in frame units — the floor reads it for where an intern's feet are (card#12444). */
+export const FOOT = 188;
 
 /** The chibi frame's least head share — FLOOR.md § 12's *Intern head share* row. */
 export const CHIBI_HEAD_SHARE = 0.5;
