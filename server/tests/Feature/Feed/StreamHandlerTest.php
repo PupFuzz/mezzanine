@@ -36,7 +36,7 @@ class StreamHandlerTest extends FeedTestCase
         // ⛔ EVERY frame is `event: mezzanine` — the one listener's name; never the primitive's `update`.
         foreach ($stream->frames as $frame) {
             $this->assertSame(FeedStream::EVENT, $frame['event']);
-            $this->assertSame(1, $frame['envelope']['feed_version']);
+            $this->assertSame(FleetReload::FEED_VERSION, $frame['envelope']['feed_version']);
         }
 
         // The delta written after connect is delivered, in the order the fold wrote it.

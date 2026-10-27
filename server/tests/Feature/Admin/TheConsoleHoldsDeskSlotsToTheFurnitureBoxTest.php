@@ -11,6 +11,7 @@ use App\Fold\Clock;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\SeatRows;
 use Tests\TestCase;
 
 /**
@@ -57,11 +58,7 @@ class TheConsoleHoldsDeskSlotsToTheFurnitureBoxTest extends TestCase
     {
         $now = now()->format('Y-m-d H:i:s.v');
         $installRef = DB::table('installs')->insertGetId(['install_id' => self::INSTALL, 'created_at' => $now]);
-        $seatRef = DB::table('seats')->insertGetId([
-            'install_ref' => $installRef,
-            'seat_id' => 'aimla-pm',
-            'created_at' => $now,
-        ]);
+        $seatRef = SeatRows::insert($installRef, 'aimla-pm', ['created_at' => $now]);
 
         DB::table('seat_state')->insert([
             'seat_ref' => $seatRef,

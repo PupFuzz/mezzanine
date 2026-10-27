@@ -736,6 +736,8 @@ export function deskLayout(desk, ctx) {
             // pose that reaches the desk meets (the sleeper's arms and head, § 10.4's frame contract item 4).
             rect('character', 'character', R.character, {
                 asset: characterAsset(desk),
+                // card#12443: the delivered body (`character.species`), which the painter hands the tree.
+                species: desk.species,
                 pose: desk.pose,
                 animation: desk.held,
                 desk_top: (R['desk-sprite'].y - R.character.y) / R.character.h,
@@ -884,6 +886,8 @@ export function deskLayout(desk, ctx) {
             // from the same model the asset id is, so the two can never name different interns.
             install_id: desk.install_id,
             key: internKey(desk.seat_id, stool.call_id),
+            // card#12443: the body the intern must not wear — its seat's DELIVERED species, never the seat key's draw.
+            seat_species: desk.species,
             asset,
             art: !ctx.failed.has(asset),
         });

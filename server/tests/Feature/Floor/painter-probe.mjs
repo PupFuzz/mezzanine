@@ -45,6 +45,13 @@
  * and AT-D3-19's two causes — a tree that failed to load, a generator that throws for one intern's key —
  * reach the painter's report, the second for that intern alone, and never throw out of the paint.
  *
+ * ⛔ AT-D3-24's BODY LEGS (card#12443): every desk, walker and intern is drawn from the seat object's DELIVERED
+ * `character.species` — the stub names the species it was handed in every frame, and what each element is owed is
+ * written from the fixture seat's `character`, never from the element under test. The planted seats deliver a species
+ * that differs from their key's own draw, on purpose, so a painter that draws from the key is seen. A second paint
+ * after the species moved draws the new body (the frame cache is keyed on it), and a species the tree does not hold
+ * — the stub throws for it, as the tree does — is § 9 F14's placeholder for that asset alone.
+ *
  * The desks are every planted seat (`desk-leaves/fx-desk-leaves-planted.json` — the bounds, the caps,
  * the badges, the nulls) confirmed, unconfirmed and as the placeholder, each placed at its own box on a
  * row, through the real `placeDesk()` / `placeBubbles()`.
@@ -88,6 +95,8 @@ globalThis.setInterval = (fn) => { loops.push(fn); return loops.length; };
 globalThis.clearInterval = () => {};
 
 const { deskModel } = await mod('desk/desk-render.js');
+// The generator's species list and draw, read from the tree itself: what the stub admits and what a key draws.
+const { SPECIES_KEYS, speciesOf } = await import(pathToFileURL(join(HERE, '..', '..', '..', '..', 'resources', 'characters', 'creatures.js')).href);
 const { placeDesk, placeBubbles } = await mod('floor/scene.js');
 const { createPainter, measurer, STYLE } = await mod('floor/painter.js');
 const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_BAND, STOOL_PITCH, FOLD_LAG_OPACITY } = await mod('floor/desk-layout.js');
@@ -107,8 +116,16 @@ const STUB_OFFSET = 2;
 const doc = (what) => `<svg xmlns="http://www.w3.org/2000/svg"><title>${what}</title></svg>`;
 const uri = (d) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(d)}`;
 let throwFor = null;
+/**
+ * The tree's contract for a forced species (`recipe()`, card#12443): one it does not hold is a throw; omitted, the key's
+ * own draw — which the stub names `@undefined`, so a painter that omits it draws a frame no element owes.
+ */
+const body = (species) => {
+    if (species !== undefined && !SPECIES_KEYS.includes(species)) throw new RangeError(`no species "${species}"`);
+    return String(species);
+};
 const characters = {
-    walkFrames(installId, seatId) { asked.walk.push(`${installId}/${seatId}`); return [0, 1, 2].map((p) => doc(`${installId}/${seatId}#${p}`)); },
+    walkFrames(installId, seatId, species) { asked.walk.push(`${installId}/${seatId}`); const sp = body(species); return [0, 1, 2].map((p) => doc(`${installId}/${seatId}@${sp}#${p}`)); },
     // A desk's frames for its pose — the tree → painter interface, `{ frames, loopFrom }` (§ 10.4's frame contract
     // item 4): the stub names the pose, the desk's top edge and the clear rects it was asked for in every frame, so a
     // painter that asks for another pose, or drops the edge or the clear rects, draws a frame no element owes. The
@@ -117,20 +134,22 @@ const characters = {
     // rather than the loop's, reds the held-loop leg.
     poseFrames(installId, seatId, at) {
         asked.pose.push(`${installId}/${seatId}`);
+        const sp = body(at.species);
         const loopFrom = at.pose === 'asleep' ? 1 : 0;
-        return { frames: Array.from({ length: loopFrom + 4 }, (_, i) => doc(`${installId}/${seatId}#${at.pose}@${at.deskTop}~${JSON.stringify(at.clear ?? null)}#${i}`)), loopFrom };
+        return { frames: Array.from({ length: loopFrom + 4 }, (_, i) => doc(`${installId}/${seatId}@${sp}#${at.pose}@${at.deskTop}~${JSON.stringify(at.clear ?? null)}#${i}`)), loopFrom };
     },
     loopOffset(installId, seatId, length) {
         asked.offset.push([`${installId}/${seatId}`, length]);
         return STUB_OFFSET % length;
     },
-    chibiFrame(installId, key) {
+    chibiFrame(installId, key, seatSpecies) {
         asked.chibi.push(`${installId}/${key}`);
         if (key === throwFor) throw new Error('a planted generator defect for one key');
-        return doc(`${installId}/${key}#chibi`);
+        // The body the intern is kept off: its seat's delivered species (card#12443).
+        return doc(`${installId}/${key}!${body(seatSpecies)}#chibi`);
     },
 };
-const internFrame = (installId, seatId, callId) => uri(doc(`${installId}/${seatId}~${callId}#chibi`));
+const internFrame = (installId, seatId, callId, seatSpecies) => uri(doc(`${installId}/${seatId}~${callId}!${seatSpecies}#chibi`));
 
 /**
  * The floor's theme, stubbed (FLOOR.md § 10.6, card#11046 row 22): every document names the function and the
@@ -338,7 +357,7 @@ const loopFromOf = (pose) => (pose === 'asleep' ? 1 : 0);
 const startOf = (e) => (e.animation?.motion === true && e.animation.frame_interval_ms !== null ? loopFromOf(e.pose) + (STUB_OFFSET % 4) : 0);
 
 /** A stub frame of a desk's character, as the painter is owed to draw it (the stub's naming, above). */
-const poseFrame = (key, e, i) => uri(doc(`${key}#${e.pose}@${deskTop(key, e)}~${JSON.stringify(e.clear ?? null)}#${i}`));
+const poseFrame = (key, e, i, species = seatOf.get(key).character.species) => uri(doc(`${key}@${species}#${e.pose}@${deskTop(key, e)}~${JSON.stringify(e.clear ?? null)}#${i}`));
 
 /**
  * The art viewport a desk's character is owed — written here from the published rule (§ 10.4 item 4, § 12's *Sleeper
@@ -417,7 +436,7 @@ function owed(e, seat, failed, key) {
             // (§ 10.4's frame contract item 3, card#12259) — the tree's chibi frame under `seat~<call_id>`; an untitled
             // intern with a dashed edge at its own rect.
             const look = e.untitled ? ['intern', 'untitled'] : ['intern'];
-            const want = internFrame(seat.install_id, seat.seat_id, e.call_id);
+            const want = internFrame(seat.install_id, seat.seat_id, e.call_id, seat.character.species);
             const port = internPort(e);
             const sprite = ['svg', port, (n) => {
                 const img = n.children[0];
@@ -940,6 +959,8 @@ function walkOf(n) {
         ],
         size: { w: 54, h: 96 }, frame: { w: 108, h: 117 },
         elapsed_frames: 0, elapsed_ms: 0, started_at: 5000,
+        // card#12443: the walker is the desk's character, in the seat's delivered body.
+        species: 'otter',
     };
     let perf = 100000;
     const realPerformance = globalThis.performance;
@@ -960,7 +981,7 @@ function walkOf(n) {
     const imageIn = (n) => (n === undefined ? undefined : walkOf(n).find((m) => m.name === 'image' && classes(m).includes('character')));
     const floorImage = imageIn(floorEl);
     const cabImage = imageIn(cabEl);
-    const phase = (i) => uri(doc(`walk-room/walker#${i}`));
+    const phase = (i) => uri(doc(`walk-room/walker@otter#${i}`));
     const frameOf = (h) => decodeURIComponent(String(h)).match(/#(\d+)<\/title>/)?.[1] ?? '?';
 
     walker_.painted = floorEl !== undefined;
@@ -1147,4 +1168,44 @@ function walkOf(n) {
     }
 }
 
-console.log(JSON.stringify({ desks: desks.length, painted, bubbles, interns, fade, poses: [...poses].sort(), walker: walker_, defects }));
+// ── AT-D3-24's body legs (card#12443): a desk is drawn in the species its seat object DELIVERS. The frame legs above
+// already hold every desk's image to its fixture seat's `character.species` and every intern's to that seat's; this
+// block holds the fixture to delivering species apart from its keys' own draws (or those legs could not tell the two
+// apart), the painter's cache to the species, and an unheld species to § 9 F14 ──
+const body_ = { apart: 0, recached: false, unheld: false };
+{
+    const same = seats.filter((s) => s.character.species === speciesOf(`${s.install_id}/${s.seat_id}`));
+
+    body_.apart = seats.length - same.length;
+
+    if (seats.length === 0 || same.length > 0) {
+        defects.push(`body: ${same.length} planted seat(s) deliver their key's own draw (e.g. ${same.slice(0, 2).map((s) => s.seat_id).join(', ')}) — a painter drawing from the key would pass the frame legs over them`);
+    }
+
+    const desk = desks.find((d) => d.elements.some((e) => e.kind === 'character'));
+    const element = desk.elements.find((e) => e.kind === 'character');
+    const moved = SPECIES_KEYS.find((sp) => sp !== element.species);
+    const reborn = { ...desk, elements: desk.elements.map((e) => (e.kind === 'character' ? { ...e, species: moved } : e)) };
+    const one = createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} });
+    const characterHref = () => walkOf(host.children[0]).find((n) => n.name === 'image' && classes(n).includes('character'))?.getAttribute('href');
+
+    one.paint({ ...scene, desks: [desk] }, { bounds: null });
+    one.paint({ ...scene, desks: [reborn] }, { bounds: null });
+    body_.recached = characterHref() === poseFrame(desk.key, element, startOf(element), moved);
+
+    if (!body_.recached) {
+        defects.push(`body: after ${desk.key}'s delivered species moved to ${moved}, one painter still drew «${decodeURIComponent(String(characterHref())).match(/@[a-z-]+#/)?.[0] ?? '?'}» — its frames are not cached by species`);
+    }
+
+    const reported = [];
+    const unheld = { ...desk, elements: desk.elements.map((e) => (e.kind === 'character' ? { ...e, species: 'no-such-species' } : e)) };
+
+    createPainter({ characters, themes: { studio: theme }, failed: (ids) => reported.push(...ids), select() {} }).paint({ ...scene, desks: [unheld] }, { bounds: null });
+    body_.unheld = characterHref() === undefined && reported.length === 1 && reported[0] === element.asset;
+
+    if (!body_.unheld) {
+        defects.push(`body: a delivered species the tree does not hold drew ${characterHref() === undefined ? 'no image' : 'an image'} and reported ${JSON.stringify(reported)} — § 9 F14 is that asset's placeholder alone, never another body`);
+    }
+}
+
+console.log(JSON.stringify({ desks: desks.length, painted, bubbles, interns, fade, poses: [...poses].sort(), walker: walker_, body: body_, defects }));

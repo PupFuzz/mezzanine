@@ -3,9 +3,12 @@
 //
 // THE RULE (`docs/design/FLOOR.md` section 3.1 and section 10.2): a character is seeded from
 // `(install_id, seat_id)` — the same pair that keys the desk — so a seat looks identical on
-// every browser and every reload with NOTHING STORED anywhere. No random draw, no server field,
-// no localStorage. The appearance IS the identity, computed. The creatures draw every field
-// through `draw()` (`creatures.js`).
+// every browser and every reload. No random draw and no localStorage. ONE field is stored, and
+// it is the server's, not this tree's: the seat's SPECIES, its body, allocated by the server at
+// the seat's creation and delivered as `character.species` (card#12443, `docs/design/FLEET-STATE.md`
+// § 6.13); the painter hands it to the tree, and `App\Characters\Draw` is the server's port of
+// `draw()` below, which the allocation's preference order starts from. Every other field is the
+// identity, computed: the creatures draw it through `draw()` (`creatures.js`).
 
 const ENC = new TextEncoder();
 

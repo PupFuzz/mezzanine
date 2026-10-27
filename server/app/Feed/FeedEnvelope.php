@@ -6,7 +6,7 @@ use App\Fold\Clock;
 
 /**
  * `docs/design/FLEET-STATE.md § 8.3`'s **envelope**, in one place — the property every message type
- * shares: `{"feed_version":1,"t":…,"server_time":"…", …}`.
+ * shares: `{"feed_version":2,"t":…,"server_time":"…", …}`.
  *
  * A TRAIT rather than a base class so that a message keeps whatever else it is; every class using
  * it implements `App\Feed\FeedMessage`.
@@ -22,7 +22,7 @@ use App\Fold\Clock;
 trait FeedEnvelope
 {
     /** § 8.1: the feed "carries `feed_version` for detection". */
-    public const FEED_VERSION = 1;
+    public const FEED_VERSION = 2;
 
     /** @return array<string, mixed>  the members BEYOND the envelope */
     abstract public function body(): array;

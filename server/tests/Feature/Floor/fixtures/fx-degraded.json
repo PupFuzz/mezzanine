@@ -19,6 +19,9 @@
           {
             "install_id": "aimla",
             "seat_id": "aimla-catchup",
+            "character": {
+              "species": "pepper"
+            },
             "state_version": 7001,
             "render_state": "catching_up",
             "link_state": "catching_up",
@@ -95,6 +98,9 @@
           {
             "install_id": "aimla",
             "seat_id": "aimla-stale",
+            "character": {
+              "species": "broccoli"
+            },
             "state_version": 7002,
             "render_state": "stale",
             "link_state": "stale",
@@ -171,6 +177,9 @@
           {
             "install_id": "aimla",
             "seat_id": "aimla-offline",
+            "character": {
+              "species": "radish"
+            },
             "state_version": 7003,
             "render_state": "offline",
             "link_state": "offline",
@@ -247,6 +256,9 @@
           {
             "install_id": "aimla",
             "seat_id": "aimla-disabled",
+            "character": {
+              "species": "turnip"
+            },
             "state_version": 7004,
             "render_state": "disabled",
             "link_state": "disabled",
@@ -323,6 +335,9 @@
           {
             "install_id": "aimla",
             "seat_id": "aimla-lagged",
+            "character": {
+              "species": "deer"
+            },
             "state_version": 7005,
             "render_state": "working",
             "link_state": "live",
@@ -413,6 +428,9 @@
           {
             "install_id": "aimla",
             "seat_id": "aimla-idle",
+            "character": {
+              "species": "deer"
+            },
             "state_version": 7006,
             "render_state": "idle",
             "link_state": "live",
@@ -517,6 +535,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-catchup",
+                      "character": {
+                        "species": "pepper"
+                      },
                       "state_version": 7001,
                       "render_state": "catching_up",
                       "link_state": "catching_up",
@@ -593,6 +614,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-stale",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 7002,
                       "render_state": "stale",
                       "link_state": "stale",
@@ -669,6 +693,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-offline",
+                      "character": {
+                        "species": "radish"
+                      },
                       "state_version": 7003,
                       "render_state": "offline",
                       "link_state": "offline",
@@ -745,6 +772,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-disabled",
+                      "character": {
+                        "species": "turnip"
+                      },
                       "state_version": 7004,
                       "render_state": "disabled",
                       "link_state": "disabled",
@@ -821,6 +851,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-lagged",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 7005,
                       "render_state": "working",
                       "link_state": "live",
@@ -911,6 +944,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-idle",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 7006,
                       "render_state": "idle",
                       "link_state": "live",
@@ -995,7 +1031,7 @@
         {
           "at_ms": 30000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:44.400Z",
             "fleet": {
@@ -1040,6 +1076,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-catchup",
+                      "character": {
+                        "species": "pepper"
+                      },
                       "state_version": 7001,
                       "render_state": "catching_up",
                       "link_state": "catching_up",
@@ -1116,6 +1155,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-stale",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 7002,
                       "render_state": "stale",
                       "link_state": "stale",
@@ -1192,6 +1234,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-offline",
+                      "character": {
+                        "species": "radish"
+                      },
                       "state_version": 7003,
                       "render_state": "offline",
                       "link_state": "offline",
@@ -1268,6 +1313,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-disabled",
+                      "character": {
+                        "species": "turnip"
+                      },
                       "state_version": 7004,
                       "render_state": "disabled",
                       "link_state": "disabled",
@@ -1344,6 +1392,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-lagged",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 7005,
                       "render_state": "working",
                       "link_state": "live",
@@ -1434,6 +1485,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-idle",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 7006,
                       "render_state": "idle",
                       "link_state": "live",
@@ -1520,6 +1574,9 @@
         "aimla/aimla-catchup": {
           "install_id": "aimla",
           "seat_id": "aimla-catchup",
+          "character": {
+            "species": "pepper"
+          },
           "state_version": 7001,
           "render_state": "catching_up",
           "link_state": "catching_up",
@@ -1596,6 +1653,9 @@
         "aimla/aimla-stale": {
           "install_id": "aimla",
           "seat_id": "aimla-stale",
+          "character": {
+            "species": "broccoli"
+          },
           "state_version": 7002,
           "render_state": "stale",
           "link_state": "stale",
@@ -1672,6 +1732,9 @@
         "aimla/aimla-offline": {
           "install_id": "aimla",
           "seat_id": "aimla-offline",
+          "character": {
+            "species": "radish"
+          },
           "state_version": 7003,
           "render_state": "offline",
           "link_state": "offline",
@@ -1748,6 +1811,9 @@
         "aimla/aimla-disabled": {
           "install_id": "aimla",
           "seat_id": "aimla-disabled",
+          "character": {
+            "species": "turnip"
+          },
           "state_version": 7004,
           "render_state": "disabled",
           "link_state": "disabled",
@@ -1824,6 +1890,9 @@
         "aimla/aimla-lagged": {
           "install_id": "aimla",
           "seat_id": "aimla-lagged",
+          "character": {
+            "species": "deer"
+          },
           "state_version": 7005,
           "render_state": "working",
           "link_state": "live",
@@ -1914,6 +1983,9 @@
         "aimla/aimla-idle": {
           "install_id": "aimla",
           "seat_id": "aimla-idle",
+          "character": {
+            "species": "deer"
+          },
           "state_version": 7006,
           "render_state": "idle",
           "link_state": "live",

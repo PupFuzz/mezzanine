@@ -20,6 +20,9 @@
           {
             "install_id": "aimla",
             "seat_id": "aimla-interns",
+            "character": {
+              "species": "fox"
+            },
             "state_version": 9001,
             "render_state": "working",
             "link_state": "live",
@@ -135,6 +138,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-interns",
+                      "character": {
+                        "species": "fox"
+                      },
                       "state_version": 9001,
                       "render_state": "working",
                       "link_state": "live",
@@ -231,7 +237,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -302,7 +308,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:16.400Z",
             "install_id": "aimla",
@@ -325,6 +331,9 @@
         "aimla/aimla-interns": {
           "install_id": "aimla",
           "seat_id": "aimla-interns",
+          "character": {
+            "species": "fox"
+          },
           "state_version": 9003,
           "render_state": "working",
           "link_state": "live",

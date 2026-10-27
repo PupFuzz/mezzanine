@@ -20,6 +20,9 @@
           {
             "install_id": "aimla",
             "seat_id": "aimla-stalled",
+            "character": {
+              "species": "fox"
+            },
             "state_version": 7701,
             "render_state": "stalled",
             "link_state": "live",
@@ -96,6 +99,9 @@
           {
             "install_id": "aimla",
             "seat_id": "aimla-unknown",
+            "character": {
+              "species": "potato"
+            },
             "state_version": 7702,
             "render_state": "unknown",
             "link_state": "live",
@@ -199,6 +205,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-stalled",
+                      "character": {
+                        "species": "fox"
+                      },
                       "state_version": 7701,
                       "render_state": "stalled",
                       "link_state": "live",
@@ -275,6 +284,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-unknown",
+                      "character": {
+                        "species": "potato"
+                      },
                       "state_version": 7702,
                       "render_state": "unknown",
                       "link_state": "live",
@@ -361,6 +373,9 @@
         "aimla/aimla-stalled": {
           "install_id": "aimla",
           "seat_id": "aimla-stalled",
+          "character": {
+            "species": "fox"
+          },
           "state_version": 7701,
           "render_state": "stalled",
           "link_state": "live",
@@ -437,6 +452,9 @@
         "aimla/aimla-unknown": {
           "install_id": "aimla",
           "seat_id": "aimla-unknown",
+          "character": {
+            "species": "potato"
+          },
           "state_version": 7702,
           "render_state": "unknown",
           "link_state": "live",
