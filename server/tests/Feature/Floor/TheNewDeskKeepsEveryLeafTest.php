@@ -354,7 +354,7 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
             // An intern's key is minted per dispatch: the painter drops the frames of each one it no longer
             // draws — its Map is the only cache (card#11046: the tree holds none, and has no forget()).
             "an intern no longer drawn kept in the painter's frames" => ['../floor/painter.js',
-                "                for (const key of [...frames.keys()].filter((k) => k.startsWith(`${asset}~`))) {\n                    frames.delete(key);\n                }", ''],
+                "                for (const key of [...frames.keys()].filter((k) => k.startsWith(`\${asset}~`))) {\n                    frames.delete(key);\n                }", ''],
             'an intern animated' => ['../floor/painter.js',
                 "art(g, drawn.uris[0], e.overdraw, e.asset, e.untitled ? 'intern untitled' : 'intern');",
                 "stepping.push([art(g, drawn.uris[0], e.overdraw, e.asset, e.untitled ? 'intern untitled' : 'intern'), [drawn.uris[0], 'x', 'y'], 0, 0]);"],
@@ -407,10 +407,10 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 "characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top, clear: at.clear, species })",
                 "characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top, clear: at.clear })"],
             "a character's frames cached on the asset alone, not its species" => ['../floor/painter.js',
-                "`${asset}#${at.pose}@${at.desk_top}`}~${species}`;", "`${asset}#${at.pose}@${at.desk_top}`}`;"],
+                '`${asset}#${at.pose}@${at.desk_top}`}~${species}`;', '`${asset}#${at.pose}@${at.desk_top}`}`;'],
             "an unheld species drawn as the key's own body" => ['../floor/painter.js',
-                "            } catch {\n                report(asset);\n\n                return null;\n            }",
-                "            } catch {\n                frames.set(key, { uris: characters.poseFrames(installId, seatId, { pose: at?.pose ?? 'present', deskTop: at?.desk_top ?? 0.5, clear: at?.clear }).frames.map(svgUri), loopFrom: 0 });\n            }"],
+                "                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });\n            } catch {\n                report(asset);",
+                "                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });\n            } catch {\n                frames.set(key, { uris: characters.poseFrames(installId, seatId, { pose: at?.pose ?? 'present', deskTop: at?.desk_top ?? 0.5, clear: at?.clear }).frames.map(svgUri), loopFrom: 0 });\n                return frames.get(key);"],
             "an intern kept off the seat key's draw, not its seat's delivered body" => ['../floor/painter.js',
                 'characters.chibiFrame(installId, seatId, species)', 'characters.chibiFrame(installId, seatId)'],
             // § 9 F14's third cause (§ 10.2): an undecodable frame's <image> error event, unreported.

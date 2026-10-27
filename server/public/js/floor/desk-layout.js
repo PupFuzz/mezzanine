@@ -613,6 +613,8 @@ export const DRAWN_MEMBERS = Object.freeze({
     side_table: ['side-table', 'stool', 'stool-more'],
     bubble: ['bubble'],
     held: ['character'],
+    // card#12443: the delivered body the character is drawn in, and the body each intern is kept off.
+    species: ['character', 'stool'],
     // Drawn on the chip's hollow dashed form; the desk's dimming is the group's lighting class (FLOOR.md decision 63).
     unconfirmed: ['chip'],
 });

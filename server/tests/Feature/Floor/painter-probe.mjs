@@ -1200,11 +1200,18 @@ const body_ = { apart: 0, recached: false, unheld: false };
     const reported = [];
     const unheld = { ...desk, elements: desk.elements.map((e) => (e.kind === 'character' ? { ...e, species: 'no-such-species' } : e)) };
 
-    createPainter({ characters, themes: { studio: theme }, failed: (ids) => reported.push(...ids), select() {} }).paint({ ...scene, desks: [unheld] }, { bounds: null });
-    body_.unheld = characterHref() === undefined && reported.length === 1 && reported[0] === element.asset;
+    let threw = null;
+
+    try {
+        createPainter({ characters, themes: { studio: theme }, failed: (ids) => reported.push(...ids), select() {} }).paint({ ...scene, desks: [unheld] }, { bounds: null });
+    } catch (e) {
+        threw = e;
+    }
+
+    body_.unheld = threw === null && characterHref() === undefined && reported.length === 1 && reported[0] === element.asset;
 
     if (!body_.unheld) {
-        defects.push(`body: a delivered species the tree does not hold drew ${characterHref() === undefined ? 'no image' : 'an image'} and reported ${JSON.stringify(reported)} — § 9 F14 is that asset's placeholder alone, never another body`);
+        defects.push(`body: a delivered species the tree does not hold ${threw ? `threw out of the paint (${threw.message})` : `drew ${characterHref() === undefined ? 'no image' : 'an image'} and reported ${JSON.stringify(reported)}`} — § 9 F14 is that asset's placeholder alone, never another body`);
     }
 }
 
