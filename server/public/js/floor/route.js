@@ -8,11 +8,26 @@
  * every engine, every viewer and every reload. `floor/scene.js` builds the lattice and the routes (the painter
  * decides nothing, `scene.js`'s header), and the painter reads `pointAt()` and `floorStackOrder()` back.
  *
- * ⛔ THE LATTICE IS READ FROM THE MAP, NEVER FROM WHAT WAS DRAWN (walk note item 3). A cell is blocked iff its
- * half-open rect meets a `wall` tile, a STANDING kind's tile image (the theme registry's kinds minus the plane
- * kinds), another desk's slot or drawn box, or lies outside the floor's extent. A tileset still pending resolves no
- * kind, so its cells are open until it arrives — and the lattice key (`scene.js`'s `latticeKey()`) cancels every
- * walk routed without it then. Other walkers are never obstacles.
+ * ⛔ THE LATTICE IS READ FROM THE MAP, NEVER FROM WHAT WAS DRAWN (walk note item 3). The FEET rule: a cell is
+ * blocked iff its half-open rect meets a `wall` tile, a STANDING kind's tile image (the theme registry's kinds minus
+ * the plane kinds), another desk's slot or drawn box, or lies outside the floor's extent. A tileset still pending
+ * resolves no kind, so its cells are open until it arrives — and the lattice key (`scene.js`'s `latticeKey()`)
+ * cancels every walk routed without it then. Other walkers are never obstacles.
+ *
+ * ⛔ A WALKER KEEPS CLEAR LIKE A PERSON IN A BUILDING (walk note item 3, card#12442). The feet rule alone lets a path
+ * hug an obstacle one cell away while the body — the character's drawn rect, centred on the feet — is painted over
+ * it. So every obstacle and every OTHER desk is inflated by the body round the feet: a cell is blocked when its
+ * centre lies within half the drawn body's width plus `CLEARANCE.margin` of the rect sideways AND within
+ * `CLEARANCE.depth` of its depth span. Another desk keeps the bare body without the margins: it is drawn in the
+ * floor's depth order with the walker (walk note item 9), where a wall tile and a standing tile are not. A rect wholly above the feet on screen — behind the walker in the
+ * three-quarter view — is drawn behind it and does not count; one beside the feet or in front of them does. The
+ * width is the scene's drawn character rect (`body.w`), never a constant here, so a taller or wider character moves
+ * the inflation with it. Paths prefer the middle of a walkway: a cell near a blocked one costs extra (`CENTRING`).
+ *
+ * ⛔ THREE TIERS, TRIED IN ORDER, PER WALK (`CLEARANCE_TIERS`): `clear` (the body plus both margins), `snug` (the
+ * bare body, no margin), `feet` (the feet rule alone — the lattice before card#12442). Each tier's blocked set holds
+ * the next one's, so a route found at one tier is legal at every tier after it. `route()` answers the first tier
+ * that connects the two points and names it, so a map too tight for a body still walks, on the best route that fits.
  *
  * ⛔ NOTHING HERE KNOWS ABOUT ELEVATORS. A1 and A2 hand `route()` a desk's anchor and the elevator's threshold; a
  * later destination hands it another point.
@@ -21,27 +36,44 @@
 /** § 12's *Route lattice and cost* row: an orthogonal step costs 10, a diagonal one 14 — integers, so no float ties. */
 export const STEP_COST = Object.freeze({ straight: 10, diagonal: 14 });
 
+/**
+ * § 12's *Walker clearance* row (card#12442): the px a walker's drawn body keeps from an obstacle beside it
+ * (`margin`, past half the body's width), and the px its feet keep from an obstacle's depth span (`depth`) — the
+ * `clear` tier's; `snug` keeps neither.
+ */
+export const CLEARANCE = Object.freeze({ margin: 8, depth: 4 });
+
+/**
+ * § 12's *Walkway centring* row (card#12442): a cell whose Chebyshev distance to the nearest blocked cell (or the
+ * lattice's edge) is `d` cells costs `weight × max(0, ⌈reach ÷ cell⌉ − d)` on entry, on top of its step — so a path
+ * keeps to the middle of a walkway up to `reach` px from its edges. Integers, as the step costs are.
+ */
+export const CENTRING = Object.freeze({ reach: 48, weight: 3 });
+
+/** The clearance tiers, strictest first (the header's *Three tiers*). */
+export const CLEARANCE_TIERS = Object.freeze(['clear', 'snug', 'feet']);
+
 /** Whether two half-open rects `{x, y, w, h}` share any area — touching edges do not. */
 const meets = (a, b) => a.w > 0 && a.h > 0 && b.w > 0 && b.h > 0
     && a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 /**
- * THE WALKABLE MODEL of one floor (walk note item 3): a grid of lattice cells over the floor's extent, each blocked
- * or open for every walker, and every desk's footprint kept apart, because a walker's OWN desk is open to it on its
- * anchor's row and every other desk is blocked whole.
+ * THE WALKABLE MODEL of one floor (walk note item 3): a grid of lattice cells over the floor's extent, and for each
+ * clearance tier the cells blocked for every walker and each desk's cells — because a walker's OWN desk is open to it
+ * on its anchor's row (by the feet rule, never inflated: it sits there) and every other desk is blocked whole.
  *
  * @param {{extent: {x: number, y: number, width: number, height: number}, cell: number,
  *          obstacles: list<{x: number, y: number, w: number, h: number}>,
- *          desks: list<{key: string, rects: list<{x: number, y: number, w: number, h: number}>}>}} parts —
+ *          desks: list<{key: string, rects: list<{x: number, y: number, w: number, h: number}>}>,
+ *          body: {w: number}}} parts —
  *        `cell` the smallest tile edge over the floor's grids; `obstacles` the `wall` tiles' and standing tiles' rects;
- *        `desks` each desk's slot and drawn box
+ *        `desks` each desk's slot and drawn box; `body` the walker's drawn character rect, whose width is what clears
  * @returns {object} the lattice, read only by `route()` and the tests
  */
-export function lattice({ extent, cell, obstacles, desks }) {
+export function lattice({ extent, cell, obstacles, desks, body }) {
     const c = cell;
     const cols = Math.ceil(extent.width / c);
     const rows = Math.ceil(extent.height / c);
-    const blocked = new Uint8Array(cols * rows);
     const rectOf = (i) => ({ x: extent.x + (i % cols) * c, y: extent.y + Math.floor(i / cols) * c, w: c, h: c });
     // The cells one rect meets, by the half-open test itself over a range one cell wider each side.
     const cellsOf = (r) => {
@@ -61,30 +93,100 @@ export function lattice({ extent, cell, obstacles, desks }) {
 
         return out;
     };
+    // The rect inflated by the body round the feet: the cells whose CENTRE lies strictly within `side` px of it
+    // sideways and `depth` px of its depth span — with the cells the feet rule blocks, so each tier holds the next's.
+    const haloOf = (r, side, depth) => {
+        const out = new Set(cellsOf(r));
 
+        if (r.w <= 0 || r.h <= 0) {
+            return [...out];
+        }
+
+        const x0 = Math.max(0, Math.floor((r.x - side - extent.x) / c) - 1);
+        const x1 = Math.min(cols - 1, Math.ceil((r.x + r.w + side - extent.x) / c));
+        const y0 = Math.max(0, Math.floor((r.y - depth - extent.y) / c) - 1);
+        const y1 = Math.min(rows - 1, Math.ceil((r.y + r.h + depth - extent.y) / c));
+
+        for (let y = y0; y <= y1; y++) {
+            const cy = extent.y + (y + 0.5) * c;
+
+            if (cy > r.y - depth && cy < r.y + r.h + depth) {
+                for (let x = x0; x <= x1; x++) {
+                    const cx = extent.x + (x + 0.5) * c;
+
+                    if (cx > r.x - side && cx < r.x + r.w + side) {
+                        out.add(y * cols + x);
+                    }
+                }
+            }
+        }
+
+        return [...out];
+    };
     // A cell is inside the extent by construction, save the last column and row where the extent is not a whole
     // number of cells: their part past the extent is not floor.
-    for (let i = 0; i < blocked.length; i++) {
+    const outside = new Uint8Array(cols * rows);
+
+    for (let i = 0; i < outside.length; i++) {
         const r = rectOf(i);
 
         if (r.x + r.w > extent.x + extent.width || r.y + r.h > extent.y + extent.height) {
-            blocked[i] = 1;
+            outside[i] = 1;
         }
     }
 
-    for (const r of obstacles) {
-        for (const i of cellsOf(r)) {
-            blocked[i] = 1;
-        }
-    }
+    const half = body.w / 2;
+    // What each tier blocks round a wall or standing tile, and round another desk. A desk is drawn in the floor's
+    // depth order with the walker (walk note item 9) and its box is its art's own extent, so it keeps the bare body
+    // at both body tiers; the margins are the walls' and the standing furniture's.
+    const reach = {
+        clear: (r) => haloOf(r, half + CLEARANCE.margin, CLEARANCE.depth),
+        snug: (r) => haloOf(r, half, 0),
+        feet: cellsOf,
+    };
+    const deskReach = { clear: reach.snug, snug: reach.snug, feet: cellsOf };
+    // How far in from the floor's edge each tier's centring counts the edge as reaching — the edge as a wall the
+    // tier inflates, so a walkway along the edge is centred on the body and not on the feet. It blocks nothing.
+    const edge = { clear: { side: half + CLEARANCE.margin, depth: CLEARANCE.depth }, snug: { side: half, depth: 0 }, feet: { side: 0, depth: 0 } };
+    const sorted = (list) => Object.freeze([...new Set(list)].sort((a, b) => a - b));
+    const built = new Map();
 
     return Object.freeze({
         origin: Object.freeze({ x: extent.x, y: extent.y }),
         cell: c,
         cols,
         rows,
-        blocked,
-        desks: Object.freeze(desks.map((d) => Object.freeze({ key: d.key, cells: Object.freeze([...new Set(d.rects.flatMap(cellsOf))].sort((a, b) => a - b)) }))),
+        // Each desk's own cells by the feet rule: what its OWN walker may enter on its anchor's row.
+        desks: Object.freeze(desks.map((d) => Object.freeze({ key: d.key, cells: sorted(d.rects.flatMap(cellsOf)) }))),
+        // One tier's model, built the first time a route asks for it — a floor whose every walk routes at `clear`
+        // never builds the others.
+        tier: (name) => {
+            if (built.has(name)) {
+                return built.get(name);
+            }
+
+            const blocked = Uint8Array.from(outside);
+
+            for (const r of obstacles) {
+                for (const i of reach[name](r)) {
+                    blocked[i] = 1;
+                }
+            }
+
+            // Each desk as ANOTHER walker meets it: its rects inflated by the tier's desk reach.
+            const tierDesks = Object.freeze(desks.map((d) => Object.freeze({ key: d.key, cells: sorted(d.rects.flatMap(deskReach[name])) })));
+            const walled = Uint8Array.from(blocked);
+
+            for (const d of tierDesks) {
+                for (const i of d.cells) {
+                    walled[i] = 1;
+                }
+            }
+
+            built.set(name, Object.freeze({ name, blocked, desks: tierDesks, centring: centringCost(cols, rows, c, walled, edge[name]) }));
+
+            return built.get(name);
+        },
     });
 }
 
@@ -102,23 +204,36 @@ export function cellCentre(grid, [x, y]) {
 }
 
 /**
- * The cells blocked for ONE walker: the floor's obstacles, every other desk whole, and its own desk on every row but
- * its anchor's — so it leaves and reaches its desk sideways, at its seated depth (walk note item 3).
+ * The cells blocked for ONE walker at one tier: the tier's obstacles, every other desk whole as the tier inflates it,
+ * and its own desk (by the feet rule) on every row but its anchor's — so it leaves and reaches its desk sideways, at
+ * its seated depth (walk note item 3).
  *
  * @param {object} grid `lattice()`'s
  * @param {{key: string, anchor: {x: number, y: number}}} walker
+ * @param {string} [tier] one of `CLEARANCE_TIERS`, the strictest when absent
  * @returns {Uint8Array}
  */
-export function blockedFor(grid, walker) {
-    const out = Uint8Array.from(grid.blocked);
+export function blockedFor(grid, walker, tier = CLEARANCE_TIERS[0]) {
+    const t = grid.tier(tier);
+    const out = Uint8Array.from(t.blocked);
     const anchor = cellAt(grid, walker.anchor);
 
-    // Every other desk whole; the own desk on every row but the anchor's. A cell of the anchor's row that another
-    // desk also meets stays blocked, because that desk's cells are blocked whoever's row it is.
-    for (const desk of grid.desks) {
-        for (const i of desk.cells) {
-            if (desk.key !== walker.key || anchor === null || Math.floor(i / grid.cols) !== anchor[1]) {
+    for (const desk of t.desks) {
+        if (desk.key !== walker.key) {
+            for (const i of desk.cells) {
                 out[i] = 1;
+            }
+        }
+    }
+
+    // The own desk off its anchor's row. A cell of the anchor's row that another desk also meets stays blocked,
+    // because that desk's cells are blocked whoever's row it is.
+    for (const desk of grid.desks) {
+        if (desk.key === walker.key) {
+            for (const i of desk.cells) {
+                if (anchor === null || Math.floor(i / grid.cols) !== anchor[1]) {
+                    out[i] = 1;
+                }
             }
         }
     }
@@ -127,29 +242,65 @@ export function blockedFor(grid, walker) {
 }
 
 /**
- * A* over the lattice (walk note item 3): 8-connected, `STEP_COST`, a diagonal refused when either orthogonal
- * neighbour is blocked (no corner is cut), the octile heuristic in the same units, and the open set ordered by
- * `(f, g descending, y, x)` — a total order, so one path for one set of inputs.
- *
- * @param {object} grid `lattice()`'s
- * @param {{x: number, y: number}} from
- * @param {{x: number, y: number}} to
- * @param {{key: string, anchor: {x: number, y: number}}} walker the walker whose desk is its own
- * @returns {list<[number, number]>|null} the cells from `from`'s to `to`'s, both included, or `null` with no open route
+ * The centring cost of entering each cell at one tier (§ 12's *Walkway centring* row): `weight × max(0, R − d)`, `d`
+ * the cell's Chebyshev distance in cells to the nearest cell the tier blocks for its obstacles or any desk, or to the
+ * floor's edge inflated as the tier inflates a wall (`edge`, px sideways and in depth), `R = ⌈reach ÷ cell⌉`. One
+ * field per tier, shared by every walker: a walker's own desk repels its own walk as it does the others', which only
+ * ever adds the same cost round the desk it must leave from.
  */
-export function route(grid, from, to, walker) {
-    const start = cellAt(grid, from);
-    const goal = cellAt(grid, to);
+function centringCost(cols, rows, cell, blocked, edge) {
+    const R = Math.ceil(CENTRING.reach / cell);
+    // Whole cells from a cell's centre, `at` px from an edge, to that edge's inflation `by` px deep.
+    const toEdge = (at, by) => Math.max(0, Math.ceil((at - by) / cell));
+    const d = new Int32Array(cols * rows);
+    const queue = [];
 
-    if (start === null || goal === null) {
-        return null;
+    for (let i = 0; i < d.length; i++) {
+        const x = i % cols;
+        const y = Math.floor(i / cols);
+
+        if (blocked[i] === 1) {
+            queue.push(i);
+        } else {
+            d[i] = Math.min(R,
+                toEdge((x + 0.5) * cell, edge.side), toEdge((cols - x - 0.5) * cell, edge.side),
+                toEdge((y + 0.5) * cell, edge.depth), toEdge((rows - y - 0.5) * cell, edge.depth));
+        }
     }
 
-    const blocked = blockedFor(grid, walker);
+    // A multi-source breadth-first pass, 8-connected: Chebyshev distance from the blocked cells, capped at R.
+    for (let k = 0; k < queue.length; k++) {
+        const i = queue[k];
+        const x = i % cols;
+        const y = Math.floor(i / cols);
+
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+                const nx = x + dx;
+                const ny = y + dy;
+                const n = ny * cols + nx;
+
+                if (nx >= 0 && ny >= 0 && nx < cols && ny < rows && d[n] > d[i] + 1) {
+                    d[n] = d[i] + 1;
+                    queue.push(n);
+                }
+            }
+        }
+    }
+
+    return d.map((v) => CENTRING.weight * Math.max(0, R - v));
+}
+
+/**
+ * A* over the lattice (walk note item 3) at ONE tier's blocked set: 8-connected, `STEP_COST` plus the centring cost
+ * of the cell entered, a diagonal refused when either orthogonal neighbour is blocked (no corner is cut), the octile
+ * heuristic in the step units — never above the true cost, since no centring cost is negative — and the open set
+ * ordered by `(f, g descending, y, x)`: a total order, so one path for one set of inputs.
+ */
+function search(grid, start, goal, blocked, extra) {
     const { cols, rows } = grid;
-    const idx = ([x, y]) => y * cols + x;
-    const s = idx(start);
-    const t = idx(goal);
+    const s = start[1] * cols + start[0];
+    const t = goal[1] * cols + goal[0];
 
     if (blocked[s] === 1 || blocked[t] === 1) {
         return null;
@@ -250,7 +401,7 @@ export function route(grid, from, to, walker) {
                 }
 
                 const n = (y + dy) * cols + x + dx;
-                const gn = gc + (diagonal ? STEP_COST.diagonal : STEP_COST.straight);
+                const gn = gc + (diagonal ? STEP_COST.diagonal : STEP_COST.straight) + extra[n];
 
                 if (closed[n] === 0 && (g[n] === -1 || gn < g[n])) {
                     g[n] = gn;
@@ -258,6 +409,36 @@ export function route(grid, from, to, walker) {
                     push([gn + h(n), gn, y + dy, x + dx, n]);
                 }
             }
+        }
+    }
+
+    return null;
+}
+
+/**
+ * THE ROUTE between two points for one walker: the first of `CLEARANCE_TIERS` whose blocked set connects them, and
+ * that tier's A* path.
+ *
+ * @param {object} grid `lattice()`'s
+ * @param {{x: number, y: number}} from
+ * @param {{x: number, y: number}} to
+ * @param {{key: string, anchor: {x: number, y: number}}} walker the walker whose desk is its own
+ * @returns {{cells: list<[number, number]>, tier: string}|null} the cells from `from`'s to `to`'s, both included, and
+ *          the tier they were found at; `null` with no open route at any tier
+ */
+export function route(grid, from, to, walker) {
+    const start = cellAt(grid, from);
+    const goal = cellAt(grid, to);
+
+    if (start === null || goal === null) {
+        return null;
+    }
+
+    for (const tier of CLEARANCE_TIERS) {
+        const cells = search(grid, start, goal, blockedFor(grid, walker, tier), grid.tier(tier).centring);
+
+        if (cells !== null) {
+            return Object.freeze({ cells, tier });
         }
     }
 
