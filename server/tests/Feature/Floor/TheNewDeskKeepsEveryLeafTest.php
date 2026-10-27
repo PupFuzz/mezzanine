@@ -404,10 +404,10 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
             // asset alone; a species the tree does not hold drawn as the key's own body instead of F14; and an intern
             // handed the seat key's own draw instead of its seat's delivered body.
             "a seat drawn from its key, the delivered species dropped" => ['../floor/painter.js',
-                "characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top, clear: at.clear, species })",
-                "characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top, clear: at.clear })"],
+                "characters.poseFrames(installId, seatId, { pose: at.pose, glyph: at.glyph ?? null, deskTop: at.desk_top, clear: at.clear, species })",
+                "characters.poseFrames(installId, seatId, { pose: at.pose, glyph: at.glyph ?? null, deskTop: at.desk_top, clear: at.clear })"],
             "a character's frames cached on the asset alone, not its species" => ['../floor/painter.js',
-                '`${asset}#${at.pose}@${at.desk_top}`}~${species}`;', '`${asset}#${at.pose}@${at.desk_top}`}`;'],
+                '`${asset}#${at.pose}/${at.glyph ?? \'\'}@${at.desk_top}`}~${species}`;', '`${asset}#${at.pose}/${at.glyph ?? \'\'}@${at.desk_top}`}`;'],
             "an unheld species drawn as the key's own body" => ['../floor/painter.js',
                 "                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });\n            } catch {\n                report(asset);",
                 "                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });\n            } catch {\n                frames.set(key, { uris: characters.poseFrames(installId, seatId, { pose: at?.pose ?? 'present', deskTop: at?.desk_top ?? 0.5, clear: at?.clear }).frames.map(svgUri), loopFrom: 0 });\n                return frames.get(key);"],

@@ -303,12 +303,6 @@ class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
     }
 
     /**
-     * Wall tiles down the shipped default's elevator-room column, at tile column `$col` from the floor's top to the
-     * room's front: the column between them and the room's first desk is that room's one body-wide exit.
-     *
-     * @return list<array{0: int, 1: int}>
-     */
-    /**
      * The column to plant, re-derived from the walker's drawn body and the strip beside the first desk (card#12444 made the
      * body wider, so the columns that leave `snug` and the feet rule moved): for `snug`, the column nearest the desk whose
      * gap still holds the body — a lattice centre farther than half the body from the wall and from the desk — but not
@@ -341,6 +335,12 @@ class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
         $this->fail("no column of the default's left strip leaves `{$tier}`");
     }
 
+    /**
+     * Wall tiles down the shipped default's elevator-room column, at tile column `$col` from the floor's top to the
+     * room's front: the column between them and the room's first desk is that room's one body-wide exit.
+     *
+     * @return list<array{0: int, 1: int}>
+     */
     private function plantedColumn(int $col): array
     {
         $map = $this->map($this->defaultMapPath());

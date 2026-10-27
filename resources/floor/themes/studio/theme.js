@@ -976,7 +976,7 @@ export function deskProps({ install_id: installId, seat_id: seatId }) {
  * nothing else (FLOOR.md § 10.6 item 2), so the rows are stated here, and `tools/floor-themes/selftest.mjs` holds them to
  * the layout's own slots — a row that drifts from the layout's reds. The table itself is the rect's bottom 42 px.
  */
-const TABLE = Object.freeze({ w: 228, h: 110, seat_x: 4, seat_pitch: 56, seat_w: 40, per_row: 4, row_dy: 68 });
+const TABLE = Object.freeze({ w: 228, h: 98, seat_x: 4, seat_pitch: 38, seat_w: 35, per_row: 4, row_dy: 56 });
 
 /**
  * THE SIDE TABLE, at every desk with art: a low tea table with a teapot at its far end and cushion seats in

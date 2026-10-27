@@ -673,7 +673,7 @@ for (const g of layer?.children ?? []) {
         if (circles.length > 0 && head !== null) {
             const gaps = circles.map((c, i) => (i === 0 ? head.y : circles[i - 1].y - circles[i - 1].r) - (c.y + c.r));
             const top = circles[circles.length - 1];
-            const under = bb.y + bb.h - (top.y - top.r);
+            const under = top.y - top.r - (bb.y + bb.h);
 
             if (!(under >= -EPS && under <= Math.max(...gaps) + EPS)) {
                 defects.push(`${key}: the bubble's trail stops ${under.toFixed(1)} px under the cloud, its circles ${Math.max(...gaps).toFixed(1)} px apart at most — it does not reach the bubble`);

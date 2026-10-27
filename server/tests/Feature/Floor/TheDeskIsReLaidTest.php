@@ -104,7 +104,7 @@ class TheDeskIsReLaidTest extends TestCase
             'the chair emitted after the screen text' => ["        rect('chair', 'character', R.chair, { pose: desk.pose, unconfirmed: desk.unconfirmed, occupied: desk.character, doc: doc('chair') });\n", '',
                 "    // Q4 (a): the chip reads the model's glyph", "    if (!ctx.placeholder) { rect('chair', 'character', R.chair, { pose: desk.pose, unconfirmed: desk.unconfirmed, occupied: desk.character }); }\n    // Q4 (a): the chip reads the model's glyph"],
             "today's order, the side table after the flag" => ["        rect('side-table', 'side_table', R['side-table'], {", "        false && rect('side-table', 'side_table', R['side-table'], {",
-                '    // § 8: one sprite per intern, in front of the side table', "    if (!ctx.placeholder) { rect('side-table', 'side_table', R['side-table'], { seats: 4, seat_dx: [], seat: { dy: 36, w: 20, h: 6 } }); }\n    // § 8: one sprite per intern, in front of the side table"],
+                '    // § 8: one sprite per intern, in front of the side table', "    if (!ctx.placeholder) { rect('side-table', 'side_table', R['side-table'], { seats: 4, seat_at: slots.slice(0, 4).map((slot) => ({ dx: slot.x - R['side-table'].x, dy: slot.y + slot.h - SEAT_H - R['side-table'].y })), seat: { w: STOOL_W, h: SEAT_H } }); }\n    // § 8: one sprite per intern, in front of the side table"],
         ] as $what => [$from1, $to1, $from2, $to2]) {
             $dir = $this->mutatedModules(['../floor/desk-layout.js', $from1, $to1]);
             $this->mutateAgain($dir, '../floor/desk-layout.js', $from2, $to2);
@@ -164,10 +164,28 @@ class TheDeskIsReLaidTest extends TestCase
 
     public function test_red_a_trail_circle_on_the_creature(): void
     {
-        $dir = $this->mutatedModules(['../floor/desk-layout.js', '    let bottom = head.y - TRAIL_GAP;', '    let bottom = head.y + 8;']);
+        $dir = $this->mutatedModules(['../floor/desk-layout.js', '    let y = top;', '    let y = top + 8 + TRAIL_GAP;']);
 
         $this->assertNotSame([], array_filter($this->bubbleDefects($this->painterRun(dirname($dir))), fn (string $d): bool => str_contains($d, "meets the character's rect")),
             'RED (the trail started 8 px inside the character\'s rect) did not fail the bubble leg');
+    }
+
+    /**
+     * card#12444, the operator's ruling of 2026-10-27 (*"anchor the bubble to the character. If necessary, add another
+     * bubble to extend the height"*): the bubble set back in the box's top band leaves its character, and a trail held at
+     * its normal reach stops short of a bubble set higher.
+     */
+    public function test_red_the_bubble_off_its_character_or_the_trail_short_of_it(): void
+    {
+        foreach ([
+            "the bubble back in the box's top band" => ['../floor/scene.js', '            anchor: { x: centre, y: bottom },', '            anchor: { x: centre, y: desk.box.y + 2 * LINE + 2 * BUBBLE_PAD },', 'not set on its character'],
+            'the trail at its normal reach whatever the bubble' => ['../floor/scene.js', '            trail: trailCircles(foot.x, foot.y, rect.y + rect.h),', '            trail: trailCircles(foot.x, foot.y, foot.y - TRAIL_REACH),', 'does not reach the bubble'],
+        ] as $what => [$file, $from, $to, $says]) {
+            $dir = $this->mutatedModules([$file, $from, $to]);
+
+            $this->assertNotSame([], array_filter($this->bubbleDefects($this->painterRun(dirname($dir))), fn (string $d): bool => str_contains($d, $says)),
+                "RED ({$what}) did not fail the bubble leg with «{$says}»");
+        }
     }
 
     public function test_red_the_cloud_escaping_its_box(): void

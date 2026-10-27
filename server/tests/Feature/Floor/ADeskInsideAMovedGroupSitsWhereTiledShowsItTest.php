@@ -68,8 +68,8 @@ class ADeskInsideAMovedGroupSitsWhereTiledShowsItTest extends TestCase
 
     /**
      * A map's grid two tile rows taller, floor tiles under them — room below the desk for the y offsets the summing tests
-     * shift it by, which the fixture's grid (as tall as the box, rounded up to whole tiles) need not leave (card#12444
-     * made the box taller and the fixture's slack 4 px).
+     * shift it by, which the fixture's grid (as tall as the box, rounded up to whole tiles) need not leave (card#12444's
+     * box leaves the fixture a pixel of slack, and the next box may leave none).
      *
      * @param  array<string, mixed>  $map
      * @return array<string, mixed>
@@ -84,7 +84,7 @@ class ADeskInsideAMovedGroupSitsWhereTiledShowsItTest extends TestCase
     }
 
     /**
-     * The fixture's one-desk map with only the `desks` layer's own offset — no group.
+     * The fixture's one-desk map with only the `desks` layer's own offset — no group — on the roomy grid.
      *
      * @return array<string, mixed>
      */
@@ -93,7 +93,7 @@ class ADeskInsideAMovedGroupSitsWhereTiledShowsItTest extends TestCase
         $map = FloorMapFixture::decoded(1);
         $map['layers'][1] += ['offsetx' => $lx, 'offsety' => $ly];
 
-        return $map;
+        return $this->roomy($map);
     }
 
     /** @param array<string, mixed> $map */
@@ -190,28 +190,28 @@ class ADeskInsideAMovedGroupSitsWhereTiledShowsItTest extends TestCase
         $this->assertStringContainsString('spans -1–', $left);
 
         // The two offsets SUM: neither alone leaves the grid, together they do. The room below the desk is the grid's
-        // height less the box's, read off the fixture and the box (card#12444 made the box taller); the group takes
+        // height less the box's, read off the roomy map and the box (card#12444 made the box taller); the group takes
         // just over half of it and the layer the rest plus one pixel.
-        $fixture = FloorMapFixture::decoded(1);
+        $fixture = $this->roomy(FloorMapFixture::decoded(1));
         $slack = $fixture['height'] * $fixture['tileheight'] - $box->height;
         $this->assertGreaterThanOrEqual(2, $slack, 'the fixture\'s grid leaves the desk too little room to split between two offsets');
         $group = intdiv($slack, 2) + 1;
         $layer = $slack - $group + 1;
-        $this->assertNull($this->refusal($this->grouped(0, $group, 0, 0)));
-        $this->assertNull($this->refusal($this->grouped(0, 0, 0, $layer)));
-        $this->assertNotNull($this->refusal($this->grouped(0, $group, 0, $layer)),
+        $this->assertNull($this->refusal($this->roomy($this->grouped(0, $group, 0, 0))));
+        $this->assertNull($this->refusal($this->roomy($this->grouped(0, 0, 0, $layer))));
+        $this->assertNotNull($this->refusal($this->roomy($this->grouped(0, $group, 0, $layer))),
             'a desk the group and the layer offsets together moved past the bottom edge was accepted');
     }
 
     /** GREEN — the furniture-box checks name the desks at their shifted positions. */
     public function test_green_the_furniture_box_refusals_report_the_shifted_positions(): void
     {
-        $map = $this->grouped(10, 4);
+        $map = $this->roomy($this->grouped(10, 4));
         $box = FurnitureBox::current();
         $map['layers'][1]['layers'][0]['objects'][] = ['id' => 2, 'x' => 100, 'y' => 0, 'width' => $box->width, 'height' => $box->height];
         $map['width'] = 40;
         $map['layers'][0]['width'] = 40;
-        $map['layers'][0]['data'] = array_fill(0, 40 * 8, 1);
+        $map['layers'][0]['data'] = array_fill(0, 40 * $map['height'], 1);
 
         $refusals = DeskSlots::refusals(FloorMap::parse(FloorMapFixture::encode($map)), FurnitureBox::current());
 
