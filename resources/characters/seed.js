@@ -3,9 +3,12 @@
 //
 // THE RULE (`docs/design/FLOOR.md` section 3.1 and section 10.2): a character is seeded from
 // `(install_id, seat_id)` — the same pair that keys the desk — so a seat looks identical on
-// every browser and every reload with NOTHING STORED anywhere. No random draw, no server field,
-// no localStorage. The appearance IS the identity, computed. The creatures draw every field
-// through `draw()` (`creatures.js`).
+// every browser and every reload. No random draw and no localStorage. ONE field is stored, and
+// it is the server's, not this tree's: the seat's SPECIES, its body, allocated by the server at
+// the seat's creation and delivered as `character.species` (card#12443, `docs/design/FLEET-STATE.md`
+// § 6.13); the painter hands it to the tree, and `App\Characters\Draw` is the server's port of
+// `draw()` below, which the allocation's preference order starts from. Every other field is the
+// identity, computed: the creatures draw it through `draw()` (`creatures.js`).
 
 const ENC = new TextEncoder();
 
@@ -15,9 +18,10 @@ const ENC = new TextEncoder();
  * This is `docs/design/FLOOR.md` section 3.2's hash, bit-for-bit, and it is exported because
  * that section's DESK SLOT function needs the same one: the floor (card #7341) must import this
  * rather than mint a second copy that can drift. `tools/design/verify-floor.py` holds a Python
- * implementation for the design doc's own worked table; the two are bound by
- * `tools/characters/selftest.mjs`, which checks this function against the four `h` values that
- * table publishes.
+ * implementation for the design doc's own worked table and checks it against the four `h` values
+ * that table publishes (its G8); `server/tests/Feature/Fleet/TheSpeciesListHasOneSourceTest.php`
+ * checks THIS function against the same four values, and the server's port (`App\Characters\Draw`)
+ * against both, so the three copies are bound through the published table.
  *
  * Do NOT add an avalanche step here — see `mix32` below, which is a separate function precisely
  * so this one stays the spec's.

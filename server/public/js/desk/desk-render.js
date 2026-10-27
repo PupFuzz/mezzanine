@@ -386,6 +386,10 @@ export function deskModel(seat, ages, facts = {}, options = {}) {
     return {
         install_id: seat.install_id,
         seat_id: seat.seat_id,
+        // card#12443 (D2 § 6.13): the body D2 allocated this seat — the character tree draws exactly it, and its
+        // interns never wear it. D2 never sends a seat without it (`NOT NULL`, backfilled); an object that lacks it
+        // carries `null`, which the painter draws as § 9 F14's placeholder and never as the key's own body.
+        species: seat.character?.species ?? null,
         nameplate: seat.seat_id,
         render_state: { value: state, recognised },
         character,

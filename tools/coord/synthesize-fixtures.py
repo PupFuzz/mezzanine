@@ -198,7 +198,7 @@ def round_envelope(spec: dict, r: dict) -> dict:
             if t != r["from"] and t not in targets:
                 targets.append(t)
     at = iso_ms(spec, r["thread"], r.get("comment", 0) % 60)
-    return {"feed_version": 1, "t": "coord.round", "server_time": at, "coord_round": {
+    return {"feed_version": 2, "t": "coord.round", "server_time": at, "coord_round": {
         "post_ref": post_ref, "thread_ref": thread_ref, "scope": r["scope"], "install_id": r["install_id"],
         "from": r["from"], "attribution": "resolved", "to": list(r["to"]), "targets": targets, "carrier": None,
         "declares_close": bool(r.get("declares_close", False)), "posted_at": at, "received_at": at}}

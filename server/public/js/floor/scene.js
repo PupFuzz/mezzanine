@@ -1589,7 +1589,10 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce, char
         const before = key === null ? null : previous.get(key) ?? null;
 
         if (id === 'A1' || id === 'A2') {
-            effects.push(walkEffect(base, id, now, threshold(band), motion && !reduce, character, box, walking));
+            // card#12443: the walker wears the seat's delivered body, read off the desk model this render holds.
+            const species = key === null ? null : frame.desks.desks[key]?.species ?? null;
+
+            effects.push(walkEffect({ ...base, species }, id, now, threshold(band), motion && !reduce, character, box, walking));
 
             continue;
         }
