@@ -1898,6 +1898,14 @@ and on [W5](#w5--the-flusher-the-sessions-next-hook-is-its-start)'s claim when t
 ends), the seat reads `offline` on the floor until a session's next hook starts another, by design. [`install.sh`](install.sh) does not run on Windows: its blocks are this runbook's Linux blocks. An
 agent on a Windows seat runs the blocks of this section itself, one Bash tool call each.
 
+**What has been run on Windows, and what has not.** This section was performed on one Windows seat
+(card#12335), against a scratch install in a test directory, with every hook run by hand rather than fired
+by a Claude Code session. The values block, W0 to W5, U1 and U2 ran there as written. W6 and W7 ran only
+against a scratch config with nothing listening, so neither has reached a Mezzanine site. **W8 has not been
+run on Windows**, its `rm -rf` lines included, and **neither has the upgrade as a sequence**: U6's two
+calls, `stop-flusher.js` and `flusher-ancestry.js --upgrade`, ran only as the helpers on their own, against
+scratch spools. The first real install is the first run of all of these at a site.
+
 Each sub-step below says only what differs from the Linux step of the same number, and points at it for the
 rest. The values are D1 § 2.1's and § 3.1's:
 
@@ -2229,16 +2237,17 @@ replaces it: once W4 has wired the hooks, the next tool call's `PreToolUse` runs
 the hook ends by spawning the flusher when no fresh `flusher.lock` exists.
 
 **The flusher lives as long as the session that started it; the next session's first hook restarts it
-after `K.LOCK_STALE_MS`.** That is the claim this runbook makes until a seat measures more. Before merge
-(card#12335), a flusher started by a hook run by hand outlived the Bash tool call that ran the hook, 110 s
-with no hook firing, and 610 s with no hook firing; whether it outlives a session's `/clear`, the session's
-end and the window closing, and so runs until logoff, was not measured.
+after `K.LOCK_STALE_MS`.** That is the claim this runbook makes until a seat measures more. On the seat this section was
+written on (card#12335), a flusher started by a hook run by hand outlived the Bash tool call that ran the
+hook, 110 s with no hook firing, and 610 s with no hook firing; whether it outlives a session's `/clear`,
+the session's end and the window closing, and so runs until logoff, has not been measured.
 
 **Never start it by piping `{}` into a hook while a config exists**: `PostToolUse` on an empty payload
 spools a `tool.start`/`tool.end` pair for `INVALID_TOOL_NAME`, which the server shows.
 
 The flusher a hook spawns inherits that hook's environment. Whether a hook Claude Code runs on Windows
-carries the settings' `env` block, and so `COORD_CONFIG`, was not measured before merge; the heartbeat's
+carries the settings' `env` block, and so `COORD_CONFIG`, has not been measured (card#12335's run fired
+every hook by hand); the heartbeat's
 `read_via` says which roster the flusher read, and on Windows that is `$COORD_CONFIG` or none.
 
 Save Step 5's helpers with [its helper block](#step-5--supervise-the-flusher-from-the-user-crontab), as
@@ -2436,6 +2445,9 @@ SH
   hooks are the only start, so a Windows seat on which no Claude Code session is running reads `offline`.
 - **No Windows install on a roaming profile.** `%APPDATA%`, which holds the config and its token, is copied
   to a profile server at logoff on a roaming profile; W1 stops on one.
+- **No Windows install with `%APPDATA%` folder-redirected.** Folder redirection points `%APPDATA%` at a
+  network share, so the config and its token would live on that share. W1's roaming check reads the
+  profile's roaming setting only and does not detect a redirected folder.
 - **On Windows: no `install.sh`, no statusLine wrap, and no hidden-prompt token route.** The Windows section
   is run by hand, block by block; Step 4 (b) is not applied; the token arrives only by the operator's carry.
   Adding a site, rotating a token and removing a site are written for Linux paths only.

@@ -430,9 +430,10 @@ else:
     # § 2.3's first numbered list declares must be named by § 3.1's DECLARED leg and by AT-27.  The
     # paths are re-derived from § 2.3's list labels on every run; none is written here.  What this
     # cannot check is that a start definition's launch delivers the value -- the Linux crontab entry
-    # fleet-reporter/INSTALL-LINUX.md writes, or the Windows Scheduled Task owed at the Windows agent
-    # seat's onboarding -- or that the install rewrites it and restarts the flusher when the value
-    # changes.  Neither is in a file this check reads, and § 18.13 row 6 names both as not established.
+    # fleet-reporter/INSTALL-LINUX.md writes; Windows has no supervised start (Option A, card#12335),
+    # so there its flusher is hook-spawned and the value comes from the harness settings' env block --
+    # or that the install rewrites it and restarts the flusher when the value changes.  Neither is in a
+    # file this check reads, and § 18.13 row 6 names both as not established.
     sec23 = re.search(r"^### 2\.3 .*?(?=^### )", raw, re.S | re.M)
     m_starts = re.search(r"((?:^\d+\. \*\*[^*\n]+\*\*[^\n]*\n(?:   [^\n]*\n)*)+)",
                          sec23.group(0) if sec23 else "", re.M)
