@@ -365,13 +365,13 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
             'a canvas made for a character' => ['../floor/painter.js',
                 '                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });', "                document.createElement('canvas');\n                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });"],
             'a desk that loses its character for a pose it has no frame for' => ['../floor/painter.js',
-                'const drawn = characterFrames(desk.install_id, desk.seat_id, e.asset, e.species, { pose: e.pose, desk_top: e.desk_top, clear: e.clear });',
-                "const drawn = e.pose === 'asleep' ? null : characterFrames(desk.install_id, desk.seat_id, e.asset, e.species, { pose: e.pose, desk_top: e.desk_top, clear: e.clear });"],
+                'const drawn = characterFrames(desk.install_id, desk.seat_id, e.asset, e.species, { pose: e.pose, glyph: e.glyph, desk_top: e.desk_top, clear: e.clear });',
+                "const drawn = e.pose === 'asleep' ? null : characterFrames(desk.install_id, desk.seat_id, e.asset, e.species, { pose: e.pose, glyph: e.glyph, desk_top: e.desk_top, clear: e.clear });"],
             // card#12159 — the desk draws the tree's frames for its POSE: the walk drawn for every pose (the
             // defect the sleeper was hidden behind), the pose's frames drawn without the desk's edge, and a held
             // loop stepping the walk's three frames whatever the drawing holds.
             "a desk drawn in the walk's frames whatever its pose" => ['../floor/painter.js',
-                'characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top, clear: at.clear, species })', '{ frames: characters.walkFrames(installId, seatId, species), loopFrom: 0 }'],
+                'characters.poseFrames(installId, seatId, { pose: at.pose, glyph: at.glyph ?? null, deskTop: at.desk_top, clear: at.clear, species })', '{ frames: characters.walkFrames(installId, seatId, species), loopFrom: 0 }'],
             "a pose's frames drawn without the desk's top edge" => ['../floor/desk-layout.js',
                 "desk_top: (R['desk-sprite'].y - R.character.y) / R.character.h,", 'desk_top: 0.5,'],
             'a held loop that steps three frames whatever the drawing holds' => ['../floor/painter.js',
@@ -392,7 +392,7 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
             "a walker's walk stepped from loopFrom 1" => ['../floor/painter.js',
                 'stepping.push([el, drawn.uris, drawn.loopFrom, 0, window]);', 'stepping.push([el, drawn.uris, 1, 0, window]);'],
             "a desk's frames cached without its pose" => ['../floor/painter.js',
-                '`${asset}#${at.pose}@${at.desk_top}`', '`${asset}#@${at.desk_top}`'],
+                '`${asset}#${at.pose}/${at.glyph ?? \'\'}@${at.desk_top}`', '`${asset}#/${at.glyph ?? \'\'}@${at.desk_top}`'],
             // N8: a frame list copied onto the element instead of held in the painter's Map.
             "a held loop's frames copied onto the element" => ['../floor/painter.js',
                 "                            stepping.push([el, uris, loopFrom, offset]);\n                        }", "                            el.dataset.frames = JSON.stringify(uris);\n                        }"],
@@ -404,10 +404,10 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
             // asset alone; a species the tree does not hold drawn as the key's own body instead of F14; and an intern
             // handed the seat key's own draw instead of its seat's delivered body.
             "a seat drawn from its key, the delivered species dropped" => ['../floor/painter.js',
-                "characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top, clear: at.clear, species })",
-                "characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top, clear: at.clear })"],
+                "characters.poseFrames(installId, seatId, { pose: at.pose, glyph: at.glyph ?? null, deskTop: at.desk_top, clear: at.clear, species })",
+                "characters.poseFrames(installId, seatId, { pose: at.pose, glyph: at.glyph ?? null, deskTop: at.desk_top, clear: at.clear })"],
             "a character's frames cached on the asset alone, not its species" => ['../floor/painter.js',
-                '`${asset}#${at.pose}@${at.desk_top}`}~${species}`;', '`${asset}#${at.pose}@${at.desk_top}`}`;'],
+                '`${asset}#${at.pose}/${at.glyph ?? \'\'}@${at.desk_top}`}~${species}`;', '`${asset}#${at.pose}/${at.glyph ?? \'\'}@${at.desk_top}`}`;'],
             "an unheld species drawn as the key's own body" => ['../floor/painter.js',
                 "                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });\n            } catch {\n                report(asset);",
                 "                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });\n            } catch {\n                frames.set(key, { uris: characters.poseFrames(installId, seatId, { pose: at?.pose ?? 'present', deskTop: at?.desk_top ?? 0.5, clear: at?.clear }).frames.map(svgUri), loopFrom: 0 });\n                return frames.get(key);"],

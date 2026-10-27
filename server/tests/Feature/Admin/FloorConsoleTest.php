@@ -699,8 +699,8 @@ class FloorConsoleTest extends TestCase
         $this->provisionSeat('sola-solo', 'sola');
         $this->provisionSeat('zeta-solo', 'zeta');
 
-        $this->author('sola', FloorMapFixture::sized(15, 8))->assertSessionHasNoErrors();
-        $this->author('zeta', FloorMapFixture::sized(15, 8))->assertSessionHasNoErrors();
+        $this->author('sola', FloorMapFixture::sized(15, FloorMapFixture::boxRows()))->assertSessionHasNoErrors();
+        $this->author('zeta', FloorMapFixture::sized(15, FloorMapFixture::boxRows()))->assertSessionHasNoErrors();
 
         $this->composeTheBuilding([['rooms' => [
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
@@ -708,7 +708,7 @@ class FloorConsoleTest extends TestCase
         ]]]);
 
         $this->actingAs($this->operator())
-            ->patch(route('admin.floors.update', 'sola'), ['map' => FloorMapFixture::sized(16, 8)])
+            ->patch(route('admin.floors.update', 'sola'), ['map' => FloorMapFixture::sized(16, FloorMapFixture::boxRows())])
             ->assertRedirect()
             ->assertSessionHasErrors('map');
 

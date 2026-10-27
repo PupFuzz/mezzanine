@@ -67,7 +67,24 @@ class ADeskInsideAMovedGroupSitsWhereTiledShowsItTest extends TestCase
     }
 
     /**
-     * The fixture's one-desk map with only the `desks` layer's own offset — no group.
+     * A map's grid two tile rows taller, floor tiles under them — room below the desk for the y offsets the summing tests
+     * shift it by, which the fixture's grid (as tall as the box, rounded up to whole tiles) need not leave (card#12444's
+     * box leaves the fixture a pixel of slack, and the next box may leave none).
+     *
+     * @param  array<string, mixed>  $map
+     * @return array<string, mixed>
+     */
+    private function roomy(array $map): array
+    {
+        $map['height'] += 2;
+        $map['layers'][0]['height'] += 2;
+        $map['layers'][0]['data'] = [...$map['layers'][0]['data'], ...array_fill(0, 2 * $map['width'], $map['layers'][0]['data'][0])];
+
+        return $map;
+    }
+
+    /**
+     * The fixture's one-desk map with only the `desks` layer's own offset — no group — on the roomy grid.
      *
      * @return array<string, mixed>
      */
@@ -76,7 +93,7 @@ class ADeskInsideAMovedGroupSitsWhereTiledShowsItTest extends TestCase
         $map = FloorMapFixture::decoded(1);
         $map['layers'][1] += ['offsetx' => $lx, 'offsety' => $ly];
 
-        return $map;
+        return $this->roomy($map);
     }
 
     /** @param array<string, mixed> $map */
@@ -138,7 +155,7 @@ class ADeskInsideAMovedGroupSitsWhereTiledShowsItTest extends TestCase
     /** GREEN — a desk inside a group offset by (96, 16) whose layer is offset by (64, 8) is at (160, 24). */
     public function test_green_the_server_reads_a_grouped_desk_at_the_groups_and_the_layers_summed_offset(): void
     {
-        $desk = $this->serverDesk($this->grouped(96, 16, 64, 8));
+        $desk = $this->serverDesk($this->roomy($this->grouped(96, 16, 64, 8)));
 
         $this->assertSame([160.0, 24.0], [$desk['x'], $desk['y']]);
     }
@@ -172,26 +189,35 @@ class ADeskInsideAMovedGroupSitsWhereTiledShowsItTest extends TestCase
         $this->assertNotNull($left, 'a desk a layer offset moved past the left edge of the grid was accepted');
         $this->assertStringContainsString('spans -1–', $left);
 
-        // The two offsets SUM: neither alone leaves the grid, together they do (y: 256 − 228 = 28).
-        $this->assertNull($this->refusal($this->grouped(0, 20, 0, 0)));
-        $this->assertNull($this->refusal($this->grouped(0, 0, 0, 8)));
-        $this->assertNotNull($this->refusal($this->grouped(0, 20, 0, 9)),
+        // The two offsets SUM: neither alone leaves the grid, together they do. The room below the desk is the grid's
+        // height less the box's, read off the roomy map and the box (card#12444 made the box taller); the group takes
+        // just over half of it and the layer the rest plus one pixel.
+        $fixture = $this->roomy(FloorMapFixture::decoded(1));
+        $slack = $fixture['height'] * $fixture['tileheight'] - $box->height;
+        $this->assertGreaterThanOrEqual(2, $slack, 'the fixture\'s grid leaves the desk too little room to split between two offsets');
+        $group = intdiv($slack, 2) + 1;
+        $layer = $slack - $group + 1;
+        $this->assertNull($this->refusal($this->roomy($this->grouped(0, $group, 0, 0))));
+        $this->assertNull($this->refusal($this->roomy($this->grouped(0, 0, 0, $layer))));
+        $this->assertNotNull($this->refusal($this->roomy($this->grouped(0, $group, 0, $layer))),
             'a desk the group and the layer offsets together moved past the bottom edge was accepted');
     }
 
     /** GREEN — the furniture-box checks name the desks at their shifted positions. */
     public function test_green_the_furniture_box_refusals_report_the_shifted_positions(): void
     {
-        $map = $this->grouped(10, 4);
-        $map['layers'][1]['layers'][0]['objects'][] = ['id' => 2, 'x' => 100, 'y' => 0, 'width' => 440, 'height' => 228];
+        $map = $this->roomy($this->grouped(10, 4));
+        $box = FurnitureBox::current();
+        $map['layers'][1]['layers'][0]['objects'][] = ['id' => 2, 'x' => 100, 'y' => 0, 'width' => $box->width, 'height' => $box->height];
         $map['width'] = 40;
         $map['layers'][0]['width'] = 40;
-        $map['layers'][0]['data'] = array_fill(0, 40 * 8, 1);
+        $map['layers'][0]['data'] = array_fill(0, 40 * $map['height'], 1);
 
         $refusals = DeskSlots::refusals(FloorMap::parse(FloorMapFixture::encode($map)), FurnitureBox::current());
 
         $this->assertCount(1, $refusals, 'the two overlapping desks were not refused exactly once');
-        $this->assertStringContainsString('id 1 spans 10–450 × 4–232 and id 2 spans 110–550 × 4–232', $refusals[0]);
+        $this->assertStringContainsString(sprintf('id 1 spans 10–%d × 4–%d and id 2 spans 110–%d × 4–%d',
+            10 + $box->width, 4 + $box->height, 110 + $box->width, 4 + $box->height), $refusals[0]);
     }
 
     /** GREEN — an offset on the desks' path that is not a number is refused by name. */
@@ -221,14 +247,14 @@ class ADeskInsideAMovedGroupSitsWhereTiledShowsItTest extends TestCase
      */
     public function test_green_the_client_places_each_desk_where_the_server_judged_it(): void
     {
-        $nested = $this->grouped(96, 16, 64, 8);
+        $nested = $this->roomy($this->grouped(96, 16, 64, 8));
         $nested['layers'][1] = [
             'id' => 4, 'type' => 'group', 'name' => 'wing', 'offsetx' => 20, 'offsety' => 2,
             'opacity' => 1, 'visible' => true, 'layers' => [$nested['layers'][1]],
         ];
         $nested['nextlayerid'] = 5;
 
-        foreach ([[$this->grouped(96, 16, 64, 8), 160, 24], [$this->layerOffset(32.5, 4), 32.5, 4], [$nested, 180, 26]] as [$map, $x, $y]) {
+        foreach ([[$this->roomy($this->grouped(96, 16, 64, 8)), 160, 24], [$this->layerOffset(32.5, 4), 32.5, 4], [$nested, 180, 26]] as [$map, $x, $y]) {
             $server = $this->serverDesk($map);
             $client = $this->clientDesk($map);
 
@@ -246,7 +272,7 @@ class ADeskInsideAMovedGroupSitsWhereTiledShowsItTest extends TestCase
             '            x: object?.x ?? 0,',
         ]);
 
-        $map = $this->grouped(96, 16, 64, 8);
+        $map = $this->roomy($this->grouped(96, 16, 64, 8));
 
         $this->assertNotEquals($this->serverDesk($map)['x'], $this->clientDesk($map, $dir)['x'],
             'the RED did not bite: a client ignoring the offset placed the desk where the server judged it');

@@ -30,7 +30,7 @@
  * cannot read FLOOR.md, so a restatement a consumer cannot follow a pointer to is DELETED or
  * GUARDED, and the test above re-derives every cell from the document on each run.
  *
- * ⛔ WHICH HELD ROWS LOOP IS DERIVED FROM THOSE CELLS AND IS NOT A SECOND LIST. § 11's *two states
+ * ⛔ WHICH HELD ROWS LOOP IS DERIVED FROM THOSE CELLS AND IS NOT A SECOND LIST. § 11's *states
  * with no motion by design* are the held rows whose Animation cell names no loop, so `loops()`
  * below reads the cell this file already holds under guard rather than a hand-kept pair of ids
  * that would be free to disagree with it — which is what `desk/desk-render.js` held until this
@@ -58,9 +58,9 @@ export const ANIMATION_SET = Object.freeze({
     A4: Object.freeze({ class: 'held', animation: 'think — leaning back, watching the monitor, with the same blink and wiggle, 4 fps loop', reduced: 'a thinking pose, static' }),
     A5: Object.freeze({ class: 'edge', animation: "tool-swap — the monitor's glyph changes, one 250 ms cross-fade", reduced: 'the glyph changes with no fade' }),
     A6: Object.freeze({ class: 'held', animation: "idle — the character is slumped asleep on the desk, the monitor off, with three z's standing above its head, still, and lit in turn — a pulse of brightness that starts at the character and travels up through z1, z2, z3 (ZZz), phase-offset per seat, 4 fps loop", reduced: "the static slumped pose, the three z's drawn once, every one at full brightness, and still" }),
-    A7: Object.freeze({ class: 'held', animation: 'attention — a raised hand and a marker above the desk, 4 fps loop', reduced: 'a static raised-hand pose and the marker' }),
+    A7: Object.freeze({ class: 'held', animation: "attention — a raised hand and a marker above the desk, its glow lit and dark in turn by the sleeper's pulse of brightness, phase-offset per seat, 4 fps loop", reduced: 'a static raised-hand pose and the marker, at full brightness' }),
     A8: Object.freeze({ class: 'held', animation: 'stalled — head in hands, static, with the api_error_type line', reduced: 'identical' }),
-    A9: Object.freeze({ class: 'held', animation: 'unknown — a question marker over an occupied desk', reduced: 'identical' }),
+    A9: Object.freeze({ class: 'held', animation: "unknown — a question marker over an occupied desk, its glow lit and dark in turn by the sleeper's pulse of brightness, phase-offset per seat, 4 fps loop", reduced: 'the question marker drawn once, at full brightness, and still' }),
     A10: Object.freeze({ class: 'edge', animation: 'intern-arrive / intern-leave — a stool at the side table fills or empties', reduced: 'the stool is simply occupied or empty' }),
     A11: Object.freeze({ class: 'edge', animation: 'badge-raise — a badge appears with a single 250 ms fade', reduced: 'the badge is simply present' }),
     A12: Object.freeze({ class: 'edge', animation: 'gauge — the context bar eases to its new value over 250 ms', reduced: 'the bar jumps to the value' }),
@@ -191,12 +191,12 @@ export function animationForm(animationId, reduce = false) {
 /**
  * § 6.4's *identical* — the reduced-motion form of a row that has NO motion to replace, which is
  * the whole of what makes a held row static by design. § 11 names that population in words (*the
- * two states with no motion by design*) and this is where it is DERIVED: a row whose reduced form
+ * states with no motion by design*, its count in a word) and this is where it is DERIVED: a row whose reduced form
  * is its ordinary one is a row nothing was removed from.
  *
  * ⛔ IT IS NOT `loops()`, AND THE DIFFERENCE WAS A18 (retired by card#12239). `loops()` answers *does this row run frames at
  * § 12's rate*, which decides a frame interval; this answers *does this row move at all*. Every
- * held row of § 6.2 was a 4 fps loop or one of those two states until A18 — a line whose reduced
+ * held row of § 6.2 was a 4 fps loop or one of those states until A18 — a line whose reduced
  * cell says *drawn static … no travel along it*, so its ordinary form DOES move and it runs no
  * frame loop. Deriving motion from `loops()` drew that line with `motion: false`, which is § 11's
  * claim that one of its reasons applied when none did (card#7341 step 7, the step that first

@@ -97,9 +97,11 @@ globalThis.clearInterval = () => {};
 const { deskModel } = await mod('desk/desk-render.js');
 // The generator's species list and draw, read from the tree itself: what the stub admits and what a key draws.
 const { SPECIES_KEYS, speciesOf } = await import(pathToFileURL(join(HERE, '..', '..', '..', '..', 'resources', 'characters', 'creatures.js')).href);
+// the tree's declared crest of a seat's drawn head (card#12444), which the page hands the scene as `crest`
+const { crestTop } = await import(pathToFileURL(join(HERE, '..', '..', '..', '..', 'resources', 'characters', 'index.js')).href);
 const { placeDesk, placeBubbles } = await mod('floor/scene.js');
 const { createPainter, measurer, STYLE } = await mod('floor/painter.js');
-const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_BAND, STOOL_PITCH, FOLD_LAG_OPACITY } = await mod('floor/desk-layout.js');
+const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_GAP, TRAIL_RADII, TRAIL_GAP, TRAIL_REACH, STOOL_FRAME, FRAME_UNITS_PER_PX, FOLD_LAG_OPACITY } = await mod('floor/desk-layout.js');
 
 /**
  * The character tree, stubbed: a frame is an SVG document naming the `(install, seat key, frame)` it was
@@ -168,7 +170,8 @@ const { harnessMeasurer } = await import('../Support/harness-measurer.mjs');
 const NOW_MS = Date.parse('2026-08-23T14:23:22.400Z');
 const PLANTED = JSON.parse(readFileSync(join(HERE, 'desk-leaves', 'fx-desk-leaves-planted.json'), 'utf8'));
 const measure = harnessMeasurer(PLANTED.measurer);
-const BOX = { width: 440, height: 228 };
+// The furniture box at the cap, read from its one declaration (`resources/floor/furniture-box.js`) — never a copy of it.
+const { FURNITURE_BOX: BOX } = await import(pathToFileURL(join(HERE, '..', '..', '..', '..', 'resources', 'floor', 'furniture-box.js')).href);
 
 // ── the desks, each at its own box on one row ─────────────────────────────────────────────────────
 const desks = [];
@@ -198,7 +201,7 @@ for (const seat of seats) {
         // variants of one seat would otherwise share a bubble.
         const room = `room-${desks.length}`;
         const key = `${room}/${seat.seat_id}`;
-        const ctx = { box: BOX, measure, character: { w: 18, h: 32 }, theme: 'studio', placeholder: v.placeholder, failed: failing(seat, v.fails) };
+        const ctx = { box: BOX, measure, character: { w: 18, h: 32 }, crest: crestTop, theme: 'studio', placeholder: v.placeholder, failed: failing(seat, v.fails) };
 
         seatOf.set(key, seat);
         failedOf.set(key, ctx.failed);
@@ -361,20 +364,22 @@ const poseFrame = (key, e, i, species = seatOf.get(key).character.species) => ur
 
 /**
  * The art viewport a desk's character is owed — written here from the published rule (§ 10.4 item 4, § 12's *Sleeper
- * frame*), never read off the element under test: a sleeper's is its OVERDRAW, the character's rect widened by half its
- * width each side and raised to one pixel under the bubble's band; every other character's is its element's rect.
+ * frame*), never read off the element under test: every character's is its OVERDRAW, the character's rect widened by
+ * half its width each side and raised by the thought trail's height at its normal reach (a pixel under where the bubble
+ * sits on its character, card#12444).
  */
 function characterPort(key, e) {
     // § 10.4's frame contract (card#12187, card#12259): every character's viewport is its overdraw — the rect widened
-    // by half its width each side and raised to one pixel under the bubble's band — whatever its pose.
-    const top = byKey.get(key).box.y + BUBBLE_BAND + 1;
+    // by half its width each side and raised by the trail's height, `TRAIL_RADII` and `TRAIL_GAP` — whatever its pose.
+    const top = e.y - TRAIL_RADII.reduce((h, r) => h + 2 * r + TRAIL_GAP, 0);
 
     return { x: e.x - e.w / 2, y: top, w: 2 * e.w, h: e.y + e.h - top };
 }
 
-/** § 10.4's frame contract item 3 (card#12259): an intern's viewport is its stool's rect widened to the row's pitch. */
+/** § 10.4's frame contract item 3 (card#12259): an intern's viewport is its stool's rect widened to `STOOL_FRAME`, centred. */
 function internPort(e) {
-    return { x: e.x - (STOOL_PITCH - e.w) / 2, y: e.y, w: STOOL_PITCH, h: e.h };
+    // `STOOL_FRAME` across, centred on the rect — what holds every chibi's ink; a neighbour's may overlap it (card#12444)
+    return { x: e.x - (STOOL_FRAME - e.w) / 2, y: e.y, w: STOOL_FRAME, h: e.h };
 }
 
 /**
@@ -618,6 +623,18 @@ for (const g of layer?.children ?? []) {
         defects.push(`${key}: plate order — facts are painted and no facts plate is`);
     }
 
+    // ── the interns' PAINT ORDER (card#12444): neighbouring frames may overlap, so the back row is painted before the
+    // front and each row left to right, which keeps every drawing whole wherever two frames meet ──
+    const stoolsPainted = desk.elements.filter((e) => e.kind === 'stool');
+
+    stoolsPainted.forEach((s, i) => {
+        const p = stoolsPainted[i - 1];
+
+        if (p !== undefined && !(s.y > p.y + EPS || (same(s.y, p.y) && s.x > p.x + EPS))) {
+            defects.push(`${key}: the interns are not painted back row first, each row left to right — intern ${s.index} after ${p.index}`);
+        }
+    });
+
     if (desk.bubble !== null) {
         const bb = desk.bubble;
         const trailAt = next;
@@ -641,6 +658,15 @@ for (const g of layer?.children ?? []) {
         // cloud's ink inside the bubble's own rect, which is what AT-D3-20 (b) and rule 5 read as the bubble ──
         const circles = nodes.slice(trailAt).filter((n) => n.name === 'circle').map((n) => ({ x: num(n, 'cx'), y: num(n, 'cy'), r: num(n, 'r') }));
         const head = desk.elements.find((e) => e.kind === 'character') ?? null;
+        // the character's DRAWN head, from the tree's own declaration (card#12444's seat ruling); a species the tree does
+        // not hold is drawn as the placeholder, and its trail starts at the rect's top
+        const crestY = head === null ? null : head.y + (() => {
+            try {
+                return crestTop(desk.install_id, desk.seat_id, { pose: head.pose, species: head.species }) / FRAME_UNITS_PER_PX;
+            } catch {
+                return 0;
+            }
+        })();
 
         if (circles.length < 3) {
             defects.push(`${key}: the bubble's trail paints ${circles.length} circles, not at least 3`);
@@ -655,10 +681,41 @@ for (const g of layer?.children ?? []) {
                 defects.push(`${key}: the bubble's trail circle ${i} is at x ${c.x}, off the anchor ${desk.anchor_x}`);
             }
 
-            if (head !== null && c.x + c.r > head.x && head.x + head.w > c.x - c.r && c.y + c.r > head.y && head.y + head.h > c.y - c.r) {
-                defects.push(`${key}: the bubble's trail circle ${i} meets the character's rect`);
+            if (crestY !== null && c.y + c.r > crestY - EPS) {
+                defects.push(`${key}: the bubble's trail circle ${i} meets the character's drawn head`);
             }
         });
+
+        // ── the trail REACHES the cloud and the bubble is SET ON ITS CHARACTER (card#12444, the operator's ruling of
+        // 2026-10-27, *"anchor the bubble to the character. If necessary, add another bubble to extend the height"*):
+        // the last circle stands no further under the cloud's rect than the widest gap the trail leaves between two of
+        // its circles or over the creature; and a bubble no pass parted sits `TRAIL_REACH` above the character's top, or
+        // `BUBBLE_GAP` above the facts plate where its width reaches over the plate and that is higher ──
+        if (circles.length > 0 && head !== null) {
+            const gaps = circles.map((c, i) => (i === 0 ? crestY : circles[i - 1].y - circles[i - 1].r) - (c.y + c.r));
+            const top = circles[circles.length - 1];
+            const under = top.y - top.r - (bb.y + bb.h);
+
+            // the trail STARTS at the drawn head: the first circle stands over the crest no further than the trail's
+            // circles stand apart (card#12444's seat ruling — a trail from the frame's top stops short of a low head)
+            if (gaps.length > 1 && gaps[0] > Math.max(...gaps.slice(1)) + EPS) {
+                defects.push(`${key}: the bubble's trail starts ${gaps[0].toFixed(1)} px over the character's drawn head, its circles ${Math.max(...gaps.slice(1)).toFixed(1)} px apart — it does not reach the head`);
+            }
+
+            if (!(under >= -EPS && under <= Math.max(...gaps) + EPS)) {
+                defects.push(`${key}: the bubble's trail stops ${under.toFixed(1)} px under the cloud, its circles ${Math.max(...gaps).toFixed(1)} px apart at most — it does not reach the bubble`);
+            }
+
+            if (bb.lifted === 0) {
+                const plate = desk.elements.find((e) => e.kind === 'facts-plate') ?? null;
+                const over = plate !== null && bb.x < plate.x + plate.w && plate.x < bb.x + bb.w;
+                const want = Math.min(head.y - TRAIL_REACH, over ? plate.y - BUBBLE_GAP : Infinity);
+
+                if (!same(bb.y + bb.h, want)) {
+                    defects.push(`${key}: the bubble's bottom is at ${(bb.y + bb.h).toFixed(1)}, not set on its character at ${want.toFixed(1)}`);
+                }
+            }
+        }
 
         const cloud = nodes.slice(trailAt).find((n) => n.name === 'path');
         const ink = cloud === undefined ? null : rectOf(cloud);

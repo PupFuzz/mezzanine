@@ -104,7 +104,7 @@ class TheDeskIsReLaidTest extends TestCase
             'the chair emitted after the screen text' => ["        rect('chair', 'character', R.chair, { pose: desk.pose, unconfirmed: desk.unconfirmed, occupied: desk.character, doc: doc('chair') });\n", '',
                 "    // Q4 (a): the chip reads the model's glyph", "    if (!ctx.placeholder) { rect('chair', 'character', R.chair, { pose: desk.pose, unconfirmed: desk.unconfirmed, occupied: desk.character }); }\n    // Q4 (a): the chip reads the model's glyph"],
             "today's order, the side table after the flag" => ["        rect('side-table', 'side_table', R['side-table'], {", "        false && rect('side-table', 'side_table', R['side-table'], {",
-                '    // § 8: one sprite per intern, in front of the side table', "    if (!ctx.placeholder) { rect('side-table', 'side_table', R['side-table'], { seats: 4, seat_dx: [], seat: { dy: 36, w: 20, h: 6 } }); }\n    // § 8: one sprite per intern, in front of the side table"],
+                '    // § 8: one sprite per intern, in front of the side table', "    if (!ctx.placeholder) { rect('side-table', 'side_table', R['side-table'], { seats: 4, seat_at: slots.slice(0, 4).map((slot) => ({ dx: slot.x - R['side-table'].x, dy: slot.y + slot.h - SEAT_H - R['side-table'].y })), seat: { w: STOOL_W, h: SEAT_H } }); }\n    // § 8: one sprite per intern, in front of the side table"],
         ] as $what => [$from1, $to1, $from2, $to2]) {
             $dir = $this->mutatedModules(['../floor/desk-layout.js', $from1, $to1]);
             $this->mutateAgain($dir, '../floor/desk-layout.js', $from2, $to2);
@@ -127,9 +127,10 @@ class TheDeskIsReLaidTest extends TestCase
 
     public function test_red_a_facts_row_over_the_table(): void
     {
-        // The stack laid from 12 px BELOW the table's top rather than above it (card#11468).
+        // The stack laid from 40 px BELOW the top of the interns' rows rather than above them, down onto the side table
+        // (card#11468; card#12444 anchored the stack above the back row, whose top is above the table's).
         $dir = $this->mutatedModules(['../floor/desk-layout.js',
-            'const bottom = table.y - 2 - FACTS_PLATE_PAD_Y;', 'const bottom = table.y + 12 - FACTS_PLATE_PAD_Y;']);
+            'const bottom = table.y - 2 - FACTS_PLATE_PAD_Y;', 'const bottom = table.y + 40 - FACTS_PLATE_PAD_Y;']);
         $defects = $this->bareDefects($this->sceneOf(self::SHIPPED, $dir));
 
         foreach (['facts-plate', 'quiet-age'] as $kind) {
@@ -163,10 +164,43 @@ class TheDeskIsReLaidTest extends TestCase
 
     public function test_red_a_trail_circle_on_the_creature(): void
     {
-        $dir = $this->mutatedModules(['../floor/desk-layout.js', '    let bottom = head.y - TRAIL_GAP;', '    let bottom = head.y + 8;']);
+        $dir = $this->mutatedModules(['../floor/desk-layout.js', '    let y = top;', '    let y = top + 8 + TRAIL_GAP;']);
 
-        $this->assertNotSame([], array_filter($this->bubbleDefects($this->painterRun(dirname($dir))), fn (string $d): bool => str_contains($d, "meets the character's rect")),
-            'RED (the trail started 8 px inside the character\'s rect) did not fail the bubble leg');
+        $this->assertNotSame([], array_filter($this->bubbleDefects($this->painterRun(dirname($dir))), fn (string $d): bool => str_contains($d, "meets the character's drawn head")),
+            'RED (the trail started 8 px inside the character\'s head) did not fail the bubble leg');
+    }
+
+    /**
+     * card#12444, the operator's ruling of 2026-10-27 (*"anchor the bubble to the character. If necessary, add another
+     * bubble to extend the height"*): the bubble set back in the box's top band leaves its character, and a trail held at
+     * its normal reach stops short of a bubble set higher.
+     */
+    public function test_red_the_bubble_off_its_character_or_the_trail_short_of_it(): void
+    {
+        foreach ([
+            "the bubble back in the box's top band" => ['../floor/scene.js', '            anchor: { x: centre, y: bottom },', '            anchor: { x: centre, y: desk.box.y + 2 * LINE + 2 * BUBBLE_PAD },', 'not set on its character'],
+            'the trail at its normal reach whatever the bubble' => ['../floor/scene.js', '            trail: trailCircles(foot.x, foot.y, rect.y + rect.h),', '            trail: trailCircles(foot.x, foot.y, foot.y - TRAIL_REACH),', 'does not reach the bubble'],
+            // the seat's ruling of the same day: the trail starts at the character's drawn head, not its frame's top
+            'the trail started at the frame\'s top' => ['../floor/scene.js', '        return ctx.crest(installId, model.seat_id, { pose: character.pose, species: character.species });', '        return 0;', 'does not reach the head'],
+        ] as $what => [$file, $from, $to, $says]) {
+            $dir = $this->mutatedModules([$file, $from, $to]);
+
+            $this->assertNotSame([], array_filter($this->bubbleDefects($this->painterRun(dirname($dir))), fn (string $d): bool => str_contains($d, $says)),
+                "RED ({$what}) did not fail the bubble leg with «{$says}»");
+        }
+    }
+
+    /**
+     * card#12444 (the operator's *"Spacing between subagents can still be reduced further"*): neighbouring interns' frames
+     * may overlap, so the layout emits them back row first, each row left to right; emitted in slot order — the front row
+     * first — the painter probe names it.
+     */
+    public function test_red_the_interns_painted_front_row_first(): void
+    {
+        $dir = $this->mutatedModules(['../floor/desk-layout.js', '.sort(([, a], [, b]) => slots[b].row - slots[a].row || a - b)', '.sort(([, a], [, b]) => a - b)']);
+
+        $this->assertNotSame([], array_filter($this->painterRun(dirname($dir))['defects'], fn (string $d): bool => str_contains($d, 'not painted back row first')),
+            'RED (the interns emitted in slot order, the front row first) did not fail the paint-order check');
     }
 
     public function test_red_the_cloud_escaping_its_box(): void
@@ -186,17 +220,18 @@ class TheDeskIsReLaidTest extends TestCase
     public function test_red_the_anchor_back_at_the_box_mid_height(): void
     {
         $dir = $this->mutatedModules(['../floor/scene.js',
-            '    return Object.freeze({ x: desk.anchor_x, y: desk.anchor_y });', '    return Object.freeze({ x: desk.anchor_x, y: desk.box.y + desk.box.h / 2 });']);
+            '    return Object.freeze({ x: desk.anchor_x, y: desk.anchor_y });', '    return Object.freeze({ x: desk.anchor_x, y: desk.box.y + desk.box.h / 4 });']);
 
+        // a quarter of the box's height: inside the plate's rows (card#12444's taller box put its mid-height under them)
         $this->assertNotSame([], $this->anchorHeightDefects($this->sceneOf(self::SHIPPED, $dir)),
-            'RED (the thread anchor back at the box\'s mid-height, inside the plate\'s rows) did not fail the anchor-height leg');
+            'RED (the thread anchor up in the box, inside the plate\'s rows) did not fail the anchor-height leg');
     }
 
     public function test_red_the_tables_seats_and_feet(): void
     {
         foreach ([
             'the empty table with no seats' => ['const seats = Math.max(SIDE_TABLE_SEATS, shown.length);', 'const seats = shown.length;', 'seats'],
-            'its foot line 4 px above the interns\'' => ['const table = { x: colB - 8, y: foot - 42, w: W - colB + 8, h: 42 };', 'const table = { x: colB - 8, y: foot - 46, w: W - colB + 8, h: 42 };', 'foot line'],
+            'its foot line 4 px above the interns\'' => ['const table = { x: colB - 8, y: foot - 42 - (STOOL_ROWS - 1) * rowStep,', 'const table = { x: colB - 8, y: foot - 46 - (STOOL_ROWS - 1) * rowStep,', 'foot line'],
         ] as $what => [$from, $to, $says]) {
             $defects = $this->tableDefects($this->sceneOf(self::CAP, $this->mutatedModules(['../floor/desk-layout.js', $from, $to])));
 
@@ -244,10 +279,11 @@ class TheDeskIsReLaidTest extends TestCase
         $section = substr($doc, $start, (int) strpos($doc, '**How a desk', $start) - $start);
         $rows = [];
 
-        preg_match_all('/^\| (the [^|]+?) \| (\d+), (\d+), (\d+)(?: × (\d+)| wide)/mu', $section, $m, PREG_SET_ORDER);
+        // decimals admitted: card#12444's character rect is 67.5 px wide, so its x and width are halves
+        preg_match_all('/^\| (the [^|]+?) \| ([\d.]+), ([\d.]+), ([\d.]+)(?: × ([\d.]+)| wide)/mu', $section, $m, PREG_SET_ORDER);
 
         foreach ($m as $row) {
-            $rows[$row[1]] = [(int) $row[2], (int) $row[3], (int) $row[4], isset($row[5]) && $row[5] !== '' ? (int) $row[5] : null];
+            $rows[$row[1]] = [0 + $row[2], 0 + $row[3], 0 + $row[4], isset($row[5]) && $row[5] !== '' ? 0 + $row[5] : null];
         }
 
         $this->assertSame(array_keys(self::TABLE_KINDS), array_keys($rows), "§ 10.6's table names other elements than the ones this leg reads");
@@ -290,18 +326,25 @@ class TheDeskIsReLaidTest extends TestCase
             }
 
             // The side table: § 12's least seat count, one more per intern drawn past it, and its foot line —
-            // its bottom edge — the interns' own.
+            // its bottom edge — the front row's own, each row behind it a whole row's step higher (card#12444's ruling D).
             $table0 = $this->elementsOf($desk, 'side-table')[0] ?? null;
+            // in slot order (each element's `index`), the front row first; the layout emits them in paint order
             $stools = $this->elementsOf($desk, 'stool');
+            usort($stools, static fn (array $a, array $b): int => $a['index'] <=> $b['index']);
 
             if ($table0 !== null) {
                 if ($table0['seats'] !== max(4, count($stools))) {
                     $defects[] = "{$desk['key']}'s side table has {$table0['seats']} seats, not max(4, ".count($stools).')';
                 }
 
-                foreach ($stools as $s) {
-                    if (abs(($s['y'] + $s['h']) - ($table0['y'] + $table0['h'])) > 1e-6) {
-                        $defects[] = "{$desk['key']}'s intern {$s['index']} does not end on the side table's foot line";
+                $perRow = count(array_filter($stools, static fn (array $x): bool => $x['y'] === ($stools[0]['y'] ?? null)));
+                $step = isset($stools[$perRow]) ? $stools[0]['y'] - $stools[$perRow]['y'] : 0;
+
+                foreach ($stools as $i => $s) {
+                    $row = $perRow > 0 ? intdiv($i, $perRow) : 0;
+
+                    if (abs(($s['y'] + $s['h']) - ($table0['y'] + $table0['h'] - $row * $step)) > 1e-6) {
+                        $defects[] = "{$desk['key']}'s intern {$s['index']} does not end on the side table's foot line, a whole row's step up for its row";
                     }
                 }
             }

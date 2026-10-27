@@ -14,7 +14,7 @@
 // the intern's chibi frame, and every document of the sleeper — the still, then the loop — in the sleeper's own raised, widened
 // frame with the floor's clear rects, over a desk edge drawn at the floor's own share — every seat frame in the same
 // widened, raised frame since card#12259
-// (`--desk-top`, default 70/96, the share `tools/characters/selftest.mjs` draws at); then `--variants` more standing
+// (`--desk-top`, default the share the floor hands the tree, derived from `deskRects()` as `tools/characters/selftest.mjs` derives it); then `--variants` more standing
 // frames of other keys, so the colourways, hats, neckwear and extras show. Each frame is an <img> over the tree's SVG
 // document as a data: URI under encodeURIComponent — exactly how `floor/painter.js` shows it.
 //
@@ -25,18 +25,26 @@
 import { createServer } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, extname, join, normalize } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { browser, findChrome } from '../design/headless-chromium.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..');
+// The desk's top edge as the floor hands it (`deskLayout()`'s `desk_top`), from the same rects at the furniture box — never a figure.
+const DESK_TOP = await (async () => {
+  const { deskRects } = await import(pathToFileURL(join(REPO, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
+  const { FURNITURE_BOX } = await import(pathToFileURL(join(REPO, 'resources', 'floor', 'furniture-box.js')).href);
+  const { SCENE_W, SCENE_H } = await import(pathToFileURL(join(REPO, 'resources', 'characters', 'index.js')).href);
+  const r = deskRects(FURNITURE_BOX, { w: SCENE_W, h: SCENE_H });
+  return (r['desk-sprite'].y - r.character.y) / r.character.h;
+})();
 const argv = process.argv.slice(2);
 const argOf = (flag, fallback = null) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : fallback; };
 
 const out = argOf('--out');
 if (!out) { console.error('usage: sheet.browser.mjs --out <png> [--kind animal|vegetable] [--new] [--unit px-per-frame-unit] [--variants N] [--desk-top share] [--chrome path]'); process.exit(2); }
 const q = new URLSearchParams({
-  kind: argOf('--kind', 'all'), new: argv.includes('--new') ? '1' : '', unit: argOf('--unit', '1'), variants: argOf('--variants', '4'), deskTop: argOf('--desk-top', String(70 / 96)),
+  kind: argOf('--kind', 'all'), new: argv.includes('--new') ? '1' : '', unit: argOf('--unit', '1'), variants: argOf('--variants', '4'), deskTop: argOf('--desk-top', String(DESK_TOP)),
 });
 
 const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.html': 'text/html; charset=utf-8', '.json': 'application/json', '.css': 'text/css' };
@@ -76,7 +84,7 @@ const PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>
   for (let i = 0; i < V; i++) head.push('variant ' + (i + 1));
   const total = C.SPECIES_KEYS.length, added = C.SPECIES_KEYS.filter((k) => C.SPECIES[k].added).length;
   let html = '<caption>Mezzanine — the character sheet: ' + keys.length + ' of ' + total + ' species (' + (total - added) + ' of the approved sheet + ' + added + ' added since), every frame the tree draws'
-    + '<small>Rendered by tools/characters/sheet.browser.mjs from resources/characters/ at ' + U + ' px per frame unit (a seat\\'s rect is 54 × 96 floor px = 108 × 192 units; its frame is drawn ' + SV.w + ' × ' + SV.h + ' units from (' + SV.x + ', ' + SV.y + '), the intern\\'s ' + CV.w + ' × ' + CV.h + '). Sleeper frames over a desk edge at ' + deskTop.toFixed(3) + ' of the rect. Variant columns are other keys of the same species, so colourway, hat, neckwear and extra vary.</small></caption>';
+    + '<small>Rendered by tools/characters/sheet.browser.mjs from resources/characters/ at ' + U + ' px per frame unit (a seat\\'s rect is 108 × 192 units over the floor\\'s character rect; its frame is drawn ' + SV.w + ' × ' + SV.h + ' units from (' + SV.x + ', ' + SV.y + '), the intern\\'s ' + CV.w + ' × ' + CV.h + '). Sleeper frames over a desk edge at ' + deskTop.toFixed(3) + ' of the rect. Variant columns are other keys of the same species, so colourway, hat, neckwear and extra vary.</small></caption>';
   html += '<tr>' + head.map((h) => '<th>' + h + '</th>').join('') + '</tr>';
   for (const sp of keys) {
     const S = C.SPECIES[sp], key = 'sheet/' + sp;

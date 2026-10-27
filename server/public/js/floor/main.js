@@ -428,6 +428,8 @@ loadArt().then(({ furniture, characters, registry, themes, failed }) => {
             character: { w: characters?.SCENE_W ?? 0, h: characters?.SCENE_H ?? 0 },
             // The character tree's seeded draw: a departing walker's wait at the elevator is one (§ 6.2's walk note item 5).
             draw: characters?.draw ?? null,
+            // The character tree's crest of a seat's drawn head: where § 5.1's thought trail ends (card#12444).
+            crest: characters?.crestTop ?? null,
             // FLOOR.md § 10.6: the registry each floor's `theme` is resolved against (item 5, § 9 F23) and
             // which themes the page holds (item 8). A registry or a theme whose import was rejected is
             // § 9 F14's: the floor draws its fallback, and the strip names the asset.
