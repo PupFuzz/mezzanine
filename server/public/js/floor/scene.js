@@ -304,6 +304,14 @@ export function threshold(band) {
 const WALK_SIDE = Object.freeze({ A1: 'staffed', A2: 'empty' });
 
 /**
+ * A walker's drawn rect — the character's at the scene's scale, its feet at its bottom centre: the size a walk effect
+ * is drawn at and the body its route keeps clear (`route.js`'s `lattice()`, card#12442), one value for both.
+ */
+export function walkerSize(character) {
+    return Object.freeze({ w: character.w * CHARACTER_SCALE, h: character.h * CHARACTER_SCALE });
+}
+
+/**
  * One A1 or A2 walk (FLOOR § 6.2's walk note items 3 and 5, card#12194): a ROUTED path through open floor between
  * the desk's anchor and the elevator's threshold, as legs in frame order — A2 walks to the threshold, WAITS there for
  * its seeded wait, stands while the leaves open on it, and steps into the cab, where the closing leaves cover it; A1
@@ -321,6 +329,7 @@ function walkEffect(base, id, anchor, door, motion, character, box, walking) {
         frames: 0,
         legs: Object.freeze([]),
         door: null,
+        clearance: null,
         size: null,
         frame: null,
         // § 5.5's line, for a desk inside a room that cannot reach the elevator — a defect of the map, never an
@@ -333,11 +342,13 @@ function walkEffect(base, id, anchor, door, motion, character, box, walking) {
     }
 
     const [from, to] = id === 'A2' ? [anchor, door] : [door, anchor];
-    const cells = walking.route(key, anchor, from, to);
+    const routed = walking.route(key, anchor, from, to);
 
-    if (cells === null) {
+    if (routed === null) {
         return none(walking.inRoom(key));
     }
+
+    const { cells } = routed;
 
     // The route's cell centres, bracketed by the walk's two ends.
     const points = Object.freeze([from, ...cells.map((c) => walking.centre(c)), to].map((p) => Object.freeze({ x: p.x, y: p.y })));
@@ -369,10 +380,14 @@ function walkEffect(base, id, anchor, door, motion, character, box, walking) {
         legs: Object.freeze(legs),
         door: Object.freeze(doorSpan),
         no_route: false,
+        // Which clearance tier the route was found at (`route.js`'s `CLEARANCE_TIERS`, card#12442) — read by the tests
+        // and the walk probe, drawn nowhere.
+        clearance: routed.tier,
         // The walker is the desk's character at its drawn size, its feet on the path: `size` its rect (the
-        // placeholder's, § 9 F14), `frame` the size its image is drawn at — the character's overdraw, the frame every
-        // seat document is drawn in (§ 10.4's frame contract, card#12259), centred on the feet as the desk's is.
-        size: Object.freeze({ w: character.w * CHARACTER_SCALE, h: character.h * CHARACTER_SCALE }),
+        // placeholder's, § 9 F14, and the body the route keeps clear), `frame` the size its image is drawn at — the
+        // character's overdraw, the frame every seat document is drawn in (§ 10.4's frame contract, card#12259),
+        // centred on the feet as the desk's is.
+        size: walkerSize(character),
         frame: Object.freeze((({ w, h }) => ({ w, h }))(characterOverdraw(box, character).overdraw)),
         frames: Math.max(...legs.map((l) => l.start + l.frames), doorSpan.start + doorSpan.frames),
     });
@@ -408,7 +423,7 @@ function latticeKey(frame, input, grids, kinds) {
  * The routing the walks of ONE render share (walk note item 3): the lattice, built at the first walk that asks and
  * never on a render that carries none, every route over it, and each departure's seeded wait.
  */
-function walkRouting({ key, extent, cell, obstacles, desks, draw }) {
+function walkRouting({ key, extent, cell, obstacles, desks, draw, character }) {
     let grid;
     const desksByKey = new Map(desks.map((d) => [d.key, d]));
     const built = () => {
@@ -418,6 +433,8 @@ function walkRouting({ key, extent, cell, obstacles, desks, draw }) {
                 cell,
                 obstacles,
                 desks: desks.map((d) => ({ key: d.key, rects: [d.slot_rect, d.box].filter((r) => r !== null) })),
+                // The body the route keeps clear: the walker's drawn rect, the one its effect is drawn at (card#12442).
+                body: walkerSize(character),
             });
         }
 
@@ -774,6 +791,7 @@ export function buildScene(frame, input) {
         obstacles,
         desks,
         draw: input.draw ?? null,
+        character: input.character,
     });
     const effects = buildEffects(input.effects ?? [], frame, anchors, input.previous ?? new Map(), extent, band, input.reduce === true, input.character, box, walking);
 

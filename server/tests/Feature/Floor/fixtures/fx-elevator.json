@@ -878,7 +878,7 @@
           }
         }
       ],
-      "until_ms": 12000,
+      "until_ms": 14000,
       "floor": {
         "key": "aimla",
         "local_hours": 9,
@@ -3876,7 +3876,7 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
-                      "state_version": 31145,
+                      "state_version": 31151,
                       "render_state": "working",
                       "link_state": "live",
                       "activity_state": "working",
@@ -4040,7 +4040,7 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
-                      "state_version": 15042,
+                      "state_version": 15230,
                       "render_state": "blocked",
                       "link_state": "live",
                       "activity_state": "blocked",
@@ -4159,7 +4159,7 @@
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
             "seat_id": "aimla-review",
-            "state_version": 15043,
+            "state_version": 15231,
             "at": "2026-08-23T14:23:15.400Z",
             "changed": [
               "render_state",
@@ -4179,7 +4179,7 @@
             "server_time": "2026-08-23T14:23:16.150Z",
             "install_id": "aimla",
             "seat_id": "aimla-impl-1",
-            "state_version": 31146,
+            "state_version": 31152,
             "at": "2026-08-23T14:23:16.150Z",
             "changed": [
               "render_state",
@@ -4216,7 +4216,7 @@
           }
         }
       },
-      "note": "`aimla-review` goes `→ offline`, and `aimla-impl-1`, the nearer desk, three loop frames later: two routed walks of different lengths whose WAITS at the threshold overlap and whose door frames overlap, the leaves opening once over both (card#12194). The state versions are chosen so the seeded waits do it — each wait is `draw(seatKey, 'elevator-wait:<state_version>') % (WAIT_MAX_FRAMES + 1)` (`resources/characters/seed.js`): `aimla/aimla-review` at 15043 waits 5 frames, `aimla/aimla-impl-1` at 31146 waits 9, so both stand on the threshold together and the door spans meet; `node -e` over `seed.js`'s `draw()` re-prints both, and AT-D3-23's H4 re-derives them. The arrival order (`aimla-review` first) is the reverse of the code-unit key order (`aimla/aimla-impl-1` < `aimla/aimla-review`), which H11's plant needs."
+      "note": "`aimla-review` goes `→ offline`, and `aimla-impl-1`, the farther desk, three loop frames later: two routed walks of different lengths whose WAITS at the threshold overlap and whose door frames overlap, the leaves opening once over both (card#12194). The state versions are chosen so the seeded waits do it at the routes' lengths (card#12442 re-chose them when the walkers began keeping clear of walls and furniture) — each wait is `draw(seatKey, 'elevator-wait:<state_version>') % (WAIT_MAX_FRAMES + 1)` (`resources/characters/seed.js`): `aimla/aimla-review` at 15231 waits 23 frames, `aimla/aimla-impl-1` at 31152 waits 1, so both stand on the threshold together and the door spans meet; `node -e` over `seed.js`'s `draw()` re-prints both, and AT-D3-23's H4 re-derives them. The arrival order (`aimla-review` first) is the reverse of the code-unit key order (`aimla/aimla-impl-1` < `aimla/aimla-review`), which H11's plant needs."
     },
     "repaint": {
       "http": {
@@ -9459,7 +9459,7 @@
           }
         }
       ],
-      "until_ms": 12000,
+      "until_ms": 14000,
       "floor": {
         "key": "aimla",
         "local_hours": 9,

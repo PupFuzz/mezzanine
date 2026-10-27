@@ -1471,7 +1471,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     /** H14: every own-desk cell open — the walker cuts across its own desk off its anchor's row. */
     public function test_red_every_own_desk_cell_open(): void
     {
-        $dir = $this->mutatedModules([self::ROUTE, 'if (desk.key !== walker.key || anchor === null || Math.floor(i / grid.cols) !== anchor[1]) {', 'if (desk.key !== walker.key) {']);
+        $dir = $this->mutatedModules([self::ROUTE, 'if (anchor === null || Math.floor(i / grid.cols) !== anchor[1]) {', 'if (anchor === null) {']);
 
         $this->assertNotSame([], array_filter($this->allRouteDefects($dir), static fn ($d) => str_starts_with($d, 'H14')), 'no walker left its desk off its anchor row');
     }
@@ -1500,7 +1500,10 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
             'const before = (a, b) => a[0] - b[0] || (walker.flip ? a[1] - b[1] : b[1] - a[1]) || a[2] - b[2] || a[3] - b[3];']);
         $dir = $this->mutatedModulesOn($dir, [self::SCENE, 'return g === null ? null : route(g, from, to, { key: seat, anchor });',
             'return g === null ? null : route(g, from, to, { key: seat, anchor, flip: [...new Set(order)].indexOf(seat) % 2 === 0 });']);
-        $dir = $this->mutatedModulesOn($dir, [self::SCENE, 'function walkRouting({ key, extent, cell, obstacles, desks, draw }) {', 'function walkRouting({ key, extent, cell, obstacles, desks, draw, order }) {']);
+        // The A* search does not see the walker; the plant hands it over.
+        $dir = $this->mutatedModulesOn($dir, [self::ROUTE, 'function search(grid, start, goal, blocked, extra) {', 'function search(grid, start, goal, blocked, extra, walker) {']);
+        $dir = $this->mutatedModulesOn($dir, [self::ROUTE, 'blockedFor(grid, walker, tier), grid.tier(tier).centring);', 'blockedFor(grid, walker, tier), grid.tier(tier).centring, walker);']);
+        $dir = $this->mutatedModulesOn($dir, [self::SCENE, 'function walkRouting({ key, extent, cell, obstacles, desks, draw, character }) {', 'function walkRouting({ key, extent, cell, obstacles, desks, draw, character, order }) {']);
         $dir = $this->mutatedModulesOn($dir, [self::SCENE, '        draw: input.draw ?? null,', "        draw: input.draw ?? null,\n        order: Object.keys(frame.desks.desks),"]);
 
         $this->assertNotSame(json_encode($this->legsBySeat('mass-departure', $dir)), json_encode($this->legsBySeat('mass-departure-reordered', $dir)), 'the plant drew one path for two snapshot orders');
@@ -1509,7 +1512,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     /** H10: an unroutable desk falls back to the straight segment. */
     public function test_red_no_route_falls_back_to_the_segment(): void
     {
-        $dir = $this->mutatedModules([self::SCENE, 'const cells = walking.route(key, anchor, from, to);', 'const cells = walking.route(key, anchor, from, to) ?? [];']);
+        $dir = $this->mutatedModules([self::SCENE, 'const routed = walking.route(key, anchor, from, to);', "const routed = walking.route(key, anchor, from, to) ?? { cells: [], tier: 'feet' };"]);
 
         $this->assertNotSame([], $this->noRouteDefects($this->floorRun('walled-in', $dir), self::PM, true));
     }

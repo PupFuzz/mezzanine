@@ -4,8 +4,10 @@
  *
  * Modes (stdin JSON `{ mode, … }`):
  *
- *   `shipped`  — the shipped default (`resources/floor/default.tmj`, its tileset, the theme registry's kinds) as the
- *                scene reads it: the lattice's cell and extent, the threshold, every `wall` and standing tile's rect
+ *   `shipped`  — the shipped default (`resources/floor/default.tmj`, or the map at `map`; its tileset, the theme
+ *                registry's kinds) as the scene reads it: the lattice's cell and extent, the threshold, the walker's
+ *                drawn body (`walkerSize()`), each desk's route and the clearance tier it was found at (card#12442),
+ *                every `wall` and standing tile's rect
  *                (resolved through `scene.js`'s `mapTiles()` and `tileset.js`'s reader — the obstacles H1 and H15 hold
  *                a path to), and EVERY `desks` object routed to the threshold (H17), with the cost of the lattice and
  *                every route together, measured `repeat` times (H9). `walls` paints extra `wall` tiles into a COPY of
@@ -51,7 +53,7 @@ if (input.mode === 'stack') {
     answer(input.cases.map(({ desks, walkers }) => floorStackOrder(desks, walkers).map((o) => ({ kind: o.kind, key: o.key }))));
 }
 
-const { PLANE_KINDS, backWall, mapTiles, slotOrigin, threshold, buildScene } = await mod('floor/scene.js');
+const { PLANE_KINDS, backWall, mapTiles, slotOrigin, threshold, buildScene, walkerSize } = await mod('floor/scene.js');
 const { backWallBand, mapDesks, mapGrid } = await mod('floor/floor-layout.js');
 const { readTileset, tilesetUrl } = await mod('floor/tileset.js');
 const { characterCentre, deskAnchor } = await mod('floor/desk-layout.js');
@@ -62,7 +64,7 @@ const CHARACTER = { w: characters.SCENE_W, h: characters.SCENE_H };
 const TSX = readFileSync(join(REPO, 'resources', 'floor', 'tiles', 'floor-plane.tsx'), 'utf8');
 
 if (input.mode === 'shipped') {
-    const map = JSON.parse(readFileSync(join(REPO, 'resources', 'floor', 'default.tmj'), 'utf8'));
+    const map = JSON.parse(readFileSync(input.map ?? join(REPO, 'resources', 'floor', 'default.tmj'), 'utf8'));
     const grid = mapGrid(map);
 
     if ((input.walls ?? []).length > 0) {
@@ -99,6 +101,7 @@ if (input.mode === 'shipped') {
             cell: Math.min(grid.tilewidth, grid.tileheight),
             obstacles: obstacles(),
             desks: desks.map((d) => ({ key: d.key, rects: [d.slot, d.box] })),
+            body: walkerSize(CHARACTER),
         });
 
         return { g, routes: desks.map((d) => route(g, d.anchor, door, { key: d.key, anchor: d.anchor })) };
@@ -120,11 +123,12 @@ if (input.mode === 'shipped') {
         extent,
         threshold: door,
         obstacles: obstacles(),
+        body: walkerSize(CHARACTER),
         desks: desks.map((d, i) => {
-            const cells = routes[i];
+            const cells = routes[i]?.cells ?? null;
             const points = cells === null ? null : [d.anchor, ...cells.map((c) => cellCentre(g, c)), door];
 
-            return { ...d, cells, points, length: points === null ? null : polylineLength(points) };
+            return { ...d, cells, clearance: routes[i]?.tier ?? null, points, length: points === null ? null : polylineLength(points) };
         }),
         cost_ms: costs,
     });
