@@ -910,14 +910,27 @@ function rimOf(markup) {
  */
 export const SEAT_RECT = Object.freeze({ x: 0, y: 0, w: 108, h: 192 });
 /**
- * THE INTERN's CHIBI FRAME: the intern rect's 108 × 172.8 units (the rect's aspect, the last 172.8 units above the foot)
- * widened to the PITCH the floor lays interns at — `108 × pitch / width` units wide, the pitch `floor/desk-layout.js`'s
- * `stoolSlots()` derives over its `STOOL_W` (card#12444's ruling D: 40 px stools, four to a row, a 56 px pitch) — all the
- * room a row of interns has (two frames meet at the pitch and never overlap), which the upright chibi frame's widest heads
- * fit (`frameDocument()`; `tools/characters/selftest.mjs` § 8b measures the margin left). The floor draws it into the
- * intern's overdraw rect (`internOverdraw()`); the two are held equal by `tools/characters/selftest.mjs` § 7b.
+ * THE INTERN's RECT AND PITCH ON THE FLOOR, in floor pixels — `floor/desk-layout.js`'s `STOOL_W` × `STOOL_H` and its
+ * `STOOL_GAP` (card#12444, the operator's rulings of 2026-10-27: 1.75 times card#11058's 20 × 32, the least gap the frame
+ * contract allows). The tree cannot import the floor, so the figures are stated here and held equal to the floor's by
+ * `tools/characters/selftest.mjs` § 7b; the chibi frame below is derived from them.
  */
-export const CHIBI_VIEWBOX = Object.freeze({ x: -21.6, y: 19.2, w: 151.2, h: 172.8 });
+export const CHIBI_STOOL = Object.freeze({ w: 35, h: 56, gap: 3 });
+/**
+ * THE INTERN's CHIBI FRAME: the intern rect in units — 108 units over its width, so its height is `108 × h / w` units, the
+ * last that many above the foot (the rect's aspect) — widened to the PITCH the floor lays interns at, `CHIBI_STOOL.gap / 2`
+ * px each side, so two frames meet at the pitch and never overlap. That half-gap holds the widest chibi's ink past the
+ * rect's sides (`frameDocument()`; `tools/characters/selftest.mjs` § 8b measures the margin left, and derives the gap).
+ * The floor draws it into the intern's overdraw rect (`internOverdraw()`); the two are held equal by
+ * `tools/characters/selftest.mjs` § 7b.
+ */
+const CHIBI_UPP = 108 / CHIBI_STOOL.w;
+// to a billionth of a unit, so the document's viewBox reads as the figure and not its float's last bits
+const nano = (v) => Math.round(v * 1e9) / 1e9;
+export const CHIBI_VIEWBOX = Object.freeze({
+  x: nano(-CHIBI_UPP * CHIBI_STOOL.gap / 2), y: nano(192 - CHIBI_UPP * CHIBI_STOOL.h),
+  w: nano(CHIBI_UPP * (CHIBI_STOOL.w + CHIBI_STOOL.gap)), h: nano(CHIBI_UPP * CHIBI_STOOL.h),
+});
 const FOOT = 188;
 
 /** The chibi frame's least head share — FLOOR.md § 12's *Intern head share* row. */
@@ -1142,10 +1155,10 @@ function sleepingEyesSvg(F) {
   return `<g data-part="eyes-closed">${out.join('')}</g>`;
 }
 
-/** A z `h` tall's two stroke widths: its pale core's and its dark outline's. */
-function zStrokes(h) {
+/** A z `h` tall's two stroke widths, its pale core's and its dark outline's — both `weight` times as wide for a heavier glyph. */
+function zStrokes(h, weight = 1) {
   const core = Math.max(1.4, h * 0.16);
-  return { core, outline: core + 2.6 };
+  return { core: core * weight, outline: (core + 2.6) * weight };
 }
 
 /** A z `h` tall's half extent across and down, its outline's half-width included — its body box about its centre. */
@@ -1164,17 +1177,18 @@ function zPath(x, y, h) {
  * THE GLOW — one primitive for every glyph on the floor that pulses (card#12187's z's; card#12444's state markers): the
  * glyph's path `d`, `h` units tall, at brightness `level` (FLOOR.md § 12's *Sleeper z brightness*), as two layers. `body`
  * is the `part` group: the dark outline in `ink`, and the core stroked over it in `fill` mixed toward the ink by
- * `Z_GLOW[level]`, both `zStrokes(h)` wide. `halo` is the glow behind it: none at level 0, else a stroke of the lamp
- * colour `Z_HALO[level]` wider than the outline each side at `Z_HALO_OPACITY[level]`. `body`'s attributes are `data`
- * then `bodyData`; the halo's are `data`. A caller draws every halo before every body, so no halo crosses a glyph.
+ * `Z_GLOW[level]`, both `zStrokes(h, weight)` wide. `halo` is the glow behind it: none at level 0, else a stroke of the
+ * lamp colour `spread · Z_HALO[level]` wider than the outline each side at `Z_HALO_OPACITY[level]`. A z is drawn at weight
+ * and spread 1; a state marker heavier and wider (`MARKER_WEIGHT`, `MARKER_SPREAD`). `body`'s attributes are `data` then
+ * `bodyData`; the halo's are `data`. A caller draws every halo before every body, so no halo crosses a glyph.
  * @returns {{body: string, halo: string}}
  */
-function glowSvg(d, h, level, { ink, fill, part, data, bodyData = '' }) {
-  const sw = zStrokes(h);
+function glowSvg(d, h, level, { ink, fill, part, data, bodyData = '', weight = 1, spread = 1 }) {
+  const sw = zStrokes(h, weight);
   const stroke = (col, width) => `<path d="${d}" stroke="${col}" stroke-width="${f(width)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
   return {
     body: `<g data-part="${part}"${data}${bodyData}>${stroke(ink, sw.outline)}${stroke(mix(fill, ink, Z_GLOW[level]), sw.core)}</g>`,
-    halo: level === 0 ? '' : `<path data-part="halo"${data} d="${d}" stroke="${Z_LAMP}" stroke-width="${f(sw.outline + 2 * Z_HALO[level])}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${f(Z_HALO_OPACITY[level])}"/>`,
+    halo: level === 0 ? '' : `<path data-part="halo"${data} d="${d}" stroke="${Z_LAMP}" stroke-width="${f(sw.outline + 2 * spread * Z_HALO[level])}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${f(Z_HALO_OPACITY[level])}"/>`,
   };
 }
 
@@ -1213,6 +1227,19 @@ export function markerLevel(f) {
 }
 
 /**
+ * THE MARKER's WEIGHT AND GLOW (the operator's ruling of 2026-10-27 on card#12444, *"even thicker "?" and "!" markers so
+ * they are more obvious"*): a marker's strokes are `MARKER_WEIGHT` times a z's of its height, and its halo `MARKER_SPREAD`
+ * times a z's wider each side. The glyph's path is drawn shorter by what the heavier outline adds (`markerGlyph()`), so a
+ * marker's ink is still exactly as tall as the z it matches.
+ */
+export const MARKER_WEIGHT = 1.5;
+export const MARKER_SPREAD = 1.8;
+/** A marker `h` tall's glyph path height and strokes: the path shortened by the outline's extra width, the strokes heavier. */
+function markerGlyph(h) {
+  const z = zStrokes(h), sw = zStrokes(h, MARKER_WEIGHT);
+  return { p: h + z.outline - sw.outline, sw };
+}
+/**
  * THE STATE MARKERS (card#12444; FLOOR.md § 10.4's frame contract item 5, § 12's *State marker*): the question's `?` and
  * the blocked seat's `!`, each a stroked path centred at (0, 0) and `h` units tall — the glyph's ends, its outline's
  * width aside, half its height above and below the centre, as a z's are — drawn through the z's glow (`glowSvg()`) in the
@@ -1226,10 +1253,10 @@ const MARKERS = Object.freeze({
   '!': Object.freeze({ ink: '#a33a26', fill: '#ffeee6', w: 0.07,
     d: (h) => `M${f(-0.07 * h)} ${f(-0.5 * h)}L${f(-0.025 * h)} ${f(0.16 * h)}M${f(0.07 * h)} ${f(-0.5 * h)}L${f(0.025 * h)} ${f(0.16 * h)}M0 ${f(0.5 * h)}l0 0` }),
 });
-/** A marker's half extent across and down about its centre, its outline included — `zHalf()`'s, for the widest glyph. */
+/** A marker's half extent across and down about its centre, its outline included — `zHalf()`'s down, for the widest glyph across. */
 function markerHalf(h) {
-  const o = zStrokes(h).outline / 2;
-  return { w: Math.max(...Object.values(MARKERS).map((m) => m.w)) * h + o, h: h / 2 + o };
+  const { p, sw } = markerGlyph(h), o = sw.outline / 2;
+  return { w: Math.max(...Object.values(MARKERS).map((m) => m.w)) * p + o, h: p / 2 + o };
 }
 
 /**
@@ -1247,7 +1274,7 @@ function markerStand(key, r, A, dir, clear) {
   const crown = CREST_TOP[r.variant === null ? r.species : `${r.species}/${r.variant}`];
   if (crown === undefined) throw new RangeError(`CREST_TOP declares no crest for ${r.species}${r.variant === null ? '' : `/${r.variant}`}`);
   const h = zStand(crown, dir, zLargeFor(crown, dir, clear), clear)[0].h;
-  const hb = markerHalf(h), G = Z_HALO[3], V = SEAT_VIEWBOX;
+  const hb = markerHalf(h), G = MARKER_SPREAD * Z_HALO[3], V = SEAT_VIEWBOX;
   // `e`: the document writes coordinates to the hundredth (`f()`), so the stand keeps that much further in, and a rounding
   // never carries the glow onto the unit it keeps from an edge
   const e = 0.01;
@@ -1262,7 +1289,7 @@ function markerStand(key, r, A, dir, clear) {
 /** A marker at its stand, lit at `level`: its halo, then its glyph, in one `marker` group that names its glyph and level. */
 function markerSvg(at, glyph, level) {
   const M = MARKERS[glyph];
-  const { body, halo } = glowSvg(M.d(at.h), at.h, level, { ink: M.ink, fill: M.fill, part: 'glyph', data: '' });
+  const { body, halo } = glowSvg(M.d(markerGlyph(at.h).p), at.h, level, { ink: M.ink, fill: M.fill, part: 'glyph', data: '', weight: MARKER_WEIGHT, spread: MARKER_SPREAD });
   return `<g data-part="marker" data-glyph="${glyph === '?' ? 'question' : 'attention'}" data-level="${level}" data-x="${f(at.x)}" data-y="${f(at.y)}" data-h="${f(at.h)}" transform="translate(${f(at.x)} ${f(at.y)})"><g data-part="glow">${halo}</g>${body}</g>`;
 }
 

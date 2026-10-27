@@ -23,7 +23,7 @@
 // reds when what the scene draws at the cap no longer fits it. Changing a number here is changing
 // what every stored map is validated against. ⛔ THE HEIGHT IS THE LEAST THE DESK NEEDS for this width
 // (`floor/desk-layout.js`'s `leastBoxHeight()`), held equal to it by `tools/characters/selftest.mjs` § 7b:
-// card#12444's taller characters and its two rows of interns twice card#11058's size grew it (from 228).
+// card#12444's taller characters and its two rows of interns 1.75 times card#11058's size grew it (from 228).
 
-export const FURNITURE_BOX = Object.freeze({ width: 440, height: 307 });
+export const FURNITURE_BOX = Object.freeze({ width: 440, height: 287 });
 

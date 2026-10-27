@@ -207,7 +207,7 @@ check(C.walkFrames(anySeat.install_id, anySeat.seat_id)[0] === C.standingFrame(a
 // The painter's half, and the sleeper's own legs over every species, are server/tests/Feature/Floor/sleeper-probe.mjs.
 section("7b. a desk's pose frames: { frames, loopFrom } — the sleeper's still and loop for asleep, the marker's for a marked pose, the walk in its expression for every other; every sleeper document is a document");
 // The floor's own desk edge and clear rects, from the one function that hands them to the tree (§ 10.4 item 4).
-const { characterOverdraw, deskRects, stoolSlots, leastBoxHeight, STOOL_ROWS, FRAME_UNITS_PER_PX, CHARACTER_SCALE } = await import(pathToFileURL(join(REPO, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
+const { characterOverdraw, deskRects, stoolSlots, leastBoxHeight, STOOL_ROWS, STOOL_W, STOOL_H, STOOL_GAP, STOOL_ROW_GAP, FRAME_UNITS_PER_PX, CHARACTER_SCALE } = await import(pathToFileURL(join(REPO, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
 const { FURNITURE_BOX } = await import(pathToFileURL(join(REPO, 'resources', 'floor', 'furniture-box.js')).href);
 const { overdraw, clear: CLEAR } = characterOverdraw(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H });
 // The floor states the tree's frame units per pixel (it cannot import the tree); held equal to the tree's own over the
@@ -227,6 +227,9 @@ check(['x', 'y', 'w', 'h'].every((k) => Math.abs(odUnits[k] - C.SEAT_VIEWBOX[k])
 const seatVb = `viewBox="${C.SEAT_VIEWBOX.x} ${C.SEAT_VIEWBOX.y} ${C.SEAT_VIEWBOX.w} ${C.SEAT_VIEWBOX.h}"`;
 check([C.standingFrame(roster[0].install_id, roster[0].seat_id), ...C.walkFrames(roster[0].install_id, roster[0].seat_id)].every((d) => d.includes(seatVb)),
   `the standing frame and every walk frame are drawn in SEAT_VIEWBOX (${seatVb}), the sleeper's widened, raised frame (card#12259)`);
+// The tree states the intern's rect and gap (it cannot import the floor); held equal to the floor's own.
+check(C.CHIBI_STOOL.w === STOOL_W && C.CHIBI_STOOL.h === STOOL_H && C.CHIBI_STOOL.gap === STOOL_GAP,
+  `the tree's CHIBI_STOOL (${JSON.stringify(C.CHIBI_STOOL)}) is desk-layout.js's STOOL_W x STOOL_H and STOOL_GAP (${STOOL_W} x ${STOOL_H}, ${STOOL_GAP})`);
 // The interns: every slot's chibi frame is its rect widened to the row's pitch, in the chibi frame's units (the rect's
 // 108 units over its px), from the rect's top-left at the frame's top (CHIBI_VIEWBOX.y) — the same for every slot.
 const slots = stoolSlots(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H });
@@ -246,6 +249,11 @@ check(order && slots[0].y + slots[0].h === rects['desk-sprite'].y + rects['desk-
   `the slots are row-major in ${STOOL_ROWS} rows of ${CAP / STOOL_ROWS}, the front row first and on the desk's foot line, each row left to right`);
 check(slots.every((a, i) => slots.every((b, j) => i === j || !meet(a, b))) && slots.every((x) => inside(x) && inside(x.overdraw)),
   `no two of the ${slots.length} slots meet, and every slot and its overdraw lies inside the ${FURNITURE_BOX.width} x ${FURNITURE_BOX.height} box`);
+// THE ROW GAP IS THE LEAST (the operator's 2026-10-27 *"Reduce the spacing between subagents"*): a pixel less and two rows'
+// rects would meet — read off the slots themselves, each row lowered by the pixel.
+const closer = slots.map((x) => ({ ...x, y: x.y + x.row }));
+check(STOOL_ROW_GAP >= 0 && closer.some((a, i) => closer.some((b, j) => i !== j && meet(a, b))),
+  `STOOL_ROW_GAP (${STOOL_ROW_GAP}) is the least at which no two interns' rects meet — a pixel less and two rows overlap`);
 // The box is derived (card#12444): its height is the least the desk needs for its width (`leastBoxHeight()`'s search
 // from below, so a pixel less is a box the layout does not fit).
 const least = leastBoxHeight(FURNITURE_BOX.width, { w: C.SCENE_W, h: C.SCENE_H });
@@ -292,7 +300,8 @@ for (const sp of KEYS) docs.set(`sleeper:${sp}`, Array.from({ length: C.SLEEP_LO
 // SIZE — the marker's glyph, its outline included and its glow not, is as tall as the same seat's first z asleep (z1, the
 // largest of its three), both measured by `inkBounds` off the documents, never a figure; PULSE — a marker pose draws a still and the
 // sleeper's loop, the marker lit at z1's level of the same pulse (`zLevels()`), and nothing else changing; ONE GLOW — every
-// level's halo is the z's (`Z_HALO`, `Z_HALO_OPACITY` over the same outline); CLEAR — the marker at its brightest keeps a
+// level's halo is the z's (`Z_HALO`, `Z_HALO_OPACITY` over the same outline), `MARKER_SPREAD` times as wide on the
+// operator's 2026-10-27 *"even thicker"* (the glyph's strokes `MARKER_WEIGHT` times a z's, SIZE unchanged); CLEAR — the marker at its brightest keeps a
 // unit off the floor's clear rects (the monitor, the props, the desk, the thought trail's column) and inside the frame.
 section("7c. the markers: the `?` and the `!` are the z's size, pulse with the z's pulse in the z's glow, and keep clear");
 // One element of a document, by its `data-part`, with everything inside it (balanced <g> tags).
@@ -351,10 +360,10 @@ for (const expression of MARKED) for (const level of [0, 1, 2, 3]) {
   if (!Number.isFinite(outline)) { glowBad.push(`${expression} level ${level}: no glyph outline drawn`); continue; }
   if (level === 0 ? halos.length !== 0 : halos.length === 0) { glowBad.push(`${expression} level ${level}: ${halos.length} halos`); continue; }
   for (const [, w, op] of halos) {
-    if (Math.abs(Number(w) - (outline + 2 * C.Z_HALO[level])) > 0.02 || Math.abs(Number(op) - C.Z_HALO_OPACITY[level]) > 0.005) glowBad.push(`${expression} level ${level}: halo ${w} at ${op} over an outline of ${outline}`);
+    if (Math.abs(Number(w) - (outline + 2 * C.MARKER_SPREAD * C.Z_HALO[level])) > 0.02 || Math.abs(Number(op) - C.Z_HALO_OPACITY[level]) > 0.005) glowBad.push(`${expression} level ${level}: halo ${w} at ${op} over an outline of ${outline}`);
   }
 }
-check(glowBad.length === 0, `ONE GLOW: every marker level's halo is the z's — none at level 0, else Z_HALO[level] wider than the outline each side at Z_HALO_OPACITY[level]${glowBad.length ? ` — ${glowBad.slice(0, 3).join('; ')}` : ''}`);
+check(glowBad.length === 0, `ONE GLOW: every marker level's halo is the z's, MARKER_SPREAD (${C.MARKER_SPREAD}) times as wide — none at level 0, else MARKER_SPREAD x Z_HALO[level] wider than the outline each side at Z_HALO_OPACITY[level]${glowBad.length ? ` — ${glowBad.slice(0, 3).join('; ')}` : ''}`);
 // Clear of the furniture and the trail, and inside the frame, at the brightest glow, for every species and variant.
 const clearBad = [];
 for (const sp of KEYS) for (const expression of MARKED) for (const v of [null, ...variantsOf(sp)]) {
@@ -433,7 +442,9 @@ const framesOf = (sp, key) => [
   ...Object.keys(C.EXPRESSIONS).filter((x) => x !== 'neutral').map((expression) => ['posed', C.frameDocument(key, { species: sp, expression, clear: CLEAR }), C.SEAT_VIEWBOX, C.SEAT_RECT]),
 ];
 const FRAME_KINDS = ['standing', 'walking', 'chibi', 'asleep', 'posed'];
+const label = (sp, key) => { const v = C.recipe(key, sp).variant; return v ? `${sp}/${v}` : sp; };
 const worst = {};   // species → kind → { over: past the frame, cut: past the rect, key }
+const chibiAcross = { units: -Infinity, who: '' };   // the chibi's ink past its rect's sides, the widest over the population
 let boundsDocs = 0;
 for (const sp of KEYS) {
   const w = worst[sp] = {};
@@ -445,9 +456,12 @@ for (const sp of KEYS) {
     if (cut > e.cut) { e.cut = cut; e.cutKey = key; }
     const side = pastMargin(b, vb);
     if (side > e.side) { e.side = side; e.sideKey = key; }
+    if (kind === 'chibi' && b !== null) {
+      const across = Math.max(rect.x - b.x0, b.x1 - (rect.x + rect.w));
+      if (across > chibiAcross.units) Object.assign(chibiAcross, { units: across, who: `${label(sp, key)} ${key}` });
+    }
   }
 }
-const label = (sp, key) => { const v = C.recipe(key, sp).variant; return v ? `${sp}/${v}` : sp; };
 const worstBy = (kind, f) => KEYS.map((sp) => [sp, worst[sp][kind]]).sort((x, y) => f(y[1]) - f(x[1]))[0];
 measure(`what the character's own rect would cut, per frame kind — the frame before card#12259, gates nothing — in units past it: ${FRAME_KINDS.filter((k) => k !== 'asleep' && k !== 'posed').map((k) => { const [sp, e] = worstBy(k, (e) => e.cut); return `${k} ${e.cut.toFixed(1)} (${label(sp, e.cutKey)}, ${e.cutKey})`; }).join(', ')} — over ${BOUNDS_KEYS} keys per species and ${WIDE_KEYS} at size ${widest.size}, girth ${widest.stout}, tilt ±${widest.tilt}`);
 measure(`every species past its rect: ${KEYS.flatMap((sp) => FRAME_KINDS.filter((k) => k !== 'asleep' && k !== 'posed' && worst[sp][k].cut > 0).map((k) => `${label(sp, worst[sp][k].cutKey)} ${k} ${worst[sp][k].cut.toFixed(1)}`)).join(', ') || 'none'}`);
@@ -456,6 +470,14 @@ for (const kind of FRAME_KINDS) {
   const out = KEYS.filter((sp) => worst[sp][kind].over > 0).map((sp) => `${label(sp, worst[sp][kind].key)} ${worst[sp][kind].over.toFixed(1)} (${worst[sp][kind].key})`);
   check(out.length === 0, `${kind}: no species' ink leaves its frame on any side${out.length ? ` — past it: ${out.join(', ')}` : ''}`);
 }
+// THE INTERNS' GAP IS DERIVED HERE (card#12444, the operator's 2026-10-27 *"Reduce the spacing between subagents"*): the
+// fewest whole floor pixels whose half, each side of the intern's rect, holds the widest chibi ink past the rect's sides
+// measured above — in floor pixels, the chibi frame's 108 units over the rect's STOOL_W. Any fewer and a head is clipped
+// at the pitch; any more is spacing the operator asked to reclaim.
+const leastGap = Math.ceil(2 * Math.max(0, chibiAcross.units) * STOOL_W / C.SEAT_RECT.w);
+measure(`the chibi's ink past its rect's sides, the widest: ${chibiAcross.units.toFixed(2)} units (${chibiAcross.who}), ${(chibiAcross.units * STOOL_W / C.SEAT_RECT.w).toFixed(2)} px — the least whole-pixel gap between two interns ${leastGap}`);
+check(Number.isFinite(chibiAcross.units) && STOOL_GAP === leastGap,
+  `desk-layout.js's STOOL_GAP (${STOOL_GAP}) is the least whole-pixel gap whose half each side holds the widest chibi past its rect (${leastGap})`);
 // THE CREST TABLE, held by the same reader (§ 10.4 item 4; card#12187's CREST_TOP): for every species and variant, the
 // sleeper's topmost ink WITHOUT its z's — the document cut before its `zs` group — lies at or under the crest top the
 // tree declares, within 1 unit (the table is stated in whole units, and 1 unit stays inside Z_GAP's 2, the gap the z's

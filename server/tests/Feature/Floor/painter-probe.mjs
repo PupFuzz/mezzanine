@@ -90,7 +90,7 @@ globalThis.clearInterval = () => {};
 const { deskModel } = await mod('desk/desk-render.js');
 const { placeDesk, placeBubbles } = await mod('floor/scene.js');
 const { createPainter, measurer, STYLE } = await mod('floor/painter.js');
-const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_BAND, TRAIL_RADII, TRAIL_GAP, stoolSlots, FOLD_LAG_OPACITY } = await mod('floor/desk-layout.js');
+const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_GAP, TRAIL_RADII, TRAIL_GAP, TRAIL_REACH, stoolSlots, FOLD_LAG_OPACITY } = await mod('floor/desk-layout.js');
 
 /**
  * The character tree, stubbed: a frame is an SVG document naming the `(install, seat key, frame)` it was
@@ -344,8 +344,8 @@ const poseFrame = (key, e, i) => uri(doc(`${key}#${e.pose}@${deskTop(key, e)}~${
 /**
  * The art viewport a desk's character is owed — written here from the published rule (§ 10.4 item 4, § 12's *Sleeper
  * frame*), never read off the element under test: every character's is its OVERDRAW, the character's rect widened by
- * half its width each side and raised by the thought trail's height (one pixel under the bubble's band at card#12259's
- * box; card#12444's taller box lowers the desk and leaves the band where it is).
+ * half its width each side and raised by the thought trail's height at its normal reach (a pixel under where the bubble
+ * sits on its character, card#12444).
  */
 function characterPort(key, e) {
     // § 10.4's frame contract (card#12187, card#12259): every character's viewport is its overdraw — the rect widened
@@ -357,7 +357,7 @@ function characterPort(key, e) {
 
 /** § 10.4's frame contract item 3 (card#12259): an intern's viewport is its stool's rect widened to the row's pitch. */
 function internPort(e) {
-    // the row's pitch, as the layout derives it from the box (`stoolSlots()`, card#12444's two rows)
+    // the row's pitch, as the layout lays it (`stoolSlots()`: the rect and the least gap, card#12444)
     const pitch = stoolSlots(BOX, { w: 18, h: 32 })[0].pitch;
 
     return { x: e.x - (pitch - e.w) / 2, y: e.y, w: pitch, h: e.h };
@@ -645,6 +645,31 @@ for (const g of layer?.children ?? []) {
                 defects.push(`${key}: the bubble's trail circle ${i} meets the character's rect`);
             }
         });
+
+        // ── the trail REACHES the cloud and the bubble is SET ON ITS CHARACTER (card#12444, the operator's ruling of
+        // 2026-10-27, *"anchor the bubble to the character. If necessary, add another bubble to extend the height"*):
+        // the last circle stands no further under the cloud's rect than the widest gap the trail leaves between two of
+        // its circles or over the creature; and a bubble no pass parted sits `TRAIL_REACH` above the character's top, or
+        // `BUBBLE_GAP` above the facts plate where its width reaches over the plate and that is higher ──
+        if (circles.length > 0 && head !== null) {
+            const gaps = circles.map((c, i) => (i === 0 ? head.y : circles[i - 1].y - circles[i - 1].r) - (c.y + c.r));
+            const top = circles[circles.length - 1];
+            const under = bb.y + bb.h - (top.y - top.r);
+
+            if (!(under >= -EPS && under <= Math.max(...gaps) + EPS)) {
+                defects.push(`${key}: the bubble's trail stops ${under.toFixed(1)} px under the cloud, its circles ${Math.max(...gaps).toFixed(1)} px apart at most — it does not reach the bubble`);
+            }
+
+            if (bb.lifted === 0) {
+                const plate = desk.elements.find((e) => e.kind === 'facts-plate') ?? null;
+                const over = plate !== null && bb.x < plate.x + plate.w && plate.x < bb.x + bb.w;
+                const want = Math.min(head.y - TRAIL_REACH, over ? plate.y - BUBBLE_GAP : Infinity);
+
+                if (!same(bb.y + bb.h, want)) {
+                    defects.push(`${key}: the bubble's bottom is at ${(bb.y + bb.h).toFixed(1)}, not set on its character at ${want.toFixed(1)}`);
+                }
+            }
+        }
 
         const cloud = nodes.slice(trailAt).find((n) => n.name === 'path');
         const ink = cloud === undefined ? null : rectOf(cloud);

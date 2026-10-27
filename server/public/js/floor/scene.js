@@ -32,7 +32,7 @@
 import { ANIMATION_SET, LOOP_FPS, loops } from '../wire/animation-set.js';
 import { footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layout.js';
 import { readEmbedded, splitGid, tilesetUrl } from './tileset.js';
-import { BUBBLE_BAND, BUBBLE_PAD, CHARACTER_SCALE, LINE, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, thoughtTrail, union } from './desk-layout.js';
+import { BUBBLE_GAP, BUBBLE_PAD, CHARACTER_SCALE, LINE, TRAIL_REACH, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, trailCircles, trailFoot, union } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
 import { cellCentre, lattice, polylineLength, route } from './route.js';
 import { perchPoint } from './bird.js';
@@ -760,7 +760,7 @@ export function buildScene(frame, input) {
         }
     }
 
-    // ── The bubbles: § 5.1 rule 5's pass over the base rects, in the box's top band ───────────
+    // ── The bubbles: § 5.1 rule 5's pass over the base rects, each set on its character ───────────
     placeBubbles(desks, input.measure, W, Object.keys(models));
 
     // ── The frame: the band over the floor's whole extent (§ 4.2) and the slab under it ────────
@@ -868,8 +868,9 @@ export function placeDesk(model, key, installId, slot, at, ctx, extra) {
         // meet it at, the desk's own mid-height, below every facts plate (`deskAnchor()`, card#11468).
         anchor_x: at.x + characterCentre(ctx.box, ctx.character),
         anchor_y: at.y + deskAnchor(ctx.box, ctx.character).y,
-        // § 5.1's thought trail, in scene coordinates — drawn only with a bubble (card#11468).
-        trail: Object.freeze(thoughtTrail(ctx.box, ctx.character).map((c) => Object.freeze({ ...c, x: at.x + c.x, y: at.y + c.y }))),
+        // § 5.1's thought trail starts here, the character's top on its centre line, in scene coordinates — drawn only
+        // with a bubble, up to wherever the bubble is set (card#11468, card#12444).
+        trail_foot: (({ x, y }) => Object.freeze({ x: at.x + x, y: at.y + y }))(trailFoot(ctx.box, ctx.character)),
         placeholder: ctx.placeholder,
         elements: Object.freeze(moved),
         furniture: Object.freeze(union(moved)),
@@ -883,7 +884,12 @@ export function placeDesk(model, key, installId, slot, at, ctx, extra) {
 /**
  * § 5.1 rules 4 and 5: each bubble's text cut to the box through the one primitive, its box sized
  * from the MEASURED text, and overlapping bubbles parted by `desk/task-bubble.js`'s own pass over
- * the base rects — here, the box's top band, above the character's column. Exported, with
+ * the base rects. THE BASE RECT IS SET ON ITS CHARACTER (the operator's ruling of 2026-10-27 on
+ * card#12444, *"anchor the bubble to the character"*): its bottom `TRAIL_REACH` above the character's
+ * top, where the trail at its normal reach meets it — or, a bubble wide enough to reach over the
+ * facts plate, `BUBBLE_GAP` above the plate where that is higher — and the trail drawn from the
+ * character up to wherever the bubble ends, as many circles as that gap holds (`trailCircles()`).
+ * `leastBoxHeight()` keeps the tallest bubble inside the box either way. Exported, with
  * `placeDesk()`, for the desk leaf guard.
  */
 export function placeBubbles(desks, measure, W, delivered) {
@@ -913,12 +919,16 @@ export function placeBubbles(desks, measure, W, delivered) {
         // Above the character's column, kept inside the box: the anchor is the character's centre
         // line, moved only as far as the bubble's own width needs to stay within the box.
         const centre = Math.min(Math.max(desk.anchor_x, desk.box.x + w / 2), desk.box.x + W - w / 2);
+        // On the character, unless the bubble's width reaches over the facts plate: then above the plate too.
+        const plate = desk.elements.find((e) => e.kind === 'facts-plate');
+        const overPlate = plate !== undefined && centre - w / 2 < plate.x + plate.w && plate.x < centre + w / 2;
+        const bottom = Math.min(desk.trail_foot.y - TRAIL_REACH, overPlate ? plate.y - BUBBLE_GAP : Infinity);
 
         wanted.push({
             install_id: desk.install_id,
             seat_id: desk.seat_id,
             text: line1.text,
-            anchor: { x: centre, y: desk.box.y + BUBBLE_BAND },
+            anchor: { x: centre, y: bottom },
             lines: [line1, line2],
             size: { w, h },
             source: b.source,
@@ -931,10 +941,10 @@ export function placeBubbles(desks, measure, W, delivered) {
     const bySeat = new Map(placed.map((rect) => [`${rect.install_id}/${rect.seat_id}`, rect]));
 
     for (const desk of desks) {
-        // The trail is the bubble's: a desk with no bubble draws none, and keeps no copy of it.
-        const trail = desk.trail;
+        // The trail is the bubble's: a desk with no bubble draws none, and keeps no copy of where it would start.
+        const foot = desk.trail_foot;
 
-        delete desk.trail;
+        delete desk.trail_foot;
 
         const want = wanted.find((b) => b.install_id === desk.install_id && b.seat_id === desk.seat_id);
 
@@ -957,9 +967,9 @@ export function placeBubbles(desks, measure, W, delivered) {
             source: want.source,
             degraded_note: want.degraded_note,
             // § 5.1 (card#11468): the cloud round the measured rect, and the trail of growing circles from just
-            // above the creature to the cloud, on the anchor's line.
+            // above the creature to the cloud, on the anchor's line — to the bubble where it was set, parted or not.
             cloud: cloudOutline(rect),
-            trail,
+            trail: trailCircles(foot.x, foot.y, rect.y + rect.h),
         });
     }
 

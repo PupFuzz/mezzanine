@@ -93,8 +93,7 @@ export const TYPE_ROLES = Object.freeze({
 export const SCREEN_INSET = 3;
 
 /**
- * The bubble's inner padding — the text's inset from the bubble's rect — and the band at the top of the box the
- * bubble is drawn in. The padding holds the cloud's puffs (`CLOUD_PUFF`): the cloud is drawn INSIDE the rect, its
+ * The bubble's inner padding — the text's inset from the bubble's rect. The padding holds the cloud's puffs (`CLOUD_PUFF`): the cloud is drawn INSIDE the rect, its
  * scallops reaching the rect's edge and its valleys `CLOUD_PUFF` in from it, so the text clears every valley and
  * the rect AT-D3-20 *(b)* reads is the cloud's own extent (card#11468).
  */
@@ -104,14 +103,33 @@ export const BUBBLE_PAD = 6;
 export const CLOUD_PUFF = 4;
 
 /**
- * The thought trail (§ 5.1, card#11468): the radii of its circles, from the one just above the creature's head
- * to the one nearest the cloud — growing, so the trail reads as a thought rising — and the gap between two.
+ * The thought trail (§ 5.1, card#11468): the radii of its circles at its NORMAL REACH, from the one just above the
+ * creature's head to the one nearest the cloud — growing, so the trail reads as a thought rising — and the least gap
+ * between two. A trail longer than its normal reach draws more circles, their radii running evenly from the first of
+ * these to the last (`trailCircles()`).
  */
 export const TRAIL_RADII = Object.freeze([2, 3, 4]);
 
 export const TRAIL_GAP = 1;
 
-export const BUBBLE_BAND = 2 * LINE + 2 * BUBBLE_PAD;
+/**
+ * THE TRAIL's NORMAL REACH: from the character's top to the bubble's bottom when the trail is `TRAIL_RADII` with a
+ * `TRAIL_GAP` under each circle and above the last — where the bubble sits when nothing holds it higher (§ 5.1, the
+ * operator's ruling of 2026-10-27 on card#12444, *"anchor the bubble to the character"*).
+ */
+export const TRAIL_REACH = TRAIL_RADII.reduce((h, r) => h + 2 * r + TRAIL_GAP, TRAIL_GAP);
+
+/**
+ * THE TALLEST BUBBLE, in lines and in pixels (§ 5.1): the bubble's text and its second line (the source and the degraded
+ * note), padded. A PARAMETER of the layout — card#12446's three-line bubble raises `BUBBLE_LINES` — which the least box
+ * (`leastBoxHeight()`) and the desk's art placeholder read, so a taller bubble grows the box rather than leaving it.
+ */
+export const BUBBLE_LINES = 2;
+
+export const BUBBLE_BAND = BUBBLE_LINES * LINE + 2 * BUBBLE_PAD;
+
+/** The gap a bubble keeps above the facts plate it would otherwise meet (`placeBubbles()`, `leastBoxHeight()`). */
+export const BUBBLE_GAP = 1;
 
 /** The art column's width — the character, the desk, the monitor, the chip and the plate (§ 2.2: Chosen). */
 export const ART_W = 216;
@@ -189,24 +207,33 @@ const BADGE_PITCH = 108;
 const BADGE_PAD = 3;
 
 /**
- * One intern's sprite rect (§ 8, § 10.4's art contract): twice card#11058's 20 × 32, the operator's ruling of 2026-10-27
- * on card#12444 (option D, *"D"*: *"subagents are 2× today's size"*), its aspect kept so the chibi frame's units are
- * unchanged (`CHIBI_VIEWBOX`, 108 over the rect's width).
+ * One intern's sprite rect (§ 8, § 10.4's art contract): 1.75 times card#11058's 20 × 32, the operator's ruling of
+ * 2026-10-27 on card#12444 (*"Instead of twice today's size, try 1.75x today's size"*, superseding option D's 2×), its
+ * aspect kept so the chibi frame's height in units is unchanged (`CHIBI_VIEWBOX`, 108 units over the rect's width). The
+ * tree states the same rect for its chibi frame (`resources/characters/creatures.js`'s `CHIBI_STOOL`), held equal to this
+ * one by `tools/characters/selftest.mjs` § 7b.
  */
-const STOOL_W = 40;
+export const STOOL_W = 35;
 
-const STOOL_H = 64;
+export const STOOL_H = 56;
 
 /**
- * THE INTERNS' ROWS (the same ruling): `STOOL_CAP` interns in `STOOL_ROWS` rows of `STOOL_CAP / STOOL_ROWS`, the front row
- * on the desk's foot line and each row behind it `STOOL_H + STOOL_ROW_GAP` higher, so no two interns' rects meet. The
- * pitch is DERIVED, never stated: what the box's width leaves from `STOOL_INSET` left of the facts column to the box's
- * edge, over a row's interns (`stoolSlots()`). AT-D3-20 holds the rows at the cap inside the box, and the studio theme's
- * seat rows are held to these by `tools/floor-themes/selftest.mjs`.
+ * THE INTERNS' ROWS (the same rulings): `STOOL_CAP` interns in `STOOL_ROWS` rows of `STOOL_CAP / STOOL_ROWS`, the front row
+ * on the desk's foot line, each row behind it `STOOL_H + STOOL_ROW_GAP` higher and each intern `STOOL_W + STOOL_GAP` right
+ * of the last (`stoolSlots()`). Both gaps are the LEAST the frame contract allows (the operator's *"Reduce the spacing
+ * between subagents to reclaim some space"*, 2026-10-27), and `tools/characters/selftest.mjs` derives both on every run
+ * and reds when either is not that least: `STOOL_GAP` is the fewest whole pixels whose half, each side of an intern's rect,
+ * holds the widest chibi's ink past the rect's sides (§ 8b measures it over every species, at the widest girth and size),
+ * so two chibi frames meet at the pitch and none clips a head; `STOOL_ROW_GAP` is the least at which no two interns' rects
+ * meet — the chibi frame is the rect's own height, its ink inside it top and bottom, so a row may stand on the rect of the
+ * row in front of it. AT-D3-20 holds the rows at the cap inside the box, and the studio theme's seat rows are held to
+ * these by `tools/floor-themes/selftest.mjs`.
  */
 export const STOOL_ROWS = 2;
 
-export const STOOL_ROW_GAP = 4;
+export const STOOL_GAP = 3;
+
+export const STOOL_ROW_GAP = 0;
 
 /** Where the stool rows start, left of the facts column by this much: the side table's own inset (card#12444). */
 const STOOL_INSET = 4;
@@ -377,7 +404,7 @@ function longestRun(points, start, width, measure, role) {
  * THE DESK's RECT TABLE — § 2.2's, derived from the box (`resources/floor/furniture-box.js`'s one
  * declaration): every element's rect relative to the box's top-left — the art from the desk's slab, the
  * facts column stacked up from the side table on the desk's foot line, the hatch and the placeholder from the
- * bubble's band. A larger box keeps every rect inside; AT-D3-20 reds when the box shrinks below the table at
+ * tallest bubble's height (`BUBBLE_BAND`) under the box's top. A larger box keeps every rect inside; AT-D3-20 reds when the box shrinks below the table at
  * the cap. The facts rows here are the stack AT THE CAP; a desk's own stack is `deskLayout()`'s.
  *
  * @param {{width: number, height: number}} box the furniture box
@@ -454,26 +481,58 @@ export function deskRects(box, character) {
 }
 
 /**
- * THE THOUGHT TRAIL (§ 5.1, card#11468 — the operator's "starting with a small bubble and increasing in size
- * until reaching the top card status bubble"): the circles between the creature and its cloud, box-relative,
- * smallest first. They stand on the character's centre line (`characterCentre()`), the first `TRAIL_GAP` above
- * the character's rect so no circle covers the creature, each next one `TRAIL_GAP` above the last, growing by
- * `TRAIL_RADII`. Their sizes are constants: the trail says nothing about the seat (§ 5.1 rule 2).
+ * WHERE THE THOUGHT TRAIL STARTS (§ 5.1): the top of the character's rect — the line the tallest crest reaches — on its
+ * centre line (`characterCentre()`), box-relative.
  *
- * @returns {list<{x: number, y: number, r: number}>} each circle's centre and radius
+ * @returns {{x: number, y: number}}
  */
-export function thoughtTrail(box, character) {
+export function trailFoot(box, character) {
     const head = deskRects(box, character).character;
     const x = head.x + head.w / 2;
-    const out = [];
-    let bottom = head.y - TRAIL_GAP;
 
-    for (const r of TRAIL_RADII) {
-        out.push(Object.freeze({ x, y: bottom - r, r }));
-        bottom -= 2 * r + TRAIL_GAP;
-    }
+    return Object.freeze({ x, y: head.y });
+}
 
-    return Object.freeze(out);
+/**
+ * THE THOUGHT TRAIL (§ 5.1, card#11468 — the operator's "starting with a small bubble and increasing in size
+ * until reaching the top card status bubble"; card#12444's *"If necessary, add another bubble to extend the height"*):
+ * the circles from a character's top `top` up to its bubble's bottom `bottom`, on the line `x`, smallest first. At the
+ * trail's normal reach (`TRAIL_REACH`) they are `TRAIL_RADII`; a longer trail draws as many circles as the gap holds at
+ * `TRAIL_GAP` apart — never a fixed count — their radii running evenly from the first of `TRAIL_RADII` to the last, and
+ * the gap's slack shared evenly under each circle and above the last, so the last circle stands as far under the
+ * cloud as the first stands over the creature. Their sizes say nothing about the seat (§ 5.1 rule 2).
+ *
+ * @param {number} x the trail's line @param {number} top the character's top @param {number} bottom the bubble's bottom,
+ *        at least `TRAIL_REACH` above `top`
+ * @returns {list<{x: number, y: number, r: number}>} each circle's centre and radius
+ */
+export function trailCircles(x, top, bottom) {
+    const span = top - bottom;
+    const [first, last] = [TRAIL_RADII[0], TRAIL_RADII[TRAIL_RADII.length - 1]];
+    const n = Math.max(TRAIL_RADII.length, Math.floor((span - TRAIL_GAP) / (first + last + TRAIL_GAP)));
+    const radii = n === TRAIL_RADII.length ? TRAIL_RADII : Array.from({ length: n }, (_, i) => first + ((last - first) * i) / (n - 1));
+    const gap = (span - 2 * radii.reduce((sum, r) => sum + r, 0)) / (n + 1);
+    let y = top;
+
+    return Object.freeze(radii.map((r) => {
+        y -= gap + r;
+        const circle = Object.freeze({ x, y, r });
+
+        y -= r;
+
+        return circle;
+    }));
+}
+
+/**
+ * The thought trail at its NORMAL REACH, box-relative (`trailCircles()` from `trailFoot()` up `TRAIL_REACH`): the column
+ * the character's overdraw rises to and the sleeper's z's keep out of (`characterOverdraw()`). A bubble held higher
+ * draws a longer trail (`placeBubbles()`), above that column.
+ */
+export function thoughtTrail(box, character) {
+    const foot = trailFoot(box, character);
+
+    return trailCircles(foot.x, foot.y, foot.y - TRAIL_REACH);
 }
 
 /**
@@ -488,8 +547,8 @@ export const FRAME_UNITS_PER_PX = 1.6;
 /**
  * THE CHARACTER's OVERDRAW AND ITS CLEAR RECTS (FLOOR.md § 10.4's frame contract, § 12's *Character frame*;
  * card#12187 for the sleeper, card#12259 for every pose). Every seat document is drawn in the OVERDRAW — the
- * character's rect widened by half its width each side and raised to the thought trail's top, one pixel under the
- * bubble's band — while the character element's own rect, which every overlap rule reads, is unchanged. The sleeper's
+ * character's rect widened by half its width each side and raised to the top of the thought trail at its normal reach,
+ * a pixel under where its bubble sits (`TRAIL_REACH`) — while the character element's own rect, which every overlap rule reads, is unchanged. The sleeper's
  * z's stand above and beside its head, past the rect; a standing or walking body's tilt and lean carry its widest parts
  * past the rect's side, which the painter's viewport would clip (§ 14 item 33(6)). Beside it the CLEAR rects: the
  * floor's furniture the z's keep out of — the monitor's frame, the desk's props, the desk and the thought trail's
@@ -536,8 +595,8 @@ export function internOverdraw(stool, pitch) {
 /**
  * THE INTERNS' SLOTS (ruling D, card#12444) — the `STOOL_CAP` places a desk lays interns at, as an ORDERED list, row-major:
  * the front row left to right, then the row behind it, so a stable slot index (card#12450's per-call slot) is a place
- * on the table. Each slot is the intern's rect, box-relative, with `row`, `col`, `index`, the derived `pitch` (what the
- * box's width leaves from the rows' inset to its edge, over a row's interns) and its `overdraw` (`internOverdraw()`).
+ * on the table. Each slot is the intern's rect, box-relative, with `row`, `col`, `index`, the `pitch` (`STOOL_W +
+ * STOOL_GAP`, the least the frame contract allows) and its `overdraw` (`internOverdraw()`).
  *
  * @returns {list<{x: number, y: number, w: number, h: number, index: number, row: number, col: number, pitch: number,
  *          overdraw: object}>}
@@ -545,7 +604,7 @@ export function internOverdraw(stool, pitch) {
 export function stoolSlots(box, character) {
     const R = deskRects(box, character);
     const { per_row: perRow, row_step: rowStep } = R.stool;
-    const pitch = (box.width - R.stool.x) / perRow;
+    const pitch = STOOL_W + STOOL_GAP;
 
     return Object.freeze(Array.from({ length: STOOL_CAP }, (_, index) => {
         const row = Math.floor(index / perRow);
@@ -558,10 +617,11 @@ export function stoolSlots(box, character) {
 
 /**
  * THE LEAST FURNITURE BOX for a width (ruling D, card#12444: *"the desk area grows taller again to hold the second
- * row"*, by what the layout needs and no more): the smallest whole-pixel height at which both columns clear the bubble's
- * band by a pixel at the cap — the character's overdraw (its trail's top) and the facts plate over the full stack of
- * rows above the interns' back row. `resources/furniture-box.js`'s height is held equal to it for its width by
- * `tools/characters/selftest.mjs` § 7b, so the box is derived, never guessed.
+ * row"*, by what the layout needs and no more): the smallest whole-pixel height at which the tallest bubble
+ * (`BUBBLE_BAND`) stays inside the box wherever `placeBubbles()` may set it at the cap — on its character, `TRAIL_REACH`
+ * above the character's top, and, a bubble wide enough to reach the facts column, `BUBBLE_GAP` above the facts plate
+ * over the full stack of rows above the interns' back row. `resources/furniture-box.js`'s height is held equal to it for
+ * its width by `tools/characters/selftest.mjs` § 7b, so the box is derived, never guessed.
  *
  * @returns {number}
  */
@@ -569,9 +629,8 @@ export function leastBoxHeight(width, character) {
     for (let height = BUBBLE_BAND; height < 4096; height++) {
         const box = { width, height };
         const R = deskRects(box, character);
-        const od = characterOverdraw(box, character).overdraw;
 
-        if (od.y >= BUBBLE_BAND + 1 && R.label.y - FACTS_PLATE_PAD_Y >= BUBBLE_BAND + 1) {
+        if (R.character.y - TRAIL_REACH - BUBBLE_BAND >= 0 && R.label.y - FACTS_PLATE_PAD_Y - BUBBLE_GAP - BUBBLE_BAND >= 0) {
             return height;
         }
     }
