@@ -32,7 +32,7 @@
 import { ANIMATION_SET, LOOP_FPS, loops } from '../wire/animation-set.js';
 import { footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layout.js';
 import { readEmbedded, splitGid, tilesetUrl } from './tileset.js';
-import { BUBBLE_GAP, BUBBLE_PAD, CHARACTER_SCALE, LINE, TRAIL_REACH, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, trailCircles, trailFoot, union } from './desk-layout.js';
+import { BUBBLE_GAP, BUBBLE_PAD, CHARACTER_SCALE, FRAME_UNITS_PER_PX, LINE, TRAIL_REACH, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, trailCircles, trailFoot, union } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
 import { cellCentre, lattice, polylineLength, route } from './route.js';
 import { perchPoint } from './bird.js';
@@ -696,6 +696,7 @@ export function buildScene(frame, input) {
                 box,
                 measure: input.measure,
                 character: input.character,
+                crest: input.crest ?? null,
                 theme: theme.drawn ? theme.name : null,
                 // F16: a mapless room's every desk is the placeholder, in a plain grid.
                 placeholder: room.mapless || artFor(model),
@@ -735,6 +736,7 @@ export function buildScene(frame, input) {
                 box,
                 measure: input.measure,
                 character: input.character,
+                crest: input.crest ?? null,
                 theme: theme.drawn ? theme.name : null,
                 placeholder: artFor(model),
                 failed,
@@ -840,6 +842,27 @@ export function slotOrigin(slot, box) {
 }
 
 /**
+ * WHERE A DESK's CHARACTER's DRAWN HEAD IS (§ 5.1, the seat's ruling of 2026-10-27 on card#12444: the thought trail reaches
+ * each character's drawn head): its topmost ink, in the tree's frame units under the character rect's top — the tree's
+ * `crestTop()` for the seat's key, its delivered species and its pose, which the page hands the scene as `crest` once the
+ * tree has loaded. With no tree, no drawn character, or a species the tree does not hold (§ 9 F14, which the painter draws
+ * as the placeholder), 0: the rect's top, the line the tallest crest reaches.
+ */
+function crestOf(model, installId, elements, ctx) {
+    const character = elements.find((e) => e.kind === 'character');
+
+    if (character === undefined || typeof ctx.crest !== 'function' || typeof character.species !== 'string') {
+        return 0;
+    }
+
+    try {
+        return ctx.crest(installId, model.seat_id, { pose: character.pose, species: character.species });
+    } catch {
+        return 0;
+    }
+}
+
+/**
  * One desk placed at `at`: its box, its elements in scene coordinates, and their union. Exported for
  * the desk leaf guard (`TheNewDeskKeepsEveryLeafTest`), which reads a desk as the painter is handed it.
  */
@@ -868,9 +891,11 @@ export function placeDesk(model, key, installId, slot, at, ctx, extra) {
         // meet it at, the desk's own mid-height, below every facts plate (`deskAnchor()`, card#11468).
         anchor_x: at.x + characterCentre(ctx.box, ctx.character),
         anchor_y: at.y + deskAnchor(ctx.box, ctx.character).y,
-        // § 5.1's thought trail starts here, the character's top on its centre line, in scene coordinates — drawn only
-        // with a bubble, up to wherever the bubble is set (card#11468, card#12444).
-        trail_foot: (({ x, y }) => Object.freeze({ x: at.x + x, y: at.y + y }))(trailFoot(ctx.box, ctx.character)),
+        // § 5.1's thought trail starts here, the character's DRAWN head on its centre line, in scene coordinates — drawn
+        // only with a bubble, up to wherever the bubble is set (card#11468, card#12444).
+        // The bubble is set on the character's FRAME top (`frame_top`, `placeBubbles()`); the trail runs on down to its head.
+        frame_top: at.y + trailFoot(ctx.box, ctx.character).y,
+        trail_foot: (({ x, y }) => Object.freeze({ x: at.x + x, y: at.y + y + crestOf(model, installId, moved, ctx) / FRAME_UNITS_PER_PX }))(trailFoot(ctx.box, ctx.character)),
         placeholder: ctx.placeholder,
         elements: Object.freeze(moved),
         furniture: Object.freeze(union(moved)),
@@ -885,10 +910,11 @@ export function placeDesk(model, key, installId, slot, at, ctx, extra) {
  * § 5.1 rules 4 and 5: each bubble's text cut to the box through the one primitive, its box sized
  * from the MEASURED text, and overlapping bubbles parted by `desk/task-bubble.js`'s own pass over
  * the base rects. THE BASE RECT IS SET ON ITS CHARACTER (the operator's ruling of 2026-10-27 on
- * card#12444, *"anchor the bubble to the character"*): its bottom `TRAIL_REACH` above the character's
- * top, where the trail at its normal reach meets it — or, a bubble wide enough to reach over the
- * facts plate, `BUBBLE_GAP` above the plate where that is higher — and the trail drawn from the
- * character up to wherever the bubble ends, as many circles as that gap holds (`trailCircles()`).
+ * card#12444, *"anchor the bubble to the character"*): its bottom `TRAIL_REACH` above the top of the
+ * character's frame, where the trail at its normal reach meets it — or, a bubble wide enough to reach
+ * over the facts plate, `BUBBLE_GAP` above the plate where that is higher — and the trail drawn from
+ * the character's DRAWN head (`crestOf()`, the seat's ruling of the same day) up to wherever the
+ * bubble ends, as many circles as that gap holds (`trailCircles()`).
  * `leastBoxHeight()` keeps the tallest bubble inside the box either way. Exported, with
  * `placeDesk()`, for the desk leaf guard.
  */
@@ -922,7 +948,7 @@ export function placeBubbles(desks, measure, W, delivered) {
         // On the character, unless the bubble's width reaches over the facts plate: then above the plate too.
         const plate = desk.elements.find((e) => e.kind === 'facts-plate');
         const overPlate = plate !== undefined && centre - w / 2 < plate.x + plate.w && plate.x < centre + w / 2;
-        const bottom = Math.min(desk.trail_foot.y - TRAIL_REACH, overPlate ? plate.y - BUBBLE_GAP : Infinity);
+        const bottom = Math.min(desk.frame_top - TRAIL_REACH, overPlate ? plate.y - BUBBLE_GAP : Infinity);
 
         wanted.push({
             install_id: desk.install_id,
@@ -945,6 +971,7 @@ export function placeBubbles(desks, measure, W, delivered) {
         const foot = desk.trail_foot;
 
         delete desk.trail_foot;
+        delete desk.frame_top;
 
         const want = wanted.find((b) => b.install_id === desk.install_id && b.seat_id === desk.seat_id);
 

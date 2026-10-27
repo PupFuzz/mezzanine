@@ -214,7 +214,7 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
     public function test_red_the_stool_rects(): void
     {
         foreach ([
-            'the pitch narrower than the sprite' => ['    const pitch = STOOL_W + STOOL_GAP;', '    const pitch = 16;', 'meets the desk\'s stool'],
+            'the pitch narrower than the sprite' => ['    const pitch = STOOL_PITCH;', '    const pitch = 16;', 'meets the desk\'s stool'],
             'the intern keyed by its place' => ['key: internKey(desk.seat_id, stool.call_id),', 'key: internKey(desk.seat_id, `intern${i}`),', 'is keyed'],
             'the sprite drawn at the glyph\'s size' => ['export const STOOL_W = 35;', 'export const STOOL_W = 8;', 'not the art contract\'s'],
         ] as $what => [$from, $to, $says]) {
@@ -576,7 +576,10 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
         $this->artContractStool();
 
         $defects = [];
+        // Read in SLOT order (each element's `index`): the layout emits the interns in paint order — the back row first —
+        // which the painter probe holds (card#12444).
         $stools = $this->elementsOf($desk, 'stool');
+        usort($stools, static fn (array $a, array $b): int => $a['index'] <=> $b['index']);
 
         foreach ($stools as $i => $e) {
             $call = $seat['subagents'][$i]['call_id'] ?? null;

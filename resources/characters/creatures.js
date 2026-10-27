@@ -940,17 +940,17 @@ function rimOf(markup) {
  */
 export const SEAT_RECT = Object.freeze({ x: 0, y: 0, w: 108, h: 192 });
 /**
- * THE INTERN's RECT AND PITCH ON THE FLOOR, in floor pixels — `floor/desk-layout.js`'s `STOOL_W` × `STOOL_H` and its
- * `STOOL_GAP` (card#12444, the operator's rulings of 2026-10-27: 1.75 times card#11058's 20 × 32, the least gap the frame
- * contract allows). The tree cannot import the floor, so the figures are stated here and held equal to the floor's by
- * `tools/characters/selftest.mjs` § 7b; the chibi frame below is derived from them.
+ * THE INTERN's RECT AND FRAME ON THE FLOOR, in floor pixels — `floor/desk-layout.js`'s `STOOL_W` × `STOOL_H` and its
+ * `STOOL_FRAME` (card#12444, the operator's rulings of 2026-10-27: 1.75 times card#11058's 20 × 32, and a frame the least
+ * that holds every chibi's ink). The tree cannot import the floor, so the figures are stated here and held equal to the
+ * floor's by `tools/characters/selftest.mjs` § 7b; the chibi frame below is derived from them.
  */
-export const CHIBI_STOOL = Object.freeze({ w: 35, h: 56, gap: 3 });
+export const CHIBI_STOOL = Object.freeze({ w: 35, h: 56, frame: 38 });
 /**
  * THE INTERN's CHIBI FRAME: the intern rect in units — 108 units over its width, so its height is `108 × h / w` units, the
- * last that many above the foot (the rect's aspect) — widened to the PITCH the floor lays interns at, `CHIBI_STOOL.gap / 2`
- * px each side, so two frames meet at the pitch and never overlap. That half-gap holds the widest chibi's ink past the
- * rect's sides (`frameDocument()`; `tools/characters/selftest.mjs` § 8b measures the margin left, and derives the gap).
+ * last that many above the foot (the rect's aspect) — widened to `CHIBI_STOOL.frame` px, centred, which holds the widest
+ * chibi's ink past the rect's sides (`frameDocument()`; `tools/characters/selftest.mjs` § 8b measures the margin left, and
+ * derives the frame). A neighbour's frame may overlap it: the floor lays interns at the ink's pitch, not the frame's.
  * The floor draws it into the intern's overdraw rect (`internOverdraw()`); the two are held equal by
  * `tools/characters/selftest.mjs` § 7b.
  */
@@ -958,8 +958,8 @@ const CHIBI_UPP = 108 / CHIBI_STOOL.w;
 // to a billionth of a unit, so the document's viewBox reads as the figure and not its float's last bits
 const nano = (v) => Math.round(v * 1e9) / 1e9;
 export const CHIBI_VIEWBOX = Object.freeze({
-  x: nano(-CHIBI_UPP * CHIBI_STOOL.gap / 2), y: nano(192 - CHIBI_UPP * CHIBI_STOOL.h),
-  w: nano(CHIBI_UPP * (CHIBI_STOOL.w + CHIBI_STOOL.gap)), h: nano(CHIBI_UPP * CHIBI_STOOL.h),
+  x: nano(-CHIBI_UPP * (CHIBI_STOOL.frame - CHIBI_STOOL.w) / 2), y: nano(192 - CHIBI_UPP * CHIBI_STOOL.h),
+  w: nano(CHIBI_UPP * CHIBI_STOOL.frame), h: nano(CHIBI_UPP * CHIBI_STOOL.h),
 });
 const FOOT = 188;
 
@@ -1173,6 +1173,68 @@ export const CREST_TOP = Object.freeze({
   // every entry at or above that ink on every run, beside the tool's raster scan
   penguin: 56, snail: 64, sheep: 68, deer: 37, corn: 45, broccoli: 15, pepper: 42, cabbage: 47,
 });
+
+/**
+ * Which row of `STAND_TOP` a key reads: its species, and variant where it has one, the hat it wears (`'none'` for none),
+ * and its size.
+ * @param {string} key @param {string} [force] the delivered species @returns {{name: string, hat: string, size: number}}
+ */
+export function standEntry(key, force) {
+  const { r, sp, A } = build(key, force);
+  return { name: r.variant === null ? r.species : `${r.species}/${r.variant}`, hat: worn(r, sp, A).hat, size: r.size };
+}
+
+/**
+ * THE STANDING CREST TABLE (the seat's ruling of 2026-10-27 on card#12444: the floor's thought trail reaches each
+ * character's DRAWN head): the topmost ink of a standing or walking key, in frame units from the character rect's top, at
+ * size 1, per species (and variant where it has them) and per hat it wears (`standEntry()`) — every expression and walk
+ * phase, its marker aside, scaled back to size 1 about the foot line, the body's scale's own origin. The recipe keeps no
+ * bounding box of an ear, a leaf, a cap or a hat, so the table states it; `tools/characters/selftest.mjs` § 8b holds every
+ * key of its population's ink at or under its row on every run, and each row within a unit of the highest such ink.
+ */
+export const STAND_TOP = Object.freeze({
+  bear: Object.freeze({ beanie: 46, beret: 40, flower: 49, ladybug: 49, none: 49, straw: 47 }),
+  broccoli: Object.freeze({ beanie: 31, beret: 26, flower: 33, ladybug: 33, none: 33 }),
+  cabbage: Object.freeze({ beret: 56, flower: 61, ladybug: 61, none: 61 }),
+  carrot: Object.freeze({ flower: 3, ladybug: 3, none: 3 }),
+  corn: Object.freeze({ flower: 30, ladybug: 30, none: 30, straw: 30 }),
+  deer: Object.freeze({ beret: 26, flower: 26, ladybug: 26, none: 26, straw: 26 }),
+  eggplant: Object.freeze({ flower: 31, ladybug: 31, none: 31 }),
+  fox: Object.freeze({ beret: 21, flower: 21, ladybug: 21, none: 21 }),
+  frog: Object.freeze({ flower: 57, ladybug: 57, none: 57 }),
+  hedgehog: Object.freeze({ beret: 54, flower: 59, ladybug: 59, none: 59 }),
+  mole: Object.freeze({ beanie: 52, beret: 47, flower: 57, ladybug: 59, none: 59, straw: 53 }),
+  'mushroom/bell': Object.freeze({ flower: 15, ladybug: 17, none: 17 }),
+  'mushroom/dome': Object.freeze({ flower: 25, ladybug: 27, none: 27 }),
+  'mushroom/wide': Object.freeze({ flower: 39, ladybug: 41, none: 41 }),
+  otter: Object.freeze({ beanie: 42, beret: 37, flower: 46, ladybug: 49, none: 49, straw: 44 }),
+  owl: Object.freeze({ beanie: 37, beret: 37, flower: 37, ladybug: 37, none: 37, straw: 37 }),
+  peapod: Object.freeze({ flower: 18, ladybug: 18, none: 18 }),
+  penguin: Object.freeze({ beanie: 39, beret: 35, flower: 39, ladybug: 39, none: 39, straw: 39 }),
+  pepper: Object.freeze({ flower: 42, ladybug: 42, none: 42, straw: 42 }),
+  potato: Object.freeze({ beanie: 49, beret: 49, flower: 49, ladybug: 49, none: 49, straw: 49 }),
+  pumpkin: Object.freeze({ flower: 43, ladybug: 43, none: 43 }),
+  'rabbit/lop': Object.freeze({ beanie: 54, beret: 48, flower: 59, ladybug: 61, none: 61, straw: 55 }),
+  'rabbit/upright': Object.freeze({ flower: 9, ladybug: 9, none: 9 }),
+  radish: Object.freeze({ flower: 18, ladybug: 18, none: 18 }),
+  sheep: Object.freeze({ beanie: 62, beret: 58, flower: 65, ladybug: 65, none: 65, straw: 64 }),
+  snail: Object.freeze({ beret: 59, flower: 59, ladybug: 59, none: 59, straw: 59 }),
+  turnip: Object.freeze({ flower: 25, ladybug: 25, none: 25 }),
+});
+
+/**
+ * WHERE A KEY's DRAWN HEAD IS, in frame units from the character rect's top (card#12444): asleep, the sleeper's crest
+ * (`CREST_TOP`, the head rolled onto its arms); in every other pose its standing crest (`STAND_TOP`) at its size, scaled
+ * about the foot line. A species, variant or hat the tables do not hold is refused, never guessed.
+ * @param {string} key @param {{pose?: string, species?: string}} [at] the pose drawn and the delivered species
+ * @returns {number}
+ */
+export function crestOfKey(key, { pose, species } = {}) {
+  const e = standEntry(key, species);
+  const t = pose === 'asleep' ? CREST_TOP[e.name] : STAND_TOP[e.name]?.[e.hat];
+  if (t === undefined) throw new RangeError(`no crest for ${e.name} wearing ${e.hat}${pose === 'asleep' ? ' asleep' : ''}`);
+  return pose === 'asleep' ? t : FOOT - (FOOT - t) * e.size;
+}
 
 /** Closed eyes: a soft downward arc per eye, with a lash at its outer end. */
 function sleepingEyesSvg(F) {

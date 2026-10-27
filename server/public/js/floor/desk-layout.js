@@ -219,19 +219,26 @@ export const STOOL_H = 56;
 
 /**
  * THE INTERNS' ROWS (the same rulings): `STOOL_CAP` interns in `STOOL_ROWS` rows of `STOOL_CAP / STOOL_ROWS`, the front row
- * on the desk's foot line, each row behind it `STOOL_H + STOOL_ROW_GAP` higher and each intern `STOOL_W + STOOL_GAP` right
- * of the last (`stoolSlots()`). Both gaps are the LEAST the frame contract allows (the operator's *"Reduce the spacing
- * between subagents to reclaim some space"*, 2026-10-27), and `tools/characters/selftest.mjs` derives both on every run
- * and reds when either is not that least: `STOOL_GAP` is the fewest whole pixels whose half, each side of an intern's rect,
- * holds the widest chibi's ink past the rect's sides (§ 8b measures it over every species, at the widest girth and size),
- * so two chibi frames meet at the pitch and none clips a head; `STOOL_ROW_GAP` is the least at which no two interns' rects
- * meet — the chibi frame is the rect's own height, its ink inside it top and bottom, so a row may stand on the rect of the
- * row in front of it. AT-D3-20 holds the rows at the cap inside the box, and the studio theme's seat rows are held to
- * these by `tools/floor-themes/selftest.mjs`.
+ * on the desk's foot line, each row behind it `STOOL_H + STOOL_ROW_GAP` higher and each intern `STOOL_PITCH` right of the
+ * last (`stoolSlots()`). The spacing is the LEAST the INK allows (the operator's *"Spacing between subagents can still be
+ * reduced further"*, 2026-10-27): two neighbours' FRAMES may overlap, and no two interns' INK may touch.
+ * `tools/characters/selftest.mjs` § 8b derives each on every run, from the chibi ink it measures over every species at the
+ * widest girth and size, and reds when one is not that least — so a wider chibi (card#12448's laptop) re-derives them:
+ * - `STOOL_PITCH`, the fewest whole pixels at which the rightmost ink any intern draws stays clear of the leftmost ink any
+ *   neighbour draws one pitch over;
+ * - `STOOL_FRAME`, the intern's FRAME across (`internOverdraw()`): the fewest whole pixels, centred on the rect, that hold
+ *   every chibi's ink, so no frame clips a head;
+ * - `STOOL_ROW_GAP`, the least at which no two interns' rects meet — the chibi frame is the rect's own height, its ink
+ *   inside it top and bottom, so a row may stand on the rect of the row in front of it.
+ * Where frames overlap, the PAINT ORDER keeps every drawing whole: the back row before the front, each row left to right
+ * (`deskLayout()` emits the interns so). AT-D3-20 holds the rows at the cap inside the box, and the studio theme's seat
+ * rows are held to these by `tools/floor-themes/selftest.mjs`.
  */
 export const STOOL_ROWS = 2;
 
-export const STOOL_GAP = 3;
+export const STOOL_PITCH = 38;
+
+export const STOOL_FRAME = 38;
 
 export const STOOL_ROW_GAP = 0;
 
@@ -481,8 +488,9 @@ export function deskRects(box, character) {
 }
 
 /**
- * WHERE THE THOUGHT TRAIL STARTS (§ 5.1): the top of the character's rect — the line the tallest crest reaches — on its
- * centre line (`characterCentre()`), box-relative.
+ * THE TOP OF THE CHARACTER's FRAME on its centre line (`characterCentre()`), box-relative (§ 5.1): the character rect's
+ * top, the line the tallest crest reaches — where the bubble is set, and where the thought trail starts when the scene
+ * has no drawn head to start it at (`scene.js`'s `crestOf()` lowers it to the head's own crest).
  *
  * @returns {{x: number, y: number}}
  */
@@ -496,14 +504,14 @@ export function trailFoot(box, character) {
 /**
  * THE THOUGHT TRAIL (§ 5.1, card#11468 — the operator's "starting with a small bubble and increasing in size
  * until reaching the top card status bubble"; card#12444's *"If necessary, add another bubble to extend the height"*):
- * the circles from a character's top `top` up to its bubble's bottom `bottom`, on the line `x`, smallest first. At the
+ * the circles from a character's head `top` up to its bubble's bottom `bottom`, on the line `x`, smallest first. At the
  * trail's normal reach (`TRAIL_REACH`) they are `TRAIL_RADII`; a longer trail draws as many circles as the gap holds at
  * `TRAIL_GAP` apart — never a fixed count — their radii running evenly from the first of `TRAIL_RADII` to the last, and
  * the gap's slack shared evenly under each circle and above the last, so the last circle stands as far under the
  * cloud as the first stands over the creature. Their sizes say nothing about the seat (§ 5.1 rule 2).
  *
- * @param {number} x the trail's line @param {number} top the character's top @param {number} bottom the bubble's bottom,
- *        at least `TRAIL_REACH` above `top`
+ * @param {number} x the trail's line @param {number} top the character's drawn head, or its frame's top
+ * @param {number} bottom the bubble's bottom, at least `TRAIL_REACH` above `top`
  * @returns {list<{x: number, y: number, r: number}>} each circle's centre and radius
  */
 export function trailCircles(x, top, bottom) {
@@ -577,17 +585,17 @@ export function characterOverdraw(box, character) {
 
 /**
  * THE INTERN's OVERDRAW (FLOOR.md § 8, § 10.4's frame contract item 3; card#12259): the intern's chibi frame is drawn
- * in its stool's rect widened to the row's PITCH — `(pitch − STOOL_W) / 2` px each side (`stoolSlots()`), the whole gap between
- * two interns, so two frames meet at the pitch and never overlap — while the stool element's own rect, which the
- * dashed edge of an untitled intern and every overlap rule read, is unchanged. The tree's `CHIBI_VIEWBOX` is this
- * rect in the chibi frame's units (the rect's 108 units over its `STOOL_W` px), held equal to it by
- * `tools/characters/selftest.mjs` § 7b.
+ * in its stool's rect widened to `STOOL_FRAME`, centred — `(STOOL_FRAME − STOOL_W) / 2` px each side, what holds every
+ * chibi's ink — and a neighbour's frame may overlap it (the pitch is the ink's, `STOOL_PITCH`), while the stool element's
+ * own rect, which the dashed edge of an untitled intern and every overlap rule read, is unchanged. The tree's
+ * `CHIBI_VIEWBOX` is this rect in the chibi frame's units (the rect's 108 units over its `STOOL_W` px), held equal to it
+ * by `tools/characters/selftest.mjs` § 7b.
  *
  * @param {{x: number, y: number, w: number, h: number}} stool the intern's rect, box-relative
  * @returns {{x: number, y: number, w: number, h: number}} the overdraw, box-relative in px
  */
-export function internOverdraw(stool, pitch) {
-    const margin = (pitch - stool.w) / 2;
+export function internOverdraw(stool) {
+    const margin = (STOOL_FRAME - stool.w) / 2;
 
     return Object.freeze({ x: stool.x - margin, y: stool.y, w: stool.w + 2 * margin, h: stool.h });
 }
@@ -595,8 +603,8 @@ export function internOverdraw(stool, pitch) {
 /**
  * THE INTERNS' SLOTS (ruling D, card#12444) — the `STOOL_CAP` places a desk lays interns at, as an ORDERED list, row-major:
  * the front row left to right, then the row behind it, so a stable slot index (card#12450's per-call slot) is a place
- * on the table. Each slot is the intern's rect, box-relative, with `row`, `col`, `index`, the `pitch` (`STOOL_W +
- * STOOL_GAP`, the least the frame contract allows) and its `overdraw` (`internOverdraw()`).
+ * on the table. Each slot is the intern's rect, box-relative, with `row`, `col`, `index`, the `pitch` (`STOOL_PITCH`, the
+ * least the ink allows) and its `overdraw` (`internOverdraw()`).
  *
  * @returns {list<{x: number, y: number, w: number, h: number, index: number, row: number, col: number, pitch: number,
  *          overdraw: object}>}
@@ -604,14 +612,14 @@ export function internOverdraw(stool, pitch) {
 export function stoolSlots(box, character) {
     const R = deskRects(box, character);
     const { per_row: perRow, row_step: rowStep } = R.stool;
-    const pitch = STOOL_W + STOOL_GAP;
+    const pitch = STOOL_PITCH;
 
     return Object.freeze(Array.from({ length: STOOL_CAP }, (_, index) => {
         const row = Math.floor(index / perRow);
         const col = index % perRow;
         const at = { x: R.stool.x + col * pitch, y: R.stool.y - row * rowStep, w: R.stool.w, h: R.stool.h };
 
-        return Object.freeze({ ...at, index, row, col, pitch, overdraw: internOverdraw(at, pitch) });
+        return Object.freeze({ ...at, index, row, col, pitch, overdraw: internOverdraw(at) });
     }));
 }
 
@@ -1009,8 +1017,9 @@ export function deskLayout(desk, ctx) {
         });
     }
 
-    // § 8: one sprite per intern, in front of the side table (emitted in the art pass above).
-    shown.forEach((stool, i) => {
+    // § 8: one sprite per intern, in front of the side table (emitted in the art pass above), in PAINT ORDER — the back row
+    // before the front, each row left to right — so where two interns' frames overlap each is drawn whole (`STOOL_PITCH`).
+    shown.map((stool, i) => [stool, i]).sort(([, a], [, b]) => slots[b].row - slots[a].row || a - b).forEach(([stool, i]) => {
         const asset = internAsset(desk, stool.call_id);
 
         // Q3: the sprite is keyed by the intern's call, never by its place in the row; § 9 F14: an

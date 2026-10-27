@@ -166,8 +166,8 @@ class TheDeskIsReLaidTest extends TestCase
     {
         $dir = $this->mutatedModules(['../floor/desk-layout.js', '    let y = top;', '    let y = top + 8 + TRAIL_GAP;']);
 
-        $this->assertNotSame([], array_filter($this->bubbleDefects($this->painterRun(dirname($dir))), fn (string $d): bool => str_contains($d, "meets the character's rect")),
-            'RED (the trail started 8 px inside the character\'s rect) did not fail the bubble leg');
+        $this->assertNotSame([], array_filter($this->bubbleDefects($this->painterRun(dirname($dir))), fn (string $d): bool => str_contains($d, "meets the character's drawn head")),
+            'RED (the trail started 8 px inside the character\'s head) did not fail the bubble leg');
     }
 
     /**
@@ -180,12 +180,27 @@ class TheDeskIsReLaidTest extends TestCase
         foreach ([
             "the bubble back in the box's top band" => ['../floor/scene.js', '            anchor: { x: centre, y: bottom },', '            anchor: { x: centre, y: desk.box.y + 2 * LINE + 2 * BUBBLE_PAD },', 'not set on its character'],
             'the trail at its normal reach whatever the bubble' => ['../floor/scene.js', '            trail: trailCircles(foot.x, foot.y, rect.y + rect.h),', '            trail: trailCircles(foot.x, foot.y, foot.y - TRAIL_REACH),', 'does not reach the bubble'],
+            // the seat's ruling of the same day: the trail starts at the character's drawn head, not its frame's top
+            'the trail started at the frame\'s top' => ['../floor/scene.js', '        return ctx.crest(installId, model.seat_id, { pose: character.pose, species: character.species });', '        return 0;', 'does not reach the head'],
         ] as $what => [$file, $from, $to, $says]) {
             $dir = $this->mutatedModules([$file, $from, $to]);
 
             $this->assertNotSame([], array_filter($this->bubbleDefects($this->painterRun(dirname($dir))), fn (string $d): bool => str_contains($d, $says)),
                 "RED ({$what}) did not fail the bubble leg with «{$says}»");
         }
+    }
+
+    /**
+     * card#12444 (the operator's *"Spacing between subagents can still be reduced further"*): neighbouring interns' frames
+     * may overlap, so the layout emits them back row first, each row left to right; emitted in slot order — the front row
+     * first — the painter probe names it.
+     */
+    public function test_red_the_interns_painted_front_row_first(): void
+    {
+        $dir = $this->mutatedModules(['../floor/desk-layout.js', '.sort(([, a], [, b]) => slots[b].row - slots[a].row || a - b)', '.sort(([, a], [, b]) => a - b)']);
+
+        $this->assertNotSame([], array_filter($this->painterRun(dirname($dir))['defects'], fn (string $d): bool => str_contains($d, 'not painted back row first')),
+            'RED (the interns emitted in slot order, the front row first) did not fail the paint-order check');
     }
 
     public function test_red_the_cloud_escaping_its_box(): void
@@ -313,7 +328,9 @@ class TheDeskIsReLaidTest extends TestCase
             // The side table: § 12's least seat count, one more per intern drawn past it, and its foot line —
             // its bottom edge — the front row's own, each row behind it a whole row's step higher (card#12444's ruling D).
             $table0 = $this->elementsOf($desk, 'side-table')[0] ?? null;
+            // in slot order (each element's `index`), the front row first; the layout emits them in paint order
             $stools = $this->elementsOf($desk, 'stool');
+            usort($stools, static fn (array $a, array $b): int => $a['index'] <=> $b['index']);
 
             if ($table0 !== null) {
                 if ($table0['seats'] !== max(4, count($stools))) {

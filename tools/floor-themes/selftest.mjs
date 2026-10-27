@@ -700,8 +700,8 @@ const PLANTS = [
         (t) => edit(THEME(t), 'seat_pitch: 38,', 'seat_pitch: 24,')],
     ['the interns move and the seats do not: the layout\'s rows a step further apart', 'seats', 'TABLE.row_dy is 56 and the layout\'s is 60',
         (t) => edit(join(t.js, 'floor', 'desk-layout.js'), 'export const STOOL_ROW_GAP = 0;', 'export const STOOL_ROW_GAP = 4;')],
-    ['the interns spread and the seats do not: the layout\'s gap a pixel wider', 'seats', 'TABLE.seat_pitch is 38 and the layout\'s is 39',
-        (t) => edit(join(t.js, 'floor', 'desk-layout.js'), 'export const STOOL_GAP = 3;', 'export const STOOL_GAP = 4;')],
+    ['the interns spread and the seats do not: the layout\'s pitch a pixel wider', 'seats', 'TABLE.seat_pitch is 38 and the layout\'s is 39',
+        (t) => edit(join(t.js, 'floor', 'desk-layout.js'), 'export const STOOL_PITCH = 38;', 'export const STOOL_PITCH = 39;')],
     ['a draw that is not the key\'s: Math.random() for one seeded choice', 'totality', 'is not one document per input',
         (t) => edit(THEME(t), "const c = pick(deskKey(installId, seatId), 'theme:chair', PALETTE.chair.colours);", 'const c = PALETTE.chair.colours[Math.floor(Math.random() * PALETTE.chair.colours.length)];')],
 ];

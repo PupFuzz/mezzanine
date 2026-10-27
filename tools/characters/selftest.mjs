@@ -225,7 +225,7 @@ check(C.walkFrames(anySeat.install_id, anySeat.seat_id)[0] === C.standingFrame(a
 // The painter's half, and the sleeper's own legs over every species, are server/tests/Feature/Floor/sleeper-probe.mjs.
 section("7b. a desk's pose frames: { frames, loopFrom } — the sleeper's still and loop for asleep, the marker's for a marked pose, the walk in its expression for every other; every sleeper document is a document");
 // The floor's own desk edge and clear rects, from the one function that hands them to the tree (§ 10.4 item 4).
-const { characterOverdraw, deskRects, stoolSlots, leastBoxHeight, STOOL_ROWS, STOOL_W, STOOL_H, STOOL_GAP, STOOL_ROW_GAP, FRAME_UNITS_PER_PX, CHARACTER_SCALE } = await import(pathToFileURL(join(REPO, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
+const { characterOverdraw, deskRects, stoolSlots, leastBoxHeight, STOOL_ROWS, STOOL_W, STOOL_H, STOOL_PITCH, STOOL_FRAME, STOOL_ROW_GAP, FRAME_UNITS_PER_PX, CHARACTER_SCALE } = await import(pathToFileURL(join(REPO, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
 const { FURNITURE_BOX } = await import(pathToFileURL(join(REPO, 'resources', 'floor', 'furniture-box.js')).href);
 const { overdraw, clear: CLEAR } = characterOverdraw(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H });
 // The floor states the tree's frame units per pixel (it cannot import the tree); held equal to the tree's own over the
@@ -246,9 +246,9 @@ const seatVb = `viewBox="${C.SEAT_VIEWBOX.x} ${C.SEAT_VIEWBOX.y} ${C.SEAT_VIEWBO
 check([C.standingFrame(roster[0].install_id, roster[0].seat_id), ...C.walkFrames(roster[0].install_id, roster[0].seat_id)].every((d) => d.includes(seatVb)),
   `the standing frame and every walk frame are drawn in SEAT_VIEWBOX (${seatVb}), the sleeper's widened, raised frame (card#12259)`);
 // The tree states the intern's rect and gap (it cannot import the floor); held equal to the floor's own.
-check(C.CHIBI_STOOL.w === STOOL_W && C.CHIBI_STOOL.h === STOOL_H && C.CHIBI_STOOL.gap === STOOL_GAP,
-  `the tree's CHIBI_STOOL (${JSON.stringify(C.CHIBI_STOOL)}) is desk-layout.js's STOOL_W x STOOL_H and STOOL_GAP (${STOOL_W} x ${STOOL_H}, ${STOOL_GAP})`);
-// The interns: every slot's chibi frame is its rect widened to the row's pitch, in the chibi frame's units (the rect's
+check(C.CHIBI_STOOL.w === STOOL_W && C.CHIBI_STOOL.h === STOOL_H && C.CHIBI_STOOL.frame === STOOL_FRAME,
+  `the tree's CHIBI_STOOL (${JSON.stringify(C.CHIBI_STOOL)}) is desk-layout.js's STOOL_W x STOOL_H and STOOL_FRAME (${STOOL_W} x ${STOOL_H}, ${STOOL_FRAME})`);
+// The interns: every slot's chibi frame is its rect widened to STOOL_FRAME, centred, in the chibi frame's units (the rect's
 // 108 units over its px), from the rect's top-left at the frame's top (CHIBI_VIEWBOX.y) — the same for every slot.
 const slots = stoolSlots(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H });
 const slotBad = slots.filter((slot) => {
@@ -463,6 +463,7 @@ const FRAME_KINDS = ['standing', 'walking', 'chibi', 'asleep', 'posed'];
 const label = (sp, key) => { const v = C.recipe(key, sp).variant; return v ? `${sp}/${v}` : sp; };
 const worst = {};   // species → kind → { over: past the frame, cut: past the rect, key }
 const chibiAcross = { units: -Infinity, who: '' };   // the chibi's ink past its rect's sides, the widest over the population
+const chibiInk = { left: Infinity, right: -Infinity, leftWho: '', rightWho: '' };   // its leftmost and rightmost ink, rect-relative
 let boundsDocs = 0;
 for (const sp of KEYS) {
   const w = worst[sp] = {};
@@ -477,6 +478,8 @@ for (const sp of KEYS) {
     if (kind === 'chibi' && b !== null) {
       const across = Math.max(rect.x - b.x0, b.x1 - (rect.x + rect.w));
       if (across > chibiAcross.units) Object.assign(chibiAcross, { units: across, who: `${label(sp, key)} ${key}` });
+      if (b.x0 - rect.x < chibiInk.left) Object.assign(chibiInk, { left: b.x0 - rect.x, leftWho: `${label(sp, key)} ${key}` });
+      if (b.x1 - rect.x > chibiInk.right) Object.assign(chibiInk, { right: b.x1 - rect.x, rightWho: `${label(sp, key)} ${key}` });
     }
   }
 }
@@ -488,14 +491,22 @@ for (const kind of FRAME_KINDS) {
   const out = KEYS.filter((sp) => worst[sp][kind].over > 0).map((sp) => `${label(sp, worst[sp][kind].key)} ${worst[sp][kind].over.toFixed(1)} (${worst[sp][kind].key})`);
   check(out.length === 0, `${kind}: no species' ink leaves its frame on any side${out.length ? ` — past it: ${out.join(', ')}` : ''}`);
 }
-// THE INTERNS' GAP IS DERIVED HERE (card#12444, the operator's 2026-10-27 *"Reduce the spacing between subagents"*): the
-// fewest whole floor pixels whose half, each side of the intern's rect, holds the widest chibi ink past the rect's sides
-// measured above — in floor pixels, the chibi frame's 108 units over the rect's STOOL_W. Any fewer and a head is clipped
-// at the pitch; any more is spacing the operator asked to reclaim.
-const leastGap = Math.ceil(2 * Math.max(0, chibiAcross.units) * STOOL_W / C.SEAT_RECT.w);
-measure(`the chibi's ink past its rect's sides, the widest: ${chibiAcross.units.toFixed(2)} units (${chibiAcross.who}), ${(chibiAcross.units * STOOL_W / C.SEAT_RECT.w).toFixed(2)} px — the least whole-pixel gap between two interns ${leastGap}`);
-check(Number.isFinite(chibiAcross.units) && STOOL_GAP === leastGap,
-  `desk-layout.js's STOOL_GAP (${STOOL_GAP}) is the least whole-pixel gap whose half each side holds the widest chibi past its rect (${leastGap})`);
+// THE INTERNS' FRAME AND PITCH ARE DERIVED HERE (card#12444, the operator's 2026-10-27 *"Spacing between subagents can
+// still be reduced further"*), from the chibi ink measured above over the whole population, in floor pixels (the chibi
+// frame's 108 units over the rect's STOOL_W), so a wider chibi (card#12448's laptop and sway) re-derives both:
+// - the FRAME, the fewest whole pixels, centred on the rect, whose margin each side holds the widest ink past the rect's
+//   sides — any fewer and a frame clips a head;
+// - the PITCH, the fewest whole pixels at which the rightmost ink any intern draws stays clear of the leftmost ink any
+//   neighbour draws one pitch over — frames may overlap, ink may not touch; any more is spacing the operator asked to reclaim.
+const pxOf = (units) => units * STOOL_W / C.SEAT_RECT.w;
+const leastFrame = Math.ceil(STOOL_W + 2 * pxOf(Math.max(0, chibiAcross.units)) - 1e-9);
+const leastPitch = Math.floor(pxOf(chibiInk.right - chibiInk.left) + 1e-9) + 1;
+measure(`the chibi's ink past its rect's sides, the widest: ${chibiAcross.units.toFixed(2)} units (${chibiAcross.who}), ${pxOf(chibiAcross.units).toFixed(2)} px — the least whole-pixel frame ${leastFrame}`);
+measure(`the chibi's ink across, rect-relative: leftmost ${chibiInk.left.toFixed(2)} units (${chibiInk.leftWho}), rightmost ${chibiInk.right.toFixed(2)} (${chibiInk.rightWho}) — ${pxOf(chibiInk.right - chibiInk.left).toFixed(2)} px from one to the other, so the least whole-pixel pitch at which no two interns' ink touches is ${leastPitch}`);
+check(Number.isFinite(chibiAcross.units) && STOOL_FRAME === leastFrame,
+  `desk-layout.js's STOOL_FRAME (${STOOL_FRAME}) is the least whole-pixel frame whose margin each side holds the widest chibi past its rect (${leastFrame})`);
+check(Number.isFinite(chibiInk.right) && STOOL_PITCH === leastPitch,
+  `desk-layout.js's STOOL_PITCH (${STOOL_PITCH}) is the least whole-pixel pitch at which no two interns' ink touches (${leastPitch})`);
 // THE CREST TABLE, held by the same reader (§ 10.4 item 4; card#12187's CREST_TOP): for every species and variant, the
 // sleeper's topmost ink WITHOUT its z's — the document cut before its `zs` group — lies at or under the crest top the
 // tree declares, within 1 unit (the table is stated in whole units, and 1 unit stays inside Z_GAP's 2, the gap the z's
@@ -515,6 +526,26 @@ for (const sp of KEYS) for (const v of (variantsOf(sp).length ? variantsOf(sp) :
   if (!(C.CREST_TOP[name] <= top + 1)) crestFault.push(`${name}: CREST_TOP ${C.CREST_TOP[name]} but ${who} draws up to ${top.toFixed(1)}`);
 }
 check(crestFault.length === 0, `CREST_TOP is at or above every species' and variant's topmost sleeper ink (within 1 unit) over ${BOUNDS_KEYS} keys each${crestFault.length ? ` — ${crestFault.slice(0, 3).join('; ')}` : ''}`);
+// THE STANDING CREST TABLE (card#12444, the seat's ruling of 2026-10-27: the floor's thought trail ends at the drawn head),
+// held by the same reader over the same keys: for every key, every expression and walk phase, its marker cut away, the
+// topmost ink lies AT OR UNDER the crest the tree declares for it (`crestOfKey()`, `STAND_TOP` at the key's size) — so no
+// trail circle the floor stands over the crest meets the head — and each row a key reads lies within two units of the
+// highest such ink (a measurement, not a margin: the table is the floor of a larger population than this one, and its
+// whole units round it up by under one). Rows no key of the population reads are printed, unexamined.
+const standFault = [], standSlack = {};
+for (const sp of KEYS) for (const key of keysOf(sp)) {
+  const e = C.standEntry(key, sp), row = `${e.name}#${e.hat}`, want = C.crestOfKey(key, { species: sp });
+  for (const expression of Object.keys(C.EXPRESSIONS)) for (const phase of [0, 1, 2]) {
+    const doc = C.frameDocument(key, { species: sp, phase, expression, clear: CLEAR }), m = partOf(doc, 'marker');
+    const top = inkBounds(m === null ? doc : doc.replace(m, '')).y0;
+    if (top < want - 1e-6) standFault.push(`${row} (${key}, ${expression}, phase ${phase}): ink at ${top.toFixed(2)} over the crest ${want.toFixed(2)}`);
+    standSlack[row] = Math.min(standSlack[row] ?? Infinity, top - want);
+  }
+}
+const standLoose = Object.entries(standSlack).filter(([, v]) => v > 2).map(([r, v]) => `${r} ${v.toFixed(2)}`);
+const standRows = Object.entries(C.STAND_TOP).flatMap(([name, g]) => Object.keys(g).map((h) => `${name}#${h}`));
+measure(`STAND_TOP rows no key of the population reads, unexamined: ${standRows.filter((r) => !(r in standSlack)).join(', ') || 'none'} — of ${standRows.length}`);
+check(standFault.length === 0 && standLoose.length === 0, `STAND_TOP is at or above every standing and walking key's topmost ink, and each row within two units of it, over ${BOUNDS_KEYS + WIDE_KEYS} keys a species${standFault.length ? ` — ${standFault.slice(0, 3).join('; ')}` : ''}${standLoose.length ? ` — loose: ${standLoose.slice(0, 4).join('; ')}` : ''}`);
 // the control: the same leg over a frame whose drawing is pushed sideways by more than the frame's margin reds — so a
 // part drawn past the frame is a thing this leg sees. The push is the margin plus a third of the rect, read off the
 // constants, never a figure.

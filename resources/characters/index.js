@@ -11,7 +11,7 @@
 // ⛔ Every entry point returns standalone SVG DOCUMENTS. The painter turns each into a
 // SVG `data:` URI (UTF-8, encodeURIComponent) — this tree carries no URI, and no text naming one.
 
-import { EXPRESSIONS, SLEEP_LOOP, expressionOf, frameDocument, internSpeciesOf, markerLevel, sleepDocument } from './creatures.js';
+import { EXPRESSIONS, SLEEP_LOOP, crestOfKey, expressionOf, frameDocument, internSpeciesOf, markerLevel, sleepDocument } from './creatures.js';
 import { draw, seatKey } from './seed.js';
 
 export { seatKey, fnv1a32, draw } from './seed.js';
@@ -20,7 +20,7 @@ export {
   RIM, RIM_W, SEAT_RECT, SEAT_VIEWBOX, CHIBI_STOOL, CHIBI_VIEWBOX, CHIBI_HEAD_SHARE, speciesOf, internSpeciesOf, recipe, describe, chibiGeometry, frameDocument,
   EYE_K, BROW_K, MOUTH_K, EXPRESSIONS, expressionOf,
   SLEEP_LOOP, SLEEP_ZS, Z_LARGE, Z_A0, Z_A1, Z_RATIO, Z_T0, Z_GAP, Z_TOP, Z_GLOW, Z_HALO, Z_HALO_OPACITY,
-  CREST_TOP, MARKER_WEIGHT, MARKER_SPREAD, zLevels, markerLevel, zStand, zLargeFor, sleepDocument,
+  CREST_TOP, STAND_TOP, standEntry, crestOfKey, MARKER_WEIGHT, MARKER_SPREAD, zLevels, markerLevel, zStand, zLargeFor, sleepDocument,
 } from './creatures.js';
 
 /**
@@ -109,6 +109,16 @@ export function poseFrames(installId, seatId, { pose, glyph = null, deskTop, cle
     return { frames: [doc(3), ...Array.from({ length: SLEEP_LOOP }, (_, n) => doc(markerLevel(n)))], loopFrom: 1 };
   }
   return { frames: [0, 1, 2].map((phase) => frameDocument(key, { phase, expression, species })), loopFrom: 0 };
+}
+
+/**
+ * WHERE A SEAT's DRAWN HEAD IS (card#12444) — the tree → floor interface for § 5.1's thought trail: the topmost ink of the
+ * seat's character in the pose it is drawn in, in frame units from the character rect's top (`creatures.js`'s
+ * `crestOfKey()`), for its delivered `species`. The page hands it to the scene, which ends the trail there.
+ * @param {string} installId @param {string} seatId @param {{pose?: string, species?: string}} [at] @returns {number}
+ */
+export function crestTop(installId, seatId, at = {}) {
+  return crestOfKey(seatKey(installId, seatId), at);
 }
 
 /**
