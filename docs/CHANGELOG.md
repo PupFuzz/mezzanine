@@ -27,7 +27,7 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
-- **card#12443** — PLACEHOLDER-12443
+- **card#12443** — **Designed, not yet built: each agent gets its own character.** The operator saw two seats of one floor wearing one body (2026-10-26). `docs/design/FLEET-STATE.md § 6.13` now specifies that the server allocates a seat's species when the seat is created — one no live seat holds, else one no live seat on its floor holds, else the least-used — stores it on `seats.species`, keeps it for the seat's life, frees it on retirement and delivers it as `character.species` on every seat object; `docs/design/FLOOR.md` § 3.1, § 5.1 and § 10.4 draw exactly the delivered body, and an intern never wears its seat's. The migration reserves every live seat's current body where no earlier live seat drew it and re-allocates only the displaced seats, in creation order, so a seat with a unique body never moves; `FLEET-STATE.md § 14` item 18 lists the sandbox seats that would move and the operator's questions. The design documents state the member beside their tables rather than in them until the build lands, so nothing deployable changes under this card.
 
 ## [0.11.0] — 2026-10-27
 
