@@ -149,7 +149,8 @@ const { harnessMeasurer } = await import('../Support/harness-measurer.mjs');
 const NOW_MS = Date.parse('2026-08-23T14:23:22.400Z');
 const PLANTED = JSON.parse(readFileSync(join(HERE, 'desk-leaves', 'fx-desk-leaves-planted.json'), 'utf8'));
 const measure = harnessMeasurer(PLANTED.measurer);
-const BOX = { width: 440, height: 228 };
+// The furniture box at the cap, read from its one declaration (`resources/floor/furniture-box.js`) — never a copy of it.
+const { FURNITURE_BOX: BOX } = await import(pathToFileURL(join(HERE, '..', '..', '..', '..', 'resources', 'floor', 'furniture-box.js')).href);
 
 // ── the desks, each at its own box on one row ─────────────────────────────────────────────────────
 const desks = [];

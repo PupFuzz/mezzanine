@@ -94,9 +94,10 @@ const THINKING = { pose: 'leaning-back', glyph: 'thinking', lighting: 'full', mo
  * two more members). `null` is a state whose desk holds no render at all — § 7.1's Animation
  * column reads *none* for it.
  *
- * ⛔ WHICH OF THESE HOLDS MOTION IS NOT HERE. § 11's *two states with no motion by design* are
- * `stalled` and `unknown`, and `wire/animation-set.js` answers that from A8's and A9's own § 6.2
- * Animation cells — which name no loop where every other held row names a 4 fps one — rather than
+ * ⛔ WHICH OF THESE HOLDS MOTION IS NOT HERE. § 11's *states with no motion by design* are
+ * `stalled` alone since card#12444 gave `unknown`'s marker the sleeper's pulse, and `wire/animation-set.js`
+ * answers that from A8's own § 6.2 Animation cell — which names no loop where every other held row names a
+ * 4 fps one — rather than
  * from a pair of ids kept beside this map, which is what this file held until card#7341 step 6
  * and what nothing re-derived from the document.
  * `Tests\Feature\Floor\TheAnimationSetIsTheDocumentsClosedSetTest` re-derives this map itself

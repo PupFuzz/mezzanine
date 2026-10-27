@@ -970,12 +970,11 @@ export function deskProps({ install_id: installId, seat_id: seatId }) {
 }
 
 /**
- * The side table's rect (228 × 42, its foot line its bottom edge) and the seats' row: § 12's seats, each
- * 20 wide on a 24 px pitch from 8 px in — the interns' row, which `desk-layout.js` lays the same way, so an
- * intern stands in front of its seat.
+ * The side table's rect (its foot line its bottom edge) and the seats' row: § 12's seats, one under each intern's place
+ * on the interns' row `desk-layout.js` lays (`STOOL_W`, `STOOL_PITCH`, from the table's inset). A theme is handed the
+ * seat count and nothing else (FLOOR.md § 10.6 item 2), so the row is stated here, and `tools/floor-themes/selftest.mjs`
+ * holds the seats this module draws under the layout's own intern rects — a row that drifts from the layout's reds.
  */
-// card#12444 SAMPLE: the interns' row moved to 25 px stools on a 28 px pitch from 4 px in (`desk-layout.js`); this is a
-// COPY of those figures, which the real build must derive or guard (canon #16) rather than re-sync by hand.
 const TABLE = Object.freeze({ w: 228, h: 42, seat_x: 4, seat_pitch: 28, seat_w: 25 });
 
 /**
@@ -994,7 +993,8 @@ export function sideTable({ install_id: installId, seat_id: seatId, seats }) {
     const foot = TABLE.h;
     const top = foot - 24;
     const x = 0;
-    const tw = Math.max(64, seats * TABLE.seat_pitch + 20);
+    // as wide as its seats need and never wider than its rect, so the teapot at its far end is never cut (card#12444)
+    const tw = Math.min(TABLE.w, Math.max(64, seats * TABLE.seat_pitch + 20));
     const s = [];
     const m = [];
 

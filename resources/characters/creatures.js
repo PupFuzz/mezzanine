@@ -11,8 +11,8 @@
 // tree carries one (FLOOR.md § 10.1 clause 2). It makes no request of any kind, holds no cache and
 // reads no clock or random source.
 //
-// Drawing space: SEAT_RECT (0 0 108 192, 2 units per floor pixel in the 54 x 96 character rect), drawn in SEAT_VIEWBOX;
-// the foot line is y = 188, the centre line x = 54.
+// Drawing space: SEAT_RECT (0 0 108 192 frame units over the floor's character rect, `floor/desk-layout.js`'s
+// FRAME_UNITS_PER_PX units per floor pixel), drawn in SEAT_VIEWBOX; the foot line is y = 188, the centre line x = 54.
 
 import { draw, pick, chance } from './seed.js';
 
@@ -627,8 +627,9 @@ export const EYES = ['round', 'sparkle', 'happy', 'sleepy', 'bead'];
 export const MOUTHS = ['smile', 'open', 'cat', 'tiny', 'grin'];
 export const BLUSH = [0, 0.5, 0.8];
 export const BROWS = ['none', 'none', 'soft', 'worried'];
-// card#12444 SAMPLE: narrowed from [0.84, 0.88, 0.92, 0.96, 1.0] (a 16 % spread) to a 6 % one, the largest unchanged so
-// the frame-bounds leg's worst case is the same drawing; `size` is its own draw field, so nothing else re-rolls.
+// card#12444: a 6 % spread (it was 16 %, from 0.84), so the taller rect is filled and no seat reads as a child of its
+// neighbour; the largest is unchanged, so the frame-bounds leg's worst case is the same drawing, and `size` is its own
+// draw field, so nothing else a key draws re-rolls.
 export const SIZES = [0.94, 0.97, 1.0];
 export const STOUT = [0.93, 1, 1.07];
 export const TILTS = [-3, 0, 3];
@@ -680,8 +681,8 @@ export function recipe(key, force) {
 }
 
 // ---- shared feature painters ----
-// card#12444 SAMPLE — the face, re-scaled for the floor's fit zoom (measured 0.81 CSS px per scene px at the 1,280 × 800
-// reference viewport): the approved sheet's eye is 3.7 × 4.4 units, 1.5 CSS px in radius on the floor. EYE_K scales every
+// THE FACE (card#12444), re-scaled for the floor's fit zoom (the sampler measured 0.81 CSS px per scene px at the
+// 1,280 × 800 reference viewport, where the approved sheet's eye was 1.5 CSS px in radius). EYE_K scales every
 // eye, lid and glint; BROW_K the brows' stroke and reach; MOUTH_K the mouth; all about the species' own face anchors, so
 // no species' face moves. `X` is the EXPRESSION the pose asks for (`EXPRESSIONS`): the lids' closure, where the eyes
 // look, how wide they are, and which brows and mouth override the key's own.
@@ -758,11 +759,12 @@ function blushSvg(pen, F, op, dxExtra = 0) {
 }
 
 /**
- * THE EXPRESSIONS (card#12444 sample) — what a POSE does to the key's own face. The key keeps its eye style, its mouth and
- * its brows for `neutral`; a pose overrides what the state must show: where the eyes look (`look`, in eye units), how
- * far the lids are down (`lid`), how wide the eyes are (`wide`), and the brows and mouth it needs. `marker` is § 7.1's
- * marker — the pose art's, drawn inside the frame (§ 14 item 34) — and `hands` the pose's paws: `raised` (one paw up,
- * the blocked seat's raised hand) or `cheeks` (both paws at the cheeks, head in hands).
+ * THE EXPRESSIONS (card#12444; FLOOR.md § 10.4's frame contract item 1) — what a POSE does to the key's own face. The key
+ * keeps its eye style, its mouth and its brows for `neutral`; a pose overrides what the state must show: where the eyes
+ * look (`look`, in eye units), how far the lids are down (`lid`), how wide the eyes are (`wide`), and the brows and mouth
+ * it needs. `marker` is § 7.1's marker, the glyph `markerStand()` places and the z's glow lights (item 5), and `hands`
+ * the pose's paws: `raised` (one paw up, the blocked seat's raised hand) or `cheeks` (both paws at the cheeks, head in
+ * hands).
  */
 export const EXPRESSIONS = Object.freeze({
   neutral: {},
@@ -782,14 +784,6 @@ export function expressionOf(pose, glyph) {
     case 'present': return glyph === 'question' ? 'question' : 'neutral';
     default: return 'neutral';
   }
-}
-/** The marker — a small cream puff with the glyph, up and to the viewer's left of the head, in the frame's margin. */
-function markerSvg(pen, H, glyph) {
-  const x = 54 - 46, y = H.y - 12, r = 11;
-  const col = glyph === '!' ? '#d8553d' : '#4f6fb0';
-  return `<g data-part="marker"><circle cx="${f(x)}" cy="${f(y)}" r="${r}" fill="${pen.paint('#fff8ee')}" stroke="${line('#f3e6d2')}" stroke-width="1.4"/>` +
-    `<circle cx="${f(x + 8)}" cy="${f(y + 9)}" r="3" fill="#fff8ee" stroke="${line('#f3e6d2')}" stroke-width="1.1"/>` +
-    `<text x="${f(x)}" y="${f(y + 5.6)}" text-anchor="middle" font-family="ui-rounded, 'Segoe UI', sans-serif" font-size="16" font-weight="700" fill="${col}">${glyph}</text></g>`;
 }
 /** The pose's paws: one raised beside the head, or both at the cheeks. Only where the species has arms. */
 function handsSvg(pen, A, F, kind) {
@@ -905,8 +899,8 @@ function rimOf(markup) {
 
 // ---- the frames ----
 /**
- * THE CHARACTER's RECT, in frame units: a seat's 108 × 192 — two units per floor pixel of its 54 × 96 px rect
- * (`floor/desk-layout.js`'s `FRAME_UNITS_PER_PX`) — the space every body is drawn into, x 54 its centre and the
+ * THE CHARACTER's RECT, in frame units: a seat's 108 × 192 over the floor's character rect —
+ * `floor/desk-layout.js`'s `FRAME_UNITS_PER_PX` units per floor pixel — the space every body is drawn into, x 54 its centre and the
  * foot line at its bottom. Since card#12259 it is NO document's viewBox: every seat document is drawn in
  * `SEAT_VIEWBOX` (below, beside the sleeper's z's), which is this rect with a margin on three sides, because the
  * frame's own composition — the key's tilt, the walk's lean, and the widest girth at the largest size — carries
@@ -916,14 +910,13 @@ function rimOf(markup) {
  */
 export const SEAT_RECT = Object.freeze({ x: 0, y: 0, w: 108, h: 192 });
 /**
- * THE INTERN's CHIBI FRAME: the 20 × 32 px intern rect's 108 × 172.8 units (the rect's aspect, the last 172.8 units
- * above the foot) widened to the stool PITCH the floor lays interns at — 24 px for a 20 px rect, so the frame is
- * `108 × 24 / 20` = 129.6 units wide, 10.8 each side past the rect — the margin the chibi frame's tilt needs and all
- * the room a row of interns has (two frames meet at the pitch and never overlap). The floor draws it into the intern's
- * overdraw rect (`floor/desk-layout.js`'s `internOverdraw()`); the two are held equal by `tools/characters/selftest.mjs` § 7b.
+ * THE INTERN's CHIBI FRAME: the intern rect's 108 × 172.8 units (the rect's aspect, the last 172.8 units above the foot)
+ * widened to the stool PITCH the floor lays interns at — `108 × pitch / width` units wide, `floor/desk-layout.js`'s
+ * `STOOL_PITCH` over its `STOOL_W` (card#12444: 25 px stools on a 28 px pitch) — all the room a row of interns has (two
+ * frames meet at the pitch and never overlap), which the upright chibi frame's widest heads fit (`frameDocument()`;
+ * `tools/characters/selftest.mjs` § 8b measures the margin left). The floor draws it into the intern's overdraw rect
+ * (`internOverdraw()`); the two are held equal by `tools/characters/selftest.mjs` § 7b.
  */
-// card#12444 SAMPLE: the intern's rect is 25 × 40 px on a 28 px pitch (`desk-layout.js`), so the frame is 108 × 28 / 25 =
-// 120.96 units wide, 6.48 each side past the rect; the rect's own 108 × 172.8 units are unchanged (the aspect is kept).
 export const CHIBI_VIEWBOX = Object.freeze({ x: -6.48, y: 19.2, w: 120.96, h: 172.8 });
 const FOOT = 188;
 
@@ -981,8 +974,11 @@ function worn(r, sp, A) {
 /**
  * One frame of one key, as a standalone SVG document.
  * @param {string} key the seat key, or an intern key `seat~<call_id>`
- * @param {{ phase?: 0|1|2, chibi?: boolean, species?: string, expression?: string }} [opt] phase 0 is the standing frame;
- *        `expression` a key of `EXPRESSIONS` (card#12444 sample), `neutral` when absent
+ * @param {{ phase?: 0|1|2, chibi?: boolean, species?: string, expression?: string, level?: 0|1|2|3, clear?: object[] }} [opt]
+ *        phase 0 is the standing frame; `expression` a key of `EXPRESSIONS`, `neutral` when absent; for an expression
+ *        with a marker, `level` its brightness (3, full, when absent) and `clear` the floor's clear rects
+ *        (`floor/desk-layout.js`'s `characterOverdraw()`), without which a marker is refused — never drawn against guessed
+ *        furniture (card#12444)
  * @returns {string}
  */
 export function frameDocument(key, opt = {}) {
@@ -990,6 +986,8 @@ export function frameDocument(key, opt = {}) {
   if (![0, 1, 2].includes(phase)) throw new RangeError(`phase must be 0, 1 or 2, got ${phase}`);
   const X = EXPRESSIONS[opt.expression ?? 'neutral'];
   if (X === undefined) throw new RangeError(`no expression ${opt.expression}`);
+  const level = opt.level ?? 3;
+  if (![0, 1, 2, 3].includes(level)) throw new RangeError(`level must be 0, 1, 2 or 3, got ${level}`);
   const { r, sp, pen, c, A } = build(key, opt.species);
   const { hat, neck, extra } = worn(r, sp, A);
   const F = A.face;
@@ -1028,13 +1026,14 @@ export function frameDocument(key, opt = {}) {
   if (holding) parts.push(heldSvg(pen, extra, A.arms.y - 4, r.acc2, A.arms.col));
   if (X.hands) parts.push(handsSvg(pen, A, F, X.hands));
   if (hat !== 'none') parts.push(hatSvg(pen, A.hat, hat, r.acc1, r.acc2));
-  if (X.marker) parts.push(markerSvg(pen, A.hat, X.marker));
 
   const markup = parts.join('');
   const drawing = `<g opacity="${RIM_OPACITY}">${rimOf(markup)}</g>${markup}`;
   const s = r.size;   // girth lives in the profile (st), so the scale stays uniform
   const lean = phase === 0 ? 0 : (phase === 1 ? -2 : 2);
-  const tf = `translate(54 ${FOOT}) scale(${s} ${s}) rotate(${r.tilt + lean}) translate(-54 -${FOOT})`;
+  // THE INTERN STANDS UPRIGHT (card#12444): the chibi frame is drawn untilted — the key's tilt reached a wide cap past
+  // the intern's pitch-wide frame, and an intern a stool's width across reads a 3° lean as a fall, not a character.
+  const tf = `translate(54 ${FOOT}) scale(${s} ${s}) rotate(${opt.chibi ? 0 : r.tilt + lean}) translate(-54 -${FOOT})`;
   // The shadow ends ON the foot line (187.5 + 4.5 = 192, the rect's bottom): at ry 4.6 it reached a tenth of a unit
   // under it in every frame, the one bottom-edge overshoot the frame-bounds leg found (card#12259).
   const shadow = `<ellipse cx="54" cy="187.5" rx="${f(A.shadow * s)}" ry="4.5" fill="${pen.soft('#1c1424', 0.42)}"/>`;
@@ -1056,7 +1055,10 @@ export function frameDocument(key, opt = {}) {
     vb = CHIBI_VIEWBOX;
   }
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}" width="${vb.w}" height="${vb.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs>${shadow}<g transform="${tf}">${inner}</g></svg>`;
+  // The marker stands in the FRAME, never in the body's transform: it neither tilts with the key nor scales with its size.
+  const marker = X.marker && !opt.chibi ? markerSvg(markerStand(key, r, A, c.side, opt.clear), X.marker, level) : '';
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}" width="${vb.w}" height="${vb.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs>${shadow}<g transform="${tf}">${inner}</g>${marker}</svg>`;
 }
 
 // ---- the sleeper (FLOOR.md § 6.2 A6, § 10.4's frame contract item 4; card#12159, card#12187) ----
@@ -1082,15 +1084,16 @@ export const Z_RATIO = 0.5;
 export const Z_T0 = 0.17;
 /** The gap between the path's start — its imaginary z's box and glow — and the crest line (or the props' line), in frame units. */
 export const Z_GAP = 2;
-/** The raised frame's top, in frame units: the path's end stands its imaginary z's box and glow a unit under it. */
-// card#12444 SAMPLE: the raise is the thought trail's 21 px at the floor's units per px (`desk-layout.js`'s
-// FRAME_UNITS_PER_PX, 1.6 at CHARACTER_SCALE 3.75) — 42 at the former 2 units per px; held equal to the overdraw by
-// `tools/characters/selftest.mjs` § 7b.
+/**
+ * The raised frame's top, in frame units: the path's end stands its imaginary z's box and glow a unit under it. It is the
+ * thought trail's height over the character's rect (`floor/desk-layout.js`'s `characterOverdraw()`) in frame units, held
+ * equal to the overdraw by `tools/characters/selftest.mjs` § 7b (card#12444 re-derived it for the taller rect).
+ */
 export const Z_TOP = -33.6;
 /**
  * THE SEAT's FRAME (FLOOR.md § 12's *Character frame*; § 10.4's frame contract) — the viewBox of EVERY seat document:
- * the character's 108 × 192 rect (`SEAT_RECT`) widened by half its width each side and raised 42 units, 216 × 234
- * from (−54, −42). card#12187 widened and raised it for the sleeper, so the z's have room above and beside the
+ * the character's 108 × 192 rect (`SEAT_RECT`) widened by half its width each side and raised to `Z_TOP`.
+ * card#12187 widened and raised it for the sleeper, so the z's have room above and beside the
  * crest; card#12259 draws the standing and walking frames in the same frame, so the composition's tilt and lean,
  * and the widest girth at the largest size, never carry an approved body past the edge the painter clips at (the
  * margin they need is measured by `tools/characters/selftest.mjs` § 8b, never written down; the frame's is 54 a
@@ -1157,30 +1160,106 @@ function zPath(x, y, h) {
   return `M${f(x - w / 2)} ${f(y - h / 2)}H${f(x + w / 2)}L${f(x - w / 2)} ${f(y + h / 2)}H${f(x + w / 2)}`;
 }
 
-/** One fixed z at brightness `level`: the dark outline, and the core mixed from the pale fill toward the ink by the level. */
-function zSvg(z, level) {
-  const sw = zStrokes(z.h), d = zPath(z.x, z.y, z.h);
+/**
+ * THE GLOW — one primitive for every glyph on the floor that pulses (card#12187's z's; card#12444's state markers): the
+ * glyph's path `d`, `h` units tall, at brightness `level` (FLOOR.md § 12's *Sleeper z brightness*), as two layers. `body`
+ * is the `part` group: the dark outline in `ink`, and the core stroked over it in `fill` mixed toward the ink by
+ * `Z_GLOW[level]`, both `zStrokes(h)` wide. `halo` is the glow behind it: none at level 0, else a stroke of the lamp
+ * colour `Z_HALO[level]` wider than the outline each side at `Z_HALO_OPACITY[level]`. `body`'s attributes are `data`
+ * then `bodyData`; the halo's are `data`. A caller draws every halo before every body, so no halo crosses a glyph.
+ * @returns {{body: string, halo: string}}
+ */
+function glowSvg(d, h, level, { ink, fill, part, data, bodyData = '' }) {
+  const sw = zStrokes(h);
   const stroke = (col, width) => `<path d="${d}" stroke="${col}" stroke-width="${f(width)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
-  return `<g data-part="z" data-k="${z.k}" data-level="${level}" data-x="${f(z.x)}" data-y="${f(z.y)}" data-h="${f(z.h)}">${stroke(Z_INK, sw.outline)}${stroke(mix(Z_FILL, Z_INK, Z_GLOW[level]), sw.core)}</g>`;
+  return {
+    body: `<g data-part="${part}"${data}${bodyData}>${stroke(ink, sw.outline)}${stroke(mix(fill, ink, Z_GLOW[level]), sw.core)}</g>`,
+    halo: level === 0 ? '' : `<path data-part="halo"${data} d="${d}" stroke="${Z_LAMP}" stroke-width="${f(sw.outline + 2 * Z_HALO[level])}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${f(Z_HALO_OPACITY[level])}"/>`,
+  };
 }
 
-/** A fixed z's halo at `level`: none at level 0, else a wider stroke of the lamp colour, translucent by level. */
-function haloSvg(z, level) {
-  if (level === 0) return '';
-  return `<path data-part="halo" data-k="${z.k}" data-level="${level}" d="${zPath(z.x, z.y, z.h)}" stroke="${Z_LAMP}" stroke-width="${f(zStrokes(z.h).outline + 2 * Z_HALO[level])}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${f(Z_HALO_OPACITY[level])}"/>`;
+/** One fixed z at brightness `level`, through the glow: its body and its halo. */
+function zGlow(z, level) {
+  return glowSvg(zPath(z.x, z.y, z.h), z.h, level, {
+    ink: Z_INK, fill: Z_FILL, part: 'z', data: ` data-k="${z.k}" data-level="${level}"`, bodyData: ` data-x="${f(z.x)}" data-y="${f(z.y)}" data-h="${f(z.h)}"`,
+  });
 }
 
 /**
- * THE PULSE (FLOOR.md § 10.4 item 4, § 12's *Sleeper z pulse*): the levels of z1, z2, z3 at loop frame `f` — a bubble of
- * brightness reaches z`k+1` at loop frame `2k`, peaks there at 3 and glows 2 and 1 in the loop frames behind it, and z1
- * is 1 in the loop frame before the bubble arrives: `300 200 130 020 013 002 001 100`.
+ * THE PULSE (FLOOR.md § 10.4 item 4, § 12's *Sleeper z pulse*): the level of the `k`-th glyph along the pulse's path at
+ * loop frame `f` — a bubble of brightness reaches glyph `k` at loop frame `2k`, peaks there at 3 and glows 2 and 1 in the
+ * loop frames behind it, and the first glyph is 1 in the loop frame before the bubble arrives.
+ */
+function pulseLevel(f, k) {
+  const d = (((f - 2 * k) % SLEEP_LOOP) + SLEEP_LOOP) % SLEEP_LOOP;
+  return d === 0 ? 3 : d === 1 ? 2 : d === 2 ? 1 : d === SLEEP_LOOP - 1 && k === 0 ? 1 : 0;
+}
+
+/**
+ * The levels of z1, z2, z3 at loop frame `f` — the pulse over the sleeper's three z's: `300 200 130 020 013 002 001 100`.
  * @param {number} f a loop frame, 0..SLEEP_LOOP-1 @returns {number[]} a level 0–3 per z, z1 first
  */
 export function zLevels(f) {
-  return Array.from({ length: SLEEP_ZS }, (_, k) => {
-    const d = (((f - 2 * k) % SLEEP_LOOP) + SLEEP_LOOP) % SLEEP_LOOP;
-    return d === 0 ? 3 : d === 1 ? 2 : d === 2 ? 1 : d === SLEEP_LOOP - 1 && k === 0 ? 1 : 0;
-  });
+  return Array.from({ length: SLEEP_ZS }, (_, k) => pulseLevel(f, k));
+}
+
+/**
+ * A STATE MARKER's level at loop frame `f` (card#12444): the same pulse, the marker lit as z1 is — the bubble reaching it at
+ * frame 0 and leaving it dark after frame 2, `3 2 1 0 0 0 0 1` — so the `?` and the `!` glow on and off at the z's pace.
+ * @param {number} f a loop frame, 0..SLEEP_LOOP-1 @returns {number} a level 0–3
+ */
+export function markerLevel(f) {
+  return pulseLevel(f, 0);
+}
+
+/**
+ * THE STATE MARKERS (card#12444; FLOOR.md § 10.4's frame contract item 5, § 12's *State marker*): the question's `?` and
+ * the blocked seat's `!`, each a stroked path centred at (0, 0) and `h` units tall — the glyph's ends, its outline's
+ * width aside, half its height above and below the centre, as a z's are — drawn through the z's glow (`glowSvg()`) in the
+ * marker's own ink, so a marker reads as the state's colour and glows as the z's do. A dot is a zero-length stroke, which
+ * the round cap draws as a disc of the stroke's width.
+ */
+const MARKERS = Object.freeze({
+  '?': Object.freeze({ ink: '#2f4f8f', fill: '#e6eeff', w: 0.32,
+    d: (h) => `M${f(-0.3 * h)} ${f(-0.22 * h)}C${f(-0.3 * h)} ${f(-0.592 * h)} ${f(0.32 * h)} ${f(-0.592 * h)} ${f(0.32 * h)} ${f(-0.25 * h)}C${f(0.32 * h)} ${f(-0.04 * h)} 0 ${f(-0.06 * h)} 0 ${f(0.14 * h)}M0 ${f(0.5 * h)}l0 0` }),
+  '!': Object.freeze({ ink: '#a33a26', fill: '#ffeee6', w: 0,
+    d: (h) => `M0 ${f(-0.5 * h)}V${f(0.16 * h)}M0 ${f(0.5 * h)}l0 0` }),
+});
+/** A marker's half extent across and down about its centre, its outline included — `zHalf()`'s, for the widest glyph. */
+function markerHalf(h) {
+  const o = zStrokes(h).outline / 2;
+  return { w: Math.max(...Object.values(MARKERS).map((m) => m.w)) * h + o, h: h / 2 + o };
+}
+
+/**
+ * WHERE A SEAT's MARKER STANDS, and how tall (§ 10.4 item 5's law): as tall as the seat's own first z asleep — z1 of the
+ * stand `zLargeFor()` finds for the key's crest, roll side and the floor's clear rects — so the marker is the z's size
+ * wherever the z's are. It stands at the frame's side away from the raised paw (`handsSvg()` raises the −x one), its
+ * glow a unit inside the frame's edge, and its glyph's foot at the key's crown line (the hat anchor at the key's size),
+ * but never higher than a unit under the frame's top with its glow, nor so low that its glow comes within a unit of a
+ * clear rect under it. A seat whose frame leaves the marker no such place is refused (§ 9 F14), never drawn clamped into
+ * the furniture.
+ * @returns {{x: number, y: number, h: number}} the centre and height, in frame units
+ */
+function markerStand(key, r, A, dir, clear) {
+  if (!Array.isArray(clear) || !clear.some((c) => c.name === 'props')) throw new RangeError("a marker needs the floor's clear rects, the desk's props among them");
+  const crown = CREST_TOP[r.variant === null ? r.species : `${r.species}/${r.variant}`];
+  if (crown === undefined) throw new RangeError(`CREST_TOP declares no crest for ${r.species}${r.variant === null ? '' : `/${r.variant}`}`);
+  const h = zStand(crown, dir, zLargeFor(crown, dir, clear), clear)[0].h;
+  const hb = markerHalf(h), G = Z_HALO[3], V = SEAT_VIEWBOX;
+  const x = V.x + V.w - 1 - G - hb.w;
+  const under = clear.filter((c) => c.x < x + hb.w + G + 1 && c.x + c.w > x - hb.w - G - 1).map((c) => c.y);
+  const lo = V.y + 1 + G + hb.h, hi = Math.min(V.y + V.h, ...under) - 1 - G - hb.h;
+  if (hi < lo) throw new RangeError(`no room for a marker ${f(h)} units tall beside ${key}`);
+  const foot = FOOT + (A.hat.y - FOOT) * r.size;
+  return { x, y: Math.min(hi, Math.max(lo, foot - hb.h)), h };
+}
+
+/** A marker at its stand, lit at `level`: its halo, then its glyph, in one `marker` group that names its glyph and level. */
+function markerSvg(at, glyph, level) {
+  const M = MARKERS[glyph];
+  const { body, halo } = glowSvg(M.d(at.h), at.h, level, { ink: M.ink, fill: M.fill, part: 'glyph', data: '' });
+  return `<g data-part="marker" data-glyph="${glyph === '?' ? 'question' : 'attention'}" data-level="${level}" data-x="${f(at.x)}" data-y="${f(at.y)}" data-h="${f(at.h)}" transform="translate(${f(at.x)} ${f(at.y)})"><g data-part="glow">${halo}</g>${body}</g>`;
 }
 
 /**
@@ -1306,8 +1385,9 @@ export function sleepDocument(key, opt) {
   // The three z's, fixed above the head on the side AWAY from its roll, lit at the document's levels.
   const zs = zStand(crown, dir, zLargeFor(crown, dir, opt.clear), opt.clear);
   const levels = frame === 0 ? zs.map(() => 3) : zLevels(frame - 1);
-  const halos = zs.map((z) => haloSvg(z, levels[z.k])).join('');
-  const bodies = zs.map((z) => zSvg(z, levels[z.k])).join('');
+  const glows = zs.map((z) => zGlow(z, levels[z.k]));
+  const halos = glows.map((g) => g.halo).join('');
+  const bodies = glows.map((g) => g.body).join('');
   const V = SEAT_VIEWBOX;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${V.x} ${V.y} ${V.w} ${V.h}" width="${V.w}" height="${V.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs><g data-pose="asleep" data-eyes-y="${f(eyes)}" data-edge="${f(edge)}" data-crown="${crown}" clip-path="url(#c_edge)">${drawing}</g><g data-part="zs"><g data-part="glow">${halos}</g>${bodies}</g></svg>`;

@@ -149,12 +149,13 @@ export const FACT_ROWS = Object.freeze(['label', 'currency', 'lag', 'gauge', 'ba
 export const PLATED_KINDS = Object.freeze(['label', 'currency', 'lag', 'gauge-bar', 'gauge-pct', 'badge', 'flag', 'quiet-age']);
 
 /**
- * The character rect over the tree's footprint unit `SCENE_W × SCENE_H` (18 × 32): the rect is 3 × that,
- * 54 × 96 (§ 12's *Character rect* row, Chosen). Sized by card#11058 for the pixel tree and kept when the
- * vector creatures replaced it (card#11046): they have no native size, so the unit is the rect's aspect
- * and this its scale, and neither the box nor any rect moved (`resources/characters/index.js`).
+ * The character rect over the tree's footprint unit `SCENE_W × SCENE_H` (`resources/characters/index.js`): the
+ * rect is this many times that (§ 12's *Character rect* row, Chosen). Sized by card#11058 at 3 for the pixel
+ * tree and kept when the vector creatures replaced it (card#11046): they have no native size, so the unit is
+ * the rect's aspect and this its scale. The operator's ask of 2026-10-26 (card#12444, *"The character sizes are
+ * good"*) made the characters 25 % taller: 3.75, the rect growing UPWARD from a foot line that does not move
+ * (`deskRects()`), and the furniture box 24 px taller to hold it (`resources/floor/furniture-box.js`).
  */
-// card#12444 SAMPLE (+25 %): 3.75 → a 67.5 × 120 px rect; the furniture box grows 24 px to hold it (`furniture-box.js`).
 export const CHARACTER_SCALE = 3.75;
 
 /** § 8's cap on the interns drawn: the array D2 caps at 8 (§ 8.1's chosen cap). */
@@ -187,18 +188,20 @@ const BADGE_PITCH = 108;
 /** A badge chip's inner padding: an id of at most ⌊(BADGE_W − 2 × BADGE_PAD) ÷ glyph width⌋ glyphs fits. */
 const BADGE_PAD = 3;
 
-/** One intern's sprite rect, and the pitch the row lays them at (§ 8, § 10.4's art contract). */
-// card#12444 SAMPLE (the operator's "Subagent characters also need to be taller", 2026-10-26): the intern's rect +25 %,
-// 20 × 32 → 25 × 40, the aspect kept so the chibi frame's units are unchanged (108 over the rect's width). The row's pitch
-// is what the box's width leaves: eight stools from the side table's inset (box x 216) to the box's edge (440) is 224 px,
-// a 28 px pitch — a 3 px gap, 1.5 px (6.5 chibi units) of tilt margin a side against the 2 px (10.8 units) there was.
+/**
+ * One intern's sprite rect, and the pitch the row lays them at (§ 8, § 10.4's art contract). card#12444, the operator's
+ * *"Subagent characters also need to be taller"* (2026-10-26): the rect is 25 % larger than card#11058's, its aspect kept
+ * so the chibi frame's units are unchanged (`CHIBI_VIEWBOX`, 108 over the rect's width), and the pitch is what the box's
+ * width leaves: `STOOL_CAP` stools from `STOOL_INSET` left of the facts column to the box's edge. AT-D3-20 holds the row
+ * at the cap inside the box, and the studio theme's seat row is held to this one by `tools/floor-themes/selftest.mjs`.
+ */
 const STOOL_W = 25;
 
 const STOOL_H = 40;
 
 export const STOOL_PITCH = 28;
 
-/** Where the stool row starts, left of the facts column by this much: the side table's own inset (card#12444 sample). */
+/** Where the stool row starts, left of the facts column by this much: the side table's own inset (card#12444). */
 const STOOL_INSET = 4;
 
 /**
@@ -404,8 +407,8 @@ export function deskRects(box, character) {
     const rowY = stackRows(FACT_ROWS, table);
 
     return Object.freeze({
-        // card#12444 SAMPLE: the FOOT LINE is pinned 26 px under the desk's slab (where it has always been: slab − 70 + 96),
-        // so a taller rect grows UPWARD and the chair, the desk and the sleeper's edge keep their relationship.
+        // THE FOOT LINE is pinned 26 px under the desk's slab, where card#11058's rect stood it (card#12444): a taller
+        // rect grows UPWARD, and the chair and the desk keep their place under it.
         character: { x: sitter, y: slab + 26 - ch, w: cw, h: ch },
         chair: { x: sitter, y: slab - 38, w: cw, h: 64 },
         placeholder: { x: 0, y: top, w: ART_W, h: H - 36 - top },
@@ -457,12 +460,13 @@ export function thoughtTrail(box, character) {
 }
 
 /**
- * The character tree's frame units per floor pixel: a seat's 108 × 192-unit frame is drawn into the character's
- * 54 × 96 px rect (`resources/characters/index.js`'s `SCENE_W` note). The floor cannot import the tree (it loads
- * apart, and may fail — § 9 F14), so the figure is stated here and held equal to the tree's own
- * (`SEAT_RECT.w ÷ (SCENE_W × CHARACTER_SCALE)`) by `tools/characters/selftest.mjs` § 7b.
+ * The character tree's frame units per floor pixel: a seat's `SEAT_RECT` (108 × 192 units) is drawn into the
+ * character's rect, `CHARACTER_SCALE` times the tree's `SCENE_W × SCENE_H` (`resources/characters/index.js`'s
+ * `SCENE_W` note). The floor cannot import the tree (it loads apart, and may fail — § 9 F14), so the figure is
+ * stated here and held equal to the tree's own (`SEAT_RECT.w ÷ (SCENE_W × CHARACTER_SCALE)`) by
+ * `tools/characters/selftest.mjs` § 7b.
  */
-export const FRAME_UNITS_PER_PX = 1.6;   // card#12444 SAMPLE: 108 ÷ (18 × 3.75)
+export const FRAME_UNITS_PER_PX = 1.6;
 
 /**
  * THE CHARACTER's OVERDRAW AND ITS CLEAR RECTS (FLOOR.md § 10.4's frame contract, § 12's *Character frame*;
@@ -747,7 +751,8 @@ export function deskLayout(desk, ctx) {
             rect('character', 'character', R.character, {
                 asset: characterAsset(desk),
                 pose: desk.pose,
-                // card#12444 SAMPLE: the glyph reaches the tree with the pose, so `present` + `question` draws the question's face.
+                // § 7.1's glyph reaches the tree with the pose (card#12444): `present` with `question` draws the question's
+                // face and its `?` marker, which one pose cannot say alone.
                 glyph: desk.glyph,
                 animation: desk.held,
                 desk_top: (R['desk-sprite'].y - R.character.y) / R.character.h,

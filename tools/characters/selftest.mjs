@@ -205,12 +205,11 @@ check(C.walkFrames(anySeat.install_id, anySeat.seat_id)[0] === C.standingFrame(a
 
 // ---- 7b. the sleeper (card#12159; § 10.4's frame contract item 4) — what a pose draws ----
 // The painter's half, and the sleeper's own legs over every species, are server/tests/Feature/Floor/sleeper-probe.mjs.
-section("7b. a desk's pose frames: { frames, loopFrom } — the sleeper's still and loop for asleep, the walk's for every other pose; every sleeper document is a document");
+section("7b. a desk's pose frames: { frames, loopFrom } — the sleeper's still and loop for asleep, the marker's for a marked pose, the walk in its expression for every other; every sleeper document is a document");
 // The floor's own desk edge and clear rects, from the one function that hands them to the tree (§ 10.4 item 4).
 const { characterOverdraw, internOverdraw, deskRects, FRAME_UNITS_PER_PX, CHARACTER_SCALE } = await import(pathToFileURL(join(REPO, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
 const { FURNITURE_BOX } = await import(pathToFileURL(join(REPO, 'resources', 'floor', 'furniture-box.js')).href);
 const { overdraw, clear: CLEAR } = characterOverdraw(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H });
-const DESK_TOP = 70 / 96;
 // The floor states the tree's frame units per pixel (it cannot import the tree); held equal to the tree's own over the
 // character's RECT, and the overdraw, in those units from the rect's top-left, is the frame every seat document is
 // drawn in (§ 12's *Character frame*; card#12187, card#12259).
@@ -219,10 +218,15 @@ check(C.SEAT_RECT.w / charRect.w === FRAME_UNITS_PER_PX && C.SEAT_RECT.h / charR
   `desk-layout.js's FRAME_UNITS_PER_PX (${FRAME_UNITS_PER_PX}) is the tree's frame units per character-rect pixel (${C.SEAT_RECT.w / charRect.w})`);
 const rects = deskRects(FURNITURE_BOX, { w: C.SCENE_W, h: C.SCENE_H });
 const sitter = rects.character;
+// The desk's top edge as a share of the character's rect — what `deskLayout()` hands the tree as `desk_top`, derived the
+// same way from the same rects, never a figure.
+const DESK_TOP = (rects['desk-sprite'].y - sitter.y) / sitter.h;
 const odUnits = { x: (overdraw.x - sitter.x) * FRAME_UNITS_PER_PX, y: (overdraw.y - sitter.y) * FRAME_UNITS_PER_PX, w: overdraw.w * FRAME_UNITS_PER_PX, h: overdraw.h * FRAME_UNITS_PER_PX };
-check(['x', 'y', 'w', 'h'].every((k) => odUnits[k] === C.SEAT_VIEWBOX[k]), `the character's overdraw in frame units (${JSON.stringify(odUnits)}) is SEAT_VIEWBOX (${JSON.stringify(C.SEAT_VIEWBOX)}), the frame of every seat document`);
-check(/viewBox="-54 -42 216 234"/.test(C.standingFrame(roster[0].install_id, roster[0].seat_id)) && C.walkFrames(roster[0].install_id, roster[0].seat_id).every((d) => d.includes(`viewBox="${C.SEAT_VIEWBOX.x} ${C.SEAT_VIEWBOX.y} ${C.SEAT_VIEWBOX.w} ${C.SEAT_VIEWBOX.h}"`)),
-  'the standing frame and every walk frame are drawn in SEAT_VIEWBOX, the sleeper\'s widened, raised frame (card#12259)');
+// to 1e-9: the overdraw's px times a non-integer units-per-px is a float product, which the frame's own sum need not equal bit for bit
+check(['x', 'y', 'w', 'h'].every((k) => Math.abs(odUnits[k] - C.SEAT_VIEWBOX[k]) < 1e-9), `the character's overdraw in frame units (${JSON.stringify(odUnits)}) is SEAT_VIEWBOX (${JSON.stringify(C.SEAT_VIEWBOX)}), the frame of every seat document`);
+const seatVb = `viewBox="${C.SEAT_VIEWBOX.x} ${C.SEAT_VIEWBOX.y} ${C.SEAT_VIEWBOX.w} ${C.SEAT_VIEWBOX.h}"`;
+check([C.standingFrame(roster[0].install_id, roster[0].seat_id), ...C.walkFrames(roster[0].install_id, roster[0].seat_id)].every((d) => d.includes(seatVb)),
+  `the standing frame and every walk frame are drawn in SEAT_VIEWBOX (${seatVb}), the sleeper's widened, raised frame (card#12259)`);
 // The intern: its chibi frame is the stool's rect widened to the row's pitch, in the chibi frame's units (the rect's
 // 108 units over its px), from the stool rect's top-left at the frame's top (CHIBI_VIEWBOX.y).
 const stool = rects.stool, io = internOverdraw(stool), upp = C.SEAT_RECT.w / stool.w;
@@ -239,8 +243,20 @@ check(asleep.frames[0] !== C.standingFrame(si, ss) && /data-pose="asleep"/.test(
 // but the sleeper and the empty chair, which draws no character.
 const { DESK } = await import(pathToFileURL(join(REPO, 'server', 'public', 'js', 'desk', 'desk-poses.js')).href);
 const otherPoses = [...new Set([...Object.values(DESK).map((d) => d.pose), 'leaning-back'])].filter((p) => p !== 'asleep' && p !== 'empty-chair');
-check(otherPoses.every((pose) => { const p = C.poseFrames(si, ss, { pose, deskTop: DESK_TOP, clear: CLEAR }); return p.loopFrom === 0 && p.frames.join() === C.walkFrames(si, ss).join(); }),
-  `every other pose (${otherPoses.join(', ')}) draws the walk, as before, { frames, loopFrom: 0 }`);
+// Every (pose, glyph) the model draws a character for, with the expression each asks the tree for; the marked ones are 7c's.
+const posed = [...new Map([...Object.values(DESK), { pose: 'leaning-back', glyph: 'thinking' }]
+  .filter((d) => d.pose !== 'asleep' && d.pose !== 'empty-chair').map((d) => [`${d.pose}/${d.glyph}`, d])).values()];
+const unmarked = posed.filter((d) => !C.EXPRESSIONS[C.expressionOf(d.pose, d.glyph)].marker);
+const walkBadPose = unmarked.filter(({ pose, glyph }) => {
+  const p = C.poseFrames(si, ss, { pose, glyph, deskTop: DESK_TOP, clear: CLEAR }), expression = C.expressionOf(pose, glyph);
+  const walk = [0, 1, 2].map((phase) => C.frameDocument(C.seatKey(si, ss), { phase, expression }));
+  return !(p.loopFrom === 0 && p.frames.join() === walk.join() && (expression !== 'neutral' || p.frames.join() === C.walkFrames(si, ss).join()));
+});
+check(unmarked.length > 0 && walkBadPose.length === 0,
+  `every unmarked pose (${unmarked.map((d) => `${d.pose}/${d.glyph} → ${C.expressionOf(d.pose, d.glyph)}`).join(', ')}) draws the walk in its expression, the neutral one the walk itself, { frames, loopFrom: 0 }${walkBadPose.length ? ` — not: ${walkBadPose.map((d) => d.pose).join(', ')}` : ''}`);
+const faces = new Set(unmarked.filter((d) => C.expressionOf(d.pose, d.glyph) !== 'neutral').map((d) => C.poseFrames(si, ss, { pose: d.pose, glyph: d.glyph, deskTop: DESK_TOP, clear: CLEAR }).frames[0]));
+check(faces.size === new Set(unmarked.map((d) => C.expressionOf(d.pose, d.glyph)).filter((x) => x !== 'neutral')).size && ![...faces].includes(C.standingFrame(si, ss)),
+  `each expressed pose draws its own face, none of them the neutral standing frame (${faces.size} distinct)`);
 let edgeRefused = 0;
 for (const bad of [undefined, 0, 1, Number.NaN]) { try { C.sleepFrames(si, ss, bad, CLEAR); } catch { edgeRefused++; } }
 check(edgeRefused === 4, "a sleeper with no desk edge inside its frame is refused, never drawn against a guessed one");
@@ -251,6 +267,89 @@ let docRefused = 0;
 for (const bad of [-1, C.SLEEP_LOOP + 1, 0.5]) { try { C.sleepDocument('sleep/x', { frame: bad, deskTop: DESK_TOP, clear: CLEAR }); } catch { docRefused++; } }
 check(docRefused === 3, `a document outside 0..SLEEP_LOOP (${C.SLEEP_LOOP}) is refused`);
 for (const sp of KEYS) docs.set(`sleeper:${sp}`, Array.from({ length: C.SLEEP_LOOP + 1 }, (_, frame) => C.sleepDocument(`sleep/${sp}`, { species: sp, frame, deskTop: DESK_TOP, clear: CLEAR })));
+
+// ---- 7c. the markers (card#12444; FLOOR.md § 10.4's frame contract item 5, § 12's *State marker*) ----
+// The operator's ask of 2026-10-26: the question's `?` and the blocked seat's `!` "much bigger, similar to the size of the
+// ZZz's", and blinking — "a backglow on and off similar to how the glow travels through Zzzs". Four legs, every species:
+// SIZE — the marker's glyph, its outline included and its glow not, is as tall as the same seat's first z asleep (z1, the
+// largest of its three), both measured by `inkBounds` off the documents, never a figure; PULSE — a marker pose draws a still and the
+// sleeper's loop, the marker lit at z1's level of the same pulse (`zLevels()`), and nothing else changing; ONE GLOW — every
+// level's halo is the z's (`Z_HALO`, `Z_HALO_OPACITY` over the same outline); CLEAR — the marker at its brightest keeps a
+// unit off the floor's clear rects (the monitor, the props, the desk, the thought trail's column) and inside the frame.
+section("7c. the markers: the `?` and the `!` are the z's size, pulse with the z's pulse in the z's glow, and keep clear");
+// One element of a document, by its `data-part`, with everything inside it (balanced <g> tags).
+const partOf = (doc, name) => {
+  const at = doc.indexOf(`<g data-part="${name}"`);
+  if (at < 0) return null;
+  let depth = 0;
+  for (const m of doc.slice(at).matchAll(/<(\/?)g\b[^>]*?(\/?)>/g)) {
+    if (m[2]) continue;
+    depth += m[1] ? -1 : 1;
+    if (depth === 0) return doc.slice(at, at + m.index + m[0].length);
+  }
+  return null;
+};
+const alone = (markup) => `<svg xmlns="http://www.w3.org/2000/svg">${markup}</svg>`;
+const heightOf = (markup) => { const b = inkBounds(alone(markup)); return b === null ? 0 : b.y1 - b.y0; };
+const MARKED = Object.entries(C.EXPRESSIONS).filter(([, x]) => x.marker).map(([name]) => name);
+const markerBody = (doc) => { const m = partOf(doc, 'marker'); if (m === null) return null; const g = partOf(m, 'glow'); return g === null ? m : m.replace(g, ''); };
+// A seat's first z (z1, the largest it draws asleep): the same key's sleeper still, its `data-k="0"` z's own group.
+const z1Of = (key, sp) => C.sleepDocument(key, { species: sp, frame: 0, deskTop: DESK_TOP, clear: CLEAR }).match(/<g data-part="z" data-k="0"[^>]*>(?:<path [^>]*\/>)+<\/g>/)?.[0] ?? '';
+const keyOfVariant = (prefix, sp, v) => { let key = `${prefix}/${sp}`; for (let i = 0; v !== null && C.recipe(key, sp).variant !== v; i++) key = `${prefix}/${sp}/${i}`; return key; };
+const sizeBad = [], sizes7c = [];
+for (const sp of KEYS) for (const v of [null, ...variantsOf(sp)]) {
+  const key = keyOfVariant('marker', sp, v), z1 = heightOf(z1Of(key, sp));
+  for (const expression of MARKED) {
+    const body = markerBody(C.frameDocument(key, { species: sp, expression, clear: CLEAR }));
+    const h = body === null ? 0 : heightOf(body);
+    sizes7c.push([h, z1]);
+    if (!(z1 > 0 && Math.abs(h - z1) <= 0.5)) sizeBad.push(`${sp}${v ? `/${v}` : ''} ${expression} ${h.toFixed(1)} for a z1 of ${z1.toFixed(1)}`);
+  }
+}
+const span = (i) => `${Math.min(...sizes7c.map((x) => x[i])).toFixed(1)} to ${Math.max(...sizes7c.map((x) => x[i])).toFixed(1)}`;
+measure(`marker and z1 heights, outline included, glow not, over every species and variant: the markers ${span(0)} units, the same keys' z1 asleep ${span(1)}`);
+check(MARKED.length > 0 && sizeBad.length === 0, `SIZE: every species' ${MARKED.join(' and ')} marker is as tall as the same seat's first z asleep, within half a unit${sizeBad.length ? ` — not: ${sizeBad.slice(0, 4).join('; ')}` : ''}`);
+// The pulse, through the tree → painter interface, on a committed seat, for every pose whose expression carries a marker.
+const levelOf = (doc) => Number(partOf(doc, 'marker')?.match(/^<g data-part="marker"[^>]*data-level="(\d)"/)?.[1] ?? NaN);
+const markedPoses = otherPoses.filter((pose) => MARKED.includes(C.expressionOf(pose, pose === 'present' ? 'question' : null)));
+const pulseBad = [];
+for (const pose of markedPoses) {
+  const glyph = pose === 'present' ? 'question' : null;
+  const p = C.poseFrames(si, ss, { pose, glyph, deskTop: DESK_TOP, clear: CLEAR });
+  const want = [3, ...Array.from({ length: C.SLEEP_LOOP }, (_, n) => C.zLevels(n)[0])];
+  const got = (p.frames ?? []).map(levelOf);
+  if (p.loopFrom !== 1 || JSON.stringify(got) !== JSON.stringify(want)) pulseBad.push(`${pose}: loopFrom ${p.loopFrom}, marker levels ${JSON.stringify(got)} for ${JSON.stringify(want)}`);
+  const unmarked = new Set((p.frames ?? []).map((d) => { const m = partOf(d, 'marker'); return m === null ? d : d.replace(m, ''); }));
+  if (unmarked.size !== 1) pulseBad.push(`${pose}: ${unmarked.size} distinct drawings under the marker — only the marker's brightness may change`);
+}
+check(markedPoses.length > 0 && pulseBad.length === 0, `PULSE: ${markedPoses.join(', ')} draw a still with the marker at full brightness (the reduced-motion form) and the sleeper's ${C.SLEEP_LOOP}-frame loop with the marker lit as z1 is, loopFrom 1, nothing else changing${pulseBad.length ? ` — ${pulseBad.slice(0, 2).join('; ')}` : ''}`);
+// One glow: every level's halo over the marker's own outline, read off the drawn attributes.
+const glowBad = [];
+for (const expression of MARKED) for (const level of [0, 1, 2, 3]) {
+  const m = partOf(C.frameDocument('marker/glow', { species: KEYS[0], expression, level, clear: CLEAR }), 'marker') ?? '';
+  // the glyph's first stroke is its dark outline (the z's `zSvg()` draws its outline first the same way)
+  const outline = Number((m.match(/<g data-part="glyph"[^>]*><path [^>]*stroke-width="([\d.]+)"/) ?? [])[1]);
+  const halos = [...m.matchAll(/<path data-part="halo"[^>]*stroke-width="([\d.]+)"[^>]*opacity="([\d.]+)"/g)];
+  if (!Number.isFinite(outline)) { glowBad.push(`${expression} level ${level}: no glyph outline drawn`); continue; }
+  if (level === 0 ? halos.length !== 0 : halos.length === 0) { glowBad.push(`${expression} level ${level}: ${halos.length} halos`); continue; }
+  for (const [, w, op] of halos) {
+    if (Math.abs(Number(w) - (outline + 2 * C.Z_HALO[level])) > 0.02 || Math.abs(Number(op) - C.Z_HALO_OPACITY[level]) > 0.005) glowBad.push(`${expression} level ${level}: halo ${w} at ${op} over an outline of ${outline}`);
+  }
+}
+check(glowBad.length === 0, `ONE GLOW: every marker level's halo is the z's — none at level 0, else Z_HALO[level] wider than the outline each side at Z_HALO_OPACITY[level]${glowBad.length ? ` — ${glowBad.slice(0, 3).join('; ')}` : ''}`);
+// Clear of the furniture and the trail, and inside the frame, at the brightest glow, for every species and variant.
+const clearBad = [];
+for (const sp of KEYS) for (const expression of MARKED) for (const v of [null, ...variantsOf(sp)]) {
+  const key = keyOfVariant('marker', sp, v);
+  const m = partOf(C.frameDocument(key, { species: sp, expression, level: 3, clear: CLEAR }), 'marker');
+  const b = m === null ? null : inkBounds(alone(m));
+  if (b === null) { clearBad.push(`${sp} ${expression}: no marker drawn`); continue; }
+  // `e`: the stand places the glow exactly a unit in, so a float's last bit is not a unit's breach
+  const V = C.SEAT_VIEWBOX, e = 1e-6;
+  if (b.x0 < V.x + 1 - e || b.x1 > V.x + V.w - 1 + e || b.y0 < V.y + 1 - e) clearBad.push(`${sp} ${expression}: past the frame's edge, ${JSON.stringify(b)}`);
+  for (const c of CLEAR) if (b.x1 > c.x - 1 + e && b.x0 < c.x + c.w + 1 - e && b.y1 > c.y - 1 + e && b.y0 < c.y + c.h + 1 - e) clearBad.push(`${sp}${v ? `/${v}` : ''} ${expression}: meets the ${c.name}`);
+}
+check(clearBad.length === 0, `CLEAR: every species' marker, glow included, keeps a unit inside the frame and off the ${CLEAR.map((c) => c.name).join(', ')}${clearBad.length ? ` — ${clearBad.slice(0, 3).join('; ')}` : ''}`);
 
 // ---- 8. vector, well-formed, self-contained (N2) ----
 section('8. every frame is one well-formed, self-contained SVG document');
@@ -312,8 +411,10 @@ const framesOf = (sp, key) => [
   ['walking', C.frameDocument(key, { species: sp, phase: 2 }), C.SEAT_VIEWBOX, C.SEAT_RECT],
   ['chibi', C.frameDocument(`${key}~intern`, { species: sp, chibi: true }), C.CHIBI_VIEWBOX, CHIBI_RECT],
   ...Array.from({ length: C.SLEEP_LOOP + 1 }, (_, frame) => ['asleep', C.sleepDocument(key, { species: sp, frame, deskTop: DESK_TOP, clear: CLEAR }), C.SEAT_VIEWBOX, C.SEAT_VIEWBOX]),
+  // every expression's standing frame — its paws, and its marker at full brightness, the widest glow (card#12444)
+  ...Object.keys(C.EXPRESSIONS).filter((x) => x !== 'neutral').map((expression) => ['posed', C.frameDocument(key, { species: sp, expression, clear: CLEAR }), C.SEAT_VIEWBOX, C.SEAT_RECT]),
 ];
-const FRAME_KINDS = ['standing', 'walking', 'chibi', 'asleep'];
+const FRAME_KINDS = ['standing', 'walking', 'chibi', 'asleep', 'posed'];
 const worst = {};   // species → kind → { over: past the frame, cut: past the rect, key }
 let boundsDocs = 0;
 for (const sp of KEYS) {
@@ -330,8 +431,8 @@ for (const sp of KEYS) {
 }
 const label = (sp, key) => { const v = C.recipe(key, sp).variant; return v ? `${sp}/${v}` : sp; };
 const worstBy = (kind, f) => KEYS.map((sp) => [sp, worst[sp][kind]]).sort((x, y) => f(y[1]) - f(x[1]))[0];
-measure(`what the character's own rect would cut, per frame kind — the frame before card#12259, gates nothing — in units past it: ${FRAME_KINDS.filter((k) => k !== 'asleep').map((k) => { const [sp, e] = worstBy(k, (e) => e.cut); return `${k} ${e.cut.toFixed(1)} (${label(sp, e.cutKey)}, ${e.cutKey})`; }).join(', ')} — over ${BOUNDS_KEYS} keys per species and ${WIDE_KEYS} at size ${widest.size}, girth ${widest.stout}, tilt ±${widest.tilt}`);
-measure(`every species past its rect: ${KEYS.flatMap((sp) => FRAME_KINDS.filter((k) => k !== 'asleep' && worst[sp][k].cut > 0).map((k) => `${label(sp, worst[sp][k].cutKey)} ${k} ${worst[sp][k].cut.toFixed(1)}`)).join(', ') || 'none'}`);
+measure(`what the character's own rect would cut, per frame kind — the frame before card#12259, gates nothing — in units past it: ${FRAME_KINDS.filter((k) => k !== 'asleep' && k !== 'posed').map((k) => { const [sp, e] = worstBy(k, (e) => e.cut); return `${k} ${e.cut.toFixed(1)} (${label(sp, e.cutKey)}, ${e.cutKey})`; }).join(', ')} — over ${BOUNDS_KEYS} keys per species and ${WIDE_KEYS} at size ${widest.size}, girth ${widest.stout}, tilt ±${widest.tilt}`);
+measure(`every species past its rect: ${KEYS.flatMap((sp) => FRAME_KINDS.filter((k) => k !== 'asleep' && k !== 'posed' && worst[sp][k].cut > 0).map((k) => `${label(sp, worst[sp][k].cutKey)} ${k} ${worst[sp][k].cut.toFixed(1)}`)).join(', ') || 'none'}`);
 measure(`least margin left at the frame's sides and top, per frame kind: ${FRAME_KINDS.map((k) => { const [sp, e] = worstBy(k, (e) => e.side); return `${k} ${(-e.side).toFixed(1)} (${label(sp, e.sideKey)}, ${e.sideKey})`; }).join(', ')} — over ${boundsDocs} documents`);
 for (const kind of FRAME_KINDS) {
   const out = KEYS.filter((sp) => worst[sp][kind].over > 0).map((sp) => `${label(sp, worst[sp][kind].key)} ${worst[sp][kind].over.toFixed(1)} (${worst[sp][kind].key})`);

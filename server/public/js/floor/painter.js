@@ -331,15 +331,17 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     /**
      * A character's frames as image URIs with where its held loop starts in them, `{ uris, loopFrom }`, made once per
      * asset and drawing: a desk's frames for its pose — the tree's `poseFrames()`, `uris[0]` the pose's static form and
-     * `uris[loopFrom ..]` its held loop (§ 10.4's frame contract: the sleeper's for `asleep`, its still ahead of the
-     * loop, the walk's for every other pose) — a walker's walk frames (`at` null), or an intern's one chibi frame, the
-     * tree handed the intern key (`internKey()`) in the seat's place; both of the last with `loopFrom` 0. `loopFrom`
+     * `uris[loopFrom ..]` its held loop (§ 10.4's frame contract: the sleeper's for `asleep` and the marker's pulse for a
+     * pose with a marker, each its still ahead of the loop, the walk's for every other pose) — a walker's walk frames
+     * (`at` null), or an intern's one chibi frame, the tree handed the intern key (`internKey()`) in the seat's place;
+     * both of the last with `loopFrom` 0. `loopFrom`
      * is kept beside the URIs because a property on the list `.map()` returns is lost. The cache key is the asset with
      * the drawing it holds, so a desk asleep and its walker never share frames. A tree that failed to load, or a
      * generator that throws for this key, is § 9 F14 for this asset and never a throw out of the paint.
      *
-     * @param {{pose: string, desk_top: number, clear?: object[]}|null} at a desk's pose, its desk's top edge and, for
-     *        a sleeper, the clear rects its z's keep out of (`characterOverdraw()`), or `null`
+     * @param {{pose: string, glyph?: string, desk_top: number, clear?: object[]}|null} at a desk's pose, its § 7.1 glyph,
+     *        its desk's top edge and the clear rects a sleeper's z's and a marker keep out of (`characterOverdraw()`), or
+     *        `null`
      * @returns {{uris: string[], loopFrom: number}|null}
      */
     const characterFrames = (installId, seatId, asset, at = null, intern = false) => {
@@ -349,8 +351,9 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             return null;
         }
 
-        // `at.clear` is not in the key: a sleeper's clear rects are `characterOverdraw()`'s of the one furniture box and
-        // the character's size, the same for every desk, so the pose and the desk's top edge already name the drawing.
+        // `at.clear` is not in the key: a sleeper's and a marker's clear rects are `characterOverdraw()`'s of the one
+        // furniture box and the character's size, the same for every desk, so the pose, its glyph and the desk's top edge
+        // already name the drawing.
         // A layout whose clear rects differ by desk must add them here.
         const key = intern ? asset : at === null ? `${asset}#walk` : `${asset}#${at.pose}/${at.glyph ?? ''}@${at.desk_top}`;
 
@@ -520,7 +523,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                         // line; static, because an intern takes no § 6.2 row. The viewport is the stool's
                         // overdraw (§ 10.4's frame contract item 3, card#12259): the rect widened to the row's
                         // pitch, so a tilted frame's ear or cap is not cut at the rect's side. An untitled
-                        // intern is drawn dashed (§ 8): its sprite with a dashed edge at its own 20 × 32 rect —
+                        // intern is drawn dashed (§ 8): its sprite with a dashed edge at its own stool rect —
                         // rx 3, no fill, `--scene-stool` at 1.5 wide, dashed `3 2` — and its fallback glyph
                         // below is dashed `3 2` with no fill (the designer's rulings on card#11058 PR-C).
                         const drawn = characterFrames(e.install_id, e.key, e.asset, null, true);
