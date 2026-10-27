@@ -396,6 +396,17 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         return el;
     };
 
+    /**
+     * One element's text as painted — one text a line, each on its role's line below the last (a wrapped text, the
+     * screen's, has more than one: card#12446) — in its class: the monitor's text carries its lit state, so its ink
+     * is the screen's (§ 10.6). The paint and the 1 s refresh both draw through it.
+     */
+    const textLines = (parent, e, id) => {
+        const cls = e.lit ? `t-${e.kind} lit-${e.lit}` : `t-${e.kind}`;
+
+        return (e.lines ?? [e]).map((line, i) => text(parent, { ...e, id, y: e.y + i * TYPE_ROLES[e.role ?? FACT].line, text: line.text }, cls));
+    };
+
     function paintDesk(layer, desk) {
         const group = node('g', {
             class: `desk lighting-${desk.lighting}${desk.placeholder ? ' placeholder' : ''}`,
@@ -540,8 +551,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                     break;
                 default:
                     if (typeof e.text === 'string') {
-                        // The monitor's text carries its lit state, so its ink is the screen's (§ 10.6).
-                        text(g, { ...e, id }, e.lit ? `t-${e.kind} lit-${e.lit}` : `t-${e.kind}`);
+                        textLines(g, e, id);
                     }
             }
         });
@@ -1185,10 +1195,33 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                     return;
                 }
 
-                const el = svg.querySelector(`[data-id="${CSS.escape(`${desk.key}:${i}`)}"]`);
+                const id = `${desk.key}:${i}`;
+                const nodes = [...svg.querySelectorAll(`[data-id="${CSS.escape(id)}"]`)];
+                const lines = e.lines ?? [e];
 
-                if (el !== null) {
-                    el.textContent = e.text;
+                if (nodes.length === 0) {
+                    return;
+                }
+
+                if (nodes.length === lines.length) {
+                    nodes.forEach((n, j) => {
+                        n.textContent = lines[j].text;
+                    });
+
+                    return;
+                }
+
+                // A wrapped text whose line count moved with its words (an age ticking on the screen, card#12446):
+                // its lines re-drawn where they stood.
+                const parent = nodes[0].parentNode;
+                const after = nodes[nodes.length - 1].nextSibling;
+
+                for (const n of nodes) {
+                    n.remove();
+                }
+
+                for (const n of textLines(parent, e, id)) {
+                    parent.insertBefore(n, after);
                 }
             });
         }

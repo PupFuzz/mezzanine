@@ -57,7 +57,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     private const ROUTED_RUNS = ['leave-stale', 'return-from-stale', 'two-walkers', 'crossing', 'mass-departure', 'repaint', 'delta-under-walk'];
 
     /** The fixture's measurer, as every `fx-elevator` run states it — the scene-level H6 leg builds its scene with it. */
-    private const MEASURER = ['glyph_w' => ['fact' => 6, 'name' => 8, 'screen' => 5], 'line_h' => ['fact' => 12, 'name' => 16, 'screen' => 12]];
+    private const MEASURER = ['glyph_w' => ['fact' => 6, 'name' => 8, 'screen' => 5], 'line_h' => ['fact' => 12, 'name' => 16, 'screen' => 8]];
 
     // ── § 12's rows, read out of the document ────────────────────────────────────────────────
 
