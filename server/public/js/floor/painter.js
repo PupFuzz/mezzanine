@@ -77,6 +77,13 @@ const FACT = 'fact';
 export const svgUri = (doc) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(doc)}`;
 
 /**
+ * card#12445: how small the portal bird is drawn as it vanishes into the birdhouse's hole, at the end of its hop in
+ * (and the start of its hop out) — drawing only: the sheet's `hop` keyframes scale to it, and the hop's path ends
+ * where, at this size, the bird's body is centred on the hole.
+ */
+const HOP_SCALE = 0.35;
+
+/**
  * The drawing's own stylesheet — which palette token each class paints with, and the § 6.2 forms'
  * keyframes, placed inside the SVG so the drawing carries it wherever the camera takes it. ⛔ NO COLOUR
  * IS WRITTEN HERE: every one is a `var(--…)` token whose value is `public/css/mezzanine.css`'s `:root`,
@@ -127,8 +134,8 @@ ${CAB_STYLE}
 @keyframes flap-up{0%{opacity:1}50%{opacity:0}}@keyframes flap-down{0%{opacity:0}50%{opacity:1}}
 .fx-perched{opacity:0;animation-name:perched;animation-timing-function:linear}
 @keyframes perched{from{opacity:1}to{opacity:1}}
-.fx-hop{opacity:0;animation-name:hop;animation-timing-function:ease-in-out}.fx-hop.hop-out{animation-direction:reverse}
-@keyframes hop{from{opacity:1;transform:translate(0px,-${BIRD_LIFT}px) scale(1) translate(0px,${BIRD_LIFT}px)}70%{opacity:1}to{opacity:0;transform:translate(var(--hole-x),var(--hole-y)) scale(.35) translate(0px,${BIRD_LIFT}px)}}
+.fx-hop{offset-rotate:0deg;opacity:0;animation-name:hop;animation-timing-function:ease-in-out}.fx-hop.hop-out{animation-direction:reverse}
+@keyframes hop{from{offset-distance:0%;opacity:1;transform:scale(1)}70%{opacity:1}to{offset-distance:100%;opacity:0;transform:scale(${HOP_SCALE})}}
 .fx-rest{opacity:0;animation-name:rest;animation-fill-mode:forwards}
 @keyframes rest{from{opacity:1}88%{opacity:1}89%{opacity:.5}99%{opacity:.5}to{opacity:0}}
 .fx-perch{animation-name:perch;animation-fill-mode:forwards}
@@ -725,15 +732,17 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                         // card#12445 (the operator, 2026-10-26): the portal bird STANDS on the birdhouse's perch for
                         // the ledge dwell — its feet on the peg (`perchPoint()`), the wing still — and hops between
                         // the perch and the hole: up into it, shrinking out of sight, going out; out of it onto the
-                        // perch coming in (the same hop, reversed). It faces the way it flies.
+                        // perch coming in (the same hop, reversed). The hop runs from where it stands to where, at
+                        // `HOP_SCALE`, its body is centred on the hole. It faces the way it flies.
                         const p = fx.perch;
                         const frame = (n) => (n * fx.frame_interval_ms) / 1000;
-                        const ledge = node('g', { transform: `translate(${p.at.x} ${p.at.y})` }, layer);
+                        const inside = { x: p.hole.x, y: p.hole.y + BIRD_LIFT * HOP_SCALE };
+                        const ledge = node('g', { transform: `translate(${p.point.x} ${p.point.y})` }, layer);
                         const perched = node('g', { class: 'fx-perched', style: `animation-duration:${frame(p.dwell_frames)}s;animation-delay:${at(p.dwell_start)}s` }, ledge);
                         const hop = node('g', {
                             class: `fx-hop hop-${p.hop}`,
-                            style: `animation-duration:${frame(p.hop_frames)}s;animation-delay:${at(p.hop_start)}s;--hole-x:${p.hole.x - p.at.x}px;--hole-y:${p.hole.y - p.at.y}px`,
-                        }, ledge);
+                            style: `animation-duration:${frame(p.hop_frames)}s;animation-delay:${at(p.hop_start)}s;offset-path:path('M ${p.point.x} ${p.point.y} L ${inside.x} ${inside.y}')`,
+                        }, layer);
 
                         bird(perched, fx.heading_deg, null, 'closed', true);
                         bird(hop, fx.heading_deg, flap, 'closed', true);

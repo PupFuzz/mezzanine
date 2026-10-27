@@ -229,7 +229,7 @@ export class EffectsInFlight {
         };
         const own = part(effect);
         const taken = this.#held
-            .filter((h) => (h.effect.perch ?? null) !== null && samePoint(h.effect.perch.at, effect.perch.at))
+            .filter((h) => (h.effect.perch ?? null) !== null && samePoint(h.effect.perch.point, effect.perch.point))
             .map((h) => {
                 const p = part(h.effect);
 

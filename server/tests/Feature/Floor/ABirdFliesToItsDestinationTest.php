@@ -203,6 +203,9 @@ class ABirdFliesToItsDestinationTest extends TestCase
         $late = $this->mutatedModules([self::PAINTER, 'animation-delay:${at(p.dwell_start)}s', 'animation-delay:${at(p.dwell_start + 1)}s']);
         $this->assertNotSame([], $this->ledgeDefects($this->paint($painted, $late), $painted), 'CONTROL (a painter drawing the dwell a frame late) did not bite');
 
+        $low = $this->mutatedModules([self::PAINTER, 'y: p.hole.y + BIRD_LIFT * HOP_SCALE }', 'y: p.hole.y + BIRD_LIFT }']);
+        $this->assertNotSame([], $this->ledgeDefects($this->paint($painted, $low), $painted), 'CONTROL (a hop that ends under the hole) did not bite');
+
         $stacked = $this->mutatedModules(['../floor/in-flight.js', '? this.#onTheLedge(effect, now) : effect;', '? effect : effect;']);
         $this->assertNotSame([], $this->queueDefects($this->queue($painted, $stacked)), 'CONTROL (two birds on the ledge at once) did not bite');
 
@@ -317,7 +320,7 @@ class ABirdFliesToItsDestinationTest extends TestCase
                 'arrival' => ['the perch', 'a desk'],
                 default => ['a desk', 'a desk'],
             };
-            $perch = $fx['perch'] === null ? null : [$fx['perch']['at']['x'], $fx['perch']['at']['y']];
+            $perch = $fx['perch'] === null ? null : [$fx['perch']['point']['x'], $fx['perch']['point']['y']];
 
             if ($fx['animation_id'] === 'A22') {
                 // card#12445: the place it stands is straight under the hole, and its hop runs to and from the hole.
@@ -433,8 +436,9 @@ class ABirdFliesToItsDestinationTest extends TestCase
         }
 
         $this->assertNotNull($portal, 'the run drew no birdhouse');
-        $this->assertSame(1, preg_match('/@keyframes hop\{from\{[^}]*\}(?:[^{}]*\{[^}]*\})*to\{[^}]*translate\(var\(--hole-x\),var\(--hole-y\)\)[^}]*\}\}/', $style),
-            'the sheet\'s hop keyframes do not end on the hole (`--hole-x`, `--hole-y`)');
+        // The hop's last keyframe: at the end of its path, the bird drawn at this scale.
+        $this->assertSame(1, preg_match('/@keyframes hop\{from\{[^}]*\}(?:[^{}]*\{[^}]*\})*to\{offset-distance:100%;[^}]*transform:scale\(([\d.]+)\)\}\}/', $style, $shrink),
+            'the sheet\'s hop keyframes do not end at the end of the hop\'s path, at a scale');
 
         $seen = 0;
 
@@ -507,10 +511,18 @@ class ABirdFliesToItsDestinationTest extends TestCase
                 $defects[] = sprintf('%s: the peg is %.1f px from its legs\' middle, not between them', $key, $peg);
             }
 
-            $this->assertSame(1, preg_match('/--hole-x:([-\d.]+)px;--hole-y:([-\d.]+)px/', (string) $f['paints'][0]['hop']['style'], $hole), "{$key}: its hop names no hole");
+            // The hop runs from where it stands to where, at the last keyframe's scale, its body is centred on the hole.
+            $hopNode = $f['paints'][0]['hop'];
+            $this->assertSame(1, preg_match("/offset-path:path\\('M ([-\\d.]+) ([-\\d.]+) L ([-\\d.]+) ([-\\d.]+)'\\)/", (string) $hopNode['style'], $path), "{$key}: its hop runs on no straight path");
+            $this->assertSame(1, preg_match('/^translate\(0 ([-\d.]+)\)/', (string) $hopNode['bird'], $hopLift), "{$key}: the hopping bird is not lifted by a translate");
+            $body = [(float) $path[3], (float) $path[4] + (float) $hopLift[1] * (float) $shrink[1]];
 
-            if ([(float) $hole[1], (float) $hole[2]] !== [(float) $portal['mouth']['x'] - $stands[0], (float) $portal['mouth']['y'] - $stands[1]]) {
-                $defects[] = "{$key} hops to ({$hole[1]}, {$hole[2]}) from where it stands, not to the hole";
+            if ([(float) $path[1], (float) $path[2]] !== $stands) {
+                $defects[] = "{$key} hops from ({$path[1]}, {$path[2]}), not from where it stands";
+            }
+
+            if (abs($body[0] - $portal['mouth']['x']) > 0.01 || abs($body[1] - $portal['mouth']['y']) > 0.01) {
+                $defects[] = sprintf('%s hops its body to (%.2f, %.2f), not into the hole at (%.2f, %.2f)', $key, $body[0], $body[1], $portal['mouth']['x'], $portal['mouth']['y']);
             }
         }
 

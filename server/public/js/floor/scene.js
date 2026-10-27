@@ -1402,7 +1402,7 @@ function travel(base, from, to, moving, rest, portal = null) {
     const flight = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / ENVELOPE_PX_PER_FRAME));
     const out = portal?.leg === 'departure';
     const perch = portal === null ? null : Object.freeze({
-        at: portal.ledge,
+        point: portal.ledge,
         hole: portal.hole,
         hop: out ? 'in' : 'out',
         dwell_start: out ? flight : HOLE_HOP_FRAMES,
