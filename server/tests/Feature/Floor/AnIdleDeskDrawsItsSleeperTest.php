@@ -7,11 +7,13 @@ use Tests\Feature\Support\DrivesAShippedClientModule;
 use Tests\TestCase;
 
 /**
- * **An idle desk draws its sleeper** — card#12159, `docs/design/FLOOR.md` § 6.2 A6, § 7.1's `idle` row and
- * § 10.4's frame contract item 4: an idle seat's character is slumped asleep on its desk, its eyes closed, the
- * monitor dimmed, with z's rising above its head — the largest lowest, each higher one smaller and the highest
- * fading — in A6's loop, in which only the z's move; under reduced motion it is the static slumped pose with the
- * z's drawn once (§ 6.4). And beside it, AT-D3-5's comparison on the drawing: a `stale` desk draws no character.
+ * **An idle desk draws its sleeper** — card#12159 and card#12187, `docs/design/FLOOR.md` § 6.2 A6, § 7.1's `idle`
+ * row and § 10.4's frame contract item 4: an idle seat's character is slumped asleep on its desk, its eyes closed, the
+ * monitor off, with three z's standing fixed above its head on the side away from its roll — z1 the lowest — lit in turn
+ * by a pulse of brightness, each halo behind its z, drawn in its overdraw past the character's rect and kept out of the
+ * floor's clear rects; a still ahead of the loop (`loopFrom` 1), the loop started at the seat's own offset; under
+ * reduced motion it is the still, every z at full brightness (§ 6.4). And beside it, AT-D3-5's comparison on the
+ * drawing: a `stale` desk draws no character.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE CHECK IS `sleeper-probe.mjs`, AND IT READS THE DRAWING: the painter over a fake DOM with the REAL
@@ -43,11 +45,12 @@ class AnIdleDeskDrawsItsSleeperTest extends TestCase
         $run = $this->sleeperRun();
 
         $this->assertSame([], $run['defects'], "the shipped floor does not draw its idle desk asleep:\n".implode("\n", $run['defects']));
-        // Each leg read something: a frame, the z's in it, the loop's steps and every species' sleeper.
-        $this->assertGreaterThan(0, $run['counts']['frames'], 'no sleeper frame was read');
+        // Each leg read something: a document, the z's in it, the loop's steps, every species' sleeper and two staggered seats.
+        $this->assertGreaterThan(0, $run['counts']['frames'], 'no sleeper document was read');
         $this->assertGreaterThan(0, $run['counts']['zs'], 'no z was read');
         $this->assertGreaterThan(0, $run['counts']['steps'], 'the held loop was never stepped');
         $this->assertGreaterThan(0, $run['counts']['species'], 'no species was drawn asleep');
+        $this->assertSame(2, $run['counts']['stagger'] ?? 0, 'the stagger leg did not read two seats whose offsets differ');
     }
 
     /**
@@ -58,42 +61,88 @@ class AnIdleDeskDrawsItsSleeperTest extends TestCase
     public static function controls(): array
     {
         return [
-            // The defect card#12159 was filed on: the desk draws the walk's frames whatever its pose.
+            // Each anchored edit plants one defect § 10.4 item 4 or § 6.2 names; the legs it must red are the probe's.
             "the walk's frames drawn for every pose" => ['client', ['../floor/painter.js',
-                'characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top })', 'characters.walkFrames(installId, seatId)'],
-                ['sleeper:', 'still:', 'reduced:']],
+                'characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top, clear: at.clear })',
+                '{ frames: characters.walkFrames(installId, seatId), loopFrom: 0 }'], ['sleeper:', 'reduced:']],
             'a held loop stepping three frames whatever the drawing holds' => ['client', ['../floor/painter.js',
-                "el.setAttribute('href', urls[tick % urls.length]);", "el.setAttribute('href', urls[tick % 3]);"], ['rise:']],
+                "el.setAttribute('href', uris[loopFrom + ((tick + offset) % (uris.length - loopFrom))]);",
+                "el.setAttribute('href', uris[loopFrom + ((tick + offset) % 3)]);"], ['loop:']],
+            "the held loop's start dropped, so the moving loop shows the still" => ['client', ['../floor/painter.js',
+                "el.setAttribute('href', uris[loopFrom + ((tick + offset) % (uris.length - loopFrom))]);",
+                "el.setAttribute('href', uris[(tick + offset) % uris.length]);"], ['loop:']],
             "the desk's top edge not handed to the pose" => ['client', ['../floor/desk-layout.js',
-                "desk_top: (R['desk-sprite'].y - R.character.y) / R.character.h,", 'desk_top: 0.5,'], ['sleeper:']],
+                "desk_top: (R['desk-sprite'].y - R.character.y) / R.character.h,",
+                'desk_top: 0.5,'], ['sleeper:']],
             'reduced motion not selected for the held render' => ['client', ['../desk/desk-render.js',
-                'heldRendering(heldId, permitted, options.reduce === true)', 'heldRendering(heldId, permitted, false)'], ['reduced:']],
+                'heldRendering(heldId, permitted, options.reduce === true)',
+                'heldRendering(heldId, permitted, false)'], ['reduced:']],
             "the idle desk's monitor lit" => ['client', ['../desk/desk-poses.js',
-                "idle: { pose: 'asleep', glyph: 'asleep', lighting: 'full', monitor: 'dimmed' },",
+                "idle: { pose: 'asleep', glyph: 'asleep', lighting: 'full', monitor: 'off' },",
                 "idle: { pose: 'asleep', glyph: 'asleep', lighting: 'full', monitor: 'on' },"], ['monitor:']],
             'the idle desk modelled upright' => ['client', ['../desk/desk-poses.js',
-                "idle: { pose: 'asleep', glyph: 'asleep', lighting: 'full', monitor: 'dimmed' },",
-                "idle: { pose: 'present', glyph: 'asleep', lighting: 'full', monitor: 'dimmed' },"], ['sleeper:']],
-            // AT-D3-5's third RED, reached on the drawing: a dark desk that draws a character.
+                "idle: { pose: 'asleep', glyph: 'asleep', lighting: 'full', monitor: 'off' },",
+                "idle: { pose: 'present', glyph: 'asleep', lighting: 'full', monitor: 'off' },"], ['sleeper:']],
+            "a moving loop started at the still, not at its seat's offset" => ['client', ['../floor/painter.js',
+                'art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw,',
+                'art(g, uris[0], e.overdraw,'], ['stagger:']],
+            'a still sleeper drawn at its offset, not at the still' => ['client', ['../floor/painter.js',
+                'art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw,',
+                'art(g, uris[loopFrom + characters.loopOffset(desk.install_id, desk.seat_id, uris.length - loopFrom)], e.overdraw,'], ['reduced:', 'stagger:']],
+            "a loop offset drawn over the list's length, not the loop's" => ['client', ['../floor/painter.js',
+                'characters.loopOffset(desk.install_id, desk.seat_id, uris.length - loopFrom)',
+                'characters.loopOffset(desk.install_id, desk.seat_id, uris.length)'], ['stagger:']],
+            "a sleeper drawn in its element's rect, not its overdraw" => ['client', ['../floor/painter.js',
+                'art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw,',
+                'art(g, moves ? uris[loopFrom + offset] : uris[0], e,'], ['overdraw:']],
+            "a sleeper's overdraw left where the layout put it" => ['client', ['../floor/scene.js',
+                'overdraw: Object.freeze({ ...e.overdraw, x: at.x + e.overdraw.x, y: at.y + e.overdraw.y })',
+                'overdraw: e.overdraw'], ['overdraw:']],
+            'the clear rects not handed to the tree' => ['client', ['../floor/painter.js',
+                '{ pose: e.pose, desk_top: e.desk_top, clear: e.clear }',
+                '{ pose: e.pose, desk_top: e.desk_top }'], ['sleeper:']],
+            "a clear rect off the furniture (the trail's column halved)" => ['client', ['../floor/desk-layout.js',
+                'const column = { x: trail[0].x - reach, y: top, w: 2 * reach, h: c.y - top };',
+                'const column = { x: trail[0].x - reach, y: top, w: reach, h: c.y - top };'], ['overdraw:']],
             'a character drawn at a stale desk' => ['client', ['../desk/task-bubble.js',
                 "export const NO_CHARACTER_STATES = Object.freeze(['stale', 'offline', 'retired']);",
                 "export const NO_CHARACTER_STATES = Object.freeze(['offline', 'retired']);"], ['chair:']],
             'the sleeper drawn with its eyes open' => ['tree', ['creatures.js',
-                '  parts.push(sleepingEyesSvg(F));', '  parts.push(eyesSvg(pen, F, r.eyes));'], ['sleeper:']],
+                '  parts.push(sleepingEyesSvg(F));',
+                '  parts.push(eyesSvg(pen, F, r.eyes));'], ['sleeper:']],
             'the sleeper swaying frame to frame' => ['tree', ['creatures.js',
-                'rotate(${roll}) scale(${s} ${s}) translate(-54 -${f(chin)})', 'rotate(${roll + frame * 2}) scale(${s} ${s}) translate(-54 -${f(chin)})'], ['still:']],
-            "the z's frozen in place" => ['tree', ['creatures.js',
-                'const phase = ((frame / SLEEP_FRAMES) + 0.5) % 1;', 'const phase = 0.5;'], ['rise:']],
-            "the z's not shrinking as they rise" => ['tree', ['creatures.js',
-                '      h: Z_LARGE + (Z_SMALL - Z_LARGE) * t,', '      h: Z_LARGE,'], ['zs:']],
-            "the z's sinking instead of rising" => ['tree', ['creatures.js',
-                '  const to = { x: 54 + dir * 46, y: Z_SMALL };', '  const to = { x: 54 + dir * 46, y: from.y + 30 };'], ['rise:']],
-            "the z's drawn across the sleeper's face" => ['tree', ['creatures.js',
-                'y: Math.min(Math.max(Z_RISE, Math.min(crown - 4, edge - 30)), eyes - Z_LARGE / 2 - 4)', 'y: eyes + 4'], ['zs:']],
-            'the highest z never fading' => ['tree', ['creatures.js',
-                'const opacity = Math.min(1, t / 0.15, (1 - t) / 0.4);', 'const opacity = Math.min(1, t / 0.15);'], ['zs:']],
-            'only two z\'s drawn' => ['tree', ['creatures.js',
-                'const SLEEP_ZS = 3;', 'const SLEEP_ZS = 2;'], ['zs:']],
+                'rotate(${roll}) scale(${s} ${s}) translate(-54 -${f(chin)})',
+                'rotate(${roll + frame * 2}) scale(${s} ${s}) translate(-54 -${f(chin)})'], ['still:']],
+            'the pulse reversed, z3 first' => ['tree', ['creatures.js',
+                '    const d = (((f - 2 * k) % SLEEP_LOOP) + SLEEP_LOOP) % SLEEP_LOOP;',
+                '    const d = (((f - 2 * (SLEEP_ZS - 1 - k)) % SLEEP_LOOP) + SLEEP_LOOP) % SLEEP_LOOP;'], ['pulse:']],
+            'a z moved between frames' => ['tree', ['creatures.js',
+                "  const bodies = zs.map((z) => zSvg(z, levels[z.k])).join('');",
+                "  const bodies = zs.map((z) => zSvg({ ...z, x: z.x + frame }, levels[z.k])).join('');"], ['still:']],
+            "two z's positions swapped, their indices kept (the pulse runs down)" => ['tree', ['creatures.js',
+                '    const t = Z_T0 + (1 - 2 * Z_T0) * k / (SLEEP_ZS - 1);',
+                '    const t = Z_T0 + (1 - 2 * Z_T0) * (SLEEP_ZS - 1 - k) / (SLEEP_ZS - 1);'], ['order:']],
+            "a crest top set 20 units under the drawing's" => ['tree', ['creatures.js',
+                'fox: 34,',
+                'fox: 54,'], ['crest:']],
+            "two z's drawn, not three" => ['tree', ['creatures.js',
+                'export const SLEEP_ZS = 3;',
+                'export const SLEEP_ZS = 2;'], ['zs:']],
+            "the halos drawn in front of the z's" => ['tree', ['creatures.js',
+                '<g data-part="zs"><g data-part="glow">${halos}</g>${bodies}</g>',
+                '<g data-part="zs">${bodies}<g data-part="glow">${halos}</g></g>'], ['halo:']],
+            'a lit z drawn without its halo' => ['tree', ['creatures.js',
+                "  if (level === 0) return '';\n  return `<path data-part=\"halo\"",
+                "  if (level < 3) return '';\n  return `<path data-part=\"halo\""], ['halo:']],
+            "card#12159's z size" => ['tree', ['creatures.js',
+                'export const Z_LARGE = 36;',
+                'export const Z_LARGE = 24;'], ['zs:']],
+            "the z's on the side the head rolled to" => ['tree', ['creatures.js',
+                '    return { k, x: 54 - dir * (Z_A0 + (Z_A1 - Z_A0) * t), y: y0 + (y1 - y0) * t, h: L + (S - L) * t };',
+                '    return { k, x: 54 + dir * (Z_A0 + (Z_A1 - Z_A0) * t), y: y0 + (y1 - y0) * t, h: L + (S - L) * t };'], ['zs:']],
+            "the sleeper drawn in a frame other than § 12's" => ['tree', ['creatures.js',
+                'export const SEAT_VIEWBOX = Object.freeze({ x: -54, y: Z_TOP, w: 216, h: 234 });',
+                'export const SEAT_VIEWBOX = Object.freeze({ x: -54, y: Z_TOP, w: 216, h: 200 });'], ['sleeper:']],
         ];
     }
 

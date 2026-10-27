@@ -13,7 +13,7 @@ use Illuminate\Http\JsonResponse;
  * because an error code minted at a call site is a code no reporter was told to expect.
  *
  * `batch_id` rides every refusal that has one. § 12.2's worked `unsupported_schema_version`
- * example carries it, and it is what lets a reporter tie the refusal in its `REJECTED.txt` to
+ * example carries it, and it is what lets a reporter tie the refusal in its `REJECTED.<site>.txt` to
  * the batch it quarantined (§ 11.5).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -116,6 +116,20 @@ final class Refusal
             $expectedInstall,
             $expectedSeat,
         ), ['expected_install_id' => $expectedInstall, 'expected_seat_id' => $expectedSeat]);
+    }
+
+    /**
+     * The coordination receipt's D1 § 18.8 step 6 (card#12239): the payload's `repository.full_name` is
+     * a claim, held for equality against the binding the verifying secret belongs to. § 12.2's
+     * `identity_mismatch` row, the same refusal one route over: a secret issued for one repository
+     * must not write another's posts onto a floor.
+     */
+    public static function repositoryMismatch(string $expectedRepository): self
+    {
+        return new self(403, 'identity_mismatch', sprintf(
+            'This hook is bound to %s; the delivery claims a different repository.',
+            $expectedRepository,
+        ), ['expected_repository' => $expectedRepository]);
     }
 
     // ── step 8 ───────────────────────────────────────────────────────────────────────────────

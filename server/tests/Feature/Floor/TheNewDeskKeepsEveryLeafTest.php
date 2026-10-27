@@ -31,6 +31,12 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
 
     private const DATA = __DIR__.'/desk-leaves';
 
+    /** `desk-layout.js`'s § 7.4 fade (card#12346) — the anchor its controls replace. */
+    private const FADE = "    if (desk.lag !== null) {\n        for (const e of elements) {\n            e.opacity = FOLD_LAG_OPACITY;\n        }\n    }\n";
+
+    /** The treatment the fade replaced, planted back: § 7.4's hatched overlay over the art column, the art at full opacity. */
+    private const HATCH = "    if (desk.lag !== null) {\n        rect('lag-overlay', 'lag', { x: 0, y: 0, w: ART_W, h: 200 });\n    }\n";
+
     /** How many `node` processes judge a batch of mutated trees at once. */
     private const PARALLEL = 4;
 
@@ -185,7 +191,10 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
     {
         $layout = '../floor/desk-layout.js';
         $plants = [
-            'the hatch' => [[$layout, "        rect('lag-overlay', 'lag', R['lag-overlay'], { overlay: desk.lag.overlay });\n", ''], 'ii-missing', 'lag-overlay'],
+            // § 7.4's fade (card#12346): dropped, drawn on a desk without the badge, and the old hatch drawn in its place.
+            'the fade' => [[$layout, "            e.opacity = FOLD_LAG_OPACITY;\n", ''], 'ii-missing', 'fold-lag.fade'],
+            'the fade on every desk' => [[$layout, "    if (desk.lag !== null) {\n        for (const e of elements) {", "    if (true) {\n        for (const e of elements) {"], 'ii-extra', 'fold-lag.fade'],
+            'the hatch drawn back' => [[$layout, self::FADE, self::HATCH], 'ii-extra', 'lag-overlay'],
             'the descriptor' => [[$layout, "        text('monitor-text', 'monitor', desk.action === null ? desk.desk_label : desk.monitor.text, R['monitor-text'],\n            { role: 'screen', lit: desk.monitor.lit });\n", ''], 'ii-missing', 'monitor-text'],
             'the quiet age' => [[$layout, "    text('quiet-age', 'quiet_age', desk.quiet_age, R['quiet-age']);\n", ''], 'ii-missing', 'quiet-age'],
             'the flag off by one' => [[$layout, 'const n = flagCount(desk, row);', 'const n = flagCount(desk, row) + 1;'], 'ii-missing', 'flag'],
@@ -206,8 +215,8 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 "    if (!ctx.placeholder) rect('monitor', 'monitor', R.monitor, { lit: desk.monitor.lit });\n"], 'ii-missing', 'monitor.lit'],
             'the dimming lost (the placed desk lit full)' => [['../floor/scene.js', "        lighting: model.lighting,\n        bubble_model: bubble,",
                 "        lighting: 'full',\n        bubble_model: bubble,"], 'ii-missing', 'group.lighting'],
-            'motion forced' => [['../floor/scene.js', 'const moved = elements.map((e) => Object.freeze({ ...e, x: at.x + e.x, y: at.y + e.y }));',
-                "const moved = elements.map((e) => Object.freeze({ ...e, ...(e.kind === 'character' ? { animation: { ...e.animation, motion: true } } : {}), x: at.x + e.x, y: at.y + e.y }));"],
+            'motion forced' => [['../floor/scene.js', "    const moved = elements.map((e) => Object.freeze({\n        ...e,\n",
+                "    const moved = elements.map((e) => Object.freeze({\n        ...e,\n        ...(e.kind === 'character' ? { animation: { ...e.animation, motion: true } } : {}),\n"],
                 'ii-missing', 'character.motion'],
         ];
 
@@ -340,36 +349,53 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 'stroke:var(--scene-stool);stroke-width:1.5;stroke-dasharray:3 2}', 'stroke:var(--scene-stool);stroke-dasharray:3 2}'],
             'an intern drawn as the glyph with its art intact' => ['../floor/painter.js', '                    if (e.art) {', '                    if (false) {'],
             "an intern's sprite outside its clipping viewport" => ['../floor/painter.js',
-                "art(g, urls[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern');",
-                "image(g, urls[0], e.x, e.y, e.w, e.h, e.asset, { class: e.untitled ? 'intern untitled' : 'intern' });"],
+                "art(g, drawn.uris[0], e.overdraw, e.asset, e.untitled ? 'intern untitled' : 'intern');",
+                "image(g, drawn.uris[0], e.x, e.y, e.w, e.h, e.asset, { class: e.untitled ? 'intern untitled' : 'intern' });"],
             // An intern's key is minted per dispatch: the painter drops the frames of each one it no longer
             // draws — its Map is the only cache (card#11046: the tree holds none, and has no forget()).
             "an intern no longer drawn kept in the painter's frames" => ['../floor/painter.js',
                 "                interns.delete(asset);\n                frames.delete(asset);", '                interns.delete(asset);'],
             'an intern animated' => ['../floor/painter.js',
-                "art(g, urls[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern');",
-                "stepping.push([art(g, urls[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern'), [urls[0], 'x', 'y']]);"],
+                "art(g, drawn.uris[0], e.overdraw, e.asset, e.untitled ? 'intern untitled' : 'intern');",
+                "stepping.push([art(g, drawn.uris[0], e.overdraw, e.asset, e.untitled ? 'intern untitled' : 'intern'), [drawn.uris[0], 'x', 'y'], 0, 0]);"],
             // card#11046 — AT-D3-24's painter half, each planted in the shipped painter.
             'a character shown through an image that is not an SVG document (a raster frame)' => ['../floor/painter.js',
                 'export const svgUri = (doc) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(doc)}`;',
                 'export const svgUri = (doc) => `data:image/png;base64,${encodeURIComponent(doc)}`;'],
             'a canvas made for a character' => ['../floor/painter.js',
-                '                frames.set(key, docs.map(svgUri));', "                document.createElement('canvas');\n                frames.set(key, docs.map(svgUri));"],
+                '                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });', "                document.createElement('canvas');\n                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });"],
             'a desk that loses its character for a pose it has no frame for' => ['../floor/painter.js',
-                'const urls = characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, desk_top: e.desk_top });',
-                "const urls = e.pose === 'asleep' ? null : characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, desk_top: e.desk_top });"],
+                'const drawn = characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, desk_top: e.desk_top, clear: e.clear });',
+                "const drawn = e.pose === 'asleep' ? null : characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, desk_top: e.desk_top, clear: e.clear });"],
             // card#12159 — the desk draws the tree's frames for its POSE: the walk drawn for every pose (the
             // defect the sleeper was hidden behind), the pose's frames drawn without the desk's edge, and a held
             // loop stepping the walk's three frames whatever the drawing holds.
             "a desk drawn in the walk's frames whatever its pose" => ['../floor/painter.js',
-                'characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top })', 'characters.walkFrames(installId, seatId)'],
+                'characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top, clear: at.clear })', '{ frames: characters.walkFrames(installId, seatId), loopFrom: 0 }'],
             "a pose's frames drawn without the desk's top edge" => ['../floor/desk-layout.js',
                 "desk_top: (R['desk-sprite'].y - R.character.y) / R.character.h,", 'desk_top: 0.5,'],
             'a held loop that steps three frames whatever the drawing holds' => ['../floor/painter.js',
-                "el.setAttribute('href', urls[tick % urls.length]);", "el.setAttribute('href', urls[tick % 3]);"],
+                "el.setAttribute('href', uris[loopFrom + ((tick + offset) % (uris.length - loopFrom))]);", "el.setAttribute('href', uris[loopFrom + ((tick + offset) % 3)]);"],
+            // card#12187 — § 6.2's per-seat loop phase: a moving loop started at frame 0 whatever its seat's offset.
+            "a moving held loop started at frame 0, not at its seat's offset" => ['../floor/painter.js',
+                'art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw,', 'art(g, uris[0], e.overdraw,'],
+            // card#12187 — § 10.4 item 4's tree → painter interface: the loop's start dropped (the moving loop steps the
+            // still as one of its frames), the offset drawn over the list's length and not the loop's, and a sleeper's
+            // image drawn in its element's rect instead of its overdraw.
+            "the held loop's start dropped" => ['../floor/painter.js',
+                "el.setAttribute('href', uris[loopFrom + ((tick + offset) % (uris.length - loopFrom))]);", "el.setAttribute('href', uris[(tick + offset) % uris.length]);"],
+            "a loop offset drawn over the list's length, not the loop's" => ['../floor/painter.js',
+                'characters.loopOffset(desk.install_id, desk.seat_id, uris.length - loopFrom)', 'characters.loopOffset(desk.install_id, desk.seat_id, uris.length)'],
+            "a sleeper drawn in its element's rect, not its overdraw" => ['../floor/painter.js',
+                'art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw,', 'art(g, moves ? uris[loopFrom + offset] : uris[0], e,'],
+            // card#12187 impl review N5: a walk stepped from past its stand frame, and a desk's frames cached without its pose.
+            "a walker's walk stepped from loopFrom 1" => ['../floor/painter.js',
+                'stepping.push([el, drawn.uris, drawn.loopFrom, 0, window]);', 'stepping.push([el, drawn.uris, 1, 0, window]);'],
+            "a desk's frames cached without its pose" => ['../floor/painter.js',
+                '`${asset}#${at.pose}@${at.desk_top}`', '`${asset}#@${at.desk_top}`'],
             // N8: a frame list copied onto the element instead of held in the painter's Map.
             "a held loop's frames copied onto the element" => ['../floor/painter.js',
-                "                            stepping.push([el, urls]);\n                        }", "                            el.dataset.frames = JSON.stringify(urls);\n                        }"],
+                "                            stepping.push([el, uris, loopFrom, offset]);\n                        }", "                            el.dataset.frames = JSON.stringify(uris);\n                        }"],
             // § 9 F14's two causes for a code-drawn character (§ 10.2): unreported, or thrown out of the paint.
             'a tree that failed to load left unreported' => ['../floor/painter.js',
                 "        if (characters === null) {\n            report(asset);", "        if (characters === null) {\n            void asset;"],
@@ -392,6 +418,60 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                     "CONTROL ({$what}) left the box — it is planted to stay inside it, where containment alone reads clean");
             }
         }
+    }
+
+    /**
+     * § 7.4's fade (card#12346, the operator's ruling of 2026-10-25): a desk whose seat carries `fold_lag` draws its art —
+     * the chair, the character, the desk, the monitor's frame, the desk props and the side table, or F14's placeholder —
+     * in one group at `FOLD_LAG_OPACITY`, and every fact at full opacity; a desk without the badge draws every node at
+     * full opacity. `painter-probe.mjs` reads it on what was painted, and the figure is held to § 12's *Fold-lag fade* row.
+     */
+    public function test_a_fold_lagged_desk_draws_its_art_faded_and_a_healthy_desk_at_full_opacity(): void
+    {
+        $fadeDefects = fn (array $run): array => array_values(array_filter($run['defects'], fn (string $d): bool => str_contains($d, "§ 7.4's fade")));
+        $shipped = $this->painterRun();
+
+        $this->assertGreaterThan(0, $shipped['fade']['faded'], 'no fold_lag desk was painted — the faded half reads nothing');
+        $this->assertGreaterThan(0, $shipped['fade']['full'], 'no desk without fold_lag was painted — the full-opacity half reads nothing');
+        $this->assertSame([], $fadeDefects($shipped));
+        $this->assertSame($this->foldLagFadeRow(), $shipped['fade']['opacity'], "desk-layout.js's FOLD_LAG_OPACITY is not § 12's *Fold-lag fade* figure");
+
+        // The old treatment planted back — the hatch drawn over the art column, the art at full opacity.
+        $hatched = $this->mutatedModules(['../floor/desk-layout.js', self::FADE, self::HATCH]);
+        $painter = dirname($hatched).'/floor/painter.js';
+        $this->assertSame(1, substr_count((string) file_get_contents($painter), "                case 'plate':\n"), "the hatch control's painter anchor is not in painter.js exactly once");
+        file_put_contents($painter, str_replace("                case 'plate':\n", "                case 'plate':\n                case 'lag-overlay':\n", (string) file_get_contents($painter)));
+
+        $controls = [
+            'the old hatch planted back' => [dirname($hatched), 'at opacity 1, not '],
+            'the facts faded with the art' => [dirname($this->mutatedModules(['../floor/painter.js',
+                "            if (e.opacity === undefined) {\n                faded = null;", "            if (false) {\n                faded = null;"])), 'not 1 on a fold_lag desk'],
+            'the fade on a desk without fold_lag' => [dirname($this->mutatedModules(['../floor/desk-layout.js',
+                "    if (desk.lag !== null) {\n        for (const e of elements) {", "    if (true) {\n        for (const e of elements) {"])), 'on a desk without fold_lag'],
+            'each faded element in a group of its own' => [dirname($this->mutatedModules(['../floor/painter.js',
+                '            } else if (faded === null) {', '            } else {'])), 'fold-lag group(s) on a desk with fold_lag'],
+        ];
+
+        foreach ($controls as $what => [$tree, $needle]) {
+            $hit = array_filter($fadeDefects($this->painterRun($tree)), fn (string $d): bool => str_contains($d, $needle));
+
+            $this->assertNotSame([], $hit, "CONTROL ({$what}) did not red the fade leg with «{$needle}»");
+        }
+
+        // The pin's own control: the figure moved in the layout alone reds against § 12's row.
+        $moved = $this->painterRun(dirname($this->mutatedModules(['../floor/desk-layout.js',
+            'export const FOLD_LAG_OPACITY = 0.5;', 'export const FOLD_LAG_OPACITY = 0.6;'])));
+        $this->assertNotSame($this->foldLagFadeRow(), $moved['fade']['opacity'], 'CONTROL (the fade figure moved in the layout alone) did not red the § 12 pin');
+    }
+
+    /** § 12's *Fold-lag fade* figure, read from the document. */
+    private function foldLagFadeRow(): float
+    {
+        $doc = (string) file_get_contents(__DIR__.'/../../../../docs/design/FLOOR.md');
+
+        $this->assertSame(1, preg_match('/^\| \*\*Fold-lag fade\*\* \| \*\*(\d+(?:\.\d+)?)\*\* opacity\b/m', $doc, $m), '§ 12 carries no *Fold-lag fade* row');
+
+        return (float) $m[1];
     }
 
     /**

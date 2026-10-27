@@ -16,7 +16,7 @@
     @if (auth()->user()->hasCompletedTwoFactorEnrolment())
         <p>
             Two-factor authentication is on for your account. Each sign-in asks for a code from your
-            authenticator app.
+            authenticator app, except on a browser you choose to remember for 30 days.
         </p>
 
         <p>

@@ -6,7 +6,7 @@
 # WHY IT EXISTS. `bin/promote-cards-by-token` declared its whole body a BYTE-FOR-BYTE copy of
 # upstream at pin e2f131f and called that "a one-diff check". Nothing ran the diff. PR #51 had
 # edited the body at two sites eleven days earlier and the declaration went on reading as true
-# for everyone downstream — found by PupFuzz/agent-roundtable#463 (2026-09-11). A declaration
+# for everyone downstream — found in fleet coordination on 2026-09-11. A declaration
 # with no check is not a contract, it is a comment, and it is worse than silence: the next
 # reader audits their work against a stated provenance that is false and gets confidence
 # instead of a question. The sibling `.selftest.sh` carried the same shape of declaration and
@@ -48,10 +48,11 @@
 # — no shebang, no header — so the body rule this script derives has nothing to anchor on and the
 # `--selftest` control arm (line 2 must be a `#` comment) cannot be built over a markdown document.
 # What pins them instead is `bin/pr-body-lint.selftest.py`'s own `FIXTURES` table, which carries a
-# sha256 per fixture and reds by name when one does not match. Those figures are UPSTREAM'S OWN, so
-# unlike a locally-minted pin they check the copy against the SOURCE rather than against this
-# repo's last declaration — the comparison this script explains it has to do without. The CI job
-# runs that selftest, so the check is real rather than available.
+# sha256 per fixture and reds by name when one does not match. Since card#12260 struck the
+# fixtures' coordination-thread citations, those figures are LOCALLY MINTED — that file's declared
+# edit (1) — so they check the copy against this repo's last declaration, as this script's pins do,
+# not against upstream's bytes. The CI job runs that selftest, so the check is real rather than
+# available.
 #
 # `bin/dependency-audit-fixtures/*` has no row either, for the same reason (JSON and lockfiles, no
 # header), and unlike the set above NOTHING pins it: upstream's selftest carries no per-fixture
@@ -83,13 +84,13 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # no behaviour; it is spelled out because a column that silently holds two kinds of thing is how a
 # reader gets a wrong answer confidently.
 MANIFEST=(
-  "bin/promote-cards-by-token|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|0932e9fe67c8f471c71f6252235be8683605b174863acddfe0449b972f604f10"
-  "bin/promote-cards-by-token.selftest.sh|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|463663423c3a5152bc8dc4833f331e069910e74424c54e69b024ba1598703984"
-  "bin/pr-body-lint.py|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e|26c3eb1d3888c34d746f656eb11083cd03b1d3920327c49ed552470ebbff313c"
-  "bin/pr-body-lint.selftest.py|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e|0df57e97ab0027305cf6848f77ae89a52478abdae75d29fe478a297c4c4980e6"
+  "bin/promote-cards-by-token|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|796695b361003301c8b79f3f9606d6bcb5f4b002faa44f2b4120f687aa0ac973"
+  "bin/promote-cards-by-token.selftest.sh|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|258d8e7f083b6db44381e7bd1d8136d44a6914868db54b1809ec63227391d073"
+  "bin/pr-body-lint.py|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e|5711a19e4f7af120b969caa1ed432290f8dac1ec64dc27e50d742f8f2c0e3913"
+  "bin/pr-body-lint.selftest.py|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e|fb7e8ecf503221a8a96ed45f2e47221bb09a47f9bcdad9fc75af8b69aae38a00"
   ".github/workflows/dependency-audit.yml|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|71b68902619fe84a14990a124a1af335f5afd0de41f348d20f6f9d3d10054239"
   ".github/workflows/dependency-ref-matrix.yml|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|1a867e8435290a5d0f1d385c9501e09d65d4a4e841fb61b1951e6eae57d29705"
-  "bin/dependency-audit.selftest.sh|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|0fecc24fce3182dbc4faf04ba569c6acf06ed2ceef0cc5fe3a33b7ba3b001361"
+  "bin/dependency-audit.selftest.sh|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|2c82aab9280da78d93fc8423ba5050915e067edd42b9104eef316c60be2a4241"
 )
 
 # --- The declared local edits: <repo-relative path>|<what the site is>|<unbroken fragment>
@@ -106,6 +107,13 @@ FRAGMENTS=(
   "bin/promote-cards-by-token|card#11527 site (3), the foreign-card skip and read-before-write|confirm_foreign_403() {"
   "bin/promote-cards-by-token|card#11527 site (3), the card read's 200-shape refusal|A 200 is a card only if it carries"
   "bin/promote-cards-by-token|card#11527 site (3), the scoped lookup's data-array refusal|error(\"no data array\")"
+  "bin/promote-cards-by-token|card#12260 site (4), the flat-write comment without its thread number|Ratified flat write contract, upstream's;"
+  "bin/promote-cards-by-token.selftest.sh|card#12260, a fixture subject citing ref #N|(card#101, ref #9)"
+  "bin/promote-cards-by-token.selftest.sh|card#12260, a fixture subject citing ref #N|(card#5085, ref #148)"
+  "bin/pr-body-lint.py|card#12260 (1), the docstring's ratification sentence without its thread number|operator (once in fleet coordination, and again on 2026-09-09"
+  "bin/pr-body-lint.selftest.py|card#12260 (1), the FIXTURES sha256 figures re-derived over the struck fixtures|a7c1a1b4df5763c51f7dc18078035b06b981a03e70a4b50cccd3addc715f922d"
+  "bin/pr-body-lint.py|card#12325 (2), the release-scope measurement sentence without the impl repo's name|repo's feature PRs card#10493 lists each spent a review finding on"
+  "bin/pr-body-lint.selftest.py|card#12325 (2), arm I without the impl repo's name or its template heading|A fleet impl repo mandates"
   "bin/promote-cards-by-token.selftest.sh|card#11527, the foreign-card / 403 / read-before-write cases|9c. A 403 card read is judged"
   "bin/promote-cards-by-token.selftest.sh|card#11527, the 200-shape degraded-read cases|9d. A 200 that does not carry the fields"
   ".github/workflows/dependency-audit.yml|(1) the pinned osv-scanner install step|SHA256=ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108"
@@ -113,6 +121,7 @@ FRAGMENTS=(
   ".github/workflows/dependency-ref-matrix.yml|(1) the uses: slug names this repo|uses: PupFuzz/mezzanine/.github/workflows/dependency-audit.yml@dev"
   "bin/dependency-audit.selftest.sh|(1) the callee path under .github/workflows/|ROOT/.github/workflows/dependency-audit.yml\""
   "bin/dependency-audit.selftest.sh|(1) the fixtures path bin/dependency-audit-fixtures/|HERE/dependency-audit-fixtures\""
+  "bin/dependency-audit.selftest.sh|(2) the card#11434 comment carries no private coordination reference|# card#11434 (backend) within card#11604:"
 )
 
 # The ONE spelling of the body rule. Both files use it; the failure message quotes it verbatim

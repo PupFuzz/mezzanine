@@ -369,8 +369,8 @@ final class Fold
      * per-seat transaction — so under autocommit the claim's row locks are released at the end of
      * the claiming statement and do not survive into the transaction that does the work. Two
      * workers can therefore claim one seat. The projections are idempotent by construction and
-     * would survive that; THE COUNTERS ARE NOT — `duplicate_open`, `seq_gap` and the rest would
-     * double. Guarding the advance on the cursor value the pass read makes the loser's whole
+     * would survive that; THE COUNTERS ARE NOT — `duplicate_open`, `seq_collision` and the rest
+     * would double. Guarding the advance on the cursor value the pass read makes the loser's whole
      * transaction roll back, which is the same shape the purged-window branch already uses ("the
      * guard is about the CURSOR alone") and costs one WHERE clause.
      */

@@ -176,14 +176,26 @@ Route::middleware(['auth', 'mfa'])->group(function () {
     Route::get('/art/characters/{path}', [ArtController::class, 'characters'])
         ->where('path', '[A-Za-z0-9._/-]+')
         ->name('art.characters');
+
+    // ⭐ THE SESSION KEEPALIVE — card#12434, operator ruling 2026-10-26: "As long as the browser is
+    // connected, the login should not time out." `wire/fleet-client.js` asks for it while its stream is
+    // connected, at the interval it derives from the lifetime the layout hands the page. It does nothing
+    // itself: the session middleware every route in this group runs is what saves the session row
+    // (`last_activity`) and re-issues the cookie with a fresh `Expires`. Both halves are needed, because
+    // the cookie expires on its own clock (`expire_on_close` is false). A long-lived stream response
+    // does neither after connect (`docs/design/FLEET-STATE.md § 9`).
+    // Here and not in `routes/fleet.php`: it reads nothing from the fleet, and an `mzr_` token has no
+    // session to keep. The `api/` prefix is what makes a guest a `401` and not a login redirect
+    // (`bootstrap/app.php`), and that `401` is the F6 signal the client already acts on.
+    Route::get('/api/session/keepalive', fn () => response()->noContent())->name('session.keepalive');
 });
 
 /*
  * THE ADMIN CONSOLE (card#9070) — mounted here, inside GATE 1's stack, because it is a browser
  * page like the dashboard and earns the same two middleware for the same reason, plus a third:
  * `can:operate` (card#9415), which refuses an observer `403`. Its own routes, and the whole
- * argument for its authorization model and for what it deliberately does NOT expose (a
- * seat-create path), are in `routes/admin.php`.
+ * argument for its authorization model — including the extra `password.confirm` on the seat
+ * tokens module (card#12331) — are in `routes/admin.php`.
  *
  * The prefix and the name prefix are stated HERE rather than inside that file so that every URL
  * and every route name the console owns is decided in one line, beside the middleware that

@@ -1,0 +1,112 @@
+{
+  "_comment": "card#12239 — THE ONLY LIST OF SYNTHETIC COORDINATION VALUES (docs/design/COORD-STORE.md § 3.5 item 1). Every coordination fixture under generated/ is written from this file by tools/coord/synthesize-fixtures.py and nothing else; CI regenerates and byte-compares. Every value here is made up. Never paste a real name, id, title, body, login or repository into this file — it is the one place content enters, which is why it is small and reviewed.",
+  "names": {
+    "install": ["pm", "coder", "helper", "reviewer"],
+    "roundtable": ["pm-solo", "coder-solo"],
+    "broadcast": "all",
+    "unhoused": "stranger-solo",
+    "malformed": ["Not A Slug"]
+  },
+  "installs": {
+    "one": {
+      "floor": "one",
+      "seats": {
+        "one-pm": {"protocol_agent_name": "pm", "protocol_agent_name_check": "checked", "roundtable_agent_name": "pm-solo", "roundtable_agent_name_check": "checked"},
+        "one-coder": {"protocol_agent_name": "coder", "protocol_agent_name_check": "unchecked", "roundtable_agent_name": "coder-solo", "roundtable_agent_name_check": "checked"},
+        "one-helper": {"protocol_agent_name": "helper", "protocol_agent_name_check": "checked", "roundtable_agent_name": null, "roundtable_agent_name_check": "undeclared"},
+        "one-review": {"protocol_agent_name": "helper", "protocol_agent_name_check": "unchecked", "roundtable_agent_name": null, "roundtable_agent_name_check": "undeclared"}
+      }
+    },
+    "two": {
+      "floor": "two",
+      "seats": {
+        "two-reviewer": {"protocol_agent_name": "reviewer", "protocol_agent_name_check": "checked", "roundtable_agent_name": "coder-solo", "roundtable_agent_name_check": "checked"}
+      }
+    }
+  },
+  "owner": "synthetic-org",
+  "host": "example.invalid",
+  "repositories": {
+    "install": {"full_name": "synthetic-org/coordination-fixture", "scope": "install", "install_id": "one"},
+    "fleet": {"full_name": "synthetic-org/roundtable-fixture", "scope": "fleet", "install_id": null}
+  },
+  "ids": {
+    "thread_base": 900000,
+    "comment_base": 9000000000000,
+    "delivery_guid_prefix": "00000000-0000-4000-8000-",
+    "hook_id": 424242,
+    "repository_id": 777001,
+    "installation_target_type": "repository",
+    "time_base": "2026-01-02T03:04:05Z"
+  },
+  "login": "synthetic-user",
+  "sentences": [
+    "The kettle is on the second shelf.",
+    "Blue paint dries slowly in winter.",
+    "A small lamp lights the corner desk.",
+    "The garden path curves past the pond.",
+    "Seven pebbles sit in a glass jar.",
+    "The clock in the hall runs a little fast.",
+    "Paper boats float well on calm water.",
+    "The window faces a row of tall trees.",
+    "A green kite caught the morning wind.",
+    "The library closes early on Sundays.",
+    "Two pigeons share the warm chimney.",
+    "The recipe calls for a pinch of salt."
+  ],
+  "titles": [
+    "a note about the shelf",
+    "the paint question",
+    "lamp placement",
+    "the garden path"
+  ],
+  "body_lines": {
+    "from-line": "FROM: {from}",
+    "to-line": "TO: {to}",
+    "close-token": "## [CLOSE] {sentence}",
+    "plain": "{sentence}"
+  },
+  "title_form": "[{carrier}] from:{from}, to:{to} — {title}",
+  "label_prefixes": {"from": "from:", "to": "to:"},
+  "headers": [
+    {"role": "content-type", "name": "Content-Type", "value": "application/json"},
+    {"role": "user-agent", "name": "User-Agent", "value": "GitHub-Hookshot/synthetic"},
+    {"role": "delivery", "name": "X-GitHub-Delivery", "value": "{guid}"},
+    {"role": "event", "name": "X-GitHub-Event", "value": "{event}"},
+    {"role": "hook-id", "name": "X-GitHub-Hook-ID", "value": "{hook_id}"},
+    {"role": "target-id", "name": "X-GitHub-Hook-Installation-Target-ID", "value": "{repository_id}"},
+    {"role": "target-type", "name": "X-GitHub-Hook-Installation-Target-Type", "value": "{target_type}"},
+    {"role": "signature-256", "name": "X-Hub-Signature-256", "sign": "sha256"},
+    {"role": "signature-1", "name": "X-Hub-Signature", "sign": "sha1"}
+  ],
+  "deliveries": [
+    {"key": "opened", "repo": "install", "event": "issues", "action": "opened", "thread": 0, "carrier": "brief", "title": 0, "from": "pm", "to": ["coder", "helper"], "lines": [["from-line"], ["to-line"], ["plain", 0]], "labels": {"from": ["pm"], "to": ["coder", "helper"]}},
+    {"key": "opened-unlabelled", "repo": "install", "event": "issues", "action": "opened", "thread": 1, "carrier": "query", "title": 1, "from": "pm", "to": ["coder", "helper"], "lines": [["from-line"], ["to-line"], ["plain", 1]], "labels": {"from": [], "to": []}},
+    {"key": "opened-no-author", "repo": "install", "event": "issues", "action": "opened", "thread": 2, "carrier": null, "title": 2, "from": null, "to": null, "lines": [["plain", 2]], "labels": {"from": [], "to": []}},
+    {"key": "opened-broadcast", "repo": "install", "event": "issues", "action": "opened", "thread": 3, "carrier": "announce", "title": 3, "from": "pm", "to": ["all"], "lines": [["from-line"], ["to-line"], ["plain", 3]], "labels": {"from": ["pm"], "to": ["all"]}},
+    {"key": "comment", "repo": "install", "event": "issue_comment", "action": "created", "thread": 0, "comment": 1, "from": "coder", "to": ["pm"], "lines": [["from-line"], ["to-line"], ["plain", 4]], "labels": {"from": ["pm"], "to": ["coder", "helper"]}},
+    {"key": "comment-new-addressee", "repo": "install", "event": "issue_comment", "action": "created", "thread": 1, "comment": 2, "from": "pm", "to": ["reviewer"], "lines": [["from-line"], ["to-line"], ["plain", 5]], "labels": {"from": [], "to": []}},
+    {"key": "comment-no-to", "repo": "install", "event": "issue_comment", "action": "created", "thread": 0, "comment": 3, "from": "coder", "to": null, "lines": [["from-line"], ["plain", 6]], "labels": {"from": ["pm"], "to": ["coder", "helper"]}},
+    {"key": "comment-close", "repo": "install", "event": "issue_comment", "action": "created", "thread": 0, "comment": 4, "from": "pm", "to": ["coder"], "lines": [["from-line"], ["to-line"], ["close-token", 7]], "labels": {"from": ["pm"], "to": ["coder", "helper"]}},
+    {"key": "comment-mentions-close", "repo": "install", "event": "issue_comment", "action": "created", "thread": 0, "comment": 5, "from": "coder", "to": ["pm"], "lines": [["from-line"], ["to-line"], ["plain", 8], ["close-token", 9]], "labels": {"from": ["pm"], "to": ["coder", "helper"]}},
+    {"key": "comment-on-pr", "repo": "install", "event": "issue_comment", "action": "created", "thread": 4, "comment": 6, "pull_request": true, "carrier": "review", "title": 0, "from": "reviewer", "to": ["pm"], "lines": [["from-line"], ["to-line"], ["plain", 10]], "labels": {"from": ["pm"], "to": ["reviewer"]}},
+    {"key": "comment-bad-name", "repo": "install", "event": "issue_comment", "action": "created", "thread": 0, "comment": 7, "from": "Not A Slug", "to": ["pm"], "lines": [["from-line"], ["to-line"], ["plain", 11]], "labels": {"from": ["pm"], "to": ["coder", "helper"]}},
+    {"key": "closed", "repo": "install", "event": "issues", "action": "closed", "thread": 0, "carrier": "brief", "title": 0, "from": "pm", "to": ["coder", "helper"], "lines": [["from-line"], ["to-line"], ["plain", 0]], "labels": {"from": ["pm"], "to": ["coder", "helper"]}},
+    {"key": "reopened", "repo": "install", "event": "issues", "action": "reopened", "thread": 0, "carrier": "brief", "title": 0, "from": "pm", "to": ["coder", "helper"], "lines": [["from-line"], ["to-line"], ["plain", 0]], "labels": {"from": ["pm"], "to": ["coder", "helper"]}},
+    {"key": "labeled", "repo": "install", "event": "issues", "action": "labeled", "thread": 0, "carrier": "brief", "title": 0, "from": "pm", "to": ["coder", "helper"], "lines": [["from-line"], ["to-line"], ["plain", 0]], "labels": {"from": ["pm"], "to": ["coder", "helper", "reviewer"]}},
+    {"key": "ping", "repo": "install", "event": "ping"},
+    {"key": "fleet-comment", "repo": "fleet", "event": "issue_comment", "action": "created", "thread": 10, "comment": 20, "from": "pm-solo", "to": ["coder-solo"], "lines": [["from-line"], ["to-line"], ["plain", 0]], "labels": {"from": ["pm-solo"], "to": ["coder-solo"]}},
+    {"key": "fleet-broadcast", "repo": "fleet", "event": "issues", "action": "opened", "thread": 11, "carrier": "announce", "title": 1, "from": "pm-solo", "to": ["all"], "lines": [["from-line"], ["to-line"], ["plain", 1]], "labels": {"from": ["pm-solo"], "to": ["all"]}}
+  ],
+  "rounds": [
+    {"key": "R1", "scope": "install", "install_id": "one", "thread": 20, "from": "pm", "to": ["all"]},
+    {"key": "R2", "scope": "install", "install_id": "one", "thread": 20, "comment": 30, "from": "helper", "to": ["pm"]},
+    {"key": "R3", "scope": "install", "install_id": "one", "thread": 20, "comment": 31, "from": "coder", "to": ["pm", "helper"]},
+    {"key": "R4", "scope": "install", "install_id": "one", "thread": 20, "comment": 32, "from": "pm", "to": ["pm"], "declares_close": true},
+    {"key": "F1", "scope": "fleet", "install_id": null, "thread": 21, "comment": 40, "from": "pm-solo", "to": ["coder-solo"]},
+    {"key": "F2", "scope": "fleet", "install_id": null, "thread": 21, "comment": 41, "from": "coder-solo", "to": ["pm-solo"]},
+    {"key": "F3", "scope": "fleet", "install_id": null, "thread": 22, "from": "pm-solo", "to": ["all"]},
+    {"key": "F4", "scope": "fleet", "install_id": null, "thread": 21, "comment": 42, "from": "stranger-solo", "to": ["pm-solo"]},
+    {"key": "F5", "scope": "fleet", "install_id": null, "thread": 21, "comment": 43, "from": "pm", "to": ["pm-solo"]}
+  ]
+}

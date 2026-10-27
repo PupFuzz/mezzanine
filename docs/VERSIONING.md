@@ -48,8 +48,7 @@ specific to Mezzanine and has no counterpart there.
    [`docs/changelog/`](changelog/)`v<version>.md`, one file per tag**, moved there verbatim by
    [step 13](#release-flow). The tag is the archive's unit precisely because this rule makes the
    tag the unit that owes the entry. **This policy owns the obligation and not the format**:
-   roundtable #344 settled headings, ordering and per-PR
-   versus at-release authorship, and `docs/PLAN.md § 4` is where that answer was adopted,
+   `docs/PLAN.md § 4` owns headings, ordering and per-PR versus at-release authorship,
    including the card-level entry rule and the size gate this project added to it. Read § 4
    before writing an entry; it is deliberately not restated here.
 4. **Tags are minted by CI on `main`. Nobody hand-tags.** After a human merges the release PR
@@ -213,7 +212,7 @@ it, and it is why the release gate asks *what* is merged rather than *who* merge
 > rule 5's `main` → `dev` back-merge lands as a merge commit**, and nothing else in this repository
 > depends on it. The values behind each of those sentences are settings: the re-derive command at
 > the end of this block prints them, and it is what to believe when the two disagree. This is
-> deliberately the model sola-pm uses (PupFuzz/agent-roundtable#385/#386).
+> deliberately the model sola-pm uses.
 >
 > - **How the back-merge lands:** the admin identity merges the `sync/main-to-dev-post-v<version>`
 >   PR with `gh pr merge <N> --merge`. **Not `solo-self-merge`**: it always squashes, which is what
@@ -271,6 +270,38 @@ version lines with different consumers (see
 [§ Wire compatibility](#wire-compatibility--the-reporter-to-ingest-contract-has-its-own-version-line)).
 Moving the accepted schema set makes a release *at least* minor, but the schema's own number
 is not derived from the repo's and never tracks it.
+
+### The reporter's own version
+
+`REPORTER_VERSION` in `fleet-reporter/fleet-reporter.js` is a third version line. It names the
+**build a seat runs**, and every batch and `selftest` report carries it as `reporter_version`. It is
+neither the repo's `VERSION` nor the wire schema's: seats upgrade on their own schedule, a reporter
+change lands on `dev` long before a release collects it, and most reporter changes move no schema.
+
+- **It moves in the same PR as any change to what a reporter update ships**: the files
+  `fleet-reporter/INSTALL-LINUX.md` Step 1 installs, and the crontab entry its Step 5 writes. The
+  next version is strictly greater than `dev`'s, so no two builds report one version.
+  `bin/reporter-version-guard.py` (workflow `reporter-version`, run when a PR opens and on every
+  push to it) enforces it, and owns that population.
+- **It is sized by [§ Bump sizing](#bump-sizing) from the seat's side.** Patch: a fix or internal
+  change that alters nothing a seat must do or can see. Minor: new functionality, or anything that
+  brings a seat a step (a new hook fixture, hook wiring, crontab line or config key). Pre-1.0 a
+  break is a minor, stated in its row.
+- **Its row in `fleet-reporter/UPDATES.md`** says what an upgrading seat applies, and the same PR
+  adds it.
+- **`SchemaVersions::CURRENT_REPORTER_VERSION` follows it, exactly, in the same PR.** It is the
+  server's copy of the build it was built with, held equal to `REPORTER_VERSION` by
+  `Tests\Unit\Ingest\CurrentReporterVersionIsPinnedToTheArtifactTest` and by
+  `bin/reporter-version-guard.py` on every PR (card#11818 part 2 — `docs/design/FLEET-STATE.md`
+  Appendix B row 14 says whether it has landed); a seat whose last reported version
+  is behind it is badged `update_required` on the floor and in the drill-down
+  (`docs/design/FLEET-STATE.md § 7.2`), and its batches are still accepted.
+- **`SchemaVersions::MIN_REPORTER_VERSION` does not follow it.** That value is published for an
+  operator to read and enforced nowhere (its docblock says why), and an older reporter's batches stay
+  accepted.
+
+`0.1.0` named every build up to card#11818, which moved the line to `0.2.0`, a minor: the builds
+behind it added hooks, config forms and the multi-site flusher.
 
 ---
 

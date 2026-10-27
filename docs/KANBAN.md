@@ -299,7 +299,7 @@ nothing else, and which speaks only to a file until someone reads it.
   with `kbcard --board mezzanine list` (print the stderr denominator: `--swimlane 14` matches
   nothing, because 14 is the BOARD id); `DL-` is genuinely zero, `pr_number` is not. Whether a
   released range should be correlated on that key instead was RULED on 2026-09-14: no — this
-  repo keeps its `card#<id>` token mover (PupFuzz/agent-roundtable#444, `card#9146`).
+  repo keeps its `card#<id>` token mover (`card#9146`).
   `bin/promote-cards-by-token`'s header, § WHY THIS MOVER, carries the measurement and the
   condition that reopens it.
 - **No board-side card creation from CI.** Cards are created by humans and agents on the

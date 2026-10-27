@@ -180,6 +180,8 @@ class LobbyPageWiringTest extends TestCase
             'a camera sized to the old surface' => ['surface', 'view(current(camera));', 'view(current(frame.camera));'],
             // The directory: painted from the frame, on the render and on the 1 s tick.
             'plaques never painted' => ['directory', "        renderDirectory(document, el('lobby-floors'), frame.summary);\n", ''],
+            // card#12187: the boxes never placed — they would flow on every surface, the board never drawn.
+            'boxes never placed' => ['directory', "    dock.place(drawn);\n", ''],
             'no tick' => ['tick', 'startAgeTicker(client, clock, window, () => {', 'void (client, clock, window, () => {'],
             'a tick that re-reads nothing' => ['tick', '    const frame = screen.tickView();', '    const frame = lastFrame;'],
             'a pan and zoom that never reach the camera' => ['wheel', 'pan: screen.pan,', 'pan: screen.camera,'],
@@ -479,8 +481,11 @@ class LobbyPageWiringTest extends TestCase
                 ': screen.resize(size);', 'view(current(camera));'],
             'reduced motion' => ["reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches"],
             // The directory's plaques and boxes, `directory.js`'s; painted from the frame's summary.
-            'directory' => ["import { boxStyles, renderDirectory, showDirectory } from './directory.js';",
-                "        renderDirectory(document, el('lobby-floors'), frame.summary);\n", 'const styles = boxStyles(rect, drawn);'],
+            // card#12187: where the boxes stand is the docking entry's alone, placed on every paint over the styled surface.
+            'directory' => ["import { dockingEntry, renderDirectory, showDirectory } from './directory.js';",
+                "        renderDirectory(document, el('lobby-floors'), frame.summary);\n",
+                'const dock = dockingEntry(window, document, { building, layer, boxes: [[directoryBox, scene.directory], [readingsBox, scene.readings]], scene });',
+                '    dock.place(drawn);'],
             // § 2.5's 1 s tick: the directory's ages re-read through the screen, nothing drained.
             'tick' => ["import { startAgeTicker } from '../wire/age-readout.js';", 'startAgeTicker(client, clock, window, () => {', '    const frame = screen.tickView();'],
         ];

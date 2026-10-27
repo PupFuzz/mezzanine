@@ -7,6 +7,16 @@ The fw#873 negative is the HAND-BUILT one, and its row says so. `pr-body-lint.se
 each one's `sha256` and says which revision it is; the pin is what makes "the known positive" a claim a second reader can check
 rather than a label.
 
+**STRUCK IN THIS REPOSITORY (card#12260).** This repository is public and carries no reference to the
+fleet's private coordination repository, so each body here has had its coordination-thread citations
+struck, and nothing else: the `· <thread>` suffix of every `**Coordinated in:**` line (the card and
+board stay), the thread number in the fw#847 pair's bundled-list entries for upstream #618 and
+#631, and the thread and comment id in fw#873's recommendation sentence, which now reads *the
+recommendation the coordination thread made*. Line counts are unchanged and the fw#873 negative is
+still the positive byte for byte except the lines `arm_g` names. The `FIXTURES` sha256 figures are
+therefore this repository's, re-derived over the struck bodies — `pr-body-lint.selftest.py`'s header
+declares that edit — and no longer upstream's.
+
 | file | revision | what it is |
 |---|---|---|
 | `fw847-v0.50.0-body-2026-09-08T220229Z.md.txt` | #847, `editedAt 2026-09-08T22:02:29Z` | **The COMMENTARY positive.** The body card#9073 was minted against, and the one the operator read: *"It is full of commentary again instead of what someone installing the package needs to know. For example, Why MINOR (0.49.0 → 0.50.0) section and Correlation gaps."* Both of those are here, and the lint reds on exactly them. |

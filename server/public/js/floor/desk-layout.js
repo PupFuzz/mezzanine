@@ -7,8 +7,8 @@
  * ⛔ THE DESK DRAWS EXACTLY THE RULED SET AND NOTHING ELSE: the character (or the chair), the desk,
  * the monitor and its text, the nameplate on its plate, the state chip, the label line, the currency
  * label, the lag line, the context bar and its %, a badge row of two (the treatment badges, then
- * recognised badges in the wire's order), ONE flag `⚠ +N` for every unusual item whose raw form is
- * not drawn, the interns, the quiet age, § 7.4's hatch, § 7.3's dimming and the bubble. Every other
+ * `PINNED_BADGES`, then recognised badges in the wire's order), ONE flag `⚠ +N` for every unusual item whose raw form is
+ * not drawn, the interns, the quiet age, § 7.4's fade, § 7.3's dimming and the bubble. Every other
  * fact — and every raw unrecognised string — is the drill-down's and the desk list's
  * (`drilldown/main.js`, `desk/desk-list.js`). `Tests\Feature\Floor\TheNewDeskKeepsEveryLeafTest` holds
  * both halves: every leaf the desk drew before card#11058 is carried by the panel AND the list, and
@@ -32,7 +32,8 @@
  * ⛔ EVERY STRING GOES THROUGH `fit()` AND NO DRAWING SITE CUTS ONE ITSELF (§ 10.3). A string the
  * fixtures never stretch — the currency label, the lag line, the gauge's % — is cut by the same code
  * as the ones they do, which is the only reason AT-D3-20's second RED,
- * planted in `fit()`, can speak for them.
+ * planted in `fit()`, can speak for them. The monitor's text, the one string laid on more than one line
+ * (card#12446), goes through `wrap()`, which breaks the lines and leaves the cut on the last to `fit()`.
  *
  * ⛔ THE STRINGS ARE THE DESK MODEL's (`desk/desk-render.js`), each as that model decided it. What
  * this module adds is WHERE: which column, which row, how wide. Three strings the model leaves as
@@ -67,10 +68,13 @@ export const LINE_NAME = 16;
 /**
  * The SCREEN role (FLOOR.md § 10.6's *The desk, re-laid*, card#11046 — the operator's "The monitor screen
  * text can be smaller so that more letters can fit"): the one string the desk draws in it is the monitor's
- * text, measured and drawn at 8 px on the facts' 12 px line (§ 12's *Screen type size* row — the smallest
- * that read at fit on a device-scale-1 screen, measured in headless Chromium).
+ * text, measured and drawn at 7 px on an 8 px line, wrapped to as many lines as the screen's text rect holds
+ * (§ 12's *Screen type size* row). It was 8 px on the facts' 12 px line, one line, until card#12446 — the
+ * operator's "Reduce monitor font size by 1 point and allow text to wrap lines to fill the entire screen".
  */
-export const FONT_SCREEN = '8px sans-serif';
+export const FONT_SCREEN = '7px sans-serif';
+
+export const LINE_SCREEN = 8;
 
 /**
  * THE DESK's THREE TYPE ROLES — the facts, the nameplate (Q2) and the monitor's screen (card#11046) — the
@@ -82,8 +86,11 @@ export const FONT_SCREEN = '8px sans-serif';
 export const TYPE_ROLES = Object.freeze({
     fact: Object.freeze({ font: FONT, line: LINE, baseline: LINE - 2 }),
     name: Object.freeze({ font: FONT_NAME, line: LINE_NAME, baseline: LINE_NAME - 3 }),
-    screen: Object.freeze({ font: FONT_SCREEN, line: LINE, baseline: 9 }),
+    screen: Object.freeze({ font: FONT_SCREEN, line: LINE_SCREEN, baseline: 6 }),
 });
+
+/** The screen's text inset, every side, from the screen's rect (§ 12's monitor row). */
+export const SCREEN_INSET = 3;
 
 /**
  * The bubble's inner padding — the text's inset from the bubble's rect — and the band at the top of the box the
@@ -109,13 +116,21 @@ export const BUBBLE_BAND = 2 * LINE + 2 * BUBBLE_PAD;
 /** The art column's width — the character, the desk, the monitor, the chip and the plate (§ 2.2: Chosen). */
 export const ART_W = 216;
 
+/**
+ * § 7.4's FOLD-LAG FADE (card#12346, the operator's ruling of 2026-10-25 — FLOOR.md § 12's *Fold-lag fade*
+ * row): the opacity a `fold_lag` desk's art pass — the chair, the character, the desk, the monitor's frame, the
+ * desk props and the side table, or § 9 F14's placeholder standing in for them — is drawn at. Every fact stays
+ * at full opacity, the nameplate and the lag line among them.
+ */
+export const FOLD_LAG_OPACITY = 0.5;
+
 /** The gap between the art column and the facts column. */
 export const GUTTER = 4;
 
 /**
  * THE FACTS PLATE (§ 10.6's *The desk, re-laid*, card#11468 — the operator's "A is fine", 2026-10-07): the
  * facts column's one soft rounded backdrop. Its padding across is 4, so its left edge is the art column's edge
- * (`ART_W`) and § 7.4's hatch, which covers the art column, never reaches it; 6 down; its corners `FACTS_PLATE_RX`.
+ * (`ART_W`); 6 down; its corners `FACTS_PLATE_RX`.
  */
 export const FACTS_PLATE_PAD = 4;
 
@@ -151,9 +166,9 @@ export const SIDE_TABLE_SEATS = 4;
 const SEAT_H = 6;
 
 /**
- * D2 § 8.2.1's bound on `badges` — "the union of D1's 12 `degraded` members and § 7.2's 7, of
- * which `epoch_reset` is in both" — which is exactly the published member set, so it is that set's
- * size rather than a second number (§ 12's *`badges` bound* row).
+ * D2 § 8.2.1's bound on `badges` — the union of D1's `degraded` members and D2 § 7.2's server-derived
+ * badges, of which `epoch_reset` is in both — which is exactly the published member set, so it is that
+ * set's size rather than a second number (§ 12's *`badges` bound* row).
  */
 export const BADGE_BOUND = BADGES.size;
 
@@ -176,7 +191,7 @@ const STOOL_W = 20;
 
 const STOOL_H = 32;
 
-const STOOL_PITCH = 24;
+export const STOOL_PITCH = 24;
 
 /**
  * § 9 F14's per-stool fallback: the glyph an intern whose art failed is drawn as, inside its sprite
@@ -195,6 +210,15 @@ const PLATE_TEXT_W = 148;
 
 /** The badges a § 7 treatment reads — § 7.3's `config_invalid` and § 7.4's `fold_lag`. */
 export const TREATMENT_BADGES = Object.freeze(['config_invalid', 'fold_lag']);
+
+/**
+ * The badges drawn after the treatment badges and ahead of every other — `FLOOR.md § 13` row 75 (the
+ * operator's ruling (C) of 2026-10-25, amending row 44's order): `update_required`, so the mark the
+ * operator's rule asks for is folded into the flag only when both treatment badges are present. NOT a
+ * treatment: the desk is not treated as not-current for it (§ 7.2). Row 75 lists what reversing the
+ * ruling to the wire's order would cost; in this module it empties this list and moves nothing else.
+ */
+export const PINNED_BADGES = Object.freeze(['update_required']);
 
 /**
  * § 5.1's open-call count, which the model carries as a number.
@@ -258,6 +282,80 @@ export function fit(text, width, measure, role = 'fact') {
 }
 
 /**
+ * THE SCENE's ONE WRAP (card#12446): `text` laid on at most `maxLines` lines of `width`, measured in `role` by the
+ * page's measurer as `fit()` is. A line breaks at a word boundary — a space, which the break drops — and where one
+ * word is wider than a whole line (a path, a URL) inside the word, by code point, so no line is drawn past the
+ * width. The last line is `fit()`'s: whatever does not fit on it is cut there with the mark, so a wrapped string is
+ * truncated visibly or not at all, by the same primitive as every other desk string.
+ *
+ * @param {number} maxLines at least 1
+ * @returns {{text: string, lines: list<{text: string, w: number}>, truncated: boolean, w: number, h: number}}
+ *          `text` is what the lines draw read as one string: the whole of `text`, or, cut, the prefix the lines hold
+ *          and the mark; `w` the widest line; `h` the lines on the role's line (`TYPE_ROLES`)
+ */
+export function wrap(text, width, measure, role, maxLines) {
+    const points = [...text];
+    const lines = [];
+    let start = 0;
+    let last = 0;
+    let truncated = false;
+
+    while (lines.length < maxLines && start < points.length) {
+        const rest = points.slice(start).join('');
+
+        last = start;
+
+        if (lines.length === maxLines - 1 || measure(rest, role).w <= width) {
+            const cut = fit(rest, width, measure, role);
+
+            lines.push({ text: cut.text, w: cut.w });
+            truncated = cut.truncated;
+            break;
+        }
+
+        // The longest run from `start` that fits — at least one code point, so a glyph wider than the line still
+        // moves on — then back to the last space inside it; a run with no space in it is broken where it stops.
+        const end = start + Math.max(1, longestRun(points, start, width, measure, role));
+        const space = points[end] === ' ' ? end : points.lastIndexOf(' ', end - 1);
+        const stop = space > start ? space : end;
+        const line = points.slice(start, stop).join('');
+
+        lines.push({ text: line, w: measure(line, role).w });
+        start = stop;
+
+        while (points[start] === ' ') {
+            start++;
+        }
+    }
+
+    return {
+        text: truncated ? points.slice(0, last).join('') + lines[lines.length - 1].text : text,
+        lines,
+        truncated,
+        w: Math.max(0, ...lines.map((l) => l.w)),
+        h: lines.length * TYPE_ROLES[role].line,
+    };
+}
+
+/** The most code points of `points` from `start` whose run measures within `width` in `role` — a binary search. */
+function longestRun(points, start, width, measure, role) {
+    let lo = 0;
+    let hi = points.length - start;
+
+    while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+
+        if (measure(points.slice(start, start + mid).join(''), role).w <= width) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+
+    return lo;
+}
+
+/**
  * THE DESK's RECT TABLE — § 2.2's, derived from the box (`resources/floor/furniture-box.js`'s one
  * declaration): every element's rect relative to the box's top-left — the art from the desk's slab, the
  * facts column stacked up from the side table on the desk's foot line, the hatch and the placeholder from the
@@ -285,8 +383,10 @@ export function deskRects(box, character) {
     const desk = { x: mid - 90, y: slab, w: 180, h: 60 };
     const sitter = desk.x + desk.w / 3 - cw / 2;
     // The monitor's frame: 96 × 46, its right edge the desk's, standing on the desk's top; the screen
-    // inset 4 px inside it and 31 px tall; the text 3 px inside the screen (§ 12's monitor row).
+    // inset 4 px inside it and 31 px tall; the text `SCREEN_INSET` inside the screen on every side, so its
+    // rect's height is what decides how many lines the screen holds (§ 12's monitor row, card#12446).
     const frame = { x: desk.x + desk.w - 96, y: slab - 46, w: 96, h: 46 };
+    const screen = { x: frame.x + 4, y: frame.y + 4, w: 88, h: 31 };
     // § 10.6 (card#11468): the side table stands on the desk's own foot line, its interns in front of it and the
     // *+N more* tag under it; the facts stack upward from just above it, inside the plate's padding. These row
     // rects are the stack AT THE CAP — every row present — and `deskLayout()` lays the rows a desk carries
@@ -303,8 +403,8 @@ export function deskRects(box, character) {
         'monitor-frame': frame,
         // The desk's left third: the lamp and its light, the mug or the plant (§ 10.6).
         'desk-props': { x: desk.x - 12, y: slab - 34, w: 68, h: 50 },
-        monitor: { x: frame.x + 4, y: frame.y + 4, w: 88, h: 31 },
-        'monitor-text': { x: frame.x + 7, y: frame.y + 13, w: 82, h: LINE },
+        monitor: screen,
+        'monitor-text': { x: screen.x + SCREEN_INSET, y: screen.y + SCREEN_INSET, w: screen.w - 2 * SCREEN_INSET, h: screen.h - 2 * SCREEN_INSET },
         chip: { x: mid, y: H - 16, w: CHIP_MAX_W, h: 14 },
         label: { x: colB, y: rowY.label, w: widthB, h: LINE },
         currency: { x: colB, y: rowY.currency, w: widthB, h: LINE },
@@ -319,7 +419,6 @@ export function deskRects(box, character) {
         // bottom edge) is the desk's and the interns', so they stand in front of it.
         'side-table': table,
         'stool-more': { x: colB, y: foot + 2, w: widthB, h: LINE },
-        'lag-overlay': { x: 0, y: top, w: ART_W, h: H - top },
         plate: { x: mid - 80, y: H - 36, w: 160, h: 18 },
     });
 }
@@ -345,6 +444,62 @@ export function thoughtTrail(box, character) {
     }
 
     return Object.freeze(out);
+}
+
+/**
+ * The character tree's frame units per floor pixel: a seat's 108 × 192-unit frame is drawn into the character's
+ * 54 × 96 px rect (`resources/characters/index.js`'s `SCENE_W` note). The floor cannot import the tree (it loads
+ * apart, and may fail — § 9 F14), so the figure is stated here and held equal to the tree's own
+ * (`SEAT_RECT.w ÷ (SCENE_W × CHARACTER_SCALE)`) by `tools/characters/selftest.mjs` § 7b.
+ */
+export const FRAME_UNITS_PER_PX = 2;
+
+/**
+ * THE CHARACTER's OVERDRAW AND ITS CLEAR RECTS (FLOOR.md § 10.4's frame contract, § 12's *Character frame*;
+ * card#12187 for the sleeper, card#12259 for every pose). Every seat document is drawn in the OVERDRAW — the
+ * character's rect widened by half its width each side and raised to the thought trail's top, one pixel under the
+ * bubble's band — while the character element's own rect, which every overlap rule reads, is unchanged. The sleeper's
+ * z's stand above and beside its head, past the rect; a standing or walking body's tilt and lean carry its widest parts
+ * past the rect's side, which the painter's viewport would clip (§ 14 item 33(6)). Beside it the CLEAR rects: the
+ * floor's furniture the z's keep out of — the monitor's frame, the desk's props, the desk and the thought trail's
+ * column — in the tree's frame units from the character rect's top-left, so no figure of the desk is copied into the
+ * tree. One function, read by the layout, the tree's caller and the measuring tool alike
+ * (`tools/design/sleeper-zs.browser.mjs`).
+ *
+ * @returns {{overdraw: {x: number, y: number, w: number, h: number}, clear: list<{name: string, x: number, y: number, w: number, h: number}>}}
+ *          the overdraw box-relative in px, the clear rects in frame units
+ */
+export function characterOverdraw(box, character) {
+    const R = deskRects(box, character);
+    const c = R.character;
+    const trail = thoughtTrail(box, character);
+    const top = Math.min(...trail.map((t) => t.y - t.r));
+    const reach = Math.max(...TRAIL_RADII);
+    const column = { x: trail[0].x - reach, y: top, w: 2 * reach, h: c.y - top };
+    const unit = (r) => Object.freeze({ x: (r.x - c.x) * FRAME_UNITS_PER_PX, y: (r.y - c.y) * FRAME_UNITS_PER_PX, w: r.w * FRAME_UNITS_PER_PX, h: r.h * FRAME_UNITS_PER_PX });
+
+    return Object.freeze({
+        overdraw: Object.freeze({ x: c.x - c.w / 2, y: top, w: 2 * c.w, h: c.y + c.h - top }),
+        clear: Object.freeze([['monitor', R['monitor-frame']], ['props', R['desk-props']], ['desk', R['desk-sprite']], ['trail', column]]
+            .map(([name, r]) => Object.freeze({ name, ...unit(r) }))),
+    });
+}
+
+/**
+ * THE INTERN's OVERDRAW (FLOOR.md § 8, § 10.4's frame contract item 3; card#12259): the intern's chibi frame is drawn
+ * in its stool's rect widened to the row's PITCH — `(STOOL_PITCH − STOOL_W) / 2` px each side, the whole gap between
+ * two interns, so two frames meet at the pitch and never overlap — while the stool element's own rect, which the
+ * dashed edge of an untitled intern and every overlap rule read, is unchanged. The tree's `CHIBI_VIEWBOX` is this
+ * rect in the chibi frame's units (the rect's 108 units over its `STOOL_W` px), held equal to it by
+ * `tools/characters/selftest.mjs` § 7b.
+ *
+ * @param {{x: number, y: number, w: number, h: number}} stool the intern's rect, box-relative
+ * @returns {{x: number, y: number, w: number, h: number}} the overdraw, box-relative in px
+ */
+export function internOverdraw(stool) {
+    const margin = (STOOL_PITCH - STOOL_W) / 2;
+
+    return Object.freeze({ x: stool.x - margin, y: stool.y, w: stool.w + 2 * margin, h: stool.h });
 }
 
 /**
@@ -403,7 +558,7 @@ export function stackRows(rows, table) {
 
 /**
  * THE DESK's ANCHOR — the character rect's centre line, box-relative (FLOOR.md § 10.6: the bubble is
- * anchored to the character, § 5.1 rule 3, and the thread line and the walks meet the desk where its
+ * anchored to the character, § 5.1 rule 3, and the coordination birds and the walks meet the desk where its
  * sitter sits). The one primitive every anchor reads, so a re-laid character moves them all.
  */
 export function characterCentre(box, character) {
@@ -449,7 +604,7 @@ export const DRAWN_MEMBERS = Object.freeze({
     render_state: ['chip'],
     desk_label: ['label', 'monitor-text'],
     desk_currency: ['currency'],
-    lag: ['lag-overlay', 'lag'],
+    lag: ['lag'],
     monitor: ['monitor', 'monitor-text', 'monitor-frame'],
     quiet_age: ['quiet-age'],
     gauge: ['gauge-bar', 'gauge-pct'],
@@ -489,8 +644,8 @@ export const NOT_DRAWN_MEMBERS = Object.freeze({
 /**
  * One desk's elements, relative to its box's top-left, in § 2.2's layer order (bottom first): the
  * painter draws them in this order — the art pass first (the chair, the character, the desk, the
- * monitor's frame, the desk props, the side table), then every fact (FLOOR.md § 10.6's rule 2) — so the
- * hatch is over the art and the chip, and the plate is above the hatch.
+ * monitor's frame, the desk props, the side table), then every fact (FLOOR.md § 10.6's rule 2) — so a
+ * `fold_lag` desk's faded art (§ 7.4, `FOLD_LAG_OPACITY`) is all under the facts, which keep full opacity.
  *
  * @param {object} desk one desk model (`desk/desk-render.js`'s `deskModel()`)
  * @param {object} ctx `{ box: {width, height}, measure, character: {w, h}, theme: string|null,
@@ -538,8 +693,16 @@ export function deskLayout(desk, ctx) {
             return null;
         }
 
-        const cut = fit(String(value), r.w, measure, extra.role ?? 'fact');
-        const e = { kind, member, x: r.x, y: r.y, w: cut.w, h: cut.h, text: cut.text, truncated: cut.truncated, ...extra };
+        // A rect taller than one line of its role holds as many lines as fit in it (the screen's, card#12446),
+        // wrapped; every other text is one line, cut.
+        const role = extra.role ?? 'fact';
+        const rows = Math.floor(r.h / TYPE_ROLES[role].line);
+        const cut = rows > 1 ? wrap(String(value), r.w, measure, role, rows) : fit(String(value), r.w, measure, role);
+        const e = {
+            kind, member, x: r.x, y: r.y, w: cut.w, h: cut.h, text: cut.text, truncated: cut.truncated,
+            ...(rows > 1 ? { lines: cut.lines } : {}),
+            ...extra,
+        };
 
         elements.push(e);
 
@@ -576,6 +739,10 @@ export function deskLayout(desk, ctx) {
                 pose: desk.pose,
                 animation: desk.held,
                 desk_top: (R['desk-sprite'].y - R.character.y) / R.character.h,
+                // § 10.4's frame contract (card#12187, card#12259): every character image is drawn in its overdraw,
+                // past the element's rect — a sleeper's z's and a standing or walking body's tilted parts both
+                // reach past it — and a sleeper's z's keep out of the clear rects the tree is handed.
+                ...characterOverdraw(ctx.box, ctx.character),
             });
         }
 
@@ -601,6 +768,14 @@ export function deskLayout(desk, ctx) {
     // facts' backdrop) and before every fact it is drawn behind. It is as wide as the widest fact it holds, which is
     // known once the facts are cut, so it is spliced in at this index after them.
     const plateAt = elements.length;
+
+    // § 7.4's fade (card#12346): on a `fold_lag` desk every element of the art pass above — and only those — is drawn
+    // at `FOLD_LAG_OPACITY`; the facts below, the lag line and the nameplate among them, keep full opacity.
+    if (desk.lag !== null) {
+        for (const e of elements) {
+            e.opacity = FOLD_LAG_OPACITY;
+        }
+    }
 
     // The monitor is a fact (its light, Q1 B's task text), drawn on the placeholder too.
     rect('monitor', 'monitor', R.monitor, { lit: desk.monitor.lit });
@@ -646,7 +821,7 @@ export function deskLayout(desk, ctx) {
         text('gauge-pct', 'gauge', gauge.pct, R['gauge-pct']);
     }
 
-    // Q1 (B): the badge row — the treatment badges, then recognised badges in the wire's order.
+    // Q1 (B), row 75: the badge row — the treatment badges, the pinned ones, then the wire's order.
     const row = badgeRow;
 
     row.forEach((badge, i) => {
@@ -696,10 +871,15 @@ export function deskLayout(desk, ctx) {
 
         // Q3: the sprite is keyed by the intern's call, never by its place in the row; § 9 F14: an
         // intern whose art failed falls back to the glyph, that stool alone.
-        rect('stool', 'side_table', { ...R.stool, x: R.stool.x + i * STOOL_PITCH }, {
+        const at = { ...R.stool, x: R.stool.x + i * STOOL_PITCH };
+
+        rect('stool', 'side_table', at, {
             call_id: stool.call_id,
             untitled: stool.untitled,
             index: i,
+            // § 10.4's frame contract item 3 (card#12259): the sprite is drawn in the stool's overdraw, the rect widened
+            // to the row's pitch, so a tilted chibi frame's ear or cap is not clipped at the rect's side.
+            overdraw: internOverdraw(at),
             // What the character tree is handed — the install and the intern key in the seat's place —
             // from the same model the asset id is, so the two can never name different interns.
             install_id: desk.install_id,
@@ -735,12 +915,7 @@ export function deskLayout(desk, ctx) {
         });
     }
 
-    // ── Layer 5: § 7.4's hatch over the art and the chip ────────────────────────────────────────
-    if (desk.lag !== null) {
-        rect('lag-overlay', 'lag', R['lag-overlay'], { overlay: desk.lag.overlay });
-    }
-
-    // ── Layer 6: the plate and the nameplate, above the hatch ───────────────────────────────────
+    // ── Layer 5: the plate and the nameplate ────────────────────────────────────────────────────
     rect('plate', 'nameplate', R.plate);
 
     // Q2: the nameplate is the one string in the name role — measured, cut and centred in it.
@@ -762,8 +937,9 @@ export function deskLayout(desk, ctx) {
 }
 
 /**
- * The badge row's order (§ 10.3's cut order, amended by the ruling of 2026-10-02): the badges a § 7
- * treatment reads first, then the RECOGNISED badges in the wire's own order. An unrecognised badge is
+ * The badge row's order (§ 10.3's cut order, amended by the ruling of 2026-10-02 and by § 13 row 75):
+ * the badges a § 7 treatment reads first, then `PINNED_BADGES`, then the other RECOGNISED badges in the
+ * wire's own order. An unrecognised badge is
  * never in it — its raw id is not drawn on the desk (Q0); it is counted into the flag through its
  * `badges: <id>` line.
  *
@@ -777,7 +953,8 @@ export function clusterOrder(desk) {
 
     return [
         ...known.filter((id) => TREATMENT_BADGES.includes(id)),
-        ...known.filter((id) => !TREATMENT_BADGES.includes(id)),
+        ...known.filter((id) => PINNED_BADGES.includes(id)),
+        ...known.filter((id) => !TREATMENT_BADGES.includes(id) && !PINNED_BADGES.includes(id)),
     ];
 }
 

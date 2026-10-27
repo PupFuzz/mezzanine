@@ -733,6 +733,16 @@ export function layoutStatement(failure) {
 }
 
 /**
+ * The lobby's statement when its page script could not start (card#12319): said in the building readings and the
+ * directory in place of their placeholders, which would otherwise say WAITING for a snapshot that no stream will ever
+ * bring. The cause is the thrown error's own message. Not a § 9 failure render — those are the protocol's, and a
+ * lobby that did not start has no protocol running — and its wording is not ratified.
+ */
+export function startFailure(error) {
+    return `the lobby could not start — ${error instanceof Error ? error.message : String(error)}; reload the page to try again`;
+}
+
+/**
  * § 9 F17's cold start: "there is no layout to keep, so under that statement it lists the snapshot's
  * installs as rooms with **no floor claimed**, each a link to `/floor/{install_id}`". No floor, no key,
  * no label and no summary is derived — composing is exactly what the failed document was needed for.

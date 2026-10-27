@@ -94,6 +94,17 @@ class TheLobbyIsADrawnRoomTest extends TestCase
     }
 
     /**
+     * § 4.1 claim 14 (card#12187, decision 72): `directory.js`'s docking entry against § 12's *Directory dock width* — the
+     * boxes flow with no room drawn, stand on the board above the bound and dock under it, re-asked on a paint, a resize
+     * and a change of the page's text size; and it alone writes their `data-home`, their counter-scale and the surface's
+     * `touch-action`.
+     */
+    public function test_green_the_docking_entry_docks_the_boxes_under_the_bound(): void
+    {
+        $this->assertSame([], $this->dockDefects($this->dockRun()));
+    }
+
+    /**
      * § 4.1: the lobby page sets no text size of its own — no second stylesheet, no style block or attribute sizing text,
      * and on the page chrome sheet no text size on the root, the body, `*` or a tag `directory.js` builds, and none with
      * `!important` — so the directory's `1rem` is the viewer's body text size. (Carried from the plate label's check, card#7343,
@@ -187,8 +198,13 @@ class TheLobbyIsADrawnRoomTest extends TestCase
         $page = $this->lobbyPage();
 
         foreach ([
-            'a directory that does not scroll' => ["    overflow-y: auto;\n    touch-action: none;\n    display: flex;\n    flex-direction: column;\n    gap: 6px;\n}", "    overflow-y: hidden;\n    touch-action: none;\n    display: flex;\n    flex-direction: column;\n    gap: 6px;\n}"],
-            'a directory the browser scrolls natively' => ["    overflow-y: auto;\n    touch-action: none;\n    display: flex;", "    overflow-y: auto;\n    touch-action: auto;\n    display: flex;"],
+            'a directory that does not scroll' => [".lobby [data-home=\"board\"] .lobby-plaques {\n    overflow-y: auto;", ".lobby [data-home=\"board\"] .lobby-plaques {\n    overflow-y: hidden;"],
+            'a directory the browser scrolls natively' => [".lobby [data-home=\"board\"] .lobby-plaques {\n    overflow-y: auto;\n    touch-action: none;", ".lobby [data-home=\"board\"] .lobby-plaques {\n    overflow-y: auto;\n    touch-action: auto;"],
+            // card#12187: `touch-action: none` or `pan-y` left on the docked list, and the tap target's floor dropped.
+            'touch-action: none left on the docked list' => [".lobby .lobby-plaques {\n    flex: 1 1 auto;", ".lobby .lobby-plaques {\n    touch-action: none;\n    flex: 1 1 auto;"],
+            'pan-y left on the docked list' => [".lobby .lobby-plaques {\n    flex: 1 1 auto;", ".lobby .lobby-plaques {\n    touch-action: pan-y;\n    flex: 1 1 auto;"],
+            "a docked link's minimum height removed" => ["    min-width: 24px;\n    min-height: 24px;\n", "    min-width: 24px;\n"],
+            'the un-drawn colours keyed back on the layer' => ['.lobby [data-home="flow"] .lobby-reading,', '.lobby #lobby-room:not([data-drawn]) .lobby-reading,'],
             'a row that does not wrap' => [".lobby .lobby-plaque-row {\n    display: flex;\n    flex-wrap: wrap;", ".lobby .lobby-plaque-row {\n    display: flex;\n    flex-wrap: nowrap;"],
             'a row cut at its end' => [".lobby .lobby-plaque-row {\n    display: flex;\n", ".lobby .lobby-plaque-row {\n    white-space: nowrap;\n    text-overflow: ellipsis;\n    display: flex;\n"],
             'a reading cut at its end' => [".lobby .lobby-reading li {\n    margin: 0;\n", ".lobby .lobby-reading li {\n    margin: 0;\n    white-space: nowrap;\n    text-overflow: ellipsis;\n"],
@@ -204,6 +220,34 @@ class TheLobbyIsADrawnRoomTest extends TestCase
         $undeclared = str_replace(' data-camera-scrolls>', '>', $page);
         $this->assertNotSame($undeclared, $page);
         $this->assertNotSame([], $this->sheetDefects($sheet, $undeclared), 'RED (a directory that does not declare it scrolls) did not bite');
+
+        foreach (['<section id="lobby-directory" aria-labelledby="lobby-directory-heading" data-home="flow">', '<div id="lobby-readings" data-home="flow">'] as $shipped) {
+            $unshipped = str_replace(' data-home="flow"', '', $shipped);
+            $planted = str_replace($shipped, $unshipped, $page);
+            $this->assertNotSame($planted, $page, "the markup's {$shipped} anchor is gone");
+            $this->assertNotSame([], $this->sheetDefects($sheet, $planted), "RED (the markup's data-home=\"flow\" removed from {$unshipped}) did not bite");
+        }
+    }
+
+    /** Each docking-entry defect planted in `directory.js` — the bound, the text-size observer, the surface, the moves. */
+    public function test_red_each_docking_entry_defect(): void
+    {
+        foreach ([
+            'the bound set to nothing (the box back on the board at a phone)' => ['export const DOCK_BOUND = Object.freeze({ w: 24, h: 15 });', 'export const DOCK_BOUND = Object.freeze({ w: 0, h: 0 });'],
+            'the bound set to 30 em (a 1,440 × 780 board docked)' => ['export const DOCK_BOUND = Object.freeze({ w: 24, h: 15 });', 'export const DOCK_BOUND = Object.freeze({ w: 30, h: 15 });'],
+            'the ResizeObserver on the 1rem probe removed' => ["    new win.ResizeObserver(() => place()).observe(probe);\n", ''],
+            'the resize listener removed' => ["    win.addEventListener('resize', () => place());\n", ''],
+            "the entry's surface rewrite skipped" => ["        building.style.touchAction = next === 'board' ? 'none' : 'auto';\n", ''],
+            'a box moved on every placing' => ['                if (box.parentElement !== layer) {', '                if (true) {'],
+            'the counter-scale kept on the dock' => ["boxStyles(rect, next === 'board')", 'boxStyles(rect, true)'],
+            "the box's home left unwritten" => ["            box.setAttribute('data-home', next);\n", ''],
+        ] as $what => [$from, $to]) {
+            $dir = $this->mutatedModules(['../lobby/directory.js', $from, $to]);
+            $this->assertNotSame([], $this->dockDefects($this->dockRun(dirname($dir))), "RED ({$what}) did not bite");
+        }
+
+        $dir = $this->mutatedModules(['../lobby/building-scene.js', "        cursor: drawn ? 'grab' : '',", "        touchAction: drawn ? 'none' : '',\n        cursor: drawn ? 'grab' : '',"]);
+        $this->assertNotSame([], $this->dockDefects($this->dockRun(dirname($dir))), 'RED (the surface style writing touch-action again) did not bite');
     }
 
     /** A page or a sheet that sets its own text size — `1rem` is then no longer the body text size. */
@@ -240,6 +284,116 @@ class TheLobbyIsADrawnRoomTest extends TestCase
         $renders = $this->replay($run)['lobby_renders'];
 
         return $renders[count($renders) - 1]['frame']['summary']['floors'];
+    }
+
+    /** § 12's *Directory dock width*, read from the document: the least face, in em, across and down. @return array{0: int, 1: int} */
+    private function dockBound(): array
+    {
+        $this->assertSame(1, preg_match('/^\| \*\*Directory dock width\*\* \| the fitted board\'s face under \*\*(\d+) em\*\* wide or \*\*(\d+) em\*\* tall/m', $this->floorMd(), $m),
+            '§ 12 carries no *Directory dock width* row in the form this test reads');
+
+        return [(int) $m[1], (int) $m[2]];
+    }
+
+    /**
+     * The docking entry driven through a page's sequence — undrawn, drawn on a desktop surface, painted again, resized to a
+     * phone, back, and the text size raised — and the predicate at faces a pixel either side of each figure of the bound.
+     */
+    private function dockRun(?string $jsRoot = null): array
+    {
+        [$bw, $bh] = $this->dockBound();
+        // The room's extent and the directory's rect, the probe's own (`lobbyScene()`), so the faces are drawn at the bound.
+        $scene = $this->paint([], [], $jsRoot)['room']['scene'];
+        [$ew, $eh, $dw, $dh] = [$scene['extent']['w'], $scene['extent']['h'], $scene['directory']['w'], $scene['directory']['h']];
+        // The surface at which the face is exactly `$bw` em wide at a 16 px rem (height unbounding); and the height at which a
+        // height-limited fit first holds both figures — the board's 488 : 308 is narrower than 24 : 15, so on a short
+        // surface the width figure is the one that binds first.
+        $wAt = $bw * 16 / $dw * $ew;
+        $hAt = max($bw * 16 / $dw, $bh * 16 / $dh) * $eh;
+        $faces = [
+            ['why' => 'just wide enough', 'surface' => ['width' => $wAt + 1, 'height' => 2000], 'rem' => 16, 'owed' => 'board'],
+            ['why' => 'just too narrow', 'surface' => ['width' => $wAt - 1, 'height' => 2000], 'rem' => 16, 'owed' => 'dock'],
+            ['why' => 'just tall enough', 'surface' => ['width' => 4000, 'height' => $hAt + 1], 'rem' => 16, 'owed' => 'board'],
+            ['why' => 'just too short', 'surface' => ['width' => 4000, 'height' => $hAt - 1], 'rem' => 16, 'owed' => 'dock'],
+            ['why' => '1,440 × 780 (B\'s board run)', 'surface' => ['width' => 1424, 'height' => 624], 'rem' => 16, 'owed' => 'board'],
+        ];
+        $desk = ['width' => 1424, 'height' => 720];
+        $phone = ['width' => 374, 'height' => 200];
+        $steps = [
+            ['drawn' => false, 'surface' => $desk, 'rem' => 16, 'via' => 'place', 'owed' => 'flow'],
+            ['drawn' => true, 'surface' => $desk, 'rem' => 16, 'via' => 'place', 'owed' => 'board'],
+            ['drawn' => true, 'surface' => $desk, 'rem' => 16, 'via' => 'place', 'owed' => 'board', 'still' => true],
+            ['surface' => $phone, 'rem' => 16, 'via' => 'resize', 'owed' => 'dock'],
+            ['drawn' => true, 'surface' => $phone, 'rem' => 16, 'via' => 'place', 'owed' => 'dock', 'still' => true],
+            ['surface' => $desk, 'rem' => 16, 'via' => 'resize', 'owed' => 'board'],
+            ['surface' => $desk, 'rem' => 28, 'via' => 'text', 'owed' => 'dock'],
+            ['surface' => $desk, 'rem' => 16, 'via' => 'text', 'owed' => 'board'],
+            ['drawn' => false, 'surface' => $phone, 'rem' => 16, 'via' => 'place', 'owed' => 'flow'],
+        ];
+        $payload = escapeshellarg((string) json_encode(['dock' => $steps, 'dock_faces' => $faces]));
+        $out = [];
+        exec('echo '.$payload.' | node '.escapeshellarg(self::PROBE).($jsRoot === null ? '' : ' --js '.escapeshellarg($jsRoot)).' 2>&1', $out, $rc);
+        $this->assertSame(0, $rc, "the room probe failed:\n".implode("\n", $out));
+
+        return json_decode(implode("\n", $out), true)['dock'] + ['bound_read' => [$bw, $bh]];
+    }
+
+    /** @return list<string> */
+    private function dockDefects(array $dock): array
+    {
+        $defects = [];
+
+        if ($dock['bound'] !== ['w' => $dock['bound_read'][0], 'h' => $dock['bound_read'][1]]) {
+            $defects[] = 'the entry\'s bound is not § 12\'s *Directory dock width*: '.json_encode($dock['bound']).' against '.json_encode($dock['bound_read']);
+        }
+
+        foreach ($dock['predicate'] as $f) {
+            if ($f['home'] !== $f['owed']) {
+                $defects[] = "the face {$f['why']} ".json_encode($f['surface'])." at a {$f['rem']} px rem is `{$f['home']}`, not `{$f['owed']}`";
+            }
+        }
+
+        if (! $dock['observes_probe'] || $dock['probe'] === null || $dock['probe']['style']['width'] !== '1rem' || $dock['probe']['style']['height'] !== '1rem' || $dock['probe']['style']['visibility'] !== 'hidden') {
+            $defects[] = 'the entry observes no hidden 1rem probe — a change of the text size is never re-asked: '.json_encode([$dock['observes_probe'], $dock['probe']]);
+        }
+
+        if (! $dock['listens_resize']) {
+            $defects[] = 'the entry does not re-ask on a resize';
+        }
+
+        if (in_array('touchAction', $dock['surface_keys'], true)) {
+            $defects[] = 'the surface\'s style writes `touch-action` beside the entry — two writers of one state';
+        }
+
+        foreach ($dock['steps'] as $i => $s) {
+            $owed = $s['step']['owed'];
+            $at = "step {$i} ({$s['step']['via']} at ".json_encode($s['step']['surface']).", rem {$s['step']['rem']})";
+            $parent = $owed === 'board' ? 'layer' : 'page';
+
+            if ($s['entry_home'] !== $owed || $s['data_home'] !== [$owed, $owed]) {
+                $defects[] = "{$at}: the boxes are `".implode('/', $s['data_home'])."` (the entry says {$s['entry_home']}), not `{$owed}`";
+            }
+
+            if ($s['homes'] !== [$parent, $parent] || ($parent === 'page' && ($s['order'] !== ['directory', 'readings'] || ! $s['after_surface']))) {
+                $defects[] = "{$at}: the boxes stand in ".implode('/', $s['homes']).' — '.json_encode($s['order']).", not in the {$parent}".($parent === 'page' ? ' after the surface, the directory first' : '');
+            }
+
+            $scaled = array_map(static fn ($t): bool => str_contains((string) $t, 'var(--lobby-scale'), $s['face_transform']);
+
+            if ($scaled !== [$owed === 'board', $owed === 'board']) {
+                $defects[] = "{$at}: the faces' counter-scale is ".json_encode($s['face_transform']).' — set on the board and unset everywhere else';
+            }
+
+            if ($s['touch_action'] !== ($owed === 'board' ? 'none' : 'auto')) {
+                $defects[] = "{$at}: the surface's touch-action is ".json_encode($s['touch_action']).' — `none` on the board alone, `auto` everywhere else';
+            }
+
+            if (($s['step']['still'] ?? false) && $s['moves'] !== 0) {
+                $defects[] = "{$at}: a placing that kept the home moved {$s['moves']} box(es) — a render moves nothing";
+            }
+        }
+
+        return $defects;
     }
 
     /** The room probe over plaques and unclaimed rooms. */
@@ -559,11 +713,47 @@ class TheLobbyIsADrawnRoomTest extends TestCase
             return $m[1];
         };
 
-        $list = $rule('.lobby .lobby-plaques');
+        $list = $rule('.lobby [data-home="board"] .lobby-plaques');
 
         if (! str_contains($list, 'overflow-y: auto;') || ! str_contains($list, 'touch-action: none;')) {
-            $defects[] = 'the plaques\' list does not scroll inside its box, or the browser may scroll it natively (§ 4.1)';
+            $defects[] = 'on the board the plaques\' list does not scroll inside its box, or the browser may scroll it natively (§ 4.1)';
         }
+
+        // § 4.1 claim 14 (card#12187): `touch-action: none` only where the wire listens — every rule saying it keyed on
+        // `[data-home="board"]` — and `pan-y` nowhere, so a docked finger keeps the page's pinch-zoom (WCAG 2.2 SC 1.4.4).
+        preg_match_all('/([^{}]+)\{([^{}]*)\}/', (string) preg_replace('#/\*.*?\*/#s', '', $sheet), $rules, PREG_SET_ORDER);
+
+        foreach ($rules as [, $selectors, $body]) {
+            if (! str_contains($selectors, '.lobby')) {
+                continue;
+            }
+
+            if (str_contains($body, 'pan-y')) {
+                $defects[] = 'a lobby rule says `pan-y` (`'.trim($selectors).'`) — it refuses the page\'s pinch-zoom';
+            }
+
+            if (preg_match('/touch-action:\s*none/', $body) === 1) {
+                foreach (explode(',', $selectors) as $selector) {
+                    if (! str_contains($selector, '[data-home="board"]')) {
+                        $defects[] = 'a lobby rule says `touch-action: none` off the board (`'.trim($selector).'`)';
+                    }
+                }
+            }
+        }
+
+        // Docked, a plaque's link is at least 24 × 24 CSS px (WCAG 2.2 SC 2.5.8), under `[data-home="dock"]` and nowhere else.
+        $tap = $rule('.lobby [data-home="dock"] .lobby-plaque-name');
+
+        if (! str_contains($tap, 'min-height: 24px;') || ! str_contains($tap, 'min-width: 24px;')) {
+            $defects[] = 'a docked plaque\'s link is not declared at least 24 × 24 CSS px';
+        }
+
+        // The placeholder colours are keyed on the box's own home, never on an ancestor it leaves (review round 1's F2).
+        if (str_contains($sheet, '#lobby-room:not([data-drawn])')) {
+            $defects[] = 'the un-drawn colours are keyed on `#lobby-room` — a box outside the layer reads none of them';
+        }
+
+        $rule('.lobby [data-home="flow"] .lobby-face');
 
         // § 4.1: every line is read whole — a line wider than its box wraps, and nothing the plaque or the readings show is
         // cut at its end; in the name row the name and the agents and desks never shrink, so the rooms line gives way.
@@ -603,9 +793,14 @@ class TheLobbyIsADrawnRoomTest extends TestCase
             $defects[] = 'a word wider than its box is not broken (`overflow-wrap: anywhere;` missing on the face)';
         }
 
-        if (preg_match('#<section id="lobby-directory" aria-labelledby="lobby-directory-heading">\s*<div class="lobby-face lobby-directory-face">\s*<h3 id="lobby-directory-heading">(.*?)</h3>\s*<ol id="lobby-floors" class="lobby-plaques" aria-labelledby="lobby-directory-heading" data-camera-scrolls>#s', $page, $m) !== 1
+        // The boxes ship `data-home="flow"` (§ 4.1 claim 14), so the placeholders are the page's colours with no script run.
+        if (preg_match('#<div id="lobby-readings" data-home="flow">#', $page) !== 1) {
+            $defects[] = 'the readings\' box does not ship `data-home="flow"` in the markup';
+        }
+
+        if (preg_match('#<section id="lobby-directory" aria-labelledby="lobby-directory-heading" data-home="flow">\s*<div class="lobby-face lobby-directory-face">\s*<h3 id="lobby-directory-heading">(.*?)</h3>\s*<ol id="lobby-floors" class="lobby-plaques" aria-labelledby="lobby-directory-heading" data-camera-scrolls>#s', $page, $m) !== 1
             || trim(strip_tags($m[1])) !== 'FLOOR DIRECTORY — counts the seats this client holds') {
-            $defects[] = 'the directory is not its HTML title over a list it names, declaring that it scrolls';
+            $defects[] = 'the directory is not its HTML title over a list it names, declaring that it scrolls, shipped `data-home="flow"`';
         }
 
         return $defects;

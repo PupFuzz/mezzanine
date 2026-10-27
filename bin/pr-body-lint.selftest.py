@@ -2,8 +2,20 @@
 # ── VENDORED — DO NOT EDIT ANYTHING BELOW THIS HEADER ─────────────────────────────────────────
 #
 # pr-body-lint.selftest.py — `bin/pr-body-lint.py`'s own controls, vendored from the same commit as
-# the tool. Everything below this header is upstream's file, byte-for-byte; mezzanine has made NO
-# edit to it, and `bin/vendor-pin-check.sh` pins its body.
+# the tool. Everything below this header is upstream's file, byte-for-byte, EXCEPT THE DECLARED
+# SITES BELOW, and `bin/vendor-pin-check.sh` pins its body.
+#
+#   DECLARED LOCAL EDITS — this is the COMPLETE list. Anything else below is a defect.
+#     (1) card#12260 — every sha256 figure in the `FIXTURES` table, re-derived after the
+#         fixtures' coordination-thread citations were struck (`pr-body-lint-fixtures/README.md`
+#         names each struck string). Located by the fragment
+#         `a7c1a1b4df5763c51f7dc18078035b06b981a03e70a4b50cccd3addc715f922d` (the fw#847 positive's
+#         figure). No arm, rule or assertion moves; the suite runs green on the struck bodies.
+#     (2) card#12325 — arm I's citation of another team's private implementation repository and
+#         of a heading its PR template carries. The section-I comment, the `FEATURE_BODY` heading
+#         and its line, the row (1) label and the row (7) control label say "a fleet impl repo" and
+#         `## Boundary check` instead. Located by the fragment `A fleet impl repo mandates`. The
+#         heading stays one the release allow-set does not admit, so every arm asserts what it did.
 #
 #   upstream repo     PupFuzz/agent-board-framework  (PRIVATE)
 #   upstream path     plugins/coord/templates/bin/pr-body-lint.selftest.py
@@ -22,18 +34,18 @@
 # captured PR bodies with no shebang and no header, so the body rule that script derives has
 # nothing to anchor on and its control arm (line 2 must be a `#` comment) cannot be built over a
 # markdown document. It needs none — the `FIXTURES` table below carries a sha256 for every fixture
-# this suite reads, and the suite reds by name when one does not match. Those figures are
-# UPSTREAM'S OWN, so unlike a locally-minted pin they check the copy against the source rather than
-# against this repo's last declaration. `README.md` in that directory carries no figure and is
-# documentation of the captured bodies' provenance.
+# this suite reads, and the suite reds by name when one does not match. Since card#12260 those
+# figures are LOCALLY MINTED (declared edit (1) above): they pin the fixtures to this repo's struck
+# copies, not to upstream's bytes. `README.md` in that directory carries no figure and is
+# documentation of the captured bodies' provenance and of what was struck.
 #
 # ⚠ IT IS RUN WITH `--workflow .github/workflows/card-token-lint.yml`, AND THAT IS THE ONE PLACE
 # THIS INSTALL DIFFERS FROM UPSTREAM'S LAYOUT — an argument, never an edit to the body below. Arm i
 # step (9) reads the workflow that runs the lint, and upstream's default is the plugin's own
 # `templates/workflows/pr-body-lint.yml`, which this tree does not have: here the lint runs in the
 # `pr-body-lint` job of `card-token-lint.yml`. Run without the argument, arm i FAILS naming the path
-# it tried and every other arm still runs (upstream card#10719, reported from here as
-# PupFuzz/agent-roundtable#581). The CI step and every local run pass it:
+# it tried and every other arm still runs (upstream card#10719, reported from here in
+# fleet coordination). The CI step and every local run pass it:
 #
 #   python3 bin/pr-body-lint.selftest.py --workflow .github/workflows/card-token-lint.yml
 #
@@ -188,19 +200,19 @@ WORKFLOW_SOURCE = "the default, this plugin's own layout"
 # the one file, beside the one it already carries for itself and for the same stated reason.
 FIXTURES = {
     "positive": ("fw847-v0.50.0-body-2026-09-08T220229Z.md.txt",
-                 "31cfc5649c34f09601c76aaed5817c62d413cd5a5a1e6b8ae2456b3c751a8be4"),
+                 "a7c1a1b4df5763c51f7dc18078035b06b981a03e70a4b50cccd3addc715f922d"),
     "negative": ("fw847-v0.50.0-body-rewritten.md.txt",
-                 "85c244b7d3fbfa4bf79d2718c28ed902cb490e1ab16b3d4cd4196d98cb0fb21a"),
+                 "53ac78a308faabd024ce599157594b5027e5ecb559314dfb8a981b072ae0988d"),
     # The attribution-line pair — fw#891, the same PR either side of the 2026-09-11 ruling.
     "attr_positive": ("fw891-v0.51.0-body-2026-09-10T140853Z.md.txt",
-                      "7f269aeb45243018829929c80c9c76a460bad26e1e237f229fca19707a225331"),
+                      "4213873230d80aeaf5762250388ece06c5ffd285d39703b1fe39a51f1abe8378"),
     "attr_negative": ("fw891-v0.51.0-body-rewritten.md.txt",
-                      "63ca4812628c7055faa5d2c8ca5e922b3cfa28904e2c1869deaa48e9c7c4c8eb"),
+                      "628734056c86995b6d5d568b8989a07c42aeeba119157164041ce2198ecd1a1a"),
     # The live-state-reading pair — fw#873 as first published, and a HAND-BUILT negative.
     "live_positive": ("fw873-body-2026-09-08T205957Z.md.txt",
-                      "bfb44759b25a3cbea31a63ecddadea35c9065fae9d5c0e4c6a1c56414783d3f9"),
+                      "1665c160ba5080335088f3f515859464f80d09073be3e3ff7e8db6417efec24e"),
     "live_negative": ("fw873-body-hand-built-derivations.md.txt",
-                      "4ec27d315998a93c41658a0f08437561ae009d01574e0d75c7051cac6a132656"),
+                      "aea22ba24228fc70b48c985a487090b08fe422c235a1542e9caf5e3fad7b4c7c"),
 }
 
 # A body written to the IN table, by hand — the second negative. It carries the machine-read rows
@@ -1022,8 +1034,8 @@ def arm_h_bot_author(mod, td):
 # I — THE RELEASE SCOPE (card#10493): the release standard judges RELEASE PRs, and only them
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 # THE KNOWN POSITIVE IS A SHAPE card#10493 MEASURED, NOT ONE INVENTED HERE — the measurement is the
-# card author's (sola-pm), cited, not re-taken. `BWtek-Medical/sola-device` mandates
-# `## Summary`, `## SaMD boundary check` and `## CI action-pin resync check` on its feature PRs (its
+# card author's (sola-pm), cited, not re-taken. A fleet impl repo mandates
+# `## Summary`, `## Boundary check` and `## CI action-pin resync check` on its feature PRs (its
 # own PR template and `pr_body_shape_guard.py`), and each of its PRs card#10493 lists spent a
 # review finding on this lint's `heading-not-allowed` rows for exactly those headings. The body
 # below carries them — the SECTION CONTENT under them is hand-written, because that repo is not
@@ -1032,9 +1044,9 @@ FEATURE_BODY = """## Summary
 
 Adds the retry window to the sync daemon.
 
-## SaMD boundary check
+## Boundary check
 
-No change to the SaMD boundary.
+No change to the boundary.
 
 ## CI action-pin resync check
 
@@ -1055,7 +1067,7 @@ def arm_i_release_scope(mod, td):
     # (1) THE DEFECT, CLOSED — a feature PR in its own repo's shape is not judged against the
     # release allow-set, and says nothing about `## Summary`.
     got = rules_on(mod, FEATURE_BODY, title=FEATURE_TITLE)
-    check("I a FEATURE PR's body carrying its own repo's `## Summary` / `## SaMD boundary check` / "
+    check("I a FEATURE PR's body carrying its own repo's `## Summary` / `## Boundary check` / "
           "`## CI action-pin resync check` is NOT red — the release allow-set does not reach it",
           got == [], got)
 
@@ -1137,7 +1149,7 @@ def arm_i_release_scope(mod, td):
            if f.rule == "heading-not-allowed"]
     if check("I CONTROL: with the scope predicate forced to RELEASE — the pre-card#10493 lint — the "
              "feature body reds on `heading-not-allowed` for `## Summary`, the finding each "
-             "sola-device PR card#10493 lists carried", any(f.text == "## Summary" for f in got),
+             "fleet impl repo PR card#10493 lists carried", any(f.text == "## Summary" for f in got),
              [f.text for f in got]):
         seen_red("I the release scope, driven red by a copy that judges every PR as a release and "
                  "reds a feature body's own `## Summary`")

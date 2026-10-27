@@ -13,7 +13,7 @@
  * ⛔ THE POPULATION IS DERIVED FROM THE MODELS, NEVER LISTED. A path is a LEAF when no desk carries an
  * object or a non-empty array there; a path some desk carries an object at is interior, and its
  * children are the leaves (so `lag`, null on a live desk and an object on a lagged one, contributes
- * `lag.line` and `lag.overlay`, and a member null on every desk stays a leaf that is never non-default).
+ * `lag.line`, and a member null on every desk stays a leaf that is never non-default).
  * ⛔ A path treated as interior is not skipped where a desk holds a non-default PRIMITIVE there: a member
  * that is a string on one desk and an object on another would have its string measured by nothing, so
  * that is a defect by name, not a value the walk passes over.

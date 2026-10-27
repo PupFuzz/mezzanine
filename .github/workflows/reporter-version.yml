@@ -1,0 +1,54 @@
+# reporter-version.yml — fail a PR that changes what a fleet-reporter update ships without moving
+# REPORTER_VERSION, or without a fleet-reporter/UPDATES.md row naming what the update touches
+# (card#11818).
+#
+# WHAT IT DOES. Runs `bin/reporter-version-guard.py --selftest`, which plants each defect against a
+# copy of this checkout's real runbook, script, fixtures and ledger and watches it fail, with controls
+# that pass; then judges this PR's head against its base. The population, the rules and what the
+# guard cannot see are owned by that script's docstring and are not restated here.
+#
+# WHY IT EXISTS. REPORTER_VERSION read 0.1.0 from the reporter's first build while the file changed in
+# many later PRs, so every build reported the same version and a seat that skipped an update looked
+# exactly like one that had applied it.
+#
+# NO `paths:` FILTER, DELIBERATELY. A path-filtered workflow that produces no run reads as pending,
+# not passed (`docs/VERSIONING.md § Branch model`); the guard decides applicability itself and prints
+# NOT APPLICABLE on a PR that changes nothing an update ships.
+#
+# NEEDS NO CREDENTIAL AND NO NETWORK BEYOND THE FETCH BELOW. Pure git plus stdlib Python.
+
+name: Reporter version
+
+on:
+  pull_request:
+    # `edited` includes a base retarget, which changes the base this guard judges against, so it re-runs.
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  reporter-version:
+    runs-on: ubuntu-latest
+    steps:
+      # The PR head, with full history: the guard diffs the head against its MERGE BASE with the base
+      # branch, which a shallow clone cannot compute.
+      - name: Checkout the PR head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      # No `--depth`: a shallow fetch re-shallows the full checkout above and the merge base goes with it.
+      - name: Fetch the base branch tip
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+
+      - name: Self-test (each defect planted and seen to fail; controls pass)
+        run: python3 bin/reporter-version-guard.py --selftest
+
+      - name: Judge this PR
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: python3 bin/reporter-version-guard.py --base-rev="origin/$BASE_REF" --head-rev=HEAD

@@ -18,7 +18,7 @@ use Tests\TestCase;
  * no rect twice — two cells of one kind and size sharing an edge are ONE region, and a cell listed after one
  * it overlaps is never drawn ahead of it. It also paints a scene of the shipped room's plane and standing
  * pieces and holds the painter to drawing no tile's image: every image a theme's document, and no pattern
- * but the hatch. Whether a strip is rasterised without a seam is the browser's, and is looked at on the
+ * at all. Whether a strip is rasterised without a seam is the browser's, and is looked at on the
  * screenshots at review, not here.
  *
  * ⛔ WHAT A TILE IS, TO THE FLOOR, IS WRITTEN ONCE, in `scene.js`'s `tileLook()` — its kind and its cell's

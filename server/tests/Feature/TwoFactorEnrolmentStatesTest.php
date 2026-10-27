@@ -106,7 +106,7 @@ class TwoFactorEnrolmentStatesTest extends TestCase
 
         // It lands on the floor, and says why: the status sentence is
         // `App\Http\Responses\TwoFactorConfirmedResponse`'s and the second line is the dashboard's.
-        $response->assertSee('Two-factor authentication is on. Each sign-in now asks for a code from your authenticator app.');
+        $response->assertSee('Two-factor authentication is on. Each sign-in asks for a code from your authenticator app, except on a browser you choose to remember for 30 days.');
         $response->assertSee('with a confirmed second factor');
     }
 

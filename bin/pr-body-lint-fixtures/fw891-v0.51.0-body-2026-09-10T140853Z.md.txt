@@ -48,7 +48,7 @@ FROM: pm
 ⚠ **`card_token_regex` is not declared in `.release-pr.json`.** The `shipped-cards` manifest is absent, so nothing here is correlated against the card's own `id`. Declare it if your commit subjects carry that spelling — the two keys are two id spaces, so do not re-spell the other one as this one.
 
 Built: dispatched (coder ×1 / mechanic ×0)
-**Coordinated in:** card#9229 (board 13) · rt#283
+**Coordinated in:** card#9229 (board 13)
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 

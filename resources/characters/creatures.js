@@ -2,15 +2,16 @@
 //
 // Every character is an original animal or vegetable creature, drawn as a STANDALONE SVG DOCUMENT per
 // frame and selected from its key alone through seed.js's draw — the same key, the same document, on
-// every engine and every reload, with nothing stored. Ported from the operator-approved design sheet
-// (2026-10-05) and not redesigned; the seat's two additions are the faint light rim (`RIM`) and the
-// hedgehog's softer, curved spines.
+// every engine and every reload, with nothing stored. The species of the operator-approved design sheet
+// (2026-10-05) are ported and not redesigned; the seat's two additions to them are the faint light rim (`RIM`)
+// and the hedgehog's softer, curved spines. The species marked `added` (card#12212) are the seat's own drawing to
+// the same look, appended to the one list every key draws its species from (FLOOR.md § 10.4's growth bullet).
 //
 // ⛔ This module builds DOCUMENTS, never URIs: the painter makes the `data:` URI, so no text in the asset
 // tree carries one (FLOOR.md § 10.1 clause 2). It makes no request of any kind, holds no cache and
 // reads no clock or random source.
 //
-// Drawing space: viewBox 0 0 108 192 for a seat (2 units per floor pixel in the 54 x 96 character rect);
+// Drawing space: SEAT_RECT (0 0 108 192, 2 units per floor pixel in the 54 x 96 character rect), drawn in SEAT_VIEWBOX;
 // the foot line is y = 188, the centre line x = 54.
 
 import { draw, pick, chance } from './seed.js';
@@ -62,6 +63,28 @@ function smooth(pts) {
 // a leaf pointing "up" (angle 0) from its base (x, y)
 function leafD(len, wid) {
   return `M0 0C${f(wid)} ${f(-len * 0.22)} ${f(wid * 0.85)} ${f(-len * 0.78)} 0 ${f(-len)}C${f(-wid * 0.85)} ${f(-len * 0.78)} ${f(-wid)} ${f(-len * 0.22)} 0 0Z`;
+}
+
+// a scalloped closed outline: n soft bumps, each `bulge` deep, around the ellipse (cx, cy, rx, ry) — a fleece, a
+// broccoli crown, a cabbage leaf (card#12212); one path, so one coloured line and one rim
+function scallop(cx, cy, rx, ry, n, bulge, a0 = -Math.PI / 2) {
+  const P = (i) => { const a = a0 + i * 2 * Math.PI / n; return [cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]; };
+  let d = `M${f(P(0)[0])} ${f(P(0)[1])}`;
+  for (let i = 0; i < n; i++) {
+    const a = a0 + (i + 0.5) * 2 * Math.PI / n, [x1, y1] = P(i + 1);
+    d += `Q${f(cx + Math.cos(a) * (rx + bulge * 2))} ${f(cy + Math.sin(a) * (ry + bulge * 2))} ${f(x1)} ${f(y1)}`;
+  }
+  return d + 'Z';
+}
+
+// an open Catmull-Rom curve through points (a snail's spiral)
+function curve(pts) {
+  const n = pts.length; let d = `M${f(pts[0][0])} ${f(pts[0][1])}`;
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(n - 1, i + 2)];
+    d += `C${f(p1[0] + (p2[0] - p0[0]) / 6)} ${f(p1[1] + (p2[1] - p0[1]) / 6)} ${f(p2[0] - (p3[0] - p1[0]) / 6)} ${f(p2[1] - (p3[1] - p1[1]) / 6)} ${f(p2[0])} ${f(p2[1])}`;
+  }
+  return d;
 }
 
 // ---- the drawing context handed to a species ----
@@ -409,6 +432,168 @@ const APPROVED = {
         arms: { y: 140, dx: 39 * c.st, col: b }, feet: { dx: 16 * c.st, col: shade(b, 0.2) }, shadow: 38 * c.st };
     },
   },
+  // ---- card#12212: four more animals and four more vegetables, drawn to the approved look and appended to the list ----
+  // `added` names the card that drew a species after the approved sheet. It is a provenance label the character sheet
+  // reads for its NEW mark (`tools/characters/sheet.browser.mjs`); nothing in the draw reads it — every key draws its
+  // species by the one `pick` over the whole list (the operator's ruling of 2026-10-22, FLOOR.md § 10.4's growth bullet).
+  penguin: {
+    kind: 'animal', label: 'penguin-ish', added: 'card#12212',
+    pals: [['#3e4a5c', '#f6f1e6'], ['#2d3a4f', '#fbf5ea'], ['#55657a', '#f4f0e8'], ['#5a4a44', '#f5ecdf'], ['#3f6b72', '#eef4ee']],
+    hats: ['beanie', 'beret', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    build(c) {
+      const [b, m] = c.P, X = c.X, beak = '#e8a04a', foot = '#e3a24f';
+      const body = c.sym([[0, 50], [22, 53], [35, 72], [42, 104], [44, 140], [39, 170], [25, 184], [0, 186]]);
+      c.body(c.shape(body, b));
+      const clip = c.pen.clip(body);
+      // the pale front, one tall oval from the chest to the feet, and the two face patches meeting over the beak
+      c.body(`<ellipse cx="54" cy="144" rx="${f(29 * c.st)}" ry="42" fill="${c.pen.paint(m)}" clip-path="${clip}"/>`);
+      for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * 14)}" cy="93" rx="${f(14 * c.st)}" ry="16" fill="${c.pen.paint(m)}" clip-path="${clip}"/>`);
+      // a little tuft at the crown, and the beak pointing down between the eyes
+      c.body(`<path d="M${X(-4)} 52Q${X(-1)} 42 ${X(3)} 45Q${X(5)} 38 ${X(8)} 46" stroke="${line(b)}" stroke-width="1.6" fill="none" stroke-linecap="round"/>`);
+      c.front(`<path d="M${X(-5.5)} 104Q54 101.5 ${X(5.5)} 104Q${X(3)} 113 54 115Q${X(-3)} 113 ${X(-5.5)} 104Z" fill="${c.pen.paint(beak)}" stroke="${line(beak)}" stroke-width="1" stroke-linejoin="round"/><ellipse cx="52.4" cy="105.2" rx="1.6" ry=".7" fill="#fff" opacity=".55"/>`);
+      return { face: { y: 94, es: 14, s: 1.05, my: null, ms: 1, beak: true }, hat: { x: 54, y: 51, w: 24 }, neck: { y: 118, w: 42 * c.st },
+        arms: { y: 136, dx: 41 * c.st, col: shade(b, 0.08) }, feet: { dx: 15 * c.st, col: foot, rx: 10 }, shadow: 40 * c.st };
+    },
+  },
+  snail: {
+    kind: 'animal', label: 'snail-ish', added: 'card#12212',
+    pals: [['#c98a5a', '#f3dfc4'], ['#9a6b8f', '#efe0e6'], ['#7f9f6a', '#e9efd6'], ['#d9a05a', '#f8ecd6'], ['#6f7fa6', '#e6e8f0']],
+    hats: ['beret', 'flower', 'ladybug', 'straw'], necks: ['bow', 'neckerchief', 'scarf'], extras: ['glasses', 'book', 'mug'],
+    build(c) {
+      const [b, m] = c.P, X = c.X, t = -c.side;
+      // the shell, behind and over one shoulder — the shoulder AWAY from the key's side, which is the side the sleeper
+      // rolls toward, so the shell swings in and not out of the frame; a round shell with its spiral drawn in its own shadow
+      const sx = X(t * 16), sy = 112, R = 24;
+      c.back(`<ellipse cx="${f(sx)}" cy="${sy}" rx="${f(R * c.st)}" ry="${R}" fill="${c.pen.paint(b)}" stroke="${line(b)}" stroke-width="1.6"/>`);
+      const turns = 2.3, pts = [];
+      for (let i = 0; i <= 48; i++) { const a = i / 48 * turns * 2 * Math.PI, r = (R - 4) * (1 - i / 48) ** 0.8; pts.push([sx + Math.cos(a + 0.6) * r * c.st * t, sy + 2 + Math.sin(a + 0.6) * r]); }
+      c.back(`<path d="${curve(pts)}" stroke="${shade(b, 0.45)}" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".8"/>`);
+      c.back(`<ellipse cx="${f(sx - 7 * c.st)}" cy="${sy - 9}" rx="${f(5.5 * c.st)}" ry="4" fill="${tint(b, 0.55)}" opacity=".6" transform="rotate(-30 ${f(sx - 7 * c.st)} ${sy - 9})"/>`);
+      // the feelers, two soft stalks from the crown, each with a bulb
+      for (const s of [-1, 1]) c.back(`<path d="M${X(s * 8)} 92Q${X(s * 11)} 78 ${X(s * 14)} 68" stroke="${line(m)}" stroke-width="2.6" fill="none" stroke-linecap="round"/><circle cx="${X(s * 14.5)}" cy="66" r="4.2" fill="${c.pen.paint(m)}" stroke="${line(m)}" stroke-width="1.2"/>`);
+      // the soft body, head and foot in one, a shade darker under the shell
+      const body = c.sym([[0, 88], [18, 90], [24, 112], [26, 138], [32, 162], [40, 182], [0, 186]]);
+      c.body(c.shape(body, m));
+      c.body(`<ellipse cx="54" cy="168" rx="${f(38 * c.st)}" ry="14" fill="${shade(m, 0.16)}" clip-path="${c.pen.clip(body)}" opacity=".6"/>`);
+      return { face: { y: 106, es: 12, s: 1, my: 119, ms: 0.85 }, hat: { x: 54, y: 89, w: 18 }, neck: { y: 130, w: 27 * c.st },
+        arms: { y: 150, dx: 28 * c.st, col: m, small: true }, feet: null, shadow: 44 * c.st };
+    },
+  },
+  sheep: {
+    kind: 'animal', label: 'sheep-ish', added: 'card#12212',
+    pals: [['#f4ecdc', '#7a5f55'], ['#fbf4e8', '#b07a4a'], ['#f2dfd6', '#8c6f78'], ['#e5dcea', '#6f7488'], ['#e9dfc8', '#5e4b45']],
+    hats: ['beret', 'beanie', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    build(c) {
+      const [b, m] = c.P, X = c.X, nose = '#d98c8c';
+      // ears out to the sides, behind the face
+      for (const s of [-1, 1]) c.back(`<g transform="rotate(${s * 22} ${X(s * 25)} 96)">${c.ell(X(s * 25), 96, 11, 6, m)}</g>`);
+      // the fleece: one scalloped cloud, body and crown in one
+      c.body(c.shape(scallop(54, 134, 37 * c.st, 47, 16, 6), b));
+      // the face, an oval set into the fleece, with the fleece's forelock over the brow
+      c.body(c.ell(54, 104, 19 * c.st, 23, m));
+      c.body(c.shape(scallop(54, 80, 20 * c.st, 9, 7, 4.5), b));
+      c.body(`<path d="M50.6 118Q54 116 57.4 118Q56 122.4 54 123Q52 122.4 50.6 118Z" fill="${c.pen.paint(nose)}" stroke="${line(nose)}" stroke-width=".9" stroke-linejoin="round"/>`);
+      return { face: { y: 104, es: 11, s: 0.95, my: 123, ms: 0.75 }, hat: { x: 54, y: 72, w: 20 }, neck: { y: 128, w: 32 * c.st },
+        arms: { y: 152, dx: 34 * c.st, col: m, small: true }, feet: { dx: 14 * c.st, col: m }, shadow: 42 * c.st };
+    },
+  },
+  deer: {
+    kind: 'animal', label: 'deer-ish', added: 'card#12212',
+    pals: [['#c48a5a', '#f6e8d2'], ['#a86b48', '#f3e2cc'], ['#8f7a66', '#efe4d6'], ['#d9a86a', '#fbf1de'], ['#b89a86', '#f6ebe3']],
+    hats: ['flower', 'ladybug', 'beret', 'straw'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    build(c) {
+      const [b, m] = c.P, X = c.X, horn = '#b39a78';
+      // young antlers — a beam and one fork each — and the ears, out and up
+      for (const s of [-1, 1]) {
+        const d = `M${X(s * 12)} 72C${X(s * 15)} 60 ${X(s * 17)} 50 ${X(s * 22)} 40M${X(s * 16)} 56C${X(s * 21)} 54 ${X(s * 26)} 50 ${X(s * 30)} 44M${X(s * 19)} 46C${X(s * 16)} 42 ${X(s * 15)} 38 ${X(s * 16)} 31`;
+        c.back(`<path d="${d}" stroke="${line(horn)}" stroke-width="5.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" stroke="${horn}" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`);
+        c.back(`<g transform="rotate(${-s * 40} ${X(s * 30)} 86)">${c.ell(X(s * 30), 86, 8, 15, b)}<ellipse cx="${X(s * 30)}" cy="88" rx="4" ry="10" fill="${m}" opacity=".85"/></g>`);
+      }
+      const body = c.sym([[0, 116], [20, 121], [28, 142], [31, 164], [26, 182], [0, 185]]);
+      c.body(c.shape(body, b));
+      c.body(`<ellipse cx="54" cy="152" rx="${f(14 * c.st)}" ry="22" fill="${m}" clip-path="${c.pen.clip(body)}"/>`);
+      if (chance(c.key, 'spots', 1, 2)) for (const [dx, y, r] of [[-22, 130, 2.2], [24, 136, 2], [-25, 150, 1.8], [26, 156, 2.1], [-20, 168, 1.9], [22, 172, 1.7]]) c.body(`<circle cx="${X(dx)}" cy="${y}" r="${r}" fill="${tint(m, 0.3)}" opacity=".8"/>`);
+      c.body(c.shape(c.sym([[0, 66], [18, 68], [29, 80], [33, 98], [30, 114], [20, 126], [0, 130]]), b));
+      c.body(`<ellipse cx="54" cy="117" rx="${f(13 * c.st)}" ry="10" fill="${c.pen.paint(m)}" opacity=".95"/>`);
+      c.body(`<path d="M50.2 112.4Q54 110.4 57.8 112.4Q56.4 117.4 54 118Q51.6 117.4 50.2 112.4Z" fill="${EYE}"/><ellipse cx="52.6" cy="112.4" rx="1.4" ry=".7" fill="${GLINT}" opacity=".7"/>`);
+      return { face: { y: 98, es: 13, s: 1, my: 121.5, ms: 0.8 }, hat: { x: 54, y: 67, w: 18 }, neck: { y: 124, w: 26 * c.st },
+        arms: { y: 150, dx: 27 * c.st, col: b }, feet: { dx: 13 * c.st, col: shade(b, 0.5), rx: 7 }, shadow: 32 * c.st };
+    },
+  },
+  corn: {
+    kind: 'vegetable', label: 'corn', added: 'card#12212',
+    pals: [['#f0c84a', '#7fa65a'], ['#f6e7b8', '#8db55e'], ['#b8503a', '#6b9a52'], ['#6f6aa8', '#8aa06a'], ['#e89a3c', '#79a85a']],
+    hats: ['ladybug', 'flower', 'straw'], necks: ['bow', 'neckerchief', 'scarf'], extras: ['glasses', 'satchel'],
+    build(c) {
+      const [b, g] = c.P, X = c.X;
+      // the silk, a few pale wisps from the tip
+      c.back(`<path d="M${X(-4)} 58Q${X(-10)} 46 ${X(-6)} 36M54 56Q${X(2)} 44 ${X(-2)} 33M${X(4)} 58Q${X(10)} 48 ${X(6)} 38" stroke="${tint(b, 0.45)}" stroke-width="1.7" fill="none" stroke-linecap="round" opacity=".9"/>`);
+      const cob = c.sym([[0, 54], [16, 58], [25, 80], [28, 110], [27, 140], [23, 166], [14, 182], [0, 186]]);
+      c.body(c.shape(cob, b));
+      // the kernels: one pattern of staggered rounded squares, clipped to the cob
+      const pid = c.pen.uid(), cw = f(8 * c.st), cl = shade(b, 0.3), hl = tint(b, 0.55);
+      const kernel = (x, y) => `<rect x="${f(x - 3 * c.st)}" y="${f(y - 3.4)}" width="${f(6 * c.st)}" height="6.8" rx="2.2" fill="none" stroke="${cl}" stroke-width=".9" opacity=".5"/><ellipse cx="${f(x - 1 * c.st)}" cy="${f(y - 1.4)}" rx="${f(1.1 * c.st)}" ry=".9" fill="${hl}" opacity=".8"/>`;
+      c.pen.defs.push(`<pattern id="${pid}" patternUnits="userSpaceOnUse" x="${f(54 - 4 * c.st)}" y="0" width="${cw}" height="10">${kernel(4 * c.st, 2.5)}${kernel(0, 7.5)}${kernel(8 * c.st, 7.5)}</pattern>`);
+      c.body(`<path d="${cob}" fill="url(#${pid})" clip-path="${c.pen.clip(cob)}"/>`);
+      // the husk: two leaves wrapping the lower cob, their tips peeled out and up
+      for (const s of [-1, 1]) {
+        c.body(c.shape(`M${X(s * 2)} 186C${X(s * 30)} 184 ${X(s * 38)} 150 ${X(s * 33)} 118C${X(s * 31)} 100 ${X(s * 38)} 94 ${X(s * 42)} 84C${X(s * 36)} 88 ${X(s * 29)} 98 ${X(s * 22)} 110C${X(s * 14)} 124 ${X(s * 10)} 156 ${X(s * 2)} 186Z`, g));
+        c.body(`<path d="M${X(s * 8)} 180C${X(s * 20)} 150 ${X(s * 29)} 122 ${X(s * 38)} 92" stroke="${tint(g, 0.45)}" stroke-width="1.1" fill="none" stroke-linecap="round" opacity=".7"/>`);
+      }
+      return { face: { y: 98, es: 13, s: 1, my: 113, ms: 0.9 }, hat: { x: 54, y: 55, w: 16 }, neck: { y: 124, w: 26 * c.st },
+        arms: { y: 142, dx: 34 * c.st, col: g, small: true }, feet: { dx: 10 * c.st, col: shade(g, 0.2), rx: 6 }, shadow: 28 * c.st };
+    },
+  },
+  broccoli: {
+    kind: 'vegetable', label: 'broccoli', added: 'card#12212',
+    pals: [['#4f8a4a', '#cfe0b0'], ['#6aa05a', '#d8e6b8'], ['#7a5f9a', '#e2d8ea'], ['#a9c04e', '#e8ecc0'], ['#3f7f70', '#cfe3d8']],
+    hats: ['beret', 'beanie', 'ladybug', 'flower'], necks: ['bow', 'scarf', 'neckerchief'], extras: ['glasses', 'mug', 'book'],
+    build(c) {
+      const [b, m] = c.P, X = c.X;
+      // the stalk, flaring at its foot (its neck sits low on it, so no satchel: one would hang below the foot line)
+      c.body(c.shape(c.sym([[0, 98], [18, 100], [21, 124], [22, 150], [28, 172], [31, 184], [0, 186]]), m));
+      // the crown: a scalloped canopy with its floret clusters
+      c.body(c.shape(scallop(54, 75, 40 * c.st, 34, 18, 6), b));
+      for (const [dx, y, r] of [[-20, 65, 9], [6, 55, 10], [24, 73, 8], [-6, 85, 9], [18, 95, 6.5], [-27, 89, 6.5]]) c.body(`<path d="${scallop(X(dx), y, r * c.st, r * 0.85, 7, 2)}" fill="${shade(b, 0.22)}" opacity=".5"/>`);
+      return { face: { y: 126, es: 11, s: 0.9, my: 139, ms: 0.8 }, hat: { x: 54, y: 42, w: 26 }, neck: { y: 150, w: 22 * c.st },
+        arms: { y: 148, dx: 25 * c.st, col: m, small: true }, feet: { dx: 14 * c.st, col: shade(m, 0.2) }, shadow: 36 * c.st };
+    },
+  },
+  pepper: {
+    kind: 'vegetable', label: 'bell pepper', added: 'card#12212',
+    pals: [['#d8453a'], ['#e9b63a'], ['#e7832f'], ['#6f9a3c'], ['#6a4a86']],
+    hats: ['ladybug', 'flower', 'straw'], necks: [], extras: ['glasses', 'mug', 'book'],
+    build(c) {
+      const [b] = c.P, X = c.X, stem = '#6f9a4e';
+      // three lobes: high shoulders with a dip for the stem, and a bumped foot
+      const body = c.sym([[0, 74], [14, 66], [29, 66], [40, 76], [44, 104], [44, 140], [40, 168], [29, 183], [12, 180], [0, 183]]);
+      c.body(c.shape(body, b));
+      for (const dx of [-16, 16]) c.body(`<path d="M${X(dx * 0.9)} 70C${X(dx * 1.6)} 110 ${X(dx * 1.6)} 150 ${X(dx * 0.9)} 184" stroke="${shade(b, 0.3)}" stroke-width="1.6" fill="none" opacity=".5" stroke-linecap="round"/>`);
+      c.body(`<path d="M${X(-30)} 92Q${X(-37)} 122 ${X(-31)} 152" stroke="#fff" stroke-width="4.2" fill="none" opacity=".32" stroke-linecap="round"/>`);
+      // the stem, leaning aside, on its calyx
+      c.body(`<path d="M${X(4)} 72C${X(4)} 62 ${X(7)} 54 ${X(12)} 48" stroke="${line(stem)}" stroke-width="7" fill="none" stroke-linecap="round"/><path d="M${X(4)} 72C${X(4)} 62 ${X(7)} 54 ${X(12)} 48" stroke="${stem}" stroke-width="4.6" fill="none" stroke-linecap="round"/>`);
+      for (const a of [-60, -20, 20, 60]) c.body(c.leaf(X(4), 74, a, 11, 5, shade(stem, 0.08)));
+      return { face: { y: 108, es: 15, s: 1.05, my: 124, ms: 1 }, hat: { x: X(-8), y: 66, w: 18 }, neck: null,
+        arms: { y: 146, dx: 42 * c.st, col: b, small: true }, feet: { dx: 18 * c.st, col: shade(b, 0.25) }, shadow: 42 * c.st };
+    },
+  },
+  cabbage: {
+    kind: 'vegetable', label: 'cabbage', added: 'card#12212',
+    pals: [['#bfd48a', '#6f9a52'], ['#9a6aa8', '#5e3b6e'], ['#d6dc8c', '#4f7f44'], ['#dfe8cf', '#8aa678'], ['#d9a6c8', '#8a5a96']],
+    hats: ['ladybug', 'flower', 'beret'], necks: ['bow', 'neckerchief'], extras: ['glasses', 'mug', 'book'],
+    build(c) {
+      const [b, m] = c.P, X = c.X;
+      // the outer leaves, behind: three scalloped leaves fanning left, right and up, each with a pale midrib
+      for (const [dx, y, rx, ry, rot] of [[-19, 122, 19, 38, -20], [19, 122, 19, 38, 20], [0, 94, 32, 28, 0]]) {
+        c.back(`<g transform="rotate(${rot} ${X(dx)} ${y})">${c.shape(scallop(X(dx), y, rx * c.st, ry, 12, 4), m)}<path d="M${X(dx)} ${y + ry * 0.8}L${X(dx)} ${y - ry * 0.7}" stroke="${tint(m, 0.45)}" stroke-width="1.4" stroke-linecap="round" opacity=".7"/></g>`);
+      }
+      const head = c.sym([[0, 72], [24, 74], [38, 90], [43, 118], [42, 148], [35, 174], [20, 185], [0, 186]]);
+      c.body(c.shape(head, b));
+      for (const a of [-40, -14, 14, 40]) c.body(`<path d="M54 185Q${X(a * 0.9)} 160 ${X(a * 1.1)} 138" stroke="${tint(b, 0.4)}" stroke-width="1.6" fill="none" opacity=".6" stroke-linecap="round"/>`);
+      return { face: { y: 110, es: 15, s: 1.05, my: 126, ms: 1 }, hat: { x: 54, y: 72, w: 24 }, neck: { y: 150, w: 35 * c.st },
+        arms: { y: 148, dx: 40 * c.st, col: b, small: true }, feet: { dx: 18 * c.st, col: shade(b, 0.25) }, shadow: 40 * c.st };
+    },
+  },
 };
 /**
  * WITHHELD — the one closed list a ruling on FLOOR.md § 14 item 33(1) edits. Each entry removes one
@@ -430,7 +615,11 @@ export const SPECIES = Object.freeze(Object.fromEntries(Object.entries(APPROVED)
   hats: sp.hats.filter(keepHat),
 })])));
 
-/** The species list, in its one fixed order: the salt was searched over THIS order. */
+/**
+ * The species list, in its one fixed order: the approved sheet's species in the order the salt was searched over,
+ * then the species each later card added, appended in the order they were drawn. The species draw is a modulus over
+ * this list's length, so appending to it re-draws the keys already placed (FLOOR.md § 10.4's growth bullet).
+ */
 export const SPECIES_KEYS = Object.freeze(Object.keys(SPECIES));
 
 // ---- the shared dimensions (closed populations) ----
@@ -443,8 +632,13 @@ export const STOUT = [0.93, 1, 1.07];
 export const TILTS = [-3, 0, 3];
 export const ACCENTS = ['#c8553d', '#e0a43a', '#7f9f6a', '#6f8fb0', '#94627e', '#f2e6cf', '#4f8a87', '#d97f8f'];
 
-/** The draw field the species is selected under — the salt (FLOOR.md § 10.4): picked once, fixed forever. */
-export const SPECIES_FIELD = 'species:s1';
+/**
+ * The draw field the species is selected under — the salt (FLOOR.md § 10.4's salt bullet): searched once per list and
+ * fixed until the list next grows. `species:s1` was the first field keeping every room of the committed roster distinct
+ * over the approved sixteen (card#11046); `species:s3` is the first doing so, for the roster and the control, over the
+ * twenty-four the list grew to (card#12212, the operator's ruling of 2026-10-23). A re-pick is surfaced, never silent.
+ */
+export const SPECIES_FIELD = 'species:s3';
 
 /**
  * The species a key draws. An intern's key (`seat~<call_id>`, § 10.4) never draws its seat's: where its
@@ -623,9 +817,25 @@ function rimOf(markup) {
 }
 
 // ---- the frames ----
-/** A frame's drawing space: a seat's 108 x 192, an intern's 108 x 172.8 (its 20 x 32 rect's aspect). */
-export const SEAT_VIEWBOX = Object.freeze({ x: 0, y: 0, w: 108, h: 192 });
-export const CHIBI_VIEWBOX = Object.freeze({ x: 0, y: 19.2, w: 108, h: 172.8 });
+/**
+ * THE CHARACTER's RECT, in frame units: a seat's 108 × 192 — two units per floor pixel of its 54 × 96 px rect
+ * (`floor/desk-layout.js`'s `FRAME_UNITS_PER_PX`) — the space every body is drawn into, x 54 its centre and the
+ * foot line at its bottom. Since card#12259 it is NO document's viewBox: every seat document is drawn in
+ * `SEAT_VIEWBOX` (below, beside the sleeper's z's), which is this rect with a margin on three sides, because the
+ * frame's own composition — the key's tilt, the walk's lean, and the widest girth at the largest size — carries
+ * approved bodies past this rect's side by up to a dozen units, and the painter clips at the frame's edge
+ * (FLOOR.md § 10.4's frame contract; § 14 item 33(6)). What is held to this rect is the floor's element rect,
+ * which every overlap rule reads, and the foot line.
+ */
+export const SEAT_RECT = Object.freeze({ x: 0, y: 0, w: 108, h: 192 });
+/**
+ * THE INTERN's CHIBI FRAME: the 20 × 32 px intern rect's 108 × 172.8 units (the rect's aspect, the last 172.8 units
+ * above the foot) widened to the stool PITCH the floor lays interns at — 24 px for a 20 px rect, so the frame is
+ * `108 × 24 / 20` = 129.6 units wide, 10.8 each side past the rect — the margin the chibi frame's tilt needs and all
+ * the room a row of interns has (two frames meet at the pitch and never overlap). The floor draws it into the intern's
+ * overdraw rect (`floor/desk-layout.js`'s `internOverdraw()`); the two are held equal by `tools/characters/selftest.mjs` § 7b.
+ */
+export const CHIBI_VIEWBOX = Object.freeze({ x: -10.8, y: 19.2, w: 129.6, h: 172.8 });
 const FOOT = 188;
 
 /** The chibi frame's least head share — FLOOR.md § 12's *Intern head share* row. */
@@ -731,7 +941,9 @@ export function frameDocument(key, opt = {}) {
   const s = r.size;   // girth lives in the profile (st), so the scale stays uniform
   const lean = phase === 0 ? 0 : (phase === 1 ? -2 : 2);
   const tf = `translate(54 ${FOOT}) scale(${s} ${s}) rotate(${r.tilt + lean}) translate(-54 -${FOOT})`;
-  const shadow = `<ellipse cx="54" cy="187.5" rx="${f(A.shadow * s)}" ry="4.6" fill="${pen.soft('#1c1424', 0.42)}"/>`;
+  // The shadow ends ON the foot line (187.5 + 4.5 = 192, the rect's bottom): at ry 4.6 it reached a tenth of a unit
+  // under it in every frame, the one bottom-edge overshoot the frame-bounds leg found (card#12259).
+  const shadow = `<ellipse cx="54" cy="187.5" rx="${f(A.shadow * s)}" ry="4.5" fill="${pen.soft('#1c1424', 0.42)}"/>`;
   let inner = drawing, vb = SEAT_VIEWBOX;
 
   if (opt.chibi) {
@@ -753,21 +965,71 @@ export function frameDocument(key, opt = {}) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}" width="${vb.w}" height="${vb.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs>${shadow}<g transform="${tf}">${inner}</g></svg>`;
 }
 
-// ---- the sleeper (FLOOR.md § 6.2 A6, § 10.4's frame contract item 4; card#12159) ----
+// ---- the sleeper (FLOOR.md § 6.2 A6, § 10.4's frame contract item 4; card#12159, card#12187) ----
 /**
- * THE SLEEPER's LOOP — A6's 4 fps loop is this many frames; frame 0 is the static, reduced-motion form.
- * Only the z's move between frames: the sleeper itself is the same drawing in every one, so nothing sways.
+ * THE SLEEPER's PULSE — A6's 4 fps loop is this many LOOP FRAMES (FLOOR.md § 12's *Sleeper z pulse*). The tree draws a
+ * sleeper as `SLEEP_LOOP + 1` DOCUMENTS: document 0 is the STILL — every z at full brightness, the reduced-motion form,
+ * the same for every seat — and document n is loop frame n − 1. Only the z's brightness changes between documents: the
+ * sleeper and its z's stand still in every one (§ 10.4 item 4's *The documents are a still and then the loop*).
  */
-export const SLEEP_FRAMES = 4;
-/** The z's in flight at once, and the height of the largest (nearest the head) and the smallest (highest), in units. */
-const SLEEP_ZS = 3;
-const Z_LARGE = 24;
-const Z_SMALL = 11;
+export const SLEEP_LOOP = 8;
+/** The z's a sleeper draws: three, fixed above its head (the operator's ruling of 2026-10-22, card#12187). */
+export const SLEEP_ZS = 3;
+/** The largest a seat's `L` may be, in frame units; each seat's own is `zLargeFor()`'s. */
+export const Z_LARGE = 36;
+/** The least `L` the search goes down to; a seat whose room holds no `L` this large is refused, never drawn clamped. */
+const Z_LEAST = 10;
+/** The path's two ends, in frame units off the head's centre AWAY from the side it rolled to (§ 10.4 item 4). */
+export const Z_A0 = 10;
+export const Z_A1 = 108;
+/** The path's last z is `Z_RATIO` of its first's size: it shrinks from `L` to `Z_RATIO · L` along the path. */
+export const Z_RATIO = 0.5;
+/** Where z1 stands along the path; z3 stands at `1 − Z_T0` and z2 halfway. */
+export const Z_T0 = 0.17;
+/** The gap between the path's start — its imaginary z's box and glow — and the crest line (or the props' line), in frame units. */
+export const Z_GAP = 2;
+/** The raised frame's top, in frame units: the path's end stands its imaginary z's box and glow a unit under it. */
+export const Z_TOP = -42;
+/**
+ * THE SEAT's FRAME (FLOOR.md § 12's *Character frame*; § 10.4's frame contract) — the viewBox of EVERY seat document:
+ * the character's 108 × 192 rect (`SEAT_RECT`) widened by half its width each side and raised 42 units, 216 × 234
+ * from (−54, −42). card#12187 widened and raised it for the sleeper, so the z's have room above and beside the
+ * crest; card#12259 draws the standing and walking frames in the same frame, so the composition's tilt and lean,
+ * and the widest girth at the largest size, never carry an approved body past the edge the painter clips at (the
+ * margin they need is measured by `tools/characters/selftest.mjs` § 8b, never written down; the frame's is 54 a
+ * side). The floor draws every seat document into the character's overdraw rect (`floor/desk-layout.js`'s
+ * `characterOverdraw()`), whose aspect is this frame's; the sleeper's z-stand still reads the character's own
+ * 0–108 units as the body's column (`zStandKeeps()`).
+ */
+export const SEAT_VIEWBOX = Object.freeze({ x: -54, y: Z_TOP, w: 216, h: 234 });
+/**
+ * THE BRIGHTNESS LEVELS 0 (dim) to 3 (full), FLOOR.md § 12's *Sleeper z brightness*: the core is the pale fill mixed
+ * toward the ink by `Z_GLOW[level]`, and behind the z stands a halo of the palette's `--lamp` (`Z_LAMP`), `Z_HALO[level]`
+ * units wider than the outline each side at `Z_HALO_OPACITY[level]`. The outline is the ink at every level.
+ */
+export const Z_GLOW = Object.freeze([0.5, 0.3, 0.12, 0]);
+export const Z_HALO = Object.freeze([0, 1.5, 3, 5]);
+export const Z_HALO_OPACITY = Object.freeze([0, 0.5, 0.8, 1]);
+const Z_LAMP = '#ffcf7d';
 /** How far the sleeper's head rolls onto its arms, in degrees, toward the key's own side. */
 const SLEEP_ROLL = 14;
-/** The lowest a z's rise starts, in units from the frame's top — the least room the z's are given. */
-const Z_RISE = 56;
 const Z_INK = '#4f4380', Z_FILL = '#ece8ff';
+
+/**
+ * THE CREST TABLE (FLOOR.md § 10.4 item 4): the topmost ink of a sleeper, in frame units from the character frame's
+ * top, per species and per variant where it has them — `<species>` or `<species>/<variant>`. The recipe keeps no
+ * bounding box of an ear, a leaf, a cap or a hat, so the table states "above the head" for the law below, and
+ * `tools/design/sleeper-zs.browser.mjs` holds every scanned seat's drawing at or below it.
+ */
+export const CREST_TOP = Object.freeze({
+  bear: 53, carrot: 31, eggplant: 39, fox: 34, frog: 73, hedgehog: 67, mole: 60,
+  'mushroom/bell': 15, 'mushroom/dome': 25, 'mushroom/wide': 38, otter: 63, owl: 49, peapod: 44, potato: 56,
+  pumpkin: 47, 'rabbit/lop': 62, 'rabbit/upright': 20, radish: 25, turnip: 27,
+  // card#12212's species: each the floor of the topmost ink `tools/design/svg-document.mjs`'s inkBounds reads over the
+  // sleeper's own documents (without their z's) across the selftest's keys — tools/characters/selftest.mjs § 8b holds
+  // every entry at or above that ink on every run, beside the tool's raster scan
+  penguin: 56, snail: 64, sheep: 68, deer: 37, corn: 45, broccoli: 15, pepper: 42, cabbage: 47,
+});
 
 /** Closed eyes: a soft downward arc per eye, with a lash at its outer end. */
 function sleepingEyesSvg(F) {
@@ -780,62 +1042,131 @@ function sleepingEyesSvg(F) {
   return `<g data-part="eyes-closed">${out.join('')}</g>`;
 }
 
-/** One z, centred at (x, y), `h` tall: a Z stroke in the sleeper's ink with a pale core. */
-function zSvg(x, y, h, opacity, t) {
-  const w = h * 0.8, sw = Math.max(1.4, h * 0.16);
-  const d = `M${f(x - w / 2)} ${f(y - h / 2)}H${f(x + w / 2)}L${f(x - w / 2)} ${f(y + h / 2)}H${f(x + w / 2)}`;
+/** A z `h` tall's two stroke widths: its pale core's and its dark outline's. */
+function zStrokes(h) {
+  const core = Math.max(1.4, h * 0.16);
+  return { core, outline: core + 2.6 };
+}
+
+/** A z `h` tall's half extent across and down, its outline's half-width included — its body box about its centre. */
+function zHalf(h) {
+  const o = zStrokes(h).outline / 2;
+  return { w: h * 0.4 + o, h: h / 2 + o };
+}
+
+/** A z's Z stroke, centred at (x, y), `h` tall. */
+function zPath(x, y, h) {
+  const w = h * 0.8;
+  return `M${f(x - w / 2)} ${f(y - h / 2)}H${f(x + w / 2)}L${f(x - w / 2)} ${f(y + h / 2)}H${f(x + w / 2)}`;
+}
+
+/** One fixed z at brightness `level`: the dark outline, and the core mixed from the pale fill toward the ink by the level. */
+function zSvg(z, level) {
+  const sw = zStrokes(z.h), d = zPath(z.x, z.y, z.h);
   const stroke = (col, width) => `<path d="${d}" stroke="${col}" stroke-width="${f(width)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
-  return `<g data-part="z" data-t="${f(t)}" data-x="${f(x)}" data-y="${f(y)}" data-h="${f(h)}" opacity="${f(opacity)}">${stroke(Z_INK, sw + 2.6)}${stroke(Z_FILL, sw)}</g>`;
+  return `<g data-part="z" data-k="${z.k}" data-level="${level}" data-x="${f(z.x)}" data-y="${f(z.y)}" data-h="${f(z.h)}">${stroke(Z_INK, sw.outline)}${stroke(mix(Z_FILL, Z_INK, Z_GLOW[level]), sw.core)}</g>`;
+}
+
+/** A fixed z's halo at `level`: none at level 0, else a wider stroke of the lamp colour, translucent by level. */
+function haloSvg(z, level) {
+  if (level === 0) return '';
+  return `<path data-part="halo" data-k="${z.k}" data-level="${level}" d="${zPath(z.x, z.y, z.h)}" stroke="${Z_LAMP}" stroke-width="${f(zStrokes(z.h).outline + 2 * Z_HALO[level])}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${f(Z_HALO_OPACITY[level])}"/>`;
 }
 
 /**
- * Where each z is in one frame: `SLEEP_ZS` of them evenly spaced along the rise, each a step further up per
- * frame, so frame `SLEEP_FRAMES` is frame 0 again with every z one place higher — the lowest is born as the
- * highest fades, and the loop has no seam. Along the rise a z shrinks from `Z_LARGE` to `Z_SMALL` ("ZZzzz"),
- * drifts a little side to side, and fades in at the bottom and out at the top. Frame 0 sits half a step in,
- * so the static form shows every z, the largest lowest.
- * @returns {{t: number, x: number, y: number, h: number, opacity: number}[]} lowest first
+ * THE PULSE (FLOOR.md § 10.4 item 4, § 12's *Sleeper z pulse*): the levels of z1, z2, z3 at loop frame `f` — a bubble of
+ * brightness reaches z`k+1` at loop frame `2k`, peaks there at 3 and glows 2 and 1 in the loop frames behind it, and z1
+ * is 1 in the loop frame before the bubble arrives: `300 200 130 020 013 002 001 100`.
+ * @param {number} f a loop frame, 0..SLEEP_LOOP-1 @returns {number[]} a level 0–3 per z, z1 first
  */
-function sleepZs(frame, from, to) {
-  const phase = ((frame / SLEEP_FRAMES) + 0.5) % 1;
-  const out = [];
-  for (let k = 0; k < SLEEP_ZS; k++) {
-    const t = (k + phase) / SLEEP_ZS;
-    const opacity = Math.min(1, t / 0.15, (1 - t) / 0.4);
-    out.push({
-      t,
-      x: from.x + (to.x - from.x) * t + Math.sin(t * Math.PI * 2) * 3 * Math.sign(to.x - from.x || 1),
-      y: from.y + (to.y - from.y) * t,
-      h: Z_LARGE + (Z_SMALL - Z_LARGE) * t,
-      opacity,
-    });
-  }
-  return out.sort((a, b) => a.t - b.t);
+export function zLevels(f) {
+  return Array.from({ length: SLEEP_ZS }, (_, k) => {
+    const d = (((f - 2 * k) % SLEEP_LOOP) + SLEEP_LOOP) % SLEEP_LOOP;
+    return d === 0 ? 3 : d === 1 ? 2 : d === 2 ? 1 : d === SLEEP_LOOP - 1 && k === 0 ? 1 : 0;
+  });
 }
 
 /**
- * The SLEEPER — one frame of a key slumped asleep at its desk, as a standalone SVG document (A6).
+ * WHERE THE THREE z's STAND for a crest top `crown`, a roll `dir` (+1 when the head rolled toward +x) and a size `L` —
+ * FLOOR.md § 10.4 item 4's law, exactly as `tools/design/sleeper-zs.browser.mjs`'s `above3Fixed()` computes it. The path
+ * runs from an imaginary z of size `L` whose box and brightest glow stand `Z_GAP` above the crest line (or the props'
+ * line, where that is higher) to one of size `Z_RATIO · L` whose box and glow end a unit under the raised frame's top;
+ * z `k` stands at `t_k` along it, `x_k = 54 − dir·(Z_A0 + (Z_A1 − Z_A0)·t_k)`, never clamped.
+ * @param {number} crown @param {number} dir @param {number} L @param {{name: string, y: number}[]} clear the floor's clear rects
+ * @returns {{k: number, x: number, y: number, h: number}[]} z1 first, the lowest
+ */
+export function zStand(crown, dir, L, clear) {
+  const props = clear.find((c) => c.name === 'props');
+  const S = L * Z_RATIO, G = Z_HALO[3];
+  const y0 = Math.min(crown - Z_GAP, props.y - Z_GAP) - zHalf(L).h - G;
+  const y1 = Math.max(Z_TOP, SEAT_VIEWBOX.y) + zHalf(S).h + G + 1;
+  return Array.from({ length: SLEEP_ZS }, (_, k) => {
+    const t = Z_T0 + (1 - 2 * Z_T0) * k / (SLEEP_ZS - 1);
+    return { k, x: 54 - dir * (Z_A0 + (Z_A1 - Z_A0) * t), y: y0 + (y1 - y0) * t, h: L + (S - L) * t };
+  });
+}
+
+/**
+ * Whether a stand of size `L` keeps § 10.4 item 4's four rules — `above3Why()`'s, rule by rule: (1) the brightest glow
+ * inside the frame on all four sides; (2) no two bodies' boxes meeting, a unit apart; (3) no body's box meeting a clear
+ * rect, a unit apart; (4) no z, its glow included, below the crest line within the character's own 108 units.
+ */
+function zStandKeeps(crown, dir, L, clear) {
+  const zs = zStand(crown, dir, L, clear).map((z) => ({ ...z, hb: zHalf(z.h) }));
+  const G = Z_HALO[3], V = SEAT_VIEWBOX;
+  for (const z of zs) if (z.y - z.hb.h - G < V.y - 0.01 || z.y + z.hb.h + G > V.y + V.h) return false;
+  for (const z of zs) if (z.x - z.hb.w - G < V.x - 0.01 || z.x + z.hb.w + G > V.x + V.w + 0.01) return false;
+  for (let a = 0; a < zs.length; a += 1) for (let b = a + 1; b < zs.length; b += 1) {
+    const A = zs[a], B = zs[b];
+    if (Math.abs(A.x - B.x) < A.hb.w + B.hb.w + 1 && Math.abs(A.y - B.y) < A.hb.h + B.hb.h + 1) return false;
+  }
+  for (const z of zs) {
+    for (const c of clear) if (z.x + z.hb.w > c.x - 1 && z.x - z.hb.w < c.x + c.w + 1 && z.y + z.hb.h > c.y - 1 && z.y - z.hb.h < c.y + c.h + 1) return false;
+    if (z.x + z.hb.w + G > 0 && z.x - z.hb.w - G < 108 && z.y + z.hb.h + G > crown - Z_GAP + 0.01) return false;
+  }
+  return true;
+}
+
+/**
+ * THE SEAT's OWN SIZE `L` (FLOOR.md § 10.4 item 4, § 12's *Sleeper's z's*): the largest, in half-unit steps from `Z_LARGE`
+ * down to 10, whose stand keeps all four rules — `above3Plan()`'s `L`. A seat with no room for even the least is refused
+ * (a RangeError the painter reports as § 9 F14), never drawn with z's clamped into the furniture.
+ * @param {number} crown @param {number} dir @param {object[]} clear @returns {number}
+ */
+export function zLargeFor(crown, dir, clear) {
+  for (let L = Z_LARGE; L >= Z_LEAST; L -= 0.5) if (zStandKeeps(crown, dir, L, clear)) return L;
+  throw new RangeError(`no three z's of size ${Z_LEAST} or more fit above crest ${crown}`);
+}
+
+/**
+ * The SLEEPER — one document of a key slumped asleep at its desk, as a standalone SVG document (A6).
  *
  * The creature is its own recipe — body, colourway, hat, neckwear, glasses — with its eyes closed and its
  * brows and held thing put away, its head rolled onto its forearms, which lie along the desk's top edge. The
- * edge is the CALLER's (`deskTop`, a share of the frame's height, which the floor derives from its desk
+ * edge is the CALLER's (`deskTop`, a share of the character frame's height, which the floor derives from its desk
  * rects): the frame has no desk of its own, and everything below the edge is drawn behind the desk the floor
- * lays over it. Above the head the z's rise (`sleepZs()`).
+ * lays over it. Above the head stand three z's (`zStand()`), each lit at its level for the document — every z at 3 in
+ * document 0, the still, and `zLevels(n − 1)` in document n — all halos first, behind every z, and the z's in front of
+ * the sleeper. `clear` is the floor's furniture in frame units (`floor/desk-layout.js`'s `characterOverdraw()`), which
+ * no z's body enters.
  *
  * @param {string} key the seat key
- * @param {{ frame?: number, deskTop: number, species?: string }} opt `frame` 0..SLEEP_FRAMES-1
+ * @param {{ frame?: number, deskTop: number, clear: object[], species?: string }} opt `frame` the document, 0..SLEEP_LOOP
  * @returns {string}
  */
 export function sleepDocument(key, opt) {
   const frame = opt.frame ?? 0;
-  if (!Number.isInteger(frame) || frame < 0 || frame >= SLEEP_FRAMES) throw new RangeError(`frame must be 0..${SLEEP_FRAMES - 1}, got ${frame}`);
+  if (!Number.isInteger(frame) || frame < 0 || frame > SLEEP_LOOP) throw new RangeError(`frame must be 0..${SLEEP_LOOP}, got ${frame}`);
   if (!(opt.deskTop > 0 && opt.deskTop < 1)) throw new RangeError(`deskTop must be a share of the frame's height in (0, 1), got ${opt.deskTop}`);
+  if (!Array.isArray(opt.clear) || !opt.clear.some((c) => c.name === 'props')) throw new RangeError("clear must be the floor's clear rects, the desk's props among them");
   const { r, sp, pen, c, A } = build(key, opt.species);
   const { hat, neck, extra } = worn(r, sp, A);
   const F = A.face;
   const s = r.size;
-  const edge = opt.deskTop * SEAT_VIEWBOX.h;
+  const edge = opt.deskTop * SEAT_RECT.h;
   const dir = c.side;
+  const crown = CREST_TOP[r.variant === null ? r.species : `${r.species}/${r.variant}`];
+  if (crown === undefined) throw new RangeError(`CREST_TOP declares no crest for ${r.species}${r.variant === null ? '' : `/${r.variant}`}`);
 
   // The head and the body under it, rolled about the chin, the chin resting just above the edge.
   const parts = [...c.layers.back, ...c.layers.body];
@@ -873,17 +1204,16 @@ export function sleepDocument(key, opt) {
   // Nothing is drawn below the edge: the desk stands there, and a frame drawn without one stays a sleeper.
   pen.defs.push(`<clipPath id="c_edge"><rect x="-200" y="-200" width="508" height="${f(edge + 200)}"/></clipPath>`);
 
-  // The z's rise from just above the head toward the frame's top, on the side it rolled to. A head so tall its
-  // crown stands above `Z_RISE` keeps the z's their room: they start there, drawn over the top of the head. And
-  // the top of the closed eyes, rolled with the head, is the line every z stays above, whatever the rest says:
-  // the z's float over the sleeper and never across its face.
-  const crown = rest - Math.cos(rad) * lift;
+  // The closed eyes' line, rolled with the head — stated on the document for the measuring tool's seat picks.
   const eyes = rest - Math.cos(rad) * (chin - F.y) * s - (Math.abs(Math.sin(rad)) * F.es + 5 * F.s) * s;
-  const from = { x: 54 + dir * 2, y: Math.min(Math.max(Z_RISE, Math.min(crown - 4, edge - 30)), eyes - Z_LARGE / 2 - 4) };
-  const to = { x: 54 + dir * 46, y: Z_SMALL };
-  const zs = sleepZs(frame, from, to).map((z) => zSvg(z.x, z.y, z.h, z.opacity, z.t)).join('');
+  // The three z's, fixed above the head on the side AWAY from its roll, lit at the document's levels.
+  const zs = zStand(crown, dir, zLargeFor(crown, dir, opt.clear), opt.clear);
+  const levels = frame === 0 ? zs.map(() => 3) : zLevels(frame - 1);
+  const halos = zs.map((z) => haloSvg(z, levels[z.k])).join('');
+  const bodies = zs.map((z) => zSvg(z, levels[z.k])).join('');
+  const V = SEAT_VIEWBOX;
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${SEAT_VIEWBOX.x} ${SEAT_VIEWBOX.y} ${SEAT_VIEWBOX.w} ${SEAT_VIEWBOX.h}" width="${SEAT_VIEWBOX.w}" height="${SEAT_VIEWBOX.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs><g data-pose="asleep" data-eyes-y="${f(eyes)}" data-edge="${f(edge)}" clip-path="url(#c_edge)">${drawing}</g><g data-part="zs">${zs}</g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${V.x} ${V.y} ${V.w} ${V.h}" width="${V.w}" height="${V.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs><g data-pose="asleep" data-eyes-y="${f(eyes)}" data-edge="${f(edge)}" data-crown="${crown}" clip-path="url(#c_edge)">${drawing}</g><g data-part="zs"><g data-part="glow">${halos}</g>${bodies}</g></svg>`;
 }
 
 /**

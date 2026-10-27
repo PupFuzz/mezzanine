@@ -151,7 +151,7 @@ class TheFloorDrawsItsFrameTest extends TestCase
 
         foreach ([
             'the band' => ['export const BAND_H = 160;', 'export const BAND_H = 161;'],
-            'the zone' => ['const ZONE_W = 272;', 'const ZONE_W = 273;'],
+            'the zone' => ['const ZONE_W = 332;', 'const ZONE_W = 333;'],
             'the pitch' => ['pitch: 360,', 'pitch: 361,'],
             'the glazing' => ['h: 80, dy: 22 };', 'h: 81, dy: 22 };'],
         ] as $what => [$from, $to]) {
@@ -407,6 +407,32 @@ JS;
             }
         }
 
+        // card#12241: the BIRD PORTAL — the birdhouse from its roof's peak to its bracket — hangs in the zone, right
+        // of the clock and clear of it, and no window's surround meets it (COORD-STORE.md § 6.1; § 4.2).
+        $p = $band['portal'] ?? null;
+
+        if ($p === null) {
+            $defects[] = "at width {$band['w']} the band carries no bird portal";
+        } else {
+            $house = ['x' => $p['roof']['x'], 'y' => $p['roof']['peak_y'], 'w' => $p['roof']['w'], 'h' => $p['bracket']['y'] + $p['bracket']['h'] - $p['roof']['peak_y']];
+
+            if (! $this->inside($house, $zone)) {
+                $defects[] = "at width {$band['w']} the birdhouse is not inside the reserved zone";
+            }
+
+            if ($house['x'] < $band['clock']['x'] + $band['clock']['w'] + 16) {
+                $defects[] = "at width {$band['w']} the birdhouse is not 16 px of wall right of the clock";
+            }
+
+            foreach ($band['windows'] as $i => $window) {
+                $s = $window['surround'];
+
+                if ($s['x'] < $house['x'] + $house['w'] && $house['x'] < $s['x'] + $s['w'] && $s['y'] < $house['y'] + $house['h'] && $house['y'] < $s['y'] + $s['h']) {
+                    $defects[] = "at width {$band['w']} window {$i}'s surround meets the birdhouse";
+                }
+            }
+        }
+
         // The elevator's surround — the frame the floor's theme draws (§ 10.6) — stays on the wall too.
         if (! $this->inside($band['elevator']['surround'], $zone)) {
             $defects[] = "at width {$band['w']} the elevator's surround is not inside the reserved zone";
@@ -536,8 +562,18 @@ JS;
             }
         }
 
-        if ($first === null || $first > $box) {
-            $defects[] = "the smallest floor one furniture box wide ({$box} px) draws no window";
+        // The threshold itself, from the module's own constants (§ 4.2's `ZONE_W + margin + min_w + gap`):
+        // card#12241's birdhouse widened the zone to 332 px, so a floor one furniture box wide ({$box} px)
+        // now sits under it and draws no window — the art specification's stated consequence (416 → 476 px).
+        $scene = (string) file_get_contents(($dir ?? $this->moduleDir()).'/../floor/scene.js');
+        preg_match('/^const ZONE_W = (\d+);$/m', $scene, $z);
+        preg_match('/^const WINDOW = \{([^}]*)\};$/m', $scene, $w);
+        preg_match_all('/(\w+): ([\d.]+)/', $w[1] ?? '', $m);
+        $win = array_combine($m[1], array_map('floatval', $m[2]));
+        $threshold = (int) ($z[1] ?? 0) + (int) ($win['margin'] ?? 0) + (int) ($win['min_w'] ?? 0) + (int) ($win['gap'] ?? 0);
+
+        if ($first === null || $first !== $threshold) {
+            $defects[] = "the narrowest band drawing a window is {$first} px, and § 4.2's threshold is {$threshold} px";
         }
 
         return array_slice($defects, 0, 20);

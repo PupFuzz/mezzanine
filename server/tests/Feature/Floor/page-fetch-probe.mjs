@@ -27,8 +27,12 @@ const payload = JSON.parse(readFileSync(0, 'utf8'));
 const served = new Map(payload.tilesets.map((t) => [t.url, t]));
 
 // The browser globals `live-page.js` reads, and nothing more: it schedules on `window`, subclasses
-// `EventSource` (never opened here — no stream is started), and calls the global `fetch`.
+// `EventSource` (never opened here — no stream is started), calls the global `fetch`, and reads one
+// `<meta>` off `document`.
 globalThis.window = globalThis;
+// `livePage()` reads the session lifetime off the page's `<meta>` (card#12434). This page has none, so
+// the client it constructs sends no keepalive, and none is started here anyway.
+globalThis.document = { querySelector: () => null };
 globalThis.EventSource = class { addEventListener() {} };
 globalThis.fetch = async (url) => {
     const entry = served.get(url);

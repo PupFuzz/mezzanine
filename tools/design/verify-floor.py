@@ -461,11 +461,21 @@ else:
                     f"animation with no event wearing a field name")
     if len(anim_ids) < 10:
         fail.append(f"G1 CONTROL: only {len(anim_ids)} animation rows parsed from section 6.2")
-    bad_class = sorted(a for a, k in anim_class.items() if k not in ("edge", "held"))
+    # card#12239: `retired` is the closed set's THIRD class — a row whose id is kept and never renumbered,
+    # that never fires and writes no log row. It is a dedicated status, not a widened one: a retired row
+    # must say so in its trigger cell (`RETIRED`) and end nowhere (`—`), or it is a live row mislabelled.
+    bad_class = sorted(a for a, k in anim_class.items() if k not in ("edge", "held", "retired"))
     for a in bad_class:
-        fail.append(f"G1: animation {a}'s Class cell reads `{anim_class[a]}`, which is neither `edge` "
-                    f"nor `held` — the log's causality rule is selected by that cell, so a row "
-                    f"outside the two classes is a row whose animation-log contract is undefined")
+        fail.append(f"G1: animation {a}'s Class cell reads `{anim_class[a]}`, which is not `edge`, `held` "
+                    f"or `retired` — the log's causality rule is selected by that cell, so a row "
+                    f"outside the three classes is a row whose animation-log contract is undefined")
+    for r in anim_rows:
+        c = cells(r)
+        m = re.match(r"^\*\*(A\d+)\*\*$", c[0])
+        if m and anim_class.get(m.group(1)) == "retired":
+            if len(c) < 7 or "RETIRED" not in c[5] or c[6].strip() != "—":
+                fail.append(f"G1: animation {m.group(1)} is `retired` but its trigger cell does not say "
+                            f"RETIRED or its Ends cell is not `—` — a retired row fires nothing")
     if not bad_class and len({k for k in anim_class.values()}) < 2:
         fail.append("G1 CONTROL: section 6.2's rows are all one class — the split the log's two "
                     "causality rules rest on would be unexercised, and every held render would be "
@@ -1398,12 +1408,20 @@ if len(ur_m) != 7:
                 f"seven it declares — the extractor is broken")
 
 # The LONGEST `badges` array D2 publishes: § 8.2.2's snapshot carries one member and § 8.3.2's
-# worst-case block carries all eighteen, so taking the first match reads the wrong population.
+# worst-case block carries every member, so taking the first match reads the wrong population.
 cands = re.findall(prose(r'"badges": \[(.*?)\]'), d2_raw, re.S)
 badge_m = set(re.findall(r'"([a-z_]+)"', max(cands, key=len))) if cands else set()
-if len(badge_m) != 18:
+# The bound is READ from D2 § 8.2.1's own `badges` row rather than pinned here: a literal 18 held the
+# control to a figure the document moves (card#11818 part 2 made it 19), and a control that has to be
+# edited by hand on every move is one that gets edited to pass. D2's G4 holds that cell to the union
+# it states; this reads the cell D2 has already checked.
+_bound = re.search(r"^\| `badges` \| array\\<string\\> \| no \| \*\*0…(\d+)\*\*", d2_raw, re.M)
+if not _bound:
+    fail.append("G7 CONTROL: D2 § 8.2.1's `badges` row no longer states its bound as `**0…N**`, so the "
+                "worst-case block's member count has nothing to be held to")
+elif len(badge_m) != int(_bound.group(1)):
     fail.append(f"G7 CONTROL: {len(badge_m)} badges parsed from D2 § 8.3.2's worst-case block, not "
-                f"the 18 § 8.2.1 bounds the array at")
+                f"the {_bound.group(1)} § 8.2.1 bounds the array at")
 
 def rendered_members(header_re):
     out = set()

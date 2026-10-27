@@ -103,6 +103,8 @@
                       ],
                       "badges_since": "2026-08-23T09:14:02.118Z",
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "pm",
@@ -189,6 +191,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -263,6 +267,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -337,6 +343,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "review",
@@ -399,7 +407,7 @@
         "scene": {
           "measurer": {
             "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
-            "line_h": { "fact": 12, "name": 16, "screen": 12 }
+            "line_h": { "fact": 12, "name": 16, "screen": 8 }
           },
           "character": {
             "w": 18,
@@ -489,6 +497,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "review",
@@ -563,6 +573,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -649,6 +661,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -744,6 +758,8 @@
                       ],
                       "badges_since": "2026-08-23T09:14:02.118Z",
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "pm",
@@ -806,7 +822,7 @@
         "scene": {
           "measurer": {
             "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
-            "line_h": { "fact": 12, "name": 16, "screen": 12 }
+            "line_h": { "fact": 12, "name": 16, "screen": 8 }
           },
           "character": {
             "w": 18,
@@ -917,6 +933,8 @@
                       ],
                       "badges_since": "2026-08-23T09:14:02.118Z",
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "pm",
@@ -1003,6 +1021,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -1077,6 +1097,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -1151,6 +1173,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "review",
@@ -1213,7 +1237,7 @@
         "scene": {
           "measurer": {
             "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
-            "line_h": { "fact": 12, "name": 16, "screen": 12 }
+            "line_h": { "fact": 12, "name": 16, "screen": 8 }
           },
           "character": {
             "w": 18,
@@ -1324,6 +1348,8 @@
                       ],
                       "badges_since": "2026-08-23T09:14:02.118Z",
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "pm",
@@ -1410,6 +1436,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -1484,6 +1512,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -1558,6 +1588,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "review",
@@ -1620,7 +1652,7 @@
         "scene": {
           "measurer": {
             "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
-            "line_h": { "fact": 12, "name": 16, "screen": 12 }
+            "line_h": { "fact": 12, "name": 16, "screen": 8 }
           },
           "character": {
             "w": 18,
@@ -1739,6 +1771,8 @@
                       ],
                       "badges_since": "2026-08-23T09:14:02.118Z",
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "pm",
@@ -1825,6 +1859,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -1899,6 +1935,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -1973,6 +2011,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "review",
@@ -2035,7 +2075,7 @@
         "scene": {
           "measurer": {
             "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
-            "line_h": { "fact": 12, "name": 16, "screen": 12 }
+            "line_h": { "fact": 12, "name": 16, "screen": 8 }
           },
           "character": {
             "w": 18,
@@ -2154,6 +2194,8 @@
                       ],
                       "badges_since": "2026-08-23T09:14:02.118Z",
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "pm",
@@ -2240,6 +2282,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -2314,6 +2358,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -2388,6 +2434,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "review",
@@ -2450,7 +2498,7 @@
         "scene": {
           "measurer": {
             "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
-            "line_h": { "fact": 12, "name": 16, "screen": 12 }
+            "line_h": { "fact": 12, "name": 16, "screen": 8 }
           },
           "character": {
             "w": 18,
@@ -2569,6 +2617,8 @@
                       ],
                       "badges_since": "2026-08-23T09:14:02.118Z",
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "pm",
@@ -2655,6 +2705,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -2729,6 +2781,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -2803,6 +2857,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "review",
@@ -2865,7 +2921,7 @@
         "scene": {
           "measurer": {
             "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
-            "line_h": { "fact": 12, "name": 16, "screen": 12 }
+            "line_h": { "fact": 12, "name": 16, "screen": 8 }
           },
           "themes": {
             "registry": false
@@ -2979,6 +3035,8 @@
                       ],
                       "badges_since": "2026-08-23T09:14:02.118Z",
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "pm",
@@ -3065,6 +3123,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -3139,6 +3199,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -3213,6 +3275,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "review",
@@ -3325,7 +3389,7 @@
         "scene": {
           "measurer": {
             "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
-            "line_h": { "fact": 12, "name": 16, "screen": 12 }
+            "line_h": { "fact": 12, "name": 16, "screen": 8 }
           },
           "character": {
             "w": 18,
@@ -3436,6 +3500,8 @@
                       ],
                       "badges_since": "2026-08-23T09:14:02.118Z",
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "pm",
@@ -3522,6 +3588,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -3596,6 +3664,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -3670,6 +3740,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "review",
@@ -3892,7 +3964,7 @@
         "scene": {
           "measurer": {
             "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
-            "line_h": { "fact": 12, "name": 16, "screen": 12 }
+            "line_h": { "fact": 12, "name": 16, "screen": 8 }
           },
           "character": {
             "w": 18,
@@ -3982,6 +4054,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "review",
@@ -4056,6 +4130,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -4142,6 +4218,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -4237,6 +4315,8 @@
                       ],
                       "badges_since": "2026-08-23T09:14:02.118Z",
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "pm",
@@ -4459,7 +4539,7 @@
         "scene": {
           "measurer": {
             "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
-            "line_h": { "fact": 12, "name": 16, "screen": 12 }
+            "line_h": { "fact": 12, "name": 16, "screen": 8 }
           },
           "character": {
             "w": 18,
@@ -4570,6 +4650,8 @@
                       ],
                       "badges_since": "2026-08-23T09:14:02.118Z",
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "pm",
@@ -4656,6 +4738,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -4730,6 +4814,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -4804,6 +4890,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "review",
@@ -5026,7 +5114,7 @@
         "scene": {
           "measurer": {
             "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
-            "line_h": { "fact": 12, "name": 16, "screen": 12 }
+            "line_h": { "fact": 12, "name": 16, "screen": 8 }
           },
           "character": {
             "w": 18,
@@ -5036,7 +5124,7 @@
       }
     },
     "interns_cap": {
-      "note": "§ 11's `fx-interns` cap leg: fx-snapshot-4 with `aimla-impl-1` and `aimla-impl-2` each at § 8's cap of 8 stools, `subagents_open` 9, every intern title at 120 B; `aimla-impl-1`'s descriptor at 200 B; `aimla-impl-2` badged with D2's bound of 18 plus one member outside § 7.2's set, `fold_lag` among them with a `fold_lag_ms`; every `task.title` at 120 B — on the shipped default.",
+      "note": "§ 11's `fx-interns` cap leg: fx-snapshot-4 with `aimla-impl-1` and `aimla-impl-2` each at § 8's cap of 8 stools, `subagents_open` 9, every intern title at 120 B; `aimla-impl-1`'s descriptor at 200 B; `aimla-impl-2` badged with D2's bound — every member of § 7.2's set — plus one member outside it, `fold_lag` among them with a `fold_lag_ms`; every `task.title` at 120 B — on the shipped default.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -5137,6 +5225,8 @@
                       ],
                       "badges_since": "2026-08-23T09:14:02.118Z",
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "pm",
@@ -5272,6 +5362,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -5411,10 +5503,13 @@
                         "reporter_ahead",
                         "fold_lag",
                         "derivation_error",
+                        "update_required",
                         "not_a_published_badge"
                       ],
                       "badges_since": "2026-08-23T09:14:02.118Z",
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -5489,6 +5584,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "review",
@@ -5551,7 +5648,7 @@
         "scene": {
           "measurer": {
             "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
-            "line_h": { "fact": 12, "name": 16, "screen": 12 }
+            "line_h": { "fact": 12, "name": 16, "screen": 8 }
           },
           "character": {
             "w": 18,
@@ -5662,6 +5759,8 @@
                       ],
                       "badges_since": "2026-08-23T09:14:02.118Z",
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "pm",
@@ -5797,6 +5896,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -5936,10 +6037,13 @@
                         "reporter_ahead",
                         "fold_lag",
                         "derivation_error",
+                        "update_required",
                         "not_a_published_badge"
                       ],
                       "badges_since": "2026-08-23T09:14:02.118Z",
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -6014,6 +6118,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "review",
@@ -6076,7 +6182,7 @@
         "scene": {
           "measurer": {
             "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
-            "line_h": { "fact": 12, "name": 16, "screen": 12 }
+            "line_h": { "fact": 12, "name": 16, "screen": 8 }
           },
           "character": {
             "w": 18,
@@ -6235,6 +6341,8 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
                       "protocol_agent_name": "interns",
                       "protocol_agent_name_check": "checked",
                       "protocol_agent_role": "impl",
@@ -6297,7 +6405,7 @@
         "scene": {
           "measurer": {
             "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
-            "line_h": { "fact": 12, "name": 16, "screen": 12 }
+            "line_h": { "fact": 12, "name": 16, "screen": 8 }
           },
           "character": {
             "w": 18,

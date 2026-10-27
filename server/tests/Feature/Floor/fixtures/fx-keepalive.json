@@ -1,0 +1,385 @@
+{
+  "note": "card#12434's session keepalive: FleetClient asks for GET /api/session/keepalive once every quarter of the session lifetime the page hands it, only while its stream is connected, and never once it has signed out (FLOOR § 9 F6/F7).",
+  "runs": {
+    "keepalive_connected": {
+      "note": "card#12434: a session lifetime of 40 s, so a keepalive every 10 s while the stream is connected. The stream ends at 35 s and every re-open is refused until 60 s, so the keepalives due at 40, 50 and 60 s find no connected stream and are not sent. The re-open at 65 s is accepted, and the keepalives resume at 70 s.",
+      "recovery": true,
+      "session_lifetime_ms": 40000,
+      "http": {
+        "/api/fleet/snapshot": [
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 0,
+                "seats_live": 0
+              },
+              "installs": []
+            },
+            "clocked": true,
+            "times": 20
+          }
+        ],
+        "/api/session/keepalive": [
+          {
+            "status": 204,
+            "text": "",
+            "times": 20
+          }
+        ]
+      },
+      "stream_refusals": [
+        {
+          "from_ms": 35000,
+          "until_ms": 60000
+        }
+      ],
+      "messages": [
+        {
+          "at_ms": 100,
+          "envelope": {
+            "feed_version": 1,
+            "t": "fleet.health",
+            "server_time": "2026-08-23T14:23:14.500Z",
+            "fleet": {
+              "db": "ok",
+              "fold": "ok",
+              "sweep": "ok",
+              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "max_fold_lag_ms": 117,
+              "seats_total": 0,
+              "seats_live": 0
+            }
+          }
+        },
+        {
+          "at_ms": 15000,
+          "envelope": {
+            "feed_version": 1,
+            "t": "feed.heartbeat",
+            "server_time": "2026-08-23T14:23:29.400Z",
+            "fleet": {
+              "db": "ok",
+              "fold": "ok",
+              "sweep": "ok",
+              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "max_fold_lag_ms": 117,
+              "seats_total": 0,
+              "seats_live": 0
+            }
+          }
+        },
+        {
+          "at_ms": 30000,
+          "envelope": {
+            "feed_version": 1,
+            "t": "feed.heartbeat",
+            "server_time": "2026-08-23T14:23:44.400Z",
+            "fleet": {
+              "db": "ok",
+              "fold": "ok",
+              "sweep": "ok",
+              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "max_fold_lag_ms": 117,
+              "seats_total": 0,
+              "seats_live": 0
+            }
+          }
+        },
+        {
+          "at_ms": 35000,
+          "end": true
+        },
+        {
+          "at_ms": 65100,
+          "envelope": {
+            "feed_version": 1,
+            "t": "fleet.health",
+            "server_time": "2026-08-23T14:24:19.500Z",
+            "fleet": {
+              "db": "ok",
+              "fold": "ok",
+              "sweep": "ok",
+              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "max_fold_lag_ms": 117,
+              "seats_total": 0,
+              "seats_live": 0
+            }
+          }
+        },
+        {
+          "at_ms": 80000,
+          "envelope": {
+            "feed_version": 1,
+            "t": "feed.heartbeat",
+            "server_time": "2026-08-23T14:24:34.400Z",
+            "fleet": {
+              "db": "ok",
+              "fold": "ok",
+              "sweep": "ok",
+              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "max_fold_lag_ms": 117,
+              "seats_total": 0,
+              "seats_live": 0
+            }
+          }
+        },
+        {
+          "at_ms": 95000,
+          "envelope": {
+            "feed_version": 1,
+            "t": "feed.heartbeat",
+            "server_time": "2026-08-23T14:24:49.400Z",
+            "fleet": {
+              "db": "ok",
+              "fold": "ok",
+              "sweep": "ok",
+              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "max_fold_lag_ms": 117,
+              "seats_total": 0,
+              "seats_live": 0
+            }
+          }
+        }
+      ],
+      "until_ms": 100000
+    },
+    "keepalive_401": {
+      "note": "card#12434: the second keepalive is answered 401, because the session was ended elsewhere. That is FLOOR § 9 F6: the client signs out, closes its stream and sends nothing more, keepalive included.",
+      "recovery": true,
+      "session_lifetime_ms": 40000,
+      "http": {
+        "/api/fleet/snapshot": [
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 0,
+                "seats_live": 0
+              },
+              "installs": []
+            },
+            "clocked": true,
+            "times": 20
+          }
+        ],
+        "/api/session/keepalive": [
+          {
+            "status": 204,
+            "text": ""
+          },
+          {
+            "status": 401,
+            "body": {
+              "message": "Unauthenticated."
+            }
+          }
+        ]
+      },
+      "messages": [
+        {
+          "at_ms": 100,
+          "envelope": {
+            "feed_version": 1,
+            "t": "fleet.health",
+            "server_time": "2026-08-23T14:23:14.500Z",
+            "fleet": {
+              "db": "ok",
+              "fold": "ok",
+              "sweep": "ok",
+              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "max_fold_lag_ms": 117,
+              "seats_total": 0,
+              "seats_live": 0
+            }
+          }
+        },
+        {
+          "at_ms": 15000,
+          "envelope": {
+            "feed_version": 1,
+            "t": "feed.heartbeat",
+            "server_time": "2026-08-23T14:23:29.400Z",
+            "fleet": {
+              "db": "ok",
+              "fold": "ok",
+              "sweep": "ok",
+              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "max_fold_lag_ms": 117,
+              "seats_total": 0,
+              "seats_live": 0
+            }
+          }
+        },
+        {
+          "at_ms": 30000,
+          "envelope": {
+            "feed_version": 1,
+            "t": "feed.heartbeat",
+            "server_time": "2026-08-23T14:23:44.400Z",
+            "fleet": {
+              "db": "ok",
+              "fold": "ok",
+              "sweep": "ok",
+              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "max_fold_lag_ms": 117,
+              "seats_total": 0,
+              "seats_live": 0
+            }
+          }
+        },
+        {
+          "at_ms": 45000,
+          "envelope": {
+            "feed_version": 1,
+            "t": "feed.heartbeat",
+            "server_time": "2026-08-23T14:23:59.400Z",
+            "fleet": {
+              "db": "ok",
+              "fold": "ok",
+              "sweep": "ok",
+              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "max_fold_lag_ms": 117,
+              "seats_total": 0,
+              "seats_live": 0
+            }
+          }
+        },
+        {
+          "at_ms": 60000,
+          "envelope": {
+            "feed_version": 1,
+            "t": "feed.heartbeat",
+            "server_time": "2026-08-23T14:24:14.400Z",
+            "fleet": {
+              "db": "ok",
+              "fold": "ok",
+              "sweep": "ok",
+              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "max_fold_lag_ms": 117,
+              "seats_total": 0,
+              "seats_live": 0
+            }
+          }
+        }
+      ],
+      "until_ms": 70000
+    },
+    "keepalive_session_close": {
+      "note": "card#12434: the server ends the stream with feed.close{reason:\"session\"} at 25 s, because the 15 s re-check found the session gone. The client signs out (F6) and the keepalive due at 30 s is never sent.",
+      "recovery": true,
+      "session_lifetime_ms": 40000,
+      "http": {
+        "/api/fleet/snapshot": [
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 0,
+                "seats_live": 0
+              },
+              "installs": []
+            },
+            "clocked": true,
+            "times": 20
+          }
+        ],
+        "/api/session/keepalive": [
+          {
+            "status": 204,
+            "text": "",
+            "times": 20
+          }
+        ]
+      },
+      "messages": [
+        {
+          "at_ms": 100,
+          "envelope": {
+            "feed_version": 1,
+            "t": "fleet.health",
+            "server_time": "2026-08-23T14:23:14.500Z",
+            "fleet": {
+              "db": "ok",
+              "fold": "ok",
+              "sweep": "ok",
+              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "max_fold_lag_ms": 117,
+              "seats_total": 0,
+              "seats_live": 0
+            }
+          }
+        },
+        {
+          "at_ms": 15000,
+          "envelope": {
+            "feed_version": 1,
+            "t": "feed.heartbeat",
+            "server_time": "2026-08-23T14:23:29.400Z",
+            "fleet": {
+              "db": "ok",
+              "fold": "ok",
+              "sweep": "ok",
+              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "max_fold_lag_ms": 117,
+              "seats_total": 0,
+              "seats_live": 0
+            }
+          }
+        },
+        {
+          "at_ms": 25000,
+          "envelope": {
+            "feed_version": 1,
+            "t": "feed.close",
+            "server_time": "2026-08-23T14:23:39.400Z",
+            "reason": "session",
+            "at": "2026-08-23T14:23:39.400Z"
+          }
+        },
+        {
+          "at_ms": 25010,
+          "end": true
+        }
+      ],
+      "until_ms": 70000
+    }
+  }
+}

@@ -47,6 +47,18 @@ final class Purge
     /** `D2-MUST` #3's dedup window, the FLOOR the retention constant may never go under. */
     public const DEDUP_WINDOW_DAYS = 10;
 
+    /**
+     * § 6.7's coordination digest chain (card#12239): GitHub's documented redelivery reach — the oldest
+     * delivery an operator can still redeliver — is the floor under `coord_deliveries`' retention,
+     * because D1 § 18.8 step 7's absorption IS that table's unique key, and a digest purged before
+     * GitHub stops redelivering re-derives one real post as two. DOCS-CITED (COORD-STORE.md § 2.3).
+     *
+     * `coord_deliveries` is purged on the event retention, so `guard()`'s dedup floor (10 days) is the
+     * one that binds; `PurgeTest` holds both floors above this reach, so the two chains cannot be split
+     * under it by an edit to one constant.
+     */
+    public const REDELIVERY_REACH_DAYS = 3;
+
     /** § 6.7's batch bound. */
     public const BATCH = 5000;
 
@@ -98,6 +110,9 @@ final class Purge
         // reads a row behind a stream's cursor, so a row that lingers until the next hourly pass
         // costs disk and nothing else (§ 6.7: ~7.5 MB at the 50-seat ceiling).
         'feed_outbox' => 'created_at',
+        // § 6.12's digest store, on the event retention (card#12239): 14 days against GitHub's 3-day
+        // redelivery reach, which `guard()` holds as the floor.
+        'coord_deliveries' => 'received_at',
     ];
 
     /**
@@ -255,6 +270,7 @@ final class Purge
             'attention_requests' => ['resolved_at', 'id'],                // ix_purge
             'seat_state_transitions' => ['at', 'id'],                     // ix_purge
             'feed_outbox' => ['created_at', 'id'],                        // ix_created
+            'coord_deliveries' => ['received_at', 'id'],                  // ix_received
             default => throw new \LogicException('no purge order declared for '.$table),
         };
     }

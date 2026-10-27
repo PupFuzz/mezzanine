@@ -21,8 +21,11 @@
  *
  * ⭐ THE ROOM, THE DIRECTORY AND THE CAMERA (§ 4.1, § 4.5). `#lobby-building` is the drawing surface — a clipping
  * drawing only while the room is drawn (`building-scene.js`'s `surfaceStyle()`) — and `#lobby-room` the camera's layer
- * in it: the room's drawing (`building-paint.js`'s `roomDrawing()`), the directory's box at the board's rect and the
- * readings' box under it (`directory.js`'s `boxStyles()`), all moved and scaled by the camera's one transform. The
+ * in it: the room's drawing (`building-paint.js`'s `roomDrawing()`) and, while the room is drawn and the board's fitted
+ * face is not under § 12's *Directory dock width*, the directory's box at the board's rect and the readings' box under
+ * it, all moved and scaled by the camera's one transform. Under the bound — a phone, a tablet, a laptop — the boxes dock
+ * in the page's flow under the surface. Where the boxes stand, their `data-home` and the surface's `touch-action` are
+ * `directory.js`'s `dockingEntry()`'s alone, which this file calls on every paint (decision 72). The
  * camera hook, `view()`, is the one place a camera is shown — fit, wheel, pinch, key, drag, every glide step, resize —
  * and it calls `directory.js`'s `showDirectory()`, the one writer of the directory's counter-scale, on every camera it
  * shows and never from a render. The wheel, the drag, the pinch, the keys, the zoom buttons and *Fit the lobby* are
@@ -51,9 +54,10 @@ import { arrival, revealed } from '../wire/ride-arrival.js';
 import { ridePage } from '../wire/ride-page.js';
 import { cabTheme, loadHousePalette, paintCab } from '../floor/cab-paint.js';
 import { startLobbyScreen } from './lobby-screen.js';
+import { startFailure } from './lobby-model.js';
 import { lobbyScene, surfaceStyle } from './building-scene.js';
 import { paintRoom, roomDrawing, themeRoomCab } from './building-paint.js';
-import { boxStyles, renderDirectory, showDirectory } from './directory.js';
+import { dockingEntry, renderDirectory, showDirectory } from './directory.js';
 
 /**
  * ⛔ A MISSING ELEMENT THROWS RATHER THAN BEING GUARDED PAST. The guarded form — `if (node === null) return;` at every
@@ -106,9 +110,38 @@ const directoryBox = el('lobby-directory');
 const readingsBox = el('lobby-readings');
 const scene = lobbyScene();
 
-/** The room's drawing surface in CSS px — the element the room is drawn and the camera looks in. */
+/**
+ * THE DOCKING ENTRY (§ 4.1, decision 72) — the one writer of where the two boxes stand, their `data-home` and the
+ * surface's `touch-action`, re-asked on every paint, every resize and every change of the page's text size.
+ */
+const dock = dockingEntry(window, document, { building, layer, boxes: [[directoryBox, scene.directory], [readingsBox, scene.readings]], scene });
+
+/**
+ * The room's drawing surface in CSS px AS THE ROOM IS DRAWN IN IT — the element the camera looks in, at the size the
+ * camera frames the room at.
+ *
+ * ⛔ WHILE THE ROOM IS NOT DRAWN THE SURFACE HAS NO SIZE OF ITS OWN, so it is measured under the drawn style and put
+ * back (card#12319). Un-drawn, `#lobby-building` holds only the empty camera's layer — the two boxes flow after it
+ * (card#12187) — and `surfaceStyle(null)` gives it no height, so it measures ZERO high in every browser at every
+ * window size; and `wire/camera.js` rightly refuses a surface with no area. Read as it stood, the page's first read —
+ * the screen's camera, before any snapshot — threw, and the lobby never opened its stream. Both writes are in this
+ * one synchronous call, so no frame is ever painted with the drawn style on an un-drawn page; `surfaceStyle()` sets
+ * every member either way, so the put-back is exactly `paintScene()`'s un-drawn style.
+ */
 function surface() {
-    return { width: building.clientWidth, height: building.clientHeight };
+    const drawn = layer.hasAttribute('data-drawn');
+
+    if (!drawn) {
+        Object.assign(building.style, surfaceStyle(scene));
+    }
+
+    const size = { width: building.clientWidth, height: building.clientHeight };
+
+    if (!drawn) {
+        Object.assign(building.style, surfaceStyle(null));
+    }
+
+    return size;
 }
 
 /**
@@ -168,15 +201,12 @@ function paintScene(frame) {
         ? { position: 'relative', width: `${scene.extent.w}px`, height: `${scene.extent.h}px`, transformOrigin: '0 0' }
         : { position: '', width: '', height: '', transformOrigin: '' });
 
-    for (const [box, rect] of [[directoryBox, scene.directory], [readingsBox, scene.readings]]) {
-        const styles = boxStyles(rect, drawn);
-
-        Object.assign(box.style, styles.box);
-        Object.assign(box.firstElementChild.style, styles.face);
-    }
+    // Where the boxes stand — on the board, docked, or flowing with no room drawn — over the surface as just styled.
+    dock.place(drawn);
 
     room.art.style.display = drawn ? 'block' : 'none';
-    // The sheet's plaques and panels are the board's colours only on the drawn room (`mezzanine.css`'s lobby block).
+    // The layer's record that the room is drawn, which a browser tool waits on (`tools/design/floor-ride.browser.mjs`);
+    // no style reads it — the boxes' colours are keyed on their own `data-home`.
     layer.toggleAttribute('data-drawn', drawn);
 
     if (drawn) {
@@ -277,12 +307,42 @@ const cab = ridePage({
     timers,
 });
 
+/** The placeholders that say the page is WAITING — for the stream, or for the fleet snapshot it brings. */
+const WAITING = ['lobby-feed', 'lobby-resyncs', 'lobby-totals', 'lobby-store', 'lobby-derivation', 'lobby-sweep', 'lobby-ingest', 'lobby-stamp'];
+
+/**
+ * ⛔ A LOBBY THAT CANNOT START SAYS SO, AND NEVER WAITS (card#12319). The screen — its camera included — is built
+ * before the stream is opened, so a throw there leaves no stream and no render, and every placeholder would say
+ * *waiting for the fleet snapshot* for as long as the page is open. The building readings and the directory say
+ * instead that the lobby could not start, and why (`lobby-model.js`'s `startFailure()`); the error is re-thrown, so
+ * the console carries it as well.
+ */
+function cannotStart(error) {
+    const statement = startFailure(error);
+
+    say('lobby-start-failure', statement);
+
+    for (const id of WAITING) {
+        say(id, null);
+    }
+
+    list('lobby-floors', [statement]);
+}
+
 const { client, clock, fetch: pageFetch, requestRender, log } = livePage(() => screen.render());
-const screen = startLobbyScreen(client, pageFetch, clock, log, paint, {
-    surface: surface(),
-    reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-    lobby_href: el('lobby').dataset.lobbyHref,
-});
+let screen;
+
+try {
+    screen = startLobbyScreen(client, pageFetch, clock, log, paint, {
+        surface: surface(),
+        reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+        lobby_href: el('lobby').dataset.lobbyHref,
+    });
+} catch (error) {
+    cannotStart(error);
+
+    throw error;
+}
 
 // The room's drawing stands first in the camera's layer, under the directory's and the readings' boxes.
 layer.prepend(room.art);

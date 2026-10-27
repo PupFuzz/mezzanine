@@ -32,8 +32,10 @@
 import { ANIMATION_SET, LOOP_FPS, loops } from '../wire/animation-set.js';
 import { footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layout.js';
 import { readEmbedded, splitGid, tilesetUrl } from './tileset.js';
-import { BUBBLE_BAND, BUBBLE_PAD, CHARACTER_SCALE, LINE, characterCentre, cloudOutline, deskAnchor, deskLayout, fit, furnitureAsset, thoughtTrail, union } from './desk-layout.js';
+import { BUBBLE_BAND, BUBBLE_PAD, CHARACTER_SCALE, LINE, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, thoughtTrail, union } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
+import { cellCentre, lattice, polylineLength, route } from './route.js';
+import { perchPoint } from './bird.js';
 
 /**
  * The back-wall band's height (§ 4.2) — "its height is a drawing layer's" (`floor-layout.js`): a wall
@@ -68,9 +70,22 @@ export const BAND_H = 160;
  * (design review r3 MINOR-1): the formula's *at least one* holds from that width up, and under it a
  * window — or its sill — could only be drawn inside the zone. A stored map can be that narrow (F21).
  */
-const ZONE_W = 272;
+const ZONE_W = 332;
 const ELEVATOR = { dx: 32, w: 84, h: 144, frame: 6, header: 14 };
-const CLOCK = { dx: 164, size: 64 };
+/**
+ * The wall clock, RAISED 44 px to the top of the band (card#12241, the operator's ruling of 2026-10-23:
+ * *"I want the clock raised to the height of the current birdhouse"*): its rect's top is `dy` under the
+ * band's top, where it was centred in the band's 160 px.
+ */
+const CLOCK = { dx: 164, size: 64, dy: 4 };
+/**
+ * THE BIRD PORTAL (card#12241, COORD-STORE.md § 6.1) — the birdhouse on a bracket to the RIGHT of the clock,
+ * with `gap` px of clear wall between the clock face and the roof, the roof's peak level with the clock's
+ * top. A fixture of the FRAME, on every floor and never of a map, so no authored furniture meets it and a
+ * floor without one cannot occur. `ZONE_W` grows by the gap and the roof's width (272 → 332), so the first
+ * window keeps from the birdhouse the clearance it kept from the clock.
+ */
+const PORTAL = { gap: 16, roof_w: 44, body: 34, bracket_w: 40, bracket_h: 3, hole_r: 8 };
 const WINDOW = { margin: 24, pitch: 360, w: 208, min_w: 96, gap: 24, h: 80, dy: 22 };
 
 /**
@@ -234,19 +249,35 @@ function roomSuffix(installId, seats) {
 
 /**
  * The walk and the travel speeds the edge rows' frames are counted from, in scene pixels per frame
- * at § 12's loop rate. They decide how many frames a walk takes and carry no fact: every walk of
- * one length takes the same number of frames, whatever the seat.
+ * at § 12's loop rate (§ 12's *Walk speed* and *Envelope speed* rows). They decide how many frames a walk or
+ * a flight takes and carry no fact: every walk or flight of one length takes the same number of frames,
+ * whatever the seat.
  */
-export const WALK_PX_PER_FRAME = 48;
-const ENVELOPE_PX_PER_FRAME = 96;
-const RING_PX_PER_FRAME = 240;
-const RING_FADE_FRAMES = 2;
+export const WALK_PX_PER_FRAME = 24;
+const ENVELOPE_PX_PER_FRAME = 48;
 
 /**
- * A moving A18 line's flow: the frames one dash period takes to travel along it, at § 12's loop rate.
- * It decides how fast the dashes flow and carries no fact — every moving line flows alike.
+ * card#12241's arrival, RULED (the operator's "A"): from touchdown the bird sets the envelope on the desk and
+ * lifts away, and the envelope RESTS for eight frames, is drawn at half opacity for one, and is gone —
+ * eleven frames from touchdown, so nothing persists. Reduced motion draws the still envelope for the moving
+ * form's whole duration, flight and rest (§ 6.2 A19's reduced cell).
  */
-const THREAD_FLOW_FRAMES = 4;
+const ARRIVAL_REST_FRAMES = 11;
+
+/**
+ * card#12445's ledge dwell, RULED (the operator, 2026-10-26: *"When the bird reaches the birdhouse, it should stop there
+ * on the birdhouse ledge for a second before hopping into the hole. When it arrives, it should come out of the hole and
+ * wait on the ledge for 1 second before flying."*): the portal bird stands on the birdhouse's perch this long going out
+ * and coming in — FLOOR.md § 12's *Ledge dwell* row — in seconds, and in loop frames at § 12's rate.
+ */
+export const LEDGE_DWELL_S = 1;
+export const LEDGE_DWELL_FRAMES = LEDGE_DWELL_S * LOOP_FPS;
+
+/** card#12445: the hop between the perch and the hole, in loop frames (§ 12's *Hole hop* row). Chosen; it carries no fact. */
+export const HOLE_HOP_FRAMES = 2;
+
+const RING_PX_PER_FRAME = 240;
+const RING_FADE_FRAMES = 2;
 
 /**
  * The elevator's leaves, in loop frames (FLOOR § 12's *Elevator leaves* row, card#9566): opening, the
@@ -254,41 +285,179 @@ const THREAD_FLOW_FRAMES = 4;
  */
 export const ELEVATOR_DOOR = Object.freeze({ open: 2, step: 1, close: 2 });
 
+/**
+ * The longest a departing character waits at the elevator before the leaves open (§ 12's *Elevator wait* row,
+ * card#12194 — the operator's *"random wait time up to 1 minute"*), in seconds, and in loop frames at § 12's rate.
+ */
+export const ELEVATOR_WAIT_S = 60;
+export const WAIT_MAX_FRAMES = ELEVATOR_WAIT_S * LOOP_FPS;
+
 /** Where every A1 and A2 walk meets the elevator: the leaves' seam, at their foot (§ 6.2's walk note item 3). */
 export function threshold(band) {
     return band === null || band === undefined ? null : Object.freeze({ x: band.elevator.seam, y: band.elevator.y + band.elevator.h });
 }
 
 /**
- * One A1 or A2 walk (FLOOR § 6.2's walk note items 3 and 5): A16's straight-segment rule between the
- * desk's anchor and the elevator's threshold, `⌈length ÷ WALK_PX_PER_FRAME⌉` frames, and the door's
- * frames around it. A2 walks to the threshold, the leaves open, the walker steps in and is gone, the
- * leaves close; A1 is the reverse, the leaves closing behind it while it walks, and it sits on the
- * walk's last frame. `shown` is the frames the walker is drawn in, `walk` the frames it moves in, `door`
- * the frames the leaves are not shut in. With no motion, or no desk on this floor, it draws nothing.
+ * The Desk-column SIDE an A1 or A2 row delivers (§ 6.2's walk note item 6, clause 1): A2 leaves the desk drawing the
+ * empty chair, A1 a character. A render whose model draws the seat's desk on another side cancels the walk.
  */
-function walkEffect(base, id, desk, door, motion, character) {
-    if (!motion || desk === null || door === null) {
-        return Object.freeze({ ...base, from: null, to: null, frames: 0, walk: null, shown: null, door: null, size: null });
+const WALK_SIDE = Object.freeze({ A1: 'staffed', A2: 'empty' });
+
+/**
+ * A walker's drawn rect — the character's at the scene's scale, its feet at its bottom centre: the size a walk effect
+ * is drawn at and the body its route keeps clear (`route.js`'s `lattice()`, card#12442), one value for both.
+ */
+export function walkerSize(character) {
+    return Object.freeze({ w: character.w * CHARACTER_SCALE, h: character.h * CHARACTER_SCALE });
+}
+
+/**
+ * One A1 or A2 walk (FLOOR § 6.2's walk note items 3 and 5, card#12194): a ROUTED path through open floor between
+ * the desk's anchor and the elevator's threshold, as legs in frame order — A2 walks to the threshold, WAITS there for
+ * its seeded wait, stands while the leaves open on it, and steps into the cab, where the closing leaves cover it; A1
+ * is revealed in the cab by the opening leaves, steps out, and walks to its desk while they close behind it, sitting
+ * on its walk's last frame. `door` is the frames the leaves are not shut in. With no motion, no desk on this floor,
+ * no band, or no open route, the row is drawn without its walk: no legs, frames 0 (walk note item 7).
+ */
+function walkEffect(base, id, anchor, door, motion, character, box, walking) {
+    const key = `${base.install_id}/${base.seat_id}`;
+    const none = (narrate) => Object.freeze({
+        ...base,
+        route: 'none',
+        side: WALK_SIDE[id],
+        lattice_key: walking.key,
+        frames: 0,
+        legs: Object.freeze([]),
+        door: null,
+        clearance: null,
+        size: null,
+        frame: null,
+        // § 5.5's line, for a desk inside a room that cannot reach the elevator — a defect of the map, never an
+        // overflow desk, which stands on no grid (walk note item 7).
+        no_route: narrate,
+    });
+
+    if (!motion || anchor === null || door === null) {
+        return none(false);
     }
 
-    const [from, to] = id === 'A2' ? [desk, door] : [door, desk];
-    const steps = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / WALK_PX_PER_FRAME));
+    const [from, to] = id === 'A2' ? [anchor, door] : [door, anchor];
+    const routed = walking.route(key, anchor, from, to);
+
+    if (routed === null) {
+        return none(walking.inRoom(key));
+    }
+
+    const { cells } = routed;
+
+    // The route's cell centres, bracketed by the walk's two ends.
+    const points = Object.freeze([from, ...cells.map((c) => walking.centre(c)), to].map((p) => Object.freeze({ x: p.x, y: p.y })));
+    const length = polylineLength(points);
+    const steps = Math.max(1, Math.ceil(length / WALK_PX_PER_FRAME));
     const D = ELEVATOR_DOOR;
-    const doorFrames = D.open + D.step + D.close;
-    const timing = id === 'A2'
-        ? { walk: { start: 0, frames: steps }, shown: { start: 0, frames: steps + D.open + D.step }, door: { start: steps, frames: doorFrames } }
-        : { walk: { start: D.open + D.step, frames: steps }, shown: { start: D.open, frames: D.step + steps }, door: { start: 0, frames: doorFrames } };
+    const at = Object.freeze({ x: door.x, y: door.y });
+    const walk = (start) => Object.freeze({ kind: 'walk', start, frames: steps, points, length });
+    const stand = (start, frames, why) => Object.freeze({ kind: 'stand', start, frames, at, why });
+    const cab = (start, frames) => Object.freeze({ kind: 'cab', start, frames, at });
+    let legs;
+    let doorSpan;
+
+    if (id === 'A2') {
+        const wait = walking.wait(key, base.cause);
+
+        legs = [walk(0), stand(steps, wait, 'wait'), stand(steps + wait, D.open, 'door'), cab(steps + wait + D.open, D.step + D.close)];
+        doorSpan = { start: steps + wait, frames: D.open + D.step + D.close };
+    } else {
+        legs = [cab(0, D.open), stand(D.open, D.step, 'step'), walk(D.open + D.step)];
+        doorSpan = { start: 0, frames: D.open + D.step + D.close };
+    }
 
     return Object.freeze({
         ...base,
-        from,
-        to,
-        ...timing,
-        // The walker is the desk's character at its drawn size, its feet on the segment.
-        size: Object.freeze({ w: character.w * CHARACTER_SCALE, h: character.h * CHARACTER_SCALE }),
-        frames: Math.max(timing.walk.start + timing.walk.frames, timing.door.start + timing.door.frames),
+        route: 'routed',
+        side: WALK_SIDE[id],
+        lattice_key: walking.key,
+        legs: Object.freeze(legs),
+        door: Object.freeze(doorSpan),
+        no_route: false,
+        // Which clearance tier the route was found at (`route.js`'s `CLEARANCE_TIERS`, card#12442) — read by the tests
+        // and the walk probe, drawn nowhere.
+        clearance: routed.tier,
+        // The walker is the desk's character at its drawn size, its feet on the path: `size` its rect (the
+        // placeholder's, § 9 F14, and the body the route keeps clear), `frame` the size its image is drawn at — the
+        // character's overdraw, the frame every seat document is drawn in (§ 10.4's frame contract, card#12259),
+        // centred on the feet as the desk's is.
+        size: walkerSize(character),
+        frame: Object.freeze((({ w, h }) => ({ w, h }))(characterOverdraw(box, character).overdraw)),
+        frames: Math.max(...legs.map((l) => l.start + l.frames), doorSpan.start + doorSpan.frames),
     });
+}
+
+/**
+ * The LATTICE KEY (§ 6.2's walk note item 6, clause 4): a fingerprint of exactly what the walkable model reads — the
+ * layout's version, each rendered room's install, origin, map version and whether its map is drawn, the hallway's
+ * presence, the theme registry's kinds as held, and each tileset the maps name with its status in the loader. A
+ * render whose key differs from a walk's cancels it: the walk was routed on a floor no longer drawn. What the painter
+ * drew (its failed assets, the theme's `drawn`) is deliberately not in it — the lattice reads the map's cells.
+ */
+function latticeKey(frame, input, grids, kinds) {
+    const status = (url) => {
+        const held = input.tilesets.get(url);
+
+        return held === undefined ? 'absent' : held.pending === true ? 'pending' : held.failure !== undefined ? 'failure' : 'tileset';
+    };
+    const urls = [...new Set(grids.flatMap((g) => (Array.isArray(g.map.tilesets) ? g.map.tilesets : [])
+        .filter((entry) => typeof entry?.source === 'string')
+        .map((entry) => tilesetUrl(entry.source))))].sort();
+
+    return JSON.stringify([
+        input.layout_version ?? null,
+        frame.rooms.map((room) => [room.install_id, room.origin?.x ?? null, room.origin?.y ?? null, room.map?.map_version ?? null, room.mapless === true]),
+        grids.some((g) => g.install_id === null),
+        kinds,
+        urls.map((url) => [url, status(url)]),
+    ]);
+}
+
+/**
+ * The routing the walks of ONE render share (walk note item 3): the lattice, built at the first walk that asks and
+ * never on a render that carries none, every route over it, and each departure's seeded wait.
+ */
+function walkRouting({ key, extent, cell, obstacles, desks, draw, character }) {
+    let grid;
+    const desksByKey = new Map(desks.map((d) => [d.key, d]));
+    const built = () => {
+        if (grid === undefined) {
+            grid = extent === null || cell === null ? null : lattice({
+                extent,
+                cell,
+                obstacles,
+                desks: desks.map((d) => ({ key: d.key, rects: [d.slot_rect, d.box].filter((r) => r !== null) })),
+                // The body the route keeps clear: the walker's drawn rect, the one its effect is drawn at (card#12442).
+                body: walkerSize(character),
+            });
+        }
+
+        return grid;
+    };
+
+    return {
+        key,
+        route: (seat, anchor, from, to) => {
+            const g = built();
+
+            return g === null ? null : route(g, from, to, { key: seat, anchor });
+        },
+        centre: (c) => cellCentre(grid, c),
+        inRoom: (seat) => (desksByKey.get(seat)?.slot_rect ?? null) !== null,
+        // § 5.1 of card#12194's design: a deterministic per-event draw over the character's own key — the character
+        // tree's ONE seeded draw (`resources/characters/seed.js`'s `draw()`, § 10.4) — uniform over `0 … WAIT_MAX_FRAMES`.
+        // With no character tree held there is no seeded draw, and the walker waits none (§ 9 F14's viewer).
+        wait: (seat, cause) => (typeof draw === 'function' ? draw(seat, `elevator-wait:${cause}`) % (WAIT_MAX_FRAMES + 1) : 0),
+        get lattice() {
+            return built();
+        },
+    };
 }
 
 /** A § 6.2 edge row's single-frame forms — the 250 ms fades and eases, one loop frame each. */
@@ -298,11 +467,12 @@ const ONE_FRAME = new Set(['A5', 'A11', 'A12', 'A14', 'A17']);
  * The scene for one floor frame, or `null` when the frame composed no floor.
  *
  * @param {object} frame `FloorScreen#draw()`'s frame
- * @param {object} input `{ box, measure, character, themes, maps, hallway, tilesets, failed,
- *        reduce, effects, previous }` — `themes` is `painter.js`'s `themeInputs()`; `maps` is
- *        install_id → the held map document or `null`; `tilesets` is `TilesetLoader#held`; `failed` the
- *        asset ids the painter reported; `effects` the animation-log rows this render wrote; `previous`
- *        key → the box the last scene drew
+ * @param {object} input `{ box, measure, character, draw, themes, maps, hallway, tilesets, layout_version,
+ *        failed, reduce, effects, previous }` — `draw` the character tree's seeded draw (`seed.js`'s `draw()`, or
+ *        `null` where the tree failed to load); `themes` is `painter.js`'s `themeInputs()`; `maps` is
+ *        install_id → the held map document or `null`; `tilesets` is `TilesetLoader#held`; `layout_version` the
+ *        building layout's version held; `failed` the asset ids the painter reported; `effects` the animation-log
+ *        rows this render wrote; `previous` key → the box the last scene drew
  */
 export function buildScene(frame, input) {
     if (frame.floor === null || frame.floor === undefined || frame.rooms.length === 0) {
@@ -388,6 +558,9 @@ export function buildScene(frame, input) {
         return grid === null || f === null ? null : { x: f.x, y: f.y, w: f.width, h: f.height, cell: { w: grid.tilewidth, h: grid.tileheight } };
     });
     const landingAt = extents.findLastIndex((e, i) => e !== null && holds(grids[i], e));
+    // The walkable model's obstacles (§ 6.2's walk note item 3): every `wall` tile and every standing kind's tile, at
+    // the rect the floor would draw it, read from the map's cells — whether or not the theme draws them.
+    const obstacles = [];
 
     grids.forEach((g, i) => {
         const extent = extents[i];
@@ -397,6 +570,12 @@ export function buildScene(frame, input) {
         }
 
         const cells = mapTiles(g.map, g.origin, tilesetFor, g.install_id);
+
+        for (const c of cells) {
+            if (c.kind === 'wall' || standing.includes(c.kind)) {
+                obstacles.push(Object.freeze({ x: c.x, y: c.y, w: c.w, h: c.h }));
+            }
+        }
         const of = (kind) => tileRegions(cells.filter((c) => c.kind === kind))
             .flatMap((region) => region.rects)
             .map((r) => Object.freeze({ x: r.x - extent.x, y: r.y - extent.y, w: r.w, h: r.h }));
@@ -511,7 +690,7 @@ export function buildScene(frame, input) {
             // native size from that anchor, past the slot's edge (F21), neither scaled nor clipped.
             const at = slot === null
                 ? { x: room.origin.x + d.grid_index * W, y: room.origin.y }
-                : { x: slot.x, y: slot.y + slot.h - H };
+                : slotOrigin(slot, box);
 
             desks.push(placeDesk(model, d.key, installId, slot, at, {
                 box,
@@ -601,10 +780,20 @@ export function buildScene(frame, input) {
         h: SLAB_H,
     });
 
-    // ── The coordination line and the § 6.2 forms this render draws ───────────────────────────
+    // ── The § 6.2 forms this render draws ──────────────────────────────────────────────────────
     const anchors = new Map(desks.map((desk) => [desk.key, anchorOf(desk)]));
-    const lines = buildLines(frame, anchors, input);
-    const effects = buildEffects(input.effects ?? [], frame, anchors, input.previous ?? new Map(), extent, band, input.reduce === true, input.character);
+    // The lattice's cell: the smallest tile edge over the floor's grids, the hallway's included (walk note item 3).
+    const sizes = extents.filter((e) => e !== null).flatMap((e) => [e.cell.w, e.cell.h]);
+    const walking = walkRouting({
+        key: latticeKey(frame, input, grids, theme.kinds),
+        extent: extent === null ? null : { x: extent.x, y: extent.y, width: extent.width, height: extent.height },
+        cell: sizes.length === 0 ? null : Math.min(...sizes),
+        obstacles,
+        desks,
+        draw: input.draw ?? null,
+        character: input.character,
+    });
+    const effects = buildEffects(input.effects ?? [], frame, anchors, input.previous ?? new Map(), extent, band, input.reduce === true, input.character, box, walking);
 
     // § 9 F14: every asset the scene asked to be drawn that the painter reported failed, and every
     // tileset that could not be fetched or read.
@@ -627,17 +816,27 @@ export function buildScene(frame, input) {
         scenery: Object.freeze(scenery),
         desks: Object.freeze(desks),
         strip,
-        lines,
         effects,
         decorative: Object.freeze(decorative),
         notices: Object.freeze(notices),
         theme: theme.resolved,
         failed: Object.freeze(failedAssets),
         art_failed: failedAssets.length > 0,
-        // Where each desk's lines and walks meet it — what the NEXT render's walks start from.
+        // Where each desk's travellers and walks meet it — what the NEXT render's walks start from.
         anchors: Object.freeze(Object.fromEntries(anchors)),
+        // What the walkable model reads, fingerprinted — every render's, so the holder can cancel a walk routed on another.
+        lattice_key: walking.key,
         loop_fps: LOOP_FPS,
     });
+}
+
+/**
+ * Where a desk's box stands in its slot: the slot's bottom-left — the floor line its author drew — so a slot at least
+ * the box's size holds it, and an undersized one's desk is drawn at native size from that anchor, past the slot's
+ * edge (F21). Exported for the route probe, which places the shipped default's desks by the same rule.
+ */
+export function slotOrigin(slot, box) {
+    return { x: slot.x, y: slot.y + slot.h - box.height };
 }
 
 /**
@@ -646,7 +845,13 @@ export function buildScene(frame, input) {
  */
 export function placeDesk(model, key, installId, slot, at, ctx, extra) {
     const { elements, bubble } = deskLayout(model, ctx);
-    const moved = elements.map((e) => Object.freeze({ ...e, x: at.x + e.x, y: at.y + e.y }));
+    // A character's or an intern's overdraw (§ 10.4's frame contract) moves with its element; a sleeper's clear rects are frame units and do not.
+    const moved = elements.map((e) => Object.freeze({
+        ...e,
+        x: at.x + e.x,
+        y: at.y + e.y,
+        ...(e.overdraw === undefined ? {} : { overdraw: Object.freeze({ ...e.overdraw, x: at.x + e.overdraw.x, y: at.y + e.overdraw.y }) }),
+    }));
 
     return {
         key,
@@ -655,8 +860,11 @@ export function placeDesk(model, key, installId, slot, at, ctx, extra) {
         ...extra,
         slot_rect: slot === null ? null : Object.freeze(slot),
         box: Object.freeze({ x: at.x, y: at.y, w: ctx.box.width, h: ctx.box.height }),
-        // FLOOR.md § 10.6: where the bubble, the thread line and the walks meet this desk — its sitter's
-        // centre line, through the one primitive (`characterCentre()`), and the height the lines and the walks
+        // The desk's DEPTH KEY (§ 6.2's walk note item 9, § 12's *Depth key*): its furniture foot line — the line the
+        // side table and the interns stand on — which a walker's feet are compared with to stack it in front or behind.
+        depth_y: at.y + (({ y, h }) => y + h)(deskRects(ctx.box, ctx.character)['desk-sprite']),
+        // FLOOR.md § 10.6: where the bubble, the coordination birds and the walks meet this desk — its sitter's
+        // centre line, through the one primitive (`characterCentre()`), and the height the birds and the walks
         // meet it at, the desk's own mid-height, below every facts plate (`deskAnchor()`, card#11468).
         anchor_x: at.x + characterCentre(ctx.box, ctx.character),
         anchor_y: at.y + deskAnchor(ctx.box, ctx.character).y,
@@ -1135,10 +1343,10 @@ export function backWall(span, room) {
             seam: lift.x + lift.w / 2,
         }),
         // § 6.5: a room with no value is drawn as having none — `set: false`, never a plausible time.
-        // Hung at mid-wall, in the zone, right of the elevator.
+        // Hung in the zone right of the elevator, raised to the band's top (card#12241).
         clock: Object.freeze({
             x: span.x + CLOCK.dx,
-            y: y + (BAND_H - CLOCK.size) / 2,
+            y: y + CLOCK.dy,
             w: CLOCK.size,
             h: CLOCK.size,
             set: room !== null,
@@ -1147,63 +1355,40 @@ export function backWall(span, room) {
             text: room?.text ?? null,
             label: room?.label ?? null,
         }),
+        portal: birdPortal(span.x, y, room?.sky ?? null),
         windows: Object.freeze(windows),
     });
 }
 
-/** Where a line or an envelope meets a desk: the character's column, at the desk's own mid-height (`deskAnchor()`). */
-function anchorOf(desk) {
-    return Object.freeze({ x: desk.anchor_x, y: desk.anchor_y });
+/**
+ * The birdhouse's geometry, band-relative to `left` and the band's top `top` (card#12241's measured layout):
+ * its centre `c` is 22 px right of the roof's left edge, the roof's left edge `PORTAL.gap` px right of the
+ * clock face; `c.y` is 28 px under the clock's top, so the roof's 28 px gable peaks level with it. The MOUTH
+ * is the hole's centre — where a portal bird enters and leaves (COORD-STORE.md § 6.1), hopping between it and the
+ * `perch` under it (card#12445). `sky` is the room's sky phase, `null` when the room has no value (§ 6.5).
+ */
+function birdPortal(left, top, sky) {
+    const cx = left + CLOCK.dx + CLOCK.size + PORTAL.gap + PORTAL.roof_w / 2;
+    const cy = top + CLOCK.dy + 28;
+
+    return Object.freeze({
+        x: cx,
+        y: cy,
+        roof: Object.freeze({ x: cx - PORTAL.roof_w / 2, w: PORTAL.roof_w, peak_y: cy - 28, eave_y: cy - 12 }),
+        body: Object.freeze({ x: cx - PORTAL.body / 2, y: cy - 12, w: PORTAL.body, h: PORTAL.body }),
+        bracket: Object.freeze({ x: cx - PORTAL.bracket_w / 2, y: cy + 22, w: PORTAL.bracket_w, h: PORTAL.bracket_h }),
+        mouth: Object.freeze({ x: cx, y: cy + 2, r: PORTAL.hole_r }),
+        // The peg perch under the hole, seen end-on: from the wall (`top`) to its tip nearest the viewer (`tip`), where a
+        // portal bird stands (card#12445, `bird.js`'s `perchPoint()`).
+        perch: Object.freeze({ x: cx, top: cy + 2 + PORTAL.hole_r + 3, tip: cy + 2 + PORTAL.hole_r + 8 }),
+        // The hole shows the windows' own sky (A17's value), so the portal never shows a second time of day.
+        sky,
+    });
 }
 
-/**
- * § 5.7's thread line, drawn between the desks its resolved participants stand at — A18's held
- * render, in the form the set decided.
- */
-function buildLines(frame, anchors, input) {
-    const out = [];
-
-    for (const [installId, model] of Object.entries(frame.coord ?? {})) {
-        for (const thread of model.threads) {
-            if (!thread.animations.includes('A18')) {
-                continue;
-            }
-
-            const ends = thread.endpoints
-                .map((seatId) => anchors.get(`${installId}/${seatId}`) ?? null)
-                .filter((a) => a !== null);
-
-            if (ends.length < 2) {
-                continue;
-            }
-
-            const mid = { x: (ends[0].x + ends[1].x) / 2, y: (ends[0].y + ends[1].y) / 2 };
-            const label = thread.label === null ? null : fit(thread.label, 240, input.measure);
-
-            out.push(Object.freeze({
-                animation_id: 'A18',
-                install_id: installId,
-                thread_ref: thread.thread_ref,
-                ends: Object.freeze(ends),
-                ended: thread.ended,
-                // The label is the wire's, with its mark where `subject_truncated` said so (§ 5.7);
-                // cut to fit through the one primitive like every other string on the floor.
-                label: label === null ? null : Object.freeze({ x: mid.x, y: mid.y - LINE, text: label.text, truncated: label.truncated || thread.truncated }),
-                carrier: thread.carrier,
-                lifecycle: thread.lifecycle,
-                beads: thread.beads_label,
-                // ⛔ THE LINE's `held` IS THE RENDERING THE SET LOGGED (`floor/floor-screen.js`), so a
-                // line § 9 F6 stilled is drawn static here as it is logged static there; reduced motion
-                // is already folded into it. A moving line flows at § 12's loop rate, one dash period
-                // per THREAD_FLOW_FRAMES frames — a fixed rate carrying no fact (§ 6.1 rule 2).
-                ...form('A18', !thread.held.motion),
-                frame_interval_ms: 1000 / LOOP_FPS,
-                frames: thread.held.motion ? THREAD_FLOW_FRAMES : 0,
-            }));
-        }
-    }
-
-    return Object.freeze(out);
+/** Where an envelope or a walk meets a desk: the character's column, at the desk's own mid-height (`deskAnchor()`). */
+function anchorOf(desk) {
+    return Object.freeze({ x: desk.anchor_x, y: desk.anchor_y });
 }
 
 /** § 6.2's form for one row — its class, whether it loops, and § 6.4's rendering. */
@@ -1219,10 +1404,55 @@ function form(animationId, reduce) {
 }
 
 /**
+ * One bird's flight from `from` to `to` carrying an envelope — A19's traveller and both halves of A22's
+ * portal bird share it, so the two forms cannot drift apart. `rest` is how many frames the envelope rests
+ * where the bird set it down (none when it flies into the birdhouse). With no motion it is the still
+ * envelope at `to`, shown for the moving form's own duration (§ 6.2's reduced cells).
+ *
+ * card#12445: `portal` — `{ ledge, hole, leg }` for A22's bird, `null` for A19's — puts the bird on the birdhouse's
+ * perch for § 12's *Ledge dwell* and hops it between the perch and the hole: going out it flies to the perch, stands,
+ * and hops in (flight → dwell → hop); coming in it hops out onto the perch, stands, and flies (hop → dwell → flight).
+ * `perch` carries each part's first frame from the effect's start, so the painter draws the timeline and decides
+ * none of it; `span_frames` is the whole moving form. `wait_frames` is the in-flight holder's — the frames the bird
+ * waits for the ledge another bird holds (`EffectsInFlight`) — and every part starts that much later.
+ */
+function travel(base, from, to, moving, rest, portal = null) {
+    const flight = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / ENVELOPE_PX_PER_FRAME));
+    const out = portal?.leg === 'departure';
+    const perch = portal === null ? null : Object.freeze({
+        point: portal.ledge,
+        hole: portal.hole,
+        hop: out ? 'in' : 'out',
+        dwell_start: out ? flight : HOLE_HOP_FRAMES,
+        dwell_frames: LEDGE_DWELL_FRAMES,
+        hop_start: out ? flight + LEDGE_DWELL_FRAMES : 0,
+        hop_frames: HOLE_HOP_FRAMES,
+    });
+    const atPerch = perch === null ? 0 : LEDGE_DWELL_FRAMES + HOLE_HOP_FRAMES;
+
+    return Object.freeze({
+        ...base,
+        from,
+        to,
+        // The operator's QA ruling (card#7341 scope addition 3): the traveller faces its direction of
+        // travel — card#12241's bird flips to it.
+        heading_deg: Math.atan2(to.y - from.y, to.x - from.x) * 180 / Math.PI,
+        frames: moving ? flight : 0,
+        flight_start: moving && portal !== null && !out ? atPerch : 0,
+        rest_frames: moving ? rest : 0,
+        perch: moving ? perch : null,
+        wait_frames: 0,
+        span_frames: moving ? flight + rest + atPerch : 0,
+        // The reduced form is transient too: shown for the moving form's own duration.
+        still_frames: moving ? 0 : flight + rest + atPerch,
+    });
+}
+
+/**
  * Every § 6.2 edge row this render WROTE, as the frames to draw — at § 12's loop rate, from where
  * the fact happened to where it ends. Rows are the animation set's; nothing here fires one.
  */
-function buildEffects(rows, frame, anchors, previous, extent, band, reduce, character) {
+function buildEffects(rows, frame, anchors, previous, extent, band, reduce, character, box, walking) {
     const interval = 1000 / LOOP_FPS;
     const effects = [];
     const seen = new Set();
@@ -1255,28 +1485,24 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce, char
 
             seen.add(tag);
 
-            const round = frame.coord?.[row.install_id]?.rounds.find((r) => r.post_ref === row.cause) ?? null;
-            const origin = round?.origin.agent?.resolved ? anchors.get(`${row.install_id}/${round.origin.agent.seat_id}`) ?? null : null;
+            // An install-scope post is its room's; a fleet-scope one (card#12239) is the floor's, and its
+            // ends are already `install_id/seat_id` keys, its travellers only the destinations drawn here.
+            const local = frame.coord?.[row.install_id]?.rounds.find((r) => r.post_ref === row.cause) ?? null;
+            const fleet = local === null ? (frame.coord_fleet?.rounds.find((r) => r.post_ref === row.cause) ?? null) : null;
+            const round = local ?? fleet;
+            const keyOf = (seatId) => (fleet === null ? `${row.install_id}/${seatId}` : seatId);
+            const origin = round?.origin.agent?.resolved ? anchors.get(keyOf(round.origin.agent.seat_id)) ?? null : null;
+            const destinations = round === null ? [] : fleet === null ? round.targets.desks.map((d) => d.seat_id) : round.travellers;
 
             if (id === 'A19' && round !== null && origin !== null) {
-                for (const target of round.targets.desks) {
-                    const to = anchors.get(`${row.install_id}/${target.seat_id}`) ?? null;
+                for (const target of destinations) {
+                    const to = anchors.get(keyOf(target)) ?? null;
 
                     if (to === null) {
                         continue;
                     }
 
-                    const length = Math.hypot(to.x - origin.x, to.y - origin.y);
-
-                    effects.push(Object.freeze({
-                        ...base,
-                        from: origin,
-                        to,
-                        // The operator's QA ruling (card#7341 scope addition 3): the envelope's nose
-                        // points along its direction of travel.
-                        heading_deg: Math.atan2(to.y - origin.y, to.x - origin.x) * 180 / Math.PI,
-                        frames: motion && !reduce ? Math.max(1, Math.ceil(length / ENVELOPE_PX_PER_FRAME)) : 0,
-                    }));
+                    effects.push(travel(base, origin, to, motion && !reduce, ARRIVAL_REST_FRAMES));
                 }
             }
 
@@ -1305,6 +1531,47 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce, char
             continue;
         }
 
+        if (id === 'A22') {
+            // § 6.2 A22, the portal bird (COORD-STORE.md § 6.1 rule 4): the set logs one row for a post's
+            // departure and one per arrival here, and the scene draws the post's whole crossing once —
+            // the bird leaving its origin desk for THIS floor's birdhouse and going in, and a bird arriving
+            // from it at each destination desk here, setting its envelope down. Nothing is drawn toward
+            // another floor's birdhouse: the far floor draws its own half.
+            const tag = `${id} ${row.cause}`;
+            const round = frame.coord_fleet?.rounds.find((r) => r.post_ref === row.cause) ?? null;
+            const mouth = band?.portal?.mouth ?? null;
+
+            if (seen.has(tag) || round === null || mouth === null) {
+                continue;
+            }
+
+            seen.add(tag);
+
+            // card#12445: the bird flies to and from the birdhouse's perch, and hops between it and the hole.
+            const ledge = perchPoint(band.portal.perch);
+            const hole = Object.freeze({ x: mouth.x, y: mouth.y });
+            const moving = motion && !reduce;
+
+            if (round.portal.departure) {
+                const from = anchors.get(round.origin.agent.seat_id) ?? null;
+
+                if (from !== null) {
+                    // It goes in: no envelope is left at the hole, so it has no rest.
+                    effects.push(Object.freeze({ ...travel(base, from, ledge, moving, 0, { ledge, hole, leg: 'departure' }), leg: 'departure' }));
+                }
+            }
+
+            for (const key of round.portal.arrivals) {
+                const to = anchors.get(key) ?? null;
+
+                if (to !== null) {
+                    effects.push(Object.freeze({ ...travel(base, ledge, to, moving, ARRIVAL_REST_FRAMES, { ledge, hole, leg: 'arrival' }), leg: 'arrival' }));
+                }
+            }
+
+            continue;
+        }
+
         if (id === 'A14') {
             effects.push(Object.freeze({ ...base, target: 'strip', frames: motion ? 1 : 0 }));
 
@@ -1322,7 +1589,7 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce, char
         const before = key === null ? null : previous.get(key) ?? null;
 
         if (id === 'A1' || id === 'A2') {
-            effects.push(walkEffect(base, id, now, threshold(band), motion && !reduce, character));
+            effects.push(walkEffect(base, id, now, threshold(band), motion && !reduce, character, box, walking));
 
             continue;
         }

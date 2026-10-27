@@ -1,0 +1,47 @@
+[
+  {
+    "role": "content-type",
+    "name": "Content-Type",
+    "value": "application/json"
+  },
+  {
+    "role": "user-agent",
+    "name": "User-Agent",
+    "value": "GitHub-Hookshot/synthetic"
+  },
+  {
+    "role": "delivery",
+    "name": "X-GitHub-Delivery",
+    "value": "00000000-0000-4000-8000-000000000005"
+  },
+  {
+    "role": "event",
+    "name": "X-GitHub-Event",
+    "value": "issue_comment"
+  },
+  {
+    "role": "hook-id",
+    "name": "X-GitHub-Hook-ID",
+    "value": "424242"
+  },
+  {
+    "role": "target-id",
+    "name": "X-GitHub-Hook-Installation-Target-ID",
+    "value": "777001"
+  },
+  {
+    "role": "target-type",
+    "name": "X-GitHub-Hook-Installation-Target-Type",
+    "value": "repository"
+  },
+  {
+    "role": "signature-256",
+    "name": "X-Hub-Signature-256",
+    "sign": "sha256"
+  },
+  {
+    "role": "signature-1",
+    "name": "X-Hub-Signature",
+    "sign": "sha1"
+  }
+]

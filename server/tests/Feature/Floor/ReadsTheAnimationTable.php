@@ -40,7 +40,8 @@ trait ReadsTheAnimationTable
     ];
 
     /**
-     * § 6.2's **Class** column: `['A1' => 'edge', …]`.
+     * § 6.2's **Class** column: `['A1' => 'edge', …]`. Three classes since card#12239: `edge`, `held`,
+     * and `retired` — an id kept and never renumbered, which nothing fires (A18, A21).
      *
      * ⚠ IT IS A PROJECTION OF `documentAnimationRows()` AND NOT A SECOND WALK (card#7341 step 6).
      * Step 2 needed the Class column alone; step 6's animation set restates the Animation and
@@ -105,7 +106,7 @@ trait ReadsTheAnimationTable
 
             if (count($cells) !== count($headings)
                 || preg_match('/^\*\*(A\d+)\*\*$/', $cells[0], $m) !== 1
-                || preg_match('/^`(edge|held)`$/', $cells[$at['class']], $c) !== 1) {
+                || preg_match('/^`(edge|held|retired)`$/', $cells[$at['class']], $c) !== 1) {
                 continue;
             }
 
@@ -161,7 +162,7 @@ trait ReadsTheAnimationTable
      * `working` row and `heldRowFor()` below resolves the exclusion by specificity, which is what
      * § 6.2 says the exclusion IS: A4 is A3 plus two further facts. A row whose cell states a
      * condition in some other shape parses to nothing and is not a desk row here, which is correct
-     * for A18 (a coordination object, no seat) and would be loud for anything else.
+     * for a `retired` row and would be loud for anything else.
      *
      * @return array<string, array<string, mixed>>
      */

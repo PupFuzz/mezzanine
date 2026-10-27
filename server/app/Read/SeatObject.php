@@ -63,10 +63,10 @@ final class SeatObject
         $longest = SeatFacts::longestOpenCall($state);
         $session = SeatFacts::session($state);
         $subagents = SeatFacts::openSubagents($seatRef);
-        // § 8.2.1's `idle_nudge_after_s` (card#9418): the horizon this seat resolves to. The record
-        // contract (rt#478 ask 2) makes it the RESOLVED per-seat value, "seat override else install
-        // default; where it comes from is ours" — this install has no per-seat override, so every
-        // seat resolves to the configured install value (null when unset or malformed —
+        // § 8.2.1's `idle_nudge_after_s` (card#9418): the horizon this seat resolves to. The contract
+        // recorded on the card makes it the RESOLVED per-seat value: a per-seat override where one
+        // exists, else the install default, resolved on this side — this install has no per-seat
+        // override, so every seat resolves to the configured install value (null when unset or malformed —
         // `IdleHorizon`). CONFIGURATION, not state, so it is read
         // here and never fingerprinted: § 6.5 names why it rides no delta.
         $idleNudgeAfterS = IdleHorizon::seconds();
@@ -84,7 +84,7 @@ final class SeatObject
             // card#9418: the server-clock instant the fold entered `idle`, null on every other
             // state — written on the edge by `StateRecompute`, published here as stored.
             'idle_since' => Clock::wire($state->idle_since),
-            // ⛔ ABSENT, NOT NULL, WHEN NO HORIZON IS DECLARED (rt#479): a consumer tells a declared
+            // ⛔ ABSENT, NOT NULL, WHEN NO HORIZON IS DECLARED (card#9418): a consumer tells a declared
             // horizon from an undeclared one by the key's presence, so no default is ever emitted.
             // Snapshot and detail only — § 6.5 keeps it out of the delta.
             ...($idleNudgeAfterS === null ? [] : ['idle_nudge_after_s' => $idleNudgeAfterS]),
@@ -174,6 +174,10 @@ final class SeatObject
             'badges' => Badges::render($state),
             'badges_since' => Clock::wire(Badges::since($state)),
             'enabled' => $state->enabled === null ? null : (bool) $state->enabled,
+            // card#12239: the seat's DECLARED roundtable name and its check, verbatim (§ 8.2.1) — the
+            // declaration a FLEET-scope coordination object joins through (§ 8.3.3 rule 1's fleet arm).
+            'roundtable_agent_name' => $state->roundtable_agent_name,
+            'roundtable_agent_name_check' => $state->roundtable_agent_name_check,
             // § 8.2.1: the seat's DECLARATION and its check's outcome, carried VERBATIM — this plane
             // performs no check of its own and re-derives neither. Both are null before the first
             // heartbeat; the name is also null on a seat that declares none, and the check is what

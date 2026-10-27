@@ -5,11 +5,15 @@
 # ⚑ VENDORED, NOT AUTHORED HERE — same provenance, same rule, as the script it tests:
 # everything from `set -uo pipefail` down is a copy of
 # PupFuzz/agent-board-framework `bin/promote-cards-by-token.selftest.sh` at commit
-# e2f131f796baa93a5aa9cec620969bcaa21ac7fe, EXCEPT ONE DECLARED SITE, the selftest half of the
-# mover's declared site (3) (card#11527): the `foreign` fixture helper, the `%20id=` stub key,
-# the control card `card 1 13 93` in reset_fixtures, case 6's skip assertions, and cases 9b,
-# 9c and 9d — located by the fragments `9c. A 403 card read is judged` and `9d. A 200 that does
-# not carry the fields`. Fix defects upstream and re-vendor. Paths and `card#NNNN` references
+# e2f131f796baa93a5aa9cec620969bcaa21ac7fe, EXCEPT THE DECLARED SITES NAMED HERE. One is the selftest
+# half of the mover's declared site (3) (card#11527): the `foreign` fixture helper, the `%20id=`
+# stub key, the control card `card 1 13 93` in reset_fixtures, case 6's skip assertions, and cases
+# 9b, 9c and 9d — located by the fragments `9c. A 403 card read is judged` and `9d. A 200 that
+# does not carry the fields`. The other is card#12260's: commit subjects in the fixtures that cite
+# a coordination-thread number, and this public repository carries no reference to the fleet's
+# private coordination repository, so each reads `ref #N` instead — still a non-card `#N` token
+# beside a real card token, which is all each case exercises. Located by the fragments
+# `(card#101, ref #9)` and `(card#5085, ref #148)`. Fix defects upstream and re-vendor. Paths and `card#NNNN` references
 # inside the body resolve in THAT repo, not this one, except card#11527.
 # ⚑ AND THAT CLAIM IS CHECKED, not asserted: `bin/vendor-pin-check.sh` pins the sha256 of this
 # file's body and runs on EVERY PR (the `card-token-lint` workflow). Any edit below reds CI
@@ -177,7 +181,7 @@ gc "baseline"
 git -C "$GFX" tag v0.0.1
 BASE_SHA="$(git -C "$GFX" rev-parse HEAD)"
 git -C "$GFX" checkout -q -b rel
-gc "feat: do a thing (card#101, roundtable #9) (#7)"
+gc "feat: do a thing (card#101, ref #9) (#7)"
 gc "docs: adjust the thing (card#102) (#8)"
 gc "chore: mention card4 in prose (#10)"       # near-miss: must WARN, must not correlate
                                                # (single-digit glued — below the DL-233
@@ -760,7 +764,7 @@ card-123-foo|123
 Fix widget (Card#12)|12
 feature/card-3639-tag-coverage|3639
 feature/card#88-fix|88
-refactor: hoist temp-dir cleanup across selftests (card#5085, roundtable #148) (#473)|5085
+refactor: hoist temp-dir cleanup across selftests (card#5085, ref #148) (#473)|5085
 card#3|3
 card42|42
 card123|123

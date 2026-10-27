@@ -44,7 +44,7 @@ server/                     the Laravel host + MFA-gated shell   ← exists
 server/public/js/            the pages' ES modules — floor/, lobby/, desk/, wire/ (the camera: wire/camera.js)
 resources/characters/       the creature generator (first-party, vector) ← exists
 resources/floor/            the floor's themes (first-party, vector), its tileset of kinds and the shipped default map ← exists
-fleet-reporter/             cross-platform hook bundle + by-hand Linux install runbook
+fleet-reporter/             cross-platform hook bundle + Linux install runbook, script and agent guide
 docs/                       design notes, feed schema, CHANGELOG, ATTRIBUTION
 docs/changelog/             archived releases, one file per tag (v0.2.0.md, …)
 bin/, tools/                prod deploy (bin/deploy.sh), kanban + design-doc
@@ -215,6 +215,25 @@ change keeps its old `Mezzanine` label, and so does one enrolled before a host c
 rename the entry in the authenticator app, or enrol again with **Move to a new authenticator**
 (below).
 
+### Remembering a browser
+
+The two-factor code page has a **Remember this browser for 30 days** box on its code form and on its recovery-code form.
+Tick it when you enter a code or a recovery code, and that browser signs **that account** in on its
+password alone for the next 30 days, counted from the tick; using it does not extend the 30 days.
+Every other browser, and any other account on that browser, is still asked for a code.
+
+An account's remembered browsers are all forgotten when its password changes, when its second factor
+is reset by email, disabled, re-enrolled or moved to a new authenticator, and when the account is
+retired. The next sign-in on each of them asks for a code again.
+
+The browser holds a random token in a cookie marked `Secure`, `HttpOnly` and `SameSite=Lax`; the
+host stores only a hash of it, in the `remembered_browsers` table. Because the cookie is `Secure`, a
+browser keeps it only over HTTPS. Like every cookie this application sets, it is encrypted with
+`APP_KEY`. To forget every remembered browser at once, empty the `remembered_browsers` table; rotating
+`APP_KEY` does the same only when the old key is left out of `APP_PREVIOUS_KEYS`, which keeps old
+cookies readable. `App\Auth\RememberedBrowser`
+owns the mechanism and the 30-day constant.
+
 ### Losing your authenticator
 
 **Two ways back, and the first needs nothing from the host.**
@@ -262,8 +281,10 @@ observer is refused it with a `403` and the dashboard does not link it (card#941
 edit, retire), **agents** (read seat state, the `mezzanine:retire` operator act, and the
 **retired seats** record — a removed seat's desk goes from the floor immediately, so the console is
 where *who retired it, when and why* lives, `card#9078`), **floors** (each room's Tiled map: how
-many desks it has and where they sit, `card#9085`) and the **building layout** (which rooms share a
-floor, what each floor is called, and where each room is drawn on a planned one, `card#9208`).
+many desks it has and where they sit, `card#9085`), the **building layout** (which rooms share a
+floor, what each floor is called, and where each room is drawn on a planned one, `card#9208`) and
+**seat tokens** (issue a seat's reporter token, shown once to copy, and revoke one later,
+`card#12331`).
 Pinning a named seat to a chosen desk was ruled out on `card#9071` (2026-09-12) because it would
 store a fact `docs/design/FLOOR.md § 3.2` derives — and a desk object carrying any property but
 `reserved_for` is refused at the write so that a seat's name cannot arrive as one. `reserved_for`
@@ -302,8 +323,28 @@ the first time an account must exist that may NOT administer other accounts — 
 with the operator's ruling on card#9415. `server/routes/admin.php` carries the same account beside
 the middleware.
 
-⛔ **There is no "add an agent" and no "delete a user", and both absences are deliberate.** A seat
-exists because it *reported* (`docs/design/FLOOR.md § 3.4`); an account stops working by being
+**A seat is added on the Seat tokens page** (`/admin/tokens`, card#12331). It asks for your password
+again before it opens. Type the install id and the seat id — a new one creates the install and the
+seat — and the page shows the seat's reporter token once: copy it into the seat's reporter config
+(`fleet-reporter/INSTALL-LINUX.md` Step 2) right away, because only its SHA-256 is kept and the page
+cannot show it again. The seat is on the floor from that moment, as *no data yet*, until its first
+batch (`docs/design/FLOOR.md § 3.4`). A seat that already holds a token gets a second one beside it,
+which is a rotation: revoke the old prefix on the same page once the seat's config holds the new one.
+A revoked token is refused on the seat's next request, and the list keeps who revoked it and when;
+a revocation takes no reason. A retired seat is refused a token; its replacement takes a new seat id. The same act runs from a
+shell as `php artisan mezzanine:ingest-token:issue <install_id> <seat_id>` and
+`mezzanine:ingest-token:revoke <prefix>`.
+
+**To install the reporter on a Linux seat, ask the seat's Claude Code agent in one sentence**, for
+example *"Install the Mezzanine reporter from github.com/PupFuzz/mezzanine on this machine."* The agent
+follows [`fleet-reporter/AGENT-INSTALL.md`](fleet-reporter/AGENT-INSTALL.md): it asks for the site's URL
+and a seat name, runs `fleet-reporter/install.sh`, has you issue the seat's token on the Seat tokens page
+and type it at a hidden prompt, so the token never passes through the agent, and finishes when the site
+has accepted the seat's first batch and reports its build current. No coordination framework is needed
+on the seat. The script runs the blocks of `fleet-reporter/INSTALL-LINUX.md`, which is also the
+procedure by hand.
+
+⛔ **There is no "delete a user", and the absence is deliberate.** An account stops working by being
 retired, and its record survives so that everything it did still resolves.
 
 ### The board card on a desk
@@ -349,6 +390,48 @@ it on:
 
 Until the board and the bridge carry live comment delivery (`docs/design/BOARD-TASK.md § 15.2` lists
 the three conditions), a comment reaches the agent the next time it reads its card.
+
+### Coordination posts on the floor
+
+When one agent posts to another on a coordination repository, the floor draws it as a message: a bird
+carries an envelope from the sender's desk to each recipient's desk, and a post to everyone sends one ring
+of notes out from the sender. Nothing stays drawn after a message, and a post from or to an agent with no
+desk in this building draws nothing (`docs/design/COORD-STORE.md`, which owns every rule below). Every
+floor's back wall carries a birdhouse right of the clock: a post between desks on different floors flies
+into the sender's floor's birdhouse and out of the recipient's, so each floor shows its own half. A post is
+drawn once; an end the floor cannot place on a desk is written to the page's event log with the reason.
+
+Mezzanine receives the posts itself, as GitHub webhook deliveries to `POST /api/ingest/github/{hook}`.
+Each repository gets **one binding**: `install` scope for an install's own coordination repository, or
+`fleet` scope for a repository whose threads span installs. Issuing one is an **operator act at your own
+terminal**, because the secret must stay out of every transcript and command line:
+
+```sh
+# on the Mezzanine host, as the deploy user; both output paths outside any git checkout
+php artisan mezzanine:coord-hook:issue <owner>/<repo> --scope=fleet --shared-identity=true \
+    --by=<you> --secret-out ~/coord-secret --hook-request-out ~/coord-hook.json
+#   …or --scope=install --install=<install_id> for an install's own repository
+
+# register the hook with YOUR GitHub credential (admin on that repository)
+gh api repos/<owner>/<repo>/hooks --input ~/coord-hook.json
+
+shred -u ~/coord-secret ~/coord-hook.json
+```
+
+The command prints the hook's URL and the secret's 8-character prefix, and writes the secret only to the
+two `0600` files; it refuses a path inside a git checkout and a repository that already has a binding.
+To rotate, add a second secret with `--hook=<mzh_…>` (a third is refused while two are live), re-key the
+hook on GitHub, then `php artisan mezzanine:coord-hook:revoke <mzh_…> --secret=<prefix>`; revoking
+without `--secret` ends the binding. `GET /api/fleet/health` counts the route's traffic
+(`coord_delivery_received.<hook>`, `coord_signature_invalid`, `coord_delivery_duplicate`,
+`coord_delivery_ignored.<event>`, and the derivation's counters), and the store keeps one digest row per
+delivery for 14 days and nothing of its text.
+
+A desk joins a post through a **declaration in its seat's reporter config**: `protocol_agent_name` for
+posts on its install's own repository, and `roundtable_agent_name` — the identity the seat posts under on
+the fleet's cross-install repository, which must equal `cross_project.identity` in the coordination config
+`$COORD_CONFIG` names — for fleet-scope posts (`fleet-reporter/INSTALL-LINUX.md`'s config table). Only a
+`checked` roundtable name joins a desk; the seat object shows the check's state.
 
 ### The idle horizon
 

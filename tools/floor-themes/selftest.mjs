@@ -573,7 +573,8 @@ function surfacesLeg(o) {
 /** § 10.6's contrast table's floor-dependent columns, PRINTED for every theme over its surfaces — gating nothing. */
 function printScreenInk(o) {
     const css = readFileSync(o.t.css, 'utf8');
-    const screens = [['lit', token(css, 'state-ink'), token(css, 'scene-monitor-on')], ['dimmed', token(css, 'scene-screen-ink-dim'), token(css, 'scene-monitor-dim')]];
+    // The lit screen alone: since card#12187 no state draws a dimmed screen (FLOOR.md § 10.6).
+    const screens = [['lit', token(css, 'state-ink'), token(css, 'scene-monitor-on')]];
 
     for (const [name, theme] of Object.entries(o.themes)) {
         for (const [screen, ink, fill] of screens) {
@@ -632,8 +633,10 @@ const PLANTS = [
         (t) => edit(t.tileset, '<property name="kind" value="cushion"/>', '<property name="note" value="cushion"/>')],
     ['the palette drifts: the house floor back to direction A\'s', 'drift', "floor: the table states #d9c7a5, the module's PALETTE holds #c99a6b",
         (t) => edit(THEME(t), "floor: Object.freeze({ boards: '#d9c7a5' }),", "floor: Object.freeze({ boards: '#c99a6b' }),")],
+    // card#12241 widened the zone 60 px for the birdhouse and raised the clock to the band's top, so the plant
+    // grows the side margin far enough (160 px) for the first window's surround to reach the clock's face.
     ['a surround too wide', 'band', "surround meets the clock's face",
-        (t) => edit(join(t.js, 'floor', 'scene.js'), 'export const SURROUND = Object.freeze({ side: 32,', 'export const SURROUND = Object.freeze({ side: 64,')],
+        (t) => edit(join(t.js, 'floor', 'scene.js'), 'export const SURROUND = Object.freeze({ side: 32,', 'export const SURROUND = Object.freeze({ side: 160,')],
     ['the dark fallback: --scene-floor as the drawing\'s --ground', 'surfaces', 'the fallback --scene-floor #171a28',
         (t) => edit(t.css, '--scene-floor: #e8dcc4;', '--scene-floor: #171a28;')],
     ['text in a theme: the seat\'s id in the chair', 'wellFormedness', 'chair — a <text>',

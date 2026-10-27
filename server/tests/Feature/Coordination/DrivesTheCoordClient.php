@@ -51,6 +51,9 @@ trait DrivesTheCoordClient
      * document from its start and then finds "some field rows in there".
      * `CoordMemberSetMatchesTheDocumentTest`'s CONTROL 1 plants that rename.
      *
+     * `coord_thread` is still parsed: D2 keeps its table as a specified-and-not-published object, and a
+     * parse that skipped it could not tell its rows from `coord_round`'s.
+     *
      * @return array{coord_thread: list<string>, coord_round: list<string>}
      */
     protected function documentMembers(?string $md = null): array
@@ -84,9 +87,41 @@ trait DrivesTheCoordClient
     }
 
     /**
+     * The top-level member names of every worked JSON example in D2 § 8.3.3 that carries `$object`,
+     * in order — an INDEPENDENT reading of the object's member set (the examples are prose, the table
+     * is the declaration), so the table parse is checked against the document rather than against a
+     * figure written here.
+     *
+     * @return list<list<string>>
+     */
+    protected function workedExampleMembers(string $object, ?string $md = null): array
+    {
+        $md ??= $this->fleetStateMd();
+        $open = strpos($md, self::S833_OPEN);
+        $close = $open === false ? false : strpos($md, self::S833_CLOSE, $open);
+
+        if ($open === false || $close === false) {
+            return [];
+        }
+
+        preg_match_all('/```json\n(.*?)```/s', substr($md, $open, $close - $open), $blocks);
+        $out = [];
+
+        foreach ($blocks[1] as $block) {
+            $decoded = json_decode($block, true);
+
+            if (is_array($decoded) && is_array($decoded[$object] ?? null)) {
+                $out[] = array_keys($decoded[$object]);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * The worked `coord.thread` of D2 § 8.3.3, transcribed field for field — a `closed`
-     * delivery that names nobody, whose `posted_at` is null and whose `participants` carries
-     * `all` unexpanded.
+     * delivery that names nobody. Since card#12239 the type is specified and NOT published (D2 § 8.3),
+     * so the one use left for it is to show a client that is handed one draws nothing for it.
      *
      * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
@@ -97,7 +132,8 @@ trait DrivesTheCoordClient
             't' => 'coord.thread',
             'server_time' => '2026-08-27T16:02:11.802Z',
             'coord_thread' => array_merge([
-                'thread_ref' => 'AIMLA-org/aimla-coordination#742',
+                'thread_ref' => 'synthetic-org/coordination-fixture#900742',
+                'scope' => 'install',
                 'install_id' => 'aimla',
                 'lifecycle' => 'closed',
                 'carrier' => 'announce',
@@ -113,7 +149,9 @@ trait DrivesTheCoordClient
     }
 
     /**
-     * The worked `coord.round` of D2 § 8.3.3, transcribed field for field.
+     * The worked `coord.round` of D2 § 8.3.3, transcribed field for field — except `targets`, which
+     * this rig gives three named members so a fan-out has something to resolve (the worked post is a
+     * `to:all`, whose `targets` is `null`).
      *
      * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
@@ -124,8 +162,9 @@ trait DrivesTheCoordClient
             't' => 'coord.round',
             'server_time' => '2026-08-27T09:14:03.501Z',
             'coord_round' => array_merge([
-                'post_ref' => 'AIMLA-org/aimla-coordination#742',
-                'thread_ref' => 'AIMLA-org/aimla-coordination#742',
+                'post_ref' => 'synthetic-org/coordination-fixture#900742',
+                'thread_ref' => 'synthetic-org/coordination-fixture#900742',
+                'scope' => 'install',
                 'install_id' => 'aimla',
                 'from' => 'pm',
                 'attribution' => 'resolved',

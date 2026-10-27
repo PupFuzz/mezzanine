@@ -402,8 +402,9 @@ export function deskModel(seat, ages, facts = {}, options = {}) {
         // Q0: the currency label as the desk draws it (`deskCurrency`).
         desk_currency: deskCurrency(currency, seat),
         dark,
+        // § 7.4: non-null exactly while the badge is up — the layout fades the desk's art on it (card#12346).
         lag: lagged
-            ? { overlay: 'hatched', line: lagLine(seat, facts.derivation_stamp ?? null) }
+            ? { line: lagLine(seat, facts.derivation_stamp ?? null) }
             : null,
         config_note: configInvalid ? SENDING_NOTHING : null,
         monitor: monitor(desk, seat, label),

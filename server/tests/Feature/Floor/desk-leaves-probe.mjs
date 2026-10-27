@@ -174,6 +174,9 @@ const variantKey = (v) => `${v.missing ? 'unconfirmed' : 'confirmed'}${v.stilled
 // model and the variant by the RULINGS' words, never by calling the layout. A row with no ruling fails.
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
 const TREATMENT = ['config_invalid', 'fold_lag'];
+// FLOOR.md § 13 row 75 (card#11818 part 2, the operator's ruling (C) of 2026-10-25 amending Q1 (B)'s order): `update_required` follows the
+// treatment badges and precedes every other badge.
+const PINNED = ['update_required'];
 const BADGES_ON_DESK = 2;
 const INTERN_CAP = 8;
 const rawOf = (m, field) => m.unrecognised.find((u) => u.startsWith(`${field}: `))?.slice(field.length + 2) ?? null;
@@ -202,12 +205,16 @@ function nonRawCurrency(m) {
     return m.currency_label !== null && raw !== null ? m.currency_label.replace(`was: ${raw}`, 'was: unrecognised') : m.currency_label;
 }
 
-/** Q1 (B) + Q0: the badge row's ORDER — treatment badges, then recognised badges in the wire's order. */
+/** Q1 (B) + row 75 + Q0: the badge row's ORDER — treatment badges, then `PINNED`, then recognised badges in the wire's order. */
 function badgeOrder(m) {
     const unknown = new Set(m.unrecognised.filter((u) => u.startsWith('badges: ')).map((u) => u.slice(8)));
     const known = m.badges.filter((b) => !unknown.has(b));
 
-    return [...known.filter((b) => TREATMENT.includes(b)), ...known.filter((b) => !TREATMENT.includes(b))];
+    return [
+        ...known.filter((b) => TREATMENT.includes(b)),
+        ...known.filter((b) => PINNED.includes(b)),
+        ...known.filter((b) => !TREATMENT.includes(b) && !PINNED.includes(b)),
+    ];
 }
 
 /**
@@ -218,6 +225,10 @@ const flagN = (m) => m.unrecognised.length + badgeOrder(m).length - Math.min(BAD
 
 const internsMore = (m) => (m.side_table.more ?? 0) + Math.max(0, m.side_table.stools.length - INTERN_CAP);
 const art = (v) => !v.placeholder;
+/** § 7.4's fade (card#12346): the art pass a `fold_lag` desk draws faded — § 10.6's art kinds, or F14's placeholder. */
+const fadedArt = (m, v) => (art(v)
+    ? ['chair', ...(m.character ? ['character'] : []), 'desk-sprite', 'monitor-frame', 'desk-props', 'side-table']
+    : ['placeholder']).join(' ');
 
 export const EXPECTED = [
     { kind: 'placeholder', when: (m, v) => v.placeholder, value: () => 'present', ruling: '§ 9 F14 — the placeholder stands in for the images only (spec)' },
@@ -245,11 +256,11 @@ export const EXPECTED = [
     { kind: 'label', when: (m) => nonRawLabel(m) !== null, value: nonRawLabel, ruling: 'the desk\'s state text — Q1 (B)\'s carrier of the state (FLAGGED for the operator at B1\'s checkpoint); Q0 — non-raw' },
     { kind: 'currency', when: (m) => nonRawCurrency(m) !== null, value: nonRawCurrency, ruling: 'Q0 (a) — warning treatments: § 7.3\'s currency label (FLAGGED for the operator at B1\'s checkpoint)' },
     { kind: 'lag', when: (m) => (m.lag?.line ?? null) !== null, value: (m) => m.lag.line, ruling: 'Q0 (a) — warning treatments: § 7.4\'s lag line (FLAGGED for the operator at B1\'s checkpoint)' },
-    { kind: 'lag-overlay', when: (m) => m.lag !== null, value: () => 'present', ruling: 'Q0 (a) — warning treatments: § 7.4\'s hatch' },
+    { kind: 'fold-lag.fade', when: (m) => m.lag !== null, value: fadedArt, ruling: 'Q0 (a) — warning treatments: § 7.4\'s fade of the art (the operator\'s ruling of 2026-10-25, card#12346)' },
     { kind: 'group.lighting', when: () => true, value: (m) => m.lighting, ruling: 'Q0 (a) — warning treatments: § 7.3\'s dimming' },
     { kind: 'gauge-bar', when: (m) => m.gauge.reported, value: (m) => String(m.gauge.bar), ruling: 'Q1 (B) — the context bar' },
     { kind: 'gauge-pct', when: (m) => m.gauge.reported, value: (m) => m.gauge.pct, ruling: 'Q1 (B) — the context % (the model\'s own string, criterion 8)' },
-    { kind: 'badge', when: (m) => badgeOrder(m).length > 0, value: (m) => badgeOrder(m).slice(0, BADGES_ON_DESK), ruling: 'Q1 (B) — up to two badges, treatment first; Q0 (a) — the two treatment badges; no unrecognised id' },
+    { kind: 'badge', when: (m) => badgeOrder(m).length > 0, value: (m) => badgeOrder(m).slice(0, BADGES_ON_DESK), ruling: 'Q1 (B) — up to two badges, treatment first; row 75 — `update_required` next; Q0 (a) — the two treatment badges; no unrecognised id' },
     { kind: 'flag', when: (m) => flagN(m) > 0, value: (m) => `⚠ +${flagN(m)}`, ruling: 'Q0 (a) — one flag ⚠ +N for anything else unusual (N as design § 2.2 defines it)' },
     {
         kind: 'side-table',
@@ -305,7 +316,6 @@ function adapt(desk) {
             case 'desk-sprite':
             case 'plate':
             case 'facts-plate':
-            case 'lag-overlay':
             case 'placeholder':
                 add(e.kind, 'present');
                 break;
@@ -327,6 +337,13 @@ function adapt(desk) {
                 // chip — and anything else the layout draws, which the expected set then names extra.
                 add(e.kind, typeof e.text === 'string' ? e.text : 'present');
         }
+    }
+
+    // § 7.4's fade: the kinds the layout draws faded, in its order — one entry, or none on a desk drawn at full opacity.
+    const faded = desk.elements.filter((e) => e.opacity !== undefined).map((e) => e.kind);
+
+    if (faded.length > 0) {
+        add('fold-lag.fade', faded.join(' '));
     }
 
     // The group's lighting: the placed desk's own, which `painter.js` classes the whole desk by.
@@ -681,6 +698,23 @@ function renderedList(m) {
     return deskListLines(m).map((line) => textOf(line.role, line.text));
 }
 
+/**
+ * THE BASELINE's LEAVES A LATER RULING RE-VALUED — each by its kind, its exact old value and the seats it applies to,
+ * citing the ruling. The fact is still owed by the panel and the list; what is owed is the value the ruling gave it (`to`,
+ * or `null` for a leaf owed nowhere, with the reason beside it). A leaf not named here is owed as the baseline recorded it.
+ */
+const RULED_SINCE = [
+    // card#12187, FLOOR.md decision 71: an `idle` desk's monitor is off, so its list row and drill-down read *monitor
+    // off* where the baseline's idle desk read *monitor dimmed* — the dimmed screen is retired (§ 10.6).
+    { kind: 'monitor.lit', from: 'monitor dimmed', to: 'monitor off', applies: (seat) => seat.render_state === 'idle' },
+    // …and the screen, off, draws no text. On every seat D2 can publish as `idle` that text was the label line, which the
+    // label row still carries: `idle` is entered only once no call is open (FLEET-STATE.md § 4.4's exit → `idle`, `C ==
+    // 0`) and `action` is `null` when none is (§ 8.2.1). A planted seat varies `render_state` over one body that holds
+    // an open call, so its baseline idle screen showed that call's descriptor — a seat D2 cannot produce. That one leaf
+    // is owed nowhere (`to: null`); the descriptor of any seat that CAN hold an open call is owed as recorded.
+    { kind: 'monitor-text', from: null, to: null, applies: (seat, value) => seat.render_state === 'idle' && seat.action !== null && value === (seat.action.descriptor ?? seat.action.tool_name) },
+];
+
 function ruleOne(key, entry) {
     const seat = baseline.seats[entry.seat];
     const v = entry.variant;
@@ -700,8 +734,11 @@ function ruleOne(key, entry) {
     const drawnBadges = [];
     let badgeTag = false;
 
-    for (const [kind, member, value] of entry.leaves) {
-        if (kind === 'placeholder') {
+    for (const [kind, member, recorded] of entry.leaves) {
+        const ruled = RULED_SINCE.find((r) => r.kind === kind && (r.from === null || r.from === recorded) && r.applies(seat, recorded));
+        const value = ruled === undefined ? recorded : ruled.to;
+
+        if (kind === 'placeholder' || value === null) {
             continue;
         }
 

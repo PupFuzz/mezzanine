@@ -2,8 +2,10 @@
 @section('title', 'Agents')
 @section('console')
     <p>
-        Seats reporting to this install. A seat appears here because it <em>reported</em> — there
-        is no "add an agent", by design (<code>docs/design/FLOOR.md § 3.4</code>).
+        Seats on this install. A seat exists from the moment it is provisioned — its token issued on the
+        <a href="{{ route('admin.tokens.index') }}">Seat tokens</a> page or by the CLI — and shows
+        <em>no data yet</em> until it first reports (<code>docs/design/FLOOR.md § 3.4</code>). To add an
+        agent, issue its seat a token there.
     </p>
 
     <table>

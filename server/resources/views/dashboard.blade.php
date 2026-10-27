@@ -76,12 +76,12 @@
             § 4.1's ROOM, ITS DIRECTORY AND ITS ELEVATOR — Appendix B row 24 (card#12113). `#lobby-building` is the
             drawing surface and `#lobby-room` the camera's layer in it (`public/js/wire/camera.js`, held by
             `lobby-screen.js`): `public/js/lobby/main.js` stands the drawn room in it (`building-paint.js`, the
-            elevator the one control on its wall) and the two boxes below at their rects on the room's far wall —
-            the directory at the board's inner rectangle, the building's readings under the board — all moved and
-            scaled by the camera's one transform, the boxes' text counter-scaled to the page's own size
-            (`directory.js`). The wheel or a two-finger scroll pans, Ctrl+wheel or a pinch zooms about the pointer,
-            and one finger or the mouse drags to pan (card#11045), as `#lobby-hint` says; a wheel or a drag begun over
-            the directory scrolls it while it can. ⛔ Nothing here carries a size or a clip of its own: the surface is
+            elevator the one control on its wall) and, on a surface where the board's face can be read, the two boxes
+            below at their rects on the room's far wall — the directory at the board's inner rectangle, the building's
+            readings under the board — all moved and scaled by the camera's one transform, the boxes' text
+            counter-scaled to the page's own size (`directory.js`). The wheel or a two-finger scroll pans, Ctrl+wheel
+            or a pinch zooms about the pointer, and one finger or the mouse drags to pan (card#11045), as `#lobby-hint`
+            says; a wheel or a drag begun over the directory on the board scrolls it while it can. ⛔ Nothing here carries a size or a clip of its own: the surface is
             a clipping drawing only once a full snapshot has applied (`building-scene.js`'s `surfaceStyle()`), and
             before it everything below flows in the page with its placeholders, each saying it is WAITING.
 
@@ -89,47 +89,57 @@
             (`Tests\Feature\Lobby\LobbyPageWiringTest`): a `getElementById` answering `null` is a silent no-op.
         --}}
         <div id="lobby-building" role="group" aria-label="the lobby drawing">
-            <div id="lobby-room">
-                {{--
-                    § 4.1's directory. ⛔ THE TITLE IS REQUIRED, NOT DECORATION (§ 2.1 row 5, AT-D3-15): the per-floor
-                    figures count the seats THIS CLIENT HOLDS, stated once over the list. HTML in the directory's own
-                    counter-scaled face, never a word painted into the drawn board.
-                --}}
-                <section id="lobby-directory" aria-labelledby="lobby-directory-heading">
-                    <div class="lobby-face lobby-directory-face">
-                        <h3 id="lobby-directory-heading"><span class="lobby-directory-title">FLOOR DIRECTORY</span> <span>— counts the seats this client holds</span></h3>
-                        <ol id="lobby-floors" class="lobby-plaques" aria-labelledby="lobby-directory-heading" data-camera-scrolls>
-                            <li>waiting for the fleet snapshot</li>
-                        </ol>
-                    </div>
-                </section>
+            <div id="lobby-room"></div>
+        </div>
+        {{--
+            ⭐ THE TWO BOXES STAND HERE, IN THE PAGE's FLOW, AND SHIP `data-home="flow"` (§ 4.1, decision 72; card#12187).
+            `public/js/lobby/directory.js`'s `dockingEntry()` — the one writer of where they stand — moves them into
+            `#lobby-room`, onto the board, only while the room is drawn and the board's fitted face is not under § 12's
+            *Directory dock width*, writing `data-home="board"`; under it they stay here, docked under the room
+            (`data-home="dock"`). Shipped as `flow`, so the placeholders are styled for the page's ground from the first
+            paint, before and without any script.
+        --}}
+        {{--
+            § 4.1's directory. ⛔ THE TITLE IS REQUIRED, NOT DECORATION (§ 2.1 row 5, AT-D3-15): the per-floor
+            figures count the seats THIS CLIENT HOLDS, stated once over the list. HTML in the directory's own
+            counter-scaled face, never a word painted into the drawn board.
+        --}}
+        <section id="lobby-directory" aria-labelledby="lobby-directory-heading" data-home="flow">
+            <div class="lobby-face lobby-directory-face">
+                <h3 id="lobby-directory-heading"><span class="lobby-directory-title">FLOOR DIRECTORY</span> <span>— counts the seats this client holds</span></h3>
+                <ol id="lobby-floors" class="lobby-plaques" aria-labelledby="lobby-directory-heading" data-camera-scrolls>
+                    <li>waiting for the fleet snapshot</li>
+                </ol>
+            </div>
+        </section>
 
-                {{--
-                    § 4.1's readings under the board: the building's own rows, unchanged in source and wording — the
-                    feed with its resync count and the fleet totals (§ 4.1 row 3, read from the wire), the THREE
-                    SEPARATE INDICATORS, never one aggregate (D2 § 8.2.4), the ingest line and the membership stamp
-                    (§ 2.3), the discrepancy sentence (§ 4.1 row 4), and the client's own event record (§ 5.5).
-                --}}
-                <div id="lobby-readings">
-                    <div class="lobby-face lobby-readings-face">
-                        <section class="lobby-reading" aria-labelledby="lobby-health-heading" data-camera-scrolls>
-                            <h3 id="lobby-health-heading">Building readings</h3>
-                            <p><span id="lobby-feed">feed: waiting for the stream</span></p>
-                            <p><span id="lobby-resyncs">resyncs: waiting for the stream</span></p>
-                            <p><span id="lobby-totals">waiting for the fleet snapshot</span></p>
-                            <p><span id="lobby-store">store: waiting for the fleet snapshot</span></p>
-                            <p><span id="lobby-derivation">derivation: waiting for the fleet snapshot</span></p>
-                            <p><span id="lobby-sweep">sweep: waiting for the fleet snapshot</span></p>
-                            <p><span id="lobby-ingest">ingest: waiting for the fleet snapshot</span></p>
-                            <p><span id="lobby-stamp">waiting for the fleet snapshot</span></p>
-                            <p id="lobby-discrepancy" role="status" hidden></p>
-                        </section>
-                        <section class="lobby-reading" aria-labelledby="lobby-log-heading" data-camera-scrolls>
-                            <h3 id="lobby-log-heading">Event log</h3>
-                            <ol id="lobby-log" aria-labelledby="lobby-log-heading" hidden></ol>
-                        </section>
-                    </div>
-                </div>
+        {{--
+            § 4.1's readings under the board: the building's own rows, unchanged in source and wording — the
+            feed with its resync count and the fleet totals (§ 4.1 row 3, read from the wire), the THREE
+            SEPARATE INDICATORS, never one aggregate (D2 § 8.2.4), the ingest line and the membership stamp
+            (§ 2.3), the discrepancy sentence (§ 4.1 row 4), and the client's own event record (§ 5.5).
+            First, hidden until it is needed: the statement that the lobby's script could not start
+            (card#12319), which `public/js/lobby/main.js` writes in place of the WAITING placeholders.
+        --}}
+        <div id="lobby-readings" data-home="flow">
+            <div class="lobby-face lobby-readings-face">
+                <section class="lobby-reading" aria-labelledby="lobby-health-heading" data-camera-scrolls>
+                    <h3 id="lobby-health-heading">Building readings</h3>
+                    <p id="lobby-start-failure" role="alert" hidden></p>
+                    <p><span id="lobby-feed">feed: waiting for the stream</span></p>
+                    <p><span id="lobby-resyncs">resyncs: waiting for the stream</span></p>
+                    <p><span id="lobby-totals">waiting for the fleet snapshot</span></p>
+                    <p><span id="lobby-store">store: waiting for the fleet snapshot</span></p>
+                    <p><span id="lobby-derivation">derivation: waiting for the fleet snapshot</span></p>
+                    <p><span id="lobby-sweep">sweep: waiting for the fleet snapshot</span></p>
+                    <p><span id="lobby-ingest">ingest: waiting for the fleet snapshot</span></p>
+                    <p><span id="lobby-stamp">waiting for the fleet snapshot</span></p>
+                    <p id="lobby-discrepancy" role="status" hidden></p>
+                </section>
+                <section class="lobby-reading" aria-labelledby="lobby-log-heading" data-camera-scrolls>
+                    <h3 id="lobby-log-heading">Event log</h3>
+                    <ol id="lobby-log" aria-labelledby="lobby-log-heading" hidden></ol>
+                </section>
             </div>
         </div>
         @include('partials.camera-hint', ['id' => 'lobby-hint'])

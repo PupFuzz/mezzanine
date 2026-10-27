@@ -1,0 +1,21 @@
+{
+  "feed_version": 1,
+  "t": "coord.round",
+  "server_time": "2026-01-02T03:26:05.000Z",
+  "coord_round": {
+    "post_ref": "synthetic-org/roundtable-fixture#900022",
+    "thread_ref": "synthetic-org/roundtable-fixture#900022",
+    "scope": "fleet",
+    "install_id": null,
+    "from": "pm-solo",
+    "attribution": "resolved",
+    "to": [
+      "all"
+    ],
+    "targets": null,
+    "carrier": null,
+    "declares_close": false,
+    "posted_at": "2026-01-02T03:26:05.000Z",
+    "received_at": "2026-01-02T03:26:05.000Z"
+  }
+}

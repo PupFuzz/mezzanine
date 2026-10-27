@@ -149,7 +149,7 @@ class TheDeskIsReLaidTest extends TestCase
     public function test_red_the_trail_missing_or_not_growing(): void
     {
         foreach ([
-            'the trail not painted' => ['../floor/painter.js', "                node('circle', { cx: c.x, cy: c.y, r: c.r, class: 'bubble-trail' }, g);\n", '', 'paints 0 circles'],
+            'the trail not painted' => ['../floor/painter.js', "                node('circle', { cx: c.x, cy: c.y, r: c.r, class: 'bubble-trail' }, group);\n", '', 'paints 0 circles'],
             'two circles only' => ['../floor/desk-layout.js', 'export const TRAIL_RADII = Object.freeze([2, 3, 4]);', 'export const TRAIL_RADII = Object.freeze([2, 3]);', 'paints 2 circles'],
             'largest at the creature' => ['../floor/desk-layout.js', 'export const TRAIL_RADII = Object.freeze([2, 3, 4]);', 'export const TRAIL_RADII = Object.freeze([4, 3, 2]);', 'does not grow'],
             'one size' => ['../floor/desk-layout.js', 'export const TRAIL_RADII = Object.freeze([2, 3, 4]);', 'export const TRAIL_RADII = Object.freeze([3, 3, 3]);', 'does not grow'],
@@ -202,14 +202,6 @@ class TheDeskIsReLaidTest extends TestCase
 
             $this->assertNotSame([], array_filter($defects, fn (string $d): bool => str_contains($d, $says)), "RED ({$what}) did not fail the table leg");
         }
-    }
-
-    public function test_red_the_dimmed_screen_todays_defect(): void
-    {
-        $dir = $this->mutatedModules(['../floor/painter.js', '.t-monitor-text.lit-dimmed{fill:var(--scene-screen-ink-dim)}', '.t-monitor-text.lit-dimmed{fill:var(--scene-ink)}']);
-
-        $this->assertNotSame([], array_filter($this->inkDefects(dirname($dir).'/floor/painter.js'), fn (string $d): bool => str_contains($d, 'dimmed')),
-            'RED (the dimmed screen in the scene\'s ink, 2.25:1) did not fail the screen leg');
     }
 
     public function test_red_the_plate_in_the_facts_ink(): void
@@ -465,7 +457,8 @@ class TheDeskIsReLaidTest extends TestCase
 
         $defects = [];
 
-        foreach (['on' => 'lit-on', 'dimmed' => 'lit-dimmed'] as $lit => $class) {
+        // The lit screen alone: since card#12187 no state draws a dimmed screen (FLOOR.md § 10.6), so its RED is retired.
+        foreach (['on' => 'lit-on'] as $lit => $class) {
             $ink = preg_match('/\.t-monitor-text\.'.$class.'\{fill:var\(--([a-z0-9-]+)\)\}/', $style, $a) === 1 ? $a[1] : null;
             $fill = preg_match('/\.monitor\.'.$class.'\{fill:var\(--([a-z0-9-]+)\)\}/', $style, $b) === 1 ? $b[1] : null;
 

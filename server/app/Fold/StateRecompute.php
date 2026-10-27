@@ -312,9 +312,13 @@ class StateRecompute
             $update['last_activity_kind'] = $e->kind;
         }
 
-        // The ordering key's own high-water mark, plus D1 § 10.2's three counters. Advanced only
-        // on a greater `(seq_epoch, seq)`: a batch older than the seat's newest processed `seq` is
-        // "history, not a conflict" and must not drag the mark backwards or invent a gap.
+        // The ordering key's own high-water mark — the APPLIED mark `delivery.last_seq` publishes —
+        // plus D1 § 10.2's `seq_epoch_change` and `seq_collision`. Advanced only on a greater
+        // `(seq_epoch, seq)`: a batch older than the seat's newest processed `seq` is "history, not a
+        // conflict" and must not drag the mark backwards. `seq_gap` is not counted here: a gap is a
+        // property of what the site RECEIVED, duplicates included, and the fold sees only stored
+        // rows — the ingest counts it once per accepted batch (`BatchWriter::receivedGap()`,
+        // card#12210).
         $epochChanged = $state->last_event_seq_epoch !== null && $state->last_event_seq_epoch !== $e->seqEpoch;
 
         if ($epochChanged) {
@@ -322,14 +326,6 @@ class StateRecompute
             // deliberately not alarmed. Without a new epoch a reset counter would look like a
             // 48,000-event gap.
             Counters::seat($e->seatRef, 'seq_epoch_change', at: $e->receivedAt);
-        }
-
-        if ($state->last_event_seq_epoch === $e->seqEpoch && $e->seq > (int) $state->last_event_seq + 1) {
-            // A real gap: events lost AFTER the flusher counted them. This raises this plane's own
-            // `seq_gap` badge and NEVER D1's `lossy` — `lossy` means the reporter discarded events
-            // and counted them, a server-side gap means we did not receive what the reporter says
-            // it sent, and writing both onto one member makes them indistinguishable.
-            Counters::seat($e->seatRef, 'seq_gap', $e->seq - (int) $state->last_event_seq - 1, $e->receivedAt);
         }
 
         // An ordering-key COLLISION, which `D2-MUST` #4 forbids and this checks rather than
@@ -469,8 +465,12 @@ class StateRecompute
             'idle_since' => $this->idleSince($state, $activity, $edgeAt ?? $nowSql),
             'server_badges' => json_encode($badges),
             'badge_first_seen' => json_encode(
+                // The NEW server set over the stored row — the new set on the LEFT, because `+` keeps
+                // the left operand's key: the stored set on the left judged the map one recompute
+                // late, so a server badge carried no first-seen time (and the seat no `badges_since`)
+                // until the recompute after the one that raised it (card#11818 part 2, AT-D2-30).
                 Badges::firstSeen($state->badge_first_seen, Badges::render((object) (
-                    (array) $state + ['server_badges' => json_encode($badges)]
+                    ['server_badges' => json_encode($badges)] + (array) $state
                 )), $nowSql)
             ),
             'state_computed_at' => $nowSql,
@@ -480,7 +480,7 @@ class StateRecompute
 
     /**
      * § 8.2.1's `idle_since` — the SERVER-clock instant the seat entered `idle` (card#9418, the
-     * contract agreed with the bridge's idle watchdog on rt#478 / rt#479).
+     * contract agreed with the bridge's idle watchdog and recorded on the card).
      *
      * ⛔ AN EDGE, SO IT READS THE STORED PREVIOUS STATE, as `badge_first_seen` does for a badge's
      * onset. § 4.3's `activity_state` is a pure function of five facts and holds no memory; WHEN it

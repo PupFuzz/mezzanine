@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // THE FLOOR PAGE's CHROME, MEASURED ON A RENDERED LAYOUT — card#11045 PR-A, `docs/design/FLOOR.md` § 4.2's
 // page chrome. Node, no dependencies — but a real browser, because where a flex column puts the room and
-// where the sections below it land are a composition only a renderer produces; there is no browser on
-// the build host, so this is run by hand, like `lobby-directory.browser.mjs`.
+// where the sections below it land are a composition only a renderer produces. It is not wired in CI
+// (`tools/design/README.md` says why), so it is run by hand, like `lobby-directory.browser.mjs`.
 //
 //   node tools/design/floor-chrome.browser.mjs              # judge the shipped view and stylesheet
 //   node tools/design/floor-chrome.browser.mjs --selftest   # …and see each check red on its own planted defect

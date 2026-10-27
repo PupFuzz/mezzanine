@@ -1,47 +1,27 @@
 /**
- * The two member sets of `docs/design/FLEET-STATE.md § 8.3.3` — `coord_thread` and `coord_round`,
- * in D2's own table order.
+ * The member set of `docs/design/FLEET-STATE.md § 8.3.3`'s `coord_round` — the one coordination object
+ * this client reads — in D2's own table order.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ THIS FILE IS A RESTATEMENT AND IT IS GUARDED, NOT TRUSTED. D2 § 8.3.3 is two markdown
- * tables; a browser cannot read one, so the copy cannot be deleted. The rule for a restatement a
- * consumer cannot follow a pointer to is therefore GUARD it, and the guard is
- * `tests/Feature/Coordination/CoordMemberSetMatchesTheDocumentTest.php`, which RE-DERIVES both
- * sets from `docs/design/FLEET-STATE.md` on every run and compares them position by position, in
- * both directions. A hand-written expected list in that test would be a THIRD copy, which is how
- * two copies end up agreeing while the document says something else.
+ * ⛔ THIS FILE IS A RESTATEMENT AND IT IS GUARDED, NOT TRUSTED. D2 § 8.3.3 is a markdown table; a
+ * browser cannot read one, so the copy cannot be deleted. The guard is
+ * `tests/Feature/Coordination/CoordMemberSetMatchesTheDocumentTest.php`, which RE-DERIVES the set — its
+ * members, its order and its size — from `docs/design/FLEET-STATE.md` on every run and compares it
+ * position by position, in both directions.
  *
- * ⛔ THE ORDER IS LOAD-BEARING, not decoration. It is the order the render map of
- * `docs/design/FLOOR.md § 5.7` walks, so a set that agrees while two members have swapped places
- * is a set no comparison of SETS can see is wrong.
+ * ⛔ THERE IS NO `coord_thread` SET. Since card#12239 `coord.thread` is specified and not published
+ * (D2 § 8.3), so a member set for it here would be a client's copy of an object no wire carries.
  *
- * ⛔ THERE IS NO MEMBER SET FOR `lifecycle`, `attribution` OR `carrier` HERE, AND THAT IS A
- * DECISION RATHER THAN AN OMISSION. D2 declines to type them as enums — "minted and consumed
- * inside one deployment, so there is nothing for that machinery to route" — and § 5.7 renders
- * each verbatim for that reason. A vocabulary here would be a second home for three words D2
- * already owns, free to disagree with it, and its first effect would be to let an unknown value
- * be mapped to the nearest one this client happens to know.
+ * ⛔ THERE IS NO MEMBER SET FOR `attribution`, `carrier` OR `scope`'s values HERE. D2 declines to type
+ * them as enums — "minted and consumed inside one deployment" — so a vocabulary here would be a second
+ * home for words D2 owns, and its first effect would be to map an unknown value to the nearest known one.
  */
 
-/** `coord_thread`'s eleven, in D2 § 8.3.3's first table's order. */
-export const COORD_THREAD_MEMBERS = Object.freeze([
-    'thread_ref',
-    'install_id',
-    'lifecycle',
-    'carrier',
-    'subject',
-    'subject_truncated',
-    'opened_by',
-    'attribution',
-    'participants',
-    'posted_at',
-    'received_at',
-]);
-
-/** `coord_round`'s eleven, in D2 § 8.3.3's second table's order. */
+/** `coord_round`'s members, in D2 § 8.3.3's table order. */
 export const COORD_ROUND_MEMBERS = Object.freeze([
     'post_ref',
     'thread_ref',
+    'scope',
     'install_id',
     'from',
     'attribution',
@@ -53,10 +33,5 @@ export const COORD_ROUND_MEMBERS = Object.freeze([
     'received_at',
 ]);
 
-/**
- * The two message types D2 § 8.3's message table carries for this surface. They are the `t`
- * values the feed sends and the only two this client reads on the coordination layer.
- */
-export const COORD_THREAD_MESSAGE = 'coord.thread';
-
+/** The one `t` D2 § 8.3's message table carries for this surface that this client reads. */
 export const COORD_ROUND_MESSAGE = 'coord.round';

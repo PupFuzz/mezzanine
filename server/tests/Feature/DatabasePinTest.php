@@ -134,7 +134,7 @@ class DatabasePinTest extends TestCase
     }
 
     /**
-     * The set-equality leg (card#9742), taking kanban-solo's shape from rt#506 as offered.
+     * The set-equality leg (card#9742), taking kanban-solo's shape as offered.
      *
      * The test below iterates PAIRED_KEYS, so before this existed the guard reported on whatever
      * subset that hand-written constant happened to name: a pin added to phpunit.xml and not

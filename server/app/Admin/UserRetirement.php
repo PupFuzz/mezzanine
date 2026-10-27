@@ -2,6 +2,7 @@
 
 namespace App\Admin;
 
+use App\Auth\RememberedBrowser;
 use App\Models\User;
 use App\Support\RetirementAttribution;
 use Illuminate\Support\Facades\DB;
@@ -91,6 +92,10 @@ final class UserRetirement
                 'retired_by' => $by,
                 'retired_reason' => $reason,
             ]);
+
+            // Card#12179: a retired account keeps no remembered browser. Called here rather than
+            // from `User::booted()`, because the write above fires no model event.
+            RememberedBrowser::forgetAll($target->getKey());
 
             return self::RETIRED;
         });

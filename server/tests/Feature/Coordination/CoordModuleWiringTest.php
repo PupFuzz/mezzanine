@@ -9,11 +9,9 @@ use Tests\TestCase;
  * resolves, and that it holds no second copy of a function the shared `wire/` owns.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⚠ NO PAGE SERVES THIS DIRECTORY's DOM HALF, and this file says so rather than asserting one does.
- * The floor page (`floor/main.js`, Appendix B step 8) draws the coordination line from
- * `coord-model.js` through `floor/floor-screen.js` and writes its own elements, so this directory's
- * DOM half, `main.js`, is loaded by no page — unlike `public/js/lobby`, whose `dashboard.blade.php`
- * loads it, it has no host page to check against. What is checkable is that the modules are
+ * ⚠ THIS DIRECTORY HAS NO DOM HALF. The floor page (`floor/main.js`) draws the coordination birds from
+ * `coord-model.js` through `floor/floor-screen.js`; the page-less `main.js` that once rendered a thread
+ * list went with the thread line (card#12239). What is checkable here is that the modules are
  * internally coherent and that nothing about them will fail to LOAD; the floor page's own element
  * contract is `Tests\Feature\Floor\FloorPageWiringTest`'s to hold.
  */
@@ -25,7 +23,7 @@ class CoordModuleWiringTest extends TestCase
     {
         $dir = $this->moduleDir();
 
-        $this->assertFileExists($dir.'/main.js');
+        $this->assertFileDoesNotExist($dir.'/main.js', 'the retired coordination list page is back — nothing coordination-related is held on the floor (card#12239)');
         $this->assertFileExists($dir.'/coord-model.js');
         $this->assertFileExists($dir.'/coord-members.js');
 

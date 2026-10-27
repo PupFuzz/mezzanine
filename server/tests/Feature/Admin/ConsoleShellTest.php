@@ -7,6 +7,7 @@ use App\Building\Layouts;
 use App\Floor\FloorMap;
 use App\Floor\Floors;
 use App\Models\User;
+use Database\Factories\UserFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -63,6 +64,10 @@ class ConsoleShellTest extends TestCase
             'admin.layout.revisions' => route('admin.layout.revisions'),
             'admin.layout.diff' => route('admin.layout.diff', ['from' => 1, 'to' => 2]),
             'admin.layout.export' => route('admin.layout.export', 1),
+
+            // card#12331's seat tokens — behind `password.confirm` as well as the three gates, so
+            // the allow arms confirm a password first (`confirmedOperator()`).
+            'admin.tokens.index' => route('admin.tokens.index'),
         ];
     }
 
@@ -118,6 +123,23 @@ class ConsoleShellTest extends TestCase
         return User::factory()->twoFactorConfirmed()->create();
     }
 
+    /**
+     * An enrolled operator, signed in, who has confirmed their password — what the allow arms
+     * need since card#12331 put the seat tokens module behind `password.confirm`. The arm that
+     * observes `password.confirm` refusing is
+     * `test_the_seat_tokens_module_refuses_an_operator_without_a_recent_password`.
+     */
+    private function confirmedOperator(): User
+    {
+        $user = $this->enrolled();
+
+        $this->actingAs($user)
+            ->post(route('password.confirm.store'), ['password' => UserFactory::password()])
+            ->assertSessionHasNoErrors();
+
+        return $user;
+    }
+
     public function test_every_console_page_refuses_a_session_with_no_login(): void
     {
         foreach ($this->pages() as $url) {
@@ -157,8 +179,10 @@ class ConsoleShellTest extends TestCase
 
     public function test_every_console_page_allows_a_second_factor_session(): void
     {
+        $operator = $this->confirmedOperator();
+
         foreach ($this->pages() as $url) {
-            $this->actingAs($this->enrolled())->get($url)->assertOk();
+            $this->actingAs($operator)->get($url)->assertOk();
         }
     }
 
@@ -198,6 +222,13 @@ class ConsoleShellTest extends TestCase
             'admin.floors.restore' => ['post', route('admin.floors.restore', [$this->authoredFloor(), 1]), []],
             'admin.layout.update' => ['patch', route('admin.layout.update'), ['layout' => '{"floors": []}']],
             'admin.layout.restore' => ['post', route('admin.layout.restore', 1), []],
+
+            // card#12331's seat tokens. The issue payload carries no valid key on purpose: a gate
+            // arm that let it through would still issue nothing.
+            'admin.tokens.issue' => ['post', route('admin.tokens.issue'), [
+                'issue_key' => 'x', 'install_id' => 'aimla', 'seat_id' => 'aimla-pm',
+            ]],
+            'admin.tokens.revoke' => ['post', route('admin.tokens.revoke', 'mzn_abcdefgh'), []],
         ];
     }
 
@@ -248,6 +279,39 @@ class ConsoleShellTest extends TestCase
             ->post(route('admin.agents.retire', ['aimla', 'aimla-pm']), ['reason' => 'x'])
             ->assertRedirect(route('admin.agents.index'))
             ->assertSessionHasErrors('retire');
+    }
+
+    /**
+     * ⛔ CARD#12331 · THE SEAT TOKENS MODULE ASKS FOR THE PASSWORD AGAIN. An enrolled operator whose
+     * session has not confirmed a password recently is sent to `password.confirm` from the page and
+     * from both writes, and nothing is written. The control is the same requests after a confirm:
+     * the page answers, and the issue POST reaches the action (its key is no key, so it is refused
+     * by the action's own answer rather than by the gate).
+     */
+    public function test_the_seat_tokens_module_refuses_an_operator_without_a_recent_password(): void
+    {
+        DB::table('installs')->insert(['install_id' => 'aimla', 'created_at' => now()->format('Y-m-d H:i:s.v')]);
+        $operator = $this->enrolled();
+        $writes = collect($this->writes())->only(['admin.tokens.issue', 'admin.tokens.revoke']);
+        $this->assertCount(2, $writes);
+
+        $this->actingAs($operator)->get(route('admin.tokens.index'))->assertRedirect(route('password.confirm'));
+
+        foreach ($writes as $name => [$method, $url, $payload]) {
+            $response = $this->actingAs($operator)->$method($url, $payload);
+            $response->assertRedirect();
+            $this->assertSame(route('password.confirm'), $response->headers->get('Location'), $name.' is not behind password.confirm');
+        }
+
+        $this->assertSame(0, DB::table('ingest_tokens')->count());
+        $this->assertSame(0, DB::table('seats')->count());
+
+        $this->post(route('password.confirm.store'), ['password' => UserFactory::password()]);
+
+        $this->actingAs($operator)->get(route('admin.tokens.index'))->assertOk();
+        $this->actingAs($operator)->post(...array_slice($writes['admin.tokens.issue'], 1))
+            ->assertRedirect(route('admin.tokens.index'))
+            ->assertSessionHasErrors('issue');
     }
 
     /**
@@ -316,8 +380,10 @@ class ConsoleShellTest extends TestCase
         $this->assertNotSame([], $modules);
         $checked = 0;
 
+        $operator = $this->confirmedOperator();
+
         foreach ($this->pages() as $name => $url) {
-            $response = $this->actingAs($this->enrolled())->get($url);
+            $response = $this->actingAs($operator)->get($url);
 
             // ⚠ A DOWNLOAD IS NOT A PAGE, and card#9208's two export routes are downloads: § 6.11
             // serves any revision as a file, which carries no navigation by construction. They
@@ -343,13 +409,39 @@ class ConsoleShellTest extends TestCase
     }
 
     /**
-     * ⛔ THE TWO ROUTES THAT MUST NOT EXIST, ASSERTED AS ABSENT RATHER THAN LEFT UNWRITTEN.
+     * ⛔ EVERY CONSOLE MODULE IS IN `ConsoleModules`, derived from the route table: a module's routes
+     * are named `admin.<key>.*`, so every such `<key>` must be a registered module. The test above
+     * checks that the modules the list HAS are linked; this one checks the list is not missing one —
+     * a module whose entry was forgotten would otherwise have no nav link and no landing card, and
+     * the test above would pass, because it reads the same list.
+     */
+    public function test_every_console_route_belongs_to_a_registered_module(): void
+    {
+        $routeModules = collect(Route::getRoutes()->getRoutes())
+            ->map(fn ($route) => (string) $route->getName())
+            ->filter(fn (string $name) => str_starts_with($name, 'admin.') && substr_count($name, '.') >= 2)
+            ->map(fn (string $name) => explode('.', $name)[1])
+            ->unique()->sort()->values()->all();
+
+        $this->assertContains('tokens', $routeModules, 'the control: the route table was read');
+        $this->assertSame($routeModules, collect(ConsoleModules::all())->pluck('key')->sort()->values()->all());
+    }
+
+    /**
+     * ⛔ THE ROUTES THAT MUST NOT EXIST, ASSERTED AS ABSENT RATHER THAN LEFT UNWRITTEN — AND THE ONE
+     * PROVISIONING ROUTE THAT DOES, ASSERTED WITH ITS GATE.
      *
-     * A seat-create path would store a fact `docs/design/FLOOR.md § 3.4` derives — the (b) class
-     * the operator deferred to `card#9071` — and a user DELETE would be the act card#9070's D2
-     * replaced with retirement. Both are the kind of thing a later "while I'm here" edit adds
-     * without noticing which decision it is reversing, so the absence is a test rather than a
-     * comment.
+     * A user DELETE would be the act card#9070's D2 replaced with retirement, and the agent module
+     * writes nothing but retirement: a write under `admin/agents` that pinned or authored a seat
+     * would store a fact the floor derives, which `card#9071`'s ruling refuses. Both are the kind of
+     * thing a later "while I'm here" edit adds without noticing which decision it is reversing, so
+     * the absence is a test rather than a comment.
+     *
+     * ⚠ A SEAT IS NOW PROVISIONED FROM THIS CONSOLE (card#12331, superseding card#9070's "no add an
+     * agent" posture on the operator's 2026-10-25 request): issuing a seat's token on the *Seat
+     * tokens* page creates the seat, by the CLI's own act. It lives under `admin/tokens`, so the
+     * `admin/agents` assertion below is unchanged; what is added is that the issue route exists and
+     * carries `password.confirm`.
      */
     public function test_the_console_exposes_no_seat_create_and_no_user_delete(): void
     {
@@ -367,7 +459,12 @@ class ConsoleShellTest extends TestCase
         $this->assertFalse(
             $console->contains(fn (string $s) => str_contains($s, 'POST admin/agents')
                 && ! str_contains($s, 'retire')),
-            'a write to admin/agents that is not the retire act — a seat-create path is card#9071\'s'
+            'a write to admin/agents that is not the retire act — the agent module writes retirement only'
         );
+
+        $issue = Route::getRoutes()->getByName('admin.tokens.issue');
+        $this->assertNotNull($issue, 'the seat tokens issue route is not registered');
+        $this->assertContains('password.confirm', $issue->gatherMiddleware(),
+            'the route that mints a seat credential is not behind password.confirm');
     }
 }

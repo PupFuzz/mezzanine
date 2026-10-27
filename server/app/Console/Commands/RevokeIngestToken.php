@@ -2,11 +2,16 @@
 
 namespace App\Console\Commands;
 
+use App\Fleet\SeatTokenRevocation;
+use App\Fleet\SeatTokens;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 
 /**
- * Revoke a seat token, by prefix.
+ * Revoke a seat token, by prefix — the SHELL surface of `App\Fleet\SeatTokens::revoke()`.
+ *
+ * ⚠ THE ACT MOVED INTO `App\Fleet\SeatTokens` IN card#12331, when the console's *Seat tokens*
+ * page became its second caller; this file is argument parsing, messages and an exit code, and its
+ * output is unchanged. `--by` (default: the OS user) is new and lands in `ingest_tokens.revoked_by`.
  *
  * BY PREFIX, NOT BY VALUE, and that is a consequence of D1 § 3.3 rather than a convenience: the
  * plaintext is not stored, so nobody operating this server has it to type — and asking for it
@@ -27,7 +32,7 @@ class RevokeIngestToken extends Command
 {
     protected $signature = 'mezzanine:ingest-token:revoke
                             {prefix : the token prefix shown at issue time, e.g. mzn_kQ7aB2xZ}
-                            {--reason= : why, for the audit trail}';
+                            {--by= : who revoked it; defaults to the OS user}';
 
     protected $description = 'Revoke a seat ingest token by its prefix';
 
@@ -35,61 +40,31 @@ class RevokeIngestToken extends Command
     {
         $prefix = (string) $this->argument('prefix');
 
-        $rows = DB::table('ingest_tokens')
-            ->join('seats', 'seats.id', '=', 'ingest_tokens.seat_ref')
-            ->join('installs', 'installs.id', '=', 'seats.install_ref')
-            ->where('ingest_tokens.prefix', $prefix)
-            ->select([
-                'ingest_tokens.id',
-                'ingest_tokens.revoked_at',
-                'installs.install_id',
-                'seats.seat_id',
-            ])
-            ->get();
+        $result = SeatTokens::revoke(
+            $prefix,
+            (string) ($this->option('by') ?: (get_current_user() ?: 'unknown')),
+        );
 
-        if ($rows->isEmpty()) {
-            // A miss is reported as a failure rather than shrugged off. "Nothing to revoke" and
-            // "revoked" must not look alike to an operator part-way through a rotation, because
-            // the next thing they do is delete the old value from the seat.
+        if ($result->outcome === SeatTokenRevocation::NO_SUCH_PREFIX) {
+            // A miss is a failure rather than a shrug: see `SeatTokens::revoke()`.
             $this->error(sprintf('No token with prefix %s. Nothing was revoked.', $prefix));
 
             return self::FAILURE;
         }
 
-        $active = $rows->whereNull('revoked_at');
-
-        if ($active->isEmpty()) {
+        if ($result->outcome === SeatTokenRevocation::ALREADY_REVOKED) {
             $this->warn(sprintf('Token %s is already revoked. Nothing changed.', $prefix));
 
             return self::SUCCESS;
         }
 
-        $now = now()->format('Y-m-d H:i:s.v');
+        foreach ($result->revoked as $row) {
+            $this->line(sprintf('  revoked %s — %s / %s', $prefix, $row['installId'], $row['seatId']));
 
-        DB::table('ingest_tokens')
-            ->whereIn('id', $active->pluck('id'))
-            ->whereNull('revoked_at')
-            ->update([
-                'revoked_at' => $now,
-                'revoked_reason' => $this->option('reason') ?: null,
-            ]);
-
-        foreach ($active as $row) {
-            $this->line(sprintf('  revoked %s — %s / %s', $prefix, $row->install_id, $row->seat_id));
-
-            $remaining = DB::table('ingest_tokens')
-                ->where('seat_ref', DB::table('ingest_tokens')->where('id', $row->id)->value('seat_ref'))
-                ->whereNull('revoked_at')
-                ->count();
-
-            if ($remaining === 0) {
+            if ($row['remaining'] === 0) {
                 // Said out loud because it is the state D1 § 3.3 calls "a dark seat with nothing
                 // to roll back to", and it is reachable by running this command one step early.
-                $this->warn(sprintf(
-                    '  %s / %s now has NO active token and cannot post. If this was a rotation, issue the new token first.',
-                    $row->install_id,
-                    $row->seat_id,
-                ));
+                $this->warn('  '.SeatTokenRevocation::darkSeatWarning($row['installId'], $row['seatId']));
             }
         }
 

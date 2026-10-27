@@ -984,7 +984,7 @@ against.
    the server and a thread model (item 8). **The ruling: (a).** Card comments ship first, as
    `BoardCommentChannel`, with the honest receipt — *posted*, never *delivered*, in the wording
    [§ 15.11](#1511-failure-paths-and-every-sentence-the-panel-renders)'s `posted` row owns — and the
-   bridge-side request is filed as `PupFuzz/agent-roundtable#609` to kanban-solo
+   bridge-side request is filed with kanban-solo
    ([§ 15.13](#1513-what-the-operator-provisions) item 3). It has landed upstream; until
    [§ 15.2](#152-the-hop-and-what-this-repository-cannot-verify)'s three conditions hold on a host, a
    comment reaches the agent at its next read of the card. **Built** (card#9417). The seam in
@@ -1643,7 +1643,7 @@ at the panel and at the route — until the first two are done:
    that can comment on board 14's cards, and **a write-scoped token for it** — `BOARD_COMPOSE_TOKEN`
    in `server/.env` on each host, beside the existing three keys ([§ 14](#14-open-questions) item 6).
    ⛔ Not the poller's token, and not any seat's. The bridge side names this account
-   **`mezzanine-floor`** (rt#609), and two bridge settings follow from it, each of which would drop a
+   **`mezzanine-floor`**, and two bridge settings follow from it, each of which would drop a
    floor comment silently (the bridge's `docs/consumer-guide.md` § Card comments and § Echo-suppression
    semantics own the mechanics): ⛔ **`mezzanine-floor` is never the bridge's writeback identity** —
    the bridge's echo gate drops a comment whose author is that identity, so the assignee would never be
@@ -1653,7 +1653,7 @@ at the panel and at the route — until the first two are done:
    and 3, unchanged: arm 1 has nothing to resolve until tier 1 is lit. Compose arrives as dark as tier
    1 did, and for the same reasons, each separately legible.
 3. **✅ FILED — the bridge-side request** ([§ 14](#14-open-questions) item 7; the operator chose fork
-   (a) on 2026-10-09): `PupFuzz/agent-roundtable#609`, a roundtable feature request to kanban-solo for
+   (a) on 2026-10-09): a feature request to kanban-solo for
    `comment.created` in the subscription filter and a `card_comment` intent routed to the seat whose
    card it is. It has landed upstream (the bridge's `card_comment` intent); live delivery on a host
    still needs [§ 15.2](#152-the-hop-and-what-this-repository-cannot-verify)'s three conditions. Until

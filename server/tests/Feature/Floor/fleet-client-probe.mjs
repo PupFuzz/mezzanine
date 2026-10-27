@@ -122,6 +122,9 @@
  *      "stream_refusals": [ {from_ms, until_ms} ] // an `EventSource` constructed inside a window
  *                                               //  errors before `open` — the `503` a maintenance
  *                                               //  window answers a re-open with (AT-D3-8)
+ *      "session_lifetime_ms": N                 // with `recovery`: the session lifetime a page hands
+ *                                               //  the client (card#12434), which turns its session
+ *                                               //  keepalive on. Absent, the client sends none
  *    }`
  *   A message entry `{ "at_ms": N, "end": true }` ends the current stream at N — the server closing
  *   it, which a browser reports as `error` — rather than delivering an envelope.
@@ -130,7 +133,7 @@
  *      "pending_timers": N, "rejections": [], "age_renders": [ {at, readouts} ],
  *      "streams": [ {opened_at, open_fired, refused, ended_at, closed_at} ],
  *      "desk_renders": [ {at, trigger, frame, …} ], "floor_renders": [ {at, trigger, frame} ] — `trigger`
- *      `render` for a render, `walk end` for a walk's paint-only refresh, `ride` for the frame a page paints
+ *      `render` for a render, `walk end` for the paint-only refresh at the end of a walk or of any other effect in flight, `ride` for the frame a page paints
  *      after a ride act (`rideView()`), "ride_acts": [ {at, act, answer, ride, scene_view_ride} ] — each ride act's
  *      answer, the `ride` of the frame painted after it (`null` when it answered `null` and nothing was painted)
  *      and the `ride` of the 1 s tick's scene over that frame's desks (`sceneView()`),
@@ -255,6 +258,8 @@ const { healthCounters } = await import(pathToFileURL(join(dir, '..', 'lobby', '
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const furniture = await import(pathToFileURL(join(repoRoot, 'resources', 'floor', 'furniture-box.js')).href);
 const themeRegistry = await import(pathToFileURL(join(repoRoot, 'resources', 'floor', 'themes', 'index.js')).href);
+// The character tree's seeded draw, from disk, as the page hands the scene the tree's (a departure's wait, card#12194).
+const { draw: seededDraw } = await import(pathToFileURL(join(repoRoot, 'resources', 'characters', 'index.js')).href);
 // FLOOR.md § 10.6 item 1: every theme the registry names, from disk, as the page imports each by the asset route.
 const themeModules = Object.fromEntries(await Promise.all(themeRegistry.THEMES.map(async (name) => [
     name,
@@ -480,7 +485,8 @@ async function replay(scenario) {
         },
     };
 
-    const client = new FleetClient(http.fetch, FakeEventSource, clock, recovery ? recoveryTimers : null);
+    const client = new FleetClient(http.fetch, FakeEventSource, clock, recovery ? recoveryTimers : null,
+        { sessionLifetimeMs: scenario.session_lifetime_ms ?? null });
     const records = [];
     const ageRenders = [];
     const deskRenders = [];
@@ -641,6 +647,7 @@ async function replay(scenario) {
                 box: box ?? furniture.FURNITURE_BOX,
                 measure: harnessMeasurer(measurer),
                 character,
+                draw: seededDraw,
                 themes: themeInputs(registry, modules),
             });
             screen.assetsFailed([...(registry === null ? [THEME_REGISTRY] : []), ...rejected.map((name) => `theme:${name}`)]);

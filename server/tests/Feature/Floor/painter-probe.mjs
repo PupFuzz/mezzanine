@@ -20,6 +20,13 @@
  * chip and its text, the badge and the flag and each one's text, the plate, and every intern node.
  * Containment is kept beside it.
  *
+ * ⛔ § 7.4's FADE (card#12346, the operator's ruling of 2026-10-25): on a desk whose seat carries `fold_lag` every
+ * node painted for an art element — § 10.6's art kinds and § 9 F14's placeholder, written here from the document —
+ * is drawn inside ONE `g.fold-lag` group at the layout's `FOLD_LAG_OPACITY`, which is a fade (above 0, below 1;
+ * `TheNewDeskKeepsEveryLeafTest` holds the figure to § 12's row); every other node of that desk, and every node of
+ * a desk without the badge, is at full opacity — no `fold-lag` group on it at all. `fade.faded` / `fade.full` count
+ * the desks each half read, and `fade.opacity` is the layout's figure.
+ *
  * ⛔ THE INTERNS (card#11058 PR-C): each is its sprite in a clipping viewport — static, the character
  * tree's chibi frame drawn under the intern key `seat~<call_id>`, which this probe writes from the
  * published rule rather than importing it — inside a dashed edge when untitled; or, where its art
@@ -42,7 +49,7 @@
  * the badges, the nulls) confirmed, unconfirmed and as the placeholder, each placed at its own box on a
  * row, through the real `placeDesk()` / `placeBubbles()`.
  *
- * argv: `--js <tree>` (default: the shipped tree). stdout: `{ desks, painted, interns, defects: [ … ] }`
+ * argv: `--js <tree>` (default: the shipped tree). stdout: `{ desks, painted, interns, fade, defects: [ … ] }`
  * — `interns` counts each form painted, so a leg that painted nothing reads as such.
  */
 
@@ -83,7 +90,7 @@ globalThis.clearInterval = () => {};
 const { deskModel } = await mod('desk/desk-render.js');
 const { placeDesk, placeBubbles } = await mod('floor/scene.js');
 const { createPainter, measurer, STYLE } = await mod('floor/painter.js');
-const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD } = await mod('floor/desk-layout.js');
+const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_BAND, STOOL_PITCH, FOLD_LAG_OPACITY } = await mod('floor/desk-layout.js');
 
 /**
  * The character tree, stubbed: a frame is an SVG document naming the `(install, seat key, frame)` it was
@@ -91,18 +98,31 @@ const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD } = await mod('floo
  * Q3) — and the URI from § 10.2's — never imported from the module under test, so a layout that keys
  * interns otherwise, or a painter that makes another URI, reds.
  */
-const asked = { walk: [], pose: [], chibi: [] };
+const asked = { walk: [], pose: [], chibi: [], offset: [] };
+/**
+ * The offset the stub's `loopOffset()` answers for every seat (§ 6.2's per-seat loop phase, card#12187): not 0, so a
+ * painter that starts a moving loop at frame 0, or a still desk anywhere but frame 0, draws a frame no element owes.
+ */
+const STUB_OFFSET = 2;
 const doc = (what) => `<svg xmlns="http://www.w3.org/2000/svg"><title>${what}</title></svg>`;
 const uri = (d) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(d)}`;
 let throwFor = null;
 const characters = {
     walkFrames(installId, seatId) { asked.walk.push(`${installId}/${seatId}`); return [0, 1, 2].map((p) => doc(`${installId}/${seatId}#${p}`)); },
-    // A desk's frames for its pose (§ 10.4's frame contract): the stub names the pose and the desk's top edge it was
-    // asked for in every frame, so a painter that asks for another pose, or drops the edge, draws a frame no
-    // element owes. Four frames, so a loop stepping three reds the held-loop leg.
+    // A desk's frames for its pose — the tree → painter interface, `{ frames, loopFrom }` (§ 10.4's frame contract
+    // item 4): the stub names the pose, the desk's top edge and the clear rects it was asked for in every frame, so a
+    // painter that asks for another pose, or drops the edge or the clear rects, draws a frame no element owes. The
+    // sleeper's is FIVE documents with `loopFrom` 1 — a still, then a loop of four — and every other pose's FOUR with
+    // `loopFrom` 0: so a loop stepping three, a loop stepped from document 0, or an offset drawn over the list's length
+    // rather than the loop's, reds the held-loop leg.
     poseFrames(installId, seatId, at) {
         asked.pose.push(`${installId}/${seatId}`);
-        return [0, 1, 2, 3].map((i) => doc(`${installId}/${seatId}#${at.pose}@${at.deskTop}#${i}`));
+        const loopFrom = at.pose === 'asleep' ? 1 : 0;
+        return { frames: Array.from({ length: loopFrom + 4 }, (_, i) => doc(`${installId}/${seatId}#${at.pose}@${at.deskTop}~${JSON.stringify(at.clear ?? null)}#${i}`)), loopFrom };
+    },
+    loopOffset(installId, seatId, length) {
+        asked.offset.push([`${installId}/${seatId}`, length]);
+        return STUB_OFFSET % length;
     },
     chibiFrame(installId, key) {
         asked.chibi.push(`${installId}/${key}`);
@@ -179,8 +199,11 @@ const svg = host.children[0];
 const layer = svg?.children.find((n) => n.getAttribute('class') === 'desks');
 const byKey = new Map(desks.map((d) => [d.key, d]));
 const defects = [];
+// The A2 walker leg's readings (card#12194): whether it painted, and which frames its two images drew on each pair of ticks.
+const walker_ = { painted: false, frames: null };
 let painted = 0;
 let bubbles = 0;
+const fade = { faded: 0, full: 0, opacity: FOLD_LAG_OPACITY };
 const EPS = 1e-6;
 const num = (n, k) => Number(n.getAttribute(k));
 const same = (a, b) => Number.isFinite(a) && Math.abs(a - b) <= EPS;
@@ -305,6 +328,36 @@ function deskTop(key, e) {
     return (sprite.y - e.y) / e.h;
 }
 
+/** Where a pose's held loop starts in the stub's frames, written from the stub's own rule above: 1 for the sleeper, else 0. */
+const loopFromOf = (pose) => (pose === 'asleep' ? 1 : 0);
+
+/**
+ * The document a desk's character is first painted at: 0 — the still — when its held render is still; when it moves,
+ * the loop's start plus the stub's offset into the loop of four (§ 10.4 item 4's `uris[loopFrom + offset]`).
+ */
+const startOf = (e) => (e.animation?.motion === true && e.animation.frame_interval_ms !== null ? loopFromOf(e.pose) + (STUB_OFFSET % 4) : 0);
+
+/** A stub frame of a desk's character, as the painter is owed to draw it (the stub's naming, above). */
+const poseFrame = (key, e, i) => uri(doc(`${key}#${e.pose}@${deskTop(key, e)}~${JSON.stringify(e.clear ?? null)}#${i}`));
+
+/**
+ * The art viewport a desk's character is owed — written here from the published rule (§ 10.4 item 4, § 12's *Sleeper
+ * frame*), never read off the element under test: a sleeper's is its OVERDRAW, the character's rect widened by half its
+ * width each side and raised to one pixel under the bubble's band; every other character's is its element's rect.
+ */
+function characterPort(key, e) {
+    // § 10.4's frame contract (card#12187, card#12259): every character's viewport is its overdraw — the rect widened
+    // by half its width each side and raised to one pixel under the bubble's band — whatever its pose.
+    const top = byKey.get(key).box.y + BUBBLE_BAND + 1;
+
+    return { x: e.x - e.w / 2, y: top, w: 2 * e.w, h: e.y + e.h - top };
+}
+
+/** § 10.4's frame contract item 3 (card#12259): an intern's viewport is its stool's rect widened to the row's pitch. */
+function internPort(e) {
+    return { x: e.x - (STOOL_PITCH - e.w) / 2, y: e.y, w: STOOL_PITCH, h: e.h };
+}
+
 /**
  * What the painter owes one layout element, in order: `[node name, {x, y, w?, h?, text?}, extra check?]`.
  * The offsets are the painter's stated ones — and nothing else may move a node off its element.
@@ -315,11 +368,14 @@ function owed(e, seat, failed, key) {
     switch (e.kind) {
         case 'character':
             // The art's clipping viewport at the element's rect, the image at the viewport's origin — and
-            // the image is frame 0 of the tree's frames for the desk's POSE, over the desk's top edge as the
-            // element's own rects place it, as an SVG-document URI (AT-D3-24; § 10.4's frame contract).
-            return [['svg', at, (n) => viewport(e)(n) ?? classIs(['character'])(n.children[0])
-                ?? (n.children[0].getAttribute('href') === uri(doc(`${key}#${e.pose}@${deskTop(key, e)}#0`)) ? null
-                    : `its image is «${decodeURIComponent(String(n.children[0].getAttribute("href"))).slice(60, 140)}», not frame 0 of the seat's «${e.pose}» frames over its desk's edge as an SVG-document URI`)
+            // the image is the tree's frame for the desk's POSE, over the desk's top edge as the element's own
+            // rects place it, as an SVG-document URI (AT-D3-24; § 10.4's frame contract): frame 0 when the held
+            // render is still, the seat's loop offset when it moves (§ 6.2's per-seat loop phase, card#12187).
+            // A sleeper's viewport is its overdraw (§ 10.4 item 4, card#12187), and its image the still or its loop's
+            // document; its pose's frames are handed its clear rects.
+            return [['svg', characterPort(key, e), (n) => viewport(characterPort(key, e))(n) ?? classIs(['character'])(n.children[0])
+                ?? (n.children[0].getAttribute('href') === poseFrame(key, e, startOf(e)) ? null
+                    : `its image is «${decodeURIComponent(String(n.children[0].getAttribute("href"))).slice(60, 200)}», not document ${startOf(e)} of the seat's «${e.pose}» frames over its desk's edge and clear rects as an SVG-document URI`)
                 ?? (n.children[0].getAttribute('preserveAspectRatio') === 'xMidYMax meet' ? null : 'its image is not drawn xMidYMax meet')]];
         case 'chair':
         case 'desk-sprite':
@@ -357,13 +413,15 @@ function owed(e, seat, failed, key) {
                 return [['rect', glyph, classIs(e.untitled ? ['stool', 'untitled'] : ['stool'])]];
             }
 
-            // § 8 / Q3: the sprite in its clipping viewport, the tree's chibi frame under `seat~<call_id>`;
-            // an untitled intern inside a dashed edge.
+            // § 8 / Q3: the sprite in its clipping viewport — the stool's overdraw, the rect widened to the row's pitch
+            // (§ 10.4's frame contract item 3, card#12259) — the tree's chibi frame under `seat~<call_id>`; an untitled
+            // intern with a dashed edge at its own rect.
             const look = e.untitled ? ['intern', 'untitled'] : ['intern'];
             const want = internFrame(seat.install_id, seat.seat_id, e.call_id);
-            const sprite = ['svg', at, (n) => {
+            const port = internPort(e);
+            const sprite = ['svg', port, (n) => {
                 const img = n.children[0];
-                const shape = viewport(e)(n);
+                const shape = viewport(port)(n);
 
                 return shape ?? classIs(['art'])(n) ?? classIs(look)(img)
                     ?? (img.getAttribute('href') === want ? null : `its sprite is the tree's «${img.getAttribute('href')}», not the intern key's «${want}»`)
@@ -382,15 +440,25 @@ function owed(e, seat, failed, key) {
             return [['rect', at, (n) => classIs(['facts-plate'])(n) ?? (n.getAttribute('rx') === String(e.rx) ? null : `its corners are rx «${n.getAttribute('rx')}», not ${e.rx}`)]];
         case 'monitor':
         case 'placeholder':
-        case 'lag-overlay':
             return [['rect', at]];
         default:
-            return typeof e.text === 'string' ? [['text', { ...at, text: e.text }]] : [];
+            if (typeof e.text !== 'string') {
+                return [];
+            }
+
+            // A wrapped text (the screen's, card#12446): one painted text a line, each on the role's line below the
+            // last and as wide as its own measured line — never one text holding every line.
+            return e.lines === undefined
+                ? [['text', { ...at, text: e.text }]]
+                : e.lines.map((line, i) => ['text', { x: e.x, y: e.y + i * TYPE_ROLES[e.role ?? 'fact'].line, w: line.w, h: TYPE_ROLES[e.role ?? 'fact'].line, text: line.text }]);
     }
 }
 
 /** § 10.6's art elements and the character — every other element of a desk is a fact, painted after them. */
 const PAINT_ART = new Set(['chair', 'character', 'desk-sprite', 'monitor-frame', 'desk-props', 'side-table']);
+
+/** What § 7.4's fade draws at `FOLD_LAG_OPACITY` on a `fold_lag` desk: the art kinds, or F14's placeholder for them. */
+const FADED_ART = new Set([...PAINT_ART, 'placeholder']);
 
 /** The facts § 10.6 puts on the facts plate (card#11468), written here from the document, not imported. */
 const PLATED = new Set(['label', 'currency', 'lag', 'gauge-bar', 'gauge-pct', 'badge', 'flag', 'quiet-age']);
@@ -456,7 +524,10 @@ for (const g of layer?.children ?? []) {
     const key = g.getAttribute('data-key');
     const desk = byKey.get(key);
     const b = desk.box;
-    const nodes = [...g.children];
+    // § 7.4's fade group is read through: its nodes are the desk's, in place, each carrying the group's opacity.
+    const fadeGroups = g.children.filter((n) => n.name === 'g' && classes(n).includes('fold-lag'));
+    const opacityOf = new Map(fadeGroups.flatMap((f) => f.children.map((n) => [n, Number(f.getAttribute('opacity'))])));
+    const nodes = g.children.flatMap((n) => (fadeGroups.includes(n) ? n.children : [n]));
     let next = 0;
     const paintedKind = [];
 
@@ -468,6 +539,29 @@ for (const g of layer?.children ?? []) {
             next++;
         }
     });
+
+    // ── § 7.4's fade leg (card#12346): driven by the BADGE, as § 7.4 drives the whole treatment ──
+    const lagged = (seatOf.get(key).badges ?? []).includes('fold_lag');
+
+    if (lagged && !(FOLD_LAG_OPACITY > 0 && FOLD_LAG_OPACITY < 1)) {
+        defects.push(`${key}: the fold-lag opacity is ${FOLD_LAG_OPACITY}, which is not a fade`);
+    }
+
+    nodes.forEach((n, i) => {
+        const want = lagged && FADED_ART.has(paintedKind[i]) ? FOLD_LAG_OPACITY : 1;
+        const got = opacityOf.get(n) ?? 1;
+
+        if (got !== want) {
+            defects.push(`${key}: § 7.4's fade — the painted ${label(n)} for ${paintedKind[i] ?? 'no element'} is at opacity ${got}, not ${want}`
+                + (lagged ? ' on a fold_lag desk' : ' on a desk without fold_lag'));
+        }
+    });
+
+    if (fadeGroups.length !== (lagged ? 1 : 0)) {
+        defects.push(`${key}: § 7.4's fade — ${fadeGroups.length} fold-lag group(s) on a desk ${lagged ? 'with' : 'without'} fold_lag, not ${lagged ? 1 : 0}`);
+    }
+
+    fade[lagged ? 'faded' : 'full']++;
 
     // ── FLOOR.md § 10.6's rule 2, the paint-order leg (AT-D3-25's re-laid half): every node painted for a
     // fact element comes after every node painted for an art element or the character. The art kinds are
@@ -749,10 +843,11 @@ for (const p of owedPoses) {
     }
 }
 
-// ── § 6.2's held loop steps a moving character through its own pose's frames — every one of them, as many as
-// the tree drew, and never another drawing's — and leaves an intern still ──
-{
-    const desk = desks.find((d) => d.elements.some((e) => e.kind === 'character') && d.elements.some((e) => e.kind === 'stool' && !failedOf.get(d.key).has(e.asset)));
+// ── § 6.2's held loop steps a moving character through its own pose's held loop — every frame of it, as many as the
+// tree drew, from the loop's start (`loopFrom`, § 10.4 item 4) and never another drawing's — and leaves an intern still.
+// Read twice: a desk whose pose's loop is the whole list (`loopFrom` 0) with an intern beside it, and a sleeper, whose
+// still stands ahead of its loop (`loopFrom` 1) and never steps ──
+function heldLoop(desk, withIntern) {
     const moving = {
         ...desk,
         held: { ...(desk.held ?? {}), motion: true, frame_interval_ms: 250 },
@@ -760,6 +855,7 @@ for (const p of owedPoses) {
     };
 
     loops.length = 0;
+    asked.offset.length = 0;
     createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} }).paint({ ...scene, desks: [moving] }, { bounds: null });
 
     const g = host.children[0].children.find((n) => n.getAttribute('class') === 'desks').children[0];
@@ -767,28 +863,187 @@ for (const p of owedPoses) {
     const intern = g.children.find((n) => n.name === 'svg' && n.children[0] && classes(n.children[0]).includes('intern'))?.children[0];
     const internBefore = intern?.getAttribute('href');
     const asset = moving.key;
+    const pose = moving.elements.find((e) => e.kind === 'character');
+    const from = loopFromOf(pose.pose);
 
-    if (character === undefined || intern === undefined) {
-        defects.push('the held-loop desk painted no character sprite or no intern sprite to step');
+    if (character === undefined || (withIntern && intern === undefined)) {
+        defects.push(`the held-loop desk (${pose.pose}) painted no character sprite${withIntern ? ' or no intern sprite' : ''} to step`);
     } else if (loops.length !== 1) {
-        defects.push(`a moving held render started ${loops.length} loop(s), not one`);
+        defects.push(`a moving held render (${pose.pose}) started ${loops.length} loop(s), not one`);
     } else {
-        const pose = moving.elements.find((e) => e.kind === 'character');
-        const frame = (i) => uri(doc(`${asset}#${pose.pose}@${deskTop(desk.key, pose)}#${i}`));
+        const frame = (i) => poseFrame(desk.key, pose, i);
         const seen = [];
+        const start = character.getAttribute('href');
+        // § 6.2's per-seat loop phase (card#12187): the moving loop starts at the seat's offset into the LOOP of four
+        // and steps on from it — documents `from + ((tick + offset) % 4)`, never the still ahead of the loop.
+        const owedSteps = [1, 2, 3, 4, 5, 6, 7, 8].map((i) => from + ((i + STUB_OFFSET) % 4));
 
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < 8; i++) {
             loops[0]();
             seen.push(character.getAttribute('href'));
         }
 
-        if (seen.join('|') !== [1, 2, 3, 0].map(frame).join('|')) {
-            defects.push(`the held loop did not step the moving character through its pose's four frames in order — it drew ${seen.map((h) => decodeURIComponent(h).match(/#[^<]*#\d/)?.[0] ?? '?').join(', ')}`);
+        if (start !== frame(from + (STUB_OFFSET % 4))) {
+            defects.push(`the moving ${pose.pose} character was first painted at «${decodeURIComponent(start).match(/#\d+<\/title>/)?.[0] ?? '?'}», not at its loop's start plus its seat's offset, document ${from + (STUB_OFFSET % 4)}`);
         }
 
-        if (intern.getAttribute('href') !== internBefore) {
+        if (!asked.offset.some(([k, n]) => k === asset && n === 4)) {
+            defects.push(`the painter never asked the tree for the moving ${pose.pose} seat's loop offset over its loop's four frames — it asked ${JSON.stringify(asked.offset)}`);
+        }
+
+        if (seen.join('|') !== owedSteps.map(frame).join('|')) {
+            defects.push(`the held loop did not step the moving ${pose.pose} character through its loop's four frames in order from its offset — it drew ${seen.map((h) => decodeURIComponent(h).match(/#(\d+)<\/title>/)?.[1] ?? '?').join(', ')}, not documents ${owedSteps.join(', ')}`);
+        }
+
+        if (withIntern && intern.getAttribute('href') !== internBefore) {
             defects.push('the held loop stepped an intern — an intern stands still (§ 8)');
         }
+    }
+}
+
+{
+    const typist = desks.find((d) => d.elements.some((e) => e.kind === 'character' && e.pose !== 'asleep') && d.elements.some((e) => e.kind === 'stool' && !failedOf.get(d.key).has(e.asset)));
+    const sleeper = desks.find((d) => d.elements.some((e) => e.kind === 'character' && e.pose === 'asleep'));
+
+    if (typist === undefined || sleeper === undefined) {
+        defects.push(`the planted desks hold no ${typist === undefined ? 'moving desk with an intern' : 'sleeper'} — the held-loop leg reads nothing`);
+    } else {
+        heldLoop(typist, true);
+        heldLoop(sleeper, false);
+    }
+}
+
+/** Every node under `n`, `n` first. */
+function walkOf(n) {
+    return [n, ...n.children.flatMap(walkOf)];
+}
+
+// ── card#12194 — an A2 walker (§ 6.2's walk note items 5 and 9): its floor element is a child of the floor stack (the
+// desks layer, never `effects`), its cab element a descendant of the band's cab clip group after the room and before the
+// leaves; neither takes a pointer (H19); and the floor image strides only inside its walk leg — the same phase-0 frame on
+// two ticks of its wait, differing frames on two ticks of its walk — while the cab image never strides (H21). The loop's
+// time is `performance.now() − began`, so the probe stubs `performance.now()` and places each tick inside a leg ──
+{
+    const { backWall, threshold } = await mod('floor/scene.js');
+    const { backWallBand } = await mod('floor/floor-layout.js');
+    const band = backWall(backWallBand({ x: 0, y: 0, width: 1200 }), null);
+    const T = threshold(band);
+    const I = 250;
+    const walker = {
+        animation_id: 'A2', cause: 77, install_id: 'walk-room', seat_id: 'walker', class: 'edge', motion: true, frame_interval_ms: I,
+        route: 'routed', side: 'empty', lattice_key: 'k', frames: 25, door: { start: 20, frames: 5 },
+        legs: [
+            { kind: 'walk', start: 0, frames: 8, points: [{ x: 300, y: 200 }, { x: 200, y: 100 }, T], length: 0 },
+            { kind: 'stand', start: 8, frames: 12, at: T, why: 'wait' },
+            { kind: 'stand', start: 20, frames: 2, at: T, why: 'door' },
+            { kind: 'cab', start: 22, frames: 3, at: T },
+        ],
+        size: { w: 54, h: 96 }, frame: { w: 108, h: 117 },
+        elapsed_frames: 0, elapsed_ms: 0, started_at: 5000,
+    };
+    let perf = 100000;
+    const realPerformance = globalThis.performance;
+
+    Object.defineProperty(globalThis, 'performance', { value: { now: () => perf }, configurable: true });
+    loops.length = 0;
+    asked.walk.length = 0;
+    createPainter({ characters, themes: { studio: theme }, failed() {}, select() {}, clock: { now: () => 5000 } })
+        .paint({ ...scene, band, desks: desks.slice(0, 2), effects: [walker], doors: [], loop_fps: 4 }, { bounds: null });
+
+    const drawing = host.children[0];
+    const stackLayer = drawing.children.find((n) => n.getAttribute('class') === 'desks');
+    const effectsLayer = drawing.children.find((n) => n.getAttribute('class') === 'effects');
+    const shownOf = (n) => classes(n).includes('fx-walker-shown');
+    const floorEl = stackLayer.children.find(shownOf);
+    const cabEl = walkOf(drawing).find((n) => classes(n).includes('fx-walker-cab'));
+    const cabGroup = walkOf(drawing).find((n) => n.getAttribute('class') === 'band-cab');
+    const imageIn = (n) => (n === undefined ? undefined : walkOf(n).find((m) => m.name === 'image' && classes(m).includes('character')));
+    const floorImage = imageIn(floorEl);
+    const cabImage = imageIn(cabEl);
+    const phase = (i) => uri(doc(`walk-room/walker#${i}`));
+    const frameOf = (h) => decodeURIComponent(String(h)).match(/#(\d+)<\/title>/)?.[1] ?? '?';
+
+    walker_.painted = floorEl !== undefined;
+
+    if (floorEl === undefined || walkOf(effectsLayer).some(shownOf)) {
+        defects.push('the A2 walker is not a child of the floor stack (the desks layer) — or a walker element is in the effects layer');
+    }
+
+    if (stackLayer.children.filter((n) => classes(n).includes('desk')).length !== 2) {
+        defects.push('the floor stack does not hold the two desks beside the walker');
+    }
+
+    if (cabEl === undefined || cabGroup === undefined || !walkOf(cabGroup).includes(cabEl)) {
+        defects.push("the A2 walker's cab element is not inside the band's cab clip group");
+    } else {
+        const order = walkOf(drawing);
+        const firstLeaf = order.findIndex((n) => classes(n).includes('elevator-leaf'));
+
+        if (!(order.indexOf(cabEl) < firstLeaf)) {
+            defects.push("the A2 walker's cab element is drawn after the elevator's leaves — over them");
+        }
+    }
+
+    // § 1.2's pointer rule: every walker element, its placeholder and its images are under a `pointer-events:none` group.
+    if (!/\.fx-walker-shown\{[^}]*pointer-events:none/.test(STYLE)) {
+        defects.push('the sheet does not draw `.fx-walker-shown` with `pointer-events:none` — a walker takes the presses meant for the elevator and the desks');
+    }
+
+    if (floorImage === undefined || cabImage === undefined || loops.length !== 1) {
+        defects.push(`the A2 walker painted ${floorImage === undefined ? 'no floor image' : cabImage === undefined ? 'no cab image' : `${loops.length} loop(s), not one`}`);
+    } else {
+        const tick = (ms) => { perf = 100000 + ms; loops[0](); return [floorImage.getAttribute('href'), cabImage.getAttribute('href')]; };
+        // Inside the walk leg (0 … 8 frames), inside the wait (8 … 20), inside the cab (22 … 25).
+        const walk1 = tick(2 * I + 10);
+        const walk2 = tick(3 * I + 10);
+        const wait1 = tick(10 * I + 10);
+        const wait2 = tick(11 * I + 10);
+        const cab1 = tick(22 * I + 10);
+        const cab2 = tick(23 * I + 10);
+
+        walker_.frames = { walk: [walk1[0], walk2[0]].map(frameOf), wait: [wait1[0], wait2[0]].map(frameOf), cab: [cab1[1], cab2[1]].map(frameOf) };
+
+        if (walk1[0] === walk2[0]) {
+            defects.push(`the A2 walker did not stride inside its walk leg — two ticks drew frame ${frameOf(walk1[0])} both times`);
+        }
+
+        if (wait1[0] !== phase(0) || wait2[0] !== phase(0)) {
+            defects.push(`the A2 walker walked in place while it waited — it drew frames ${frameOf(wait1[0])}, ${frameOf(wait2[0])}, not its phase-0 stand frame on both ticks`);
+        }
+
+        if ([walk1, walk2, wait1, wait2, cab1, cab2].some(([, c]) => c !== phase(0))) {
+            defects.push('the A2 walker\'s cab image stepped — it is never stepped, standing in the cab at its phase-0 frame');
+        }
+    }
+
+    Object.defineProperty(globalThis, 'performance', { value: realPerformance, configurable: true });
+}
+
+// ── A desk's frames are cached BY POSE (§ 10.4's frame contract): one painter drawing a seat asleep, then the same seat
+// in another pose, draws the second pose's frames — never the first's from a cache keyed without the pose ──
+{
+    const sleeping = desks.find((d) => d.elements.some((e) => e.kind === 'character' && e.pose === 'asleep'));
+    const awake = {
+        ...sleeping,
+        elements: sleeping.elements.map((e) => {
+            if (e.kind !== 'character') {
+                return e;
+            }
+
+            // Every pose carries the overdraw and the clear rects since card#12259; only the pose changes.
+            return { ...e, pose: 'present' };
+        }),
+    };
+    const one = createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} });
+    const characterHref = () => walkOf(host.children[0]).find((n) => n.name === 'image' && classes(n).includes('character'))?.getAttribute('href');
+
+    one.paint({ ...scene, desks: [sleeping] }, { bounds: null });
+    one.paint({ ...scene, desks: [awake] }, { bounds: null });
+
+    const pose = awake.elements.find((e) => e.kind === 'character');
+
+    if (characterHref() !== poseFrame(sleeping.key, pose, startOf(pose))) {
+        defects.push(`a seat drawn asleep and then present by one painter drew «${decodeURIComponent(String(characterHref())).match(/#[a-z-]+@/)?.[0] ?? '?'}» frames the second time — the painter's frames are not keyed by pose`);
     }
 }
 
@@ -892,4 +1147,4 @@ for (const p of owedPoses) {
     }
 }
 
-console.log(JSON.stringify({ desks: desks.length, painted, bubbles, interns, poses: [...poses].sort(), defects }));
+console.log(JSON.stringify({ desks: desks.length, painted, bubbles, interns, fade, poses: [...poses].sort(), walker: walker_, defects }));

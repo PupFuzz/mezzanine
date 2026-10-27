@@ -263,10 +263,12 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
             ]));
         }
 
+        // The surface's `touch-action` is not `surfaceStyle()`'s since card#12187: `directory.js`'s docking entry writes it,
+        // `auto` with no room drawn, and `TheLobbyIsADrawnRoomTest`'s docking-entry test holds that, and that
+        // `surfaceStyle()` writes none.
         return array_values(array_filter([
             $surface['aspectRatio'] !== '' ? "a lobby with no room drawn held in a {$surface['aspectRatio']} box" : null,
             $surface['overflow'] !== '' ? "a lobby with no room drawn clipped ({$surface['overflow']})" : null,
-            $surface['touchAction'] !== '' ? "a lobby with no room drawn refusing the page's touch scroll ({$surface['touchAction']})" : null,
         ]));
     }
 

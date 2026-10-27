@@ -43,6 +43,17 @@ import { createAnimationLog } from './animation-log.js';
 export const ANIMATION_LOG_RETENTION = 2000;
 
 /**
+ * The install's session lifetime in ms, read off the page the server rendered
+ * (`layouts/app.blade.php`'s `mezzanine-session-lifetime-s`, card#12434). The client protocol derives its
+ * session-keepalive interval from it, and treats anything but a positive number as no lifetime. A page
+ * that extends the layout always carries the tag, and both pages' wiring tests red if this stops
+ * reading it.
+ */
+function sessionLifetimeMs() {
+    return Number(document.querySelector('meta[name="mezzanine-session-lifetime-s"]')?.content) * 1000;
+}
+
+/**
  * @param {function(): Promise<void>} render the page's one render — called at most once at a time,
  *        and never dropped: a request made while one runs is honoured when it ends
  * @returns {{client: FleetClient, clock: {now: function(): number}, fetch: Function, requestRender: function(): void,
@@ -127,7 +138,7 @@ export function livePage(render) {
         cancel: (handle) => window.clearTimeout(handle),
     };
 
-    const client = new FleetClient(pageFetch, PageEventSource, clock, timers);
+    const client = new FleetClient(pageFetch, PageEventSource, clock, timers, { sessionLifetimeMs: sessionLifetimeMs() });
 
     return { client, clock, fetch: pageFetch, requestRender, log: createAnimationLog(ANIMATION_LOG_RETENTION) };
 }

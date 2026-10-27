@@ -33,9 +33,9 @@ reopen an entry by talking to its decider.
 | D-06 | Telemetry payload is **minimized**: tool name + short sanitized descriptor, turn boundaries, context %, subagent task titles. Full args/outputs never transit. | operator | 2026-08-23 |
 | D-07 | Floor art from **CC0 tilesets**; characters ported from munder-difflin's procedural generator (MIT, with attribution). The upstream's commercial tilesets are never vendored. | operator | 2026-08-22 |
 | D-08 | App deploys to a **separate host** (operator provisions; target TBD) | operator | 2026-08-23 |
-| D-09 | Human-readable docs live in `docs/`; repo root is reserved for AI-parsed `CLAUDE*.md` files (structure pending roundtable #346) | operator | 2026-08-23 |
+| D-09 | Human-readable docs live in `docs/`; repo root is reserved for AI-parsed `CLAUDE*.md` files (structure pending a fleet decision) | operator | 2026-08-23 |
 | D-10 | **Aggregation plane lives in the Mezzanine app**, not the bridge — the analysis in § 1 | pm, under operator delegation ("best technical solution") | 2026-08-23 |
-| D-11 | Changelog discipline adapted from agent-board-toolkit per kanban-solo's #344 answer, **plus a size gate** they don't have (§ 4) | pm | 2026-08-23 |
+| D-11 | Changelog discipline adapted from agent-board-toolkit per kanban-solo's measured practice, **plus a size gate** they don't have (§ 4) | pm | 2026-08-23 |
 | D-12 | Branch model: `dev` integrates (squash by convention), `main` releases (merge-commit, ruleset-enforced); `card-token-lint` is a required check on both | pm | 2026-08-23 |
 | D-13 | After the P0 designs land, the project **splits to a dedicated Mezzanine agent** running a **sandbox** instance; **prod** is a separate deployment driven by `bin/deploy.sh` (pattern requested from kanban-solo's kanban-board project) | operator | 2026-08-23 |
 | D-14 | Design docs are written to the **standalone-implementer standard** (§ 2, "The bar") — complete enough that an AI agent with no access to this project's conversational history implements from the document alone | operator | 2026-08-23 |
@@ -261,12 +261,12 @@ owned by another team buys nothing and costs both directions (a dashboard bug ca
 fleet coordination; a bridge deploy can never blank the floor).
 
 **Efficiency favors it too.** The alternative — FRs into the bridge — puts Mezzanine's critical
-path behind kanban-solo's queue, and their stated position (roundtable #341) is that they want
+path behind kanban-solo's queue, and their stated position is that they want
 our prototype numbers *before* bridge features land. Duplicating ~50 lines of webhook glue is
 cheaper than a cross-team dependency on every iteration.
 
 **The integration point is an API, not shared code:** Mezzanine exposes a REST **fleet-snapshot
-endpoint**. The bridge's future autonomy watchdog (#341's ask 2) consumes it for exactly the
+endpoint**. The bridge's future autonomy watchdog consumes it for exactly the
 liveness signal kanban-solo said no one could give them — the seat-produced turn boundaries. One
 producer, clean boundary, either side deployable alone.
 
@@ -313,7 +313,7 @@ artifact fills in the fields). Hard requirements it must satisfy:
 - **minimized payload** (D-06) by construction — sanitization at the *reporter*, so secrets
   cannot transit even if the server misbehaves;
 - **kill-vs-complete discrimination**: a `/clear` SIGKILLs an in-flight subagent tool call
-  (measured, roundtable #341/#340); a killed call must be distinguishable from a completed turn
+  (measured by fleet seats); a killed call must be distinguishable from a completed turn
   or the busiest seats mint false idles. The schema carries what the acceptance test needs to
   prove this — break it on purpose, watch a killed call, confirm no idle transition;
 - event kinds: session start/end, turn start/end, tool start/end (name + descriptor), subagent
@@ -371,7 +371,7 @@ overlap where the dependency arrows allow. "Accept:" lines are the review floor,
 | | D2 fleet-state + feed (new card) | D1 | review; snapshot+delta contract explicit |
 | | D3 floor UI spec (card#7457) | D2 draft | review; identity mapping defined |
 | **P1 telemetry** | `fleet-reporter` core: spool + flusher (#7335) | D1 | hermetic selftest; **never blocks the agent**; survives server down; sanitizer has RED fixtures |
-| | installer, Linux + **Windows validated** (#7336) — **won't-do**; Linux seats install by hand with `fleet-reporter/INSTALL-LINUX.md` (card#9368). A Windows procedure is owed when the Windows agent seat onboards | #7335 | a real install on a seat before anything trusts the signal. **Operator ruling 2026-09-13:** Windows validation is not required now, the validated Linux install satisfies this for the present, and Windows validation is owed at the Windows agent seat's onboarding (D1 § 16) |
+| | installer, Linux (#7336): `fleet-reporter/install.sh` runs `fleet-reporter/INSTALL-LINUX.md`'s blocks (card#9368's runbook), and a Claude Code agent runs it by `fleet-reporter/AGENT-INSTALL.md`. A Windows procedure is owed when the Windows agent seat onboards | #7335 | a real install on a seat before anything trusts the signal. **Operator ruling 2026-09-13:** Windows validation is not required now, the validated Linux install satisfies this for the present, and Windows validation is owed at the Windows agent seat's onboarding (D1 § 16) |
 | | kill-vs-idle proof (#7337) | #7335 | the D1-specified test, run for real against a `/clear` |
 | **P2 server** | Laravel skeleton + MFA on stock packages (#7334, re-scoped per D-04) | — | Fortify + TOTP; MFA gates page, **the feed** (SSE since card#9287), and REST snapshot; seat-token ingest is separate and never browser-facing |
 | | ingest endpoint (#7338) | D1, skeleton | rejects unknown schema loudly; per-seat tokens; rate limits; statusLine sampled not streamed |
@@ -382,17 +382,17 @@ overlap where the dependency arrows allow. "Accept:" lines are the review floor,
 | | drill-down + interns (#7342) | #7341 | subagent titles appear from real Task dispatches |
 | **P4 building** | elevator, floor-per-PM, solo floor (#7343) | #7341 | schema already multi-install; second floor renders from a second install's feed |
 | | CI lanes for app code (#7344) | first PHP/JS code | required-check list updated the same PR (see `docs/VERSIONING.md` — a new workflow is not auto-required) |
-| **cont.** | changelog + card-entry gate (card#8174, per #344) — ✅ **landed 2026-08-30** as `release-pr-guard` R4 (the card's bullet) and R5 (the size gate § 4 had claimed since D-11) | — | § 4; every arm seen to red on a planted defect first — eight guard mutations, each producing a targeted failure |
-| | `CLAUDE*.md` structure (new card, blocked on #346) | #346 answer | index + chapters per sola-inventory's pattern |
+| **cont.** | changelog + card-entry gate (card#8174) — ✅ **landed 2026-08-30** as `release-pr-guard` R4 (the card's bullet) and R5 (the size gate § 4 had claimed since D-11) | — | § 4; every arm seen to red on a planted defect first — eight guard mutations, each producing a targeted failure |
+| | `CLAUDE*.md` structure (new card, blocked on a fleet decision) | that decision | index + chapters per sola-inventory's pattern |
 | | `bin/deploy.sh` prod deploy (#7459) | P2 server host (D-08) | prod moves only via the script; seen to fail on a broken precondition before trusted — `bin/deploy.selftest.sh` is that evidence, and the live-host leg stays unexercised until the first deploy to the prod host (D-08) |
 
-Deliberately **not** in this plan: the autonomy watchdog (roundtable #341 + our `[WAKE]` prototype
-#659 — separate track; Mezzanine's contribution to it is the REST snapshot), and the aimla
+Deliberately **not** in this plan: the autonomy watchdog (a separate fleet track, alongside our
+`[WAKE]` prototype; Mezzanine's contribution to it is the REST snapshot), and the aimla
 cutover work, which outranks all of this whenever it is live.
 
 ## 4. Documentation & release discipline
 
-Adopted from kanban-solo's #344 answer (measured, not folklore), with one deliberate addition.
+Adopted from kanban-solo's practice (measured, not folklore), with one deliberate addition.
 
 ⚠ **Every rule in this section was prose with nothing behind it until 2026-08-30.** A sweep of
 `dev` that day found **30 cards named in commit subjects and 25 bulleted** — card#7335 (the whole
@@ -498,11 +498,11 @@ rule violations anyone could have committed at the time.
   server --exclude-dir=vendor | grep -v '^docs/CHANGELOG.md:'`. The `-i` is load-bearing — the
   archive directory is lowercase and a case-sensitive sweep misses every reference to it.
 - **Cite only the card the PR is about.** The same `card#N` token drives the changelog obligation
-  *and* the board writeback (#343's mention-vs-closure defect). A card cited "for context" is a
+  *and* the board writeback (the mention-vs-closure defect). A card cited "for context" is a
   spurious changelog obligation and a wrongly-moved card at once. Nothing enforces this yet —
   it is discipline, stated here so it is at least written.
 - `CLAUDE.md` (root) will carry the last-10-changes snapshot table per the operator's structure
-  direction; format details wait on #346 rather than being guessed.
+  direction; format details wait on the fleet's structure decision rather than being guessed.
 
 ## 5. Deployment
 
@@ -512,18 +512,18 @@ rule violations anyone could have committed at the time.
   separate host (D-08), deployed only via **`bin/deploy.sh`** — hand-deploys to prod are not a
   path.
 - **`bin/deploy.sh` exists (card#7459) and has never run against a host.** ⚠ The kanban-board
-  sample it was to be adopted from — `share/issue-347/kanban-solo/kanban-board-deploy.sh @
-  ee7df9b9` — **was not reachable from this seat** (no such path on this host; the roundtable repo
+  sample it was to be adopted from — kanban-solo's `kanban-board-deploy.sh @ ee7df9b9` —
+  **was not reachable from this seat** (no such path on this host, and the repository holding it
   answers 404 to this credential), so the fleet's deploy scripts are *not* yet demonstrably one
-  shape and no line of the sample was copied. What was adopted is rt#347's own enumeration of the
+  shape and no line of the sample was copied. What was adopted is the card's own handover enumeration of the
   sample's load-bearing properties: forward-only migrations (the store's DDL is
   non-transactional), the load-bearing cache-rebuild order, down-and-stay-down on failure for operator review,
   re-exec-after-checkout, and every "fails once then silently succeeds on a bare re-run" state made
-  loud. **Two things are outstanding**: rt#347 item 5 — take the adapted script to kanban-solo on a
+  loud. **Two things are outstanding**: handover item 5 — take the adapted script to kanban-solo on a
   fresh thread once the P2 host exists — and the first real run, which is the only place the
   live-host leg (the installed crontab and a real daemon restart, the FPM pool's opcache posture,
   MariaDB, `/up` through the real proxy) is exercised at all.
-- **One divergence from the sample's topology, ruled binding by rt#347 item 1:** the deploy
+- **One divergence from the sample's topology, ruled binding by handover item 1:** the deploy
   restarts the long-lived daemons *inside* the window — the set `bin/supervision.sh` lists — and no
   feed daemon: card#9287 re-pinned the feed to Server-Sent Events served by PHP-FPM, whose workers the
   deploy does not restart; they pick up a release's code through opcache revalidation (next bullet),
@@ -1160,10 +1160,10 @@ rule violations anyone could have committed at the time.
 | Old reporter → new ingest skew | D1's versioning + support window; loud reject; VERSIONING owns the policy |
 | False idles on busy seats | the kill-vs-complete gate (#7337) blocks trusting the signal until passed. **Run 2026-08-25: it FAILED and the bar stands** — the reporter was right and the design's guarantee did not hold on the installed harness. D1/D2 amended (`D2-MUST` #1's background-task condition, § 6.6's kill signature, § 8.6's cross-session exclusion); the reporter's own § 6.6 mapping is **not yet updated** |
 | Secrets in telemetry | minimized payload at the reporter (D-06); RED fixtures for the sanitizer |
-| Board-14 mention-vs-closure (#343) | inherited from the bridge writeback; first-release card enumeration discipline until the upstream fix lands |
+| Board-14 mention-vs-closure | inherited from the bridge writeback; first-release card enumeration discipline until the upstream fix lands |
 | **Harness facts drifting under the design** | D1 § 6.0's re-capture obligation, widened to **any** version change after a PATCH bump moved the call lifecycle (#7337). `tools/at1-kill-vs-complete/` re-runs the proof; the version is read from the running binary, never from config |
 | Windows divergence | validation seat is a P1 gate, not a P4 afterthought |
-| Doc structure churn | root `CLAUDE*` files wait on #346; nothing to migrate later |
+| Doc structure churn | root `CLAUDE*` files wait on the fleet's structure decision; nothing to migrate later |
 | Scope creep toward the watchdog | out of plan; only the REST snapshot is Mezzanine's part |
 
 ## 7. What "v0.1.0 shipped" means

@@ -24,6 +24,10 @@ return Application::configure(basePath: dirname(__DIR__))
         then: function (): void {
             Route::middleware([])->group(__DIR__.'/../routes/ingest.php');
 
+            // The coordination receipt (card#12239, D1 § 18.8): the same empty middleware list, for the
+            // reasons `routes/coord.php` states.
+            Route::middleware([])->group(__DIR__.'/../routes/coord.php');
+
             // The READ plane (card #7827). Its own file and its own stack for the mirror of the
             // ingest's reason — see `routes/fleet.php`, which states each group it is not in and
             // why. Registered here rather than from `web:` because it needs `web`'s session
