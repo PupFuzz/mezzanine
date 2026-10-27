@@ -6,7 +6,9 @@ block it needs out of this file and runs it unchanged
 ([Running it with `install.sh`](#running-it-with-installsh), card#7336), and
 [`AGENT-INSTALL.md`](AGENT-INSTALL.md) is the guide a Claude Code agent follows to run it. The runbook
 was written by performing it on the sandbox host on 2026-09-13 (card#9368), for the seat `mezzanine` /
-`mezzanine-solo`, and the seat has reported since.
+`mezzanine-solo`, and the seat has reported since. A Windows seat follows
+[Installing on a Windows seat](#installing-on-a-windows-seat-option-a-hooks-start-the-flusher), near the
+end, which runs most of these blocks unchanged and says where it differs.
 
 **What is live on that seat, and what is not:**
 
@@ -340,7 +342,7 @@ export SEAT_AGENT=<protocol_agent_name>       # sandbox: mezzanine
 export SEAT_URL=<ingest_url>                  # sandbox: https://sandboxmezzanine.neeba.com/api/ingest/events
 export SEAT_BY=<issued_by>                    # who issues the token, for the server's record; sandbox: card-9368
 export SEAT_SERVER=<server_checkout>          # where php artisan runs; sandbox: /home/mezzanine/mezzanine/server
-export SEAT_WRAPPED; SEAT_WRAPPED="$(node -e 'let s = {}; try { s = JSON.parse(require("fs").readFileSync(process.env.HOME + "/.claude/settings.json", "utf8")); } catch (e) { if (e.code !== "ENOENT") throw e; } console.log((s.statusLine && s.statusLine.command) || "")')" || unset SEAT_WRAPPED
+export SEAT_WRAPPED; SEAT_WRAPPED="$(node -e 'let s = {}; try { s = JSON.parse(require("fs").readFileSync((process.env.WIN_UP || process.env.HOME) + "/.claude/settings.json", "utf8")); } catch (e) { if (e.code !== "ENOENT") throw e; } console.log((s.statusLine && s.statusLine.command) || "")')" || unset SEAT_WRAPPED
 env | grep '^SEAT_' | sort
 ```
 
@@ -366,7 +368,7 @@ for (const f of process.argv.slice(2)) {
 }
 console.log(v);
 JS
-  node "$B/coord-config.js" $HOME/.claude/settings.json $HOME/.claude/settings.local.json
+  node "$B/coord-config.js" "${WIN_UP:-$HOME}/.claude/settings.json" "${WIN_UP:-$HOME}/.claude/settings.local.json"
 SH
 ```
 
@@ -382,7 +384,8 @@ the names that roster holds, and what `SEAT_AGENT` is against it:
 ```bash
 bash -euo pipefail <<'SH'
   : "${SEAT_AGENT?is not set: run the values block at the top of Step 2 first}"
-  CC=$(node "$B/coord-config.js" $HOME/.claude/settings.json $HOME/.claude/settings.local.json)
+  CC=$(node "$B/coord-config.js" "${WIN_UP:-$HOME}/.claude/settings.json" "${WIN_UP:-$HOME}/.claude/settings.local.json")
+  if [ -z "$CC" ] && [ -n "${WIN_UP:-}" ]; then echo "no COORD_CONFIG in the settings: on Windows there is no home-path roster (D1 § 3.1), so the name is unchecked"; exit 0; fi
   export ROSTER="${CC:-$HOME/.config/coord/coordination.config.json}"
   node -e 'const f = process.env.ROSTER, a = process.env.SEAT_AGENT; const c = JSON.parse(require("fs").readFileSync(f, "utf8")); const names = (c.roster || []).map((r) => r.name); for (const n of names) console.log(n); console.log(a === "" ? "SEAT_AGENT is empty: undeclared" : "SEAT_AGENT " + a + (names.includes(a) ? " is a member: checked" : " is not a member: disagreed"))'
 SH
@@ -428,6 +431,14 @@ if (MODE) {
   if (!fs.existsSync(e.FR_CONFIG)) die("FR_MODE=" + MODE + " changes a config that exists, and " + e.FR_CONFIG + " does not");
 }
 const mode = (st) => (st.mode & 0o777).toString(8);
+// Windows has no mode bits: the owner-only ACL is checked instead, by acl-only-me.js beside this file in $B (card#12335).
+const acl = () => require(path.join(__dirname, "acl-only-me.js"));
+function perm(f) {
+  if (process.platform !== "win32") return "mode " + mode(fs.statSync(f));
+  const r = acl().check([path.dirname(f), f]);
+  if (!r.ok) { for (const l of r.lines) console.error(l); console.error(f + " was written and is NOT owner-only: delete it, and treat its token as exposed"); process.exit(1); }
+  return "ACL: owner-only";
+}
 const siteOf = (name, url, token) => ({ name, ingest_url: url, token, ca_file: e.FR_CA_FILE || null, proxy_url: null });
 function writeConfig(token) {
   // A fresh install writes the multi-site form, one site, and never the single-site form (D1 § 3.1).
@@ -442,7 +453,7 @@ function writeConfig(token) {
   fs.chmodSync(path.dirname(e.FR_CONFIG), 0o700);
   const fd = fs.openSync(e.FR_CONFIG, "wx", 0o600);
   fs.writeSync(fd, JSON.stringify(cfg, null, 2) + "\n"); fs.closeSync(fd);
-  console.log("wrote " + e.FR_CONFIG + " (mode " + mode(fs.statSync(e.FR_CONFIG)) + ")");
+  console.log("wrote " + e.FR_CONFIG + " (" + perm(e.FR_CONFIG) + ")");
 }
 function changeSites(token) {
   // Read, lift a single-site file into `sites` under FR_LIFT_NAME, change the one site, then write a 0600
@@ -473,23 +484,34 @@ function changeSites(token) {
   catch (err) { errors = ["cannot load the reporter at " + e.FR_REPORTER + " (" + (err.code || err.message) + ")"]; }
   if (errors.length) { fs.unlinkSync(tmp); for (const x of errors) console.error("config error: " + x); die("the result does not validate"); }
   try { fs.renameSync(tmp, e.FR_CONFIG); } catch (err) { try { fs.unlinkSync(tmp); } catch (e2) {} die("could not rename " + tmp + " over " + e.FR_CONFIG + " (" + err.code + ")"); }
-  console.log("wrote " + e.FR_CONFIG + " (mode " + mode(fs.statSync(e.FR_CONFIG)) + "), sites: " + c.sites.map((x) => x.name).join(", "));
+  console.log("wrote " + e.FR_CONFIG + " (" + perm(e.FR_CONFIG) + "), sites: " + c.sites.map((x) => x.name).join(", "));
   if (MODE === "set-token") console.log("token replaced: " + e.FR_SITE_NAME);
 }
 const place = (token) => { try { (MODE ? changeSites : writeConfig)(token); } catch (err) { die("could not write " + e.FR_CONFIG + " (" + err.code + ")"); } };
-if (e.FR_TOKEN_FILE) {
-  // The seat end of a hand delivery: the token comes from the carried file, never from stdin.
+// The carried file and its directory are this account's alone, before the file is read. POSIX: owner and mode.
+// Windows (card#12335): process.getuid does not exist there, so the POSIX checks threw a TypeError before reading
+// anything; the file and its directory must instead pass acl-only-me.js's owner-only ACL check.
+function tokenFileGuard() {
   let st;
   try { st = fs.lstatSync(e.FR_TOKEN_FILE); } catch (err) { die("cannot read the token file " + e.FR_TOKEN_FILE + " (" + err.code + ")"); }
   if (!st.isFile()) die("the token file " + e.FR_TOKEN_FILE + " is not a regular file");
+  if (process.platform === "win32") {
+    const r = acl().check([path.dirname(e.FR_TOKEN_FILE), e.FR_TOKEN_FILE]);
+    if (!r.ok) { for (const l of r.lines) console.error(l); die("the token file " + e.FR_TOKEN_FILE + " or its directory is not owner-only"); }
+    return;
+  }
   if (st.uid !== process.getuid()) die("the token file " + e.FR_TOKEN_FILE + " is not owned by this account");
   if ((st.mode & 0o777) !== 0o600) die("the token file " + e.FR_TOKEN_FILE + " has mode " + mode(st) + ", not 600");
   const dir = path.dirname(e.FR_TOKEN_FILE), dst = fs.lstatSync(dir);
   if (!dst.isDirectory() || dst.uid !== process.getuid()) die("the token file's directory " + dir + " is not a directory owned by this account");
   if ((dst.mode & 0o777) !== 0o700) die("the token file's directory " + dir + " has mode " + mode(dst) + ", not 700");
+}
+if (e.FR_TOKEN_FILE) {
+  // The seat end of a hand delivery: the token comes from the carried file, never from stdin.
+  tokenFileGuard();
   const body = fs.readFileSync(e.FR_TOKEN_FILE, "utf8");
   if (!FILE_TOKEN.test(body)) die("the token file " + e.FR_TOKEN_FILE + " does not hold exactly one well-formed mzn_ token");
-  console.log("read the token from " + e.FR_TOKEN_FILE + " (mode 600)");
+  console.log("read the token from " + e.FR_TOKEN_FILE + " (" + (process.platform === "win32" ? "ACL: owner-only" : "mode 600") + ")");
   place(body.trimEnd());
 } else {
   let raw = ""; process.stdin.setEncoding("utf8");
@@ -759,10 +781,11 @@ name the file and never print what it holds:
 <!-- install.sh: run token-config -->
 ```bash
 bash -euo pipefail <<'SH'
-  { [ -O "$B" ] && [ "$(stat -c %a "$B")" = 700 ] && [ -f "$B/write-config.js" ] && [ -O "$B/write-config.js" ]; } || { echo "\$B is not the seat's own 0700 directory holding its writer: NOTHING RUN" >&2; exit 1; }
+  if [ -n "${WIN_C:-}" ]; then { node "$B/acl-only-me.js" check "$B" "$B/write-config.js" && [ -f "$B/write-config.js" ]; } || { echo "\$B is not the seat's own owner-only directory holding its writer: NOTHING RUN" >&2; exit 1; }
+  else { [ -O "$B" ] && [ "$(stat -c %a "$B")" = 700 ] && [ -f "$B/write-config.js" ] && [ -O "$B/write-config.js" ]; } || { echo "\$B is not the seat's own 0700 directory holding its writer: NOTHING RUN" >&2; exit 1; }; fi
   for v in SEAT_INSTALL_ID SEAT_ID SEAT_URL; do [ -n "${!v:-}" ] || { echo "$v is not set: run the values block at the top of Step 2 first: NOTHING RUN" >&2; exit 1; }; done
   : "${SEAT_AGENT?is not set: run the values block at the top of Step 2 first}" "${SEAT_WRAPPED?is not set: run the values block at the top of Step 2 first}"
-  FR_TOKEN_FILE=$HOME/.config/fleet-reporter/mezzanine-reporter-token FR_CONFIG=$HOME/.config/fleet-reporter/config.json FR_INSTALL="$SEAT_INSTALL_ID" FR_SEAT="$SEAT_ID" FR_URL="$SEAT_URL" FR_SPOOL=$HOME/.local/state/fleet-reporter FR_AGENT="$SEAT_AGENT" FR_WRAPPED="$SEAT_WRAPPED" node "$B/write-config.js"
+  FR_TOKEN_FILE="${WIN_C:-$HOME/.config/fleet-reporter}/mezzanine-reporter-token" FR_CONFIG="${WIN_C:-$HOME/.config/fleet-reporter}/config.json" FR_INSTALL="$SEAT_INSTALL_ID" FR_SEAT="$SEAT_ID" FR_URL="$SEAT_URL" FR_SPOOL="${WIN_SPOOL:-$HOME/.local/state/fleet-reporter}" FR_AGENT="$SEAT_AGENT" FR_WRAPPED="$SEAT_WRAPPED" FR_DESCRIPTORS="${FR_DESCRIPTORS:-full}" node "$B/write-config.js"
 SH
 echo "pipeline rc=$?"
 ```
@@ -780,7 +803,7 @@ and is the operator's to inspect and shred. It ends by printing `gone` or `PRESE
 <!-- install.sh: run token-shred -->
 ```bash
 bash -euo pipefail <<'SH'
-  F=$HOME/.config/fleet-reporter/mezzanine-reporter-token
+  F="${WIN_C:-$HOME/.config/fleet-reporter}/mezzanine-reporter-token"
   if [ -L "$F" ]; then echo "$F is a symlink to $(readlink -f -- "$F"): the link is removed and that file is left for you to inspect and shred" >&2; rm -- "$F"
   elif [ -f "$F" ]; then shred -u -- "$F"; fi
   if [ -e "$F" ] || [ -L "$F" ]; then echo "token file PRESENT: $F"; else echo "token file gone: $F"; fi
@@ -853,8 +876,8 @@ before the page was left, it cannot be shown again: revoke its prefix on the sam
 <!-- install.sh: run config-check -->
 ```bash
 bash -euo pipefail <<'SH'
-  export FR_CONFIG=$HOME/.config/fleet-reporter/config.json
-  stat -c '%a %n' "$(dirname "$FR_CONFIG")" "$FR_CONFIG"
+  export FR_CONFIG="${WIN_C:-$HOME/.config/fleet-reporter}/config.json"
+  if [ -n "${WIN_C:-}" ]; then node "$B/acl-only-me.js" check "$(dirname "$FR_CONFIG")" "$FR_CONFIG"; else stat -c '%a %n' "$(dirname "$FR_CONFIG")" "$FR_CONFIG"; fi
   node -e 'const f = process.env.FR_CONFIG; if (!f) { console.error("FR_CONFIG must name the config file: NOTHING READ"); process.exit(2); } const c=JSON.parse(require("fs").readFileSync(f,"utf8")); const show=(p,o)=>{for (const [k,v] of Object.entries(o)) { if (k==="sites" && Array.isArray(v)) { v.forEach((x,i)=>show("sites["+(x&&x.name||i)+"].",x||{})); continue; } const u=(x)=>{try{const w=new URL(x);if(w.username||w.password){w.username="USER";w.password="";return w.href.replace("USER@","<userinfo>@");}}catch(e){}return x;}; console.log(p+k, k==="token" ? "<" + (/^mzn_[A-Za-z0-9_-]{43}$/.test(v) ? "well-formed" : "MALFORMED") + ">" : JSON.stringify(typeof v==="string" && /_url$/.test(k) ? u(v) : v)); }}; show("",c)'
 SH
 ```
@@ -883,7 +906,7 @@ the config's mode kept. This reads and writes the file without printing it:
 
 <!-- install.sh: skip — an optional later change; install.sh writes the default, full -->
 ```bash
-FR_CONFIG=$HOME/.config/fleet-reporter/config.json FR_DESCRIPTORS=none node -e 'const fs=require("fs"),f=process.env.FR_CONFIG,v=process.env.FR_DESCRIPTORS; if (!f) { console.error("FR_CONFIG must name the config file: NOTHING WRITTEN"); process.exit(2); } if(!["full","paths","none"].includes(v)) { console.error("FR_DESCRIPTORS must be full, paths or none: NOTHING WRITTEN"); process.exit(2); } const c=JSON.parse(fs.readFileSync(f,"utf8")); c.descriptors=v; fs.writeFileSync(f, JSON.stringify(c,null,2)+"\n", {mode:0o600}); console.log("descriptors =", v)'
+FR_CONFIG="${WIN_C:-$HOME/.config/fleet-reporter}/config.json" FR_DESCRIPTORS=none node -e 'const fs=require("fs"),f=process.env.FR_CONFIG,v=process.env.FR_DESCRIPTORS; if (!f) { console.error("FR_CONFIG must name the config file: NOTHING WRITTEN"); process.exit(2); } if(!["full","paths","none"].includes(v)) { console.error("FR_DESCRIPTORS must be full, paths or none: NOTHING WRITTEN"); process.exit(2); } const c=JSON.parse(fs.readFileSync(f,"utf8")); c.descriptors=v; fs.writeFileSync(f, JSON.stringify(c,null,2)+"\n", {mode:0o600}); console.log("descriptors =", v)'
 ```
 
 Every hook reads the config when it fires, so the next tool call uses the new value. Nothing needs a
@@ -919,6 +942,10 @@ A second script checks the result against the original: every top-level key othe
 `statusLine` is unchanged, every existing hook entry is still in place, every added entry is the
 reporter's, and a changed statusLine can only be the reporter.
 
+Both scripts build the reporter's command string the same way, and on Windows both wrap the artifact's path
+in double quotes and refuse one written with backslashes (card#12335). That expression is written once in
+each script: an edit to one is made to the other.
+
 <!-- install.sh: run hooks-scripts -->
 ```bash
 bash -euo pipefail <<'SH'
@@ -926,6 +953,10 @@ bash -euo pipefail <<'SH'
 const fs = require("fs"), path = require("path");
 const [src, dst, js, prior] = process.argv.slice(2);
 if (!src || !dst || !js) { console.error("usage: node wire-hooks.js <settings.json> <output> <fleet-reporter.js> [<prior statusLine command>]: NOTHING WRITTEN"); process.exit(2); }
+// Windows: the path is quoted, for a profile folder with a space, and must be in forward-slash form so the JSON
+// needs no escaping (card#12335). Elsewhere it is written bare, the string seats already carry.
+const q = (p) => (process.platform === "win32" ? '"' + p + '"' : p);
+if (process.platform === "win32" && js.includes(String.fromCharCode(92))) { console.error("pass the artifact path in forward-slash form (cygpath -m): NOTHING WRITTEN"); process.exit(2); }
 const fixtures = path.join(path.dirname(js), "fixtures", "hooks");
 const set = fs.readdirSync(fixtures).filter((f) => f.endsWith(".json")).sort().map((f) => {
   const shapes = JSON.parse(fs.readFileSync(path.join(fixtures, f), "utf8")).shapes;
@@ -935,14 +966,14 @@ const s = JSON.parse(fs.readFileSync(src, "utf8"));
 s.hooks = s.hooks || {};
 const added = [];
 for (const { hook, tool } of set) {
-  const command = "node " + js + " hook " + hook;
+  const command = "node " + q(js) + " hook " + hook;
   const list = (s.hooks[hook] = s.hooks[hook] || []);
   if (list.some((e) => (e.hooks || []).some((x) => x.command === command))) continue;
   list.push({ matcher: tool ? "*" : "", hooks: [{ type: "command", command }] });
   added.push(hook);
 }
 if (prior !== undefined) {
-  const sl = "node " + js + " statusline";
+  const sl = "node " + q(js) + " statusline";
   const current = s.statusLine && s.statusLine.command ? s.statusLine.command : "";
   if (current !== sl) {
     if (current !== prior) {
@@ -963,13 +994,16 @@ JS
 const fs = require("fs");
 const [before, after, js] = process.argv.slice(2);
 if (!before || !after || !js) { console.error("usage: node check-preserved.js <before.json> <after.json> <fleet-reporter.js>: NOTHING CHECKED"); process.exit(2); }
+// The same quoting rule as wire-hooks.js, kept identical to it there (card#12335).
+const q = (p) => (process.platform === "win32" ? '"' + p + '"' : p);
+if (process.platform === "win32" && js.includes(String.fromCharCode(92))) { console.error("pass the artifact path in forward-slash form (cygpath -m): NOTHING CHECKED"); process.exit(2); }
 const a = JSON.parse(fs.readFileSync(before, "utf8")), b = JSON.parse(fs.readFileSync(after, "utf8"));
 const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
 const bad = [];
 for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
   if (k === "hooks") continue;
   if (k === "statusLine" && !same(a[k], b[k])) {
-    if (b[k].command !== "node " + js + " statusline") bad.push("statusLine changed to something other than the reporter");
+    if (b[k].command !== "node " + q(js) + " statusline") bad.push("statusLine changed to something other than the reporter");
     else console.log("statusLine: wrapped (was: " + (a[k] && a[k].command) + ")");
   } else if (!same(a[k], b[k])) bad.push("top-level key " + k + " changed");
 }
@@ -981,7 +1015,7 @@ for (const h of Object.keys(ah)) {
 }
 for (const h of Object.keys(bh)) {
   for (const e of bh[h].slice((ah[h] || []).length)) {
-    if (!same(e.hooks, [{ type: "command", command: "node " + js + " hook " + h }])) bad.push("hook " + h + ": an added entry is not the reporter's");
+    if (!same(e.hooks, [{ type: "command", command: "node " + q(js) + " hook " + h }])) bad.push("hook " + h + ": an added entry is not the reporter's");
     else added += 1;
   }
 }
@@ -998,10 +1032,10 @@ SH
 <!-- install.sh: run hooks-apply -->
 ```bash
 bash -euo pipefail <<'SH'
-  node "$B/wire-hooks.js" $HOME/.claude/settings.json "$B/settings.wired.json" $HOME/.local/share/fleet-reporter/fleet-reporter.js
-  node "$B/check-preserved.js" $HOME/.claude/settings.json "$B/settings.wired.json" $HOME/.local/share/fleet-reporter/fleet-reporter.js
-  if cmp -s "$B/settings.wired.json" $HOME/.claude/settings.json; then echo "already wired: nothing applied"
-  else cp "$B/settings.wired.json" $HOME/.claude/settings.json && echo applied; fi
+  node "$B/wire-hooks.js" "${WIN_UP:-$HOME}/.claude/settings.json" "$B/settings.wired.json" "${WIN_I:-$HOME/.local/share/fleet-reporter}/fleet-reporter.js"
+  node "$B/check-preserved.js" "${WIN_UP:-$HOME}/.claude/settings.json" "$B/settings.wired.json" "${WIN_I:-$HOME/.local/share/fleet-reporter}/fleet-reporter.js"
+  if cmp -s "$B/settings.wired.json" "${WIN_UP:-$HOME}/.claude/settings.json"; then echo "already wired: nothing applied"
+  else cp "$B/settings.wired.json" "${WIN_UP:-$HOME}/.claude/settings.json" && echo applied; fi
 SH
 ```
 
@@ -1094,6 +1128,69 @@ const num = (re, what) => { const m = re.exec(src); if (!m) { console.error("can
 const FLUSH_MS = num(/\bFLUSH_MS:\s*(\d+)/, "K.FLUSH_MS"), REQUEST_MS = num(/\bREQUEST_MS:\s*(\d+)/, "K.REQUEST_MS");
 const ROUNDS = num(/for \(let round = 0; round < (\d+);/, "laneDrain's round cap");
 const boundMs = FLUSH_MS + REQUEST_MS * (1 + 2 * ROUNDS);
+// Windows (card#12335) has no /proc and no SIGTERM: every path of stopWin32 ends in process.exit, so the lines
+// after it run on Linux only.
+if (process.platform === "win32") stopWin32();
+function stopWin32() {
+  const lockFile = path.join(spool, "flusher.lock");
+  const read = () => { try { return JSON.parse(fs.readFileSync(lockFile, "utf8")); } catch (e) { return null; } };
+  const held = read();
+  if (!held) { console.log("no readable flusher.lock: no flusher to stop"); process.exit(0); }
+  const { pid, started_at } = held;
+  try { process.kill(pid, 0); } catch (e) {
+    if (e.code === "ESRCH") { console.log("flusher.lock names pid " + pid + ", which is not running: the lock is stale, no flusher to stop"); process.exit(0); }
+    console.error("flusher.lock names pid " + pid + ", which cannot be probed (" + e.code + "): NOTHING SENT"); process.exit(1);
+  }
+  // Who the pid is now: its start time and its command line, from one CIM query through acl-only-me.js's PowerShell
+  // runner (saved beside this file by W0). The command line is compared here and never printed: it is the
+  // process's own argv.
+  let start, cmdline;
+  try {
+    const out = require(path.join(__dirname, "acl-only-me.js")).powershell("$p = Get-CimInstance Win32_Process -Filter ('ProcessId=' + [int]$env:FR_PID)\n" +
+      "if ($null -eq $p) { 'gone' } else { $p.CreationDate.ToUniversalTime().ToString('o'); [string]$p.CommandLine }", { FR_PID: String(pid) }).split(/\r?\n/);
+    if (out[0] === "gone") { console.log("flusher.lock names pid " + pid + ", which is not running: the lock is stale, no flusher to stop"); process.exit(0); }
+    start = Date.parse(out[0]);
+    cmdline = out.slice(1).join(" ");
+  } catch (e) { console.error("cannot read the start time of pid " + pid + " (PowerShell failed): NOTHING SENT"); process.exit(1); }
+  if (!Number.isFinite(start)) { console.error("cannot read the start time of pid " + pid + ": NOTHING SENT"); process.exit(1); }
+  // The flusher writes started_at from its own clock after its process began, so its process starts no later; a
+  // reused pid's process began after the flusher died, so after started_at. No slack. (started_at comes from the
+  // reporter's now(), which FLEET_REPORTER_NOW_MS shifts in its tests only.)
+  if (!(start <= Date.parse(started_at))) { console.error("flusher.lock names pid " + pid + ", which started " + new Date(start).toISOString() + ", after the lock's started_at " + started_at + ": a reused pid, NOTHING SENT"); process.exit(1); }
+  // The command line names <js> followed by `flusher`, compared as Windows paths (resolved, case-insensitive),
+  // never as a substring: the spawn passes the artifact's backslash path, quoted when it holds a space.
+  const BS = String.fromCharCode(92), want = path.win32.resolve(js).toLowerCase();
+  const argv = [];
+  for (let i = 0, a = null, quoted = false; i <= cmdline.length; i++) {
+    const c = cmdline[i];
+    if (c === undefined || ((c === " " || c === "\t") && !quoted)) { if (a !== null) argv.push(a); a = null; continue; }
+    if (a === null) a = "";
+    if (c === BS) {
+      let n = 0;
+      while (cmdline[i] === BS) { n++; i++; }
+      if (cmdline[i] === '"') { a += BS.repeat(n >> 1); if (n % 2) a += '"'; else quoted = !quoted; } else { a += BS.repeat(n); i--; }
+    } else if (c === '"') quoted = !quoted;
+    else a += c;
+  }
+  const named = argv.some((x, i) => argv[i + 1] === "flusher" && path.win32.resolve(x).toLowerCase() === want);
+  if (!named) { console.error("flusher.lock names pid " + pid + ", whose command line does not match " + js + " flusher: NOTHING SENT"); process.exit(1); }
+  console.log("pid " + pid + " started " + new Date(start).toISOString() + ", no later than the lock's started_at; its command line matches " + js + " flusher");
+  // On Windows process.kill terminates the process outright (Node's process.kill: SIGTERM is an unconditional
+  // termination there), so the flusher does not finish its pass. D1 § 2.3 absorbs that: state is saved before each
+  // send by temp file and rename (a leftover .tmp beside state.json is harmless), and the lock is removed below.
+  process.kill(pid);
+  const t0 = Date.now(), tick = new Int32Array(new SharedArrayBuffer(4));
+  for (;;) {
+    try { process.kill(pid, 0); } catch (e) { if (e.code === "ESRCH") break; }
+    if (Date.now() - t0 > boundMs) { console.error("flusher pid " + pid + " still running " + boundMs / 1000 + " s after it was terminated: NOT STOPPED"); process.exit(1); }
+    Atomics.wait(tick, 0, 0, 250);
+  }
+  console.log("flusher pid " + pid + " terminated, gone " + Math.round((Date.now() - t0) / 1000) + " s later");
+  const now = read();
+  if (now && now.pid === pid && now.started_at === started_at) { fs.unlinkSync(lockFile); console.log("removed flusher.lock naming pid " + pid); }
+  else console.log(now ? "flusher.lock now names another flusher: left in place" : "flusher.lock is already gone");
+  process.exit(0);
+}
 let pid;
 try { pid = JSON.parse(fs.readFileSync(path.join(spool, "flusher.lock"), "utf8")).pid; } catch (e) { console.log("no readable flusher.lock: no flusher to stop"); process.exit(0); }
 let cmd = null;
@@ -1112,6 +1209,30 @@ const fs = require("fs"), path = require("path");
 const [spool, js, mode] = process.argv.slice(2);
 if (!spool || !js) { console.error("usage: node flusher-ancestry.js <spool dir> <fleet-reporter.js> [--upgrade]"); process.exit(2); }
 if (mode !== undefined && mode !== "--upgrade") { console.error("unknown mode [" + mode + "]: the only one is --upgrade"); process.exit(2); }
+// Windows (card#12335): no /proc and no supervisor to name. Each leg prints its own verdict, and every path ends
+// in process.exit, so the lines after it run on Linux only. It does not show who started the holder: a hook's
+// flusher and one run by hand hold the same lock.
+if (process.platform === "win32") ancestryWin32();
+function ancestryWin32() {
+  const lockFile = path.join(spool, "flusher.lock");
+  let held;
+  try { held = JSON.parse(fs.readFileSync(lockFile, "utf8")); } catch (e) { console.log("FAIL: no readable flusher.lock, so no flusher holds the lock"); process.exit(1); }
+  try { process.kill(held.pid, 0); } catch (e) { console.log("FAIL: flusher.lock names pid " + held.pid + ", which is " + (e.code === "ESRCH" ? "not running" : "not probeable (" + e.code + ")")); process.exit(1); }
+  console.log("pid " + held.pid + " is running");
+  const m = /\bLOCK_STALE_MS:\s*(\d+)/.exec(fs.readFileSync(js, "utf8"));
+  if (!m) { console.log("FAIL: cannot read K.LOCK_STALE_MS from " + js); process.exit(1); }
+  const age = Date.now() - fs.statSync(lockFile).mtimeMs;
+  if (age >= Number(m[1])) { console.log("FAIL: the lock has not been renewed for " + Math.round(age / 1000) + " s, past K.LOCK_STALE_MS"); process.exit(1); }
+  console.log("the lock was renewed " + Math.round(age / 1000) + " s ago, inside K.LOCK_STALE_MS");
+  if (mode === "--upgrade") {
+    const builtMs = fs.statSync(js).mtimeMs, startedMs = Date.parse(held.started_at);
+    if (!(startedMs >= builtMs)) { console.log("FAIL: the lock holder started " + held.started_at + ", before the artifact was installed at " + new Date(builtMs).toISOString() + ": it runs the previous build"); process.exit(1); }
+    console.log("PASS: the lock holder runs the artifact installed at " + new Date(builtMs).toISOString() + " (it started " + held.started_at + ")");
+    process.exit(0);
+  }
+  console.log("Windows has no supervised start (Option A): who started the holder is not a question here");
+  process.exit(2);
+}
 let pid;
 try { pid = JSON.parse(fs.readFileSync(path.join(spool, "flusher.lock"), "utf8")).pid; } catch (e) { console.log("FAIL: no readable flusher.lock, so no flusher holds the lock"); process.exit(1); }
 const chain = [];
@@ -1373,7 +1494,7 @@ long enough for cron's next minute to start a flusher after Step 5 stopped one, 
 
 <!-- install.sh: run arrival -->
 ```bash
-( FR_REPORTER=$HOME/.local/share/fleet-reporter/fleet-reporter.js FR_CONFIG=$HOME/.config/fleet-reporter/config.json FR_WAIT_S=150 node -e '
+( FR_REPORTER="${WIN_I:-$HOME/.local/share/fleet-reporter}/fleet-reporter.js" FR_CONFIG="${WIN_C:-$HOME/.config/fleet-reporter}/config.json" FR_WAIT_S=150 node -e '
 const fs = require("fs"), path = require("path");
 const js = process.env.FR_REPORTER, cfg = process.env.FR_CONFIG, wait = Number(process.env.FR_WAIT_S);
 if (!js || !cfg || !(wait >= 0)) { console.log("FR_REPORTER, FR_CONFIG and FR_WAIT_S must each be set: NOT MEASURED"); process.exit(2); }
@@ -1485,7 +1606,7 @@ git clone https://github.com/PupFuzz/mezzanine "$B/checkout" && git -C "$B/check
 
 <!-- install.sh: run u1 -->
 ```bash
-( C=<checkout>/fleet-reporter; I=$HOME/.local/share/fleet-reporter
+( C=<checkout>/fleet-reporter; I="${WIN_I:-$HOME/.local/share/fleet-reporter}"
   v() { grep -o "^const REPORTER_VERSION = '[^']*'" "$1" | cut -d"'" -f2; }
   echo "installed $(v "$I/fleet-reporter.js"), this checkout $(v "$C/fleet-reporter.js")"
   sha256sum "$C/fleet-reporter.js" "$I/fleet-reporter.js"
@@ -1508,7 +1629,7 @@ the block would write it, and refuses a name the runbook does not hold exactly o
 <!-- install.sh: skip — install.sh saves each helper by running the block that saves it -->
 ```bash
 bash -euo pipefail <<'SH'
-  for h in coord-config.js wire-hooks.js check-preserved.js stop-flusher.js flusher-ancestry.js; do
+  for h in coord-config.js wire-hooks.js check-preserved.js stop-flusher.js flusher-ancestry.js acl-only-me.js; do
     start="cat > \"\$B/$h\" <<'JS'"
     awk -v s="$start" 'on && $0 == "JS" { on = 0; n++; next } on { print; next } { t = $0; sub(/^ +/, "", t) } t == s { on = 1 } END { exit n == 1 ? 0 : 1 }' \
       <checkout>/fleet-reporter/INSTALL-LINUX.md > "$B/$h" || { echo "$h: not exactly one block in the runbook: NOT EXTRACTED" >&2; exit 1; }
@@ -1519,7 +1640,8 @@ SH
 ```
 
 *Check:* it prints `helpers-extracted`. Add `write-config.js` to the list when a row's `config` touch
-names Step 2's writer.
+names Step 2's writer. The list holds `acl-only-me.js`, which the Windows section's W0 saves: one list for
+both systems, so a Linux seat extracts it too and never runs it.
 
 **U3 — the artifact and its fixtures.** Run [Step 1](#step-1--prerequisites-and-the-artifact)'s
 `install` lines over the running seat; that step says why they come before the flusher stops.
@@ -1595,9 +1717,9 @@ request's header and nowhere else, and prints no token:
 
 <!-- install.sh: run health -->
 ```bash
-( I=$HOME/.local/share/fleet-reporter
+( I="${WIN_I:-$HOME/.local/share/fleet-reporter}"
   v() { grep -o "^const REPORTER_VERSION = '[^']*'" "$1" | cut -d"'" -f2; }
-  FR_REPORTER="$I/fleet-reporter.js" FR_CONFIG=$HOME/.config/fleet-reporter/config.json FR_WANT="$(v "$I/fleet-reporter.js")" node -e '
+  FR_REPORTER="$I/fleet-reporter.js" FR_CONFIG="${WIN_C:-$HOME/.config/fleet-reporter}/config.json" FR_WANT="$(v "$I/fleet-reporter.js")" node -e '
 const https = require("https"), fs = require("fs");
 const js = process.env.FR_REPORTER, cfg = process.env.FR_CONFIG, want = process.env.FR_WANT;
 if (!js || !cfg) { console.log("FR_REPORTER and FR_CONFIG must each be set: NOT MEASURED"); process.exit(2); }
@@ -1765,6 +1887,461 @@ even though the hooks are now live, and neither were items 3 to 5, because all o
 the seat this runbook exists to connect. Item 3's helper was exercised only against stand-in
 processes, as Step 5 reports.
 
+## Installing on a Windows seat (Option A: hooks start the flusher)
+
+A Windows agent seat is Claude Code on Windows, whose shell tool is Git Bash (`MSYSTEM=MINGW64`). It ends
+in the state Steps 0 to 8 reach on Linux, with one difference the operator ruled on 2026-10-25 (Option A):
+**nothing supervises the flusher on Windows.** There is no Scheduled Task, no cron analogue and no other
+supervisor. The reporter's own hooks are the flusher's only start: every hook that finds no fresh lock
+spawns one (`maybeRespawnFlusher` in `fleet-reporter.js`, D1 § 2.3). So a seat on which no Claude Code
+session has fired a hook for `K.LOCK_STALE_MS` and a heartbeat interval reads `offline` on the floor, by
+design. [`install.sh`](install.sh) does not run on Windows: its blocks are this runbook's Linux blocks. An
+agent on a Windows seat runs the blocks of this section itself, one Bash tool call each.
+
+Each sub-step below says only what differs from the Linux step of the same number, and points at it for the
+rest. The values are D1 § 2.1's and § 3.1's:
+
+| What | On a Windows seat | Why |
+|---|---|---|
+| profile, `WIN_UP` | `C:/Users/<u>`, from `node`'s `os.homedir()` | the profile Claude Code reads `.claude/settings.json` under. Git Bash's `$HOME` can be another directory, so no block here reads it |
+| artifact, `WIN_I` | `%LOCALAPPDATA%\fleet-reporter` | D1 § 2.1's Windows install directory |
+| config directory, `WIN_C` | `%APPDATA%\fleet-reporter` | where the reporter reads `config.json` (D1 § 3.1). It also holds the carried token file, between the carry and the shred |
+| spool, `WIN_SPOOL` | `%LOCALAPPDATA%\fleet-reporter-state` | the config's `spool_dir`. It sits beside the artifact, so backing up or removing the artifact never touches it |
+| attempt directories, `WIN_B_ROOT` | `%LOCALAPPDATA%\fleet-reporter-install` | one `$B` per attempt, under it, as on Linux |
+| `descriptors` | `"full"`, written explicitly | operator ruling, 2026-10-25 |
+| `$COORD_CONFIG` | whatever the settings' `env` block sets | on Windows the only roster the reporter reads (D1 § 3.1 has no home path there) |
+
+Every path a block hands to `node` is in `C:/…` form, from `cygpath -m`: `node` receives that form
+unchanged, while Git Bash rewrites a `/c/…` argument before `node` sees it. Every expansion is
+double-quoted, because a profile folder may hold a space and an unquoted test such as `[ -d $X ]` then
+fails with `too many arguments`, takes its `else` branch and carries on.
+
+**Rules for this section's blocks, beyond the Linux ones above.**
+
+- **Every Bash tool call is a new shell.** Before each block, run the Windows values block below, `export
+  B=<the attempt directory>` once W0 has made one, and from W2 on Step 2's values block.
+- **Paste a block as it is written, or save it to a file and run it with `bash <file>`.** The Windows Bash
+  tool turns two backslashes in the text it is given into one, measured on card#12335's seat: `printf '%s\n'
+  'a\\b'` prints `a\b` there, and the same line run from a file prints `a\\b`. No block of this runbook
+  holds two backslashes in a row, and an edit must keep it so.
+- **Each block is its own `bash -euo pipefail` process, as on Linux.** Under the Windows Bash tool, too, a
+  `( set -e; false; echo continued )` subshell prints `continued` and exits 0. Inside a block, a command
+  that may fail stands on its own line, never on the left of `&&`: `false && true` followed by `echo
+  carried-on` prints `carried-on`, even in a block of its own.
+- **No PowerShell, `icacls`, `schtasks` or `whoami` on a bash line of this section.** Owner-only access is
+  checked and set by [W0](#w0--back-up-and-make-the-attempt-directory-owner-only)'s `acl-only-me.js`, which
+  runs PowerShell and `icacls.exe` itself, by argument array, with each path passed in the environment.
+
+**The Linux blocks this section runs as they are written**, with the Windows values exported: Step 2's
+values block, resolver, identity check, writer, (c) and (d); Step 3's check and one-key rewrite; Step 4's
+scripts and (a); Step 5's helpers; U1, U2 and U8; and Step 7's arrival check. Each takes its paths from
+`WIN_UP`, `WIN_I`, `WIN_C` and `WIN_SPOOL` when they are set, and from the Linux path when they are not, so
+on Linux it runs as it did before. Where a Linux block checks a mode (`stat`, `[ -O ]`), it runs
+`acl-only-me.js check` instead when `WIN_C` is set. The blocks below are the steps that differ.
+
+**The Windows values.** Run in the current shell, because it exports into it. A `cygpath` that fails leaves
+its value unset, and every block then stops on it by name:
+
+<!-- install.sh: skip — the Windows section; install.sh runs on Linux only -->
+```bash
+export WIN_UP; WIN_UP="$(cygpath -m "$(node -p "require('os').homedir()")")" || unset WIN_UP
+export WIN_I; WIN_I="$(cygpath -m "$LOCALAPPDATA")/fleet-reporter" || unset WIN_I
+export WIN_C; WIN_C="$(cygpath -m "$APPDATA")/fleet-reporter" || unset WIN_C
+export WIN_SPOOL; WIN_SPOOL="$(cygpath -m "$LOCALAPPDATA")/fleet-reporter-state" || unset WIN_SPOOL
+export WIN_B_ROOT; WIN_B_ROOT="$(cygpath -m "$LOCALAPPDATA")/fleet-reporter-install" || unset WIN_B_ROOT
+env | grep '^WIN_' | sort
+```
+
+### W0 — back up, and make the attempt directory owner-only
+
+As [Step 0](#step-0--back-up-what-the-install-touches-and-make-the-attempt-directory), without the crontab
+half. `$B` is not a `0700` directory here: it is made, then given the owner-only ACL, D1 § 3.1's
+"restricted to the installing user", before anything is copied into it. **Owner-only** means the owner is
+this account or Administrators, and every access rule, explicit or inherited, allows this account, SYSTEM
+or Administrators and no one else: SYSTEM and Administrators are what root is to a Linux `0600`. The block
+saves `acl-only-me.js`, the helper every later Windows step uses for it:
+
+- `node "$B/acl-only-me.js" prep <dir>` removes the directory's inherited rules and grants full control to
+  this account, SYSTEM and Administrators, inherited by everything made inside it afterwards.
+- `node "$B/acl-only-me.js" check <path>…` prints `<path>: ACL owner-only (owner <me>; <n> ACEs)` for each
+  path, or exits 1 with `NOT owner-only:` and the reason: a symbolic link, junction or other reparse point,
+  another owner, or the rule that should not be there, by SID. It names SIDs only, never account names,
+  which are localised, and this account's own SID only as `<me>`. Writer, Step 3 and W2 call it, the writer
+  as a module (`require(…).check`).
+- `node "$B/acl-only-me.js" roaming` prints `roaming true` or `roaming false` for this account's profile;
+  `sid` prints this account's SID. On a platform other than Windows each prints `not Windows: nothing to
+  do` and exits 2. U2 extracts it with the other helpers, on Linux too, where nothing runs it.
+
+<!-- install.sh: skip — the Windows section; install.sh runs on Linux only -->
+```bash
+export B="${WIN_B_ROOT:?run the Windows values block first}/$(date -u +%Y%m%dT%H%M%SZ)"
+bash -euo pipefail <<'SH'
+  : "${WIN_UP:?run the Windows values block first}" "${WIN_I:?run the Windows values block first}" "${WIN_C:?run the Windows values block first}" "${WIN_B_ROOT:?run the Windows values block first}"
+  mkdir -p "$WIN_B_ROOT"
+  mkdir "$B"
+  echo "B=$B"
+  cat > "$B/acl-only-me.js" <<'JS'
+// Windows only (card#12335): the owner-only ACL a Linux seat gets from mode 0600/0700, read and set by SID.
+// "Owner-only" (D2): the owner is this account or Administrators, and every ACE, explicit or inherited, is an
+// Allow for one of this account, SYSTEM (S-1-5-18) or Administrators (S-1-5-32-544). Output names SIDs only,
+// never account names (localised, and they differ on Entra-joined machines), and this account's own SID as <me>.
+const fs = require("fs"), path = require("path"), cp = require("child_process");
+const SYSTEM = "S-1-5-18", ADMINS = "S-1-5-32-544";
+const sys32 = (...p) => path.join(process.env.SystemRoot || "C:/Windows", "System32", ...p);
+// PowerShell 5.1 given a PowerShell 7 PSModulePath can fail to load its own modules, so the child gets none. The
+// script goes as -EncodedCommand (UTF-16LE base64), so no quoting layer touches it; paths and ids reach it
+// through the environment, never through its text.
+function powershell(script, extra) {
+  const env = Object.assign({}, process.env, extra || {});
+  for (const k of Object.keys(env)) if (k.toUpperCase() === "PSMODULEPATH") delete env[k];
+  const enc = Buffer.from("$ErrorActionPreference = 'Stop'\n" + script, "utf16le").toString("base64");
+  return cp.execFileSync(sys32("WindowsPowerShell", "v1.0", "powershell.exe"), ["-NoProfile", "-NonInteractive", "-EncodedCommand", enc],
+    { env, windowsHide: true, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+}
+const win = (p) => path.win32.normalize(p);
+let me = null;
+const sid = () => me || (me = powershell("[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value").trim());
+const who = (s) => (s === sid() ? "<me>" : s);
+function check(paths) {
+  const lines = [];
+  let ok = true;
+  const bad = (p, why) => { ok = false; lines.push(p + ": NOT owner-only: " + why); };
+  for (const p of paths) {
+    let st;
+    try { st = fs.lstatSync(p); } catch (e) { bad(p, "cannot read it (" + e.code + ")"); continue; }
+    if (st.isSymbolicLink()) { bad(p, "a symbolic link or junction"); continue; }
+    if (!st.isFile() && !st.isDirectory()) { bad(p, "neither a regular file nor a directory"); continue; }
+    let out;
+    try {
+      out = powershell("$p = $env:FR_ACL_PATH\n" +
+        "'reparse ' + [bool]((Get-Item -LiteralPath $p -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint)\n" +
+        "$a = Get-Acl -LiteralPath $p\n" +
+        "'owner ' + $a.GetOwner([System.Security.Principal.SecurityIdentifier]).Value\n" +
+        "foreach ($r in $a.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) { 'ace ' + $r.IdentityReference.Value + ' ' + $r.AccessControlType + ' ' + $r.IsInherited }",
+        { FR_ACL_PATH: win(p) });
+    } catch (e) { bad(p, "its ACL could not be read (PowerShell exited " + e.status + ")"); continue; }
+    const rows = out.split(/\r?\n/).filter(Boolean);
+    const owner = (rows.find((l) => l.startsWith("owner ")) || "owner ?").slice(6);
+    const aces = rows.filter((l) => l.startsWith("ace ")).map((l) => l.split(" "));
+    if (!rows.includes("reparse False")) { bad(p, "a reparse point"); continue; }
+    if (owner !== sid() && owner !== ADMINS) { bad(p, "owned by " + who(owner)); continue; }
+    const foreign = aces.filter(([, s, type]) => type !== "Allow" || ![sid(), SYSTEM, ADMINS].includes(s));
+    if (foreign.length) { bad(p, foreign.map(([, s, type, inh]) => type + " " + who(s) + (inh === "True" ? " (inherited)" : "")).join(", ")); continue; }
+    lines.push(p + ": ACL owner-only (owner " + who(owner) + "; " + aces.length + " ACEs)");
+  }
+  return { ok, lines };
+}
+module.exports = { check, powershell };
+if (require.main === module) {
+  const [cmd, ...args] = process.argv.slice(2);
+  if (process.platform !== "win32") { console.log("not Windows: nothing to do"); process.exit(2); }
+  const usage = () => { console.error("usage: node acl-only-me.js sid | prep <dir> | check <path>... | roaming: NOTHING DONE"); process.exit(2); };
+  if (cmd === "sid") console.log(sid());
+  else if (cmd === "prep") {
+    if (args.length !== 1) usage();
+    let st;
+    try { st = fs.lstatSync(args[0]); } catch (e) { console.error(args[0] + ": cannot read it (" + e.code + "): NOTHING CHANGED"); process.exit(1); }
+    if (!st.isDirectory() || st.isSymbolicLink()) { console.error(args[0] + ": not a directory: NOTHING CHANGED"); process.exit(1); }
+    // /inheritance:r drops every inherited ACE; /grant:r replaces this account's, SYSTEM's and Administrators' explicit
+    // grants with full control, (OI)(CI) handing it to every file and directory made inside afterwards.
+    cp.execFileSync(sys32("icacls.exe"), [win(args[0]), "/inheritance:r", "/grant:r", "*" + sid() + ":(OI)(CI)F",
+      "*" + SYSTEM + ":(OI)(CI)F", "*" + ADMINS + ":(OI)(CI)F"], { windowsHide: true, stdio: ["ignore", "ignore", "inherit"] });
+    console.log(args[0] + ": inheritance removed; full control for <me>, SYSTEM and Administrators only");
+  } else if (cmd === "check") {
+    if (!args.length) usage();
+    const r = check(args);
+    for (const l of r.lines) (r.ok ? console.log : console.error)(l);
+    process.exit(r.ok ? 0 : 1);
+  } else if (cmd === "roaming") {
+    const v = powershell("(Get-CimInstance Win32_UserProfile -Filter (\"SID='\" + $env:FR_SID + \"'\")).RoamingConfigured", { FR_SID: sid() }).trim();
+    if (v !== "True" && v !== "False") { console.error("the profile's RoamingConfigured read [" + v + "]: NOT MEASURED"); process.exit(1); }
+    console.log("roaming " + v.toLowerCase());
+  } else usage();
+}
+JS
+  node --check "$B/acl-only-me.js"
+  node "$B/acl-only-me.js" prep "$B"
+  node "$B/acl-only-me.js" check "$B"
+  if [ ! -e "$WIN_UP/.claude/settings.json" ]; then mkdir -p "$WIN_UP/.claude"; printf '{}\n' > "$WIN_UP/.claude/settings.json"; echo "no settings.json yet: created it as {}"; fi
+  cp -p "$WIN_UP/.claude/settings.json" "$B/settings.json"
+  cmp "$WIN_UP/.claude/settings.json" "$B/settings.json"
+  echo "settings copied"
+  if [ -d "$WIN_I" ]; then
+    cp -pr "$WIN_I" "$B/artifact"
+    diff -r "$WIN_I" "$B/artifact"
+    echo "artifact and fixtures copied"
+  else echo "no artifact installed yet: nothing to copy"; fi
+  if [ -f "$WIN_C/config.json" ]; then
+    cp -p "$WIN_C/config.json" "$B/config.json"
+    cmp "$WIN_C/config.json" "$B/config.json"
+    node "$B/acl-only-me.js" check "$B/config.json"
+    echo "config copied"
+  else echo "no config written yet: nothing to copy"; fi
+  node "$B/acl-only-me.js" check "$B/settings.json"
+SH
+```
+
+*Check:* it prints `B=…`, the `prep` line, the `check` line for `$B`, `settings copied`, `artifact and
+fixtures copied` or `no artifact installed yet`, `config copied` or `no config written yet`, and a `check`
+line for every file it copied that holds a secret (on an upgrade the config backup holds the token). `ls
+"$B"` shows no token file. `mkdir` without `-p` fails if the directory exists, so an attempt never reuses
+another's.
+
+### W1 — prerequisites, the artifact, and the ordering probe
+
+As [Step 1](#step-1--prerequisites-and-the-artifact), with `cygpath`, `install`, `sha256sum`, `diff`, `cmp`
+and `shred` in place of `flock` and `crontab`. Git for Windows ships them all; a build without one is
+named here, and the block stops. It also stops when `node` would receive `WIN_I` changed, which every later
+block depends on, and on a roaming profile: `%APPDATA%`, where the config lives, is copied to a profile
+server at logoff on a roaming profile, so the token would leave the machine. It records whether Git Bash's
+`$HOME` is the profile, and nothing here relies on that.
+
+<!-- install.sh: skip — the Windows section; install.sh runs on Linux only -->
+```bash
+bash -euo pipefail <<'SH'
+  : "${WIN_UP:?run the Windows values block first}" "${WIN_I:?run the Windows values block first}" "${B:?export B=<the attempt directory W0 made>}"
+  node -e 'const v = process.versions.node; if (Number(v.split(".")[0]) < 18) { console.error("node " + v + " is older than 18 (D1 § 2.1): NOTHING INSTALLED"); process.exit(1); } console.log("node " + v + " at " + process.execPath)'
+  claude --version
+  command -v cygpath install sha256sum diff cmp shred
+  command -v python || echo "no python on PATH: nothing on the seat needs it"
+  GOT="$(node -p 'process.argv[1]' -- "$WIN_I")"
+  [ "$GOT" = "$WIN_I" ] || { echo "node received [$GOT] for [$WIN_I]: STOP, every later block hands node this path" >&2; exit 1; }
+  echo "node receives WIN_I unchanged"
+  echo "Git Bash HOME is $(cygpath -m "$HOME"); the profile is $WIN_UP"
+  echo "MSYSTEM $MSYSTEM"
+  R="$(node "$B/acl-only-me.js" roaming)"
+  echo "$R"
+  [ "$R" = "roaming false" ] || { echo "a roaming profile copies %APPDATA% to a profile server at logoff, the config and its token with it: STOP before any carry" >&2; exit 1; }
+SH
+```
+
+Then the artifact. The `install` lines start in the first column and take the form
+`bin/reporter-version-guard.py` reads, as Step 1's do; `<checkout>` is a `C:/…` path with no space:
+
+<!-- install.sh: skip — the Windows section; install.sh runs on Linux only -->
+```bash
+bash -euo pipefail <<'SH'
+: "${WIN_I:?run the Windows values block first}" "${B:?export B=<the attempt directory W0 made>}"
+install -d "$WIN_I"
+node "$B/acl-only-me.js" prep "$WIN_I"
+install -d "$WIN_I/fixtures" "$WIN_I/fixtures/hooks"
+install -m 0600 <checkout>/fleet-reporter/fleet-reporter.js "$WIN_I/fleet-reporter.js"
+install -m 0600 <checkout>/fleet-reporter/fixtures/hooks/*.json "$WIN_I/fixtures/hooks/"
+sha256sum <checkout>/fleet-reporter/fleet-reporter.js "$WIN_I/fleet-reporter.js"
+diff -r <checkout>/fleet-reporter/fixtures "$WIN_I/fixtures"
+echo fixtures-match
+node "$B/acl-only-me.js" check "$WIN_I" "$WIN_I/fleet-reporter.js"
+SH
+```
+
+*Check:* one hash twice, `fixtures-match`, and two `check` lines. The artifact runs as this account on every
+tool call, so its directory gets the owner-only ACL, Windows' counterpart of Step 1's `0700`. A mode does
+not do that on Windows, and `install -d -m 0700` fails there outright: on card#12335's seat it printed
+`cannot change permissions … Permission denied` and exited 1 in every directory tried, while `install -d`
+alone and `install -m 0600` of a file succeeded. Git for Windows' `install` and `cp` add no access rule of
+their own: a file each wrote into an owner-only directory passed `check`, inheriting the directory's rules. **On a first install only**, before any config exists, the ordering probe of Step 1:
+a hook with no config exits 0 and prints nothing, so the hooks may be wired before the config. With a config
+present the probe would spool a `tool.start`/`tool.end` pair for `INVALID_TOOL_NAME`, so the block refuses
+to run it then:
+
+<!-- install.sh: skip — the Windows section; install.sh runs on Linux only -->
+```bash
+bash -euo pipefail <<'SH'
+  : "${WIN_I:?run the Windows values block first}" "${WIN_C:?run the Windows values block first}"
+  if [ -e "$WIN_C/config.json" ] || [ -n "${FLEET_REPORTER_CONFIG:-}" ]; then echo "a config exists, or FLEET_REPORTER_CONFIG names one: the ordering probe is for a first install only: NOT RUN" >&2; exit 1; fi
+  printf '{}' | node "$WIN_I/fleet-reporter.js" hook PostToolUse
+  echo "rc=0"
+SH
+```
+
+### W2 — the token, carried by the operator
+
+As [Step 2](#step-2--issue-the-seat-token-into-the-config-on-this-host-or-through-a-carried-file), by
+[the hand delivery](#when-the-server-is-on-another-host-carry-the-token-in-one-named-file): the token is
+issued on the Mezzanine host, or on the site's *Seat tokens* page, and **the operator** carries it to the
+seat. The seat never holds a credential for the Mezzanine host, and the agent never sees the token. Run
+Step 2's values block (`SEAT_BY` and `SEAT_SERVER` are the issuing side's; on the seat any value will do,
+because nothing here reads them), then its resolver, its identity check and its writer, as written. With
+`WIN_UP` set they read the profile's settings files; with no `COORD_CONFIG` in them the identity check
+prints `no COORD_CONFIG in the settings: on Windows there is no home-path roster (D1 § 3.1), so the name
+is unchecked` and exits 0. The writer checks a carried token file with `acl-only-me.js` on Windows, in
+place of the owner and mode checks (the owner-only rule W0 states), and reads the token only after it passes.
+
+**(b) Prepare the directory, then carry the file into it.** The directory is made owner-only before the
+token arrives:
+
+<!-- install.sh: skip — the Windows section; install.sh runs on Linux only -->
+```bash
+bash -euo pipefail <<'SH'
+  : "${WIN_C:?run the Windows values block first}" "${B:?export B=<the attempt directory W0 made>}"
+  mkdir -p "$WIN_C"
+  node "$B/acl-only-me.js" prep "$WIN_C"
+  node "$B/acl-only-me.js" check "$WIN_C"
+SH
+```
+
+The operator then copies `mezzanine-reporter-token` from their own machine into `%APPDATA%\fleet-reporter\`,
+over RDP, signed in as the seat's account, by a file copy that keeps the bytes: a redirected drive, or a
+file copied through the clipboard. Never by pasting the token's text, which can add a carriage return and
+puts the token in a transcript. The copy then has to pass:
+
+<!-- install.sh: skip — the Windows section; install.sh runs on Linux only -->
+```bash
+node "$B/acl-only-me.js" check "${WIN_C:?run the Windows values block first}" "${WIN_C:?run the Windows values block first}/mezzanine-reporter-token"
+```
+
+**(c)** is Step 2 (c)'s block, as written. With `WIN_C` set its first line checks `$B` and the writer with
+`acl-only-me.js`, and it writes `descriptors` `"full"` explicitly. *Check:* the two `check` lines, `read
+the token from …/mezzanine-reporter-token (ACL: owner-only)`, `wrote …/config.json (ACL: owner-only)` and
+`pipeline rc=0`. **(d)** is Step 2 (d)'s block, as written; it must print `token file gone`. The operator
+also deletes the copy on **their** machine, which neither runbook does, and confirms that (d) ran where
+the token was issued.
+
+Step 2's failure rule stands as written: when (c) refuses the file's type, its access rules or its content,
+the token is treated as exposed. Run (d), revoke the token by its prefix, issue another and carry it again.
+The writer keeps its pattern of one token and an optional line feed, so a file that gained a carriage
+return on the way is refused that way too.
+
+### W3 — check the config
+
+[Step 3](#step-3--check-the-config-file)'s block, as written: with `WIN_C` set it runs `acl-only-me.js check`
+on the directory and the file in place of `stat`. *Check:* two `check` lines, `descriptors "full"`, and the
+token shown only as `<well-formed>`.
+
+### W4 — wire the hooks
+
+[Step 4](#step-4--wire-the-hooks-and-optionally-the-statusline)'s scripts block and procedure (a)'s block,
+as written. On Windows `wire-hooks.js` writes the artifact's path in double quotes, `node
+"C:/Users/<u>/AppData/Local/fleet-reporter/fleet-reporter.js" hook <Hook>`, so a profile folder with a
+space cannot split it, and refuses a path written with backslashes. **(b), the statusLine wrap, is not
+applied on Windows**: it is outside this install's scope, and nothing here measured it. *Check:* as Step 4 (a), then make one tool call and count the
+`tool.start` rows it spooled; the count is at least 1:
+
+<!-- install.sh: skip — the Windows section; install.sh runs on Linux only -->
+```bash
+cat "${WIN_SPOOL:?run the Windows values block first}"/*.jsonl | grep -c '"kind":"tool.start"'
+```
+
+### W5 — the flusher: the session's next hook is its start
+
+**No supervisor runs on Windows (Option A).** D1 § 2.3's supervised start is not built here, and nothing
+replaces it: once W4 has wired the hooks, the next tool call's `PreToolUse` runs before the tool does, and
+the hook ends by spawning the flusher when no fresh `flusher.lock` exists.
+
+**The flusher lives as long as the session that started it; the next session's first hook restarts it
+after `K.LOCK_STALE_MS`.** That is the claim this runbook makes until a seat measures more. Before merge
+(card#12335), a flusher started by a hook run by hand outlived the Bash tool call that ran the hook, 110 s
+with no hook firing, and 610 s with no hook firing; whether it outlives a session's `/clear`, the session's
+end and the window closing, and so runs until logoff, was not measured.
+
+**Never start it by piping `{}` into a hook while a config exists**: `PostToolUse` on an empty payload
+spools a `tool.start`/`tool.end` pair for `INVALID_TOOL_NAME`, which the server shows.
+
+The flusher a hook spawns inherits that hook's environment. Whether a hook Claude Code runs on Windows
+carries the settings' `env` block, and so `COORD_CONFIG`, was not measured before merge; the heartbeat's
+`read_via` says which roster the flusher read, and on Windows that is `$COORD_CONFIG` or none.
+
+Save Step 5's helpers with [its helper block](#step-5--supervise-the-flusher-from-the-user-crontab), as
+written, and nothing else of Step 5: there is no crontab. On Windows `stop-flusher.js` stops the flusher
+only when the pid `flusher.lock` names is running, started no later than the lock's `started_at`, and runs
+this artifact's `flusher`, its command line compared as Windows paths. It prints `matches` or `does not
+match` and never the command line itself, which is the process's own argv. It then terminates the
+process, which on Windows is immediate rather than a `SIGTERM`, waits for it to go, and removes the lock
+if it still names that flusher. `flusher-ancestry.js` has no supervisor to name on Windows: it checks that the lock's pid is
+running and the lock is fresh, with `--upgrade` that the holder started after the artifact was installed,
+and without `--upgrade` it exits 2 saying so. Neither shows who started the holder: a hook's flusher and
+one run by hand hold the same lock.
+
+Then the check, read-only, which waits up to 20 s for a lock naming a running pid:
+
+<!-- install.sh: skip — the Windows section; install.sh runs on Linux only -->
+```bash
+node -e 'const fs = require("fs"), path = require("path"), lock = path.join(process.argv[1], "flusher.lock"), t0 = Date.now(); (function look() { let l = null, alive = false; try { l = JSON.parse(fs.readFileSync(lock, "utf8")); process.kill(l.pid, 0); alive = true; } catch (e) {} if (!alive && Date.now() - t0 < 20000) return setTimeout(look, 1000); if (!l) { console.log("no readable flusher.lock after 20 s: NO FLUSHER. Has a hook fired since W4?"); process.exit(1); } console.log("flusher.lock names pid " + l.pid + ", started_at " + l.started_at + ", " + (alive ? "running" : "NOT RUNNING") + ", renewed " + Math.round((Date.now() - fs.statSync(lock).mtimeMs) / 1000) + " s ago"); process.exit(alive ? 0 : 1); })()' "${WIN_SPOOL:?run the Windows values block first}"
+```
+
+*Check:* `running`, and a renewal under `K.LOCK_STALE_MS`.
+
+### W6 — selftest
+
+As [Step 6](#step-6--selftest), with `COORD_CONFIG` set to the resolver's value when it prints one. Step 6
+reads every code:
+
+<!-- install.sh: skip — the Windows section; install.sh runs on Linux only -->
+```bash
+bash -euo pipefail <<'SH'
+  : "${WIN_UP:?run the Windows values block first}" "${WIN_I:?run the Windows values block first}" "${B:?export B=<the attempt directory W0 made>}"
+  CC="$(node "$B/coord-config.js" "$WIN_UP/.claude/settings.json" "$WIN_UP/.claude/settings.local.json")"
+  if [ -n "$CC" ]; then export COORD_CONFIG="$CC"; fi
+  rc=0
+  node "$WIN_I/fleet-reporter.js" selftest || rc=$?
+  echo "selftest rc=$rc"
+SH
+```
+
+### W7 — verify that events arrive
+
+[Step 7](#step-7--verify-that-events-arrive) on the seat: the spool and the flusher's log, then the
+arrival block as written. The server's side is Step 7's store query, which the server's operator runs.
+
+<!-- install.sh: skip — the Windows section; install.sh runs on Linux only -->
+```bash
+ls -la "${WIN_SPOOL:?run the Windows values block first}" && tail -n 5 "${WIN_SPOOL:?run the Windows values block first}"/log/*.log
+```
+
+### Upgrading a Windows seat
+
+[Upgrading an existing seat](#upgrading-an-existing-seat), with these differences:
+
+- **U0** is W0, then U0's clone line. **U1**, **U2** and **U8** run as written. U2's list holds
+  `acl-only-me.js`.
+- **U3** is W1's artifact block, without the ordering probe. **U4** is W4.
+- **U5:** a row's `cron` touch does nothing on Windows. Its `config` touch is applied as written.
+**U6** takes two tool calls, because the hooks of the second start the new flusher. In the first, the stop:
+
+<!-- install.sh: skip — the Windows section; install.sh runs on Linux only -->
+```bash
+node "$B/stop-flusher.js" "${WIN_SPOOL:?run the Windows values block first}" "${WIN_I:?run the Windows values block first}/fleet-reporter.js"
+```
+
+In the next, W5's check, then:
+
+<!-- install.sh: skip — the Windows section; install.sh runs on Linux only -->
+```bash
+node "$B/flusher-ancestry.js" "${WIN_SPOOL:?run the Windows values block first}" "${WIN_I:?run the Windows values block first}/fleet-reporter.js" --upgrade
+```
+
+*Check:* `PASS: the lock holder runs the artifact installed at …`. `FAIL: … it runs the previous build` means
+the old build still holds the lock: run the first call again. **U7** is W6. **U9** names the hash of
+`"$WIN_I/fleet-reporter.js"`.
+
+### W8 — uninstall
+
+As [Step 8](#step-8--uninstall-and-roll-back), in **one** tool call: every tool call's boundary fires the
+hooks, and a hook that finds no fresh lock starts the flusher again. The block restores `settings.json`
+from the attempt directory that predates the hooks, stops the flusher, shreds a token file left in the
+config directory, then removes the config directory first, so a hook still in flight finds no config and
+exits, then the spool, then the artifact. That attempt directory must hold `stop-flusher.js` and
+`acl-only-me.js` (Step 5's helper block and U2 save them). Revoking the token, item 4, is the operator's,
+on the Mezzanine host.
+
+<!-- install.sh: skip — the Windows section; install.sh runs on Linux only -->
+```bash
+bash -euo pipefail <<'SH'
+  : "${WIN_UP:?run the Windows values block first}" "${WIN_I:?run the Windows values block first}" "${WIN_C:?run the Windows values block first}" "${WIN_SPOOL:?run the Windows values block first}" "${B:?export B=<the attempt directory whose settings.json predates the hooks>}"
+  cp -p "$B/settings.json" "$WIN_UP/.claude/settings.json"
+  cmp "$B/settings.json" "$WIN_UP/.claude/settings.json"
+  node "$B/stop-flusher.js" "$WIN_SPOOL" "$WIN_I/fleet-reporter.js"
+  F="$WIN_C/mezzanine-reporter-token"
+  if [ -f "$F" ] && [ ! -L "$F" ]; then shred -u -- "$F"; fi
+  rm -rf -- "$WIN_C"
+  rm -rf -- "$WIN_SPOOL"
+  rm -rf -- "$WIN_I"
+  for p in "$WIN_C" "$WIN_SPOOL" "$WIN_I"; do if [ -e "$p" ]; then echo "PRESENT $p"; else echo "gone $p"; fi; done
+SH
+```
+
+*Check:* `gone` three times, and `cat "$WIN_UP/.claude/settings.json" | grep -c fleet-reporter` prints `0`.
+
 ## What this install does not give you, by name
 
 - **`protocol_agent_name` is sent only by a build that includes card#9375.** That build reads the key
@@ -1854,7 +2431,11 @@ processes, as Step 5 reports.
   (`REJECTED.default.txt`, `quarantine/rejected.default.jsonl`); an older build's `REJECTED.txt` and
   `quarantine/rejected.jsonl` stay as history until Step 8 removes the spool directory.
 - **No context gauge** while Step 4(b) is not applied, which is the sandbox's state.
-- **No Windows procedure exists yet.** One is owed when the Windows agent seat onboards, a real
-  Windows machine. By operator ruling on 2026-09-13, D1 § 13's Windows validation is not required
-  before then, and a validated Linux install (this runbook, card#9368) satisfies that precondition
-  for the present. D1 § 3.1 names the Windows route owed at that onboarding.
+- **On Windows, no supervisor starts the flusher** (Option A, operator ruling on 2026-10-25). The procedure
+  is [Installing on a Windows seat](#installing-on-a-windows-seat-option-a-hooks-start-the-flusher): the
+  hooks are the only start, so a Windows seat on which no Claude Code session is running reads `offline`.
+- **No Windows install on a roaming profile.** `%APPDATA%`, which holds the config and its token, is copied
+  to a profile server at logoff on a roaming profile; W1 stops on one.
+- **On Windows: no `install.sh`, no statusLine wrap, and no hidden-prompt token route.** The Windows section
+  is run by hand, block by block; Step 4 (b) is not applied; the token arrives only by the operator's carry.
+  Adding a site, rotating a token and removing a site are written for Linux paths only.
