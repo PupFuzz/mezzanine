@@ -26,8 +26,10 @@ terminal, so that command refuses to run from your Bash tool: it is the user's t
 uname -s && git --version
 ```
 
-It must print `Linux`. On macOS or Windows, stop and tell the user that this install is Linux only;
-`INSTALL-LINUX.md` names what is owed for Windows. `install.sh` checks `node` (18 or later), `flock` and
+It must print `Linux`. **On Windows, do not run `install.sh`**: it runs the runbook's Linux bash blocks.
+Follow [the Windows section of `INSTALL-LINUX.md`](INSTALL-LINUX.md#installing-on-a-windows-seat-option-a-hooks-start-the-flusher)
+instead, in which the operator carries the token to the seat. On macOS, stop and tell the user that this
+install does not cover it. `install.sh` checks `node` (18 or later), `flock` and
 `crontab` itself, and names any that is missing.
 
 ## 2. Get the code
