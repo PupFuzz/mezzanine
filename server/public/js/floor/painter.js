@@ -352,13 +352,13 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         // `at.clear` is not in the key: a sleeper's clear rects are `characterOverdraw()`'s of the one furniture box and
         // the character's size, the same for every desk, so the pose and the desk's top edge already name the drawing.
         // A layout whose clear rects differ by desk must add them here.
-        const key = intern ? asset : at === null ? `${asset}#walk` : `${asset}#${at.pose}@${at.desk_top}`;
+        const key = intern ? asset : at === null ? `${asset}#walk` : `${asset}#${at.pose}/${at.glyph ?? ''}@${at.desk_top}`;
 
         if (!frames.has(key)) {
             try {
                 const drawn = intern ? { frames: [characters.chibiFrame(installId, seatId)], loopFrom: 0 }
                     : at === null ? { frames: characters.walkFrames(installId, seatId), loopFrom: 0 }
-                        : characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top, clear: at.clear });
+                        : characters.poseFrames(installId, seatId, { pose: at.pose, glyph: at.glyph ?? null, deskTop: at.desk_top, clear: at.clear });
 
                 frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });
             } catch {
@@ -469,7 +469,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
 
             switch (e.kind) {
                 case 'character': {
-                    const drawn = characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, desk_top: e.desk_top, clear: e.clear });
+                    const drawn = characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, glyph: e.glyph, desk_top: e.desk_top, clear: e.clear });
 
                     if (drawn !== null) {
                         // § 6.2's per-seat loop phase (card#12187): a held render that MOVES starts at the seat's own

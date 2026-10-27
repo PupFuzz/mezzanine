@@ -627,7 +627,9 @@ export const EYES = ['round', 'sparkle', 'happy', 'sleepy', 'bead'];
 export const MOUTHS = ['smile', 'open', 'cat', 'tiny', 'grin'];
 export const BLUSH = [0, 0.5, 0.8];
 export const BROWS = ['none', 'none', 'soft', 'worried'];
-export const SIZES = [0.84, 0.88, 0.92, 0.96, 1.0];
+// card#12444 SAMPLE: narrowed from [0.84, 0.88, 0.92, 0.96, 1.0] (a 16 % spread) to a 6 % one, the largest unchanged so
+// the frame-bounds leg's worst case is the same drawing; `size` is its own draw field, so nothing else re-rolls.
+export const SIZES = [0.94, 0.97, 1.0];
 export const STOUT = [0.93, 1, 1.07];
 export const TILTS = [-3, 0, 3];
 export const ACCENTS = ['#c8553d', '#e0a43a', '#7f9f6a', '#6f8fb0', '#94627e', '#f2e6cf', '#4f8a87', '#d97f8f'];
@@ -678,44 +680,129 @@ export function recipe(key, force) {
 }
 
 // ---- shared feature painters ----
-function eyesSvg(pen, F, style) {
-  const s = F.s, out = [];
+// card#12444 SAMPLE — the face, re-scaled for the floor's fit zoom (measured 0.81 CSS px per scene px at the 1,280 × 800
+// reference viewport): the approved sheet's eye is 3.7 × 4.4 units, 1.5 CSS px in radius on the floor. EYE_K scales every
+// eye, lid and glint; BROW_K the brows' stroke and reach; MOUTH_K the mouth; all about the species' own face anchors, so
+// no species' face moves. `X` is the EXPRESSION the pose asks for (`EXPRESSIONS`): the lids' closure, where the eyes
+// look, how wide they are, and which brows and mouth override the key's own.
+export const EYE_K = 1.5;
+export const BROW_K = 1.6;
+export const MOUTH_K = 1.3;
+/** The eye's outline — a thin lash line over the top of every open eye, so the eye reads as a shape and not a dot. */
+const LASH = '#1d1418';
+function eyesSvg(pen, F, style, X = {}) {
+  const wide = X.wide ?? 1, s = F.s * EYE_K * wide, out = [];
+  const lx = (X.look?.dx ?? 0) * s, ly = (X.look?.dy ?? 0) * s;
+  const lid = X.lid ?? 0;                     // 0 open … 1 shut: the upper lid comes down over the eye by this share
   for (const side of [-1, 1]) {
     const x = 54 + side * F.es, y = F.y;
-    if (style === 'happy') out.push(`<path d="M${f(x - 4.2 * s)} ${f(y + 1.2 * s)}Q${f(x)} ${f(y - 4.8 * s)} ${f(x + 4.2 * s)} ${f(y + 1.2 * s)}" stroke="${EYE}" stroke-width="${f(2.2 * s)}" fill="none" stroke-linecap="round"/>`);
-    else if (style === 'sleepy') out.push(`<path d="M${f(x - 4.2 * s)} ${f(y - 0.6 * s)}A${f(4.2 * s)} ${f(4.4 * s)} 0 0 0 ${f(x + 4.2 * s)} ${f(y - 0.6 * s)}Z" fill="${EYE}"/><path d="M${f(x - 4.8 * s)} ${f(y - 0.9 * s)}Q${f(x)} ${f(y - 2.2 * s)} ${f(x + 4.8 * s)} ${f(y - 0.9 * s)}" stroke="${EYE}" stroke-width="${f(1.5 * s)}" fill="none" stroke-linecap="round"/><circle cx="${f(x - 1.4 * s)}" cy="${f(y + 1.1 * s)}" r="${f(0.9 * s)}" fill="${GLINT}"/>`);
-    else if (style === 'bead') out.push(`<circle cx="${f(x)}" cy="${f(y)}" r="${f(2.9 * s)}" fill="${EYE}"/><circle cx="${f(x - 1 * s)}" cy="${f(y - 1.1 * s)}" r="${f(1 * s)}" fill="${GLINT}"/>`);
-    else if (style === 'sparkle') out.push(`<ellipse cx="${f(x)}" cy="${f(y)}" rx="${f(4.1 * s)}" ry="${f(5.3 * s)}" fill="${EYE}"/><ellipse cx="${f(x)}" cy="${f(y + 2.4 * s)}" rx="${f(2.9 * s)}" ry="${f(2.3 * s)}" fill="#6b4a3e" opacity=".75"/><circle cx="${f(x - 1.4 * s)}" cy="${f(y - 1.9 * s)}" r="${f(1.8 * s)}" fill="${GLINT}"/><circle cx="${f(x + 1.5 * s)}" cy="${f(y + 1.6 * s)}" r="${f(0.8 * s)}" fill="${GLINT}"/>`);
-    else out.push(`<ellipse cx="${f(x)}" cy="${f(y)}" rx="${f(3.7 * s)}" ry="${f(4.4 * s)}" fill="${EYE}"/><circle cx="${f(x - 1.2 * s)}" cy="${f(y - 1.6 * s)}" r="${f(1.5 * s)}" fill="${GLINT}"/><circle cx="${f(x + 1.3 * s)}" cy="${f(y + 1.6 * s)}" r="${f(0.65 * s)}" fill="${GLINT}" opacity=".9"/>`);
+    if (style === 'happy' && lid < 0.3) { out.push(`<path d="M${f(x - 4.2 * s)} ${f(y + 1.2 * s)}Q${f(x)} ${f(y - 4.8 * s)} ${f(x + 4.2 * s)} ${f(y + 1.2 * s)}" stroke="${EYE}" stroke-width="${f(2.2 * s)}" fill="none" stroke-linecap="round"/>`); continue; }
+    // the eye's body — round, sparkle, bead or sleepy — then the pupil's highlight, the lid cut and the lash line
+    const rx = style === 'bead' ? 3.1 * s : style === 'sparkle' ? 4.3 * s : 3.9 * s;
+    const ry = style === 'bead' ? 3.1 * s : style === 'sparkle' ? 5.4 * s : 4.5 * s;
+    const top = y - ry + lid * 2 * ry;         // the lid's edge
+    const cut = pen.clip(`M${f(x - rx - 2)} ${f(top)}H${f(x + rx + 2)}V${f(y + ry + 2)}H${f(x - rx - 2)}Z`);
+    let body = `<ellipse cx="${f(x)}" cy="${f(y)}" rx="${f(rx)}" ry="${f(ry)}" fill="${EYE}"/>`;
+    if (style === 'sparkle') body += `<ellipse cx="${f(x + lx)}" cy="${f(y + 2.4 * s + ly)}" rx="${f(2.9 * s)}" ry="${f(2.3 * s)}" fill="#6b4a3e" opacity=".75"/>`;
+    const glintR = style === 'bead' ? 1.1 * s : 1.7 * s;
+    body += `<circle cx="${f(x - 1.3 * s + lx)}" cy="${f(y - 1.7 * s + ly)}" r="${f(glintR)}" fill="${GLINT}"/><circle cx="${f(x + 1.4 * s + lx)}" cy="${f(y + 1.7 * s + ly)}" r="${f(0.75 * s)}" fill="${GLINT}" opacity=".9"/>`;
+    const sleepy = style === 'sleepy' ? Math.max(lid, 0.35) : lid;
+    const sTop = y - ry + sleepy * 2 * ry;
+    const sCut = sleepy === lid ? cut : pen.clip(`M${f(x - rx - 2)} ${f(sTop)}H${f(x + rx + 2)}V${f(y + ry + 2)}H${f(x - rx - 2)}Z`);
+    out.push(`<g clip-path="${sCut}">${body}</g>`);
+    // the lash line: along the lid's edge where it has come down, else a soft arc over the eye's top
+    if (sleepy > 0.05) out.push(`<path d="M${f(x - rx - 0.4 * s)} ${f(sTop + 0.2 * s)}Q${f(x)} ${f(sTop - 0.9 * s)} ${f(x + rx + 0.4 * s)} ${f(sTop + 0.2 * s)}" stroke="${LASH}" stroke-width="${f(1.4 * s)}" fill="none" stroke-linecap="round"/>`);
+    else out.push(`<path d="M${f(x - rx - 0.3 * s)} ${f(y - 0.3 * ry)}Q${f(x)} ${f(y - ry - 1.1 * s)} ${f(x + rx + 0.3 * s)} ${f(y - 0.3 * ry)}" stroke="${LASH}" stroke-width="${f(1.1 * s)}" fill="none" stroke-linecap="round" opacity=".85"/>`);
   }
-  return out.join('');
+  return `<g data-part="eyes">${out.join('')}</g>`;
 }
 function browsSvg(F, style) {
   if (style === 'none') return '';
-  const s = F.s, out = [];
+  const s = F.s * BROW_K, out = [];
   for (const side of [-1, 1]) {
-    const x = 54 + side * F.es, y = F.y - 8.2 * s;
-    const inner = style === 'worried' ? -1.6 : 0.4, outer = style === 'worried' ? 1 : 0.4;
-    out.push(`<path d="M${f(x - side * 3.4 * s)} ${f(y + inner * s)}Q${f(x)} ${f(y - 1.6 * s)} ${f(x + side * 3.4 * s)} ${f(y + outer * s)}" stroke="${EYE}" stroke-width="${f(1.3 * s)}" fill="none" stroke-linecap="round" opacity=".8"/>`);
+    // `ask` raises ONE brow (the viewer's right) high and arched and leaves the other soft; `raised` lifts both;
+    // `knit` pulls both inner ends down and in (strain).
+    const one = style === 'ask' && side === 1;
+    const kind = one ? 'raised' : style === 'ask' ? 'soft' : style;
+    const lift = kind === 'raised' ? 3.2 : 0;
+    const x = 54 + side * F.es, y = F.y - (6.6 + lift) * s;
+    const inner = kind === 'worried' ? -1.4 : kind === 'knit' ? 1.6 : kind === 'raised' ? 0.6 : 0.4;
+    const outer = kind === 'worried' ? 0.9 : kind === 'knit' ? -0.6 : kind === 'raised' ? 1.2 : 0.4;
+    const arch = kind === 'raised' ? -2.6 : -1.5;
+    out.push(`<path d="M${f(x - side * 3.4 * s)} ${f(y + inner * s)}Q${f(x)} ${f(y + arch * s)} ${f(x + side * 3.4 * s)} ${f(y + outer * s)}" stroke="${EYE}" stroke-width="${f(1.35 * s)}" fill="none" stroke-linecap="round" opacity=".92"/>`);
   }
-  return out.join('');
+  return `<g data-part="brows">${out.join('')}</g>`;
 }
 function mouthSvg(F, style) {
   if (F.my == null) return '';
-  const x = 54, y = F.my, k = F.ms;
+  const x = 54, y = F.my + 1.2, k = F.ms * MOUTH_K;
   const P = (dx, dy) => `${f(x + dx * k)} ${f(y + dy * k)}`;
+  const w = f(1.8 * Math.max(k, 0.85));
   switch (style) {
     case 'open': return `<path d="M${P(-3.6, 0)}Q${P(0, 0.8)} ${P(3.6, 0)}Q${P(2.8, 6.2)} ${P(0, 6.2)}Q${P(-2.8, 6.2)} ${P(-3.6, 0)}Z" fill="#7a3a3a"/><ellipse cx="${x}" cy="${f(y + 4.4 * k)}" rx="${f(2 * k)}" ry="${f(1.5 * k)}" fill="#e48c8c"/>`;
-    case 'cat': return `<path d="M${P(-5, 0)}Q${P(-2.5, 3.2)} ${P(0, 0)}Q${P(2.5, 3.2)} ${P(5, 0)}" stroke="${MOUTH}" stroke-width="${f(1.6 * Math.max(k, 0.85))}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+    case 'cat': return `<path d="M${P(-5, 0)}Q${P(-2.5, 3.2)} ${P(0, 0)}Q${P(2.5, 3.2)} ${P(5, 0)}" stroke="${MOUTH}" stroke-width="${w}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
     case 'tiny': return `<ellipse cx="${x}" cy="${f(y + 1.4 * k)}" rx="${f(1.7 * k)}" ry="${f(2 * k)}" fill="#6e3434"/>`;
     case 'grin': return `<path d="M${P(-5.6, 0)}Q${P(0, 1)} ${P(5.6, 0)}Q${P(0, 9)} ${P(-5.6, 0)}Z" fill="#7a3a3a"/><path d="M${P(-2.8, 4.8)}Q${P(0, 2.8)} ${P(2.8, 4.8)}Q${P(0, 6.4)} ${P(-2.8, 4.8)}Z" fill="#e48c8c"/>`;
-    default: return `<path d="M${P(-4.2, 0)}Q${P(0, 4.2)} ${P(4.2, 0)}" stroke="${MOUTH}" stroke-width="${f(1.7 * Math.max(k, 0.85))}" fill="none" stroke-linecap="round"/>`;
+    // the expressions' own mouths (card#12444 sample)
+    case 'o': return `<ellipse cx="${x}" cy="${f(y + 1.6 * k)}" rx="${f(2.6 * k)}" ry="${f(3.1 * k)}" fill="#6e3434"/><ellipse cx="${f(x - 0.8 * k)}" cy="${f(y + 0.6 * k)}" rx="${f(0.9 * k)}" ry="${f(0.7 * k)}" fill="#fff" opacity=".35"/>`;
+    case 'call': return `<path d="M${P(-4.6, -0.6)}Q${P(0, 0.4)} ${P(4.6, -0.6)}Q${P(4.2, 8)} ${P(0, 8.6)}Q${P(-4.2, 8)} ${P(-4.6, -0.6)}Z" fill="#7a3a3a"/><path d="M${P(-3.2, 0.3)}Q${P(0, 1.2)} ${P(3.2, 0.3)}Q${P(0, 2.6)} ${P(-3.2, 0.3)}Z" fill="#fff6ee"/><ellipse cx="${x}" cy="${f(y + 6.2 * k)}" rx="${f(2.4 * k)}" ry="${f(1.6 * k)}" fill="#e48c8c"/>`;
+    case 'frown': return `<path d="M${P(-4.4, 2.6)}Q${P(0, -1.6)} ${P(4.4, 2.6)}" stroke="${MOUTH}" stroke-width="${w}" fill="none" stroke-linecap="round"/>`;
+    case 'focus': return `<path d="M${P(-3.2, 0.6)}Q${P(0, 1.6)} ${P(3.2, 0.6)}" stroke="${MOUTH}" stroke-width="${w}" fill="none" stroke-linecap="round"/>`;
+    default: return `<path d="M${P(-4.2, 0)}Q${P(0, 4.2)} ${P(4.2, 0)}" stroke="${MOUTH}" stroke-width="${w}" fill="none" stroke-linecap="round"/>`;
   }
 }
 function blushSvg(pen, F, op, dxExtra = 0) {
   if (!op) return '';
-  const s = F.s;
-  return [-1, 1].map((side) => `<ellipse cx="${f(54 + side * (F.es + (5.5 + dxExtra) * s))}" cy="${f(F.y + 7 * s)}" rx="${f(5.4 * s)}" ry="${f(3.4 * s)}" fill="${pen.soft('#f07c6c', op)}"/>`).join('');
+  const s = F.s * 1.15;
+  return [-1, 1].map((side) => `<ellipse cx="${f(54 + side * (F.es + (6.4 + dxExtra) * s))}" cy="${f(F.y + 7.6 * s)}" rx="${f(5.8 * s)}" ry="${f(3.6 * s)}" fill="${pen.soft('#f07c6c', op)}"/>`).join('');
+}
+
+/**
+ * THE EXPRESSIONS (card#12444 sample) — what a POSE does to the key's own face. The key keeps its eye style, its mouth and
+ * its brows for `neutral`; a pose overrides what the state must show: where the eyes look (`look`, in eye units), how
+ * far the lids are down (`lid`), how wide the eyes are (`wide`), and the brows and mouth it needs. `marker` is § 7.1's
+ * marker — the pose art's, drawn inside the frame (§ 14 item 34) — and `hands` the pose's paws: `raised` (one paw up,
+ * the blocked seat's raised hand) or `cheeks` (both paws at the cheeks, head in hands).
+ */
+export const EXPRESSIONS = Object.freeze({
+  neutral: {},
+  working: { look: { dx: 1.1, dy: 0.7 }, lid: 0.2, mouth: 'focus' },
+  thinking: { look: { dx: -0.6, dy: -1.3 }, lid: 0.12, mouth: 'tiny', brows: 'soft' },
+  question: { wide: 1.12, brows: 'ask', mouth: 'o', marker: '?' },
+  attention: { wide: 1.18, brows: 'raised', mouth: 'call', marker: '!', hands: 'raised' },
+  stalled: { lid: 0.45, brows: 'worried', mouth: 'frown', hands: 'cheeks' },
+});
+/** A pose → its expression; `present` reads the glyph (one glyph, one face: the question's). */
+export function expressionOf(pose, glyph) {
+  switch (pose) {
+    case 'at-keyboard': return 'working';
+    case 'leaning-back': return 'thinking';
+    case 'raised-hand': return 'attention';
+    case 'head-in-hands': return 'stalled';
+    case 'present': return glyph === 'question' ? 'question' : 'neutral';
+    default: return 'neutral';
+  }
+}
+/** The marker — a small cream puff with the glyph, up and to the viewer's left of the head, in the frame's margin. */
+function markerSvg(pen, H, glyph) {
+  const x = 54 - 46, y = H.y - 12, r = 11;
+  const col = glyph === '!' ? '#d8553d' : '#4f6fb0';
+  return `<g data-part="marker"><circle cx="${f(x)}" cy="${f(y)}" r="${r}" fill="${pen.paint('#fff8ee')}" stroke="${line('#f3e6d2')}" stroke-width="1.4"/>` +
+    `<circle cx="${f(x + 8)}" cy="${f(y + 9)}" r="3" fill="#fff8ee" stroke="${line('#f3e6d2')}" stroke-width="1.1"/>` +
+    `<text x="${f(x)}" y="${f(y + 5.6)}" text-anchor="middle" font-family="ui-rounded, 'Segoe UI', sans-serif" font-size="16" font-weight="700" fill="${col}">${glyph}</text></g>`;
+}
+/** The pose's paws: one raised beside the head, or both at the cheeks. Only where the species has arms. */
+function handsSvg(pen, A, F, kind) {
+  if (!A.arms) return '';
+  const col = A.arms.col, s = F.s;
+  if (kind === 'raised') {
+    const side = -1, ax = 54 + side * (A.arms.dx + 2), ay = A.arms.y;
+    const rx = A.arms.small ? 4.8 : 6.4, ry = A.arms.small ? 12 : 15;
+    const top = ay - ry * 1.55;
+    return `<g data-part="hands"><ellipse cx="${f(ax)}" cy="${f(ay - ry * 0.75)}" rx="${f(rx)}" ry="${f(ry)}" transform="rotate(${side * 14} ${f(ax)} ${f(ay)})" fill="${pen.paint(col)}" stroke="${line(col)}" stroke-width="1.3"/>` +
+      `<circle cx="${f(ax + side * 3)}" cy="${f(top)}" r="${f(6.2)}" fill="${pen.paint(tint(col, 0.08))}" stroke="${line(col)}" stroke-width="1.2"/></g>`;
+  }
+  return `<g data-part="hands">${[-1, 1].map((side) => `<ellipse cx="${f(54 + side * (F.es + 7.5 * s))}" cy="${f(F.y + 11 * s)}" rx="${f(7 * s)}" ry="${f(6.2 * s)}" fill="${pen.paint(col)}" stroke="${line(col)}" stroke-width="1.3"/>`).join('')}</g>`;
 }
 
 function hatSvg(pen, H, kind, acc, acc2) {
@@ -779,7 +866,7 @@ function neckSvg(pen, N, kind, acc, acc2, side) {
   return '';
 }
 function glassesSvg(F) {
-  const s = F.s, r = 6.8 * s, col = '#5a3a2a';
+  const s = F.s, r = 6.8 * s * (EYE_K * 0.84), col = '#5a3a2a';   // the rings grow with the eyes they hold
   return [-1, 1].map((side) => `<circle cx="${f(54 + side * F.es)}" cy="${f(F.y)}" r="${f(r)}" fill="#fff" fill-opacity=".14" stroke="${col}" stroke-width="1.5"/>`).join('') +
     `<path d="M${f(54 - F.es + r)} ${f(F.y - 0.8)}Q54 ${f(F.y - 3)} ${f(54 + F.es - r)} ${f(F.y - 0.8)}" stroke="${col}" stroke-width="1.4" fill="none"/>`;
 }
@@ -892,12 +979,15 @@ function worn(r, sp, A) {
 /**
  * One frame of one key, as a standalone SVG document.
  * @param {string} key the seat key, or an intern key `seat~<call_id>`
- * @param {{ phase?: 0|1|2, chibi?: boolean, species?: string }} [opt] phase 0 is the standing frame
+ * @param {{ phase?: 0|1|2, chibi?: boolean, species?: string, expression?: string }} [opt] phase 0 is the standing frame;
+ *        `expression` a key of `EXPRESSIONS` (card#12444 sample), `neutral` when absent
  * @returns {string}
  */
 export function frameDocument(key, opt = {}) {
   const phase = opt.phase ?? 0;
   if (![0, 1, 2].includes(phase)) throw new RangeError(`phase must be 0, 1 or 2, got ${phase}`);
+  const X = EXPRESSIONS[opt.expression ?? 'neutral'];
+  if (X === undefined) throw new RangeError(`no expression ${opt.expression}`);
   const { r, sp, pen, c, A } = build(key, opt.species);
   const { hat, neck, extra } = worn(r, sp, A);
   const F = A.face;
@@ -927,14 +1017,16 @@ export function frameDocument(key, opt = {}) {
   if (neck !== 'none' && extra === 'satchel') parts.push(satchelSvg(pen, A.neck, r.acc2, -c.side));
   parts.push(...c.layers.front);
   parts.push(blushSvg(pen, F, r.blush, A.blushDx || 0));
-  parts.push(eyesSvg(pen, F, r.eyes));
-  parts.push(browsSvg(F, r.brows));
-  parts.push(mouthSvg(F, F.beak ? null : r.mouth));
+  parts.push(eyesSvg(pen, F, r.eyes, X));
+  parts.push(browsSvg(F, X.brows ?? r.brows));
+  parts.push(mouthSvg(F, F.beak ? null : (X.mouth ?? r.mouth)));
   if (neck !== 'none') parts.push(neckSvg(pen, A.neck, neck, r.acc1, r.acc2, c.side));
   if (neck === 'none' && extra === 'satchel') parts.push(satchelSvg(pen, A.neck, r.acc2, -c.side));
   if (extra === 'glasses') parts.push(glassesSvg(F));
   if (holding) parts.push(heldSvg(pen, extra, A.arms.y - 4, r.acc2, A.arms.col));
+  if (X.hands) parts.push(handsSvg(pen, A, F, X.hands));
   if (hat !== 'none') parts.push(hatSvg(pen, A.hat, hat, r.acc1, r.acc2));
+  if (X.marker) parts.push(markerSvg(pen, A.hat, X.marker));
 
   const markup = parts.join('');
   const drawing = `<g opacity="${RIM_OPACITY}">${rimOf(markup)}</g>${markup}`;
@@ -989,7 +1081,10 @@ export const Z_T0 = 0.17;
 /** The gap between the path's start — its imaginary z's box and glow — and the crest line (or the props' line), in frame units. */
 export const Z_GAP = 2;
 /** The raised frame's top, in frame units: the path's end stands its imaginary z's box and glow a unit under it. */
-export const Z_TOP = -42;
+// card#12444 SAMPLE: the raise is the thought trail's 21 px at the floor's units per px (`desk-layout.js`'s
+// FRAME_UNITS_PER_PX, 1.6 at CHARACTER_SCALE 3.75) — 42 at the former 2 units per px; held equal to the overdraw by
+// `tools/characters/selftest.mjs` § 7b.
+export const Z_TOP = -33.6;
 /**
  * THE SEAT's FRAME (FLOOR.md § 12's *Character frame*; § 10.4's frame contract) — the viewBox of EVERY seat document:
  * the character's 108 × 192 rect (`SEAT_RECT`) widened by half its width each side and raised 42 units, 216 × 234
@@ -1001,7 +1096,7 @@ export const Z_TOP = -42;
  * `characterOverdraw()`), whose aspect is this frame's; the sleeper's z-stand still reads the character's own
  * 0–108 units as the body's column (`zStandKeeps()`).
  */
-export const SEAT_VIEWBOX = Object.freeze({ x: -54, y: Z_TOP, w: 216, h: 234 });
+export const SEAT_VIEWBOX = Object.freeze({ x: -54, y: Z_TOP, w: 216, h: 192 - Z_TOP });
 /**
  * THE BRIGHTNESS LEVELS 0 (dim) to 3 (full), FLOOR.md § 12's *Sleeper z brightness*: the core is the pale fill mixed
  * toward the ink by `Z_GLOW[level]`, and behind the z stands a halo of the palette's `--lamp` (`Z_LAMP`), `Z_HALO[level]`
@@ -1033,7 +1128,7 @@ export const CREST_TOP = Object.freeze({
 
 /** Closed eyes: a soft downward arc per eye, with a lash at its outer end. */
 function sleepingEyesSvg(F) {
-  const s = F.s, out = [];
+  const s = F.s * EYE_K, out = [];
   for (const side of [-1, 1]) {
     const x = 54 + side * F.es, y = F.y + 0.6 * s;
     out.push(`<path d="M${f(x - 4.4 * s)} ${f(y)}Q${f(x)} ${f(y + 4.2 * s)} ${f(x + 4.4 * s)} ${f(y)}" stroke="${EYE}" stroke-width="${f(2 * s)}" fill="none" stroke-linecap="round"/>`);

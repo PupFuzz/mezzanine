@@ -154,7 +154,8 @@ export const PLATED_KINDS = Object.freeze(['label', 'currency', 'lag', 'gauge-ba
  * vector creatures replaced it (card#11046): they have no native size, so the unit is the rect's aspect
  * and this its scale, and neither the box nor any rect moved (`resources/characters/index.js`).
  */
-export const CHARACTER_SCALE = 3;
+// card#12444 SAMPLE (+25 %): 3.75 → a 67.5 × 120 px rect; the furniture box grows 24 px to hold it (`furniture-box.js`).
+export const CHARACTER_SCALE = 3.75;
 
 /** § 8's cap on the interns drawn: the array D2 caps at 8 (§ 8.1's chosen cap). */
 export const STOOL_CAP = 8;
@@ -396,7 +397,9 @@ export function deskRects(box, character) {
     const rowY = stackRows(FACT_ROWS, table);
 
     return Object.freeze({
-        character: { x: sitter, y: slab - 70, w: cw, h: ch },
+        // card#12444 SAMPLE: the FOOT LINE is pinned 26 px under the desk's slab (where it has always been: slab − 70 + 96),
+        // so a taller rect grows UPWARD and the chair, the desk and the sleeper's edge keep their relationship.
+        character: { x: sitter, y: slab + 26 - ch, w: cw, h: ch },
         chair: { x: sitter, y: slab - 38, w: cw, h: 64 },
         placeholder: { x: 0, y: top, w: ART_W, h: H - 36 - top },
         'desk-sprite': desk,
@@ -452,7 +455,7 @@ export function thoughtTrail(box, character) {
  * apart, and may fail — § 9 F14), so the figure is stated here and held equal to the tree's own
  * (`SEAT_RECT.w ÷ (SCENE_W × CHARACTER_SCALE)`) by `tools/characters/selftest.mjs` § 7b.
  */
-export const FRAME_UNITS_PER_PX = 2;
+export const FRAME_UNITS_PER_PX = 1.6;   // card#12444 SAMPLE: 108 ÷ (18 × 3.75)
 
 /**
  * THE CHARACTER's OVERDRAW AND ITS CLEAR RECTS (FLOOR.md § 10.4's frame contract, § 12's *Character frame*;
@@ -737,6 +740,8 @@ export function deskLayout(desk, ctx) {
             rect('character', 'character', R.character, {
                 asset: characterAsset(desk),
                 pose: desk.pose,
+                // card#12444 SAMPLE: the glyph reaches the tree with the pose, so `present` + `question` draws the question's face.
+                glyph: desk.glyph,
                 animation: desk.held,
                 desk_top: (R['desk-sprite'].y - R.character.y) / R.character.h,
                 // § 10.4's frame contract (card#12187, card#12259): every character image is drawn in its overdraw,

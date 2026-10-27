@@ -11,13 +11,14 @@
 // ⛔ Every entry point returns standalone SVG DOCUMENTS. The painter turns each into a
 // SVG `data:` URI (UTF-8, encodeURIComponent) — this tree carries no URI, and no text naming one.
 
-import { SLEEP_LOOP, frameDocument, sleepDocument } from './creatures.js';
+import { SLEEP_LOOP, expressionOf, frameDocument, sleepDocument } from './creatures.js';
 import { draw, seatKey } from './seed.js';
 
 export { seatKey, fnv1a32, draw } from './seed.js';
 export {
   SPECIES, SPECIES_KEYS, SPECIES_FIELD, WITHHELD, EYES, MOUTHS, BLUSH, BROWS, SIZES, STOUT, TILTS, ACCENTS, GREENS,
   RIM, RIM_W, SEAT_RECT, SEAT_VIEWBOX, CHIBI_VIEWBOX, CHIBI_HEAD_SHARE, speciesOf, recipe, describe, chibiGeometry, frameDocument,
+  EYE_K, BROW_K, MOUTH_K, EXPRESSIONS, expressionOf,
   SLEEP_LOOP, SLEEP_ZS, Z_LARGE, Z_A0, Z_A1, Z_RATIO, Z_T0, Z_GAP, Z_TOP, Z_GLOW, Z_HALO, Z_HALO_OPACITY,
   CREST_TOP, zLevels, zStand, zLargeFor, sleepDocument,
 } from './creatures.js';
@@ -87,8 +88,13 @@ export function sleepFrames(installId, seatId, deskTop, clear) {
  * @param {string} installId @param {string} seatId @param {{pose: string, deskTop: number, clear: object[]}} at
  * @returns {{frames: string[], loopFrom: number}}
  */
-export function poseFrames(installId, seatId, { pose, deskTop, clear }) {
-  return pose === 'asleep' ? sleepFrames(installId, seatId, deskTop, clear) : { frames: walkFrames(installId, seatId), loopFrom: 0 };
+export function poseFrames(installId, seatId, { pose, glyph = null, deskTop, clear }) {
+  if (pose === 'asleep') return sleepFrames(installId, seatId, deskTop, clear);
+  // card#12444 SAMPLE: every pose but asleep is still the standing frame and the walk's loop, drawn with the pose's
+  // EXPRESSION (`creatures.js`'s `EXPRESSIONS`, keyed by `expressionOf(pose, glyph)`); the walker's own frames
+  // (`walkFrames()`) stay neutral.
+  const key = seatKey(installId, seatId), expression = expressionOf(pose, glyph);
+  return { frames: [0, 1, 2].map((phase) => frameDocument(key, { phase, expression })), loopFrom: 0 };
 }
 
 /**

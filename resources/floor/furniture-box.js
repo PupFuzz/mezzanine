@@ -23,5 +23,5 @@
 // reds when what the scene draws at the cap no longer fits it. Changing a number here is changing
 // what every stored map is validated against.
 
-export const FURNITURE_BOX = Object.freeze({ width: 440, height: 228 });
+export const FURNITURE_BOX = Object.freeze({ width: 440, height: 252 });
 
