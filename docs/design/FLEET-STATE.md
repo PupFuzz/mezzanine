@@ -3070,7 +3070,7 @@ That list is what [§ 10](COORD-STORE.md#10-operator-questions)'s NQ1 asks the f
 
 ⭐ **Built for card#12443 (designed 2026-10-26, revised through six design reviews, ruled by the operator
 on 2026-10-27 — [§ 14](#14-open-questions-for-the-review-loop) item 18 — and built the same day). The
-operator's ask, verbatim:** *"on the solo-agents floor, two characters have the same image.
+operator's ask, verbatim but for the floor's name, withheld here:** *"on the [one] floor, two characters have the same image.
 I thought there isn't supposed to be any repetition? the system should try to allocate a unique
 character for each new agent. If all characters are used up, then the next rule is not to have a
 duplicate character within the floor"*.
@@ -3086,11 +3086,11 @@ row 61). [§ 6.4](#64-ddl)'s `seats` fence, [§ 8.2.1](#821-the-seat-state-objec
 salted once so the roster committed at card#12212 came out distinct per room, and unconstrained for
 every seat minted since. Read from the sandbox store on 2026-10-26 — the `seats` rows `retired_at IS
 NULL` selects, joined to `installs`, each key's species by the generator's own `speciesOf` at `dev`
-`80064720` — the live population repeats a body wherever two of those rows draw one species, and the
-repeats it held that day were `mole` (`aimla/moodle`, `sola/device`), `radish` (`sola/backend`,
-`sola/fred`) and `cabbage` (`solo-agents/key`, `solo-agents/kanban`), the last the pair the operator
-saw. The derivation is `node` over the generator with that seat list, and the migration below re-prints
-it as its own report rather than this paragraph being trusted.
+`80064720` — the live population repeats a body wherever two of those rows draw one species, and it held
+three such repeated pairs that day, one of them the pair the operator saw. The derivation is `node` over
+the generator with that seat list, and the migration below re-prints it as its own report rather than
+this paragraph being trusted. This document is public, so it names no real install or seat: the seats
+and species of that day's repeats are recorded on card#12443.
 
 **The rules, in the order the allocation tries them — the operator's two, and the three that make them
 total:**
@@ -3282,11 +3282,10 @@ is fleet-sized, so this is one statement per seat inside the migration and not
 [§ 6.9](#69-migrations-on-a-live-events-table) rule 3's batched backfill, which is `events`'s; the
 `NOT NULL` strands nothing because the backfill precedes it and the only application inserter of `seats`
 rows allocates. Run over the sandbox population read above, the two passes keep every live seat's draw
-except the later-created member of each repeat the evidence paragraph names: `sola/device` `mole` →
-`hedgehog`, `sola/fred` `radish` → `turnip`, and `solo-agents/kanban` `cabbage` → `fox` (the probe from
-`cabbage`, the list's last entry, wraps to its first) — the same set one pass gave on that population,
-because none of the moved-to species was a later seat's draw, which is the case the second pass exists
-for and the fixture [AT-D2-31](#at-d2-31-a-seats-character-is-allocated-once-unique-while-it-can-be-and-freed-by-retirement)
+except the later-created member of each colliding pair — three seats, each re-printed with its old and
+new species by the migration's table, and recorded on card#12443 — the same set one pass gave on that
+population, because none of the moved-to species was a later seat's draw, which is the case the second
+pass exists for and the fixture [AT-D2-31](#at-d2-31-a-seats-character-is-allocated-once-unique-while-it-can-be-and-freed-by-retirement)
 plants. The migration prints that table when it runs (and logs it), and the operator accepted this change
 set before the build ([§ 14](#14-open-questions-for-the-review-loop) item 18(1)).
 
@@ -7315,12 +7314,12 @@ operator ruling.
     questions only the operator could answer, a new mechanism being ask-first (`USER-GATING.md § 2g`):
     - *(1)* **The migration's change set.** On the sandbox population read on 2026-10-26, the two-pass
       backfill ([§ 6.13](#613-the-character-allocation--one-species-per-seat-allocated-at-creation-and-kept-for-life))
-      moves exactly the later-created member of each repeat the evidence paragraph names — `sola/device`
-      (`mole` → `hedgehog`), `sola/fred` (`radish` → `turnip`) and `solo-agents/kanban` (`cabbage` → `fox`) —
-      and every other live seat keeps its draw; a seat already retired is written today's draw, labelled so.
+      moves exactly the later-created member of each colliding pair the evidence paragraph counts — three
+      seats, put to the operator by name on card#12443 and re-printed by the migration's table — and every
+      other live seat keeps its draw; a seat already retired is written today's draw, labelled so.
       The migration prints the same table when it runs. **Recommendation:** accept — it is the operator's own
       rule (*keep the earlier, move the later*) applied to the repeats the floor shows today, and nothing
-      else moves. **Ruled: accepted** — `kanban` to `fox`, `device` to `hedgehog`, `fred` to `turnip`.
+      else moves. **Ruled: accepted** — the three moves exactly as card#12443 lists them.
     - *(2)* **A floor composed after its seats were allocated — which is the ordinary order.** An install
       exists from its first seat's token issue and is placed on a floor in the console afterwards, so rule 2
       reads *the install alone* for every new install, and rule 4 keeps the species for life. While the live

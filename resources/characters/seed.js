@@ -18,9 +18,10 @@ const ENC = new TextEncoder();
  * This is `docs/design/FLOOR.md` section 3.2's hash, bit-for-bit, and it is exported because
  * that section's DESK SLOT function needs the same one: the floor (card #7341) must import this
  * rather than mint a second copy that can drift. `tools/design/verify-floor.py` holds a Python
- * implementation for the design doc's own worked table; the two are bound by
- * `tools/characters/selftest.mjs`, which checks this function against the four `h` values that
- * table publishes.
+ * implementation for the design doc's own worked table and checks it against the four `h` values
+ * that table publishes (its G8); `server/tests/Feature/Fleet/TheSpeciesListHasOneSourceTest.php`
+ * checks THIS function against the same four values, and the server's port (`App\Characters\Draw`)
+ * against both, so the three copies are bound through the published table.
  *
  * Do NOT add an avalanche step here — see `mix32` below, which is a separate function precisely
  * so this one stays the spec's.

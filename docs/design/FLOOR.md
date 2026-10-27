@@ -10537,11 +10537,11 @@ reason to leave two readings live.
     ⚠ *Superseded with (2) by (7), 2026-10-26: no salt is searched again.*
 
     *(7)* ✅ **CLOSED — card#12443 (built 2026-10-27): the body is ALLOCATED by D2, and items (2) and (5) are
-    superseded for it; the operator ruled on D2 § 14 item 18 on 2026-10-27, accepting every recommendation.** The operator, on 2026-10-26: *"on the solo-agents floor, two
+    superseded for it; the operator ruled on D2 § 14 item 18 on 2026-10-27, accepting every recommendation.** The operator, on 2026-10-26 (the floor's name withheld here): *"on the [one] floor, two
     characters have the same image. I thought there isn't supposed to be any repetition? the system should
     try to allocate a unique character for each new agent. If all characters are used up, then the next
-    rule is not to have a duplicate character within the floor"*. Measured: `solo-agents/key` and
-    `solo-agents/kanban` both draw `cabbage` under `species:s3`, and the sandbox's live seats repeat a body
+    rule is not to have a duplicate character within the floor"*. Measured: the two seats the operator saw
+    both draw one species under `species:s3`, and the sandbox's live seats repeat a body
     wherever two of them draw one species — the repeats of that day are
     [D2 § 6.13](FLEET-STATE.md#613-the-character-allocation--one-species-per-seat-allocated-at-creation-and-kept-for-life)'s
     evidence paragraph's, re-derived by `node` over the generator and the `seats` table. The salt's rule — *re-pick, surfaced* — cannot hold the operator's rule, because a salt is

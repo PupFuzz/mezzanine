@@ -63,8 +63,12 @@ class TheSpeciesListHasOneSourceTest extends TestCase
         $this->assertSame(4, preg_match_all('/^\| `([a-z0-9-]+\/[a-z0-9-]+)` \| (\d+) \| \d+ \| (?:\d+|role) \| \*\*\d+\*\* \|$/m', $floor, $rows, PREG_SET_ORDER),
             'FLOOR.md § 3.2\'s four published h values did not parse');
 
-        foreach ($rows as [, $key, $h]) {
+        $published = $this->node('const seed = await import(%s); console.log(JSON.stringify(%s.map((k) => seed.fnv1a32(k))));',
+            $this->tree().'/seed.js', array_column($rows, 1));
+
+        foreach ($rows as $i => [, $key, $h]) {
             $this->assertSame((int) $h, Draw::fnv1a32($key), "Draw::fnv1a32({$key}) is not the h FLOOR.md § 3.2 publishes");
+            $this->assertSame((int) $h, $published[$i], "seed.js's fnv1a32({$key}) is not the h FLOOR.md § 3.2 publishes");
         }
     }
 
