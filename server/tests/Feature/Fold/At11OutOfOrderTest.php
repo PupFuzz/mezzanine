@@ -338,6 +338,11 @@ class At11OutOfOrderTest extends FoldTestCase
         $facts = SeatFacts::versionBearing($seatRef);
         unset($facts['action'], $facts['subagents'], $facts['session'], $facts['task']);
 
+        // `species` (card#12443) is the seat's character, allocated at its creation and never written by the fold:
+        // the two seats here are live at once, so the second is allocated around the first by design. It is a seat
+        // identity input like `seat_ref`, not a fact delivery order could move.
+        unset($facts['species']);
+
         // `activity.last_received_at` is a SERVER-clock receipt and the two runs were delivered at
         // different server times, so it legitimately differs. The seat-clock member and the kind
         // are what convergence is a claim about, and they stay in.

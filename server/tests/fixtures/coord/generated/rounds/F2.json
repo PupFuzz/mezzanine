@@ -1,5 +1,5 @@
 {
-  "feed_version": 1,
+  "feed_version": 2,
   "t": "coord.round",
   "server_time": "2026-01-02T03:25:46.000Z",
   "coord_round": {

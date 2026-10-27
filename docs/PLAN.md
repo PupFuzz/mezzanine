@@ -762,9 +762,11 @@ rule violations anyone could have committed at the time.
   unreadable or gone, `chmod` restores an unreadable one in place, a GONE one is replaced by swapping
   `.git` alone out of a `git clone --no-checkout` then `checkout --force`, and
   `repack -a -d` confirms — it refuses outright if anything reachable cannot be read. It says outright that
-  `git fetch` CANNOT bring that object back (fetch negotiates from refs, and this checkout's refs already
-  claim the commit, so the remote is never asked — measured, git 2.53.0: exit 0 and nothing transferred with
-  the object unreadable, exit 0 and the object still gone with it deleted), and it says outright not to
+  `git fetch` CANNOT bring that object back (fetch asks the remote only for the tips of its refs that this
+  checkout lacks, so whether this checkout's refs already claim the commit or no ref names it at all, the
+  remote is never asked for the objects behind it — measured, git 2.53.0: exit 0 and nothing transferred with
+  the object unreadable, exit 0 and the object still gone with it deleted; git 2.56.0 refuses that fetch
+  outright, exit 128, when the object is one it reads while negotiating — card#12477), and it says outright not to
   re-clone the deploy root: `server/.env` is created on the host and is in no commit, so its `APP_KEY` and
   `DB_PASSWORD` exist nowhere else, and a fresh clone would take `server/storage/` and the `.deploy-failed`
   marker — the logs and the marker the failure banner sends the operator to — with it. And **a release

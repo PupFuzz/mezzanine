@@ -3,6 +3,7 @@
 namespace Tests\Feature\Feed;
 
 use App\Feed\BuildingLayoutChanged;
+use App\Feed\FleetReload;
 use App\Feed\Outbox;
 use App\Fold\Clock;
 use Illuminate\Support\Facades\DB;
@@ -208,7 +209,7 @@ class At25ConcurrentWriterTest extends FeedTestCase
             'created_at' => $createdAt ?? Clock::sql(now()),
             't' => $type,
             'install_id' => $installId,
-            'message' => json_encode(['feed_version' => 1, 't' => $type, 'server_time' => Clock::wire(Clock::sql(now()))] + $body),
+            'message' => json_encode(['feed_version' => FleetReload::FEED_VERSION, 't' => $type, 'server_time' => Clock::wire(Clock::sql(now()))] + $body),
         ]);
     }
 }

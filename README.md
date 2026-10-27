@@ -9,7 +9,8 @@ they are actually doing right now — with a drill-down into their tasks and sub
 > manage/remove, and floors + their maps) and `php artisan mezzanine:user:create`, which is what makes a fresh deploy
 > reachable at all — see [The first account](#the-first-account-and-the-way-back-from-a-lockout). The **creature generator** exists in
 > [`resources/characters/`](resources/characters/) — dependency-free ES modules that draw each
-> seat's animal or vegetable creature, as vector SVG, from its identity alone; open
+> seat's animal or vegetable creature, as vector SVG, from its identity and the species the server
+> allocated it; open
 > `tools/characters/harness.html` (the creature sheet) over a local static server to see it. The kanban automation in `.github/workflows/` also runs; see
 > [Kanban](#kanban) below.
 
@@ -460,9 +461,11 @@ appends.
 The characters are **first-party**: original animal and vegetable creatures drawn by the code in
 `resources/characters/` as vector SVG (`docs/design/FLOOR.md § 10.2`, card#11046), replacing the
 interim pixel people that came with an earlier port of munder-difflin's generator — that port left the
-tree whole, and its record stays in git and in `docs/PLAN.md § 0`'s D-07 appends. A seat's appearance
-is a pure function of `(install_id, seat_id)`, so it looks the same on every browser with nothing
-stored.
+tree whole, and its record stays in git and in `docs/PLAN.md § 0`'s D-07 appends. A seat's **body** —
+which creature it is — is allocated by the server when the seat is created, one no other live seat
+holds while there are enough to go round, and kept for the seat's life (`docs/design/FLEET-STATE.md
+§ 6.13`, card#12443); everything else about its appearance is a pure function of `(install_id,
+seat_id)`. Both are the same on every browser.
 
 Two CI gates enforce the licence claim rather than leaving it to discipline: **every asset
 needs a provenance row** — hash, SPDX from a closed allowlist, and an `origin` of `first-party`

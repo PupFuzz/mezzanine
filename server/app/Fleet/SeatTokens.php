@@ -2,6 +2,7 @@
 
 namespace App\Fleet;
 
+use App\Characters\SpeciesList;
 use App\Support\Anchored;
 use App\Support\Slug;
 use Illuminate\Support\Collection;
@@ -24,6 +25,13 @@ use Illuminate\Support\Facades\DB;
  * exactly that state, and the token — a seat with a token and no state row, or a state row with no
  * token, is a half-provisioned desk.
  *
+ * ⛔ CREATING A SEAT ALLOCATES ITS CHARACTER, ONCE (card#12443, `docs/design/FLEET-STATE.md § 6.13`). This is the
+ * one application writer of `seats`, so the allocation lives here: the transaction's FIRST statement locks the
+ * one-row `species_allocation_lock` mutex, on every path, and a new seat's `species` is chosen by
+ * `App\Fleet\CharacterAllocation` over the live population read under it. A re-issue for an existing seat writes
+ * no species. One attempt, no retry loop: the mutex row is locked by nothing else, so the allocation's own locks
+ * have no deadlock partner.
+ *
  * ⛔ ISSUING NEVER REVOKES. D1 § 3.3: "Issue and activate the new token **server-side first** (old
  * and new both valid for a 7-day overlap), *then* write the new token into the seat config, *then*
  * revoke the old one." A seat may hold several active tokens — that is what the overlap IS — and
@@ -42,6 +50,14 @@ use Illuminate\Support\Facades\DB;
  */
 final class SeatTokens
 {
+    /**
+     * Test seam: runs inside `issue()`'s transaction right after the species mutex is locked, before any other
+     * statement — the position AT-D2-31's concurrency legs probe (`SeatRetirement::$beforeRetire`'s shape).
+     *
+     * @var (callable(string, string): void)|null
+     */
+    public static $afterMutex = null;
+
     /**
      * Mint a token for `<installId>/<seatId>`, creating the install and the seat if they are new.
      */
@@ -65,6 +81,18 @@ final class SeatTokens
         $now = now()->format('Y-m-d H:i:s.v');
 
         $written = DB::transaction(function () use ($installId, $seatId, $by, $prefix, $hash, $now) {
+            // ⛔ THE SPECIES MUTEX IS THE TRANSACTION'S FIRST STATEMENT, ON EVERY PATH (card#12443,
+            // docs/design/FLEET-STATE.md § 6.13). Two creations serialise on this one row, which nothing else
+            // locks. FIRST is literal: under REPEATABLE READ the read view every plain read answers from is opened
+            // by the transaction's first plain read and never refreshed, so a plain read taken above this lock
+            // would fix a snapshot from before an allocation that committed while this one waited — and the
+            // population read below would allocate that seat's species again.
+            DB::table('species_allocation_lock')->where('id', 1)->lockForUpdate()->value('id');
+
+            if (self::$afterMutex !== null) {
+                (self::$afterMutex)($installId, $seatId);
+            }
+
             $installRef = DB::table('installs')->where('install_id', $installId)->value('id');
 
             $seat = $installRef === null ? null : DB::table('seats')
@@ -89,9 +117,12 @@ final class SeatTokens
                 ]);
             }
 
+            // § 6.13: a NEW seat is allocated its species here, once, and keeps it for life — a re-issue for an
+            // existing seat takes no branch that writes it.
             $seatRef = $seat?->id ?? DB::table('seats')->insertGetId([
                 'install_ref' => $installRef,
                 'seat_id' => $seatId,
+                'species' => self::allocate($installId, $seatId),
                 'created_at' => $now,
             ]);
 
@@ -141,6 +172,22 @@ final class SeatTokens
             seatRef: $written['seatRef'],
             createdAt: $now,
             priorActive: $written['priorActive'],
+        );
+    }
+
+    /**
+     * The new seat's species, by § 6.13's rules over the live population — read here, under the mutex the
+     * transaction opened with. The building layout is read only if rule 1 has no answer.
+     */
+    private static function allocate(string $installId, string $seatId): string
+    {
+        $live = CharacterAllocation::livePopulation();
+
+        return CharacterAllocation::choose(
+            $installId.'/'.$seatId,
+            $live,
+            CharacterAllocation::floorOf($installId, array_map(static fn (object $s): string => (string) $s->install_id, $live)),
+            SpeciesList::current(),
         );
     }
 

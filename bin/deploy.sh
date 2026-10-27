@@ -1563,7 +1563,8 @@ git_read_at() {
 # assumed:
 #   · IT IS NOT REACHABLE THROUGH THIS SCRIPT TODAY. A7 fetches before it resolves anything, and a
 #     ref it cannot read fails THAT first — measured: `fatal: bad object refs/remotes/origin/main`,
-#     exit 1, so the deploy REFUSES at the fetch, by name, with git's error above the refusal
+#     exit 1 (git 2.56.0: `fatal: loose object … is corrupt`, exit 128 — card#12477), so the deploy
+#     REFUSES at the fetch, by name, with git's error above the refusal
 #     (card#9646 landed the fetch's own status reading; a fix for this belongs there).
 #   · IF IT EVER BECOMES REACHABLE, THE COUPLING IS A8's. An unreadable `refs/remotes/$REMOTE/main`
 #     would answer git_ref_oid with 1-silent, A8 would read that as "there is no release branch",
@@ -1628,7 +1629,9 @@ git_peel_mismatch() {
 #                         NOT ALWAYS A FAILED READ (card#9611 r4): a peel to a type the object is
 #                         not is loud here on a healthy store, and the branch says so by git's own
 #                         wording rather than calling every loud 1 a read that failed.
-#   ∉ {0,1}, git LOUD   — does not return. A read that failed, named by git's own error.
+#   ∉ {0,1}, git LOUD   — does not return. A read that failed, named by git's own error, under the
+#                         SAME refusal as a loud 1: git 2.56.0 answers 128 for the walk git 2.53.0
+#                         and 2.55.0 answer 1 for (card#12477), so the two loud answers are one refusal.
 #   ∉ {0,1}, git SILENT — does not return, AND THE REFUSAL CLAIMS NO FAILURE (card#9611 r3): git
 #                         answered without printing anything, so nothing establishes a failed read.
 # ⚠ THOSE FIVE ARE THE COVERAGE UNIT, and that is this round's lesson rather than a note: r2 added
@@ -1646,6 +1649,8 @@ git_peel_mismatch() {
 #                                                         object …: Permission denied`
 #   git rev-parse --verify --quiet refs/remotes/origin/main → 0 + the id   ← a NAME, on that same
 #                                                                            broken checkout
+# git 2.56.0 gives the same three answers but the second, which is 128 and adds `fatal: loose object
+# … is corrupt` (card#12477) — loud at both, which is what is read; the status is not.
 # So the discriminator at status 1 is git's own stderr: an absence answers SILENTLY. It is captured
 # in order to be READ, never to be hidden — every byte of it is printed back before anything is
 # decided, because git's message is what names the object (the rule stated for the readers above).
@@ -1655,7 +1660,8 @@ git_peel_mismatch() {
 # needed to FIND one is what it could not read. That is not one candidate shape but every candidate
 # whose resolution needs the pack, which is the shape a real host is in (objects arrive packed from
 # `fetch`) — measured, git 2.53.0, `.pack` chmod 000, stderr EMPTY at each: an abbreviated id → 1,
-# `main~1` → 1, `:/subject` → 1. A FULL 40-character id cannot reach that: it resolves to itself at
+# `main~1` → 1, `:/subject` → 1 (git 2.56.0: `main~1` and `:/subject` the same, card#12477). A FULL
+# 40-character id cannot reach that: it resolves to itself at
 # status 0 with the store untouched (measured on that same broken checkout, and on a healthy one for
 # an id naming no object at all), so the object question is asked of `cat-file -t` below, where a
 # failure is loud. A7's refusal tells an operator that, rather than calling that silence the ref's
@@ -1685,21 +1691,22 @@ git_ref_oid() {
   # measurements and states why. The answer that MEANS absence (status 1, git SILENT) is settled
   # below and cannot reach git_peel_mismatch: it has no message to ask the question of.
   [ -z "$__ro_msg" ] || git_peel_mismatch "'$__ro_cand'" "$__ro_msg" || :
-  if [ "$__ro_rc" -eq 1 ]; then
-    [ -n "$__ro_msg" ] || return 1
+  # ⛔ ONE REFUSAL FOR EVERY LOUD STATUS, because the status of a failed walk is git's and it MOVED
+  # (card#12477). Measured on one unreadable loose object, `--ref <id>~2` walking through it: git
+  # 2.53.0 and 2.55.0 print `unable to open loose object` and exit 1; git 2.56.0 prints that, then
+  # `fatal: loose object … is corrupt`, and exits 128. A refusal per status told those two gits two
+  # different stories about one read. What says which read failed is git's message, at any status.
+  [ "$__ro_rc" -ne 1 ] || [ -n "$__ro_msg" ] || return 1
+  if [ -n "$__ro_msg" ]; then
     git_rev_read_failed "resolve '$__ro_cand'" "rev-parse --verify" "$__ro_rc" \
       "Exit 1 is \"there is no ref of that name\" — and that answer is SILENT. This one printed the" \
       "message above, so it is not that, and GIT'S OWN MESSAGE IS WHAT SAYS WHICH READ THIS WAS:" \
       "resolving '$__ro_cand' goes past the refs and into the object store when it is an abbreviated" \
       "id or rev syntax (~, ^, @{}, :/), which is the common case here — and a ref the refs" \
-      "themselves cannot follow is loud at this status too (measured: a dangling symref, on a" \
-      "completely healthy object store)." \
-      "Nothing was resolved, so nothing about what '$__ro_cand' names is known."
-  fi
-  if [ -n "$__ro_msg" ]; then
-    git_rev_read_failed "resolve '$__ro_cand'" "rev-parse --verify" "$__ro_rc" \
-      "Exit 1 is \"there is no ref of that name\" and $__ro_rc is not that, and git printed the error" \
-      "above on the way there: the read failed, and git's own message names what it could not read." \
+      "themselves cannot follow is loud too (measured: a dangling symref, exit 1, on a completely" \
+      "healthy object store). Which status a failed read gives is git's to choose: git 2.56.0" \
+      "exits 128 where git 2.53.0 and 2.55.0 exit 1 for the same unreadable object, so the status" \
+      "above says nothing this message does not." \
       "Nothing was resolved, so nothing about what '$__ro_cand' names is known."
   fi
   # ∉ {0,1} AND GIT SAID NOTHING. The same over-read this card exists to end, one branch further in
@@ -2652,13 +2659,21 @@ phase_a() {
   # git checkout" about any of those goes looking for a checkout that is right there.
   #
   # THE DISCRIMINATOR IS GIT'S OWN WORDING, not the status — the status is 128 for all of them. git
-  # says `not a git repository` in those words for the four shapes that really are not a checkout
-  # (a plain directory; `.git` at mode 000, which git discovers PAST rather than fails on; a `.git`
-  # file pointing nowhere; a `.git` directory that is not a repository), and `cannot change to '…':
-  # Not a directory` for a root that is a file. Anything else lands in the generic branch — which is
-  # honest about an unrecognised wording rather than false about it. `LC_ALL=C` is pinned on this
-  # call so the wording is the one measured; it is pinned on the NEW call only (card#9646 § 5 S9).
-  # git's message is PRINTED before either refusal, because it is what names the cause.
+  # says `not a git repository` in those words for the shapes that really are not a checkout (a plain
+  # directory; `.git` at mode 000, which git discovers PAST rather than fails on; a `.git` directory
+  # that is not a repository), `cannot change to '…': Not a directory` for a root that is a file, and
+  # for a `.git` FILE pointing nowhere, `not a git repository: <its target>` on git 2.53.0 (`… :
+  # (null)` on git 2.55.0) and `gitfile does not point to a valid repository: <the .git file>` on git
+  # 2.56.0 (measured, all three; card#12477). git 2.56's release notes: "A regression in the error
+  # diagnosis code for invalid .git files has been fixed" (merge 54a441bcea, jk/setup-gitfile-diag-fix),
+  # and the message changed with that fix — setup.c, read_gitfile_error_die(). Anything else
+  # lands in the generic branch — which is honest about an unrecognised wording rather than false
+  # about it, and is where a future git's new wording for one of these shapes arrives. No status
+  # separates them (128 for every one), and testing the `.git` path ourselves would be a second
+  # implementation of git's own repository discovery, beside the one that actually decides.
+  # `LC_ALL=C` is pinned on this call so the wording is the one measured; it is pinned on the NEW
+  # call only (card#9646 § 5 S9). git's message is PRINTED before either refusal, because it is what
+  # names the cause.
   #
   # ⚠ AND NONE OF THE THREE REFUSALS card#9646 ADDS (here, A4, A7) SAYS "git's error is above this
   # refusal". They say what git PRINTED is above it, which is true whether or not git printed
@@ -2672,7 +2687,7 @@ phase_a() {
   if [ "$repo_rc" -ne 0 ]; then
     [ -z "$repo_msg" ] || printf '%s\n' "$repo_msg" >&2
     case "$repo_msg" in
-      *"not a git repository"* | *"cannot change to"*)
+      *"not a git repository"* | *"cannot change to"* | *"gitfile does not point to a valid repository"*)
         refuse "$DEPLOY_ROOT is not a git checkout" \
           "git's message above says what it found there instead." ;;
       *)
@@ -3092,14 +3107,17 @@ phase_a() {
   # told them to look for.
   #
   # ⛔ STATUS ONLY — git's stderr IS NOT CAPTURED, and that is load-bearing rather than incidental.
-  # A SUCCESSFUL fetch prints to stderr as a matter of course (ref-update lines), and it prints
-  # git's own `error:` lines while still exiting 0 when an object it does not need is unreadable —
-  # the shape `three_releases` produces in bin/deploy.selftest.sh, where a middle commit is blinded
-  # and the fetch completes. A rule keyed on stderr would refuse those healthy runs. The status is
-  # the whole answer here; git's message goes straight to the operator's terminal, unsilenced, which
-  # is the same rule the readers below state (§ reading the TARGET RELEASE out of git).
+  # A SUCCESSFUL fetch prints to stderr as a matter of course (ref-update lines; a `--prune` prints
+  # each ref it drops), so a rule keyed on stderr would refuse healthy runs. The status is the whole
+  # answer here; git's message goes straight to the operator's terminal, unsilenced, which is the
+  # same rule the readers below state (§ reading the TARGET RELEASE out of git).
   #
-  # The headline names no cause on purpose: the status does not carry one, so it does not claim one.
+  # The headline names no cause on purpose: the status does not carry one, so it does not claim one —
+  # and WHICH status a cause gets is git's, and it moved (card#12477): git 2.56.0 reports a loose
+  # object it cannot open as corrupt, and its fetch exits 128 for a commit near this checkout's own
+  # tips that it cannot read, where git 2.53.0 exited 1 (an unreadable tip) or, with nothing new to
+  # fetch, fetched through it (a commit behind one). So the list below names git's wording for each
+  # cause, and no status.
   local fetch_rc=0
   git_at fetch --prune --tags "$REMOTE" || fetch_rc=$?
   [ "$fetch_rc" -eq 0 ] || git_read_unusable \
@@ -3108,13 +3126,15 @@ phase_a() {
     "not guess:" \
     "  · $REMOTE could not be reached, or refused this host's credential, or its configured URL" \
     "    names nothing git can fetch from — git says \`does not appear to be a git repository\` or" \
-    "    \`Could not read from remote repository\` (measured, git 2.53.0: exit 128 for both)." \
+    "    \`Could not read from remote repository\`." \
     "    It is NOT \"MEZZ_REMOTE names no remote of this checkout\": A3c established that it does," \
     "    by membership in \`git remote\`, before this fetch ran (card#9832)." \
-    "  · a ref of THIS CHECKOUT that git could not read — \`bad object refs/…\`, exit 1. A fetch" \
-    "    reads this checkout's own tips to tell $REMOTE what it already has, so that failure is in" \
-    "    the object store HERE and not at $REMOTE. It is the store A8's refusal names the repair" \
-    "    for, and \`git fetch\` is not that repair — it is the thing that failed." \
+    "  · a ref of THIS CHECKOUT that git could not read, or a commit behind one — git says" \
+    "    \`bad object refs/…\`, \`unable to open loose object …\` or \`loose object … is corrupt\`" \
+    "    (git 2.56 calls an object it has no permission to open corrupt, too). A fetch reads this" \
+    "    checkout's own tips, and the commits behind them, to tell $REMOTE what it already has, so" \
+    "    that failure is in the object store HERE and not at $REMOTE. \`git -C $DEPLOY_ROOT fsck\`" \
+    "    names the object; \`git fetch\` is not the repair — it is the thing that failed." \
     "  · a store git could not write what it fetched into." \
     "Nothing about the release was read: no ref was resolved and no gate ran. Remote-tracking refs" \
     "may have moved partway; the worktree, HEAD and what is being served did not."
@@ -3247,11 +3267,14 @@ phase_a() {
       "       git -C $DEPLOY_ROOT repack -a -d" \
       "     It rebuilds the packs and refuses outright if anything reachable cannot be read, so a" \
       "     clean run is the answer you want. It repairs nothing — it reports." \
-      "⛔ git fetch CANNOT bring that object back. fetch negotiates from REFS, and the refs of this" \
-      "checkout ALREADY claim that commit, so $REMOTE is never asked for the objects behind it —" \
+      "⛔ git fetch CANNOT bring that object back. fetch asks $REMOTE only for the tips of its refs" \
+      "that this checkout does not already have. Where this checkout's refs ALREADY claim that commit," \
+      "and where no ref names it at all, $REMOTE is never asked for the objects behind it —" \
       "measured, git 2.53.0: with the object unreadable \`fetch --prune\` exits 0 having transferred" \
       "nothing and the file is still unreadable, and with the object DELETED it exits 0 too and the" \
-      "object is still gone. A clean fetch here is not a repair that worked." \
+      "object is still gone; git 2.56.0 refuses that fetch outright (exit 128, \`… is corrupt\`)" \
+      "when the object is one it reads while negotiating, and transfers nothing either." \
+      "A clean fetch here is not a repair that worked." \
       "⛔ DO NOT RE-CLONE $DEPLOY_ROOT ITSELF. server/.env is created on this host and is in no" \
       "commit, so its APP_KEY and DB_PASSWORD exist nowhere else; a fresh clone of the whole root" \
       "also takes server/storage/ — the logs — and .deploy-failed, the marker a failed window" \

@@ -354,7 +354,7 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
             // An intern's key is minted per dispatch: the painter drops the frames of each one it no longer
             // draws — its Map is the only cache (card#11046: the tree holds none, and has no forget()).
             "an intern no longer drawn kept in the painter's frames" => ['../floor/painter.js',
-                "                interns.delete(asset);\n                frames.delete(asset);", '                interns.delete(asset);'],
+                "                for (const key of [...frames.keys()].filter((k) => k.startsWith(`\${asset}~`))) {\n                    frames.delete(key);\n                }", ''],
             'an intern animated' => ['../floor/painter.js',
                 "art(g, drawn.uris[0], e.overdraw, e.asset, e.untitled ? 'intern untitled' : 'intern');",
                 "stepping.push([art(g, drawn.uris[0], e.overdraw, e.asset, e.untitled ? 'intern untitled' : 'intern'), [drawn.uris[0], 'x', 'y'], 0, 0]);"],
@@ -365,13 +365,13 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
             'a canvas made for a character' => ['../floor/painter.js',
                 '                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });', "                document.createElement('canvas');\n                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });"],
             'a desk that loses its character for a pose it has no frame for' => ['../floor/painter.js',
-                'const drawn = characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, desk_top: e.desk_top, clear: e.clear });',
-                "const drawn = e.pose === 'asleep' ? null : characterFrames(desk.install_id, desk.seat_id, e.asset, { pose: e.pose, desk_top: e.desk_top, clear: e.clear });"],
+                'const drawn = characterFrames(desk.install_id, desk.seat_id, e.asset, e.species, { pose: e.pose, desk_top: e.desk_top, clear: e.clear });',
+                "const drawn = e.pose === 'asleep' ? null : characterFrames(desk.install_id, desk.seat_id, e.asset, e.species, { pose: e.pose, desk_top: e.desk_top, clear: e.clear });"],
             // card#12159 — the desk draws the tree's frames for its POSE: the walk drawn for every pose (the
             // defect the sleeper was hidden behind), the pose's frames drawn without the desk's edge, and a held
             // loop stepping the walk's three frames whatever the drawing holds.
             "a desk drawn in the walk's frames whatever its pose" => ['../floor/painter.js',
-                'characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top, clear: at.clear })', '{ frames: characters.walkFrames(installId, seatId), loopFrom: 0 }'],
+                'characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top, clear: at.clear, species })', '{ frames: characters.walkFrames(installId, seatId, species), loopFrom: 0 }'],
             "a pose's frames drawn without the desk's top edge" => ['../floor/desk-layout.js',
                 "desk_top: (R['desk-sprite'].y - R.character.y) / R.character.h,", 'desk_top: 0.5,'],
             'a held loop that steps three frames whatever the drawing holds' => ['../floor/painter.js',
@@ -398,7 +398,21 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 "                            stepping.push([el, uris, loopFrom, offset]);\n                        }", "                            el.dataset.frames = JSON.stringify(uris);\n                        }"],
             // § 9 F14's two causes for a code-drawn character (§ 10.2): unreported, or thrown out of the paint.
             'a tree that failed to load left unreported' => ['../floor/painter.js',
-                "        if (characters === null) {\n            report(asset);", "        if (characters === null) {\n            void asset;"],
+                "        if (characters === null || typeof species !== 'string') {\n            report(asset);", "        if (characters === null || typeof species !== 'string') {\n            void asset;"],
+            // card#12443 — AT-D3-24's body legs: the seat's frames drawn from its key alone, the delivered species
+            // dropped (the operator's "two characters have the same image", re-made); the frame cache keyed on the
+            // asset alone; a species the tree does not hold drawn as the key's own body instead of F14; and an intern
+            // handed the seat key's own draw instead of its seat's delivered body.
+            "a seat drawn from its key, the delivered species dropped" => ['../floor/painter.js',
+                "characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top, clear: at.clear, species })",
+                "characters.poseFrames(installId, seatId, { pose: at.pose, deskTop: at.desk_top, clear: at.clear })"],
+            "a character's frames cached on the asset alone, not its species" => ['../floor/painter.js',
+                '`${asset}#${at.pose}@${at.desk_top}`}~${species}`;', '`${asset}#${at.pose}@${at.desk_top}`}`;'],
+            "an unheld species drawn as the key's own body" => ['../floor/painter.js',
+                "                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });\n            } catch {\n                report(asset);",
+                "                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });\n            } catch {\n                frames.set(key, { uris: characters.poseFrames(installId, seatId, { pose: at?.pose ?? 'present', deskTop: at?.desk_top ?? 0.5, clear: at?.clear }).frames.map(svgUri), loopFrom: 0 });\n                return frames.get(key);"],
+            "an intern kept off the seat key's draw, not its seat's delivered body" => ['../floor/painter.js',
+                'characters.chibiFrame(installId, seatId, species)', 'characters.chibiFrame(installId, seatId)'],
             // § 9 F14's third cause (§ 10.2): an undecodable frame's <image> error event, unreported.
             "an undecodable frame's error event left unreported" => ['../floor/painter.js',
                 "        el.addEventListener('error', () => report(asset ?? href), { once: true });\n", ''],

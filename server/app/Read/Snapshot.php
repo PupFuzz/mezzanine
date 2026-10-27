@@ -119,6 +119,8 @@ final class Snapshot
         'seat_state.*',
         'installs.install_id',
         'seats.seat_id',
+        'seats.species',
+        'seats.species_drawn_at',
         'seats.retired_at',
         'seats.retired_by',
         'seats.retired_reason',

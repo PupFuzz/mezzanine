@@ -4,6 +4,7 @@ namespace Tests\Feature\Fold;
 
 use App\Console\Commands\RebuildCommand;
 use App\Fleet\SeatRetirement;
+use App\Fleet\SeatTokens;
 use App\Fold\Clock;
 use App\Fold\Fold;
 use App\Ingest\Acceptance;
@@ -15,9 +16,12 @@ use App\Ingest\TokenBinding;
 use App\Ingest\ValidBatch;
 use App\Ingest\ValidEvent;
 use App\Sweep\Predicates;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 /**
@@ -126,6 +130,7 @@ abstract class CommittedSeatTestCase extends TestCase
         RebuildCommand::$afterFirstDelete = null;
         SeatRetirement::$beforeRetire = null;
         SeatRetirement::$afterBefore = null;
+        SeatTokens::$afterMutex = null;
         Fold::$beforeLock = null;
         Fold::$afterReadable = null;
         Carbon::setTestNow();
@@ -240,6 +245,38 @@ abstract class CommittedSeatTestCase extends TestCase
         }
 
         $this->fail('the fold did not converge in '.$maxPasses.' passes');
+    }
+
+    /**
+     * Record one connection's statements, one list per transaction it begins — the fold connection's by
+     * default. Hoisted from `FoldLockFirstTest` (card#12443) so it and `SeatCharacterAllocationLockOrderTest`
+     * read one copy of the statement-position witness.
+     *
+     * `TransactionBeginning` fires after the connection has begun, and `START TRANSACTION` itself is
+     * not a `QueryExecuted`, so a list's first entry is the transaction's first statement. Only the
+     * named connection is recorded: a probe on its own connection is not.
+     *
+     * @return callable(): list<list<string>>
+     */
+    protected function recordFoldTransactions(string $connection = self::FOLD): callable
+    {
+        $transactions = [];
+
+        Event::listen(TransactionBeginning::class, function (TransactionBeginning $e) use (&$transactions, $connection) {
+            if ($e->connectionName === $connection) {
+                $transactions[] = [];
+            }
+        });
+
+        Event::listen(QueryExecuted::class, function (QueryExecuted $q) use (&$transactions, $connection) {
+            if ($q->connectionName === $connection && $transactions !== []) {
+                $transactions[array_key_last($transactions)][] = $q->sql;
+            }
+        });
+
+        return function () use (&$transactions) {
+            return $transactions;
+        };
     }
 
     /**
