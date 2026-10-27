@@ -1504,6 +1504,10 @@ CREATE TABLE seats (
 --   species list, never an ENUM (the list grows by appending, FLOOR.md § 10.4, and a stored key
 --   outlives a DDL); 16 is the parser's bound as much as the column's (§ 6.13). Freed by
 --   `retired_at` through the read filter: nothing writes it at retirement (§ 4.10).
+--   species_source — one of `allocated`, `migrated`, `drawn` (an enumeration when built), NOT NULL:
+--   how the value above came to be — the rules at creation, the migration's two passes over a row
+--   live at the time, or today's draw written for a row already retired, which the console labels
+--   so (§ 6.13's migration paragraph). Written with `species`, by the same two writers, never after.
 
 CREATE TABLE seat_board_task (
   seat_ref        INT UNSIGNED NOT NULL PRIMARY KEY,
@@ -3144,8 +3148,11 @@ superseded for the body by this card).
 that inserts a `seats` row — the console's seat-tokens page and `mezzanine:ingest-token:issue` both call
 it, and the console's agents page creates no seat (`SeatController`'s docblock) — so the allocation runs
 on that method's insert branch, inside its transaction, before the `seats` insert, as a pure function
-`App\Fleet\CharacterAllocation::choose(string $key, iterable $live, ?array $floorInstalls, array $list): string`
-over values the transaction read (`$floorInstalls` `null` until rule 2 needs it), testable with no store.
+`App\Fleet\CharacterAllocation::choose(string $key, iterable $live, callable $floorInstalls, array $list): string`
+over values the transaction read — `$floorInstalls` is a **thunk** the function calls only when rule 1 has
+no answer, which is how a function returning one string says *rule 1 was empty, now read the layout*
+without the caller reading it first — testable with no store (a thunk that throws if called is the
+rule-1 leg's spy).
 A retired seat is refused before it, as today. The suite's own seat rows are the other writer: the tests
 that insert `seats` directly rather than through `issue()` — `git grep -ln "table('seats')->insert" --
 server/tests` lists them, `FloorConsoleTest`, `TheConsoleHoldsDeskSlotsToTheFurnitureBoxTest` and
@@ -3153,9 +3160,12 @@ server/tests` lists them, `FloorConsoleTest`, `TheConsoleHoldsDeskSlotsToTheFurn
 shared fixture helper rather than three hand-written inserts (Appendix B row 15).
 
 **Concurrency — two seats created at once, on this store's one login.** The live population is read with
-a **locking read** — `SELECT installs.install_id, seats.species FROM seats JOIN installs … WHERE
-seats.retired_at IS NULL FOR UPDATE` — and it is **the transaction's FIRST statement on every path**,
-before the `uq_seat` lookup `issue()` already makes. ⚠ **The order is the point, and the first draft had
+a **locking read over `seats` alone** — `SELECT id, install_ref, species FROM seats WHERE retired_at IS
+NULL ORDER BY id FOR UPDATE`, the `install_id`s then resolved by a plain read of `installs` — and it is
+**the transaction's FIRST statement on every path**, before the `uq_seat` lookup `issue()` already makes.
+Not a join: a join plan driven from `installs` would lock in a different order from `BoardPoll::write()`'s
+`seats`-by-`id` read and would lock nothing at all on an empty `installs`, and the install name is not
+what is being locked. ⚠ **The order is the point, and the first draft had
 it wrong:** `issue()`'s existing `lockForUpdate()` on `(install_ref, seat_id)` takes a gap lock on
 `uq_seat` where the new row will go, and two creations in one install that each took that gap lock and
 then waited on the other's rows at the full scan close a deadlock InnoDB breaks with `1213`. Taken
@@ -3170,10 +3180,14 @@ one of them is changing under it. No index on `retired_at` exists and none is ne
 table ([§ 6.7](#67-retention-and-purge)); the hold is one transaction of a few statements. No lock-order
 cycle with [§ 6.5](#65-the-fold)'s seat lock: the allocation touches no existing `seat_state` row (it
 inserts the new seat's), and every writer that locks `seat_state` takes it before `seats`, so each can
-wait on an allocation and never the reverse. The act runs under `DB::transaction()` with
-`SeatRetirement::LOCK_ATTEMPTS` attempts — today `issue()` runs with the framework's one — so a `1213`
-or `1205` is retried from a clean rollback, and the plaintext token is minted once, outside it, as
-today. ⚠ **The alternative refused — a named lock (`GET_LOCK`)**: a second serialisation primitive
+wait on an allocation and never the reverse. With the lock taken first, two creations cannot deadlock
+on each other at all — the second holds nothing when it waits — so the retry is for a writer outside this
+act (a retirement's row lock timing out at `1205`): the act runs under `DB::transaction()` with
+`SeatRetirement::LOCK_ATTEMPTS` attempts — today `issue()` runs with the framework's one — so such an
+error is retried from a clean rollback, the plaintext token is minted once, outside it, as today, and
+an attempt-counting seam (`SeatTokens::$onAttempt`, the shape of `SeatRetirement::$beforeRetire`) is
+what lets [AT-D2-31](#at-d2-31-a-seats-character-is-allocated-once-unique-while-it-can-be-and-freed-by-retirement)
+assert that two creations cost **zero** retries. ⚠ **The alternative refused — a named lock (`GET_LOCK`)**: a second serialisation primitive
 beside the row locks every other writer here uses ([§ 6.5](#65-the-fold),
 [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)), and one that would
 not serialise with the retirement `UPDATE`, which the row lock does for free. **And a `UNIQUE` index on
@@ -3198,8 +3212,15 @@ holds the port equal to `node`'s values over the committed roster and to the fou
 ([§ 8.2.1](#821-the-seat-state-object)'s ⏳ rows), never null, on the snapshot, the detail and — being
 version-bearing by [§ 6.5](#65-the-fold)'s subtraction (`SeatFacts::versionBearing()` fingerprints
 `species`; `SeatDelta::WIRE_MEMBER` maps it to `character`) — the delta, which no runtime writer ever
-exercises for it. ⭐ **The release that ships the member bumps `feed_version`** (`FleetReload::FEED_VERSION`
-and the stream envelope, [§ 8.3](#83-the-websocket-delta-feed)). The reason is a page from before the
+exercises for it. ⭐ **The release that ships the member bumps `feed_version`** — the one trait constant
+`FeedEnvelope::FEED_VERSION`, which every envelope and `FleetReload` read ([§ 8.3](#83-the-websocket-delta-feed))
+— **and it is ONE release for all four things**: the server member and its migration (Appendix B row 15),
+the painter's forced-species path and the client's `wire/fleet-client.js` `FEED_VERSION` (row 26), and
+the bump itself. ⛔ Neither row ships alone: a release carrying row 15's bump without row 26's painter
+would reload every page into JavaScript that still draws the key's bodies, and the operator's pair would
+stay on a floor whose store had moved on; a release carrying row 26 without row 15 has no member to
+draw. The two rows are one build, merged into one release, and the migration is held with them. The
+reason the bump is needed at all is a page from before the
 deploy: card#12434 keeps a connected floor signed in, a deploy writes `fleet.reload`, and on a
 `feed_version` the page knows it re-opens the stream silently and re-snapshots
 ([FLOOR.md § 2.5](FLOOR.md#25-what-re-renders-and-when)) — with its old JavaScript, which draws the key's
@@ -3222,10 +3243,13 @@ failed asset and never as a fallback body.
 **When the list grows, and why it never shrinks under a seat.** Growth by appending
 ([FLOOR.md § 10.4](FLOOR.md#104-the-art-direction-as-a-specification)'s growth bullet) now moves **no
 seat**: every stored species stays, new seats may draw the added ones, and the salt needs no re-pick.
-A species is **never removed** from the list while a seat holds it: removing one is a card that ships a
-migration re-allocating every seat holding it — these rules over the remaining list, in creation order —
-before the generator drops it, and the build's store test holds every stored species to the current
-list. A generator that dropped a species first would make the floor draw every seat holding it as F14.
+A species is **never removed** from the list while a seat holds it. That is a **process rule, held at
+the removal and not by the suite** — a suite test cannot see the live store: removing a species is a
+card whose migration first re-allocates every row holding it (these rules over the remaining list, in
+creation order) and then **asserts, in the same migration, that no `seats` row holds the removed key**,
+refusing to complete otherwise; the generator drops the species in that same release. A generator that
+dropped a species first would make the floor draw every seat holding it as F14, which is the failure the
+rule exists to make unreachable.
 
 **The migration — two passes, and who changes on the live sandbox.** One migration: add `species`
 nullable; backfill; then `NOT NULL`. The backfill is **two passes over the live rows in `id` order**
@@ -3237,9 +3261,13 @@ own draw no earlier live seat holds, exactly that draw; **pass 2 re-allocates th
 later members of each collision — in `id` order by rules 1–3 and the preference order, against the
 reserved set and the pass-2 allocations before them. A seat with a unique draw therefore keeps it
 whatever its position, and a displaced seat can take only a species no live seat's draw claims. A seat
-already retired is written **the species the generator draws for its key today** — labelled so, on the
-console, for every seat retired before the migration: it is what a floor showed it as only while the salt
-has not moved since, and the salt moved at card#12212 — and never counts in either pass. The population
+already retired is written **the species the generator draws for its key today** — it is what a floor
+showed it as only while the salt has not moved since, and the salt moved at card#12212 — and never counts
+in either pass. **How the console knows which rows those are:** the migration also adds
+`seats.species_source` ([§ 6.4](#64-ddl)'s ⏳ comment) — `allocated` for a seat created after it,
+`migrated` for a row live at the backfill (kept or re-allocated), `drawn` for a row already retired —
+and the console labels a `drawn` species *today's draw*; nothing infers the label from `retired_at`
+against a cutoff nobody recorded. The population
 is fleet-sized, so this is one statement per seat inside the migration and not
 [§ 6.9](#69-migrations-on-a-live-events-table) rule 3's batched backfill, which is `events`'s; the
 `NOT NULL` strands nothing because the backfill precedes it and the only application inserter of `seats`
@@ -6709,14 +6737,15 @@ function's legs are a unit test over `CharacterAllocation::choose()` with no sto
   `FleetReload::FEED_VERSION` and the stream envelope carry the bumped version; the console's agents
   page lists the species, labelled *today's draw* on a seat retired before the migration.
 - **GREEN — concurrency:** the two seats created on two connections hold two species while a free one
-  exists. The second connection either waits at its first statement until the first commits, or — where
-  the server breaks a deadlock between them — is retried inside `SeatRetirement::LOCK_ATTEMPTS` and
-  succeeds; the leg asserts the two outcomes (two seats, two species) and not the absence of a `1213`.
+  exists, the second connection waits at its first statement until the first commits, and the
+  attempt-counting seam (`SeatTokens::$onAttempt`) records **exactly one attempt per issue — zero
+  retries** — which is what *the lock is taken first* buys and what the Second RED below takes away.
 - **GREEN — the migration:** on the collision fixture the earlier-created seat keeps its hash species
   and the later one is re-allocated to the first free species in its preference order; **on the cascade
   fixture seat C keeps its own draw and seat B is allocated past it**; a retired fixture seat is written
-  today's draw; the column is `NOT NULL` afterwards; and the backfill's printed table names each seat
-  that moved, with before and after.
+  today's draw with `species_source` `drawn`, every live row `migrated`, and a seat issued afterwards
+  `allocated`; both columns are `NOT NULL` afterwards; the console labels the `drawn` row *today's draw*
+  and the others not; and the backfill's printed table names each seat that moved, with before and after.
 - **GREEN — one source:** `SpeciesList::current()` equals what `node` imports from
   `resources/characters/creatures.js` (`SPECIES_KEYS` in order, `SPECIES_FIELD`), and `Draw::draw()`
   equals `node`'s `draw()` over every key of `tools/characters/roster.json` and the four `h` values
@@ -6725,15 +6754,20 @@ function's legs are a unit test over `CharacterAllocation::choose()` with no sto
   allocates one species to both seats, which is the duplicate the rule exists to prevent, and the leg
   names the species.
 - **Second RED — the lock taken second:** keep `FOR UPDATE` but take the `uq_seat` lookup first → the
-  two-connection run on one install deadlocks on every attempt, and the leg reports the exhausted
-  attempts rather than two seats.
+  two-connection run on one install closes the gap-lock deadlock, the server breaks it with `1213`, the
+  seam counts a second attempt on one connection, and the concurrency leg's **zero-retries** clause
+  fails — the outcome (two seats, two species) may still arrive through the retry, which is why the
+  leg asserts the attempt count and not the outcome alone.
 - **Third RED — the floor read as the install:** resolve rule 2's population from the seat's install
   alone with the composed layout saved → the over-full seat takes a species its floor-mate holds.
 - **Fourth RED — the layout read eagerly:** call `Layouts::read()` before rule 1 → with the refused row
   stored, the under-full issue is refused, and the leg names the refusal where an allocation was owed.
 - **Fifth RED — the preference dropped:** take the first free species in list order instead of from the
-  key's draw → the migration leg moves a seat whose hash species was unique, and the rule-1 leg's *holds
-  exactly its own draw* clause fails.
+  key's draw → a new seat whose own draw is free is not given it, so the rule-1 leg's *holds exactly its
+  own draw* clause fails; and in the migration's second pass the displaced seat of the collision fixture
+  lands on the list's first free entry instead of the first free entry past its draw, which the leg
+  names — pass 1 is untouched by this plant, because reservation is by draw and not by preference,
+  so no seat with a unique draw moves under it.
 - **Sixth RED — one pass:** backfill in one pass, re-allocating each collision as it is met → on the
   cascade fixture seat C moves, and the leg names it as a seat with a unique draw that was moved.
 - **Seventh RED — freed by a write:** make retirement null `seats.species` → the retired row's record
@@ -6743,7 +6777,10 @@ function's legs are a unit test over `CharacterAllocation::choose()` with no sto
 - **Eighth RED — a second copy of the list:** declare the species list in PHP → the one-source leg is
   satisfied by nothing and reds the moment one list moves; its control appends a species to the
   generator alone and holds the leg red; and a 17-byte key in the generator's list is refused by the
-  parse, naming the key, rather than truncated by the column.
+  parse, naming the key, rather than truncated by the column. (A species removed while a row holds it is
+  [§ 6.13](#613-the-character-allocation--one-species-per-seat-allocated-at-creation-and-kept-for-life)'s
+  process rule, asserted by the removal's own migration and not by this suite, which cannot see the live
+  store.)
 - **Discriminating controls:** *(a)* the two-connection run with the lock first passes, so the
   concurrency leg is known able to say clean; *(b)* the migration leg over a fixture with no collision
   moves nobody, so *keeps its hash species* is a check that can fail.
@@ -7224,7 +7261,7 @@ operator ruling.
 
 18. **⇢ Operator — the character allocation, designed for card#12443 and not yet built
     ([§ 6.13](#613-the-character-allocation--one-species-per-seat-allocated-at-creation-and-kept-for-life),
-    [§ 13](#13-decisions-taken-revisable-at-review) row 61).** Four things only the operator can answer,
+    [§ 13](#13-decisions-taken-revisable-at-review) row 61).** The questions only the operator can answer,
     each with the seat's recommendation; the design stands on the recommendations until ruled otherwise,
     and the build does not start before the ruling (a new mechanism — `USER-GATING.md § 2g`).
     - *(1)* **The migration's change set.** On the sandbox population read on 2026-10-26, the two-pass
@@ -7264,6 +7301,21 @@ operator ruling.
       desk starts over, as its slot does ([FLOOR.md § 3.1](FLOOR.md#31-the-keys-and-why-they-are-the-only-ones)).
       **Recommendation:** *(b)*; *(a)* is one operator act and one column write if the operator wants it,
       designed as its own card, and the retire-then-reissue order is what makes the old body available.
+    - *(5)* **Does an intern count as an agent for uniqueness?** [FLOOR.md § 10.4](FLOOR.md#104-the-art-direction-as-a-specification)
+      quotes the operator's earlier ruling — *"each agent and subagent needs their own appearance and
+      personality"* — and this design allocates a body to **seats only**: an intern keeps decision 54's
+      rule (a body that is never its seat's delivered one, siblings told apart by colourway, face and what
+      they wear, and a repeated body among siblings the common case). The reason is what an intern is:
+      keyed per dispatch (`seat~<call_id>`, a fresh ULID), alive for minutes, with no row of its own to
+      allocate against — a stored allocation per intern is a write on the ingest's request path at every
+      `subagent.spawn` and a free at every `subagent.stop`, on a population that churns thousands of
+      times a day where seats churn once. The alternative weighed: a per-desk allocation computed in the
+      client over the open `subagents[]`, pure over that set — which moves a sibling's body when another
+      sibling leaves, the exact property decision 47 keyed interns per call to prevent.
+      **Recommendation:** no — seats are agents for this rule, interns are not, and the ask's own words
+      (*"a unique character for each new agent"*) are about seats; if the operator wants interns distinct
+      among siblings too, that is the client-side set rule above, designed as its own card with decision
+      47's cost stated.
 
 ---
 
@@ -7399,7 +7451,7 @@ everything from step 3 onward.
 | 12 | ✅ **BUILT — card#12239 (2026-10-24).** **the coordination receipt** (card#12239, design approved 2026-10-24): the three tables of [§ 6.4](#64-ddl), the binding commands with the two-secret rule, the receipt route in D1 § 18.8's order with the `{hook}` selector, the `coord.round` derivation, the one-transaction write with its `ON DUPLICATE KEY` primitive and fault discipline, and the counters' homes ([§ 6.12](#612-the-coordination-store), [§ 7.1](#71-d1s-server-side-counters--where-they-live)); `App\Sweep\Purge` gains the digest row and the 3-day floor | D1's **AT-23**, **AT-24**'s round half, **AT-25**, **AT-26**; [AT-D2-26](#at-d2-26-the-receipt-publishes-the-message-and-holds-nothing), [AT-D2-27](#at-d2-27-the-digest-the-derivation-and-the-feed-rows-commit-together-or-not-at-all), [AT-D2-28](#at-d2-28-a-fleet-scope-message-reaches-every-client-carrying-no-room), [AT-D2-29](#at-d2-29-a-binding-holds-at-most-two-secrets); [AT-D2-17](#at-d2-17-dedup-retention-and-the-chain-between-them) extended with the digest chain. The build order and each test's RED plant are `docs/design/COORD-STORE.md § 9`'s |
 | 13 | ✅ **BUILT — card#12239 (2026-10-24).** **the roundtable-name declaration, server half** — the two `seat_state` columns, the ingest registry rows, the fold, `SeatDelta`'s map and the two seat-object members ([§ 6.4](#64-ddl), [§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects) rule 1's fleet arm) | `SeatObjectMatchesTheDocumentTest`'s delta-map leg and the heartbeat registry test, each red on the member missing; FLOOR.md's AT-D3-29 for the consumer's arm |
 | 14 | ✅ **BUILT — card#11818 part 2 (2026-10-24).** **the reporter-outdated badge, server half** (card#11818 part 2; `docs/design/plan-11818-reporter-outdated.md` is the build plan): `SchemaVersions::CURRENT_REPORTER_VERSION` with its pin test, `SchemaVersions::reporterIsOutdated()`, the `update_required` member of `Badges::SERVER` raised in `serverFor()` ([§ 7.2](#72-this-planes-own-counters-and-badges)), `current_reporter_version` on `GET /api/ingest/health` ([D1 § 4.1](EVENT-SCHEMA.md#41-endpoints)), and `bin/reporter-version-guard.py`'s constant-equality leg. No column, no migration: the badge is derived into `seat_state.server_badges` as the others in [§ 7.2](#72-this-planes-own-counters-and-badges)'s list are | [AT-D2-30](#at-d2-30-an-out-of-date-reporter-is-badged-a-current-one-is-not-and-nothing-is-refused) RED on each of its plants, then GREEN; `Tests\Unit\Fold\BadgesServerMatchesTheDocumentTest` (holds `Badges::SERVER` to [§ 7.2](#72-this-planes-own-counters-and-badges)'s list in both directions, with its plant seen to report both mismatches); FLOOR.md's AT-D3-30 for the consumer's half |
-| 15 | **DESIGNED — card#12443 (2026-10-26, revised at design review r1 2026-10-27), not built; gated on [§ 14](#14-open-questions-for-the-review-loop) item 18.** **the character allocation, server half** ([§ 6.13](#613-the-character-allocation--one-species-per-seat-allocated-at-creation-and-kept-for-life)): the `seats.species` migration with its **two-pass** backfill (reserve the unique draws, then re-allocate the displaced in `id` order), its *today's draw* write for already-retired rows and its printed change table ([§ 6.4](#64-ddl)'s ⏳ column); `App\Characters\SpeciesList` (the strict parse of `resources/characters/creatures.js`'s `SPECIES_KEYS` and `SPECIES_FIELD`, `FurnitureBox`'s shape, refusing a key over 16 bytes) and `App\Characters\Draw` (the `fnv1a32` / `mix32` port), each held to `node` by `TheSpeciesListHasOneSourceTest`; `App\Fleet\CharacterAllocation::choose()` (the pure function: rules 1–3 with rule 3's floor-then-fleet order, the preference order, and the layout read only when rule 1 has no answer); on `SeatTokens::issue()`: the locking read as the transaction's **first** statement on every path, before the `uq_seat` lookup, the choice on the insert branch, the lazy `Layouts::read()` with `InvalidBuildingLayout` caught into *each install its own floor* plus `character_floor_unread` ([§ 7.2](#72-this-planes-own-counters-and-badges)) and one log line, and `DB::transaction(…, SeatRetirement::LOCK_ATTEMPTS)` so a `1213` / `1205` is retried from a clean rollback (today the method runs with one attempt); `Snapshot`'s select, `SeatObject::build()`, `SeatFacts::versionBearing()` and `SeatDelta::WIRE_MEMBER` carrying `character.species`; **`FleetReload::FEED_VERSION` and the stream envelope bumped**, so a page from before this release shows the reload banner instead of drawing the key's bodies ([§ 6.13](#613-the-character-allocation--one-species-per-seat-allocated-at-creation-and-kept-for-life)'s wire paragraph); the console's agents page listing the species; one shared fixture helper that inserts a seat row with its species for the tests that insert `seats` directly — `FloorConsoleTest`, `TheConsoleHoldsDeskSlotsToTheFurnitureBoxTest` and `TheConsoleListsMapsNamingRetiredArtTest` on the day of this design, re-derived by `git grep -ln "table('seats')->insert" -- server/tests` — so the `NOT NULL` strands no fixture; and the doc rows this build moves from ⏳ prose into their tables, each re-measured by the tools on that run: [§ 6.4](#64-ddl)'s column, [§ 8.2.1](#821-the-seat-state-object)'s two rows and worst-case list entry, [§ 8.2.2](#822-worked-snapshot) and [§ 8.3.2](#832-worked-worst-case-delta)'s members, the size table and [§ 12](#12-every-number-and-where-it-comes-from)'s field-count and byte rows, and in FLOOR.md § 5.1's body row, § 8.1's and § 12's cap arithmetic. Depends on the generator declaring `SPECIES_KEYS` as one literal line (FLOOR.md Appendix B row 26's first step, which lands first or in the same change). Doc rows already amended as prose, marked with the card: [§ 4.10](#410-retirement-is-a-rendered-state)'s table, [§ 6.5](#65-the-fold)'s lock paragraph, [§ 6.6](#66-rebuild-from-the-log), [§ 7.2](#72-this-planes-own-counters-and-badges)'s counter row, [§ 13](#13-decisions-taken-revisable-at-review) row 61, [§ 14](#14-open-questions-for-the-review-loop) item 18, and in FLOOR.md § 3.1, § 2.5, § 9 F14, § 10.2, § 10.4 (the table's species row, the interns, salt, growth and collision bullets), AT-D3-24, § 13 row 80, § 14 items 33(7) and 42, Appendix A T41 and Appendix B row 26; outside the design documents, `tools/characters/roster.json`'s note and `tools/characters/salt-control.json` (retired with the salt leg), `resources/characters/seed.js`'s header (*nothing stored*), and `README.md`'s character-tree lines | [AT-D2-31](#at-d2-31-a-seats-character-is-allocated-once-unique-while-it-can-be-and-freed-by-retirement) RED on each of its plants, then GREEN; `SeatObjectMatchesTheDocumentTest`'s delta-map leg red on the member missing; FLOOR.md's AT-D3-24 for the consumer's half |
+| 15 | **DESIGNED — card#12443 (2026-10-26, revised at design review r1 2026-10-27), not built; gated on [§ 14](#14-open-questions-for-the-review-loop) item 18.** **the character allocation, server half** ([§ 6.13](#613-the-character-allocation--one-species-per-seat-allocated-at-creation-and-kept-for-life)): the `seats.species` and `seats.species_source` migration with its **two-pass** backfill (reserve the unique draws, then re-allocate the displaced in `id` order), its *today's draw* write for already-retired rows (`species_source` `drawn`, which the console labels) and its printed change table ([§ 6.4](#64-ddl)'s ⏳ columns); `App\Characters\SpeciesList` (the strict parse of `resources/characters/creatures.js`'s `SPECIES_KEYS` and `SPECIES_FIELD`, `FurnitureBox`'s shape, refusing a key over 16 bytes) and `App\Characters\Draw` (the `fnv1a32` / `mix32` port), each held to `node` by `TheSpeciesListHasOneSourceTest`; `App\Fleet\CharacterAllocation::choose()` (the pure function: rules 1–3 with rule 3's floor-then-fleet order, the preference order, and the floor population taken from a thunk it calls only when rule 1 has no answer); on `SeatTokens::issue()`: the locking read over `seats` alone (`… WHERE retired_at IS NULL ORDER BY id FOR UPDATE`, the install names by a plain read after it) as the transaction's **first** statement on every path, before the `uq_seat` lookup, the choice on the insert branch, the lazy `Layouts::read()` behind the thunk with `InvalidBuildingLayout` caught into *each install its own floor* plus `character_floor_unread` ([§ 7.2](#72-this-planes-own-counters-and-badges)) and one log line, `DB::transaction(…, SeatRetirement::LOCK_ATTEMPTS)` so a `1205` against another writer is retried from a clean rollback (today the method runs with one attempt), and the attempt-counting test seam `SeatTokens::$onAttempt`; `Snapshot`'s select, `SeatObject::build()`, `SeatFacts::versionBearing()` and `SeatDelta::WIRE_MEMBER` carrying `character.species`; **the one trait constant `FeedEnvelope::FEED_VERSION` bumped — in the SAME release as row 26 and never alone** ([§ 6.13](#613-the-character-allocation--one-species-per-seat-allocated-at-creation-and-kept-for-life)'s one-release rule: the member, its migration, the painter's path and the client constant are one build merged into one release), so a page from before it shows the reload banner instead of drawing the key's bodies — and with it every site that pins the value, by this derivation and not by a list: `git grep -l -E '"feed_version": ?1\b' -- server/tests tools` (on the day of this design: `FeedSurfaceTest`'s envelope assertion and its `api_version` / `feed_version` leg, every `server/tests/Feature/Floor/fixtures/fx-*.json`, the coord generated rounds under `server/tests/fixtures/coord/generated/rounds/` and `tools/coord/synthesize-fixtures.py`, which regenerates them), plus `TheStreamRecoveryIsTheDocumentsTest`'s plants, which hold the client's constant to the server's, and [§ 8.3](#83-the-websocket-delta-feed)'s envelope line and every worked block from [§ 8.3.1](#831-worked-delta) on that carries an envelope; the console's agents page listing the species; one shared fixture helper that inserts a seat row with its species for the tests that insert `seats` directly — `FloorConsoleTest`, `TheConsoleHoldsDeskSlotsToTheFurnitureBoxTest` and `TheConsoleListsMapsNamingRetiredArtTest` on the day of this design, re-derived by `git grep -ln "table('seats')->insert" -- server/tests` — so the `NOT NULL` strands no fixture; and the doc rows this build moves from ⏳ prose into their tables, each re-measured by the tools on that run: [§ 6.4](#64-ddl)'s column, [§ 8.2.1](#821-the-seat-state-object)'s two rows and worst-case list entry, [§ 8.2.2](#822-worked-snapshot) and [§ 8.3.2](#832-worked-worst-case-delta)'s members, the size table and [§ 12](#12-every-number-and-where-it-comes-from)'s field-count and byte rows, and in FLOOR.md § 5.1's body row, § 8.1's and § 12's cap arithmetic. Depends on the generator declaring `SPECIES_KEYS` as one literal line (FLOOR.md Appendix B row 26's first step, which lands first or in the same change). Doc rows already amended as prose, marked with the card: [§ 4.10](#410-retirement-is-a-rendered-state)'s table, [§ 6.5](#65-the-fold)'s lock paragraph, [§ 6.6](#66-rebuild-from-the-log), [§ 7.2](#72-this-planes-own-counters-and-badges)'s counter row, [§ 13](#13-decisions-taken-revisable-at-review) row 61, [§ 14](#14-open-questions-for-the-review-loop) item 18, and in FLOOR.md § 3.1, § 2.5, § 9 F14, § 10.2, § 10.4 (the table's species row, the interns, salt, growth and collision bullets), AT-D3-24, § 13 row 80, § 14 items 33(7) and 42, Appendix A T41 and Appendix B row 26; outside the design documents, `tools/characters/roster.json`'s note and `tools/characters/salt-control.json` (retired with the salt leg), `resources/characters/seed.js`'s header (*nothing stored*), and `README.md`'s character-tree lines | [AT-D2-31](#at-d2-31-a-seats-character-is-allocated-once-unique-while-it-can-be-and-freed-by-retirement) RED on each of its plants, then GREEN; `SeatObjectMatchesTheDocumentTest`'s delta-map leg red on the member missing; FLOOR.md's AT-D3-24 for the consumer's half |
 
 **Three of these are hard requirements before anything downstream may treat this state as true:**
 **AT-D2-2** (the `/clear` trace mints no idle — the D2 half of D1's headline test, and the reason both
