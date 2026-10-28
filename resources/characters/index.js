@@ -11,7 +11,7 @@
 // ⛔ Every entry point returns standalone SVG DOCUMENTS. The painter turns each into a
 // SVG `data:` URI (UTF-8, encodeURIComponent) — this tree carries no URI, and no text naming one.
 
-import { EXPRESSIONS, SLEEP_LOOP, crestOfKey, expressionOf, frameDocument, internSpeciesOf, markerLevel, sleepDocument } from './creatures.js';
+import { EXPRESSIONS, INTERN_LOOP, SLEEP_LOOP, crestOfKey, expressionOf, frameDocument, internSpeciesOf, markerLevel, sleepDocument } from './creatures.js';
 import { draw, seatKey } from './seed.js';
 
 export { seatKey, fnv1a32, draw } from './seed.js';
@@ -21,6 +21,8 @@ export {
   EYE_K, BROW_K, MOUTH_K, EXPRESSIONS, expressionOf,
   SLEEP_LOOP, SLEEP_ZS, Z_LARGE, Z_A0, Z_A1, Z_RATIO, Z_T0, Z_GAP, Z_TOP, Z_GLOW, Z_HALO, Z_HALO_OPACITY,
   CREST_TOP, STAND_TOP, standEntry, crestOfKey, MARKER_WEIGHT, MARKER_SPREAD, zLevels, markerLevel, zStand, zLargeFor, sleepDocument,
+  LAPTOP_SHELLS, STICKER_SHAPES, STICKER_INKS, STICKER_CONTRAST, INTERN_LOOP, INTERN_SWAY_DEG, INTERN_SWAY_DX, INTERN_SWAY_STEP,
+  INTERN_SWAY_AMP, laptopOf,
 } from './creatures.js';
 
 /**
@@ -66,6 +68,23 @@ export function chibiFrame(installId, internKey, seatSpecies) {
   const key = seatKey(installId, internKey);
   const species = seatSpecies === undefined ? undefined : internSpeciesOf(key, seatSpecies);
   return frameDocument(key, { chibi: true, species });
+}
+
+/**
+ * THE INTERN's FRAMES (card#12448; FLOOR.md § 10.4's frame contract item 3, § 6.2 A23): the chibi frame with its
+ * laptop, as `{ frames, loopFrom }` in `poseFrames()`'s shape — `frames[0]` the STILL (A23's reduced-motion form and
+ * its form whenever the row draws no motion: the laptop on the lap, no sway) and `frames[1 ..]` the typing sway,
+ * `INTERN_LOOP` frames at the loop rate, which a moving render steps from the intern's own `loopOffset()`.
+ * `seatSpecies` is `chibiFrame()`'s: the seat's delivered species, which the intern never wears (card#12443).
+ * @param {string} installId @param {string} internKey @param {string} [seatSpecies]
+ * @returns {{frames: string[], loopFrom: number}}
+ */
+export function internFrames(installId, internKey, seatSpecies) {
+  const key = seatKey(installId, internKey);
+  const species = seatSpecies === undefined ? undefined : internSpeciesOf(key, seatSpecies);
+  const frames = [frameDocument(key, { chibi: true, laptop: true, species })];
+  for (let i = 0; i < INTERN_LOOP; i++) frames.push(frameDocument(key, { chibi: true, laptop: true, sway: i, species }));
+  return { frames, loopFrom: 1 };
 }
 
 /**

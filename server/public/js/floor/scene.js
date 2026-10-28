@@ -900,6 +900,8 @@ export function placeDesk(model, key, installId, slot, at, ctx, extra) {
         elements: Object.freeze(moved),
         furniture: Object.freeze(union(moved)),
         held: model.held,
+        // § 6.2 A23 (card#12448): the side table's held rendering, beside the desk's own.
+        interns_held: model.interns_held,
         lighting: model.lighting,
         bubble_model: bubble,
         bubble: null,

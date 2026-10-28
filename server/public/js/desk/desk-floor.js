@@ -185,12 +185,14 @@ export class DeskFloor {
             const now = this.#facts.get(k);
             const wasMissing = before.facts.get(k)?.missing ?? now.missing;
             const changed = wasMissing !== now.missing || before.stilled !== now.stilled;
-            const prior = changed
-                ? deskModel(seat, readouts.desks[k], { ...now, missing: wasMissing, stilled: before.stilled }, this.#options)?.held ?? null
-                : frame.desks[k]?.held ?? null;
+            const model = changed
+                ? deskModel(seat, readouts.desks[k], { ...now, missing: wasMissing, stilled: before.stilled }, this.#options)
+                : frame.desks[k];
 
             conditions.set(k, {
-                prior,
+                prior: model?.held ?? null,
+                // § 6.2 A23 (card#12448): the side table's held rendering under the same prior conditions.
+                prior_interns: model?.interns_held ?? null,
                 unconfirmed: now.missing && !wasMissing,
                 stilled: now.stilled && !before.stilled,
             });

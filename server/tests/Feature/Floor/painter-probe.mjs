@@ -27,9 +27,12 @@
  * a desk without the badge, is at full opacity — no `fold-lag` group on it at all. `fade.faded` / `fade.full` count
  * the desks each half read, and `fade.opacity` is the layout's figure.
  *
- * ⛔ THE INTERNS (card#11058 PR-C): each is its sprite in a clipping viewport — static, the character
- * tree's chibi frame drawn under the intern key `seat~<call_id>`, which this probe writes from the
- * published rule rather than importing it — inside a dashed edge when untitled; or, where its art
+ * ⛔ THE INTERNS (card#11058 PR-C, card#12448): each is its sprite in a clipping viewport — the character
+ * tree's `internFrames()` drawn under the intern key `seat~<call_id>`, which this probe writes from the
+ * published rule rather than importing it: its laptop still where § 6.2 A23 draws no motion, and its
+ * typing loop from its own offset where it does, which until card#12451 is exactly while its desk's own
+ * held render moves (written here from that rule, never read off the stool's element) — inside a dashed
+ * edge when untitled; or, where its art
  * is reported failed, § 9 F14's glyph in its rect, that stool alone. The reorder check paints each seat
  * of two or more interns in the wire's order and reversed and reads each intern's sprite by its place;
  * the cache check paints the floor again with no intern, then again with them, and holds the painter to
@@ -40,8 +43,8 @@
  * here, not imported — `xMidYMax meet`; no canvas is made for a character; a desk of every
  * `(pose, glyph)` pair the desk model asks a character for draws frame 0 of the tree's frames for that pose over
  * its desk's top edge (§ 10.4's frame contract — the tree here a stub, so the sleeper's own drawing is
- * `sleeper-probe.mjs`'s); a held loop steps its pose's own frames, every one in order, and leaves an intern
- * still; no frame list is copied onto an element;
+ * `sleeper-probe.mjs`'s); a held loop steps its pose's own frames, every one in order, and steps an intern
+ * through its own typing loop exactly while the stool's A23 rendering moves; no frame list is copied onto an element;
  * and AT-D3-19's two causes — a tree that failed to load, a generator that throws for one intern's key —
  * reach the painter's report, the second for that intern alone, and never throw out of the paint.
  *
@@ -144,14 +147,23 @@ const characters = {
         asked.offset.push([`${installId}/${seatId}`, length]);
         return STUB_OFFSET % length;
     },
-    chibiFrame(installId, key, seatSpecies) {
+    // An intern's frames (card#12448, § 10.4's frame contract item 3): FIVE documents with `loopFrom` 1 — its laptop
+    // still, then its typing loop of four — so an intern drawn at another document, or stepped from the still, reds.
+    // Each names the body the intern is kept off, its seat's delivered species (card#12443). The plain `chibiFrame()` is
+    // not stubbed: a painter that asked for it would throw here, which is § 9 F14 for that intern and a defect below.
+    internFrames(installId, key, seatSpecies) {
         asked.chibi.push(`${installId}/${key}`);
         if (key === throwFor) throw new Error('a planted generator defect for one key');
-        // The body the intern is kept off: its seat's delivered species (card#12443).
-        return doc(`${installId}/${key}!${body(seatSpecies)}#chibi`);
+        return { frames: Array.from({ length: 5 }, (_, i) => doc(`${installId}/${key}!${body(seatSpecies)}#intern#${i}`)), loopFrom: 1 };
     },
 };
-const internFrame = (installId, seatId, callId, seatSpecies) => uri(doc(`${installId}/${seatId}~${callId}!${seatSpecies}#chibi`));
+const internFrame = (installId, seatId, callId, seatSpecies, i = 0) => uri(doc(`${installId}/${seatId}~${callId}!${seatSpecies}#intern#${i}`));
+/**
+ * The document an intern is first painted at, from the published rule (§ 6.2 A23, until card#12451): its still while
+ * its desk's own held render draws no motion, else its loop's start plus the stub's offset into its loop of four.
+ */
+const internStart = (desk) => (desk.held?.motion === true && desk.held.frame_interval_ms !== null ? 1 + (STUB_OFFSET % 4) : 0);
+const internForms = { typing: 0, still: 0 };
 
 /**
  * The floor's theme, stubbed (FLOOR.md § 10.6, card#11046 row 22): every document names the function and the
@@ -441,7 +453,10 @@ function owed(e, seat, failed, key) {
             // (§ 10.4's frame contract item 3, card#12259) — the tree's chibi frame under `seat~<call_id>`; an untitled
             // intern with a dashed edge at its own rect.
             const look = e.untitled ? ['intern', 'untitled'] : ['intern'];
-            const want = internFrame(seat.install_id, seat.seat_id, e.call_id, seat.character.species);
+            const start = internStart(byKey.get(key));
+            const want = internFrame(seat.install_id, seat.seat_id, e.call_id, seat.character.species, start);
+
+            internForms[start === 0 ? 'still' : 'typing']++;
             const port = internPort(e);
             const sprite = ['svg', port, (n) => {
                 const img = n.children[0];
@@ -920,14 +935,18 @@ for (const p of owedPoses) {
 }
 
 // ── § 6.2's held loop steps a moving character through its own pose's held loop — every frame of it, as many as the
-// tree drew, from the loop's start (`loopFrom`, § 10.4 item 4) and never another drawing's — and leaves an intern still.
-// Read twice: a desk whose pose's loop is the whole list (`loopFrom` 0) with an intern beside it, and a sleeper, whose
+// tree drew, from the loop's start (`loopFrom`, § 10.4 item 4) and never another drawing's — and an intern through its
+// own typing loop exactly while its stool's A23 rendering moves (card#12448). Read three times: a desk whose pose's
+// loop is the whole list (`loopFrom` 0) with a typing intern beside it; the same desk with its stool's rendering still
+// — the hook card#12451 turns, so the intern's motion is the stool's own and never the desk's — and a sleeper, whose
 // still stands ahead of its loop (`loopFrom` 1) and never steps ──
-function heldLoop(desk, withIntern) {
+function heldLoop(desk, withIntern, internTypes = false) {
+    const go = { motion: true, frame_interval_ms: 250 };
     const moving = {
         ...desk,
-        held: { ...(desk.held ?? {}), motion: true, frame_interval_ms: 250 },
-        elements: desk.elements.map((e) => (e.kind === 'character' ? { ...e, animation: { motion: true, frame_interval_ms: 250 } } : e)),
+        held: { ...(desk.held ?? {}), ...go },
+        elements: desk.elements.map((e) => (e.kind === 'character' ? { ...e, animation: go }
+            : e.kind === 'stool' ? { ...e, animation: internTypes ? go : { motion: false, frame_interval_ms: null } } : e)),
     };
 
     loops.length = 0;
@@ -949,6 +968,7 @@ function heldLoop(desk, withIntern) {
     } else {
         const frame = (i) => poseFrame(desk.key, pose, i);
         const seen = [];
+        const internSeen = [];
         const start = character.getAttribute('href');
         // § 6.2's per-seat loop phase (card#12187): the moving loop starts at the seat's offset into the LOOP of four
         // and steps on from it — documents `from + ((tick + offset) % 4)`, never the still ahead of the loop.
@@ -957,6 +977,7 @@ function heldLoop(desk, withIntern) {
         for (let i = 0; i < 8; i++) {
             loops[0]();
             seen.push(character.getAttribute('href'));
+            internSeen.push(intern?.getAttribute('href'));
         }
 
         if (start !== frame(from + (STUB_OFFSET % 4))) {
@@ -971,8 +992,16 @@ function heldLoop(desk, withIntern) {
             defects.push(`the held loop did not step the moving ${pose.pose} character through its loop's four frames in order from its offset — it drew ${seen.map((h) => decodeURIComponent(h).match(/#(\d+)<\/title>/)?.[1] ?? '?').join(', ')}, not documents ${owedSteps.join(', ')}`);
         }
 
-        if (withIntern && intern.getAttribute('href') !== internBefore) {
-            defects.push('the held loop stepped an intern — an intern stands still (§ 8)');
+        if (withIntern) {
+            // the stool whose intern the leg read — the first painted, whose key its document names
+            const stool = moving.elements.find((e) => e.kind === 'stool' && decodeURIComponent(internBefore).includes(`${e.install_id}/${e.key}!`));
+            const iframe = (i) => internFrame(stool.install_id, ...stool.key.split('~'), stool.seat_species, i);
+            const owedIntern = internTypes ? [1, 2, 3, 4, 5, 6, 7, 8].map((i) => 1 + ((i + STUB_OFFSET) % 4)) : [0, 0, 0, 0, 0, 0, 0, 0];
+            const firstIntern = internTypes ? 1 + (STUB_OFFSET % 4) : 0;
+
+            if (internBefore !== iframe(firstIntern) || internSeen.join('|') !== owedIntern.map(iframe).join('|')) {
+                defects.push(`with its stool's A23 rendering ${internTypes ? 'moving' : 'still'}, the intern was painted at «${decodeURIComponent(internBefore).match(/#intern#\d+/)?.[0] ?? '?'}» and stepped through ${internSeen.map((h) => decodeURIComponent(h).match(/#intern#(\d+)/)?.[1] ?? '?').join(', ')}, not document ${firstIntern} then ${owedIntern.join(', ')}`);
+            }
         }
     }
 }
@@ -984,7 +1013,8 @@ function heldLoop(desk, withIntern) {
     if (typist === undefined || sleeper === undefined) {
         defects.push(`the planted desks hold no ${typist === undefined ? 'moving desk with an intern' : 'sleeper'} — the held-loop leg reads nothing`);
     } else {
-        heldLoop(typist, true);
+        heldLoop(typist, true, true);
+        heldLoop(typist, true, false);
         heldLoop(sleeper, false);
     }
 }
@@ -1272,4 +1302,4 @@ const body_ = { apart: 0, recached: false, unheld: false };
     }
 }
 
-console.log(JSON.stringify({ desks: desks.length, painted, bubbles, interns, fade, poses: [...poses].sort(), walker: walker_, body: body_, defects }));
+console.log(JSON.stringify({ desks: desks.length, painted, bubbles, interns, intern_forms: internForms, fade, poses: [...poses].sort(), walker: walker_, body: body_, defects }));

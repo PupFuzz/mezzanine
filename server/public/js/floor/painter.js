@@ -333,8 +333,8 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
      * asset and drawing: a desk's frames for its pose — the tree's `poseFrames()`, `uris[0]` the pose's static form and
      * `uris[loopFrom ..]` its held loop (§ 10.4's frame contract: the sleeper's for `asleep` and the marker's pulse for a
      * pose with a marker, each its still ahead of the loop, the walk's for every other pose) — a walker's walk frames
-     * (`at` null), or an intern's one chibi frame, the tree handed the intern key (`internKey()`) in the seat's place;
-     * both of the last with `loopFrom` 0. `loopFrom`
+     * (`at` null, `loopFrom` 0), or an intern's `internFrames()` — its laptop still, then its typing sway from
+     * `loopFrom` 1 — the tree handed the intern key (`internKey()`) in the seat's place. `loopFrom`
      * is kept beside the URIs because a property on the list `.map()` returns is lost. The cache key is the asset with
      * the drawing it holds, so a desk asleep and its walker never share frames. A tree that failed to load, or a
      * generator that throws for this key, is § 9 F14 for this asset and never a throw out of the paint.
@@ -365,7 +365,9 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
 
         if (!frames.has(key)) {
             try {
-                const drawn = intern ? { frames: [characters.chibiFrame(installId, seatId, species)], loopFrom: 0 }
+                // § 10.4's frame contract item 3 (card#12448): an intern's frames are the tree's `internFrames()` — the
+                // still with its laptop, then the typing sway's loop — in `poseFrames()`'s shape.
+                const drawn = intern ? characters.internFrames(installId, seatId, species)
                     : at === null ? { frames: characters.walkFrames(installId, seatId, species), loopFrom: 0 }
                         : characters.poseFrames(installId, seatId, { pose: at.pose, glyph: at.glyph ?? null, deskTop: at.desk_top, clear: at.clear, species });
 
@@ -395,6 +397,28 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
      * centred and standing on the rect's floor line. Whatever the art file draws past its own frame is
      * clipped at the rect the layout gave it, so no art reaches a neighbouring element or the box's edge.
      */
+    /**
+     * One HELD character's art — a desk's character, or an intern (§ 6.2 A23, card#12448) — from its frames and its
+     * element's `animation`, `overdraw` and `asset`. § 6.2's per-seat loop phase (card#12187): a held render that MOVES
+     * starts at its own offset into its LOOP — `uris[loopFrom ..]`, whose length is the loop's, never the list's — the
+     * tree's `loopOffset()` over `(installId, key)`, the seat's or the intern key, so two characters in one state never
+     * step in lockstep, and is pushed to step; one that does not move is `uris[0]`, the still, the canonical
+     * reduced-motion form, whatever its offset. § 10.4's frame contract (card#12187, card#12259): the art viewport is
+     * the element's overdraw, past its rect — never the rect itself.
+     */
+    const heldArt = (g, drawn, e, cls, installId, key) => {
+        const { uris, loopFrom } = drawn;
+        const moves = e.animation?.motion === true && e.animation.frame_interval_ms !== null;
+        const offset = moves ? characters.loopOffset(installId, key, uris.length - loopFrom) : 0;
+        const el = art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw, e.asset, cls);
+
+        if (moves) {
+            stepping.push([el, uris, loopFrom, offset]);
+        }
+
+        return el;
+    };
+
     const art = (parent, href, e, asset, cls) => {
         const port = node('svg', { x: e.x, y: e.y, width: e.w, height: e.h, viewBox: `0 0 ${e.w} ${e.h}`, overflow: 'hidden', class: 'art' }, parent);
 
@@ -481,21 +505,9 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                     const drawn = characterFrames(desk.install_id, desk.seat_id, e.asset, e.species, { pose: e.pose, glyph: e.glyph, desk_top: e.desk_top, clear: e.clear });
 
                     if (drawn !== null) {
-                        // § 6.2's per-seat loop phase (card#12187): a held render that MOVES starts at the seat's own
-                        // offset into its LOOP — `uris[loopFrom ..]`, whose length is the loop's, never the list's — so
-                        // two desks in one state never step in lockstep; one that does not move is `uris[0]`, the
-                        // still, the canonical reduced-motion form, whatever its offset.
-                        const { uris, loopFrom } = drawn;
-                        const moves = e.animation?.motion === true && e.animation.frame_interval_ms !== null;
-                        const offset = moves ? characters.loopOffset(desk.install_id, desk.seat_id, uris.length - loopFrom) : 0;
-                        // § 10.4's frame contract (card#12187, card#12259): every character's art viewport is its
-                        // overdraw, past the element's rect — a sleeper's z's stand above and beside its head, and a
-                        // standing or walking body's tilted parts reach past the rect's side — never the rect itself.
-                        const el = art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw, e.asset, 'character');
-
-                        if (moves) {
-                            stepping.push([el, uris, loopFrom, offset]);
-                        }
+                        // A sleeper's z's stand above and beside its head, and a standing or walking body's tilted parts
+                        // reach past the rect's side, so its viewport is its overdraw (`heldArt()`).
+                        heldArt(g, drawn, e, 'character', desk.install_id, desk.seat_id);
                     }
 
                     break;
@@ -524,9 +536,9 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                 }
                 case 'stool':
                     if (e.art) {
-                        // § 8 / Q3: the intern's sprite in its clipping viewport — the tree's chibi frame
-                        // under its own key, face-on, `xMidYMax meet`, foot on the rect's floor
-                        // line; static, because an intern takes no § 6.2 row. The viewport is the stool's
+                        // § 8 / Q3: the intern's sprite in its clipping viewport — the tree's chibi frame with its
+                        // laptop under its own key, face-on, `xMidYMax meet`, foot on the rect's floor line;
+                        // typing while § 6.2 A23's held rendering draws motion, else its still. The viewport is the stool's
                         // overdraw (§ 10.4's frame contract item 3, card#12259): the rect widened to the row's
                         // pitch, so a tilted frame's ear or cap is not cut at the rect's side. An untitled
                         // intern is drawn dashed (§ 8): its sprite with a dashed edge at its own stool rect —
@@ -537,7 +549,11 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                         if (drawn !== null) {
                             interns.add(e.asset);
                             drawnInterns.add(e.asset);
-                            art(g, drawn.uris[0], e.overdraw, e.asset, e.untitled ? 'intern untitled' : 'intern');
+                            // § 6.2 A23 (card#12448): the intern types — its sway loop steps while the interns' held
+                            // rendering draws motion, from the intern's own offset (§ 6.2's per-seat loop phase, over
+                            // the intern key), so a row's interns do not all sway as one; where it draws none, the
+                            // still, which is the row's reduced-motion form.
+                            heldArt(g, drawn, e, e.untitled ? 'intern untitled' : 'intern', e.install_id, e.key);
 
                             if (e.untitled) {
                                 node('rect', { x: e.x, y: e.y, width: e.w, height: e.h, rx: 3, class: 'intern-edge' }, g);
@@ -1166,7 +1182,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         // frame outside it, its time `performance.now() − began` — the origin its pinned animations read.
         const moving = stepping;
         const walking = walkers.length > 0;
-        const interval = scene.desks.find((d) => d.held?.motion)?.held.frame_interval_ms ?? (walking ? 1000 / scene.loop_fps : null);
+        const interval = scene.desks.map((d) => [d.held, d.interns_held]).flat().find((h) => h?.motion)?.frame_interval_ms ?? (walking ? 1000 / scene.loop_fps : null);
 
         if ((moving.length > 0 || walking) && interval !== null) {
             let tick = 0;

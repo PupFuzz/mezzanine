@@ -317,6 +317,11 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
             $this->assertGreaterThan(0, $shipped['interns'][$form], "the painter probe painted no intern as {$form} — that leg reads nothing");
         }
 
+        // card#12448: interns were painted both typing (a moving desk) and still (a desk that draws no motion).
+        foreach (['typing', 'still'] as $form) {
+            $this->assertGreaterThan(0, $shipped['intern_forms'][$form], "the painter probe painted no intern {$form} — that half of A23 reads nothing");
+        }
+
         $controls = [
             'the badge text drawn at its desk-local offset' => ['../floor/painter.js', 'x: e.x + e.text_dx, id', 'x: e.text_dx, id'],
             // In-box displacements (review r2): each stays inside the box, so only the equality reds.
@@ -349,15 +354,22 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 'stroke:var(--scene-stool);stroke-width:1.5;stroke-dasharray:3 2}', 'stroke:var(--scene-stool);stroke-dasharray:3 2}'],
             'an intern drawn as the glyph with its art intact' => ['../floor/painter.js', '                    if (e.art) {', '                    if (false) {'],
             "an intern's sprite outside its clipping viewport" => ['../floor/painter.js',
-                "art(g, drawn.uris[0], e.overdraw, e.asset, e.untitled ? 'intern untitled' : 'intern');",
-                "image(g, drawn.uris[0], e.x, e.y, e.w, e.h, e.asset, { class: e.untitled ? 'intern untitled' : 'intern' });"],
+                "heldArt(g, drawn, e, e.untitled ? 'intern untitled' : 'intern', e.install_id, e.key);",
+                "heldArt(g, drawn, { ...e, overdraw: e }, e.untitled ? 'intern untitled' : 'intern', e.install_id, e.key);"],
             // An intern's key is minted per dispatch: the painter drops the frames of each one it no longer
             // draws — its Map is the only cache (card#11046: the tree holds none, and has no forget()).
             "an intern no longer drawn kept in the painter's frames" => ['../floor/painter.js',
                 "                for (const key of [...frames.keys()].filter((k) => k.startsWith(`\${asset}~`))) {\n                    frames.delete(key);\n                }", ''],
-            'an intern animated' => ['../floor/painter.js',
-                "art(g, drawn.uris[0], e.overdraw, e.asset, e.untitled ? 'intern untitled' : 'intern');",
-                "stepping.push([art(g, drawn.uris[0], e.overdraw, e.asset, e.untitled ? 'intern untitled' : 'intern'), [drawn.uris[0], 'x', 'y'], 0, 0]);"],
+            // card#12448 — § 6.2 A23: the intern types exactly while its stool's rendering moves, from its own offset,
+            // and the rendering moves exactly while its desk's own held render does (until card#12451).
+            'an intern that never types' => ['../floor/painter.js',
+                "heldArt(g, drawn, e, e.untitled ? 'intern untitled' : 'intern', e.install_id, e.key);",
+                "heldArt(g, drawn, { ...e, animation: null }, e.untitled ? 'intern untitled' : 'intern', e.install_id, e.key);"],
+            "an intern typing off its desk's render rather than its stool's own" => ['../floor/painter.js',
+                "heldArt(g, drawn, e, e.untitled ? 'intern untitled' : 'intern', e.install_id, e.key);",
+                "heldArt(g, drawn, { ...e, animation: desk.held }, e.untitled ? 'intern untitled' : 'intern', e.install_id, e.key);"],
+            'an intern typing on a desk whose own render is still' => ['../desk/desk-render.js',
+                "return heldRendering('A23', held !== null && held.motion === true, reduce);", "return heldRendering('A23', true, reduce);"],
             // card#11046 — AT-D3-24's painter half, each planted in the shipped painter.
             'a character shown through an image that is not an SVG document (a raster frame)' => ['../floor/painter.js',
                 'export const svgUri = (doc) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(doc)}`;',
@@ -385,7 +397,7 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
             "the held loop's start dropped" => ['../floor/painter.js',
                 "el.setAttribute('href', uris[loopFrom + ((tick + offset) % (uris.length - loopFrom))]);", "el.setAttribute('href', uris[(tick + offset) % uris.length]);"],
             "a loop offset drawn over the list's length, not the loop's" => ['../floor/painter.js',
-                'characters.loopOffset(desk.install_id, desk.seat_id, uris.length - loopFrom)', 'characters.loopOffset(desk.install_id, desk.seat_id, uris.length)'],
+                'characters.loopOffset(installId, key, uris.length - loopFrom)', 'characters.loopOffset(installId, key, uris.length)'],
             "a sleeper drawn in its element's rect, not its overdraw" => ['../floor/painter.js',
                 'art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw,', 'art(g, moves ? uris[loopFrom + offset] : uris[0], e,'],
             // card#12187 impl review N5: a walk stepped from past its stand frame, and a desk's frames cached without its pose.
@@ -395,7 +407,7 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 '`${asset}#${at.pose}/${at.glyph ?? \'\'}@${at.desk_top}`', '`${asset}#/${at.glyph ?? \'\'}@${at.desk_top}`'],
             // N8: a frame list copied onto the element instead of held in the painter's Map.
             "a held loop's frames copied onto the element" => ['../floor/painter.js',
-                "                            stepping.push([el, uris, loopFrom, offset]);\n                        }", "                            el.dataset.frames = JSON.stringify(uris);\n                        }"],
+                "            stepping.push([el, uris, loopFrom, offset]);\n        }", "            el.dataset.frames = JSON.stringify(uris);\n        }"],
             // § 9 F14's two causes for a code-drawn character (§ 10.2): unreported, or thrown out of the paint.
             'a tree that failed to load left unreported' => ['../floor/painter.js',
                 "        if (characters === null || typeof species !== 'string') {\n            report(asset);", "        if (characters === null || typeof species !== 'string') {\n            void asset;"],

@@ -383,6 +383,8 @@ export function deskModel(seat, ages, facts = {}, options = {}) {
     // no loop, exactly as a lag does, because motion would claim a currency nothing supports.
     const unrecognised = unrecognisedValues(seat);
     const permitted = !lagged && !configInvalid && unrecognised.length === 0 && facts.stilled !== true;
+    const held = heldId === null ? null : heldRendering(heldId, permitted, options.reduce === true);
+    const table = sideTable(seat);
 
     return {
         install_id: seat.install_id,
@@ -435,10 +437,30 @@ export function deskModel(seat, ages, facts = {}, options = {}) {
         oldest_badge_since: (seat.badges_since ?? null) === null
             ? null
             : `${OLDEST_BADGE_SINCE} ${clockTime(seat.badges_since)}`,
-        side_table: sideTable(seat),
+        side_table: table,
         // § 5.1 rule 3: "A desk that draws no character draws no bubble", which covers the
         // unconfirmed seat too — the bubble module reads `render_state` alone and cannot know.
         bubble: character ? taskBubble(seat) : null,
-        held: heldId === null ? null : heldRendering(heldId, permitted, options.reduce === true),
+        held,
+        interns_held: internsHeld(table, held, options.reduce === true),
     };
+}
+
+/**
+ * § 6.2 A23 `intern-type` (card#12448): the side table's held rendering — held while the desk draws an intern, `null`
+ * where it draws none. Whether it draws MOTION is, until card#12451, the desk's own: the interns type exactly while the
+ * desk's held render moves, so an intern claims no more than its seat already does (an open dispatch call keeps the
+ * seat `working`, D1 § 8.6), and every treatment that stills the desk — a lag, `config_invalid`, an unrecognised value,
+ * a stilled floor, a desk static by design — stills its interns with it.
+ *
+ * ⏳ THE HOOK card#12451 PLUGS INTO (FLOOR.md § 8's *Working and idle interns* block, designed in PR #382): this is
+ * the one place the interns' motion is decided, and that build replaces the `permitted` below with the interns' own
+ * `subagents[].activity_state` — held while an element reads `working`, a laptop and no motion where it reads `idle`.
+ */
+function internsHeld(table, held, reduce) {
+    if (table.stools.length === 0) {
+        return null;
+    }
+
+    return heldRendering('A23', held !== null && held.motion === true, reduce);
 }

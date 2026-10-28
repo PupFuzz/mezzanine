@@ -185,7 +185,7 @@ class EveryStateIsLegibleWithoutMotionTest extends TestCase
                 $key = "{$row['install_id']}/{$row['seat_id']}";
                 $seat = $this->finalSeats($result)[$key];
 
-                $this->assertSame($this->heldRowFor($seat), $row['animation_id'],
+                $this->assertSame($this->predictedRowFor($seat, $row['animation_id']), $row['animation_id'],
                     "[{$run}] {$key} entered a row § 6.2 does not predict for its own object");
 
                 if ($row['motion']) {

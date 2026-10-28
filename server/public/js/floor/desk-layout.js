@@ -759,6 +759,8 @@ export const DRAWN_MEMBERS = Object.freeze({
     held: ['character'],
     // card#12443: the delivered body the character is drawn in, and the body each intern is kept off.
     species: ['character', 'stool'],
+    // § 6.2 A23 (card#12448): the interns' held render, drawn as each intern's laptop still or typing loop.
+    interns_held: ['stool'],
     // Drawn on the chip's hollow dashed form; the desk's dimming is the group's lighting class (FLOOR.md decision 63).
     unconfirmed: ['chip'],
 });
@@ -1042,6 +1044,9 @@ export function deskLayout(desk, ctx) {
             seat_species: desk.species,
             asset,
             art: !ctx.failed.has(asset),
+            // § 6.2 A23 (card#12448): the interns' held rendering, which the desk model derives — whether the
+            // interns type, § 6.4's form, and the interval their sway steps at.
+            animation: desk.interns_held,
         });
     });
 

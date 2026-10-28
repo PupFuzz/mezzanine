@@ -128,6 +128,21 @@ export const NOT_LISTED = Object.freeze({
     'held.frame_interval_ms': {
         reason: "a drawn loop's frame rate; the list draws no loop",
     },
+    // § 6.2 A23 (card#12448): the side table's held render — its interns typing at their laptops.
+    'interns_held.animation_id': {
+        reason: "the interns' typing is the drawing's motion (§ 6.2 A23); the list animates nothing, and the interns it "
+            + 'is held for are on the row as the stools',
+    },
+    'interns_held.motion': {
+        reason: "whether the interns type; until card#12451 it is the desk's own `held.motion`, which the row prints as "
+            + 'moving or still',
+    },
+    'interns_held.form': {
+        reason: "§ 6.4's reduced-motion form of a drawn loop; the list draws no loop to reduce",
+    },
+    'interns_held.frame_interval_ms': {
+        reason: "a drawn loop's frame rate; the list draws no loop",
+    },
 });
 
 /** The joins, and nothing else: parts a member left null or empty are dropped, never printed blank. */
