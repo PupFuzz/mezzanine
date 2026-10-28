@@ -477,7 +477,10 @@ const APPROVED = {
       const body = c.sym([[0, 88], [18, 90], [24, 112], [26, 138], [32, 162], [40, 182], [0, 186]]);
       c.body(c.shape(body, m));
       c.body(`<ellipse cx="54" cy="168" rx="${f(38 * c.st)}" ry="14" fill="${shade(m, 0.16)}" clip-path="${c.pen.clip(body)}" opacity=".6"/>`);
-      return { face: { y: 106, es: 12, s: 1, my: 119, ms: 0.85 }, hat: { x: 54, y: 89, w: 18 }, neck: { y: 130, w: 27 * c.st },
+      // card#12502: the face (eyes and mouth together) sits 1.1 units above its approved 106 / 119 — the least lift that
+      // takes the snail off the standard laptop's binding row, so the lid's top rises to where the next species binds it
+      // (the seat's ruling of 2026-10-28, reversible; tools/characters/selftest.mjs § 6b prints the binding drawing)
+      return { face: { y: 104.9, es: 12, s: 1, my: 117.9, ms: 0.85 }, hat: { x: 54, y: 89, w: 18 }, neck: { y: 130, w: 27 * c.st },
         arms: { y: 150, dx: 28 * c.st, col: m, small: true }, feet: null, shadow: 44 * c.st };
     },
   },
@@ -1004,9 +1007,11 @@ function stickerSvg(shape, ink, r) {
 /**
  * THE STANDARD LAPTOP (card#12502; FLOOR.md § 13's row for it). The operator's rulings of 2026-10-28: *"option B.  Each
  * laptop should be a standard height. it should not vary with the character height."*, then *"It is OK for the laptop
- * to be high enough that it covers a part of the character's mouth"*. So every intern's laptop is ONE drawing in the
- * chibi frame's units, the same width, height and lean for every species, key and loop frame, drawn OUTSIDE the
- * intern's size scale (an intern's `size` never resizes it) and moved only by the intern's sway, which it shares.
+ * to be high enough that it covers a part of the character's mouth"*, then *"I want the laptop lid to be higher and
+ * less angled."* with a reference photograph taken for its proportions only (*"The builder should keep existing
+ * colors"*). So every intern's laptop is ONE drawing in the chibi frame's units — an upright lid, the same width and
+ * height for every species, key and loop frame, from its top edge down to the seat line — drawn OUTSIDE the intern's
+ * size scale (an intern's `size` never resizes it) and moved only by the intern's sway, which it shares.
  *
  * `LAPTOP_W` is card#12448's widest lid, the one its per-species rule already drew on the broadest bodies. `LAPTOP_TOP`
  * is the lid's top edge, and it is DERIVED, never chosen: `tools/characters/selftest.mjs` § 6b measures every species
@@ -1014,49 +1019,50 @@ function stickerSvg(shape, ink, r) {
  * reds unless this figure is the highest whole unit at which the lid covers no eye in any frame and leaves the upper
  * half of every mouth (or beak) showing — the seat's reading of the second ruling's "a part of the character's mouth".
  * So this is the tallest lid those two conditions allow; the selftest prints the drawing that binds it. The deck's
- * front edge stands under the top by card#12448's rule — 0.16 of the drop from the top to the foot short of the foot —
- * so the base is fixed too.
+ * bottom edge is the seat line (`FOOT`), so the base is fixed too.
  */
 export const LAPTOP_W = 70;
-export const LAPTOP_TOP = 158;
+export const LAPTOP_TOP = 156;
 
-/** The laptop's one geometry, in frame units — a pure function of the two constants above and `FOOT`. */
+/** The deck's thickness under the lid, in frame units: the thin edge the open laptop rests on. */
+const LAPTOP_DECK = 2.4;
+
+/** The laptop's one geometry, in frame units — a pure function of the constants above and `FOOT`. */
 function laptopGeometry() {
   const w = LAPTOP_W, y0 = LAPTOP_TOP;
-  const y1 = FOOT - (FOOT - y0) * 0.16;          // the deck's front edge, on the lap
-  const deckH = Math.max(5, (y1 - y0) * 0.18), yH = y1 - deckH;   // the hinge line
-  const x0 = 54 - w / 2, x1 = 54 + w / 2;
-  const lean = w * 0.09, shrink = w * 0.08;       // the lid leans back: its top edge narrower and shifted
-  return { w, y0, y1, yH, x0, x1, tx0: x0 + lean + shrink, tx1: x1 + lean - shrink * 0.4 };
+  const y1 = FOOT;                 // the deck's bottom edge, on the seat line the intern sits on
+  const yH = y1 - LAPTOP_DECK;     // the hinge: the lid's foot and the deck's top
+  return { w, y0, y1, yH, x0: 54 - w / 2, x1: 54 + w / 2 };
 }
 
 /**
- * The laptop on an intern's lap — the operator's style B: a three-quarter lid, a trapezoid leaning back with its hinge
- * at the bottom, the screen's bright edge peeking along its top and near side, a dark hinge and a thin deck lip under
- * it. Its back faces the viewer with the key's two stickers on it. The `lid` part is the lid's outline; the `glow` part
- * is the screen's soft wash over the face, which is light, not cover.
+ * The laptop on an intern's lap, as the operator's reference photograph of 2026-10-28 draws it: the open lid seen from
+ * behind, nearly upright — a plain rectangle with softly rounded corners, its back to the viewer with the key's two
+ * stickers on it, the screen's light along its top edge, a thin dark hinge at its foot and the deck's thin lighter
+ * edge under it, resting on the seat line. The `lid` part is the lid's outline; the `glow` part is the screen's soft
+ * wash over the face, which is light, not cover.
  */
 function laptopSvg(pen, lap) {
-  const { w, y0, y1, yH, x0, x1, tx0, tx1 } = laptopGeometry();
+  const { w, y0, y1, yH, x0, x1 } = laptopGeometry();
   const S = lap.shell;
   const glow = '#bfe4ff';
+  const h = yH - y0;
   const out = [];
-  out.push(`<ellipse data-part="glow" cx="${f((tx0 + tx1) / 2)}" cy="${f(y0)}" rx="${f(w * 0.42)}" ry="3" fill="${pen.soft(glow, 0.6)}"/>`);
-  // the screen's lit edge, behind the lid and a hair wider along the top and the near side
-  out.push(`<path d="M${f(tx0 - 2.2)} ${f(y0 - 0.2)}L${f(tx1 + 0.6)} ${f(y0 - 0.2)}L${f(x1)} ${f(yH)}L${f(x0 - 2.2)} ${f(yH)}Z" fill="${glow}" opacity=".95"/>`);
-  out.push(`<path data-part="lid" d="M${f(tx0)} ${f(y0)}L${f(tx1)} ${f(y0)}L${f(x1)} ${f(yH)}L${f(x0)} ${f(yH)}Z" fill="${pen.paint(S)}" stroke="${line(S)}" stroke-width="1.4" stroke-linejoin="round"/>`);
+  out.push(`<ellipse data-part="glow" cx="54" cy="${f(y0)}" rx="${f(w * 0.42)}" ry="3" fill="${pen.soft(glow, 0.6)}"/>`);
+  // the screen's lit edge, just over the lid's top, behind it
+  out.push(`<rect x="${f(x0 + 1.5)}" y="${f(y0 - 0.6)}" width="${f(w - 3)}" height="2" rx="1" fill="${glow}" opacity=".95"/>`);
+  out.push(`<rect data-part="lid" x="${f(x0)}" y="${f(y0)}" width="${f(w)}" height="${f(h)}" rx="3" fill="${pen.paint(S)}" stroke="${line(S)}" stroke-width="1.4"/>`);
   // the stickers, at fixed shares of the lid, sized to fit inside it
-  const top = y0 + 2, h = yH - y0 - 2, r = Math.min(h * 0.17, w * 0.12) * 0.9;
-  const slots = [[54 - w * 0.22, top + h * 0.40, -12], [54 + w * 0.24, top + h * 0.64, 9]];
+  const r = Math.min(h * 0.17, w * 0.12) * 0.9;
+  const slots = [[54 - w * 0.22, y0 + h * 0.40, -12], [54 + w * 0.24, y0 + h * 0.64, 9]];
   lap.stickers.forEach((st, i) => {
     const [sx, sy, rot] = slots[i];
     out.push(`<g data-part="sticker" transform="translate(${f(sx)} ${f(sy)}) rotate(${rot})">${stickerSvg(st.shape, st.ink, r)}</g>`);
   });
-  // the hinge, then the deck's lip, a hair wider at the front
-  out.push(`<rect data-part="hinge" x="${f(x0 - 0.5)}" y="${f(yH - 1.3)}" width="${f(w + 1)}" height="2.2" rx="1" fill="${shade(S, 0.45)}"/>`);
-  const fw = w * 1.08, fx0 = 54 - fw / 2, fx1 = 54 + fw / 2;
-  out.push(`<path data-part="deck" d="M${f(x0)} ${f(yH)}H${f(x1)}L${f(fx1)} ${f(y1)}H${f(fx0)}Z" fill="${pen.paint(tint(S, 0.42))}" stroke="${line(S)}" stroke-width="1.1" stroke-linejoin="round"/>`);
-  out.push(`<path d="M${f(fx0)} ${f(y1)}H${f(fx1)}" stroke="${shade(S, 0.3)}" stroke-width="1.4" stroke-linecap="round"/>`);
+  // the hinge, then the deck's edge, a hair wider than the lid
+  out.push(`<rect data-part="hinge" x="${f(x0 + 1)}" y="${f(yH - 0.9)}" width="${f(w - 2)}" height="1.2" rx=".6" fill="${shade(S, 0.45)}"/>`);
+  const dx0 = 54 - w * 0.52, dw = w * 1.04;
+  out.push(`<rect data-part="deck" x="${f(dx0)}" y="${f(yH)}" width="${f(dw)}" height="${f(y1 - yH - 0.6)}" rx="1" fill="${pen.paint(tint(S, 0.42))}" stroke="${line(S)}" stroke-width="1.1"/>`);
   return out.join('');
 }
 

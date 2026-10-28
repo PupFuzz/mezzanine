@@ -353,7 +353,7 @@ check(lapFaults.frame.length === 0, `every laptop's ink is inside the intern's f
   let px = -Infinity;
   inkBounds(doc.replace('<g data-part="laptop">', `<g data-part="laptop" transform="translate(${vbox.w} 0)">`), (node, b, up) => { if (underPart(up, 'laptop')) px = Math.max(px, b.x1); });
   check(px > vbox.x + vbox.w, `CONTROL — a laptop pushed one frame width sideways reaches ${px.toFixed(1)}, past the frame's side ${(vbox.x + vbox.w).toFixed(1)}`);
-  const taller = doc.replace(/(<path data-part="lid" d="M[\d.]+ )([\d.]+)/, (m, a, y) => `${a}${Number(y) - 4}`);
+  const taller = doc.replace(/(<rect data-part="lid" x="[^"]*" y=")([^"]*)(" width="[^"]*" height=")([^"]*)/, (m, a, y, c, h) => `${a}${Number(y) - 4}${c}${Number(h) + 4}`);
   check(taller !== doc && laptopShape(taller) !== laptopShape(doc), 'CONTROL — a lid drawn 4 units taller is a second geometry, so the leg can see a laptop that varies');
 }
 
