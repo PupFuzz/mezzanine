@@ -61,6 +61,13 @@ Two more values are optional, and most users need neither:
 - **`--ca-file`**, only when the site's certificate is issued by a private CA: the absolute path of a PEM
   file that trusts it.
 
+The link from the seat to its kanban board user needs nothing from the user (card#12447): the script reads
+the seat's own board credential from the coordination framework's credential store, asks the board which
+user it is, and writes that into the config, so the site maps the desk to that user's cards by itself. A
+seat with no board credential stays unlinked, and its desk shows the step the agent marked in progress on
+its to-do list instead. `--no-board` leaves the seat unlinked on purpose; there is no flag to type a board
+user, because a user someone other than the seat's own credential chooses is the site operator's pin.
+
 ## 4. Run the first command
 
 ```bash
@@ -110,6 +117,16 @@ install.sh: INSTALLED: the server holds this build current and every site has ac
 and it exits `0`. Above those lines, the health check prints `default: installed <version>, server current
 <version>: current`, which is the site saying it holds this build current, and the arrival check prints
 `default: <n> batch(es) accepted: events arrive`.
+
+The install also sets `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` in this account's `~/.claude/settings.json` `env`
+when it is not already set (card#12447; the operator's ruling of 2026-10-27: *"this should be checked and
+set as part of the mezzanine reporter installation"*), so the desk can show the agent's in-progress to-do
+when it has no board card. Its block prints `set`, or `already set: unchanged`, or `kept … : unchanged`,
+and never overwrites a value the user chose; it changes the user-level file only, so a project's own
+settings keep their say. Sessions already running keep the tools they started with; the next session
+has them. Nothing to ask the user for. The board block prints `board user <id> on <scheme://host>`, or
+`undeclared: this seat has no board credential (…)`, or `kept: …` when the board could not answer — none
+of them fails the install.
 
 ## 7. Tell the user what to look at
 

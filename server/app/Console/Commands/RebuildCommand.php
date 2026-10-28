@@ -256,6 +256,8 @@ class RebuildCommand extends Command
             'protocol_agent_role' => null,
             'roundtable_agent_name' => null,
             'roundtable_agent_name_check' => null,
+            'board_user_declared' => null,
+            'board_fingerprint_declared' => null,
             'reporter_uptime_s' => null,
             'reporter_version' => null,
             'reporter_platform' => null,
@@ -284,6 +286,11 @@ class RebuildCommand extends Command
             'task_ref' => null,
             'task_as_of' => null,
             'task_degraded' => false,
+            // card#12447: tier 4's slot is PROJECTION, so the replay re-derives it (D2 § 6.4) — and it must
+            // be nulled here or the guard on `todo_event_time` would refuse every replayed `todo.progress`.
+            'todo_title' => null,
+            'todo_as_of' => null,
+            'todo_event_time' => null,
             'fold_errors' => 0,
             'fold_cursor_event_id' => 0,
             'fold_cursor_received_at' => $oldest ?? Clock::sql(now()),

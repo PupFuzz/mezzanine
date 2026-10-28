@@ -7,9 +7,16 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 /**
- * `docs/design/FLEET-STATE.md § 2.1`'s **seat→board-user** operator command — the ONLY writer of
- * `seats.board_user_id` (`docs/design/BOARD-TASK.md § 4.1`), on the model of `mezzanine:retire`:
- * an administrative fact that no timeout, poll or inference may set.
+ * `docs/design/FLEET-STATE.md § 2.1`'s **seat→board-user** operator command — the operator's PIN on
+ * `seats.board_user_id` (`docs/design/BOARD-TASK.md § 4.1`), on the model of `mezzanine:retire`: an
+ * administrative fact that no timeout and no inference may set. Since card#12447 it is one of TWO writers;
+ * the other is the board poll's link pass (§ 4.4), which writes what a seat declared and the board confirmed,
+ * and which never overrides what this command wrote. `seats.board_user_source` says which wrote it:
+ *
+ *   `--board-user=<id>`  PINS — `operator`; the pass leaves the seat alone from then on, whatever it declares
+ *   `--refuse`           REFUSES — `NULL` with `refused`; the pass leaves the seat alone from then on — the
+ *                        verb for a seat whose declaration is not this operator's to honour
+ *   `--clear`            UNPINS AND UN-REFUSES — `NULL` and `NULL`: let the declaration decide at the next poll
  *
  * ⛔ ANY WRITE OF THE COLUMN DELETES THE SEAT'S `seat_board_task` ROW IN THE SAME TRANSACTION —
  * `--clear` AND `--board-user` alike. A cleared mapping that left the row would go on answering
@@ -36,9 +43,10 @@ class SeatBoardUserCommand extends Command
     protected $signature = 'mezzanine:seat-board-user
         {--seat= : <install>/<seat>}
         {--board-user= : the board user id whose assigned cards answer for this seat}
-        {--clear : remove the seat\'s board-user mapping}';
+        {--clear : remove the seat\'s board-user mapping, pin or refusal, returning it to automatic linking}
+        {--refuse : refuse the seat\'s own board declaration: no mapping, and the link pass writes nothing for it}';
 
-    protected $description = 'Map a seat to a kanban board user, or clear its mapping (docs/design/BOARD-TASK.md § 4.1)';
+    protected $description = 'Pin a seat to a kanban board user, refuse its declaration, or clear either (docs/design/BOARD-TASK.md § 4.1, § 4.4)';
 
     /** `seats.board_user_id` is `INT UNSIGNED` (D2 § 6.4). */
     private const MAX_BOARD_USER = 4_294_967_295;
@@ -48,6 +56,7 @@ class SeatBoardUserCommand extends Command
         $seat = (string) $this->option('seat');
         $boardUser = $this->option('board-user');
         $clear = (bool) $this->option('clear');
+        $refuse = (bool) $this->option('refuse');
 
         if (! str_contains($seat, '/')) {
             $this->error('--seat=<install>/<seat> is required');
@@ -55,15 +64,17 @@ class SeatBoardUserCommand extends Command
             return self::INVALID;
         }
 
-        if ($clear === ($boardUser !== null)) {
-            $this->error('exactly one of --board-user=<id> and --clear is required');
+        if ((int) $clear + (int) $refuse + (int) ($boardUser !== null) !== 1) {
+            $this->error('exactly one of --board-user=<id>, --refuse and --clear is required');
 
             return self::INVALID;
         }
 
         $value = null;
+        $source = $refuse ? 'refused' : null;
 
-        if (! $clear) {
+        if ($boardUser !== null) {
+            $source = 'operator';
             // `(int)` saturates at PHP_INT_MAX on a longer digit string, which is above the bound.
             if (preg_match('/^[1-9][0-9]*$/', (string) $boardUser) !== 1 || (int) $boardUser > self::MAX_BOARD_USER) {
                 $this->error('--board-user must be a positive integer board user id');
@@ -91,7 +102,7 @@ class SeatBoardUserCommand extends Command
         $seatRef = (int) $seatRef;
 
         try {
-            $refused = DB::transaction(function () use ($seatRef, $value): ?string {
+            $refused = DB::transaction(function () use ($seatRef, $value, $source): ?string {
                 $retiredAt = DB::table('seats')->where('id', $seatRef)->lockForUpdate()->value('retired_at');
 
                 if ($value !== null && $retiredAt !== null) {
@@ -99,7 +110,7 @@ class SeatBoardUserCommand extends Command
                 }
 
                 DB::table('seat_board_task')->where('seat_ref', $seatRef)->delete();
-                DB::table('seats')->where('id', $seatRef)->update(['board_user_id' => $value]);
+                DB::table('seats')->where('id', $seatRef)->update(['board_user_id' => $value, 'board_user_source' => $source]);
 
                 return null;
             });
@@ -124,9 +135,11 @@ class SeatBoardUserCommand extends Command
             return self::FAILURE;
         }
 
-        $this->info($value === null
-            ? sprintf('cleared the board-user mapping of %s', $seat)
-            : sprintf('mapped %s to board user %d', $seat, $value));
+        $this->info(match (true) {
+            $refuse => sprintf('refused the board declaration of %s: it is not mapped, and the link pass writes nothing for it', $seat),
+            $value === null => sprintf('cleared the board-user mapping of %s: its own declaration decides at the next poll', $seat),
+            default => sprintf('pinned %s to board user %d', $seat, $value),
+        });
 
         return self::SUCCESS;
     }
