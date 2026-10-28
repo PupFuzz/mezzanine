@@ -959,21 +959,14 @@ export const STICKER_CONTRAST = 110;
 /** The sway loop: this many LOOP FRAMES (4 fps), centre → left → centre → right, so one cycle is a second. */
 export const INTERN_LOOP = 4;
 /**
- * The sway's SHAPE at amplitude 1: degrees about the foot, and the lateral shift as a share of the intern's drawn
- * height. The sway drawn is this shape times `INTERN_SWAY_AMP`.
+ * THE SWAY — FIXED by the operator's ruling of 2026-10-27, *"x0.6"*: ×0.6 of the sampled sway of ±3° and 0.022 of the
+ * drawn height, so each extreme rotates the intern this many degrees about its foot and shifts it this share of its
+ * drawn height sideways. The intern's FRAME and the floor's PITCH grow to hold it: `tools/characters/selftest.mjs` § 8b
+ * measures every intern at both extremes and reds when `desk-layout.js`'s `STOOL_FRAME` or `STOOL_PITCH` is not the
+ * least that holds them (FLOOR.md § 12's *Intern sway*, § 13 row 87).
  */
-export const INTERN_SWAY_DEG = 3;
-export const INTERN_SWAY_DX = 0.022;
-/** The grid the amplitude is derived on. */
-export const INTERN_SWAY_STEP = 0.05;
-/**
- * THE SWAY's AMPLITUDE — the LARGEST multiple of `INTERN_SWAY_STEP` at which no intern's ink leaves `CHIBI_VIEWBOX` in
- * any loop frame (the operator's C2, 2026-10-27). It is a DERIVED figure, not a chosen one: `tools/characters/selftest.mjs`
- * § 8b re-derives it on every run over the frame-bounds population, and reds — naming the value it derived — when this
- * constant is not that value, so a frame that grows (card#12444) or a drawing that widens moves it through a red, never
- * silently. FLOOR.md § 12's *Intern sway* row cites the derivation, never the figure.
- */
-export const INTERN_SWAY_AMP = 0.1;
+export const INTERN_SWAY_DEG = 1.8;
+export const INTERN_SWAY_DX = 0.0132;
 
 function rgbDist(a, b) { const A = hex2rgb(a), B = hex2rgb(b); return Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]); }
 
@@ -1067,10 +1060,11 @@ export const SEAT_RECT = Object.freeze({ x: 0, y: 0, w: 108, h: 192 });
 /**
  * THE INTERN's RECT AND FRAME ON THE FLOOR, in floor pixels — `floor/desk-layout.js`'s `STOOL_W` × `STOOL_H` and its
  * `STOOL_FRAME` (card#12444, the operator's rulings of 2026-10-27: 1.75 times card#11058's 20 × 32, and a frame the least
- * that holds every chibi's ink). The tree cannot import the floor, so the figures are stated here and held equal to the
- * floor's by `tools/characters/selftest.mjs` § 7b; the chibi frame below is derived from them.
+ * that holds every intern's ink — at its laptop and at both extremes of its sway since card#12448). The tree cannot
+ * import the floor, so the figures are stated here and held equal to the floor's by `tools/characters/selftest.mjs` § 7b;
+ * the chibi frame below is derived from them.
  */
-export const CHIBI_STOOL = Object.freeze({ w: 35, h: 56, frame: 38 });
+export const CHIBI_STOOL = Object.freeze({ w: 35, h: 56, frame: 41 });
 /**
  * THE INTERN's CHIBI FRAME: the intern rect in units — 108 units over its width, so its height is `108 × h / w` units, the
  * last that many above the foot (the rect's aspect) — widened to `CHIBI_STOOL.frame` px, centred, which holds the widest
@@ -1152,13 +1146,12 @@ function worn(r, sp, A) {
 /**
  * One frame of one key, as a standalone SVG document.
  * @param {string} key the seat key, or an intern key `seat~<call_id>`
- * @param {{ phase?: 0|1|2, chibi?: boolean, species?: string, expression?: string, level?: 0|1|2|3, clear?: object[], laptop?: boolean, sway?: number, amp?: number }} [opt]
+ * @param {{ phase?: 0|1|2, chibi?: boolean, species?: string, expression?: string, level?: 0|1|2|3, clear?: object[], laptop?: boolean, sway?: number }} [opt]
  *        phase 0 is the standing frame; `expression` a key of `EXPRESSIONS`, `neutral` when absent; for an expression
  *        with a marker, `level` its brightness (3, full, when absent) and `clear` the floor's clear rects
  *        (`floor/desk-layout.js`'s `characterOverdraw()`), without which a marker is refused — never drawn against guessed
  *        furniture (card#12444); `laptop` (the intern's laptop on its lap) and `sway` (a loop frame 0 .. INTERN_LOOP − 1
- *        of the typing sway) are the chibi frame's (card#12448), and `amp` the sway's amplitude, `INTERN_SWAY_AMP` when
- *        absent — passed only by the selftest's derivation of that constant
+ *        of the typing sway) are the chibi frame's (card#12448)
  * @returns {string}
  */
 export function frameDocument(key, opt = {}) {
@@ -1219,12 +1212,11 @@ export function frameDocument(key, opt = {}) {
     throw new RangeError(`sway is a chibi frame's loop frame 0..${INTERN_LOOP - 1}, got ${opt.sway}`);
   }
   const sway = opt.sway === undefined ? 0 : [0, -1, 0, 1][opt.sway];
-  const amp = opt.amp ?? INTERN_SWAY_AMP;
   let swayTf = '';
   if (sway !== 0) {
     const g = chibiOf(A);
     const height = FOOT - (g.top + (FOOT - g.chin) * (1 - g.k));
-    swayTf = ` translate(${f(sway * amp * INTERN_SWAY_DX * height)} 0) rotate(${f(sway * amp * INTERN_SWAY_DEG)} 54 ${FOOT})`;
+    swayTf = ` translate(${f(sway * INTERN_SWAY_DX * height)} 0) rotate(${f(sway * INTERN_SWAY_DEG)} 54 ${FOOT})`;
   }
   const tf = `translate(54 ${FOOT}) scale(${s} ${s}) rotate(${opt.chibi ? 0 : r.tilt + lean}) translate(-54 -${FOOT})${swayTf}`;
   // The shadow ends ON the foot line (187.5 + 4.5 = 192, the rect's bottom): at ry 4.6 it reached a tenth of a unit

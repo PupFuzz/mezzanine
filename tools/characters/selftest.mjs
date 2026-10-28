@@ -534,7 +534,7 @@ const framesOf = (sp, key) => [
   ['walking', C.frameDocument(key, { species: sp, phase: 1 }), C.SEAT_VIEWBOX, C.SEAT_RECT],
   ['walking', C.frameDocument(key, { species: sp, phase: 2 }), C.SEAT_VIEWBOX, C.SEAT_RECT],
   ['chibi', C.frameDocument(`${key}~intern`, { species: sp, chibi: true }), C.CHIBI_VIEWBOX, CHIBI_RECT],
-  // the intern as the floor draws it (card#12448): the laptop still and the sway's two extremes, at INTERN_SWAY_AMP
+  // the intern as the floor draws it (card#12448): the laptop still and the sway's two extremes, at the fixed INTERN_SWAY_DEG and INTERN_SWAY_DX
   ...[undefined, 1, 3].map((sway) => ['intern', C.frameDocument(`${key}~intern`, { species: sp, chibi: true, laptop: true, sway }), C.CHIBI_VIEWBOX, CHIBI_RECT]),
   ...Array.from({ length: C.SLEEP_LOOP + 1 }, (_, frame) => ['asleep', C.sleepDocument(key, { species: sp, frame, deskTop: DESK_TOP, clear: CLEAR }), C.SEAT_VIEWBOX, C.SEAT_VIEWBOX]),
   // every expression's standing frame — its paws, and its marker at full brightness, the widest glow (card#12444)
@@ -543,7 +543,7 @@ const framesOf = (sp, key) => [
 const FRAME_KINDS = ['standing', 'walking', 'chibi', 'intern', 'asleep', 'posed'];
 const label = (sp, key) => { const v = C.recipe(key, sp).variant; return v ? `${sp}/${v}` : sp; };
 const worst = {};   // species → kind → { over: past the frame, cut: past the rect, key }
-const chibiAcross = { units: -Infinity, who: '' };   // the chibi's ink past its rect's sides, the widest over the population
+const chibiAcross = { units: -Infinity, who: '' };   // the chibi's ink past its rect's sides — the plain chibi and the swaying intern — the widest over the population
 const chibiInk = { left: Infinity, right: -Infinity, leftWho: '', rightWho: '' };   // its leftmost and rightmost ink, rect-relative
 const internInk = { left: Infinity, right: -Infinity, leftWho: '', rightWho: '' };  // the same over the intern at its laptop, still and swaying
 let boundsDocs = 0;
@@ -557,7 +557,7 @@ for (const sp of KEYS) {
     if (cut > e.cut) { e.cut = cut; e.cutKey = key; }
     const side = pastMargin(b, vb);
     if (side > e.side) { e.side = side; e.sideKey = key; }
-    if (kind === 'chibi' && b !== null) {
+    if ((kind === 'chibi' || kind === 'intern') && b !== null) {
       const across = Math.max(rect.x - b.x0, b.x1 - (rect.x + rect.w));
       if (across > chibiAcross.units) Object.assign(chibiAcross, { units: across, who: `${label(sp, key)} ${key}` });
       if (b.x0 - rect.x < chibiInk.left) Object.assign(chibiInk, { left: b.x0 - rect.x, leftWho: `${label(sp, key)} ${key}` });
@@ -586,18 +586,18 @@ for (const kind of FRAME_KINDS) {
 //   neighbour draws one pitch over — frames may overlap, ink may not touch; any more is spacing the operator asked to reclaim.
 const pxOf = (units) => units * STOOL_W / C.SEAT_RECT.w;
 const leastFrame = Math.ceil(STOOL_W + 2 * pxOf(Math.max(0, chibiAcross.units)) - 1e-9);
-// card#12448: the PITCH reads the intern as the floor draws it — at its laptop, still and at both extremes of its sway —
-// beside the plain chibi, because two neighbours sway out of step and their ink must not touch at any frame. The FRAME
-// reads the still chibi alone: the sway's amplitude is the largest that fits the frame (below), so a frame derived from
-// the swayed ink would grow with the sway it holds and the two would have no answer.
+// card#12448: the FRAME and the PITCH both read the intern as the floor draws it — at its laptop, still and at both
+// extremes of its sway, which the operator FIXED at ×0.6 (2026-10-27) — beside the plain chibi: a frame must hold the
+// swayed ink or the painter clips it, and two neighbours sway out of step, so their ink must not touch at any frame.
+// The sway is a constant, so the frame it sizes does not move it — the two have one answer.
 const pitchInk = { left: Math.min(chibiInk.left, internInk.left), right: Math.max(chibiInk.right, internInk.right) };
 const leastPitch = Math.floor(pxOf(pitchInk.right - pitchInk.left) + 1e-9) + 1;
-measure(`the chibi's ink past its rect's sides, the widest: ${chibiAcross.units.toFixed(2)} units (${chibiAcross.who}), ${pxOf(chibiAcross.units).toFixed(2)} px — the least whole-pixel frame ${leastFrame}`);
+measure(`the chibi's ink past its rect's sides, swaying included, the widest: ${chibiAcross.units.toFixed(2)} units (${chibiAcross.who}), ${pxOf(chibiAcross.units).toFixed(2)} px — the least whole-pixel frame ${leastFrame}`);
 measure(`the chibi's ink across, rect-relative: leftmost ${chibiInk.left.toFixed(2)} units (${chibiInk.leftWho}), rightmost ${chibiInk.right.toFixed(2)} (${chibiInk.rightWho}); at its laptop and swaying: leftmost ${internInk.left.toFixed(2)} (${internInk.leftWho}), rightmost ${internInk.right.toFixed(2)} (${internInk.rightWho}) — ${pxOf(pitchInk.right - pitchInk.left).toFixed(2)} px from one to the other, so the least whole-pixel pitch at which no two interns' ink touches is ${leastPitch}`);
 check(Number.isFinite(chibiAcross.units) && STOOL_FRAME === leastFrame,
-  `desk-layout.js's STOOL_FRAME (${STOOL_FRAME}) is the least whole-pixel frame whose margin each side holds the widest chibi past its rect (${leastFrame})`);
+  `desk-layout.js's STOOL_FRAME (${STOOL_FRAME}) is the least whole-pixel frame whose margin each side holds the widest intern, swaying at ±${C.INTERN_SWAY_DEG}°, or chibi past its rect (${leastFrame})`);
 check(Number.isFinite(chibiInk.right) && Number.isFinite(internInk.right) && STOOL_PITCH === leastPitch,
-  `desk-layout.js's STOOL_PITCH (${STOOL_PITCH}) is the least whole-pixel pitch at which no two interns' ink touches (${leastPitch})`);
+  `desk-layout.js's STOOL_PITCH (${STOOL_PITCH}) is the least whole-pixel pitch at which no two interns' ink touches, each swaying at ±${C.INTERN_SWAY_DEG}° (${leastPitch})`);
 // THE BACK ROW's LAPTOP CLEARS THE FRONT ROW's HEAD (card#12448, the coordinator's check on card#12444's two rows): an
 // intern of the back row stands one row step above the intern in front of it, in the same column, and is drawn first —
 // so its laptop's lowest ink, still or swaying, must stay above the topmost ink any front-row intern draws, or the front
@@ -618,26 +618,6 @@ check(Number.isFinite(chibiInk.right) && Number.isFinite(internInk.right) && STO
   const halved = headTop - (lidLow - stepUnits / 2);
   check(halved <= 0, `CONTROL — at half the row step the same laptop reaches ${(-halved).toFixed(2)} units past the front row's head, so the leg can see an overlap`);
 }
-// THE SWAY's AMPLITUDE IS DERIVED HERE (the operator's C2, 2026-10-27: the largest that fits the chibi frame). Over the
-// same population, the largest multiple of INTERN_SWAY_STEP at which neither sway extreme puts any ink past
-// CHIBI_VIEWBOX — searched from the shipped constant, up while it fits and down while it does not — must BE the shipped
-// constant. A frame that widens (card#12444) or a drawing that grows moves the derived value and reds this line, which
-// names the value to ship; the step past it is measured overflowing, so the check is seen able to fail on every run.
-const swayPast = (amp) => {
-  let over = -Infinity, who = '';
-  for (const sp of KEYS) for (const key of keysOf(sp)) for (const sway of [1, 3]) {
-    const o = past(inkBounds(C.frameDocument(`${key}~intern`, { species: sp, chibi: true, laptop: true, sway, amp })), C.CHIBI_VIEWBOX);
-    if (o > over) { over = o; who = `${label(sp, key)} ${key} sway=${sway}`; }
-  }
-  return { over, who };
-};
-const STEP = C.INTERN_SWAY_STEP, grid = (n) => Math.round(n * 1e6) / 1e6;
-let fit = grid(C.INTERN_SWAY_AMP), atFit = swayPast(fit);
-while (atFit.over > 0 && fit > 0) { fit = grid(fit - STEP); atFit = swayPast(fit); }
-let next = grid(fit + STEP), atNext = swayPast(next);
-while (atNext.over <= 0) { fit = next; atFit = atNext; next = grid(fit + STEP); atNext = swayPast(next); }
-measure(`the sway's largest fitting amplitude on the ${STEP} grid: x${fit} (±${grid(fit * C.INTERN_SWAY_DEG)}°, a lateral ${grid(fit * C.INTERN_SWAY_DX)} of the drawn height), least margin ${(-atFit.over).toFixed(2)} units (${atFit.who}); x${next} is past the frame by ${atNext.over.toFixed(2)} (${atNext.who})`);
-check(grid(C.INTERN_SWAY_AMP) === fit, `INTERN_SWAY_AMP (${C.INTERN_SWAY_AMP}) is the largest amplitude that fits the chibi frame, x${fit}, and x${next} does not fit${grid(C.INTERN_SWAY_AMP) === fit ? '' : ` — ship INTERN_SWAY_AMP = ${fit}`}`);
 // THE CREST TABLE, held by the same reader (§ 10.4 item 4; card#12187's CREST_TOP): for every species and variant, the
 // sleeper's topmost ink WITHOUT its z's — the document cut before its `zs` group — lies at or under the crest top the
 // tree declares, within 1 unit (the table is stated in whole units, and 1 unit stays inside Z_GAP's 2, the gap the z's

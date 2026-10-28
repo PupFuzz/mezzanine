@@ -223,7 +223,8 @@ export const STOOL_H = 56;
  * last (`stoolSlots()`). The spacing is the LEAST the INK allows (the operator's *"Spacing between subagents can still be
  * reduced further"*, 2026-10-27): two neighbours' FRAMES may overlap, and no two interns' INK may touch.
  * `tools/characters/selftest.mjs` § 8b derives each on every run, from the chibi ink it measures over every species at the
- * widest girth and size, and reds when one is not that least — so a wider chibi (card#12448's laptop) re-derives them:
+ * widest girth and size — the plain chibi and the intern at its laptop, still and at both extremes of its fixed sway
+ * (card#12448) — and reds when one is not that least, so a wider chibi or a larger sway re-derives them:
  * - `STOOL_PITCH`, the fewest whole pixels at which the rightmost ink any intern draws stays clear of the leftmost ink any
  *   neighbour draws one pitch over;
  * - `STOOL_FRAME`, the intern's FRAME across (`internOverdraw()`): the fewest whole pixels, centred on the rect, that hold
@@ -236,9 +237,9 @@ export const STOOL_H = 56;
  */
 export const STOOL_ROWS = 2;
 
-export const STOOL_PITCH = 38;
+export const STOOL_PITCH = 41;
 
-export const STOOL_FRAME = 38;
+export const STOOL_FRAME = 41;
 
 export const STOOL_ROW_GAP = 0;
 
