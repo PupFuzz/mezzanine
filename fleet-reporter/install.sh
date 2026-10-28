@@ -14,8 +14,13 @@
 #
 # Usage:
 #   install.sh [--site <url>] [--seat-id <id>] [--install-id <id>] [--agent-name <name>] [--ca-file <path>]
+#              [--no-board]
 #   install.sh --set-token [--site <url> --seat-id <id> [--install-id <id>] [--agent-name <name>]
-#              [--ca-file <path>]] [--site-name <name>]
+#              [--ca-file <path>]] [--site-name <name>] [--no-board]
+#
+# --no-board leaves the seat's board declaration unset (card#12447): Step 2's `board-identity` block then
+# declares nothing, and clears a declaration the config already holds. There is no flag to TYPE a board user:
+# a user an operator chooses is the server's pin (`mezzanine:seat-board-user`), never a seat's declaration.
 #   install.sh --check-runbook [<runbook>]
 #
 # Exit: 0 installed and every check passed, or nothing to change · 1 refused, or a step or check failed
@@ -29,9 +34,9 @@ MZI_RUNBOOK=$MZI_HERE/INSTALL-LINUX.md
 
 # Every block this script runs, by its anchor name. `--check-runbook` holds this list and the runbook's
 # `run` anchors to each other, both ways.
-MZI_BLOCKS=(prereqs backup u1 artifact values resolver identity writer token-prompt token-config token-rotate
-  token-shred config-check hooks-scripts hooks-apply cron-helpers cron-write cron-ancestry holder restart
-  selftest health arrival)
+MZI_BLOCKS=(prereqs backup u1 artifact values resolver identity board-identity writer token-prompt token-config
+  token-rotate token-shred config-check hooks-scripts hooks-apply todo-tools cron-helpers cron-write cron-ancestry
+  holder restart selftest health arrival)
 # Text this script reads in a block's output, as `<block>|<text>`. `--check-runbook` holds each to the
 # block's own source, so a reworded message reds the check instead of being read as the other outcome.
 MZI_MARKERS=(
@@ -40,6 +45,8 @@ MZI_MARKERS=(
   "cron-write|crontab already current"
   "cron-helpers|it runs the previous build"
   "identity|is not a member: disagreed"
+  "board-identity|board identity: unchanged"
+  "todo-tools|: unchanged"
   "token-config|pipeline rc="
   "token-rotate|pipeline rc="
   "selftest|selftest rc="
@@ -150,6 +157,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --set-token) MZI_MODE=set-token ;;
     --check-runbook) MZI_MODE=check; if [ $# -gt 1 ] && [ "${2#--}" = "$2" ]; then MZI_CHECK_RB=$2; shift; fi ;;
+    --no-board) export FR_NO_BOARD=1 ;;
     --site|--seat-id|--install-id|--agent-name|--ca-file|--site-name)
       [ $# -gt 1 ] || die "$1 needs a value: NOTHING RUN"
       case "$1" in
@@ -239,11 +247,13 @@ set_token() {
   run writer || die "the config writer could not be saved: NOTHING WRITTEN"
   if [ "$rotate" = 0 ]; then
     run values || die "Step 2's values block failed: NOTHING WRITTEN"
+    run resolver || die "the COORD_CONFIG resolver could not be saved: NOTHING WRITTEN"
     if [ -n "$MZI_AGENT" ]; then
-      run resolver || die "the COORD_CONFIG resolver could not be saved: NOTHING WRITTEN"
       run identity || die "the roster that --agent-name is checked against could not be read: NOTHING WRITTEN"
       ! said identity "is not a member: disagreed" || die "--agent-name $MZI_AGENT is not in the roster (above), so its desk would join no post: NOTHING WRITTEN"
     fi
+    # card#12447: the seat's board user, from its own board credential, for the writer below to carry.
+    run board-identity || die "Step 2's board-identity block failed (above): NOTHING WRITTEN"
   fi
   if [ "$carried" = 0 ]; then
     run token-prompt || die "the token was not written to $MZI_TOKEN_FILE: NOTHING WRITTEN"
@@ -276,7 +286,7 @@ set_token() {
 # ── install / upgrade / re-check ─────────────────────────────────────────────────────────────────
 
 install() {
-  local artifact=0 changed=0 cc st h a v verdict=0 id
+  local artifact=0 changed=0 board=0 cc st h a v verdict=0 id
   run prereqs || die "a prerequisite is missing (the line above names it): NOTHING INSTALLED"
   if [ ! -f "$MZI_CFG" ]; then
     if [ -z "$MZI_URL" ] || [ -z "$MZI_SEAT_ID" ]; then die "no config at $MZI_CFG yet: pass --site and --seat-id, and install.sh names the token step: NOTHING RUN"; fi
@@ -302,16 +312,23 @@ install() {
   fi
   if [ "$artifact" = 1 ]; then run artifact || die "Step 1 failed (above)"; changed=1; fi
   run resolver || die "the COORD_CONFIG resolver could not be saved"
+  # card#12447: re-resolved on EVERY run, upgrades included, so a moved layout or a changed answer reaches the
+  # config. A declaration it rewrote reaches the heartbeat only from the flusher's next start, so it owes U6.
+  run board-identity || die "Step 2's board-identity block failed (above): the config is unchanged"
+  said board-identity "board identity: unchanged" || { changed=1; board=1; }
   run hooks-scripts || die "Step 4's scripts could not be saved"
   run hooks-apply || die "Step 4 (a) refused or failed (above): settings.json is unchanged unless the block printed \`applied\`"
   said hooks-apply "already wired: nothing applied" || changed=1
+  # card#12447: the harness's to-do tools, set in the same file through the same stage-check-apply pipeline.
+  run todo-tools || die "Step 4 (c) refused or failed (above): settings.json is unchanged unless the block printed \`set\`"
+  said todo-tools ": unchanged" || changed=1
   run cron-helpers || die "Step 5's helpers could not be saved"
   run cron-write || die "Step 5 refused or failed (above)"
   said cron-write "crontab already current" || changed=1
   # U6 is owed when the RUNNING flusher is older than the installed artifact, whichever run installed it:
   # U1 compares files only, so a run that installed the artifact and failed before U6 leaves it NO-OP.
   run holder || true
-  if said holder "it runs the previous build"; then
+  if said holder "it runs the previous build" || [ "$board" = 1 ]; then
     run restart "stops the flusher, waits 70 s for its next start, and checks it" || die "the flusher does not yet run the new build (above): run install.sh again"
     changed=1
   fi

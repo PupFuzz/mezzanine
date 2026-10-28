@@ -30,7 +30,8 @@ use Tests\Feature\Sweep\SweepTestCase;
  * columns directly, because the command *is* the mechanism under test". `retire()` is
  * `SweepTestCase`'s helper and runs `mezzanine:retire` with its three real arguments.
  *
- * THE MAPPING IS MADE BY `mezzanine:seat-board-user`, the column's only writer (card#11289), and
+ * THE MAPPING IS MADE BY `mezzanine:seat-board-user`, the operator's pin (one of the column's two writers since
+ * card#12447; card#11289), and
  * the input row is then seeded as a fixture: what is under test is the RETIREMENT act, its input is
  * a store state, and a row the poller would write is that state. `Tests\Feature\Board\
  * AtD4_8EveryWayAMappingLeavesClearsTheRowTest` drives the same act from a real poll.

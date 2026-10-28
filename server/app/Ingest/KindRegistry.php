@@ -382,8 +382,8 @@ final class KindRegistry
                 'oldest_unsent_age_s', 'last_hook_at', 'open_calls', 'open_sessions',
                 'open_attention', 'enabled', 'roundtable_agent_name', 'roundtable_agent_name_check',
                 'protocol_agent_name', 'protocol_agent_name_check',
-                'protocol_agent_role', 'degraded', 'counters', 'counters_omitted', 'predicates', 'selftest',
-                'config_fingerprint',
+                'protocol_agent_role', 'board_user_id', 'board_fingerprint', 'degraded', 'counters',
+                'counters_omitted', 'predicates', 'selftest', 'config_fingerprint',
             ],
             'bounds' => [
                 // card#12239: D1 § 6.14 states the roundtable name's bound as the same figure as the
@@ -449,6 +449,18 @@ final class KindRegistry
                     'array' => false,
                 ],
             ],
+        ],
+
+        // ── § 6.16 (card#12447) — the seat's in-progress to-do, the flusher's one emit per section ─
+        // No enum: `tool_name` is a string by § 6.16's own reasoning (the `dispatch_tool_name.<name>`
+        // precedent), and the title's bound is § 7.4's one title bound.
+        'todo.progress' => [
+            'fields' => ['title', 'title_truncated', 'tool_name'],
+            'bounds' => [
+                'title' => 120,
+                'tool_name' => 64,
+            ],
+            'enums' => [],
         ],
     ];
 

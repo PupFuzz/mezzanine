@@ -22,6 +22,12 @@ WHAT IT PROVES, each against a control that must come out the other way:
   6. A ROTATION: `--set-token` over a config, with the new token in the carried token file, replaces that
      site's token and nothing else, removes the file and restarts the flusher; with the old token revoked
      on the site, the next run is current.
+  7. THE BOARD DECLARATION AND THE TO-DO TOOLS (card#12447): Step 2's `board-identity` block asks a stub
+     board `GET /users/current.json` with the seat's own credential from a coordination credential store
+     and the config gains `board_user_id` / `board_api_base`; a changed answer rewrites them and restarts
+     the flusher; an outage keeps them; a store naming no kanban pointer clears them. Step 4 (c) adds
+     `env.CLAUDE_CODE_ENABLE_TODO_TOOLS = "1"` once, leaves it on every later run, keeps a value the user
+     chose, and refuses a settings file whose `env` is not an object — each guard with a RED.
 
 HERMETIC. HOME is a temp directory. `crontab` is a stub on PATH that reads and writes a file under it; the
 real crontab is never called except `crontab -l`, read before and after the run, which must be equal. Cron
@@ -130,6 +136,17 @@ TOKEN2 = "mzn_" + secrets.token_urlsafe(32)        # the rotation's: carried in 
 assert re.fullmatch(r"mzn_[A-Za-z0-9_-]{43}", TOKEN) and re.fullmatch(r"mzn_[A-Za-z0-9_-]{43}", TOKEN2)
 ACCEPTED = {TOKEN, TOKEN2}
 OUTPUTS: list[str] = []      # every byte any run printed, swept for the token at the end
+# card#12447 — the seat's KANBAN credential, as the coordination framework's credential store points at it, and what
+# the stub board answers to `GET /api/v3/users/current.json` under it: `[status, body]`, changed by section 7.
+BOARD_TOKEN = "kb_" + secrets.token_urlsafe(24)
+BOARD_ANSWER: list = [200, {"data": {"id": 14, "name": "selftest seat"}}]
+COORD = HOME / ".config" / "coord"
+COORD.mkdir(parents=True)
+(COORD / "kanban-token").write_text(BOARD_TOKEN + "\n")
+os.chmod(COORD / "kanban-token", 0o600)
+(COORD / "credentials.ini").write_text(f"[kanban]\napi_token_file = {COORD / 'kanban-token'}\n")
+TODO_KEY = "CLAUDE_CODE_ENABLE_TODO_TOOLS"
+TODO_MARK = HOME / ".config" / "fleet-reporter" / "todo-tools-set"
 
 
 # ── the TLS ingest stub ──────────────────────────────────────────────────────────────────────────
@@ -168,6 +185,11 @@ class Ingest:
 
             def do_GET(self):
                 outer.gets.append(self.path)
+                if self.path == "/api/v3/users/current.json":
+                    # The stub BOARD (card#12447): it answers only the seat's own kanban credential.
+                    if self.headers.get("Authorization", "") != "Bearer " + BOARD_TOKEN:
+                        return self.answer(401, {"error": "unauthenticated"})
+                    return self.answer(BOARD_ANSWER[0], BOARD_ANSWER[1])
                 if not self.authed():
                     return self.answer(401, {"error": "unauthenticated"})
                 self.answer(200, {"accepted_schema_versions": [1], "server_time": "2026-10-25T00:00:00.000Z",
@@ -201,6 +223,11 @@ class Ingest:
 INGEST = Ingest()
 VALUES = ["--site", INGEST.site, "--install-id", "selftest-install", "--seat-id", "selftest-seat",
           "--ca-file", str(INGEST.crt)]
+# The coordination config the board-identity block reads the kanban base from (the home path: these settings set no
+# COORD_CONFIG), and the stub's certificate trusted for that one request through node's own extra-CA variable.
+BOARD_BASE = INGEST.site + "/api/v3"
+(COORD / "coordination.config.json").write_text(json.dumps({"kanban": {"base_url": INGEST.site + "/"}, "roster": []}))
+ENV["NODE_EXTRA_CA_CERTS"] = str(INGEST.crt)
 
 
 _last_run = [0.0]
@@ -422,6 +449,11 @@ check("  … the config carries the given identity, the site's ingest URL and it
       (cfg.get("install_id"), cfg.get("seat_id"), cfg.get("sites", [{}])[0].get("ingest_url"),
        cfg.get("sites", [{}])[0].get("ca_file"), cfg.get("protocol_agent_name")) ==
       ("selftest-install", "selftest-seat", INGEST.site + "/api/ingest/events", str(INGEST.crt), None), str(cfg))
+check("  … and the board user the seat's own kanban credential resolves to, on the base the coordination config "
+      "names joined to api/v3 with one `/` (card#12447)",
+      (cfg.get("board_user_id"), cfg.get("board_api_base")) == (14, BOARD_BASE)
+      and "board user 14 on " + INGEST.site + ": the config writer takes it" in out.decode("utf-8", "replace"), str(cfg))
+check("  … and the kanban credential is in no argv and no environment either", BOARD_TOKEN not in trace)
 check("  … strace recorded the run's execs (the measurement happened): the writer's node and the script's bash",
       'write-config.js"' in trace and "--set-token" in trace)
 check("  … and the token is in no argv and no environment of any process the run started", TOKEN not in trace)
@@ -437,8 +469,12 @@ try:
           (r.stdout + r.stderr)[-4000:])
     check("  … selftest, the health check and the arrival check each passed",
           "selftest rc=0 · health rc=0 · arrival rc=0" in r.stdout, (r.stdout + r.stderr)[-2000:])
-    check("  … every key of the user's settings other than hooks is unchanged",
-          {k: v for k, v in after.items() if k != "hooks"} == {k: v for k, v in USER_SETTINGS.items() if k != "hooks"})
+    check("  … every key of the user's settings other than hooks and env is unchanged",
+          {k: v for k, v in after.items() if k not in ("hooks", "env")}
+          == {k: v for k, v in USER_SETTINGS.items() if k not in ("hooks", "env")})
+    check("  … env keeps the user's keys and gains the to-do tools key alone, as \"1\", recorded as this install's "
+          "(card#12447)", after.get("env") == {**USER_SETTINGS["env"], TODO_KEY: "1"} and TODO_MARK.exists()
+          and "CLAUDE_CODE_ENABLE_TODO_TOOLS=1: set in" in r.stdout, json.dumps(after.get("env")))
     check("  … every hook entry the user had is still first in its list, unchanged",
           all(after["hooks"][h][:len(v)] == v for h, v in USER_SETTINGS["hooks"].items()), json.dumps(after["hooks"]))
     hook_set = sorted(p.stem for p in (HERE / "fixtures" / "hooks").glob("*.json"))
@@ -455,7 +491,8 @@ try:
                    "resolver": "── INSTALL-LINUX.md block `resolver`", "hooks-scripts": "scripts-saved",
                    "hooks-apply": "\napplied\n", "cron-helpers": "helpers-saved", "cron-write": "installed: ",
                    "config-check": "sites[default].token <well-formed>", "selftest": "selftest rc=0",
-                   "health": "server current " + VERSION + ": current", "arrival": "batch(es) accepted: events arrive"}
+                   "health": "server current " + VERSION + ": current", "arrival": "batch(es) accepted: events arrive",
+                   "board-identity": "board identity: unchanged", "todo-tools": "set in "}
     check("  … and every block it ran printed its own command's output",
           [b for b, line in BLOCK_LINES.items() if line not in r.stdout] == [],
           str([b for b, line in BLOCK_LINES.items() if line not in r.stdout]))
@@ -477,6 +514,9 @@ try:
     check("  … it only read the crontab", all(c == "crontab -l" for c in crontab_calls()[calls:]), str(crontab_calls()[calls:]))
     check("  … the flusher was not restarted", pid is not None and lock_pid() == pid and pid in our_flushers(), f"{pid} -> {lock_pid()}")
     check("  … and it left no attempt directory behind", len(list(ATTEMPTS.iterdir())) == n_attempts)
+    check("  … its board-identity and todo-tools blocks each said `unchanged`",
+          "board identity: unchanged" in r.stdout and "CLAUDE_CODE_ENABLE_TODO_TOOLS=1: already set: unchanged" in r.stdout,
+          r.stdout[-3000:])
     r = sh(*VALUES[:4], "--seat-id", "another-seat")
     check("a run naming another seat than the config's refuses, NOTHING RUN, and changes nothing",
           r.returncode == 1 and "NOTHING RUN" in r.stderr and snapshot() == before, r.stdout + r.stderr)
@@ -526,12 +566,108 @@ try:
     r = sh(*VALUES)
     check("  … and with the old token revoked, the next run is current on the new one", r.returncode == 0
           and "ALREADY CURRENT" in r.stdout and "health rc=0" in r.stdout, (r.stdout + r.stderr)[-3000:])
+
+    # ── 7. the board declaration and the to-do tools (card#12447) ────────────────────────────────────
+    print("== 7. the board declaration follows the board's answer, and the to-do tools key is the user's to keep ==")
+    BOARD_ANSWER[:] = [200, {"data": {"id": 15}}]
+    pid = lock_pid()
+    r = sh(*VALUES)
+    cfg = json.loads(CFG.read_text())
+    check("a board answering a different user rewrites the declaration, keeps the config 0600, and restarts the flusher",
+          r.returncode == 0 and (cfg.get("board_user_id"), cfg.get("board_api_base")) == (15, BOARD_BASE)
+          and oct(CFG.stat().st_mode & 0o777) == "0o600" and "written to" in r.stdout
+          and "PASS: the lock holder runs the artifact installed at" in r.stdout and lock_pid() not in (None, pid),
+          (r.stdout + r.stderr)[-3000:])
+    BOARD_ANSWER[:] = [503, {"error": "down"}]
+    before = snapshot()
+    r = sh(*VALUES)
+    check("a board that does not answer KEEPS the declaration: `kept`, unchanged, and nothing else moves",
+          r.returncode == 0 and "kept: the board answered 503" in r.stdout and "ALREADY CURRENT" in r.stdout
+          and snapshot() == before, (r.stdout + r.stderr)[-3000:])
+    BOARD_ANSWER[:] = [200, {"data": {"id": 15}}]
+    ini = (COORD / "credentials.ini").read_text()
+    (COORD / "credentials.ini").write_text("[kanban]\nbase = nothing here\n")
+    r = sh(*VALUES)
+    cfg = json.loads(CFG.read_text())
+    check("a credential store, read whole, that names no [kanban] api_token_file CLEARS the declaration: undeclared",
+          r.returncode == 0 and "board_user_id" not in cfg and "board_api_base" not in cfg
+          and "undeclared: this seat has no board credential" in r.stdout, (r.stdout + r.stderr)[-3000:])
+    (COORD / "credentials.ini").write_text(ini)
+    r = sh(*VALUES, "--no-board")
+    check("--no-board declares nothing, whatever the board would answer", r.returncode == 0
+          and "board_user_id" not in json.loads(CFG.read_text()) and "(--no-board)" in r.stdout, r.stdout[-2000:])
+    r = sh(*VALUES)
+    check("  … and the next run without it declares the board's answer again",
+          r.returncode == 0 and json.loads(CFG.read_text()).get("board_user_id") == 15, r.stdout[-2000:])
+
+    # The to-do tools key is the user's to keep: a value they chose is never overwritten.
+    s7 = json.loads(SETTINGS.read_text())
+    s7["env"][TODO_KEY] = "0"
+    SETTINGS.write_text(json.dumps(s7, indent=2) + "\n")
+    before = snapshot()
+    r = sh(*VALUES)
+    check("a to-do tools value the user set to \"0\" is KEPT: `kept … : unchanged`, settings.json byte for byte",
+          r.returncode == 0 and 'CLAUDE_CODE_ENABLE_TODO_TOOLS="0": kept' in r.stdout and snapshot() == before,
+          (r.stdout + r.stderr)[-2000:])
+    s7["env"] = ["not", "an", "object"]
+    SETTINGS.write_text(json.dumps(s7, indent=2) + "\n")
+    before = snapshot()
+    r = sh(*VALUES)
+    check("a settings.json whose env is not an object is refused by name, and nothing is written",
+          r.returncode == 1 and "env in" in r.stderr + r.stdout and "is not an object: NOTHING WRITTEN" in r.stderr + r.stdout
+          and snapshot() == before, (r.stdout + r.stderr)[-2000:])
+    s7["env"] = dict(USER_SETTINGS["env"])
+    SETTINGS.write_text(json.dumps(s7, indent=2) + "\n")
+    r = sh(*VALUES)
+    check("  … and with env an object again and the key absent, the run sets it once more",
+          r.returncode == 0 and json.loads(SETTINGS.read_text())["env"].get(TODO_KEY) == "1", r.stdout[-2000:])
+
+    # REDs, each a plant on a copy of the checkout, seen to break the guard it names.
+    def red_run(name: str, edit) -> subprocess.CompletedProcess:
+        co = TMP / f"red-{name}" / "fleet-reporter"
+        shutil.copytree(HERE, co, ignore=shutil.ignore_patterns("*.selftest.py"))
+        (co / "INSTALL-LINUX.md").write_text(edit((co / "INSTALL-LINUX.md").read_text()))
+        return sh(*VALUES, script=co / "install.sh")
+
+    s7 = json.loads(SETTINGS.read_text())
+    s7["env"][TODO_KEY] = "0"
+    SETTINGS.write_text(json.dumps(s7, indent=2) + "\n")
+    r = red_run("overwrite", lambda t: t.replace(
+        'if (t.env && Object.prototype.hasOwnProperty.call(t.env, "CLAUDE_CODE_ENABLE_TODO_TOOLS")) fs.copyFileSync(tsrc, tdst);',
+        'if (false) fs.copyFileSync(tsrc, tdst);').replace(
+        'else { t.env = Object.assign({}, t.env || {}, { CLAUDE_CODE_ENABLE_TODO_TOOLS: "1" });',
+        'else { t.env = Object.assign({}, t.env || {}); t.env.CLAUDE_CODE_ENABLE_TODO_TOOLS = "1";'))
+    check("RED: a todo-tools stage that overwrites the user's value is refused by check-preserved, and settings.json "
+          "keeps the user's \"0\"", r.returncode == 1 and "NOT PRESERVED" in r.stderr + r.stdout
+          and json.loads(SETTINGS.read_text())["env"][TODO_KEY] == "0", (r.stdout + r.stderr)[-2000:])
+    s7["env"].pop(TODO_KEY)
+    SETTINGS.write_text(json.dumps(s7, indent=2) + "\n")
+    r = red_run("touch-other", lambda t: t.replace(
+        'else { t.env = Object.assign({}, t.env || {}, { CLAUDE_CODE_ENABLE_TODO_TOOLS: "1" });',
+        'else { t.env = Object.assign({}, t.env || {}, { CLAUDE_CODE_ENABLE_TODO_TOOLS: "1" }); t.permissions = {};'))
+    check("RED: a todo-tools stage that changes any other key is refused by check-preserved, and nothing is applied",
+          r.returncode == 1 and "NOT PRESERVED" in r.stderr + r.stdout
+          and json.loads(SETTINGS.read_text()).get("permissions") == USER_SETTINGS["permissions"]
+          and TODO_KEY not in json.loads(SETTINGS.read_text())["env"], (r.stdout + r.stderr)[-2000:])
+    r = sh(*VALUES)
+    check("  … and the real block, after both REDs, sets the key and passes its own check",
+          r.returncode == 0 and json.loads(SETTINGS.read_text())["env"].get(TODO_KEY) == "1", r.stdout[-2000:])
+    BOARD_ANSWER[:] = [503, {"error": "down"}]
+    r = red_run("outage-undeclares", lambda t: t.replace(
+        '    if (held) out = held;\n    console.log("kept: "', '    if (held) rewrite(c, null);\n    console.log("kept: "'))
+    check("RED: a board-identity block that undeclares on an outage loses the seat's declaration",
+          "board_user_id" not in json.loads(CFG.read_text()), (r.stdout + r.stderr)[-2000:])
+    BOARD_ANSWER[:] = [200, {"data": {"id": 15}}]
+    r = sh(*VALUES)
+    check("  … and the real block, the board answering again, declares it once more",
+          r.returncode == 0 and json.loads(CFG.read_text()).get("board_user_id") == 15, r.stdout[-2000:])
 finally:
     reap()
 
 # ── 4. the token, in every output ────────────────────────────────────────────────────────────────
 print("== 4. the token in the outputs, and what this run leaves behind ==")
-check("no output of any run printed either token", not any(t in o for o in OUTPUTS for t in (TOKEN, TOKEN2)))
+check("no output of any run printed either token, or the seat's kanban credential",
+      not any(t in o for o in OUTPUTS for t in (TOKEN, TOKEN2, BOARD_TOKEN)))
 check("every flusher this run started is stopped", our_flushers() == [], str(our_flushers()))
 check("the real crontab is what it was before the run (read with `crontab -l` only)", real_crontab_md5() == REAL_BEFORE)
 shutil.rmtree(TMP, ignore_errors=True)

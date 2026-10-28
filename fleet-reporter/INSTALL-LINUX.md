@@ -103,7 +103,8 @@ config to read, and nothing is installed until it is:
    prerequisites line, installs nothing, prints the command for step 2 with this run's values, and exits
    `3`. `<url>` is the site's address, `https://<host>`, or its ingest URL; the script appends
    `/api/ingest/events` to an address. `--install-id` defaults to this account's name, as a slug.
-2. `install.sh --set-token` with the same values: Step 0, Step 2's values block and writer, then
+2. `install.sh --set-token` with the same values: Step 0, Step 2's values block, resolver, board-identity
+   block and writer, then
    [(a′)'s hidden prompt](#when-the-token-is-issued-on-the-sites-seat-tokens-page), (c) and (d), then
    Step 3. A token file already at `~/.config/fleet-reporter/mezzanine-reporter-token`, which
    [the hand delivery](#when-the-server-is-on-another-host-carry-the-token-in-one-named-file) carries, is
@@ -112,8 +113,10 @@ config to read, and nothing is installed until it is:
    With no terminal to read from, it refuses before it writes anything, and names the command to run in
    one.
 3. `install.sh` with the same values, or none: Step 0; U1, and Step 1 when the seat's artifact is absent
-   or differs from the checkout's; Step 4 (a); Step 5's block; the read-only check under U6 of what the
-   running flusher runs, and U6 when it runs an older build than the installed artifact, so a run that
+   or differs from the checkout's; Step 2's board-identity block (card#12447), whose rewrite of the config owes
+   U6; Step 4 (a) and (c); Step 5's block; the read-only check under U6 of what the
+   running flusher runs, and U6 when it runs an older build than the installed artifact or the board-identity
+   block rewrote the config, so a run that
    installed the artifact and failed before U6 is finished by the next; Step 3; Step 6, U8, and [Step 7's arrival check](#step-7--verify-that-events-arrive);
    then, when the run changed anything, Step 5's check of who started the flusher, which it reports and
    does not judge (a flusher a hook started holds the same lock, as that check says).
@@ -122,7 +125,8 @@ config to read, and nothing is installed until it is:
 clone, or a `git pull` of the checkout), run 3 is [Upgrading an existing seat](#upgrading-an-existing-seat)
 U0 to U8 for the touches `artifact`, `fixtures`, `hooks` and `cron`. A row's `config` touch is still
 applied by hand, with the command the row names. A run that changes nothing writes nothing: U1 prints
-`NO-OP`, Step 4 (a) prints `already wired: nothing applied` and Step 5 prints `crontab already current`,
+`NO-OP`, Step 2's board-identity block prints `board identity: unchanged`, Step 4 (a) prints `already
+wired: nothing applied`, (c) prints `… : unchanged` and Step 5 prints `crontab already current`,
 so `settings.json`, the crontab, the artifact and the config keep their bytes and their mtimes and the
 flusher is not restarted. The checks still run, and the run then removes the attempt directory its Step 0
 made, which holds copies of a state it did not change. A run whose config names another `install_id`,
@@ -394,6 +398,165 @@ SH
 On the sandbox it printed `mezzanine`. The seat declares `mezzanine`, so the check is `checked`.
 Declaring `mezzanine-solo` would have been `disagreed`.
 
+**Declare the seat's board user** (card#12447, D1 § 3.1's *`board_user_id` and `board_api_base`*). The
+operator ruled that linking an agent to its board user happens automatically when the seat is set up, so
+the install asks the board *who am I* with the seat's own kanban credential and writes the answer into the
+config; the seat then declares it on every heartbeat, and the site's board poll checks it against the board
+before it maps the desk (`docs/design/BOARD-TASK.md § 4.4`). The block reads the kanban API base from the
+coordination config `$COORD_CONFIG` names (the resolver above, then the home path), as `kanban.base_url`
+joined to `api/v3` with exactly one `/`, and the credential from that framework's credential store
+(`$COORD_CREDENTIALS`, else `~/.config/coord/credentials.ini`): its `[kanban] api_token_file` pointer, the
+one `kbcard` discovers. It never reads the kanban read variable a seat exports into its sessions, which the
+board refuses on this endpoint (D1 § 3.1), and it prints no token, no pointer and no response body.
+
+It is re-run on **every** `install.sh` run, upgrades included, and it decides by what it can read:
+
+| It finds | It prints | The config |
+|---|---|---|
+| a `200` from `GET /users/current.json` with an integer `data.id` | `board user <id> on <scheme://host>`, then `: board identity: unchanged`, `: written to …` or `: the config writer takes it` | gains or keeps `board_user_id` and `board_api_base`; a different answer rewrites them |
+| no coordination config, no `kanban.base_url`, no credential store, or a store read whole that names no `[kanban] api_token_file` | `undeclared: this seat has no board credential (<why>)` | both keys removed when present — the seat takes the to-do tier instead |
+| anything else — the board unreachable, a non-`200`, no integer `data.id`, a store that cannot be read | `kept: <why> — …: board identity: unchanged` | unchanged: an outage does not undeclare a seat |
+
+`--no-board` (an `install.sh` flag; `FR_NO_BOARD=1` by hand) declares nothing, as the second row. A rewrite
+goes through the writer's own route — a `0600` temp file beside the config, checked with the installed
+reporter's `loadConfig`, renamed into place — and the flusher reads the config only when it starts, so
+`install.sh` restarts it (U6) after a rewrite. The last line exports `SEAT_BOARD_USER` and `SEAT_BOARD_BASE`
+into this shell for the writer below, which puts them into a fresh config.
+
+<!-- install.sh: run board-identity -->
+```bash
+bash -euo pipefail <<'SH'
+  cat > "$B/board-identity.js" <<'JS'
+const fs = require("fs"), path = require("path"), os = require("os");
+const e = process.env;
+const die = (why) => { console.error(why + ": NOTHING WRITTEN"); process.exit(1); };
+for (const k of ["FR_COORD", "FR_CONFIG", "FR_OUT"]) if (!e[k]) die(k + " is not set");
+const MAX_ID = 4294967295, home = os.homedir();
+const expand = (p) => (p === "~" ? home : p.startsWith("~/") ? path.join(home, p.slice(2)) : p);
+const shown = (base) => { try { const u = new URL(base); return u.protocol + "//" + u.host; } catch (err) { return "<unparseable base>"; } };
+// The coordination framework's kanban API base: `kanban.base_url` of the config `$COORD_CONFIG` names, joined to
+// `api/v3` with exactly one `/` unless it already ends there. No config, or none naming a base: no board here.
+function apiBase() {
+  let c;
+  try { c = JSON.parse(fs.readFileSync(e.FR_COORD, "utf8")); } catch (err) { return { none: err.code === "ENOENT" ? "no coordination config" : null, fail: err.code === "ENOENT" ? null : "coordination config unreadable" }; }
+  const b = c && c.kanban && typeof c.kanban.base_url === "string" ? c.kanban.base_url.trim().replace(/\/+$/, "") : "";
+  if (!b) return { none: "the coordination config names no kanban.base_url" };
+  const base = /\/api\/v3$/.test(b) ? b : b + "/api/v3";
+  let u = null;
+  try { u = new URL(base); } catch (err) { u = null; }
+  if (!u || u.protocol !== "https:" || u.username || u.password || Buffer.byteLength(base) > 256) return { fail: "the kanban base is not an https:// URL of at most 256 B with no userinfo" };
+  return { base };
+}
+// The credential store's `[kanban] api_token_file` POINTER — never an inline token, never the exported read variable,
+// which the board refuses on this endpoint. Absent store, or a store read whole that names no pointer: no credential.
+function pointer() {
+  const store = e.COORD_CREDENTIALS || path.join(home, ".config", "coord", "credentials.ini");
+  let text;
+  try { text = fs.readFileSync(store, "utf8"); } catch (err) { return err.code === "ENOENT" ? { none: "no coordination credential store" } : { fail: "the credential store is unreadable" }; }
+  let sec = null; const found = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const l = raw.trim();
+    if (!l || l[0] === "#" || l[0] === ";") continue;
+    if (l[0] === "[") { const p = l.lastIndexOf("]"); sec = p > 0 ? l.slice(1, p) : ""; continue; }
+    if (sec !== "kanban") continue;
+    const at = [l.indexOf("="), l.indexOf(":")].filter((x) => x > 0);
+    if (!at.length) continue;
+    const d = Math.min(...at);
+    if (l.slice(0, d).trim().toLowerCase() === "api_token_file" && l.slice(d + 1).trim()) found.push(l.slice(d + 1).trim());
+  }
+  if (found.length > 1) return { fail: "the credential store declares [kanban] api_token_file more than once" };
+  return found.length ? { file: expand(found[0]) } : { none: "the credential store names no [kanban] api_token_file" };
+}
+// `GET /users/current.json` under the seat's own credential: who this seat is on its board. The token rides a header
+// and nothing here prints it, a response body, or an exception message (which can carry the request).
+function whoami(base, token) {
+  return new Promise((resolve) => {
+    let done = false;
+    const end = (v) => { if (!done) { done = true; resolve(v); } };
+    let req;
+    try {
+      req = require("https").get(base + "/users/current.json", { headers: { Authorization: "Bearer " + token, Accept: "application/json" }, timeout: 20000 }, (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (d) => { if (body.length < 65536) body += d; });
+        res.on("end", () => {
+          if (res.statusCode !== 200) return end({ fail: "the board answered " + res.statusCode });
+          let id = null;
+          try { const j = JSON.parse(body); id = j && j.data ? j.data.id : null; } catch (err) { id = null; }
+          end(Number.isInteger(id) && id >= 1 && id <= MAX_ID ? { id } : { fail: "the board's answer carries no integer data.id" });
+        });
+        res.on("error", () => end({ fail: "the board's answer was cut off" }));
+      });
+    } catch (err) { return end({ fail: "the request could not be made" }); }
+    req.on("timeout", () => { req.destroy(); end({ fail: "the board did not answer in 20 s" }); });
+    req.on("error", () => end({ fail: "the board is unreachable" }));
+  });
+}
+async function resolveBoard() {
+  if (e.FR_NO_BOARD) return { none: "--no-board" };
+  const a = apiBase();
+  if (!a.base) return a;
+  const p = pointer();
+  if (!p.file) return p;
+  let token;
+  try { token = fs.readFileSync(p.file, "utf8").trim(); } catch (err) { return { fail: "the credential store's token file is unreadable" }; }
+  if (!/^[\x21-\x7E]+$/.test(token)) return { fail: "the credential store's token file holds no usable token" };
+  const w = await whoami(a.base, token);
+  return w.id ? { id: w.id, base: a.base } : w;
+}
+// Rewrite the two keys of an EXISTING config: a 0600 temp file beside it, flushed, checked with the installed
+// reporter's own loadConfig, renamed into place — the writer's own route, so a failed write leaves the config as it was.
+function rewrite(c, decl) {
+  delete c.board_user_id; delete c.board_api_base;
+  if (decl) { c.board_user_id = decl.id; c.board_api_base = decl.base; }
+  const f = e.FR_CONFIG, tmp = path.join(path.dirname(f), "." + path.basename(f) + "." + process.pid + ".tmp");
+  try {
+    const fd = fs.openSync(tmp, "wx", 0o600);
+    try { fs.writeSync(fd, JSON.stringify(c, null, 2) + "\n"); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    if (e.FR_REPORTER && fs.existsSync(e.FR_REPORTER)) {
+      const m = require(path.resolve(e.FR_REPORTER)), errs = m.allConfigErrors(m.loadConfig(tmp));
+      if (errs.length) throw new Error("the result does not validate: " + errs.join("; "));
+    }
+    fs.renameSync(tmp, f);
+  } catch (err) { try { fs.unlinkSync(tmp); } catch (e2) {} die("could not rewrite " + f + " (" + (err.code || err.message) + ")"); }
+}
+(async () => {
+  const r = await resolveBoard();
+  let c = null;
+  if (fs.existsSync(e.FR_CONFIG)) {
+    try { c = JSON.parse(fs.readFileSync(e.FR_CONFIG, "utf8")); } catch (err) { die("cannot read " + e.FR_CONFIG + " as JSON"); }
+  }
+  const held = c && c.board_user_id !== undefined && c.board_user_id !== null ? { id: c.board_user_id, base: c.board_api_base } : null;
+  let out = { id: "", base: "" };
+  if (r.id) {
+    out = r;
+    const say = "board user " + r.id + " on " + shown(r.base);
+    if (!c) console.log(say + ": the config writer takes it");
+    else if (held && held.id === r.id && held.base === r.base) console.log(say + ": board identity: unchanged");
+    else { rewrite(c, r); console.log(say + ": written to " + e.FR_CONFIG + " — the flusher reads it at its next start"); }
+  } else if (r.none) {
+    if (held) { rewrite(c, null); console.log("undeclared: this seat has no board credential (" + r.none + "): the declaration is cleared from " + e.FR_CONFIG); }
+    else console.log("undeclared: this seat has no board credential (" + r.none + "): board identity: unchanged");
+  } else {
+    if (held) out = held;
+    console.log("kept: " + r.fail + " — " + (held ? "the declaration the config holds stands" : "nothing is declared") + ": board identity: unchanged");
+  }
+  fs.writeFileSync(e.FR_OUT, String(out.id) + "\n" + String(out.base) + "\n", { mode: 0o600 });
+})();
+JS
+  node --check "$B/board-identity.js"
+  CC=$(node "$B/coord-config.js" "${WIN_UP:-$HOME}/.claude/settings.json" "${WIN_UP:-$HOME}/.claude/settings.local.json")
+  FR_COORD="${CC:-$HOME/.config/coord/coordination.config.json}" FR_CONFIG="${WIN_C:-$HOME/.config/fleet-reporter}/config.json" FR_REPORTER="${WIN_I:-$HOME/.local/share/fleet-reporter}/fleet-reporter.js" FR_OUT="$B/board-identity.vals" node "$B/board-identity.js"
+SH
+export SEAT_BOARD_USER SEAT_BOARD_BASE; SEAT_BOARD_USER=$(sed -n 1p "$B/board-identity.vals"); SEAT_BOARD_BASE=$(sed -n 2p "$B/board-identity.vals")
+```
+
+*Check:* one of the three lines above. On this project's seat on 2026-10-28 the block's script, run
+against a scratch config with the seat's real coordination config and credential store, printed
+`board user <the seat's id> on https://<its kanban host>: written to …`, then `… : board identity:
+unchanged` on a second run, and `--no-board` cleared both keys; the installer's selftest drives the
+three rows against a TLS stub of the board (`fleet-reporter/install.selftest.py`).
+
 **The token is a credential, and it must never reach a terminal, an argv, a shell history or a log.**
 `mezzanine:ingest-token:issue` prints the plaintext once and stores only its SHA-256 (the site's *Seat
 tokens* page performs the same act and shows it once, in the browser). So the issue
@@ -411,7 +574,7 @@ const e = process.env, out = [], TOKEN = /^\s*token\s+(mzn_[A-Za-z0-9_-]{43})\s*
 const FILE_TOKEN = /^mzn_[A-Za-z0-9_-]{43}\n?$/;
 const DESCRIPTORS = e.FR_DESCRIPTORS || "full";
 const TRANSPORT = ["ingest_url", "token", "ca_file", "proxy_url"];
-const SEAT_KEYS = ["FR_INSTALL", "FR_SEAT", "FR_SPOOL", "FR_AGENT", "FR_WRAPPED", "FR_DESCRIPTORS"];
+const SEAT_KEYS = ["FR_INSTALL", "FR_SEAT", "FR_SPOOL", "FR_AGENT", "FR_WRAPPED", "FR_DESCRIPTORS", "FR_BOARD_USER", "FR_BOARD_BASE"];
 const MODE = e.FR_MODE || "";
 const die = (why) => { console.error(why + ": NOTHING WRITTEN"); process.exit(1); };
 if (!["", "add-site", "set-token"].includes(MODE)) die("FR_MODE must be add-site or set-token, or unset");
@@ -419,6 +582,10 @@ if (!["full", "paths", "none"].includes(DESCRIPTORS)) die("FR_DESCRIPTORS must b
 for (const k of ["FR_TOKEN_FILE", "FR_TOKEN_OUT"]) if (k in e && !e[k]) die(k + " is set but empty");
 if (e.FR_TOKEN_FILE && e.FR_TOKEN_OUT) die("FR_TOKEN_FILE and FR_TOKEN_OUT are two different steps; set one");
 if (e.FR_CA_FILE && !path.isAbsolute(e.FR_CA_FILE)) die("FR_CA_FILE must be an absolute path");
+// The board declaration (card#12447): both or neither, the id a positive integer within INT UNSIGNED. Empty is unset,
+// which is what the board-identity block exports for an undeclared seat.
+if (!e.FR_BOARD_USER !== !e.FR_BOARD_BASE) die("FR_BOARD_USER and FR_BOARD_BASE are a pair: set both or neither");
+if (e.FR_BOARD_USER && !(/^[1-9][0-9]{0,9}$/.test(e.FR_BOARD_USER) && Number(e.FR_BOARD_USER) <= 4294967295)) die("FR_BOARD_USER must be a positive integer board user id");
 if (MODE) {
   // The two modes change `sites` and nothing else: the seat's keys come from the file.
   for (const k of SEAT_KEYS) if (k in e) die(k + " is set, and FR_MODE=" + MODE + " takes the seat's keys from the file");
@@ -447,6 +614,7 @@ function writeConfig(token) {
     install_id: e.FR_INSTALL, seat_id: e.FR_SEAT, spool_dir: e.FR_SPOOL,
     wrapped_statusline: e.FR_WRAPPED || null, protocol_agent_name: e.FR_AGENT || null,
     descriptors: DESCRIPTORS, enabled: true,
+    ...(e.FR_BOARD_USER ? { board_user_id: Number(e.FR_BOARD_USER), board_api_base: e.FR_BOARD_BASE } : {}),
     sites: [siteOf(e.FR_SITE_NAME || "default", e.FR_URL, token)],
   };
   fs.mkdirSync(path.dirname(e.FR_CONFIG), { recursive: true, mode: 0o700 });
@@ -595,7 +763,7 @@ bash -euo pipefail <<'SH'
   for v in SEAT_INSTALL_ID SEAT_ID SEAT_URL SEAT_BY SEAT_SERVER; do [ -n "${!v:-}" ] || { echo "$v is not set: run the values block at the top of Step 2 first: NOTHING RUN" >&2; exit 1; }; done
   : "${SEAT_AGENT?is not set: run the values block at the top of Step 2 first}" "${SEAT_WRAPPED?is not set: run the values block at the top of Step 2 first}"
   cd "$SEAT_SERVER"
-  php artisan mezzanine:ingest-token:issue "$SEAT_INSTALL_ID" "$SEAT_ID" --by="$SEAT_BY" < /dev/null 2>&1 | FR_CONFIG=$HOME/.config/fleet-reporter/config.json FR_INSTALL="$SEAT_INSTALL_ID" FR_SEAT="$SEAT_ID" FR_URL="$SEAT_URL" FR_SPOOL=$HOME/.local/state/fleet-reporter FR_AGENT="$SEAT_AGENT" FR_WRAPPED="$SEAT_WRAPPED" node "$B/write-config.js"
+  php artisan mezzanine:ingest-token:issue "$SEAT_INSTALL_ID" "$SEAT_ID" --by="$SEAT_BY" < /dev/null 2>&1 | FR_CONFIG=$HOME/.config/fleet-reporter/config.json FR_INSTALL="$SEAT_INSTALL_ID" FR_SEAT="$SEAT_ID" FR_URL="$SEAT_URL" FR_SPOOL=$HOME/.local/state/fleet-reporter FR_AGENT="$SEAT_AGENT" FR_WRAPPED="$SEAT_WRAPPED" FR_BOARD_USER="${SEAT_BOARD_USER:-}" FR_BOARD_BASE="${SEAT_BOARD_BASE:-}" node "$B/write-config.js"
 SH
 echo "pipeline rc=$?"
 ```
@@ -785,7 +953,7 @@ bash -euo pipefail <<'SH'
   else { [ -O "$B" ] && [ "$(stat -c %a "$B")" = 700 ] && [ -f "$B/write-config.js" ] && [ -O "$B/write-config.js" ]; } || { echo "\$B is not the seat's own 0700 directory holding its writer: NOTHING RUN" >&2; exit 1; }; fi
   for v in SEAT_INSTALL_ID SEAT_ID SEAT_URL; do [ -n "${!v:-}" ] || { echo "$v is not set: run the values block at the top of Step 2 first: NOTHING RUN" >&2; exit 1; }; done
   : "${SEAT_AGENT?is not set: run the values block at the top of Step 2 first}" "${SEAT_WRAPPED?is not set: run the values block at the top of Step 2 first}"
-  FR_TOKEN_FILE="${WIN_C:-$HOME/.config/fleet-reporter}/mezzanine-reporter-token" FR_CONFIG="${WIN_C:-$HOME/.config/fleet-reporter}/config.json" FR_INSTALL="$SEAT_INSTALL_ID" FR_SEAT="$SEAT_ID" FR_URL="$SEAT_URL" FR_SPOOL="${WIN_SPOOL:-$HOME/.local/state/fleet-reporter}" FR_AGENT="$SEAT_AGENT" FR_WRAPPED="$SEAT_WRAPPED" FR_DESCRIPTORS="${FR_DESCRIPTORS:-full}" node "$B/write-config.js"
+  FR_TOKEN_FILE="${WIN_C:-$HOME/.config/fleet-reporter}/mezzanine-reporter-token" FR_CONFIG="${WIN_C:-$HOME/.config/fleet-reporter}/config.json" FR_INSTALL="$SEAT_INSTALL_ID" FR_SEAT="$SEAT_ID" FR_URL="$SEAT_URL" FR_SPOOL="${WIN_SPOOL:-$HOME/.local/state/fleet-reporter}" FR_AGENT="$SEAT_AGENT" FR_WRAPPED="$SEAT_WRAPPED" FR_DESCRIPTORS="${FR_DESCRIPTORS:-full}" FR_BOARD_USER="${SEAT_BOARD_USER:-}" FR_BOARD_BASE="${SEAT_BOARD_BASE:-}" node "$B/write-config.js"
 SH
 echo "pipeline rc=$?"
 ```
@@ -951,6 +1119,20 @@ each script: an edit to one is made to the other.
 bash -euo pipefail <<'SH'
   cat > "$B/wire-hooks.js" <<'JS'
 const fs = require("fs"), path = require("path");
+// Step 4 (c), card#12447: one more mode of THIS pipeline, not a second writer of settings.json. It copies the input
+// and sets `env.CLAUDE_CODE_ENABLE_TODO_TOOLS` to "1" when the key is absent, and changes nothing else; a key that is
+// present, whatever its value, is copied byte for byte. An `env` that is present and not an object is refused.
+if (process.argv[2] === "--todo-tools") {
+  const [tsrc, tdst] = process.argv.slice(3);
+  if (!tsrc || !tdst) { console.error("usage: node wire-hooks.js --todo-tools <settings.json> <output>: NOTHING WRITTEN"); process.exit(2); }
+  const t = JSON.parse(fs.readFileSync(tsrc, "utf8"));
+  if (t.env !== undefined && (t.env === null || typeof t.env !== "object" || Array.isArray(t.env))) { console.error("env in " + tsrc + " is not an object: NOTHING WRITTEN"); process.exit(1); }
+  if (t.env && Object.prototype.hasOwnProperty.call(t.env, "CLAUDE_CODE_ENABLE_TODO_TOOLS")) fs.copyFileSync(tsrc, tdst);
+  else { t.env = Object.assign({}, t.env || {}, { CLAUDE_CODE_ENABLE_TODO_TOOLS: "1" }); fs.writeFileSync(tdst, JSON.stringify(t, null, 2) + "\n"); }
+  JSON.parse(fs.readFileSync(tdst, "utf8"));
+  console.log("valid JSON staged in " + tdst);
+  process.exit(0);
+}
 const [src, dst, js, prior] = process.argv.slice(2);
 if (!src || !dst || !js) { console.error("usage: node wire-hooks.js <settings.json> <output> <fleet-reporter.js> [<prior statusLine command>]: NOTHING WRITTEN"); process.exit(2); }
 // Windows: the path is quoted, for a profile folder with a space, and must be in forward-slash form so the JSON
@@ -992,6 +1174,20 @@ console.log("valid JSON written to " + dst + "; added: " + (added.join(", ") || 
 JS
   cat > "$B/check-preserved.js" <<'JS'
 const fs = require("fs");
+// Step 4 (c)'s rule, card#12447: between the two files ONLY `env.CLAUDE_CODE_ENABLE_TODO_TOOLS` may differ, and only
+// by being ADDED as "1" — so the control that reds when a hook disappears also reds when (c) touches anything else.
+if (process.argv[2] === "--todo-tools") {
+  const K = "CLAUDE_CODE_ENABLE_TODO_TOOLS", [tb, ta] = process.argv.slice(3);
+  if (!tb || !ta) { console.error("usage: node check-preserved.js --todo-tools <before.json> <after.json>: NOTHING CHECKED"); process.exit(2); }
+  const a = JSON.parse(fs.readFileSync(tb, "utf8")), b = JSON.parse(fs.readFileSync(ta, "utf8"));
+  const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+  const had = !!a.env && Object.prototype.hasOwnProperty.call(a.env, K);
+  let ok = had ? same(a, b) : !!b.env && b.env[K] === "1";
+  if (ok && !had) { const c = JSON.parse(JSON.stringify(b)); delete c.env[K]; if (a.env === undefined && !Object.keys(c.env).length) delete c.env; ok = same(a, c); }
+  if (!ok) { console.error("NOT PRESERVED: between the two files only env." + K + " may differ, and only by being added as \"1\""); process.exit(1); }
+  console.log(had ? "env." + K + " was already present: the files are the same" : "only env." + K + " differs, added as \"1\"");
+  process.exit(0);
+}
 const [before, after, js] = process.argv.slice(2);
 if (!before || !after || !js) { console.error("usage: node check-preserved.js <before.json> <after.json> <fleet-reporter.js>: NOTHING CHECKED"); process.exit(2); }
 // The same quoting rule as wire-hooks.js, kept identical to it there (card#12335).
@@ -1085,7 +1281,7 @@ time minus the sensor's time in the table. Claude Code cancels a status-line scr
 arrives, so under rapid renders the sensor's file can lag, and the coord framework's context budget
 reads that file.
 
-### (c) ⏳ the to-do tools — designed for card#12447 (2026-10-27), not built
+### (c) the to-do tools (card#12447)
 
 **The operator's ruling, verbatim (2026-10-27): *"this should be checked and set as part of the
 mezzanine reporter installation."*** The desk's thought bubble shows the agent's in-progress to-do
@@ -1116,7 +1312,7 @@ change the run must restart anything for; `set` records itself in
 `~/.config/fleet-reporter/todo-tools-set` — one line, the date — which is what lets Step 8 know the
 key was this install's to remove.
 
-<!-- install.sh: skip — designed for card#12447 and not built; install.sh runs it as `todo-tools` once the build adds the block to MZI_BLOCKS, with `todo-tools|: unchanged` among its markers -->
+<!-- install.sh: run todo-tools -->
 ```bash
 bash -euo pipefail <<'SH'
   S=$HOME/.claude/settings.json
@@ -1143,16 +1339,16 @@ so a project that sets the key to another value keeps its own answer in that pro
 neither reads nor edits those files — the user-level file is the one the reporter's install owns. ⚠
 **A session started before this block ran keeps the tool set it started with**, exactly as (a)'s hooks
 do; the desk shows a to-do from the next session on. The `descriptors` key is unrelated: it decides
-what the reporter *sends*, this decides what the harness *provides*. **A build-time measurement is
-owed before the block is trusted**: a headless session on a current model started with the variable
-unset in its shell and set only in a `--settings` file's `env` block, driven as `docs/design/EVENT-SCHEMA.md
-§ 6.0`'s capture was, whose hooks then carry a `TaskCreate` or `TodoWrite` — the measurement that the
-settings `env` block alone provides the tools, which this page cites from the reference and has not
-run. **Step 8's uninstall removes the key only when `~/.config/fleet-reporter/todo-tools-set` says
+what the reporter *sends*, this decides what the harness *provides*. ⚠ **Not measured, and owed:** that a settings
+file's `env` block ALONE provides the tools — a headless session on a current model started with the
+variable unset in its shell and set only in a `--settings` file's `env` block, driven as
+`docs/design/EVENT-SCHEMA.md § 6.0`'s capture was, whose hooks then carry a `TaskCreate` or `TodoWrite`.
+This page cites it from the reference, and card#12447's build did not run it; until it is run, a seat on
+a current model whose desk never shows a to-do title is the observable. **Step 8's uninstall removes the key only when `~/.config/fleet-reporter/todo-tools-set` says
 this install set it**, and then removes that file; a key the account carried before the install, or
 set by anyone else, is left.
 
-## Step 5 — supervise the flusher from the user crontab## Step 5 — supervise the flusher from the user crontab
+## Step 5 — supervise the flusher from the user crontab
 
 This step writes a marked block **outside** `bin/supervision.sh`'s `# BEGIN/END mezzanine-supervision`
 block, and never edits that one. It is also the step you re-run when a value in the start line
@@ -1724,7 +1920,9 @@ applied`, which is the same check.
 **U5 — the crontab, when a row lists `cron`, and the config, when a row lists `config`.** For `cron`, run
 [Step 5](#step-5--supervise-the-flusher-from-the-user-crontab)'s write block. *Check:* it prints the
 diff and `installed: <md5>`, or `crontab already current`. For `config`, make the change the row names
-with the command it names (Step 2's writer or Step 3's one-key rewrite). *Check:* Step 3's printer shows
+with the command it names (Step 2's writer or Step 3's one-key rewrite); a row that names a block — `0.5.0`'s
+Step 2 `board-identity` and Step 4 (c) `todo-tools` — is applied by running that block, which `install.sh`
+does on every run. *Check:* Step 3's printer shows
 the new value, and [Step 6](#step-6--selftest) passes `config_readable`. The flusher reads its config only when it
 starts, so U6's restart applies the change.
 
@@ -1896,7 +2094,15 @@ the pre-hooks `settings.json`, and `20260913T193245Z` for item 2, the crontab. I
    `cp -p "$B/settings.json" "$HOME/.claude/settings.json" && node -e 'JSON.parse(require("fs").readFileSync(process.env.HOME + "/.claude/settings.json","utf8")); console.log("valid JSON")'`.
    If something else has changed it, remove only the entries whose command contains
    `share/fleet-reporter/fleet-reporter.js`. If Step 4(b) was applied, also set `statusLine.command`
-   back to the config's `wrapped_statusline`.
+   back to the config's `wrapped_statusline`. **The to-do tools key** (Step 4 (c), card#12447) goes only
+   when `~/.config/fleet-reporter/todo-tools-set` says this install set it — a key the account carried
+   before the install, or one set by anyone else, is left — and only while it still holds `"1"`; the
+   command writes a temp file beside the real path and renames it onto `realpath`'s answer, as (c) does:
+
+<!-- install.sh: skip — uninstall is by hand -->
+```bash
+FR_S=$HOME/.claude/settings.json FR_MARK=$HOME/.config/fleet-reporter/todo-tools-set node -e 'const fs=require("fs"),path=require("path"),K="CLAUDE_CODE_ENABLE_TODO_TOOLS",m=process.env.FR_MARK,f=process.env.FR_S; if (!fs.existsSync(m)) { console.log(K+": this install did not set it: left"); process.exit(0); } const real=fs.realpathSync(f), s=JSON.parse(fs.readFileSync(real,"utf8")); if (s.env && s.env[K]==="1") { delete s.env[K]; if (!Object.keys(s.env).length) delete s.env; const t=path.join(path.dirname(real),"."+path.basename(real)+"."+process.pid+".tmp"); fs.writeFileSync(t, JSON.stringify(s,null,2)+"\n", {mode:0o600}); fs.renameSync(t, real); console.log(K+": removed from "+real); } else console.log(K+": no longer \"1\": left"); fs.unlinkSync(m)'
+```
 2. **Remove the crontab block**, and nothing else, with the block below. It is staged in `$B` and
    installed only if the `diff` against Step 0's backup is empty. A result with no line left removes the
    crontab (`crontab -r`), which is the state of a seat that had none at Step 0; a seat that has no

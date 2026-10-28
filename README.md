@@ -359,12 +359,24 @@ operator's:
 2. **Set the three keys in `server/.env`** and refresh the config cache: `BOARD_API_BASE` (https, no
    trailing slash, e.g. `https://<kanban-host>/api/v3`), `BOARD_API_TOKEN`, and `BOARD_IDS` (a
    comma-separated list of board ids). With `BOARD_IDS` empty the poller does nothing.
-3. **Map each seat to its board user:**
+3. **Nothing per seat, usually** (card#12447). A seat whose reporter install found its own kanban
+   credential declares its board user on every heartbeat, and the poll's link pass maps it after
+   checking the declaration against this server's `BOARD_API_BASE` and the boards' members
+   (`docs/design/BOARD-TASK.md § 4.4`). The command is the operator's override — a pin that the pass
+   never changes, a refusal for a seat whose declaration must not be honoured, and a clear that hands
+   the seat back to its declaration:
 
 ```sh
-php artisan mezzanine:seat-board-user --seat=<install>/<seat> --board-user=<board user id>
-php artisan mezzanine:seat-board-user --seat=<install>/<seat> --clear
+php artisan mezzanine:seat-board-user --seat=<install>/<seat> --board-user=<board user id>   # pin
+php artisan mezzanine:seat-board-user --seat=<install>/<seat> --refuse                       # refuse its declaration
+php artisan mezzanine:seat-board-user --seat=<install>/<seat> --clear                        # back to automatic
 ```
+
+   A seat's detail counts why a declaring seat is not linked: `board_link_conflict` (another seat holds
+   or declares the same user — one log line names both seats), `board_link_unknown_user`,
+   `board_link_human_account` (the board marks the account `human`, not `service`), and
+   `board_link_site_mismatch`; `board_link_failed` on `GET /api/fleet/health` counts a members read the
+   pass could not use. A seat with no board shows its in-progress to-do in the bubble instead.
 
 `mezzanine:board-poll` then runs every five minutes from the existing `schedule:run` crontab entry,
 so `bin/supervision.sh` needs no change. A desk shows the most recently updated card assigned to its

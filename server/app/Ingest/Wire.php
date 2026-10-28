@@ -71,6 +71,15 @@ final class Wire
     /** D1 § 6.5: the literal a `tool_name` that failed its pattern is sent as. */
     public const INVALID_TOOL_NAME = 'INVALID_TOOL_NAME';
 
+    /**
+     * D1 § 6.14's `board_fingerprint` (card#12447) — 16 lowercase hex, the first 16 of a SHA-256 over the
+     * seat's normalized board API base; D2 § 6.4 stores it in an ASCII `CHAR(16)`.
+     */
+    public const BOARD_FINGERPRINT = '[0-9a-f]{16}';
+
+    /** D2 § 6.4's `seats.board_user_id INT UNSIGNED` — the width D1 § 3.1 bounds `board_user_id` to. */
+    public const BOARD_USER_MAX = 4_294_967_295;
+
     /** D1 § 6.7's `subagent_type` — `^[A-Za-z0-9_-]+$`, ≤ 32 B. */
     public const SUBAGENT_TYPE = '[A-Za-z0-9_-]{1,32}';
 

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Board;
 
 use App\Board\BoardPoll;
+use App\Board\LinkPass;
 use App\Fold\Clock;
 use App\Read\SeatObject;
 use Illuminate\Http\Client\Request;
@@ -24,8 +25,9 @@ use Tests\Feature\Sweep\SweepTestCase;
  * the request it made. The one path that needs a REAL transport failure (AT-D4-3's refused
  * connection) gets one: `refusingBase()` names a local port nothing listens on.
  *
- * ⛔ THE MAPPING IS MADE BY `mezzanine:seat-board-user`, the column's only writer — never an
- * UPDATE. The command is part of what these tests exercise.
+ * ⛔ A MAPPING IS MADE BY ONE OF THE COLUMN'S TWO WRITERS — `mezzanine:seat-board-user` (the pin) or the
+ * board poll's link pass from a folded declaration (`declare()`, card#12447) — never an UPDATE. Both are part
+ * of what these tests exercise.
  */
 abstract class BoardTaskTestCase extends SweepTestCase
 {
@@ -100,6 +102,17 @@ abstract class BoardTaskTestCase extends SweepTestCase
                 return is_callable($answer) ? $answer($request) : Http::response($answer[1], $answer[0]);
             }
 
+            // § 6.6 (card#12447): the link pass's members read, answered from `$this->members`.
+            if (preg_match('#/boards/([0-9]+)/members\.json$#', (string) parse_url($request->url(), PHP_URL_PATH), $m) === 1) {
+                $answer = $this->members[(int) $m[1]] ?? [404, '{"error":"no such board"}'];
+
+                if (is_array($answer) && array_is_list($answer) && count($answer) === 2 && is_int($answer[0])) {
+                    return Http::response($answer[1], $answer[0]);
+                }
+
+                return Http::response(json_encode($answer), 200);
+            }
+
             parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $q);
             $board = (int) substr((string) ($q['q'] ?? ''), strlen('board_id='));
             $answer = $this->pages[$board][(int) ($q['page'] ?? 0)] ?? [404, '{"error":"no such page"}'];
@@ -110,6 +123,59 @@ abstract class BoardTaskTestCase extends SweepTestCase
 
             return Http::response(json_encode($answer), 200);
         }]);
+    }
+
+    /**
+     * What the faked board answers to `GET /boards/{id}/members.json` (§ 6.6, card#12447): `[board] => body`
+     * (an array, json-encoded) or a `[status, raw body]` pair. A board not listed answers `404`.
+     *
+     * @var array<int, mixed>
+     */
+    protected array $members = [];
+
+    /** One member object in the measured shape (§ 6.6): `{"data": [...]}`, no `meta`. */
+    protected function member(int $user, string $accountType = LinkPass::AGENT_ACCOUNT_TYPE, bool $disabled = false): array
+    {
+        return [
+            'user_id' => $user, 'name' => 'member '.$user, 'email' => 'm'.$user.'@example.test', 'initials' => 'M',
+            'role' => 'board_custom', 'account_type' => $accountType, 'disabled' => $disabled,
+            'is_owner' => false, 'custom_permissions' => [],
+        ];
+    }
+
+    /**
+     * Fold a heartbeat in which the seat DECLARES `$user` on `$base` (D1 § 3.1, § 6.14) — or declares
+     * nothing, when `$user` is null — from a reporter of `$version`.
+     */
+    protected function declare(?int $user, ?string $base = self::BASE, ?string $token = null, ?string $seat = null,
+        ?string $version = null): void
+    {
+        $data = [
+            'uptime_s' => 600, 'spool_bytes' => 0, 'spool_files' => 1, 'spool_lag_events' => 0,
+            'oldest_unsent_age_s' => null, 'last_hook_at' => null, 'open_calls' => 0, 'open_sessions' => 0,
+            'open_attention' => 0, 'enabled' => true, 'protocol_agent_name' => null,
+            'protocol_agent_name_check' => 'undeclared', 'protocol_agent_role' => null,
+            'board_user_id' => $user,
+            'board_fingerprint' => $user === null || $base === null ? null : LinkPass::fingerprint($base),
+            'degraded' => [], 'counters' => [], 'counters_omitted' => 0, 'predicates' => [],
+            'selftest' => ['config_readable' => 'pass'], 'config_fingerprint' => '9f2c41a7be03d518',
+        ];
+        $this->deliver([$this->event('reporter.heartbeat', $data)], $version === null ? [] : ['reporter_version' => $version],
+            token: $token, seat: $seat);
+        $this->fold();
+    }
+
+    protected function seatCounter(string $name, ?int $seatRef = null): int
+    {
+        return (int) (DB::table('seat_counters')->where('seat_ref', $seatRef ?? $this->seatRef)->where('name', $name)->value('value') ?? 0);
+    }
+
+    /** @return array{?int, ?string} the seat's `board_user_id` and `board_user_source` */
+    protected function mapping(?int $seatRef = null): array
+    {
+        $r = DB::table('seats')->where('id', $seatRef ?? $this->seatRef)->first(['board_user_id', 'board_user_source']);
+
+        return [$r->board_user_id === null ? null : (int) $r->board_user_id, $r->board_user_source];
     }
 
     /** One page body in § 6.4's shape. */

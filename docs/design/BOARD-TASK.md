@@ -37,7 +37,7 @@ own transaction ([§ 7.2](#72-the-upsert)) and had nothing to write against othe
 [§ 13](#13-what-is-deliberately-not-built) records where each amendment landed and what is still
 deliberately not built.
 
-⭐ **card#12447 — DESIGNED, NOT BUILT (operator ruling 2026-10-26).** *"When an agent is set up,
+⭐ **card#12447 — BUILT 2026-10-28 (operator ruling 2026-10-26).** *"When an agent is set up,
 (A — link agents to board users) should occur automatically. If an agent doesn't connect to a
 board, then B should occur automatically (not opt-in). The monitor continues to show (C)."* This
 document's half of that ruling is **A**: the seat→board-user link stops being a mapping an operator
@@ -45,7 +45,7 @@ types and becomes a **declaration the seat makes and the poller confirms**
 ([§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447)), with the
 command of [§ 4.1](#41-seat--board-user) kept as the operator's pin. **B** — the to-do tier — is
 D2's and D1's ([D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here)
-tier 4, [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s `todo.progress` block); **C** changes nothing. Every section this
+tier 4, [D1 § 6.16](EVENT-SCHEMA.md#616-todoprogress)); **C** changes nothing. Every section this
 card amends says so in its own text; [§ 13](#13-what-is-deliberately-not-built)'s second table is
 where each amendment's state is read.
 
@@ -310,10 +310,10 @@ candidate*, and the poller never asks the board about it.
 facts, and a configuration map would be a second identity registry free to drift from the first: a seat
 retired in the store but still named in a YAML file is a join that keeps answering.
 
-**Its writers are two, since card#12447 (designed): the operator's command below, which PINS a
+**Its writers are two, since card#12447: the operator's command below, which PINS a
 value, and the board poll's link pass ([§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447)),
 which writes a value the seat declared and the board confirmed.** `seats.board_user_source`
-([D2 § 6.4](FLEET-STATE.md#64-ddl)'s designed paragraph) says which: `operator` for the command's pin,
+([D2 § 6.4](FLEET-STATE.md#64-ddl)) says which: `operator` for the command's pin,
 `declared` for the pass's write, `refused` for the command's `--refuse` — a `NULL` mapping the pass may
 not fill — and `NULL` exactly when the column is `NULL` and no refusal stands. Until card#12447 the command was the only writer, on
 the exact model of `mezzanine:retire` — an administrative fact that no timeout, poll or inference may
@@ -324,7 +324,7 @@ checker between them, not an inference. The command:
 ```
 php artisan mezzanine:seat-board-user --seat=<install>/<seat> --board-user=<id>
 php artisan mezzanine:seat-board-user --seat=<install>/<seat> --clear
-php artisan mezzanine:seat-board-user --seat=<install>/<seat> --refuse      # card#12447, designed
+php artisan mezzanine:seat-board-user --seat=<install>/<seat> --refuse      # card#12447
 ```
 
 ⛔ **ANY write of the column — `--clear` or `--board-user` — deletes that seat's `seat_board_task`
@@ -373,8 +373,8 @@ the column; today it would be a column with one value.
 
 ### 4.4 The link pass — automatic mapping from the seat's declaration (card#12447)
 
-*Designed on card#12447; not built. The operator's A: the link is automatic at set-up. Today one
-seat of the fleet is mapped, by hand (`SELECT seat_id FROM seats WHERE board_user_id IS NOT NULL` on the
+*Built on card#12447 (`App\Board\LinkPass`). The operator's A: the link is automatic at set-up. Before
+it one seat of the fleet was mapped, by hand (`SELECT seat_id FROM seats WHERE board_user_id IS NOT NULL` on the
 sandbox re-prints the set), and every other seat's tier 1 is dark for want of an operator typing an id
 nobody but the seat's own machine can read off a board.*
 
@@ -386,9 +386,9 @@ names (**MEASURED 2026-10-27 on this seat: `200`, `data.id` an integer, equal to
 itself is assigned to**). So the reporter's installer asks the board *who am I* once and writes the
 answer into the seat config, and the seat declares it on every heartbeat beside its API base's
 fingerprint — [D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)'s *`board_user_id` and
-`board_api_base`*, [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s two designed members. The fold
+`board_api_base`*, [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s two members `board_user_id` and `board_fingerprint`. The fold
 stores the last heartbeat's pair on `seat_state` as `board_user_declared` /
-`board_fingerprint_declared` ([D2 § 6.4](FLEET-STATE.md#64-ddl)'s designed paragraph), **off the seat
+`board_fingerprint_declared` ([D2 § 6.4](FLEET-STATE.md#64-ddl)), **off the seat
 object** and read by one consumer: this pass.
 
 **What the pass does, every poll, before the card read — in two phases.** **Phase 1, outside any
@@ -417,18 +417,19 @@ rather than overwritten. Over each candidate seat:
    normalises a missing key to `null` ([D1 § 6.0](EVENT-SCHEMA.md#60-conventions-and-how-harness-payloads-are-read),
    *Missing vs null*) — so the clear runs only when the seat's last batch's `reporter_version`
    ([D2 § 6.4](FLEET-STATE.md#64-ddl) `seat_state.reporter_version`) is at least the build whose
-   heartbeat carries the members on every send: `SchemaVersions::reporterAtLeast($version, '0.4.0')`,
+   heartbeat carries the members on every send: `SchemaVersions::reporterAtLeast($version, '0.5.0')`
+   (`SchemaVersions::TODO_AND_BOARD_DECLARATION_FROM`),
    a primitive the build adds beside `reporterIsOutdated()` — numeric precedence per component, an
    unparseable or null version answering `false` — and **not** `reporterIsOutdated()`, which compares
    against `CURRENT_REPORTER_VERSION` and would stop clearing the day the current build moved past
-   `0.4.0` (AT-D4-12's third case). A seat on an older reporter, or one
+   `0.5.0` (AT-D4-12's third case). A seat on an older reporter, or one
    with no batch yet, is left exactly as it is: silence is not a declaration of anything.
 3. **A declaration equal to the seat's current `declared` mapping is already done** — nothing is
    written, nothing counted.
 4. **Otherwise the declaration is checked, in this order, and the first refusal wins:**
    - **the site.** `board_fingerprint_declared` must equal the first 16 hex of SHA-256 over this
      site's own `BOARD_API_BASE`, normalized exactly as
-     [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s designed member states — scheme and host
+     [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s `board_fingerprint` member states — scheme and host
      lowercased, a default port removed, trailing slashes removed; userinfo is refused at the reporter's
      `loadConfig`, so none reaches either side. Unequal ⇒ `board_link_site_mismatch`. The seat works
      another kanban, and an id that coincides on it is the join-by-coincidence
@@ -438,9 +439,14 @@ rather than overwritten. Over each candidate seat:
      ([§ 6.6](#66-the-members-read)). Not found, or disabled ⇒ `board_link_unknown_user`: no card on
      these boards can ever be assigned to that user, so a mapping would be a join to nothing.
    - **the account.** The member's `account_type` must not name a human account. ⚠ The member
-     objects carry the key (measured, [§ 6.6](#66-the-members-read)); **its value set is unmeasured
-     here**, so the build reads the values off the real response before writing the predicate, and
-     records them in [§ 12](#12-every-number-and-where-it-comes-from). A human's account ⇒
+     objects carry the key (measured, [§ 6.6](#66-the-members-read)), and its value set was **measured on
+     2026-10-28 as `human` and `service`** ([§ 12](#12-every-number-and-where-it-comes-from)), so the leg
+     passes `service` alone and reads any other value — `human`, or one outside the measured set — as a
+     person's, failing closed (`LinkPass::AGENT_ACCOUNT_TYPE`). ⚠ **The same read found this project's own
+     agent seat's login marked `human`**: the account type is the board's provisioning fact and not proof
+     of who uses the account, so an agent provisioned as a regular user is refused by this leg and is
+     linked by the operator's pin — which is what the migration's backfill already makes this seat's hand
+     mapping (AT-D4-13). A human's account ⇒
      `board_link_human_account`: a seat declaring a person's id would put that person's cards on a
      desk and the compose box ([§ 15](#15-the-compose-path--one-verb)) would post to them under the
      seat's name — the one consequence of a wrong link that reaches outside the floor.
@@ -724,7 +730,7 @@ increments; one log line names the board id and the class (`shape` / `pagination
 header; the command exits non-zero. ⛔ It must **not** coerce `"7582"` to `7582`, and it must **not**
 treat a one-page response as complete because it looks like one.
 
-### 6.6 The members read (card#12447, designed)
+### 6.6 The members read (card#12447)
 
 ```
 GET {BOARD_API_BASE}/boards/<id>/members.json
@@ -739,9 +745,9 @@ is admitted to this endpoint is **unverified** and is the first thing the build 
 `disabled` (bool), `is_owner` and `custom_permissions`; **no `meta`**, so the response is read as
 one page. Consumed: `user_id`, `disabled` and `account_type`, nothing else — a member's name or role reaching a desk
 would be the board taxonomy [§ 6.2](#62-the-fields-consumed) keeps off the floor. ⚠ `account_type`'s
-value set is **unmeasured**: the key was read, its values were not, and the build records them in
-[§ 12](#12-every-number-and-where-it-comes-from) before [§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447)'s
-account leg is written against them.
+value set was read on 2026-10-28 — `human` and `service` — and is recorded in
+[§ 12](#12-every-number-and-where-it-comes-from), against which [§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447)'s
+account leg is written.
 
 **When it is read.** In the pass's first phase, before any row is locked, and only when [§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447)
 step 4 has at least one declaration to check — a fleet whose every declaring seat is mapped or pinned
@@ -942,7 +948,7 @@ to D2 § 7.2 and to `GET /api/fleet/health`'s `counters` member: **`board_poll_o
 | `200`, valid, **no assigned cards anywhere** | **OPEN** — a clean poll | `board_poll_ok`; every mapped seat gets a `card_id = NULL` row. This is today's state ([§ 10](#10-dark-on-arrival)) |
 | A card assigned to a user no seat maps | **ignored, silently** | none, deliberately. The board is the operator's and carries assignments Mezzanine has no business having an opinion about |
 | Two seats mapped to one board user | **unreachable** — the UNIQUE key refuses it at the mapping command, and the link pass checks the fleet before it writes ([§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447) step 4) | the command's non-zero exit; `board_link_conflict` on the declaring seat (card#12447) |
-| Two seats **declaring** one board user (card#12447, designed) | **a holder keeps it and the other is refused every poll; two unmapped seats contending in one pass map neither** — no rule picks a winner | `board_link_conflict` on every refused seat's detail, once per poll while it persists; the operator retires the stale seat, pins one, or refuses one |
+| Two seats **declaring** one board user (card#12447) | **a holder keeps it and the other is refused every poll; two unmapped seats contending in one pass map neither** — no rule picks a winner | `board_link_conflict` on every refused seat's detail, once per poll while it persists; the operator retires the stale seat, pins one, or refuses one |
 | A declared user no configured board knows, or a disabled member (card#12447) | **refused, nothing written** | `board_link_unknown_user` on the seat's detail |
 | A declared user whose `account_type` names a person's account (card#12447) | **refused, nothing written** | `board_link_human_account` on the seat's detail; the operator pins or refuses |
 | A seat mapped by declaration now declares a user the pass refuses (card#12447) | **the refusal above, and the old mapping and its row cleared in the same transaction** | that refusal's counter and `board_link_cleared`, both on the seat's detail |
@@ -975,7 +981,7 @@ undiagnosable silence.
 | # | Condition | State, measured 2026-09-11 | How its absence reads |
 |---|---|---|---|
 | 1 | A credential and `BOARD_IDS` are configured | absent | `board_poll_ok` stays `0`; the job no-ops at exit 0 |
-| 2 | At least one seat carries a `board_user_id` | absent — the column does not exist yet. **Since 2026-09-14 one seat does, by hand; card#12447 (designed) makes this condition hold automatically for every seat whose install resolves a board user and whose declaration the link pass confirms ([§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447)) — the condition stays, its writer changes** | polls succeed, write nothing, `board_poll_ok` climbs; a declaring, unmapped seat shows why in its detail counters |
+| 2 | At least one seat carries a `board_user_id` | absent — the column does not exist yet. **Since 2026-09-14 one seat does, by hand; card#12447 makes this condition hold automatically for every seat whose install resolves a board user and whose declaration the link pass confirms ([§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447)) — the condition stays, its writer changes** | polls succeed, write nothing, `board_poll_ok` climbs; a declaring, unmapped seat shows why in its detail counters |
 | 3 | At least one card carries a non-null `assigned_user_id` | **zero across the whole of board 14** — not a sample: `meta.last_page` is 1, so one request is the entire population (derivation in [§ 12](#12-every-number-and-where-it-comes-from)) | every mapped seat gets a `card_id = NULL` row; every desk falls through to tier 3 with `task.source: "telemetry"` and `task.degraded: false` |
 
 ⭐ **The floor is honest in that state without anything being added**, because D2 § 4.9 put
@@ -1098,7 +1104,7 @@ degraded one.
   mapping, and its whole symptom is the mapping command's bare non-zero exit
   ([D2 § 4.10](FLEET-STATE.md#410-retirement-is-a-rendered-state)).
 
-### AT-D4-9 a confirmed declaration is mapped, and a pin or a refusal outranks it (card#12447, designed)
+### AT-D4-9 a confirmed declaration is mapped, and a pin or a refusal outranks it (card#12447)
 
 - **Build:** a seat whose last heartbeat declares user `14` with the fingerprint of the test's
   `BOARD_API_BASE`; a faked members read listing `14` on board 14 as an enabled agent account; run one
@@ -1118,7 +1124,7 @@ degraded one.
 - **Control:** a seat declaring nothing, never mapped, is untouched by all five polls and counts
   nothing, so the pass is known to be able to leave a seat alone.
 
-### AT-D4-10 a conflict is counted on every refused seat and resolved only by a human act (card#12447, designed)
+### AT-D4-10 a conflict is counted on every refused seat and resolved only by a human act (card#12447)
 
 - **Build:** seat A mapped to `14` (declared); seat B's heartbeat declares `14`; run a poll. Then,
   separately, seats C and D both unmapped and both declaring a free user `16`; run a poll.
@@ -1136,7 +1142,7 @@ degraded one.
 - **Control:** the same fixture with B declaring `15` maps B, so the conflict assertion is known
   to turn on the collision and not on B.
 
-### AT-D4-11 the site, the board and the account are checked before the fleet, and a failed members read maps nothing (card#12447, designed)
+### AT-D4-11 the site, the board and the account are checked before the fleet, and a failed members read maps nothing (card#12447)
 
 - **Build:** declaring seats, one per refusal leg and one control: a seat whose fingerprint is of
   another base (`https://Other.example/api/v3/` normalized); a seat declaring a user the members read
@@ -1157,26 +1163,26 @@ degraded one.
 - **Control:** every refused seat above with a clean members read listing its user as an enabled
   agent member of the test's base maps, so each refusal is known to be the check and not the fixture.
 
-### AT-D4-12 an undeclared heartbeat clears a declared mapping only from a reporter that sends the members (card#12447, designed)
+### AT-D4-12 an undeclared heartbeat clears a declared mapping only from a reporter that sends the members (card#12447)
 
 - **Build:** a seat mapped by declaration with a board-titled desk, whose last batch's
   `reporter_version` is the build that sends the members; fold a heartbeat carrying
   `board_user_id: null`; run a poll. Separately, the same seat whose last batch's `reporter_version`
-  is `0.3.0` — a build whose heartbeat omits the member, which the ingest stores as the same `null` —
+  is `0.4.0` — a build whose heartbeat omits the member, which the ingest stores as the same `null` —
   with the same heartbeat folded; separately a mapped seat with no batch at all since the mapping; and
-  separately the first seat again with `CURRENT_REPORTER_VERSION` set to a build **above** `0.4.0`.
+  separately the first seat again reporting a build **above** `0.5.0`.
 - **GREEN:** the first seat's `board_user_id` and `board_user_source` are `NULL`, its row is gone in the pass's transaction,
   `board_link_cleared` + 1, and the recompute renders tier 4 or 3 with `task_degraded = false`;
-  the `0.3.0` seat and the silent seat are untouched; the seat under the higher current build is
-  cleared exactly as the first was — the comparison is against `0.4.0`, never against the current build.
+  the `0.4.0` seat and the silent seat are untouched; the seat on the higher build is
+  cleared exactly as the first was — the comparison is against `0.5.0`, never against the current build.
 - **RED, each seen to fail:** treat `board_user_declared IS NULL` as a clearing declaration without reading
   `reporter_version` — every seat on a reporter that predates the member is unmapped by the first
   poll after the server upgrade, before any seat has been upgraded; compare with `reporterIsOutdated()`
-  — the clear stops the day the current build passes `0.4.0`.
+  — the clear stops the day the current build passes `0.5.0`.
 - **Control:** a seat mapped by the **operator** on the current build that stops declaring keeps its
   mapping (step 1 skips it), so the clear is known to act on `declared` alone.
 
-### AT-D4-13 the migration pins every mapping that exists (card#12447, designed)
+### AT-D4-13 the migration pins every mapping that exists (card#12447)
 
 - **Build:** on a store at the migration's base, map one seat by the command and leave another
   unmapped; run the migration; run a poll on which the mapped seat's heartbeat declares a different
@@ -1207,7 +1213,7 @@ running the command in the cell, which is what a reader re-runs rather than trus
 | Overlap-lock expiry | **10 min** | **Chosen** — § 3.1 requires it below the 30-minute bound and the framework default is a day. Bounded above by the bound: a poll killed holding the lock at T + 5 min frees it at T + 5 + E, the next tick polls within 5 min, and that must land before T + 30 — so E < 20 min. Bounded below by a live poll's own length, or a slow poll gets a second copy beside it: the timeout row's fifteen requests at 20 s is 5 min. Re-derive when either the cadence or the bound moves | [§ 3.1](#31-mezzanineboard-poll) |
 | Page cap | **200 pages** | **Chosen** — a runaway guard, not a truncation policy: 200 × 200 is far past any real board, so reaching it means the pager is looping | [§ 6.3](#63-pagination-and-the-false-clean-rule) |
 | `title` bound | `seat_state.task_title`'s own | **Cited** — D2 § 6.4. Never restated as a figure here: one bound, one home ([§ 8.4](#84-truncation)) | [§ 7.1](#71-the-input-table) |
-| Board members, board 14 | **Measured 2026-10-27** (card#12447) | `GET /boards/14/members.json` under a member's own credential → `200`, `len(body["data"])` members, no `meta`; `[m["user_id"] for m in body["data"]]` holds this seat's `data.id`; `sorted({m["account_type"] for m in body["data"]})` is the value set [§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447)'s account leg is written against, **not yet read**. **Re-run it rather than trusting this cell**, and re-run it under the poller's read token once one is issued — whether that token is admitted is unverified | [§ 6.6](#66-the-members-read) |
+| Board members, board 14 | **Measured 2026-10-27** (card#12447) | `GET /boards/14/members.json` under a member's own credential → `200`, `len(body["data"])` members, no `meta`; `[m["user_id"] for m in body["data"]]` holds this seat's `data.id`; `sorted({m["account_type"] for m in body["data"]})` is the value set [§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447)'s account leg is written against — **read 2026-10-28: `human` and `service`, this seat's own login among the `human` ones**. **Re-run it rather than trusting this cell**, and re-run it under the poller's read token once one is issued — whether that token is admitted is unverified | [§ 6.6](#66-the-members-read) |
 | This seat's board user | **Measured 2026-10-27** (card#12447) | `GET /users/current.json` under the credential store's `[kanban] api_token_file` → `200`, `body["data"]["id"]` an integer equal to card#12447's own `assigned_user_id` as `kbcard show --task 12447` prints it; the same request under the exported kanban read variable → `401` | [§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447) |
 | Members reads per poll | **≤ the board count**, and 0 when no declaration is pending | **Derived** — one request per configured board, issued only when [§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447) step 4 has a declaration to check (card#12447) | [§ 6.6](#66-the-members-read) |
 | Whole-board payload, board 14 | **Measured 2026-09-11** | `GET /tasks/search.json?q=board_id%3D14&limit=200&page=1` → `200`; then `len(json.dumps(body))`, `len(body["data"])`, `body["meta"]["last_page"]`. ~340 KB on one page. **Re-run it rather than trusting this cell** | [§ 3.2](#32-the-cadence-chosen--and-the-30-minute-bound-re-derived) |
@@ -1269,7 +1275,7 @@ against.
 
 ### 13.1 card#12447 — the automatic link and the to-do tier: every amendment, and its state
 
-**Designed 2026-10-27; nothing below is built.** ⚠ **B was re-derived on design review round 3** —
+**Designed 2026-10-27, built 2026-10-28** (one PR, the design's PR #383). ⚠ **B was re-derived on design review round 3** —
 rounds 1 to 3 each found a MAJOR in the same to-do-lifecycle class (r1: a hook-side race, a `TaskList`
 wording flip and an unknown-id contract alarm; r2: an unbounded journal line; r3: a refusing cap that
 went dark, and a widened session-reopen rule that resurrected ended stalls), which fired the dispatching
@@ -1278,23 +1284,22 @@ task texts, titled by the one call that moved an item) and couples nothing to se
 slot per seat, the reporter the sole writer of its life, deriving the seat's answer over its open
 sessions — round 4's F1 — and re-syncing it on every flusher start). Stated as exact requests per
 [§ 1.3](#13-the-boundary-stated-as-a-rule), written into each owning document in the same change
-as this section and marked *designed, card#12447* there, so a reader of any of them sees the whole;
-ratification is the operator's, and the build is a separate dispatch. Each row's surface carries
+as this section and marked *card#12447* there, so a reader of any of them sees the whole. Each row's surface carries
 its text; this table is where the state is read.
 
 | Surface | Amendment | State |
 |---|---|---|
-| this document § 0, § 4.1, **§ 4.4**, **§ 6.6**, § 9, § 10, § 11 (AT-D4-9 … AT-D4-13), § 12, § 14, § 15.6 | the link pass, the members read, the pin and the refusal, the counters, the failure rows, the measurements, the compose arm | designed |
-| D1 § 3.1 (`board_user_id`, `board_api_base` and their subsection), § 6.0's fact table (the to-do tool families, measured at 2.1.311), § 6's kind table, **§ 6.14's designed `todo.progress` block and its two designed heartbeat members** — prose beside the tables, because `Tests\\Feature\\Ingest\\EventSchemaDriftTest` holds the tables to the registry — § 7.1 (the `TaskCreate`/`TaskUpdate`/`TaskList` row), § 7.4, **§ 8.2** (the `todo_list` / `todo_create` / `todo_update` / `todo_end` records, sanitised and byte-measured at append), § 9.3 (`todo_task_unknown`, `todo_map_evicted`, `board_declaration_malformed`), AT-10's to-do case, AT-30, AT-31, § 14 (the LRU and retained-map caps), § 15 rows 62–65, § 16 row 12 | the declaration and the to-do kind, reporter side; the reporter bump `0.3.0 → 0.4.0` with its `UPDATES.md` row | designed |
-| D2 § 2.1 (both rows), § 3.2, § 4.6, **§ 4.9** (tier 4, `task.source`'s `todo`, the one `task_degraded` rule), § 4.6's todo row (the reporter's `null` is the title's only end; no reopen rule is widened), § 6.4's designed paragraph outside the fence (`seats.board_user_source` with its backfill, `seat_state.board_user_declared` and `board_fingerprint_declared`, `seat_state.todo_title`, `todo_as_of` and `todo_event_time`, the `todo` member), § 6.5 (the `todo` group guarded on `todo_event_time`; an integer arm and `conforming()` on the declared members), `SchemaVersions::reporterAtLeast()`, § 7.2 (the `board_link_*` rows on seat detail and the fleet's `board_link_failed`, listed on § 8.2.4's `counters` member), § 8.2.1 (`task.source`, `task.ref`), § 12, § 13 rows 64–65, AT-D2-33, AT-D2-34, Appendix A S33–S34, Appendix B row 17 | the merge tier, its one slot per seat and its reporter-owned life; the declaration's store and the link's counters | designed |
-| D3 § 13 row 96, § 14 item 4 | `todo` renders as `telemetry` does — a title with no reference; no new render, no new animation row | designed |
-| `fleet-reporter/INSTALL-LINUX.md` Step 2 — a `board-identity` block (`run`), the values block's two new exports, the writer's two new keys; Step 3's printer; **Step 4 (c) — the `todo-tools` block, written as a `skip —` anchored block the build turns into `run todo-tools`** (the operator's ruling, item 11); § Upgrading an existing seat — a `config` touch row for `0.4.0` that names both blocks as what an installed seat runs | the installer resolves `kanban.base_url` + `/api/v3` and the store's `[kanban] api_token_file` from the coordination config the identity block already reads, calls `GET /users/current.json` in the user's shell, prints only `board user <id> on <scheme://host>`, exports `SEAT_BOARD_USER` / `SEAT_BOARD_BASE`, and writes them; a box with no coordination config or no kanban pointer prints `undeclared: this seat has no board credential` and exits 0 | designed — a build item: the runbook is held to `install.sh` by `--check-runbook`, so the block and its `MZI_BLOCKS` entry land together |
-| `fleet-reporter/install.sh` | `board-identity` and `todo-tools` in `MZI_BLOCKS` — `todo-tools` run after `hooks-apply` with `todo-tools\|: unchanged` as its one marker, which both the `already set` and the `kept` lines end in, so neither counts as a change the run restarts anything for; **the consolidation:** `wire-hooks.js --todo-tools` and `check-preserved.js --todo-tools` extend Step 4 (a)'s stage-check-apply pipeline to one `env` key rather than adding a second writer of `settings.json`, and the apply is a temp file renamed onto `realpath` so a symlinked settings file stays one — a shape (a) may adopt without changing what it writes; `board-identity` run after `identity` in `set_token` and in **every** `install` run, upgrades included, so a moved layout or a changed answer is re-resolved; `--no-board` to leave the keys unset; **no `--board-user` flag** — an id the operator chooses is the server's pin ([§ 4.1](#41-seat--board-user)), never a seat's typed declaration; the `config-check` reader unchanged (it prints every key, and `board_api_base` carries no userinfo to mask) | designed |
-| `fleet-reporter/AGENT-INSTALL.md` § 6 (the designed paragraph is written) and § 3 | the to-do tools sentence is in; one more sentence for § 3: the board link needs nothing from the user — the script reads the seat's own board credential from the coordination framework's store and asks the board; a seat with no board stays unlinked and the desk shows its to-do instead | designed |
-| `fleet-reporter/UPDATES.md` | the `0.4.0` row: touches `artifact, config`; *New: the desk shows the agent's in-progress to-do when no board card answers, and a seat whose install can reach its board is linked to its board user automatically; the config gains `board_user_id` and `board_api_base`, written by Step 2's `board-identity` block, which `install.sh` runs on every install and upgrade; and the install now sets `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` in the account's `~/.claude/settings.json` `env` when it is absent (Step 4 (c)) — an account-wide change to what the harness provides in every session, kept if the account already set the key, and removed by Step 8 only when this install set it* | designed — written by the build PR, which `bin/reporter-version-guard.py` holds to the bump |
-| `README.md § The board card on a desk` | the sentence that says a seat is mapped by `mezzanine:seat-board-user` becomes: mapped automatically from the seat's own declaration, with the command as the operator's pin | designed |
+| this document § 0, § 4.1, **§ 4.4**, **§ 6.6**, § 9, § 10, § 11 (AT-D4-9 … AT-D4-13), § 12, § 14, § 15.6 | the link pass, the members read, the pin and the refusal, the counters, the failure rows, the measurements, the compose arm | built |
+| D1 § 3.1 (`board_user_id`, `board_api_base` and their subsection), § 6.0's fact table (the to-do tool families, measured at 2.1.311), § 6's kind table, **§ 6.16 `todo.progress` and its two heartbeat members** — rows of the tables `Tests\\Feature\\Ingest\\EventSchemaDriftTest` holds to the registry — § 7.1 (the `TaskCreate`/`TaskUpdate`/`TaskList` row), § 7.4, **§ 8.2** (the `todo_list` / `todo_create` / `todo_update` / `todo_end` records, sanitised and byte-measured at append), § 9.3 (`todo_task_unknown`, `todo_map_evicted`, `board_declaration_malformed`), AT-10's to-do case, AT-30, AT-31, § 14 (the LRU and retained-map caps), § 15 rows 62–65, § 16 row 12 | the declaration and the to-do kind, reporter side; the reporter bump `0.4.0 → 0.5.0` with its `UPDATES.md` row (`0.4.0` was card#12451's) | built |
+| D2 § 2.1 (both rows), § 3.2, § 4.6, **§ 4.9** (tier 4, `task.source`'s `todo`, the one `task_degraded` rule), § 4.6's todo row (the reporter's `null` is the title's only end; no reopen rule is widened), § 6.4's fence and its paragraph (`seats.board_user_source` with its backfill, `seat_state.board_user_declared` and `board_fingerprint_declared`, `seat_state.todo_title`, `todo_as_of` and `todo_event_time`, the `todo` member), § 6.5 (the `todo` group guarded on `todo_event_time`; an integer arm and `conforming()` on the declared members), `SchemaVersions::reporterAtLeast()`, § 7.2 (the `board_link_*` rows on seat detail and the fleet's `board_link_failed`, listed on § 8.2.4's `counters` member), § 8.2.1 (`task.source`, `task.ref`), § 12, § 13 rows 64–65, AT-D2-33, AT-D2-34, Appendix A S33–S34, Appendix B row 17 | the merge tier, its one slot per seat and its reporter-owned life; the declaration's store and the link's counters | built |
+| D3 § 13 row 96, § 14 item 4 | `todo` renders as `telemetry` does — a title with no reference; no new render, no new animation row | built |
+| `fleet-reporter/INSTALL-LINUX.md` Step 2 — a `board-identity` block (`run`), the values block's two new exports, the writer's two new keys; Step 3's printer; **Step 4 (c) — the `todo-tools` block, `run todo-tools`** (the operator's ruling, item 11), with `wire-hooks.js --todo-tools` and `check-preserved.js --todo-tools`; § Upgrading an existing seat — U5's `config` touch for `0.5.0` names both blocks as what an installed seat runs; Step 8 removes the to-do tools key only when `todo-tools-set` says this install set it | the installer resolves `kanban.base_url` + `/api/v3` and the store's `[kanban] api_token_file` from the coordination config the identity block already reads, calls `GET /users/current.json` in the user's shell, prints only `board user <id> on <scheme://host>`, exports `SEAT_BOARD_USER` / `SEAT_BOARD_BASE`, and writes them; a box with no coordination config or no kanban pointer prints `undeclared: this seat has no board credential` and exits 0 | built — the runbook is held to `install.sh` by `--check-runbook` |
+| `fleet-reporter/install.sh` | `board-identity` and `todo-tools` in `MZI_BLOCKS` — `todo-tools` run after `hooks-apply` with `todo-tools\|: unchanged` as its one marker, which both the `already set` and the `kept` lines end in, so neither counts as a change the run restarts anything for; **the consolidation:** `wire-hooks.js --todo-tools` and `check-preserved.js --todo-tools` extend Step 4 (a)'s stage-check-apply pipeline to one `env` key rather than adding a second writer of `settings.json`, and the apply is a temp file renamed onto `realpath` so a symlinked settings file stays one — a shape (a) may adopt without changing what it writes; `board-identity` run after `identity` in `set_token` and in **every** `install` run, upgrades included, so a moved layout or a changed answer is re-resolved; `--no-board` to leave the keys unset; **no `--board-user` flag** — an id the operator chooses is the server's pin ([§ 4.1](#41-seat--board-user)), never a seat's typed declaration; the `config-check` reader unchanged (it prints every key, and `board_api_base` carries no userinfo to mask) | built |
+| `fleet-reporter/AGENT-INSTALL.md` § 6 and § 3 | the to-do tools sentence is in; one more sentence for § 3: the board link needs nothing from the user — the script reads the seat's own board credential from the coordination framework's store and asks the board; a seat with no board stays unlinked and the desk shows its to-do instead | built |
+| `fleet-reporter/UPDATES.md` | the `0.5.0` row: touches `artifact, config`; *New: the desk shows the agent's in-progress to-do when no board card answers, and a seat whose install can reach its board is linked to its board user automatically; the config gains `board_user_id` and `board_api_base`, written by Step 2's `board-identity` block, which `install.sh` runs on every install and upgrade; and the install now sets `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` in the account's `~/.claude/settings.json` `env` when it is absent (Step 4 (c)) — an account-wide change to what the harness provides in every session, kept if the account already set the key, and removed by Step 8 only when this install set it* | built — `bin/reporter-version-guard.py` holds it to the bump |
+| `README.md § The board card on a desk` | the sentence that says a seat is mapped by `mezzanine:seat-board-user` becomes: mapped automatically from the seat's own declaration, with the command as the operator's pin | built |
 | `server/.env.example` | no new key: the link pass reads `BOARD_API_BASE`, `BOARD_API_TOKEN` and `BOARD_IDS`, which exist | — |
-| the migration | one migration: the columns [D2 § 6.4](FLEET-STATE.md#64-ddl)'s designed paragraph lists, and the backfill `UPDATE seats SET board_user_source = 'operator' WHERE board_user_id IS NOT NULL` — AT-D4-13 | designed |
+| the migration | one migration: the columns [D2 § 6.4](FLEET-STATE.md#64-ddl)'s fence lists, and the backfill `UPDATE seats SET board_user_source = 'operator' WHERE board_user_id IS NOT NULL` — AT-D4-13 | built |
 
 ---
 
@@ -1393,7 +1398,7 @@ its text; this table is where the state is read.
     fact table); the opt-in is `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` — its name and scope read from Claude
     Code's own `env-vars` reference on 2026-10-27 (*set to `1` to get the task-tracking tools on every
     model; requires v2.1.233 or later*), and a settings file's `env` block reaches every session however
-    `claude` was launched. **The ruling, as designed:** `fleet-reporter/INSTALL-LINUX.md` Step 4 (c) —
+    `claude` was launched. **The ruling, as built:** `fleet-reporter/INSTALL-LINUX.md` Step 4 (c) —
     a `todo-tools` block beside the hooks block, run by `install.sh` on every install and upgrade — reads
     the key in the seat's user-level `~/.claude/settings.json` `env`, sets `1` when it is absent, leaves
     `1` as *already set*, and **keeps** any other value an operator chose, printing which; the
@@ -1417,8 +1422,10 @@ its text; this table is where the state is read.
     shared or service-account credential the residual blocks the link pass for that seat until it is
     `--refuse`d, which is the precondition [§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447)'s
     *What this does NOT do* names. **Recommendation, unchanged:** `--refuse` such a seat before its
-    first poll, and read the members response's `account_type` values so the account leg can refuse
-    what it can.
+    first poll. The members response's `account_type` values were read on 2026-10-28 — `human` and
+    `service` ([§ 12](#12-every-number-and-where-it-comes-from)) — and the account leg refuses every value
+    but `service`; ⚠ the same read found this project's own agent seat's login marked `human`, so an agent
+    provisioned as a regular board user is refused by that leg and needs the operator's pin.
 13. **⇢ Build — the poller's read token on the members endpoint.** [§ 6.6](#66-the-members-read)
     was measured under a member's own credential; whether a read-scoped board token is admitted to
     `GET /boards/{id}/members.json` is unverified until item 1's token exists. **Blocks:** the link
