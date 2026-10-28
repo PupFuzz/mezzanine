@@ -8280,12 +8280,15 @@ else:
        "the previous build's for the same spool, and every spooled event, its seq removed, is byte-equal",
        (True, True, True), ({k: new_batch[k] for k in ENV_KEPT} == {k: old_batch[k] for k in ENV_KEPT},
                             kept_new == kept_old, len(kept_old) >= 4))
-    # card#12239 adds § 6.14's roundtable declaration pair to every heartbeat, by name — the one addition
-    # to the field set since the previous build, and the only one this comparison admits.
-    eq("  … the heartbeat's field set is the previous build's plus card#12239's roundtable pair, its selftest "
+    # card#12239 adds § 6.14's roundtable declaration pair to every heartbeat, and card#12447 its board declaration
+    # pair, by name — the two additions to the field set since the previous build, and the only ones this
+    # comparison admits.
+    eq("  … the heartbeat's field set is the previous build's plus card#12239's roundtable pair and card#12447's "
+       "board pair, its selftest "
        "members are § 6.14's table (the previous set plus token_accepted and card#12239's rt_name_ok), and its config_fingerprint equals the "
        "previous build's for the same config",
-       (sorted(list(old_hb["data"]) + ["roundtable_agent_name", "roundtable_agent_name_check"]), sorted(SELFTEST_MEMBERS), sorted(sorted(old_hb["data"]["selftest"]) + ["token_accepted", "rt_name_ok"]),
+       (sorted(list(old_hb["data"]) + ["roundtable_agent_name", "roundtable_agent_name_check", "board_user_id",
+                                       "board_fingerprint"]), sorted(SELFTEST_MEMBERS), sorted(sorted(old_hb["data"]["selftest"]) + ["token_accepted", "rt_name_ok"]),
         old_hb["data"]["config_fingerprint"]),
        (sorted(new_hb["data"]), sorted(new_hb["data"]["selftest"]), sorted(new_hb["data"]["selftest"]),
         new_hb["data"]["config_fingerprint"]))
