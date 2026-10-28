@@ -4,6 +4,7 @@ namespace App\Fold;
 
 use App\Feed\Publisher;
 use App\Ingest\Counters;
+use App\Ingest\SchemaVersions;
 use App\Ingest\Wire;
 use App\Support\ByteTruncation;
 use Illuminate\Support\Facades\DB;
@@ -518,7 +519,8 @@ class StateRecompute
 
     /**
      * `docs/design/BOARD-TASK.md § 8.1` — the merge D2 § 4.9 specifies: tier 1 (a board card
-     * assigned to this seat) over tier 3 (the seat's own telemetry).
+     * assigned to this seat) over tier 4 (the seat's own in-progress to-do, card#12447) over tier 3
+     * (the seat's own telemetry).
      *
      * ⛔ TIER 1 IS READ FROM `seat_board_task`, AN INPUT, AND NEVER WRITTEN INTO `seat_state` BY
      * ITS PRODUCER (§ 2). The poller owns that table and the rebuild does not touch it, so a
@@ -558,6 +560,26 @@ class StateRecompute
             }
 
             $dropped = true;
+        }
+
+        // TIER 4 (card#12447, D2 § 4.9) — the seat's own in-progress to-do, ONE slot per seat, read only
+        // from a seat whose last reported build sends the boundary `null` that ends it: a build below
+        // that never ends a slot it filled, so a downgraded seat's last title is HIDDEN rather than shown
+        // stale. `task_as_of` is the event's stored `received_at` — never `now()`, card#9214's rule on a
+        // third input — so a replay reaches the same row. `task_degraded` is ONE rule over every tier:
+        // a dropped tier 1 answered by this tier is degraded; a to-do with no board title ever held is not.
+        $todo = DB::table('seat_state')->where('seat_ref', $seatRef)
+            ->first(['todo_title', 'todo_as_of', 'reporter_version']);
+
+        if ($todo !== null && $todo->todo_title !== null
+            && SchemaVersions::reporterAtLeast($todo->reporter_version, SchemaVersions::TODO_AND_BOARD_DECLARATION_FROM)) {
+            return [
+                'task_title' => $todo->todo_title,
+                'task_source' => 'todo',
+                'task_ref' => null,
+                'task_as_of' => $todo->todo_as_of,
+                'task_degraded' => $dropped,
+            ];
         }
 
         $tier3 = $this->taskTier3($seatRef, $currentCall);

@@ -5778,13 +5778,13 @@ eq("RED R9: findTwinForEnd on the wide window — terminal 2's end adopts termin
    "start and N1's Stop reaps terminal 2's running dispatch (review R2-1; C13 flips)",
    (["tool.end"], [(SID2, NEWSID)], [("aborted", "reap_turn_boundary", "reap", "turn_boundary", NEWSID)]),
    c13_got(s, ev, per, D2r))
-p_r10 = plant(("  if (s && (!source || s.start_source === source)) return;",
+p_r10 = plant(("  if (s && (!source || (source !== 'resume' && s.start_source === source))) return;",
                "  if (s) return;"))
 s, ev, ctr, _, _ = clear_trace("clear-r10", C3B, p_r10)
 eq("RED R10: SessionStart(clear) recorded only when it is the session's first hook — C3b never "
    "pairs (review R2-7a)", None, ctr.get("dispatch_rekeyed_to_new_session"))
-p_r11 = plant(("} else if (r.source) s.start_source = r.source;",
-               "} else if (r.source) { s.start_source = r.source; s.paired_from = null; }"))
+p_r11 = plant(("} else if (r.source === 'clear') s.start_source = r.source;",
+               "} else if (r.source === 'clear') { s.start_source = r.source; s.paired_from = null; }"))
 s, ev, ctr, _, _ = clear_trace("clear-r11", C14, p_r11)
 eq("RED R11: a session_open that resets paired_from — the duplicate makes NEW pairable again and "
    "the other terminal's clear pairs with it (review R2-7b; C14 flips)", [(BGSID, NEWSID), (SID2, NEWSID)], c14_got(s))
@@ -8280,12 +8280,15 @@ else:
        "the previous build's for the same spool, and every spooled event, its seq removed, is byte-equal",
        (True, True, True), ({k: new_batch[k] for k in ENV_KEPT} == {k: old_batch[k] for k in ENV_KEPT},
                             kept_new == kept_old, len(kept_old) >= 4))
-    # card#12239 adds § 6.14's roundtable declaration pair to every heartbeat, by name — the one addition
-    # to the field set since the previous build, and the only one this comparison admits.
-    eq("  … the heartbeat's field set is the previous build's plus card#12239's roundtable pair, its selftest "
+    # card#12239 adds § 6.14's roundtable declaration pair to every heartbeat, and card#12447 its board declaration
+    # pair, by name — the two additions to the field set since the previous build, and the only ones this
+    # comparison admits.
+    eq("  … the heartbeat's field set is the previous build's plus card#12239's roundtable pair and card#12447's "
+       "board pair, its selftest "
        "members are § 6.14's table (the previous set plus token_accepted and card#12239's rt_name_ok), and its config_fingerprint equals the "
        "previous build's for the same config",
-       (sorted(list(old_hb["data"]) + ["roundtable_agent_name", "roundtable_agent_name_check"]), sorted(SELFTEST_MEMBERS), sorted(sorted(old_hb["data"]["selftest"]) + ["token_accepted", "rt_name_ok"]),
+       (sorted(list(old_hb["data"]) + ["roundtable_agent_name", "roundtable_agent_name_check", "board_user_id",
+                                       "board_fingerprint"]), sorted(SELFTEST_MEMBERS), sorted(sorted(old_hb["data"]["selftest"]) + ["token_accepted", "rt_name_ok"]),
         old_hb["data"]["config_fingerprint"]),
        (sorted(new_hb["data"]), sorted(new_hb["data"]["selftest"]), sorted(new_hb["data"]["selftest"]),
         new_hb["data"]["config_fingerprint"]))
@@ -9406,6 +9409,593 @@ redgreen("a quiet subagent is reported idle at the seat, and its next hook repor
          "one idle a threshold after the last hook and never over an open call; working before the next tool.start "
          "and once; a /clear keeps the state with the call; a revival is a new titled dispatch under the current "
          "mode, count-bounded and snapshotted; stale folds heal on the next pass; same-type starts bind nothing")
+
+
+print("\n== 26. THE TO-DO TIER SAYS WHAT THE AGENT TURNED TO, DERIVED AND ENDED BY ONE WRITER; A BOARD DECLARATION RIDES EVERY HEARTBEAT (AT-30, AT-31, D1 § 3.1, § 6.16, card#12447) ==")
+# Every hook and pass below runs on ONE pinned clock. A one-pass flusher is a flusher START, so its first
+# fold always re-syncs (§ 6.16); FLEET_REPORTER_SEAT_PASSES runs further passes in the same process, which
+# is the only place "nothing changed, nothing emitted" can be seen. `p.flush()` pins the flusher's start
+# before the trace, as § 25 does, so no pass reaps the calls the trace opened.
+T30A = "77777777-3333-4333-8444-0000000000c1"
+T30B = "77777777-3333-4333-8444-0000000000c2"
+T30C = "77777777-3333-4333-8444-0000000000c3"
+TITLE_CAP = k_ms("TITLE_CAP") or 120
+MAP_CAP = k_ms("TODO_MAP_ENTRIES") or 64
+
+
+def todo_list(*items):
+    """A `TodoWrite` list: (activeForm, content, status) per item."""
+    return {"todos": [{"content": c, "status": st, "activeForm": a} for a, c, st in items]}
+
+
+class P30:
+    """One AT-30 rig: a seat, a reporter, and the pinned clock every step advances."""
+
+    def __init__(self, name, reporter=REPORTER, sid=T30A, start=True):
+        self.s, self.r = seat(name, ingest=DEAD), reporter
+        self.base = self.t = int(time.time() * 1000)
+        if start:
+            self.hk("SessionStart", sid=sid, source="startup")
+
+    def tick(self, ms=100):
+        self.t += ms
+
+    def env(self, **kw):
+        return dict(FLEET_REPORTER_NOW_MS=self.t, **kw)
+
+    def hk(self, name, sid=T30A, **kw):
+        self.tick()
+        base = {"session_id": sid, "hook_event_name": name, "prompt_id": "p1", "cwd": "/home/agent/mezzanine"}
+        base.update(kw)
+        return hook(self.s, name, base, reporter=self.r, **self.env())
+
+    def post(self, tool, ti, tr=None, sid=T30A, **kw):
+        return self.hk("PostToolUse", sid=sid, tool_name=tool, tool_input=ti, tool_response=tr or {},
+                       tool_use_id=f"toolu_{self.t}", duration_ms=5, **kw)
+
+    def create(self, tid, subject, active=None, sid=T30A):
+        ti = {"subject": subject, "description": "d"}
+        if active is not None:
+            ti["activeForm"] = active
+        return self.post("TaskCreate", ti, {"task": {"id": tid, "subject": subject}}, sid=sid)
+
+    def update(self, tid, status=None, sid=T30A, **extra):
+        ti = {"taskId": tid}
+        if status:
+            ti["status"] = status
+        ti.update(extra)
+        return self.post("TaskUpdate", ti, {"success": True, "taskId": tid}, sid=sid)
+
+    def concurrent(self, payloads):
+        """Each (hook name, payload) as its OWN hook process, all started before any is waited on."""
+        self.tick()
+        procs = [subprocess.Popen(["node", str(self.r), "hook", n], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, text=True, env=self.s.env(**self.env()), cwd=str(HERE))
+                 for n, _ in payloads]
+        for pr, (_, pl) in zip(procs, payloads):
+            pr.stdin.write(json.dumps(pl))
+            pr.stdin.close()
+        for pr in procs:
+            pr.wait(timeout=30)
+
+    def flush(self, passes=1, **kw):
+        self.tick()
+        return flush(self.s, reporter=self.r, FLEET_REPORTER_FLUSHER_START_MS=self.base - 1000,
+                     FLEET_REPORTER_SEAT_PASSES=passes, **self.env(**kw))
+
+    def todos(self):
+        return [(e["session_id"], e["data"]["title"], e["data"]["tool_name"], e["event_time"])
+                for e in self.s.events() if e["kind"] == "todo.progress"]
+
+    def titles(self):
+        return [t for _, t, _, _ in self.todos()]
+
+    def index(self):
+        out = []
+        for f in sorted((self.s.spool / "index").glob("*.jsonl")):
+            for line in f.read_text(encoding="utf-8").splitlines():
+                try:
+                    out.append(json.loads(line))
+                except ValueError:
+                    pass
+        return out
+
+    def records(self):
+        return [r for r in self.index() if str(r.get("k", "")).startswith("todo_")]
+
+    def journal_text(self):
+        return "".join(f.read_text(encoding="utf-8") for f in sorted((self.s.spool / "index").glob("*.jsonl")))
+
+    def todo_snap(self):
+        return snapshot(self.s).get("todo") or {}
+
+
+def at30_families(reporter=REPORTER):
+    out = {}
+    # The TodoWrite family, its one close driven from concurrent hook processes beside a plain Bash close.
+    w = P30("at30-todowrite", reporter)
+    lst = todo_list(("Measuring the room", "Measure the room", "in_progress"), ("Ordering the paint", "Order the paint", "pending"))
+    base = {"session_id": T30A, "prompt_id": "p1", "cwd": "/home/agent/mezzanine", "duration_ms": 5}
+    w.concurrent([("PostToolUse", dict(base, hook_event_name="PostToolUse", tool_name="TodoWrite", tool_input=lst,
+                                       tool_response={}, tool_use_id="toolu_tw1")),
+                  ("PostToolUse", dict(base, hook_event_name="PostToolUse", tool_name="Bash", tool_input={"command": "ls"},
+                                       tool_response={}, tool_use_id="toolu_b1"))])
+    out["w_hook_todos"] = w.todos()
+    out["w_records"] = [r["k"] for r in w.records()]
+    w.flush(passes=2)
+    out["w_after_pass"] = [(t, n) for _, t, n, _ in w.todos()]
+    # The Task family: three creates from concurrent hook processes, then the update to in_progress.
+    k = P30("at30-tasks", reporter)
+    base_k = dict(base, hook_event_name="PostToolUse", tool_name="TaskCreate")
+    k.concurrent([("PostToolUse", dict(base_k, tool_use_id=f"toolu_c{i}", tool_input={"subject": s, "activeForm": a},
+                                       tool_response={"task": {"id": str(i), "subject": s}}))
+                  for i, (s, a) in enumerate([("Measure the room", "Measuring the room"), ("Order paint", "Ordering paint"),
+                                              ("Paint", "Painting")], start=1)])
+    k.update("1", "in_progress")
+    out["k_hook_todos"] = k.todos()
+    out["k_records"] = sorted(r["k"] for r in k.records())
+    k.flush(passes=2)
+    out["k_after_pass"] = [(t, n) for _, t, n, _ in k.todos()]
+    # TaskList appends nothing and emits nothing.
+    n_rec = len(k.records())
+    k.post("TaskList", {}, {"tasks": [{"id": "1", "subject": "Measure the room", "status": "in_progress"}]})
+    k.flush(passes=2)
+    out["k_tasklist"] = (len(k.records()) - n_rec,
+                         [(t, n) for _, t, n, _ in k.todos()[len(out["k_after_pass"]):]])
+    # The titled id completed: the title goes null.
+    k.update("1", "completed")
+    k.flush()
+    out["k_completed"] = k.titles()[-1]
+    # 70 creates: the map holds 64, the rest evicted and counted; an evicted id's update titles from its
+    # own text, or null with none.
+    for i in range(100, 170):
+        k.create(str(i), f"Step {i}", f"Doing step {i}")
+    k.flush()
+    snap = {x["session_id"]: x for x in k.todo_snap().get("sessions", [])}
+    out["map_size"] = len(snap.get(T30A, {}).get("map", []))
+    out["evicted"] = k.s.site_counters().get("todo_map_evicted")
+    k.update("100", "in_progress", activeForm="Doing step 100 again")
+    k.flush()
+    out["evicted_with_text"] = k.titles()[-1]
+    k.update("101", "in_progress")
+    k.flush()
+    out["evicted_without_text"] = k.titles()[-1]
+    out["unknown"] = k.s.site_counters().get("todo_task_unknown")
+    out["contract_moved"] = [c for c in k.s.site_counters() if c.startswith("payload_key_missing.")]
+    # The boundaries: titled, then SessionEnd → null, resume → the retained title, clear → null.
+    k.update("169", "in_progress")
+    k.flush()
+    out["before_end"] = k.titles()[-1]
+    mark = len(k.todos())
+    k.hk("SessionEnd", reason="other")
+    k.flush()
+    out["end"] = [(t, n) for _, t, n, _ in k.todos()[mark:]]
+    mark = len(k.todos())
+    k.hk("SessionStart", source="resume")
+    k.flush()
+    out["resume"] = [(s, t, n) for s, t, n, _ in k.todos()[mark:]]
+    mark = len(k.todos())
+    k.hk("SessionEnd", reason="clear")
+    k.hk("SessionStart", sid=T30C, source="clear")
+    k.flush()
+    out["clear"] = [t for _, t, _, _ in k.todos()[mark:]]
+    out["caps"] = max(len(json.dumps({"v": 1, "t": "x", "e": e})) for e in k.s.events())
+    return out
+
+
+a30 = at30_families()
+eq("the hooks' spool carries NO todo.progress, for either family, however many hook processes ran at once",
+   ([], []), (a30["w_hook_todos"], a30["k_hook_todos"]))
+eq("  … and the journal holds one record per to-do payload: TodoWrite's one; the Task family's three creates and its update",
+   (["todo_list"], ["todo_create", "todo_create", "todo_create", "todo_update"]), (a30["w_records"], a30["k_records"]))
+eq("TodoWrite: one pass of two emits exactly ONE todo.progress, the activeForm, naming the tool that moved it",
+   [("Measuring the room", "TodoWrite")], a30["w_after_pass"])
+eq("the Task family: one pass of two emits exactly ONE todo.progress, the in-progress task's activeForm",
+   [("Measuring the room", "TaskUpdate")], a30["k_after_pass"])
+eq("a TaskList close appends nothing and moves nothing: the one event after it is the flusher start's re-sync of the "
+   "same title, still naming the TaskUpdate that moved it", (0, [("Measuring the room", "TaskUpdate")]), a30["k_tasklist"])
+eq("a TaskUpdate of the titled id to `completed` yields title null", None, a30["k_completed"])
+eq(f"after 70 creates the session's map holds {MAP_CAP} entries, and todo_map_evicted counts the rest",
+   (MAP_CAP, 70 + 3 - MAP_CAP), (a30["map_size"], a30["evicted"]))
+eq("  … an update of an evicted id titles from the text it carries", "Doing step 100 again", a30["evicted_with_text"])
+eq("  … and with none titles null — never the previous step's text", None, a30["evicted_without_text"])
+eq("  … each counting todo_task_unknown, and no payload_key_missing.* (which would raise harness_contract_moved)",
+   (2, []), (a30["unknown"], a30["contract_moved"]))
+eq("SessionEnd yields title null with tool_name SessionEnd", [(None, "SessionEnd")], a30["end"])
+eq("SessionStart(resume) re-emits the title the session's retained map and titled id hold",
+   [(T30A, "Doing step 169", "SessionStart")], a30["resume"])
+eq("a /clear yields null", [None], a30["clear"])
+eq("every event of the to-do rig is under the 4 KiB cap", True, a30["caps"] <= 4096)
+
+
+def at30_two_sessions(reporter=REPORTER):
+    out = {}
+    p = P30("at30-two", reporter)
+    p.hk("SessionStart", sid=T30B, source="startup")
+    p.post("TodoWrite", todo_list(("Measuring the room", "m", "in_progress")), sid=T30A)
+    p.flush()
+    p.tick(10000)
+    p.post("TodoWrite", todo_list(("Ordering the paint", "o", "in_progress")), sid=T30B)
+    p.flush()
+    p.tick(10000)
+    p.hk("SessionEnd", sid=T30B, reason="other")
+    p.flush()
+    out["seq"] = [(s, t, n) for s, t, n, _ in p.todos()]
+    out["stamps"] = [e for _, _, _, e in p.todos()]
+    # A Bash hook for B after B's SessionEnd reopens B in the index and emits nothing.
+    mark = len(p.todos())
+    p.post("Bash", {"command": "ls"}, sid=T30B)
+    p.flush(passes=2)
+    out["late_b"] = [t for _, t, _, _ in p.todos()[mark:]]
+    out["b_open"] = T30B in {x["session_id"] for x in snapshot(p.s).get("sessions", [])}
+    mark = len(p.todos())
+    p.hk("SessionEnd", sid=T30A, reason="other")
+    p.flush()
+    out["a_end"] = [t for _, t, _, _ in p.todos()[mark:]]
+    return out
+
+
+b30 = at30_two_sessions()
+eq("two sessions: the spool carries A's title, then B's, then A's AGAIN — B's SessionEnd never nulls A's live title",
+   [(T30A, "Measuring the room", "TodoWrite"), (T30B, "Ordering the paint", "TodoWrite"),
+    (T30B, "Measuring the room", "SessionEnd")], b30["seq"])
+eq("  … the re-emit is stamped later than every stamp before it", True,
+   len(b30["stamps"]) == 3 and b30["stamps"][2] > max(b30["stamps"][:2]))
+eq("  … a Bash hook for B after its SessionEnd reopens B in the index and puts nothing of B's back: the one event "
+   "after it is the start's re-sync of A's title (its contributing bit stays clear)",
+   (["Measuring the room"], True), (b30["late_b"], b30["b_open"]))
+eq("  … then A's SessionEnd yields null", [None], b30["a_end"])
+
+
+def at30_restart_and_section(reporter=REPORTER):
+    out = {}
+    p = P30("at30-restart", reporter)
+    p.post("TodoWrite", todo_list(("Measuring the room", "m", "in_progress")))
+    p.flush()
+    p.post("Bash", {"command": "ls"})      # spooled after the title, so a re-sync must sort after it
+    p.tick(5000)                           # far past a process start-up, so the clocks' order is the trace's
+    mark = len(p.todos())
+    p.flush(passes=3)                      # a NEW flusher with the title retained, then two quiet passes
+    out["restart"] = [(s, t) for s, t, _, _ in p.todos()[mark:]]
+    evs = p.s.events()
+    last_todo = max(i for i, e in enumerate(evs) if e["kind"] == "todo.progress")
+    out["resync_in_order"] = all(e["event_time"] <= evs[last_todo]["event_time"] for e in evs[:last_todo])
+    # One section: X completed and Y in_progress folded in one flusher section emit ONE event, Y.
+    q = P30("at30-section", reporter)
+    q.create("x", "X", "Doing X")
+    q.create("y", "Y", "Doing Y")
+    q.update("x", "in_progress")
+    q.flush()
+    mark = len(q.todos())
+    q.update("x", "completed")
+    q.update("y", "in_progress")
+    q.flush()
+    out["section"] = [t for _, t, _, _ in q.todos()[mark:]]
+    # 70 creates after the titled id's create leave the title standing while the map holds 64.
+    for i in range(70):
+        q.create(f"z{i}", f"Z{i}", f"Doing Z{i}")
+    q.flush()
+    snap = {x["session_id"]: x for x in q.todo_snap().get("sessions", [])}
+    out["standing"] = (q.titles()[-1], len(snap.get(T30A, {}).get("map", [])))
+    q.update("y", "completed")
+    q.flush()
+    out["titled_evicted_then_completed"] = q.titles()[-1]
+    return out
+
+
+c30 = at30_restart_and_section()
+eq("a flusher restarted with A's title retained emits that title on its FIRST fold, nothing having changed, "
+   "under A's session_id — and its two later passes emit nothing", [(T30A, "Measuring the room")], c30["restart"])
+eq("  … and that re-sync is stamped with the section stamp: no event spooled before it carries a later event_time",
+   True, c30["resync_in_order"])
+eq("one section: X → completed and Y → in_progress folded together emit ONE event, Y", ["Doing Y"], c30["section"])
+eq(f"70 creates after the titled id's create leave the title standing while the map holds {MAP_CAP}",
+   ("Doing Y", MAP_CAP), c30["standing"])
+eq("  … and the titled id, evicted from the map, still ends its title when it completes", None,
+   c30["titled_evicted_then_completed"])
+
+
+def at30_eviction_and_inference(reporter=REPORTER):
+    out = {}
+    # A seventeenth session evicting B through reapSessionBoundary re-derives, exactly as B's SessionEnd.
+    p = P30("at30-evict", reporter, start=False)
+    p.hk("SessionStart", sid=T30B, source="startup")      # B opened first: the least recently active session
+    p.hk("SessionStart", sid=T30A, source="startup")
+    p.post("TodoWrite", todo_list(("Measuring the room", "m", "in_progress")), sid=T30A)
+    p.post("TodoWrite", todo_list(("Ordering the paint", "o", "in_progress")), sid=T30B)   # B's is the answer
+    p.flush()
+    mark = len(p.todos())
+    for i in range(15):
+        p.hk("SessionStart", sid=f"77777777-3333-4333-8444-{i:012d}", source="startup")
+    p.flush()
+    out["evict"] = [(s, t, n) for s, t, n, _ in p.todos()[mark:]]
+    out["b_closed"] = [r.get("end_reason") for r in p.index() if r.get("k") == "session_close" and r.get("session_id") == T30B]
+    # A late hook 16 minutes after an inferred_silence close restores the contribution and re-emits.
+    q = P30("at30-late", reporter)
+    q.post("TodoWrite", todo_list(("Measuring the room", "m", "in_progress")))
+    q.flush()
+    q.tick(91 * 60 * 1000)
+    q.flush()
+    out["inferred"] = [(t, n) for _, t, n, _ in q.todos()[1:]]
+    q.tick(16 * 60 * 1000)
+    q.post("Bash", {"command": "ls"})
+    q.flush()
+    out["late"] = [(s, t, n) for s, t, n, _ in q.todos()[2:]]
+    # A flusher whose first folds hold no session emits nothing until the fold that does, then re-syncs.
+    r = P30("at30-empty", reporter, start=False)
+    r.flush(passes=2)
+    out["empty"] = r.todos()
+    r.hk("SessionStart", source="startup")
+    r.flush()
+    out["then"] = [(s, t, n) for s, t, n, _ in r.todos()]
+    return out
+
+
+d30 = at30_eviction_and_inference()
+eq("a seventeenth session evicts B through reapSessionBoundary (inferred_silence), and the answer is re-derived "
+   "and emitted exactly as B's SessionEnd would — A's title, under B's session",
+   ([(T30B, "Measuring the room", "SessionEnd")], ["inferred_silence"]), (d30["evict"], d30["b_closed"]))
+eq("the flusher's own 90-minute inferred_silence close ends the contribution: null", [(None, "SessionEnd")], d30["inferred"])
+eq("  … and the first hook 16 minutes later — the sessionsClosed tombstone long pruned — restores it from "
+   "closed_by_inference and re-emits", [(T30A, "Measuring the room", "SessionStart")], d30["late"])
+eq("a flusher whose first folds hold no session emits nothing", [], d30["empty"])
+eq("  … until the fold that does, which re-syncs the answer (null) under that session",
+   [(T30A, None, "SessionStart")], d30["then"])
+
+
+def at30_hygiene(reporter=REPORTER):
+    out = {}
+    p = P30("at30-hygiene", reporter)
+    # AT-2's extension: a credential in an activeForm.
+    tok = "ghp_" + "Q" * 36
+    p.post("TodoWrite", todo_list((f"Rotating token {tok}", "r", "in_progress")))
+    p.flush()
+    out["redacted_spool"] = p.titles()[-1]
+    out["journal_has_token"] = tok in p.journal_text()
+    # AT-10's to-do GREEN: 200 entries of 400-byte activeForms, 40 in progress.
+    prose = ("Measuring the room and writing down every wall " * 10)[:396]
+    big = [(prose + f"{i:04d}", f"c{i}", "in_progress" if i % 5 == 0 else "pending") for i in range(200)]
+    p.post("TodoWrite", todo_list(*big))
+    lines = [ln for f in sorted((p.s.spool / "index").glob("*.jsonl")) for ln in f.read_text(encoding="utf-8").splitlines()
+             if '"todo_list"' in ln]
+    last = json.loads(lines[-1])
+    out["line_bytes"] = len(lines[-1].encode("utf-8"))
+    out["entry"] = last.get("entry")
+    out["tail_in_journal"] = (prose[-200:] + "0000") in p.journal_text()
+    # The same payloads with agent_id present append nothing.
+    n = len(p.records())
+    p.post("TodoWrite", todo_list(("Sub", "s", "in_progress")), agent_id="a0000000000000c30")
+    p.post("TaskCreate", {"subject": "S", "activeForm": "Subbing"}, {"task": {"id": "9", "subject": "S"}}, agent_id="a0000000000000c30")
+    out["subagent_records"] = len(p.records()) - n
+    # The control: two in_progress items yield the first in list order, on every run.
+    q = P30("at30-order", reporter)
+    q.post("TodoWrite", todo_list(("Second thing", "b", "pending"), ("First thing", "a", "in_progress"), ("Third", "c", "in_progress")))
+    q.flush()
+    q.post("TodoWrite", todo_list(("Third", "c", "in_progress"), ("First thing", "a", "in_progress")))
+    q.flush()
+    out["order"] = q.titles()
+    # last_emitted is written AFTER the spool line it names: a pass whose append fails persists nothing new.
+    r = P30("at30-persist", reporter)
+    r.post("TodoWrite", todo_list(("One", "1", "in_progress")))
+    r.flush()
+    out["persist_before"] = r.todo_snap().get("last_emitted")
+    r.post("TodoWrite", todo_list(("Two", "2", "in_progress")))
+    r.tick()
+    blocked = r.s.spool / f"{time.strftime('%Y%m%d%H', time.gmtime(r.t / 1000 + 0.1))}.jsonl"
+    moved = blocked.with_suffix(".jsonl.keep")
+    blocked.rename(moved)
+    blocked.mkdir()                                   # the event append now fails (EISDIR) and is counted
+    r.flush()
+    out["persist_failed"] = r.todo_snap().get("last_emitted")
+    blocked.rmdir()
+    moved.rename(blocked)
+    r.flush()
+    out["persist_after"] = (r.todo_snap().get("last_emitted"), r.titles()[-1])
+    return out
+
+
+h30 = at30_hygiene()
+eq("AT-2's extension: a to-do whose activeForm carries a GitHub token reaches the spool as ‹redacted:token›",
+   "Rotating token ‹redacted:token›", h30["redacted_spool"])
+eq("  … and the journal never held the raw token: the full § 7.3 pass ran at append, in the hook", False,
+   h30["journal_has_token"])
+eq("AT-10's to-do case: a 200-entry, 400-byte-activeForm list journals ONE line under 4 KiB", True, h30["line_bytes"] <= 4096)
+eq(f"  … carrying exactly one entry: the first in_progress, cut at the {TITLE_CAP} B title bound with …",
+   (True, True, True), (bool(h30["entry"]) and h30["entry"]["text"].endswith("…"),
+                        bool(h30["entry"]) and len(h30["entry"]["text"].encode()) <= TITLE_CAP,
+                        bool(h30["entry"]) and h30["entry"]["text"].startswith("Measuring the room") and h30["entry"]["truncated"] is True))
+eq("  … and a grep of the journal for a 400-byte activeForm's tail finds nothing: cut before appendLine", False,
+   h30["tail_in_journal"])
+eq("the same payloads with agent_id present append nothing (a subagent's list is the subagent's)", 0, h30["subagent_records"])
+eq("CONTROL: two in_progress items yield the FIRST in list order, on every run — the assertion discriminates on order",
+   ["First thing", "Third"], h30["order"])
+eq("last_emitted is persisted only after the append landed: a pass whose spool append failed leaves the previous value",
+   ("One", "One"), (h30["persist_before"], h30["persist_failed"]))
+eq("  … and the next pass, its append landing, sends the owed title and records it", ("Two", "Two"), h30["persist_after"])
+
+
+def at30_narrowed(reporter=REPORTER):
+    out = {}
+    p = P30("at30-narrow", reporter)
+    p.post("TodoWrite", todo_list(("Measuring the room", "m", "in_progress")))
+    p.flush()
+    p.s.cfg["descriptors"] = "paths"
+    p.s.write_cfg()
+    n = len(p.records())
+    p.post("TodoWrite", todo_list(("Something else", "s", "in_progress")))
+    p.hk("SessionEnd", reason="other")
+    p.hk("SessionStart", source="resume")
+    out["appended"] = len(p.records()) - n
+    mark = len(p.todos())
+    p.flush(passes=2)
+    p.flush(passes=2)
+    out["restarts"] = [t for _, t, _, _ in p.todos()[mark:]]
+    return out
+
+
+n30 = at30_narrowed()
+eq("narrowed, seeded: under descriptors \"paths\" the hooks append no to-do record", 0, n30["appended"])
+eq("  … each flusher restart's first fold emits title null exactly once, and no fold ever emits the retained title",
+   [None, None], n30["restarts"])
+
+
+# ── AT-30's REDs, each planted on a COPY and seen to flip its GREEN ──────────────────────────────────────
+def red(label, got, green_value):
+    if got != green_value:
+        ok(f"RED seen: {label}")
+    else:
+        bad(f"RED did not fire (the GREEN would be vacuous): {label} — got {got!r}")
+
+
+r_hook = plant(("  if (descriptorMode(ctx.config) !== 'full') return;\n  if (bytes(",
+                "  if (descriptorMode(ctx.config) !== 'full') return;\n  if (rec.k === 'todo_list') ctx.emit('todo.progress', rec.session_id, { title: rec.entry ? rec.entry.text : null, title_truncated: false, tool_name: rec.tool_name });\n  if (bytes("))
+red("derive and emit in the hook — the hooks' spool carries a todo.progress", at30_families(r_hook)["w_hook_todos"], [])
+r_refuse = plant(("  t.map.delete(id);\n  t.map.set(id, { text, truncated: !!truncated });",
+                  "  if (!t.map.has(id) && t.map.size >= K.TODO_MAP_ENTRIES) return;\n  t.map.delete(id);\n  t.map.set(id, { text, truncated: !!truncated });"))
+red("refuse the 65th entry instead of evicting — the evicted-id update cannot title from the map, and the map never evicts",
+    at30_families(r_refuse)["evicted"], 70 + 3 - MAP_CAP)
+r_raw = plant(("  const r = sanitize(raw, K.TITLE_CAP);\n  countSanitizer(r);\n  return { text: r.text, truncated: r.truncated };",
+               "  return { text: raw, truncated: false };"))
+red("journal the raw text — the credential is on disk before any pass runs", at30_hygiene(r_raw)["journal_has_token"], False)
+r_before = plant(("  const ev = ctx.emit('todo.progress', sid,", "  ix.todo.last_emitted = ans.title;\n  const ev = ctx.emit('todo.progress', sid,"))
+red("persist last_emitted before the append — a failed append marks the title sent", at30_hygiene(r_before)["persist_failed"], "One")
+r_noend = plant(("  if (t.contributing) ix.todo.trigger = { session_id: sid, tool_name: 'SessionEnd' };\n  t.contributing = false;\n  t.closed_by_inference",
+                 "  t.closed_by_inference"),
+                ("      t.contributing = false;\n      break;\n    default: break;", "      break;\n    default: break;"))
+red("emit nothing at SessionEnd — the title outlives its session on the desk", at30_families(r_noend)["end"], [(None, "SessionEnd")])
+r_every = plant(("  if (!resync && !changed) return false;", ""))
+red("emit on every pass — a later quiet pass emits a second event where none is owed",
+    at30_restart_and_section(r_every)["restart"], [(T30A, "Measuring the room")])
+r_seatnull = plant(("  if (t.contributing) ix.todo.trigger = { session_id: sid, tool_name: 'SessionEnd' };\n  t.contributing = false;\n  t.closed_by_inference",
+                    "  if (t.contributing) ix.todo.trigger = { session_id: sid, tool_name: 'SessionEnd' };\n  for (const x of ix.todo.sessions.values()) x.contributing = false;\n  t.closed_by_inference"))
+red("null the seat on B's SessionEnd while A is open — A's live title vanishes",
+    at30_two_sessions(r_seatnull)["seq"][-1:], [(T30B, "Measuring the room", "SessionEnd")])
+r_stamp = plant(("    let line = JSON.stringify({ v: SCHEMA_VERSION, t: rfc3339(t), e: ev });\n    if (bytes(line) > K.EVENT_CAP && typeof",
+                 "    if (kind === 'todo.progress' && data.__at) { ev.event_time = data.__at; delete data.__at; }\n    let line = JSON.stringify({ v: SCHEMA_VERSION, t: rfc3339(t), e: ev });\n    if (bytes(line) > K.EVENT_CAP && typeof"),
+                ("tool_name: toolName });\n  if (ev === null) return false;",
+                 "tool_name: toolName, __at: (ix.todo.sessions.get(sid) || {}).title_at });\n  if (ev === null) return false;"))
+red("stamp the event from the triggering record's `at` — the restart's re-sync sorts behind events spooled after the title",
+    at30_restart_and_section(r_stamp)["resync_in_order"], True)
+r_anylate = plant(("  if (r.source === 'resume' || t.closed_by_inference) {", "  if (true) {"))
+red("set contributing on ANY late hook — a hook after a seat-sent SessionEnd puts the ended title back",
+    at30_two_sessions(r_anylate)["late_b"], ["Measuring the room"])
+r_noevict = plant(("  todoSessionClosed(ix, r.session_id, r.end_reason || null, r.at);\n      break;",
+                   "  if (r.end_reason !== 'inferred_silence') todoSessionClosed(ix, r.session_id, r.end_reason || null, r.at);\n      break;"))
+red("skip the re-derivation on the hook-side cap eviction — the evicted session's title outlives it",
+    at30_eviction_and_inference(r_noevict)["evict"], [(T30B, "Measuring the room", "SessionEnd")])
+r_perrecord = plant(("    case 'todo_list': case 'todo_create': case 'todo_update': case 'todo_end':\n      applyTodoRecord(ix, r);",
+                     "    case 'todo_list': case 'todo_create': case 'todo_update': case 'todo_end':\n      applyTodoRecord(ix, r);\n      if (ix.emitNow) ix.emitNow();"),
+                    ("      const fx = foldIndex(spool, at, { counting: true });", "      const fx = foldIndex(spool, at, { counting: true, ctx });"),
+                    ("  ix.counting = !!opts.counting;", "  ix.counting = !!opts.counting;\n  if (opts.ctx) ix.emitNow = () => emitTodo(opts.ctx, ix, false);"))
+red("emit per record instead of once per section — X's null and Y's title share one stamp and two events go out",
+    at30_restart_and_section(r_perrecord)["section"], ["Doing Y"])
+r_tomb = plant(("  if (r.source === 'resume' || t.closed_by_inference) {",
+                "  if (r.source === 'resume' || (t.closed_by_inference && false)) {"))
+red("read the post-inference case from anything but closed_by_inference — the 16-minute late hook restores nothing",
+    at30_eviction_and_inference(r_tomb)["late"], [(T30A, "Measuring the room", "SessionStart")])
+r_narrowread = plant(("  if (mode !== 'full') return { title: null, title_truncated: false };\n  let best = null;", "  let best = null;"))
+red("read the retained state under a narrowed descriptors — the seeded title is re-synced onto the desk",
+    at30_narrowed(r_narrowread)["restarts"], [None, None])
+r_twonull = plant(("  if (emitTodo(ctx, fx, todoResyncOwed)) todoResyncOwed = false;",
+                   "  if (descriptorMode(ctx.config) !== 'full' && todoResyncOwed) ctx.emit('todo.progress', newestSession(fx), { title: null, title_truncated: false, tool_name: 'SessionStart' });\n      if (emitTodo(ctx, fx, todoResyncOwed)) todoResyncOwed = false;"))
+red("emit the narrowing's null and the restart re-sync as two events — two same-stamp events per restart",
+    at30_narrowed(r_twonull)["restarts"], [None, None])
+r_lruonly = plant(("  return best ? { title: best.title, title_truncated: best.title_truncated } : { title: null, title_truncated: false };",
+                   "  if (best && best.titled_id !== null && !best.map.has(best.titled_id)) return { title: null, title_truncated: false };\n  return best ? { title: best.title, title_truncated: best.title_truncated } : { title: null, title_truncated: false };"))
+red("keep the titled id only in the LRU — its eviction blanks the desk mid-step",
+    at30_restart_and_section(r_lruonly)["standing"], ("Doing Y", MAP_CAP))
+redgreen("the to-do tier: one writer, one emit per section, ended at every boundary (AT-30, card#12447)",
+         "one plant per RED, each on a copy: a hook that emits; a refusing map; raw text journaled; last_emitted "
+         "before the append; no clear at SessionEnd; an emit every pass; a session's end nulling the seat; a "
+         "record-time stamp; contributing on any late hook; no re-derivation on the cap eviction; one emit per "
+         "record; the post-inference case read elsewhere; retained state read under paths; two nulls per "
+         "narrowed restart; a titled id held only in the LRU — each flips its GREEN",
+         "the hooks append sanitised, bounded records; the flusher folds them into a per-session LRU with the "
+         "titled id beside it, derives the seat's answer over contributing sessions LAST, and emits once per "
+         "section under the section stamp, persisting last_emitted only after the append")
+
+
+# ── AT-31: a board declaration rides every heartbeat, carries no URL, and a malformed one declares nothing ──
+BASE31 = "https://kanban.example.org/api/v3"
+
+
+def at31_case(tag, extra, reporter=REPORTER, agent=None):
+    s = seat(f"at31-{tag}")
+    s.cfg.update(extra)
+    if agent is not None:
+        s.cfg["protocol_agent_name"] = agent
+    s.write_cfg()
+    mark = len(INGEST.batches)
+    r = flush(s, reporter=reporter, COORD_CONFIG="/nonexistent/coord.json")
+    hbs = [e for b in list(INGEST.batches[mark:]) if b.get("auth") == f"Bearer {s.token}"
+           for e in b["batch"].get("events", []) if e.get("kind") == "reporter.heartbeat"]
+    hb = hbs[0]["data"] if hbs else {}
+    _, st = selftest(s, reporter=reporter, COORD_CONFIG="/nonexistent/coord.json")
+    raw = "".join(json.dumps(b["batch"]) for b in list(INGEST.batches[mark:]) if b.get("auth") == f"Bearer {s.token}")
+    return {
+        "pair": (hb.get("board_user_id", "ABSENT"), hb.get("board_fingerprint", "ABSENT")) if hbs else ("NO HEARTBEAT", None),
+        "has_keys": ("board_user_id" in hb, "board_fingerprint" in hb),
+        "malformed": s.site_counters().get("board_declaration_malformed", 0),
+        "detail_key": ((st.get("detail") or {}).get("board_declaration") or {}).get("malformed_key"),
+        "config_readable": hb.get("selftest", {}).get("config_readable"),
+        "sent": bool(hbs),
+        "host_on_wire": "kanban.example.org" in raw.lower(),
+        "agent_check": hb.get("protocol_agent_name_check"),
+    }
+
+
+def fp(base):
+    import hashlib
+    return hashlib.sha256(base.encode()).hexdigest()[:16]
+
+
+def at31_all(reporter=REPORTER, agent=None):
+    sfx = "" if agent is None else "-agent"
+    return {
+        "both": at31_case("both" + sfx, {"board_user_id": 14, "board_api_base": BASE31}, reporter, agent),
+        "slashcase": at31_case("slash" + sfx, {"board_user_id": 14, "board_api_base": "https://Kanban.EXAMPLE.org:443/api/v3/"}, reporter, agent),
+        "neither": at31_case("neither" + sfx, {}, reporter, agent),
+        "half": at31_case("half" + sfx, {"board_user_id": 14}, reporter, agent),
+        "string": at31_case("string" + sfx, {"board_user_id": "14", "board_api_base": BASE31}, reporter, agent),
+        "userinfo": at31_case("userinfo" + sfx, {"board_user_id": 14, "board_api_base": "https://u:p@kanban.example.org/api/v3"}, reporter, agent),
+    }
+
+
+g31 = at31_all()
+eq("AT-31: both keys well-formed ⇒ board_user_id 14 and the fingerprint of the base, lowercased and slash-trimmed",
+   (14, fp(BASE31)), g31["both"]["pair"])
+eq("  … a base written with an upper-case host, its default port and a trailing slash yields the SAME fingerprint",
+   g31["both"]["pair"], g31["slashcase"]["pair"])
+eq("  … neither key, half a pair, a string id and a base carrying userinfo each heartbeat null and null, both keys present",
+   [((None, None), (True, True))] * 4,
+   [(g31[k]["pair"], g31[k]["has_keys"]) for k in ("neither", "half", "string", "userinfo")])
+eq("  … the malformed three count board_declaration_malformed and selftest's detail names the KEY",
+   [(0, None), (1, "board_api_base"), (1, "board_user_id"), (1, "board_api_base")],
+   [(g31[k]["malformed"], g31[k]["detail_key"]) for k in ("neither", "half", "string", "userinfo")])
+eq("  … config_readable passes and the flusher sends, on every one", [("pass", True)] * 6,
+   [(g31[k]["config_readable"], g31[k]["sent"]) for k in g31])
+eq("  … and the base's host never rides the wire", [False] * 6, [g31[k]["host_on_wire"] for k in g31])
+c31 = at31_all(agent="mezzanine")
+eq("CONTROL: the same configs with protocol_agent_name added keep that field's own state — the declarations do not read each other",
+   ([c31[k]["agent_check"] for k in c31], [c31[k]["pair"] for k in c31]),
+   (["unchecked"] * 6, [g31[k]["pair"] for k in g31]))
+r31_omit = plant(("      board_user_id: declaration.board.user_id,\n      board_fingerprint: declaration.board.fingerprint,\n", ""))
+red("omit the pair on an undeclared seat — a site cannot tell it from a 0.3.0 reporter",
+    at31_case("red-omit", {}, r31_omit)["has_keys"], (True, True))
+r31_url = plant(("      board_fingerprint: declaration.board.fingerprint,\n", "      board_fingerprint: declaration.board.fingerprint,\n      board_api_base: config.board_api_base,\n"))
+_r31_src = r31_url.read_text(encoding="utf-8").replace("board_api_base: config.board_api_base", "board_api_base: cfg.board_api_base", 1)
+r31_url.write_text(_r31_src, encoding="utf-8")
+red("carry board_api_base on the heartbeat — AT-4's wire read finds the host",
+    at31_case("red-url", {"board_user_id": 14, "board_api_base": BASE31}, r31_url)["host_on_wire"], False)
+r31_err = plant(("  // `protocol_agent_name` is deliberately NOT validated here: a malformed one declares nothing, and",
+                 "  if (c.board_user_id !== undefined && !Number.isInteger(c.board_user_id)) errors.push('board_user_id must be an integer');\n  // `protocol_agent_name` is deliberately NOT validated here: a malformed one declares nothing, and"))
+red("fail config_readable on the malformed pair — a typo in an optional label silences the seat",
+    at31_case("red-err", {"board_user_id": "14", "board_api_base": BASE31}, r31_err)["config_readable"], "pass")
+redgreen("a board declaration rides every heartbeat, as a digest, and a malformed one declares nothing (AT-31, card#12447)",
+         "three plants: the pair omitted when undeclared; the base itself on the heartbeat; a malformed pair as a "
+         "config error — each flips its GREEN",
+         "the heartbeat carries board_user_id and a 16-hex fingerprint of the normalized base on every send, null "
+         "and null when undeclared or malformed, counted and named in selftest's detail, the seat still sending")
 
 
 print("\n== 21. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")

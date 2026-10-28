@@ -69,9 +69,14 @@ final class BoardPoll
             $boardIds = CandidateRead::boardIds($raw);
             [$base, $token] = self::credential();
 
+            // § 4.4 (card#12447) — the link pass's PHASE 1, outside any transaction: its candidate set and,
+            // when a declaration needs checking, the members read. A degraded members read closes the PASS
+            // (null, counted) and never the poll: the card read below runs either way.
+            $plan = LinkPass::prepare($boardIds, $base, $token);
+
             // § 15.9: the read and § 4.2's fold are `CandidateRead`'s, which the compose path's live
             // read shares; it neither counts nor logs, so a failure is counted below and only here.
-            $written = $this->write(CandidateRead::winners($boardIds, $base, $token, $say), $observedAt);
+            $written = $this->write(CandidateRead::winners($boardIds, $base, $token, $say), $observedAt, $plan);
         } catch (BoardPollFailed $failure) {
             $this->countFailure($failure);
 
@@ -111,7 +116,7 @@ final class BoardPoll
 
     /**
      * § 7.2 — one transaction, one row per mapped unretired seat, and `board_poll_ok` committed
-     * with it.
+     * with it — and, first in it, the link pass's writes (card#12447, § 4.4).
      *
      * ⚠ THE MAPPING IS READ HERE, LOCKED, AND NOT BEFORE THE BOARD READS. `mezzanine:seat-board-user`
      * and retirement each delete a seat's row in the transaction that rewrites its mapping; a poll
@@ -123,10 +128,15 @@ final class BoardPoll
      *
      * @param  array<int, array<string, mixed>>  $winners
      */
-    private function write(array $winners, string $observedAt): int
+    private function write(array $winners, string $observedAt, ?LinkPlan $plan = null): int
     {
         try {
-            return DB::transaction(function () use ($winners, $observedAt): int {
+            return DB::transaction(function () use ($winners, $observedAt, $plan): int {
+                // § 4.4's PHASE 2 FIRST, in this one transaction: its lock covers every `seats` row the link
+                // pass may write AND every mapped seat, in `id` order, so the read below re-takes locks this
+                // transaction already holds and a seat the pass just mapped gets its row in this same poll.
+                LinkPass::apply($plan);
+
                 $seats = DB::table('seats')
                     ->whereNotNull('board_user_id')
                     ->whereNull('retired_at')

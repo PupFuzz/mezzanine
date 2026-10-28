@@ -145,6 +145,7 @@ class Projector
             'attention.request' => $this->attentionRequest($e),
             'attention.resolved' => $this->attentionResolved($e),
             'reporter.heartbeat' => $this->heartbeat($e),
+            'todo.progress' => $this->todoProgress($e),
 
             // Unreachable: the ingest stores only kinds `KindRegistry` knows and the fold reads
             // only stored rows, so an unknown kind cannot arrive here. A silent default would be
@@ -1009,6 +1010,40 @@ class Projector
         ]);
     }
 
+    /**
+     * D1 § 6.16 (card#12447) — tier 4's ONE SLOT PER SEAT, `seat_state.todo_*`, on `contextSample()`'s
+     * model: it reads and writes `seat_state` alone.
+     *
+     * ⛔ IT RESOLVES NO SESSION ROW, AND THAT IS THE DESIGN (D2 § 6.5, design review r5). The event carries
+     * the TRIGGERING record's `session_id` — for a boundary emit the session the reporter just closed — and
+     * `sessionRef()` reopens a session the server holds closed by `inferred_silence`: the reporter's own
+     * boundary `null` would reopen the session it reports the end of, a phantom open session with
+     * `session_reopened` counted on every silence close.
+     *
+     * ⛔ GUARDED ON THE EVENT'S OWN `event_time` (`todo_event_time`), NEVER ON `todo_as_of` — the receipt —
+     * which would let a seat whose clock runs behind the server's refuse each newer title it sends (r2,
+     * MAJOR-2), and an EQUAL stamp loses, as the gauge's does: which is why the reporter emits at most one
+     * per flusher section (D1 § 6.16). And it clears on nothing of this plane's: no session close, no
+     * quiescence, no clock — the reporter is the one writer of the title's life (D2 § 4.6's to-do row).
+     * Not an activity kind (D2 § 3.2): the task-tool call that produced it already is.
+     */
+    private function todoProgress(FoldEvent $e): void
+    {
+        $state = DB::table('seat_state')->where('seat_ref', $e->seatRef)->first(['todo_event_time']);
+
+        if ($state->todo_event_time !== null && strcmp($e->eventTime, $state->todo_event_time) <= 0) {
+            return;
+        }
+
+        DB::table('seat_state')->where('seat_ref', $e->seatRef)->update([
+            // Already ≤ 120 BYTES at the reporter, and the ingest refuses a longer one (D1 § 12.1 step 10),
+            // so the `VARCHAR(120)` never truncates; `str()` maps `null` (nothing in progress) to `null`.
+            'todo_title' => $e->str('title', 120),
+            'todo_as_of' => $e->receivedAt,
+            'todo_event_time' => $e->eventTime,
+        ]);
+    }
+
     // ── attention ────────────────────────────────────────────────────────────────────────────
 
     private function attentionRequest(FoldEvent $e): void
@@ -1150,6 +1185,26 @@ class Projector
         // "no heartbeat has said" out of the boolean.
         $enabled = Wire::field($e->data, 'enabled');
 
+        // card#12447: the seat's DECLARED board user and its fingerprint (D1 § 6.14), off the seat object
+        // and read by one consumer, the board poll's link pass (`BOARD-TASK.md § 4.4`) — a REPORTED claim
+        // that pass CHECKS before anything joins on it. Last heartbeat's value; an omitted key writes
+        // `null` like every member of this group. Each through its own arm: the id an INTEGER in
+        // `1…4,294,967,295` and nothing else (a string spelling is a reporter bug, not a second encoding),
+        // the fingerprint `conforming()` to its 16 hex; a miss stores `null`, counts `format_refused.<key>`,
+        // and lands the rest of the heartbeat. The fingerprint is `null` exactly when the id is.
+        $declaredUser = Wire::field($e->data, 'board_user_id');
+        $boardUser = null;
+
+        if ($declaredUser !== null) {
+            if (is_int($declaredUser) && $declaredUser >= 1 && $declaredUser <= Wire::BOARD_USER_MAX) {
+                $boardUser = $declaredUser;
+            } else {
+                Counters::seat($e->seatRef, FoldEvent::FORMAT_REFUSED.'board_user_id');
+            }
+        }
+
+        $fingerprint = $e->conforming('board_fingerprint', Wire::BOARD_FINGERPRINT);
+
         DB::table('seat_state')->where('seat_ref', $e->seatRef)->update([
             'last_heartbeat_received_at' => $e->receivedAt,
             'spool_lag_events' => $e->int('spool_lag_events'),
@@ -1191,6 +1246,8 @@ class Projector
                 'roundtable_agent_name_check',
                 KindRegistry::KINDS['reporter.heartbeat']['enums']['roundtable_agent_name_check']['members'],
             ),
+            'board_user_declared' => $boardUser,
+            'board_fingerprint_declared' => $boardUser === null ? null : $fingerprint,
             'reporter_uptime_s' => $e->int('uptime_s'),
             // § 7.3: stored VERBATIM as a snapshot, never summed and never merged into
             // `seat_counters`. They are cumulative totals that persist across flusher restarts, so
