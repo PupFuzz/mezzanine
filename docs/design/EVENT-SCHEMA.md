@@ -1498,7 +1498,7 @@ process whose whole contract ([§ 2.2](#22-rules-that-protect-the-seat)) is to p
 | one key without the other, or either malformed | `null` and `null` — a malformed declaration declares nothing, exactly as a malformed `protocol_agent_name` does, and for the same reason: the ingest would refuse a heartbeat carrying it and the whole batch with it ([§ 12.4](#124-batches-are-atomic)). ⛔ Not a config error: `config_readable` passes, nothing stops sending | `board_declaration_malformed` ([§ 9.3](#93-degradation-counters)); the `selftest` subcommand's `detail` names which key, and never the value of `board_api_base` beyond its scheme and host |
 
 **Which credential the installer resolves with, and the two states a box can be in.** The runbook's
-install step (`fleet-reporter/INSTALL-LINUX.md` Step 2, a `board-identity` block to be added under
+install step (`fleet-reporter/INSTALL-LINUX.md` Step 2's `board-identity` block,
 card#12447) reads the kanban API base from the coordination config the reporter already resolves for
 its roster — `$COORD_CONFIG` first, the home path second, the order
 *`protocol_agent_name`* above states — as `kanban.base_url` joined to `api/v3` with **exactly one `/`** between them — every trailing `/`
@@ -8181,7 +8181,7 @@ property.
   compaction variant.
 ### AT-30 the to-do tier says what the agent turned to, from either family, derived and ended by one writer
 
-*Designed, card#12447; built with [§ 16](#16-what-an-implementer-builds-from-this) row 12.*
+*Built for card#12447 ([§ 16](#16-what-an-implementer-builds-from-this) row 12): `fleet-reporter/fleet-reporter.selftest.py` § 26, each RED a plant on a copy of the reporter.*
 
 - **Build:** drive the reporter's `hook` subcommand with the captured `PostToolUse` payloads of
   [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s to-do row — the `TodoWrite` list with
@@ -8242,10 +8242,16 @@ property.
   pass seen to fire on a to-do and not only on a command.
 - **Control:** a `TodoWrite` whose list carries two `in_progress` items yields the first in list
   order on every run, so the assertion is known to discriminate on order.
+- **How the suite reads two of the GREENs, stated so the claim is no wider than the run:** every
+  flusher there is a START (`FLEET_REPORTER_ONE_PASS`), whose first fold re-syncs by rule, so *the
+  `TaskList` close emits nothing* is read as *the one event its pass emits is the start's re-sync of
+  the same title, still naming the `TaskUpdate` that moved it*, and *nothing changed, nothing emitted*
+  is read on the later passes of one process (`FLEET_REPORTER_SEAT_PASSES`); and the `/clear` is
+  driven as the harness delivers it, `SessionEnd(clear)` and then `SessionStart(clear)`.
 
 ### AT-31 a board declaration rides every heartbeat, carries no URL, and a malformed one declares nothing
 
-*Designed, card#12447; built with [§ 16](#16-what-an-implementer-builds-from-this) row 12.*
+*Built for card#12447 ([§ 16](#16-what-an-implementer-builds-from-this) row 12): `fleet-reporter/fleet-reporter.selftest.py` § 26, each RED a plant on a copy of the reporter.*
 
 - **Build:** four configs — both board keys well-formed; neither; `board_user_id` without
   `board_api_base`; `board_user_id: "14"` (a string). Start the flusher on each and read its first

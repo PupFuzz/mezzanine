@@ -419,7 +419,7 @@ rather than overwritten. Over each candidate seat:
    ([D2 § 6.4](FLEET-STATE.md#64-ddl) `seat_state.reporter_version`) is at least the build whose
    heartbeat carries the members on every send: `SchemaVersions::reporterAtLeast($version, '0.5.0')`
    (`SchemaVersions::TODO_AND_BOARD_DECLARATION_FROM`),
-   a primitive the build adds beside `reporterIsOutdated()` — numeric precedence per component, an
+   a primitive beside `reporterIsOutdated()` — numeric precedence per component, an
    unparseable or null version answering `false` — and **not** `reporterIsOutdated()`, which compares
    against `CURRENT_REPORTER_VERSION` and would stop clearing the day the current build moved past
    `0.5.0` (AT-D4-12's third case). A seat on an older reporter, or one
@@ -1118,9 +1118,12 @@ degraded one.
   `board_user_id` `NULL`, `board_user_source = refused`, the row gone, and a fifth poll writes and
   counts nothing for the seat while the heartbeat still declares `14`.
 - **RED, each seen to fail:** let the pass overwrite a pinned seat — the operator's `15` becomes
-  `14` with nothing degraded; let it fill a refused seat — the refusal is a comment; skip the row
-  deletion on the pass's write — the desk shows the previous user's card for a cadence, the shape
-  AT-D4-8 names as the hardest to see.
+  `14` with nothing degraded; let it fill a refused seat — the refusal is a comment. ⚠ A third RED
+  this AT once named — skip the row deletion on the pass's write — is **not observable** and was
+  measured so (card#12447's build): the card read in the same transaction upserts the newly mapped
+  seat's row, overwriting what the deletion would have removed, so the plant changes no committed
+  state. The deletion stays because [§ 4.1](#41-seat--board-user)'s rule is stated over every write
+  of the column.
 - **Control:** a seat declaring nothing, never mapped, is untouched by all five polls and counts
   nothing, so the pass is known to be able to leave a seat alone.
 
@@ -1405,7 +1408,7 @@ its text; this table is where the state is read.
     `--check-runbook` drift check holds the block and its `already set` marker to the script as it holds
     every other block. What it does not do, named: read which model a seat runs (not a file fact, and not
     needed once the variable is set), or touch a session already running (the next session has the
-    tools). **Blocks:** nothing — a build item of [§ 13.1](#131-card12447--the-automatic-link-and-the-to-do-tier-every-amendment-and-its-state).
+    tools). **Blocks:** nothing — built with [§ 13.1](#131-card12447--the-automatic-link-and-the-to-do-tier-every-amendment-and-its-state); ⚠ the measurement that a settings `env` block alone provides the tools is owed (`fleet-reporter/INSTALL-LINUX.md` Step 4 (c)).
 12. **✅ ANSWERED, with one residual — whose credential a seat's board identity is** (operator,
     2026-10-27, verbatim: *"yes each PM has their own login"*). A PM seat's `[kanban] api_token_file`
     is that agent's own account, so — **provided no other seat declares the same user**, which the

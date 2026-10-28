@@ -1305,7 +1305,7 @@ being added — so the control that reds when a hook disappears also reds when t
 anything else. A settings file whose `env` is present and **not an object** is refused by name and
 nothing is written. The apply is a temp file beside the real path and a `rename` onto
 `realpath`'s answer, so a `settings.json` that is a symlink stays a symlink and its target gets the
-bytes; (a)'s `cp` is the same act in the shape it had when written, and the build may move (a) onto
+bytes; (a)'s `cp` is the same act in the shape it had when written, and (a) may move onto
 this apply without changing what it writes. A `kept` and an `already set` both end in
 **`: unchanged`**, which is the one marker `install.sh` reads for this block, so neither counts as a
 change the run must restart anything for; `set` records itself in
