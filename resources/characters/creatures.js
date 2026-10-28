@@ -940,12 +940,20 @@ function rimOf(markup) {
 // taller. It is OK not to see their hands."), so the paws and the keys are behind it, the eyes always over its top edge
 // and at least the top of the mouth too, and the screen, which faces the intern, shows only as a lit edge and a glow.
 
-/** The laptop shells — ten, chosen to differ at one floor pixel: light, dark, and eight hues apart. */
-export const LAPTOP_SHELLS = Object.freeze(['#e4e0d8', '#3b3e4b', '#c8553d', '#e0a43a', '#7fb3d5', '#7f9f6a', '#8a5a8e', '#3f8f8a', '#e08aa0', '#4b6e3f']);
+/**
+ * The laptop shells — ten pale metallic tints, variations of silver (the operator's ruling of 2026-10-28, card#12502:
+ * *"I want the laptop colors to be variations of metallic silver, similar to how Apple colors their macbooks."*):
+ * silver, graphite, sky, ice, lavender, rose, peach, gold, mint and starlight. They are light and close by design, so a
+ * shell tells interns apart less than its stickers do; `laptopSvg()` draws each with a metallic sheen.
+ */
+export const LAPTOP_SHELLS = Object.freeze(['#dcdee2', '#b9bdc5', '#c5d9ee', '#c9e3e6', '#d8d0ea', '#efd0d8', '#f1d7c3', '#ecdfb7', '#cde6d3', '#e9e3d6']);
 /** The sticker shapes, each drawn by `stickerSvg()`. */
 export const STICKER_SHAPES = Object.freeze(['star', 'heart', 'leaf', 'bolt', 'smiley', 'planet', 'paw', 'mug']);
-/** The sticker inks — a sticker is drawn in an ink that stands off its shell (`laptopOf()`'s contrast filter). */
-export const STICKER_INKS = Object.freeze(['#fff5e0', '#2b2430', '#f2c44a', '#e3524f', '#5aa0e0', '#79c26f']);
+/**
+ * The sticker inks — a sticker is drawn in an ink that stands off its shell (`laptopOf()`'s contrast filter): dark and
+ * saturated, chosen against the pale metallic shells (card#12502), where card#12448's light inks would vanish.
+ */
+export const STICKER_INKS = Object.freeze(['#2b2430', '#d23f3b', '#2b67b8', '#2a8048', '#7442ad', '#c9651a']);
 /** The least RGB distance a sticker's ink keeps from its shell, so no sticker vanishes into its lid. */
 export const STICKER_CONTRAST = 110;
 /** The sway loop: this many LOOP FRAMES (4 fps), centre → left → centre → right, so one cycle is a second. */
@@ -1009,11 +1017,14 @@ function stickerSvg(shape, ink, r) {
  * laptop should be a standard height. it should not vary with the character height."*, then *"It is OK for the laptop
  * to be high enough that it covers a part of the character's mouth"*, then *"I want the laptop lid to be higher and
  * less angled."* with a reference photograph taken for its proportions only (*"The builder should keep existing
- * colors"*). So every intern's laptop is ONE drawing in the chibi frame's units — an upright lid, the same width and
- * height for every species, key and loop frame, from its top edge down to the seat line — drawn OUTSIDE the intern's
- * size scale (an intern's `size` never resizes it) and moved only by the intern's sway, which it shares.
+ * colors"*), then *"The width of the laptops should be less than the width of a subagent character so that we see a
+ * little part of the subagents' bodies."*. So every intern's laptop is ONE drawing in the chibi frame's units — an
+ * upright lid, the same width and height for every species, key and loop frame, from its top edge down to the seat
+ * line — drawn OUTSIDE the intern's size scale (an intern's `size` never resizes it) and moved only by the intern's
+ * sway, which it shares.
  *
- * `LAPTOP_W` is card#12448's widest lid, the one its per-species rule already drew on the broadest bodies. `LAPTOP_TOP`
+ * `LAPTOP_W` is DERIVED too: the selftest's § 6b reds unless it is the widest whole unit at which every body, at every
+ * size and girth, still shows one CSS pixel (at the floor's fit zoom) past the laptop on both sides. `LAPTOP_TOP`
  * is the lid's top edge, and it is DERIVED, never chosen: `tools/characters/selftest.mjs` § 6b measures every species
  * and variant at every size, eye style and mouth style, still and at both sway extremes, in the laptop's own frame, and
  * reds unless this figure is the highest whole unit at which the lid covers no eye in any frame and leaves the upper
@@ -1021,7 +1032,7 @@ function stickerSvg(shape, ink, r) {
  * So this is the tallest lid those two conditions allow; the selftest prints the drawing that binds it. The deck's
  * bottom edge is the seat line (`FOOT`), so the base is fixed too.
  */
-export const LAPTOP_W = 70;
+export const LAPTOP_W = 42;
 export const LAPTOP_TOP = 156;
 
 /** The deck's thickness under the lid, in frame units: the thin edge the open laptop rests on. */
@@ -1036,11 +1047,13 @@ function laptopGeometry() {
 }
 
 /**
- * The laptop on an intern's lap, as the operator's reference photograph of 2026-10-28 draws it: the open lid seen from
- * behind, nearly upright — a plain rectangle with softly rounded corners, its back to the viewer with the key's two
- * stickers on it, the screen's light along its top edge, a thin dark hinge at its foot and the deck's thin lighter
- * edge under it, resting on the seat line. The `lid` part is the lid's outline; the `glow` part is the screen's soft
- * wash over the face, which is light, not cover.
+ * The laptop on an intern's lap, in the proportions of the operator's reference photograph of 2026-10-28: the open lid
+ * seen from behind, upright — a rectangle with softly rounded corners, its back to the viewer with the key's two
+ * stickers on it, the screen's light along its top edge, a thin dark hinge at its foot and the deck's thin edge under
+ * it, resting on the seat line. The lid is METAL (the operator's second reference, the same day): a vertical sheen,
+ * lighter at the top, with a soft highlight band and a thin bright rim inside its outline — and no logo of any kind.
+ * The `lid` part is the lid's outline; the `glow` part is the screen's soft wash over the face, which is light, not
+ * cover.
  */
 function laptopSvg(pen, lap) {
   const { w, y0, y1, yH, x0, x1 } = laptopGeometry();
@@ -1051,7 +1064,14 @@ function laptopSvg(pen, lap) {
   out.push(`<ellipse data-part="glow" cx="54" cy="${f(y0)}" rx="${f(w * 0.42)}" ry="3" fill="${pen.soft(glow, 0.6)}"/>`);
   // the screen's lit edge, just over the lid's top, behind it
   out.push(`<rect x="${f(x0 + 1.5)}" y="${f(y0 - 0.6)}" width="${f(w - 3)}" height="2" rx="1" fill="${glow}" opacity=".95"/>`);
-  out.push(`<rect data-part="lid" x="${f(x0)}" y="${f(y0)}" width="${f(w)}" height="${f(h)}" rx="3" fill="${pen.paint(S)}" stroke="${line(S)}" stroke-width="1.4"/>`);
+  // the metal: lighter at the top, a soft highlight band a third of the way down, the shell's own tint, a little
+  // darker at the foot
+  const white = (t) => mix(S, '#ffffff', t);
+  const sheen = pen.uid();
+  pen.defs.push(`<linearGradient id="${sheen}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${white(0.55)}"/><stop offset=".24" stop-color="${white(0.2)}"/><stop offset=".33" stop-color="${white(0.6)}"/><stop offset=".42" stop-color="${white(0.18)}"/><stop offset=".78" stop-color="${S}"/><stop offset="1" stop-color="${shade(S, 0.12)}"/></linearGradient>`);
+  out.push(`<rect data-part="lid" x="${f(x0)}" y="${f(y0)}" width="${f(w)}" height="${f(h)}" rx="3" fill="url(#${sheen})" stroke="${shade(S, 0.42)}" stroke-width="1.4"/>`);
+  // the bright rim, just inside the outline
+  out.push(`<rect x="${f(x0 + 1.1)}" y="${f(y0 + 1.1)}" width="${f(w - 2.2)}" height="${f(h - 2.2)}" rx="2.2" fill="none" stroke="#ffffff" stroke-width=".8" opacity=".75"/>`);
   // the stickers, at fixed shares of the lid, sized to fit inside it
   const r = Math.min(h * 0.17, w * 0.12) * 0.9;
   const slots = [[54 - w * 0.22, y0 + h * 0.40, -12], [54 + w * 0.24, y0 + h * 0.64, 9]];
@@ -1062,7 +1082,7 @@ function laptopSvg(pen, lap) {
   // the hinge, then the deck's edge, a hair wider than the lid
   out.push(`<rect data-part="hinge" x="${f(x0 + 1)}" y="${f(yH - 0.9)}" width="${f(w - 2)}" height="1.2" rx=".6" fill="${shade(S, 0.45)}"/>`);
   const dx0 = 54 - w * 0.52, dw = w * 1.04;
-  out.push(`<rect data-part="deck" x="${f(dx0)}" y="${f(yH)}" width="${f(dw)}" height="${f(y1 - yH - 0.6)}" rx="1" fill="${pen.paint(tint(S, 0.42))}" stroke="${line(S)}" stroke-width="1.1"/>`);
+  out.push(`<rect data-part="deck" x="${f(dx0)}" y="${f(yH)}" width="${f(dw)}" height="${f(y1 - yH - 0.6)}" rx="1" fill="${white(0.35)}" stroke="${shade(S, 0.42)}" stroke-width="1.1"/>`);
   return out.join('');
 }
 
