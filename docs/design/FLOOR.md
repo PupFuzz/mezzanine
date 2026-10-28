@@ -3552,6 +3552,176 @@ logged.
     viewer's cancel is consistent with its own route, and no scenery is drawn on it. A viewer whose character
     tree failed to load has no seeded draw, and its departures wait none. No new failure path is minted.
 
+⏳ **Interns ride the elevator too — DESIGNED for card#12450 and card#12451 (2026-10-26), NOT BUILT.** The
+operator's ask, verbatim (2026-10-26): *"1. when a subagent starts, it should open elevator doors and come out
+from the elavator and walk to its location. Once it reaches its location, a laptop fades in. 2. When the
+subagent stops, its laptop fades away. it should walk from its location to the elevator, wait for the door to
+open like regular agents wait, and then go in (elevator door closes)"*, and, the same day, *"5. If a subagent
+finishes its task before it reaches its place, then it returns to the elevator whenever it can"*. The items
+of this *Interns ride the elevator too* block are the rows above applied to the interns of [§ 8](#8-interns--subagent-rendering-and-the-cap), and
+they bind the build the way items 1–12 bind the shipped walk. Until the build lands, [A10](#62-the-animation-table--the-closed-set)'s
+table cells, `wire/animation-set.js` and `floor/scene.js` are as the table above reads them — the stool
+fills or empties in one frame — because the table's cells are held equal to the module's by
+`TheAnimationSetIsTheDocumentsClosedSetTest`, so a cell cannot move before its module does. **What the build
+changes in the table, stated here so the cells are copied and not re-derived:** A10's *Animation* cell becomes
+*`intern-arrive` / `intern-leave` — the elevator's leaves open on the intern standing in the cab, it steps out
+and walks its routed path to its stool, sits, and its laptop fades in; or its laptop fades out, it stands,
+walks its routed path to the elevator, waits there for up to a minute, the leaves open, it steps in and they
+close over it*; its *Ends* cell *when the laptop has faded in, or when the leaves have closed behind it*; its
+*Reduced-motion form* cell is unchanged (*the stool is simply occupied or empty*). **Two rows are added at the
+end of the table, named here and numbered at the build** (the next two free ids, never a retired one): the
+`held` row **`intern-work`** — *typing at the laptop, with card#12448's sway, 4 fps loop*, at the side table,
+driving fact `subagents[].activity_state`, held by *an element whose `activity_state == "working"`*, ending
+*when no element's is*, reduced form *a static typing pose with the laptop*, absence meaning *no intern of
+this seat is working now*. **Its episode is keyed `<seat key>~interns`** (round 1, M1): `wire/animation-set.js`'s
+`held()` carries one open episode per key in `#episodes`, keyed by the desk, and the desk's own key is
+taken by the one held row a `render_state` selects (A3, A4, A6, A7, A8, A9, A15), so a second episode on
+the desk's key would end the first on every render; the build has `held()` read a second hold off the desk
+model — the interns' — under the derived key, entered and left by the same `enterHeld`/`leaveHeld` with the
+seat's ids on the row — `held()` strips the `~interns` suffix to find the seat whose `state_version` is the
+entry's `cause` and whose object `exitCause` reads, so the derived key is a key of the episode map alone
+and never of `seats` (round 2, minor 10) — and `FIRED_BY` for the row reads **`desk`** — it is held by the seat object and
+never fired by a `changed[]` member — which widens `TheAnimationSetIsTheDocumentsClosedSetTest`'s desk leg
+from *conditions that open `render_state == "`* to *held rows keyed on the seat object*, a test amendment
+that build carries with the row; and the `edge` row **`laptop`** — *the intern's laptop fades in or out over § 12's
+Laptop fade*, at the side table, driving fact `subagents[].activity_state`, fired by *a delta whose `changed[]`
+contains `subagents` and in which an element present on both sides changes its `activity_state`*, ending *at
+the laptop's new opacity*, reduced form *the laptop is simply present or absent*, absence meaning *no intern
+changed between working and idle*. A delta that only flips an element's `activity_state` gains and loses no
+`call_id`, so it fires `laptop` and never A10, exactly as `fx-interns`' count-only delta fires nothing today.
+
+13. **The intern's walk is A10's drawing, per `call_id`, on the walk primitive of item 3, to a STOOL SLOT
+    the intern keeps for as long as it is in the array.** An intern is keyed `seat~<call_id>`
+    ([§ 8](#8-interns--subagent-rendering-and-the-cap)) for its walk, its slot and its creature. A subagent that stopped and was revived by a message
+    ([D1 § 8.5](EVENT-SCHEMA.md#85-subagent-identity--binding-agent_id-to-a-call)'s measured revival
+    path) is a **new intern** under a new `call_id`, walking in from the elevator as any arrival does, with
+    its own creature and its own slot — the seat's ruling A of design round 2 ([§ 13](#13-decisions-taken-revisable-at-review)
+    row 85): no lineage crosses the wire, and the operator's ruling that the creature is keyed by the
+    call (card#11058 Q3) stands. ⚠ Today `desk-layout.js` lays the stools
+    **positionally** over the newest-first array (`shown.forEach((stool, i) => …x + i * STOOL_PITCH`), so a
+    new intern shifts every seated one a pitch along — harmless while an intern is a static sprite, and
+    wrong the moment it walks: a gain would move every seated intern's anchor, cancel every arrival in
+    flight under item 6's anchor clause, and teleport the seated. So the desk model gains **a slot map per
+    seat, `call_id → slot`, 0 … the cap − 1, kept across deltas the way a seat keeps its desk slot**
+    ([§ 3.2](#32-the-desk-slot-function)'s discipline, one level down): a `call_id` the array gains takes
+    the **lowest free slot**, gains on one delta taking slots in `started_at` ascending order (round 2,
+    minor 11), so two viewers holding one array in two orders agree; a `call_id` the
+    array loses frees its slot, and a hole stays a hole until a later gain fills it (the row is not
+    compacted — compaction is the shift this item exists to remove); a non-delta replace of the seat's
+    object — a snapshot, a resync, an insert, a reconnect — **rebuilds** the map from the delivered array
+    in **`started_at` ascending** order, oldest at slot 0, which is the map a delta-driven history with no
+    departures also reaches, so a reload moves nobody on the common seat and moves interns only where
+    departures had left holes — a render [§ 6.5](#65-a-snapshot-never-animates) draws as delivered anyway.
+    The stool is drawn at `R.stool.x + slot * STOOL_PITCH`; the side table seats **the highest held slot
+    plus one** (§ 12's *Side-table seats*: at least four, one more per slot past them), so a hole is a
+    visible empty stool between interns. An intern's anchor is **its slot's foot** — the slot rect's
+    bottom-centre in the desk's box, the point the chibi frame stands on — and a slot never moves while
+    held, so item 6's anchor clause, read against the slot's foot, is tripped by a desk move and never by
+    a sibling's arrival or departure; a departure starts from the slot the intern held. It routes as its
+    seat's own walker does: `route()` is handed the SEAT's key and the slot's foot as `anchor`, so the
+    seat's desk is open to it on the slot's row and on no other, every other desk is an obstacle, and it
+    leaves and reaches the side table sideways at the stool's depth. One effect per intern gained (A1's
+    shape: `cab`, `stand`, `walk`, then a `seat` leg of § 12's *Laptop fade* frames, the intern drawn on its
+    stool while its laptop's opacity rises from 0 to 1) or lost (A2's shape with the fade first: a `seat` leg
+    of the same frames with the opacity falling **from whatever opacity the laptop has reached** to 0 —
+    1 when seated and working, less when a fade-in was still running, and skipped when the opacity is 0,
+    the intern's held `activity_state` being `idle` or the fade-in not yet begun — then `walk`, `stand`
+    (its wait), `stand` (the door) and `cab`). The wait is the same seeded draw as A2's, over the INTERN's key:
+    `draw('seat~<call_id>', 'elevator-wait:' + cause)`, `cause` the delta's `state_version`, so two interns
+    leaving on one delta wait differently and every viewer agrees. The walker is the intern at its drawn size
+    — [§ 10.4](#104-the-art-direction-as-a-specification)'s intern frame, which card#12444 may resize and
+    this item does not fix — striding through its `walk` leg where the character tree hands walk frames for
+    the intern key and gliding at its chibi frame where it hands none, in the cab clip group at the seam's
+    foot through its `cab` leg as the seat's walker is (item 10). The log is A10's: **one row per delta per
+    seat**, `cause` its `state_version`, written at the apply; the per-intern effects are that row's drawing,
+    as a walk is presentation and never state. The `seat` leg's laptop target is read at each paint from the
+    intern's HELD `activity_state`, not from the applying render's: an arrival whose subagent goes idle
+    mid-walk sits with no laptop, and one that resumes sits with one, so the fade never draws a state the
+    object no longer holds.
+14. **No queue at the door, for interns as for seats (item 9).** Each intern walks its own route on its own
+    time, its wait its own draw; interns arriving on one delta are revealed in the cab together and walk out
+    together, the leaves opening once across the union of their door frames (item 10), stacked by
+    `floorStackOrder()` with the seat's walkers — `(y, key)`, the intern keys sorting with the seat keys by
+    code unit. **The bound on walkers at the door is the holder's, not the array's:** arrivals in flight
+    are at most the array's cap per seat, but departing interns have already left the array and are
+    bounded only by how many effects the holder carries, so a seat that dispatches eight, loses them and
+    dispatches eight more inside one wait can have sixteen interns at its elevator; no figure is claimed,
+    and the overlap is accepted under *"it is OK to overlap"* ([§ 13](#13-decisions-taken-revisable-at-review)
+    row 76), never a wait that depends on another walker. A stagger between interns of one delta is not built: it would be a delay that
+    varies with how many arrived, which is a quantity read off the array and nothing the operator asked to
+    see; [§ 14](#14-open-questions-for-the-review-loop) item 42 carries it as a look to judge on the sandbox.
+15. **At the cap, the array is a reduction and a walk is a claim, so the walk is drawn only when the
+    reduction is exact.** `subagents[]` keeps the 8 newest of `subagents_open` ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object));
+    a 9th spawn drops the oldest from the array while its subagent still runs, and a stop among ten lets a
+    hidden one re-enter. An intern leaving the array under those conditions did not stop, and one entering did
+    not just start. So A10's walks fire **only when `subagents_open ≤ 8` on both sides of the delta** — the
+    array is then the whole set, a lost `call_id` is a stop and a gained one a spawn; otherwise the stool
+    fills or empties as the shipped A10 draws it, with no walker, no door and the *+N more* tag carrying the
+    count, and the A10 row is logged either way. The rule reads two integers the delta already carries and
+    invents nothing; the honest alternative — D2 publishing which call closed — is wire for a case
+    [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) says no fleet seat has been measured in.
+    **A drop at the cap under an arrival in flight is a plain cancel, not a turn-round** (round 1, m1): the
+    intern's loss from the array under this rule is not a stop, so item 16's walk back — which claims
+    one — is not drawn; the arrival ends at once, the slot empties on the applying render, and the *+N
+    more* count carries the intern.
+16. **A stop that lands before the intern reaches its stool turns it round — the operator's item 5, and the
+    one place decision 51 does not apply.** The cancelling delta — the intern's `call_id` leaving the array
+    while its arrival is in flight — fires A10's leave row as any loss does, and its drawing is a return from
+    wherever the walker is at that render's instant, never the rest of the walk to the stool, and the laptop
+    never fades in. Three cases, by the leg the arrival is in:
+    - **in the `cab` leg** (the leaves opening on it): the leaves close over it over § 12's *Elevator leaves*
+      closing frames and it never steps out; no wait — it is already inside;
+    - **in the `stand` leg** (stepped out, on the threshold, the leaves open): it steps back in over the step
+      frame and the leaves close over it; no wait — the doors are open;
+    - **in the `walk` leg**: it turns at `pointAt()`'s point for that instant, routes from the lattice cell
+      under its feet — open by construction, since the path it is on crosses open cells only — back to the
+      threshold, walks it, waits its seeded draw for the stop's `cause`, and takes the full door: open, step,
+      close;
+    - **in the `seat` leg** (seated, the laptop fading in): it is at its stool, so this is an ordinary
+      departure from the slot, item 13's shape — the `seat` leg fades the laptop out from the opacity it
+      has reached, then the walk, the wait and the door; the fade never completes its rise first.
+    The turn-round effect REPLACES the arrival in the holder (one walk per intern, as item 6 keeps one per
+    seat), with the arrival's start pinned so the turn point is the walker's drawn position and not a frame's
+    start. Where it turns depends on when the stop's delta was applied on that viewer, so two viewers can
+    turn at two points; the path from each point and the wait are deterministic, and a replay on one timeline
+    draws one answer (AT-D3-31). **A spawn during a departure cannot be the same intern**: a closed `call_id`
+    never reopens ([D1 § 8.6](EVENT-SCHEMA.md#86-server-side-interpretation-of-open-call-state)), so a new
+    dispatch is a new key and an independent walker, and no turn-round exists in that direction. **Seats keep
+    decision 51** — a seat returning inside its departure's wait is still drawn seated at once (item 6's
+    ⚠ paragraph); whether that should become a turn-round too is [§ 14](#14-open-questions-for-the-review-loop)
+    item 42's question to the operator, not this item's to decide.
+17. **Cancel, for an intern's walk.** Every clause of item 6 that touches the SEAT cancels the seat's interns'
+    walks with it — a non-delta entry for the seat (snapshot, resync, insert, reconnect, removal), the row 5
+    and stilled conditions, the anchor clause read against the SLOT's foot (item 13 — which a sibling's
+    gain or loss never moves), the threshold and the lattice key — and the intern is drawn on its stool at
+    once, in its held state. A delta that leaves the intern in
+    the array — its `activity_state` flipping, a title arriving for an untitled one, the seat's own
+    `working ↔ idle` — leaves the walker on its way (item 13's `seat` leg reads the state it needs at the
+    paint). The intern's own loss from the array is item 16's turn-round when its arrival is in flight and
+    nothing when its departure is — it is already leaving. The seat's chair emptying (A2) moves no intern:
+    `subagents[]` is not a function of `link_state`, and the interns stay at the side table of an empty desk
+    as they do today; a retirement (A13) removes the desk and its interns with it, with no intern walk.
+18. **Reduced motion and snapshots.** Under `reduce` an intern's stool is simply occupied or empty and its
+    laptop simply present or absent — A10's and `laptop`'s reduced cells — and `intern-work` draws its static
+    typing pose; no intern walker is drawn, the leaves never move, and every firing writes `motion: false`.
+    A snapshot, a resync, a per-seat insert and a reconnect ([§ 6.5](#65-a-snapshot-never-animates)) draw
+    every intern seated, each with its laptop as its `activity_state` says, and start no walk and no fade: a
+    page loaded mid-run shows the interns at work, as the operator's item 1 wants them seen and not re-arrived.
+19. **Gained and lost in one render — the shortest subagent is seen in the cab** (design round 3, the seat's
+    ruling). A subagent's gain and loss can reach the page in ONE render: the fold's two versions commit
+    together — `Outbox` inserts a seat's window in one `INSERT` — the stream yields both in one tick
+    (`FeedStream`), and `wire/live-page.js` coalesces everything a tick delivered into one render. Item 6's
+    rule for the SEAT — *two opposite edges applied in one render […] leave the side unchanged and still
+    cancel, and their two new rows draw nothing* — would hide that subagent entirely, so it does not apply
+    to an intern: both A10 rows are logged, each against its own delta's `state_version`, and the drawing
+    is **item 16's cab-leg turn-round from frame zero** — the leaves open on the intern standing in the cab
+    and close over it, § 12's *Elevator leaves* opening then closing frames, no step out, no wait, no walk,
+    no `seat` leg and no laptop. The intern was there, and the floor says so for as long as the doors take.
+    **The same applies to an `activity_state` flipped there and back in one render:** the two `laptop`
+    rows are logged and nothing fades — the element's held state is the net of the two deltas, and the
+    holder admits the second fade at the first's start, which is a fade of zero length; the reversal
+    mid-way that `flip` shows needs the two deltas to reach two renders.
+
 **Two rows move with no seat's state behind them — A14 and A17 — and both are driven by
 `feed.heartbeat`, so when the feed dies they stop together and every claim on the page goes still.**
 That is the
@@ -3973,7 +4143,12 @@ document states and no acceptance test checks; that is written down rather than 
 [§ 14](#14-open-questions-for-the-review-loop) item 15 carries what would close it.
 [A1](#62-the-animation-table--the-closed-set) and [A2](#62-the-animation-table--the-closed-set)'s
 reduced forms are asserted by [AT-D3-23](#at-d3-23-a-seat-leaves-by-the-elevator-and-returns-by-it),
-which replays its walks under `reduce` too (card#9566).
+which replays its walks under `reduce` too (card#9566). ⏳ Designed, not built (card#12450, card#12451):
+[A10](#62-the-animation-table--the-closed-set)'s walk and the `intern-work` and `laptop` rows of
+[§ 6.2](#62-the-animation-table--the-closed-set)'s designed block take their reduced forms from that
+block's item 18, and [AT-D3-31](#at-d3-31-an-intern-arrives-by-the-elevator-works-or-rests-at-its-laptop-and-leaves-by-it)
+replays `fx-intern-walk` under `reduce`, which moves A10 out of the unasserted remainder listed above when
+it lands.
 
 **The elevator ride's reduced form** (card#11795, [§ 4.5](#45-the-viewport-rule-and-the-camera)): every
 phase is a cut — the cab appears and goes with no fade, its doors and the floor's leaves never move — and
@@ -4002,7 +4177,10 @@ same floor draws its leaves at rest.
 Their arrival is not a claim that anything happened to any seat — it is a claim about what the client
 knows. Animating them would put an arrival at every desk on every reconnect, and a fleet that appeared
 to walk back in every time the network hiccupped would have made the floor's motion meaningless in
-exactly one afternoon. [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) asserts it.
+exactly one afternoon. [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) asserts it. ⏳ The
+interns are no exception (card#12450, designed): a snapshot's `subagents[]` is drawn seated at the side table,
+each intern's laptop present or absent as its `activity_state` says, with no walk from the elevator and no
+fade — [§ 6.2](#62-the-animation-table--the-closed-set)'s designed block, item 18.
 
 **What a snapshot does do is render the states it delivers, held renders included, and that is not an
 exception to the rule above but the other half of it.** A snapshot carrying a `working` seat renders a
@@ -4523,6 +4701,46 @@ four steps after the tables that carry them.
 | **+N more** | `subagents_open` minus the array's length | appears only when positive. The count is the wire's, never `subagents.length` |
 | the full list | the seat-detail response's uncapped open-call list ([D2 § 8.2.3](FLEET-STATE.md#823-the-seat-detail-response)), **selected on the dispatch calls** — [D2 § 6.4](FLEET-STATE.md#64-ddl)'s `calls.is_dispatch`, the same population as `subagents[]` without the cap, and the only one whose calls carry the `title` and `subagent_type` the rows above draw. `agent_scope` and `parent_call_id` attribute an intern's own calls back to it — the intern join they are stored for ([D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state)) — and do not select this list (operator ruling 2026-09-25, card#7342) | the drill-down's intern list is **not** `subagents[]`, is not capped at 8, and is not every open call of the seat either — a seat's own `Bash` call is not an intern ([§ 5.2](#52-the-drill-down), [§ 14](#14-open-questions-for-the-review-loop) item 1) |
 | arrival and departure | `subagents` in a delta's `changed[]` | animation [A10](#62-the-animation-table--the-closed-set) |
+
+⏳ **Working and idle interns — DESIGNED for card#12451 (2026-10-26), NOT BUILT.** The operator's items 3 and
+4, verbatim: *"3. the mezzanine reporter should be extended to report when subagents are working or idle.
+4. When a subagent is busy, then it moves as already described. When a subagent is idle, it stops moving and
+the laptop fades away. When it resumes working, the laptop fades back and the character appears to be
+typing."* The wire member is `subagents[].activity_state` — `working` | `idle`, **never null**, designed at
+[D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) and minted by [D1's `subagent.activity`](EVENT-SCHEMA.md#68-subagentstop)
+(the reporter's own reading of silence at the seat: no call open under the subagent and no hook from it for
+**60 s**, the number [§ 12](#12-every-number-and-where-it-comes-from)'s *Subagent idle threshold* cites from
+D1). **The rows the build adds to the table above and to [§ 5.1](#51-the-desk)'s render map**, stated here so
+they are copied and not re-derived — they are prose until then because `verify-floor.py`'s G2 holds every
+source field in those tables to a field D2's table already declares, and D2's row lands with the server half:
+
+- **the intern's laptop, and whether it types** — source `subagents[].activity_state` — `working`: the
+  laptop is drawn open on the side table in front of the intern and the intern types at it, card#12448's sway
+  as the held `intern-work` row of [§ 6.2](#62-the-animation-table--the-closed-set)'s designed block; `idle`:
+  **no laptop and no motion** — the intern sits on its stool in its chibi frame, still, as every intern is
+  drawn today. The two are legible without motion ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation),
+  AT-D3-13's property one row over): the laptop is the difference. The flip between them is the `laptop`
+  edge row's fade over **4** loop frames each way — a fade interrupted by the opposite flip reverses from the
+  opacity it has reached, so a subagent that flaps never pops, and two flips the page applies in one render
+  fade nothing ([§ 6.2](#62-the-animation-table--the-closed-set)'s designed block, item 19);
+- **the word, in the drill-down and the list** — the same field — `working` or `idle` beside the intern's
+  label, the one place the value is spelled out; never an age (the wire carries no `since` for it, and
+  [§ 2.4](#24-the-clock-and-every-age-on-the-page) refuses an age no clock delivered).
+
+**The default an older reporter yields, and why it is not a null.** A reporter without card#12451's build
+sends no `subagent.activity`, so D2 holds every dispatch call of that seat at the value the fold writes when
+the call OPENS — `working` ([D2 § 6.5](FLEET-STATE.md#65-the-fold)) — and the intern types at its laptop for
+as long as its dispatch call is open. That is today's semantics for the seat itself: an open call renders the
+seat `working` ([D1 § 8.6](EVENT-SCHEMA.md#86-server-side-interpretation-of-open-call-state)'s *a seat with
+any open call is working*), so an intern under an old reporter claims what its seat already claims. The
+alternative — a nullable member whose null draws the laptop — was rejected because a laptop held by a null
+is [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s first form, motion held by
+no delivered field; and a null drawn as *no laptop* would be indistinguishable from `idle` on the desk, which
+[§ 5.6](#56-the-null-render-for-every-nullable-member) forbids. The seat's `update_required` badge
+([§ 7.2](#72-badges-every-member-has-a-render)) names the commonest reason a seat's interns never go
+idle, and not every one (round 1, m4): a current reporter whose dispatch is **unbound** never reports it
+idle either (D1 § 6.8's designed block — `agent_bind_unresolved` is that measurement, and no badge), and a
+`subagent.activity` lost to spool overflow leaves the intern at its last state under the `lossy` badge.
 
 ### 8.1 The cap stays at 8 — the arithmetic, and the reason
 
@@ -7199,6 +7417,7 @@ cannot be shown to obey the honesty principle, and the principle is the product'
 | `fx-elevator` | card#9566's walks, every run over `fx-snapshot-4`'s four `aimla` seats on the shipped default map but the A19 variant, each run a sequence of deltas with the frames between renders stated: **leave-stale** (`aimla-impl-1` `working → stale`); **return-from-stale** (`stale → working`); **stale-then-offline** (`working → stale`; inside its A2 walk, `stale → offline`; then a delta re-sending `offline`); **staffed-step** (`working → idle`, a step between two members that draw a character); **reslot** (`aimla-impl-2` `working → offline`, then inside its A2 walk `fx-collision`'s `aimla-mac-1` arrival, which re-slots `aimla-impl-2` from slot 4 to 5 with no journal entry for `aimla-impl-2`; the run is written over the walk in flight, so an A1 variant is the same steps from `offline → working`); **reslot-no-row** (`aimla-impl-2` `working → offline`, then inside its A2 walk a `room.map` revision that moves the desk object `aimla-impl-2` holds, so its anchor moves with no seat entry in the journal at all); **return-then-leave** (`offline → working`, then inside A1's walk `working → offline`); **leave-then-return** (`working → offline`, then inside A2's walk `offline → working`); **resync-cancels** (`offline → working`, then inside A1's walk a delta gap whose resync fetch returns the seat `working`); **retire** (`working → retired`); **two-walkers** (`aimla-review` goes `→ offline`, and `aimla-impl-1`, the farther desk, three loop frames later, a render apart; since card#12194 their state versions are chosen so the seeded waits overlap on the threshold and the door spans meet, the derivation in the run's note); **repaint** (`working → offline`, then a `feed.heartbeat` while its A2 is in flight); **stilled** (leave-stale, then inside its A2 walk a delta gap for `aimla-impl-2` whose resync fetch answers `401`, so the floor is stilled with no entry for `aimla-impl-1`); **unconfirmed** (leave-stale, then inside its A2 walk two delta gaps for `aimla-impl-1` whose resync fetches answer `503`, so its row 5 condition turns on with no entry applied); **elevator-moves** (leave-stale, then inside its A2 walk a `building.layout` revision placing a mapless `beta` above `aimla`, so the band and the elevator's threshold move and the desk's anchor does not); **zoom-mid-walk** (return-from-stale with the viewer zooming in two notches inside the A1 walk); and card#12194's **delta-under-walk** (return-from-stale, then `working → idle` inside the A1), **batched-edges** (return-from-stale, then a resync whose failed fetch drains `working → stale → working` in one render), **map-edit-mid-walk** (leave-stale, then a `room.map` that moves no desk), **walled-in** (`aimla-pm` leaves an office an authored map seals), **overflow-leaves** (leave-stale over a one-desk map), **no-band-leaves** (leave-stale with the room's map unavailable), **crossing** (`aimla-review` departs and `aimla-impl-1` arrives past it near the threshold), **mass-departure** (every seat `→ stale` at one instant) and **mass-departure-reordered** (the same, the snapshot's seats reversed), with one **A19** variant over `fx-coord` (its **named** round R3 — `to: ["pm", "helper"]` — in flight when a `feed.heartbeat` lands, `aimla-review` declaring a name of its own rather than `fx-coord`'s deliberate duplicate, so the install is valid and R3's envelopes reach two resolved desks; *r5: the variant rode R2 while R2 was a broadcast with expanded `targets`*) |
 | `fx-lobby` | ✅ the directory's runs landed with card#12113's model slice (`server/tests/Feature/Floor/fixtures/fx-lobby.json`, replayed by `Tests\Feature\Floor\TheDirectoryPlaqueReadsWhatTheClientHoldsTest`), each run named `lobby_` and its name below — `stalled` is another file's run — with **unclaimed** as `lobby_unclaimed`; **lobby-ride** and **lobby-arrival** replay `lobby_plaque`'s snapshot and layout with the ride acts the lobby ride's build adds. card#12113's directory, every run over a layout of **three floors** composed from `fx-snapshot-4`'s four `aimla` seats plus the seats each run adds, so one plaque is a composed floor of two rooms and one is an unplaced install's own: **plaque** — a floor whose seats are one `working` with `task.ref` *card#7338* and `subagents_open` 9 over a `subagents` array at the cap of 8, one `idle` with the same `task.ref`, one `blocked` with `blocked_since` set and `task` null, and one `stale`, so the tally shows four members, the agents-and-desks pair reads *3 agents · 4 desks*, the cards count reads one card for two seats holding it and none for the null, the intern sum reads 9 where the arrays sum to 8, and the open-call sum is the four seats' `open_calls` summed; **attention** — the plaque above plus a second `blocked` seat with a later `blocked_since` (the earlier is named), a `live` seat with `context.used_pct` 91.2 and one sorting before it by `seat_id` with `context` null (the first is named, the second never, and the plaque renders), and a `live` seat whose `longest_open_call.started_received_at` is 12 min 5 s before the run's corrected clock (named, *running for 12m 05s*) beside one 2 min before it (not named); **dispatch** — a `live` seat whose `longest_open_call` is an `Agent` call opened 40 min 12 s before the run's corrected clock while its `action` is a `Bash` call opened 10 s before it with `parent_call_id` the dispatch's, so the line names *Agent running for 40m 12s* and a plaque reading `action` would name nothing; **attention-quiet** — the same floor with no seat `blocked`, every `context.used_pct` below 80, every `longest_open_call` younger than 10 min: no attention line; **dark-blocked** — one `stale` seat whose `activity_state` is `blocked` with `blocked_since` set, and no `live` seat past any threshold: no attention line; **stalled** — no `blocked` seat and two `stalled` seats, the earlier `activity.last_received_at` named with its raw `api_error_type` and its phrase; **markers** — a floor of **fourteen** held seats across its two rooms, two of them sharing a `seat_id` across the rooms, so the row draws 12 and *+2 more*, the two namesakes are told apart by their room, and one whose `render_state` is an unrecognised string is drawn as a ring and counted as a desk and not an agent; **lobby-ride** — the lobby page's ride through every phase on the scenario clock, the stops the three plaques then *Lobby* marked current, a choice of a floor routing to that plaque's `href` with `#ride` and `beyond: office`, *Lobby* a stay with `beyond: lobby`, Escape `inside` a stay, and the floor page's ride to the lobby carrying `beyond: lobby` from `chosen` on and `beyond: office` in `entering`; **lobby-arrival** — the lobby page entered by a ride, its first drawn room entering `arriving` with the elevator's leaves open and closing; **unclaimed** — the lobby under [§ 9](#9-failure-paths-and-their-observables) F17 with no layout held: the room drawn, the directory listing each install as *no floor claimed*, the cab offering *Lobby* alone |
 | `fx-reporter` | two `aimla` seats over the shipped default map in `fx-office`'s shape, both `live` `working` with a task, `aimla-pm` relaying `pm` (card#11818 part 2): **`aimla-pm`** with `reporter.version` `"0.3.0"` and `badges: []`; **`aimla-impl-1`** with `reporter.version` `"0.1.0"`, `badges: ["update_required"]` and `badges_since` set. The floor compares no versions, so the strings are wire samples and not a claim about the server's constant. Then three deltas: one for `aimla-impl-1` whose `changed[]` carries `badges` and whose array is `["lossy", "config_invalid", "update_required"]`; one for `aimla-impl-1` that clears all three; and one for `aimla-pm` whose `badges` gains `update_required` with `reporter` unchanged — the server-moved case, the badge arriving with no version change |
+| `fx-intern-walk` | ⏳ designed for card#12450 and card#12451, not built. `fx-snapshot-4`'s four `aimla` seats on the shipped default map, `aimla-impl-1` the seat whose side table the runs move, each run a sequence of deltas with the frames between renders stated, every element's `activity_state` present ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s designed member): **arrive** (`subagents` gains one `call_id` at `working`, `subagents_open` 0 → 1); **arrive-idle** (the same gain at `idle`); **leave-working** (that element lost, `subagents_open` 1 → 0, its held state `working`); **leave-idle** (lost while `idle`); **flip** (a delta re-sending the array with the element's `activity_state` `working → idle`, then one `idle → working`, the second landing two loop frames into the first's fade); **stop-in-cab**, **stop-at-door** and **stop-mid-walk** (the arrive delta, then its loss applied one frame into the `cab` leg, one frame into the `stand` leg, and at the walk leg's midpoint); **flip-mid-walk** (the arrive delta at `working`, then `working → idle` on the walk leg); **two-interns** (two gained on one delta, `subagents_open` 0 → 2, then one lost); **gain-during-arrival** (one gained, then a second gained one frame into the first's walk leg, `subagents_open` 1 → 2); **middle-leaves** (three gained on one delta, slots 0–2, then the slot-1 intern lost, then a fourth gained); **reload-holes** (middle-leaves' seated state re-delivered as a snapshot, the two survivors' `started_at` in slot order); **gain-and-loss-one-render** (the arrive delta and its loss delta delivered in one stream tick, so the harness applies both before one render; and a variant with the `flip` run's two `activity_state` deltas in one tick); **capped-gain** (the array at 8 and `subagents_open` 8 → 9 with the array's oldest replaced by the newest); **capped-loss** (`subagents_open` 10 → 9 with one visible element replaced by a hidden one re-entering); **seat-leaves** (`aimla-impl-1` `working → stale` with two interns seated); **reslot-interns** (an arrival in flight when `fx-collision`'s displacing delta moves the desk); **old-reporter** (a snapshot whose two elements both read `working` and whose seat carries `update_required`, then no delta); and **snapshot-seated** (a fresh snapshot carrying three elements, two `working` and one `idle`, with no delta). Every run is also replayed under `prefers-reduced-motion: reduce` |
 
 ### AT-D3-1 no animation without its event
 
@@ -9485,6 +9704,111 @@ row 25.*
 - **Discriminating control:** `aimla-pm` at the snapshot — the same render state and task, no chip — so
   the test measures the badge and not the desk.
 
+### AT-D3-31 an intern arrives by the elevator, works or rests at its laptop, and leaves by it
+
+*⏳ Designed for card#12450 and card#12451 (2026-10-26), not built. [§ 6.2](#62-the-animation-table--the-closed-set)'s
+*Interns ride the elevator too* block, and [§ 8](#8-interns--subagent-rendering-and-the-cap)'s designed block. Gated at
+[Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 26. Its instruments are
+[AT-D3-23](#at-d3-23-a-seat-leaves-by-the-elevator-and-returns-by-it)'s: the walk probe for the legs and
+the lattice, the painter probe for the stool, the laptop and the cab, and a browser row for the fade.*
+
+- **Build:** replay every run of `fx-intern-walk`, once as written and once under
+  `prefers-reduced-motion: reduce`, collecting the animation log, the scene of every render and every
+  paint-only refresh. **Reads:** **the harness**, the **side table**, the **elevator walk**, the
+  **animation set**, the **intern walk**, the **laptop**, the **drill-down**.
+- **GREEN — the rows:** arrive and arrive-idle each write one A10 row with the delta's `state_version` as
+  `cause` and no `laptop` row; flip writes two `laptop` rows and no A10; leave-working and leave-idle one A10
+  each; seat-leaves writes `aimla-impl-1`'s A2 and no A10; snapshot-seated and old-reporter write no `edge`
+  row at all, and snapshot-seated enters one `intern-work` episode for the seat on its first render.
+- **GREEN — the arrival:** arrive's effect for `seat~<call_id>` has the legs `cab`, `stand`, `walk`, `seat`,
+  each starting where the one before ends; the walk leg runs from the threshold to the stool's foot read off
+  the render's own scene; the `seat` leg is § 12's *Laptop fade* frames with the laptop's opacity rising
+  from 0 to 1 on the painter's node; the desk draws the stool empty until the walk's end and the intern
+  seated from the paint-only refresh; arrive-idle's effect has no `seat` leg and its intern sits with no
+  laptop.
+- **GREEN — the departure:** leave-working's legs are `seat` (opacity 1 → 0), `walk`, `stand` (the wait),
+  `stand` (the door) and `cab`, the wait equal to `draw('seat~<call_id>', 'elevator-wait:<state_version>')
+  mod (WAIT_MAX_FRAMES + 1)` re-drawn through `resources/characters/seed.js`; leave-idle's legs begin at
+  `walk`.
+- **GREEN — the turn-round (item 16):** stop-in-cab draws the leaves closing over the intern over the
+  closing frames with no step and no wait; stop-at-door draws the step back in and the close with no wait;
+  stop-mid-walk's effect starts at `pointAt()`'s point for the cancelling render's instant, its walk leg's
+  first point inside the lattice cell under the walker's feet, ends at the threshold, and carries the wait,
+  open, step and close; in none of the three does the laptop's opacity leave 0, and each holds exactly one
+  effect for the intern's key after the cancelling render.
+- **GREEN — the laptop flips (item 13, § 8):** flip's first delta fades the laptop from 1 toward 0 and the
+  second, landing two frames in, fades it back from the opacity reached — never from 0 — and the
+  `intern-work` episode is left at the first and re-entered at the second; flip-mid-walk's intern sits with
+  no laptop, the `seat` leg having read the held `idle` at its first paint.
+- **GREEN — several at once (item 14):** two-interns draws two effects with their own routes and their own
+  waits, the leaves opening once across the union of their door frames, and the stack orders the two by
+  `(y, key)`; neither effect's frames depend on the other's.
+- **GREEN — the cap (item 15):** capped-gain and capped-loss each log one A10 row and draw **no** walker,
+  no door and no fade — the stools change on the applying render and the *+N more* tag reads
+  `subagents_open − 8`.
+- **GREEN — one render (item 19):** gain-and-loss-one-render logs two A10 rows for the intern, each with its
+  own delta's `state_version`, and holds exactly one effect for its key — `cab` legs only, the leaves
+  opening then closing over the intern, no `stand`, no `walk`, no `seat`, no wait — whose frames are the
+  *Elevator leaves* opening plus closing figures; its flip variant logs two `laptop` rows and the laptop's
+  opacity never leaves 1.
+- **GREEN — the slots (item 13):** gain-during-arrival leaves the first intern's walk in flight on the
+  second's render, its anchor unchanged, and seats the second at slot 1 by its own walk; middle-leaves
+  keeps slots 0 and 2 where they were after slot 1's departure, draws an empty stool at slot 1 with the
+  side table seated for three, and seats the fourth intern at slot 1; reload-holes' snapshot seats the two
+  survivors at slots 0 and 1 by `started_at` with no walker — the rebuild, drawn as delivered. The
+  `intern-work` episode is entered under the key `aimla/aimla-impl-1~interns`, and `aimla-impl-1`'s own
+  A3 episode is neither left nor re-entered by any intern render.
+- **GREEN — the seat and its interns (item 17):** seat-leaves draws the seat's A2 walker and leaves both
+  interns on their stools with their laptops as held; reslot-interns draws no intern walker on the render
+  that moved the desk and the intern seated at the desk's new place.
+- **GREEN — the default and the snapshot (§ 8, item 18):** old-reporter's two interns type at their
+  laptops and the seat carries its `update_required` chip; snapshot-seated draws three interns seated, two
+  with laptops and one without, with no walker and no fade, and the drill-down's list reads `working`,
+  `working`, `idle` beside the three labels.
+- **GREEN — reduced motion:** under `reduce` every run writes the same rows at `motion: false`, no intern
+  walker is drawn, the leaves stay closed, the laptop is present or absent on the applying render with no
+  intermediate opacity, and `intern-work` draws its static typing pose.
+- **RED — the stool fills at once:** keep the shipped one-frame A10 drawing → arrive draws no walker and the
+  laptop appears with no fade. Caught by: arrive.
+- **Second RED — the arrival finishes first:** on the loss, let the arrival run to the stool and then start a
+  departure (the chain decision 51 refuses for seats) → stop-mid-walk's intern sits, its laptop fades in,
+  and it leaves afterwards; the operator's item 5 inverted. Caught by: stop-mid-walk, stop-in-cab,
+  stop-at-door.
+- **Third RED — the plain cancel:** treat the loss as item 6's cancel and draw the intern gone at once → no
+  effect follows the cancelling render. Caught by: stop-mid-walk.
+- **Fourth RED — the laptop held by the walk:** read the `seat` leg's target from the applying render →
+  flip-mid-walk fades in a laptop the object no longer holds. Caught by: flip-mid-walk.
+- **Fifth RED — the fade restarts:** start the second fade from 0 → flip's laptop pops to dark before
+  brightening. Caught by: flip.
+- **Sixth RED — a walk at the cap:** fire the walk whenever a `call_id` is gained or lost → capped-gain walks
+  the dropped intern to the elevator while its subagent runs, and capped-loss walks a running one in from the
+  cab. Caught by: capped-gain, capped-loss.
+- **Seventh RED — a queue:** add the first intern's remaining frames to the second's wait → two-interns'
+  second wait is not its own draw. Caught by: two-interns.
+- **Eighth RED — the null default:** render an element with no `activity_state` key, or draw the laptop
+  from a seat-level field → old-reporter's interns sit with no laptop while the server says `working`, or
+  snapshot-seated's idle intern types. Caught by: old-reporter, snapshot-seated.
+- **Ninth RED — the snapshot arrives:** fire A10 on a snapshot's elements → snapshot-seated draws three
+  walkers out of the cab. Caught by: snapshot-seated.
+- **Tenth RED — the seat's own wait:** draw the intern's wait from the SEAT's key → two interns leaving on one
+  delta wait alike, and a replay with the interns reordered waits differently. Caught by: two-interns.
+- **Eleventh RED — the positional row:** lay the stools by array index, the shipped `desk-layout.js` →
+  gain-during-arrival's first arrival is cancelled by its own anchor moving, and middle-leaves' slot-2
+  intern jumps to slot 1. Caught by: gain-during-arrival, middle-leaves.
+- **Twelfth RED — the episode on the desk's key:** enter `intern-work` under `aimla/aimla-impl-1` → the
+  seat's A3 episode is left on the render that seats the first intern. Caught by: arrive, snapshot-seated.
+- **Thirteenth RED — the cap drop turns round:** draw item 16's walk back for an intern the cap dropped
+  mid-arrival → capped-gain's dropped intern walks to the elevator while its subagent runs. Caught by:
+  capped-gain, with its arrival in flight.
+- **Fourteenth RED — the seat's rule for two edges:** apply item 6's *two opposite edges draw nothing* to
+  the intern → gain-and-loss-one-render logs its two A10 rows and draws no effect, and the shortest
+  subagent is never seen. Caught by: gain-and-loss-one-render.
+- **Fifteenth RED — a fade inside one render:** start the first `laptop` fade and let the second run after
+  it → gain-and-loss-one-render's flip variant dims the laptop and brings it back for two deltas the page
+  applied as one. Caught by: gain-and-loss-one-render's flip variant.
+- **Discriminating control:** `aimla-pm`, with no interns, on every run — no A10, no `laptop`, no
+  `intern-work` episode and no walker — so the test measures the side table and not the floor.
+
 ---
 
 ## 12. Every number, and where it comes from
@@ -9516,6 +9840,9 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | **Route lattice and cost** | **the floor's smallest tile; 10 / 14** | **Derived** (the cell) and **Chosen** (the costs), card#12194 — the walkable model's cell is the smallest `tilewidth`/`tileheight` over the floor's grids, the hallway's included, so a gap narrower than a cell is not a corridor; an orthogonal step costs 10 and a diagonal 14, integers (about 1 % under √2 — `(√2 − 1.4) ÷ √2`) so the A\* search's every `g` and `f` compares exactly. A cell is blocked for the walker's feet, and at the `clear` and `snug` tiers for its drawn body too (*Walker clearance* below, card#12442), and a step also costs the cell's *Walkway centring*. Its code home is `server/public/js/floor/route.js`'s `STEP_COST`, held equal to this cell by `test_green_section_12_is_the_scenes_constants` | [§ 6.2](#62-the-animation-table--the-closed-set)'s walk note |
 | **Walker clearance** | **8 px beside; 4 px in depth** | **Chosen** (card#12442) — the `clear` tier's margins round the walker's drawn body: a cell is blocked when its centre lies within half the drawn character rect's width (`scene.js`'s `walkerSize()`, *Character rect* at the scene's scale — derived, never a constant here) **plus 8 px** of a `wall` or standing tile sideways, **and** within **4 px** of that tile's depth span; another desk keeps the bare half-width and no depth, and the `snug` tier keeps the bare half-width and no depth for every rect. 8 px is the floor's smallest tile, one lattice cell — the least margin a cell centre can resolve, and a visible gap at floor zoom; 4 px is half a cell, which keeps the feet off a wall line in front of them while still fitting the shipped default's 12 px gap between the PM desk and its office's front wall. Its code home is `server/public/js/floor/route.js`'s `CLEARANCE`, held equal to this cell by `server/tests/Feature/Floor/AWalkerKeepsClearOfWallsAndFurnitureTest.php`'s `test_green_section_12_is_the_routes_clearance`, and every route of the shipped default and the cubicle fixture to it by that file's GREENs. **What re-derives it:** a map whose aisles are narrower than the body and both margins walks those desks at `snug` or `feet`, and the operator's reading of the walk | [§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 3 |
 | **Walkway centring** | **48 px; weight 3** | **Chosen** (card#12442) — a cell whose Chebyshev distance to the nearest cell the tier blocks for an obstacle or a desk, or to the floor's edge inflated as the tier inflates a wall, is `d` cells costs `3 × max(0, ⌈48 ÷ cell⌉ − d)` on entry, on top of its step: within 48 px of an edge a route pays to be farther from it, so a walkway no wider than 96 px past its inflation is walked down its middle, and a wider one anywhere at least 48 px from both its edges. Integers, as the step costs are. Its code home is `server/public/js/floor/route.js`'s `CENTRING`, held equal to this cell by `test_green_section_12_is_the_routes_clearance`, and the cubicle fixture's two edge walkways to their middles by that file's `test_green_every_desk_of_the_cubicles_walks_without_touching_a_wall` | [§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 3 |
+| **Laptop fade** | **4** loop frames | ⏳ **Chosen** (card#12450, card#12451; designed, not built) — one second each way at the loop rate: the operator's *"a laptop fades in"* / *"fades away"* needs a fade a viewer sees as one, and the one-frame fades of A5, A11 and A12 are value tweens bounded by the stream tick, which a laptop is not — it carries no value. An interrupted fade reverses from the opacity it has reached. **What re-derives it:** the operator's reading of the first drawn fade on the sandbox. Its code home at the build is `server/public/js/floor/scene.js`, beside `ELEVATOR_DOOR`, held equal to this cell by AT-D3-31's successor to `test_green_section_12_is_the_scenes_constants` | [§ 6.2](#62-the-animation-table--the-closed-set)'s designed block, [§ 8](#8-interns--subagent-rendering-and-the-cap) |
+| **Subagent idle threshold** | **60** s | ⏳ **Cited** (card#12451; designed, not built) — [D1 § 14](EVENT-SCHEMA.md#14-every-number-and-where-it-comes-from)'s *Subagent idle threshold*, the reporter's own: a bound dispatch with no call open under its subagent and no hook from it for this long is reported `idle`, evaluated on the flusher's 10 s pass, so the floor sees the flip 60–70 s after the subagent's last hook plus delivery. The floor reads the delivered `activity_state` and never this number; it is here because a reviewer of the render asks how long a quiet intern sits typing before its laptop goes, and the answer is D1's | [§ 8](#8-interns--subagent-rendering-and-the-cap) |
+| **Intern walk anchor** | the stool's foot — its rect's bottom-centre | ⏳ **Derived** (card#12450; designed, not built) — the point `desk-layout.js` stands the chibi frame on (§ 12's *Intern frame*), so the walker arrives exactly where the seated intern is drawn; the seat's desk is open to the intern's route on that row alone, as the seat's own desk is on its anchor's row (*Thread and walk anchor height*) | [§ 6.2](#62-the-animation-table--the-closed-set)'s designed block, item 13 |
 | **Routing budget** | **one loop frame** | **Derived** (card#12194) — the lattice plus every route a render carries must fit inside one *Loop frame rate* frame, so a render that starts walks never stalls the floor. `server/tests/Feature/Floor/ASeatLeavesByTheElevatorAndReturnsByItTest.php`'s `test_green_the_shipped_default_routes_every_desk` (H9) measures the lattice and every desk object's route on the shipped default — more routes than any one render of the fixture runs carries — prints every run's cost, and asserts the median under the frame; the first, a cold engine's, is printed beside it | [§ 6.2](#62-the-animation-table--the-closed-set)'s walk note |
 | **Depth key** | **a character's feet `y`; a desk's furniture foot line** | **Derived** (card#12194) — on the 3/4-oblique floor nearer is lower on screen: a walker's key is its feet's `y` at the instant drawn (`pointAt()`), a desk's its furniture foot line, the box's top plus `deskRects()`'s desk sprite's `y + h` — the line the side table and the interns stand on — emitted by the scene as `depth_y`. Ties: the desk first, then walkers by code-unit seat key, never `localeCompare`. Its code home is `server/public/js/floor/route.js`'s `floorStackOrder()`, held to this rule by `test_green_the_floor_stack_orders_walkers_by_depth_and_never_moves_a_desk` (H16, H18) | [§ 6.2](#62-the-animation-table--the-closed-set)'s walk note |
 | **Ride door motion** | **1,000 ms** | **Chosen** (card#12038) — each door motion of the floor's ride ([§ 4.5](#45-the-viewport-rule-and-the-camera)): the floor's leaves opening, the cab's closing on entry and opening on the choice, and the closing on a stay and on the floor the ride arrives at; each eases continuously (`ease-in-out`), never quantised with `steps()`. The ride's leaf motion is [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s exception for the viewer's own ride, which is not claim-bearing, so *Loop frame rate* does not bind it; until this row it reused *Elevator leaves* at the loop rate, which moved every ride door in a jump per loop frame. **What re-derives it:** the operator's reading on the sandbox, 2026-10-18 — *the elevator doors open and close too quickly, and it is very choppy*. Each phase that moves a door ends as its doors finish: `opening` lasts this figure, and every other one a *Fade* and then this figure. Its code home is `server/public/js/wire/ride.js`'s `RIDE_DOOR_MS` (`floor/floor-screen.js`'s until card#12113 hoisted the ride), read by `ridePhase()`, held equal to this cell by `Tests\Feature\Floor\TheFloorsRideIsNavigationTest`'s `test_green_section_12s_ride_door_motion_is_ride_door_ms`, every phase length held to it by that test's `test_green_every_phase_length_is_section_12s`, and every ride door style's being free of `steps(` by `Tests\Feature\Floor\TheElevatorIsAControlOnTheDrawingTest`'s `test_the_ride_doors_never_step`. 0 under reduced motion | [§ 4.5](#45-the-viewport-rule-and-the-camera), [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith) |
@@ -9751,6 +10078,14 @@ review can reverse it deliberately rather than discover it later.
 | 85 | **Decided 2026-10-27 — the operator's feedback on card#12444, relayed by the coordinator, verbatim: *"The subagent height is good. Spacing between subagents can still be reduced further. Also, it doesn't make sense for there to be a table behind the subagents. Instead of a table behind them, how about a low couch? or indvidual chairs?"* — with the coordinator's rule for the spacing, and the seat's ruling (reversible) on the trail** — the interns' pitch is bounded by their INK, not their frames: neighbouring frames may overlap, no two interns' ink may touch, and the paint order (back row first, each row left to right) keeps every drawing whole; `STOOL_PITCH` and `STOOL_FRAME` are each derived by `tools/characters/selftest.mjs` § 8b on every run. ⚠ **The derivation returned the pitch it replaced, 38 px**: the widest chibi, the dome mushroom at the widest girth, draws 37.36 px of ink across, so two of them side by side need 38, and a uniform pitch cannot be less while no ink may touch — the box (440 × 287), the default map and the fit (0.6701) are unchanged. The thought trail starts at the character's drawn head ([§ 5.1](#51-the-desk); `crestTop()`, `STAND_TOP`). The couch or the chairs in place of the side table are the operator's choice from samples, not yet built | a pitch per pair of neighbours from their species' own ink; ink allowed to overlap, back to front; a fractional pitch (37.37 px) | a per-pair pitch moves an intern when a neighbour changes, which the slots' stable order exists to prevent; overlapping ink is the rule the coordinator excluded; a fractional pitch saves under 2 px a row | the spacing the operator sees between narrower species stays: it is the room the widest one needs |
 | 86 | **Decided 2026-10-27 — the operator's choice on card#12444, relayed by the coordinator, verbatim: *"1. Couch A  2. keep"* — sample A of the two the seat drew for the operator's *"it doesn't make sense for there to be a table behind the subagents. Instead of a table behind them, how about a low couch? or indvidual chairs?"*, and the 38 px pitch kept** — the side seating at every desk with art is a LOW COUCH per row of interns in place of the tea table ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *the side seating* row): one cushioned sofa per row with a low back, one seat cushion per intern, round arms and wooden feet, as long as the row's places (it follows the pitch), each intern sitting ON its cushion (the cushion's top at the interns' foot line, `TABLE.foot_lift`, held to the chibi frame's foot by `tools/floor-themes/selftest.mjs`' seats leg); the teapot that sat on the table is DROPPED, the plant beside it KEPT beside the front couch; the layout's element and the wire's member keep the name *side table* (`side-table`, `side_table`), which every gate and the wire read | (B) a small chair per intern; one couch for both rows | the operator chose A; a chair wide enough to read at the fit (about 31 px) leaves a pitch under about 33 px no room, where a couch follows any pitch; one couch for two rows would sit the back row on nothing | the side seating's rect stays the side table's (no box change); renaming the element would move every gate for no drawn difference |
 | 87 | **Decided 2026-10-27 — the operator's acceptance of the seat's four recommendations on card#12448 (*"I accept your recommendations for all questions"*), and the operator's ruling the same day on the lid: subagents type on laptops of their own.** **C1** the lid's BACK faces the viewer, with the stickers and the screen's glow; **C2** the sway is the largest that fits the chibi frame, re-derived by the frame-bounds measurement — ⚠ REPLACED the same day by the operator's ruling *"x0.6"*: a FIXED sway of ×0.6 of the sampled one (±1.8°, 0.0132 of the drawn height), the intern's frame and pitch growing to hold it ([§ 12](#12-every-number-and-where-it-comes-from)'s *Intern sway*). Once card#12444 derived the frame as the least that holds the still intern, the largest sway that fitted it was ×0.1 (±0.3°, a third of a pixel at the fit) — no typing to see — so the rule was replaced rather than the frame given back; holding ×0.6 takes the frame and the pitch from 38 px to 41; **C3** the laptop's design is a pure draw of the intern key, the same for the whole run, never re-drawn against a sibling; **C4** interns type only while busy — and until card#12451's `activity_state` is built, *busy* is the desk's own held render moving ([§ 6.2](#62-the-animation-table--the-closed-set) A23); and *"The subagent's laptop cover should be taller. It is OK not to see their hands."* — the lid stands from under the face to just over the feet ([§ 12](#12-every-number-and-where-it-comes-from)'s *Intern laptop lid*). A23's episode is one per SEAT under the derived key `<seat key>~interns` in `held()`'s episode map, as PR #382 designed for card#12451 | **(A)** the screen facing the viewer — the intern then faces away and its face is lost; **(B)** the largest sway that fits the frame (C2 as first accepted) — against a frame sized to the still intern it is ×0.1, invisible; or the pitch kept at 38 px with the sway clipped at the frame's edge; **(C)** a design drawn distinct from its siblings' — the laptop would change when a sibling arrives or leaves; **(D)** a separate *typing* signal — none is delivered yet; **(E)** the sampled short lid with the paws on a deck over it — refused by the operator's ruling; **(F)** an episode per intern — the log's schema carries `install_id` and `seat_id` and no intern key, so it would be a schema change to an instrument no test reads per intern | A seat with an open dispatch call is `working`, so the interns' typing claims what the desk already claims, and the frame and the pitch re-derive to hold the fixed sway, so a wider drawing reds rather than clips | Each row of interns is 9 px wider (three gaps of 3 px), the couch with it, inside the unchanged 440 × 287 box; uniqueness is a measured rate, not a guarantee (the selftest's *laptop repeat rates*); an intern of a seat whose own render is still — a lagged desk, a stalled one — sits still at its laptop until card#12451 delivers its own state |
+| 80 | ⏳ **Designed 2026-10-26 — the operator's ask (items 1, 2 and 5), card#12450: interns arrive and leave by the elevator on the walk primitive, per `call_id`, to a stool SLOT each keeps while it is in the array, and a stop that lands mid-arrival turns the intern round from wherever it is** ([§ 6.2](#62-the-animation-table--the-closed-set)'s designed block, items 13 and 16) | the shipped one-frame stool fill over a positional row; or finishing the arrival and then departing; or decision 51's plain cancel (the intern vanishes) | the operator's words are the product: *"it returns to the elevator whenever it can"*; and a positional row moves every seated intern on each gain, which under a walk cancels every arrival in flight and teleports the seated (round 1, B2). Decision 51 stands for SEATS, which the operator has not asked about — [§ 14](#14-open-questions-for-the-review-loop) item 42 asks | an intern that vanishes or finishes its walk where the operator asked for a return; a seated row that shifts under a walk |
+| 81 | ⏳ **Designed 2026-10-26 — this seat as the repository's maintainer, card#12450: at the cap, A10's walks fire only when `subagents_open ≤ 8` on both sides of the delta** (item 15) | always walk a gained or lost `call_id`; or publish which call closed on the wire | the array is a reduction, and a walk is a claim that a subagent started or stopped; the two integers the delta carries say when the reduction is exact, and no fleet seat has been measured past the cap ([§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)) | at the cap, a walk that claims a start or a stop the wire did not state |
+| 82 | ⏳ **Designed 2026-10-26 — this seat as the repository's maintainer, card#12451: `subagents[].activity_state` is never null, and an older reporter's interns render `working`** — laptop and typing — for as long as their dispatch calls are open ([§ 8](#8-interns--subagent-rendering-and-the-cap)'s designed block) | a nullable member drawn as *busy by default*; or a null drawn as no laptop | a laptop held by a null is [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s first form, and a null drawn as no laptop is indistinguishable from `idle` ([§ 5.6](#56-the-null-render-for-every-nullable-member)); `working` at open is what the seat itself already claims of an open call, and the seat's `update_required` badge names the reporter that never reports idle | an older reporter's interns type while they wait, under a badge that says why |
+| 83 | ⏳ **Designed 2026-10-26 — this seat as the repository's maintainer, card#12451: the `intern-work` held row's episode is per SEAT, under the derived key `<seat key>~interns` in `held()`'s episode map** — entered when any intern of the seat is `working`, left when none is — and the `laptop` edge row's log row is per delta per seat, as A10's is | an episode per intern, with the intern's `call_id` on the animation-log row; or the episode on the desk's own key | the log's schema ([§ 11](#11-acceptance-tests)) carries `install_id` and `seat_id` and no intern key; a column for it is a schema change to an instrument no test reads per intern, while a per-seat episode still holds the typing motion to a delivered field, which is all the honesty principle asks. The desk's own key already holds the one episode its `render_state` selects, so a second on it would end the first every render (round 1, M1) | a per-intern episode would be a log schema change; a per-seat one loses which intern typed, which no test reads |
+| 84 | ⏳ **Designed 2026-10-26 — this seat as the repository's maintainer, card#12450: interns arriving on one delta are revealed together and walk out together, with no stagger** (item 14) | a per-intern offset of a step frame or more | a stagger is a delay that varies with how many arrived — a quantity read off the array and nothing the operator asked to see; the operator's *"it is OK to overlap"* (row 76) covers the clump, and [§ 14](#14-open-questions-for-the-review-loop) item 42 carries the look as a sandbox judgement | a clump of interns at the door on a mass dispatch, judged on the sandbox |
+| 85 | ⏳ **Decided 2026-10-27 — the seat's ruling A of design round 2, card#12451: a revived subagent is a NEW intern** — a new synthesized `call_id`, its creature keyed `seat~<call_id>` as every intern's is, its own slot, an ordinary arrival from the elevator — and nothing about its lineage crosses the wire ([§ 6.2](#62-the-animation-table--the-closed-set)'s designed block, item 13; [D1 § 8.5](EVENT-SCHEMA.md#85-subagent-identity--binding-agent_id-to-a-call)'s revival path) | round 1's lineage: a `revived_from` wire field, a root resolved in the fold, a `lineage_call_id` member, the creature keyed on it and the slot it last held | the lineage produced five of round 2's findings for a creature's continuity nobody asked for — the complexity diagnostic — where the operator's ruling of card#11058 Q3 (the creature is the call's) already answers the question and costs nothing; the revival stays a reporter-internal binding, count-bounded, which is all the floor needs to draw the subagent at all | a revived subagent arrives as a stranger — a different creature at a different stool |
+| 86 | ⏳ **Decided 2026-10-27 — the seat's ruling of design round 3, card#12450: a subagent gained and lost in one render is drawn as the cab-leg turn-round from frame zero — the doors open on the intern and close over it** ([§ 6.2](#62-the-animation-table--the-closed-set)'s *Interns ride the elevator too* block, item 19) | item 6's seat rule — two opposite edges in one render draw nothing — applied to the intern | the two deltas commit together, ride one stream tick and are coalesced into one render, so under the seat's rule the shortest subagent would never be seen on a floor whose purpose is to show it; the cab-leg is the drawing item 16 already owns for a stop that lands in the `cab` leg, so it costs no new form | the doors move for a subagent the viewer may not have time to read; the alternative hides it, which the operator's item 5 refuses |
+| 87 | ⏳ **Decided 2026-10-27 — the seat's re-derivation of design round 4 (the review tripwire fired on the resume-decision class after three rounds): the resume is self-healing, never exact — the hook emits on its own fold, the flusher repairs, and a duplicate `working` is harmless** ([D1 § 6.8](EVENT-SCHEMA.md#68-subagentstop)'s designed block) | an exact resume: a lock, a journal re-read under it, a partial-line applier | each exactness fix minted the next finding (a lock the writer gives up, a bucket the hour rolls); a repair the same value cannot mis-state costs an event and nothing on the floor | one event per stale hook, bounded by the child's own calls |
 
 ---
 
@@ -10939,6 +11274,65 @@ reason to leave two readings live.
     body legs, [decision 81](#13-decisions-taken-revisable-at-review) and
     [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 26. **Closed by** the operator's
     ruling on D2 § 14 item 18 and the one build of rows 15 and 26.
+42. **⇢ Operator — the intern lifecycle's open questions (card#12450, card#12451, designed 2026-10-26),
+    each with this seat's recommendation; the design above is built on the recommendations and is revised
+    where the operator answers otherwise.**
+    - **Q1 — what `idle` means for a subagent.** The harness fires no `Stop` inside a subagent
+      ([D1 § 8.5](EVENT-SCHEMA.md#85-subagent-identity--binding-agent_id-to-a-call), MEASURED), and
+      **MEASURED on this seat at 2.1.311, headless `claude -p`, 2026-10-27, in an isolated hook rig** (the
+      capture is [D1 § 8.5](EVENT-SCHEMA.md#85-subagent-identity--binding-agent_id-to-a-call)'s designed
+      paragraph's): a foreground dispatch fires `PreToolUse(Agent)` → `SubagentStart` → the subagent's own
+      `PreToolUse`/`PostToolUse` → `SubagentStop` → `PostToolUse(Agent)` with `status: "completed"` →
+      `Stop`, and the Agent tool offered the model **no `resume` input** — asked to resume the finished
+      subagent by id, it answered that the tool has no such parameter. So on this build a finished
+      subagent is gone, not paused, and the harness never says *finished and waiting* of a subagent the
+      way it does of a seat. An earlier draft of this line said *a subagent has one turn*, which was
+      unsourced; what is measured is the sequence above. **Also measured, same rig, same day:** a
+      background dispatch fires its `SubagentStop` at its own end, after its parent's `Stop` and before
+      the harness wakes the parent with the result; a `SendMessage` to a RUNNING subagent is delivered at
+      its next tool round and fires no hook of its own; and a `SendMessage` to a FINISHED subagent
+      **revives it under its old `agent_id`** — a second `SubagentStart` with no `PreToolUse(Agent)`, its
+      hooks, a second `SubagentStop`. So a stop is an end the harness can undo, and the design treats it
+      as one: the intern leaves at the stop and, if the subagent is revived, **a new intern walks in** — a
+      new dispatch call the reporter synthesizes ([D1 § 8.5](EVENT-SCHEMA.md#85-subagent-identity--binding-agent_id-to-a-call)'s
+      designed revival path), with its own creature and its own slot ([§ 13](#13-decisions-taken-revisable-at-review)
+      row 85, the seat's ruling A of round 2). The alternative — holding the dispatch open past a stop in
+      case a message revives it — has no discriminator: the stop's payload reads the same whether a revival
+      follows or not, and a dispatch held open would keep an intern typing at a desk for a subagent that is
+      gone. The design reads `idle` as **silence**: no call
+      open under the subagent and no hook from it for [§ 12](#12-every-number-and-where-it-comes-from)'s
+      *Subagent idle threshold*, judged at the seat by the reporter, where silence cannot be delivery lag
+      ([D2 § 3](FLEET-STATE.md#3-delivery-is-not-activity)). A subagent composing a long answer with no tool
+      call trips it too — its laptop goes after a minute and comes back at its next call — while a subagent
+      waiting on a permission prompt does **not**: its tool call is open until the prompt is answered
+      ([D1 § 6.12](EVENT-SCHEMA.md#612-attentionrequest)), so it keeps typing, and the seat's own `blocked`
+      is what says a human is awaited at that desk. **Recommendation:** accept silence at 60 s as `idle`; if
+      the operator wants a waiting intern to stop typing too, that is an intern-level `blocked` — a third
+      member, a separate ask, and a rule-4 change on the wire — not a change to this definition.
+    - **Q2 — should a SEAT that returns during its departure also turn round?** Item 16 turns an intern
+      round on the operator's item 5; decision 51 still draws a returning seat seated at once, with no walk
+      back from the threshold (item 6's ⚠ paragraph). **Recommendation:** yes, on its own card, with item
+      16's three cases applied to A1/A2 — one rule for every walker — but not folded into card#12450, whose
+      ask names subagents.
+    - **Q3 — the look of a mass arrival.** Eight interns dispatched at once are revealed in the cab together
+      and walk out as a clump (decision 84). **Recommendation:** judge it on the sandbox before asking for a
+      stagger; a stagger is a delay the data did not send.
+    - **Q4 — the walker's art.** card#12444 (taller characters, interns included) and card#12448 (the laptop
+      and the typing sway) own the intern's frames and the laptop's drawing; this design fixes only the
+      laptop's fade and the walker's size rule (*the intern at its drawn size*). **Recommendation:** land
+      card#12448's laptop before card#12450's build, so the fade has an element to fade; the walk can land
+      first with the `seat` leg fading nothing.
+    - **Q5 — two dispatches started at once, of one type** (round 2, finding 7). MEASURED on this seat
+      (F, the same rig): the harness started two foreground dispatches of one message **sequentially** —
+      each `SubagentStart` arrived before the next `PreToolUse(Agent)` — so the reporter's sole-unbound
+      rule bound both, and every `SubagentStart`'s `agent_type` equalled its dispatch's `subagent_type`,
+      which [D1 § 8.5](EVENT-SCHEMA.md#85-subagent-identity--binding-agent_id-to-a-call) now uses as a
+      tie-break where two dispatches are unbound at once and exactly one is of that type. The residual is
+      two unbound dispatches of ONE type at one `SubagentStart`, which no capture reached on 2.1.311: both
+      stay unbound for life, never go idle on the floor, and their calls are unattributed
+      (`agent_bind_ambiguous` counts the start). **Recommendation:** accept it as the measured non-case;
+      if that counter rises on real seats, the next capture is a same-type parallel dispatch on that
+      build, and the design owes a rule then.
 
 ## Appendix A — every obligation addressed to this document
 
@@ -11087,6 +11481,7 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 | 24 | card#12113 (closing card#11800) — the **lobby room** ([§ 4.1](#41-the-lobby--the-building-summary)): the drawn room facing the elevator wall as shapes carrying no fact (`lobby/building-scene.js` re-cut to the room — the far wall, ceiling, floor, side walls, rail, skirting, lamps, bench, plant, picture, the one window carrying A17's sky, the directory board's wood and fixings, and the elevator's frame, leaves, lamp, sill, mat and call plate with the cab's interior behind its leaves from the landing's eye), the room-scale camera over it (fit on entry, *Fit the lobby*, every wire shared with the floor), and the retirement of the cross-section's plates, shaft, roof, ground lobby, gliding cab, the plate rows and their label modules and tests, the next-stop control, its notices and the viewer's cab position; the **lobby directory** ([§ 4.1](#41-the-lobby--the-building-summary)'s table): the plaque per floor as a model over the held seats — `lobby-model.js`'s `plate()` grown to the tally's rows, the agents-and-desks pair, the marker row with its cap, the attention line and the four totals, each a pure function under `node` — painted in the camera's layer at the board's rect, its text counter-scaled to the page's own size by the page's one camera hook, scrolling inside its box, its ages on the 1 s tick (`wire/age-readout.js`'s ticker, its second page), the wheel rule over an element that declares it scrolls (`wire/camera-gestures.js`), and the plaque face added to `tools/design/state-chip-colours.py`'s surfaces; the **lobby ride** ([§ 4.5](#45-the-viewport-rule-and-the-camera)): the ride's state machine hoisted from `floor/floor-screen.js` to `wire/ride.js` and held by both screens, the page-side phase performer hoisted from `floor/main.js` to a module both pages wire with their own dialog, the cab dialog as one blade partial and one sheet block, `paintCab()` and `cabTheme()` taking the palette as data so the lobby page may call them after loading the house theme module, `drawLobbyView()` and `LOBBY_VIEW` in `floor/painter.js` beside the office, the ride frame's `beyond`, the lobby's elevator as the control, and the harness's `lobby.ride` acts — reading, for the attention line's long call, [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s `longest_open_call`, a D2 member card#12113 adds and the server builds first (its fold column, `SeatFacts`, `SeatObject` and D2's own tests), so the directory never reads `action` for it | [AT-D3-27](#at-d3-27-the-directory-plaque-reads-what-the-client-holds-and-names-only-what-needs-a-look), [AT-D3-28](#at-d3-28-the-lobbys-elevator-is-the-floors-ride), **[AT-D3-21](#at-d3-21-the-camera-moves-the-viewer-and-never-the-fleet)** **(building half)** — rewritten for the room: *Fit the lobby* frames it, the camera acts move over it, focus on the elevator or the board brings the camera to it, no camera act writes a log row; and [AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count), re-run green over the directory, unchanged |
 | 25 | ✅ landed 2026-10-24 (card#11818 part 2; `docs/design/plan-11818-reporter-outdated.md` is the build plan) — the **reporter-outdated badge, floor half**: `update_required` in `wire/member-sets.js`'s set, its line in `drilldown/drilldown-model.js`'s `BADGE_LINE`, and `floor/desk-layout.js`'s cluster order — the treatment badges, then `update_required`, then the wire's order ([§ 5.1](#51-the-desk), [§ 7.2](#72-badges-every-member-has-a-render), [§ 13](#13-decisions-taken-revisable-at-review) row 75). No new element, no new rect, no new animation: a badge appearing is [A11](#62-the-animation-table--the-closed-set), and the chip's text is the id. Depends on D2 Appendix B row 14 for the wire to carry the member; independent of every row above | [AT-D3-30](#at-d3-30-an-out-of-date-reporter-is-marked-on-the-desk-named-in-the-panel-and-never-read-as-not-current) RED on each of its plants, then GREEN; `AnUnrecognisedMemberRendersAsUnrecognisedTest`, `TheDrillDownSpeaksTheDocumentsBadgeLinesTest` and `TheDrillDownWindowsTheServersCounterBadgesTest` green over the grown set, each having been seen red with the member missing from its copy |
 | 26 | ✅ landed 2026-10-27 (card#12443, on the operator's ruling of D2 § 14 item 18) — **the character allocation, floor half** ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones), [§ 5.1](#51-the-desk)'s body row, [§ 10.2](#102-characters-original-creatures-drawn-by-code), [§ 10.4](#104-the-art-direction-as-a-specification), [§ 13](#13-decisions-taken-revisable-at-review) row 81): **first**, `resources/characters/creatures.js` declaring `SPECIES_KEYS` as one literal line the server's reader can parse, held equal to the drawn species by `tools/characters/selftest.mjs` (the step D2 Appendix B row 15 depends on, so it lands first or with it); then the tree's API taking the species beside the key — `standingFrame`, `walkFrames`, `poseFrames` and `chibiFrame`'s seat species, through `frameDocument`'s existing `species` option — with `speciesOf()` kept for the preference order and the sheet; `floor/desk-layout.js` carrying `character.species` from the seat object onto the desk's and each intern's elements; `floor/painter.js`'s `characterFrames()` handing it to the tree and keying its cache on it; **`wire/fleet-client.js`'s `FEED_VERSION` moved to the value D2 Appendix B row 15 bumps `FeedEnvelope::FEED_VERSION` to — in the SAME release, never apart** (D2 § 6.13's one-release rule: this row and row 15 are one build merged into one release, the migration held with them, because a bump shipped ahead of this painter would reload every page into JavaScript that still draws the key's bodies), so a page of this release re-opens the stream and an older page banners ([§ 2.5](#25-what-re-renders-and-when)); the selftest's salt legs and `tools/characters/salt-control.json` retired, its interns leg taking the seat species as a parameter, and the body legs added; `painter-probe.mjs`'s body legs; every fixture seat in `server/tests/Feature/Floor/fixtures/` gaining `character`; `resources/characters/seed.js`'s header and `README.md`'s character lines re-stated (the body is stored, the rest is not); [§ 5.1](#51-the-desk)'s body row moved into its table and [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)'s and [§ 12](#12-every-number-and-where-it-comes-from)'s cap arithmetic re-written to the re-measured figures; and the lobby's directory unchanged — it draws no character. Depends on D2 Appendix B row 15 for the member to arrive; independent of every row above | [AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom)'s body legs RED on each of their plants, then GREEN, and its interns leg green over the delivered species; `EveryFixtureSeatMatchesThePublishedSeatObjectTest` green over every fixture seat carrying `character` — it reads § 8.2.1 from D2 at run time, so it reds on the member missing from any fixture the day D2's row lands, which is the plant |
+| 26 | ⏳ designed 2026-10-26 (card#12450, card#12451), not built — the **intern walk** ([§ 6.2](#62-the-animation-table--the-closed-set)'s *Interns ride the elevator too* block): A10's cells moved as that block states and its drawing per `call_id` through `route.js` with the stool's foot as anchor (`floor/scene.js`'s `walkEffect()` generalised over the walker's key and anchor, `floor/in-flight.js` keyed per intern with the turn-round of item 16, the cab clip and the floor stack over the intern's frame); the **laptop** — the `laptop` edge row and the `seat` leg's fade, § 12's *Laptop fade* in `scene.js` beside `ELEVATOR_DOOR`, over the element card#12448 draws; the **intern activity render** — the `intern-work` held row in `wire/animation-set.js` (both new rows numbered there and in the table at once, `FIRED_BY` `desk` for `intern-work` and `delta` for `laptop`, and `held()` mapping the derived `<seat key>~interns` key back to its seat — the suffix stripped — for `cause`, `exitCause` and the row's ids; round 2, minor 10), the laptop and typing on `floor/desk-layout.js`'s stool, and `working` / `idle` beside the label in `drilldown/drilldown-model.js` and the desk list; and the § 5.1 and § 8 rows for `subagents[].activity_state`, moved from prose into the tables. Depends on D2 Appendix B row 15 for the wire to carry the member and on D1 § 16 row 11 for a reporter to mint it; the walk half (card#12450) depends on neither and may land first, its `seat` leg fading nothing until the laptop exists. card#12442's route clearance, where it lands first, applies to the intern's route as to every walker's | [AT-D3-31](#at-d3-31-an-intern-arrives-by-the-elevator-works-or-rests-at-its-laptop-and-leaves-by-it) RED on each of its plants, then GREEN; [AT-D3-23](#at-d3-23-a-seat-leaves-by-the-elevator-and-returns-by-it) and [AT-D3-4](#at-d3-4-the-subagent-cap-boundary) re-run unchanged, since the seat's walk and the cap must not have moved; `TheAnimationSetIsTheDocumentsClosedSetTest` green over the moved cells and the two new rows |
 
 **Three of these are hard requirements before anything downstream may treat this floor as honest:**
 **AT-D3-1** (no animation without its event — the operator's principle, made into a test),

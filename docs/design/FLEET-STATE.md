@@ -351,6 +351,17 @@ debounce and no timer ([D1 § 6.0](EVENT-SCHEMA.md#60-conventions-and-how-harnes
 DOCS-CITED). It correlates with activity and is not produced by it. Treating it as activity would make
 the gauge's own refresh look like work — a stamp corroborating itself.
 
+⏳ **`subagent.activity` — designed for card#12451 (2026-10-26), not built — counts as activity: no.** The
+row the build adds to the table above reads, cell by cell: Kind `subagent.activity`; Counts as activity?
+**no**; Note *its `idle` is produced by the flusher on a timer and its `working` rides beside a `tool.start`
+that already counts; it moves `subagents[].activity_state` and nothing else* — and the reason is the maxim
+this section is named for: its `idle` member is produced by the flusher on a timer
+([D1 § 6.8](EVENT-SCHEMA.md#68-subagentstop)'s designed block), which is the shape `reporter.heartbeat`'s
+row refuses, and its `working` member rides immediately before a `tool.start` that already counts, so
+admitting it would add nothing to `last_activity_*` on one edge and corroborate a timer on the other. It
+moves one fact and one fact only — the dispatch call's `activity_state`
+([§ 6.5](#65-the-fold)'s designed rule) — and never the seat's own state.
+
 ### 3.3 The two ages, and the arithmetic each one is computed by
 
 | Rendered quantity | Computed as | Direction of its error | Bound on the error |
@@ -983,6 +994,14 @@ discriminable on the wire; this section is D2 not throwing it away.
 The golden fixture for this whole section is D1's own worked `/clear` trace, replayed end to end in
 [§ 10](#10-worked-example-the-clear-trace-folded-end-to-end) and asserted by
 [AT-D2-2](#at-d2-2-the-clear-trace-mints-no-idle).
+
+⏳ **The row the build adds for card#12451 (designed 2026-10-26, not built):** a `subagent.activity` event
+— what it must **not** produce: any activity state of the seat, any input to rule 4, any `last_activity_*`
+move, any badge; what it produces here: `calls.activity_state` on the one dispatch call it names, which
+[§ 8.2.1](#821-the-seat-state-object)'s designed member reads and nothing else does. A seat whose every
+intern is `idle` is still `working` while a dispatch call is open — the subagent exists, and
+[D1 § 8.6](EVENT-SCHEMA.md#86-server-side-interpretation-of-open-call-state)'s *a seat with any open call is
+working* is unchanged. An intern's quiet is the intern's fact; the seat's quiet is `turn.end`'s.
 
 ### 4.9 The task-title merge, and what is not specified here
 
@@ -2184,6 +2203,23 @@ CREATE TABLE authored_revisions (
 
 **Row counts and index choices are sized in [§ 6.8](#68-sizing).**
 
+⏳ **The columns the build adds to `calls` for card#12451 (designed 2026-10-26, not built), stated outside
+the fence because the fence is what the migrations are held to:** `activity_state ENUM('working','idle')
+NOT NULL DEFAULT 'working'`, after `subagent_type`, with the comment *the intern's own state, from
+`subagent.activity`; `working` from the open; read on `is_dispatch` rows only*; and **its own LWW triple**
+(round 1, M6) — `activity_event_time DATETIME(3) NULL`, `activity_seq_epoch CHAR(26) CHARACTER SET ascii
+COLLATE ascii_bin NULL`, `activity_seq BIGINT UNSIGNED NULL` — because the row's `applied_*` triple moves
+on every open, close and title join, and an `activity` event compared against it would be refused by a
+later close or would overwrite a later activity with an earlier one; a fact with its own writers gets its
+own comparator, as `sessions` keeps one per group ([§ 6.5](#65-the-fold)). The four land by one
+`ALGORITHM=INSTANT` migration with no backfill — the default is the value every existing row is owed,
+since every dispatch opened under a reporter that could not say otherwise is `working` by
+[§ 8.2.1](#821-the-seat-state-object)'s designed rule, and a null triple is *no activity event yet* — and
+the `ENUM`'s two members are D1's two, by reference to [D1 § 6.8](EVENT-SCHEMA.md#68-subagentstop)'s
+designed block and never restated with a third. **The column is scoped to dispatch rows** (round 1, m5):
+a row with `is_dispatch = 0` holds the default and is read by nothing, and the fold writes it on no such
+row.
+
 ### 6.5 The fold
 
 **One transaction per pass, per seat.**
@@ -2437,6 +2473,34 @@ property, not the two conditions: a row at a version the client already holds is
 [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s `delta.state_version == local + 1`
 rule, so the desk's drill-down would record a change the feed could never deliver. An implementer
 computing the two conditions from two separate reads has no way to see that they have diverged.
+
+⏳ **The projection of `subagent.activity` (card#12451, designed 2026-10-26, not built).** `project()` sets
+`calls.activity_state` to the event's member on the **open dispatch** row whose `call_id` it names,
+LWW-guarded on the row's **own `activity_*` triple** ([§ 6.4](#64-ddl)'s designed columns) and never on
+its `applied_*` triple, which the open, the close and the title join move — so a `working` and an `idle`
+arriving out of order converge on the later one, and a close that arrives after an activity event neither
+refuses it nor is refused by it. A `tool.start` that opens a dispatch call writes `working`, which is the
+column's default and the one fact an older reporter's dispatch ever carries; a row with `is_dispatch = 0`
+is never written (round 1, m5). An event naming a `call_id` that is closed, that is not a dispatch, or that
+no row holds, projects **nothing** — it is stored, it is on the drill-down's timeline, and the lost
+`tool.start` it would imply is already `seq_gap`'s or `lossy`'s business; no counter is minted for it,
+because a counter without a consequence is decoration and the consequence here is already badged.
+`subagents` is version-bearing, so a changed element bumps `state_version` and the delta re-sends the array
+([§ 8.3.1](#831-worked-delta)'s shallow merge: a top-level member is replaced whole) with `subagents` in
+`changed[]`; the cost is at most one delta per flip, bounded by D1's rate for the kind, and a flip changes
+no transition row because `render_state` does not move. **Versioning is per event — the shipped rule, which round 1 mis-stated as once per window and round 2
+withdraws (the seat's ruling B):** the build's `StateRecompute` runs after every projected event — its
+docblock's own case against the pseudocode above — and [§ 10](#10-worked-example-the-clear-trace-folded-end-to-end)
+reads *ten events, ten deltas*. So an `idle` and a `working` folded in one pass yield **two** deltas in
+order — and what the floor draws depends on how many renders they reach: across two, the laptop's fade
+reverses mid-way (`FLOOR.md`'s `flip` run); in one — the pass's rows commit together in `Outbox`'s one
+`INSERT`, the stream yields them in one tick, and the page coalesces the tick into one render — nothing
+fades, the element's net state is drawn (`FLOOR.md` § 6.2's designed block, item 19); and a
+dispatch whose `tool.start` and close are both projected in one pass yields two versions — one in which
+`subagents[]` carries it, one in which it does not — so the intern walks in and, its loss landing a
+moment behind, turns round at the elevator (`FLOOR.md` § 6.2's designed block, item 16), or, when the
+two reach the page in one render, is seen in the cab as the doors open and close (item 19): the
+operator's item 5 served for the shortest subagent, and no subagent unseen. 
 
 **Arrival order for visiting, `(event_time, seq_epoch, seq)` for applying.** The fold *reads* in
 `events.id` order because `seq` cannot carry a cursor at all: it can have permanent holes
@@ -3899,6 +3963,29 @@ properties, each one the consumer depends on:
   absence; [§ 6.5](#65-the-fold) names it outside the version-bearing set for those two reasons. It
   reaches a consumer on the snapshot and the detail response, which is what the consumer polls.
 
+> ⏳ **One member the build adds to the table above for card#12451 (designed 2026-10-26, not built),
+> written as prose because `Tests\Feature\Feed\SeatObjectMatchesTheDocumentTest` and
+> `Tests\Feature\Floor\EveryFixtureSeatMatchesThePublishedSeatObjectTest` hold every row of that table to
+> `App\Read\SeatObject` and to every fixture seat, so the row cannot exist before the object carries it.**
+> The row: `subagents[].activity_state` — enum — Null? **no** — `working` | `idle`, from `calls.activity_state`
+> ([§ 6.5](#65-the-fold)'s designed rule); `working` at the call's open, so a reporter that never sends
+> `subagent.activity` yields `working` for the life of the dispatch — example `"working"`. It is a member of
+> each element of `subagents`, so it is on the delta's `patch` whenever the array is, and on the seat-detail
+> response's open-call list ([§ 8.2.3](#823-the-seat-detail-response)) for every dispatch call, uncapped. It
+> rides REST under [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s additive rule — no `api_version`
+> move, a consumer ignores what it does not know — and the stream is served with its client, so no
+> `feed_version` move either. **Why not nullable:** a null here would be *this reporter has not said*, and the
+> floor's one honest render of that is the same as `idle`'s — no laptop — which `FLOOR.md` § 5.6 forbids;
+> the fold's `working` at open is a fact every reporter already asserts of an open call (D1 § 8.6).
+> **What it costs the worst case is the tool's to print, not this paragraph's** (round 2, minor 9): the
+> build adds `"activity_state": "working"` — rule 3's longer member — to every element of the
+> [§ 8.3.2](#832-worked-worst-case-delta) block and the [§ 8.2.2](#822-worked-snapshot) snapshot, and
+> `tools/design/verify-fleet-state.py` re-serializes them and re-prints the size table above, while
+> `verify-floor.py`'s G3 re-derives `FLOOR.md` § 8.1's spare, per-element cost and reachable cap from those
+> figures; the member's own serialized length is what moves them, by eight elements in the worst case and
+> by one per further element. The cap stays at 8 unless that run shows fewer than one further element
+> fitting, which is the one outcome that would reopen § 8.1's third reason.
+>
 **`subagents` is capped at 8 with the true count beside it, and that is a stated reduction rule, not a
 silent truncation.** D1's index cap admits up to 64 open calls; a side table rendering 64 interns is a
 list, not a desk. The 8 kept are the most recently started, `subagents_open` always carries the true
@@ -4236,8 +4323,10 @@ into one message* — and it is withdrawn here (card#9287), because it was never
 `state_version` is the client's plus one, so a message carrying the *last* of two versions minted in
 one tick is a gap to every client, not a merge. The per-seat message rate is therefore the writers'
 property and not the transport's: [§ 6.5](#65-the-fold)'s rule enqueues one row per transaction that
-bumps `state_version`, and the fold bumps once per pass over a seat's unfolded window — so what this
-tick bounds is delivery granularity per stream, and the *4 msg/s per seat regardless of what the seat
+bumps `state_version`, and the fold bumps once per projected event whose version-bearing fields moved
+(`StateRecompute` runs after every event — an earlier revision of this sentence said *once per pass over
+a seat's unfolded window*, which the build never did; corrected on card#12451's design round 3, where
+the per-event rule is load-bearing) — so what this tick bounds is delivery granularity per stream, and the *4 msg/s per seat regardless of what the seat
 does* that the earlier revision promised is not a property anything here provides.
 
 ⭐ **This withdrawal reconciles the document to code that already shipped, rather than asking for a
@@ -4808,6 +4897,11 @@ bound, `"idle_nudge_after_s":86400` — 27 B more — and the worst-case snapsho
 
 `changed` lists every key of `patch`, which is what makes this the worst case rather than a large one: a
 delta that patches fewer fields is strictly smaller, and no delta can patch more than all of them.
+
+⏳ At the build of card#12451 every element of this block's `subagents` gains `"activity_state": "working"`
+— the longer member, rule 3 — and the [§ 8.2.2](#822-worked-snapshot) elements the same, and the size table
+of [§ 8.2.1](#821-the-seat-state-object) is re-printed from the tool; the hand-derived cost is in § 8.2.1's
+designed paragraph.
 
 #### 8.3.3 The coordination objects
 
@@ -6834,6 +6928,60 @@ test over `CharacterAllocation::choose()` with no store.*
 - **Not mechanised:** that a floor's viewer finds two bodies distinguishable — [FLOOR.md § 10.4](FLOOR.md#104-the-art-direction-as-a-specification)'s
   review; and the on-floor duplicate a later layout composition can create, which is accepted by design
   ([§ 14](#14-open-questions-for-the-review-loop) item 18) and checked by nothing.
+### AT-D2-31 an intern's activity is the reporter's word, and an open dispatch is working until it says otherwise
+
+*⏳ Designed for card#12451 (2026-10-26), not built. [§ 6.5](#65-the-fold)'s designed projection,
+[§ 8.2.1](#821-the-seat-state-object)'s designed member, [§ 4.8](#48-what-may-never-mint-a-state)'s designed
+row. Gated at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 15.*
+
+- **Build:** a live store, the fold driven **one pass at a time** (round 1, M2); one seat fed a dispatch
+  `tool.start` with its `subagent.spawn` and a child `tool.start` / `tool.end` pair under it
+  (`parent_call_id` set) in one batch, **folded**; then `subagent.activity(idle)` for the dispatch in a
+  second batch, **folded**; then `subagent.activity(working)` with a later `event_time` in a third,
+  **folded**; a second seat fed the same dispatch and child pair and **no** activity event; a third fed the
+  two activity events in the reverse arrival order across two batches, folded between them; a fourth fed an
+  `idle` naming a `call_id` no row holds; a fifth fed the dispatch, the `idle` and the `working` **in one
+  batch and one pass** (the net-result leg); a sixth fed a dispatch whose `tool.start` and `tool.end` ride
+  one batch and one pass (the unseen leg); a seventh fed the dispatch, then `idle`, then — in a later pass — a
+  `subagent.spawn` re-fill for the dispatch, its title arriving late ([§ 10](#10-worked-example-the-clear-trace-folded-end-to-end)
+  E2's path) with a later `event_time`, then, in the pass after that, a `working` whose `event_time` is
+  **between** the idle's and the spawn's. 
+- **GREEN:** after the passes the first seat's `subagents[0].activity_state` is `working`; the pass that
+  folded the `idle` produced one delta naming `subagents` in `changed[]` and patching the whole array with
+  the element at `idle`, and the pass that folded the `working` one more at `working`; neither moved
+  `activity_state`, `render_state`, `last_activity_*` or any badge of the seat, and no transition row was
+  written for either. The second seat's element reads `working` with no activity event ever stored. The
+  third seat converges on `working`, the later `event_time` winning whatever the arrival order. The fourth
+  seat's batch is `202`, the event is in `events`, no `calls` row was created, no seat-object member moved
+  and no counter rose. The fifth seat's one pass produced **two** deltas, the first with the element at `idle` and the second
+  at `working`, in that order. The sixth seat's `subagents[]` carried the dispatch on one version and not
+  on the next — a gain and a loss, two deltas — and the drill-down's timeline lists its call. The seventh
+  seat's row ends open, `working`, with its title filled: the `working` was not refused by the spawn's
+  later `applied_*` triple, and the spawn was not refused by the activity's.
+  `GET /api/fleet/seats/{install}/{seat}`'s open-call list carries `activity_state` on every dispatch call,
+  the capped array and the uncapped list agreeing element by element. `SeatObjectMatchesTheDocumentTest`
+  passes with the row moved into the § 8.2.1 table, and `verify-fleet-state.py` re-prints the § 8.2.1 size
+  table and the FLOOR G3 figures from the re-cut blocks.
+- **RED — idle minted by the server:** derive the member from the child calls' `closed_at` against the
+  sweep's clock → the second seat's element goes `idle` with no reporter word, and a seat behind on delivery
+  shows idle interns that are working. Caught by: the second seat.
+- **Second RED — the seat goes quiet with its interns:** let the `idle` event feed rule 4 or clear
+  `open_turn` → the first seat's `activity_state` leaves `working` while a dispatch call is open. Caught by:
+  the first seat.
+- **Third RED — last-arrival wins:** project without the LWW guard → the third seat ends `idle`. Caught by:
+  the third seat.
+- **Fourth RED — the orphan creates a row:** upsert a `calls` row for the unknown `call_id` → the fourth
+  seat gains a dispatch nobody opened, and an intern with no spawn, no start and no title appears on the
+  floor. Caught by: the fourth seat.
+- **Fifth RED — the null default:** make the column nullable and leave it unset at open → the second seat's
+  element is `null`, which the floor has no render for (`FLOOR.md` § 5.6). Caught by: the second seat.
+- **Sixth RED — one comparator for two facts:** guard the activity projection on the row's `applied_*`
+  triple → the seventh seat's `working` is refused as older than the spawn, and the row ends `idle`.
+  Caught by: the seventh seat.
+- **Seventh RED — once per window:** version after the pass, over every event it projected (the
+  pseudocode's shape, which round 1 took for the rule) → the fifth seat's pass yields one delta at
+  `working`, the floor never fades for an `idle` the reporter did report, and the sixth seat's dispatch
+  is carried by no version, so no intern walks for it. Caught by: the fifth and sixth seats.
 
 ---
 
@@ -7021,6 +7169,8 @@ review can reverse it deliberately rather than discover it later.
 | 59 | **card#11818 part 2 (seat ruling, reversible): a seat whose last reported reporter build is behind the server's `CURRENT_REPORTER_VERSION` is BADGED `update_required` and its batches are still accepted; `MIN_REPORTER_VERSION` keeps its informational meaning and `ACCEPTED` alone refuses** ([§ 7.2](#72-this-planes-own-counters-and-badges)) | raise `MIN_REPORTER_VERSION` to the current build and refuse a lower reporter at the ingest, in the shape of D1 § 12.1 step 6's schema refusal | the operator's rule is that a seat which skipped an update is VISIBLE. A refusal empties the one surface the rule asks for: the refused seat's desk goes dark within 900 s, and under D1 § 11.5 the refusal is permanent for that batch. A badge marks the seat while it keeps reporting, the drill-down names the build it runs, and the badge survives the seat going quiet. The badge is a current comparison rather than a windowed counter because the condition has no rise to date and does not lapse | an operator finds a stale seat by reading the floor or the seat object, never from an ingest counter; a seat that is behind AND dark shows the badge on an empty chair for as long as the store still holds one of its batches, which is the honest picture; after a rebuild that finds none (dark past `batches` retention) the badge is gone with the version it was judged on, the same loss every batch-sourced reporter field carries, and no fallback is built for it. Reversible: moving `CURRENT_REPORTER_VERSION` is a release act its docblock already names, and removing the badge is a change to `Badges::SERVER` and its one comparison |
 | 60 | **card#12210 (operator ruling opq-1792660567-cb5f, 2026-10-22, option A): the `seq_gap` rule runs at the ingest, once per accepted batch, over every `seq` the batch carried — stored, duplicate and ignored unknown kinds — against a received mark the ingest keeps on `seat_state`** ([D1 § 10.2](EVENT-SCHEMA.md#102-ordering-seq-and-gap-detection)) | keep the rule in the fold and give it each batch's received range (`batches.seq_min` / `seq_max`) read beside `reporter_version` | the fold visits stored rows only: a request that is all duplicates and carries no heartbeat stores no row, so the fold never visits it and its range never advances the mark — the false gap moves to the next stored row. Closing that from the fold needs a running maximum over earlier batches per event and a new index; the ingest already holds every `seq` of the batch, under the seat lock, exactly once | one more rule on the request path (a max and one count over a batch's seqs, a counter write only when a gap exists) and three `seat_state` columns in an update the transaction already makes. Not counted: a refused batch's run is still a gap; a real loss between the last batch a build that does not maintain the mark accepted and the first batch one that does accepts (the first deploy, every roll-forward or re-land after a rollback or revert) — that batch sets the mark; and a loss across an epoch change, which on a seat fed by two lanes under two epochs (one server under two spellings) is every loss there, since the mark changes on every accepted batch of the other epoch, stored rows or not |
 | 61 | **Built for card#12443 (designed 2026-10-26, ruled 2026-10-27, § 14 item 18), the operator's ask: a seat's SPECIES is allocated by this plane at the seat's creation, stored on `seats.species`, unique among live seats while the list allows, then unique on the seat's floor, then least-used; kept for life; freed by retirement through the read filter** ([§ 6.13](#613-the-character-allocation--one-species-per-seat-allocated-at-creation-and-kept-for-life), [§ 6.4](#64-ddl), [§ 8.2.1](#821-the-seat-state-object)) | **(A)** keep the pure hash and re-search the salt whenever the live fleet repeats a body — the mechanism FLOOR.md § 10.4's salt bullet names; **(B)** allocate in the client — each browser picks a free species over the snapshot it holds; **(C)** a `UNIQUE` index over `(species, live)` as the guarantee; **(D)** a table of its own, `seat_characters`, with the allocation's time and the rule that fired; **(E)** a named lock (`GET_LOCK`) for the concurrency instead of the one-row mutex | (A) cannot hold the property: a salt is one pass over one roster, the fleet is unbounded and seats are minted after any search — the sandbox repeated three bodies within four days of the last re-pick, and each re-pick re-draws approved bodies (decision 73's cost, paid twice already). (B) makes two browsers disagree — the one property FLOOR.md § 3.1 holds for the character — and a reload would re-pick. (C) enforces what rules 2 and 3 deliberately relax: once the list is exhausted a repeat is correct, so uniqueness is a preference and the store must not refuse it. (D) is a second row per seat to free, join and retain for one value that is freed by the seat's own `retired_at`; a column on `seats` is freed by the predicate every read already applies, and the allocation's own time is the seat's `created_at`. (E) is a second serialisation primitive beside the row-lock form `Layouts::serialise()` already uses for the building layout, with nothing the one-row mutex lacks — the allocation rate is the seat-creation rate, re-printed by `SELECT DATE(created_at), COUNT(*) FROM seats GROUP BY 1` (a handful of creation days in a store's life, bursty), so what the mutex costs (one row lock per rare operator act) is the right size | two columns and a one-row mutex table, one row lock at seat creation — **the mutex replaced a full-scan locking read after three review rounds each found a defect in the concurrency class (r1: lock order against `issue()`'s own `uq_seat` gap lock; r2: a test asserting the absence of an error; r3: a harness in which that test could neither pass nor discriminate), at which the review's pre-committed tripwire stopped the patching and re-derived upstream: seat creation is a rare operator act, so it needs a mutex, not next-key semantics** — a `feed_version` bump so a page from before the release banners instead of drawing the key's bodies, two field rows and the bytes [§ 8.2.1](#821-the-seat-state-object)'s size table re-measures, a strict parse of the generator's list and a PHP port of its draw, each guarded against `node`; and the first stored appearance fact, which FLOOR.md § 10.4 called a disguise — it is not one, because it is stored for every seat on the one plane every browser reads, and the rest of the appearance stays a pure function of the key. Reversing it is dropping the column and the two rows and restoring `speciesOf` as the body's source, with the repeats that implies |
+| 61 | ⏳ **card#12451 (designed 2026-10-26, not built): an intern's working/idle is a per-dispatch fact the REPORTER mints and the fold stores — `calls.activity_state`, `subagents[].activity_state`, never null, `working` at open** ([§ 6.5](#65-the-fold), [§ 8.2.1](#821-the-seat-state-object)) | derive it server-side from the child calls' stored timestamps and a sweep; or a nullable member with the floor choosing a default | the server reading silence is the defect [§ 3](#3-delivery-is-not-activity) exists to refuse — it cannot tell no hooks from no delivery — where the reporter can; and a null is a third state the floor would have to draw as one of the two. `working` at open is what [D1 § 8.6](EVENT-SCHEMA.md#86-server-side-interpretation-of-open-call-state) already says of an open call | a reporter that never upgrades shows interns typing while they wait — badged `update_required`, which names the cause |
+| 62 | ⏳ **card#12451 — design round 2, the seat's ruling B (2026-10-27): the fold's per-event versioning stands, and the once-per-window rule round 1 wrote into [§ 6.5](#65-the-fold)'s designed paragraph is withdrawn** | version once per fold pass, so an undone flip inside one batch never reaches the floor | the shipped `StateRecompute` recomputes after every projected event and [§ 10](#10-worked-example-the-clear-trace-folded-end-to-end) counts ten deltas for ten events; a design that contradicts the build it amends is a defect, and per-event is also what shows the shortest subagent — it walks in and turns round, which the operator's item 5 asks for — where once-per-window hid it | a flip undone inside one batch costs the floor a fade that reverses when its two deltas reach two renders, and nothing when they reach one; nothing else |
 
 ---
 
@@ -7374,6 +7524,14 @@ operator ruling.
 
 ---
 
+18. **⇢ Review — the intern activity member's one open point (card#12451, designed 2026-10-26).** The
+    seat-detail response ([§ 8.2.3](#823-the-seat-detail-response)) lists every open dispatch call uncapped;
+    the designed member rides each of them, so the drill-down can say `working` / `idle` past the cap. What
+    it does not carry is **when** the state was entered: no `activity_since`, because the floor renders no
+    age for it and a stored instant nobody renders is a column that drifts. If a consumer appears that wants
+    *idle for how long*, the instant is the event's own `event_time`, already in `events`, and the column is
+    one migration — stated as the trigger, not built.
+
 ## Appendix A — every D1 obligation, and where it is discharged
 
 [D1 § 12.6](EVENT-SCHEMA.md#126-the-five-d2-must-constraints) carries **five numbered `D2-MUST`
@@ -7507,6 +7665,7 @@ everything from step 3 onward.
 | 13 | ✅ **BUILT — card#12239 (2026-10-24).** **the roundtable-name declaration, server half** — the two `seat_state` columns, the ingest registry rows, the fold, `SeatDelta`'s map and the two seat-object members ([§ 6.4](#64-ddl), [§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects) rule 1's fleet arm) | `SeatObjectMatchesTheDocumentTest`'s delta-map leg and the heartbeat registry test, each red on the member missing; FLOOR.md's AT-D3-29 for the consumer's arm |
 | 14 | ✅ **BUILT — card#11818 part 2 (2026-10-24).** **the reporter-outdated badge, server half** (card#11818 part 2; `docs/design/plan-11818-reporter-outdated.md` is the build plan): `SchemaVersions::CURRENT_REPORTER_VERSION` with its pin test, `SchemaVersions::reporterIsOutdated()`, the `update_required` member of `Badges::SERVER` raised in `serverFor()` ([§ 7.2](#72-this-planes-own-counters-and-badges)), `current_reporter_version` on `GET /api/ingest/health` ([D1 § 4.1](EVENT-SCHEMA.md#41-endpoints)), and `bin/reporter-version-guard.py`'s constant-equality leg. No column, no migration: the badge is derived into `seat_state.server_badges` as the others in [§ 7.2](#72-this-planes-own-counters-and-badges)'s list are | [AT-D2-30](#at-d2-30-an-out-of-date-reporter-is-badged-a-current-one-is-not-and-nothing-is-refused) RED on each of its plants, then GREEN; `Tests\Unit\Fold\BadgesServerMatchesTheDocumentTest` (holds `Badges::SERVER` to [§ 7.2](#72-this-planes-own-counters-and-badges)'s list in both directions, with its plant seen to report both mismatches); FLOOR.md's AT-D3-30 for the consumer's half |
 | 15 | ✅ **BUILT — card#12443 (2026-10-27), on the operator's ruling of [§ 14](#14-open-questions-for-the-review-loop) item 18.** **the character allocation, server half** ([§ 6.13](#613-the-character-allocation--one-species-per-seat-allocated-at-creation-and-kept-for-life)): the migration adding `seats.species`, the nullable marker `seats.species_drawn_at` and the one-row `species_allocation_lock` table it seeds, with its **two-pass** backfill (reserve the unique draws, then re-allocate the displaced in `id` order) run under that mutex, its *today's draw* write for already-retired rows (the marker set, which the console labels) and its printed change table ([§ 6.4](#64-ddl)'s fence); `App\Characters\SpeciesList` (the strict parse of `resources/characters/creatures.js`'s `SPECIES_KEYS` and `SPECIES_FIELD`, `FurnitureBox`'s shape, refusing a key over 16 bytes) and `App\Characters\Draw` (the `fnv1a32` / `mix32` port), each held to `node` by `TheSpeciesListHasOneSourceTest`; `App\Fleet\CharacterAllocation::choose()` (the pure function: rules 1–3 with rule 3's floor-then-fleet order, the preference order, and the floor population taken from a thunk it calls only when rule 1 has no answer); on `SeatTokens::issue()`: `SELECT id FROM species_allocation_lock WHERE id = 1 FOR UPDATE` as the transaction's **first** statement on every path, before the `uq_seat` lookup, the live population by a plain read under it, the choice on the insert branch, the lazy `Layouts::read()` behind the thunk with `InvalidBuildingLayout` caught into *each install its own floor* plus `character_floor_unread` ([§ 7.2](#72-this-planes-own-counters-and-badges)) and one log line, the method's single attempt kept, the position seam `SeatTokens::$afterMutex` the concurrency legs' probe runs at, and `FoldLockFirstTest`'s private `recordFoldTransactions()` hoisted into `CommittedSeatTestCase` so the lock-order test reads the one copy; `Snapshot`'s select, `SeatObject::build()`, `SeatFacts::versionBearing()` and `SeatDelta::WIRE_MEMBER` carrying `character.species`; **the one trait constant `FeedEnvelope::FEED_VERSION` bumped — in the SAME release as row 26 and never alone** ([§ 6.13](#613-the-character-allocation--one-species-per-seat-allocated-at-creation-and-kept-for-life)'s one-release rule: the member, its migration, the painter's path and the client constant are one build merged into one release), so a page from before it shows the reload banner instead of drawing the key's bodies — and with it every site that pins the value, by this derivation over the three literal forms and not by a list: `git grep -n -E "\"feed_version\": ?1\b|'feed_version' => 1\b|assertSame\(1, .*feed_version|FEED_VERSION = 1" -- server tools` (on the day of this design: the JSON form in every `server/tests/Feature/Floor/fixtures/fx-*.json`, the coord generated rounds under `server/tests/fixtures/coord/generated/rounds/` and `tools/coord/synthesize-fixtures.py`, which regenerates them; the PHP array form in `At15BackpressureTest`, `At25ConcurrentWriterTest` and `VisiblePrefixTest`'s outbox rows; the literal asserts in `FeedSurfaceTest`, `At23WireSurfaceTest` and `StreamHandlerTest` — **which the build points at `FeedEnvelope::FEED_VERSION` instead of re-pinning**, as `FeedSurfaceTest`'s reload leg already does; and `TheStreamRecoveryIsTheDocumentsTest`'s plants, which hold `wire/fleet-client.js`'s constant to the server's), plus [§ 8.3](#83-the-websocket-delta-feed)'s envelope line and every worked block from [§ 8.3.1](#831-worked-delta) on that carries an envelope; the console's agents page listing the species; one shared fixture helper that inserts a seat row with its species for the tests that insert `seats` directly — `FloorConsoleTest`, `TheConsoleHoldsDeskSlotsToTheFurnitureBoxTest` and `TheConsoleListsMapsNamingRetiredArtTest` on the day of this design, re-derived by `git grep -ln "table('seats')->insert" -- server/tests` — so the `NOT NULL` strands no fixture; and the doc rows this build moved from prose beside them into their tables, each re-measured by the tools on that run: [§ 6.4](#64-ddl)'s column, [§ 8.2.1](#821-the-seat-state-object)'s two rows and worst-case list entry, [§ 8.2.2](#822-worked-snapshot) and [§ 8.3.2](#832-worked-worst-case-delta)'s members, the size table and [§ 12](#12-every-number-and-where-it-comes-from)'s field-count and byte rows, and in FLOOR.md § 5.1's body row, § 8.1's and § 12's cap arithmetic. Depends on the generator declaring `SPECIES_KEYS` as one literal line (FLOOR.md Appendix B row 26's first step, which lands first or in the same change). Doc rows already amended as prose, marked with the card: [§ 4.10](#410-retirement-is-a-rendered-state)'s table, [§ 6.5](#65-the-fold)'s lock paragraph, [§ 6.6](#66-rebuild-from-the-log), [§ 7.2](#72-this-planes-own-counters-and-badges)'s counter row, [§ 13](#13-decisions-taken-revisable-at-review) row 61, [§ 14](#14-open-questions-for-the-review-loop) item 18, and in FLOOR.md § 3.1, § 2.5, § 9 F14, § 10.2, § 10.4 (the table's species row, the interns, salt, growth and collision bullets), AT-D3-24, § 13 row 81, § 14 items 33(7) and 42, Appendix A T41 and Appendix B row 26; outside the design documents, `tools/characters/roster.json`'s note and `tools/characters/salt-control.json` (retired with the salt leg), `resources/characters/seed.js`'s header (*nothing stored*), and `README.md`'s character-tree lines | [AT-D2-31](#at-d2-31-a-seats-character-is-allocated-once-unique-while-it-can-be-and-freed-by-retirement) RED on each of its plants, then GREEN; `SeatObjectMatchesTheDocumentTest`'s delta-map leg red on the member missing; FLOOR.md's AT-D3-24 for the consumer's half |
+| 15 | ⏳ designed 2026-10-26 (card#12451), not built — **the subagent activity member, server half**: the `calls.activity_state` column with its own `activity_event_time` / `activity_seq_epoch` / `activity_seq` triple, and their one migration ([§ 6.4](#64-ddl)'s designed paragraph), `subagent.activity` in `App\Ingest\KindRegistry` with its two-member enum and no unknown member, the fold's projection and the `working` at open ([§ 6.5](#65-the-fold)'s designed paragraph), `subagents[].activity_state` on `App\Read\SeatObject`, `SeatFacts`, `SeatDelta`'s map and the seat-detail response, the § 8.2.1 row and the § 3.2 and § 4.8 rows moved from prose into their tables, the [§ 8.2.2](#822-worked-snapshot) and [§ 8.3.2](#832-worked-worst-case-delta) blocks re-cut with the member and the size figures re-printed from the tool, and every fixture seat carrying it. Depends on nothing above for the column and the object; the member is populated only by a reporter at D1 § 16 row 11's build. `FLOOR.md` Appendix B row 26 is the consumer's half | [AT-D2-31](#at-d2-31-an-interns-activity-is-the-reporters-word-and-an-open-dispatch-is-working-until-it-says-otherwise) RED on each of its plants, then GREEN; `SeatObjectMatchesTheDocumentTest` and `EveryFixtureSeatMatchesThePublishedSeatObjectTest` green over the moved row; `verify-fleet-state.py` G2 and G3 green over the re-cut blocks |
 
 **Three of these are hard requirements before anything downstream may treat this state as true:**
 **AT-D2-2** (the `/clear` trace mints no idle — the D2 half of D1's headline test, and the reason both

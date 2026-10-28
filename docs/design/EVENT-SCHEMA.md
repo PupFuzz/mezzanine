@@ -3033,6 +3033,149 @@ not a gap to paper over with a second copy that could disagree with the first.
           "close_source":"reap_session_boundary"} }
 ```
 
+#### `subagent.activity` — ⏳ designed for card#12451 (2026-10-26), not built
+
+The operator's ask, verbatim: *"the mezzanine reporter should be extended to report when subagents are
+working or idle"*. This block is the kind the build adds as its own `### 6.N` section with a `data` field
+table; it is prose here, and not that section, because `Tests\Feature\Ingest\EventSchemaDriftTest` holds
+every `### 6.N` kind heading equal to `App\Ingest\KindRegistry` in both directions, so the heading cannot
+exist before the registry row does. Everything the section will say is below, so the build copies and does
+not re-derive.
+
+**Trigger — two edges, one per member, both the reporter's own reading of the seat it runs on.**
+A bound dispatch call ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) is `working` from its
+open. It becomes **`idle`** when the flusher's pass ([§ 11.5](#115-retry-and-backoff)'s `K.FLUSH_MS`
+cadence) finds, for an open dispatch call with a `child_agent_id`: no open call in the index whose
+`agent_scope_id` is that id, **and** that id's `last_at` older than [§ 14](#14-every-number-and-where-it-comes-from)'s
+*Subagent idle threshold*. It becomes **`working`** again at the next `PreToolUse` carrying that
+`agent_id`, emitted immediately **before** that call's `tool.start`, matching every other
+close-before-trigger ordering in [§ 8.3](#83-the-reap-rules). The threshold is the debounce on the way to
+`idle`; the way back has none — one hook is one fact.
+
+**`last_at` is a per-child instant the fold KEEPS, not one it derives** (design round 1, B1). The folded
+index gains one map, `agents: child_agent_id → { last_at }`, held in memory and in `index/snapshot.json`
+beside `calls` and `tombstones` ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)),
+and written by the fold on **every** record that carries an `agent_scope_id` or a `child_agent_id`: an
+`open` whose entry has `agent_scope_id` sets that id's `last_at` to the record's `at`; a `close` or a
+`tombstone` whose entry had one sets it to the close's `at` **before** the entry is dropped; a `bind` sets
+the bound id's `last_at` to its own `at` (every journal record carries `at` — `journal()` stamps it — so
+the information is on disk already, and only the fold's keeping of it is new). An earlier draft of this
+paragraph derived the instant from the `open` and `tombstone` records the index already keeps; it could
+not, because the fold DELETES an entry at an ordinary `close` (`fleet-reporter.js`'s `case 'close'`
+tombstones only a `subagent_stop_hook` close) and folds no instant for a `bind` — so a child's record set
+emptied at every closed call, and `idle` would have fired one pass after any call ended. **The map's bound is a derivation, not a figure** (round 2, finding 3): it holds one entry per bound open
+dispatch — written at the `bind`, dropped by the `close` or `tombstone` of the dispatch it serves (its
+`SubagentStop`), and swept by `capIndex()`, which drops any entry whose id no open dispatch's
+`child_agent_id` names — so its size is at most the open-call index's own bound, `K.OPEN_CALLS`, and
+nothing in it ages by a clock. **The reporter journals each transition** as an index
+record (`k: 'activity'`, the call's `call_id` and the new state) so a flusher restart re-emits nothing.
+
+**The resume is self-healing, not exact — the seat's re-derivation of design round 4, after three
+rounds of findings in one class** (round 2 finding 2: the hook decides on a fold made outside the lock;
+round 3 minor 3: two hooks under one child can both emit; round 4: the seat write lock is given up
+after `K.WRITE_LOCK_WAIT_MS` and the writer proceeds unlocked ([§ 11.2](#112-spool-line-format)), and a
+re-read of the current bucket misses records an hour-roll put in the next one — each fix for exactness
+minted the next finding, which is canon's tripwire). So nothing here is exact, and nothing needs to be.
+**The hook emits `working` whenever ITS fold says the child is `idle` at a `PreToolUse`**, journaling
+the transition first; that fold may be stale. **The flusher's pass REPAIRS, under its own lock**: any dispatch whose journaled state is `idle` **and for
+which the idle rule no longer holds on the pass's current fold** — a call is open under its child, or
+`now − last_at` is under the threshold — is journaled and emitted `working` (round 5, finding 2: the
+second arm is what catches a call that opened and closed before the flusher's `idle` record landed,
+which a rule reading only *a call is open* would miss). **A duplicate `working` is harmless**: it
+carries the value the server already holds, so `calls.activity_state` does not change, no
+version-bearing field moves, `state_version` does not bump and no delta goes out
+(`FLEET-STATE.md` § 6.5) — it costs one event on the wire and nothing on the floor; and a
+newer-stamped duplicate cannot override a true `idle`, because the server holds the later `idle` on the
+same comparator. A stale `idle` the hook did not see is repaired within one pass (`K.FLUSH_MS`), and a
+hook is not asked to be exact at all: its fold may predate a record a lock lapse or an hour-roll kept
+from it, and the pass repairs whatever the fold missed. **The stop-race, named:** a repair can go out
+for a call closed between the pass's fold and its emit; the server folds an activity record for a call
+that is not open to nothing ([`FLEET-STATE.md` § 6.5](FLEET-STATE.md#65-the-fold)'s designed rule), so
+it is harmless there, and the pass never emits for a call closed **on its own fold** — it reads open
+dispatch entries only, and a tombstone is not one. **A dispatch call with no `child_agent_id` never
+goes idle**: no hook can be attributed to it, so silence about it is not evidence, and it stays
+`working` until it closes.
+
+**What gives it, hook by hook.** `SubagentStart` binds and starts the clock (its `bind` record's `at`
+becomes the child's `last_at`); `PreToolUse` / `PostToolUse` / `PostToolUseFailure` carrying `agent_id`
+are the activity, each moving `last_at` through the `open`, `close` and `tombstone` records they already
+write; `SubagentStop` closes the call, and a closed dispatch has no activity state to report —
+`subagent.stop` says it is gone. ⚠ **A call the harness refuses after its `PreToolUse`** — a permission
+the user denies, a hook that exits 2 — closes by the hook the harness fires for it where
+[§ 6.6](#66-toolend) handles one, and otherwise sits open until its turn reap ([§ 8.3](#83-the-reap-rules));
+while it is open the child cannot go `idle`, so an intern whose subagent waits on a refusal it never gets
+keeps typing for that long. Named as the residual of reading an open call as *busy* (round 2, minor 15),
+not designed around: the open call is the fact, and the reap is its bound. `Notification`, `PermissionRequest`
+and `PreCompact` under an `agent_id` are **not** activity here, and the first two never need to be: a
+subagent waiting on a permission prompt holds its tool call **open** — its `PreToolUse` has fired and its
+`PostToolUse` has not, which is why [§ 6.12](#612-attentionrequest) can name the request's `call_id` as the
+one open call — so this rule keeps it `working`, typing at its laptop while a human is asked. **Named
+rather than hidden:** the honest render of that wait is an intern-level `blocked`, which this design does
+not mint — the seat's own `blocked` ([§ 6.12](#612-attentionrequest)) already says a human is awaited at
+that desk — and `FLOOR.md` § 14 item 42 Q1 puts the reading to the operator. Activity under an `agent_id` bound to no dispatch is already counted at every `PreToolUse` by
+`agent_bind_unresolved` ([§ 9.3](#93-degradation-counters)); this event mints no second counter for the
+same condition, and the row's meaning is unchanged: a non-zero there is also the measure of interns whose
+activity this event cannot report.
+
+**The `data` fields the section will table** — `call_id`, ULID, not null, 26 chars, equal to the dispatch
+`tool.start`'s and `subagent.spawn`'s; `activity_state`, enum, not null, `working` | `idle` — **a
+reporter-minted enum with no unknown member** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s
+classification: a value the reporter mints from its own timer has no benign unknown case, so a third member
+is a rule-4 change with a stated window, and the build adds the row to § 6.0's classification table with
+`reporter` and `—`). No `since` and no `quiet_ms`: the floor renders the state and no age for it
+(`FLOOR.md` § 8's designed block), and an age it cannot render is a field a consumer will one day read as
+one.
+
+```json
+{ "event_id":"01K3TA7H8J9K0M1N2P3Q4R5T6X","schema_version":1,"kind":"subagent.activity",
+  "event_time":"2026-08-23T14:25:31.004Z","seq":48331,
+  "install_id":"aimla","seat_id":"aimla-pm","session_id":"a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
+  "data":{"call_id":"01K3TA6G7H8J9K0M1N2P3Q4R5T","activity_state":"idle"} }
+```
+
+**Bounds and rate — the derivation, duplicates included** (round 1, M4; round 3, finding 6; round 4).
+Per open dispatch, in one day: at most one `idle` per (threshold + pass) of silence, and at most one
+repair `working` per `idle` — a repair answers an `idle`, so repairs cannot exceed idles — which is
+`2 × 86,400 ÷ (threshold + pass)`; plus the hook's duplicates, at most one `working` per `PreToolUse`
+the child fires while a fold somewhere still says it is `idle`, bounded by the child's own `tool.start`
+count, which the kind table already carries (round 5, finding 4). A journal append that fails
+(`spool_append_failed.index`, [§ 9.3](#93-degradation-counters)) lets a transition be decided again on
+the next fold, which is a separate, pathological bound — one more event per failed append — and not
+the ordinary one. Written as the derivation and not the figure: the build prints it from
+[§ 14](#14-every-number-and-where-it-comes-from)'s threshold, `K.FLUSH_MS` and the `tool.start`
+row. A seat runs dispatches concurrently, so the per-seat row is that times a chosen
+concurrency `C` (round 2, minor 15): `C = 2` — the two dispatch streams a seat that reviews while it
+builds keeps open, this project's own pattern — and the kind-table row the build adds reads
+`subagent.activity` | the flusher's idle pass and its repair, or a `PreToolUse` under an idle subagent |
+hook / flusher | `0 … 2 × 86,400 ÷ (threshold + pass) × C + the child's tool.start ceiling`, its floor a
+seat that dispatches nothing. `C` is re-derived from the first week's
+`dispatch_background_launch` against `subagent.stop` on real seats, as every row's range is; the open-call
+index's cap is the hard limit on `C` and not a seat that exists. The row moves the kind table's ceiling
+by its own ceiling, and with it every site that cites the sum — [§ 14](#14-every-number-and-where-it-comes-from)'s
+*Busy-seat volume*, the spool's residency figure in [§ 11.3](#113-rotation-and-the-overflow-policy)
+(the spool bound over the new ceiling at the typical event size, which the build checks is still inside
+*survives the server being down for days*) and the store sizing `FLEET-STATE.md` § 6.8 derives from it —
+re-derived at the build from the table and not pre-written here. **No hysteresis is built**: a minimum dwell after a resume
+would hold the floor's laptop on a subagent the reporter knows went quiet, buying a lower bound for a
+false frame; if the first week shows flapping dispatches, the measurement names the dwell, and the row
+re-derives.
+
+**Compatibility.** A new kind is [`docs/VERSIONING.md § Wire compatibility`](../VERSIONING.md#the-rules)
+rule 7's first additive case: no `schema_version` bump, and an ingest older than the build ignores and
+counts it (`ignored_unknown_kinds`, [§ 12.7](#127-server-side-counters)), rendering the seat
+`reporter_ahead` — which is the order the fleet upgrades in anyway, server first. The server half is D2's
+(`FLEET-STATE.md` § 6.5's designed fold rule and § 8.2.1's designed member).
+
+**Rollout — one reporter release with card#12447.** This is new functionality a seat sees, so
+`REPORTER_VERSION` moves a **minor** ([`docs/VERSIONING.md § The reporter's own version`](../VERSIONING.md#the-reporters-own-version))
+with touches `artifact` alone — no new hook, no fixture, no config key: every hook it reads is already
+wired. card#12447's reporter release (the TodoWrite capture) is in flight on the same artifact; the two land
+under **one** version row in `fleet-reporter/UPDATES.md`, whichever merges second taking the row and
+naming both, and `SchemaVersions::CURRENT_REPORTER_VERSION` follows it in that PR — one announcement to
+the fleet, one upgrade per seat. A seat that has not applied it is badged `update_required` and its interns
+render `working` for as long as their dispatches are open (`FLOOR.md` § 8's designed block states the
+default and why it is not a null).
+
 ### 6.9 `compaction.start`
 
 **Trigger:** the `PreCompact` hook. The payload key is **`trigger`** (MEASURED at 2.1.247 —
@@ -4708,6 +4851,110 @@ resolves it through `child_agent_id` to stamp the parent Task call's `call_id` o
 the call ran under, and the parent it belongs to. The floor can therefore attribute an intern's tool calls to
 the right intern without the harness's opaque `agent_id` ever transiting. Where the binding failed,
 `parent_call_id` is `null` and `agent_bind_unresolved` counts it — an honest unknown, never a guess.
+
+⏳ **What the binding buys the activity signal (card#12451, designed, not built).** The same
+`child_agent_id` is the key the flusher's idle pass and the hook's resume read, so
+[`subagent.activity`](#68-subagentstop) rests on this section and adds no binding rule of its own: a
+dispatch bound by any row above can go `idle` and resume; one bound by none stays `working` until it closes.
+**The sole-unbound rule gains a tie-break (round 2, finding 7):** where two or more dispatch calls are
+unbound at a `SubagentStart`, and exactly one of them carries a `subagent_type` equal to the payload's
+`agent_type` (MEASURED equal on F's two starts, and on every `SubagentStart` of A, B and E), that one is
+bound and counted `agent_bind_type_match`. It is kept because `agent_type` is the one key a
+`SubagentStart` shares with its dispatch's input, so it is the only tie-break the payloads afford that
+is not a guess (round 3, finding 9); a dispatch whose `subagent_type` the reporter refused — `null`, from
+a value off [§ 6.7](#67-subagentspawn)'s pattern — equals no `agent_type` and is never chosen by it — the [§ 9.3](#93-degradation-counters) row the build adds
+reading *a `SubagentStart` with several unbound dispatches was bound by the one whose `subagent_type`
+equals its `agent_type`* | *informational; its share of starts is how often the harness overlapped two
+dispatches' starts, which F did not*; two or more unbound of that type stay `agent_bind_ambiguous` —
+unbound for life, never idle, their calls unattributed — a residual no capture reached on 2.1.311, put to
+the operator at `FLOOR.md` § 14 item 42 Q5. The index therefore keeps `subagent_type` on a dispatch's
+`open` record, which the revival path above needs anyway.
+The `/clear` carry ([§ 8.3](#83-the-reap-rules)) keeps the call's activity record with the call, so an intern
+idle across a `/clear` stays idle on the floor and resumes under the new `session_id`. **What neither end
+can verify locally, named:** the reporter declares `idle` from the absence of hooks it would have seen; the
+harness documents no hook for *the model is generating*, so a subagent composing a long answer is `idle` by
+this rule — stated at `FLOOR.md` § 14 item 42 Q1 as the operator's call, and the one reading of silence this
+design can make honestly, since it is made where silence is silence and not delivery lag
+(`FLEET-STATE.md` § 3). **MEASURED at 2.1.311 (2026-10-27, headless `claude -p`, this seat, in a rig
+loaded with `--setting-sources project` so none of the seat's own hooks ran — mode and version named per
+[§ 6.0](#60-conventions-and-how-harness-payloads-are-read) obligation 2):** one foreground dispatch fired,
+in order, `SessionStart`, `UserPromptSubmit`, `PreToolUse(Agent)` (inputs `description`, `prompt`,
+`run_in_background`, `subagent_type` — no `resume`), `SubagentStart` (`agent_id`, `agent_type`), the
+subagent's `PreToolUse(Bash)` and `PostToolUse(Bash)` carrying that `agent_id`, `SubagentStop`
+(`background_tasks: []`), `PostToolUse(Agent)` with `tool_response.status: "completed"` and `agentId`
+equal to the bound id, `Stop`, `SessionEnd` — the 2.1.247 headless ordering again, so this design's
+order-independence is exercised and not assumed. Asked to resume the finished subagent by id, the model
+reported the Agent tool exposes no `resume` parameter on this build. **A background dispatch, same rig:**
+`PreToolUse(Agent)` → `SubagentStart` → `PostToolUse(Agent)` with `status: "async_launched"` and
+`agentId`, tens of ms later → the parent's `Stop` with `background_tasks` listing the subagent as
+`running` → the subagent's own hooks → `SubagentStop`, whose own `background_tasks` **still lists it as
+`running`** → a harness-injected `UserPromptSubmit` carrying the result to the parent → the parent's
+`Stop` with `background_tasks: []` — the card#11799 order, re-measured. **A message to a RUNNING
+subagent** (`SendMessage`, present on this build): queued and delivered at its next tool round, with no
+hook of its own and no second `SubagentStart` or `SubagentStop`. **A message to a FINISHED subagent —
+the measurement this design turns on:** after the subagent's `SubagentStop` and the parent's wake, a
+`SendMessage` to its id answered `Resuming agent …` with `resumedAgentId` and `revivedAgentId` equal to
+the original id; the harness then fired a **second `SubagentStart` for the SAME `agent_id`, with no
+`PreToolUse(Agent)`**, the subagent's hooks ran under that id, a **second `SubagentStop`** followed, and
+the parent was woken again. **Two foreground dispatches in one message (F, same rig):** the harness
+started them **sequentially** — `PreToolUse(Agent)` for the first, its `SubagentStart`, then
+`PreToolUse(Agent)` for the second, its `SubagentStart` — each `SubagentStart` carrying an `agent_type`
+equal to its dispatch's `subagent_type` (`general-purpose`, `Explore`), the two then running
+concurrently and stopping in either order, each `SubagentStop` followed by its own `PostToolUse(Agent)`
+with `status: "completed"` and its `agentId`. ⚠ The rig writes concurrent hooks to one file and three of its lines
+interleaved; their `hook_event_name`, `agent_id` and `tool_response.status` were recovered from the
+line fragments, and the orderings above are stated only where the fragments' order is unambiguous.
+
+⏳ **The revival path (card#12451, designed from that measurement; re-cut under the seat's ruling A of
+design round 2; not built).** A `SubagentStop` is an end the harness can undo: a message to a stopped
+subagent revives it under its old `agent_id`, and nothing at the stop says whether a revival will come —
+the stop's own `background_tasks` lists the subagent as `running` whether it is revived (E) or not (B). So
+the stop stays what [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) makes it — the dispatch
+call closes, `subagent.stop` goes out, the intern leaves (`FLOOR.md` § 6.2's designed block) — and **a
+revival is a NEW dispatch call, and on the floor a new intern**: no lineage crosses the wire, the creature
+stays keyed by its call (the operator's ruling of card#11058 Q3, untouched), and `FLOOR.md` § 13 row 85
+records the ruling and what the first draft's lineage cost. **The matching is reporter-internal.** At the
+`SubagentStop` that closes a bound dispatch, the reporter records the dispatch in a **count-bounded
+store**, `revivable: agent_id → { title, title_truncated, subagent_type }` — the dispatch's own, which the
+index keeps on its `open` record since this design, reporter-internal and costing no wire field — at most
+`K.TOMBSTONES` entries, the oldest evicted first and newest-wins per id, with **no clock** — a store bounded
+by time would drop a subagent the operator messages an hour later, and nothing in the harness bounds that
+gap. **No new journal record carries it** (round 3, finding 2): the fold derives the store from records it
+already keeps — a `close` whose `close_source` is `subagent_stop_hook` on a dispatch entry **adds** that
+entry's `title`, `title_truncated` and `subagent_type` under its `child_agent_id`; a synthesized `open` —
+recognisable by carrying `child_agent_id` at the open, which no harness-driven `open` does — **removes**
+its id's entry — and `index/snapshot.json` gains the member `revivable` beside `calls`, `tombstones` and
+`agents`, so a restart folds the same store the running flusher held. On a `SubagentStart` whose `agent_id`
+is bound to no open call and is in the store, the reporter
+**synthesizes a dispatch**: an `open` record with a fresh `call_id`, the `SubagentStart`'s `session_id` and
+`prompt_id`, `tool_name` `Agent`, `harness_call_ref` `null`, `is_dispatch`, `agent_scope_id` `null` — a
+dispatch call belongs to the main agent's scope, as the `PreToolUse(Agent)` it stands in for would, and a
+`SubagentStart` names no parent — and `child_agent_id` the `agent_id`, its own `bind` record, exact by
+construction and outranking the sole-unbound rule; it emits that call's `tool.start` (`agent_scope`
+`main`, `parent_call_id` `null`, `open_calls_before` as counted, `descriptor` the descriptor builder's
+answer for an `Agent` call whose description is the stored title, under the seat's **current**
+`descriptors` mode); and it emits the call's `subagent.spawn` with `title` **re-derived under the current
+mode** — the stored title when the mode is `full`, `null` under `paths` or `none`, as [§ 6.7](#67-subagentspawn)
+gives every spawn — and `title_truncated` and `subagent_type` as stored; counted `subagent_revived`, the
+[§ 9.3](#93-degradation-counters) row the build adds reading *a `SubagentStart` matched a stopped dispatch
+in the revivable store and a dispatch was synthesized for it* | *informational; the measure of how often a
+stopped subagent comes back, read beside `subagent_stop_unmatched`*. The entry leaves the store at the
+synthesis and is re-recorded at the revived dispatch's own stop. ⚠ **A residual the captures do not
+settle** (round 3, finding 5): a synthesized dispatch open at its parent's `Stop` survives that turn's
+reap only if the `Stop`'s `background_tasks` lists its subagent (`turnReapScope()`); E's revival was a
+background dispatch and was listed, and a FOREGROUND dispatch revived by a message is not captured — the
+capture that settles it is A's foreground dispatch, a `SendMessage` to it after its stop, and the
+parent's next `Stop`, read for whether the revived subagent is listed. Until then: if it is not listed,
+the revived intern leaves at the parent's `Stop` as `aborted` / `turn_boundary`, which the floor draws as
+a departure, and its later `SubagentStop` is `subagent_stop_unmatched` — stated as the residual, not
+designed around. Its calls are attributed as any bound
+subagent's, its silence goes `idle` by the same threshold, and its second `SubagentStop` closes it by the
+`agent_id` match exactly as the first did. `PostToolUse(SendMessage)`'s `revivedAgentId` (E) is **not**
+read: the `agent_id` equality is exact on its own, and a tool-specific key would join [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s
+harness-fact set for nothing it decides. A `SubagentStart` for an id the store has evicted, or for a
+dispatch its own `PostToolUse` closed first (the 2.1.245 order, which records nothing at its
+`SubagentStop`), binds nothing, as today, and its work is unattributed: counted by the existing
+`agent_bind_unresolved`, named here as the residual rather than widened into a guess.
 
 ### 8.6 Server-side interpretation of open-call state
 
@@ -7506,6 +7753,106 @@ property.
   and `loadConfig` refuses it. The temp-and-rename writer under the same limit fails at the temp
   file, unlinks it, exits 1, and the original is byte-identical — which is the control, run first.
 
+### AT-29 a quiet subagent is reported idle at the seat, and its next hook reports it working
+
+*⏳ Designed for card#12451 (2026-10-26), not built. [§ 6.8](#68-subagentstop)'s designed block and
+[§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)'s designed paragraph. Gated at
+[§ 16](#16-what-an-implementer-builds-from-this) row 11.*
+
+- **Build:** the selftest's hook rig with an injected clock: a `PreToolUse(Agent)` → `SubagentStart`
+  (binding `agent_id` `X`) → `PostToolUse(async_launched, agentId X)`; then under `X` one `PreToolUse(Bash)`
+  and its `PostToolUse`; then flusher passes with the clock advanced in `K.FLUSH_MS` steps. A second rig
+  leaves a `Bash` under `X` open across the same advance. A third dispatches twice at once so one call stays
+  unbound (`agent_bind_ambiguous`). A fourth runs the sequence across a `/clear` pair with the dispatch
+  carried. A fifth replays the 2026-10-27 revival capture's hook order: the dispatch, its `SubagentStart`,
+  its inner call, its `SubagentStop`, then — under the same `agent_id`, with no `PreToolUse(Agent)` — a
+  second `SubagentStart`, an inner `PreToolUse`/`PostToolUse`, and a second `SubagentStop`, with a
+  variant in which the flusher compacts the index across an hour between the stop and the second
+  `SubagentStart` — `index/snapshot.json` rewritten and the stop's bucket dropped; a sixth the
+  same with `K.TOMBSTONES` further dispatches stopped between the first stop and the second
+  `SubagentStart`, so the id was evicted from the store; a seventh in two legs, the rig driving the two processes by hand: (a) a flusher pass journals `idle`
+  for the dispatch between a hook's index fold and that hook's first emit, the hook a `PreToolUse`
+  under the child; then the next flusher pass; then a second `PreToolUse` under the child whose fold
+  holds the `idle` record and not the pass's repair; (b) finding 2's case — an inner call under the
+  child opens and closes between the flusher's fold and the write of its `idle` record, so the `idle`
+  lands after the close and no hook fires after it; an eighth replaying F's order for
+  two foreground dispatches of different types, with a variant in which both `SubagentStart`s arrive
+  after both `PreToolUse(Agent)`s, and a variant of that with both dispatches `general-purpose`; a ninth
+  that revives under a seat config whose `descriptors` mode is `paths` at the revival and was `full` at
+  the dispatch.
+- **GREEN:** the first rig spools exactly one `subagent.activity` with `activity_state: "idle"` and the
+  dispatch's `call_id`, on the first pass whose clock is more than `K.SUBAGENT_IDLE_MS` past the inner
+  `PostToolUse`'s `at`, and none before; **the long-call leg** (round 1, B1): the second rig's inner `Bash`
+  closes more than `K.SUBAGENT_IDLE_MS` after the `bind`, and the `idle` lands one threshold after the
+  CLOSE's `at` — never one pass after the close, and never at the threshold after the bind;
+  `index/snapshot.json` written after the close carries the child's `last_at` equal to that close's `at`; a further `PreToolUse` under `X` spools one `working` for that
+  `call_id` **before** that call's `tool.start` in the spool's order, and a second `PreToolUse` under `X`
+  spools no second `working`; a flusher restarted between the pass and the resume re-emits nothing (the
+  `activity` record folds). The second rig spools no `idle` while its `Bash` is open and one after its close
+  plus the threshold. The third rig's unbound dispatch spools no `activity` event at all across any advance.
+  The fourth rig's `idle` lands under the old `session_id` and its `working` under the new one, for one
+  `call_id`. The fifth rig spools, at the second `SubagentStart`, a `tool.start` for a NEW `call_id`
+  (`tool_name` `Agent`, `harness_call_ref` `null`, `agent_scope` `main`, `parent_call_id` `null`)
+  followed by a `subagent.spawn` carrying the first dispatch's `title`, `title_truncated` and
+  `subagent_type` and no field the spawn table does not declare; the inner call then carries
+  `parent_call_id` equal to the new `call_id`; the second `SubagentStop` closes the new call `completed`
+  with `match: "agent_id"`, `subagent_revived` rises by one and `subagent_stop_unmatched` does not. The
+  sixth rig's second `SubagentStart` binds nothing, spools no spawn, and its inner call carries
+  `parent_call_id` `null` with `agent_bind_unresolved` risen by one. The seventh rig's leg (a) spools
+  no `working` from the first hook (its fold says `working`), exactly one repair `working` from the next
+  pass, and one more `working` from the second hook — a duplicate, accepted — with no `idle` after them;
+  leg (b) spools one `working`, from the pass after the `idle` record, because `now − last_at` is under
+  the threshold on that pass's fold; in both legs the dispatch's journaled state is `working` at the
+  end, and no `working` is spooled for a `call_id` that is closed or tombstoned on the emitting pass's
+  own fold. The fifth rig's compaction variant synthesizes the revival exactly as the rig does, the
+  store having survived in `index/snapshot.json`'s `revivable` member. The eighth
+  rig binds each dispatch at its own `SubagentStart` by the sole-unbound rule in F's order; its
+  deferred-starts variant binds the first start by `agent_type` (`agent_bind_type_match` risen by one)
+  and the second by the sole-unbound rule (`agent_bind_sole_unbound` risen by one); its
+  same-type variant binds neither, `agent_bind_ambiguous` rises by two, and neither dispatch ever spools
+  an `idle`. The ninth rig's revival spawn carries `title: null` and `title_truncated: false`. Every event is under the 4 KiB cap and
+  `activity_state` is one of the two members.
+- **RED — idle from a timer with no silence:** declare `idle` after the threshold from the dispatch's OPEN
+  regardless of hooks → the second rig spools `idle` over an open `Bash`. Caught by: the second rig.
+- **Second RED — the instant derived from the index's records:** read the child's last instant off its `open`
+  and `tombstone` records, the first draft's rule → the fold has deleted the closed `Bash`, the child has no
+  record, and `idle` lands one pass after the close instead of one threshold after it. Caught by: the
+  second rig's long-call leg.
+- **Third RED — the resume after the trigger:** emit `working` after the `tool.start` → the spool's order
+  puts the subagent's first call ahead of its wake. Caught by: the first rig's order assertion.
+- **Fourth RED — the unbound guess:** let the sole-unbound dispatch go idle → the third rig spools an `idle`
+  for a call no hook can ever resume. Caught by: the third rig.
+- **Fifth RED — the restart re-emits:** keep the state in process memory alone → a restarted flusher spools
+  a second `idle`. Caught by: the first rig's restart leg.
+- **Sixth RED — a third member:** send `quiet` → the ingest's enum check refuses the event, and the fixture
+  that plants it asserts the refusal rather than a pass-through.
+- **Seventh RED — the revival re-opens the closed call:** on the matching `SubagentStart`, journal an
+  `open` for the OLD `call_id` → the server, which never reopens a closed call ([§ 8.6](#86-server-side-interpretation-of-open-call-state)'s ledger rule), holds
+  the revived work against a closed row, and the floor draws no intern. Caught by: the fifth rig.
+- **Eighth RED — the revival as a fresh untitled dispatch:** synthesize the pair without the kept title →
+  the revived intern arrives dashed and untitled for a dispatch whose description the reporter saw.
+  Caught by: the fifth rig.
+- **Ninth RED — the title as emitted, not as the mode now says:** send the stored title whatever the
+  current `descriptors` mode → the ninth rig's revival carries a title under `paths`. Caught by: the ninth
+  rig.
+- **Tenth RED — no flusher repair, or a repair reading only an open call:** let the hook be the only
+  resumer → leg (a)'s dispatch stays `idle` until the second hook and leg (b)'s until the subagent's
+  next hook; read only *a call is open under the child* → leg (b) is never repaired, its call having
+  closed before the `idle` was written. Caught by: the seventh rig, both legs.
+- **Eleventh RED — the type as a guess:** bind by `agent_type` when two unbound dispatches share it →
+  the eighth rig's same-type variant binds one of two to a subagent that may be the other. Caught by:
+  the eighth rig.
+- **Twelfth RED — a timed store:** bound the revivable store by a clock → the sixth rig, re-run with the
+  clock advanced past that time and fewer than `K.TOMBSTONES` stops between, synthesizes nothing where
+  the count-bounded store would. Caught by: the sixth rig's clock variant.
+- **Thirteenth RED — a repair for a dead call:** let the repair pass read tombstones or closed entries →
+  a `working` is spooled for a `call_id` that is closed on the pass's own fold, which the spool
+  assertion catches. Caught by: the seventh rig, both legs, with a reaped dispatch planted beside the
+  live one.
+- **Fourteenth RED — the store in memory alone:** omit `revivable` from `index/snapshot.json` → the fifth
+  rig's compaction variant finds no entry for the id and binds nothing. Caught by: the fifth rig's
+  compaction variant.
+
 ---
 
 ## 14. Every number, and where it comes from
@@ -7598,6 +7945,7 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | `delivery_digest` | 64 B | Derived — SHA-256 as lowercase hex is exactly 64 characters. It is a uniqueness key and **not** a window, so this design carries no retention number for it — and [§ 18.13](#1813-what-this-section-does-not-establish) carries what that costs, since the store holding it does have one | [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) |
 | The coordination corpus every § 18 rate is measured over | **728** issues, **10,552** comments | **Measured** — the coordination repository's entire issue and comment population, read 2026-08-28 through the REST API with a positive and a negative control on every scan. It is the denominator behind the convergence-phrase rate (78.1%), the anchored-`[CLOSE]` rate (2.12%), the label-fallback rate (30.1%), the title-redaction rate (7.0% → 0.7%) and the preamble-shape rate (715/728). **A population, not a sample**: an earlier review round put the label fallback at 15.7% and the phrase at 77.7% from 300 comments, and the population moved the first figure by 2× | [§ 18.5](#185-the-three-findings-the-audit-turns-on) |
 | Rate limit on the coordination route, **verified** deliveries | **none** | Chosen, and the absence is the decision — every limit above protects the server from a producer that retries and loses nothing when refused. This one's upstream is GitHub, whose behaviour on a refusal is UNVERIFIED, so a limit would risk converting a burst into permanent loss. The HMAC, the body cap and an alarmed delivery counter are what remain | [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) |
+| Subagent idle threshold | **60** s | ⏳ **Chosen** (card#12451; designed, not built) — equal to `K.HEARTBEAT_MS`: long enough that the ordinary think between two tool calls (seconds) never flaps the floor's laptop, short enough that an intern gone quiet is seen to be within a minute, which is the resolution the heartbeat already gives the seat. Evaluated on the flusher's `K.FLUSH_MS` pass, so `idle` is declared between 60 and 70 s after the last hook under the subagent. **What re-derives it:** the operator's reading of the floor — a laptop that flickers on a working intern says it is too short, an intern typing for minutes after its subagent went quiet says it is too long. Its code home at the build is `fleet-reporter/fleet-reporter.js`'s `K.SUBAGENT_IDLE_MS`, held equal to this cell by the selftest | [§ 6.8](#68-subagentstop)'s designed block, [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) |
 | Rate limit on the coordination route, **step-3 refusals** | 60/h keyed **`(route, source IP)`** | **Value reused, budget not** — it is [§ 12.3](#123-rate-limits)'s failed-authentication limit at the same value and for the same stated purpose (log volume and CPU, never a guessing defence), in a bucket of this route's own. The route part of the key is load-bearing: § 12.3's limit was priced over seats sharing with seats, and this endpoint is unauthenticated, so one shared bucket would let an anonymous caller spend a real seat's rotation-race budget ([§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)). A request that fails the HMAC is by construction not GitHub's, so the permanent-loss argument in the row above does not reach it | [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) |
 
 Three numbers rest on estimates rather than measurements and say so at their definition: the
@@ -7730,6 +8078,7 @@ values no published rule derived.
 | 58 | **card#12239 r3: `to`'s label fallback is the union of the thread's `from:` and `to:` labels less the author** ([§ 18.7](#187-coordround)) | the `to:` labels alone, as the first draft had it | the opener is a `from:` label; a `to:`-only fallback addressed the addressee's reply to nobody once the author was removed, which the floor drew as nothing for the commonest reply (review r2 MAJOR-7) | a reply without a `TO:` line now addresses every other labelled member, including observers — which is what the thread's membership says and the author did not narrow; the fraction of fallback posts this changes is unmeasured (no corpus) and bounded by the 30.1% fallback rate |
 | 59 | **card#12239 r3: a comment on a pull request is derived as any other post** ([§ 18.7](#187-coordround)) | ignore comments whose `issue` carries `pull_request` | a PR on a coordination repository is a thread of the same number space; the bridge classifies `pull_request.opened` as authoring | `thread_ref` names a PR as it names an issue; nothing distinguishes them on the wire, and nothing needs to |
 | 60 | **card#12239 r5: the `all` expansion is specified and not derived — `targets` is `null` on every broadcast, no roster is provisioned with a binding, and `coord_targets_unresolved` / `coord_roster_unknown_name` are specified and not derived** ([§ 18.7](#187-coordround), [§ 18.3.1](#1831-the-install-facts-input-declared-once), [§ 18.8.1](#1881-the-counters-this-route-mints)) | provision the roster and expand `all` anyway | the operator ruled a broadcast is the ring and sends no traveller, so an enumerated fan-out has no consumer; a copied roster is a restatement of another repository's config with a one-directional drift guard, kept for nothing | a consumer that later wants the fan-out provisions the roster and switches the expansion on — the rule is written and the counters are declared |
+| 61 | ⏳ **card#12451 (designed 2026-10-26, not built): a subagent's working/idle is a reporter-minted kind, `subagent.activity`, with `idle` read from silence AT THE SEAT — no call open under the bound `agent_id` and no hook from it for § 14's threshold — and `working` from the next hook** ([§ 6.8](#68-subagentstop)'s designed block) | the server deriving it from the stored child calls' timestamps, with no reporter change and no new kind | the server cannot tell silence from delivery lag, which is the one rule D2 § 3 is built on; the reporter can, because at the seat an absent hook is an absent hook. The cost is a reporter release and one new kind; what it buys is an `idle` that is a fact about the subagent and not about the pipe. The second alternative — a field on `tool.start` / `tool.end` — cannot carry the idle edge, which lands when no hook fires | a seat that cannot upgrade its reporter never shows an idle intern; its badge says so |
 
 **One thing this document deliberately does not contain:** the accepted schema-version set. That set
 lives in exactly one machine-readable place in the ingest's code and is reported by the health
@@ -7760,6 +8109,7 @@ one of them is optional.
 | 8 | the coordination **receipt** path: the hook registration and its per-hook secret, HMAC verification over the raw bytes, the validation order, and signed-body digest idempotency ([§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)) | **AT-23** RED then GREEN — all three REDs, and the replay one in particular: it is the only check that distinguishes this design from the header-keyed one every implementer reaches for first |
 | 9 | the coordination **derivation**: the two objects, their attribution states, the body-line address rules, [§ 18.6](#186-coordthread)'s **membership union**, and the install-facts input the fan-out resolves against ([§ 18.3.1](#1831-the-install-facts-input-declared-once), [§ 18.6](#186-coordthread), [§ 18.7](#187-coordround)) | **AT-24** and **AT-25** RED then GREEN. AT-25's unlabelled fixture is the primary case and its labelled twin is the control; a suite carrying only the labelled one passes while the derivation is wrong on the deliveries that actually occur. **AT-25's FIFTH red is the one to build first**: the other four all pass under a body-only derivation, which is the derivation that shipped |
 | 10 | the **close signal**, last of the three because it is the one whose defect is invisible per-post ([§ 18.5](#185-the-three-findings-the-audit-turns-on)) | **AT-26** RED then GREEN, and its first RED is a **rate** assertion over a replayed corpus rather than a per-post one. Built before the corpus exists, this row's test passes under the wrong implementation and under the right one alike |
+| 11 | ⏳ designed 2026-10-26 (card#12451), not built — the **subagent activity signal**: `K.SUBAGENT_IDLE_MS`, the `activity` index record, the per-child `last_at` map in the fold and in `index/snapshot.json`, the flusher pass's idle evaluation over it, the hook's resume before its `tool.start` and the flusher's repair on the next pass, the revival path of [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)'s designed paragraph (`title`, `title_truncated` and `subagent_type` kept on a dispatch's `open` record, the count-bounded `revivable` store derived from `subagent_stop_hook` closes and synthesized opens and held in `index/snapshot.json`, the synthesized dispatch on a matching `SubagentStart`, bound at once, its spawn's title re-derived under the current `descriptors` mode), the `agent_type` tie-break at `SubagentStart`, and the per-child map swept in `capIndex()`, the `### 6.N` section and the § 6.0 kind-table and classification rows this document's [§ 6.8](#68-subagentstop) block spells out, and the `REPORTER_VERSION` minor shared with card#12447's release (`fleet-reporter/UPDATES.md`, one row naming both). Depends on rows 2 and 3; independent of rows 8–10 | **AT-29** RED then GREEN — the silence leg first, because it is the one the flusher's pass alone can see; `bin/reporter-version-guard.py` green with the shared row |
 
 ⭐ **Rows 8–10 under card#12239 (2026-10-24).** Row 8 is built: the receipt at
 `POST /api/ingest/github/{hook}` in [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)'s
