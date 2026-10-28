@@ -111,6 +111,13 @@ and it exits `0`. Above those lines, the health check prints `default: installed
 <version>: current`, which is the site saying it holds this build current, and the arrival check prints
 `default: <n> batch(es) accepted: events arrive`.
 
+⏳ **Designed for card#12447, not built:** the install also sets `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`
+in this account's `~/.claude/settings.json` `env` when it is not already set (the operator's ruling of
+2026-10-27: *"this should be checked and set as part of the mezzanine reporter installation"*), so the
+desk can show the agent's in-progress to-do when it has no board card; it prints `set`, or `already set: unchanged`,
+or `kept … : unchanged`, and never overwrites a value the user chose; it changes the user-level file
+only, so a project's own settings keep their say. Nothing to ask the user for.
+
 ## 7. Tell the user what to look at
 
 The desk is on the site's floor under the seat name. It appeared, as *no data yet*, when the token was

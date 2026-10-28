@@ -1085,7 +1085,74 @@ time minus the sensor's time in the table. Claude Code cancels a status-line scr
 arrives, so under rapid renders the sensor's file can lag, and the coord framework's context budget
 reads that file.
 
-## Step 5 — supervise the flusher from the user crontab
+### (c) ⏳ the to-do tools — designed for card#12447 (2026-10-27), not built
+
+**The operator's ruling, verbatim (2026-10-27): *"this should be checked and set as part of the
+mezzanine reporter installation."*** The desk's thought bubble shows the agent's in-progress to-do
+when no board card answers (`docs/design/EVENT-SCHEMA.md § 6.14`'s `todo.progress` block), and the
+harness provides its task-tracking tools by default only on some models — on every other model
+*"Claude Code leaves the tools out unless you opt in"*, and the opt-in is the environment variable
+**`CLAUDE_CODE_ENABLE_TODO_TOOLS=1`** (its reference, read 2026-10-27: the `env-vars` page, *"Set to
+`1` to get the task-tracking tools on every model … Requires Claude Code v2.1.233 or later"*; the
+`tools-reference` page § *Task tool availability*). A settings file's `env` block is how a variable
+reaches every session however `claude` was launched (*"Claude Code reads them directly from the file"*),
+and `~/.claude/settings.json` is the file that applies to *"you, in every project"* — the file (a)
+wires the hooks into.
+
+**So (c) is one more step of (a)'s pipeline, not a second writer of that file.** It runs after
+`hooks-apply`, over the file (a) left, through the same three moves: **stage** the change in `$B`,
+**check** that nothing but the one key was added, **apply**. `wire-hooks.js` gains a mode,
+`--todo-tools`, that copies the input and sets `env.CLAUDE_CODE_ENABLE_TODO_TOOLS` to `"1"` when the
+key is absent, leaving every other byte of meaning alone; `check-preserved.js` gains the matching
+rule — between its two files **only** `env.CLAUDE_CODE_ENABLE_TODO_TOOLS` may differ, and only by
+being added — so the control that reds when a hook disappears also reds when this step touches
+anything else. A settings file whose `env` is present and **not an object** is refused by name and
+nothing is written. The apply is a temp file beside the real path and a `rename` onto
+`realpath`'s answer, so a `settings.json` that is a symlink stays a symlink and its target gets the
+bytes; (a)'s `cp` is the same act in the shape it had when written, and the build may move (a) onto
+this apply without changing what it writes. A `kept` and an `already set` both end in
+**`: unchanged`**, which is the one marker `install.sh` reads for this block, so neither counts as a
+change the run must restart anything for; `set` records itself in
+`~/.config/fleet-reporter/todo-tools-set` — one line, the date — which is what lets Step 8 know the
+key was this install's to remove.
+
+<!-- install.sh: skip — designed for card#12447 and not built; install.sh runs it as `todo-tools` once the build adds the block to MZI_BLOCKS, with `todo-tools|: unchanged` among its markers -->
+```bash
+bash -euo pipefail <<'SH'
+  S=$HOME/.claude/settings.json
+  node "$B/wire-hooks.js" --todo-tools "$S" "$B/settings.todo.json"
+  node "$B/check-preserved.js" --todo-tools "$S" "$B/settings.todo.json"
+  if cmp -s "$B/settings.todo.json" "$S"; then
+    node -e 'const v=(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).env||{}).CLAUDE_CODE_ENABLE_TODO_TOOLS; console.log(v==="1" ? "CLAUDE_CODE_ENABLE_TODO_TOOLS=1: already set: unchanged" : "CLAUDE_CODE_ENABLE_TODO_TOOLS="+JSON.stringify(v)+": kept — a value an operator chose is not overwritten: unchanged")' "$S"
+  else
+    node -e 'const fs=require("fs"),path=require("path"),[src,dst]=process.argv.slice(1); const real=fs.realpathSync(dst); const tmp=path.join(path.dirname(real),"."+path.basename(real)+"."+process.pid+".tmp"); fs.copyFileSync(src,tmp); fs.chmodSync(tmp,0o600); fs.renameSync(tmp,real); if ((JSON.parse(fs.readFileSync(real,"utf8")).env||{}).CLAUDE_CODE_ENABLE_TODO_TOOLS!=="1") { console.error("read-back of "+real+" does not hold the key: NOT APPLIED"); process.exit(1); } fs.writeFileSync(process.env.HOME+"/.config/fleet-reporter/todo-tools-set", new Date().toISOString()+"\n", {mode:0o600}); console.log("CLAUDE_CODE_ENABLE_TODO_TOOLS=1: set in "+real+" — the to-do tools reach every session on this account from its next start")' "$B/settings.todo.json" "$S"
+  fi
+SH
+```
+
+*Check:* it prints one of the three lines; a second run prints `already set: unchanged`. The read-back
+after the rename is the step's own verification, and a read-back that does not hold the key is
+`NOT APPLIED` with a non-zero exit. **What it checks, and what it cannot:** it reads the key in
+`~/.claude/settings.json`'s `env` — `1` is *already set*, another value is *kept* (an operator who set
+`0` or removed the tools chose to, and a settings file can set a variable but cannot unset one),
+absent is *set*. Whether a given model would have provided the tools without it is not readable from
+a file, and is not needed: with the variable set the tools are provided on every model. **It cannot
+see the other settings files**: by settings precedence a managed settings entry, a project's
+`.claude/settings.json` or a `.claude/settings.local.json` `env` block overrides the user-level value,
+so a project that sets the key to another value keeps its own answer in that project, and this block
+neither reads nor edits those files — the user-level file is the one the reporter's install owns. ⚠
+**A session started before this block ran keeps the tool set it started with**, exactly as (a)'s hooks
+do; the desk shows a to-do from the next session on. The `descriptors` key is unrelated: it decides
+what the reporter *sends*, this decides what the harness *provides*. **A build-time measurement is
+owed before the block is trusted**: a headless session on a current model started with the variable
+unset in its shell and set only in a `--settings` file's `env` block, driven as `docs/design/EVENT-SCHEMA.md
+§ 6.0`'s capture was, whose hooks then carry a `TaskCreate` or `TodoWrite` — the measurement that the
+settings `env` block alone provides the tools, which this page cites from the reference and has not
+run. **Step 8's uninstall removes the key only when `~/.config/fleet-reporter/todo-tools-set` says
+this install set it**, and then removes that file; a key the account carried before the install, or
+set by anyone else, is left.
+
+## Step 5 — supervise the flusher from the user crontab## Step 5 — supervise the flusher from the user crontab
 
 This step writes a marked block **outside** `bin/supervision.sh`'s `# BEGIN/END mezzanine-supervision`
 block, and never edits that one. It is also the step you re-run when a value in the start line
