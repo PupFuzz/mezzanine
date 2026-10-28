@@ -424,7 +424,7 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 "                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });\n            } catch {\n                report(asset);",
                 "                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });\n            } catch {\n                frames.set(key, { uris: characters.poseFrames(installId, seatId, { pose: at?.pose ?? 'present', deskTop: at?.desk_top ?? 0.5, clear: at?.clear }).frames.map(svgUri), loopFrom: 0 });\n                return frames.get(key);"],
             "an intern kept off the seat key's draw, not its seat's delivered body" => ['../floor/painter.js',
-                'characters.chibiFrame(installId, seatId, species)', 'characters.chibiFrame(installId, seatId)'],
+                'characters.internFrames(installId, seatId, species)', 'characters.internFrames(installId, seatId)'],
             // § 9 F14's third cause (§ 10.2): an undecodable frame's <image> error event, unreported.
             "an undecodable frame's error event left unreported" => ['../floor/painter.js',
                 "        el.addEventListener('error', () => report(asset ?? href), { once: true });\n", ''],
