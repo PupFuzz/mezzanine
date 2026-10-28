@@ -5778,13 +5778,13 @@ eq("RED R9: findTwinForEnd on the wide window — terminal 2's end adopts termin
    "start and N1's Stop reaps terminal 2's running dispatch (review R2-1; C13 flips)",
    (["tool.end"], [(SID2, NEWSID)], [("aborted", "reap_turn_boundary", "reap", "turn_boundary", NEWSID)]),
    c13_got(s, ev, per, D2r))
-p_r10 = plant(("  if (s && (!source || s.start_source === source)) return;",
+p_r10 = plant(("  if (s && (!source || (source !== 'resume' && s.start_source === source))) return;",
                "  if (s) return;"))
 s, ev, ctr, _, _ = clear_trace("clear-r10", C3B, p_r10)
 eq("RED R10: SessionStart(clear) recorded only when it is the session's first hook — C3b never "
    "pairs (review R2-7a)", None, ctr.get("dispatch_rekeyed_to_new_session"))
-p_r11 = plant(("} else if (r.source) s.start_source = r.source;",
-               "} else if (r.source) { s.start_source = r.source; s.paired_from = null; }"))
+p_r11 = plant(("} else if (r.source === 'clear') s.start_source = r.source;",
+               "} else if (r.source === 'clear') { s.start_source = r.source; s.paired_from = null; }"))
 s, ev, ctr, _, _ = clear_trace("clear-r11", C14, p_r11)
 eq("RED R11: a session_open that resets paired_from — the duplicate makes NEW pairable again and "
    "the other terminal's clear pairs with it (review R2-7b; C14 flips)", [(BGSID, NEWSID), (SID2, NEWSID)], c14_got(s))
