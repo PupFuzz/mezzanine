@@ -10,7 +10,7 @@ final class LinkPlan
 {
     /**
      * @param  array<int, object>  $candidates  seat id ⇒ its declaration row as phase 1 read it
-     * @param  array<int, array{disabled: bool, account_type: ?string}>  $members  board user id ⇒ the member
+     * @param  array<int, array{disabled: bool}>  $members  board user id ⇒ the member
      * @param  string  $fingerprint  this site's own `BOARD_API_BASE`, under D1 § 6.14's normalization
      */
     public function __construct(

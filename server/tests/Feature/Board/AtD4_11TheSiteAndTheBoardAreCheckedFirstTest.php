@@ -6,14 +6,15 @@ use App\Board\BoardPoll;
 use App\Board\LinkPass;
 
 /**
- * AT-D4-11 — the site, the board and the account are checked before the fleet, and a failed members read
- * maps nothing (card#12447, `docs/design/BOARD-TASK.md § 4.4` step 4, § 6.6).
+ * AT-D4-11 — the site and the board are checked before the fleet, a member the board types `human` links like
+ * any other, and a failed members read maps nothing (card#12447, `docs/design/BOARD-TASK.md § 4.4` step 4, § 6.6).
  *
  * The REDs this holds: a raw-string base comparison (the case-and-slash seat would be refused), no
- * fingerprint leg (another kanban's id would map), a mapping on a failed read, and an old mapping kept
- * through a refused change.
+ * fingerprint leg (another kanban's id would map), an `account_type` gate (the `human`-typed member — the type
+ * this project's own agent login carries on the measured board — would be refused; seat ruling, card#12447), a
+ * mapping on a failed read, and an old mapping kept through a refused change.
  */
-class AtD4_11TheSiteBoardAndAccountAreCheckedFirstTest extends BoardTaskTestCase
+class AtD4_11TheSiteAndTheBoardAreCheckedFirstTest extends BoardTaskTestCase
 {
     /** @return array{string, int} */
     private function seat(string $seatId): array
@@ -46,23 +47,25 @@ class AtD4_11TheSiteBoardAndAccountAreCheckedFirstTest extends BoardTaskTestCase
     {
         return ['data' => [
             $this->member(21), $this->member(23, disabled: ! $clean), $this->member(25),
-            $this->member(24, $clean ? LinkPass::AGENT_ACCOUNT_TYPE : 'human'),
+            $this->member(24, 'human'),
             ...($clean ? [$this->member(22)] : []),
         ]];
     }
 
-    public function test_each_leg_refuses_by_its_own_counter_and_the_normalized_base_matches(): void
+    public function test_each_leg_refuses_by_its_own_counter_a_human_typed_member_links_and_the_normalized_base_matches(): void
     {
         $seats = $this->fixture();
         $this->members = [self::BOARD => $this->members(false)];
         $this->assertSame(0, $this->poll()[0]);
 
         $want = ['site' => LinkPass::SITE_MISMATCH, 'unknown' => LinkPass::UNKNOWN_USER,
-            'disabled' => LinkPass::UNKNOWN_USER, 'human' => LinkPass::HUMAN_ACCOUNT];
+            'disabled' => LinkPass::UNKNOWN_USER];
         foreach ($want as $label => $counter) {
             $this->assertSame(1, $this->seatCounter($counter, $seats[$label]), $label.' was not refused by '.$counter);
             $this->assertSame([null, null], $this->mapping($seats[$label]), $label.' was written');
         }
+        $this->assertSame([24, 'declared'], $this->mapping($seats['human']),
+            'a member the board types `human` was refused: the pass gates on account_type');
         $this->assertSame([25, 'declared'], $this->mapping($seats['caseslash']),
             'a base differing only by case and a trailing slash was refused: the raw strings were compared');
     }

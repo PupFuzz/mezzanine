@@ -81,7 +81,7 @@ class AtD4_13TheMigrationPinsEveryMappingThatExistsTest extends TestCase
             'reporter_version' => '0.5.0',
         ]);
         Http::fake(['board.example.test/*' => Http::response(json_encode(['data' => [
-            ['user_id' => 15, 'account_type' => LinkPass::AGENT_ACCOUNT_TYPE, 'disabled' => false],
+            ['user_id' => 15, 'account_type' => 'human', 'disabled' => false],
         ]]), 200)]);
     }
 

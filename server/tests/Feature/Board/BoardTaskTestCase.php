@@ -134,7 +134,7 @@ abstract class BoardTaskTestCase extends SweepTestCase
     protected array $members = [];
 
     /** One member object in the measured shape (§ 6.6): `{"data": [...]}`, no `meta`. */
-    protected function member(int $user, string $accountType = LinkPass::AGENT_ACCOUNT_TYPE, bool $disabled = false): array
+    protected function member(int $user, string $accountType = 'service', bool $disabled = false): array
     {
         return [
             'user_id' => $user, 'name' => 'member '.$user, 'email' => 'm'.$user.'@example.test', 'initials' => 'M',

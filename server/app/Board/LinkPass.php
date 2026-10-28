@@ -49,20 +49,18 @@ final class LinkPass
 
     public const UNKNOWN_USER = 'board_link_unknown_user';
 
-    public const HUMAN_ACCOUNT = 'board_link_human_account';
-
     public const SITE_MISMATCH = 'board_link_site_mismatch';
 
     /** D2 § 7.2 — fleet-scoped: the members read was degraded, so the pass checked nothing this poll. */
     public const FAILED = 'board_link_failed';
 
-    /**
-     * § 6.6 / § 12's measured `account_type` value set (2026-10-28, board 14): `human` and `service`. The
-     * account leg passes `service` ALONE: a value outside the measured set is read as a person's, failing
-     * closed, because the consequence the leg exists to stop — a person's cards on a desk and the compose
-     * box posting to them under the seat's name — is the one that reaches outside the floor.
+    /*
+     * ⛔ NO ACCOUNT-TYPE LEG (seat ruling on card#12447, 2026-10-28, reversible). The members response carries
+     * `account_type`, and its measured values on board 14 are `human` and `service` — with this project's own
+     * agent login among the `human` ones. A gate on it would refuse the very seats the operator asked to link
+     * ("yes each PM has their own login"), so the type is not read. The control against a wrong declaration is
+     * the operator's: `mezzanine:seat-board-user --board-user` pins and `--refuse` refuses (§ 4.1).
      */
-    public const AGENT_ACCOUNT_TYPE = 'service';
 
     /**
      * Phase 1 — the candidate set and, when any declaration needs checking, the members of every configured
@@ -146,7 +144,7 @@ final class LinkPass
         }
 
         // The CONTENTION SET, defined rather than left to the read order: every declaration that passed the
-        // site, board and account legs this pass, from a seat step 1 did not skip.
+        // site and board legs this pass, from a seat step 1 did not skip.
         $contenders = [];
 
         foreach ($checked as $seatRef => [$row, $refusal]) {
@@ -210,7 +208,7 @@ final class LinkPass
         return 'check';
     }
 
-    /** Step 4's site, board and account legs, in that order; the first refusal wins. */
+    /** Step 4's site and board legs, in that order; the first refusal wins. */
     private static function legs(object $row, LinkPlan $plan): ?string
     {
         if (! is_string($row->board_fingerprint_declared) || ! hash_equals($plan->fingerprint, $row->board_fingerprint_declared)) {
@@ -221,10 +219,6 @@ final class LinkPass
 
         if ($member === null || $member['disabled']) {
             return self::UNKNOWN_USER;
-        }
-
-        if ($member['account_type'] !== self::AGENT_ACCOUNT_TYPE) {
-            return self::HUMAN_ACCOUNT;
         }
 
         return null;
@@ -259,7 +253,7 @@ final class LinkPass
      * where none was measured (a pager this design did not see).
      *
      * @param  list<int>  $boardIds
-     * @return array<int, array{disabled: bool, account_type: ?string}>|null
+     * @return array<int, array{disabled: bool}>|null
      */
     private static function members(array $boardIds, string $base, string $token): ?array
     {
@@ -294,11 +288,10 @@ final class LinkPass
                 }
 
                 $disabled = ($m->disabled ?? null) !== false;
-                $type = is_string($m->account_type ?? null) ? $m->account_type : null;
                 $held = $members[$m->user_id] ?? null;
 
                 if ($held === null || ($held['disabled'] && ! $disabled)) {
-                    $members[$m->user_id] = ['disabled' => $disabled, 'account_type' => $type];
+                    $members[$m->user_id] = ['disabled' => $disabled];
                 }
             }
         }

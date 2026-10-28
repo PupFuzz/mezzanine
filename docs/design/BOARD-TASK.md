@@ -395,7 +395,7 @@ object** and read by one consumer: this pass.
 transaction:** the members read ([§ 6.6](#66-the-members-read)) and the card read's pages
 ([§ 6.1](#61-the-endpoint)) — every HTTP request the poll makes — and, from a plain read of `seats` and
 `seat_state`, the **candidate set**: every unretired seat with a declaration, each declaration judged
-by the site, board and account legs of step 4 below. **Phase 2, one transaction:** lock every `seats`
+by the site and board legs of step 4 below. **Phase 2, one transaction:** lock every `seats`
 row the pass may write `FOR UPDATE`, in `seats.id` order — the order [§ 4.1](#41-seat--board-user)'s
 command and the retirement act take, `seats` then `seat_board_task` — **re-read** each locked seat's
 `board_user_id`, `board_user_source` and its declaration columns; a declaration that differs from
@@ -438,21 +438,20 @@ rather than overwritten. Over each candidate seat:
      `disabled` one — read from `GET /boards/{id}/members.json` under the poller's read token
      ([§ 6.6](#66-the-members-read)). Not found, or disabled ⇒ `board_link_unknown_user`: no card on
      these boards can ever be assigned to that user, so a mapping would be a join to nothing.
-   - **the account.** The member's `account_type` must not name a human account. ⚠ The member
-     objects carry the key (measured, [§ 6.6](#66-the-members-read)), and its value set was **measured on
-     2026-10-28 as `human` and `service`** ([§ 12](#12-every-number-and-where-it-comes-from)), so the leg
-     passes `service` alone and reads any other value — `human`, or one outside the measured set — as a
-     person's, failing closed (`LinkPass::AGENT_ACCOUNT_TYPE`). ⚠ **The same read found this project's own
-     agent seat's login marked `human`**: the account type is the board's provisioning fact and not proof
-     of who uses the account, so an agent provisioned as a regular user is refused by this leg and is
-     linked by the operator's pin — which is what the migration's backfill already makes this seat's hand
-     mapping (AT-D4-13). A human's account ⇒
-     `board_link_human_account`: a seat declaring a person's id would put that person's cards on a
-     desk and the compose box ([§ 15](#15-the-compose-path--one-verb)) would post to them under the
-     seat's name — the one consequence of a wrong link that reaches outside the floor.
+   - ⛔ **No account-type leg** (seat ruling on card#12447, 2026-10-28, reversible, recorded on the card).
+     The members objects carry `account_type`, and its values on board 14 were **measured on 2026-10-28
+     as `human` and `service`** ([§ 12](#12-every-number-and-where-it-comes-from)) — with this project's
+     own agent login among the `human` ones. Agent logins are provisioned as ordinary users, so a gate
+     on the type would refuse the very seats the operator asked to link (*"yes each PM has their own
+     login"*, [§ 14](#14-open-questions) item 12). The pass therefore reads no type. **The control
+     against a wrong declaration — a seat declaring a person's id, whose cards would then reach its
+     desk and its compose box ([§ 15](#15-the-compose-path--one-verb)) — is the operator's**:
+     `mezzanine:seat-board-user --board-user` pins the right user and `--refuse` refuses the
+     declaration ([§ 4.1](#41-seat--board-user)), and the fleet leg below refuses any user a second seat
+     holds or declares.
    - **the fleet.** No other unretired seat may hold the user, pinned or declared — and no other
      member of the **contention set** may declare it. The contention set is defined, not left to the
-     read order: *every declaration that passed the site, board and account legs this pass, from a
+     read order: *every declaration that passed the site and board legs this pass, from a
      seat step 1 did not skip*. Two members of it declaring one free user map **neither**; a seat
      the operator has since pinned or refused is not a member, so a `--refuse` on one of two
      contenders resolves the contention at the next poll and the other maps. For every conflict the
@@ -511,18 +510,18 @@ seat is never a candidate* any more but *let the declaration decide at the next 
 — the site holds a read token that cannot speak for the seat, and a membership read with the token
 it has is the check it can make. It does not re-check a mapped user on later polls beyond step 3's
 equality: a user removed from every board after mapping gets no card and the merge falls through
-clean, which is the same render as a user with nothing assigned. It does not see a seat declaring a
-shared or a service account whose `account_type` the members response does not mark as a person's —
-[§ 14](#14-open-questions) item 12 records the operator's answer for PM seats and names that single-seat
-residual as the one case the pass cannot see, which blocks the pass on such a box until the seat is
-refused. And it
+clean, which is the same render as a user with nothing assigned. It does not judge WHOSE account a
+declared user is — no field of the members response tells an agent's login from a person's (the
+`account_type` measured above does not) — so a seat declaring a person's or a shared account, alone
+on its box, is mapped; [§ 14](#14-open-questions) item 12 names that residual, and the operator's pin
+or refusal is its control. And it
 does not write `seat_board_task`: the card read does, as before, so [§ 2](#2-the-rebuildability-question)'s
 argument is untouched — `seats` gains one more operator-or-pass-written durable input, and the fold
 still reads only `events` and the durable inputs a rebuild does not destroy.
 
 **The seams, by name (canon #7).** Each with a declaring end and a checking end:
 - *the seat declares the board user and the board the id belongs to* — DECLARED by D1 § 3.1 on the
-  heartbeat; CHECKED here, step 4's site, board and account legs; what neither end can verify is that
+  heartbeat; CHECKED here, step 4's site and board legs; what neither end can verify is that
   the seat's credential is the agent's own and not a shared one — the operator's provisioning fact,
   NAMED at [§ 14](#14-open-questions) item 12 as the precondition it is.
 - *the installer finds the seat's board credential and base where the coordination framework keeps
@@ -542,11 +541,9 @@ still reads only `events` and the durable inputs a rebuild does not destroy.
   it does not state it); MEASURED once, 2026-10-27, by assigning this card to this seat's user and
   reading both; NAMED as a measurement, re-derived by `kbcard show --task 12447` against the seat's
   `/users/current.json`.
-- *the members endpoint lists every member a card can be assigned to, and marks a person's account as
-  one* — DECLARED by nothing cited; MEASURED 2026-10-27 as a bare `data` array for board 14 with no
-  `meta` (`len(body["data"])` re-prints its size) carrying an `account_type` key whose values this
-  design has not read, so whether it pages past some count and what the key's values are stay
-  **unverified** ([§ 6.6](#66-the-members-read) treats a `meta.last_page` that appears as a shape
+- *the members endpoint lists every member a card can be assigned to* — DECLARED by nothing cited;
+  MEASURED 2026-10-27 as a bare `data` array for board 14 with no `meta` (`len(body["data"])`
+  re-prints its size), so whether it pages past some count stays **unverified** ([§ 6.6](#66-the-members-read) treats a `meta.last_page` that appears as a shape
   change and degrades the pass, never the poll).
 
 ---
@@ -743,11 +740,11 @@ read token has not yet been issued, [§ 14](#14-open-questions) item 1, so wheth
 is admitted to this endpoint is **unverified** and is the first thing the build measures): `200`,
 `data` a bare array of member objects, each carrying `user_id` (int), `name`, `role`, `account_type`,
 `disabled` (bool), `is_owner` and `custom_permissions`; **no `meta`**, so the response is read as
-one page. Consumed: `user_id`, `disabled` and `account_type`, nothing else — a member's name or role reaching a desk
-would be the board taxonomy [§ 6.2](#62-the-fields-consumed) keeps off the floor. ⚠ `account_type`'s
-value set was read on 2026-10-28 — `human` and `service` — and is recorded in
-[§ 12](#12-every-number-and-where-it-comes-from), against which [§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447)'s
-account leg is written.
+one page. Consumed: `user_id` and `disabled`, nothing else — a member's name or role reaching a desk
+would be the board taxonomy [§ 6.2](#62-the-fields-consumed) keeps off the floor. `account_type`'s
+values, read on 2026-10-28 — `human` and `service`, agent logins among the `human` ones — are recorded in
+[§ 12](#12-every-number-and-where-it-comes-from) and are why [§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447)
+reads no account type.
 
 **When it is read.** In the pass's first phase, before any row is locked, and only when [§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447)
 step 4 has at least one declaration to check — a fleet whose every declaring seat is mapped or pinned
@@ -950,7 +947,6 @@ to D2 § 7.2 and to `GET /api/fleet/health`'s `counters` member: **`board_poll_o
 | Two seats mapped to one board user | **unreachable** — the UNIQUE key refuses it at the mapping command, and the link pass checks the fleet before it writes ([§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447) step 4) | the command's non-zero exit; `board_link_conflict` on the declaring seat (card#12447) |
 | Two seats **declaring** one board user (card#12447) | **a holder keeps it and the other is refused every poll; two unmapped seats contending in one pass map neither** — no rule picks a winner | `board_link_conflict` on every refused seat's detail, once per poll while it persists; the operator retires the stale seat, pins one, or refuses one |
 | A declared user no configured board knows, or a disabled member (card#12447) | **refused, nothing written** | `board_link_unknown_user` on the seat's detail |
-| A declared user whose `account_type` names a person's account (card#12447) | **refused, nothing written** | `board_link_human_account` on the seat's detail; the operator pins or refuses |
 | A seat mapped by declaration now declares a user the pass refuses (card#12447) | **the refusal above, and the old mapping and its row cleared in the same transaction** | that refusal's counter and `board_link_cleared`, both on the seat's detail |
 | A seat the operator refused declares anything (card#12447) | **skipped** — nothing read, nothing written | none; `board_user_source = refused` is the record |
 | A declaration fingerprinting another kanban (card#12447) | **refused, nothing written** | `board_link_site_mismatch` on the seat's detail |
@@ -1145,16 +1141,16 @@ degraded one.
 - **Control:** the same fixture with B declaring `15` maps B, so the conflict assertion is known
   to turn on the collision and not on B.
 
-### AT-D4-11 the site, the board and the account are checked before the fleet, and a failed members read maps nothing (card#12447)
+### AT-D4-11 the site and the board are checked before the fleet, a member the board types `human` links, and a failed members read maps nothing (card#12447)
 
 - **Build:** declaring seats, one per refusal leg and one control: a seat whose fingerprint is of
   another base (`https://Other.example/api/v3/` normalized); a seat declaring a user the members read
   does not list; a seat declaring a listed but `disabled` member; a seat declaring a member whose
-  `account_type` is the value the build measured for a person's account; and a seat whose base
+  `account_type` is `human` (the type this project's own agent login carries on the measured board); and a seat whose base
   differs from the test's only by case and a trailing slash, which must MATCH. Then the full fixture
   with the members read answering `500`, then a body carrying `meta`.
-- **GREEN:** `board_link_site_mismatch`, `board_link_unknown_user`, `board_link_unknown_user` and
-  `board_link_human_account` respectively, nothing written for any; the case-and-slash seat maps; on
+- **GREEN:** `board_link_site_mismatch`, `board_link_unknown_user` and `board_link_unknown_user`,
+  nothing written for those three; the `human`-typed member MAPS; the case-and-slash seat maps; on
   the two bad reads `board_link_failed` + 1 each, **no** seat written, and `board_poll_ok` still + 1
   with the card rows refreshed — the card read ran. Then one more: a seat mapped by declaration to
   `14` whose heartbeat now declares the `disabled` member — `board_link_unknown_user` + 1 **and**
@@ -1162,9 +1158,10 @@ degraded one.
 - **RED, each seen to fail:** compare the raw base strings (the case-and-slash seat is refused);
   skip the fingerprint (a user id from another kanban maps); map on a failed read (a declaration
   nobody checked becomes a join); keep the old mapping on a refused change (the desk shows `14`'s
-  cards for a seat that says it is someone else).
+  cards for a seat that says it is someone else); gate on `account_type` (the `human`-typed member —
+  an agent login on the measured board — is refused, and automatic linking dies for most seats).
 - **Control:** every refused seat above with a clean members read listing its user as an enabled
-  agent member of the test's base maps, so each refusal is known to be the check and not the fixture.
+  member of the test's base maps, so each refusal is known to be the check and not the fixture.
 
 ### AT-D4-12 an undeclared heartbeat clears a declared mapping only from a reporter that sends the members (card#12447)
 
@@ -1216,7 +1213,7 @@ running the command in the cell, which is what a reader re-runs rather than trus
 | Overlap-lock expiry | **10 min** | **Chosen** — § 3.1 requires it below the 30-minute bound and the framework default is a day. Bounded above by the bound: a poll killed holding the lock at T + 5 min frees it at T + 5 + E, the next tick polls within 5 min, and that must land before T + 30 — so E < 20 min. Bounded below by a live poll's own length, or a slow poll gets a second copy beside it: the timeout row's fifteen requests at 20 s is 5 min. Re-derive when either the cadence or the bound moves | [§ 3.1](#31-mezzanineboard-poll) |
 | Page cap | **200 pages** | **Chosen** — a runaway guard, not a truncation policy: 200 × 200 is far past any real board, so reaching it means the pager is looping | [§ 6.3](#63-pagination-and-the-false-clean-rule) |
 | `title` bound | `seat_state.task_title`'s own | **Cited** — D2 § 6.4. Never restated as a figure here: one bound, one home ([§ 8.4](#84-truncation)) | [§ 7.1](#71-the-input-table) |
-| Board members, board 14 | **Measured 2026-10-27** (card#12447) | `GET /boards/14/members.json` under a member's own credential → `200`, `len(body["data"])` members, no `meta`; `[m["user_id"] for m in body["data"]]` holds this seat's `data.id`; `sorted({m["account_type"] for m in body["data"]})` is the value set [§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447)'s account leg is written against — **read 2026-10-28: `human` and `service`, this seat's own login among the `human` ones**. **Re-run it rather than trusting this cell**, and re-run it under the poller's read token once one is issued — whether that token is admitted is unverified | [§ 6.6](#66-the-members-read) |
+| Board members, board 14 | **Measured 2026-10-27** (card#12447) | `GET /boards/14/members.json` under a member's own credential → `200`, `len(body["data"])` members, no `meta`; `[m["user_id"] for m in body["data"]]` holds this seat's `data.id`; `sorted({m["account_type"] for m in body["data"]})` — **read 2026-10-28: `human` and `service`, this seat's own login among the `human` ones**, which is why [§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447) reads no account type. **Re-run it rather than trusting this cell**, and re-run it under the poller's read token once one is issued — whether that token is admitted is unverified | [§ 6.6](#66-the-members-read) |
 | This seat's board user | **Measured 2026-10-27** (card#12447) | `GET /users/current.json` under the credential store's `[kanban] api_token_file` → `200`, `body["data"]["id"]` an integer equal to card#12447's own `assigned_user_id` as `kbcard show --task 12447` prints it; the same request under the exported kanban read variable → `401` | [§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447) |
 | Members reads per poll | **≤ the board count**, and 0 when no declaration is pending | **Derived** — one request per configured board, issued only when [§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447) step 4 has a declaration to check (card#12447) | [§ 6.6](#66-the-members-read) |
 | Whole-board payload, board 14 | **Measured 2026-09-11** | `GET /tasks/search.json?q=board_id%3D14&limit=200&page=1` → `200`; then `len(json.dumps(body))`, `len(body["data"])`, `body["meta"]["last_page"]`. ~340 KB on one page. **Re-run it rather than trusting this cell** | [§ 3.2](#32-the-cadence-chosen--and-the-30-minute-bound-re-derived) |
@@ -1418,17 +1415,17 @@ its text; this table is where the state is read.
     the contention set ([§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447)
     step 4) maps **none** of them and counts `board_link_conflict` on each, the poll's log names the
     pair, and the operator pins the one seat that works that user's cards or refuses the rest. **The
-    residual, still the operator's:** a shared or service account whose `account_type` the members
-    response does not mark as a person's would, on a box with one seat, map that seat to a user whose
-    cards are not its own — the account leg cannot see it and the conflict rule needs a second seat to
-    fire. **Blocks:** nothing fleet-wide — PM seats are answered; on a box whose one seat holds a
+    residual, still the operator's:** a person's, a shared or a service account declared by the one
+    seat of a box maps that seat to a user whose cards may not be its own — no field of the members
+    response tells whose account it is (`account_type` does not: agent logins carry `human`), and the
+    conflict rule needs a second seat to fire. **Blocks:** nothing fleet-wide — PM seats are answered; on a box whose one seat holds a
     shared or service-account credential the residual blocks the link pass for that seat until it is
     `--refuse`d, which is the precondition [§ 4.4](#44-the-link-pass--automatic-mapping-from-the-seats-declaration-card12447)'s
     *What this does NOT do* names. **Recommendation, unchanged:** `--refuse` such a seat before its
     first poll. The members response's `account_type` values were read on 2026-10-28 — `human` and
-    `service` ([§ 12](#12-every-number-and-where-it-comes-from)) — and the account leg refuses every value
-    but `service`; ⚠ the same read found this project's own agent seat's login marked `human`, so an agent
-    provisioned as a regular board user is refused by that leg and needs the operator's pin.
+    `service` ([§ 12](#12-every-number-and-where-it-comes-from)), this project's own agent login among the
+    `human` ones — so the link pass reads no account type (seat ruling on card#12447, 2026-10-28,
+    reversible): a gate on it would have refused the PM seats this item's answer says to link.
 13. **⇢ Build — the poller's read token on the members endpoint.** [§ 6.6](#66-the-members-read)
     was measured under a member's own credential; whether a read-scoped board token is admitted to
     `GET /boards/{id}/members.json` is unverified until item 1's token exists. **Blocks:** the link

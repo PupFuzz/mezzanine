@@ -374,8 +374,7 @@ php artisan mezzanine:seat-board-user --seat=<install>/<seat> --clear           
 
    A seat's detail counts why a declaring seat is not linked: `board_link_conflict` (another seat holds
    or declares the same user — one log line names both seats), `board_link_unknown_user`,
-   `board_link_human_account` (the board marks the account `human`, not `service`), and
-   `board_link_site_mismatch`; `board_link_failed` on `GET /api/fleet/health` counts a members read the
+   and `board_link_site_mismatch`; `board_link_failed` on `GET /api/fleet/health` counts a members read the
    pass could not use. A seat with no board shows its in-progress to-do in the bubble instead.
 
 `mezzanine:board-poll` then runs every five minutes from the existing `schedule:run` crontab entry,
