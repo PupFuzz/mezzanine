@@ -234,6 +234,42 @@ trait ReadsTheAnimationTable
     }
 
     /**
+     * § 6.2's SIDE-TABLE row (A23, card#12448) — the one `held` row whose Where cell is the side table, or
+     * `null` where the table holds none, or more than one, or one whose condition is not the published
+     * *`subagents[]` is not empty* (so a reworded condition is loud here rather than read as another).
+     */
+    protected function documentSideTableRow(?string $md = null): ?string
+    {
+        $rows = array_filter($this->documentAnimationRows($md), static fn (array $row): bool => $row['class'] === 'held'
+            && $row['where'] === 'side table' && str_contains($row['condition'], 'subagents[] is not empty'));
+
+        return count($rows) === 1 ? array_key_first($rows) : null;
+    }
+
+    /**
+     * The side-table row ONE seat object holds: § 6.2's A23 where its `subagents[]` is not empty, else
+     * `null`. It is held BESIDE the desk's own row (`heldRowFor()`), never instead of it.
+     *
+     * @param  array<string, mixed>  $seat
+     */
+    protected function sideTableRowFor(array $seat, ?string $md = null): ?string
+    {
+        return is_array($seat['subagents'] ?? null) && $seat['subagents'] !== [] ? $this->documentSideTableRow($md) : null;
+    }
+
+    /**
+     * The row § 6.2 predicts for the HOLD an entered row belongs to — the side table's when the row is
+     * the side-table row, else the desk's own (`heldRowFor()`) — so a predicate written for one hold per
+     * seat reads each of a desk's two holds against its own condition (card#12448).
+     *
+     * @param  array<string, mixed>  $seat
+     */
+    protected function predictedRowFor(array $seat, string $enteredId, ?string $md = null): ?string
+    {
+        return $enteredId === $this->documentSideTableRow($md) ? $this->sideTableRowFor($seat, $md) : $this->heldRowFor($seat, $md);
+    }
+
+    /**
      * § 6.2's HELD rows keyed by the `render_state` each row's own condition names, one row per
      * state: `['working' => 'A3', 'idle' => 'A6', …]`.
      *

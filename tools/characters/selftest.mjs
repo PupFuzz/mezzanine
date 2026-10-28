@@ -77,7 +77,7 @@ const all = [
 ];
 for (const [kind, inst, key] of all) {
   try {
-    const frames = kind === 'seat' ? [C.standingFrame(inst, key), ...C.walkFrames(inst, key)] : [C.chibiFrame(inst, key)];
+    const frames = kind === 'seat' ? [C.standingFrame(inst, key), ...C.walkFrames(inst, key)] : [C.chibiFrame(inst, key), ...C.internFrames(inst, key).frames];
     docs.set(`${kind}:${inst}/${key}`, frames);
     drawn++;
   } catch (e) { threw.push(`${inst}/${key}: ${e.message}`); }
@@ -86,7 +86,7 @@ check(threw.length === 0, `${drawn} keys drew and none threw${threw.length ? ` �
 const fresh = await import(pathToFileURL(join(TREE, 'index.js')).href + '?fresh');
 const twiceBad = all.filter(([kind, inst, key]) => kind === 'seat'
   ? C.standingFrame(inst, key) !== fresh.standingFrame(inst, key)
-  : C.chibiFrame(inst, key) !== fresh.chibiFrame(inst, key));
+  : C.chibiFrame(inst, key) !== fresh.chibiFrame(inst, key) || C.internFrames(inst, key).frames.join() !== fresh.internFrames(inst, key).frames.join());
 check(twiceBad.length === 0, `every key draws byte-identical markup again, from a fresh module load${twiceBad.length ? ` — differs: ${twiceBad[0].join(' ')}` : ''}`);
 
 // ---- 2. the space is the document's (a guard: FLOOR.md § 10.4's table against the closed lists) ----
@@ -208,6 +208,85 @@ const chibiRoot = C.chibiFrame('desk-0', desks[0].interns[0]).match(/^<svg[^>]*>
 const vb = C.CHIBI_VIEWBOX;
 check(chibiRoot.includes(`viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}"`) && vb.y + vb.h >= 188,
   `the chibi frame's viewBox is CHIBI_VIEWBOX and holds the foot line (${vb.x} ${vb.y} ${vb.w} ${vb.h}); § 7b holds it to the intern's overdraw`);
+
+// ---- 6b. the laptop and the typing sway (card#12448; FLOOR.md § 8, § 10.4's frame contract item 3, § 12) ----
+section("6b. the intern's laptop: a pure draw of its key; stickers that stand off their shell and sit on the lid; the face over the lid; the sway's frames");
+// THE DESIGN is the key's alone (the operator's C3): the same key draws the same laptop from a fresh module load, and
+// nothing a sibling draws can move it — `laptopOf()` takes the key and nothing else.
+const lapKeys = desks.flatMap(({ seat, interns }) => interns.map((k) => `${seat[0]}/${k}`));
+check(C.laptopOf.length === 1 && lapKeys.every((k) => JSON.stringify(C.laptopOf(k)) === JSON.stringify(fresh.laptopOf(k))),
+  `every one of ${lapKeys.length} interns draws the same laptop again, from a fresh module load, from its key alone`);
+const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const dist = (a, b) => { const A = rgb(a), B = rgb(b); return Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]); };
+const inksOf = (shell) => C.STICKER_INKS.filter((c) => dist(c, shell) >= C.STICKER_CONTRAST);
+check(C.LAPTOP_SHELLS.every((sh) => inksOf(sh).length >= 2), `every shell has at least two inks that stand off it by ${C.STICKER_CONTRAST} (${C.LAPTOP_SHELLS.map((sh) => `${sh} ${inksOf(sh).length}`).join(', ')})`);
+const laps = lapKeys.map((k) => C.laptopOf(k));
+const lowInk = laps.filter((l) => l.stickers.some((st) => dist(st.ink, l.shell) < C.STICKER_CONTRAST)).length;
+check(lowInk === 0, `no sticker of ${laps.length} laptops is drawn in an ink nearer its shell than ${C.STICKER_CONTRAST} (${lowInk} are)`);
+const sameShape = laps.filter((l) => l.stickers[0].shape === l.stickers[1].shape).length;
+check(sameShape === 0, `no laptop carries one sticker shape twice (${sameShape} do)`);
+const reach = [['shell', C.LAPTOP_SHELLS, (l) => [l.shell]], ['sticker shape', C.STICKER_SHAPES, (l) => l.stickers.map((st) => st.shape)], ['sticker ink', C.STICKER_INKS, (l) => l.stickers.map((st) => st.ink)]];
+for (const [name, list, of] of reach) { const seen = new Set(laps.flatMap(of)); check(list.every((m) => seen.has(m)), `${name}: ${seen.size}/${list.length} members reached by the ${laps.length} interns`); }
+// "unique" (the card): the design is a draw of the key, never re-drawn against a sibling (C3), so two interns of one desk
+// CAN share one — and how often they do at the cap is measured here and gates nothing (FLOOR.md § 12 cites this line).
+const designOf = (l) => JSON.stringify(l);
+let shellRepeat = 0, designRepeat = 0;
+for (const { seat, interns } of desks) {
+  const ls = interns.map((k) => C.laptopOf(`${seat[0]}/${k}`));
+  if (new Set(ls.map((l) => l.shell)).size < ls.length) shellRepeat++;
+  if (new Set(ls.map(designOf)).size < ls.length) designRepeat++;
+}
+measure(`laptop repeat rates at the cap of ${CAP} (gate nothing): a repeated shell on ${shellRepeat}/${DESKS} desks (${(shellRepeat / DESKS).toFixed(3)}), a repeated whole design (shell, both stickers and both inks) on ${designRepeat}/${DESKS} (${(designRepeat / DESKS).toFixed(3)}), seed ${SEED}`);
+// THE FRAMES: the still, then INTERN_LOOP loop frames — centre, left, centre, right — so frames 1 and 3 are the still
+// (the centre) and 2 and 4 lean opposite ways; the still carries the laptop and the plain chibi frame does not.
+const [ii, ik] = ['desk-0', desks[0].interns[0]];
+const IF = C.internFrames(ii, ik);
+check(IF.loopFrom === 1 && IF.frames.length === 1 + C.INTERN_LOOP, `internFrames draws the still and ${C.INTERN_LOOP} loop frames, loopFrom 1 (got ${IF.frames.length} documents, loopFrom ${IF.loopFrom})`);
+check(IF.frames[1] === IF.frames[0] && IF.frames[3] === IF.frames[0] && IF.frames[2] !== IF.frames[0] && IF.frames[4] !== IF.frames[0] && IF.frames[2] !== IF.frames[4],
+  'the loop is centre, left, centre, right: its centre frames are the still and its two sway frames differ from it and from each other');
+check(/data-part="lid"/.test(IF.frames[0]) && !/data-part="lid"/.test(C.chibiFrame(ii, ik)), 'the still carries the laptop; the plain chibi frame does not');
+let swayRefused = 0;
+for (const bad of [-1, C.INTERN_LOOP, 0.5]) { try { C.frameDocument('sway/x', { chibi: true, laptop: true, sway: bad }); } catch { swayRefused++; } }
+try { C.frameDocument('sway/x', { sway: 1 }); } catch { swayRefused++; }
+try { C.frameDocument('sway/x', { laptop: true }); } catch { swayRefused++; }
+check(swayRefused === 5, `a sway outside 0..${C.INTERN_LOOP - 1}, a sway on a seat frame and a laptop on a seat frame are refused (${swayRefused}/5)`);
+// THE LID UNDER THE FACE, AND THE STICKERS ON THE LID (the operator's ruling of 2026-10-27: a taller lid, the hands may
+// go, the face may not): read by the same ink reader as § 8b, per species and variant, in the still and both sway
+// frames — the face group's lowest ink is at or over the lid's top edge, and every sticker's ink is inside the lid.
+const underPart = (up, name) => up.some((n) => n.attrs?.['data-part'] === name);
+const lidFaults = [];
+let lidDocs = 0, faceGap = Infinity, faceGapKey = '';
+for (const sp of KEYS) for (const v of [null, ...variantsOf(sp)]) {
+  let key = `lid/${sp}`;
+  for (let i = 0; v !== null && C.recipe(key, sp).variant !== v; i++) key = `lid/${sp}/${i}`;
+  for (const sway of [undefined, 1, 3]) {
+    lidDocs++;
+    let lid = null, face = -Infinity;
+    const stickers = [];
+    inkBounds(C.frameDocument(key, { species: sp, chibi: true, laptop: true, sway }), (node, b, up) => {
+      if (node.attrs?.['data-part'] === 'lid') lid = b;
+      else if (underPart(up, 'face')) face = Math.max(face, b.y1);
+      else if (underPart(up, 'sticker')) stickers.push(b);
+    });
+    const name = `${sp}${v ? `/${v}` : ''} sway=${sway ?? 'still'}`;
+    if (lid === null || face === -Infinity) { lidFaults.push(`${name}: no ${lid === null ? 'lid' : 'face'} measured`); continue; }
+    // the lid's top edge is its box's top less half its stroke — the stroke widens the box by 0.7 each way
+    const lidTop = lid.y0 + 0.7;
+    if (face > lidTop) lidFaults.push(`${name}: the face reaches ${face.toFixed(1)}, under the lid's top ${lidTop.toFixed(1)}`);
+    if (lidTop - face < faceGap) { faceGap = lidTop - face; faceGapKey = name; }
+    if (stickers.length === 0 || stickers.some((b) => b.x0 < lid.x0 || b.x1 > lid.x1 || b.y0 < lid.y0 || b.y1 > lid.y1)) lidFaults.push(`${name}: a sticker leaves the lid`);
+  }
+}
+measure(`the least gap between the face's lowest ink and the lid's top edge: ${faceGap.toFixed(1)} units (${faceGapKey}) over ${lidDocs} documents`);
+check(lidFaults.length === 0, `every species and variant draws its face over the lid's top edge and its stickers on the lid, still and swaying (${lidDocs} documents)${lidFaults.length ? ` — ${lidFaults.slice(0, 4).join('; ')}` : ''}`);
+// CONTROL: the same reader over a frame whose lid is pushed up past the face, and whose sticker is pushed off the lid, reds.
+{
+  const doc = C.frameDocument('lid/control', { species: KEYS[0], chibi: true, laptop: true });
+  const up = doc.replace(/(<rect data-part="lid" x="[^"]*" y=")([^"]*)(")/, (m, a, y, b) => `${a}${Number(y) - 40}${b}`);
+  let lid = null, face = -Infinity;
+  inkBounds(up, (node, b, anc) => { if (node.attrs?.['data-part'] === 'lid') lid = b; else if (underPart(anc, 'face')) face = Math.max(face, b.y1); });
+  check(up !== doc && lid !== null && face > lid.y0 + 0.7, `CONTROL — a lid raised 40 units is over the face (face ${face.toFixed(1)}, lid top ${(lid?.y0 + 0.7).toFixed(1)}), so the leg can see a covered face`);
+}
 
 // ---- 7. the frames, at parity (the node half; the painter half is painter-probe.mjs) ----
 section('7. the frames: a standing frame, three distinct walk phases (phase 0 the standing frame), a chibi frame');
@@ -455,15 +534,18 @@ const framesOf = (sp, key) => [
   ['walking', C.frameDocument(key, { species: sp, phase: 1 }), C.SEAT_VIEWBOX, C.SEAT_RECT],
   ['walking', C.frameDocument(key, { species: sp, phase: 2 }), C.SEAT_VIEWBOX, C.SEAT_RECT],
   ['chibi', C.frameDocument(`${key}~intern`, { species: sp, chibi: true }), C.CHIBI_VIEWBOX, CHIBI_RECT],
+  // the intern as the floor draws it (card#12448): the laptop still and the sway's two extremes, at the fixed INTERN_SWAY_DEG and INTERN_SWAY_DX
+  ...[undefined, 1, 3].map((sway) => ['intern', C.frameDocument(`${key}~intern`, { species: sp, chibi: true, laptop: true, sway }), C.CHIBI_VIEWBOX, CHIBI_RECT]),
   ...Array.from({ length: C.SLEEP_LOOP + 1 }, (_, frame) => ['asleep', C.sleepDocument(key, { species: sp, frame, deskTop: DESK_TOP, clear: CLEAR }), C.SEAT_VIEWBOX, C.SEAT_VIEWBOX]),
   // every expression's standing frame — its paws, and its marker at full brightness, the widest glow (card#12444)
   ...Object.keys(C.EXPRESSIONS).filter((x) => x !== 'neutral').map((expression) => ['posed', C.frameDocument(key, { species: sp, expression, clear: CLEAR }), C.SEAT_VIEWBOX, C.SEAT_RECT]),
 ];
-const FRAME_KINDS = ['standing', 'walking', 'chibi', 'asleep', 'posed'];
+const FRAME_KINDS = ['standing', 'walking', 'chibi', 'intern', 'asleep', 'posed'];
 const label = (sp, key) => { const v = C.recipe(key, sp).variant; return v ? `${sp}/${v}` : sp; };
 const worst = {};   // species → kind → { over: past the frame, cut: past the rect, key }
-const chibiAcross = { units: -Infinity, who: '' };   // the chibi's ink past its rect's sides, the widest over the population
+const chibiAcross = { units: -Infinity, who: '' };   // the chibi's ink past its rect's sides — the plain chibi and the swaying intern — the widest over the population
 const chibiInk = { left: Infinity, right: -Infinity, leftWho: '', rightWho: '' };   // its leftmost and rightmost ink, rect-relative
+const internInk = { left: Infinity, right: -Infinity, leftWho: '', rightWho: '' };  // the same over the intern at its laptop, still and swaying
 let boundsDocs = 0;
 for (const sp of KEYS) {
   const w = worst[sp] = {};
@@ -475,11 +557,15 @@ for (const sp of KEYS) {
     if (cut > e.cut) { e.cut = cut; e.cutKey = key; }
     const side = pastMargin(b, vb);
     if (side > e.side) { e.side = side; e.sideKey = key; }
-    if (kind === 'chibi' && b !== null) {
+    if ((kind === 'chibi' || kind === 'intern') && b !== null) {
       const across = Math.max(rect.x - b.x0, b.x1 - (rect.x + rect.w));
       if (across > chibiAcross.units) Object.assign(chibiAcross, { units: across, who: `${label(sp, key)} ${key}` });
       if (b.x0 - rect.x < chibiInk.left) Object.assign(chibiInk, { left: b.x0 - rect.x, leftWho: `${label(sp, key)} ${key}` });
       if (b.x1 - rect.x > chibiInk.right) Object.assign(chibiInk, { right: b.x1 - rect.x, rightWho: `${label(sp, key)} ${key}` });
+    }
+    if (kind === 'intern' && b !== null) {
+      if (b.x0 - rect.x < internInk.left) Object.assign(internInk, { left: b.x0 - rect.x, leftWho: `${label(sp, key)} ${key}` });
+      if (b.x1 - rect.x > internInk.right) Object.assign(internInk, { right: b.x1 - rect.x, rightWho: `${label(sp, key)} ${key}` });
     }
   }
 }
@@ -500,13 +586,38 @@ for (const kind of FRAME_KINDS) {
 //   neighbour draws one pitch over — frames may overlap, ink may not touch; any more is spacing the operator asked to reclaim.
 const pxOf = (units) => units * STOOL_W / C.SEAT_RECT.w;
 const leastFrame = Math.ceil(STOOL_W + 2 * pxOf(Math.max(0, chibiAcross.units)) - 1e-9);
-const leastPitch = Math.floor(pxOf(chibiInk.right - chibiInk.left) + 1e-9) + 1;
-measure(`the chibi's ink past its rect's sides, the widest: ${chibiAcross.units.toFixed(2)} units (${chibiAcross.who}), ${pxOf(chibiAcross.units).toFixed(2)} px — the least whole-pixel frame ${leastFrame}`);
-measure(`the chibi's ink across, rect-relative: leftmost ${chibiInk.left.toFixed(2)} units (${chibiInk.leftWho}), rightmost ${chibiInk.right.toFixed(2)} (${chibiInk.rightWho}) — ${pxOf(chibiInk.right - chibiInk.left).toFixed(2)} px from one to the other, so the least whole-pixel pitch at which no two interns' ink touches is ${leastPitch}`);
+// card#12448: the FRAME and the PITCH both read the intern as the floor draws it — at its laptop, still and at both
+// extremes of its sway, which the operator FIXED at ×0.6 (2026-10-27) — beside the plain chibi: a frame must hold the
+// swayed ink or the painter clips it, and two neighbours sway out of step, so their ink must not touch at any frame.
+// The sway is a constant, so the frame it sizes does not move it — the two have one answer.
+const pitchInk = { left: Math.min(chibiInk.left, internInk.left), right: Math.max(chibiInk.right, internInk.right) };
+const leastPitch = Math.floor(pxOf(pitchInk.right - pitchInk.left) + 1e-9) + 1;
+measure(`the chibi's ink past its rect's sides, swaying included, the widest: ${chibiAcross.units.toFixed(2)} units (${chibiAcross.who}), ${pxOf(chibiAcross.units).toFixed(2)} px — the least whole-pixel frame ${leastFrame}`);
+measure(`the chibi's ink across, rect-relative: leftmost ${chibiInk.left.toFixed(2)} units (${chibiInk.leftWho}), rightmost ${chibiInk.right.toFixed(2)} (${chibiInk.rightWho}); at its laptop and swaying: leftmost ${internInk.left.toFixed(2)} (${internInk.leftWho}), rightmost ${internInk.right.toFixed(2)} (${internInk.rightWho}) — ${pxOf(pitchInk.right - pitchInk.left).toFixed(2)} px from one to the other, so the least whole-pixel pitch at which no two interns' ink touches is ${leastPitch}`);
 check(Number.isFinite(chibiAcross.units) && STOOL_FRAME === leastFrame,
-  `desk-layout.js's STOOL_FRAME (${STOOL_FRAME}) is the least whole-pixel frame whose margin each side holds the widest chibi past its rect (${leastFrame})`);
-check(Number.isFinite(chibiInk.right) && STOOL_PITCH === leastPitch,
-  `desk-layout.js's STOOL_PITCH (${STOOL_PITCH}) is the least whole-pixel pitch at which no two interns' ink touches (${leastPitch})`);
+  `desk-layout.js's STOOL_FRAME (${STOOL_FRAME}) is the least whole-pixel frame whose margin each side holds the widest intern, swaying at ±${C.INTERN_SWAY_DEG}°, or chibi past its rect (${leastFrame})`);
+check(Number.isFinite(chibiInk.right) && Number.isFinite(internInk.right) && STOOL_PITCH === leastPitch,
+  `desk-layout.js's STOOL_PITCH (${STOOL_PITCH}) is the least whole-pixel pitch at which no two interns' ink touches, each swaying at ±${C.INTERN_SWAY_DEG}° (${leastPitch})`);
+// THE BACK ROW's LAPTOP CLEARS THE FRONT ROW's HEAD (card#12448, the coordinator's check on card#12444's two rows): an
+// intern of the back row stands one row step above the intern in front of it, in the same column, and is drawn first —
+// so its laptop's lowest ink, still or swaying, must stay above the topmost ink any front-row intern draws, or the front
+// row's head would be drawn over a laptop it seems to sit inside. Measured over the same population, in the chibi frame's
+// units, with the row step read off the floor's own slots.
+{
+  const perRow = slots.findIndex((sl) => sl.row === 1);
+  const stepUnits = (slots[0].y - slots[perRow].y) * C.SEAT_RECT.w / STOOL_W;
+  let lidLow = -Infinity, lidWho = '', headTop = Infinity, headWho = '';
+  for (const sp of KEYS) for (const key of keysOf(sp)) for (const sway of [undefined, 1, 3]) {
+    const doc = C.frameDocument(`${key}~intern`, { species: sp, chibi: true, laptop: true, sway });
+    const b = inkBounds(doc, (node, nb) => { if (node.attrs?.['data-part'] === 'lid' && nb.y1 > lidLow) { lidLow = nb.y1; lidWho = `${label(sp, key)} ${key} sway=${sway ?? 'still'}`; } });
+    if (b.y0 < headTop) { headTop = b.y0; headWho = `${label(sp, key)} ${key}`; }
+  }
+  const clear = headTop - (lidLow - stepUnits);
+  measure(`the back row's lowest laptop ink sits ${clear.toFixed(2)} units (${(clear * STOOL_W / C.SEAT_RECT.w).toFixed(2)} px) above the front row's topmost ink — lid ${lidLow.toFixed(2)} (${lidWho}) one row step of ${stepUnits.toFixed(2)} up, head ${headTop.toFixed(2)} (${headWho})`);
+  check(perRow > 0 && Number.isFinite(clear) && clear > 0, `no back-row intern's laptop reaches down to a front-row intern's head (${clear.toFixed(2)} units clear)`);
+  const halved = headTop - (lidLow - stepUnits / 2);
+  check(halved <= 0, `CONTROL — at half the row step the same laptop reaches ${(-halved).toFixed(2)} units past the front row's head, so the leg can see an overlap`);
+}
 // THE CREST TABLE, held by the same reader (§ 10.4 item 4; card#12187's CREST_TOP): for every species and variant, the
 // sleeper's topmost ink WITHOUT its z's — the document cut before its `zs` group — lies at or under the crest top the
 // tree declares, within 1 unit (the table is stated in whole units, and 1 unit stays inside Z_GAP's 2, the gap the z's

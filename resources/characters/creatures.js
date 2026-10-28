@@ -764,6 +764,16 @@ function browsSvg(F, style) {
   }
   return `<g data-part="brows">${out.join('')}</g>`;
 }
+/**
+ * The lowest line any mouth style draws, in the species' own drawing — `mouthSvg()`'s origin, `F.my` + 1.2, plus 9
+ * mouth units (`F.ms × MOUTH_K`), at or under the deepest point any style reaches (`call`'s, at 8.6) — or `null` for a
+ * face with no mouth of its own (a beak). The intern's laptop lid stands under it (card#12448, `chibiOf()`), so a
+ * change to a mouth's depth moves the lid with it; `tools/characters/selftest.mjs` § 6b measures the face's ink
+ * against the lid's top edge, and reds where this line is not under every mouth.
+ */
+function mouthFloor(F) {
+  return F.my == null ? null : F.my + 1.2 + 9 * F.ms * MOUTH_K;
+}
 function mouthSvg(F, style) {
   if (F.my == null) return '';
   const x = 54, y = F.my + 1.2, k = F.ms * MOUTH_K;
@@ -927,6 +937,114 @@ function rimOf(markup) {
     .replace(/ (?:opacity|fill-opacity|stroke-opacity)="[^"]*"/g, '');
 }
 
+// ---- the intern's laptop (card#12448; FLOOR.md § 8, § 10.4's frame contract item 3, § 12) ----
+// The operator's ask (2026-10-26): "each subagent to have a laptop placed in front of their lap, and they should move
+// left and right to look like they are typing … a variety of laptop colors and stickers so that each subagent's
+// laptop has unique design." The laptop is drawn INSIDE the intern's own transform from the chibi geometry — the
+// face's lowest line after the squash (`chibiOf()`'s `lid`) and the foot — so it follows a re-proportioned or taller
+// intern (card#12444) unchanged; no figure of it is in scene pixels. Seen in the floor's 3/4 oblique the lid's BACK
+// faces the viewer, with the stickers (the operator's C1, 2026-10-27). The lid stands from under the face to just over
+// the feet (the operator's ruling of 2026-10-27: "The subagent's laptop cover should be taller. It is OK not to see
+// their hands."), so the eyes and the mouth are over its top edge, the paws and the keys are behind it, and the
+// screen, which faces the intern, shows only as a lit edge and a glow along the top.
+
+/** The laptop shells — ten, chosen to differ at one floor pixel: light, dark, and eight hues apart. */
+export const LAPTOP_SHELLS = Object.freeze(['#e4e0d8', '#3b3e4b', '#c8553d', '#e0a43a', '#7fb3d5', '#7f9f6a', '#8a5a8e', '#3f8f8a', '#e08aa0', '#4b6e3f']);
+/** The sticker shapes, each drawn by `stickerSvg()`. */
+export const STICKER_SHAPES = Object.freeze(['star', 'heart', 'leaf', 'bolt', 'smiley', 'planet', 'paw', 'mug']);
+/** The sticker inks — a sticker is drawn in an ink that stands off its shell (`laptopOf()`'s contrast filter). */
+export const STICKER_INKS = Object.freeze(['#fff5e0', '#2b2430', '#f2c44a', '#e3524f', '#5aa0e0', '#79c26f']);
+/** The least RGB distance a sticker's ink keeps from its shell, so no sticker vanishes into its lid. */
+export const STICKER_CONTRAST = 110;
+/** The sway loop: this many LOOP FRAMES (4 fps), centre → left → centre → right, so one cycle is a second. */
+export const INTERN_LOOP = 4;
+/**
+ * THE SWAY — FIXED by the operator's ruling of 2026-10-27, *"x0.6"*: ×0.6 of the sampled sway of ±3° and 0.022 of the
+ * drawn height, so each extreme rotates the intern this many degrees about its foot and shifts it this share of its
+ * drawn height sideways. The intern's FRAME and the floor's PITCH grow to hold it: `tools/characters/selftest.mjs` § 8b
+ * measures every intern at both extremes and reds when `desk-layout.js`'s `STOOL_FRAME` or `STOOL_PITCH` is not the
+ * least that holds them (FLOOR.md § 12's *Intern sway*, § 13 row 87).
+ */
+export const INTERN_SWAY_DEG = 1.8;
+export const INTERN_SWAY_DX = 0.0132;
+
+function rgbDist(a, b) { const A = hex2rgb(a), B = hex2rgb(b); return Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]); }
+
+/**
+ * A key's laptop — a pure function of the intern key, one named draw per field (seed.js's `draw`), so the laptop is
+ * the intern's for as long as it exists and depends on no sibling: shell, two stickers at fixed slots, each a shape
+ * and an ink that contrasts with the shell, the second sticker's shape drawn away from the first's.
+ * @param {string} key @returns {{shell: string, stickers: {shape: string, ink: string}[]}}
+ */
+export function laptopOf(key) {
+  const shell = pick(key, 'laptop:shell', LAPTOP_SHELLS);
+  const inks = STICKER_INKS.filter((c) => rgbDist(c, shell) >= STICKER_CONTRAST);
+  const a = pick(key, 'laptop:sticker-a', STICKER_SHAPES);
+  const b = pick(key, 'laptop:sticker-b', STICKER_SHAPES.filter((s) => s !== a));
+  return { shell, stickers: [{ shape: a, ink: pick(key, 'laptop:ink-a', inks) }, { shape: b, ink: pick(key, 'laptop:ink-b', inks) }] };
+}
+
+/** One sticker, `r` units across its half-extent, centred at the origin, in its ink. */
+function stickerSvg(shape, ink, r) {
+  const edge = `stroke="${tint(ink, 0.55)}" stroke-width="${f(r * 0.16)}" stroke-linejoin="round"`;
+  const P = (pts) => pts.map(([x, y]) => `${f(x * r)} ${f(y * r)}`).join('L');
+  switch (shape) {
+    case 'star': {
+      const pts = [];
+      for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, d = i % 2 ? 0.46 : 1; pts.push([Math.cos(a) * d, Math.sin(a) * d]); }
+      return `<path d="M${P(pts)}Z" fill="${ink}" ${edge}/>`;
+    }
+    case 'heart':
+      return `<path d="M0 ${f(r * 0.95)}C${f(-r * 1.5)} ${f(r * 0.1)} ${f(-r * 0.9)} ${f(-r * 1.05)} 0 ${f(-r * 0.35)}C${f(r * 0.9)} ${f(-r * 1.05)} ${f(r * 1.5)} ${f(r * 0.1)} 0 ${f(r * 0.95)}Z" fill="${ink}" ${edge}/>`;
+    case 'leaf':
+      return `<g transform="rotate(-35)"><path d="${leafD(r * 2.1, r * 0.95)}" transform="translate(0 ${f(r)})" fill="${ink}" ${edge}/></g>`;
+    case 'bolt':
+      return `<path d="M${P([[0.15, -1], [-0.6, 0.15], [-0.05, 0.15], [-0.25, 1], [0.6, -0.2], [0.05, -0.2]])}Z" fill="${ink}" ${edge}/>`;
+    case 'smiley':
+      return `<circle r="${f(r)}" fill="${ink}" ${edge}/><circle cx="${f(-r * 0.34)}" cy="${f(-r * 0.22)}" r="${f(r * 0.13)}" fill="${EYE}"/><circle cx="${f(r * 0.34)}" cy="${f(-r * 0.22)}" r="${f(r * 0.13)}" fill="${EYE}"/><path d="M${f(-r * 0.45)} ${f(r * 0.25)}Q0 ${f(r * 0.75)} ${f(r * 0.45)} ${f(r * 0.25)}" stroke="${EYE}" stroke-width="${f(r * 0.14)}" fill="none" stroke-linecap="round"/>`;
+    case 'planet':
+      return `<circle r="${f(r * 0.72)}" fill="${ink}" ${edge}/><ellipse rx="${f(r * 1.15)}" ry="${f(r * 0.3)}" transform="rotate(-22)" fill="none" stroke="${tint(ink, 0.6)}" stroke-width="${f(r * 0.2)}"/>`;
+    case 'paw':
+      return `<ellipse cy="${f(r * 0.3)}" rx="${f(r * 0.62)}" ry="${f(r * 0.5)}" fill="${ink}" ${edge}/>` + [[-0.72, -0.25], [-0.28, -0.7], [0.28, -0.7], [0.72, -0.25]].map(([x, y]) => `<circle cx="${f(x * r)}" cy="${f(y * r)}" r="${f(r * 0.26)}" fill="${ink}" ${edge}/>`).join('');
+    case 'mug':
+      return `<rect x="${f(-r * 0.7)}" y="${f(-r * 0.6)}" width="${f(r * 1.2)}" height="${f(r * 1.3)}" rx="${f(r * 0.2)}" fill="${ink}" ${edge}/><path d="M${f(r * 0.5)} ${f(-r * 0.3)}q${f(r * 0.75)} 0 0 ${f(r * 0.75)}" fill="none" stroke="${ink}" stroke-width="${f(r * 0.28)}"/><path d="M${f(-r * 0.3)} ${f(-r * 0.85)}q-${f(r * 0.2)} -${f(r * 0.3)} 0 -${f(r * 0.55)}M${f(r * 0.15)} ${f(-r * 0.85)}q-${f(r * 0.2)} -${f(r * 0.3)} 0 -${f(r * 0.55)}" fill="none" stroke="${tint(ink, 0.5)}" stroke-width="${f(r * 0.12)}" stroke-linecap="round"/>`;
+  }
+  return '';
+}
+
+/**
+ * The laptop on an intern's lap, in the chibi frame's units and the intern's own transform. Every figure is a share
+ * of the intern's drawn geometry: `lid` the line `chibiOf()` stands the lid on, `hw` the body's half-width at the
+ * arms, the foot at `FOOT`. THE LID's HEIGHT RULE (FLOOR.md § 12's *Intern laptop lid* row; the operator's ruling of
+ * 2026-10-27): its top edge is `lid` — `LID_GAP` under the face's lowest line, the chin or the mouth's floor after the
+ * squash — and its bottom edge 0.16 of the drop from that edge to the foot short of the foot, so the lid covers the
+ * body band, paws included, and never the eyes or the mouth. Its width is the arms' span, held to 44–70 units; the two
+ * stickers stand on the lid at fixed shares of it, sized to fit inside it.
+ */
+function laptopSvg(pen, lap, { lid, hw }) {
+  const lidW = Math.max(44, Math.min(70, 2 * hw));
+  const y0 = lid;                         // the lid's top edge, under the face
+  const y1 = FOOT - (FOOT - lid) * 0.16;  // the lid's bottom edge, just over the feet
+  const lidH = y1 - y0;
+  const x0 = 54 - lidW / 2;
+  const S = lap.shell;
+  const glow = '#bfe4ff';
+  const out = [];
+  // the screen's glow, behind the lid: a thin wash along its top edge, which faces the intern
+  out.push(`<ellipse cx="54" cy="${f(y0)}" rx="${f(lidW * 0.44)}" ry="3.2" fill="${pen.soft(glow, 0.55)}"/>`);
+  // the lid's back, with its stickers — the part the viewer sees
+  out.push(`<rect data-part="lid" x="${f(x0)}" y="${f(y0)}" width="${f(lidW)}" height="${f(lidH)}" rx="${f(Math.min(lidH, lidW) * 0.12)}" fill="${pen.paint(S)}" stroke="${line(S)}" stroke-width="1.4"/>`);
+  // the screen's lit edge along the lid's top
+  out.push(`<path d="M${f(x0 + 2)} ${f(y0 + 0.6)}H${f(x0 + lidW - 2)}" stroke="${glow}" stroke-width="1.3" stroke-linecap="round" opacity=".9"/>`);
+  const r = Math.min(lidH * 0.17, lidW * 0.12);
+  const slots = [[54 - lidW * 0.22, y0 + lidH * 0.38, -12], [54 + lidW * 0.24, y0 + lidH * 0.64, 9]];
+  lap.stickers.forEach((st, i) => {
+    const [sx, sy, rot] = slots[i];
+    out.push(`<g data-part="sticker" transform="translate(${f(sx)} ${f(sy)}) rotate(${rot})">${stickerSvg(st.shape, st.ink, r)}</g>`);
+  });
+  return out.join('');
+}
+
 // ---- the frames ----
 /**
  * THE CHARACTER's RECT, in frame units: a seat's 108 × 192 over the floor's character rect —
@@ -942,10 +1060,11 @@ export const SEAT_RECT = Object.freeze({ x: 0, y: 0, w: 108, h: 192 });
 /**
  * THE INTERN's RECT AND FRAME ON THE FLOOR, in floor pixels — `floor/desk-layout.js`'s `STOOL_W` × `STOOL_H` and its
  * `STOOL_FRAME` (card#12444, the operator's rulings of 2026-10-27: 1.75 times card#11058's 20 × 32, and a frame the least
- * that holds every chibi's ink). The tree cannot import the floor, so the figures are stated here and held equal to the
- * floor's by `tools/characters/selftest.mjs` § 7b; the chibi frame below is derived from them.
+ * that holds every intern's ink — at its laptop and at both extremes of its sway since card#12448). The tree cannot
+ * import the floor, so the figures are stated here and held equal to the floor's by `tools/characters/selftest.mjs` § 7b;
+ * the chibi frame below is derived from them.
  */
-export const CHIBI_STOOL = Object.freeze({ w: 35, h: 56, frame: 38 });
+export const CHIBI_STOOL = Object.freeze({ w: 35, h: 56, frame: 41 });
 /**
  * THE INTERN's CHIBI FRAME: the intern rect in units — 108 units over its width, so its height is `108 × h / w` units, the
  * last that many above the foot (the rect's aspect) — widened to `CHIBI_STOOL.frame` px, centred, which holds the widest
@@ -981,12 +1100,21 @@ function headOf(A) {
   return { top: A.hat.y, chin };
 }
 
-/** The chibi geometry for a built species: how far the body below the chin is squashed. */
+/** The gap the intern's laptop lid keeps under the face's lowest line, in frame units (card#12448). */
+const LID_GAP = 1.5;
+
+/**
+ * The chibi geometry for a built species: how far the body below the chin is squashed, and `lid` — the line the
+ * intern's laptop lid stands on, in the chibi frame AFTER the squash: `LID_GAP` under the face's lowest line (the
+ * chin, or the mouth's floor where a mouth reaches past the chin line and is squashed with the body).
+ */
 function chibiOf(A) {
   const { top, chin } = headOf(A);
   const head = chin - top, body = FOOT - chin;
   const k = Math.min(0.75, (head / body) * (1 / CHIBI_TARGET - 1));
-  return { top, chin, k, share: head / (head + body * k) };
+  const shift = body * (1 - k);
+  const floor = Math.max(chin, mouthFloor(A.face) ?? chin);
+  return { top, chin, k, share: head / (head + body * k), lid: shift + chin + (floor - chin) * k + LID_GAP };
 }
 
 function build(key, force) {
@@ -1018,11 +1146,12 @@ function worn(r, sp, A) {
 /**
  * One frame of one key, as a standalone SVG document.
  * @param {string} key the seat key, or an intern key `seat~<call_id>`
- * @param {{ phase?: 0|1|2, chibi?: boolean, species?: string, expression?: string, level?: 0|1|2|3, clear?: object[] }} [opt]
+ * @param {{ phase?: 0|1|2, chibi?: boolean, species?: string, expression?: string, level?: 0|1|2|3, clear?: object[], laptop?: boolean, sway?: number }} [opt]
  *        phase 0 is the standing frame; `expression` a key of `EXPRESSIONS`, `neutral` when absent; for an expression
  *        with a marker, `level` its brightness (3, full, when absent) and `clear` the floor's clear rects
  *        (`floor/desk-layout.js`'s `characterOverdraw()`), without which a marker is refused — never drawn against guessed
- *        furniture (card#12444)
+ *        furniture (card#12444); `laptop` (the intern's laptop on its lap) and `sway` (a loop frame 0 .. INTERN_LOOP − 1
+ *        of the typing sway) are the chibi frame's (card#12448)
  * @returns {string}
  */
 export function frameDocument(key, opt = {}) {
@@ -1032,6 +1161,7 @@ export function frameDocument(key, opt = {}) {
   if (X === undefined) throw new RangeError(`no expression ${opt.expression}`);
   const level = opt.level ?? 3;
   if (![0, 1, 2, 3].includes(level)) throw new RangeError(`level must be 0, 1, 2 or 3, got ${level}`);
+  if (opt.laptop && !opt.chibi) throw new RangeError('the laptop is the chibi frame\'s: a seat frame has no lap to put it on');
   const { r, sp, pen, c, A } = build(key, opt.species);
   const { hat, neck, extra } = worn(r, sp, A);
   const F = A.face;
@@ -1061,9 +1191,8 @@ export function frameDocument(key, opt = {}) {
   if (neck !== 'none' && extra === 'satchel') parts.push(satchelSvg(pen, A.neck, r.acc2, -c.side));
   parts.push(...c.layers.front);
   parts.push(blushSvg(pen, F, r.blush, A.blushDx || 0));
-  parts.push(eyesSvg(pen, F, r.eyes, X));
-  parts.push(browsSvg(F, X.brows ?? r.brows));
-  parts.push(mouthSvg(F, F.beak ? null : (X.mouth ?? r.mouth)));
+  // the face — eyes, brows and mouth — in one group, which the selftest reads to hold the laptop's lid under it
+  parts.push(`<g data-part="face">${eyesSvg(pen, F, r.eyes, X)}${browsSvg(F, X.brows ?? r.brows)}${mouthSvg(F, F.beak ? null : (X.mouth ?? r.mouth))}</g>`);
   if (neck !== 'none') parts.push(neckSvg(pen, A.neck, neck, r.acc1, r.acc2, c.side));
   if (neck === 'none' && extra === 'satchel') parts.push(satchelSvg(pen, A.neck, r.acc2, -c.side));
   if (extra === 'glasses') parts.push(glassesSvg(F));
@@ -1077,7 +1206,19 @@ export function frameDocument(key, opt = {}) {
   const lean = phase === 0 ? 0 : (phase === 1 ? -2 : 2);
   // THE INTERN STANDS UPRIGHT (card#12444): the chibi frame is drawn untilted — the key's tilt reached a wide cap past
   // the intern's pitch-wide frame, and an intern a stool's width across reads a 3° lean as a fall, not a character.
-  const tf = `translate(54 ${FOOT}) scale(${s} ${s}) rotate(${opt.chibi ? 0 : r.tilt + lean}) translate(-54 -${FOOT})`;
+  // card#12448: the intern's typing sway, a loop frame 0 .. INTERN_LOOP − 1 — centre, left, centre, right — a rotation
+  // about the foot and a lateral shift proportional to the drawn height, laptop and all; no `sway` is the still.
+  if (opt.sway !== undefined && !(opt.chibi && Number.isInteger(opt.sway) && opt.sway >= 0 && opt.sway < INTERN_LOOP)) {
+    throw new RangeError(`sway is a chibi frame's loop frame 0..${INTERN_LOOP - 1}, got ${opt.sway}`);
+  }
+  const sway = opt.sway === undefined ? 0 : [0, -1, 0, 1][opt.sway];
+  let swayTf = '';
+  if (sway !== 0) {
+    const g = chibiOf(A);
+    const height = FOOT - (g.top + (FOOT - g.chin) * (1 - g.k));
+    swayTf = ` translate(${f(sway * INTERN_SWAY_DX * height)} 0) rotate(${f(sway * INTERN_SWAY_DEG)} 54 ${FOOT})`;
+  }
+  const tf = `translate(54 ${FOOT}) scale(${s} ${s}) rotate(${opt.chibi ? 0 : r.tilt + lean}) translate(-54 -${FOOT})${swayTf}`;
   // The shadow ends ON the foot line (187.5 + 4.5 = 192, the rect's bottom): at ry 4.6 it reached a tenth of a unit
   // under it in every frame, the one bottom-edge overshoot the frame-bounds leg found (card#12259).
   const shadow = `<ellipse cx="54" cy="187.5" rx="${f(A.shadow * s)}" ry="4.5" fill="${pen.soft('#1c1424', 0.42)}"/>`;
@@ -1096,6 +1237,14 @@ export function frameDocument(key, opt = {}) {
     pen.defs.push(`<clipPath id="c_body"><rect x="-200" y="${f(g.chin)}" width="508" height="400"/></clipPath>`);
     inner = `<g transform="translate(0 ${f(shift)})" clip-path="url(#c_head)"><use href="#c_drawing"/></g>` +
       `<g transform="translate(0 ${f(shift + g.chin)}) scale(1 ${f(g.k)}) translate(0 -${f(g.chin)})" clip-path="url(#c_body)"><use href="#c_drawing"/></g>`;
+    if (opt.laptop) {
+      // card#12448: the laptop on the lap, from the squashed geometry — the chin line after the shift, and the body's
+      // half-width at the arms (or the shadow's where a species has no arms) — drawn over both bands, unsquashed and
+      // unrimmed: it is a prop, not the creature. A held mug or book (drawn in the body band) is behind it.
+      const hw = A.arms ? A.arms.dx : A.shadow * 0.8;
+      const markup = laptopSvg(pen, laptopOf(key), { lid: g.lid, hw });
+      inner += markup;
+    }
     vb = CHIBI_VIEWBOX;
   }
 

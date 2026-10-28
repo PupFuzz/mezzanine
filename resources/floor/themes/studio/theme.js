@@ -978,7 +978,7 @@ export function deskProps({ install_id: installId, seat_id: seatId }) {
  * the chibi frame's foot line (`resources/characters`' `FOOT`) under its 108 units over `seat_w` px, which the same leg
  * holds — so the cushion's top ends where the feet are and an intern sits ON its cushion.
  */
-const TABLE = Object.freeze({ w: 228, h: 98, seat_x: 4, seat_pitch: 38, seat_w: 35, per_row: 4, row_dy: 56, foot_lift: 1.3 });
+const TABLE = Object.freeze({ w: 228, h: 98, seat_x: 4, seat_pitch: 41, seat_w: 35, per_row: 4, row_dy: 56, foot_lift: 1.3 });
 
 /**
  * THE SIDE SEATING, at every desk with art — a LOW COUCH per row of interns (the operator's ruling of 2026-10-27 on
