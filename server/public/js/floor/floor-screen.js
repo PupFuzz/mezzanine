@@ -734,7 +734,13 @@ export class FloorScreen {
      */
     #scene(frame, rows, journal, now) {
         const drawable = this.#sceneInput !== null && frame.floor !== null;
-        const plain = drawable ? buildScene(frame, this.#sceneDocs(frame, rows)) : null;
+        // card#12450: the intern walks in flight going into this render — what item 16 turns an arrival from — and each
+        // intern's laptop opacity, which a departure and a flip fade from.
+        const plain = drawable ? buildScene(frame, {
+            ...this.#sceneDocs(frame, rows),
+            interns_in_flight: this.#inFlight.interns(now),
+            laptop_at: (key) => this.#inFlight.laptopAt(key, now),
+        }) : null;
 
         if (drawable) {
             this.#lastFrame = frame;
@@ -751,6 +757,16 @@ export class FloorScreen {
             stilled: (frame.failure?.sign_in ?? null) !== null,
             side: (key) => walkSide(frame.desks?.desks?.[key]?.render_state?.value),
             lattice_key: plain?.lattice_key ?? null,
+            // card#12450, item 17: an intern walk's anchor is its SLOT's foot in this render's scene, and the interns
+            // the arrays hold are what an arrival the cap dropped is cancelled against.
+            // The slot the intern holds NOW (a departing one's last), so a slot that moved under a walk is a moved anchor.
+            slot_foot: (fx) => {
+                const key = `${fx.install_id}/${fx.seat_id}`;
+                const slot = (frame.desks?.desks?.[key]?.side_table?.stools ?? []).find((s) => s.call_id === fx.call_id)?.slot ?? fx.slot;
+
+                return plain?.slot_feet?.[key]?.[slot] ?? null;
+            },
+            interns: new Set(Object.entries(frame.desks?.desks ?? {}).flatMap(([key, d]) => (d.side_table?.stools ?? []).map((s) => `${key}~${s.call_id}`))),
         });
         this.#armWalkEnd(now);
 
@@ -780,27 +796,61 @@ export class FloorScreen {
      */
     #overlay(frame, plain, now) {
         const inbound = this.#inFlight.inbound(now);
+        const inboundInterns = this.#inFlight.inboundInterns(now);
         let scene = plain;
 
+        let desks = null;
+
         if (inbound.size > 0) {
-            const desks = { ...frame.desks.desks };
+            desks = { ...frame.desks.desks };
 
             for (const key of inbound) {
                 if (desks[key] !== undefined) {
                     desks[key] = inboundDesk(desks[key]);
                 }
             }
+        }
 
+        if (inboundInterns.size > 0) {
+            desks ??= { ...frame.desks.desks };
+
+            // card#12450: an intern whose arrival is in flight is drawn by its walker, so its stool draws empty — its
+            // slot kept, the side table seated for it — until the paint-only refresh at the arrival's end seats it.
+            for (const key of Object.keys(desks)) {
+                const stools = desks[key].side_table?.stools ?? [];
+
+                if (stools.some((s) => inboundInterns.has(`${key}~${s.call_id}`))) {
+                    desks[key] = Object.freeze({
+                        ...desks[key],
+                        side_table: Object.freeze({ ...desks[key].side_table, stools: stools.filter((s) => !inboundInterns.has(`${key}~${s.call_id}`)) }),
+                    });
+                }
+            }
+        }
+
+        if (desks !== null) {
             scene = buildScene({ ...frame, desks: { ...frame.desks, desks } }, this.#sceneDocs(frame, []));
         }
+
+        // card#12451: an intern walk's `seat` leg reads the intern's HELD state at each paint — the laptop of an arrival
+        // whose subagent went idle on the way stays down — so each walk in flight carries it, read off the frame.
+        const heldOf = (fx) => (frame.desks?.desks?.[`${fx.install_id}/${fx.seat_id}`]?.side_table?.stools ?? [])
+            .find((s) => s.call_id === fx.call_id)?.activity ?? null;
+        const current = this.#inFlight.current(now).map((fx) => (fx.animation_id === 'A10' && typeof fx.intern_key === 'string'
+            ? Object.freeze({ ...fx, held_activity: heldOf(fx) })
+            : fx));
 
         return Object.freeze({
             ...scene,
             // The static forms this render's own rows drew (§ 6.4: frames 0 — a bead, a broadcast
             // marker) are this paint's alone, as they always were; everything with frames to run is the
             // holder's, this render's new ones included.
-            effects: Object.freeze([...plain.effects.filter((e) => !(e.frames > 0) && !(e.still_frames > 0)), ...this.#inFlight.current(now)]),
+            effects: Object.freeze([...plain.effects.filter((e) => !(e.frames > 0) && !(e.still_frames > 0)), ...current]),
             doors: Object.freeze(this.#inFlight.doors(now)),
+            // The instant on the page's clock `doors` is in frames from — the painter pins the leaves' motion to it, as it
+            // pins every walker to its own start, so neither the scene's build nor the browser's layout of the paint
+            // that follows delays the leaves behind a walker already stepping out through them (card#12450).
+            doors_at: now,
             // § 4.5: the elevator's leaves while a ride holds them — the painter draws them from this and
             // adds nothing for a walk's door span meanwhile; `doors` stays the walks' (AT-D3-23's instrument).
             ride: this.#ride.sceneRide(now),

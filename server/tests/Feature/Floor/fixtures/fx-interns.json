@@ -255,48 +255,56 @@
                   "call_id": "2SJ650Q0KMCRB0000000000000",
                   "title": "slice 1",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:15.400Z"
                 },
                 {
                   "call_id": "MCBER9GSAVH650000000000000",
                   "title": "slice 2",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:16.400Z"
                 },
                 {
                   "call_id": "6Z4PBH9H12NNE0000000000000",
                   "title": null,
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:17.400Z"
                 },
                 {
                   "call_id": "RJXYYS29R9S370000000000000",
                   "title": "slice 4",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:18.400Z"
                 },
                 {
                   "call_id": "A5P6J2V1EGXH10000000000000",
                   "title": "slice 5",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:19.400Z"
                 },
                 {
                   "call_id": "WREE5AKS5R2ZA0000000000000",
                   "title": "slice 6",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:20.400Z"
                 },
                 {
                   "call_id": "EB7PRKCHWZ6D40000000000000",
                   "title": "slice 7",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:21.400Z"
                 },
                 {
                   "call_id": "0Y0YBV59K6AVD0000000000000",
                   "title": "slice 8",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:22.400Z"
                 }
               ],
@@ -363,48 +371,56 @@
               "call_id": "2SJ650Q0KMCRB0000000000000",
               "title": "slice 1",
               "subagent_type": "coder",
+              "activity_state": "working",
               "started_at": "2026-08-23T14:23:15.400Z"
             },
             {
               "call_id": "MCBER9GSAVH650000000000000",
               "title": "slice 2",
               "subagent_type": "coder",
+              "activity_state": "working",
               "started_at": "2026-08-23T14:23:16.400Z"
             },
             {
               "call_id": "6Z4PBH9H12NNE0000000000000",
               "title": null,
               "subagent_type": "coder",
+              "activity_state": "working",
               "started_at": "2026-08-23T14:23:17.400Z"
             },
             {
               "call_id": "RJXYYS29R9S370000000000000",
               "title": "slice 4",
               "subagent_type": "coder",
+              "activity_state": "working",
               "started_at": "2026-08-23T14:23:18.400Z"
             },
             {
               "call_id": "A5P6J2V1EGXH10000000000000",
               "title": "slice 5",
               "subagent_type": "coder",
+              "activity_state": "working",
               "started_at": "2026-08-23T14:23:19.400Z"
             },
             {
               "call_id": "WREE5AKS5R2ZA0000000000000",
               "title": "slice 6",
               "subagent_type": "coder",
+              "activity_state": "working",
               "started_at": "2026-08-23T14:23:20.400Z"
             },
             {
               "call_id": "EB7PRKCHWZ6D40000000000000",
               "title": "slice 7",
               "subagent_type": "coder",
+              "activity_state": "working",
               "started_at": "2026-08-23T14:23:21.400Z"
             },
             {
               "call_id": "0Y0YBV59K6AVD0000000000000",
               "title": "slice 8",
               "subagent_type": "coder",
+              "activity_state": "working",
               "started_at": "2026-08-23T14:23:22.400Z"
             }
           ],

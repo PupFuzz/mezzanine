@@ -354,22 +354,23 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 'stroke:var(--scene-stool);stroke-width:1.5;stroke-dasharray:3 2}', 'stroke:var(--scene-stool);stroke-dasharray:3 2}'],
             'an intern drawn as the glyph with its art intact' => ['../floor/painter.js', '                    if (e.art) {', '                    if (false) {'],
             "an intern's sprite outside its clipping viewport" => ['../floor/painter.js',
-                "heldArt(g, drawn, e, e.untitled ? 'intern untitled' : 'intern', e.install_id, e.key);",
-                "heldArt(g, drawn, { ...e, overdraw: e }, e.untitled ? 'intern untitled' : 'intern', e.install_id, e.key);"],
+                "heldArt(g, drawn, e, cls, e.install_id, e.key);",
+                "heldArt(g, drawn, { ...e, overdraw: e }, cls, e.install_id, e.key);"],
             // An intern's key is minted per dispatch: the painter drops the frames of each one it no longer
             // draws — its Map is the only cache (card#11046: the tree holds none, and has no forget()).
             "an intern no longer drawn kept in the painter's frames" => ['../floor/painter.js',
                 "                for (const key of [...frames.keys()].filter((k) => k.startsWith(`\${asset}~`))) {\n                    frames.delete(key);\n                }", ''],
             // card#12448 — § 6.2 A23: the intern types exactly while its stool's rendering moves, from its own offset,
-            // and the rendering moves exactly while its desk's own held render does (until card#12451).
+            // and the rendering is held by its interns' own `activity_state` and moves while the desk's treatment permits it
+            // (card#12451).
             'an intern that never types' => ['../floor/painter.js',
-                "heldArt(g, drawn, e, e.untitled ? 'intern untitled' : 'intern', e.install_id, e.key);",
-                "heldArt(g, drawn, { ...e, animation: null }, e.untitled ? 'intern untitled' : 'intern', e.install_id, e.key);"],
+                "heldArt(g, drawn, e, cls, e.install_id, e.key);",
+                "heldArt(g, drawn, { ...e, animation: null }, cls, e.install_id, e.key);"],
             "an intern typing off its desk's render rather than its stool's own" => ['../floor/painter.js',
-                "heldArt(g, drawn, e, e.untitled ? 'intern untitled' : 'intern', e.install_id, e.key);",
-                "heldArt(g, drawn, { ...e, animation: desk.held }, e.untitled ? 'intern untitled' : 'intern', e.install_id, e.key);"],
-            'an intern typing on a desk whose own render is still' => ['../desk/desk-render.js',
-                "return heldRendering('A23', held !== null && held.motion === true, reduce);", "return heldRendering('A23', true, reduce);"],
+                "heldArt(g, drawn, e, cls, e.install_id, e.key);",
+                "heldArt(g, drawn, { ...e, animation: desk.held }, cls, e.install_id, e.key);"],
+            'an intern typing on a desk whose treatment stills it' => ['../desk/desk-render.js',
+                "return heldRendering('A23', permitted, reduce);", "return heldRendering('A23', true, reduce);"],
             // card#11046 — AT-D3-24's painter half, each planted in the shipped painter.
             'a character shown through an image that is not an SVG document (a raster frame)' => ['../floor/painter.js',
                 'export const svgUri = (doc) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(doc)}`;',

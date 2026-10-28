@@ -61,7 +61,7 @@ export const ANIMATION_SET = Object.freeze({
     A7: Object.freeze({ class: 'held', animation: "attention — a raised hand and a marker above the desk, its glow lit and dark in turn by the sleeper's pulse of brightness, phase-offset per seat, 4 fps loop", reduced: 'a static raised-hand pose and the marker, at full brightness' }),
     A8: Object.freeze({ class: 'held', animation: 'stalled — head in hands, static, with the api_error_type line', reduced: 'identical' }),
     A9: Object.freeze({ class: 'held', animation: "unknown — a question marker over an occupied desk, its glow lit and dark in turn by the sleeper's pulse of brightness, phase-offset per seat, 4 fps loop", reduced: 'the question marker drawn once, at full brightness, and still' }),
-    A10: Object.freeze({ class: 'edge', animation: 'intern-arrive / intern-leave — a stool at the side table fills or empties', reduced: 'the stool is simply occupied or empty' }),
+    A10: Object.freeze({ class: 'edge', animation: "intern-arrive / intern-leave — the elevator's leaves open on the intern standing in the cab, it steps out and walks its routed path to its stool, sits, and its laptop fades in; or its laptop fades out, it stands, walks its routed path to the elevator, waits there for up to a minute, the leaves open, it steps in and they close over it", reduced: 'the stool is simply occupied or empty' }),
     A11: Object.freeze({ class: 'edge', animation: 'badge-raise — a badge appears with a single 250 ms fade', reduced: 'the badge is simply present' }),
     A12: Object.freeze({ class: 'edge', animation: 'gauge — the context bar eases to its new value over 250 ms', reduced: 'the bar jumps to the value' }),
     A13: Object.freeze({ class: 'edge', animation: 'retire — the character stands, leaves, and the desk is removed from the floor (§ 3.5, card#9078: it used to clear the desk and stamp a plate)', reduced: 'the desk is simply absent on the next render' }),
@@ -76,7 +76,8 @@ export const ANIMATION_SET = Object.freeze({
     A20: Object.freeze({ class: 'edge', animation: 'broadcast-pulse — one ring expands from the origin desk across the floor', reduced: 'the origin desk carries a static broadcast marker for that post' }),
     A21: Object.freeze({ class: 'retired', animation: "call-marker — retired before it was built (card#12239's design round 1); never drawn", reduced: 'none — a retired row has no form' }),
     A22: Object.freeze({ class: 'edge', animation: "portal-bird — the bird carries the envelope from a resolved origin desk on this floor to the floor's bird portal and leaves, or arrives from the portal at a resolved destination desk on this floor, for a post whose other end resolves to a desk on another floor of this building", reduced: "a still envelope at the portal or at the desk for the moving form's duration, then gone" }),
-    A23: Object.freeze({ class: 'held', animation: 'intern-type — each intern at the side table types at the laptop on its lap, swaying gently left and right, 4 fps loop', reduced: 'each intern sits still with its laptop on its lap' }),
+    A23: Object.freeze({ class: 'held', animation: 'intern-type — each working intern at the side table types at the laptop on its lap, swaying gently left and right, 4 fps loop', reduced: 'each working intern sits still with its laptop on its lap' }),
+    A24: Object.freeze({ class: 'edge', animation: "laptop — an intern's laptop fades in or out over the laptop fade", reduced: 'the laptop is simply present or absent' }),
 });
 
 /**
@@ -128,6 +129,7 @@ export const FIRED_BY = Object.freeze({
     A21: 'retired',
     A22: 'coord',
     A23: 'desk',
+    A24: 'delta',
 });
 
 /**
@@ -279,6 +281,14 @@ const toolName = (seat) => seat.action?.tool_name ?? null;
 const callIds = (seat) => new Set((Array.isArray(seat.subagents) ? seat.subagents : []).map((s) => s.call_id));
 const badges = (seat) => new Set(Array.isArray(seat.badges) ? seat.badges : []);
 const sameMembers = (a, b) => a.size === b.size && [...a].every((v) => b.has(v));
+/** card#12451: `call_id → activity_state` over a seat's `subagents[]`. */
+const activities = (seat) => new Map((Array.isArray(seat.subagents) ? seat.subagents : []).map((s) => [s.call_id, s.activity_state]));
+/** § 6.2 A24's condition: an element present on BOTH sides changes its `activity_state`. */
+const flipped = (before, after) => {
+    const [a, b] = [activities(before), activities(after)];
+
+    return [...b].some(([id, state]) => a.has(id) && a.get(id) !== state);
+};
 const gained = (a, b) => [...b].some((v) => !a.has(v));
 
 /**
@@ -330,6 +340,8 @@ const DELTA_ROWS = Object.freeze([
     Object.freeze({ id: 'A11', changed: 'badges', fires: (before, after) => gained(badges(before), badges(after)) }),
     Object.freeze({ id: 'A12', changed: 'context', fires: () => true }),
     Object.freeze({ id: 'A13', changed: 'render_state', fires: retiring }),
+    // card#12451: a delta that only flips an element's state gains and loses no `call_id`, so it fires A24 and never A10.
+    Object.freeze({ id: 'A24', changed: 'subagents', fires: flipped }),
 ]);
 
 /** The `changed[]` member each delta-driven row is gated on — read by the closed-set assertions. */

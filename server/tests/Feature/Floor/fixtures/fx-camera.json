@@ -59,6 +59,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -433,6 +434,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -832,6 +834,7 @@
                   "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                   "title": "draft the D1 event schema",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:31.004Z"
                 }
               ],
@@ -1214,6 +1217,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -1588,6 +1592,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -1987,6 +1992,7 @@
                   "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                   "title": "draft the D1 event schema",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:31.004Z"
                 }
               ],
@@ -2236,6 +2242,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -2730,6 +2737,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -3201,6 +3209,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -3681,6 +3690,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -5299,6 +5309,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -5744,6 +5755,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -6462,6 +6474,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -6946,6 +6959,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -7506,6 +7520,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -8042,7 +8057,7 @@
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
-                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "started_at": "2026-08-23T14:23:31.004Z" }
+                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z" }
                       ],
                       "subagents_open": 1,
                       "task": { "title": "ingest endpoint", "source": "board_card", "ref": "card#7338", "as_of": "2026-08-23T14:05:00.000Z", "degraded": false },
@@ -8271,7 +8286,7 @@
               "open_calls": 1,
               "open_turn": true,
               "subagents": [
-                { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "started_at": "2026-08-23T14:23:31.004Z" }
+                { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z" }
               ],
               "subagents_open": 1,
               "task": { "title": "ingest endpoint", "source": "board_card", "ref": "card#7338", "as_of": "2026-08-23T14:05:00.000Z", "degraded": false },
@@ -8304,8 +8319,8 @@
                 "counters": { "accepted": 48211, "seq_gap": 0 },
                 "predicates": [],
                 "open_calls": [
-                  { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "tool_name": "Agent", "descriptor": null, "agent_scope": "main", "parent_call_id": null, "is_dispatch": 1, "title": "draft the D1 event schema", "subagent_type": "coder", "opened_at": "2026-08-23T14:23:31.004Z", "orphan_due_at": "2026-08-23T15:23:10.000Z" },
-                  { "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "Bash", "descriptor": "Bash: composer test", "agent_scope": "main", "parent_call_id": null, "is_dispatch": 0, "title": null, "subagent_type": null, "opened_at": "2026-08-23T14:23:09.882Z", "orphan_due_at": "2026-08-23T14:38:09.882Z" }
+                  { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "tool_name": "Agent", "descriptor": null, "agent_scope": "main", "parent_call_id": null, "is_dispatch": 1, "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "opened_at": "2026-08-23T14:23:31.004Z", "orphan_due_at": "2026-08-23T15:23:10.000Z" },
+                  { "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "Bash", "descriptor": "Bash: composer test", "agent_scope": "main", "parent_call_id": null, "is_dispatch": 0, "title": null, "subagent_type": null, "activity_state": null, "opened_at": "2026-08-23T14:23:09.882Z", "orphan_due_at": "2026-08-23T14:38:09.882Z" }
                 ],
                 "attention": null,
                 "session": null
@@ -8453,7 +8468,7 @@
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
-                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "started_at": "2026-08-23T14:23:31.004Z" }
+                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z" }
                       ],
                       "subagents_open": 1,
                       "task": { "title": "ingest endpoint", "source": "board_card", "ref": "card#7338", "as_of": "2026-08-23T14:05:00.000Z", "degraded": false },
@@ -9126,7 +9141,7 @@
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
-                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "started_at": "2026-08-23T14:23:31.004Z" }
+                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z" }
                       ],
                       "subagents_open": 1,
                       "task": { "title": "ingest endpoint", "source": "board_card", "ref": "card#7338", "as_of": "2026-08-23T14:05:00.000Z", "degraded": false },
@@ -9448,7 +9463,7 @@
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
-                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "started_at": "2026-08-23T14:23:31.004Z" }
+                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z" }
                       ],
                       "subagents_open": 1,
                       "task": { "title": "ingest endpoint", "source": "board_card", "ref": "card#7338", "as_of": "2026-08-23T14:05:00.000Z", "degraded": false },
@@ -9729,7 +9744,7 @@
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
-                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "started_at": "2026-08-23T14:23:31.004Z" }
+                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z" }
                       ],
                       "subagents_open": 1,
                       "task": { "title": "ingest endpoint", "source": "board_card", "ref": "card#7338", "as_of": "2026-08-23T14:05:00.000Z", "degraded": false },
@@ -10028,7 +10043,7 @@
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
-                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "started_at": "2026-08-23T14:23:31.004Z" }
+                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z" }
                       ],
                       "subagents_open": 1,
                       "task": { "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi", "source": "board_card", "ref": "card#7338", "as_of": "2026-08-23T14:05:00.000Z", "degraded": false },

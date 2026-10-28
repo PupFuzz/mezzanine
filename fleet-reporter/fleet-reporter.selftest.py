@@ -1827,7 +1827,7 @@ eq("nothing the dispatch text held reaches the spool, under any value",
 
 # RED — the two ways this key dies: the hook ignores it, or a typo widens it.
 p_ignore = plant(("const d = buildDescriptor(toolName, ti, mode);", "const d = buildDescriptor(toolName, ti);"),
-                 ("const title = mode === 'full' && typeof", "const title = typeof"))
+                 ("const title = isDispatch && mode === 'full' && typeof", "const title = isDispatch && typeof"))
 r_ignore = drive_descriptors("desc-none-ignored", "none", reporter=p_ignore)
 eq("RED: a hook that ignores the key sends every descriptor and the title under \"none\"",
    (FULL, False), (r_ignore["descriptors"], r_ignore["title"] is None))
@@ -8901,6 +8901,511 @@ for c in ENV_CMDS:
 eq("the runbook's `node -e` commands that read FR_CONFIG (Step 3's printer and one-key rewrite, Step 8's site "
    "removal) each exit 2 naming FR_CONFIG when it is unset, and none dies on a TypeError",
    (N_ENV_CMDS, {k: (2, True, False) for k in env_out}), (len(env_out), env_out))
+
+
+print("\n== 25. A QUIET SUBAGENT IS REPORTED IDLE AT THE SEAT, AND ITS NEXT HOOK REPORTS IT WORKING (AT-29, D1 § 6.15, § 8.5, card#12451) ==")
+# Every hook and every flusher pass below runs on ONE pinned clock, so the threshold is crossed exactly
+# where a case says. A one-pass flusher reaps every call older than its own start (§ 8.3's last row),
+# which is right for a restart and wrong for the long-running flusher that is the only one ever to judge a
+# subagent's silence — so `p.flush()` pins that start BEFORE the trace (FLEET_REPORTER_FLUSHER_START_MS,
+# a timing-only seam that can only narrow the reap), and `p.restart()` is a genuine restart.
+IDLE_MS, FLUSH_MS, TOMBSTONES = k_ms("SUBAGENT_IDLE_MS"), k_ms("FLUSH_MS"), k_ms("TOMBSTONES")
+_d1_615 = (HERE.parent / "docs/design/EVENT-SCHEMA.md").read_text(encoding="utf-8")
+_m = re.search(r"^\| Subagent idle threshold \| \*\*(\d+)\*\* s \|", _d1_615, re.M)
+eq("K.SUBAGENT_IDLE_MS is § 14's *Subagent idle threshold* cell, read from the document",
+   int(_m.group(1)) * 1000 if _m else None, IDLE_MS)
+IDLE_MS, FLUSH_MS, TOMBSTONES = IDLE_MS or 60000, FLUSH_MS or 10000, TOMBSTONES or 64
+A29 = "77777777-2222-4333-8444-0000000000a1"
+A29N = "77777777-2222-4333-8444-0000000000a2"
+XA, YA = "a0000000000000a29", "a0000000000000b29"
+
+
+class P29:
+    """One AT-29 rig: a seat, a reporter, and the pinned clock every step advances."""
+
+    def __init__(self, name, reporter=REPORTER):
+        self.s, self.r = seat(name), reporter
+        self.base = self.t = int(time.time() * 1000)
+        self.hk("SessionStart", source="startup")
+        self.hk("UserPromptSubmit", prompt="go")
+
+    def tick(self, ms=100):
+        self.t += ms
+
+    def hk(self, name, sid=A29, **kw):
+        self.tick()
+        base = {"session_id": sid, "hook_event_name": name, "prompt_id": "p1", "cwd": "/home/agent/mezzanine"}
+        base.update(kw)
+        return hook(self.s, name, base, reporter=self.r, FLEET_REPORTER_NOW_MS=self.t)
+
+    def dispatch(self, tuid, *, typ="coder", desc="probe the ingest", background=True, sid=A29):
+        self.tick()
+        ti = {"description": desc, "subagent_type": typ, "prompt": "x"}
+        if background:
+            ti["run_in_background"] = True
+        return hook(self.s, "PreToolUse", pre(tool="Agent", ti=ti, tuid=tuid, session_id=sid),
+                    reporter=self.r, FLEET_REPORTER_NOW_MS=self.t)
+
+    def launch(self, tuid, agent, sid=A29):
+        self.tick()
+        p = bg_post(tuid, agent)
+        p["session_id"] = sid
+        return hook(self.s, "PostToolUse", p, reporter=self.r, FLEET_REPORTER_NOW_MS=self.t)
+
+    def inner(self, tuid, agent, *, close=True, sid=A29):
+        """A call under `agent`: its PreToolUse, and (unless `close=False`) its PostToolUse 100 ms later."""
+        self.tick()
+        hook(self.s, "PreToolUse", pre(tool="Bash", ti={"command": "ls"}, tuid=tuid, session_id=sid, agent_id=agent),
+             reporter=self.r, FLEET_REPORTER_NOW_MS=self.t)
+        if close:
+            self.post(tuid, agent, sid=sid)
+
+    def post(self, tuid, agent, sid=A29):
+        self.tick()
+        hook(self.s, "PostToolUse", {"session_id": sid, "hook_event_name": "PostToolUse", "prompt_id": "p1",
+                                     "tool_name": "Bash", "tool_input": {"command": "ls"}, "tool_use_id": tuid,
+                                     "duration_ms": 80, "agent_id": agent, "cwd": "/home/agent/mezzanine"},
+             reporter=self.r, FLEET_REPORTER_NOW_MS=self.t)
+
+    def start(self, agent, typ="coder", sid=A29):
+        return self.hk("SubagentStart", sid=sid, agent_id=agent, agent_type=typ)
+
+    def sstop(self, agent, typ="coder", sid=A29):
+        return self.hk("SubagentStop", sid=sid, agent_id=agent, agent_type=typ, **stop(sid))
+
+    def flush(self):
+        return flush(self.s, reporter=self.r, FLEET_REPORTER_NOW_MS=self.t,
+                     FLEET_REPORTER_FLUSHER_START_MS=self.base - 1000)
+
+    def restart(self):
+        return flush(self.s, reporter=self.r, FLEET_REPORTER_NOW_MS=self.t)
+
+    def passes(self, n, step=None):
+        """`n` flusher passes `step` ms apart; returns, per pass, the subagent.activity events it spooled."""
+        out = []
+        for _ in range(n):
+            self.tick(step or FLUSH_MS)
+            before = len(self.s.events())
+            self.flush()
+            out.append([(e["data"]["call_id"], e["data"]["activity_state"]) for e in self.s.events()[before:]
+                        if e["kind"] == "subagent.activity"])
+        return out
+
+    def ev(self):
+        return self.s.events()
+
+    def acts(self):
+        return [(e["data"]["call_id"], e["data"]["activity_state"], e["session_id"]) for e in self.ev()
+                if e["kind"] == "subagent.activity"]
+
+    def spawns(self):
+        return [e["data"] for e in self.ev() if e["kind"] == "subagent.spawn"]
+
+    def index(self):
+        out = []
+        for f in sorted((self.s.spool / "index").glob("*.jsonl")):
+            for line in f.read_text(encoding="utf-8").splitlines():
+                try:
+                    out.append(json.loads(line))
+                except ValueError:
+                    pass
+        return out
+
+    def journaled(self, call_id):
+        """The dispatch's state as its last `activity` record left it (`working` when none)."""
+        st = [r["state"] for r in self.index() if r.get("k") == "activity" and r.get("call_id") == call_id]
+        return st[-1] if st else "working"
+
+
+def at29_first(name, reporter=REPORTER):
+    p = P29(name, reporter)
+    p.dispatch("toolu_A1")
+    p.start(XA)
+    p.launch("toolu_A1", XA)
+    D = p.spawns()[0]["call_id"]
+    p.inner("toolu_X1", XA)
+    closed = [r for r in p.index() if r.get("k") == "close"][-1]["at"]
+    # Passes half a cadence off the close (5 s, 15 s, … 75 s after it), so no pass sits on the threshold
+    # itself, where the few ms a process takes to start would decide the side.
+    p.tick(-FLUSH_MS // 2)
+    out = {"D": D, "per_pass": p.passes(8)}
+    out["snapshot_last_at"] = {a.get("agent_id"): a.get("last_at") for a in snapshot(p.s).get("agents", [])}.get(XA)
+    out["close_at"] = closed
+    out["next_pass"] = p.passes(1)[0]                         # a new process, folding the journal
+    before = len(p.ev())
+    p.inner("toolu_X2", XA, close=False)
+    seg = [e for e in p.ev()[before:]]
+    out["resume_order"] = [e["kind"] for e in seg]
+    before = len(p.ev())
+    p.inner("toolu_X3", XA, close=False)
+    out["second_hook"] = [e["kind"] for e in p.ev()[before:]]
+    before = len(p.ev())
+    p.tick(FLUSH_MS)
+    p.restart()
+    tail = p.ev()[before:]
+    out["restart_acts"] = [e for e in tail if e["kind"] == "subagent.activity"]
+    out["restart_reaped_dispatch"] = [e["data"]["close_source"] for e in tail
+                                      if e["kind"] == "tool.end" and e["data"]["call_id"] == D]
+    out["acts"] = p.acts()
+    out["caps"] = max(len(json.dumps({"v": 1, "t": "x", "e": e})) for e in p.ev())
+    return out
+
+
+f29 = at29_first("at29-first")
+eq("the first rig spools exactly ONE subagent.activity across eight passes: `idle`, for the dispatch",
+   [(f29["D"], "idle")], [a for per in f29["per_pass"] for a in per])
+eq("  … on the first pass whose clock is MORE than K.SUBAGENT_IDLE_MS past the inner PostToolUse — the "
+   "seventh, 65 s on — and on none before", [7], [i + 1 for i, a in enumerate(f29["per_pass"]) if a])
+eq("  … index/snapshot.json written after the close carries the child's last_at equal to the close's own `at`",
+   f29["close_at"], f29["snapshot_last_at"])
+eq("  … a later pass by a NEW flusher process re-emits nothing: the `activity` record folds", [], f29["next_pass"])
+eq("  … the next PreToolUse under the subagent spools `working` BEFORE its own tool.start",
+   ["subagent.activity", "tool.start"], f29["resume_order"])
+eq("  … and a second PreToolUse spools no second `working`", ["tool.start"], f29["second_hook"])
+eq("  … a genuine flusher restart reaps the dispatch (§ 8.3's last row) and emits no activity at all",
+   ([], ["reap_reporter_restart"]), (f29["restart_acts"], f29["restart_reaped_dispatch"]))
+eq("  … every event under the 4 KiB cap, every activity_state one of the two members",
+   (True, {"working", "idle"}), (f29["caps"] <= 4096, {a[1] for a in f29["acts"]}))
+
+
+def at29_long_call(name, reporter=REPORTER):
+    p = P29(name, reporter)
+    p.dispatch("toolu_A1")
+    p.start(XA)
+    p.launch("toolu_A1", XA)
+    D = p.spawns()[0]["call_id"]
+    p.inner("toolu_L1", XA, close=False)
+    open_passes = p.passes(10)                               # 100 s with the Bash open
+    p.post("toolu_L1", XA)
+    close_at = [r for r in p.index() if r.get("k") == "close"][-1]["at"]
+    p.tick(-FLUSH_MS // 2)                                   # half a cadence off the threshold, as above
+    after = p.passes(8)
+    return {"D": D, "open": open_passes, "after": after, "close_at": close_at,
+            "last_at": {a.get("agent_id"): a.get("last_at") for a in snapshot(p.s).get("agents", [])}.get(XA)}
+
+
+l29 = at29_long_call("at29-long")
+eq("the long-call leg: no `idle` while the subagent's Bash is open, across 100 s of passes",
+   [[]] * 10, l29["open"])
+eq("  … and its `idle` lands one THRESHOLD after the close — the seventh pass after it — never one pass "
+   "after the close and never at the threshold after the bind", [7],
+   [i + 1 for i, a in enumerate(l29["after"]) if a == [(l29["D"], "idle")]])
+eq("  … the snapshot's last_at is the CLOSE's `at`", l29["close_at"], l29["last_at"])
+
+
+def at29_unbound(name, reporter=REPORTER):
+    p = P29(name, reporter)
+    p.dispatch("toolu_U1")
+    p.dispatch("toolu_U2", desc="second")
+    p.start(XA)                                             # two unbound coders: ambiguous, no guess
+    p.inner("toolu_U3", XA)
+    passes = p.passes(9)
+    return {"acts": p.acts(), "passes": passes, "ctr": p.s.counters().get("agent_bind_ambiguous")}
+
+
+u29 = at29_unbound("at29-unbound")
+eq("the unbound dispatch (agent_bind_ambiguous) spools no activity event at all across 90 s",
+   ([], 1), (u29["acts"], u29["ctr"]))
+
+
+def at29_clear(name, reporter=REPORTER):
+    p = P29(name, reporter)
+    p.dispatch("toolu_C1")
+    p.start(XA)
+    p.launch("toolu_C1", XA)
+    D = p.spawns()[0]["call_id"]
+    p.inner("toolu_C2", XA)
+    p.passes(7)
+    p.hk("SessionEnd", reason="clear")
+    p.hk("SessionStart", sid=A29N, source="clear")
+    p.inner("toolu_C3", XA, close=False, sid=A29N)
+    return {"D": D, "acts": p.acts()}
+
+
+c29 = at29_clear("at29-clear")
+eq("across a /clear the dispatch is carried with its state: `idle` under the old session_id, `working` "
+   "under the new one, for one call_id", [(c29["D"], "idle", A29), (c29["D"], "working", A29N)], c29["acts"])
+
+
+def at29_revival(name, reporter=REPORTER, *, compact=False, evict=0, gap_ms=0, paths_at_revival=False):
+    p = P29(name, reporter)
+    p.dispatch("toolu_R1", desc="draft the schema", background=False)
+    p.start(XA)
+    p.inner("toolu_R2", XA)
+    p.sstop(XA)
+    first = p.spawns()[0]
+    hook(p.s, "PostToolUse", dict(bg_post("toolu_R1", XA, launched=False, desc="draft the schema"), session_id=A29),
+         reporter=p.r, FLEET_REPORTER_NOW_MS=p.t + 50)
+    p.tick(100)
+    for i in range(evict):
+        a = "a%016x" % (0xe000 + i)
+        p.dispatch(f"toolu_E{i}", desc=f"filler {i}", background=False)
+        p.start(a)
+        p.sstop(a)
+    if gap_ms:
+        p.tick(gap_ms)
+    dropped = None
+    if compact:
+        stop_bucket = sorted((p.s.spool / "index").glob("*.jsonl"))[-1].name
+        p.tick(3600 * 1000 + 60000)
+        p.hk("UserPromptSubmit", prompt="next hour")          # journals into the next hour's bucket
+        p.tick(1000)
+        p.flush()
+        dropped = not (p.s.spool / "index" / stop_bucket).exists()
+        p.revivable_in_snapshot = [v.get("agent_id") for v in snapshot(p.s).get("revivable", [])]
+    if paths_at_revival:
+        p.s.cfg["descriptors"] = "paths"
+        p.s.write_cfg()
+    before = len(p.ev())
+    ctr0 = p.s.counters()
+    p.start(XA)
+    at_start = p.ev()[before:]
+    p.inner("toolu_R3", XA)
+    p.sstop(XA)
+    tail = p.ev()[before:]
+    ctr = p.s.counters()
+    delta = lambda k: ctr.get(k, 0) - ctr0.get(k, 0)
+    starts = [e["data"] for e in at_start if e["kind"] == "tool.start"]
+    spawns = [e["data"] for e in at_start if e["kind"] == "subagent.spawn"]
+    new = starts[0]["call_id"] if starts else None
+    inner = [e["data"] for e in tail if e["kind"] == "tool.start" and e["data"]["tool_name"] == "Bash"]
+    return {
+        "first": first, "kinds_at_start": [e["kind"] for e in at_start], "start": starts[0] if starts else None,
+        "spawn": spawns[0] if spawns else None, "new": new,
+        "inner_parent": inner[0]["parent_call_id"] if inner else "none",
+        "closes": dispatch_closes(tail, new) if new else [],
+        "revived": delta("subagent_revived"), "unmatched": delta("subagent_stop_unmatched"),
+        "unresolved": delta("agent_bind_unresolved"), "dropped": dropped,
+    }
+
+
+rv = at29_revival("at29-revive")
+eq("the revival: at the second SubagentStart, a tool.start for a NEW call_id and then a subagent.spawn",
+   (["tool.start", "subagent.spawn"], True), (rv["kinds_at_start"], rv["new"] not in (None, rv["first"]["call_id"])))
+eq("  … the tool.start is an `Agent` call of the main scope with no harness reference and no parent",
+   ("Agent", None, "main", None),
+   tuple(rv["start"].get(k) for k in ("tool_name", "harness_call_ref", "agent_scope", "parent_call_id")) if rv["start"] else None)
+eq("  … the spawn carries the first dispatch's title, title_truncated and subagent_type, and no field the "
+   "spawn table does not declare",
+   ({"call_id", "title", "title_truncated", "subagent_type"}, ("draft the schema", False, "coder")),
+   (set(rv["spawn"]), (rv["spawn"]["title"], rv["spawn"]["title_truncated"], rv["spawn"]["subagent_type"]))
+   if rv["spawn"] else None)
+eq("  … the subagent's inner call names the NEW dispatch as its parent", rv["new"], rv["inner_parent"])
+eq("  … the second SubagentStop closes the new call completed by agent_id; subagent_revived +1, "
+   "subagent_stop_unmatched +0", ([("completed", "subagent_stop_hook", "agent_id")], 1, 0),
+   (rv["closes"], rv["revived"], rv["unmatched"]))
+
+rvc = at29_revival("at29-revive-compact", compact=True)
+eq("the compaction variant: the stop's index bucket is dropped across the hour, and the revival is "
+   "synthesized exactly as without it — the store survived in snapshot.json's `revivable`",
+   (True, ["tool.start", "subagent.spawn"], "draft the schema"),
+   (rvc["dropped"], rvc["kinds_at_start"], (rvc["spawn"] or {}).get("title")))
+
+rve = at29_revival("at29-revive-evicted", evict=TOMBSTONES)
+eq(f"the eviction rig: {TOMBSTONES} (K.TOMBSTONES) further stops evict the id, so the second SubagentStart "
+   "binds nothing, spools no spawn, and its inner call carries no parent (agent_bind_unresolved +1)",
+   ([], None, 1), (rve["kinds_at_start"], rve["inner_parent"], rve["unresolved"]))
+rvt = at29_revival("at29-revive-late", evict=1, gap_ms=2 * 3600 * 1000)
+eq("  … and its clock variant: two hours and one further stop later the store still revives — it is "
+   "bounded by count, not by time", ["tool.start", "subagent.spawn"], rvt["kinds_at_start"])
+
+rvp = at29_revival("at29-revive-paths", paths_at_revival=True)
+eq("the ninth rig: a revival under `descriptors: paths` re-derives the title under the CURRENT mode — "
+   "title null, title_truncated false", (None, False),
+   ((rvp["spawn"] or {}).get("title", "absent"), (rvp["spawn"] or {}).get("title_truncated", "absent")))
+
+
+def at29_heal(name, reporter=REPORTER):
+    """Leg (a): a flusher `idle` journaled between a hook's fold and its emit, and a later hook whose fold
+    predates the pass's repair. Leg (b): an inner call opened and closed between the flusher's fold and the
+    write of its `idle`. A reaped dispatch, journaled idle, is planted beside the live one in both."""
+    out = {}
+    for leg in ("a", "b"):
+        p = P29(f"{name}-{leg}", reporter)
+        # the dead one: Z, bound to YA, gone idle, then reaped by a Stop that does not list it
+        p.dispatch("toolu_Z1", desc="dead")
+        p.start(YA)
+        p.launch("toolu_Z1", YA)
+        Z = p.spawns()[0]["call_id"]
+        p.dispatch("toolu_H1")
+        p.start(XA)
+        p.launch("toolu_H1", XA)
+        D = p.spawns()[1]["call_id"]
+        p.inner("toolu_H2", XA)
+        index_append(p.s, p.t, {"k": "activity", "call_id": Z, "state": "idle"})
+        p.hk("Stop", **stop(A29, XA))                      # reaps Z (not listed), keeps D (listed)
+        p.tick(IDLE_MS + 5000)
+        if leg == "a":
+            before = len(p.ev())
+            p.inner("toolu_H3", XA, close=False)           # its fold says `working` …
+            index_append(p.s, p.t + 1, {"k": "activity", "call_id": D, "state": "idle"})   # … the pass's idle lands
+            out["a_first_hook"] = [e["kind"] for e in p.ev()[before:]]
+            snap = p.s.spool / "index" / "snapshot.json"
+            old_snap = snap.read_text(encoding="utf-8") if snap.exists() else None
+            out["a_repair_pass"] = p.passes(1)[0]
+            new_snap = snap.read_text(encoding="utf-8")
+            # the snapshot the pass wrote already holds the repair, so the stale fold gets the one before it
+            if old_snap is None:
+                snap.unlink()
+            else:
+                snap.write_text(old_snap, encoding="utf-8")
+            # a hook whose fold holds the `idle` and NOT the repair: hide the repair record while it folds
+            files = sorted((p.s.spool / "index").glob("*.jsonl"))
+            texts = {f: f.read_text(encoding="utf-8") for f in files}
+            repair = [l for f in files for l in texts[f].splitlines()
+                      if '"k":"activity"' in l and D in l and '"working"' in l]
+            for f in files:
+                f.write_text("".join(l + "\n" for l in texts[f].splitlines() if l not in repair), encoding="utf-8")
+            before = len(p.ev())
+            p.inner("toolu_H4", XA, close=False)
+            out["a_second_hook"] = [(e["kind"], e["data"].get("activity_state")) for e in p.ev()[before:]
+                                    if e["kind"] == "subagent.activity"]
+            for f in files:                                 # restore, the hook's own records after
+                own = f.read_text(encoding="utf-8")[len("".join(l + "\n" for l in texts[f].splitlines() if l not in repair)):]
+                f.write_text(texts[f] + own, encoding="utf-8")
+            snap.write_text(new_snap, encoding="utf-8")
+            out["a_after"] = p.passes(3)
+        else:
+            p.inner("toolu_H5", XA)                         # opened and closed before the late idle …
+            index_append(p.s, p.t + 1, {"k": "activity", "call_id": D, "state": "idle"})
+            out["b_repair_pass"] = p.passes(1)[0]
+            out["b_after"] = p.passes(2)
+        out[f"{leg}_journaled"] = p.journaled(D)
+        out[f"{leg}_dead_working"] = [a for a in p.acts() if a[0] == Z and a[1] == "working"]
+        out[f"{leg}_D"] = D
+    return out
+
+
+h29 = at29_heal("at29-heal")
+eq("leg (a): the first hook, whose fold says working, spools no `working`", ["tool.start"], h29["a_first_hook"])
+eq("  … the next pass spools exactly one repair `working`", [(h29["a_D"], "working")], h29["a_repair_pass"])
+eq("  … the second hook, its fold holding the `idle` and not the repair, spools one more — a duplicate, accepted",
+   [("subagent.activity", "working")], h29["a_second_hook"])
+eq("  … and no `idle` after them", [[], [], []], h29["a_after"])
+eq("leg (b): the call that closed before the late `idle` landed is seen by the repair — `now − last_at` is "
+   "inside the threshold — so the next pass spools one `working`", [(h29["b_D"], "working")], h29["b_repair_pass"])
+eq("  … and nothing more", [[], []], h29["b_after"])
+eq("in both legs the dispatch's journaled state ends `working`, and no `working` is ever spooled for the "
+   "reaped dispatch beside it", ("working", "working", [], []),
+   (h29["a_journaled"], h29["b_journaled"], h29["a_dead_working"], h29["b_dead_working"]))
+
+
+def at29_types(name, order, types, reporter=REPORTER):
+    p = P29(name, reporter)
+    steps = {"preA": lambda: p.dispatch("toolu_TA", typ=types[0], background=False),
+             "preB": lambda: p.dispatch("toolu_TB", typ=types[1], desc="second", background=False),
+             "startA": lambda: p.start(XA, types[0]), "startB": lambda: p.start(YA, types[1])}
+    for st in order:
+        steps[st]()
+    p.inner("toolu_TI", XA)
+    p.passes(8)
+    c = p.s.counters()
+    return {"sole": c.get("agent_bind_sole_unbound", 0), "type": c.get("agent_bind_type_match", 0),
+            "ambiguous": c.get("agent_bind_ambiguous", 0), "acts": p.acts()}
+
+
+F_ORDER, DEFER = ["preA", "startA", "preB", "startB"], ["preA", "preB", "startA", "startB"]
+t1 = at29_types("at29-types-f", F_ORDER, ("general-purpose", "Explore"))
+eq("F's order, two foreground dispatches of two types: each bound at its own SubagentStart by the "
+   "sole-unbound rule", (2, 0, 0), (t1["sole"], t1["type"], t1["ambiguous"]))
+t2 = at29_types("at29-types-defer", DEFER, ("general-purpose", "Explore"))
+eq("  … both starts after both dispatches: the first bound by agent_type, the second by the sole-unbound rule",
+   (1, 1, 0), (t2["sole"], t2["type"], t2["ambiguous"]))
+t3 = at29_types("at29-types-same", DEFER, ("general-purpose", "general-purpose"))
+eq("  … both of one type: neither bound (agent_bind_ambiguous +2), and neither ever goes idle",
+   (0, 0, 2, []), (t3["sole"], t3["type"], t3["ambiguous"], t3["acts"]))
+
+# ── the REDs, each a plant on a copy, each caught by the rig the AT names ─────────────────────
+r_timer = plant(("    const idle = !busy.has(e.child_agent_id) && atMs - Date.parse(a.last_at) > K.SUBAGENT_IDLE_MS;",
+                 "    const idle = atMs - Date.parse(e.started_at) > K.SUBAGENT_IDLE_MS;"))
+eq("RED (idle from a timer with no silence): the long-call rig goes idle over an open Bash", True,
+   any(at29_long_call("at29-red-timer", r_timer)["open"]))
+r_derived = plant(("        seen(e.agent_scope_id);\n        served(e);\n        // § 8.5 (card#12451)",
+                   "        served(e);\n        // § 8.5 (card#12451)"))
+lr = at29_long_call("at29-red-derived", r_derived)
+eq("RED (the instant derived from the index's records — the close moves no last_at): idle lands one pass "
+   "after the close, not one threshold after it", [1], [i + 1 for i, a in enumerate(lr["after"]) if a])
+r_after = plant(
+    ("      if (parentCallId && ix.calls.get(parentCallId).activity === 'idle') {",
+     "      let resumeAfter = null;\n      if (parentCallId && ix.calls.get(parentCallId).activity === 'idle') {"),
+    ("        emit('subagent.activity', sid, { call_id: parentCallId, activity_state: 'working' });",
+     "        resumeAfter = parentCallId;"),
+    ("        open_calls_before: Math.min(openBefore, K.OPEN_CALLS),\n      });\n      if (isDispatch) {",
+     "        open_calls_before: Math.min(openBefore, K.OPEN_CALLS),\n      });\n"
+     "      if (resumeAfter) emit('subagent.activity', sid, { call_id: resumeAfter, activity_state: 'working' });\n"
+     "      if (isDispatch) {"))
+eq("RED (the resume after the trigger): the first rig's order assertion sees tool.start first",
+   ["tool.start", "subagent.activity"], at29_first("at29-red-after", r_after)["resume_order"])
+r_guess = plant(("    if (!e.is_dispatch || !e.child_agent_id) continue;\n    const a = ix.agents.get(e.child_agent_id);\n    if (!a) continue;",
+                 "    if (!e.is_dispatch) continue;\n    const a = ix.agents.get(e.child_agent_id) || { last_at: e.started_at };"))
+eq("RED (the unbound guess): the third rig's unbound dispatch goes idle", True,
+   bool(at29_unbound("at29-red-guess", r_guess)["acts"]))
+r_memory = plant(("    const held = e.activity === 'idle' ? 'idle' : 'working';",
+                  "    const held = (globalThis.MEM29 || (globalThis.MEM29 = new Map())).get(e.call_id) === 'idle' ? 'idle' : 'working';"),
+                 ("    journal(ctx.spool, { k: 'activity', call_id: e.call_id, state: want });\n    e.activity = want;\n",
+                  "    globalThis.MEM29.set(e.call_id, want);\n"))
+fm = at29_first("at29-red-memory", r_memory)
+eq("RED (the state in process memory alone): the next flusher process spools a second `idle`, and the "
+   "hook never resumes", (True, ["tool.start"]), (bool(fm["next_pass"]), fm["resume_order"]))
+r_reopen = plant(
+    ("          ix.revivable.set(e.child_agent_id, { title: e.title || null,",
+     "          ix.revivable.set(e.child_agent_id, { call_id: e.call_id, title: e.title || null,"),
+    ("  const callId = ulid(atMs);\n  const openBefore = ix.calls.size;\n  const rec = {\n    k: 'open', call_id: callId, session_id: sid, tool_name: 'Agent',",
+     "  const callId = kept.call_id;\n  const openBefore = ix.calls.size;\n  const rec = {\n    k: 'open', call_id: callId, session_id: sid, tool_name: 'Agent',"))
+rr = at29_revival("at29-red-reopen", r_reopen)
+eq("RED (the revival re-opens the closed call): the fifth rig's revived dispatch carries the OLD call_id",
+   rr["first"]["call_id"], rr["new"])
+r_untitled = plant(("  const title = mode === 'full' ? kept.title : null;", "  const title = null;"))
+eq("RED (the revival as a fresh untitled dispatch): the fifth rig's spawn carries no title", None,
+   (at29_revival("at29-red-untitled", r_untitled)["spawn"] or {}).get("title"))
+r_mode = plant(("  const title = mode === 'full' ? kept.title : null;", "  const title = kept.title;"))
+eq("RED (the title as stored, not as the mode now says): the ninth rig's revival carries a title under paths",
+   "draft the schema", (at29_revival("at29-red-mode", r_mode, paths_at_revival=True)["spawn"] or {}).get("title"))
+r_norepair = plant(("    if (want === held) continue;", "    if (want === held || want === 'working') continue;"))
+hn = at29_heal("at29-red-norepair", r_norepair)
+eq("RED (no flusher repair): leg (a)'s pass and leg (b)'s pass spool nothing", ([], []),
+   (hn["a_repair_pass"], hn["b_repair_pass"]))
+r_openonly = plant(("    const idle = !busy.has(e.child_agent_id) && atMs - Date.parse(a.last_at) > K.SUBAGENT_IDLE_MS;\n"
+                    "    const held = e.activity === 'idle' ? 'idle' : 'working';\n"
+                    "    const want = idle ? 'idle' : 'working';",
+                    "    const idle = !busy.has(e.child_agent_id) && atMs - Date.parse(a.last_at) > K.SUBAGENT_IDLE_MS;\n"
+                    "    const held = e.activity === 'idle' ? 'idle' : 'working';\n"
+                    "    const want = idle ? 'idle' : held === 'idle' && !busy.has(e.child_agent_id) ? 'idle' : 'working';"))
+eq("RED (a repair reading only an open call): leg (b) is never repaired, its call having closed first", [],
+   at29_heal("at29-red-openonly", r_openonly)["b_repair_pass"])
+r_typeguess = plant(("const pick = unbound.length === 1 ? unbound[0] : typed.length === 1 ? typed[0] : null;",
+                     "const pick = unbound.length === 1 ? unbound[0] : typed.length >= 1 ? typed[0] : null;"))
+eq("RED (the type as a guess): the same-type variant binds one of two", True,
+   at29_types("at29-red-typeguess", DEFER, ("general-purpose", "general-purpose"), r_typeguess)["type"] >= 1)
+r_timed = plant(
+    ("          ix.revivable.set(e.child_agent_id, { title: e.title || null,",
+     "          ix.revivable.set(e.child_agent_id, { at: r.at, title: e.title || null,"),
+    ("  while (ix.revivable.size > K.TOMBSTONES)",
+     "  for (const [id, v] of [...ix.revivable]) if (nowMs - Date.parse(v.at || 0) > K.TOMBSTONE_MS) ix.revivable.delete(id);\n"
+     "  while (ix.revivable.size > K.TOMBSTONES)"))
+eq("RED (a timed store): the clock variant, two hours and one stop on, synthesizes nothing", [],
+   at29_revival("at29-red-timed", r_timed, evict=1, gap_ms=2 * 3600 * 1000)["kinds_at_start"])
+r_dead = plant(("    ctx.emit('subagent.activity', e.session_id, { call_id: e.call_id, activity_state: want });\n  }\n}",
+                "    ctx.emit('subagent.activity', e.session_id, { call_id: e.call_id, activity_state: want });\n  }\n"
+                "  for (const tb of [...ix.tombstones.values()]) if (tb.activity === 'idle') { tb.activity = 'working'; "
+                "ctx.emit('subagent.activity', tb.session_id, { call_id: tb.call_id, activity_state: 'working' }); }\n}"))
+hd = at29_heal("at29-red-dead", r_dead)
+eq("RED (a repair for a dead call): a `working` is spooled for the reaped dispatch", True,
+   bool(hd["a_dead_working"] or hd["b_dead_working"]))
+r_nosnap = plant(("    revivable: [...ix.revivable.entries()].map(([agent_id, v]) => Object.assign({ agent_id }, v)),\n", ""))
+eq("RED (the store in memory alone): the compaction variant finds no entry for the id and binds nothing", [],
+   at29_revival("at29-red-nosnap", r_nosnap, compact=True)["kinds_at_start"])
+
+redgreen("a quiet subagent is reported idle at the seat, and its next hook reports it working (AT-29, § 6.15, card#12451)",
+         "idle from a timer -> idle over an open Bash; the instant derived from the index -> idle one pass after a "
+         "close; the resume after its tool.start -> the wake trails the call; the unbound guessed -> an idle no hook "
+         "can resume; memory-only state -> a second idle and no resume; the revival on the old call_id, untitled, or "
+         "under the old mode's title; no repair, or a repair reading only an open call -> an intern left idle; the "
+         "type as a guess -> one of two same-type dispatches bound; a timed or unsnapshotted store -> no revival; a "
+         "repair over tombstones -> a working for a dead call",
+         "one idle a threshold after the last hook and never over an open call; working before the next tool.start "
+         "and once; a /clear keeps the state with the call; a revival is a new titled dispatch under the current "
+         "mode, count-bounded and snapshotted; stale folds heal on the next pass; same-type starts bind nothing")
 
 
 print("\n== 21. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")

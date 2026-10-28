@@ -72,6 +72,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -1051,6 +1052,7 @@
                   "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                   "title": "draft the D1 event schema",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:31.004Z"
                 }
               ],
@@ -1138,6 +1140,7 @@
                     "is_dispatch": 1,
                     "title": "draft the D1 event schema",
                     "subagent_type": "coder",
+                    "activity_state": "working",
                     "opened_at": "2026-08-23T14:23:31.004Z",
                     "orphan_due_at": "2026-08-23T15:23:10.000Z"
                   },
@@ -1150,6 +1153,7 @@
                     "is_dispatch": 0,
                     "title": null,
                     "subagent_type": null,
+                    "activity_state": null,
                     "opened_at": "2026-08-23T14:23:09.882Z",
                     "orphan_due_at": "2026-08-23T14:38:09.882Z"
                   }
@@ -1352,6 +1356,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -2331,6 +2336,7 @@
                   "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                   "title": "draft the D1 event schema",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:31.004Z"
                 }
               ],
@@ -2418,6 +2424,7 @@
                     "is_dispatch": 1,
                     "title": "draft the D1 event schema",
                     "subagent_type": "coder",
+                    "activity_state": "working",
                     "opened_at": "2026-08-23T14:23:31.004Z",
                     "orphan_due_at": "2026-08-23T15:23:10.000Z"
                   },
@@ -2430,6 +2437,7 @@
                     "is_dispatch": 0,
                     "title": null,
                     "subagent_type": null,
+                    "activity_state": null,
                     "opened_at": "2026-08-23T14:23:09.882Z",
                     "orphan_due_at": "2026-08-23T14:38:09.882Z"
                   }
@@ -2702,6 +2710,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -3680,6 +3689,7 @@
                   "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                   "title": "draft the D1 event schema",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:31.004Z"
                 }
               ],
@@ -3767,6 +3777,7 @@
                     "is_dispatch": 1,
                     "title": "draft the D1 event schema",
                     "subagent_type": "coder",
+                    "activity_state": "working",
                     "opened_at": "2026-08-23T14:23:31.004Z",
                     "orphan_due_at": "2026-08-23T15:23:10.000Z"
                   },
@@ -3779,6 +3790,7 @@
                     "is_dispatch": 0,
                     "title": null,
                     "subagent_type": null,
+                    "activity_state": null,
                     "opened_at": "2026-08-23T14:23:09.882Z",
                     "orphan_due_at": "2026-08-23T14:38:09.882Z"
                   }
@@ -3887,6 +3899,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -4873,6 +4886,7 @@
                   "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                   "title": "draft the D1 event schema",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:31.004Z"
                 }
               ],
@@ -4960,6 +4974,7 @@
                     "is_dispatch": 1,
                     "title": "draft the D1 event schema",
                     "subagent_type": "coder",
+                    "activity_state": "working",
                     "opened_at": "2026-08-23T14:23:31.004Z",
                     "orphan_due_at": "2026-08-23T15:23:10.000Z"
                   },
@@ -4972,6 +4987,7 @@
                     "is_dispatch": 0,
                     "title": null,
                     "subagent_type": null,
+                    "activity_state": null,
                     "opened_at": "2026-08-23T14:23:09.882Z",
                     "orphan_due_at": "2026-08-23T14:38:09.882Z"
                   }
@@ -5154,6 +5170,7 @@
                           "call_id": "01K3TC2B3C4D5E6F7G8H9J0K1M",
                           "title": null,
                           "subagent_type": null,
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:22:51.000Z"
                         }
                       ],
@@ -5973,6 +5990,7 @@
                   "call_id": "01K3TC2B3C4D5E6F7G8H9J0K1M",
                   "title": null,
                   "subagent_type": null,
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:22:51.000Z"
                 }
               ],
@@ -6050,6 +6068,7 @@
                     "is_dispatch": 1,
                     "title": null,
                     "subagent_type": null,
+                    "activity_state": "working",
                     "opened_at": "2026-08-23T14:22:51.000Z",
                     "orphan_due_at": "2026-08-23T15:23:10.000Z"
                   },
@@ -6062,6 +6081,7 @@
                     "is_dispatch": 0,
                     "title": null,
                     "subagent_type": null,
+                    "activity_state": null,
                     "opened_at": "2026-08-23T14:22:50.000Z",
                     "orphan_due_at": "2026-08-23T15:23:10.000Z"
                   }
@@ -7732,48 +7752,56 @@
                   "call_id": "2SJ650Q0KMCRB0000000000000",
                   "title": "slice 1",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:15.400Z"
                 },
                 {
                   "call_id": "MCBER9GSAVH650000000000000",
                   "title": "slice 2",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:16.400Z"
                 },
                 {
                   "call_id": "6Z4PBH9H12NNE0000000000000",
                   "title": null,
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:17.400Z"
                 },
                 {
                   "call_id": "RJXYYS29R9S370000000000000",
                   "title": "slice 4",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:18.400Z"
                 },
                 {
                   "call_id": "A5P6J2V1EGXH10000000000000",
                   "title": "slice 5",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:19.400Z"
                 },
                 {
                   "call_id": "WREE5AKS5R2ZA0000000000000",
                   "title": "slice 6",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:20.400Z"
                 },
                 {
                   "call_id": "EB7PRKCHWZ6D40000000000000",
                   "title": "slice 7",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:21.400Z"
                 },
                 {
                   "call_id": "0Y0YBV59K6AVD0000000000000",
                   "title": "slice 8",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:22.400Z"
                 }
               ],
@@ -7851,6 +7879,7 @@
                     "is_dispatch": 1,
                     "title": "slice 1",
                     "subagent_type": "coder",
+                    "activity_state": "working",
                     "opened_at": "2026-08-23T14:23:15.400Z",
                     "orphan_due_at": "2026-08-23T15:23:10.000Z"
                   },
@@ -7863,6 +7892,7 @@
                     "is_dispatch": 1,
                     "title": "slice 2",
                     "subagent_type": "coder",
+                    "activity_state": "working",
                     "opened_at": "2026-08-23T14:23:16.400Z",
                     "orphan_due_at": "2026-08-23T15:23:10.000Z"
                   },
@@ -7875,6 +7905,7 @@
                     "is_dispatch": 1,
                     "title": "slice 3",
                     "subagent_type": "coder",
+                    "activity_state": "working",
                     "opened_at": "2026-08-23T14:23:17.400Z",
                     "orphan_due_at": "2026-08-23T15:23:10.000Z"
                   },
@@ -7887,6 +7918,7 @@
                     "is_dispatch": 1,
                     "title": "slice 4",
                     "subagent_type": "coder",
+                    "activity_state": "working",
                     "opened_at": "2026-08-23T14:23:18.400Z",
                     "orphan_due_at": "2026-08-23T15:23:10.000Z"
                   },
@@ -7899,6 +7931,7 @@
                     "is_dispatch": 1,
                     "title": "slice 5",
                     "subagent_type": "coder",
+                    "activity_state": "working",
                     "opened_at": "2026-08-23T14:23:19.400Z",
                     "orphan_due_at": "2026-08-23T15:23:10.000Z"
                   },
@@ -7911,6 +7944,7 @@
                     "is_dispatch": 1,
                     "title": "slice 6",
                     "subagent_type": "coder",
+                    "activity_state": "working",
                     "opened_at": "2026-08-23T14:23:20.400Z",
                     "orphan_due_at": "2026-08-23T15:23:10.000Z"
                   },
@@ -7923,6 +7957,7 @@
                     "is_dispatch": 1,
                     "title": "slice 7",
                     "subagent_type": "coder",
+                    "activity_state": "working",
                     "opened_at": "2026-08-23T14:23:21.400Z",
                     "orphan_due_at": "2026-08-23T15:23:10.000Z"
                   },
@@ -7935,6 +7970,7 @@
                     "is_dispatch": 1,
                     "title": "slice 8",
                     "subagent_type": "coder",
+                    "activity_state": "working",
                     "opened_at": "2026-08-23T14:23:22.400Z",
                     "orphan_due_at": "2026-08-23T15:23:10.000Z"
                   },
@@ -7947,6 +7983,7 @@
                     "is_dispatch": 1,
                     "title": null,
                     "subagent_type": "coder",
+                    "activity_state": "working",
                     "opened_at": "2026-08-23T14:23:23.400Z",
                     "orphan_due_at": "2026-08-23T15:23:10.000Z"
                   },
@@ -7959,6 +7996,7 @@
                     "is_dispatch": 0,
                     "title": null,
                     "subagent_type": null,
+                    "activity_state": null,
                     "opened_at": "2026-08-23T14:23:09.400Z",
                     "orphan_due_at": "2026-08-23T14:38:09.400Z"
                   }
@@ -8008,48 +8046,56 @@
                   "call_id": "2SJ650Q0KMCRB0000000000000",
                   "title": "slice 1",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:15.400Z"
                 },
                 {
                   "call_id": "MCBER9GSAVH650000000000000",
                   "title": "slice 2",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:16.400Z"
                 },
                 {
                   "call_id": "6Z4PBH9H12NNE0000000000000",
                   "title": null,
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:17.400Z"
                 },
                 {
                   "call_id": "RJXYYS29R9S370000000000000",
                   "title": "slice 4",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:18.400Z"
                 },
                 {
                   "call_id": "A5P6J2V1EGXH10000000000000",
                   "title": "slice 5",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:19.400Z"
                 },
                 {
                   "call_id": "WREE5AKS5R2ZA0000000000000",
                   "title": "slice 6",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:20.400Z"
                 },
                 {
                   "call_id": "EB7PRKCHWZ6D40000000000000",
                   "title": "slice 7",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:21.400Z"
                 },
                 {
                   "call_id": "0Y0YBV59K6AVD0000000000000",
                   "title": "slice 8",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:22.400Z"
                 }
               ],
@@ -8151,6 +8197,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -8525,6 +8572,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -9631,6 +9679,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -10005,6 +10054,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -11104,6 +11154,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -12241,6 +12292,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -12615,6 +12667,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -13514,6 +13567,7 @@
                   "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                   "title": "draft the D1 event schema",
                   "subagent_type": "coder",
+                  "activity_state": "working",
                   "started_at": "2026-08-23T14:23:31.004Z"
                 }
               ],

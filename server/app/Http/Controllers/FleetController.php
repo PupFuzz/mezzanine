@@ -312,8 +312,8 @@ class FleetController extends Controller
             'open_calls' => DB::table('calls')->where('seat_ref', $seatRef)->whereNull('closed_at')
                 ->orderByDesc('opened_at')->get([
                     'call_id', 'tool_name', 'descriptor', 'agent_scope', 'parent_call_id',
-                    'is_dispatch', 'title', 'subagent_type', 'opened_at', 'orphan_due_at',
-                ])->map(fn ($c) => self::onTheWire($c, ['opened_at', 'orphan_due_at']))->all(),
+                    'is_dispatch', 'title', 'subagent_type', 'activity_state', 'opened_at', 'orphan_due_at',
+                ])->map(fn ($c) => self::onTheWire(self::dispatchActivity($c), ['opened_at', 'orphan_due_at']))->all(),
             'attention' => self::onTheWire(
                 DB::table('attention_requests')->where('seat_ref', $seatRef)
                     ->whereNull('resolved_at')->orderBy('opened_at')
@@ -329,6 +329,21 @@ class FleetController extends Controller
                 ['turn_started_at', 'last_turn_ended_at'],
             ),
         ];
+    }
+
+    /**
+     * card#12451 — `activity_state` is the INTERN's fact (§ 8.2.1's `subagents[].activity_state`), so
+     * the uncapped list carries it on every dispatch call, where it agrees with the capped array
+     * element by element, and `null` on an ordinary call, whose column holds the default and is read
+     * by nothing (§ 6.4): a seat's own `Bash` is not an intern, and a `working` on it would claim one.
+     */
+    private static function dispatchActivity(object $call): object
+    {
+        if (! $call->is_dispatch) {
+            $call->activity_state = null;
+        }
+
+        return $call;
     }
 
     /**

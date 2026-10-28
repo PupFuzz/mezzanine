@@ -59,48 +59,56 @@
              "call_id": "01K3TX00000000000000000002",
              "title": "intern 1",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:14.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000003",
              "title": "intern 2",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:13.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000004",
              "title": "intern 3",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:12.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000005",
              "title": "intern 4",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:11.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000006",
              "title": "intern 5",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:10.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000007",
              "title": "intern 6",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:09.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000008",
              "title": "intern 7",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:08.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000009",
              "title": "intern 8",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:07.400Z"
             }
            ],
@@ -742,48 +750,56 @@
              "call_id": "01K3TX0000000000000000000B",
              "title": "intern 1",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:14.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000000C",
              "title": "intern 2",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:13.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000000D",
              "title": "intern 3",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:12.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000000E",
              "title": "intern 4",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:11.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000000F",
              "title": "intern 5",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:10.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000000G",
              "title": "intern 6",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:09.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000000H",
              "title": "intern 7",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:08.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000000J",
              "title": "intern 8",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:07.400Z"
             }
            ],
@@ -1837,48 +1853,56 @@
              "call_id": "01K3TX0000000000000000000P",
              "title": "intern 1",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:14.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000000Q",
              "title": "intern 2",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:13.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000000R",
              "title": "intern 3",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:12.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000000S",
              "title": "intern 4",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:11.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000000T",
              "title": "intern 5",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:10.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000000V",
              "title": "intern 6",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:09.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000000W",
              "title": "intern 7",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:08.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000000X",
              "title": "intern 8",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:07.400Z"
             }
            ],
@@ -2222,6 +2246,7 @@
              "call_id": "01K3TX0000000000000000000Y",
              "title": "build the directory",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T13:43:03.400Z"
             }
            ],
@@ -2618,48 +2643,56 @@
              "call_id": "01K3TX00000000000000000011",
              "title": "intern 1",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:14.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000012",
              "title": "intern 2",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:13.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000013",
              "title": "intern 3",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:12.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000014",
              "title": "intern 4",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:11.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000015",
              "title": "intern 5",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:10.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000016",
              "title": "intern 6",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:09.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000017",
              "title": "intern 7",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:08.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000018",
              "title": "intern 8",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:07.400Z"
             }
            ],
@@ -3301,48 +3334,56 @@
              "call_id": "01K3TX0000000000000000001A",
              "title": "intern 1",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:14.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000001B",
              "title": "intern 2",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:13.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000001C",
              "title": "intern 3",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:12.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000001D",
              "title": "intern 4",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:11.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000001E",
              "title": "intern 5",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:10.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000001F",
              "title": "intern 6",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:09.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000001G",
              "title": "intern 7",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:08.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000001H",
              "title": "intern 8",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:07.400Z"
             }
            ],
@@ -3984,48 +4025,56 @@
              "call_id": "01K3TX0000000000000000001K",
              "title": "intern 1",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:14.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000001M",
              "title": "intern 2",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:13.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000001N",
              "title": "intern 3",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:12.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000001P",
              "title": "intern 4",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:11.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000001Q",
              "title": "intern 5",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:10.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000001R",
              "title": "intern 6",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:09.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000001S",
              "title": "intern 7",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:08.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000001T",
              "title": "intern 8",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:07.400Z"
             }
            ],
@@ -4825,48 +4874,56 @@
              "call_id": "01K3TX00000000000000000022",
              "title": "intern 1",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:14.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000023",
              "title": "intern 2",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:13.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000024",
              "title": "intern 3",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:12.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000025",
              "title": "intern 4",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:11.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000026",
              "title": "intern 5",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:10.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000027",
              "title": "intern 6",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:09.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000028",
              "title": "intern 7",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:08.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000029",
              "title": "intern 8",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:07.400Z"
             }
            ],
@@ -6566,48 +6623,56 @@
              "call_id": "01K3TX0000000000000000002B",
              "title": "intern 1",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:14.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000002C",
              "title": "intern 2",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:13.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000002D",
              "title": "intern 3",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:12.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000002E",
              "title": "intern 4",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:11.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000002F",
              "title": "intern 5",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:10.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000002G",
              "title": "intern 6",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:09.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000002H",
              "title": "intern 7",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:08.400Z"
             },
             {
              "call_id": "01K3TX0000000000000000002J",
              "title": "intern 8",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:07.400Z"
             }
            ],
@@ -7220,48 +7285,56 @@
              "call_id": "01K3TX00000000000000000002",
              "title": "intern 1",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:14.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000003",
              "title": "intern 2",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:13.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000004",
              "title": "intern 3",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:12.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000005",
              "title": "intern 4",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:11.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000006",
              "title": "intern 5",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:10.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000007",
              "title": "intern 6",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:09.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000008",
              "title": "intern 7",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:08.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000009",
              "title": "intern 8",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:07.400Z"
             }
            ],
@@ -8031,48 +8104,56 @@
              "call_id": "01K3TX00000000000000000002",
              "title": "intern 1",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:14.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000003",
              "title": "intern 2",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:13.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000004",
              "title": "intern 3",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:12.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000005",
              "title": "intern 4",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:11.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000006",
              "title": "intern 5",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:10.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000007",
              "title": "intern 6",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:09.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000008",
              "title": "intern 7",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:08.400Z"
             },
             {
              "call_id": "01K3TX00000000000000000009",
              "title": "intern 8",
              "subagent_type": "coder",
+             "activity_state": "working",
              "started_at": "2026-08-23T14:21:07.400Z"
             }
            ],
