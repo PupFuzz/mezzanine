@@ -598,6 +598,26 @@ check(Number.isFinite(chibiAcross.units) && STOOL_FRAME === leastFrame,
   `desk-layout.js's STOOL_FRAME (${STOOL_FRAME}) is the least whole-pixel frame whose margin each side holds the widest chibi past its rect (${leastFrame})`);
 check(Number.isFinite(chibiInk.right) && Number.isFinite(internInk.right) && STOOL_PITCH === leastPitch,
   `desk-layout.js's STOOL_PITCH (${STOOL_PITCH}) is the least whole-pixel pitch at which no two interns' ink touches (${leastPitch})`);
+// THE BACK ROW's LAPTOP CLEARS THE FRONT ROW's HEAD (card#12448, the coordinator's check on card#12444's two rows): an
+// intern of the back row stands one row step above the intern in front of it, in the same column, and is drawn first —
+// so its laptop's lowest ink, still or swaying, must stay above the topmost ink any front-row intern draws, or the front
+// row's head would be drawn over a laptop it seems to sit inside. Measured over the same population, in the chibi frame's
+// units, with the row step read off the floor's own slots.
+{
+  const perRow = slots.findIndex((sl) => sl.row === 1);
+  const stepUnits = (slots[0].y - slots[perRow].y) * C.SEAT_RECT.w / STOOL_W;
+  let lidLow = -Infinity, lidWho = '', headTop = Infinity, headWho = '';
+  for (const sp of KEYS) for (const key of keysOf(sp)) for (const sway of [undefined, 1, 3]) {
+    const doc = C.frameDocument(`${key}~intern`, { species: sp, chibi: true, laptop: true, sway });
+    const b = inkBounds(doc, (node, nb) => { if (node.attrs?.['data-part'] === 'lid' && nb.y1 > lidLow) { lidLow = nb.y1; lidWho = `${label(sp, key)} ${key} sway=${sway ?? 'still'}`; } });
+    if (b.y0 < headTop) { headTop = b.y0; headWho = `${label(sp, key)} ${key}`; }
+  }
+  const clear = headTop - (lidLow - stepUnits);
+  measure(`the back row's lowest laptop ink sits ${clear.toFixed(2)} units (${(clear * STOOL_W / C.SEAT_RECT.w).toFixed(2)} px) above the front row's topmost ink — lid ${lidLow.toFixed(2)} (${lidWho}) one row step of ${stepUnits.toFixed(2)} up, head ${headTop.toFixed(2)} (${headWho})`);
+  check(perRow > 0 && Number.isFinite(clear) && clear > 0, `no back-row intern's laptop reaches down to a front-row intern's head (${clear.toFixed(2)} units clear)`);
+  const halved = headTop - (lidLow - stepUnits / 2);
+  check(halved <= 0, `CONTROL — at half the row step the same laptop reaches ${(-halved).toFixed(2)} units past the front row's head, so the leg can see an overlap`);
+}
 // THE SWAY's AMPLITUDE IS DERIVED HERE (the operator's C2, 2026-10-27: the largest that fits the chibi frame). Over the
 // same population, the largest multiple of INTERN_SWAY_STEP at which neither sway extreme puts any ink past
 // CHIBI_VIEWBOX — searched from the shipped constant, up while it fits and down while it does not — must BE the shipped
