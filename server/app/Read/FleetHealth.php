@@ -3,6 +3,7 @@
 namespace App\Read;
 
 use App\Board\BoardPoll;
+use App\Board\LinkPass;
 use App\Coord\CoordCounters;
 use App\Fleet\CharacterAllocation;
 use App\Fold\Clock;
@@ -94,6 +95,7 @@ final class FleetHealth
         'feed_outbox_boundary_stalled',
         BoardPoll::OK,
         BoardPoll::FAILED,
+        LinkPass::FAILED,
         IdleHorizon::MALFORMED,
         CharacterAllocation::FLOOR_UNREAD,
         // § 7.1 — the coordination route's derived counters (card#12239), every D1 § 18.8.1 row not

@@ -292,7 +292,10 @@ final class SeatRetirement
             // IS the § 2.1 no-op decision ("Re-running it on an already-retired seat is a no-op"),
             // and widening its SET list would leave the decision reading the same while a second
             // act's worth of columns rode along with it. This runs only on the branch that wrote.
-            DB::table('seats')->where('id', $seatRef)->update(['board_user_id' => null]);
+            // card#12447: and WHO wrote it goes with it — a pin, a declaration or a refusal is a fact
+            // about the mapping this seat no longer holds (D2 § 6.4's designed column), so a re-homed
+            // seat's successor starts from no source at all.
+            DB::table('seats')->where('id', $seatRef)->update(['board_user_id' => null, 'board_user_source' => null]);
             DB::table('seat_board_task')->where('seat_ref', $seatRef)->delete();
 
             // The recompute is the SHARED one (§ 6.5's per-writer rule names this act as one of
