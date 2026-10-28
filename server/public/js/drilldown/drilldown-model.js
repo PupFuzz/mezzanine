@@ -501,6 +501,9 @@ function internBlock(seat, detailFailed, missingDetail, sc) {
             label: s.title ?? UNTITLED,
             untitled: (s.title ?? null) === null,
             type: s.subagent_type ?? null,
+            // card#12451 (§ 8's *Working and idle interns*): the intern's own state, spelled out — `working` or `idle`,
+            // never an age (the wire carries no instant for it).
+            activity: s.activity_state ?? null,
             started_at: sc(s.started_at),
             orphan_due_at: null,
         }));
@@ -515,6 +518,8 @@ function internBlock(seat, detailFailed, missingDetail, sc) {
         untitled: (call.title ?? null) === null,
         // § 5.6: a null `subagent_type` draws no type tag; the label is unaffected.
         type: call.subagent_type ?? null,
+        // card#12451: the intern's own state off the uncapped list, which carries it on every dispatch call (D2 § 8.2.3).
+        activity: call.activity_state ?? null,
         // § 8: a seat-clock claim, "rendered as a labelled timestamp and never as *how long it
         // has been running*" — there is no server-clock start for a subagent on any read
         // surface, so no duration exists to render and none is invented.

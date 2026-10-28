@@ -230,7 +230,7 @@ class TheDeskIsReLaidTest extends TestCase
     public function test_red_the_tables_seats_and_feet(): void
     {
         foreach ([
-            'the empty table with no seats' => ['const seats = Math.max(SIDE_TABLE_SEATS, shown.length);', 'const seats = shown.length;', 'seats'],
+            'the empty table with no seats' => ['const seats = Math.max(SIDE_TABLE_SEATS, desk.side_table.seats);', 'const seats = desk.side_table.seats;', 'seats'],
             'its foot line 4 px above the interns\'' => ['const table = { x: colB - 8, y: foot - 42 - (STOOL_ROWS - 1) * rowStep,', 'const table = { x: colB - 8, y: foot - 46 - (STOOL_ROWS - 1) * rowStep,', 'foot line'],
         ] as $what => [$from, $to, $says]) {
             $defects = $this->tableDefects($this->sceneOf(self::CAP, $this->mutatedModules(['../floor/desk-layout.js', $from, $to])));

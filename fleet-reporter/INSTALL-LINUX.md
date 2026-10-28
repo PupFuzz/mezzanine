@@ -1784,6 +1784,13 @@ the server's operator, and U9's reply carries U8's lines for them.
 with the seat, the installed hash (`sha256sum $HOME/.local/share/fleet-reporter/fleet-reporter.js`),
 U7's `selftest rc=` line, naming every check that is not `pass`, and U8's lines with its `health rc=`.
 
+**Upgrading to `0.4.0` (card#12451).** Its row touches `artifact` alone, so U4 and U5 find nothing to do and
+the rest run as written. **Deploy the server first:** `0.4.0` sends a new event kind, `subagent.activity`, which a
+server older than card#12451 ignores and counts (`ignored_unknown_kinds`, the seat then badged `reporter_ahead`),
+and U8 compares the installed build with the server's `current_reporter_version`, which only a server carrying
+card#12451 publishes as `0.4.0`. Until a seat applies it, its interns show working for as long as their dispatch
+is open. This upgrade has not yet been run on a seat: the sequence below is what each step's check reads.
+
 **What was run for card#11818**, on the sandbox host on 2026-10-24, without changing the live seat:
 
 - **U2** against this runbook: each helper U2's list names came out byte-identical (`cmp`) to what its block

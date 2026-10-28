@@ -118,6 +118,13 @@ export const NOT_LISTED = Object.freeze({
     'side_table.stools[].call_id': {
         reason: "the intern join key (§ 5.1): stored to attribute an intern's calls, drawn by no element",
     },
+    'side_table.stools[].slot': {
+        reason: "where the intern sits at the side table (card#12450's kept slot); a place on the drawing, and the list "
+            + "prints the interns in the wire's order",
+    },
+    'side_table.seats': {
+        reason: 'how many seats the side table draws (card#12450: the highest held slot plus one); the list draws no table',
+    },
     'held.animation_id': {
         reason: "the held render is the drawing's motion (§ 6.2); the list animates nothing, and the state it "
             + 'moves for is on the row as the glyph, the pose and the label line',
@@ -134,8 +141,8 @@ export const NOT_LISTED = Object.freeze({
             + 'is held for are on the row as the stools',
     },
     'interns_held.motion': {
-        reason: "whether the interns type; until card#12451 it is the desk's own `held.motion`, which the row prints as "
-            + 'moving or still',
+        reason: "whether the working interns type (§ 6.2 A23); each intern's own `working` or `idle` is on its stool's line, "
+            + 'and the treatment that stills them is on the row as its badges',
     },
     'interns_held.form': {
         reason: "§ 6.4's reduced-motion form of a drawn loop; the list draws no loop to reduce",
@@ -169,7 +176,8 @@ function monitorLine(monitor) {
 
 /** § 8's side table, the desk's half: one line per stool, then *+N more* from the model's count. */
 function stoolLines(table) {
-    const lines = table.stools.map((stool) => ({ role: 'stool', text: join(stool.label, stool.type, stool.started_at) }));
+    // card#12451: the intern's own state, `working` or `idle`, beside its label (FLOOR.md § 8) — never an age.
+    const lines = table.stools.map((stool) => ({ role: 'stool', text: join(stool.label, stool.type, stool.activity, stool.started_at) }));
 
     return table.more === null ? lines : [...lines, { role: 'stool-more', text: MORE(table.more) }];
 }

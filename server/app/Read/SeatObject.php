@@ -116,6 +116,10 @@ final class SeatObject
                 'call_id' => (string) $c->call_id,
                 'title' => $c->title,
                 'subagent_type' => $c->subagent_type,
+                // card#12451: the reporter's word on the intern (D1 § 6.15), `working` from the open,
+                // so a reporter that never sends `subagent.activity` yields `working` for the life of
+                // the dispatch — never null (§ 8.2.1).
+                'activity_state' => (string) $c->activity_state,
                 'started_at' => Clock::wire($c->opened_at),
             ])->values()->all(),
             'subagents_open' => $subagents->count(),

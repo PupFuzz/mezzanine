@@ -30,11 +30,13 @@
  * ⛔ THE INTERNS (card#11058 PR-C, card#12448): each is its sprite in a clipping viewport — the character
  * tree's `internFrames()` drawn under the intern key `seat~<call_id>`, which this probe writes from the
  * published rule rather than importing it: its laptop still where § 6.2 A23 draws no motion, and its
- * typing loop from its own offset where it does, which until card#12451 is exactly while its desk's own
- * held render moves (written here from that rule, never read off the stool's element) — inside a dashed
- * edge when untitled; or, where its art
+ * typing loop from its own offset where it does, which since card#12451 is exactly while its desk's side-table
+ * rendering moves — held by the interns' own `activity_state` and moving while the desk's treatment permits it (written
+ * here from that rule, never read off the model's `interns_held` or the stool's element) — inside a dashed edge when
+ * untitled; or, where its art
  * is reported failed, § 9 F14's glyph in its rect, that stool alone. The reorder check paints each seat
- * of two or more interns in the wire's order and reversed and reads each intern's sprite by its place;
+ * of two or more interns twice, with distinct `started_at`s ascending then descending — which reverses the places a fresh
+ * replace seats them at (card#12450's slots) — and reads each intern's sprite by its place;
  * the cache check paints the floor again with no intern, then again with them, and holds the painter to
  * having dropped every intern the first paint drew (the tree is asked again) and nothing else.
  *
@@ -149,20 +151,30 @@ const characters = {
     },
     // An intern's frames (card#12448, § 10.4's frame contract item 3): FIVE documents with `loopFrom` 1 — its laptop
     // still, then its typing loop of four — so an intern drawn at another document, or stepped from the still, reds.
-    // Each names the body the intern is kept off, its seat's delivered species (card#12443). The plain `chibiFrame()` is
-    // not stubbed: a painter that asked for it would throw here, which is § 9 F14 for that intern and a defect below.
+    // Each names the body the intern is kept off, its seat's delivered species (card#12443). The plain `chibiFrame()` —
+    // an IDLE intern's drawing, no laptop (card#12451) — is stubbed beside it under its own name, so a working intern
+    // drawn at it reds below.
     internFrames(installId, key, seatSpecies) {
         asked.chibi.push(`${installId}/${key}`);
         if (key === throwFor) throw new Error('a planted generator defect for one key');
         return { frames: Array.from({ length: 5 }, (_, i) => doc(`${installId}/${key}!${body(seatSpecies)}#intern#${i}`)), loopFrom: 1 };
     },
+    chibiFrame(installId, key, seatSpecies) {
+        asked.chibi.push(`${installId}/${key}`);
+        return doc(`${installId}/${key}!${body(seatSpecies)}#chibi`);
+    },
 };
 const internFrame = (installId, seatId, callId, seatSpecies, i = 0) => uri(doc(`${installId}/${seatId}~${callId}!${seatSpecies}#intern#${i}`));
 /**
- * The document an intern is first painted at, from the published rule (§ 6.2 A23, until card#12451): its still while
- * its desk's own held render draws no motion, else its loop's start plus the stub's offset into its loop of four.
+ * The document an intern is first painted at, from the published rule (§ 6.2 A23, card#12451) written out here and never
+ * read off the model's own `interns_held` — reading the model's answer would hold the painter to whatever the model says,
+ * so a model that typed on a stilled desk would read clean: the side table moves while an intern it draws is `working`,
+ * the desk's treatment permits motion (no lag badge, no `config_invalid` note, no unrecognised value — this probe stills
+ * no floor and reduces no motion) and the desk is not drawn dark. Moving, the loop's start plus the stub's offset into
+ * its loop of four; else the still.
  */
-const internStart = (desk) => (desk.held?.motion === true && desk.held.frame_interval_ms !== null ? 1 + (STUB_OFFSET % 4) : 0);
+const internStart = (desk) => (desk.side_table.stools.some((s) => s.activity === 'working') && desk.lag === null
+    && desk.config_note === null && desk.unrecognised.length === 0 && desk.dark === null ? 1 + (STUB_OFFSET % 4) : 0);
 const internForms = { typing: 0, still: 0 };
 
 /**
@@ -200,6 +212,8 @@ const failing = (seat, parity) => new Set(parity === null ? [] : seat.subagents
     .filter((_, i) => i % 2 === parity)
     .map((s) => `intern:${seat.install_id}/${seat.seat_id}~${s.call_id}`));
 const failedOf = new Map();
+// Each placed desk's model, which `internStart()` reads the treatment facts off.
+const modelOf = new Map();
 
 for (const seat of seats) {
     for (const v of [{ missing: false, placeholder: false, fails: null }, { missing: true, placeholder: false, fails: 1 }, { missing: false, placeholder: true, fails: 0 }]) {
@@ -216,6 +230,7 @@ for (const seat of seats) {
         const ctx = { box: BOX, measure, character: { w: 18, h: 32 }, crest: crestTop, theme: 'studio', placeholder: v.placeholder, failed: failing(seat, v.fails) };
 
         seatOf.set(key, seat);
+        modelOf.set(key, model);
         failedOf.set(key, ctx.failed);
         desks.push(placeDesk(model, key, room, null, { x: desks.length * BOX.width, y: 0 }, ctx, { overflow: false, slot: null, object_id: null }));
     }
@@ -453,7 +468,7 @@ function owed(e, seat, failed, key) {
             // (§ 10.4's frame contract item 3, card#12259) — the tree's chibi frame under `seat~<call_id>`; an untitled
             // intern with a dashed edge at its own rect.
             const look = e.untitled ? ['intern', 'untitled'] : ['intern'];
-            const start = internStart(byKey.get(key));
+            const start = internStart(modelOf.get(key));
             const want = internFrame(seat.install_id, seat.seat_id, e.call_id, seat.character.species, start);
 
             internForms[start === 0 ? 'still' : 'typing']++;
@@ -834,9 +849,10 @@ for (const desk of desks) {
 }
 
 // ── Q3: the intern key is `call_id` — an intern keeps its sprite when `subagents[]` reorders ──────
-// Each planted seat with two or more interns is painted twice, its `subagents[]` in the wire's order and
-// reversed, with no art failed. The sprite at row place `i` belongs to the intern the input put there,
-// so each intern's sprite is read by its PLACE — never by its href — and must be the same in both. Each
+// Each planted seat with two or more interns is painted twice, with distinct `started_at`s ascending and then descending
+// by array place — which reverses the places a fresh replace seats them at (card#12450: oldest at slot 0) — with no art failed. The
+// sprite at slot `s` belongs to the intern the published rule seats there, so each intern's sprite is read by its
+// PLACE — never by its href — and must be the same in both. Each
 // paint is a FRESH painter — another page load, or another browser — because one painter's frame cache
 // (keyed by the asset) would hand back the first paint's sprite and hide a key that is not the call's.
 {
@@ -848,21 +864,30 @@ for (const desk of desks) {
         createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} }).paint({ ...scene, desks: [desk] }, { bounds: null });
 
         const g = host.children[0].children.find((n) => n.getAttribute('class') === 'desks').children[0];
+        // Slot order: the front row (the larger `y`) left to right, then the row behind it — `stoolSlots()`' row-major order.
         const sprites = g.children.filter((n) => n.name === 'svg' && classes(n.children[0]).includes('intern'))
-            .sort((a, b) => num(a, 'x') - num(b, 'x'));
+            .sort((a, b) => num(b, 'y') - num(a, 'y') || num(a, 'x') - num(b, 'x'));
+        // The published rule for a fresh replace: `started_at` ascending, then `call_id` by code unit, oldest at slot 0.
+        const bySlot = [...seat.subagents].sort((a, b) => (a.started_at < b.started_at ? -1 : a.started_at > b.started_at ? 1
+            : a.call_id < b.call_id ? -1 : a.call_id > b.call_id ? 1 : 0));
 
-        return new Map(seat.subagents.slice(0, sprites.length).map((s, i) => [s.call_id, sprites[i].children[0].getAttribute('href')]));
+        return new Map(bySlot.slice(0, sprites.length).map((s, i) => [s.call_id, sprites[i].children[0].getAttribute('href')]));
     };
 
+    // Distinct starts, ascending then descending by array place: a planted seat's interns may share one `started_at`
+    // (the cap plants do), and a reversal of equal starts reverses nothing — the places would not move at all.
+    const at = (i) => new Date(Date.parse('2026-08-23T14:23:00.000Z') + i).toISOString();
+
     for (const seat of seats.filter((x) => x.subagents.length >= 2)) {
-        const before = spritesByCall(seat);
-        const after = spritesByCall({ ...seat, subagents: [...seat.subagents].reverse() });
+        const n = seat.subagents.length;
+        const before = spritesByCall({ ...seat, subagents: seat.subagents.map((s, i) => ({ ...s, started_at: at(i) })) });
+        const after = spritesByCall({ ...seat, subagents: seat.subagents.map((s, i) => ({ ...s, started_at: at(n - 1 - i) })) });
 
         for (const [call, href] of before) {
             interns.swapped++;
 
             if (after.get(call) !== href) {
-                defects.push(`${seat.seat_id}: the intern ${call} drew «${href}» in the wire's order and «${after.get(call)}» reversed — `
+                defects.push(`${seat.seat_id}: the intern ${call} drew «${href}» at its place and «${after.get(call)}» at its reversed place — `
                     + 'its sprite is keyed by its place in the row, not by its call (Q3)');
             }
         }
@@ -938,7 +963,7 @@ for (const p of owedPoses) {
 // tree drew, from the loop's start (`loopFrom`, § 10.4 item 4) and never another drawing's — and an intern through its
 // own typing loop exactly while its stool's A23 rendering moves (card#12448). Read three times: a desk whose pose's
 // loop is the whole list (`loopFrom` 0) with a typing intern beside it; the same desk with its stool's rendering still
-// — the hook card#12451 turns, so the intern's motion is the stool's own and never the desk's — and a sleeper, whose
+// — the intern's motion is the stool's own (since card#12451 its interns' own `activity_state`) and never the desk's — and a sleeper, whose
 // still stands ahead of its loop (`loopFrom` 1) and never steps ──
 function heldLoop(desk, withIntern, internTypes = false) {
     const go = { motion: true, frame_interval_ms: 250 };

@@ -236,25 +236,29 @@ trait ReadsTheAnimationTable
     /**
      * § 6.2's SIDE-TABLE row (A23, card#12448) — the one `held` row whose Where cell is the side table, or
      * `null` where the table holds none, or more than one, or one whose condition is not the published
-     * *`subagents[]` is not empty* (so a reworded condition is loud here rather than read as another).
+     * *an element reads `activity_state == "working"`* (card#12451; so a reworded condition is loud here rather than
+     * read as another).
      */
     protected function documentSideTableRow(?string $md = null): ?string
     {
         $rows = array_filter($this->documentAnimationRows($md), static fn (array $row): bool => $row['class'] === 'held'
-            && $row['where'] === 'side table' && str_contains($row['condition'], 'subagents[] is not empty'));
+            && $row['where'] === 'side table' && str_contains($row['condition'], 'activity_state == "working"'));
 
         return count($rows) === 1 ? array_key_first($rows) : null;
     }
 
     /**
-     * The side-table row ONE seat object holds: § 6.2's A23 where its `subagents[]` is not empty, else
-     * `null`. It is held BESIDE the desk's own row (`heldRowFor()`), never instead of it.
+     * The side-table row ONE seat object holds: § 6.2's A23 where an element of its `subagents[]` reads
+     * `working` (card#12451), else `null`. It is held BESIDE the desk's own row (`heldRowFor()`), never instead of it.
      *
      * @param  array<string, mixed>  $seat
      */
     protected function sideTableRowFor(array $seat, ?string $md = null): ?string
     {
-        return is_array($seat['subagents'] ?? null) && $seat['subagents'] !== [] ? $this->documentSideTableRow($md) : null;
+        // card#12451: held while an element reads `working` — § 6.2 A23's condition, read off the row above.
+        $working = array_filter(is_array($seat['subagents'] ?? null) ? $seat['subagents'] : [], static fn ($s): bool => ($s['activity_state'] ?? null) === 'working');
+
+        return $working !== [] ? $this->documentSideTableRow($md) : null;
     }
 
     /**

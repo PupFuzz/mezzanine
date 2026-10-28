@@ -59,6 +59,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -735,6 +736,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -913,6 +915,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -1340,6 +1343,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -1775,6 +1779,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -2210,6 +2215,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -2645,6 +2651,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -3075,6 +3082,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -3552,6 +3560,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -4388,6 +4397,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -4726,6 +4736,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -5313,6 +5324,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -5413,48 +5425,56 @@
                           "call_id": "01K3TB00000000000000000100",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:20:10.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000101",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:21:11.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000102",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:22:12.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000103",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:20:13.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000104",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:21:14.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000105",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:22:15.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000106",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:20:16.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000107",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:21:17.004Z"
                         }
                       ],
@@ -5541,48 +5561,56 @@
                           "call_id": "01K3TB00000000000000000200",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:20:10.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000201",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:21:11.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000202",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:22:12.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000203",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:20:13.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000204",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:21:14.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000205",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:22:15.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000206",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:20:16.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000207",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:21:17.004Z"
                         }
                       ],
@@ -5859,6 +5887,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -5959,48 +5988,56 @@
                           "call_id": "01K3TB00000000000000000100",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:20:10.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000101",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:21:11.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000102",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:22:12.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000103",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:20:13.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000104",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:21:14.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000105",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:22:15.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000106",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:20:16.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000107",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:21:17.004Z"
                         }
                       ],
@@ -6087,48 +6124,56 @@
                           "call_id": "01K3TB00000000000000000200",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:20:10.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000201",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:21:11.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000202",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:22:12.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000203",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:20:13.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000204",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:21:14.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000205",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:22:15.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000206",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:20:16.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000207",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:21:17.004Z"
                         }
                       ],
@@ -6413,48 +6458,56 @@
                           "call_id": "01K3TB00000000000000000300",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:20:10.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000301",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:21:11.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000302",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:22:12.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000303",
                           "title": null,
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:20:13.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000304",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:21:14.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000305",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:22:15.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000306",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:20:16.004Z"
                         },
                         {
                           "call_id": "01K3TB00000000000000000307",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:21:17.004Z"
                         }
                       ],

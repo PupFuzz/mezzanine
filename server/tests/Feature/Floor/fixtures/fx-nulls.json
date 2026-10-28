@@ -111,6 +111,7 @@
                 "call_id": "01K3TC2B3C4D5E6F7G8H9J0K1M",
                 "title": null,
                 "subagent_type": null,
+                "activity_state": "working",
                 "started_at": "2026-08-23T14:22:51.000Z"
               }
             ],
@@ -297,6 +298,7 @@
                           "call_id": "01K3TC2B3C4D5E6F7G8H9J0K1M",
                           "title": null,
                           "subagent_type": null,
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:22:51.000Z"
                         }
                       ],

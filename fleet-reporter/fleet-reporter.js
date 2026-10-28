@@ -67,7 +67,7 @@ const lazy = (name) => require(name);
  * change to a file a reporter update ships, and `bin/reporter-version-guard.py` fails a PR that changes
  * one without moving it, so two different builds never report the same version. Each version's row in
  * `fleet-reporter/UPDATES.md` says what an upgrading seat must apply. */
-const REPORTER_VERSION = '0.3.0';
+const REPORTER_VERSION = '0.4.0';
 const SCHEMA_VERSION = 1;
 
 /* ── Every number, from § 14 and the section that derives it ──────────────────────────────── */
@@ -84,6 +84,9 @@ const K = {
                                  // unimplemented "≥ 50 queued events" leg, and why `50` is not
                                  // parked here as a constant nothing reads
   HEARTBEAT_MS: 60000,           // § 9.1
+  SUBAGENT_IDLE_MS: 60000,       // § 14 *Subagent idle threshold* (card#12451) — a bound subagent with no call open under
+                                 // it and no hook from it for this long is reported `idle` (§ 6.15); held equal to § 14's cell
+                                 // by the selftest
   BACKOFF_BASE_MS: 2000,         // § 11.5
   BACKOFF_MAX_MS: 120000,        // § 11.5
   RETRY_AFTER_CAP_S: 600,        // § 11.5
@@ -1255,12 +1258,26 @@ function emptyIndex() {
     // (§ 8.4) and the second signal must be able to tell "already reaped by my twin" from
     // "never seen", which are different events on the wire. Retained for the same 15 min.
     sessionsClosed: new Map(),
+    // § 6.15 (card#12451) — the per-child instant the idle rule reads, KEPT by the fold rather than
+    // derived: an ordinary `close` deletes its entry, so a child's records alone empty at every closed
+    // call. One entry per bound open dispatch; `capIndex` sweeps the rest.
+    agents: new Map(),
+    // § 8.5's revival store (card#12451): a dispatch its SubagentStop closed, by the child's
+    // `agent_id`, so a SubagentStart that revives it can open a new dispatch carrying its title. Bounded
+    // by COUNT (K.TOMBSTONES, oldest evicted, newest wins), never by a clock — nothing in the harness
+    // bounds how long after a stop a message may revive the subagent.
+    revivable: new Map(),
     bucket: null, offset: 0, corrupt: 0, truncated: false, evicted: [],
   };
 }
 
 function applyIndexRecord(ix, r, nowMs) {
   const touch = (sid) => { const s = ix.sessions.get(sid); if (s) s.last_active = r.at || s.last_active; };
+  // § 6.15 — every record carrying a subagent's id is a hook from that subagent (or its binding),
+  // and moves the child's `last_at` to the record's own `at`.
+  const seen = (agentId) => { if (agentId && r.at) ix.agents.set(agentId, { last_at: r.at }); };
+  // The dispatch an entry served is gone: its child's instant goes with it (the map's bound).
+  const served = (e) => { if (e.is_dispatch && e.child_agent_id) ix.agents.delete(e.child_agent_id); };
   switch (r.k) {
     case 'session_open': {
       // § 8.4 — `source` is written only by SessionStart(source=clear), and it may land on a session
@@ -1305,12 +1322,24 @@ function applyIndexRecord(ix, r, nowMs) {
       touch(r.session_id); break;
     case 'turn_close': ix.turns.delete(r.session_id); touch(r.session_id); break;
     case 'open': {
-      ix.calls.set(r.call_id, {
+      const entry = {
         call_id: r.call_id, session_id: r.session_id, tool_name: r.tool_name,
         harness_call_ref: r.harness_call_ref || null, started_at: r.at,
         is_dispatch: !!r.is_dispatch, agent_scope_id: r.agent_scope_id || null,
         child_agent_id: r.child_agent_id || null, prompt_id: r.prompt_id || null,
-      });
+      };
+      // § 8.5 (card#12451) — a dispatch keeps its own title and type, so a revival can re-send them
+      // and the SubagentStart tie-break can read the type. Reporter-internal; no wire field.
+      if (r.is_dispatch) {
+        entry.title = typeof r.title === 'string' ? r.title : null;
+        entry.title_truncated = !!r.title_truncated;
+        entry.subagent_type = typeof r.subagent_type === 'string' ? r.subagent_type : null;
+      }
+      ix.calls.set(r.call_id, entry);
+      seen(entry.agent_scope_id);
+      // An `open` carrying `child_agent_id` is a SYNTHESIZED revival (no harness-driven open binds at
+      // open): the stopped dispatch it stands in for leaves the store.
+      if (entry.child_agent_id) { seen(entry.child_agent_id); ix.revivable.delete(entry.child_agent_id); }
       const turn = ix.turns.get(r.session_id);
       if (turn && turn.prompt_id === (r.prompt_id || null)) turn.tool_calls += 1;
       touch(r.session_id);
@@ -1321,6 +1350,15 @@ function applyIndexRecord(ix, r, nowMs) {
       if (e) {
         const turn = ix.turns.get(e.session_id);
         if (turn && turn.prompt_id === e.prompt_id && r.outcome === 'failed') turn.failed_calls += 1;
+        seen(e.agent_scope_id);
+        served(e);
+        // § 8.5 (card#12451) — a dispatch its SubagentStop closed may be revived under the same
+        // agent_id: keep what the revival re-sends. Delete-then-set makes the newest stop win the
+        // eviction order as well as the value.
+        if (r.close_source === 'subagent_stop_hook' && e.is_dispatch && e.child_agent_id) {
+          ix.revivable.delete(e.child_agent_id);
+          ix.revivable.set(e.child_agent_id, { title: e.title || null, title_truncated: !!e.title_truncated, subagent_type: e.subagent_type || null });
+        }
         ix.calls.delete(r.call_id);
         touch(e.session_id);
         // § 8.5 — a dispatch call closed by its SubagentStop keeps its harness reference for the
@@ -1335,14 +1373,17 @@ function applyIndexRecord(ix, r, nowMs) {
       }
       break;
     }
-    case 'bind': { const e = ix.calls.get(r.call_id); if (e) e.child_agent_id = r.child_agent_id; break; }
+    case 'bind': { const e = ix.calls.get(r.call_id); if (e) e.child_agent_id = r.child_agent_id; seen(r.child_agent_id); break; }
+    // § 6.15 (card#12451) — the subagent's state as this reporter last put it on the wire. Rides the
+    // call's own entry, so a /clear carry keeps it with the call and a restarted flusher re-emits nothing.
+    case 'activity': { const e = ix.calls.get(r.call_id); if (e) e.activity = r.state; break; }
     case 'tombstone': {
       const e = ix.calls.get(r.call_id);
       // A reaped entry does not vanish: it keeps its original call_id for 15 min so a late
       // close still finds it (§ 8.2). Without this the server's late-completion override —
       // the instrument that reports the Stop reap is too eager — could never fire.
       ix.tombstones.set(r.call_id, Object.assign({}, e || {}, { call_id: r.call_id, closed_at: r.at }));
-      if (e) { const s = ix.sessions.get(e.session_id); if (s) s.aborted_calls += 1; ix.calls.delete(r.call_id); }
+      if (e) { seen(e.agent_scope_id); served(e); const s = ix.sessions.get(e.session_id); if (s) s.aborted_calls += 1; ix.calls.delete(r.call_id); }
       break;
     }
     case 'attention_open':
@@ -1368,6 +1409,12 @@ function capIndex(ix, nowMs) {
   }
   while (ix.tombstones.size > K.TOMBSTONES) { ix.tombstones.delete(ix.tombstones.keys().next().value); count('open_call_index_overflow'); }
   for (const [sid, c] of ix.sessionsClosed) if (nowMs - Date.parse(c.closed_at || 0) > K.TOMBSTONE_MS) ix.sessionsClosed.delete(sid);
+  // § 6.15 — `agents` holds an instant only for a child some open dispatch is bound to, so its size is
+  // at most the open-call index's own bound and nothing in it ages by a clock.
+  const bound = new Set();
+  for (const e of ix.calls.values()) if (e.is_dispatch && e.child_agent_id) bound.add(e.child_agent_id);
+  for (const id of [...ix.agents.keys()]) if (!bound.has(id)) ix.agents.delete(id);
+  while (ix.revivable.size > K.TOMBSTONES) ix.revivable.delete(ix.revivable.keys().next().value);
   while (ix.sessions.size > K.SESSIONS) {
     // Eviction is by LEAST-RECENT ACTIVITY, not oldest-opened: a long-lived session that is
     // still emitting is the one worth keeping (§ 8.2).
@@ -1407,6 +1454,10 @@ function foldIndex(spool, nowMs) {
     for (const t of snap.turns || []) ix.turns.set(t.session_id, t);
     for (const a of snap.attention || []) ix.attention.set(a.session_id, a);
     for (const c of snap.compactions || []) ix.compactions.set(c.session_id, c);
+    // card#12451 — a snapshot an older flusher wrote has neither: a child bound before the upgrade has
+    // no instant until its next hook, and is judged by nothing until then (it stays `working`).
+    for (const a of snap.agents || []) ix.agents.set(a.agent_id, { last_at: a.last_at });
+    for (const v of snap.revivable || []) ix.revivable.set(v.agent_id, { title: v.title || null, title_truncated: !!v.title_truncated, subagent_type: v.subagent_type || null });
   } catch (e) {
     // A missing snapshot is the ordinary first-run state; an unparseable one costs history,
     // never the exit code (AT-3 drives exactly this case and asserts exit 0).
@@ -2064,6 +2115,37 @@ function pairClear(ctx, ix, oldSid, newSid, twin) {
   if (twin.age_ms > K.CLEAR_GAP_MS) count('clear_pair_late');
 }
 
+/* § 8.5's revival path (card#12451). The stopped dispatch's kept title and type are re-sent on a NEW
+ * dispatch call: an `open` record that carries `child_agent_id` at the open (which is what tells the fold
+ * it was synthesized, and takes the id out of the store), its `bind`, and the pair the PreToolUse(Agent)
+ * it stands in for would have emitted. The title is re-derived under the CURRENT `descriptors` mode, as
+ * § 6.7 gives every spawn: the stored one under `full`, `null` under `paths` or `none`. */
+function reviveDispatch(ctx, ix, sid, agentId, payload, atMs) {
+  const kept = ix.revivable.get(agentId);
+  const mode = descriptorMode(ctx.config);
+  const callId = ulid(atMs);
+  const openBefore = ix.calls.size;
+  const rec = {
+    k: 'open', call_id: callId, session_id: sid, tool_name: 'Agent', harness_call_ref: null,
+    is_dispatch: true, agent_scope_id: null, child_agent_id: agentId, prompt_id: payload.prompt_id || null,
+    title: kept.title, title_truncated: kept.title_truncated, subagent_type: kept.subagent_type,
+  };
+  journal(ctx.spool, rec);
+  applyIndexRecord(ix, Object.assign({}, rec, { at: rfc3339(atMs) }), atMs);
+  journal(ctx.spool, { k: 'bind', call_id: callId, child_agent_id: agentId });
+  const title = mode === 'full' ? kept.title : null;
+  const d = buildDescriptor('Agent', title === null ? {} : { description: title }, mode);
+  ctx.emit('tool.start', sid, {
+    call_id: callId, tool_name: 'Agent', descriptor: d.descriptor, descriptor_truncated: d.truncated,
+    agent_scope: 'main', parent_call_id: null, harness_call_ref: null,
+    open_calls_before: Math.min(openBefore, K.OPEN_CALLS),
+  });
+  ctx.emit('subagent.spawn', sid, {
+    call_id: callId, title, title_truncated: title === null ? false : kept.title_truncated, subagent_type: kept.subagent_type,
+  });
+  count('subagent_revived');
+}
+
 function handleHook(ctx, hookName, payload, ix, atMs) {
   const sid = validSessionId(payload.session_id);
   const emit = ctx.emit;
@@ -2198,14 +2280,30 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         for (const e of ix.calls.values()) if (e.child_agent_id === agentId) { parentCallId = e.call_id; break; }
         if (!parentCallId) count('agent_bind_unresolved');
       }
+      // § 6.15 (card#12451) — THE RESUME: a hook under a subagent THIS fold holds `idle` says it works
+      // again, journaled first and emitted immediately BEFORE this call's tool.start. The fold may be
+      // stale (it is made outside the lock, and the lock can lapse): a duplicate `working` carries the
+      // value the server already holds and moves nothing, and the flusher's next pass repairs any
+      // `idle` this fold did not see — so the resume is self-healing, never exact (§ 6.15).
+      if (parentCallId && ix.calls.get(parentCallId).activity === 'idle') {
+        journal(ctx.spool, { k: 'activity', call_id: parentCallId, state: 'working' });
+        ix.calls.get(parentCallId).activity = 'working';
+        emit('subagent.activity', sid, { call_id: parentCallId, activity_state: 'working' });
+      }
       const isDispatch = toolName === 'Agent' || toolName === 'Task';
       const callId = ulid(atMs);
       const ref = typeof payload.tool_use_id === 'string' && bytes(payload.tool_use_id) <= 64 ? payload.tool_use_id : null;
       const openBefore = ix.calls.size;
+      // § 6.7 — the title is the dispatch's free-text description, so only `descriptors: "full"` sends it.
+      const title = isDispatch && mode === 'full' && typeof ti.description === 'string' ? sanitize(`${ti.description}`, K.TITLE_CAP) : null;
+      const st = isDispatch && typeof ti.subagent_type === 'string' && /^[A-Za-z0-9_-]{1,32}$/.test(ti.subagent_type) ? ti.subagent_type : null;
       const rec = {
         k: 'open', call_id: callId, session_id: sid, tool_name: toolName, harness_call_ref: ref,
         is_dispatch: isDispatch, agent_scope_id: agentId, prompt_id: payload.prompt_id || null,
       };
+      // The dispatch's own title and type ride its open record (§ 8.5): the revival re-sends them and
+      // the SubagentStart tie-break reads the type. Exactly what the spawn below sends, never more.
+      if (isDispatch) Object.assign(rec, { title: title ? title.text : null, title_truncated: title ? title.truncated : false, subagent_type: st });
       journal(ctx.spool, rec);
       applyIndexRecord(ix, Object.assign({}, rec, { at: rfc3339(atMs) }), atMs);
       emit('tool.start', sid, {
@@ -2220,10 +2318,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         // emit no subagent.spawn on any seat running this build — a whole feature reading zero
         // forever, from one transcribed string. Which one fired is counted.
         count(`dispatch_tool_name.${toolName}`);
-        // The title is the dispatch's free-text description, so only `descriptors: "full"` sends it.
-        const title = mode === 'full' && typeof ti.description === 'string' ? sanitize(`${ti.description}`, K.TITLE_CAP) : null;
         if (title) countSanitizer(title);
-        const st = typeof ti.subagent_type === 'string' && /^[A-Za-z0-9_-]{1,32}$/.test(ti.subagent_type) ? ti.subagent_type : null;
         emit('subagent.spawn', sid, {
           call_id: callId, title: title ? title.text : null,
           title_truncated: title ? title.truncated : false, subagent_type: st,
@@ -2343,11 +2438,22 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       // launch's own PostToolUse names the agent it launched (§ 8.5, card#11799), and a call it
       // already bound to THIS agent_id must not have some other call bound to it as well.
       if ([...ix.calls.values()].some((e) => e.child_agent_id === agentId)) break;
+      // § 8.5's REVIVAL (card#12451): a SubagentStart for a subagent whose dispatch its SubagentStop
+      // closed is that subagent revived by a message (MEASURED at 2.1.311: the same agent_id, no
+      // PreToolUse(Agent)). The closed call never reopens (§ 8.6), so the revival is a NEW dispatch,
+      // synthesized here and bound at once — exact by construction, so it outranks the rules below.
+      if (ix.revivable.has(agentId)) { reviveDispatch(ctx, ix, sid, agentId, payload, atMs); break; }
       const unbound = [...ix.calls.values()].filter((e) => e.session_id === sid && e.is_dispatch && !e.child_agent_id);
-      if (unbound.length === 1) {
-        journal(ctx.spool, { k: 'bind', call_id: unbound[0].call_id, child_agent_id: agentId });
-        unbound[0].child_agent_id = agentId;
-        count('agent_bind_sole_unbound');
+      // The tie-break (round 2, finding 7): `agent_type` is the one key a SubagentStart shares with its
+      // dispatch's input (MEASURED equal on every capture), so where several are unbound and exactly one
+      // is of that type, that one is the subagent's. Two of one type stay a guess, and are not bound.
+      const agentType = typeof payload.agent_type === 'string' ? payload.agent_type : null;
+      const typed = unbound.length > 1 && agentType ? unbound.filter((e) => e.subagent_type === agentType) : [];
+      const pick = unbound.length === 1 ? unbound[0] : typed.length === 1 ? typed[0] : null;
+      if (pick) {
+        journal(ctx.spool, { k: 'bind', call_id: pick.call_id, child_agent_id: agentId });
+        pick.child_agent_id = agentId;
+        count(unbound.length === 1 ? 'agent_bind_sole_unbound' : 'agent_bind_type_match');
       } else if (unbound.length > 1) {
         count('agent_bind_ambiguous');   // no guess is written
       }
@@ -3658,6 +3764,17 @@ function classify(status, headers, text) {
   return { kind: 'retryable', status, foreign: true, body: parsed, text };
 }
 
+/* A TIMING-ONLY TEST SEAM, beside FLEET_REPORTER_NOW_MS and as inert (AT-29, card#12451): the instant a
+ * one-pass flusher takes as its OWN START for § 8.3's restart reap, so the suite can drive the later pass
+ * of a flusher that has been running since before the calls it judges — the only flusher that ever judges
+ * a subagent's silence, since a restart reaps every call older than itself. It can only move the start
+ * EARLIER (it narrows the reap and never widens it), and gates nothing else. */
+function flusherStartSeam(atStart) {
+  const v = process.env.FLEET_REPORTER_FLUSHER_START_MS;
+  const n = v === undefined || v === '' ? NaN : Number(v);
+  return Number.isFinite(n) ? Math.min(n, atStart) : atStart;
+}
+
 /* A TIMING-ONLY TEST SEAM, beside FLEET_REPORTER_NOW_MS and as inert (AT-28 Cases B and M): it lowers the
  * ladder's cap so a lane in backoff attempts on every pass, and gates nothing else. */
 const BACKOFF_CAP_MS = (() => {
@@ -3858,6 +3975,8 @@ function writeSnapshot(spool, state, ix) {
     sessions: [...ix.sessions.values()], turns: [...ix.turns.entries()].map(([session_id, t]) => Object.assign({ session_id }, t)),
     attention: [...ix.attention.values()], compactions: [...ix.compactions.values()],
     sessions_closed: [...ix.sessionsClosed.entries()].map(([session_id, c]) => Object.assign({ session_id }, c)),
+    agents: [...ix.agents.entries()].map(([agent_id, a]) => Object.assign({ agent_id }, a)),
+    revivable: [...ix.revivable.entries()].map(([agent_id, v]) => Object.assign({ agent_id }, v)),
   }));
 }
 
@@ -3956,7 +4075,8 @@ async function flusherMain() {
   withSeatWriter(config, spool, (ctx) => {
     const at = ctx.take();
     const fx = foldIndex(spool, at);
-    reap(ctx, fx, (e) => Date.parse(e.started_at || 0) < atStart, 'reporter_restart', 'reap_reporter_restart', at);
+    const startedAt = flusherStartSeam(atStart);
+    reap(ctx, fx, (e) => Date.parse(e.started_at || 0) < startedAt, 'reporter_restart', 'reap_reporter_restart', at);
   });
 
   const started = runSelftestChecks(config, cp, allErrors);
@@ -4147,6 +4267,7 @@ async function flusherMain() {
  * agent". Its exits are all observed edges, and D2 closes the trapdoor on the seat's next activity
  * event — so this loop neither times it out nor lets the silence close below end its session. */
 function expireOpenFacts(ctx, ix, atMs) {
+  judgeSubagents(ctx, ix, atMs);
   for (const [sid, c] of [...ix.compactions]) {
     if (atMs - Date.parse(c.started_at || atMs) > K.COMPACTION_MS) closeCompaction(ctx, ix, sid, 'timeout', atMs);
   }
@@ -4164,6 +4285,32 @@ function expireOpenFacts(ctx, ix, atMs) {
       ix.sessions.delete(sid); ix.turns.delete(sid);
       emitSessionEnd(ctx, s, sid, 'inferred_silence', 0, [], atMs);
     }
+  }
+}
+
+/* § 6.15 (card#12451) — THE FLUSHER'S READING OF A SUBAGENT'S SILENCE, under the seat write lock, on the
+ * pass's own fold. A bound open dispatch is `idle` when no open call is under its child AND the child's
+ * kept `last_at` is more than K.SUBAGENT_IDLE_MS behind; it is journaled and emitted on the edge. THE
+ * REPAIR is the same rule read the other way: a dispatch journaled `idle` for which the rule no longer
+ * holds — a call open under the child, or `last_at` inside the threshold (a call that opened and closed
+ * before the `idle` record landed, which a rule reading only "a call is open" misses) — is journaled and
+ * emitted `working`. Only OPEN dispatch entries are read, so no `working` goes out for a call this fold
+ * holds closed or tombstoned. An unbound dispatch is never judged (no hook can be attributed to it), and
+ * a bound one whose child has no kept instant yet (bound before this build) waits for its next hook. */
+function judgeSubagents(ctx, ix, atMs) {
+  const busy = new Set();
+  for (const e of ix.calls.values()) if (e.agent_scope_id) busy.add(e.agent_scope_id);
+  for (const e of [...ix.calls.values()]) {
+    if (!e.is_dispatch || !e.child_agent_id) continue;
+    const a = ix.agents.get(e.child_agent_id);
+    if (!a) continue;
+    const idle = !busy.has(e.child_agent_id) && atMs - Date.parse(a.last_at) > K.SUBAGENT_IDLE_MS;
+    const held = e.activity === 'idle' ? 'idle' : 'working';
+    const want = idle ? 'idle' : 'working';
+    if (want === held) continue;
+    journal(ctx.spool, { k: 'activity', call_id: e.call_id, state: want });
+    e.activity = want;
+    ctx.emit('subagent.activity', e.session_id, { call_id: e.call_id, activity_state: want });
   }
 }
 

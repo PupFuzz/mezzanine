@@ -883,7 +883,7 @@ before, and each site loses only what it had not received: a dropped bucket coun
 **that site's** cursor into **that site's** `spool_dropped_events`, so `lossy` is raised on the site
 that lost and on no other. The bound for a site that is down is therefore the one the seat already
 had: nothing is lost for an outage up to the residency cap or until the spool reaches its size bound
-(~6.4 days at the [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) ceiling, longer on a
+(~3.7 days at the [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) ceiling, longer on a
 quieter seat), and past it the oldest hour is lost first, counted and badged on that site alone,
 while the sites that are current lose nothing and are delayed by nothing. A drop never waits for a
 lane's persisted request and never changes what that request resends (*One request per site*,
@@ -1609,7 +1609,7 @@ Present on **every** event of every kind.
 |---|---|---|---|---|---|
 | `event_id` | ULID | — | no | 26 chars | `"01K3T8ZQ6P2R4S8T0VWXYZ1234"` |
 | `schema_version` | int | — | no | ≥ 1, **must equal the batch's** | `1` |
-| `kind` | string | — | no | ≤ 32 B, `^[a-z]+\.[a-z_]+$`; the 14 currently-defined kinds are listed in [§ 6](#6-event-kinds), and an **unknown kind is accepted, ignored and counted** ([§ 5](#5-compatibility--what-this-document-owes-the-policy)), never a rejection | `"tool.start"` |
+| `kind` | string | — | no | ≤ 32 B, `^[a-z]+\.[a-z_]+$`; the 15 currently-defined kinds are listed in [§ 6](#6-event-kinds), and an **unknown kind is accepted, ignored and counted** ([§ 5](#5-compatibility--what-this-document-owes-the-policy)), never a rejection | `"tool.start"` |
 | `event_time` | rfc3339_ms | UTC, seat clock | no | — | `"2026-08-23T14:07:03.118Z"` |
 | `seq` | int | — | no | 1…2^53−1, monotonic per `seq_epoch` | `48211` |
 | `install_id` | slug | — | no | ≤ 32 B, **must equal the batch's** | `"aimla"` |
@@ -1877,6 +1877,7 @@ classification exists:**
 | `subagent.stop.outcome` | reporter | — | [§ 6.6](#66-toolend), by reference — never restated |
 | `subagent.stop.abort_reason` | reporter | — | [§ 6.6](#66-toolend), by reference |
 | `subagent.stop.close_source` | reporter | — | [§ 6.6](#66-toolend), by reference |
+| `subagent.activity.activity_state` | reporter — the flusher's reading of a subagent's silence, and the hook's resume | — | [§ 6.15](#615-subagentactivity) |
 | `compaction.start.trigger` | harness — `PreCompact.trigger` | `unknown` | [§ 6.9](#69-compactionstart) |
 | `compaction.end.close_source` *(a **different** set of three)* | reporter | — | [§ 6.10](#610-compactionend) |
 | `context.sample.used_pct_source` | reporter | — | [§ 6.11](#611-contextsample) |
@@ -2190,10 +2191,10 @@ wired: an unsubscribed hook costs nothing, a subscribed one costs latency on the
 | `UserPromptSubmit` | resolve an open attention request | `turn.start`, maybe `attention.resolved` |
 | `Stop` | reap that session's open calls | `tool.end`(s), `turn.end` |
 | `StopFailure` | reap that session's open calls — a turn that ended on an API error | `tool.end`(s), `turn.end` (`api_error`) |
-| `PreToolUse` | open a ledger entry | `tool.start`, plus `subagent.spawn` when `tool_name ∈ {"Agent","Task"}` |
+| `PreToolUse` | open a ledger entry; under a subagent its fold holds `idle`, journal it `working` first ([§ 6.15](#615-subagentactivity)) | `tool.start`, plus `subagent.spawn` when `tool_name ∈ {"Agent","Task"}`; `subagent.activity` (`working`) ahead of it on that resume |
 | `PostToolUse` | close it as succeeded | `tool.end` (`completed`), maybe `subagent.stop`, maybe `attention.resolved` |
 | `PostToolUseFailure` | close it as failed, or as aborted when it matches [§ 6.6](#66-toolend)'s **kill signature** | `tool.end` (`failed` \| `aborted`), maybe `subagent.stop`, maybe `attention.resolved` |
-| `SubagentStart` | bind the subagent's `agent_id` to the open dispatch call as its `child_agent_id` | *(none — a binding, not an event)* |
+| `SubagentStart` | bind the subagent's `agent_id` to the open dispatch call as its `child_agent_id`; for a stopped dispatch's `agent_id` in the revivable store, synthesize a new dispatch and bind it ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)'s revival path) | *(none — a binding, not an event)*; on a revival, the new dispatch's `tool.start` and `subagent.spawn` |
 | `SubagentStop` | reap that subagent's own open calls ([§ 8.3](#83-the-reap-rules)), then close the bound dispatch call if it is still open | `tool.end`(s), `subagent.stop` |
 | `PreCompact` | — | `compaction.start` |
 | `PostCompact` | — | `compaction.end` |
@@ -2292,6 +2293,7 @@ cites its sum instead of carrying a second figure that could drift from it.
 | `tool.end` | `PostToolUse`, `PostToolUseFailure`, or a reap ([§ 8.3](#83-the-reap-rules)) | hook | 1,000–3,000 |
 | `subagent.spawn` | `PreToolUse` where `tool_name ∈ {"Agent","Task"}` ([§ 6.7](#67-subagentspawn)) | hook | 5–60 |
 | `subagent.stop` | the Task call's close, from any close source | hook | 5–60 |
+| `subagent.activity` | the flusher's idle pass and its repair, or a `PreToolUse` under an idle subagent ([§ 6.15](#615-subagentactivity)) | hook / flusher | 0–7,936 |
 | `compaction.start` | `PreCompact` hook | hook | 2–20 |
 | `compaction.end` | `PostCompact` hook, or `SessionStart(source=compact)` | hook | 2–20 |
 | `context.sample` | statusLine render, **sampled** | statusline | ≤ 1,440 |
@@ -2300,13 +2302,16 @@ cites its sum instead of carrying a second figure that could drift from it.
 | `reporter.heartbeat` | flusher timer, every 60 s | flusher | 1,440 |
 
 Volumes are **estimates for sizing, not measurements** — no seat has been instrumented yet. The
-ceiling column sums to **10,420 events/seat/day**, which at the ~500 B typical event size is
-**~5.2 MB/day**. That pair is the only volume figure this document uses: it feeds the spool bound,
+ceiling column sums to **18,356 events/seat/day**, which at the ~500 B typical event size is
+**~9.2 MB/day**. That pair is the only volume figure this document uses: it feeds the spool bound,
 the residency cap and the rate limits, and the first week of live data re-derives it. The same
-column's midpoint is ~7,100 events/day (~3.6 MB/day); sizing is done at the ceiling, and the tightest
-bound derived from it — the spool's 6.4-day residency ([§ 11.3](#113-rotation-and-the-overflow-policy))
+column's midpoint is ~11,100 events/day (~5.5 MB/day); sizing is done at the ceiling, and the tightest
+bound derived from it — the spool's 3.7-day residency ([§ 11.3](#113-rotation-and-the-overflow-policy))
 — still satisfies the "survives the server being down for days" requirement with room, while the rate
-limits sit 46× above it.
+limits sit 26× above it. **card#12451's row is most of the move, and most of the row is a bound, not a
+rate:** `subagent.activity`'s ceiling ([§ 6.15](#615-subagentactivity)'s derivation) is
+`2 × 86,400 ÷ (60 + 10) × C` with `C = 2` — 4,936 — plus its hooks' duplicate `working`s, bounded by the
+`tool.start` row's 3,000; that row moved the sum from 10,420.
 
 ### 6.1 `session.start`
 
@@ -3032,149 +3037,6 @@ not a gap to paper over with a second copy that could disagree with the first.
           "abort_reason":"session_cleared","duration_ms":184992,
           "close_source":"reap_session_boundary"} }
 ```
-
-#### `subagent.activity` — ⏳ designed for card#12451 (2026-10-26), not built
-
-The operator's ask, verbatim: *"the mezzanine reporter should be extended to report when subagents are
-working or idle"*. This block is the kind the build adds as its own `### 6.N` section with a `data` field
-table; it is prose here, and not that section, because `Tests\Feature\Ingest\EventSchemaDriftTest` holds
-every `### 6.N` kind heading equal to `App\Ingest\KindRegistry` in both directions, so the heading cannot
-exist before the registry row does. Everything the section will say is below, so the build copies and does
-not re-derive.
-
-**Trigger — two edges, one per member, both the reporter's own reading of the seat it runs on.**
-A bound dispatch call ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) is `working` from its
-open. It becomes **`idle`** when the flusher's pass ([§ 11.5](#115-retry-and-backoff)'s `K.FLUSH_MS`
-cadence) finds, for an open dispatch call with a `child_agent_id`: no open call in the index whose
-`agent_scope_id` is that id, **and** that id's `last_at` older than [§ 14](#14-every-number-and-where-it-comes-from)'s
-*Subagent idle threshold*. It becomes **`working`** again at the next `PreToolUse` carrying that
-`agent_id`, emitted immediately **before** that call's `tool.start`, matching every other
-close-before-trigger ordering in [§ 8.3](#83-the-reap-rules). The threshold is the debounce on the way to
-`idle`; the way back has none — one hook is one fact.
-
-**`last_at` is a per-child instant the fold KEEPS, not one it derives** (design round 1, B1). The folded
-index gains one map, `agents: child_agent_id → { last_at }`, held in memory and in `index/snapshot.json`
-beside `calls` and `tombstones` ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)),
-and written by the fold on **every** record that carries an `agent_scope_id` or a `child_agent_id`: an
-`open` whose entry has `agent_scope_id` sets that id's `last_at` to the record's `at`; a `close` or a
-`tombstone` whose entry had one sets it to the close's `at` **before** the entry is dropped; a `bind` sets
-the bound id's `last_at` to its own `at` (every journal record carries `at` — `journal()` stamps it — so
-the information is on disk already, and only the fold's keeping of it is new). An earlier draft of this
-paragraph derived the instant from the `open` and `tombstone` records the index already keeps; it could
-not, because the fold DELETES an entry at an ordinary `close` (`fleet-reporter.js`'s `case 'close'`
-tombstones only a `subagent_stop_hook` close) and folds no instant for a `bind` — so a child's record set
-emptied at every closed call, and `idle` would have fired one pass after any call ended. **The map's bound is a derivation, not a figure** (round 2, finding 3): it holds one entry per bound open
-dispatch — written at the `bind`, dropped by the `close` or `tombstone` of the dispatch it serves (its
-`SubagentStop`), and swept by `capIndex()`, which drops any entry whose id no open dispatch's
-`child_agent_id` names — so its size is at most the open-call index's own bound, `K.OPEN_CALLS`, and
-nothing in it ages by a clock. **The reporter journals each transition** as an index
-record (`k: 'activity'`, the call's `call_id` and the new state) so a flusher restart re-emits nothing.
-
-**The resume is self-healing, not exact — the seat's re-derivation of design round 4, after three
-rounds of findings in one class** (round 2 finding 2: the hook decides on a fold made outside the lock;
-round 3 minor 3: two hooks under one child can both emit; round 4: the seat write lock is given up
-after `K.WRITE_LOCK_WAIT_MS` and the writer proceeds unlocked ([§ 11.2](#112-spool-line-format)), and a
-re-read of the current bucket misses records an hour-roll put in the next one — each fix for exactness
-minted the next finding, which is canon's tripwire). So nothing here is exact, and nothing needs to be.
-**The hook emits `working` whenever ITS fold says the child is `idle` at a `PreToolUse`**, journaling
-the transition first; that fold may be stale. **The flusher's pass REPAIRS, under its own lock**: any dispatch whose journaled state is `idle` **and for
-which the idle rule no longer holds on the pass's current fold** — a call is open under its child, or
-`now − last_at` is under the threshold — is journaled and emitted `working` (round 5, finding 2: the
-second arm is what catches a call that opened and closed before the flusher's `idle` record landed,
-which a rule reading only *a call is open* would miss). **A duplicate `working` is harmless**: it
-carries the value the server already holds, so `calls.activity_state` does not change, no
-version-bearing field moves, `state_version` does not bump and no delta goes out
-(`FLEET-STATE.md` § 6.5) — it costs one event on the wire and nothing on the floor; and a
-newer-stamped duplicate cannot override a true `idle`, because the server holds the later `idle` on the
-same comparator. A stale `idle` the hook did not see is repaired within one pass (`K.FLUSH_MS`), and a
-hook is not asked to be exact at all: its fold may predate a record a lock lapse or an hour-roll kept
-from it, and the pass repairs whatever the fold missed. **The stop-race, named:** a repair can go out
-for a call closed between the pass's fold and its emit; the server folds an activity record for a call
-that is not open to nothing ([`FLEET-STATE.md` § 6.5](FLEET-STATE.md#65-the-fold)'s designed rule), so
-it is harmless there, and the pass never emits for a call closed **on its own fold** — it reads open
-dispatch entries only, and a tombstone is not one. **A dispatch call with no `child_agent_id` never
-goes idle**: no hook can be attributed to it, so silence about it is not evidence, and it stays
-`working` until it closes.
-
-**What gives it, hook by hook.** `SubagentStart` binds and starts the clock (its `bind` record's `at`
-becomes the child's `last_at`); `PreToolUse` / `PostToolUse` / `PostToolUseFailure` carrying `agent_id`
-are the activity, each moving `last_at` through the `open`, `close` and `tombstone` records they already
-write; `SubagentStop` closes the call, and a closed dispatch has no activity state to report —
-`subagent.stop` says it is gone. ⚠ **A call the harness refuses after its `PreToolUse`** — a permission
-the user denies, a hook that exits 2 — closes by the hook the harness fires for it where
-[§ 6.6](#66-toolend) handles one, and otherwise sits open until its turn reap ([§ 8.3](#83-the-reap-rules));
-while it is open the child cannot go `idle`, so an intern whose subagent waits on a refusal it never gets
-keeps typing for that long. Named as the residual of reading an open call as *busy* (round 2, minor 15),
-not designed around: the open call is the fact, and the reap is its bound. `Notification`, `PermissionRequest`
-and `PreCompact` under an `agent_id` are **not** activity here, and the first two never need to be: a
-subagent waiting on a permission prompt holds its tool call **open** — its `PreToolUse` has fired and its
-`PostToolUse` has not, which is why [§ 6.12](#612-attentionrequest) can name the request's `call_id` as the
-one open call — so this rule keeps it `working`, typing at its laptop while a human is asked. **Named
-rather than hidden:** the honest render of that wait is an intern-level `blocked`, which this design does
-not mint — the seat's own `blocked` ([§ 6.12](#612-attentionrequest)) already says a human is awaited at
-that desk — and `FLOOR.md` § 14 item 42 Q1 puts the reading to the operator. Activity under an `agent_id` bound to no dispatch is already counted at every `PreToolUse` by
-`agent_bind_unresolved` ([§ 9.3](#93-degradation-counters)); this event mints no second counter for the
-same condition, and the row's meaning is unchanged: a non-zero there is also the measure of interns whose
-activity this event cannot report.
-
-**The `data` fields the section will table** — `call_id`, ULID, not null, 26 chars, equal to the dispatch
-`tool.start`'s and `subagent.spawn`'s; `activity_state`, enum, not null, `working` | `idle` — **a
-reporter-minted enum with no unknown member** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s
-classification: a value the reporter mints from its own timer has no benign unknown case, so a third member
-is a rule-4 change with a stated window, and the build adds the row to § 6.0's classification table with
-`reporter` and `—`). No `since` and no `quiet_ms`: the floor renders the state and no age for it
-(`FLOOR.md` § 8's designed block), and an age it cannot render is a field a consumer will one day read as
-one.
-
-```json
-{ "event_id":"01K3TA7H8J9K0M1N2P3Q4R5T6X","schema_version":1,"kind":"subagent.activity",
-  "event_time":"2026-08-23T14:25:31.004Z","seq":48331,
-  "install_id":"aimla","seat_id":"aimla-pm","session_id":"a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
-  "data":{"call_id":"01K3TA6G7H8J9K0M1N2P3Q4R5T","activity_state":"idle"} }
-```
-
-**Bounds and rate — the derivation, duplicates included** (round 1, M4; round 3, finding 6; round 4).
-Per open dispatch, in one day: at most one `idle` per (threshold + pass) of silence, and at most one
-repair `working` per `idle` — a repair answers an `idle`, so repairs cannot exceed idles — which is
-`2 × 86,400 ÷ (threshold + pass)`; plus the hook's duplicates, at most one `working` per `PreToolUse`
-the child fires while a fold somewhere still says it is `idle`, bounded by the child's own `tool.start`
-count, which the kind table already carries (round 5, finding 4). A journal append that fails
-(`spool_append_failed.index`, [§ 9.3](#93-degradation-counters)) lets a transition be decided again on
-the next fold, which is a separate, pathological bound — one more event per failed append — and not
-the ordinary one. Written as the derivation and not the figure: the build prints it from
-[§ 14](#14-every-number-and-where-it-comes-from)'s threshold, `K.FLUSH_MS` and the `tool.start`
-row. A seat runs dispatches concurrently, so the per-seat row is that times a chosen
-concurrency `C` (round 2, minor 15): `C = 2` — the two dispatch streams a seat that reviews while it
-builds keeps open, this project's own pattern — and the kind-table row the build adds reads
-`subagent.activity` | the flusher's idle pass and its repair, or a `PreToolUse` under an idle subagent |
-hook / flusher | `0 … 2 × 86,400 ÷ (threshold + pass) × C + the child's tool.start ceiling`, its floor a
-seat that dispatches nothing. `C` is re-derived from the first week's
-`dispatch_background_launch` against `subagent.stop` on real seats, as every row's range is; the open-call
-index's cap is the hard limit on `C` and not a seat that exists. The row moves the kind table's ceiling
-by its own ceiling, and with it every site that cites the sum — [§ 14](#14-every-number-and-where-it-comes-from)'s
-*Busy-seat volume*, the spool's residency figure in [§ 11.3](#113-rotation-and-the-overflow-policy)
-(the spool bound over the new ceiling at the typical event size, which the build checks is still inside
-*survives the server being down for days*) and the store sizing `FLEET-STATE.md` § 6.8 derives from it —
-re-derived at the build from the table and not pre-written here. **No hysteresis is built**: a minimum dwell after a resume
-would hold the floor's laptop on a subagent the reporter knows went quiet, buying a lower bound for a
-false frame; if the first week shows flapping dispatches, the measurement names the dwell, and the row
-re-derives.
-
-**Compatibility.** A new kind is [`docs/VERSIONING.md § Wire compatibility`](../VERSIONING.md#the-rules)
-rule 7's first additive case: no `schema_version` bump, and an ingest older than the build ignores and
-counts it (`ignored_unknown_kinds`, [§ 12.7](#127-server-side-counters)), rendering the seat
-`reporter_ahead` — which is the order the fleet upgrades in anyway, server first. The server half is D2's
-(`FLEET-STATE.md` § 6.5's designed fold rule and § 8.2.1's designed member).
-
-**Rollout — one reporter release with card#12447.** This is new functionality a seat sees, so
-`REPORTER_VERSION` moves a **minor** ([`docs/VERSIONING.md § The reporter's own version`](../VERSIONING.md#the-reporters-own-version))
-with touches `artifact` alone — no new hook, no fixture, no config key: every hook it reads is already
-wired. card#12447's reporter release (the TodoWrite capture) is in flight on the same artifact; the two land
-under **one** version row in `fleet-reporter/UPDATES.md`, whichever merges second taking the row and
-naming both, and `SchemaVersions::CURRENT_REPORTER_VERSION` follows it in that PR — one announcement to
-the fleet, one upgrade per seat. A seat that has not applied it is badged `update_required` and its interns
-render `working` for as long as their dispatches are open (`FLOOR.md` § 8's designed block states the
-default and why it is not a null).
 
 ### 6.9 `compaction.start`
 
@@ -3940,12 +3802,154 @@ case, which is what makes this exemption checkable rather than asserted.
 
 **The example's own arithmetic is checkable, and is meant to be checked.** `uptime_s` 401,150 s is
 4.64 days, so `events_emitted` 48,374 is ~10,420 events/day — exactly the
-[§ 6.0](#60-conventions-and-how-harness-payloads-are-read) kind-table ceiling this document sizes
-everything against, which is what a *maximally* busy seat looks like. An earlier draft showed the same
+[§ 6.0](#60-conventions-and-how-harness-payloads-are-read) kind-table ceiling this document sized everything
+against before card#12451's `subagent.activity` row, which is what a *maximally* busy seat whose interns never
+go quiet looks like; the row's own ceiling is a seat whose interns flap at the limit, and the example predates
+it. An earlier draft showed the same
 48,374 events against a one-day uptime, i.e. 4.6× a ceiling the same document called a ceiling — a
 worked example quietly refuting the number it was illustrating. The cross-checks inside the example
 hold too: `descriptor_allowlisted` 2,841 + 93 = 2,934 = `agent_scope_subagent` 412 + 2,522 (both are
 per-`tool.start`).
+
+### 6.15 `subagent.activity`
+
+*Built for card#12451 (designed 2026-10-26 through five review rounds, built 2026-10-28; reporter `0.4.0`).*
+The operator's ask, verbatim: *"the mezzanine reporter should be extended to report when subagents are
+working or idle"*. **D2:** an event sets the `activity_state` of the one open dispatch call it names, under that
+call's own last-writer-wins triple, moves no state of the seat, and creates no row; the seat object carries it on every
+element of `subagents[]`, `working` from the call's open ([`FLEET-STATE.md` § 6.5](FLEET-STATE.md#65-the-fold), § 8.2.1).
+
+**Trigger — two edges, one per member, both the reporter's own reading of the seat it runs on.**
+A bound dispatch call ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) is `working` from its
+open. It becomes **`idle`** when the flusher's pass ([§ 11.5](#115-retry-and-backoff)'s `K.FLUSH_MS`
+cadence) finds, for an open dispatch call with a `child_agent_id`: no open call in the index whose
+`agent_scope_id` is that id, **and** that id's `last_at` more than [§ 14](#14-every-number-and-where-it-comes-from)'s
+*Subagent idle threshold* behind the pass's clock. It becomes **`working`** again at the next `PreToolUse`
+carrying that `agent_id`, emitted immediately **before** that call's `tool.start`, matching every other
+close-before-trigger ordering in [§ 8.3](#83-the-reap-rules). The threshold is the debounce on the way to
+`idle`; the way back has none — one hook is one fact. The pass that judges is the flusher's seat pass, under
+the seat write lock and on that pass's own fold (`fleet-reporter.js`'s `judgeSubagents()`, called from
+`expireOpenFacts()`).
+
+**`last_at` is a per-child instant the fold KEEPS, not one it derives** (design round 1, B1). The folded
+index keeps one map, `agents: child_agent_id → { last_at }`, held in memory and in `index/snapshot.json`
+beside `calls` and `tombstones` ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)),
+and written by the fold on **every** record that carries an `agent_scope_id` or a `child_agent_id`: an
+`open` whose entry has `agent_scope_id` sets that id's `last_at` to the record's `at`; a `close` or a
+`tombstone` whose entry had one sets it to the close's `at` **before** the entry is dropped; a `bind` sets
+the bound id's `last_at` to its own `at` (every journal record carries `at` — `journal()` stamps it — so
+the information was on disk already, and only the fold's keeping of it is new). A rule that derived the
+instant from the `open` and `tombstone` records the index keeps could not work: the fold DELETES an entry
+at an ordinary `close` (`case 'close'` tombstones only a `subagent_stop_hook` close) and folds no instant for
+a `bind`, so a child's record set empties at every closed call, and `idle` would fire one pass after any call
+ended (AT-29's second RED). **The map's bound is a derivation, not a figure** (round 2, finding 3): it holds
+one entry per bound open dispatch — written at the `bind`, dropped by the `close` or `tombstone` of the
+dispatch it serves (its `SubagentStop`), and swept by `capIndex()`, which drops any entry whose id no open
+dispatch's `child_agent_id` names — so its size is at most the open-call index's own bound, `K.OPEN_CALLS`,
+and nothing in it ages by a clock. A child bound by a flusher that predates the map has no instant until its
+next hook, and is judged by nothing until then — it stays `working`, the value it already holds. **The
+reporter journals each transition** as an index record (`k: 'activity'`, the call's `call_id`, `state` the
+new member), which the fold sets on the call's own entry, so the next process — a hook, or a flusher pass —
+folds the state the wire was last told. A flusher RESTART emits no activity at all: § 8.3's last row reaps
+every call older than the flusher's own start, the dispatch among them, so the restarted flusher closes the
+intern rather than re-judging it.
+
+**The resume is self-healing, not exact — the seat's re-derivation of design round 4, after three
+rounds of findings in one class** (round 2 finding 2: the hook decides on a fold made outside the lock;
+round 3 minor 3: two hooks under one child can both emit; round 4: the seat write lock is given up
+after `K.WRITE_LOCK_WAIT_MS` and the writer proceeds unlocked ([§ 11.2](#112-spool-line-format)), and a
+re-read of the current bucket misses records an hour-roll put in the next one — each fix for exactness
+minted the next finding, which is canon's tripwire). So nothing here is exact, and nothing needs to be.
+**The hook emits `working` whenever ITS fold says the child is `idle` at a `PreToolUse`**, journaling
+the transition first; that fold may be stale. **The flusher's pass REPAIRS, under its own lock**: any dispatch
+whose journaled state is `idle` **and for which the idle rule no longer holds on the pass's current fold** — a
+call is open under its child, or `now − last_at` is within the threshold — is journaled and emitted `working`
+(round 5, finding 2: the second arm is what catches a call that opened and closed before the flusher's `idle`
+record landed, which a rule reading only *a call is open* would miss). **A duplicate `working` is harmless**:
+it carries the value the server already holds, so `calls.activity_state` does not change, no
+version-bearing field moves, `state_version` does not bump and no delta goes out
+(`FLEET-STATE.md` § 6.5) — it costs one event on the wire and nothing on the floor; and a
+newer-stamped duplicate cannot override a true `idle`, because the server holds the later `idle` on the
+same comparator. A stale `idle` the hook did not see is repaired within one pass (`K.FLUSH_MS`), and a
+hook is not asked to be exact at all: its fold may predate a record a lock lapse or an hour-roll kept
+from it, and the pass repairs whatever the fold missed. **The stop-race, named:** a repair can go out
+for a call closed between the pass's fold and its emit; the server folds an activity record for a call
+that is not open to nothing ([`FLEET-STATE.md` § 6.5](FLEET-STATE.md#65-the-fold)), so it is harmless
+there, and the pass never emits for a call closed **on its own fold** — it reads open dispatch entries
+only, and a tombstone is not one. **A dispatch call with no `child_agent_id` never goes idle**: no hook can
+be attributed to it, so silence about it is not evidence, and it stays `working` until it closes.
+
+**What gives it, hook by hook.** `SubagentStart` binds and starts the clock (its `bind` record's `at`
+becomes the child's `last_at`); `PreToolUse` / `PostToolUse` / `PostToolUseFailure` carrying `agent_id`
+are the activity, each moving `last_at` through the `open`, `close` and `tombstone` records they already
+write; `SubagentStop` closes the call, and a closed dispatch has no activity state to report —
+`subagent.stop` says it is gone. ⚠ **A call the harness refuses after its `PreToolUse`** — a permission
+the user denies, a hook that exits 2 — closes by the hook the harness fires for it where
+[§ 6.6](#66-toolend) handles one, and otherwise sits open until its turn reap ([§ 8.3](#83-the-reap-rules));
+while it is open the child cannot go `idle`, so an intern whose subagent waits on a refusal it never gets
+keeps typing for that long. Named as the residual of reading an open call as *busy* (round 2, minor 15),
+not designed around: the open call is the fact, and the reap is its bound. `Notification`, `PermissionRequest`
+and `PreCompact` under an `agent_id` are **not** activity here, and the first two never need to be: a
+subagent waiting on a permission prompt holds its tool call **open** — its `PreToolUse` has fired and its
+`PostToolUse` has not, which is why [§ 6.12](#612-attentionrequest) can name the request's `call_id` as the
+one open call — so this rule keeps it `working`, typing at its laptop while a human is asked. **Named
+rather than hidden:** the honest render of that wait is an intern-level `blocked`, which this design does
+not mint — the seat's own `blocked` ([§ 6.12](#612-attentionrequest)) already says a human is awaited at
+that desk — and the operator accepted silence at 60 s as `idle` with that reading (card#12451's ruling). Activity under an `agent_id` bound to no dispatch is already counted at every `PreToolUse` by
+`agent_bind_unresolved` ([§ 9.3](#93-degradation-counters)); this event mints no second counter for the
+same condition, and the row's meaning is unchanged: a non-zero there is also the measure of interns whose
+activity this event cannot report.
+
+| `data` field | Type | Units | Null? | Bounds | Example |
+|---|---|---|---|---|---|
+| `call_id` | ULID | — | no | 26 chars, equals the dispatch `tool.start`'s and `subagent.spawn`'s | `"01K3TA6G7H8J9K0M1N2P3Q4R5T"` |
+| `activity_state` | enum | — | no | `working` \| `idle` — reporter-minted from its own timer, so no unknown member: a third value is a reporter bug and a `422`, and a third member is a rule-4 change with a stated window | `"idle"` |
+
+No `since` and no `quiet_ms`: the floor renders the state and no age for it (`FLOOR.md` § 8's *Working and
+idle interns*), and an age it cannot render is a field a consumer will one day read as one.
+
+```json
+{ "event_id":"01K3TA7H8J9K0M1N2P3Q4R5T6X","schema_version":1,"kind":"subagent.activity",
+  "event_time":"2026-08-23T14:25:31.004Z","seq":48331,
+  "install_id":"aimla","seat_id":"aimla-pm","session_id":"a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
+  "data":{"call_id":"01K3TA6G7H8J9K0M1N2P3Q4R5T","activity_state":"idle"} }
+```
+
+**Bounds and rate — the derivation, duplicates included** (round 1, M4; round 3, finding 6; round 4).
+Per open dispatch, in one day: at most one `idle` per (threshold + pass) of silence, and at most one
+repair `working` per `idle` — a repair answers an `idle`, so repairs cannot exceed idles — which is
+`2 × 86,400 ÷ (threshold + pass)`; plus the hook's duplicates, at most one `working` per `PreToolUse`
+the child fires while a fold somewhere still says it is `idle`, bounded by the child's own `tool.start`
+count, which the kind table already carries (round 5, finding 4). A journal append that fails
+(`spool_append_failed.index`, [§ 9.3](#93-degradation-counters)) lets a transition be decided again on
+the next fold, which is a separate, pathological bound — one more event per failed append — and not
+the ordinary one. A seat runs dispatches concurrently, so the per-seat row is that times a chosen
+concurrency `C` (round 2, minor 15): `C = 2` — the two dispatch streams a seat that reviews while it
+builds keeps open, this project's own pattern. The kind table's row ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read))
+is that derivation evaluated at [§ 14](#14-every-number-and-where-it-comes-from)'s threshold, `K.FLUSH_MS`
+and the `tool.start` row's ceiling, and § 14's *Busy-seat volume* carries the sum it moves. `C` is
+re-derived from the first week's `dispatch_background_launch` against `subagent.stop` on real seats, as
+every row's range is; the open-call index's cap is the hard limit on `C` and not a seat that exists. **No
+hysteresis is built**: a minimum dwell after a resume would hold the floor's laptop on a subagent the
+reporter knows went quiet, buying a lower bound for a false frame; if the first week shows flapping
+dispatches, the measurement names the dwell, and the row re-derives.
+
+**Compatibility.** A new kind is [`docs/VERSIONING.md § Wire compatibility`](../VERSIONING.md#the-rules)
+rule 7's first additive case: no `schema_version` bump, and an ingest older than the build ignores and
+counts it (`ignored_unknown_kinds`, [§ 12.7](#127-server-side-counters)), rendering the seat
+`reporter_ahead` — which is the order the fleet upgrades in anyway, server first.
+
+**Rollout — reporter `0.4.0`, shared with card#12447.** This is new functionality a seat sees, so
+`REPORTER_VERSION` moves a **minor**, to `0.4.0` ([`docs/VERSIONING.md § The reporter's own version`](../VERSIONING.md#the-reporters-own-version)),
+and touches `artifact` alone — no new hook, no fixture, no config key: every hook it reads is already
+wired. `SchemaVersions::CURRENT_REPORTER_VERSION` moves with it, and `fleet-reporter/UPDATES.md` carries the
+`0.4.0` row. card#12447's reporter change (the TodoWrite capture) was designed to share this minor; under
+§ The reporter's own version a later reporter change takes a version strictly greater than `dev`'s
+(`bin/reporter-version-guard.py` holds it), so whichever of the two lands second moves the line again and adds
+its own row, and a release carrying both announces both rows to the fleet as one upgrade. A seat that has
+not applied it is badged `update_required` and its interns render `working` for as long as their
+dispatches are open (`FLOOR.md` § 8's *Working and idle interns* states the default and why it is not a
+null).
 
 ---
 
@@ -4703,8 +4707,10 @@ choosing by the first of these that applies:
 
 | Situation | Binding | Counter |
 |---|---|---|
+| the `agent_id` is in the revivable store — a dispatch its `SubagentStop` closed, revived by a message (card#12451, the revival path below) | a NEW dispatch call, synthesized and bound at once | `subagent_revived` |
 | exactly one open dispatch call in that session has no `child_agent_id` yet | that call | `agent_bind_sole_unbound` |
-| two or more unbound open dispatch calls | **none** — no guess is written | `agent_bind_ambiguous` |
+| two or more unbound open dispatch calls, and exactly one of them has a `subagent_type` equal to the payload's `agent_type` (card#12451) | that call | `agent_bind_type_match` |
+| two or more unbound open dispatch calls, none or several of that type | **none** — no guess is written | `agent_bind_ambiguous` |
 | no `SubagentStart` payload at all (the hook did not fire, or carried no `agent_id`) | none | `payload_key_missing.agent_id` |
 
 **There is no exact-reference binding row, because the payload carries no reference to bind on.**
@@ -4852,9 +4858,9 @@ the call ran under, and the parent it belongs to. The floor can therefore attrib
 the right intern without the harness's opaque `agent_id` ever transiting. Where the binding failed,
 `parent_call_id` is `null` and `agent_bind_unresolved` counts it — an honest unknown, never a guess.
 
-⏳ **What the binding buys the activity signal (card#12451, designed, not built).** The same
+**What the binding buys the activity signal (card#12451, built 2026-10-28).** The same
 `child_agent_id` is the key the flusher's idle pass and the hook's resume read, so
-[`subagent.activity`](#68-subagentstop) rests on this section and adds no binding rule of its own: a
+[`subagent.activity`](#615-subagentactivity) rests on this section and adds no binding rule of its own: a
 dispatch bound by any row above can go `idle` and resume; one bound by none stays `working` until it closes.
 **The sole-unbound rule gains a tie-break (round 2, finding 7):** where two or more dispatch calls are
 unbound at a `SubagentStart`, and exactly one of them carries a `subagent_type` equal to the payload's
@@ -4862,18 +4868,17 @@ unbound at a `SubagentStart`, and exactly one of them carries a `subagent_type` 
 bound and counted `agent_bind_type_match`. It is kept because `agent_type` is the one key a
 `SubagentStart` shares with its dispatch's input, so it is the only tie-break the payloads afford that
 is not a guess (round 3, finding 9); a dispatch whose `subagent_type` the reporter refused — `null`, from
-a value off [§ 6.7](#67-subagentspawn)'s pattern — equals no `agent_type` and is never chosen by it — the [§ 9.3](#93-degradation-counters) row the build adds
-reading *a `SubagentStart` with several unbound dispatches was bound by the one whose `subagent_type`
-equals its `agent_type`* | *informational; its share of starts is how often the harness overlapped two
-dispatches' starts, which F did not*; two or more unbound of that type stay `agent_bind_ambiguous` —
-unbound for life, never idle, their calls unattributed — a residual no capture reached on 2.1.311, put to
-the operator at `FLOOR.md` § 14 item 42 Q5. The index therefore keeps `subagent_type` on a dispatch's
-`open` record, which the revival path above needs anyway.
+a value off [§ 6.7](#67-subagentspawn)'s pattern — equals no `agent_type` and is never chosen by it
+([§ 9.3](#93-degradation-counters)'s `agent_bind_type_match`); two or more unbound of that type stay
+`agent_bind_ambiguous` — unbound for life, never idle, their calls unattributed — a residual no capture
+reached on 2.1.311, which the operator accepted as a residual on card#12451 (`FLOOR.md` § 14 item 43 Q5). The
+index therefore keeps `subagent_type` on a dispatch's `open` record, which the revival path below needs
+anyway.
 The `/clear` carry ([§ 8.3](#83-the-reap-rules)) keeps the call's activity record with the call, so an intern
 idle across a `/clear` stays idle on the floor and resumes under the new `session_id`. **What neither end
 can verify locally, named:** the reporter declares `idle` from the absence of hooks it would have seen; the
 harness documents no hook for *the model is generating*, so a subagent composing a long answer is `idle` by
-this rule — stated at `FLOOR.md` § 14 item 42 Q1 as the operator's call, and the one reading of silence this
+this rule — the operator's call at `FLOOR.md` § 14 item 43 Q1, ruled on card#12451 (*idle = 60 s with no open call*), and the one reading of silence this
 design can make honestly, since it is made where silence is silence and not delivery lag
 (`FLEET-STATE.md` § 3). **MEASURED at 2.1.311 (2026-10-27, headless `claude -p`, this seat, in a rig
 loaded with `--setting-sources project` so none of the seat's own hooks ran — mode and version named per
@@ -4905,18 +4910,18 @@ with `status: "completed"` and its `agentId`. ⚠ The rig writes concurrent hook
 interleaved; their `hook_event_name`, `agent_id` and `tool_response.status` were recovered from the
 line fragments, and the orderings above are stated only where the fragments' order is unambiguous.
 
-⏳ **The revival path (card#12451, designed from that measurement; re-cut under the seat's ruling A of
-design round 2; not built).** A `SubagentStop` is an end the harness can undo: a message to a stopped
+**The revival path (card#12451, designed from that measurement; re-cut under the seat's ruling A of
+design round 2, which the operator confirmed; built 2026-10-28).** A `SubagentStop` is an end the harness can undo: a message to a stopped
 subagent revives it under its old `agent_id`, and nothing at the stop says whether a revival will come —
 the stop's own `background_tasks` lists the subagent as `running` whether it is revived (E) or not (B). So
 the stop stays what [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) makes it — the dispatch
-call closes, `subagent.stop` goes out, the intern leaves (`FLOOR.md` § 6.2's designed block) — and **a
+call closes, `subagent.stop` goes out, the intern leaves (`FLOOR.md` § 6.2's *Interns ride the elevator too*) — and **a
 revival is a NEW dispatch call, and on the floor a new intern**: no lineage crosses the wire, the creature
-stays keyed by its call (the operator's ruling of card#11058 Q3, untouched), and `FLOOR.md` § 13 row 85
+stays keyed by its call (the operator's ruling of card#11058 Q3, untouched), and `FLOOR.md` § 13 row 93
 records the ruling and what the first draft's lineage cost. **The matching is reporter-internal.** At the
 `SubagentStop` that closes a bound dispatch, the reporter records the dispatch in a **count-bounded
-store**, `revivable: agent_id → { title, title_truncated, subagent_type }` — the dispatch's own, which the
-index keeps on its `open` record since this design, reporter-internal and costing no wire field — at most
+store**, `revivable: agent_id → { title, title_truncated, subagent_type }` — the dispatch's own, as its spawn
+sent them, which the index keeps on its `open` record, reporter-internal and costing no wire field — at most
 `K.TOMBSTONES` entries, the oldest evicted first and newest-wins per id, with **no clock** — a store bounded
 by time would drop a subagent the operator messages an hour later, and nothing in the harness bounds that
 gap. **No new journal record carries it** (round 3, finding 2): the fold derives the store from records it
@@ -4935,10 +4940,9 @@ construction and outranking the sole-unbound rule; it emits that call's `tool.st
 answer for an `Agent` call whose description is the stored title, under the seat's **current**
 `descriptors` mode); and it emits the call's `subagent.spawn` with `title` **re-derived under the current
 mode** — the stored title when the mode is `full`, `null` under `paths` or `none`, as [§ 6.7](#67-subagentspawn)
-gives every spawn — and `title_truncated` and `subagent_type` as stored; counted `subagent_revived`, the
-[§ 9.3](#93-degradation-counters) row the build adds reading *a `SubagentStart` matched a stopped dispatch
-in the revivable store and a dispatch was synthesized for it* | *informational; the measure of how often a
-stopped subagent comes back, read beside `subagent_stop_unmatched`*. The entry leaves the store at the
+gives every spawn — `title_truncated` as stored beside a title and `false` beside none, and `subagent_type`
+as stored; counted `subagent_revived` ([§ 9.3](#93-degradation-counters)). The code is `fleet-reporter.js`'s
+`reviveDispatch()`, called from the `SubagentStart` handler ahead of the binding rules. The entry leaves the store at the
 synthesis and is re-recorded at the revived dispatch's own stop. ⚠ **A residual the captures do not
 settle** (round 3, finding 5): a synthesized dispatch open at its parent's `Stop` survives that turn's
 reap only if the `Stop`'s `background_tasks` lists its subagent (`turnReapScope()`); E's revival was a
@@ -5177,6 +5181,8 @@ the two were equal.
 | `state_reset` | `state.json` existed and could not be used (a read error other than a missing file, or empty, truncated, unparseable, or the wrong shape); a new epoch was minted and the spool re-sent from its oldest bucket ([§ 11.4](#114-corruption-the-torn-last-line-and-a-missing-or-unreadable-statejson)). **A missing `state.json` is not a reset:** it is a first start, or state lost with the file, and it mints an epoch and re-sends the same way while counting nothing. Lost state on a seat that has already reported is badged by the server's `seq_epoch_change` ([§ 10.2](#102-ordering-seq-and-gap-detection)) | informational, rendered `epoch_reset`; **not** `lossy`, because nothing was discarded |
 | `subagent_stop_unmatched` | `SubagentStop` that could name no call | informational, and **not** expected near zero: the harness fires `SubagentStop` for agents no dispatch launched, far more often than for dispatches (MEASURED, [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)). The binding's health is read off `agent_bind_launch_ref` and `dispatch_background_launch` instead |
 | `agent_bind_sole_unbound` | a `SubagentStart` bound by being the only unbound dispatch call — the binding rule for a dispatch whose launch carries no `agentId`, since the `SubagentStart` payload carries no parent reference ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) | informational; its share of `SubagentStart`s is that rule's success rate |
+| `agent_bind_type_match` | a `SubagentStart` with several unbound dispatches was bound by the one whose `subagent_type` equals its `agent_type` (card#12451, [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) | informational; its share of starts is how often the harness overlapped two dispatches' starts, which no capture on 2.1.311 did |
+| `subagent_revived` | a `SubagentStart` matched a stopped dispatch in the revivable store and a dispatch was synthesized for it (card#12451, [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) | informational; the measure of how often a stopped subagent comes back, read beside `subagent_stop_unmatched` |
 | `agent_bind_launch_ref` | a background launch's `PostToolUse` bound its dispatch call from `tool_response.agentId`, where the call was unbound or bound to a different id ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call), card#11799) | informational; the exact rule. Against `dispatch_background_launch` it says how often `SubagentStart` had not already bound the same id |
 | `dispatch_background_launch` | a dispatch call's `PostToolUse` reported `tool_response.status: "async_launched"`, so the call was held open for its `SubagentStop` ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) | informational; zero on a seat that dispatches means its harness returns dispatches on completion — or that the marker moved and every intern is closing at launch again |
 | `dispatch_kept_across_turn_reap` | a `Stop` or `SubagentStop` reap skipped an open dispatch call because its payload's `background_tasks` lists that call's subagent as running ([§ 8.3](#83-the-reap-rules)) | informational; zero beside a non-zero `dispatch_background_launch` on a seat whose turns end while subagents run means the task ids no longer match `agent_id` and running subagents are being reaped at their parent's `Stop` |
@@ -5531,7 +5537,7 @@ batch. Retrying is correct; the duplicates it creates must be free.
 > confusing possible corruption of a timeline.
 >
 > The size bound alone could not have carried this coupling, and the arithmetic is why: 32 MiB at the
-> [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) ceiling of ~5.2 MB/day fills in ~6.4
+> [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) ceiling of ~9.2 MB/day fills in ~3.7
 > days, but a **quiet** seat — one emitting little more than its 1,440 daily heartbeats — takes far
 > longer. A heartbeat is not a ~500 B typical event: its `data` alone allows 1.5 KiB of counters plus
 > 512 B of predicates plus 256 B of selftest, and the worked example in
@@ -5785,7 +5791,7 @@ clock its events carry, appends them, and then removes the lock:
 
 | Bound | Value | Derivation |
 |---|---|---|
-| Total spool | **32 MiB** | at the [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) ceiling — 10,420 events/seat/day at ~500 B ≈ **5.2 MB/day** — 32 MiB is **~6.4 days** of a busy seat (33.55 MB ÷ 5.21 MB/day). The requirement is "survives the server being down for days"; a working week of a broken deploy fits, at a disk cost nobody will notice on a developer machine |
+| Total spool | **32 MiB** | at the [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) ceiling — 18,356 events/seat/day at ~500 B ≈ **9.2 MB/day** — 32 MiB is **~3.7 days** of a busy seat (33.55 MB ÷ 9.18 MB/day). The requirement is "survives the server being down for days"; three days of a broken deploy fit at the ceiling, and a working week below ~65 % of it, which is every seat whose interns do not flap at the idle threshold all day, at a disk cost nobody will notice on a developer machine (card#12451's `subagent.activity` row moved the ceiling from 10,420 and this residency from ~6.4 days) |
 | **Residency cap** | **8 days** | a bucket older than 8 days is dropped whatever the spool's size. This is what bounds residency on a *quiet* seat, where filling 32 MiB takes longer than the 10-day dedup window is long — [§ 10.3](#103-idempotency-and-the-dedup-window) owns that measurement and this row does not restate it — and it is the bound that window is coupled to. It is also independently right: a nine-day-old event has no consumer left |
 | Overflow unit | one whole hour bucket | O(1) `unlink`, no rewriting of a file another process is appending to |
 | Overflow policy | **drop oldest** | the dashboard's value is *current* state; a week-old queued event has no consumer left. Dropping newest would discard exactly the events that still matter |
@@ -5811,7 +5817,7 @@ plus one flush interval in that case, which is a bounded overshoot of a disk-spa
 it was while the seat's other sites drain, and the two bounds above are evaluated per seat exactly as
 before: a bucket past the residency cap, or the oldest bucket while the spool is over its size bound,
 is dropped whichever sites have and have not received it. So a site survives an outage of up to 8 days,
-or until the spool reaches 32 MiB — ~6.4 days at the [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)
+or until the spool reaches 32 MiB — ~3.7 days at the [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)
 ceiling, and longer on a quieter seat — with nothing lost, and drains on recovery at
 [§ 11.5](#115-retry-and-backoff)'s rate against its own limiter; past that it loses the oldest hour
 first, counted and badged on that site and on no other, while the sites that are current lose nothing
@@ -6257,7 +6263,7 @@ both record this fleet hitting for real.
 | Limit | Keyed on | Value | Derivation | Over-limit |
 |---|---|---|---|---|
 | Requests | token binding | **120 / minute** | healthy cadence is 6/min ([§ 11.5](#115-retry-and-backoff)); 120 is 20× headroom — it can only be reached by a spin loop | `429`, `retry_after_s: 30` |
-| Events | token binding | **20,000 / hour** | the [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) ceiling is ~10,420/day ≈ 434/hour; 20,000 is ~46× headroom, still bounds one runaway seat's storage to ~10 MB/hour, and is the number a full-spool drain is measured against ([§ 11.5](#115-retry-and-backoff)). **The reporter pins this figure** (`K.SITE_EVENTS_PER_HOUR`, card#12180) to pace a drain under it, and the acceptance suite holds the pin equal to `RateLimiter::EVENTS_LIMIT` — the same repository holds both, so the copy has a check | `429`, `retry_after_s: 60` |
+| Events | token binding | **20,000 / hour** | the [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) ceiling is ~18,356/day ≈ 765/hour; 20,000 is ~26× headroom, still bounds one runaway seat's storage to ~10 MB/hour, and is the number a full-spool drain is measured against ([§ 11.5](#115-retry-and-backoff)). **The reporter pins this figure** (`K.SITE_EVENTS_PER_HOUR`, card#12180) to pace a drain under it, and the acceptance suite holds the pin equal to `RateLimiter::EVENTS_LIMIT` — the same repository holds both, so the copy has a check | `429`, `retry_after_s: 60` |
 | Body size | — | 256 KiB | [§ 4.4](#44-size-caps-and-their-derivations) | `413` |
 | Failed authentications | **`(route, source IP)`** | **60 / hour** | see below | `429` and an operator-visible alert — **enforced at [§ 12.1](#121-validation-order) step 4**, inside the auth check itself, because a request that fails auth never reaches step 5 where the other limits live. **The route is part of the key, and is not a detail**: [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)'s step-3 refusal reuses this limit's *value* on an **unauthenticated** endpoint, so one shared bucket would let any caller on the internet spend the budget this row prices over authenticated seats. Each route gets a bucket of its own |
 
@@ -7755,11 +7761,18 @@ property.
 
 ### AT-29 a quiet subagent is reported idle at the seat, and its next hook reports it working
 
-*⏳ Designed for card#12451 (2026-10-26), not built. [§ 6.8](#68-subagentstop)'s designed block and
-[§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)'s designed paragraph. Gated at
-[§ 16](#16-what-an-implementer-builds-from-this) row 11.*
+*Built for card#12451 (designed 2026-10-26, built 2026-10-28): [§ 6.15](#615-subagentactivity) and
+[§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)'s revival path and tie-break, driven by
+`fleet-reporter/fleet-reporter.selftest.py` § 25, each RED a plant on a copy of the reporter. Gated at
+[§ 16](#16-what-an-implementer-builds-from-this) row 11. The sixth RED is the ingest's, driven by
+`Tests\Feature\Ingest\At18UnknownEnumTest::test_a_third_subagent_activity_member_refuses_the_batch`.*
 
-- **Build:** the selftest's hook rig with an injected clock: a `PreToolUse(Agent)` → `SubagentStart`
+- **Build:** the selftest's hook rig on one pinned clock (`FLEET_REPORTER_NOW_MS`). A one-pass flusher reaps
+  every call older than its own start ([§ 8.3](#83-the-reap-rules)'s last row), which is right for a restart and
+  wrong for the long-running flusher that is the only one ever to judge a subagent's silence, so a pass pins
+  its start before the trace through the timing-only seam `FLEET_REPORTER_FLUSHER_START_MS`, which can only
+  move the start earlier and gates nothing else. Passes sit half a `K.FLUSH_MS` off the threshold, so no
+  pass lands on it. A `PreToolUse(Agent)` → `SubagentStart`
   (binding `agent_id` `X`) → `PostToolUse(async_launched, agentId X)`; then under `X` one `PreToolUse(Bash)`
   and its `PostToolUse`; then flusher passes with the clock advanced in `K.FLUSH_MS` steps. A second rig
   leaves a `Bash` under `X` open across the same advance. A third dispatches twice at once so one call stays
@@ -7773,7 +7786,9 @@ property.
   `SubagentStart`, so the id was evicted from the store; a seventh in two legs, the rig driving the two processes by hand: (a) a flusher pass journals `idle`
   for the dispatch between a hook's index fold and that hook's first emit, the hook a `PreToolUse`
   under the child; then the next flusher pass; then a second `PreToolUse` under the child whose fold
-  holds the `idle` record and not the pass's repair; (b) finding 2's case — an inner call under the
+  holds the `idle` record and not the pass's repair — the pass's `idle` stood in for by an index record
+  appended after the first hook folded, and the stale fold by hiding the repair record and the snapshot the
+  pass wrote while the second hook folds; (b) finding 2's case — an inner call under the
   child opens and closes between the flusher's fold and the write of its `idle` record, so the `idle`
   lands after the close and no hook fires after it; an eighth replaying F's order for
   two foreground dispatches of different types, with a variant in which both `SubagentStart`s arrive
@@ -7787,8 +7802,8 @@ property.
   CLOSE's `at` — never one pass after the close, and never at the threshold after the bind;
   `index/snapshot.json` written after the close carries the child's `last_at` equal to that close's `at`; a further `PreToolUse` under `X` spools one `working` for that
   `call_id` **before** that call's `tool.start` in the spool's order, and a second `PreToolUse` under `X`
-  spools no second `working`; a flusher restarted between the pass and the resume re-emits nothing (the
-  `activity` record folds). The second rig spools no `idle` while its `Bash` is open and one after its close
+  spools no second `working`; a later pass by a NEW flusher process re-emits nothing (the `activity` record
+  folds), and a genuine flusher restart reaps the dispatch by § 8.3's last row and emits no activity at all. The second rig spools no `idle` while its `Bash` is open and one after its close
   plus the threshold. The third rig's unbound dispatch spools no `activity` event at all across any advance.
   The fourth rig's `idle` lands under the old `session_id` and its `working` under the new one, for one
   `call_id`. The fifth rig spools, at the second `SubagentStart`, a `tool.start` for a NEW `call_id`
@@ -7822,8 +7837,9 @@ property.
   puts the subagent's first call ahead of its wake. Caught by: the first rig's order assertion.
 - **Fourth RED — the unbound guess:** let the sole-unbound dispatch go idle → the third rig spools an `idle`
   for a call no hook can ever resume. Caught by: the third rig.
-- **Fifth RED — the restart re-emits:** keep the state in process memory alone → a restarted flusher spools
-  a second `idle`. Caught by: the first rig's restart leg.
+- **Fifth RED — the state in process memory alone:** hold the state in the flusher's memory and journal
+  nothing → the next flusher process spools a second `idle`, and the hook, which folds the journal, never
+  resumes. Caught by: the first rig's next-pass and resume legs.
 - **Sixth RED — a third member:** send `quiet` → the ingest's enum check refuses the event, and the fixture
   that plants it asserts the refusal rather than a pass-through.
 - **Seventh RED — the revival re-opens the closed call:** on the matching `SubagentStart`, journal an
@@ -7864,7 +7880,7 @@ harness at a pinned version ([§ 6.0](#60-conventions-and-how-harness-payloads-a
 and, where it applies, what would re-derive it.
 
 The volume figures are **owned by [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s kind
-table** and cited here, not restated: the ceiling of that table's per-kind ranges is 10,420
+table** and cited here, not restated: the ceiling of that table's per-kind ranges is 18,356
 events/seat/day, and every row below that says "the ceiling" means that sum.
 
 | Value | Number | Basis | Where |
@@ -7891,7 +7907,7 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | Title cap | 120 B | Chosen — ~18 English words; a dispatch description is 3–8 | [§ 7.4](#74-truncation) |
 | `console_url` bound | 95 B | Derived — the longest string § 6.3's pattern matches: the 31 B prefix `https://claude.ai/code/session_` plus 64 id characters | [§ 6.3](#63-turnstart) |
 | `console_url` transcript tail | 1 MiB, read back in 64 KiB steps | Chosen — above the largest gap between two bridge records a read of this seat's transcripts found on 2026-10-05; the step keeps the common case (a record in the last few KiB) to one small read inside the 250 ms hook budget | [§ 6.3](#63-turnstart) |
-| Busy-seat volume | ceiling **10,420 events/day ≈ 5.2 MB/day**; midpoint ~7,100/day ≈ 3.6 MB/day | **Estimate, not a measurement** — the sum of the kind table's per-kind ranges (1,440 heartbeats + ≤ 1,440 context samples + ≤ 6,000 tool events + ≤ 1,200 turn events + the rest). Sizing uses the ceiling. Re-derived from the first week of live data | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
+| Busy-seat volume | ceiling **18,356 events/day ≈ 9.2 MB/day**; midpoint ~11,100/day ≈ 5.5 MB/day | **Estimate, not a measurement** — the sum of the kind table's per-kind ranges (1,440 heartbeats + ≤ 1,440 context samples + ≤ 6,000 tool events + ≤ 1,200 turn events + ≤ 7,936 subagent activity events, card#12451 + the rest). Sizing uses the ceiling. Re-derived from the first week of live data | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
 | statusLine sample cadence | 60 s | Derived — matches the heartbeat. Bounds the class at **≤ 1,440 cadence samples/session-day plus one per 5-point crossing**; deliberately *not* expressed as a multiple of the render rate, which is event-driven and burst-shaped, not a rate | [§ 6.11](#611-contextsample) |
 | statusLine bucket | 5 percentage points | Chosen — the resolution a human reads a gauge at | [§ 6.11](#611-contextsample) |
 | Wrapped statusLine timeout | 1 s | Chosen — a status line re-renders on every trigger; slower is already broken. Also sits below the harness's own cancellation, which is what allows the failure to be counted | [§ 6.11](#611-contextsample) |
@@ -7920,7 +7936,7 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | Dedup window | 10 days | Derived — 25 % above the **8-day residency cap**, which is what bounds how old a delivered event can be. **Moves whenever the residency cap moves** | [§ 10.3](#103-idempotency-and-the-dedup-window) |
 | Spool residency cap | 8 days | Chosen — bounds residency by *age* rather than leaving it to fall out of a volume estimate, which on a quiet seat stretches past the 10-day dedup window. The fill time itself is measured in [§ 10.3](#103-idempotency-and-the-dedup-window) from the worked heartbeat and re-measured by the gate; it is deliberately not restated here | [§ 11.3](#113-rotation-and-the-overflow-policy) |
 | Batch-id memory | 24 h | Chosen — covers the retry ladder plus a same-day manual replay; bounded by the 6/min ceiling at ≤ 8,640 rows/seat/day | [§ 10.4](#104-batch-level-idempotency) |
-| Spool bound | 32 MiB | Derived — ~6.4 days at the ceiling rate (33.55 MB ÷ 5.21 MB/day); satisfies "survives the server being down for days" at negligible disk cost | [§ 11.3](#113-rotation-and-the-overflow-policy) |
+| Spool bound | 32 MiB | Derived — ~3.7 days at the ceiling rate (33.55 MB ÷ 9.18 MB/day); satisfies "survives the server being down for days" at negligible disk cost | [§ 11.3](#113-rotation-and-the-overflow-policy) |
 | Spool / journal bucket | 1 UTC hour | Chosen — removes rotation-rename races entirely; ~430 events ≈ 215 KB per spool bucket at the ceiling | [§ 11.1](#111-layout) |
 | Index-journal fold cap | 8 MiB | Derived — ~9 days of a busy seat's index writes with no flusher at all; past it the fold truncates, counts, and badges rather than growing without bound | [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open) |
 | Open-call index | 64 open + 64 tombstones | Chosen — far above any observed concurrency; overflow is itself a signal | [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open) |
@@ -7933,7 +7949,7 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | Orphan timeout, ordinary | 15 min | Derived — the harness's documented 10-minute `Bash` ceiling + 50 %. **The ceiling is unverified against the installed build** | [§ 12.5](#125-late-completions-and-orphan-timeouts) |
 | Orphan timeout, `Task` | 60 min | Chosen — 4× the ordinary; erring long is the safe direction | [§ 12.5](#125-late-completions-and-orphan-timeouts) |
 | Rate limit, requests | 120/min/seat | Derived — 20× the 6/min healthy cadence | [§ 12.3](#123-rate-limits) |
-| Rate limit, events | 20,000/h/seat | Derived — ~46× the ceiling's 434/h | [§ 12.3](#123-rate-limits) |
+| Rate limit, events | 20,000/h/seat | Derived — ~26× the ceiling's 765/h | [§ 12.3](#123-rate-limits) |
 | Failed-auth limit | 60/h **per source IP** | Chosen — bounds log volume and CPU, nothing else; a per-token-string key could never bound guessing, because each attempt presents a fresh string | [§ 12.3](#123-rate-limits) |
 | Quarantine caps | 256 KiB corrupt (stop writing), seat-wide / 1 MiB rejected (stop writing) and 64 KiB marker (drop oldest), **each per site** | Chosen — enough to diagnose, bounded so a broken seat cannot fill a disk; each with its at-cap behaviour stated. Per site since card#12180, so one site's poison stream evicts nothing of another's; the worst case on disk is the site cap × (1 MiB + 64 KiB) + 256 KiB | [§ 11.1](#111-layout) |
 | Local log | 1 MiB/day, 2 days retained | Chosen — day-bucketed so retention needs no rename; two days spans a weekend-adjacent incident | [§ 11.1](#111-layout) |
@@ -7945,7 +7961,7 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | `delivery_digest` | 64 B | Derived — SHA-256 as lowercase hex is exactly 64 characters. It is a uniqueness key and **not** a window, so this design carries no retention number for it — and [§ 18.13](#1813-what-this-section-does-not-establish) carries what that costs, since the store holding it does have one | [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) |
 | The coordination corpus every § 18 rate is measured over | **728** issues, **10,552** comments | **Measured** — the coordination repository's entire issue and comment population, read 2026-08-28 through the REST API with a positive and a negative control on every scan. It is the denominator behind the convergence-phrase rate (78.1%), the anchored-`[CLOSE]` rate (2.12%), the label-fallback rate (30.1%), the title-redaction rate (7.0% → 0.7%) and the preamble-shape rate (715/728). **A population, not a sample**: an earlier review round put the label fallback at 15.7% and the phrase at 77.7% from 300 comments, and the population moved the first figure by 2× | [§ 18.5](#185-the-three-findings-the-audit-turns-on) |
 | Rate limit on the coordination route, **verified** deliveries | **none** | Chosen, and the absence is the decision — every limit above protects the server from a producer that retries and loses nothing when refused. This one's upstream is GitHub, whose behaviour on a refusal is UNVERIFIED, so a limit would risk converting a burst into permanent loss. The HMAC, the body cap and an alarmed delivery counter are what remain | [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) |
-| Subagent idle threshold | **60** s | ⏳ **Chosen** (card#12451; designed, not built) — equal to `K.HEARTBEAT_MS`: long enough that the ordinary think between two tool calls (seconds) never flaps the floor's laptop, short enough that an intern gone quiet is seen to be within a minute, which is the resolution the heartbeat already gives the seat. Evaluated on the flusher's `K.FLUSH_MS` pass, so `idle` is declared between 60 and 70 s after the last hook under the subagent. **What re-derives it:** the operator's reading of the floor — a laptop that flickers on a working intern says it is too short, an intern typing for minutes after its subagent went quiet says it is too long. Its code home at the build is `fleet-reporter/fleet-reporter.js`'s `K.SUBAGENT_IDLE_MS`, held equal to this cell by the selftest | [§ 6.8](#68-subagentstop)'s designed block, [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) |
+| Subagent idle threshold | **60** s | **Chosen** (card#12451; the operator's ruling on the card, 2026-10-27: *idle = 60 s with no open call*) — equal to `K.HEARTBEAT_MS`: long enough that the ordinary think between two tool calls (seconds) never flaps the floor's laptop, short enough that an intern gone quiet is seen to be within a minute, which is the resolution the heartbeat already gives the seat. Evaluated on the flusher's `K.FLUSH_MS` pass, so `idle` is declared between 60 and 70 s after the last hook under the subagent. **What re-derives it:** the operator's reading of the floor — a laptop that flickers on a working intern says it is too short, an intern typing for minutes after its subagent went quiet says it is too long. Its code home is `fleet-reporter/fleet-reporter.js`'s `K.SUBAGENT_IDLE_MS`, held equal to this cell by the selftest's § 25 | [§ 6.15](#615-subagentactivity), [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) |
 | Rate limit on the coordination route, **step-3 refusals** | 60/h keyed **`(route, source IP)`** | **Value reused, budget not** — it is [§ 12.3](#123-rate-limits)'s failed-authentication limit at the same value and for the same stated purpose (log volume and CPU, never a guessing defence), in a bucket of this route's own. The route part of the key is load-bearing: § 12.3's limit was priced over seats sharing with seats, and this endpoint is unauthenticated, so one shared bucket would let an anonymous caller spend a real seat's rotation-race budget ([§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)). A request that fails the HMAC is by construction not GitHub's, so the permanent-loss argument in the row above does not reach it | [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) |
 
 Three numbers rest on estimates rather than measurements and say so at their definition: the
@@ -8078,7 +8094,7 @@ values no published rule derived.
 | 58 | **card#12239 r3: `to`'s label fallback is the union of the thread's `from:` and `to:` labels less the author** ([§ 18.7](#187-coordround)) | the `to:` labels alone, as the first draft had it | the opener is a `from:` label; a `to:`-only fallback addressed the addressee's reply to nobody once the author was removed, which the floor drew as nothing for the commonest reply (review r2 MAJOR-7) | a reply without a `TO:` line now addresses every other labelled member, including observers — which is what the thread's membership says and the author did not narrow; the fraction of fallback posts this changes is unmeasured (no corpus) and bounded by the 30.1% fallback rate |
 | 59 | **card#12239 r3: a comment on a pull request is derived as any other post** ([§ 18.7](#187-coordround)) | ignore comments whose `issue` carries `pull_request` | a PR on a coordination repository is a thread of the same number space; the bridge classifies `pull_request.opened` as authoring | `thread_ref` names a PR as it names an issue; nothing distinguishes them on the wire, and nothing needs to |
 | 60 | **card#12239 r5: the `all` expansion is specified and not derived — `targets` is `null` on every broadcast, no roster is provisioned with a binding, and `coord_targets_unresolved` / `coord_roster_unknown_name` are specified and not derived** ([§ 18.7](#187-coordround), [§ 18.3.1](#1831-the-install-facts-input-declared-once), [§ 18.8.1](#1881-the-counters-this-route-mints)) | provision the roster and expand `all` anyway | the operator ruled a broadcast is the ring and sends no traveller, so an enumerated fan-out has no consumer; a copied roster is a restatement of another repository's config with a one-directional drift guard, kept for nothing | a consumer that later wants the fan-out provisions the roster and switches the expansion on — the rule is written and the counters are declared |
-| 61 | ⏳ **card#12451 (designed 2026-10-26, not built): a subagent's working/idle is a reporter-minted kind, `subagent.activity`, with `idle` read from silence AT THE SEAT — no call open under the bound `agent_id` and no hook from it for § 14's threshold — and `working` from the next hook** ([§ 6.8](#68-subagentstop)'s designed block) | the server deriving it from the stored child calls' timestamps, with no reporter change and no new kind | the server cannot tell silence from delivery lag, which is the one rule D2 § 3 is built on; the reporter can, because at the seat an absent hook is an absent hook. The cost is a reporter release and one new kind; what it buys is an `idle` that is a fact about the subagent and not about the pipe. The second alternative — a field on `tool.start` / `tool.end` — cannot carry the idle edge, which lands when no hook fires | a seat that cannot upgrade its reporter never shows an idle intern; its badge says so |
+| 61 | **card#12451 (designed 2026-10-26, built 2026-10-28): a subagent's working/idle is a reporter-minted kind, `subagent.activity`, with `idle` read from silence AT THE SEAT — no call open under the bound `agent_id` and no hook from it for § 14's threshold — and `working` from the next hook** ([§ 6.15](#615-subagentactivity)) | the server deriving it from the stored child calls' timestamps, with no reporter change and no new kind | the server cannot tell silence from delivery lag, which is the one rule D2 § 3 is built on; the reporter can, because at the seat an absent hook is an absent hook. The cost is a reporter release and one new kind; what it buys is an `idle` that is a fact about the subagent and not about the pipe. The second alternative — a field on `tool.start` / `tool.end` — cannot carry the idle edge, which lands when no hook fires | a seat that cannot upgrade its reporter never shows an idle intern; its badge says so |
 
 **One thing this document deliberately does not contain:** the accepted schema-version set. That set
 lives in exactly one machine-readable place in the ingest's code and is reported by the health
@@ -8109,7 +8125,7 @@ one of them is optional.
 | 8 | the coordination **receipt** path: the hook registration and its per-hook secret, HMAC verification over the raw bytes, the validation order, and signed-body digest idempotency ([§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)) | **AT-23** RED then GREEN — all three REDs, and the replay one in particular: it is the only check that distinguishes this design from the header-keyed one every implementer reaches for first |
 | 9 | the coordination **derivation**: the two objects, their attribution states, the body-line address rules, [§ 18.6](#186-coordthread)'s **membership union**, and the install-facts input the fan-out resolves against ([§ 18.3.1](#1831-the-install-facts-input-declared-once), [§ 18.6](#186-coordthread), [§ 18.7](#187-coordround)) | **AT-24** and **AT-25** RED then GREEN. AT-25's unlabelled fixture is the primary case and its labelled twin is the control; a suite carrying only the labelled one passes while the derivation is wrong on the deliveries that actually occur. **AT-25's FIFTH red is the one to build first**: the other four all pass under a body-only derivation, which is the derivation that shipped |
 | 10 | the **close signal**, last of the three because it is the one whose defect is invisible per-post ([§ 18.5](#185-the-three-findings-the-audit-turns-on)) | **AT-26** RED then GREEN, and its first RED is a **rate** assertion over a replayed corpus rather than a per-post one. Built before the corpus exists, this row's test passes under the wrong implementation and under the right one alike |
-| 11 | ⏳ designed 2026-10-26 (card#12451), not built — the **subagent activity signal**: `K.SUBAGENT_IDLE_MS`, the `activity` index record, the per-child `last_at` map in the fold and in `index/snapshot.json`, the flusher pass's idle evaluation over it, the hook's resume before its `tool.start` and the flusher's repair on the next pass, the revival path of [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)'s designed paragraph (`title`, `title_truncated` and `subagent_type` kept on a dispatch's `open` record, the count-bounded `revivable` store derived from `subagent_stop_hook` closes and synthesized opens and held in `index/snapshot.json`, the synthesized dispatch on a matching `SubagentStart`, bound at once, its spawn's title re-derived under the current `descriptors` mode), the `agent_type` tie-break at `SubagentStart`, and the per-child map swept in `capIndex()`, the `### 6.N` section and the § 6.0 kind-table and classification rows this document's [§ 6.8](#68-subagentstop) block spells out, and the `REPORTER_VERSION` minor shared with card#12447's release (`fleet-reporter/UPDATES.md`, one row naming both). Depends on rows 2 and 3; independent of rows 8–10 | **AT-29** RED then GREEN — the silence leg first, because it is the one the flusher's pass alone can see; `bin/reporter-version-guard.py` green with the shared row |
+| 11 | ✅ **BUILT — card#12451 (2026-10-28), reporter `0.4.0`.** The **subagent activity signal**: `K.SUBAGENT_IDLE_MS`, the `activity` index record, the per-child `last_at` map in the fold and in `index/snapshot.json`, the flusher pass's idle evaluation over it, the hook's resume before its `tool.start` and the flusher's repair on the next pass, [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)'s revival path (`title`, `title_truncated` and `subagent_type` kept on a dispatch's `open` record, the count-bounded `revivable` store derived from `subagent_stop_hook` closes and synthesized opens and held in `index/snapshot.json`, the synthesized dispatch on a matching `SubagentStart`, bound at once, its spawn's title re-derived under the current `descriptors` mode), the `agent_type` tie-break at `SubagentStart`, and the per-child map swept in `capIndex()`, [§ 6.15](#615-subagentactivity) and the § 6.0 kind-table and classification rows, and the `REPORTER_VERSION` minor `0.4.0` with its `fleet-reporter/UPDATES.md` row; card#12447's reporter change, designed to share it, takes the next version under the guard's strictly-greater rule if it lands after. Depends on rows 2 and 3; independent of rows 8–10 | **AT-29** RED then GREEN — the silence leg first, because it is the one the flusher's pass alone can see; `bin/reporter-version-guard.py` green with the `0.4.0` row |
 
 ⭐ **Rows 8–10 under card#12239 (2026-10-24).** Row 8 is built: the receipt at
 `POST /api/ingest/github/{hook}` in [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)'s

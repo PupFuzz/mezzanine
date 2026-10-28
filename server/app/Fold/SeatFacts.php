@@ -367,6 +367,6 @@ final class SeatFacts
             ->whereNull('closed_at')
             ->where('is_dispatch', true)
             ->orderByDesc('opened_at')
-            ->get(['call_id', 'title', 'subagent_type', 'opened_at']);
+            ->get(['call_id', 'title', 'subagent_type', 'activity_state', 'opened_at']);
     }
 }

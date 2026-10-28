@@ -185,6 +185,26 @@ class At18UnknownEnumTest extends IngestTestCase
         $this->assertSame(0, $this->storedEvents());
     }
 
+    /**
+     * card#12451 — D1 AT-29's sixth RED, at the ingest: `subagent.activity.activity_state` is minted by
+     * the reporter from its own timer, so a third member is a reporter bug and refuses the batch. The
+     * control is the same batch with a member D1 § 6.15 declares, which is stored.
+     */
+    public function test_a_third_subagent_activity_member_refuses_the_batch(): void
+    {
+        $this->postBatch($this->validBatch($this->twoHundredWith([
+            'call_id' => '01K3TA6G7H8J9K0M1N2P3Q4R5T', 'activity_state' => 'quiet',
+        ], kind: 'subagent.activity')))
+            ->assertStatus(422)
+            ->assertJson(['error' => 'invalid_event', 'index' => 0, 'field' => 'activity_state']);
+        $this->assertSame(0, $this->storedEvents());
+
+        $this->postBatch($this->validBatch($this->twoHundredWith([
+            'call_id' => '01K3TA6G7H8J9K0M1N2P3Q4R5T', 'activity_state' => 'idle',
+        ], kind: 'subagent.activity')))->assertStatus(202);
+        $this->assertSame(200, $this->storedEvents(), 'the control: a declared member is not stored');
+    }
+
     public function test_the_heartbeat_degraded_array_is_validated_against_section_9_3s_twelve(): void
     {
         // § 9.3 states the cost of getting this set wrong more starkly than anywhere else in D1:

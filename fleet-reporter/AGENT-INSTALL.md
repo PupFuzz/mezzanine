@@ -126,7 +126,9 @@ Running step 6's command again is safe: on a seat that is already current it cha
 the seat after `git -C "$HOME/.local/src/mezzanine" pull --ff-only`: it installs the new build, rewires
 whatever the build adds, restarts the background process on it, and checks the site holds it current.
 [`UPDATES.md`](UPDATES.md) lists what each reporter version changes; a version whose row lists a
-`config` touch needs the change that row names, by hand.
+`config` touch needs the change that row names, by hand. Reporter `0.4.0` (card#12451, working and idle
+subagents) is the artifact alone, so running the command again upgrades it; its new event kind needs a server
+that carries card#12451, so the server is deployed first ([`INSTALL-LINUX.md` § Upgrading an existing seat](INSTALL-LINUX.md#upgrading-an-existing-seat)).
 
 ## When a run does not end in `INSTALLED`
 

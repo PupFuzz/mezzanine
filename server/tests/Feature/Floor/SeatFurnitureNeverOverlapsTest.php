@@ -581,8 +581,13 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
         $stools = $this->elementsOf($desk, 'stool');
         usort($stools, static fn (array $a, array $b): int => $a['index'] <=> $b['index']);
 
+        // card#12450: slot `i` is the call a fresh replace seats there — the array in `started_at` ascending order, then
+        // `call_id` by code unit (`desk/intern-slots.js`'s rebuild), never the call at array index `i`.
+        $bySlot = $seat['subagents'];
+        usort($bySlot, static fn (array $a, array $b): int => [$a['started_at'], $a['call_id']] <=> [$b['started_at'], $b['call_id']]);
+
         foreach ($stools as $i => $e) {
-            $call = $seat['subagents'][$i]['call_id'] ?? null;
+            $call = $bySlot[$i]['call_id'] ?? null;
             $at = "{$desk['key']}'s intern {$i}";
 
             [$w, $h] = $this->artContractStool();

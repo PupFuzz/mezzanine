@@ -39,6 +39,7 @@ import { floorAgeReadouts, startAgeTicker } from '../wire/age-readout.js';
 import { AnimationSet } from '../wire/animation-set.js';
 import { correctedNowMs } from '../wire/duration.js';
 import { deskModel, unrecognisedValues } from './desk-render.js';
+import { advanceSlots, rebuildSlots } from './intern-slots.js';
 
 export class DeskFloor {
     #source;
@@ -54,6 +55,12 @@ export class DeskFloor {
 
     /** key → what only the protocol knows about the seat, read at the last `render()`. */
     #facts = new Map();
+
+    /**
+     * key → the seat's interns' slots, `call_id → slot` (FLOOR.md § 6.2's *Interns ride the elevator too*, item 13;
+     * `desk/intern-slots.js`): kept across renders, advanced by each applied delta and rebuilt by each non-delta replace.
+     */
+    #slots = new Map();
 
     /** Whether the last `render()` drew the floor stilled (§ 9 F6) — § 11's precedence compares with it. */
     #stilled = false;
@@ -152,10 +159,11 @@ export class DeskFloor {
 
         this.#recordUnrecognised();
 
+        const { interns, flips } = this.#internMoves(journal);
         const offset = this.#source.clockOffsetMs;
         const browserNow = this.#clock.now();
         const readouts = floorAgeReadouts(this.#held, offset, browserNow);
-        const frame = this.view(readouts);
+        const frame = { ...this.view(readouts), interns, flips };
         const at = correctedNowMs(offset, browserNow);
 
         // The `edge` rows first — each is caused by one of the messages in the journal — and the
@@ -168,6 +176,71 @@ export class DeskFloor {
             .map((entry) => [`${entry.install_id}/${entry.seat_id}`, entry.cause])), this.#conditions(frame, readouts, before));
 
         return frame;
+    }
+
+    /**
+     * The interns' slots over one drained journal (item 13), and what each applied delta did to a seat's interns:
+     * `{ key, cause, gained, lost, exact }` per delta whose `changed[]` names `subagents`, in journal order — the scene's
+     * input for A10's walks (items 13–16, 19). A non-delta entry applied for a seat REBUILDS its map; a seat with no map
+     * yet is rebuilt from what is held; a seat no longer held drops its map. The tick never reaches this.
+     *
+     * `flips` is A24's input (card#12451): per such delta, the interns present on both sides whose `activity_state`
+     * changed, each with the state it left and the one it took — `{ key, cause, calls: [{ call_id, from, to }] }` — which
+     * the scene fades the laptop of, from where it was to where the delta left it.
+     */
+    #internMoves(journal) {
+        const moves = [];
+        const flips = [];
+        const keyOf = (entry) => `${entry.install_id}/${entry.seat_id}`;
+
+        for (const entry of journal) {
+            if (entry.outcome !== 'applied' || typeof entry.seat_id !== 'string') {
+                continue;
+            }
+
+            const key = keyOf(entry);
+
+            if (entry.t !== 'seat.delta') {
+                this.#slots.delete(key);
+
+                continue;
+            }
+
+            if (!(entry.changed ?? []).includes('subagents')) {
+                continue;
+            }
+
+            const prev = this.#slots.get(key) ?? rebuildSlots(entry.before);
+            const moved = advanceSlots(prev, entry.before, entry.after);
+
+            this.#slots.set(key, moved.slots);
+
+            if (moved.gained.length > 0 || moved.lost.length > 0) {
+                moves.push(Object.freeze({ key, cause: entry.state_version, gained: moved.gained, lost: moved.lost, exact: moved.exact }));
+            }
+
+            const was = new Map((entry.before?.subagents ?? []).map((s) => [s.call_id, s.activity_state]));
+            const flipped = (entry.after?.subagents ?? []).filter((s) => was.has(s.call_id) && was.get(s.call_id) !== s.activity_state)
+                .map((s) => Object.freeze({ call_id: s.call_id, from: was.get(s.call_id), to: s.activity_state }));
+
+            if (flipped.length > 0) {
+                flips.push(Object.freeze({ key, cause: entry.state_version, calls: Object.freeze(flipped) }));
+            }
+        }
+
+        for (const key of [...this.#slots.keys()]) {
+            if (!this.#held.has(key)) {
+                this.#slots.delete(key);
+            }
+        }
+
+        for (const [key, seat] of this.#held) {
+            if (!this.#slots.has(key)) {
+                this.#slots.set(key, rebuildSlots(seat));
+            }
+        }
+
+        return { interns: Object.freeze(moves), flips: Object.freeze(flips) };
     }
 
     /**
@@ -186,7 +259,7 @@ export class DeskFloor {
             const wasMissing = before.facts.get(k)?.missing ?? now.missing;
             const changed = wasMissing !== now.missing || before.stilled !== now.stilled;
             const model = changed
-                ? deskModel(seat, readouts.desks[k], { ...now, missing: wasMissing, stilled: before.stilled }, this.#options)
+                ? deskModel(seat, readouts.desks[k], { ...now, missing: wasMissing, stilled: before.stilled, slots: this.#slots.get(k) ?? null }, this.#options)
                 : frame.desks[k];
 
             conditions.set(k, {
@@ -227,7 +300,7 @@ export class DeskFloor {
         const desks = {};
 
         for (const [k, seat] of this.#held) {
-            const model = deskModel(seat, readouts.desks[k], this.#facts.get(k), this.#options);
+            const model = deskModel(seat, readouts.desks[k], { ...this.#facts.get(k), slots: this.#slots.get(k) ?? null }, this.#options);
 
             if (model !== null) {
                 desks[k] = model;

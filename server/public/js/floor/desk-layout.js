@@ -908,7 +908,9 @@ export function deskLayout(desk, ctx) {
         // more per intern drawn past them, so its width says nothing the row of interns does not. The theme
         // is handed the seat count and nothing else about the seat; it lays each seat under an intern's
         // place, which `seat_at` states as offsets inside the table (the interns stand at `stoolSlots()`).
-        const seats = Math.max(SIDE_TABLE_SEATS, shown.length);
+        // card#12450: the highest HELD slot plus one (`desk/desk-render.js`'s `seats`), so a hole a departure left is an
+        // empty seat between interns rather than a row that closes up under the seated.
+        const seats = Math.max(SIDE_TABLE_SEATS, desk.side_table.seats);
 
         rect('side-table', 'side_table', R['side-table'], {
             seats,
@@ -1022,7 +1024,9 @@ export function deskLayout(desk, ctx) {
 
     // § 8: one sprite per intern, in front of the side table (emitted in the art pass above), in PAINT ORDER — the back row
     // before the front, each row left to right — so where two interns' frames overlap each is drawn whole (`STOOL_PITCH`).
-    shown.map((stool, i) => [stool, i]).sort(([, a], [, b]) => slots[b].row - slots[a].row || a - b).forEach(([stool, i]) => {
+    // card#12450: each at its intern's KEPT slot (`stool.slot`, § 6.2's *Interns ride the elevator too* item 13), never its
+    // index in the newest-first array, so a gain or a loss moves no seated intern.
+    shown.map((stool) => [stool, stool.slot]).sort(([, a], [, b]) => slots[b].row - slots[a].row || a - b).forEach(([stool, i]) => {
         const asset = internAsset(desk, stool.call_id);
 
         // Q3: the sprite is keyed by the intern's call, never by its place in the row; § 9 F14: an
@@ -1048,6 +1052,8 @@ export function deskLayout(desk, ctx) {
             // § 6.2 A23 (card#12448): the interns' held rendering, which the desk model derives — whether the
             // interns type, § 6.4's form, and the interval their sway steps at.
             animation: desk.interns_held,
+            // card#12451: the intern's own state — `working` draws its laptop, `idle` none (FLOOR.md § 8).
+            activity: stool.activity,
         });
     });
 

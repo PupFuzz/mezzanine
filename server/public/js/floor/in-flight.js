@@ -24,6 +24,15 @@
  * draws every fact of the applied object but the character, and the walker IS that character. No walk starts from
  * a cancelled one, and a render whose journal fires two walk rows for one seat draws neither. The 1 s age tick and
  * the paint-only refresh are not renders and never reach `render()`.
+ *
+ * ⛔ AN INTERN WALKS TOO, ONE WALK PER INTERN (§ 6.2's *Interns ride the elevator too*, items 13–17; card#12450). An
+ * intern's A10 walk is held under its own key, `<seat key>~<call_id>`, beside its seat's walk and never in its place. Every
+ * clause above that touches the SEAT cancels its interns' walks with it — a non-delta entry for the seat, row 5's or the
+ * stilled condition changing, the threshold or the lattice key — and the anchor clause is read against the intern's SLOT
+ * foot, which a sibling's gain or loss never moves; the seat's own side and its A1/A2 rows do not touch an intern (the
+ * chair emptying moves no intern). An arrival whose intern leaves the array while it is in flight is REPLACED by item 16's
+ * turn-round when the loss walks, and is a plain cancel when it does not (item 15's cap). A24's laptop fade is held per
+ * intern too, and a later fade replaces it from the opacity it reached.
  */
 
 import { emptyChair, staffed } from '../wire/animation-set.js';
@@ -41,6 +50,12 @@ export function walkSide(renderState) {
 
 /** The held walks' seat keys. */
 const keyOf = (effect) => `${effect.install_id}/${effect.seat_id}`;
+
+/** An intern's A10 walk (card#12450) — keyed by its intern key, never by its seat's. */
+const isInternWalk = (effect) => effect.animation_id === 'A10' && typeof effect.intern_key === 'string';
+
+/** An intern's A24 laptop fade (card#12451). */
+const isFade = (effect) => effect.animation_id === 'A24' && typeof effect.intern_key === 'string';
 
 const samePoint = (a, b) => a !== null && b !== null && a !== undefined && b !== undefined && a.x === b.x && a.y === b.y;
 
@@ -62,7 +77,9 @@ export class EffectsInFlight {
      * @param {list<object>} effects the scene's effects for the rows this render wrote
      * @param {number} now the browser's clock, ms
      * @param {object} ctx `{ journal, anchors: Map, threshold, unconfirmed: function(key): boolean|null, stilled,
-     *        side: function(key): string, lattice_key }`
+     *        side: function(key): string, lattice_key, slot_foot: function(effect): ?{x, y}, interns: Set<string> }` —
+     *        `slot_foot` an intern walk's slot foot in this render's scene (item 17's anchor clause), `interns` the intern
+     *        keys this render's arrays hold
      * @returns {list<string>} the keys whose walk this render cancelled
      */
     render(effects, now, ctx) {
@@ -74,10 +91,37 @@ export class EffectsInFlight {
         // Two opposite edges applied in one render leave the side unchanged and still cancel: their rows are here.
         const rowKeys = new Set(effects.filter((effect) => WALK_ROWS.includes(effect.animation_id)).map(keyOf));
         const cancelled = [];
+        // An intern a walk of this render replaces (item 16's turn-round), and an intern whose fade a newer one replaces.
+        const replaced = new Set(effects.filter((e) => isInternWalk(e) && e.frames > 0).map((e) => e.intern_key));
+        const refaded = new Set(effects.filter(isFade).map((e) => e.intern_key));
 
         this.#held = this.#held.filter((h) => {
             if (this.#ended(h, now)) {
                 return false;
+            }
+
+            if (h.fade === true) {
+                // A newer fade for the intern, or any walk of it, takes the laptop over.
+                return !refaded.has(h.key) && !replaced.has(h.key);
+            }
+
+            if (h.intern === true) {
+                const seat = keyOf(h.effect);
+                const touched = touchedKeys.has(seat)
+                    || h.lattice_key !== ctx.lattice_key
+                    || h.unconfirmed !== ctx.unconfirmed(seat)
+                    || h.stilled !== ctx.stilled
+                    || !samePoint(h.anchor, (ctx.slot_foot ?? (() => null))(h.effect))
+                    || !samePoint(h.threshold, ctx.threshold)
+                    // Item 15: an arrival whose intern left the array with no walk of its own — the cap dropped it — is a
+                    // plain cancel. A departure's intern has left the array by definition.
+                    || (h.effect.leg_kind === 'arrive' && !(ctx.interns ?? new Set()).has(h.key) && !replaced.has(h.key));
+
+                if (touched) {
+                    cancelled.push(h.key);
+                }
+
+                return !touched && !replaced.has(h.key);
             }
 
             if (h.key === null) {
@@ -110,6 +154,34 @@ export class EffectsInFlight {
 
         for (const effect of effects) {
             if (!(effect.frames > 0) && !(effect.still_frames > 0)) {
+                continue;
+            }
+
+            if (isFade(effect)) {
+                this.#held.push({ effect, at: now, frames: effect.frames, key: effect.intern_key, fade: true });
+
+                continue;
+            }
+
+            if (isInternWalk(effect)) {
+                // One walk per intern; a seat-touching render that cancels the seat's interns starts none of them.
+                if (cancelled.includes(effect.intern_key) || touchedKeys.has(keyOf(effect))) {
+                    continue;
+                }
+
+                this.#held.push({
+                    effect,
+                    at: now,
+                    frames: effect.frames,
+                    key: effect.intern_key,
+                    intern: true,
+                    anchor: effect.anchor ?? null,
+                    threshold: ctx.threshold,
+                    unconfirmed: ctx.unconfirmed(keyOf(effect)),
+                    stilled: ctx.stilled,
+                    lattice_key: effect.lattice_key,
+                });
+
                 continue;
             }
 
@@ -167,6 +239,51 @@ export class EffectsInFlight {
         return new Set(this.#held
             .filter((h) => h.key !== null && h.effect.animation_id === 'A1' && !this.#ended(h, now))
             .map((h) => h.key));
+    }
+
+    /**
+     * The interns whose arrival is still in flight at `now` (card#12450): their stools draw empty, the walker drawing the
+     * intern through its whole arrival, its `seat` leg included, until the paint-only refresh at its end seats it.
+     */
+    inboundInterns(now) {
+        return new Set(this.#held
+            .filter((h) => h.intern === true && h.effect.leg_kind === 'arrive' && !this.#ended(h, now))
+            .map((h) => h.key));
+    }
+
+    /** Every intern walk in flight at `now`, intern key → `{ effect, elapsed_ms }` — what item 16 turns an arrival from. */
+    interns(now) {
+        return new Map(this.#held
+            .filter((h) => h.intern === true && !this.#ended(h, now))
+            .map((h) => [h.key, Object.freeze({ effect: h.effect, elapsed_ms: Math.max(0, now - h.at) })]));
+    }
+
+    /**
+     * An intern's laptop opacity at `now` where something in flight is moving it, else `null` (its held state decides):
+     * an A24 fade at its point between its two ends, or an arrival — 0 before its `seat` leg, rising through it.
+     */
+    laptopAt(key, now) {
+        const h = this.#held.find((x) => x.key === key && !this.#ended(x, now) && (x.fade === true || (x.intern === true && x.effect.leg_kind === 'arrive')));
+
+        if (h === undefined) {
+            return null;
+        }
+
+        const ms = Math.max(0, now - h.at);
+
+        if (h.fade === true) {
+            return h.effect.from + (h.effect.to - h.effect.from) * Math.min(1, ms / (h.effect.frames * this.#intervalMs));
+        }
+
+        const seat = h.effect.legs.find((l) => l.kind === 'seat') ?? null;
+
+        if (seat === null) {
+            return 0;
+        }
+
+        const into = ms - seat.start * this.#intervalMs;
+
+        return into <= 0 ? 0 : Math.min(1, into / (seat.frames * this.#intervalMs)) * seat.laptop_to;
     }
 
     /**
