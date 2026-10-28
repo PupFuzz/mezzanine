@@ -179,7 +179,7 @@ export const CHARACTER_SCALE = 3.75;
 /** § 8's cap on the interns drawn: the array D2 caps at 8 (§ 8.1's chosen cap). */
 export const STOOL_CAP = 8;
 
-/** The side table's least seat count (§ 12's *Side-table seats* row): an empty table shows its seats. */
+/** The side table's least seat count (§ 12's *Side-table seats* row): an empty couch shows its seat cushions. */
 export const SIDE_TABLE_SEATS = 4;
 
 /** A seat's height on the side table, along its foot line (§ 10.6; row 20's flat shape). */
