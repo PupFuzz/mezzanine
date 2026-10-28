@@ -90,6 +90,7 @@ final class SeatDelta implements FeedMessage
         'reporter_version' => 'reporter',
         'reporter_platform' => 'reporter',
         'selftest_failed' => 'reporter',
+        'species' => 'character',
         'retired' => 'retired',
     ];
 

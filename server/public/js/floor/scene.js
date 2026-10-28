@@ -32,9 +32,9 @@
 import { ANIMATION_SET, LOOP_FPS, loops } from '../wire/animation-set.js';
 import { footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layout.js';
 import { readEmbedded, splitGid, tilesetUrl } from './tileset.js';
-import { BUBBLE_BAND, BUBBLE_PAD, CHARACTER_SCALE, LINE, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, thoughtTrail, union } from './desk-layout.js';
+import { BUBBLE_GAP, BUBBLE_PAD, CHARACTER_SCALE, FRAME_UNITS_PER_PX, LINE, STOOL_FRAME, STOOL_H, STOOL_W, TRAIL_REACH, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, internKey, stoolSlots, trailCircles, trailFoot, union } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
-import { cellCentre, lattice, polylineLength, route } from './route.js';
+import { cellCentre, lattice, pointAt, polylineLength, route } from './route.js';
 import { perchPoint } from './bird.js';
 
 /**
@@ -286,6 +286,12 @@ const RING_FADE_FRAMES = 2;
 export const ELEVATOR_DOOR = Object.freeze({ open: 2, step: 1, close: 2 });
 
 /**
+ * The intern's laptop fade, in loop frames (FLOOR § 12's *Laptop fade* row, card#12450/card#12451): one second each way
+ * at the loop rate — A10's `seat` legs and A24's fade. Chosen; it carries no fact.
+ */
+export const LAPTOP_FADE = 4;
+
+/**
  * The longest a departing character waits at the elevator before the leaves open (§ 12's *Elevator wait* row,
  * card#12194 — the operator's *"random wait time up to 1 minute"*), in seconds, and in loop frames at § 12's rate.
  */
@@ -310,6 +316,13 @@ const WALK_SIDE = Object.freeze({ A1: 'staffed', A2: 'empty' });
 export function walkerSize(character) {
     return Object.freeze({ w: character.w * CHARACTER_SCALE, h: character.h * CHARACTER_SCALE });
 }
+
+/**
+ * An INTERN walker's drawn rect (§ 6.2's *Interns ride the elevator too*, item 13; card#12450): the intern at its drawn
+ * size — the stool's rect, `STOOL_W × STOOL_H`, its feet at its bottom centre — and the body its route keeps clear, as
+ * the seat's is `walkerSize()`. Its image is drawn in `STOOL_FRAME`, the frame that holds every chibi's ink.
+ */
+export const INTERN_SIZE = Object.freeze({ w: STOOL_W, h: STOOL_H });
 
 /**
  * One A1 or A2 walk (FLOOR § 6.2's walk note items 3 and 5, card#12194): a ROUTED path through open floor between
@@ -424,38 +437,45 @@ function latticeKey(frame, input, grids, kinds) {
  * never on a render that carries none, every route over it, and each departure's seeded wait.
  */
 function walkRouting({ key, extent, cell, obstacles, desks, draw, character }) {
-    let grid;
+    const grids = new Map();
     const desksByKey = new Map(desks.map((d) => [d.key, d]));
-    const built = () => {
-        if (grid === undefined) {
-            grid = extent === null || cell === null ? null : lattice({
+    // One lattice per walker BODY, each built at the first walk that asks: the seat's character and, for an intern's walk
+    // (card#12450), the intern at its drawn size — the body each route keeps clear (card#12442's clearance).
+    const built = (body) => {
+        const id = `${body.w}x${body.h}`;
+
+        if (!grids.has(id)) {
+            grids.set(id, extent === null || cell === null ? null : lattice({
                 extent,
                 cell,
                 obstacles,
                 desks: desks.map((d) => ({ key: d.key, rects: [d.slot_rect, d.box].filter((r) => r !== null) })),
                 // The body the route keeps clear: the walker's drawn rect, the one its effect is drawn at (card#12442).
-                body: walkerSize(character),
-            });
+                body,
+            }));
         }
 
-        return grid;
+        return grids.get(id);
     };
+    let last = null;
 
     return {
         key,
-        route: (seat, anchor, from, to) => {
-            const g = built();
+        route: (seat, anchor, from, to, body = walkerSize(character)) => {
+            const g = built(body);
+
+            last = g;
 
             return g === null ? null : route(g, from, to, { key: seat, anchor });
         },
-        centre: (c) => cellCentre(grid, c),
+        centre: (c) => cellCentre(last, c),
         inRoom: (seat) => (desksByKey.get(seat)?.slot_rect ?? null) !== null,
         // § 5.1 of card#12194's design: a deterministic per-event draw over the character's own key — the character
         // tree's ONE seeded draw (`resources/characters/seed.js`'s `draw()`, § 10.4) — uniform over `0 … WAIT_MAX_FRAMES`.
         // With no character tree held there is no seeded draw, and the walker waits none (§ 9 F14's viewer).
         wait: (seat, cause) => (typeof draw === 'function' ? draw(seat, `elevator-wait:${cause}`) % (WAIT_MAX_FRAMES + 1) : 0),
         get lattice() {
-            return built();
+            return built(walkerSize(character));
         },
     };
 }
@@ -696,6 +716,7 @@ export function buildScene(frame, input) {
                 box,
                 measure: input.measure,
                 character: input.character,
+                crest: input.crest ?? null,
                 theme: theme.drawn ? theme.name : null,
                 // F16: a mapless room's every desk is the placeholder, in a plain grid.
                 placeholder: room.mapless || artFor(model),
@@ -735,6 +756,7 @@ export function buildScene(frame, input) {
                 box,
                 measure: input.measure,
                 character: input.character,
+                crest: input.crest ?? null,
                 theme: theme.drawn ? theme.name : null,
                 placeholder: artFor(model),
                 failed,
@@ -760,7 +782,7 @@ export function buildScene(frame, input) {
         }
     }
 
-    // ── The bubbles: § 5.1 rule 5's pass over the base rects, in the box's top band ───────────
+    // ── The bubbles: § 5.1 rule 5's pass over the base rects, each set on its character ───────────
     placeBubbles(desks, input.measure, W, Object.keys(models));
 
     // ── The frame: the band over the floor's whole extent (§ 4.2) and the slab under it ────────
@@ -793,7 +815,13 @@ export function buildScene(frame, input) {
         draw: input.draw ?? null,
         character: input.character,
     });
-    const effects = buildEffects(input.effects ?? [], frame, anchors, input.previous ?? new Map(), extent, band, input.reduce === true, input.character, box, walking);
+    const effects = buildEffects(input.effects ?? [], frame, anchors, input.previous ?? new Map(), extent, band, input.reduce === true, input.character, box, walking, {
+        desks: new Map(desks.map((d) => [d.key, d])),
+        // card#12450: the intern walks the holder carries into this render, and each intern's laptop opacity there
+        // (`floor/in-flight.js`) — what a turn-round turns from and a departure fades from.
+        in_flight: input.interns_in_flight ?? new Map(),
+        laptop_at: input.laptop_at ?? (() => null),
+    });
 
     // § 9 F14: every asset the scene asked to be drawn that the painter reported failed, and every
     // tileset that could not be fetched or read.
@@ -824,6 +852,10 @@ export function buildScene(frame, input) {
         art_failed: failedAssets.length > 0,
         // Where each desk's travellers and walks meet it — what the NEXT render's walks start from.
         anchors: Object.freeze(Object.fromEntries(anchors)),
+        // card#12450: each desk's interns' slot feet, in slot order — what an intern's walk is routed to and from, and the
+        // anchor the holder's item 17 compares a walk in flight against.
+        slot_feet: Object.freeze(Object.fromEntries(desks.map((d) => [d.key,
+            Object.freeze(stoolSlots(box, input.character).map((_, slot) => slotFoot(d, slot, box, input.character)))]))),
         // What the walkable model reads, fingerprinted — every render's, so the holder can cancel a walk routed on another.
         lattice_key: walking.key,
         loop_fps: LOOP_FPS,
@@ -837,6 +869,27 @@ export function buildScene(frame, input) {
  */
 export function slotOrigin(slot, box) {
     return { x: slot.x, y: slot.y + slot.h - box.height };
+}
+
+/**
+ * WHERE A DESK's CHARACTER's DRAWN HEAD IS (§ 5.1, the seat's ruling of 2026-10-27 on card#12444: the thought trail reaches
+ * each character's drawn head): its topmost ink, in the tree's frame units under the character rect's top — the tree's
+ * `crestTop()` for the seat's key, its delivered species and its pose, which the page hands the scene as `crest` once the
+ * tree has loaded. With no tree, no drawn character, or a species the tree does not hold (§ 9 F14, which the painter draws
+ * as the placeholder), 0: the rect's top, the line the tallest crest reaches.
+ */
+function crestOf(model, installId, elements, ctx) {
+    const character = elements.find((e) => e.kind === 'character');
+
+    if (character === undefined || typeof ctx.crest !== 'function' || typeof character.species !== 'string') {
+        return 0;
+    }
+
+    try {
+        return ctx.crest(installId, model.seat_id, { pose: character.pose, species: character.species });
+    } catch {
+        return 0;
+    }
 }
 
 /**
@@ -868,12 +921,17 @@ export function placeDesk(model, key, installId, slot, at, ctx, extra) {
         // meet it at, the desk's own mid-height, below every facts plate (`deskAnchor()`, card#11468).
         anchor_x: at.x + characterCentre(ctx.box, ctx.character),
         anchor_y: at.y + deskAnchor(ctx.box, ctx.character).y,
-        // § 5.1's thought trail, in scene coordinates — drawn only with a bubble (card#11468).
-        trail: Object.freeze(thoughtTrail(ctx.box, ctx.character).map((c) => Object.freeze({ ...c, x: at.x + c.x, y: at.y + c.y }))),
+        // § 5.1's thought trail starts here, the character's DRAWN head on its centre line, in scene coordinates — drawn
+        // only with a bubble, up to wherever the bubble is set (card#11468, card#12444).
+        // The bubble is set on the character's FRAME top (`frame_top`, `placeBubbles()`); the trail runs on down to its head.
+        frame_top: at.y + trailFoot(ctx.box, ctx.character).y,
+        trail_foot: (({ x, y }) => Object.freeze({ x: at.x + x, y: at.y + y + crestOf(model, installId, moved, ctx) / FRAME_UNITS_PER_PX }))(trailFoot(ctx.box, ctx.character)),
         placeholder: ctx.placeholder,
         elements: Object.freeze(moved),
         furniture: Object.freeze(union(moved)),
         held: model.held,
+        // § 6.2 A23 (card#12448): the side table's held rendering, beside the desk's own.
+        interns_held: model.interns_held,
         lighting: model.lighting,
         bubble_model: bubble,
         bubble: null,
@@ -883,7 +941,13 @@ export function placeDesk(model, key, installId, slot, at, ctx, extra) {
 /**
  * § 5.1 rules 4 and 5: each bubble's text cut to the box through the one primitive, its box sized
  * from the MEASURED text, and overlapping bubbles parted by `desk/task-bubble.js`'s own pass over
- * the base rects — here, the box's top band, above the character's column. Exported, with
+ * the base rects. THE BASE RECT IS SET ON ITS CHARACTER (the operator's ruling of 2026-10-27 on
+ * card#12444, *"anchor the bubble to the character"*): its bottom `TRAIL_REACH` above the top of the
+ * character's frame, where the trail at its normal reach meets it — or, a bubble wide enough to reach
+ * over the facts plate, `BUBBLE_GAP` above the plate where that is higher — and the trail drawn from
+ * the character's DRAWN head (`crestOf()`, the seat's ruling of the same day) up to wherever the
+ * bubble ends, as many circles as that gap holds (`trailCircles()`).
+ * `leastBoxHeight()` keeps the tallest bubble inside the box either way. Exported, with
  * `placeDesk()`, for the desk leaf guard.
  */
 export function placeBubbles(desks, measure, W, delivered) {
@@ -913,12 +977,16 @@ export function placeBubbles(desks, measure, W, delivered) {
         // Above the character's column, kept inside the box: the anchor is the character's centre
         // line, moved only as far as the bubble's own width needs to stay within the box.
         const centre = Math.min(Math.max(desk.anchor_x, desk.box.x + w / 2), desk.box.x + W - w / 2);
+        // On the character, unless the bubble's width reaches over the facts plate: then above the plate too.
+        const plate = desk.elements.find((e) => e.kind === 'facts-plate');
+        const overPlate = plate !== undefined && centre - w / 2 < plate.x + plate.w && plate.x < centre + w / 2;
+        const bottom = Math.min(desk.frame_top - TRAIL_REACH, overPlate ? plate.y - BUBBLE_GAP : Infinity);
 
         wanted.push({
             install_id: desk.install_id,
             seat_id: desk.seat_id,
             text: line1.text,
-            anchor: { x: centre, y: desk.box.y + BUBBLE_BAND },
+            anchor: { x: centre, y: bottom },
             lines: [line1, line2],
             size: { w, h },
             source: b.source,
@@ -931,10 +999,11 @@ export function placeBubbles(desks, measure, W, delivered) {
     const bySeat = new Map(placed.map((rect) => [`${rect.install_id}/${rect.seat_id}`, rect]));
 
     for (const desk of desks) {
-        // The trail is the bubble's: a desk with no bubble draws none, and keeps no copy of it.
-        const trail = desk.trail;
+        // The trail is the bubble's: a desk with no bubble draws none, and keeps no copy of where it would start.
+        const foot = desk.trail_foot;
 
-        delete desk.trail;
+        delete desk.trail_foot;
+        delete desk.frame_top;
 
         const want = wanted.find((b) => b.install_id === desk.install_id && b.seat_id === desk.seat_id);
 
@@ -957,9 +1026,9 @@ export function placeBubbles(desks, measure, W, delivered) {
             source: want.source,
             degraded_note: want.degraded_note,
             // § 5.1 (card#11468): the cloud round the measured rect, and the trail of growing circles from just
-            // above the creature to the cloud, on the anchor's line.
+            // above the creature to the cloud, on the anchor's line — to the bubble where it was set, parted or not.
             cloud: cloudOutline(rect),
-            trail,
+            trail: trailCircles(foot.x, foot.y, rect.y + rect.h),
         });
     }
 
@@ -1449,13 +1518,294 @@ function travel(base, from, to, moving, rest, portal = null) {
 }
 
 /**
+ * WHERE AN INTERN SITS, in scene coordinates (item 13): its slot's foot — the slot rect's bottom-centre in the desk's
+ * box (`stoolSlots()`), the point the chibi frame stands on — or `null` for a desk this scene does not draw.
+ */
+function slotFoot(desk, slot, box, character) {
+    const s = desk === undefined ? null : stoolSlots(box, character)[slot] ?? null;
+
+    return s === null ? null : Object.freeze({ x: desk.box.x + s.x + s.w / 2, y: desk.box.y + s.y + s.h });
+}
+
+/**
+ * ONE A10 ROW's WALKS (§ 6.2's *Interns ride the elevator too*, items 13–16; card#12450): an effect per intern the delta
+ * gained (an arrival) or lost (a departure, or item 16's turn-round of an arrival still in flight), each keyed
+ * `<seat key>~<call_id>` and drawn on § 6.2's walk primitive — the seat's own A1/A2 legs, routed for the intern's body
+ * between its slot's foot and the threshold, with a `seat` leg for its laptop's fade.
+ *
+ * ⛔ AT THE CAP NOTHING WALKS (item 15): where `subagents_open` exceeds 8 on either side of the delta the array is a
+ * reduction, so a lost `call_id` is not a stop and a gained one not a spawn — the stool fills or empties as the row's
+ * reduced form draws it, and an arrival in flight for an intern the cap dropped is a plain cancel (the holder's).
+ *
+ * The departure's wait is A2's seeded draw over the INTERN's key, `draw(seat~<call_id>, elevator-wait:<cause>)`, so two
+ * interns leaving on one delta wait apart and every viewer agrees.
+ */
+function internWalks(row, base, frame, interns, band, moving, character, box, walking) {
+    const seat = `${row.install_id}/${row.seat_id}`;
+    const move = (frame.desks.interns ?? []).find((m) => m.key === seat && m.cause === row.cause) ?? null;
+
+    if (move === null || !move.exact || !moving) {
+        return [];
+    }
+
+    const desk = interns.desks.get(seat);
+    const door = threshold(band);
+    // Where every intern walk meets the elevator — the seat walks' threshold (`threshold()`), one frozen point.
+    const sill = door === null ? null : Object.freeze({ x: door.x, y: door.y });
+    const D = ELEVATOR_DOOR;
+    const out = [];
+    const shape = (element, kind) => {
+        const key = `${seat}~${element.call_id}`;
+        const anchor = slotFoot(desk, element.slot, box, character);
+
+        return {
+            ...base,
+            call_id: element.call_id,
+            intern_key: key,
+            intern_seat_key: internKey(row.seat_id, element.call_id),
+            slot: element.slot,
+            anchor,
+            leg_kind: kind,
+            activity_state: element.activity_state ?? null,
+            // card#12443: the body the intern must not wear — its seat's delivered species.
+            seat_species: frame.desks.desks[seat]?.species ?? null,
+            lattice_key: walking.key,
+            size: INTERN_SIZE,
+            frame: Object.freeze({ w: STOOL_FRAME, h: STOOL_H }),
+            side: null,
+        };
+    };
+    const routed = (fx, from, to) => {
+        const r = fx.anchor === null || door === null ? null : walking.route(seat, fx.anchor, from, to, INTERN_SIZE);
+
+        if (r === null) {
+            return null;
+        }
+
+        const points = Object.freeze([from, ...r.cells.map((c) => walking.centre(c)), to].map((p) => Object.freeze({ x: p.x, y: p.y })));
+
+        return { points, length: polylineLength(points), tier: r.tier };
+    };
+    const walk = (start, r) => Object.freeze({ kind: 'walk', start, frames: Math.max(1, Math.ceil(r.length / WALK_PX_PER_FRAME)), points: r.points, length: r.length });
+    const leg = (kind, start, frames, at, why = null) => Object.freeze({ kind, start, frames, at, ...(why === null ? {} : { why }) });
+    const done = (fx, legs, doorSpan, tier) => Object.freeze({
+        ...fx,
+        route: 'routed',
+        clearance: tier,
+        legs: Object.freeze(legs),
+        door: Object.freeze(doorSpan),
+        no_route: false,
+        frames: Math.max(...legs.map((l) => l.start + l.frames), doorSpan.start + doorSpan.frames),
+    });
+    // A departure from the slot (item 13): the laptop fades out from `from` (a `seat` leg; none when it is already 0),
+    // then the walk, the seeded wait and the door.
+    const departure = (fx, from) => {
+        const r = routed(fx, fx.anchor, door);
+
+        if (r === null) {
+            return null;
+        }
+
+        const F = from > 0 ? LAPTOP_FADE : 0;
+        const w = walk(F, r);
+        const wait = walking.wait(fx.intern_key, row.cause);
+        const legs = [
+            ...(F > 0 ? [Object.freeze({ ...leg('seat', 0, F, fx.anchor), laptop_from: from, laptop_to: 0 })] : []),
+            w,
+            leg('stand', F + w.frames, wait, sill, 'wait'),
+            leg('stand', F + w.frames + wait, D.open, sill, 'door'),
+            leg('cab', F + w.frames + wait + D.open, D.step + D.close, sill),
+        ];
+
+        return done(fx, legs, { start: F + w.frames + wait, frames: D.open + D.step + D.close }, r.tier);
+    };
+
+    for (const element of move.gained) {
+        const fx = shape(element, 'arrive');
+        const r = door === null ? null : routed(fx, door, fx.anchor);
+
+        if (r === null) {
+            continue;
+        }
+
+        const w = walk(D.open + D.step, r);
+        const legs = [leg('cab', 0, D.open, sill), leg('stand', D.open, D.step, sill, 'step'), w];
+
+        // The laptop fades in at the stool — read off the intern's HELD state at each paint, so one that went idle on
+        // the way sits with none; an intern that arrives idle has no `seat` leg at all.
+        if (fx.activity_state === 'working') {
+            legs.push(Object.freeze({ ...leg('seat', w.start + w.frames, LAPTOP_FADE, fx.anchor), laptop_from: 0, laptop_to: 1 }));
+        }
+
+        out.push(done(fx, legs, { start: 0, frames: D.open + D.step + D.close }, r.tier));
+    }
+
+    for (const element of move.lost) {
+        const fx = shape(element, 'leave');
+        const flying = interns.in_flight.get(fx.intern_key) ?? null;
+        const held = interns.laptop_at(fx.intern_key);
+        const from = held ?? (fx.activity_state === 'working' ? 1 : 0);
+
+        if (flying !== null && flying.effect.leg_kind === 'arrive') {
+            const turned = turnRound(fx, flying, from, door, routed, walk, leg, done, walking, row);
+
+            if (turned !== null) {
+                out.push(turned);
+            }
+
+            continue;
+        }
+
+        const gone = door === null || fx.anchor === null ? null : departure(fx, from);
+
+        if (gone !== null) {
+            out.push(gone);
+        }
+    }
+
+    return out;
+}
+
+/**
+ * ITEM 16 — A STOP THAT LANDS BEFORE THE INTERN REACHES ITS STOOL TURNS IT ROUND, from wherever it is at the cancelling
+ * render's instant, and the laptop never fades in: in the `cab` leg the leaves close over it; in the `stand` leg it
+ * steps back in and they close; in the `walk` leg it turns at `pointAt()`'s point, routes from there back to the
+ * threshold, waits its seeded draw for the stop's `cause` and takes the full door; in the `seat` leg it is at its stool,
+ * so it is an ordinary departure fading the laptop out from the opacity it has reached. The holder replaces the arrival
+ * with this effect (one walk per intern).
+ */
+function turnRound(fx, flying, from, door, routed, walk, leg, done, walking, row) {
+    const D = ELEVATOR_DOOR;
+    const I = flying.effect.frame_interval_ms;
+    const elapsed = flying.elapsed_ms;
+    const legs = flying.effect.legs;
+    const k = Math.max(0, legs.findIndex((l) => elapsed < (l.start + l.frames) * I));
+    const now = legs[k === -1 ? legs.length - 1 : k];
+    const at = door === null ? null : Object.freeze({ x: door.x, y: door.y });
+
+    if (at === null) {
+        return null;
+    }
+
+    if (now.kind === 'cab') {
+        return done({ ...fx, leg_kind: 'turn', turned_in: 'cab' }, [leg('cab', 0, D.close, at)], { start: 0, frames: D.close }, flying.effect.clearance);
+    }
+
+    if (now.kind === 'stand') {
+        return done({ ...fx, leg_kind: 'turn', turned_in: 'stand' }, [leg('stand', 0, D.step, at, 'step'), leg('cab', D.step, D.close, at)],
+            { start: 0, frames: D.step + D.close }, flying.effect.clearance);
+    }
+
+    if (now.kind === 'walk') {
+        const p = pointAt(flying.effect, elapsed);
+        const here = Object.freeze({ x: p.x, y: p.y });
+        const r = routed(fx, here, door);
+
+        if (r === null) {
+            return null;
+        }
+
+        const w = walk(0, r);
+        const wait = walking.wait(fx.intern_key, row.cause);
+
+        return done({ ...fx, leg_kind: 'turn', turned_in: 'walk', turned_at: here }, [
+            w,
+            leg('stand', w.frames, wait, at, 'wait'),
+            leg('stand', w.frames + wait, D.open, at, 'door'),
+            leg('cab', w.frames + wait + D.open, D.step + D.close, at),
+        ], { start: w.frames + wait, frames: D.open + D.step + D.close }, r.tier);
+    }
+
+    // In the `seat` leg: at its stool, its laptop part-way up — an ordinary departure from the opacity it has reached.
+    const r = routed(fx, fx.anchor, door);
+
+    if (r === null) {
+        return null;
+    }
+
+    const F = from > 0 ? LAPTOP_FADE : 0;
+    const w = walk(F, r);
+    const wait = walking.wait(fx.intern_key, row.cause);
+
+    return done({ ...fx, leg_kind: 'turn', turned_in: 'seat' }, [
+        ...(F > 0 ? [Object.freeze({ ...leg('seat', 0, F, fx.anchor), laptop_from: from, laptop_to: 0 })] : []),
+        w,
+        leg('stand', F + w.frames, wait, at, 'wait'),
+        leg('stand', F + w.frames + wait, D.open, at, 'door'),
+        leg('cab', F + w.frames + wait + D.open, D.step + D.close, at),
+    ], { start: F + w.frames + wait, frames: D.open + D.step + D.close }, r.tier);
+}
+
+/**
+ * ITEM 19 — GAINED AND LOST IN ONE RENDER: the shortest subagent is seen in the cab. Item 16's cab-leg turn-round from
+ * frame zero: the leaves open on the intern standing in the cab and close over it — the *Elevator leaves* opening then
+ * closing frames, no step out, no wait, no walk, no `seat` leg and no laptop. The arrival's row and the loss's are both
+ * logged; this is the one drawing for the two.
+ */
+function internBlink(arrival, loss) {
+    const D = ELEVATOR_DOOR;
+    const at = arrival.legs[0].at;
+
+    return Object.freeze({
+        ...arrival,
+        leg_kind: 'blink',
+        cause: loss.cause,
+        legs: Object.freeze([Object.freeze({ kind: 'cab', start: 0, frames: D.open + D.close, at })]),
+        door: Object.freeze({ start: 0, frames: D.open + D.close }),
+        frames: D.open + D.close,
+    });
+}
+
+/**
+ * ONE A24 ROW's FADES (§ 8's *Working and idle interns*; card#12451): for each intern of the delta present on both sides
+ * whose `activity_state` changed, its laptop's fade over § 12's *Laptop fade* — from the opacity it has reached (a fade
+ * interrupted by the opposite flip reverses from there, never from 0) to 1 for `working` and 0 for `idle`. An intern
+ * whose arrival is still in flight is the arrival's to draw: its `seat` leg reads the held state at each paint. Reduced
+ * motion and a row drawn without motion draw no fade: the laptop is simply present or absent on the applying render.
+ */
+function laptopFades(row, base, frame, interns, moving) {
+    const seat = `${row.install_id}/${row.seat_id}`;
+    const flip = (frame.desks.flips ?? []).find((f) => f.key === seat && f.cause === row.cause) ?? null;
+    const opacity = (state) => (state === 'working' ? 1 : 0);
+    const out = [];
+
+    for (const call of flip?.calls ?? []) {
+        const key = `${seat}~${call.call_id}`;
+
+        // An intern whose arrival is still in flight is the arrival's to draw: its `seat` leg reads the held state.
+        if (interns.in_flight.has(key)) {
+            continue;
+        }
+
+        const from = interns.laptop_at(key) ?? opacity(call.from);
+        const to = opacity(call.to);
+
+        out.push(Object.freeze({
+            ...base,
+            call_id: call.call_id,
+            intern_key: key,
+            from,
+            to,
+            frames: moving && from !== to ? LAPTOP_FADE : 0,
+        }));
+    }
+
+    return out;
+}
+
+/**
  * Every § 6.2 edge row this render WROTE, as the frames to draw — at § 12's loop rate, from where
  * the fact happened to where it ends. Rows are the animation set's; nothing here fires one.
  */
-function buildEffects(rows, frame, anchors, previous, extent, band, reduce, character, box, walking) {
+function buildEffects(rows, frame, anchors, previous, extent, band, reduce, character, box, walking, interns) {
     const interval = 1000 / LOOP_FPS;
     const effects = [];
     const seen = new Set();
+    // card#12450: the interns this render's A10 rows gained, by intern key → index into `effects`, so a loss in the same
+    // render redraws that arrival as item 19's cab-leg blink rather than drawing nothing.
+    const arrivedHere = new Map();
+    // card#12451: each intern's A24 fades in this render, folded to ONE from the first's start to the last's end (item 19).
+    const fadedHere = new Map();
 
     for (const row of rows) {
         if (row.class !== 'edge') {
@@ -1588,8 +1938,52 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce, char
         const now = key === null ? null : anchors.get(key) ?? null;
         const before = key === null ? null : previous.get(key) ?? null;
 
+        if (id === 'A10') {
+            for (const fx of internWalks(row, base, frame, interns, band, motion && !reduce, character, box, walking)) {
+                const at = arrivedHere.get(fx.intern_key);
+
+                if (fx.leg_kind === 'leave' && at !== undefined) {
+                    // Item 19: gained and lost in one render — the doors open on the intern and close over it.
+                    effects[at] = internBlink(effects[at], fx);
+                    arrivedHere.delete(fx.intern_key);
+
+                    continue;
+                }
+
+                if (fx.leg_kind === 'arrive') {
+                    arrivedHere.set(fx.intern_key, effects.length);
+                }
+
+                effects.push(fx);
+            }
+
+            continue;
+        }
+
+        if (id === 'A24') {
+            for (const fx of laptopFades(row, base, frame, interns, motion && !reduce)) {
+                const held = fadedHere.get(fx.intern_key);
+
+                if (held !== undefined) {
+                    // Item 19: two flips the page applies in one render are one fade, from where the first began to where
+                    // the second ends — none at all where it ends where it began.
+                    effects[held] = Object.freeze({ ...effects[held], to: fx.to, frames: motion && !reduce && effects[held].from !== fx.to ? LAPTOP_FADE : 0, cause: fx.cause });
+
+                    continue;
+                }
+
+                fadedHere.set(fx.intern_key, effects.length);
+                effects.push(fx);
+            }
+
+            continue;
+        }
+
         if (id === 'A1' || id === 'A2') {
-            effects.push(walkEffect(base, id, now, threshold(band), motion && !reduce, character, box, walking));
+            // card#12443: the walker wears the seat's delivered body, read off the desk model this render holds.
+            const species = key === null ? null : frame.desks.desks[key]?.species ?? null;
+
+            effects.push(walkEffect({ ...base, species }, id, now, threshold(band), motion && !reduce, character, box, walking));
 
             continue;
         }

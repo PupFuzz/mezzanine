@@ -435,6 +435,21 @@ final class KindRegistry
                 ],
             ],
         ],
+
+        // ── § 6.15 (card#12451) — the reporter's own reading of a subagent's silence ─────────
+        'subagent.activity' => [
+            'fields' => ['call_id', 'activity_state'],
+            'bounds' => [],
+            'enums' => [
+                // Reporter-minted from its own timer, so no unknown member: a third value is a
+                // reporter bug and a 422, and a third member is a rule-4 change with a window.
+                'activity_state' => [
+                    'members' => ['working', 'idle'],
+                    'unknown' => null,
+                    'array' => false,
+                ],
+            ],
+        ],
     ];
 
     public static function knows(string $kind): bool

@@ -1,8 +1,10 @@
 // The creature generator — first-party, card#11046 (docs/design/FLOOR.md § 10.2, § 10.4).
 //
 // Every character is an original animal or vegetable creature, drawn as a STANDALONE SVG DOCUMENT per
-// frame and selected from its key alone through seed.js's draw — the same key, the same document, on
-// every engine and every reload, with nothing stored. The species of the operator-approved design sheet
+// frame and selected from its key through seed.js's draw — the same key, the same document, on every
+// engine and every reload. The one exception is the BODY of a seat on a floor: the species the server
+// allocated it and delivers (`character.species`, card#12443), which the painter hands in as `force` /
+// `species`; everything else is still the key's draw. The species of the operator-approved design sheet
 // (2026-10-05) are ported and not redesigned; the seat's two additions to them are the faint light rim (`RIM`)
 // and the hedgehog's softer, curved spines. The species marked `added` (card#12212) are the seat's own drawing to
 // the same look, appended to the one list every key draws its species from (FLOOR.md § 10.4's growth bullet).
@@ -11,8 +13,8 @@
 // tree carries one (FLOOR.md § 10.1 clause 2). It makes no request of any kind, holds no cache and
 // reads no clock or random source.
 //
-// Drawing space: SEAT_RECT (0 0 108 192, 2 units per floor pixel in the 54 x 96 character rect), drawn in SEAT_VIEWBOX;
-// the foot line is y = 188, the centre line x = 54.
+// Drawing space: SEAT_RECT (0 0 108 192 frame units over the floor's character rect, `floor/desk-layout.js`'s
+// FRAME_UNITS_PER_PX units per floor pixel), drawn in SEAT_VIEWBOX; the foot line is y = 188, the centre line x = 54.
 
 import { draw, pick, chance } from './seed.js';
 
@@ -617,17 +619,28 @@ export const SPECIES = Object.freeze(Object.fromEntries(Object.entries(APPROVED)
 
 /**
  * The species list, in its one fixed order: the approved sheet's species in the order the salt was searched over,
- * then the species each later card added, appended in the order they were drawn. The species draw is a modulus over
- * this list's length, so appending to it re-draws the keys already placed (FLOOR.md § 10.4's growth bullet).
+ * then the species each later card added, appended in the order they were drawn.
+ *
+ * ⛔ ONE LITERAL LINE, AND THE SERVER READS IT (card#12443). `App\Characters\SpeciesList` parses exactly this line —
+ * `export const SPECIES_KEYS = Object.freeze([ … ]);`, single-quoted ASCII keys of at most 16 bytes (the width of
+ * `seats.species`) — to allocate each seat's body (docs/design/FLEET-STATE.md § 6.13), so the list has one source and
+ * two readers, and `TheSpeciesListHasOneSourceTest` holds the PHP reading equal to what `node` imports. Keep it on one
+ * line and written out. `tools/characters/selftest.mjs` holds it equal, in order, to `Object.keys(SPECIES)`.
+ *
+ * The list GROWS BY APPENDING and never shrinks under a seat: a seat's species is stored at its creation, so an
+ * appended species moves no seat (FLOOR.md § 10.4's growth bullet); removing one is D2 § 6.13's process rule.
  */
-export const SPECIES_KEYS = Object.freeze(Object.keys(SPECIES));
+export const SPECIES_KEYS = Object.freeze(['fox', 'bear', 'rabbit', 'owl', 'frog', 'mole', 'hedgehog', 'otter', 'radish', 'turnip', 'mushroom', 'peapod', 'carrot', 'eggplant', 'pumpkin', 'potato', 'penguin', 'snail', 'sheep', 'deer', 'corn', 'broccoli', 'pepper', 'cabbage']);
 
 // ---- the shared dimensions (closed populations) ----
 export const EYES = ['round', 'sparkle', 'happy', 'sleepy', 'bead'];
 export const MOUTHS = ['smile', 'open', 'cat', 'tiny', 'grin'];
 export const BLUSH = [0, 0.5, 0.8];
 export const BROWS = ['none', 'none', 'soft', 'worried'];
-export const SIZES = [0.84, 0.88, 0.92, 0.96, 1.0];
+// card#12444: a 6 % spread (it was 16 %, from 0.84), so the taller rect is filled and no seat reads as a child of its
+// neighbour; the largest is unchanged, so the frame-bounds leg's worst case is the same drawing, and `size` is its own
+// draw field, so nothing else a key draws re-rolls.
+export const SIZES = [0.94, 0.97, 1.0];
 export const STOUT = [0.93, 1, 1.07];
 export const TILTS = [-3, 0, 3];
 export const ACCENTS = ['#c8553d', '#e0a43a', '#7f9f6a', '#6f8fb0', '#94627e', '#f2e6cf', '#4f8a87', '#d97f8f'];
@@ -641,9 +654,10 @@ export const ACCENTS = ['#c8553d', '#e0a43a', '#7f9f6a', '#6f8fb0', '#94627e', '
 export const SPECIES_FIELD = 'species:s3';
 
 /**
- * The species a key draws. An intern's key (`seat~<call_id>`, § 10.4) never draws its seat's: where its
- * own draw lands there, it is re-drawn under a field of its own over the other species — a pure function
- * of the intern's key, because that key carries its seat's (decision 54).
+ * The species a key draws — since card#12443 the server's PREFERENCE for a seat (D2 § 6.13 allocates the body it
+ * delivers, starting from this draw) and the harness's own sheet; the painter never draws a seat from it. An
+ * intern's key (`seat~<call_id>`, § 10.4) never draws its seat's body: `internSpeciesOf()` below, handed here the
+ * seat key's own draw, which is what a sheet with nothing delivered shows.
  * @param {string} key @returns {string}
  */
 export function speciesOf(key) {
@@ -654,17 +668,36 @@ export function speciesOf(key) {
     return own;
   }
 
-  const seat = speciesOf(key.slice(0, cut));
+  return internSpeciesOf(key, speciesOf(key.slice(0, cut)));
+}
 
-  if (own !== seat) {
+/**
+ * The species an intern draws beside a seat whose body is `seatSpecies` — on a floor, the seat's DELIVERED species
+ * (`character.species`, card#12443), never the seat key's own draw. Its own draw, and where that lands on the seat's
+ * body, a re-draw under a field of its own over the other species: a pure function of the intern's key and that one
+ * value (decision 54), reading no sibling.
+ * @param {string} key the intern key `seat~<call_id>` @param {string} seatSpecies @returns {string}
+ */
+export function internSpeciesOf(key, seatSpecies) {
+  const own = pick(key, SPECIES_FIELD, SPECIES_KEYS);
+
+  if (own !== seatSpecies) {
     return own;
   }
 
-  return pick(key, 'species-redraw', SPECIES_KEYS.filter((s) => s !== seat));
+  return pick(key, 'species-redraw', SPECIES_KEYS.filter((s) => s !== seatSpecies));
 }
 
-/** A key's recipe: one independent draw per named field (seed.js's `draw`). */
+/**
+ * A key's recipe: one independent draw per named field (seed.js's `draw`). `force` is the species to draw the body as —
+ * a seat's DELIVERED species (`character.species`, card#12443) — and every other field is still the key's own draw.
+ * A forced species this tree does not hold is a throw naming it, which the painter draws as FLOOR.md § 9 F14's
+ * placeholder; it never falls back to the key's own body.
+ */
 export function recipe(key, force) {
+  if (force !== undefined && force !== null && !Object.hasOwn(SPECIES, force)) {
+    throw new RangeError(`no species "${force}" in this character tree (SPECIES_KEYS); the seat object names a body this tree cannot draw`);
+  }
   const species = force || speciesOf(key);
   const sp = SPECIES[species];
   const variant = sp.variant ? sp.variant(key) : null;
@@ -678,44 +711,132 @@ export function recipe(key, force) {
 }
 
 // ---- shared feature painters ----
-function eyesSvg(pen, F, style) {
-  const s = F.s, out = [];
+// THE FACE (card#12444), re-scaled for the floor's fit zoom (the sampler measured 0.81 CSS px per scene px at the
+// 1,280 × 800 reference viewport, where the approved sheet's eye was 1.5 CSS px in radius). EYE_K scales every
+// eye, lid and glint; BROW_K the brows' stroke and reach; MOUTH_K the mouth; all about the species' own face anchors, so
+// no species' face moves. `X` is the EXPRESSION the pose asks for (`EXPRESSIONS`): the lids' closure, where the eyes
+// look, how wide they are, and which brows and mouth override the key's own.
+export const EYE_K = 1.5;
+export const BROW_K = 1.6;
+export const MOUTH_K = 1.3;
+/** The eye's outline — a thin lash line over the top of every open eye, so the eye reads as a shape and not a dot. */
+const LASH = '#1d1418';
+function eyesSvg(pen, F, style, X = {}) {
+  const wide = X.wide ?? 1, s = F.s * EYE_K * wide, out = [];
+  const lx = (X.look?.dx ?? 0) * s, ly = (X.look?.dy ?? 0) * s;
+  const lid = X.lid ?? 0;                     // 0 open … 1 shut: the upper lid comes down over the eye by this share
   for (const side of [-1, 1]) {
     const x = 54 + side * F.es, y = F.y;
-    if (style === 'happy') out.push(`<path d="M${f(x - 4.2 * s)} ${f(y + 1.2 * s)}Q${f(x)} ${f(y - 4.8 * s)} ${f(x + 4.2 * s)} ${f(y + 1.2 * s)}" stroke="${EYE}" stroke-width="${f(2.2 * s)}" fill="none" stroke-linecap="round"/>`);
-    else if (style === 'sleepy') out.push(`<path d="M${f(x - 4.2 * s)} ${f(y - 0.6 * s)}A${f(4.2 * s)} ${f(4.4 * s)} 0 0 0 ${f(x + 4.2 * s)} ${f(y - 0.6 * s)}Z" fill="${EYE}"/><path d="M${f(x - 4.8 * s)} ${f(y - 0.9 * s)}Q${f(x)} ${f(y - 2.2 * s)} ${f(x + 4.8 * s)} ${f(y - 0.9 * s)}" stroke="${EYE}" stroke-width="${f(1.5 * s)}" fill="none" stroke-linecap="round"/><circle cx="${f(x - 1.4 * s)}" cy="${f(y + 1.1 * s)}" r="${f(0.9 * s)}" fill="${GLINT}"/>`);
-    else if (style === 'bead') out.push(`<circle cx="${f(x)}" cy="${f(y)}" r="${f(2.9 * s)}" fill="${EYE}"/><circle cx="${f(x - 1 * s)}" cy="${f(y - 1.1 * s)}" r="${f(1 * s)}" fill="${GLINT}"/>`);
-    else if (style === 'sparkle') out.push(`<ellipse cx="${f(x)}" cy="${f(y)}" rx="${f(4.1 * s)}" ry="${f(5.3 * s)}" fill="${EYE}"/><ellipse cx="${f(x)}" cy="${f(y + 2.4 * s)}" rx="${f(2.9 * s)}" ry="${f(2.3 * s)}" fill="#6b4a3e" opacity=".75"/><circle cx="${f(x - 1.4 * s)}" cy="${f(y - 1.9 * s)}" r="${f(1.8 * s)}" fill="${GLINT}"/><circle cx="${f(x + 1.5 * s)}" cy="${f(y + 1.6 * s)}" r="${f(0.8 * s)}" fill="${GLINT}"/>`);
-    else out.push(`<ellipse cx="${f(x)}" cy="${f(y)}" rx="${f(3.7 * s)}" ry="${f(4.4 * s)}" fill="${EYE}"/><circle cx="${f(x - 1.2 * s)}" cy="${f(y - 1.6 * s)}" r="${f(1.5 * s)}" fill="${GLINT}"/><circle cx="${f(x + 1.3 * s)}" cy="${f(y + 1.6 * s)}" r="${f(0.65 * s)}" fill="${GLINT}" opacity=".9"/>`);
+    if (style === 'happy' && lid < 0.3) { out.push(`<path d="M${f(x - 4.2 * s)} ${f(y + 1.2 * s)}Q${f(x)} ${f(y - 4.8 * s)} ${f(x + 4.2 * s)} ${f(y + 1.2 * s)}" stroke="${EYE}" stroke-width="${f(2.2 * s)}" fill="none" stroke-linecap="round"/>`); continue; }
+    // the eye's body — round, sparkle, bead or sleepy — then the pupil's highlight, the lid cut and the lash line
+    const rx = style === 'bead' ? 3.1 * s : style === 'sparkle' ? 4.3 * s : 3.9 * s;
+    const ry = style === 'bead' ? 3.1 * s : style === 'sparkle' ? 5.4 * s : 4.5 * s;
+    const top = y - ry + lid * 2 * ry;         // the lid's edge
+    const cut = pen.clip(`M${f(x - rx - 2)} ${f(top)}H${f(x + rx + 2)}V${f(y + ry + 2)}H${f(x - rx - 2)}Z`);
+    let body = `<ellipse cx="${f(x)}" cy="${f(y)}" rx="${f(rx)}" ry="${f(ry)}" fill="${EYE}"/>`;
+    if (style === 'sparkle') body += `<ellipse cx="${f(x + lx)}" cy="${f(y + 2.4 * s + ly)}" rx="${f(2.9 * s)}" ry="${f(2.3 * s)}" fill="#6b4a3e" opacity=".75"/>`;
+    const glintR = style === 'bead' ? 1.1 * s : 1.7 * s;
+    body += `<circle cx="${f(x - 1.3 * s + lx)}" cy="${f(y - 1.7 * s + ly)}" r="${f(glintR)}" fill="${GLINT}"/><circle cx="${f(x + 1.4 * s + lx)}" cy="${f(y + 1.7 * s + ly)}" r="${f(0.75 * s)}" fill="${GLINT}" opacity=".9"/>`;
+    const sleepy = style === 'sleepy' ? Math.max(lid, 0.35) : lid;
+    const sTop = y - ry + sleepy * 2 * ry;
+    const sCut = sleepy === lid ? cut : pen.clip(`M${f(x - rx - 2)} ${f(sTop)}H${f(x + rx + 2)}V${f(y + ry + 2)}H${f(x - rx - 2)}Z`);
+    out.push(`<g clip-path="${sCut}">${body}</g>`);
+    // the lash line: along the lid's edge where it has come down, else a soft arc over the eye's top
+    if (sleepy > 0.05) out.push(`<path d="M${f(x - rx - 0.4 * s)} ${f(sTop + 0.2 * s)}Q${f(x)} ${f(sTop - 0.9 * s)} ${f(x + rx + 0.4 * s)} ${f(sTop + 0.2 * s)}" stroke="${LASH}" stroke-width="${f(1.4 * s)}" fill="none" stroke-linecap="round"/>`);
+    else out.push(`<path d="M${f(x - rx - 0.3 * s)} ${f(y - 0.3 * ry)}Q${f(x)} ${f(y - ry - 1.1 * s)} ${f(x + rx + 0.3 * s)} ${f(y - 0.3 * ry)}" stroke="${LASH}" stroke-width="${f(1.1 * s)}" fill="none" stroke-linecap="round" opacity=".85"/>`);
   }
-  return out.join('');
+  return `<g data-part="eyes">${out.join('')}</g>`;
 }
 function browsSvg(F, style) {
   if (style === 'none') return '';
-  const s = F.s, out = [];
+  const s = F.s * BROW_K, out = [];
   for (const side of [-1, 1]) {
-    const x = 54 + side * F.es, y = F.y - 8.2 * s;
-    const inner = style === 'worried' ? -1.6 : 0.4, outer = style === 'worried' ? 1 : 0.4;
-    out.push(`<path d="M${f(x - side * 3.4 * s)} ${f(y + inner * s)}Q${f(x)} ${f(y - 1.6 * s)} ${f(x + side * 3.4 * s)} ${f(y + outer * s)}" stroke="${EYE}" stroke-width="${f(1.3 * s)}" fill="none" stroke-linecap="round" opacity=".8"/>`);
+    // `ask` raises ONE brow (the viewer's right) high and arched and leaves the other soft; `raised` lifts both;
+    // `knit` pulls both inner ends down and in (strain).
+    const one = style === 'ask' && side === 1;
+    const kind = one ? 'raised' : style === 'ask' ? 'soft' : style;
+    const lift = kind === 'raised' ? 3.2 : 0;
+    const x = 54 + side * F.es, y = F.y - (6.6 + lift) * s;
+    const inner = kind === 'worried' ? -1.4 : kind === 'knit' ? 1.6 : kind === 'raised' ? 0.6 : 0.4;
+    const outer = kind === 'worried' ? 0.9 : kind === 'knit' ? -0.6 : kind === 'raised' ? 1.2 : 0.4;
+    const arch = kind === 'raised' ? -2.6 : -1.5;
+    out.push(`<path d="M${f(x - side * 3.4 * s)} ${f(y + inner * s)}Q${f(x)} ${f(y + arch * s)} ${f(x + side * 3.4 * s)} ${f(y + outer * s)}" stroke="${EYE}" stroke-width="${f(1.35 * s)}" fill="none" stroke-linecap="round" opacity=".92"/>`);
   }
-  return out.join('');
+  return `<g data-part="brows">${out.join('')}</g>`;
+}
+/**
+ * The lowest line any mouth style draws, in the species' own drawing — `mouthSvg()`'s origin, `F.my` + 1.2, plus 9
+ * mouth units (`F.ms × MOUTH_K`), at or under the deepest point any style reaches (`call`'s, at 8.6) — or `null` for a
+ * face with no mouth of its own (a beak). The intern's laptop lid stands under it (card#12448, `chibiOf()`), so a
+ * change to a mouth's depth moves the lid with it; `tools/characters/selftest.mjs` § 6b measures the face's ink
+ * against the lid's top edge, and reds where this line is not under every mouth.
+ */
+function mouthFloor(F) {
+  return F.my == null ? null : F.my + 1.2 + 9 * F.ms * MOUTH_K;
 }
 function mouthSvg(F, style) {
   if (F.my == null) return '';
-  const x = 54, y = F.my, k = F.ms;
+  const x = 54, y = F.my + 1.2, k = F.ms * MOUTH_K;
   const P = (dx, dy) => `${f(x + dx * k)} ${f(y + dy * k)}`;
+  const w = f(1.8 * Math.max(k, 0.85));
   switch (style) {
     case 'open': return `<path d="M${P(-3.6, 0)}Q${P(0, 0.8)} ${P(3.6, 0)}Q${P(2.8, 6.2)} ${P(0, 6.2)}Q${P(-2.8, 6.2)} ${P(-3.6, 0)}Z" fill="#7a3a3a"/><ellipse cx="${x}" cy="${f(y + 4.4 * k)}" rx="${f(2 * k)}" ry="${f(1.5 * k)}" fill="#e48c8c"/>`;
-    case 'cat': return `<path d="M${P(-5, 0)}Q${P(-2.5, 3.2)} ${P(0, 0)}Q${P(2.5, 3.2)} ${P(5, 0)}" stroke="${MOUTH}" stroke-width="${f(1.6 * Math.max(k, 0.85))}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+    case 'cat': return `<path d="M${P(-5, 0)}Q${P(-2.5, 3.2)} ${P(0, 0)}Q${P(2.5, 3.2)} ${P(5, 0)}" stroke="${MOUTH}" stroke-width="${w}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
     case 'tiny': return `<ellipse cx="${x}" cy="${f(y + 1.4 * k)}" rx="${f(1.7 * k)}" ry="${f(2 * k)}" fill="#6e3434"/>`;
     case 'grin': return `<path d="M${P(-5.6, 0)}Q${P(0, 1)} ${P(5.6, 0)}Q${P(0, 9)} ${P(-5.6, 0)}Z" fill="#7a3a3a"/><path d="M${P(-2.8, 4.8)}Q${P(0, 2.8)} ${P(2.8, 4.8)}Q${P(0, 6.4)} ${P(-2.8, 4.8)}Z" fill="#e48c8c"/>`;
-    default: return `<path d="M${P(-4.2, 0)}Q${P(0, 4.2)} ${P(4.2, 0)}" stroke="${MOUTH}" stroke-width="${f(1.7 * Math.max(k, 0.85))}" fill="none" stroke-linecap="round"/>`;
+    // the expressions' own mouths (card#12444 sample)
+    case 'o': return `<ellipse cx="${x}" cy="${f(y + 1.6 * k)}" rx="${f(2.6 * k)}" ry="${f(3.1 * k)}" fill="#6e3434"/><ellipse cx="${f(x - 0.8 * k)}" cy="${f(y + 0.6 * k)}" rx="${f(0.9 * k)}" ry="${f(0.7 * k)}" fill="#fff" opacity=".35"/>`;
+    case 'call': return `<path d="M${P(-4.6, -0.6)}Q${P(0, 0.4)} ${P(4.6, -0.6)}Q${P(4.2, 8)} ${P(0, 8.6)}Q${P(-4.2, 8)} ${P(-4.6, -0.6)}Z" fill="#7a3a3a"/><path d="M${P(-3.2, 0.3)}Q${P(0, 1.2)} ${P(3.2, 0.3)}Q${P(0, 2.6)} ${P(-3.2, 0.3)}Z" fill="#fff6ee"/><ellipse cx="${x}" cy="${f(y + 6.2 * k)}" rx="${f(2.4 * k)}" ry="${f(1.6 * k)}" fill="#e48c8c"/>`;
+    case 'frown': return `<path d="M${P(-4.4, 2.6)}Q${P(0, -1.6)} ${P(4.4, 2.6)}" stroke="${MOUTH}" stroke-width="${w}" fill="none" stroke-linecap="round"/>`;
+    case 'focus': return `<path d="M${P(-3.2, 0.6)}Q${P(0, 1.6)} ${P(3.2, 0.6)}" stroke="${MOUTH}" stroke-width="${w}" fill="none" stroke-linecap="round"/>`;
+    default: return `<path d="M${P(-4.2, 0)}Q${P(0, 4.2)} ${P(4.2, 0)}" stroke="${MOUTH}" stroke-width="${w}" fill="none" stroke-linecap="round"/>`;
   }
 }
 function blushSvg(pen, F, op, dxExtra = 0) {
   if (!op) return '';
-  const s = F.s;
-  return [-1, 1].map((side) => `<ellipse cx="${f(54 + side * (F.es + (5.5 + dxExtra) * s))}" cy="${f(F.y + 7 * s)}" rx="${f(5.4 * s)}" ry="${f(3.4 * s)}" fill="${pen.soft('#f07c6c', op)}"/>`).join('');
+  const s = F.s * 1.15;
+  return [-1, 1].map((side) => `<ellipse cx="${f(54 + side * (F.es + (6.4 + dxExtra) * s))}" cy="${f(F.y + 7.6 * s)}" rx="${f(5.8 * s)}" ry="${f(3.6 * s)}" fill="${pen.soft('#f07c6c', op)}"/>`).join('');
+}
+
+/**
+ * THE EXPRESSIONS (card#12444; FLOOR.md § 10.4's frame contract item 1) — what a POSE does to the key's own face. The key
+ * keeps its eye style, its mouth and its brows for `neutral`; a pose overrides what the state must show: where the eyes
+ * look (`look`, in eye units), how far the lids are down (`lid`), how wide the eyes are (`wide`), and the brows and mouth
+ * it needs. `marker` is § 7.1's marker, the glyph `markerStand()` places and the z's glow lights (item 5), and `hands`
+ * the pose's paws: `raised` (one paw up, the blocked seat's raised hand) or `cheeks` (both paws at the cheeks, head in
+ * hands).
+ */
+export const EXPRESSIONS = Object.freeze({
+  neutral: {},
+  working: { look: { dx: 1.1, dy: 0.7 }, lid: 0.2, mouth: 'focus' },
+  thinking: { look: { dx: -0.6, dy: -1.3 }, lid: 0.12, mouth: 'tiny', brows: 'soft' },
+  question: { wide: 1.12, brows: 'ask', mouth: 'o', marker: '?' },
+  attention: { wide: 1.18, brows: 'raised', mouth: 'call', marker: '!', hands: 'raised' },
+  stalled: { lid: 0.45, brows: 'worried', mouth: 'frown', hands: 'cheeks' },
+});
+/** A pose → its expression; `present` reads the glyph (one glyph, one face: the question's). */
+export function expressionOf(pose, glyph) {
+  switch (pose) {
+    case 'at-keyboard': return 'working';
+    case 'leaning-back': return 'thinking';
+    case 'raised-hand': return 'attention';
+    case 'head-in-hands': return 'stalled';
+    case 'present': return glyph === 'question' ? 'question' : 'neutral';
+    default: return 'neutral';
+  }
+}
+/** The pose's paws: one raised beside the head, or both at the cheeks. Only where the species has arms. */
+function handsSvg(pen, A, F, kind) {
+  if (!A.arms) return '';
+  const col = A.arms.col, s = F.s;
+  if (kind === 'raised') {
+    const side = -1, ax = 54 + side * (A.arms.dx + 2), ay = A.arms.y;
+    const rx = A.arms.small ? 4.8 : 6.4, ry = A.arms.small ? 12 : 15;
+    const top = ay - ry * 1.55;
+    return `<g data-part="hands"><ellipse cx="${f(ax)}" cy="${f(ay - ry * 0.75)}" rx="${f(rx)}" ry="${f(ry)}" transform="rotate(${side * 14} ${f(ax)} ${f(ay)})" fill="${pen.paint(col)}" stroke="${line(col)}" stroke-width="1.3"/>` +
+      `<circle cx="${f(ax + side * 3)}" cy="${f(top)}" r="${f(6.2)}" fill="${pen.paint(tint(col, 0.08))}" stroke="${line(col)}" stroke-width="1.2"/></g>`;
+  }
+  return `<g data-part="hands">${[-1, 1].map((side) => `<ellipse cx="${f(54 + side * (F.es + 7.5 * s))}" cy="${f(F.y + 11 * s)}" rx="${f(7 * s)}" ry="${f(6.2 * s)}" fill="${pen.paint(col)}" stroke="${line(col)}" stroke-width="1.3"/>`).join('')}</g>`;
 }
 
 function hatSvg(pen, H, kind, acc, acc2) {
@@ -779,7 +900,7 @@ function neckSvg(pen, N, kind, acc, acc2, side) {
   return '';
 }
 function glassesSvg(F) {
-  const s = F.s, r = 6.8 * s, col = '#5a3a2a';
+  const s = F.s, r = 6.8 * s * (EYE_K * 0.84), col = '#5a3a2a';   // the rings grow with the eyes they hold
   return [-1, 1].map((side) => `<circle cx="${f(54 + side * F.es)}" cy="${f(F.y)}" r="${f(r)}" fill="#fff" fill-opacity=".14" stroke="${col}" stroke-width="1.5"/>`).join('') +
     `<path d="M${f(54 - F.es + r)} ${f(F.y - 0.8)}Q54 ${f(F.y - 3)} ${f(54 + F.es - r)} ${f(F.y - 0.8)}" stroke="${col}" stroke-width="1.4" fill="none"/>`;
 }
@@ -816,10 +937,118 @@ function rimOf(markup) {
     .replace(/ (?:opacity|fill-opacity|stroke-opacity)="[^"]*"/g, '');
 }
 
+// ---- the intern's laptop (card#12448; FLOOR.md § 8, § 10.4's frame contract item 3, § 12) ----
+// The operator's ask (2026-10-26): "each subagent to have a laptop placed in front of their lap, and they should move
+// left and right to look like they are typing … a variety of laptop colors and stickers so that each subagent's
+// laptop has unique design." The laptop is drawn INSIDE the intern's own transform from the chibi geometry — the
+// face's lowest line after the squash (`chibiOf()`'s `lid`) and the foot — so it follows a re-proportioned or taller
+// intern (card#12444) unchanged; no figure of it is in scene pixels. Seen in the floor's 3/4 oblique the lid's BACK
+// faces the viewer, with the stickers (the operator's C1, 2026-10-27). The lid stands from under the face to just over
+// the feet (the operator's ruling of 2026-10-27: "The subagent's laptop cover should be taller. It is OK not to see
+// their hands."), so the eyes and the mouth are over its top edge, the paws and the keys are behind it, and the
+// screen, which faces the intern, shows only as a lit edge and a glow along the top.
+
+/** The laptop shells — ten, chosen to differ at one floor pixel: light, dark, and eight hues apart. */
+export const LAPTOP_SHELLS = Object.freeze(['#e4e0d8', '#3b3e4b', '#c8553d', '#e0a43a', '#7fb3d5', '#7f9f6a', '#8a5a8e', '#3f8f8a', '#e08aa0', '#4b6e3f']);
+/** The sticker shapes, each drawn by `stickerSvg()`. */
+export const STICKER_SHAPES = Object.freeze(['star', 'heart', 'leaf', 'bolt', 'smiley', 'planet', 'paw', 'mug']);
+/** The sticker inks — a sticker is drawn in an ink that stands off its shell (`laptopOf()`'s contrast filter). */
+export const STICKER_INKS = Object.freeze(['#fff5e0', '#2b2430', '#f2c44a', '#e3524f', '#5aa0e0', '#79c26f']);
+/** The least RGB distance a sticker's ink keeps from its shell, so no sticker vanishes into its lid. */
+export const STICKER_CONTRAST = 110;
+/** The sway loop: this many LOOP FRAMES (4 fps), centre → left → centre → right, so one cycle is a second. */
+export const INTERN_LOOP = 4;
+/**
+ * THE SWAY — FIXED by the operator's ruling of 2026-10-27, *"x0.6"*: ×0.6 of the sampled sway of ±3° and 0.022 of the
+ * drawn height, so each extreme rotates the intern this many degrees about its foot and shifts it this share of its
+ * drawn height sideways. The intern's FRAME and the floor's PITCH grow to hold it: `tools/characters/selftest.mjs` § 8b
+ * measures every intern at both extremes and reds when `desk-layout.js`'s `STOOL_FRAME` or `STOOL_PITCH` is not the
+ * least that holds them (FLOOR.md § 12's *Intern sway*, § 13 row 87).
+ */
+export const INTERN_SWAY_DEG = 1.8;
+export const INTERN_SWAY_DX = 0.0132;
+
+function rgbDist(a, b) { const A = hex2rgb(a), B = hex2rgb(b); return Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]); }
+
+/**
+ * A key's laptop — a pure function of the intern key, one named draw per field (seed.js's `draw`), so the laptop is
+ * the intern's for as long as it exists and depends on no sibling: shell, two stickers at fixed slots, each a shape
+ * and an ink that contrasts with the shell, the second sticker's shape drawn away from the first's.
+ * @param {string} key @returns {{shell: string, stickers: {shape: string, ink: string}[]}}
+ */
+export function laptopOf(key) {
+  const shell = pick(key, 'laptop:shell', LAPTOP_SHELLS);
+  const inks = STICKER_INKS.filter((c) => rgbDist(c, shell) >= STICKER_CONTRAST);
+  const a = pick(key, 'laptop:sticker-a', STICKER_SHAPES);
+  const b = pick(key, 'laptop:sticker-b', STICKER_SHAPES.filter((s) => s !== a));
+  return { shell, stickers: [{ shape: a, ink: pick(key, 'laptop:ink-a', inks) }, { shape: b, ink: pick(key, 'laptop:ink-b', inks) }] };
+}
+
+/** One sticker, `r` units across its half-extent, centred at the origin, in its ink. */
+function stickerSvg(shape, ink, r) {
+  const edge = `stroke="${tint(ink, 0.55)}" stroke-width="${f(r * 0.16)}" stroke-linejoin="round"`;
+  const P = (pts) => pts.map(([x, y]) => `${f(x * r)} ${f(y * r)}`).join('L');
+  switch (shape) {
+    case 'star': {
+      const pts = [];
+      for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, d = i % 2 ? 0.46 : 1; pts.push([Math.cos(a) * d, Math.sin(a) * d]); }
+      return `<path d="M${P(pts)}Z" fill="${ink}" ${edge}/>`;
+    }
+    case 'heart':
+      return `<path d="M0 ${f(r * 0.95)}C${f(-r * 1.5)} ${f(r * 0.1)} ${f(-r * 0.9)} ${f(-r * 1.05)} 0 ${f(-r * 0.35)}C${f(r * 0.9)} ${f(-r * 1.05)} ${f(r * 1.5)} ${f(r * 0.1)} 0 ${f(r * 0.95)}Z" fill="${ink}" ${edge}/>`;
+    case 'leaf':
+      return `<g transform="rotate(-35)"><path d="${leafD(r * 2.1, r * 0.95)}" transform="translate(0 ${f(r)})" fill="${ink}" ${edge}/></g>`;
+    case 'bolt':
+      return `<path d="M${P([[0.15, -1], [-0.6, 0.15], [-0.05, 0.15], [-0.25, 1], [0.6, -0.2], [0.05, -0.2]])}Z" fill="${ink}" ${edge}/>`;
+    case 'smiley':
+      return `<circle r="${f(r)}" fill="${ink}" ${edge}/><circle cx="${f(-r * 0.34)}" cy="${f(-r * 0.22)}" r="${f(r * 0.13)}" fill="${EYE}"/><circle cx="${f(r * 0.34)}" cy="${f(-r * 0.22)}" r="${f(r * 0.13)}" fill="${EYE}"/><path d="M${f(-r * 0.45)} ${f(r * 0.25)}Q0 ${f(r * 0.75)} ${f(r * 0.45)} ${f(r * 0.25)}" stroke="${EYE}" stroke-width="${f(r * 0.14)}" fill="none" stroke-linecap="round"/>`;
+    case 'planet':
+      return `<circle r="${f(r * 0.72)}" fill="${ink}" ${edge}/><ellipse rx="${f(r * 1.15)}" ry="${f(r * 0.3)}" transform="rotate(-22)" fill="none" stroke="${tint(ink, 0.6)}" stroke-width="${f(r * 0.2)}"/>`;
+    case 'paw':
+      return `<ellipse cy="${f(r * 0.3)}" rx="${f(r * 0.62)}" ry="${f(r * 0.5)}" fill="${ink}" ${edge}/>` + [[-0.72, -0.25], [-0.28, -0.7], [0.28, -0.7], [0.72, -0.25]].map(([x, y]) => `<circle cx="${f(x * r)}" cy="${f(y * r)}" r="${f(r * 0.26)}" fill="${ink}" ${edge}/>`).join('');
+    case 'mug':
+      return `<rect x="${f(-r * 0.7)}" y="${f(-r * 0.6)}" width="${f(r * 1.2)}" height="${f(r * 1.3)}" rx="${f(r * 0.2)}" fill="${ink}" ${edge}/><path d="M${f(r * 0.5)} ${f(-r * 0.3)}q${f(r * 0.75)} 0 0 ${f(r * 0.75)}" fill="none" stroke="${ink}" stroke-width="${f(r * 0.28)}"/><path d="M${f(-r * 0.3)} ${f(-r * 0.85)}q-${f(r * 0.2)} -${f(r * 0.3)} 0 -${f(r * 0.55)}M${f(r * 0.15)} ${f(-r * 0.85)}q-${f(r * 0.2)} -${f(r * 0.3)} 0 -${f(r * 0.55)}" fill="none" stroke="${tint(ink, 0.5)}" stroke-width="${f(r * 0.12)}" stroke-linecap="round"/>`;
+  }
+  return '';
+}
+
+/**
+ * The laptop on an intern's lap, in the chibi frame's units and the intern's own transform. Every figure is a share
+ * of the intern's drawn geometry: `lid` the line `chibiOf()` stands the lid on, `hw` the body's half-width at the
+ * arms, the foot at `FOOT`. THE LID's HEIGHT RULE (FLOOR.md § 12's *Intern laptop lid* row; the operator's ruling of
+ * 2026-10-27): its top edge is `lid` — `LID_GAP` under the face's lowest line, the chin or the mouth's floor after the
+ * squash — and its bottom edge 0.16 of the drop from that edge to the foot short of the foot, so the lid covers the
+ * body band, paws included, and never the eyes or the mouth. Its width is the arms' span, held to 44–70 units; the two
+ * stickers stand on the lid at fixed shares of it, sized to fit inside it.
+ */
+function laptopSvg(pen, lap, { lid, hw }) {
+  const lidW = Math.max(44, Math.min(70, 2 * hw));
+  const y0 = lid;                         // the lid's top edge, under the face
+  const y1 = FOOT - (FOOT - lid) * 0.16;  // the lid's bottom edge, just over the feet
+  const lidH = y1 - y0;
+  const x0 = 54 - lidW / 2;
+  const S = lap.shell;
+  const glow = '#bfe4ff';
+  const out = [];
+  // the screen's glow, behind the lid: a thin wash along its top edge, which faces the intern
+  out.push(`<ellipse cx="54" cy="${f(y0)}" rx="${f(lidW * 0.44)}" ry="3.2" fill="${pen.soft(glow, 0.55)}"/>`);
+  // the lid's back, with its stickers — the part the viewer sees
+  out.push(`<rect data-part="lid" x="${f(x0)}" y="${f(y0)}" width="${f(lidW)}" height="${f(lidH)}" rx="${f(Math.min(lidH, lidW) * 0.12)}" fill="${pen.paint(S)}" stroke="${line(S)}" stroke-width="1.4"/>`);
+  // the screen's lit edge along the lid's top
+  out.push(`<path d="M${f(x0 + 2)} ${f(y0 + 0.6)}H${f(x0 + lidW - 2)}" stroke="${glow}" stroke-width="1.3" stroke-linecap="round" opacity=".9"/>`);
+  const r = Math.min(lidH * 0.17, lidW * 0.12);
+  const slots = [[54 - lidW * 0.22, y0 + lidH * 0.38, -12], [54 + lidW * 0.24, y0 + lidH * 0.64, 9]];
+  lap.stickers.forEach((st, i) => {
+    const [sx, sy, rot] = slots[i];
+    out.push(`<g data-part="sticker" transform="translate(${f(sx)} ${f(sy)}) rotate(${rot})">${stickerSvg(st.shape, st.ink, r)}</g>`);
+  });
+  return out.join('');
+}
+
 // ---- the frames ----
 /**
- * THE CHARACTER's RECT, in frame units: a seat's 108 × 192 — two units per floor pixel of its 54 × 96 px rect
- * (`floor/desk-layout.js`'s `FRAME_UNITS_PER_PX`) — the space every body is drawn into, x 54 its centre and the
+ * THE CHARACTER's RECT, in frame units: a seat's 108 × 192 over the floor's character rect —
+ * `floor/desk-layout.js`'s `FRAME_UNITS_PER_PX` units per floor pixel — the space every body is drawn into, x 54 its centre and the
  * foot line at its bottom. Since card#12259 it is NO document's viewBox: every seat document is drawn in
  * `SEAT_VIEWBOX` (below, beside the sleeper's z's), which is this rect with a margin on three sides, because the
  * frame's own composition — the key's tilt, the walk's lean, and the widest girth at the largest size — carries
@@ -829,14 +1058,30 @@ function rimOf(markup) {
  */
 export const SEAT_RECT = Object.freeze({ x: 0, y: 0, w: 108, h: 192 });
 /**
- * THE INTERN's CHIBI FRAME: the 20 × 32 px intern rect's 108 × 172.8 units (the rect's aspect, the last 172.8 units
- * above the foot) widened to the stool PITCH the floor lays interns at — 24 px for a 20 px rect, so the frame is
- * `108 × 24 / 20` = 129.6 units wide, 10.8 each side past the rect — the margin the chibi frame's tilt needs and all
- * the room a row of interns has (two frames meet at the pitch and never overlap). The floor draws it into the intern's
- * overdraw rect (`floor/desk-layout.js`'s `internOverdraw()`); the two are held equal by `tools/characters/selftest.mjs` § 7b.
+ * THE INTERN's RECT AND FRAME ON THE FLOOR, in floor pixels — `floor/desk-layout.js`'s `STOOL_W` × `STOOL_H` and its
+ * `STOOL_FRAME` (card#12444, the operator's rulings of 2026-10-27: 1.75 times card#11058's 20 × 32, and a frame the least
+ * that holds every intern's ink — at its laptop and at both extremes of its sway since card#12448). The tree cannot
+ * import the floor, so the figures are stated here and held equal to the floor's by `tools/characters/selftest.mjs` § 7b;
+ * the chibi frame below is derived from them.
  */
-export const CHIBI_VIEWBOX = Object.freeze({ x: -10.8, y: 19.2, w: 129.6, h: 172.8 });
-const FOOT = 188;
+export const CHIBI_STOOL = Object.freeze({ w: 35, h: 56, frame: 41 });
+/**
+ * THE INTERN's CHIBI FRAME: the intern rect in units — 108 units over its width, so its height is `108 × h / w` units, the
+ * last that many above the foot (the rect's aspect) — widened to `CHIBI_STOOL.frame` px, centred, which holds the widest
+ * chibi's ink past the rect's sides (`frameDocument()`; `tools/characters/selftest.mjs` § 8b measures the margin left, and
+ * derives the frame). A neighbour's frame may overlap it: the floor lays interns at the ink's pitch, not the frame's.
+ * The floor draws it into the intern's overdraw rect (`internOverdraw()`); the two are held equal by
+ * `tools/characters/selftest.mjs` § 7b.
+ */
+const CHIBI_UPP = 108 / CHIBI_STOOL.w;
+// to a billionth of a unit, so the document's viewBox reads as the figure and not its float's last bits
+const nano = (v) => Math.round(v * 1e9) / 1e9;
+export const CHIBI_VIEWBOX = Object.freeze({
+  x: nano(-CHIBI_UPP * (CHIBI_STOOL.frame - CHIBI_STOOL.w) / 2), y: nano(192 - CHIBI_UPP * CHIBI_STOOL.h),
+  w: nano(CHIBI_UPP * CHIBI_STOOL.frame), h: nano(CHIBI_UPP * CHIBI_STOOL.h),
+});
+/** The foot line every body stands on, in frame units — the floor reads it for where an intern's feet are (card#12444). */
+export const FOOT = 188;
 
 /** The chibi frame's least head share — FLOOR.md § 12's *Intern head share* row. */
 export const CHIBI_HEAD_SHARE = 0.5;
@@ -855,12 +1100,21 @@ function headOf(A) {
   return { top: A.hat.y, chin };
 }
 
-/** The chibi geometry for a built species: how far the body below the chin is squashed. */
+/** The gap the intern's laptop lid keeps under the face's lowest line, in frame units (card#12448). */
+const LID_GAP = 1.5;
+
+/**
+ * The chibi geometry for a built species: how far the body below the chin is squashed, and `lid` — the line the
+ * intern's laptop lid stands on, in the chibi frame AFTER the squash: `LID_GAP` under the face's lowest line (the
+ * chin, or the mouth's floor where a mouth reaches past the chin line and is squashed with the body).
+ */
 function chibiOf(A) {
   const { top, chin } = headOf(A);
   const head = chin - top, body = FOOT - chin;
   const k = Math.min(0.75, (head / body) * (1 / CHIBI_TARGET - 1));
-  return { top, chin, k, share: head / (head + body * k) };
+  const shift = body * (1 - k);
+  const floor = Math.max(chin, mouthFloor(A.face) ?? chin);
+  return { top, chin, k, share: head / (head + body * k), lid: shift + chin + (floor - chin) * k + LID_GAP };
 }
 
 function build(key, force) {
@@ -892,12 +1146,22 @@ function worn(r, sp, A) {
 /**
  * One frame of one key, as a standalone SVG document.
  * @param {string} key the seat key, or an intern key `seat~<call_id>`
- * @param {{ phase?: 0|1|2, chibi?: boolean, species?: string }} [opt] phase 0 is the standing frame
+ * @param {{ phase?: 0|1|2, chibi?: boolean, species?: string, expression?: string, level?: 0|1|2|3, clear?: object[], laptop?: boolean, sway?: number }} [opt]
+ *        phase 0 is the standing frame; `expression` a key of `EXPRESSIONS`, `neutral` when absent; for an expression
+ *        with a marker, `level` its brightness (3, full, when absent) and `clear` the floor's clear rects
+ *        (`floor/desk-layout.js`'s `characterOverdraw()`), without which a marker is refused — never drawn against guessed
+ *        furniture (card#12444); `laptop` (the intern's laptop on its lap) and `sway` (a loop frame 0 .. INTERN_LOOP − 1
+ *        of the typing sway) are the chibi frame's (card#12448)
  * @returns {string}
  */
 export function frameDocument(key, opt = {}) {
   const phase = opt.phase ?? 0;
   if (![0, 1, 2].includes(phase)) throw new RangeError(`phase must be 0, 1 or 2, got ${phase}`);
+  const X = EXPRESSIONS[opt.expression ?? 'neutral'];
+  if (X === undefined) throw new RangeError(`no expression ${opt.expression}`);
+  const level = opt.level ?? 3;
+  if (![0, 1, 2, 3].includes(level)) throw new RangeError(`level must be 0, 1, 2 or 3, got ${level}`);
+  if (opt.laptop && !opt.chibi) throw new RangeError('the laptop is the chibi frame\'s: a seat frame has no lap to put it on');
   const { r, sp, pen, c, A } = build(key, opt.species);
   const { hat, neck, extra } = worn(r, sp, A);
   const F = A.face;
@@ -927,20 +1191,34 @@ export function frameDocument(key, opt = {}) {
   if (neck !== 'none' && extra === 'satchel') parts.push(satchelSvg(pen, A.neck, r.acc2, -c.side));
   parts.push(...c.layers.front);
   parts.push(blushSvg(pen, F, r.blush, A.blushDx || 0));
-  parts.push(eyesSvg(pen, F, r.eyes));
-  parts.push(browsSvg(F, r.brows));
-  parts.push(mouthSvg(F, F.beak ? null : r.mouth));
+  // the face — eyes, brows and mouth — in one group, which the selftest reads to hold the laptop's lid under it
+  parts.push(`<g data-part="face">${eyesSvg(pen, F, r.eyes, X)}${browsSvg(F, X.brows ?? r.brows)}${mouthSvg(F, F.beak ? null : (X.mouth ?? r.mouth))}</g>`);
   if (neck !== 'none') parts.push(neckSvg(pen, A.neck, neck, r.acc1, r.acc2, c.side));
   if (neck === 'none' && extra === 'satchel') parts.push(satchelSvg(pen, A.neck, r.acc2, -c.side));
   if (extra === 'glasses') parts.push(glassesSvg(F));
   if (holding) parts.push(heldSvg(pen, extra, A.arms.y - 4, r.acc2, A.arms.col));
+  if (X.hands) parts.push(handsSvg(pen, A, F, X.hands));
   if (hat !== 'none') parts.push(hatSvg(pen, A.hat, hat, r.acc1, r.acc2));
 
   const markup = parts.join('');
   const drawing = `<g opacity="${RIM_OPACITY}">${rimOf(markup)}</g>${markup}`;
   const s = r.size;   // girth lives in the profile (st), so the scale stays uniform
   const lean = phase === 0 ? 0 : (phase === 1 ? -2 : 2);
-  const tf = `translate(54 ${FOOT}) scale(${s} ${s}) rotate(${r.tilt + lean}) translate(-54 -${FOOT})`;
+  // THE INTERN STANDS UPRIGHT (card#12444): the chibi frame is drawn untilted — the key's tilt reached a wide cap past
+  // the intern's pitch-wide frame, and an intern a stool's width across reads a 3° lean as a fall, not a character.
+  // card#12448: the intern's typing sway, a loop frame 0 .. INTERN_LOOP − 1 — centre, left, centre, right — a rotation
+  // about the foot and a lateral shift proportional to the drawn height, laptop and all; no `sway` is the still.
+  if (opt.sway !== undefined && !(opt.chibi && Number.isInteger(opt.sway) && opt.sway >= 0 && opt.sway < INTERN_LOOP)) {
+    throw new RangeError(`sway is a chibi frame's loop frame 0..${INTERN_LOOP - 1}, got ${opt.sway}`);
+  }
+  const sway = opt.sway === undefined ? 0 : [0, -1, 0, 1][opt.sway];
+  let swayTf = '';
+  if (sway !== 0) {
+    const g = chibiOf(A);
+    const height = FOOT - (g.top + (FOOT - g.chin) * (1 - g.k));
+    swayTf = ` translate(${f(sway * INTERN_SWAY_DX * height)} 0) rotate(${f(sway * INTERN_SWAY_DEG)} 54 ${FOOT})`;
+  }
+  const tf = `translate(54 ${FOOT}) scale(${s} ${s}) rotate(${opt.chibi ? 0 : r.tilt + lean}) translate(-54 -${FOOT})${swayTf}`;
   // The shadow ends ON the foot line (187.5 + 4.5 = 192, the rect's bottom): at ry 4.6 it reached a tenth of a unit
   // under it in every frame, the one bottom-edge overshoot the frame-bounds leg found (card#12259).
   const shadow = `<ellipse cx="54" cy="187.5" rx="${f(A.shadow * s)}" ry="4.5" fill="${pen.soft('#1c1424', 0.42)}"/>`;
@@ -959,10 +1237,21 @@ export function frameDocument(key, opt = {}) {
     pen.defs.push(`<clipPath id="c_body"><rect x="-200" y="${f(g.chin)}" width="508" height="400"/></clipPath>`);
     inner = `<g transform="translate(0 ${f(shift)})" clip-path="url(#c_head)"><use href="#c_drawing"/></g>` +
       `<g transform="translate(0 ${f(shift + g.chin)}) scale(1 ${f(g.k)}) translate(0 -${f(g.chin)})" clip-path="url(#c_body)"><use href="#c_drawing"/></g>`;
+    if (opt.laptop) {
+      // card#12448: the laptop on the lap, from the squashed geometry — the chin line after the shift, and the body's
+      // half-width at the arms (or the shadow's where a species has no arms) — drawn over both bands, unsquashed and
+      // unrimmed: it is a prop, not the creature. A held mug or book (drawn in the body band) is behind it.
+      const hw = A.arms ? A.arms.dx : A.shadow * 0.8;
+      const markup = laptopSvg(pen, laptopOf(key), { lid: g.lid, hw });
+      inner += markup;
+    }
     vb = CHIBI_VIEWBOX;
   }
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}" width="${vb.w}" height="${vb.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs>${shadow}<g transform="${tf}">${inner}</g></svg>`;
+  // The marker stands in the FRAME, never in the body's transform: it neither tilts with the key nor scales with its size.
+  const marker = X.marker && !opt.chibi ? markerSvg(markerStand(key, r, A, c.side, opt.clear), X.marker, level) : '';
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}" width="${vb.w}" height="${vb.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs>${shadow}<g transform="${tf}">${inner}</g>${marker}</svg>`;
 }
 
 // ---- the sleeper (FLOOR.md § 6.2 A6, § 10.4's frame contract item 4; card#12159, card#12187) ----
@@ -988,12 +1277,16 @@ export const Z_RATIO = 0.5;
 export const Z_T0 = 0.17;
 /** The gap between the path's start — its imaginary z's box and glow — and the crest line (or the props' line), in frame units. */
 export const Z_GAP = 2;
-/** The raised frame's top, in frame units: the path's end stands its imaginary z's box and glow a unit under it. */
-export const Z_TOP = -42;
+/**
+ * The raised frame's top, in frame units: the path's end stands its imaginary z's box and glow a unit under it. It is the
+ * thought trail's height over the character's rect (`floor/desk-layout.js`'s `characterOverdraw()`) in frame units, held
+ * equal to the overdraw by `tools/characters/selftest.mjs` § 7b (card#12444 re-derived it for the taller rect).
+ */
+export const Z_TOP = -33.6;
 /**
  * THE SEAT's FRAME (FLOOR.md § 12's *Character frame*; § 10.4's frame contract) — the viewBox of EVERY seat document:
- * the character's 108 × 192 rect (`SEAT_RECT`) widened by half its width each side and raised 42 units, 216 × 234
- * from (−54, −42). card#12187 widened and raised it for the sleeper, so the z's have room above and beside the
+ * the character's 108 × 192 rect (`SEAT_RECT`) widened by half its width each side and raised to `Z_TOP`.
+ * card#12187 widened and raised it for the sleeper, so the z's have room above and beside the
  * crest; card#12259 draws the standing and walking frames in the same frame, so the composition's tilt and lean,
  * and the widest girth at the largest size, never carry an approved body past the edge the painter clips at (the
  * margin they need is measured by `tools/characters/selftest.mjs` § 8b, never written down; the frame's is 54 a
@@ -1001,7 +1294,7 @@ export const Z_TOP = -42;
  * `characterOverdraw()`), whose aspect is this frame's; the sleeper's z-stand still reads the character's own
  * 0–108 units as the body's column (`zStandKeeps()`).
  */
-export const SEAT_VIEWBOX = Object.freeze({ x: -54, y: Z_TOP, w: 216, h: 234 });
+export const SEAT_VIEWBOX = Object.freeze({ x: -54, y: Z_TOP, w: 216, h: 192 - Z_TOP });
 /**
  * THE BRIGHTNESS LEVELS 0 (dim) to 3 (full), FLOOR.md § 12's *Sleeper z brightness*: the core is the pale fill mixed
  * toward the ink by `Z_GLOW[level]`, and behind the z stands a halo of the palette's `--lamp` (`Z_LAMP`), `Z_HALO[level]`
@@ -1022,7 +1315,7 @@ const Z_INK = '#4f4380', Z_FILL = '#ece8ff';
  * `tools/design/sleeper-zs.browser.mjs` holds every scanned seat's drawing at or below it.
  */
 export const CREST_TOP = Object.freeze({
-  bear: 53, carrot: 31, eggplant: 39, fox: 34, frog: 73, hedgehog: 67, mole: 60,
+  bear: 53, carrot: 31, eggplant: 39, fox: 34, frog: 73, hedgehog: 66, mole: 60,
   'mushroom/bell': 15, 'mushroom/dome': 25, 'mushroom/wide': 38, otter: 63, owl: 49, peapod: 44, potato: 56,
   pumpkin: 47, 'rabbit/lop': 62, 'rabbit/upright': 20, radish: 25, turnip: 27,
   // card#12212's species: each the floor of the topmost ink `tools/design/svg-document.mjs`'s inkBounds reads over the
@@ -1031,9 +1324,71 @@ export const CREST_TOP = Object.freeze({
   penguin: 56, snail: 64, sheep: 68, deer: 37, corn: 45, broccoli: 15, pepper: 42, cabbage: 47,
 });
 
+/**
+ * Which row of `STAND_TOP` a key reads: its species, and variant where it has one, the hat it wears (`'none'` for none),
+ * and its size.
+ * @param {string} key @param {string} [force] the delivered species @returns {{name: string, hat: string, size: number}}
+ */
+export function standEntry(key, force) {
+  const { r, sp, A } = build(key, force);
+  return { name: r.variant === null ? r.species : `${r.species}/${r.variant}`, hat: worn(r, sp, A).hat, size: r.size };
+}
+
+/**
+ * THE STANDING CREST TABLE (the seat's ruling of 2026-10-27 on card#12444: the floor's thought trail reaches each
+ * character's DRAWN head): the topmost ink of a standing or walking key, in frame units from the character rect's top, at
+ * size 1, per species (and variant where it has them) and per hat it wears (`standEntry()`) — every expression and walk
+ * phase, its marker aside, scaled back to size 1 about the foot line, the body's scale's own origin. The recipe keeps no
+ * bounding box of an ear, a leaf, a cap or a hat, so the table states it; `tools/characters/selftest.mjs` § 8b holds every
+ * key of its population's ink at or under its row on every run, and each row within a unit of the highest such ink.
+ */
+export const STAND_TOP = Object.freeze({
+  bear: Object.freeze({ beanie: 46, beret: 40, flower: 49, ladybug: 49, none: 49, straw: 47 }),
+  broccoli: Object.freeze({ beanie: 31, beret: 26, flower: 33, ladybug: 33, none: 33 }),
+  cabbage: Object.freeze({ beret: 56, flower: 61, ladybug: 61, none: 61 }),
+  carrot: Object.freeze({ flower: 3, ladybug: 3, none: 3 }),
+  corn: Object.freeze({ flower: 30, ladybug: 30, none: 30, straw: 30 }),
+  deer: Object.freeze({ beret: 26, flower: 26, ladybug: 26, none: 26, straw: 26 }),
+  eggplant: Object.freeze({ flower: 31, ladybug: 31, none: 31 }),
+  fox: Object.freeze({ beret: 21, flower: 21, ladybug: 21, none: 21 }),
+  frog: Object.freeze({ flower: 57, ladybug: 57, none: 57 }),
+  hedgehog: Object.freeze({ beret: 54, flower: 59, ladybug: 59, none: 59 }),
+  mole: Object.freeze({ beanie: 52, beret: 47, flower: 57, ladybug: 59, none: 59, straw: 53 }),
+  'mushroom/bell': Object.freeze({ flower: 15, ladybug: 17, none: 17 }),
+  'mushroom/dome': Object.freeze({ flower: 25, ladybug: 27, none: 27 }),
+  'mushroom/wide': Object.freeze({ flower: 39, ladybug: 41, none: 41 }),
+  otter: Object.freeze({ beanie: 42, beret: 37, flower: 46, ladybug: 49, none: 49, straw: 44 }),
+  owl: Object.freeze({ beanie: 37, beret: 37, flower: 37, ladybug: 37, none: 37, straw: 37 }),
+  peapod: Object.freeze({ flower: 18, ladybug: 18, none: 18 }),
+  penguin: Object.freeze({ beanie: 39, beret: 35, flower: 39, ladybug: 39, none: 39, straw: 39 }),
+  pepper: Object.freeze({ flower: 42, ladybug: 42, none: 42, straw: 42 }),
+  potato: Object.freeze({ beanie: 49, beret: 49, flower: 49, ladybug: 49, none: 49, straw: 49 }),
+  pumpkin: Object.freeze({ flower: 43, ladybug: 43, none: 43 }),
+  'rabbit/lop': Object.freeze({ beanie: 54, beret: 48, flower: 59, ladybug: 61, none: 61, straw: 55 }),
+  'rabbit/upright': Object.freeze({ flower: 9, ladybug: 9, none: 9 }),
+  radish: Object.freeze({ flower: 18, ladybug: 18, none: 18 }),
+  sheep: Object.freeze({ beanie: 62, beret: 58, flower: 65, ladybug: 65, none: 65, straw: 64 }),
+  snail: Object.freeze({ beret: 59, flower: 59, ladybug: 59, none: 59, straw: 59 }),
+  turnip: Object.freeze({ flower: 25, ladybug: 25, none: 25 }),
+});
+
+/**
+ * WHERE A KEY's DRAWN HEAD IS, in frame units from the character rect's top (card#12444): asleep, the sleeper's crest
+ * (`CREST_TOP`, the head rolled onto its arms); in every other pose its standing crest (`STAND_TOP`) at its size, scaled
+ * about the foot line. A species, variant or hat the tables do not hold is refused, never guessed.
+ * @param {string} key @param {{pose?: string, species?: string}} [at] the pose drawn and the delivered species
+ * @returns {number}
+ */
+export function crestOfKey(key, { pose, species } = {}) {
+  const e = standEntry(key, species);
+  const t = pose === 'asleep' ? CREST_TOP[e.name] : STAND_TOP[e.name]?.[e.hat];
+  if (t === undefined) throw new RangeError(`no crest for ${e.name} wearing ${e.hat}${pose === 'asleep' ? ' asleep' : ''}`);
+  return pose === 'asleep' ? t : FOOT - (FOOT - t) * e.size;
+}
+
 /** Closed eyes: a soft downward arc per eye, with a lash at its outer end. */
 function sleepingEyesSvg(F) {
-  const s = F.s, out = [];
+  const s = F.s * EYE_K, out = [];
   for (const side of [-1, 1]) {
     const x = 54 + side * F.es, y = F.y + 0.6 * s;
     out.push(`<path d="M${f(x - 4.4 * s)} ${f(y)}Q${f(x)} ${f(y + 4.2 * s)} ${f(x + 4.4 * s)} ${f(y)}" stroke="${EYE}" stroke-width="${f(2 * s)}" fill="none" stroke-linecap="round"/>`);
@@ -1042,10 +1397,10 @@ function sleepingEyesSvg(F) {
   return `<g data-part="eyes-closed">${out.join('')}</g>`;
 }
 
-/** A z `h` tall's two stroke widths: its pale core's and its dark outline's. */
-function zStrokes(h) {
+/** A z `h` tall's two stroke widths, its pale core's and its dark outline's — both `weight` times as wide for a heavier glyph. */
+function zStrokes(h, weight = 1) {
   const core = Math.max(1.4, h * 0.16);
-  return { core, outline: core + 2.6 };
+  return { core: core * weight, outline: (core + 2.6) * weight };
 }
 
 /** A z `h` tall's half extent across and down, its outline's half-width included — its body box about its centre. */
@@ -1060,30 +1415,124 @@ function zPath(x, y, h) {
   return `M${f(x - w / 2)} ${f(y - h / 2)}H${f(x + w / 2)}L${f(x - w / 2)} ${f(y + h / 2)}H${f(x + w / 2)}`;
 }
 
-/** One fixed z at brightness `level`: the dark outline, and the core mixed from the pale fill toward the ink by the level. */
-function zSvg(z, level) {
-  const sw = zStrokes(z.h), d = zPath(z.x, z.y, z.h);
+/**
+ * THE GLOW — one primitive for every glyph on the floor that pulses (card#12187's z's; card#12444's state markers): the
+ * glyph's path `d`, `h` units tall, at brightness `level` (FLOOR.md § 12's *Sleeper z brightness*), as two layers. `body`
+ * is the `part` group: the dark outline in `ink`, and the core stroked over it in `fill` mixed toward the ink by
+ * `Z_GLOW[level]`, both `zStrokes(h, weight)` wide. `halo` is the glow behind it: none at level 0, else a stroke of the
+ * lamp colour `spread · Z_HALO[level]` wider than the outline each side at `Z_HALO_OPACITY[level]`. A z is drawn at weight
+ * and spread 1; a state marker heavier and wider (`MARKER_WEIGHT`, `MARKER_SPREAD`). `body`'s attributes are `data` then
+ * `bodyData`; the halo's are `data`. A caller draws every halo before every body, so no halo crosses a glyph.
+ * @returns {{body: string, halo: string}}
+ */
+function glowSvg(d, h, level, { ink, fill, part, data, bodyData = '', weight = 1, spread = 1 }) {
+  const sw = zStrokes(h, weight);
   const stroke = (col, width) => `<path d="${d}" stroke="${col}" stroke-width="${f(width)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
-  return `<g data-part="z" data-k="${z.k}" data-level="${level}" data-x="${f(z.x)}" data-y="${f(z.y)}" data-h="${f(z.h)}">${stroke(Z_INK, sw.outline)}${stroke(mix(Z_FILL, Z_INK, Z_GLOW[level]), sw.core)}</g>`;
+  return {
+    body: `<g data-part="${part}"${data}${bodyData}>${stroke(ink, sw.outline)}${stroke(mix(fill, ink, Z_GLOW[level]), sw.core)}</g>`,
+    halo: level === 0 ? '' : `<path data-part="halo"${data} d="${d}" stroke="${Z_LAMP}" stroke-width="${f(sw.outline + 2 * spread * Z_HALO[level])}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${f(Z_HALO_OPACITY[level])}"/>`,
+  };
 }
 
-/** A fixed z's halo at `level`: none at level 0, else a wider stroke of the lamp colour, translucent by level. */
-function haloSvg(z, level) {
-  if (level === 0) return '';
-  return `<path data-part="halo" data-k="${z.k}" data-level="${level}" d="${zPath(z.x, z.y, z.h)}" stroke="${Z_LAMP}" stroke-width="${f(zStrokes(z.h).outline + 2 * Z_HALO[level])}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${f(Z_HALO_OPACITY[level])}"/>`;
+/** One fixed z at brightness `level`, through the glow: its body and its halo. */
+function zGlow(z, level) {
+  return glowSvg(zPath(z.x, z.y, z.h), z.h, level, {
+    ink: Z_INK, fill: Z_FILL, part: 'z', data: ` data-k="${z.k}" data-level="${level}"`, bodyData: ` data-x="${f(z.x)}" data-y="${f(z.y)}" data-h="${f(z.h)}"`,
+  });
 }
 
 /**
- * THE PULSE (FLOOR.md § 10.4 item 4, § 12's *Sleeper z pulse*): the levels of z1, z2, z3 at loop frame `f` — a bubble of
- * brightness reaches z`k+1` at loop frame `2k`, peaks there at 3 and glows 2 and 1 in the loop frames behind it, and z1
- * is 1 in the loop frame before the bubble arrives: `300 200 130 020 013 002 001 100`.
+ * THE PULSE (FLOOR.md § 10.4 item 4, § 12's *Sleeper z pulse*): the level of the `k`-th glyph along the pulse's path at
+ * loop frame `f` — a bubble of brightness reaches glyph `k` at loop frame `2k`, peaks there at 3 and glows 2 and 1 in the
+ * loop frames behind it, and the first glyph is 1 in the loop frame before the bubble arrives.
+ */
+function pulseLevel(f, k) {
+  const d = (((f - 2 * k) % SLEEP_LOOP) + SLEEP_LOOP) % SLEEP_LOOP;
+  return d === 0 ? 3 : d === 1 ? 2 : d === 2 ? 1 : d === SLEEP_LOOP - 1 && k === 0 ? 1 : 0;
+}
+
+/**
+ * The levels of z1, z2, z3 at loop frame `f` — the pulse over the sleeper's three z's: `300 200 130 020 013 002 001 100`.
  * @param {number} f a loop frame, 0..SLEEP_LOOP-1 @returns {number[]} a level 0–3 per z, z1 first
  */
 export function zLevels(f) {
-  return Array.from({ length: SLEEP_ZS }, (_, k) => {
-    const d = (((f - 2 * k) % SLEEP_LOOP) + SLEEP_LOOP) % SLEEP_LOOP;
-    return d === 0 ? 3 : d === 1 ? 2 : d === 2 ? 1 : d === SLEEP_LOOP - 1 && k === 0 ? 1 : 0;
-  });
+  return Array.from({ length: SLEEP_ZS }, (_, k) => pulseLevel(f, k));
+}
+
+/**
+ * A STATE MARKER's level at loop frame `f` (card#12444): the same pulse, the marker lit as z1 is — the bubble reaching it at
+ * frame 0 and leaving it dark after frame 2, `3 2 1 0 0 0 0 1` — so the `?` and the `!` glow on and off at the z's pace.
+ * @param {number} f a loop frame, 0..SLEEP_LOOP-1 @returns {number} a level 0–3
+ */
+export function markerLevel(f) {
+  return pulseLevel(f, 0);
+}
+
+/**
+ * THE MARKER's WEIGHT AND GLOW (the operator's ruling of 2026-10-27 on card#12444, *"even thicker "?" and "!" markers so
+ * they are more obvious"*): a marker's strokes are `MARKER_WEIGHT` times a z's of its height, and its halo `MARKER_SPREAD`
+ * times a z's wider each side. The glyph's path is drawn shorter by what the heavier outline adds (`markerGlyph()`), so a
+ * marker's ink is still exactly as tall as the z it matches.
+ */
+export const MARKER_WEIGHT = 1.5;
+export const MARKER_SPREAD = 1.8;
+/** A marker `h` tall's glyph path height and strokes: the path shortened by the outline's extra width, the strokes heavier. */
+function markerGlyph(h) {
+  const z = zStrokes(h), sw = zStrokes(h, MARKER_WEIGHT);
+  return { p: h + z.outline - sw.outline, sw };
+}
+/**
+ * THE STATE MARKERS (card#12444; FLOOR.md § 10.4's frame contract item 5, § 12's *State marker*): the question's `?` and
+ * the blocked seat's `!`, each a stroked path centred at (0, 0) and `h` units tall — the glyph's ends, its outline's
+ * width aside, half its height above and below the centre, as a z's are — drawn through the z's glow (`glowSvg()`) in the
+ * marker's own ink, so a marker reads as the state's colour and glows as the z's do. A dot is a zero-length stroke, which
+ * the round cap draws as a disc of the stroke's width.
+ */
+const MARKERS = Object.freeze({
+  '?': Object.freeze({ ink: '#2f4f8f', fill: '#e6eeff', w: 0.32,
+    d: (h) => `M${f(-0.3 * h)} ${f(-0.22 * h)}C${f(-0.3 * h)} ${f(-0.592 * h)} ${f(0.32 * h)} ${f(-0.592 * h)} ${f(0.32 * h)} ${f(-0.25 * h)}C${f(0.32 * h)} ${f(-0.04 * h)} 0 ${f(-0.06 * h)} 0 ${f(0.14 * h)}M0 ${f(0.5 * h)}l0 0` }),
+  // the bar is two strokes a little apart, wider at the top, which the round caps and the core merge into one tapering bar
+  '!': Object.freeze({ ink: '#a33a26', fill: '#ffeee6', w: 0.07,
+    d: (h) => `M${f(-0.07 * h)} ${f(-0.5 * h)}L${f(-0.025 * h)} ${f(0.16 * h)}M${f(0.07 * h)} ${f(-0.5 * h)}L${f(0.025 * h)} ${f(0.16 * h)}M0 ${f(0.5 * h)}l0 0` }),
+});
+/** A marker's half extent across and down about its centre, its outline included — `zHalf()`'s down, for the widest glyph across. */
+function markerHalf(h) {
+  const { p, sw } = markerGlyph(h), o = sw.outline / 2;
+  return { w: Math.max(...Object.values(MARKERS).map((m) => m.w)) * p + o, h: p / 2 + o };
+}
+
+/**
+ * WHERE A SEAT's MARKER STANDS, and how tall (§ 10.4 item 5's law): as tall as the seat's own first z asleep — z1 of the
+ * stand `zLargeFor()` finds for the key's crest, roll side and the floor's clear rects — so the marker is the z's size
+ * wherever the z's are. It stands at the frame's side away from the raised paw (`handsSvg()` raises the −x one), its
+ * glow a unit inside the frame's edge, and its glyph's foot at the key's crown line (the hat anchor at the key's size),
+ * but never higher than a unit under the frame's top with its glow, nor so low that its glow comes within a unit of a
+ * clear rect under it. A seat whose frame leaves the marker no such place is refused (§ 9 F14), never drawn clamped into
+ * the furniture.
+ * @returns {{x: number, y: number, h: number}} the centre and height, in frame units
+ */
+function markerStand(key, r, A, dir, clear) {
+  if (!Array.isArray(clear) || !clear.some((c) => c.name === 'props')) throw new RangeError("a marker needs the floor's clear rects, the desk's props among them");
+  const crown = CREST_TOP[r.variant === null ? r.species : `${r.species}/${r.variant}`];
+  if (crown === undefined) throw new RangeError(`CREST_TOP declares no crest for ${r.species}${r.variant === null ? '' : `/${r.variant}`}`);
+  const h = zStand(crown, dir, zLargeFor(crown, dir, clear), clear)[0].h;
+  const hb = markerHalf(h), G = MARKER_SPREAD * Z_HALO[3], V = SEAT_VIEWBOX;
+  // `e`: the document writes coordinates to the hundredth (`f()`), so the stand keeps that much further in, and a rounding
+  // never carries the glow onto the unit it keeps from an edge
+  const e = 0.01;
+  const x = V.x + V.w - 1 - G - hb.w - e;
+  const under = clear.filter((c) => c.x < x + hb.w + G + 1 && c.x + c.w > x - hb.w - G - 1).map((c) => c.y);
+  const lo = V.y + 1 + G + hb.h + e, hi = Math.min(V.y + V.h, ...under) - 1 - G - hb.h - e;
+  if (hi < lo) throw new RangeError(`no room for a marker ${f(h)} units tall beside ${key}`);
+  const foot = FOOT + (A.hat.y - FOOT) * r.size;
+  return { x, y: Math.min(hi, Math.max(lo, foot - hb.h)), h };
+}
+
+/** A marker at its stand, lit at `level`: its halo, then its glyph, in one `marker` group that names its glyph and level. */
+function markerSvg(at, glyph, level) {
+  const M = MARKERS[glyph];
+  const { body, halo } = glowSvg(M.d(markerGlyph(at.h).p), at.h, level, { ink: M.ink, fill: M.fill, part: 'glyph', data: '', weight: MARKER_WEIGHT, spread: MARKER_SPREAD });
+  return `<g data-part="marker" data-glyph="${glyph === '?' ? 'question' : 'attention'}" data-level="${level}" data-x="${f(at.x)}" data-y="${f(at.y)}" data-h="${f(at.h)}" transform="translate(${f(at.x)} ${f(at.y)})"><g data-part="glow">${halo}</g>${body}</g>`;
 }
 
 /**
@@ -1209,8 +1658,9 @@ export function sleepDocument(key, opt) {
   // The three z's, fixed above the head on the side AWAY from its roll, lit at the document's levels.
   const zs = zStand(crown, dir, zLargeFor(crown, dir, opt.clear), opt.clear);
   const levels = frame === 0 ? zs.map(() => 3) : zLevels(frame - 1);
-  const halos = zs.map((z) => haloSvg(z, levels[z.k])).join('');
-  const bodies = zs.map((z) => zSvg(z, levels[z.k])).join('');
+  const glows = zs.map((z) => zGlow(z, levels[z.k]));
+  const halos = glows.map((g) => g.halo).join('');
+  const bodies = glows.map((g) => g.body).join('');
   const V = SEAT_VIEWBOX;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${V.x} ${V.y} ${V.w} ${V.h}" width="${V.w}" height="${V.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs><g data-pose="asleep" data-eyes-y="${f(eyes)}" data-edge="${f(edge)}" data-crown="${crown}" clip-path="url(#c_edge)">${drawing}</g><g data-part="zs"><g data-part="glow">${halos}</g>${bodies}</g></svg>`;

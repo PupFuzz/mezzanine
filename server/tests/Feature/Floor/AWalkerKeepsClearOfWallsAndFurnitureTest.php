@@ -272,7 +272,7 @@ class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
      */
     public function test_red_a_column_narrowed_past_the_margins_drops_to_snug(): void
     {
-        $floor = $this->floor($this->defaultMapPath(), null, $this->plantedColumn(4));
+        $floor = $this->floor($this->defaultMapPath(), null, $this->plantedColumn($this->columnLeaving('snug')));
         $tiers = $this->tiers($floor);
 
         $this->assertContains('snug', $tiers, 'CONTROL (the column narrowed past the margins) left every desk at clear');
@@ -287,7 +287,7 @@ class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
     /** The same column narrower than the body: the desks still walk, on the feet rule, and the body guard sees it. */
     public function test_red_a_gap_narrower_than_the_body_walks_on_the_feet_rule(): void
     {
-        $floor = $this->floor($this->defaultMapPath(), null, $this->plantedColumn(5));
+        $floor = $this->floor($this->defaultMapPath(), null, $this->plantedColumn($this->columnLeaving('feet')));
 
         $this->assertContains('feet', $this->tiers($floor), 'CONTROL (a gap narrower than the body) left no desk on the feet rule');
         $this->assertSame([], array_keys(array_filter($this->tiers($floor), static fn ($t) => $t === null)), 'a desk stopped walking');
@@ -303,6 +303,39 @@ class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
     }
 
     /**
+     * The column to plant, re-derived from the walker's drawn body and the strip beside the first desk (card#12444 made the
+     * body wider, so the columns that leave `snug` and the feet rule moved): for `snug`, the column nearest the desk whose
+     * gap still holds the body — a lattice centre farther than half the body from the wall and from the desk — but not
+     * the body and the margin; for `feet`, the nearest whose gap holds no body.
+     */
+    private function columnLeaving(string $tier): int
+    {
+        $map = $this->map($this->defaultMapPath());
+        $cell = $map['tilewidth'];
+        $desks = array_values(array_filter($map['layers'], static fn ($l) => $l['name'] === 'desks'))[0]['objects'];
+        $first = array_reduce($desks, static fn ($a, $o) => $a === null || $o['x'] < $a['x'] || ($o['x'] === $a['x'] && $o['y'] < $a['y']) ? $o : $a);
+        $half = $this->floor($this->defaultMapPath())['body']['w'] / 2;
+        $margin = $this->clearance()['margin'];
+        $open = static function (int $col, float $keep) use ($cell, $first, $half): bool {
+            for ($c = ($col + 1) * $cell + $cell / 2; $c < $first['x']; $c += $cell) {
+                if ($c > ($col + 1) * $cell + $keep && $c < $first['x'] - $half) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        for ($col = intdiv($first['x'], $cell) - 1; $col > 0; $col--) {
+            if ($tier === 'snug' ? $open($col, $half) && ! $open($col, $half + $margin) : ! $open($col, $half) && $open($col - 1, $half)) {
+                return $col;
+            }
+        }
+
+        $this->fail("no column of the default's left strip leaves `{$tier}`");
+    }
+
+    /**
      * Wall tiles down the shipped default's elevator-room column, at tile column `$col` from the floor's top to the
      * room's front: the column between them and the room's first desk is that room's one body-wide exit.
      *
@@ -314,7 +347,12 @@ class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
         $desks = array_values(array_filter($map['layers'], static fn ($l) => $l['name'] === 'desks'))[0]['objects'];
         $first = array_reduce($desks, static fn ($a, $o) => $a === null || $o['x'] < $a['x'] || ($o['x'] === $a['x'] && $o['y'] < $a['y']) ? $o : $a);
         $front = intdiv($first['y'] + $first['height'], $map['tileheight']);
+        // …and the back margin closed at the first desk's right edge, so every other desk's way to the elevator runs up the
+        // strip the column narrows (card#12444's re-lay left the back margin a second way round, which the column alone
+        // did not close)
+        $edge = intdiv($first['x'] + $first['width'], $map['tilewidth']);
+        $top = intdiv($first['y'], $map['tileheight']);
 
-        return array_map(static fn ($row) => [$col, $row], range(1, $front));
+        return [...array_map(static fn ($row) => [$col, $row], range(1, $front)), ...array_map(static fn ($row) => [$edge, $row], range(0, $top - 1))];
     }
 }

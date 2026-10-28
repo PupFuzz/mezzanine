@@ -34,7 +34,7 @@ class TheStreamRecoveryIsTheDocumentsTest extends TestCase
         $source = (string) file_get_contents($this->moduleDir().'/fleet-client.js');
 
         foreach ([
-            'FEED_VERSION' => ['export const FEED_VERSION = 1;', 'export const FEED_VERSION = 2;'],
+            'FEED_VERSION' => ['export const FEED_VERSION = 2;', 'export const FEED_VERSION = 3;'],
             'SILENCE_MS' => ['export const SILENCE_MS = 45000;', 'export const SILENCE_MS = 30000;'],
             'CADENCE_MS' => ['export const CADENCE_MS = 10000;', 'export const CADENCE_MS = 3000;'],
             'BACKOFF_CEILING_MS' => ['export const BACKOFF_CEILING_MS = 80000;', 'export const BACKOFF_CEILING_MS = 160000;'],

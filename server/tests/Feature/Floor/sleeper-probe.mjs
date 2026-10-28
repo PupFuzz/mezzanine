@@ -97,6 +97,13 @@ const read = (re, what) => {
 };
 /** § 12's *Sleeper's z's*: the seat's `L`, and each z's share of it, z1 first. */
 const L = num(read(/sized \*\*`L` ([\d.]+)\*\* at every seat/, "§ 12 *Sleeper's z's* `L`")[1]);
+/**
+ * …and the seats the row names with an `L` of their own (card#12444: the highest crests, whose stands the frame's top
+ * stops), each as `the \`<species or species/variant>\` at **<L>**` in the row's first cells, the pattern
+ * `sleeper-zs.browser.mjs`'s residuals use — read here, never copied.
+ */
+const L_OWN = Object.fromEntries([...read(/^\| \*\*Sleeper's z's\*\* \| ([^|]*) \|/m, "§ 12 *Sleeper's z's* row")[1]
+    .matchAll(/the `([a-z/]+)` at \*\*([\d.]+)\*\*/g)].map((m) => [m[1], num(m[2])]));
 const SHARES = read(/z1 \*\*([\d.]+)\*\* `L`, z2 \*\*([\d.]+)\*\* `L` and z3 \*\*([\d.]+)\*\* `L`/, "§ 12 *Sleeper's z's* shares").slice(1).map(num);
 /** § 12's *Sleeper z pulse*: the levels of z1 z2 z3 by loop frame. */
 const PULSE = read(/^\| \*\*Sleeper z pulse\*\* \|.*?the levels by loop frame are `([0-3 ]+)`/m, '§ 12 *Sleeper z pulse* table')[1]
@@ -104,19 +111,19 @@ const PULSE = read(/^\| \*\*Sleeper z pulse\*\* \|.*?the levels by loop frame ar
 const LOOP = PULSE.length;
 /** § 12's *Character frame* — the frame of every seat document since card#12259. */
 const FRAME = (() => {
-    const m = read(/^\| \*\*Character frame\*\* \| \*\*(\d+) × (\d+)\*\* frame units from \(\*\*(-?\d+)\*\*, \*\*(-?\d+)\*\*\)/m, '§ 12 *Character frame* row');
+    const m = read(/^\| \*\*Character frame\*\* \| \*\*([\d.]+) × ([\d.]+)\*\* frame units from \(\*\*(-?[\d.]+)\*\*, \*\*(-?[\d.]+)\*\*\)/m, '§ 12 *Character frame* row');
 
     return { x: num(m[3]), y: num(m[4]), w: num(m[1]), h: num(m[2]) };
 })();
 /** § 10.4 item 4's overdraw: its size and its place on the furniture box, in px. */
 const OVERDRAW = (() => {
-    const m = read(/(\d+) × (\d+) px, at box\s+\((\d+), (\d+)\)/, '§ 10.4 item 4 overdraw rect');
+    const m = read(/([\d.]+) × ([\d.]+) px, at box\s+\(([\d.]+), ([\d.]+)\)/, '§ 10.4 item 4 overdraw rect');
 
     return { x: num(m[3]), y: num(m[4]), w: num(m[1]), h: num(m[2]) };
 })();
 /** § 10.4 item 4's clear rects, in frame units: x and y ranges (the desk's by its y range alone, as the document states it). */
 const CLEAR = (() => {
-    const m = read(/the monitor's frame \(x ([−\d-]+)–([−\d-]+), y ([−\d-]+)–([−\d-]+) units\), the desk's props \(x ([−\d-]+)–([−\d-]+), y ([−\d-]+)–([−\d-]+)\),\s+the desk\s+\(y ([−\d-]+)–([−\d-]+)\) and the thought trail's column \(x ([−\d-]+)–([−\d-]+), y ([−\d-]+)–([−\d-]+)\)/, '§ 10.4 item 4 clear rects');
+    const m = read(/the monitor's frame \(x ([−\d.-]+)–([−\d.-]+), y ([−\d.-]+)–([−\d.-]+) units\), the desk's props \(x ([−\d.-]+)–([−\d.-]+), y ([−\d.-]+)–([−\d.-]+)\),\s+the desk\s+\(y ([−\d.-]+)–([−\d.-]+)\) and the thought trail's column \(x ([−\d.-]+)–([−\d.-]+), y ([−\d.-]+)–([−\d.-]+)\)/, '§ 10.4 item 4 clear rects');
     const v = m.slice(1).map(num);
 
     return { monitor: { x: [v[0], v[1]], y: [v[2], v[3]] }, props: { x: [v[4], v[5]], y: [v[6], v[7]] }, desk: { y: [v[8], v[9]] }, trail: { x: [v[10], v[11]], y: [v[12], v[13]] } };
@@ -137,7 +144,8 @@ const { harnessMeasurer } = await import('../Support/harness-measurer.mjs');
 const PLANTED = JSON.parse(readFileSync(join(HERE, 'desk-leaves', 'fx-desk-leaves-planted.json'), 'utf8'));
 const measure = harnessMeasurer(PLANTED.measurer);
 const NOW_MS = Date.parse('2026-08-23T14:23:22.400Z');
-const BOX = { width: 440, height: 228 };
+// The furniture box at the cap, read from its one declaration (`resources/floor/furniture-box.js`) — never a copy of it.
+const { FURNITURE_BOX: BOX } = await import(pathToFileURL(join(HERE, '..', '..', '..', '..', 'resources', 'floor', 'furniture-box.js')).href);
 const seatNamed = (id) => PLANTED.seats.map((s) => s.seat).find((s) => s.seat_id === id);
 const defects = [];
 const counts = { frames: 0, zs: 0, species: 0, steps: 0 };
@@ -215,9 +223,11 @@ function sleeperLegs(where, docs, edge, crestKey) {
 
         const away = -rollOf(doc);
 
+        const seatL = L_OWN[crestKey] ?? L;
+
         for (const z of zs) {
-            if (Math.abs(z.h - SHARES[z.k] * L) > 0.02) {
-                out.push(`zs: ${at}'s z${z.k + 1} is ${z.h} units tall, not ${SHARES[z.k]} of § 12's L ${L} (${(SHARES[z.k] * L).toFixed(2)})`);
+            if (Math.abs(z.h - SHARES[z.k] * seatL) > 0.02) {
+                out.push(`zs: ${at}'s z${z.k + 1} is ${z.h} units tall, not ${SHARES[z.k]} of § 12's L ${seatL} for ${crestKey} (${(SHARES[z.k] * seatL).toFixed(2)})`);
             }
 
             if (z.y - z.hh < FRAME.y - 0.01 || z.y + z.hh > FRAME.y + FRAME.h + 0.01 || z.x - z.hw < FRAME.x - 0.01 || z.x + z.hw > FRAME.x + FRAME.w + 0.01) {
@@ -327,7 +337,9 @@ const ownFrames = (placed) => {
     }
 
     try {
-        return C.sleepFrames(placed.install_id, placed.seat_id, edgeOf(placed) / VIEW.h, characterElement(placed)?.clear);
+        // card#12443: in the seat's delivered body, which its character element carries and the painter is handed —
+        // that the element carries the seat object's `character.species` is painter-probe.mjs's body legs.
+        return C.sleepFrames(placed.install_id, placed.seat_id, edgeOf(placed) / VIEW.h, characterElement(placed)?.clear, characterElement(placed)?.species);
     } catch (e) {
         defects.push(`sleeper: the tree draws no sleeper for ${placed.key}'s character element — ${e.message}`);
 
@@ -383,10 +395,13 @@ const ownFrames = (placed) => {
 
         const clear = characterElement(placed)?.clear ?? [];
         const byName = Object.fromEntries(clear.map((c) => [c.name, c]));
+        // to 1e-9: the rects are px times a non-integer units-per-px (card#12444's 1.6), float products the document's
+        // decimal figures need not equal bit for bit
+        const ne = (a, b) => Math.abs(a - b) > 1e-9;
         const off = Object.entries(CLEAR).filter(([name, r]) => {
             const c = byName[name];
 
-            return c === undefined || (r.x !== undefined && (c.x !== r.x[0] || c.x + c.w !== r.x[1])) || c.y !== r.y[0] || c.y + c.h !== r.y[1];
+            return c === undefined || (r.x !== undefined && (ne(c.x, r.x[0]) || ne(c.x + c.w, r.x[1]))) || ne(c.y, r.y[0]) || ne(c.y + c.h, r.y[1]);
         }).map(([name]) => name);
 
         if (clear.length !== 4 || off.length > 0) {

@@ -5,11 +5,8 @@ namespace Tests\Feature\Fold;
 use App\Fold\Fold;
 use App\Fold\FoldEvent;
 use App\Fold\Projector;
-use Illuminate\Database\Events\QueryExecuted;
-use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
@@ -214,36 +211,6 @@ class FoldLockFirstTest extends CommittedSeatTestCase
         $this->assertSame(0, (int) $this->state()->fold_errors);
         $this->assertSame($first, (int) $this->state()->fold_cursor_event_id, 'the cursor moved past the event whose quarantine yielded');
         $this->assertSame(1, $applied, 'the pass did not report the one event the recovery applied');
-    }
-
-    /**
-     * Record the fold connection's statements, one list per transaction it begins.
-     *
-     * `TransactionBeginning` fires after the connection has begun, and `START TRANSACTION` itself is
-     * not a `QueryExecuted`, so a list's first entry is the transaction's first statement. Only the
-     * fold connection is recorded: `Fold::$beforeLock`'s probe runs on its own.
-     *
-     * @return callable(): list<list<string>>
-     */
-    private function recordFoldTransactions(): callable
-    {
-        $transactions = [];
-
-        Event::listen(TransactionBeginning::class, function (TransactionBeginning $e) use (&$transactions) {
-            if ($e->connectionName === self::FOLD) {
-                $transactions[] = [];
-            }
-        });
-
-        Event::listen(QueryExecuted::class, function (QueryExecuted $q) use (&$transactions) {
-            if ($q->connectionName === self::FOLD && $transactions !== []) {
-                $transactions[array_key_last($transactions)][] = $q->sql;
-            }
-        });
-
-        return function () use (&$transactions) {
-            return $transactions;
-        };
     }
 
     /**

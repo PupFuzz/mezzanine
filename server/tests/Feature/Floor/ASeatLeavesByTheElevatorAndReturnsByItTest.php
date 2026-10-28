@@ -718,7 +718,8 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
 
     /**
      * The PM office's front wall in the shipped default's `walls` layer, re-derived: the row carrying the most wall cells
-     * right of the reserved desk's slot's left edge, and the open cells of that row between its first and last wall cell.
+     * from the office's partition (the first wall cell left of the reserved slot) rightward, and the open cells of that
+     * row between its first and last wall cell.
      *
      * @return array{row: int, gap: list<int>}
      */
@@ -728,7 +729,14 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         $walls = array_values(array_filter($map['layers'], static fn ($l) => $l['name'] === 'walls'))[0]['data'];
         $w = $map['width'];
         $slot = array_values(array_filter(array_values(array_filter($map['layers'], static fn ($l) => $l['name'] === 'desks'))[0]['objects'], fn ($o) => $o['id'] === $this->reservedDeskId()))[0];
-        $from = intdiv($slot['x'], $map['tilewidth']) - 2;
+        // the office's partition: the first wall cell left of the reserved slot on the slot's top row (card#12444 stood it
+        // against the middle back slot, a walker's gap from the reserved one)
+        $top = intdiv($slot['y'], $map['tileheight']);
+        $from = intdiv($slot['x'], $map['tilewidth']);
+
+        while ($from > 0 && $walls[$top * $w + $from] === 0) {
+            $from--;
+        }
         $best = null;
 
         for ($y = 0; $y < $map['height']; $y++) {
@@ -801,7 +809,11 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
 
         $this->assertSame('working', $byKind['chip'][0]['text'] ?? null, 'the chip is not the applied object\'s');
         $this->assertSame('working', $byKind['label'][0]['text'] ?? null, 'the label line is not the applied object\'s');
-        $this->assertCount(2, $byKind['stool'] ?? [], 'the side table is not the applied object\'s');
+        // The applied object's two interns: on their stools, or — since card#12450, the delta that brings the seat back
+        // also brings them — walking in from the elevator beside it, each its own A10 walk.
+        $walkingIn = array_filter($applying['scene']['effects'], static fn (array $e): bool => $e['animation_id'] === 'A10'
+            && str_starts_with($e['intern_key'] ?? '', self::IMPL_1.'~') && ($e['frames'] ?? 0) > 0);
+        $this->assertSame(2, count($byKind['stool'] ?? []) + count($walkingIn), 'the side table is not the applied object\'s');
 
         $end = $this->frameAt($result, $this->walkEnd($result), 'walk end');
         $seated = $this->deskIn($end, self::IMPL_1);

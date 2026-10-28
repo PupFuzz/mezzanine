@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Support\SeatRows;
 use Tests\TestCase;
 
 /**
@@ -75,9 +76,7 @@ class FloorConsoleTest extends TestCase
         $installRef = DB::table('installs')->where('install_id', $installId)->value('id')
             ?? DB::table('installs')->insertGetId(['install_id' => $installId, 'created_at' => $now]);
 
-        $seatRef = DB::table('seats')->insertGetId([
-            'install_ref' => $installRef,
-            'seat_id' => $seatId,
+        $seatRef = SeatRows::insert($installRef, $seatId, [
             'created_at' => $now,
             'retired_at' => $retiredAt,
             'retired_by' => $retiredAt === null ? null : 'ops@example.com',
@@ -700,8 +699,8 @@ class FloorConsoleTest extends TestCase
         $this->provisionSeat('sola-solo', 'sola');
         $this->provisionSeat('zeta-solo', 'zeta');
 
-        $this->author('sola', FloorMapFixture::sized(15, 8))->assertSessionHasNoErrors();
-        $this->author('zeta', FloorMapFixture::sized(15, 8))->assertSessionHasNoErrors();
+        $this->author('sola', FloorMapFixture::sized(15, FloorMapFixture::boxRows()))->assertSessionHasNoErrors();
+        $this->author('zeta', FloorMapFixture::sized(15, FloorMapFixture::boxRows()))->assertSessionHasNoErrors();
 
         $this->composeTheBuilding([['rooms' => [
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
@@ -709,7 +708,7 @@ class FloorConsoleTest extends TestCase
         ]]]);
 
         $this->actingAs($this->operator())
-            ->patch(route('admin.floors.update', 'sola'), ['map' => FloorMapFixture::sized(16, 8)])
+            ->patch(route('admin.floors.update', 'sola'), ['map' => FloorMapFixture::sized(16, FloorMapFixture::boxRows())])
             ->assertRedirect()
             ->assertSessionHasErrors('map');
 

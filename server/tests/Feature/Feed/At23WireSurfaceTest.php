@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Feed;
 
+use App\Feed\FleetReload;
 use App\Feed\Outbox;
 use App\Sweep\Purge;
 use Illuminate\Support\Facades\DB;
@@ -72,7 +73,7 @@ class At23WireSurfaceTest extends FeedTestCase
         $this->assertSame(self::INSTALL, $retired[0]['install_id']);
 
         // § 8.3's envelope, on every message.
-        $this->assertSame(1, $retired[0]['payload']['feed_version']);
+        $this->assertSame(FleetReload::FEED_VERSION, $retired[0]['payload']['feed_version']);
         $this->assertSame('seat.retired', $retired[0]['payload']['t']);
         $this->assertArrayHasKey('server_time', $retired[0]['payload']);
 

@@ -49,6 +49,7 @@ import { isRenderState } from '../lobby/render-state.js';
 import { clockTime } from '../wire/clock.js';
 import { contextGauge } from '../wire/context-gauge.js';
 import { heldRendering } from '../wire/animation-set.js';
+import { rebuildSlots } from './intern-slots.js';
 import { ACTIVITY_STATES, BADGES, LINK_STATES } from '../wire/member-sets.js';
 import { NO_DATA_YET, UNTITLED } from '../wire/null-render.js';
 import { SEAT_CLOCK, derivationLagLine, seatClock } from '../wire/age-readout.js';
@@ -94,9 +95,10 @@ const THINKING = { pose: 'leaning-back', glyph: 'thinking', lighting: 'full', mo
  * two more members). `null` is a state whose desk holds no render at all — § 7.1's Animation
  * column reads *none* for it.
  *
- * ⛔ WHICH OF THESE HOLDS MOTION IS NOT HERE. § 11's *two states with no motion by design* are
- * `stalled` and `unknown`, and `wire/animation-set.js` answers that from A8's and A9's own § 6.2
- * Animation cells — which name no loop where every other held row names a 4 fps one — rather than
+ * ⛔ WHICH OF THESE HOLDS MOTION IS NOT HERE. § 11's *states with no motion by design* are
+ * `stalled` alone since card#12444 gave `unknown`'s marker the sleeper's pulse, and `wire/animation-set.js`
+ * answers that from A8's own § 6.2 Animation cell — which names no loop where every other held row names a
+ * 4 fps one — rather than
  * from a pair of ids kept beside this map, which is what this file held until card#7341 step 6
  * and what nothing re-derived from the document.
  * `Tests\Feature\Floor\TheAnimationSetIsTheDocumentsClosedSetTest` re-derives this map itself
@@ -240,15 +242,25 @@ function lagLine(seat, stamp) {
  *
  * ⛔ THE COUNT IS `subagents_open`, NEVER THE ARRAY'S LENGTH, and an empty array is NO stools —
  * not a stool count of zero (AT-D3-14: "the side table shows no stools rather than zero stools").
+ *
+ * ⛔ EACH STOOL STANDS AT ITS INTERN's KEPT SLOT (§ 6.2's *Interns ride the elevator too*, item 13; card#12450), the
+ * map `desk/desk-floor.js` holds across deltas and hands in as `slots` — never its index in the newest-first array,
+ * which a gain would shift. A caller holding no map (the drill-down's panel) gets the map a fresh replace delivers
+ * (`rebuildSlots()`), the same assignment a reload draws. `seats` is the highest held slot plus one, so a hole a
+ * departure left is an empty seat between interns.
+ *
+ * `activity` is the intern's own `subagents[].activity_state` (§ 8's *Working and idle interns*, card#12451): `working`
+ * draws its laptop, `idle` none.
  */
-function sideTable(seat) {
+function sideTable(seat, slots = null) {
     const subagents = Array.isArray(seat.subagents) ? seat.subagents : [];
     const open = Number.isInteger(seat.subagents_open) ? seat.subagents_open : null;
     const more = open === null ? 0 : open - subagents.length;
-
-    return {
-        stools: subagents.map((s) => ({
+    const held = slots ?? rebuildSlots(seat);
+    const stools = subagents.filter((s) => held.has(s.call_id)).map((s) => ({
             call_id: s.call_id ?? null,
+            slot: held.get(s.call_id),
+            activity: s.activity_state ?? null,
             // § 5.6: **untitled**, never an invented title and never the type standing in for one.
             label: s.title ?? UNTITLED,
             untitled: (s.title ?? null) === null,
@@ -257,7 +269,11 @@ function sideTable(seat) {
             // § 8: "a seat-clock claim, rendered as a labelled timestamp and never as *how long it
             // has been running*".
             started_at: seatClock(s.started_at ?? null),
-        })),
+        }));
+
+    return {
+        stools,
+        seats: stools.length === 0 ? 0 : Math.max(...stools.map((s) => s.slot)) + 1,
         more: more > 0 ? more : null,
     };
 }
@@ -382,10 +398,16 @@ export function deskModel(seat, ages, facts = {}, options = {}) {
     // no loop, exactly as a lag does, because motion would claim a currency nothing supports.
     const unrecognised = unrecognisedValues(seat);
     const permitted = !lagged && !configInvalid && unrecognised.length === 0 && facts.stilled !== true;
+    const held = heldId === null ? null : heldRendering(heldId, permitted, options.reduce === true);
+    const table = sideTable(seat, facts.slots ?? null);
 
     return {
         install_id: seat.install_id,
         seat_id: seat.seat_id,
+        // card#12443 (D2 § 6.13): the body D2 allocated this seat — the character tree draws exactly it, and its
+        // interns never wear it. D2 never sends a seat without it (`NOT NULL`, backfilled); an object that lacks it
+        // carries `null`, which the painter draws as § 9 F14's placeholder and never as the key's own body.
+        species: seat.character?.species ?? null,
         nameplate: seat.seat_id,
         render_state: { value: state, recognised },
         character,
@@ -430,10 +452,31 @@ export function deskModel(seat, ages, facts = {}, options = {}) {
         oldest_badge_since: (seat.badges_since ?? null) === null
             ? null
             : `${OLDEST_BADGE_SINCE} ${clockTime(seat.badges_since)}`,
-        side_table: sideTable(seat),
+        side_table: table,
         // § 5.1 rule 3: "A desk that draws no character draws no bubble", which covers the
         // unconfirmed seat too — the bubble module reads `render_state` alone and cannot know.
         bubble: character ? taskBubble(seat) : null,
-        held: heldId === null ? null : heldRendering(heldId, permitted, options.reduce === true),
+        held,
+        interns_held: internsHeld(table, permitted && dark === null, options.reduce === true),
     };
+}
+
+/**
+ * § 6.2 A23 `intern-type` (card#12448, card#12451): the side table's held rendering — held while an intern the desk
+ * draws reads `subagents[].activity_state == "working"`, `null` while none does (FLOOR.md § 8's *Working and idle
+ * interns*). The driving fact is the INTERN's own, the reporter's word on it (D1 § 6.15): a working intern types at its
+ * laptop, an idle one sits still with no laptop, and a reporter that never says either leaves every open dispatch
+ * `working` (D2 § 8.2.1).
+ *
+ * Whether it draws MOTION is the desk's treatment verdict, `permitted` — no lag, no `config_invalid`, no unrecognised
+ * value, the floor not stilled — and a desk drawn dark (`stale`, `offline`), whose facts are as old as its last
+ * delivery: a typing loop there would be motion no current fact holds (§ 6.3's first form). Under those the working
+ * interns keep their laptops and sit still, which is A23's reduced form.
+ */
+function internsHeld(table, permitted, reduce) {
+    if (!table.stools.some((s) => s.activity === 'working')) {
+        return null;
+    }
+
+    return heldRendering('A23', permitted, reduce);
 }

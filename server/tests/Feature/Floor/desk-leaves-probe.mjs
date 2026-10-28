@@ -101,7 +101,8 @@ const NOW_MS = Date.parse(baseline.now);
 // baseline's own `measurer` field is a record of how the desk before B1 was measured: nothing reads it.
 const PLANTED = JSON.parse(readFileSync(join(DATA, 'fx-desk-leaves-planted.json'), 'utf8'));
 const measure = harnessMeasurer(PLANTED.measurer);
-const BOX = { width: 440, height: 228 };
+// The furniture box at the cap, read from its one declaration (`resources/floor/furniture-box.js`) — never a copy of it.
+const { FURNITURE_BOX: BOX } = await import(pathToFileURL(join(HERE, '..', '..', '..', '..', 'resources', 'floor', 'furniture-box.js')).href);
 const ctxFor = (placeholder) => ({ box: BOX, measure, character: { w: 18, h: 32 }, sprite: { url: 'desk.png', w: 116, h: 57 }, placeholder, failed: new Set() });
 const facts = (seat, v) => ({ missing: v.missing, derivation_stamp: seat.server_time ?? '2026-08-23T14:23:14.400Z', stilled: v.stilled });
 const modelOf = (seat, v) => deskModel(seat, deskAgeReadout(seat, NOW_MS), facts(seat, v), { reduce: v.reduce });
@@ -713,6 +714,10 @@ const RULED_SINCE = [
     // an open call, so its baseline idle screen showed that call's descriptor — a seat D2 cannot produce. That one leaf
     // is owed nowhere (`to: null`); the descriptor of any seat that CAN hold an open call is owed as recorded.
     { kind: 'monitor-text', from: null, to: null, applies: (seat, value) => seat.render_state === 'idle' && seat.action !== null && value === (seat.action.descriptor ?? seat.action.tool_name) },
+    // card#12444, FLOOR.md decision 82: `unknown`'s question marker pulses with the sleeper's pulse (A9's Animation cell
+    // names a 4 fps loop), so where its held render may move — no treatment, no stilled floor, no reduced motion — the
+    // character the baseline recorded `still` is `moving`; under any of those it is still, as recorded.
+    { kind: 'character.motion', from: 'still', to: 'moving', applies: (seat, value, m) => seat.render_state === 'unknown' && m.held?.motion === true },
 ];
 
 function ruleOne(key, entry) {
@@ -735,7 +740,7 @@ function ruleOne(key, entry) {
     let badgeTag = false;
 
     for (const [kind, member, recorded] of entry.leaves) {
-        const ruled = RULED_SINCE.find((r) => r.kind === kind && (r.from === null || r.from === recorded) && r.applies(seat, recorded));
+        const ruled = RULED_SINCE.find((r) => r.kind === kind && (r.from === null || r.from === recorded) && r.applies(seat, recorded, m));
         const value = ruled === undefined ? recorded : ruled.to;
 
         if (kind === 'placeholder' || value === null) {

@@ -29,6 +29,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -58,6 +61,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -126,6 +130,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -214,6 +221,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -290,6 +300,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -993,7 +1006,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -1011,7 +1024,7 @@
         {
           "at_ms": 15000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.400Z",
             "fleet": {
@@ -1029,7 +1042,7 @@
         {
           "at_ms": 20000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:34.400Z",
             "install_id": "aimla",
@@ -1054,7 +1067,7 @@
         {
           "at_ms": 30000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:44.400Z",
             "fleet": {
@@ -1072,7 +1085,7 @@
         {
           "at_ms": 45000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:59.400Z",
             "fleet": {
@@ -1090,7 +1103,7 @@
         {
           "at_ms": 60000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:24:14.400Z",
             "fleet": {
@@ -1142,6 +1155,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -1171,6 +1187,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -1239,6 +1256,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -1327,6 +1347,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -1403,6 +1426,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -2106,7 +2132,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -2124,7 +2150,7 @@
         {
           "at_ms": 15000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.400Z",
             "fleet": {
@@ -2142,7 +2168,7 @@
         {
           "at_ms": 30000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:44.400Z",
             "fleet": {
@@ -2160,7 +2186,7 @@
         {
           "at_ms": 45000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:59.400Z",
             "fleet": {
@@ -2178,7 +2204,7 @@
         {
           "at_ms": 60000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:24:14.400Z",
             "fleet": {
@@ -2196,7 +2222,7 @@
         {
           "at_ms": 75000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:24:29.400Z",
             "fleet": {
@@ -2214,7 +2240,7 @@
         {
           "at_ms": 85000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:24:39.400Z",
             "install_id": "aimla",
@@ -2239,7 +2265,7 @@
         {
           "at_ms": 90000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:24:44.400Z",
             "fleet": {
@@ -2257,7 +2283,7 @@
         {
           "at_ms": 105000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:24:59.400Z",
             "fleet": {
@@ -2275,7 +2301,7 @@
         {
           "at_ms": 120000,
           "envelope": {
-            "feed_version": 1,
+            "feed_version": 2,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:25:14.400Z",
             "fleet": {

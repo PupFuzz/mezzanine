@@ -144,7 +144,8 @@ class TheDeskRenderNeverDrawsANullAsAZeroTest extends TestCase
             $d[] = 'a null model label rendered as '.json_encode($desk['model_label']);
         }
 
-        if ($desk['side_table'] !== ['stools' => [], 'more' => null]) {
+        // card#12450: no stools, and no slot held, so no seat beyond the table's own.
+        if ($desk['side_table'] !== ['stools' => [], 'seats' => 0, 'more' => null]) {
             $d[] = 'an empty subagent array rendered as something other than no stools: '.json_encode($desk['side_table']);
         }
 

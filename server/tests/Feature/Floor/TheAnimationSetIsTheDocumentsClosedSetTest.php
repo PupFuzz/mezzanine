@@ -99,7 +99,7 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
     }
 
     /**
-     * § 6.1 rule 2, § 12's *Loop frame rate* row, and § 11's *two states with no motion by design*:
+     * § 6.1 rule 2, § 12's *Loop frame rate* row, and § 11's *states with no motion by design*:
      * one fixed rate, and WHICH rows run at it read off each row's own Animation cell.
      */
     public function test_which_rows_loop_and_how_fast_is_derived_from_the_cells_the_module_carries(): void
@@ -125,9 +125,10 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
                 "{$id}'s frame interval is not one frame per § 12's rate");
         }
 
-        // § 11 names the population in words — *the **two** states with no motion by design
-        // (`stalled` and `unknown`)* — and it is those two held rows that name no loop. Both halves
-        // are read, so neither the count nor the members can drift alone.
+        // § 11 names the population in words — *the **one** state with no motion by design
+        // (`stalled` …)*, its count spelled as a word and its members in backticks — and it is those held
+        // rows that name no loop. Both halves are read, so neither the count nor the members can drift
+        // alone (card#12444 took `unknown` out of it: A9's marker pulses).
         $byState = $this->documentHeldByState();
         $motionless = array_keys(array_filter(
             $expected,
@@ -136,11 +137,14 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
             ARRAY_FILTER_USE_BOTH,
         ));
 
-        $this->assertSame(1, preg_match('/the \*\*(two)\*\* states with no motion by design \(`([a-z_]+)` and `([a-z_]+)`/', $this->floorMd(), $m),
+        $this->assertSame(1, preg_match('/the \*\*(one|two|three|four)\*\* states? with no motion by design \(((?:`[a-z_]+`(?:,? and |, )?)+)/', $this->floorMd(), $m),
             '§ 11\'s sentence naming the states with no motion by design is not in the form this check reads');
-        $this->assertCount(2, $motionless, '§ 11 says two held rows carry no motion by design and § 6.2\'s cells name a different number');
-        $this->assertSame([$byState[$m[2]], $byState[$m[3]]], $motionless,
-            '§ 11\'s two motionless states are not the two held rows whose § 6.2 cell names no loop');
+        $count = ['one' => 1, 'two' => 2, 'three' => 3, 'four' => 4][$m[1]];
+        preg_match_all('/`([a-z_]+)`/', $m[2], $members);
+        $this->assertCount($count, $members[1], "§ 11 counts {$m[1]} motionless state(s) and names a different number");
+        $this->assertCount($count, $motionless, "§ 11 says {$m[1]} held row(s) carry no motion by design and § 6.2's cells name a different number");
+        $this->assertSame(array_map(static fn (string $state): string => $byState[$state], $members[1]), $motionless,
+            '§ 11\'s motionless states are not the held rows whose § 6.2 cell names no loop');
     }
 
     /**
@@ -168,7 +172,7 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
                 "{$id} draws motion with § 7.3's treatment refusing it");
             // ⛔ WHETHER A HELD ROW MOVES IS ITS REDUCED CELL AND NOT ITS LOOP (card#7341 step 7).
             // § 6.4's reduced form REPLACES the motion, so a cell reading *identical* is a row with no
-            // motion to replace — § 11's *two states with no motion by design*. ⛔ AND A `retired` ROW
+            // motion to replace — § 11's *states with no motion by design*. ⛔ AND A `retired` ROW
             // NEVER MOVES (card#12239): it has no form at all, so whatever its cells say it draws
             // nothing, and the set answers *no motion* for it in every state.
             $this->assertSame(
@@ -221,21 +225,19 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
             '§ 11\'s two seatless rows are not the two the set fires on the heartbeat');
         $this->assertSame('feed.heartbeat', $shipped['heartbeat']);
 
-        // Every `desk` row is a held row § 6.2 holds by a `render_state`, and every such row is a
-        // `desk` row: the two populations are one, derived from the table rather than paired by hand.
-        // A4 is in it — its condition names `working` and two further facts — which is why this leg
-        // reads the CONDITIONS and not `documentHeldByState()`'s one-row-per-state projection.
+        // Every `desk` row is a held row of § 6.2, and every held row is a `desk` row: a held row is
+        // held by the seat object the desk model reads, whether its condition names a `render_state`
+        // (A3, A4, A6, A7, A8, A9, A15 — the desk's own) or the side table (A23, card#12448, held
+        // beside it under `INTERNS`'s derived key). The two populations are one, derived from the
+        // table rather than paired by hand. The desk's own are held to its state→row map below.
         $deskRows = array_keys(array_filter($shipped['fired_by'], static fn (string $by): bool => $by === 'desk'));
-        $fromDocument = array_keys(array_filter(
-            $document,
-            static fn (array $row): bool => $row['class'] === 'held' && str_starts_with($row['condition'], 'render_state == "'),
-        ));
+        $fromDocument = array_keys(array_filter($document, static fn (array $row): bool => $row['class'] === 'held'));
 
         sort($deskRows);
         sort($fromDocument);
 
         $this->assertSame($fromDocument, $deskRows,
-            'the rows the set says a desk holds are not § 6.2\'s held rows keyed by a `render_state`');
+            'the rows the set says a desk holds are not § 6.2\'s held rows');
 
         // Every `delta` row names the `changed[]` member its own § 6.2 row is gated on.
         foreach ($shipped['delta_row_drivers'] as $id => $member) {
@@ -313,6 +315,64 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
 
         $this->assertSame('MissingConditions', $driven['errors'][0]['name'] ?? null,
             'a held op that leaves a held seat\'s episode with no `conditions` did not fail by name');
+    }
+
+    /**
+     * § 6.2 A23 (card#12448): the side table's held render is its OWN episode beside the desk's, keyed
+     * `<seat key>~interns` in the set's episode map, on the seat's own row — so seating, stilling or
+     * emptying the side table never leaves or re-enters the desk's episode, and the side table's exit asks
+     * § 11's precedence of ITS prior (`prior_interns`), not the desk's.
+     */
+    public function test_the_side_tables_a23_is_its_own_episode_beside_the_desks(): void
+    {
+        $desk = static fn (?array $interns): array => ['aimla/aimla-pm' => [
+            'install_id' => 'aimla', 'seat_id' => 'aimla-pm',
+            'held' => ['animation_id' => 'A3', 'motion' => true],
+            'interns_held' => $interns,
+        ]];
+        $typing = ['animation_id' => 'A23', 'motion' => true];
+        $conditions = static fn (?array $priorInterns, bool $stilled = false): array => ['aimla/aimla-pm' => [
+            'prior' => ['animation_id' => 'A3', 'motion' => true], 'prior_interns' => $priorInterns, 'unconfirmed' => false, 'stilled' => $stilled,
+        ]];
+        $render = static fn (int $at, ?array $interns, int $version, ?array $conditions = null): array => ['op' => 'held', 'at' => $at,
+            'desks' => $desk($interns), 'seats' => ['aimla/aimla-pm' => ['state_version' => $version]]] + ($conditions === null ? [] : ['conditions' => $conditions]);
+        $ops = [
+            // v5: the desk works with an intern typing beside it — two episodes, one seat.
+            $render(1000, $typing, 5),
+            // v6: the subagent stopped — the side table empties and the desk works on: (2a), the side table's alone.
+            $render(2000, null, 6, $conditions(null)),
+            // v7: a new subagent; then the floor newly stilled while the object still draws it typing: (4).
+            $render(3000, $typing, 7, $conditions($typing)),
+            $render(4000, ['animation_id' => 'A23', 'motion' => false], 7, $conditions($typing, true)),
+        ];
+
+        $driven = $this->shippedSet(['ops' => $ops]);
+
+        $this->assertSame([], $driven['errors'], 'driving the set over the side table threw');
+        $this->assertSame([
+            'A3 entered 5 true aimla-pm',
+            'A23 entered 5 true aimla-pm',
+            'A23 left 6 false aimla-pm',
+            'A23 entered 7 true aimla-pm',
+            'A23 left stilled false aimla-pm',
+            'A23 entered 7 false aimla-pm',
+        ], $this->rowLines($driven['rows']), 'the side table\'s A23 is not its own episode beside the desk\'s A3, on the seat\'s row, left by its own prior');
+
+        // CONTROL — the side table held under the desk's own key: the two holds collide, and the run above reds.
+        $planted = $this->plantedSet("Object.freeze({ suffix: INTERNS, field: 'interns_held', prior: 'prior_interns' }),",
+            "Object.freeze({ suffix: '', field: 'interns_held', prior: 'prior_interns' }),");
+
+        $this->assertNotSame($this->rowLines($driven['rows']), $this->rowLines($this->shippedSet(['ops' => $ops], $planted)['rows']),
+            'CONTROL did not bite: the side table held under the desk\'s own key drew the same episodes');
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<string>
+     */
+    private function rowLines(array $rows): array
+    {
+        return array_map(static fn (array $r): string => "{$r['animation_id']} {$r['phase']} {$r['cause']} ".json_encode($r['motion'])." {$r['seat_id']}", $rows);
     }
 
     /**
@@ -432,10 +492,10 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
             'CONTROL 1 did not bite: a § 6.2 column was renamed and the walk still answered');
 
         // CONTROL 2 — one row's Animation cell reworded: the words must come from the cell.
-        $reworded = str_replace('`attention` — a raised hand and a marker above the desk, 4 fps loop',
-            '`attention` — a raised hand and a marker above the desk, 9 fps loop', $md);
+        $reworded = str_replace("`attention` — a raised hand and a marker above the desk, its glow lit and dark in turn by the sleeper's pulse of brightness, phase-offset per seat, 4 fps loop",
+            "`attention` — a raised hand and a marker above the desk, its glow lit and dark in turn by the sleeper's pulse of brightness, phase-offset per seat, 9 fps loop", $md);
         $this->assertNotSame($md, $reworded, 'CONTROL 2 mutated nothing — A7\'s Animation cell has been reworded');
-        $this->assertSame('attention — a raised hand and a marker above the desk, 9 fps loop',
+        $this->assertSame("attention — a raised hand and a marker above the desk, its glow lit and dark in turn by the sleeper's pulse of brightness, phase-offset per seat, 9 fps loop",
             $this->documentAnimationRows($reworded)['A7']['animation'],
             'CONTROL 2 did not bite: A7\'s cell was reworded and the walk did not follow it');
 
@@ -451,10 +511,11 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
         $looping = $this->plantedSet("return (ANIMATION_SET[animationId]?.animation ?? '').includes(`\${LOOP_FPS} fps loop`);",
             'return ANIMATION_SET[animationId] !== undefined;');
         $planted = $this->shippedSet([], $looping);
-        $this->assertTrue($planted['loops']['A9'],
+        // A8, the row static by design (A9 was the other until card#12444 gave its marker the sleeper's pulse)
+        $this->assertTrue($planted['loops']['A8'],
             'CONTROL 4 mutated nothing — `loops()` is not spelled the way this plant anchors on');
-        $this->assertSame(250, $planted['frame_interval_ms']['A9'],
-            'CONTROL 4 did not reach the rate: A9 claims a loop and carries no interval');
+        $this->assertSame(250, $planted['frame_interval_ms']['A8'],
+            'CONTROL 4 did not reach the rate: A8 claims a loop and carries no interval');
 
         // CONTROL 5 — § 6.4's condition removed from the one place it decides: every row would then
         // draw motion under `reduce`, which is AT-D3-13's own claim broken at its source.

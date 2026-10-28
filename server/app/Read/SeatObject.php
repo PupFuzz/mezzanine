@@ -74,6 +74,9 @@ final class SeatObject
         return [
             'install_id' => (string) $seat->install_id,
             'seat_id' => (string) $seat->seat_id,
+            // card#12443 (§ 6.13): the species this seat was allocated at its creation and keeps for life. An
+            // object, so a second server-allocated appearance fact is a member and not a rename.
+            'character' => ['species' => (string) $seat->species],
             'state_version' => (int) $state->state_version,
             'render_state' => (string) $state->render_state,
             'link_state' => (string) $state->link_state,
@@ -113,6 +116,10 @@ final class SeatObject
                 'call_id' => (string) $c->call_id,
                 'title' => $c->title,
                 'subagent_type' => $c->subagent_type,
+                // card#12451: the reporter's word on the intern (D1 § 6.15), `working` from the open,
+                // so a reporter that never sends `subagent.activity` yields `working` for the life of
+                // the dispatch — never null (§ 8.2.1).
+                'activity_state' => (string) $c->activity_state,
                 'started_at' => Clock::wire($c->opened_at),
             ])->values()->all(),
             'subagents_open' => $subagents->count(),
@@ -227,7 +234,7 @@ final class SeatObject
         $seat = DB::table('seats')
             ->join('installs', 'installs.id', '=', 'seats.install_ref')
             ->where('seats.id', $seatRef)
-            ->first(['installs.install_id', 'seats.seat_id', 'seats.retired_at',
+            ->first(['installs.install_id', 'seats.seat_id', 'seats.species', 'seats.retired_at',
                 'seats.retired_by', 'seats.retired_reason']);
 
         $state = DB::table('seat_state')->where('seat_ref', $seatRef)->first();

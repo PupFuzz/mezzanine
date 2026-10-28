@@ -44,6 +44,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -73,6 +76,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -141,6 +145,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -229,6 +236,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -305,6 +315,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -456,7 +469,7 @@
       }
     },
     "frame_sparse": {
-      "note": "card#11045 PR-D, a SPARSE map: eight desk objects at the furniture box spread over a 2,400 × 600 grid, with `fx-snapshot-4`'s four seats — four slots stand unused, and the operator's Q1 ruling (2026-10-01) is that an unused slot is plain floor: no spare desk is drawn there.",
+      "note": "card#11045 PR-D, a SPARSE map: eight desk objects at the furniture box spread over a grid 2,400 px wide and two rows of the box tall with their gaps (the second row and the grid from `@box.height`, so a taller box moves them — card#12444), with `fx-snapshot-4`'s four seats — four slots stand unused, and the operator's Q1 ruling (2026-10-01) is that an unused slot is plain floor: no spare desk is drawn there.",
       "messages": [],
       "until_ms": 100,
       "floor": {
@@ -498,6 +511,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -527,6 +543,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -595,6 +612,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -683,6 +703,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -759,6 +782,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -866,7 +892,7 @@
                 "renderorder": "right-down",
                 "infinite": false,
                 "width": 2400,
-                "height": 600,
+                "height": "@box.height*2+100",
                 "tilewidth": 1,
                 "tileheight": 1,
                 "nextlayerid": 2,
@@ -934,7 +960,7 @@
                         "rotation": 0,
                         "visible": true,
                         "x": 40,
-                        "y": 340,
+                        "y": "@box.height+60",
                         "width": "@box.width",
                         "height": "@box.height"
                       },
@@ -945,7 +971,7 @@
                         "rotation": 0,
                         "visible": true,
                         "x": 600,
-                        "y": 340,
+                        "y": "@box.height+60",
                         "width": "@box.width",
                         "height": "@box.height"
                       },
@@ -956,7 +982,7 @@
                         "rotation": 0,
                         "visible": true,
                         "x": 1160,
-                        "y": 340,
+                        "y": "@box.height+60",
                         "width": "@box.width",
                         "height": "@box.height"
                       },
@@ -967,7 +993,7 @@
                         "rotation": 0,
                         "visible": true,
                         "x": 1720,
-                        "y": 340,
+                        "y": "@box.height+60",
                         "width": "@box.width",
                         "height": "@box.height"
                       }
@@ -1029,6 +1055,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -1058,6 +1087,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -1126,6 +1156,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -1214,6 +1247,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -1290,6 +1326,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -1371,6 +1410,9 @@
                     {
                       "install_id": "beta",
                       "seat_id": "beta-1",
+                      "character": {
+                        "species": "potato"
+                      },
                       "state_version": 6101,
                       "render_state": "idle",
                       "link_state": "live",
@@ -1447,6 +1489,9 @@
                     {
                       "install_id": "beta",
                       "seat_id": "beta-2",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 6102,
                       "render_state": "idle",
                       "link_state": "live",
@@ -1523,6 +1568,9 @@
                     {
                       "install_id": "beta",
                       "seat_id": "beta-3",
+                      "character": {
+                        "species": "bear"
+                      },
                       "state_version": 6103,
                       "render_state": "idle",
                       "link_state": "live",
@@ -1816,6 +1864,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 48219,
                       "render_state": "working",
                       "link_state": "live",
@@ -1845,6 +1896,7 @@
                           "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
+                          "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z"
                         }
                       ],
@@ -1913,6 +1965,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
                       "state_version": 31107,
                       "render_state": "working",
                       "link_state": "live",
@@ -2001,6 +2056,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
                       "state_version": 20544,
                       "render_state": "idle",
                       "link_state": "live",
@@ -2077,6 +2135,9 @@
                     {
                       "install_id": "aimla",
                       "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
                       "state_version": 15032,
                       "render_state": "blocked",
                       "link_state": "live",
@@ -2158,6 +2219,9 @@
                     {
                       "install_id": "beta",
                       "seat_id": "beta-1",
+                      "character": {
+                        "species": "potato"
+                      },
                       "state_version": 6101,
                       "render_state": "idle",
                       "link_state": "live",
@@ -2234,6 +2298,9 @@
                     {
                       "install_id": "beta",
                       "seat_id": "beta-2",
+                      "character": {
+                        "species": "snail"
+                      },
                       "state_version": 6102,
                       "render_state": "idle",
                       "link_state": "live",
@@ -2310,6 +2377,9 @@
                     {
                       "install_id": "beta",
                       "seat_id": "beta-3",
+                      "character": {
+                        "species": "bear"
+                      },
                       "state_version": 6103,
                       "render_state": "idle",
                       "link_state": "live",

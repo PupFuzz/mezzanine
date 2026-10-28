@@ -138,6 +138,7 @@ class Projector
             'tool.end' => $this->toolEnd($e),
             'subagent.spawn' => $this->subagentSpawn($e),
             'subagent.stop' => $this->subagentStop($e),
+            'subagent.activity' => $this->subagentActivity($e),
             'compaction.start' => $this->compactionStart($e),
             'compaction.end' => $this->compactionEnd($e),
             'context.sample' => $this->contextSample($e),
@@ -882,6 +883,59 @@ class Projector
         }
 
         $this->touchCallApplied($call->id, $e);
+    }
+
+    /**
+     * D1 § 6.15 — the reporter's word on whether a dispatch's subagent is working or idle
+     * (card#12451, `docs/design/FLEET-STATE.md § 6.5`'s projection of `subagent.activity`).
+     *
+     * ONE FACT ON ONE ROW, AND NOTHING ELSE. It writes `calls.activity_state` on the OPEN DISPATCH row
+     * the event names and moves no seat state: `subagent.activity` is not in § 3.2's activity set
+     * (`StateRecompute::ACTIVITY_KINDS`), feeds no rule-4 input and no badge, and a seat whose every
+     * intern is idle is still `working` while a dispatch call is open (§ 4.8).
+     *
+     * ITS OWN COMPARATOR, NEVER THE ROW'S `applied_*` TRIPLE. The open, the close and the title join
+     * all move `applied_*`, so guarding on it would let a later spawn refuse an activity event, and
+     * would let an earlier activity overwrite a later one whenever the close moved the triple in
+     * between. So the `activity_*` triple guards this group alone, and the row's high-water mark is
+     * left where the call's own events put it: this event never touches `applied_*`, so it cannot
+     * refuse them either (AT-D2-32's seventh seat, both directions).
+     *
+     * AN EVENT NAMING NO OPEN DISPATCH PROJECTS NOTHING — a closed call, an ordinary call, or a
+     * `call_id` no row holds. It is stored, it is on the drill-down's timeline, and no row is
+     * created: an upsert here would put an intern on the floor that no `tool.start` or spawn ever
+     * opened (AT-D2-32's fourth RED). No counter is minted for it — the lost `tool.start` it implies
+     * is already `seq_gap`'s or `lossy`'s business.
+     */
+    private function subagentActivity(FoldEvent $e): void
+    {
+        $callId = $e->conforming('call_id', Wire::ULID);
+
+        if ($callId === null) {
+            return;
+        }
+
+        $state = $e->enum('activity_state', KindRegistry::KINDS['subagent.activity']['enums']['activity_state']['members']);
+        $call = $this->call($e->seatRef, $callId);
+
+        if ($state === null || $call === null || $call->closed_at !== null || ! $call->is_dispatch) {
+            return;
+        }
+
+        $held = $call->activity_event_time === null
+            ? null
+            : [$call->activity_event_time, (string) $call->activity_seq_epoch, (int) $call->activity_seq];
+
+        if (! Ordering::newer($this->tripleOf($e), $held)) {
+            return;
+        }
+
+        DB::table('calls')->where('id', $call->id)->update([
+            'activity_state' => $state,
+            'activity_event_time' => $e->eventTime,
+            'activity_seq_epoch' => $e->seqEpoch,
+            'activity_seq' => $e->seq,
+        ]);
     }
 
     // ── compaction, context ──────────────────────────────────────────────────────────────────

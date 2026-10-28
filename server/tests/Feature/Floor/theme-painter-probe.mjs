@@ -81,15 +81,17 @@ const planeOf = (id, walls, withDoc = true) => ({
     install_id: id, x: 0, y: 160, w: 1000, h: 400,
     doc: withDoc ? { asset: `theme:studio/plane:${id}`, theme: 'studio', fn: 'plane', input: { w: 1000, h: 400, seed: id, walls } } : null,
 });
+// The furniture box at the cap, read from its one declaration (`resources/floor/furniture-box.js`) — never a copy of it.
+const { FURNITURE_BOX: BOX } = await import(pathToFileURL(join(HERE, '..', '..', '..', '..', 'resources', 'floor', 'furniture-box.js')).href);
 const FURNITURE = [['chair', 'chair'], ['desk-sprite', 'desk'], ['monitor-frame', 'monitorFrame'], ['desk-props', 'deskProps'], ['side-table', 'sideTable']];
 const deskOf = (seat, i) => {
     const set = `theme:studio/desk:aimla/${seat}`;
 
     return {
         key: `aimla/${seat}`, install_id: 'aimla', seat_id: seat, placeholder: false, lighting: 'full', bubble: null, held: null,
-        box: { x: i * 440, y: 600, w: 440, h: 228 },
+        box: { x: i * BOX.width, y: 600, w: BOX.width, h: BOX.height },
         elements: FURNITURE.map(([kind, fn], k) => ({
-            kind, member: null, x: i * 440 + k * 10, y: 600, w: 50, h: 40,
+            kind, member: null, x: i * BOX.width + k * 10, y: 600, w: 50, h: 40,
             doc: { set, theme: 'studio', fn, input: fn === 'sideTable' ? { install_id: 'aimla', seat_id: seat, seats: 4 } : { install_id: 'aimla', seat_id: seat } },
         })),
     };

@@ -147,8 +147,9 @@ export function renderDrillDown(root, model) {
     put(root, '[data-panel-interns-open]', interns.listed && interns.open !== null ? String(interns.open) : null);
     put(root, '[data-panel-interns-statement]', interns.statement);
     putRows(root, '[data-panel-interns]', interns.rows.map((intern) => ({
-        data: { callId: intern.call_id, untitled: intern.untitled, type: intern.type },
-        text: joined([intern.label, intern.type, intern.untitled ? intern.call_id : null, intern.started_at]),
+        data: { callId: intern.call_id, untitled: intern.untitled, type: intern.type, activity: intern.activity },
+        // card#12451: `working` or `idle` beside the intern's label — the one place the value is spelled out.
+        text: joined([intern.label, intern.type, intern.activity, intern.untitled ? intern.call_id : null, intern.started_at]),
     })));
 
     const activity = model.activity;

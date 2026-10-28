@@ -1,5 +1,5 @@
 /**
- * The ANIMATION SET — `docs/design/FLOOR.md § 6.2`'s CLOSED SET, A1 through A20, as the renderer's
+ * The ANIMATION SET — `docs/design/FLOOR.md § 6.2`'s CLOSED SET, every row of its table, as the renderer's
  * own artifact, and the one place a § 6.2 row is started. Appendix B row 6, card#7341 step 6.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -30,7 +30,7 @@
  * cannot read FLOOR.md, so a restatement a consumer cannot follow a pointer to is DELETED or
  * GUARDED, and the test above re-derives every cell from the document on each run.
  *
- * ⛔ WHICH HELD ROWS LOOP IS DERIVED FROM THOSE CELLS AND IS NOT A SECOND LIST. § 11's *two states
+ * ⛔ WHICH HELD ROWS LOOP IS DERIVED FROM THOSE CELLS AND IS NOT A SECOND LIST. § 11's *states
  * with no motion by design* are the held rows whose Animation cell names no loop, so `loops()`
  * below reads the cell this file already holds under guard rather than a hand-kept pair of ids
  * that would be free to disagree with it — which is what `desk/desk-render.js` held until this
@@ -58,10 +58,10 @@ export const ANIMATION_SET = Object.freeze({
     A4: Object.freeze({ class: 'held', animation: 'think — leaning back, watching the monitor, with the same blink and wiggle, 4 fps loop', reduced: 'a thinking pose, static' }),
     A5: Object.freeze({ class: 'edge', animation: "tool-swap — the monitor's glyph changes, one 250 ms cross-fade", reduced: 'the glyph changes with no fade' }),
     A6: Object.freeze({ class: 'held', animation: "idle — the character is slumped asleep on the desk, the monitor off, with three z's standing above its head, still, and lit in turn — a pulse of brightness that starts at the character and travels up through z1, z2, z3 (ZZz), phase-offset per seat, 4 fps loop", reduced: "the static slumped pose, the three z's drawn once, every one at full brightness, and still" }),
-    A7: Object.freeze({ class: 'held', animation: 'attention — a raised hand and a marker above the desk, 4 fps loop', reduced: 'a static raised-hand pose and the marker' }),
+    A7: Object.freeze({ class: 'held', animation: "attention — a raised hand and a marker above the desk, its glow lit and dark in turn by the sleeper's pulse of brightness, phase-offset per seat, 4 fps loop", reduced: 'a static raised-hand pose and the marker, at full brightness' }),
     A8: Object.freeze({ class: 'held', animation: 'stalled — head in hands, static, with the api_error_type line', reduced: 'identical' }),
-    A9: Object.freeze({ class: 'held', animation: 'unknown — a question marker over an occupied desk', reduced: 'identical' }),
-    A10: Object.freeze({ class: 'edge', animation: 'intern-arrive / intern-leave — a stool at the side table fills or empties', reduced: 'the stool is simply occupied or empty' }),
+    A9: Object.freeze({ class: 'held', animation: "unknown — a question marker over an occupied desk, its glow lit and dark in turn by the sleeper's pulse of brightness, phase-offset per seat, 4 fps loop", reduced: 'the question marker drawn once, at full brightness, and still' }),
+    A10: Object.freeze({ class: 'edge', animation: "intern-arrive / intern-leave — the elevator's leaves open on the intern standing in the cab, it steps out and walks its routed path to its stool, sits, and its laptop fades in; or its laptop fades out, it stands, walks its routed path to the elevator, waits there for up to a minute, the leaves open, it steps in and they close over it", reduced: 'the stool is simply occupied or empty' }),
     A11: Object.freeze({ class: 'edge', animation: 'badge-raise — a badge appears with a single 250 ms fade', reduced: 'the badge is simply present' }),
     A12: Object.freeze({ class: 'edge', animation: 'gauge — the context bar eases to its new value over 250 ms', reduced: 'the bar jumps to the value' }),
     A13: Object.freeze({ class: 'edge', animation: 'retire — the character stands, leaves, and the desk is removed from the floor (§ 3.5, card#9078: it used to clear the desk and stamp a plate)', reduced: 'the desk is simply absent on the next render' }),
@@ -76,6 +76,8 @@ export const ANIMATION_SET = Object.freeze({
     A20: Object.freeze({ class: 'edge', animation: 'broadcast-pulse — one ring expands from the origin desk across the floor', reduced: 'the origin desk carries a static broadcast marker for that post' }),
     A21: Object.freeze({ class: 'retired', animation: "call-marker — retired before it was built (card#12239's design round 1); never drawn", reduced: 'none — a retired row has no form' }),
     A22: Object.freeze({ class: 'edge', animation: "portal-bird — the bird carries the envelope from a resolved origin desk on this floor to the floor's bird portal and leaves, or arrives from the portal at a resolved destination desk on this floor, for a post whose other end resolves to a desk on another floor of this building", reduced: "a still envelope at the portal or at the desk for the moving form's duration, then gone" }),
+    A23: Object.freeze({ class: 'held', animation: 'intern-type — each working intern at the side table types at the laptop on its lap, swaying gently left and right, 4 fps loop', reduced: 'each working intern sits still with its laptop on its lap' }),
+    A24: Object.freeze({ class: 'edge', animation: "laptop — an intern's laptop fades in or out over the laptop fade", reduced: 'the laptop is simply present or absent' }),
 });
 
 /**
@@ -87,7 +89,8 @@ export const ANIMATION_SET = Object.freeze({
  *                   as its Driving fact (`edges()`, Appendix B step 10).
  *   · `heartbeat` — an `edge` row fired by each `feed.heartbeat` RECEIVED.
  *   · `desk`      — a `held` render `desk/desk-render.js` selects for the state it draws, entered
- *                   and left by `held()` against the object that holds it.
+ *                   and left by `held()` against the object that holds it: the desk's own (`held`), and
+ *                   A23, its side table's (`interns_held`, card#12448), under the derived key `INTERNS`.
  *   · `slot`      — A16, whose trigger is § 3.3's displacement and therefore a fact about the
  *                   SLOT FUNCTION, Appendix B row 7's artifact. `displaced()` is the entry that
  *                   row calls, and `floor/floor-screen.js` calls it (card#7341 step 7); the log row
@@ -125,7 +128,34 @@ export const FIRED_BY = Object.freeze({
     A20: 'coord',
     A21: 'retired',
     A22: 'coord',
+    A23: 'desk',
+    A24: 'delta',
 });
+
+/**
+ * THE SIDE TABLE's EPISODE KEY (card#12448; FLOOR.md § 13's decision on A23): `<seat key>~interns`. `held()` holds
+ * one open episode per key, and the desk's own key is taken by the one held row its `render_state` selects, so A23 —
+ * held beside it, by the same seat object — is entered and left under this derived key. It is a key of the episode
+ * map alone and never of the held seats: `held()` strips it to find the seat whose `state_version` is the entry's
+ * `cause` and whose object the exit reads. The row it writes carries the seat's own `install_id` and `seat_id`.
+ */
+export const INTERNS = '~interns';
+
+/**
+ * The held renders one desk carries — the desk's own, then its side table's — each with its episode key's suffix, the
+ * desk model's member it is, and the member of `held()`'s `conditions` entry that is its prior.
+ */
+const HOLDS = Object.freeze([
+    Object.freeze({ suffix: '', field: 'held', prior: 'prior' }),
+    Object.freeze({ suffix: INTERNS, field: 'interns_held', prior: 'prior_interns' }),
+]);
+
+/** A key of the episode map → its seat's key and the hold it is the episode of. */
+function holdOf(key) {
+    const interns = key.endsWith(INTERNS);
+
+    return [interns ? key.slice(0, -INTERNS.length) : key, HOLDS[interns ? 1 : 0]];
+}
 
 /**
  * § 6.1 rule 2 and § 12's *Loop frame rate* row: **fixed** for every claim-bearing loop on the
@@ -191,12 +221,12 @@ export function animationForm(animationId, reduce = false) {
 /**
  * § 6.4's *identical* — the reduced-motion form of a row that has NO motion to replace, which is
  * the whole of what makes a held row static by design. § 11 names that population in words (*the
- * two states with no motion by design*) and this is where it is DERIVED: a row whose reduced form
+ * states with no motion by design*, its count in a word) and this is where it is DERIVED: a row whose reduced form
  * is its ordinary one is a row nothing was removed from.
  *
  * ⛔ IT IS NOT `loops()`, AND THE DIFFERENCE WAS A18 (retired by card#12239). `loops()` answers *does this row run frames at
  * § 12's rate*, which decides a frame interval; this answers *does this row move at all*. Every
- * held row of § 6.2 was a 4 fps loop or one of those two states until A18 — a line whose reduced
+ * held row of § 6.2 was a 4 fps loop or one of those states until A18 — a line whose reduced
  * cell says *drawn static … no travel along it*, so its ordinary form DOES move and it runs no
  * frame loop. Deriving motion from `loops()` drew that line with `motion: false`, which is § 11's
  * claim that one of its reasons applied when none did (card#7341 step 7, the step that first
@@ -251,6 +281,14 @@ const toolName = (seat) => seat.action?.tool_name ?? null;
 const callIds = (seat) => new Set((Array.isArray(seat.subagents) ? seat.subagents : []).map((s) => s.call_id));
 const badges = (seat) => new Set(Array.isArray(seat.badges) ? seat.badges : []);
 const sameMembers = (a, b) => a.size === b.size && [...a].every((v) => b.has(v));
+/** card#12451: `call_id → activity_state` over a seat's `subagents[]`. */
+const activities = (seat) => new Map((Array.isArray(seat.subagents) ? seat.subagents : []).map((s) => [s.call_id, s.activity_state]));
+/** § 6.2 A24's condition: an element present on BOTH sides changes its `activity_state`. */
+const flipped = (before, after) => {
+    const [a, b] = [activities(before), activities(after)];
+
+    return [...b].some(([id, state]) => a.has(id) && a.get(id) !== state);
+};
 const gained = (a, b) => [...b].some((v) => !a.has(v));
 
 /**
@@ -302,6 +340,8 @@ const DELTA_ROWS = Object.freeze([
     Object.freeze({ id: 'A11', changed: 'badges', fires: (before, after) => gained(badges(before), badges(after)) }),
     Object.freeze({ id: 'A12', changed: 'context', fires: () => true }),
     Object.freeze({ id: 'A13', changed: 'render_state', fires: retiring }),
+    // card#12451: a delta that only flips an element's state gains and loses no `call_id`, so it fires A24 and never A10.
+    Object.freeze({ id: 'A24', changed: 'subagents', fires: flipped }),
 ]);
 
 /** The `changed[]` member each delta-driven row is gated on — read by the closed-set assertions. */
@@ -328,7 +368,7 @@ export const STILLED = 'stilled';
  * while the held rendering is a function of the object, row 5's condition, the stilled floor and
  * reduced motion; `null` is the log's mark of a row with nothing behind it, which AT-D3-1 reds on.
  */
-function exitCause(k, open, seats, removed, conditions) {
+function exitCause(k, open, seats, removed, conditions, hold) {
     if (!seats.has(k)) {
         // (1): the removal's answer — the retired object's version, which both announcements carry
         // (§ 3.5), or § 2.3 row 4's `snapshot`, which the protocol journals as the removal's cause.
@@ -336,7 +376,7 @@ function exitCause(k, open, seats, removed, conditions) {
     }
 
     const version = seats.get(k).state_version;
-    const { prior, unconfirmed, stilled } = conditions.get(k);
+    const { unconfirmed, stilled, [hold.prior]: prior } = conditions.get(k);
 
     if (prior === null || prior.animation_id !== open.animation_id) {
         return version; // (2a)
@@ -516,6 +556,9 @@ export class AnimationSet {
      * § 6.2's `held` class over one frame: enter every desk's held render against the object that
      * holds it, and leave the ones whose hold has ended with the `cause` § 11's precedence gives.
      *
+     * ⛔ A DESK CARRIES TWO HOLDS (card#12448): its own, and its side table's A23 under `INTERNS`'s
+     * derived key, each entered and left by the same rule below against the same seat object.
+     *
      * ⛔ AN EPISODE IS ONE CONTINUOUS RUN OF ONE RENDER ON ONE SEAT (§ 11). A change of the held
      * row OR of whether motion is drawn leaves one episode and enters another, because two rows
      * identical in every field cannot say which states a desk held or for how long — AT-D3-5 reads
@@ -532,43 +575,50 @@ export class AnimationSet {
      * @param {Map<string, *>} removed key → the `cause` the protocol journalled when it REMOVED the
      *        seat (`seat.removed`, Appendix B step 10): a removed seat has no held object left to read
      *        a version off, so the version that ended its hold travels with the removal instead
-     * @param {Map<string, {prior: ?object, unconfirmed: boolean, stilled: boolean}>} conditions
+     * @param {Map<string, {prior: ?object, prior_interns: ?object, unconfirmed: boolean, stilled: boolean}>} conditions
      *        key → what § 11's precedence compares with the render before this one, for each seat
      *        held now: `prior`, the held rendering the object held NOW draws with every client
      *        condition at the value it had in the previous render (the desk floor derives it, because
-     *        the desk render is its module and not this one); `unconfirmed`, whether § 2.3 row 5's
+     *        the desk render is its module and not this one), and `prior_interns` the same for its side
+     *        table's (A23, card#12448); `unconfirmed`, whether § 2.3 row 5's
      *        condition holds in this render and did not in the previous one; and `stilled`, the same
      *        for § 9 F6's stilled floor
      */
     held(desks, seats, at, removed, conditions) {
-        for (const [k, open] of this.#episodes) {
-            const want = desks[k]?.held ?? null;
+        for (const [key, open] of this.#episodes) {
+            const [k, hold] = holdOf(key);
+            const want = desks[k]?.[hold.field] ?? null;
 
             if (want === null || want.animation_id !== open.animation_id || want.motion !== open.motion) {
-                this.#log.leaveHeld(open.episode_id, { cause: exitCause(k, open, seats, removed, conditions), at });
-                this.#episodes.delete(k);
+                this.#log.leaveHeld(open.episode_id, { cause: exitCause(k, open, seats, removed, conditions, hold), at });
+                this.#episodes.delete(key);
             }
         }
 
         for (const [k, desk] of Object.entries(desks)) {
-            if (desk.held === null || this.#episodes.has(k)) {
-                continue;
+            for (const hold of HOLDS) {
+                const rendering = desk[hold.field] ?? null;
+                const key = k + hold.suffix;
+
+                if (rendering === null || this.#episodes.has(key)) {
+                    continue;
+                }
+
+                const episodeId = this.#log.enterHeld({
+                    animation_id: rendering.animation_id,
+                    cause: seats.get(k).state_version,
+                    install_id: desk.install_id,
+                    seat_id: desk.seat_id,
+                    motion: rendering.motion,
+                    at,
+                });
+
+                this.#episodes.set(key, {
+                    episode_id: episodeId,
+                    animation_id: rendering.animation_id,
+                    motion: rendering.motion,
+                });
             }
-
-            const episodeId = this.#log.enterHeld({
-                animation_id: desk.held.animation_id,
-                cause: seats.get(k).state_version,
-                install_id: desk.install_id,
-                seat_id: desk.seat_id,
-                motion: desk.held.motion,
-                at,
-            });
-
-            this.#episodes.set(k, {
-                episode_id: episodeId,
-                animation_id: desk.held.animation_id,
-                motion: desk.held.motion,
-            });
         }
     }
 }

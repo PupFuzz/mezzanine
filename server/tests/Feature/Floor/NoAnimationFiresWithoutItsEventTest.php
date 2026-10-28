@@ -47,10 +47,12 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
 
     /**
      * ⛔ THE INSTRUMENT HALF, AND ITS GREEN IS A TWO-SIDED CONTROL. `fx-snapshot-4` alone, then
-     * silence: without the *exactly four rows* half a log-writing bug that recorded nothing would
-     * pass, and without the *no `edge` row* half a client that fired arrivals on the snapshot would.
+     * silence: without the *exactly the predicted rows* half a log-writing bug that recorded nothing would
+     * pass, and without the *no `edge` row* half a client that fired arrivals on the snapshot would. Each
+     * seat predicts its desk's row, and — where its `subagents[]` is not empty — its side table's beside it
+     * (§ 6.2 A23, card#12448), keyed `<seat>~interns` here as the set keys its episode.
      */
-    public function test_a_snapshot_then_silence_logs_the_four_held_entries_section_62_predicts_and_no_more(): void
+    public function test_a_snapshot_then_silence_logs_the_held_entries_section_62_predicts_and_no_more(): void
     {
         $result = $this->silentSnapshotRun();
         $rows = $result['animation_log'];
@@ -64,8 +66,16 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
         // own object holds, in the order the floor entered them.
         $expected = [];
 
+        $side = $this->documentSideTableRow();
+
+        $this->assertNotNull($side, '§ 6.2 carries no side-table row in the form this check reads');
+
         foreach ($this->snapshotSeats('instrument') as $key => $seat) {
             $expected[$key] = $this->heldRowFor($seat);
+
+            if ($this->sideTableRowFor($seat) !== null) {
+                $expected["{$key}~interns"] = $side;
+            }
         }
 
         $this->assertNotContains(null, $expected,
@@ -75,7 +85,7 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
 
         foreach ($rows as $row) {
             $this->assertSame('entered', $row['phase']);
-            $actual["{$row['install_id']}/{$row['seat_id']}"] = $row['animation_id'];
+            $actual["{$row['install_id']}/{$row['seat_id']}".($row['animation_id'] === $side ? '~interns' : '')] = $row['animation_id'];
         }
 
         ksort($expected);
@@ -83,7 +93,7 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
 
         $this->assertSame($expected, $actual,
             'the held renders the log carries are not the § 6.2 rows the delivered states predict');
-        $this->assertCount(count($expected), $rows, 'the log carries a fifth row over four delivered states');
+        $this->assertCount(count($expected), $rows, 'the log carries a row beyond the ones the delivered states predict');
 
         // Each with that seat's own `state_version` as its cause, and each opening a DISTINCT episode.
         foreach ($rows as $row) {
@@ -212,11 +222,11 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
     public function test_red_an_ambient_breathing_loop_started_through_the_log_fails_both_ways(): void
     {
         $breathing = $this->plantedSet(
-            "        for (const [k, desk] of Object.entries(desks)) {\n            if (desk.held === null || this.#episodes.has(k)) {",
+            "        for (const [k, desk] of Object.entries(desks)) {\n            for (const hold of HOLDS) {",
             "        for (const [k, desk] of Object.entries(desks)) {\n            this.#log.enterHeld({\n"
             ."                animation_id: 'breathe', cause: null, install_id: desk.install_id,\n"
             ."                seat_id: desk.seat_id, motion: true, at,\n            });\n\n"
-            .'            if (desk.held === null || this.#episodes.has(k)) {',
+            .'            for (const hold of HOLDS) {',
         );
 
         $rows = $this->deskRun('ages', $breathing)['animation_log'];
@@ -258,16 +268,16 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
         // therefore reach for the quantity: a *busier seats type faster* edit divides the row's fixed
         // interval by this desk's own `open_calls`.
         $faster = $this->plantedDesk(
-            'held: heldId === null ? null : heldRendering(heldId, permitted, options.reduce === true),',
+            'const held = heldId === null ? null : heldRendering(heldId, permitted, options.reduce === true);',
             <<<'JS'
-            held: heldId === null ? null : (() => {
+            const held = heldId === null ? null : (() => {
                     const drawn = heldRendering(heldId, permitted, options.reduce === true);
 
                     return drawn.frame_interval_ms === null ? drawn : {
                         ...drawn,
                         frame_interval_ms: drawn.frame_interval_ms / Math.max(1, seat.open_calls ?? 1),
                     };
-                })(),
+                })();
             JS,
         );
 
@@ -331,7 +341,8 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
         $conditions = $this->documentHoldConditions();
 
         foreach ($result['animation_log'] as $row) {
-            if ($row['class'] !== 'held' || $row['phase'] !== 'entered' || ! isset($conditions[$row['animation_id']])) {
+            if ($row['class'] !== 'held' || $row['phase'] !== 'entered'
+                || (! isset($conditions[$row['animation_id']]) && $row['animation_id'] !== $this->documentSideTableRow())) {
                 continue;
             }
 
@@ -341,7 +352,7 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
             $this->assertNotNull($object,
                 "[{$run}] {$row['animation_id']}'s entered row names `state_version` {$row['cause']}, which this client never held for {$key}");
 
-            $holds = $this->heldRowFor($object);
+            $holds = $this->predictedRowFor($object, $row['animation_id']);
 
             $this->assertSame($row['animation_id'], $holds,
                 "[{$run}] {$row['animation_id']} was entered against an object § 6.2 says holds "
@@ -457,6 +468,9 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
     {
         $key = "{$entry['install_id']}/{$entry['seat_id']}";
         $held = $render['held'][$key] ?? null;
+        // A side-table episode (§ 6.2 A23, card#12448) is its own hold: its row is the side table's, which the
+        // desk's empty chair does not take away, and its `motion` is the frame's `interns_held`.
+        $sideTable = $entry['animation_id'] === $this->documentSideTableRow();
 
         if ($held === null) {
             // (1): the removal's answer, § 2.3 row 4's `snapshot` or the retired object's version.
@@ -481,7 +495,7 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
 
         // (2a): the object held now, drawn with row 5's condition at its previous value — a
         // missing seat draws the empty chair, which holds no row.
-        $row = $was['missing'] ? null : $this->heldRowFor($object);
+        $row = $sideTable ? $this->sideTableRowFor($object) : ($was['missing'] ? null : $this->heldRowFor($object));
 
         if ($changed && $row !== $entry['animation_id']) {
             return ['(2a)', $version];
@@ -494,7 +508,7 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
         if ($changed) {
             $motion = match (true) {
                 $previous['stilled'] => false,
-                $render['stilled'] === $previous['stilled'] => $render['frame']['desks'][$key]['held']['motion'] ?? null,
+                $render['stilled'] === $previous['stilled'] => $render['frame']['desks'][$key][$sideTable ? 'interns_held' : 'held']['motion'] ?? null,
                 default => $this->fail("[{$run}] a render stilled the floor and applied an object on {$key} that keeps its row — "
                     .'(2b) asks for a drawing no record carries'),
             };

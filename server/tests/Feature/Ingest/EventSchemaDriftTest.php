@@ -512,7 +512,7 @@ class EventSchemaDriftTest extends TestCase
         return $deferred;
     }
 
-    public function test_the_registry_knows_exactly_the_fourteen_kinds_section_6_declares(): void
+    public function test_the_registry_knows_exactly_the_kinds_section_6_declares(): void
     {
         $doc = $this->doc();
 
@@ -524,10 +524,15 @@ class EventSchemaDriftTest extends TestCase
         $registered = array_keys(KindRegistry::KINDS);
         sort($registered);
 
+        $this->assertNotEmpty($documented, 'no `### 6.N` kind heading parsed; the comparison would pass vacuously');
         $this->assertSame($documented, $registered);
 
-        // § 6's own count, stated in § 4.3: "the 14 currently-defined kinds are listed in § 6".
-        $this->assertCount(14, $registered);
+        // § 4.3's own count, READ from the sentence that states it rather than pinned here (card#12451: a
+        // figure in this test went stale at the fifteenth kind), so the registry, the headings and § 4.3
+        // agree three ways. `tools/design/verify-floor.py`'s G2 holds the same sentence to the headings.
+        $this->assertSame(1, preg_match('/the (\d+) currently-defined kinds are listed in/', $doc, $m),
+            '§ 4.3 no longer states how many kinds § 6 defines');
+        $this->assertCount((int) $m[1], $registered);
     }
 
     private function doc(): string

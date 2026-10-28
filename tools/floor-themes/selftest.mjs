@@ -148,8 +148,10 @@ async function open(t) {
     const scene = await load(join(t.js, 'floor', 'scene.js'));
     const floorLayout = await load(join(t.js, 'floor', 'floor-layout.js'));
     const tileset = await load(join(t.js, 'floor', 'tileset.js'));
+    const deskLayout = await load(join(t.js, 'floor', 'desk-layout.js'));
+    const characters = await load(join(t.root, 'resources', 'characters', 'index.js'));
 
-    return { t, registry, themes, missing, scene, floorLayout, tileset };
+    return { t, registry, themes, missing, scene, floorLayout, tileset, deskLayout, characters };
 }
 
 /**
@@ -589,7 +591,58 @@ function printScreenInk(o) {
     }
 }
 
-const LEGS = { totality, wellFormedness, closure, api, drift, band: bandLeg, surfaces: surfacesLeg };
+/**
+ * The side table's seat row against the interns' (card#12444): a theme is handed the seat count and nothing else
+ * (§ 10.6 item 2), so a theme that seats the table states the row itself — `TABLE` in its module — and this holds that
+ * declaration to the layout's own: the table's rect and the stool row `deskRects()` lays at the furniture box, the
+ * seat's inset from the table, its width, the pitch, a row's count and the rows' step (`stoolSlots()`), so an intern
+ * always stands over its seat.
+ */
+async function seatsLeg(o) {
+    const defects = [];
+    const { FURNITURE_BOX } = await load(join(REPO, 'resources', 'floor', 'furniture-box.js'));
+    const ch = { w: o.characters.SCENE_W, h: o.characters.SCENE_H };
+    const R = o.deskLayout.deskRects(FURNITURE_BOX, ch);
+    const slots = o.deskLayout.stoolSlots(FURNITURE_BOX, ch);
+    const perRow = slots.filter((slot) => slot.row === 0).length;
+    const want = { w: R['side-table'].w, h: R['side-table'].h, seat_x: slots[0].x - R['side-table'].x, seat_pitch: slots[1].x - slots[0].x,
+        seat_w: slots[0].w, per_row: perRow, row_dy: slots[0].y - slots[perRow].y };
+    // the table's foot line is the front row's
+    if (R['side-table'].y + R['side-table'].h !== slots[0].y + slots[0].h) {
+        defects.push(`the side table's foot line (${R['side-table'].y + R['side-table'].h}) is not the front row's (${slots[0].y + slots[0].h})`);
+    }
+
+    for (const name of Object.keys(o.themes)) {
+        const src = readFileSync(join(o.t.themes, name, 'theme.js'), 'utf8');
+        const m = src.match(/^const TABLE = Object\.freeze\(\{ ([^}]*) \}\);$/m);
+
+        if (m === null) {
+            defects.push(`${name}: declares no TABLE row in the form this leg reads`);
+            continue;
+        }
+
+        const got = Object.fromEntries(m[1].split(', ').map((kv) => kv.split(': ')).map(([k, v]) => [k, Number(v)]));
+
+        for (const [k, v] of Object.entries(want)) {
+            if (got[k] !== v) {
+                defects.push(`${name}: TABLE.${k} is ${got[k]} and the layout's is ${v}`);
+            }
+        }
+
+        // an intern sits ON its cushion (card#12444's couch): the cushion's top ends where the interns' feet stand, the
+        // chibi frame's foot line above its bottom in floor px — read off the tree, to the twentieth of a pixel
+        const cv = o.characters.CHIBI_VIEWBOX;
+        const lift = (cv.y + cv.h - o.characters.FOOT) * want.seat_w / o.characters.SEAT_RECT.w;
+
+        if (!(Math.abs(got.foot_lift - lift) <= 0.05)) {
+            defects.push(`${name}: TABLE.foot_lift is ${got.foot_lift} and the interns' feet stand ${lift.toFixed(2)} px over the foot line`);
+        }
+    }
+
+    return defects;
+}
+
+const LEGS = { totality, wellFormedness, closure, api, drift, band: bandLeg, surfaces: surfacesLeg, seats: seatsLeg };
 
 // ── the shipped tree ───────────────────────────────────────────────────────────────────────────────
 const real = await open(shipped);
@@ -652,6 +705,14 @@ const PLANTS = [
         (t) => edit(THEME(t), "floor: Object.freeze({ boards: '#d9c7a5' }),", "floor: Object.freeze({ boards: '#8f8070' }),")],
     ['the floor too dark for the facts\' ink: the chip tool\'s ink gate', 'surfaces', "--check fails over the surfaces: check: --scene-ink holds",
         (t) => edit(THEME(t), "floor: Object.freeze({ boards: '#d9c7a5' }),", "floor: Object.freeze({ boards: '#8f8070' }),")],
+    ['the seat row drifts from the interns\': the theme\'s pitch left at card#11058\'s', 'seats', 'TABLE.seat_pitch is 24 and the layout\'s is 41',
+        (t) => edit(THEME(t), 'seat_pitch: 41,', 'seat_pitch: 24,')],
+    ['the interns move and the seats do not: the layout\'s rows a step further apart', 'seats', 'TABLE.row_dy is 56 and the layout\'s is 60',
+        (t) => edit(join(t.js, 'floor', 'desk-layout.js'), 'export const STOOL_ROW_GAP = 0;', 'export const STOOL_ROW_GAP = 4;')],
+    ['the interns spread and the seats do not: the layout\'s pitch a pixel wider', 'seats', 'TABLE.seat_pitch is 41 and the layout\'s is 42',
+        (t) => edit(join(t.js, 'floor', 'desk-layout.js'), 'export const STOOL_PITCH = 41;', 'export const STOOL_PITCH = 42;')],
+    ['the couch\'s cushion under the interns\' feet: its top at the foot line', 'seats', 'TABLE.foot_lift is 0 and the interns\' feet stand',
+        (t) => edit(THEME(t), 'row_dy: 56, foot_lift: 1.3 });', 'row_dy: 56, foot_lift: 0 });')],
     ['a draw that is not the key\'s: Math.random() for one seeded choice', 'totality', 'is not one document per input',
         (t) => edit(THEME(t), "const c = pick(deskKey(installId, seatId), 'theme:chair', PALETTE.chair.colours);", 'const c = PALETTE.chair.colours[Math.floor(Math.random() * PALETTE.chair.colours.length)];')],
 ];

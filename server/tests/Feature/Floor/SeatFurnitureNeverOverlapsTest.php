@@ -214,9 +214,9 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
     public function test_red_the_stool_rects(): void
     {
         foreach ([
-            'the pitch narrower than the sprite' => ['const STOOL_PITCH = 24;', 'const STOOL_PITCH = 16;', 'meets the desk\'s stool'],
+            'the pitch narrower than the sprite' => ['    const pitch = STOOL_PITCH;', '    const pitch = 16;', 'meets the desk\'s stool'],
             'the intern keyed by its place' => ['key: internKey(desk.seat_id, stool.call_id),', 'key: internKey(desk.seat_id, `intern${i}`),', 'is keyed'],
-            'the sprite drawn at the glyph\'s size' => ['const STOOL_W = 20;', 'const STOOL_W = 8;', 'not the art contract\'s 20 × 32'],
+            'the sprite drawn at the glyph\'s size' => ['export const STOOL_W = 35;', 'export const STOOL_W = 8;', 'not the art contract\'s'],
         ] as $what => [$from, $to, $says]) {
             $defects = $this->boundDefects(self::CAP, $this->mutatedModules(['../floor/desk-layout.js', $from, $to]));
 
@@ -545,9 +545,23 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
     }
 
     /**
-     * (e)'s stool rects (card#11058 PR-C): each intern is drawn as a sprite in its own 20 × 32 rect — the
-     * size `docs/design/FLOOR.md` § 10.4's art-contract bullet (*The desk's art contract*) and § 8's
-     * first row (*one intern per open subagent*) state — keyed
+     * The intern's rect as § 8's first row states it — *its foot on its W × H rect's floor line* — read from the
+     * document, so the layout's `STOOL_W` × `STOOL_H` is held to the art contract rather than to a copy here.
+     *
+     * @return array{0: int, 1: int}
+     */
+    private function artContractStool(): array
+    {
+        $this->assertSame(1, preg_match('/^\| one intern per open subagent .*? its foot on its (\d+) × (\d+) rect\'s floor line/m', $this->floorMd(), $m),
+            '§ 8\'s first row states no intern rect in the form this check reads');
+
+        return [(int) $m[1], (int) $m[2]];
+    }
+
+    /**
+     * (e)'s stool rects (card#11058 PR-C): each intern is drawn as a sprite in its own stool rect — the
+     * size `docs/design/FLOOR.md` § 8's first row (*one intern per open subagent*) states, read from it
+     * (`artContractStool()`; 35 × 56 since card#12444) — keyed
      * `seat~<call_id>` by the intern the wire put at that place (Q3), on one row in the wire's order, no two
      * meeting and none meeting another FACT element of its desk — the art it stands in front of (the side table)
      * is painted first, which is FLOOR.md § 10.6's rule 2 and AT-D3-25's to hold. These runs fail no art, so every intern is the
@@ -559,15 +573,27 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
      */
     private function stoolRectDefects(array $desk, array $seat): array
     {
+        $this->artContractStool();
+
         $defects = [];
+        // Read in SLOT order (each element's `index`): the layout emits the interns in paint order — the back row first —
+        // which the painter probe holds (card#12444).
         $stools = $this->elementsOf($desk, 'stool');
+        usort($stools, static fn (array $a, array $b): int => $a['index'] <=> $b['index']);
+
+        // card#12450: slot `i` is the call a fresh replace seats there — the array in `started_at` ascending order, then
+        // `call_id` by code unit (`desk/intern-slots.js`'s rebuild), never the call at array index `i`.
+        $bySlot = $seat['subagents'];
+        usort($bySlot, static fn (array $a, array $b): int => [$a['started_at'], $a['call_id']] <=> [$b['started_at'], $b['call_id']]);
 
         foreach ($stools as $i => $e) {
-            $call = $seat['subagents'][$i]['call_id'] ?? null;
+            $call = $bySlot[$i]['call_id'] ?? null;
             $at = "{$desk['key']}'s intern {$i}";
 
-            if ([$e['w'], $e['h']] !== [20, 32]) {
-                $defects[] = "{$at} is drawn {$e['w']} × {$e['h']}, not the art contract's 20 × 32";
+            [$w, $h] = $this->artContractStool();
+
+            if ([$e['w'], $e['h']] !== [$w, $h]) {
+                $defects[] = "{$at} is drawn {$e['w']} × {$e['h']}, not the art contract's {$w} × {$h}";
             }
 
             if ($e['call_id'] !== $call || $e['key'] !== "{$seat['seat_id']}~{$call}") {
@@ -578,8 +604,15 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
                 $defects[] = "{$at} is drawn as the fallback glyph on a run that failed no art";
             }
 
-            if ($i > 0 && ($e['y'] !== $stools[0]['y'] || $e['x'] <= $stools[$i - 1]['x'])) {
-                $defects[] = "{$at} is off the row, or out of the wire's order";
+            // card#12444's ruling D: two rows, row-major — the front row left to right, then the row behind it, each row
+            // as long as the front one
+            $perRow = count(array_filter($stools, static fn (array $s): bool => $s['y'] === $stools[0]['y']));
+            $prev = $stools[$i - 1] ?? null;
+
+            if ($prev !== null && ($i % $perRow === 0
+                ? ! ($e['y'] < $prev['y'] && $e['x'] === $stools[0]['x'])
+                : ! ($e['y'] === $prev['y'] && $e['x'] > $prev['x']))) {
+                $defects[] = "{$at} is off its row, or out of the wire's row-major order";
             }
 
             foreach ($desk['elements'] as $other) {

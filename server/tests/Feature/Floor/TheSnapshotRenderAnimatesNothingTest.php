@@ -77,7 +77,7 @@ class TheSnapshotRenderAnimatesNothingTest extends TestCase
                 $object = $this->objectAtVersion($run, $key, $row['cause']);
 
                 $this->assertNotNull($object, "[{$run}] {$key}'s entry names a version no REST body carried");
-                $this->assertSame($this->heldRowFor($object), $row['animation_id'],
+                $this->assertSame($this->predictedRowFor($object, $row['animation_id']), $row['animation_id'],
                     "[{$run}] {$key} entered a row § 6.2 does not predict for the object that was delivered");
             }
         }

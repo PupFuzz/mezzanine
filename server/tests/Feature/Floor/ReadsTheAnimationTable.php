@@ -234,6 +234,46 @@ trait ReadsTheAnimationTable
     }
 
     /**
+     * § 6.2's SIDE-TABLE row (A23, card#12448) — the one `held` row whose Where cell is the side table, or
+     * `null` where the table holds none, or more than one, or one whose condition is not the published
+     * *an element reads `activity_state == "working"`* (card#12451; so a reworded condition is loud here rather than
+     * read as another).
+     */
+    protected function documentSideTableRow(?string $md = null): ?string
+    {
+        $rows = array_filter($this->documentAnimationRows($md), static fn (array $row): bool => $row['class'] === 'held'
+            && $row['where'] === 'side table' && str_contains($row['condition'], 'activity_state == "working"'));
+
+        return count($rows) === 1 ? array_key_first($rows) : null;
+    }
+
+    /**
+     * The side-table row ONE seat object holds: § 6.2's A23 where an element of its `subagents[]` reads
+     * `working` (card#12451), else `null`. It is held BESIDE the desk's own row (`heldRowFor()`), never instead of it.
+     *
+     * @param  array<string, mixed>  $seat
+     */
+    protected function sideTableRowFor(array $seat, ?string $md = null): ?string
+    {
+        // card#12451: held while an element reads `working` — § 6.2 A23's condition, read off the row above.
+        $working = array_filter(is_array($seat['subagents'] ?? null) ? $seat['subagents'] : [], static fn ($s): bool => ($s['activity_state'] ?? null) === 'working');
+
+        return $working !== [] ? $this->documentSideTableRow($md) : null;
+    }
+
+    /**
+     * The row § 6.2 predicts for the HOLD an entered row belongs to — the side table's when the row is
+     * the side-table row, else the desk's own (`heldRowFor()`) — so a predicate written for one hold per
+     * seat reads each of a desk's two holds against its own condition (card#12448).
+     *
+     * @param  array<string, mixed>  $seat
+     */
+    protected function predictedRowFor(array $seat, string $enteredId, ?string $md = null): ?string
+    {
+        return $enteredId === $this->documentSideTableRow($md) ? $this->sideTableRowFor($seat, $md) : $this->heldRowFor($seat, $md);
+    }
+
+    /**
      * § 6.2's HELD rows keyed by the `render_state` each row's own condition names, one row per
      * state: `['working' => 'A3', 'idle' => 'A6', …]`.
      *

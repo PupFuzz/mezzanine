@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Floor;
 
+use App\Floor\FurnitureBox;
 use Tests\TestCase;
 
 /**
@@ -240,7 +241,7 @@ class AnOutOfDateReporterIsMarkedOnTheDeskTest extends TestCase
         return $this->node($root, 'const { deskLayout } = await import(url("floor/desk-layout.js"));'
             .'const { deskListRow } = await import(url("desk/desk-list.js"));'
             .'const measure = (t) => ({ w: [...String(t)].length * 6, h: 12 });'
-            .'out(input.map((model) => ({ elements: deskLayout(model, { box: { width: 440, height: 228 }, measure,'
+            .'out(input.map((model) => ({ elements: deskLayout(model, { box: { width: '.FurnitureBox::current()->width.', height: '.FurnitureBox::current()->height.' }, measure,'
             .' character: { w: 18, h: 32 }, sprite: null, placeholder: false, failed: new Set() }).elements, list: deskListRow(model) })));',
             $models);
     }

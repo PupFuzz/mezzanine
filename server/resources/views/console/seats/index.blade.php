@@ -8,10 +8,17 @@
         agent, issue its seat a token there.
     </p>
 
+    <p>
+        Each seat's <strong>character</strong> is the creature it is drawn as on the floor. It is chosen once,
+        when the seat is created — one no other live seat is, while there are enough to go round — and the seat
+        keeps it for as long as it exists; retiring a seat frees its character for the next new one
+        (<code>docs/design/FLEET-STATE.md § 6.13</code>). It is not editable here.
+    </p>
+
     <table>
         <thead>
             <tr>
-                <th>Install</th><th>Seat</th><th>Render state</th><th>Link</th>
+                <th>Install</th><th>Seat</th><th>Character</th><th>Render state</th><th>Link</th>
                 <th>Last activity</th><th></th>
             </tr>
         </thead>
@@ -20,6 +27,7 @@
                 <tr>
                     <td>{{ $seat->install_id }}</td>
                     <td>{{ $seat->seat_id }}</td>
+                    <td>@include('console.seats.species', ['seat' => $seat])</td>
                     <td>{{ $seat->render_state }}</td>
                     <td>{{ $seat->link_state }}</td>
                     <td>
@@ -41,7 +49,7 @@
                     </td>
                 </tr>
             @empty
-                <tr><td colspan="6">No seat has reported to this install yet.</td></tr>
+                <tr><td colspan="7">No seat has reported to this install yet.</td></tr>
             @endforelse
         </tbody>
     </table>
@@ -64,7 +72,7 @@
     <table>
         <thead>
             <tr>
-                <th>Install</th><th>Seat</th><th>Retired</th><th>By</th><th>Reason</th>
+                <th>Install</th><th>Seat</th><th>Character</th><th>Retired</th><th>By</th><th>Reason</th>
             </tr>
         </thead>
         <tbody>
@@ -72,12 +80,13 @@
                 <tr>
                     <td>{{ $seat->install_id }}</td>
                     <td>{{ $seat->seat_id }}</td>
+                    <td>@include('console.seats.species', ['seat' => $seat])</td>
                     <td><x-utc-time :at="$seat->retired_at" /></td>
                     <td>{{ $seat->retired_by }}</td>
                     <td>{{ $seat->retired_reason }}</td>
                 </tr>
             @empty
-                <tr><td colspan="5">No seat has been retired on this install.</td></tr>
+                <tr><td colspan="6">No seat has been retired on this install.</td></tr>
             @endforelse
         </tbody>
     </table>

@@ -60,7 +60,7 @@ final class SchemaVersions
      * `ACCEPTED` alone refuses (D2 § 13 row 59 says why a refusal would hide the very seat the badge
      * exists to show).
      */
-    public const CURRENT_REPORTER_VERSION = '0.3.0';
+    public const CURRENT_REPORTER_VERSION = '0.4.0';
 
     public static function accepts(mixed $version): bool
     {

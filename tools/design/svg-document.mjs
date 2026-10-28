@@ -55,8 +55,10 @@ export const vectorDefect = (doc) => (/<image\b/.test(doc) ? 'an <image>' : /dat
 // by their control points, which lie outside the ink), so the answer is tight to a sample step and never names a
 // control point as ink. `<defs>` content is read only where a `<use>` or a `clip-path` reaches it. A path command
 // this reader does not implement is REFUSED by name rather than skipped, so a document can never under-measure
-// silently. `each(node, box)`, when given, is called with every drawn shape and its own box, so a caller can name
-// the part that reached somewhere. It exists for AT-D3-24's frame-bounds leg (card#12212): a character's ink stays inside its frame.
+// silently. `each(node, box, ancestors)`, when given, is called with every drawn shape, its own box and the elements
+// above it (a `<use>` included, then the subtree it reaches), so a caller can name the part that reached somewhere.
+// It exists for AT-D3-24's frame-bounds leg (card#12212): a character's ink stays inside its frame; the ancestors
+// for its laptop leg (card#12448), which reads a `data-part` group's ink.
 const SAMPLES = 24;
 const mul = (A, B) => [A[0] * B[0] + A[2] * B[1], A[1] * B[0] + A[3] * B[1], A[0] * B[2] + A[2] * B[3], A[1] * B[2] + A[3] * B[3], A[0] * B[4] + A[2] * B[5] + A[4], A[1] * B[4] + A[3] * B[5] + A[5]];
 const apply = (M, [x, y]) => [M[0] * x + M[2] * y + M[4], M[1] * x + M[3] * y + M[5]];
@@ -156,7 +158,7 @@ export function inkBounds(doc, each = null) {
   const cut = (b, c) => (b && c ? (b[0] > c[2] || b[2] < c[0] || b[1] > c[3] || b[3] < c[1] ? null : [Math.max(b[0], c[0]), Math.max(b[1], c[1]), Math.min(b[2], c[2]), Math.min(b[3], c[3])]) : b);
   const refOf = (v) => v?.match(/url\(#([^)]+)\)/)?.[1] ?? v?.match(/^#(.+)$/)?.[1];
   const geometryBox = (node, M) => { let b = null; for (const ch of node.children) { const p = shapePoints(ch); const Mc = mul(M, transformOf(ch.attrs.transform)); if (p) { const bb = boxOf(p, Mc, 0); b = b ? [Math.min(b[0], bb[0]), Math.min(b[1], bb[1]), Math.max(b[2], bb[2]), Math.max(b[3], bb[3])] : bb; } } return b; };
-  const walk = (node, M, clip) => {
+  const walk = (node, M, clip, up) => {
     if (SKIP.has(node.name)) return;
     const Mc = mul(M, transformOf(node.attrs.transform));
     let clipC = clip;
@@ -166,7 +168,7 @@ export function inkBounds(doc, each = null) {
       const target = byId.get(refOf(node.attrs.href ?? node.attrs['xlink:href']));
       if (!target) throw new Error('inkBounds: <use> names nothing');
       const Mu = mul(Mc, [1, 0, 0, 1, Number(node.attrs.x ?? 0), Number(node.attrs.y ?? 0)]);
-      walk(target, Mu, clipC);
+      walk(target, Mu, clipC, [...up, node]);
       return;
     }
     const pts = shapePoints(node);
@@ -176,11 +178,11 @@ export function inkBounds(doc, each = null) {
       const scale = Math.sqrt(Math.abs(Mc[0] * Mc[3] - Mc[1] * Mc[2]));
       const pad = stroked ? (Number(A['stroke-width'] ?? 1) / 2) * scale : 0;
       const b = cut(boxOf(pts, Mc, pad), clipC);
-      if (b && !(b[0] === 0 && b[1] === 0 && b[2] === 0 && b[3] === 0 && clipC && clipC[2] === 0)) { union(b); if (each) each(node, { x0: b[0], y0: b[1], x1: b[2], y1: b[3] }); }
+      if (b && !(b[0] === 0 && b[1] === 0 && b[2] === 0 && b[3] === 0 && clipC && clipC[2] === 0)) { union(b); if (each) each(node, { x0: b[0], y0: b[1], x1: b[2], y1: b[3] }, up); }
       return;
     }
-    for (const ch of node.children) walk(ch, Mc, clipC);
+    for (const ch of node.children) walk(ch, Mc, clipC, [...up, node]);
   };
-  walk(root, [1, 0, 0, 1, 0, 0], null);
+  walk(root, [1, 0, 0, 1, 0, 0], null, []);
   return box && { x0: box[0], y0: box[1], x1: box[2], y1: box[3] };
 }

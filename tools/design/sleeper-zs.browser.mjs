@@ -76,9 +76,18 @@ const Z_INK_TOOL = zColours[1], Z_FILL_TOOL = zColours[2];
 const cssLamp = readFileSync(join(ROOT, 'server', 'public', 'css', 'mezzanine.css'), 'utf8').match(/--lamp:\s*(#[0-9a-fA-F]{6})/)?.[1] ?? null;
 const treeLamp = readFileSync(join(TREE, 'creatures.js'), 'utf8').match(/const Z_LAMP = '(#[0-9a-fA-F]{6})'/)?.[1] ?? null;
 if (cssLamp === null) { console.error('FAIL — mezzanine.css declares no --lamp'); process.exit(1); }
-/** The desk's top edge as the floor hands it: `deskRects()`'s character rect is 96 tall with the desk's top 70 down it. */
-const DESK_TOP = 70 / 96;
-/** Raster px per frame unit (the sleeper's frame is 216 × 234 units; one px a unit keeps a run to a few minutes). */
+/**
+ * The desk's top edge as the floor hands it — `deskLayout()`'s `desk_top`: where `deskRects()`'s desk crosses its
+ * character rect, as a share of the rect's height, derived from the same rects at the furniture box (card#12444 moved it).
+ */
+const DESK_TOP = await (async () => {
+  const { deskRects } = await import(pathToFileURL(join(ROOT, 'server', 'public', 'js', 'floor', 'desk-layout.js')).href);
+  const { FURNITURE_BOX } = await import(pathToFileURL(join(ROOT, 'resources', 'floor', 'furniture-box.js')).href);
+  const { SCENE_W, SCENE_H } = await import(pathToFileURL(join(TREE, 'index.js')).href);
+  const r = deskRects(FURNITURE_BOX, { w: SCENE_W, h: SCENE_H });
+  return (r['desk-sprite'].y - r.character.y) / r.character.h;
+})();
+/** Raster px per frame unit (the sleeper's frame is § 12's *Character frame*; one px a unit keeps a run to a few minutes). */
 const SCALE = 1;
 /** A pixel is ink when its alpha is over this — so a z faded under about 0.16 opacity draws no ink at all. */
 const ALPHA = 40;
@@ -100,7 +109,7 @@ function boundsFromDocument() {
   const residuals = [...(overRow?.[1] ?? '').matchAll(/the `([a-z]+)` at \*\*(\d+) %\*\*/g)].map((m) => ({ species: m[1], bound: Number(m[2]) / 100 }));
   const face = md.match(/^\| \*\*Sleeper z face clearance\*\* \| \*\*(\d+)\*\* frame units from the closed eyes' ink, holding at most \*\*(\d+) %\*\* /m);
   if (face === null) throw new Error('FLOOR.md § 12 carries no *Sleeper z face clearance* row in the form this tool reads');
-  const frame = md.match(/^\| \*\*Character frame\*\* \| \*\*(\d+) × (\d+)\*\* frame units from \(\*\*(-?\d+)\*\*, \*\*(-?\d+)\*\*\)/m);
+  const frame = md.match(/^\| \*\*Character frame\*\* \| \*\*([\d.]+) × ([\d.]+)\*\* frame units from \(\*\*(-?[\d.]+)\*\*, \*\*(-?[\d.]+)\*\*\)/m);
   if (frame === null) throw new Error('FLOOR.md § 12 carries no *Character frame* row in the form this tool reads');
   const clearRow = md.match(/^\| \*\*Sleeper z clearance\*\* \| \*\*(\d+) %\*\* /m);
   if (clearRow === null) throw new Error('FLOOR.md § 12 carries no *Sleeper z clearance* row in the form this tool reads');
@@ -252,7 +261,7 @@ function zLargeFor(eyes) {
  * z's at `Z3.t0`, the midpoint and `1 - Z3.t0` along it, shrinking from `L` to `Z3.ratio * L`, the lowest box just above
  * the crown and the path ending with the highest z's box at the frame's raised top (`top`).
  */
-const Z3 = { count: 3, large: Number(arg('--z-large', 36)), ratio: Number(arg('--z-ratio', 0.5)), gap: 2, t0: 0.17, a0: Number(arg('--a0', 10)), a1: Number(arg('--a1', 108)), top: -42 };
+const Z3 = { count: 3, large: Number(arg('--z-large', 36)), ratio: Number(arg('--z-ratio', 0.5)), gap: 2, t0: 0.17, a0: Number(arg('--a0', 10)), a1: Number(arg('--a1', 108)), top: -Infinity };   // the raise is the frame's own top, § 12's *Character frame* (`VIEW.y`), not a second figure (card#12444)
 /**
  * The brightness levels 0 (dim) to 3 (full), each drawn two ways at once: the core mixed from the pale fill toward the ink by
  * `GLOW[level]` (a dimmer core), and a warm halo of the palette's `--lamp` behind the z, `HALO[level]` units wider than its

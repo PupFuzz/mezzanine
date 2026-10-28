@@ -27,11 +27,16 @@
  * a desk without the badge, is at full opacity — no `fold-lag` group on it at all. `fade.faded` / `fade.full` count
  * the desks each half read, and `fade.opacity` is the layout's figure.
  *
- * ⛔ THE INTERNS (card#11058 PR-C): each is its sprite in a clipping viewport — static, the character
- * tree's chibi frame drawn under the intern key `seat~<call_id>`, which this probe writes from the
- * published rule rather than importing it — inside a dashed edge when untitled; or, where its art
+ * ⛔ THE INTERNS (card#11058 PR-C, card#12448): each is its sprite in a clipping viewport — the character
+ * tree's `internFrames()` drawn under the intern key `seat~<call_id>`, which this probe writes from the
+ * published rule rather than importing it: its laptop still where § 6.2 A23 draws no motion, and its
+ * typing loop from its own offset where it does, which since card#12451 is exactly while its desk's side-table
+ * rendering moves — held by the interns' own `activity_state` and moving while the desk's treatment permits it (written
+ * here from that rule, never read off the model's `interns_held` or the stool's element) — inside a dashed edge when
+ * untitled; or, where its art
  * is reported failed, § 9 F14's glyph in its rect, that stool alone. The reorder check paints each seat
- * of two or more interns in the wire's order and reversed and reads each intern's sprite by its place;
+ * of two or more interns twice, with distinct `started_at`s ascending then descending — which reverses the places a fresh
+ * replace seats them at (card#12450's slots) — and reads each intern's sprite by its place;
  * the cache check paints the floor again with no intern, then again with them, and holds the painter to
  * having dropped every intern the first paint drew (the tree is asked again) and nothing else.
  *
@@ -40,10 +45,17 @@
  * here, not imported — `xMidYMax meet`; no canvas is made for a character; a desk of every
  * `(pose, glyph)` pair the desk model asks a character for draws frame 0 of the tree's frames for that pose over
  * its desk's top edge (§ 10.4's frame contract — the tree here a stub, so the sleeper's own drawing is
- * `sleeper-probe.mjs`'s); a held loop steps its pose's own frames, every one in order, and leaves an intern
- * still; no frame list is copied onto an element;
+ * `sleeper-probe.mjs`'s); a held loop steps its pose's own frames, every one in order, and steps an intern
+ * through its own typing loop exactly while the stool's A23 rendering moves; no frame list is copied onto an element;
  * and AT-D3-19's two causes — a tree that failed to load, a generator that throws for one intern's key —
  * reach the painter's report, the second for that intern alone, and never throw out of the paint.
+ *
+ * ⛔ AT-D3-24's BODY LEGS (card#12443): every desk, walker and intern is drawn from the seat object's DELIVERED
+ * `character.species` — the stub names the species it was handed in every frame, and what each element is owed is
+ * written from the fixture seat's `character`, never from the element under test. The planted seats deliver a species
+ * that differs from their key's own draw, on purpose, so a painter that draws from the key is seen. A second paint
+ * after the species moved draws the new body (the frame cache is keyed on it), and a species the tree does not hold
+ * — the stub throws for it, as the tree does — is § 9 F14's placeholder for that asset alone.
  *
  * The desks are every planted seat (`desk-leaves/fx-desk-leaves-planted.json` — the bounds, the caps,
  * the badges, the nulls) confirmed, unconfirmed and as the placeholder, each placed at its own box on a
@@ -88,9 +100,13 @@ globalThis.setInterval = (fn) => { loops.push(fn); return loops.length; };
 globalThis.clearInterval = () => {};
 
 const { deskModel } = await mod('desk/desk-render.js');
+// The generator's species list and draw, read from the tree itself: what the stub admits and what a key draws.
+const { SPECIES_KEYS, speciesOf } = await import(pathToFileURL(join(HERE, '..', '..', '..', '..', 'resources', 'characters', 'creatures.js')).href);
+// the tree's declared crest of a seat's drawn head (card#12444), which the page hands the scene as `crest`
+const { crestTop } = await import(pathToFileURL(join(HERE, '..', '..', '..', '..', 'resources', 'characters', 'index.js')).href);
 const { placeDesk, placeBubbles } = await mod('floor/scene.js');
 const { createPainter, measurer, STYLE } = await mod('floor/painter.js');
-const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_BAND, STOOL_PITCH, FOLD_LAG_OPACITY } = await mod('floor/desk-layout.js');
+const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_GAP, TRAIL_RADII, TRAIL_GAP, TRAIL_REACH, STOOL_FRAME, FRAME_UNITS_PER_PX, FOLD_LAG_OPACITY } = await mod('floor/desk-layout.js');
 
 /**
  * The character tree, stubbed: a frame is an SVG document naming the `(install, seat key, frame)` it was
@@ -107,8 +123,16 @@ const STUB_OFFSET = 2;
 const doc = (what) => `<svg xmlns="http://www.w3.org/2000/svg"><title>${what}</title></svg>`;
 const uri = (d) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(d)}`;
 let throwFor = null;
+/**
+ * The tree's contract for a forced species (`recipe()`, card#12443): one it does not hold is a throw; omitted, the key's
+ * own draw — which the stub names `@undefined`, so a painter that omits it draws a frame no element owes.
+ */
+const body = (species) => {
+    if (species !== undefined && !SPECIES_KEYS.includes(species)) throw new RangeError(`no species "${species}"`);
+    return String(species);
+};
 const characters = {
-    walkFrames(installId, seatId) { asked.walk.push(`${installId}/${seatId}`); return [0, 1, 2].map((p) => doc(`${installId}/${seatId}#${p}`)); },
+    walkFrames(installId, seatId, species) { asked.walk.push(`${installId}/${seatId}`); const sp = body(species); return [0, 1, 2].map((p) => doc(`${installId}/${seatId}@${sp}#${p}`)); },
     // A desk's frames for its pose — the tree → painter interface, `{ frames, loopFrom }` (§ 10.4's frame contract
     // item 4): the stub names the pose, the desk's top edge and the clear rects it was asked for in every frame, so a
     // painter that asks for another pose, or drops the edge or the clear rects, draws a frame no element owes. The
@@ -117,20 +141,41 @@ const characters = {
     // rather than the loop's, reds the held-loop leg.
     poseFrames(installId, seatId, at) {
         asked.pose.push(`${installId}/${seatId}`);
+        const sp = body(at.species);
         const loopFrom = at.pose === 'asleep' ? 1 : 0;
-        return { frames: Array.from({ length: loopFrom + 4 }, (_, i) => doc(`${installId}/${seatId}#${at.pose}@${at.deskTop}~${JSON.stringify(at.clear ?? null)}#${i}`)), loopFrom };
+        return { frames: Array.from({ length: loopFrom + 4 }, (_, i) => doc(`${installId}/${seatId}@${sp}#${at.pose}@${at.deskTop}~${JSON.stringify(at.clear ?? null)}#${i}`)), loopFrom };
     },
     loopOffset(installId, seatId, length) {
         asked.offset.push([`${installId}/${seatId}`, length]);
         return STUB_OFFSET % length;
     },
-    chibiFrame(installId, key) {
+    // An intern's frames (card#12448, § 10.4's frame contract item 3): FIVE documents with `loopFrom` 1 — its laptop
+    // still, then its typing loop of four — so an intern drawn at another document, or stepped from the still, reds.
+    // Each names the body the intern is kept off, its seat's delivered species (card#12443). The plain `chibiFrame()` —
+    // an IDLE intern's drawing, no laptop (card#12451) — is stubbed beside it under its own name, so a working intern
+    // drawn at it reds below.
+    internFrames(installId, key, seatSpecies) {
         asked.chibi.push(`${installId}/${key}`);
         if (key === throwFor) throw new Error('a planted generator defect for one key');
-        return doc(`${installId}/${key}#chibi`);
+        return { frames: Array.from({ length: 5 }, (_, i) => doc(`${installId}/${key}!${body(seatSpecies)}#intern#${i}`)), loopFrom: 1 };
+    },
+    chibiFrame(installId, key, seatSpecies) {
+        asked.chibi.push(`${installId}/${key}`);
+        return doc(`${installId}/${key}!${body(seatSpecies)}#chibi`);
     },
 };
-const internFrame = (installId, seatId, callId) => uri(doc(`${installId}/${seatId}~${callId}#chibi`));
+const internFrame = (installId, seatId, callId, seatSpecies, i = 0) => uri(doc(`${installId}/${seatId}~${callId}!${seatSpecies}#intern#${i}`));
+/**
+ * The document an intern is first painted at, from the published rule (§ 6.2 A23, card#12451) written out here and never
+ * read off the model's own `interns_held` — reading the model's answer would hold the painter to whatever the model says,
+ * so a model that typed on a stilled desk would read clean: the side table moves while an intern it draws is `working`,
+ * the desk's treatment permits motion (no lag badge, no `config_invalid` note, no unrecognised value — this probe stills
+ * no floor and reduces no motion) and the desk is not drawn dark. Moving, the loop's start plus the stub's offset into
+ * its loop of four; else the still.
+ */
+const internStart = (desk) => (desk.side_table.stools.some((s) => s.activity === 'working') && desk.lag === null
+    && desk.config_note === null && desk.unrecognised.length === 0 && desk.dark === null ? 1 + (STUB_OFFSET % 4) : 0);
+const internForms = { typing: 0, still: 0 };
 
 /**
  * The floor's theme, stubbed (FLOOR.md § 10.6, card#11046 row 22): every document names the function and the
@@ -149,7 +194,8 @@ const { harnessMeasurer } = await import('../Support/harness-measurer.mjs');
 const NOW_MS = Date.parse('2026-08-23T14:23:22.400Z');
 const PLANTED = JSON.parse(readFileSync(join(HERE, 'desk-leaves', 'fx-desk-leaves-planted.json'), 'utf8'));
 const measure = harnessMeasurer(PLANTED.measurer);
-const BOX = { width: 440, height: 228 };
+// The furniture box at the cap, read from its one declaration (`resources/floor/furniture-box.js`) — never a copy of it.
+const { FURNITURE_BOX: BOX } = await import(pathToFileURL(join(HERE, '..', '..', '..', '..', 'resources', 'floor', 'furniture-box.js')).href);
 
 // ── the desks, each at its own box on one row ─────────────────────────────────────────────────────
 const desks = [];
@@ -166,6 +212,8 @@ const failing = (seat, parity) => new Set(parity === null ? [] : seat.subagents
     .filter((_, i) => i % 2 === parity)
     .map((s) => `intern:${seat.install_id}/${seat.seat_id}~${s.call_id}`));
 const failedOf = new Map();
+// Each placed desk's model, which `internStart()` reads the treatment facts off.
+const modelOf = new Map();
 
 for (const seat of seats) {
     for (const v of [{ missing: false, placeholder: false, fails: null }, { missing: true, placeholder: false, fails: 1 }, { missing: false, placeholder: true, fails: 0 }]) {
@@ -179,9 +227,10 @@ for (const seat of seats) {
         // variants of one seat would otherwise share a bubble.
         const room = `room-${desks.length}`;
         const key = `${room}/${seat.seat_id}`;
-        const ctx = { box: BOX, measure, character: { w: 18, h: 32 }, theme: 'studio', placeholder: v.placeholder, failed: failing(seat, v.fails) };
+        const ctx = { box: BOX, measure, character: { w: 18, h: 32 }, crest: crestTop, theme: 'studio', placeholder: v.placeholder, failed: failing(seat, v.fails) };
 
         seatOf.set(key, seat);
+        modelOf.set(key, model);
         failedOf.set(key, ctx.failed);
         desks.push(placeDesk(model, key, room, null, { x: desks.length * BOX.width, y: 0 }, ctx, { overflow: false, slot: null, object_id: null }));
     }
@@ -338,24 +387,26 @@ const loopFromOf = (pose) => (pose === 'asleep' ? 1 : 0);
 const startOf = (e) => (e.animation?.motion === true && e.animation.frame_interval_ms !== null ? loopFromOf(e.pose) + (STUB_OFFSET % 4) : 0);
 
 /** A stub frame of a desk's character, as the painter is owed to draw it (the stub's naming, above). */
-const poseFrame = (key, e, i) => uri(doc(`${key}#${e.pose}@${deskTop(key, e)}~${JSON.stringify(e.clear ?? null)}#${i}`));
+const poseFrame = (key, e, i, species = seatOf.get(key).character.species) => uri(doc(`${key}@${species}#${e.pose}@${deskTop(key, e)}~${JSON.stringify(e.clear ?? null)}#${i}`));
 
 /**
  * The art viewport a desk's character is owed — written here from the published rule (§ 10.4 item 4, § 12's *Sleeper
- * frame*), never read off the element under test: a sleeper's is its OVERDRAW, the character's rect widened by half its
- * width each side and raised to one pixel under the bubble's band; every other character's is its element's rect.
+ * frame*), never read off the element under test: every character's is its OVERDRAW, the character's rect widened by
+ * half its width each side and raised by the thought trail's height at its normal reach (a pixel under where the bubble
+ * sits on its character, card#12444).
  */
 function characterPort(key, e) {
     // § 10.4's frame contract (card#12187, card#12259): every character's viewport is its overdraw — the rect widened
-    // by half its width each side and raised to one pixel under the bubble's band — whatever its pose.
-    const top = byKey.get(key).box.y + BUBBLE_BAND + 1;
+    // by half its width each side and raised by the trail's height, `TRAIL_RADII` and `TRAIL_GAP` — whatever its pose.
+    const top = e.y - TRAIL_RADII.reduce((h, r) => h + 2 * r + TRAIL_GAP, 0);
 
     return { x: e.x - e.w / 2, y: top, w: 2 * e.w, h: e.y + e.h - top };
 }
 
-/** § 10.4's frame contract item 3 (card#12259): an intern's viewport is its stool's rect widened to the row's pitch. */
+/** § 10.4's frame contract item 3 (card#12259): an intern's viewport is its stool's rect widened to `STOOL_FRAME`, centred. */
 function internPort(e) {
-    return { x: e.x - (STOOL_PITCH - e.w) / 2, y: e.y, w: STOOL_PITCH, h: e.h };
+    // `STOOL_FRAME` across, centred on the rect — what holds every chibi's ink; a neighbour's may overlap it (card#12444)
+    return { x: e.x - (STOOL_FRAME - e.w) / 2, y: e.y, w: STOOL_FRAME, h: e.h };
 }
 
 /**
@@ -417,7 +468,10 @@ function owed(e, seat, failed, key) {
             // (§ 10.4's frame contract item 3, card#12259) — the tree's chibi frame under `seat~<call_id>`; an untitled
             // intern with a dashed edge at its own rect.
             const look = e.untitled ? ['intern', 'untitled'] : ['intern'];
-            const want = internFrame(seat.install_id, seat.seat_id, e.call_id);
+            const start = internStart(modelOf.get(key));
+            const want = internFrame(seat.install_id, seat.seat_id, e.call_id, seat.character.species, start);
+
+            internForms[start === 0 ? 'still' : 'typing']++;
             const port = internPort(e);
             const sprite = ['svg', port, (n) => {
                 const img = n.children[0];
@@ -599,6 +653,18 @@ for (const g of layer?.children ?? []) {
         defects.push(`${key}: plate order — facts are painted and no facts plate is`);
     }
 
+    // ── the interns' PAINT ORDER (card#12444): neighbouring frames may overlap, so the back row is painted before the
+    // front and each row left to right, which keeps every drawing whole wherever two frames meet ──
+    const stoolsPainted = desk.elements.filter((e) => e.kind === 'stool');
+
+    stoolsPainted.forEach((s, i) => {
+        const p = stoolsPainted[i - 1];
+
+        if (p !== undefined && !(s.y > p.y + EPS || (same(s.y, p.y) && s.x > p.x + EPS))) {
+            defects.push(`${key}: the interns are not painted back row first, each row left to right — intern ${s.index} after ${p.index}`);
+        }
+    });
+
     if (desk.bubble !== null) {
         const bb = desk.bubble;
         const trailAt = next;
@@ -622,6 +688,15 @@ for (const g of layer?.children ?? []) {
         // cloud's ink inside the bubble's own rect, which is what AT-D3-20 (b) and rule 5 read as the bubble ──
         const circles = nodes.slice(trailAt).filter((n) => n.name === 'circle').map((n) => ({ x: num(n, 'cx'), y: num(n, 'cy'), r: num(n, 'r') }));
         const head = desk.elements.find((e) => e.kind === 'character') ?? null;
+        // the character's DRAWN head, from the tree's own declaration (card#12444's seat ruling); a species the tree does
+        // not hold is drawn as the placeholder, and its trail starts at the rect's top
+        const crestY = head === null ? null : head.y + (() => {
+            try {
+                return crestTop(desk.install_id, desk.seat_id, { pose: head.pose, species: head.species }) / FRAME_UNITS_PER_PX;
+            } catch {
+                return 0;
+            }
+        })();
 
         if (circles.length < 3) {
             defects.push(`${key}: the bubble's trail paints ${circles.length} circles, not at least 3`);
@@ -636,10 +711,41 @@ for (const g of layer?.children ?? []) {
                 defects.push(`${key}: the bubble's trail circle ${i} is at x ${c.x}, off the anchor ${desk.anchor_x}`);
             }
 
-            if (head !== null && c.x + c.r > head.x && head.x + head.w > c.x - c.r && c.y + c.r > head.y && head.y + head.h > c.y - c.r) {
-                defects.push(`${key}: the bubble's trail circle ${i} meets the character's rect`);
+            if (crestY !== null && c.y + c.r > crestY - EPS) {
+                defects.push(`${key}: the bubble's trail circle ${i} meets the character's drawn head`);
             }
         });
+
+        // ── the trail REACHES the cloud and the bubble is SET ON ITS CHARACTER (card#12444, the operator's ruling of
+        // 2026-10-27, *"anchor the bubble to the character. If necessary, add another bubble to extend the height"*):
+        // the last circle stands no further under the cloud's rect than the widest gap the trail leaves between two of
+        // its circles or over the creature; and a bubble no pass parted sits `TRAIL_REACH` above the character's top, or
+        // `BUBBLE_GAP` above the facts plate where its width reaches over the plate and that is higher ──
+        if (circles.length > 0 && head !== null) {
+            const gaps = circles.map((c, i) => (i === 0 ? crestY : circles[i - 1].y - circles[i - 1].r) - (c.y + c.r));
+            const top = circles[circles.length - 1];
+            const under = top.y - top.r - (bb.y + bb.h);
+
+            // the trail STARTS at the drawn head: the first circle stands over the crest no further than the trail's
+            // circles stand apart (card#12444's seat ruling — a trail from the frame's top stops short of a low head)
+            if (gaps.length > 1 && gaps[0] > Math.max(...gaps.slice(1)) + EPS) {
+                defects.push(`${key}: the bubble's trail starts ${gaps[0].toFixed(1)} px over the character's drawn head, its circles ${Math.max(...gaps.slice(1)).toFixed(1)} px apart — it does not reach the head`);
+            }
+
+            if (!(under >= -EPS && under <= Math.max(...gaps) + EPS)) {
+                defects.push(`${key}: the bubble's trail stops ${under.toFixed(1)} px under the cloud, its circles ${Math.max(...gaps).toFixed(1)} px apart at most — it does not reach the bubble`);
+            }
+
+            if (bb.lifted === 0) {
+                const plate = desk.elements.find((e) => e.kind === 'facts-plate') ?? null;
+                const over = plate !== null && bb.x < plate.x + plate.w && plate.x < bb.x + bb.w;
+                const want = Math.min(head.y - TRAIL_REACH, over ? plate.y - BUBBLE_GAP : Infinity);
+
+                if (!same(bb.y + bb.h, want)) {
+                    defects.push(`${key}: the bubble's bottom is at ${(bb.y + bb.h).toFixed(1)}, not set on its character at ${want.toFixed(1)}`);
+                }
+            }
+        }
 
         const cloud = nodes.slice(trailAt).find((n) => n.name === 'path');
         const ink = cloud === undefined ? null : rectOf(cloud);
@@ -743,9 +849,10 @@ for (const desk of desks) {
 }
 
 // ── Q3: the intern key is `call_id` — an intern keeps its sprite when `subagents[]` reorders ──────
-// Each planted seat with two or more interns is painted twice, its `subagents[]` in the wire's order and
-// reversed, with no art failed. The sprite at row place `i` belongs to the intern the input put there,
-// so each intern's sprite is read by its PLACE — never by its href — and must be the same in both. Each
+// Each planted seat with two or more interns is painted twice, with distinct `started_at`s ascending and then descending
+// by array place — which reverses the places a fresh replace seats them at (card#12450: oldest at slot 0) — with no art failed. The
+// sprite at slot `s` belongs to the intern the published rule seats there, so each intern's sprite is read by its
+// PLACE — never by its href — and must be the same in both. Each
 // paint is a FRESH painter — another page load, or another browser — because one painter's frame cache
 // (keyed by the asset) would hand back the first paint's sprite and hide a key that is not the call's.
 {
@@ -757,21 +864,30 @@ for (const desk of desks) {
         createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} }).paint({ ...scene, desks: [desk] }, { bounds: null });
 
         const g = host.children[0].children.find((n) => n.getAttribute('class') === 'desks').children[0];
+        // Slot order: the front row (the larger `y`) left to right, then the row behind it — `stoolSlots()`' row-major order.
         const sprites = g.children.filter((n) => n.name === 'svg' && classes(n.children[0]).includes('intern'))
-            .sort((a, b) => num(a, 'x') - num(b, 'x'));
+            .sort((a, b) => num(b, 'y') - num(a, 'y') || num(a, 'x') - num(b, 'x'));
+        // The published rule for a fresh replace: `started_at` ascending, then `call_id` by code unit, oldest at slot 0.
+        const bySlot = [...seat.subagents].sort((a, b) => (a.started_at < b.started_at ? -1 : a.started_at > b.started_at ? 1
+            : a.call_id < b.call_id ? -1 : a.call_id > b.call_id ? 1 : 0));
 
-        return new Map(seat.subagents.slice(0, sprites.length).map((s, i) => [s.call_id, sprites[i].children[0].getAttribute('href')]));
+        return new Map(bySlot.slice(0, sprites.length).map((s, i) => [s.call_id, sprites[i].children[0].getAttribute('href')]));
     };
 
+    // Distinct starts, ascending then descending by array place: a planted seat's interns may share one `started_at`
+    // (the cap plants do), and a reversal of equal starts reverses nothing — the places would not move at all.
+    const at = (i) => new Date(Date.parse('2026-08-23T14:23:00.000Z') + i).toISOString();
+
     for (const seat of seats.filter((x) => x.subagents.length >= 2)) {
-        const before = spritesByCall(seat);
-        const after = spritesByCall({ ...seat, subagents: [...seat.subagents].reverse() });
+        const n = seat.subagents.length;
+        const before = spritesByCall({ ...seat, subagents: seat.subagents.map((s, i) => ({ ...s, started_at: at(i) })) });
+        const after = spritesByCall({ ...seat, subagents: seat.subagents.map((s, i) => ({ ...s, started_at: at(n - 1 - i) })) });
 
         for (const [call, href] of before) {
             interns.swapped++;
 
             if (after.get(call) !== href) {
-                defects.push(`${seat.seat_id}: the intern ${call} drew «${href}» in the wire's order and «${after.get(call)}» reversed — `
+                defects.push(`${seat.seat_id}: the intern ${call} drew «${href}» at its place and «${after.get(call)}» at its reversed place — `
                     + 'its sprite is keyed by its place in the row, not by its call (Q3)');
             }
         }
@@ -844,14 +960,18 @@ for (const p of owedPoses) {
 }
 
 // ── § 6.2's held loop steps a moving character through its own pose's held loop — every frame of it, as many as the
-// tree drew, from the loop's start (`loopFrom`, § 10.4 item 4) and never another drawing's — and leaves an intern still.
-// Read twice: a desk whose pose's loop is the whole list (`loopFrom` 0) with an intern beside it, and a sleeper, whose
+// tree drew, from the loop's start (`loopFrom`, § 10.4 item 4) and never another drawing's — and an intern through its
+// own typing loop exactly while its stool's A23 rendering moves (card#12448). Read three times: a desk whose pose's
+// loop is the whole list (`loopFrom` 0) with a typing intern beside it; the same desk with its stool's rendering still
+// — the intern's motion is the stool's own (since card#12451 its interns' own `activity_state`) and never the desk's — and a sleeper, whose
 // still stands ahead of its loop (`loopFrom` 1) and never steps ──
-function heldLoop(desk, withIntern) {
+function heldLoop(desk, withIntern, internTypes = false) {
+    const go = { motion: true, frame_interval_ms: 250 };
     const moving = {
         ...desk,
-        held: { ...(desk.held ?? {}), motion: true, frame_interval_ms: 250 },
-        elements: desk.elements.map((e) => (e.kind === 'character' ? { ...e, animation: { motion: true, frame_interval_ms: 250 } } : e)),
+        held: { ...(desk.held ?? {}), ...go },
+        elements: desk.elements.map((e) => (e.kind === 'character' ? { ...e, animation: go }
+            : e.kind === 'stool' ? { ...e, animation: internTypes ? go : { motion: false, frame_interval_ms: null } } : e)),
     };
 
     loops.length = 0;
@@ -873,6 +993,7 @@ function heldLoop(desk, withIntern) {
     } else {
         const frame = (i) => poseFrame(desk.key, pose, i);
         const seen = [];
+        const internSeen = [];
         const start = character.getAttribute('href');
         // § 6.2's per-seat loop phase (card#12187): the moving loop starts at the seat's offset into the LOOP of four
         // and steps on from it — documents `from + ((tick + offset) % 4)`, never the still ahead of the loop.
@@ -881,6 +1002,7 @@ function heldLoop(desk, withIntern) {
         for (let i = 0; i < 8; i++) {
             loops[0]();
             seen.push(character.getAttribute('href'));
+            internSeen.push(intern?.getAttribute('href'));
         }
 
         if (start !== frame(from + (STUB_OFFSET % 4))) {
@@ -895,8 +1017,16 @@ function heldLoop(desk, withIntern) {
             defects.push(`the held loop did not step the moving ${pose.pose} character through its loop's four frames in order from its offset — it drew ${seen.map((h) => decodeURIComponent(h).match(/#(\d+)<\/title>/)?.[1] ?? '?').join(', ')}, not documents ${owedSteps.join(', ')}`);
         }
 
-        if (withIntern && intern.getAttribute('href') !== internBefore) {
-            defects.push('the held loop stepped an intern — an intern stands still (§ 8)');
+        if (withIntern) {
+            // the stool whose intern the leg read — the first painted, whose key its document names
+            const stool = moving.elements.find((e) => e.kind === 'stool' && decodeURIComponent(internBefore).includes(`${e.install_id}/${e.key}!`));
+            const iframe = (i) => internFrame(stool.install_id, ...stool.key.split('~'), stool.seat_species, i);
+            const owedIntern = internTypes ? [1, 2, 3, 4, 5, 6, 7, 8].map((i) => 1 + ((i + STUB_OFFSET) % 4)) : [0, 0, 0, 0, 0, 0, 0, 0];
+            const firstIntern = internTypes ? 1 + (STUB_OFFSET % 4) : 0;
+
+            if (internBefore !== iframe(firstIntern) || internSeen.join('|') !== owedIntern.map(iframe).join('|')) {
+                defects.push(`with its stool's A23 rendering ${internTypes ? 'moving' : 'still'}, the intern was painted at «${decodeURIComponent(internBefore).match(/#intern#\d+/)?.[0] ?? '?'}» and stepped through ${internSeen.map((h) => decodeURIComponent(h).match(/#intern#(\d+)/)?.[1] ?? '?').join(', ')}, not document ${firstIntern} then ${owedIntern.join(', ')}`);
+            }
         }
     }
 }
@@ -908,7 +1038,8 @@ function heldLoop(desk, withIntern) {
     if (typist === undefined || sleeper === undefined) {
         defects.push(`the planted desks hold no ${typist === undefined ? 'moving desk with an intern' : 'sleeper'} — the held-loop leg reads nothing`);
     } else {
-        heldLoop(typist, true);
+        heldLoop(typist, true, true);
+        heldLoop(typist, true, false);
         heldLoop(sleeper, false);
     }
 }
@@ -940,6 +1071,8 @@ function walkOf(n) {
         ],
         size: { w: 54, h: 96 }, frame: { w: 108, h: 117 },
         elapsed_frames: 0, elapsed_ms: 0, started_at: 5000,
+        // card#12443: the walker is the desk's character, in the seat's delivered body.
+        species: 'otter',
     };
     let perf = 100000;
     const realPerformance = globalThis.performance;
@@ -960,7 +1093,7 @@ function walkOf(n) {
     const imageIn = (n) => (n === undefined ? undefined : walkOf(n).find((m) => m.name === 'image' && classes(m).includes('character')));
     const floorImage = imageIn(floorEl);
     const cabImage = imageIn(cabEl);
-    const phase = (i) => uri(doc(`walk-room/walker#${i}`));
+    const phase = (i) => uri(doc(`walk-room/walker@otter#${i}`));
     const frameOf = (h) => decodeURIComponent(String(h)).match(/#(\d+)<\/title>/)?.[1] ?? '?';
 
     walker_.painted = floorEl !== undefined;
@@ -1147,4 +1280,51 @@ function walkOf(n) {
     }
 }
 
-console.log(JSON.stringify({ desks: desks.length, painted, bubbles, interns, fade, poses: [...poses].sort(), walker: walker_, defects }));
+// ── AT-D3-24's body legs (card#12443): a desk is drawn in the species its seat object DELIVERS. The frame legs above
+// already hold every desk's image to its fixture seat's `character.species` and every intern's to that seat's; this
+// block holds the fixture to delivering species apart from its keys' own draws (or those legs could not tell the two
+// apart), the painter's cache to the species, and an unheld species to § 9 F14 ──
+const body_ = { apart: 0, recached: false, unheld: false };
+{
+    const same = seats.filter((s) => s.character.species === speciesOf(`${s.install_id}/${s.seat_id}`));
+
+    body_.apart = seats.length - same.length;
+
+    if (seats.length === 0 || same.length > 0) {
+        defects.push(`body: ${same.length} planted seat(s) deliver their key's own draw (e.g. ${same.slice(0, 2).map((s) => s.seat_id).join(', ')}) — a painter drawing from the key would pass the frame legs over them`);
+    }
+
+    const desk = desks.find((d) => d.elements.some((e) => e.kind === 'character'));
+    const element = desk.elements.find((e) => e.kind === 'character');
+    const moved = SPECIES_KEYS.find((sp) => sp !== element.species);
+    const reborn = { ...desk, elements: desk.elements.map((e) => (e.kind === 'character' ? { ...e, species: moved } : e)) };
+    const one = createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} });
+    const characterHref = () => walkOf(host.children[0]).find((n) => n.name === 'image' && classes(n).includes('character'))?.getAttribute('href');
+
+    one.paint({ ...scene, desks: [desk] }, { bounds: null });
+    one.paint({ ...scene, desks: [reborn] }, { bounds: null });
+    body_.recached = characterHref() === poseFrame(desk.key, element, startOf(element), moved);
+
+    if (!body_.recached) {
+        defects.push(`body: after ${desk.key}'s delivered species moved to ${moved}, one painter still drew «${decodeURIComponent(String(characterHref())).match(/@[a-z-]+#/)?.[0] ?? '?'}» — its frames are not cached by species`);
+    }
+
+    const reported = [];
+    const unheld = { ...desk, elements: desk.elements.map((e) => (e.kind === 'character' ? { ...e, species: 'no-such-species' } : e)) };
+
+    let threw = null;
+
+    try {
+        createPainter({ characters, themes: { studio: theme }, failed: (ids) => reported.push(...ids), select() {} }).paint({ ...scene, desks: [unheld] }, { bounds: null });
+    } catch (e) {
+        threw = e;
+    }
+
+    body_.unheld = threw === null && characterHref() === undefined && reported.length === 1 && reported[0] === element.asset;
+
+    if (!body_.unheld) {
+        defects.push(`body: a delivered species the tree does not hold ${threw ? `threw out of the paint (${threw.message})` : `drew ${characterHref() === undefined ? 'no image' : 'an image'} and reported ${JSON.stringify(reported)}`} — § 9 F14 is that asset's placeholder alone, never another body`);
+    }
+}
+
+console.log(JSON.stringify({ desks: desks.length, painted, bubbles, interns, intern_forms: internForms, fade, poses: [...poses].sort(), walker: walker_, body: body_, defects }));
