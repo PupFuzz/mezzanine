@@ -942,10 +942,16 @@ and the seat not appearing in that site's store, which is the install document's
 per site. [§ 6.14](#614-reporterheartbeat) states the member accordingly, and the alternative that
 would close it — an identity probe — is rejected below with its cost.
 
-**The installer's writer, `write-config.js`, gains two modes and loses one shape.** It is embedded in
-`fleet-reporter/INSTALL-LINUX.md` Step 2 and today does one thing: take the token off the issue
-command's stdout (or from the carried `FR_TOKEN_FILE`), write a single-site config with `wx`, refuse
-a file that exists. Both token routes keep the property that matters — **the token never reaches a
+**The installer's writer, `write-config.js`, gains two modes and loses one shape.** When card#12180
+designed this it was embedded in `fleet-reporter/INSTALL-LINUX.md` Step 2 and did one thing: take the
+token off the issue command's stdout (or from the carried `FR_TOKEN_FILE`), write a single-site config
+with `wx`, refuse a file that exists. **Since card#12571 the writer is `fleet-reporter/install.js`'s
+`writeConfig`**: each mode below is one of its `mode` values and each `FR_*` input one of its options,
+which `install.js` sets from its own command line rather than from the environment (AT-28 Case P drives
+it under the `FR_*` names through the suite's driver), and it has modes this card did not design —
+`grep -n 'const WRITE_MODES' fleet-reporter/install.js` prints them. Which command performs each act —
+a first install, a rotation, adding or removing a site — is `fleet-reporter/INSTALL.md`'s, not this
+subsection's. Both token routes keep the property that matters — **the token never reaches a
 terminal, an argv, a shell history or a log** — and both are kept unchanged; what changes:
 
 - **It writes the multi-site form, always.** A fresh install writes `sites: [{ name, ingest_url,
@@ -974,8 +980,8 @@ terminal, an argv, a shell history or a log** — and both are kept unchanged; w
   carries and nothing of any value; the existing tokens are copied inside the process and never
   printed, and the new one takes the token route's existing redaction.
 - **`FR_MODE=set-token` replaces one site's token and nothing else**, and exists because the
-  install document already requires rotation (`fleet-reporter/INSTALL-LINUX.md` Step 2, *Rotation*,
-  and [§ 3.3](#33-authentication-and-the-identity-binding-rule)'s order) and nothing credential-safe
+  install document already requires rotation (`fleet-reporter/INSTALL.md` § *Rotating a site's token*;
+  Step 2's *Rotation* in the runbook this card amended, and [§ 3.3](#33-authentication-and-the-identity-binding-rule)'s order) and nothing credential-safe
   could perform it on a multi-site file: the fresh pipeline refuses an existing file, `add-site`
   refuses a duplicate name and URL, the issue command stores a hash and prints a new plaintext
   (`server/app/Console/Commands/IssueIngestToken.php`), so the config still holds the refused value
@@ -988,6 +994,8 @@ terminal, an argv, a shell history or a log** — and both are kept unchanged; w
   secrets), replaces that element's `token`, and takes the same temp-file, `loadConfig`, rename path;
   it prints the site names and `token replaced: <name>`. The rotation the install document states is
   then one order with the refusable step first: issue on the site, `set-token`, the flusher's restart
+  (since card#12571 the middle two are one command, `node install.js --token-file <path>`, which writes
+  the token by this mode and then restarts the flusher)
   (issuing revokes nothing, so the old token stays valid until the revoke — [§ 3.3](#33-authentication-and-the-identity-binding-rule)'s
   overlap — and the restart is not a race), then the old prefix's revoke — **the revoke after the restart**, because a running flusher still presents the
   old token until it restarts, and a revoked one is a `401` that stops its lane
@@ -997,9 +1005,13 @@ terminal, an argv, a shell history or a log** — and both are kept unchanged; w
 - **Removing a site is a filtered rewrite of the one key**, by the `node -e` pattern Step 3 already
   uses to change `descriptors` — read, drop the element whose `name` matches, write with the mode
   kept — given in the install document as a command; a hand edit in an editor is also fine, since it
-  exposes nothing, and `selftest` names a file it breaks. No writer mode is added for it.
+  exposes nothing, and `selftest` names a file it breaks. No writer mode is added for it on this card;
+  card#12571 added one, `remove-site`, which `node install.js remove-site <name>` runs.
 
-**The install document changes this card owes, by step** (`fleet-reporter/INSTALL-LINUX.md`):
+**The install document changes this card owes, by step** (`fleet-reporter/INSTALL-LINUX.md`, the
+runbook as card#12180 found it; since card#12571 its successor `fleet-reporter/INSTALL.md` states
+these acts as `install.js` performs them, in *Upgrading an existing seat*, *Rotating a site's token*,
+*Adding a site* and *Removing one site*):
 **Step 1 gains the upgrade order — `install` the artifact first, then stop the flusher (Step 5's
 `stop-flusher.js`), then let cron's next minute or the next hook start it, then check that the lock
 holder started after the artifact did.** The order is load-bearing and not hygiene, and both
@@ -6285,7 +6297,8 @@ and in a token file made from it (the page's *Save token file* button, or `insta
 until the seat's file is written; `revoke`, from the CLI or that page, is permanent; and there is no re-bind (`server/app/Console/Commands` holds `issue`
 and `revoke` and no third command, and the page is not a command). A `401` is fixed by a
 token that resolves and a `403` by one issued for this seat's pair — both reach the file by the
-writer's `set-token` mode and the running flusher by Step 5's restart
+writer's `set-token` mode and the running flusher by a restart — one command since card#12571,
+`node install.js --token-file <path>` (`fleet-reporter/INSTALL.md` § *Rotating a site's token*)
 ([§ 3.1](#sites-one-seat-reporting-to-several-mezzanine-deployments), *The installer's writer*). So
 the stop is lane state, not saved state, and **under it the lane sends no batch and runs no health
 probe**: a probe could measure nothing that reaches a wire the stop has closed, a `401` probe spends
