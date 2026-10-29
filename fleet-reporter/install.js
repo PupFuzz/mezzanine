@@ -640,15 +640,17 @@ function stopFlusher(T) {
   }
   return pid;
 }
-/* When the lock holder started: field 22 of /proc/<pid>/stat on Linux; on macOS and Windows the lock's own
- * `started_at`, read after the pid check, so no `lstart` is parsed (D6 § 3.1). */
+/* When the lock holder started: the lock's own `started_at`, on every OS, read only after the pid is confirmed
+ * to run this artifact's `flusher`, so no `ps lstart` is parsed (D6 § 3.1). The flusher writes it from its own
+ * millisecond clock as it takes the lock. Linux's `/proc/<pid>/stat` start time was the source before card#12571
+ * and cannot order a start against an artifact written a second earlier: `/proc/stat`'s `btime` is whole
+ * seconds and drifts from the wall clock (0.6–2.1 s early, measured on the sandbox and on ubuntu-latest, where
+ * a no-op run then restarted a flusher cron had started 1 s after the install), and `/proc/uptime` is
+ * virtualized under a container (53 s off on the sandbox host). A value that does not parse reads as the
+ * previous build, so the restart it owes is the safe direction. */
 function holderStartMs(T, held) {
-  if (T.platform !== 'linux') return Date.parse(held.started_at);
-  const stat = fs.readFileSync(`/proc/${held.pid}/stat`, 'utf8');
-  const ticks = Number(stat.replace(/^.*\) /s, '').split(' ')[19]);
-  const btime = Number(/^btime (\d+)$/m.exec(fs.readFileSync('/proc/stat', 'utf8'))[1]);
-  const hz = Number(cp.execFileSync('getconf', ['CLK_TCK']).toString().trim());
-  return (btime + ticks / hz) * 1000;
+  const t = Date.parse(held.started_at);
+  return Number.isFinite(t) ? t : -Infinity;
 }
 /* Whether the RUNNING flusher runs the installed build: 'current', 'previous' (started before the artifact
  * was installed — the restart is owed), or 'none' (no live flusher holds the lock: its next start runs the

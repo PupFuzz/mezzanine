@@ -430,8 +430,9 @@ started pid N`, `flusher already running pid N`, or `NO FLUSHER` and exits 1.
 `holder` asks, read-only, whether the RUNNING flusher runs the installed build: `PASS: the lock holder runs the
 artifact installed at …`, or `FAIL: … before the artifact was installed …: it runs the previous build`, which owes
 the restart, or `no live flusher holds the lock`, which owes nothing (its next start runs the installed build).
-The holder's start time is field 22 of `/proc/<pid>/stat` on Linux, and the lock's own `started_at` on macOS and
-Windows, read after the pid check, so no `ps lstart` is parsed. The restart is owed when the holder runs the
+The holder's start time is the lock's own `started_at`, which the flusher writes from its own millisecond clock
+as it takes the lock, read only after the pid is confirmed to run this artifact's `flusher`, on every OS; no
+`ps lstart` is parsed. The restart is owed when the holder runs the
 previous build or the board step rewrote the config.
 
 `restart` stops the flusher **by pid, with the artifact check** — only when the pid `flusher.lock` names runs
@@ -450,10 +451,12 @@ with `holder`'s `PASS`, or refuses.
 finds no live one, and it runs the path the hook was given, so stopping first lets a hook that fires before the
 install start the **old** artifact, which then runs until stopped again. Installing first leaves only the seconds
 between the two, in which a hook already runs the new artifact beside the old flusher; a per-site count a hook
-takes then is folded past by the old flusher and lost, uncounted, and nothing else is. On Linux the `/proc` start
-time can read a second or two early — `/proc/stat`'s `btime` is whole seconds and the wall clock drifts from the
-boot clock (0.9 s and 2.1 s on the sandbox) — so a holder started within two seconds of the install can read as
-older, and stopping it again is right then too. **Measured on the sandbox seat** (2026-10-23, attempt
+takes then is folded past by the old flusher and lost, uncounted, and nothing else is. The runbook read the
+holder's start from `/proc`, which reads a second or two early — `/proc/stat`'s `btime` is whole seconds and the
+wall clock drifts from the boot clock (0.9 s and 2.1 s on the sandbox) — so a holder started within two seconds of
+the install read as older; on `ubuntu-latest` that made a no-op run restart a flusher cron had started a second
+after the install, which is why `install.js` reads the lock's `started_at` instead (card#12571; `/proc/uptime`,
+the other boot clock, is virtualized under a container and was 53 s off on the sandbox host). **Measured on the sandbox seat** (2026-10-23, attempt
 `20261023T015956Z-upgrade-12180`): run before the stop, the check printed `FAIL: the lock holder started
 2026-10-22T02:29:59.050Z, before the artifact was installed at 2026-10-23T02:00:54.912Z`; the stop printed
 `flusher pid 901 exited 5 s after SIGTERM`; cron's 02:01 start took the lock and the check printed `PASS`. The new
