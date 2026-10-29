@@ -34,7 +34,7 @@ REDs plant their own defect in a copy and need no outside plant; those say so wh
             line written while it waits fails it, alone or after older lines, and is the one it names.
   R-all-24  arrival judges only the batches accepted during the run: batches_ok unchanged over the wait is NOT
             ARRIVED; a rise, or a replaced entry counting again, arrives; an unreadable state.json is named.
-  R-lin-1   the crontab block byte-identical to the runbook's at 188e5fce for the same inputs; cron's start.
+  R-lin-1   the crontab block byte-identical to the runbook's at 188e5fce for the same inputs; cron's start; a hook's flusher holding the lock reads UNVERIFIED in ancestry, never FAIL.
   R-win-1..4, R-mac-1..4: the per-OS supervision, ACLs, quoting, roaming refusal, launchd states.
 
   R-all-13 (the crontab read predicate) is `fleet-reporter.selftest.py` § 24's, beside card#12334's history;
@@ -758,6 +758,32 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
             anc = A.node("ancestry")
             check("R-lin-1", "cron's line started the flusher (a process named cron, then flock), and the ancestry check PASSes",
                   pid is not None and "PASS: the lock holder was started by cron through flock" in anc.stdout, tail(anc))
+            # A hook's flusher holds the lock (card#12571 follow-up): its own seat, so seat A's flusher keeps its
+            # lock. A detached `node <artifact> flusher` is reparented away from flock and cron, as a hook's is, and
+            # the lock carries its real start ticks, so the holder reads LIVE. ancestry is informational: its line
+            # reads UNVERIFIED, and no line it prints starts with the verdict word FAIL.
+            H = Seat("ancestry-hook", coord=False)
+            H.node("artifact")
+            sp = subprocess.run([NODE, "-e", "const c = require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 300000)', "
+                                 "process.argv[1], 'flusher'], { detached: true, stdio: 'ignore' }); c.unref(); console.log(c.pid)", H.T["js"]],
+                                capture_output=True, text=True, timeout=60)
+            hooked = int(sp.stdout.strip())
+            STARTED.add(hooked)
+            time.sleep(0.5)
+            st = Path(f"/proc/{hooked}/stat").read_text()
+            hs = Path(H.T["spool"])
+            hs.mkdir(parents=True, exist_ok=True)
+            (hs / "flusher.lock").write_text(json.dumps({"pid": hooked, "started_at": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+                                                         "start_ticks": int(st[st.rindex(")") + 2:].split(" ")[19])}))
+            anc = H.node("ancestry")
+            try:
+                os.kill(hooked, signal.SIGTERM)
+            except OSError:
+                pass
+            lines = [l.strip() for l in anc.stdout.splitlines()]
+            check("R-lin-1", "a hook's flusher holds the lock: the informational ancestry line starts UNVERIFIED, and no line starts FAIL",
+                  anc.returncode == 0 and any(l.startswith("UNVERIFIED: the lock holder's parents include no flock and no cron") for l in lines)
+                  and not any(l.startswith("FAIL") for l in lines), tail(anc))
         if IS_WIN:
             check("R-win-1", "the supervisor step started the flusher and waited for a live lock",
                   re.search(r"flusher (started|already running) pid \d+", out) is not None, tail(r))
@@ -1320,7 +1346,8 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
             lock.write_text(json.dumps({"pid": hooked.pid, "started_at": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())}))
             r = A.node("ancestry")
             hooked.kill()
-            check("R-mac-2", "a planted lock pid launchctl does not report: FAIL", "FAIL: launchctl reports" in r.stdout, tail(r))
+            check("R-mac-2", "a planted lock pid launchctl does not report: UNVERIFIED, never FAIL (ancestry is informational)",
+                  "UNVERIFIED: launchctl reports" in r.stdout and not any(l.strip().startswith("FAIL") for l in r.stdout.splitlines()), tail(r))
             lock.write_text(json.dumps({"pid": sleeper.pid, "started_at": "2026-10-29T00:00:00.000Z"}))
             # The one stale-lock test (`lockHolder`), read through the read-only holder step: a pid that does not
             # run this artifact's flusher names no flusher, and is never signalled (the stop is R-all-10's RED).
