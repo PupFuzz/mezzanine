@@ -530,7 +530,7 @@ still reads only `events` and the durable inputs a rebuild does not destroy.
   installer DECLARES what it read, by printing the base's scheme and host and the resolved id; it
   CHECKS the read by making the one request and refusing to write on anything but a `200` with an
   integer `data.id`; what it cannot verify is that the layout still holds on the next install — so the
-  `board-identity` block **re-resolves on every run of `install.sh`, upgrades included**, rewriting the
+  `board-identity` step **re-resolves on every installer run (`fleet-reporter/install.js`), upgrades included**, rewriting the
   keys when a `200` names a different user or base, clearing them on *no credential*, and **keeping them
   with `kept` printed on any other failure** — an outage does not undeclare a seat (D1 § 3.1's subsection
   states the rule) — joining `kanban.base_url` to `api/v3` with exactly one `/`; and the

@@ -1,10 +1,14 @@
 # D6 — the one-command reporter install on Linux, Windows and macOS
 
-**Status: DESIGN, revision r5 — r3 re-derived the installer at the upstream layer after design review
+**Status: BUILT, from revision r5 — r3 re-derived the installer at the upstream layer after design review
 r2 tripped the loop's stop rule; r4 folded review r3's coverage findings; r5 folds review r4's findings
 on r4's own additions ([§ 13](#13-where-the-review-findings-stand)). The operator's rulings of
-2026-10-29 are recorded in [§ 10](#10-operator-rulings) and nothing there gates the build. Nothing in
-this document is built.** Card#12571; the macOS leg was added to the scope by the operator on
+2026-10-29 are recorded in [§ 10](#10-operator-rulings). Built in card#12571's installer change:
+`fleet-reporter/install.js`, every step and subcommand of § 3, the version guard's population of § 3.3, the
+suites of § 7 (R-srv-1 excepted), and § 11's ledger rows other than row 16. Not built there: § 4.2's *Save
+token file* button and its R-srv-1, and ledger row 16, the Seat tokens page's text — card#12571's server
+change, a separate PR. Not measured: the macOS and Windows legs on a real seat, which their CI runners and
+the first real installs measure.** Card#12571; the macOS leg was added to the scope by the operator on
 2026-10-29 (*"We will also onboard a macos claude agent. We need a working mezzanine reporter for
 claude on macos"*).
 
@@ -583,8 +587,9 @@ what it prints.
 
 ## 11. The amendment ledger
 
-Diffs to ratified documents the build lands in the same PR as the code. None is applied by this
-design PR except row 10; until the build, the owning document is the authority where the two differ.
+Diffs to ratified documents the build lands in the same PR as the code. Row 10 was applied by the design
+PR; every other row but row 16 is applied by the installer change, and row 16, which names the page's
+*Save token file* button, lands with that button in the server change.
 
 | # | Document and place | Change | Why |
 |---|---|---|---|

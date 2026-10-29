@@ -31,12 +31,31 @@ the test that tells the two apart, and the bound on the warmth.
 
 | Plane | What it does | Where it runs |
 |---|---|---|
-| **Telemetry** | `fleet-reporter`, a Claude Code hook bundle, POSTs turn/tool/session events | every agent machine (Linux + Windows) |
+| **Telemetry** | `fleet-reporter`, a Claude Code hook bundle, POSTs turn/tool/session events | every agent machine (Linux, Windows and macOS; [installing it](#install-the-reporter-on-an-agent-machine)) |
 | **Aggregation** | fleet-state store + live feed, merged with coordination and board events | this repo (D-10) |
 | **Presentation** | Laravel app serving an SVG office floor fed by Server-Sent Events, behind MFA | this repo |
 
 Telemetry is **programmatic end to end** — the harness fires the hooks and the reporter
 posts the JSON. No model is asked to describe itself.
+
+## Install the reporter on an agent machine
+
+**Ask the machine's Claude Code agent, in one sentence:** *"Install the Mezzanine reporter from
+https://github.com/PupFuzz/mezzanine."* — on Linux, Windows or macOS.
+
+**Agent: read [`fleet-reporter/AGENT-INSTALL.md`](fleet-reporter/AGENT-INSTALL.md) and follow it.** It asks the
+user one thing, where they saved or copied the seat's token file from the site's Seat tokens page, and runs:
+
+```bash
+git clone --depth 1 https://github.com/PupFuzz/mezzanine ~/.local/src/mezzanine
+node ~/.local/src/mezzanine/fleet-reporter/install.js --token-file <the path the user gave>
+```
+
+in the background, with its output to a file, because the install outlasts a shell tool's timeout. **To upgrade
+or re-check**: `git -C ~/.local/src/mezzanine pull --ff-only`, then the same command with no `--token-file`.
+**To uninstall**: the same command with `--uninstall`, then revoke the token prefixes it prints. Node 18 or later,
+no root, no `sudo`, no coordination framework. [`fleet-reporter/INSTALL.md`](fleet-reporter/INSTALL.md) is the
+reference for what each step does on each OS.
 
 ## Repo layout
 
@@ -45,7 +64,7 @@ server/                     the Laravel host + MFA-gated shell   ← exists
 server/public/js/            the pages' ES modules — floor/, lobby/, desk/, wire/ (the camera: wire/camera.js)
 resources/characters/       the creature generator (first-party, vector) ← exists
 resources/floor/            the floor's themes (first-party, vector), its tileset of kinds and the shipped default map ← exists
-fleet-reporter/             cross-platform hook bundle + Linux install runbook, script and agent guide
+fleet-reporter/             cross-platform hook bundle + its installer (install.js), reference and agent guide
 docs/                       design notes, feed schema, CHANGELOG, ATTRIBUTION
 docs/changelog/             archived releases, one file per tag (v0.2.0.md, …)
 bin/, tools/                prod deploy (bin/deploy.sh), kanban + design-doc
@@ -326,9 +345,9 @@ the middleware.
 
 **A seat is added on the Seat tokens page** (`/admin/tokens`, card#12331). It asks for your password
 again before it opens. Type the install id and the seat id — a new one creates the install and the
-seat — and the page shows the seat's reporter token once: copy it into the seat's reporter config
-(`fleet-reporter/INSTALL-LINUX.md` Step 2) right away, because only its SHA-256 is kept and the page
-cannot show it again. The seat is on the floor from that moment, as *no data yet*, until its first
+seat — and the page shows the seat's reporter token once: put it into the seat's token file for its
+installer right away (`fleet-reporter/INSTALL.md` § The token file), because only its SHA-256 is kept and the
+page cannot show it again. The seat is on the floor from that moment, as *no data yet*, until its first
 batch (`docs/design/FLOOR.md § 3.4`). A seat that already holds a token gets a second one beside it,
 which is a rotation: revoke the old prefix on the same page once the seat's config holds the new one.
 A revoked token is refused on the seat's next request, and the list keeps who revoked it and when;
@@ -336,14 +355,8 @@ a revocation takes no reason. A retired seat is refused a token; its replacement
 shell as `php artisan mezzanine:ingest-token:issue <install_id> <seat_id>` and
 `mezzanine:ingest-token:revoke <prefix>`.
 
-**To install the reporter on a Linux seat, ask the seat's Claude Code agent in one sentence**, for
-example *"Install the Mezzanine reporter from github.com/PupFuzz/mezzanine on this machine."* The agent
-follows [`fleet-reporter/AGENT-INSTALL.md`](fleet-reporter/AGENT-INSTALL.md): it asks for the site's URL
-and a seat name, runs `fleet-reporter/install.sh`, has you issue the seat's token on the Seat tokens page
-and type it at a hidden prompt, so the token never passes through the agent, and finishes when the site
-has accepted the seat's first batch and reports its build current. No coordination framework is needed
-on the seat. The script runs the blocks of `fleet-reporter/INSTALL-LINUX.md`, which is also the
-procedure by hand.
+**To install the reporter on a seat**, see [Install the reporter on an agent machine](#install-the-reporter-on-an-agent-machine):
+the seat's own Claude Code agent runs it, and the token reaches the seat as a file, never through the agent.
 
 ⛔ **There is no "delete a user", and the absence is deliberate.** An account stops working by being
 retired, and its record survives so that everything it did still resolves.
@@ -442,7 +455,7 @@ delivery for 14 days and nothing of its text.
 A desk joins a post through a **declaration in its seat's reporter config**: `protocol_agent_name` for
 posts on its install's own repository, and `roundtable_agent_name` — the identity the seat posts under on
 the fleet's cross-install repository, which must equal `cross_project.identity` in the coordination config
-`$COORD_CONFIG` names — for fleet-scope posts (`fleet-reporter/INSTALL-LINUX.md`'s config table). Only a
+`$COORD_CONFIG` names — for fleet-scope posts (a hand edit of the seat's config, `fleet-reporter/INSTALL.md`). Only a
 `checked` roundtable name joins a desk; the seat object shows the check's state.
 
 ### The idle horizon
