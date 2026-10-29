@@ -269,10 +269,7 @@ esac
         CRON_SEATS.append(self)
 
     def node(self, *args: str, stdin: "str | None" = None, timeout: int = 420, env: "dict | None" = None, install: "Path | None" = None):
-        r = subprocess.run([NODE, str(install or self.install), *args], capture_output=True, text=True, env=env or self.env,
-                           input=stdin if stdin is not None else "", timeout=timeout, cwd=str(self.root))
-        OUTPUTS.append(r.stdout + r.stderr)
-        return r
+        return run_to_files([NODE, str(install or self.install), *args], env or self.env, self.root, stdin=stdin, timeout=timeout)
 
     def settings(self) -> dict:
         return json.loads(Path(self.T["settings"]).read_text())
@@ -359,6 +356,30 @@ if args[:2] == ["kickstart", "-k"]:
     stop(); start(); sys.exit(0)
 sys.exit(64)
 '''
+
+
+class Ran:
+    def __init__(self, returncode: int, stdout: str, stderr: str) -> None:
+        self.returncode, self.stdout, self.stderr = returncode, stdout, stderr
+
+
+_ran = [0]
+
+
+def run_to_files(argv: list, env: dict, cwd: Path, stdin: "str | None" = None, timeout: int = 420) -> Ran:
+    """Run the installer AS AGENT-INSTALL.md HAS IT RUN: output to a file, never a pipe the caller drains. On
+    Windows the flusher the installer starts inherits the installer's inheritable handles, so a caller reading
+    the installer's output through a pipe would wait for that flusher to exit (windows-latest, card#12571)."""
+    _ran[0] += 1
+    base = TMP / f"run-{_ran[0]}"
+    with open(f"{base}.out", "wb") as o, open(f"{base}.err", "wb") as e:
+        if stdin is None:
+            rc = subprocess.run(argv, stdout=o, stderr=e, stdin=subprocess.DEVNULL, env=env, timeout=timeout, cwd=str(cwd)).returncode
+        else:
+            rc = subprocess.run(argv, stdout=o, stderr=e, input=stdin.encode(), env=env, timeout=timeout, cwd=str(cwd)).returncode
+    r = Ran(rc, Path(f"{base}.out").read_text(encoding="utf-8", errors="replace"), Path(f"{base}.err").read_text(encoding="utf-8", errors="replace"))
+    OUTPUTS.append(r.stdout + r.stderr)
+    return r
 
 
 def pid_alive(pid: int) -> bool:
@@ -606,8 +627,7 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
             OUTPUTS.append(r.stdout + r.stderr)
             trace = log.read_text()
         else:
-            r = subprocess.run(argv, capture_output=True, text=True, env=A.env, timeout=600, cwd=str(A.root))
-            OUTPUTS.append(r.stdout + r.stderr)
+            r = run_to_files(argv, A.env, A.root, timeout=600)
         out = r.stdout + r.stderr
         cfg = A.config() if Path(A.T["config"]).exists() else {}
         check("R-all-8", "the install exits 0, INSTALLED, selftest · health · arrival each rc=0",
@@ -1061,9 +1081,8 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         tw = token()
         INGEST.accepted.add(tw)
         d = planted_copy("rw1", ("install.js", "  child.unref();\n", "  child.kill();\n"))
-        cp_ = subprocess.run([NODE, str(d / "install.js"), "--token-file", str(write_v2(W.root / "t", tw, INGEST.url, "inst-w", "seat-w")), "--ca-file", str(INGEST.crt)],
-                             capture_output=True, text=True, env=W.env, timeout=600)
-        OUTPUTS.append(cp_.stdout + cp_.stderr)
+        cp_ = run_to_files([NODE, str(d / "install.js"), "--token-file", str(write_v2(W.root / "t", tw, INGEST.url, "inst-w", "seat-w")), "--ca-file", str(INGEST.crt)],
+                           W.env, W.root, timeout=600)
         check("R-win-1", "the supervisor step with its start disabled ends NO FLUSHER exit 1, and the arrival step never runs",
               cp_.returncode == 1 and "NO FLUSHER" in cp_.stderr and "step `arrival`" not in cp_.stdout, tail(cp_))
     if IS_WIN and A and want("R-win-3", "R-all-7"):
