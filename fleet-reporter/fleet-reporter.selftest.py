@@ -8802,8 +8802,8 @@ _status_only = writer_path(WRITER_SRC.replace(_pred, "  if (r.status === 1) retu
 cron_state(OTHER, broken="broken1")
 r5o, c5o, i5o = inst("supervisor", installer=_status_only)
 eq("RED: a read that tests the status alone, over the same crontab, installs the reporter's block over it — the "
-   "mezzanine-supervision block gone, exit 0", (0, True, True),
-   (r5o.returncode, any(c.startswith("crontab /") for c in c5o), i5o is not None and "mezzanine-supervision" not in i5o))
+   "mezzanine-supervision block gone (its own read-back then fails, after the damage)", (True, True),
+   (any(c.startswith("crontab /") for c in c5o), i5o is not None and "mezzanine-supervision" not in i5o))
 # The same predicate guards the uninstall's removal, which reads the crontab before it removes anything.
 cron_state(OTHER + "# BEGIN fleet-reporter-flusher\n# x\n# END fleet-reporter-flusher\n", broken="broken")
 (cr_home / ".config" / "fleet-reporter").mkdir(parents=True)
@@ -8826,21 +8826,22 @@ inst("supervisor")
 r8o, c8o, i8o = inst("--uninstall")
 eq("  … one holding another block keeps it, byte for byte", (0, OTHER), (r8o.returncode, i8o))
 
-# FAIL-STOP: the main install over a settings.json that is not JSON stops at the hooks step, exit 1 under the
-# tool's wrapper, and nothing after it runs: the supervisor step never calls `crontab` with a file.
+# FAIL-STOP: the main install over a settings.json whose `hooks` is not an object stops at the hooks step, exit 1
+# under the tool's wrapper, and nothing after it runs: the supervisor step never calls `crontab` with a file. (A
+# settings.json that is not JSON at all stops earlier, at `resolver`, which reads the same file.)
 cron_state(None)
 _cfg_dir = cr_home / ".config" / "fleet-reporter"
 _cfg_dir.mkdir(parents=True)
 os.chmod(_cfg_dir, 0o700)
 run_writer({"FR_CONFIG": _cfg_dir / "config.json", "FR_INSTALL": "aimla", "FR_SEAT": "aimla-pm",
             "FR_URL": "https://127.0.0.1:9/api/ingest/events", "FR_SPOOL": cr_home / "spool"}, stdin=ISSUE_OUT(P_TOK1))
-(cr_home / ".claude" / "settings.json").write_text("{ not json\n", encoding="utf-8")
+(cr_home / ".claude" / "settings.json").write_text('{"hooks": []}\n', encoding="utf-8")
 rf, cf, inf = inst("--no-board")
-eq("the main install stops at its first failed step (settings.json not JSON, at `hooks`): exit 1 under the agent "
-   "shell's `eval … &&`, the steps after it never run, and `crontab` never called with a file",
-   (1, False, False, True),
-   (rf.returncode, "step `todo-tools`" in rf.stdout or "step `supervisor`" in rf.stdout,
-    any(c.startswith("crontab /") for c in cf), "cannot read" in rf.stderr and "NOTHING WRITTEN" in rf.stderr))
+eq("the main install stops at its first failed step (settings.json's hooks not an object, at `hooks`): exit 1 "
+   "under the agent shell's `eval … &&`, the steps after it never run, and `crontab` never called with a file",
+   (1, True, False, False, True),
+   (rf.returncode, "step `hooks`" in rf.stdout, "step `todo-tools`" in rf.stdout or "step `supervisor`" in rf.stdout,
+    any(c.startswith("crontab /") for c in cf), "hooks in settings.json is not an object" in rf.stderr))
 _steps = "  hooks(ctx);\n  todoTools(ctx);\n  supervisor(ctx);"
 if _steps not in WRITER_SRC:
     raise AssertionError("plant anchor not found in install.js's install() (the RED would be vacuous)")
@@ -8851,7 +8852,7 @@ _cfg_dir.mkdir(parents=True)
 os.chmod(_cfg_dir, 0o700)
 run_writer({"FR_CONFIG": _cfg_dir / "config.json", "FR_INSTALL": "aimla", "FR_SEAT": "aimla-pm",
             "FR_URL": "https://127.0.0.1:9/api/ingest/events", "FR_SPOOL": cr_home / "spool"}, stdin=ISSUE_OUT(P_TOK1))
-(cr_home / ".claude" / "settings.json").write_text("{ not json\n", encoding="utf-8")
+(cr_home / ".claude" / "settings.json").write_text('{"hooks": []}\n', encoding="utf-8")
 rfr, cfr, infr = inst("--no-board", installer=_carry_on)
 eq("RED: an install that carries on past a failed step reaches the supervisor and writes the crontab", True,
    any(c.startswith("crontab /") for c in cfr))
@@ -8859,8 +8860,8 @@ redgreen("each installer step stops at its first failure under an agent's shell 
          "as an empty crontab (card#12334, card#12571)",
          f"a status-only read over a locked crontab -> stub calls {c5o}, the other block gone; a carry-on install -> "
          f"calls {cfr}",
-         f"install.js: unreadable -> calls {c5b} / {c5c}, untouched; no crontab -> installs, rc 0; settings.json not "
-         f"JSON -> rc {rf.returncode}, calls {cf}")
+         f"install.js: unreadable -> calls {c5b} / {c5c}, untouched; no crontab -> installs, rc 0; settings.json's hooks not "
+         f"an object -> rc {rf.returncode}, calls {cf}")
 
 # A MISSING VALUE IS NAMED, NEVER A TypeError (card#12334: an agent lost a trailing argument and got a
 # readFileSync TypeError). Each subcommand that needs a value, given none, exits 1 naming what it needs.

@@ -475,11 +475,16 @@ try:
             "a bad slug": f"token {T0}\ningest_url https://h.test/api/ingest/events\ninstall_id AB\nseat_id cd\n",
             "trailing whitespace": f"token {T0} \ningest_url https://h.test/api/ingest/events\ninstall_id ab\nseat_id cd\n",
         }
+        # BY NAME: each refusal names its own rule, so a rule disabled is a refusal that names another, and reds.
+        names = {"two tokens": "line 1 is not one", "empty": "is empty", "a carriage return": "carriage return",
+                 "a fifth key": "line 5 carries a key", "a repeated key": "token more than once",
+                 "a non-https URL": "ingest_url is not an https://", "a bad slug": "install_id fails",
+                 "trailing whitespace": "line 1 is not one"}
         r = node_eval("const m=require(process.argv[1]); const out={}; for (const [k,v] of Object.entries(JSON.parse(process.argv[2]))) { try { m.parseTokenFile(v); out[k]='ACCEPTED'; } catch (e) { out[k]=e.message; } } console.log(JSON.stringify(out));", json.dumps(bad))
         got = json.loads(r.stdout or "{}")
         check("R-all-2", "the parser refuses a two-token, empty, CR-bearing, fifth-key, repeated-key, non-https, bad-slug and "
-              "trailing-whitespace file, each by name, and no message carries the token",
-              set(got) == set(bad) and all(v != "ACCEPTED" and T0 not in v for v in got.values()), json.dumps(got, indent=1))
+              "trailing-whitespace file, each naming its own rule, and no message carries the token",
+              set(got) == set(bad) and all(names[k] in v and T0 not in v for k, v in got.items()), json.dumps(got, indent=1))
         r = node_eval("const m=require(process.argv[1]); const k=[m.siteKey('https://LOCALHOST:8443/api/ingest/events'), m.siteKey('https://localhost:8443/api/ingest/events/'), m.siteKey('https://localhost:8443/'), m.siteKey('https://localhost:8443/api/ingest/events')]; console.log(JSON.stringify(k));")
         keys = json.loads(r.stdout or "[]")
         check("R-all-9", "siteKey: a URL differing only in host case, in a trailing slash, or a bare origin keys the same site",
@@ -905,7 +910,7 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
                   and oct(real.stat().st_mode & 0o777) == "0o640", tail(r))
 
     # ── R-all-21: the render has no side effects ──────────────────────────────────────────────────────
-    if IS_LIN and want("R-all-21"):
+    if IS_LIN and want("R-all-21", "R-all-20"):
         print("== R-all-21: --render-shipping spawns nothing and writes nothing ==")
         rh, empty = TMP / "render-home", TMP / "render-path"
         rh.mkdir()
