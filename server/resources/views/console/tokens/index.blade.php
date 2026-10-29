@@ -12,7 +12,18 @@
             <p><strong>Copy it now. It is shown once</strong>, on this page only, and cannot be shown again: only its SHA-256 is stored.</p>
             <p>Prefix <code>{{ $issued->prefix }}</code></p>
             <p><code id="seat-token-plaintext" data-seat-token>{{ $issued->plaintext }}</code></p>
-            <p>Put it into the seat's reporter config — the token file the install guide names (<code>fleet-reporter/INSTALL-LINUX.md</code>, Step 2). If you did not copy it, revoke this prefix below and issue another.</p>
+            @if ($tokenFileIngestUrl !== null)
+                {{-- card#12571, D6 § 4.2: `seat-token.js` builds the file in the browser from this button's
+                     attributes and the token element's text; no request carries it. The button holds no
+                     copy of the token, and the script removes it on a back/forward-cache restore. --}}
+                <p>Put it into the seat's reporter config: save it with the button below, which writes the file <code>mezzanine-reporter-token</code> holding the token, this site's ingest URL and the seat's ids, or copy it into the token file the install guide names (<code>fleet-reporter/INSTALL-LINUX.md</code>, Step 2). If you did neither, revoke this prefix below and issue another.</p>
+                <p>
+                    <button type="button" data-seat-token-save data-ingest-url="{{ $tokenFileIngestUrl }}"
+                            data-install-id="{{ $issued->installId }}" data-seat-id="{{ $issued->seatId }}">Save token file</button>
+                </p>
+            @else
+                <p>Put it into the seat's reporter config — the token file the install guide names (<code>fleet-reporter/INSTALL-LINUX.md</code>, Step 2). If you did not copy it, revoke this prefix below and issue another.</p>
+            @endif
             @if ($issued->priorActive !== [])
                 <p>
                     This is a <strong>rotation</strong>: the seat still holds
