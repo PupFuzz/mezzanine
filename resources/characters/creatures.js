@@ -1426,7 +1426,7 @@ export function crestOfKey(key, { pose, species } = {}) {
 export const FACE_TOP = Object.freeze({
   bear: 76, broccoli: 107, cabbage: 88, carrot: 67, corn: 77, deer: 77, eggplant: 83, fox: 77, frog: 57, hedgehog: 77,
   mole: 81, 'mushroom/bell': 90, 'mushroom/dome': 90, 'mushroom/wide': 90, otter: 64, owl: 69, peapod: 68, penguin: 72,
-  pepper: 86, potato: 85, pumpkin: 84, 'rabbit/lop': 76, 'rabbit/upright': 76, radish: 82, sheep: 85, snail: 86, turnip: 86,
+  pepper: 86, potato: 85, pumpkin: 84, 'rabbit/lop': 76, 'rabbit/upright': 76, radish: 82, sheep: 85, snail: 84, turnip: 86,
 });
 
 /**
