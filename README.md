@@ -345,9 +345,10 @@ the middleware.
 
 **A seat is added on the Seat tokens page** (`/admin/tokens`, card#12331). It asks for your password
 again before it opens. Type the install id and the seat id — a new one creates the install and the
-seat — and the page shows the seat's reporter token once: put it into the seat's token file for its
-installer right away (`fleet-reporter/INSTALL.md` § The token file), because only its SHA-256 is kept and the
-page cannot show it again. The seat is on the floor from that moment, as *no data yet*, until its first
+seat — and the page shows the seat's reporter token once, with a *Save token file* button that saves it as
+the file the seat's installer takes (`fleet-reporter/INSTALL.md` § The token file). Save it right away, because
+only its SHA-256 is kept and the page cannot show it again. The button appears when the site's `APP_URL` starts
+with `https://`, the only kind of site the installer accepts. The seat is on the floor from that moment, as *no data yet*, until its first
 batch (`docs/design/FLOOR.md § 3.4`). A seat that already holds a token gets a second one beside it,
 which is a rotation: revoke the old prefix on the same page once the seat's config holds the new one.
 A revoked token is refused on the seat's next request, and the list keeps who revoked it and when;
