@@ -431,19 +431,27 @@ started pid N`, `flusher already running pid N`, or `NO FLUSHER` and exits 1.
 artifact installed at …`, or `FAIL: … before the artifact was installed …: it runs the previous build`, which owes
 the restart, or `no live flusher holds the lock`, which owes nothing (its next start runs the installed build).
 The holder's start time is the lock's own `started_at`, which the flusher writes from its own millisecond clock
-as it takes the lock, read only after the pid is confirmed to run this artifact's `flusher`, on every OS; no
-`ps lstart` is parsed. The restart is owed when the holder runs the
+as it takes the lock, read only after the lock passes the test below, on every OS. The restart is owed when the holder runs the
 previous build or the board step rewrote the config.
 
-**A lock names a flusher only when its pid runs `<artifact> flusher`** (`/proc/<pid>/cmdline` on Linux;
-`ps -o command= -p <pid>` under `LC_ALL=C` on macOS; on Windows one `Get-CimInstance Win32_Process` query, the
-process started no later than the lock's `started_at`, the command line compared as Windows paths and never
-printed). One test answers that for the holder check, the stop, the restart's wait, the Windows start and the
-ancestry report. A lock that fails it is **stale** — its flusher died, a reboot say, and its pid, if alive, is now
-another process's — and names no flusher: nothing is signalled, the step says `… the lock is stale: no flusher
-to stop, nothing signalled`, and it goes on, as the reporter's own `acquireLock` takes such a lock over once it is
-`K.LOCK_STALE_MS` old. (Before card#12571's review, the stop alone refused that lock, which left an uninstall
-unable to finish.)
+**A lock names a running flusher when its pid is alive and that process began no later than the lock's own
+`started_at`** (plus 2.5 s, `START_SLACK_MS` in `install.js`: a start time can read up to 2.1 s late on Linux,
+whose `/proc/stat` boot time is whole seconds, and up to 1 s on macOS, whose `ps -o etime=` is whole seconds;
+Windows' CIM `CreationDate` is exact). The flusher writes the lock itself, with its pid and `started_at`, after its
+process began, so a pid reused by another process is exactly a live process that began after `started_at`. One
+test answers that for the holder check, the stop, the restart's wait, the Windows start and the ancestry report,
+and it reads no path: a hook-respawned flusher runs the artifact by its **realpath**, so under a symlinked or
+junctioned home its command line does not spell the path this installer uses, and a path comparison read a live
+flusher as stale (card#12571's review, round 2). Its three answers:
+
+- **live**: the stop signals it; the holder check compares its `started_at` with the artifact.
+- **stale** — the pid is dead, or began after `started_at`: its flusher died (a reboot, say) and the pid, if alive,
+  is another process's. It names no flusher: nothing is signalled, the step says `… the lock is stale: no flusher
+  to stop, nothing signalled`, and it goes on, as the reporter's own `acquireLock` takes such a lock over once it is
+  `K.LOCK_STALE_MS` old.
+- **unknown** — the pid is alive and the lock has no usable `started_at`, or the process's start cannot be read:
+  **refused**, loudly and naming the pid and the lock, because a flusher cannot then be told from a reused pid. The
+  uninstall makes this test before it removes anything.
 
 `restart` stops the flusher **by pid, with that test**: it sends `SIGTERM` (on Windows the termination is immediate, and D1 § 2.3 absorbs it: state is saved by temp file
 and rename) and waits a bound derived from the artifact's constants, `K.FLUSH_MS + K.REQUEST_MS × (1 + 2 ×

@@ -584,66 +584,63 @@ const alive = (pid) => {
   if (process.platform === 'linux') { try { return !/^\S+ \(.*\) Z /s.test(fs.readFileSync(`/proc/${pid}/stat`, 'utf8')); } catch (e) { return false; } }
   return true;
 };
-/* The command line of `pid`, or null when it is not running: /proc on Linux, `ps` under LC_ALL=C on macOS. */
-function cmdlineOf(platform, pid) {
-  if (platform === 'linux') {
-    try { return fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').join(' ').trim(); } catch (e) { return null; }
-  }
-  if (platform === 'darwin') {
-    const r = cp.spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8', env: Object.assign({}, process.env, { LC_ALL: 'C' }) });
-    return r.status === 0 ? r.stdout.trim() : null;
-  }
-  return null;
+/* When process `pid` began, in ms since the epoch, or null when nothing can be read: field 22 of /proc/<pid>/stat
+ * from /proc/stat's btime on Linux; `ps -o etime=` (elapsed time, locale-free) under LC_ALL=C on macOS; the CIM
+ * `CreationDate` on Windows. */
+function processStartMs(T, pid) {
+  try {
+    if (T.platform === 'linux') {
+      const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+      const ticks = Number(stat.replace(/^.*\) /s, '').split(' ')[19]);
+      const btime = Number(/^btime (\d+)$/m.exec(fs.readFileSync('/proc/stat', 'utf8'))[1]);
+      const hz = Number(cp.execFileSync('getconf', ['CLK_TCK']).toString().trim());
+      const ms = (btime + ticks / hz) * 1000;
+      return Number.isFinite(ms) ? ms : null;
+    }
+    if (T.platform === 'darwin') {
+      const r = cp.spawnSync('ps', ['-o', 'etime=', '-p', String(pid)], { encoding: 'utf8', env: Object.assign({}, process.env, { LC_ALL: 'C' }) });
+      const m = r.status === 0 ? /^\s*(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)\s*$/.exec(r.stdout) : null;
+      if (!m) return null;
+      const secs = (Number(m[1] || 0) * 86400) + (Number(m[2] || 0) * 3600) + (Number(m[3]) * 60) + Number(m[4]);
+      return Date.now() - secs * 1000;
+    }
+    const out = powershell("$p = Get-CimInstance Win32_Process -Filter ('ProcessId=' + [int]$env:FR_PID)\n"
+      + "if ($null -eq $p) { 'gone' } else { $p.CreationDate.ToUniversalTime().ToString('o') }", { FR_PID: String(pid) }).trim();
+    const ms = out === 'gone' ? NaN : Date.parse(out);
+    return Number.isFinite(ms) ? ms : null;
+  } catch (e) { return null; }
 }
-/* Windows: the pid's start time and command line from one CIM query. The command line is compared, never
- * printed: it is the process's own argv. */
-function win32Process(pid) {
-  const out = powershell("$p = Get-CimInstance Win32_Process -Filter ('ProcessId=' + [int]$env:FR_PID)\n"
-    + "if ($null -eq $p) { 'gone' } else { $p.CreationDate.ToUniversalTime().ToString('o'); [string]$p.CommandLine }", { FR_PID: String(pid) }).split(/\r?\n/);
-  if (out[0] === 'gone') return null;
-  return { start: Date.parse(out[0]), cmdline: out.slice(1).join(' ') };
-}
-function win32Argv(cmdline) {
-  const BS = '\\', argv = [];
-  for (let i = 0, a = null, quoted = false; i <= cmdline.length; i++) {
-    const c = cmdline[i];
-    if (c === undefined || ((c === ' ' || c === '\t') && !quoted)) { if (a !== null) argv.push(a); a = null; continue; }
-    if (a === null) a = '';
-    if (c === BS) {
-      let n = 0;
-      while (cmdline[i] === BS) { n++; i++; }
-      if (cmdline[i] === '"') { a += BS.repeat(n >> 1); if (n % 2) a += '"'; else quoted = !quoted; } else { a += BS.repeat(n); i--; }
-    } else if (c === '"') quoted = !quoted;
-    else a += c;
-  }
-  return argv;
-}
-/* THE ONE TEST of whether `flusher.lock` names a running flusher of THIS artifact, shared by every reader — the
- * holder check, the stop and the restart's wait — so no step is stricter than another (card#12571 review F1). A
- * lock passes when its pid is alive and runs `<js> flusher` (`/proc/<pid>/cmdline` on Linux, `ps` on macOS, one
- * CIM query on Windows, where the process must also have started no later than the lock's `started_at`). A lock
- * that fails is STALE: its flusher died and the pid, if alive, is some other process's — reused after a reboot,
- * say. Such a lock names no flusher, so nothing is signalled and nothing is refused; the reporter's own
- * `acquireLock` takes it over once it is `K.LOCK_STALE_MS` old. Returns { held, live } and, when not live, `why`. */
+/* How much LATER than its true start a process's start time can read, the one tolerance of the stale-lock test
+ * below. The largest misread measured is 2.1 s (/proc/stat's whole-second btime against the wall clock, the
+ * sandbox, card#12180 and card#12571); macOS's `etime` is whole seconds, so up to 1 s; Windows' CreationDate is
+ * exact. 2.5 s covers the largest with a margin. A flusher that crashed within this window of its own start and
+ * whose pid was reused at once is the one case it can misread, as live — the fail-closed direction. */
+const START_SLACK_MS = 2500;
+/* THE ONE TEST of whether `flusher.lock` names a running flusher, shared by every reader — the holder check, the
+ * stop, the restart's wait, the Windows start's wait and the ancestry report (card#12571 review rounds 1 and 2).
+ * The lock is written by the flusher itself, with its pid and its own `started_at`, so the flusher is identified
+ * by TIME and never by a path's spelling: a pid reused by another process is precisely a live process that began
+ * AFTER the lock's started_at (the flusher's process began before it wrote the lock). So:
+ *   live   ⇔ the pid is alive AND it began no later than started_at + START_SLACK_MS;
+ *   stale  ⇔ the pid is dead, OR it began after that — its flusher died and the pid is another process's, which
+ *            names no flusher: nothing is signalled and nothing is refused, and the reporter's `acquireLock` takes
+ *            the lock over once it is K.LOCK_STALE_MS old;
+ *   unknown ⇔ the pid is alive and the lock's started_at, or the process's start, cannot be read: REFUSED, loudly,
+ *            because a flusher cannot then be told from a reused pid (fail closed, never open).
+ * Comparing the command line's path was the test before round 2: a hook-respawned flusher runs `__filename`, the
+ * REALPATH, so under a symlinked or junctioned home a live flusher read as stale. Returns { held, live, why }. */
 function lockHolder(T) {
   const held = readLock(T);
   if (!held || !Number.isInteger(held.pid)) return { held: null, live: false, why: 'no readable flusher.lock' };
   const pid = held.pid;
   const stale = (what) => ({ held, live: false, why: `flusher.lock names pid ${pid}, ${what}: the lock is stale` });
   if (!alive(pid)) return stale('which is not running');
-  if (T.platform === 'win32') {
-    const p = win32Process(pid);
-    if (!p) return stale('which is not running');
-    // The flusher writes started_at from its own clock after its process began, so its process starts no later;
-    // a reused pid's process began after the flusher died, so after started_at. No slack.
-    if (!(p.start <= Date.parse(held.started_at))) return stale(`which started ${new Date(p.start).toISOString()}, after the lock's started_at ${held.started_at}, so it is a reused pid`);
-    const argv = win32Argv(p.cmdline);
-    if (!argv.some((x, i) => argv[i + 1] === 'flusher' && samePath('win32', x, T.js))) return stale(`whose command line is not ${T.js} flusher, so it is a reused pid`);
-    return { held, live: true };
+  const startedAt = Date.parse(held.started_at), began = processStartMs(T, pid);
+  if (!Number.isFinite(startedAt) || began === null) {
+    if (!alive(pid)) return stale('which is not running');
+    refuse(`flusher.lock names live pid ${pid} with ${Number.isFinite(startedAt) ? 'a process start this step cannot read' : 'no usable started_at'}, so a flusher cannot be told from a reused pid: check pid ${pid} yourself, stop it if it is the reporter's flusher, delete ${lockPath(T)}, and run again: NOTHING SENT`);
   }
-  const cmd = cmdlineOf(T.platform, pid);
-  if (cmd === null) return stale('which is not running');
-  if (!cmd.includes(T.js + ' flusher')) return stale(`which does not run ${T.js} flusher, so it is a reused pid`);
+  if (began > startedAt + START_SLACK_MS) return stale(`which began ${new Date(began).toISOString()}, after the lock's started_at ${held.started_at}, so it is a reused pid`);
   return { held, live: true };
 }
 /* The bound a stop waits, derived from the installed artifact's own constants (the runbook's derivation). */
@@ -1524,6 +1521,9 @@ function uninstall(ctx) {
     return `revoke prefix \`${s.token.slice(0, 12)}\` on ${host}'s Seat tokens page (site ${s.name})`;
   }) : [];
   if (T.platform === 'linux') readCrontab();
+  // The stale-lock test now, so a lock it must refuse (a live pid with no usable started_at) refuses before anything
+  // is removed, never at the stop after the hooks and the config are gone.
+  lockHolder(T);
   // The revoke list FIRST, before anything is removed: the config that holds the prefixes goes in the next steps,
   // so a run that fails after that would otherwise leave the operator nothing to revoke by (review N1).
   step('uninstall: the prefixes to revoke');

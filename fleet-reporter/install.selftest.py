@@ -1201,7 +1201,8 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
             # A holder of THIS artifact's flusher that launchd did not start (a hook's): its command line names the
             # artifact and `flusher`, so the stale-lock test passes it, and launchctl reports another pid.
             hooked = subprocess.Popen([NODE, "-e", "setTimeout(()=>{},300000)", A.T["js"], "flusher"])
-            lock.write_text(json.dumps({"pid": hooked.pid, "started_at": "2026-10-29T00:00:00.000Z"}))
+            time.sleep(0.5)        # the lock's started_at is written after its holder began, as the flusher writes it
+            lock.write_text(json.dumps({"pid": hooked.pid, "started_at": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())}))
             r = A.node("ancestry")
             hooked.kill()
             check("R-mac-2", "a planted lock pid launchctl does not report: FAIL", "FAIL: launchctl reports" in r.stdout, tail(r))
@@ -1293,6 +1294,66 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         finally:
             sleeper.kill()
             sleeper.wait()
+
+    # ── R-all-10: a live flusher is recognised however its path is spelled; an unreadable lock refuses ──
+    if want("R-all-10"):
+        print("== R-all-10: a live holder reached through a symlinked or junctioned home; a lock with no usable started_at ==")
+        # (a) The home is a LINK. T.js keeps the link's spelling, while a hook-respawned flusher runs
+        # `spawn(process.execPath, [__filename, 'flusher'])` and node's __filename is the REALPATH. A process shaped
+        # like that flusher, started BEFORE the lock's started_at, must be stopped by the uninstall — never read as a
+        # stale lock (review round 2, NEW-1).
+        L = Seat("linked-home", coord=False)
+        real_home = L.root / "real-home"
+        shutil.move(str(L.home), str(real_home))
+        linked = True
+        try:
+            if IS_WIN:
+                linked = subprocess.run(["cmd", "/c", "mklink", "/J", str(L.home), str(real_home)], capture_output=True).returncode == 0
+            else:
+                os.symlink(real_home, L.home)
+        except OSError:
+            linked = False
+        if not linked:
+            not_measured("R-all-10 (a linked home)", "this runner could not make the home a link")
+        else:
+            L.node("artifact")
+            real_js = os.path.realpath(L.T["js"])
+            decoy = subprocess.Popen([NODE, "-e", "setTimeout(() => {}, 300000)", real_js, "flusher"])
+            time.sleep(0.5)
+            spool = Path(L.T["spool"])
+            spool.mkdir(parents=True, exist_ok=True)
+            started = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time()))
+            (spool / "flusher.lock").write_text(json.dumps({"pid": decoy.pid, "started_at": started}))
+            try:
+                r = L.node("--uninstall", timeout=600)
+                stopped = decoy.wait(timeout=30) is not None
+            except subprocess.TimeoutExpired:
+                stopped = False
+            finally:
+                if decoy.poll() is None:
+                    decoy.kill()
+                decoy.wait()
+            check("R-all-10", "a live flusher reached through a linked home (its command line the realpath, the lock's own "
+                  "started_at after its start) is STOPPED by the uninstall, never read as a stale lock",
+                  real_js != L.T["js"] and stopped and "no flusher to stop" not in r.stdout and f"flusher pid {decoy.pid} exited" in r.stdout, tail(r))
+        # (c) A live pid in a lock whose started_at is missing or garbled cannot be told from a reused pid: the
+        # uninstall refuses LOUDLY, before it removes anything (fail closed, never open).
+        G = Seat("garbled-lock", coord=False)
+        G.node("artifact")
+        Path(G.T["configDir"]).mkdir(parents=True)
+        holder_proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)"])
+        try:
+            spool = Path(G.T["spool"])
+            spool.mkdir(parents=True, exist_ok=True)
+            for label, body in {"garbled": {"pid": holder_proc.pid, "started_at": "not a time"}, "missing": {"pid": holder_proc.pid}}.items():
+                (spool / "flusher.lock").write_text(json.dumps(body))
+                r = G.node("--uninstall")
+                check("R-all-10", f"a lock naming a live pid with its started_at {label}: the uninstall refuses loudly, signals "
+                      "nothing and removes nothing", r.returncode == 1 and "no usable started_at" in r.stderr and holder_proc.poll() is None
+                      and Path(G.T["configDir"]).exists() and Path(G.T["artifactDir"]).exists(), tail(r))
+        finally:
+            holder_proc.kill()
+            holder_proc.wait()
 
     # ── R-all-12: AGENT-INSTALL.md's prose rules ──────────────────────────────────────────────────────
     if want("R-all-12"):
