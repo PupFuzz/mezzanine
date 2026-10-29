@@ -32,7 +32,7 @@
 import { ANIMATION_SET, LOOP_FPS, loops } from '../wire/animation-set.js';
 import { footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layout.js';
 import { readEmbedded, splitGid, tilesetUrl } from './tileset.js';
-import { BUBBLE_GAP, BUBBLE_PAD, CHARACTER_SCALE, FRAME_UNITS_PER_PX, LINE, STOOL_FRAME, STOOL_H, STOOL_W, TRAIL_REACH, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, internKey, stoolSlots, trailCircles, trailFoot, union } from './desk-layout.js';
+import { BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, internKey, stoolSlots, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
 import { cellCentre, lattice, pointAt, polylineLength, route } from './route.js';
 import { perchPoint } from './bird.js';
@@ -717,6 +717,7 @@ export function buildScene(frame, input) {
                 measure: input.measure,
                 character: input.character,
                 crest: input.crest ?? null,
+                headClear: input.headClear ?? null,
                 theme: theme.drawn ? theme.name : null,
                 // F16: a mapless room's every desk is the placeholder, in a plain grid.
                 placeholder: room.mapless || artFor(model),
@@ -757,6 +758,7 @@ export function buildScene(frame, input) {
                 measure: input.measure,
                 character: input.character,
                 crest: input.crest ?? null,
+                headClear: input.headClear ?? null,
                 theme: theme.drawn ? theme.name : null,
                 placeholder: artFor(model),
                 failed,
@@ -875,20 +877,25 @@ export function slotOrigin(slot, box) {
  * WHERE A DESK's CHARACTER's DRAWN HEAD IS (§ 5.1, the seat's ruling of 2026-10-27 on card#12444: the thought trail reaches
  * each character's drawn head): its topmost ink, in the tree's frame units under the character rect's top — the tree's
  * `crestTop()` for the seat's key, its delivered species and its pose, which the page hands the scene as `crest` once the
- * tree has loaded. With no tree, no drawn character, or a species the tree does not hold (§ 9 F14, which the painter draws
- * as the placeholder), 0: the rect's top, the line the tallest crest reaches.
+ * tree has loaded — and what its bubble must leave uncovered, the tree's `headClear()` (card#12446), handed as
+ * `headClear`. With no tree, no drawn character, or a species the tree does not hold (§ 9 F14, which the painter draws
+ * as the placeholder), `{ crest: 0, clear: null }`: the rect's top, the line the tallest crest reaches, and a bubble set
+ * as high as any seat's (`bubbleSeat()`).
  */
-function crestOf(model, installId, elements, ctx) {
+function headOf(model, installId, elements, ctx) {
     const character = elements.find((e) => e.kind === 'character');
+    const none = { crest: 0, clear: null };
 
-    if (character === undefined || typeof ctx.crest !== 'function' || typeof character.species !== 'string') {
-        return 0;
+    if (character === undefined || typeof ctx.crest !== 'function' || typeof ctx.headClear !== 'function' || typeof character.species !== 'string') {
+        return none;
     }
 
+    const at = { pose: character.pose, glyph: character.glyph, species: character.species, clear: character.clear };
+
     try {
-        return ctx.crest(installId, model.seat_id, { pose: character.pose, species: character.species });
+        return { crest: ctx.crest(installId, model.seat_id, at), clear: ctx.headClear(installId, model.seat_id, at) };
     } catch {
-        return 0;
+        return none;
     }
 }
 
@@ -898,6 +905,8 @@ function crestOf(model, installId, elements, ctx) {
  */
 export function placeDesk(model, key, installId, slot, at, ctx, extra) {
     const { elements, bubble } = deskLayout(model, ctx);
+    const head = headOf(model, installId, elements, ctx);
+    const seat = bubbleSeat(ctx.box, ctx.character, head.clear, head.crest);
     // A character's or an intern's overdraw (§ 10.4's frame contract) moves with its element; a sleeper's clear rects are frame units and do not.
     const moved = elements.map((e) => Object.freeze({
         ...e,
@@ -921,11 +930,10 @@ export function placeDesk(model, key, installId, slot, at, ctx, extra) {
         // meet it at, the desk's own mid-height, below every facts plate (`deskAnchor()`, card#11468).
         anchor_x: at.x + characterCentre(ctx.box, ctx.character),
         anchor_y: at.y + deskAnchor(ctx.box, ctx.character).y,
-        // § 5.1's thought trail starts here, the character's DRAWN head on its centre line, in scene coordinates — drawn
-        // only with a bubble, up to wherever the bubble is set (card#11468, card#12444).
-        // The bubble is set on the character's FRAME top (`frame_top`, `placeBubbles()`); the trail runs on down to its head.
-        frame_top: at.y + trailFoot(ctx.box, ctx.character).y,
-        trail_foot: (({ x, y }) => Object.freeze({ x: at.x + x, y: at.y + y + crestOf(model, installId, moved, ctx) / FRAME_UNITS_PER_PX }))(trailFoot(ctx.box, ctx.character)),
+        // § 5.1: where the bubble is set on its character and where its thought trail starts, in scene coordinates —
+        // drawn only with a bubble (`bubbleSeat()`: as low as the face and the pose's mark allow, card#12446).
+        bubble_bottom: at.y + seat.bottom,
+        trail_foot: Object.freeze({ x: at.x + trailFoot(ctx.box, ctx.character).x, y: at.y + seat.foot }),
         placeholder: ctx.placeholder,
         elements: Object.freeze(moved),
         furniture: Object.freeze(union(moved)),
@@ -939,19 +947,16 @@ export function placeDesk(model, key, installId, slot, at, ctx, extra) {
 }
 
 /**
- * § 5.1 rules 4 and 5: each bubble's text cut to the box through the one primitive, its box sized
- * from the MEASURED text, and overlapping bubbles parted by `desk/task-bubble.js`'s own pass over
- * the base rects. THE BASE RECT IS SET ON ITS CHARACTER (the operator's ruling of 2026-10-27 on
- * card#12444, *"anchor the bubble to the character"*): its bottom `TRAIL_REACH` above the top of the
- * character's frame, where the trail at its normal reach meets it — or, a bubble wide enough to reach
- * over the facts plate, `BUBBLE_GAP` above the plate where that is higher — and the trail drawn from
- * the character's DRAWN head (`crestOf()`, the seat's ruling of the same day) up to wherever the
- * bubble ends, as many circles as that gap holds (`trailCircles()`).
- * `leastBoxHeight()` keeps the tallest bubble inside the box either way. Exported, with
- * `placeDesk()`, for the desk leaf guard.
+ * § 5.1 rules 4 and 5: each bubble's title wrapped to `BUBBLE_TITLE_LINES` lines through the one wrap and its source line
+ * cut through the one primitive, at most `BUBBLE_MAX_W` wide, its box sized from the MEASURED lines, and overlapping
+ * bubbles parted by `desk/task-bubble.js`'s own pass over the base rects. THE BASE RECT IS SET ON ITS CHARACTER (the
+ * operator's ruling of 2026-10-27 on card#12444, *"anchor the bubble to the character"*), as low as its face and its
+ * pose's mark allow (card#12446, `bubbleSeat()`), and the trail drawn from where `bubbleSeat()` starts it up to wherever
+ * the bubble ends (`trailCircles()`). A bubble no wider than the art column never reaches the facts plate, and
+ * `leastBoxHeight()` keeps the tallest inside the box. Exported, with `placeDesk()`, for the desk leaf guard.
  */
 export function placeBubbles(desks, measure, W, delivered) {
-    const inner = W - 2 * BUBBLE_PAD;
+    const inner = Math.min(W, BUBBLE_MAX_W) - 2 * BUBBLE_PAD;
     const wanted = [];
     // ⛔ HANDED OVER IN THE ORDER THE CLIENT HOLDS THE SEATS, which is the order they were DELIVERED
     // — deliberately not an order this module fixes, because rule 5's determinism is
@@ -969,29 +974,26 @@ export function placeBubbles(desks, measure, W, delivered) {
             continue;
         }
 
-        const line1 = fit(b.text, inner, measure);
+        const title = wrap(b.text, inner, measure, 'fact', BUBBLE_TITLE_LINES);
         const second = [b.source, b.degraded_note].filter((s) => s !== null && s !== undefined);
         const line2 = second.length === 0 ? null : fit(second.join(' · '), inner, measure);
-        const w = Math.max(line1.w, line2?.w ?? 0) + 2 * BUBBLE_PAD;
-        const h = (line2 === null ? LINE : 2 * LINE) + 2 * BUBBLE_PAD;
+        const w = Math.max(title.w, line2?.w ?? 0) + 2 * BUBBLE_PAD;
+        const h = title.h + (line2 === null ? 0 : LINE) + 2 * BUBBLE_PAD;
         // Above the character's column, kept inside the box: the anchor is the character's centre
         // line, moved only as far as the bubble's own width needs to stay within the box.
         const centre = Math.min(Math.max(desk.anchor_x, desk.box.x + w / 2), desk.box.x + W - w / 2);
-        // On the character, unless the bubble's width reaches over the facts plate: then above the plate too.
-        const plate = desk.elements.find((e) => e.kind === 'facts-plate');
-        const overPlate = plate !== undefined && centre - w / 2 < plate.x + plate.w && plate.x < centre + w / 2;
-        const bottom = Math.min(desk.frame_top - TRAIL_REACH, overPlate ? plate.y - BUBBLE_GAP : Infinity);
 
         wanted.push({
             install_id: desk.install_id,
             seat_id: desk.seat_id,
-            text: line1.text,
-            anchor: { x: centre, y: bottom },
-            lines: [line1, line2],
+            text: title.text,
+            anchor: { x: centre, y: desk.bubble_bottom },
+            title,
+            second: line2,
             size: { w, h },
             source: b.source,
             degraded_note: b.degraded_note,
-            truncated: b.truncated || line1.truncated,
+            truncated: b.truncated || title.truncated,
         });
     }
 
@@ -1003,7 +1005,7 @@ export function placeBubbles(desks, measure, W, delivered) {
         const foot = desk.trail_foot;
 
         delete desk.trail_foot;
-        delete desk.frame_top;
+        delete desk.bubble_bottom;
 
         const want = wanted.find((b) => b.install_id === desk.install_id && b.seat_id === desk.seat_id);
 
@@ -1019,10 +1021,12 @@ export function placeBubbles(desks, measure, W, delivered) {
             w: rect.w,
             h: rect.h,
             lifted: rect.lifted,
-            text: want.lines[0].text,
-            text_w: want.lines[0].w,
+            text: want.title.text,
+            text_w: want.title.w,
+            // The title's lines, top first, each as measured (card#12446); the source line is drawn under the last.
+            lines: Object.freeze(want.title.lines.map((l) => Object.freeze({ ...l }))),
             truncated: want.truncated,
-            second: want.lines[1]?.text ?? null,
+            second: want.second?.text ?? null,
             source: want.source,
             degraded_note: want.degraded_note,
             // § 5.1 (card#11468): the cloud round the measured rect, and the trail of growing circles from just

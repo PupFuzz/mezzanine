@@ -70,9 +70,12 @@ export function deskDrawsCharacter(renderState) {
  * so a number written here would be a number about a drawing this document does not own", and
  * § 12 carries no row for it. What D3 requires is that a cap EXIST, that the box be MEASURED and
  * that the truncation be MARKED, and those three are what this module implements. The cap is
- * REACHABLE rather than theoretical: D2 § 8.2.1 bounds `task.title` at 120 B.
+ * REACHABLE rather than theoretical: D2 § 8.2.1 bounds `task.title` at 120 B, so a `task.ref` and its separator ahead
+ * of a long title pass it. It was 48 while the bubble drew one line; since the scene wraps the title to three lines
+ * (card#12446, the operator's ruling (B) of 2026-10-28), the cut a viewer sees is usually the scene's, on the third
+ * line, and this cap bounds what the scene is handed to measure.
  */
-export const MAX_CHARS = 48;
+export const MAX_CHARS = 120;
 
 /** The mark itself — one character, so the cut stays inside the cap rather than beside it. */
 export const TRUNCATION_MARK = '…';
