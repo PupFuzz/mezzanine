@@ -4185,28 +4185,31 @@ redgreen("a malformed declared name does not silence the seat, and its value sta
          f"malformed_declaration {[(d['detail'] or {}).get('malformed_declaration') for d in malformed_seen.values()]}")
 
 # CASE F — the SUPERVISED START. The flusher a healthy seat runs is the one its OS start launches, and
-# that start inherits nothing from the harness. On Linux the start definition is the crontab line
-# `INSTALL-LINUX.md` Step 5 writes, so the line is READ OUT OF THE RUNBOOK and expanded by the
-# runbook's own shell assignment — never re-typed here — and run the way cron runs a line: `/bin/sh -c`
-# from an environment holding HOME, LOGNAME, SHELL and PATH, and no `$COORD_CONFIG`. The only addition is
-# `FLEET_REPORTER_ONE_PASS`, the suite's inert one-pass seam. The seat config goes where a seat keeps it,
-# `$HOME/.config/fleet-reporter/config.json`, since cron's line names no config path either.
-INSTALL_LINUX = (HERE / "INSTALL-LINUX.md").read_text(encoding="utf-8")
-START_LINES = re.findall(r'^\s*LINE="(.+)"\s*$', INSTALL_LINUX, re.M)
-CC_ASSIGNMENT = "${CC:+COORD_CONFIG=$CC }"
+# that start inherits nothing from the harness. On Linux the start definition is the crontab line the
+# installer writes, so the line is `install.js`'s exported `cronLine` for this box's values — the function
+# the installer's `supervisor` step writes into the crontab, never re-typed here (card#12571) — and it is run
+# the way cron runs a line: `/bin/sh -c` from an environment holding HOME, LOGNAME, SHELL and PATH, and no
+# `$COORD_CONFIG`. The only addition is `FLEET_REPORTER_ONE_PASS`, the suite's inert one-pass seam. The seat
+# config goes where a seat keeps it, `$HOME/.config/fleet-reporter/config.json`, since cron's line names no
+# config path either.
+INSTALL_JS = HERE / "install.js"
 NODE_REAL = os.path.realpath(shutil.which("node") or "node")
+CRON_LINE_JS = ("const m = require(process.argv[1]); process.stdout.write(String(m.cronLine('linux', "
+                "{ coordConfig: process.argv[2], flock: process.argv[3], node: process.argv[4], js: process.argv[5] })))")
 
 
-def cron_start(box, cc: "str | None", template: str, reporter: Path = REPORTER):
+def cron_line(cc: "str | None", flock: Path, reporter: Path, installer: Path = INSTALL_JS) -> str:
+    return subprocess.run(["node", "-e", CRON_LINE_JS, str(installer), cc or "", str(flock), NODE_REAL, str(reporter)],
+                          capture_output=True, text=True).stdout
+
+
+def cron_start(box, cc: "str | None", installer: Path = INSTALL_JS, reporter: Path = REPORTER):
     s, env = box
     home = Path(env["HOME"])
     (home / ".config" / "fleet-reporter").mkdir(parents=True, exist_ok=True)
     (home / ".config" / "fleet-reporter" / "config.json").write_text(json.dumps(s.cfg), encoding="utf-8")
     (s.spool / "flusher.lock").unlink(missing_ok=True)
-    expanded = subprocess.run(
-        ["/bin/sh", "-c", f'LINE="{template}"; printf %s "$LINE"'], capture_output=True, text=True,
-        env={"PATH": "/usr/bin:/bin", "CC": cc or "", "FLOCK": str(s.root / "flusher.flock"),
-             "NODE": NODE_REAL, "JS": str(reporter)}).stdout
+    expanded = cron_line(cc, s.root / "flusher.flock", reporter, installer)
     try:
         subprocess.run(["/usr/bin/env", "-i", f"HOME={home}", "LOGNAME=fleet-reporter-suite", "SHELL=/bin/sh",
                         "PATH=/usr/bin:/bin", "FLEET_REPORTER_ONE_PASS=1", "/bin/sh", "-c", expanded],
@@ -4216,18 +4219,19 @@ def cron_start(box, cc: "str | None", template: str, reporter: Path = REPORTER):
     return expanded, last_heartbeat(s)
 
 
-eq("precondition: INSTALL-LINUX.md Step 5 writes exactly one flusher start line, and it assigns "
-   "COORD_CONFIG through the runbook's own conditional", (1, True),
-   (len(START_LINES), bool(START_LINES) and CC_ASSIGNMENT in START_LINES[0]))
-if shutil.which("flock") is None or not Path("/usr/bin/env").exists() or not START_LINES:
-    skip("AT-27 case F needs `flock`, /usr/bin/env and the runbook's start line — the supervised start's "
+_probe_line = cron_line("/cc.json", Path("/f.flock"), REPORTER)
+eq("precondition: install.js's cronLine carries COORD_CONFIG on the line when the resolver finds one, and none "
+   "when it does not", (True, False), (_probe_line.startswith("COORD_CONFIG=/cc.json "),
+                                       cron_line("", Path("/f.flock"), REPORTER).startswith("COORD_CONFIG=")))
+if shutil.which("flock") is None or not Path("/usr/bin/env").exists() or not _probe_line:
+    skip("AT-27 case F needs `flock`, /usr/bin/env and install.js's start line — the supervised start's "
          "delivery of $COORD_CONFIG was NOT measured, and that is not a pass")
     at_f = at_f_red = None
 else:
     box_f = at27_box("at27-f", coord=AT27_ROSTER_WITHOUT)
-    line_f, hb_f = cron_start(box_f, box_f[1]["COORD_CONFIG"], START_LINES[0])
+    line_f, hb_f = cron_start(box_f, box_f[1]["COORD_CONFIG"])
     at_f = wire(hb_f)
-    eq("case F — case C's box, the flusher started ONLY by the runbook's crontab line from an environment "
+    eq("case F — case C's box, the flusher started ONLY by the installer's crontab line from an environment "
        "with no $COORD_CONFIG: the heartbeat is identical to case C's on every member",
        (want(AT27_NAME, "disagreed", "fail", disagreed=1), at_c["wire"]), (at_f, at_f))
     eq("  … because the line itself carries the assignment", True, line_f.startswith("COORD_CONFIG="))
@@ -4238,7 +4242,7 @@ else:
     moved = box_mv[0].root / "coordination-repo-moved" / "coordination.config.json"
     moved.parent.mkdir(parents=True)
     Path(box_mv[1]["COORD_CONFIG"]).rename(moved)
-    _, hb_mv = cron_start(box_mv, str(moved), START_LINES[0])
+    _, hb_mv = cron_start(box_mv, str(moved))
     eq("case F, moved — the config moved and the start line rewritten with the new path: identical to case F",
        (want(AT27_NAME, "disagreed", "fail", disagreed=1), at_f), (wire(hb_mv), wire(hb_mv)))
     box_stale = at27_box("at27-f-moved-stale", coord=AT27_ROSTER_WITHOUT)
@@ -4246,14 +4250,20 @@ else:
     moved_s = box_stale[0].root / "coordination-repo-moved" / "coordination.config.json"
     moved_s.parent.mkdir(parents=True)
     Path(stale_cc).rename(moved_s)
-    _, hb_stale = cron_start(box_stale, stale_cc, START_LINES[0])
+    _, hb_stale = cron_start(box_stale, stale_cc)
     eq("  … and WITHOUT the rewrite the flusher reads the install-time path and reports `unchecked`, the "
        "check passing — § 18.13 row 6's residual, which only the rewrite catches",
        want(AT27_NAME, "unchecked", "pass", unchecked=1), wire(hb_stale))
 
-    # ⛔ RED — the start path. A start line written without the assignment.
+    # ⛔ RED — the start path. An installer whose cronLine writes the line without the assignment.
     box_fr = at27_box("at27-f-red", coord=AT27_ROSTER_WITHOUT)
-    line_fr, hb_fr = cron_start(box_fr, box_fr[1]["COORD_CONFIG"], START_LINES[0].replace(CC_ASSIGNMENT, "", 1))
+    _red_inst = tmpdir("fr-plant-installer-") / "install.js"
+    _inst_src = INSTALL_JS.read_text(encoding="utf-8")
+    _cc_expr = "${cc ? 'COORD_CONFIG=' + cc + ' ' : ''}"
+    if _cc_expr not in _inst_src:
+        raise AssertionError("plant anchor not found in install.js's cronLine (the RED would be vacuous)")
+    _red_inst.write_text(_inst_src.replace(_cc_expr, "", 1), encoding="utf-8")
+    line_fr, hb_fr = cron_start(box_fr, box_fr[1]["COORD_CONFIG"], installer=_red_inst)
     at_f_red = wire(hb_fr)
     eq("RED: a start line without the COORD_CONFIG assignment reads the home path, finds nothing, and reports "
        "`unchecked` with the check PASSING — the disagreement that fails nothing, on the start path",
@@ -4691,8 +4701,8 @@ redgreen("the console URL is read from the transcript's tail, pattern-checked, a
 
 
 print("\n== 19d. AN UNSET harness_label IS A CONFIG GAP, NOT A MOVED HARNESS PAYLOAD (D1 § 6.1, § 9.3, card#11330) ==")
-# INSTALL-LINUX.md Step 3 leaves `harness_label` unset on purpose, so this is the state of every seat
-# installed by the runbook. Builds before card#11330 counted it `payload_key_missing.harness_label`,
+# the installer leaves `harness_label` unset on purpose (INSTALL.md § The config), so this is the state of every seat
+# installed by the installer. Builds before card#11330 counted it `payload_key_missing.harness_label`,
 # and § 9.3 maps that family to `harness_contract_moved`: every correct install was badged "the
 # harness payload moved under this reporter". The case is driven end to end, hook -> sink -> flusher
 # -> heartbeat, because the badge is what the operator reads and the counter name alone is not.
@@ -4777,7 +4787,7 @@ eq("RED: without the rename an upgraded seat keeps the false harness_contract_mo
    "harness_contract_moved" in hl_heartbeat(s19m_r)["degraded"])
 redgreen("an unset harness_label raises no harness_contract_moved, on a new seat or an upgraded one (card#11330)",
          "counted as payload_key_missing.harness_label -> harness_contract_moved on every seat installed "
-         "by the runbook; without the rename an upgraded seat keeps the badge from its saved total",
+         "by the installer; without the rename an upgraded seat keeps the badge from its saved total",
          "counted as harness_label_unset, which raises no member; an upgraded seat's saved total and "
          "unfolded old-name delta arrive as harness_label_unset (2) and the badge clears; control: a "
          "missing harness payload key still raises harness_contract_moved")
@@ -4877,7 +4887,7 @@ redgreen("a degraded member is raised while its counter rose within 24 h; the to
 
 print("\n== 19f. A STATUSLINE WITH NO USABLE context_window IS EXPECTED, NOT A MOVED HARNESS PAYLOAD (D1 § 6.11, § 9.3, card#11544) ==")
 # D1 § 6.11: the statusLine payload has no usable `context_window` in the first seconds of EVERY
-# session, so the counter for it is non-zero on every seat that applies INSTALL-LINUX.md Step 4(b).
+# session, so the counter for it is non-zero on every seat that applies the statusLine wrap (`install.js statusline`).
 # Builds before card#11544 counted it `payload_key_missing.context_window`, which § 9.3 maps to
 # `harness_contract_moved`: every session start re-raised "the harness payload moved under this
 # reporter", so card#9491's 24 h window never cleared it on an active seat. Driven end to end,
@@ -4958,7 +4968,7 @@ eq("RED: without the rename entry an upgraded seat keeps the false harness_contr
 redgreen("a statusLine with no usable context_window raises no harness_contract_moved, on a new seat or an "
          "upgraded one (card#11544)",
          "counted as payload_key_missing.context_window -> harness_contract_moved at every session start "
-         "on a Step 4(b) seat; without the rename entry an upgraded seat keeps the badge from its saved total",
+         "on a seat with the statusLine wrap; without the rename entry an upgraded seat keeps the badge from its saved total",
          "counted as context_window_unavailable, which raises no member; an upgraded seat's saved total and "
          "unfolded old-name delta arrive as context_window_unavailable (3) and the badge clears; control: "
          "a payload_key_missing.* key no table names still raises harness_contract_moved")
@@ -6308,17 +6318,47 @@ def kill_when(p: subprocess.Popen, s: Seat, cond, timeout: float = 30.0) -> bool
     return seen
 
 
-INSTALL_DOC = (HERE / "INSTALL-LINUX.md").read_text(encoding="utf-8")
-WRITER_SRC = re.search(r"cat > \"\$B/write-config\.js\" <<'JS'\n(.*?)\nJS\n", INSTALL_DOC, re.S).group(1)
+# THE WRITER is `install.js`'s exported `writeConfig` (card#12571, D6 § 3.3): the function the installer's
+# token-config, add-site, rotation and remove-site steps call, validated with the reporter beside it. The cases
+# below keep the runbook writer's `FR_*` vocabulary, and WRITER_DRIVER maps each variable to the option of the
+# same meaning and nothing else; the token comes from a token file through `parseTokenFile` or from the issue
+# command's output on stdin through `parseIssueOutput` (Case P's stdin leg, D1 § 13). A variable that is SET is
+# passed, so a seat key set beside a mode reaches `writeConfig`'s own refusal.
+INSTALLER = HERE / "install.js"
+WRITER_SRC = INSTALLER.read_text(encoding="utf-8")
+WRITER_DRIVER = r"""
+const m = require(process.argv[1]), fs = require('fs'), e = process.env;
+const opt = (k) => (k in e ? e[k] : undefined);
+const o = { mode: e.FR_MODE || '', config: e.FR_CONFIG, siteName: opt('FR_SITE_NAME'), url: opt('FR_URL'), caFile: opt('FR_CA_FILE'),
+  install: opt('FR_INSTALL'), seat: opt('FR_SEAT'), spool: opt('FR_SPOOL'), agent: opt('FR_AGENT'), wrapped: opt('FR_WRAPPED'),
+  descriptors: opt('FR_DESCRIPTORS'), boardUser: opt('FR_BOARD_USER'), boardBase: opt('FR_BOARD_BASE'), liftName: opt('FR_LIFT_NAME') };
+(async () => {
+  try {
+    if (['', 'add-site', 'set-token'].includes(o.mode)) {
+      if (e.FR_TOKEN_FILE) o.token = m.parseTokenFile(fs.readFileSync(e.FR_TOKEN_FILE)).token;
+      else {
+        let raw = '';
+        for await (const d of process.stdin) raw += d;
+        let r;
+        try { r = m.parseIssueOutput(raw); } catch (x) { if (x.echoed) console.log(x.echoed.join('\n')); throw x; }
+        console.log(r.echoed.join('\n'));
+        o.token = r.token;
+      }
+    }
+    m.writeConfig(o);
+  } catch (x) { if (x instanceof m.Refusal) { console.error(x.message); process.exit(1); } throw x; }
+})();
+"""
 
 
-def writer_path() -> Path:
-    """`write-config.js`, RE-EXTRACTED from INSTALL-LINUX.md Step 2's fenced block on every run, so the block
-    the operator saves is the one tested (AT-28 Case P)."""
+def writer_path(src: "str | None" = None) -> Path:
+    """`install.js` beside a copy of the reporter it validates with: this checkout's, or `src` — a planted copy
+    of the installer's text (AT-28 Case P's REDs)."""
     d = tmpdir("fr-writer-")
     os.chmod(d, 0o700)
-    f = d / "write-config.js"
-    f.write_text(WRITER_SRC, encoding="utf-8")
+    shutil.copy(REPORTER, d / "fleet-reporter.js")
+    f = d / "install.js"
+    f.write_text(src if src is not None else WRITER_SRC, encoding="utf-8")
     return f
 
 
@@ -6334,14 +6374,14 @@ def token_file(token: str) -> Path:
 def run_writer(env: dict, *, stdin: str = "", writer: "Path | None" = None, preexec=None) -> subprocess.CompletedProcess:
     e = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": os.environ.get("HOME", "/tmp")}
     e.update({k: str(v) for k, v in env.items()})
-    return subprocess.run(["node", str(writer or writer_path())], input=stdin, capture_output=True, text=True,
+    return subprocess.run(["node", "-e", WRITER_DRIVER, str(writer or INSTALLER)], input=stdin, capture_output=True, text=True,
                           env=e, cwd=str(HERE), preexec_fn=preexec)
 
 
 def set_token(s: Seat, site: str, token: str) -> subprocess.CompletedProcess:
-    """§ 3.1's `FR_MODE=set-token`, by the carried-file route, over this seat's config."""
+    """§ 3.1's set-token mode of the installer's writer, by the token-file route, over this seat's config."""
     return run_writer({"FR_MODE": "set-token", "FR_SITE_NAME": site, "FR_CONFIG": s.cfg_path,
-                       "FR_REPORTER": REPORTER, "FR_TOKEN_FILE": token_file(token)})
+                       "FR_TOKEN_FILE": token_file(token)})
 
 
 M_K = {"FLUSH_MS": 25, "REQUEST_MS": 300, "HEARTBEAT_MS": 600, "HEALTH_MS": 1500}
@@ -7705,7 +7745,7 @@ pd = tmpdir("fr-at28-p-")
 os.chmod(pd, 0o700)
 pf = p_single(pd)
 orig = pf.read_bytes()
-base_env = {"FR_CONFIG": pf, "FR_REPORTER": REPORTER}
+base_env = {"FR_CONFIG": pf}
 r_nomode = run_writer({**base_env, "FR_INSTALL": "aimla", "FR_SEAT": "aimla-pm", "FR_URL": "https://x.example.test/api/ingest/events",
                        "FR_SPOOL": pd / "spool"}, stdin=ISSUE_OUT(P_TOK2))
 eq("Case P: without FR_MODE an existing file is refused and unchanged", (1, orig), (r_nomode.returncode, pf.read_bytes()))
@@ -7724,7 +7764,6 @@ refusals = {
     "duplicate name": {"FR_MODE": "add-site", "FR_SITE_NAME": "sandbox", "FR_URL": "https://other.example.test/api/ingest/events"},
     "duplicate URL": {"FR_MODE": "add-site", "FR_SITE_NAME": "third", "FR_URL": "https://SANDBOX.example.test:443/api/ingest/events"},
     "malformed URL": {"FR_MODE": "add-site", "FR_SITE_NAME": "third", "FR_URL": "https://bad host/api/ingest/events"},
-    "missing FR_REPORTER": {"FR_MODE": "add-site", "FR_SITE_NAME": "third", "FR_URL": "https://t.example.test/api/ingest/events", "FR_REPORTER": ""},
 }
 for k in ("FR_INSTALL", "FR_SEAT", "FR_SPOOL", "FR_AGENT", "FR_WRAPPED", "FR_DESCRIPTORS"):
     refusals[f"{k} set"] = {"FR_MODE": "add-site", "FR_SITE_NAME": "third", "FR_URL": "https://t.example.test/api/ingest/events", k: "x"}
@@ -7735,8 +7774,9 @@ for label, envx in refusals.items():
         env_.pop("FR_REPORTER")
     r = run_writer(env_, stdin=ISSUE_OUT(P_TOK3))
     ref_out[label] = (r.returncode, pf.read_bytes() == after_add, no_tmp(pd), leaked(r, P_TOK1, P_TOK2, P_TOK3))
-eq("  … a duplicate name, a duplicate URL (by site key), a malformed URL, a missing FR_REPORTER, and each of the six "
-   "seat keys set: each exits 1, the file unchanged, no temp file left, no planted token printed",
+eq("  … a duplicate name, a duplicate URL (by site key), a malformed URL, and each of the six seat keys set: each "
+   "exits 1, the file unchanged, no temp file left, no planted token printed (the writer validates with the reporter "
+   "beside it, so the runbook writer's missing-FR_REPORTER refusal has no counterpart)",
    {k: (1, True, True, False) for k in refusals}, ref_out)
 eq("  … and no planted token appeared on stdout or stderr of the add itself", False, leaked(r_add, P_TOK1, P_TOK2))
 fd_ = tmpdir("fr-at28-pf-")
@@ -7763,7 +7803,7 @@ eq("  … and by the carried token file", (0, P_TOK2, False),
 ps = tmpdir("fr-at28-ps-")
 os.chmod(ps, 0o700)
 psf = p_single(ps)
-r_set1 = run_writer({"FR_CONFIG": psf, "FR_REPORTER": REPORTER, "FR_MODE": "set-token", "FR_SITE_NAME": "default"},
+r_set1 = run_writer({"FR_CONFIG": psf, "FR_MODE": "set-token", "FR_SITE_NAME": "default"},
                     stdin=ISSUE_OUT(P_TOK2))
 s1 = json.loads(psf.read_text(encoding="utf-8"))
 eq("  … over a single-site file with FR_SITE_NAME=default: the lifted multi-site form, the new token under default",
@@ -7775,7 +7815,6 @@ set_refusals = {
     "FR_URL set": {"FR_SITE_NAME": "sandbox", "FR_URL": "https://x.example.test/api/ingest/events"},
     "FR_CA_FILE set": {"FR_SITE_NAME": "sandbox", "FR_CA_FILE": "/etc/ssl/x.pem"},
     "a seat key set": {"FR_SITE_NAME": "sandbox", "FR_SEAT": "x"},
-    "missing FR_REPORTER": {"FR_SITE_NAME": "sandbox", "FR_REPORTER": ""},
 }
 set_out = {}
 for label, envx in set_refusals.items():
@@ -7786,18 +7825,17 @@ for label, envx in set_refusals.items():
     set_out[label] = (r.returncode, pf.read_bytes() == after_ok, no_tmp(pd), leaked(r, P_TOK1, P_TOK2, P_TOK3))
     if label.startswith("a name"):
         names_listed = "default, sandbox" in r.stderr
-eq("  … a name the file does not carry, FR_URL or FR_CA_FILE set, a seat key set, and a missing FR_REPORTER: each "
-   "exits 1 with the file unchanged and no temp file left, the name error listing the file's site names",
+eq("  … a name the file does not carry, FR_URL or FR_CA_FILE set, and a seat key set: each exits 1 with the file "
+   "unchanged and no temp file left, the name error listing the file's site names",
    ({k: (1, True, True, False) for k in set_refusals}, True), (set_out, names_listed))
 # RED — a writer that leaves `"ca_file": null` at the top level when it lifts.
-w_ca = writer_path()
-w_ca.write_text(WRITER_SRC.replace("for (const k of TRANSPORT) { lifted[k] = k in c ? c[k] : null; delete c[k]; }",
-                                   "for (const k of TRANSPORT) { lifted[k] = k in c ? c[k] : null; if (k !== 'ca_file') delete c[k]; }"),
-                encoding="utf-8")
+_lift = "for (const k of TRANSPORT) { lifted[k] = k in c ? c[k] : null; delete c[k]; }"
+assert _lift in WRITER_SRC, "the lift plant matched nothing"
+w_ca = writer_path(WRITER_SRC.replace(_lift, "for (const k of TRANSPORT) { lifted[k] = k in c ? c[k] : null; if (k !== 'ca_file') delete c[k]; }"))
 pr_ = tmpdir("fr-at28-pr-")
 os.chmod(pr_, 0o700)
 prf = p_single(pr_)
-r_ca = run_writer({"FR_CONFIG": prf, "FR_REPORTER": REPORTER, "FR_MODE": "add-site", "FR_SITE_NAME": "sandbox",
+r_ca = run_writer({"FR_CONFIG": prf, "FR_MODE": "add-site", "FR_SITE_NAME": "sandbox",
                    "FR_URL": "https://sandbox.example.test/api/ingest/events"}, stdin=ISSUE_OUT(P_TOK2), writer=w_ca)
 eq("RED: a writer that leaves \"ca_file\": null at the top level when it lifts -> loadConfig names both forms present "
    "(and the file is left as it was)", (1, True), (r_ca.returncode, "top-level ca_file is present beside sites" in r_ca.stderr))
@@ -7815,23 +7853,20 @@ def limited(n: int):
 pl = tmpdir("fr-at28-pl-")
 os.chmod(pl, 0o700)
 plf = p_single(pl)
-r_add2 = run_writer({"FR_CONFIG": plf, "FR_REPORTER": REPORTER, "FR_MODE": "add-site", "FR_SITE_NAME": "sandbox",
+r_add2 = run_writer({"FR_CONFIG": plf, "FR_MODE": "add-site", "FR_SITE_NAME": "sandbox",
                      "FR_URL": "https://sandbox.example.test/api/ingest/events"}, stdin=ISSUE_OUT(P_TOK2))
 plain = plf.read_bytes()
-r_lim = run_writer({"FR_CONFIG": plf, "FR_REPORTER": REPORTER, "FR_MODE": "set-token", "FR_SITE_NAME": "sandbox"},
+r_lim = run_writer({"FR_CONFIG": plf, "FR_MODE": "set-token", "FR_SITE_NAME": "sandbox"},
                    stdin=ISSUE_OUT(P_TOK3), preexec=limited(len(plain) // 2))
 eq("CONTROL (run first): the temp-and-rename writer under a file-size limit below the config's length fails at the "
    "temp file, unlinks it, exits 1, and the original is byte-identical", (1, True, True),
    (r_lim.returncode, plf.read_bytes() == plain, no_tmp(pl)))
-w_inplace = writer_path()
-w_inplace.write_text(WRITER_SRC.replace(
-    '    const fd = fs.openSync(tmp, "wx", 0o600);\n    try { fs.writeSync(fd, JSON.stringify(c, null, 2) + "\\n"); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }',
-    '    fs.writeFileSync(e.FR_CONFIG, JSON.stringify(c, null, 2) + "\\n", { mode: 0o600 }); fs.copyFileSync(e.FR_CONFIG, tmp);'),
-    encoding="utf-8")
-assert w_inplace.read_text(encoding="utf-8") != WRITER_SRC, "the in-place plant matched nothing"
-r_inp = run_writer({"FR_CONFIG": plf, "FR_REPORTER": REPORTER, "FR_MODE": "set-token", "FR_SITE_NAME": "sandbox"},
+_atomic = "  if (!reporter().atomicWrite(o.config, text, { sync: true })) refuse(`could not write ${o.config}: NOTHING WRITTEN`);"
+assert _atomic in WRITER_SRC, "the in-place plant matched nothing"
+w_inplace = writer_path(WRITER_SRC.replace(_atomic, "  fs.writeFileSync(o.config, text, { mode: 0o600 });"))
+r_inp = run_writer({"FR_CONFIG": plf, "FR_MODE": "set-token", "FR_SITE_NAME": "sandbox"},
                    stdin=ISSUE_OUT(P_TOK3), writer=w_inplace, preexec=limited(len(plain) // 2))
-eq("SECOND RED: a writer that rewrites the config in place (writeFileSync over the path, Step 3's shape) under the same "
+eq("SECOND RED: a writer that rewrites the config in place (writeFileSync over the path) under the same "
    "limit leaves it truncated, and loadConfig refuses it", (True, True),
    (plf.read_bytes() != plain and len(plf.read_bytes()) <= len(plain) // 2,
     any("not valid JSON" in x for x in config_errors(plf)["errors"])))
@@ -7843,28 +7878,25 @@ redgreen("Case P — the writer adds a site and rotates a token without printing
          f"under the same limit -> rc {r_lim.returncode}, original byte-identical")
 
 
-# Step 8's REMOVE-ONE-SITE command, re-extracted from INSTALL-LINUX.md: temp file, loadConfig, rename (review F6).
-# Since card#12334 it takes its three values from FR_CONFIG, FR_SITE_NAME and FR_REPORTER at the front of the line.
-REMOVE_JS = re.search(r"^FR_CONFIG=\S+ FR_SITE_NAME=\S+ FR_REPORTER=\S+ node -e '(const fs=require\(\"fs\"\),path=require\(\"path\"\),f=process\.env\.FR_CONFIG.*?)'$",
-                      INSTALL_DOC, re.M).group(1)
+# REMOVE-SITE is the writer's own mode since card#12571 (`install.js remove-site <name>`): temp file, the
+# reporter's rules, rename (card#12180 review F6). OLD_REMOVE_JS below is the reviewed one-liner, the RED.
 
 
-def run_remove(cfg: Path, name: str, js_src: str = REMOVE_JS, preexec=None) -> subprocess.CompletedProcess:
-    # The values go both ways: in the environment, which the runbook's command reads, and as argv, which the
-    # reviewed one-liner below (OLD_REMOVE_JS, the RED) read.
+def run_remove(cfg: Path, name: str, js_src: "str | None" = None, preexec=None) -> subprocess.CompletedProcess:
+    if js_src is None:
+        return run_writer({"FR_MODE": "remove-site", "FR_CONFIG": cfg, "FR_SITE_NAME": name}, preexec=preexec)
     return subprocess.run(["node", "-e", js_src, str(cfg), name, str(REPORTER)], capture_output=True, text=True,
-                          cwd=str(HERE), preexec_fn=preexec,
-                          env={**os.environ, "FR_CONFIG": str(cfg), "FR_SITE_NAME": name, "FR_REPORTER": str(REPORTER)})
+                          cwd=str(HERE), preexec_fn=preexec)
 
 
 rd = tmpdir("fr-at28-rm-")
 os.chmod(rd, 0o700)
 rf = p_single(rd)
-run_writer({"FR_CONFIG": rf, "FR_REPORTER": REPORTER, "FR_MODE": "add-site", "FR_SITE_NAME": "sandbox",
+run_writer({"FR_CONFIG": rf, "FR_MODE": "add-site", "FR_SITE_NAME": "sandbox",
             "FR_URL": "https://sandbox.example.test/api/ingest/events"}, stdin=ISSUE_OUT(P_TOK2))
 two = rf.read_bytes()
 r_lim_rm = run_remove(rf, "sandbox", preexec=limited(len(two) // 3))
-eq("Case P, remove-site (Step 8): under a file-size limit below the result's length it fails at the temp file, exits 1, "
+eq("Case P, remove-site: under a file-size limit below the result's length it fails at the temp file, exits 1, "
    "and the config is byte-identical with no temp file left (the control, run first)", (1, True, True),
    (r_lim_rm.returncode, rf.read_bytes() == two, no_tmp(rd)))
 r_unk = run_remove(rf, "nope")
@@ -7885,7 +7917,7 @@ r_old = run_remove(rf, "sandbox", js_src=OLD_REMOVE_JS, preexec=limited(len(two)
 eq("RED: the reviewed one-liner, which rewrites the config in place, leaves it truncated under the same limit and "
    "loadConfig refuses it", (True, True),
    (rf.read_bytes() != two and len(rf.read_bytes()) <= len(two) // 3, any("not valid JSON" in x for x in config_errors(rf)["errors"])))
-redgreen("Step 8's remove-site command is atomic (card#12180 review F6)",
+redgreen("the writer's remove-site mode is atomic (card#12180 review F6)",
          f"in-place rewrite under RLIMIT_FSIZE -> config truncated to {len(rf.read_bytes())} of {len(two)} B",
          f"temp-and-rename -> rc {r_lim_rm.returncode}, original byte-identical; removal rc {r_rm.returncode}")
 
@@ -8686,56 +8718,16 @@ redgreen("Case B — a down site stalls nothing and loses nothing (AT-28, D1 § 
          f"{b_g1['max_hb_gap']} s; on recovery sb got the persisted request first and every event, duplicates {b_g1.get('dups')}")
 
 
-print("\n== 24. THE RUNBOOK'S BLOCKS STOP AT THEIR FIRST FAILURE, AND NO CRONTAB READS AS EMPTY (card#12334) ==")
-# An agent's shell tool runs what it is given as `eval '<command>' && …` (INSTALL-LINUX.md § The values to
-# substitute, the paragraph after the table). bash ignores `set -e` in every command the left side of `&&` runs,
-# a subshell that sets it itself included, so a `( set -euo pipefail … )` block pasted there carried on past a
-# failed `crontab -l` and installed a crontab holding the reporter's block alone. Each block is now its own
-# `bash -euo pipefail <<'SH'` process. Everything here is READ OUT OF THE RUNBOOK and run under that same
-# `eval … &&` wrapper, and every `crontab` it runs is a stub on PATH: the real one is never called.
+print("\n== 24. EACH INSTALLER STEP STOPS AT ITS FIRST FAILURE, AND NO CRONTAB READS AS EMPTY (card#12334, card#12571) ==")
+# card#12334 found that the runbook's `( set -euo pipefail … )` blocks carried on past a failed command under an
+# agent's shell tool, which runs what it is given as `eval '<command>' && …`, and installed a crontab holding the
+# reporter's block alone over a crontab it had failed to read. Since card#12571 there are no blocks: every step is
+# a function of `install.js` (D6 § 3.3), and the property is the subcommand's — EACH SUBCOMMAND EXITS NON-ZERO AT
+# ITS FIRST FAILED STEP AND WRITES NOTHING AFTER IT, run under that same wrapper — and the crontab read is
+# card#12334's predicate (D6 § 3.4, R-all-13): status 1 with `no crontab for` is the empty crontab, any other
+# failure refuses, at install and at uninstall. Every `crontab` below is a stub on PATH: the real one is never
+# called, and the stub is asserted to be what `crontab` resolves to before each run.
 TOOL_WRAP = 'eval "$1" && :'
-SH_BLOCKS = re.findall(r"^(bash -euo pipefail <<'SH'\n.*?\nSH)$", INSTALL_DOC, re.M | re.S)
-SUBSHELL_E = re.compile(r"^\s*\(\s*set -e", re.M)
-eq("precondition: the runbook has blocks in the separate-bash form, and every one parses (`bash -n`, "
-   "with each <placeholder> filled)", (True, []),
-   (bool(SH_BLOCKS), [b.splitlines()[1][:60] for b in SH_BLOCKS if subprocess.run(
-       ["bash", "-n"], input=re.sub(r"<[a-z_ ]+>", "X", b), capture_output=True, text=True).returncode != 0]))
-eq("RED: the subshell detector finds the old block shape", True,
-   bool(SUBSHELL_E.search("```bash\n( set -euo pipefail\n  false )\n```")))
-eq("  … and no block of the runbook is a `( set -e … )` subshell", [],
-   [INSTALL_DOC[:m.start()].count("\n") + 1 for m in SUBSHELL_E.finditer(INSTALL_DOC)])
-
-
-# THE GUARD MUST SEE A BLOCK THAT IS NOT YET IN THE FORM (review of PR #371, F1 and F4). The checks above read
-# the blocks already in the separate-bash form, so a state-writing block left in any third form — U6's bare
-# stop / sleep / check lines were one — was outside their population. This one reads EVERY fenced bash block:
-# outside its `<<'SH'` heredoc, a block of more than one command line that runs a command writing state is a
-# finding. "Writes state" is STATEFUL below: the file, directory, process and crontab writers the runbook uses,
-# and a redirect into a file. ⚠ Its limits, by name: a writer not on that list is not seen, a one-line block is
-# not judged (it has no line to carry on to), and commands quoted inline in prose are outside the population.
-STATEFUL = re.compile(r"(?:^|[\s;&|(])(?:install|cp|mv|rm|shred|mkdir|chmod|chown|ln|kill|tee|truncate)\s"
-                      r"|\bcrontab\s+(?:-r\b|-(?:\s|$)|[^-\s(])|stop-flusher\.js|\bsed\s+-i\b"
-                      r"|(?<![=>-])>>?\s*(?!/dev/null|&)[\"$/~\w]", re.M)
-
-
-def loose_stateful_blocks(doc: str) -> list[int]:
-    out = []
-    for m in re.finditer(r"^```bash\n(.*?)^```$", doc, re.M | re.S):
-        outer = re.sub(r"^bash -euo pipefail <<'SH'\n.*?^SH$", "bash -euo pipefail <<'SH'", m.group(1), flags=re.M | re.S)
-        # A <placeholder> is the reader's to fill, never a redirect: `<checkout>/x` would otherwise read as `> /x`.
-        lines = [re.sub(r"<[a-z_ ]+>", "X", ln) for ln in outer.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
-        if len(lines) >= 2 and any(STATEFUL.search(ln) for ln in lines):
-            out.append(doc[:m.start()].count("\n") + 1)
-    return out
-
-
-PLANTED = ("\n```bash\nnode \"$B/stop-flusher.js\" $HOME/.local/state/fleet-reporter $HOME/.local/share/fleet-reporter/fleet-reporter.js\n"
-           "sleep 70\nnode \"$B/flusher-ancestry.js\" $HOME/.local/state/fleet-reporter $HOME/.local/share/fleet-reporter/fleet-reporter.js --upgrade\n```\n"
-           "\n```bash\nF=$HOME/x\nif [ -f \"$F\" ]; then shred -u -- \"$F\"; fi\n```\n")
-eq("RED: two blocks planted in the form U6 and Step 2 (d) had before the review (a bare stop / sleep / check, and a "
-   "bare shred) are both found", 2, len(loose_stateful_blocks(INSTALL_DOC + PLANTED)) - len(loose_stateful_blocks(INSTALL_DOC)))
-eq("  … and the runbook has no block that writes state outside the separate-bash form", [],
-   loose_stateful_blocks(INSTALL_DOC))
 
 
 def tool_run(cmd: str, env: "dict | None" = None) -> subprocess.CompletedProcess:
@@ -8743,16 +8735,6 @@ def tool_run(cmd: str, env: "dict | None" = None) -> subprocess.CompletedProcess
     return subprocess.run(["bash", "-c", TOOL_WRAP, "tool", cmd], capture_output=True, text=True, env=env)
 
 
-HEAD = SH_BLOCKS[0].splitlines()[0] if SH_BLOCKS else "bash -euo pipefail <<'SH'"
-r_old = tool_run("( set -euo pipefail\n  false\n  echo continued )\necho rc=$?")
-r_new = tool_run(f"{HEAD}\n  false\n  echo continued\nSH\necho rc=$?")
-eq("RED: under the tool's `eval … &&`, the old subshell block runs on past `false` and exits 0", "continued\nrc=0\n",
-   r_old.stdout)
-eq("  … the runbook's block form stops at the `false`", "rc=1\n", r_new.stdout)
-
-READS = sorted(set(re.findall(r"^  (read_crontab\(\) \{.*\})$", INSTALL_DOC, re.M)))
-eq("every block that reads the crontab defines `read_crontab` identically (one definition, however many copies)", 1,
-   len(READS))
 cr = tmpdir("fr-cron-")
 os.chmod(cr, 0o700)
 (cr / "bin").mkdir()
@@ -8761,149 +8743,142 @@ STUB.write_text(f"""#!/bin/sh
 D={cr}
 echo "crontab $*" >> $D/calls.log
 if [ -e $D/broken ] && [ "$1" = -l ]; then echo "crontab: cannot open the spool: Permission denied" >&2; exit 2; fi
+if [ -e $D/broken1 ] && [ "$1" = -l ]; then echo "crontab: your crontab is locked by another session" >&2; exit 1; fi
 case "$1" in
   -l) [ -e $D/installed ] || {{ echo "no crontab for $(id -un)" >&2; exit 1; }}; cat $D/installed ;;
   -r) [ -e $D/installed ] || {{ echo "no crontab for $(id -un)" >&2; exit 1; }}; rm $D/installed ;;
-  -) cat > $D/installed ;;
   *) cp "$1" $D/installed ;;
 esac
 """, encoding="utf-8")
 os.chmod(STUB, 0o700)
 cr_home = cr / "home"
-(cr_home / ".claude").mkdir(parents=True)
-(cr_home / ".claude" / "settings.json").write_text("{}\n", encoding="utf-8")
-(cr_home / ".local" / "share" / "fleet-reporter").mkdir(parents=True)
-shutil.copy(REPORTER, cr_home / ".local" / "share" / "fleet-reporter" / "fleet-reporter.js")
-CR_B = cr / "B"
 NODE_DIR = os.path.dirname(shutil.which("node") or "/usr/bin/node")
+CR_ENV = {"PATH": f"{cr / 'bin'}:{NODE_DIR}:/usr/bin:/bin", "HOME": str(cr_home), "LANG": "C.UTF-8"}
+OTHER = "# BEGIN mezzanine-supervision\n* * * * * cd /x && php artisan mezzanine:fold\n# END mezzanine-supervision\n"
 
 
-def cron_state(installed: "str | None", broken: bool = False, *, make_b: bool = True) -> None:
-    """The stub's crontab and a fresh attempt directory. `make_b=False` leaves `$B` for Step 0's block to make,
-    as the runbook has it do; `put_helpers()` saves Step 5's helpers into it after."""
-    for f in ("installed", "broken", "calls.log"):
+def cron_state(installed: "str | None", broken: str = "") -> None:
+    """A fresh home and the stub's crontab: `installed` (None: no crontab), `broken` 'broken' (exit 2) or
+    'broken1' (exit 1 with another message)."""
+    shutil.rmtree(cr_home, ignore_errors=True)
+    (cr_home / ".claude").mkdir(parents=True)
+    (cr_home / ".claude" / "settings.json").write_text("{}\n", encoding="utf-8")
+    for f in ("installed", "broken", "broken1", "calls.log"):
         (cr / f).unlink(missing_ok=True)
     if installed is not None:
         (cr / "installed").write_text(installed, encoding="utf-8")
     if broken:
-        (cr / "broken").write_text("", encoding="utf-8")
-    shutil.rmtree(CR_B, ignore_errors=True)
-    if make_b:
-        put_helpers()
+        (cr / broken).write_text("", encoding="utf-8")
 
 
-def put_helpers() -> None:
-    CR_B.mkdir(mode=0o700, exist_ok=True)
-    for h in ("coord-config.js", "stop-flusher.js"):
-        src = re.search(r"cat > \"\$B/" + re.escape(h) + r"\" <<'JS'\n(.*?)\nJS\n", INSTALL_DOC, re.S).group(1)
-        (CR_B / h).write_text(src + "\n", encoding="utf-8")
-
-
-def cron_block(marker: str) -> str:
-    found = [b for b in SH_BLOCKS if marker in b]
-    if len(found) != 1:
-        raise AssertionError(f"{len(found)} runbook blocks hold {marker!r}, not one (the check would be vacuous)")
-    # The stub is asserted to be what `crontab` resolves to before the block runs: the real one is never reached.
-    # `node` too, by name: the blocks run it, and a block that cannot find it fails for a reason no assertion names.
-    return (f'[ "$(command -v crontab)" = {STUB} ] || {{ echo "STUB NOT ON PATH" >&2; exit 99; }}\n'
-            f'command -v node > /dev/null || {{ echo "NO node ON PATH" >&2; exit 98; }}\n{found[0]}\necho rc=$?')
-
-
-def cron_run(marker: str, *, block: "str | None" = None) -> "tuple[subprocess.CompletedProcess, list[str], str | None]":
-    # The PATH holds the stub, then the directory of the `node` this suite runs, then the system's. `node` is not
-    # in /usr/bin on every host — on the CI runner it is /usr/local/bin/node — so a PATH of the stub and
-    # /usr/bin:/bin alone left the blocks with no `node` there (card#12334, PR #371's first CI run).
-    env = {"PATH": f"{cr / 'bin'}:{NODE_DIR}:/usr/bin:/bin", "HOME": str(cr_home), "B": str(CR_B)}
-    r = tool_run(block or cron_block(marker), env)
+def inst(args: str, installer: Path = INSTALLER) -> "tuple[subprocess.CompletedProcess, list[str], str | None]":
+    # The stub is asserted to be what `crontab` resolves to; `node` by name, as an agent's shell runs it.
+    cmd = (f'[ "$(command -v crontab)" = {STUB} ] || {{ echo "STUB NOT ON PATH" >&2; exit 99; }}\n'
+           f"node {installer} {args}")
+    r = tool_run(cmd, CR_ENV)
     calls = (cr / "calls.log").read_text(encoding="utf-8").splitlines() if (cr / "calls.log").exists() else []
-    inst = (cr / "installed").read_text(encoding="utf-8") if (cr / "installed").exists() else None
-    return r, calls, inst
+    installed = (cr / "installed").read_text(encoding="utf-8") if (cr / "installed").exists() else None
+    return r, calls, installed
 
 
-S0, S5, S8 = 'md5sum < "$B/crontab.txt"', 'read_crontab > "$B/crontab.before"', '"$B/crontab.rollback"'
-OTHER = "# BEGIN mezzanine-supervision\n* * * * * cd /x && php artisan mezzanine:fold\n# END mezzanine-supervision\n"
-cron_state(None, make_b=False)
-r0, c0, _ = cron_run(S0)
-eq("Step 0 on a seat with no crontab: it says so, backs up an empty crontab, prints the empty file's md5 and exits 0",
-   (True, "", True, "rc=0"),
-   ("no crontab installed" in r0.stdout, (CR_B / "crontab.txt").read_text(encoding="utf-8"),
-    "d41d8cd98f00b204e9800998ecf8427e  -" in r0.stdout, r0.stdout.strip().splitlines()[-1]))
-cron_state(OTHER, broken=True, make_b=False)
-r0b, c0b, _ = cron_run(S0)
-eq("  … and a `crontab -l` that fails any other way stops it at the read, with the error shown and rc 1",
-   (True, "rc=1", False), ("Permission denied" in r0b.stderr, r0b.stdout.strip().splitlines()[-1], "-  " in r0b.stdout))
 cron_state(None)
-r5, c5, i5 = cron_run(S5)
-eq("Step 5 on a seat with no crontab installs a crontab holding the reporter's block alone, and exits 0",
-   (True, "rc=0"), (i5 is not None and i5.startswith("# BEGIN fleet-reporter-flusher\n")
-                    and i5.endswith("# END fleet-reporter-flusher\n") and i5.count("\n") == 5,
-                    r5.stdout.strip().splitlines()[-1]))
-cron_state(OTHER, broken=True)
-r5b, c5b, i5b = cron_run(S5)
-eq("  … and on a crontab it cannot read it stops at the read: no install call, the crontab untouched, rc 1",
-   (["crontab -l"], OTHER, "rc=1"), (c5b, i5b, r5b.stdout.strip().splitlines()[-1]))
-old5 = cron_block(S5).replace(f"{HEAD}\n", "( set -euo pipefail\n").replace(
-    f"  {READS[0] if READS else ''}\n", "").replace(S5, 'crontab -l > "$B/crontab.before"').replace(
-    '"$JS"\nSH\n', '"$JS" )\n')
-cron_state(OTHER, broken=True)
-r5o, c5o, i5o = cron_run(S5, block=old5)
-eq("RED: the block as it stood before card#12334, under the same tool wrapper and the same unreadable crontab, "
-   "carries on past the failed read and installs the reporter's block over the crontab, exit 0",
-   (True, True, "rc=0"), (any(c.startswith("crontab /") for c in c5o),
-                          i5o is not None and "mezzanine-supervision" not in i5o, r5o.stdout.strip().splitlines()[-1]))
-cron_state(None, make_b=False)
-cron_run(S0)
-put_helpers()
-cron_run(S5)
-r8, c8, i8 = cron_run(S8)
-eq("Step 8 item 2 on a seat that had no crontab at Step 0: the diff is empty, it removes the crontab, and the md5 it "
-   "prints last is Step 0's", (None, True, True, "rc=0"),
-   (i8, "crontab -r" in c8, "d41d8cd98f00b204e9800998ecf8427e  -" in r8.stdout, r8.stdout.strip().splitlines()[-1]))
-cron_state(None, make_b=False)
-cron_run(S0)
-r8n, c8n, i8n = cron_run(S8)
-eq("  … with no crontab at all by then it removes nothing, says so, and exits 0",
-   (None, False, True, "rc=0"),
-   (i8n, any(c in ("crontab -r",) or c.startswith("crontab /") for c in c8n), "nothing to remove" in r8n.stdout,
-    r8n.stdout.strip().splitlines()[-1]))
-redgreen("the runbook's blocks stop at a failed command under an agent's shell tool, and a seat with no crontab "
-         "installs (card#12334)",
-         f"`( set -euo pipefail … )` under `eval … &&` -> {r_old.stdout.strip()!r}; Step 5 as it stood, over an "
-         f"unreadable crontab -> stub calls {c5o}, the other block gone",
-         f"`bash -euo pipefail <<'SH'` -> {r_new.stdout.strip()!r}; Step 5 over the same crontab -> calls {c5b}, "
-         f"untouched; no crontab -> Steps 0, 5 and 8 each rc 0, the rollback's md5 Step 0's")
+r5, c5, i5 = inst("supervisor")
+eq("the supervisor step on a seat with no crontab (status 1, `no crontab for …`) installs a crontab holding the "
+   "reporter's block alone, and exits 0", (0, True),
+   (r5.returncode, i5 is not None and i5.startswith("# BEGIN fleet-reporter-flusher\n")
+    and i5.endswith("# END fleet-reporter-flusher\n") and i5.count("\n") == 5))
+cron_state(OTHER, broken="broken")
+r5b, c5b, i5b = inst("supervisor")
+eq("  … on a crontab it cannot read (exit 2) it refuses at the read: rc 1, `crontab` never called with a file, the "
+   "crontab untouched", (1, ["crontab -l"], OTHER), (r5b.returncode, c5b, i5b))
+cron_state(OTHER, broken="broken1")
+r5c, c5c, i5c = inst("supervisor")
+eq("  … and on status 1 with another message it refuses the same way: the stderr test is the distinction",
+   (1, ["crontab -l"], OTHER), (r5c.returncode, c5c, i5c))
+_pred = "  if (r.status === 1 && /^no crontab for /m.test(r.stderr || '')) return { text: '', none: true };"
+if _pred not in WRITER_SRC:
+    raise AssertionError("plant anchor not found in install.js's readCrontab (the RED would be vacuous)")
+_status_only = writer_path(WRITER_SRC.replace(_pred, "  if (r.status === 1) return { text: '', none: true };"))
+cron_state(OTHER, broken="broken1")
+r5o, c5o, i5o = inst("supervisor", installer=_status_only)
+eq("RED: a read that tests the status alone, over the same crontab, installs the reporter's block over it — the "
+   "mezzanine-supervision block gone, exit 0", (0, True, True),
+   (r5o.returncode, any(c.startswith("crontab /") for c in c5o), i5o is not None and "mezzanine-supervision" not in i5o))
+# The same predicate guards the uninstall's removal, which reads the crontab before it removes anything.
+cron_state(OTHER + "# BEGIN fleet-reporter-flusher\n# x\n# END fleet-reporter-flusher\n", broken="broken")
+(cr_home / ".config" / "fleet-reporter").mkdir(parents=True)
+(cr_home / ".config" / "fleet-reporter" / "config.json").write_text("{}\n", encoding="utf-8")
+r8b, c8b, i8b = inst("--uninstall")
+eq("--uninstall over a crontab it cannot read refuses before it removes anything: rc 1, only `crontab -l` called, "
+   "the config directory still there", (1, ["crontab -l"], True),
+   (r8b.returncode, c8b, (cr_home / ".config" / "fleet-reporter").exists()))
+cron_state(None)
+r8n, c8n, i8n = inst("--uninstall")
+eq("  … on a seat with no crontab it removes nothing, says so, and exits 0", (0, None, False, True),
+   (r8n.returncode, i8n, any(c == "crontab -r" or c.startswith("crontab /") for c in c8n), "no crontab installed: nothing to remove" in r8n.stdout))
+cron_state(None)
+inst("supervisor")
+r8, c8, i8 = inst("--uninstall")
+eq("  … and a crontab holding the reporter's block alone is removed whole (`crontab -r`)", (0, None, True),
+   (r8.returncode, i8, "crontab -r" in c8))
+cron_state(OTHER)
+inst("supervisor")
+r8o, c8o, i8o = inst("--uninstall")
+eq("  … one holding another block keeps it, byte for byte", (0, OTHER), (r8o.returncode, i8o))
 
+# FAIL-STOP: the main install over a settings.json that is not JSON stops at the hooks step, exit 1 under the
+# tool's wrapper, and nothing after it runs: the supervisor step never calls `crontab` with a file.
+cron_state(None)
+_cfg_dir = cr_home / ".config" / "fleet-reporter"
+_cfg_dir.mkdir(parents=True)
+os.chmod(_cfg_dir, 0o700)
+run_writer({"FR_CONFIG": _cfg_dir / "config.json", "FR_INSTALL": "aimla", "FR_SEAT": "aimla-pm",
+            "FR_URL": "https://127.0.0.1:9/api/ingest/events", "FR_SPOOL": cr_home / "spool"}, stdin=ISSUE_OUT(P_TOK1))
+(cr_home / ".claude" / "settings.json").write_text("{ not json\n", encoding="utf-8")
+rf, cf, inf = inst("--no-board")
+eq("the main install stops at its first failed step (settings.json not JSON, at `hooks`): exit 1 under the agent "
+   "shell's `eval … &&`, the steps after it never run, and `crontab` never called with a file",
+   (1, False, False, True),
+   (rf.returncode, "step `todo-tools`" in rf.stdout or "step `supervisor`" in rf.stdout,
+    any(c.startswith("crontab /") for c in cf), "cannot read" in rf.stderr and "NOTHING WRITTEN" in rf.stderr))
+_steps = "  hooks(ctx);\n  todoTools(ctx);\n  supervisor(ctx);"
+if _steps not in WRITER_SRC:
+    raise AssertionError("plant anchor not found in install.js's install() (the RED would be vacuous)")
+_carry_on = writer_path(WRITER_SRC.replace(_steps, "  try { hooks(ctx); } catch (e) { warn('ignored: ' + e.message); }\n"
+                                                   "  try { todoTools(ctx); } catch (e) { warn('ignored: ' + e.message); }\n  supervisor(ctx);"))
+cron_state(None)
+_cfg_dir.mkdir(parents=True)
+os.chmod(_cfg_dir, 0o700)
+run_writer({"FR_CONFIG": _cfg_dir / "config.json", "FR_INSTALL": "aimla", "FR_SEAT": "aimla-pm",
+            "FR_URL": "https://127.0.0.1:9/api/ingest/events", "FR_SPOOL": cr_home / "spool"}, stdin=ISSUE_OUT(P_TOK1))
+(cr_home / ".claude" / "settings.json").write_text("{ not json\n", encoding="utf-8")
+rfr, cfr, infr = inst("--no-board", installer=_carry_on)
+eq("RED: an install that carries on past a failed step reaches the supervisor and writes the crontab", True,
+   any(c.startswith("crontab /") for c in cfr))
+redgreen("each installer step stops at its first failure under an agent's shell tool, and only `no crontab for` reads "
+         "as an empty crontab (card#12334, card#12571)",
+         f"a status-only read over a locked crontab -> stub calls {c5o}, the other block gone; a carry-on install -> "
+         f"calls {cfr}",
+         f"install.js: unreadable -> calls {c5b} / {c5c}, untouched; no crontab -> installs, rc 0; settings.json not "
+         f"JSON -> rc {rf.returncode}, calls {cf}")
 
-# A MISSING VALUE IS NAMED, NEVER A TypeError. Each helper the runbook saves, given no arguments, and each
-# `node -e` command that reads FR_CONFIG, given none, exits 2 with a line naming what it needs (card#12334: an
-# agent ran Step 3's printer saved to a file, lost its trailing argument, and got a readFileSync TypeError).
-HELPERS = ("coord-config.js", "wire-hooks.js", "check-preserved.js", "stop-flusher.js", "flusher-ancestry.js")
-ARGLESS = {}
-for h in HELPERS:
-    src = re.search(r"cat > \"\$B/" + re.escape(h) + r"\" <<'JS'\n(.*?)\nJS\n", INSTALL_DOC, re.S).group(1)
-    r = subprocess.run(["node", "-e", src], capture_output=True, text=True, cwd=str(cr))
-    ARGLESS[h] = (r.returncode, r.stderr.startswith("usage: "), "TypeError" in r.stderr)
-eq("each helper the runbook saves, run with no arguments, exits 2 with its usage line and no TypeError",
-   {h: (2, True, False) for h in HELPERS}, ARGLESS)
-sf = re.search(r"cat > \"\$B/stop-flusher\.js\" <<'JS'\n(.*?)\nJS\n", INSTALL_DOC, re.S).group(1)
-sf_red = re.sub(r"^if \(!spool \|\| !js\).*\n", "", sf, count=1, flags=re.M)
-r_sf_red = subprocess.run(["node", "-e", sf_red], capture_output=True, text=True, cwd=str(cr))
-eq("RED: stop-flusher.js without its usage line, run with no arguments, dies on a TypeError", (True, True),
-   (sf_red != sf, "TypeError" in r_sf_red.stderr))
-ENV_CMDS = re.findall(r"node -e '((?:const f = process\.env\.FR_CONFIG|const fs=require\(\"fs\"\)(?:,path=require\(\"path\"\))?,f=process\.env\.FR_CONFIG).*?)'(?:$|\n)",
-                      INSTALL_DOC, re.M)
-# The population, re-derived: every `node -e` line of the runbook that reads FR_CONFIG, so a command the
-# extraction above misses is a count mismatch, not a silent pass.
-N_ENV_CMDS = len(re.findall(r"node -e '[^\n]*process\.env\.FR_CONFIG", INSTALL_DOC))
-eq("precondition: the runbook has `node -e` commands that read FR_CONFIG", True, N_ENV_CMDS > 0)
-env_out = {}
-for c in ENV_CMDS:
-    r = subprocess.run(["node", "-e", c], capture_output=True, text=True, cwd=str(cr),
-                       env={k: v for k, v in os.environ.items() if not k.startswith("FR_")})
-    env_out[c[:50]] = (r.returncode, "must" in r.stderr and "FR_CONFIG" in r.stderr, "TypeError" in r.stderr)
-eq("the runbook's `node -e` commands that read FR_CONFIG (Step 3's printer and one-key rewrite, Step 8's site "
-   "removal) each exit 2 naming FR_CONFIG when it is unset, and none dies on a TypeError",
-   (N_ENV_CMDS, {k: (2, True, False) for k in env_out}), (len(env_out), env_out))
+# A MISSING VALUE IS NAMED, NEVER A TypeError (card#12334: an agent lost a trailing argument and got a
+# readFileSync TypeError). Each subcommand that needs a value, given none, exits 1 naming what it needs.
+cron_state(None)
+ARGLESS = {"remove-site": "needs the site's name", "set-descriptors": "takes full, paths or none",
+           "issue-file": "needs --out", "add-site": "needs --token-file", "token-take": "needs --token-file",
+           "--token-file": "needs a value", "statusline --wrap": "needs a value"}
+argless = {}
+for a, want_text in ARGLESS.items():
+    r = inst(a)[0]
+    argless[a] = (r.returncode, want_text in r.stderr, "TypeError" in r.stderr)
+eq("each subcommand or flag that needs a value, given none, exits 1 naming what it needs, with no TypeError",
+   {a: (1, True, False) for a in ARGLESS}, argless)
+_need = "    if (!name) refuse('remove-site needs the site\\'s name: NOTHING WRITTEN');\n"
+if _need not in WRITER_SRC:
+    raise AssertionError("plant anchor not found in install.js's remove-site (the RED would be vacuous)")
+r_need = inst("remove-site", installer=writer_path(WRITER_SRC.replace(_need, "")))[0]
+eq("RED: remove-site without its check, given no name, names nothing it needs", False, "needs the site's name" in r_need.stderr)
 
 
 print("\n== 25. A QUIET SUBAGENT IS REPORTED IDLE AT THE SEAT, AND ITS NEXT HOOK REPORTS IT WORKING (AT-29, D1 § 6.15, § 8.5, card#12451) ==")
