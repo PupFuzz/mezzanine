@@ -590,8 +590,8 @@ const alive = (pid) => {
 function processStartMs(T, pid) {
   try {
     if (T.platform === 'linux') {
-      const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
-      const ticks = Number(stat.replace(/^.*\) /s, '').split(' ')[19]);
+      const ticks = reporter().procStartTicks(pid);
+      if (ticks === null) return null;
       const btime = Number(/^btime (\d+)$/m.exec(fs.readFileSync('/proc/stat', 'utf8'))[1]);
       const hz = Number(cp.execFileSync('getconf', ['CLK_TCK']).toString().trim());
       const ms = (btime + ticks / hz) * 1000;
@@ -627,6 +627,11 @@ const START_SLACK_MS = 2500;
  *            the lock over once it is K.LOCK_STALE_MS old;
  *   unknown ⇔ the pid is alive and the lock's started_at, or the process's start, cannot be read: REFUSED, loudly,
  *            because a flusher cannot then be told from a reused pid (fail closed, never open).
+ * On LINUX, a lock carrying `start_ticks` — the flusher's own /proc start in clock ticks since boot, written since
+ * 0.6.0 — is judged by that instead, exactly: live ⇔ the pid's field 22 equals it. The time test reads the start as
+ * btime + ticks, i.e. the wall clock now minus the process's age, so a forward wall-clock STEP larger than the
+ * slack after the flusher began (an NTP step after a wrong-RTC boot, a VM restore) would read a live flusher as
+ * stale; the ticks cannot move (review round 3).
  * Comparing the command line's path was the test before round 2: a hook-respawned flusher runs `__filename`, the
  * REALPATH, so under a symlinked or junctioned home a live flusher read as stale. Returns { held, live, why }. */
 function lockHolder(T) {
@@ -635,6 +640,19 @@ function lockHolder(T) {
   const pid = held.pid;
   const stale = (what) => ({ held, live: false, why: `flusher.lock names pid ${pid}, ${what}: the lock is stale` });
   if (!alive(pid)) return stale('which is not running');
+  // Linux, a lock that carries the flusher's own start ticks (written by 0.6.0 on): the kernel's counter on both
+  // sides, so it must match EXACTLY, with no slack, and no wall-clock step can move either side (review round 3).
+  if (T.platform === 'linux' && held.start_ticks !== undefined) {
+    const ticks = reporter().procStartTicks(pid);
+    if (!Number.isSafeInteger(held.start_ticks) || ticks === null) {
+      if (!alive(pid)) return stale('which is not running');
+      refuse(`flusher.lock names live pid ${pid} with ${ticks === null ? 'a /proc start this step cannot read' : 'a start_ticks that is not a whole number'}, so a flusher cannot be told from a reused pid: check pid ${pid} yourself, stop it if it is the reporter's flusher, delete ${lockPath(T)}, and run again: NOTHING SENT`);
+    }
+    if (ticks !== held.start_ticks) return stale(`which began at tick ${ticks} since boot, not the lock's ${held.start_ticks}, so it is a reused pid`);
+    return { held, live: true };
+  }
+  // Otherwise — macOS, Windows, and a Linux lock a pre-0.6.0 flusher wrote — the lock's started_at against the
+  // process's start, within START_SLACK_MS.
   const startedAt = Date.parse(held.started_at), began = processStartMs(T, pid);
   if (!Number.isFinite(startedAt) || began === null) {
     if (!alive(pid)) return stale('which is not running');

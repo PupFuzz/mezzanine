@@ -434,8 +434,14 @@ The holder's start time is the lock's own `started_at`, which the flusher writes
 as it takes the lock, read only after the lock passes the test below, on every OS. The restart is owed when the holder runs the
 previous build or the board step rewrote the config.
 
-**A lock names a running flusher when its pid is alive and that process began no later than the lock's own
-`started_at`** (plus 2.5 s, `START_SLACK_MS` in `install.js`: a start time can read up to 2.1 s late on Linux,
+**On Linux, a lock that carries `start_ticks` names a running flusher exactly when its pid is alive and the
+pid's own start in `/proc/<pid>/stat` (field 22, clock ticks since boot) equals it.** The flusher writes that
+key into its own lock from 0.6.0 on. Both sides are the kernel's counter, so the match is exact, with no slack,
+and no wall-clock step can move either side; a different value is another process, so the lock is stale.
+
+**Otherwise — macOS, Windows, and a Linux lock written by a flusher before 0.6.0, as every upgrading seat's is on
+its first run — a lock names a running flusher when its pid is alive and that process began no later than the
+lock's own `started_at`** (plus 2.5 s, `START_SLACK_MS` in `install.js`: a start time can read up to 2.1 s late on Linux,
 whose `/proc/stat` boot time is whole seconds, and up to 1 s on macOS, whose `ps -o etime=` is whole seconds;
 Windows' CIM `CreationDate` is exact). The flusher writes the lock itself, with its pid and `started_at`, after its
 process began, so a pid reused by another process is exactly a live process that began after `started_at`. One
@@ -449,9 +455,17 @@ flusher as stale (card#12571's review, round 2). Its three answers:
   is another process's. It names no flusher: nothing is signalled, the step says `… the lock is stale: no flusher
   to stop, nothing signalled`, and it goes on, as the reporter's own `acquireLock` takes such a lock over once it is
   `K.LOCK_STALE_MS` old.
-- **unknown** — the pid is alive and the lock has no usable `started_at`, or the process's start cannot be read:
-  **refused**, loudly and naming the pid and the lock, because a flusher cannot then be told from a reused pid. The
-  uninstall makes this test before it removes anything.
+- **unknown** — the pid is alive and the lock has no usable `started_at` (or, on Linux, a `start_ticks` that is not
+  a whole number), or the process's start cannot be read: **refused**, loudly and naming the pid and the lock,
+  because a flusher cannot then be told from a reused pid. The uninstall makes this test before it removes
+  anything.
+
+⚠ **Not verifiable by the time test, by name:** on Linux, while a flusher from before 0.6.0 runs (so its lock has no
+`start_ticks`), a forward wall-clock step larger than the slack after it started — an NTP step after a boot with a
+wrong hardware clock, a VM restored from a snapshot — makes its start read later than `started_at`, so it reads as
+stale. The time test computes the start as the boot time plus the process's age, and the boot time is the wall
+clock now minus the uptime. The window closes when the flusher restarts on 0.6.0, which the upgrade's own restart
+does.
 
 `restart` stops the flusher **by pid, with that test**: it sends `SIGTERM` (on Windows the termination is immediate, and D1 § 2.3 absorbs it: state is saved by temp file
 and rename) and waits a bound derived from the artifact's constants, `K.FLUSH_MS + K.REQUEST_MS × (1 + 2 ×

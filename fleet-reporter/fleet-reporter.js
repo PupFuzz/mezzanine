@@ -3549,9 +3549,26 @@ function saveState(spool, state, opts) {
  * reads the lock: a mtime newer than 90 s means a live owner and it exits 0 immediately; an
  * older one is unlinked ONLY IF the mtime it read is still the one on disk, and the exclusive
  * create is retried exactly once. Losing that retry is also an immediate exit 0. */
+/* Field 22 of /proc/<pid>/stat — the process's start, in clock ticks since boot — or null where there is no /proc
+ * or no such process. The kernel's own counter, so a wall-clock step moves it not at all (card#12571 review round
+ * 3). `comm`, field 2, is in parentheses and may itself hold spaces and parentheses, so the fields are split after
+ * the LAST `)`: what follows is field 3 on, which puts field 22 at index 19. The one parser of it, used by the
+ * flusher for its own lock and by the installer to recognise that flusher (`install.js`'s `lockHolder`). */
+function procStartTicks(pid) {
+  let stat;
+  try { stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8'); } catch (e) { return null; }
+  const close = stat.lastIndexOf(')');
+  if (close < 0) return null;
+  const v = Number(stat.slice(close + 2).split(' ')[19]);
+  return Number.isSafeInteger(v) && v >= 0 ? v : null;
+}
+
 function acquireLock(spool, state) {
   const lock = path.join(spool, 'flusher.lock');
-  const body = JSON.stringify({ pid: process.pid, started_at: state.owner_started_at });
+  // On Linux the lock also carries this process's own start ticks, an identity no wall-clock step can move; the
+  // installer compares it with the pid's live /proc entry to tell this flusher from a reused pid.
+  const ticks = process.platform === 'linux' ? procStartTicks(process.pid) : null;
+  const body = JSON.stringify({ pid: process.pid, started_at: state.owner_started_at, ...(ticks === null ? {} : { start_ticks: ticks }) });
   ensureDir(spool);
   const tryCreate = () => {
     try { const fd = fs.openSync(lock, 'wx'); fs.writeSync(fd, Buffer.from(body, 'utf8')); fs.closeSync(fd); return true; }
@@ -5339,10 +5356,11 @@ if (require.main === module) main();
 module.exports = { sanitize, buildDescriptor, truncateBytes, ulid, buildCounters, buildDegraded,
   windowedCounters,
   appendLine, K, ENUM, SANITIZER_FIXTURES, SELFTEST_CHECKS, CRED_PREFIX_RE,
-  /* `loadConfig`, `parseConfig`, `atomicWrite`, `siteKey` and `REPORTER_VERSION` are exported for ONE
+  /* `loadConfig`, `parseConfig`, `atomicWrite`, `siteKey`, `REPORTER_VERSION` and `procStartTicks` are exported for ONE
    * caller, the installer (`install.js`, card#12571): it validates the config it is about to write with
    * the reader's own rules, so the two cannot disagree about a valid site, a duplicate name or URL, or
    * both forms present (§ 3.1, *The installer's writer*); it writes every file through the one
-   * temp-and-rename primitive; and it keys a site as the reader does. Requiring this file runs nothing:
+   * temp-and-rename primitive; it keys a site as the reader does; and it reads a process's start ticks as the
+   * flusher records its own in `flusher.lock`. Requiring this file runs nothing:
    * `main` is guarded above. */
-  loadConfig, parseConfig, allConfigErrors, atomicWrite, siteKey, REPORTER_VERSION };
+  loadConfig, parseConfig, allConfigErrors, atomicWrite, siteKey, REPORTER_VERSION, procStartTicks };

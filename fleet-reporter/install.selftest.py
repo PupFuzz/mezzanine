@@ -1344,6 +1344,77 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
             check("R-all-10", "a live flusher reached through a linked home (its command line the realpath, the lock's own "
                   "started_at after its start) is STOPPED by the uninstall, never read as a stale lock",
                   real_js != L.T["js"] and stopped and "no flusher to stop" not in r.stdout and f"flusher pid {decoy} exited" in r.stdout, tail(r))
+        # (d) Linux: the step-immune identity. A lock carrying `start_ticks` (field 22 of /proc/<pid>/stat, written by
+        # the flusher itself) names a live flusher exactly when the pid's own field 22 equals it — however far the wall
+        # clock has stepped. A started_at far in the past with matching ticks simulates a forward clock step: LIVE, and
+        # stopped. Matching time but different ticks is another process: STALE, nothing signalled (review round 3).
+        if IS_LIN:
+            def ticks_of(pid: int) -> int:
+                st = Path(f"/proc/{pid}/stat").read_text()
+                return int(st[st.rindex(")") + 2:].split(" ")[19])
+
+            def detached_decoy(js: str) -> int:
+                sp = subprocess.run([NODE, "-e", "const c = require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 300000)', "
+                                     "process.argv[1], 'flusher'], { detached: true, stdio: 'ignore' }); c.unref(); console.log(c.pid)", js],
+                                    capture_output=True, text=True, timeout=60)
+                pid = int(sp.stdout.strip())
+                STARTED.add(pid)
+                return pid
+
+            for label, stepped in (("the wall clock stepped forward since it started", True), ("a foreign pid whose ticks differ", False)):
+                K = Seat("ticks-" + ("step" if stepped else "foreign"), coord=False)
+                K.node("artifact")
+                proc = detached_decoy(K.T["js"])
+                time.sleep(0.5)
+                spool = Path(K.T["spool"])
+                spool.mkdir(parents=True, exist_ok=True)
+                body = ({"pid": proc, "started_at": "2001-01-01T00:00:00.000Z", "start_ticks": ticks_of(proc)} if stepped
+                        else {"pid": proc, "started_at": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()), "start_ticks": ticks_of(proc) + 1})
+                (spool / "flusher.lock").write_text(json.dumps(body))
+                r = K.node("--uninstall", timeout=600)
+                t0 = time.time()
+                while stepped and pid_alive(proc) and time.time() - t0 < 30:
+                    time.sleep(0.5)
+                gone = not pid_alive(proc)
+                if not gone:
+                    try:
+                        os.kill(proc, signal.SIGTERM)
+                    except OSError:
+                        pass
+                if stepped:
+                    check("R-all-10", f"Linux, start_ticks matching and {label}: the flusher is LIVE and the uninstall stops it",
+                          r.returncode == 0 and gone and f"flusher pid {proc} exited" in r.stdout, tail(r))
+                else:
+                    check("R-all-10", f"Linux, {label} (its time within the slack): STALE, nothing signalled",
+                          r.returncode == 0 and not gone and "no flusher to stop" in r.stdout, tail(r))
+            # The parser splits after the LAST `)`: a process whose comm holds `) (` and spaces still reads right.
+            odd = subprocess.Popen([NODE, "-e", "process.title = 'x) y (z'; setTimeout(() => {}, 30000)"])
+            time.sleep(0.5)
+            comm = Path(f"/proc/{odd.pid}/comm").read_text().strip()
+            r = subprocess.run([NODE, "-e", "console.log(require(process.argv[1]).procStartTicks(Number(process.argv[2])))",
+                                str(CO / "fleet-reporter.js"), str(odd.pid)], capture_output=True, text=True)
+            check("R-all-10", "Linux: field 22 is read after the LAST `)`, so a comm holding `) (` and spaces parses",
+                  ")" in comm and r.stdout.strip() == str(ticks_of(odd.pid)), f"comm {comm!r}: {r.stdout} {r.stderr}")
+            odd.kill()
+            odd.wait()
+            # The flusher writes the key itself: a real flusher's lock carries its own ticks.
+            F = Seat("ticks-real", coord=False)
+            F.node("artifact")
+            FL = Path(F.T["spool"])
+            (F.home / ".config" / "fleet-reporter").mkdir(parents=True)
+            node_eval("const m=require(process.argv[1]); m.writeConfig({config:process.argv[2], token:'mzn_'+'r'.repeat(43), install:'inst-r', seat:'seat-r', url:'https://127.0.0.1:9/api/ingest/events', spool:process.argv[3]});",
+                      F.T["config"], str(FL))
+            fp = subprocess.Popen([NODE, F.T["js"], "flusher"], env=F.env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL, start_new_session=True)
+            STARTED.add(fp.pid)
+            t0 = time.time()
+            while not (FL / "flusher.lock").exists() and time.time() - t0 < 30:
+                time.sleep(0.2)
+            lk = json.loads((FL / "flusher.lock").read_text()) if (FL / "flusher.lock").exists() else {}
+            check("R-all-10", "Linux: the flusher writes its own start_ticks into flusher.lock, equal to its /proc field 22",
+                  lk.get("pid") == fp.pid and lk.get("start_ticks") == ticks_of(fp.pid), json.dumps(lk))
+            fp.terminate()
+            fp.wait()
         # (c) A live pid in a lock whose started_at is missing or garbled cannot be told from a reused pid: the
         # uninstall refuses LOUDLY, before it removes anything (fail closed, never open).
         G = Seat("garbled-lock", coord=False)
