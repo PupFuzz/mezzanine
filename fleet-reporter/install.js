@@ -786,12 +786,12 @@ function checkPreserved(before, after, platform, js, may) {
   may = may || {};
   const bad = [];
   const a = withoutReporter(before, platform, js), b = withoutReporter(after, platform, js);
-  if (may.statusLine) { delete a.statusLine; delete b.statusLine; }
+  if (may.statusLine !== undefined) { delete a.statusLine; delete b.statusLine; }
   if (may.todo) {
     for (const x of [a, b]) if (x.env && typeof x.env === 'object') { delete x.env[TODO_KEY]; if (!Object.keys(x.env).length) delete x.env; }
   }
   for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) if (!same(a[k], b[k])) bad.push(k === 'hooks' ? 'an existing hook entry was removed, reordered or rewritten' : `top-level key ${k} changed`);
-  if (may.statusLine && after.statusLine && !same(after.statusLine, before.statusLine)) {
+  if (may.statusLine !== undefined && after.statusLine && !same(after.statusLine, before.statusLine)) {
     const c = after.statusLine.command;
     if (!(isReporterCommand(platform, js, c, 'statusline') || c === may.statusLine)) bad.push('statusLine changed to something other than the reporter or the wrapped command');
   }

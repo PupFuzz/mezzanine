@@ -861,6 +861,15 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
             r = A.node("statusline")
             check("R-all-18", "statusline: the wrap applied, the config's wrapped_statusline is the prior command",
                   r.returncode == 0 and A.settings()["statusLine"]["command"] == f"node {A.T['js']} statusline" and A.config()["wrapped_statusline"] == "my-status-line", tail(r))
+            N = Seat("no-statusline", coord=False)
+            N.node("artifact")
+            node_eval("const m=require(process.argv[1]); m.writeConfig({config:process.argv[2], token:'mzn_'+'n'.repeat(43), install:'inst-n', seat:'seat-n', url:'https://n.test/api/ingest/events', spool:process.argv[3]});",
+                      N.T["config"], N.T["spool"])
+            Path(N.T["settings"]).write_text('{"permissions": {"allow": []}}\n')
+            r = N.node("statusline")
+            check("R-all-18", "statusline on a seat that has no statusLine at all: the wrap applied, nothing else changed, "
+                  "wrapped_statusline null", r.returncode == 0 and N.settings() == {"permissions": {"allow": []}, "statusLine": {"type": "command", "command": f"node {N.T['js']} statusline"}}
+                  and N.config()["wrapped_statusline"] is None, tail(r))
         A.wait_flusher()
 
     # ── R-all-17: the checkout's reporter validates the write ─────────────────────────────────────────
