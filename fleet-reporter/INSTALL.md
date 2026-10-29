@@ -522,9 +522,14 @@ batch the new build sent, about a minute after the restart; a counter-raised bad
 
 **`arrival`** waits up to 150 s — long enough for cron's next minute after a stop — for every site's entry in the
 flusher's `state.json` to count an accepted batch (`batches_ok`, D1 § 9.3): `<site>: <n> batch(es) accepted:
-events arrive` and `arrival rc=0`; `a batch was REFUSED` (`rc=1`), whose `REJECTED.<site>.txt` carries the status
-(a `401`, or a `403 identity_mismatch` naming the pair the token was issued for); `NOT ARRIVED` (`rc=2`): no
-flusher ran, or the site did not answer.
+events arrive` and `arrival rc=0`; `REFUSED during this run` (`rc=1`), naming the latest refusal's time, status
+and code from `REJECTED.<site>.txt` (a `401`, or a `403 identity_mismatch` naming the pair the token was issued
+for); `NOT ARRIVED` (`rc=2`): no flusher ran, or the site did not answer. A refusal counts when its line in
+`REJECTED.<site>.txt` was written during this run: the run reads the file's lines before its first step, and judges
+only the lines added since. The file is the seat's record of every refusal and the run leaves it as it is; its
+older lines are reported beside the site's verdict as `from before this run, not judged`. A step run alone (`node
+install.js arrival`) judges the lines written while that step runs. The baseline is the file's content, never its
+timestamps against the clock, so a wall-clock step during the run cannot date a new refusal as an old one.
 
 **`ancestry`**, after a run that changed anything, says who started the lock holder — **informational**, reported
 and never judged, because a hook's flusher holds the same lock and heartbeats as well. Linux: the holder's process

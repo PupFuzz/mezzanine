@@ -110,7 +110,7 @@ tokens page.
 | `no gui launchd domain for this user` | macOS over SSH | the macOS install supports a GUI login with Claude Code in a Terminal there |
 | `a roaming profile copies %APPDATA% …` | a Windows roaming profile | not supported: the token would leave the machine at logoff |
 | selftest `token_accepted` `fail`, or health `HTTP 401` | the site does not accept the token | the user issues a new token and saves its file; run step 3's command with the new path, which replaces it; then they revoke the old prefix |
-| arrival `a batch was REFUSED`, with `identity_mismatch` | the token was issued for other names | as the row above, issuing it for exactly the install id and seat id the file carries |
+| arrival `REFUSED during this run`, with `code=identity_mismatch` | the token was issued for other names | as the row above, issuing it for exactly the install id and seat id the file carries |
 | health `NOT CURRENT` | the checkout and the site run different builds | an older checkout: pull and re-run; newer: the site's operator deploys it |
 
 [`INSTALL.md` § The checks](INSTALL.md#the-checks) reads every code.

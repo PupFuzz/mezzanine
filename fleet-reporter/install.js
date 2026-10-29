@@ -1337,6 +1337,43 @@ async function health(ctx) {
   return rc;
 }
 
+/* The lines of every REJECTED.<site>.txt on disk when this run began, by path: `arrival`'s baseline (card#12514).
+ * The flusher is that file's only writer, and it only APPENDS a line per refusal, except that past
+ * K.REJECTED_TXT_CAP it keeps the file's newer half — which drops lines and adds none it did not just append. So
+ * a line absent from this baseline was written during the run, and a refusal from before the run, kept in the
+ * file as the user's record, is never judged as this run's. Taken by content, never by the lines' timestamps
+ * against the clock: a wall-clock step back during the run would date a new refusal before the run's start and
+ * pass it, the fail-open direction, as the lock test reads the kernel's ticks rather than the wall clock (D6
+ * § 3.1, review round 3). Both spools a run can judge are read: the platform table's, and the config's when
+ * it names another. */
+function rejectedBaseline(T) {
+  const seen = new Map();
+  for (const d of new Set([T.spool, reporter().loadConfig(T.config).spool])) {
+    let names;
+    try { names = d ? fs.readdirSync(d) : []; } catch (e) { names = []; }
+    for (const n of names) {
+      if (!/^REJECTED\..+\.txt$/.test(n)) continue;
+      try { seen.set(path.join(d, n), new Set(fs.readFileSync(path.join(d, n), 'utf8').split('\n'))); } catch (e) { /* gone since the listing */ }
+    }
+  }
+  return seen;
+}
+/* The lines of `file` this run saw written — every non-empty line not in the run's baseline — and how many it
+ * holds from before the run. */
+function rejectedSince(baseline, file) {
+  let text;
+  try { text = fs.readFileSync(file, 'utf8'); } catch (e) { return { fresh: [], held: 0 }; }
+  const before = baseline.get(file) || new Set(), lines = text.split('\n').filter((l) => l !== '');
+  const fresh = lines.filter((l) => !before.has(l));
+  return { fresh, held: lines.length - fresh.length };
+}
+/* What a refusal line says, for the run's output: the marker's timestamp, status and code (fleet-reporter.js's
+ * `markerLine`), never its body. */
+const refusalSummary = (l) => {
+  const m = /^(\S+) .*?\b(status=\S+) (code=\S+)/.exec(l);
+  return m ? `${m[1]} ${m[2]} ${m[3]}` : 'a line in no marker shape';
+};
+
 async function arrival(ctx, waitS) {
   const T = ctx.T;
   step('arrival', `waits up to ${waitS} s for each site to accept a batch`);
@@ -1351,9 +1388,14 @@ async function arrival(ctx, waitS) {
       const name = s.name || 'sites[' + s.index + ']';
       const e = st && st.sites && s.name && Object.prototype.hasOwnProperty.call(st.sites, s.name) ? st.sites[s.name] : null;
       const ok = (e && e.counters && e.counters.batches_ok) || 0;
-      if (s.name && exists(path.join(spool, 'REJECTED.' + s.name + '.txt'))) { refused += 1; lines.push(name + ': a batch was REFUSED; REJECTED.' + s.name + '.txt in ' + spool + ' names the status'); }
-      else if (ok) lines.push(name + ': ' + ok + ' batch(es) accepted: events arrive');
-      else { waiting += 1; lines.push(name + ': no batch accepted yet: NOT ARRIVED'); }
+      const file = 'REJECTED.' + s.name + '.txt';
+      const rej = s.name ? rejectedSince(ctx.rejectedAtStart, path.join(spool, file)) : { fresh: [], held: 0 };
+      const earlier = rej.held ? ` (${file} holds ${rej.held} refusal line(s) from before this run, not judged)` : '';
+      if (rej.fresh.length) {
+        refused += 1;
+        lines.push(`${name}: a batch was REFUSED during this run, the latest ${refusalSummary(rej.fresh[rej.fresh.length - 1])}; ${file} in ${spool} holds every refusal`);
+      } else if (ok) lines.push(name + ': ' + ok + ' batch(es) accepted: events arrive' + earlier);
+      else { waiting += 1; lines.push(name + ': no batch accepted yet: NOT ARRIVED' + earlier); }
     }
     if (!refused && waiting && Date.now() - t0 < waitS * 1000) { await new Promise((r) => setTimeout(r, 2000)); continue; }
     for (const l of lines) say(l);
@@ -1921,7 +1963,8 @@ async function main(argv) {
   if (a.flags.help) { process.stdout.write(fs.readFileSync(__filename, 'utf8').split('\n').slice(1, 26).map((l) => l.replace(/^ ?\*? ?/, '')).join('\n') + '\n'); return 0; }
   const T = platformTable(process.platform, os.homedir(), process.env);
   if (a.flags.paths) { process.stdout.write(JSON.stringify(publicTable(T), null, 2) + '\n'); return 0; }
-  const ctx = { T, a, attempt: null, changed: false, cc: undefined };
+  // `arrival`'s baseline, read before any step runs: the refusals already on disk are not this run's.
+  const ctx = { T, a, attempt: null, changed: false, cc: undefined, rejectedAtStart: rejectedBaseline(T) };
   if (a.flags.uninstall) return uninstall(ctx);
   if (a.cmd) return STEPS[a.cmd](ctx);
   return install(ctx);

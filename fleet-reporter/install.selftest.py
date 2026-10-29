@@ -30,6 +30,8 @@ REDs plant their own defect in a copy and need no outside plant; those say so wh
   R-all-18  add-site, remove-site, statusline, set-descriptors: refusals and success.
   R-all-21  (Linux) --render-shipping spawns nothing and writes nothing; another flag beside it refuses.
   R-all-22  issue-file: the stdin route, its refusals, and (Linux, macOS) --prompt at a pseudo-terminal.
+  R-all-23  arrival judges only the refusals written during the run: a REJECTED file of older lines passes, a
+            line written while it waits fails it, alone or after older lines, and is the one it names.
   R-lin-1   the crontab block byte-identical to the runbook's at 188e5fce for the same inputs; cron's start.
   R-win-1..4, R-mac-1..4: the per-OS supervision, ACLs, quoting, roaming refusal, launchd states.
 
@@ -646,7 +648,7 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
     A = None
     A_TOK = token()
     if want("R-all-4", "R-all-5", "R-all-6", "R-all-7", "R-all-8", "R-all-9", "R-all-10", "R-all-16", "R-all-17",
-            "R-all-18", "R-lin-1", "R-win-1", "R-win-2", "R-win-3", "R-mac-1", "R-mac-2", "R-mac-3"):
+            "R-all-18", "R-all-23", "R-lin-1", "R-win-1", "R-win-2", "R-win-3", "R-mac-1", "R-mac-2", "R-mac-3"):
         print("== a fresh install: one sentence's worth — a token file and nothing else ==")
         A = Seat("seat-a", home_name="seat home" if IS_WIN else "home")
         INGEST.accepted.add(A_TOK)
@@ -797,6 +799,66 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         r = A.node("--seat-id", "another-seat")
         check("R-all-6", "a run naming another seat than the config's refuses, NOTHING RUN, and changes nothing",
               r.returncode == 1 and "NOTHING RUN" in r.stderr and A.snapshot() == before, tail(r))
+
+    # ── R-all-23: arrival judges only the refusals this run saw written (card#12514) ─────────────────
+    def marker(at_ms: float, status: int = 422, code: str = "validation_failed") -> str:
+        """A line in the shape fleet-reporter.js's `markerLine` writes: its ISO timestamp first."""
+        iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(at_ms / 1000)) + ".%03dZ" % (int(at_ms) % 1000)
+        return f"{iso} site=default status={status} code={code} events=3 body={{\"error\":\"{code}\"}}\n"
+
+    if A and want("R-all-23"):
+        print("== R-all-23: a re-check on a seat whose REJECTED file holds only refusals from days earlier ==")
+        A.wait_flusher()
+        rej = Path(A.T["spool"]) / "REJECTED.default.txt"
+        old_ms = (time.time() - 2 * 86400) * 1000
+        rej.write_text(marker(old_ms) + marker(old_ms + 3_540_000))
+        os.utime(rej, (old_ms / 1000, old_ms / 1000))
+        r = A.node()
+        check("R-all-23", "a REJECTED file whose every line predates the run, with batches accepted since: arrival rc=0 and "
+              "the run exits 0, ALREADY CURRENT",
+              r.returncode == 0 and "ALREADY CURRENT" in r.stdout and "arrival rc=0" in r.stdout
+              and "batch(es) accepted: events arrive" in r.stdout, tail(r))
+        check("R-all-23", "  … and the file, the user's own record, keeps every line", rej.read_text().count("status=422") == 2)
+        rej.unlink()
+
+    if want("R-all-23"):
+        print("== R-all-23: a refusal written while `arrival` waits ==")
+        S = Seat("seat-arrival", coord=False)
+        r = S.node("artifact")
+        check("R-all-23", "the bare seat's artifact step installs the reporter `arrival` reads the config with", r.returncode == 0, tail(r))
+        spool = Path(S.T["spool"])
+        spool.mkdir(parents=True, exist_ok=True)
+        Path(S.T["configDir"]).mkdir(parents=True, exist_ok=True)
+        Path(S.T["config"]).write_text(json.dumps({"install_id": "inst-arr", "seat_id": "seat-arr", "spool_dir": str(spool), "enabled": True,
+                                                   "ingest_url": INGEST.url, "token": token(), "ca_file": str(INGEST.crt)}))
+        # No flusher runs on this seat, so nothing rewrites state.json: no batch is accepted, and arrival waits.
+        (spool / "state.json").write_text(json.dumps({"sites": {"default": {"counters": {"batches_ok": 0}}}}))
+        rej = spool / "REJECTED.default.txt"
+
+        def arrival_with(prior: str, written: str) -> Ran:
+            if prior:
+                rej.write_text(prior)
+            elif rej.exists():
+                rej.unlink()
+            out: list = []
+            t = threading.Thread(target=lambda: out.append(S.node("arrival", timeout=240)))
+            t.start()
+            time.sleep(4)                        # past the step's start and its first look, inside its wait
+            with open(rej, "a") as f:
+                f.write(written)
+            t.join()
+            return out[0]
+
+        new = marker(time.time() * 1000, status=403, code="identity_mismatch")
+        r = arrival_with("", new)
+        check("R-all-23", "a refusal written during the run: arrival rc=1, naming the refusal's status and code",
+              r.returncode == 1 and "arrival rc=1" in r.stdout and "REFUSED" in r.stdout and "status=403 code=identity_mismatch" in r.stdout, tail(r))
+        old_ms = (time.time() - 2 * 86400) * 1000
+        r = arrival_with(marker(old_ms) + marker(old_ms + 1000), new)
+        check("R-all-23", "a file of old lines that gains one new line during the run: arrival rc=1, naming the new line's status "
+              "and code, never an old one's",
+              r.returncode == 1 and "arrival rc=1" in r.stdout and "status=403 code=identity_mismatch" in r.stdout
+              and "status=422" not in r.stdout, tail(r))
 
     # ── R-all-7: an upgrade, artifact first and the stop second ───────────────────────────────────────
     if A and want("R-all-7", "R-mac-1"):
