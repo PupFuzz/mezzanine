@@ -642,10 +642,13 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             }
 
             node('path', { d: b.cloud.d, class: 'bubble' }, group);
-            text(group, { x: b.x + BUBBLE_PAD, y: b.y + BUBBLE_PAD, text: b.text, id: `${desk.key}:bubble` }, 'bubble-text');
+            // The title's lines, one text a line (card#12446), then the source line under the last.
+            b.lines.forEach((line, i) => {
+                text(group, { x: b.x + BUBBLE_PAD, y: b.y + BUBBLE_PAD + i * TYPE_ROLES[FACT].line, text: line.text, id: `${desk.key}:bubble` }, 'bubble-text');
+            });
 
             if (b.second !== null) {
-                text(group, { x: b.x + BUBBLE_PAD, y: b.y + BUBBLE_PAD + TYPE_ROLES[FACT].line, text: b.second, id: `${desk.key}:bubble2` }, 'bubble-source');
+                text(group, { x: b.x + BUBBLE_PAD, y: b.y + BUBBLE_PAD + b.lines.length * TYPE_ROLES[FACT].line, text: b.second, id: `${desk.key}:bubble2` }, 'bubble-source');
             }
         }
 

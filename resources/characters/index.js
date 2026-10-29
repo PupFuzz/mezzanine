@@ -11,7 +11,7 @@
 // ⛔ Every entry point returns standalone SVG DOCUMENTS. The painter turns each into a
 // SVG `data:` URI (UTF-8, encodeURIComponent) — this tree carries no URI, and no text naming one.
 
-import { EXPRESSIONS, INTERN_LOOP, SLEEP_LOOP, crestOfKey, expressionOf, frameDocument, internSpeciesOf, markerLevel, sleepDocument } from './creatures.js';
+import { EXPRESSIONS, INTERN_LOOP, SLEEP_LOOP, crestOfKey, headClearOfKey, expressionOf, frameDocument, internSpeciesOf, markerLevel, sleepDocument } from './creatures.js';
 import { draw, seatKey } from './seed.js';
 
 export { seatKey, fnv1a32, draw } from './seed.js';
@@ -20,7 +20,7 @@ export {
   RIM, RIM_W, FOOT, SEAT_RECT, SEAT_VIEWBOX, CHIBI_STOOL, CHIBI_VIEWBOX, CHIBI_HEAD_SHARE, speciesOf, internSpeciesOf, recipe, describe, chibiGeometry, frameDocument,
   EYE_K, BROW_K, MOUTH_K, EXPRESSIONS, expressionOf,
   SLEEP_LOOP, SLEEP_ZS, Z_LARGE, Z_A0, Z_A1, Z_RATIO, Z_T0, Z_GAP, Z_TOP, Z_GLOW, Z_HALO, Z_HALO_OPACITY,
-  CREST_TOP, STAND_TOP, standEntry, crestOfKey, MARKER_WEIGHT, MARKER_SPREAD, zLevels, markerLevel, zStand, zLargeFor, sleepDocument,
+  CREST_TOP, STAND_TOP, FACE_TOP, standEntry, crestOfKey, headClearOfKey, MARKER_WEIGHT, MARKER_SPREAD, zLevels, markerLevel, zStand, zLargeFor, sleepDocument,
   LAPTOP_SHELLS, STICKER_SHAPES, STICKER_INKS, STICKER_CONTRAST, INTERN_LOOP, INTERN_SWAY_DEG, INTERN_SWAY_DX, laptopOf, LAPTOP_W, LAPTOP_TOP, LAPTOP_BOTTOM, LAPTOP_EYE_MARGIN,
 } from './creatures.js';
 
@@ -137,6 +137,19 @@ export function poseFrames(installId, seatId, { pose, glyph = null, deskTop, cle
  */
 export function crestTop(installId, seatId, at = {}) {
   return crestOfKey(seatKey(installId, seatId), at);
+}
+
+/**
+ * WHAT A SEAT's THOUGHT BUBBLE MUST LEAVE UNCOVERED (card#12446) — the tree → floor interface for § 5.1's bubble, beside
+ * `crestTop()`: its face's top and the top of the mark its pose draws over the head, in frame units from the character
+ * rect's top (`creatures.js`'s `headClearOfKey()`), for its delivered `species`. The page hands it to the scene, which
+ * sets the bubble above both (`floor/desk-layout.js`'s `bubbleSeat()`).
+ * @param {string} installId @param {string} seatId
+ * @param {{pose?: string, glyph?: string|null, species?: string, clear?: object[]}} [at]
+ * @returns {{face: number|null, mark: number|null}}
+ */
+export function headClear(installId, seatId, at = {}) {
+  return headClearOfKey(seatKey(installId, seatId), at);
 }
 
 /**

@@ -250,7 +250,7 @@ for (const bad of [-1, C.INTERN_LOOP, 0.5]) { try { C.frameDocument('sway/x', { 
 try { C.frameDocument('sway/x', { sway: 1 }); } catch { swayRefused++; }
 try { C.frameDocument('sway/x', { laptop: true }); } catch { swayRefused++; }
 check(swayRefused === 5, `a sway outside 0..${C.INTERN_LOOP - 1}, a sway on a seat frame and a laptop on a seat frame are refused (${swayRefused}/5)`);
-// THE STANDARD LAPTOP (card#12502; FLOOR.md § 13 row 97; the operator's rulings of 2026-10-28 — one standard size,
+// THE STANDARD LAPTOP (card#12502; FLOOR.md § 13 row 98; the operator's rulings of 2026-10-28 — one standard size,
 // *"I want baseline B where the laptop is raised. … The laptop needs to be wider and also taller. Again, it is OK for
 // the laptop to cover a smaller subagent's mouse [mouth] and nose."*). Read by the same ink reader as § 8b, IN THE
 // LAPTOP's OWN FRAME — each document wrapped in the inverse of its laptop group's transform, so the lid is
@@ -812,15 +812,43 @@ check(crestFault.length === 0, `CREST_TOP is at or above every species' and vari
 // trail circle the floor stands over the crest meets the head — and each row a key reads lies within two units of the
 // highest such ink (a measurement, not a margin: the table is the floor of a larger population than this one, and its
 // whole units round it up by under one). Rows no key of the population reads are printed, unexamined.
-const standFault = [], standSlack = {};
+// THE FACE TABLE AND THE BUBBLE's CLEAR LINES, read in the same pass (card#12446, the operator's ruling of 2026-10-28,
+// *"The bubble can also be lowered"* — never over the eyes, the mouth or the facts plate): for every key, expression and
+// walk phase, the face group's topmost ink lies AT OR UNDER the face `headClearOfKey()` declares for it (`FACE_TOP` at the
+// key's size), each `FACE_TOP` row within two units of the highest such ink; a marked pose's `?` or `!`, glow included,
+// lies at or under the mark it declares; and no line it declares rises above the frame's top (`SEAT_VIEWBOX.y`), the
+// highest the floor's `bubbleSeat()` — and so `leastBoxHeight()` — ever sets a bubble against.
+const POSE_OF = { neutral: ['present', null], working: ['at-keyboard', null], thinking: ['leaning-back', null], question: ['present', 'question'], attention: ['raised-hand', null], stalled: ['head-in-hands', null] };
+const standFault = [], standSlack = {}, faceFault = [], faceSlack = {}, faceInk = [];
 for (const sp of KEYS) for (const key of keysOf(sp)) {
   const e = C.standEntry(key, sp), row = `${e.name}#${e.hat}`, want = C.crestOfKey(key, { species: sp });
   for (const expression of Object.keys(C.EXPRESSIONS)) for (const phase of [0, 1, 2]) {
     const doc = C.frameDocument(key, { species: sp, phase, expression, clear: CLEAR }), m = partOf(doc, 'marker');
+    let face = Infinity, mark = Infinity;
+    inkBounds(doc, (node, b, up) => { if (underPart(up, 'face')) face = Math.min(face, b.y0); else if (underPart(up, 'marker')) mark = Math.min(mark, b.y0); });
     const top = inkBounds(m === null ? doc : doc.replace(m, '')).y0;
     if (top < want - 1e-6) standFault.push(`${row} (${key}, ${expression}, phase ${phase}): ink at ${top.toFixed(2)} over the crest ${want.toFixed(2)}`);
     standSlack[row] = Math.min(standSlack[row] ?? Infinity, top - want);
+    const [pose, glyph] = POSE_OF[expression];
+    const clear = C.headClearOfKey(key, { pose, glyph, species: sp, clear: CLEAR });
+    faceInk.push({ name: e.name, size: e.size, face });
+    if (face < clear.face - 1e-6) faceFault.push(`${e.name} (${key}, ${expression}, phase ${phase}): face ink at ${face.toFixed(2)} over its declared ${clear.face.toFixed(2)}`);
+    faceSlack[e.name] = Math.min(faceSlack[e.name] ?? Infinity, C.FOOT - (C.FOOT - face) / e.size - C.FACE_TOP[e.name]);
+    if ((C.EXPRESSIONS[expression].marker ? 1 : 0) !== (clear.mark === null ? 0 : 1)) faceFault.push(`${e.name} (${key}, ${expression}): a mark declared ${clear.mark === null ? 'absent' : 'present'} where the pose draws ${m === null ? 'none' : 'one'}`);
+    else if (clear.mark !== null && mark < clear.mark - 1e-6) faceFault.push(`${e.name} (${key}, ${expression}): marker ink at ${mark.toFixed(2)} over its declared ${clear.mark.toFixed(2)}`);
+    if (clear.face < 0 || (clear.mark !== null && clear.mark < C.SEAT_VIEWBOX.y)) faceFault.push(`${e.name} (${key}, ${expression}): a clear line above the frame's top`);
   }
+}
+const faceLoose = Object.entries(faceSlack).filter(([, v]) => v > 2).map(([r, v]) => `${r} ${v.toFixed(2)}`);
+const asleepClear = C.headClearOfKey('bounds/asleep', { pose: 'asleep', species: KEYS[0] });
+check(asleepClear.face === null && asleepClear.mark === C.SEAT_VIEWBOX.y, `asleep, the bubble clears the z's at the frame's top (${JSON.stringify(asleepClear)}), which § 8b holds every sleeper's ink under`);
+check(faceFault.length === 0 && faceLoose.length === 0 && Object.keys(faceSlack).length === Object.keys(C.FACE_TOP).length,
+  `FACE_TOP is at or above every standing and walking key's face ink, each of its ${Object.keys(C.FACE_TOP).length} rows read and within two units of it, and a marked pose's mark is at or above its marker's ink, over ${BOUNDS_KEYS + WIDE_KEYS} keys a species${faceFault.length ? ` — ${faceFault.slice(0, 3).join('; ')}` : ''}${faceLoose.length ? ` — loose: ${faceLoose.slice(0, 4).join('; ')}` : ''}`);
+// the control: the same comparison against a table five units lower in one row (a face line under the eyes) reds.
+{
+  const row = Object.keys(C.FACE_TOP)[0];
+  const under = faceInk.filter((f) => f.name === row && f.face < C.FOOT - (C.FOOT - (C.FACE_TOP[row] + 5)) * f.size - 1e-6);
+  check(under.length > 0, `CONTROL — FACE_TOP's ${row} row moved 5 units down is under ${under.length} measured face(s), so the leg can see a bubble set over the eyes`);
 }
 const standLoose = Object.entries(standSlack).filter(([, v]) => v > 2).map(([r, v]) => `${r} ${v.toFixed(2)}`);
 const standRows = Object.entries(C.STAND_TOP).flatMap(([name, g]) => Object.keys(g).map((h) => `${name}#${h}`));

@@ -376,7 +376,8 @@ const FACTS_W = BOX.width - (216 + 4);
 const roleOf = (kind) => ({ nameplate: 'name', 'monitor-text': 'screen' }[kind] ?? 'fact');
 const TEXT_W = {
     nameplate: 148, 'monitor-text': 82, chip: 160 - 12, badge: 108 - 6, label: FACTS_W, currency: FACTS_W, lag: FACTS_W,
-    'gauge-pct': 60, flag: FACTS_W, 'stool-more': FACTS_W, 'quiet-age': FACTS_W, bubble: BOX.width - 6, 'bubble.second': BOX.width - 6,
+    // the bubble's text width (card#12446: the art column less its padding); a title that fits one such line is never cut
+    'gauge-pct': 60, flag: FACTS_W, 'stool-more': FACTS_W, 'quiet-age': FACTS_W, bubble: 216 - 12, 'bubble.second': 216 - 12,
 };
 
 function ruleTwo(where, m, v, desk) {
@@ -717,6 +718,9 @@ const RULED_SINCE = [
     // card#12444, FLOOR.md decision 82: `unknown`'s question marker pulses with the sleeper's pulse (A9's Animation cell
     // names a 4 fps loop), so where its held render may move — no treatment, no stilled floor, no reduced motion — the
     // character the baseline recorded `still` is `moving`; under any of those it is still, as recorded.
+    // card#12446, FLOOR.md decision 97: the bubble's cap is 120 code points (48 until then), so a title the baseline drew cut
+    // at 48 is owed as the model now holds it — the whole title, or its cut at 120 — which the cut value is a prefix of.
+    { kind: 'bubble', from: null, to: (seat, value, m) => m.bubble.text, applies: (seat, value, m) => value.endsWith('…') && m.bubble !== null && m.bubble.text !== value && m.bubble.text.startsWith(value.slice(0, -1)) },
     { kind: 'character.motion', from: 'still', to: 'moving', applies: (seat, value, m) => seat.render_state === 'unknown' && m.held?.motion === true },
 ];
 
@@ -741,7 +745,7 @@ function ruleOne(key, entry) {
 
     for (const [kind, member, recorded] of entry.leaves) {
         const ruled = RULED_SINCE.find((r) => r.kind === kind && (r.from === null || r.from === recorded) && r.applies(seat, recorded, m));
-        const value = ruled === undefined ? recorded : ruled.to;
+        const value = ruled === undefined ? recorded : typeof ruled.to === 'function' ? ruled.to(seat, recorded, m) : ruled.to;
 
         if (kind === 'placeholder' || value === null) {
             continue;
