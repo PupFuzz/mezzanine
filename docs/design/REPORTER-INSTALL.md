@@ -63,7 +63,8 @@ What a user meets today, read from the tree at `origin/dev` `188e5fce`:
 - **The Linux route is three runs and a hidden prompt the agent cannot run.** `install.sh` exits `3`
   on a seat with no config (`fleet-reporter/install.sh:303-311`), the user runs `--set-token` at a
   terminal of their own because the agent's shell has no `/dev/tty` (`install.sh:239-241`,
-  `AGENT-INSTALL.md:89-93`), then the agent runs the install. `AGENT-INSTALL.md` is 173 lines.
+  `AGENT-INSTALL.md:89-93`), then the agent runs the install. `wc -l fleet-reporter/AGENT-INSTALL.md`
+  prints the guide's length (173 at `188e5fce`), and its longest section is the token step.
 - **The Windows route is by hand, block by block.** `install.sh` refuses to run there
   (`AGENT-INSTALL.md:30-32`); the agent runs the Windows section of `INSTALL-LINUX.md` one Bash tool
   call per block, re-exporting a values block before each (`INSTALL-LINUX.md:2197-2199`), and the token
@@ -196,12 +197,12 @@ It prints: `artifact`, `u1` (sha256sum) · `backup` (stat -c, md5sum, crontab) �
 `token-config`, `token-prompt`, `token-rotate` (stat -c) · `token-shred` (shred, readlink -f) ·
 `prereqs` (readlink -f, flock, crontab) · `cron-helpers` (/proc, flock) · `cron-write` (flock,
 readlink -f, crontab, md5sum). Every other run block already runs on Windows as written, and so runs on
-macOS. The build changes those twelve this way, each a small edit inside the block it names, with the
-anchor and the read messages unchanged:
+macOS. The build changes the blocks that command prints this way, each a small edit inside the block it
+names, with the anchor and the read messages unchanged:
 
 | Tool | Where it goes | Why that and not a port of the tool |
 |---|---|---|
-| `stat -c '%a %U'` | `node "$B/owner-only.js" check <path>…` — `acl-only-me.js` generalised: on `win32` the ACL check it is today, on POSIX the owner-and-mode check `write-config.js` already carries in node (`INSTALL-LINUX.md:628-644`). The `if [ -n "${WIN_C:-}" ]` branches collapse to one call | BSD `stat` has no `-c` and prints the mode as `%Lp`, the owner as `%Su` ([§ 6.1](#61-what-macos-lacks-and-what-it-has)); two spellings of one check is the defect |
+| `stat -c '%a %U'` | `node "$B/owner-only.js" check <path>…` — `acl-only-me.js` generalised: on `win32` the ACL check it is today, on POSIX the owner-and-mode check `write-config.js` already carries in node (`INSTALL-LINUX.md:659-681`). The `if [ -n "${WIN_C:-}" ]` branches collapse to one call | BSD `stat` has no `-c` and prints the mode as `%Lp`, the owner as `%Su` ([§ 6.1](#61-what-macos-lacks-and-what-it-has)); two spellings of one check is the defect |
 | `sha256sum`, `md5sum` | `node "$B/digest.js" sha256\|md5 <file>…`, `crypto.createHash`, GNU output format | macOS 14 ships GNU-compatible `sha256sum`/`md5sum` ([§ 6.1](#61-what-macos-lacks-and-what-it-has)); which earlier version first did is unverified, and the run block must not depend on it |
 | `shred -u` | `node "$B/shred.js" <file>`: refuse a symlink, overwrite the file's length with random bytes, `fsync`, unlink — the runbook already states `shred`'s overwrite is not assured on journaling file systems (`INSTALL-LINUX.md:981-983`), so node's is the same guarantee | no `shred(1)` on macOS |
 | `readlink -f` | `node -p 'require("fs").realpathSync(process.argv[1])' -- <path>`; for `node` itself, `process.execPath` | `readlink -f` on macOS is unverified from here (§ 6.1) |
@@ -246,7 +247,7 @@ existing Step 8 text made a block.
 `~/.config/fleet-reporter/mezzanine-reporter-token` (Windows: `%APPDATA%\fleet-reporter\`): one line,
 `mzn_` + 43 characters of `[A-Za-z0-9_-]`, optional trailing `\n`, mode `0600` in a `0700` directory
 the seat account owns, or the owner-only ACL on Windows (`INSTALL-LINUX.md:889-901`; the writer's
-`FILE_TOKEN = /^mzn_[A-Za-z0-9_-]{43}\n?$/`, `INSTALL-LINUX.md:574`, and its checks at `:628-644`).
+`FILE_TOKEN = /^mzn_[A-Za-z0-9_-]{43}\n?$/`, `INSTALL-LINUX.md:574`, and its checks at `:659-681`).
 It is a hop the operator carries by hand. **v1 stays accepted**, so the hand delivery and the
 hidden-prompt runbook route keep working; a v1 file carries no site, install id or seat id, so with
 one the installer needs `--site` and `--seat-id` (and takes `--install-id` or the account name as
@@ -323,7 +324,7 @@ Three refusals, each before anything is written, each naming exposure where ther
 2. **The agent's rule, in `AGENT-INSTALL.md`:** if the user's reply holds a `mzn_` string, the agent runs
    nothing and says the same: the token has passed through the agent, which D1 P-6 and the guide forbid,
    and the remedy is revoke-and-reissue, not an install.
-3. **The file's content** is validated by the writer, which never echoes it (`:628-644`); a file that is
+3. **The file's content** is validated by the writer, which never echoes it (`INSTALL-LINUX.md:659-681`); a file that is
    not v1 or v2 is refused with the reason and the token in it is treated as exposed only when the file
    was also readable by others (§ 4.3).
 
@@ -353,7 +354,7 @@ Agent: (runs) git clone --depth 1 https://github.com/PupFuzz/mezzanine ~/.local/
        (runs) node ~/.local/src/mezzanine/fleet-reporter/install.js --token-file ~/Downloads/mezzanine-reporter-token
        … install.js: ── INSTALL-LINUX.md block `token-take` … moved into ~/.config/fleet-reporter (mode 600)
        … read the token from …/mezzanine-reporter-token (mode 600) · wrote …/config.json (mode 600) · token file gone
-       … board user 14 on https://<kanban host> · CLAUDE_CODE_ENABLE_TODO_TOOLS=1: set · installed: <crontab md5>
+       … board user <id> on https://<kanban host> · CLAUDE_CODE_ENABLE_TODO_TOOLS=1: set · installed: <crontab md5>
        … selftest rc=0 · health rc=0 · arrival rc=0
        install.js: INSTALLED: the server holds this build current and every site has accepted a batch; the desk is on the site's floor
 Agent: Done. Your desk is on the floor as <install>/<seat>. Start a new Claude Code session to see tool calls appear.
@@ -443,7 +444,7 @@ D1 § 2.3 wants a supervised start on a seat that can have one, so that *heartbe
 | Option | Mechanism | What it costs |
 |---|---|---|
 | **A. A user `launchd` agent** (recommended) | `~/Library/LaunchAgents/com.pupfuzz.fleet-reporter.plist`, owned by the user, `launchctl bootstrap gui/$(id -u) <plist>`; `ProgramArguments` = the resolved `node` and the artifact's `flusher`; `RunAtLoad true`; **`StartInterval 60`**, not `KeepAlive`; `EnvironmentVariables` carries `COORD_CONFIG` when the resolver prints one — D1 § 3.1's delivery contract; stdout/err to `/dev/null` as the crontab line does. No root: Apple's launchd guide says per-user agents are owned by the user and loaded by the per-user `launchd` started *"when a user logs in"*, and *"execute only while that user is logged in"*; at logout launchd sends them `SIGTERM`, which is the flusher's clean stop (lock removed) | runs only while the user is logged in — which is when a macOS seat is a seat, since Claude Code runs in its terminal; a flusher that loses the lock to a hook-started one exits 0 and is started again a minute later and exits again, one `node` start per minute while that lasts, the same cost cron pays without `flock`. `StartInterval` rather than `KeepAlive` because `KeepAlive true` relaunches a job that exited 0 after its throttle (10 s), six times the churn, for the same lock loser |
-| B. The user crontab, as Linux | `* * * * *` + `@reboot` with no `flock` | Apple ships `cron` but its own `crontab(1)` says its functionality *"has been absorbed by launchd"* (recall of the page's text; unverified from here); since macOS 10.15 `cron` needs a Full Disk Access grant to touch protected folders, a per-machine click in System Settings — none of this install's paths is protected, so it may not fire, but the first failure mode would be silent; and the Linux `cron-ancestry` check expects `flock` and `CRON` in the chain, so it needs its own macOS variant anyway |
+| B. The user crontab, as Linux | `* * * * *` + `@reboot` with no `flock` | Apple ships `cron` but its own `crontab(1)` says its functionality *"has been absorbed by launchd"* (recall of the page's text; unverified from here); since macOS 10.15 `cron` needs a Full Disk Access grant to touch protected folders, a per-machine click in System Settings (recall, unverified from here) — none of this install's paths is protected, so it may not fire, but the first failure mode would be silent; and the Linux `cron-ancestry` check expects `flock` and `CRON` in the chain, so it needs its own macOS variant anyway |
 | C. Option A as on Windows — hooks only | the ruling card#12335 took for Windows, nothing to build | the idle/offline distinction D1 § 15 row 9 names is lost on the seat; taken on Windows because Windows has no no-root supervisor the operator accepted, which is not macOS's situation |
 
 **Recommendation: A.** It is Apple's supported no-root mechanism, it delivers the environment by a
@@ -461,8 +462,8 @@ supervisor block and prints the sentence the agent relays (§ 5).
 
 The installer runs blocks through `bash`; it runs no `sed -i`, `date -d` or `stat` of its own —
 every value it computes it computes in node (`os.homedir()`, `fs.realpathSync`, `crypto`,
-`process.execPath`). The blocks' GNU uses are the twelve of § 3.3, each replaced by a node helper or
-moved to a Linux-only block. The sanity grep for the build: after it lands, § 3.3's `awk` must print
+`process.execPath`). The blocks' GNU uses are the ones § 3.3's command prints, each replaced by a node
+helper or moved to a Linux-only block. The sanity grep for the build: after it lands, § 3.3's `awk` must print
 no block without a `· linux` suffix for `flock`, `crontab`, `/proc`, and nothing at all for `stat -c`,
 `shred`, `md5sum`, `sha256sum`, `readlink -f`.
 
@@ -634,13 +635,13 @@ before the build should trust the owning document.
 
 | # | Document and place | Change | Why |
 |---|---|---|---|
-| 1 | D1 § 2.1's install-path table and § 3.1's path table | add `macOS` where they read *Linux / macOS* only by implication in the heading: the config directory `~/.config/fleet-reporter/` and the artifact `~/.local/share/fleet-reporter/`, as stated; no new row | the rows already cover macOS; the amendment is the sentence that says the Windows values block's `WIN_*` are set by the installer on `win32` only |
+| 1 | D1 § 2.1's install-path table and § 3.1's path table | no path changes: the *Linux / macOS* rows already give macOS `~/.local/share/fleet-reporter/` and `~/.config/fleet-reporter/`. One sentence is added beside them: the installer sets the Windows section's `WIN_*` values on `win32` only, and on `darwin` the Linux/macOS rows apply unchanged | the rows cover macOS; what D1 lacks is the statement of who sets the per-OS values |
 | 2 | D1 § 3.1, after the carried-file sentence | the token-file contract of § 4: v1 and v2, the four keys, LF only; the page's Save button as the producer | the hop is declared where the consumer reads D1 |
 | 3 | D1 § 2.3 item 1 | *on macOS, a user `launchd` agent with `StartInterval 60` and `RunAtLoad`, which runs while the user is logged in* — if Q1 = A; the contract's `$COORD_CONFIG` delivery by `EnvironmentVariables` | § 2.3 names the Linux and Windows starts; macOS is a third |
 | 4 | D1 § 3.1, the roster resolution paragraph | *the home path is Linux's; on Windows and macOS `$COORD_CONFIG` is the whole resolution* | `rosterSite()` already does this (`fleet-reporter.js:522`); D1 says it for Windows only |
 | 5 | D1 § 15 row 9 | the macOS column: supervised (A) or hook-respawn only (C), per Q1 | the row records the per-OS decision |
 | 6 | D1 § 16's install precondition | a macOS leg: *a procedure exists once this design is built; a real install is owed*, as the Windows leg reads today (`EVENT-SCHEMA.md:8557-8565`) | same shape as the Windows precondition |
-| 7 | `fleet-reporter/INSTALL-LINUX.md` | title and intro: *on a Linux, Windows or macOS seat*; § Running it with `install.sh` → `install.js`; the platform anchors; the twelve blocks of § 3.3; the macOS section (`prereqs-darwin`, `launchd-write`, `launchd-ancestry`, backup/uninstall legs), written like the Windows section: only what differs | the runbook owns the commands |
+| 7 | `fleet-reporter/INSTALL-LINUX.md` | title and intro: *on a Linux, Windows or macOS seat*; § Running it with `install.sh` → `install.js`; the platform anchors; the blocks § 3.3's command prints; the macOS section (`prereqs-darwin`, `launchd-write`, `launchd-ancestry`, backup/uninstall legs), written like the Windows section: only what differs | the runbook owns the commands |
 | 8 | `fleet-reporter/AGENT-INSTALL.md`, `fleet-reporter/README.md`, `README.md` | § 3.2 and § 5 | the user-facing surfaces |
 | 9 | `docs/PLAN.md § 3`, the installer row | *Linux, Windows and macOS: `fleet-reporter/install.js` runs the runbook's blocks* | the work-breakdown map |
 | 10 | `tools/design/README.md` | this document declared under no gate, as D4 and D5 are — applied by this PR | the verifier README's convention |
