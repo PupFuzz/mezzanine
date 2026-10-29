@@ -166,7 +166,7 @@ class TheDeskIsReLaidTest extends TestCase
     {
         $dir = $this->mutatedModules(['../floor/desk-layout.js', '    let y = top;', '    let y = top + 8 + TRAIL_GAP;']);
 
-        $this->assertNotSame([], array_filter($this->bubbleDefects($this->painterRun(dirname($dir))), fn (string $d): bool => str_contains($d, "meets the character's drawn head")),
+        $this->assertNotSame([], array_filter($this->bubbleDefects($this->painterRun(dirname($dir))), fn (string $d): bool => str_contains($d, "meets the character's")),
             'RED (the trail started 8 px inside the character\'s head) did not fail the bubble leg');
     }
 
@@ -178,10 +178,14 @@ class TheDeskIsReLaidTest extends TestCase
     public function test_red_the_bubble_off_its_character_or_the_trail_short_of_it(): void
     {
         foreach ([
-            "the bubble back in the box's top band" => ['../floor/scene.js', '            anchor: { x: centre, y: bottom },', '            anchor: { x: centre, y: desk.box.y + 2 * LINE + 2 * BUBBLE_PAD },', 'not set on its character'],
-            'the trail at its normal reach whatever the bubble' => ['../floor/scene.js', '            trail: trailCircles(foot.x, foot.y, rect.y + rect.h),', '            trail: trailCircles(foot.x, foot.y, foot.y - TRAIL_REACH),', 'does not reach the bubble'],
+            "the bubble back in the box's top band" => ['../floor/scene.js', '            anchor: { x: centre, y: desk.bubble_bottom },', '            anchor: { x: centre, y: desk.box.y + 2 * LINE + 2 * BUBBLE_PAD },', 'not set on its character'],
+            // 22 px, the trail's least reach (`TRAIL_REACH`), which scene.js no longer imports
+            'the trail at its least reach whatever the bubble' => ['../floor/scene.js', '            trail: trailCircles(foot.x, foot.y, rect.y + rect.h),', '            trail: trailCircles(foot.x, foot.y, foot.y - 22),', 'does not reach the bubble'],
             // the seat's ruling of the same day: the trail starts at the character's drawn head, not its frame's top
-            'the trail started at the frame\'s top' => ['../floor/scene.js', '        return ctx.crest(installId, model.seat_id, { pose: character.pose, species: character.species });', '        return 0;', 'does not reach the head'],
+            'the trail started at the frame\'s top' => ['../floor/scene.js', '        return { crest: ctx.crest(installId, model.seat_id, at), clear: ctx.headClear(installId, model.seat_id, at) };', '        return { crest: 0, clear: ctx.headClear(installId, model.seat_id, at) };', 'does not reach the head'],
+            // card#12446 (the operator's *"The bubble can also be lowered"*): a bubble left where card#12444 set it, at the
+            // character's frame whatever its face, is not set as low as the face allows
+            'the bubble not lowered to the face' => ['../floor/desk-layout.js', '    const bottom = head === null', '    const bottom = head === null || true', 'not set on its character'],
         ] as $what => [$file, $from, $to, $says]) {
             $dir = $this->mutatedModules([$file, $from, $to]);
 

@@ -796,11 +796,14 @@ PLANTS = [
     (
         # The same check's OTHER axis (PR #232 round 1, MINOR-7): a `≥ box` test is two comparisons,
         # and a plant on the width alone would pass a check that had dropped the height.  The first
-        # `height` after the layer's name is the first object's, in Tiled's own key order.
+        # `height` after the layer's name is the first object's, in Tiled's own key order.  Planted
+        # one pixel under the BOX's height rather than under the object's own: the default's objects
+        # are 287 tall, the box's height when card#12444 laid them, and card#12446 shrank the box to
+        # 276 under them, so a pixel off the object is still at least the box.
         "verify-floor.py",
         "resources/floor/default.tmj",
         r"(\"desks\"[\s\S]*?\"height\":)(\d+)(,)",
-        "shrink",
+        "under-box-height",
         "the shipped default's first `desks` object one pixel shorter than the furniture box, which "
         "G8 must refuse as an object smaller than the box on its height (PR #232 round 1, MINOR-7)",
         "smaller than the furniture box at the cap",
@@ -1157,10 +1160,21 @@ HOLDS = [
     ),
 ]
 
+def _box_height():
+    """The furniture box's height, out of `resources/floor/furniture-box.js`'s one declaration line."""
+    line = re.search(r"^export const FURNITURE_BOX = Object\.freeze\(\{ width: (\d+), height: (\d+) \}\);$",
+                     (ROOT / "resources" / "floor" / "furniture-box.js").read_text(encoding="utf-8"), re.M)
+    if line is None:
+        raise SystemExit("the furniture box's declaration line is not in the shape this plant reads")
+    return int(line.group(2))
+
+
 # Each reads group(2) out of the document and transforms it; none carries a value of its own.
 MUTATIONS = {
     "bump": lambda m: m.group(1) + str(int(m.group(2).replace(",", "")) + 1) + m.group(3),
     "shrink": lambda m: m.group(1) + str(int(m.group(2).replace(",", "")) - 1) + m.group(3),
+    # one pixel under the furniture box's height, read out of its one declaration (card#12446)
+    "under-box-height": lambda m: m.group(1) + str(_box_height() - 1) + m.group(3),
     "nonascii-digit": lambda m: m.group(1) + m.group(2)[:-1] + chr(0x0660 + int(m.group(2)[-1])) + m.group(3),
     "php-escape": lambda m: m.group(1) + "\\\\" + m.group(2) + m.group(3),
     "bold-bump": lambda m: (m.group(1) + "**"
