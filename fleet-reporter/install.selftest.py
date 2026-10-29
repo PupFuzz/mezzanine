@@ -693,6 +693,13 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
                   and "KeepAlive" not in p, json.dumps(p, default=str))
             check("R-mac-1", "not loaded: one bootstrap", "launchctl bootstrap" in (A.stub / "launchctl.log").read_text(), (A.stub / "launchctl.log").read_text())
             A.wait_flusher()
+        if r.returncode != 0 or not Path(A.T["js"]).exists():
+            # Its own checks above have failed; every later section needs an installed seat, so none of them
+            # runs on it — reported here by name, never read as a pass.
+            not_measured("R-all-6, -7, -9, -10, -17, -18 and the per-OS sections on seat A",
+                         "the first install failed (above), so there is no installed seat to run them on")
+            check("seat-a", "the first install produced an installed seat for the later sections", False)
+            A = None
 
     # ── R-all-6: the second run ───────────────────────────────────────────────────────────────────────
     if A and want("R-all-6"):

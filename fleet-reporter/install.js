@@ -392,7 +392,7 @@ let mySid = null;
 const sid = () => mySid || (mySid = powershell('[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value').trim());
 const who = (s) => (s === sid() ? '<me>' : s);
 function aclCheck(paths) {
-  const lines = [], foreign = [];
+  const lines = [], foreign = [], foreignSids = [];
   let ok = true;
   const bad = (p, why) => { ok = false; lines.push(p + ': NOT owner-only: ' + why); };
   for (const p of paths) {
@@ -416,20 +416,24 @@ function aclCheck(paths) {
     if (owner !== sid() && owner !== ADMINS_SID) { bad(p, 'owned by ' + who(owner)); continue; }
     const f = aces.filter(([, s, type]) => type !== 'Allow' || ![sid(), SYSTEM_SID, ADMINS_SID].includes(s));
     if (f.length) {
-      for (const [, s, type, inh] of f) foreign.push(type + ' ' + who(s) + (inh === 'True' ? ' (inherited)' : ''));
+      for (const [, s, type, inh] of f) { foreign.push(type + ' ' + who(s) + (inh === 'True' ? ' (inherited)' : '')); foreignSids.push(s); }
       bad(p, f.map(([, s, type, inh]) => type + ' ' + who(s) + (inh === 'True' ? ' (inherited)' : '')).join(', '));
       continue;
     }
     lines.push(p + ': ACL owner-only (owner ' + who(owner) + '; ' + aces.length + ' ACEs)');
   }
-  return { ok, lines, foreign };
+  return { ok, lines, foreign, foreignSids };
 }
 /* Removes the directory's inherited rules and grants full control to this account, SYSTEM and Administrators,
  * inherited by everything made inside it afterwards. */
 function aclPrep(dir) {
   const icacls = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'icacls.exe');
-  cp.execFileSync(icacls, [path.win32.normalize(dir), '/inheritance:r', '/grant:r', '*' + sid() + ':(OI)(CI)F',
-    '*' + SYSTEM_SID + ':(OI)(CI)F', '*' + ADMINS_SID + ':(OI)(CI)F'], { windowsHide: true, stdio: ['ignore', 'ignore', 'inherit'] });
+  const run = (...a) => cp.execFileSync(icacls, [path.win32.normalize(dir), ...a], { windowsHide: true, stdio: ['ignore', 'ignore', 'inherit'] });
+  run('/inheritance:r', '/grant:r', '*' + sid() + ':(OI)(CI)F', '*' + SYSTEM_SID + ':(OI)(CI)F', '*' + ADMINS_SID + ':(OI)(CI)F');
+  // `/grant:r` replaces the grants of the SIDs it names and `/inheritance:r` drops inherited ACEs, so an EXPLICIT
+  // ACE for any other SID survives both — windows-latest gives a new directory one for OWNER RIGHTS (S-1-3-4).
+  // Each is removed by SID, grant and deny alike, so the directory holds the three grants above and nothing else.
+  for (const s of new Set(aclCheck([dir]).foreignSids)) run('/remove', '*' + s);
 }
 /* Whether this account's profile roams (W1's check, card#12335): %APPDATA%, the config's home, is copied to a
  * profile server at logoff on a roaming profile. FLEET_REPORTER_INSTALL_ASSUME_ROAMING=1 forces the answer
