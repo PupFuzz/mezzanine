@@ -102,11 +102,12 @@ globalThis.clearInterval = () => {};
 const { deskModel } = await mod('desk/desk-render.js');
 // The generator's species list and draw, read from the tree itself: what the stub admits and what a key draws.
 const { SPECIES_KEYS, speciesOf } = await import(pathToFileURL(join(HERE, '..', '..', '..', '..', 'resources', 'characters', 'creatures.js')).href);
-// the tree's declared crest of a seat's drawn head (card#12444), which the page hands the scene as `crest`
-const { crestTop } = await import(pathToFileURL(join(HERE, '..', '..', '..', '..', 'resources', 'characters', 'index.js')).href);
+// the tree's declared crest of a seat's drawn head (card#12444), which the page hands the scene as `crest`, and what its
+// bubble must leave uncovered (card#12446), handed as `headClear`
+const { crestTop, headClear } = await import(pathToFileURL(join(HERE, '..', '..', '..', '..', 'resources', 'characters', 'index.js')).href);
 const { placeDesk, placeBubbles } = await mod('floor/scene.js');
 const { createPainter, measurer, STYLE } = await mod('floor/painter.js');
-const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_GAP, TRAIL_RADII, TRAIL_GAP, TRAIL_REACH, STOOL_FRAME, FRAME_UNITS_PER_PX, FOLD_LAG_OPACITY } = await mod('floor/desk-layout.js');
+const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME, BUBBLE_PAD, BUBBLE_GAP, BUBBLE_MAX_W, TRAIL_RADII, TRAIL_GAP, TRAIL_REACH, STOOL_FRAME, FRAME_UNITS_PER_PX, FOLD_LAG_OPACITY } = await mod('floor/desk-layout.js');
 
 /**
  * The character tree, stubbed: a frame is an SVG document naming the `(install, seat key, frame)` it was
@@ -227,7 +228,7 @@ for (const seat of seats) {
         // variants of one seat would otherwise share a bubble.
         const room = `room-${desks.length}`;
         const key = `${room}/${seat.seat_id}`;
-        const ctx = { box: BOX, measure, character: { w: 18, h: 32 }, crest: crestTop, theme: 'studio', placeholder: v.placeholder, failed: failing(seat, v.fails) };
+        const ctx = { box: BOX, measure, character: { w: 18, h: 32 }, crest: crestTop, headClear, theme: 'studio', placeholder: v.placeholder, failed: failing(seat, v.fails) };
 
         seatOf.set(key, seat);
         modelOf.set(key, model);
@@ -671,11 +672,12 @@ for (const g of layer?.children ?? []) {
         const lines = [
             ...bb.trail.map((c) => ['circle', { x: c.x - c.r, y: c.y - c.r, w: 2 * c.r, h: 2 * c.r }, classIs(['bubble-trail'])]),
             ['path', {}, (n) => classIs(['bubble'])(n) ?? (n.getAttribute('d') === bb.cloud.d ? null : 'its outline is not the cloud the scene traced')],
-            ['text', { x: bb.x + BUBBLE_PAD, y: bb.y + BUBBLE_PAD, text: bb.text }],
+            // the title's lines, one text a line on the fact role's line (card#12446), then the source line under the last
+            ...bb.lines.map((line, i) => ['text', { x: bb.x + BUBBLE_PAD, y: bb.y + BUBBLE_PAD + i * TYPE_ROLES.fact.line, text: line.text }]),
         ];
 
         if (bb.second !== null) {
-            lines.push(['text', { x: bb.x + BUBBLE_PAD, y: bb.y + BUBBLE_PAD + TYPE_ROLES.fact.line, text: bb.second }]);
+            lines.push(['text', { x: bb.x + BUBBLE_PAD, y: bb.y + BUBBLE_PAD + bb.lines.length * TYPE_ROLES.fact.line, text: bb.second }]);
         }
 
         for (const want of lines) {
@@ -683,23 +685,38 @@ for (const g of layer?.children ?? []) {
             next++;
         }
 
-        // ── the thought-bubble leg (§ 5.1, card#11468), read on what was PAINTED: at least three circles,
-        // smallest first and each above the last, on the anchor's line, none meeting the character; and the
-        // cloud's ink inside the bubble's own rect, which is what AT-D3-20 (b) and rule 5 read as the bubble ──
+        // ── the thought-bubble leg (§ 5.1, card#11468, card#12446), read on what was PAINTED: exactly `TRAIL_RADII`'s
+        // circles (the operator's 2026-10-28 *"fewer small bubbles … each one should grow progressively in size"*), each
+        // larger than the one under it and above it, on the anchor's line, none meeting the character's face (or, asleep,
+        // its drawn head); and the cloud's ink inside the bubble's own rect, which is what AT-D3-20 (b) and rule 5 read
+        // as the bubble ──
         const circles = nodes.slice(trailAt).filter((n) => n.name === 'circle').map((n) => ({ x: num(n, 'cx'), y: num(n, 'cy'), r: num(n, 'r') }));
         const head = desk.elements.find((e) => e.kind === 'character') ?? null;
         // the character's DRAWN head, from the tree's own declaration (card#12444's seat ruling); a species the tree does
         // not hold is drawn as the placeholder, and its trail starts at the rect's top
+        const at = head === null ? null : { pose: head.pose, glyph: head.glyph, species: head.species, clear: head.clear };
         const crestY = head === null ? null : head.y + (() => {
             try {
-                return crestTop(desk.install_id, desk.seat_id, { pose: head.pose, species: head.species }) / FRAME_UNITS_PER_PX;
+                return crestTop(desk.install_id, desk.seat_id, at) / FRAME_UNITS_PER_PX;
             } catch {
                 return 0;
             }
         })();
+        // what the bubble and its trail leave uncovered (card#12446): the face, from the tree's own declaration — or,
+        // with no face (asleep) or no tree answer, the drawn head
+        const clear = head === null ? null : (() => {
+            try {
+                return headClear(desk.install_id, desk.seat_id, at);
+            } catch {
+                return null;
+            }
+        })();
+        const faceY = head === null ? null : (clear?.face ?? null) === null ? crestY : head.y + clear.face / FRAME_UNITS_PER_PX;
 
-        if (circles.length < 3) {
-            defects.push(`${key}: the bubble's trail paints ${circles.length} circles, not at least 3`);
+        // three, FLOOR.md § 12's *Thought trail* row (*"always three circles"*) — written here, never read off the module
+        // under test, so a layout that draws another number reds
+        if (circles.length !== 3) {
+            defects.push(`${key}: the bubble's trail paints ${circles.length} circles, not 3`);
         }
 
         circles.forEach((c, i) => {
@@ -711,18 +728,26 @@ for (const g of layer?.children ?? []) {
                 defects.push(`${key}: the bubble's trail circle ${i} is at x ${c.x}, off the anchor ${desk.anchor_x}`);
             }
 
-            if (crestY !== null && c.y + c.r > crestY - EPS) {
-                defects.push(`${key}: the bubble's trail circle ${i} meets the character's drawn head`);
+            if (faceY !== null && c.y + c.r > faceY - EPS) {
+                defects.push(`${key}: the bubble's trail circle ${i} meets the character's ${clear?.face == null ? 'drawn head' : 'face'}`);
             }
         });
 
         // ── the trail REACHES the cloud and the bubble is SET ON ITS CHARACTER (card#12444, the operator's ruling of
         // 2026-10-27, *"anchor the bubble to the character. If necessary, add another bubble to extend the height"*):
         // the last circle stands no further under the cloud's rect than the widest gap the trail leaves between two of
-        // its circles or over the creature; and a bubble no pass parted sits `TRAIL_REACH` above the character's top, or
-        // `BUBBLE_GAP` above the facts plate where its width reaches over the plate and that is higher ──
+        // its circles or over the creature; and a bubble no pass parted is set as low as the seat's face and its pose's
+        // mark allow (card#12446, the operator's 2026-10-28 *"The bubble can also be lowered"*): `TRAIL_REACH` above the
+        // face, `BUBBLE_GAP` above the mark — or, with no tree answer, `BUBBLE_GAP` above the character's frame — and no
+        // wider than the art column, so it never reaches the facts plate ──
         if (circles.length > 0 && head !== null) {
-            const gaps = circles.map((c, i) => (i === 0 ? crestY : circles[i - 1].y - circles[i - 1].r) - (c.y + c.r));
+            const frameTop = head.y - (TRAIL_REACH - TRAIL_GAP);
+            const want = clear === null
+                ? frameTop - BUBBLE_GAP
+                : Math.min(clear.face === null ? Infinity : faceY - TRAIL_REACH, clear.mark === null ? Infinity : head.y + clear.mark / FRAME_UNITS_PER_PX - BUBBLE_GAP);
+            // the trail starts at the drawn head, or, under a bubble set over the head's top, `TRAIL_REACH` under the bubble
+            const startY = Math.max(crestY, want + TRAIL_REACH);
+            const gaps = circles.map((c, i) => (i === 0 ? startY : circles[i - 1].y - circles[i - 1].r) - (c.y + c.r));
             const top = circles[circles.length - 1];
             const under = top.y - top.r - (bb.y + bb.h);
 
@@ -736,11 +761,13 @@ for (const g of layer?.children ?? []) {
                 defects.push(`${key}: the bubble's trail stops ${under.toFixed(1)} px under the cloud, its circles ${Math.max(...gaps).toFixed(1)} px apart at most — it does not reach the bubble`);
             }
 
-            if (bb.lifted === 0) {
-                const plate = desk.elements.find((e) => e.kind === 'facts-plate') ?? null;
-                const over = plate !== null && bb.x < plate.x + plate.w && plate.x < bb.x + bb.w;
-                const want = Math.min(head.y - TRAIL_REACH, over ? plate.y - BUBBLE_GAP : Infinity);
+            const plate = desk.elements.find((e) => e.kind === 'facts-plate') ?? null;
 
+            if (bb.w > BUBBLE_MAX_W + EPS || (plate !== null && bb.x < plate.x + plate.w && plate.x < bb.x + bb.w && bb.y < plate.y + plate.h && plate.y < bb.y + bb.h)) {
+                defects.push(`${key}: the bubble (${bb.w.toFixed(1)} px wide) covers the facts plate or is wider than the art column`);
+            }
+
+            if (bb.lifted === 0) {
                 if (!same(bb.y + bb.h, want)) {
                     defects.push(`${key}: the bubble's bottom is at ${(bb.y + bb.h).toFixed(1)}, not set on its character at ${want.toFixed(1)}`);
                 }

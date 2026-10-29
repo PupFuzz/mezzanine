@@ -1386,6 +1386,41 @@ export function crestOfKey(key, { pose, species } = {}) {
   return pose === 'asleep' ? t : FOOT - (FOOT - t) * e.size;
 }
 
+/**
+ * THE FACE TABLE (card#12446, the operator's ruling of 2026-10-28, *"The bubble can also be lowered"*, never over the eyes
+ * or the mouth): the topmost ink of a standing or walking key's FACE — its eyes, brows and mouth, the `face` group — in
+ * frame units from the character rect's top, at size 1, per species (and variant where it has them), over every
+ * expression and walk phase, scaled back to size 1 about the foot line. A hat or an ear never reaches the face, so the
+ * table keys no hat. `tools/characters/selftest.mjs` § 8b holds every key of its population's face at or under its row on
+ * every run, and each row within two units of the highest such ink.
+ */
+export const FACE_TOP = Object.freeze({
+  bear: 76, broccoli: 107, cabbage: 88, carrot: 67, corn: 77, deer: 77, eggplant: 83, fox: 77, frog: 57, hedgehog: 77,
+  mole: 81, 'mushroom/bell': 90, 'mushroom/dome': 90, 'mushroom/wide': 90, otter: 64, owl: 69, peapod: 68, penguin: 72,
+  pepper: 86, potato: 85, pumpkin: 84, 'rabbit/lop': 76, 'rabbit/upright': 76, radish: 82, sheep: 85, snail: 86, turnip: 86,
+});
+
+/**
+ * WHAT A THOUGHT BUBBLE MUST LEAVE UNCOVERED ON A KEY (card#12446): `face`, the topmost ink of its face standing
+ * (`FACE_TOP` at its size, scaled about the foot line), or `null` asleep, where the head rolls onto the arms under its
+ * z's; and `mark`, the top of what its pose draws over the head — the sleeper's z's, which the frame holds (the frame's
+ * top, `SEAT_VIEWBOX.y`), the `?` or the `!` with its glow at its stand and the unit it keeps clear (`markerStand()`), or `null` for a pose that
+ * draws none — in frame units from the character rect's top. The floor sets the bubble above both (`bubbleSeat()`).
+ * @param {string} key @param {{pose?: string, glyph?: string|null, species?: string, clear?: object[]}} [at] the pose
+ *        and § 7.1 glyph drawn, the delivered species, and the floor's clear rects (a marked pose needs them)
+ * @returns {{face: number|null, mark: number|null}}
+ */
+export function headClearOfKey(key, { pose, glyph = null, species, clear } = {}) {
+  if (pose === 'asleep') return { face: null, mark: SEAT_VIEWBOX.y };
+  const e = standEntry(key, species), t = FACE_TOP[e.name];
+  if (t === undefined) throw new RangeError(`no face top for ${e.name}`);
+  const face = FOOT - (FOOT - t) * e.size, X = EXPRESSIONS[expressionOf(pose, glyph)];
+  if (!X.marker) return { face, mark: null };
+  const { r, c, A } = build(key, species), at = markerStand(key, r, A, c.side, clear);
+  // the glyph's half height and its glow, and the unit `markerStand()` keeps between the glow and anything else
+  return { face, mark: at.y - markerHalf(at.h).h - MARKER_SPREAD * Z_HALO[3] - 1 };
+}
+
 /** Closed eyes: a soft downward arc per eye, with a lash at its outer end. */
 function sleepingEyesSvg(F) {
   const s = F.s * EYE_K, out = [];
