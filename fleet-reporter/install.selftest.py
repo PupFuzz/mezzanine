@@ -67,6 +67,10 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+# Every file this suite reads or writes is UTF-8 (the reporter's source included); on Windows Python's default
+# codec is the ANSI code page, which cannot decode it (windows-latest, card#12571), so the suite runs in UTF-8 mode.
+if sys.platform == "win32" and not sys.flags.utf8_mode:
+    sys.exit(subprocess.run([sys.executable, "-X", "utf8", *sys.argv]).returncode)
 AP = argparse.ArgumentParser()
 AP.add_argument("--checkout", help="the fleet-reporter directory to test (a planted copy); default: this one")
 AP.add_argument("--only", help="comma-separated D6 ids; the sections that need them run, and nothing else")
