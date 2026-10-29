@@ -235,9 +235,13 @@ class Seat:
             local, roaming = self.home / "AppData" / "Local", self.home / "AppData" / "Roaming"
             local.mkdir(parents=True)
             roaming.mkdir(parents=True)
-            self.env = {k: v for k, v in os.environ.items() if k.upper() in ("SYSTEMROOT", "WINDIR", "SYSTEMDRIVE", "PATHEXT", "COMSPEC", "PROGRAMDATA", "TEMP", "TMP", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "USERNAME", "USERDOMAIN", "OS")}
+            # The runner's OWN environment, as a real seat's Git Bash carries the user's, with the profile folders
+            # moved to the throwaway home and the reporter's and the coordination framework's variables taken out.
+            # A hand-picked minimal set (no ProgramFiles, ALLUSERSPROFILE, …) is an environment no seat has, and
+            # PowerShell locates its own modules from those variables.
+            self.env = {k: v for k, v in os.environ.items() if not k.upper().startswith(("FLEET_REPORTER", "COORD_"))}
             self.env.update({"USERPROFILE": str(self.home), "HOME": str(self.home), "APPDATA": str(roaming), "LOCALAPPDATA": str(local),
-                             "PATH": os.pathsep.join([str(self.stub), node_dir, os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32")])})
+                             "PATH": os.pathsep.join([str(self.stub), node_dir, os.environ.get("PATH", "")])})
         else:
             self.env = {"HOME": str(self.home), "PATH": f"{self.stub}:{node_dir}:/usr/bin:/bin", "USER": os.environ.get("USER", "seat"),
                         "LOGNAME": os.environ.get("USER", "seat"), "LANG": "C.UTF-8"}
@@ -392,6 +396,33 @@ def run_to_files(argv: list, env: dict, cwd: Path, stdin: "str | None" = None, t
               + "\n".join("       " + ln for ln in (r.stdout + r.stderr).splitlines()[-60:]), file=sys.stderr)
     OUTPUTS.append(r.stdout + r.stderr)
     return r
+
+
+def run_on_pipes(argv: list, env: dict, cwd: Path, timeout: int = 600) -> "tuple[Ran, bool]":
+    """Run the installer with its output on PIPES, as Claude's Bash tool runs a command, and report whether both
+    pipes reached EOF within 30 s of the installer's exit. A child it started that holds a pipe open (the Windows
+    flusher start inherits the installer's handles) keeps that pipe from ever ending, and a caller reading it
+    hangs. The pipes are read on threads, never by `communicate()`, whose timeout path would itself block."""
+    p = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, env=env, cwd=str(cwd))
+    bufs = {"out": b"", "err": b""}
+
+    def drain(name, f):
+        for chunk in iter(lambda: f.read(4096), b""):
+            bufs[name] += chunk
+    threads = [threading.Thread(target=drain, args=("out", p.stdout), daemon=True), threading.Thread(target=drain, args=("err", p.stderr), daemon=True)]
+    for t in threads:
+        t.start()
+    try:
+        rc = p.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        p.kill()
+        rc = 124
+    for t in threads:
+        t.join(30)
+    eof = not any(t.is_alive() for t in threads)
+    r = Ran(rc, bufs["out"].decode("utf-8", "replace"), bufs["err"].decode("utf-8", "replace") + ("" if rc != 124 else f"\n[killed after {timeout} s]"))
+    OUTPUTS.append(r.stdout + r.stderr)
+    return r, eof
 
 
 def pid_alive(pid: int) -> bool:
@@ -639,7 +670,16 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
             OUTPUTS.append(r.stdout + r.stderr)
             trace = log.read_text()
         else:
-            r = run_to_files(argv, A.env, A.root, timeout=600)
+            # On PIPES, as Claude's Bash tool runs it; on Windows this run's flusher is the installer's own start,
+            # still alive when the installer exits.
+            ctl, ctl_eof = run_on_pipes([NODE, "-e", "require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 45000)'], "
+                                         "{ detached: true, stdio: ['ignore', 'inherit', 'ignore'] }).unref()"], A.env, A.root, timeout=60)
+            check("R-win-1" if IS_WIN else "R-mac-1", "RED: the pipe check reads a parent whose detached child holds its stdout as "
+                  "never ending", ctl.returncode == 0 and not ctl_eof)
+            r, eof = run_on_pipes(argv, A.env, A.root, timeout=900)
+            check("R-win-1" if IS_WIN else "R-mac-1", "the installer's output pipes end when it exits, though the flusher it "
+                  "started runs on: a caller reading them, as Claude's Bash tool does, is not left waiting",
+                  eof and r.returncode != 124, tail(r))
         out = r.stdout + r.stderr
         cfg = A.config() if Path(A.T["config"]).exists() else {}
         check("R-all-8", "the install exits 0, INSTALLED, selftest · health · arrival each rc=0",

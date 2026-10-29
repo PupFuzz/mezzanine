@@ -404,33 +404,48 @@ function aclCheck(paths) {
   const lines = [], foreign = [], foreignSids = [];
   let ok = true;
   const bad = (p, why) => { ok = false; lines.push(p + ': NOT owner-only: ' + why); };
+  // The type checks first, in node; then ONE PowerShell process reads every remaining path's ACL — a PowerShell
+  // start costs seconds (23 s each on windows-latest, measured by the trace, card#12571), so never one per path.
+  const todo = [];
   for (const p of paths) {
     let st;
     try { st = fs.lstatSync(p); } catch (e) { bad(p, 'cannot read it (' + e.code + ')'); continue; }
     if (st.isSymbolicLink()) { bad(p, 'a symbolic link or junction'); continue; }
     if (!st.isFile() && !st.isDirectory()) { bad(p, 'neither a regular file nor a directory'); continue; }
-    let out;
-    try {
-      out = powershell('$p = $env:FR_ACL_PATH\n'
-        + "'reparse ' + [bool]((Get-Item -LiteralPath $p -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint)\n"
-        + '$a = Get-Acl -LiteralPath $p\n'
-        + "'owner ' + $a.GetOwner([System.Security.Principal.SecurityIdentifier]).Value\n"
-        + "foreach ($r in $a.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) { 'ace ' + $r.IdentityReference.Value + ' ' + $r.AccessControlType + ' ' + $r.IsInherited }",
-        { FR_ACL_PATH: path.win32.normalize(p) });
-    } catch (e) { bad(p, 'its ACL could not be read (PowerShell exited ' + e.status + ')'); continue; }
-    const rows = out.split(/\r?\n/).filter(Boolean);
+    todo.push(p);
+  }
+  if (!todo.length) return { ok, lines, foreign, foreignSids };
+  let out;
+  try {
+    out = powershell("foreach ($p in $env:FR_ACL_PATHS.Split('|')) {\n"
+      + "'path ' + $p\n"
+      + "'reparse ' + [bool]((Get-Item -LiteralPath $p -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint)\n"
+      + '$a = Get-Acl -LiteralPath $p\n'
+      + "'owner ' + $a.GetOwner([System.Security.Principal.SecurityIdentifier]).Value\n"
+      + "foreach ($r in $a.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) { 'ace ' + $r.IdentityReference.Value + ' ' + $r.AccessControlType + ' ' + $r.IsInherited }\n"
+      + '}', { FR_ACL_PATH: todo[0], FR_ACL_PATHS: todo.map((x) => path.win32.normalize(x)).join('|') });
+  } catch (e) {
+    for (const p of todo) bad(p, 'its ACL could not be read (PowerShell exited ' + e.status + ')');
+    return { ok, lines, foreign, foreignSids };
+  }
+  const blocks = [];
+  for (const l of out.split(/\r?\n/).filter(Boolean)) {
+    if (l.startsWith('path ')) blocks.push([]); else if (blocks.length) blocks[blocks.length - 1].push(l);
+  }
+  todo.forEach((p, i) => {
+    const rows = blocks[i] || [];
     const owner = (rows.find((l) => l.startsWith('owner ')) || 'owner ?').slice(6);
     const aces = rows.filter((l) => l.startsWith('ace ')).map((l) => l.split(' '));
-    if (!rows.includes('reparse False')) { bad(p, 'a reparse point'); continue; }
-    if (owner !== sid() && owner !== ADMINS_SID) { bad(p, 'owned by ' + who(owner)); continue; }
+    if (!rows.includes('reparse False')) { bad(p, rows.length ? 'a reparse point' : 'its ACL was not read'); return; }
+    if (owner !== sid() && owner !== ADMINS_SID) { bad(p, 'owned by ' + who(owner)); return; }
     const f = aces.filter(([, s, type]) => type !== 'Allow' || ![sid(), SYSTEM_SID, ADMINS_SID].includes(s));
     if (f.length) {
       for (const [, s, type, inh] of f) { foreign.push(type + ' ' + who(s) + (inh === 'True' ? ' (inherited)' : '')); foreignSids.push(s); }
       bad(p, f.map(([, s, type, inh]) => type + ' ' + who(s) + (inh === 'True' ? ' (inherited)' : '')).join(', '));
-      continue;
+      return;
     }
     lines.push(p + ': ACL owner-only (owner ' + who(owner) + '; ' + aces.length + ' ACEs)');
-  }
+  });
   return { ok, lines, foreign, foreignSids };
 }
 /* Removes the directory's inherited rules and grants full control to this account, SYSTEM and Administrators,
