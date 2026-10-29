@@ -1337,26 +1337,45 @@ async function health(ctx) {
   return rc;
 }
 
-/* The lines of every REJECTED.<site>.txt on disk when this run began, by path: `arrival`'s baseline (card#12514).
- * The flusher is that file's only writer, and it only APPENDS a line per refusal, except that past
- * K.REJECTED_TXT_CAP it keeps the file's newer half — which drops lines and adds none it did not just append. So
- * a line absent from this baseline was written during the run, and a refusal from before the run, kept in the
- * file as the user's record, is never judged as this run's. Taken by content, never by the lines' timestamps
- * against the clock: a wall-clock step back during the run would date a new refusal before the run's start and
- * pass it, the fail-open direction, as the lock test reads the kernel's ticks rather than the wall clock (D6
- * § 3.1, review round 3). Both spools a run can judge are read: the platform table's, and the config's when
- * it names another. */
-function rejectedBaseline(T) {
-  const seen = new Map();
+/* What `arrival` judges against, read in `main` before any step runs (card#12514): the spool as it was when this
+ * run began, so nothing written before the run is judged as this run's. Both spools a run can judge are read: the
+ * platform table's, and the config's when it names another. Two members, each keyed by path:
+ *
+ *   rejected — the lines of every REJECTED.<site>.txt. The flusher is that file's only writer, and it only
+ *     APPENDS a line per refusal, except that past K.REJECTED_TXT_CAP it keeps the file's newer half — which drops
+ *     lines and adds none it did not just append. So a line absent from the baseline was written during the run,
+ *     and a refusal from before the run, kept in the file as the user's record, is never judged as this run's.
+ *     Taken by content, never by the lines' timestamps against the clock: a wall-clock step back during the run
+ *     would date a new refusal before the run's start and pass it, the fail-open direction, as the lock test reads
+ *     the kernel's ticks rather than the wall clock (D6 § 3.1, review round 3).
+ *   accepted — state.json's `batches_ok` per site, the count of accepted batches, which only rises while a site's
+ *     entry lives and restarts from nothing when the flusher replaces the entry or mints a new state (D1 § 3.1
+ *     rule 1, § 11.4). `{ sites }`, a missing state.json reading as every site at 0 (the state the flusher will
+ *     mint), or `{ unknown }` naming why a state.json that exists could not be read. A state.json written before
+ *     card#12180 holds the counters at the top level, which the flusher carries into the site `default`. */
+function arrivalBaseline(T) {
+  const rejected = new Map(), accepted = new Map();
   for (const d of new Set([T.spool, reporter().loadConfig(T.config).spool])) {
+    if (!d) continue;
     let names;
-    try { names = d ? fs.readdirSync(d) : []; } catch (e) { names = []; }
+    try { names = fs.readdirSync(d); } catch (e) { names = []; }
     for (const n of names) {
       if (!/^REJECTED\..+\.txt$/.test(n)) continue;
-      try { seen.set(path.join(d, n), new Set(fs.readFileSync(path.join(d, n), 'utf8').split('\n'))); } catch (e) { /* gone since the listing */ }
+      try { rejected.set(path.join(d, n), new Set(fs.readFileSync(path.join(d, n), 'utf8').split('\n'))); } catch (e) { /* gone since the listing */ }
     }
+    const sp = path.join(d, 'state.json');
+    let st;
+    try { st = readJson(sp); } catch (e) {
+      accepted.set(sp, e.code === 'ENOENT' ? { sites: {} } : { unknown: `state.json could not be read at the run's start (${e.code || 'not JSON'})` });
+      continue;
+    }
+    const count = (o) => (o && o.counters && Number.isFinite(o.counters.batches_ok) ? o.counters.batches_ok : 0);
+    const sites = {};
+    if (st && st.sites && typeof st.sites === 'object') for (const [k, v] of Object.entries(st.sites)) sites[k] = count(v);
+    else sites.default = count(st);
+    accepted.set(sp, { sites });
   }
-  return seen;
+  return { rejected, accepted };
 }
 /* The lines of `file` this run saw written — every non-empty line not in the run's baseline — and how many it
  * holds from before the run. */
@@ -1380,7 +1399,9 @@ async function arrival(ctx, waitS) {
   const { spool, sites } = require(T.js).loadConfig(T.config);
   if (!spool || !sites.length) { say('the config names no spool or no site: NOT MEASURED, the selftest step names why'); say('arrival rc=2'); return 2; }
   const t0 = Date.now();
-  const state = () => { try { return readJson(path.join(spool, 'state.json')); } catch (e) { return null; } };
+  const sp = path.join(spool, 'state.json');
+  const state = () => { try { return readJson(sp); } catch (e) { return null; } };
+  const base = ctx.atStart.accepted.get(sp) || { unknown: `the run's start read no state.json at ${sp}` };
   for (;;) {
     const st = state(), lines = [];
     let waiting = 0, refused = 0;
@@ -1389,13 +1410,21 @@ async function arrival(ctx, waitS) {
       const e = st && st.sites && s.name && Object.prototype.hasOwnProperty.call(st.sites, s.name) ? st.sites[s.name] : null;
       const ok = (e && e.counters && e.counters.batches_ok) || 0;
       const file = 'REJECTED.' + s.name + '.txt';
-      const rej = s.name ? rejectedSince(ctx.rejectedAtStart, path.join(spool, file)) : { fresh: [], held: 0 };
+      const rej = s.name ? rejectedSince(ctx.atStart.rejected, path.join(spool, file)) : { fresh: [], held: 0 };
       const earlier = rej.held ? ` (${file} holds ${rej.held} refusal line(s) from before this run, not judged)` : '';
+      /* A batch accepted DURING the run: `batches_ok` above its value at the start, or below it but not zero — the
+       * flusher replaced the site's entry during the run and counted again from nothing, so every batch it now
+       * counts came after the start. Equal is not judged arrived: a replaced entry that has counted exactly the
+       * old total cannot be told from an entry that counted nothing, and the next heartbeat (K.HEARTBEAT_MS)
+       * settles it inside the wait. A baseline that could not be read is named, and the total judged alone. */
+      const b = base.sites ? (base.sites[s.name] || 0) : null;
+      const arrived = b === null ? ok > 0 : ok > b || (ok > 0 && ok < b);
+      const counted = b === null ? `${base.unknown}, so a batch accepted before the run counts too` : `batches_ok ${b} at the run's start, ${ok} now`;
       if (rej.fresh.length) {
         refused += 1;
-        lines.push(`${name}: a batch was REFUSED during this run, the latest ${refusalSummary(rej.fresh[rej.fresh.length - 1])}; ${file} in ${spool} holds every refusal`);
-      } else if (ok) lines.push(name + ': ' + ok + ' batch(es) accepted: events arrive' + earlier);
-      else { waiting += 1; lines.push(name + ': no batch accepted yet: NOT ARRIVED' + earlier); }
+        lines.push(`${name}: a batch was REFUSED during this run, the latest ${refusalSummary(rej.fresh[rej.fresh.length - 1])}; ${file} in ${spool} holds every refusal` + earlier);
+      } else if (arrived) lines.push(`${name}: a batch accepted during this run (${counted}): events arrive` + earlier);
+      else { waiting += 1; lines.push(`${name}: no batch accepted during this run (${counted}): NOT ARRIVED` + earlier); }
     }
     if (!refused && waiting && Date.now() - t0 < waitS * 1000) { await new Promise((r) => setTimeout(r, 2000)); continue; }
     for (const l of lines) say(l);
@@ -1963,8 +1992,8 @@ async function main(argv) {
   if (a.flags.help) { process.stdout.write(fs.readFileSync(__filename, 'utf8').split('\n').slice(1, 26).map((l) => l.replace(/^ ?\*? ?/, '')).join('\n') + '\n'); return 0; }
   const T = platformTable(process.platform, os.homedir(), process.env);
   if (a.flags.paths) { process.stdout.write(JSON.stringify(publicTable(T), null, 2) + '\n'); return 0; }
-  // `arrival`'s baseline, read before any step runs: the refusals already on disk are not this run's.
-  const ctx = { T, a, attempt: null, changed: false, cc: undefined, rejectedAtStart: rejectedBaseline(T) };
+  // `arrival`'s baseline, read before any step runs: the refusals and accepted batches already on disk are not this run's.
+  const ctx = { T, a, attempt: null, changed: false, cc: undefined, atStart: arrivalBaseline(T) };
   if (a.flags.uninstall) return uninstall(ctx);
   if (a.cmd) return STEPS[a.cmd](ctx);
   return install(ctx);

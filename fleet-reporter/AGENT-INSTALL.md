@@ -111,6 +111,8 @@ tokens page.
 | `a roaming profile copies %APPDATA% …` | a Windows roaming profile | not supported: the token would leave the machine at logoff |
 | selftest `token_accepted` `fail`, or health `HTTP 401` | the site does not accept the token | the user issues a new token and saves its file; run step 3's command with the new path, which replaces it; then they revoke the old prefix |
 | arrival `REFUSED during this run`, with `code=identity_mismatch` | the token was issued for other names | as the row above, issuing it for exactly the install id and seat id the file carries |
+| arrival `no batch accepted during this run … NOT ARRIVED`, the line ending `refusal line(s) from before this run, not judged` | a refusal before this run stopped the site's sending, and no batch has gone through since | the user reads the latest line of `REJECTED.<site>.txt` (its `status=` and `code=`): a `401` or an `identity_mismatch` is one of the two rows above; otherwise run again once the site answers |
+| arrival `NOT ARRIVED` with no such ending | no flusher ran during the wait, or the site did not answer | run again in a minute; `node install.js holder` says whether a live flusher holds the lock |
 | health `NOT CURRENT` | the checkout and the site run different builds | an older checkout: pull and re-run; newer: the site's operator deploys it |
 
 [`INSTALL.md` § The checks](INSTALL.md#the-checks) reads every code.
