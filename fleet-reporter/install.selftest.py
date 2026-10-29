@@ -1198,9 +1198,14 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         real_lock = lock.read_text()
         sleeper = subprocess.Popen(["sleep", "300"])
         try:
-            lock.write_text(json.dumps({"pid": sleeper.pid, "started_at": "2026-10-29T00:00:00.000Z"}))
+            # A holder of THIS artifact's flusher that launchd did not start (a hook's): its command line names the
+            # artifact and `flusher`, so the stale-lock test passes it, and launchctl reports another pid.
+            hooked = subprocess.Popen([NODE, "-e", "setTimeout(()=>{},300000)", A.T["js"], "flusher"])
+            lock.write_text(json.dumps({"pid": hooked.pid, "started_at": "2026-10-29T00:00:00.000Z"}))
             r = A.node("ancestry")
+            hooked.kill()
             check("R-mac-2", "a planted lock pid launchctl does not report: FAIL", "FAIL: launchctl reports" in r.stdout, tail(r))
+            lock.write_text(json.dumps({"pid": sleeper.pid, "started_at": "2026-10-29T00:00:00.000Z"}))
             # The one stale-lock test (`lockHolder`), read through the read-only holder step: a pid that does not
             # run this artifact's flusher names no flusher, and is never signalled (the stop is R-all-10's RED).
             r = A.node("holder")
