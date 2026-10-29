@@ -77,7 +77,12 @@ const refuse = (m, code) => { throw new Refusal(m, code); };
 const scrub = (s) => String(s).replace(TOKEN_SHAPE_G, '<redacted>');
 const say = (...a) => { process.stdout.write(scrub(a.join(' ')) + '\n'); };
 const warn = (...a) => { process.stderr.write(scrub(a.join(' ')) + '\n'); };
-const step = (name, note) => say(`── step \`${name}\`${note ? ' (' + note + ')' : ''}`);
+/* FLEET_REPORTER_INSTALL_TRACE=1: each step heading and each spawned PowerShell or icacls call reports, on
+ * stderr, the milliseconds since the run began and what it ran on (a path, never content) — the diagnostic for a
+ * run that stalls where no step prints (card#12571's first windows-latest runs). Inert unless set. */
+const TRACE = process.env.FLEET_REPORTER_INSTALL_TRACE === '1', T0 = Date.now();
+const trace = (what) => { if (TRACE) warn(`trace +${Date.now() - T0} ms: ${what}`); };
+const step = (name, note) => { trace('step ' + name); say(`── step \`${name}\`${note ? ' (' + note + ')' : ''}`); };
 const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 const exists = (p) => { try { fs.lstatSync(p); return true; } catch (e) { return false; } };
 const sha256 = (b) => crypto.createHash('sha256').update(b).digest('hex');
@@ -385,8 +390,12 @@ function powershell(script, extra) {
   for (const k of Object.keys(env)) if (k.toUpperCase() === 'PSMODULEPATH') delete env[k];
   const enc = Buffer.from("$ErrorActionPreference = 'Stop'\n" + script, 'utf16le').toString('base64');
   const exe = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  return cp.execFileSync(exe, ['-NoProfile', '-NonInteractive', '-EncodedCommand', enc],
-    { env, windowsHide: true, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const on = (extra && (extra.FR_ACL_PATH || extra.FR_PID || extra.FR_SID)) || 'this account';
+  trace('powershell start, on ' + on);
+  try {
+    return cp.execFileSync(exe, ['-NoProfile', '-NonInteractive', '-EncodedCommand', enc],
+      { env, windowsHide: true, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } finally { trace('powershell end, on ' + on); }
 }
 let mySid = null;
 const sid = () => mySid || (mySid = powershell('[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value').trim());
@@ -428,7 +437,7 @@ function aclCheck(paths) {
  * inherited by everything made inside it afterwards. */
 function aclPrep(dir) {
   const icacls = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'icacls.exe');
-  const run = (...a) => cp.execFileSync(icacls, [path.win32.normalize(dir), ...a], { windowsHide: true, stdio: ['ignore', 'ignore', 'inherit'] });
+  const run = (...a) => { trace('icacls ' + a[0] + ' on ' + dir); cp.execFileSync(icacls, [path.win32.normalize(dir), ...a], { windowsHide: true, stdio: ['ignore', 'ignore', 'inherit'] }); trace('icacls done'); };
   run('/inheritance:r', '/grant:r', '*' + sid() + ':(OI)(CI)F', '*' + SYSTEM_SID + ':(OI)(CI)F', '*' + ADMINS_SID + ':(OI)(CI)F');
   // `/grant:r` replaces the grants of the SIDs it names and `/inheritance:r` drops inherited ACEs, so an EXPLICIT
   // ACE for any other SID survives both — windows-latest gives a new directory one for OWNER RIGHTS (S-1-3-4).

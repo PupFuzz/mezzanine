@@ -242,6 +242,8 @@ class Seat:
             self.env = {"HOME": str(self.home), "PATH": f"{self.stub}:{node_dir}:/usr/bin:/bin", "USER": os.environ.get("USER", "seat"),
                         "LOGNAME": os.environ.get("USER", "seat"), "LANG": "C.UTF-8"}
         self.env["NODE_EXTRA_CA_CERTS"] = str(INGEST.crt)
+        if IS_WIN:
+            self.env["FLEET_REPORTER_INSTALL_TRACE"] = "1"      # a stall there names its call (install.js's trace)
         if IS_LIN:
             (self.stub / "crontab").write_text(f"""#!/bin/sh
 D={self.stub}
