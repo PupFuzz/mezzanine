@@ -210,7 +210,7 @@ check(chibiRoot.includes(`viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}"`) && vb.y + 
   `the chibi frame's viewBox is CHIBI_VIEWBOX and holds the foot line (${vb.x} ${vb.y} ${vb.w} ${vb.h}); § 7b holds it to the intern's overdraw`);
 
 // ---- 6b. the laptop and the typing sway (card#12448; FLOOR.md § 8, § 10.4's frame contract item 3, § 12) ----
-section("6b. the intern's laptop: a pure draw of its key; stickers that stand off their shell; one standard laptop that covers no eye and no whole mouth and leaves some body on both sides; the sway's frames");
+section("6b. the intern's laptop: a pure draw of its key; stickers that stand off their shell; one standard laptop, raised on the lap, that covers no eye, shows the median body on both sides and stays off the feet; the sway's frames");
 // THE DESIGN is the key's alone (the operator's C3): the same key draws the same laptop from a fresh module load, and
 // nothing a sibling draws can move it — `laptopOf()` takes the key and nothing else.
 const lapKeys = desks.flatMap(({ seat, interns }) => interns.map((k) => `${seat[0]}/${k}`));
@@ -250,30 +250,26 @@ for (const bad of [-1, C.INTERN_LOOP, 0.5]) { try { C.frameDocument('sway/x', { 
 try { C.frameDocument('sway/x', { sway: 1 }); } catch { swayRefused++; }
 try { C.frameDocument('sway/x', { laptop: true }); } catch { swayRefused++; }
 check(swayRefused === 5, `a sway outside 0..${C.INTERN_LOOP - 1}, a sway on a seat frame and a laptop on a seat frame are refused (${swayRefused}/5)`);
-// THE STANDARD LAPTOP (card#12502; the operator's rulings of 2026-10-28, *"option B.  Each laptop should be a standard
-// height. it should not vary with the character height."* and *"It is OK for the laptop to be high enough that it
-// covers a part of the character's mouth"*). Read by the same ink reader as § 8b, IN THE LAPTOP's OWN FRAME — each
-// document wrapped in the inverse of its laptop group's transform, so the lid is axis-aligned and the face is where it
-// stands relative to the lid (the intern and its laptop share one sway; a mismatch would show as a covered face here).
-// THE POPULATION: every species and variant at every size, every eye style and every mouth style, still and at both
-// sway extremes. Eye ink is drawn by `eyesSvg()` from the eye style and the face anchors alone, and mouth ink by
-// `mouthSvg()` from the mouth style and the same anchors (a beak is its species' own drawing), so for each variant and
-// size the eye styles and the mouth styles are walked side by side, the longer list setting the count, rather than
-// every pairing: every eye style and every mouth style is drawn at every size of every variant.
-// "A PART OF THE MOUTH" is read as: the lid may cover a mouth's lower half and never more — the mouth's half-height line
-// stays at or over the lid's top, so the upper half of every mouth (and beak) still shows.
+// THE STANDARD LAPTOP (card#12502; FLOOR.md § 13 row 97; the operator's rulings of 2026-10-28 — one standard size,
+// *"I want baseline B where the laptop is raised. … The laptop needs to be wider and also taller. Again, it is OK for
+// the laptop to cover a smaller subagent's mouse [mouth] and nose."*). Read by the same ink reader as § 8b, IN THE
+// LAPTOP's OWN FRAME — each document wrapped in the inverse of its laptop group's transform, so the lid is
+// axis-aligned and the face is where it stands relative to the lid (the intern and its laptop share one sway; a
+// mismatch would show as a covered face here).
+// THE FACE RULE: every eye's lowest ink stays `LAPTOP_EYE_MARGIN` over the lid's top; a mouth or a nose may be covered.
+// THE POPULATION: every species and variant at every size and every eye style, still and at both sway extremes — eye
+// ink is drawn by `eyesSvg()` from the eye style and the face anchors alone.
 const underPart = (up, name) => up.some((n) => n.attrs?.['data-part'] === name);
 const inLaptopFrame = (doc) => {
   const m = doc.match(/<g data-part="laptop" transform="translate\(([-\d.e]+) 0\) rotate\(([-\d.e]+) 54 188\)">/);
   return m === null ? doc : doc.replace('</defs>', `</defs><g transform="rotate(${-m[2]} 54 188) translate(${-m[1]} 0)">`).replace(/<\/svg>$/, '</g></svg>');
 };
-/** One intern document read in its laptop's frame: its eyes' lowest ink, its mouth's top and bottom, the laptop's cover (its ink less the glow), the lid's box and the stickers'. */
+/** One intern document read in its laptop's frame: its eyes' lowest ink, the laptop's cover (its topmost ink), the lid's box and the stickers'. */
 const lapRead = (doc) => {
-  const o = { eyeLow: -Infinity, mTop: Infinity, mBot: -Infinity, cover: Infinity, lid: null, stickers: [] };
+  const o = { eyeLow: -Infinity, cover: Infinity, lid: null, stickers: [] };
   inkBounds(inLaptopFrame(doc), (node, b, up) => {
     if (underPart(up, 'eyes')) o.eyeLow = Math.max(o.eyeLow, b.y1);
-    else if (underPart(up, 'mouth')) { o.mTop = Math.min(o.mTop, b.y0); o.mBot = Math.max(o.mBot, b.y1); }
-    else if (underPart(up, 'laptop') && node.attrs?.['data-part'] !== 'glow') {
+    else if (underPart(up, 'laptop')) {
       o.cover = Math.min(o.cover, b.y0);
       if (node.attrs?.['data-part'] === 'lid') o.lid = b;
       else if (underPart(up, 'sticker')) o.stickers.push(b);
@@ -296,21 +292,20 @@ const laptopShape = (doc) => {
 };
 const lapPop = [];
 for (const sp of KEYS) {
-  const want = new Map();   // `variant|size|eyes|mouth` → the first key drawing it
-  const n = Math.max(C.EYES.length, C.MOUTHS.length);
-  for (const v of (variantsOf(sp).length ? variantsOf(sp) : [null])) for (const size of C.SIZES) for (let i = 0; i < n; i++) want.set(`${v}|${size}|${C.EYES[i % C.EYES.length]}|${C.MOUTHS[i % C.MOUTHS.length]}`, null);
+  const want = new Map();   // `variant|size|eyes` → the first key drawing it
+  for (const v of (variantsOf(sp).length ? variantsOf(sp) : [null])) for (const size of C.SIZES) for (const e of C.EYES) want.set(`${v}|${size}|${e}`, null);
   let open = want.size;
   for (let i = 0; open > 0 && i < 200000; i++) {
-    const key = `lap/${sp}/${i}`, r = C.recipe(key, sp), id = `${r.variant}|${r.size}|${r.eyes}|${r.mouth}`;
+    const key = `lap/${sp}/${i}`, r = C.recipe(key, sp), id = `${r.variant}|${r.size}|${r.eyes}`;
     if (want.get(id) === null) { want.set(id, key); open--; }
   }
   for (const [id, key] of want) lapPop.push({ sp, id, key });
 }
 const lapMissing = lapPop.filter((e) => e.key === null).map((e) => `${e.sp} ${e.id}`);
-check(lapMissing.length === 0, `the laptop population holds every species and variant at every size, eye style and mouth style (${lapPop.length} drawings${lapMissing.length ? `; no key found for ${lapMissing.slice(0, 3).join(', ')}` : ''})`);
-const lapFaults = { eyes: [], mouth: [], stickers: [], frame: [], none: [] };
+check(lapMissing.length === 0, `the laptop population holds every species and variant at every size and eye style (${lapPop.length} drawings${lapMissing.length ? `; no key found for ${lapMissing.slice(0, 3).join(', ')}` : ''})`);
+const lapFaults = { eyes: [], stickers: [], frame: [], none: [] };
 const geometry = new Set(), coverOffsets = new Set();
-let lapDocs = 0, need = { t: -Infinity, who: '' }, eyeNeed = { t: -Infinity, who: '' }, eyeGap = { u: Infinity, who: '' };
+let lapDocs = 0, eyeNeed = { t: -Infinity, who: '' }, eyeGap = { u: Infinity, who: '' };
 const vbox = C.CHIBI_VIEWBOX;
 for (const { sp, id, key } of lapPop.filter((e) => e.key !== null)) for (const sway of [undefined, 1, 3]) {
   lapDocs++;
@@ -318,38 +313,35 @@ for (const { sp, id, key } of lapPop.filter((e) => e.key !== null)) for (const s
   const name = `${sp} ${id} sway=${sway ?? 'still'}`;
   geometry.add(laptopShape(doc));
   const o = lapRead(doc);
-  if (o.lid === null || o.eyeLow === -Infinity || o.mTop === Infinity) { lapFaults.none.push(`${name}: no ${o.lid === null ? 'lid' : o.eyeLow === -Infinity ? 'eyes' : 'mouth'} measured`); continue; }
-  const off = C.LAPTOP_TOP - o.cover, mid = (o.mTop + o.mBot) / 2;
+  if (o.lid === null || o.eyeLow === -Infinity) { lapFaults.none.push(`${name}: no ${o.lid === null ? 'lid' : 'eyes'} measured`); continue; }
+  const off = C.LAPTOP_TOP - o.cover;
   coverOffsets.add(off.toFixed(6));
-  if (o.eyeLow > o.cover) lapFaults.eyes.push(`${name}: the eyes reach ${o.eyeLow.toFixed(2)}, under the lid's top ${o.cover.toFixed(2)}`);
-  if (mid > o.cover) lapFaults.mouth.push(`${name}: the mouth's half-height line ${mid.toFixed(2)} is under the lid's top ${o.cover.toFixed(2)}`);
+  if (o.eyeLow + C.LAPTOP_EYE_MARGIN > o.cover) lapFaults.eyes.push(`${name}: the eyes reach ${o.eyeLow.toFixed(2)}, within ${C.LAPTOP_EYE_MARGIN} of the lid's top ${o.cover.toFixed(2)}`);
   if (o.stickers.length === 0 || o.stickers.some((b) => b.x0 < o.lid.x0 || b.x1 > o.lid.x1 || b.y0 < o.lid.y0 || b.y1 > o.lid.y1)) lapFaults.stickers.push(`${name}: a sticker leaves the lid`);
   // INSIDE THE FRAME, read in the document's own space — where the painter clips
   const L = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
   inkBounds(doc, (node, b, up) => { if (underPart(up, 'laptop')) Object.assign(L, { x0: Math.min(L.x0, b.x0), y0: Math.min(L.y0, b.y0), x1: Math.max(L.x1, b.x1), y1: Math.max(L.y1, b.y1) }); });
   if (!(L.x0 >= vbox.x && L.x1 <= vbox.x + vbox.w && L.y0 >= vbox.y && L.y1 <= vbox.y + vbox.h)) lapFaults.frame.push(`${name}: the laptop's ink ${L.x0.toFixed(1)}..${L.x1.toFixed(1)} × ${L.y0.toFixed(1)}..${L.y1.toFixed(1)} leaves the frame`);
-  // what this document asks of the lid's top: its eyes over the cover, and its mouth's upper half
-  if (Math.max(o.eyeLow, mid) + off > need.t) need = { t: Math.max(o.eyeLow, mid) + off, who: `${name} (its ${o.eyeLow >= mid ? 'eyes' : 'mouth'})` };
-  if (o.eyeLow + off > eyeNeed.t) eyeNeed = { t: o.eyeLow + off, who: name };
+  // what this document asks of the lid's top: its eyes, and the margin, over the cover
+  if (o.eyeLow + off + C.LAPTOP_EYE_MARGIN > eyeNeed.t) eyeNeed = { t: o.eyeLow + off + C.LAPTOP_EYE_MARGIN, who: name };
   if (o.cover - o.eyeLow < eyeGap.u) eyeGap = { u: o.cover - o.eyeLow, who: name };
 }
 // the highest whole unit the population allows: the least whole number at or under every document's need
-const derivedTop = Math.ceil(need.t - 1e-9);
-measure(`the lid's top the population allows: the eyes alone at or under ${eyeNeed.t.toFixed(2)} (${eyeNeed.who}); eyes and mouths together at or under ${need.t.toFixed(2)} (${need.who}) — the highest whole unit ${derivedTop}; the least gap between any eye and the lid ${eyeGap.u.toFixed(2)} units (${eyeGap.who}); over ${lapDocs} documents`);
-check(geometry.size === 1, `every laptop is one geometry — the same lid, screen edge, hinge and deck for every species, key and loop frame (${geometry.size} distinct over ${lapDocs} documents)`);
+const derivedTop = Math.ceil(eyeNeed.t - 1e-9);
+measure(`the lid's top the eyes allow: at or under ${eyeNeed.t.toFixed(2)} with a margin of ${C.LAPTOP_EYE_MARGIN} (${eyeNeed.who}) — the highest whole unit ${derivedTop}; the least gap between any eye and the lid ${eyeGap.u.toFixed(2)} units (${eyeGap.who}); over ${lapDocs} documents`);
+check(geometry.size === 1, `every laptop is one geometry — the same lid, hinge, deck sliver and deck corner for every species, key and loop frame (${geometry.size} distinct over ${lapDocs} documents)`);
 check(coverOffsets.size === 1, `the lid's cover stands one fixed offset over LAPTOP_TOP in every document's laptop frame (${[...coverOffsets].join(', ')})`);
-check(Number.isFinite(need.t) && C.LAPTOP_TOP === derivedTop, `LAPTOP_TOP (${C.LAPTOP_TOP}) is the highest whole unit at which no eye is covered and every mouth keeps its upper half over the lid (${derivedTop}, bound by ${need.who})`);
-check(lapFaults.none.length === 0, `every laptop document draws a lid, eyes and a mouth to measure${lapFaults.none.length ? ` — ${lapFaults.none.slice(0, 3).join('; ')}` : ''}`);
-check(lapFaults.eyes.length === 0, `no eye is covered by the lid, still or swaying, over ${lapDocs} documents${lapFaults.eyes.length ? ` — ${lapFaults.eyes.slice(0, 3).join('; ')}` : ''}`);
-check(lapFaults.mouth.length === 0, `no mouth is fully covered: every mouth keeps at least its upper half over the lid, over ${lapDocs} documents${lapFaults.mouth.length ? ` — ${lapFaults.mouth.slice(0, 3).join('; ')}` : ''}`);
+check(Number.isFinite(eyeNeed.t) && C.LAPTOP_TOP === derivedTop, `LAPTOP_TOP (${C.LAPTOP_TOP}) is the highest whole unit at which every eye stays ${C.LAPTOP_EYE_MARGIN} units over the lid (${derivedTop}, bound by ${eyeNeed.who})`);
+check(lapFaults.none.length === 0, `every laptop document draws a lid and eyes to measure${lapFaults.none.length ? ` — ${lapFaults.none.slice(0, 3).join('; ')}` : ''}`);
+check(lapFaults.eyes.length === 0, `no eye comes within ${C.LAPTOP_EYE_MARGIN} units of the lid, still or swaying, over ${lapDocs} documents${lapFaults.eyes.length ? ` — ${lapFaults.eyes.slice(0, 3).join('; ')}` : ''}`);
 check(lapFaults.stickers.length === 0, `every sticker is drawn on its lid, over ${lapDocs} documents${lapFaults.stickers.length ? ` — ${lapFaults.stickers.slice(0, 3).join('; ')}` : ''}`);
 check(lapFaults.frame.length === 0, `every laptop's ink is inside the intern's frame, over ${lapDocs} documents${lapFaults.frame.length ? ` — ${lapFaults.frame.slice(0, 3).join('; ')}` : ''}`);
-// CONTROLS: the same readers over a frame whose laptop is raised 30 units see covered eyes and a covered mouth; one whose
-// laptop is pushed a frame's width sideways sees ink outside the frame; one whose lid is drawn taller sees a second geometry.
+// CONTROLS: the same readers over a frame whose laptop is raised 30 units see a covered eye; one whose laptop is pushed a
+// frame's width sideways sees ink outside the frame; one whose lid is drawn taller sees a second geometry.
 {
   const doc = C.frameDocument('lap/control', { species: 'snail', chibi: true, laptop: true });
   const raised = lapRead(doc.replace('<g data-part="laptop">', '<g data-part="laptop" transform="translate(0 -30)">'));
-  check(raised.eyeLow > raised.cover && (raised.mTop + raised.mBot) / 2 > raised.cover, `CONTROL — a laptop raised 30 units covers the snail's eyes (${raised.eyeLow.toFixed(2)} under ${raised.cover.toFixed(2)}) and its mouth's upper half, so the legs can see a covered face`);
+  check(raised.eyeLow + C.LAPTOP_EYE_MARGIN > raised.cover, `CONTROL — a laptop raised 30 units covers the snail's eyes (${raised.eyeLow.toFixed(2)} under ${raised.cover.toFixed(2)}), so the leg can see a covered eye`);
   let px = -Infinity;
   inkBounds(doc.replace('<g data-part="laptop">', `<g data-part="laptop" transform="translate(${vbox.w} 0)">`), (node, b, up) => { if (underPart(up, 'laptop')) px = Math.max(px, b.x1); });
   check(px > vbox.x + vbox.w, `CONTROL — a laptop pushed one frame width sideways reaches ${px.toFixed(1)}, past the frame's side ${(vbox.x + vbox.w).toFixed(1)}`);
@@ -357,34 +349,44 @@ check(lapFaults.frame.length === 0, `every laptop's ink is inside the intern's f
   check(taller !== doc && laptopShape(taller) !== laptopShape(doc), 'CONTROL — a lid drawn 4 units taller is a second geometry, so the leg can see a laptop that varies');
 }
 
-// THE LAPTOP's WIDTH (card#12502; the operator's ruling of 2026-10-28, *"The width of the laptops should be less than
-// the width of a subagent character so that we see a little part of the subagents' bodies."*). One width for every
-// intern, DERIVED here: every species and variant at every size and girth (the draws that set how wide a body is), still
-// and at both sway extremes, read in the laptop's own frame — the body's ink where each of the lid's rows crosses it
-// (`inkBounds`' `span`, the outline cut at the row, never a shape's box, which is the widest the shape is anywhere).
+// THE LAPTOP's WIDTH AND ITS LOWEST LINE (card#12502). One width for every intern, DERIVED here, over every species and
+// variant at every size and girth (the draws that set how wide a body is), still and at both sway extremes, read in the
+// laptop's own frame — the body's ink where each of the lid's rows crosses it (`inkBounds`' `span`, the outline cut at
+// the row, never a shape's box, which is the widest the shape is anywhere).
 // A SIDE OF A BODY IS SEEN where, over some run of the lid's rows at least `LAP_MARGIN` tall, the body reaches at least
 // `LAP_MARGIN` past the laptop's ink on that side — a patch one CSS pixel each way at the floor's fit zoom. Rows, not
-// the whole band: a root vegetable tapers to its tip inside the lid's height, so no width shows every row of every body.
+// the whole band: a root vegetable tapers to its tip inside the lid's height.
+// THE WIDTH RULE (the operator's *"The laptop needs to be wider"*, and the seat's ruling of 2026-10-28, reversible): each
+// species' REACH is the least, over its drawings and sides, of how far its body reaches from the centre line over its
+// best run of rows; the width is the widest whole unit at which the MEDIAN species (the lower of the two middle ones)
+// still shows `LAP_MARGIN` past the laptop on both sides. A slimmer species may be covered edge to edge.
+// THE LOWEST LINE: under a 16:10 lid if the feet allow it, and never down to the feet — the laptop's lowest ink stays at
+// or over the highest foot ink any intern draws.
 // `LAP_FIT` is the fit zoom the margin is measured at — the 1,280 × 800 reference window's (FLOOR.md § 13 row 84's
 // 0.6701, the figure the coordinator's brief states as 0.67) — and one CSS pixel there is the intern's 108 units over its
 // `CHIBI_STOOL.w` floor pixels, over the zoom.
 const LAP_FIT = 0.67;
 const LAP_MARGIN = C.SEAT_RECT.w / C.CHIBI_STOOL.w / LAP_FIT;
 const LAP_STEP = 0.25, LAP_ROWS = Math.ceil(LAP_MARGIN / LAP_STEP) + 1;   // a run of rows at least LAP_MARGIN tall
-/** One document's spans in its laptop's frame: per row of its lid, the body's reach left and right of the centre line and the laptop's own ink. */
+/** One document's spans in its laptop's frame: per row of its lid, the body's reach left and right of the centre line and the laptop's own ink; and its feet's topmost ink, the laptop's lowest, and the lid's box. */
 const lapSides = (doc) => {
   const parts = [];
+  let feetTop = Infinity, lapLow = -Infinity, lidBox = null;
   inkBounds(inLaptopFrame(doc), (node, b, up, span) => {
     const lap = underPart(up, 'laptop');
+    if (underPart(up, 'feet')) feetTop = Math.min(feetTop, b.y0);
+    if (lap) lapLow = Math.max(lapLow, b.y1);
+    if (node.attrs?.['data-part'] === 'lid') lidBox = b;
     // the body: the intern's own drawing (the shadow is the root's child, outside the intern's transform)
-    parts.push({ span, lid: node.attrs?.['data-part'] === 'lid', cover: lap && node.attrs?.['data-part'] !== 'glow', body: !lap && up.length >= 3 });
+    parts.push({ span, lid: node.attrs?.['data-part'] === 'lid', cover: lap, body: !lap && up.length >= 3 });
   });
   const lid = parts.find((p) => p.lid);
   if (!lid) return null;
   const at = (y, pick) => { let lo = Infinity, hi = -Infinity; for (const p of parts) if (pick(p)) { const s = p.span(y); if (s) { lo = Math.min(lo, s[0]); hi = Math.max(hi, s[1]); } } return [lo, hi]; };
   const rows = [];
   for (let y = 0; y <= C.CHIBI_VIEWBOX.y + C.CHIBI_VIEWBOX.h; y += LAP_STEP) if (lid.span(y)) rows.push(y);
-  return rows.map((y) => { const [bl, br] = at(y, (p) => p.body), [ll, lr] = at(y, (p) => p.cover); return { reachL: 54 - bl, reachR: br - 54, lapL: 54 - ll, lapR: lr - 54 }; });
+  const out = rows.map((y) => { const [bl, br] = at(y, (p) => p.body), [ll, lr] = at(y, (p) => p.cover); return { reachL: 54 - bl, reachR: br - 54, lapL: 54 - ll, lapR: lr - 54 }; });
+  return Object.assign(out, { feetTop, lapLow, lidBox });
 };
 /** The best run of LAP_ROWS rows: the largest, over every run, of the least value in it. */
 const bestRun = (a) => { let b = -Infinity; for (let i = 0; i + LAP_ROWS <= a.length; i++) b = Math.max(b, Math.min(...a.slice(i, i + LAP_ROWS))); return b; };
@@ -401,36 +403,58 @@ for (const sp of KEYS) {
 }
 const girthMissing = girthPop.filter((e) => e.key === null).map((e) => `${e.sp} ${e.id}`);
 check(girthMissing.length === 0, `the width population holds every species and variant at every size and girth (${girthPop.length} drawings${girthMissing.length ? `; no key found for ${girthMissing.slice(0, 3).join(', ')}` : ''})`);
-const sideFaults = [], inkOffsets = new Set();
-let widthDocs = 0, narrowest = { reach: Infinity, who: '' };
+const inkOffsets = new Set(), lowOffsets = new Set(), lidHeights = new Set(), widthUnmeasured = [];
+const reachOf = {}, shownOf = {};   // species → its least reach, and the least it shows past the laptop on a side
+let widthDocs = 0, feet = { y: Infinity, who: '' }, lapLowest = { y: -Infinity, who: '' };
 for (const { sp, id, key } of girthPop.filter((e) => e.key !== null)) for (const sway of [undefined, 1, 3]) {
   widthDocs++;
   const name = `${sp} ${id} sway=${sway ?? 'still'}`;
   const rows = lapSides(C.frameDocument(key, { species: sp, chibi: true, laptop: true, sway }));
-  if (rows === null || rows.length < LAP_ROWS) { sideFaults.push(`${name}: no lid rows to measure`); continue; }
+  if (rows === null || rows.length < LAP_ROWS) { widthUnmeasured.push(`${name}: no lid rows to measure`); continue; }
   inkOffsets.add((rows[Math.floor(rows.length / 2)].lapR - C.LAPTOP_W / 2).toFixed(6));
+  lowOffsets.add((rows.lapLow - C.LAPTOP_BOTTOM).toFixed(6));
+  lidHeights.add((rows.lidBox.y1 - rows.lidBox.y0 - 1.4).toFixed(6));   // the lid's own height, less its stroke
+  if (rows.feetTop < feet.y) feet = { y: rows.feetTop, who: name };
+  if (rows.lapLow > lapLowest.y) lapLowest = { y: rows.lapLow, who: name };
   for (const [side, reach, lap] of [['left', 'reachL', 'lapL'], ['right', 'reachR', 'lapR']]) {
-    // what this side shows past the laptop, and how wide the body reaches, over its best run of rows
-    const shown = bestRun(rows.map((r) => r[reach] - r[lap]));
-    if (shown < LAP_MARGIN) sideFaults.push(`${name}: its ${side} side shows ${shown.toFixed(2)} units past the laptop at best, under ${LAP_MARGIN.toFixed(2)}`);
-    const r = bestRun(rows.map((x) => x[reach]));
-    if (r < narrowest.reach) narrowest = { reach: r, who: `${name}, its ${side} side` };
+    const r = bestRun(rows.map((x) => x[reach])), shown = bestRun(rows.map((x) => x[reach] - x[lap]));
+    if (!(sp in reachOf) || r < reachOf[sp].v) reachOf[sp] = { v: r, who: `${name}, its ${side} side` };
+    if (!(sp in shownOf) || shown < shownOf[sp].v) shownOf[sp] = { v: shown, who: `${name}, its ${side} side` };
   }
 }
-const inkOff = Number([...inkOffsets][0]);
-// the widest whole-unit laptop at which the narrowest body still shows LAP_MARGIN past it on both sides
-const derivedW = Math.floor(2 * (narrowest.reach - inkOff - LAP_MARGIN) + 1e-9);
-measure(`the laptop's width the bodies allow: the narrowest reach over a run of ${LAP_ROWS} rows is ${narrowest.reach.toFixed(2)} units from the centre line (${narrowest.who}); less the lid's ink past its edge (${inkOff.toFixed(2)}) and a margin of ${LAP_MARGIN.toFixed(2)} units (one CSS px at fit zoom ${LAP_FIT}) each side, the widest whole unit ${derivedW} — ${(derivedW / 70 * 100).toFixed(0)} % of card#12448's 70; over ${widthDocs} documents`);
-check(inkOffsets.size === 1, `the laptop's ink stands one fixed distance past LAPTOP_W's edge in every document (${[...inkOffsets].join(', ')})`);
-check(Number.isFinite(narrowest.reach) && C.LAPTOP_W === derivedW, `LAPTOP_W (${C.LAPTOP_W}) is the widest whole unit at which every body shows ${LAP_MARGIN.toFixed(2)} units past the laptop on both sides (${derivedW}, bound by ${narrowest.who})`);
-check(sideFaults.length === 0, `every body shows at least ${LAP_MARGIN.toFixed(2)} units (one CSS px at fit zoom ${LAP_FIT}) past the laptop on both sides, over ${widthDocs} documents${sideFaults.length ? ` — ${sideFaults.slice(0, 3).join('; ')}` : ''}`);
-// CONTROL: the same reader over a frame whose lid is drawn as wide as the intern's rect sees a side hidden.
+const inkOff = Number([...inkOffsets][0]), lowOff = Number([...lowOffsets][0]), lidH = Number([...lidHeights][0]);
+const bySize = Object.entries(reachOf).sort((a, b) => a[1].v - b[1].v);
+const [medianSp, median] = bySize[Math.floor((bySize.length - 1) / 2)];
+// the widest whole-unit laptop at which the median species still shows LAP_MARGIN past it on both sides
+const derivedW = Math.floor(2 * (median.v - inkOff - LAP_MARGIN) + 1e-9);
+const covered = bySize.filter(([sp]) => shownOf[sp].v < LAP_MARGIN).map(([sp]) => `${sp} ${shownOf[sp].v.toFixed(1)}`);
+measure(`the species' reach over a run of ${LAP_ROWS} rows, narrowest first: ${bySize.map(([sp, r]) => `${sp} ${r.v.toFixed(1)}`).join(', ')} — the median species ${medianSp} at ${median.v.toFixed(2)} (${median.who})`);
+measure(`the laptop's width: the median reach less the lid's ink past its edge (${inkOff.toFixed(2)}) and a margin of ${LAP_MARGIN.toFixed(2)} units (one CSS px at fit zoom ${LAP_FIT}) each side, the widest whole unit ${derivedW}; species shown under the margin on a side (covered edge to edge, the seat's ruling): ${covered.join(', ') || 'none'}; over ${widthDocs} documents`);
+// THE LOWEST LINE: a 16:10 lid's, or the feet's, whichever is higher
+const sliver = C.LAPTOP_BOTTOM - C.LAPTOP_TOP - lidH;
+const at16x10 = Math.round(C.LAPTOP_TOP + C.LAPTOP_W * 10 / 16 + sliver);
+const overFeet = Math.floor(feet.y - lowOff + 1e-9);
+const derivedBottom = Math.min(at16x10, overFeet);
+measure(`the laptop's lowest line: a 16:10 lid would put it at ${at16x10}; the highest foot ink is ${feet.y.toFixed(2)} (${feet.who}), so it may go no lower than ${overFeet} — ${derivedBottom}, a lid ${C.LAPTOP_W} × ${lidH.toFixed(1)} (${(C.LAPTOP_W / lidH).toFixed(2)}:1; 16:10 is 1.6:1)`);
+check(widthUnmeasured.length === 0, `every width document draws a lid to measure${widthUnmeasured.length ? ` — ${widthUnmeasured.slice(0, 3).join('; ')}` : ''}`);
+check(inkOffsets.size === 1 && lowOffsets.size === 1 && lidHeights.size === 1, `the laptop's ink stands one fixed distance past LAPTOP_W's edge and LAPTOP_BOTTOM, and its lid is one height, in every document (${[...inkOffsets].join(', ')}; ${[...lowOffsets].join(', ')}; ${[...lidHeights].join(', ')})`);
+check(Number.isFinite(median.v) && C.LAPTOP_W === derivedW, `LAPTOP_W (${C.LAPTOP_W}) is the widest whole unit at which the median species (${medianSp}) shows ${LAP_MARGIN.toFixed(2)} units past the laptop on both sides (${derivedW})`);
+const wideHidden = bySize.slice(Math.floor((bySize.length - 1) / 2)).filter(([sp]) => shownOf[sp].v < LAP_MARGIN).map(([sp]) => `${sp} shows ${shownOf[sp].v.toFixed(2)} (${shownOf[sp].who})`);
+check(wideHidden.length === 0, `every species at or wider than the median shows at least ${LAP_MARGIN.toFixed(2)} units (one CSS px at fit zoom ${LAP_FIT}) past the laptop on both sides${wideHidden.length ? ` — ${wideHidden.slice(0, 3).join('; ')}` : ''}`);
+check(Number.isFinite(feet.y) && C.LAPTOP_BOTTOM === derivedBottom, `LAPTOP_BOTTOM (${C.LAPTOP_BOTTOM}) is a 16:10 lid's lowest line or the feet's, whichever is higher (${derivedBottom})`);
+check(lapLowest.y <= feet.y, `no laptop reaches the feet: its lowest ink ${lapLowest.y.toFixed(2)} (${lapLowest.who}) is at or over the highest foot ink ${feet.y.toFixed(2)} (${feet.who})`);
+// CONTROLS: the same reader over a frame whose lid is drawn as wide as the intern's rect sees the median species' side
+// hidden; one whose laptop is pushed 10 units down sees it reach the feet.
 {
-  const doc = C.frameDocument('girth/control', { species: 'peapod', chibi: true, laptop: true });
+  const medianKey = girthPop.find((e) => e.sp === medianSp).key;
+  const doc = C.frameDocument(medianKey, { species: medianSp, chibi: true, laptop: true });
   const wide = doc.replace(/(<rect data-part="lid" x=")([^"]*)(" y="[^"]*" width=")([^"]*)/, (m, a, x, b, w) => `${a}${C.SEAT_RECT.x}${b}${C.SEAT_RECT.w}`);
   const rows = lapSides(wide);
   const shown = Math.min(bestRun(rows.map((r) => r.reachL - r.lapL)), bestRun(rows.map((r) => r.reachR - r.lapR)));
-  check(wide !== doc && shown < LAP_MARGIN, `CONTROL — a lid as wide as the intern's rect hides a side of the peapod (${shown.toFixed(2)} units shown), so the leg can see a hidden body`);
+  check(wide !== doc && shown < LAP_MARGIN, `CONTROL — a lid as wide as the intern's rect hides a side of the ${medianSp} (${shown.toFixed(2)} units shown), so the leg can see a hidden body`);
+  const footed = girthPop.find((e) => e.sp === feet.who.split(' ')[0]).key;
+  const down = lapSides(C.frameDocument(footed, { species: feet.who.split(' ')[0], chibi: true, laptop: true }).replace('<g data-part="laptop">', '<g data-part="laptop" transform="translate(0 10)">'));
+  check(down.lapLow > down.feetTop, `CONTROL — a laptop pushed 10 units down reaches the feet (${down.lapLow.toFixed(2)} under ${down.feetTop.toFixed(2)}), so the leg can see a laptop on the feet`);
 }
 
 // ---- 7. the frames, at parity (the node half; the painter half is painter-probe.mjs) ----

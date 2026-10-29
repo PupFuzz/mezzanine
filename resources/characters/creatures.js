@@ -934,11 +934,9 @@ function rimOf(markup) {
 // The operator's ask (2026-10-26): "each subagent to have a laptop placed in front of their lap, and they should move
 // left and right to look like they are typing … a variety of laptop colors and stickers so that each subagent's
 // laptop has unique design." Since card#12502 the laptop is ONE standard drawing in the chibi frame's units (`LAPTOP_W`,
-// `LAPTOP_TOP`, below), the same for every intern, and moves only with the intern's sway; no figure of it is in scene
-// pixels. Seen in the floor's 3/4 oblique the lid's BACK faces the viewer, with the stickers (the operator's C1,
-// 2026-10-27). It stands tall over the lap (the operator's ruling of 2026-10-27: "The subagent's laptop cover should be
-// taller. It is OK not to see their hands."), so the paws and the keys are behind it, the eyes always over its top edge
-// and at least the top of the mouth too, and the screen, which faces the intern, shows only as a lit edge and a glow.
+// `LAPTOP_TOP`, `LAPTOP_BOTTOM`, below), the same for every intern, and moves only with the intern's sway; no figure of
+// it is in scene pixels. Seen in the floor's 3/4 oblique the lid's BACK faces the viewer, with the stickers (the
+// operator's C1, 2026-10-27), raised on the lap with the paws and the keys behind it and the eyes always over it.
 
 /**
  * The laptop shells — ten pale metallic tints, variations of silver (the operator's ruling of 2026-10-28, card#12502:
@@ -1013,63 +1011,63 @@ function stickerSvg(shape, ink, r) {
 }
 
 /**
- * THE STANDARD LAPTOP (card#12502; FLOOR.md § 13's row for it). The operator's rulings of 2026-10-28: *"option B.  Each
- * laptop should be a standard height. it should not vary with the character height."*, then *"It is OK for the laptop
- * to be high enough that it covers a part of the character's mouth"*, then *"I want the laptop lid to be higher and
- * less angled."* with a reference photograph taken for its proportions only (*"The builder should keep existing
- * colors"*), then *"The width of the laptops should be less than the width of a subagent character so that we see a
- * little part of the subagents' bodies."*. So every intern's laptop is ONE drawing in the chibi frame's units — an
- * upright lid, the same width and height for every species, key and loop frame, from its top edge down to the seat
- * line — drawn OUTSIDE the intern's size scale (an intern's `size` never resizes it) and moved only by the intern's
- * sway, which it shares.
+ * THE STANDARD LAPTOP (card#12502; FLOOR.md § 13's row for it), from the operator's rulings of 2026-10-28 — one standard
+ * size (*"Each laptop should be a standard height. it should not vary with the character height."*), metal tints
+ * (*"variations of metallic silver"*), and *"I want baseline B where the laptop is raised. … The laptop needs to be
+ * wider and also taller. Again, it is OK for the laptop to cover a smaller subagent's mouse [mouth] and nose. From the
+ * from viewpoint, the viewer should not be able to see most of the keyboard. If the laptop is turned slightly, we might
+ * see a small corner of it. We should mostly see the laptop cover opened at around 110 degrees"*. So every intern's
+ * laptop is ONE drawing in the chibi frame's units, the same for every species, key and loop frame, drawn OUTSIDE the
+ * intern's size scale and moved only by the intern's sway, which it shares: the lid's back, raised on the lap.
  *
- * `LAPTOP_W` is DERIVED too: the selftest's § 6b reds unless it is the widest whole unit at which every body, at every
- * size and girth, still shows one CSS pixel (at the floor's fit zoom) past the laptop on both sides. `LAPTOP_TOP`
- * is the lid's top edge, and it is DERIVED, never chosen: `tools/characters/selftest.mjs` § 6b measures every species
- * and variant at every size, eye style and mouth style, still and at both sway extremes, in the laptop's own frame, and
- * reds unless this figure is the highest whole unit at which the lid covers no eye in any frame and leaves the upper
- * half of every mouth (or beak) showing — the seat's reading of the second ruling's "a part of the character's mouth".
- * So this is the tallest lid those two conditions allow; the selftest prints the drawing that binds it. The deck's
- * bottom edge is the seat line (`FOOT`), so the base is fixed too.
+ * All three figures are DERIVED by `tools/characters/selftest.mjs` § 6b, which reds unless each is the figure its rule
+ * gives over the measured population (every species and variant at every size, face style and girth, still and at
+ * both sway extremes, read in the laptop's own frame); the selftest prints what binds each:
+ * - `LAPTOP_TOP`, the lid's top edge: the highest whole unit at which no eye comes within `LAPTOP_EYE_MARGIN` of the
+ *   lid. A mouth and a nose may be covered.
+ * - `LAPTOP_W`, the lid's width: the widest whole unit at which the MEDIAN species' body still shows one CSS pixel (at
+ *   the floor's fit zoom) past the laptop on both sides — so a slimmer species may be covered edge to edge (the seat's
+ *   ruling of 2026-10-28, reversible).
+ * - `LAPTOP_BOTTOM`, the laptop's lowest ink: under a 16:10 lid if the feet allow it, and never down to the feet — so
+ *   the lid stands as tall as its width asks for, raised on the lap above them.
  */
-export const LAPTOP_W = 42;
-export const LAPTOP_TOP = 156;
+export const LAPTOP_W = 59;
+export const LAPTOP_TOP = 150;
+export const LAPTOP_BOTTOM = 180;
+/** How far over the lid's top edge every eye's lowest ink stays, in frame units (card#12502). */
+export const LAPTOP_EYE_MARGIN = 2;
+/** What shows under the lid's hinge: the sliver of the deck's front edge, in frame units. */
+const LAPTOP_SLIVER = 1.6;
 
-/** The deck's thickness under the lid, in frame units: the thin edge the open laptop rests on. */
-const LAPTOP_DECK = 2.4;
-
-/** The laptop's one geometry, in frame units — a pure function of the constants above and `FOOT`. */
+/** The laptop's one geometry, in frame units — a pure function of the constants above. */
 function laptopGeometry() {
-  const w = LAPTOP_W, y0 = LAPTOP_TOP;
-  const y1 = FOOT;                 // the deck's bottom edge, on the seat line the intern sits on
-  const yH = y1 - LAPTOP_DECK;     // the hinge: the lid's foot and the deck's top
+  const w = LAPTOP_W, y0 = LAPTOP_TOP, y1 = LAPTOP_BOTTOM;
+  const yH = y1 - LAPTOP_SLIVER;   // the hinge: the lid's foot, over the deck's front sliver
   return { w, y0, y1, yH, x0: 54 - w / 2, x1: 54 + w / 2 };
 }
 
 /**
- * The laptop on an intern's lap, in the proportions of the operator's reference photograph of 2026-10-28: the open lid
- * seen from behind, upright — a rectangle with softly rounded corners, its back to the viewer with the key's two
- * stickers on it, the screen's light along its top edge, a thin dark hinge at its foot and the deck's thin edge under
- * it, resting on the seat line. The lid is METAL (the operator's second reference, the same day): a vertical sheen,
- * lighter at the top, with a soft highlight band and a thin bright rim inside its outline — and no logo of any kind.
- * The `lid` part is the lid's outline; the `glow` part is the screen's soft wash over the face, which is light, not
- * cover.
+ * The laptop on an intern's lap, seen from the front and a little above with its lid opened about 110°: almost all the
+ * viewer sees is the lid's BACK — a rounded rectangle in the key's metallic tint, a sheen lighter at the top with a soft
+ * highlight band, a thin bright rim and the key's two stickers — with a thin dark hinge band at its foot and a sliver
+ * of the deck's front edge under that. The laptop is turned a few degrees, so one rear corner of the deck peeks out
+ * past the lid's lower right corner as a small lighter wedge; no keys show. No glow on the face and no logo of any kind.
+ * The `lid` part is the lid's outline, which the top-edge and width legs read.
  */
 function laptopSvg(pen, lap) {
   const { w, y0, y1, yH, x0, x1 } = laptopGeometry();
   const S = lap.shell;
-  const glow = '#bfe4ff';
   const h = yH - y0;
   const out = [];
-  out.push(`<ellipse data-part="glow" cx="54" cy="${f(y0)}" rx="${f(w * 0.42)}" ry="3" fill="${pen.soft(glow, 0.6)}"/>`);
-  // the screen's lit edge, just over the lid's top, behind it
-  out.push(`<rect x="${f(x0 + 1.5)}" y="${f(y0 - 0.6)}" width="${f(w - 3)}" height="2" rx="1" fill="${glow}" opacity=".95"/>`);
+  const white = (t) => mix(S, '#ffffff', t);
+  const edge = shade(S, 0.42);
+  // the deck's rear corner, behind the lid: only the part past the lid's right edge shows, rising away from the viewer
+  out.push(`<path data-part="deck-corner" d="M${f(x1 - 4)} ${f(yH - 1)}L${f(x1 + 2.6)} ${f(yH - 3.4)}L${f(x1 + 3.4)} ${f(yH - 1.9)}L${f(x1 - 1)} ${f(yH + 1)}Z" fill="${white(0.5)}" stroke="${edge}" stroke-width=".9" stroke-linejoin="round"/>`);
   // the metal: lighter at the top, a soft highlight band a third of the way down, the shell's own tint, a little
   // darker at the foot
-  const white = (t) => mix(S, '#ffffff', t);
   const sheen = pen.uid();
   pen.defs.push(`<linearGradient id="${sheen}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${white(0.55)}"/><stop offset=".24" stop-color="${white(0.2)}"/><stop offset=".33" stop-color="${white(0.6)}"/><stop offset=".42" stop-color="${white(0.18)}"/><stop offset=".78" stop-color="${S}"/><stop offset="1" stop-color="${shade(S, 0.12)}"/></linearGradient>`);
-  out.push(`<rect data-part="lid" x="${f(x0)}" y="${f(y0)}" width="${f(w)}" height="${f(h)}" rx="3" fill="url(#${sheen})" stroke="${shade(S, 0.42)}" stroke-width="1.4"/>`);
+  out.push(`<rect data-part="lid" x="${f(x0)}" y="${f(y0)}" width="${f(w)}" height="${f(h)}" rx="3" fill="url(#${sheen})" stroke="${edge}" stroke-width="1.4"/>`);
   // the bright rim, just inside the outline
   out.push(`<rect x="${f(x0 + 1.1)}" y="${f(y0 + 1.1)}" width="${f(w - 2.2)}" height="${f(h - 2.2)}" rx="2.2" fill="none" stroke="#ffffff" stroke-width=".8" opacity=".75"/>`);
   // the stickers, at fixed shares of the lid, sized to fit inside it
@@ -1079,10 +1077,9 @@ function laptopSvg(pen, lap) {
     const [sx, sy, rot] = slots[i];
     out.push(`<g data-part="sticker" transform="translate(${f(sx)} ${f(sy)}) rotate(${rot})">${stickerSvg(st.shape, st.ink, r)}</g>`);
   });
-  // the hinge, then the deck's edge, a hair wider than the lid
-  out.push(`<rect data-part="hinge" x="${f(x0 + 1)}" y="${f(yH - 0.9)}" width="${f(w - 2)}" height="1.2" rx=".6" fill="${shade(S, 0.45)}"/>`);
-  const dx0 = 54 - w * 0.52, dw = w * 1.04;
-  out.push(`<rect data-part="deck" x="${f(dx0)}" y="${f(yH)}" width="${f(dw)}" height="${f(y1 - yH - 0.6)}" rx="1" fill="${white(0.35)}" stroke="${shade(S, 0.42)}" stroke-width="1.1"/>`);
+  // the hinge band at the lid's foot, then the deck's front sliver under it
+  out.push(`<rect data-part="hinge" x="${f(x0 + 1)}" y="${f(yH - 1)}" width="${f(w - 2)}" height="1.3" rx=".6" fill="${shade(S, 0.5)}"/>`);
+  out.push(`<rect data-part="deck" x="${f(x0 + 1.5)}" y="${f(yH + 0.3)}" width="${f(w - 3)}" height="${f(y1 - yH - 0.85)}" rx=".6" fill="${white(0.3)}" stroke="${edge}" stroke-width=".9"/>`);
   return out.join('');
 }
 
@@ -1206,8 +1203,9 @@ export function frameDocument(key, opt = {}) {
   if (A.feet) {
     for (const s of [-1, 1]) {
       const up = lifted(s) ? 5 : 0, fx = 54 + s * A.feet.dx + (lifted(s) ? s * 1.5 : 0);
-      if (A.feet.talon) for (const k of [-3, 0, 3]) parts.push(`<ellipse cx="${f(fx + k)}" cy="${185 - up}" rx="1.9" ry="3.2" fill="${pen.paint(A.feet.col)}" stroke="${line(A.feet.col)}" stroke-width=".8"/>`);
-      else parts.push(`<ellipse cx="${f(fx)}" cy="${184 - up}" rx="${A.feet.rx || 8.5}" ry="4.6" fill="${pen.paint(A.feet.col)}" stroke="${line(A.feet.col)}" stroke-width="1.3"/>`);
+      // the feet, in a `feet` part the selftest reads for the laptop's lowest line (card#12502)
+      if (A.feet.talon) parts.push(`<g data-part="feet">${[-3, 0, 3].map((k) => `<ellipse cx="${f(fx + k)}" cy="${185 - up}" rx="1.9" ry="3.2" fill="${pen.paint(A.feet.col)}" stroke="${line(A.feet.col)}" stroke-width=".8"/>`).join('')}</g>`);
+      else parts.push(`<g data-part="feet"><ellipse cx="${f(fx)}" cy="${184 - up}" rx="${A.feet.rx || 8.5}" ry="4.6" fill="${pen.paint(A.feet.col)}" stroke="${line(A.feet.col)}" stroke-width="1.3"/></g>`);
     }
   }
   parts.push(...c.layers.body);
