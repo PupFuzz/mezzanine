@@ -372,12 +372,22 @@ def run_to_files(argv: list, env: dict, cwd: Path, stdin: "str | None" = None, t
     the installer's output through a pipe would wait for that flusher to exit (windows-latest, card#12571)."""
     _ran[0] += 1
     base = TMP / f"run-{_ran[0]}"
+    t0, note = time.time(), ""
     with open(f"{base}.out", "wb") as o, open(f"{base}.err", "wb") as e:
-        if stdin is None:
-            rc = subprocess.run(argv, stdout=o, stderr=e, stdin=subprocess.DEVNULL, env=env, timeout=timeout, cwd=str(cwd)).returncode
-        else:
-            rc = subprocess.run(argv, stdout=o, stderr=e, input=stdin.encode(), env=env, timeout=timeout, cwd=str(cwd)).returncode
-    r = Ran(rc, Path(f"{base}.out").read_text(encoding="utf-8", errors="replace"), Path(f"{base}.err").read_text(encoding="utf-8", errors="replace"))
+        try:
+            if stdin is None:
+                rc = subprocess.run(argv, stdout=o, stderr=e, stdin=subprocess.DEVNULL, env=env, timeout=timeout, cwd=str(cwd)).returncode
+            else:
+                rc = subprocess.run(argv, stdout=o, stderr=e, input=stdin.encode(), env=env, timeout=timeout, cwd=str(cwd)).returncode
+        except subprocess.TimeoutExpired:
+            # A run past its bound is a FAILURE of the check that made it, with what it printed shown — never a
+            # crash that hides every later section.
+            rc, note = 124, f"\n[the run was killed after {timeout} s, still running]"
+    r = Ran(rc, Path(f"{base}.out").read_text(encoding="utf-8", errors="replace"),
+            Path(f"{base}.err").read_text(encoding="utf-8", errors="replace") + note)
+    if note:
+        print(f"  !!   a run timed out after {round(time.time() - t0)} s: {' '.join(str(a) for a in argv[1:3])} …; what it printed:\n"
+              + "\n".join("       " + ln for ln in (r.stdout + r.stderr).splitlines()[-60:]), file=sys.stderr)
     OUTPUTS.append(r.stdout + r.stderr)
     return r
 
