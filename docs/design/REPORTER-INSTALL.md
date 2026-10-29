@@ -1,8 +1,8 @@
 # D6 — the one-command reporter install on Linux, Windows and macOS
 
 **Status: DESIGN, revision r2 — folds design review r1's findings ([§ 13](#13-design-review-r1--disposition-per-finding))
-and the operator's answers of 2026-10-29 to r1's six questions ([§ 10](#10-operator-questions)); one
-question, the Mac seat's login kind, is being asked separately. Nothing in this document is built.** Card#12571; the macOS leg was added to the scope by the operator on 2026-10-29 (*"We will also
+and the operator's answers of 2026-10-29 to r1's six questions and to the Mac seat's login kind
+([§ 10](#10-operator-questions)). Nothing in this document is built.** Card#12571; the macOS leg was added to the scope by the operator on 2026-10-29 (*"We will also
 onboard a macos claude agent. We need a working mezzanine reporter for claude on macos"*).
 
 > **What this document is.** The design for one install command that puts `fleet-reporter` on a
@@ -32,8 +32,11 @@ onboard a macos claude agent. We need a working mezzanine reporter for claude on
    says why that is kept and not replaced): it is `install.sh`'s order, conditions and outcome-reading
    ported to node, plus an explicit per-platform block table ([§ 3.3](#33-the-per-platform-block-set-derived)),
    with the Windows section's `WIN_*` values set by the installer instead of by a pasted values block.
-3. **The agent asks the user one question — the path of the token file** saved from the site's Seat
-   tokens page — and passes the installer that path and nothing else. The installer takes the file into
+3. **The agent asks the user one question — where they saved or copied the token file** from the
+   site's Seat tokens page, on this machine or on another (the operator, 2026-10-29: *"token file may
+   be copied from another machine"* — a carried file is a first-class route on all three OSes,
+   [§ 10.1](#101-decided--the-operators-answers-of-2026-10-29-to-r1s-questions)) — and passes the installer that path
+   and nothing else. The installer takes the file into
    the owner-only config directory, validates it, writes the config, and removes the file once the
    config is verified ([§ 4](#4-the-token-file-contract)). A path that is really the token is refused
    by name, and the token is then treated as exposed ([§ 4.4](#44-a-path-that-carries-the-token-is-refused)).
@@ -45,7 +48,8 @@ onboard a macos claude agent. We need a working mezzanine reporter for claude on
    Windows (Option A, the operator's ruling of 2026-10-25; the installer itself starts the flusher
    once, [§ 3.6](#36-starting-the-flusher-on-windows)), and on macOS a user `launchd` agent (the
    operator's answer of 2026-10-29, [§ 10](#10-operator-questions)), designed for a seat used at a GUI
-   login; an SSH-only seat is a named refusal until the operator answers the open question ([§ 6](#6-macos)).
+   login — the operator's answer of the same day: the Mac agent is used at the Mac — and an SSH-only
+   seat is a refusal that names the limit ([§ 6](#6-macos)).
 6. **A fresh install goes from three runs to one**: today's exit-3 run, `--set-token` run and install
    run become one invocation with `--token-file`.
 
@@ -319,7 +323,12 @@ and `restart · linux darwin` keeps its wait. R8 and R12 assert the Windows star
 `mzn_` + 43 characters of `[A-Za-z0-9_-]`, optional trailing `\n`, mode `0600` in a `0700` directory
 the seat account owns, or the owner-only ACL on Windows (`INSTALL-LINUX.md:889-901`; the writer's
 `FILE_TOKEN = /^mzn_[A-Za-z0-9_-]{43}\n?$/`, `INSTALL-LINUX.md:574`, and its checks at `:659-681`).
-It is a hop the operator carries by hand. **v1 stays accepted**, so the hand delivery and the
+It is a hop the operator carries by hand. **A carried file is a first-class route, not a fallback**
+(the operator, 2026-10-29: *"token file may be copied from another machine"*): the browser that saved
+the file may be on another machine, so on every OS `--token-file` takes a file the user saved here or
+copied here alike, under one rule ([§ 4.3](#43-how-the-installer-takes-the-file-token-take)), and a
+carried v2 file's `ingest_url`, `install_id` and `seat_id` drive the identity exactly as a downloaded
+one's do. **v1 stays accepted**, so the hand delivery and the
 hidden-prompt runbook route keep working; a v1 file carries no site, install id or seat id, so with
 one the installer needs `--site` and `--seat-id` (and takes `--install-id` or the account name as
 today, `install.sh:184-187`), and the agent asks for them.
@@ -446,9 +455,10 @@ markers, which do not move.
 ```
 User:  Install the Mezzanine reporter from https://github.com/PupFuzz/mezzanine
 Agent: I'll install it from the README's Install section. One thing I need from you: on the site, open
-       Admin → Seat tokens, issue a token for this seat, click "Save token file", and tell me where the
-       browser saved it (usually ~/Downloads/mezzanine-reporter-token). Don't paste the token itself;
-       the file is removed once the token is in the config.
+       Admin → Seat tokens, issue a token for this seat, click "Save token file", and tell me where you
+       saved or copied the token file on this machine (usually ~/Downloads/mezzanine-reporter-token; if
+       the browser is on another machine, copy the file here first). Don't paste the token itself; the
+       file is removed once the token is in the config.
 User:  ~/Downloads/mezzanine-reporter-token
 Agent: (runs) git clone --depth 1 https://github.com/PupFuzz/mezzanine ~/.local/src/mezzanine
        (runs) node ~/.local/src/mezzanine/fleet-reporter/install.js --token-file ~/Downloads/mezzanine-reporter-token
@@ -478,9 +488,10 @@ Agent: Done. On Windows nothing supervises the reporter's background process (th
 The agent converts the user's backslash path to forward slashes before passing it; `install.js` also
 accepts either and never hands a backslash to a block.
 
-**macOS** — the same words again; the agent adds one sentence before running — *"If macOS asks whether
-the terminal may access your Downloads folder, allow it; or save the file in your home folder instead"*
-([§ 6.4](#64-tcc-the-downloads-folder-and-the-login-kind)) — and the lines that differ:
+**macOS** — the same words again; the agent adds one sentence before running — *"Save or copy the file
+into your home folder rather than Downloads, Desktop or Documents; if it is in one of those and macOS
+asks whether the terminal may access that folder, allow it"* ([§ 6.4](#64-tcc-the-downloads-folder-and-the-login-kind)) — and the lines
+that differ:
 
 ```
        … `launchd-write`: ~/Library/LaunchAgents/com.pupfuzz.fleet-reporter.plist written; bootstrapped in gui/501
@@ -554,12 +565,13 @@ D1 § 2.3 wants a supervised start on a seat that can have one, so that *heartbe
 **Decided: A** (the operator's answer to r1's Q1, 2026-10-29). A is Apple's supported no-root
 mechanism, delivers the environment by a declared key rather than a crontab line's leading assignment,
 and its single-instance-per-label start replaces `flock`. **The design is for a seat used at a GUI
-login.** An SSH-only seat has no `gui/<uid>` domain to bootstrap into: until the operator answers the
-login-kind question (being asked separately, [§ 10](#10-operator-questions)), `prereqs · darwin`
-**refuses** such a seat by name — *"no gui launchd domain for this user: the reporter's macOS install
-needs a GUI login; an SSH-only seat is not yet supported"* — rather than silently installing with no
-supervisor. B is kept in the table as the mechanism that answer would turn on, and is not designed
-further here.
+login, which the operator confirmed is how the Mac agent is used** (*"(a)"*, 2026-10-29: at the Mac,
+Claude in a Terminal there — [§ 10.1](#101-decided--the-operators-answers-of-2026-10-29-to-r1s-questions)). **That is
+the supported macOS case, and the `gui/<uid>` domain is where the agent is bootstrapped.** An SSH-only
+seat has no `gui/<uid>` domain to bootstrap into, and `prereqs · darwin` **refuses** one by name —
+*"no gui launchd domain for this user: the reporter's macOS install supports a GUI login, with Claude
+Code in a Terminal there; an SSH-only seat is not supported"* — rather than silently installing with
+no supervisor. B stays in the table as the mechanism such a seat would need, and is not designed here.
 
 **`launchd-write` is idempotent**: it stages the plist in `$B`, compares it with the installed one, and
 prints `launchd agent already current: nothing written, nothing restarted` when they are byte-equal
@@ -595,8 +607,8 @@ agent relays ([§ 5](#5-the-user-visible-flow)).
 
 ### 6.4 TCC, the Downloads folder, and the login kind
 
-Two macOS facts shape the one question and the supervisor, both recall and both for Q3 and the first
-install to settle:
+Two macOS facts shape the token route and the supervisor, both recall and both for the first install
+to settle:
 
 - **`~/Downloads`, `~/Desktop` and `~/Documents` are privacy-protected folders.** The first time a
   terminal-launched process reads a file under one, macOS asks the user whether that terminal
@@ -609,13 +621,17 @@ install to settle:
   the token lives in `~/.config/fleet-reporter` by then.
 - **A seat operated over SSH has no `gui/<uid>` launchd domain**, so a LaunchAgent cannot be
   bootstrapped there and would not run; the user crontab does run under `cron`, which needs no session.
-  A seat whose browser is on another machine also means the token file is **carried**, not downloaded,
-  and arrives by the hand-delivery route; `--token-file` names its path and [§ 4.3](#43-how-the-installer-takes-the-file-token-take)'s
-  take rule applies.
+  A token file saved by a browser on another machine is **copied** to the seat, and `--token-file`
+  names its path there; [§ 4.3](#43-how-the-installer-takes-the-file-token-take)'s one take rule applies.
 
-The login kind is the one question still open ([§ 10](#10-operator-questions)), asked of the operator
-separately. Until it is answered the installer does not guess: `prereqs · darwin` checks
-`launchctl print gui/$(id -u)` and refuses an SSH-only seat by name ([§ 6.3](#63-supervision-the-choice-and-the-recommendation)).
+The login kind is decided — a GUI login ([§ 10.1](#101-decided--the-operators-answers-of-2026-10-29-to-r1s-questions)) —
+and `prereqs · darwin` checks `launchctl print gui/$(id -u)` and refuses an SSH-only seat by name
+([§ 6.3](#63-supervision-the-choice-and-the-recommendation)). **The browser may be on another machine**
+(the operator, 2026-10-29), so both token routes are first-class on macOS as on the other two: the
+browser's download on the seat and a file copied to the seat, each passed by path and taken under the Q4
+rule. For either, the agent's message steers the save or copy destination away from the
+privacy-protected folders — *put it in your home folder, not Downloads, Desktop or Documents* — and
+names the consent prompt the user sees if it lands in one anyway ([§ 5](#5-the-user-visible-flow)).
 
 ### 6.5 The first real macOS install: what it must measure
 
@@ -759,8 +775,8 @@ symlink path, and `prereqs · darwin` compares the plist's `node` with `command 
 - It does not restore `settings.json` from a backup at uninstall, ever ([§ 3.5](#35-uninstall)).
 - It does not refuse a token file other accounts could have read: the operator ruled *accept with
   warning*, and the warning is what the design owes ([§ 4.3](#43-how-the-installer-takes-the-file-token-take)).
-- It does not cover an SSH-only or headless Mac: `prereqs · darwin` refuses one by name until the
-  operator's open answer says whether such a seat exists ([§ 6.3](#63-supervision-the-choice-and-the-recommendation)).
+- It does not cover an SSH-only or headless Mac: the operator confirmed the Mac agent is used at a GUI
+  login, and `prereqs · darwin` refuses any other seat by name ([§ 6.3](#63-supervision-the-choice-and-the-recommendation)).
 
 ## 10. Operator questions
 
@@ -771,25 +787,20 @@ Each is folded where it applies:
 
 | r1 question | Answer | Where it lands |
 |---|---|---|
-| Q1 — macOS supervision: (A) user `launchd` agent, (B) crontab without `flock`, (C) hooks only | **A** | [§ 6.3](#63-supervision-the-choice-and-the-recommendation); designed for a GUI-login seat, an SSH-only seat refused by name until § 10.2's question is answered |
+| Q1 — macOS supervision: (A) user `launchd` agent, (B) crontab without `flock`, (C) hooks only | **A** | [§ 6.3](#63-supervision-the-choice-and-the-recommendation); designed for the GUI-login seat the operator confirmed (the row below), an SSH-only seat refused by name |
 | Q2 — the Seat tokens page gains *Save token file* and keeps showing the plaintext | **yes, both** | [§ 4.2](#42-the-page-writes-the-file-v2) |
 | Q3 — the token file is removed by default once the config is verified | **yes, by default** | [§ 4.3](#43-how-the-installer-takes-the-file-token-take); `--keep-token-file` dropped (F15), the default stands |
 | Q4 — a token file other accounts could have read | **accept with warning** | [§ 4.3](#43-how-the-installer-takes-the-file-token-take): the ruling was on wording that drew no line between a browser's save and a carried file, so it covers both; the warning is computed from effective reachability, names the window and the accounts, and ends *revoke and issue again if you are unsure*; `chmod 0600` / ACL reset after the move and before `token-config`; ledger row 12 records the loosening of Step 2's carried-file rule |
 | Q5 — `install.sh` becomes a shim for one release | **yes** | [§ 3.2](#32-why-the-runbook-stays-the-owner-of-the-commands); removal keyed to the reporter minor after the one that ships `install.js`, both numbers in that release's `UPDATES.md` row |
 | Q6 — the macOS seat's own agent performs the first real install | **yes** | [§ 6.5](#65-the-first-real-macos-install-what-it-must-measure) |
+| r2's question — is the Mac agent used at the Mac (a GUI login, Claude in a Terminal there), or over SSH? | **"(a)"** — at the Mac | [§ 6.3](#63-supervision-the-choice-and-the-recommendation), [§ 6.4](#64-tcc-the-downloads-folder-and-the-login-kind): the GUI-login seat is **the** supported macOS case, bootstrapped in the `gui/<uid>` domain; an SSH-only seat is a refusal that names the limit |
+| r2's follow-up — where is the browser? | **"token file may be copied from another machine"** | the carried file is a **first-class route on all three OSes**, not a fallback ([§ 4.1](#41-todays-file-v1), [§ 4.3](#43-how-the-installer-takes-the-file-token-take), [§ 6.4](#64-tcc-the-downloads-folder-and-the-login-kind)): the agent's one question is *where did you save or copy the token file?* ([§ 5](#5-the-user-visible-flow)); the Q4 accept-with-warning rule applies to a copied file as to a saved one; a v2 file's `ingest_url`, `install_id` and `seat_id` drive the identity either way; on macOS the agent steers the copy destination away from Downloads, Desktop and Documents, or names the consent prompt |
 
 ### 10.2 Open
 
-- **How is the Mac seat used: at a GUI login with the browser on the seat, or over SSH with the
-  browser elsewhere?** Being asked of the operator separately. Until answered, the design is for the
-  GUI-login seat and `prereqs · darwin` refuses an SSH-only one by name ([§ 6.3](#63-supervision-the-choice-and-the-recommendation),
-  [§ 6.4](#64-tcc-the-downloads-folder-and-the-login-kind)). **Recommendation if the answer is SSH:**
-  the user crontab (B) for that seat, with its own `cron-ancestry` variant, and the token carried into
-  the named file as on Windows; a wrong assumption costs a refusal and a re-run, not a silent seat.
-  Example: a MacBook the operator sits at — GUI, A, the browser's download; a Mac mini in a rack
-  reached by `ssh` — B, a carried file.
-- **`COORD_CONFIG` on macOS** needs no decision: the resolver reads the settings file and the plist
-  carries what it prints, which is correct whether or not the seat runs the coordination framework.
+Nothing gates the build. **`COORD_CONFIG` on macOS** needs no decision: the resolver reads the
+settings file and the plist carries what it prints, which is correct whether or not the seat runs the
+coordination framework.
 
 ## 11. The amendment ledger
 
@@ -801,7 +812,7 @@ before the build should trust the owning document.
 |---|---|---|---|
 | 1 | D1 § 2.1's install-path table and § 3.1's path table | no path changes: the *Linux / macOS* rows already give macOS `~/.local/share/fleet-reporter/` and `~/.config/fleet-reporter/`. One sentence is added beside them: the installer sets the Windows section's `WIN_*` values on `win32` only, and on `darwin` the Linux/macOS rows apply unchanged | the rows cover macOS; what D1 lacks is the statement of who sets the per-OS values |
 | 2 | D1 § 3.1, after the carried-file sentence | the token-file contract of § 4: v1 and v2, the four keys, LF only; the page's Save button as the producer; the take rule of § 4.3 | the hop is declared where the consumer reads D1 |
-| 3 | D1 § 2.3 item 1 | *on macOS, a user `launchd` agent with `StartInterval 60` and `RunAtLoad`, which runs while the user is logged in at the GUI* (the operator's ruling of 2026-10-29); an SSH-only seat is refused until § 10.2's answer; the contract's `$COORD_CONFIG` delivery by `EnvironmentVariables` | § 2.3 names the Linux and Windows starts; macOS is a third |
+| 3 | D1 § 2.3 item 1 | *on macOS, a user `launchd` agent with `StartInterval 60` and `RunAtLoad`, which runs while the user is logged in at the GUI* (the operator's rulings of 2026-10-29: a `launchd` agent, and the seat is used at a GUI login); an SSH-only seat is refused by name; the contract's `$COORD_CONFIG` delivery by `EnvironmentVariables` | § 2.3 names the Linux and Windows starts; macOS is a third |
 | 4 | D1 § 3.1, the roster resolution paragraph | *the home path is Linux's; on Windows and macOS `$COORD_CONFIG` is the whole resolution* | `rosterSite()` already does this (`fleet-reporter.js:522`); D1 says it for Windows only |
 | 5 | D1 § 15 row 9 | the macOS column: supervised, a user `launchd` agent (the operator's ruling of 2026-10-29) | the row records the per-OS decision |
 | 6 | D1 § 16's install precondition | a macOS leg: *a procedure exists once this design is built; a real install is owed*, as the Windows leg reads today (`EVENT-SCHEMA.md:8557-8565`) | same shape as the Windows precondition |
@@ -836,7 +847,7 @@ below; none is declined.
 | F2 | MAJOR — no flusher starts inside one `install.js` run on Windows | **Fixed.** § 3.6: `flusher-start.js` on `win32`, one detached start as a hook's; `restart · win32` uses it; R8 (with the disabled-start control) and R12 assert it |
 | F3 | MAJOR — "each block is its own bash process" contradicts the two exporting lines | **Fixed.** § 3.1 item 2: the installer owns `B` and `SEAT_*`; Step 0's line becomes `${B:-…}`; the values block's own `env | grep '^SEAT_'` line is what the installer reads; board-identity's values from `$B/board-identity.vals`; blocks run as `bash <file>` under `$B` |
 | F4 | MAJOR — `ppid` 1 cannot fail on macOS | **Fixed.** § 6.3: PASS only when `launchctl print` reports the lock's pid; R11 plants a hook-started holder |
-| F5 | MAJOR — SSH-operated Mac, carried token, TCC on `~/Downloads` | **Fixed.** § 6.4 and § 10.2's open question (asked of the operator separately); the design is for the GUI-login seat, and `prereqs · darwin` refuses an SSH-only seat by name until the answer; the agent's message names the privacy prompt; § 6.5 expects it |
+| F5 | MAJOR — SSH-operated Mac, carried token, TCC on `~/Downloads` | **Fixed.** The question was put to the operator, who answered *"(a)"* — at the Mac (§ 10.1): the GUI-login seat is the supported case and `prereqs · darwin` refuses an SSH-only seat by name; the operator then ruled *"token file may be copied from another machine"*, so the carried file is a first-class route on every OS (§ 4.1, § 6.4), the agent asks *where did you save or copy the token file?*, steers a macOS destination away from the privacy-protected folders and names the consent prompt (§ 5), and § 6.5 expects it |
 | F6 | MAJOR — rotation with another site's v2 file corrupts site A | **Fixed.** § 4.6: the file's `ingest_url` selects the site and must match exactly one; mismatch refused naming *Adding a site*; R22 |
 | F7 | MAJOR, security — warn-and-continue loosens the carried-file rule; `0600` after rename | **Fixed as the operator ruled.** The operator answered r1's Q4 *accept with warning* on wording covering carried files too, so the design keeps acceptance and states the loosening (§ 4.3, ledger row 12) instead of refusing; the mechanics the finding asked for are all in: the warning is computed from effective reachability over the directory chain, names the window, the other accounts and the revoke-and-reissue remedy; `chmod 0600` (ACL reset on Windows, by copy-not-rename) after the move and before `token-config`; R19 |
 | F8 | MAJOR — the plist outside the version guard's population | **Fixed.** § 6.3 and ledger row 11: `launchd` touch, guard reads the heredoc under `launchd-write`, ledger row, selftest case; R25 |
