@@ -1441,8 +1441,11 @@ async function arrival(ctx, waitS) {
 function ancestry(ctx) {
   const T = ctx.T;
   step('ancestry', 'informational');
+  /* Its non-PASS outcome reads UNVERIFIED, never FAIL: the step is not judged, and a verdict word that reads as
+   * failure on a line nothing judges was read as a failed install (card#12571 follow-up). */
+  const unverified = (m) => say(`UNVERIFIED: ${m} (informational; the install's verdict does not read it)`);
   const h = lockHolder(T), held = h.held;
-  if (!h.live) { say(`FAIL: no live flusher holds the lock (${h.why})`); return; }
+  if (!h.live) { unverified(`no live flusher holds the lock (${h.why})`); return; }
   if (T.platform === 'linux') {
     const chain = [];
     for (let p = held.pid; p > 1;) {
@@ -1455,11 +1458,12 @@ function ancestry(ctx) {
     for (const c of chain) say(String(c.p).padStart(8) + '  ' + c.comm.padEnd(8) + ' ' + c.cmd.slice(0, 150));
     const flock = chain[1] && chain[1].comm === 'flock' && chain[1].cmd.includes(T.js);
     const cron = chain.some((c) => /^cron$/i.test(c.comm));
-    say(flock && cron ? 'PASS: the lock holder was started by cron through flock'
-      : `FAIL: the lock holder's parents include ${flock ? 'flock' : 'no flock'} and ${cron ? 'cron' : 'no cron'}: a flusher cron did not start holds the lock (a hook's, or one run by hand), so cron's line is NOT verified`);
+    if (flock && cron) say('PASS: the lock holder was started by cron through flock');
+    else unverified(`the lock holder's parents include ${flock ? 'flock' : 'no flock'} and ${cron ? 'cron' : 'no cron'}: a flusher cron did not start holds the lock (a hook's, or one run by hand), so cron's line is NOT verified`);
   } else if (T.platform === 'darwin') {
     const lp = launchdPid();
-    say(lp === held.pid ? `PASS: launchctl reports pid ${lp} = flusher.lock` : `FAIL: launchctl reports ${lp === null ? 'no pid' : 'pid ' + lp}, and flusher.lock names pid ${held.pid}: a flusher launchd did not start holds the lock`);
+    if (lp === held.pid) say(`PASS: launchctl reports pid ${lp} = flusher.lock`);
+    else unverified(`launchctl reports ${lp === null ? 'no pid' : 'pid ' + lp}, and flusher.lock names pid ${held.pid}: a flusher launchd did not start holds the lock (a hook's, or one run by hand), so launchd's job is NOT verified`);
   } else {
     const age = Date.now() - fs.statSync(lockPath(T)).mtimeMs;
     const fresh = age < require(T.js).K.LOCK_STALE_MS;

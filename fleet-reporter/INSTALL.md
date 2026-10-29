@@ -548,10 +548,12 @@ written while that step runs.
 
 **`ancestry`**, after a run that changed anything, says who started the lock holder — **informational**, reported
 and never judged, because a hook's flusher holds the same lock and heartbeats as well. Linux: the holder's process
-chain, and `PASS` when its parent is `flock` running this artifact with `cron` among its ancestors; a `FAIL` there
-means cron's line is unverified, not broken (a hook usually wins the race after a stop). macOS: `PASS` when
+chain, and `PASS` when its parent is `flock` running this artifact with `cron` among its ancestors. macOS: `PASS` when
 `launchctl print` reports a `pid` equal to `flusher.lock`'s — a hook-started flusher is reparented to pid 1 too, so
-"parent is launchd" could not fail. Windows: the holder is live, its lock fresh, started after the artifact.
+"parent is launchd" could not fail. Any other holder there reads `UNVERIFIED: … (informational; the install's verdict
+does not read it)`: cron's line or launchd's job is unverified, not broken (a hook usually wins the race after a
+stop). Windows: the holder is live, its lock fresh, started after the artifact. On every OS, a lock no live flusher
+holds reads `UNVERIFIED: no live flusher holds the lock (…)`, with the same ending.
 
 ## Upgrading an existing seat
 
