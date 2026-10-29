@@ -64,8 +64,8 @@ class AtD4_12AnUndeclaredHeartbeatClearsOnlyFromAReporterThatSendsTest extends B
     public function test_the_comparison_is_against_the_floor_and_never_the_current_build(): void
     {
         $this->mappedByDeclaration();
-        $this->assertSame(SchemaVersions::TODO_AND_BOARD_DECLARATION_FROM, SchemaVersions::CURRENT_REPORTER_VERSION,
-            'precondition: this build is the floor; the case below models the day the current build passes it');
+        $this->assertTrue(SchemaVersions::reporterAtLeast(SchemaVersions::CURRENT_REPORTER_VERSION, SchemaVersions::TODO_AND_BOARD_DECLARATION_FROM),
+            'precondition: the current build is at or past the floor; the case below is a seat further past it');
         $this->declare(null, version: '9.0.0');
         $this->assertSame(0, $this->poll()[0]);
         $this->assertSame([null, null], $this->mapping(), 'a seat ahead of the floor did not clear');
