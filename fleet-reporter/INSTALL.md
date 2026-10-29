@@ -422,7 +422,7 @@ A hook fires around a tool call, not inside one, so inside one `install.js` run 
 step therefore spawns `node <artifact> flusher` **unconditionally**, with the reporter's own spawn options
 (`detached`, `stdio: 'ignore'`, `windowsHide`, `unref`, D1 P-7) and `COORD_CONFIG` from the resolver; the
 flusher's own `acquireLock` makes a loser exit 0, so the installer carries no copy of the respawn's lock logic.
-It then waits, bounded by the artifact's `K.LOCK_STALE_MS`, for a lock naming a live pid, and prints `flusher
+It then waits, bounded by the artifact's `K.LOCK_STALE_MS`, for a lock naming a live flusher of this artifact (the stale-lock test below), and prints `flusher
 started pid N`, `flusher already running pid N`, or `NO FLUSHER` and exits 1.
 
 ### `holder` and `restart`
@@ -435,11 +435,17 @@ as it takes the lock, read only after the pid is confirmed to run this artifact'
 `ps lstart` is parsed. The restart is owed when the holder runs the
 previous build or the board step rewrote the config.
 
-`restart` stops the flusher **by pid, with the artifact check** — only when the pid `flusher.lock` names runs
-`<artifact> flusher` (`/proc/<pid>/cmdline` on Linux; `ps -o command= -p <pid>` under `LC_ALL=C` on macOS; on
-Windows one `Get-CimInstance Win32_Process` query, the process started no later than the lock's `started_at`,
-the command line compared as Windows paths and never printed), because a stale lock's pid may have been reused.
-It sends `SIGTERM` (on Windows the termination is immediate, and D1 § 2.3 absorbs it: state is saved by temp file
+**A lock names a flusher only when its pid runs `<artifact> flusher`** (`/proc/<pid>/cmdline` on Linux;
+`ps -o command= -p <pid>` under `LC_ALL=C` on macOS; on Windows one `Get-CimInstance Win32_Process` query, the
+process started no later than the lock's `started_at`, the command line compared as Windows paths and never
+printed). One test answers that for the holder check, the stop, the restart's wait, the Windows start and the
+ancestry report. A lock that fails it is **stale** — its flusher died, a reboot say, and its pid, if alive, is now
+another process's — and names no flusher: nothing is signalled, the step says `… the lock is stale: no flusher
+to stop, nothing signalled`, and it goes on, as the reporter's own `acquireLock` takes such a lock over once it is
+`K.LOCK_STALE_MS` old. (Before card#12571's review, the stop alone refused that lock, which left an uninstall
+unable to finish.)
+
+`restart` stops the flusher **by pid, with that test**: it sends `SIGTERM` (on Windows the termination is immediate, and D1 § 2.3 absorbs it: state is saved by temp file
 and rename) and waits a bound derived from the artifact's constants, `K.FLUSH_MS + K.REQUEST_MS × (1 + 2 ×
 laneDrain's round cap)`, or ends `NOT STOPPED`. Then the OS's start: cron's next minute (or a sooner hook) on
 Linux, waited for up to 70 s; `launchctl kickstart -k gui/<uid>/com.pupfuzz.fleet-reporter` on macOS; the Windows
@@ -576,8 +582,12 @@ site's token after the restart.
 
 `node install.js --uninstall`, one process, in this order:
 
-1. **The revoke prefixes are read from the config first**, and the crontab read (Linux) — a crontab it cannot read
-   refuses before anything is removed.
+1. **The revoke prefixes are read from the config and printed first**, one line per configured site — *revoke
+   prefix `<mzn_xxxxxxxx>` on `<host>`'s Seat tokens page* — before anything is removed, so a run that fails at a
+   later step has still shown them; and the crontab is read (Linux), so a crontab it cannot read refuses before
+   anything is removed. The prefix is not secret. Revoking is the operator's act; to take the desk off the floor
+   too, the site's operator runs `php artisan mezzanine:retire --seat=<install_id>/<seat_id> --by=<operator>
+   --reason=<why>` (FLEET-STATE § 4.10).
 2. **The hooks, removed structurally**: every entry whose command parses as the reporter's for this artifact, the
    `statusLine` deleted when it is the reporter's and the config's `wrapped_statusline` is `null`, or set back to
    it when it is not, and the to-do key removed only when `todo-tools-set` says this install set it and it still
@@ -591,10 +601,6 @@ site's token after the restart.
 6. **Every file under `fleet-reporter-install/` whose content carries the token shape** removed from every attempt
    directory — config backups and token files by that test, not by name, so a copy under another name goes too;
    this run's own backups of `settings.json` and the crontab or plist stay, so the operator can see what it undid.
-7. **One line per configured site**: *revoke prefix `<mzn_xxxxxxxx>` on `<host>`'s Seat tokens page*. The prefix is
-   not secret. Revoking is the operator's act; to take the desk off the floor too, the site's operator runs
-   `php artisan mezzanine:retire --seat=<install_id>/<seat_id> --by=<operator> --reason=<why>` (FLEET-STATE
-   § 4.10).
 
 ## By hand
 

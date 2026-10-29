@@ -54,7 +54,9 @@ A PR that changes no member is NOT APPLICABLE and exits 0.
 
 WHAT IT CANNOT SEE: a change to what an upgrading seat must do that neither installs a file nor changes the
 render — a new step whose effect is a config key, a settings key the render does not print, or a refusal.
-The ledger row is where the author states one; review is what catches a missing statement. The render's
+Nor a file DROPPED from the `artifact` region's list: the files are read from the head's list, so one the head
+no longer names is no longer compared. The ledger row is where the author states one; review is what catches a
+missing statement. The render's
 input is a contract between revisions and is append-only: unknown keys are ignored, so the head may read a
 key a base does not, and removing one takes two PRs (`install.js`'s `renderShipping` says why).
 

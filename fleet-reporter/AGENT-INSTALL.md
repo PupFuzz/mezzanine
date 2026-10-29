@@ -84,9 +84,10 @@ offline then (the operator's ruling, Option A). An `exit 2` installed the report
 check (the site did not answer in time): run step 5's re-check a minute later. An `exit 1` refused or
 failed, and its last `install.js:` line says why; the table below reads the common ones.
 
-**If you run the installer again after the token file was taken** — after a failure at any later step —
-run it with **no `--token-file`**: the file is in the config directory by then, and the installer uses it
-from there. A second `--token-file` run finds the path gone and refuses.
+**If you run the installer again after the token file was taken**, run it with **no `--token-file`**. A run
+that failed before the config was written left the file in the config directory, and the re-run uses it
+from there; a run that failed after the config was written has already removed the file, and the re-run
+needs none. A second `--token-file` run finds the original path gone and refuses.
 
 ## 5. Upgrade, re-check and uninstall
 
@@ -94,7 +95,7 @@ from there. A second `--token-file` run finds the path gone and refuses.
 with no `--token-file`; it ends `ALREADY CURRENT` on a current seat and changes nothing.
 [`UPDATES.md`](UPDATES.md) lists what each reporter version changes; a version whose row lists a `config`
 touch names the change it needs. **Uninstalling** is the same command with `--uninstall` in place of
-`--token-file <path>`; its last lines name each token prefix, which the user revokes on that site's Seat
+`--token-file <path>`; its first lines name each token prefix, which the user revokes on that site's Seat
 tokens page.
 
 ## When a run does not end in `INSTALLED`

@@ -471,6 +471,10 @@ function roaming() {
 function ownerOnlyDir(platform, dir) {
   if (platform === 'win32') {
     fs.mkdirSync(dir, { recursive: true });
+    // A symbolic link or junction is refused BEFORE icacls runs, so its target is never re-ACL'd (review S5);
+    // node's lstat reports a junction as a symbolic link on Windows.
+    const st = fs.lstatSync(dir);
+    if (st.isSymbolicLink() || !st.isDirectory()) refuse(`${dir} is a symbolic link, a junction or no directory: it is never re-ACL'd: NOTHING WRITTEN`);
     if (!aclCheck([dir]).ok) aclPrep(dir);
     const r = aclCheck([dir]);
     if (!r.ok) { for (const l of r.lines) warn(l); refuse(`${dir} could not be made owner-only: NOTHING WRITTEN`); }
@@ -614,16 +618,33 @@ function win32Argv(cmdline) {
   }
   return argv;
 }
-/* Whether `pid` runs `<js> flusher`: a reused pid in a stale lock may be any process. */
-function runsFlusher(T, pid) {
+/* THE ONE TEST of whether `flusher.lock` names a running flusher of THIS artifact, shared by every reader — the
+ * holder check, the stop and the restart's wait — so no step is stricter than another (card#12571 review F1). A
+ * lock passes when its pid is alive and runs `<js> flusher` (`/proc/<pid>/cmdline` on Linux, `ps` on macOS, one
+ * CIM query on Windows, where the process must also have started no later than the lock's `started_at`). A lock
+ * that fails is STALE: its flusher died and the pid, if alive, is some other process's — reused after a reboot,
+ * say. Such a lock names no flusher, so nothing is signalled and nothing is refused; the reporter's own
+ * `acquireLock` takes it over once it is `K.LOCK_STALE_MS` old. Returns { held, live } and, when not live, `why`. */
+function lockHolder(T) {
+  const held = readLock(T);
+  if (!held || !Number.isInteger(held.pid)) return { held: null, live: false, why: 'no readable flusher.lock' };
+  const pid = held.pid;
+  const stale = (what) => ({ held, live: false, why: `flusher.lock names pid ${pid}, ${what}: the lock is stale` });
+  if (!alive(pid)) return stale('which is not running');
   if (T.platform === 'win32') {
     const p = win32Process(pid);
-    if (!p) return false;
+    if (!p) return stale('which is not running');
+    // The flusher writes started_at from its own clock after its process began, so its process starts no later;
+    // a reused pid's process began after the flusher died, so after started_at. No slack.
+    if (!(p.start <= Date.parse(held.started_at))) return stale(`which started ${new Date(p.start).toISOString()}, after the lock's started_at ${held.started_at}, so it is a reused pid`);
     const argv = win32Argv(p.cmdline);
-    return argv.some((x, i) => argv[i + 1] === 'flusher' && samePath('win32', x, T.js));
+    if (!argv.some((x, i) => argv[i + 1] === 'flusher' && samePath('win32', x, T.js))) return stale(`whose command line is not ${T.js} flusher, so it is a reused pid`);
+    return { held, live: true };
   }
   const cmd = cmdlineOf(T.platform, pid);
-  return cmd !== null && cmd.includes(T.js + ' flusher');
+  if (cmd === null) return stale('which is not running');
+  if (!cmd.includes(T.js + ' flusher')) return stale(`which does not run ${T.js} flusher, so it is a reused pid`);
+  return { held, live: true };
 }
 /* The bound a stop waits, derived from the installed artifact's own constants (the runbook's derivation). */
 function stopBoundMs(T) {
@@ -635,20 +656,9 @@ function stopBoundMs(T) {
 /* Stop the flusher `flusher.lock` names, by pid, only when that pid runs this artifact's `flusher`. Returns
  * the pid it stopped, or null when none ran. */
 function stopFlusher(T) {
-  const held = readLock(T);
-  if (!held || !Number.isInteger(held.pid)) { say('no readable flusher.lock: no flusher to stop'); return null; }
-  const pid = held.pid;
-  if (!alive(pid)) { say(`flusher.lock names pid ${pid}, which is not running: the lock is stale, no flusher to stop`); return null; }
-  if (T.platform === 'win32') {
-    const p = win32Process(pid);
-    if (!p) { say(`flusher.lock names pid ${pid}, which is not running: the lock is stale, no flusher to stop`); return null; }
-    // The flusher writes started_at from its own clock after its process began, so its process starts no later;
-    // a reused pid's process began after the flusher died, so after started_at. No slack.
-    if (!(p.start <= Date.parse(held.started_at))) refuse(`flusher.lock names pid ${pid}, which started ${new Date(p.start).toISOString()}, after the lock's started_at ${held.started_at}: a reused pid, NOTHING SENT`);
-    if (!runsFlusher(T, pid)) refuse(`flusher.lock names pid ${pid}, whose command line does not match ${T.js} flusher: NOTHING SENT`);
-  } else if (!runsFlusher(T, pid)) {
-    refuse(`flusher.lock names pid ${pid}, which does not run ${T.js} flusher: NOTHING SENT`);
-  }
+  const h = lockHolder(T);
+  if (!h.live) { say(`${h.why}: no flusher to stop, nothing signalled`); return null; }
+  const held = h.held, pid = held.pid;
   const bound = stopBoundMs(T);
   // On Windows process.kill terminates outright; D1 § 2.3 absorbs that (state is saved by temp file and rename).
   process.kill(pid, T.platform === 'win32' ? undefined : 'SIGTERM');
@@ -680,9 +690,9 @@ function holderStartMs(T, held) {
  * was installed — the restart is owed), or 'none' (no live flusher holds the lock: its next start runs the
  * installed build, so nothing is owed). Read-only. */
 function holder(T) {
-  const held = readLock(T);
-  if (!held || !Number.isInteger(held.pid) || !alive(held.pid) || !runsFlusher(T, held.pid)) {
-    say('no live flusher holds the lock: its next start runs the installed artifact');
+  const h = lockHolder(T), held = h.held;
+  if (!h.live) {
+    say(`no live flusher holds the lock (${h.why}): its next start runs the installed artifact`);
     return 'none';
   }
   const startedMs = holderStartMs(T, held), builtMs = fs.statSync(T.js).mtimeMs;
@@ -705,12 +715,12 @@ function startFlusherWin32(ctx) {
   child.unref();
   const bound = require(T.js).K.LOCK_STALE_MS, t0 = Date.now();
   for (;;) {
-    const l = readLock(T);
-    if (l && Number.isInteger(l.pid) && alive(l.pid)) {
-      say(l.pid === child.pid ? `flusher started pid ${l.pid}` : `flusher already running pid ${l.pid}`);
-      return l.pid;
+    const h = lockHolder(T);
+    if (h.live) {
+      say(h.held.pid === child.pid ? `flusher started pid ${h.held.pid}` : `flusher already running pid ${h.held.pid}`);
+      return h.held.pid;
     }
-    if (Date.now() - t0 > bound) refuse(`NO FLUSHER: no lock naming a live pid ${Math.round(bound / 1000)} s after the start`);
+    if (Date.now() - t0 > bound) refuse(`NO FLUSHER: no lock naming a live flusher of this artifact ${Math.round(bound / 1000)} s after the start`);
     sleepSync(250);
   }
 }
@@ -732,8 +742,8 @@ function restart(ctx) {
   // and not yet holding the lock when the stop looked — takes the lock afterwards running the PREVIOUS build. So
   // the wait is for a holder on the installed build, and an older one found in the window is stopped again.
   for (;;) {
-    const l = readLock(T);
-    if (l && Number.isInteger(l.pid) && l.pid !== old && alive(l.pid) && runsFlusher(T, l.pid)) {
+    const h = lockHolder(T), l = h.held;
+    if (h.live && l.pid !== old) {
       if (holderStartMs(T, l) >= builtMs) break;
       say(`pid ${l.pid} took the lock running the previous build (it started before the artifact was installed): stopping it too`);
       stopFlusher(T);
@@ -756,7 +766,11 @@ function hookSet(T) {
   return names.map((f) => ({ hook: f.slice(0, -5), matcher: hookMatcher(readJson(path.join(T.fixtures, f)).shapes) }));
 }
 function readSettings(T) {
-  try { return readJson(T.settings); } catch (e) { refuse(`cannot read ${T.settings} as JSON (${e.code || 'not JSON'}): NOTHING WRITTEN`); }
+  let s;
+  try { s = readJson(T.settings); } catch (e) { refuse(`cannot read ${T.settings} as JSON (${e.code || 'not JSON'}): NOTHING WRITTEN`); }
+  // Claude Code's settings file is one JSON object; an array, a string, a number or `null` is not one to merge into.
+  if (!s || typeof s !== 'object' || Array.isArray(s)) refuse(`${T.settings} is not a JSON object (it holds ${Array.isArray(s) ? 'an array' : s === null ? 'null' : typeof s}): NOTHING WRITTEN`);
+  return s;
 }
 /* Wire the reporter's hooks into `settings` (a parsed settings.json), appended after the user's own entries in
  * each list; every other key is held. An existing reporter entry is RECOGNISED BY PARSING; one written in a
@@ -890,6 +904,11 @@ function prereqs(ctx) {
   const v = process.versions.node;
   if (Number(v.split('.')[0]) < 18) refuse(`node ${v} is older than 18 (D1 § 2.1): NOTHING INSTALLED`);
   say(`node ${v} at ${process.execPath}`);
+  // POSIX writes the hook commands with the artifact's path bare (D1 § 2.1; the form every seat holds), and they
+  // are recognised by parsing that path back, so a home holding whitespace or a quote cannot be wired — refused
+  // here, before anything is written (review S2), never at the hooks step after the config and the artifact.
+  if (T.platform !== 'win32' && /[\s"]/.test(T.home)) refuse(`the home directory ${JSON.stringify(T.home)} holds whitespace or a quote, which the reporter's hook commands on this OS cannot carry: NOTHING INSTALLED`);
+  if (T.platform === 'linux') cronInputs(ctx);
   if (T.platform === 'linux') {
     for (const t of ['flock', 'crontab']) { const w = which(t); if (!w) refuse(`${t} is not on PATH, and the Linux supervised start needs it: NOTHING INSTALLED`); say(w); }
   } else if (T.platform === 'darwin') {
@@ -1194,7 +1213,13 @@ function tokenTake(ctx, p) {
   const dest = T.tokenFile;
   const already = exists(dest) && samePath(T.platform, fs.realpathSync(p), fs.realpathSync(dest));
   if (!already) {
-    if (exists(dest)) refuse(`a token file is already at ${dest}, from an earlier run: run install.js with no --token-file to use it, or delete it: NOTHING WRITTEN`);
+    // With no config, a run with no --token-file takes that file up; with one (a rotation or add-site), such a
+    // run is a re-check that never reads it, so the way forward is to delete it (review N2).
+    if (exists(dest)) {
+      refuse(exists(T.config)
+        ? `a token file is already at ${dest}, left by an earlier run that did not finish: delete it, then run this command again: NOTHING WRITTEN`
+        : `a token file is already at ${dest}, from an earlier run: run install.js with no --token-file to use it, or delete it: NOTHING WRITTEN`);
+    }
     if (T.platform === 'win32') {
       // A NEW file, written `wx`, so its ACL is the directory's inherited one and nothing of the source's.
       fs.writeFileSync(dest, fs.readFileSync(p), { flag: 'wx' });
@@ -1330,8 +1355,8 @@ async function arrival(ctx, waitS) {
 function ancestry(ctx) {
   const T = ctx.T;
   step('ancestry', 'informational');
-  const held = readLock(T);
-  if (!held || !Number.isInteger(held.pid) || !alive(held.pid)) { say('FAIL: no live flusher holds the lock'); return; }
+  const h = lockHolder(T), held = h.held;
+  if (!h.live) { say(`FAIL: no live flusher holds the lock (${h.why})`); return; }
   if (T.platform === 'linux') {
     const chain = [];
     for (let p = held.pid; p > 1;) {
@@ -1416,13 +1441,24 @@ function nodeForCron() {
   const w = which('node');
   return w ? fs.realpathSync(w) : process.execPath;
 }
+/* The values the Linux crontab line carries, each refused BY NAME unless every character is one cron and the
+ * shell take literally: letters, digits and `_ . / : @ + -` (an allowlist; cron turns `%` into a newline and
+ * the shell splits on whitespace and expands `$`, quotes and globs — review S1). */
+const CRON_SAFE = /^[A-Za-z0-9_./:@+-]+$/;
+function cronInputs(ctx) {
+  const T = ctx.T;
+  const inputs = { coordConfig: ctx.cc !== undefined ? ctx.cc : coordConfig(T), flock: T.flock, node: nodeForCron(), js: T.js };
+  for (const [name, v] of [['COORD_CONFIG', inputs.coordConfig], ['the flock file', inputs.flock], ['node', inputs.node], ['the artifact', inputs.js]]) {
+    if (v && !CRON_SAFE.test(v)) refuse(`${name} ${JSON.stringify(v)} holds a character the crontab line cannot carry (only letters, digits and _ . / : @ + - are written there): NOTHING INSTALLED`);
+  }
+  return inputs;
+}
 function supervisor(ctx) {
   const T = ctx.T;
   step('supervisor', T.supervisor);
   const cc = resolver(ctx, true);
   if (T.platform === 'linux') {
-    const inputs = { coordConfig: cc, flock: T.flock, node: nodeForCron(), js: T.js };
-    if (/[\s%]/.test(inputs.coordConfig + inputs.flock + inputs.node + inputs.js)) refuse('a crontab path holds whitespace or %: NOTHING WRITTEN');
+    const inputs = cronInputs(ctx);
     const before = readCrontab();
     const next = cronReplace(before.text, cronBlock('linux', inputs));
     if (next === before.text) { say('crontab already current: nothing written, nothing restarted'); return; }
@@ -1488,6 +1524,11 @@ function uninstall(ctx) {
     return `revoke prefix \`${s.token.slice(0, 12)}\` on ${host}'s Seat tokens page (site ${s.name})`;
   }) : [];
   if (T.platform === 'linux') readCrontab();
+  // The revoke list FIRST, before anything is removed: the config that holds the prefixes goes in the next steps,
+  // so a run that fails after that would otherwise leave the operator nothing to revoke by (review N1).
+  step('uninstall: the prefixes to revoke');
+  if (!prefixes.length) say('no configured site was read: no prefix to revoke');
+  for (const l of prefixes) say(l);
   const B = attemptDir(ctx);
   if (exists(T.settings)) fs.copyFileSync(T.settings, T.P.join(B, 'settings.json'));
   if (T.platform === 'linux') fs.writeFileSync(T.P.join(B, 'crontab.txt'), readCrontab().text, { mode: 0o600 });
@@ -1540,9 +1581,7 @@ function uninstall(ctx) {
   step('uninstall: attempt directories');
   for (const f of secretFiles(T.attempts)) { fs.rmSync(f, { force: true }); say('removed ' + f + ' (it held a token)'); }
   say(`kept this run's backups of what it undid: ${B}`);
-  if (!prefixes.length) say('no configured site was read: no prefix to revoke');
-  for (const l of prefixes) say(l);
-  say('install.js: UNINSTALLED. Revoking each prefix above is the operator\'s act, on that site.');
+  say('install.js: UNINSTALLED. Revoking each prefix listed at the start of this run is the operator\'s act, on that site.');
   return 0;
 }
 

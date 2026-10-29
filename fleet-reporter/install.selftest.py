@@ -1201,13 +1201,16 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
             lock.write_text(json.dumps({"pid": sleeper.pid, "started_at": "2026-10-29T00:00:00.000Z"}))
             r = A.node("ancestry")
             check("R-mac-2", "a planted lock pid launchctl does not report: FAIL", "FAIL: launchctl reports" in r.stdout, tail(r))
-            r = A.node("restart")
-            check("R-mac-3", "a lock naming a reused pid (a process not running the artifact): the stop refuses, NOTHING SENT",
-                  r.returncode == 1 and "NOTHING SENT" in r.stderr and sleeper.poll() is None, tail(r))
+            # The one stale-lock test (`lockHolder`), read through the read-only holder step: a pid that does not
+            # run this artifact's flusher names no flusher, and is never signalled (the stop is R-all-10's RED).
+            r = A.node("holder")
+            check("R-mac-3", "a lock naming a reused pid (a process not running the artifact): no live flusher, stale, nothing "
+                  "signalled", r.returncode == 0 and "the lock is stale" in r.stdout and "reused pid" in r.stdout and sleeper.poll() is None, tail(r))
             stand = subprocess.Popen([NODE, "-e", "setTimeout(()=>{},300000)", "/elsewhere/fleet-reporter.js", "flusher"])
             lock.write_text(json.dumps({"pid": stand.pid, "started_at": "2026-10-29T00:00:00.000Z"}))
-            r = A.node("restart")
-            check("R-mac-3", "a stand-in `node … flusher` not running this artifact: refused", r.returncode == 1 and "NOTHING SENT" in r.stderr and stand.poll() is None, tail(r))
+            r = A.node("holder")
+            check("R-mac-3", "a stand-in `node … flusher` not running this artifact: not a flusher of it, nothing signalled",
+                  r.returncode == 0 and "the lock is stale" in r.stdout and stand.poll() is None, tail(r))
             stand.kill()
         finally:
             sleeper.kill()
@@ -1224,6 +1227,67 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         r = S.node("--token-file", str(f))
         check("R-mac-4", "no gui/<uid> domain: refused by name before anything is written",
               r.returncode == 1 and "no gui launchd domain" in r.stderr and not S.attempts() and not Path(S.T["configDir"]).exists() and f.exists(), tail(r))
+
+    # ── refusals that come before anything is written, and settings that are not an object ─────────────
+    if want("R-all-8", "R-all-2"):
+        print("== a settings.json that is not a JSON object; a home or a COORD_CONFIG the install cannot carry ==")
+        S = Seat("bad-settings", coord=False)
+        S.node("artifact")
+        for body in ("[]\n", "null\n", '"x"\n'):
+            Path(S.T["settings"]).write_text(body)
+            r = S.node("hooks")
+            check("R-all-8", f"a settings.json holding {body.strip()} is refused by name, nothing written, no TypeError",
+                  r.returncode == 1 and "is not a JSON object" in r.stderr and "TypeError" not in r.stderr
+                  and Path(S.T["settings"]).read_text() == body, tail(r))
+        if not IS_WIN:
+            H = Seat("space-home", home_name="a home", coord=False)
+            f = write_v2(H.root / "t", token(), INGEST.url, "inst-h", "seat-h")
+            r = H.node("--token-file", str(f))
+            check("R-all-2", "a POSIX home holding whitespace is refused at prereqs, before anything is written",
+                  r.returncode == 1 and "holds whitespace or a quote" in r.stderr and not H.attempts()
+                  and not Path(H.T["configDir"]).exists() and f.exists(), tail(r))
+        if IS_LIN:
+            C = Seat("odd-coord", coord=False)
+            (C.home / ".claude" / "settings.local.json").write_text(json.dumps({"env": {"COORD_CONFIG": "/tmp/$(id)/c.json"}}))
+            f = write_v2(C.root / "t", token(), INGEST.url, "inst-c", "seat-c")
+            r = C.node("--token-file", str(f))
+            check("R-all-2", "a COORD_CONFIG the crontab line cannot carry is refused BY NAME at prereqs, before anything is written",
+                  r.returncode == 1 and "COORD_CONFIG" in r.stderr and "cannot carry" in r.stderr and not C.attempts() and f.exists(), tail(r))
+        if IS_WIN:
+            J = Seat("junction", coord=False)
+            target = J.root / "elsewhere"
+            target.mkdir()
+            subprocess.run(["cmd", "/c", "mklink", "/J", J.T["configDir"], str(target)], capture_output=True)
+            before = subprocess.run(["icacls", str(target)], capture_output=True, text=True).stdout
+            f = write_v2(J.root / "t", token(), INGEST.url, "inst-j", "seat-j")
+            r = J.node("--token-file", str(f))
+            check("R-win-1", "a config directory that is a junction is refused before icacls runs, and its target's ACL is unchanged",
+                  Path(J.T["configDir"]).exists() and r.returncode == 1 and "never re-ACL'd" in r.stderr
+                  and subprocess.run(["icacls", str(target)], capture_output=True, text=True).stdout == before, tail(r))
+
+    # ── R-all-10: a stale lock whose pid was reused never blocks an uninstall ───────────────────────────
+    if want("R-all-10"):
+        print("== R-all-10: a stale flusher.lock naming a live process that is not the flusher ==")
+        # The flusher died (a reboot; Windows has no supervisor) and its lock outlived it, older than
+        # K.LOCK_STALE_MS, its pid now another live process's. That lock names no flusher: the uninstall signals
+        # nothing, and finishes.
+        S = Seat("stale-lock", coord=False)
+        S.node("artifact")
+        sleeper = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)"])
+        try:
+            spool = Path(S.T["spool"])
+            spool.mkdir(parents=True, exist_ok=True)
+            lock = spool / "flusher.lock"
+            lock.write_text(json.dumps({"pid": sleeper.pid, "started_at": "2026-01-01T00:00:00.000Z"}))
+            os.utime(lock, (time.time() - 600, time.time() - 600))
+            r = S.node("--uninstall")
+            check("R-all-10", "--uninstall over a stale lock whose pid now runs something else: it signals nothing, says there "
+                  "is no flusher to stop, removes the spool and the artifact, and exits 0",
+                  r.returncode == 0 and "no flusher to stop" in r.stdout and sleeper.poll() is None
+                  and not spool.exists() and not Path(S.T["artifactDir"]).exists(), tail(r))
+        finally:
+            sleeper.kill()
+            sleeper.wait()
 
     # ── R-all-12: AGENT-INSTALL.md's prose rules ──────────────────────────────────────────────────────
     if want("R-all-12"):
@@ -1274,8 +1338,8 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
               "name too — while this run's settings and crontab/plist backups remain",
               left == [] and not planted_secret.exists() and mine is not None and (mine / "settings.json").exists()
               and (not IS_LIN or (mine / "crontab.txt").exists()), f"{left} {mine and sorted(p.name for p in mine.iterdir())}")
-        check("R-all-10", "one revoke-prefix line per configured site, prefixes only",
-              out.count("revoke prefix `mzn_") == n_sites and A_TOK not in out, tail(r))
+        check("R-all-10", "one revoke-prefix line per configured site, prefixes only, printed before anything is removed",
+              out.count("revoke prefix `mzn_") == n_sites and A_TOK not in out and 0 <= out.rfind("revoke prefix `mzn_") < out.find("── step `uninstall: hooks`"), tail(r))
 finally:
     reap()
 
