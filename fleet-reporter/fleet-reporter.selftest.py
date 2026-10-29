@@ -6357,6 +6357,7 @@ def writer_path(src: "str | None" = None) -> Path:
     d = tmpdir("fr-writer-")
     os.chmod(d, 0o700)
     shutil.copy(REPORTER, d / "fleet-reporter.js")
+    shutil.copytree(HERE / "fixtures", d / "fixtures")      # what the installer installs beside the script
     f = d / "install.js"
     f.write_text(src if src is not None else WRITER_SRC, encoding="utf-8")
     return f

@@ -734,6 +734,13 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
             check("R-mac-1", "a restart owed: `kickstart -k` on the label, after the stop by pid", "kickstart -k" in log
                   and "kickstart: the previous pid was already stopped" in log, log[-1500:])
         A.wait_flusher()
+        Path(A.T["js"]).unlink()                 # the script gone, its fixtures intact: a difference, never a crash
+        r = A.node("artifact")
+        check("R-all-7", "a seat whose installed script is missing beside intact fixtures: the artifact step installs it",
+              r.returncode == 0 and Path(A.T["js"]).read_bytes() == (CO / "fleet-reporter.js").read_bytes() and "fixtures-match" in r.stdout, tail(r))
+        r = A.node()
+        check("R-all-7", "  … and the next run restarts the flusher on it", r.returncode == 0 and "PASS: the lock holder runs the artifact" in r.stdout, tail(r))
+        A.wait_flusher()
 
     # ── R-all-7 on Linux: a seat laid out by install.sh ───────────────────────────────────────────────
     if IS_LIN and want("R-all-7"):

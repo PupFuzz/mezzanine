@@ -926,7 +926,12 @@ function artifact(ctx) {
   const src = artifactFiles(__dirname), dst = artifactFiles(T.artifactDir);
   const v = (f) => { try { return versionOf(f); } catch (e) { return null; } };
   say(`installed ${v(T.js) || 'none'}, this checkout ${v(path.join(__dirname, 'fleet-reporter.js'))}`);
-  const same_ = src.length === dst.length && src.every(([rel, f], i) => dst[i][0] === rel && fs.readFileSync(f).equals(fs.readFileSync(dst[i][1])));
+  // A file missing on the seat (a deleted script beside its fixtures, or nothing installed yet) is a difference.
+  const bytes = (f) => { try { return fs.readFileSync(f); } catch (e) { return null; } };
+  const same_ = src.length === dst.length && src.every(([rel, f], i) => {
+    const have = bytes(dst[i][1]);
+    return dst[i][0] === rel && have !== null && fs.readFileSync(f).equals(have);
+  });
   if (same_) { say('NO-OP: this seat already runs this checkout\'s artifact and fixtures'); return false; }
   if (!src.length || !src.some(([rel]) => rel === 'fleet-reporter.js')) refuse(`the checkout at ${__dirname} holds no fleet-reporter.js: NOTHING INSTALLED`);
   if (T.platform === 'win32') ownerOnlyDir('win32', T.artifactDir); else fs.mkdirSync(T.artifactDir, { recursive: true, mode: 0o700 });
