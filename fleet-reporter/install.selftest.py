@@ -119,9 +119,11 @@ def real_crontab_md5() -> str:
 
 
 REAL_BEFORE = real_crontab_md5()
-TMP = Path(tempfile.mkdtemp(prefix="fr-install-selftest-")).resolve()
+# Under /tmp on POSIX, traversable, so R-all-4's group-readable file is reachable as on a real home: macOS's own
+# temp directory sits under a 0700 per-user folder, where no other account could reach the file at all.
+TMP = Path(tempfile.mkdtemp(prefix="fr-install-selftest-", dir=None if IS_WIN else "/tmp")).resolve()
 if not IS_WIN:
-    os.chmod(TMP, 0o755)        # traversable, so R-all-4's group-readable file is reachable as on a real home
+    os.chmod(TMP, 0o755)
 OUTPUTS: list[str] = []
 SECRETS: set = set()
 STARTED: set = set()        # flusher pids this run saw, reaped at the end
@@ -254,7 +256,7 @@ esac
             os.chmod(self.stub / "crontab", 0o700)
             shutil.copy("/bin/sh", self.stub / "cron")      # cron's process name, for the ancestry check
         if IS_MAC:
-            (self.stub / "launchctl").write_text(LAUNCHCTL_STUB.replace("@STUB@", str(self.stub)))
+            (self.stub / "launchctl").write_text(LAUNCHCTL_STUB.replace("@STUB@", str(self.stub)).replace("#!/usr/bin/env python3", "#!" + sys.executable, 1))
             os.chmod(self.stub / "launchctl", 0o700)
         if coord:
             cc = self.home / ".config" / "coord"

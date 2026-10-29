@@ -1078,7 +1078,15 @@ function guardTokenFile(T, p) {
   try { st = fs.lstatSync(p); } catch (e) { refuse(`cannot read the token file ${p} (${e.code}): NOTHING WRITTEN`); }
   if (st.isSymbolicLink()) refuse(`the token file ${p} is a symbolic link: give the file itself: NOTHING WRITTEN`);
   if (!st.isFile()) refuse(`the token file ${p} is not a regular file: NOTHING WRITTEN`);
-  if (T.platform !== 'win32' && st.uid !== process.getuid()) refuse(`the token file ${p} is not owned by this account: NOTHING WRITTEN`);
+  if (T.platform !== 'win32') {
+    if (st.uid !== process.getuid()) refuse(`the token file ${p} is not owned by this account: NOTHING WRITTEN`);
+    return st;
+  }
+  // Windows has no uid: the owner is the ACL's, this account or Administrators, as owner-only reads it.
+  let owner;
+  try { owner = powershell('(Get-Acl -LiteralPath $env:FR_ACL_PATH).GetOwner([System.Security.Principal.SecurityIdentifier]).Value', { FR_ACL_PATH: path.win32.normalize(p) }).trim(); }
+  catch (e) { refuse(`cannot read the token file ${p}'s owner (PowerShell exited ${e.status}): NOTHING WRITTEN`); }
+  if (owner !== sid() && owner !== ADMINS_SID) refuse(`the token file ${p} is not owned by this account: NOTHING WRITTEN`);
   return st;
 }
 /* Read and parse the token file in place (the pre-read: nothing is written until it parses). macOS's
@@ -1149,7 +1157,8 @@ function tokenTake(ctx, p) {
   if (!already) {
     if (exists(dest)) refuse(`a token file is already at ${dest}, from an earlier run: run install.js with no --token-file to use it, or delete it: NOTHING WRITTEN`);
     if (T.platform === 'win32') {
-      fs.copyFileSync(p, dest, fs.constants.COPYFILE_EXCL);
+      // A NEW file, written `wx`, so its ACL is the directory's inherited one and nothing of the source's.
+      fs.writeFileSync(dest, fs.readFileSync(p), { flag: 'wx' });
       const r = aclCheck([T.configDir, dest]);
       if (!r.ok) { for (const l of r.lines) warn(l); refuse(`the copy at ${dest} is not owner-only: delete it, and treat its token as exposed`); }
       fs.unlinkSync(p);

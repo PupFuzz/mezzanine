@@ -122,7 +122,7 @@ read. Then:
   (iCloud, OneDrive, Dropbox, Google Drive) gets a second warning, which says it is a heuristic.
 - **The take**: the config directory is made owner-only; when the path already is
   `<config dir>/mezzanine-reporter-token`, nothing moves; otherwise on POSIX the file is renamed in (copied
-  across a filesystem boundary) and set `0600`, and on Windows it is copied, so it inherits the directory's
+  across a filesystem boundary) and set `0600`, and on Windows it is copied into a new file, so it inherits the directory's
   ACL, checked, and the source removed. A token file already at the named path from an earlier run refuses
   a second `--token-file`: run with no `--token-file` to use it, or delete it.
 - **The removal**: once the config holding it is written and checked, the file is overwritten with zeros,
