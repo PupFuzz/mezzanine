@@ -1,7 +1,8 @@
 # D6 — the one-command reporter install on Linux, Windows and macOS
 
-**Status: DESIGN, revision r4 — r3 re-derived the installer at the upstream layer after design review
-r2 tripped the loop's stop rule; r4 folds review r3's coverage findings ([§ 13](#13-where-the-review-findings-stand)). The operator's rulings of
+**Status: DESIGN, revision r5 — r3 re-derived the installer at the upstream layer after design review
+r2 tripped the loop's stop rule; r4 folded review r3's coverage findings; r5 folds review r4's findings
+on r4's own additions ([§ 13](#13-where-the-review-findings-stand)). The operator's rulings of
 2026-10-29 are recorded in [§ 10](#10-operator-rulings) and nothing there gates the build. Nothing in
 this document is built.** Card#12571; the macOS leg was added to the scope by the operator on
 2026-10-29 (*"We will also onboard a macos claude agent. We need a working mezzanine reporter for
@@ -110,10 +111,10 @@ by-hand fallback and the installer are the same code:
 | platform table | keyed on `process.platform`: artifact, config, spool, attempt-directory and settings paths — D1 § 2.1/3.1's values, with `os.homedir()` as the profile on every OS (Git Bash's `$HOME` is never read, `INSTALL-LINUX.md:2236`); the supervisor kind; the owner-only mechanism (`chmod` 0700/0600 on POSIX, the ACL helper on `win32` — today's `acl-only-me.js`, carried into `install.js` as a function) |
 | `token-file` parser | **one** parser for v1 and v2 ([§ 4.2](#42-the-page-writes-the-file-v2)), used by the pre-read of `--token-file` and by the config write — the only reader of the file's bytes, and it never prints them |
 | config writer | today's `write-config.js` logic (`INSTALL-LINUX.md:568-758`) as a function: first write, `set-token`, `add-site`, `remove-site`, `set-descriptors`, the statusLine wrap's `wrapped_statusline`; every result validated with **the checkout's** `fleet-reporter.js` `loadConfig` (`fleet-reporter.js:5303` exports it) — the build about to be installed, never the artifact already on the seat, which an upgrade is replacing |
-| atomic write | **one** primitive for every file the installer writes in place — the settings file, the artifact, the config, the plist: a temp file beside `realpath`'s answer, the target's mode kept (0600 where new), `fsync`, `rename` onto the target; on `win32` a bounded retry on `EPERM`/`EBUSY`, which an antivirus or indexer holding the file raises. Today's blocks carry three spellings of it (`INSTALL-LINUX.md:1324`, `:2113`, the writer's `tmp`) |
-| exports | behind a `require.main === module` guard, for the reporter's acceptance suite ([§ 3.3](#33-what-the-old-guards-protected-preserved-by-other-means)): `cronLine(inputs)`, `launchdPlist(inputs)`, `hookCommand(artifactPath)`, `writeConfig(…)`, `parseTokenFile(bytes)`, `siteKey(url)` |
+| atomic write | **the reporter's own `atomicWrite`** (`fleet-reporter.js:833-862`: a unique temp beside the target, `wx` 0600, optional `fsync`, `rename`), **extended and exported** rather than a second primitive beside it: it gains a `keepMode` option (the target's existing mode, read before the write, applied to the temp) and, on `win32`, a bounded retry of the `rename` on `EPERM`/`EBUSY`, which an antivirus or indexer holding the target raises. The installer uses it for the settings file, the artifact, the config and the plist, writing beside `realpath`'s answer so a symlinked settings file stays a symlink. Today's blocks each spell the temp-and-rename on their own — the derivation is `grep -c 'renameSync' fleet-reporter/INSTALL-LINUX.md`, every hit a copy (the to-do key's removal at `INSTALL-LINUX.md:2104` and its set at `:1324` among them) — and the reporter's own `win32` state writes go through `atomicWrite` with **no** such retry today, so an indexer holding `state.json` loses that pass's save: a sibling of the same shape, named here for the build (canon #7), not fixed by this design |
+| exports | `cronLine(platform, inputs)`, `launchdPlist(inputs)`, `hookCommand(platform, artifactPath)`, `writeConfig(…)`, `parseTokenFile(bytes)`, `parseIssueOutput(text)`, `siteKey(url)`, `atomicWrite` — for the reporter's acceptance suite and the version guard ([§ 3.3](#33-what-the-old-guards-protected-preserved-by-other-means)); **`main` runs only under a `require.main === module` guard**, so a `require` of the file runs nothing |
 | board identity, to-do tools | today's `board-identity.js` and `wire-hooks.js --todo-tools` logic as functions |
-| hook wiring | today's `wire-hooks.js` and `check-preserved.js` as functions: derive the hook set from the installed fixtures, append after the user's entries, hold every other key unchanged. **The canonical command string is pinned per OS**: `node <abs path> hook <Hook>` on POSIX; on `win32` `node "<C:/…/fleet-reporter.js>" hook <Hook>` — **forward slashes, double-quoted** — which is what the first Windows seat's `settings.json` holds today (`wire-hooks.js` refuses a backslash path and quotes, `INSTALL-LINUX.md:1141`, `:2502-2503`), and what D1 § 2.1's table will say ([§ 11](#11-the-amendment-ledger) row 14; its backslash example is the wrong side). `path.join` on `win32` yields backslashes, so **an entry is recognised by parsing, never by string equality**: the command is split into `node`, the quoted-or-bare path and `hook <Hook>`, and the path compared by `path.win32.resolve` lower-cased on `win32` (`stop-flusher.js`'s own comparison, `INSTALL-LINUX.md:1438`), `path.resolve` elsewhere. Dedupe at install and removal at uninstall use that one comparison, so the existing Windows seat is neither double-wired nor left with entries naming a deleted artifact |
+| hook wiring | today's `wire-hooks.js` and `check-preserved.js` as functions: derive the hook set from the installed fixtures, append after the user's entries, hold every other key unchanged. **The canonical command string is pinned per OS**: `node <abs path> hook <Hook>` on POSIX; on `win32` `node "<C:/…/fleet-reporter.js>" hook <Hook>` — **forward slashes, double-quoted** — which is what the first Windows seat's `settings.json` holds today (`wire-hooks.js` refuses a backslash path and quotes, `INSTALL-LINUX.md:1141`, `:2502-2503`), and what D1 § 2.1's table will say ([§ 11](#11-the-amendment-ledger) row 14; its backslash example is the wrong side). `path.join` on `win32` yields backslashes, so **an entry is recognised by parsing, never by string equality**: the command is split into `node`, the quoted-or-bare path and `hook <Hook>`, and the path compared by `path.win32.resolve` lower-cased on `win32` (`stop-flusher.js`'s own comparison, `INSTALL-LINUX.md:1438`), `path.resolve` elsewhere. Dedupe at install and removal at uninstall use that one comparison, so the existing Windows seat is neither double-wired nor left with entries naming a deleted artifact; **the same parse recognises `node "<path>" statusline`**, so a wrapped statusLine is found and removed by the same rule; and dedupe **collapses** forward-slash and backslash variants of one artifact path to the canonical form, writing the file only when an entry changed |
 | supervisor | `crontab` block write/compare/remove (Linux), `launchd` plist write/compare/bootstrap/bootout (macOS), one bounded flusher start (Windows) — [§ 3.4](#34-supervision-per-os) |
 | flusher control | stop by pid with the artifact check (today's `stop-flusher.js`: `/proc` on Linux, `Get-CimInstance` on Windows; on macOS `ps -o command= -p <pid>` under `LC_ALL=C`, then — after the pid check — the lock's own `started_at` as the start time, so no `lstart` is parsed), the holder-started-after-artifact check, and the per-OS ancestry check, which is **informational as today** (`install.sh:346`: reported, never judged) |
 | checks | `selftest` (spawns the reporter), health (`GET /api/ingest/health` per site), arrival (the site's `state.json` entry, bounded wait) — today's blocks' logic |
@@ -129,9 +130,9 @@ installer are one code path:
 | `node install.js --token-file <path> [--site <url> --seat-id <id> [--install-id <id>]] [--agent-name] [--ca-file] [--no-board]` | `prereqs`, `backup`, `values` (from the file, or the flags for a v1 file), `resolver`, `identity`, `board-identity`, `token-take` ([§ 4.3](#43-the-take-rule)), `token-config`, `config-check`, then the install below. With a config present it is the **rotation** ([§ 4.5](#45-rotation)) |
 | `node install.js [values]` | `prereqs`, `backup`, `artifact` (compare, then install), `resolver`, `board-identity`, `hooks`, `todo-tools`, `supervisor`, `holder`/`restart` when owed, `config-check`, `selftest`, `health`, `arrival`, `ancestry`. With no config: refuses, naming `--token-file` |
 | `node install.js <step> [args]` | that step alone, the by-hand fallback `INSTALL.md` describes |
-| `node install.js add-site --token-file <path> [--site-name <n>]` · `remove-site <name>` | today's *Adding a site* and *Removing one site* (`INSTALL-LINUX.md:794-844`, `:2148-2168`): the file's v2 identity must equal the config's, its `ingest_url` must match no configured site; the writer's `add-site` mode, then the flusher restart; `remove-site` refuses the last site and restarts |
-| `node install.js statusline [--wrap <command>]` · `set-descriptors full\|paths\|none` | Step 4 (b)'s wrap (`INSTALL-LINUX.md:1090-1110`, with the cost the runbook measured) and Step 3's one-key rewrite (`:1075-1088`); each restarts the flusher as the runbook says |
-| `node install.js issue-file --out <path> [--prompt]` | the two by-hand **v1 producers** for a seat with no browser download: `--prompt` reads the token from `/dev/tty` with echo off (today's (a′), `INSTALL-LINUX.md:1023-1034`), refusing when there is no terminal; without it, the token is read from stdin, which is where the issuer pipes `php artisan mezzanine:ingest-token:issue` (today's `FR_TOKEN_OUT`, `:910-925`); the file is written `0600`, `wx`, one line, and the prefix alone is printed |
+| `node install.js add-site --token-file <path> [--site <url>] [--ca-file <path>] [--site-name <n>]` · `remove-site <name>` | today's *Adding a site* and *Removing one site* (`INSTALL-LINUX.md:794-844`, `:2148-2168`). `add-site` runs **`token-take` and the default removal exactly as the main invocation does** ([§ 4.3](#43-the-take-rule)); a v2 file's identity must equal the config's and its `ingest_url` must match no configured site; a v1 file **requires `--site`**, since it carries none; `--ca-file` sets the new site's `ca_file` as the main invocation's does; then the writer's `add-site` mode and the flusher restart. `remove-site` refuses the last site and restarts |
+| `node install.js statusline [--wrap <command>]` · `set-descriptors full\|paths\|none` | Step 4 (b)'s wrap (`INSTALL-LINUX.md:1090-1110`, with the cost the runbook measured) and Step 3's one-key rewrite (`:1075-1088`); each restarts the flusher as the runbook says. **On `win32` the wrap is unmeasured** (W4: *"not applied on Windows … nothing here measured it"*, `:2504-2505`) and `statusline` **refuses** there, naming that |
+| `node install.js issue-file --out <path> [--prompt]` | the two by-hand **v1 producers** for a seat with no browser download. **Extraction is today's writer's** (`INSTALL-LINUX.md:684-705`, `TOKEN`/`SHAPE` at `:573`): the input must hold **exactly one** line matching `^\s*token\s+(mzn_[A-Za-z0-9_-]{43})\s*$`; every other line is echoed with every token-shaped substring replaced by `<redacted>`; zero or two token lines refuse. Without `--prompt` the input is stdin, where the issuer pipes `php artisan mezzanine:ingest-token:issue` (today's `FR_TOKEN_OUT`, `:910-925`) — **and a stdin that is a terminal is refused** (*"pipe the issue command in, or use --prompt"*), so a token is never typed into an echoing terminal. `--prompt` reads from `/dev/tty` with echo off (today's (a′), `:1023-1034`), **restores the terminal mode on every exit path** (success, refusal, signal), refuses when there is no terminal, and is **Linux and macOS only**: on `win32` there is no `/dev/tty`, and the subcommand refuses by name. The file is written `0600`, `wx`, one line; the prefix alone is printed. `parseIssueOutput` is exported and AT-28 Case P's stdin leg (D1 `EVENT-SCHEMA.md:8047`) drives it |
 | `node install.js --uninstall` | [§ 3.5](#35-uninstall) |
 | `node install.js --paths` | the resolved platform table, which R-all-1 holds against D1 |
 
@@ -171,15 +172,31 @@ point at it.
   step installs (`fleet-reporter.js`, `fixtures/hooks/*.json`), and the guard reads that list as it
   reads the `install` lines today, so a changed artifact byte or a new fixture still maps to the
   `artifact`/`fixtures`/`hooks` touches. **The start definitions and the hook wiring are compared by
-  output, not by text**: `node install.js --render-shipping` prints, for fixed inputs the guard
-  supplies (a home, a `node` path, a `COORD_CONFIG`, the fixture names), the crontab block, the plist
-  and the hook command set for each OS, and the guard runs it at the base and at the head and diffs —
-  so a helper edited anywhere in the file that changes what a seat installs reds, whether or not a
-  region encloses it, mapping to the `supervisor` touch (replacing `cron`; `launchd` is the same row)
-  or `hooks`. A missing or duplicated `artifact` region, or a `--render-shipping` that fails at
-  either rev, is **exit 2, never a pass**, as today's unmeasurable runbook is
-  (`bin/reporter-version-guard.py:20-23`). Its selftest gains a plant per touch and one for a helper
-  edit outside the region (R-all-14).
+  output, not by text**: `node install.js --render-shipping` prints the crontab block, the plist and
+  the hook command set **for every platform**, and the guard runs it at the base and at the head and
+  diffs — so a helper edited anywhere in the file that changes what a seat installs reds, whether or
+  not a region encloses it, mapping to the `supervisor` touch (replacing `cron`; `launchd` is the same
+  row) or `hooks`. The render's rules, each with a RED:
+  - **The input is a stable cross-rev contract**: one JSON object on stdin — a home, a `node` path, a
+    `COORD_CONFIG`, the fixture names — and **unknown keys are ignored**, so a head that reads a new
+    key still renders at a base that does not know it.
+  - **The platform is an argument, never the environment.** Every render function takes `platform`
+    explicitly and builds paths with `path.posix` or `path.win32`; the render reads neither
+    `process.platform`, nor `process.env`, nor `os.homedir()`. The guard runs on `ubuntu-latest` and
+    must see an edit to the `win32` hook branch alone (R-all-20).
+  - **The render has no side effects**: it spawns nothing and writes nothing; an unknown flag beside
+    `--render-shipping` **refuses** rather than falling through to an install. The guard runs it with
+    a temporary `HOME` and a `PATH` holding no `crontab` or `launchctl`, so a regression in either
+    rule is a visible failure, not a crontab written on a CI runner (R-all-21).
+  - **A base with no `install.js`** — which is the build PR itself, and `reporter-version` is a
+    required check on `dev` — is **not** exit 2: the base side of the diff is today's runbook
+    population, the `install` lines and the crontab entry read as the guard reads them now, so the
+    head either reproduces them (no touch owed) or differs (the touch owed, and the ledger row
+    satisfies it). Exit 2 — never a pass, as today's unmeasurable runbook is
+    (`bin/reporter-version-guard.py:20-23`) — is reserved for a missing or duplicated `artifact`
+    region at a rev that has `install.js`, and for a render that fails at a rev that has one.
+  Its selftest gains a plant per touch, one for a helper edit outside the region (R-all-14), and the
+  base-without-`install.js` case (R-all-19).
 - **The reporter's own acceptance suite reads the runbook today**, and D1 ratifies two of those
   reads: AT-27 case F runs the crontab `LINE` read out of `INSTALL-LINUX.md`
   (`fleet-reporter.selftest.py:4194-4232`; D1 `EVENT-SCHEMA.md:1326-1327`), AT-28 Case P re-extracts
@@ -262,12 +279,15 @@ still in flight then finds no config and exits instead of starting a flusher; th
 the crontab block removed under the read predicate of [§ 3.4](#34-supervision-per-os) (a crontab the
 step cannot read is never rewritten), with the `flock` file beside the spool removed; on macOS
 `bootout`, then the plist deleted; nothing on Windows — then the flusher stopped by pid, the spool
-and the artifact removed. **Attempt directories**: every config backup and every token file under
-`fleet-reporter-install/` is removed from every attempt directory, because they hold the plaintext
-token; the non-secret backups of this run (the settings file, the crontab or plist) are kept, so the
-operator can see what the uninstall undid. Then one line per configured site: *revoke prefix
-`<mzn_xxxxxxxx>` on `<ingest host>`'s Seat tokens page* (the prefix is not secret:
-`AGENT-INSTALL.md:88`). Revoking is the operator's act.
+and the artifact removed. **The config is removed as a directory**, `~/.config/fleet-reporter/` and
+its Windows counterpart whole, so the `todo-tools-set` marker and any token file go with it.
+**Attempt directories**: every file under `fleet-reporter-install/` **whose content matches the token
+shape** is removed from every attempt directory — config backups and token files by that test, not
+by name, so a copy under another name is caught too; the non-secret backups of this run (the settings
+file, the crontab or plist) are kept, so the operator can see what the uninstall undid. **The revoke
+prefixes are read from the config before anything is removed**, and printed last, one line per
+configured site: *revoke prefix `<mzn_xxxxxxxx>` on `<ingest host>`'s Seat tokens page* (the prefix
+is not secret: `AGENT-INSTALL.md:88`). Revoking is the operator's act.
 
 ### 3.6 Upgrading an existing seat, in place
 
@@ -422,7 +442,7 @@ launchctl reports pid 8812 = flusher.lock`.
 `--uninstall`, then the operator revokes the prefixes it prints.
 
 **`AGENT-INSTALL.md`** states the five moves and three mechanical facts. **The identity the agent
-proposes**: the install id is the account name as a slug (`install.sh:184-187`'s derivation) and the
+proposes**: the install id is the account name as a slug (`install.sh:195`'s derivation) and the
 seat id the host name lower-cased, offered for the user to type on the Seat tokens page, since the
 page is where the pair is first fixed. **The run time**, derived from the installer's own bounds:
 `restart`'s wait for the supervisor (70 s today, `INSTALL-LINUX.md:1937`) + `arrival`'s window
@@ -486,13 +506,17 @@ says; **all** = the three runners, **lin/win/mac** = that runner, **seat** = the
 | R-all-7 | upgrade in place from a seat laid out by today's `install.sh` (lin) and by card#12335's hand-run section (win): artifact replaced first, flusher stopped second, the holder-after-artifact check PASSes; the crontab block reads `already current` on lin; a run against the Windows layout re-checks the ACLs and starts the flusher | lin win |
 | R-win-3 | a `settings.json` fixture in the documented quoted forward-slash form (`INSTALL-LINUX.md:2502-2503`): an upgrade leaves it **byte-equal** (no second entry per hook); `--uninstall` removes exactly those entries; a backslash-form entry planted beside them is recognised as the reporter's too | win |
 | R-all-13 | the crontab read: stderr `no crontab for <user>` with status 1 ⇒ empty, the block written; any other failure (a stub exiting 1 with other text, or exiting 2) ⇒ the step refuses and `crontab` is never called with a file, at install and at uninstall | lin |
-| R-all-14 | `reporter-version-guard.py`: a helper edited **outside** the `artifact` region that changes `--render-shipping`'s crontab, plist or hook output ⇒ FAIL naming `supervisor` or `hooks`; a missing or duplicated region, or a failing render at either rev ⇒ exit 2 | all |
+| R-all-14 | `reporter-version-guard.py`: a helper edited **outside** the `artifact` region that changes `--render-shipping`'s crontab, plist or hook output ⇒ FAIL naming `supervisor` or `hooks`; a missing or duplicated region at a rev that has `install.js`, or a render failing at such a rev ⇒ exit 2 | all |
+| R-all-19 | the guard on the build PR's own shape: a base **without** `install.js` (today's runbook) and a head with it plus the ledger row ⇒ PASS; the same head without the row ⇒ FAIL naming the touches the runbook population and the render differ on; never exit 2 for the absent base | all |
+| R-all-20 | the render's platform is an argument: an edit to the `win32` hook-command branch alone, run on `ubuntu-latest`, ⇒ FAIL naming `hooks`; a render input carrying an unknown key ⇒ rendered unchanged | lin |
+| R-all-21 | the render has no side effects: run with a temporary `HOME` and a `PATH` without `crontab`/`launchctl`, the trace shows no spawn and the `HOME` is untouched afterwards; `--render-shipping` with any other flag ⇒ refused, nothing run; a plant that makes the render spawn `crontab` is caught by the empty `PATH` and the trace | lin |
+| R-all-22 | `issue-file`: a piped issue output with one token line ⇒ the file written `0600`, the other lines echoed with every token-shaped substring `<redacted>`, the prefix printed; zero or two token lines ⇒ refused; a stdin that is a terminal without `--prompt` ⇒ refused; `--prompt` on `win32` ⇒ refused by name; `--prompt` under a pty on lin/mac ⇒ the token read with echo off and the terminal mode restored, also after a planted failure mid-read and after `SIGINT` | all (the pty case lin mac) |
 | R-all-15 | `install.sh --set-token …` ⇒ refused naming `--token-file`, nothing run; `install.sh` with any other arguments ⇒ `install.js` runs with them | lin mac |
 | R-win-4 | a roaming profile (stub `roaming true`) ⇒ refused by name before anything is written, as W1 does today (`INSTALL-LINUX.md:2401-2402`) | win |
 | R-all-8 | hooks: the user's entries and every other key survive byte-equal; the path quoted on win; `todo-tools` set/kept with its marker; board identity from the stub board | all |
 | R-all-9 | rotation: a v2 file matching no site ⇒ refused with the listing, config byte-equal; matching B with `--site-name A` ⇒ refused; matching B alone, or by a URL differing only in case or a trailing slash ⇒ B rotated and A untouched; mismatched identity ⇒ refused | all |
 | R-all-10 | `--uninstall` with a foreign hook entry added after the install, a `statusLine` the user set later, and (lin) a foreign crontab line added outside the block after the install: the reporter's entries (by the parsed comparison) and its to-do key gone, the foreign entry and the user's `statusLine` kept; the config removed before the stop; the crontab holds the foreign line and no block, and the `flock` file is gone (lin); `bootout` called and the plist file absent (mac); every config backup and token file gone from every attempt directory while this run's settings and crontab/plist backups remain; one prefix line per site | all |
-| R-all-11 | `reporter-version-guard.py`: a byte changed inside each marked region of `install.js` with `REPORTER_VERSION` unmoved ⇒ FAIL naming the touch; moved with the row ⇒ PASS | all |
+| R-all-11 | `reporter-version-guard.py`: a file added to or changed in the `artifact` region's list, or a `--render-shipping` output that differs base-versus-head, with `REPORTER_VERSION` unmoved ⇒ FAIL naming the touch (`artifact`/`fixtures`/`hooks`/`supervisor`); moved with the row ⇒ PASS | all |
 | R-all-12 | `AGENT-INSTALL.md` holds verbatim the `mzn_` rule and the timeout sentence (prose rules no guard sees otherwise) | all |
 | R-lin-1 | the crontab block written once, byte-identical to `INSTALL-LINUX.md:1543`'s line at `188e5fce` for the same inputs, under `flock -n` with `COORD_CONFIG=`; the cron thread starts the flusher; ancestry PASS | lin |
 | R-win-1 | the supervisor step starts the flusher and waits for a live lock; with the start disabled it ends `NO FLUSHER` exit 1 and `arrival` is never reached; ACLs on config, token directory and artifact pass | win + seat |
@@ -500,7 +524,7 @@ says; **all** = the three runners, **lin/win/mac** = that runner, **seat** = the
 | R-mac-1 | the plist: 0600, `command -v node`'s path, `StartInterval 60`, `RunAtLoad`, `COORD_CONFIG`; the stub `launchctl`'s three loaded states each get their one action; an equal plist ⇒ `already current`, nothing called; a restart owed ⇒ `kickstart -k` on the label after the stop by pid | mac |
 | R-all-16 | the atomic write: a settings file that is a symlink keeps being a symlink and its target gets the bytes; the mode survives; a write interrupted before the rename leaves the target untouched; on win a planted `EBUSY` on the first rename is retried and succeeds | all |
 | R-all-17 | the config is validated with the **checkout's** reporter: a checkout whose `loadConfig` refuses a key the installed artifact accepts ⇒ the write is refused, the config byte-equal | all |
-| R-all-18 | `add-site`, `remove-site`, `statusline`, `set-descriptors` and `issue-file` each drive the runbook's refusals (a site that already exists, the last site, a statusLine that is neither the reporter nor the prior command, a descriptor outside the three, no terminal for `--prompt`) and their success path, with the flusher restarted where the runbook says | all |
+| R-all-18 | `add-site`, `remove-site`, `statusline`, `set-descriptors` and `issue-file` each drive the runbook's refusals (a site that already exists, the last site, a statusLine that is neither the reporter nor the prior command, a descriptor outside the three, no terminal for `--prompt`) and their success path, with the flusher restarted where the runbook says; `add-site` with a **v1 file and no `--site`** ⇒ refused naming it, with `--site` ⇒ the site added and the file taken and removed as the main invocation does; with **`--ca-file`** ⇒ the new site's `ca_file` set and the probe trusting it; `statusline` on `win32` ⇒ refused naming the unmeasured wrap; a wrapped statusLine in backslash form on `win32` ⇒ recognised and removed by `--uninstall` | all |
 | R-mac-2 | ancestry: a planted lock pid that `launchctl print` does not report ⇒ FAIL; reported ⇒ PASS; on the seat: `kill -9` recovery and no stacking under `StartInterval` | mac + seat |
 | R-mac-3 | flusher control on darwin: a reused pid refused, a holder started before the artifact ⇒ FAIL, a stand-in not running the artifact refused | mac |
 | R-mac-4 | no `gui/<uid>` domain (stub) ⇒ refused by name before anything is written | mac |
@@ -574,12 +598,13 @@ design PR except row 10; until the build, the owning document is the authority w
 | 8 | `fleet-reporter/AGENT-INSTALL.md`, `fleet-reporter/README.md`, `README.md` | [§ 5](#5-the-user-visible-flow) | the user-facing surfaces |
 | 9 | `docs/PLAN.md § 3`, the installer row | *Linux, Windows and macOS: `fleet-reporter/install.js`* | the work-breakdown map |
 | 10 | `tools/design/README.md` | this document declared under no gate — applied by this PR | the convention |
-| 11 | `docs/VERSIONING.md § The reporter's own version`, `fleet-reporter/UPDATES.md`'s touch table, `bin/reporter-version-guard.py` and its selftest | the population is `install.js`'s marked regions; `cron` → `supervisor`, covering the plist; one plant per region | [§ 3.3](#33-what-the-old-guards-protected-preserved-by-other-means) |
+| 11 | `docs/VERSIONING.md § The reporter's own version`, `fleet-reporter/UPDATES.md`'s touch table, `bin/reporter-version-guard.py` and its selftest | the population is the `artifact` region's file list plus `--render-shipping`'s output for every platform, diffed base-versus-head; `cron` → `supervisor`, covering the plist; a base without `install.js` reads as today's runbook population; the plants of R-all-11, R-all-14, R-all-19, R-all-20, R-all-21 | [§ 3.3](#33-what-the-old-guards-protected-preserved-by-other-means) |
 | 12 | `INSTALL.md`'s Step 2 (c) failure rule (today `INSTALL-LINUX.md:1004-1008`) and D1 § 3.1 | **the operator's ruling *accept with warning* loosens** *treat the token as exposed rather than repair the mode and go on* for a file the installer takes by path, saved or copied: taken, mode repaired, warning printed | recorded, not applied silently |
 | 13 | `fleet-reporter/README.md`'s file table and `.github/workflows/fleet-reporter.yml` | `install.js` and `INSTALL.md` replace `install.sh`, `INSTALL-LINUX.md` and `install.selftest.py`'s runbook-guard section; the three-runner matrix | the directory's own index and the suite's home |
 | 14 | D1 § 2.1's install-path table, the Windows row | the settings command on `win32` is `node "C:/Users/<u>/AppData/Local/fleet-reporter/fleet-reporter.js" hook <Hook>` — forward slashes, double-quoted; the row's backslash example is replaced | the first Windows seat holds that form, written by `wire-hooks.js`, which refuses a backslash path (`INSTALL-LINUX.md:1141`); D1's example was the wrong side |
 | 15 | D1 § 13 AT-27 case F (`EVENT-SCHEMA.md:1326-1327`) and AT-28 Case P (`:8044-8046`); `fleet-reporter.selftest.py` § 24 | the crontab line comes from `install.js`'s exported `cronLine`, the writer from its exported `writeConfig`, and § 24's fail-stop property is each subcommand's | the suite stops reading a runbook that no longer holds blocks |
 | 16 | `server/resources/views/console/tokens/index.blade.php:15` | *"the token file the install guide names (`fleet-reporter/INSTALL-LINUX.md`, Step 2)"* → *"save it with the button below, or see `fleet-reporter/INSTALL.md`"* | the page names a file that becomes a stub |
+| 17 | every D1 sentence naming `INSTALL-LINUX.md` | re-pointed at `INSTALL.md`, or at the `install.js` step that now owns the behaviour, one by one; **the population is derived, not listed**: `grep -n INSTALL-LINUX docs/design/EVENT-SCHEMA.md` prints every hit, and the build's reviewer re-runs it at the head and expects the stub's name to remain only where history is cited | a rename that leaves a ratified document naming a stub is the drift the stub exists to catch |
 
 ## 12. What this design does not establish
 
@@ -607,7 +632,7 @@ revision is that re-derivation. Where each finding stands:
 | r1 F5 (SSH, carried token, TCC) | carried: GUI-only refusal, the carried route first-class, the privacy-folder steer and `EPERM` message ([§ 3.4](#34-supervision-per-os), [§ 4.1](#41-routes), [§ 6](#6-macos)) |
 | r1 F6 (rotation) + N7 (URL normalisation) | carried with normalised matching and a listing on refusal ([§ 4.5](#45-rotation)); R-all-9 |
 | r1 F7 + N8 (per-principal reachability), N9 (`ctime`/`birthtime`; source == destination; Windows owner-versus-foreign split) | carried ([§ 4.3](#43-the-take-rule)); R-all-4 |
-| r1 F8 (version guard) | carried, re-homed to `install.js`'s marked regions with `supervisor` replacing `cron` ([§ 3.3](#33-what-the-old-guards-protected-preserved-by-other-means)); R-all-11 |
+| r1 F8 (version guard) | carried, re-homed to `install.js`: the `artifact` region's file list for the blobs, `--render-shipping` output diffed base-versus-head for the start definitions and hook wiring, `supervisor` replacing `cron` ([§ 3.3](#33-what-the-old-guards-protected-preserved-by-other-means)); R-all-11, R-all-14, R-all-19 to R-all-21 |
 | r1 F9 + N6 (attempt directories, prefix per site) + the exact-command match and `statusLine` deletion | carried ([§ 3.5](#35-uninstall)); R-all-10 |
 | r1 F10 + N5 (loaded state) | carried: the step reads the loaded state and acts once ([§ 3.4](#34-supervision-per-os)); R-mac-1 |
 | r1 F11 (symlink path), F14 (shim), F15 (no keep flag), F16 (unlinked; best-effort), F17 (ledger row 12), F18 + N3 (`config('app.url')`, octet-stream, https-only, bfcache), F20 (figures), N4 (one parser), N13 (darwin roster: D1 row 4), N17 (uninstall predicate: exact match), N18 (Save button after a bfcache restore: removed with the token), N19 (the Bash tool timeout in `AGENT-INSTALL.md`) | carried as stated in the sections each names |
@@ -637,5 +662,23 @@ claim) is folded in r4:
 | F15 run time derived; background rule; retry after the take | **Fixed**: § 5 |
 | F16 darwin: lock's `started_at` after the pid check; `LC_ALL=C` | **Fixed**: § 3.1 |
 | F17 the Seat tokens page's text | **Fixed**: ledger row 16 |
-| F18 off cites / self-coverage claim | **Fixed**: the claim dropped (the row above); the cites this revision adds are read from the tree at `188e5fce` |
+| F18 off cites / self-coverage claim | **Fixed**: the claim dropped (the row above) |
 | hygiene — the crontab comment line verbatim | **Fixed**: § 3.4 says so and why |
+
+**r4** (VERDICT REVISE on `570a9cfc`: r3's F1, F2 and F6–F17 closed; the open items are r4's own
+additions) is folded in r5:
+
+| Finding | Disposition |
+|---|---|
+| 1 GATING — the render guard would exit 2 forever on the build PR (no `install.js` at the base) | **Fixed.** § 3.3: a base without `install.js` reads as today's runbook population, never exit 2; the render input is one JSON object on stdin with unknown keys ignored; R-all-19 |
+| 2 GATING — the render must not depend on the platform it runs on | **Fixed.** § 3.3: `platform` is an explicit argument, `path.posix`/`path.win32`, no `process.platform`/`env`/`os.homedir()`; R-all-20 |
+| 3 GATING — `add-site`'s shape | **Fixed.** § 3.1: `--token-file`, `--site` (required for v1), `--ca-file`, `--site-name`; `token-take` and the default removal as the main invocation; R-all-18's v1 and CA cases |
+| 4 GATING — `issue-file` security | **Fixed.** § 3.1: today's extraction (exactly one `token` line, every other line echoed with the shape redacted), a terminal stdin refused without `--prompt`, the terminal mode restored on every exit path, `--prompt` lin/mac only and refused on `win32`, `parseIssueOutput` exported and Case P's stdin leg retargeted; R-all-22 |
+| 5 GATING — render side effects | **Fixed.** § 3.3: spawns nothing, writes nothing, an unknown flag refuses; the guard runs it with a temporary `HOME` and a `PATH` without `crontab`/`launchctl`; R-all-21 |
+| r4-F5 uninstall: the config directory; token-shaped files in attempt dirs; prefixes read first | **Fixed**: § 3.5 |
+| r4-F6 extend the reporter's `atomicWrite`; the false count; the win32 sibling | **Fixed**: § 3.1's row — extended and exported, the derivation in place of the count, the reporter's own retry-less `win32` state writes named as a sibling for the build |
+| r4-F7 restate ledger row 11, R-all-11 and the r1-F8 row | **Fixed** |
+| r4-F8 statusline in the parsed compare; win32 wrap unmeasured; slash-variant dedupe | **Fixed**: § 3.1's hook-wiring and `statusline` rows; R-all-18 |
+| r4-F9 the two cites; the "every cite verified" claim | **Fixed**: `install.sh:195`, `INSTALL-LINUX.md:2104`; the claim dropped |
+| r4-F10 a derived ledger row for D1's `INSTALL-LINUX` mentions | **Fixed**: ledger row 17 |
+| hygiene — `main` under the guard, not the exports | **Fixed**: § 3.1's exports row |
