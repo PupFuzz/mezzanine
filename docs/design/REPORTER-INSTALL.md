@@ -5,9 +5,11 @@ r2 tripped the loop's stop rule; r4 folded review r3's coverage findings; r5 fol
 on r4's own additions ([§ 13](#13-where-the-review-findings-stand)). The operator's rulings of
 2026-10-29 are recorded in [§ 10](#10-operator-rulings). Built in card#12571's installer change:
 `fleet-reporter/install.js`, every step and subcommand of § 3, the version guard's population of § 3.3, the
-suites of § 7 (R-srv-1 excepted), and § 11's ledger rows other than row 16. Not built there: § 4.2's *Save
-token file* button and its R-srv-1, and ledger row 16, the Seat tokens page's text — card#12571's server
-change, a separate PR. Not measured: the macOS and Windows legs on a real seat, which their CI runners and
+suites of § 7 (R-srv-1 excepted), and § 11's ledger rows other than row 16. Built in card#12571's server
+change: § 4.2's *Save token file* button, R-srv-1 (`server/tests/Feature/Admin/SeatTokenSaveFileTest.php`,
+`tools/design/seat-token-file.selftest.mjs`, and the hand-run `tools/design/seat-token.browser.mjs` rows), and
+ledger row 16, the Seat tokens page's text, which tells the install `fleet-reporter/AGENT-INSTALL.md` describes
+rather than the row's shorter wording. Not measured: the macOS and Windows legs on a real seat, which their CI runners and
 the first real installs measure.** Card#12571; the macOS leg was added to the scope by the operator on
 2026-10-29 (*"We will also onboard a macos claude agent. We need a working mezzanine reporter for
 claude on macos"*).

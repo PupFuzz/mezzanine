@@ -10,9 +10,9 @@ use Tests\TestCase;
 /**
  * R-srv-1's server half — card#12571, D6 § 4.2 (`docs/design/REPORTER-INSTALL.md`): the issue response
  * carries a *Save token file* button that writes the v2 token file in the browser, and what the server
- * renders for it. The blob itself is built by `public/js/console/seat-token.js`; its bytes, its type and
- * the button's removal by the page's `pageshow` handler are walked in a real browser, by hand, with
- * `tools/design/seat-token.browser.mjs` (its `save` and `restore` rows); no CI job runs that walk.
+ * renders for it. The blob itself is built by `public/js/console/seat-token.js`; that the bytes it builds
+ * parse through `fleet-reporter/install.js`'s `parseTokenFile` is `tools/design/seat-token-file.selftest.mjs`'s,
+ * in CI; a real browser's click and restore are walked by hand with `tools/design/seat-token.browser.mjs`.
  *
  * ⛔ THE INGEST URL IS `app.url`'s, NEVER THE REQUEST'S. A request-derived URL (`url()`, `route()`,
  * `window.location`) follows whatever `Host` the request carried; the file would then point the
@@ -114,17 +114,53 @@ class SeatTokenSaveFileTest extends TestCase
     }
 
     /**
-     * Ledger row 16: the page no longer sends the operator only to copy the token into the file the
-     * install guide names; it names the button.
+     * The `fleet-reporter/…` paths a response names, each checked to be a file in this checkout and not
+     * the moved runbook's redirect stub. Returns the paths, so an arm can assert which ones it expects.
+     *
+     * @return list<string>
      */
-    public function test_the_issue_response_names_the_button_and_the_install_guide(): void
+    private function guidePathsIn(TestResponse $response): array
+    {
+        preg_match_all('#fleet-reporter/[A-Za-z0-9_.-]+#', (string) $response->getContent(), $m);
+        $paths = array_values(array_unique($m[0]));
+
+        foreach ($paths as $path) {
+            $this->assertFileExists(base_path('../'.$path), "the page names $path, which is not in the repository");
+            $this->assertNotSame('fleet-reporter/INSTALL-LINUX.md', $path, 'the page names the moved runbook\'s redirect stub');
+        }
+
+        return $paths;
+    }
+
+    /**
+     * Ledger row 16, as the merged guides tell it (`fleet-reporter/AGENT-INSTALL.md` § 2–3): save the
+     * file, hand the agent its path, and the agent runs `install.js --token-file <path>`.
+     */
+    public function test_the_https_issue_response_tells_the_install_the_guides_describe(): void
     {
         config(['app.url' => 'https://mezzanine.example']);
         $this->confirmedOperator();
 
         $response = $this->issueOnPage('aimla', 'aimla-pm')->assertOk();
 
-        $response->assertSee('save it with the button below', false);
-        $response->assertSee('fleet-reporter/INSTALL-LINUX.md', false);
+        $response->assertSee('node fleet-reporter/install.js --token-file &lt;that path&gt;', false);
+        $response->assertSee('Do not paste the token to the agent.');
+        $this->assertEqualsCanonicalizing(
+            ['fleet-reporter/install.js', 'fleet-reporter/AGENT-INSTALL.md', 'fleet-reporter/INSTALL.md'],
+            $this->guidePathsIn($response),
+        );
+    }
+
+    /** `install.js` refuses a site that is not `https://` (`--site must be an https:// URL`), and the page says so. */
+    public function test_the_http_issue_response_says_why_there_is_no_file_and_names_no_stub(): void
+    {
+        config(['app.url' => 'http://mezzanine.example']);
+        $this->confirmedOperator();
+
+        $response = $this->issueOnPage('aimla', 'aimla-pm')->assertOk();
+
+        $response->assertSee('the reporter\'s installer accepts only an', false);
+        $response->assertDontSee('--token-file', false);
+        $this->assertSame(['fleet-reporter/INSTALL.md'], $this->guidePathsIn($response));
     }
 }
