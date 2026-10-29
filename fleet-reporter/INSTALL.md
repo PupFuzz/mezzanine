@@ -603,6 +603,10 @@ Every step is `node install.js <step>`: `prereqs`, `backup`, `artifact`, `resolv
 1 when a restart is owed), `restart`, `selftest`, `health`, `arrival`, `ancestry`. Each prints the same lines the
 installer reads. There is no bash copy of a step: a reader who cannot run node has no reporter to install.
 
+**A run that seems stuck**: set `FLEET_REPORTER_INSTALL_TRACE=1` for it, and every step and every PowerShell or
+`icacls` call it makes is reported on stderr with the milliseconds since the run began and the path it ran on
+(never content). That is how card#12571 found a Windows test environment in which each PowerShell start took 23 s.
+
 ## What the version guard reads
 
 `bin/reporter-version-guard.py` holds a PR that changes what an update ships to a `REPORTER_VERSION` bump and an
