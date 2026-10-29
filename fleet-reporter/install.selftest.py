@@ -1318,24 +1318,32 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         else:
             L.node("artifact")
             real_js = os.path.realpath(L.T["js"])
-            decoy = subprocess.Popen([NODE, "-e", "setTimeout(() => {}, 300000)", real_js, "flusher"])
+            # Spawned as a hook spawns the flusher: detached, by a node parent that then exits, so it is reparented
+            # and reaped by the system (a direct child of this suite would linger as a zombie once signalled, which
+            # macOS, with no /proc, still reports alive).
+            sp = subprocess.run([NODE, "-e", "const c = require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 300000)', "
+                                 "process.argv[1], 'flusher'], { detached: true, stdio: 'ignore', windowsHide: true }); c.unref(); console.log(c.pid)", real_js],
+                                capture_output=True, text=True, timeout=60)
+            decoy = int(sp.stdout.strip())
+            STARTED.add(decoy)
             time.sleep(0.5)
             spool = Path(L.T["spool"])
             spool.mkdir(parents=True, exist_ok=True)
             started = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time()))
-            (spool / "flusher.lock").write_text(json.dumps({"pid": decoy.pid, "started_at": started}))
-            try:
-                r = L.node("--uninstall", timeout=600)
-                stopped = decoy.wait(timeout=30) is not None
-            except subprocess.TimeoutExpired:
-                stopped = False
-            finally:
-                if decoy.poll() is None:
-                    decoy.kill()
-                decoy.wait()
+            (spool / "flusher.lock").write_text(json.dumps({"pid": decoy, "started_at": started}))
+            r = L.node("--uninstall", timeout=600)
+            t0 = time.time()
+            while pid_alive(decoy) and time.time() - t0 < 30:
+                time.sleep(0.5)
+            stopped = not pid_alive(decoy)
+            if not stopped:
+                try:
+                    os.kill(decoy, signal.SIGTERM)
+                except OSError:
+                    pass
             check("R-all-10", "a live flusher reached through a linked home (its command line the realpath, the lock's own "
                   "started_at after its start) is STOPPED by the uninstall, never read as a stale lock",
-                  real_js != L.T["js"] and stopped and "no flusher to stop" not in r.stdout and f"flusher pid {decoy.pid} exited" in r.stdout, tail(r))
+                  real_js != L.T["js"] and stopped and "no flusher to stop" not in r.stdout and f"flusher pid {decoy} exited" in r.stdout, tail(r))
         # (c) A live pid in a lock whose started_at is missing or garbled cannot be told from a reused pid: the
         # uninstall refuses LOUDLY, before it removes anything (fail closed, never open).
         G = Seat("garbled-lock", coord=False)
@@ -1346,6 +1354,7 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
             spool = Path(G.T["spool"])
             spool.mkdir(parents=True, exist_ok=True)
             for label, body in {"garbled": {"pid": holder_proc.pid, "started_at": "not a time"}, "missing": {"pid": holder_proc.pid}}.items():
+                spool.mkdir(parents=True, exist_ok=True)        # a regression that removed it fails the check, never the suite
                 (spool / "flusher.lock").write_text(json.dumps(body))
                 r = G.node("--uninstall")
                 check("R-all-10", f"a lock naming a live pid with its started_at {label}: the uninstall refuses loudly, signals "
