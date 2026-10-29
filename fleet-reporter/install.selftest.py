@@ -30,6 +30,10 @@ REDs plant their own defect in a copy and need no outside plant; those say so wh
   R-all-18  add-site, remove-site, statusline, set-descriptors: refusals and success.
   R-all-21  (Linux) --render-shipping spawns nothing and writes nothing; another flag beside it refuses.
   R-all-22  issue-file: the stdin route, its refusals, and (Linux, macOS) --prompt at a pseudo-terminal.
+  R-all-23  arrival judges only the refusals written during the run: a REJECTED file of older lines passes, a
+            line written while it waits fails it, alone or after older lines, and is the one it names.
+  R-all-24  arrival judges only the batches accepted during the run: batches_ok unchanged over the wait is NOT
+            ARRIVED; a rise, or a replaced entry counting again, arrives; an unreadable state.json is named.
   R-lin-1   the crontab block byte-identical to the runbook's at 188e5fce for the same inputs; cron's start.
   R-win-1..4, R-mac-1..4: the per-OS supervision, ACLs, quoting, roaming refusal, launchd states.
 
@@ -646,7 +650,7 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
     A = None
     A_TOK = token()
     if want("R-all-4", "R-all-5", "R-all-6", "R-all-7", "R-all-8", "R-all-9", "R-all-10", "R-all-16", "R-all-17",
-            "R-all-18", "R-lin-1", "R-win-1", "R-win-2", "R-win-3", "R-mac-1", "R-mac-2", "R-mac-3"):
+            "R-all-18", "R-all-23", "R-all-24", "R-lin-1", "R-win-1", "R-win-2", "R-win-3", "R-mac-1", "R-mac-2", "R-mac-3"):
         print("== a fresh install: one sentence's worth — a token file and nothing else ==")
         A = Seat("seat-a", home_name="seat home" if IS_WIN else "home")
         INGEST.accepted.add(A_TOK)
@@ -797,6 +801,117 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         r = A.node("--seat-id", "another-seat")
         check("R-all-6", "a run naming another seat than the config's refuses, NOTHING RUN, and changes nothing",
               r.returncode == 1 and "NOTHING RUN" in r.stderr and A.snapshot() == before, tail(r))
+
+    # ── R-all-23, R-all-24: arrival judges only what this run saw written (card#12514) ────────────────
+    def marker(at_ms: float, status: int = 422, code: str = "validation_failed") -> str:
+        """A line in the shape fleet-reporter.js's `markerLine` writes: its ISO timestamp first."""
+        iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(at_ms / 1000)) + ".%03dZ" % (int(at_ms) % 1000)
+        return f"{iso} site=default status={status} code={code} events=3 body={{\"error\":\"{code}\"}}\n"
+
+    if A and want("R-all-23"):
+        print("== R-all-23: a re-check on a seat whose REJECTED file holds only refusals from days earlier ==")
+        A.wait_flusher()
+        rej = Path(A.T["spool"]) / "REJECTED.default.txt"
+        old_ms = (time.time() - 2 * 86400) * 1000
+        rej.write_text(marker(old_ms) + marker(old_ms + 3_540_000))
+        os.utime(rej, (old_ms / 1000, old_ms / 1000))
+        r = A.node()
+        check("R-all-23", "a REJECTED file whose every line predates the run, on a seat whose flusher's batches are accepted: "
+              "arrival rc=0 on a batch accepted during the run, the old lines reported as not judged, and the run exits 0, ALREADY CURRENT",
+              r.returncode == 0 and "ALREADY CURRENT" in r.stdout and "arrival rc=0" in r.stdout
+              and re.search(r"default: a batch accepted during this run \(batches_ok \d+ at the run's start, \d+ now\): events arrive "
+                            r"\(REJECTED\.default\.txt holds 2 refusal line\(s\) from before this run, not judged\)", r.stdout) is not None, tail(r))
+        check("R-all-23", "  … and the file, the user's own record, keeps every line", rej.read_text().count("status=422") == 2)
+        rej.unlink()
+
+    if want("R-all-23", "R-all-24"):
+        print("== R-all-23, R-all-24: what is written while `arrival` waits, on a seat no flusher runs on ==")
+        S = Seat("seat-arrival", coord=False)
+        r = S.node("artifact")
+        check("R-all-23", "the bare seat's artifact step installs the reporter `arrival` reads the config with", r.returncode == 0, tail(r))
+        spool = Path(S.T["spool"])
+        spool.mkdir(parents=True, exist_ok=True)
+        Path(S.T["configDir"]).mkdir(parents=True, exist_ok=True)
+        Path(S.T["config"]).write_text(json.dumps({"install_id": "inst-arr", "seat_id": "seat-arr", "spool_dir": str(spool), "enabled": True,
+                                                   "ingest_url": INGEST.url, "token": token(), "ca_file": str(INGEST.crt)}))
+        rej, state = spool / "REJECTED.default.txt", spool / "state.json"
+
+        def put_state(text: str) -> None:
+            """state.json as the flusher writes it: a whole file, renamed into place."""
+            tmp = spool / "state.json.test-tmp"
+            tmp.write_text(text)
+            os.replace(tmp, state)
+
+        def ok_state(n: int) -> str:
+            return json.dumps({"sites": {"default": {"counters": {"batches_ok": n}}}})
+
+        def arrival_while(prior_rej: "str | None", prior_state: str, during) -> Ran:
+            """Run `node install.js arrival` with REJECTED and state.json as given, and call `during` once the step's
+            header is printed — after `main` read the baseline, which it does before any step — so what it writes
+            is the run's on a slow runner too. No flusher runs on this seat, so nothing else writes either file."""
+            if prior_rej is None:
+                rej.unlink(missing_ok=True)
+            else:
+                rej.write_text(prior_rej)
+            put_state(prior_state)
+            _ran[0] += 1
+            base = TMP / f"run-{_ran[0]}"
+            seen_header = False
+            with open(f"{base}.out", "wb") as o, open(f"{base}.err", "wb") as e:
+                p = subprocess.Popen([NODE, str(S.install), "arrival"], stdout=o, stderr=e, stdin=subprocess.DEVNULL, env=S.env, cwd=str(S.root))
+                t0 = time.time()
+                while time.time() - t0 < 60 and p.poll() is None:
+                    if "── step `arrival`" in Path(f"{base}.out").read_text(encoding="utf-8", errors="replace"):
+                        seen_header = True
+                        break
+                    time.sleep(0.1)
+                if seen_header and during:
+                    during()
+                try:
+                    rc = p.wait(timeout=240)
+                except subprocess.TimeoutExpired:
+                    p.kill()
+                    p.wait()
+                    rc = 124
+            r = Ran(rc, Path(f"{base}.out").read_text(encoding="utf-8", errors="replace"),
+                    Path(f"{base}.err").read_text(encoding="utf-8", errors="replace")
+                    + ("" if seen_header else "\n[the step header never printed, so nothing was written during the run]"))
+            OUTPUTS.append(r.stdout + r.stderr)
+            return r
+
+        def append(line: str):
+            def go() -> None:
+                with open(rej, "a") as f:
+                    f.write(line)
+            return go
+
+        new = marker(time.time() * 1000, status=403, code="identity_mismatch")
+        r = arrival_while(None, ok_state(0), append(new))
+        check("R-all-23", "a refusal written during the run: arrival rc=1, naming the refusal's status and code",
+              r.returncode == 1 and "arrival rc=1" in r.stdout and "REFUSED during this run" in r.stdout
+              and "status=403 code=identity_mismatch" in r.stdout, tail(r))
+        old_ms = (time.time() - 2 * 86400) * 1000
+        r = arrival_while(marker(old_ms) + marker(old_ms + 1000), ok_state(0), append(new))
+        check("R-all-23", "a file of old lines that gains one new line during the run: arrival rc=1, naming the new line's status "
+              "and code, never an old one's, with the old lines reported as not judged",
+              r.returncode == 1 and "arrival rc=1" in r.stdout and "status=403 code=identity_mismatch" in r.stdout
+              and "status=422" not in r.stdout and "holds 2 refusal line(s) from before this run, not judged" in r.stdout, tail(r))
+
+        if want("R-all-24"):
+            r = arrival_while(None, ok_state(5), None)
+            check("R-all-24", "batches accepted before the run and none during it: NOT ARRIVED, rc=2, after the whole wait, naming "
+                  "both counts", r.returncode == 2 and "arrival rc=2" in r.stdout
+                  and "no batch accepted during this run (batches_ok 5 at the run's start, 5 now): NOT ARRIVED" in r.stdout, tail(r))
+            r = arrival_while(None, ok_state(5), lambda: put_state(ok_state(6)))
+            check("R-all-24", "the same seat whose flusher gets one batch through during the run: events arrive, rc=0",
+                  r.returncode == 0 and "a batch accepted during this run (batches_ok 5 at the run's start, 6 now): events arrive" in r.stdout, tail(r))
+            r = arrival_while(None, ok_state(5), lambda: put_state(ok_state(1)))
+            check("R-all-24", "an entry the flusher replaced during the run, counting again from nothing (5 at the start, 1 now): "
+                  "events arrive, rc=0", r.returncode == 0 and "(batches_ok 5 at the run's start, 1 now): events arrive" in r.stdout, tail(r))
+            r = arrival_while(None, "{ not json", lambda: put_state(ok_state(3)))
+            check("R-all-24", "a state.json that could not be read at the start: the run says so, and judges the total alone",
+                  r.returncode == 0 and "state.json could not be read at the run's start (not JSON), so a batch accepted before the run "
+                  "counts too): events arrive" in r.stdout, tail(r))
 
     # ── R-all-7: an upgrade, artifact first and the stop second ───────────────────────────────────────
     if A and want("R-all-7", "R-mac-1"):

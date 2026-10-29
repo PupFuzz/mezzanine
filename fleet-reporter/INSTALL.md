@@ -520,11 +520,31 @@ not asked, because this check sends nothing through a proxy). The badge clears a
 batch the new build sent, about a minute after the restart; a counter-raised badge such as `epoch_reset` stays its
 24 h window.
 
-**`arrival`** waits up to 150 s — long enough for cron's next minute after a stop — for every site's entry in the
-flusher's `state.json` to count an accepted batch (`batches_ok`, D1 § 9.3): `<site>: <n> batch(es) accepted:
-events arrive` and `arrival rc=0`; `a batch was REFUSED` (`rc=1`), whose `REJECTED.<site>.txt` carries the status
-(a `401`, or a `403 identity_mismatch` naming the pair the token was issued for); `NOT ARRIVED` (`rc=2`): no
-flusher ran, or the site did not answer.
+**`arrival`** waits up to 150 s — long enough for cron's next minute after a stop — for every site to accept a
+batch **during this run**, and judges nothing from before it. Before its first step the run reads each site's
+`batches_ok` in the flusher's `state.json` (D1 § 9.3) and the lines of each `REJECTED.<site>.txt`; `arrival` then
+reads:
+
+- `<site>: a batch accepted during this run (batches_ok <start> at the run's start, <n> now): events arrive` and
+  `arrival rc=0`: the count rose. A count lower than at the start and above zero arrives too: the flusher replaced
+  the site's state entry during the run (D1 § 3.1 rule 1) and counted again from nothing. A running flusher sends
+  each site that answers a heartbeat batch every `K.HEARTBEAT_MS` (60 s, D1 § 9.1) whether or not it has events,
+  so a seat with nothing to send still has a batch accepted inside the wait.
+- `<site>: a batch was REFUSED during this run, the latest <time> status=<s> code=<c>` (`rc=1`): a line added to
+  `REJECTED.<site>.txt` since the start (a `401`, or a `403 identity_mismatch` naming the pair the token was issued
+  for).
+- `<site>: no batch accepted during this run (batches_ok <start> at the run's start, <n> now): NOT ARRIVED`
+  (`rc=2`): no flusher ran, the site did not answer, or the site stopped its lane on a refusal before the run (a
+  `401`/`403` stops it until the flusher restarts on a corrected config) — the older lines of `REJECTED.<site>.txt`
+  name that refusal.
+
+Every verdict line ends with `(REJECTED.<site>.txt holds <n> refusal line(s) from before this run, not judged)`
+when the file has such lines. The file is the seat's record of every refusal and the run leaves it as it is. Its
+baseline is the file's content, never its timestamps against the clock, so a wall-clock step during the run cannot
+date a new refusal as an old one. A `state.json` that exists and cannot be read at the start is named in place of
+the start's count (`state.json could not be read at the run's start (<why>), so a batch accepted before the run
+counts too`), and the site is judged by its total alone. A step run alone (`node install.js arrival`) judges what is
+written while that step runs.
 
 **`ancestry`**, after a run that changed anything, says who started the lock holder — **informational**, reported
 and never judged, because a hook's flusher holds the same lock and heartbeats as well. Linux: the holder's process
