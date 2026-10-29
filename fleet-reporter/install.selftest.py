@@ -519,7 +519,7 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         d1 = (CO.parent / "docs" / "design" / "EVENT-SCHEMA.md").read_text(encoding="utf-8")
         row = "Windows" if IS_WIN else "Linux / macOS"
         inst = re.search(r"^\| " + re.escape(row) + r" \| `([^`]+)` \|", d1, re.M)
-        cfg = re.search(r"^\| " + ("Windows" if IS_WIN else "Linux/macOS") + r" \| `([^`]+)`", d1, re.M)
+        cfg = re.search(r"^\| " + ("Windows" if IS_WIN else "Linux/macOS") + r" \| `([^`]*config\.json)`", d1, re.M)
 
         def expand(v: str) -> str:
             v = v.replace("~", str(s.home)).replace("%LOCALAPPDATA%", s.env.get("LOCALAPPDATA", "")).replace("%APPDATA%", s.env.get("APPDATA", ""))
@@ -555,7 +555,7 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         check("R-all-2", "a v2 file disagreeing with --seat-id: refused, nothing written",
               r.returncode == 1 and "disagrees" in r.stderr and not Path(s.T["config"]).exists() and v2.exists(), tail(r))
         v1 = dl / "v1"
-        v1.write_text(tok + "\n")
+        v1.write_bytes((tok + "\n").encode())      # bytes: text mode writes CRLF on Windows
         r = s.node("--token-file", str(v1))
         check("R-all-2", "a v1 file with no --site and no --seat-id: refused naming both",
               r.returncode == 1 and "--site" in r.stderr and "--seat-id" in r.stderr and not Path(s.T["config"]).exists(), tail(r))
@@ -647,7 +647,7 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         check("R-all-8" if not IS_WIN else "R-win-2", "the reporter's entry is added for every hook in the fixture set, in the "
               + ("quoted forward-slash form, through a profile path holding a space" if IS_WIN else "bare absolute form"),
               added == hook_set, f"{added} != {hook_set}\n{json.dumps(after['hooks'])[:2000]}")
-        check("R-all-8", "the artifact is the checkout's", Path(js).read_bytes() == (CO / "fleet-reporter.js").read_bytes())
+        check("R-all-8", "the artifact is the checkout's", Path(js).exists() and Path(js).read_bytes() == (CO / "fleet-reporter.js").read_bytes())
         if IS_LIN:
             check("R-all-5", "strace recorded the run's execs (the measurement happened): node and crontab",
                   "crontab" in trace and str(A.install) in trace)
@@ -801,12 +801,12 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         h = A.node("health")
         check("R-all-18", "  … and the probe trusts it: both sites current", h.returncode == 0 and "site-b: installed" in h.stdout and "health rc=0" in h.stdout, tail(h))
         fv1 = A.root / "carry" / "v1"
-        fv1.write_text(token() + "\n")
+        fv1.write_bytes((token() + "\n").encode())
         r = A.node("add-site", "--token-file", str(fv1))
         check("R-all-18", "add-site with a v1 file and no --site: refused naming it, the file left", r.returncode == 1 and "--site" in r.stderr and fv1.exists(), tail(r))
         tc = token()
         INGEST3.accepted.add(tc)
-        fv1.write_text(tc + "\n")
+        fv1.write_bytes((tc + "\n").encode())
         r = A.node("add-site", "--token-file", str(fv1), "--site", INGEST3.site, "--ca-file", str(INGEST3.crt), "--site-name", "site-c")
         check("R-all-18", "  … with --site: the site added, the file taken and removed as the main invocation does",
               r.returncode == 0 and [s["name"] for s in A.config()["sites"]] == ["default", "site-b", "site-c"] and not fv1.exists(), tail(r))

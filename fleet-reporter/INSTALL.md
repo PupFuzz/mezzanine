@@ -114,8 +114,9 @@ read. Then:
   through either bit, so the computation errs toward the warning); on Windows, the file's foreign ACEs.
 - **A file another principal could have read is taken, with one warning** (the operator's ruling of
   2026-10-29, *accept with warning*, for a saved and a copied file alike), naming the directory, the window
-  from the file's `birthtime` where the platform has it, else its `ctime` — never its `mtime`, which a copy
-  keeps — the principals that could read it (the local accounts in its group, and other accounts, from
+  from the file's `birthtime` when it is later than the `mtime`, else its `ctime` — never its `mtime`, which a
+  copy keeps; and on macOS a copy that keeps an older `mtime` moves the file's birth time back to it (APFS,
+  measured on `macos-latest`), so a birth time at or before the `mtime` is read as that clamp — the principals that could read it (the local accounts in its group, and other accounts, from
   `/etc/group` and `/etc/passwd`), and *revoke this prefix on the Seat tokens page and issue again if you are
   unsure*. A file nobody else could reach is taken with no warning. ⚠ The account enumeration sees local
   files only: a network-mounted home's other readers are outside it. A path under a known sync root

@@ -839,7 +839,7 @@ function attemptDir(ctx) {
     const d = T.P.join(T.attempts, stamp + (i ? '-' + i : ''));
     try { fs.mkdirSync(d, { mode: 0o700 }); ctx.attempt = d; break; } catch (e) { if (e.code !== 'EEXIST' || i > 50) throw e; }
   }
-  if (T.platform === 'win32') { aclPrep(ctx.attempt); if (!aclCheck([ctx.attempt]).ok) refuse(`${ctx.attempt} could not be made owner-only: NOTHING COPIED`); } else {
+  if (T.platform === 'win32') ownerOnlyDir('win32', ctx.attempt); else {
     const st = fs.lstatSync(ctx.attempt);
     if (st.uid !== process.getuid() || (st.mode & 0o777) !== 0o700) refuse(`${ctx.attempt} is not a new 0700 directory of this account's: NOTHING COPIED`);
   }
@@ -1152,7 +1152,11 @@ function tokenTake(ctx, p) {
   const st = guardTokenFile(T, p);
   const reach = reachability(T, p, st);
   if (reach) {
-    const born = st.birthtimeMs > 0 ? st.birthtimeMs : st.ctimeMs;
+    // The copy's age, never its mtime, which a copy keeps. A birth time AFTER the mtime is a copy's own; one at
+    // or before it may be the platform's clamp — APFS moves a file's birth time back to an earlier mtime set on
+    // it, as a copy that keeps the mtime does (measured on macos-latest, card#12571) — so then the change time,
+    // which that same act sets to now. A file written once at creation has all three about equal.
+    const born = st.birthtimeMs > st.mtimeMs ? st.birthtimeMs : st.ctimeMs;
     say(`token-take: WARNING: ${p}, in ${path.dirname(path.resolve(p))}, could be read by other local accounts for ${Math.max(0, Math.round((Date.now() - born) / 1000))} s (${reach.principals}); revoke this prefix on the Seat tokens page and issue again if you are unsure`);
   }
   if (SYNC_ROOTS.some((re) => re.test(path.resolve(p)))) say(`token-take: WARNING: ${p} looks like it is in a synced folder (a heuristic, by its path); a sync client may have copied it, which this installer cannot see: revoke this prefix and issue again if you are unsure`);
