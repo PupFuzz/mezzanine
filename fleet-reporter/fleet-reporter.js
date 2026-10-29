@@ -67,7 +67,7 @@ const lazy = (name) => require(name);
  * change to a file a reporter update ships, and `bin/reporter-version-guard.py` fails a PR that changes
  * one without moving it, so two different builds never report the same version. Each version's row in
  * `fleet-reporter/UPDATES.md` says what an upgrading seat must apply. */
-const REPORTER_VERSION = '0.5.0';
+const REPORTER_VERSION = '0.6.0';
 const SCHEMA_VERSION = 1;
 
 /* ── Every number, from § 14 and the section that derives it ──────────────────────────────── */
@@ -381,10 +381,16 @@ function validateSite(site, label) {
  * still writes nothing to stdout (P-1, P-2). A config error is loud on the seat's OWN surface
  * (the log, `config_invalid`, `selftest`) — never on the agent's. */
 function loadConfig(p) {
-  const errors = [];
   let raw;
   try { raw = fs.readFileSync(p, 'utf8'); }
   catch (e) { return { config: null, errors: [`config unreadable at ${p}: ${e.code || e.message}`], spool: null, sites: [] }; }
+  return parseConfig(raw);
+}
+
+/* `loadConfig`'s rules over a config's TEXT, so the installer validates the bytes it is about to write
+ * with the same rules before they reach the disk (`install.js`'s `writeConfig`, card#12571). */
+function parseConfig(raw) {
+  const errors = [];
   let c;
   try { c = JSON.parse(raw); }
   catch (e) { return { config: null, errors: [`config is not valid JSON: ${e.message}`], spool: null, sites: [] }; }
@@ -826,29 +832,59 @@ function appendCapped(file, line, cap, tree) {
   return appendLine(file, line, tree);
 }
 
-/* `sync` is for ONE caller, the pre-send save of a site's request (§ 3.1, *One request per site*): the
- * one `state.json` write whose loss to a power cut puts seqs on a wire the restarted seat cannot see. It
- * fsyncs the temp file before the rename and the directory after it where the platform can open a
- * directory (Linux); where it cannot, the file alone is synced and the write goes on (§ 15 row 54). */
+/* THE ONE TEMP-AND-RENAME WRITE, the reporter's and the installer's (`install.js` requires it from this
+ * file rather than keeping a second one: D6 § 3.1, card#12571). It returns `true` when the target holds
+ * `text`, and `false` on any failure, with the temp file removed and the target as it was — so every
+ * caller checks the result; it never throws.
+ *
+ * `text` is a string (written as UTF-8) or a Buffer.
+ *
+ * `sync` is for the writes whose loss to a power cut costs something: the pre-send save of a site's
+ * request (§ 3.1, *One request per site*), the one `state.json` write whose loss puts seqs on a wire the
+ * restarted seat cannot see, and the installer's config. It opens the temp file `wx` (the plain path
+ * uses `writeFileSync` with mode 0600, which a unique name makes safe enough for every other write),
+ * fsyncs it before the rename and the directory after it where the platform can open a directory
+ * (Linux); where it cannot, the file alone is synced and the write goes on (§ 15 row 54).
+ *
+ * `keepMode` applies the target's existing mode to the temp file before the rename, so a file the user
+ * keeps at 0644 (their `settings.json`) stays 0644; with no target yet the mode is 0600.
+ *
+ * On `win32` the rename is retried a bounded number of times on `EPERM`/`EBUSY`, which an antivirus
+ * scanner or a search indexer holding the target open raises; before card#12571 one such hold lost that
+ * pass's `state.json` save. The retries total `RENAME_RETRY_MS`'s sum, under half a second. */
+const RENAME_RETRY_MS = [10, 25, 50, 100, 200];
+function renameOver(tmp, file) {
+  for (let i = 0; ; i++) {
+    try { fs.renameSync(tmp, file); return; } catch (e) {
+      if (process.platform !== 'win32' || (e.code !== 'EPERM' && e.code !== 'EBUSY') || i >= RENAME_RETRY_MS.length) throw e;
+      sleepSync(RENAME_RETRY_MS[i]);
+    }
+  }
+}
 function atomicWrite(file, text, opts) {
   // .tmp + rename with a UNIQUE temp name (§ 11.1): one fixed temp name is a lost-update
   // generator the moment two processes race, which is exactly what § 8.2 removed from the index.
   const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
   const sync = !!(opts && opts.sync);
+  let mode = 0o600;
+  if (opts && opts.keepMode) {
+    try { mode = fs.statSync(file).mode & 0o7777; } catch (e) { /* no target yet: the new file is 0600 */ }
+  }
   try {
     ensureDir(path.dirname(file));
     if (sync) {
       const fd = fs.openSync(tmp, 'wx', 0o600);
       try {
         // `writeSync` may write fewer bytes than it was given; the loop writes the rest before the sync.
-        const buf = Buffer.from(text, 'utf8');
+        const buf = Buffer.isBuffer(text) ? text : Buffer.from(text, 'utf8');
         for (let off = 0; off < buf.length;) off += fs.writeSync(fd, buf, off, buf.length - off);
         fs.fsyncSync(fd);
       } finally { fs.closeSync(fd); }
     } else {
       fs.writeFileSync(tmp, text, { encoding: 'utf8', mode: 0o600 });
     }
-    fs.renameSync(tmp, file); // atomic-replace on both platforms
+    if (mode !== 0o600) fs.chmodSync(tmp, mode);
+    renameOver(tmp, file); // atomic-replace on both platforms
     if (sync) {
       let dfd = -1;
       try { dfd = fs.openSync(path.dirname(file), 'r'); fs.fsyncSync(dfd); }
@@ -3513,9 +3549,26 @@ function saveState(spool, state, opts) {
  * reads the lock: a mtime newer than 90 s means a live owner and it exits 0 immediately; an
  * older one is unlinked ONLY IF the mtime it read is still the one on disk, and the exclusive
  * create is retried exactly once. Losing that retry is also an immediate exit 0. */
+/* Field 22 of /proc/<pid>/stat — the process's start, in clock ticks since boot — or null where there is no /proc
+ * or no such process. The kernel's own counter, so a wall-clock step moves it not at all (card#12571 review round
+ * 3). `comm`, field 2, is in parentheses and may itself hold spaces and parentheses, so the fields are split after
+ * the LAST `)`: what follows is field 3 on, which puts field 22 at index 19. The one parser of it, used by the
+ * flusher for its own lock and by the installer to recognise that flusher (`install.js`'s `lockHolder`). */
+function procStartTicks(pid) {
+  let stat;
+  try { stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8'); } catch (e) { return null; }
+  const close = stat.lastIndexOf(')');
+  if (close < 0) return null;
+  const v = Number(stat.slice(close + 2).split(' ')[19]);
+  return Number.isSafeInteger(v) && v >= 0 ? v : null;
+}
+
 function acquireLock(spool, state) {
   const lock = path.join(spool, 'flusher.lock');
-  const body = JSON.stringify({ pid: process.pid, started_at: state.owner_started_at });
+  // On Linux the lock also carries this process's own start ticks, an identity no wall-clock step can move; the
+  // installer compares it with the pid's live /proc entry to tell this flusher from a reused pid.
+  const ticks = process.platform === 'linux' ? procStartTicks(process.pid) : null;
+  const body = JSON.stringify({ pid: process.pid, started_at: state.owner_started_at, ...(ticks === null ? {} : { start_ticks: ticks }) });
   ensureDir(spool);
   const tryCreate = () => {
     try { const fd = fs.openSync(lock, 'wx'); fs.writeSync(fd, Buffer.from(body, 'utf8')); fs.closeSync(fd); return true; }
@@ -5303,8 +5356,11 @@ if (require.main === module) main();
 module.exports = { sanitize, buildDescriptor, truncateBytes, ulid, buildCounters, buildDegraded,
   windowedCounters,
   appendLine, K, ENUM, SANITIZER_FIXTURES, SELFTEST_CHECKS, CRED_PREFIX_RE,
-  /* `loadConfig` is exported for ONE caller, the installer's writer (`INSTALL-LINUX.md` Step 2,
-   * `write-config.js`), which validates the file it is about to rename into place with the reader's own
-   * rules, so the two cannot disagree about a valid site, a duplicate name or URL, or both forms present
-   * (§ 3.1, *The installer's writer*). Requiring this file runs nothing: `main` is guarded above. */
-  loadConfig, allConfigErrors };
+  /* `loadConfig`, `parseConfig`, `atomicWrite`, `siteKey`, `REPORTER_VERSION` and `procStartTicks` are exported for ONE
+   * caller, the installer (`install.js`, card#12571): it validates the config it is about to write with
+   * the reader's own rules, so the two cannot disagree about a valid site, a duplicate name or URL, or
+   * both forms present (§ 3.1, *The installer's writer*); it writes every file through the one
+   * temp-and-rename primitive; it keys a site as the reader does; and it reads a process's start ticks as the
+   * flusher records its own in `flusher.lock`. Requiring this file runs nothing:
+   * `main` is guarded above. */
+  loadConfig, parseConfig, allConfigErrors, atomicWrite, siteKey, REPORTER_VERSION, procStartTicks };

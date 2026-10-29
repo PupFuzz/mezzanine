@@ -1,172 +1,116 @@
 # Installing the Mezzanine reporter — the guide for a Claude Code agent
 
 **You are a Claude Code agent, and the user has asked you to install the Mezzanine reporter on this
-machine.** Follow this page from top to bottom. It needs no coordination framework, no root and no
-`sudo`. The procedure on this page runs on Linux; on Windows, [step 1](#1-check-the-machine) sends you
-to the Windows section of `INSTALL-LINUX.md` instead. At the end the user's Claude Code activity on this account reaches
-their Mezzanine site, where it appears as a desk on the floor.
+machine.** Follow this page from top to bottom. It runs on Linux, Windows (in Claude Code's Git Bash tool)
+and macOS, needs no coordination framework, no root and no `sudo`, and asks the user for one thing: where
+they saved or copied the seat's token file. At the end the user's Claude Code activity on this account
+reaches their Mezzanine site, where it appears as a desk on the floor.
 
-The reporter, `fleet-reporter`, is a set of Claude Code hooks plus one background process. The install
-copies it into this account's home, writes its config, adds its hooks to `~/.claude/settings.json`
-(every hook already there is kept, in place), and adds one block to the account's crontab to keep the
-background process running. [`INSTALL-LINUX.md`](INSTALL-LINUX.md) owns every command that does this;
-[`install.sh`](install.sh) runs those commands for you, with a backup of each file first. Run the script
-and let it do the work, so that every change it makes is backed up and checked.
+The reporter, `fleet-reporter`, is a set of Claude Code hooks plus one background process.
+[`install.js`](install.js) installs it: it copies it into this account's home, writes its config, adds its
+hooks to `~/.claude/settings.json` after every hook already there, and sets up what keeps the background
+process running. [`INSTALL.md`](INSTALL.md) is the reference for what each step does and why.
 
-## The seat token is the one secret, and the user enters it
+## The token is the one secret, and it never passes through you
 
-The site issues the seat a token, `mzn_…`, that authenticates every batch the seat sends. **It must
-never pass through you.** Do not ask the user to paste it into the chat, and do not put it in a command,
-an environment variable or a file. The user types it at a prompt `install.sh --set-token` shows, which
-echoes nothing and writes the token straight into the config with mode `0600`. Your own shell has no
-terminal, so that command refuses to run from your Bash tool: it is the user's to run (step 5).
+The site issues the seat a token, `mzn_…`, that authenticates everything the seat sends. The user saves it
+as a file from the site's *Seat tokens* page, and you pass the installer **the file's path**, nothing else.
+Never ask the user to paste the token, never put it in a command, an environment variable or a file of
+your own, and never open the token file with your Read tool or print it: the installer is the only thing
+that reads it, and it removes the file once the token is in the config.
+If a reply from the user holds a string that starts `mzn_`, the token has passed through you: run nothing, tell the user so, and ask them to revoke its prefix on the Seat tokens page and issue another.
 
-## 1. Check the machine
-
-```bash
-uname -s && git --version
-```
-
-It must print `Linux`. **On Windows, do not run `install.sh`**: it runs the runbook's Linux bash blocks.
-Follow [the Windows section of `INSTALL-LINUX.md`](INSTALL-LINUX.md#installing-on-a-windows-seat-option-a-hooks-start-the-flusher)
-instead, in which the operator carries the token to the seat. On macOS, stop and tell the user that this
-install does not cover it. `install.sh` checks `node` (18 or later), `flock` and
-`crontab` itself, and names any that is missing.
-
-## 2. Get the code
+## 1. Check the machine and get the code
 
 ```bash
-git clone --depth 1 https://github.com/PupFuzz/mezzanine "$HOME/.local/src/mezzanine"
+node --version && git --version
 ```
 
-If that directory is already there from an earlier install, update it instead with
-`git -C "$HOME/.local/src/mezzanine" pull --ff-only`. The commands below write the script's path as
-`$HOME/.local/src/mezzanine/fleet-reporter/install.sh`; if the user wants the checkout elsewhere, use
-that path throughout.
-
-## 3. Ask the user for the values, in one message
-
-| Value | What to tell the user | Flag |
-|---|---|---|
-| **Site URL** | the address of their Mezzanine site, as they open it in a browser: `https://<host>` | `--site` |
-| **Seat name** | a name for this seat, shown on its desk: lowercase letters, digits and `-`, 2 to 48 characters, starting with a letter or digit. Offer one, such as this machine's host name in lowercase | `--seat-id` |
-| **Install id** | the group this seat belongs to on the site, 2 to 32 characters in the same alphabet. Without it the script uses this account's name (`id -un`, in lowercase); offer that, and say they can name an install the site already has | `--install-id` |
-
-Two more values are optional, and most users need neither:
-
-- **`--agent-name`**, only for a user whose seat runs the coordination framework with a roster, to
-  declare the seat's name in it. Without it the seat is *undeclared*, which is a supported state that
-  stays so ([`docs/design/EVENT-SCHEMA.md`](../docs/design/EVENT-SCHEMA.md) § 3.1, item 4 of
-  `protocol_agent_name`): the desk reports in full, and only coordination posts are not joined to it.
-- **`--ca-file`**, only when the site's certificate is issued by a private CA: the absolute path of a PEM
-  file that trusts it.
-
-The link from the seat to its kanban board user needs nothing from the user (card#12447): the script reads
-the seat's own board credential from the coordination framework's credential store, asks the board which
-user it is, and writes that into the config, so the site maps the desk to that user's cards by itself. A
-seat with no board credential stays unlinked, and its desk shows the step the agent marked in progress on
-its to-do list instead. `--no-board` leaves the seat unlinked on purpose; there is no flag to type a board
-user, because a user someone other than the seat's own credential chooses is the site operator's pin.
-
-## 4. Run the first command
+`node` must be 18 or later. Then clone the repository, or update it if an earlier install left it there:
 
 ```bash
-bash "$HOME/.local/src/mezzanine/fleet-reporter/install.sh" --site <site URL> --seat-id <seat name> --install-id <install id>
+git clone --depth 1 https://github.com/PupFuzz/mezzanine ~/.local/src/mezzanine || git -C ~/.local/src/mezzanine pull --ff-only
 ```
 
-With no config yet it installs nothing, exits `3`, and prints the token step with these values filled
-in: where to issue the token, and the exact `--set-token` command. An exit `1` names a value it refused,
-such as a seat name outside the alphabet; ask the user again and re-run.
+## 2. Ask the user the one question
 
-## 5. Hand the token step to the user, and wait
+Send this, with the two names filled in. **Propose the names**: the install id is this account's name as a
+slug (`id -un`, lower-cased, `.` and `_` turned into `-`), and the seat id is this machine's host name
+lower-cased (`hostname`); the user may type others.
 
-Relay the two steps the script printed, in its words, and add that you will wait:
+> One thing I need from you: on your Mezzanine site, open **Admin → Seat tokens**, issue a token for this
+> seat — install id `<install id>`, seat id `<seat id>`, unless you want other names — click **Save token
+> file**, and tell me where you saved or copied the file on this machine (usually
+> `~/Downloads/mezzanine-reporter-token`). Please don't paste the token itself: the installer reads the
+> file and removes it once the token is in the config.
 
-1. **Issue the token on the site.** The user signs in to the site as an operator, opens the admin
-   console's *Seat tokens* page, `<site URL>/admin/tokens`, which asks for their password again, types
-   the install id and the seat name exactly as above, and issues. The page shows the token once, with
-   its prefix. The prefix is not secret; ask them to keep it, because revoking the token later takes it.
-2. **Enter it at the hidden prompt.** The user runs the `--set-token` command the script printed. In
-   Claude Code they can type it after `!` at the prompt. Claude Code can run a `!` command without a
-   terminal: the script then prints `there is no terminal to read the token from` and writes nothing,
-   and the user runs the same command in a terminal window of their own on this machine, signed in as
-   the same account. At the prompt they paste the token and press Enter; nothing is echoed.
+**On macOS** add: *"Save or copy the file into your home folder rather than Downloads, Desktop or
+Documents; if it is in one of those and macOS asks whether the terminal may access that folder, allow
+it."* **On Windows** pass the path the user gives with forward slashes (`C:/Users/me/Downloads/…`).
 
-Do not go on until the user says it is done. Success ends with `the token is in the config`, after
-Step 3's check of the config, which shows the token only as `<well-formed>`. If the script printed `does
-not hold exactly one well-formed mzn_ token`, what it read was not the token. When it had prompted for
-it, the paste was something else: the token file is already removed, and the user runs the command
-again and pastes the token again. When it printed `a token file is already at …` instead of prompting,
-it read a file left there earlier and leaves it in place: the user deletes that file,
-`~/.config/fleet-reporter/mezzanine-reporter-token`, and runs the command again to be asked for the token.
+The file may have been saved on another machine and copied here: that is as good as one saved here.
 
-## 6. Run the install
+## 3. Run the installer, in the background
 
 ```bash
-bash "$HOME/.local/src/mezzanine/fleet-reporter/install.sh" --site <site URL> --seat-id <seat name> --install-id <install id>
+node ~/.local/src/mezzanine/fleet-reporter/install.js --token-file <the path the user gave> > ~/fleet-reporter-install.log 2>&1; echo "install.js exit $?" >> ~/fleet-reporter-install.log
 ```
 
-It takes one to four minutes: it waits for the background process's first start and for the site to
-accept a batch. It prints each runbook block it runs, then ends with:
+Run the installer in the background with its output to a file, and read the file's last lines: a foreground call is cut off by the Bash tool's timeout before the install ends.
+That timeout is 120 s by default and 600 s at most (the Bash tool's own description, read 2026-10-29), and
+the install's own bounded waits add up past it: up to 70 s for the background process's restart on the new
+build, up to 150 s for the site to accept a batch, and a 15 s request per site for each of two checks —
+over four minutes on one site before the copying. Start the command with your Bash tool's background
+option, wait for it to finish, then read the end of the log:
+
+```bash
+tail -n 25 ~/fleet-reporter-install.log
+```
+
+## 4. Read the result and tell the user
+
+Success ends with:
 
 ```
-install.sh: selftest rc=0 · health rc=0 · arrival rc=0
-install.sh: INSTALLED: the server holds this build current and every site has accepted a batch; the desk is on the site's floor
+install.js: selftest rc=0 · health rc=0 · arrival rc=0
+install.js: INSTALLED: the server holds this build current and every site has accepted a batch; the desk is on the site's floor
+install.js exit 0
 ```
 
-and it exits `0`. Above those lines, the health check prints `default: installed <version>, server current
-<version>: current`, which is the site saying it holds this build current, and the arrival check prints
-`default: <n> batch(es) accepted: events arrive`.
+Tell the user the desk is on the floor as `<install id>/<seat id>`, and that a Claude Code session started
+before the install, this one included, reports its tool calls once it is restarted. **On Windows** add that
+nothing keeps the background process running when no Claude Code session is open, so the desk reads
+offline then (the operator's ruling, Option A). An `exit 2` installed the reporter and could not measure a
+check (the site did not answer in time): run step 5's re-check a minute later. An `exit 1` refused or
+failed, and its last `install.js:` line says why; the table below reads the common ones.
 
-The install also sets `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` in this account's `~/.claude/settings.json` `env`
-when it is not already set (card#12447; the operator's ruling of 2026-10-27: *"this should be checked and
-set as part of the mezzanine reporter installation"*), so the desk can show the agent's in-progress to-do
-when it has no board card. Its block prints `set`, or `already set: unchanged`, or `kept … : unchanged`,
-and never overwrites a value the user chose; it changes the user-level file only, so a project's own
-settings keep their say. Sessions already running keep the tools they started with; the next session
-has them. Nothing to ask the user for. The board block prints `board user <id> on <scheme://host>`, or
-`undeclared: this seat has no board credential (…)`, or `kept: …` when the board could not answer — none
-of them fails the install.
+**If you run the installer again after the token file was taken**, run it with **no `--token-file`**. A run
+that failed before the config was written left the file in the config directory, and the re-run uses it
+from there; a run that failed after the config was written has already removed the file, and the re-run
+needs none. A second `--token-file` run finds the original path gone and refuses.
 
-## 7. Tell the user what to look at
+## 5. Upgrade, re-check and uninstall
 
-The desk is on the site's floor under the seat name. It appeared, as *no data yet*, when the token was
-issued, and it shows the seat's own state from the first batch the site accepted, which the arrival
-check has just seen. A Claude Code session started before the install, this one included, may not
-report its own tool calls until it is restarted; the background process reports the seat's liveness
-either way, so suggest the user starts a new session to see work appear on the desk.
-
-## 8. Running it again
-
-Running step 6's command again is safe: on a seat that is already current it changes nothing, ends
-`ALREADY CURRENT: nothing changed, and every check passed`, and exits `0`. The same command upgrades
-the seat after `git -C "$HOME/.local/src/mezzanine" pull --ff-only`: it installs the new build, rewires
-whatever the build adds, restarts the background process on it, and checks the site holds it current.
-[`UPDATES.md`](UPDATES.md) lists what each reporter version changes; a version whose row lists a
-`config` touch needs the change that row names, by hand. Reporter `0.4.0` (card#12451, working and idle
-subagents) is the artifact alone, so running the command again upgrades it; its new event kind needs a server
-that carries card#12451, so the server is deployed first ([`INSTALL-LINUX.md` § Upgrading an existing seat](INSTALL-LINUX.md#upgrading-an-existing-seat)).
+*"Upgrade the Mezzanine reporter"* is `git -C ~/.local/src/mezzanine pull --ff-only`, then step 3's command
+with no `--token-file`; it ends `ALREADY CURRENT` on a current seat and changes nothing.
+[`UPDATES.md`](UPDATES.md) lists what each reporter version changes; a version whose row lists a `config`
+touch names the change it needs. **Uninstalling** is the same command with `--uninstall` in place of
+`--token-file <path>`; its first lines name each token prefix, which the user revokes on that site's Seat
+tokens page.
 
 ## When a run does not end in `INSTALLED`
 
-Read the block the script was running, which it prints above its last line, and match it here:
-
-| What it printed | What it means | What to do |
+| The last `install.js:` line says | What it means | What to do |
 |---|---|---|
-| `is not a seat_id`, `is not an install_id`, `must be an https:// URL` | a value is outside its pattern | ask the user for the value again |
-| `the config is for seat_id …` (or `install_id`, or `do not include`) | a config for another seat is already on this account | ask the user which seat this account is; this install does not replace a seat. `INSTALL-LINUX.md` Step 8 removes one by hand |
-| selftest `token_accepted` `fail`, or health `HTTP 401 unauthenticated` | the site does not accept the token: mistyped, revoked, or issued on another site | the user issues a new token on the Seat tokens page and runs the `--set-token` command again, which replaces it; then they revoke the old prefix there, and you run step 6 again |
-| arrival `a batch was REFUSED`, with `403 identity_mismatch` in the file it names | the token was issued for another install id or seat name | as the row above, issuing the token for exactly the install id and seat name of step 3 |
-| health `NOT CURRENT` | this checkout and the site run different builds | an installed build older than the site's: pull the checkout and run step 6 again. Newer: the site's operator deploys the newer build; the seat reports either way |
-| `NOT MEASURED` from health, or arrival `NOT ARRIVED`, and exit `2` | the site did not answer, or no batch arrived within the wait | check the site URL opens in a browser, wait a minute, and run step 6 again. `INSTALL-LINUX.md` Step 6 and Step 7 read every code |
-| `INSTALL-LINUX.md and this script disagree` | the checkout was edited, or is broken | clone it again (step 2) |
+| `an argument looks like a seat token` | the token went into the command line | the token is exposed: run nothing more, and have the user revoke its prefix and issue another |
+| `cannot read the token file …`, `is not a regular file`, `is a symbolic link` | the path does not name the saved file | ask the user for the path again |
+| `macOS refused the read` | the file is in a privacy-protected folder | have the user allow the terminal access, or move the file into their home folder |
+| the token file `holds a carriage return`, `carries no …`, `is not one "<key> <value>" pair` | the file is not the one the page saved, or was edited | the token is treated as exposed: the user revokes its prefix, issues another and saves the new file |
+| `disagrees with the token file's …` | a flag you passed differs from the file | run again with only `--token-file` |
+| `no gui launchd domain for this user` | macOS over SSH | the macOS install supports a GUI login with Claude Code in a Terminal there |
+| `a roaming profile copies %APPDATA% …` | a Windows roaming profile | not supported: the token would leave the machine at logoff |
+| selftest `token_accepted` `fail`, or health `HTTP 401` | the site does not accept the token | the user issues a new token and saves its file; run step 3's command with the new path, which replaces it; then they revoke the old prefix |
+| arrival `a batch was REFUSED`, with `identity_mismatch` | the token was issued for other names | as the row above, issuing it for exactly the install id and seat id the file carries |
+| health `NOT CURRENT` | the checkout and the site run different builds | an older checkout: pull and re-run; newer: the site's operator deploys it |
 
-`INSTALL-LINUX.md` § Running it with `install.sh` states every exit code and what each run does.
-
-## What this install leaves out
-
-- **The status-line wrap** (Step 4 (b)), which adds the desk's context gauge at a cost to every status
-  line render. It is optional and not applied; the runbook says how.
-- **`roundtable_agent_name`**, for a seat that posts on the cross-project coordination channel: a hand
-  edit of the config, in the runbook's table of values.
-- **Uninstalling**, which is `INSTALL-LINUX.md` Step 8, by hand.
+[`INSTALL.md` § The checks](INSTALL.md#the-checks) reads every code.

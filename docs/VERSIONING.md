@@ -279,13 +279,14 @@ neither the repo's `VERSION` nor the wire schema's: seats upgrade on their own s
 change lands on `dev` long before a release collects it, and most reporter changes move no schema.
 
 - **It moves in the same PR as any change to what a reporter update ships**: the files
-  `fleet-reporter/INSTALL-LINUX.md` Step 1 installs, and the crontab entry its Step 5 writes. The
-  next version is strictly greater than `dev`'s, so no two builds report one version.
+  `fleet-reporter/install.js`'s `artifact` region lists, and what its `--render-shipping` prints for every
+  platform — the crontab block, the launchd plist and the hook commands. The next version is strictly
+  greater than `dev`'s, so no two builds report one version.
   `bin/reporter-version-guard.py` (workflow `reporter-version`, run when a PR opens and on every
   push to it) enforces it, and owns that population.
 - **It is sized by [§ Bump sizing](#bump-sizing) from the seat's side.** Patch: a fix or internal
   change that alters nothing a seat must do or can see. Minor: new functionality, or anything that
-  brings a seat a step (a new hook fixture, hook wiring, crontab line or config key). Pre-1.0 a
+  brings a seat a step (a new hook fixture, hook wiring, start definition or config key). Pre-1.0 a
   break is a minor, stated in its row.
 - **Its row in `fleet-reporter/UPDATES.md`** says what an upgrading seat applies, and the same PR
   adds it.

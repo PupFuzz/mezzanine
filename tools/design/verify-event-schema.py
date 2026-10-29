@@ -429,8 +429,8 @@ else:
     # contract that named only the hook-spawned start left it on the home path.  So every start path
     # § 2.3's first numbered list declares must be named by § 3.1's DECLARED leg and by AT-27.  The
     # paths are re-derived from § 2.3's list labels on every run; none is written here.  What this
-    # cannot check is that a start definition's launch delivers the value -- the Linux crontab entry
-    # fleet-reporter/INSTALL-LINUX.md writes; Windows has no supervised start (Option A, card#12335),
+    # cannot check is that a start definition's launch delivers the value -- the Linux crontab entry and
+    # the macOS plist fleet-reporter/install.js writes; Windows has no supervised start (Option A, card#12335),
     # so there its flusher is hook-spawned and the value comes from the harness settings' env block --
     # or that the install rewrites it and restarts the flusher when the value changes.  Neither is in a
     # file this check reads, and § 18.13 row 6 names both as not established.
