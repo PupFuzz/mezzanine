@@ -39,9 +39,11 @@ almost nothing else — [§ 18.9](#189-why-this-does-not-ride-the-batch-contract
 4. The payload is **minimized at the reporter** (D-06): tool name plus a 200-byte sanitized
    descriptor, turn boundaries, context percentage, subagent task titles. Arguments and outputs
    never transit, so a misbehaving server cannot be handed a secret it was never sent.
-5. Fourteen event kinds ([§ 6](#6-event-kinds)) cover session, turn, tool, subagent, compaction,
-   context, attention (both edges) and reporter-liveness. [§ 6](#6-event-kinds) has fifteen
-   sub-headings for them: § 6.0 is the field conventions, not a kind.
+5. The event kinds of [§ 6](#6-event-kinds) cover session, turn, tool, subagent, compaction,
+   context, attention (both edges), reporter-liveness and the seat's own to-do list
+   ([§ 6.16](#616-todoprogress), card#12447). Each of § 6's sub-headings from § 6.1 on is one kind;
+   § 6.0 is the field conventions, not a kind. No count is written here: `App\Ingest\KindRegistry`'s
+   key set is the population, and `Tests\Feature\Ingest\EventSchemaDriftTest` holds the headings to it.
 6. Every tool call is an explicit **open/close ledger entry** — that is how a `/clear`-killed call
    stays distinguishable from a completed one, which is the requirement everything else bends around
    ([§ 8](#8-call-lifecycle--the-kill-vs-complete-contract)).
@@ -196,7 +198,11 @@ the quietest possible reporter failure:
 | OS | Install directory | What the installer writes into settings |
 |---|---|---|
 | Linux / macOS | `~/.local/share/fleet-reporter/` | the expanded absolute path (`/home/<u>/.local/share/…`), never relying on `~` being expanded for it |
-| Windows | `%LOCALAPPDATA%\fleet-reporter\` | the **expanded** absolute path (`C:\Users\<u>\AppData\Local\fleet-reporter\fleet-reporter.js`) — never `~`, never an unexpanded `%VAR%` |
+| Windows | `%LOCALAPPDATA%\fleet-reporter\` | the **expanded** absolute path in forward slashes, double-quoted: `node "C:/Users/<u>/AppData/Local/fleet-reporter/fleet-reporter.js" hook <Hook>` — never `~`, never an unexpanded `%VAR%`, never a backslash path. It is the form the first Windows seat's settings hold (card#12335); the installer recognises an entry by parsing it, so a backslash variant is still the reporter's and is rewritten to this form (card#12571) |
+
+**The installer's platform table is these rows and [§ 3.1](#31-the-seat-config-file)'s**: `node
+fleet-reporter/install.js --paths` prints them for the OS it runs on, and its install suite holds them to the two
+tables, read out of this document (card#12571).
 
 ### 2.2 Rules that protect the seat
 
@@ -240,7 +246,7 @@ if a real seat exceeds it, the fix is in the reporter, not in the number.
 ### 2.3 The flusher must be alive whenever the seat is
 
 The heartbeat is only a liveness signal if its absence means something. Two mechanisms, both required
-on Linux; on Windows only the second is built (item 1 says why):
+on Linux and macOS; on Windows only the second is built (item 1 says why):
 
 1. **Supervised start** — the flusher is registered with a supervisor that runs as the seat's own
    account and needs no root. **On Linux, for a seat without root or lingering (this project's Linux
@@ -251,14 +257,18 @@ on Linux; on Windows only the second is built (item 1 says why):
    account's last logout (`loginctl(1)`, `enable-linger`). The Linux seat installed so far (card#9368)
    runs on the sandbox host, which the no-root, no-sudo, no-systemd ruling covers (`docs/PLAN.md § 5`). A Linux seat that **has**
    lingering may use a `systemd --user` unit instead, and the contract below binds that unit the same
-   way. **On Windows there is no supervised start** (Option A, the operator's ruling of 2026-10-25,
-   card#12335): no Scheduled Task and no other supervisor, so item 2's respawn is the flusher's only
-   start. A Windows seat therefore reads `offline` from the moment its flusher stops — at logoff or a
+   way. **On macOS, for a seat at a GUI login, it is a user `launchd` agent** with `StartInterval 60` and
+   `RunAtLoad` (card#12571; the operator's ruling Q1, and *"(a)"*: the Mac agent is used at the Mac), not
+   `KeepAlive`, which would relaunch a lock loser every throttle interval; it carries `COORD_CONFIG` in its
+   `EnvironmentVariables`, and a seat with no `gui/<uid>` domain — SSH-only — is refused by the installer.
+   **On Windows there is no supervised start** (Option A, the operator's ruling of 2026-10-25,
+   card#12335): no Scheduled Task and no other supervisor, so item 2's respawn is the flusher's start,
+   and the installer starts one flusher at install and upgrade, because no hook fires inside its run. A Windows seat therefore reads `offline` from the moment its flusher stops — at logoff or a
    reboot, and possibly when the session whose hook started it ends, which card#12335 did not measure —
    until a session's next hook starts another: the cost [§ 15](#15-decisions-taken-revisable-at-review)
-   row 9 names. The Windows procedure is `fleet-reporter/INSTALL-LINUX.md` § Installing on a Windows
-   seat. The Linux crontab mechanics are `fleet-reporter/INSTALL-LINUX.md`'s
-   (card#9368), which also derives how long a restart takes. The *contract* is
+   row 9 names. The procedure on every OS is `fleet-reporter/install.js`, whose reference
+   `fleet-reporter/INSTALL.md` carries the Linux crontab mechanics (card#9368), which also derive how long a
+   restart takes, the macOS agent and the Windows start (card#12571). The *contract* is
    here. ⚠ **That start inherits nothing from the harness's settings**, so the
    contract includes the start's launch delivering `$COORD_CONFIG` to the flusher
    ([§ 3.1](#31-the-seat-config-file)'s delivery contract says why, what the flusher does without
@@ -277,7 +287,9 @@ on Linux; on Windows only the second is built (item 1 says why):
 
 **Flusher exclusivity is mandatory, not advisory.** `flusher.lock` is created with
 `O_CREAT|O_EXCL` (`fs.openSync(path, 'wx')`), which is atomic on both platforms: exactly one process
-can win it. It holds `{"pid":…,"started_at":…}` — since card#12180 a `seq_epoch` is a site's, held in that
+can win it. It holds `{"pid":…,"started_at":…}`, and on Linux since card#12571 also `"start_ticks"`, the
+flusher's own start in clock ticks since boot (field 22 of `/proc/self/stat`), by which the installer tells this
+flusher from a reused pid whatever the wall clock did — since card#12180 a `seq_epoch` is a site's, held in that
 site's `state.json` entry, so the lock names none — and its `mtime` is touched on item 2's cadence.
 A flusher that exits removes the lock only while its body still names that flusher's own `pid` and
 `started_at`; a lock that names another flusher is left in place, because removing it lets the next
@@ -331,6 +343,18 @@ Written once, at install time, by the installer. It is the **only** source of th
 | Linux/macOS | `~/.config/fleet-reporter/config.json`, `0600`, directory `0700` |
 | Windows | `%APPDATA%\fleet-reporter\config.json`, ACL restricted to the installing user |
 
+These rows are the installer's platform table, as [§ 2.1](#21-one-file-four-subcommands)'s are (`node
+fleet-reporter/install.js --paths`). **The token reaches this file from a TOKEN FILE the installer is given by
+path** (card#12571; `docs/design/REPORTER-INSTALL.md` § 4 owns the contract's rationale). **v1** is the bare token
+on one line with an optional LF. **v2** is the form the site's *Seat tokens* page saves (its *Save token file*
+button, card#12571's server half): exactly four `<key> <value>` lines — `token`, `ingest_url`, `install_id`,
+`seat_id` — once each, in any order, LF only and no carriage return, `ingest_url` an `https://` URL ending
+`/api/ingest/events`, the two slugs by the rows below; a v2 file gives the installer the seat's identity and
+site. One parser in `fleet-reporter/install.js` reads both and refuses anything else by name, never printing
+the content. The installer takes the file into this file's directory, owner-only — a file another principal
+could have read is **taken with a warning** (the operator's ruling of 2026-10-29, which loosens the earlier
+*treat it as exposed* rule for a file given by path) — writes the config, and removes the file.
+
 | Key | Type | Null? | Bounds | Example |
 |---|---|---|---|---|
 | `install_id` | slug | no | `^[a-z0-9][a-z0-9-]{1,31}$` | `"aimla"` |
@@ -345,6 +369,8 @@ Written once, at install time, by the installer. It is the **only** source of th
 | `descriptors` | string | no — **absent** means `"full"` | `"full"`, `"paths"` or `"none"`; any other value is a config error, and the events spooled under it are built as under `"none"` | `"full"` |
 | `protocol_agent_name` | slug | **yes** | the **protocol agent name this seat declares itself to be** — the `slug` pattern and the byte bound [§ 18.6](#186-coordthread) gives such a name on the wire, pointed at rather than restated: a name this file could hold and no `coord.*` field could carry would join nothing. Absent or `null` when the seat declares none | `"pm"` |
 | `roundtable_agent_name` | slug | **yes** | the **identity this seat posts under on the fleet's cross-install coordination repository** — the roundtable — which on a solo or PM seat is a different string from the row above (in the generator spec's vocabulary, `pm-solo` beside `pm`; operator, 2026-10-23, card#12239). Same pattern, same bound, same four check states, checked against a different key of the same config (the subsection *`roundtable_agent_name`* below). Absent or `null` when the seat declares none | `"pm-solo"` |
+| `board_user_id` | int | **yes** | card#12447 — the kanban board user this seat's own board credential resolves to, `1…4,294,967,295` (`D2-CITED:` the width [D2 § 6.4](FLEET-STATE.md#64-ddl)'s `seats.board_user_id` holds); written by the installer from the board's own answer rather than typed from memory (the subsection *`board_user_id` and `board_api_base`* below). Absent or `null` when the seat declares no board identity; a value that is not a positive integer in that range is a **malformed** declaration, which declares nothing | `14` |
+| `board_api_base` | string | **yes** | card#12447 — the absolute `https://` base of the kanban API the row above was resolved against, ≤ 256 B, carrying no userinfo, present exactly when `board_user_id` is; it never reaches the wire — the heartbeat carries its 16-hex fingerprint ([§ 6.14](#614-reporterheartbeat)) — so a consuming site can tell *the same board as mine* from *a user id that happens to coincide on another board* | `"https://kanban.example.org/api/v3"` |
 | `enabled` | bool | no | — | `true` |
 
 **What the reporter enforces of this table.** `loadConfig` checks every row at each read except
@@ -378,7 +404,11 @@ table. `"paths"` keeps the descriptors whose source is a file path or a path glo
 wire carries tool names and timing only. Under `"paths"` and `"none"` [§ 6.7](#67-subagentspawn)'s
 `title` is `null` too, because it is the dispatch's free text. Under `"paths"` and `"none"`
 [§ 6.3](#63-turnstart)'s `console_url` is `null` too (card#9416): the key says how much a seat sends, and
-a seat that asked for less than the full label set did not ask for a link to its console either. Neither value changes
+a seat that asked for less than the full label set did not ask for a link to its console either. Under
+`"paths"` and `"none"` `todo.progress` ([§ 6.16](#616-todoprogress), card#12447)
+carries nothing but `null`: under either value the seat's derived answer IS `null`, no retained
+to-do state is read for it, and that `null` is re-synced on every flusher restart — a to-do's text is
+the dispatch title's kind of free text. Neither value changes
 `descriptor_allowlisted` ([§ 9.4](#94-the-predicate-constant-alarm)), which still reads whether the tool is
 on the allowlist. An unrecognised value is a config error: like every other, the flusher keeps
 spooling and sends nothing (`config_invalid`, [§ 9.3](#93-degradation-counters)), and the hooks build
@@ -413,9 +443,9 @@ site issuing it a token, and on no other site by it. What becomes per site is th
 the table above: `ingest_url`, `token`, `ca_file` and `proxy_url`. Everything a site is told is told
 by this subsection and the sections it points at; nothing a site receives changes shape (*The wire
 is unchanged*, below). **Status: built on card#12180.** `fleet-reporter.js` reads both forms and runs
-one lane per site, `fleet-reporter/README.md` carries the amendment row, and the writer embedded in
-`fleet-reporter/INSTALL-LINUX.md` Step 2 writes the multi-site form with the two modes *The installer's
-writer* below states; AT-28 is the acceptance suite's. The install steps that subsection lists are
+one lane per site, `fleet-reporter/README.md` carries the amendment row, and the installer's writer
+(`fleet-reporter/install.js`'s `writeConfig`; until card#12571 the runbook's `write-config.js`) writes the
+multi-site form with the two modes *The installer's writer* below states; AT-28 is the acceptance suite's. The install steps that subsection lists are
 written into the install document, and performing them on the sandbox seat — the record the runbook
 keeps of every step — is the card's install step, which the document says is owed where it is.
 
@@ -566,7 +596,7 @@ process model is unchanged: exactly one flusher runs per seat, wins one `O_EXCL`
 - **`flusher` start and restart mean what they meant.** The supervised start and the opportunistic
   respawn ([§ 2.3](#23-the-flusher-must-be-alive-whenever-the-seat-is)) start the one process; a
   config change — a site added, removed or repointed — takes the restart every config change takes
-  (`fleet-reporter/INSTALL-LINUX.md` Step 5's stop, then cron's next minute or a sooner hook). A
+  (the installer's `restart` step: the stop, then the OS's start or a sooner hook). A
   running flusher reads its config once, at start, and this card does not change that.
 
 **State per site, keyed by name and bound to the hash of the site key.** `state.json` carries a `sites` object
@@ -681,6 +711,11 @@ the file, their lines still being in the spool. A later re-upgrade finds that bu
 it by rule 3 under yet another fresh epoch. Each hop costs the sites one `epoch_reset`, and the
 re-upgrade, being rule 3, re-sends as rule 3 does and counts no `seq_gap`
 ([§ 10.2](#102-ordering-seq-and-gap-detection)); the install document does not offer a downgrade.
+One more thing a downgrade loses (card#12447): a build below `0.5.0` sends no `todo.progress` and so
+no boundary `null`, so a title the downgraded seat last sent would stand on its desk for good — which is
+why `D2:` the server's merge reads tier 4 only for a seat whose last reported `reporter_version`
+satisfies `reporterAtLeast('0.5.0')` (D2 § 4.9's read-time gate), and a downgraded seat's standing slot
+is hidden, not shown stale.
 
 **One request per site, persisted before it is sent and resent verbatim until the site answers.**
 This is the mechanism every per-site `seq` rule rests on, and it replaces the three that rounds 1–3
@@ -907,10 +942,16 @@ and the seat not appearing in that site's store, which is the install document's
 per site. [§ 6.14](#614-reporterheartbeat) states the member accordingly, and the alternative that
 would close it — an identity probe — is rejected below with its cost.
 
-**The installer's writer, `write-config.js`, gains two modes and loses one shape.** It is embedded in
-`fleet-reporter/INSTALL-LINUX.md` Step 2 and today does one thing: take the token off the issue
-command's stdout (or from the carried `FR_TOKEN_FILE`), write a single-site config with `wx`, refuse
-a file that exists. Both token routes keep the property that matters — **the token never reaches a
+**The installer's writer, `write-config.js`, gains two modes and loses one shape.** When card#12180
+designed this it was embedded in `fleet-reporter/INSTALL-LINUX.md` Step 2 and did one thing: take the
+token off the issue command's stdout (or from the carried `FR_TOKEN_FILE`), write a single-site config
+with `wx`, refuse a file that exists. **Since card#12571 the writer is `fleet-reporter/install.js`'s
+`writeConfig`**: each mode below is one of its `mode` values and each `FR_*` input one of its options,
+which `install.js` sets from its own command line rather than from the environment (AT-28 Case P drives
+it under the `FR_*` names through the suite's driver), and it has modes this card did not design —
+`grep -n 'const WRITE_MODES' fleet-reporter/install.js` prints them. Which command performs each act —
+a first install, a rotation, adding or removing a site — is `fleet-reporter/INSTALL.md`'s, not this
+subsection's. Both token routes keep the property that matters — **the token never reaches a
 terminal, an argv, a shell history or a log** — and both are kept unchanged; what changes:
 
 - **It writes the multi-site form, always.** A fresh install writes `sites: [{ name, ingest_url,
@@ -939,8 +980,8 @@ terminal, an argv, a shell history or a log** — and both are kept unchanged; w
   carries and nothing of any value; the existing tokens are copied inside the process and never
   printed, and the new one takes the token route's existing redaction.
 - **`FR_MODE=set-token` replaces one site's token and nothing else**, and exists because the
-  install document already requires rotation (`fleet-reporter/INSTALL-LINUX.md` Step 2, *Rotation*,
-  and [§ 3.3](#33-authentication-and-the-identity-binding-rule)'s order) and nothing credential-safe
+  install document already requires rotation (`fleet-reporter/INSTALL.md` § *Rotating a site's token*;
+  Step 2's *Rotation* in the runbook this card amended, and [§ 3.3](#33-authentication-and-the-identity-binding-rule)'s order) and nothing credential-safe
   could perform it on a multi-site file: the fresh pipeline refuses an existing file, `add-site`
   refuses a duplicate name and URL, the issue command stores a hash and prints a new plaintext
   (`server/app/Console/Commands/IssueIngestToken.php`), so the config still holds the refused value
@@ -953,6 +994,8 @@ terminal, an argv, a shell history or a log** — and both are kept unchanged; w
   secrets), replaces that element's `token`, and takes the same temp-file, `loadConfig`, rename path;
   it prints the site names and `token replaced: <name>`. The rotation the install document states is
   then one order with the refusable step first: issue on the site, `set-token`, the flusher's restart
+  (since card#12571 the middle two are one command, `node install.js --token-file <path>`, which writes
+  the token by this mode and then restarts the flusher)
   (issuing revokes nothing, so the old token stays valid until the revoke — [§ 3.3](#33-authentication-and-the-identity-binding-rule)'s
   overlap — and the restart is not a race), then the old prefix's revoke — **the revoke after the restart**, because a running flusher still presents the
   old token until it restarts, and a revoked one is a `401` that stops its lane
@@ -962,9 +1005,13 @@ terminal, an argv, a shell history or a log** — and both are kept unchanged; w
 - **Removing a site is a filtered rewrite of the one key**, by the `node -e` pattern Step 3 already
   uses to change `descriptors` — read, drop the element whose `name` matches, write with the mode
   kept — given in the install document as a command; a hand edit in an editor is also fine, since it
-  exposes nothing, and `selftest` names a file it breaks. No writer mode is added for it.
+  exposes nothing, and `selftest` names a file it breaks. No writer mode is added for it on this card;
+  card#12571 added one, `remove-site`, which `node install.js remove-site <name>` runs.
 
-**The install document changes this card owes, by step** (`fleet-reporter/INSTALL-LINUX.md`):
+**The install document changes this card owes, by step** (`fleet-reporter/INSTALL-LINUX.md`, the
+runbook as card#12180 found it; since card#12571 its successor `fleet-reporter/INSTALL.md` states
+these acts as `install.js` performs them, in *Upgrading an existing seat*, *Rotating a site's token*,
+*Adding a site* and *Removing one site*):
 **Step 1 gains the upgrade order — `install` the artifact first, then stop the flusher (Step 5's
 `stop-flusher.js`), then let cron's next minute or the next hook start it, then check that the lock
 holder started after the artifact did.** The order is load-bearing and not hygiene, and both
@@ -1206,8 +1253,9 @@ fallback.**
    nothing else on the box reads.
 2. **`~/.config/coord/coordination.config.json`**, when it is not set — **on Linux only.** The
    framework's solo orientation publishes that path in POSIX `~` form and names no Windows
-   equivalent, so on Windows, the other platform this reporter targets ([§ 0](#0-overview)),
-   item 1 is the whole resolution (the paragraph on Windows below).
+   equivalent, so on Windows and on macOS, the other platforms this reporter targets ([§ 0](#0-overview)),
+   item 1 is the whole resolution (the paragraph on Windows below; `rosterSite()` in
+   `fleet-reporter/fleet-reporter.js` reads the home path on `linux` only).
 
 ⛔ **Reading the home path alone makes `disagreed` unreachable on the install shape this ruling
 exists for, and an earlier draft of this section did exactly that.** The coordination framework
@@ -1238,10 +1286,9 @@ coordination framework — so it is **withdrawn rather than relayed**, because a
 published as a contract is a claim the other end would be right to build against. ⚠ **`%APPDATA%` on
 the seat-config row above is a different fact and stays**: that path is where *this* reporter keeps
 *its own* config, which this document decides and the installer creates, while where a
-**coordination** config lives is the framework's decision in another repository. On Windows — the one
-platform this reporter targets whose home path this document has not sourced — `$COORD_CONFIG` is
-the whole of the resolution, and its
-absence is an `unchecked` seat — a supported state.
+**coordination** config lives is the framework's decision in another repository. On Windows and on
+macOS — the platforms this reporter targets whose home path this document has not sourced —
+`$COORD_CONFIG` is the whole of the resolution, and its absence is an `unchecked` seat — a supported state.
 
 **This resolution is a CROSS-REPOSITORY guarantee, so it is declared, checked and bounded rather
 than assumed.** The condition — *the roster is at a path this reporter reads* — is one no reviewer
@@ -1261,8 +1308,8 @@ framework's, in another repository, and it can move without a single check here 
   [§ 2.3](#23-the-flusher-must-be-alive-whenever-the-seat-is)'s **opportunistic respawn** —
   `fleet-reporter/fleet-reporter.js` spawns it with a copy of the hook's own environment.
   ⛔ **§ 2.3's SUPERVISED START inherits none of that, and on a healthy seat it is the flusher that
-  runs.** Its supervisor launches it, the user crontab on Linux (Windows has no supervised start,
-  below), from an environment the harness's settings never reach; and because the flusher lock is exclusive and a
+  runs.** Its supervisor launches it, the user crontab on Linux and the user `launchd` agent on macOS
+  (Windows has no supervised start, below), from an environment the harness's settings never reach; and because the flusher lock is exclusive and a
   hook respawns a flusher only once the lock has gone stale, the OS-started flusher is the one that
   reads the roster and emits every heartbeat for as long as it stays up. A contract that reached
   hooks alone would leave the steady-state heartbeat reading the home path — `unchecked` — on exactly
@@ -1271,11 +1318,13 @@ framework's, in another repository, and it can move without a single check here 
   flusher**. When it is unset there, the launch delivers nothing, so a solo box keeps the home-path
   branch. It is not assumed to be an environment the start definition carries of its own: a start
   definition need not carry one. **On Linux the route is the crontab entry's own `COORD_CONFIG=<path>`
-  assignment**, written by `fleet-reporter/INSTALL-LINUX.md`'s supervision step (card#9368). **On
-  Windows there is no supervised start to deliver it** (Option A, card#12335): every flusher is one a
-  hook spawned, so the route is the harness's settings `env` block, which the hook inherits and hands
-  to the flusher it spawns. The install reads `COORD_CONFIG` from those settings and sets nothing of
-  its own (`fleet-reporter/INSTALL-LINUX.md` § Installing on a Windows seat). Whether a hook Claude
+  assignment**, written by the installer's `supervisor` step (`fleet-reporter/install.js`, card#9368,
+  card#12571); **on macOS it is the plist's `EnvironmentVariables.COORD_CONFIG`**, written by the same
+  step. **On Windows there is no supervised start to deliver it** (Option A, card#12335): every flusher
+  but the one the installer starts is one a hook spawned, so the route is the harness's settings `env`
+  block, which the hook inherits and hands to the flusher it spawns. The install reads `COORD_CONFIG` from
+  those settings, gives it to the one flusher it starts, and sets nothing of its own
+  (`fleet-reporter/INSTALL.md` § Windows: no supervisor). Whether a hook Claude
   Code runs on Windows carries that `env` block was not measured by card#12335, whose run fired every hook by hand; the
   heartbeat's `read_via` reports which roster the flusher read
   ([§ 16](#16-what-an-implementer-builds-from-this)'s Windows precondition).
@@ -1283,10 +1332,11 @@ framework's, in another repository, and it can move without a single check here 
   delivering the path as it stood at install, so the same contract requires the install to
   **rewrite the start definition and restart the flusher when that value changes**. A running
   flusher keeps the environment it was launched with, so a rewrite alone changes nothing until that
-  process exits. On Linux that means re-running the runbook's supervision step, which replaces its
-  crontab block and stops the running flusher. On Windows there is no start definition to rewrite:
-  the new value reaches a flusher spawned by a hook after the settings changed, so the running one
-  must exit first, and the Windows section's upgrade step U6 stops it. Until it
+  process exits. On Linux and macOS that means re-running the installer, whose `supervisor` step
+  replaces its crontab block and stops the running flusher, or boots the launchd agent out and in on the
+  rewritten plist. On Windows there is no start definition to rewrite: the new value reaches a flusher
+  spawned by a hook after the settings changed, so the running one must exit first, and the installer's
+  `restart` step stops it and starts one on the new value. Until it
   does, the flusher reads the old path: `unchecked` where nothing remains there, or a check against a
   roster nothing else on the box still reads where a copy does. Neither fails an act, which is why
   [§ 18.13](#1813-what-this-section-does-not-establish) row 6 names it. ⛔ **The flusher does not
@@ -1310,9 +1360,11 @@ framework's, in another repository, and it can move without a single check here 
   supervised start with nothing inherited, and its ⛔ RED is a start definition written without the
   variable. **That half is discharged on `card#9375`**: `fleet-reporter/fleet-reporter.selftest.py`
   § 19 drives every case and every RED above against `fleet-reporter/fleet-reporter.js`, and each RED
-  has been seen to fail. Its case F runs the start line `fleet-reporter/INSTALL-LINUX.md` writes, read
-  out of that runbook, under `sh -c` from an environment carrying no `$COORD_CONFIG`; that is not cron
-  itself, and it is not the entry an install actually wrote. **The half this repository can check today, it does:** `tools/design/verify-event-schema.py`
+  has been seen to fail. Its case F runs the start line the installer writes — `fleet-reporter/install.js`'s
+  exported `cronLine`, the function its `supervisor` step writes into the crontab (card#12571) — under
+  `sh -c` from an environment carrying no `$COORD_CONFIG`; that is not cron itself, and it is not the entry
+  an install actually wrote. The macOS plist's delivery is held by the installer's own suite on
+  `macos-latest` and is not a case of AT-27. **The half this repository can check today, it does:** `tools/design/verify-event-schema.py`
   re-derives the resolution order from the list above on every run, and reds when AT-27 stops naming
   a site, when [§ 18.13](#1813-what-this-section-does-not-establish) row 6 stops naming them in order,
   when this document names any other location for a coordination config, or when the DECLARED leg
@@ -1448,6 +1500,70 @@ so the heartbeat never carries a value the ingest would refuse ([§ 12.4](#124-b
 and `protocol_agent_name_in_roster` is decided by the name alone. Reading it is the label case
 [§ 3.4](#34-why-identity-never-comes-from-the-environment) rule 1 permits: it gates no emission and
 enters no identity — not the token binding, not `config_fingerprint`, not a character seed.
+
+#### `board_user_id` and `board_api_base` — the seat's board identity, declared at install (card#12447)
+
+**Why the seat declares it, and why it is the installer that writes it.** The operator ruled on
+2026-10-26 that linking an agent to its board user *"should occur automatically"* when the agent is
+set up (card#12447). The only party that holds both halves of that join at set-up time is the seat's
+machine: it carries the kanban credential the agent works the board with, and that credential
+resolves — **MEASURED 2026-10-27 on this project's seat, kanban API `GET /users/current.json` under
+the credential `kbcard` reads from the coordination framework's credential store** — to a `200`
+whose `data.id` is the integer board user the board's own `assigned_user_id` names. So the install
+asks the board *who am I* once, with the seat's own credential, and writes the answer here; the seat
+then **declares** it on every heartbeat, exactly as it declares `protocol_agent_name`.
+**D2:** the site stores the last heartbeat's pair off the seat object and **checks** it against the
+board with its own read-scoped credential before anything joins on it — the board poll's link pass
+(`docs/design/BOARD-TASK.md § 4.4`, card#12447), never the fold. It is `card#7957` option (d) one surface
+over: a declaration by the party that can observe both ends, checked by the party that can
+falsify it, never a name match and never a mapping somebody types from memory.
+
+⛔ **It declares; it does not identify — the four turns `protocol_agent_name` lists hold here
+unchanged.** It is not an input to the token binding ([§ 3.3](#33-authentication-and-the-identity-binding-rule)),
+not an input to the character seed, not in `config_fingerprint`, and omitting it is a supported
+state, permanently: a seat with no board declares none, reports in full, and its desk's task title
+`D2-CITED:` falls through [D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here)'s
+tiers below tier 1 — which is the operator's *"if an agent doesn't connect to a board"* case.
+
+**The reporter checks nothing against the board, by design, and the state set is therefore two
+members and not four.** A roster is a file on the box; a board is a credentialed remote service, and
+a flusher that called it every minute would be a second board client with a second credential in a
+process whose whole contract ([§ 2.2](#22-rules-that-protect-the-seat)) is to protect the seat. So:
+
+| The config holds | What the reporter emits on every heartbeat | Counter |
+|---|---|---|
+| both keys, each well-formed | `board_user_id` as declared, and `board_fingerprint` = the 16-hex fingerprint of `board_api_base` ([§ 6.14](#614-reporterheartbeat) states the derivation) | — |
+| neither key, or both `null` | `null` and `null` — **never the fields silently omitted**, so a site can tell a current reporter that declares nothing from a reporter that predates the fields | — |
+| one key without the other, or either malformed | `null` and `null` — a malformed declaration declares nothing, exactly as a malformed `protocol_agent_name` does, and for the same reason: the ingest would refuse a heartbeat carrying it and the whole batch with it ([§ 12.4](#124-batches-are-atomic)). ⛔ Not a config error: `config_readable` passes, nothing stops sending | `board_declaration_malformed` ([§ 9.3](#93-degradation-counters)); the `selftest` subcommand's `detail` names which key, and never the value of `board_api_base` beyond its scheme and host |
+
+**Which credential the installer resolves with, and the two states a box can be in.** The installer's
+`board-identity` step (`fleet-reporter/install.js`; the runbook's Step 2 block until card#12571,
+card#12447) reads the kanban API base from the coordination config the reporter already resolves for
+its roster — `$COORD_CONFIG` first, the home path second, the order
+*`protocol_agent_name`* above states — as `kanban.base_url` joined to `api/v3` with **exactly one `/`** between them — every trailing `/`
+stripped from the base first — unless the base already ends in `/api/v3` (**MEASURED 2026-10-27: this
+seat's `kanban.base_url` is the site root, and the API answers under `/api/v3`**), and the credential from that framework's credential store
+(`[kanban] api_token_file`, the pointer `kbcard` discovers — read in the user's own shell, sent in an
+`Authorization` header, printed nowhere). ⚠ **The kanban read variable this seat exports into its sessions (`COORD_KANBAN_READ`) is
+NOT that credential: MEASURED 2026-10-27, it is refused `401` on `/users/current.json`** while the
+store's token answers `200` — so the block reads the store's pointer and never that variable, and a
+box whose store names no kanban token is the second state: the keys are left unset, the seat is
+**undeclared**, and the step says so and goes on. **On a later run** — every installer run re-resolves
+— a failure other than *no credential* (the board unreachable, a non-`200`, a body with no integer
+`data.id`) **keeps the keys the config already holds** and prints `kept` with the failure's class: a
+seat that declared yesterday is not undeclared by today's outage, and the keys change only on a
+`200` that names a different user or base, or on *no credential* — a credential store the block **read
+successfully** and that names no kanban token pointer — which clears them; a store it could not read at
+all is a failure like any other and keeps them. The install does not fail on a seat that has no
+board; the operator's ruling is that the link is automatic where there is a board to link to, and a
+seat without one takes the to-do tier instead.
+
+**A re-homed seat declares again.** A seat retired and re-created under a new `seat_id` runs the
+install again and resolves the same board user, which the retirement act freed —
+`D2-CITED:` [D2 § 4.10](FLEET-STATE.md#410-retirement-is-a-rendered-state) — and the site's link pass maps it at
+its next poll. A seat whose config is copied to a second machine declares the same board user twice,
+which is the conflict `docs/design/BOARD-TASK.md § 4.4` refuses by name — and which no seat can
+detect, for the reason `card#9296`'s duplicate-name rule gives.
 
 ### 3.2 Session identity
 
@@ -1609,7 +1725,7 @@ Present on **every** event of every kind.
 |---|---|---|---|---|---|
 | `event_id` | ULID | — | no | 26 chars | `"01K3T8ZQ6P2R4S8T0VWXYZ1234"` |
 | `schema_version` | int | — | no | ≥ 1, **must equal the batch's** | `1` |
-| `kind` | string | — | no | ≤ 32 B, `^[a-z]+\.[a-z_]+$`; the 15 currently-defined kinds are listed in [§ 6](#6-event-kinds), and an **unknown kind is accepted, ignored and counted** ([§ 5](#5-compatibility--what-this-document-owes-the-policy)), never a rejection | `"tool.start"` |
+| `kind` | string | — | no | ≤ 32 B, `^[a-z]+\.[a-z_]+$`; the 16 currently-defined kinds are listed in [§ 6](#6-event-kinds), and an **unknown kind is accepted, ignored and counted** ([§ 5](#5-compatibility--what-this-document-owes-the-policy)), never a rejection | `"tool.start"` |
 | `event_time` | rfc3339_ms | UTC, seat clock | no | — | `"2026-08-23T14:07:03.118Z"` |
 | `seq` | int | — | no | 1…2^53−1, monotonic per `seq_epoch` | `48211` |
 | `install_id` | slug | — | no | ≤ 32 B, **must equal the batch's** | `"aimla"` |
@@ -2030,8 +2146,8 @@ fed reads zero forever, and nothing reds. The obligations, both binding:
    > **Every capture records the harness version it was taken from, read from the running binary and
    > not from configuration.** Three sources disagree in practice and only one of them is the fact:
    > `harness_label` in the reporter's config is a value **written once, by hand, if at all**, and
-   > cannot see an upgrade — `fleet-reporter/install.sh` (card #7336) writes the config the runbook
-   > writes, and `fleet-reporter/INSTALL-LINUX.md` Step 3 leaves the key unset on purpose for exactly that
+   > cannot see an upgrade — the installer (`fleet-reporter/install.js`, card#12571; `install.sh` before it,
+   > card #7336) writes the config, and leaves the key unset on purpose for exactly that
    > reason, so on a seat installed that way the field is `null`; a `claude --version` taken before
    > a run can be stale by the time it matters — an
    > auto-update landed **mid-experiment** during card #7337's own runs, so events labelled
@@ -2132,6 +2248,7 @@ reference, the measurement wins and the row says so.
 | `tool_response`'s per-tool schema | — | **UNVERIFIED**, and **not needed**: which hook closed the call carries the error fact ([§ 6.6](#66-toolend)) and `PostToolUseFailure.error` carries the detail. Nothing to close — **except for the dispatch tool**, below |
 | The dispatch tool's `tool_response` says whether it returned on **launch** or on **completion**: `{"isAsync": true, "status": "async_launched", "agentId", "description", "resolvedModel", "prompt", "outputFile", "canReadOutputFile", "canContinueAgent"}` for a background launch; `status` is `"completed"` when the call returned after its subagent finished | `tool_response.status`, `tool_response.agentId` | **MEASURED, by a different method from [§ 17](#17-appendix--the-captured-harness-payloads)'s** (card#11799): read off the tool results recorded in this project's seat transcripts at 2.1.266–2.1.296, every one of them `async_launched`, and the `agentId` matched against the `agent_id` the reporter's own `SubagentStart` `bind` recorded for the same dispatch. That the hook's `tool_response` is this same object is **DOCS-CITED** from the installed 2.1.296 binary, whose `PostToolUse` builder passes the tool's result as `tool_response`; **no hook-stdin capture of an `Agent` `PostToolUse` exists**, so none is added to § 17. `"completed"` is DOCS-CITED from the same binary — no foreground dispatch occurred on these seats. [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) reads both fields. Cost if wrong: a launch that is not recognised closes at its `PostToolUse` as before — the empty side table, never a lost event; `dispatch_background_launch` reading zero on a dispatching seat is the observable |
 | A `background_tasks` entry for a launched subagent carries `id` equal to its `agent_id`, and the array lists only tasks that are `running` or `pending` **and** backgrounded | `background_tasks[].id` | **DOCS-CITED** from the installed 2.1.296 binary (the subagent task is registered under its `agent_id`, the payload builder filters on that status pair and `isBackgrounded`, and the binary's own task-notification contract states "The `<task-id>` value is the agent ID"); the entry's key set is MEASURED at 2.1.245 above. **No `Stop` payload naming a running subagent has been captured on this project's seats.** [§ 8.3](#83-the-reap-rules)'s turn reap reads it. Cost if wrong: no id ever matches, the reap aborts a running subagent's dispatch at its parent's `Stop` — the intern leaves early, counted by `dispatch_kept_across_turn_reap` reading zero beside a non-zero `dispatch_background_launch` |
+| **The harness's to-do list is two tool families, and on a current model it is neither unless the session opts in** (card#12447) | `tool_name`, `tool_input.todos[]`, `tool_input.subject`, `tool_input.activeForm`, `tool_input.taskId`, `tool_input.status`, `tool_response.task.id`, `tool_response.tasks[]` | **MEASURED at 2.1.311, headless `claude -p` with `--settings`, 2026-10-27, two runs on this project's seat; the captures are not yet in [§ 17](#17-appendix--the-captured-harness-payloads), whose declared build is older — they join it at the next whole-appendix re-capture, which [§ 16](#16-what-an-implementer-builds-from-this) makes part of the build.** Under `CLAUDE_CODE_ENABLE_TODO_TOOLS=1 CLAUDE_CODE_ENABLE_TASKS=0`: `TodoWrite`'s `PreToolUse` and `PostToolUse` both carry `tool_input.todos`, an array of `{content, status, activeForm}` with `status ∈ {pending, in_progress, completed}`; its `PostToolUse` adds `tool_response: {oldTodos, newTodos}`. Under `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` alone the harness provides the **Task family** instead: `TaskCreate` carries `tool_input: {subject, description, activeForm}` and its `PostToolUse` `tool_response: {task: {id, subject}}`; `TaskUpdate` carries `tool_input: {taskId, status}` (the SDK reference says the key may arrive as `id` or `task_id` and `activeForm` as `active_form` — DOCS-CITED, not seen in this capture) and `tool_response: {success, taskId, updatedFields, statusChange: {from, to}}`; `TaskList` carries `tool_response: {tasks: [{id, subject, status, blockedBy}]}` with no `activeForm`. **DOCS-CITED** (`code.claude.com/docs/en/tools-reference`, § *Task tool availability*, read 2026-10-27): the five tools are provided by default only on Opus 4.7, Sonnet 4.6, Haiku 4.5 and earlier models; wherever provided, the four Task tools are, and `TodoWrite` only under `CLAUDE_CODE_ENABLE_TASKS=0`; on every other model *"Claude Code leaves the tools out unless you opt in"* (`CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools`, or `--tools`), the default applying from 2.1.268; by the operator's ruling of 2026-10-27 the reporter's installer sets that variable in the seat's user-level settings `env` when it is absent (`docs/design/BOARD-TASK.md § 14` item 11, the installer's `todo-tools` step in `fleet-reporter/install.js`). **Cost if wrong:** a seat on which the list exists under a name this row does not name sends no `todo.progress`, and its desk falls through to tier 3 — the same render as a seat with no list, which [§ 6.16](#616-todoprogress) names as the one state the tier cannot distinguish |
 
 #### Harness enum value sets are bound to the binary, not transcribed
 
@@ -2300,9 +2417,10 @@ cites its sum instead of carrying a second figure that could drift from it.
 | `attention.request` | `PermissionRequest` hook, or `Notification` hook | hook | 0–50 |
 | `attention.resolved` | the request's exit edge ([§ 6.13](#613-attentionresolved)) | hook / flusher | 0–50 |
 | `reporter.heartbeat` | flusher timer, every 60 s | flusher | 1,440 |
+| `todo.progress` (card#12447, [§ 6.16](#616-todoprogress)) | the flusher's fold of the `todo` journal records a main-agent `PostToolUse` on a task-tracking tool appended, when the in-progress title it derives for that session changed | flusher | ≤ 100 — **outside the sum below**: every one rides a tool call `tool.start`/`tool.end`'s own range already counts, and the sum is a sizing estimate whose smallest row is that range ÷ 30; the first week of live data re-derives the ceiling with this kind in it ([§ 14](#14-every-number-and-where-it-comes-from)) |
 
 Volumes are **estimates for sizing, not measurements** — no seat has been instrumented yet. The
-ceiling column sums to **18,356 events/seat/day**, which at the ~500 B typical event size is
+ceiling column's rows above `todo.progress` sum to **18,356 events/seat/day**, which at the ~500 B typical event size is
 **~9.2 MB/day**. That pair is the only volume figure this document uses: it feeds the spool bound,
 the residency cap and the rate limits, and the first week of live data re-derives it. The same
 column's midpoint is ~11,100 events/day (~5.5 MB/day); sizing is done at the ceiling, and the tightest
@@ -2367,7 +2485,7 @@ capture was taken from, so the fleet needs to be able to *see* when a seat has m
 field carries `claude-code/<version>` from the harness the reporter is running under, which lets an
 operator answer "which seats are on a build this document has never been measured against" from the
 stream instead of from a survey. ⚠ **No hook payload carries the version, so the reporter reads it from
-a `harness_label` config key**, and `fleet-reporter/INSTALL-LINUX.md` Step 3 leaves that key unset on
+a `harness_label` config key**, and the installer (`fleet-reporter/install.js`) leaves that key unset on
 purpose: a version written once goes stale at the harness's next self-update. On a seat installed that
 way the field is `null`, and `harness_label_unset` counts the gap. **It is not a
 `payload_key_missing.<key>` counter**, because that family names a harness payload key and raises
@@ -3486,12 +3604,15 @@ split of the fields is stated under the table.
 | `protocol_agent_name` | slug | — | **yes** | `config.protocol_agent_name` ([§ 3.1](#31-the-seat-config-file)) verbatim; ≤ 48 B — the bound [§ 18.6](#186-coordthread) gives a protocol agent name, which that row points at. It is a **figure** here and not a pointer because [§ 12.1](#121-validation-order) step 10 refuses only a bound this table states: left as a pointer, an over-long name would pass the ingest and fail at the fold against [D2 § 6.4](FLEET-STATE.md#64-ddl)'s 48 B column instead. `tools/design/verify-event-schema.py` holds this figure — and D2's column, D2 § 8.2.1's row and the store's migration — equal to § 18.6's; `null` on a seat that declares none, and absent from a reporter that predates this field — the paragraph below this table separates what the ingest accepts from what a current reporter owes | `"pm"` |
 | `protocol_agent_name_check` | enum | — | **yes** | `checked` \| `unchecked` \| `disagreed` \| `undeclared` — [§ 3.1](#31-the-seat-config-file)'s state table owns the set and the rule that produces each member; null or absent means a reporter that predates this field — the paragraph below this table separates what the ingest accepts from what a current reporter owes | `"checked"` |
 | `protocol_agent_role` | slug | — | **yes** | the coordination roster entry's `role`, relayed verbatim beside the name ([§ 3.1](#31-the-seat-config-file)'s *`protocol_agent_role`*); ≤ 48 B — the name's own pattern and bound, a **figure** here for the same reason as the row above, and held equal to it, with D2's column, D2 § 8.2.1's row, the store's migration and the ingest's registry, by `tools/design/verify-event-schema.py`; `null` unless `protocol_agent_name_check` is `checked` and the declared name selects exactly one entry carrying a slug-shaped `role`, and absent from a reporter that predates this field (card#11144) | `"pm"` |
+| `board_user_id` | int | — | **yes** | `config.board_user_id` ([§ 3.1](#31-the-seat-config-file)'s *`board_user_id` and `board_api_base`*, card#12447) verbatim, `1…4,294,967,295`; `null` when the seat declares none or its declaration is malformed, and absent from a reporter that predates the member | `14` |
+| `board_fingerprint` | string | — | **yes** | 16 hex chars = the first 16 of SHA-256 over `board_api_base` **normalized**: scheme and host lowercased, a port equal to the scheme's default (`443` for `https`) removed, every trailing `/` removed, nothing else touched — a base carrying userinfo is refused at `loadConfig` (the malformed row of § 3.1's state table), so no strip of it is needed or written; `null` exactly when `board_user_id` is. The URL itself never rides the wire — the same reason `config_fingerprint` carries a digest and not `ingest_url` — and the site's own `BOARD_API_BASE`, normalized by this same rule, is what `docs/design/BOARD-TASK.md § 4.4` compares it to: the declaring end states the normalization, the checking end cites it (card#12447) | `"3b7f0a9c21d4e8f6"` |
 | `degraded` | array\<enum\> | — | no | 0…12 elements, one per member of the set [§ 9.3](#93-degradation-counters) declares; no duplicates, ordered as [§ 9.3](#93-degradation-counters) lists them | `["batches_rejected"]` |
 | `counters` | object | — | no | ≤ 1.5 KiB serialized, all cumulative totals that persist across flusher restarts ([§ 9.3](#93-degradation-counters)); reduction rule below | see below |
 | `counters_omitted` | int | — | no | ≥ 0, counters dropped to fit the cap | `0` |
 | `predicates` | object | — | no | ≤ 512 B, `{name:{true:int,false:int}}`; one member per [§ 9.4](#94-the-predicate-constant-alarm) predicate, worst case **316 B** — **no reduction rule, and none owed** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5's named exemption; the arithmetic is below) | see below |
 | `selftest` | object | — | no | ≤ 256 B, `{name:"pass"\|"fail"}`, every key matching `^[a-z][a-z0-9_]*$` and ≤ 32 B; one member per check the member table below declares, worst case **254 B** — **no reduction rule, and none owed** (same exemption) | see below |
 | `config_fingerprint` | string | — | no | 16 hex chars = SHA-256 of `install_id\|seat_id\|ingest_url`, **token excluded** — the `ingest_url` of the site receiving the heartbeat, so a single-site seat's fingerprint is what it was before card#12180 | `"9f2c41a7be03d518"` |
+
 
 **Which members are the site's and which are the seat's (card#12180).** A heartbeat is built for one
 site and sent to it ([§ 3.1](#sites-one-seat-reporting-to-several-mezzanine-deployments)), so every
@@ -3504,8 +3625,9 @@ verdict that site's sending acts on); and, inside `counters`, the per-site deliv
 [§ 9.3](#93-degradation-counters) declares, each carried as that site's total **plus** the seat-level
 total of the same name where one exists (§ 9.3 states the composition), with `degraded` composed from
 the seat's windowed counters merged with that site's. **The seat's:** `uptime_s`, `spool_bytes`,
-`spool_files`, `last_hook_at`, the `open_*` figures, `enabled`, the declaration triple, `predicates`,
-the remaining `selftest` members and every other counter. No member names the site: a site reads a
+`spool_files`, `last_hook_at`, the `open_*` figures, `enabled`, the declaration triple, the board pair
+(`board_user_id`, `board_fingerprint`, card#12447), `predicates`, the remaining `selftest` members and every
+other counter. No member names the site: a site reads a
 seat exactly as it read a single-site seat. **The event is stamped from the clock when the lane builds
 it, outside the seat write lock** ([§ 11.2](#112-spool-line-format)): it is no longer a spool line,
 its `seq` is the site's and its position is item 0 of the batch that carries it, and the fields it
@@ -3939,17 +4061,234 @@ rule 7's first additive case: no `schema_version` bump, and an ingest older than
 counts it (`ignored_unknown_kinds`, [§ 12.7](#127-server-side-counters)), rendering the seat
 `reporter_ahead` — which is the order the fleet upgrades in anyway, server first.
 
-**Rollout — reporter `0.4.0`, shared with card#12447.** This is new functionality a seat sees, so
+**Rollout — reporter `0.4.0`.** This is new functionality a seat sees, so
 `REPORTER_VERSION` moves a **minor**, to `0.4.0` ([`docs/VERSIONING.md § The reporter's own version`](../VERSIONING.md#the-reporters-own-version)),
 and touches `artifact` alone — no new hook, no fixture, no config key: every hook it reads is already
 wired. `SchemaVersions::CURRENT_REPORTER_VERSION` moves with it, and `fleet-reporter/UPDATES.md` carries the
-`0.4.0` row. card#12447's reporter change (the TodoWrite capture) was designed to share this minor; under
-§ The reporter's own version a later reporter change takes a version strictly greater than `dev`'s
-(`bin/reporter-version-guard.py` holds it), so whichever of the two lands second moves the line again and adds
-its own row, and a release carrying both announces both rows to the fleet as one upgrade. A seat that has
+`0.4.0` row. card#12447's reporter change was designed to share this minor and landed after it, so under
+§ The reporter's own version it took the next one — `0.5.0`, its own row ([§ 6.16](#616-todoprogress)'s
+rollout) — and a release carrying both announces both rows to the fleet as one upgrade. A seat that has
 not applied it is badged `update_required` and its interns render `working` for as long as their
 dispatches are open (`FLOOR.md` § 8's *Working and idle interns* states the default and why it is not a
 null).
+
+### 6.16 `todo.progress`
+
+*Built for card#12447 (designed 2026-10-27 through seven review rounds, built 2026-10-28; reporter `0.5.0`).*
+The operator's ruling of 2026-10-26, verbatim: *"If an agent doesn't connect to a board, then B should
+occur automatically (not opt-in)"* — B being the harness to-do list's in-progress item, shown in the
+desk's thought bubble when no board card answers.
+
+**Re-derived on review round 3, and the shape is deliberately small.** The first three drafts
+reconstructed the harness's whole task list from its incremental calls and coupled the title's life to
+the server's session rows; each round found a defect in that lifecycle (`docs/design/BOARD-TASK.md
+§ 13.1` carries the one-line history). The design below keeps **no list** and **no server-side
+lifecycle**: the reporter holds a small map of task texts, decides the title from the one call that
+moved it, and is the **sole writer of the title's life** — it says `null` when the session ends.
+
+**Trigger — the FLUSHER emits it, from records the hooks only append.** [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)'s
+rule binds here as everywhere: hooks run in parallel and never read-modify-write, so no hook derives a
+title. A main-agent `PostToolUse` (no `agent_id` in the payload, the label [§ 6.5](#65-toolstart) reads
+for `agent_scope`) on `TodoWrite`, `TaskCreate` or `TaskUpdate` appends **one journal record and emits
+nothing**; the flusher's index fold ([§ 11.5](#115-retry-and-backoff)'s `K.FLUSH_MS` cadence) applies
+the records in journal order and emits **at most ONE `todo.progress` per flusher section, derived
+LAST** — after the section's records are folded and its inferred closes have run — by comparing the
+seat's derived answer with `last_emitted` and emitting once when they differ. One per section is a
+rule and not an optimisation: every event a section emits shares the section stamp
+([§ 11.2](#112-spool-line-format)), `D2:` the server guards the slot on that stamp as
+`contextSample()` guards the gauge, an equal stamp loses, so two titles in one section would land the
+first and drop the second — a `TaskUpdate` X → `completed` and Y → `in_progress` in one 10 s window
+would leave the desk blank while the agent works Y. Deriving last over the whole section yields *Y*
+once. `TaskList` and `TaskGet` append nothing: the list is
+never reconstructed here. A subagent's list is the subagent's and appends nothing. The records, all
+D1-SILENT reporter-internal kinds beside the index's others, compacted by the flusher like every other:
+
+| Record | Appended on | Carries | The fold applies it as |
+|---|---|---|---|
+| `todo_list` | `TodoWrite`'s `PostToolUse` | the **first** `in_progress` entry of `tool_input.todos[]` in list order, as `text` (`activeForm`, else `content`), or no entry | the session's title becomes that `text`, or `null` when the record carries no entry — `TodoWrite` carries the whole list, so one record is the whole answer, and one entry is all the derivation reads |
+| `todo_create` | `TaskCreate`'s `PostToolUse` | `tool_response.task.id`, `text` (`activeForm`, else `subject`) | the session's map gains `id → text` |
+| `todo_update` | `TaskUpdate`'s `PostToolUse` | `tool_input.taskId`; `status` where present; `text` where the call carried `activeForm` or `subject` | `text` present ⇒ the map's entry is set; `status: in_progress` ⇒ that id becomes the session's **titled id** and the session's title its `text`; `status: completed` or `deleted` for the titled id ⇒ the session's title is `null`; any other update moves no title |
+
+**The map is a small LRU, never a list — and the title is kept beside it, not in it.** Per session,
+`id → text`, at most [§ 14](#14-every-number-and-where-it-comes-from)'s *entries per session map*,
+ordered by last touch (a create or an update); a touch past the cap **evicts the least-recently-touched
+entry** and counts `todo_map_evicted`, so the map can never refuse a new entry — the defect the
+previous draft's refusing cap carried, under which a session full of completed tasks went dark for
+the rest of its life. Each session also keeps, **outside the LRU**, its `titled_id` and the title
+`text` that id had when it was titled, so evicting the titled entry from the map loses no title;
+both ride the index snapshot with the map, beside a per-session **`closed_by_inference`** bit —
+set at the session's close when its `end_reason` is `inferred_silence`, which is both the flusher's
+own silence close and the hook-side cap eviction (`reapSessionBoundary` reaps an evicted session
+under that reason), and cleared by a close under any other reason — kept here because the index's
+`sessionsClosed` tombstones are pruned after 15 minutes and the post-inference first hook may arrive
+later than that; and a per-session **`contributing`** bit — set by a
+`todo_*` record that moves the session's title, by a `session_open` with `source: resume`, and by the
+first hook of a session whose retained state carries `closed_by_inference`; cleared by **every** `session_close` — a
+`SessionEnd`, a `/clear`, the flusher's `inferred_silence`, and the hook-side session-cap eviction
+(`reapSessionBoundary` on an evicted session, [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)) — and set by
+nothing else: `touchSession()` reopens an index session on any late hook, and a late hook after a
+seat-sent `SessionEnd` must not resurrect a contribution the seat ended. The seat's answer is
+re-derived on every clear of the bit, the cap eviction included, so a session the hook side evicts
+takes its title off the desk exactly as a `SessionEnd` does. An update naming an id
+the map does not hold — evicted, or created before this reporter saw the session (a resumed list, a
+reporter upgraded mid-session, the harness's own list identifier `CLAUDE_CODE_TASK_LIST_ID`,
+DOCS-CITED) — is **expected** and counts `todo_task_unknown` ([§ 9.3](#93-degradation-counters)),
+its own informational counter and never `payload_key_missing.<key>`, whose rise raises
+`harness_contract_moved` on a seat whose harness has moved nothing; when such an update carries
+`text` the entry is created from it, and when it sets `in_progress` with no `text` the session's
+title is `null`, because the reporter holds no text to show and a bubble that kept the previous
+step's text over a step it cannot name would be a title about the wrong task. What stays a
+`payload_key_missing.<key>` is a payload the reporter cannot read at all: `todos` that is not an
+array, a `TaskCreate` close with no `tool_response.task.id`.
+
+**The seat's title is derived over its CONTRIBUTING sessions, and a boundary removes one contribution.**
+Two terminals on one seat is ordinary ([§ 6.2](#62-sessionend)), so a per-session title cannot be
+the per-seat answer by itself: B's `SessionEnd` would null A's live title, and B's resume would
+overwrite it. The flusher therefore keeps one title per session — set and cleared as the table
+above says, each with the `at` of the record that last moved it — and derives **the seat's** title
+as **the most recently moved non-null title among the seat's CONTRIBUTING sessions** — a session
+contributes while its `contributing` bit is set (below). A session boundary clears that session's
+bit; the seat's answer is then re-derived over the sessions still contributing and emitted if it
+changed — another session's title, or `null` when none is left.
+
+**What the event carries, pinned.** It is stamped **like every other event the flusher emits**: the
+section stamp taken under the seat write lock at emit ([§ 11.2](#112-spool-line-format), card#11563),
+never a clock the caller supplies — a trigger-time stamp would break [§ 10.1](#101-two-clocks-and-which-is-authoritative-for-what)'s
+spool order and leave the unconditional re-sync below with no time of its own. That fresh stamp is
+what lets a re-emitted older title stand: `D2:` the server guards the slot on the event's own
+`event_time`, and the re-emit is newer than any `null` emitted before it; the triggering record's
+`at` rides no `data` field, because nothing reads it. Its `session_id` is **the triggering record's**
+— the session whose title or boundary changed the seat's answer, which for a boundary emit is the
+session that just closed, and for the first-fold re-sync the newest session the index holds, closed
+or open. When the index holds no session at all the flusher emits nothing, re-sync included — a
+`todo.progress` carries a session like every kind but the heartbeat ([§ 4.3](#43-common-per-event-fields)),
+and the cost is named: a server slot standing from before a snapshot the reporter lost is corrected by
+the seat's first session record, not sooner. ⛔ `D2:` the server's projection of this kind resolves
+**no session row** — it is a seat-slot write on the `contextSample()` model, and it must not call the
+session resolver that a session-scoped projection calls, because the resolver reopens a session the
+flusher closed on inference and the boundary emit carries exactly that session's id: a phantom open
+session, and `session_reopened` counted on every silence close.
+
+| `data` field | Type | Units | Null? | Bounds | Example |
+|---|---|---|---|---|---|
+| `title` | string | — | **yes** | ≤ 120 B, sanitized — the full pass of [§ 7.3](#73-redaction-rules-applied-in-this-order), then [§ 7.4](#74-truncation)'s procedure at the title bound, applied **by the hook at append** (below); `null` when nothing is in progress, when the titled task completed or was deleted, at the session's end, at a `/clear`, and once when `descriptors` is narrowed | `"Measuring the room"` |
+| `title_truncated` | bool | — | no | — | `false` |
+| `tool_name` | string | — | no | ≤ 64 B, the `tool.start` pattern — the tool whose record moved the title, or the boundary that cleared it (`SessionEnd`, `SessionStart`); the drill-down's timeline reads it, and `dispatch_tool_name.<name>`'s precedent is why it is a string and not a closed set this document would re-transcribe at the next harness release | `"TaskUpdate"` |
+
+**Which text.** The harness gives a to-do two strings: an imperative (`content` on `TodoWrite`,
+`subject` on the Task family) and a present-continuous `activeForm` (*Measuring the room*), which the
+harness itself shows while an item is in progress and which is the form a thought bubble reads
+naturally. `text` is **`activeForm` when the payload carries one, else the imperative** — a rule over
+two documented fields with different roles, decided at the hook from the one payload in hand, never a
+fallback across calls. For `TodoWrite` the **first** `in_progress` entry in the harness's own array
+order answers; for the Task family the **most recent** `TaskUpdate` that set `in_progress` answers,
+whatever other ids hold that status, because the call that moved an item is the harness's own
+statement of what the agent turned to. ⚠ The harness's guidance that one item at a time is in
+progress is **UNVERIFIED** here and nothing depends on it: both rules answer either way.
+
+**The reporter is the ONE writer of the title's life, and the server holds one slot per seat.**
+`D2:` the server keeps the newest `todo.progress` on `seat_state` — `todo_title`, `todo_as_of`,
+`todo_event_time` (D2 § 6.4's columns) — one slot per seat, guarded on the event's own
+`event_time` like every other field group, and clears it on **nothing of its own**: no session close,
+no quiescence, no clock. The reporter says when a contribution ends, from the facts only it can see,
+and emits the seat's re-derived answer whenever it changes:
+
+- at **`SessionEnd`**, whatever its `reason`, the hook appends a `todo_end` record; the flusher
+  drops that session's contribution and emits the seat's new answer, with `tool_name: "SessionEnd"`;
+- at a **`/clear`** — `SessionStart(source=clear)`, the signal [§ 8.4](#84-detecting-a-clear-with-two-independent-signals)
+  already pairs — the same, since the new session starts with no list;
+- at the flusher's own **`inferred_silence`** close ([§ 6.2](#62-sessionend)) the same, from the
+  same process that emits that `session.end`, so a session that died without a `SessionEnd` ends its
+  contribution at the 90-minute silence rule and not later — and when a hook from that session
+  arrives afterwards (the harness was quiet, not gone; the server reopens the row on it,
+  `D2-CITED:` D2 § 4.6), the flusher **sets the session's `contributing` bit again and re-emits the
+  seat's answer** on that first hook, so the inference's `null` does not outlive the inference — the
+  one late-hook case that restores, since the close it undoes was the reporter's own guess;
+- at **`SessionStart(source=resume)`** the flusher sets the session's `contributing` bit, its
+  retained title and titled id standing — the `claude --resume` after an ordinary `SessionEnd`, the case a server-side lifecycle could
+  not see — and emits the seat's answer if it changed; the retained per-session state is kept past a
+  session's close for [§ 14](#14-every-number-and-where-it-comes-from)'s *retained session maps*,
+  and past that count the least-recently touched **closed** session's state is dropped — never an
+  open session's, which [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)'s
+  cap of 16 already bounds;
+- **after every flusher start** the derived seat answer is emitted **unconditionally**, `null`
+  included, on the first fold whose index holds a session — and the re-sync is **owed until it is
+  sent**: a start whose first folds hold no session carries the obligation forward to the fold that
+  does, so a title the previous flusher never managed to send, or a `null` lost with a dying process,
+  is re-synced without waiting for the next change. `last_emitted` — the title the flusher last put on the
+  spool, and nothing else, since nothing reads more — lives in the index snapshot's `todo` member
+  beside the retained session state; its initial value is **absent**, meaning *nothing sent yet*, which the comparison
+  reads as different from every answer, `null` included, so a fresh index's first derived answer
+  always emits;
+- when a seat's `descriptors` is `"paths"` or `"none"`, **the derived answer IS `null`** — the
+  flusher reads no retained to-do state under either value, so a title kept in the snapshot from
+  before a narrowing is never derived onto the desk — and the hooks append no `todo_*` record. The
+  flusher loads its config once, at start, so the narrowing takes effect **after the flusher restarts
+  under the new value**; its restart re-sync then emits that `null` as the ONE emit of its first fold
+  — the narrowing's `null` and the re-sync are the same event, never two same-stamp events the server
+  would decide between — and, because the re-sync is unconditional, the `null` is **re-emitted on
+  every restart** under a narrowed value rather than remembered as already sent: one event per
+  restart is cheaper than one more persisted bit and the failure it could carry, and the server's
+  guard reads an equal `null` as no change.
+
+What this costs, stated: a seat that goes **offline** with a title standing keeps it on `seat_state`
+until its next event — and its desk draws no character and so no bubble while it is offline
+(`FLOOR.md § 5.1` rule 3), so nothing is shown that the seat did not say; when it comes back, the
+flusher's first fold after its own restart re-syncs the answer, and failing a restart the seat's next
+boundary or title change does. The server-side quiescence clear the earlier
+draft carried is therefore not needed and is not designed. The change comparison is on byte equality
+of the sanitized title, and `last_emitted` is persisted **only after the spool append succeeded** —
+writing it first would, on a failed append, mark a title as sent that no site will receive.
+
+**Every text field is sanitised and bounded AT APPEND, by the hook, and every line is measured.** The
+journal is one `O_APPEND` line of at most 4 KiB per record ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open),
+AT-10), it is a file on the seat that a quarantine or a support request may read, and raw to-do text
+is the free text this whole block exists to bound — so the hook runs the full
+[§ 7.3](#73-redaction-rules-applied-in-this-order) pass and [§ 7.4](#74-truncation)'s procedure at the
+**title bound** over every `text` before `appendLine`, exactly as it would over a descriptor, and
+measures the serialized line with `Buffer.byteLength` before writing it: a `todo_list` record carries
+one entry at most and every other record one task, so the measure is an assertion the line is under
+the cap by construction, not a loop that makes it so. ⛔ **Under [`descriptors`](#31-the-seat-config-file) `"paths"` or
+`"none"` the hook appends NO `todo_*` record at all** — the key says how much free text a seat sends,
+and a journal line it never sends is still a line on disk.
+
+**Sensitive content, and the one lever a seat has.** The operator was told a to-do's text can carry
+sensitive content (a patient-data seat's step is a step about patient data) and ruled automatic rather
+than opt-in (card#12447). So the bounds are the design's defence, and they are three: the title passes
+the **full** [§ 7.3](#73-redaction-rules-applied-in-this-order) pass, as a dispatch title does, so a
+credential, a host, an address or a path shape in it is replaced before it leaves the machine; it is
+cut at **120 bytes**; and under `descriptors` `"paths"` or `"none"` the kind carries nothing but the
+one clearing `null`. ⚠ What the pass does not catch, [§ 7.3](#73-redaction-rules-applied-in-this-order)
+states by name, and a to-do written as prose — *call the patient back about the result* — matches
+none of its shapes and reaches the wire. That is the cost the ruling accepted, stated here so it is
+not discovered: the redactor is a shape filter, not a classifier, and the `descriptors` key is the
+seat's whole opt-out.
+
+**Why a kind of its own, and not a field on `tool.end`.** `tool.end`'s fields are the close of a call —
+outcome, duration, match quality — and a to-do's title is not a property of the call that wrote it but
+of what the agent turned to, which a session boundary can also end. A new `kind` is additive under
+[`docs/VERSIONING.md § Wire compatibility`](../VERSIONING.md#the-rules) — no schema bump; a server built
+before it ignores it and counts `ignored_unknown_kinds` ([§ 12.1](#121-validation-order) step 10), which
+is why the rollout is server first, then seats.
+**D2:** it is **not** a member of D2 § 3.2's activity set — the tool call that produced it already is,
+and a boundary's `null` is a projection of that boundary; a second stamp for one act would be a stamp
+corroborating itself.
+
+**Rollout — reporter `0.5.0`.** New functionality and two new config keys, so `REPORTER_VERSION` moves a
+**minor** past card#12451's `0.4.0` ([`docs/VERSIONING.md § The reporter's own version`](../VERSIONING.md#the-reporters-own-version)),
+with `SchemaVersions::CURRENT_REPORTER_VERSION` in the same PR and the `0.5.0` row of `fleet-reporter/UPDATES.md`,
+which touches `artifact, config`: the config gains `board_user_id` and `board_api_base` through the runbook's
+`board-identity` block, and the install sets `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` through its `todo-tools` block
+(the installer's `board-identity` and `todo-tools` steps, `fleet-reporter/install.js`) — both run on every install and
+upgrade. Server first, then seats: a server before this build ignores the kind (`ignored_unknown_kinds`) and
+counts the two heartbeat members as unknown fields, and loses nothing.
+
+```json
+{ "event_id":"01K3TA7H8J9K0M1N2P3Q4R5T6W","schema_version":1,"kind":"todo.progress",
+  "event_time":"2026-08-23T14:24:02.118Z","seq":48331,
+  "install_id":"aimla","seat_id":"aimla-pm","session_id":"a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
+  "data":{"title":"Measuring the room","title_truncated":false,"tool_name":"TaskUpdate"} }
+```
 
 ---
 
@@ -3981,6 +4320,7 @@ tool. A tool not in this table contributes **no descriptor at all** (`descriptor
 | `WebFetch` | `tool_input.url`, **scheme + host only** | `WebFetch: <scheme>://<host>`, the host then replaced by [rule 9](#73-redaction-rules-applied-in-this-order) | `WebFetch: https://‹redacted:host›` |
 | `WebSearch` | `tool_input.query` | `WebSearch: <query>` | `WebSearch: laravel reverb auth` |
 | `TodoWrite` | *(none)* | `TodoWrite` | `TodoWrite` |
+| `TaskCreate`, `TaskUpdate`, `TaskList` (card#12447) | *(none)* — the list's in-progress item reaches the wire once, as [§ 6.16](#616-todoprogress)'s `todo.progress` `title`, and not a second time as a descriptor; the monitor keeps showing that the tool ran | `<tool_name>` | `TaskUpdate` |
 | anything else, **including every `mcp__*` tool** | *(none)* | `null` | `null` |
 
 MCP tools are called out because they are the largest open surface: their input schemas are defined by
@@ -4167,7 +4507,8 @@ label. Removing the whole sequence is both safer and more readable.
 The descriptor is truncated to **200 bytes** of UTF-8, never splitting a multi-byte character: cut at
 the last character boundary at or before byte 197 and append `…` (U+2026, 3 bytes), giving exactly
 ≤ 200 bytes. Set `descriptor_truncated: true` and increment `sanitizer_truncations`.
-`subagent.spawn.title` uses the same procedure at **120 bytes** (117 + `…`).
+`subagent.spawn.title` uses the same procedure at **120 bytes** (117 + `…`), and so does
+`todo.progress.title` ([§ 6.16](#616-todoprogress), card#12447) — one title bound, one procedure, every home named here.
 
 ⭐ **Truncation stays HERE, and the ingest refuses rather than repeating it** (card#9283). The server
 enforces both bounds ([§ 12.1](#121-validation-order) step 10) and a value over one is a `422`, never
@@ -4378,6 +4719,7 @@ record, no process ever rewriting what another may be writing**:
 | `session_close` | `session_id`, `closed_at`, `end_reason` — the session tombstone ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)); `end_reason` is the wire member the boundary emitted; `paired_to` is set by `pair` |
 | `carry` | `call_id`, `from_session_id` — a bound dispatch a `/clear` left open ([§ 8.3](#83-the-reap-rules)); applied only while the entry's `session_id` equals `from_session_id`, so a `carry` folded after the `pair` that re-keyed its entry does nothing |
 | `pair` | `old_session_id`, `new_session_id` — written by the second of a `/clear`'s two signals ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)); its fold marks both sessions paired and re-keys every entry carried from old to new that exists at that point in the journal |
+| `todo_list`, `todo_create`, `todo_update`, `todo_end` | card#12447 — the to-do records [§ 6.16](#616-todoprogress) states: each keyed by `session_id`, appended by a main-agent `PostToolUse` on `TodoWrite`, `TaskCreate` or `TaskUpdate`, and `todo_end` by `SessionEnd` and `SessionStart(source=clear)`; **every text field sanitised by § 7.3 and cut to the title bound before the append, `todo_list` carrying the first in-progress entry alone, and the line measured with `Buffer.byteLength`**, so each line is under the 4 KiB this table's concurrency row requires by construction; folded by the flusher into a per-session LRU map of task texts (capped, evicting) with the session's `titled_id` and title kept beside it, all of which it keeps past the session's close up to [§ 14](#14-every-number-and-where-it-comes-from)'s count and compacts into the snapshot like every other record; no record is appended under `descriptors` `"paths"` or `"none"` |
 
 > **AMENDED — the session records, and the two `/clear` records (card#11817).** The code has journaled
 > `session_open` and `session_close` since the 16-session cap landed, and this table never listed
@@ -5165,7 +5507,7 @@ the two were equal.
 | `batches_ok` | a batch the server accepted (`202` with an ingest body, [§ 11.5](#115-retry-and-backoff)) | informational; the denominator the other batch counters are read against |
 | `batches_retried` | a batch that will be sent again: a retryable status (`408`, `429`, any `5xx`) or a transport failure or timeout ([§ 11.5](#115-retry-and-backoff)) | informational — **no loss**, because the batch stays spooled and a retry commits once ([§ 10.4](#104-batch-level-idempotency)). For a `5xx` it is the reporter's side of the server's `batches_failed.<detail>` ([§ 12.7](#127-server-side-counters)) |
 | `hook_name_mismatch` | `argv[2]` ≠ `hook_event_name` | `degraded`; the harness contract moved |
-| `payload_key_missing.<key>` | a harness payload key the reporter reads was absent: `session_id`, a key a hook handler reads, `agent_id` on `SubagentStart`, or `tool_response.agentId` on a background launch's `PostToolUse` ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)). The family also carries `payload_key_missing.unsubscribed_hook.<name>`, counted when the reporter is run for a hook outside [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s subscribed set, which a seat wired by `fleet-reporter/INSTALL-LINUX.md` Step 4 never is | `degraded`, member `harness_contract_moved`, for **every** key in the family: the reporter matches the `payload_key_missing.` prefix, so a key a later build starts reading raises the member with no edit here. A gap that is expected on a correct install is therefore counted under its own name and never in this family: `harness_label_unset` and `context_window_unavailable` |
+| `payload_key_missing.<key>` | a harness payload key the reporter reads was absent: `session_id`, a key a hook handler reads, `agent_id` on `SubagentStart`, or `tool_response.agentId` on a background launch's `PostToolUse` ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)). The family also carries `payload_key_missing.unsubscribed_hook.<name>`, counted when the reporter is run for a hook outside [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s subscribed set, which a seat wired by the installer's `hooks` step never is | `degraded`, member `harness_contract_moved`, for **every** key in the family: the reporter matches the `payload_key_missing.` prefix, so a key a later build starts reading raises the member with no edit here. A gap that is expected on a correct install is therefore counted under its own name and never in this family: `harness_label_unset` and `context_window_unavailable` |
 | `enum_value_unknown.<wire field>` | a closed-enum field carried a value this reporter does not know, coerced per [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 4 | informational, rendered `reporter_behind` — the harness has added a member and this document owes an edit |
 | `enum_value_unknown.notification_type` | a `Notification` carried a `notification_type` [§ 6.12](#612-attentionrequest)'s lookup table does not know, so **no** `attention.request` was emitted — the one counter in this document that names a harness **payload key** rather than a wire field, and the single exception [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 4 names | informational, rendered `reporter_behind` — this is where `notification_kind`'s unknown case lives, since the field has no `other` member and no event survives to carry one ([§ 6.12](#612-attentionrequest)). A rising value on real seats is the edit's trigger |
 | `invalid_tool_name` | `tool_name` failed its pattern and was sent as `INVALID_TOOL_NAME` | `degraded` |
@@ -5208,7 +5550,10 @@ the two were equal.
 | `protocol_agent_name_unchecked` | the seat declares a protocol agent name and **no coordination roster was readable on this box** to check it against ([§ 3.1](#31-the-seat-config-file)) | informational, and the fleet-wide measurement of how much of the join rests on an unchecked declaration. **It raises no `degraded` member on purpose**: the state rides every heartbeat as `protocol_agent_name_check`, dated by `uptime_s` beside it, which is strictly more than a badge carries |
 | `protocol_agent_name_disagreed` | a roster **was** readable here and the declared name is not a member of it — the two identity surfaces disagree ([§ 3.1](#31-the-seat-config-file)) | the `selftest` check `protocol_agent_name_in_roster` **fails**, so the act fails visibly and `selftest` carries the failure on every heartbeat; the name is emitted exactly as declared and **resolves to no desk**. **It raises no `degraded` member, deliberately**: the reporter is not degraded — it is reporting a coordination-config defect correctly — and badging the seat's own health would name the wrong subject |
 | `project_label_home_suppressed` | a `cwd` equal to the home directory, whose basename is the OS username, so `project_label` was sent as `null` ([§ 6.1](#61-sessionstart)) | informational, and the record that the § 1 non-goal is enforced rather than merely stated. It also distinguishes this `null` from a `null` caused by an absent `cwd` |
-| `harness_label_unset` | a `session.start` was emitted with `harness_label` `null` because the seat's config carries no `harness_label` string (absent, empty or not a string), and absent is the state `fleet-reporter/INSTALL-LINUX.md` Step 3 leaves on purpose ([§ 6.1](#61-sessionstart)) | informational, and the measurement of how many sessions the fleet's version pin is missing for. **It raises no `degraded` member**: the key is the reporter's config, not a harness payload key, so it is not a `payload_key_missing.<key>` counter. Builds before card#11330 counted it as `payload_key_missing.harness_label`; a later build's flusher moves a total saved under that name to this one at its next sink fold, so an upgraded seat's `harness_contract_moved` clears |
+| `todo_task_unknown` | card#12447 — a `todo_update` record named a task id the session's map did not hold ([§ 6.16](#616-todoprogress)): a list the harness kept across a `resume`, a compaction, a reporter upgrade or an `inferred_silence` reopen, which this reporter never saw created | informational, and **not** a `payload_key_missing.<key>` — that family's rise raises `harness_contract_moved`, and a healthy seat produces this on every resume; the entry is created from the text the update carries, and an in-progress update with none titles `null` rather than a stale step |
+| `todo_map_evicted` | card#12447 — a session's LRU map evicted its least-recently-touched entry to admit a new one ([§ 6.16](#616-todoprogress), the cap in [§ 14](#14-every-number-and-where-it-comes-from)) | informational: the session's titled id and title live outside the map, so an eviction moves no title; an evicted id that is updated later counts `todo_task_unknown` and titles from the text that update carries, if any |
+| `board_declaration_malformed` | card#12447 — the config carries a board declaration that declares nothing: one of `board_user_id` / `board_api_base` without the other, a `board_user_id` that is not an integer in `1…4,294,967,295`, or a `board_api_base` that is not an absolute `https://` URL within 256 B, or that carries userinfo — a base with a user or a password in it is refused as malformed, so the fingerprint's input never holds one ([§ 3.1](#31-the-seat-config-file)'s *`board_user_id` and `board_api_base`*); the heartbeat carries `null` for both and the seat keeps sending | informational — not a `degraded` member and not a `selftest` check (the `selftest` object's cap is exempt from a reduction rule on arithmetic a tenth member would break — [§ 6.14](#614-reporterheartbeat)); the `selftest` subcommand's `detail` names the offending key, and `docs/design/BOARD-TASK.md § 4.4`'s link pass sees an undeclared seat, which is the honest result |
+| `harness_label_unset` | a `session.start` was emitted with `harness_label` `null` because the seat's config carries no `harness_label` string (absent, empty or not a string), and absent is the state the installer (`fleet-reporter/install.js`) leaves on purpose ([§ 6.1](#61-sessionstart)) | informational, and the measurement of how many sessions the fleet's version pin is missing for. **It raises no `degraded` member**: the key is the reporter's config, not a harness payload key, so it is not a `payload_key_missing.<key>` counter. Builds before card#11330 counted it as `payload_key_missing.harness_label`; a later build's flusher moves a total saved under that name to this one at its next sink fold, so an upgraded seat's `harness_contract_moved` clears |
 | `console_url_malformed` | a transcript record that decides [§ 6.3](#63-turnstart)'s `console_url` carried an id or url that fails the field's pattern, so `null` was sent | informational, and the observable for that row's UNVERIFIED basis: a non-zero here on real seats means the harness moved the record's shape and § 6.3 owes an edit |
 | `console_url_tail_exhausted` | [§ 6.3](#63-turnstart)'s read walked its whole 1 MiB tail of a larger transcript without finding a deciding record, so `null` was sent | informational; a rising share of turns means the bridge records have drifted further apart than the bound, which § 6.3 re-derives |
 | `context_window_unavailable` | a statusLine render whose `context_window` gave no usable percentage, so no `context.sample` was emitted ([§ 6.11](#611-contextsample)) | informational, and **expected on every seat that wraps the statusLine**, in the first seconds of every session. **It raises no `degraded` member**: the gap is the harness's normal early-session state, so counting it as `payload_key_missing.context_window` re-raised `harness_contract_moved` at every session start. Builds before card#11544 counted it under that name; a later build's flusher moves a total saved under it to this one at its next sink fold, so an upgraded seat's `harness_contract_moved` clears |
@@ -5948,10 +6293,12 @@ drives it.
 No act on the server makes the token the config holds acceptable again: `mezzanine:ingest-token:issue`
 mints a new plaintext and stores only its hash, so the new value exists nowhere but on the issuer's
 screen — the CLI's, or the console's *Seat tokens* page, which performs the same act (card#12331) —
+and in a token file made from it (the page's *Save token file* button, or `install.js issue-file`, card#12571)
 until the seat's file is written; `revoke`, from the CLI or that page, is permanent; and there is no re-bind (`server/app/Console/Commands` holds `issue`
 and `revoke` and no third command, and the page is not a command). A `401` is fixed by a
 token that resolves and a `403` by one issued for this seat's pair — both reach the file by the
-writer's `set-token` mode and the running flusher by Step 5's restart
+writer's `set-token` mode and the running flusher by a restart — one command since card#12571,
+`node install.js --token-file <path>` (`fleet-reporter/INSTALL.md` § *Rotating a site's token*)
 ([§ 3.1](#sites-one-seat-reporting-to-several-mezzanine-deployments), *The installer's writer*). So
 the stop is lane state, not saved state, and **under it the lane sends no batch and runs no health
 probe**: a probe could measure nothing that reaches a wire the stop has closed, a `401` probe spends
@@ -6745,6 +7092,11 @@ recorded here because they are what a re-run will hit first:
   never be closed by the reporter, so the server holds them open to the orphan timeout while the seat
   is healthy. Count the losses; a run that loses none has not reproduced the race and the concurrency
   must be raised before the GREEN is trusted.
+- **GREEN — the to-do records (card#12447, `fleet-reporter.selftest.py` § 26):** among the invocations, a `TodoWrite` close
+  carrying 200 entries of 400-byte `activeForm`s, 40 of them `in_progress`: the `todo_list` line is
+  ≤ 4 KiB by `Buffer.byteLength`, parses, and carries exactly one entry — the first `in_progress` in
+  list order, its `text` cut at the title bound with `…`; a `grep` of the journal for a 400-byte
+  `activeForm`'s tail finds nothing, because the hook cut it before `appendLine`.
 - **RED — the atomicity claim:** replace the single `writeSync` with a two-part write (payload, then
   `\n`) → interleaving appears. If it does **not** appear on a platform, that platform's atomicity
   claim is unproven, not proven — increase concurrency until the RED reproduces before trusting the
@@ -7730,11 +8082,11 @@ property.
   `sa` reject one. **GREEN:** `sa`'s record is in `rejected.sa.jsonl` and its line in `REJECTED.sa.txt`;
   `sb`'s cap counted `quarantine_rejected_dropped` on `sb`'s entry and `sa`'s is 0. **RED:** a reporter
   with one `rejected.jsonl` → `sa`'s record is dropped at `sb`'s cap and `sa` counts the drop.
-- **Case P — the writer adds a site without printing a token, and refuses what it must.** Extract
-  `write-config.js` from `fleet-reporter/INSTALL-LINUX.md`'s fenced block (the suite re-extracts it
-  rather than keeping a copy, so the block the operator runs is the one tested) and drive it over a
-  single-site file and over a multi-site file, with the token on stdin in the issue command's shape
-  and from a `0600` token file. **GREEN:** without `FR_MODE=add-site` an existing file is refused and
+- **Case P — the writer adds a site without printing a token, and refuses what it must.** Drive the
+  installer's writer, `fleet-reporter/install.js`'s exported `writeConfig` (card#12571; the suite calls the
+  function the installer calls, so the writer an install runs is the one tested), over a single-site file
+  and over a multi-site file, with the token on stdin in the issue command's shape — through the exported
+  `parseIssueOutput`, which takes exactly one token line — and from a token file through `parseTokenFile`. **GREEN:** without `FR_MODE=add-site` an existing file is refused and
   unchanged; with it, the result is the multi-site form with the four top-level keys absent, the
   lifted site named `FR_LIFT_NAME` (`default` when unset) with its four values byte-equal to the
   original's, the new site appended, mode `0600`, and `loadConfig` on it reports no error; a
@@ -7868,6 +8220,95 @@ property.
 - **Fourteenth RED — the store in memory alone:** omit `revivable` from `index/snapshot.json` → the fifth
   rig's compaction variant finds no entry for the id and binds nothing. Caught by: the fifth rig's
   compaction variant.
+### AT-30 the to-do tier says what the agent turned to, from either family, derived and ended by one writer
+
+*Built for card#12447 ([§ 16](#16-what-an-implementer-builds-from-this) row 12): `fleet-reporter/fleet-reporter.selftest.py` § 26, each RED a plant on a copy of the reporter.*
+
+- **Build:** drive the reporter's `hook` subcommand with the captured `PostToolUse` payloads of
+  [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s to-do row — the `TodoWrite` list with
+  one `in_progress` item; the Task family's three `TaskCreate` closes and the `TaskUpdate` to
+  `in_progress` — in each family's order, under one session, **from concurrent hook processes**;
+  then run one flusher pass; then a `TaskList` close; then a `TaskUpdate` of the titled id to
+  `completed`; then 70 `TaskCreate` closes; then a `SessionEnd`; then a `SessionStart(source=resume)`
+  for the same session; then a `SessionStart(source=clear)` for a new session.
+- **GREEN:** the hooks' spool carries no `todo.progress` and the journal one record per payload;
+  after the pass exactly one `todo.progress` per run, one run per family, `title: "Measuring the room"` (the
+  `activeForm`), `title_truncated: false`, `tool_name` naming the record that moved it; the `TaskList`
+  close appends nothing and emits nothing; the `completed` update yields `title: null`; after the
+  70 creates the map holds 64 entries, `todo_map_evicted` counts the rest, and an update of an
+  evicted id counts `todo_task_unknown` — titling from its own `text` when it carries one and `null`
+  when it does not; the `SessionEnd` yields `title: null` with `tool_name: "SessionEnd"`; the
+  `resume` re-emits the title the session's retained map and titled id hold; the `clear` yields
+  `null`; **two sessions:** A titled *Measuring the room* at `at` 14:00:00, then B titled *Ordering
+  the paint* at 14:00:10, then B's `SessionEnd` at 14:00:20 — the spool carries A's title, then B's,
+  then **A's again**, stamped with the flusher's section stamp at that fold — later than every
+  stamp before it — carrying B's `session_id` and `tool_name: "SessionEnd"`, never a `null`; then
+  A's `SessionEnd` yields `null`; a flusher restarted with A's title retained emits that title on its
+  first fold with nothing having changed, under A's `session_id`; a `Bash` hook arriving for B after
+  B's `SessionEnd` reopens B in the index and emits nothing — B's `contributing` bit stays clear;
+  a seventeenth session evicting B from the index through `reapSessionBoundary` re-derives and
+  emits the answer exactly as B's `SessionEnd` did; 70 creates after the titled id's create leave
+  the title standing while the map holds 64 entries; **one section:** a `TaskUpdate` of the titled X
+  to `completed` and of Y to `in_progress` folded in one flusher section emit **one** event, *Y*;
+  **a late hook:** a session the flusher closed by `inferred_silence` whose next `Bash` hook arrives
+  **16 minutes** after the close — the `sessionsClosed` tombstone long pruned — restores its
+  contribution from `closed_by_inference` and re-emits; a flusher whose first folds hold no session
+  emits nothing until the fold that does, and then re-syncs; a `grep` of the journal for any raw `activeForm` finds only the sanitised, bounded text;
+  `last_emitted` is written after the spool line it names; the same payloads with `agent_id` present
+  append nothing; **narrowed, seeded:** with a title retained in the snapshot from before the narrowing, under
+  `descriptors: "paths"` the hooks append nothing, each flusher restart's first fold emits `title:
+  null` exactly once — the derived answer, the retained state unread — and no fold ever emits the
+  retained title.
+- **RED, each seen to fail:** derive the title in the hook (two concurrent hooks each read a map
+  missing the other's record and the spool carries two titles for one list); refuse a 65th entry
+  instead of evicting (the session titles nothing new for the rest of its life); journal the raw
+  `todos` (a credential in an `activeForm` is on disk before any pass runs); persist `last_emitted`
+  before the append (a failed append marks a title sent); emit nothing at `SessionEnd` (the title
+  outlives its session on the desk); emit on every call (two events where one is owed); **null the
+  seat on B's `SessionEnd` while A is open** (A's live title vanishes from the desk, and B's resume
+  would overwrite it); stamp the event from the triggering record's `at` instead of the section stamp (the spool's
+  order breaks against [§ 10.1](#101-two-clocks-and-which-is-authoritative-for-what) and the
+  re-sync has no time of its own); set `contributing` on any late hook (a hook after a seat-sent
+  `SessionEnd` puts the ended session's title back on the desk); skip the re-derivation on the
+  hook-side cap eviction (an evicted session's title outlives it); emit per record instead of once
+  per section (X's `null` and Y's title share one stamp, the server keeps the first, and the desk is
+  blank while the agent works Y); read the post-inference case from `sessionsClosed` instead of
+  `closed_by_inference` (the 16-minute late hook restores nothing); read the retained state under a
+  narrowed `descriptors` (the seeded title is re-synced onto the desk the seat stopped sending it
+  to); emit the narrowing's `null` and the restart re-sync as two events (same stamp, the server
+  keeps the first); keep the titled id only in the LRU (its
+  eviction blanks the desk mid-step).
+- **AT-2's extension:** a to-do whose `activeForm` carries `token ghp_…` reaches the journal and the
+  spool as `‹redacted:token›` — rule 3's own output, the full [§ 7.3](#73-redaction-rules-applied-in-this-order)
+  pass seen to fire on a to-do and not only on a command.
+- **Control:** a `TodoWrite` whose list carries two `in_progress` items yields the first in list
+  order on every run, so the assertion is known to discriminate on order.
+- **How the suite reads two of the GREENs, stated so the claim is no wider than the run:** every
+  flusher there is a START (`FLEET_REPORTER_ONE_PASS`), whose first fold re-syncs by rule, so *the
+  `TaskList` close emits nothing* is read as *the one event its pass emits is the start's re-sync of
+  the same title, still naming the `TaskUpdate` that moved it*, and *nothing changed, nothing emitted*
+  is read on the later passes of one process (`FLEET_REPORTER_SEAT_PASSES`); and the `/clear` is
+  driven as the harness delivers it, `SessionEnd(clear)` and then `SessionStart(clear)`.
+
+### AT-31 a board declaration rides every heartbeat, carries no URL, and a malformed one declares nothing
+
+*Built for card#12447 ([§ 16](#16-what-an-implementer-builds-from-this) row 12): `fleet-reporter/fleet-reporter.selftest.py` § 26, each RED a plant on a copy of the reporter.*
+
+- **Build:** four configs — both board keys well-formed; neither; `board_user_id` without
+  `board_api_base`; `board_user_id: "14"` (a string). Start the flusher on each and read its first
+  heartbeat.
+- **GREEN:** the first carries `board_user_id: 14` and a `board_fingerprint` equal to the first 16
+  hex of SHA-256 over the base with its scheme and host lowercased and trailing slashes removed —
+  and a base written with a trailing slash and an upper-case host yields the **same** fingerprint;
+  the other three carry `null` and `null`, both keys present; the third and fourth count
+  `board_declaration_malformed` and `selftest`'s `detail` names the key; `config_readable` passes
+  on all four and the flusher sends on all four.
+- **RED, each seen to fail:** omit the pair on an undeclared seat (a site cannot tell it from a
+  `0.3.0` reporter); carry `board_api_base` itself on the heartbeat (AT-4's spool read finds a
+  host on the wire); fail `config_readable` on the malformed pair (a typo in an optional label
+  silences a seat).
+- **Control:** the same four configs with `protocol_agent_name` added keep that field's own four
+  states unchanged — the two declarations do not read each other.
 
 ---
 
@@ -7904,7 +8345,12 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | Max batch body | 256 KiB | Derived — 4× under nginx's documented 1 MiB `client_max_body_size` default. **The deploy host's actual value is unverified** and re-derives this if it is tighter | [§ 4.4](#44-size-caps-and-their-derivations) |
 | Typical event size | ~500 B | Derived from the field tables in [§ 6](#6-event-kinds) — the sizing input for spool, batch and rate limits | [§ 4.4](#44-size-caps-and-their-derivations) |
 | Descriptor cap | 200 B | Derived — three constraints agree: ~160 chars renderable, 5× the longest realistic command, keeps events ~500 B | [§ 7.4](#74-truncation) |
-| Title cap | 120 B | Chosen — ~18 English words; a dispatch description is 3–8 | [§ 7.4](#74-truncation) |
+| Title cap | 120 B | Chosen — ~18 English words; a dispatch description is 3–8; a to-do's `activeForm` is of the same order, and [§ 6.16](#616-todoprogress)'s `todo.progress` takes the bound unchanged rather than minting a fourth (card#12447) | [§ 7.4](#74-truncation) |
+| Entries per `todo_list` record | 1 | **Derived** (card#12447) — the derivation reads the first `in_progress` entry and nothing else, so the hook journals that entry alone; the line is then one `text` of ≤ 120 B plus its envelope (`k`, `session_id` ≤ 128 B, `at`, `tool_name` ≤ 64 B), under 0.5 KiB serialized, which is why `Buffer.byteLength` is measured as an assertion and no entry is ever dropped to fit | [§ 6.16](#616-todoprogress) |
+| Entries per session map | 64 | **Chosen** (card#12447) — the open-call index cap, reused; an LRU that evicts, so the figure bounds memory and never refuses; bounds the snapshot at the retained-map count below × 64 entries × ~160 B | [§ 6.16](#616-todoprogress) |
+| Retained session maps | 32 | **Chosen** (card#12447) — twice [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)'s open-session cap of 16, so every open session's map fits with as many closed ones kept for a `resume`; the least-recently-touched **closed** session's state is dropped past the count, an open session's never — a count and not a clock, because the harness keeps a list across `resume` for as long as it likes and the snapshot is what must stay bounded. Re-derive from the first week of live `todo_task_unknown` counts | [§ 6.16](#616-todoprogress) |
+| `board_fingerprint` length | 16 hex chars | **Derived** — `config_fingerprint`'s own width ([§ 6.14](#614-reporterheartbeat)), reused for a second digest of a configured URL; the input's normalization is stated on the field (card#12447) | [§ 6.14](#614-reporterheartbeat) |
+| `board_user_id` bound | 1…4,294,967,295 | **Cited** — `D2-CITED:` [D2 § 6.4](FLEET-STATE.md#64-ddl)'s `seats.board_user_id INT UNSIGNED`, the column the declaration is checked into (card#12447) | [§ 3.1](#31-the-seat-config-file) |
 | `console_url` bound | 95 B | Derived — the longest string § 6.3's pattern matches: the 31 B prefix `https://claude.ai/code/session_` plus 64 id characters | [§ 6.3](#63-turnstart) |
 | `console_url` transcript tail | 1 MiB, read back in 64 KiB steps | Chosen — above the largest gap between two bridge records a read of this seat's transcripts found on 2026-10-05; the step keeps the common case (a record in the last few KiB) to one small read inside the 250 ms hook budget | [§ 6.3](#63-turnstart) |
 | Busy-seat volume | ceiling **18,356 events/day ≈ 9.2 MB/day**; midpoint ~11,100/day ≈ 5.5 MB/day | **Estimate, not a measurement** — the sum of the kind table's per-kind ranges (1,440 heartbeats + ≤ 1,440 context samples + ≤ 6,000 tool events + ≤ 1,200 turn events + ≤ 7,936 subagent activity events, card#12451 + the rest). Sizing uses the ceiling. Re-derived from the first week of live data | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
@@ -8042,7 +8488,7 @@ values no published rule derived.
 | 6 | **`attention.request` exists**, ~~classified client-side from `Notification`~~ **mapped from the harness's `notification_type`** | omit it; let D2 derive *blocked* from its status tiers | `docs/PLAN.md § 7` requires *blocked* as a rendered state and no other hook supplies it | **Amended 2026-08-23 (round 2):** *blocked* is now a **pair** — `attention.request` / `attention.resolved` ([§ 6.13](#613-attentionresolved)). The original had an entry event and no exit event, so a seat entered *blocked* once and rendered it forever. **Amended 2026-08-23 (round 3):** the "knowingly-fragile classifier, instrumented rather than trusted" is **deleted**. It matched English wording against a payload that carries `notification_type` — a harness-supplied field naming the kind directly — so it would have returned `other` on every real notification and its watching predicate would have gone constant on day one. Instrumenting a fragile classifier is the wrong move when the field that removes the need for one is in the same payload (canon: read the field, do not instrument the guess). The hook is now also **gated** on that field, which is the one carve-out to [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 2 — see row 29 |
 | 7 | **`turn.start` carries `prompt_chars`** | carry nothing about the prompt | a length is a size, not content, and distinguishes a nudge from a pasted brief | if review reads a length as content-adjacent, deleting the field is compatible |
 | 8 | **The `lifo_tool_name` match fallback** exists at all | require a harness call reference; drop the close if absent | dropping a close would put an unmatched call into the ledger — the failure this design forbids | can swap two concurrent same-tool calls' ids and durations; **cannot** affect counts or outcomes, so `D2-MUST` #1 is untouched. **Amended 2026-08-23:** `tool_use_id` is documented on **both** `PreToolUse` and `PostToolUse`, so `harness_ref` is expected to win essentially always; the fallback is now a backstop whose *use* is a defect signal, and tombstone matching sits between it and synthesis |
-| 9 | **The flusher is OS-supervised *and* hook-respawned** | hook-respawn only (no OS integration) | respawn-only means an idle seat stops heartbeating and renders `offline` while it is merely quiet — destroying the idle/offline distinction the product depends on | install complexity on two platforms: on Linux `fleet-reporter/INSTALL-LINUX.md`. **Amended 2026-10-25 (Option A, card#12335): on Windows the alternative is taken** — hook-respawn only, no Scheduled Task — so a Windows seat whose flusher has stopped (at logoff or a reboot) renders `offline` rather than idle until a session's next hook starts one, the cost this row names; the procedure is `fleet-reporter/INSTALL-LINUX.md` § Installing on a Windows seat ([§ 2.3](#23-the-flusher-must-be-alive-whenever-the-seat-is) item 1) |
+| 9 | **The flusher is OS-supervised *and* hook-respawned** | hook-respawn only (no OS integration) | respawn-only means an idle seat stops heartbeating and renders `offline` while it is merely quiet — destroying the idle/offline distinction the product depends on | install complexity on three platforms, in one installer (`fleet-reporter/install.js`, card#12571): on Linux the user crontab, **on macOS supervised too, by a user `launchd` agent** for a seat at a GUI login (card#12571, the operator's ruling Q1). **Amended 2026-10-25 (Option A, card#12335): on Windows the alternative is taken** — hook-respawn only, no Scheduled Task — so a Windows seat whose flusher has stopped (at logoff or a reboot) renders `offline` rather than idle until a session's next hook starts one, the cost this row names; the installer starts one flusher at install and upgrade ([§ 2.3](#23-the-flusher-must-be-alive-whenever-the-seat-is) item 1) |
 | 10 | **`GET /api/ingest/health` requires a seat token** | unauthenticated health surface | the accepted-version set is fleet-internal, and everyone who needs it already holds a token | an operator without a token must read the deployed declaration instead |
 | 11 | **`session.end` is an observation from the `SessionEnd` hook**, with one inferred member (`inferred_silence`, 90 min) | keep the four-way inference (`cleared` / `superseded` / `compacted` / 6 h stale) that an earlier draft built on the premise that no session-end hook exists | the premise was false — `SessionEnd` exists with a documented `reason` set. Reading a session's end from the harness that ended it is strictly better than inferring it from three side effects | if `SessionEnd` does not fire on some path, that path closes on the 90-minute silence rule instead, and `session_reopened` says so. The inference did not become *less* available; it became the fallback |
 | 12 | **Every reap and index rule is keyed by `session_id`**, and the supersede-on-different-session rule is deleted | keep reaping whenever a hook carries an unfamiliar `session_id` | two terminals on one seat is ordinary (`open_sessions` is bounded at 16), and under the old rule each session aborted the other's healthy calls, making *idle* unreachable on both and minting a `session.end` storm | a session that genuinely ends without a `SessionEnd` now waits for the 90-minute rule rather than being closed by its successor's first hook — and the second `/clear` signal's activity pick, kept then, is deleted by row 53 |
@@ -8095,6 +8541,10 @@ values no published rule derived.
 | 59 | **card#12239 r3: a comment on a pull request is derived as any other post** ([§ 18.7](#187-coordround)) | ignore comments whose `issue` carries `pull_request` | a PR on a coordination repository is a thread of the same number space; the bridge classifies `pull_request.opened` as authoring | `thread_ref` names a PR as it names an issue; nothing distinguishes them on the wire, and nothing needs to |
 | 60 | **card#12239 r5: the `all` expansion is specified and not derived — `targets` is `null` on every broadcast, no roster is provisioned with a binding, and `coord_targets_unresolved` / `coord_roster_unknown_name` are specified and not derived** ([§ 18.7](#187-coordround), [§ 18.3.1](#1831-the-install-facts-input-declared-once), [§ 18.8.1](#1881-the-counters-this-route-mints)) | provision the roster and expand `all` anyway | the operator ruled a broadcast is the ring and sends no traveller, so an enumerated fan-out has no consumer; a copied roster is a restatement of another repository's config with a one-directional drift guard, kept for nothing | a consumer that later wants the fan-out provisions the roster and switches the expansion on — the rule is written and the counters are declared |
 | 61 | **card#12451 (designed 2026-10-26, built 2026-10-28): a subagent's working/idle is a reporter-minted kind, `subagent.activity`, with `idle` read from silence AT THE SEAT — no call open under the bound `agent_id` and no hook from it for § 14's threshold — and `working` from the next hook** ([§ 6.15](#615-subagentactivity)) | the server deriving it from the stored child calls' timestamps, with no reporter change and no new kind | the server cannot tell silence from delivery lag, which is the one rule D2 § 3 is built on; the reporter can, because at the seat an absent hook is an absent hook. The cost is a reporter release and one new kind; what it buys is an `idle` that is a fact about the subagent and not about the pipe. The second alternative — a field on `tool.start` / `tool.end` — cannot carry the idle edge, which lands when no hook fires | a seat that cannot upgrade its reporter never shows an idle intern; its badge says so |
+| 62 | **card#12447: the seat's board identity is a seat DECLARATION written by the installer from the board's own `GET /users/current.json` answer under the seat's kanban credential, carried on the heartbeat as `board_user_id` plus a 16-hex fingerprint of the API base, and checked at the site against the board with the site's read credential** ([§ 3.1](#31-the-seat-config-file), [§ 6.14](#614-reporterheartbeat); `docs/design/BOARD-TASK.md § 4.4`) | the site matching a board username to `seat_id` or to `protocol_agent_name`; the reporter calling the board on every heartbeat; carrying the API base URL itself | a name match is the join-by-coincidence `BOARD-TASK.md § 4.1` refuses; a flusher with a board credential is a second board client inside the process whose contract is to protect the seat; a URL on the wire is a host on the wire, which [§ 7.3](#73-redaction-rules-applied-in-this-order) rule 9 exists to keep off it | a seat whose kanban credential is not in the framework's store is undeclared and takes the to-do tier — the install says so and does not fail |
+| 63 | **card#12447 (re-derived on review round 3): the to-do tier rides a kind of its own, `todo.progress`, which the FLUSHER emits at its fold from `todo_*` journal records the hooks append on a main-agent `PostToolUse` of `TodoWrite`, `TaskCreate` or `TaskUpdate`; the reporter keeps a per-session LRU map of task texts and NO list, with each session's titled id and title beside the map; a session's title is the first in-progress entry of a `TodoWrite` list or the `activeForm` of the newest `TaskUpdate` to `in_progress`, and the SEAT's title is the most recently moved non-null title among its CONTRIBUTING sessions — a per-session bit every `session_close` clears and only a title-moving record, a `resume` or the first hook after an inferred close sets — re-derived whenever a contribution changes or ends and emitted AT MOST ONCE PER FLUSHER SECTION, derived last, under the section stamp like every event and carrying the triggering record's `session_id`** ([§ 6.16](#616-todoprogress), [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)) | a field on `tool.end`; a hook that reads the map and emits; one event per task-tool call; `PreToolUse`; reading the harness's task files on disk; **reconstructing the whole list from creates, updates and `TaskList` syncs with a refusing cap** — rounds 1 to 3's draft, which cost a race, a wording flip, an unknown-id contract alarm, an unbounded journal line and a cap that went dark | a title is a property of what the agent turned to, which the one call that moved it states; a hook that reads is the read-modify-write § 8.2 forbids; a reconstructed list is a second copy of harness state that every harness call can desynchronise, and three review rounds found a new way each time | an evicted id updated later titles only from the text that update carries; a `TaskList` the agent reads back changes nothing on the desk |
+| 64 | **card#12447: `text` is `activeForm`, else the imperative, decided at the hook from the one payload; the full § 7.3 pass and the title bound apply AT APPEND; `todo_list` journals the first in-progress entry alone and the line is measured with `Buffer.byteLength` as an assertion; the LRU evicts and never refuses; nothing is journaled under `descriptors: "paths"` or `"none"`, the derived answer under either is `null` with no retained state read, and every flusher restart under either re-syncs that `null` as its one first-fold emit** ([§ 6.16](#616-todoprogress)) | `content`/`subject` always; sanitising at the flusher; journaling every in-progress entry and dropping a tail to fit; a map that refuses past its cap, or one that holds the titled entry; emitting the retained title under a narrowed `descriptors`, or a one-shot `null` beside the re-sync, or an *already nulled* bit persisted across restarts | the harness shows `activeForm` while an item is in progress; raw text must not reach the journal on disk; a count is a restatement of the bytes it approximates; a refusing cap left a session dark (round 3, M3); a narrowed seat's standing title would be a title the seat no longer sends | a prose to-do that matches none of § 7.3's shapes reaches the wire — the ruling's accepted cost, stated in the block |
+| 65 | **card#12447 (re-derived on review round 3): the server holds ONE slot per SEAT — `seat_state.todo_title` / `todo_as_of` / `todo_event_time` — and clears it on nothing of its own; the reporter is the sole lifecycle writer — a `SessionEnd`, a `/clear`, its own `inferred_silence` close or the hook-side cap eviction clears that session's `contributing` bit and the seat's answer over its contributing sessions is re-emitted under the section stamp; a `resume`, or the first hook of a session the flusher closed by inference, restores the contribution; the first fold after every flusher start re-emits the answer unconditionally — under a narrowed `descriptors` that answer is `null` and the re-sync is the narrowing's one emit; and the server reads tier 4 only for a seat on `0.5.0` or later, and its projection resolves no session row** ([§ 6.16](#616-todoprogress); `D2:` D2 § 4.6's designed row and § 6.4's designed columns) | a per-session slot read through open sessions, with D2's reopen rule widened to a seat-closed session's `resume` (round 2's draft); a server-side clear on offline quiescence; a freshness clock | the widened reopen resurrected ended stalls and had no reason to exclude `clear` (round 3, M1, M2) — coupling the title to server session rows imported every lifecycle rule those rows carry; the reporter sees every boundary the server would infer and the one it cannot (the resume), so one writer suffices; a quiescence clear is unneeded because an offline desk draws no bubble | a seat that dies without a `SessionEnd` keeps its title until the flusher's 90-minute silence close; a title stands on `seat_state` through an offline period and is decided by the seat's first event back |
 
 **One thing this document deliberately does not contain:** the accepted schema-version set. That set
 lives in exactly one machine-readable place in the ingest's code and is reported by the health
@@ -8126,6 +8576,7 @@ one of them is optional.
 | 9 | the coordination **derivation**: the two objects, their attribution states, the body-line address rules, [§ 18.6](#186-coordthread)'s **membership union**, and the install-facts input the fan-out resolves against ([§ 18.3.1](#1831-the-install-facts-input-declared-once), [§ 18.6](#186-coordthread), [§ 18.7](#187-coordround)) | **AT-24** and **AT-25** RED then GREEN. AT-25's unlabelled fixture is the primary case and its labelled twin is the control; a suite carrying only the labelled one passes while the derivation is wrong on the deliveries that actually occur. **AT-25's FIFTH red is the one to build first**: the other four all pass under a body-only derivation, which is the derivation that shipped |
 | 10 | the **close signal**, last of the three because it is the one whose defect is invisible per-post ([§ 18.5](#185-the-three-findings-the-audit-turns-on)) | **AT-26** RED then GREEN, and its first RED is a **rate** assertion over a replayed corpus rather than a per-post one. Built before the corpus exists, this row's test passes under the wrong implementation and under the right one alike |
 | 11 | ✅ **BUILT — card#12451 (2026-10-28), reporter `0.4.0`.** The **subagent activity signal**: `K.SUBAGENT_IDLE_MS`, the `activity` index record, the per-child `last_at` map in the fold and in `index/snapshot.json`, the flusher pass's idle evaluation over it, the hook's resume before its `tool.start` and the flusher's repair on the next pass, [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)'s revival path (`title`, `title_truncated` and `subagent_type` kept on a dispatch's `open` record, the count-bounded `revivable` store derived from `subagent_stop_hook` closes and synthesized opens and held in `index/snapshot.json`, the synthesized dispatch on a matching `SubagentStart`, bound at once, its spawn's title re-derived under the current `descriptors` mode), the `agent_type` tie-break at `SubagentStart`, and the per-child map swept in `capIndex()`, [§ 6.15](#615-subagentactivity) and the § 6.0 kind-table and classification rows, and the `REPORTER_VERSION` minor `0.4.0` with its `fleet-reporter/UPDATES.md` row; card#12447's reporter change, designed to share it, takes the next version under the guard's strictly-greater rule if it lands after. Depends on rows 2 and 3; independent of rows 8–10 | **AT-29** RED then GREEN — the silence leg first, because it is the one the flusher's pass alone can see; `bin/reporter-version-guard.py` green with the `0.4.0` row |
+| 12 | ✅ **BUILT — card#12447 (2026-10-28), reporter `0.5.0`.** The reporter chain's half: `loadConfig`'s `board_user_id` and `board_api_base`, the heartbeat's `board_user_id` and `board_fingerprint`, the `board_declaration_malformed` and `todo_task_unknown` counters and the `selftest` detail line; [§ 6.16](#616-todoprogress) — the `todo_list` / `todo_create` / `todo_update` / `todo_end` journal records the hooks append with the byte-measured, sanitised-at-append line, the flusher's per-session LRU map (64, evicting) and titled id, the per-session titled id, title, `contributing` and `closed_by_inference` beside the map, the seat answer over contributing sessions derived LAST and emitted at most once per flusher section under the section stamp with the triggering record's `session_id`, the boundary clears (`SessionEnd`, `/clear`, `inferred_silence`, the cap eviction), the `resume` and post-inference-first-hook restores, the owed-until-sent re-sync with `last_emitted` in the snapshot, the retained closed-session count, the change comparison and emission persisted after the append, the full sanitizer pass at the title bound, the `descriptors` gate; the `TaskCreate`/`TaskUpdate`/`TaskList` allowlist row; `REPORTER_VERSION` `0.4.0 → 0.5.0` (a minor: new functionality and the config keys above — `0.4.0` was card#12451's, row 11), `SchemaVersions::CURRENT_REPORTER_VERSION` moved with it in the same PR, and the `fleet-reporter/UPDATES.md` row with touches `artifact, config` — the `config` touch naming `board_user_id` and `board_api_base` and the runbook's `board-identity` block as the way an installed seat gains them. **Server first, then seats**: a `0.5.0` reporter against a server without row 12's ingest half sends a kind it ignores and two heartbeat members it counts as unknown, and loses nothing. ⚠ **Not in this build, and owed:** the whole-appendix re-capture of [§ 17](#17-appendix--the-captured-harness-payloads) at the build the fleet runs, with the `TodoWrite`, `TaskCreate`, `TaskUpdate` and `TaskList` shapes [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s fact table measured on 2026-10-27 — the hook reads those keys from a payload's `tool_input`/`tool_response`, which no vendored fixture carries, so `harness_payload_keys` (AT-21) does not cover them until the re-capture lands; `fleet-reporter.selftest.py` § 26 drives them from the measured shapes | **AT-30** and **AT-31** RED then GREEN (`fleet-reporter.selftest.py` § 26, each RED a plant on a copy); AT-2 extended with a to-do carrying a credential (§ 26); `bin/reporter-version-guard.py` green on the bump. AT-21 over re-captured fixtures is the owed half |
 
 ⭐ **Rows 8–10 under card#12239 (2026-10-24).** Row 8 is built: the receipt at
 `POST /api/ingest/github/{hook}` in [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)'s
@@ -8146,14 +8597,23 @@ These are hard requirements before anything downstream may treat this telemetry 
 check that reds when it moves — and this document has already shipped that transcription wrong twice.
 ⚠ **The install precondition's Windows leg: a procedure exists, a real install is still owed.** The
 operator's ruling of 2026-09-13 deferred Windows validation, with the validated Linux install
-(`fleet-reporter/INSTALL-LINUX.md`, card#9368) satisfying the precondition meanwhile; the request of
-2026-10-25 lifted that deferral (card#12335). The procedure is `fleet-reporter/INSTALL-LINUX.md`
-§ Installing on a Windows seat, with no supervised start ([§ 2.3](#23-the-flusher-must-be-alive-whenever-the-seat-is)
-item 1). Before it merged it was performed on a Windows seat against a scratch install through W5,
+(the runbook `fleet-reporter/INSTALL-LINUX.md` as it then stood, card#9368) satisfying the precondition
+meanwhile; the request of 2026-10-25 lifted that deferral (card#12335). The procedure is now
+`fleet-reporter/install.js` on every OS (card#12571; `fleet-reporter/INSTALL.md` its reference), with no
+supervised start on Windows ([§ 2.3](#23-the-flusher-must-be-alive-whenever-the-seat-is) item 1). Before it merged it was performed on a Windows seat against a scratch install through W5,
 with each hook run by hand rather than fired by a session. A real install on a Windows seat, from the
 merged runbook, is the measurement that remains, and until it lands the Windows-specific assumptions
 above (`%LOCALAPPDATA%`, `%APPDATA%`, `windowsHide`, and a session-fired hook carrying the settings'
-`env` block) stay unproven at a real site.
+`env` block) stay unproven at a real site. `docs/design/REPORTER-INSTALL.md` § 1 records card#12335's
+first real Windows install, by the runbook's section by hand; `install.js`'s Windows legs are measured by
+its install suite on `windows-latest` and by the next real install.
+⚠ **The install precondition's macOS leg, card#12571: a procedure exists, a real install is owed.** The
+procedure is `fleet-reporter/install.js`, supervised by a user `launchd` agent ([§ 2.3](#23-the-flusher-must-be-alive-whenever-the-seat-is)
+item 1), for a seat at a GUI login only; no macOS machine was available to its build, so its install suite
+runs on `macos-latest` against a stub `launchctl`, and the Mac seat's own agent performs the first real
+install (the operator's ruling Q6). Until it lands, the macOS assumptions — `launchctl`'s loaded-state
+reads and `pid`, a `StartInterval` job skipped rather than stacked, the privacy prompt on `~/Downloads`, and
+a session-fired hook carrying the settings' `env` block — stay unproven at a real site.
 
 **A re-capture is part of a harness upgrade, not a follow-up to one.**
 [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) obligation 2 **owns the trigger and its
@@ -9578,7 +10038,7 @@ read it is a row somebody can close.
 | **What GitHub does with a 4xx or a 5xx from this endpoint** — **DOCS-CITED since 2026-10-23: nothing.** *"GitHub does not automatically redeliver failed deliveries"*, and a response slower than **10 seconds** is recorded as a failure (docs.github.com, *Handling failed webhook deliveries*). Until then UNVERIFIED, and either way it is why [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) mints no rate limit **on the deliveries that pass step 3**. It says nothing about the step-3 refusal path, whose caller is by construction not GitHub — which is the scope the round that added that limit had to correct, and this cell carried the unqualified claim across it | if refusals are never redelivered, every refused delivery is permanent loss of a fact with no other source | read 2026-10-23: the worst case is the documented case, so the design refuses almost nothing and the decision now rests on a source rather than an assumption. What the 10 s figure adds is a budget: the receipt's whole write runs in one short transaction with no seat lock ([the store document's § 6.12](FLEET-STATE.md#612-the-coordination-store)) |
 | **GitHub's maximum delivery size** — **DOCS-CITED since 2026-10-23: 25 MB**, above which *"GitHub will not deliver a payload for that webhook event"* (docs.github.com, *Webhook events and payloads*); a whole observed delivery on this fleet's coordination repository is ~14 KB (`docs/design/COORD-STORE.md § 2.2`). Until then UNVERIFIED, with **half of the closing act done**: the largest bodies a live coordination repository actually produces are **21,963 B** for a comment and **31,087 B** for an issue, measured over its whole population 2026-08-28, so the 1 MiB cap has ~30× headroom against real traffic even before the rest of the payload is counted. The **sender's** documented maximum was the half that stayed open; it is now read at the vendor's own page, and the figure a review round offered — which this cell declined to relay unsourced, because relaying an unsourced number is the defect this table exists to prevent — is the same one | a real delivery over the cap takes a `413` and is lost — now bounded by the measurement, not eliminated by it | done on both halves 2026-10-23; what would reopen it is the vendor moving the figure |
 | **Whether a `[CLOSE]` token is added to a body this producer will not see** — a post edited to add it fires `issue_comment.edited`, which [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) step 8 does not derive from | a close act declared by an edit is missed, and its thread draws `lifecycle: closed` with no spark and no closer — the same render an undeclared close produces, so the two are indistinguishable. **The deferral IS backfillable, and that is a consequence of two things [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) now states rather than a hope**: the hook subscribes the whole `issue_comment` event, so those deliveries **were** sent and are in GitHub's delivery list; and step 8 commits **no digest** for a delivery it ignored, so a Redeliver after step 8 widens is derived rather than absorbed as a duplicate. ⚠ **What bounds the backfill is not this design**: GitHub redelivers deliveries from the past **3 days** (DOCS-CITED 2026-10-23, docs.github.com *Redelivering webhooks*), and anything older than that — or older than the hook registration itself — stays missed | add `issue_comment.edited` to step 8's derive set. That is **one action in the derive set and no re-registration**, which is what the subscription above was written wide to buy; the earlier draft of this row priced it as a subscription change and then, in the same cell, as a step-8 edit — the two were incompatible and the subscription set is what had gone unstated |
-| **That a protocol agent name identifies the same thing a `seat_id` does** — **SPECIFIED FOR A DECLARING SEAT SINCE `card#9296`, and for no other seat; built on the server's side on `card#9296`, and on the reporter's on `card#9375`.** The artifact that owns the mapping is the seat's own config: [§ 3.1](#31-the-seat-config-file)'s `protocol_agent_name`, which [§ 6.14](#614-reporterheartbeat)'s heartbeat is specified to carry with `protocol_agent_name_check` beside it, checked against the coordination roster where one is on the same box and reported *unchecked* where it is not. **What is still not established, by name:** that any seat in a fleet declares anything (the field is optional and the first provisioning act is where the convention gets set); that a roster the declaring box reads is itself correct; on an `unchecked` seat, that the declared name is a roster member at all — the wire says which of those it is rather than implying a check that never ran; and — **added on `card#9296` round 2, because the row named three residuals and this was not one of them** — **that the roster is at a path this design reads**. [§ 3.1](#31-the-seat-config-file) resolves `$COORD_CONFIG` first and `~/.config/coord/coordination.config.json` second, on Linux only; **where a coordination install actually keeps its config is decided in another repository**, by code no check here can read, so a move there turns every `checked` in a fleet into `unchecked` with nothing going red at either end. The contract is DECLARED at § 3.1 and has **not** been published to the party that owns it. And — **added on `card#9296` round 3** — **that the supervised start's launch delivers `$COORD_CONFIG`**: § 3.1's delivery contract requires it, because the OS-started flusher inherits nothing from the harness and is the one that heartbeats on a healthy seat, but nothing here checks that a start definition delivers the value. On Linux, since `card#9368`, the start definition is a crontab entry that `fleet-reporter/INSTALL-LINUX.md` writes with the assignment on its own command line. Since `card#9375` the acceptance suite reads that runbook's start line and runs it outside cron (AT-27 case F), and no check reads the entry an install actually wrote. On Windows there is no supervised start (Option A, `card#12335`): the flusher is hook-spawned and takes the value from the harness settings' `env` block, and whether a session-fired hook on Windows carries that block is not established ([§ 3.1](#31-the-seat-config-file)). A start definition without the value reports `unchecked` on every heartbeat of a box whose hooks can read the roster. And — **added on `card#9296` round 4** — **that the value it delivers is still current**: the install resolves `$COORD_CONFIG` once, so a coordination config that later moves leaves the flusher reading the path as it stood — `unchecked` where nothing remains, or a check against a roster nothing else on the box reads where a copy does — until the start definition is rewritten and the flusher restarted, which [§ 3.1](#31-the-seat-config-file) requires of whoever installed the seat and nothing here can see. ⚠ Unchanged: the two **still** cannot be compared on a live seat. Since `card#9368` one seat reports, `mezzanine` / `mezzanine-solo` on the sandbox, and its config declares a name. `fleet-reporter/fleet-reporter.js` reads that key since `card#9375`. That seat was installed from a build before it (`fleet-reporter/INSTALL-LINUX.md` Step 1), so it sends a name only once its artifact is replaced and its flusher restarted, and `card#9375` did not read which build it runs now. **`"seat_id": "aimla-pm"` wherever it appears in this document is a documentary example rather than a measured value**. And — **added on `card#11144`** — the relayed role rests on three conditions the coordination framework decides and nothing here can read: **that `role` stays a member of a roster entry**, **that the role vocabulary stays open and `pm` keeps its meaning**, and **that a PM install's roster holds one `pm`**. § 3.1's DECLARED leg now carries the role in the same contract (`roster[].name` and `roster[].role`, relayed verbatim), and like the resolution order it has **not** been published to the party that owns it. A seat sends a role only once its reporter is replaced with a build that includes `card#11144` and its flusher restarted | **Was:** every coordination fact derived correctly and **joining to no desk** — total for the join and invisible in the derivation. **Now, and narrower:** for a seat that declares nothing the same total failure, but it is a RENDERED state rather than an invisible one (`undeclared`, an unresolved participant, no line drawn); for a declaring seat the residual is that a name checked against a **wrong roster** resolves to a wrong desk, and that an `unchecked` name rests on the declaration alone. ⚠ The tier-2 title used to sit in this cell and no longer does — it was retired on `card#9234`, so the thread line is the whole of what this mapping blocks | **RULED on `card#7957` — *(d)* the seat declares its own protocol agent name, *(2)* an unresolved participant is a first-class rendering — and *(d)*'s SERVER half is BUILT on `card#9296`:** the ingest accepts and the store folds the two heartbeat members, and the consumer-side rule that only a declaration joins is applied ([§ 3.1](#31-the-seat-config-file)). **Its REPORTER half is BUILT on `card#9375`:** `fleet-reporter/fleet-reporter.js` reads the declaration and resolves the roster at flusher start and on `selftest`, emits both heartbeat members on every heartbeat, and **fails the act** — `protocol_agent_name_in_roster` — on a disagreement. AT-27's cases and REDs run in `fleet-reporter/fleet-reporter.selftest.py` § 19. What remains, and what would close it: a fleet whose seats actually declare — which is a provisioning act and not a design one — a roster whose correctness is checkable from the declaring box, which no artifact offers in either direction today; and, for the path residual, **carrying § 3.1's resolution-order contract to the coordination framework's owner** — an issue or a coordination post against the repository that decides where a coord config lives, and since `card#11144` the roster-role contract with it — so that the two ends read one published statement instead of each holding its own; and, for the start-path residual, [AT-27](#at-27-a-declared-agent-name-is-checked-and-a-disagreement-fails-an-act) case F and its moved variant, run against a real supervised start. On Linux that is the crontab entry `fleet-reporter/INSTALL-LINUX.md` writes, run by cron on a real seat; the suite runs the runbook's line outside cron, which checks the line and not an installed entry. ⛔ Until then this row stays, because a row somebody can close is worse than useless if it is closed while half of it is still true |
+| **That a protocol agent name identifies the same thing a `seat_id` does** — **SPECIFIED FOR A DECLARING SEAT SINCE `card#9296`, and for no other seat; built on the server's side on `card#9296`, and on the reporter's on `card#9375`.** The artifact that owns the mapping is the seat's own config: [§ 3.1](#31-the-seat-config-file)'s `protocol_agent_name`, which [§ 6.14](#614-reporterheartbeat)'s heartbeat is specified to carry with `protocol_agent_name_check` beside it, checked against the coordination roster where one is on the same box and reported *unchecked* where it is not. **What is still not established, by name:** that any seat in a fleet declares anything (the field is optional and the first provisioning act is where the convention gets set); that a roster the declaring box reads is itself correct; on an `unchecked` seat, that the declared name is a roster member at all — the wire says which of those it is rather than implying a check that never ran; and — **added on `card#9296` round 2, because the row named three residuals and this was not one of them** — **that the roster is at a path this design reads**. [§ 3.1](#31-the-seat-config-file) resolves `$COORD_CONFIG` first and `~/.config/coord/coordination.config.json` second, on Linux only; **where a coordination install actually keeps its config is decided in another repository**, by code no check here can read, so a move there turns every `checked` in a fleet into `unchecked` with nothing going red at either end. The contract is DECLARED at § 3.1 and has **not** been published to the party that owns it. And — **added on `card#9296` round 3** — **that the supervised start's launch delivers `$COORD_CONFIG`**: § 3.1's delivery contract requires it, because the OS-started flusher inherits nothing from the harness and is the one that heartbeats on a healthy seat, but nothing here checks that a start definition delivers the value. On Linux, since `card#9368`, the start definition is a crontab entry the installer writes (`fleet-reporter/install.js` since `card#12571`, the runbook before it) with the assignment on its own command line, and on macOS since `card#12571` a launchd plist carrying it in `EnvironmentVariables`. Since `card#9375` the acceptance suite runs the Linux start line outside cron (AT-27 case F; since `card#12571` the line is `install.js`'s exported `cronLine`), and no check reads the entry an install actually wrote. On Windows there is no supervised start (Option A, `card#12335`): the flusher is hook-spawned and takes the value from the harness settings' `env` block, and whether a session-fired hook on Windows carries that block is not established ([§ 3.1](#31-the-seat-config-file)). A start definition without the value reports `unchecked` on every heartbeat of a box whose hooks can read the roster. And — **added on `card#9296` round 4** — **that the value it delivers is still current**: the install resolves `$COORD_CONFIG` once, so a coordination config that later moves leaves the flusher reading the path as it stood — `unchecked` where nothing remains, or a check against a roster nothing else on the box reads where a copy does — until the start definition is rewritten and the flusher restarted, which [§ 3.1](#31-the-seat-config-file) requires of whoever installed the seat and nothing here can see. ⚠ Unchanged: the two **still** cannot be compared on a live seat. Since `card#9368` one seat reports, `mezzanine` / `mezzanine-solo` on the sandbox, and its config declares a name. `fleet-reporter/fleet-reporter.js` reads that key since `card#9375`. That seat was installed from a build before it (`fleet-reporter/INSTALL-LINUX.md` Step 1), so it sends a name only once its artifact is replaced and its flusher restarted, and `card#9375` did not read which build it runs now. **`"seat_id": "aimla-pm"` wherever it appears in this document is a documentary example rather than a measured value**. And — **added on `card#11144`** — the relayed role rests on three conditions the coordination framework decides and nothing here can read: **that `role` stays a member of a roster entry**, **that the role vocabulary stays open and `pm` keeps its meaning**, and **that a PM install's roster holds one `pm`**. § 3.1's DECLARED leg now carries the role in the same contract (`roster[].name` and `roster[].role`, relayed verbatim), and like the resolution order it has **not** been published to the party that owns it. A seat sends a role only once its reporter is replaced with a build that includes `card#11144` and its flusher restarted | **Was:** every coordination fact derived correctly and **joining to no desk** — total for the join and invisible in the derivation. **Now, and narrower:** for a seat that declares nothing the same total failure, but it is a RENDERED state rather than an invisible one (`undeclared`, an unresolved participant, no line drawn); for a declaring seat the residual is that a name checked against a **wrong roster** resolves to a wrong desk, and that an `unchecked` name rests on the declaration alone. ⚠ The tier-2 title used to sit in this cell and no longer does — it was retired on `card#9234`, so the thread line is the whole of what this mapping blocks | **RULED on `card#7957` — *(d)* the seat declares its own protocol agent name, *(2)* an unresolved participant is a first-class rendering — and *(d)*'s SERVER half is BUILT on `card#9296`:** the ingest accepts and the store folds the two heartbeat members, and the consumer-side rule that only a declaration joins is applied ([§ 3.1](#31-the-seat-config-file)). **Its REPORTER half is BUILT on `card#9375`:** `fleet-reporter/fleet-reporter.js` reads the declaration and resolves the roster at flusher start and on `selftest`, emits both heartbeat members on every heartbeat, and **fails the act** — `protocol_agent_name_in_roster` — on a disagreement. AT-27's cases and REDs run in `fleet-reporter/fleet-reporter.selftest.py` § 19. What remains, and what would close it: a fleet whose seats actually declare — which is a provisioning act and not a design one — a roster whose correctness is checkable from the declaring box, which no artifact offers in either direction today; and, for the path residual, **carrying § 3.1's resolution-order contract to the coordination framework's owner** — an issue or a coordination post against the repository that decides where a coord config lives, and since `card#11144` the roster-role contract with it — so that the two ends read one published statement instead of each holding its own; and, for the start-path residual, [AT-27](#at-27-a-declared-agent-name-is-checked-and-a-disagreement-fails-an-act) case F and its moved variant, run against a real supervised start. On Linux that is the crontab entry the installer writes, run by cron on a real seat; the suite runs the installer's line outside cron, which checks the line and not an installed entry. ⛔ Until then this row stays, because a row somebody can close is worse than useless if it is closed while half of it is still true |
 | **That a thread CONVERGED, as the protocol defines convergence** — the protocol's convergence is a **quorum**: *"An issue closes when every required participant has posted `zero open questions`. Required participants are those on `to:` labels who are not observer-CC'd"*. Neither object carries an observer-CC flag, a required-participant set, or a per-participant ACK ledger, and `participants` includes observers with nothing to exclude them by. **The quorum is not computable from anything emitted here** | a consumer that reads `lifecycle: closed` or `declares_close: true` as *"the thread converged"* is making a claim the wire does not carry — and it would be right about many threads and wrong about every stale-close, with no way to tell which. What this design offers instead is two weaker facts that are true: the thread ended, and somebody declared the close act | the protocol names required participants **on the wire** — an observer-CC marker in the body or a distinct label — at which point the quorum is a count. Until then this row is the answer, and [§ 18.5](#185-the-three-findings-the-audit-turns-on) states in terms that `declares_close` is not it |
 | ✅ **CLOSED 2026-10-23 (card#12239 design): [§ 12.7](#127-server-side-counters) enrols the derived members of [§ 18.8.1](#1881-the-counters-this-route-mints) by pointer rows — the rows there not marked *specified, not derived* — and the store document's [§ 7.1](FLEET-STATE.md#71-d1s-server-side-counters--where-they-live) and [§ 8.2.4](FLEET-STATE.md#824-the-fleet-health-object) give each `global_counters` storage and `GET /api/fleet/health` as its surface.** The row stays as the record of why it was open. **That the coordination route's counters have anywhere to live** — [§ 18.8.1](#1881-the-counters-this-route-mints) declares eleven, and [§ 12.7](#127-server-side-counters)'s table is the surface that would give them storage and a badge. Membership there is an **obligation on the store's counter plane**, so this section declares the counters and does not enrol them | an implementer builds the receipt path, increments ten counters, and no operator can read any of them — the alarms `coord_targets_unresolved` and `coord_roster_unknown_name` exist for are the two that matter most, and both would be write-only | the slice that designs the coordination store adopts the ten into [§ 12.7](#127-server-side-counters) and gives each a row on the counter plane, in one change with the plane's own document. **The evidence that this is a real obligation and not bookkeeping is mechanical**: enrolling them early makes `tools/design/verify-fleet-state.py` red with one failure per counter, which is how this row was found |
 | ✅ **CLOSED 2026-10-23 (card#12239 design): `D2-CITED:` [D2 § 6.7](FLEET-STATE.md#67-retention-and-purge) retains the digest 14 days, and GitHub's Redeliver reaches 3 days back (DOCS-CITED), so the chain `3 d < 14 d` bounds this hazard the way the reporter's chain bounds its own.** The row stays as the record. **That the idempotency key cannot expire into a double-derivation** — a uniqueness constraint has no window, but the store that holds it has a retention, and **nothing bounds how old a redelivered coordination delivery can be**. The reporter's equivalent is bounded by [§ 11.3](#113-rotation-and-the-overflow-policy)'s 8-day spool residency; GitHub's Redeliver button has no such floor | an operator redelivering a delivery older than the store's retention re-derives it: one thread line or round bead drawn twice, from one real post. Bounded and recoverable, and invisible while it happens | either state the digest store's retention as unbounded and price it — the key is 64 B and this repository's whole history is under 12,000 deliveries — or bound the redelivery age at receipt by refusing a payload timestamp older than the retention. Both are decisions for the slice that builds the store, and each is cheap; what is not affordable is the sentence an earlier draft carried, which asserted the problem away |

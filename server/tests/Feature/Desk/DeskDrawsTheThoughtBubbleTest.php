@@ -157,13 +157,14 @@ class DeskDrawsTheThoughtBubbleTest extends TestCase
     /**
      * § 5.1 rule 4: a title too long for the bubble is "truncated **with a mark**", because "a
      * title clipped with no mark is read as the whole title — a claim about the wire the wire
-     * did not make". The bound is reachable: D2 § 8.2.1 bounds `task.title` at 120 B.
+     * did not make". The bound is reachable inside D2 § 8.2.1's: `task.title` is bounded at 120 B, the cap is 120
+     * code points (card#12446), and a `task.ref` and its separator ahead of a long title pass it.
      */
     public function test_a_long_title_is_truncated_with_a_mark(): void
     {
-        $long = str_repeat('ingest endpoint ', 7);
+        $long = 'card#7338 — '.str_repeat('ingest endpoint ', 7);
         $probe = $this->probe(['seat' => $this->seatBody([
-            'task' => ['title' => $long, 'source' => 'telemetry', 'ref' => null, 'as_of' => null, 'degraded' => false],
+            'task' => ['title' => str_repeat('ingest endpoint ', 7), 'source' => 'board_card', 'ref' => 'card#7338', 'as_of' => null, 'degraded' => false],
         ])]);
 
         $bubble = $probe['bubble'];
@@ -180,7 +181,7 @@ class DeskDrawsTheThoughtBubbleTest extends TestCase
             'the mark is drawn BESIDE the cap rather than inside it, so the box the page measured '
             .'is not the box it draws');
         $this->assertStringStartsWith(mb_substr($bubble['text'], 0, -1), $long,
-            'the drawn text is not a prefix of the wire\'s title — something was reworded on the way');
+            'the drawn text is not a prefix of the wire\'s reference and title — something was reworded on the way');
     }
 
     /**
@@ -223,7 +224,7 @@ class DeskDrawsTheThoughtBubbleTest extends TestCase
         // exists for, and the one a fixed-width box would produce for free.
         $unmarked = $this->probe(
             ['seat' => $this->seatBody([
-                'task' => ['title' => str_repeat('ingest endpoint ', 7), 'source' => 'telemetry', 'ref' => null, 'as_of' => null, 'degraded' => false],
+                'task' => ['title' => str_repeat('ingest endpoint ', 7), 'source' => 'board_card', 'ref' => 'card#7338', 'as_of' => null, 'degraded' => false],
             ])],
             $this->mutatedModules([
                 'task-bubble.js',

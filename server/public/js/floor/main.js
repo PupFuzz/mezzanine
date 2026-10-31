@@ -430,6 +430,8 @@ loadArt().then(({ furniture, characters, registry, themes, failed }) => {
             draw: characters?.draw ?? null,
             // The character tree's crest of a seat's drawn head: where § 5.1's thought trail ends (card#12444).
             crest: characters?.crestTop ?? null,
+            // The tree's face and pose mark over the head: what the bubble is set above (card#12446).
+            headClear: characters?.headClear ?? null,
             // FLOOR.md § 10.6: the registry each floor's `theme` is resolved against (item 5, § 9 F23) and
             // which themes the page holds (item 8). A registry or a theme whose import was rejected is
             // § 9 F14's: the floor draws its fallback, and the strip names the asset.

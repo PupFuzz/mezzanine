@@ -103,36 +103,51 @@ export const BUBBLE_PAD = 6;
 export const CLOUD_PUFF = 4;
 
 /**
- * The thought trail (§ 5.1, card#11468): the radii of its circles at its NORMAL REACH, from the one just above the
- * creature's head to the one nearest the cloud — growing, so the trail reads as a thought rising — and the least gap
- * between two. A trail longer than its normal reach draws more circles, their radii running evenly from the first of
- * these to the last (`trailCircles()`).
+ * The thought trail (§ 5.1, card#11468; card#12446): the radii of its circles, from the one just above the creature's
+ * head to the one nearest the cloud — each larger than the last, so the trail reads as a thought rising — and the least
+ * gap between two. The trail is ALWAYS these circles and no more (the operator's ruling of 2026-10-28, *"There should be
+ * fewer small bubbles from the character's head to the actual thought bubble. Instead, each one should grow progressively
+ * in size"*): a longer trail spaces them further apart rather than drawing more (`trailCircles()`).
  */
 export const TRAIL_RADII = Object.freeze([2, 3, 4]);
 
 export const TRAIL_GAP = 1;
 
 /**
- * THE TRAIL's NORMAL REACH: from the character's top to the bubble's bottom when the trail is `TRAIL_RADII` with a
- * `TRAIL_GAP` under each circle and above the last — where the bubble sits when nothing holds it higher (§ 5.1, the
- * operator's ruling of 2026-10-27 on card#12444, *"anchor the bubble to the character"*).
+ * THE TRAIL's LEAST REACH: `TRAIL_RADII` with a `TRAIL_GAP` under each circle and above the last — the least gap a trail
+ * spans between a head and its bubble (`bubbleSeat()`), and the height the character's overdraw rises above its rect
+ * (`characterOverdraw()`, the column the sleeper's z's are drawn in).
  */
 export const TRAIL_REACH = TRAIL_RADII.reduce((h, r) => h + 2 * r + TRAIL_GAP, TRAIL_GAP);
 
 /**
- * THE TALLEST BUBBLE, in lines and in pixels (§ 5.1): the bubble's text and its second line (the source and the degraded
- * note), padded. A PARAMETER of the layout — card#12446's three-line bubble raises `BUBBLE_LINES` — which the least box
- * (`leastBoxHeight()`) and the desk's art placeholder read, so a taller bubble grows the box rather than leaving it.
+ * THE BUBBLE's TITLE LINES (§ 5.1, card#12446 — the operator's *"allow the text in the thought bubble to wrap to 3
+ * lines"*): the title wraps at word boundaries on at most this many lines through the scene's one wrap (`wrap()`), the
+ * last cut with the mark, and the source line is drawn under them.
  */
-export const BUBBLE_LINES = 2;
+export const BUBBLE_TITLE_LINES = 3;
+
+/**
+ * THE TALLEST BUBBLE, in lines and in pixels (§ 5.1): the title's lines and the source line (the source and the degraded
+ * note), padded. The least box (`leastBoxHeight()`) and the desk's art placeholder read it, so a taller bubble grows the
+ * box rather than leaving it.
+ */
+export const BUBBLE_LINES = BUBBLE_TITLE_LINES + 1;
 
 export const BUBBLE_BAND = BUBBLE_LINES * LINE + 2 * BUBBLE_PAD;
 
-/** The gap a bubble keeps above the facts plate it would otherwise meet (`placeBubbles()`, `leastBoxHeight()`). */
+/** The gap a bubble keeps above the mark a pose draws over the head — the sleeper's z's, the `?` or the `!` (`bubbleSeat()`). */
 export const BUBBLE_GAP = 1;
 
 /** The art column's width — the character, the desk, the monitor, the chip and the plate (§ 2.2: Chosen). */
 export const ART_W = 216;
+
+/**
+ * THE BUBBLE's WIDEST (card#12446, the operator's ruling (B) of 2026-10-28): the art column's width, so a bubble set on
+ * its character — centred on the character's line, kept inside the box — never reaches the facts plate, whose left edge
+ * is the art column's (`FACTS_PLATE_PAD`), and its title wraps rather than widening.
+ */
+export const BUBBLE_MAX_W = ART_W;
 
 /**
  * § 7.4's FOLD-LAG FADE (card#12346, the operator's ruling of 2026-10-25 — FLOOR.md § 12's *Fold-lag fade*
@@ -179,7 +194,7 @@ export const CHARACTER_SCALE = 3.75;
 /** § 8's cap on the interns drawn: the array D2 caps at 8 (§ 8.1's chosen cap). */
 export const STOOL_CAP = 8;
 
-/** The side table's least seat count (§ 12's *Side-table seats* row): an empty table shows its seats. */
+/** The side table's least seat count (§ 12's *Side-table seats* row): an empty couch shows its seat cushions. */
 export const SIDE_TABLE_SEATS = 4;
 
 /** A seat's height on the side table, along its foot line (§ 10.6; row 20's flat shape). */
@@ -504,26 +519,22 @@ export function trailFoot(box, character) {
 
 /**
  * THE THOUGHT TRAIL (§ 5.1, card#11468 — the operator's "starting with a small bubble and increasing in size
- * until reaching the top card status bubble"; card#12444's *"If necessary, add another bubble to extend the height"*):
- * the circles from a character's head `top` up to its bubble's bottom `bottom`, on the line `x`, smallest first. At the
- * trail's normal reach (`TRAIL_REACH`) they are `TRAIL_RADII`; a longer trail draws as many circles as the gap holds at
- * `TRAIL_GAP` apart — never a fixed count — their radii running evenly from the first of `TRAIL_RADII` to the last, and
- * the gap's slack shared evenly under each circle and above the last, so the last circle stands as far under the
- * cloud as the first stands over the creature. Their sizes say nothing about the seat (§ 5.1 rule 2).
+ * until reaching the top card status bubble"; card#12446 — the operator's ruling of 2026-10-28, *"There should be fewer
+ * small bubbles from the character's head to the actual thought bubble. Instead, each one should grow progressively in
+ * size"*): the circles from a character's head `top` up to its bubble's bottom `bottom`, on the line `x`, smallest first
+ * — always `TRAIL_RADII`, each larger than the one under it, and a longer trail spaced further apart rather than drawn
+ * with more: the gap's slack is shared evenly under each circle and above the last, so the last circle stands as far
+ * under the cloud as the first stands over the creature. Their sizes say nothing about the seat (§ 5.1 rule 2).
  *
- * @param {number} x the trail's line @param {number} top the character's drawn head, or its frame's top
+ * @param {number} x the trail's line @param {number} top the character's drawn head, or the line `bubbleSeat()` starts it at
  * @param {number} bottom the bubble's bottom, at least `TRAIL_REACH` above `top`
  * @returns {list<{x: number, y: number, r: number}>} each circle's centre and radius
  */
 export function trailCircles(x, top, bottom) {
-    const span = top - bottom;
-    const [first, last] = [TRAIL_RADII[0], TRAIL_RADII[TRAIL_RADII.length - 1]];
-    const n = Math.max(TRAIL_RADII.length, Math.floor((span - TRAIL_GAP) / (first + last + TRAIL_GAP)));
-    const radii = n === TRAIL_RADII.length ? TRAIL_RADII : Array.from({ length: n }, (_, i) => first + ((last - first) * i) / (n - 1));
-    const gap = (span - 2 * radii.reduce((sum, r) => sum + r, 0)) / (n + 1);
+    const gap = (top - bottom - 2 * TRAIL_RADII.reduce((sum, r) => sum + r, 0)) / (TRAIL_RADII.length + 1);
     let y = top;
 
-    return Object.freeze(radii.map((r) => {
+    return Object.freeze(TRAIL_RADII.map((r) => {
         y -= gap + r;
         const circle = Object.freeze({ x, y, r });
 
@@ -534,9 +545,9 @@ export function trailCircles(x, top, bottom) {
 }
 
 /**
- * The thought trail at its NORMAL REACH, box-relative (`trailCircles()` from `trailFoot()` up `TRAIL_REACH`): the column
- * the character's overdraw rises to and the sleeper's z's keep out of (`characterOverdraw()`). A bubble held higher
- * draws a longer trail (`placeBubbles()`), above that column.
+ * The thought trail at its LEAST REACH from the character rect's top, box-relative (`trailCircles()` from `trailFoot()` up
+ * `TRAIL_REACH`): the column the character's overdraw rises to and the sleeper's z's keep out of (`characterOverdraw()`).
+ * Where a bubble is set, and so where its trail runs, is `bubbleSeat()`'s.
  */
 export function thoughtTrail(box, character) {
     const foot = trailFoot(box, character);
@@ -625,12 +636,41 @@ export function stoolSlots(box, character) {
 }
 
 /**
+ * WHERE A BUBBLE IS SET ON ITS CHARACTER (§ 5.1; card#12444's *"anchor the bubble to the character"*, and card#12446 —
+ * the operator's ruling of 2026-10-28, *"The bubble can also be lowered"*, with the seat's bounds: never over the eyes,
+ * the mouth or the facts plate, and the trail still leading to the head), box-relative: `{ bottom, foot }`, the base
+ * rect's bottom and the line the thought trail starts at. `head` is the character tree's `headClear()` for the seat in
+ * its pose — `face`, the topmost ink of its eyes, brows and mouth, and `mark`, the top of what the pose draws over the
+ * head (the sleeper's z's, the `?` or the `!`), or `null` where it draws none — in frame units under the rect's top;
+ * `crest` is its drawn head (`crestTop()`), in the same units.
+ *
+ * The bubble is set as LOW as those allow: `TRAIL_REACH` above the face, so the whole trail fits between the face and
+ * the cloud, and `BUBBLE_GAP` above the mark. It may overlap the top of the head — ears, a hat, a crown — and then the
+ * trail starts `TRAIL_REACH` under it, on the head; under a lower head it starts at the head's crest. With no `head`
+ * (no tree, or a seat it does not hold — § 9 F14) the bubble is set as high as any seat's is, `BUBBLE_GAP` above the
+ * character's frame, which holds every mark (§ 10.4's frame contract) — the one height `leastBoxHeight()` reads.
+ *
+ * @param {{face: number|null, mark: number|null}|null} head @param {number} crest
+ * @returns {{bottom: number, foot: number}}
+ */
+export function bubbleSeat(box, character, head, crest) {
+    const top = trailFoot(box, character).y;
+    const highest = characterOverdraw(box, character).overdraw.y - BUBBLE_GAP;
+    const px = (units) => top + units / FRAME_UNITS_PER_PX;
+    const bottom = head === null
+        ? highest
+        : Math.min(head.face === null ? Infinity : px(head.face) - TRAIL_REACH, head.mark === null ? Infinity : px(head.mark) - BUBBLE_GAP);
+
+    return Object.freeze({ bottom, foot: Math.max(px(crest), bottom + TRAIL_REACH) });
+}
+
+/**
  * THE LEAST FURNITURE BOX for a width (ruling D, card#12444: *"the desk area grows taller again to hold the second
  * row"*, by what the layout needs and no more): the smallest whole-pixel height at which the tallest bubble
- * (`BUBBLE_BAND`) stays inside the box wherever `placeBubbles()` may set it at the cap — on its character, `TRAIL_REACH`
- * above the character's top, and, a bubble wide enough to reach the facts column, `BUBBLE_GAP` above the facts plate
- * over the full stack of rows above the interns' back row. `resources/furniture-box.js`'s height is held equal to it for
- * its width by `tools/characters/selftest.mjs` § 7b, so the box is derived, never guessed.
+ * (`BUBBLE_BAND`) stays inside the box set as high as `bubbleSeat()` ever sets one — `BUBBLE_GAP` above the character's
+ * frame — and the facts plate at the cap does too. A bubble is never wider than the art column (`BUBBLE_MAX_W`), so it
+ * never reaches the plate and is never held above it (card#12446). `resources/furniture-box.js`'s height is held equal to
+ * it for its width by `tools/characters/selftest.mjs` § 7b, so the box is derived, never guessed.
  *
  * @returns {number}
  */
@@ -639,7 +679,7 @@ export function leastBoxHeight(width, character) {
         const box = { width, height };
         const R = deskRects(box, character);
 
-        if (R.character.y - TRAIL_REACH - BUBBLE_BAND >= 0 && R.label.y - FACTS_PLATE_PAD_Y - BUBBLE_GAP - BUBBLE_BAND >= 0) {
+        if (bubbleSeat(box, character, null, 0).bottom - BUBBLE_BAND >= 0 && R.label.y - FACTS_PLATE_PAD_Y >= 0) {
             return height;
         }
     }

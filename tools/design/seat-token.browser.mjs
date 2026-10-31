@@ -4,8 +4,10 @@
 // second factor included, so it needs an account whose password and TOTP secret the runner holds.
 //
 //   SEAT_TOKEN_UAT_EMAIL=… SEAT_TOKEN_UAT_PASSWORD=… SEAT_TOKEN_UAT_TOTP_SECRET=<base32> \
-//     node tools/design/seat-token.browser.mjs --base http://127.0.0.1:8123
-//   …and --chrome <path> or $CHROME, as every browser tool here.
+//     node tools/design/seat-token.browser.mjs --base http://127.0.0.1:8123 [--http-site]
+//   …and --chrome <path> or $CHROME, as every browser tool here. `--http-site` says the site's `app.url` is
+//   `http:`, where the save button must not render; without it the walk expects an `https:` `app.url`. The
+//   scheme `--base` is reached by is not the one that decides: the button follows `app.url`, not the request.
 //
 // The credentials come from the ENVIRONMENT, never argv (a process list shows argv). The walk issues a token
 // for a fresh seat on the given site, so run it against a site where that is wanted.
@@ -16,11 +18,21 @@
 //   pattern    the slug inputs' `pattern` attributes compile in the browser (a pattern that does not compile is
 //              ignored silently): a non-slug is a `patternMismatch`, a slug is not
 //   issue      the issue response shows exactly one `mzn_` token and its prefix, and is `Cache-Control: no-store`
+//   save       card#12571, D6 § 4.2 (R-srv-1): the *Save token file* button is there, and a click builds a blob of
+//              type `application/octet-stream` downloaded as `mezzanine-reporter-token`, holding exactly the v2
+//              file — the four keys once each, LF only, no CR, no trailing space, the token the page shows, the
+//              button's `https:` ingest URL ending `/api/ingest/events`, and the issued install and seat ids — with
+//              no request sent by the click and the token in no URL the page was at. On an `http:` site
+//              (`--http-site`) the row instead requires the button to be ABSENT
+//   restore    the page's `pageshow` handler, fired with `persisted` true by the walk itself, blanks the token and
+//              removes the save button. A synthetic event, because Chromium reports a POST's response as not restorable from
+//              the back/forward cache (`HTTPMethodNotGET`), so `bfcache` below does not reach that page there
 //   reload     reloading that response (the browser re-sends the POST) shows the "already used or out of date"
 //              refusal, no token, and still one token row for the seat
 //   back       navigating away and pressing Back shows no token
 //   bfcache    whether that Back was a back/forward-cache restore (`pageshow.persisted`): when it was, the token
-//              element must read as blanked; when it was not, the row reports NOT MEASURED, never a pass
+//              element must read as blanked and the save button must be gone; when it was not, the row reports
+//              NOT MEASURED, never a pass
 //   revoke     the row's revoke form, which takes no reason, revokes it and the list names the operator
 //
 // ⛔ THE TOKEN IS NEVER PRINTED. Rows print its prefix and its length; the plaintext stays inside the browser.
@@ -33,6 +45,7 @@ const argOf = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i +
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const BASE = (argOf('--base') || '').replace(/\/$/, '');
+const HTTP_SITE = argv.includes('--http-site');
 const { SEAT_TOKEN_UAT_EMAIL: EMAIL, SEAT_TOKEN_UAT_PASSWORD: PASSWORD, SEAT_TOKEN_UAT_TOTP_SECRET: SECRET } = process.env;
 if (!BASE || !EMAIL || !PASSWORD || !SECRET) {
   console.error('usage: SEAT_TOKEN_UAT_EMAIL=… SEAT_TOKEN_UAT_PASSWORD=… SEAT_TOKEN_UAT_TOTP_SECRET=… node seat-token.browser.mjs --base <url>');
@@ -68,11 +81,25 @@ const evaluate = async (expr) => {
 };
 const documents = [];
 on('Network.responseReceived', (p) => { if (p.type === 'Document') documents.push({ url: p.response.url, status: p.response.status, cacheControl: p.response.headers['Cache-Control'] ?? p.response.headers['cache-control'] ?? '' }); });
+const requests = [];
+on('Network.requestWillBeSent', (p) => { requests.push(p.request.url); });
 await page('Network.enable');
 let restored = null;
 on('Page.backForwardCacheNotUsed', (p) => { restored = { used: false, reasons: (p.notRestoredExplanations || []).map((x) => x.reason) }; });
 // Every document records `pageshow.persisted` where the walk can read it after a Back.
 await page('Page.addScriptToEvaluateOnNewDocument', { source: "addEventListener('pageshow', (e) => { window.__persisted = e.persisted; });" });
+// Every document records the blob a save builds and the link that downloads it, and suppresses the download
+// itself: the walk judges the bytes the page would write, inside the page, and never writes or prints them.
+await page('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
+  const create = URL.createObjectURL.bind(URL);
+  URL.createObjectURL = (blob) => { const href = create(blob); window.__saved = { href, type: blob.type, text: null };
+    blob.text().then((t) => { window.__saved.text = t; }); return href; };
+  const click = HTMLAnchorElement.prototype.click;
+  HTMLAnchorElement.prototype.click = function () {
+    if (this.href.startsWith('blob:')) { window.__savedLink = { href: this.href, download: this.download, attached: this.isConnected }; return; }
+    return click.call(this);
+  };
+})();` });
 
 /** Run `action` in the page and wait until a NEW document has loaded. */
 async function navigates(action) {
@@ -122,6 +149,54 @@ try {
   row('issue', shown.shape && (await bodyTokens()) === 1 && /no-store/.test(issuedDoc?.cacheControl ?? ''),
     `uat / ${seat}: token of ${shown.length} chars shown once, prefix ${prefix}; response ${issuedDoc?.status} Cache-Control "${issuedDoc?.cacheControl}"`);
 
+  // The save, judged inside the page: only booleans, the keys, the ingest URL and the ids come back out.
+  const buttons = await evaluate('document.querySelectorAll("[data-seat-token-save]").length');
+  if (HTTP_SITE) {
+    row('save', buttons === 0, `--http-site: ${buttons} save button(s) on the issue response, none expected`);
+  } else if (buttons !== 1) {
+    row('save', false, `${buttons} save button(s) on the issue response, one expected on an https site (pass --http-site if app.url is http:)`);
+  } else {
+    requests.length = 0;
+    await evaluate('document.querySelector("[data-seat-token-save]").click()');
+    for (let i = 0; i < 40 && !(await evaluate('window.__saved?.text != null')); i += 1) await sleep(50);
+    const saved = await evaluate(`(() => {
+      const s = window.__saved, l = window.__savedLink, b = document.querySelector('[data-seat-token-save]');
+      if (!s || s.text == null || !l) return { built: !!s, linked: !!l };
+      const token = document.getElementById('seat-token-plaintext').textContent.trim();
+      const text = s.text, lines = text.split('\\n');
+      const body = lines.slice(0, -1).map((line) => { const at = line.indexOf(' '); return [line.slice(0, at), line.slice(at + 1)]; });
+      const keys = body.map(([k]) => k), value = Object.fromEntries(body);
+      return {
+        built: true, linked: true, type: s.type, download: l.download, sameHref: l.href === s.href, keys,
+        noCr: !text.includes('\\r'), endsLf: text.endsWith('\\n') && lines.at(-1) === '',
+        noTrailingSpace: lines.every((line) => !/[ \\t]$/.test(line)), oneSpace: body.every(([k, v]) => k && v && !/\\s/.test(v)),
+        tokenIsShown: value.token === token && /^mzn_[A-Za-z0-9_-]{43}$/.test(token),
+        ingestUrl: value.ingest_url, buttonUrl: b.dataset.ingestUrl, installId: value.install_id, seatId: value.seat_id,
+        tokenInUrl: location.href.includes(token.slice(4)),
+      };
+    })()`);
+    const keysOnce = JSON.stringify(saved.keys) === JSON.stringify(['token', 'ingest_url', 'install_id', 'seat_id']);
+    const urlOk = saved.ingestUrl === saved.buttonUrl && /^https:\/\/[^\s/]+(\/\S*)?\/api\/ingest\/events$/.test(saved.ingestUrl ?? '');
+    const sent = requests.filter((u) => !u.startsWith('blob:') && !u.startsWith('data:'));
+    const tokenInDocUrl = await evaluate(`[${documents.map((d) => JSON.stringify(d.url)).join(',')}].some((u) => u.includes(document.getElementById('seat-token-plaintext').textContent.trim().slice(4)))`);
+    row('save', saved.built && saved.linked && saved.type === 'application/octet-stream' && saved.download === 'mezzanine-reporter-token'
+      && saved.sameHref && keysOnce && saved.noCr && saved.endsLf && saved.noTrailingSpace && saved.oneSpace && saved.tokenIsShown
+      && urlOk && saved.installId === 'uat' && saved.seatId === seat && sent.length === 0 && !saved.tokenInUrl && !tokenInDocUrl,
+      `blob built ${saved.built}, linked ${saved.linked}; type "${saved.type}", download "${saved.download}"; keys ${JSON.stringify(saved.keys)}; `
+      + `LF-only ${saved.noCr}, ends LF ${saved.endsLf}, no trailing space ${saved.noTrailingSpace}, one space per line ${saved.oneSpace}; `
+      + `token = the shown one ${saved.tokenIsShown}; ingest_url ${saved.ingestUrl} (button ${saved.buttonUrl}); ids ${saved.installId} / ${saved.seatId}; `
+      + `requests sent by the click ${sent.length}; token in a URL ${saved.tokenInUrl || tokenInDocUrl}`);
+  }
+
+  // The page's restore handler, driven by a SYNTHETIC `pageshow` with `persisted` true: the issue response is a
+  // POST's, which Chromium reports as not restorable from the back/forward cache (`HTTPMethodNotGET`), so the `bfcache` row
+  // below does not reach it there. This measures what the handler does, not whether a browser restores the page.
+  const onRestore = await evaluate(`(() => { dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    const t = document.getElementById('seat-token-plaintext')?.textContent.trim() ?? null;
+    return { blanked: t !== null && !/mzn_/.test(t), buttons: document.querySelectorAll('[data-seat-token-save]').length }; })()`);
+  row('restore', onRestore.blanked && onRestore.buttons === 0,
+    `synthetic pageshow(persisted): token element blanked ${onRestore.blanked}; save buttons left ${onRestore.buttons}`);
+
   const rowsFor = () => evaluate(`[...document.querySelectorAll('tbody tr')].filter((r) => r.textContent.includes('uat / ${seat}')).length`);
   documents.length = 0;
   await navigates('location.reload()');
@@ -141,9 +216,10 @@ try {
   const persisted = await evaluate('window.__persisted');
   const afterBack = await bodyTokens();
   const blanked = await evaluate('document.getElementById("seat-token-plaintext")?.textContent.trim() ?? null');
+  const saveButtons = await evaluate('document.querySelectorAll("[data-seat-token-save]").length');
   row('back', second === 1 && afterBack === 0,
     `issue response showed ${second} token; after Back: ${afterBack} tokens, documents ${documents.map((d) => `${d.status} ${new URL(d.url).pathname}`).join(' → ') || 'none fetched'}, showing ${await evaluate('location.href')} "${(await evaluate('document.body.innerText')).replace(/\s+/g, ' ').trim().slice(0, 90)}"`);
-  if (persisted === true) row('bfcache', blanked !== null && !/mzn_/.test(blanked), `restored from the back/forward cache; token element reads "${blanked}"`);
+  if (persisted === true) row('bfcache', blanked !== null && !/mzn_/.test(blanked) && saveButtons === 0, `restored from the back/forward cache; token element reads "${blanked}"; save buttons ${saveButtons}`);
   else row('bfcache', null, `pageshow.persisted=${persisted}; ${restored ? `not restored: ${restored.reasons.join(', ') || 'no reason given'}` : 'no restore reported'}`);
 
   await go(`${BASE}/admin/tokens`);

@@ -289,7 +289,7 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
     public function test_red_the_fixed_width_bubble(): void
     {
         $dir = $this->mutatedModules(['../floor/scene.js',
-            'const w = Math.max(line1.w, line2?.w ?? 0) + 2 * BUBBLE_PAD;', 'const w = 120;']);
+            'const w = Math.max(title.w, line2?.w ?? 0) + 2 * BUBBLE_PAD;', 'const w = 120;']);
 
         $this->assertNotSame([], $this->measuredDefects($this->sceneOf(self::SHIPPED, $dir), self::SHIPPED),
             'RED (the fixed-width bubble) did not fail (d)');
@@ -402,7 +402,10 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
         return $defects;
     }
 
-    /** (d): each bubble's box holds its measured text, and the bound title is cut with a mark. */
+    /**
+     * (d): each bubble's box holds its measured text — every line of the wrapped title (card#12446) measured by the page's
+     * measurer, the widest its text width — and the bound title is cut with a mark.
+     */
     private function measuredDefects(array $scene, string $run): array
     {
         [$glyph] = $this->measurerOf($run, 'fact');
@@ -415,7 +418,10 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
                 continue;
             }
 
-            if ($b['text_w'] !== $glyph * mb_strlen($b['text'])) {
+            $measured = array_map(fn (array $line): bool => $line['w'] === $glyph * mb_strlen($line['text']), $b['lines']);
+            $widest = max(array_map(fn (array $line): int => $glyph * mb_strlen($line['text']), $b['lines']));
+
+            if (in_array(false, $measured, true) || $b['text_w'] !== $widest) {
                 $defects[] = "{$desk['key']}'s bubble text was not measured by the page's measurer";
             }
 

@@ -60,7 +60,7 @@ final class SchemaVersions
      * `ACCEPTED` alone refuses (D2 § 13 row 59 says why a refusal would hide the very seat the badge
      * exists to show).
      */
-    public const CURRENT_REPORTER_VERSION = '0.4.0';
+    public const CURRENT_REPORTER_VERSION = '0.6.0';
 
     public static function accepts(mixed $version): bool
     {
@@ -91,4 +91,31 @@ final class SchemaVersions
 
         return version_compare($version, self::CURRENT_REPORTER_VERSION, '<');
     }
+
+    /**
+     * Whether a seat's last reported build is at least `$floor` — the read-time gate of a feature only a
+     * build from `$floor` on can END (card#12447): D2 § 4.9 reads tier 4 only from `0.5.0`, because a
+     * build below it sends no boundary `null` and a slot such a seat last filled would stand for good, and
+     * `BOARD-TASK.md § 4.4` step 2 clears a `declared` mapping on a heartbeat's `null` only from the build
+     * that sends the members on every heartbeat.
+     *
+     * ⛔ NOT `reporterIsOutdated()`, which compares against `CURRENT_REPORTER_VERSION` and would stop
+     * answering `true` for a `0.5.0` seat the day the current build moved past it. Numeric precedence per
+     * component, as that predicate's; a null or unparseable version answers `false` — a build this version
+     * line cannot name is not one that is known to send what the caller needs.
+     */
+    public static function reporterAtLeast(?string $version, string $floor): bool
+    {
+        if ($version === null || preg_match('/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/D', $version) !== 1) {
+            return false;
+        }
+
+        return version_compare($version, $floor, '>=');
+    }
+
+    /**
+     * The first build that sends `todo.progress` and the board-declaration heartbeat members (card#12447).
+     * One constant for both readers, because one build shipped both.
+     */
+    public const TODO_AND_BOARD_DECLARATION_FROM = '0.5.0';
 }

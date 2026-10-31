@@ -67,7 +67,7 @@ const lazy = (name) => require(name);
  * change to a file a reporter update ships, and `bin/reporter-version-guard.py` fails a PR that changes
  * one without moving it, so two different builds never report the same version. Each version's row in
  * `fleet-reporter/UPDATES.md` says what an upgrading seat must apply. */
-const REPORTER_VERSION = '0.4.0';
+const REPORTER_VERSION = '0.6.0';
 const SCHEMA_VERSION = 1;
 
 /* ── Every number, from § 14 and the section that derives it ──────────────────────────────── */
@@ -137,6 +137,11 @@ const K = {
                                  // a drain; the acceptance suite holds it equal to RateLimiter::EVENTS_LIMIT
   SEND_WINDOW_MS: 3615000,       // § 11.5 / § 14 — Derived: the server's 3,600 s window + one 15 s request deadline
   HEARTBEAT_HEADROOM: 120,       // § 11.5 / § 14 — Chosen: 2x the 60 heartbeats an hour holds
+  TODO_MAP_ENTRIES: 64,          // § 14 *Entries per session map* (card#12447) — the open-call cap reused; an LRU
+                                 // that evicts, so it bounds memory and never refuses (§ 6.16)
+  TODO_RETAINED_SESSIONS: 32,    // § 14 *Retained session maps* (card#12447) — twice SESSIONS; past it the
+                                 // least-recently-touched CLOSED session's to-do state is dropped (§ 6.16)
+  BOARD_USER_MAX: 4294967295,    // § 14 *`board_user_id` bound* (card#12447) — D2 § 6.4's INT UNSIGNED
 };
 
 /* ── Harness-sourced enum value sets (§ 6.0). ─────────────────────────────────────────────────
@@ -376,10 +381,16 @@ function validateSite(site, label) {
  * still writes nothing to stdout (P-1, P-2). A config error is loud on the seat's OWN surface
  * (the log, `config_invalid`, `selftest`) — never on the agent's. */
 function loadConfig(p) {
-  const errors = [];
   let raw;
   try { raw = fs.readFileSync(p, 'utf8'); }
   catch (e) { return { config: null, errors: [`config unreadable at ${p}: ${e.code || e.message}`], spool: null, sites: [] }; }
+  return parseConfig(raw);
+}
+
+/* `loadConfig`'s rules over a config's TEXT, so the installer validates the bytes it is about to write
+ * with the same rules before they reach the disk (`install.js`'s `writeConfig`, card#12571). */
+function parseConfig(raw) {
+  const errors = [];
   let c;
   try { c = JSON.parse(raw); }
   catch (e) { return { config: null, errors: [`config is not valid JSON: ${e.message}`], spool: null, sites: [] }; }
@@ -617,6 +628,55 @@ function resolveRoundtable(cfg) {
   return { name, check: 'disagreed', malformed: null, config: site.path, identity: read.identity };
 }
 
+/* ── The seat's BOARD identity (§ 3.1's *`board_user_id` and `board_api_base`*, card#12447) ──────────
+ * A DECLARATION the installer wrote from the board's own `GET /users/current.json` answer, and nothing
+ * the reporter checks against the board: the state set is two members (declared, or not), and a
+ * malformed pair declares nothing exactly as a malformed `protocol_agent_name` does — it is NOT a config
+ * error, so `config_readable` passes and the seat keeps sending. Like the protocol name it is not an
+ * identity: no token binding, no `config_fingerprint`, no character seed reads it.
+ *
+ * `board_api_base` NEVER RIDES THE WIRE. The heartbeat carries its 16-hex fingerprint over the base
+ * NORMALIZED — scheme and host lowercased, a default port (`443`) removed, every trailing `/` removed,
+ * nothing else touched — so a consuming site compares its own `BOARD_API_BASE` under the same rule
+ * (`docs/design/BOARD-TASK.md § 4.4`). A base carrying userinfo is malformed here, so no strip of one
+ * is needed or written. Resolved at flusher start and on `selftest`, never in a hook. */
+function normalizedBoardBase(base) {
+  let u;
+  try { u = new URL(base); } catch (e) { return null; }
+  // `URL` already lowercases the scheme and the host and drops a default port from `host`.
+  const rest = base.slice(base.indexOf('//') + 2).replace(/^[^/?#]*/, '');
+  return `${u.protocol}//${u.host}${rest}`.replace(/\/+$/, '');
+}
+const boardFingerprint = (base) => sha256hex(normalizedBoardBase(base)).slice(0, 16);
+
+/* Returns { user_id, fingerprint, malformed } — `malformed` names the offending KEY (never a value) or is
+ * null. Both present and well-formed ⇒ declared; neither (absent or null) ⇒ undeclared; anything else ⇒
+ * malformed, which heartbeats as undeclared. */
+function boardDeclaration(cfg) {
+  const has = (k) => cfg[k] !== undefined && cfg[k] !== null;
+  const none = { user_id: null, fingerprint: null, malformed: null };
+  if (!has('board_user_id') && !has('board_api_base')) return none;
+  const id = cfg.board_user_id, base = cfg.board_api_base;
+  const bad = (k) => Object.assign({}, none, { malformed: k });
+  if (!has('board_user_id')) return bad('board_user_id');
+  if (!has('board_api_base')) return bad('board_api_base');
+  if (!Number.isInteger(id) || id < 1 || id > K.BOARD_USER_MAX) return bad('board_user_id');
+  let u = null;
+  if (typeof base === 'string' && /^https:\/\//.test(base) && bytes(base) <= 256) { try { u = new URL(base); } catch (e) { u = null; } }
+  if (!u || u.protocol !== 'https:' || u.username !== '' || u.password !== '' || /@/.test(base.slice(8).split(/[/?#]/, 1)[0])) return bad('board_api_base');
+  return { user_id: id, fingerprint: boardFingerprint(base), malformed: null };
+}
+
+/* The board declaration as `selftest`'s detail shows it: the declared id, the base's SCHEME AND HOST
+ * only (§ 3.1: never the value beyond them), and the malformed key. Counted once per resolution, like
+ * the protocol name's counters. */
+function resolveBoard(cfg) {
+  const d = boardDeclaration(cfg);
+  if (d.malformed !== null) count('board_declaration_malformed');
+  const shown = typeof cfg.board_api_base === 'string' ? schemeAndHost(cfg.board_api_base) : null;
+  return Object.assign(d, { base_shown: d.malformed === null ? shown : null });
+}
+
 /* ── P-6: a secret VALUE must never reach an output stream, a log, a traceback or an argv ────
  * The control is that the token is never PASSED to a writer — but "never passed" is a property
  * of every call site, and one future call site is all it takes. So the log writer redacts at
@@ -772,29 +832,59 @@ function appendCapped(file, line, cap, tree) {
   return appendLine(file, line, tree);
 }
 
-/* `sync` is for ONE caller, the pre-send save of a site's request (§ 3.1, *One request per site*): the
- * one `state.json` write whose loss to a power cut puts seqs on a wire the restarted seat cannot see. It
- * fsyncs the temp file before the rename and the directory after it where the platform can open a
- * directory (Linux); where it cannot, the file alone is synced and the write goes on (§ 15 row 54). */
+/* THE ONE TEMP-AND-RENAME WRITE, the reporter's and the installer's (`install.js` requires it from this
+ * file rather than keeping a second one: D6 § 3.1, card#12571). It returns `true` when the target holds
+ * `text`, and `false` on any failure, with the temp file removed and the target as it was — so every
+ * caller checks the result; it never throws.
+ *
+ * `text` is a string (written as UTF-8) or a Buffer.
+ *
+ * `sync` is for the writes whose loss to a power cut costs something: the pre-send save of a site's
+ * request (§ 3.1, *One request per site*), the one `state.json` write whose loss puts seqs on a wire the
+ * restarted seat cannot see, and the installer's config. It opens the temp file `wx` (the plain path
+ * uses `writeFileSync` with mode 0600, which a unique name makes safe enough for every other write),
+ * fsyncs it before the rename and the directory after it where the platform can open a directory
+ * (Linux); where it cannot, the file alone is synced and the write goes on (§ 15 row 54).
+ *
+ * `keepMode` applies the target's existing mode to the temp file before the rename, so a file the user
+ * keeps at 0644 (their `settings.json`) stays 0644; with no target yet the mode is 0600.
+ *
+ * On `win32` the rename is retried a bounded number of times on `EPERM`/`EBUSY`, which an antivirus
+ * scanner or a search indexer holding the target open raises; before card#12571 one such hold lost that
+ * pass's `state.json` save. The retries total `RENAME_RETRY_MS`'s sum, under half a second. */
+const RENAME_RETRY_MS = [10, 25, 50, 100, 200];
+function renameOver(tmp, file) {
+  for (let i = 0; ; i++) {
+    try { fs.renameSync(tmp, file); return; } catch (e) {
+      if (process.platform !== 'win32' || (e.code !== 'EPERM' && e.code !== 'EBUSY') || i >= RENAME_RETRY_MS.length) throw e;
+      sleepSync(RENAME_RETRY_MS[i]);
+    }
+  }
+}
 function atomicWrite(file, text, opts) {
   // .tmp + rename with a UNIQUE temp name (§ 11.1): one fixed temp name is a lost-update
   // generator the moment two processes race, which is exactly what § 8.2 removed from the index.
   const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
   const sync = !!(opts && opts.sync);
+  let mode = 0o600;
+  if (opts && opts.keepMode) {
+    try { mode = fs.statSync(file).mode & 0o7777; } catch (e) { /* no target yet: the new file is 0600 */ }
+  }
   try {
     ensureDir(path.dirname(file));
     if (sync) {
       const fd = fs.openSync(tmp, 'wx', 0o600);
       try {
         // `writeSync` may write fewer bytes than it was given; the loop writes the rest before the sync.
-        const buf = Buffer.from(text, 'utf8');
+        const buf = Buffer.isBuffer(text) ? text : Buffer.from(text, 'utf8');
         for (let off = 0; off < buf.length;) off += fs.writeSync(fd, buf, off, buf.length - off);
         fs.fsyncSync(fd);
       } finally { fs.closeSync(fd); }
     } else {
       fs.writeFileSync(tmp, text, { encoding: 'utf8', mode: 0o600 });
     }
-    fs.renameSync(tmp, file); // atomic-replace on both platforms
+    if (mode !== 0o600) fs.chmodSync(tmp, mode);
+    renameOver(tmp, file); // atomic-replace on both platforms
     if (sync) {
       let dfd = -1;
       try { dfd = fs.openSync(path.dirname(file), 'r'); fs.fsyncSync(dfd); }
@@ -1165,6 +1255,11 @@ const ALLOWLIST = {
   WebFetch: (ti) => schemeAndHost(ti.url),
   WebSearch: (ti) => ti.query,
   TodoWrite: () => '',            // rendered as the bare tool name — a label, no argument
+  // § 7.1 (card#12447): the to-do's in-progress item reaches the wire ONCE, as § 6.16's `todo.progress`
+  // title, never a second time as a descriptor — the monitor keeps showing that the tool ran.
+  TaskCreate: () => '',
+  TaskUpdate: () => '',
+  TaskList: () => '',
 };
 const firstLine = (s) => (typeof s === 'string' ? s.split(/\r?\n/, 1)[0] : null);
 
@@ -1250,6 +1345,243 @@ function journal(spool, rec) {
   return appendLine(path.join(indexDir(spool), `${utcBucket(t)}.jsonl`), JSON.stringify(rec), 'index');
 }
 
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+ * THE TO-DO TIER, REPORTER SIDE (§ 6.16, card#12447)
+ *
+ * NO LIST IS KEPT. The harness's to-do list is two tool families (§ 6.0's fact table), and every draft
+ * that reconstructed the list from their incremental calls found a new way to desynchronise from it. So
+ * the reporter keeps, per session, a small LRU map of task TEXTS and decides the title from the one call
+ * that moved it: the first `in_progress` entry of a `TodoWrite` list, or the newest `TaskUpdate` to
+ * `in_progress`. The hooks only APPEND (§ 8.2 forbids a hook reading the map to emit); the flusher folds
+ * the records and emits at most ONE `todo.progress` per section, derived LAST (`emitTodo`).
+ *
+ * THE REPORTER IS THE ONE WRITER OF THE TITLE'S LIFE: the server clears its slot on nothing of its own,
+ * so every boundary that ends a session's contribution — `SessionEnd`, a `/clear`, the flusher's
+ * `inferred_silence`, the hook-side cap eviction — clears that session's `contributing` bit here, and the
+ * SEAT's answer (the most recently moved non-null title over the contributing sessions) is re-emitted.
+ * ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+const TODO_TOOLS = ['TodoWrite', 'TaskCreate', 'TaskUpdate'];
+const TODO_ID_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
+
+function emptyTodo() {
+  return { sessions: new Map(), last_emitted: undefined, trigger: null };
+}
+
+/* One session's to-do state, created on first need. `touched_at` orders the RETAINED closed sessions. */
+function todoSession(ix, sid, at) {
+  let t = ix.todo.sessions.get(sid);
+  if (!t) {
+    t = { map: new Map(), titled_id: null, title: null, title_truncated: false, title_at: null,
+      contributing: false, closed_by_inference: false, touched_at: at || null };
+    ix.todo.sessions.set(sid, t);
+  }
+  if (at) t.touched_at = at;
+  return t;
+}
+
+/* The map's one writer: a touch moves the id to the newest end, and a touch past the cap EVICTS the
+ * least-recently-touched entry — it never refuses, which is what left a session full of completed tasks
+ * dark for the rest of its life in round 3's draft. */
+function todoMapSet(ix, t, id, text, truncated) {
+  t.map.delete(id);
+  t.map.set(id, { text, truncated: !!truncated });
+  while (t.map.size > K.TODO_MAP_ENTRIES) {
+    t.map.delete(t.map.keys().next().value);
+    if (ix.counting) count('todo_map_evicted');
+  }
+}
+
+/* A record that MOVES the session's title: sets it, dates it by the record's own `at`, and makes the
+ * session contribute. */
+function todoTitle(ix, t, sid, toolName, title, truncated, titledId, at) {
+  t.title = title; t.title_truncated = title === null ? false : !!truncated; t.titled_id = titledId;
+  t.title_at = at || t.title_at; t.contributing = true;
+  ix.todo.trigger = { session_id: sid, tool_name: toolName };
+}
+
+function applyTodoRecord(ix, r) {
+  const sid = r.session_id;
+  if (typeof sid !== 'string') return;
+  const t = todoSession(ix, sid, r.at);
+  switch (r.k) {
+    case 'todo_list':
+      // `TodoWrite` carries the whole list, so its one record is the whole answer.
+      todoTitle(ix, t, sid, 'TodoWrite', r.entry ? r.entry.text : null, r.entry ? r.entry.truncated : false, null, r.at);
+      break;
+    case 'todo_create':
+      if (typeof r.text === 'string') todoMapSet(ix, t, r.id, r.text, r.truncated);
+      break;
+    case 'todo_update': {
+      // An id the map does not hold is EXPECTED — a list kept across a resume, a compaction or a reporter
+      // upgrade, or an evicted entry — so it is its own informational counter and never a
+      // `payload_key_missing.<key>`, whose rise raises `harness_contract_moved`.
+      if (!t.map.has(r.id) && ix.counting) count('todo_task_unknown');
+      if (typeof r.text === 'string') todoMapSet(ix, t, r.id, r.text, r.truncated);
+      const entry = t.map.get(r.id) || null;
+      if (r.status === 'in_progress') {
+        // An id this reporter holds no text for titles `null`: the previous step's text over a step it
+        // cannot name would be a title about the wrong task.
+        todoTitle(ix, t, sid, 'TaskUpdate', entry ? entry.text : null, entry ? entry.truncated : false, r.id, r.at);
+      } else if ((r.status === 'completed' || r.status === 'deleted') && t.titled_id === r.id) {
+        todoTitle(ix, t, sid, 'TaskUpdate', null, false, null, r.at);
+      }
+      break;
+    }
+    case 'todo_end':
+      if (t.contributing) ix.todo.trigger = { session_id: sid, tool_name: r.tool_name === 'SessionStart' ? 'SessionStart' : 'SessionEnd' };
+      t.contributing = false;
+      break;
+    default: break;
+  }
+}
+
+/* EVERY `session_close` clears the bit — a `SessionEnd`, a `/clear`, the flusher's `inferred_silence`, the
+ * hook-side cap eviction — and records whether the close was the reporter's own guess, because the
+ * index's 15-minute `sessionsClosed` tombstone is pruned before a quiet session's next hook may arrive. */
+function todoSessionClosed(ix, sid, endReason, at) {
+  const t = ix.todo.sessions.get(sid);
+  if (!t) return;
+  if (t.contributing) ix.todo.trigger = { session_id: sid, tool_name: 'SessionEnd' };
+  t.contributing = false;
+  t.closed_by_inference = endReason === 'inferred_silence';
+  if (at) t.touched_at = at;
+}
+
+/* A `session_open` restores the contribution in exactly two cases: a `resume` (the case a server-side
+ * lifecycle could not see), and the first hook of a session the flusher closed BY INFERENCE — the one late
+ * hook that restores, since the close it undoes was the reporter's own guess. Any other late hook (after a
+ * seat-sent `SessionEnd`) reopens the index session and restores nothing. */
+function todoSessionOpened(ix, r) {
+  const t = ix.todo.sessions.get(r.session_id);
+  if (!t) return;
+  if (r.source === 'resume' || t.closed_by_inference) {
+    t.contributing = true; t.closed_by_inference = false;
+    ix.todo.trigger = { session_id: r.session_id, tool_name: 'SessionStart' };
+  }
+  if (r.at) t.touched_at = r.at;
+}
+
+/* § 14's *Retained session maps*: past the count the least-recently-touched CLOSED session's state is
+ * dropped — never an open session's, which § 8.2's own session cap bounds. */
+function capTodo(ix) {
+  const ts = ix.todo.sessions;
+  while (ts.size > K.TODO_RETAINED_SESSIONS) {
+    let victim = null;
+    for (const [sid, t] of ts) {
+      if (ix.sessions.has(sid)) continue;
+      if (victim === null || Date.parse(t.touched_at || 0) < Date.parse(ts.get(victim).touched_at || 0)) victim = sid;
+    }
+    if (victim === null) break;
+    ts.delete(victim);
+  }
+}
+
+/* THE SEAT'S ANSWER: the most recently moved non-null title among the CONTRIBUTING sessions, or null.
+ * Under `descriptors` `"paths"` or `"none"` the answer IS null and no retained state is read. */
+function todoAnswer(ix, mode) {
+  if (mode !== 'full') return { title: null, title_truncated: false };
+  let best = null;
+  for (const t of ix.todo.sessions.values()) {
+    if (!t.contributing || t.title === null) continue;
+    if (!best || Date.parse(t.title_at || 0) > Date.parse(best.title_at || 0)) best = t;
+  }
+  return best ? { title: best.title, title_truncated: best.title_truncated } : { title: null, title_truncated: false };
+}
+
+/* The newest session the index holds, open or closed — the re-sync's `session_id` — or null. */
+function newestSession(ix) {
+  let best = null, bestAt = -Infinity;
+  const see = (sid, at) => { const v = Date.parse(at || 0); if (v >= bestAt) { best = sid; bestAt = v; } };
+  for (const [sid, t] of ix.todo.sessions) see(sid, t.touched_at);
+  for (const [sid, c] of ix.sessionsClosed) see(sid, c.closed_at);
+  for (const [sid, x] of ix.sessions) see(sid, x.last_active || x.opened_at);
+  return best;
+}
+
+/* Hook side: one record per main-agent close, its text sanitised by the FULL § 7.3 pass and cut to the
+ * title bound BEFORE it is appended (`todoText`) — raw to-do text is the free text this tier exists to
+ * bound, and the journal is a file on the seat. Under `descriptors` `"paths"` or `"none"` nothing is
+ * appended at all. The line is measured with `Buffer.byteLength` as an ASSERTION: one entry and one task
+ * per record put it under the 4 KiB journal line by construction, so the branch never runs. */
+function appendTodo(ctx, ix, rec) {
+  if (descriptorMode(ctx.config) !== 'full') return;
+  if (bytes(JSON.stringify(Object.assign({ at: rfc3339(now()) }, rec))) > K.EVENT_CAP) { count('oversize_event_dropped'); return; }
+  journal(ctx.spool, rec);
+}
+
+/* `text` is `activeForm` when the payload carries one, else the imperative (`content` / `subject`) — a
+ * rule over two documented fields with different roles, decided from the one payload in hand. */
+function todoText(activeForm, imperative) {
+  const raw = typeof activeForm === 'string' && activeForm !== '' ? activeForm
+    : (typeof imperative === 'string' && imperative !== '' ? imperative : null);
+  if (raw === null) return null;
+  const r = sanitize(raw, K.TITLE_CAP);
+  countSanitizer(r);
+  return { text: r.text, truncated: r.truncated };
+}
+
+const todoId = (v) => {
+  const id = typeof v === 'number' && Number.isInteger(v) ? String(v) : v;
+  return typeof id === 'string' && TODO_ID_RE.test(id) ? id : null;
+};
+
+/* The one hook-side reader of a to-do close (§ 6.0's to-do row names every key it reads). What it cannot
+ * read at all — `todos` that is not an array, a `TaskCreate` close with no task id — is a
+ * `payload_key_missing.<key>`; everything else is an ordinary record. */
+function todoFromClose(ctx, ix, sid, payload) {
+  const toolName = payload.tool_name;
+  if (!TODO_TOOLS.includes(toolName) || !sid) return;
+  const ti = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
+  if (toolName === 'TodoWrite') {
+    if (!Array.isArray(ti.todos)) { count('payload_key_missing.tool_input.todos'); return; }
+    const first = ti.todos.find((x) => x && typeof x === 'object' && x.status === 'in_progress');
+    const entry = first ? todoText(first.activeForm, first.content) : null;
+    appendTodo(ctx, ix, { k: 'todo_list', session_id: sid, tool_name: toolName, entry });
+    return;
+  }
+  if (toolName === 'TaskCreate') {
+    const tr = payload.tool_response && typeof payload.tool_response === 'object' ? payload.tool_response : {};
+    const id = todoId(tr.task && typeof tr.task === 'object' ? tr.task.id : undefined);
+    if (id === null) { count('payload_key_missing.tool_response.task.id'); return; }
+    const tx = todoText(ti.activeForm, ti.subject);
+    appendTodo(ctx, ix, { k: 'todo_create', session_id: sid, tool_name: toolName, id, text: tx ? tx.text : null, truncated: tx ? tx.truncated : false });
+    return;
+  }
+  const id = todoId(ti.taskId);
+  if (id === null) { count('payload_key_missing.tool_input.taskId'); return; }
+  const rec = { k: 'todo_update', session_id: sid, tool_name: toolName, id };
+  if (typeof ti.status === 'string') rec.status = ti.status;
+  const tx = todoText(ti.activeForm, ti.subject);
+  if (tx) { rec.text = tx.text; rec.truncated = tx.truncated; }
+  appendTodo(ctx, ix, rec);
+}
+
+/* THE FLUSHER'S ONE EMIT PER SECTION, DERIVED LAST (§ 6.16). Every event a section emits shares its
+ * stamp, and the server guards the slot on that stamp with an equal stamp losing, so two titles in one
+ * section would land the first and drop the second. `resync` is the start's unconditional emit, owed
+ * until it is sent. Returns whether an event reached the spool: the caller discharges the re-sync, and
+ * `last_emitted` moves, only after a successful append — moving it first would mark a title as sent that
+ * no site will receive. */
+function emitTodo(ctx, ix, resync) {
+  const ans = todoAnswer(ix, descriptorMode(ctx.config));
+  const changed = ix.todo.last_emitted === undefined || ix.todo.last_emitted !== ans.title;
+  if (!resync && !changed) return false;
+  const trig = ix.todo.trigger;
+  // A change carries the triggering record's session — on a start's first fold too, where it is still a
+  // change — and a pure re-sync the newest session the index holds.
+  const sid = changed && trig ? trig.session_id : newestSession(ix);
+  if (sid === null) return false;   // a todo.progress carries a session (§ 4.3): nothing to emit it under yet
+  /* D1-SILENT, card#12447: the RE-SYNC's `tool_name` is the tool of the record that last moved the answer
+   * as the snapshot retains it, and `SessionStart` when none is retained — the boundary name for "the
+   * reporter began reading this seat". A change's is always that record's. */
+  const toolName = trig ? trig.tool_name : 'SessionStart';
+  const ev = ctx.emit('todo.progress', sid, { title: ans.title, title_truncated: ans.title_truncated, tool_name: toolName });
+  if (ev === null) return false;
+  ix.todo.last_emitted = ans.title;
+  return true;
+}
+
 function emptyIndex() {
   return {
     calls: new Map(), tombstones: new Map(), sessions: new Map(),
@@ -1267,6 +1599,13 @@ function emptyIndex() {
     // by COUNT (K.TOMBSTONES, oldest evicted, newest wins), never by a clock — nothing in the harness
     // bounds how long after a stop a message may revive the subagent.
     revivable: new Map(),
+    // § 6.16's to-do state (card#12447): per session, the LRU map of task texts, the titled id and title
+    // kept OUTSIDE it, and the `contributing` / `closed_by_inference` bits; beside them `last_emitted`
+    // (ABSENT = nothing sent yet) and the record that last moved the seat's answer (`trigger`).
+    todo: emptyTodo(),
+    // Whether this fold COUNTS the to-do counters: only the flusher's seat-pass fold, which applies each
+    // record once (the snapshot it then writes moves past it); a hook's fold re-applies what it has not.
+    counting: false,
     bucket: null, offset: 0, corrupt: 0, truncated: false, evicted: [],
   };
 }
@@ -1290,12 +1629,17 @@ function applyIndexRecord(ix, r, nowMs) {
           session_id: r.session_id, opened_at: r.at, last_active: r.at, turns: 0, aborted_calls: 0,
           start_source: r.source || null, paired_from: null,
         });
-      } else if (r.source) s.start_source = r.source;
+      } else if (r.source === 'clear') s.start_source = r.source;
+      todoSessionOpened(ix, r);
       break;
     }
     case 'session_close':
       ix.sessions.delete(r.session_id); ix.turns.delete(r.session_id);
       ix.sessionsClosed.set(r.session_id, { closed_at: r.at, end_reason: r.end_reason || null, paired_to: null });
+      todoSessionClosed(ix, r.session_id, r.end_reason || null, r.at);
+      break;
+    case 'todo_list': case 'todo_create': case 'todo_update': case 'todo_end':
+      applyTodoRecord(ix, r);
       break;
     case 'carry': {
       // § 8.3 — a bound dispatch a /clear left open. Applied only while the entry still belongs to
@@ -1415,6 +1759,7 @@ function capIndex(ix, nowMs) {
   for (const e of ix.calls.values()) if (e.is_dispatch && e.child_agent_id) bound.add(e.child_agent_id);
   for (const id of [...ix.agents.keys()]) if (!bound.has(id)) ix.agents.delete(id);
   while (ix.revivable.size > K.TOMBSTONES) ix.revivable.delete(ix.revivable.keys().next().value);
+  capTodo(ix);
   while (ix.sessions.size > K.SESSIONS) {
     // Eviction is by LEAST-RECENT ACTIVITY, not oldest-opened: a long-lived session that is
     // still emitting is the one worth keeping (§ 8.2).
@@ -1436,8 +1781,9 @@ function listBuckets(dir) {
 
 /* Fold: snapshot.json, then the snapshot's own bucket from byte `offset`, then every later
  * bucket in full. Appends only ever grow a file, so a byte offset is stable (§ 8.2). */
-function foldIndex(spool, nowMs) {
+function foldIndex(spool, nowMs, opts = {}) {
   const ix = emptyIndex();
+  ix.counting = !!opts.counting;
   const dir = indexDir(spool);
   let snapBucket = null, snapOffset = 0;
   try {
@@ -1458,6 +1804,9 @@ function foldIndex(spool, nowMs) {
     // no instant until its next hook, and is judged by nothing until then (it stays `working`).
     for (const a of snap.agents || []) ix.agents.set(a.agent_id, { last_at: a.last_at });
     for (const v of snap.revivable || []) ix.revivable.set(v.agent_id, { title: v.title || null, title_truncated: !!v.title_truncated, subagent_type: v.subagent_type || null });
+    // card#12447 — a snapshot an older flusher wrote has no `todo`: the state starts empty, and its
+    // `last_emitted` ABSENT, so the first derived answer emits.
+    if (snap.todo && typeof snap.todo === 'object') ix.todo = loadTodo(snap.todo);
   } catch (e) {
     // A missing snapshot is the ordinary first-run state; an unparseable one costs history,
     // never the exit code (AT-3 drives exactly this case and asserts exit 0).
@@ -1701,7 +2050,10 @@ function makeEmitter(cfg, spool, take) {
      * `atMs` from `hookMain`'s single entry-time `now()`, which is what made the primitive's
      * header comment describe a defence that only one of the three writers implemented.
      * The failure is COUNTED now (see `appendLine`), so a lost event is never a silent one. */
-    if (appendLine(path.join(spool, `${utcBucket(now())}.jsonl`), line, 'events')) count('events_emitted');
+    // The event when its line reached the spool, and null when the append failed (and was counted): one
+    // caller, § 6.16's to-do emit, persists what it sent only after the send landed.
+    if (!appendLine(path.join(spool, `${utcBucket(now())}.jsonl`), line, 'events')) return null;
+    count('events_emitted');
     return ev;
   };
 }
@@ -2067,7 +2419,9 @@ function emitSessionEnd(ctx, s, sessionId, endReasonWire, abortedCount, carriedI
 function touchSession(ctx, ix, sessionId, source = null) {
   if (!sessionId) return;
   const s = ix.sessions.get(sessionId);
-  if (s && (!source || s.start_source === source)) return;
+  // A `resume` is journaled every time (card#12447): its record is what restores the session's to-do
+  // contribution, and it moves no `start_source` (§ 8.4 pairs on `clear` alone).
+  if (s && (!source || (source !== 'resume' && s.start_source === source))) return;
   const rec = source ? { k: 'session_open', session_id: sessionId, source } : { k: 'session_open', session_id: sessionId };
   journal(ctx.spool, rec);
   applyIndexRecord(ix, rec, now());
@@ -2156,8 +2510,11 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
     case 'SessionStart': {
       const source = coerceEnum(key(payload, 'source'), ENUM.session_start_source, 'unknown', 'session.start.source');
       let previous = null;
-      // Registered FIRST, so a `pair` this hook writes finds the new session in the index.
-      touchSession(ctx, ix, sid, source === 'clear' ? 'clear' : null);
+      // Registered FIRST, so a `pair` this hook writes finds the new session in the index. A `resume` is
+      // journaled too (card#12447): it restores the session's to-do contribution (§ 6.16).
+      touchSession(ctx, ix, sid, source === 'clear' || source === 'resume' ? source : null);
+      // § 6.16 — a /clear's new session starts with no list.
+      if (source === 'clear') appendTodo(ctx, ix, { k: 'todo_end', session_id: sid, tool_name: 'SessionStart' });
       if (source === 'clear') {
         /* § 8.4 — SessionStart(clear) carries only its own (new) session_id; this build sends no
          * previous_session_id key (MEASURED). Two separate jobs, and since card#11824 NEITHER reaps:
@@ -2209,6 +2566,8 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       }
       touchSession(ctx, ix, sid);
       reapSessionBoundary(ctx, ix, sid, reason, reason === 'clear' ? 'session_cleared' : 'session_ended', atMs);
+      // § 6.16 (card#12447) — the session's to-do contribution ends, whatever the reason.
+      appendTodo(ctx, ix, { k: 'todo_end', session_id: sid, tool_name: 'SessionEnd' });
       if (reason === 'clear') {
         // The counter and predicate keep their pre-card#11817 values: before, a SessionStart that
         // came first had already reaped this session, and this hook counted the no-op instead of
@@ -2332,6 +2691,10 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
     case 'PostToolUseFailure': {
       touchSession(ctx, ix, sid);
       const failed = hookName === 'PostToolUseFailure';
+      // § 6.16 (card#12447) — a MAIN-AGENT close of a to-do tool appends one record and emits nothing:
+      // the flusher derives the title, because a hook that read the map and emitted would be the
+      // read-modify-write § 8.2 forbids.
+      if (!failed && !agentId) todoFromClose(ctx, ix, sid, payload);
       const toolName = typeof payload.tool_name === 'string' ? payload.tool_name : 'INVALID_TOOL_NAME';
       const ref = typeof payload.tool_use_id === 'string' ? payload.tool_use_id : null;
       const m = matchClose(ix, sid, toolName, ref);
@@ -3186,9 +3549,26 @@ function saveState(spool, state, opts) {
  * reads the lock: a mtime newer than 90 s means a live owner and it exits 0 immediately; an
  * older one is unlinked ONLY IF the mtime it read is still the one on disk, and the exclusive
  * create is retried exactly once. Losing that retry is also an immediate exit 0. */
+/* Field 22 of /proc/<pid>/stat — the process's start, in clock ticks since boot — or null where there is no /proc
+ * or no such process. The kernel's own counter, so a wall-clock step moves it not at all (card#12571 review round
+ * 3). `comm`, field 2, is in parentheses and may itself hold spaces and parentheses, so the fields are split after
+ * the LAST `)`: what follows is field 3 on, which puts field 22 at index 19. The one parser of it, used by the
+ * flusher for its own lock and by the installer to recognise that flusher (`install.js`'s `lockHolder`). */
+function procStartTicks(pid) {
+  let stat;
+  try { stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8'); } catch (e) { return null; }
+  const close = stat.lastIndexOf(')');
+  if (close < 0) return null;
+  const v = Number(stat.slice(close + 2).split(' ')[19]);
+  return Number.isSafeInteger(v) && v >= 0 ? v : null;
+}
+
 function acquireLock(spool, state) {
   const lock = path.join(spool, 'flusher.lock');
-  const body = JSON.stringify({ pid: process.pid, started_at: state.owner_started_at });
+  // On Linux the lock also carries this process's own start ticks, an identity no wall-clock step can move; the
+  // installer compares it with the pid's live /proc entry to tell this flusher from a reused pid.
+  const ticks = process.platform === 'linux' ? procStartTicks(process.pid) : null;
+  const body = JSON.stringify({ pid: process.pid, started_at: state.owner_started_at, ...(ticks === null ? {} : { start_ticks: ticks }) });
   ensureDir(spool);
   const tryCreate = () => {
     try { const fd = fs.openSync(lock, 'wx'); fs.writeSync(fd, Buffer.from(body, 'utf8')); fs.closeSync(fd); return true; }
@@ -3960,6 +4340,11 @@ function buildHeartbeat(cfg, spool, state, ix, site, entry, selftest, declaratio
       // the check is not `checked`, the name selects more than one entry, or the entry carries no
       // slug-shaped role. Resolved with the name, at flusher start.
       protocol_agent_role: declaration.role,
+      // § 6.14's board pair (card#12447): on EVERY heartbeat, `null` and `null` when the seat declares
+      // none or its declaration is malformed — never omitted, so a site tells a current reporter that
+      // declares nothing from one that predates the members. The base itself never rides the wire.
+      board_user_id: declaration.board.user_id,
+      board_fingerprint: declaration.board.fingerprint,
       degraded: buildDegraded(siteWindowed(state, entry, all, atMs)).slice(0, K.DEGRADED_MAX),
       counters, counters_omitted, predicates, selftest: st,
       config_fingerprint: configFingerprint(cfg, site),
@@ -3977,7 +4362,34 @@ function writeSnapshot(spool, state, ix) {
     sessions_closed: [...ix.sessionsClosed.entries()].map(([session_id, c]) => Object.assign({ session_id }, c)),
     agents: [...ix.agents.entries()].map(([agent_id, a]) => Object.assign({ agent_id }, a)),
     revivable: [...ix.revivable.entries()].map(([agent_id, v]) => Object.assign({ agent_id }, v)),
+    todo: dumpTodo(ix.todo),
   }));
+}
+
+/* § 6.16's `todo` member of the snapshot (card#12447): the retained per-session state and `last_emitted`
+ * — the title this flusher last put on the spool, and nothing else — with ABSENT spelled by leaving the
+ * key out, never as `null`, which is a title the seat sent. */
+function dumpTodo(td) {
+  const out = {
+    sessions: [...td.sessions.entries()].map(([session_id, t]) => Object.assign({ session_id }, t, { map: [...t.map.entries()].map(([id, v]) => [id, v.text, v.truncated]) })),
+    trigger: td.trigger,
+  };
+  if (td.last_emitted !== undefined) out.last_emitted = td.last_emitted;
+  return out;
+}
+function loadTodo(o) {
+  const td = emptyTodo();
+  for (const x of Array.isArray(o.sessions) ? o.sessions : []) {
+    if (!x || typeof x.session_id !== 'string') continue;
+    const t = { map: new Map(), titled_id: x.titled_id ?? null, title: typeof x.title === 'string' ? x.title : null,
+      title_truncated: !!x.title_truncated, title_at: x.title_at ?? null, contributing: !!x.contributing,
+      closed_by_inference: !!x.closed_by_inference, touched_at: x.touched_at ?? null };
+    for (const m of Array.isArray(x.map) ? x.map : []) if (Array.isArray(m) && typeof m[0] === 'string') t.map.set(m[0], { text: m[1], truncated: !!m[2] });
+    td.sessions.set(x.session_id, t);
+  }
+  if (o.trigger && typeof o.trigger.session_id === 'string') td.trigger = { session_id: o.trigger.session_id, tool_name: String(o.trigger.tool_name) };
+  if (Object.prototype.hasOwnProperty.call(o, 'last_emitted') && (o.last_emitted === null || typeof o.last_emitted === 'string')) td.last_emitted = o.last_emitted;
+  return td;
 }
 
 /* The flusher's own process-local counters are part of the same totals the hook processes
@@ -4085,8 +4497,13 @@ async function flusherMain() {
   // Loud on the seat's own surface, once per start, and WITHOUT the value: D1 § 3.1 gives the value
   // one home, the `selftest` subcommand's detail.
   if (declaration.malformed !== null) logLine(spool, 'flusher', 'protocol_agent_name is not a valid declaration (§ 3.1) — heartbeating as undeclared; `selftest` names the value');
+  if (declaration.board.malformed !== null) logLine(spool, 'flusher', `the board declaration is malformed at ${declaration.board.malformed} (§ 3.1) — heartbeating board_user_id null; \`selftest\` names the key`);
 
   let running = true, lostCounted = false, ix = null;
+  // § 6.16 (card#12447) — after EVERY flusher start the seat's derived to-do answer is emitted once,
+  // unconditionally, `null` included: a title the previous flusher never sent, or a `null` lost with a
+  // dying process, is re-synced without waiting for the next change.
+  let todoResyncOwed = true;
   const onePass = !!process.env.FLEET_REPORTER_ONE_PASS;
   /* THE LOOPS' SLEEP ENDS EARLY WHEN THE PROCESS STOPS. Several loops share this process, and a stop —
    * a signal, or ownership lost in any lane — must not wait out another loop's K.FLUSH_MS before the
@@ -4125,9 +4542,12 @@ async function flusherMain() {
      * `atMs` stays the pass's clock for cadences only. */
     ix = withSeatWriter(config, spool, (ctx) => {
       const at = ctx.take();
-      const fx = foldIndex(spool, at);
+      const fx = foldIndex(spool, at, { counting: true });
       for (const evicted of fx.evicted) reapSessionBoundary(ctx, fx, evicted, 'inferred_silence', 'session_ended', at);
       expireOpenFacts(ctx, fx, at);
+      // § 6.16 — the section's ONE `todo.progress`, derived LAST, over every record and close above. The
+      // start's re-sync is owed until a fold holding a session sends it.
+      if (emitTodo(ctx, fx, todoResyncOwed)) todoResyncOwed = false;
       return fx;
     });
     writeSnapshot(spool, state, ix);
@@ -4233,10 +4653,17 @@ async function flusherMain() {
   };
 
   // The first seat pass runs before any lane starts: a lane's heartbeat reads the index it folds.
-  try { seatPass(now()); }
-  catch (e) {
-    if (e instanceof LostOwnership) lost(e);
-    else logLine(spool, 'flusher', `pass failed: ${e && e.message}`);
+  /* FLEET_REPORTER_SEAT_PASSES — A TEST SEAM beside FLEET_REPORTER_ONE_PASS and as inert (card#12447): under
+   * ONE_PASS it runs that many seat passes back to back in this one process, so the suite can see what a
+   * long-running flusher's LATER passes do (§ 6.16: no change, no emit) without a ten-second nap. It
+   * changes no logic inside a pass, and without ONE_PASS it is not read. */
+  const seatPasses = onePass ? Math.max(1, Math.min(10, Number(process.env.FLEET_REPORTER_SEAT_PASSES) || 1)) : 1;
+  for (let i = 0; i < seatPasses && running; i++) {
+    try { seatPass(now()); }
+    catch (e) {
+      if (e instanceof LostOwnership) lost(e);
+      else logLine(spool, 'flusher', `pass failed: ${e && e.message}`);
+    }
   }
   if (running) await Promise.all([seatMain(), ...lanes.map(laneMain)]);
   /* Counts that never reached a state.json this process wrote go to the counter sink the next
@@ -4283,6 +4710,7 @@ function expireOpenFacts(ctx, ix, atMs) {
        * would put a second writer on a fact one writer already owns. */
       journal(ctx.spool, { k: 'session_close', session_id: sid, end_reason: 'inferred_silence' });
       ix.sessions.delete(sid); ix.turns.delete(sid);
+      todoSessionClosed(ix, sid, 'inferred_silence', rfc3339(atMs));   // § 6.16: its to-do contribution ends here
       emitSessionEnd(ctx, s, sid, 'inferred_silence', 0, [], atMs);
     }
   }
@@ -4813,7 +5241,7 @@ function runSelftestChecks(config, cp, errors) {
   // that no disagreement was found, and `protocol_agent_name_check` says whether a roster was read at
   // all. With no config there is no declaration to check, so nothing was measured (only the subcommand
   // can reach that: the flusher never starts without a config).
-  const declaration = config ? Object.assign(resolveDeclaration(config), { roundtable: resolveRoundtable(config) }) : null;
+  const declaration = config ? Object.assign(resolveDeclaration(config), { roundtable: resolveRoundtable(config), board: resolveBoard(config) }) : null;
   results.protocol_agent_name_in_roster = declaration ? declaration.check !== 'disagreed' && declaration.malformed === null : null;
   detail.protocol_agent_name_in_roster = declaration
     ? { declared: declaration.name, protocol_agent_name_check: declaration.check, roster: declaration.roster,
@@ -4828,6 +5256,13 @@ function runSelftestChecks(config, cp, errors) {
     ? { declared: rt.name, roundtable_agent_name_check: rt.check, config: rt.config ?? null,
       cross_project_identity: rt.identity ?? null, read_error: rt.read_error ?? null, malformed_declaration: rt.malformed }
     : { declared: null, roundtable_agent_name_check: null, reason: 'no readable config' };
+  // § 3.1's board declaration (card#12447): DETAIL ONLY, never a check — the `selftest` object's cap is
+  // exempt from a reduction rule on arithmetic a tenth member would break (§ 6.14). The base is shown
+  // by its scheme and host alone, and a malformed pair by the KEY that is wrong.
+  const bd = declaration ? declaration.board : null;
+  detail.board_declaration = bd
+    ? { board_user_id: bd.user_id, board_api_base: bd.base_shown, board_fingerprint: bd.fingerprint, malformed_key: bd.malformed }
+    : { board_user_id: null, reason: 'no readable config' };
   return { results, detail, declaration };
 }
 
@@ -4921,8 +5356,11 @@ if (require.main === module) main();
 module.exports = { sanitize, buildDescriptor, truncateBytes, ulid, buildCounters, buildDegraded,
   windowedCounters,
   appendLine, K, ENUM, SANITIZER_FIXTURES, SELFTEST_CHECKS, CRED_PREFIX_RE,
-  /* `loadConfig` is exported for ONE caller, the installer's writer (`INSTALL-LINUX.md` Step 2,
-   * `write-config.js`), which validates the file it is about to rename into place with the reader's own
-   * rules, so the two cannot disagree about a valid site, a duplicate name or URL, or both forms present
-   * (§ 3.1, *The installer's writer*). Requiring this file runs nothing: `main` is guarded above. */
-  loadConfig, allConfigErrors };
+  /* `loadConfig`, `parseConfig`, `atomicWrite`, `siteKey`, `REPORTER_VERSION` and `procStartTicks` are exported for ONE
+   * caller, the installer (`install.js`, card#12571): it validates the config it is about to write with
+   * the reader's own rules, so the two cannot disagree about a valid site, a duplicate name or URL, or
+   * both forms present (§ 3.1, *The installer's writer*); it writes every file through the one
+   * temp-and-rename primitive; it keys a site as the reader does; and it reads a process's start ticks as the
+   * flusher records its own in `flusher.lock`. Requiring this file runs nothing:
+   * `main` is guarded above. */
+  loadConfig, parseConfig, allConfigErrors, atomicWrite, siteKey, REPORTER_VERSION, procStartTicks };

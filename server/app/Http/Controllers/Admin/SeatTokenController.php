@@ -136,12 +136,32 @@ class SeatTokenController extends Controller
         };
     }
 
+    /**
+     * The `ingest_url` line of the token file the issue response's *Save token file* button writes
+     * (card#12571, D6 § 4.2), or null when the site is not `https:` — D6 § 4.2's token-file parser
+     * refuses a non-https `ingest_url`, so on such a site the button is not rendered at all.
+     *
+     * ⛔ FROM `app.url`, NEVER FROM THE REQUEST. `url()` and `route()` follow the request's `Host`, so a
+     * file built from them would point the seat's reporter at whatever host the request named. This is
+     * `IssueCoordHook`'s derivation of its hook URL, for the events route.
+     *
+     * Public for `tools/design/render-floor-view.php tokens-issued`, which renders the issue response for
+     * `tools/design/seat-token-file.selftest.mjs` with this derivation rather than a copy of it.
+     */
+    public static function tokenFileIngestUrl(): ?string
+    {
+        $url = rtrim((string) config('app.url'), '/').'/api/ingest/events';
+
+        return str_starts_with($url, 'https://') ? $url : null;
+    }
+
     /** The page, with a freshly minted issue key, never cached; `$issued` on the issue response only. */
     private function page(Request $request, ?SeatTokenIssued $issued = null): Response
     {
         $response = response()->view('console.tokens.index', [
             'active' => 'tokens',
             'issued' => $issued,
+            'tokenFileIngestUrl' => $issued === null ? null : self::tokenFileIngestUrl(),
             'issueKey' => SeatTokenIssueKey::mint($request->user()),
             'tokens' => SeatTokens::listing(),
             // Typing aids, not an authorization: any slug may be typed, which is how a NEW install

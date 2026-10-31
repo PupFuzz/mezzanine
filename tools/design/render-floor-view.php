@@ -12,11 +12,19 @@
  * user and the session, so an in-memory operator and an array-store session stand behind them; nothing is
  * written anywhere.
  *
- *   php tools/design/render-floor-view.php [floor|dashboard|login|console]
+ * `seat-token-file.selftest.mjs` (card#12571) needs the Seat tokens page's ISSUE RESPONSE, the one page
+ * that carries a plaintext token and the *Save token file* button: `tokens-issued [<app.url>]` renders it
+ * with a FIXTURE token (never a minted one), the button's ingest URL derived by the controller's own
+ * `tokenFileIngestUrl()` from `app.url` — the second argument, `https://mezzanine.example` when absent.
+ *
+ *   php tools/design/render-floor-view.php [floor|dashboard|login|console|tokens-issued [<app.url>]]
  */
 
 use App\Admin\ConsoleModules;
+use App\Fleet\SeatTokenIssued;
+use App\Http\Controllers\Admin\SeatTokenController;
 use App\Models\User;
+use App\Support\Slug;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Http\Request;
 use Illuminate\Support\ViewErrorBag;
@@ -47,4 +55,21 @@ echo match ($which) {
     'dashboard' => view('dashboard')->render(),
     'login' => view('auth.login')->render(),
     'console' => view('console.index', ['modules' => ConsoleModules::all(), 'active' => null])->render(),
+    'tokens-issued' => (function () use ($argv): string {
+        config(['app.url' => $argv[2] ?? 'https://mezzanine.example']);
+        // A token-SHAPED fixture (`mzn_` and 43 base64url characters), so the installer's parser takes it.
+        $fixture = 'mzn_FIXTURE'.str_repeat('x', 36);
+
+        return view('console.tokens.index', [
+            'active' => 'tokens',
+            'issued' => new SeatTokenIssued($fixture, substr($fixture, 0, 12), 'aimla', 'aimla-pm', 1, '2026-10-29T00:00:00Z', []),
+            'tokenFileIngestUrl' => SeatTokenController::tokenFileIngestUrl(),
+            'issueKey' => 'fixture-issue-key',
+            'tokens' => collect(),
+            'installs' => collect(['aimla']),
+            'seats' => collect(['aimla-pm']),
+            'installPattern' => Slug::INSTALL_ID,
+            'seatPattern' => Slug::SEAT_ID,
+        ])->render();
+    })(),
 };

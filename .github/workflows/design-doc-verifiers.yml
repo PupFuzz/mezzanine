@@ -50,6 +50,7 @@
 # the lobby and a floor, each loaded once, red on any uncaught exception and on a page that never
 # asks for its stream or never draws its first scene, with that row's own plants each required to
 # red on the same checkout. It is the only browser row wired, and it drives no ride and no timing.
+# The job also runs `seat-token-file.selftest.mjs` (card#12571), which needs its PHP and no browser.
 #
 # WHAT IS DELIBERATELY NOT WIRED HERE, AND WHY — the gates in `tools/design/` named below.
 # `verify-harness-facts.py` is fail-closed on a binary no runner carries, so wiring it reds every PR
@@ -230,6 +231,14 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with:
           node-version: 22.22.1
+
+      # card#12571, D6 § 4.2's R-srv-1: the bytes the Seat tokens page's *Save token file* button builds, on
+      # the markup the view renders (`render-floor-view.php tokens-issued`, a fixture token), parse through
+      # `fleet-reporter/install.js`'s `parseTokenFile`. No browser — the page's script runs in a `node:vm`
+      # stub DOM — so it sits in this job only for the PHP and composer install it shares. It carries its
+      # own planted controls and requires each to red on this checkout.
+      - name: The Seat tokens page's saved token file parses through install.js, with its own planted controls
+        run: node tools/design/seat-token-file.selftest.mjs
 
       - name: Install the pinned headless Chromium
         run: npx --yes "playwright@${PLAYWRIGHT_VERSION}" install --with-deps --only-shell chromium

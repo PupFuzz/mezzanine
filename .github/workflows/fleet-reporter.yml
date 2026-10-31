@@ -100,13 +100,15 @@ jobs:
               sys.exit(1)
           PY
 
-      # THE INSTALL SCRIPT'S SUITE (card#7336), before the long one: it takes minutes, not tens of them.
-      # It plants each divergence between `install.sh` and `INSTALL-LINUX.md` and watches the script's
-      # runbook check red it, then installs, re-runs and upgrades a seat in a throwaway HOME against a TLS
-      # stub and a stub `crontab`. It records every exec of the token step with strace, to show the token
-      # in no argv or environment; the suite refuses to run without strace rather than skip that check,
-      # so the step installs it when the image lacks it. Its own docstring owns what it proves.
-      - name: Install script suite (hermetic — throwaway HOME, stub crontab, TLS stub on loopback)
+      # THE INSTALLER'S SUITE (card#7336, card#12571), before the long one: it takes minutes, not tens of
+      # them. It drives `install.js` in throwaway HOMEs against TLS stubs and a stub `crontab`: a fresh
+      # install from a token file, a second run, upgrades from the layout install.sh left, rotation, sites,
+      # uninstall, and each RED of D6 § 7 it owns. It records every exec of the install with strace, to show
+      # the token in no argv or environment; the suite refuses to run without strace rather than skip that
+      # check, so the step installs it when the image lacks it. R-lin-1 reads the runbook at 188e5fce from
+      # this clone's history, which the full-history checkout above provides. Its docstring owns what it
+      # proves; the `install-suite-windows` and `install-suite-macos` jobs below run it there.
+      - name: Install suite (hermetic — throwaway HOME, stub crontab, TLS stub on loopback)
         run: |
           command -v strace > /dev/null || { sudo apt-get update -q && sudo apt-get install -y -q strace; }
           python3 fleet-reporter/install.selftest.py
@@ -125,3 +127,56 @@ jobs:
       # time (about 25 minutes a run since card#12180's AT-28); that is the price of a number that can be trusted.
       - name: Latency gate (P-5, asserted — runs alone so the measurement is about the code)
         run: FLEET_REPORTER_PERF=1 python3 fleet-reporter/fleet-reporter.selftest.py
+
+  # THE INSTALLER ON WINDOWS AND macOS (card#12571, D6 § 3.3 and § 7). `install.js` is one implementation for
+  # three operating systems, and its Windows legs (the owner-only ACL through PowerShell and icacls, the
+  # quoted forward-slash hook form, the installer's own flusher start, the roaming refusal) and its macOS legs
+  # (the launchd plist and its loaded states against a stub `launchctl`, the gui-domain refusal, `ps` for
+  # flusher control) only run on those runners. The suite is the same file the Linux job runs; each check
+  # names the D6 id it implements, and the ids a runner cannot measure are printed NOT MEASURED there, never
+  # passed (the strace leg is Linux's). The latency gate stays Linux-only. No setup-node or setup-python:
+  # the runners' stock `node` and Python are the dependency, as in the job above.
+  #
+  # TWO PLAIN JOBS, NOT A MATRIX, deliberately: a matrix job's status context is `install-suite (<os>)`,
+  # never its job id, so no ruleset could require it by the id `bin/release-facts.py` joins on, and that
+  # script reds a pull_request job declaring `strategy:`. Each job's context is its own id. The two bodies
+  # differ only in `runs-on`; an edit to one is made to the other.
+  install-suite-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Record the interpreter the suite will measure against
+        run: |
+          node --version && openssl version
+          PY=$(command -v python3 || command -v python) && "$PY" --version
+
+      - name: Install suite (hermetic — throwaway home, the owner-only ACL through PowerShell, TLS stub on loopback)
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" fleet-reporter/install.selftest.py
+
+  install-suite-macos:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Record the interpreter the suite will measure against
+        run: |
+          node --version && openssl version
+          PY=$(command -v python3 || command -v python) && "$PY" --version
+
+      - name: Install suite (hermetic — throwaway home, stub launchctl, TLS stub on loopback)
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" fleet-reporter/install.selftest.py

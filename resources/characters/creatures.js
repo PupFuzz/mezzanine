@@ -206,7 +206,7 @@ const APPROVED = {
         c.front(c.shape(`M${X(s * 36)} 110C${X(s * 50)} 126 ${X(s * 49)} 162 ${X(s * 35)} 174C${X(s * 33)} 150 ${X(s * 30)} 128 ${X(s * 36)} 110Z`, shade(b, 0.12)));
         c.front(`<path d="M${X(s * 40)} 132Q${X(s * 43)} 146 ${X(s * 39)} 160M${X(s * 36)} 136Q${X(s * 38)} 150 ${X(s * 36)} 164" stroke="${shade(b, 0.4)}" stroke-width="1" fill="none" opacity=".5" stroke-linecap="round"/>`);
       }
-      c.front(`<path d="M49.4 103Q54 100.4 58.6 103Q56 111 54 113Q52 111 49.4 103Z" fill="${c.pen.paint('#e3a447')}" stroke="#8a5a2a" stroke-width="1" stroke-linejoin="round"/>`);
+      c.front(`<g data-part="mouth"><path d="M49.4 103Q54 100.4 58.6 103Q56 111 54 113Q52 111 49.4 103Z" fill="${c.pen.paint('#e3a447')}" stroke="#8a5a2a" stroke-width="1" stroke-linejoin="round"/></g>`);
       return { face: { y: 94, es: 13.5, s: 1.22, my: null, ms: 1, beak: true }, hat: { x: 54, y: 54, w: 28 }, neck: { y: 121, w: 40 * c.st },
         arms: null, feet: { dx: 13 * c.st, col: '#d99a45', talon: true }, shadow: 40 * c.st };
     },
@@ -452,7 +452,7 @@ const APPROVED = {
       for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * 14)}" cy="93" rx="${f(14 * c.st)}" ry="16" fill="${c.pen.paint(m)}" clip-path="${clip}"/>`);
       // a little tuft at the crown, and the beak pointing down between the eyes
       c.body(`<path d="M${X(-4)} 52Q${X(-1)} 42 ${X(3)} 45Q${X(5)} 38 ${X(8)} 46" stroke="${line(b)}" stroke-width="1.6" fill="none" stroke-linecap="round"/>`);
-      c.front(`<path d="M${X(-5.5)} 104Q54 101.5 ${X(5.5)} 104Q${X(3)} 113 54 115Q${X(-3)} 113 ${X(-5.5)} 104Z" fill="${c.pen.paint(beak)}" stroke="${line(beak)}" stroke-width="1" stroke-linejoin="round"/><ellipse cx="52.4" cy="105.2" rx="1.6" ry=".7" fill="#fff" opacity=".55"/>`);
+      c.front(`<g data-part="mouth"><path d="M${X(-5.5)} 104Q54 101.5 ${X(5.5)} 104Q${X(3)} 113 54 115Q${X(-3)} 113 ${X(-5.5)} 104Z" fill="${c.pen.paint(beak)}" stroke="${line(beak)}" stroke-width="1" stroke-linejoin="round"/><ellipse cx="52.4" cy="105.2" rx="1.6" ry=".7" fill="#fff" opacity=".55"/></g>`);
       return { face: { y: 94, es: 14, s: 1.05, my: null, ms: 1, beak: true }, hat: { x: 54, y: 51, w: 24 }, neck: { y: 118, w: 42 * c.st },
         arms: { y: 136, dx: 41 * c.st, col: shade(b, 0.08) }, feet: { dx: 15 * c.st, col: foot, rx: 10 }, shadow: 40 * c.st };
     },
@@ -477,7 +477,10 @@ const APPROVED = {
       const body = c.sym([[0, 88], [18, 90], [24, 112], [26, 138], [32, 162], [40, 182], [0, 186]]);
       c.body(c.shape(body, m));
       c.body(`<ellipse cx="54" cy="168" rx="${f(38 * c.st)}" ry="14" fill="${shade(m, 0.16)}" clip-path="${c.pen.clip(body)}" opacity=".6"/>`);
-      return { face: { y: 106, es: 12, s: 1, my: 119, ms: 0.85 }, hat: { x: 54, y: 89, w: 18 }, neck: { y: 130, w: 27 * c.st },
+      // card#12502: the face (eyes and mouth together) sits 1.1 units above its approved 106 / 119 — the least lift that
+      // takes the snail off the standard laptop's binding row, so the lid's top rises to where the next species binds it
+      // (the seat's ruling of 2026-10-28, reversible; tools/characters/selftest.mjs § 6b prints the binding drawing)
+      return { face: { y: 104.9, es: 12, s: 1, my: 117.9, ms: 0.85 }, hat: { x: 54, y: 89, w: 18 }, neck: { y: 130, w: 27 * c.st },
         arms: { y: 150, dx: 28 * c.st, col: m, small: true }, feet: null, shadow: 44 * c.st };
     },
   },
@@ -764,16 +767,6 @@ function browsSvg(F, style) {
   }
   return `<g data-part="brows">${out.join('')}</g>`;
 }
-/**
- * The lowest line any mouth style draws, in the species' own drawing — `mouthSvg()`'s origin, `F.my` + 1.2, plus 9
- * mouth units (`F.ms × MOUTH_K`), at or under the deepest point any style reaches (`call`'s, at 8.6) — or `null` for a
- * face with no mouth of its own (a beak). The intern's laptop lid stands under it (card#12448, `chibiOf()`), so a
- * change to a mouth's depth moves the lid with it; `tools/characters/selftest.mjs` § 6b measures the face's ink
- * against the lid's top edge, and reds where this line is not under every mouth.
- */
-function mouthFloor(F) {
-  return F.my == null ? null : F.my + 1.2 + 9 * F.ms * MOUTH_K;
-}
 function mouthSvg(F, style) {
   if (F.my == null) return '';
   const x = 54, y = F.my + 1.2, k = F.ms * MOUTH_K;
@@ -940,20 +933,25 @@ function rimOf(markup) {
 // ---- the intern's laptop (card#12448; FLOOR.md § 8, § 10.4's frame contract item 3, § 12) ----
 // The operator's ask (2026-10-26): "each subagent to have a laptop placed in front of their lap, and they should move
 // left and right to look like they are typing … a variety of laptop colors and stickers so that each subagent's
-// laptop has unique design." The laptop is drawn INSIDE the intern's own transform from the chibi geometry — the
-// face's lowest line after the squash (`chibiOf()`'s `lid`) and the foot — so it follows a re-proportioned or taller
-// intern (card#12444) unchanged; no figure of it is in scene pixels. Seen in the floor's 3/4 oblique the lid's BACK
-// faces the viewer, with the stickers (the operator's C1, 2026-10-27). The lid stands from under the face to just over
-// the feet (the operator's ruling of 2026-10-27: "The subagent's laptop cover should be taller. It is OK not to see
-// their hands."), so the eyes and the mouth are over its top edge, the paws and the keys are behind it, and the
-// screen, which faces the intern, shows only as a lit edge and a glow along the top.
+// laptop has unique design." Since card#12502 the laptop is ONE standard drawing in the chibi frame's units (`LAPTOP_W`,
+// `LAPTOP_TOP`, `LAPTOP_BOTTOM`, below), the same for every intern, and moves only with the intern's sway; no figure of
+// it is in scene pixels. Seen in the floor's 3/4 oblique the lid's BACK faces the viewer, with the stickers (the
+// operator's C1, 2026-10-27), raised on the lap with the paws and the keys behind it and the eyes always over it.
 
-/** The laptop shells — ten, chosen to differ at one floor pixel: light, dark, and eight hues apart. */
-export const LAPTOP_SHELLS = Object.freeze(['#e4e0d8', '#3b3e4b', '#c8553d', '#e0a43a', '#7fb3d5', '#7f9f6a', '#8a5a8e', '#3f8f8a', '#e08aa0', '#4b6e3f']);
+/**
+ * The laptop shells — ten pale metallic tints, variations of silver (the operator's ruling of 2026-10-28, card#12502:
+ * *"I want the laptop colors to be variations of metallic silver, similar to how Apple colors their macbooks."*):
+ * silver, graphite, sky, ice, lavender, rose, peach, gold, mint and starlight. They are light and close by design, so a
+ * shell tells interns apart less than its stickers do; `laptopSvg()` draws each with a metallic sheen.
+ */
+export const LAPTOP_SHELLS = Object.freeze(['#dcdee2', '#b9bdc5', '#c5d9ee', '#c9e3e6', '#d8d0ea', '#efd0d8', '#f1d7c3', '#ecdfb7', '#cde6d3', '#e9e3d6']);
 /** The sticker shapes, each drawn by `stickerSvg()`. */
 export const STICKER_SHAPES = Object.freeze(['star', 'heart', 'leaf', 'bolt', 'smiley', 'planet', 'paw', 'mug']);
-/** The sticker inks — a sticker is drawn in an ink that stands off its shell (`laptopOf()`'s contrast filter). */
-export const STICKER_INKS = Object.freeze(['#fff5e0', '#2b2430', '#f2c44a', '#e3524f', '#5aa0e0', '#79c26f']);
+/**
+ * The sticker inks — a sticker is drawn in an ink that stands off its shell (`laptopOf()`'s contrast filter): dark and
+ * saturated, chosen against the pale metallic shells (card#12502), where card#12448's light inks would vanish.
+ */
+export const STICKER_INKS = Object.freeze(['#2b2430', '#d23f3b', '#2b67b8', '#2a8048', '#7442ad', '#c9651a']);
 /** The least RGB distance a sticker's ink keeps from its shell, so no sticker vanishes into its lid. */
 export const STICKER_CONTRAST = 110;
 /** The sway loop: this many LOOP FRAMES (4 fps), centre → left → centre → right, so one cycle is a second. */
@@ -1013,35 +1011,75 @@ function stickerSvg(shape, ink, r) {
 }
 
 /**
- * The laptop on an intern's lap, in the chibi frame's units and the intern's own transform. Every figure is a share
- * of the intern's drawn geometry: `lid` the line `chibiOf()` stands the lid on, `hw` the body's half-width at the
- * arms, the foot at `FOOT`. THE LID's HEIGHT RULE (FLOOR.md § 12's *Intern laptop lid* row; the operator's ruling of
- * 2026-10-27): its top edge is `lid` — `LID_GAP` under the face's lowest line, the chin or the mouth's floor after the
- * squash — and its bottom edge 0.16 of the drop from that edge to the foot short of the foot, so the lid covers the
- * body band, paws included, and never the eyes or the mouth. Its width is the arms' span, held to 44–70 units; the two
- * stickers stand on the lid at fixed shares of it, sized to fit inside it.
+ * THE STANDARD LAPTOP (card#12502; FLOOR.md § 13's row for it), from the operator's rulings of 2026-10-28 — one standard
+ * size (*"Each laptop should be a standard height. it should not vary with the character height."*), metal tints
+ * (*"variations of metallic silver"*), and *"I want baseline B where the laptop is raised. … The laptop needs to be
+ * wider and also taller. Again, it is OK for the laptop to cover a smaller subagent's mouse [mouth] and nose. From the
+ * from viewpoint, the viewer should not be able to see most of the keyboard. If the laptop is turned slightly, we might
+ * see a small corner of it. We should mostly see the laptop cover opened at around 110 degrees"*. So every intern's
+ * laptop is ONE drawing in the chibi frame's units, the same for every species, key and loop frame, drawn OUTSIDE the
+ * intern's size scale and moved only by the intern's sway, which it shares: the lid's back, raised on the lap.
+ *
+ * All three figures are DERIVED by `tools/characters/selftest.mjs` § 6b, which reds unless each is the figure its rule
+ * gives over the measured population (every species and variant at every size, face style and girth, still and at
+ * both sway extremes, read in the laptop's own frame); the selftest prints what binds each:
+ * - `LAPTOP_TOP`, the lid's top edge: the highest whole unit at which no eye comes within `LAPTOP_EYE_MARGIN` of the
+ *   lid. A mouth and a nose may be covered.
+ * - `LAPTOP_W`, the lid's width: the widest whole unit at which the MEDIAN species' body still shows one CSS pixel (at
+ *   the floor's fit zoom) past the laptop on both sides — so a slimmer species may be covered edge to edge (the seat's
+ *   ruling of 2026-10-28, reversible).
+ * - `LAPTOP_BOTTOM`, the laptop's lowest ink: under a 16:10 lid if the feet allow it, and never down to the feet — so
+ *   the lid stands as tall as its width asks for, raised on the lap above them.
  */
-function laptopSvg(pen, lap, { lid, hw }) {
-  const lidW = Math.max(44, Math.min(70, 2 * hw));
-  const y0 = lid;                         // the lid's top edge, under the face
-  const y1 = FOOT - (FOOT - lid) * 0.16;  // the lid's bottom edge, just over the feet
-  const lidH = y1 - y0;
-  const x0 = 54 - lidW / 2;
+export const LAPTOP_W = 59;
+export const LAPTOP_TOP = 150;
+export const LAPTOP_BOTTOM = 180;
+/** How far over the lid's top edge every eye's lowest ink stays, in frame units (card#12502). */
+export const LAPTOP_EYE_MARGIN = 2;
+/** What shows under the lid's hinge: the sliver of the deck's front edge, in frame units. */
+const LAPTOP_SLIVER = 1.6;
+
+/** The laptop's one geometry, in frame units — a pure function of the constants above. */
+function laptopGeometry() {
+  const w = LAPTOP_W, y0 = LAPTOP_TOP, y1 = LAPTOP_BOTTOM;
+  const yH = y1 - LAPTOP_SLIVER;   // the hinge: the lid's foot, over the deck's front sliver
+  return { w, y0, y1, yH, x0: 54 - w / 2, x1: 54 + w / 2 };
+}
+
+/**
+ * The laptop on an intern's lap, seen from the front and a little above with its lid opened about 110°: almost all the
+ * viewer sees is the lid's BACK — a rounded rectangle in the key's metallic tint, a sheen lighter at the top with a soft
+ * highlight band, a thin bright rim and the key's two stickers — with a thin dark hinge band at its foot and a sliver
+ * of the deck's front edge under that. The laptop is turned a few degrees, so one rear corner of the deck peeks out
+ * past the lid's lower right corner as a small lighter wedge; no keys show. No glow on the face and no logo of any kind.
+ * The `lid` part is the lid's outline, which the top-edge and width legs read.
+ */
+function laptopSvg(pen, lap) {
+  const { w, y0, y1, yH, x0, x1 } = laptopGeometry();
   const S = lap.shell;
-  const glow = '#bfe4ff';
+  const h = yH - y0;
   const out = [];
-  // the screen's glow, behind the lid: a thin wash along its top edge, which faces the intern
-  out.push(`<ellipse cx="54" cy="${f(y0)}" rx="${f(lidW * 0.44)}" ry="3.2" fill="${pen.soft(glow, 0.55)}"/>`);
-  // the lid's back, with its stickers — the part the viewer sees
-  out.push(`<rect data-part="lid" x="${f(x0)}" y="${f(y0)}" width="${f(lidW)}" height="${f(lidH)}" rx="${f(Math.min(lidH, lidW) * 0.12)}" fill="${pen.paint(S)}" stroke="${line(S)}" stroke-width="1.4"/>`);
-  // the screen's lit edge along the lid's top
-  out.push(`<path d="M${f(x0 + 2)} ${f(y0 + 0.6)}H${f(x0 + lidW - 2)}" stroke="${glow}" stroke-width="1.3" stroke-linecap="round" opacity=".9"/>`);
-  const r = Math.min(lidH * 0.17, lidW * 0.12);
-  const slots = [[54 - lidW * 0.22, y0 + lidH * 0.38, -12], [54 + lidW * 0.24, y0 + lidH * 0.64, 9]];
+  const white = (t) => mix(S, '#ffffff', t);
+  const edge = shade(S, 0.42);
+  // the deck's rear corner, behind the lid: only the part past the lid's right edge shows, rising away from the viewer
+  out.push(`<path data-part="deck-corner" d="M${f(x1 - 4)} ${f(yH - 1)}L${f(x1 + 2.6)} ${f(yH - 3.4)}L${f(x1 + 3.4)} ${f(yH - 1.9)}L${f(x1 - 1)} ${f(yH + 1)}Z" fill="${white(0.5)}" stroke="${edge}" stroke-width=".9" stroke-linejoin="round"/>`);
+  // the metal: lighter at the top, a soft highlight band a third of the way down, the shell's own tint, a little
+  // darker at the foot
+  const sheen = pen.uid();
+  pen.defs.push(`<linearGradient id="${sheen}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${white(0.55)}"/><stop offset=".24" stop-color="${white(0.2)}"/><stop offset=".33" stop-color="${white(0.6)}"/><stop offset=".42" stop-color="${white(0.18)}"/><stop offset=".78" stop-color="${S}"/><stop offset="1" stop-color="${shade(S, 0.12)}"/></linearGradient>`);
+  out.push(`<rect data-part="lid" x="${f(x0)}" y="${f(y0)}" width="${f(w)}" height="${f(h)}" rx="3" fill="url(#${sheen})" stroke="${edge}" stroke-width="1.4"/>`);
+  // the bright rim, just inside the outline
+  out.push(`<rect x="${f(x0 + 1.1)}" y="${f(y0 + 1.1)}" width="${f(w - 2.2)}" height="${f(h - 2.2)}" rx="2.2" fill="none" stroke="#ffffff" stroke-width=".8" opacity=".75"/>`);
+  // the stickers, at fixed shares of the lid, sized to fit inside it
+  const r = Math.min(h * 0.17, w * 0.12) * 0.9;
+  const slots = [[54 - w * 0.22, y0 + h * 0.40, -12], [54 + w * 0.24, y0 + h * 0.64, 9]];
   lap.stickers.forEach((st, i) => {
     const [sx, sy, rot] = slots[i];
     out.push(`<g data-part="sticker" transform="translate(${f(sx)} ${f(sy)}) rotate(${rot})">${stickerSvg(st.shape, st.ink, r)}</g>`);
   });
+  // the hinge band at the lid's foot, then the deck's front sliver under it
+  out.push(`<rect data-part="hinge" x="${f(x0 + 1)}" y="${f(yH - 1)}" width="${f(w - 2)}" height="1.3" rx=".6" fill="${shade(S, 0.5)}"/>`);
+  out.push(`<rect data-part="deck" x="${f(x0 + 1.5)}" y="${f(yH + 0.3)}" width="${f(w - 3)}" height="${f(y1 - yH - 0.85)}" rx=".6" fill="${white(0.3)}" stroke="${edge}" stroke-width=".9"/>`);
   return out.join('');
 }
 
@@ -1100,21 +1138,12 @@ function headOf(A) {
   return { top: A.hat.y, chin };
 }
 
-/** The gap the intern's laptop lid keeps under the face's lowest line, in frame units (card#12448). */
-const LID_GAP = 1.5;
-
-/**
- * The chibi geometry for a built species: how far the body below the chin is squashed, and `lid` — the line the
- * intern's laptop lid stands on, in the chibi frame AFTER the squash: `LID_GAP` under the face's lowest line (the
- * chin, or the mouth's floor where a mouth reaches past the chin line and is squashed with the body).
- */
+/** The chibi geometry for a built species: how far the body below the chin is squashed, and the head's share after it. */
 function chibiOf(A) {
   const { top, chin } = headOf(A);
   const head = chin - top, body = FOOT - chin;
   const k = Math.min(0.75, (head / body) * (1 / CHIBI_TARGET - 1));
-  const shift = body * (1 - k);
-  const floor = Math.max(chin, mouthFloor(A.face) ?? chin);
-  return { top, chin, k, share: head / (head + body * k), lid: shift + chin + (floor - chin) * k + LID_GAP };
+  return { top, chin, k, share: head / (head + body * k) };
 }
 
 function build(key, force) {
@@ -1174,8 +1203,9 @@ export function frameDocument(key, opt = {}) {
   if (A.feet) {
     for (const s of [-1, 1]) {
       const up = lifted(s) ? 5 : 0, fx = 54 + s * A.feet.dx + (lifted(s) ? s * 1.5 : 0);
-      if (A.feet.talon) for (const k of [-3, 0, 3]) parts.push(`<ellipse cx="${f(fx + k)}" cy="${185 - up}" rx="1.9" ry="3.2" fill="${pen.paint(A.feet.col)}" stroke="${line(A.feet.col)}" stroke-width=".8"/>`);
-      else parts.push(`<ellipse cx="${f(fx)}" cy="${184 - up}" rx="${A.feet.rx || 8.5}" ry="4.6" fill="${pen.paint(A.feet.col)}" stroke="${line(A.feet.col)}" stroke-width="1.3"/>`);
+      // the feet, in a `feet` part the selftest reads for the laptop's lowest line (card#12502)
+      if (A.feet.talon) parts.push(`<g data-part="feet">${[-3, 0, 3].map((k) => `<ellipse cx="${f(fx + k)}" cy="${185 - up}" rx="1.9" ry="3.2" fill="${pen.paint(A.feet.col)}" stroke="${line(A.feet.col)}" stroke-width=".8"/>`).join('')}</g>`);
+      else parts.push(`<g data-part="feet"><ellipse cx="${f(fx)}" cy="${184 - up}" rx="${A.feet.rx || 8.5}" ry="4.6" fill="${pen.paint(A.feet.col)}" stroke="${line(A.feet.col)}" stroke-width="1.3"/></g>`);
     }
   }
   parts.push(...c.layers.body);
@@ -1191,8 +1221,9 @@ export function frameDocument(key, opt = {}) {
   if (neck !== 'none' && extra === 'satchel') parts.push(satchelSvg(pen, A.neck, r.acc2, -c.side));
   parts.push(...c.layers.front);
   parts.push(blushSvg(pen, F, r.blush, A.blushDx || 0));
-  // the face — eyes, brows and mouth — in one group, which the selftest reads to hold the laptop's lid under it
-  parts.push(`<g data-part="face">${eyesSvg(pen, F, r.eyes, X)}${browsSvg(F, X.brows ?? r.brows)}${mouthSvg(F, F.beak ? null : (X.mouth ?? r.mouth))}</g>`);
+  // the face — eyes, brows and mouth — in one group; the selftest reads its eyes and its mouth (a beak is its species'
+  // own `mouth` part) against the laptop's lid (card#12502)
+  parts.push(`<g data-part="face">${eyesSvg(pen, F, r.eyes, X)}${browsSvg(F, X.brows ?? r.brows)}<g data-part="mouth">${mouthSvg(F, F.beak ? null : (X.mouth ?? r.mouth))}</g></g>`);
   if (neck !== 'none') parts.push(neckSvg(pen, A.neck, neck, r.acc1, r.acc2, c.side));
   if (neck === 'none' && extra === 'satchel') parts.push(satchelSvg(pen, A.neck, r.acc2, -c.side));
   if (extra === 'glasses') parts.push(glassesSvg(F));
@@ -1212,11 +1243,14 @@ export function frameDocument(key, opt = {}) {
     throw new RangeError(`sway is a chibi frame's loop frame 0..${INTERN_LOOP - 1}, got ${opt.sway}`);
   }
   const sway = opt.sway === undefined ? 0 : [0, -1, 0, 1][opt.sway];
-  let swayTf = '';
+  let swayTf = '', laptopTf = '';
   if (sway !== 0) {
     const g = chibiOf(A);
     const height = FOOT - (g.top + (FOOT - g.chin) * (1 - g.k));
     swayTf = ` translate(${f(sway * INTERN_SWAY_DX * height)} 0) rotate(${f(sway * INTERN_SWAY_DEG)} 54 ${FOOT})`;
+    // the laptop's share of it (card#12502): the same rotation about the foot and the same shift as the intern scaled
+    // by its size, which is where `tf` below carries the intern — so the lap and the laptop move as one
+    laptopTf = `translate(${f(s * sway * INTERN_SWAY_DX * height)} 0) rotate(${f(sway * INTERN_SWAY_DEG)} 54 ${FOOT})`;
   }
   const tf = `translate(54 ${FOOT}) scale(${s} ${s}) rotate(${opt.chibi ? 0 : r.tilt + lean}) translate(-54 -${FOOT})${swayTf}`;
   // The shadow ends ON the foot line (187.5 + 4.5 = 192, the rect's bottom): at ry 4.6 it reached a tenth of a unit
@@ -1237,21 +1271,16 @@ export function frameDocument(key, opt = {}) {
     pen.defs.push(`<clipPath id="c_body"><rect x="-200" y="${f(g.chin)}" width="508" height="400"/></clipPath>`);
     inner = `<g transform="translate(0 ${f(shift)})" clip-path="url(#c_head)"><use href="#c_drawing"/></g>` +
       `<g transform="translate(0 ${f(shift + g.chin)}) scale(1 ${f(g.k)}) translate(0 -${f(g.chin)})" clip-path="url(#c_body)"><use href="#c_drawing"/></g>`;
-    if (opt.laptop) {
-      // card#12448: the laptop on the lap, from the squashed geometry — the chin line after the shift, and the body's
-      // half-width at the arms (or the shadow's where a species has no arms) — drawn over both bands, unsquashed and
-      // unrimmed: it is a prop, not the creature. A held mug or book (drawn in the body band) is behind it.
-      const hw = A.arms ? A.arms.dx : A.shadow * 0.8;
-      const markup = laptopSvg(pen, laptopOf(key), { lid: g.lid, hw });
-      inner += markup;
-    }
     vb = CHIBI_VIEWBOX;
   }
+  // card#12448, card#12502: the laptop on the lap — the standard drawing, over both bands, unsquashed and unrimmed (it is
+  // a prop, not the creature), OUTSIDE the intern's size scale and moved only by its sway. A held mug or book is behind it.
+  const laptop = opt.laptop ? `<g data-part="laptop"${laptopTf ? ` transform="${laptopTf}"` : ''}>${laptopSvg(pen, laptopOf(key))}</g>` : '';
 
   // The marker stands in the FRAME, never in the body's transform: it neither tilts with the key nor scales with its size.
   const marker = X.marker && !opt.chibi ? markerSvg(markerStand(key, r, A, c.side, opt.clear), X.marker, level) : '';
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}" width="${vb.w}" height="${vb.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs>${shadow}<g transform="${tf}">${inner}</g>${marker}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}" width="${vb.w}" height="${vb.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs>${shadow}<g transform="${tf}">${inner}</g>${laptop}${marker}</svg>`;
 }
 
 // ---- the sleeper (FLOOR.md § 6.2 A6, § 10.4's frame contract item 4; card#12159, card#12187) ----
@@ -1384,6 +1413,41 @@ export function crestOfKey(key, { pose, species } = {}) {
   const t = pose === 'asleep' ? CREST_TOP[e.name] : STAND_TOP[e.name]?.[e.hat];
   if (t === undefined) throw new RangeError(`no crest for ${e.name} wearing ${e.hat}${pose === 'asleep' ? ' asleep' : ''}`);
   return pose === 'asleep' ? t : FOOT - (FOOT - t) * e.size;
+}
+
+/**
+ * THE FACE TABLE (card#12446, the operator's ruling of 2026-10-28, *"The bubble can also be lowered"*, never over the eyes
+ * or the mouth): the topmost ink of a standing or walking key's FACE — its eyes, brows and mouth, the `face` group — in
+ * frame units from the character rect's top, at size 1, per species (and variant where it has them), over every
+ * expression and walk phase, scaled back to size 1 about the foot line. A hat or an ear never reaches the face, so the
+ * table keys no hat. `tools/characters/selftest.mjs` § 8b holds every key of its population's face at or under its row on
+ * every run, and each row within two units of the highest such ink.
+ */
+export const FACE_TOP = Object.freeze({
+  bear: 76, broccoli: 107, cabbage: 88, carrot: 67, corn: 77, deer: 77, eggplant: 83, fox: 77, frog: 57, hedgehog: 77,
+  mole: 81, 'mushroom/bell': 90, 'mushroom/dome': 90, 'mushroom/wide': 90, otter: 64, owl: 69, peapod: 68, penguin: 72,
+  pepper: 86, potato: 85, pumpkin: 84, 'rabbit/lop': 76, 'rabbit/upright': 76, radish: 82, sheep: 85, snail: 84, turnip: 86,
+});
+
+/**
+ * WHAT A THOUGHT BUBBLE MUST LEAVE UNCOVERED ON A KEY (card#12446): `face`, the topmost ink of its face standing
+ * (`FACE_TOP` at its size, scaled about the foot line), or `null` asleep, where the head rolls onto the arms under its
+ * z's; and `mark`, the top of what its pose draws over the head — the sleeper's z's, which the frame holds (the frame's
+ * top, `SEAT_VIEWBOX.y`), the `?` or the `!` with its glow at its stand and the unit it keeps clear (`markerStand()`), or `null` for a pose that
+ * draws none — in frame units from the character rect's top. The floor sets the bubble above both (`bubbleSeat()`).
+ * @param {string} key @param {{pose?: string, glyph?: string|null, species?: string, clear?: object[]}} [at] the pose
+ *        and § 7.1 glyph drawn, the delivered species, and the floor's clear rects (a marked pose needs them)
+ * @returns {{face: number|null, mark: number|null}}
+ */
+export function headClearOfKey(key, { pose, glyph = null, species, clear } = {}) {
+  if (pose === 'asleep') return { face: null, mark: SEAT_VIEWBOX.y };
+  const e = standEntry(key, species), t = FACE_TOP[e.name];
+  if (t === undefined) throw new RangeError(`no face top for ${e.name}`);
+  const face = FOOT - (FOOT - t) * e.size, X = EXPRESSIONS[expressionOf(pose, glyph)];
+  if (!X.marker) return { face, mark: null };
+  const { r, c, A } = build(key, species), at = markerStand(key, r, A, c.side, clear);
+  // the glyph's half height and its glow, and the unit `markerStand()` keeps between the glow and anything else
+  return { face, mark: at.y - markerHalf(at.h).h - MARKER_SPREAD * Z_HALO[3] - 1 };
 }
 
 /** Closed eyes: a soft downward arc per eye, with a lash at its outer end. */

@@ -406,21 +406,6 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     };
 
     /**
-     * A desk's art in its rect (§ 10.4's art contract): a CLIPPING VIEWPORT — a nested `<svg>` at the
-     * element's rect, `overflow: hidden` — holding the image drawn `xMidYMax meet`, kept in proportion,
-     * centred and standing on the rect's floor line. Whatever the art file draws past its own frame is
-     * clipped at the rect the layout gave it, so no art reaches a neighbouring element or the box's edge.
-     */
-    /**
-     * One HELD character's art — a desk's character, or an intern (§ 6.2 A23, card#12448) — from its frames and its
-     * element's `animation`, `overdraw` and `asset`. § 6.2's per-seat loop phase (card#12187): a held render that MOVES
-     * starts at its own offset into its LOOP — `uris[loopFrom ..]`, whose length is the loop's, never the list's — the
-     * tree's `loopOffset()` over `(installId, key)`, the seat's or the intern key, so two characters in one state never
-     * step in lockstep, and is pushed to step; one that does not move is `uris[0]`, the still, the canonical
-     * reduced-motion form, whatever its offset. § 10.4's frame contract (card#12187, card#12259): the art viewport is
-     * the element's overdraw, past its rect — never the rect itself.
-     */
-    /**
      * card#12451: the laptop's fade (§ 12's *Laptop fade*), on the image that carries it — from `from` to `to` over
      * `frames` loop frames, stepped at the loop rate, `elapsed` ms in; outside its span it holds its ends.
      */
@@ -434,6 +419,15 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         return el;
     };
 
+    /**
+     * One HELD character's art — a desk's character, or an intern (§ 6.2 A23, card#12448) — from its frames and its
+     * element's `animation`, `overdraw` and `asset`. § 6.2's per-seat loop phase (card#12187): a held render that MOVES
+     * starts at its own offset into its LOOP — `uris[loopFrom ..]`, whose length is the loop's, never the list's — the
+     * tree's `loopOffset()` over `(installId, key)`, the seat's or the intern key, so two characters in one state never
+     * step in lockstep, and is pushed to step; one that does not move is `uris[0]`, the still, the canonical
+     * reduced-motion form, whatever its offset. § 10.4's frame contract (card#12187, card#12259): the art viewport is
+     * the element's overdraw, past its rect — never the rect itself.
+     */
     const heldArt = (g, drawn, e, cls, installId, key) => {
         const { uris, loopFrom } = drawn;
         const moves = e.animation?.motion === true && e.animation.frame_interval_ms !== null;
@@ -447,7 +441,13 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         return el;
     };
 
-    const art = (parent, href, e, asset, cls) => {
+    /**
+     * A desk's art in its rect (§ 10.4's art contract): a CLIPPING VIEWPORT — a nested `<svg>` at the
+     * element's rect, `overflow: hidden` — holding the image drawn `xMidYMax meet`, kept in proportion,
+     * centred and standing on the rect's floor line. Whatever the art file draws past its own frame is
+     * clipped at the rect the layout gave it, so no art reaches a neighbouring element or the box's edge.
+     */
+    const art =(parent, href, e, asset, cls) => {
         const port = node('svg', { x: e.x, y: e.y, width: e.w, height: e.h, viewBox: `0 0 ${e.w} ${e.h}`, overflow: 'hidden', class: 'art' }, parent);
 
         return image(port, href, 0, 0, e.w, e.h, asset, { class: cls, preserveAspectRatio: MEET });
@@ -642,10 +642,13 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             }
 
             node('path', { d: b.cloud.d, class: 'bubble' }, group);
-            text(group, { x: b.x + BUBBLE_PAD, y: b.y + BUBBLE_PAD, text: b.text, id: `${desk.key}:bubble` }, 'bubble-text');
+            // The title's lines, one text a line (card#12446), then the source line under the last.
+            b.lines.forEach((line, i) => {
+                text(group, { x: b.x + BUBBLE_PAD, y: b.y + BUBBLE_PAD + i * TYPE_ROLES[FACT].line, text: line.text, id: `${desk.key}:bubble` }, 'bubble-text');
+            });
 
             if (b.second !== null) {
-                text(group, { x: b.x + BUBBLE_PAD, y: b.y + BUBBLE_PAD + TYPE_ROLES[FACT].line, text: b.second, id: `${desk.key}:bubble2` }, 'bubble-source');
+                text(group, { x: b.x + BUBBLE_PAD, y: b.y + BUBBLE_PAD + b.lines.length * TYPE_ROLES[FACT].line, text: b.second, id: `${desk.key}:bubble2` }, 'bubble-source');
             }
         }
 

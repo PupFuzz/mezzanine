@@ -67,13 +67,13 @@ very fact it exists to check.
 
 | Path | Origin | Source URL | Author | SPDX | Retrieved | SHA-256 |
 |---|---|---|---|---|---|---|
-| `resources/characters/creatures.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-27 | `477863992b927ed93df455ea80447fca7d90f3eb3a0be595427a542aa46327ee` |
+| `resources/characters/creatures.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-28 | `60a98272049f933fcb7fc34c8f96cd4ceaaed1c1d7b033bd5649dade5bcf162c` |
 | `resources/characters/seed.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-27 | `dab43ae24d73b98ce41b4a5f0f51814d171820b28e17f1984e58f0db4d3a7e81` |
-| `resources/characters/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-27 | `fe4aca20b120dfdc14134778853b9a9c3ea4f9e343d611aff990049dd854224a` |
+| `resources/characters/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-28 | `c409a469287a58e6dcd7805f94518996525296cec7cc613ec188c0e3755d238b` |
 | `resources/floor/tiles/floor-plane.tsx` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `71fef94ccfb339af81d98b33ced640a0d256611340c591e160df06a9a2311890` |
 | `resources/floor/tiles/floor-plane/wall-strip.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-04 | `7e3c516867896cf61896d9e8557c9c0b8f349408432dca2b1d58d569202426d6` |
 | `resources/floor/default.tmj` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `0fca97022fb4b8133682aa92aad5b465faa47c1790d4a0a0d4df84a91966abe9` |
-| `resources/floor/furniture-box.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `6f8fd032bcaf3cc9b081f11191c0f777c733ef5dacd98433c2614acc11dde07f` |
+| `resources/floor/furniture-box.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-28 | `025b287ea0f0c89a8aeebf54a44f4489adc9e4d9ee5c22ba57514aad6b5ca38a` |
 | `resources/floor/themes/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `084aedec11906eb303001e99f9ddf05414d931417c7d47695912fdd313d60157` |
 | `resources/floor/themes/studio/theme.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `31a3b3c3aad9c3adbbd45fb1bdaaeba720ee5cb507abbe1f919a29a99654c7dd` |
 | `resources/floor/tiles/floor-plane/accent.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `437c9295c17acba54ee563516aa8f24ad73431b1a9e6d25bd72013c97de6fdd3` |
