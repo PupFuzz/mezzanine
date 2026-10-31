@@ -457,7 +457,8 @@ const NO_MIX = [
  * card#12194's walker sampler, installed before the page's first script and run on every animation frame for the first
  * `ms`: each `.fx-walker` (the gliding group) — its path, its point and feet `y` from its computed `offset-distance`, whether
  * its shown group draws it, its node (a rebuild is a new one) and its place among the floor stack's children (a move is a
- * new place for the same node), its glide's timing function and start on the timeline — and, per frame, the floor stack:
+ * new place for the same node), its glide's timing function, duration and start on the timeline, read off the `glide`
+ * animation itself (card#12705: a walker with two walk legs runs a second, `walker-shown`, on each glide) — and, per frame, the floor stack:
  * each desk's key, place and foot line (its desk sprite's viewport `y + height`), each walker's place, which element has
  * focus, any walker element outside the stack, a walker shown in the cab outside the band's cab or after its leaves, and any
  * point under a shown walker that is a walker element.
@@ -489,7 +490,7 @@ const WALKER_SAMPLER = (ms) => `(window.__walkers = { samples: [], frames: [] },
       const index = kids.indexOf(shownEl);
       if (index === -1) frame.loose.push('walker in ' + (shownEl.parentNode?.getAttribute('class') ?? '?'));
       frame.walkers.push({ y: at.y, index, shown });
-      window.__walkers.samples.push({ t: now - t0, d, el: id(shownEl), index, pct, len, x: at.x, y: at.y, shown, origin, timing: cs.animationTimingFunction, ms: parseFloat(cs.animationDuration) * 1000 });
+      window.__walkers.samples.push({ t: now - t0, d, el: id(shownEl), index, pct, len, x: at.x, y: at.y, shown, origin, timing: glide === undefined ? cs.animationTimingFunction : glide.effect.getKeyframes()[0]?.easing ?? null, ms: glide === undefined ? parseFloat(cs.animationDuration) * 1000 : glide.effect.getTiming().duration });
       if (shown) {
         const img = el.querySelector('image, rect');
         if (img !== null) {

@@ -33,9 +33,16 @@
  * chair emptying moves no intern). An arrival whose intern leaves the array while it is in flight is REPLACED by item 16's
  * turn-round when the loss walks, and is a plain cancel when it does not (item 15's cap). A24's laptop fade is held per
  * intern too, and a later fade replaces it from the opacity it reached.
+ *
+ * ⛔ THE DEPARTURES QUEUE AT THE ELEVATOR, AND THIS IS WHERE (item 9, card#12705). Each departure — A2's walk, an intern's
+ * walk out — arrives with its queue part, drawn alone; on every render, after its cancels and admissions, the holder
+ * gives each new one its waiting spot and re-times every departure in flight together (`#board()`): the leaves open for
+ * one, every one waiting boards in turn, and they close after the last. It writes nothing and fires nothing: a re-timed
+ * walk is the same row's drawing, re-timed by a delivered message that admitted or cancelled another walk.
  */
 
 import { emptyChair, staffed } from '../wire/animation-set.js';
+import { ELEVATOR_DOOR, departureLegs, queueShape } from './scene.js';
 
 /** The § 6.2 rows drawn as a walk, one per seat at most. */
 export const WALK_ROWS = Object.freeze(['A1', 'A2']);
@@ -58,6 +65,12 @@ const isInternWalk = (effect) => effect.animation_id === 'A10' && typeof effect.
 const isFade = (effect) => effect.animation_id === 'A24' && typeof effect.intern_key === 'string';
 
 const samePoint = (a, b) => a !== null && b !== null && a !== undefined && b !== undefined && a.x === b.x && a.y === b.y;
+
+/** A departure that queues at the elevator (walk note item 9, card#12705): A2's walk and an intern's walk out. */
+const queues = (h) => (h.effect.queue ?? null) !== null;
+
+/** Two keys by code unit, never `localeCompare` — the tie-break every viewer agrees on. */
+const byKey = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 export class EffectsInFlight {
     /** `{ effect, at, frames, key, anchor, threshold, unconfirmed, stilled, side, lattice_key }`, oldest first. */
@@ -219,7 +232,177 @@ export class EffectsInFlight {
             });
         }
 
+        this.#board(now, ctx.queue_spot ?? (() => null));
+
         return cancelled;
+    }
+
+    /**
+     * card#12705 — THE QUEUE AT THE ELEVATOR (walk note item 9): every departure in flight, re-timed together on each
+     * render, after its cancels and its admissions.
+     *
+     * - **Spots.** A departure the holder has not placed yet takes the LOWEST spot (`queueSpot(k)`, the scene's
+     *   `spotsNear()` spots: 0 the threshold, each later one at least § 12's *Queue spacing* from every other) that no
+     *   other departure still stands on or walks to; new ones of one render are placed in the order their routes reach
+     *   the threshold, ties by key. The threshold is also every boarder's way in, so spot 0 is free only while no other
+     *   departure in flight is still to step in by the time this one reaches it. A spot never changes once taken. Past
+     *   the last spot the floor holds, a walker waits on the threshold.
+     * - **Batches.** The leaves open at the first of: a waiting departure's own wait running out (its seeded draw, from
+     *   reaching its spot), or a walk with fixed door frames opening them (an arrival, item 19's blink, item 16's
+     *   turn-round in the cab or at the door). EVERY departure at its spot by then boards, one at a time, nearest the
+     *   door first (by spot, the spots being numbered outward from the threshold): each leaves its spot once the one
+     *   before it has stepped in (the first as the leaves begin opening, or once an arrival has stepped out), walks to
+     *   the threshold, and steps in once the leaves are open. A departure that reaches its spot before the leaves begin
+     *   to close joins at the back, in the order they arrive (ties by key). The leaves close after the last has stepped
+     *   in; a departure whose wait runs out while they close waits for them to shut and opens them again.
+     * - **The past is committed.** A departure that has left its spot keeps its leaving and its step (below, `left`), and
+     *   no departure is re-timed to leave before `now` — so no walker's drawn position changes between two renders.
+     * - **Committed batches stay put.** A batch whose leaves began opening by a render keeps that instant on every later
+     *   render, so a cancel among its walkers re-times the rest of it from the same opening, never undoes it.
+     *
+     * Every number is a function of the walks in flight and the instants they began, so a replay draws one queue. A walk
+     * with fixed door frames is never re-timed.
+     */
+    #board(now, queueSpot) {
+        const I = this.#intervalMs;
+        const D = ELEVATOR_DOOR;
+        const departing = this.#held.filter((h) => !this.#ended(h, now) && queues(h));
+        // When a departure's route reaches the threshold — the order new ones of one render are placed in.
+        const reach = (h) => h.at + (h.effect.queue.walk.start + h.effect.queue.walk.frames) * I;
+        const placed = departing.filter((h) => h.shape !== undefined);
+        const taken = new Set(placed.filter((h) => h.leaves_spot > now).map((h) => h.shape.spot.index));
+        const threshold = (h) => Object.freeze({ index: 0, at: h.effect.queue.threshold, path: Object.freeze([h.effect.queue.threshold]) });
+        const fresh = departing.filter((h) => h.shape === undefined).sort((a, b) => reach(a) - reach(b) || byKey(a.key, b.key));
+
+        for (const h of fresh) {
+            // The threshold, while anyone else is still to pass through it, is not a place to wait.
+            const through = fresh.some((o) => o !== h && o.shape !== undefined) || placed.some((o) => o.steps_in > reach(h));
+            let k = 0;
+
+            while ((taken.has(k) || (k === 0 && through)) && queueSpot(k) !== null) {
+                k++;
+            }
+
+            const spot = queueSpot(k);
+
+            taken.add(k);
+            h.shape = queueShape(h.effect.queue, spot === null ? threshold(h) : Object.freeze({ index: k, ...spot }));
+        }
+
+        // ⛔ THE PAST IS COMMITTED. A departure that has left its spot by now — its `approach` (the frame it leaves, or at
+        // spot 0 the frame the leaves begin to open on it) at or before `now` — keeps its leaving and its step exactly:
+        // nothing a later render admits or cancels moves it back to its spot or along its walk. Only the departures still
+        // standing at or walking to their spots are re-timed, and none to leave before `now`. So no walker's drawn
+        // position changes between two renders, and a spot whose walker has left is never stood on by it again.
+        const left = (h) => h.plan !== undefined && h.at + h.plan.approach * I <= now;
+        const committed = departing.filter(left).sort((a, b) => a.plan.open - b.plan.open || a.steps_in - b.steps_in);
+        const waiting = departing.filter((h) => !left(h)).map((h) => {
+            const arrive = h.at + h.shape.arrive * I;
+
+            // Its own opening: its wait run out, or the opening of the batch it was committed to — never before it is at
+            // its spot, so the walker whose instant opens a batch is always in it.
+            return { h, arrive, own: Math.max(arrive, h.pinned ?? arrive + h.effect.queue.wait * I), board: h.shape.board?.frames ?? 0 };
+        }).sort((a, b) => a.arrive - b.arrive || byKey(a.h.key, b.h.key));
+        const fixed = this.#held
+            .filter((h) => h.key !== null && !this.#ended(h, now) && !queues(h) && (h.effect.door ?? null) !== null)
+            .map((h) => ({ open: h.at + h.effect.door.start * I, clear: h.at + (h.effect.door.start + h.effect.door.frames - D.close) * I }))
+            .sort((a, b) => a.open - b.open);
+        const plans = new Map();
+        // An instant in a departure's own frames: on a frame boundary that frame, anywhere else the next one.
+        const frame = (h, ms) => {
+            const x = (ms - h.at) / I;
+
+            return Math.abs(x - Math.round(x)) < 1e-6 ? Math.round(x) : Math.ceil(x);
+        };
+        let f = 0;
+        let c = 0;
+        let shut = -Infinity;
+
+        while (waiting.length > 0 || f < fixed.length || c < committed.length) {
+            const due = waiting.length === 0 ? Infinity : Math.max(shut, Math.min(...waiting.map((w) => w.own)));
+            // The next opening: a committed batch's (it already happened), a fixed walk's, or a waiting departure's own.
+            const kept = c < committed.length ? committed[c].plan.open : Infinity;
+            const byWalk = f < fixed.length && fixed[f].open <= due && fixed[f].open < kept;
+            const open = Math.min(kept, byWalk ? fixed[f].open : due);
+            // When the next boarder may leave its spot, and when the leaves may begin to close.
+            let free = byWalk && open === fixed[f].open ? fixed[f].clear : open;
+            let closing = byWalk && open === fixed[f].open ? fixed[f].clear : open + D.open * I;
+            const absorb = () => {
+                for (; f < fixed.length && fixed[f].open <= closing; f++) {
+                    closing = Math.max(closing, fixed[f].clear);
+                    free = Math.max(free, fixed[f].clear);
+                }
+            };
+            // A committed boarder keeps its leaving and its step; the next is released from its step as drawn.
+            const keep = (h) => {
+                free = Math.max(free, h.at + (h.plan.step + D.step) * I);
+                closing = Math.max(closing, free);
+                plans.set(h, { open: h.plan.open, approach: h.plan.approach, step: h.plan.step, kept: h.plan });
+                absorb();
+            };
+            // Each boarder's leaving and step in its OWN whole frames (`frame()`), never before `now`, and the next
+            // released from the step as drawn, so two walks begun between each other's loop frames step a whole step apart.
+            const board = (w) => {
+                const approach = Math.max(w.h.shape.arrive, frame(w.h, Math.max(free, w.arrive, now)));
+                const step = Math.max(approach + w.board, frame(w.h, open + D.open * I));
+
+                free = w.h.at + (step + D.step) * I;
+                closing = Math.max(closing, free);
+                plans.set(w.h, { open, approach, step });
+                absorb();
+            };
+
+            if (byWalk && open === fixed[f].open) {
+                f++;
+            }
+
+            // The committed boarders of every opening this batch reaches, in the order they stepped in; then everyone at a
+            // spot when the leaves began to open, nearest the door first; then whoever arrives before they begin to
+            // close, in the order they arrive.
+            for (; c < committed.length && committed[c].plan.open <= closing; c++) {
+                keep(committed[c]);
+            }
+
+            absorb();
+
+            const there = waiting.filter((w) => w.arrive <= open).sort((a, b) => a.h.shape.spot.index - b.h.shape.spot.index || byKey(a.h.key, b.h.key));
+
+            for (const w of there) {
+                waiting.splice(waiting.indexOf(w), 1);
+                board(w);
+            }
+
+            while (waiting.length > 0 && waiting[0].arrive <= closing) {
+                board(waiting.shift());
+            }
+
+            const close = closing + D.close * I;
+
+            // This batch's boarders are the plans with no closing yet.
+            for (const p of plans.values()) {
+                p.close ??= close;
+            }
+
+            shut = close;
+        }
+
+        for (const h of departing) {
+            const p = plans.get(h);
+            // Leaves already closing behind a committed walker close as they began to: its cab leg is not cut short.
+            const close = p.kept !== undefined && p.kept.close - D.close * I <= now ? Math.max(p.close, p.kept.close) : p.close;
+            const drawn = departureLegs(h.effect.queue, h.shape, { open: frame(h, p.open), approach: p.approach, step: p.step, close: Math.max(frame(h, close), p.step + D.step + D.close) });
+
+            h.effect = Object.freeze({ ...h.effect, ...drawn });
+            h.frames = drawn.frames;
+            h.plan = Object.freeze({ open: p.open, approach: p.approach, step: p.step, close });
+            // It holds its spot until it leaves it — at spot 0, the threshold, until it steps in.
+            h.leaves_spot = h.at + (h.shape.spot.index === 0 ? p.step : p.approach) * I;
+            h.steps_in = h.at + p.step * I;
+
+            if (p.open <= now) {
+                h.pinned = p.open;
+            }
+        }
     }
 
     /**

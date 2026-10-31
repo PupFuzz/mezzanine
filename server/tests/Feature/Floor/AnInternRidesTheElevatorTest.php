@@ -24,6 +24,7 @@ use Tests\TestCase;
  */
 class AnInternRidesTheElevatorTest extends TestCase
 {
+    use ChecksTheElevatorQueue;
     use DrivesTheFloorScreen;
 
     private const IMPL_1 = 'aimla/aimla-impl-1';
@@ -469,6 +470,11 @@ class AnInternRidesTheElevatorTest extends TestCase
 
     // ── GREEN — several at once, the cap, one render ─────────────────────────────────────────
 
+    /**
+     * Two interns leaving on one delta each draw their own wait over their own key, and queue at the elevator as seats do
+     * (item 14, card#12705): they wait at two spots at least § 12's *Queue spacing* apart, and when the leaves open for
+     * the first, the other boards behind it, one at a time, before they close.
+     */
     public function test_green_two_interns_walk_their_own_routes_and_waits_and_the_leaves_open_once(): void
     {
         $r = $this->floorRun('two-interns');
@@ -476,13 +482,55 @@ class AnInternRidesTheElevatorTest extends TestCase
         $this->assertCount(2, $leaves, 'the two departures are not two effects');
         [[, $a], [, $b]] = $leaves;
         $this->assertNotSame($a['intern_key'], $b['intern_key']);
-        $this->assertSame($this->seededWait($a['intern_key'], $a['cause']), $a['legs'][2]['frames']);
-        $this->assertSame($this->seededWait($b['intern_key'], $b['cause']), $b['legs'][2]['frames']);
+        $this->assertSame($this->seededWait($a['intern_key'], $a['cause']), $a['queue']['wait']);
+        $this->assertSame($this->seededWait($b['intern_key'], $b['cause']), $b['queue']['wait']);
+
+        $pairs = 0;
+        $most = 0;
+
+        foreach ($this->drawn($r) as $x) {
+            [$apart, $seen] = $this->queueSpacingDefects($x['frame'], $this->queueSpacing());
+            [$together, $boarded] = $this->boardingDefects($x['frame'], $this->door());
+            $this->assertSame([], [...$apart, ...$together], "at {$x['at']} ms ({$x['trigger']})");
+            $pairs += $seen;
+            $most = max($most, $boarded);
+        }
+
+        $this->assertGreaterThan(0, $pairs, 'the two departing interns never waited at once — the run\'s premise is broken');
+        $this->assertSame(2, $most, 'the two departing interns did not board one opening of the leaves');
 
         $arrivals = array_values(array_filter($this->firstWalks($r), static fn ($h) => $h[1]['leg_kind'] === 'arrive'));
         $this->assertCount(2, $arrivals);
         $doors = $arrivals[0][0]['scene']['doors'];
         $this->assertCount(1, $doors, 'the leaves open more than once for two interns revealed together');
+    }
+
+    /**
+     * card#12705 review round 1: an intern that has left its spot for the cab is never drawn back at it — in
+     * queue-gain-after-boarding a delta trades interns after intern 01 has stepped in, and its freed spot goes to a later
+     * departure: no walker jumps between renders, no two wait on one point, and the queue boards together.
+     */
+    public function test_green_an_intern_that_has_boarded_stays_boarded(): void
+    {
+        $drawn = $this->drawn($this->floorRun('queue-gain-after-boarding'));
+        [$jumps, $compared] = $this->continuityDefects($drawn);
+
+        $this->assertSame([], $jumps);
+        $this->assertGreaterThan(0, $compared, 'no intern walk was drawn on two renders — the run\'s premise is broken');
+
+        foreach ($drawn as $x) {
+            $this->assertSame([], [...$this->queueSpacingDefects($x['frame'], $this->queueSpacing())[0], ...$this->boardingDefects($x['frame'], $this->door())[0]],
+                "at {$x['at']} ms ({$x['trigger']})");
+        }
+    }
+
+    public function test_red_the_queue_re_timed_from_scratch(): void
+    {
+        $dir = $this->planted([self::IN_FLIGHT, '        const left = (h) => h.plan !== undefined && h.at + h.plan.approach * I <= now;', '        const left = () => false;']);
+        $drawn = $this->drawn($this->floorRun('queue-gain-after-boarding', $dir));
+        $spacing = array_merge(...array_map(fn ($x) => $this->queueSpacingDefects($x['frame'], $this->queueSpacing())[0], $drawn));
+
+        $this->assertNotSame([], [...$this->continuityDefects($drawn)[0], ...$spacing], 'an intern in the cab was re-timed back to its spot and no guard saw it');
     }
 
     public function test_green_at_the_cap_nothing_walks(): void
@@ -735,20 +783,34 @@ class AnInternRidesTheElevatorTest extends TestCase
         $this->assertContains(self::BASE + 2, $causes, 'the plant drew no walk at the cap');
     }
 
-    public function test_red_a_queue_and_the_seats_own_wait(): void
+    public function test_red_an_intern_out_of_the_queue_and_the_seats_own_wait(): void
     {
-        $queue = $this->planted([self::SCENE, '        const wait = walking.wait(fx.intern_key, row.cause);
-        const legs = [', '        const wait = walking.wait(fx.intern_key, row.cause) + out.reduce((n, e) => n + e.frames, 0);
-        const legs = [']);
-        $leaves = array_values(array_filter($this->firstWalks($this->floorRun('two-interns', $queue)), static fn ($h) => $h[1]['leg_kind'] === 'leave'));
-        $owed = array_map(fn ($h) => $this->seededWait($h[1]['intern_key'], $h[1]['cause']), $leaves);
-        $this->assertNotSame($owed, array_map(static fn ($h) => $h[1]['legs'][2]['frames'], $leaves), 'the queue plant left every wait its own draw');
+        // An intern's departure drawn without its queue part (card#12705): it waits its own draw on the threshold — on
+        // the point the other intern waits at.
+        $alone = $this->planted([self::SCENE, '        return done(fx, gone.legs, gone.door, r.tier, gone.queue);', '        return done(fx, gone.legs, gone.door, r.tier);']);
+        $defects = [];
 
-        $seatKey = $this->planted([self::SCENE, '        const wait = walking.wait(fx.intern_key, row.cause);
-        const legs = [', '        const wait = walking.wait(seat, row.cause);
-        const legs = [']);
+        foreach ($this->drawn($this->floorRun('two-interns', $alone)) as $x) {
+            $defects = [...$defects, ...$this->queueSpacingDefects($x['frame'], $this->queueSpacing())[0]];
+        }
+
+        $this->assertNotSame([], $defects, 'two interns waited out of the queue and the spacing guard saw nothing');
+
+        $seatKey = $this->planted([self::SCENE, '            walk(F, r), walking.wait(fx.intern_key, row.cause), sill);', '            walk(F, r), walking.wait(seat, row.cause), sill);']);
         $leaves = array_values(array_filter($this->firstWalks($this->floorRun('two-interns', $seatKey)), static fn ($h) => $h[1]['leg_kind'] === 'leave'));
-        $this->assertSame($leaves[0][1]['legs'][2]['frames'], $leaves[1][1]['legs'][2]['frames'], 'two interns of one delta waited apart under the seat key');
+        $this->assertSame($leaves[0][1]['queue']['wait'], $leaves[1][1]['queue']['wait'], 'two interns of one delta waited apart under the seat key');
+    }
+
+    /** § 12's *Queue spacing*: the shipped walker's drawn width (`walk-probe.mjs`'s body) plus *Walker clearance*'s side margin. */
+    private function queueSpacing(): float
+    {
+        static $body = null;
+
+        $this->assertSame(1, preg_match('/^\| \*\*Walker clearance\*\* \| \*\*(\d+) px beside;/m', $this->floorMd(), $m),
+            '§ 12 carries no *Walker clearance* row in the form this test reads');
+        $body ??= $this->probe(['mode' => 'shipped', 'repeat' => 1, 'walls' => []], null, __DIR__.'/walk-probe.mjs')['body']['w'];
+
+        return (float) $body + (int) $m[1];
     }
 
     public function test_red_the_null_default_and_the_seat_level_laptop(): void
