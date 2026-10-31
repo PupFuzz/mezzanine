@@ -105,6 +105,52 @@ trait ChecksTheElevatorQueue
     }
 
     /**
+     * STILL (card#12705, review round 1): the defects where a walker's drawn position changes between two consecutive
+     * renders — read off a run's drawn frames, each walk (keyed by row, seat, intern and cause) placed by the earlier
+     * frame's legs at the later frame's instant and by the later frame's own legs at that instant, which must agree
+     * within 1.5 px. A re-time that moves a walker's past — back out of the cab, back to its spot, forward along a walk —
+     * is a jump on screen, and this is what sees it.
+     *
+     * @param  list<array{at: int, frame: array<string, mixed>}>  $drawn  a run's drawn frames, in order
+     * @return array{0: list<string>, 1: int} the defects, and the number of comparisons made
+     */
+    private function continuityDefects(array $drawn): array
+    {
+        $key = fn (array $e): string => "{$e['animation_id']} {$this->walkerKey($e)} {$e['cause']}";
+        $before = [];
+        $defects = [];
+        $compared = 0;
+
+        foreach ($drawn as $r) {
+            $now = [];
+
+            foreach ($r['frame']['scene']['effects'] ?? [] as $e) {
+                if (($e['frames'] ?? 0) <= 0 || ! is_array($e['legs'] ?? null) || $e['legs'] === []) {
+                    continue;
+                }
+
+                $k = $key($e);
+                $now[$k] = ['at' => $r['at'], 'walk' => $e];
+
+                if (isset($before[$k]) && $r['at'] >= $before[$k]['at']) {
+                    $compared++;
+                    $was = $this->queuedAt($before[$k]['walk'], $r['at'] - $before[$k]['at']);
+                    $is = $this->queuedAt($e, 0);
+                    $d = hypot($was['x'] - $is['x'], $was['y'] - $is['y']);
+
+                    if ($d > 1.5) {
+                        $defects[] = "at {$r['at']} ms {$k} jumped {$d} px (was in its {$was['leg']['kind']} leg, now in its {$is['leg']['kind']})";
+                    }
+                }
+            }
+
+            $before = $now;
+        }
+
+        return [$defects, $compared];
+    }
+
+    /**
      * APART: the defects where two departures waiting at one instant stand closer than `$spacing`, and the number of
      * waiting pairs sampled — every half loop frame over the frame's horizon, and every leg boundary.
      *
@@ -156,8 +202,47 @@ trait ChecksTheElevatorQueue
     }
 
     /**
+     * The openings of the leaves a frame draws, in ms from its instant: every walk's own door frames, each placed by its
+     * own exact `elapsed_ms`, merged where they meet — the spans `scene.doors` carries, read without its whole-frame
+     * rounding (it counts each walk's door from the frame its elapsed time has reached, so a walk begun between two loop
+     * frames lands up to one frame early there).
+     *
+     * @return list<array{0: float, 1: float}>
+     */
+    private function openings(array $frame): array
+    {
+        $spans = [];
+
+        foreach ($frame['scene']['effects'] ?? [] as $e) {
+            if (($e['frames'] ?? 0) > 0 && is_array($e['door'] ?? null)) {
+                $I = $e['frame_interval_ms'];
+                $spans[] = [$e['door']['start'] * $I - $e['elapsed_ms'], ($e['door']['start'] + $e['door']['frames']) * $I - $e['elapsed_ms']];
+            }
+        }
+
+        usort($spans, static fn ($a, $b) => $a[0] <=> $b[0]);
+        $merged = [];
+
+        foreach ($spans as $s) {
+            if ($s[1] <= 0) {
+                continue;
+            }
+
+            $last = count($merged) - 1;
+
+            if ($last >= 0 && $s[0] <= $merged[$last][1]) {
+                $merged[$last][1] = max($merged[$last][1], $s[1]);
+            } else {
+                $merged[] = $s;
+            }
+        }
+
+        return $merged;
+    }
+
+    /**
      * TOGETHER: the defects in how the departures a frame draws board, against every opening of the leaves it draws
-     * (`scene.doors`, frames from the frame's instant), and the most departures any one opening boards.
+     * (`openings()`), and the most departures any one opening boards.
      *
      * @param  array{open: int, step: int, close: int}  $door  § 12's *Elevator leaves*
      * @return array{0: list<string>, 1: int}
@@ -168,9 +253,8 @@ trait ChecksTheElevatorQueue
         $defects = [];
         $most = 0;
 
-        foreach ($frame['scene']['doors'] as $span) {
+        foreach ($this->openings($frame) as [$from, $to]) {
             $I = $walks[0]['frame_interval_ms'] ?? 250;
-            [$from, $to] = [$span['from'] * $I, $span['to'] * $I];
             $boarders = [];
 
             foreach ($walks as $w) {
@@ -210,7 +294,10 @@ trait ChecksTheElevatorQueue
             foreach ($boarders as $k => $b) {
                 // When it may leave its spot: as the leaves begin to open, or once the boarder before it has stepped in.
                 // One still waiting then leaves then — within the frame a walk begun between two loop frames rounds up by.
+                // Never before this frame's instant: what was free before it was judged on the frames that drew it, and a
+                // boarder cancelled since (item 6) is not drawn here, its follower keeping the leaving it already had.
                 $ready = $k === 0 ? ($shared === [] ? $from : null) : $boarders[$k - 1]['in'] + $door['step'] * $I;
+                $ready = $ready === null ? null : max(0.0, $ready);
 
                 if ($ready !== null && $this->waitingAt($b['walk'], $ready - 0.001) && $I - 0.001 <= $b['leaves'] - $ready) {
                     $defects[] = "{$b['key']} waits at its spot until {$b['leaves']} ms, past {$ready} ms when it was free to board";

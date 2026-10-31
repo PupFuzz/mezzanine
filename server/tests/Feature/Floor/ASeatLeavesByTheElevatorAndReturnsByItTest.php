@@ -1048,6 +1048,39 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         $this->assertGreaterThanOrEqual(4, $most, 'no opening boarded mass-departure\'s four walkers together — the runs\' premise is broken');
     }
 
+    /**
+     * card#12705 review round 1, STILL: no walker's drawn position changes between two consecutive renders — in the queue
+     * runs, and in queue-return-after-boarding, where an arrival's leaves open while a departure is already in the cab:
+     * the walker that has stepped in stays in, and the queue keeps its spacing and boards together.
+     */
+    public function test_green_no_walker_jumps_between_renders(): void
+    {
+        $compared = 0;
+
+        foreach (['two-walkers', 'mass-departure', 'crossing', 'queue-return-after-boarding'] as $run) {
+            $drawn = $this->drawn($this->floorRun($run));
+            [$defects, $n] = $this->continuityDefects($drawn);
+            $this->assertSame([], $defects, "[{$run}]");
+            $compared += $n;
+
+            foreach ($drawn as $r) {
+                $this->assertSame([], [...$this->queueSpacingDefects($r['frame'], $this->queueSpacing())[0], ...$this->boardingDefects($r['frame'], $this->door())[0]],
+                    "[{$run}] at {$r['at']} ms ({$r['trigger']})");
+            }
+        }
+
+        $this->assertGreaterThan(0, $compared, 'no walk was drawn on two renders — the runs\' premise is broken');
+    }
+
+    /** card#12705 review round 1: every departure re-timed from scratch on each render — the committed past dropped. */
+    public function test_red_the_queue_re_timed_from_scratch(): void
+    {
+        $dir = $this->mutatedModules([self::IN_FLIGHT, '        const left = (h) => h.plan !== undefined && h.at + h.plan.approach * I <= now;', '        const left = () => false;']);
+
+        $this->assertNotSame([], $this->continuityDefects($this->drawn($this->floorRun('queue-return-after-boarding', $dir)))[0],
+            'a walker in the cab was re-timed back out and the continuity guard saw nothing');
+    }
+
     /** § 12's *Queue spacing*: the shipped walker's drawn width plus *Walker clearance*'s side margin. */
     private function queueSpacing(): float
     {

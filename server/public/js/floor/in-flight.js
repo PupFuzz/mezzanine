@@ -255,6 +255,8 @@ export class EffectsInFlight {
      *   the threshold, and steps in once the leaves are open. A departure that reaches its spot before the leaves begin
      *   to close joins at the back, in the order they arrive (ties by key). The leaves close after the last has stepped
      *   in; a departure whose wait runs out while they close waits for them to shut and opens them again.
+     * - **The past is committed.** A departure that has left its spot keeps its leaving and its step (below, `left`), and
+     *   no departure is re-timed to leave before `now` — so no walker's drawn position changes between two renders.
      * - **Committed batches stay put.** A batch whose leaves began opening by a render keeps that instant on every later
      *   render, so a cancel among its walkers re-times the rest of it from the same opening, never undoes it.
      *
@@ -287,7 +289,14 @@ export class EffectsInFlight {
             h.shape = queueShape(h.effect.queue, spot === null ? threshold(h) : Object.freeze({ index: k, ...spot }));
         }
 
-        const waiting = departing.map((h) => {
+        // ⛔ THE PAST IS COMMITTED. A departure that has left its spot by now — its `approach` (the frame it leaves, or at
+        // spot 0 the frame the leaves begin to open on it) at or before `now` — keeps its leaving and its step exactly:
+        // nothing a later render admits or cancels moves it back to its spot or along its walk. Only the departures still
+        // standing at or walking to their spots are re-timed, and none to leave before `now`. So no walker's drawn
+        // position changes between two renders, and a spot whose walker has left is never stood on by it again.
+        const left = (h) => h.plan !== undefined && h.at + h.plan.approach * I <= now;
+        const committed = departing.filter(left).sort((a, b) => a.plan.open - b.plan.open || a.steps_in - b.steps_in);
+        const waiting = departing.filter((h) => !left(h)).map((h) => {
             const arrive = h.at + h.shape.arrive * I;
 
             // Its own opening: its wait run out, or the opening of the batch it was committed to — never before it is at
@@ -306,25 +315,35 @@ export class EffectsInFlight {
             return Math.abs(x - Math.round(x)) < 1e-6 ? Math.round(x) : Math.ceil(x);
         };
         let f = 0;
+        let c = 0;
         let shut = -Infinity;
 
-        while (waiting.length > 0 || f < fixed.length) {
+        while (waiting.length > 0 || f < fixed.length || c < committed.length) {
             const due = waiting.length === 0 ? Infinity : Math.max(shut, Math.min(...waiting.map((w) => w.own)));
-            const byWalk = f < fixed.length && fixed[f].open <= due;
-            const open = byWalk ? fixed[f].open : due;
+            // The next opening: a committed batch's (it already happened), a fixed walk's, or a waiting departure's own.
+            const kept = c < committed.length ? committed[c].plan.open : Infinity;
+            const byWalk = f < fixed.length && fixed[f].open <= due && fixed[f].open < kept;
+            const open = Math.min(kept, byWalk ? fixed[f].open : due);
             // When the next boarder may leave its spot, and when the leaves may begin to close.
-            let free = byWalk ? fixed[f].clear : open;
-            let closing = byWalk ? fixed[f].clear : open + D.open * I;
+            let free = byWalk && open === fixed[f].open ? fixed[f].clear : open;
+            let closing = byWalk && open === fixed[f].open ? fixed[f].clear : open + D.open * I;
             const absorb = () => {
                 for (; f < fixed.length && fixed[f].open <= closing; f++) {
                     closing = Math.max(closing, fixed[f].clear);
                     free = Math.max(free, fixed[f].clear);
                 }
             };
-            // Each boarder's leaving and step in its OWN whole frames (`frame()`), and the next released from the step as
-            // drawn, so two walks begun between each other's loop frames still step in a whole step apart.
+            // A committed boarder keeps its leaving and its step; the next is released from its step as drawn.
+            const keep = (h) => {
+                free = Math.max(free, h.at + (h.plan.step + D.step) * I);
+                closing = Math.max(closing, free);
+                plans.set(h, { open: h.plan.open, approach: h.plan.approach, step: h.plan.step, kept: h.plan });
+                absorb();
+            };
+            // Each boarder's leaving and step in its OWN whole frames (`frame()`), never before `now`, and the next
+            // released from the step as drawn, so two walks begun between each other's loop frames step a whole step apart.
             const board = (w) => {
-                const approach = Math.max(w.h.shape.arrive, frame(w.h, Math.max(free, w.arrive)));
+                const approach = Math.max(w.h.shape.arrive, frame(w.h, Math.max(free, w.arrive, now)));
                 const step = Math.max(approach + w.board, frame(w.h, open + D.open * I));
 
                 free = w.h.at + (step + D.step) * I;
@@ -333,14 +352,19 @@ export class EffectsInFlight {
                 absorb();
             };
 
-            if (byWalk) {
+            if (byWalk && open === fixed[f].open) {
                 f++;
+            }
+
+            // The committed boarders of every opening this batch reaches, in the order they stepped in; then everyone at a
+            // spot when the leaves began to open, nearest the door first; then whoever arrives before they begin to
+            // close, in the order they arrive.
+            for (; c < committed.length && committed[c].plan.open <= closing; c++) {
+                keep(committed[c]);
             }
 
             absorb();
 
-            // Everyone at a spot when the leaves begin to open, nearest the door first; then whoever arrives before they
-            // begin to close, in the order they arrive.
             const there = waiting.filter((w) => w.arrive <= open).sort((a, b) => a.h.shape.spot.index - b.h.shape.spot.index || byKey(a.h.key, b.h.key));
 
             for (const w of there) {
@@ -363,17 +387,20 @@ export class EffectsInFlight {
         }
 
         for (const h of departing) {
-            const { open, approach, step, close } = plans.get(h);
-            const drawn = departureLegs(h.effect.queue, h.shape, { open: frame(h, open), approach, step, close: Math.max(frame(h, close), step + D.step + D.close) });
+            const p = plans.get(h);
+            // Leaves already closing behind a committed walker close as they began to: its cab leg is not cut short.
+            const close = p.kept !== undefined && p.kept.close - D.close * I <= now ? Math.max(p.close, p.kept.close) : p.close;
+            const drawn = departureLegs(h.effect.queue, h.shape, { open: frame(h, p.open), approach: p.approach, step: p.step, close: Math.max(frame(h, close), p.step + D.step + D.close) });
 
             h.effect = Object.freeze({ ...h.effect, ...drawn });
             h.frames = drawn.frames;
+            h.plan = Object.freeze({ open: p.open, approach: p.approach, step: p.step, close });
             // It holds its spot until it leaves it — at spot 0, the threshold, until it steps in.
-            h.leaves_spot = h.at + (h.shape.spot.index === 0 ? step : approach) * I;
-            h.steps_in = h.at + step * I;
+            h.leaves_spot = h.at + (h.shape.spot.index === 0 ? p.step : p.approach) * I;
+            h.steps_in = h.at + p.step * I;
 
-            if (open <= now) {
-                h.pinned = open;
+            if (p.open <= now) {
+                h.pinned = p.open;
             }
         }
     }

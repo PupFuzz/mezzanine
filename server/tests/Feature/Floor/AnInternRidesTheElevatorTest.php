@@ -505,6 +505,34 @@ class AnInternRidesTheElevatorTest extends TestCase
         $this->assertCount(1, $doors, 'the leaves open more than once for two interns revealed together');
     }
 
+    /**
+     * card#12705 review round 1: an intern that has left its spot for the cab is never drawn back at it — in
+     * queue-gain-after-boarding a delta trades interns after intern 01 has stepped in, and its freed spot goes to a later
+     * departure: no walker jumps between renders, no two wait on one point, and the queue boards together.
+     */
+    public function test_green_an_intern_that_has_boarded_stays_boarded(): void
+    {
+        $drawn = $this->drawn($this->floorRun('queue-gain-after-boarding'));
+        [$jumps, $compared] = $this->continuityDefects($drawn);
+
+        $this->assertSame([], $jumps);
+        $this->assertGreaterThan(0, $compared, 'no intern walk was drawn on two renders — the run\'s premise is broken');
+
+        foreach ($drawn as $x) {
+            $this->assertSame([], [...$this->queueSpacingDefects($x['frame'], $this->queueSpacing())[0], ...$this->boardingDefects($x['frame'], $this->door())[0]],
+                "at {$x['at']} ms ({$x['trigger']})");
+        }
+    }
+
+    public function test_red_the_queue_re_timed_from_scratch(): void
+    {
+        $dir = $this->planted([self::IN_FLIGHT, '        const left = (h) => h.plan !== undefined && h.at + h.plan.approach * I <= now;', '        const left = () => false;']);
+        $drawn = $this->drawn($this->floorRun('queue-gain-after-boarding', $dir));
+        $spacing = array_merge(...array_map(fn ($x) => $this->queueSpacingDefects($x['frame'], $this->queueSpacing())[0], $drawn));
+
+        $this->assertNotSame([], [...$this->continuityDefects($drawn)[0], ...$spacing], 'an intern in the cab was re-timed back to its spot and no guard saw it');
+    }
+
     public function test_green_at_the_cap_nothing_walks(): void
     {
         foreach (['capped-gain' => 2, 'capped-loss' => 1] as $run => $step) {
