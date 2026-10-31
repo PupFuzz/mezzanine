@@ -3230,7 +3230,7 @@
           }
         },
         {
-          "at_ms": 1600,
+          "at_ms": 2100,
           "envelope": {
             "feed_version": 2,
             "t": "seat.delta",
@@ -4720,7 +4720,7 @@
           }
         }
       },
-      "note": "Two interns gained on one delta (`subagents_open` 0 \u2192 2), then both lost on one delta (2 \u2192 0): two routes and two seeded waits of their own each way, the leaves opening once across the union of their door frames."
+      "note": "Two interns gained on one delta (`subagents_open` 0 \u2192 2), then both lost on one delta (2 \u2192 0): two routes each way and two seeded waits of their own; the arrivals' leaves open once across the union of their door frames, and the departures queue (card#12705): two spots apart, one opening of the leaves, boarding one at a time."
     },
     "gain-during-arrival": {
       "http": {

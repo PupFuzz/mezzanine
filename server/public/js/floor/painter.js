@@ -124,7 +124,7 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 @keyframes ring-fade{from{transform:scale(1);opacity:1}to{transform:scale(1);opacity:0}}
 .fx-flash{fill:var(--scene-flash);opacity:0;animation-name:flash}
 @keyframes flash{from{opacity:.8}to{opacity:0}}
-.fx-walker{offset-rotate:0deg;animation-name:glide;animation-timing-function:linear;animation-fill-mode:both}.fx-walker-shown{opacity:0;pointer-events:none;animation-name:walker-shown;animation-fill-mode:none}
+.fx-walker{offset-rotate:0deg;animation-name:glide;animation-timing-function:linear;animation-fill-mode:both}.fx-walker-leg{opacity:0}.fx-walker-shown{opacity:0;pointer-events:none;animation-name:walker-shown;animation-fill-mode:none}
 @keyframes glide{from{offset-distance:0%}to{offset-distance:100%}}
 @keyframes walker-shown{from{opacity:1}to{opacity:1}}
 .fx-laptop{animation-name:laptop;animation-fill-mode:both}
@@ -884,20 +884,24 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
      * - THE FLOOR ELEMENT, in the floor stack: `g.fx-walker-shown` is drawn only through the walker's floor legs (its
      *   `walker-shown` run), and inside it `g.fx-walker` GLIDES the walk leg — `offset-distance` 0 → 100 % along the
      *   path, `linear`, `fill-mode: both`, so before the leg it stands at the path's first point and after it at its
-     *   last, which is where every `stand` leg stands.
+     *   last, which is where every `stand` leg stands. A walker with more than one walk leg (a departure waiting at a
+     *   spot beside the threshold walks to it, then from it, card#12705) has one such glide per leg, every one a child
+     *   of the floor element (`g.fx-walker.fx-walker-leg`), each drawn by its own `walker-shown` run from its walk's
+     *   start to the next walk's.
      * - THE CAB ELEMENT, in the band's cab behind the leaves, still at the threshold and drawn only through the `cab`
      *   leg — so the opening leaves reveal it and the closing ones cover it.
      *
-     * The three animated groups are pinned together to one origin (`origin()`); the floor image strides only inside
-     * the walk leg (its `stepping` window) and stands at its phase-0 frame outside it; the cab image never strides.
+     * The animated groups are pinned together to one origin (`origin()`); the floor image strides only inside its walk
+     * legs (their `stepping` windows) and stands at its phase-0 frame outside them; the cab image never strides.
      */
     function paintWalker(floor, fx) {
         const I = fx.frame_interval_ms;
         const sec = (ms) => ms / 1000;
         const elapsed = fx.elapsed_ms ?? 0;
         // card#12450: an intern's turn-round in the cab or on the threshold, and its gain-and-loss blink, walk no leg: its
-        // floor legs, if any, stand at the threshold.
-        const walk = fx.legs.find((l) => l.kind === 'walk') ?? null;
+        // floor legs, if any, stand at the threshold. card#12705: a departure that waits at a spot beside the threshold
+        // walks twice — to its spot, and from it to the threshold when it boards.
+        const walks = fx.legs.filter((l) => l.kind === 'walk');
         const onFloor = fx.legs.filter((l) => l.kind !== 'cab');
         const inCab = fx.legs.filter((l) => l.kind === 'cab');
         const intern = isInternWalk(fx);
@@ -908,22 +912,36 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         const shownStyle = (s) => `animation-duration:${sec(s.to - s.from)}s;animation-delay:${sec(s.from - elapsed)}s`;
         const floorSpan = span(onFloor);
         const cabSpan = span(inCab);
-        const still = walk === null ? (onFloor[0]?.at ?? inCab[0].at) : null;
-        const path = walk === null ? `M ${still.x} ${still.y} L ${still.x} ${still.y}` : `M ${walk.points.map((p) => `${p.x} ${p.y}`).join(' L ')}`;
         const shown = node('g', { class: 'fx-walker-shown', style: floorSpan === null ? 'animation-duration:0s' : shownStyle(floorSpan) }, floor.stack);
-        const glide = node('g', {
-            class: 'fx-walker',
-            style: walk === null
-                ? `offset-path:path('${path}');animation-duration:0s`
-                : `offset-path:path('${path}');animation-duration:${sec(walk.frames * I)}s;animation-delay:${sec(walk.start * I - elapsed)}s`,
-        }, shown);
+        // One glide per walk leg, each drawn only through its own SEGMENT — from its walk's start (the first from the
+        // walker's first floor frame) to the next walk's — by a second animation on the glide itself (`.fx-walker-leg`), so
+        // before its walk the walker stands at the path's first point and after it at its last, which is where every
+        // `stand` leg between two walks stands, and every glide is a child of the floor element. A walker with one walk (or
+        // none) has the one glide, shown through the floor element's run alone, as it always was.
+        const segments = (walks.length === 0 ? [null] : walks).map((walk, i, all) => {
+            const still = walk === null ? (onFloor[0]?.at ?? inCab[0].at) : null;
+            const path = walk === null ? `M ${still.x} ${still.y} L ${still.x} ${still.y}` : `M ${walk.points.map((p) => `${p.x} ${p.y}`).join(' L ')}`;
+            const leg = all.length === 1 ? null : { from: i === 0 ? floorSpan.from : walk.start * I, to: i === all.length - 1 ? floorSpan.to : all[i + 1].start * I };
+            const glide = node('g', {
+                class: leg === null ? 'fx-walker' : 'fx-walker fx-walker-leg',
+                style: walk === null
+                    ? `offset-path:path('${path}');animation-duration:0s`
+                    : leg === null
+                        ? `offset-path:path('${path}');animation-duration:${sec(walk.frames * I)}s;animation-delay:${sec(walk.start * I - elapsed)}s`
+                        : `offset-path:path('${path}');animation-name:glide,walker-shown;animation-timing-function:linear,linear;animation-fill-mode:both,none;`
+                            + `animation-duration:${sec(walk.frames * I)}s,${sec(leg.to - leg.from)}s;animation-delay:${sec(walk.start * I - elapsed)}s,${sec(leg.from - elapsed)}s`,
+            }, shown);
+
+            return { walk, glide };
+        });
         const cab = cabSpan === null || floor.cab === null ? null : node('g', {
             class: 'fx-walker-shown fx-walker-cab',
             style: shownStyle(cabSpan),
         }, floor.cab);
         const door = inCab[0]?.at ?? null;
         const inner = cab === null ? null : node('g', { transform: `translate(${door.x} ${door.y})` }, cab);
-        const entry = origin({ key: effectKey(fx), started_at: fx.started_at, elapsed_ms: elapsed, nodes: cab === null ? [shown, glide] : [shown, glide, cab] });
+        const animated = [shown, ...segments.map((sg) => sg.glide)];
+        const entry = origin({ key: effectKey(fx), started_at: fx.started_at, elapsed_ms: elapsed, nodes: cab === null ? animated : [...animated, cab] });
         const asset = intern ? `intern:${fx.install_id}/${fx.intern_seat_key}` : characterAsset({ install_id: fx.install_id, seat_id: fx.seat_id });
         // card#12450: an intern walks at its chibi frame and glides (the tree hands no walk frames for an intern key),
         // with its laptop drawn over it through its `seat` legs.
@@ -931,7 +949,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
 
         if (drawn === null) {
             // § 9 F14: the art failed, so the walker is the placeholder rectangle at the character's size.
-            for (const parent of [glide, inner].filter((p) => p !== null)) {
+            for (const parent of [...segments.map((sg) => sg.glide), inner].filter((p) => p !== null)) {
                 node('rect', { x: -fx.size.w / 2, y: -fx.size.h, width: fx.size.w, height: fx.size.h, class: 'placeholder' }, parent);
             }
         } else {
@@ -939,23 +957,29 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             // centred on the feet — the standing frame is drawn in the widened frame, so the image is the same width
             // the desk's viewport is; `fx.size` stays the character's rect, the placeholder's size above.
             const at = (parent) => image(parent, drawn.uris[0], -fx.frame.w / 2, -fx.frame.h, fx.frame.w, fx.frame.h, asset, { class: intern ? 'intern' : 'character', preserveAspectRatio: MEET });
-            const el = at(glide);
 
-            if (!intern && walk !== null) {
-                const window = { entry, from_ms: walk.start * I, to_ms: (walk.start + walk.frames) * I };
+            for (const { walk, glide } of segments) {
+                const el = at(glide);
 
-                // A walk starts at its stand frame: A1's and A2's walks are the whole list, `loopFrom` 0, and take no loop
-                // offset (§ 10.4 item 4); it strides only inside its walk leg. The cab's image is never stepped.
-                stepping.push([el, drawn.uris, drawn.loopFrom, 0, window]);
+                if (!intern && walk !== null) {
+                    const window = { entry, from_ms: walk.start * I, to_ms: (walk.start + walk.frames) * I };
+
+                    // A walk starts at its stand frame: A1's and A2's walks are the whole list, `loopFrom` 0, and take no loop
+                    // offset (§ 10.4 item 4); it strides only inside its walk legs. The cab's image is never stepped.
+                    stepping.push([el, drawn.uris, drawn.loopFrom, 0, window]);
+                }
             }
 
             // card#12450/card#12451: the intern's laptop through its `seat` leg — rising from 0 to 1 on an arrival whose
-            // intern is HELD working at this paint (none where it went idle on the way), falling to 0 on a departure.
+            // intern is HELD working at this paint (none where it went idle on the way), falling to 0 on a departure. The
+            // `seat` leg is at the slot, so its laptop is the segment's that stands there: the first on a departure, the
+            // last on an arrival.
             const seatLeg = intern ? fx.legs.find((l) => l.kind === 'seat') ?? null : null;
             const laptop = seatLeg === null ? null : characterFrames(fx.install_id, fx.intern_seat_key, asset, fx.seat_species, null, 'laptop');
 
             if (seatLeg !== null && laptop !== null) {
                 const to = fx.leg_kind === 'arrive' ? (fx.held_activity === 'idle' ? 0 : seatLeg.laptop_to) : seatLeg.laptop_to;
+                const glide = (fx.leg_kind === 'arrive' ? segments[segments.length - 1] : segments[0]).glide;
                 const over = image(glide, laptop.uris[0], -fx.frame.w / 2, -fx.frame.h, fx.frame.w, fx.frame.h, asset, { class: 'intern fx-laptop', preserveAspectRatio: MEET });
 
                 laptopOver(over, seatLeg.laptop_from, to, seatLeg.frames, I, elapsed - seatLeg.start * I);
@@ -1269,8 +1293,8 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         // scene carries — one interval for the whole floor. Each character steps through its OWN held loop — a walker's
         // walk, a sleeper's pulse after its still — so a loop of one length never draws another drawing's frames, from the
         // offset it was pushed with: the seat's own for a held loop, 0 for a walk. The loop is `uris[loopFrom ..]`
-        // (§ 10.4 item 4), so the still never steps. A walker strides only inside its walk leg and stands at its phase-0
-        // frame outside it, its time `performance.now() − began` — the origin its pinned animations read.
+        // (§ 10.4 item 4), so the still never steps. A walker strides only inside its walk legs and stands at its phase-0
+        // frame outside them, its time `performance.now() − began` — the origin its pinned animations read.
         const moving = stepping;
         const walking = walkers.length > 0;
         const interval = scene.desks.map((d) => [d.held, d.interns_held]).flat().find((h) => h?.motion)?.frame_interval_ms ?? (walking ? 1000 / scene.loop_fps : null);

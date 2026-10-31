@@ -34,7 +34,7 @@ import { footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layou
 import { readEmbedded, splitGid, tilesetUrl } from './tileset.js';
 import { BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, internKey, stoolSlots, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
-import { cellCentre, lattice, pointAt, polylineLength, route } from './route.js';
+import { CLEARANCE, cellCentre, lattice, pointAt, polylineLength, route, spotsNear } from './route.js';
 import { perchPoint } from './bird.js';
 
 /**
@@ -280,10 +280,10 @@ const RING_PX_PER_FRAME = 240;
 const RING_FADE_FRAMES = 2;
 
 /**
- * The elevator's leaves, in loop frames (FLOOR § 12's *Elevator leaves* row, card#9566): opening, the
- * step through the doorway, closing.
+ * The elevator's leaves, in loop frames (FLOOR § 12's *Elevator leaves* row, card#9566; card#12705 halved their speed —
+ * the operator's *"about 50% current speed"*): opening, the step through the doorway, closing.
  */
-export const ELEVATOR_DOOR = Object.freeze({ open: 2, step: 1, close: 2 });
+export const ELEVATOR_DOOR = Object.freeze({ open: 4, step: 1, close: 4 });
 
 /**
  * The intern's laptop fade, in loop frames (FLOOR § 12's *Laptop fade* row, card#12450/card#12451): one second each way
@@ -292,15 +292,127 @@ export const ELEVATOR_DOOR = Object.freeze({ open: 2, step: 1, close: 2 });
 export const LAPTOP_FADE = 4;
 
 /**
- * The longest a departing character waits at the elevator before the leaves open (§ 12's *Elevator wait* row,
- * card#12194 — the operator's *"random wait time up to 1 minute"*), in seconds, and in loop frames at § 12's rate.
+ * The longest a departing character waits at the elevator before the leaves open for it (§ 12's *Elevator wait* row,
+ * card#12194; card#12705 — the operator's *"a random wait between 0-30 seconds"*), in seconds, and in loop frames at
+ * § 12's rate.
  */
-export const ELEVATOR_WAIT_S = 60;
+export const ELEVATOR_WAIT_S = 30;
 export const WAIT_MAX_FRAMES = ELEVATOR_WAIT_S * LOOP_FPS;
 
 /** Where every A1 and A2 walk meets the elevator: the leaves' seam, at their foot (§ 6.2's walk note item 3). */
 export function threshold(band) {
     return band === null || band === undefined ? null : Object.freeze({ x: band.elevator.seam, y: band.elevator.y + band.elevator.h });
+}
+
+/**
+ * § 12's *Queue spacing* (card#12705): the least distance between the centres of two spots walkers wait at by the
+ * elevator — the seat walker's drawn width (`walkerSize()`) plus the `clear` tier's side margin, so two waiting side by
+ * side keep a person's clearance between them. An intern is narrower, so the figure holds for every walker.
+ */
+export function queueSpacing(character) {
+    return walkerSize(character).w + CLEARANCE.margin;
+}
+
+/** The legs' walk primitive: a glide along `points` from frame `start`, `⌈length ÷ walk speed⌉` frames, at least one. */
+function walkLeg(start, points) {
+    const length = polylineLength(points);
+
+    return Object.freeze({ kind: 'walk', start, frames: Math.max(1, Math.ceil(length / WALK_PX_PER_FRAME)), points, length });
+}
+
+const samePoint = (a, b) => a.x === b.x && a.y === b.y;
+
+/**
+ * A DEPARTURE's walk to its waiting SPOT (walk note item 9, card#12705): its route to the threshold, then the spot's path
+ * from the threshold — the spot's own path back to it, reversed — with every step it would retrace taken out (`A, B, A`
+ * is `A`), so a walker bound for a spot beside the door turns off its route where the two meet rather than touching the
+ * seam and stepping back. Every cell either path crosses is open (`route()`, `spotsNear()`), and removing a retraced
+ * step keeps every remaining step one of theirs, so the joined path is open floor too. Spot 0 is the threshold: its
+ * walk is the route.
+ */
+function spotWalk(walk, spot) {
+    if (spot.path.length === 1) {
+        return walk;
+    }
+
+    const out = [];
+
+    for (const p of [...walk.points, ...[...spot.path].reverse().slice(1)]) {
+        if (out.length >= 2 && samePoint(out[out.length - 2], p)) {
+            out.pop();
+        } else if (out.length === 0 || !samePoint(out[out.length - 1], p)) {
+            out.push(p);
+        }
+    }
+
+    return walkLeg(walk.start, Object.freeze(out));
+}
+
+/**
+ * WHERE A DEPARTURE STANDS AND HOW IT BOARDS, for one waiting spot (walk note item 9, card#12705): its walk to the spot,
+ * the frame it arrives there (`arrive`), and its walk from the spot to the threshold when it boards (`board`; `null`
+ * at spot 0, which is the threshold). `queue` is the departure's own part, from the render that applied its row —
+ * `lead` (the legs before it walks: an intern's laptop fade), `walk` (its route to the threshold), `wait` (its seeded
+ * draw, frames) and `threshold`; `spot` is `{index, at, path}`, `spotsNear()`'s.
+ */
+export function queueShape(queue, spot) {
+    const walk = spotWalk(queue.walk, spot);
+
+    return Object.freeze({
+        spot,
+        walk,
+        arrive: walk.start + walk.frames,
+        board: spot.path.length === 1 ? null : walkLeg(0, spot.path),
+    });
+}
+
+/**
+ * The TIMING a departure alone at the elevator keeps (walk note item 5), in frames from its start: it waits its own draw
+ * at its spot, the leaves open on it then, it walks to the threshold if its spot is not the threshold, steps into the cab
+ * once the leaves are open, and they close behind it.
+ */
+export function loneTiming(queue, shape) {
+    const D = ELEVATOR_DOOR;
+    const open = shape.arrive + queue.wait;
+    const step = Math.max(open + (shape.board?.frames ?? 0), open + D.open);
+
+    return Object.freeze({ open, approach: open, step, close: step + D.step + D.close });
+}
+
+/**
+ * A DEPARTURE's legs and door span for one timing (walk note items 5 and 9): the lead legs, the walk to its spot, the
+ * `stand` it waits in there until it leaves for the door (`approach`), the walk from the spot to the threshold, the
+ * `stand` at the door until it steps in (`step`), and the `cab` — inside, behind the leaves, until they have closed
+ * (`close`). The door span is from the leaves' opening (`open`, never before the walk's own frame 0) to their closing.
+ */
+export function departureLegs(queue, shape, timing) {
+    const at = queue.threshold;
+    const stand = (start, frames, where, why) => Object.freeze({ kind: 'stand', start, frames, at: where, why });
+    const board = shape.board === null ? null : Object.freeze({ ...shape.board, start: timing.approach });
+    const atDoor = timing.approach + (board?.frames ?? 0);
+    const legs = Object.freeze([
+        ...queue.lead,
+        shape.walk,
+        stand(shape.arrive, timing.approach - shape.arrive, shape.spot.at, 'wait'),
+        ...(board === null ? [] : [board]),
+        stand(atDoor, timing.step - atDoor, at, 'door'),
+        Object.freeze({ kind: 'cab', start: timing.step, frames: timing.close - timing.step, at }),
+    ]);
+    const door = Object.freeze({ start: Math.max(0, timing.open), frames: timing.close - Math.max(0, timing.open) });
+
+    return Object.freeze({ legs, door, frames: Math.max(...legs.map((l) => l.start + l.frames), door.start + door.frames) });
+}
+
+/**
+ * A DEPARTURE as the render that applies its row draws it (walk note items 5 and 9): its queue part and, drawn alone, its
+ * legs at the threshold — spot 0 and its own wait. The holder (`floor/in-flight.js`) gives it its spot and re-times it
+ * with every other walker at the elevator.
+ */
+function departing(lead, walk, wait, at) {
+    const queue = Object.freeze({ lead: Object.freeze(lead), walk, wait, threshold: at });
+    const shape = queueShape(queue, Object.freeze({ index: 0, at, path: Object.freeze([at]) }));
+
+    return { queue, ...departureLegs(queue, shape, loneTiming(queue, shape)) };
 }
 
 /**
@@ -327,7 +439,8 @@ export const INTERN_SIZE = Object.freeze({ w: STOOL_W, h: STOOL_H });
 /**
  * One A1 or A2 walk (FLOOR § 6.2's walk note items 3 and 5, card#12194): a ROUTED path through open floor between
  * the desk's anchor and the elevator's threshold, as legs in frame order — A2 walks to the threshold, WAITS there for
- * its seeded wait, stands while the leaves open on it, and steps into the cab, where the closing leaves cover it; A1
+ * its seeded wait, stands while the leaves open on it, and steps into the cab, where the closing leaves cover it, as
+ * drawn alone (`departing()`; the holder gives it its spot and its turn in the queue, item 9, card#12705); A1
  * is revealed in the cab by the opening leaves, steps out, and walks to its desk while they close behind it, sitting
  * on its walk's last frame. `door` is the frames the leaves are not shut in. With no motion, no desk on this floor,
  * no band, or no open route, the row is drawn without its walk: no legs, frames 0 (walk note item 7).
@@ -365,33 +478,27 @@ function walkEffect(base, id, anchor, door, motion, character, box, walking) {
 
     // The route's cell centres, bracketed by the walk's two ends.
     const points = Object.freeze([from, ...cells.map((c) => walking.centre(c)), to].map((p) => Object.freeze({ x: p.x, y: p.y })));
-    const length = polylineLength(points);
-    const steps = Math.max(1, Math.ceil(length / WALK_PX_PER_FRAME));
     const D = ELEVATOR_DOOR;
     const at = Object.freeze({ x: door.x, y: door.y });
-    const walk = (start) => Object.freeze({ kind: 'walk', start, frames: steps, points, length });
-    const stand = (start, frames, why) => Object.freeze({ kind: 'stand', start, frames, at, why });
     const cab = (start, frames) => Object.freeze({ kind: 'cab', start, frames, at });
-    let legs;
-    let doorSpan;
-
-    if (id === 'A2') {
-        const wait = walking.wait(key, base.cause);
-
-        legs = [walk(0), stand(steps, wait, 'wait'), stand(steps + wait, D.open, 'door'), cab(steps + wait + D.open, D.step + D.close)];
-        doorSpan = { start: steps + wait, frames: D.open + D.step + D.close };
-    } else {
-        legs = [cab(0, D.open), stand(D.open, D.step, 'step'), walk(D.open + D.step)];
-        doorSpan = { start: 0, frames: D.open + D.step + D.close };
-    }
+    // A2 queues at the elevator (walk note item 9): drawn alone at the threshold here, re-timed by the holder.
+    const drawn = id === 'A2'
+        ? departing([], walkLeg(0, points), walking.wait(key, base.cause), at)
+        : {
+            queue: null,
+            legs: Object.freeze([cab(0, D.open), Object.freeze({ kind: 'stand', start: D.open, frames: D.step, at, why: 'step' }), walkLeg(D.open + D.step, points)]),
+            door: Object.freeze({ start: 0, frames: D.open + D.step + D.close }),
+        };
+    const { legs } = drawn;
 
     return Object.freeze({
         ...base,
         route: 'routed',
         side: WALK_SIDE[id],
         lattice_key: walking.key,
-        legs: Object.freeze(legs),
-        door: Object.freeze(doorSpan),
+        legs,
+        door: drawn.door,
+        ...(drawn.queue === null ? {} : { queue: drawn.queue }),
         no_route: false,
         // Which clearance tier the route was found at (`route.js`'s `CLEARANCE_TIERS`, card#12442) — read by the tests
         // and the walk probe, drawn nowhere.
@@ -402,7 +509,7 @@ function walkEffect(base, id, anchor, door, motion, character, box, walking) {
         // centred on the feet as the desk's is.
         size: walkerSize(character),
         frame: Object.freeze((({ w, h }) => ({ w, h }))(characterOverdraw(box, character).overdraw)),
-        frames: Math.max(...legs.map((l) => l.start + l.frames), doorSpan.start + doorSpan.frames),
+        frames: Math.max(...legs.map((l) => l.start + l.frames), drawn.door.start + drawn.door.frames),
     });
 }
 
@@ -817,6 +924,21 @@ export function buildScene(frame, input) {
         draw: input.draw ?? null,
         character: input.character,
     });
+    // card#12705: the spaced spots walkers wait at by the elevator (walk note item 9) — on the seat walker's lattice, whose
+    // body is the widest, so a spot open to it is open to an intern — built on the holder's first ask, never otherwise.
+    let spots = null;
+    const queueSpot = (k) => {
+        const door = threshold(band);
+        const grid = door === null ? null : walking.lattice;
+
+        if (grid === null) {
+            return null;
+        }
+
+        spots ??= spotsNear(grid, door, queueSpacing(input.character));
+
+        return spots(k);
+    };
     const effects = buildEffects(input.effects ?? [], frame, anchors, input.previous ?? new Map(), extent, band, input.reduce === true, input.character, box, walking, {
         desks: new Map(desks.map((d) => [d.key, d])),
         // card#12450: the intern walks the holder carries into this render, and each intern's laptop opacity there
@@ -860,6 +982,9 @@ export function buildScene(frame, input) {
             Object.freeze(stoolSlots(box, input.character).map((_, slot) => slotFoot(d, slot, box, input.character)))]))),
         // What the walkable model reads, fingerprinted — every render's, so the holder can cancel a walk routed on another.
         lattice_key: walking.key,
+        // card#12705: spot `k` by the elevator, `{at, path}` (`spotsNear()`'s), or `null` past the last the floor holds — what the holder
+        // (`floor/in-flight.js`) stands each waiting departure at. A function, so a render that queues nobody builds none.
+        queue_spot: queueSpot,
         loop_fps: LOOP_FPS,
     });
 }
@@ -1590,19 +1715,20 @@ function internWalks(row, base, frame, interns, band, moving, character, box, wa
 
         return { points, length: polylineLength(points), tier: r.tier };
     };
-    const walk = (start, r) => Object.freeze({ kind: 'walk', start, frames: Math.max(1, Math.ceil(r.length / WALK_PX_PER_FRAME)), points: r.points, length: r.length });
+    const walk = (start, r) => walkLeg(start, r.points);
     const leg = (kind, start, frames, at, why = null) => Object.freeze({ kind, start, frames, at, ...(why === null ? {} : { why }) });
-    const done = (fx, legs, doorSpan, tier) => Object.freeze({
+    const done = (fx, legs, doorSpan, tier, queue = null) => Object.freeze({
         ...fx,
         route: 'routed',
         clearance: tier,
         legs: Object.freeze(legs),
         door: Object.freeze(doorSpan),
+        ...(queue === null ? {} : { queue }),
         no_route: false,
         frames: Math.max(...legs.map((l) => l.start + l.frames), doorSpan.start + doorSpan.frames),
     });
     // A departure from the slot (item 13): the laptop fades out from `from` (a `seat` leg; none when it is already 0),
-    // then the walk, the seeded wait and the door.
+    // then the walk, the seeded wait and the door — A2's queue at the elevator (item 14).
     const departure = (fx, from) => {
         const r = routed(fx, fx.anchor, door);
 
@@ -1611,17 +1737,10 @@ function internWalks(row, base, frame, interns, band, moving, character, box, wa
         }
 
         const F = from > 0 ? LAPTOP_FADE : 0;
-        const w = walk(F, r);
-        const wait = walking.wait(fx.intern_key, row.cause);
-        const legs = [
-            ...(F > 0 ? [Object.freeze({ ...leg('seat', 0, F, fx.anchor), laptop_from: from, laptop_to: 0 })] : []),
-            w,
-            leg('stand', F + w.frames, wait, sill, 'wait'),
-            leg('stand', F + w.frames + wait, D.open, sill, 'door'),
-            leg('cab', F + w.frames + wait + D.open, D.step + D.close, sill),
-        ];
+        const gone = departing(F > 0 ? [Object.freeze({ ...leg('seat', 0, F, fx.anchor), laptop_from: from, laptop_to: 0 })] : [],
+            walk(F, r), walking.wait(fx.intern_key, row.cause), sill);
 
-        return done(fx, legs, { start: F + w.frames + wait, frames: D.open + D.step + D.close }, r.tier);
+        return done(fx, gone.legs, gone.door, r.tier, gone.queue);
     };
 
     for (const element of move.gained) {
@@ -1709,15 +1828,9 @@ function turnRound(fx, flying, from, door, routed, walk, leg, done, walking, row
             return null;
         }
 
-        const w = walk(0, r);
-        const wait = walking.wait(fx.intern_key, row.cause);
+        const back = departing([], walk(0, r), walking.wait(fx.intern_key, row.cause), at);
 
-        return done({ ...fx, leg_kind: 'turn', turned_in: 'walk', turned_at: here }, [
-            w,
-            leg('stand', w.frames, wait, at, 'wait'),
-            leg('stand', w.frames + wait, D.open, at, 'door'),
-            leg('cab', w.frames + wait + D.open, D.step + D.close, at),
-        ], { start: w.frames + wait, frames: D.open + D.step + D.close }, r.tier);
+        return done({ ...fx, leg_kind: 'turn', turned_in: 'walk', turned_at: here }, back.legs, back.door, r.tier, back.queue);
     }
 
     // In the `seat` leg: at its stool, its laptop part-way up — an ordinary departure from the opacity it has reached.
@@ -1728,16 +1841,10 @@ function turnRound(fx, flying, from, door, routed, walk, leg, done, walking, row
     }
 
     const F = from > 0 ? LAPTOP_FADE : 0;
-    const w = walk(F, r);
-    const wait = walking.wait(fx.intern_key, row.cause);
+    const gone = departing(F > 0 ? [Object.freeze({ ...leg('seat', 0, F, fx.anchor), laptop_from: from, laptop_to: 0 })] : [],
+        walk(F, r), walking.wait(fx.intern_key, row.cause), at);
 
-    return done({ ...fx, leg_kind: 'turn', turned_in: 'seat' }, [
-        ...(F > 0 ? [Object.freeze({ ...leg('seat', 0, F, fx.anchor), laptop_from: from, laptop_to: 0 })] : []),
-        w,
-        leg('stand', F + w.frames, wait, at, 'wait'),
-        leg('stand', F + w.frames + wait, D.open, at, 'door'),
-        leg('cab', F + w.frames + wait + D.open, D.step + D.close, at),
-    ], { start: F + w.frames + wait, frames: D.open + D.step + D.close }, r.tier);
+    return done({ ...fx, leg_kind: 'turn', turned_in: 'seat' }, gone.legs, gone.door, r.tier, gone.queue);
 }
 
 /**

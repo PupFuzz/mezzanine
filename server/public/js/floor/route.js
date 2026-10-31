@@ -30,7 +30,9 @@
  * that connects the two points and names it, so a map too tight for a body still walks, on the best route that fits.
  *
  * ⛔ NOTHING HERE KNOWS ABOUT ELEVATORS. A1 and A2 hand `route()` a desk's anchor and the elevator's threshold; a
- * later destination hands it another point.
+ * later destination hands it another point. `spotsNear()` answers where several walkers can stand apart near one point —
+ * the scene asks it about the threshold, for the queue there (walk note item 9, card#12705) — over the same step rule
+ * and the same blocked sets `route()` searches.
  */
 
 /** § 12's *Route lattice and cost* row: an orthogonal step costs 10, a diagonal one 14 — integers, so no float ties. */
@@ -292,32 +294,32 @@ function centringCost(cols, rows, cell, blocked, edge) {
 }
 
 /**
- * A* over the lattice (walk note item 3) at ONE tier's blocked set: 8-connected, `STEP_COST` plus the centring cost
- * of the cell entered, a diagonal refused when either orthogonal neighbour is blocked (no corner is cut), the octile
- * heuristic in the step units — never above the true cost, since no centring cost is negative — and the open set
- * ordered by `(f, g descending, y, x)`: a total order, so one path for one set of inputs.
+ * The steps out of cell `(x, y)` over a blocked set, each handed to `visit(cell index, STEP_COST)`: 8-connected, a diagonal refused when
+ * either orthogonal neighbour is blocked (no corner is cut) — the one step rule `search()` and `spotsNear()` walk by.
  */
-function search(grid, start, goal, blocked, extra) {
-    const { cols, rows } = grid;
-    const s = start[1] * cols + start[0];
-    const t = goal[1] * cols + goal[0];
+function steps(cols, rows, blocked, x, y, visit) {
+    const open = (cx, cy) => cx >= 0 && cy >= 0 && cx < cols && cy < rows && blocked[cy * cols + cx] === 0;
 
-    if (blocked[s] === 1 || blocked[t] === 1) {
-        return null;
+    for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            if ((dx === 0 && dy === 0) || !open(x + dx, y + dy)) {
+                continue;
+            }
+
+            const diagonal = dx !== 0 && dy !== 0;
+
+            if (diagonal && (!open(x + dx, y) || !open(x, y + dy))) {
+                continue;
+            }
+
+            visit((y + dy) * cols + x + dx, diagonal ? STEP_COST.diagonal : STEP_COST.straight);
+        }
     }
+}
 
-    const h = (i) => {
-        const dx = Math.abs((i % cols) - goal[0]);
-        const dy = Math.abs(Math.floor(i / cols) - goal[1]);
-
-        return STEP_COST.straight * Math.max(dx, dy) + (STEP_COST.diagonal - STEP_COST.straight) * Math.min(dx, dy);
-    };
-    const g = new Int32Array(cols * rows).fill(-1);
-    const parent = new Int32Array(cols * rows).fill(-1);
-    const closed = new Uint8Array(cols * rows);
-    // The open set: a binary heap of `[f, g, y, x, i]`, least first by `(f, g desc, y, x)`.
+/** A binary heap ordered by `before` (least first) — the open set of `search()` and of `spotsNear()`'s cost field. */
+function minHeap(before) {
     const heap = [];
-    const before = (a, b) => a[0] - b[0] || b[1] - a[1] || a[2] - b[2] || a[3] - b[3];
     const push = (e) => {
         heap.push(e);
 
@@ -363,12 +365,42 @@ function search(grid, start, goal, blocked, extra) {
 
         return top;
     };
-    const open = (x, y) => x >= 0 && y >= 0 && x < cols && y < rows && blocked[y * cols + x] === 0;
+
+    return { push, pop, size: () => heap.length };
+}
+
+/**
+ * A* over the lattice (walk note item 3) at ONE tier's blocked set: 8-connected, `STEP_COST` plus the centring cost
+ * of the cell entered, a diagonal refused when either orthogonal neighbour is blocked (no corner is cut), the octile
+ * heuristic in the step units — never above the true cost, since no centring cost is negative — and the open set
+ * ordered by `(f, g descending, y, x)`: a total order, so one path for one set of inputs.
+ */
+function search(grid, start, goal, blocked, extra) {
+    const { cols, rows } = grid;
+    const s = start[1] * cols + start[0];
+    const t = goal[1] * cols + goal[0];
+
+    if (blocked[s] === 1 || blocked[t] === 1) {
+        return null;
+    }
+
+    const h = (i) => {
+        const dx = Math.abs((i % cols) - goal[0]);
+        const dy = Math.abs(Math.floor(i / cols) - goal[1]);
+
+        return STEP_COST.straight * Math.max(dx, dy) + (STEP_COST.diagonal - STEP_COST.straight) * Math.min(dx, dy);
+    };
+    const g = new Int32Array(cols * rows).fill(-1);
+    const parent = new Int32Array(cols * rows).fill(-1);
+    const closed = new Uint8Array(cols * rows);
+    // The open set: least first by `(f, g desc, y, x)`.
+    const before = (a, b) => a[0] - b[0] || b[1] - a[1] || a[2] - b[2] || a[3] - b[3];
+    const { push, pop, size } = minHeap(before);
 
     g[s] = 0;
     push([h(s), 0, start[1], start[0], s]);
 
-    while (heap.length > 0) {
+    while (size() > 0) {
         const [, gc, y, x, i] = pop();
 
         if (closed[i] === 1 || gc !== g[i]) {
@@ -387,29 +419,15 @@ function search(grid, start, goal, blocked, extra) {
             return cells.reverse();
         }
 
-        for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-                if ((dx === 0 && dy === 0) || !open(x + dx, y + dy)) {
-                    continue;
-                }
+        steps(cols, rows, blocked, x, y, (n, cost) => {
+            const gn = gc + cost + extra[n];
 
-                const diagonal = dx !== 0 && dy !== 0;
-
-                // No corner cut: a diagonal needs both orthogonal neighbours open.
-                if (diagonal && (!open(x + dx, y) || !open(x, y + dy))) {
-                    continue;
-                }
-
-                const n = (y + dy) * cols + x + dx;
-                const gn = gc + (diagonal ? STEP_COST.diagonal : STEP_COST.straight) + extra[n];
-
-                if (closed[n] === 0 && (g[n] === -1 || gn < g[n])) {
-                    g[n] = gn;
-                    parent[n] = i;
-                    push([gn + h(n), gn, y + dy, x + dx, n]);
-                }
+            if (closed[n] === 0 && (g[n] === -1 || gn < g[n])) {
+                g[n] = gn;
+                parent[n] = i;
+                push([gn + h(n), gn, Math.floor(n / cols), n % cols, n]);
             }
-        }
+        });
     }
 
     return null;
@@ -443,6 +461,88 @@ export function route(grid, from, to, walker) {
     }
 
     return null;
+}
+
+/**
+ * SPACED SPOTS NEAR A POINT (walk note item 9, card#12705): where several walkers can stand near one point and never on
+ * one another — spot 0 the point itself, each later spot the cheapest open cell, by the route cost FROM the point (`STEP_COST`
+ * plus the tier's centring, no corner cut), whose centre is at least `spacing` px from every earlier spot; ties by
+ * `(y, x)`. Open means open for NOBODY's walk: every desk blocked as another walker meets it, at the strictest tier the
+ * point's own cell is open at. Each spot carries its path back to the point — the cell centres from the spot's down the
+ * cost tree to the point's cell, then the point — so a walker standing there walks to the point over open floor.
+ *
+ * @param {object} grid `lattice()`'s
+ * @param {{x: number, y: number}} point
+ * @param {number} spacing the least distance between two spots' centres, px
+ * @returns {function(number): ({at: {x: number, y: number}, path: list<{x: number, y: number}>}|null)} spot `k`, built on
+ *          first ask; `null` past the last spot the open floor holds
+ */
+export function spotsNear(grid, point, spacing) {
+    const start = cellAt(grid, point);
+    const tier = start === null ? null : CLEARANCE_TIERS.find((t) => blockedFor(grid, { key: null, anchor: point }, t)[start[1] * grid.cols + start[0]] === 0) ?? null;
+    const origin = Object.freeze({ x: point.x, y: point.y });
+    const spots = [Object.freeze({ at: origin, path: Object.freeze([origin]) })];
+
+    if (tier === null) {
+        return (k) => spots[k] ?? null;
+    }
+
+    const { cols, rows } = grid;
+    const blocked = blockedFor(grid, { key: null, anchor: point }, tier);
+    const extra = grid.tier(tier).centring;
+    const s = start[1] * cols + start[0];
+    const g = new Int32Array(cols * rows).fill(-1);
+    const parent = new Int32Array(cols * rows).fill(-1);
+    const done = new Uint8Array(cols * rows);
+    // Dijkstra from the point's cell — a total order `(cost, y, x)` over the settled cells, one answer for one input.
+    const order = [];
+    const { push, pop, size } = minHeap((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+
+    g[s] = 0;
+    push([0, start[1], start[0], s]);
+
+    while (size() > 0) {
+        const [gc, y, x, i] = pop();
+
+        if (done[i] === 1 || gc !== g[i]) {
+            continue;
+        }
+
+        done[i] = 1;
+        order.push(i);
+
+        steps(cols, rows, blocked, x, y, (n, cost) => {
+            const gn = gc + cost + extra[n];
+
+            if (done[n] === 0 && (g[n] === -1 || gn < g[n])) {
+                g[n] = gn;
+                parent[n] = i;
+                push([gn, Math.floor(n / cols), n % cols, n]);
+            }
+        });
+    }
+
+    let next = 0;
+
+    return (k) => {
+        while (spots.length <= k && next < order.length) {
+            const i = order[next++];
+            const at = cellCentre(grid, [i % cols, Math.floor(i / cols)]);
+
+            if (spots.every((p) => Math.hypot(p.at.x - at.x, p.at.y - at.y) >= spacing)) {
+                const path = [];
+
+                for (let c = i; c !== -1; c = parent[c]) {
+                    path.push(Object.freeze(cellCentre(grid, [c % cols, Math.floor(c / cols)])));
+                }
+
+                path.push(origin);
+                spots.push(Object.freeze({ at: Object.freeze(at), path: Object.freeze(path) }));
+            }
+        }
+
+        return spots[k] ?? null;
+    };
 }
 
 /** A polyline's length — the sum of its segments. */

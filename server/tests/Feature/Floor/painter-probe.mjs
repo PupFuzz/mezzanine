@@ -1179,6 +1179,58 @@ function walkOf(n) {
     Object.defineProperty(globalThis, 'performance', { value: realPerformance, configurable: true });
 }
 
+// ── card#12705 — a QUEUED A2 walker (§ 6.2's walk note item 9): it walks to a spot beside the threshold, waits there and
+// walks from it to the threshold when it boards — two walk legs, painted as two glides, each a child of its floor element
+// (so a sampler reading a glide's parent reads the floor element, as for every walker) and each drawn only through its own
+// segment by a second `walker-shown` run: the first from the walker's first floor frame to the second walk's start, the
+// second from there to its last floor frame, so the two segments tile the floor span and one glide is drawn at a time ──
+{
+    const { backWall, threshold } = await mod('floor/scene.js');
+    const { backWallBand } = await mod('floor/floor-layout.js');
+    const band = backWall(backWallBand({ x: 0, y: 0, width: 1200 }), null);
+    const T = threshold(band);
+    const S = { x: T.x + 80, y: T.y + 40 };
+    const I = 250;
+    const queued = {
+        animation_id: 'A2', cause: 78, install_id: 'walk-room', seat_id: 'queued', class: 'edge', motion: true, frame_interval_ms: I,
+        route: 'routed', side: 'empty', lattice_key: 'k', frames: 29, door: { start: 20, frames: 9 },
+        legs: [
+            { kind: 'walk', start: 0, frames: 8, points: [{ x: 300, y: 200 }, S], length: 0 },
+            { kind: 'stand', start: 8, frames: 12, at: S, why: 'wait' },
+            { kind: 'walk', start: 20, frames: 4, points: [S, T], length: 0 },
+            { kind: 'stand', start: 24, frames: 0, at: T, why: 'door' },
+            { kind: 'cab', start: 24, frames: 5, at: T },
+        ],
+        size: { w: 54, h: 96 }, frame: { w: 108, h: 117 },
+        elapsed_frames: 0, elapsed_ms: 0, started_at: 5000, species: 'otter',
+    };
+
+    createPainter({ characters, themes: { studio: theme }, failed() {}, select() {}, clock: { now: () => 5000 } })
+        .paint({ ...scene, band, desks: desks.slice(0, 2), effects: [queued], doors: [], loop_fps: 4 }, { bounds: null });
+
+    const stackLayer = host.children[0].children.find((n) => n.getAttribute('class') === 'desks');
+    const floorEl = stackLayer.children.find((n) => classes(n).includes('fx-walker-shown'));
+    const glides = floorEl === undefined ? [] : floorEl.children.filter((n) => classes(n).includes('fx-walker'));
+    // Each glide's `walker-shown` run, in ms of the walk: its delay (from the walk's start, `elapsed_ms` 0) and duration.
+    const run = (g) => {
+        const style = g.getAttribute('style') ?? '';
+        const second = (prop) => Number(/([\d.]+)s$/.exec(new RegExp(`${prop}:[^;]*`).exec(style)?.[0] ?? '')?.[1] ?? NaN) * 1000;
+
+        return /animation-name:glide,walker-shown/.test(style) ? { from: second('animation-delay'), to: second('animation-delay') + second('animation-duration') } : null;
+    };
+    const runs = glides.map(run);
+
+    if (glides.length !== 2 || glides.some((g) => !classes(g).includes('fx-walker-leg'))) {
+        defects.push(`the queued A2 walker painted ${glides.length} glide(s) as children of its floor element, not two \`fx-walker-leg\` glides`);
+    } else if (runs.some((r) => r === null) || runs[0].from !== 0 || runs[0].to !== 20 * I || runs[1].from !== 20 * I || runs[1].to !== 24 * I) {
+        defects.push(`the queued A2 walker's glides are shown over ${JSON.stringify(runs)}, not its two segments [0, ${20 * I}] and [${20 * I}, ${24 * I}] ms`);
+    }
+
+    if (!/\.fx-walker-leg\{[^}]*opacity:0/.test(STYLE)) {
+        defects.push('the sheet does not hide a queued A2 walker\'s glide outside its segment (`.fx-walker-leg{opacity:0}`)');
+    }
+}
+
 // ── A desk's frames are cached BY POSE (§ 10.4's frame contract): one painter drawing a seat asleep, then the same seat
 // in another pose, draws the second pose's frames — never the first's from a cache keyed without the pose ──
 {
