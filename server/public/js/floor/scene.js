@@ -305,6 +305,61 @@ export function threshold(band) {
 }
 
 /**
+ * card#12744 — WHERE A RIDER STANDS IN THE CAB (§ 6.2's walk note item 10, § 12's *Cab spots*; the operator, 2026-11-01:
+ * *"If there are multiple agents and subagents entering the elevator, stagger them inside the elevator so that they
+ * aren't all at one point"*). Each spot is a rider's feet, as an offset in band px from the threshold — the seam at the
+ * doorway's foot — a negative `dy` being deeper into the cab. Spot 0 is the threshold itself, where a lone rider stands
+ * as it always has; spots 1 and 2 are a row in, to either side; 3 and 4 a row further in, between them; 5 at the back.
+ * Every spot's feet lie on the cab floor `cab-paint.js`'s `drawCabInterior()` draws behind the leaves at the band
+ * elevator's size from the landing's eye (`LANDING`), with the side walls' margin to spare; the rider's drawn body may
+ * reach past the doorway's edge, where the frame's clip hides it as a doorway hides someone standing to its side.
+ * Past the last spot, riders share the inner two rows' points (`cabSpot()`). Chosen; it carries no fact.
+ */
+export const CAB_SPOTS = Object.freeze([[0, 0], [-20, -12], [20, -12], [-10, -24], [10, -24], [0, -34]]
+    .map(([dx, dy]) => Object.freeze({ dx, dy })));
+
+/** Rider `k`'s feet in the cab (`CAB_SPOTS`): past the last spot, the inner two rows' points again, in turn. */
+export function cabSpot(door, k) {
+    const inner = 3;
+    const s = CAB_SPOTS[k < CAB_SPOTS.length ? k : inner + ((k - inner) % (CAB_SPOTS.length - inner))];
+
+    return Object.freeze({ x: door.x + s.dx, y: door.y + s.dy });
+}
+
+/**
+ * A walk's `cab` leg STOOD AT RIDER SPOT `slot` (card#12744, § 6.2's walk note item 10): the leg's `at` is the spot, and a
+ * rider whose spot is not the threshold steps between the two over § 12's *Elevator leaves* step, inside the cab — a
+ * boarder (a floor leg before its cab leg) from the threshold to its spot over the leg's first step (`enter`), an
+ * arrival (a floor leg after it) from its spot to the threshold over its last (`leave`), and a rider with neither — item
+ * 16's turn-round in the cab — from where it stood (`from`) to its spot. At spot 0 it stands where the scene drew it.
+ * The timing is never touched: only where the cab leg stands. Re-seating a seated walk gives the same legs.
+ *
+ * @param {list<object>} legs the walk's legs
+ * @param {{x: number, y: number}} door the threshold
+ * @param {number} slot the rider's spot (`cabSpot()`)
+ * @param {?{x: number, y: number}} from where a rider with no floor leg either side steps from, or `null`
+ */
+export function seatInCab(legs, door, slot, from = null) {
+    const i = legs.findIndex((l) => l.kind === 'cab');
+
+    if (i === -1) {
+        return legs;
+    }
+
+    const at = cabSpot(door, slot);
+    const { enter, leave, ...leg } = legs[i];
+    const here = (p) => p.x === at.x && p.y === at.y;
+    const step = ELEVATOR_DOOR.step;
+    const moved = i > 0
+        ? (here(door) ? {} : { enter: Object.freeze({ from: Object.freeze({ x: door.x, y: door.y }), frames: step }) })
+        : i < legs.length - 1
+            ? (here(door) ? {} : { leave: Object.freeze({ to: Object.freeze({ x: door.x, y: door.y }), frames: step }) })
+            : (from === null || here(from) ? {} : { enter: Object.freeze({ from: Object.freeze({ x: from.x, y: from.y }), frames: step }) });
+
+    return Object.freeze(legs.map((l, j) => (j === i ? Object.freeze({ ...leg, at, ...moved }) : l)));
+}
+
+/**
  * § 12's *Queue spacing* (card#12705): the least distance between the centres of two spots walkers wait at by the
  * elevator — the seat walker's drawn width (`walkerSize()`) plus the `clear` tier's side margin, so two waiting side by
  * side keep a person's clearance between them. An intern is narrower, so the figure holds for every walker.
@@ -383,7 +438,8 @@ export function loneTiming(queue, shape) {
  * A DEPARTURE's legs and door span for one timing (walk note items 5 and 9): the lead legs, the walk to its spot, the
  * `stand` it waits in there until it leaves for the door (`approach`), the walk from the spot to the threshold, the
  * `stand` at the door until it steps in (`step`), and the `cab` — inside, behind the leaves, until they have closed
- * (`close`). The door span is from the leaves' opening (`open`, never before the walk's own frame 0) to their closing.
+ * (`close`), drawn at the threshold here and stood at its rider spot by the holder (`seatInCab()`, card#12744). The
+ * door span is from the leaves' opening (`open`, never before the walk's own frame 0) to their closing.
  */
 export function departureLegs(queue, shape, timing) {
     const at = queue.threshold;

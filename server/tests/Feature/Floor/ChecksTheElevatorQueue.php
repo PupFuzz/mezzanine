@@ -60,6 +60,14 @@ trait ChecksTheElevatorQueue
             }
         }
 
+        if ($leg['kind'] === 'cab' && ($step = $this->cabStep($leg)) !== null) {
+            $I = $walk['frame_interval_ms'];
+            $u = min(1, max(0, ($t + $walk['elapsed_ms'] - $step['start'] * $I) / ($step['frames'] * $I)));
+
+            return ['leg' => $leg, 'x' => $step['from']['x'] + ($step['to']['x'] - $step['from']['x']) * $u,
+                'y' => $step['from']['y'] + ($step['to']['y'] - $step['from']['y']) * $u];
+        }
+
         if ($leg['kind'] !== 'walk') {
             return ['leg' => $leg, 'x' => $leg['at']['x'], 'y' => $leg['at']['y']];
         }
@@ -90,6 +98,26 @@ trait ChecksTheElevatorQueue
         return ['leg' => $leg, 'x' => $last['x'], 'y' => $last['y']];
     }
 
+    /**
+     * card#12744: a `cab` leg's step inside the cab, read off the leg — a boarder's from where it `enter`s (the threshold)
+     * to its `at` over the leg's first frames, an arrival's from its `at` to where it `leave`s to over its last — or `null`
+     * for a rider standing at its `at` the whole leg. In the walk's frames.
+     *
+     * @return array{from: array, to: array, start: int, frames: int}|null
+     */
+    private function cabStep(array $leg): ?array
+    {
+        if (isset($leg['enter'])) {
+            return ['from' => $leg['enter']['from'], 'to' => $leg['at'], 'start' => $leg['start'], 'frames' => $leg['enter']['frames']];
+        }
+
+        if (isset($leg['leave'])) {
+            return ['from' => $leg['at'], 'to' => $leg['leave']['to'], 'start' => $leg['start'] + $leg['frames'] - $leg['leave']['frames'], 'frames' => $leg['leave']['frames']];
+        }
+
+        return null;
+    }
+
     /** Whether a walker stands waiting at `$t`: in its `wait` stand, past its start and before its end. */
     private function waitingAt(array $walk, float $t): bool
     {
@@ -109,14 +137,16 @@ trait ChecksTheElevatorQueue
      * renders — read off a run's drawn frames, each walk (keyed by row, seat, intern and cause) placed by the earlier
      * frame's legs at the later frame's instant and by the later frame's own legs at that instant, which must agree
      * within 1.5 px. A re-time that moves a walker's past — back out of the cab, back to its spot, forward along a walk —
-     * is a jump on screen, and this is what sees it.
+     * is a jump on screen, and this is what sees it. `$byIntern` keys an intern's walks by its intern key alone, so item
+     * 16's turn-round — a walk of another cause that replaces the arrival — is held to start where the arrival stood
+     * (card#12744).
      *
      * @param  list<array{at: int, frame: array<string, mixed>}>  $drawn  a run's drawn frames, in order
      * @return array{0: list<string>, 1: int} the defects, and the number of comparisons made
      */
-    private function continuityDefects(array $drawn): array
+    private function continuityDefects(array $drawn, bool $byIntern = false): array
     {
-        $key = fn (array $e): string => "{$e['animation_id']} {$this->walkerKey($e)} {$e['cause']}";
+        $key = fn (array $e): string => $byIntern && isset($e['intern_key']) ? $e['intern_key'] : "{$e['animation_id']} {$this->walkerKey($e)} {$e['cause']}";
         $before = [];
         $defects = [];
         $compared = 0;
@@ -279,14 +309,14 @@ trait ChecksTheElevatorQueue
                 && is_array($e['door'] ?? null) && $e['door']['start'] * $I - $e['elapsed_ms'] < $to
                 && ($e['door']['start'] + $e['door']['frames']) * $I - $e['elapsed_ms'] > $from);
 
-            // Nearest the door first: one waiting ON the threshold — its wait where its cab is — as the leaves begin to
+            // Nearest the door first: one waiting ON the threshold — its wait where its door stand is — as the leaves begin to
             // open is in the doorway, and steps in before every other boarder.
             foreach ($boarders as $k => $b) {
                 $legs = $b['walk']['legs'];
                 $wait = array_values(array_filter($legs, static fn ($l) => ($l['why'] ?? null) === 'wait'))[0];
-                $cab = array_values(array_filter($legs, static fn ($l) => $l['kind'] === 'cab'))[0];
+                $atDoor = array_values(array_filter($legs, static fn ($l) => ($l['why'] ?? null) === 'door'))[0];
 
-                if ($k > 0 && $wait['at'] == $cab['at'] && $this->waitingAt($b['walk'], $from - 0.001)) {
+                if ($k > 0 && $wait['at'] == $atDoor['at'] && $this->waitingAt($b['walk'], $from - 0.001)) {
                     $defects[] = "{$b['key']} waited on the threshold as the leaves opened at {$from} ms and stepped in after {$boarders[0]['key']}";
                 }
             }
@@ -332,5 +362,154 @@ trait ChecksTheElevatorQueue
         }
 
         return [$defects, $most];
+    }
+
+    /**
+     * card#12744 — APART IN THE CAB (`docs/design/FLOOR.md § 6.2`'s walk note item 10): the defects in where the riders a
+     * frame draws stand inside the cab, and the number of pairs of riders sampled standing in it at one instant — every
+     * half loop frame over the frame's horizon, and every leg boundary. A rider is every walk with frames to run and a
+     * `cab` leg (A1's and A2's walks, an intern's arrival, departure, turn-round and blink), placed by its legs as
+     * `queuedAt()` places it.
+     *
+     * - **Apart:** two riders STANDING in the cab at one instant — each in its cab leg, neither inside its step
+     *   (`cabStep()`) — stand at least `$apart` apart, feet to feet. A boarder's step starts on the threshold, which is
+     *   where the first boarder stands, so a rider stepping is passing, not standing, and is read by the next two only.
+     * - **Inside:** every rider's feet, at every sampled instant of its cab leg, stepping included, are on the cab floor
+     *   the band draws behind the leaves (`$floor`, `cabFloor()`).
+     * - **No jump:** across each boundary between a cab leg and a floor leg, a rider moves at most 1.5 px in a
+     *   millisecond — it steps between the threshold and its spot, and never appears at its spot.
+     *
+     * @param  array{bottom: float, seam: float, depth: float, half: callable}  $floor  `cabFloor()`
+     * @return array{0: list<string>, 1: int}
+     */
+    private function cabDefects(array $frame, float $apart, array $floor): array
+    {
+        $riders = array_values(array_filter($frame['scene']['effects'] ?? [], static fn (array $e): bool => ($e['frames'] ?? 0) > 0
+            && array_filter($e['legs'] ?? [], static fn (array $l): bool => $l['kind'] === 'cab') !== []));
+        $cabOf = static fn (array $w): array => array_values(array_filter($w['legs'], static fn (array $l): bool => $l['kind'] === 'cab'))[0];
+        $instants = [];
+
+        foreach ($riders as $w) {
+            $end = $w['frames'] * $w['frame_interval_ms'] - $w['elapsed_ms'];
+
+            for ($t = 0.0; $t <= $end; $t += $w['frame_interval_ms'] / 2) {
+                $instants[] = $t;
+            }
+
+            foreach ($w['legs'] as $l) {
+                [$from, $to] = $this->legSpan($w, $l);
+                $instants[] = max(0.0, $from);
+                $instants[] = max(0.0, $to - 0.001);
+            }
+        }
+
+        $instants = array_values(array_unique($instants, SORT_REGULAR));
+        $defects = [];
+        $pairs = 0;
+        $key = fn (array $w): string => "{$w['animation_id']} {$this->walkerKey($w)}";
+        // Where a rider is at `$t` and whether it stands then (in its cab leg, not stepping) — `null` outside its cab leg.
+        $inCab = function (array $w, float $t) use ($cabOf): ?array {
+            $cab = $cabOf($w);
+            [$from, $to] = $this->legSpan($w, $cab);
+
+            if ($t < $from || $t >= $to) {
+                return null;
+            }
+
+            $p = $this->queuedAt($w, $t);
+            $step = $this->cabStep($cab);
+            $I = $w['frame_interval_ms'];
+            $stepping = $step !== null && $t >= $step['start'] * $I - $w['elapsed_ms'] && $t < ($step['start'] + $step['frames']) * $I - $w['elapsed_ms'];
+
+            return ['x' => $p['x'], 'y' => $p['y'], 'standing' => ! $stepping];
+        };
+
+        foreach ($instants as $t) {
+            $at = array_map(static fn (array $w) => $inCab($w, $t), $riders);
+
+            foreach ($at as $i => $p) {
+                if ($p === null) {
+                    continue;
+                }
+
+                $up = $floor['bottom'] - $p['y'];
+
+                if ($up < -0.001 || $up > $floor['depth'] + 0.001 || abs($p['x'] - $floor['seam']) > ($floor['half'])($up) + 0.001) {
+                    $defects[] = "at {$t} ms {$key($riders[$i])} stands in the cab at ".json_encode([$p['x'], $p['y']]).', off the cab floor the band draws';
+                }
+
+                for ($j = $i + 1; $j < count($at); $j++) {
+                    $q = $at[$j];
+
+                    if ($q === null || ! $p['standing'] || ! $q['standing']) {
+                        continue;
+                    }
+
+                    $pairs++;
+                    $d = hypot($p['x'] - $q['x'], $p['y'] - $q['y']);
+
+                    if ($d < $apart) {
+                        $defects[] = "at {$t} ms {$key($riders[$i])} and {$key($riders[$j])} stand in the cab {$d} px apart, under {$apart} px";
+                    }
+                }
+            }
+        }
+
+        foreach ($riders as $w) {
+            $cab = $cabOf($w);
+            [$from, $to] = $this->legSpan($w, $cab);
+            $last = end($w['legs']);
+
+            foreach ([[$from, $cab !== $w['legs'][0]], [$to, $cab !== $last]] as [$edge, $owed]) {
+                if (! $owed || $edge - 0.5 < 0) {
+                    continue;
+                }
+
+                $a = $this->queuedAt($w, $edge - 0.5);
+                $b = $this->queuedAt($w, $edge + 0.5);
+                $d = hypot($a['x'] - $b['x'], $a['y'] - $b['y']);
+
+                if ($d > 1.5) {
+                    $defects[] = "{$key($w)} jumps {$d} px between its {$a['leg']['kind']} leg and its {$b['leg']['kind']} leg at {$edge} ms";
+                }
+            }
+        }
+
+        return [array_values(array_unique($defects)), $pairs];
+    }
+
+    /**
+     * The cab floor the band draws behind the leaves, re-derived from § 12's *Cab interior* row and the frame's elevator
+     * (`scene.band.elevator`) as `drawCabInterior()` projects it from the landing: the room `W × D × H` cm fitted to the
+     * doorway, seen from an eye `eye` cm over the floor and `V` cm in front of the open front, so a floor point `Z` cm in
+     * is drawn at the scale `s = V ÷ (V + Z)`, `h ÷ H × eye × (1 − s)` px over the doorway's foot and at most
+     * `w ÷ 2 × s` px either side of the seam. `bottom` is the foot, `depth` the far wall's foot over it, `half(up)` the
+     * floor's half-width that far up.
+     *
+     * @return array{bottom: float, seam: float, depth: float, half: callable}
+     */
+    private function cabFloor(array $frame): array
+    {
+        $this->assertSame(1, preg_match('/^\| \*\*Cab interior\*\* \| \*\*(\d+) × (\d+) × (\d+) cm\*\* wide × deep × high, the eye (\d+) cm over the floor.*?from the landing, the eye (\d+) cm from the cab\'s open front \|/m', $this->floorMd(), $m),
+            '§ 12 carries no *Cab interior* row in the form this test reads');
+        [, , $D, $H, $eye, $V] = array_map('intval', $m);
+        $e = $frame['scene']['band']['elevator'];
+        $rise = $e['h'] / $H * $eye;
+
+        return [
+            'bottom' => $e['y'] + $e['h'],
+            'seam' => $e['x'] + $e['w'] / 2,
+            'depth' => $rise * (1 - $V / ($V + $D)),
+            'half' => static fn (float $up): float => $e['w'] / 2 * (1 - $up / $rise),
+        ];
+    }
+
+    /** § 12's *Cab spots*: the least distance between two riders' feet standing in the cab together. */
+    private function cabApart(): float
+    {
+        $this->assertSame(1, preg_match('/^\| \*\*Cab spots\*\* \| \*\*.*? (\d+) px apart/m', $this->floorMd(), $m),
+            '§ 12 carries no *Cab spots* row in the form this test reads');
+
+        return (float) $m[1];
     }
 }

@@ -39,10 +39,16 @@
  * gives each new one its waiting spot and re-times every departure in flight together (`#board()`): the leaves open for
  * one, every one waiting boards in turn, and they close after the last. It writes nothing and fires nothing: a re-timed
  * walk is the same row's drawing, re-timed by a delivered message that admitted or cancelled another walk.
+ *
+ * ⛔ RIDERS STAND APART IN THE CAB, AND THIS IS WHERE EACH STANDS (item 10, card#12744). After the queue's re-timing,
+ * every walk in flight with a `cab` leg is given a rider spot (`#seat()`) — the lowest no other rider holds over its
+ * cab leg, kept once that leg has begun — and its cab leg is stood there. It moves where a cab leg stands and never
+ * when any leg is.
  */
 
 import { emptyChair, staffed } from '../wire/animation-set.js';
-import { ELEVATOR_DOOR, departureLegs, queueShape } from './scene.js';
+import { pointAt } from './route.js';
+import { ELEVATOR_DOOR, departureLegs, queueShape, seatInCab } from './scene.js';
 
 /** The § 6.2 rows drawn as a walk, one per seat at most. */
 export const WALK_ROWS = Object.freeze(['A1', 'A2']);
@@ -107,6 +113,11 @@ export class EffectsInFlight {
         // An intern a walk of this render replaces (item 16's turn-round), and an intern whose fade a newer one replaces.
         const replaced = new Set(effects.filter((e) => isInternWalk(e) && e.frames > 0).map((e) => e.intern_key));
         const refaded = new Set(effects.filter(isFade).map((e) => e.intern_key));
+        // card#12744: where an arrival item 16 turns round in the cab stands — its rider spot and its feet now — which its
+        // turn-round keeps, so the intern turns from where it is.
+        const inCab = new Map(this.#held
+            .filter((h) => h.intern === true && replaced.has(h.key) && h.cab_slot !== undefined && !this.#ended(h, now))
+            .map((h) => [h.key, { slot: h.cab_slot, at: pointAt(h.effect, now - h.at) }]));
 
         this.#held = this.#held.filter((h) => {
             if (this.#ended(h, now)) {
@@ -182,12 +193,17 @@ export class EffectsInFlight {
                     continue;
                 }
 
+                const was = inCab.get(effect.intern_key);
+
                 this.#held.push({
                     effect,
                     at: now,
                     frames: effect.frames,
                     key: effect.intern_key,
                     intern: true,
+                    ...(was !== undefined && was.at.where === 'cab' && effect.legs[0]?.kind === 'cab'
+                        ? { cab_slot: was.slot, cab_from: Object.freeze({ x: was.at.x, y: was.at.y }) }
+                        : {}),
                     anchor: effect.anchor ?? null,
                     threshold: ctx.threshold,
                     unconfirmed: ctx.unconfirmed(keyOf(effect)),
@@ -233,8 +249,58 @@ export class EffectsInFlight {
         }
 
         this.#board(now, ctx.queue_spot ?? (() => null));
+        this.#seat(now, ctx.threshold ?? null);
 
         return cancelled;
+    }
+
+    /**
+     * card#12744 — RIDERS STAND APART IN THE CAB (walk note item 10): every walk in flight with a `cab` leg is given a
+     * rider spot (`scene.js`'s `cabSpot()`) and its cab leg stood there (`seatInCab()`), on each render after the queue's
+     * re-timing. Only where the cab leg stands moves; no frame of any walk is re-timed.
+     *
+     * - **The lowest spot free over its whole cab leg.** Walks are seated in the order their cab legs begin, ties by key:
+     *   each takes the lowest spot no other walk already seated holds over any instant of its own cab leg. So a lone
+     *   rider stands at spot 0, the threshold, as it always has; boarders take spots in the order they step in, the
+     *   first — nearest the door, item 9 — on the threshold and each later one further in; arrivals revealed together
+     *   in one opening stand apart from the frame the leaves begin to open.
+     * - **A rider in the cab keeps its spot.** A walk whose cab leg has begun by now keeps the spot it was drawn at on
+     *   every later render, whatever a later render admits or cancels, so no rider moves in the cab between two
+     *   renders; a walk whose cab leg is still to come is re-seated with the rest. Item 16's turn-round in the cab
+     *   keeps the spot of the arrival it replaces, and steps from where that arrival stood.
+     * - **Past the last spot**, riders share points (`cabSpot()`): a cab holds `CAB_SPOTS` apart.
+     */
+    #seat(now, door) {
+        if (door === null) {
+            return;
+        }
+
+        const I = this.#intervalMs;
+        const riders = this.#held
+            .filter((h) => !this.#ended(h, now) && (h.effect.legs ?? []).some((l) => l.kind === 'cab'))
+            .map((h) => {
+                const cab = h.effect.legs.find((l) => l.kind === 'cab');
+
+                return { h, from: h.at + cab.start * I, to: h.at + (cab.start + cab.frames) * I };
+            });
+        const seated = riders.filter((r) => r.h.cab_slot !== undefined && r.from <= now);
+        const rest = riders.filter((r) => !seated.includes(r)).sort((a, b) => a.from - b.from || byKey(a.h.key, b.h.key));
+
+        for (const r of rest) {
+            const taken = new Set(seated.filter((o) => o.from < r.to && r.from < o.to).map((o) => o.h.cab_slot));
+            let k = 0;
+
+            while (taken.has(k)) {
+                k++;
+            }
+
+            r.h.cab_slot = k;
+            seated.push(r);
+        }
+
+        for (const { h } of riders) {
+            h.effect = Object.freeze({ ...h.effect, legs: seatInCab(h.effect.legs, door, h.cab_slot, h.cab_from ?? null) });
+        }
     }
 
     /**
