@@ -956,10 +956,11 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         // speed that covers it in its frames.
         const standing = inCab[0] ?? null;
         const step = standing === null ? null : cabStep(standing);
+        const spot = standing?.at ?? null;
         const inner = cab === null
             ? null
             : step === null
-                ? node('g', { transform: `translate(${standing.at.x} ${standing.at.y})` }, cab)
+                ? node('g', { transform: `translate(${spot.x} ${spot.y})` }, cab)
                 : node('g', {
                     class: 'fx-walker-step',
                     style: `offset-path:path('M ${step.from.x} ${step.from.y} L ${step.to.x} ${step.to.y}');animation-duration:${sec(step.frames * I)}s;animation-delay:${sec(step.start * I - elapsed)}s`,
