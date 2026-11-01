@@ -49,7 +49,7 @@
 import { BUBBLE_PAD, FONT, FONT_NAME, FONT_SCREEN, STOOL_GLYPH, TYPE_ROLES, characterAsset } from './desk-layout.js';
 import { SKY_PAINT } from './floor-layout.js';
 import { ELEVATOR_DOOR } from './scene.js';
-import { floorStackOrder, pointAt } from './route.js';
+import { cabStep, floorStackOrder, pointAt } from './route.js';
 import { BIRD_LIFT, arcPath, birdShapes, birdhouseShapes, envelopeShapes, legShapes, ringShapes, standingLegShapes, stillNotes } from './bird.js';
 import { RENDER_STATES } from '../lobby/render-state.js';
 import { CAB_STYLE, LANDING, THEME_REGISTRY, cabTheme, clippedTo, drawCabInterior, node, paintCab, rideLeaves, themeModule } from './cab-paint.js';
@@ -124,7 +124,7 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 @keyframes ring-fade{from{transform:scale(1);opacity:1}to{transform:scale(1);opacity:0}}
 .fx-flash{fill:var(--scene-flash);opacity:0;animation-name:flash}
 @keyframes flash{from{opacity:.8}to{opacity:0}}
-.fx-walker{offset-rotate:0deg;animation-name:glide;animation-timing-function:linear;animation-fill-mode:both}.fx-walker-leg{opacity:0}.fx-walker-shown{opacity:0;pointer-events:none;animation-name:walker-shown;animation-fill-mode:none}
+.fx-walker,.fx-walker-step{offset-rotate:0deg;animation-name:glide;animation-timing-function:linear;animation-fill-mode:both}.fx-walker-leg{opacity:0}.fx-walker-shown{opacity:0;pointer-events:none;animation-name:walker-shown;animation-fill-mode:none}
 @keyframes glide{from{offset-distance:0%}to{offset-distance:100%}}
 @keyframes walker-shown{from{opacity:1}to{opacity:1}}
 .fx-laptop{animation-name:laptop;animation-fill-mode:both}
@@ -872,6 +872,17 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             }
         }
 
+        // card#12744: the riders in the cab, the one deepest in drawn first — a rider further in is behind one nearer the
+        // doors — ties in the order they were drawn. Placed once, before anything is pinned, so no animation restarts.
+        const riders = walkers.filter((x) => x.cab !== null);
+        const deepFirst = [...riders].sort((a, b) => a.cab_y - b.cab_y);
+
+        if (deepFirst.some((w, i) => w !== riders[i])) {
+            for (const w of deepFirst) {
+                floor.cab.insertBefore(w.cab, null);
+            }
+        }
+
         return walkers;
     }
 
@@ -888,8 +899,10 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
      *   spot beside the threshold walks to it, then from it, card#12705) has one such glide per leg, every one a child
      *   of the floor element (`g.fx-walker.fx-walker-leg`), each drawn by its own `walker-shown` run from its walk's
      *   start to the next walk's.
-     * - THE CAB ELEMENT, in the band's cab behind the leaves, still at the threshold and drawn only through the `cab`
-     *   leg — so the opening leaves reveal it and the closing ones cover it.
+     * - THE CAB ELEMENT, in the band's cab behind the leaves, drawn only through the `cab` leg — so the opening leaves
+     *   reveal it and the closing ones cover it — at the leg's rider spot (the threshold for a lone rider), gliding
+     *   between the threshold and its spot through the leg's step (`g.fx-walker-step`, card#12744). The riders in the
+     *   cab are ordered deepest first (`paintEffects()`).
      *
      * The animated groups are pinned together to one origin (`origin()`); the floor image strides only inside its walk
      * legs (their `stepping` windows) and stands at its phase-0 frame outside them; the cab image never strides.
@@ -938,10 +951,22 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             class: 'fx-walker-shown fx-walker-cab',
             style: shownStyle(cabSpan),
         }, floor.cab);
-        const door = inCab[0]?.at ?? null;
-        const inner = cab === null ? null : node('g', { transform: `translate(${door.x} ${door.y})` }, cab);
+        // card#12744: the rider stands at its cab leg's spot — the threshold for a lone rider — and steps between the
+        // threshold and its spot inside the cab along its leg's step (`cabStep()`), glided as a walk leg is, at the
+        // speed that covers it in its frames.
+        const standing = inCab[0] ?? null;
+        const step = standing === null ? null : cabStep(standing);
+        const spot = standing?.at ?? null;
+        const inner = cab === null
+            ? null
+            : step === null
+                ? node('g', { transform: `translate(${spot.x} ${spot.y})` }, cab)
+                : node('g', {
+                    class: 'fx-walker-step',
+                    style: `offset-path:path('M ${step.from.x} ${step.from.y} L ${step.to.x} ${step.to.y}');animation-duration:${sec(step.frames * I)}s;animation-delay:${sec(step.start * I - elapsed)}s`,
+                }, cab);
         const animated = [shown, ...segments.map((sg) => sg.glide)];
-        const entry = origin({ key: effectKey(fx), started_at: fx.started_at, elapsed_ms: elapsed, nodes: cab === null ? animated : [...animated, cab] });
+        const entry = origin({ key: effectKey(fx), started_at: fx.started_at, elapsed_ms: elapsed, nodes: cab === null ? animated : [...animated, cab, ...(step === null ? [] : [inner])] });
         const asset = intern ? `intern:${fx.install_id}/${fx.intern_seat_key}` : characterAsset({ install_id: fx.install_id, seat_id: fx.seat_id });
         // card#12450: an intern walks at its chibi frame and glides (the tree hands no walk frames for an intern key),
         // with its laptop drawn over it through its `seat` legs.
@@ -993,7 +1018,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             }
         }
 
-        return { key: intern ? fx.intern_key : `${fx.install_id}/${fx.seat_id}`, fx, entry, node: shown };
+        return { key: intern ? fx.intern_key : `${fx.install_id}/${fx.seat_id}`, fx, entry, node: shown, cab, cab_y: standing?.at.y ?? null };
     }
 
     /**

@@ -578,10 +578,29 @@ function along(points, s) {
 }
 
 /**
+ * A `cab` leg's STEP INSIDE THE CAB (card#12744, walk note item 10): `{from, to, start, frames}` in the walk's frames —
+ * a boarder's step from the threshold to its rider spot over the leg's first frames (`enter`), or an arrival's from its
+ * spot to the threshold over its last (`leave`) — or `null` for a rider that stands at its `at` the whole leg. The one
+ * reading of the leg's step: `pointAt()` and the painter's cab glide both take it from here.
+ */
+export function cabStep(leg) {
+    if (leg.enter !== undefined) {
+        return { from: leg.enter.from, to: leg.at, start: leg.start, frames: leg.enter.frames };
+    }
+
+    if (leg.leave !== undefined) {
+        return { from: leg.at, to: leg.leave.to, start: leg.start + leg.frames - leg.leave.frames, frames: leg.leave.frames };
+    }
+
+    return null;
+}
+
+/**
  * WHERE A WALKER IS — a pure function of time (walk note item 5): the feet's point and where they are drawn
  * (`floor`, or `cab` inside the band's cab), `t_ms` after the walk's start. Inside a `walk` leg, the point at arc
- * length `length × (t − start) ÷ duration` along its polyline — uniform speed; inside a `stand` or `cab` leg, its
- * `at`; before the first leg, the first leg's start; past the last leg, the last leg's end. The painter's glide and
+ * length `length × (t − start) ÷ duration` along its polyline — uniform speed; inside a `stand` leg, its `at`; inside
+ * a `cab` leg, its `at`, or along its step (`cabStep()`, card#12744) at uniform speed while it steps; before the first
+ * leg, the first leg's start; past the last leg, the last leg's end. The painter's glide and
  * its depth reconcile both read this one function from one time origin.
  *
  * @param {object} effect an A1 or A2 effect with `legs` and `frame_interval_ms`
@@ -605,6 +624,14 @@ export function pointAt(effect, tMs) {
 
     const leg = legs[k];
     const where = leg.kind === 'cab' ? 'cab' : 'floor';
+
+    const step = leg.kind === 'cab' ? cabStep(leg) : null;
+
+    if (step !== null) {
+        const u = Math.min(1, Math.max(0, (tMs - step.start * I) / (step.frames * I)));
+
+        return { x: step.from.x + (step.to.x - step.from.x) * u, y: step.from.y + (step.to.y - step.from.y) * u, where, leg: k };
+    }
 
     if (leg.kind !== 'walk') {
         return { x: leg.at.x, y: leg.at.y, where, leg: k };

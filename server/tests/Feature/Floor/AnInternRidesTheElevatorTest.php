@@ -524,6 +524,69 @@ class AnInternRidesTheElevatorTest extends TestCase
         }
     }
 
+    /**
+     * card#12744, APART IN THE CAB (the walk note's item 10): interns revealed together in the cab, boarding together and
+     * turning round in it stand at spots of their own, on the cab floor, and step between the threshold and their spots —
+     * in two-interns both ways, middle-leaves' three arrivals, queue-gain-after-boarding and two-stop-mid-step.
+     */
+    public function test_green_interns_in_the_cab_stand_apart(): void
+    {
+        $arriving = 0;
+        $pairs = 0;
+
+        foreach (['two-interns', 'middle-leaves', 'queue-gain-after-boarding', 'two-stop-mid-step', 'gain-and-loss-one-render'] as $run) {
+            foreach ($this->drawn($this->floorRun($run)) as $x) {
+                [$defects, $seen] = $this->cabDefects($x['frame'], $this->cabApart(), $this->cabFloor($x['frame']));
+                $this->assertSame([], $defects, "[{$run}] at {$x['at']} ms ({$x['trigger']})");
+                $pairs += $seen;
+
+                if ($run === 'middle-leaves' && $seen > 0 && array_filter($x['frame']['scene']['effects'], static fn ($e) => ($e['leg_kind'] ?? null) === 'arrive') !== []) {
+                    $arriving += $seen;
+                }
+            }
+        }
+
+        $this->assertGreaterThan(0, $pairs, 'no frame drew two interns standing in the cab at once — the runs\' premise is broken');
+        $this->assertGreaterThan(0, $arriving, 'middle-leaves\' three arrivals never stood in the cab together — the run\'s premise is broken');
+    }
+
+    /**
+     * card#12744: item 16's turn-round in the cab starts where the arrival it replaces stood — two-stop-mid-step's intern 2
+     * is lost while it steps from its spot to the threshold, and stop-in-cab's while it stands — so no intern jumps
+     * between the render before the loss and the render that applies it.
+     */
+    public function test_green_an_intern_turns_round_in_the_cab_from_where_it_stands(): void
+    {
+        $compared = 0;
+
+        foreach (['stop-in-cab', 'two-stop-mid-step'] as $run) {
+            [$jumps, $n] = $this->continuityDefects($this->drawn($this->floorRun($run)), true);
+            $this->assertSame([], $jumps, "[{$run}]");
+            $compared += $n;
+        }
+
+        $this->assertGreaterThan(0, $compared, 'no intern walk was drawn on two renders — the runs\' premise is broken');
+    }
+
+    /** card#12744: every intern revealed in the cab on the threshold — one point for the two arrivals. */
+    public function test_red_interns_on_one_point_in_the_cab(): void
+    {
+        $dir = $this->planted([self::IN_FLIGHT, '            r.h.cab_slot = k;', '            r.h.cab_slot = 0;']);
+        $defects = array_merge(...array_map(fn ($x) => $this->cabDefects($x['frame'], $this->cabApart(), $this->cabFloor($x['frame']))[0],
+            $this->drawn($this->floorRun('two-interns', $dir))));
+
+        $this->assertNotSame([], $defects, 'two interns stood on one point in the cab and the cab guard saw nothing');
+    }
+
+    /** card#12744: the turn-round in the cab standing at the arrival's spot, not where the arrival stood mid-step. */
+    public function test_red_the_turn_round_from_the_spot(): void
+    {
+        $dir = $this->planted([self::IN_FLIGHT, '{ cab_slot: was.slot, cab_from: Object.freeze({ x: was.at.x, y: was.at.y }) }', '{ cab_slot: was.slot }']);
+
+        $this->assertNotSame([], $this->continuityDefects($this->drawn($this->floorRun('two-stop-mid-step', $dir)), true)[0],
+            'an intern turned round at its spot while it stood mid-step and the continuity guard saw nothing');
+    }
+
     public function test_red_the_queue_re_timed_from_scratch(): void
     {
         $dir = $this->planted([self::IN_FLIGHT, '        const left = (h) => h.plan !== undefined && h.at + h.plan.approach * I <= now;', '        const left = () => false;']);

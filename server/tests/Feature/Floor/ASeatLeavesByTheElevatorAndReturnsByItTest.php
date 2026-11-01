@@ -317,8 +317,10 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         }
 
         // Every leg starts where the one before it ends; the wait is at the spot, every other stand and the cab at the
-        // threshold.
+        // threshold — but for a cab leg in company (card#12744), which stands at a rider spot of its own and steps to it
+        // from the threshold (A2) or from it to the threshold (A1); `ChecksTheElevatorQueue`'s `cabDefects()` holds where.
         $at = 0;
+        $alone = count($this->walks($frame)) === 1;
 
         foreach ($walk['legs'] as $i => $leg) {
             if ($leg['start'] !== $at) {
@@ -327,8 +329,9 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
 
             $at = $leg['start'] + $leg['frames'];
             $where = ($leg['why'] ?? null) === 'wait' ? $spot : $t;
+            $stepsTo = $leg['kind'] !== 'cab' || $alone ? null : ($walk['animation_id'] === 'A2' ? $leg['enter']['from'] ?? null : $leg['leave']['to'] ?? null);
 
-            if ($leg['kind'] !== 'walk' && $leg['at'] != $where) {
+            if ($leg['kind'] !== 'walk' && $leg['at'] != $where && $stepsTo != $where) {
                 $defects[] = "{$walk['animation_id']} {$key}'s {$leg['kind']} leg stands at ".json_encode($leg['at']).', not '.json_encode($where);
             }
         }
@@ -587,6 +590,14 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
             }
         }
 
+        // card#12744: a rider stepping inside the cab, between the threshold and its spot, at uniform speed.
+        if ($leg['kind'] === 'cab' && ($step = $this->cabStep($leg)) !== null) {
+            $u = min(1, max(0, ($t - $step['start'] * $I) / ($step['frames'] * $I)));
+
+            return ['x' => $step['from']['x'] + ($step['to']['x'] - $step['from']['x']) * $u,
+                'y' => $step['from']['y'] + ($step['to']['y'] - $step['from']['y']) * $u, 'where' => 'cab'];
+        }
+
         if ($leg['kind'] !== 'walk') {
             return ['x' => $leg['at']['x'], 'y' => $leg['at']['y'], 'where' => $leg['kind'] === 'cab' ? 'cab' : 'floor'];
         }
@@ -637,6 +648,13 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
 
         foreach ($this->instants($walk) as $t) {
             $p = $this->feetAt($walk, $t);
+
+            // In the cab the feet are on the cab's floor behind the leaves, never on the floor's grid (card#12744):
+            // `ChecksTheElevatorQueue`'s `cabDefects()` holds them there.
+            if ($p['where'] === 'cab') {
+                continue;
+            }
+
             $cell = $this->cellOf($p, $f['origin'], $f['c']);
 
             if (! $this->inside($f, $cell) || isset($f['blocked'][implode(',', $cell)])) {
@@ -1072,6 +1090,55 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         $this->assertGreaterThan(0, $compared, 'no walk was drawn on two renders — the runs\' premise is broken');
     }
 
+    /**
+     * card#12744, APART IN THE CAB (the walk note's item 10): in every frame of the queue runs, riders standing in the cab
+     * together stand at least § 12's *Cab spots* distance apart, every rider's feet are on the cab floor the band draws,
+     * and none jumps between the floor and its spot; mass-departure's four boarders stand in the cab together.
+     */
+    public function test_green_riders_in_the_cab_stand_apart(): void
+    {
+        $pairs = 0;
+
+        foreach (['two-walkers', 'mass-departure', 'crossing', 'queue-return-after-boarding'] as $run) {
+            foreach ($this->drawn($this->floorRun($run)) as $r) {
+                [$defects, $seen] = $this->cabDefects($r['frame'], $this->cabApart(), $this->cabFloor($r['frame']));
+                $this->assertSame([], $defects, "[{$run}] at {$r['at']} ms ({$r['trigger']})");
+                $pairs += $seen;
+            }
+        }
+
+        $this->assertGreaterThan(0, $pairs, 'no frame drew two riders standing in the cab at once — the runs\' premise is broken');
+    }
+
+    /** card#12744: every rider stood on the threshold — card#12705's one point in the cab. */
+    public function test_red_riders_on_one_point_in_the_cab(): void
+    {
+        $dir = $this->mutatedModules([self::SCENE, '    const at = cabSpot(door, slot);', '    const at = cabSpot(door, 0);']);
+        $frame = $this->frameAt($this->floorRun('mass-departure', $dir), 1000);
+
+        $this->assertNotSame([], $this->cabDefects($frame, $this->cabApart(), $this->cabFloor($frame))[0], 'four riders stood on one point in the cab and the cab guard saw nothing');
+    }
+
+    /** card#12744: a rider appears at its spot with no step from the threshold. */
+    public function test_red_a_rider_appears_at_its_spot(): void
+    {
+        $dir = $this->mutatedModules([self::SCENE, 'Object.freeze({ ...leg, at, ...moved })', 'Object.freeze({ ...leg, at })']);
+        $frame = $this->frameAt($this->floorRun('mass-departure', $dir), 1000);
+
+        $this->assertNotSame([], array_filter($this->cabDefects($frame, $this->cabApart(), $this->cabFloor($frame))[0], static fn ($d) => str_contains($d, 'jumps')),
+            'a boarder appeared at its cab spot and the cab guard saw nothing');
+    }
+
+    /** card#12744: rider spots past the cab's side walls. */
+    public function test_red_a_rider_off_the_cab_floor(): void
+    {
+        $dir = $this->mutatedModules([self::SCENE, '[[0, 0], [-20, -12], [20, -12],', '[[0, 0], [-60, -12], [60, -12],']);
+        $frame = $this->frameAt($this->floorRun('mass-departure', $dir), 1000);
+
+        $this->assertNotSame([], array_filter($this->cabDefects($frame, $this->cabApart(), $this->cabFloor($frame))[0], static fn ($d) => str_contains($d, 'off the cab floor')),
+            'a rider stood past the cab\'s side wall and the cab guard saw nothing');
+    }
+
     /** card#12705 review round 1: every departure re-timed from scratch on each render — the committed past dropped. */
     public function test_red_the_queue_re_timed_from_scratch(): void
     {
@@ -1210,8 +1277,10 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
                 $this->assertEqualsWithDelta($q['y'], $p['y'], 1e-6, "{$this->keyOf($walk)} at {$t} ms is not its arc-length point");
                 $this->assertSame($q['where'], $p['where'], "{$this->keyOf($walk)} at {$t} ms is drawn in the wrong place");
 
-                if ($p['where'] === 'cab') {
-                    $this->assertEquals($this->threshold($frame), ['x' => $p['x'], 'y' => $p['y']], 'a walker in the cab is not at the threshold');
+                // A lone rider stands at the threshold, as it always has (card#12744); in company it stands at a spot of
+                // its own, which `cabDefects()` holds.
+                if ($p['where'] === 'cab' && count($this->walks($frame)) === 1) {
+                    $this->assertEquals($this->threshold($frame), ['x' => $p['x'], 'y' => $p['y']], 'a lone walker in the cab is not at the threshold');
                 }
 
                 // Across each boundary, one millisecond moves the feet no further than the walk speed covers.
@@ -1330,6 +1399,31 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         $this->assertSame($this->waitSeconds(), (int) $s[1], '§ 12\'s *Elevator wait* is not scene.js\'s ELEVATOR_WAIT_S');
         $this->assertSame(1, preg_match('/export const STEP_COST = Object\.freeze\(\{ straight: (\d+), diagonal: (\d+) \}\);/', $route, $c));
         $this->assertSame($this->stepCost(), ['straight' => (int) $c[1], 'diagonal' => (int) $c[2]], '§ 12\'s *Route lattice and cost* is not route.js\'s STEP_COST');
+
+        // card#12744: § 12's *Cab spots* is scene.js's CAB_SPOTS, and every two of them are at least the row's distance apart.
+        $this->assertSame(1, preg_match('/^\| \*\*Cab spots\*\* \| \*\*((?:\(−?\d+, −?\d+\)(?:, )?)+) px\*\*/mu', $this->floorMd(), $row),
+            '§ 12 carries no *Cab spots* row in the form this test reads');
+        $this->assertSame(1, preg_match('/export const CAB_SPOTS = Object\.freeze\(\[((?:\[-?\d+, -?\d+\](?:, )?)+)\]/', $source, $code));
+        preg_match_all('/\((−?\d+), (−?\d+)\)/u', $row[1], $documented, PREG_SET_ORDER);
+        preg_match_all('/\[(-?\d+), (-?\d+)\]/', $code[1], $coded, PREG_SET_ORDER);
+        $pairs = static fn (array $sets): array => array_map(static fn ($m) => [(int) str_replace('−', '-', $m[1]), (int) str_replace('−', '-', $m[2])], $sets);
+        $spots = $pairs($documented);
+        $this->assertSame($spots, $pairs($coded), '§ 12\'s *Cab spots* is not scene.js\'s CAB_SPOTS');
+
+        // Every spot, the ones no run boards enough riders to reach included, is on the cab floor the band draws.
+        $floor = $this->cabFloor($this->frameAt($this->floorRun('two-walkers'), self::BOTH_WALKING_MS));
+
+        foreach ($spots as [$dx, $dy]) {
+            $this->assertTrue(-$dy >= 0 && -$dy <= $floor['depth'] && abs($dx) <= ($floor['half'])(-$dy),
+                "§ 12's *Cab spots* lists ({$dx}, {$dy}), off the cab floor the band draws");
+        }
+
+        for ($i = 0; $i < count($spots); $i++) {
+            for ($j = $i + 1; $j < count($spots); $j++) {
+                $this->assertGreaterThanOrEqual($this->cabApart(), hypot($spots[$i][0] - $spots[$j][0], $spots[$i][1] - $spots[$j][1]),
+                    '§ 12\'s *Cab spots* lists two spots closer than its own least distance');
+            }
+        }
     }
 
     // ── The REDs: each plant, replayed against the run § 11 names, breaks that run's GREEN ─────
