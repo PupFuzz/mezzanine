@@ -387,12 +387,21 @@ class AnInternRidesTheElevatorTest extends TestCase
         $d = $this->door();
         [$frame, $walk] = $this->firstWalk($this->floorRun('leave-working'), 'leave');
 
-        $this->assertSame(['seat', 'walk', 'stand', 'stand', 'cab'], $this->kinds($walk));
+        // card#12747: the laptop fades, it walks to the low call plate and presses it, walks on to the threshold, waits and
+        // takes the door.
+        $this->assertSame(['seat', 'walk', 'stand', 'walk', 'stand', 'stand', 'cab'], $this->kinds($walk));
         $this->assertContiguous($walk, 'leave-working');
         $this->assertSame([$this->laptopFade(), 1, 0], [$walk['legs'][0]['frames'], $walk['legs'][0]['laptop_from'], $walk['legs'][0]['laptop_to']]);
         $this->assertEquals($frame['scene']['slot_feet'][self::IMPL_1][$walk['slot']], $walk['legs'][1]['points'][0], 'the departure does not start at its slot');
-        $this->assertSame($this->seededWait($walk['intern_key'], $walk['cause']), $walk['legs'][2]['frames'], 'the wait is not the intern key\'s seeded draw');
-        $this->assertSame([$d['open'], $d['step'] + $d['close']], [$walk['legs'][3]['frames'], $walk['legs'][4]['frames']]);
+        $this->assertSame(['press', 'low'], [$walk['legs'][2]['why'], $walk['legs'][2]['plate']], 'the departure does not press the low call plate after its walk from the slot');
+        $this->assertEquals($this->threshold($frame), end($walk['legs'][3]['points']), 'the walk from the plate does not end at the threshold');
+        // Its wait is for the elevator its press called: the leaves open its seeded draw after the press, or as it reaches
+        // the threshold if that is later.
+        $press = $walk['legs'][2];
+        $wait = $walk['legs'][4];
+        $this->assertSame(max($wait['start'], $press['start'] + $press['frames'] + $this->seededWait($walk['intern_key'], $walk['cause'])), $wait['start'] + $wait['frames'],
+            'the wait does not end the intern key\'s seeded draw after its press');
+        $this->assertSame([$d['open'], $d['step'] + $d['close']], [$walk['legs'][5]['frames'], $walk['legs'][6]['frames']]);
 
         [, $idle] = $this->firstWalk($this->floorRun('leave-idle'), 'leave');
         $this->assertSame('walk', $idle['legs'][0]['kind'], 'an idle departure fades a laptop it does not have');
@@ -416,13 +425,16 @@ class AnInternRidesTheElevatorTest extends TestCase
         $mid = $this->floorRun('stop-mid-walk');
         [$arrivalFrame, $arrival, $arrivalAt] = $this->firstWalk($mid, 'arrive');
         [$frame, $turn, $turnAt] = $this->firstWalk($mid, 'turn');
-        $this->assertSame(['walk', 'stand', 'stand', 'cab'], $this->kinds($turn));
+        // card#12747: it turns, walks to the low call plate and presses it, walks on to the threshold, waits and boards.
+        $this->assertSame(['walk', 'stand', 'walk', 'stand', 'stand', 'cab'], $this->kinds($turn));
         $this->assertContiguous($turn, 'stop-mid-walk');
         $here = $this->pointAt($arrival, $turnAt - $arrivalAt);
         $this->assertEqualsWithDelta($here['x'], $turn['legs'][0]['points'][0]['x'], 0.001, 'the turn does not start where the walker is');
         $this->assertEqualsWithDelta($here['y'], $turn['legs'][0]['points'][0]['y'], 0.001);
-        $this->assertEquals($this->threshold($frame), end($turn['legs'][0]['points']), 'the turn does not end at the threshold');
-        $this->assertSame($this->seededWait($turn['intern_key'], $turn['cause']), $turn['legs'][1]['frames']);
+        $this->assertSame(['press', 'low'], [$turn['legs'][1]['why'], $turn['legs'][1]['plate']], 'the turn does not press the low call plate');
+        $this->assertEquals($this->threshold($frame), end($turn['legs'][2]['points']), 'the turn does not end at the threshold');
+        $this->assertSame(max($turn['legs'][3]['start'], $turn['legs'][1]['start'] + $turn['legs'][1]['frames'] + $this->seededWait($turn['intern_key'], $turn['cause'])),
+            $turn['legs'][3]['start'] + $turn['legs'][3]['frames'], 'the turn does not wait its seeded draw after its press');
         $this->assertNotContains('seat', $this->kinds($turn), 'the laptop fades in a turn-round');
 
         foreach ($this->drawn($mid) as $r) {
@@ -566,6 +578,70 @@ class AnInternRidesTheElevatorTest extends TestCase
         }
 
         $this->assertGreaterThan(0, $compared, 'no intern walk was drawn on two renders — the runs\' premise is broken');
+    }
+
+    /**
+     * card#12747, THE LOW CALL PLATE (the walk note's item 9 and item 14): in every frame of the intern runs that walk out
+     * — a departure, two leaving on one delta, item 16's turn-round in the walk and the seat legs, and the queue run —
+     * every intern presses the low plate for § 12's *Call press*, standing where § 12's *Call plates* puts an intern, the
+     * plate within its reach and the main one not; and two-interns' two departures press in turn.
+     */
+    public function test_green_interns_press_the_low_call_plate_one_at_a_time(): void
+    {
+        $pairs = 0;
+
+        foreach (['leave-working', 'leave-idle', 'two-interns', 'stop-mid-walk', 'queue-gain-after-boarding', 'middle-leaves'] as $run) {
+            foreach ($this->drawn($this->floorRun($run)) as $x) {
+                [$defects, $seen] = $this->callDefects($x['frame'], $this->seatWidth(), $this->clearanceMargin(), $this->callPress());
+                $this->assertSame([], $defects, "[{$run}] at {$x['at']} ms ({$x['trigger']})");
+                $pairs += $seen;
+            }
+        }
+
+        $this->assertGreaterThan(0, $pairs, 'no frame drew an intern pressing while another stood or walked to the plates — the runs\' premise is broken');
+
+        // The main plate is out of an intern's reach where it stands to press: above its drawn height.
+        [$frame, $walk] = $this->firstWalk($this->floorRun('leave-working'), 'leave');
+        $main = $frame['scene']['band']['elevator']['calls']['main'];
+        $feet = array_values(array_filter($walk['legs'], static fn ($l) => ($l['why'] ?? null) === 'press'))[0]['at'];
+        $this->assertLessThan($feet['y'] - $walk['size']['h'], $main['y'] + $main['h'] / 2, 'the main call plate is within an intern\'s reach');
+    }
+
+    /** card#12747: an intern sent to the seat's main plate, where it stands. */
+    public function test_red_an_intern_at_the_main_call_plate(): void
+    {
+        $dir = $this->planted([self::SCENE, "    const call = callPoint(band, character, 'low');", "    const call = callPoint(band, character, 'main');"]);
+        [$frame] = $this->firstWalk($this->floorRun('leave-working', $dir), 'leave');
+        $defects = $this->callDefects($frame, $this->seatWidth(), $this->clearanceMargin(), $this->callPress())[0];
+
+        $this->assertNotSame([], array_filter($defects, static fn ($d) => str_contains($d, 'not low')), 'an intern pressed the main plate and the call-plate guard saw nothing');
+        $this->assertNotSame([], array_filter($defects, static fn ($d) => str_contains($d, 'out of its reach')), 'an intern reached the main plate and the reach guard saw nothing');
+    }
+
+    /** card#12747: no turn at the plates — two interns of one delta press on one point. */
+    public function test_red_interns_pressing_on_one_another(): void
+    {
+        $dir = $this->planted([self::IN_FLIGHT, "        this.#call();\n", '']);
+        $defects = array_merge(...array_map(fn ($x) => $this->callDefects($x['frame'], $this->seatWidth(), $this->clearanceMargin(), $this->callPress())[0],
+            $this->drawn($this->floorRun('two-interns', $dir))));
+
+        $this->assertNotSame([], array_filter($defects, static fn ($d) => str_contains($d, 'pressing its call plate')), 'two interns pressed together and the call-plate guard saw nothing');
+    }
+
+    /** card#12747: an intern's departure that walks straight to the threshold. */
+    public function test_red_an_intern_that_skips_the_call_plate(): void
+    {
+        $dir = $this->planted([self::SCENE, "    const call = callPoint(band, character, 'low');", '    const call = null;']);
+        [$frame] = $this->firstWalk($this->floorRun('leave-working', $dir), 'leave');
+
+        $this->assertNotSame([], $this->callDefects($frame, $this->seatWidth(), $this->clearanceMargin(), $this->callPress())[0],
+            'an intern walked straight to the threshold and the call-plate guard saw nothing');
+    }
+
+    /** The shipped seat walker's drawn width (`walk-probe.mjs`'s body). */
+    private function seatWidth(): float
+    {
+        return $this->queueSpacing() - $this->clearanceMargin();
     }
 
     /** card#12744: every intern revealed in the cab on the threshold — one point for the two arrivals. */
@@ -796,7 +872,7 @@ class AnInternRidesTheElevatorTest extends TestCase
 
     public function test_red_the_plain_cancel(): void
     {
-        $dir = $this->planted([self::SCENE, "            const turned = turnRound(fx, flying, from, door, routed, walk, leg, done, walking, row);", '            const turned = null;']);
+        $dir = $this->planted([self::SCENE, '            const turned = turnRound(fx, flying, from, door, call, routed, leg, done, walking, row);', '            const turned = null;']);
         $r = $this->floorRun('stop-mid-walk', $dir);
         $this->assertSame([], array_values(array_filter($this->firstWalks($r), static fn ($h) => $h[1]['leg_kind'] !== 'arrive')),
             'the plant still drew an effect after the cancelling render');
@@ -850,7 +926,7 @@ class AnInternRidesTheElevatorTest extends TestCase
     {
         // An intern's departure drawn without its queue part (card#12705): it waits its own draw on the threshold — on
         // the point the other intern waits at.
-        $alone = $this->planted([self::SCENE, '        return done(fx, gone.legs, gone.door, r.tier, gone.queue);', '        return done(fx, gone.legs, gone.door, r.tier);']);
+        $alone = $this->planted([self::SCENE, '        return done(fx, gone.legs, gone.door, way.tier, gone.queue);', '        return done(fx, gone.legs, gone.door, way.tier);']);
         $defects = [];
 
         foreach ($this->drawn($this->floorRun('two-interns', $alone)) as $x) {
@@ -859,7 +935,7 @@ class AnInternRidesTheElevatorTest extends TestCase
 
         $this->assertNotSame([], $defects, 'two interns waited out of the queue and the spacing guard saw nothing');
 
-        $seatKey = $this->planted([self::SCENE, '            walk(F, r), walking.wait(fx.intern_key, row.cause), sill);', '            walk(F, r), walking.wait(seat, row.cause), sill);']);
+        $seatKey = $this->planted([self::SCENE, '            way, walking.wait(fx.intern_key, row.cause), sill);', '            way, walking.wait(seat, row.cause), sill);']);
         $leaves = array_values(array_filter($this->firstWalks($this->floorRun('two-interns', $seatKey)), static fn ($h) => $h[1]['leg_kind'] === 'leave'));
         $this->assertSame($leaves[0][1]['queue']['wait'], $leaves[1][1]['queue']['wait'], 'two interns of one delta waited apart under the seat key');
     }

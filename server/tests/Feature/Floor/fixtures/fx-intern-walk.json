@@ -11301,7 +11301,7 @@
           }
         },
         {
-          "at_ms": 11703,
+          "at_ms": 16203,
           "envelope": {
             "feed_version": 2,
             "t": "seat.delta",
@@ -11329,7 +11329,7 @@
           }
         },
         {
-          "at_ms": 12290,
+          "at_ms": 16790,
           "envelope": {
             "feed_version": 2,
             "t": "seat.delta",
@@ -11364,7 +11364,7 @@
           }
         },
         {
-          "at_ms": 14837,
+          "at_ms": 19337,
           "envelope": {
             "feed_version": 2,
             "t": "seat.delta",
@@ -11430,7 +11430,7 @@
           }
         }
       },
-      "note": "card#12705, review round 1: `aimla-impl-2` loses intern 01 (its walk out waits on the threshold), then gains 10 and 11 and, at 14837 ms, trades 11 for 13 and 14 in one delta. By then intern 01 has left its spot for the cab and its spot is free for a later departure; a re-time from scratch put 01 back at that spot while intern 11's walk out stood on it \u2014 one point, two walkers. The walker that has left its spot keeps its timing, so no spot is stood on by two."
+      "note": "card#12705, review round 1: `aimla-impl-2` loses intern 01 (its walk out waits on the threshold), then gains 10 and 11 and, at 19337 ms, trades 11 for 13 and 14 in one delta. By then intern 01 has left its spot for the cab and its spot is free for a later departure; a re-time from scratch put 01 back at that spot while intern 11's walk out stood on it \u2014 one point, two walkers. The walker that has left its spot keeps its timing, so no spot is stood on by two. card#12747 moved the three deltas after the loss 4500 ms later (11703, 12290 and 14837 ms before it): intern 01 now presses the low call plate on its way and reaches its spot at 16467 ms, so 10's and 11's arrivals open the leaves at 16203 and 16790 ms with 01 waiting there, and it leaves its spot at 18217 ms, before the trade."
     }
   }
 }

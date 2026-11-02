@@ -40,6 +40,11 @@
  * one, every one waiting boards in turn, and they close after the last. It writes nothing and fires nothing: a re-timed
  * walk is the same row's drawing, re-timed by a delivered message that admitted or cancelled another walk.
  *
+ * ⛔ THE DEPARTURES PRESS THE CALL PLATES ONE AT A TIME, AND THIS IS WHERE EACH WAITS ITS TURN (item 9, card#12747). Before
+ * the queue's re-timing, each new departure that walks by a plate is given its turn there (`#call()`): it waits where it
+ * set off until the walker before it has pressed and walked a walker's width away. The turn is given on the render that
+ * admits it and never changes, so the walk to the plates is never re-timed.
+ *
  * ⛔ RIDERS STAND APART IN THE CAB, AND THIS IS WHERE EACH STANDS (item 10, card#12744). After the queue's re-timing,
  * every walk in flight with a `cab` leg is given a rider spot (`#seat()`) — the lowest no other rider holds over its
  * cab leg, kept once that leg has begun — and its cab leg is stood there. It moves where a cab leg stands and never
@@ -48,7 +53,7 @@
 
 import { emptyChair, staffed } from '../wire/animation-set.js';
 import { pointAt } from './route.js';
-import { ELEVATOR_DOOR, departureLegs, queueShape, seatInCab } from './scene.js';
+import { ELEVATOR_DOOR, departureLegs, queueLater, queueShape, seatInCab, waitFrom } from './scene.js';
 
 /** The § 6.2 rows drawn as a walk, one per seat at most. */
 export const WALK_ROWS = Object.freeze(['A1', 'A2']);
@@ -77,6 +82,33 @@ const queues = (h) => (h.effect.queue ?? null) !== null;
 
 /** Two keys by code unit, never `localeCompare` — the tie-break every viewer agrees on. */
 const byKey = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * THE FEWEST WHOLE FRAMES a part of an effect starting at `now` must wait so that it meets none of `taken` — the one rule
+ * the birdhouse's ledge (card#12445) and the call plates (card#12747) share: `own` is the part in frames from the effect's
+ * start, `taken` the parts already held, in ms on the page's clock; each wait that meets one moves past it, until none
+ * meets.
+ */
+function clearOf(own, taken, now, I) {
+    let wait = 0;
+    let moved = true;
+
+    while (moved) {
+        moved = false;
+
+        for (const t of taken) {
+            const from = now + (wait + own.from) * I;
+            const to = now + (wait + own.to) * I;
+
+            if (from < t.to && t.from < to) {
+                wait = Math.ceil((t.to - now) / I) - own.from;
+                moved = true;
+            }
+        }
+    }
+
+    return wait;
+}
 
 export class EffectsInFlight {
     /** `{ effect, at, frames, key, anchor, threshold, unconfirmed, stilled, side, lattice_key }`, oldest first. */
@@ -248,6 +280,7 @@ export class EffectsInFlight {
             });
         }
 
+        this.#call();
         this.#board(now, ctx.queue_spot ?? (() => null));
         this.#seat(now, ctx.threshold ?? null);
 
@@ -300,6 +333,36 @@ export class EffectsInFlight {
 
         for (const { h } of riders) {
             h.effect = Object.freeze({ ...h.effect, legs: seatInCab(h.effect.legs, door, h.cab_slot, h.cab_from ?? null) });
+        }
+    }
+
+    /**
+     * card#12747 — THE CALL PLATES, ONE PRESSER AT A TIME (walk note item 9): each departure with a press that the holder has
+     * not yet given its turn — in the order they were admitted, so a render's new ones in their rows' order — waits where
+     * it sets off (`queueLater()`, its `line`) the fewest whole frames that keep its time at the plates — from reaching them
+     * to the end of its press and its `gap` after (the frames § 12's *Queue spacing* takes at § 12's *Walk speed*) — clear
+     * of every departure already given its turn. Both plates are one place: their standing points are closer than two
+     * walkers keep apart. A turn is given once, on the render that admits the departure, before any frame of it is drawn,
+     * and never changes: nothing a later render admits or cancels re-times a walker's way to the plates.
+     */
+    #call() {
+        const I = this.#intervalMs;
+        const span = (q) => ({ from: q.press.stand.start, to: q.press.stand.start + q.press.stand.frames + q.press.gap });
+        const pressing = this.#held.filter((h) => h.key !== null && (h.effect.queue?.press ?? null) !== null);
+
+        for (const h of pressing.filter((x) => x.called !== true)) {
+            const taken = pressing.filter((o) => o.called === true).map((o) => {
+                const s = span(o.effect.queue);
+
+                return { from: o.at + s.from * I, to: o.at + s.to * I };
+            });
+            const wait = clearOf(span(h.effect.queue), taken, h.at, I);
+
+            if (wait > 0) {
+                h.effect = Object.freeze({ ...h.effect, queue: queueLater(h.effect.queue, wait) });
+            }
+
+            h.called = true;
         }
     }
 
@@ -367,7 +430,8 @@ export class EffectsInFlight {
 
             // Its own opening: its wait run out, or the opening of the batch it was committed to — never before it is at
             // its spot, so the walker whose instant opens a batch is always in it.
-            return { h, arrive, own: Math.max(arrive, h.pinned ?? arrive + h.effect.queue.wait * I), board: h.shape.board?.frames ?? 0 };
+            // card#12747: the wait is counted from its press — the call it waits for — where it pressed one (`waitFrom()`).
+            return { h, arrive, own: Math.max(arrive, h.pinned ?? h.at + (waitFrom(h.effect.queue, h.shape) + h.effect.queue.wait) * I), board: h.shape.board?.frames ?? 0 };
         }).sort((a, b) => a.arrive - b.arrive || byKey(a.h.key, b.h.key));
         const fixed = this.#held
             .filter((h) => h.key !== null && !this.#ended(h, now) && !queues(h) && (h.effect.door ?? null) !== null)
@@ -601,22 +665,7 @@ export class EffectsInFlight {
 
                 return { from: h.at + (h.effect.wait_frames + p.from) * I, to: h.at + (h.effect.wait_frames + p.to) * I };
             });
-        let wait = 0;
-        let moved = true;
-
-        while (moved) {
-            moved = false;
-
-            for (const t of taken) {
-                const from = now + (wait + own.from) * I;
-                const to = now + (wait + own.to) * I;
-
-                if (from < t.to && t.from < to) {
-                    wait = Math.ceil((t.to - now) / I) - own.from;
-                    moved = true;
-                }
-            }
-        }
+        const wait = clearOf(own, taken, now, I);
 
         return wait === 0 ? effect : Object.freeze({ ...effect, wait_frames: wait, span_frames: effect.span_frames + wait });
     }

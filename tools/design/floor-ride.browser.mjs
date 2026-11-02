@@ -838,11 +838,19 @@ const ROWS = {
   // (the bird row's PLANT 4).
   'walker-glide': row('a walker glides along its routed path across a repaint, never in steps, from its walk\'s own start', { run: 'repaint', stream: 2000 },
     [
-      { plant: [{ file: 'js/floor/painter.js', from: "animation-duration:${sec(walk.frames * I)}s;animation-delay", to: "animation-duration:${sec(walk.frames * I)}s;animation-timing-function:steps(${walk.frames});animation-delay" }] },
+      // card#12747: every A2 walks twice (to its call plate and on from it), so each plant reaches the glide of a walker
+      // with more than one walk leg as well as the lone glide.
+      { plant: [
+        { file: 'js/floor/painter.js', from: "animation-duration:${sec(walk.frames * I)}s;animation-delay", to: "animation-duration:${sec(walk.frames * I)}s;animation-timing-function:steps(${walk.frames});animation-delay" },
+        { file: 'js/floor/painter.js', from: 'animation-timing-function:linear,linear;', to: 'animation-timing-function:steps(${walk.frames}),linear;' },
+      ] },
       // The glide's delay in whole frames while its pin reads the exact instant, the bird row's second PLANT's form: handed
       // to BOTH, the whole-frame elapsed cancels inside the pin (`began + elapsed` against `walk.start × I − elapsed`), so
       // a pinning browser draws it right — measured, NOT CAUGHT — and the defect a pinning browser can show is the mismatch.
-      { plant: [{ file: 'js/floor/painter.js', from: 'animation-delay:${sec(walk.start * I - elapsed)}s`', to: 'animation-delay:${sec(walk.start * I - (fx.elapsed_frames ?? 0) * I)}s`' }] },
+      { plant: [
+        { file: 'js/floor/painter.js', from: 'animation-delay:${sec(walk.start * I - elapsed)}s`', to: 'animation-delay:${sec(walk.start * I - (fx.elapsed_frames ?? 0) * I)}s`' },
+        { file: 'js/floor/painter.js', from: 'animation-delay:${sec(walk.start * I - elapsed)}s,', to: 'animation-delay:${sec(walk.start * I - (fx.elapsed_frames ?? 0) * I)}s,' },
+      ] },
       { plant: [
         { file: 'js/floor/painter.js', from: 'performance.now() - (clock.now() - entry.started_at)', to: 'document.timeline.currentTime - entry.elapsed_ms' },
         { file: 'page', from: 'R.delivered.push(performance.now());', to: 'for (const until = performance.now() + 40; performance.now() < until;); R.delivered.push(performance.now());' },
@@ -874,9 +882,11 @@ const ROWS = {
           }
           f.firstAfterPostMs = post === undefined ? null : Number((first.t - post).toFixed(1));
         }
-        if (f.rebuilds < 2) d.push(`${path.slice(0, 40)}: no repaint landed during the walk (one node) — continuity across a rebuild was not measured`);
         facts.push(f);
       }
+      // card#12747: an A2 walks to its call plate and on from it, two glides, and the run's one mid-walk repaint lands in
+      // one of them — so the rebuild is owed by the walk, not by each glide.
+      if (walks.size > 0 && facts.every((f) => f.rebuilds < 2)) d.push('no repaint landed during any glide of the walk (one node each) — continuity across a rebuild was not measured');
       return { defects: d.slice(0, 6), facts };
     })),
 

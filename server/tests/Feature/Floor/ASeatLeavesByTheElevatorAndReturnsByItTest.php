@@ -272,10 +272,13 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
 
     /**
      * The defects in one walk's legs, against the scene that drew it (H4, H12, and the legs' order per row). A departure
-     * walks to its waiting spot — the threshold, or one beside it while another walker waits there (card#12705, the walk
-     * note's item 9) — waits, walks from a spot beside the threshold to it, stands at the door and steps into the cab. Its
-     * queue part carries its own seeded wait; drawn ALONE — no other walk in the frame — it waits exactly that and takes
-     * § 12's door frames from the end of it. In company its timing is the queue's, which `ChecksTheElevatorQueue` holds.
+     * — waiting first where it set off while another walker is at the call plates (card#12747) — walks to its call plate,
+     * presses it, walks to its waiting spot — the threshold, or one beside it while another walker waits there (card#12705,
+     * the walk note's item 9) — waits, walks from a spot beside the threshold to it, stands at the door and steps into the
+     * cab. Its queue part carries its own seeded wait; drawn ALONE — no other walk in the frame — the leaves open on it
+     * that many frames after its press, or as it reaches its spot if that is later, and it takes § 12's door frames from
+     * then. In company its timing is the queue's, which `ChecksTheElevatorQueue` holds; where it presses, its
+     * `callDefects()`.
      */
     private function pathDefects(array $frame, array $walk): array
     {
@@ -285,18 +288,30 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         $d = $this->door();
         $defects = [];
         $kinds = array_column($walk['legs'], 'kind');
-        $owed = $walk['animation_id'] === 'A2' ? [['walk', 'stand', 'stand', 'cab'], ['walk', 'stand', 'walk', 'stand', 'cab']] : [['cab', 'stand', 'walk']];
+        $departs = ['walk', 'stand', 'walk', 'stand'];
+        $owed = $walk['animation_id'] === 'A2'
+            ? [[...$departs, 'stand', 'cab'], [...$departs, 'walk', 'stand', 'cab'], ['stand', ...$departs, 'stand', 'cab'], ['stand', ...$departs, 'walk', 'stand', 'cab']]
+            : [['cab', 'stand', 'walk']];
 
         if (! in_array($kinds, $owed, true)) {
             return ["{$walk['animation_id']} {$key}'s legs are ".json_encode($kinds).', not '.json_encode($owed)];
         }
 
-        // Where it waits: the threshold, or the spot its first walk ends at and its second leaves from.
-        $spot = $walk['animation_id'] === 'A2' ? $walk['legs'][1]['at'] : $t;
+        // Where it presses, and where it waits: the threshold, or the spot its walk from the plate ends at and its last
+        // walk leaves from.
+        $why = static fn (string $w): ?array => array_values(array_filter($walk['legs'], static fn (array $l): bool => ($l['why'] ?? null) === $w))[0] ?? null;
+        $press = $walk['animation_id'] === 'A2' ? $why('press') : null;
+        $spot = $walk['animation_id'] === 'A2' ? ($why('wait')['at'] ?? null) : $t;
         $walks = $this->legsOf($walk, 'walk');
-        $ends = $walk['animation_id'] === 'A2' ? [[$anchor, $spot], ...(count($walks) > 1 ? [[$spot, $t]] : [])] : [[$t, $anchor]];
+        $ends = $walk['animation_id'] === 'A2'
+            ? [[$anchor, $press['at'] ?? null], [$press['at'] ?? null, $spot], ...(count($walks) > 2 ? [[$spot, $t]] : [])]
+            : [[$t, $anchor]];
 
-        if (count($walks) === 1 && $spot != $t) {
+        if ($walk['animation_id'] === 'A2' && ($press === null || $spot === null || ($why('line') !== null && ($walk['legs'][0]['why'] ?? null) !== 'line'))) {
+            return ["A2 {$key} presses no call plate before it waits, or waits for the plates after it sets off"];
+        }
+
+        if ($walk['animation_id'] === 'A2' && count($walks) === 2 && $spot != $t) {
             $defects[] = "A2 {$key} waits at ".json_encode($spot).' off the threshold and never walks to it';
         }
 
@@ -328,7 +343,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
             }
 
             $at = $leg['start'] + $leg['frames'];
-            $where = ($leg['why'] ?? null) === 'wait' ? $spot : $t;
+            $where = ['wait' => $spot, 'press' => $press['at'] ?? null, 'line' => $anchor][$leg['why'] ?? ''] ?? $t;
             $stepsTo = $leg['kind'] !== 'cab' || $alone ? null : ($walk['animation_id'] === 'A2' ? $leg['enter']['from'] ?? null : $leg['leave']['to'] ?? null);
 
             if ($leg['kind'] !== 'walk' && $leg['at'] != $where && $stepsTo != $where) {
@@ -338,7 +353,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
 
         if ($walk['animation_id'] === 'A2') {
             $owedWait = $this->seededWait($key, $walk['cause']);
-            $wait = $walk['legs'][1];
+            $wait = $why('wait');
             [$doorStand, $cab] = array_slice($walk['legs'], -2);
 
             if (($walk['queue']['wait'] ?? null) !== $owedWait) {
@@ -346,8 +361,12 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
             }
 
             if (count($this->walks($frame)) === 1) {
-                if ($wait['why'] !== 'wait' || $wait['frames'] !== $owedWait) {
-                    $defects[] = "A2 {$key} waits {$wait['frames']} frames alone, not its seeded draw {$owedWait}";
+                // card#12747: the wait is for the elevator the press called — counted from the press's end, and never
+                // ending before the walker is at its spot.
+                $opens = max($wait['start'], $press['start'] + $press['frames'] + $owedWait);
+
+                if ($opens !== $wait['start'] + $wait['frames']) {
+                    $defects[] = "A2 {$key} waits {$wait['frames']} frames alone at its spot, not to {$owedWait} frames past its press";
                 }
 
                 if ($doorStand['frames'] !== $d['open'] || $cab['frames'] !== $d['step'] + $d['close']) {
@@ -1110,6 +1129,56 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         $this->assertGreaterThan(0, $pairs, 'no frame drew two riders standing in the cab at once — the runs\' premise is broken');
     }
 
+    /**
+     * card#12747, THE CALL PLATES (the walk note's item 9): in every frame of the queue runs every departure walks to the
+     * main call plate, presses it for § 12's *Call press*, standing where § 12's *Call plates* puts a seat — the plate
+     * within its reach — and only then walks to its spot; and while one presses, no other departure stands or walks to
+     * the plates within a walker's clearance of it. mass-departure's four leave at one instant, so they press in turn.
+     */
+    public function test_green_departures_press_the_main_call_plate_one_at_a_time(): void
+    {
+        $pairs = 0;
+
+        foreach (['leave-stale', 'two-walkers', 'mass-departure', 'crossing', 'queue-return-after-boarding'] as $run) {
+            foreach ($this->drawn($this->floorRun($run)) as $r) {
+                [$defects, $seen] = $this->callDefects($r['frame'], $this->shipped()['body']['w'], $this->clearanceMargin(), $this->callPress());
+                $this->assertSame([], $defects, "[{$run}] at {$r['at']} ms ({$r['trigger']})");
+                $pairs += $seen;
+            }
+        }
+
+        $this->assertGreaterThan(0, $pairs, 'no frame drew a departure pressing while another stood or walked to the plates — the runs\' premise is broken');
+        $lines = array_filter($this->firstDraws($this->floorRun('mass-departure')), static fn ($fw) => ($fw[1]['legs'][0]['why'] ?? null) === 'line');
+        $this->assertNotSame([], $lines, 'no mass-departure walker waited its turn at the plates — the run\'s premise is broken');
+    }
+
+    /** card#12747: the departure walks straight to the threshold, as before the plates — it never presses. */
+    public function test_red_a_departure_that_skips_the_call_plate(): void
+    {
+        $dir = $this->mutatedModules([self::SCENE, "callPoint(band, character, 'main'), motion && !reduce,", 'null, motion && !reduce,']);
+
+        $this->assertNotSame([], $this->callDefects($this->frameAt($this->floorRun('leave-stale', $dir), 1000), $this->shipped()['body']['w'], $this->clearanceMargin(), $this->callPress())[0],
+            'a departure walked straight to the threshold and the call-plate guard saw nothing');
+    }
+
+    /** card#12747: a seat sent to the intern's low plate. */
+    public function test_red_a_seat_at_the_low_call_plate(): void
+    {
+        $dir = $this->mutatedModules([self::SCENE, "callPoint(band, character, 'main'), motion && !reduce,", "callPoint(band, character, 'low'), motion && !reduce,"]);
+        $defects = $this->callDefects($this->frameAt($this->floorRun('leave-stale', $dir), 1000), $this->shipped()['body']['w'], $this->clearanceMargin(), $this->callPress())[0];
+
+        $this->assertNotSame([], array_filter($defects, static fn ($d) => str_contains($d, 'not main')), 'a seat pressed the low plate and the call-plate guard saw nothing');
+    }
+
+    /** card#12747: no turn at the plates — every departure presses as its route brings it there, on another's point. */
+    public function test_red_walkers_pressing_on_one_another(): void
+    {
+        $dir = $this->mutatedModules([self::IN_FLIGHT, "        this.#call();\n", '']);
+        $defects = $this->callDefects($this->frameAt($this->floorRun('mass-departure', $dir), 1000), $this->shipped()['body']['w'], $this->clearanceMargin(), $this->callPress())[0];
+
+        $this->assertNotSame([], array_filter($defects, static fn ($d) => str_contains($d, 'pressing its call plate')), 'four walkers pressed with no turn and the call-plate guard saw nothing');
+    }
+
     /** card#12744: every rider stood on the threshold — card#12705's one point in the cab. */
     public function test_red_riders_on_one_point_in_the_cab(): void
     {
@@ -1399,6 +1468,26 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         $this->assertSame($this->waitSeconds(), (int) $s[1], '§ 12\'s *Elevator wait* is not scene.js\'s ELEVATOR_WAIT_S');
         $this->assertSame(1, preg_match('/export const STEP_COST = Object\.freeze\(\{ straight: (\d+), diagonal: (\d+) \}\);/', $route, $c));
         $this->assertSame($this->stepCost(), ['straight' => (int) $c[1], 'diagonal' => (int) $c[2]], '§ 12\'s *Route lattice and cost* is not route.js\'s STEP_COST');
+
+        // card#12747: § 12's *Call press* is scene.js's CALL_PRESS_FRAMES, and its *Call plates* scene.js's CALL_PLATES; the low
+        // plate is under the main one, on its centre line, smaller, and inside an intern's height over the floor.
+        $this->assertSame(1, preg_match('/^export const CALL_PRESS_FRAMES = (\d+);$/m', $source, $p));
+        $this->assertSame($this->callPress(), (int) $p[1], '§ 12\'s *Call press* is not scene.js\'s CALL_PRESS_FRAMES');
+        $rect = '(\d+) × (\d+) px at \((\d+), (\d+)\)';
+        $this->assertSame(1, preg_match('/^\| \*\*Call plates\*\* \| \*\*main '.$rect.', low '.$rect.'\*\*/mu', $this->floorMd(), $doc),
+            '§ 12 carries no *Call plates* row in the form this test reads');
+        $this->assertSame(1, preg_match('/export const CALL_PLATES = Object\.freeze\(\{\s*main: Object\.freeze\(\{ x: (\d+), y: (\d+), w: (\d+), h: (\d+) \}\),\s*low: Object\.freeze\(\{ x: (\d+), y: (\d+), w: (\d+), h: (\d+) \}\),/', $source, $code));
+        $plates = [['x' => (int) $doc[3], 'y' => (int) $doc[4], 'w' => (int) $doc[1], 'h' => (int) $doc[2]], ['x' => (int) $doc[7], 'y' => (int) $doc[8], 'w' => (int) $doc[5], 'h' => (int) $doc[6]]];
+        $this->assertSame($plates, [['x' => (int) $code[1], 'y' => (int) $code[2], 'w' => (int) $code[3], 'h' => (int) $code[4]], ['x' => (int) $code[5], 'y' => (int) $code[6], 'w' => (int) $code[7], 'h' => (int) $code[8]]],
+            '§ 12\'s *Call plates* is not scene.js\'s CALL_PLATES');
+        [$main, $low] = $plates;
+        $surround = $this->frameAt($this->floorRun('leave-stale'), 1000)['scene']['band']['elevator']['surround'];
+        // The intern's drawn height, `INTERN_SIZE`'s — the stool's rect (`desk-layout.js`'s STOOL_H).
+        $this->assertSame(1, preg_match('/^export const STOOL_H = (\d+);$/m', (string) file_get_contents($this->moduleDir().'/../floor/desk-layout.js'), $stool));
+        $stoolH = (int) $stool[1];
+        $this->assertTrue($low['y'] >= $main['y'] + $main['h'] && $low['w'] < $main['w'] && $low['h'] < $main['h']
+            && $low['x'] * 2 + $low['w'] === $main['x'] * 2 + $main['w'] && $stoolH > $surround['h'] - ($low['y'] + $low['h'] / 2) && $stoolH < $surround['h'] - ($main['y'] + $main['h'] / 2),
+            '§ 12\'s low call plate is not a smaller plate under the main one, on its centre line, at an intern\'s height and the main one above it');
 
         // card#12744: § 12's *Cab spots* is scene.js's CAB_SPOTS, and every two of them are at least the row's distance apart.
         $this->assertSame(1, preg_match('/^\| \*\*Cab spots\*\* \| \*\*((?:\(−?\d+, −?\d+\)(?:, )?)+) px\*\*/mu', $this->floorMd(), $row),

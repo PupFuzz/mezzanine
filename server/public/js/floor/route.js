@@ -466,18 +466,20 @@ export function route(grid, from, to, walker) {
 /**
  * SPACED SPOTS NEAR A POINT (walk note item 9, card#12705): where several walkers can stand near one point and never on
  * one another — spot 0 the point itself, each later spot the cheapest open cell, by the route cost FROM the point (`STEP_COST`
- * plus the tier's centring, no corner cut), whose centre is at least `spacing` px from every earlier spot; ties by
- * `(y, x)`. Open means open for NOBODY's walk: every desk blocked as another walker meets it, at the strictest tier the
- * point's own cell is open at. Each spot carries its path back to the point — the cell centres from the spot's down the
- * cost tree to the point's cell, then the point — so a walker standing there walks to the point over open floor.
+ * plus the tier's centring, no corner cut), whose centre is at least `spacing` px from every earlier spot and from every
+ * point of `clear` (where something else stands — the scene's call-plate points, card#12747); ties by `(y, x)`. Open means
+ * open for NOBODY's walk: every desk blocked as another walker meets it, at the strictest tier the point's own cell is
+ * open at. Each spot carries its path back to the point — the cell centres from the spot's down the cost tree to the
+ * point's cell, then the point — so a walker standing there walks to the point over open floor.
  *
  * @param {object} grid `lattice()`'s
  * @param {{x: number, y: number}} point
  * @param {number} spacing the least distance between two spots' centres, px
+ * @param {list<{x: number, y: number}>} [clear] points no spot past the first comes within `spacing` of
  * @returns {function(number): ({at: {x: number, y: number}, path: list<{x: number, y: number}>}|null)} spot `k`, built on
  *          first ask; `null` past the last spot the open floor holds
  */
-export function spotsNear(grid, point, spacing) {
+export function spotsNear(grid, point, spacing, clear = []) {
     const start = cellAt(grid, point);
     const tier = start === null ? null : CLEARANCE_TIERS.find((t) => blockedFor(grid, { key: null, anchor: point }, t)[start[1] * grid.cols + start[0]] === 0) ?? null;
     const origin = Object.freeze({ x: point.x, y: point.y });
@@ -529,7 +531,7 @@ export function spotsNear(grid, point, spacing) {
             const i = order[next++];
             const at = cellCentre(grid, [i % cols, Math.floor(i / cols)]);
 
-            if (spots.every((p) => Math.hypot(p.at.x - at.x, p.at.y - at.y) >= spacing)) {
+            if ([...spots.map((p) => p.at), ...clear].every((p) => Math.hypot(p.x - at.x, p.y - at.y) >= spacing)) {
                 const path = [];
 
                 for (let c = i; c !== -1; c = parent[c]) {
