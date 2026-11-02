@@ -16,6 +16,8 @@
  *   `stack`    — `floorStackOrder(desks, walkers)` for each `{ desks, walkers }` (H11, H16, H18).
  *   `draw`     — `resources/characters/seed.js`'s `draw(key, field)` for each `[key, field]` — the seeded draw H4 re-derives
  *                a departure's wait from, read from the character tree itself.
+ *   `snack-chain` — card#12785: each key's chain of snack breaks as `scene.js`'s `snackBreaks()` derives it, over whole
+ *                days and over the window a page at each given instant reads (AT-D3-32).
  *   `lattice`  — H6's tileset and registry legs at the scene: `buildScene()` over one drawn frame and its rows twice —
  *                a tileset `pending` then held, the theme registry absent then held — each pair's lattice keys, and
  *                whether `EffectsInFlight` cancels the first scene's walk at a render carrying the second's key.
@@ -209,9 +211,13 @@ if (input.mode === 'snack') {
     const obstacles = cells.filter((c) => c.kind === 'wall' || standing.includes(c.kind)).map((c) => ({ x: c.x, y: c.y, w: c.w, h: c.h }));
     const bodies = { seat: walkerSize(CHARACTER), intern: scene.INTERN_SIZE };
 
+    const { SNACK_LINES } = await mod('floor/snack-lines.js');
+
     answer({
-        window_s: scene.SNACK_WINDOW_S,
+        gap_s: scene.SNACK_GAP_S,
+        day_s: scene.SNACK_DAY_S,
         dwell_s: scene.SNACK_DWELL_S,
+        lines: SNACK_LINES,
         tables: scene.SNACK_TABLES,
         clearance: CLEARANCE,
         bodies,
@@ -227,6 +233,21 @@ if (input.mode === 'snack') {
     });
 }
 
-if (!['points', 'draw', 'stack', 'shipped', 'lattice', 'snack'].includes(input.mode)) {
+// card#12785 (AT-D3-32): each key's chain of breaks as the scene derives it — `snackBreaks()` over whole days from
+// `from_day`, and over the window a page at each instant of `at` reads (`snackBreaks(key, t − gap max, t + gap max)`), so
+// the test holds the chain's gaps to § 12 and a page loaded at any instant to the same breaks.
+if (input.mode === 'snack-chain') {
+    const scene = await mod('floor/scene.js');
+    const { draw } = await import(pathToFileURL(join(REPO, 'resources', 'characters', 'index.js')).href);
+    const D = scene.SNACK_DAY_S;
+    const G = scene.SNACK_GAP_S.max;
+
+    answer(Object.fromEntries(input.keys.map((key) => [key, {
+        days: scene.snackBreaks(draw, key, input.from_day * D, (input.from_day + input.days) * D - 1),
+        at: (input.at ?? []).map((t) => scene.snackBreaks(draw, key, t - G, t + G)),
+    }])));
+}
+
+if (!['points', 'draw', 'stack', 'shipped', 'lattice', 'snack', 'snack-chain'].includes(input.mode)) {
     throw new Error(`unknown mode ${input.mode}`);
 }

@@ -2693,6 +2693,10 @@ re-laid half reads them as painted.
    last known task is read in the drill-down under that panel's own currency treatment instead. The
    **fact** is not lost; what is lost is **the desk's claim about a seat nobody can hear**, which is
    the claim [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable) exists to take away.
+   *A desk whose character is away on its snack break* (card#12785) is not such a desk: its state draws a character,
+   which is at the snack corner for a minute, so the desk keeps its bubble — the card it works on — and draws no
+   thought trail, the trail being the thinker's ([§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785)
+   item 4's *The empty desk*).
 4. **The text is `task.ref` and `task.title`, truncated visibly or not at all, in a box sized from the
    MEASURED text.** Both members are bounded by
    [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object), so the worst case is real rather than
@@ -2835,6 +2839,18 @@ seat did and when, and nothing is guessed onto it.
   drawing the seat's name* — and neither is ever a state. A vibe line that changed with
   `render_state` would be state-bearing text with no field, which is exactly what this section
   refuses.
+  ⭐ **The busy walker's food thought — a scoped exception, recorded (card#12785, the operator's request of
+  2026-11-02: *"If they go when busy, their thought bubble should have a witty comment relating to food"*).** The
+  line a busy walker carries to the snack corner ([§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785)
+  item 4) is text the wire did not send and is not the client's narration, so this bullet would refuse it, and it
+  is admitted by name rather than by a reading of the bullet. **Why it passes the bullet's reason:** the bullet
+  refuses a FACT the wire did not send, and a line is never one — it names no seat, task, tool, time or count; it is
+  picked from one fixed list (`server/public/js/floor/snack-lines.js`) by the break's own seeded draw, so it says
+  nothing a different line would not; and the one fact its presence carries — this walker is `working` — is a
+  delivered field, held by § 6.2's A25 row like every held render, and drawn beside the desk's own `working` facts,
+  which stay at the desk. **What stays:** no line is drawn on a desk, none on an idle walker, none under reduced
+  motion; a line never changes with any field but the walker's `working`; and no other string enters through this
+  exception — a second one would need a ruling of its own.
 - **A token, a token prefix, a token hash, or any part of one.** They are not on the read surfaces
   ([D2 § 9](FLEET-STATE.md#9-read-side-authentication)) and nothing on any screen may display one even
   if a future field carried it.
@@ -3267,7 +3283,7 @@ it carries the same fact.
 | **A22** | `edge` | `portal-bird` — the bird carries the envelope from a resolved origin desk on this floor to the floor's bird portal and leaves, or arrives from the portal at a resolved destination desk on this floor, for a post whose other end resolves to a desk on another floor of this building | desk, floor | `coord.round`, `coord_round.scope`, `coord_round.from`, `coord_round.targets` | one `coord.round` applied whose `to` does not carry `all`, with this desk resolving as its origin or as a member of its `targets`, and the counterpart end resolving to a desk **of this building on another floor**; one departure per post for an origin here, one arrival per resolved destination here. A counterpart that resolves to **no** desk fires nothing ([§ 5.7](#57-the-coordination-thread-line) property 1). Specified at `docs/design/COORD-STORE.md § 6.1`, the birdhouse is [§ 4.2](#42-the-floor)'s. **At the birdhouse the bird waits on the ledge** (card#12445, the operator's ruling of 2026-10-26): going out it lands on the peg perch under the hole, stands there for § 12's *Ledge dwell*, and hops into the hole (§ 12's *Hole hop*); coming in it hops out of the hole onto the perch, stands there for the dwell, and flies to the desk. The ledge holds one bird: a second whose time there would meet the first's waits until it is clear — inside the house coming in, at its desk going out (§ 12's *Ledge dwell* row) | at the portal, once the bird has hopped into the hole (departure), or at the desk (arrival) | a still envelope at the portal or at the desk for the moving form's duration, then gone | no post crossed floors between two desks of this building to or from a desk here |
 | **A23** | `held` | `intern-type` — each working intern at the side table types at the laptop on its lap, swaying gently left and right, 4 fps loop | side table | `subagents[].activity_state` | an element of `subagents[]` the desk draws reads `activity_state == "working"` (card#12451, [§ 8](#8-interns--subagent-rendering-and-the-cap)'s *Working and idle interns*). It draws MOTION while the desk's treatment permits it and the desk is not drawn dark — a lag, `config_invalid`, an unrecognised value, a stilled floor or a `stale` / `offline` desk stills its interns, which keep their laptops — so motion is held to a delivered field. One episode per SEAT, keyed `<seat key>~interns` beside the desk's own ([§ 13](#13-decisions-taken-revisable-at-review) rows 87 and 91), `FIRED_BY` `desk` | when no element's `activity_state` is `working` | each working intern sits still with its laptop on its lap | no intern of this seat is working now |
 | **A24** | `edge` | `laptop` — an intern's laptop fades in or out over the laptop fade | side table | `subagents[].activity_state` | a delta whose `changed[]` contains `subagents` and in which an element present on both sides changes its `activity_state` (card#12451). A delta that only flips an element's state gains and loses no `call_id`, so it fires this row and never A10. The fade is [§ 12](#12-every-number-and-where-it-comes-from)'s *Laptop fade*, from the opacity the laptop has reached — an interrupted fade reverses from there — and two flips one render applies are one fade from where the first began, none where it ends where it began (the *Interns ride the elevator too* block, item 19) | at the laptop's new opacity | the laptop is simply present or absent | no intern changed between working and idle |
-| **A25** | `held` | `snack` — once an hour, in a window seeded from the walker's key and the hour, an idle character gets up from its desk or its stool, walks its routed path to the floor's snack corner, stands at the table of its own height for a seeded dwell, and walks back — and walks home at once, from where it stands, when a delivered change recalls it to work; outside its window it draws nothing of its own, and the sleeper (A6) or the still intern stands | floor, desk, side table | `render_state`, `subagents[].activity_state` | `render_state == "idle"` for the seat, under the derived episode key `<seat key>~snack`; an element of `subagents[]` the desk draws reads `activity_state == "idle"` for its interns, under `<seat key>~snack-interns` — [§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749) owns the row (card#12749; the operator's ruling of 2026-11-02, *"A, idle only"*). It draws MOTION while the desk's treatment permits it and the desk is not drawn dark, exactly as A23 does, and a trip STARTS only while the strip's feed status reads *live* and the floor's maps place a table of the walker's height it can route to; otherwise the row is drawn without its trip and the log row is unchanged (the walk note's item 7, one row over) | when the field is not — the seat not `idle`; for the interns, when no element the desk draws is `idle` | no trip: the sleeper stays slumped at its desk and the idle intern still on its stool | the seat, or every intern the desk draws, is not idle now — a working, blocked or degraded character never leaves its desk for a snack |
+| **A25** | `held` | `snack` — every one to two hours, at a second seeded from the walker's key and its previous break, a character gets up from its desk or its stool, walks its routed path to the floor's snack corner, stands at the table of its own height for a seeded dwell, and walks back — a busy one with a food thought in a bubble over its head — and walks home at once, from where it stands, when a delivered change takes it out of its work or its rest; between breaks it draws nothing of its own, and the character at its desk or on its stool stands | floor, desk, side table | `render_state`, `subagents[].activity_state` | `render_state ∈ {"idle", "working"}` for the seat, under the derived episode key `<seat key>~snack`; an element of `subagents[]` the desk draws reads `activity_state ∈ {"idle", "working"}` for its interns, under `<seat key>~snack-interns` — [§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785) owns the row (card#12749; the operator's ruling of 2026-11-02 on card#12785, *"I want all agents and subagents to be able to go at random even work working"*, which widened the ruling of the same morning, *"A, idle only"*). It draws MOTION while the desk's treatment permits it and the desk is not drawn dark, exactly as A23 does, and a trip STARTS only while the strip's feed status reads *live* and the floor's maps place a table of the walker's height it can route to; otherwise the row is drawn without its trip and the log row is unchanged (the walk note's item 7, one row over). The food thought is this row's drawing, on its walker, while the walker's held state is `working` (§ 6.6 item 4) | when the field is neither — the seat `blocked`, `stalled`, `unknown`, `catching_up` or without a character; for the interns, when no element the desk draws is `idle` or `working` | no trip: the character stays at its desk or on its stool in its held pose | the seat, or every intern the desk draws, is neither idle nor working now — a blocked or degraded character never leaves its desk for a snack |
 
 **A1 and A2 — the walk to and from the elevator (card#9566, card#12194).** The operator's request, verbatim
 (2026-09-14): *"when a desk transitions from staffed to empty, have the person walk from their desk to
@@ -4295,8 +4311,8 @@ walk, A23 and A24 take their reduced forms from [§ 6.2](#62-the-animation-table
 the elevator too*, item 18 (card#12450, card#12451), and are asserted by
 [AT-D3-31](#at-d3-31-an-intern-arrives-by-the-elevator-works-or-rests-at-its-laptop-and-leaves-by-it), which
 replays `fx-intern-walk` under `reduce`. [A25](#62-the-animation-table--the-closed-set)'s reduced form is
-[§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749)'s — no trip at all — and
-[AT-D3-32](#at-d3-32-an-idle-character-visits-the-snack-corner-once-an-hour-stands-at-its-own-table-and-comes-straight-back)
+[§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785)'s — no trip at all — and
+[AT-D3-32](#at-d3-32-a-character-visits-the-snack-corner-every-one-to-two-hours-stands-at-its-own-table-and-comes-straight-back)
 replays `fx-snack` under `reduce` (card#12749, Appendix B row 31).
 
 **The elevator ride's reduced form** (card#11795, [§ 4.5](#45-the-viewport-rule-and-the-camera)): every
@@ -4377,7 +4393,7 @@ it, which is [decision 13](#13-decisions-taken-revisable-at-review)'s rule one s
 is rendered as not reported, never as a zero*, and a plausible time on a page that has never been live
 is exactly the zero that rule refuses.
 
-### 6.6 The snack corner, and the hourly trip — A25 (card#12749)
+### 6.6 The snack corner, and the snack break — A25 (card#12749, card#12785)
 
 **Designed 2026-11-02, and built at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 31 on the
 operator's approval of this section and its preview and the operator's answers to
@@ -4388,8 +4404,31 @@ design's recommendation, and item 5 below records it. The operator's request, ve
 one at agent height one at subagent height. All agents and subagents should randomly go to the snack area around
 once every hour, stop at their donuts and coffee table for roughly a minute, before going back to work."* And the
 ruling on the proposal (2026-11-02): *"1. A, idle only"* — only a seat whose `render_state` is `idle`, and an intern
-whose `subagents[].activity_state` is `idle`, takes a trip; a working walker away from its desk would be
-[§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean)'s false claim. This section owns the corner, the trip and
+whose `subagents[].activity_state` is `idle`, took a trip, because a working walker away from its desk was argued to
+be [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean)'s false claim.
+
+⭐ **Amended 2026-11-02 by card#12785 — the operator's informed reversal of *idle only*, built at
+[Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 32.** The operator's request, verbatim on the
+card: *"I changed my mind about when an agent/subagent can go to the snack bar. Previously I said only when idle, but
+I want all agents and subagents to be able to go at random even work working. If they go when busy, their thought
+bubble should have a witty comment relating to food, such as "Donuts, donuts donuts..." or "A coffee sounds
+good...", Come up with 25 different food thought bubbles, some practical some funny to randomly display when an
+agent goes to to the snack table. As for timing, an agent should go to the snack table at a random time between 1-2
+hours since their last snack break"*, and on the seat's draft of the lines, the same day: *"Your thought bubbles
+texts are better than mine. Remove #1 and #2 thoughts and replace with your own. Generate more so that there are a
+total of 50 to randomly choose from"*. The choice is informed: the idle-only ruling was made on this section's own
+argument that a working character away from its desk claims something false, and the operator weighed that and
+chose otherwise. **What it changes, each in the item that owns it:** a `working` seat and a `working` intern take
+breaks too (item 4's *Who*), the breaks are a seeded chain every one to two hours rather than one window an hour
+(item 4's *When*), a busy walker carries a food thought (item 4's *The food thought*), its desk keeps every fact at
+the desk while its chair is empty (item 4's *The empty desk*), and only a change OUT of `idle` and `working` recalls
+a walker (item 5). **What it costs the honesty principle, named rather than smoothed over:** a desk reading
+`working` with its chair empty while its character stands at the donuts is a render this floor did not have; what
+keeps it honest is that every working fact stays on the desk — the chip, the monitor lit as `working` lights it and
+the task bubble — and the walker's food thought says *break*, not *work*, so a viewer reads a seat that is working
+and away for a minute, which is what the operator asked the floor to draw. The break says nothing about the seat
+that the desk does not: it is a seeded presentation of a seat whose delivered state permits it. This section owns
+the corner, the trip and
 row [A25](#62-the-animation-table--the-closed-set); every other site points here. Three precedents carry most of
 it, each named where it is used rather than restated: the walks (the walk note above — the route primitive, the
 legs, the pin, the cancel clauses), the elevator queue (its spaced spots and its committed past, card#12705), and
@@ -4401,21 +4440,23 @@ card#12451).
 on every count: *the vocabulary test* — it is a walk on the character sprite, the strongest vocabulary this floor
 has (*an avatar walking IS the status*), so a viewer standing back reads it as A1 or A2; *the dead-feed test* — a
 character crossing the floor while the wire is silent asserts *this seat is still idle* about a seat nothing is
-reporting on; *the instrument test* — [AT-D3-32](#at-d3-32-an-idle-character-visits-the-snack-corner-once-an-hour-stands-at-its-own-table-and-comes-straight-back)
+reporting on; *the instrument test* — [AT-D3-32](#at-d3-32-a-character-visits-the-snack-corner-every-one-to-two-hours-stands-at-its-own-table-and-comes-straight-back)
 reads it. It therefore cannot be admitted the way the viewer's ride was (§ 6.3's scoped exception, card#11795):
 that exception rests on the ride claiming nothing — it answers the viewer's own press — and the trip claims
-something, which is exactly why the operator ruled it idle-only. **A claim-bearing motion with no row is
+something, which is exactly why the operator first ruled it idle-only and, widening it to busy characters
+(card#12785), kept it held by a delivered field. **A claim-bearing motion with no row is
 [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) consequence 1's defect by definition, so the trip takes a
 row.** Its class is `held`, and that is the honest class rather than a convenient one: the motion is permitted by
-a delivered field (`render_state == "idle"`, `subagents[].activity_state == "idle"`) for exactly as long as the
-field has that value, it is entered on a snapshot as every held render is ([§ 6.5](#65-a-snapshot-never-animates)
+a delivered field (`render_state ∈ {"idle", "working"}`, `subagents[].activity_state ∈ {"idle", "working"}` since
+card#12785; `idle` alone until it) for exactly as long as the field has one of those values, it is entered on a snapshot as every held render is ([§ 6.5](#65-a-snapshot-never-animates)
 — a page loaded mid-trip draws the walker where the trip has it, as it draws a sleeper mid-pulse), and it has a
 beginning and an end on one seat. What is NEW about it, and stated rather than smoothed over, is that its
-**form** has a one-hour cycle with a seeded phase: the sleeper's pulse is a 2 s cycle whose phase is drawn from
-identity (§ 6.2's *per-seat loop phase* paragraph); the trip is a 3,600 s cycle whose phase is drawn from identity
-and the hour. Neither phase encodes a fact — the hour is the viewer's corrected server clock, which says nothing
-about the seat — and the rate is fixed for every walker (one trip per hour, § 12's *Snack window*), so
-§ 6.3's third bullet (rate, amplitude, direction) is not touched. ⚠ **What it costs the dead-feed property, named:**
+**form** has a long cycle with a seeded phase: the sleeper's pulse is a 2 s cycle whose phase is drawn from
+identity (§ 6.2's *per-seat loop phase* paragraph); the breaks are a chain whose every gap is drawn from identity and
+the previous break's second, between one and two hours (card#12785; one trip an hour until it). Neither phase nor
+gap encodes a fact — the instants are the viewer's corrected server clock, which says nothing about the seat — and
+the gap's range is fixed for every walker and every state (§ 12's *Snack gap*), so § 6.3's third bullet (rate,
+amplitude, direction) is not touched: a busy seat breaks no more often than an idle one. ⚠ **What it costs the dead-feed property, named:**
 a held row runs while its field holds, and on [§ 9](#9-failure-paths-and-their-observables) F1's silent feed every
 held loop on the floor keeps running (the desks keep their last state; the strip and the clock carry the verdict).
 A sleeper pulsing on a dead feed is a 2 s loop at its desk; a trip would be a two-minute excursion across the room,
@@ -4426,19 +4467,21 @@ route-less walk without its motion under an unchanged log row. A trip already in
 finishes its legs — bounded, as § 6.3's timer bullet treats a walk that outlasts the verdict — because the walk home
 ends the claim rather than extending it, and a walker snatched off the floor at second 45 would be the jump this
 document refuses everywhere else. **Two held rows under one field on one seat is deliberate, not a restatement:**
-A6 is the desk's row and draws the sleeper; A25 is the floor's and draws the excursion; they are held by the same
-value and enter and leave on the same renders, under two episode keys — the desk's own for A6, and the derived
+A6 (or, for a working seat since card#12785, A3 or A4) is the desk's row and draws the sleeper or the worker; A25 is
+the floor's and draws the excursion; they are held by the same field, under two episode keys — the desk's own for A6, and the derived
 `<seat key>~snack` for A25, because `held()` keeps one open episode per key and the desk's key is taken by the row
 its `render_state` selects (the interns' block, A23's precedent; [§ 13](#13-decisions-taken-revisable-at-review)
-rows 87 and 91). The interns' half is one episode per SEAT under `<seat key>~snack-interns`, held while any element
-the desk draws reads `idle`, mirroring A23's `~interns`. **What the log then records** is [§ 11](#11-acceptance-tests)'s
+rows 87 and 91). A change between `idle` and `working`, or between A3 and A4, leaves the desk's row and enters
+another, and leaves A25's episode open — the hold is the same. The interns' half is one episode per SEAT under
+`<seat key>~snack-interns`, held while any element the desk draws reads `idle` or `working`, mirroring A23's
+`~interns`. **What the log then records** is [§ 11](#11-acceptance-tests)'s
 schema unchanged: `entered` against the held object's `state_version`, `left` by the desk precedence — (2a) when
 the field changes, (2b) when the desk's treatment stops motion, (3) and (4) as for every desk row — and `motion`
 the apply's (`false` under reduce and on a stilled floor). The log does not record whether a trip was DRAWN in an
-episode; it records that the seat was idle and that motion was permitted, which is what a held row has always
-recorded. ⚠ **A25 does not widen the desk's hold-condition function:** `heldId` still selects one desk row per
+episode; it records that the seat was idle or working and that motion was permitted, which is what a held row has
+always recorded. ⚠ **A25 does not widen the desk's hold-condition function:** `heldId` still selects one desk row per
 `render_state`; A25 is a second, derived key beside it, as A23 is, and AT-D3-1's instrument half names it beside
-A6 for `fx-snapshot-4`'s `aimla-impl-2`.
+A3 and A6 for `fx-snapshot-4`'s working and idle seats, and its interns' half for the PM's working intern.
 
 **2. The corner — two standing kinds, placed by the map, drawn by the theme.** The corner is two tiles of
 `resources/floor/tiles/floor-plane.tsx`, each declaring a kind the theme registry's `KINDS` gains
@@ -4558,53 +4601,92 @@ authored map does:
 
 **4. The trip.** Who, when, how long, which legs, and what the room shows meanwhile.
 
-- **Who.** A seat whose held `render_state` is `idle` — never `working`, `blocked`, `stalled`, `unknown`,
+- **Who.** A seat whose held `render_state` is `idle` or `working` — never `blocked`, `stalled`, `unknown`,
   `catching_up`, `stale`, `offline`, `disabled` or `retired`, and never an unrecognised value (F9) — and an intern
-  whose element reads `activity_state == "idle"` on a desk whose treatment permits motion and that is not drawn dark
-  ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim): a `fold_lag` or `config_invalid` desk, a `stale` or
-  `offline` desk, a stilled floor each keep their characters home — A23's clause, verbatim). An intern's seat need
-  not itself be idle: the operator asked for *each idle subagent*. An intern under an older reporter is never idle
-  ([§ 8](#8-interns--subagent-rendering-and-the-cap)'s default) and so never visits.
-- **When — seeded per key and hour, so every viewer sees one trip and a reload re-rolls nothing.** `H` is the hour
-  index, `⌊t ÷ 3,600⌋` for `t` the corrected server clock in seconds ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s
-  `clock_offset_ms` applied, so two viewers with two machine clocks agree on `H` and on the second within it).
-  The trip of walker `K` in hour `H` begins at `draw(K, 'snack:' + H) mod 3600` seconds into the hour — the
-  character tree's one seeded draw (`resources/characters/seed.js`'s `draw(key, field)`, the elevator wait's
-  precedent), `K` the seat's key or the intern's `<seat key>~<call_id>`, uniform over the hour — and its dwell is
-  `45 + draw(K, 'snack-dwell:' + H) mod 31` seconds, uniform over **45 … 75 s** (§ 12's *Snack window* and *Snack
-  dwell*). Both are pure functions of the key and the hour: no `Math.random`, no render instant, no `Set` order
-  reaches them, so a reload, a second browser and a replay draw the same trip at the same second. A walker takes at
-  most one trip per hour and never two at once: the window of hour `H + 1` is skipped while a trip from hour `H` is
-  still in flight. **Eligibility is read at the trip's start instant and continuously after it**: a walker not idle
-  at its start second takes no trip that hour — there is no catch-up and no re-draw, so a seat idle for ten minutes
-  of an hour has one chance in six of a trip in them, which is what *around once an hour* means for a seat idle all
-  hour and nothing more for one that is not. The trip's instants are ABSOLUTE — the hour's second, not the render's
-  — so a page loaded mid-window admits the trip already in progress and draws the walker at `pointAt()`'s point for
-  its elapsed time, pinned to the trip's own start as item 8 pins a walk (no jump at admission, and no history
-  re-enacted: a snapshot still animates nothing, [§ 6.5](#65-a-snapshot-never-animates); a held form is entered at
-  its phase).
+  whose element reads `activity_state` `idle` or `working` on a desk whose treatment permits motion and that is not
+  drawn dark ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim): a `fold_lag` or `config_invalid` desk, a
+  `stale` or `offline` desk, a stilled floor each keep their characters home — A23's clause, verbatim). An intern's
+  seat need not itself take a break: the field is the intern's. `working` joined `idle` by the operator's ruling of
+  card#12785 (2026-11-02, the paragraph above), and the values are one list in code, `wire/animation-set.js`'s
+  `SNACK_HELD`, which the desk render and the scene both read. An intern under an older reporter reads `working` at
+  its word ([§ 8](#8-interns--subagent-rendering-and-the-cap)'s default) and so goes as a busy intern.
+- **When — a seeded chain of breaks per walker, one to two hours apart, so every viewer sees one break and a reload
+  re-rolls nothing (card#12785; one window an hour until it).** `t` is the corrected server clock in seconds
+  ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s `clock_offset_ms` applied, so two viewers with two machine
+  clocks agree on every second). Walker `K`'s breaks are a chain — `K` the seat's key or the intern's
+  `<seat key>~<call_id>` — through the character tree's one seeded draw (`resources/characters/seed.js`'s
+  `draw(key, field)`, the elevator wait's precedent), shipped as `floor/scene.js`'s `snackAnchor()`, `snackDay()` and
+  `snackBreaks()`:
+  1. **The daily anchor.** Day `d` is `⌊t ÷ 86,400⌋`, a UTC day of the corrected clock, and its first break — the
+     *anchor break* — begins at `d × 86,400 + draw(K, 'snack-anchor:' + d) mod 3600`, inside the day's first hour, so a
+     floor's walkers do not all break at midnight (§ 12's *Snack anchor*).
+  2. **The gap.** Each later break of the day begins `3600 + draw(K, 'snack-gap:' + s) mod (hi − 3600 + 1)` seconds
+     after the break before it began at `s`, `hi` being 7,200 — uniform over **3,600 … 7,200 s**, the operator's *"a
+     random time between 1-2 hours since their last snack break"* — except where that would leave less than one
+     minimum gap before the next day's anchor, when `hi` is narrowed to keep it: the day's chain stops at the last
+     break that lies a whole gap (3,600 … 7,200 s) before the next day's anchor break. **So every gap lies in § 12's
+     *Snack gap* — across midnight's anchor too — and the chain never re-times a break already drawn**: a break's
+     second is a function of the key and the day's anchor alone.
+  3. **Why a daily anchor, and what it buys.** A chain from one fixed epoch would make a page loaded at any instant
+     replay every break since that epoch to find its own; the anchor bounds that to the previous day's — a page at
+     `t` reads days `⌊t ÷ 86,400⌋ − 1` onward, one draw per break and two anchors a day — whatever the time of day.
+     The cost is that the gaps in a day's last two hours are narrowed rather than uniform, which no viewer can see.
+
+  Each break's dwell is `45 + draw(K, 'snack-dwell:' + s) mod 31` seconds, uniform over **45 … 75 s** (§ 12's *Snack
+  dwell*), and its food line `draw(K, 'snack-line:' + s) mod` the length of the line list (the food thought below).
+  All are pure functions of the key and the break's second: no `Math.random`, no render instant, no `Set` order
+  reaches them, so a reload, a second browser and a replay draw the same break at the same second with the same
+  line. A walker takes one trip per break and never two at once (the gaps are an hour or more). **Eligibility is
+  read at the break's start instant and continuously after it**: a walker neither idle nor working at its start
+  second takes no trip for that break — there is no catch-up and no re-draw. The trip's instants are ABSOLUTE — the
+  break's second, not the render's — so a page loaded mid-break admits the trip already in progress and draws the
+  walker at `pointAt()`'s point for its elapsed time, pinned to the trip's own start as item 8 pins a walk (no jump
+  at admission, and no history re-enacted: a snapshot still animates nothing, [§ 6.5](#65-a-snapshot-never-animates);
+  a held form is entered at its phase). **Breaks that come due on one pass are decided in START-SECOND order, then by
+  walker key** (`floor/in-flight.js`'s `snack()`, card#12785 — the card#12749 review's N1): a page loaded during two
+  overlapping trips decides both on its first pass, and in that order it gives each the spot a viewer watching
+  throughout gave it, where the walkers' desk order could give the later walker the first spot.
 - **Legs — the walk primitive's, on the walk note's item 3, with a new destination and nothing new in the
   primitive.** `walk` from the walker's anchor (`deskAnchor()` for a seat, its slot's foot for an intern) to its
   spot, routed by `route()` on its own body's lattice at the first tier that connects, gliding at § 12's *Walk
   speed*; `stand` at the spot for the dwell, the character at its standing frame (phase 0 of its walk frames; the
-  intern at its chibi frame with no laptop, which an idle intern has none of); `walk` from the spot back to its
-  anchor, routed again from the spot's cell; then the paint-only refresh that ends every walk re-seats it, the
-  sleeper slumping back onto its desk and the intern back onto its stool. The walker is drawn in the floor stack by
+  intern at its chibi frame with no laptop — a working intern's laptop is drawn again with it at its stool); `walk` from the spot back to its
+  anchor, routed again from the spot's cell; then the paint-only refresh that ends every walk re-seats it in the pose
+  its held state draws then — the sleeper slumping back onto its desk, the worker typing or thinking, the intern back
+  onto its stool with its laptop if it is working. The walker is drawn in the floor stack by
   `floorStackOrder()` as every walker is, and other walkers are never its obstacles (item 9).
-- **The empty desk and the empty stool, meanwhile.** The desk draws the walk note's item 4 render — every fact of
-  the applied object but the character and what hangs on it: the empty chair, the monitor off as `idle` leaves it,
-  the label line, the chip reading `idle`, the facts plate, the badges, the lamp lit as the theme lights every
-  lamp — with no z's, because the z's hang on the sleeper and the sleeper is at the table. The stool of an intern on
-  its trip draws empty, exactly as it does through the intern's arrival. ⚠ **The residual, named:** an empty chair
-  under a chip reading `idle` is a render this floor did not have before — `stale` and `offline` own the empty chair
-  today. What keeps it honest is the chip and the lighting (an `idle` desk is neither dimmed nor dark) and the
-  walker on the floor; [§ 7.5](#75-what-a-degraded-desk-may-never-look-like)'s *a sleeper is never a gone seat*
-  holds in the chip's word, and the drill-down and the desk list are unchanged.
+- **The empty desk and the empty stool, meanwhile — every fact stays AT THE DESK** (`floor/in-flight.js`'s
+  `awayDesk()`). The desk draws every fact of the applied object but the character and what hangs on it: the empty
+  chair, the monitor as its state lights it — off for `idle`, lit with the action for `working` — the label line, the
+  chip reading the state, the facts plate, the badges, the lamp lit as the theme lights every lamp, **and its task
+  bubble**, the card the seat works on, with no thought trail (card#12785: the trail is the thinker's and leaves with
+  it); no z's and no typing, because those hang on the character and the character is at the table. The stool of an
+  intern on its trip draws empty, exactly as it does through the intern's arrival. ⚠ **The residual, named:** an empty
+  chair under a chip reading `idle` or `working` is a render this floor did not have before — `stale` and `offline`
+  own the empty chair. What keeps it honest is the chip, the lighting (neither desk is dimmed nor dark), the walker on
+  the floor and, for a working seat, the lit monitor and the task bubble kept at the desk;
+  [§ 7.5](#75-what-a-degraded-desk-may-never-look-like)'s *a sleeper is never a gone seat* holds in the chip's word,
+  and the drill-down and the desk list are unchanged. **[§ 5.1](#51-the-desk) rule 3 is not reached:** *a desk that
+  draws no character draws no bubble* is read off § 7.1's Desk column, the states that draw no character; `idle` and
+  `working` draw one, which is away for a minute, and the bubble is the desk's card — the trail that would draw a
+  thinker on the chair is the part that goes.
+- **The food thought — a busy walker's (card#12785).** A walker whose held state is `working` — the seat's
+  `render_state`, the intern's `activity_state` — carries one thought bubble over its head through its walk out, its
+  dwell and its walk back, holding its break's line from `server/public/js/floor/snack-lines.js`, the one home of the
+  operator's list ([§ 12](#12-every-number-and-where-it-comes-from)'s *Snack lines*). The state is read each render, so
+  a walker that turns `working` mid-trip thinks of food from that render and one that turns `idle` stops; an idle
+  walker carries none, and a walker walking home on a recall carries none. The bubble is laid out by the scene
+  relative to the walker's feet (`scene.js`'s `snackThought()`): the task bubble's cloud and trail, the line wrapped on
+  at most two lines, no source line, the text in italic — so it is never read as the desk's task, which stays on the
+  desk beside its chip. It is A25's drawing, on A25's walker, held by the same field: it moves only with the walker,
+  under reduced motion there is no trip and so no thought, and [§ 5.4](#54-what-is-never-rendered) records the line's
+  text as the one string on the floor the wire did not send and that is not the client's narration — a scoped
+  exception, argued there.
 - **Several visitors.** Each takes its spot by rule 3 and keeps it; two walkers' routes may cross, drawn by the
   floor stack as the queue's are; an agent at the tall table and an intern at the low one stand apart by the two
   spot 0s' distance, which the author keeps above the tall table's spacing (Option A's 90 px against 75.5) and the
   gate holds on the shipped default.
-- **What every viewer agrees on.** The schedule is a function of keys and the hour; a spot is a function of the
+- **What every viewer agrees on.** The schedule is a function of keys and the clock; a spot is a function of the
   trips in flight on that viewer, and two viewers whose deltas landed a frame apart can hold different in-flight
   sets at one instant and seat a third visitor differently — the queue's own stated residual (row 99), accepted on
   the same ground.
@@ -4613,8 +4695,9 @@ authored map does:
 effect in the holder like a walk, under the walker's own key, with a walk's cancel clauses and two of its own:
 
 - **The held field changes — the claim-bearing row takes over at once, and the walker WALKS HOME.** A delta that
-  takes the seat out of `idle` while its desk still draws its character (`working`, `blocked`, `stalled`, `unknown`,
-  `catching_up`), or flips the intern's element to `working`, leaves A25's episode ((2a)) on the render that applies
+  takes the seat out of `idle` and `working` while its desk still draws its character (`blocked` — an attention
+  request, the seat waiting on its human — `stalled`, `unknown`, `catching_up`), or flips the intern's element to a
+  value that is neither, leaves A25's episode ((2a)) on the render that applies
   it, enters the row the new object selects, and the desk renders the applied object's facts on that render — the
   chip, the label line, the badges, the monitor lit as the new state lights it — every fact but the character, which
   is the render the walk note's item 4 already draws under an A1 walker. **The figure walks home along its route**
@@ -4622,9 +4705,11 @@ effect in the holder like a walk, under the walker's own key, with a walk's canc
   an informed choice: this section argued the cut, and the operator weighed it): from where it is at the applying
   render's instant — back the way it came while on its walk out, its own route home from its spot while it stands
   there, the rest of its route home while on its walk back — so no frame it has drawn moves, and the paint-only
-  refresh at the walk's end seats it in the new row's pose, typing for `working`. An intern recalled to `working`
-  sits down with its laptop fading in over § 12's *Laptop fade* (the laptop was absent, so from 0); the A24 row the
-  flip writes is drawn by that walk home, not on the empty stool. **Why it is no new row:** the walk home is the end
+  refresh at the walk's end seats it in the new row's pose — the raised hand for `blocked`. **A change BETWEEN `idle`
+  and `working`, or from one working pose to another (A3 ↔ A4, a tool swap), is not a recall** (card#12785): the hold
+  is unchanged, the trip goes on along its legs, the desk renders the new facts at once and the walker's food thought
+  follows the new state; an intern's `working ↔ idle` flip likewise, its A24 row drawn on the walker's return, not on
+  the empty stool. **Why it is no new row:** the walk home is the end
   of the trip's own drawing, bounded by the route's length — it ends the trip's claim rather than making one, as a trip
   in flight on a feed already declared down finishes (item 1) — and a delta never starts it: only a trip already in
   flight is walked home. **What it costs, named:** for the length of the walk home the desk reads its new state with
@@ -4639,11 +4724,11 @@ effect in the holder like a walk, under the walker's own key, with a walk's canc
   item 16's turn-round routes an intern back from mid-walk. The walk note's *a later destination is a caller handing
   it another point* is this: the departure's `walk` starts from a spot or a point on the way to it rather than
   from the anchor, and nothing in `route()` knows the difference. A13 (`retired`, or `seat.retired`) removes the
-  desk and its walker with it, no walk, as A13 draws every character today. A1 cannot land on a seat that is idle
-  (it is staffed), and an A10 arrive is another intern. A16 (a desk move) is the anchor clause below.
+  desk and its walker with it, no walk, as A13 draws every character today. A1 cannot land on a seat that is idle or
+  working (it is staffed), and an A10 arrive is another intern. A16 (a desk move) is the anchor clause below.
 - **The walk's own cancel clauses, read for a trip:** a non-delta entry for the seat (a snapshot, a resync, an
-  insert, a reconnect) replaces the object, and the trip is RE-DERIVED from it — still `idle`, the same key and hour
-  give the same trip and it continues at its phase; otherwise it ends and the new row draws at the desk; the row 5
+  insert, a reconnect) replaces the object, and the trip is RE-DERIVED from it — still `idle` or `working`, the same
+  key and break give the same trip and it continues at its phase; otherwise it ends and the new row draws at the desk; the row 5
   (`unconfirmed`) and stilled conditions, the lattice key (a `room.map` that moves or removes the table, a layout
   act, a tileset arriving), the elevator's threshold, and the anchor (an A16 re-slot, a reserved-desk change) each
   end the trip and draw the character at its desk at once, as they end a walk. A desk whose treatment stops motion
@@ -4659,10 +4744,10 @@ effect in the holder like a walk, under the walker's own key, with a walk's canc
   and (2b) (the third bullet).
 
 **6. Dead feed, stale feed, reduced motion, and the failure paths.** On F1's verdict no new trip starts and one in
-flight finishes (item 1 above); on a `stale` or `offline` seat there is no `idle` to hold a trip, and its interns
+flight finishes (item 1 above); on a `stale` or `offline` seat there is no `idle` or `working` to hold a trip, and its interns
 are stilled with the desk (§ 7.3). Under `prefers-reduced-motion: reduce` **there are no trips**: A25's reduced form
-is the sleeper at its desk and the intern on its stool, the row's episodes written at `motion: false` as every held
-row's are, and the corner stands as scenery. On a floor F6 or F7 stills, every trip is cancelled with every walk,
+is the character at its desk or the intern on its stool in its held pose, the row's episodes written at
+`motion: false` as every held row's are, and no food thought, and the corner stands as scenery. On a floor F6 or F7 stills, every trip is cancelled with every walk,
 and the character is drawn at its desk as the stilled render draws it. A walker whose art failed to load (F14) is
 F14's placeholder rectangle on its trip, as it is on its walk. A theme that fails to draw a kind (F14) leaves the
 tile undrawn — and the tile's rect still blocks, because the lattice reads the map and not the art — so a visitor
@@ -4670,14 +4755,16 @@ walks to an empty corner; that is F14's own render and no new failure path. **No
 
 **7. What the gates and the tests do with it.** `tools/design/verify-floor.py`'s G1 holds A25 as it holds every row:
 its Class cell is `held`, its driving facts are D2 fields, and the id is bound outside the table (here, § 12, § 13,
-AT-D3-32, Appendix B); G4 binds § 12's *Snack window*, *Snack dwell*, *Snack tables* and *Snack spot* figures to this
-section; G5 binds `fx-snack` to AT-D3-32 and AT-D3-32 to row 31; G-scenery holds the two tiles' whole cells outside
+AT-D3-32, Appendix B); G4 binds § 12's *Snack gap*, *Snack anchor*, *Snack dwell*, *Snack tables* and *Snack spot* figures to this
+section; G5 binds `fx-snack` to AT-D3-32 and AT-D3-32 to rows 31 and 32; G-scenery holds the two tiles' whole cells outside
 every slot on the re-authored default, and its leg 3 holds each table's spot 0 open at `clear` for its visitor and the
-two spot 0s at least the tall table's spacing apart. [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s instrument half gains one
-expected row — A25 `entered` for `fx-snapshot-4`'s idle `aimla-impl-2` under its `~snack` key, its `cause` that seat's
-`state_version` — and its closed-set half holds every A25 row to § 11's schema with no new arm; its RED, the
-ambient idle-breathing loop, is unchanged and is exactly what a trip drawn for a `working` seat would be. The three
-things no gate reaches, said rather than implied: that the trip is drawn only inside its window (AT-D3-32's runs,
+two spot 0s at least the tall table's spacing apart. [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s instrument half expects
+an A25 `entered` row for every seat of `fx-snapshot-4` whose object holds a half — under `~snack` for the idle
+`aimla-impl-2` and the working `aimla-pm` and `aimla-impl-1` (card#12785), and under `~snack-interns` for the PM's
+working intern — each `cause` that seat's `state_version`, and none for the blocked `aimla-review`; its closed-set
+half holds every A25 row to § 11's schema with no new arm; its RED, the ambient idle-breathing loop, is unchanged,
+and a trip drawn for a `blocked` seat is AT-D3-32's first RED. The three
+things no gate reaches, said rather than implied: that the trip is drawn only from its break's second (AT-D3-32's runs,
 on the harness clock); that the corner LOOKS like a snack corner (the operator's reading of the preview, § 10.6
 item 10's residue); and that nothing draws a trip without entering A25 through the log (§ 11's NOT MECHANIZED
 limit, the same one every row carries).
@@ -5193,15 +5280,16 @@ idle, and not every one (round 1, m4): a current reporter whose dispatch is **un
 idle either (D1 § 6.15 — `agent_bind_unresolved` is that measurement, and no badge), and a
 `subagent.activity` lost to spool overflow leaves the intern at its last state under the `lossy` badge.
 
-**An idle intern leaves its stool for the snack corner about once an hour — card#12749 (designed and built
-2026-11-02, [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 31).** The
-table's `activity_state` row says an idle intern draws *no motion*; from row 31 on that reads *no motion at its
-stool*: [A25](#62-the-animation-table--the-closed-set) is held by the same `idle` element, under the derived key
-`<seat key>~snack-interns` beside A23's `~interns`, and once an hour, in a window seeded from the intern's key and
-the hour, draws the intern walking to the floor's intern-height table, standing there for its dwell and walking
-back — only while the desk's treatment permits motion, never under an older reporter's `working` default, and
-never under reduced motion. [§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749) owns every rule of it
-and nothing here restates one; the stool draws empty while the intern is away, as it does through an arrival.
+**An intern leaves its stool for the snack corner every one to two hours — card#12749 (designed and built
+2026-11-02, [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 31), widened to working interns by
+card#12785 (row 32).** The table's `activity_state` row says an idle intern draws *no motion* and a working one types;
+from row 31 on those read *at its stool*: [A25](#62-the-animation-table--the-closed-set) is held by the same element's
+`idle` or `working`, under the derived key `<seat key>~snack-interns` beside A23's `~interns`, and at each break of a
+chain seeded from the intern's key draws the intern walking to the floor's intern-height table, standing there for
+its dwell and walking back — a working intern with a food thought over its head and no laptop, which is drawn again
+when it sits — only while the desk's treatment permits motion, and never under reduced motion. An older reporter's
+`working` default is read at its word, so its interns go as busy ones. [§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785) owns every rule of it and nothing
+here restates one; the stool draws empty while the intern is away, as it does through an arrival.
 
 ### 8.1 The cap stays at 8 — the arithmetic, and the reason
 
@@ -5792,7 +5880,7 @@ only. This subsection says where the creatures come from and what they replaced;
 row 22). The one tileset the repository ships is `resources/floor/tiles/floor-plane.tsx`, an image collection
 whose every tile declares a `kind` from the theme registry's closed set — `wall` and `accent`, the plane
 kinds, and `bookcase`, `plant`, `floor-lamp`, `armchair`, `cushion`, `book-pile`, `snack-table` and
-`snack-table-low` (card#12749's snack corner, [§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749)), the
+`snack-table-low` (card#12749's snack corner, [§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785)), the
 standing ones — and
 whose every image is an authoring MARKER for Tiled, a plain labelled outline the floor never draws: the floor
 draws a placed tile by its kind, in its floor's theme ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)
@@ -5832,7 +5920,7 @@ belong here, because they are this document's rulings:
 stands on its slot's bottom edge, so the 276 px box of card#12446 left every desk where it was), on a drawn FLOOR PLANE, with a narrow scenery strip at each
   side and no conference room, no lounge and no wall of its own.** The right strip has been 200 px wide inside its
   wall since card#12749 (the operator's ruling of 2026-11-02, Option A of [§ 14](#14-open-questions-for-the-review-loop)
-  item 44), and holds the snack corner ([§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749)); no slot
+  item 44), and holds the snack corner ([§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785)); no slot
   moved, so no seat re-hashes. Its side walls and the PM office's
   walls came with card#11144 (below), and the house picture's scenery and the PM office's oak with card#11046
   (row 22, [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)); the back wall is still the band's. **The shipped default reserves `id 3`
@@ -7021,7 +7109,7 @@ theme draws INTO and never moves.
      the floor, under every standing thing and every desk;
    - **standing kinds** — the scenery: `bookcase`, `plant`, `floor-lamp`, `armchair`, `cushion`,
      `book-pile`, and the snack corner's two tables, `snack-table` and `snack-table-low` (card#12749,
-     [§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749) item 2). Each is drawn at its tile's cell rect, bottom-aligned as every image tile is
+     [§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785) item 2). Each is drawn at its tile's cell rect, bottom-aligned as every image tile is
      (`mapTiles()`), sized by the TILE — the tileset may carry one kind at several sizes, a low and a tall
      bookcase — and drawn in tile order, so the row-major y-sort of § 10.4 item 3 stands. A floor lamp's
      tile carries `decoration: lamp` as the kit's lamps did, and [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s
@@ -7159,7 +7247,7 @@ foot, inside the piece's own rect.
 | `armchair` (`PALETTE.armchair`) | an armchair, face-on (its user faces the viewer) | `#c8714f`, legs `#8a5a3a` | drift leg; eye |
 | `cushion` (`PALETTE.cushion`) | a floor pouf, its colour seeded per cell | `#c98b8f` or `#d9a54a` | drift leg; eye |
 | `book-pile` (`PALETTE['book-pile']`) | a low pile of books on the floor | the books' colours: `#c8553d`, `#e0a43a`, `#6f8fb0`, `#7f9f6a`, `#94627e`, `#f2e6cf`, `#4f8a87`, `#d97f8f` | drift leg; eye |
-| `snack-table` and `snack-table-low` (`PALETTE['snack-table']`) | card#12749's snack corner, [§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749) item 2: a small wooden table on four legs under a cloth whose front hangs in scallops — its top waist-high to the character for `snack-table` and to the intern for `snack-table-low` — and on it, at the scale the cell's width sets, a coffee maker with its carafe on the hotplate and a lamp that is a fixed warm dot and never a status light, an open pink donut box (three donuts on the tall table, two on the low: a glazed, a chocolate and a sprinkled), and three (two) cream cups banded in gold, the first with a curl of steam drawn once; nothing on it moves | wood `#c48d5c`; cloth `#f6e7d2`; box `#f4a7b9`; dough `#d9a066`, glaze `#f2d29b`, chocolate `#7a4a32`, icing `#f7b6c8`; sprinkles `#6f8fb0`, `#7f9f6a`, `#e0a43a`, `#c8553d`; the maker `#6f9a9a`, its carafe `#e7f0ef`, the coffee `#6b4226`, its lamp `#f2b84b`; cups `#fffaf0` banded `#e0a43a` | drift leg; eye |
+| `snack-table` and `snack-table-low` (`PALETTE['snack-table']`) | card#12749's snack corner, [§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785) item 2: a small wooden table on four legs under a cloth whose front hangs in scallops — its top waist-high to the character for `snack-table` and to the intern for `snack-table-low` — and on it, at the scale the cell's width sets, a coffee maker with its carafe on the hotplate and a lamp that is a fixed warm dot and never a status light, an open pink donut box (three donuts on the tall table, two on the low: a glazed, a chocolate and a sprinkled), and three (two) cream cups banded in gold, the first with a curl of steam drawn once; nothing on it moves | wood `#c48d5c`; cloth `#f6e7d2`; box `#f4a7b9`; dough `#d9a066`, glaze `#f2d29b`, chocolate `#7a4a32`, icing `#f7b6c8`; sprinkles `#6f8fb0`, `#7f9f6a`, `#e0a43a`, `#c8553d`; the maker `#6f9a9a`, its carafe `#e7f0ef`, the coffee `#6b4226`, its lamp `#f2b84b`; cups `#fffaf0` banded `#e0a43a` | drift leg; eye |
 
 **What the house picture does NOT carry over from the prototype, each named so nobody reads it as an
 oversight:** the **daylight under the windows** (item 3); the **sky's hills and clouds** — the glazing is
@@ -7429,7 +7517,7 @@ tall bookcase and a plant; a reading nook in the right strip, a floor lamp, an a
 plant; and narrow plants standing wholly in the aisle between the columns — every cell outside every `desks`
 object (G-scenery). The aisle's plants stand in a 28 px cell, so they are drawn narrow and tall. ⚠ card#12444's re-lay
 drops the aisle's two plants: an 80 px aisle holds a walker's body, and one with a plant in it holds none. ⚠ card#12749's
-re-lay (Option A, [§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749) item 3) widens the right strip to
+re-lay (Option A, [§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785) item 3) widens the right strip to
 200 px: the PM's library stands against the new wall, the snack corner's two tables under the office's front return,
 and the reading nook at the strip's foot. Where each stands is the map's to say and the screenshots' to show; no
 coordinate of it is stated here but the snack corner's, which § 6.6 states for its spots and G-scenery leg 3 measures.
@@ -7898,7 +7986,7 @@ cannot be shown to obey the honesty principle, and the principle is the product'
 | `fx-lobby` | ✅ the directory's runs landed with card#12113's model slice (`server/tests/Feature/Floor/fixtures/fx-lobby.json`, replayed by `Tests\Feature\Floor\TheDirectoryPlaqueReadsWhatTheClientHoldsTest`), each run named `lobby_` and its name below — `stalled` is another file's run — with **unclaimed** as `lobby_unclaimed`; **lobby-ride** and **lobby-arrival** replay `lobby_plaque`'s snapshot and layout with the ride acts the lobby ride's build adds. card#12113's directory, every run over a layout of **three floors** composed from `fx-snapshot-4`'s four `aimla` seats plus the seats each run adds, so one plaque is a composed floor of two rooms and one is an unplaced install's own: **plaque** — a floor whose seats are one `working` with `task.ref` *card#7338* and `subagents_open` 9 over a `subagents` array at the cap of 8, one `idle` with the same `task.ref`, one `blocked` with `blocked_since` set and `task` null, and one `stale`, so the tally shows four members, the agents-and-desks pair reads *3 agents · 4 desks*, the cards count reads one card for two seats holding it and none for the null, the intern sum reads 9 where the arrays sum to 8, and the open-call sum is the four seats' `open_calls` summed; **attention** — the plaque above plus a second `blocked` seat with a later `blocked_since` (the earlier is named), a `live` seat with `context.used_pct` 91.2 and one sorting before it by `seat_id` with `context` null (the first is named, the second never, and the plaque renders), and a `live` seat whose `longest_open_call.started_received_at` is 12 min 5 s before the run's corrected clock (named, *running for 12m 05s*) beside one 2 min before it (not named); **dispatch** — a `live` seat whose `longest_open_call` is an `Agent` call opened 40 min 12 s before the run's corrected clock while its `action` is a `Bash` call opened 10 s before it with `parent_call_id` the dispatch's, so the line names *Agent running for 40m 12s* and a plaque reading `action` would name nothing; **attention-quiet** — the same floor with no seat `blocked`, every `context.used_pct` below 80, every `longest_open_call` younger than 10 min: no attention line; **dark-blocked** — one `stale` seat whose `activity_state` is `blocked` with `blocked_since` set, and no `live` seat past any threshold: no attention line; **stalled** — no `blocked` seat and two `stalled` seats, the earlier `activity.last_received_at` named with its raw `api_error_type` and its phrase; **markers** — a floor of **fourteen** held seats across its two rooms, two of them sharing a `seat_id` across the rooms, so the row draws 12 and *+2 more*, the two namesakes are told apart by their room, and one whose `render_state` is an unrecognised string is drawn as a ring and counted as a desk and not an agent; **lobby-ride** — the lobby page's ride through every phase on the scenario clock, the stops the three plaques then *Lobby* marked current, a choice of a floor routing to that plaque's `href` with `#ride` and `beyond: office`, *Lobby* a stay with `beyond: lobby`, Escape `inside` a stay, and the floor page's ride to the lobby carrying `beyond: lobby` from `chosen` on and `beyond: office` in `entering`; **lobby-arrival** — the lobby page entered by a ride, its first drawn room entering `arriving` with the elevator's leaves open and closing; **unclaimed** — the lobby under [§ 9](#9-failure-paths-and-their-observables) F17 with no layout held: the room drawn, the directory listing each install as *no floor claimed*, the cab offering *Lobby* alone |
 | `fx-reporter` | two `aimla` seats over the shipped default map in `fx-office`'s shape, both `live` `working` with a task, `aimla-pm` relaying `pm` (card#11818 part 2): **`aimla-pm`** with `reporter.version` `"0.3.0"` and `badges: []`; **`aimla-impl-1`** with `reporter.version` `"0.1.0"`, `badges: ["update_required"]` and `badges_since` set. The floor compares no versions, so the strings are wire samples and not a claim about the server's constant. Then three deltas: one for `aimla-impl-1` whose `changed[]` carries `badges` and whose array is `["lossy", "config_invalid", "update_required"]`; one for `aimla-impl-1` that clears all three; and one for `aimla-pm` whose `badges` gains `update_required` with `reporter` unchanged — the server-moved case, the badge arriving with no version change |
 | `fx-intern-walk` | ✅ landed with card#12450 and card#12451 (`server/tests/Feature/Floor/fixtures/fx-intern-walk.json`, replayed by `Tests\Feature\Floor\AnInternRidesTheElevatorTest`). `fx-snapshot-4`'s four `aimla` seats on the shipped default map, as `fx-elevator`'s `leave-stale` replays them, every seat's interns cleared and each run's own stated, `aimla-impl-1` the seat whose side table the runs move and `aimla-pm`, with none, the control; every element carries `activity_state` ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)): **arrive** (`subagents` gains one `call_id` at `working`, `subagents_open` 0 → 1); **arrive-idle** (the same gain at `idle`); **leave-working** (that element lost, `subagents_open` 1 → 0, its held state `working`); **leave-idle** (lost while `idle`); **flip** (a delta re-sending the array with the element's `activity_state` `working → idle`, then one `idle → working`, the second landing two loop frames into the first's fade); **stop-in-cab**, **stop-at-door** and **stop-mid-walk** (the arrive delta, then its loss applied one frame into the `cab` leg, inside the `stand` leg, and at the walk leg's midpoint); **flip-mid-walk** (the arrive delta at `working`, then `working → idle` on the walk leg); **two-interns** (two gained on one delta, `subagents_open` 0 → 2, then both lost on one delta, so each way two interns walk on their own routes and their own waits); card#12744's **two-stop-mid-step** (two-interns' gain, then intern 2 lost, `subagents_open` 2 → 1, while it steps from its rider spot to the threshold in the cab); card#12705's **queue-gain-after-boarding** (`aimla-impl-2` loses an intern, then gains and trades others after it has boarded, so its freed spot is taken by a later departure; the review's reduced reproduction); **gain-during-arrival** (one gained, then a second gained one frame into the first's walk leg, `subagents_open` 1 → 2); **middle-leaves** (three gained on one delta, slots 0–2, then the slot-1 intern lost, then a fourth gained); **reload-holes** (middle-leaves' seated state re-delivered as a snapshot, the two survivors' `started_at` in slot order); **gain-and-loss-one-render** (the arrive delta and its loss applied in one render — the loss two versions ahead waits on a resync fetch that answers `503` while the gain arrives, and the failed fetch's drain applies both — and **gain-and-loss-one-render-flip**, the `flip` run's two deltas applied the same way); **capped-gain** (a late spawn with the OLDEST `started_at` arriving at slot 7, `subagents_open` 7 → 8, then with its arrival in flight a ninth spawn: the array drops the arriving one and `subagents_open` goes 8 → 9); **capped-loss** (`subagents_open` 10 → 9 with one visible element replaced by a hidden one re-entering); **seat-leaves** (`aimla-impl-1` `working → stale` with two interns seated, one `working` and one `idle`); **reslot-interns** (an intern arriving at `aimla-impl-2` when `fx-collision`'s `aimla-mac-1` arrives and moves the desk); **old-reporter** (a snapshot whose two elements both read `working` and whose seat carries `update_required`, then no delta); and **snapshot-seated** (a fresh snapshot carrying three elements, two `working` and one `idle`, with no delta). Every run named for it is also replayed under `prefers-reduced-motion: reduce` |
-| `fx-snack` | card#12749's trips ([§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749); built at Appendix B row 31; `server/tests/Feature/Floor/fixtures/fx-snack.json`, its map variants under `fixtures/maps/`). `fx-snapshot-4`'s four `aimla` seats on the shipped default **as row 31 re-authors it** — the corner's two tiles placed per the operator's choice on [§ 14](#14-open-questions-for-the-review-loop) item 44 (Option A) — with the harness clock stated per run as a corrected server-clock instant, so that hour `H`'s seeded start for the walker under test, `draw(key, 'snack:' + H) mod 3600`, falls a stated few seconds after the run's first render (the run's note derives the instant from the key the way `fx-elevator`'s two-walkers derives its waits): **idle-trip** (`aimla-impl-2`, idle from the snapshot, through its window and back, then silence); **working-window** (`aimla-impl-1`, `working`, through its own window — the control); **intern-trip** (`aimla-pm`'s element flipped `working → idle` before its window, the seat itself `working`); **intern-old-reporter** (a seat whose elements carry no `subagent.activity` behind them, `working` by default, through its interns' windows); **recall-mid-trip** (idle-trip, then `idle → working` while the walker stands at the table — it walks home, the operator's ruling on item 44 Q2); **leave-mid-trip** (idle-trip, then `idle → stale` at the table); **intern-stop-mid-trip** (intern-trip, then the element lost on the walk out); **two-visitors** (`aimla-impl-2` and `aimla-impl-1` both idle, their windows chosen to overlap at the tall table); **tall-and-low** (`aimla-impl-2`'s window overlapping `aimla-pm`'s intern's); **past-the-last-spot** (every seat idle with windows overlapping, over a map whose tall table has exactly two spots); **no-corner** (idle-trip over the shipped default WITHOUT the two tiles — the map the tree ships today); **no-route** (idle-trip over a map whose tall table stands inside a sealed cell); **reload-mid-trip** (idle-trip's window entered by a fresh snapshot thirty seconds into the dwell — a resync of the seat — and, as **reload-mid-trip-viewer**, by a second viewer whose first render lands a frame later); **feed-down** (`aimla-impl-2` idle, the stream silent past F1's 45 s before its window); **feed-dies-mid-trip** (the stream silent from the walk out); **map-moves-table** (idle-trip, then a `room.map` revision moving the tall table during the dwell); **stilled-mid-trip** (idle-trip, then a `401` on a resync fetch during the dwell). Every run named for it is also replayed under `prefers-reduced-motion: reduce` |
+| `fx-snack` | card#12749's trips and card#12785's breaks ([§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785); built at Appendix B rows 31 and 32; `server/tests/Feature/Floor/fixtures/fx-snack.json`, its map variants under `fixtures/maps/`). `fx-snapshot-4`'s four `aimla` seats on the shipped default **as row 31 re-authors it** — the corner's two tiles placed per the operator's choice on [§ 14](#14-open-questions-for-the-review-loop) item 44 (Option A) — with every instant of each run moved by one constant so that the run's clock 0 is a corrected server second its note states, a stated few seconds before the walker under test's break in its chain (§ 12's *Snack anchor* and *Snack gap*), and the other walkers that could go with no break near the run: **idle-trip** (`aimla-impl-2`, idle from the snapshot, through its break and back, then silence); **blocked-window** (`aimla-review`, `blocked`, through its own break — the control); **busy-trip** (`aimla-impl-1`, `working`, through its break with its food thought, then its call closing with the turn open on the dwell — `working → working`); **wakes-mid-trip** (idle-trip, then `idle → working` at the table — no recall); **intern-trip** (`aimla-pm`'s element flipped `working → idle` before its break, the seat itself `working`); **intern-old-reporter** (a seat whose elements carry no `subagent.activity` behind them, `working` by default, through its intern's break); **recall-mid-trip** (idle-trip, then `idle → blocked` — an attention request — while the walker stands at the table: it walks home, the operator's ruling on item 44 Q2); **leave-mid-trip** (idle-trip, then `idle → stale` at the table); **intern-stop-mid-trip** (intern-trip, then the element lost on the walk out); **two-visitors** (`aimla-impl-2` and `aimla-impl-1` both idle, their breaks overlapping at the tall table) and **two-visitors-late** (its page loaded while both are on their way); **tall-and-low** (`aimla-impl-2`'s break overlapping `aimla-pm`'s idle intern's); **past-the-last-spot** (three seats idle with breaks overlapping, over a map whose tall table has exactly two spots); **no-corner** (idle-trip over the shipped default WITHOUT the two tiles); **no-route** (idle-trip over a map whose tall table stands inside a sealed cell); **reload-mid-trip** (idle-trip's break entered by a fresh snapshot thirty seconds into the dwell — a resync of the seat — and, as **reload-mid-trip-viewer**, by a second viewer whose first render lands a frame later); **next-break** (idle-trip's walker at its following break, a page loaded a gap later); **feed-down** (`aimla-impl-2` idle, the stream silent past F1's 45 s before its break); **feed-dies-mid-trip** (the stream silent from the walk out); **map-moves-table** (idle-trip, then a `room.map` revision moving the tall table during the dwell); **stilled-mid-trip** (idle-trip, then a `401` on a resync fetch during the dwell). Every run named for it is also replayed under `prefers-reduced-motion: reduce` |
 
 ### AT-D3-1 no animation without its event
 
@@ -7923,8 +8011,9 @@ observable before both exist, so the test is **re-gated** rather than split furt
   **A3 for `aimla-pm` and `aimla-impl-1`, A6 for `aimla-impl-2`, A7 for `aimla-review`**, **A23**
   beside the desk's row for each seat whose `subagents[]` is not empty (card#12448), and — from
   [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 31 on, and not before — **A25** beside
-  `aimla-impl-2`'s A6 under its `<seat key>~snack` key ([§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749),
-  card#12749; no seat of the fixture has an idle intern, so no `~snack-interns` episode), and no other —
+  `aimla-impl-2`'s A6 under its `<seat key>~snack` key ([§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785),
+  card#12749), and — from row 32 on (card#12785) — beside the A3 of `aimla-pm` and of `aimla-impl-1` under theirs, and
+  under `aimla-pm`'s `~snack-interns` for its working intern, none for the blocked `aimla-review`, and no other —
   each with that seat's `state_version` as its cause and each opening a **distinct** `episode_id`, no
   id repeated. The control is two-sided on purpose: without it a log-writing bug that recorded nothing
   would pass the GREEN, and a client that fired arrivals on the snapshot would pass it too.
@@ -10386,54 +10475,74 @@ recorded as frame strips on the card.*
 - **Discriminating control:** `aimla-pm`, with no interns, on the arrive, two-interns and flip runs — no A10,
   no A24 and no A23 — so the test measures the side table and not the floor.
 
-### AT-D3-32 an idle character visits the snack corner once an hour, stands at its own table, and comes straight back
+### AT-D3-32 a character visits the snack corner every one to two hours, stands at its own table, and comes straight back
 
 *Designed and built for card#12749 (2026-11-02) at [Appendix B](#appendix-b--what-an-implementer-builds-from-this)
-row 31, after the operator's approval of [§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749), its
-preview and its answers to [§ 14](#14-open-questions-for-the-review-loop) item 44 —
-`Tests\Feature\Floor\AnIdleCharacterVisitsTheSnackCornerTest` runs it. It drives the floor screen's harness as [AT-D3-23](#at-d3-23-a-seat-leaves-by-the-elevator-and-returns-by-it)
+row 31, after the operator's approval of [§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785), its
+preview and its answers to [§ 14](#14-open-questions-for-the-review-loop) item 44, and amended for card#12785 at row 32
+(busy characters go too, the breaks a chain one to two hours apart, the food thought) —
+`Tests\Feature\Floor\ACharacterVisitsTheSnackCornerTest` runs it. It drives the floor screen's harness as [AT-D3-23](#at-d3-23-a-seat-leaves-by-the-elevator-and-returns-by-it)
 and [AT-D3-31](#at-d3-31-an-intern-arrives-by-the-elevator-works-or-rests-at-its-laptop-and-leaves-by-it) do: the scene
-each render and each paint-only refresh drew, the walk probe for the seeded draws and `pointAt()`, the animation log,
-and every RED a plant in the shipped tree. The look of the corner — the donuts, the coffee maker, the cups at both
-heights — is the operator's reading of the preview and of the sandbox, recorded on the card, and no clause below
+each render and each paint-only refresh drew, the walk probe for `pointAt()`, the scene's own chain and the character
+tree's `draw()` (which the test's own copy of the seeded draw is held equal to), the animation log, and every RED a plant
+in the shipped tree. The look of the corner — the donuts, the coffee maker, the cups at both heights — and of the food
+thought is the operator's reading of the preview and of the sandbox, recorded on the cards, and no clause below
 asserts it.*
 
-- **Build:** replay the runs of `fx-snack` named below, and idle-trip, intern-trip, two-visitors and recall-mid-trip once
-  more under `prefers-reduced-motion: reduce`, collecting the animation log, the scene of every render and every
-  paint-only refresh, the desk models the frames carry, and the client's event log. **Reads:** **the harness**, the
-  **animation set**, the **elevator walk**, the **snack corner**, the **snack trip**.
-- **GREEN — § 12's figures:** the scene's constants for the window, the dwell's range and the two tiles' sizes are
-  § 12's *Snack window*, *Snack dwell* and *Snack tables*, and the spot offset and spacing the scene computes are
-  § 12's *Snack spot* and *Snack spacing* over `walkerSize()`, `INTERN_SIZE` and *Walker clearance*.
+- **Build:** replay the runs of `fx-snack` named below, and idle-trip, intern-trip, two-visitors, recall-mid-trip and
+  busy-trip once more under `prefers-reduced-motion: reduce`, collecting the animation log, the scene of every render
+  and every paint-only refresh, the desk models the frames carry, and the client's event log. **Reads:** **the
+  harness**, the **animation set**, the **elevator walk**, the **snack corner**, the **snack trip**.
+- **GREEN — § 12's figures:** the scene's constants for the gap's range, the anchor's day, the dwell's range and the
+  two tiles' sizes are § 12's *Snack gap*, *Snack anchor*, *Snack dwell* and *Snack tables*, the anchor's offset lies
+  under one minimum gap, and the spot offset and spacing the scene computes are § 12's *Snack spot* and *Snack spacing*
+  over `walkerSize()`, `INTERN_SIZE` and *Walker clearance*.
+- **GREEN — the food lines:** the list `server/public/js/floor/snack-lines.js` holds is the operator's — its length the
+  one the ruling of 2026-11-02 asks for, held in that one assertion and written nowhere else — every line distinct,
+  none empty, and neither line the operator removed among them.
+- **GREEN — the chain:** over sixty days round the fixtures' instant, for a seat's key and an intern's, every gap
+  between two breaks the scene derives — across each day's anchor too — lies in *Snack gap*; the scene's chain is the
+  one § 12's two rows re-derive; a page at the start of a day, in its middle and at its end reads exactly the breaks the
+  whole chain holds there; and next-break draws idle-trip's walker's following break, a *Snack gap* after idle-trip's
+  and in a later hour, on a page loaded an hour later.
 - **GREEN — the rows:** idle-trip enters A6 and A25 for `aimla-impl-2` on the snapshot, A25 under the key
   `aimla/aimla-impl-2~snack`, both against the snapshot object's `state_version`, and writes no `edge` row and no
-  `left` row through the trip; working-window enters A3 for `aimla-impl-1` and no A25, and no walker is drawn at any
-  frame; intern-trip enters A25 under `aimla/aimla-pm~snack-interns` on the flipping delta's render against that
-  delta's `state_version`, beside the seat's A3 and A23's exit; recall-mid-trip leaves A6 and A25 on the render that
-  applies `working` ((2a), the new object's version) and enters A3; leave-mid-trip leaves both and fires one A2;
-  intern-stop-mid-trip leaves `~snack-interns` and fires one A10; feed-dies-mid-trip and feed-down write no `left`
-  row for A25 (nothing ended the hold); stilled-mid-trip leaves A25 with `cause: stilled` and re-enters it at
-  `motion: false` on that render, as it does A6.
-- **GREEN — the trip:** idle-trip's effect for `aimla/aimla-impl-2` begins at the hour's seeded second —
-  `draw('aimla/aimla-impl-2', 'snack:' + H) mod 3600` re-drawn through the character tree's `draw()` — with the legs
-  `walk`, `stand`, `walk`, each starting where the one before ends: the first from the desk's anchor to the tall table's
-  spot 0 read off the render's own scene, in `⌈length ÷ walk speed⌉` frames at the tier `route()` reports; the
-  `stand` of `45 + draw(key, 'snack-dwell:' + H) mod 31` seconds at the loop rate, the walker at its standing frame;
-  the last back to the anchor; the desk draws the empty chair, the monitor off, the chip `idle`, no z's and every
-  other fact on every frame of the trip, and the paint-only refresh at the trip's end seats the sleeper; no frame
-  draws the walker and the sleeper at once.
-- **GREEN — who:** working-window and intern-old-reporter draw no walker at any frame; intern-trip's walker is the
-  intern at its chibi frame with no laptop, from its slot's foot to the low table's spot 0, its stool drawn empty
-  meanwhile and the seat's own character typing at its desk throughout.
+  `left` row through the trip; blocked-window enters A7 for `aimla-review` and no A25; busy-trip enters A3 and A25 for
+  `aimla-impl-1` on the snapshot and A4 on its delta, leaving no A25; wakes-mid-trip leaves A6 and enters A3 at its
+  delta's version with A25 held throughout; intern-trip enters both of `aimla-pm`'s A25 halves on the snapshot — its
+  intern reads `working` there — and keeps them through the flip, beside A23's exit and the seat's A3; recall-mid-trip
+  leaves A6 and A25 on the render that applies `blocked` ((2a), the new object's version) and enters A7;
+  leave-mid-trip leaves both and fires one A2; intern-stop-mid-trip leaves `~snack-interns` and fires one A10;
+  feed-dies-mid-trip and feed-down write no `left` row for A25 (nothing ended the hold); stilled-mid-trip leaves A25
+  with `cause: stilled` and re-enters it at `motion: false` on that render, as it does A6.
+- **GREEN — the trip:** idle-trip's effect for `aimla/aimla-impl-2` begins at its chain's next break after clock 0,
+  re-derived, carrying that break's line, with the legs `walk`, `stand`, `walk`, each starting where the one before
+  ends: the first from the desk's anchor to the tall table's spot 0 read off the render's own scene, in `⌈length ÷ walk
+  speed⌉` frames at the tier `route()` reports; the `stand` of the break's dwell at the loop rate, the walker at its
+  standing frame; the last back to the anchor; the desk draws the empty chair, the monitor off, the chip `idle`, no z's
+  and every other fact on every frame of the trip, the walker carries no food thought, and the paint-only refresh at
+  the trip's end seats the sleeper; no frame draws the walker and the sleeper at once.
+- **GREEN — the busy break:** busy-trip's walker carries its break's line — `snack-lines.js`'s entry at the break's
+  re-derived index — on every frame of its trip; its desk draws `working`, the monitor lit, the chip, the empty chair,
+  no character and no held render, and keeps its task bubble with no trail; the `working → working` delta at 35 s does
+  not cut the trip (one trip, one leg kind, drawn on that render), and the paint-only refresh at its end seats the
+  walker thinking (A4); wakes-mid-trip's walker carries no thought before its delta and its break's line from the
+  render that applies `working`, its trip uncut; intern-old-reporter's intern goes carrying its break's line;
+  intern-trip's idle intern carries none.
+- **GREEN — who:** blocked-window draws no walker at any frame; intern-trip's walker is the intern at its chibi frame
+  with no laptop, from its slot's foot to the low table's spot 0, its stool drawn empty meanwhile and the seat's own
+  character typing at its desk throughout.
 - **GREEN — the spots:** two-visitors draws the second visitor at spot 1 — `spotsNear()`'s from the tall table's spot
   0, at least § 12's *Snack spacing* from it — and its first at spot 0, neither moving when the other arrives or
   leaves; tall-and-low draws the agent at the tall table's spot 0 and the intern at the low table's, the two at least
   the tall table's spacing apart; past-the-last-spot draws exactly two visitors and no third walker, and the third
   walker's seat keeps its sleeper and writes no event-log line.
-- **GREEN — the interrupts:** recall-mid-trip's render that applies `working` draws the desk's `working` facts with
+- **GREEN — overlapping trips in start order:** two-visitors-late, a page loaded while both of two-visitors' walkers
+  are on their way, gives each the start and the spot two-visitors' continuous viewer gave it.
+- **GREEN — the interrupts:** recall-mid-trip's render that applies `blocked` draws the desk's `blocked` facts with
   its chair empty and the walker walking home from where it stood — `pointAt()`'s point for the trip at that render's
-  instant — to the desk's anchor, and the paint-only refresh at the walk's end draws the character seated and typing
-  (the operator's ruling on item 44 Q2); leave-mid-trip's A2 walk begins at
+  instant — to the desk's anchor, and the paint-only refresh at the walk's end draws the character seated with its
+  hand up (the operator's ruling on item 44 Q2); leave-mid-trip's A2 walk begins at
   `pointAt()`'s point for the trip at the applying render's instant — the spot, where the walker stood — and runs to
   the threshold, then its queue part, its seeded wait and its door, with no frame drawing the walker at the desk in
   between; intern-stop-mid-trip's A10 walk begins at the intern's point on its walk out, as item 16's turn-round
@@ -10449,15 +10558,15 @@ asserts it.*
 - **GREEN — the clock and the reload:** reload-mid-trip's fresh snapshot draws the walker standing at spot 0 at its
   first render, no walk from the desk, and its second viewer draws the same spot and the same return frame; the two
   replays of idle-trip on one timeline draw one trip.
-- **GREEN — the feed:** feed-down draws no walker through the window and after it, its sleeper's pulse running;
+- **GREEN — the feed:** feed-down draws no walker through the break and after it, its sleeper's pulse running;
   feed-dies-mid-trip finishes its `stand` and its walk home and draws no second trip.
 - **GREEN — reduced motion:** under `reduce` the runs enter and leave A25 at `motion: false`, no frame draws a walker
   for a trip, and the corner's two tiles are drawn.
-- **RED — the timer walk:** draw the trip whenever the window opens, whatever the held state → working-window walks
-  a `working` seat to the table. Caught by: working-window. It is the walk note's own defect class — motion with no
+- **RED — the timer walk:** draw the trip whenever the break comes, whatever the held state → blocked-window walks a
+  `blocked` seat to the table. Caught by: blocked-window. It is the walk note's own defect class — motion with no
   delivered field behind it — and the one § 6.1 was written against.
-- **Second RED — the re-roll:** draw the window's second from `Math.random` or the render instant → reload-mid-trip's
-  two viewers disagree on the walker's frame, and idle-trip's two replays draw two trips. Caught by: reload-mid-trip.
+- **Second RED — the re-roll:** draw a break's gap from `Math.random` → reload-mid-trip's two viewers disagree on the
+  walker's frame, and idle-trip's two replays draw two trips. Caught by: reload-mid-trip.
 - **Third RED — one point:** place every visitor at spot 0 → two-visitors' two agents stand on one point. Caught by:
   two-visitors.
 - **Fourth RED — the jump home:** start the A2 walk from the desk's anchor → leave-mid-trip's walker is drawn at the
@@ -10468,18 +10577,28 @@ asserts it.*
   no-corner walks to a corner the map does not place. Caught by: no-corner.
 - **Seventh RED — the episode on the desk's key:** hold A25 under the desk's own key → idle-trip's A6 never enters,
   or A25 ends it on every render. Caught by: idle-trip's rows (and AT-D3-1's instrument half).
-- **Eighth RED — the z's over the empty chair:** keep the sleeper's z's on the desk while the walker is away →
-  idle-trip's desk draws three z's over an empty chair. Caught by: idle-trip.
+- **Eighth RED — the z's over the empty chair:** keep the sleeper on the desk while the walker is away → idle-trip's
+  desk draws its sleeper under its own walker. Caught by: idle-trip.
 - **Ninth RED — an absent field read as idle:** treat an element with no `subagent.activity` behind it — under a
   reporter too old to send one, its seat badged `update_required` and the element at D2's `working` default — as
-  idle → intern-old-reporter walks. Caught by: intern-old-reporter.
+  idle → intern-old-reporter's intern goes thinking of nothing. Caught by: intern-old-reporter.
 - **Tenth RED — the third visitor squeezed in:** overlap past the last spot as the queue does on the threshold →
   past-the-last-spot draws three walkers at two spots. Caught by: past-the-last-spot.
-- **Eleventh RED — the recall cut home:** end the trip on the `working` delta and draw the character at its desk at
-  once → recall-mid-trip's walker vanishes from the table on the render that applies `working`. Caught by:
+- **Eleventh RED — the recall cut home:** end the trip on the `blocked` delta and draw the character at its desk at
+  once → recall-mid-trip's walker vanishes from the table on the render that applies `blocked`. Caught by:
   recall-mid-trip. Until the operator's ruling on item 44 Q2 (*"Walk back"*, 2026-11-02) this RED was the walk home,
   which is now the GREEN.
-- **Discriminating control:** working-window and `aimla-review` (`blocked`) on every run — no A25, no walker — so
+- **Twelfth RED — a food thought on an idle walker:** draw the thought whatever the walker's state → idle-trip's idle
+  walker thinks of food. Caught by: idle-trip.
+- **Thirteenth RED — the desk's facts leave with its walker:** draw the away desk as an inbound one → busy-trip's desk
+  loses its task bubble while its walker is away. Caught by: busy-trip.
+- **Fourteenth RED — working → working cuts the trip:** let only the typing pose hold the trip → busy-trip's walker
+  walks home when its call closes. Caught by: busy-trip.
+- **Fifteenth RED — the seam:** run the chain past the next day's anchor with no gap kept before it → a gap at the
+  anchor lies outside *Snack gap*. Caught by: the chain.
+- **Sixteenth RED — the walkers' order:** decide the breaks due on one pass in the walkers' desk order → two-visitors-late
+  seats its walkers otherwise than two-visitors' continuous viewer. Caught by: two-visitors-late.
+- **Discriminating control:** blocked-window and `aimla-review` (`blocked`) on every run — no A25, no walker — so
   the test measures the trip and not the floor.
 
 ---
@@ -10611,11 +10730,13 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | Client event-log length | **200 lines** | **Chosen** — enough to hold a reconnect storm's worth of membership and resync lines; it is a narration of the client, not a record, and D2's own surfaces hold the durable history. **What re-derives it:** the line count one measured reconnect storm writes — every line has a named producer in [§ 5.5](#55-the-clients-own-narration), so it is measurable as soon as a client exists, and a storm that fills the log is the trigger | [§ 4.1](#41-the-lobby--the-building-summary), [§ 5.5](#55-the-clients-own-narration) |
 | Remembered coordination post identities | **1,000** `post_ref`s | **Chosen** — the figure the retired envelope hold used (card#7341 step 8, [§ 14](#14-open-questions-for-the-review-loop) item 25), kept for the one job that survives card#12239 r2's ruling: a repeat of a post the client already drew fires no edge. Five times the event log's 200 lines, so a redelivery inside GitHub's 3-day reach on a day of ~100 posts is still remembered. **What re-derives it:** the post count a measured busy day delivers to one open page | [§ 5.7](#57-the-coordination-thread-line) |
 | A page's animation-log retention | **2,000 rows** | **Chosen** — a ceiling on what the page holds rather than a sizing for a reader, because no on-page reader of the log exists yet: the floor page writes an A14 and an A17 row on every `feed.heartbeat` ([§ 6.2](#62-the-animation-table--the-closed-set)) and the lobby an A17 row (its sky, card#7343), so an unbounded log grows at up to twice the heartbeat rate for as long as a page is open. One figure for both pages, applied by `wire/live-page.js`. It binds the pages alone — the harness and every acceptance test construct the log with no bound ([§ 14](#14-open-questions-for-the-review-loop) item 26). **What re-derives it:** the rows the drill-down ([Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 10), the first on-page reader of the log, actually needs to display | [§ 11](#11-acceptance-tests) |
-| **Snack window** | **1** trip per hour, beginning `draw(key, 'snack:' + H) mod 3600` s into hour `H` | **Chosen** (card#12749; the operator's *"around once every hour"*) — one window per walker per hour of the corrected server clock (`H = ⌊t ÷ 3,600⌋`), its second drawn through `resources/characters/seed.js`'s one seeded draw over the walker's key and the hour index, so every viewer and every reload see one trip at one second and no `Math.random` or render instant reaches it; a walker not idle at that second takes no trip that hour, and one still on a trip skips the next hour's window. It carries no fact: a cadence that varied with anything a seat does would be [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s forbidden quantity. **What re-derives it:** the operator's reading of how often the floor moves on the sandbox | [§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749) |
-| **Snack dwell** | **45 … 75 s** | **Chosen** (card#12749; the operator's *"roughly a minute"*) — `45 + draw(key, 'snack-dwell:' + H) mod 31` seconds, the same seeded draw under its own field, uniform over the range, at the loop rate; it carries no fact. **What re-derives it:** the operator's reading of the first drawn trip | [§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749) |
-| **Snack tables** | **72 × 96** and **48 × 64** px | **Chosen** (card#12749) — the two marker tiles' image sizes, `snack-table` and `snack-table-low`: a table waist-high to the *Character rect*'s character and one waist-high to the *Intern frame*'s intern, each with room above for the coffee maker; the tile's rect is the obstacle the lattice blocks, so the sizes bound what a visitor keeps clear of. **What re-derives them:** the operator's reading of the preview, and a re-sized character | [§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749) |
-| **Snack spot** | half the visitor's width beside the table's front corner, *Walker clearance*'s depth plus **1** px below its foot | **Derived** (card#12749) — spot 0 at the table's front-left corner, the mirror where that is blocked, snapped to the lattice cell on the visitor's own body's lattice, so the body stands clear of the table and the table stays in view; `floor/route.js`'s `spotsNear()` from it at *Snack spacing* for the rest | [§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749) |
-| **Snack spacing** | the visitor's drawn width plus the `clear` tier's side margin, centre to centre | **Derived** (card#12749) — *Queue spacing*'s formula over the visitor's own body: `walkerSize()` plus *Walker clearance*'s margin at the tall table, `INTERN_SIZE` plus it at the low one; two tables' spot 0s are kept at least the tall table's spacing apart by the author, and on the shipped default by the gate row 31 adds to G-scenery | [§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749) |
+| **Snack gap** | **3,600 … 7,200 s** between one break's start and the next's | **Chosen** (card#12785; the operator's *"an agent should go to the snack table at a random time between 1-2 hours since their last snack break"*, 2026-11-02) — each walker's next break begins `3600 + draw(key, 'snack-gap:' + s) mod (hi − 3600 + 1)` seconds after its previous break began at `s`, through `resources/characters/seed.js`'s one seeded draw over the walker's key and that break's second, `hi` being 7,200 or less only where the day's last steps must land a whole gap before the next day's anchor; so every gap, across the anchor too, lies in the range, and no `Math.random` or render instant reaches it. It replaced card#12749's *Snack window* (one trip per hour, seeded per key and hour) | [§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785) |
+| **Snack anchor** | one break a day, at `day × 86,400 + draw(key, 'snack-anchor:' + day) mod 3,600` s | **Chosen** (card#12785) — the chain restarts from this break each UTC day of the corrected server clock (`day = ⌊t ÷ 86,400⌋`), its offset seeded under one minimum gap so a floor's walkers do not all break at midnight; a page derives any instant's breaks from at most the previous day's anchor — one draw per break and two anchors a day — and never replays a walker's history. **What re-derives it:** a change to *Snack gap*'s minimum, which the offset stays under | [§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785) |
+| **Snack dwell** | **45 … 75 s** | **Chosen** (card#12749; the operator's *"roughly a minute"*) — `45 + draw(key, 'snack-dwell:' + s) mod 31` seconds for the break beginning at `s` (card#12785; per hour until then), the same seeded draw under its own field, uniform over the range, at the loop rate; it carries no fact. **What re-derives it:** the operator's reading of the first drawn trip | [§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785) |
+| **Snack tables** | **72 × 96** and **48 × 64** px | **Chosen** (card#12749) — the two marker tiles' image sizes, `snack-table` and `snack-table-low`: a table waist-high to the *Character rect*'s character and one waist-high to the *Intern frame*'s intern, each with room above for the coffee maker; the tile's rect is the obstacle the lattice blocks, so the sizes bound what a visitor keeps clear of. **What re-derives them:** the operator's reading of the preview, and a re-sized character | [§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785) |
+| **Snack spot** | half the visitor's width beside the table's front corner, *Walker clearance*'s depth plus **1** px below its foot | **Derived** (card#12749) — spot 0 at the table's front-left corner, the mirror where that is blocked, snapped to the lattice cell on the visitor's own body's lattice, so the body stands clear of the table and the table stays in view; `floor/route.js`'s `spotsNear()` from it at *Snack spacing* for the rest | [§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785) |
+| **Snack spacing** | the visitor's drawn width plus the `clear` tier's side margin, centre to centre | **Derived** (card#12749) — *Queue spacing*'s formula over the visitor's own body: `walkerSize()` plus *Walker clearance*'s margin at the tall table, `INTERN_SIZE` plus it at the low one; two tables' spot 0s are kept at least the tall table's spacing apart by the author, and on the shipped default by the gate row 31 adds to G-scenery | [§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785) |
+| **Snack lines** | the list `server/public/js/floor/snack-lines.js` holds, one per break | **Chosen** (card#12785) — the operator's request (*"Come up with 25 different food thought bubbles, some practical some funny"*) and ruling on the draft (2026-11-02, *"Remove #1 and #2 thoughts and replace with your own. Generate more so that there are a total of 50 to randomly choose from"*), verbatim from the card's comment; a busy walker's break shows line `draw(key, 'snack-line:' + s) mod` the list's length. The module is the list's one home and no figure for its length is written here: AT-D3-32 reads the list and holds its length to the operator's ruling in one assertion | [§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785) |
 
 **The 1,280 × 800 reference viewport is Chosen and rests on no criterion, by design:** it is the size
 the camera's fit is measured at, and since the operator's ruling of 2026-10-01 (card#7341) it gates
@@ -10648,7 +10769,7 @@ belongs in its own round.
 | **G13 an empty-desk Never cell, scoped** | the comment block at G13 in `tools/design/verify-floor.py`, which states what it reads, what it reds on and what it cannot do | **tool-checked** |
 | **G14 the lobby label's one statement** | [§ 4.1](#41-the-lobby--the-building-summary)'s plate label, two legs: the label-contract vocabulary `verify-floor.py`'s G14 names, found anywhere in this document outside § 4.1's claim region (its lead-in through its last numbered claim) or in a `card#7343` bullet of the CHANGELOG, reds; and every numbered claim of § 4.1 must end with the check that holds it or a declaration that none does, each test method it names must exist in the file it names, and each contrast-tool control it names must exist in that tool | **tool-checked** — never whether a claim is true, or whether the check it names asserts it, which is a reviewer's; nor a paraphrase that uses no listed term, an unnumbered bullet inside the claim region, or code and test docblocks, `tools/design/README.md` and the tool headers |
 | **G-walls the PM office walls** | [§ 10.4](#104-the-art-direction-as-a-specification)'s projection rule, item 4, on the shipped default, two legs: every wall cell — a cell whose tile declares the kind `wall` — outside every `desks` object (half-open rects, G8's own test); and the wall-strip tile (tile 2 of `floor-plane.tsx`) declaring `kind: wall`, its marker parsed as well-formed XML. Until row 22 (card#11046) a leg held the bridge kit's elevation-only tiles off the map, which became G-scenery's first, and a leg held the strip's fill equal to `--house-trim`, which retired when the theme began drawing the walls. Each leg has a control that reds rather than reporting clean over an empty population. **Not checked:** an authored map, where a wall runs, the doorway's width, and how the walls look | **tool-checked** on the shipped default |
-| **G-scenery the shipped default's standing pieces** (card#11046, built at row 22) | on the shipped default: every tile names a tileset the repository ships and a tile that declares a kind in the theme registry's set; every standing kind's cell rect — bottom-aligned, as drawn — lies inside the grid and outside every `desks` object (half-open, G8's own test). **Leg 3** (card#12749, [§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749) item 3): one `snack-table` and one `snack-table-low` are placed; each one's spot 0 — *Snack spot*'s point, snapped to its cell's centre, or its mirror — is open at the `clear` tier for its visitor's body (*Character rect*'s width at the tall table, the intern's stool rect's at the low one, *Walker clearance*'s margins), and the two spot 0s lie at least the tall table's *Snack spacing* apart; the route to either spot and the spots past spot 0 are the scene's, held by AT-D3-32. **Not checked:** where an `accent` is painted, which is the author's. Each leg with a control that reds rather than reporting clean over an empty population; `tools/design/verify-design-docs.selftest.py` plants a standing piece inside a slot and watches it red | **tool-checked** on the shipped default |
+| **G-scenery the shipped default's standing pieces** (card#11046, built at row 22) | on the shipped default: every tile names a tileset the repository ships and a tile that declares a kind in the theme registry's set; every standing kind's cell rect — bottom-aligned, as drawn — lies inside the grid and outside every `desks` object (half-open, G8's own test). **Leg 3** (card#12749, [§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785) item 3): one `snack-table` and one `snack-table-low` are placed; each one's spot 0 — *Snack spot*'s point, snapped to its cell's centre, or its mirror — is open at the `clear` tier for its visitor's body (*Character rect*'s width at the tall table, the intern's stool rect's at the low one, *Walker clearance*'s margins), and the two spot 0s lie at least the tall table's *Snack spacing* apart; the route to either spot and the spots past spot 0 are the scene's, held by AT-D3-32. **Not checked:** where an `accent` is painted, which is the author's. Each leg with a control that reds rather than reporting clean over an empty population; `tools/design/verify-design-docs.selftest.py` plants a standing piece inside a slot and watches it red | **tool-checked** on the shipped default |
 | Whether a rendering is *good* | — | **hand-verified**, and it is a review question this document cannot mechanise: the tool checks that every rendered fact has a field and every **claim-bearing** animation has an event, never that the floor is legible — and **never** that decorative motion ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)) stays inside its bound, which no gate reaches at all |
 | Whether a **Cited** number matches what D2 says | — | **hand-verified**: the tool checks the number's presence at its D3 home, not its truth at D2's |
 
@@ -10775,7 +10896,8 @@ review can reverse it deliberately rather than discover it later.
 | 99 | **Decided 2026-10-31 — the operator's request on card#12705, verbatim: *"The current random wait time at the elevator is too long. Reduce to a random wait between 0-30 seconds. When agents or subagents wait at the elevator to leave a floor, they should not overlap each other in the same exact location when there are multiple agents waiting. They should keep some space between each other. When the elevator door opens, all agents and subagents should go into the elevator (keeping some space between each other when possible) one at a time before the door closes. Also, the elevator door should open and close slower (about 50% current speed)"* — departing walkers QUEUE at the elevator: each waits at a spaced spot of its own, every one waiting boards in turn when the leaves open for any walker, and the leaves close after the last; the wait is `0 … 30 s` and the leaves open and close over twice their frames** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note items 5, 9, 10 and 14; [§ 12](#12-every-number-and-where-it-comes-from)'s *Elevator wait*, *Elevator leaves* and *Queue spacing*). It revises [row 77](#13-decisions-taken-revisable-at-review)'s *no queue at the door* and its refusal of *landing spots at the door*. **Seat rulings inside it:** the walkers waiting when the leaves open board nearest the door first (by spot, numbered outward from the threshold), and the threshold is a waiting spot only while nobody else is still to pass through it; a departure that reaches its spot while the leaves are still open joins the boarding at the back, in arrival order, ties by key; an arrival's opening boards the waiting too; a spot, once taken, is kept | each walker on its own draw at one point, as before; a reservation schedule that spaces walkers on their way as well as at the door | it is the operator's ask; spots read off the walkable model keep every waiting walker on open floor, and the batch is a function of the walks in flight and their starts, so a replay draws one queue | two viewers whose renders land a frame apart can disagree on a walker reaching its spot within a frame of the leaves opening; walkers overlap inside the cab while the leaves stay open; a floor with fewer open spots than walkers waits the rest on the threshold |
 | 100 | **Decided 2026-11-01 — the operator's request on card#12744, verbatim: *"If there are multiple agents and subagents entering the elevator, stagger them inside the elevator so that they aren't all at one point"* — riders who share the cab stand apart: each walk with a `cab` leg stands at a rider spot of its own (§ 12's *Cab spots*), the lowest free over its whole cab leg, the threshold for a lone rider, and keeps it once its cab leg has begun** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note items 9 and 10). It closes [row 99](#13-decisions-taken-revisable-at-review)'s residual *walkers overlap inside the cab while the leaves stay open*. **Seat rulings inside it:** the first to board takes the threshold and each later boarder a spot further in; arrivals revealed together take spots by key; the step between the threshold and a spot glides inside the cab over the cab leg's first or last step frame rather than being covered; the timing of every walk is left as item 9 draws it | a rider re-timed to step in only once the one before had moved aside; riders drawn smaller with depth | it is the operator's ask, and only where a cab leg stands moves, so the queue's boarding, its committed past and every door span are unchanged | a seventh rider at once shares a point of the inner rows; a boarder's one-frame step passes the first boarder on the threshold; arrivals revealed together still step out onto the threshold together, item 9's fixed door frames being theirs |
 | 101 | **Decided 2026-11-01 — the operator's request on card#12747, verbatim: *"When agents go to the elevator, they should go to the buttons first (pause to press the button), and then move to the waiting queue. Subagents should do the same. There also needs to be a set of smaller elevator buttons below the main ones at the subagent's height so that they can reach their buttons."* — every departure walks first to its call plate and presses it, then walks to its spot in the queue: seats the main plate, interns a smaller low plate under it at their height; walkers press in turn; the seeded wait is counted from the press** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note items 5, 9, 13, 14 and 16; [§ 12](#12-every-number-and-where-it-comes-from)'s *Call plates* and *Call press*). **Seat rulings inside it:** several walkers reaching the plates close together press IN TURN, each waiting where it set off until the one before has pressed and walked a walker's width away, its turn given on the render that admits it and never changed; the two plates are one place for that; a presser stands under its plate, or beside it as near as keeps it clear of a seat on the threshold; queue spots keep the spacing from both standing points; the wait is the elevator's the press called, so it runs from the press and its walk to its spot is part of it; item 16's turn-round in the walk and seat legs presses too; a desk that cannot reach a plate walks straight to the threshold, as before; no press cue is drawn on the plate | spaced pressing points beside the plates; a short line of walkers standing by the plates; the wait counted from reaching the spot, as before | a plate is pressed from in front of it, and a line by the plates would stand on the floor the queue's spots and its boarders use; a turn given at admission re-times no drawn frame, so card#12705's committed past and boarding and card#12744's cab spots are untouched | a walker waiting its turn stands beside its empty chair or at its stool, so on a floor where many leave at once the last can set off up to a press and a gap per walker ahead of it later; two viewers whose renders land a frame apart can give two walkers their turns in two orders; the buttons do not light on a press; the lobby's drawn elevator keeps its one plate |
-| 102 | **Decided 2026-11-02 and built 2026-11-02 — the operator's request on card#12749 (2026-11-01), verbatim: *"Propose how to add a snack area with donuts and a coffee maker & cups on each floor. There should be two sets, one at agent height one at subagent height. All agents and subagents should randomly go to the snack area around once every hour, stop at their donuts and coffee table for roughly a minute, before going back to work."*, and the operator's ruling of 2026-11-02 on the proposal, *"1. A, idle only"* — a snack corner of two map-placed standing kinds, and a seeded hourly trip for idle seats and idle interns only, as [§ 6.2](#62-the-animation-table--the-closed-set)'s `held` row A25** ([§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749); [§ 12](#12-every-number-and-where-it-comes-from)'s *Snack window*, *Snack dwell*, *Snack tables*, *Snack spot* and *Snack spacing*; built at Appendix B row 31 after the operator's approval of the design and its preview, and the operator's answers of 2026-11-02 to § 14 item 44, verbatim on the card: *"1. A"*, *"2. Walk back"*, *"3. Do as you recommend"*, *"4. Do as you recommend"*, *"5. Yes, it goes"*). **Seat rulings inside it:** the trip is a `held` ROW and not a scoped exception, because it is claim-bearing by all three of § 6.3's tests and the ride's exception rests on claiming nothing; its episodes ride two derived keys, `~snack` and `~snack-interns`, beside A6 and A23; the corner is painted on the map as two tiles of two new kinds and never found by the client; spot 0 is the table's front-left corner on the visitor's own lattice and the rest are `spotsNear()`'s; a visitor past the last spot takes no trip rather than overlapping; the walker visits the nearest table of its height on its floor; a trip starts only while the strip reads *live*, and one in flight on a dead feed finishes (the operator's Q3); the window is seeded per key AND hour (Q4); an idle intern of a working seat takes its trip (Q5); **the operator's ruling on Q2: a recall to work WALKS the character home along its route, the desk rendering its new state at once** — the design recommended the cut — while an A2 or an A10 that lands mid-trip walks from where the character stands; the shipped default is re-authored to make room, Option A (the operator's Q1) | a scoped exception beside the ride's (no row, no log, § 6.3); an `edge` row pair with a clock for a cause; the trip folded into A6's own form, with no row for the interns' half; the corner placed by the scene on whatever open floor each map leaves; the cut home on the recall, which the design recommended and the operator declined; a trip cut off at F1's 45 s verdict; the default left without a corner until an author paints one | the operator asked for it and ruled it idle-only, which is a delivered field, and a motion a delivered field permits for exactly as long as it holds is what `held` means; a row keeps § 6.2 closed where an exception would open it for a motion that claims something; the map is the one home of what stands where (§ 10.6 item 7), and the gates and the lattice reach a tile with no new clause; the queue's spots and committed past are reused rather than re-minted | two held rows on one seat enter and leave together under one field; an empty chair under an `idle` chip is a new render, kept honest by the chip, the lighting and the walker on the floor; on a recall the desk reads its new state with its chair empty for the length of the walk home, as under an A1 arrival; the log records that motion was permitted, never that a trip was drawn; the default's re-lay costs about 6 % at a width-bound fit under Option A, or moves the tables to the front edge under B; two viewers whose deltas land a frame apart can seat a third visitor differently; an in-flight trip walks home for up to two minutes on a feed already declared down |
+| 102 | **Decided 2026-11-02 and built 2026-11-02; its *idle only*, its hourly window (Q4) and its recall to `working` are superseded by row 103 (card#12785) — the operator's request on card#12749 (2026-11-01), verbatim: *"Propose how to add a snack area with donuts and a coffee maker & cups on each floor. There should be two sets, one at agent height one at subagent height. All agents and subagents should randomly go to the snack area around once every hour, stop at their donuts and coffee table for roughly a minute, before going back to work."*, and the operator's ruling of 2026-11-02 on the proposal, *"1. A, idle only"* — a snack corner of two map-placed standing kinds, and a seeded hourly trip for idle seats and idle interns only, as [§ 6.2](#62-the-animation-table--the-closed-set)'s `held` row A25** ([§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785); [§ 12](#12-every-number-and-where-it-comes-from)'s *Snack window*, *Snack dwell*, *Snack tables*, *Snack spot* and *Snack spacing*; built at Appendix B row 31 after the operator's approval of the design and its preview, and the operator's answers of 2026-11-02 to § 14 item 44, verbatim on the card: *"1. A"*, *"2. Walk back"*, *"3. Do as you recommend"*, *"4. Do as you recommend"*, *"5. Yes, it goes"*). **Seat rulings inside it:** the trip is a `held` ROW and not a scoped exception, because it is claim-bearing by all three of § 6.3's tests and the ride's exception rests on claiming nothing; its episodes ride two derived keys, `~snack` and `~snack-interns`, beside A6 and A23; the corner is painted on the map as two tiles of two new kinds and never found by the client; spot 0 is the table's front-left corner on the visitor's own lattice and the rest are `spotsNear()`'s; a visitor past the last spot takes no trip rather than overlapping; the walker visits the nearest table of its height on its floor; a trip starts only while the strip reads *live*, and one in flight on a dead feed finishes (the operator's Q3); the window is seeded per key AND hour (Q4); an idle intern of a working seat takes its trip (Q5); **the operator's ruling on Q2: a recall to work WALKS the character home along its route, the desk rendering its new state at once** — the design recommended the cut — while an A2 or an A10 that lands mid-trip walks from where the character stands; the shipped default is re-authored to make room, Option A (the operator's Q1) | a scoped exception beside the ride's (no row, no log, § 6.3); an `edge` row pair with a clock for a cause; the trip folded into A6's own form, with no row for the interns' half; the corner placed by the scene on whatever open floor each map leaves; the cut home on the recall, which the design recommended and the operator declined; a trip cut off at F1's 45 s verdict; the default left without a corner until an author paints one | the operator asked for it and ruled it idle-only, which is a delivered field, and a motion a delivered field permits for exactly as long as it holds is what `held` means; a row keeps § 6.2 closed where an exception would open it for a motion that claims something; the map is the one home of what stands where (§ 10.6 item 7), and the gates and the lattice reach a tile with no new clause; the queue's spots and committed past are reused rather than re-minted | two held rows on one seat enter and leave together under one field; an empty chair under an `idle` chip is a new render, kept honest by the chip, the lighting and the walker on the floor; on a recall the desk reads its new state with its chair empty for the length of the walk home, as under an A1 arrival; the log records that motion was permitted, never that a trip was drawn; the default's re-lay costs about 6 % at a width-bound fit under Option A, or moves the tables to the front edge under B; two viewers whose deltas land a frame apart can seat a third visitor differently; an in-flight trip walks home for up to two minutes on a feed already declared down |
+| 103 | **Decided and built 2026-11-02 — the operator's informed reversal of row 102's *idle only*, on card#12785, verbatim: *"I changed my mind about when an agent/subagent can go to the snack bar. Previously I said only when idle, but I want all agents and subagents to be able to go at random even work working. If they go when busy, their thought bubble should have a witty comment relating to food […] As for timing, an agent should go to the snack table at a random time between 1-2 hours since their last snack break"*, and on the lines, *"Remove #1 and #2 thoughts and replace with your own. Generate more so that there are a total of 50 to randomly choose from"* — a `working` seat or intern takes snack breaks too, on a seeded chain one to two hours apart, a busy walker carrying a food thought, its desk keeping every fact at the desk** ([§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785); [§ 6.2](#62-the-animation-table--the-closed-set)'s A25 row; [§ 5.4](#54-what-is-never-rendered)'s recorded exception for the line; § 12's *Snack gap*, *Snack anchor* and *Snack lines*; built at Appendix B row 32). **Seat rulings inside it:** A25 is held by `render_state ∈ {idle, working}` and `activity_state ∈ {idle, working}`, one list in code (`SNACK_HELD`); only a change out of both recalls a walker home — `blocked` (an attention request, the seat waiting on its human), `stalled`, `unknown`, `catching_up` — while `idle ↔ working` and working-to-working changes keep the trip; the chain restarts from a seeded anchor break in each UTC day's first hour, and the day's last steps are narrowed so every gap, across the anchor too, stays in the range; the dwell and the line are seeded per break; the food thought is the task bubble's form without its source line, in italic, on the walker, read off the walker's state each render; the away desk keeps its task bubble with no trail; breaks due on one pass are decided in start-second order, then by key (the card#12749 review's N1) | keep idle-only (the operator's choice reversed it); one hourly window kept and the gap applied on top (two clocks for one schedule); a chain from one fixed epoch (a page replays every break since it); the gap measured from a break's END (a dwell-dependent schedule the operator did not ask for); the food line on the desk's bubble (one fact drawn twice, the task overwritten); the desk's bubble carried by the walker (the card leaves the desk) | the operator asked for it, weighing the honesty argument row 102 rested on, and the desk keeping its working facts is what keeps the render honest; a held row widened by one value is the same row, not a new class; a daily anchor bounds a page's derivation to a day and an hour whatever the time it loads; the line is no fact, so a fixed list and a seeded pick are all it needs, and § 5.4 says so by name rather than by a reading | a desk reads `working` with its chair empty for a minute or two every one to two hours — the cost the operator chose; the day's last one or two gaps are narrowed rather than uniform; a line could be read as a status by a viewer who never opens the desk, which the desk's kept bubble and chip answer; two viewers whose deltas land a frame apart can still seat a third visitor differently (row 102's residual) |
 
 ---
 
@@ -12038,7 +12160,7 @@ reason to leave two readings live.
       if that counter rises on real seats, the next capture is a same-type parallel dispatch on that
       build, and the design owes a rule then.
 44. **✅ CLOSED 2026-11-02 — the snack corner's questions (card#12749;
-    [§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749), [§ 13](#13-decisions-taken-revisable-at-review)
+    [§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785), [§ 13](#13-decisions-taken-revisable-at-review)
     row 102), answered by the operator on 2026-11-02, verbatim on the card: *"1. A"*, *"2. Walk back"*, *"3. Do as you
     recommend"*, *"4. Do as you recommend"*, *"5. Yes, it goes"* — Q2 against this seat's recommendation, the rest with
     it — and built at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 31.** Each question stands as
@@ -12053,7 +12175,7 @@ reason to leave two readings live.
       beside the nook reads as a snack corner; B reads as tables along the room's front; C leaves the request unmet
       on the one floor every unauthored room renders.
     - **Q2 — answered *"Walk back"*, against the recommendation below: a seat recalled to `working` mid-trip WALKS
-      home along its route, the desk rendering its new state at once ([§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749)
+      home along its route, the desk rendering its new state at once ([§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785)
       item 5). As it was put: a seat recalled to `working` mid-trip is CUT home, not walked.** Context: when the delta making it
       `working` lands, A3's typing holds at the desk at once and no row of the closed set is a walk home (§ 6.6 item
       5). *Example (designed):* a character standing at the donuts vanishes on the delta and is seated typing on
@@ -12069,7 +12191,7 @@ reason to leave two readings live.
       verdict, as a stilled floor cuts a walk. **Recommendation: as designed** — the walk home ends the claim and
       is bounded; the cut is a jump on a floor whose other held loops did not stop.
     - **Q4 — answered *"Do as you recommend"*: the window is seeded per key AND hour, so a walker's minute differs
-      every hour.** *Example
+      every hour.** *Superseded 2026-11-02 by card#12785 ([§ 13](#13-decisions-taken-revisable-at-review) row 103): the breaks are now a chain one to two hours apart, seeded per key and break; Q5's *idle intern* likewise now reads *idle or working intern*.* *Example
       (designed):* `aimla-impl-2` visits at :17 past one hour and :48 past the next, every viewer agreeing.
       *Alternative:* per key alone — the same minute every hour, a habit. **Recommendation: per key and hour**,
       the operator's *randomly*; both are one seeded draw and the cost of changing is one field name.
@@ -12228,7 +12350,8 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 | 28 | card#12705 — the **elevator queue** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note items 5, 9, 10 and 14; [§ 13](#13-decisions-taken-revisable-at-review) row 99): `floor/route.js`'s `spotsNear()` (the spaced spots by the threshold, each with its path back, over the one step rule and heap `search()` uses); `floor/scene.js`'s `queueSpacing()`, `queueShape()`, `loneTiming()`, `departureLegs()` and `departing()` (every departure's queue part — A2's, an intern's walk out and turn-round — drawn alone at the threshold) and the scene's `queue_spot`; `floor/in-flight.js`'s `#board()` (each departure's spot, and every departure in flight re-timed together on each render: the batch the leaves open for, boarding one at a time, the close after the last); `floor/painter.js` drawing a walker with more than one walk leg, one glide per leg; § 12's *Elevator wait* `0 … 30 s`, *Elevator leaves* `4 / 1 / 4` and *Queue spacing*; the guarded A2 and A10 Animation cells in `wire/animation-set.js` re-synced | `Tests\Feature\Floor\ASeatLeavesByTheElevatorAndReturnsByItTest` (AT-D3-23, its *queue* GREENs and REDs through `ChecksTheElevatorQueue`) and `Tests\Feature\Floor\AnInternRidesTheElevatorTest` (AT-D3-31's two-interns); `tools/design/floor-ride.browser.mjs`'s `walker-glide` and `walker-crossing` rows by hand |
 | 29 | card#12744 — **riders stand apart in the cab** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note items 9 and 10; [§ 13](#13-decisions-taken-revisable-at-review) row 100): `floor/scene.js`'s `CAB_SPOTS`, `cabSpot()` and `seatInCab()` (a walk's cab leg stood at a rider spot, with its step from or to the threshold); `floor/route.js`'s `cabStep()`, read by `pointAt()`; `floor/in-flight.js`'s `#seat()` (every walk in flight with a cab leg given the lowest spot free over its cab leg, kept once that leg has begun, and an item 16 turn-round in the cab keeping its arrival's); `floor/painter.js` drawing the rider at its spot, its step as a glide, deepest first; § 12's *Cab spots*; the guarded A2 and A10 Animation cells in `wire/animation-set.js` re-synced | `Tests\Feature\Floor\ASeatLeavesByTheElevatorAndReturnsByItTest` (AT-D3-23's *the cab* GREEN and REDs through `ChecksTheElevatorQueue`'s `cabDefects()`) and `Tests\Feature\Floor\AnInternRidesTheElevatorTest` (AT-D3-31's cab GREENs over two-interns, middle-leaves, queue-gain-after-boarding, two-stop-mid-step and gain-and-loss-one-render) |
 | 30 | card#12747 — **the call plates** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note items 5, 9, 13, 14 and 16; [§ 13](#13-decisions-taken-revisable-at-review) row 101): `floor/scene.js`'s `CALL_PLATES` and `CALL_PRESS_FRAMES`, the band's `elevator.calls`, `bandDocuments()` handing the plates to the theme, `callPoint()`, `wayOut()` (every departure's walk to its plate, its press and its route on, and the walk straight to the threshold where a plate is out of reach), `queueLater()`, `waitFrom()` (the wait counted from the press) and the queue spots kept clear of the standing points; `floor/route.js`'s `spotsNear()` taking points to keep clear of; `floor/in-flight.js`'s `#call()` (each departure's turn at the plates) and the clear-of rule it shares with the birdhouse's ledge; the house theme's `elevatorSurround()` drawing both plates at the scene's rects; § 12's *Call plates* and *Call press*, *Elevator wait* and *Queue spacing* revised; the guarded A2 and A10 Animation cells in `wire/animation-set.js` re-synced | `Tests\Feature\Floor\ASeatLeavesByTheElevatorAndReturnsByItTest` (AT-D3-23's *call plates* GREEN and REDs through `ChecksTheElevatorQueue`'s `callDefects()`) and `Tests\Feature\Floor\AnInternRidesTheElevatorTest` (AT-D3-31's low-plate GREEN and REDs); `tools/floor-themes/selftest.mjs` over the theme's surround |
-| 31 | card#12749 — after the operator's approval of [§ 6.6](#66-the-snack-corner-and-the-hourly-trip--a25-card12749) and its preview, and the answer to [§ 14](#14-open-questions-for-the-review-loop) item 44 Q1: the **snack corner** — the two kinds `snack-table` and `snack-table-low` in `resources/floor/themes/index.js`'s `KINDS`, their marker tiles in `resources/floor/tiles/floor-plane.tsx` with the two marker SVGs and their `docs/ATTRIBUTION.md` rows, the house theme's two `scenery()` branches drawn from § 6.6 item 2 and the preview (no motion, no text, no status light), the shipped default `resources/floor/default.tmj` re-authored per Q1 (Option A: the grid 1,784 × 696, the wall, the accent floor and the return extended, the office's and the nook's pieces re-laid, no slot moved), § 10.3's and § 10.6 item 6's kind lists and § 12's *The shipped default's grid* re-measured, and `tools/design/verify-floor.py` G-scenery grown by one leg: on the shipped default each snack table's spot 0 is open at `clear` on its visitor's lattice and the two spot 0s lie at least the tall table's spacing apart; and the **snack trip** — A25 in `wire/animation-set.js` (its two derived episode keys beside A23's, `held()` stripping either suffix), `desk/desk-render.js`'s held ids for the seat's and the interns' halves, `floor/scene.js`'s `snackCorner()` (the tables read off the map by kind; every walker the scene draws at a desk or a stool, with whether its hold permits a trip; spot 0 per § 12's *Snack spot* on the visitor's own lattice, the rest `spotsNear()`'s; the nearest table of the walker's height; the three legs on `route()`), `snackSchedule()` (the two seeded draws under `snack:` and `snack-dwell:`) and `snackHome()` (a recall's walk home along its route, the operator's ruling on § 14 item 44 Q2), and the A2 / A10 hand-over routed from the trip's `pointAt()` point; `floor/in-flight.js`'s `snack()` pass (the hour index on the corrected clock, each window decided once at its second, the feed-status start gate, a window entered at its phase on a page that was not watching or that a non-delta entry re-derives) holding one trip per walker with the walk's cancel clauses and the spot kept once taken; `floor/floor-screen.js`'s empty chair and empty stool under a trip (no z's) and its paint at each window's second, `floor/painter.js` drawing the visitor at its standing or chibi frame in the floor stack, [§ 5.5](#55-the-clients-own-narration)'s *no open route … snack table* line, § 12's five rows held equal to the scene's constants, and the guarded A25 cells in `wire/animation-set.js` | [AT-D3-32](#at-d3-32-an-idle-character-visits-the-snack-corner-once-an-hour-stands-at-its-own-table-and-comes-straight-back) RED on each of its plants, then GREEN; [AT-D3-1](#at-d3-1-no-animation-without-its-event) re-run, its instrument half now expecting A25 for `aimla-impl-2`; [AT-D3-23](#at-d3-23-a-seat-leaves-by-the-elevator-and-returns-by-it) and [AT-D3-31](#at-d3-31-an-intern-arrives-by-the-elevator-works-or-rests-at-its-laptop-and-leaves-by-it) re-run on the re-authored default, since every desk must still route at `clear`; [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text) re-run, every theme drawing both kinds; [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor) re-run over the new grid; `TheAnimationSetIsTheDocumentsClosedSetTest` green over the new row; `verify-floor.py` green with its new G-scenery leg seen to red on a tile moved into a slot |
+| 31 | card#12749 — after the operator's approval of [§ 6.6](#66-the-snack-corner-and-the-snack-break--a25-card12749-card12785) and its preview, and the answer to [§ 14](#14-open-questions-for-the-review-loop) item 44 Q1: the **snack corner** — the two kinds `snack-table` and `snack-table-low` in `resources/floor/themes/index.js`'s `KINDS`, their marker tiles in `resources/floor/tiles/floor-plane.tsx` with the two marker SVGs and their `docs/ATTRIBUTION.md` rows, the house theme's two `scenery()` branches drawn from § 6.6 item 2 and the preview (no motion, no text, no status light), the shipped default `resources/floor/default.tmj` re-authored per Q1 (Option A: the grid 1,784 × 696, the wall, the accent floor and the return extended, the office's and the nook's pieces re-laid, no slot moved), § 10.3's and § 10.6 item 6's kind lists and § 12's *The shipped default's grid* re-measured, and `tools/design/verify-floor.py` G-scenery grown by one leg: on the shipped default each snack table's spot 0 is open at `clear` on its visitor's lattice and the two spot 0s lie at least the tall table's spacing apart; and the **snack trip** — A25 in `wire/animation-set.js` (its two derived episode keys beside A23's, `held()` stripping either suffix), `desk/desk-render.js`'s held ids for the seat's and the interns' halves, `floor/scene.js`'s `snackCorner()` (the tables read off the map by kind; every walker the scene draws at a desk or a stool, with whether its hold permits a trip; spot 0 per § 12's *Snack spot* on the visitor's own lattice, the rest `spotsNear()`'s; the nearest table of the walker's height; the three legs on `route()`), `snackSchedule()` (the two seeded draws under `snack:` and `snack-dwell:`) and `snackHome()` (a recall's walk home along its route, the operator's ruling on § 14 item 44 Q2), and the A2 / A10 hand-over routed from the trip's `pointAt()` point; `floor/in-flight.js`'s `snack()` pass (the hour index on the corrected clock, each window decided once at its second, the feed-status start gate, a window entered at its phase on a page that was not watching or that a non-delta entry re-derives) holding one trip per walker with the walk's cancel clauses and the spot kept once taken; `floor/floor-screen.js`'s empty chair and empty stool under a trip (no z's) and its paint at each window's second, `floor/painter.js` drawing the visitor at its standing or chibi frame in the floor stack, [§ 5.5](#55-the-clients-own-narration)'s *no open route … snack table* line, § 12's five rows held equal to the scene's constants, and the guarded A25 cells in `wire/animation-set.js` | [AT-D3-32](#at-d3-32-a-character-visits-the-snack-corner-every-one-to-two-hours-stands-at-its-own-table-and-comes-straight-back) RED on each of its plants, then GREEN; [AT-D3-1](#at-d3-1-no-animation-without-its-event) re-run, its instrument half now expecting A25 for `aimla-impl-2`; [AT-D3-23](#at-d3-23-a-seat-leaves-by-the-elevator-and-returns-by-it) and [AT-D3-31](#at-d3-31-an-intern-arrives-by-the-elevator-works-or-rests-at-its-laptop-and-leaves-by-it) re-run on the re-authored default, since every desk must still route at `clear`; [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text) re-run, every theme drawing both kinds; [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor) re-run over the new grid; `TheAnimationSetIsTheDocumentsClosedSetTest` green over the new row; `verify-floor.py` green with its new G-scenery leg seen to red on a tile moved into a slot |
+| 32 | card#12785 — the operator's reversal of *idle only* ([§ 13](#13-decisions-taken-revisable-at-review) row 103): `wire/animation-set.js`'s `SNACK_HELD` (`idle`, `working`) and A25's cells re-guarded; `desk/desk-render.js`'s two A25 halves held by it; `floor/scene.js`'s chain — `snackAnchor()`, `snackDay()`, `snackBreak()`, `snackBreaks()` (§ 12's *Snack anchor* and *Snack gap*, replacing *Snack window*'s `snackSchedule()`) — the walkers' `busy` and recall over `SNACK_HELD`, `snackThought()` laid out from `floor/snack-lines.js` (§ 12's *Snack lines*, the operator's list), `snackHome()` with no laptop leg, and `placeBubbles()` drawing an away desk's bubble with no trail; `floor/in-flight.js`'s `snack()` deciding each break of the chain once, breaks due on one pass in start-second order, and `awayDesk()`; `floor/floor-screen.js` drawing the away desk through `awayDesk()` and handing each trip its thought while its walker is busy; `floor/painter.js` drawing the thought in each glide; [§ 5.4](#54-what-is-never-rendered)'s exception for the line; `fx-snack` regenerated on the chain, with the runs AT-D3-32 adds | [AT-D3-32](#at-d3-32-a-character-visits-the-snack-corner-every-one-to-two-hours-stands-at-its-own-table-and-comes-straight-back) RED on each of its plants, then GREEN; [AT-D3-1](#at-d3-1-no-animation-without-its-event) re-run, its instrument half now expecting A25 for the working seats and the PM's working intern; `TheAnimationSetIsTheDocumentsClosedSetTest` green over the amended row; `verify-floor.py` green |
 
 **Three of these are hard requirements before anything downstream may treat this floor as honest:**
 **AT-D3-1** (no animation without its event — the operator's principle, made into a test),

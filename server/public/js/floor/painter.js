@@ -116,7 +116,7 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 .plate{fill:var(--scene-plate);stroke:var(--scene-plate-edge)}
 .facts-plate{fill:var(--scene-plate);stroke:var(--scene-plate-edge);stroke-opacity:.35}
 .gauge-track{fill:var(--scene-gauge-track)}.gauge-fill{fill:var(--scene-gauge-fill)}
-.bubble{fill:var(--scene-paper);stroke:var(--scene-trim)}.bubble-trail{fill:var(--scene-paper);stroke:var(--scene-trim)}.bubble-source{fill:var(--scene-bubble-source)}
+.bubble{fill:var(--scene-paper);stroke:var(--scene-trim)}.snack-thought-text{font-style:italic}.bubble-trail{fill:var(--scene-paper);stroke:var(--scene-trim)}.bubble-source{fill:var(--scene-bubble-source)}
 .lighting-dimmed{opacity:.72}.lighting-dark{opacity:.45}.lighting-desaturated{filter:saturate(.3)}
 .strip-header{font-weight:bold}
 .decor{fill:var(--lamp);opacity:.25}.decor-moving{animation:decor ease-in-out infinite alternate}
@@ -232,9 +232,10 @@ const isInternWalk = (fx) => (fx.animation_id === 'A10' || fx.animation_id === '
  * never inherits a cancelled one's origin.
  */
 function effectKey(fx) {
-    // card#12749: one trip per walker per hour, and its walk home a motion of its own.
+    // card#12749: one trip per walker per break (card#12785: a break is its start second), and its walk home a motion of
+    // its own.
     if (fx.animation_id === 'A25') {
-        return `A25 ${fx.walker_key} ${fx.hour} ${fx.leg_kind}`;
+        return `A25 ${fx.walker_key} ${fx.start_s} ${fx.leg_kind}`;
     }
 
     if (isInternWalk(fx)) {
@@ -1014,7 +1015,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
 
             if (seatLeg !== null && laptop !== null) {
                 const to = fx.leg_kind === 'arrive' ? (fx.held_activity === 'idle' ? 0 : seatLeg.laptop_to) : seatLeg.laptop_to;
-                const glide = (fx.leg_kind === 'arrive' || fx.leg_kind === 'snack-home' ? segments[segments.length - 1] : segments[0]).glide;
+                const glide = (fx.leg_kind === 'arrive' ? segments[segments.length - 1] : segments[0]).glide;
                 const over = image(glide, laptop.uris[0], -fx.frame.w / 2, -fx.frame.h, fx.frame.w, fx.frame.h, asset, { class: 'intern fx-laptop', preserveAspectRatio: MEET });
 
                 laptopOver(over, seatLeg.laptop_from, to, seatLeg.frames, I, elapsed - seatLeg.start * I);
@@ -1025,6 +1026,25 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
 
             if (inner !== null) {
                 at(inner);
+            }
+        }
+
+        // card#12785 (FLOOR.md § 6.6 item 4): a busy walker's food thought, which the scene laid out relative to the
+        // walker's feet — drawn inside every glide, so it travels with the walker on each leg and stands with it at the
+        // table: the trail, smallest first, then the cloud, then the line or two of the break's food line.
+        if ((fx.thought ?? null) !== null) {
+            for (const { glide } of segments) {
+                const g = node('g', { class: 'snack-thought' }, glide);
+
+                for (const c of fx.thought.trail) {
+                    node('circle', { cx: c.x, cy: c.y, r: c.r, class: 'bubble-trail' }, g);
+                }
+
+                node('path', { d: fx.thought.cloud.d, class: 'bubble' }, g);
+
+                for (const line of fx.thought.lines) {
+                    text(g, { x: line.x, y: line.y, text: line.text, id: `${fx.walker_key}:thought` }, 'bubble-text snack-thought-text');
+                }
             }
         }
 

@@ -29,13 +29,14 @@
  * draws it without deciding it and § 11's review question has a list to read.
  */
 
-import { ANIMATION_SET, LOOP_FPS, loops } from '../wire/animation-set.js';
+import { ANIMATION_SET, LOOP_FPS, SNACK_HELD, loops } from '../wire/animation-set.js';
 import { footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layout.js';
 import { readEmbedded, splitGid, tilesetUrl } from './tileset.js';
-import { BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, internKey, stoolSlots, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
+import { BUBBLE_GAP, BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, internKey, stoolSlots, TRAIL_REACH, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
 import { CLEARANCE, CLEARANCE_TIERS, blockedFor, cellAt, cellCentre, lattice, pointAt, polylineLength, route, spotsNear } from './route.js';
 import { perchPoint } from './bird.js';
+import { SNACK_LINES } from './snack-lines.js';
 
 /**
  * The back-wall band's height (§ 4.2) — "its height is a drawing layer's" (`floor-layout.js`): a wall
@@ -320,12 +321,20 @@ export const ELEVATOR_WAIT_S = 30;
 export const WAIT_MAX_FRAMES = ELEVATOR_WAIT_S * LOOP_FPS;
 
 /**
- * card#12749 — THE SNACK TRIP's WINDOW (§ 12's *Snack window*, § 6.6 item 4): one trip per walker per hour of the
- * corrected server clock, its second within the hour drawn from the walker's key and the hour. Chosen; it carries no fact.
+ * card#12785 — THE SNACK GAP (§ 12's *Snack gap*, § 6.6 item 4): a walker's next break begins a seeded number of seconds
+ * after its previous break BEGAN, uniform over this range — the operator's *"a random time between 1-2 hours since their
+ * last snack break"* (2026-11-02). Chosen; it carries no fact.
  */
-export const SNACK_WINDOW_S = 3600;
+export const SNACK_GAP_S = Object.freeze({ min: 3600, max: 7200 });
 
-/** § 12's *Snack dwell* (card#12749): how long a visitor stands at its table, seeded per key and hour. Chosen. */
+/**
+ * card#12785 — THE CHAIN's DAILY ANCHOR (§ 12's *Snack anchor*, § 6.6 item 4): the chain of breaks restarts once a day of
+ * the corrected server clock (`⌊t ÷ 86,400⌋`, a UTC day), at a seeded second under one minimum gap into it — so a page
+ * derives any instant's breaks from at most the day before's anchor and never replays the walker's history.
+ */
+export const SNACK_DAY_S = 86400;
+
+/** § 12's *Snack dwell* (card#12749): how long a visitor stands at its table, seeded per key and break. Chosen. */
 export const SNACK_DWELL_S = Object.freeze({ min: 45, max: 75 });
 
 /**
@@ -356,19 +365,88 @@ export function snackSpotOffset(body) {
 }
 
 /**
- * card#12749 — ONE WALKER's TRIP IN ONE HOUR (§ 6.6 item 4): the second the trip begins, `draw(key, 'snack:' + H) mod
- * 3600` into hour `H`, and its dwell, `45 + draw(key, 'snack-dwell:' + H) mod 31` seconds — the character tree's one
- * seeded draw over the walker's key (the seat's, or the intern's `<seat key>~<call_id>`) and the hour, so every viewer and
- * every reload draw one trip at one second. `start_s` is absolute: seconds of the corrected server clock.
+ * card#12785 — THE DAY's ANCHOR BREAK of walker `key` (§ 6.6 item 4): `day × 86,400 + draw(key, 'snack-anchor:' + day) mod
+ * 3600` — a seeded second in the first hour of UTC day `day` of the corrected server clock, under one minimum gap, so the
+ * walkers of one floor do not all break at midnight. Absolute seconds.
  *
  * @param {function(string, string): number} draw `resources/characters/seed.js`'s `draw()`
  */
-export function snackSchedule(draw, key, hour) {
+export function snackAnchor(draw, key, day) {
+    return day * SNACK_DAY_S + (draw(key, `snack-anchor:${day}`) % SNACK_GAP_S.min);
+}
+
+/** The chains already derived, per draw function and `<key> <day>` — a pure function's answers, kept small. */
+const CHAINS = new WeakMap();
+
+/**
+ * card#12785 — ONE WALKER's BREAKS IN ONE DAY OF THE CHAIN (§ 6.6 item 4): the start seconds from the day's anchor break
+ * up to, and not including, the next day's — each the one before it plus a gap `SNACK_GAP_S.min + draw(key, 'snack-gap:'
+ * + s) mod (hi − SNACK_GAP_S.min + 1)`, where `hi` is the least of `SNACK_GAP_S.max` and what still leaves one minimum gap
+ * before the next anchor. So EVERY gap — inside a day and across the anchor into the next — lies in `SNACK_GAP_S`: the
+ * steps far from the next anchor are uniform over the whole range, and only the last one or two of a day are narrowed so
+ * the chain lands on the next day's anchor a whole gap later. One draw per break and two anchors a day, whatever the
+ * hour asked about.
+ */
+export function snackDay(draw, key, day) {
+    let cache = CHAINS.get(draw);
+
+    if (cache === undefined || cache.size > 512) {
+        cache = new Map();
+        CHAINS.set(draw, cache);
+    }
+
+    const id = `${key} ${day}`;
+
+    if (!cache.has(id)) {
+        const next = snackAnchor(draw, key, day + 1);
+        const starts = [snackAnchor(draw, key, day)];
+
+        for (let s = starts[0]; next - s > SNACK_GAP_S.max;) {
+            const hi = Math.min(SNACK_GAP_S.max, next - s - SNACK_GAP_S.min);
+
+            s += SNACK_GAP_S.min + (draw(key, `snack-gap:${s}`) % (hi - SNACK_GAP_S.min + 1));
+            starts.push(s);
+        }
+
+        cache.set(id, Object.freeze(starts));
+    }
+
+    return cache.get(id);
+}
+
+/**
+ * card#12785 — ONE BREAK (§ 6.6 item 4): the break of walker `key` that begins at absolute second `start` — its dwell,
+ * `45 + draw(key, 'snack-dwell:' + start) mod 31` seconds, and its food line, `draw(key, 'snack-line:' + start) mod` the
+ * length of `snack-lines.js`'s list (drawn only for a busy walker, § 6.6 item 4) — the character tree's one seeded draw over
+ * the walker's key (the seat's, or the intern's `<seat key>~<call_id>`) and the break's own second, so every viewer and
+ * every reload draw one break, one dwell and one line.
+ */
+export function snackBreak(draw, key, start) {
     return Object.freeze({
-        hour,
-        start_s: hour * SNACK_WINDOW_S + (draw(key, `snack:${hour}`) % SNACK_WINDOW_S),
-        dwell_s: SNACK_DWELL_S.min + (draw(key, `snack-dwell:${hour}`) % (SNACK_DWELL_S.max - SNACK_DWELL_S.min + 1)),
+        start_s: start,
+        dwell_s: SNACK_DWELL_S.min + (draw(key, `snack-dwell:${start}`) % (SNACK_DWELL_S.max - SNACK_DWELL_S.min + 1)),
+        line: draw(key, `snack-line:${start}`) % SNACK_LINES.length,
     });
+}
+
+/**
+ * card#12785 — THE BREAKS of walker `key` whose start second lies in `[fromS, toS]`, oldest first (§ 6.6 item 4). A break
+ * of day `d` begins at or after `d × 86,400` and before the next day's anchor, inside its first hour, so the days read are
+ * the one before `fromS`'s and every day to `toS`'s — the chain is derived from an anchor at most a day and an hour back,
+ * never replayed from a first break.
+ */
+export function snackBreaks(draw, key, fromS, toS) {
+    const out = [];
+
+    for (let day = Math.floor(fromS / SNACK_DAY_S) - 1; day <= Math.floor(toS / SNACK_DAY_S); day++) {
+        for (const s of snackDay(draw, key, day)) {
+            if (s >= fromS && s <= toS) {
+                out.push(snackBreak(draw, key, s));
+            }
+        }
+    }
+
+    return out;
 }
 
 /**
@@ -376,10 +454,12 @@ export function snackSchedule(draw, key, hour) {
  * item 5): a visitor recalled to work while its trip is in flight walks home ALONG ITS ROUTE, from where it is at
  * `elapsedMs` into the trip — back the way it came on its walk out, its route home from its spot while it stands there, or
  * the rest of its route home on its walk back — starting at frame 0 of a new effect the holder starts at that instant, so
- * no frame it has drawn moves. An intern recalled to `working` sits with its laptop fading in on arrival (`laptop`); the
- * paint-only refresh at the walk's end seats the character in its new pose.
+ * no frame it has drawn moves; the paint-only refresh at the walk's end seats the character in its new pose. Since
+ * card#12785 a recall is a seat's change to a held state that is neither `idle` nor `working` (`blocked`, `stalled`,
+ * `unknown`, `catching_up`) or an intern's to a value that is neither — never a change to `working`, which keeps the trip
+ * — so the walk home carries no laptop.
  */
-export function snackHome(effect, elapsedMs, laptop) {
+export function snackHome(effect, elapsedMs) {
     const I = effect.frame_interval_ms;
     const [out, , back] = effect.legs;
     const here = pointAt(effect, elapsedMs);
@@ -405,11 +485,8 @@ export function snackHome(effect, elapsedMs, laptop) {
             : [p, ...split(back, elapsedMs).ahead];
     const points = Object.freeze(path.filter((q, i) => i === 0 || q.x !== path[i - 1].x || q.y !== path[i - 1].y).map((q) => Object.freeze({ x: q.x, y: q.y })));
     const walk = walkLeg(0, points.length === 1 ? Object.freeze([points[0], points[0]]) : points);
-    const legs = laptop
-        ? [walk, Object.freeze({ kind: 'seat', start: walk.frames, frames: LAPTOP_FADE, at: effect.anchor, laptop_from: 0, laptop_to: 1 })]
-        : [walk];
 
-    return Object.freeze({ ...effect, leg_kind: 'snack-home', legs: Object.freeze(legs), frames: Math.max(...legs.map((l) => l.start + l.frames)) });
+    return Object.freeze({ ...effect, leg_kind: 'snack-home', legs: Object.freeze([walk]), frames: walk.frames });
 }
 
 /** Where every A1 and A2 walk meets the elevator: the leaves' seam, at their foot (§ 6.2's walk note item 3). */
@@ -1282,10 +1359,14 @@ export function buildScene(frame, input) {
 
 /**
  * card#12749 — THE SNACK CORNER OF ONE SCENE (FLOOR.md § 6.6 items 3 and 4): `tables`, the map's snack tables; `walkers`,
- * every character this scene draws at a desk or a stool that a trip could take — each with its anchor, its body, and
- * whether its hold permits a trip now (`eligible`: A25's held rendering draws motion) or its hold has ended while it is
- * still drawn at its desk (`recalled`: the held field changed — a recall walks it home, § 6.6 item 5); `schedule(key,
- * H)`, `snackSchedule()` over the scene's seeded draw; and `plan(walker, schedule, taken)`, the trip itself.
+ * every character this scene draws at a desk or a stool that a trip could take — each with its anchor, its body, whether
+ * its hold permits a trip now (`eligible`: A25's held rendering draws motion), whether its hold has ended while it is
+ * still drawn at its desk (`recalled`: the held field left `SNACK_HELD` — a recall walks it home, § 6.6 item 5), and
+ * whether it is BUSY (`busy`: its held state is `working` — the seat's `render_state`, the intern's `activity_state` —
+ * card#12785, whose walker carries a food thought); `schedule(key, fromS, toS)`, `snackBreaks()` over the scene's seeded
+ * draw; `thought(line, effect)`, the food thought's bubble laid out for `snack-lines.js`'s line `line` over a trip's
+ * walker; and `plan(walker, break,
+ * taken)`, the trip itself.
  *
  * `plan()` answers `null` where the floor holds no table of the walker's height (a plain floor, nothing to narrate),
  * `{ no_route }` where no such table can be reached (narrated once by the screen for a desk inside a room's grid),
@@ -1293,7 +1374,8 @@ export function buildScene(frame, input) {
  * anchor to its spot 0 (ties by room, then tile), the lowest spot of it that no trip in `taken` stands on, walks to or
  * stands within the spacing of, and three legs from the trip's own start — `walk` from the anchor to the spot, `stand`
  * for the dwell, `walk` home — on `route()`, at § 12's *Walk speed*. Spot 0 is § 12's *Snack spot*; the rest are
- * `spotsNear()`'s from it at *Snack spacing* on the visitor's own lattice. Nothing here starts a trip.
+ * `spotsNear()`'s from it at *Snack spacing* on the visitor's own lattice. Nothing here starts a trip, and nothing here
+ * decides whether a trip draws its thought: the screen reads `busy` off the walker each render (§ 6.6 item 4).
  */
 function snackCorner(tables, desks, models, anchors, walking, input, box) {
     const draw = typeof input.draw === 'function' ? input.draw : null;
@@ -1347,8 +1429,9 @@ function snackCorner(tables, desks, models, anchors, walking, input, box) {
             in_room: desk.slot_rect !== null,
             species: model.species ?? null,
             eligible: model.snack_held?.motion === true,
-            // The held field changed and the desk still draws its character: a trip in flight walks it home.
+            // The held field left A25's values and the desk still draws its character: a trip in flight walks it home.
             recalled: model.character === true && (model.snack_held ?? null) === null,
+            busy: model.render_state?.value === 'working',
         }));
 
         for (const stool of model.side_table?.stools ?? []) {
@@ -1365,8 +1448,9 @@ function snackCorner(tables, desks, models, anchors, walking, input, box) {
                 activity_state: stool.activity,
                 anchor: slotFoot(desk, stool.slot, box, character),
                 in_room: desk.slot_rect !== null,
-                eligible: stool.activity === 'idle' && model.snack_interns_held?.motion === true,
-                recalled: stool.activity !== 'idle',
+                eligible: SNACK_HELD.includes(stool.activity) && model.snack_interns_held?.motion === true,
+                recalled: !SNACK_HELD.includes(stool.activity),
+                busy: stool.activity === 'working',
             }));
         }
     }
@@ -1440,9 +1524,11 @@ function snackCorner(tables, desks, models, anchors, walking, input, box) {
                     : { species: w.species }),
                 walker_key: w.key,
                 leg_kind: 'snack',
-                hour: schedule.hour,
                 start_s: schedule.start_s,
                 dwell_s: schedule.dwell_s,
+                // card#12785: the break's food line, an index into `snack-lines.js`'s list — drawn only while the walker
+                // is busy, which the screen reads off the walker each render (`thought` on the effect it hands the painter).
+                line: schedule.line,
                 table: best.t.id,
                 table_kind: best.t.kind,
                 spot: Object.freeze({ table: best.t.id, index: k, at: s.at, spacing }),
@@ -1464,13 +1550,41 @@ function snackCorner(tables, desks, models, anchors, walking, input, box) {
     return Object.freeze({
         tables: Object.freeze(ordered),
         walkers: Object.freeze(walkers),
-        schedule: (key, hour) => (draw === null ? null : snackSchedule(draw, key, hour)),
+        schedule: (key, fromS, toS) => (draw === null ? [] : snackBreaks(draw, key, fromS, toS)),
+        thought: (line, effect) => snackThought(SNACK_LINES[line], input.measure, effect),
         plan,
         spot: (tableId, k) => {
             const t = ordered.find((x) => x.id === tableId);
 
             return t === undefined ? null : spots(t)(k);
         },
+    });
+}
+
+/**
+ * card#12785 — A BUSY WALKER's FOOD THOUGHT (FLOOR.md § 6.6 item 4): `text`'s bubble, laid out RELATIVE TO THE WALKER's
+ * FEET so the painter draws it inside each of the walker's glides and it travels with the walker — the cloud
+ * (`cloudOutline()`) round the text wrapped through the scene's one wrap on at most two lines of the bubble's widest,
+ * centred over the walker, its bottom `BUBBLE_GAP` above the walker's frame and at least the trail's reach above the
+ * character's rect, and the thought trail (`trailCircles()`) from the rect's top up to it. The task bubble's primitives,
+ * so the form is one; what keeps it apart from the task bubble is that it carries no source line, rides a walker and
+ * never a desk, and is classed `snack-thought` (the painter's italic).
+ */
+export function snackThought(text, measure, effect) {
+    const title = wrap(text, BUBBLE_MAX_W - 2 * BUBBLE_PAD, measure, 'fact', 2);
+    const w = title.w + 2 * BUBBLE_PAD;
+    const h = title.h + 2 * BUBBLE_PAD;
+    const top = -effect.size.h;
+    const bottom = Math.min(-effect.frame.h - BUBBLE_GAP, top - TRAIL_REACH);
+    const rect = Object.freeze({ x: -w / 2, y: bottom - h, w, h });
+
+    return Object.freeze({
+        ...rect,
+        text: title.text,
+        truncated: title.truncated,
+        lines: Object.freeze(title.lines.map((l, i) => Object.freeze({ text: l.text, w: l.w, x: rect.x + BUBBLE_PAD, y: rect.y + BUBBLE_PAD + i * LINE }))),
+        cloud: cloudOutline(rect),
+        trail: trailCircles(0, top, bottom),
     });
 }
 
@@ -1604,6 +1718,9 @@ export function placeBubbles(desks, measure, W, delivered) {
             source: b.source,
             degraded_note: b.degraded_note,
             truncated: b.truncated || title.truncated,
+            // card#12785: a desk whose character is away on its snack break keeps its bubble — the card it works on —
+            // and draws no trail, which is the thinker's and leaves with it (`in-flight.js`'s `awayDesk()`).
+            trail: b.trail !== false,
         });
     }
 
@@ -1642,7 +1759,7 @@ export function placeBubbles(desks, measure, W, delivered) {
             // § 5.1 (card#11468): the cloud round the measured rect, and the trail of growing circles from just
             // above the creature to the cloud, on the anchor's line — to the bubble where it was set, parted or not.
             cloud: cloudOutline(rect),
-            trail: trailCircles(foot.x, foot.y, rect.y + rect.h),
+            trail: want.trail ? trailCircles(foot.x, foot.y, rect.y + rect.h) : Object.freeze([]),
         });
     }
 

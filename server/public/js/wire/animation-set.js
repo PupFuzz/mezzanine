@@ -78,7 +78,7 @@ export const ANIMATION_SET = Object.freeze({
     A22: Object.freeze({ class: 'edge', animation: "portal-bird — the bird carries the envelope from a resolved origin desk on this floor to the floor's bird portal and leaves, or arrives from the portal at a resolved destination desk on this floor, for a post whose other end resolves to a desk on another floor of this building", reduced: "a still envelope at the portal or at the desk for the moving form's duration, then gone" }),
     A23: Object.freeze({ class: 'held', animation: 'intern-type — each working intern at the side table types at the laptop on its lap, swaying gently left and right, 4 fps loop', reduced: 'each working intern sits still with its laptop on its lap' }),
     A24: Object.freeze({ class: 'edge', animation: "laptop — an intern's laptop fades in or out over the laptop fade", reduced: 'the laptop is simply present or absent' }),
-    A25: Object.freeze({ class: 'held', animation: "snack — once an hour, in a window seeded from the walker's key and the hour, an idle character gets up from its desk or its stool, walks its routed path to the floor's snack corner, stands at the table of its own height for a seeded dwell, and walks back — and walks home at once, from where it stands, when a delivered change recalls it to work; outside its window it draws nothing of its own, and the sleeper (A6) or the still intern stands", reduced: 'no trip: the sleeper stays slumped at its desk and the idle intern still on its stool' }),
+    A25: Object.freeze({ class: 'held', animation: "snack — every one to two hours, at a second seeded from the walker's key and its previous break, a character gets up from its desk or its stool, walks its routed path to the floor's snack corner, stands at the table of its own height for a seeded dwell, and walks back — a busy one with a food thought in a bubble over its head — and walks home at once, from where it stands, when a delivered change takes it out of its work or its rest; between breaks it draws nothing of its own, and the character at its desk or on its stool stands", reduced: 'no trip: the character stays at its desk or on its stool in its held pose' }),
 });
 
 /**
@@ -146,13 +146,22 @@ export const FIRED_BY = Object.freeze({
 export const INTERNS = '~interns';
 
 /**
- * THE SNACK TRIP's TWO EPISODE KEYS (card#12749; FLOOR.md § 6.6 item 1): A25 is held by the same `idle` that holds A6 (the
- * seat's half) and by the interns' own `idle` (their half), so — as A23 beside the desk's row — each is entered and left
+ * THE SNACK TRIP's TWO EPISODE KEYS (card#12749; FLOOR.md § 6.6 item 1): A25 is held by the same `idle` that holds A6, or
+ * since card#12785 the `working` that holds A3 or A4 (the seat's half), and by the interns' own `idle` or `working` (their
+ * half), so — as A23 beside the desk's row — each is entered and left
  * under a derived key of its own: `<seat key>~snack` and `<seat key>~snack-interns`, one episode per SEAT for each.
  */
 export const SNACK = '~snack';
 
 export const SNACK_INTERNS = '~snack-interns';
+
+/**
+ * THE VALUES THAT HOLD A25 (§ 6.2's A25 row; card#12785 — the operator's ruling of 2026-11-02, *"I want all agents and
+ * subagents to be able to go at random even work working"*): a seat's `render_state` and an intern's `activity_state`
+ * hold the snack break while they read one of these — `idle` (the card#12749 trip) or `working` (the busy break, its walker
+ * carrying a food thought). Every other value ends the hold, and a trip in flight walks home (§ 6.6 item 5).
+ */
+export const SNACK_HELD = Object.freeze(['idle', 'working']);
 
 /**
  * The held renders one desk carries — the desk's own, its side table's, and the snack trip's two halves — each with its

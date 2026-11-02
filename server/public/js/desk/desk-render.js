@@ -48,7 +48,7 @@
 import { isRenderState } from '../lobby/render-state.js';
 import { clockTime } from '../wire/clock.js';
 import { contextGauge } from '../wire/context-gauge.js';
-import { heldRendering } from '../wire/animation-set.js';
+import { SNACK_HELD, heldRendering } from '../wire/animation-set.js';
 import { rebuildSlots } from './intern-slots.js';
 import { ACTIVITY_STATES, BADGES, LINK_STATES } from '../wire/member-sets.js';
 import { NO_DATA_YET, UNTITLED } from '../wire/null-render.js';
@@ -458,20 +458,22 @@ export function deskModel(seat, ages, facts = {}, options = {}) {
         bubble: character ? taskBubble(seat) : null,
         held,
         interns_held: internsHeld(table, permitted && dark === null, options.reduce === true),
-        // § 6.2 A25 (card#12749): the snack trip's two halves — the seat's, held by its own `idle`, and its interns'.
-        snack_held: character && state === 'idle' ? heldRendering('A25', permitted && dark === null, options.reduce === true) : null,
+        // § 6.2 A25 (card#12749, card#12785): the snack break's two halves — the seat's, held by its own `idle` or
+        // `working` (`SNACK_HELD`), and its interns'.
+        snack_held: character && SNACK_HELD.includes(state) ? heldRendering('A25', permitted && dark === null, options.reduce === true) : null,
         snack_interns_held: snackInternsHeld(table, permitted && dark === null, options.reduce === true),
     };
 }
 
 /**
- * § 6.2 A25 `snack`, the interns' half (card#12749, FLOOR.md § 6.6 item 1): held while an intern the desk draws reads
- * `subagents[].activity_state == "idle"`, `null` while none does — whatever the seat's own state, since the field is the
- * intern's (the operator's ruling of 2026-11-02, *"5. Yes, it goes"*). An element with no `activity_state` is not idle.
+ * § 6.2 A25 `snack`, the interns' half (card#12749, card#12785; FLOOR.md § 6.6 item 1): held while an intern the desk
+ * draws reads a `subagents[].activity_state` in `SNACK_HELD` — `idle` or `working` — `null` while none does, whatever the
+ * seat's own state, since the field is the intern's (the operator's ruling of 2026-11-02, *"5. Yes, it goes"*, and its
+ * widening the same day to busy subagents). An element with no `activity_state`, or an unrecognised one, holds nothing.
  * Whether it draws MOTION is A23's verdict: the desk's treatment permits it and the desk is not drawn dark.
  */
 function snackInternsHeld(table, permitted, reduce) {
-    if (!table.stools.some((s) => s.activity === 'idle')) {
+    if (!table.stools.some((s) => SNACK_HELD.includes(s.activity))) {
         return null;
     }
 

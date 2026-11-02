@@ -94,7 +94,7 @@ import { buildFleetJoin, buildJoin } from './coord-join.js';
 import { LIVE, feedStatus, statusStrip } from './status-strip.js';
 import { failureRender } from '../wire/failure-render.js';
 import { buildScene, threshold } from './scene.js';
-import { EffectsInFlight, inboundDesk, walkSide } from './in-flight.js';
+import { EffectsInFlight, awayDesk, inboundDesk, walkSide } from './in-flight.js';
 import { createCamera, fit, frameOn, glideMs, pan, panBy, pinch, resize, zoom, zoomStep } from '../wire/camera.js';
 import { TilesetLoader, tilesetUrl } from './tileset.js';
 import {
@@ -802,7 +802,7 @@ export class FloorScreen {
      * drawn as `in-flight.js`'s `inboundDesk()` draws it (item 4).
      */
     #overlay(frame, plain, now) {
-        // card#12749 (FLOOR.md § 6.6): the snack pass — a recall walks its walker home, and a window whose second has come
+        // card#12749 (FLOOR.md § 6.6): the snack pass — a recall walks its walker home, and a break whose second has come
         // is decided — over the scene just built, before anything is drawn from the holder.
         this.#snack = plain.snack ?? null;
 
@@ -823,8 +823,8 @@ export class FloorScreen {
 
         const inbound = this.#inFlight.inbound(now);
         const inboundInterns = this.#inFlight.inboundInterns(now);
-        // A walker away on a snack trip: its desk draws the empty chair with every fact of its object, no z's (§ 6.6
-        // item 4) — `inboundDesk()`'s render — and its stool draws empty.
+        // A walker away on a snack trip: its desk draws the empty chair with every fact of its object at the desk, its
+        // task bubble included and no z's (§ 6.6 item 4) — `awayDesk()`'s render — and its stool draws empty.
         const away = this.#inFlight.away(now);
         let scene = plain;
 
@@ -833,9 +833,15 @@ export class FloorScreen {
         if (inbound.size > 0 || away.size > 0) {
             desks = { ...frame.desks.desks };
 
-            for (const key of [...inbound, ...away]) {
+            for (const key of inbound) {
                 if (desks[key] !== undefined) {
                     desks[key] = inboundDesk(desks[key]);
+                }
+            }
+
+            for (const key of away) {
+                if (desks[key] !== undefined && !inbound.has(key)) {
+                    desks[key] = awayDesk(desks[key]);
                 }
             }
         }
@@ -867,9 +873,16 @@ export class FloorScreen {
         // whose subagent went idle on the way stays down — so each walk in flight carries it, read off the frame.
         const heldOf = (fx) => (frame.desks?.desks?.[`${fx.install_id}/${fx.seat_id}`]?.side_table?.stools ?? [])
             .find((s) => s.call_id === fx.call_id)?.activity ?? null;
+        // card#12785 (§ 6.6 item 4): a snack trip's walker carries its break's food thought while it is BUSY — its held
+        // state `working` in this render's scene — and none while it is idle or walking home from a recall; read each
+        // render, so a walker whose state turns working mid-trip thinks of food from that render and one that turns idle
+        // stops.
+        const walkers = new Map((plain.snack?.walkers ?? []).map((w) => [w.key, w]));
         const current = this.#inFlight.current(now).map((fx) => (fx.animation_id === 'A10' && typeof fx.intern_key === 'string'
             ? Object.freeze({ ...fx, held_activity: heldOf(fx) })
-            : fx));
+            : fx.animation_id === 'A25'
+                ? Object.freeze({ ...fx, thought: fx.leg_kind === 'snack' && walkers.get(fx.walker_key)?.busy === true ? plain.snack.thought(fx.line, fx) : null })
+                : fx));
 
         return Object.freeze({
             ...scene,
@@ -901,7 +914,7 @@ export class FloorScreen {
             this.#walkTimer = null;
         }
 
-        // card#12749: the next snack window's second paints too, so a trip begins on its own second.
+        // card#12749: the next snack break's second paints too, so a trip begins on its own second.
         const ends = [this.#inFlight.nextEnd(now), this.#inFlight.nextSnack(now, this.#snack, correctedNowMs(this.#client.clockOffsetMs, now))]
             .filter((v) => v !== null);
         const ms = ends.length === 0 ? null : Math.min(...ends);

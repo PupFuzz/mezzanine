@@ -830,7 +830,8 @@ export const NOT_DRAWN_MEMBERS = Object.freeze({
     oldest_badge_since: 'the drill-down\'s and the desk list\'s (Q1 B); the desk draws the badge row and the flag',
     // § 6.2 A25 (card#12749): the snack trip is drawn on the FLOOR, as a walker, never on the desk.
     snack_held: "the seat's snack trip (§ 6.2 A25) — drawn by the scene as the trip's walker on the floor (`floor/scene.js`'s "
-        + '`snackTrip()`), never as a desk element; the desk it leaves draws its empty chair, every fact kept',
+        + "`snackCorner()`'s `plan()`), never as a desk element; the desk it leaves draws its empty chair, every fact kept "
+        + "(`in-flight.js`'s `awayDesk()`)",
     snack_interns_held: "the interns' snack trips (§ 6.2 A25) — drawn by the scene as each intern's walker on the floor, never "
         + 'as a desk element; the stool it leaves draws empty',
 });

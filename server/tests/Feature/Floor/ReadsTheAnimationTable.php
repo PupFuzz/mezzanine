@@ -295,10 +295,11 @@ trait ReadsTheAnimationTable
     }
 
     /**
-     * The HALVES of § 6.2's snack row one seat object holds (card#12749): `~snack` where the seat's `render_state` is the
-     * value the cell names for the seat, `~snack-interns` where an element of its `subagents[]` reads the
-     * `activity_state` the cell names for its interns — each value read off the cell, so a reworded condition is loud
-     * here (`[]` with nothing parsed reads as no half held, and the callers' expectations then name it).
+     * The HALVES of § 6.2's snack row one seat object holds (card#12749, card#12785): `~snack` where the seat's
+     * `render_state` is one of the values the cell names for the seat, `~snack-interns` where an element of its
+     * `subagents[]` reads one of the `activity_state` values the cell names for its interns — each set read off the cell
+     * (`render_state ∈ {"idle", "working"}`), so a reworded condition is loud here (`[]` with nothing parsed reads as no
+     * half held, and the callers' expectations then name it).
      *
      * @param  array<string, mixed>  $seat
      * @return list<string> the suffixes held, in the order the set enters them
@@ -308,19 +309,20 @@ trait ReadsTheAnimationTable
         $id = $this->documentSnackRow($md);
 
         if ($id === null
-            || preg_match('/^render_state == "([a-z_]+)" for the seat/', $this->documentAnimationRows($md)[$id]['condition'], $s) !== 1
-            || preg_match('/reads activity_state == "([a-z_]+)" for its interns/', $this->documentAnimationRows($md)[$id]['condition'], $i) !== 1) {
+            || preg_match('/^render_state ∈ \{([^}]+)\} for the seat/u', $this->documentAnimationRows($md)[$id]['condition'], $s) !== 1
+            || preg_match('/reads activity_state ∈ \{([^}]+)\} for its interns/u', $this->documentAnimationRows($md)[$id]['condition'], $i) !== 1) {
             return [];
         }
 
+        $values = static fn (string $set): array => preg_match_all('/"([a-z_]+)"/', $set, $m) > 0 ? $m[1] : [];
         $halves = [];
 
-        if (($seat['render_state'] ?? null) === $s[1]) {
+        if (in_array($seat['render_state'] ?? null, $values($s[1]), true)) {
             $halves[] = '~snack';
         }
 
         foreach (is_array($seat['subagents'] ?? null) ? $seat['subagents'] : [] as $element) {
-            if (($element['activity_state'] ?? null) === $i[1]) {
+            if (in_array($element['activity_state'] ?? null, $values($i[1]), true)) {
                 $halves[] = '~snack-interns';
 
                 break;
