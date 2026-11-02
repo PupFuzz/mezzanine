@@ -4541,7 +4541,7 @@ derived at the scene from the walkable model — none a new map member and none 
    on the visitor's own lattice (the seat's body for the tall table, the intern's for the low), each with its path
    back to spot 0. A visitor takes the **lowest spot of its table that no visitor in flight — of either table —
    stands on, walks to, or stands within the spacing of**; past the last spot the open floor holds **it takes no
-   trip this hour** rather than overlapping anyone (the queue overlaps on the threshold because a departure cannot
+   trip for that break** rather than overlapping anyone (the queue overlaps on the threshold because a departure cannot
    be declined; a snack can). A spot, once taken, is kept for the trip; nothing re-spaces a standing visitor.
 4. **Reachable by the router.** A walker visits the NEAREST table of its own height on its floor — nearest by the
    route's length from its anchor to the table's spot 0, over every room's map and the hallway, ties by the room's
