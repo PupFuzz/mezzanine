@@ -250,7 +250,7 @@ export function bandDocuments(band) {
         },
         ...band.windows.map((w, index) => ({ fn: 'windowSurround', rect: w.surround, input: { index, glazing: Object.freeze({ w: w.w, h: w.h }) } })),
         // card#12747: the call plates, in the surround's own px — the rects the scene decides and the departures press.
-        { fn: 'elevatorSurround', rect: band.elevator.surround, input: { calls: Object.freeze({ main: CALL_PLATES.main, low: CALL_PLATES.low }) } },
+        { fn: 'elevatorSurround', rect: band.elevator.surround, input: { calls: CALL_PLATES } },
         { fn: 'clockCase', rect: { x: band.clock.x, y: band.clock.y, w: band.clock.w, h: band.clock.h }, input: {} },
     ];
 
