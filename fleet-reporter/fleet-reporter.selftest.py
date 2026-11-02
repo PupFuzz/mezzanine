@@ -9975,6 +9975,193 @@ redgreen("a board declaration rides every heartbeat, as a digest, and a malforme
          "and null when undeclared or malformed, counted and named in selftest's detail, the seat still sending")
 
 
+print("\n== 27. A PARTLY-WRITTEN INDEX-JOURNAL LINE IS READ ONCE IT IS COMPLETE (D1 § 8.2, § 11.4, card#12465) ==")
+# THE FOLD'S BYTE CURSOR STOPS AT THE HEAD OF A LINE THAT HAS NO LF YET. The flusher folds the index
+# journal from `snapshot.json`'s (bucket, offset) and writes the offset back, so a cursor that steps past
+# a partial tail skips that record for good: the next fold starts inside the line, finds a fragment and
+# counts it corrupt, and the call it opened is never in the index. Two shapes, one per branch of the old
+# cut: a tail that is the whole unread range (no LF read at all), and a tail after a complete line, whose
+# multibyte text a cut counted in UTF-16 code units rather than bytes lands the cursor inside.
+#
+# THE CLOCK IS PINNED FOR EVERY INVOCATION, hooks and flusher alike, so each one appends to the ONE bucket
+# under test: an append the flusher makes to the bucket holding the partial line would be glued onto it,
+# which is a different state (a torn line followed by writes, § 11.4's counted corrupt line) from the write
+# in progress this block is about.
+TAIL_AT = int((time.time() - 3900) * 1000)
+
+
+def snap_of(s: Seat) -> dict:
+    try:
+        return json.loads((s.spool / "index" / "snapshot.json").read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def refs_in_index(s: Seat) -> set:
+    sn = snap_of(s)
+    return {e.get("harness_call_ref") for e in (sn.get("entries") or []) + (sn.get("tombstones") or [])}
+
+
+def tail_case(name: str, reporter: Path, *, complete_first: "str | None") -> dict:
+    """Plant the last journal line `tail_ééé` opened as a partial tail, fold, complete it, fold again.
+
+    `complete_first` is the tuid of a call opened, COMPLETE, after the first snapshot and before the
+    partial line, so the fold reads an LF before the tail; None leaves the partial line the whole unread
+    range. Returns what the snapshot held at each step."""
+    s = seat(name)
+    hook(s, "PreToolUse", pre(tuid="tail_first"), reporter=reporter, FLEET_REPORTER_NOW_MS=TAIL_AT)
+    flush(s, reporter=reporter, FLEET_REPORTER_NOW_MS=TAIL_AT)
+    if complete_first:
+        hook(s, "PreToolUse", pre(tuid=complete_first), reporter=reporter, FLEET_REPORTER_NOW_MS=TAIL_AT)
+    hook(s, "PreToolUse", pre(tuid="tail_ééé"), reporter=reporter, FLEET_REPORTER_NOW_MS=TAIL_AT)
+    jf = sorted((s.spool / "index").glob("*.jsonl"))
+    if len(jf) != 1:
+        raise AssertionError(f"{name}: the pinned clock put the journal in {len(jf)} buckets, not one")
+    data = jf[0].read_bytes()
+    head, last = data[:-1].rsplit(b"\n", 1)
+    if b'"harness_call_ref":"tail_\xc3\xa9\xc3\xa9\xc3\xa9"' not in last:
+        raise AssertionError(f"{name}: the journal's last line is not the planted call's open: {last[:80]!r}")
+    cut = last.index(b'"is_dispatch"')        # after the multibyte ref, so the partial tail carries it
+    head = head + b"\n"
+    jf[0].write_bytes(head + last[:cut])
+    flush(s, reporter=reporter, FLEET_REPORTER_NOW_MS=TAIL_AT)
+    held = {"offset": snap_of(s).get("offset"), "partial_at": len(head),
+            "tail_intact": jf[0].read_bytes().endswith(last[:cut])}
+    with open(jf[0], "ab") as fh:              # the write in progress finishes
+        fh.write(last[cut:] + b"\n")
+    flush(s, reporter=reporter, FLEET_REPORTER_NOW_MS=TAIL_AT)
+    held.update({"read": "tail_ééé" in refs_in_index(s),
+                 "end_offset": snap_of(s).get("offset"), "size": jf[0].stat().st_size,
+                 "corrupt": s.site_counters().get("spool_corrupt_lines", 0),
+                 "first_read": complete_first is None or complete_first in refs_in_index(s)})
+    return held
+
+
+def tail_verdict(h: dict) -> tuple:
+    return (h["offset"] == h["partial_at"], h["tail_intact"], h["read"], h["end_offset"] == h["size"],
+            h["corrupt"], h["first_read"])
+
+
+TAIL_GOOD = (True, True, True, True, 0, True)
+t_only = tail_case("index-tail-only", REPORTER, complete_first=None)
+eq("a partial last line that is the whole unread range: the snapshot's cursor stays at its head, the "
+   "line is untouched, and once it is completed the next fold reads the call it opened — no fragment "
+   "counted corrupt, the cursor at the file's end", TAIL_GOOD, tail_verdict(t_only))
+t_after = tail_case("index-tail-after", REPORTER, complete_first="tail_üüü_complete")
+eq("a partial last line carrying multibyte text after a complete one: the cursor stops at the partial "
+   "line's head in BYTES, and the completed line is read once", TAIL_GOOD, tail_verdict(t_after))
+
+# THE REDS, planted on copies of the one primitive both folds cut through. The first consumes every byte
+# read, the old `nl < 0` branch's shape; the second cuts at the decoded string's last LF, the old
+# arithmetic's unit: a count of UTF-16 code units used as a byte offset.
+p_tail_all = plant(("return { end: start + nl + 1,", "return { end: start + got,"))
+p_tail_u16 = plant(("return { end: start + nl + 1,",
+                    "return { end: start + buf.toString('utf8', 0, got).lastIndexOf('\\n') + 1,"))
+r_only = tail_case("index-tail-only-red", p_tail_all, complete_first=None)
+eq("RED: a fold that consumes the trailing bytes steps its cursor past the partial line, and the call "
+   "it opens is never in the index once the line completes",
+   (False, False), (r_only["offset"] == r_only["partial_at"], r_only["read"]))
+r_after = tail_case("index-tail-after-red", p_tail_u16, complete_first="tail_üüü_complete")
+eq("RED: a fold that cuts in UTF-16 code units lands its cursor short of the partial line's head when a "
+   "complete line before it carries multibyte text, and re-reads a fragment as a corrupt line",
+   (False, True), (r_after["offset"] == r_after["partial_at"], r_after["corrupt"] > 0))
+redgreen("a partly-written index-journal line is read once complete, never stepped past (D1 § 11.4, card#12465)",
+         f"cursor consumes the tail -> offset {r_only['offset']} vs partial line at {r_only['partial_at']}, "
+         f"completed call read={r_only['read']}; cut in UTF-16 units -> offset {r_after['offset']} vs "
+         f"{r_after['partial_at']}, corrupt lines {r_after['corrupt']}",
+         f"no LF read: offset {t_only['offset']} == {t_only['partial_at']}, read once complete; after a "
+         f"complete line: offset {t_after['offset']} == {t_after['partial_at']} in bytes, read once complete, "
+         f"0 corrupt")
+
+
+print("\n== 28. A RESPAWNED FLUSHER RUNS IN THE USER'S HOME, NOT IN THE FOLDER ITS HOOK RAN IN (D1 P-7, card#12471) ==")
+# A CHILD HOLDS ITS WORKING DIRECTORY FOR ITS WHOLE LIFE, and the flusher lives for as long as the seat.
+# On Windows a process's working directory cannot be deleted or renamed while it runs, so a flusher that
+# inherited its hook's — whatever project folder the agent was in — held that folder until it exited.
+# Measured here as /proc/<pid>/cwd of the real detached flusher a hook forks; what that hold costs on
+# Windows is not measurable on this platform, and is not claimed. The second case is what moving the
+# directory must not break: a config path the hook was given RELATIVE to its own directory.
+#
+# THE FLUSHER IS FOUND BY ITS OWN HOME, NOT BY `spawned_flushers()`: that sweep matches a config path
+# under TMP, and the RED below hands the flusher a relative one, which it would miss and leave running.
+# Each case's home directory is its own, so the match names that case's daemon and no other.
+def flushers_homed(home: Path) -> "list[tuple[int, str, str]]":
+    found = []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            argv = [x.decode("utf-8", "replace") for x in (entry / "cmdline").read_bytes().split(b"\0") if x]
+            env = dict(kv.decode("utf-8", "replace").split("=", 1)
+                       for kv in (entry / "environ").read_bytes().split(b"\0") if b"=" in kv)
+            cwd = os.readlink(entry / "cwd")
+        except OSError:
+            continue
+        if len(argv) >= 3 and argv[1].endswith("fleet-reporter.js") and argv[2] == "flusher" \
+                and env.get("HOME") == str(home):
+            found.append((int(entry.name), cwd, env.get("FLEET_REPORTER_CONFIG", "")))
+    return found
+
+
+def respawn_case(name: str, reporter: Path, *, relative_cfg: bool = False) -> dict:
+    s = seat(name, ingest=DEAD)
+    home = s.root / "home"
+    home.mkdir()
+    caller = s.root if relative_cfg else s.root / "project"
+    caller.mkdir(exist_ok=True)
+    (s.spool / "flusher.lock").unlink()          # no live flusher: the hook's respawn rule fires
+    env = s.env(freeze=False, HOME=str(home))
+    if relative_cfg:
+        env["FLEET_REPORTER_CONFIG"] = s.cfg_path.name
+    subprocess.run(["node", str(reporter), "hook", "PreToolUse"], input=json.dumps(pre(tuid="cwd_1")),
+                   capture_output=True, text=True, env=env, cwd=str(caller))
+    t0, got = time.time(), []
+    while not got and time.time() - t0 < 20:
+        got = flushers_homed(home)
+        time.sleep(0.2)
+    for pid, _, _ in got:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    t0 = time.time()
+    while flushers_homed(home) and time.time() - t0 < 15:
+        time.sleep(0.2)
+    for pid, _, _ in flushers_homed(home):     # re-read: only a pid that is STILL this case's daemon
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+    return {"home": str(home), "caller": str(caller), "cfg": str(s.cfg_path),
+            "cwds": [c for _, c, _ in got], "cfgs": [c for _, _, c in got]}
+
+
+if spawned_flushers() is None:
+    skip("card#12471: a respawned flusher's working directory — /proc is not readable here")
+else:
+    c_green = respawn_case("respawn-cwd", REPORTER)
+    eq("the flusher a hook forks runs in the user's home directory, not the directory the hook ran in",
+       [c_green["home"]], c_green["cwds"])
+    c_rel = respawn_case("respawn-cwd-rel", REPORTER, relative_cfg=True)
+    eq("  … and a config path the hook was given relative to its own directory reaches that flusher "
+       "absolute, so it still names the same file", ([c_rel["home"]], [c_rel["cfg"]]),
+       (c_rel["cwds"], c_rel["cfgs"]))
+    p_cwd = plant(("windowsHide: true, cwd: os.homedir(), env: child }", "windowsHide: true, env: child }"))
+    c_red = respawn_case("respawn-cwd-red", p_cwd)
+    eq("RED: a spawn with no `cwd` hands the flusher the hook's own working directory",
+       [c_red["caller"]], c_red["cwds"])
+    p_rel = plant(("child[k] = path.resolve(child[k]);", "child[k] = child[k];"))
+    c_rel_red = respawn_case("respawn-cwd-rel-red", p_rel, relative_cfg=True)
+    eq("RED: with the relative config path passed on as it is, the flusher in the user's home reads a "
+       "path that names no file there", ([c_rel_red["home"]], ["config.json"]),
+       (c_rel_red["cwds"], c_rel_red["cfgs"]))
+    redgreen("a respawned flusher does not hold its hook's folder, and still reads its hook's config (D1 P-7, card#12471)",
+             f"spawn with no cwd -> flusher cwd {c_red['cwds']}, the hook's folder {c_red['caller']}; a relative "
+             f"config passed on unresolved -> the flusher in {c_rel_red['cwds']} reads {c_rel_red['cfgs']}",
+             f"spawn with cwd os.homedir() -> flusher cwd {c_green['cwds']}, the hook ran in {c_green['caller']}; "
+             f"a relative config -> {c_rel['cfgs']}")
+
+
 print("\n== 21. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
 # WHY THIS IS A CHECK AND NOT JUST A TEARDOWN. Every hook that finds a stale lock forks a real
 # detached flusher (§ 2.3, P-7) — correct reporter behaviour, and nobody's bug in the product —
