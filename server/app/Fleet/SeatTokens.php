@@ -30,7 +30,9 @@ use Illuminate\Support\Facades\DB;
  * one-row `species_allocation_lock` mutex, on every path, and a new seat's `species` is chosen by
  * `App\Fleet\CharacterAllocation` over the live population read under it. A re-issue for an existing seat writes
  * no species. One attempt, no retry loop: the mutex row is locked by nothing else, so the allocation's own locks
- * have no deadlock partner.
+ * have no deadlock partner — and a re-issue locks the existing seat's rows in `App\Fleet\SeatLock`'s order, the
+ * order every other writer of that pair takes them in, so it waits behind them rather than closing a cycle
+ * (card#12461).
  *
  * ⛔ ISSUING NEVER REVOKES. D1 § 3.3: "Issue and activate the new token **server-side first** (old
  * and new both valid for a 7-day overlap), *then* write the new token into the seat config, *then*
@@ -95,11 +97,17 @@ final class SeatTokens
 
             $installRef = DB::table('installs')->where('install_id', $installId)->value('id');
 
-            $seat = $installRef === null ? null : DB::table('seats')
+            // A plain read finds the seat: every creation holds the mutex this transaction now holds, so a
+            // seat committed before the grant is visible here and no other can appear until this commits.
+            $existing = $installRef === null ? null : DB::table('seats')
                 ->where('install_ref', $installRef)
                 ->where('seat_id', $seatId)
-                ->lockForUpdate()
-                ->first(['id', 'retired_at', 'retired_by', 'retired_reason']);
+                ->value('id');
+
+            // ⛔ A RE-ISSUE LOCKS THE SEAT IN `SeatLock`'s ORDER — `seat_state`, then `seats` (card#12461).
+            // Taking `seats` first and `seat_state` at the insert below held the pair the other way round
+            // from retirement, and the two deadlocked.
+            $seat = $existing === null ? null : SeatLock::forUpdate((int) $existing, ['id', 'retired_at', 'retired_by', 'retired_reason']);
 
             // Decided on a LOCKING read inside the transaction, before the first insert, so a
             // refusal writes nothing and a retirement racing this issue either commits first (and
