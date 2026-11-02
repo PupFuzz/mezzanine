@@ -10,7 +10,7 @@
      rug) were retired at row 22 — the theme draws the floor, and the operator removed the rug — and their ids
      are not reused, so a stored map that placed them names tiles that draw nothing. Every image here owes a
      `docs/ATTRIBUTION.md` row (§ 10.1 Gate 1). -->
-<tileset version="1.10" tiledversion="1.10.2" name="floor-plane" tilewidth="72" tileheight="144" tilecount="11" columns="0">
+<tileset version="1.10" tiledversion="1.10.2" name="floor-plane" tilewidth="72" tileheight="144" tilecount="13" columns="0">
  <grid orientation="orthogonal" width="1" height="1"/>
  <tile id="2">
   <properties>
@@ -78,5 +78,17 @@
    <property name="kind" value="plant"/>
   </properties>
   <image source="floor-plane/plant-large.svg" width="80" height="128"/>
+ </tile>
+ <tile id="13">
+  <properties>
+   <property name="kind" value="snack-table"/>
+  </properties>
+  <image source="floor-plane/snack-table.svg" width="72" height="96"/>
+ </tile>
+ <tile id="14">
+  <properties>
+   <property name="kind" value="snack-table-low"/>
+  </properties>
+  <image source="floor-plane/snack-table-low.svg" width="48" height="64"/>
  </tile>
 </tileset>

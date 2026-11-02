@@ -187,6 +187,46 @@ if (input.mode === 'lattice') {
     });
 }
 
-if (!['points', 'draw', 'stack', 'shipped', 'lattice'].includes(input.mode)) {
+// card#12749 (AT-D3-32): the snack corner's constants as the scene declares them, and the spots `spotsNear()` finds on a
+// visitor's own lattice from a spot 0 the TEST derived from § 12's rule — so the test holds the scene's trips to both.
+if (input.mode === 'snack') {
+    const scene = await mod('floor/scene.js');
+    const { CLEARANCE, spotsNear } = await mod('floor/route.js');
+    const map = JSON.parse(readFileSync(join(REPO, input.map ?? join('resources', 'floor', 'default.tmj')), 'utf8'));
+    const grid = mapGrid(map);
+    const tileset = readTileset(TSX, tilesetUrl(map.tilesets[0].source));
+    const standing = registry.KINDS.filter((k) => !PLANE_KINDS.includes(k));
+    const extent = { x: 0, y: 0, width: grid.width * grid.tilewidth, height: grid.height * grid.tileheight };
+    const box = FURNITURE_BOX;
+    // The desks the scene drew (`input.desks`, each `{key, rects}`) — a slot nobody holds is open floor — else every slot.
+    const desks = input.desks ?? mapDesks(map).map((o) => {
+        const slot = { x: o.x, y: o.y, w: o.width, h: o.height };
+        const at = slotOrigin(slot, box);
+
+        return { key: `desk-${o.id}`, rects: [slot, { x: at.x, y: at.y, w: box.width, h: box.height }] };
+    });
+    const cells = mapTiles(map, { x: 0, y: 0 }, () => tileset, null);
+    const obstacles = cells.filter((c) => c.kind === 'wall' || standing.includes(c.kind)).map((c) => ({ x: c.x, y: c.y, w: c.w, h: c.h }));
+    const bodies = { seat: walkerSize(CHARACTER), intern: scene.INTERN_SIZE };
+
+    answer({
+        window_s: scene.SNACK_WINDOW_S,
+        dwell_s: scene.SNACK_DWELL_S,
+        tables: scene.SNACK_TABLES,
+        clearance: CLEARANCE,
+        bodies,
+        offset: Object.fromEntries(Object.entries(bodies).map(([k, b]) => [k, scene.snackSpotOffset(b)])),
+        spacing: Object.fromEntries(Object.entries(bodies).map(([k, b]) => [k, scene.snackSpacing(b)])),
+        placed: cells.filter((c) => scene.SNACK_TABLES[c.kind] !== undefined).map((c) => ({ kind: c.kind, x: c.x, y: c.y, w: c.w, h: c.h })),
+        spots: (input.spots ?? []).map(({ visitor, from, count }) => {
+            const g = lattice({ extent, cell: Math.min(grid.tilewidth, grid.tileheight), obstacles, desks, body: bodies[visitor] });
+            const at = spotsNear(g, from, scene.snackSpacing(bodies[visitor]));
+
+            return Array.from({ length: count }, (_, k) => at(k)?.at ?? null);
+        }),
+    });
+}
+
+if (!['points', 'draw', 'stack', 'shipped', 'lattice', 'snack'].includes(input.mode)) {
     throw new Error(`unknown mode ${input.mode}`);
 }

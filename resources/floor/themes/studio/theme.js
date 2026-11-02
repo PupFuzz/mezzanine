@@ -68,6 +68,23 @@ export const PALETTE = Object.freeze({
     armchair: Object.freeze({ cover: '#c8714f', legs: '#8a5a3a' }),
     cushion: Object.freeze({ colours: Object.freeze(['#c98b8f', '#d9a54a']) }),
     'book-pile': Object.freeze({ books: Object.freeze(['#c8553d', '#e0a43a', '#6f8fb0', '#7f9f6a', '#94627e', '#f2e6cf', '#4f8a87', '#d97f8f']) }),
+    // card#12749: the snack corner — both kinds, `snack-table` and `snack-table-low`, paint from this one piece.
+    'snack-table': Object.freeze({
+        wood: '#c48d5c',
+        cloth: '#f6e7d2',
+        box: '#f4a7b9',
+        dough: '#d9a066',
+        glaze: '#f2d29b',
+        chocolate: '#7a4a32',
+        icing: '#f7b6c8',
+        sprinkles: Object.freeze(['#6f8fb0', '#7f9f6a', '#e0a43a', '#c8553d']),
+        maker: '#6f9a9a',
+        carafe: '#e7f0ef',
+        coffee: '#6b4226',
+        lamp: '#f2b84b',
+        cup: '#fffaf0',
+        band: '#e0a43a',
+    }),
 });
 
 /**
@@ -743,7 +760,8 @@ export function surfaces() {
 
 /**
  * A STANDING SCENERY PIECE (§ 10.6 item 6), at its tile's cell rect, its foot on the cell's floor line,
- * sized by the cell: `bookcase`, `plant`, `floor-lamp`, `armchair`, `cushion` or `book-pile`. The floor
+ * sized by the cell: `bookcase`, `plant`, `floor-lamp`, `armchair`, `cushion`, `book-pile`, or one of the snack
+ * corner's two tables, `snack-table` and `snack-table-low` (card#12749, `snackTable()`). The floor
  * lamp's light is § 6.3's decorative glow, the painter's; the theme draws no glow of its own.
  *
  * @param {{kind: string, w: number, h: number, seed: string, index: number}} input the kind, the cell's size,
@@ -838,9 +856,156 @@ export function scenery({ kind, w, h, seed, index }) {
         }
 
         s.push(shadow(pen, cx + 2, foot, w * 0.4, 2.5, 0.28) + rimmed(m.join('')));
+    } else if (kind === 'snack-table' || kind === 'snack-table-low') {
+        s.push(snackTable(pen, SNACK[kind], w, foot));
     }
 
     return doc(pen, w, h, s.join(''));
+}
+
+/**
+ * THE SNACK CORNER's TWO TABLES (card#12749, FLOOR.md § 6.6 item 2): `top` is the table top's height above the foot —
+ * waist-high to the 120 px character for `snack-table`, to the 56 px intern for `snack-table-low` — and `n` the donuts
+ * and the cups it carries. What stands on the top is drawn at the scale the cell's width sets against the tall table's
+ * 72 px, so the low set is the same things, smaller.
+ */
+const SNACK = Object.freeze({
+    'snack-table': Object.freeze({ top: 60, n: 3 }),
+    'snack-table-low': Object.freeze({ top: 28, n: 2 }),
+});
+
+/** One donut seen from the front and above, its centre at (x, y): a dough ring, its topping, its hole, sprinkles on one. */
+function donut(pen, x, y, k, topping, P) {
+    const rx = 5.4 * k;
+    const ry = 3.4 * k;
+    const icing = topping === 'glazed' ? P.glaze : topping === 'chocolate' ? P.chocolate : P.icing;
+    const drip = `M${f(x - rx * 0.92)} ${f(y)}Q${f(x - rx * 0.7)} ${f(y - ry * 1.05)} ${f(x)} ${f(y - ry * 0.98)}`
+        + `Q${f(x + rx * 0.7)} ${f(y - ry * 1.05)} ${f(x + rx * 0.92)} ${f(y)}Q${f(x + rx * 0.55)} ${f(y + ry * 0.55)} ${f(x + rx * 0.3)} ${f(y + ry * 0.2)}`
+        + `Q${f(x)} ${f(y + ry * 0.75)} ${f(x - rx * 0.35)} ${f(y + ry * 0.3)}Q${f(x - rx * 0.65)} ${f(y + ry * 0.6)} ${f(x - rx * 0.92)} ${f(y)}Z`;
+    const m = [
+        `<ellipse cx="${f(x)}" cy="${f(y + 0.8 * k)}" rx="${f(rx)}" ry="${f(ry)}" fill="${pen.paint(P.dough, 0.3)}" stroke="${line(P.dough)}" stroke-width=".6"/>`,
+        `<path d="${drip}" fill="${pen.paint(icing, 0.36)}" stroke="${line(icing)}" stroke-width=".5"/>`,
+        `<ellipse cx="${f(x)}" cy="${f(y - 0.2 * k)}" rx="${f(1.7 * k)}" ry="${f(0.95 * k)}" fill="${shade(P.dough, 0.45)}"/>`,
+        `<ellipse cx="${f(x - rx * 0.4)}" cy="${f(y - ry * 0.55)}" rx="${f(1.5 * k)}" ry="${f(0.6 * k)}" fill="${RULES.highlight}" opacity=".7"/>`,
+    ];
+
+    if (topping === 'sprinkled') {
+        [[-3.2, -1.4, 30], [-1, -2.4, -40], [2.2, -1.9, 70], [3.4, -0.4, -20], [-2.4, 0.4, 80], [1, 0.9, 10]].forEach(([dx, dy, a], i) => {
+            const px = x + dx * k;
+            const py = y + dy * k;
+
+            m.push(`<path d="M${f(px - 0.7 * k)} ${f(py)}h${f(1.4 * k)}" transform="rotate(${a} ${f(px)} ${f(py)})" stroke="${P.sprinkles[i % P.sprinkles.length]}" stroke-width="${f(0.7 * k)}" stroke-linecap="round"/>`);
+        });
+    }
+
+    return m.join('');
+}
+
+/** One cream cup standing at (x, y): its handle to the right, a band of gold round it, coffee at its brim. */
+function cup(pen, x, y, k, P) {
+    const w = 5.6 * k;
+    const h = 6.2 * k;
+
+    return `<path d="M${f(x + w / 2 - 0.4 * k)} ${f(y - h * 0.78)}q${f(2.8 * k)} ${f(0.2 * k)} ${f(2.4 * k)} ${f(2.4 * k)}q${f(-0.3 * k)} ${f(1.7 * k)} ${f(-2.4 * k)} ${f(1.6 * k)}" fill="none" stroke="${line(P.cup)}" stroke-width="${f(1.1 * k)}"/>`
+        + `<path d="M${f(x - w / 2)} ${f(y - h)}H${f(x + w / 2)}L${f(x + w * 0.4)} ${f(y - 0.6 * k)}Q${f(x + w * 0.38)} ${f(y)} ${f(x + w * 0.2)} ${f(y)}H${f(x - w * 0.2)}Q${f(x - w * 0.38)} ${f(y)} ${f(x - w * 0.4)} ${f(y - 0.6 * k)}Z" fill="${pen.face(P.cup, 0.2, 0.22)}" stroke="${line(P.cup)}" stroke-width=".6"/>`
+        + `<path d="M${f(x - w * 0.44)} ${f(y - h * 0.55)}H${f(x + w * 0.44)}" stroke="${P.band}" stroke-width="${f(1.1 * k)}"/>`
+        + `<ellipse cx="${f(x)}" cy="${f(y - h)}" rx="${f(w / 2)}" ry="${f(k)}" fill="${shade(P.coffee, 0.1)}" stroke="${line(P.cup)}" stroke-width=".5"/>`;
+}
+
+/**
+ * A SNACK TABLE (§ 6.6 item 2): a contact shadow, four wooden legs, a cloth over the top whose front hangs in scallops,
+ * and on it a coffee maker with its carafe on the hotplate — its lamp a fixed warm dot, never a status light — an open
+ * pink donut box with `n` donuts (a glazed, a chocolate, a sprinkled), and `n` cream cups, the first with a drawn curl of
+ * steam. Nothing on it moves and it writes no text.
+ */
+function snackTable(pen, { top, n }, w, foot) {
+    const P = PALETTE['snack-table'];
+    const k = w / 72;
+    const x0 = 2 * k;
+    const x1 = w - 2 * k;
+    const yt = foot - top;
+    const legs = [];
+    const out = [shadow(pen, w / 2 + 2 * k, foot, (x1 - x0) * 0.52, 3.2 * k, 0.3)];
+
+    // the back legs, shorter and in shade, then the front ones, tapering to the floor
+    for (const lx of [x0 + 7 * k, x1 - 9 * k]) {
+        legs.push(`<path d="${rr(lx, yt + 2, 2.4 * k, top - 5 * k, 1)}" fill="${shade(P.wood, 0.25)}" stroke="${line(P.wood)}" stroke-width=".5"/>`);
+    }
+
+    for (const lx of [x0 + 3 * k, x1 - 6.5 * k]) {
+        legs.push(`<path d="M${f(lx)} ${f(yt + 4)}h${f(3.5 * k)}l${f(-0.5 * k)} ${f(top - 4)}h${f(-2.5 * k)}Z" fill="${pen.face(P.wood, 0.2, 0.2)}" stroke="${line(P.wood)}" stroke-width=".6"/>`);
+    }
+
+    out.push(rimmed(legs.join('')));
+
+    // the top: its wooden slab seen from above, a cloth over it, the cloth's front hanging in scallops
+    const depth = 7 * k;
+    const scallops = Math.max(3, Math.round((x1 - x0) / (8 * k)));
+    const sw = (x1 - x0) / scallops;
+    let hem = `M${f(x0)} ${f(yt - 0.6 * k)}V${f(yt)}`;
+
+    for (let i = 0; i < scallops; i++) {
+        hem += `Q${f(x0 + (i + 0.5) * sw)} ${f(yt + 6 * k)} ${f(x0 + (i + 1) * sw)} ${f(yt)}`;
+    }
+
+    out.push(rimmed(`<path d="${rr(x0 - 1, yt - depth, x1 - x0 + 2, depth + 3 * k, 3 * k)}" fill="${pen.face(P.wood, 0.25, 0.15)}" stroke="${line(P.wood)}" stroke-width=".8"/>`
+        + `<path d="M${f(x0 + 1)} ${f(yt - depth + 1.2 * k)}H${f(x1 - 1)}V${f(yt - 0.5 * k)}H${f(x0 + 1)}Z" fill="${pen.v([[0, tint(P.cloth, 0.3)], [1, P.cloth]])}"/>`
+        + `<path d="${hem}V${f(yt - 0.6 * k)}Z" fill="${pen.face(P.cloth, 0.15, 0.16)}" stroke="${line(P.cloth)}" stroke-width=".6"/>`));
+
+    const base = yt - 2 * k;
+    const back = [];
+
+    // the coffee maker, at the left: its tower, its hood, its foot with the hotplate, the carafe on it, the lamp a dot
+    const mx = x0 + 3 * k;
+    const mw = 19 * k;
+    const mh = 31 * k;
+    const cxk = mx + 6.5 * k;
+    const cw = 9 * k;
+    const ch = 13 * k;
+    const ct = base - 3.4 * k - ch;
+
+    back.push(`<path d="${rr(mx + mw - 7 * k, base - mh, 7 * k, mh, 2.2 * k)}" fill="${pen.face(P.maker, 0.25, 0.25)}" stroke="${line(P.maker)}" stroke-width=".7"/>`);
+    back.push(`<path d="${rr(mx, base - mh, mw, 8 * k, 2.6 * k)}" fill="${pen.paint(P.maker, 0.34)}" stroke="${line(P.maker)}" stroke-width=".7"/>`);
+    back.push(`<path d="${rr(mx - 0.5 * k, base - 3.4 * k, mw + k, 3.4 * k, 1.4 * k)}" fill="${pen.face(shade(P.maker, 0.1), 0.2, 0.2)}" stroke="${line(P.maker)}" stroke-width=".6"/>`);
+    back.push(`<path d="M${f(cxk - cw / 2 + k)} ${f(ct)}H${f(cxk + cw / 2 - k)}L${f(cxk + cw / 2)} ${f(ct + ch * 0.45)}Q${f(cxk + cw / 2 + 0.5 * k)} ${f(ct + ch)} ${f(cxk)} ${f(ct + ch)}Q${f(cxk - cw / 2 - 0.5 * k)} ${f(ct + ch)} ${f(cxk - cw / 2)} ${f(ct + ch * 0.45)}Z" fill="${P.carafe}" stroke="${line(P.carafe)}" stroke-width=".6"/>`);
+    back.push(`<path d="M${f(cxk - cw / 2 + 0.2 * k)} ${f(ct + ch * 0.5)}H${f(cxk + cw / 2 - 0.2 * k)}Q${f(cxk + cw / 2)} ${f(ct + ch - 0.4 * k)} ${f(cxk)} ${f(ct + ch - 0.4 * k)}Q${f(cxk - cw / 2)} ${f(ct + ch - 0.4 * k)} ${f(cxk - cw / 2 + 0.2 * k)} ${f(ct + ch * 0.5)}Z" fill="${pen.paint(P.coffee, 0.3)}"/>`);
+    back.push(`<path d="M${f(cxk - cw / 2 + 1.4 * k)} ${f(ct + 1.6 * k)}v${f(ch * 0.4)}" stroke="${RULES.highlight}" stroke-width="${f(k)}" stroke-linecap="round" opacity=".8"/>`);
+    back.push(`<path d="M${f(cxk - cw / 2 - 0.2 * k)} ${f(ct + 2 * k)}q${f(-3 * k)} ${f(0.5 * k)} ${f(-2.6 * k)} ${f(3.4 * k)}q${f(0.3 * k)} ${f(2 * k)} ${f(2.4 * k)} ${f(2.2 * k)}" fill="none" stroke="${line(P.maker)}" stroke-width="${f(1.1 * k)}"/>`);
+    back.push(`<circle cx="${f(mx + mw - 3.5 * k)}" cy="${f(base - 6 * k)}" r="${f(1.3 * k)}" fill="${P.lamp}" stroke="${line(P.lamp)}" stroke-width=".4"/>`);
+
+    // the donut box, open: its lid tipped back with a cream ribbon, the inside's shade at its back edge
+    const bx = x0 + 25 * k;
+    const bw = 28 * k;
+    const bh = 9 * k;
+
+    back.push(`<path d="M${f(bx + k)} ${f(base - bh)}L${f(bx + 3 * k)} ${f(base - bh - 15 * k)}H${f(bx + bw - 3 * k)}L${f(bx + bw - k)} ${f(base - bh)}Z" fill="${pen.face(tint(P.box, 0.18), 0.2, 0.1)}" stroke="${line(P.box)}" stroke-width=".7"/>`);
+    back.push(`<path d="M${f(bx + 4.5 * k)} ${f(base - bh - 4 * k)}Q${f(bx + bw / 2)} ${f(base - bh - 11 * k)} ${f(bx + bw - 4.5 * k)} ${f(base - bh - 4 * k)}" fill="none" stroke="${RULES.highlight}" stroke-width="${f(1.4 * k)}" stroke-linecap="round" opacity=".75"/>`);
+    back.push(`<path d="M${f(bx)} ${f(base - bh)}H${f(bx + bw)}V${f(base - bh + 2 * k)}H${f(bx)}Z" fill="${shade(P.box, 0.3)}"/>`);
+    out.push(rimmed(back.join(''), 1.1, 0.45));
+
+    // the donuts, showing over the box's front, then the front
+    const pitch = bw / (n + 0.4);
+
+    ['glazed', 'chocolate', 'sprinkled'].slice(0, n).forEach((t, i) => {
+        out.push(donut(pen, bx + pitch * (i + 0.7), base - bh - 2.2 * k, k, t, P));
+    });
+    out.push(rimmed(`<path d="${rr(bx, base - bh + 1.4 * k, bw, bh - 1.4 * k, 1.6 * k)}" fill="${pen.face(P.box, 0.22, 0.2)}" stroke="${line(P.box)}" stroke-width=".7"/>`
+        + `<path d="M${f(bx + 3 * k)} ${f(base - bh / 2 + 0.8 * k)}h${f(bw - 6 * k)}" stroke="${RULES.highlight}" stroke-width="${f(1.2 * k)}" stroke-dasharray="${f(2 * k)} ${f(1.6 * k)}" opacity=".85"/>`));
+
+    // the cups: the first at the back right with its curl of steam, drawn once and still; the rest in front of the box
+    const cups = [[x1 - 8 * k, base], [x1 - 17 * k, base + 2.4 * k], [x1 - 26 * k, base + 2.6 * k]].slice(0, n);
+    const [sx, sy] = cups[0];
+    const steam = `M${f(sx - 0.6 * k)} ${f(sy - 7.4 * k)}c${f(-2.6 * k)} ${f(-2.4 * k)} ${f(2.6 * k)} ${f(-3.6 * k)} ${f(0.2 * k)} ${f(-6.2 * k)}`
+        + `c${f(-2.2 * k)} ${f(-2.2 * k)} ${f(2.2 * k)} ${f(-3.2 * k)} ${f(0.6 * k)} ${f(-5.6 * k)}`;
+
+    out.push(`<path d="${steam}" fill="none" stroke="${shade(RULES.highlight, 0.3)}" stroke-width="${f(1.9 * k)}" stroke-linecap="round" opacity=".35"/>`
+        + `<path d="${steam}" fill="none" stroke="${RULES.highlight}" stroke-width="${f(1.1 * k)}" stroke-linecap="round"/>`);
+
+    for (const [ux, uy] of cups) {
+        out.push(rimmed(cup(pen, ux, uy, k, P), 1, 0.45));
+    }
+
+    return out.join('');
 }
 
 /** How far each floor plant's shape reaches at unit scale, its pot and leaves together — what a cell fits it by. */

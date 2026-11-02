@@ -171,7 +171,11 @@ trait ReadsTheAnimationTable
         $held = [];
 
         foreach ($this->documentAnimationRows($md) as $id => $row) {
-            if ($row['class'] !== 'held' || ! str_starts_with($row['condition'], 'render_state == "')) {
+            // A row held under a DERIVED episode key (`<seat key>~…`, § 6.2 A23's and A25's) is held BESIDE the desk's
+            // own row, never instead of it, so it is no desk row here even where its condition names `render_state`
+            // (A25's seat half, card#12749): its readers are `documentSideTableRow()` and `documentSnackRow()`.
+            if ($row['class'] !== 'held' || ! str_starts_with($row['condition'], 'render_state == "')
+                || str_contains($row['condition'], '<seat key>~')) {
                 continue;
             }
 
@@ -270,7 +274,60 @@ trait ReadsTheAnimationTable
      */
     protected function predictedRowFor(array $seat, string $enteredId, ?string $md = null): ?string
     {
+        if ($enteredId === $this->documentSnackRow($md)) {
+            return $this->snackHalvesFor($seat, $md) !== [] ? $enteredId : null;
+        }
+
         return $enteredId === $this->documentSideTableRow($md) ? $this->sideTableRowFor($seat, $md) : $this->heldRowFor($seat, $md);
+    }
+
+    /**
+     * § 6.2's SNACK row (A25, card#12749) — the one `held` row held under BOTH derived keys `<seat key>~snack` and
+     * `<seat key>~snack-interns`, or `null` where the table holds none or more than one. Its two halves' conditions are
+     * read off its own cell by `snackHalvesFor()`.
+     */
+    protected function documentSnackRow(?string $md = null): ?string
+    {
+        $rows = array_filter($this->documentAnimationRows($md), static fn (array $row): bool => $row['class'] === 'held'
+            && str_contains($row['condition'], '<seat key>~snack-interns') && preg_match('/<seat key>~snack(?!-)/', $row['condition']) === 1);
+
+        return count($rows) === 1 ? array_key_first($rows) : null;
+    }
+
+    /**
+     * The HALVES of § 6.2's snack row one seat object holds (card#12749): `~snack` where the seat's `render_state` is the
+     * value the cell names for the seat, `~snack-interns` where an element of its `subagents[]` reads the
+     * `activity_state` the cell names for its interns — each value read off the cell, so a reworded condition is loud
+     * here (`[]` with nothing parsed reads as no half held, and the callers' expectations then name it).
+     *
+     * @param  array<string, mixed>  $seat
+     * @return list<string> the suffixes held, in the order the set enters them
+     */
+    protected function snackHalvesFor(array $seat, ?string $md = null): array
+    {
+        $id = $this->documentSnackRow($md);
+
+        if ($id === null
+            || preg_match('/^render_state == "([a-z_]+)" for the seat/', $this->documentAnimationRows($md)[$id]['condition'], $s) !== 1
+            || preg_match('/reads activity_state == "([a-z_]+)" for its interns/', $this->documentAnimationRows($md)[$id]['condition'], $i) !== 1) {
+            return [];
+        }
+
+        $halves = [];
+
+        if (($seat['render_state'] ?? null) === $s[1]) {
+            $halves[] = '~snack';
+        }
+
+        foreach (is_array($seat['subagents'] ?? null) ? $seat['subagents'] : [] as $element) {
+            if (($element['activity_state'] ?? null) === $i[1]) {
+                $halves[] = '~snack-interns';
+
+                break;
+            }
+        }
+
+        return $halves;
     }
 
     /**

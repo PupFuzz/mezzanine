@@ -67,14 +67,21 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
         $expected = [];
 
         $side = $this->documentSideTableRow();
+        $snack = $this->documentSnackRow();
 
         $this->assertNotNull($side, '§ 6.2 carries no side-table row in the form this check reads');
+        $this->assertNotNull($snack, '§ 6.2 carries no snack row (A25) in the form this check reads');
 
         foreach ($this->snapshotSeats('instrument') as $key => $seat) {
             $expected[$key] = $this->heldRowFor($seat);
 
             if ($this->sideTableRowFor($seat) !== null) {
                 $expected["{$key}~interns"] = $side;
+            }
+
+            // § 6.2 A25 (card#12749): each half of the snack trip the object holds, beside the desk's row.
+            foreach ($this->snackHalvesFor($seat) as $half) {
+                $expected["{$key}{$half}"] = $snack;
             }
         }
 
@@ -85,7 +92,16 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
 
         foreach ($rows as $row) {
             $this->assertSame('entered', $row['phase']);
-            $actual["{$row['install_id']}/{$row['seat_id']}".($row['animation_id'] === $side ? '~interns' : '')] = $row['animation_id'];
+            $seatKey = "{$row['install_id']}/{$row['seat_id']}";
+            // The log row names no half of A25 (§ 11's schema is unchanged); the set enters the seat's half before its
+            // interns', so a seat's first A25 row is `~snack` where its own object holds that half.
+            $suffix = match (true) {
+                $row['animation_id'] === $side => '~interns',
+                $row['animation_id'] === $snack => in_array('~snack', $this->snackHalvesFor($this->snapshotSeats('instrument')[$seatKey]), true)
+                    && ! isset($actual["{$seatKey}~snack"]) ? '~snack' : '~snack-interns',
+                default => '',
+            };
+            $actual["{$seatKey}{$suffix}"] = $row['animation_id'];
         }
 
         ksort($expected);
@@ -342,7 +358,8 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
 
         foreach ($result['animation_log'] as $row) {
             if ($row['class'] !== 'held' || $row['phase'] !== 'entered'
-                || (! isset($conditions[$row['animation_id']]) && $row['animation_id'] !== $this->documentSideTableRow())) {
+                || (! isset($conditions[$row['animation_id']]) && $row['animation_id'] !== $this->documentSideTableRow()
+                    && $row['animation_id'] !== $this->documentSnackRow())) {
                 continue;
             }
 
@@ -415,6 +432,12 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
                 $key = "{$row['install_id']}/{$row['seat_id']}";
                 $given = $this->precedenceGives($run, $render, $previous, $entry);
 
+                // A25's two halves (card#12749): the row names neither, so the interns' half is asked where the seat's
+                // gives another answer — an exit either half's precedence names is that half's.
+                if ($entry['animation_id'] === $this->documentSnackRow() && ($given === null || $given[1] !== $row['cause'])) {
+                    $given = $this->precedenceGives($run, $render, $previous, $entry, '~snack-interns') ?? $given;
+                }
+
                 $this->assertNotNull($given,
                     "[{$run}] {$row['animation_id']} on {$key} was left at {$render['at']} ms, in a render where no step of § 11's "
                     .'precedence applies — that render ended no episode, so the row reds whatever it names ('.json_encode($row['cause']).')');
@@ -464,13 +487,17 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
      * @param  array<string, mixed>  $entry
      * @return array{0: string, 1: int|string|null}|null
      */
-    private function precedenceGives(string $run, array $render, ?array $previous, array $entry): ?array
+    private function precedenceGives(string $run, array $render, ?array $previous, array $entry, string $half = '~snack'): ?array
     {
         $key = "{$entry['install_id']}/{$entry['seat_id']}";
         $held = $render['held'][$key] ?? null;
         // A side-table episode (§ 6.2 A23, card#12448) is its own hold: its row is the side table's, which the
         // desk's empty chair does not take away, and its `motion` is the frame's `interns_held`.
         $sideTable = $entry['animation_id'] === $this->documentSideTableRow();
+        // A snack episode (§ 6.2 A25, card#12749) is held under one of two derived keys beside the desk's own: the seat's
+        // half, which the empty chair of row 5 takes away as it takes the desk's row, and the interns' half, which it
+        // does not (A23's precedent). The log row names neither, so each half the object holds is asked in turn.
+        $snack = $entry['animation_id'] === $this->documentSnackRow();
 
         if ($held === null) {
             // (1): the removal's answer, § 2.3 row 4's `snapshot` or the retired object's version.
@@ -495,7 +522,11 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
 
         // (2a): the object held now, drawn with row 5's condition at its previous value — a
         // missing seat draws the empty chair, which holds no row.
-        $row = $sideTable ? $this->sideTableRowFor($object) : ($was['missing'] ? null : $this->heldRowFor($object));
+        $row = match (true) {
+            $snack => ($half === '~snack' && $was['missing']) || ! in_array($half, $this->snackHalvesFor($object), true) ? null : $entry['animation_id'],
+            $sideTable => $this->sideTableRowFor($object),
+            default => $was['missing'] ? null : $this->heldRowFor($object),
+        };
 
         if ($changed && $row !== $entry['animation_id']) {
             return ['(2a)', $version];
@@ -508,7 +539,11 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
         if ($changed) {
             $motion = match (true) {
                 $previous['stilled'] => false,
-                $render['stilled'] === $previous['stilled'] => $render['frame']['desks'][$key][$sideTable ? 'interns_held' : 'held']['motion'] ?? null,
+                $render['stilled'] === $previous['stilled'] => $render['frame']['desks'][$key][match (true) {
+                    $snack => $half === '~snack' ? 'snack_held' : 'snack_interns_held',
+                    $sideTable => 'interns_held',
+                    default => 'held',
+                }]['motion'] ?? null,
                 default => $this->fail("[{$run}] a render stilled the floor and applied an object on {$key} that keeps its row — "
                     .'(2b) asks for a drawing no record carries'),
             };

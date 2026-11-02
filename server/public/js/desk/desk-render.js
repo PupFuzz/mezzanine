@@ -458,7 +458,24 @@ export function deskModel(seat, ages, facts = {}, options = {}) {
         bubble: character ? taskBubble(seat) : null,
         held,
         interns_held: internsHeld(table, permitted && dark === null, options.reduce === true),
+        // § 6.2 A25 (card#12749): the snack trip's two halves — the seat's, held by its own `idle`, and its interns'.
+        snack_held: character && state === 'idle' ? heldRendering('A25', permitted && dark === null, options.reduce === true) : null,
+        snack_interns_held: snackInternsHeld(table, permitted && dark === null, options.reduce === true),
     };
+}
+
+/**
+ * § 6.2 A25 `snack`, the interns' half (card#12749, FLOOR.md § 6.6 item 1): held while an intern the desk draws reads
+ * `subagents[].activity_state == "idle"`, `null` while none does — whatever the seat's own state, since the field is the
+ * intern's (the operator's ruling of 2026-11-02, *"5. Yes, it goes"*). An element with no `activity_state` is not idle.
+ * Whether it draws MOTION is A23's verdict: the desk's treatment permits it and the desk is not drawn dark.
+ */
+function snackInternsHeld(table, permitted, reduce) {
+    if (!table.stools.some((s) => s.activity === 'idle')) {
+        return null;
+    }
+
+    return heldRendering('A25', permitted, reduce);
 }
 
 /**

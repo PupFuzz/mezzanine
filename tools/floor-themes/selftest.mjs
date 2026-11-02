@@ -287,7 +287,17 @@ function wellFormedness(o) {
 /** Input closure: a seat object passed as an extra argument changes nothing, and the module keeps no state of its own. */
 function closure(o) {
     const defects = [];
-    const docs = documents(o).filter((_, i) => i % 5 === 0);
+    // Every fifth document OF EACH API FUNCTION, its first included — so every function is sampled whatever the
+    // populations before it hold. A fifth of the whole list, counted globally, stopped sampling `chair` when
+    // card#12749's scenery joined the list ahead of it, and this leg's own RED went green.
+    const seen = new Map();
+    const docs = documents(o).filter(([, fn]) => {
+        const n = seen.get(fn) ?? 0;
+
+        seen.set(fn, n + 1);
+
+        return n % 5 === 0;
+    });
 
     for (const [name, theme] of Object.entries(o.themes)) {
         for (const [label, fn, input] of docs) {
@@ -515,7 +525,7 @@ function surfacesLeg(o) {
             ...hexes(P.landing ?? {}).map((c) => [c, 'the landing']),
             ...hexes(P['wall-run'] ?? {}).map((c) => [c, 'a wall run']),
             ...hexes(P.wall ?? {}).map((c) => [c, 'the band']),
-            ...['bookcase', 'plant', 'floor-lamp', 'armchair', 'cushion', 'book-pile'].flatMap((k) => hexes(P[k] ?? {}).map((c) => [c, `the ${k}`])),
+            ...o.registry.KINDS.filter((k) => !o.scene.PLANE_KINDS.includes(k)).flatMap((k) => hexes(P[k] ?? {}).map((c) => [c, `the ${k}`])),
         ]);
 
         for (const [surface, colour] of Object.entries(theme.surfaces())) {

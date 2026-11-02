@@ -34,7 +34,7 @@ import { footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layou
 import { readEmbedded, splitGid, tilesetUrl } from './tileset.js';
 import { BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, internKey, stoolSlots, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
-import { CLEARANCE, CLEARANCE_TIERS, cellCentre, lattice, pointAt, polylineLength, route, spotsNear } from './route.js';
+import { CLEARANCE, CLEARANCE_TIERS, blockedFor, cellAt, cellCentre, lattice, pointAt, polylineLength, route, spotsNear } from './route.js';
 import { perchPoint } from './bird.js';
 
 /**
@@ -318,6 +318,99 @@ export const LAPTOP_FADE = 4;
  */
 export const ELEVATOR_WAIT_S = 30;
 export const WAIT_MAX_FRAMES = ELEVATOR_WAIT_S * LOOP_FPS;
+
+/**
+ * card#12749 — THE SNACK TRIP's WINDOW (§ 12's *Snack window*, § 6.6 item 4): one trip per walker per hour of the
+ * corrected server clock, its second within the hour drawn from the walker's key and the hour. Chosen; it carries no fact.
+ */
+export const SNACK_WINDOW_S = 3600;
+
+/** § 12's *Snack dwell* (card#12749): how long a visitor stands at its table, seeded per key and hour. Chosen. */
+export const SNACK_DWELL_S = Object.freeze({ min: 45, max: 75 });
+
+/**
+ * § 12's *Snack tables* (card#12749, § 6.6 item 2): the two standing kinds of the snack corner, the size of each kind's
+ * tile, and whose body each serves — the seat's (`walkerSize()`) at the tall table, the intern's (`INTERN_SIZE`) at the
+ * low one. The tile's rect is the obstacle the lattice blocks, read off the map like every standing tile's.
+ */
+export const SNACK_TABLES = Object.freeze({
+    'snack-table': Object.freeze({ w: 72, h: 96, visitor: 'seat' }),
+    'snack-table-low': Object.freeze({ w: 48, h: 64, visitor: 'intern' }),
+});
+
+/**
+ * § 12's *Snack spacing* (card#12749): the least distance between two visitors' spots, centre to centre — the visitor's
+ * drawn width plus the `clear` tier's side margin, *Queue spacing*'s formula over the visitor's own body.
+ */
+export function snackSpacing(body) {
+    return body.w + CLEARANCE.margin;
+}
+
+/**
+ * § 12's *Snack spot* (card#12749, § 6.6 item 3): spot 0's offset from the table tile's bottom-left corner for a visitor
+ * of `body` — half its width beside the table's front-left corner, *Walker clearance*'s depth plus 1 px below the foot,
+ * before the snap to its lattice cell's centre; `mirror` is the front-right corner's, `dx` from the tile's right edge.
+ */
+export function snackSpotOffset(body) {
+    return Object.freeze({ dx: -body.w / 2, mirror: body.w / 2, dy: CLEARANCE.depth + 1 });
+}
+
+/**
+ * card#12749 — ONE WALKER's TRIP IN ONE HOUR (§ 6.6 item 4): the second the trip begins, `draw(key, 'snack:' + H) mod
+ * 3600` into hour `H`, and its dwell, `45 + draw(key, 'snack-dwell:' + H) mod 31` seconds — the character tree's one
+ * seeded draw over the walker's key (the seat's, or the intern's `<seat key>~<call_id>`) and the hour, so every viewer and
+ * every reload draw one trip at one second. `start_s` is absolute: seconds of the corrected server clock.
+ *
+ * @param {function(string, string): number} draw `resources/characters/seed.js`'s `draw()`
+ */
+export function snackSchedule(draw, key, hour) {
+    return Object.freeze({
+        hour,
+        start_s: hour * SNACK_WINDOW_S + (draw(key, `snack:${hour}`) % SNACK_WINDOW_S),
+        dwell_s: SNACK_DWELL_S.min + (draw(key, `snack-dwell:${hour}`) % (SNACK_DWELL_S.max - SNACK_DWELL_S.min + 1)),
+    });
+}
+
+/**
+ * card#12749 — THE WALK HOME FROM A TRIP (the operator's ruling of 2026-11-02 on § 14 item 44 Q2, *"Walk back"*; § 6.6
+ * item 5): a visitor recalled to work while its trip is in flight walks home ALONG ITS ROUTE, from where it is at
+ * `elapsedMs` into the trip — back the way it came on its walk out, its route home from its spot while it stands there, or
+ * the rest of its route home on its walk back — starting at frame 0 of a new effect the holder starts at that instant, so
+ * no frame it has drawn moves. An intern recalled to `working` sits with its laptop fading in on arrival (`laptop`); the
+ * paint-only refresh at the walk's end seats the character in its new pose.
+ */
+export function snackHome(effect, elapsedMs, laptop) {
+    const I = effect.frame_interval_ms;
+    const [out, , back] = effect.legs;
+    const here = pointAt(effect, elapsedMs);
+    const p = Object.freeze({ x: here.x, y: here.y });
+    // The vertices of a walk leg passed by `ms`, and the ones still ahead of it.
+    const split = (leg, ms) => {
+        const travelled = leg.length * Math.min(1, Math.max(0, (ms - leg.start * I) / (leg.frames * I)));
+        let at = 0;
+        const passed = [leg.points[0]];
+        const ahead = [];
+
+        for (let i = 1; i < leg.points.length; i++) {
+            at += Math.hypot(leg.points[i].x - leg.points[i - 1].x, leg.points[i].y - leg.points[i - 1].y);
+            (at <= travelled ? passed : ahead).push(leg.points[i]);
+        }
+
+        return { passed, ahead };
+    };
+    const path = elapsedMs < out.start * I + out.frames * I
+        ? [p, ...split(out, elapsedMs).passed.reverse()]
+        : elapsedMs < back.start * I
+            ? back.points
+            : [p, ...split(back, elapsedMs).ahead];
+    const points = Object.freeze(path.filter((q, i) => i === 0 || q.x !== path[i - 1].x || q.y !== path[i - 1].y).map((q) => Object.freeze({ x: q.x, y: q.y })));
+    const walk = walkLeg(0, points.length === 1 ? Object.freeze([points[0], points[0]]) : points);
+    const legs = laptop
+        ? [walk, Object.freeze({ kind: 'seat', start: walk.frames, frames: LAPTOP_FADE, at: effect.anchor, laptop_from: 0, laptop_to: 1 })]
+        : [walk];
+
+    return Object.freeze({ ...effect, leg_kind: 'snack-home', legs: Object.freeze(legs), frames: Math.max(...legs.map((l) => l.start + l.frames)) });
+}
 
 /** Where every A1 and A2 walk meets the elevator: the leaves' seam, at their foot (§ 6.2's walk note item 3). */
 export function threshold(band) {
@@ -615,7 +708,7 @@ export const INTERN_SIZE = Object.freeze({ w: STOOL_W, h: STOOL_H });
  * on its walk's last frame. `door` is the frames the leaves are not shut in. With no motion, no desk on this floor,
  * no band, or no open route, the row is drawn without its walk: no legs, frames 0 (walk note item 7).
  */
-function walkEffect(base, id, anchor, door, call, motion, character, box, walking) {
+function walkEffect(base, id, anchor, door, call, motion, character, box, walking, start = null) {
     const key = `${base.install_id}/${base.seat_id}`;
     const none = (narrate) => Object.freeze({
         ...base,
@@ -637,7 +730,9 @@ function walkEffect(base, id, anchor, door, call, motion, character, box, walkin
         return none(false);
     }
 
-    const [from, to] = id === 'A2' ? [anchor, door] : [door, anchor];
+    // card#12749 (§ 6.6 item 5): an A2 that lands while the seat's snack trip is in flight walks from where the trip has
+    // the character at this render's instant (`start`), never from the desk.
+    const [from, to] = id === 'A2' ? [start ?? anchor, door] : [door, anchor];
     const routed = walking.route(key, anchor, from, to);
 
     if (routed === null) {
@@ -675,6 +770,7 @@ function walkEffect(base, id, anchor, door, call, motion, character, box, walkin
         legs,
         door: drawn.door,
         ...(drawn.queue === null ? {} : { queue: drawn.queue }),
+        ...(start === null ? {} : { from_trip: true }),
         no_route: false,
         // Which clearance tier the route was found at (`route.js`'s `CLEARANCE_TIERS`, card#12442) — read by the tests
         // and the walk probe, drawn nowhere.
@@ -760,6 +856,8 @@ function walkRouting({ key, extent, cell, obstacles, desks, draw, character }) {
         get lattice() {
             return built(walkerSize(character));
         },
+        // card#12749: the lattice for one walker body — the snack corner's spots are found on the visitor's own.
+        grid: (body) => built(body),
     };
 }
 
@@ -864,6 +962,9 @@ export function buildScene(frame, input) {
     // The walkable model's obstacles (§ 6.2's walk note item 3): every `wall` tile and every standing kind's tile, at
     // the rect the floor would draw it, read from the map's cells — whether or not the theme draws them.
     const obstacles = [];
+    // card#12749 (§ 6.6 items 2 and 3): the snack corner's tables, read off the map by kind like every standing tile —
+    // the client never finds a place for one — whether or not the theme draws them.
+    const snackTables = [];
 
     grids.forEach((g, i) => {
         const extent = extents[i];
@@ -877,6 +978,10 @@ export function buildScene(frame, input) {
         for (const c of cells) {
             if (c.kind === 'wall' || standing.includes(c.kind)) {
                 obstacles.push(Object.freeze({ x: c.x, y: c.y, w: c.w, h: c.h }));
+            }
+
+            if (SNACK_TABLES[c.kind] !== undefined && standing.includes(c.kind)) {
+                snackTables.push(Object.freeze({ id: `${g.install_id ?? ''}#${c.layer ?? ''}#${c.index}`, room: g.install_id, kind: c.kind, x: c.x, y: c.y, w: c.w, h: c.h, index: c.index }));
             }
         }
         const of = (kind) => tileRegions(cells.filter((c) => c.kind === kind))
@@ -1122,7 +1227,11 @@ export function buildScene(frame, input) {
         // (`floor/in-flight.js`) — what a turn-round turns from and a departure fades from.
         in_flight: input.interns_in_flight ?? new Map(),
         laptop_at: input.laptop_at ?? (() => null),
+        // card#12749: the snack trips in flight going into this render, walker key → `{ effect, elapsed_ms }` — where an A2
+        // or an A10 that lands mid-trip walks from (§ 6.6 item 5).
+        trips: input.trips_in_flight ?? new Map(),
     });
+    const snack = snackCorner(snackTables, desks, models, anchors, walking, input, box);
 
     // § 9 F14: every asset the scene asked to be drawn that the painter reported failed, and every
     // tileset that could not be fetched or read.
@@ -1162,7 +1271,204 @@ export function buildScene(frame, input) {
         // card#12705: spot `k` by the elevator, `{at, path}` (`spotsNear()`'s), or `null` past the last the floor holds — what the holder
         // (`floor/in-flight.js`) stands each waiting departure at. A function, so a render that queues nobody builds none.
         queue_spot: queueSpot,
+        // card#12749: the snack corner — its tables, every walker this scene could send to one, and the trip a walker
+        // takes (`snackCorner()`); the holder (`floor/in-flight.js`) decides when, and keeps each trip it starts.
+        snack,
         loop_fps: LOOP_FPS,
+    });
+}
+
+/**
+ * card#12749 — THE SNACK CORNER OF ONE SCENE (FLOOR.md § 6.6 items 3 and 4): `tables`, the map's snack tables; `walkers`,
+ * every character this scene draws at a desk or a stool that a trip could take — each with its anchor, its body, and
+ * whether its hold permits a trip now (`eligible`: A25's held rendering draws motion) or its hold has ended while it is
+ * still drawn at its desk (`recalled`: the held field changed — a recall walks it home, § 6.6 item 5); `schedule(key,
+ * H)`, `snackSchedule()` over the scene's seeded draw; and `plan(walker, schedule, taken)`, the trip itself.
+ *
+ * `plan()` answers `null` where the floor holds no table of the walker's height (a plain floor, nothing to narrate),
+ * `{ no_route }` where no such table can be reached (narrated once by the screen for a desk inside a room's grid),
+ * `{ full }` past the last spot, and otherwise the trip's effect: the table nearest by route length from the walker's
+ * anchor to its spot 0 (ties by room, then tile), the lowest spot of it that no trip in `taken` stands on, walks to or
+ * stands within the spacing of, and three legs from the trip's own start — `walk` from the anchor to the spot, `stand`
+ * for the dwell, `walk` home — on `route()`, at § 12's *Walk speed*. Spot 0 is § 12's *Snack spot*; the rest are
+ * `spotsNear()`'s from it at *Snack spacing* on the visitor's own lattice. Nothing here starts a trip.
+ */
+function snackCorner(tables, desks, models, anchors, walking, input, box) {
+    const draw = typeof input.draw === 'function' ? input.draw : null;
+    const reduce = input.reduce === true;
+    const character = input.character;
+    const bodyOf = (visitor) => (visitor === 'seat' ? walkerSize(character) : INTERN_SIZE);
+    const ordered = [...tables].sort((a, b) => ((a.room ?? '') < (b.room ?? '') ? -1 : (a.room ?? '') > (b.room ?? '') ? 1 : a.index - b.index));
+    // Each table's spots on its visitor's lattice, built on the first ask.
+    const spotsOf = new Map();
+    const spots = (t) => {
+        if (!spotsOf.has(t.id)) {
+            const body = bodyOf(SNACK_TABLES[t.kind].visitor);
+            // The visitor's own body's lattice — the one its routes are found on.
+            const grid = walking.grid(body);
+            const o = snackSpotOffset(body);
+            const open = (p) => {
+                const c = grid === null ? null : cellAt(grid, p);
+
+                if (c === null) {
+                    return null;
+                }
+
+                const snapped = cellCentre(grid, c);
+
+                return CLEARANCE_TIERS.some((tier) => blockedFor(grid, { key: null, anchor: snapped }, tier)[c[1] * grid.cols + c[0]] === 0) ? snapped : null;
+            };
+            const spot0 = open({ x: t.x + o.dx, y: t.y + t.h + o.dy }) ?? open({ x: t.x + t.w + o.mirror, y: t.y + t.h + o.dy });
+
+            spotsOf.set(t.id, spot0 === null ? () => null : spotsNear(grid, spot0, snackSpacing(body)));
+        }
+
+        return spotsOf.get(t.id);
+    };
+    const walkers = [];
+
+    for (const desk of desks) {
+        const model = models[desk.key];
+        const anchor = anchors.get(desk.key) ?? null;
+
+        if (model === undefined || anchor === null) {
+            continue;
+        }
+
+        walkers.push(Object.freeze({
+            key: desk.key,
+            seat_key: desk.key,
+            kind: 'seat',
+            install_id: desk.install_id,
+            seat_id: desk.seat_id,
+            anchor,
+            in_room: desk.slot_rect !== null,
+            species: model.species ?? null,
+            eligible: model.snack_held?.motion === true,
+            // The held field changed and the desk still draws its character: a trip in flight walks it home.
+            recalled: model.character === true && (model.snack_held ?? null) === null,
+        }));
+
+        for (const stool of model.side_table?.stools ?? []) {
+            walkers.push(Object.freeze({
+                key: `${desk.key}~${stool.call_id}`,
+                seat_key: desk.key,
+                kind: 'intern',
+                install_id: desk.install_id,
+                seat_id: desk.seat_id,
+                call_id: stool.call_id,
+                slot: stool.slot,
+                intern_seat_key: internKey(desk.seat_id, stool.call_id),
+                seat_species: model.species ?? null,
+                activity_state: stool.activity,
+                anchor: slotFoot(desk, stool.slot, box, character),
+                in_room: desk.slot_rect !== null,
+                eligible: stool.activity === 'idle' && model.snack_interns_held?.motion === true,
+                recalled: stool.activity !== 'idle',
+            }));
+        }
+    }
+
+    const plan = (w, schedule, taken) => {
+        const visitor = w.kind;
+        const mine = ordered.filter((t) => SNACK_TABLES[t.kind].visitor === visitor);
+
+        if (mine.length === 0 || reduce || draw === null || w.anchor === null) {
+            return null;
+        }
+
+        const body = bodyOf(visitor);
+        const spacing = snackSpacing(body);
+        const routed = (from, to) => {
+            const r = walking.route(w.seat_key, w.anchor, from, to, body);
+
+            if (r === null) {
+                return null;
+            }
+
+            return { points: Object.freeze([from, ...r.cells.map((c) => walking.centre(c)), to].map((p) => Object.freeze({ x: p.x, y: p.y }))), tier: r.tier };
+        };
+        let best = null;
+
+        for (const t of mine) {
+            const s0 = spots(t)(0);
+            const r = s0 === null ? null : routed(w.anchor, s0.at);
+
+            if (r !== null && (best === null || polylineLength(r.points) < polylineLength(best.r.points))) {
+                best = { t, r };
+            }
+        }
+
+        if (best === null) {
+            return Object.freeze({ no_route: true });
+        }
+
+        for (let k = 0; ; k++) {
+            const s = spots(best.t)(k);
+
+            if (s === null) {
+                return Object.freeze({ full: true });
+            }
+
+            if (taken.some((o) => (o.table === best.t.id && o.index === k) || Math.hypot(o.at.x - s.at.x, o.at.y - s.at.y) < Math.max(o.spacing, spacing))) {
+                continue;
+            }
+
+            const there = k === 0 ? best.r : routed(w.anchor, s.at);
+            const home = there === null ? null : routed(s.at, w.anchor);
+
+            if (home === null) {
+                continue;
+            }
+
+            const out = walkLeg(0, there.points);
+            const stand = Object.freeze({ kind: 'stand', start: out.frames, frames: schedule.dwell_s * LOOP_FPS, at: s.at, why: 'snack' });
+            const back = walkLeg(stand.start + stand.frames, home.points);
+            const legs = Object.freeze([out, stand, back]);
+            const intern = visitor === 'intern';
+
+            return Object.freeze({
+                animation_id: 'A25',
+                ...form('A25', false),
+                cause: null,
+                install_id: w.install_id,
+                seat_id: w.seat_id,
+                ...(intern
+                    ? { intern_key: w.key, call_id: w.call_id, intern_seat_key: w.intern_seat_key, seat_species: w.seat_species, slot: w.slot }
+                    : { species: w.species }),
+                walker_key: w.key,
+                leg_kind: 'snack',
+                hour: schedule.hour,
+                start_s: schedule.start_s,
+                dwell_s: schedule.dwell_s,
+                table: best.t.id,
+                table_kind: best.t.kind,
+                spot: Object.freeze({ table: best.t.id, index: k, at: s.at, spacing }),
+                anchor: w.anchor,
+                route: 'routed',
+                clearance: CLEARANCE_TIERS[Math.max(CLEARANCE_TIERS.indexOf(there.tier), CLEARANCE_TIERS.indexOf(home.tier))],
+                lattice_key: walking.key,
+                size: body,
+                frame: intern ? Object.freeze({ w: STOOL_FRAME, h: STOOL_H }) : Object.freeze((({ w: fw, h: fh }) => ({ w: fw, h: fh }))(characterOverdraw(box, character).overdraw)),
+                frame_interval_ms: 1000 / LOOP_FPS,
+                door: null,
+                side: null,
+                legs,
+                frames: back.start + back.frames,
+            });
+        }
+    };
+
+    return Object.freeze({
+        tables: Object.freeze(ordered),
+        walkers: Object.freeze(walkers),
+        schedule: (key, hour) => (draw === null ? null : snackSchedule(draw, key, hour)),
+        plan,
+        spot: (tableId, k) => {
+            const t = ordered.find((x) => x.id === tableId);
+
+            return t === undefined ? null : spots(t)(k);
+        },
     });
 }
 
@@ -1951,6 +2257,24 @@ function internWalks(row, base, frame, interns, band, moving, character, box, wa
     for (const element of move.lost) {
         const fx = shape(element, 'leave');
         const flying = interns.in_flight.get(fx.intern_key) ?? null;
+        const trip = interns.trips.get(fx.intern_key) ?? null;
+
+        // card#12749 (§ 6.6 item 5): an intern whose snack trip is in flight leaves from where the trip has it at this
+        // render's instant — routed from that point by the low call plate, as item 16's turn-round routes from mid-walk.
+        if (trip !== null && door !== null) {
+            const p = pointAt(trip.effect, trip.elapsed_ms);
+            const here = Object.freeze({ x: p.x, y: p.y });
+            const r = routed(fx, here, door);
+
+            if (r !== null) {
+                const way = wayOut((a, b) => routed(fx, a, b), r, here, 0, door, call);
+                const gone = departing([], way, walking.wait(fx.intern_key, row.cause), sill);
+
+                out.push(done({ ...fx, from_trip: true }, gone.legs, gone.door, way.tier, gone.queue));
+            }
+
+            continue;
+        }
         const held = interns.laptop_at(fx.intern_key);
         const from = held ?? (fx.activity_state === 'working' ? 1 : 0);
 
@@ -2071,8 +2395,9 @@ function laptopFades(row, base, frame, interns, moving) {
     for (const call of flip?.calls ?? []) {
         const key = `${seat}~${call.call_id}`;
 
-        // An intern whose arrival is still in flight is the arrival's to draw: its `seat` leg reads the held state.
-        if (interns.in_flight.has(key)) {
+        // An intern whose arrival is still in flight is the arrival's to draw: its `seat` leg reads the held state. One on
+        // a snack trip is the trip's (card#12749): it has no laptop with it, and a recall's walk home sits it down to work.
+        if (interns.in_flight.has(key) || interns.trips.has(key)) {
             continue;
         }
 
@@ -2282,7 +2607,12 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce, char
             // card#12443: the walker wears the seat's delivered body, read off the desk model this render holds.
             const species = key === null ? null : frame.desks.desks[key]?.species ?? null;
 
-            effects.push(walkEffect({ ...base, species }, id, now, threshold(band), callPoint(band, character, 'main'), motion && !reduce, character, box, walking));
+            // card#12749: an A2 over a snack trip in flight starts where the trip has the character now.
+            const trip = id === 'A2' && key !== null ? interns.trips.get(key) ?? null : null;
+            const at = trip === null ? null : pointAt(trip.effect, trip.elapsed_ms);
+
+            effects.push(walkEffect({ ...base, species }, id, now, threshold(band), callPoint(band, character, 'main'), motion && !reduce, character, box, walking,
+                at === null ? null : Object.freeze({ x: at.x, y: at.y })));
 
             continue;
         }
