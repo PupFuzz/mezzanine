@@ -179,8 +179,8 @@ class TheDeskIsReLaidTest extends TestCase
     {
         foreach ([
             "the bubble back in the box's top band" => ['../floor/scene.js', '            anchor: { x: centre, y: desk.bubble_bottom },', '            anchor: { x: centre, y: desk.box.y + 2 * LINE + 2 * BUBBLE_PAD },', 'not set on its character'],
-            // 22 px, the trail's least reach (`TRAIL_REACH`), which scene.js no longer imports
-            'the trail at its least reach whatever the bubble' => ['../floor/scene.js', '            trail: trailCircles(foot.x, foot.y, rect.y + rect.h),', '            trail: trailCircles(foot.x, foot.y, foot.y - 22),', 'does not reach the bubble'],
+            // 22 px, the trail's least reach (`TRAIL_REACH`), written as its figure so the plant reads alone
+            'the trail at its least reach whatever the bubble' => ['../floor/scene.js', '            trail: want.trail ? trailCircles(foot.x, foot.y, rect.y + rect.h) : Object.freeze([]),', '            trail: want.trail ? trailCircles(foot.x, foot.y, foot.y - 22) : Object.freeze([]),', 'does not reach the bubble'],
             // the seat's ruling of the same day: the trail starts at the character's drawn head, not its frame's top
             'the trail started at the frame\'s top' => ['../floor/scene.js', '        return { crest: ctx.crest(installId, model.seat_id, at), clear: ctx.headClear(installId, model.seat_id, at) };', '        return { crest: 0, clear: ctx.headClear(installId, model.seat_id, at) };', 'does not reach the head'],
             // card#12446 (the operator's *"The bubble can also be lowered"*): a bubble left where card#12444 set it, at the
