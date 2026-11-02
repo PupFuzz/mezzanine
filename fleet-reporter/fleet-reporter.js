@@ -3018,15 +3018,20 @@ function readSample(spool, sid, atMs) {
  * WHAT THE SPAWNER RESOLVED AGAINST ITS OWN DIRECTORY, THE FLUSHER STILL RESOLVES THE SAME WAY. The two
  * paths the flusher takes from its environment, `FLEET_REPORTER_CONFIG` and `$COORD_CONFIG`, are made
  * absolute against the spawner's directory first when they are relative; an empty `$COORD_CONFIG` keeps
- * its own meaning (§ 3.1) and is passed as it is. Every other path is absolute already: the script and
- * `process.execPath` by construction, `spool_dir` and `ca_file` because the config refuses a relative one. */
+ * its own meaning (§ 3.1) and is passed as it is. The other paths it reads are absolute already: the script
+ * and `process.execPath` by construction, the default config path because it is built from the home or
+ * `%APPDATA%`, and `spool_dir` and `ca_file` because the config refuses a relative one. */
 function spawnFlusher(script, env) {
   const child = { ...env };
   for (const k of ['FLEET_REPORTER_CONFIG', 'COORD_CONFIG']) {
     if (typeof child[k] === 'string' && child[k] !== '' && !path.isAbsolute(child[k])) child[k] = path.resolve(child[k]);
   }
+  // `os.homedir()` throws on an account with no home (no passwd entry, no HOME), as § 3.1's roster read
+  // allows for; that seat's flusher keeps its spawner's directory rather than not starting at all.
+  let cwd;
+  try { cwd = os.homedir(); } catch (e) { cwd = undefined; }
   const proc = lazy('child_process').spawn(process.execPath, [script, 'flusher'],
-    { detached: true, stdio: 'ignore', windowsHide: true, cwd: os.homedir(), env: child });
+    { detached: true, stdio: 'ignore', windowsHide: true, cwd, env: child });
   proc.unref();
   return proc;
 }

@@ -10146,7 +10146,7 @@ else:
     eq("  … and a config path the hook was given relative to its own directory reaches that flusher "
        "absolute, so it still names the same file", ([c_rel["home"]], [c_rel["cfg"]]),
        (c_rel["cwds"], c_rel["cfgs"]))
-    p_cwd = plant(("windowsHide: true, cwd: os.homedir(), env: child }", "windowsHide: true, env: child }"))
+    p_cwd = plant(("windowsHide: true, cwd, env: child }", "windowsHide: true, env: child }"))
     c_red = respawn_case("respawn-cwd-red", p_cwd)
     eq("RED: a spawn with no `cwd` hands the flusher the hook's own working directory",
        [c_red["caller"]], c_red["cwds"])
