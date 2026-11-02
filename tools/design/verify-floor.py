@@ -50,7 +50,9 @@ with the document it is checking, and it survives exactly the pass that falsifie
   G-scenery the standing pieces (card#11046)   on the shipped default: every tile names a shipped tileset
                                                and a tile declaring a kind of the theme registry's set;
                                                every standing piece's cell rect inside the grid and
-                                               outside every `desks` object
+                                               outside every `desks` object; leg 3 (card#12749): each
+                                               snack table's spot 0 open at `clear` for its visitor,
+                                               the two at least the tall table's spacing apart
   G9  D2 section 6.5's delivery contract        a render row sourcing one of the TEN non-version-
                                                bearing members without `fetch-fresh` / `dark-only`;
                                                a section 5 table this gate has no column for; a table
@@ -108,6 +110,7 @@ reporting clean when its extractor finds nothing (canon: a check that cannot fai
 """
 import ast
 import json
+import math
 import re
 import struct
 import sys
@@ -2135,6 +2138,78 @@ def gw_tiles(map_path, doc):
     return out, missing
 
 
+# G-scenery leg 3 (card#12749, section 6.6 item 3): on the shipped default, each snack table's spot 0 -- half the
+# visitor's drawn width beside the table's front-left corner, `Walker clearance`'s depth plus 1 px below its foot,
+# snapped to its lattice cell's centre, or the front-right mirror where that is blocked -- is open at the `clear`
+# tier for its visitor's body (the seat's at `snack-table`, the intern's at `snack-table-low`), and the two spot 0s
+# lie at least the tall table's spacing apart (the seat's width plus the side margin). The body widths and the margins
+# are read off section 12's rows, never typed here. "Open at clear" is the walk note's item 3 halo over the map: a
+# cell is blocked where its centre lies within half the body plus the margin of a wall or standing rect sideways and
+# within the depth margin of its depth span, or within half the body of a `desks` object sideways and inside its
+# depth span. ⚠ This is the DOCUMENT's check of the shipped map against its stated figures; the scene's own spot,
+# on its own lattice, is AT-D3-32's (`route.js`), and a difference between the two reds there.
+GS_SNACK = {"snack-table": "seat", "snack-table-low": "intern"}
+gs_snack_status = "NOT MEASURED"
+
+
+def gs_snack_leg(mrel, snack, blocking, objs, gw, gh, cell):
+    """Leg 3's verdict for one map: the status line, failures appended to `fail`."""
+    sec12 = section_text("12-every-number-and-where-it-comes-from") or ""
+    char = re.search(r"^\| \*\*Character rect\*\* \| \*\*([\d.]+) × ([\d.]+)\*\* px", sec12, re.M)
+    intern = re.search(r"the intern's (\d+) × (\d+) px stool rect", sec12)
+    clr = re.search(r"^\| \*\*Walker clearance\*\* \| \*\*(\d+) px beside; (\d+) px in depth\*\*", sec12, re.M)
+    if not (char and intern and clr):
+        fail.append("G-scenery leg 3 CONTROL: section 12's *Character rect*, the intern's stool rect (*Intern frame*) or "
+                    "*Walker clearance* did not parse, so no snack spot could be derived")
+        return "NOT MEASURED"
+    width = {"seat": float(char.group(1)), "intern": float(intern.group(1))}
+    margin, depth = int(clr.group(1)), int(clr.group(2))
+    if sorted(k for k, *_ in snack) != sorted(GS_SNACK):
+        fail.append(f"G-scenery leg 3 CONTROL: `{mrel}` places {sorted(k for k, *_ in snack) or 'no snack table'}, and "
+                    f"section 6.6 says the shipped default lays one `snack-table` and one `snack-table-low`")
+        return "NOT MEASURED"
+
+    def blocked(px, py, w):
+        if px < 0 or py < 0 or px >= gw or py >= gh:
+            return "outside the grid"
+        for (rx, ry, rw, rh) in blocking:
+            if rx - w / 2 - margin < px < rx + rw + w / 2 + margin and ry - depth < py < ry + rh + depth:
+                return f"within the `clear` halo of the rect at ({rx}, {ry}) {rw} x {rh}"
+        for o in objs:
+            if o[1] - w / 2 < px < o[1] + o[3] + w / 2 and o[2] < py < o[2] + o[4]:
+                return f"within a body of `desks` object id {o[0]}"
+        return None
+
+    spots = {}
+    for kind, x, y, w_t, h_t, col, row in snack:
+        w = width[GS_SNACK[kind]]
+        snap = lambda v: (v // cell) * cell + cell / 2
+        foot = y + h_t
+        left = (snap(x - w / 2), snap(foot + depth + 1))
+        right = (snap(x + w_t + w / 2), snap(foot + depth + 1))
+        why_l, why_r = blocked(*left, w), blocked(*right, w)
+        if why_l is None:
+            spots[kind] = left
+        elif why_r is None:
+            spots[kind] = right
+        else:
+            fail.append(f"G-scenery leg 3: `{mrel}`'s `{kind}` at ({col}, {row}) has no spot 0 open at `clear` for its "
+                        f"visitor's {w} px body -- front-left {left} lies {why_l}, front-right {right} lies {why_r} -- "
+                        f"so it serves nobody (section 6.6 item 3)")
+    if len(spots) == 2:
+        (ax, ay), (bx, by) = spots["snack-table"], spots["snack-table-low"]
+        apart, need = math.hypot(ax - bx, ay - by), width["seat"] + margin
+        if apart < need:
+            fail.append(f"G-scenery leg 3: `{mrel}`'s two snack tables' spot 0s, {spots['snack-table']} and "
+                        f"{spots['snack-table-low']}, lie {apart:.1f} px apart, under the tall table's spacing of "
+                        f"{need} px -- an agent and an intern at their tables at once would overlap (section 6.6)")
+            return "FAILED"
+        return (f"MEASURED from {mrel}: spot 0 of `snack-table` at {spots['snack-table']} and of `snack-table-low` at "
+                f"{spots['snack-table-low']}, each open at `clear` for its visitor, {apart:.1f} px apart against the "
+                f"tall table's spacing of {need} px")
+    return "FAILED"
+
+
 if not KINDS:
     fail.append("G-walls/G-scenery CONTROL: the theme registry's `KINDS` did not parse out of "
                 "`resources/floor/themes/index.js`, so no tile's kind could be held against the set")
@@ -2171,6 +2246,7 @@ else:
                 fail.append(f"G-walls leg 2: `{GW_TILE}` is not well-formed XML ({exc}) -- Tiled and Gate 2 read it")
         _wall_gids = {g for g, t in _tiles.items() if t[2] == "wall"}
         _walls, _pieces, _bad_tiles = 0, 0, []
+        _blocking, _snack = [], []             # every wall and standing rect, and the snack tables (card#12749)
         for _l in gw_tile_layers(_doc.get("layers", [])):
             _cols = int(_l.get("width", _doc["width"]))
             for _i, _cell in enumerate(_l.get("data", [])):
@@ -2189,6 +2265,7 @@ else:
                 if _gid in _wall_gids:
                     _walls += 1
                     _cx, _cy = _col * _tw, _row * _th
+                    _blocking.append((_cx, _cy, _tw, _th))
                     for _o in _objs:
                         if _inside(_cx, _cy, _tw, _th, _o):
                             fail.append(f"G-walls leg 1: `{_mrel}` `{_l.get('name')}` wall cell ({_col}, {_row}) lies "
@@ -2200,6 +2277,9 @@ else:
                 # G-scenery leg 2: a standing piece's WHOLE cell rect, bottom-aligned as drawn (mapTiles()).
                 _pieces += 1
                 _x, _y = _col * _tw, (_row + 1) * _th - _t[4]
+                _blocking.append((_x, _y, _t[3], _t[4]))
+                if _t[2] in GS_SNACK:
+                    _snack.append((_t[2], _x, _y, _t[3], _t[4], _col, _row))
                 if _x < 0 or _y < 0 or _x + _t[3] > _gw or _y + _t[4] > _gh:
                     fail.append(f"G-scenery leg 2: `{_mrel}` `{_l.get('name')}` places a `{_t[2]}` at ({_col}, {_row}) "
                                 f"whose {_t[3]} x {_t[4]} cell leaves the grid")
@@ -2218,6 +2298,7 @@ else:
         if _pieces == 0:
             fail.append(f"G-scenery CONTROL: `{_mrel}` places no standing piece, and section 10.6 says the shipped "
                         f"default lays the house picture's scenery -- leg 2 read an empty population")
+        gs_snack_status = gs_snack_leg(_mrel, _snack, _blocking, _objs, _gw, _gh, _tw)
         if not _missing and not _bad_tiles and _walls and _pieces:
             gw_status = (f"MEASURED from {_mrel}: {_walls} wall cell(s) outside all {len(_objs)} `desks` objects; "
                          f"the `{GW_TILE}` tile declares `kind: wall` and its marker parses")
@@ -3607,6 +3688,8 @@ print(f"G-scenery the shipped default's standing pieces (card#11046): {gs_status
       f"tile resolved to a shipped tileset and a tile declaring a kind of the registry's set, and every standing "
       f"piece's whole cell rect, bottom-aligned as drawn, was held inside the grid and outside every `desks` "
       f"object. NOT checked: where an `accent` is painted, which is the author's, and how the pieces look")
+print(f"    G-scenery leg 3 the snack corner's spots (card#12749): {gs_snack_status}. NOT checked here: the route to "
+      f"either spot and the spots past spot 0 -- the scene's, held by AT-D3-32")
 print(f"G11 the composed `api_error_type` line: {len(AET_PAIRS)} member/phrase pairs re-derived from "
       f"section 7.6, section 7.1's worked instance held against them, section 5.1's verbatim "
       f"illustration held against the MEMBERS; both predicates fed their own defect on this run and "

@@ -41,8 +41,9 @@
  *
  * ⛔ THE ONE TIMER HERE IS A HELD LOOP's OWN FRAMES, at the interval the scene carries (§ 6.3's
  * second bullet: "except a state-held loop's own frames at the fixed rate"), and it runs only for a
- * character whose held render the animation set drew WITH motion, or while an A1 or A2 walker is in
- * flight — its stride and its place among the desks, an edge row's own bounded frames (card#12194).
+ * character whose held render the animation set drew WITH motion, or while a walker is in flight — A1's or
+ * A2's, an intern's A10 (card#12450) or a snack trip's A25 (card#12749) — its stride and its place among the
+ * desks, its row's own bounded frames (card#12194).
  * Decorative motion is the stylesheet's, at the cycle the scene states.
  */
 
@@ -215,11 +216,14 @@ export function measurer() {
     };
 }
 
-/** The § 6.2 rows drawn as a walker (card#9566, card#12194). */
-const isWalk = (fx) => fx.animation_id === 'A1' || fx.animation_id === 'A2';
+/**
+ * The § 6.2 rows drawn as a walker (card#9566, card#12194) — and a seat's snack trip, A25's drawing (card#12749), which
+ * is a walk out, a stand and a walk home on the same primitive.
+ */
+const isWalk = (fx) => fx.animation_id === 'A1' || fx.animation_id === 'A2' || (fx.animation_id === 'A25' && typeof fx.intern_key !== 'string');
 
-/** An intern's A10 walk (card#12450): drawn as a walker too, keyed by its intern key. */
-const isInternWalk = (fx) => fx.animation_id === 'A10' && typeof fx.intern_key === 'string';
+/** An intern's A10 walk (card#12450), and an intern's snack trip (card#12749): drawn as a walker too, keyed by its intern key. */
+const isInternWalk = (fx) => (fx.animation_id === 'A10' || fx.animation_id === 'A25') && typeof fx.intern_key === 'string';
 
 /**
  * One continuous motion's identity across paints (card#12345, card#12194). A bird flight: its row, its post, its leg
@@ -228,6 +232,11 @@ const isInternWalk = (fx) => fx.animation_id === 'A10' && typeof fx.intern_key =
  * never inherits a cancelled one's origin.
  */
 function effectKey(fx) {
+    // card#12749: one trip per walker per hour, and its walk home a motion of its own.
+    if (fx.animation_id === 'A25') {
+        return `A25 ${fx.walker_key} ${fx.hour} ${fx.leg_kind}`;
+    }
+
     if (isInternWalk(fx)) {
         return `A10 ${fx.intern_key} ${fx.cause} ${fx.leg_kind}`;
     }
@@ -887,7 +896,8 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     }
 
     /**
-     * One A1 or A2 walker (§ 6.2's walk note items 3–5, card#12194): the seat's character, its feet on the scene's
+     * One walker — A1's or A2's (§ 6.2's walk note items 3–5, card#12194), an intern's A10 (card#12450) or a snack trip's
+     * A25 (card#12749), which is a walk out, a stand at its table and a walk home: the character, its feet on the scene's
      * routed path, as TWO elements — the scene decided every number, and `elapsed_ms` is how far into the walk this
      * paint lands. Neither is ever a pointer target (`.fx-walker-shown`'s `pointer-events:none`): the elevator under a
      * waiting walker and a desk it stands in front of keep every press.
@@ -1004,7 +1014,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
 
             if (seatLeg !== null && laptop !== null) {
                 const to = fx.leg_kind === 'arrive' ? (fx.held_activity === 'idle' ? 0 : seatLeg.laptop_to) : seatLeg.laptop_to;
-                const glide = (fx.leg_kind === 'arrive' ? segments[segments.length - 1] : segments[0]).glide;
+                const glide = (fx.leg_kind === 'arrive' || fx.leg_kind === 'snack-home' ? segments[segments.length - 1] : segments[0]).glide;
                 const over = image(glide, laptop.uris[0], -fx.frame.w / 2, -fx.frame.h, fx.frame.w, fx.frame.h, asset, { class: 'intern fx-laptop', preserveAspectRatio: MEET });
 
                 laptopOver(over, seatLeg.laptop_from, to, seatLeg.frames, I, elapsed - seatLeg.start * I);

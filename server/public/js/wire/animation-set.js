@@ -78,6 +78,7 @@ export const ANIMATION_SET = Object.freeze({
     A22: Object.freeze({ class: 'edge', animation: "portal-bird — the bird carries the envelope from a resolved origin desk on this floor to the floor's bird portal and leaves, or arrives from the portal at a resolved destination desk on this floor, for a post whose other end resolves to a desk on another floor of this building", reduced: "a still envelope at the portal or at the desk for the moving form's duration, then gone" }),
     A23: Object.freeze({ class: 'held', animation: 'intern-type — each working intern at the side table types at the laptop on its lap, swaying gently left and right, 4 fps loop', reduced: 'each working intern sits still with its laptop on its lap' }),
     A24: Object.freeze({ class: 'edge', animation: "laptop — an intern's laptop fades in or out over the laptop fade", reduced: 'the laptop is simply present or absent' }),
+    A25: Object.freeze({ class: 'held', animation: "snack — once an hour, in a window seeded from the walker's key and the hour, an idle character gets up from its desk or its stool, walks its routed path to the floor's snack corner, stands at the table of its own height for a seeded dwell, and walks back — and walks home at once, from where it stands, when a delivered change recalls it to work; outside its window it draws nothing of its own, and the sleeper (A6) or the still intern stands", reduced: 'no trip: the sleeper stays slumped at its desk and the idle intern still on its stool' }),
 });
 
 /**
@@ -90,7 +91,9 @@ export const ANIMATION_SET = Object.freeze({
  *   · `heartbeat` — an `edge` row fired by each `feed.heartbeat` RECEIVED.
  *   · `desk`      — a `held` render `desk/desk-render.js` selects for the state it draws, entered
  *                   and left by `held()` against the object that holds it: the desk's own (`held`), and
- *                   A23, its side table's (`interns_held`, card#12448), under the derived key `INTERNS`.
+ *                   A23, its side table's (`interns_held`, card#12448), under the derived key `INTERNS`; and A25, the
+ *                   snack trip's (card#12749), the seat's half (`snack_held`) under `SNACK` and its interns' half
+ *                   (`snack_interns_held`) under `SNACK_INTERNS`.
  *   · `slot`      — A16, whose trigger is § 3.3's displacement and therefore a fact about the
  *                   SLOT FUNCTION, Appendix B row 7's artifact. `displaced()` is the entry that
  *                   row calls, and `floor/floor-screen.js` calls it (card#7341 step 7); the log row
@@ -130,6 +133,7 @@ export const FIRED_BY = Object.freeze({
     A22: 'coord',
     A23: 'desk',
     A24: 'delta',
+    A25: 'desk',
 });
 
 /**
@@ -142,19 +146,33 @@ export const FIRED_BY = Object.freeze({
 export const INTERNS = '~interns';
 
 /**
- * The held renders one desk carries — the desk's own, then its side table's — each with its episode key's suffix, the
- * desk model's member it is, and the member of `held()`'s `conditions` entry that is its prior.
+ * THE SNACK TRIP's TWO EPISODE KEYS (card#12749; FLOOR.md § 6.6 item 1): A25 is held by the same `idle` that holds A6 (the
+ * seat's half) and by the interns' own `idle` (their half), so — as A23 beside the desk's row — each is entered and left
+ * under a derived key of its own: `<seat key>~snack` and `<seat key>~snack-interns`, one episode per SEAT for each.
+ */
+export const SNACK = '~snack';
+
+export const SNACK_INTERNS = '~snack-interns';
+
+/**
+ * The held renders one desk carries — the desk's own, its side table's, and the snack trip's two halves — each with its
+ * episode key's suffix, the desk model's member it is, and the member of `held()`'s `conditions` entry that is its prior.
  */
 const HOLDS = Object.freeze([
     Object.freeze({ suffix: '', field: 'held', prior: 'prior' }),
     Object.freeze({ suffix: INTERNS, field: 'interns_held', prior: 'prior_interns' }),
+    Object.freeze({ suffix: SNACK, field: 'snack_held', prior: 'prior_snack' }),
+    Object.freeze({ suffix: SNACK_INTERNS, field: 'snack_interns_held', prior: 'prior_snack_interns' }),
 ]);
 
-/** A key of the episode map → its seat's key and the hold it is the episode of. */
+/**
+ * A key of the episode map → its seat's key and the hold it is the episode of — the LONGEST suffix that ends the key, so
+ * `~snack-interns` is never read as `~interns` (a seat key carries no `~`).
+ */
 function holdOf(key) {
-    const interns = key.endsWith(INTERNS);
+    const hold = HOLDS.filter((h) => h.suffix !== '' && key.endsWith(h.suffix)).sort((a, b) => b.suffix.length - a.suffix.length)[0] ?? HOLDS[0];
 
-    return [interns ? key.slice(0, -INTERNS.length) : key, HOLDS[interns ? 1 : 0]];
+    return [key.slice(0, key.length - hold.suffix.length), hold];
 }
 
 /**
@@ -556,8 +574,9 @@ export class AnimationSet {
      * § 6.2's `held` class over one frame: enter every desk's held render against the object that
      * holds it, and leave the ones whose hold has ended with the `cause` § 11's precedence gives.
      *
-     * ⛔ A DESK CARRIES TWO HOLDS (card#12448): its own, and its side table's A23 under `INTERNS`'s
-     * derived key, each entered and left by the same rule below against the same seat object.
+     * ⛔ A DESK CARRIES FOUR HOLDS: its own, its side table's A23 under `INTERNS`'s derived key (card#12448), and the
+     * snack trip's A25 under `SNACK`'s and `SNACK_INTERNS`' (card#12749), each entered and left by the same rule below
+     * against the same seat object.
      *
      * ⛔ AN EPISODE IS ONE CONTINUOUS RUN OF ONE RENDER ON ONE SEAT (§ 11). A change of the held
      * row OR of whether motion is drawn leaves one episode and enters another, because two rows
@@ -575,12 +594,13 @@ export class AnimationSet {
      * @param {Map<string, *>} removed key → the `cause` the protocol journalled when it REMOVED the
      *        seat (`seat.removed`, Appendix B step 10): a removed seat has no held object left to read
      *        a version off, so the version that ended its hold travels with the removal instead
-     * @param {Map<string, {prior: ?object, prior_interns: ?object, unconfirmed: boolean, stilled: boolean}>} conditions
+     * @param {Map<string, {prior: ?object, prior_interns: ?object, prior_snack: ?object, prior_snack_interns: ?object, unconfirmed: boolean, stilled: boolean}>} conditions
      *        key → what § 11's precedence compares with the render before this one, for each seat
      *        held now: `prior`, the held rendering the object held NOW draws with every client
      *        condition at the value it had in the previous render (the desk floor derives it, because
-     *        the desk render is its module and not this one), and `prior_interns` the same for its side
-     *        table's (A23, card#12448); `unconfirmed`, whether § 2.3 row 5's
+     *        the desk render is its module and not this one), `prior_interns` the same for its side
+     *        table's (A23, card#12448), and `prior_snack` and `prior_snack_interns` for the snack trip's two halves
+     *        (A25, card#12749); `unconfirmed`, whether § 2.3 row 5's
      *        condition holds in this render and did not in the previous one; and `stilled`, the same
      *        for § 9 F6's stilled floor
      */
