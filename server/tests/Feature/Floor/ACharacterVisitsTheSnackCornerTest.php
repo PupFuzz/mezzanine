@@ -5,8 +5,8 @@ namespace Tests\Feature\Floor;
 use Tests\TestCase;
 
 /**
- * AT-D3-32 — an idle character visits the snack corner once an hour, stands at its own table, and comes straight back
- * (`docs/design/FLOOR.md § 11`, card#12749): § 6.6's trip, § 6.2's row A25, over `fx-snack`.
+ * AT-D3-32 — a character visits the snack corner every one to two hours, stands at its own table, and comes straight back
+ * (`docs/design/FLOOR.md § 11`, card#12749, card#12785): § 6.6's trip, § 6.2's row A25, over `fx-snack`.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ A TRIP IS PRESENTATION, NEVER STATE. The rows are the animation log's and are asserted there; the trip is asserted on
@@ -14,8 +14,9 @@ use Tests\TestCase;
  * elements and its `held`, `frame.scene.snack.tables` — the model the painter draws. The look of the corner is the
  * operator's reading of the sandbox, and no clause here asserts it.
  *
- * ⛔ EVERY NUMBER IS RE-DERIVED: the window's second and the dwell through the character tree's own `draw()` over the
- * walker's key and the hour (`walk-probe.mjs`), spot 0 from § 12's *Snack spot* over the table tile the scene read and the
+ * ⛔ EVERY NUMBER IS RE-DERIVED: the chain of breaks, each break's dwell and its food line from § 12's *Snack anchor*,
+ * *Snack gap* and *Snack dwell* through this test's own copy of the character tree's seeded draw (`seedDraw()`, held equal
+ * to the tree's `draw()` through `walk-probe.mjs`), spot 0 from § 12's *Snack spot* over the table tile the scene read and the
  * bodies and margins § 12 states, the later spots through `route.js`'s own `spotsNear()`, a walker's point through
  * `pointAt()`.
  *
@@ -25,8 +26,12 @@ use Tests\TestCase;
  * ⛔ THE RECALL WALKS HOME. The operator ruled on § 14 item 44 Q2 (2026-11-02, *"Walk back"*): a walker recalled to work
  * mid-trip walks home along its route, the desk's facts rendering the new state at once. The design's Eleventh RED was the
  * walk; it is now the CUT — the trip ended on the recall and the character drawn at its desk on the applying render.
+ *
+ * ⛔ A BUSY CHARACTER GOES TOO (card#12785, the operator's ruling of 2026-11-02): a `working` seat or intern takes its
+ * break with a food thought over its head, its desk keeping every fact at the desk; `blocked` and the degraded states
+ * still keep a character home and recall one away; `idle ↔ working` and `working → working` never cut a trip.
  */
-class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
+class ACharacterVisitsTheSnackCornerTest extends TestCase
 {
     use DrivesTheFloorScreen;
 
@@ -178,7 +183,7 @@ class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
 
     // ── § 12's rows ──────────────────────────────────────────────────────────────────────────
 
-    /** @return array{window: int, dwell: array{0: int, 1: int}, tall: array{0: int, 1: int}, low: array{0: int, 1: int}, margin: int, depth: int, seat_w: float, intern_w: float} */
+    /** @return array{gap: array{0: int, 1: int}, day: int, anchor: int, dwell: array{0: int, 1: int}, tall: array{0: int, 1: int}, low: array{0: int, 1: int}, margin: int, depth: int, seat_w: float, intern_w: float} */
     private function section12(): array
     {
         $md = $this->floorMd();
@@ -187,7 +192,8 @@ class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
 
             return $m;
         };
-        $w = $read("/^\\| \\*\\*Snack window\\*\\* \\| \\*\\*1\\*\\* trip per hour, beginning `draw\\(key, 'snack:' \\+ H\\) mod (\\d+)`/m", '*Snack window*');
+        $g = $read('/^\| \*\*Snack gap\*\* \| \*\*([\d,]+) … ([\d,]+) s\*\*/m', '*Snack gap*');
+        $a = $read("/^\\| \\*\\*Snack anchor\\*\\* \\| one break a day, at `day × ([\\d,]+) \\+ draw\\(key, 'snack-anchor:' \\+ day\\) mod ([\\d,]+)` s/m", '*Snack anchor*');
         $d = $read('/^\| \*\*Snack dwell\*\* \| \*\*(\d+) … (\d+) s\*\* \|/m', '*Snack dwell*');
         $t = $read('/^\| \*\*Snack tables\*\* \| \*\*(\d+) × (\d+)\*\* and \*\*(\d+) × (\d+)\*\* px \|/m', '*Snack tables*');
         $c = $read('/^\| \*\*Walker clearance\*\* \| \*\*(\d+) px beside; (\d+) px in depth\*\* \|/m', '*Walker clearance*');
@@ -195,7 +201,9 @@ class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
         $i = $read("/the intern's (\\d+) × (\\d+) px stool rect/", '*Intern frame*');
 
         return [
-            'window' => (int) $w[1],
+            'gap' => [(int) str_replace(',', '', $g[1]), (int) str_replace(',', '', $g[2])],
+            'day' => (int) str_replace(',', '', $a[1]),
+            'anchor' => (int) str_replace(',', '', $a[2]),
             'dwell' => [(int) $d[1], (int) $d[2]],
             'tall' => [(int) $t[1], (int) $t[2]],
             'low' => [(int) $t[3], (int) $t[4]],
@@ -226,9 +234,85 @@ class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
         $this->fail("the scene reads no `{$kind}` off the map");
     }
 
-    private function hourOf(array $trip): int
+    // ── the chain, re-derived ───────────────────────────────────────────────────────────────────────────────────────
+
+    /** The character tree's seeded draw (`resources/characters/seed.js`): FNV-1a over `key#field`, then fmix32. */
+    private function seedDraw(string $key, string $field): int
     {
-        return $trip['hour'];
+        $mul = static fn (int $a, int $b): int => (($a * ($b & 0xFFFF)) + ((($a * ($b >> 16)) & 0xFFFF) << 16)) & 0xFFFFFFFF;
+        $h = 2166136261;
+
+        foreach (unpack('C*', "{$key}#{$field}") as $byte) {
+            $h = $mul($h ^ $byte, 16777619);
+        }
+
+        $h ^= $h >> 16;
+        $h = $mul($h, 0x85EBCA6B);
+        $h ^= $h >> 13;
+        $h = $mul($h, 0xC2B2AE35);
+
+        return $h ^ ($h >> 16);
+    }
+
+    /** @var array<string, list<int>> */
+    private static array $chains = [];
+
+    /**
+     * § 12's *Snack anchor* and *Snack gap*, re-derived: the start seconds of walker `$key`'s breaks of day `$day`, from
+     * its anchor up to the next day's, each gap uniform over the range and narrowed only to land a whole gap before the
+     * next anchor (§ 6.6 item 4).
+     *
+     * @return list<int>
+     */
+    private function chainOf(string $key, int $day): array
+    {
+        return self::$chains["{$key} {$day}"] ??= (function () use ($key, $day): array {
+            $f = $this->section12();
+            $anchor = fn (int $d): int => $d * $f['day'] + $this->seedDraw($key, "snack-anchor:{$d}") % $f['anchor'];
+            $next = $anchor($day + 1);
+            $starts = [$anchor($day)];
+
+            for ($s = $starts[0]; $next - $s > $f['gap'][1];) {
+                $hi = min($f['gap'][1], $next - $s - $f['gap'][0]);
+                $s += $f['gap'][0] + $this->seedDraw($key, "snack-gap:{$s}") % ($hi - $f['gap'][0] + 1);
+                $starts[] = $s;
+            }
+
+            return $starts;
+        })();
+    }
+
+    /** The break of `$key` beginning at `$start`, re-derived — its dwell and its line's index — or `null` if no break does. */
+    private function breakAt(string $key, int $start): ?array
+    {
+        $f = $this->section12();
+        $day = intdiv($start, $f['day']);
+
+        foreach ([$day - 1, $day] as $d) {
+            if (in_array($start, $this->chainOf($key, $d), true)) {
+                return [
+                    'start_s' => $start,
+                    'dwell_s' => $f['dwell'][0] + $this->seedDraw($key, "snack-dwell:{$start}") % ($f['dwell'][1] - $f['dwell'][0] + 1),
+                    'line' => $this->seedDraw($key, "snack-line:{$start}") % count($this->corner()['lines']),
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    /** The first break of `$key` after second `$after`, re-derived. */
+    private function nextBreak(string $key, int $after): int
+    {
+        $f = $this->section12();
+
+        for ($d = intdiv($after, $f['day']) - 1; ; $d++) {
+            foreach ($this->chainOf($key, $d) as $s) {
+                if ($s > $after) {
+                    return $s;
+                }
+            }
+        }
     }
 
     // ── GREEN — § 12's figures are the scene's ───────────────────────────────────────────────
@@ -238,7 +322,9 @@ class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
         $f = $this->section12();
         $c = $this->corner();
 
-        $this->assertSame($f['window'], $c['window_s'], "the scene's window is not § 12's *Snack window*");
+        $this->assertSame(['min' => $f['gap'][0], 'max' => $f['gap'][1]], $c['gap_s'], "the scene's gap is not § 12's *Snack gap*");
+        $this->assertSame($f['day'], $c['day_s'], "the scene's anchor day is not § 12's *Snack anchor*");
+        $this->assertSame($f['gap'][0], $f['anchor'], "§ 12's *Snack anchor* does not lie under one minimum gap");
         $this->assertSame(['min' => $f['dwell'][0], 'max' => $f['dwell'][1]], $c['dwell_s'], "the scene's dwell is not § 12's *Snack dwell*");
         $this->assertSame([$f['tall'], $f['low']], [[$c['tables']['snack-table']['w'], $c['tables']['snack-table']['h']], [$c['tables']['snack-table-low']['w'], $c['tables']['snack-table-low']['h']]],
             "the scene's tables are not § 12's *Snack tables*");
@@ -281,23 +367,47 @@ class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
             $defects[] = 'idle-trip left a row or fired an edge for aimla-impl-2 through the trip';
         }
 
-        $working = $this->snackRun('working-window', $dir);
+        $blocked = $this->snackRun('blocked-window', $dir);
 
-        if ($this->held($working, self::IMPL_1, 'A25') !== [] || array_column($entered($this->held($working, self::IMPL_1, 'A3')), 'animation_id') !== ['A3']) {
-            $defects[] = 'working-window did not enter A3 alone for aimla-impl-1';
+        if ($this->held($blocked, self::REVIEW, 'A25') !== [] || array_column($entered($this->held($blocked, self::REVIEW, 'A7')), 'animation_id') !== ['A7']) {
+            $defects[] = 'blocked-window did not enter A7 alone for aimla-review';
         }
 
+        // card#12785: a working seat holds A25 beside A3, and a working → working change (A3 → A4) leaves neither A25 nor
+        // its episode.
+        $busy = $this->snackRun('busy-trip', $dir);
+        $v1 = $this->snapshotSeat('busy-trip', 'aimla-impl-1')['state_version'];
+
+        if (array_column($entered($this->held($busy, self::IMPL_1, 'A25')), 'cause') !== [$v1]
+            || array_column($entered($this->held($busy, self::IMPL_1, 'A3')), 'cause') !== [$v1]
+            || $left($this->held($busy, self::IMPL_1, 'A25')) !== []
+            || array_column($entered($this->held($busy, self::IMPL_1, 'A4')), 'cause') !== [$v1 + 1]) {
+            $defects[] = 'busy-trip did not enter A25 and A3 for aimla-impl-1 on the snapshot, and A4 on the delta, leaving no A25';
+        }
+
+        $wakes = $this->snackRun('wakes-mid-trip', $dir);
+
+        if ($left($this->held($wakes, self::IMPL_2, 'A25')) !== [] || array_column($left($this->held($wakes, self::IMPL_2, 'A6')), 'cause') !== [$v2 + 1]
+            || array_column($entered($this->held($wakes, self::IMPL_2, 'A3')), 'cause') !== [$v2 + 1]) {
+            $defects[] = 'wakes-mid-trip did not leave A6 and enter A3 at the delta\'s version with A25 held throughout';
+        }
+
+        // The intern's half is held by `idle` and `working` alike (card#12785): entered on the snapshot, where the element
+        // reads `working`, and kept through its flip to `idle`.
         $intern = $this->snackRun('intern-trip', $dir);
+        $vpm = $this->snapshotSeat('intern-trip', 'aimla-pm')['state_version'];
         $flip = $this->fixture('intern-trip')['messages'];
         $flipVersion = array_values(array_filter($flip, static fn ($m) => ($m['envelope']['t'] ?? null) === 'seat.delta'))[0]['envelope']['state_version'];
+        $a25 = $entered($this->held($intern, self::PM, 'A25'));
 
-        if (array_column($entered($this->held($intern, self::PM, 'A25')), 'cause') !== [$flipVersion]
+        if (count($a25) !== 2 || array_unique(array_column($a25, 'cause')) !== [$vpm]
+            || $left($this->held($intern, self::PM, 'A25')) !== []
             || array_column($left($this->held($intern, self::PM, 'A23')), 'cause') !== [$flipVersion]
             || $left($this->held($intern, self::PM, 'A3')) !== []) {
-            $defects[] = "intern-trip did not enter A25 for aimla-pm at the flip's version beside A23's exit and the seat's A3";
+            $defects[] = "intern-trip did not enter both A25 halves for aimla-pm on the snapshot and keep them through the flip, beside A23's exit and the seat's A3";
         }
 
-        foreach (['recall-mid-trip' => 'A3', 'leave-mid-trip' => null] as $run => $then) {
+        foreach (['recall-mid-trip' => 'A7', 'leave-mid-trip' => null] as $run => $then) {
             $r = $this->snackRun($run, $dir);
             $version = $v2 + 1;
 
@@ -351,13 +461,17 @@ class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
         $defects = [];
         $f = $this->section12();
         [$frame, $trip, $at] = $this->firstTrip($result, self::IMPL_2);
-        $hour = $this->hourOf($trip);
-        $start = $hour * $f['window'] + $this->draw(self::IMPL_2, "snack:{$hour}") % $f['window'];
-        $dwell = $f['dwell'][0] + $this->draw(self::IMPL_2, "snack-dwell:{$hour}") % ($f['dwell'][1] - $f['dwell'][0] + 1);
+        $start = $this->nextBreak(self::IMPL_2, intdiv($this->clockZero($run), 1000) - 1);
+        $break = $this->breakAt(self::IMPL_2, $start);
+        $dwell = $break['dwell_s'];
 
         if ($trip['start_s'] !== $start || $this->clockZero($run) + $at - $trip['elapsed_ms'] !== $start * 1000) {
-            $defects[] = "the trip does not begin at the hour's seeded second ({$start}): it carries {$trip['start_s']} and is drawn from "
+            $defects[] = "the trip does not begin at the chain's next break ({$start}): it carries {$trip['start_s']} and is drawn from "
                 .($this->clockZero($run) + $at - $trip['elapsed_ms']);
+        }
+
+        if ($trip['line'] !== $break['line']) {
+            $defects[] = "the trip carries line {$trip['line']}, not its break's seeded {$break['line']}";
         }
 
         if (array_column($trip['legs'], 'kind') !== ['walk', 'stand', 'walk']) {
@@ -411,6 +525,11 @@ class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
                 $defects[] = "at {$r['at']} ms the desk draws its sleeper while its walker is on the floor";
             }
 
+            // An idle walker thinks of no food (card#12785).
+            if ($walking && ($this->trips($r['frame'], self::IMPL_2)[0]['thought'] ?? null) !== null) {
+                $defects[] = "at {$r['at']} ms the idle walker carries a food thought";
+            }
+
             if ($walking && ($model['render_state']['value'] !== 'idle' || $model['monitor']['lit'] !== 'off'
                 || ! in_array('chip', array_column($desk['elements'], 'kind'), true) || ! in_array('chair', array_column($desk['elements'], 'kind'), true))) {
                 $defects[] = "at {$r['at']} ms the desk does not draw its idle facts and its empty chair";
@@ -441,7 +560,7 @@ class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
     {
         $defects = [];
 
-        foreach (['working-window', 'intern-old-reporter'] as $run) {
+        foreach (['blocked-window'] as $run) {
             foreach ($this->drawn($this->snackRun($run, $dir)) as $r) {
                 if ($this->trips($r['frame']) !== []) {
                     $defects[] = "[{$run}] a walker at {$r['at']} ms";
@@ -628,8 +747,9 @@ class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
         $defects = [];
         $applied = 35000;
 
-        // recall-mid-trip: the desk renders `working` at once, the walker walks home from where it stood, and sits down to
-        // work at the refresh that ends the walk (the operator's ruling of 2026-11-02, *"Walk back"*).
+        // recall-mid-trip: an attention request (`idle → blocked`, card#12785) — the desk renders `blocked` at once, the walker
+        // walks home from where it stood, and raises its hand at the refresh that ends the walk (the operator's ruling of
+        // 2026-11-02, *"Walk back"*).
         $recall = $this->snackRun('recall-mid-trip', $dir);
         $prior = null;
         $priorAt = null;
@@ -646,8 +766,8 @@ class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
             if ($r['at'] === $applied && $r['trigger'] === 'render') {
                 $home = $this->trips($r['frame'], self::IMPL_2)[0] ?? null;
 
-                if ($r['frame']['desks']['desks'][self::IMPL_2]['render_state']['value'] !== 'working' || $this->drawsCharacter($r['frame'], self::IMPL_2)) {
-                    $defects[] = 'recall-mid-trip\'s applying render does not draw the desk working with its walker still away';
+                if ($r['frame']['desks']['desks'][self::IMPL_2]['render_state']['value'] !== 'blocked' || $this->drawsCharacter($r['frame'], self::IMPL_2)) {
+                    $defects[] = 'recall-mid-trip\'s applying render does not draw the desk blocked with its walker still away';
                 }
             }
         }
@@ -661,8 +781,8 @@ class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
             $seated = array_values(array_filter($this->drawn($recall), static fn ($r) => $r['at'] === $endAt && $r['trigger'] === 'walk end'));
 
             if ($seated === [] || ! $this->drawsCharacter($seated[0]['frame'], self::IMPL_2)
-                || ($this->desk($seated[0]['frame'], self::IMPL_2)['held']['animation_id'] ?? null) !== 'A3') {
-                $defects[] = 'recall-mid-trip\'s walker is not seated typing at the refresh that ends its walk home';
+                || ($this->desk($seated[0]['frame'], self::IMPL_2)['held']['animation_id'] ?? null) !== 'A7') {
+                $defects[] = 'recall-mid-trip\'s walker is not seated with its hand up at the refresh that ends its walk home';
             }
         }
 
@@ -868,7 +988,7 @@ class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
 
     public function test_green_reduced_motion(): void
     {
-        foreach (['idle-trip', 'intern-trip', 'two-visitors', 'recall-mid-trip'] as $run) {
+        foreach (['idle-trip', 'intern-trip', 'two-visitors', 'recall-mid-trip', 'busy-trip'] as $run) {
             $r = $this->floorRun($run, null, ['reduce' => true]);
             $rows = array_values(array_filter($r['animation_log'], static fn ($x) => $x['animation_id'] === 'A25'));
 
@@ -903,21 +1023,21 @@ class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
         return $dir;
     }
 
-    /** RED — the timer walk: the trip drawn whenever the window opens, whatever the held state. */
+    /** RED — the timer walk: the trip drawn whenever the break comes, whatever the held state. */
     public function test_red_the_timer_walk(): void
     {
         $dir = $this->planted([self::SCENE, '            eligible: model.snack_held?.motion === true,', '            eligible: true,']);
 
-        $this->assertContains('[working-window] a walker at 5000 ms', $this->whoDefects($dir));
+        $this->assertContains('[blocked-window] a walker at 5000 ms', $this->whoDefects($dir));
     }
 
-    /** Second RED — the re-roll: the window's second from `Math.random`. */
+    /** Second RED — the re-roll: a break's gap from `Math.random`. */
     public function test_red_the_re_roll(): void
     {
-        $dir = $this->planted([self::SCENE, '        start_s: hour * SNACK_WINDOW_S + (draw(key, `snack:${hour}`) % SNACK_WINDOW_S),',
-            '        start_s: hour * SNACK_WINDOW_S + Math.floor(Math.random() * SNACK_WINDOW_S),']);
+        $dir = $this->planted([self::SCENE, '            s += SNACK_GAP_S.min + (draw(key, `snack-gap:${s}`) % (hi - SNACK_GAP_S.min + 1));',
+            '            s += SNACK_GAP_S.min + Math.floor(Math.random() * (hi - SNACK_GAP_S.min + 1));']);
 
-        $this->assertNotSame([], $this->clockDefects($dir), 'a re-rolled window and the clock guard saw nothing');
+        $this->assertNotSame([], $this->clockDefects($dir), 'a re-rolled gap and the clock guard saw nothing');
     }
 
     /** Third RED — one point: every visitor at spot 0. */
@@ -964,7 +1084,7 @@ class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
     /** Eighth RED — the z's over the empty chair: the sleeper kept on the desk while its walker is away. */
     public function test_red_the_zs_over_the_empty_chair(): void
     {
-        $dir = $this->planted([self::SCREEN, '            for (const key of [...inbound, ...away]) {', '            for (const key of inbound) {']);
+        $dir = $this->planted([self::SCREEN, '                    desks[key] = awayDesk(desks[key]);', '                    desks[key] = desks[key];']);
 
         $this->assertNotSame([], array_filter($this->tripDefects($this->floorRun('idle-trip', $dir), 'idle-trip'), static fn ($d) => str_contains($d, 'draws its sleeper while its walker')),
             'the sleeper drawn under its own walker and the trip guard saw nothing');
@@ -972,14 +1092,15 @@ class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
 
     /**
      * Ninth RED — an absent field read as idle: an element under a reporter too old to send `subagent.activity` (its seat
-     * badged `update_required`; D2 leaves the element at its `working` default) read as resting rather than at its word.
+     * badged `update_required`; D2 leaves the element at its `working` default) read as resting rather than at its word —
+     * since card#12785 it still goes, and the defect is that it goes thinking of nothing.
      */
     public function test_red_an_absent_field_read_as_idle(): void
     {
         $dir = $this->planted([self::DESK_RENDER, '            activity: s.activity_state ?? null,',
             "            activity: (seat.badges ?? []).includes('update_required') ? 'idle' : (s.activity_state ?? null),"]);
 
-        $this->assertContains('[intern-old-reporter] a walker at 5000 ms', $this->whoDefects($dir));
+        $this->assertContains('intern-old-reporter\'s busy intern carries no food thought, or another line than its break\'s', $this->busyDefects($dir));
     }
 
     /** Tenth RED — the third visitor squeezed in past the last spot. */
@@ -997,5 +1118,278 @@ class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
         $dir = $this->planted([self::IN_FLIGHT, '            if (w.recalled) {', '            if (false) {']);
 
         $this->assertContains("recall-mid-trip's walker does not walk home from where it stood to its desk", $this->interruptDefects($dir));
+    }
+
+    // ── card#12785 — GREEN — the food lines ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * The operator's ruling of 2026-11-02 on card#12785 (comment 15002): *"Generate more so that there are a total of 50 to
+     * randomly choose from"*. This is the one place the count is written; every other reader takes the list's length.
+     */
+    public function test_green_the_operator_asked_for_fifty_food_lines(): void
+    {
+        $lines = $this->corner()['lines'];
+
+        $this->assertCount(50, $lines, "snack-lines.js does not hold the operator's 50 lines");
+        $this->assertSame($lines, array_values(array_unique($lines)), 'a food line is listed twice');
+
+        foreach ($lines as $line) {
+            $this->assertMatchesRegularExpression('/^\S.*\S$/u', $line, 'a food line is empty or padded');
+            $this->assertStringNotContainsString('Donuts, donuts, donuts', $line, 'a line the operator removed is back');
+            $this->assertStringNotContainsString('A coffee sounds good', $line, 'a line the operator removed is back');
+        }
+    }
+
+    // ── card#12785 — GREEN — the busy break ──────────────────────────────────────────────────────────────────────────
+
+    /** @return list<string> */
+    private function busyDefects(?string $dir = null): array
+    {
+        $defects = [];
+        $lines = $this->corner()['lines'];
+        $applied = 35000;
+
+        // busy-trip: aimla-impl-1, `working`, goes with its break's line over its head, its desk drawing every fact at the
+        // desk — `working`, the monitor lit, the chip, the task bubble with no trail — and the chair empty; the working →
+        // working delta at 35 s does not cut the trip; the refresh at its end seats it thinking (A4).
+        $busy = $this->snackRun('busy-trip', $dir);
+        $trip = $this->anyTrip($busy, self::IMPL_1);
+
+        if ($trip === null) {
+            return ['busy-trip draws no trip for its working seat'];
+        }
+
+        [, $t, $at] = $trip;
+        $break = $this->breakAt(self::IMPL_1, $t['start_s']);
+
+        if ($break === null || $t['start_s'] !== $this->nextBreak(self::IMPL_1, intdiv($this->clockZero('busy-trip'), 1000) - 1)) {
+            $defects[] = 'busy-trip\'s trip is not its chain\'s break';
+        }
+
+        $starts = [];
+        $ends = null;
+
+        foreach ($this->drawn($busy) as $r) {
+            $now = $this->trips($r['frame'], self::IMPL_1);
+
+            if ($now === []) {
+                $ends ??= $r['at'] > $at ? $r : null;
+
+                continue;
+            }
+
+            $starts[] = $now[0]['start_s'].' '.$now[0]['leg_kind'];
+
+            if (($now[0]['thought']['text'] ?? null) !== $lines[$break['line'] ?? -1]) {
+                $defects[] = "at {$r['at']} ms busy-trip's walker does not carry its break's line";
+            }
+
+            $desk = $this->desk($r['frame'], self::IMPL_1);
+            $model = $r['frame']['desks']['desks'][self::IMPL_1];
+            $kinds = array_column($desk['elements'], 'kind');
+
+            if ($model['render_state']['value'] !== 'working' || $model['monitor']['lit'] === 'off' || ! in_array('chip', $kinds, true)
+                || ! in_array('chair', $kinds, true) || $this->drawsCharacter($r['frame'], self::IMPL_1) || $desk['held'] !== null) {
+                $defects[] = "at {$r['at']} ms busy-trip's desk does not draw its working facts and its empty chair";
+            }
+
+            if (($desk['bubble']['text'] ?? null) === null || ($desk['bubble']['trail'] ?? null) !== []) {
+                $defects[] = "at {$r['at']} ms busy-trip's desk does not keep its task bubble, with no trail, while its walker is away";
+            }
+        }
+
+        if (array_values(array_unique($starts)) !== ["{$t['start_s']} snack"] || ! in_array($applied, array_column(array_filter($this->drawn($busy),
+            fn ($r) => $this->trips($r['frame'], self::IMPL_1) !== []), 'at'), true)) {
+            $defects[] = 'busy-trip\'s working → working delta cut the trip, or the trip was not drawn on its render';
+        }
+
+        if ($ends === null || $ends['trigger'] !== 'walk end' || ($this->desk($ends['frame'], self::IMPL_1)['held']['animation_id'] ?? null) !== 'A4') {
+            $defects[] = 'no paint-only refresh at busy-trip\'s end seats its walker thinking';
+        }
+
+        // wakes-mid-trip: idle at the start — no thought — then `working` at 35 s: the trip goes on, and the walker thinks of
+        // its break's food from that render.
+        $wakes = $this->snackRun('wakes-mid-trip', $dir);
+        $wbreak = $this->breakAt(self::IMPL_2, $this->firstTrip($wakes, self::IMPL_2)[1]['start_s']);
+        $kinds = [];
+
+        foreach ($this->drawn($wakes) as $r) {
+            foreach ($this->trips($r['frame'], self::IMPL_2) as $wt) {
+                $kinds[] = $wt['leg_kind'];
+                $want = $r['at'] >= $applied ? $lines[$wbreak['line']] : null;
+
+                if (($wt['thought']['text'] ?? null) !== $want) {
+                    $defects[] = "at {$r['at']} ms wakes-mid-trip's walker's thought is not ".($want === null ? 'none' : 'its break\'s line');
+                }
+            }
+        }
+
+        if (array_values(array_unique($kinds)) !== ['snack']) {
+            $defects[] = 'wakes-mid-trip\'s idle → working delta cut the trip';
+        }
+
+        // intern-old-reporter: its interns read `working` at their word, so the intern goes thinking of food.
+        $old = $this->snackRun('intern-old-reporter', $dir);
+        $call = $this->snapshotSeat('intern-old-reporter', 'aimla-pm')['subagents'][0]['call_id'];
+        $ot = $this->anyTrip($old, self::PM."~{$call}");
+
+        if ($ot === null || ($ot[1]['thought']['text'] ?? null) !== $lines[$this->breakAt(self::PM."~{$call}", $ot[1]['start_s'])['line'] ?? -1]) {
+            $defects[] = 'intern-old-reporter\'s busy intern carries no food thought, or another line than its break\'s';
+        }
+
+        // intern-trip: an idle intern carries none.
+        foreach ($this->drawn($this->snackRun('intern-trip', $dir)) as $r) {
+            foreach ($this->trips($r['frame']) as $it) {
+                if (($it['thought'] ?? null) !== null) {
+                    $defects[] = "at {$r['at']} ms intern-trip's idle intern carries a food thought";
+                }
+            }
+        }
+
+        return $defects;
+    }
+
+    public function test_green_the_busy_break(): void
+    {
+        $this->assertSame([], $this->busyDefects());
+    }
+
+    // ── card#12785 — GREEN — the chain ───────────────────────────────────────────────────────────────────────────────
+
+    /** @return list<string> */
+    private function chainDefects(?string $dir = null): array
+    {
+        $defects = [];
+        $f = $this->section12();
+        $keys = [self::IMPL_2, self::PM.'~01K3TA6G7H8J9K0M1N2P3Q4R5T'];
+        $day = intdiv(intdiv($this->clockZero('idle-trip'), 1000), $f['day']);
+        $at = [$day * $f['day'] + 1, $day * $f['day'] + 40000, ($day + 3) * $f['day'] - 1];
+        $chain = $this->probe(['mode' => 'snack-chain', 'keys' => $keys, 'from_day' => $day - 30, 'days' => 60, 'at' => $at], $dir, __DIR__.'/walk-probe.mjs');
+
+        foreach ($keys as $key) {
+            $starts = array_column($chain[$key]['days'], 'start_s');
+
+            // Every gap — inside a day and across each day's anchor — is § 12's *Snack gap*.
+            for ($i = 1; $i < count($starts); $i++) {
+                $gap = $starts[$i] - $starts[$i - 1];
+
+                if ($gap < $f['gap'][0] || $gap > $f['gap'][1]) {
+                    $defects[] = "[{$key}] the gap {$starts[$i - 1]} → {$starts[$i]} is {$gap} s, outside § 12's *Snack gap*";
+                }
+            }
+
+            // The scene's chain is the one § 12 derives, over days either side of the fixtures' instant.
+            $mine = array_merge(...array_map(fn ($d) => $this->chainOf($key, $d), range($day - 30, $day + 30)));
+            $mine = array_values(array_filter($mine, fn ($s) => $s >= ($day - 30) * $f['day'] && $s < ($day + 30) * $f['day']));
+
+            if ($starts !== $mine) {
+                $defects[] = "[{$key}] the scene's chain is not § 12's";
+            }
+
+            // A page at any instant reads the same breaks the whole chain holds there — the reload, wherever it lands.
+            foreach ($at as $i => $t) {
+                $window = array_values(array_filter($starts, fn ($s) => $s >= $t - $f['gap'][1] && $s <= $t + $f['gap'][1]));
+
+                if (array_column($chain[$key]['at'][$i], 'start_s') !== $window) {
+                    $defects[] = "[{$key}] a page at second {$t} reads other breaks than the chain";
+                }
+            }
+        }
+
+        // next-break: idle-trip's walker's following break, a gap later and in a later hour, drawn by a page loaded an hour
+        // after idle-trip's — the chain carried across the hour and across the reload.
+        $first = $this->anyTrip($this->snackRun('idle-trip', $dir), self::IMPL_2)[1] ?? null;
+        $next = $this->anyTrip($this->snackRun('next-break', $dir), self::IMPL_2)[1] ?? null;
+
+        if ($first === null || $next === null || $next['start_s'] !== $this->nextBreak(self::IMPL_2, $first['start_s'])
+            || $next['start_s'] - $first['start_s'] < $f['gap'][0] || $next['start_s'] - $first['start_s'] > $f['gap'][1]
+            || intdiv($next['start_s'], 3600) === intdiv($first['start_s'], 3600)) {
+            $defects[] = 'next-break does not draw idle-trip\'s walker\'s next break, a *Snack gap* later and in a later hour';
+        }
+
+        return $defects;
+    }
+
+    public function test_green_the_chain(): void
+    {
+        // The test's draw is the character tree's.
+        foreach ([[self::IMPL_2, 'snack-anchor:19900'], [self::PM.'~01K3TA6G7H8J9K0M1N2P3Q4R5T', 'snack-gap:1719376189'], ['aimla/ü', 'x']] as [$key, $field]) {
+            $this->assertSame($this->draw($key, $field), $this->seedDraw($key, $field), "the test's seeded draw is not the tree's for {$key}#{$field}");
+        }
+
+        $this->assertSame([], $this->chainDefects());
+    }
+
+    // ── card#12785 — GREEN — overlapping trips in start order ───────────────────────────────────────────────────────
+
+    /** @return list<string> */
+    private function orderDefects(?string $dir = null): array
+    {
+        $spots = function (string $run) use ($dir): array {
+            $out = [];
+
+            foreach ([self::IMPL_1, self::IMPL_2] as $key) {
+                $t = $this->anyTrip($this->snackRun($run, $dir), $key);
+                $out[$key] = $t === null ? null : [$t[1]['start_s'], $t[1]['spot']];
+            }
+
+            return $out;
+        };
+        $continuous = $spots('two-visitors');
+        $late = $spots('two-visitors-late');
+
+        return $late === $continuous && ! in_array(null, $late, true) ? []
+            : ['two-visitors-late seats its two walkers otherwise than two-visitors\' continuous viewer: '.json_encode([$continuous, $late])];
+    }
+
+    public function test_green_overlapping_trips_in_start_order(): void
+    {
+        $this->assertSame([], $this->orderDefects());
+    }
+
+    // ── card#12785 — REDs ───────────────────────────────────────────────────────────────────────────────────────────
+
+    /** Twelfth RED — the food thought on an idle walker. */
+    public function test_red_a_food_thought_on_an_idle_walker(): void
+    {
+        $dir = $this->planted([self::SCREEN, "walkers.get(fx.walker_key)?.busy === true", 'true']);
+
+        $this->assertNotSame([], array_filter($this->tripDefects($this->floorRun('idle-trip', $dir), 'idle-trip'), static fn ($d) => str_contains($d, 'idle walker carries a food thought')),
+            'an idle walker thinking of food and the trip guard saw nothing');
+    }
+
+    /** Thirteenth RED — the desk's facts leave with its walker: the away desk drawn as an inbound one, its bubble gone. */
+    public function test_red_the_desks_facts_leave_with_its_walker(): void
+    {
+        $dir = $this->planted([self::SCREEN, '                    desks[key] = awayDesk(desks[key]);', '                    desks[key] = inboundDesk(desks[key]);']);
+
+        $this->assertNotSame([], array_filter($this->busyDefects($dir), static fn ($d) => str_contains($d, 'keep its task bubble')),
+            'a desk that lost its task bubble to its walker and the busy guard saw nothing');
+    }
+
+    /** Fourteenth RED — working → working cuts the trip: only the typing pose holds it. */
+    public function test_red_working_to_working_cuts_the_trip(): void
+    {
+        $dir = $this->planted([self::SCENE, '            eligible: model.snack_held?.motion === true,',
+            "            eligible: model.snack_held?.motion === true && model.held?.animation_id !== 'A4',"]);
+
+        $this->assertContains('busy-trip\'s working → working delta cut the trip, or the trip was not drawn on its render', $this->busyDefects($dir));
+    }
+
+    /** Fifteenth RED — the seam: the chain run past the next anchor with no gap kept before it. */
+    public function test_red_the_seam(): void
+    {
+        $dir = $this->planted([self::SCENE, '            const hi = Math.min(SNACK_GAP_S.max, next - s - SNACK_GAP_S.min);', '            const hi = SNACK_GAP_S.max;']);
+
+        $this->assertNotSame([], array_filter($this->chainDefects($dir), static fn ($d) => str_contains($d, "outside § 12's *Snack gap*")),
+            'a gap outside the range at the anchor and the chain guard saw nothing');
+    }
+
+    /** Sixteenth RED — the walkers' order: breaks due on one pass decided in the desks' order, not their start seconds. */
+    public function test_red_the_walkers_order(): void
+    {
+        $dir = $this->planted([self::IN_FLIGHT, '        due.sort((a, b) => a.s.start_s - b.s.start_s || byKey(a.w.key, b.w.key));', '']);
+
+        $this->assertNotSame([], $this->orderDefects($dir), 'a reload deciding overlapping breaks in desk order and the order guard saw nothing');
     }
 }

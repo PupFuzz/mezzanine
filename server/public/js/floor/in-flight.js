@@ -56,13 +56,14 @@
  * the strip reads *live*. The walk's cancel clauses end it on a render (a non-delta entry for the seat, which re-derives
  * it at its phase; row 5 or the stilled floor; the lattice key; the threshold; the anchor), an A2 or an A10 leave of the
  * walker takes it over from where it stands (the scene routes those from the trip's point), and a delivered change that
- * recalls the walker to work walks it home along its route (`snackHome()`, the operator's ruling of 2026-11-02). Its
- * spot is kept from its admission until it leaves the spot, and nothing a later render admits or cancels re-times it.
+ * recalls the walker — out of `idle` and `working` (card#12785) — walks it home along its route (`snackHome()`, the
+ * operator's ruling of 2026-11-02). Its spot is kept from its admission until it leaves the spot, and nothing a later
+ * render admits or cancels re-times it. Breaks due on one pass are decided in start-second order (`snack()`, item 3).
  */
 
 import { emptyChair, staffed } from '../wire/animation-set.js';
 import { pointAt } from './route.js';
-import { ELEVATOR_DOOR, SNACK_WINDOW_S, departureLegs, queueLater, queueShape, seatInCab, snackHome, waitFrom } from './scene.js';
+import { ELEVATOR_DOOR, SNACK_GAP_S, departureLegs, queueLater, queueShape, seatInCab, snackHome, waitFrom } from './scene.js';
 
 /** The § 6.2 rows drawn as a walk, one per seat at most. */
 export const WALK_ROWS = Object.freeze(['A1', 'A2']);
@@ -132,13 +133,13 @@ export class EffectsInFlight {
      */
     #trips = new Map();
 
-    /** `<walker key> <hour>` → each hour's window decided once: a trip started, or no trip that hour. */
+    /** `<walker key> <break start second>` → each break decided once: a trip started, or no trip for that break. */
     #decided = new Set();
 
     /** The windows a non-delta entry re-derives (§ 6.6 item 5): decided again, at their phase, on the next live pass. */
     #rederive = new Set();
 
-    /** The corrected server instant (ms) of the first snack pass — a window that began before it is entered at its phase. */
+    /** The corrected server instant (ms) of the first snack pass — a break that began before it is entered at its phase. */
     #observedFrom = null;
 
     /** § 5.5's *no open route … snack table* lines already written, `<seat key> <lattice key>`. */
@@ -230,7 +231,7 @@ export class EffectsInFlight {
 
         // card#12749 (§ 6.6 item 5): the walk's cancel clauses, read for each snack trip — and an A2 or an A10 leave of the
         // walker, which the scene drew from the trip's point, takes the trip over. A trip a non-delta entry ended is
-        // re-derived from the new object on the next pass: the same key and hour give the same trip, at its phase.
+        // re-derived from the new object on the next pass: the same key and break give the same trip, at its phase.
         for (const [k, t] of this.#trips) {
             const nonDelta = touchedKeys.has(t.seat);
             const touched = this.#ended(t, now)
@@ -246,8 +247,8 @@ export class EffectsInFlight {
                 this.#trips.delete(k);
 
                 if (nonDelta && !t.home && !this.#ended(t, now)) {
-                    this.#rederive.add(`${k} ${t.effect.hour}`);
-                    this.#decided.delete(`${k} ${t.effect.hour}`);
+                    this.#rederive.add(`${k} ${t.effect.start_s}`);
+                    this.#decided.delete(`${k} ${t.effect.start_s}`);
                 }
             }
         }
@@ -592,15 +593,19 @@ export class EffectsInFlight {
      * just built (`snack`, `scene.js`'s `snackCorner()`):
      *
      * 1. **A recall walks home.** A trip whose walker's hold has ended while the desk or the stool still draws it — the
-     *    held field changed (`recalled`) — becomes its walk home from where it is now (`snackHome()`); one whose hold the
-     *    desk's treatment stilled ((2b): a lag, `config_invalid`, an unrecognised value, a dark desk) ends, and the
-     *    character is drawn at its desk.
-     * 2. **Each window is decided once.** Hour `H`'s window of walker `K` is decided at the first pass on or after its
-     *    seeded second, and at that pass only: a trip starts where the walker's hold permits it (`eligible`), the strip
-     *    reads *live*, the walker has no trip in flight, and the scene finds it a table and a spot — otherwise no trip
-     *    that hour. A window that began before this page was watching, or that a non-delta entry re-derives, is entered at
-     *    its phase on the first pass that reads *live*. The trip's start is its window's second, so the walker is drawn
-     *    where its trip has it, never from the start.
+     *    held field left A25's values (`recalled`; card#12785: `idle ↔ working` is not a recall) — becomes its walk home
+     *    from where it is now (`snackHome()`); one whose hold the desk's treatment stilled ((2b): a lag, `config_invalid`,
+     *    an unrecognised value, a dark desk) ends, and the character is drawn at its desk.
+     * 2. **Each break is decided once** (card#12785: the breaks are the walker's chain, `scene.js`'s `snackBreaks()`, each
+     *    one 60 to 120 minutes after the one before). A break is decided at the first pass on or after its seeded second,
+     *    and at that pass only: a trip starts where the walker's hold permits it (`eligible`), the strip reads *live*, the
+     *    walker has no trip in flight, and the scene finds it a table and a spot — otherwise no trip for that break. A
+     *    break that began before this page was watching, or that a non-delta entry re-derives, is entered at its phase on
+     *    the first pass that reads *live*. The trip's start is its break's second, so the walker is drawn where its trip
+     *    has it, never from the start.
+     * 3. **Breaks due on one pass are decided in START-SECOND order, then by walker key** (card#12785, the card#12749
+     *    review's N1): the order a viewer watching throughout decided them in, one pass each, so a page loaded during two
+     *    overlapping trips gives each the spot it took then rather than the spot the walkers' desk order would give it.
      *
      * @param {number} now the page's clock, ms
      * @param {{ snack: ?object, server_ms: ?number, live: boolean, unconfirmed: function(string): ?boolean,
@@ -634,7 +639,7 @@ export class EffectsInFlight {
             }
 
             if (w.recalled) {
-                const home = snackHome(t.effect, now - t.at, w.kind === 'intern' && w.activity_state === 'working');
+                const home = snackHome(t.effect, now - t.at);
 
                 this.#trips.set(k, { ...t, effect: home, at: now, frames: home.frames, home: true });
             } else {
@@ -642,100 +647,106 @@ export class EffectsInFlight {
             }
         }
 
-        const H = Math.floor(ctx.server_ms / 1000 / SNACK_WINDOW_S);
+        const nowS = Math.floor(ctx.server_ms / 1000);
 
         for (const id of this.#decided) {
-            if (Number(id.slice(id.lastIndexOf(' ') + 1)) < H - 1) {
+            if (Number(id.slice(id.lastIndexOf(' ') + 1)) < nowS - 2 * SNACK_GAP_S.max) {
                 this.#decided.delete(id);
             }
         }
 
+        // Every break whose second has come and that no pass has decided — at most one per walker in a gap's length,
+        // since the gaps are at least an hour — oldest first, ties by key.
+        const due = [];
+
         for (const w of corner.walkers) {
-            for (const hour of [H - 1, H]) {
-                const id = `${w.key} ${hour}`;
-                const s = this.#decided.has(id) ? null : corner.schedule(w.key, hour);
+            for (const s of corner.schedule(w.key, nowS - SNACK_GAP_S.max, nowS)) {
+                const id = `${w.key} ${s.start_s}`;
 
-                if (s === null || ctx.server_ms < s.start_s * 1000) {
-                    continue;
+                if (!this.#decided.has(id) && ctx.server_ms >= s.start_s * 1000) {
+                    due.push({ w, s, id });
                 }
-
-                const late = s.start_s * 1000 < this.#observedFrom || this.#rederive.has(id);
-
-                if (late && !ctx.live) {
-                    continue;
-                }
-
-                this.#decided.add(id);
-                this.#rederive.delete(id);
-
-                // A window whose second lies further back than its dwell and ten minutes of walking is not asked for a
-                // route: a bound chosen past the routes of the floors shipped and measured, and the cost of a longer one is
-                // only that a page loaded during its trip does not enter it at its phase.
-                if (!ctx.live || !w.eligible || this.#trips.has(w.key) || ctx.server_ms - s.start_s * 1000 > (s.dwell_s + 600) * 1000) {
-                    continue;
-                }
-
-                const taken = [...this.#trips.values()].filter((t) => !t.home).map((t) => t.effect.spot);
-                const effect = corner.plan(w, s, taken);
-
-                if (effect === null || effect.full === true) {
-                    continue;
-                }
-
-                if (effect.no_route === true) {
-                    const once = `${w.seat_key} ${ctx.lattice_key ?? ''}`;
-
-                    if (w.in_room && !this.#narrated.has(once)) {
-                        this.#narrated.add(once);
-                        lines.push(`${w.seat_key}: no open route between its desk and the snack table — drawn without the trip`);
-                    }
-
-                    continue;
-                }
-
-                const at = now - (ctx.server_ms - s.start_s * 1000);
-
-                if (now >= at + effect.frames * I) {
-                    continue;
-                }
-
-                this.#trips.set(w.key, {
-                    effect,
-                    at,
-                    frames: effect.frames,
-                    key: w.key,
-                    seat: w.seat_key,
-                    intern: w.kind === 'intern',
-                    anchor: w.anchor,
-                    threshold: ctx.threshold,
-                    unconfirmed: ctx.unconfirmed(w.seat_key),
-                    stilled: ctx.stilled,
-                    lattice_key: effect.lattice_key,
-                    home: false,
-                });
             }
+        }
+
+        due.sort((a, b) => a.s.start_s - b.s.start_s || byKey(a.w.key, b.w.key));
+
+        for (const { w, s, id } of due) {
+            const late = s.start_s * 1000 < this.#observedFrom || this.#rederive.has(id);
+
+            if (late && !ctx.live) {
+                continue;
+            }
+
+            this.#decided.add(id);
+            this.#rederive.delete(id);
+
+            // A break whose second lies further back than its dwell and ten minutes of walking is not asked for a route:
+            // a bound chosen past the routes of the floors shipped and measured, and the cost of a longer one is only that
+            // a page loaded during its trip does not enter it at its phase.
+            if (!ctx.live || !w.eligible || this.#trips.has(w.key) || ctx.server_ms - s.start_s * 1000 > (s.dwell_s + 600) * 1000) {
+                continue;
+            }
+
+            const taken = [...this.#trips.values()].filter((t) => !t.home).map((t) => t.effect.spot);
+            const effect = corner.plan(w, s, taken);
+
+            if (effect === null || effect.full === true) {
+                continue;
+            }
+
+            if (effect.no_route === true) {
+                const once = `${w.seat_key} ${ctx.lattice_key ?? ''}`;
+
+                if (w.in_room && !this.#narrated.has(once)) {
+                    this.#narrated.add(once);
+                    lines.push(`${w.seat_key}: no open route between its desk and the snack table — drawn without the trip`);
+                }
+
+                continue;
+            }
+
+            const at = now - (ctx.server_ms - s.start_s * 1000);
+
+            if (now >= at + effect.frames * I) {
+                continue;
+            }
+
+            this.#trips.set(w.key, {
+                effect,
+                at,
+                frames: effect.frames,
+                key: w.key,
+                seat: w.seat_key,
+                intern: w.kind === 'intern',
+                anchor: w.anchor,
+                threshold: ctx.threshold,
+                unconfirmed: ctx.unconfirmed(w.seat_key),
+                stilled: ctx.stilled,
+                lattice_key: effect.lattice_key,
+                home: false,
+            });
         }
 
         return lines;
     }
 
     /**
-     * card#12749: milliseconds until the next snack window to decide begins — any walker's, eligible or not, since its
-     * window is decided at its second whatever the walker holds then — or `null` with none, so the screen paints at it.
+     * card#12749: milliseconds until the next break to decide begins — any walker's, eligible or not, since its break is
+     * decided at its second whatever the walker holds then — or `null` with none, so the screen paints at it. A walker's
+     * next break is never more than a gap's length away (card#12785).
      */
     nextSnack(now, snack, serverMs) {
         if ((snack ?? null) === null || serverMs === null || serverMs === undefined) {
             return null;
         }
 
-        const H = Math.floor(serverMs / 1000 / SNACK_WINDOW_S);
+        const nowS = Math.floor(serverMs / 1000);
         let next = null;
 
         for (const w of snack.walkers) {
-            for (const hour of [H, H + 1]) {
-                const s = this.#decided.has(`${w.key} ${hour}`) ? null : snack.schedule(w.key, hour);
-
-                if (s !== null && s.start_s * 1000 > serverMs) {
+            for (const s of snack.schedule(w.key, nowS, nowS + SNACK_GAP_S.max)) {
+                if (!this.#decided.has(`${w.key} ${s.start_s}`) && s.start_s * 1000 > serverMs) {
                     next = Math.min(next ?? Infinity, s.start_s * 1000 - serverMs);
                 }
             }
@@ -799,12 +810,10 @@ export class EffectsInFlight {
     laptopAt(key, now) {
         const trip = this.#trips.get(key);
 
-        // card#12749: an intern on a snack trip has no laptop with it, until a recall's walk home sits it down to work.
+        // card#12749: an intern on a snack trip has no laptop with it — a working one's (card#12785) is drawn again with the
+        // intern, on its stool, at the paint-only refresh that ends the trip.
         if (trip !== undefined && !this.#ended(trip, now)) {
-            const seat = trip.effect.legs.find((l) => l.kind === 'seat') ?? null;
-            const into = Math.max(0, now - trip.at) - (seat?.start ?? 0) * this.#intervalMs;
-
-            return seat === null || into <= 0 ? 0 : Math.min(1, into / (seat.frames * this.#intervalMs)) * seat.laptop_to;
+            return 0;
         }
 
         const h = this.#held.find((x) => x.key === key && !this.#ended(x, now) && (x.fade === true || (x.intern === true && x.effect.leg_kind === 'arrive')));
@@ -918,4 +927,23 @@ export class EffectsInFlight {
  */
 export function inboundDesk(model) {
     return Object.freeze({ ...model, character: false, pose: 'empty-chair', bubble: null, held: null });
+}
+
+/**
+ * ⛔ THE AWAY DESK — a desk whose character is away on its snack break (FLOOR.md § 6.6 item 4; card#12749, card#12785).
+ * The desk keeps EVERY fact of the applied object at the desk — its chip, its label line, its monitor lit as its state
+ * lights it, its badges, its facts plate and its task bubble, the card the seat works on — and draws its chair empty: no
+ * character, so no pose and no held marker (no z's, no typing). The bubble stays with no thought trail, the trail being
+ * the thinker's and away with it (`scene.js`'s `placeBubbles()`); § 5.1 rule 3's *a desk that draws no character draws
+ * no bubble* is read for a state that draws no character, and this desk's state draws one, which is away. An A1
+ * walker's desk is `inboundDesk()`'s, and is not this.
+ */
+export function awayDesk(model) {
+    return Object.freeze({
+        ...model,
+        character: false,
+        pose: 'empty-chair',
+        bubble: model.bubble === null || model.bubble === undefined ? null : Object.freeze({ ...model.bubble, trail: false }),
+        held: null,
+    });
 }
