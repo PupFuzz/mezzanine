@@ -873,7 +873,9 @@ const ONE_FRAME = new Set(['A5', 'A11', 'A12', 'A14', 'A17']);
  *        `null` where the tree failed to load); `themes` is `painter.js`'s `themeInputs()`; `maps` is
  *        install_id → the held map document or `null`; `tilesets` is `TilesetLoader#held`; `layout_version` the
  *        building layout's version held; `failed` the asset ids the painter reported; `effects` the animation-log
- *        rows this render wrote; `previous` key → the box the last scene drew
+ *        rows this render wrote; `previous` key → the box the last scene drew; `interns_in_flight`, `laptop_at` and
+ *        `trips_in_flight` the holder's intern walks, laptop opacities and snack trips going into this render
+ *        (card#12450, card#12749)
  */
 export function buildScene(frame, input) {
     if (frame.floor === null || frame.floor === undefined || frame.rooms.length === 0) {

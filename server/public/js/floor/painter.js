@@ -41,8 +41,9 @@
  *
  * ⛔ THE ONE TIMER HERE IS A HELD LOOP's OWN FRAMES, at the interval the scene carries (§ 6.3's
  * second bullet: "except a state-held loop's own frames at the fixed rate"), and it runs only for a
- * character whose held render the animation set drew WITH motion, or while an A1 or A2 walker is in
- * flight — its stride and its place among the desks, an edge row's own bounded frames (card#12194).
+ * character whose held render the animation set drew WITH motion, or while a walker is in flight — A1's or
+ * A2's, an intern's A10 (card#12450) or a snack trip's A25 (card#12749) — its stride and its place among the
+ * desks, its row's own bounded frames (card#12194).
  * Decorative motion is the stylesheet's, at the cycle the scene states.
  */
 
@@ -895,7 +896,8 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     }
 
     /**
-     * One A1 or A2 walker (§ 6.2's walk note items 3–5, card#12194): the seat's character, its feet on the scene's
+     * One walker — A1's or A2's (§ 6.2's walk note items 3–5, card#12194), an intern's A10 (card#12450) or a snack trip's
+     * A25 (card#12749), which is a walk out, a stand at its table and a walk home: the character, its feet on the scene's
      * routed path, as TWO elements — the scene decided every number, and `elapsed_ms` is how far into the walk this
      * paint lands. Neither is ever a pointer target (`.fx-walker-shown`'s `pointer-events:none`): the elevator under a
      * waiting walker and a desk it stands in front of keep every press.

@@ -4539,15 +4539,15 @@ authored map does:
   - **Option A (recommended, and the preview):** the right strip widened to 200 px — the grid 1,784 × 696, the
     side wall, the PM office's accent floor and its front return extended to the new wall, no slot moved, so no
     desk re-hashes ([§ 3.2](#32-the-desk-slot-function): `S` is unchanged). The tall table stands against the new
-    wall under the office's return (its tile at x 1,700, foot y 400) and the low table beside it along the wall
-    (x 1,724, foot y 480); their spot 0s fall at about (1,668, 404) and (1,708, 484), both open at `clear`, about
+    wall under the office's return (in the preview, its tile at x 1,700, foot y 400 — the build's figures are above) and
+    the low table beside it along the wall (x 1,724, foot y 480); their spot 0s fall at about (1,668, 404) and
+    (1,708, 484), both open at `clear`, about
     90 px apart (`hypot(40, 80)`) — more than the tall table's spacing of 75.5 px (67.5 + 8) — so an agent and an
     intern stand at their own tables at once without touching. The office's bookcase and plant move to the new wall, and the nook's lamp, armchair,
     cushions, book pile and plants move down the strip under the corner. **Cost:** at the camera's fit in a
     width-bound window the room is drawn about 6 % smaller (1,672 ÷ 1,784). At § 12's reference viewport the floor
-    page's fit is HEIGHT-bound — the drawing's 1,280 × 579 CSS px over the scene's 864 px of band, grid and slab —
-    and stays at § 12's 0.6701 (`TheCameraMovesTheViewerAndNeverTheFleetTest` measures it on every build), so there it
-    costs nothing; a window wider than tall enough to bind on width pays the 6 %.
+    page's fit is HEIGHT-bound and stays at § 12's 0.6701 (`TheCameraMovesTheViewerAndNeverTheFleetTest` measures it
+    on every build), so there it costs nothing; a window whose width binds the fit pays the 6 %.
   - **Option B:** the grid grown downward instead — 1,672 × 808 — and the corner laid along the front edge under
     slot 6, the nook untouched. It costs nothing at a width-bound fit and puts the tables along the room's front
     edge rather than in a corner; a height-bound fit pays the same 6 % the other way.
@@ -10470,8 +10470,9 @@ asserts it.*
   or A25 ends it on every render. Caught by: idle-trip's rows (and AT-D3-1's instrument half).
 - **Eighth RED — the z's over the empty chair:** keep the sleeper's z's on the desk while the walker is away →
   idle-trip's desk draws three z's over an empty chair. Caught by: idle-trip.
-- **Ninth RED — an absent field read as idle:** treat an element with no `activity_state` behind it as idle →
-  intern-old-reporter walks. Caught by: intern-old-reporter.
+- **Ninth RED — an absent field read as idle:** treat an element with no `subagent.activity` behind it — under a
+  reporter too old to send one, its seat badged `update_required` and the element at D2's `working` default — as
+  idle → intern-old-reporter walks. Caught by: intern-old-reporter.
 - **Tenth RED — the third visitor squeezed in:** overlap past the last spot as the queue does on the threshold →
   past-the-last-spot draws three walkers at two spots. Caught by: past-the-last-spot.
 - **Eleventh RED — the recall cut home:** end the trip on the `working` delta and draw the character at its desk at

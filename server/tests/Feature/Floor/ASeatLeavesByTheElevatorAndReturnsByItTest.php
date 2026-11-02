@@ -1695,7 +1695,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
 
     public function test_red_the_desk_under_an_inbound_walk_drawn_as_its_render(): void
     {
-        $dir = $this->mutatedModules(['../floor/floor-screen.js', 'if (inbound.size > 0) {', 'if (false) {']);
+        $dir = $this->mutatedModules(['../floor/floor-screen.js', 'if (inbound.size > 0 || away.size > 0) {', 'if (away.size > 0) {']);
         $desk = $this->deskIn($this->frameAt($this->floorRun('return-from-stale', $dir), 1000), self::IMPL_1);
 
         $this->assertContains('character', $this->kinds($desk));

@@ -970,10 +970,14 @@ class AnIdleCharacterVisitsTheSnackCornerTest extends TestCase
             'the sleeper drawn under its own walker and the trip guard saw nothing');
     }
 
-    /** Ninth RED — an absent field read as idle. */
+    /**
+     * Ninth RED — an absent field read as idle: an element under a reporter too old to send `subagent.activity` (its seat
+     * badged `update_required`; D2 leaves the element at its `working` default) read as resting rather than at its word.
+     */
     public function test_red_an_absent_field_read_as_idle(): void
     {
-        $dir = $this->planted([self::DESK_RENDER, '            activity: s.activity_state ?? null,', "            activity: s.activity_state ?? 'idle',"]);
+        $dir = $this->planted([self::DESK_RENDER, '            activity: s.activity_state ?? null,',
+            "            activity: (seat.badges ?? []).includes('update_required') ? 'idle' : (s.activity_state ?? null),"]);
 
         $this->assertContains('[intern-old-reporter] a walker at 5000 ms', $this->whoDefects($dir));
     }
