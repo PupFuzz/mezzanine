@@ -1133,7 +1133,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
      * card#12747, THE CALL PLATES (the walk note's item 9): in every frame of the queue runs every departure walks to the
      * main call plate, presses it for § 12's *Call press*, standing where § 12's *Call plates* puts a seat — the plate
      * within its reach — and only then walks to its spot; and while one presses, no other departure stands or walks to
-     * the plates within a walker's clearance of it. mass-departure's four leave at one instant, so they press in turn.
+     * the plates within a walker's clearance of it. mass-departure's four leave within two loop frames of one another, so they press in turn.
      */
     public function test_green_departures_press_the_main_call_plate_one_at_a_time(): void
     {

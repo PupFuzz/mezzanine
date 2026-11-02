@@ -169,6 +169,13 @@ jobs:
       - name: Artifact gate (floor-preview.html, with its own planted controls)
         run: node tools/design/floor-preview.selftest.mjs
 
+      # card#12787: fx-snack.json and the four `fixtures/maps/snack-*.json` copies of the shipped default are
+      # generated from `resources/floor/default.tmj`. `--check` writes nothing and reds naming each file that
+      # differs from what the generator would write, so a default.tmj change that leaves a copy behind reds here
+      # rather than leaving a fixture drawing the old office. Stock `node`, no dependencies.
+      - name: fx-snack and its maps are the generator's output over the current default
+        run: node tools/design/gen-fx-snack.mjs --check
+
   # THE BROWSER SMOKE (card#12326). The lobby (`/dashboard`) and a floor (`/floor/aimla`), each loaded
   # once in headless Chromium, as the served markup (`render-floor-view.php` renders each view through
   # the layout, so it needs `php` and `server/`'s composer install, and no database and no `.env`), the
