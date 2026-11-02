@@ -5749,7 +5749,11 @@ only. This subsection says where the creatures come from and what they replaced;
   operator's:** a faint light rim on every silhouette, so the dark colourways (a charcoal bear, a dark
   otter, a deep eggplant) do not sink into what they stand on ([§ 10.4](#104-the-art-direction-as-a-specification)'s
   rim bullet, where the edge is eye-judged); and softer, curved hedgehog spines, so the back does not read as a saw-blade at 4× and
-  above.
+  above. **One change to the approved look is the operator's:** the pumpkin, which read too like the hedgehog
+  (both pale and round and ribbed), is a traditional Halloween pumpkin in every colourway — deep orange, darker than
+  the carrot, its ribs a darker orange and its stem green (the ruling of 2026-11-02, card#12795;
+  [AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom)'s pumpkin leg holds it). A seat
+  allocated the pumpkin keeps it; only its paint changed.
 - **What still comes from the munder-difflin port: nothing.** Read from the code, file by file.
   `portrait-art.js` is upstream's pixel recipes — the head box, the skin palettes, the hairstyles, the
   garments, the outline pass — and the tree's one `licensed` file; it leaves. `seed.js`'s human recipe —
@@ -9693,6 +9697,12 @@ painter's legs in `server/tests/Feature/Floor/painter-probe.mjs`.*
   ends — equals what the generator's own closed lists give it, read per species where the table states a
   range (so a list inside a range is held only at the range's ends, and that is the leg's stated limit), and every member of every list is drawn by some key of a synthetic population —
   with the control below that proves the reach assertion can fail.
+- **GREEN — the pumpkin is a deep-orange Halloween pumpkin (card#12795, the operator's ruling of 2026-11-02):**
+  every pumpkin colourway's body fill, read in HSL, is an orange (hue 15° to 40°), is darker than every carrot
+  colourway (its lightness under the darkest carrot's, every carrot colourway counted), and has at least twice the
+  chroma of the most saturated hedgehog colour, spines or body — the hedgehog's browns and creams share the orange
+  hues, so saturation is what tells the two apart. **RED:** the colourways the ruling replaced, run through the same
+  leg as its control, red it.
 - **GREEN — the salt, two halves over two populations** (§ 14 item 33(2), the seat's ruling of
   2026-10-06) — ⚠ **retired by card#12443: the guarantee is D2's allocation and
   [AT-D2-31](FLEET-STATE.md#at-d2-31-a-seats-character-is-allocated-once-unique-while-it-can-be-and-freed-by-retirement)

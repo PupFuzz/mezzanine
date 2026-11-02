@@ -124,6 +124,37 @@ for (const [dim, [want, ...pairs]] of Object.entries(expect)) {
   }
 }
 
+// ---- 2b. the pumpkin is a deep-orange Halloween pumpkin (card#12795; the operator's ruling of 2026-11-02) ----
+// The operator: the pumpkin "looks too similar to hedgehog", and its colour becomes "a more traditional halloween
+// pumpkin, darker orange than a carrot". Measured on each colourway's body fill (its first entry), in HSL:
+//   hue        — an orange, 15° to 40°;
+//   lightness  — under the darkest carrot colourway's, every carrot colourway counted;
+//   chroma     — max − min of the channels, at least twice the most saturated hedgehog colour (spines or body):
+//                the hedgehog's browns and creams share the orange hues, so hue cannot tell them apart; saturation does.
+section('2b. every pumpkin colourway is a deep orange, darker than every carrot colourway, and far more saturated than any hedgehog colour');
+const hslOf = (hex) => {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255), mx = Math.max(r, g, b), mn = Math.min(r, g, b), c = mx - mn;
+  const h = c === 0 ? 0 : mx === r ? 60 * (((g - b) / c + 6) % 6) : mx === g ? 60 * ((b - r) / c + 2) : 60 * ((r - g) / c + 4);
+  return { hex, h, l: (mx + mn) / 2, c };
+};
+const PUMPKIN_HUE = [15, 40], HEDGEHOG_APART = 2;
+function pumpkinFaults(pumpkin, carrot, hedgehog) {
+  const P = pumpkin.map((p) => hslOf(p[0])), darkest = Math.min(...carrot.map((p) => hslOf(p[0]).l)), vivid = Math.max(...hedgehog.flat().filter((v) => v.startsWith('#')).map((v) => hslOf(v).c));
+  return P.flatMap((p) => [
+    ...(p.h < PUMPKIN_HUE[0] || p.h > PUMPKIN_HUE[1] ? [`${p.hex} hue ${p.h.toFixed(1)}° is not an orange`] : []),
+    ...(p.l >= darkest ? [`${p.hex} lightness ${p.l.toFixed(3)} is not under the darkest carrot's ${darkest.toFixed(3)}`] : []),
+    ...(p.c < HEDGEHOG_APART * vivid ? [`${p.hex} chroma ${p.c.toFixed(3)} is under ${HEDGEHOG_APART} × the hedgehog's ${vivid.toFixed(3)}`] : []),
+  ]);
+}
+{
+  const faults = pumpkinFaults(SP.pumpkin.pals, SP.carrot.pals, SP.hedgehog.pals);
+  measure(`pumpkin body fills (hex hue° lightness chroma): ${SP.pumpkin.pals.map((p) => { const v = hslOf(p[0]); return `${v.hex} ${v.h.toFixed(1)} ${v.l.toFixed(3)} ${v.c.toFixed(3)}`; }).join('; ')}`);
+  check(faults.length === 0, `all ${SP.pumpkin.pals.length} pumpkin colourways are an orange, under the darkest of the ${SP.carrot.pals.length} carrot colourways and at least ${HEDGEHOG_APART} × as saturated as any hedgehog colour${faults.length ? ` — ${faults.slice(0, 4).join('; ')}` : ''}`);
+  // the control: the colourways this replaced (card#12795) — a cream, a grey-blue, two orange-tans and a rust — red the leg.
+  const before = pumpkinFaults([['#e08a3c'], ['#efe2c4'], ['#8fa0a3'], ['#d9a441', 'stripe'], ['#c8562e']], SP.carrot.pals, SP.hedgehog.pals);
+  check(before.length > 0, `CONTROL — the pumpkin colourways before card#12795 red the leg (${before.length} fault(s), e.g. ${before[0]})`);
+}
+
 // ---- 3. reach: every member of every list is drawn by some key (+ the control in section 9) ----
 section('3. every member of every closed list is drawn by some key of the synthetic population');
 function coverage(drawFn) {

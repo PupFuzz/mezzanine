@@ -6,7 +6,8 @@
 // allocated it and delivers (`character.species`, card#12443), which the painter hands in as `force` /
 // `species`; everything else is still the key's draw. The species of the operator-approved design sheet
 // (2026-10-05) are ported and not redesigned; the seat's two additions to them are the faint light rim (`RIM`)
-// and the hedgehog's softer, curved spines. The species marked `added` (card#12212) are the seat's own drawing to
+// and the hedgehog's softer, curved spines; and the operator has since recoloured the pumpkin a deep
+// Halloween orange with a green stem (2026-11-02, card#12795). The species marked `added` (card#12212) are the seat's own drawing to
 // the same look, appended to the one list every key draws its species from (FLOOR.md § 10.4's growth bullet).
 //
 // ⛔ This module builds DOCUMENTS, never URIs: the painter makes the `data:` URI, so no text in the asset
@@ -113,6 +114,7 @@ function makeCtx(pen, key, P, st) {
 }
 
 export const GREENS = ['#79a85a', '#8db55e', '#6b9a52', '#9ab062'];
+const PUMPKIN_STEM = shade(GREENS[2], 0.22);   // a green stem, a shade under the green of its curl (card#12795)
 
 // ---- the species: each draws its BODY and returns where the shared features go ----
 // face {y, es (eye half-spacing), s (eye scale), my (mouth y), ms (mouth scale), beak}
@@ -402,14 +404,16 @@ const APPROVED = {
   },
   pumpkin: {
     kind: 'vegetable', label: 'pumpkin',
-    pals: [['#e08a3c'], ['#efe2c4'], ['#8fa0a3'], ['#d9a441', 'stripe'], ['#c8562e']],
+    // A traditional deep-orange Halloween pumpkin in every colourway, darker than every carrot and far more
+    // saturated than any hedgehog (the operator's ruling of 2026-11-02, card#12795; the selftest's section 2b holds it).
+    pals: [['#cc5200'], ['#c04400'], ['#c45608'], ['#c84e04', 'stripe'], ['#b04000']],
     hats: ['ladybug', 'flower', 'sprig'], necks: [], extras: ['glasses', 'mug', 'book'],
     build(c) {
       const [b, stripe] = c.P, X = c.X;
       const body = c.sym([[0, 73], [10, 67], [24, 66], [38, 74], [46, 94], [48, 122], [45, 152], [36, 174], [20, 185], [0, 186]]);
       c.body(c.shape(body, b));
       for (const dx of [-32, -14, 14, 32]) c.body(`<path d="M${X(dx * 0.4)} 70C${X(dx * 1.45)} 88 ${X(dx * 1.45)} 166 ${X(dx * 0.5)} 185" stroke="${stripe ? tint(b, 0.6) : shade(b, 0.25)}" stroke-width="${stripe ? 3.2 : 1.4}" fill="none" opacity="${stripe ? 0.7 : 0.6}" stroke-linecap="round"/>`);
-      c.body(c.shape(`M51 70C50 58 56 48 62 46L65 50.5C60 53 58 60 58 70Z`, '#7f6a3a'));
+      c.body(c.shape(`M51 70C50 58 56 48 62 46L65 50.5C60 53 58 60 58 70Z`, PUMPKIN_STEM));
       c.body(`<path d="M61 56C68 54 72 60 68 63C65 65 63 61 66 60" stroke="#6b9a52" stroke-width="1.6" fill="none" stroke-linecap="round"/>`);
       if (chance(c.key, 'pleaf', 1, 2)) c.body(c.leaf(51, 66, -62, 18, 8, GREENS[1]));
       return { face: { y: 106, es: 16, s: 1.05, my: 122, ms: 1 }, hat: { x: 46, y: 64, w: 20 }, neck: null,
