@@ -445,9 +445,13 @@ const ELEVATOR = Object.freeze({ w: 114, h: 158, frame_w: 96, leaves: Object.fre
 /**
  * THE ELEVATOR's SURROUND, at its frame grown 18 px to the right: a honey frame with a header plate and a plain
  * dial — no numeral and no arrow, because this elevator indicates no floor — the lamp, the dark recess behind
- * the leaves, and the call buttons beside it. The leaves are the painter's, in the building's door colours.
+ * the leaves, and the call buttons beside it: two plates, each at the rect the scene hands it in the surround's own px
+ * (`calls`, card#12747) — `main` at a seat's reach and a smaller `low` under it at an intern's — each a rounded plate
+ * with two round buttons on its centre line, the upper lit. The leaves are the painter's, in the building's door colours.
+ *
+ * @param {{calls: {main: {x: number, y: number, w: number, h: number}, low: {x: number, y: number, w: number, h: number}}}} input
  */
-export function elevatorSurround() {
+export function elevatorSurround({ calls }) {
     const pen = new Pen();
     const P = PALETTE.elevator;
     const L = ELEVATOR.leaves;
@@ -461,9 +465,15 @@ export function elevatorSurround() {
     m.push(`<circle cx="${fw / 2}" cy="10.5" r="1.8" fill="${P.lamp}"/>`);
     // the recess behind the leaves
     m.push(`<path d="${rr(L.x - 2, L.y - 2, L.w + 4, L.h + 2, 4)}" fill="${shade(P.frame, 0.45)}"/>`);
-    // the call buttons
-    m.push(`<path d="${rr(fw + 4, 58, 11, 24, 5)}" fill="${pen.face(P.frame)}" stroke="${line(P.frame)}" stroke-width=".7"/>`);
-    m.push(`<circle cx="${fw + 9.5}" cy="65" r="2.6" fill="${P.lamp}"/><circle cx="${fw + 9.5}" cy="75" r="2.6" fill="${tint(P.frame, 0.4)}"/>`);
+    // the call buttons: one plate per rect, its buttons scaled to its width and spaced on its height
+    for (const r of [calls.main, calls.low]) {
+        const cx = f(r.x + r.w / 2);
+        const dy = (r.h * 5) / 24;
+        const br = f((r.w * 26) / 110);
+
+        m.push(`<path d="${rr(r.x, r.y, r.w, r.h, r.w / 2.2)}" fill="${pen.face(P.frame)}" stroke="${line(P.frame)}" stroke-width=".7"/>`);
+        m.push(`<circle cx="${cx}" cy="${f(r.y + r.h / 2 - dy)}" r="${br}" fill="${P.lamp}"/><circle cx="${cx}" cy="${f(r.y + r.h / 2 + dy)}" r="${br}" fill="${tint(P.frame, 0.4)}"/>`);
+    }
 
     return doc(pen, ELEVATOR.w, ELEVATOR.h, rimmed(m.join('')));
 }

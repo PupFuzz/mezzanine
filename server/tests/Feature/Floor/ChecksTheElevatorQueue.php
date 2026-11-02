@@ -14,6 +14,10 @@ namespace Tests\Feature\Floor;
  *   each a step after the one before, each leaving its spot only once the one before has stepped in, and one waiting
  *   then leaving it then; one waiting on the threshold itself steps in first (nearest the door first); none steps in
  *   before the leaves are open; and the leaves close right after the last has stepped in.
+ * - **The call plates first** (`callDefects()`, card#12747): every departure presses its own call plate — a seat the
+ *   main one, an intern the low one — at the point re-derived from the frame's plate rect, the plate within its reach,
+ *   before it waits; and while one presses, no other departure stands or walks to the plates within a walker's
+ *   clearance of it.
  *
  * A departure is an effect with frames to run that waits (`departures()`: A2's walk, an intern's walk out), read off its
  * legs. Times are milliseconds from the frame's own instant, each walk's legs shifted by how far into
@@ -350,7 +354,10 @@ trait ChecksTheElevatorQueue
                 }
             }
 
-            if ($boarders !== [] && $shared === []) {
+            // Every boarder's walk ends as the leaves close, so on a frame drawn within a loop frame of their closing a
+            // boarder may already have ended and be drawn no more (card#12747: a walk-end refresh at its last boarder's
+            // end) — the close is read whole on the run's earlier frames, never on a frame that cannot see every boarder.
+            if ($boarders !== [] && $shared === [] && $to >= $I - 0.001) {
                 $last = end($boarders);
                 $shut = $last['in'] + ($door['step'] + $door['close']) * $I;
 
@@ -502,6 +509,166 @@ trait ChecksTheElevatorQueue
             'depth' => $rise * (1 - $V / ($V + $D)),
             'half' => static fn (float $up): float => $e['w'] / 2 * (1 - $up / $rise),
         ];
+    }
+
+    /**
+     * card#12747 — THE CALL PLATES (`docs/design/FLOOR.md § 6.2`'s walk note item 9): the defects in how the departures a
+     * frame draws press the elevator's call plates, and the number of pairs sampled with one of them pressing — every half
+     * loop frame over the frame's horizon, and every leg boundary. Each is re-derived from the legs, the frame's band
+     * (`scene.band.elevator.calls`, held to § 12's *Call plates* elsewhere) and the widths passed in, never from the
+     * holder's queue part.
+     *
+     * - **Pressed:** every departure stands in a `press` stand — after its walk to it and before it waits — for `$press`
+     *   frames (§ 12's *Call press*).
+     * - **Its own plate:** a seat presses `main` and an intern (a walk with an `intern_key`) presses `low`; it stands on
+     *   the threshold's floor line at `x = max(plate centre, seam + $seatW ÷ 2 + its width ÷ 2 + $margin)`; and the plate's
+     *   centre is inside the walker's drawn rect (`size`) standing there — within half its width of its feet, and between
+     *   its feet and its height above them.
+     * - **One at a time:** while a departure presses, no other departure standing (any `stand` leg) or walking to its
+     *   own plate comes within `(its width + the presser's) ÷ 2 + $margin` of the presser's feet. A departure walking
+     *   elsewhere passes, as every crossing does (§ 13 row 77).
+     *
+     * @return array{0: list<string>, 1: int}
+     */
+    private function callDefects(array $frame, float $seatW, float $margin, int $press): array
+    {
+        $walks = $this->departures($frame);
+        $e = $frame['scene']['band']['elevator'];
+        $door = ['x' => $e['seam'], 'y' => $e['y'] + $e['h']];
+        $defects = [];
+        $instants = [];
+        $pressOf = [];
+
+        foreach ($walks as $i => $w) {
+            $key = $this->walkerKey($w);
+            $at = array_keys(array_filter($w['legs'], static fn (array $l): bool => ($l['why'] ?? null) === 'press'));
+            $wait = array_keys(array_filter($w['legs'], static fn (array $l): bool => ($l['why'] ?? null) === 'wait'));
+
+            if (count($at) !== 1) {
+                $defects[] = "{$key} departs without pressing a call plate once (".count($at).' press stands)';
+
+                continue;
+            }
+
+            $k = $at[0];
+            $leg = $w['legs'][$k];
+            $pressOf[$i] = $k;
+
+            if ($k === 0 || $w['legs'][$k - 1]['kind'] !== 'walk' || $k > $wait[0]) {
+                $defects[] = "{$key} does not walk to its call plate and press it before it waits";
+            }
+
+            if ($leg['frames'] !== $press) {
+                $defects[] = "{$key} presses for {$leg['frames']} frames, not § 12's *Call press* {$press}";
+            }
+
+            $plate = isset($w['intern_key']) ? 'low' : 'main';
+
+            if (($leg['plate'] ?? null) !== $plate) {
+                $defects[] = "{$key} presses the ".json_encode($leg['plate'] ?? null)." call plate, not {$plate}";
+            }
+
+            $r = $e['calls'][$leg['plate'] ?? $plate] ?? null;
+
+            if ($r === null) {
+                $defects[] = "the band draws no {$plate} call plate";
+
+                continue;
+            }
+
+            $cx = $r['x'] + $r['w'] / 2;
+            $cy = $r['y'] + $r['h'] / 2;
+            $owed = ['x' => max($cx, $door['x'] + $seatW / 2 + $w['size']['w'] / 2 + $margin), 'y' => $door['y']];
+
+            if (abs($leg['at']['x'] - $owed['x']) > 0.001 || abs($leg['at']['y'] - $owed['y']) > 0.001) {
+                $defects[] = "{$key} presses at ".json_encode($leg['at']).", not at its plate's standing point ".json_encode($owed);
+            }
+
+            if (abs($cx - $leg['at']['x']) > $w['size']['w'] / 2 + 0.001 || $cy > $leg['at']['y'] || $cy < $leg['at']['y'] - $w['size']['h']) {
+                $defects[] = "{$key}'s call plate centre ".json_encode([$cx, $cy]).' is out of its reach at '.json_encode($leg['at']);
+            }
+
+            $end = $w['frames'] * $w['frame_interval_ms'] - $w['elapsed_ms'];
+
+            for ($t = 0.0; $t <= $end; $t += $w['frame_interval_ms'] / 2) {
+                $instants[] = $t;
+            }
+
+            foreach ($w['legs'] as $l) {
+                [$from, $to] = $this->legSpan($w, $l);
+                $instants[] = max(0.0, $from);
+                $instants[] = max(0.0, $to - 0.001);
+            }
+        }
+
+        $instants = array_values(array_unique($instants, SORT_REGULAR));
+        $pairs = 0;
+        // In its press stand at `$t`, or the leg it is in then and whether that is its walk to the plate.
+        $legAt = function (array $w, float $t): ?int {
+            foreach ($w['legs'] as $n => $l) {
+                [$from, $to] = $this->legSpan($w, $l);
+
+                if ($from <= $t && $t < $to) {
+                    return $n;
+                }
+            }
+
+            return null;
+        };
+
+        foreach ($instants as $t) {
+            foreach ($pressOf as $i => $k) {
+                if ($legAt($walks[$i], $t) !== $k) {
+                    continue;
+                }
+
+                $a = $this->queuedAt($walks[$i], $t);
+
+                foreach ($walks as $j => $other) {
+                    if ($j === $i) {
+                        continue;
+                    }
+
+                    $n = $legAt($other, $t);
+                    $leg = $n === null ? null : $other['legs'][$n];
+                    $toPlate = $n !== null && isset($pressOf[$j]) && $n === $pressOf[$j] - 1;
+
+                    if ($leg === null || ($leg['kind'] !== 'stand' && ! $toPlate)) {
+                        continue;
+                    }
+
+                    $pairs++;
+                    $b = $this->queuedAt($other, $t);
+                    $d = hypot($a['x'] - $b['x'], $a['y'] - $b['y']);
+                    $clear = ($walks[$i]['size']['w'] + $other['size']['w']) / 2 + $margin;
+
+                    if ($d < $clear - 0.001) {
+                        $defects[] = "at {$t} ms {$this->walkerKey($other)} ".($toPlate ? 'walks to its plate' : "stands ({$leg['why']})")
+                            ." {$d} px from {$this->walkerKey($walks[$i])} pressing its call plate, under {$clear} px";
+                    }
+                }
+            }
+        }
+
+        return [array_values(array_unique($defects)), $pairs];
+    }
+
+    /** § 12's *Call press*, in loop frames. */
+    private function callPress(): int
+    {
+        $this->assertSame(1, preg_match('/^\| \*\*Call press\*\* \| \*\*(\d+) frames\*\* \|/m', $this->floorMd(), $m),
+            '§ 12 carries no *Call press* row in the form this test reads');
+
+        return (int) $m[1];
+    }
+
+    /** § 12's *Walker clearance* side margin, px. */
+    private function clearanceMargin(): float
+    {
+        $this->assertSame(1, preg_match('/^\| \*\*Walker clearance\*\* \| \*\*(\d+) px beside;/m', $this->floorMd(), $m),
+            '§ 12 carries no *Walker clearance* row in the form this test reads');
+
+        return (float) $m[1];
     }
 
     /** § 12's *Cab spots*: the least distance between two riders' feet standing in the cab together. */

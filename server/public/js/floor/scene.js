@@ -34,7 +34,7 @@ import { footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layou
 import { readEmbedded, splitGid, tilesetUrl } from './tileset.js';
 import { BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, internKey, stoolSlots, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
-import { CLEARANCE, cellCentre, lattice, pointAt, polylineLength, route, spotsNear } from './route.js';
+import { CLEARANCE, CLEARANCE_TIERS, cellCentre, lattice, pointAt, polylineLength, route, spotsNear } from './route.js';
 import { perchPoint } from './bird.js';
 
 /**
@@ -95,6 +95,25 @@ const WINDOW = { margin: 24, pitch: 360, w: 208, min_w: 96, gap: 24, h: 80, dy: 
  * every width (AT-D3-25's band leg).
  */
 export const SURROUND = Object.freeze({ side: 32, above: 16, below: 18, elevator_reach: 18 });
+
+/**
+ * card#12747 — THE ELEVATOR's TWO CALL PLATES (§ 12's *Call plates*; the operator, 2026-11-01: *"There also needs to be a
+ * set of smaller elevator buttons below the main ones at the subagent's height so that they can reach their buttons"*):
+ * each plate's rect in the elevator surround's px from its top-left, in the reach the surround grows right of the frame.
+ * `main` is the plate the surround has always carried, at a seat's reach; `low` is a smaller one under it, centred on the
+ * same line, at an intern's (`INTERN_SIZE`'s height). The floor's theme draws both at these rects (`bandDocuments()`), and
+ * the departures press them (`callPoint()`). Chosen; they carry no fact.
+ */
+export const CALL_PLATES = Object.freeze({
+    main: Object.freeze({ x: 100, y: 58, w: 11, h: 24 }),
+    low: Object.freeze({ x: 101, y: 116, w: 9, h: 17 }),
+});
+
+/**
+ * card#12747 — how long a departing walker stands at its call plate pressing it, in loop frames (§ 12's *Call press*): one
+ * second at the loop rate. Chosen; it carries no fact.
+ */
+export const CALL_PRESS_FRAMES = 4;
 
 /** The slab under the floor's rooms — the front wall's top edge, scenery, outside every grid (§ 4.2). */
 export const SLAB_H = 8;
@@ -230,7 +249,8 @@ export function bandDocuments(band) {
             },
         },
         ...band.windows.map((w, index) => ({ fn: 'windowSurround', rect: w.surround, input: { index, glazing: Object.freeze({ w: w.w, h: w.h }) } })),
-        { fn: 'elevatorSurround', rect: band.elevator.surround, input: {} },
+        // card#12747: the call plates, in the surround's own px — the rects the scene decides and the departures press.
+        { fn: 'elevatorSurround', rect: band.elevator.surround, input: { calls: Object.freeze({ main: CALL_PLATES.main, low: CALL_PLATES.low }) } },
         { fn: 'clockCase', rect: { x: band.clock.x, y: band.clock.y, w: band.clock.w, h: band.clock.h }, input: {} },
     ];
 
@@ -302,6 +322,36 @@ export const WAIT_MAX_FRAMES = ELEVATOR_WAIT_S * LOOP_FPS;
 /** Where every A1 and A2 walk meets the elevator: the leaves' seam, at their foot (§ 6.2's walk note item 3). */
 export function threshold(band) {
     return band === null || band === undefined ? null : Object.freeze({ x: band.elevator.seam, y: band.elevator.y + band.elevator.h });
+}
+
+/**
+ * card#12747 — WHERE A DEPARTING WALKER STANDS TO PRESS ITS CALL PLATE (§ 6.2's walk note item 9, § 12's *Call plates*):
+ * on the floor line the threshold stands on, under the plate's centre — or, where that is nearer the threshold than a
+ * seat waiting there leaves room for, as near the plate as keeps the walker's drawn body *Walker clearance*'s side margin
+ * clear of that seat's: `x = max(plate centre, seam + seat width ÷ 2 + presser width ÷ 2 + margin)`. Seats press `main`
+ * and interns `low`, so a plate's presser is a seat (`walkerSize()`) or an intern (`INTERN_SIZE`); the plate lies inside
+ * the presser's drawn width either way. `gap` is the frames a walker reaching the
+ * plates waits behind the one before it has left them — § 12's *Queue spacing* at § 12's *Walk speed* (`#call()` in
+ * `floor/in-flight.js`). `null` with no band.
+ *
+ * @param {?object} band the scene's band
+ * @param {{w: number, h: number}} character the seat character's rect
+ * @param {'main'|'low'} plate
+ */
+export function callPoint(band, character, plate) {
+    if (band === null || band === undefined) {
+        return null;
+    }
+
+    const door = threshold(band);
+    const r = band.elevator.calls[plate];
+    const body = plate === 'main' ? walkerSize(character) : INTERN_SIZE;
+
+    return Object.freeze({
+        at: Object.freeze({ x: Math.max(r.x + r.w / 2, door.x + walkerSize(character).w / 2 + body.w / 2 + CLEARANCE.margin), y: door.y }),
+        plate,
+        gap: Math.ceil(queueSpacing(character) / WALK_PX_PER_FRAME),
+    });
 }
 
 /**
@@ -404,11 +454,67 @@ function spotWalk(walk, spot) {
 }
 
 /**
+ * card#12747 — A DEPARTURE's WAY TO THE ELEVATOR, BY ITS CALL PLATE (§ 6.2's walk note item 9; the operator, 2026-11-01:
+ * *"When agents go to the elevator, they should go to the buttons first (pause to press the button), and then move to the
+ * waiting queue"*): from `from` at frame `start`, its walk to its plate's standing point (`callPoint()`), the `stand` it
+ * presses there for § 12's *Call press*, and its route from there to the threshold — `{ press, walk, tier }`, `press`
+ * the queue part's `{ walk, stand, plate, gap, line }` (`line` the frames it waits for the plates before it walks, 0 here;
+ * `queueLater()`), `tier` the looser of the two routes' clearance tiers. Where either route is closed, or there is no
+ * plate, the departure walks `straight` — its route from `from` to the threshold — with no press, as before the plates.
+ *
+ * @param {function({x: number, y: number}, {x: number, y: number}): ?{points: list<object>, tier: string}} routed
+ * @param {{points: list<object>, tier: string}} straight
+ */
+function wayOut(routed, straight, from, start, door, call) {
+    const there = call === null ? null : routed(from, call.at);
+    const back = there === null ? null : routed(call.at, door);
+
+    if (back === null) {
+        return Object.freeze({ press: null, walk: walkLeg(start, straight.points), tier: straight.tier });
+    }
+
+    const walk = walkLeg(start, there.points);
+    const stand = Object.freeze({ kind: 'stand', start: walk.start + walk.frames, frames: CALL_PRESS_FRAMES, at: call.at, why: 'press', plate: call.plate });
+
+    return Object.freeze({
+        press: Object.freeze({ walk, stand, plate: call.plate, gap: call.gap, line: 0 }),
+        walk: walkLeg(stand.start + stand.frames, back.points),
+        tier: CLEARANCE_TIERS[Math.max(CLEARANCE_TIERS.indexOf(there.tier), CLEARANCE_TIERS.indexOf(back.tier))],
+    });
+}
+
+/**
+ * card#12747 — A DEPARTURE's QUEUE PART WITH ITS WAY TO THE PLATES `frames` LATER: it stands where it set off for those
+ * frames (its `line`) before it walks, and its walk to the plates, its press and its route on to the threshold all start
+ * that much later. Used only on a departure no frame of which has been drawn (the holder's `#call()`).
+ */
+export function queueLater(queue, frames) {
+    const p = queue.press;
+    const later = (leg) => Object.freeze({ ...leg, start: leg.start + frames });
+
+    return Object.freeze({
+        ...queue,
+        press: Object.freeze({ ...p, line: p.line + frames, walk: later(p.walk), stand: later(p.stand) }),
+        walk: later(queue.walk),
+    });
+}
+
+/**
+ * The frame a departure's seeded WAIT is counted from (walk note item 9, card#12747): the end of its press — it is the
+ * wait for the elevator the press called — or, for a departure that walks straight to the threshold, its reaching its
+ * spot, as before the plates.
+ */
+export function waitFrom(queue, shape) {
+    return queue.press === null ? shape.arrive : queue.walk.start;
+}
+
+/**
  * WHERE A DEPARTURE STANDS AND HOW IT BOARDS, for one waiting spot (walk note item 9, card#12705): its walk to the spot,
  * the frame it arrives there (`arrive`), and its walk from the spot to the threshold when it boards (`board`; `null`
  * at spot 0, which is the threshold). `queue` is the departure's own part, from the render that applied its row —
- * `lead` (the legs before it walks: an intern's laptop fade), `walk` (its route to the threshold), `wait` (its seeded
- * draw, frames) and `threshold`; `spot` is `{index, at, path}`, `spotsNear()`'s.
+ * `lead` (the legs before it walks: an intern's laptop fade), `press` (its way to its call plate and its press there,
+ * `wayOut()`'s, or `null`; card#12747), `walk` (its route to the threshold — from its plate, where it pressed one), `wait`
+ * (its seeded draw, frames) and `threshold`; `spot` is `{index, at, path}`, `spotsNear()`'s.
  */
 export function queueShape(queue, spot) {
     const walk = spotWalk(queue.walk, spot);
@@ -423,31 +529,36 @@ export function queueShape(queue, spot) {
 
 /**
  * The TIMING a departure alone at the elevator keeps (walk note item 5), in frames from its start: it waits its own draw
- * at its spot, the leaves open on it then, it walks to the threshold if its spot is not the threshold, steps into the cab
- * once the leaves are open, and they close behind it.
+ * (counted from its press, card#12747 — `waitFrom()`) and is at its spot, the leaves open on it then, it walks to the
+ * threshold if its spot is not the threshold, steps into the cab once the leaves are open, and they close behind it.
  */
 export function loneTiming(queue, shape) {
     const D = ELEVATOR_DOOR;
-    const open = shape.arrive + queue.wait;
+    const open = Math.max(shape.arrive, waitFrom(queue, shape) + queue.wait);
     const step = Math.max(open + (shape.board?.frames ?? 0), open + D.open);
 
     return Object.freeze({ open, approach: open, step, close: step + D.step + D.close });
 }
 
 /**
- * A DEPARTURE's legs and door span for one timing (walk note items 5 and 9): the lead legs, the walk to its spot, the
- * `stand` it waits in there until it leaves for the door (`approach`), the walk from the spot to the threshold, the
- * `stand` at the door until it steps in (`step`), and the `cab` — inside, behind the leaves, until they have closed
- * (`close`), drawn at the threshold here and stood at its rider spot by the holder (`seatInCab()`, card#12744). The
- * door span is from the leaves' opening (`open`, never before the walk's own frame 0) to their closing.
+ * A DEPARTURE's legs and door span for one timing (walk note items 5 and 9): the lead legs; where it presses its call
+ * plate (card#12747) — the `stand` it waits in for the plates where it set off (`line`, when it has one), its walk to
+ * the plate and the `stand` it presses in there; the walk to its spot, the `stand` it waits in there until it leaves for
+ * the door (`approach`), the walk from the spot to the threshold, the `stand` at the door until it steps in (`step`), and
+ * the `cab` — inside, behind the leaves, until they have closed (`close`), drawn at the threshold here and stood at its
+ * rider spot by the holder (`seatInCab()`, card#12744). The door span is from the leaves' opening (`open`, never before
+ * the walk's own frame 0) to their closing.
  */
 export function departureLegs(queue, shape, timing) {
     const at = queue.threshold;
     const stand = (start, frames, where, why) => Object.freeze({ kind: 'stand', start, frames, at: where, why });
     const board = shape.board === null ? null : Object.freeze({ ...shape.board, start: timing.approach });
     const atDoor = timing.approach + (board?.frames ?? 0);
+    const p = queue.press;
+    const called = p === null ? [] : [...(p.line > 0 ? [stand(p.walk.start - p.line, p.line, p.walk.points[0], 'line')] : []), p.walk, p.stand];
     const legs = Object.freeze([
         ...queue.lead,
+        ...called,
         shape.walk,
         stand(shape.arrive, timing.approach - shape.arrive, shape.spot.at, 'wait'),
         ...(board === null ? [] : [board]),
@@ -461,11 +572,12 @@ export function departureLegs(queue, shape, timing) {
 
 /**
  * A DEPARTURE as the render that applies its row draws it (walk note items 5 and 9): its queue part and, drawn alone, its
- * legs at the threshold — spot 0 and its own wait. The holder (`floor/in-flight.js`) gives it its spot and re-times it
- * with every other walker at the elevator.
+ * legs at the threshold — spot 0 and its own wait. `way` is `wayOut()`'s — `press` `null` for a departure that walks
+ * straight to the threshold. The holder (`floor/in-flight.js`) gives it its turn at the plates and its spot, and
+ * re-times it with every other walker at the elevator.
  */
-function departing(lead, walk, wait, at) {
-    const queue = Object.freeze({ lead: Object.freeze(lead), walk, wait, threshold: at });
+function departing(lead, way, wait, at) {
+    const queue = Object.freeze({ lead: Object.freeze(lead), press: way.press, walk: way.walk, wait, threshold: at });
     const shape = queueShape(queue, Object.freeze({ index: 0, at, path: Object.freeze([at]) }));
 
     return { queue, ...departureLegs(queue, shape, loneTiming(queue, shape)) };
@@ -494,14 +606,16 @@ export const INTERN_SIZE = Object.freeze({ w: STOOL_W, h: STOOL_H });
 
 /**
  * One A1 or A2 walk (FLOOR § 6.2's walk note items 3 and 5, card#12194): a ROUTED path through open floor between
- * the desk's anchor and the elevator's threshold, as legs in frame order — A2 walks to the threshold, WAITS there for
- * its seeded wait, stands while the leaves open on it, and steps into the cab, where the closing leaves cover it, as
- * drawn alone (`departing()`; the holder gives it its spot and its turn in the queue, item 9, card#12705); A1
+ * the desk's anchor and the elevator's threshold, as legs in frame order — A2 walks to its call plate and presses it
+ * (`wayOut()`, card#12747; straight to the threshold where a plate's route is closed), walks on to the threshold, WAITS
+ * there for its seeded wait, stands while the leaves open on it, and steps into the cab, where the closing leaves cover
+ * it, as drawn alone (`departing()`; the holder gives it its turn at the plates, its spot and its turn in the queue,
+ * item 9, card#12705); A1
  * is revealed in the cab by the opening leaves, steps out, and walks to its desk while they close behind it, sitting
  * on its walk's last frame. `door` is the frames the leaves are not shut in. With no motion, no desk on this floor,
  * no band, or no open route, the row is drawn without its walk: no legs, frames 0 (walk note item 7).
  */
-function walkEffect(base, id, anchor, door, motion, character, box, walking) {
+function walkEffect(base, id, anchor, door, call, motion, character, box, walking) {
     const key = `${base.install_id}/${base.seat_id}`;
     const none = (narrate) => Object.freeze({
         ...base,
@@ -530,16 +644,22 @@ function walkEffect(base, id, anchor, door, motion, character, box, walking) {
         return none(walking.inRoom(key));
     }
 
-    const { cells } = routed;
-
-    // The route's cell centres, bracketed by the walk's two ends.
-    const points = Object.freeze([from, ...cells.map((c) => walking.centre(c)), to].map((p) => Object.freeze({ x: p.x, y: p.y })));
+    // A route's cell centres, bracketed by the walk's two ends.
+    const pointsOf = ({ cells }, a, b) => Object.freeze([a, ...cells.map((c) => walking.centre(c)), b].map((p) => Object.freeze({ x: p.x, y: p.y })));
+    const points = pointsOf(routed, from, to);
     const D = ELEVATOR_DOOR;
     const at = Object.freeze({ x: door.x, y: door.y });
     const cab = (start, frames) => Object.freeze({ kind: 'cab', start, frames, at });
+    // card#12747: A2 walks by its call plate and presses it on its way, where both routes are open; else straight to the
+    // threshold, as before the plates.
+    const way = id !== 'A2' ? null : wayOut((a, b) => {
+        const r = walking.route(key, anchor, a, b);
+
+        return r === null ? null : { points: pointsOf(r, a, b), tier: r.tier };
+    }, { points, tier: routed.tier }, from, 0, door, call);
     // A2 queues at the elevator (walk note item 9): drawn alone at the threshold here, re-timed by the holder.
     const drawn = id === 'A2'
-        ? departing([], walkLeg(0, points), walking.wait(key, base.cause), at)
+        ? departing([], way, walking.wait(key, base.cause), at)
         : {
             queue: null,
             legs: Object.freeze([cab(0, D.open), Object.freeze({ kind: 'stand', start: D.open, frames: D.step, at, why: 'step' }), walkLeg(D.open + D.step, points)]),
@@ -558,7 +678,7 @@ function walkEffect(base, id, anchor, door, motion, character, box, walking) {
         no_route: false,
         // Which clearance tier the route was found at (`route.js`'s `CLEARANCE_TIERS`, card#12442) — read by the tests
         // and the walk probe, drawn nowhere.
-        clearance: routed.tier,
+        clearance: way?.tier ?? routed.tier,
         // The walker is the desk's character at its drawn size, its feet on the path: `size` its rect (the
         // placeholder's, § 9 F14, and the body the route keeps clear), `frame` the size its image is drawn at — the
         // character's overdraw, the frame every seat document is drawn in (§ 10.4's frame contract, card#12259),
@@ -991,7 +1111,8 @@ export function buildScene(frame, input) {
             return null;
         }
 
-        spots ??= spotsNear(grid, door, queueSpacing(input.character));
+        // card#12747: no spot past the threshold within the spacing of where a departure presses a call plate.
+        spots ??= spotsNear(grid, door, queueSpacing(input.character), ['main', 'low'].map((plate) => callPoint(band, input.character, plate).at));
 
         return spots(k);
     };
@@ -1579,6 +1700,8 @@ export function backWall(span, room) {
 
     const lift = { x: span.x + ELEVATOR.dx, y: floor - ELEVATOR.h, w: ELEVATOR.w, h: ELEVATOR.h };
     const frameRect = { x: lift.x - ELEVATOR.frame, y: lift.y - ELEVATOR.header, w: lift.w + 2 * ELEVATOR.frame, h: lift.h + ELEVATOR.header };
+    // card#12747: the call plates in scene px, from the surround's top-left (`CALL_PLATES`).
+    const plate = (r) => Object.freeze({ x: frameRect.x + r.x, y: frameRect.y + r.y, w: r.w, h: r.h });
 
     return Object.freeze({
         x: span.x,
@@ -1595,6 +1718,8 @@ export function backWall(span, room) {
             frame: Object.freeze(frameRect),
             surround: Object.freeze({ ...frameRect, w: frameRect.w + SURROUND.elevator_reach }),
             seam: lift.x + lift.w / 2,
+            // card#12747: the two call plates the theme draws in the surround — `main` at a seat's reach, `low` an intern's.
+            calls: Object.freeze({ main: plate(CALL_PLATES.main), low: plate(CALL_PLATES.low) }),
         }),
         // § 6.5: a room with no value is drawn as having none — `set: false`, never a plausible time.
         // Hung in the zone right of the elevator, raised to the band's top (card#12241).
@@ -1737,6 +1862,8 @@ function internWalks(row, base, frame, interns, band, moving, character, box, wa
     const door = threshold(band);
     // Where every intern walk meets the elevator — the seat walks' threshold (`threshold()`), one frozen point.
     const sill = door === null ? null : Object.freeze({ x: door.x, y: door.y });
+    // card#12747: where an intern presses the LOW call plate, at its own reach.
+    const call = callPoint(band, character, 'low');
     const D = ELEVATOR_DOOR;
     const out = [];
     const shape = (element, kind) => {
@@ -1784,7 +1911,8 @@ function internWalks(row, base, frame, interns, band, moving, character, box, wa
         frames: Math.max(...legs.map((l) => l.start + l.frames), doorSpan.start + doorSpan.frames),
     });
     // A departure from the slot (item 13): the laptop fades out from `from` (a `seat` leg; none when it is already 0),
-    // then the walk, the seeded wait and the door — A2's queue at the elevator (item 14).
+    // then the walk by the low call plate and the press (card#12747; straight to the threshold where a plate's route is
+    // closed), the seeded wait and the door — A2's queue at the elevator (item 14).
     const departure = (fx, from) => {
         const r = routed(fx, fx.anchor, door);
 
@@ -1793,10 +1921,11 @@ function internWalks(row, base, frame, interns, band, moving, character, box, wa
         }
 
         const F = from > 0 ? LAPTOP_FADE : 0;
+        const way = wayOut((a, b) => routed(fx, a, b), r, fx.anchor, F, door, call);
         const gone = departing(F > 0 ? [Object.freeze({ ...leg('seat', 0, F, fx.anchor), laptop_from: from, laptop_to: 0 })] : [],
-            walk(F, r), walking.wait(fx.intern_key, row.cause), sill);
+            way, walking.wait(fx.intern_key, row.cause), sill);
 
-        return done(fx, gone.legs, gone.door, r.tier, gone.queue);
+        return done(fx, gone.legs, gone.door, way.tier, gone.queue);
     };
 
     for (const element of move.gained) {
@@ -1826,7 +1955,7 @@ function internWalks(row, base, frame, interns, band, moving, character, box, wa
         const from = held ?? (fx.activity_state === 'working' ? 1 : 0);
 
         if (flying !== null && flying.effect.leg_kind === 'arrive') {
-            const turned = turnRound(fx, flying, from, door, routed, walk, leg, done, walking, row);
+            const turned = turnRound(fx, flying, from, door, call, routed, leg, done, walking, row);
 
             if (turned !== null) {
                 out.push(turned);
@@ -1848,12 +1977,13 @@ function internWalks(row, base, frame, interns, band, moving, character, box, wa
 /**
  * ITEM 16 — A STOP THAT LANDS BEFORE THE INTERN REACHES ITS STOOL TURNS IT ROUND, from wherever it is at the cancelling
  * render's instant, and the laptop never fades in: in the `cab` leg the leaves close over it; in the `stand` leg it
- * steps back in and they close; in the `walk` leg it turns at `pointAt()`'s point, routes from there back to the
- * threshold, waits its seeded draw for the stop's `cause` and takes the full door; in the `seat` leg it is at its stool,
+ * steps back in and they close; in the `walk` leg it turns at `pointAt()`'s point, routes from there by the low call
+ * plate, presses it (card#12747) and goes on to the threshold, waits its seeded draw for the stop's `cause` and takes the
+ * full door; in the `seat` leg it is at its stool,
  * so it is an ordinary departure fading the laptop out from the opacity it has reached. The holder replaces the arrival
  * with this effect (one walk per intern).
  */
-function turnRound(fx, flying, from, door, routed, walk, leg, done, walking, row) {
+function turnRound(fx, flying, from, door, call, routed, leg, done, walking, row) {
     const D = ELEVATOR_DOOR;
     const I = flying.effect.frame_interval_ms;
     const elapsed = flying.elapsed_ms;
@@ -1884,9 +2014,10 @@ function turnRound(fx, flying, from, door, routed, walk, leg, done, walking, row
             return null;
         }
 
-        const back = departing([], walk(0, r), walking.wait(fx.intern_key, row.cause), at);
+        const way = wayOut((a, b) => routed(fx, a, b), r, here, 0, door, call);
+        const back = departing([], way, walking.wait(fx.intern_key, row.cause), at);
 
-        return done({ ...fx, leg_kind: 'turn', turned_in: 'walk', turned_at: here }, back.legs, back.door, r.tier, back.queue);
+        return done({ ...fx, leg_kind: 'turn', turned_in: 'walk', turned_at: here }, back.legs, back.door, way.tier, back.queue);
     }
 
     // In the `seat` leg: at its stool, its laptop part-way up — an ordinary departure from the opacity it has reached.
@@ -1897,10 +2028,11 @@ function turnRound(fx, flying, from, door, routed, walk, leg, done, walking, row
     }
 
     const F = from > 0 ? LAPTOP_FADE : 0;
+    const way = wayOut((a, b) => routed(fx, a, b), r, fx.anchor, F, door, call);
     const gone = departing(F > 0 ? [Object.freeze({ ...leg('seat', 0, F, fx.anchor), laptop_from: from, laptop_to: 0 })] : [],
-        walk(F, r), walking.wait(fx.intern_key, row.cause), at);
+        way, walking.wait(fx.intern_key, row.cause), at);
 
-    return done({ ...fx, leg_kind: 'turn', turned_in: 'seat' }, gone.legs, gone.door, r.tier, gone.queue);
+    return done({ ...fx, leg_kind: 'turn', turned_in: 'seat' }, gone.legs, gone.door, way.tier, gone.queue);
 }
 
 /**
@@ -2150,7 +2282,7 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce, char
             // card#12443: the walker wears the seat's delivered body, read off the desk model this render holds.
             const species = key === null ? null : frame.desks.desks[key]?.species ?? null;
 
-            effects.push(walkEffect({ ...base, species }, id, now, threshold(band), motion && !reduce, character, box, walking));
+            effects.push(walkEffect({ ...base, species }, id, now, threshold(band), callPoint(band, character, 'main'), motion && !reduce, character, box, walking));
 
             continue;
         }
