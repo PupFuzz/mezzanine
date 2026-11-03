@@ -5,9 +5,9 @@
 // engine and every reload. The one exception is the BODY of a seat on a floor: the species the server
 // allocated it and delivers (`character.species`, card#12443), which the painter hands in as `force` /
 // `species`; everything else is still the key's draw. The species of the operator-approved design sheet
-// (2026-10-05) are ported and not redesigned; the seat's two additions to them are the faint light rim (`RIM`)
-// and the hedgehog's softer, curved spines; and the operator has since recoloured the pumpkin a deep
-// Halloween orange with a green stem (2026-11-02, card#12795). The species marked `added` (card#12212) are the seat's own drawing to
+// (2026-10-05) are ported and not redesigned, but for the pumpkin; the seat's two additions to them are the faint light
+// rim (`RIM`) and the hedgehog's softer, curved spines; and the operator has since had the pumpkin redrawn as a squat,
+// jack-o'-lantern orange Halloween pumpkin, and the pepper's orange made a yellow-green (2026-11-02, card#12795). The species marked `added` (card#12212) are the seat's own drawing to
 // the same look, appended to the one list every key draws its species from (FLOOR.md § 10.4's growth bullet).
 //
 // ⛔ This module builds DOCUMENTS, never URIs: the painter makes the `data:` URI, so no text in the asset
@@ -404,21 +404,29 @@ const APPROVED = {
   },
   pumpkin: {
     kind: 'vegetable', label: 'pumpkin',
-    // A traditional deep-orange Halloween pumpkin in every colourway (the operator's ruling of 2026-11-02, card#12795): darker
-    // than every carrot in HSL lightness, twice or more the chroma of any hedgehog colour, and apart from every bell pepper
-    // colourway by CIEDE2000 — the selftest's section 2b holds all three.
-    pals: [['#bc5400'], ['#b44c00'], ['#a84800'], ['#b85000', 'stripe'], ['#a04400']],
+    // A traditional Halloween pumpkin (the operator's rulings of 2026-11-02, card#12795): jack-o'-lantern orange, bright
+    // through deep, in every colourway, darker than every orange, yellow and red carrot colourway by CIELAB L*, far more
+    // saturated than any hedgehog colour and apart from every bell pepper colourway by CIEDE2000; and a wide, squat body of
+    // deep ribbed lobes under a green, curly stem, apart from the pepper and the hedgehog by outline. The selftest's
+    // section 2b holds the colours and its outline leg the shape.
+    pals: [['#cc5800'], ['#c45200'], ['#ba4a00'], ['#c85600', 'stripe'], ['#b04400']],
     hats: ['ladybug', 'flower', 'sprig'], necks: [], extras: ['glasses', 'mug', 'book'],
     build(c) {
       const [b, stripe] = c.P, X = c.X;
-      const body = c.sym([[0, 73], [10, 67], [24, 66], [38, 74], [46, 94], [48, 122], [45, 152], [36, 174], [20, 185], [0, 186]]);
-      c.body(c.shape(body, b));
-      for (const dx of [-32, -14, 14, 32]) c.body(`<path d="M${X(dx * 0.4)} 70C${X(dx * 1.45)} 88 ${X(dx * 1.45)} 166 ${X(dx * 0.5)} 185" stroke="${stripe ? tint(b, 0.6) : shade(b, 0.25)}" stroke-width="${stripe ? 3.2 : 1.4}" fill="none" opacity="${stripe ? 0.7 : 0.6}" stroke-linecap="round"/>`);
-      c.body(c.shape(`M51 70C50 58 56 48 62 46L65 50.5C60 53 58 60 58 70Z`, PUMPKIN_STEM));
-      c.body(`<path d="M61 56C68 54 72 60 68 63C65 65 63 61 66 60" stroke="#6b9a52" stroke-width="1.6" fill="none" stroke-linecap="round"/>`);
-      if (chance(c.key, 'pleaf', 1, 2)) c.body(c.leaf(51, 66, -62, 18, 8, GREENS[1]));
-      return { face: { y: 106, es: 16, s: 1.05, my: 122, ms: 1 }, hat: { x: 46, y: 64, w: 20 }, neck: null,
-        arms: { y: 146, dx: 44 * c.st, col: b, small: true }, feet: { dx: 20 * c.st, col: shade(b, 0.25) }, shadow: 44 * c.st };
+      // the lobes, back to front: the outer pair turned away (a shade darker), the inner pair, the front lobe; each lobe's
+      // own outline and its own light are the deep ribs between them
+      const lobes = [[-33, 143, 21, 40, 0.16], [33, 143, 21, 40, 0.16], [-18, 141, 22, 44, 0.07], [18, 141, 22, 44, 0.07], [0, 142, 20, 44, 0]];
+      for (const [dx, cy, rx, ry, dark] of lobes) {
+        const col = shade(b, dark);
+        c.body(c.ell(X(dx), cy, rx * c.st, ry, col));
+        if (stripe) c.body(`<path d="M${X(dx)} ${cy - ry + 6}C${X(dx - rx * 0.18)} ${f(cy - ry * 0.3)} ${X(dx - rx * 0.18)} ${f(cy + ry * 0.3)} ${X(dx)} ${cy + ry - 6}" stroke="${tint(col, 0.55)}" stroke-width="3.4" fill="none" opacity=".65" stroke-linecap="round"/>`);
+      }
+      // the stem in the top's hollow, leaning aside, and its curling tendril
+      c.body(c.shape(`M50 102C49 91 54 83 60 79L63.5 83.5C59 86 57 93 57.5 102Z`, PUMPKIN_STEM));
+      c.body(`<path d="M59.5 89C68 84 76 89 72.5 95C69.5 99.5 64.5 95.5 67.5 92.5" stroke="${GREENS[2]}" stroke-width="1.7" fill="none" stroke-linecap="round"/>`);
+      if (chance(c.key, 'pleaf', 1, 2)) c.body(c.leaf(49, 100, -62, 18, 8, GREENS[1]));
+      return { face: { y: 124, es: 18, s: 1.05, my: 139, ms: 1 }, hat: { x: 37, y: 99, w: 18 }, neck: null,
+        arms: { y: 152, dx: 52 * c.st, col: b, small: true }, feet: { dx: 24 * c.st, col: shade(b, 0.25) }, shadow: 54 * c.st };
     },
   },
   potato: {
@@ -571,7 +579,9 @@ const APPROVED = {
   },
   pepper: {
     kind: 'vegetable', label: 'bell pepper', added: 'card#12212',
-    pals: [['#d8453a'], ['#e9b63a'], ['#e7832f'], ['#6f9a3c'], ['#6a4a86']],
+    // the third colourway, an orange until card#12795, is a yellow-green: the pumpkin owns the oranges (the operator's
+    // ruling of 2026-11-02)
+    pals: [['#d8453a'], ['#e9b63a'], ['#a8c040'], ['#6f9a3c'], ['#6a4a86']],
     hats: ['ladybug', 'flower', 'straw'], necks: [], extras: ['glasses', 'mug', 'book'],
     build(c) {
       const [b] = c.P, X = c.X, stem = '#6f9a4e';
@@ -1351,7 +1361,7 @@ const Z_INK = '#4f4380', Z_FILL = '#ece8ff';
 export const CREST_TOP = Object.freeze({
   bear: 53, carrot: 31, eggplant: 39, fox: 34, frog: 73, hedgehog: 66, mole: 60,
   'mushroom/bell': 15, 'mushroom/dome': 25, 'mushroom/wide': 38, otter: 63, owl: 49, peapod: 44, potato: 56,
-  pumpkin: 47, 'rabbit/lop': 62, 'rabbit/upright': 20, radish: 25, turnip: 27,
+  pumpkin: 63, 'rabbit/lop': 62, 'rabbit/upright': 20, radish: 25, turnip: 27,
   // card#12212's species: each the floor of the topmost ink `tools/design/svg-document.mjs`'s inkBounds reads over the
   // sleeper's own documents (without their z's) across the selftest's keys — tools/characters/selftest.mjs § 8b holds
   // every entry at or above that ink on every run, beside the tool's raster scan
@@ -1397,7 +1407,7 @@ export const STAND_TOP = Object.freeze({
   penguin: Object.freeze({ beanie: 39, beret: 35, flower: 39, ladybug: 39, none: 39, straw: 39 }),
   pepper: Object.freeze({ flower: 42, ladybug: 42, none: 42, straw: 42 }),
   potato: Object.freeze({ beanie: 49, beret: 49, flower: 49, ladybug: 49, none: 49, straw: 49 }),
-  pumpkin: Object.freeze({ flower: 43, ladybug: 43, none: 43 }),
+  pumpkin: Object.freeze({ flower: 74, ladybug: 75, none: 74 }),
   'rabbit/lop': Object.freeze({ beanie: 54, beret: 48, flower: 59, ladybug: 61, none: 61, straw: 55 }),
   'rabbit/upright': Object.freeze({ flower: 9, ladybug: 9, none: 9 }),
   radish: Object.freeze({ flower: 18, ladybug: 18, none: 18 }),
@@ -1431,7 +1441,7 @@ export function crestOfKey(key, { pose, species } = {}) {
 export const FACE_TOP = Object.freeze({
   bear: 76, broccoli: 107, cabbage: 88, carrot: 67, corn: 77, deer: 77, eggplant: 83, fox: 77, frog: 57, hedgehog: 77,
   mole: 81, 'mushroom/bell': 90, 'mushroom/dome': 90, 'mushroom/wide': 90, otter: 64, owl: 69, peapod: 68, penguin: 72,
-  pepper: 86, potato: 85, pumpkin: 84, 'rabbit/lop': 76, 'rabbit/upright': 76, radish: 82, sheep: 85, snail: 84, turnip: 86,
+  pepper: 86, potato: 85, pumpkin: 102, 'rabbit/lop': 76, 'rabbit/upright': 76, radish: 82, sheep: 85, snail: 84, turnip: 86,
 });
 
 /**

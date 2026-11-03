@@ -124,18 +124,21 @@ for (const [dim, [want, ...pairs]] of Object.entries(expect)) {
   }
 }
 
-// ---- 2b. the pumpkin is a deep-orange Halloween pumpkin (card#12795; the operator's ruling of 2026-11-02) ----
-// The operator: the pumpkin "looks too similar to hedgehog", and its colour becomes "a more traditional halloween
-// pumpkin, darker orange than a carrot". A deep orange must not make it the bell pepper's lookalike instead, whose
-// colourways include an orange and a red. Measured on each colourway's body fill (its first entry):
+// ---- 2b. the pumpkin is a jack-o'-lantern orange (card#12795; the operator's rulings of 2026-11-02) ----
+// The operator: the pumpkin "looks too similar to hedgehog", and becomes "a more traditional halloween pumpkin, darker
+// orange than a carrot" — then, from the first sheet, a brighter jack-o'-lantern orange, bright through deep, never the
+// bell pepper's lookalike, whose orange colourway became a yellow-green. Measured on each colourway's body fill (its
+// first entry):
 //   hue        — HSL, an orange: 15° to 40°;
-//   lightness  — HSL, under the darkest carrot colourway's, every carrot colourway counted;
+//   lightness  — CIELAB L*, under every carrot colourway of the orange, yellow and red family (HSL hue 0° to 60°). A
+//                carrot colourway outside that family — the purple one — is a different hue, so it is compared on
+//                nothing; the colourways counted and the ones set aside are printed;
 //   chroma     — max − min of the channels, at least twice the most saturated hedgehog colour (spines or body):
 //                the hedgehog's browns and creams share the orange hues, so hue cannot tell them apart; saturation does;
 //   pepper     — CIEDE2000 (Sharma, Wu & Dalal 2005, sRGB under D65) from every bell pepper colourway's body fill, at
-//                least PEPPER_APART. That bound is this card's design choice, not a perceptual constant; the closest
-//                pair is printed on every run.
-section('2b. every pumpkin colourway is a deep orange, darker than every carrot colourway, far more saturated than any hedgehog colour, and apart from every bell pepper colourway');
+//                least PEPPER_APART, and no pepper colourway in the pumpkin's orange band at all. That bound is this
+//                card's design choice, not a perceptual constant; the closest pair is printed on every run.
+section("2b. every pumpkin colourway is a jack-o'-lantern orange, darker than every orange, yellow and red carrot, far more saturated than any hedgehog colour, and apart from every bell pepper colourway");
 const hslOf = (hex) => {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255), mx = Math.max(r, g, b), mn = Math.min(r, g, b), c = mx - mn;
   const h = c === 0 ? 0 : mx === r ? 60 * (((g - b) / c + 6) % 6) : mx === g ? 60 * ((b - r) / c + 2) : 60 * ((r - g) / c + 4);
@@ -161,33 +164,96 @@ function ciede2000([L1, a1, b1], [L2, a2, b2]) {
   const l = (L2 - L1) / SL, c = (C2 - C1) / SC, h = dH / SH;
   return Math.sqrt(l * l + c * c + h * h + RT * c * h);
 }
-const PUMPKIN_HUE = [15, 40], HEDGEHOG_APART = 2, PEPPER_APART = 12;
+const PUMPKIN_HUE = [15, 40], WARM_HUE = [0, 60], HEDGEHOG_APART = 2, PEPPER_APART = 12;
+const warm = (hex) => { const v = hslOf(hex); return v.c > 0 && v.h >= WARM_HUE[0] && v.h <= WARM_HUE[1]; };
 const closestPair = (pumpkin, pepper) => pumpkin.flatMap((p) => pepper.map((q) => [p[0], q[0], ciede2000(labOf(p[0]), labOf(q[0]))])).sort((x, y) => x[2] - y[2])[0];
 function pumpkinFaults(pumpkin, carrot, hedgehog, pepper) {
-  const darkest = Math.min(...carrot.map((p) => hslOf(p[0]).l)), vivid = Math.max(...hedgehog.flat().filter((v) => v.startsWith('#')).map((v) => hslOf(v).c));
-  return pumpkin.map((p) => hslOf(p[0])).flatMap((p) => {
-    const [, q, d] = closestPair([[p.hex]], pepper);
-    return [
-      ...(p.h < PUMPKIN_HUE[0] || p.h > PUMPKIN_HUE[1] ? [['hue', `${p.hex} hue ${p.h.toFixed(1)}° is not an orange`]] : []),
-      ...(p.l >= darkest ? [['lightness', `${p.hex} lightness ${p.l.toFixed(3)} is not under the darkest carrot's ${darkest.toFixed(3)}`]] : []),
-      ...(p.c < HEDGEHOG_APART * vivid ? [['chroma', `${p.hex} chroma ${p.c.toFixed(3)} is under ${HEDGEHOG_APART} × the hedgehog's ${vivid.toFixed(3)}`]] : []),
-      ...(d < PEPPER_APART ? [['pepper', `${p.hex} is CIEDE2000 ${d.toFixed(2)} from the pepper's ${q}, under ${PEPPER_APART}`]] : []),
-    ];
-  });
+  const darkest = Math.min(...carrot.filter((p) => warm(p[0])).map((p) => labOf(p[0])[0]));
+  const vivid = Math.max(...hedgehog.flat().filter((v) => v.startsWith('#')).map((v) => hslOf(v).c));
+  const inBand = (v) => v.h >= PUMPKIN_HUE[0] && v.h <= PUMPKIN_HUE[1];
+  return [
+    ...pumpkin.map((p) => hslOf(p[0])).flatMap((p) => {
+      const [, q, d] = closestPair([[p.hex]], pepper), L = labOf(p.hex)[0];
+      return [
+        ...(!inBand(p) ? [['hue', `${p.hex} hue ${p.h.toFixed(1)}° is not an orange`]] : []),
+        ...(L >= darkest ? [['lightness', `${p.hex} L* ${L.toFixed(1)} is not under the darkest orange, yellow or red carrot's ${darkest.toFixed(1)}`]] : []),
+        ...(p.c < HEDGEHOG_APART * vivid ? [['chroma', `${p.hex} chroma ${p.c.toFixed(3)} is under ${HEDGEHOG_APART} × the hedgehog's ${vivid.toFixed(3)}`]] : []),
+        ...(d < PEPPER_APART ? [['pepper', `${p.hex} is CIEDE2000 ${d.toFixed(2)} from the pepper's ${q}, under ${PEPPER_APART}`]] : []),
+      ];
+    }),
+    ...pepper.map((q) => hslOf(q[0])).filter(inBand).map((q) => ['pepper', `the pepper's ${q.hex} (hue ${q.h.toFixed(1)}°) is a pumpkin orange`]),
+  ];
 }
 {
   const faults = pumpkinFaults(SP.pumpkin.pals, SP.carrot.pals, SP.hedgehog.pals, SP.pepper.pals), [cp, cq, cd] = closestPair(SP.pumpkin.pals, SP.pepper.pals);
-  measure(`pumpkin body fills (hex hue° lightness chroma): ${SP.pumpkin.pals.map((p) => { const v = hslOf(p[0]); return `${v.hex} ${v.h.toFixed(1)} ${v.l.toFixed(3)} ${v.c.toFixed(3)}`; }).join('; ')}; the closest pumpkin and bell pepper pair ${cp} / ${cq} at CIEDE2000 ${cd.toFixed(2)}`);
-  check(faults.length === 0, `all ${SP.pumpkin.pals.length} pumpkin colourways are an orange, under the darkest of the ${SP.carrot.pals.length} carrot colourways, at least ${HEDGEHOG_APART} × as saturated as any hedgehog colour and at least CIEDE2000 ${PEPPER_APART} from all ${SP.pepper.pals.length} bell pepper colourways${faults.length ? ` — ${faults.slice(0, 4).map(([, m]) => m).join('; ')}` : ''}`);
+  const counted = SP.carrot.pals.filter((p) => warm(p[0])).map((p) => p[0]), aside = SP.carrot.pals.filter((p) => !warm(p[0])).map((p) => p[0]);
+  measure(`pumpkin body fills (hex hue° L* chroma): ${SP.pumpkin.pals.map((p) => { const v = hslOf(p[0]); return `${v.hex} ${v.h.toFixed(1)} ${labOf(p[0])[0].toFixed(1)} ${v.c.toFixed(3)}`; }).join('; ')}`);
+  measure(`carrot colourways counted (L*): ${counted.map((h) => `${h} ${labOf(h)[0].toFixed(1)}`).join(', ')}; set aside as another hue family: ${aside.join(', ') || 'none'}; the closest pumpkin and bell pepper pair ${cp} / ${cq} at CIEDE2000 ${cd.toFixed(2)}`);
+  check(faults.length === 0, `all ${SP.pumpkin.pals.length} pumpkin colourways are an orange, under every orange, yellow and red carrot colourway by L*, at least ${HEDGEHOG_APART} × as saturated as any hedgehog colour and at least CIEDE2000 ${PEPPER_APART} from all ${SP.pepper.pals.length} bell pepper colourways, none of which is a pumpkin orange${faults.length ? ` — ${faults.slice(0, 4).map(([, m]) => m).join('; ')}` : ''}`);
   // the controls: the colourways this replaced (card#12795) — an orange, a cream, a grey-blue, a striped tan and a rust —
-  // red every one of the four legs, so each can fail; and the colour difference reproduces published test pairs.
-  const before = pumpkinFaults([['#e08a3c'], ['#efe2c4'], ['#8fa0a3'], ['#d9a441', 'stripe'], ['#c8562e']], SP.carrot.pals, SP.hedgehog.pals, SP.pepper.pals);
+  // and the pepper's orange before it, red every one of the four legs, so each can fail; and the colour difference
+  // reproduces published test pairs.
+  const before = pumpkinFaults([['#e08a3c'], ['#efe2c4'], ['#8fa0a3'], ['#d9a441', 'stripe'], ['#c8562e']], SP.carrot.pals, SP.hedgehog.pals, [['#d8453a'], ['#e9b63a'], ['#e7832f'], ['#6f9a3c'], ['#6a4a86']]);
   const legs = ['hue', 'lightness', 'chroma', 'pepper'], missed = legs.filter((leg) => !before.some(([l]) => l === leg));
-  check(missed.length === 0, `CONTROL — the pumpkin colourways before card#12795 red all ${legs.length} legs (${before.length} fault(s), e.g. ${before.find(([l]) => l === 'pepper')?.[1]})${missed.length ? ` — no fault on: ${missed.join(', ')}` : ''}`);
+  check(missed.length === 0, `CONTROL — the pumpkin and pepper colourways before card#12795 red all ${legs.length} legs (${before.length} fault(s), e.g. ${before.find(([l]) => l === 'pepper')?.[1]})${missed.length ? ` — no fault on: ${missed.join(', ')}` : ''}`);
+  const pepperOrange = pumpkinFaults(SP.pumpkin.pals, SP.carrot.pals, SP.hedgehog.pals, [...SP.pepper.pals, ['#e7832f']]).filter(([l]) => l === 'pepper');
+  check(pepperOrange.length > 0, `CONTROL — the pepper's orange of before card#12795 put back reds the pepper leg against today's pumpkin (${pepperOrange[0]?.[1]})`);
   // Sharma, Wu & Dalal (2005), table 1, pairs 1, 7, 17 and 25, to their published four places
   const SHARMA = [[[50, 2.6772, -79.7751], [50, 0, -82.7485], 2.0425], [[50, 0, 0], [50, -1, 2], 2.3669], [[50, 2.5, 0], [73, 25, -18], 27.1492], [[60.2574, -34.0099, 36.2677], [60.4626, -34.1751, 39.4387], 1.2644]];
   const off = SHARMA.filter(([a, b, want]) => Math.abs(ciede2000(a, b) - want) > 5e-5);
   check(off.length === 0, `CONTROL — CIEDE2000 reproduces ${SHARMA.length} of Sharma, Wu & Dalal's published test pairs${off.length ? ` — off: ${off.map(([a, b, w]) => `${ciede2000(a, b).toFixed(4)} for ${w}`).join('; ')}` : ''}`);
+}
+
+// ---- 2c. the pumpkin's outline is its own (card#12795; the operator's ruling of 2026-11-02) ----
+// A wide, squat Halloween pumpkin, told from the bell pepper and the hedgehog by outline alone. The outline is the
+// standing frame's ink, row by row — at each half-unit row of the character rect, the span from the leftmost to the
+// rightmost ink of the body's drawing (the shadow aside) — of a NEUTRAL key: size 1, girth 1, no tilt, nothing worn.
+// Two outlines are compared by intersection over union of those spans; the pumpkin's IoU with the pepper's and the
+// hedgehog's is at most OUTLINE_APART. That bound is this card's design choice; every species' IoU with the pumpkin is
+// printed on every run.
+section("2c. the pumpkin's outline is apart from the bell pepper's and the hedgehog's");
+const OUTLINE_APART = 0.75, ROW = 0.5;
+const neutralKey = (sp) => {
+  for (let i = 0; i < 20000; i++) {
+    const k = `outline/${sp}/${i}`, d = C.describe(k, sp);
+    if (d.size === 1 && d.stout === 1 && d.tilt === 0 && d.hat === 'none' && d.neck === 'none' && d.extra === 'none' && d.variant === null) return k;
+  }
+  return null;
+};
+// the body's ink is everything under the frame's body transform — `translate(54 188)` opens it; the shadow is its sibling
+function outlineRows(doc) {
+  const rows = new Map();
+  inkBounds(doc, (node, box, up, span) => {
+    if (!up.some((u) => u.name === 'g' && (u.attrs.transform ?? '').startsWith(`translate(54 ${C.FOOT})`))) return;
+    for (let y = Math.ceil(box.y0 / ROW) * ROW; y <= box.y1; y += ROW) {
+      const s = span(y); if (!s) continue;
+      const r = rows.get(y); rows.set(y, r ? [Math.min(r[0], s[0]), Math.max(r[1], s[1])] : s);
+    }
+  });
+  return rows;
+}
+function outlineIoU(a, b) {
+  let inter = 0, uni = 0;
+  for (const y of new Set([...a.keys(), ...b.keys()])) {
+    const p = a.get(y), q = b.get(y);
+    if (p && q) { inter += Math.max(0, Math.min(p[1], q[1]) - Math.max(p[0], q[0])); uni += Math.max(p[1], q[1]) - Math.min(p[0], q[0]) - Math.max(0, Math.max(p[0], q[0]) - Math.min(p[1], q[1])); }
+    else uni += (p ?? q)[1] - (p ?? q)[0];
+  }
+  return inter / uni;
+}
+{
+  const unheld = KEYS.filter((s) => neutralKey(s) === null);
+  const outlines = Object.fromEntries(KEYS.map((s) => [s, neutralKey(s)]).filter(([, k]) => k !== null).map(([s, k]) => [s, outlineRows(C.frameDocument(k, { species: s }))]));
+  const iou = (s) => outlineIoU(outlines.pumpkin, outlines[s]);
+  measure(`outline IoU with the pumpkin, a neutral key each: ${Object.keys(outlines).filter((s) => s !== 'pumpkin').map((s) => [s, iou(s)]).sort((x, y) => y[1] - x[1]).map(([s, v]) => `${s} ${v.toFixed(3)}`).join(', ')}${unheld.length ? `; no neutral key found for ${unheld.join(', ')}` : ''}`);
+  check(outlines.pumpkin && outlines.pepper && outlines.hedgehog && iou('pepper') <= OUTLINE_APART && iou('hedgehog') <= OUTLINE_APART,
+    `the pumpkin's outline has IoU at most ${OUTLINE_APART} with the bell pepper's (${outlines.pepper ? iou('pepper').toFixed(3) : 'unmeasured'}) and the hedgehog's (${outlines.hedgehog ? iou('hedgehog').toFixed(3) : 'unmeasured'})`);
+  // the control: the pumpkin's body before card#12795 — tall and round, the pepper's outline in all but name — planted as
+  // a pumpkin's outline, reds the leg against both
+  const OLD_BODY = 'M54 73C57.33 73 60 68.17 64 67C68 65.83 73.33 64.83 78 66C82.67 67.17 88.33 69.33 92 74C95.67 78.67 98.33 86 100 94C101.67 102 102.17 112.33 102 122C101.83 131.67 101 143.33 99 152C97 160.67 94.17 168.5 90 174C85.83 179.5 80 183 74 185C68 187 60.67 186 54 186C47.33 186 40 187 34 185C28 183 22.17 179.5 18 174C13.83 168.5 11 160.67 9 152C7 143.33 6.17 131.67 6 122C5.83 112.33 6.33 102 8 94C9.67 86 12.33 78.67 16 74C19.67 69.33 25.33 67.17 30 66C34.67 64.83 40 65.83 44 67C48 68.17 50.67 73 54 73Z';
+  const planted = outlineRows(`<svg xmlns="http://www.w3.org/2000/svg"><g transform="translate(54 ${C.FOOT}) scale(1 1) rotate(0) translate(-54 -${C.FOOT})"><path d="${OLD_BODY}" fill="#e08a3c" stroke="#7a4a2a" stroke-width="1.6"/></g></svg>`);
+  const [pp, ph] = [outlineIoU(planted, outlines.pepper), outlineIoU(planted, outlines.hedgehog)];
+  check(pp > OUTLINE_APART && ph > OUTLINE_APART, `CONTROL — the pumpkin's body before card#12795, planted as its outline, has IoU ${pp.toFixed(3)} with the pepper's and ${ph.toFixed(3)} with the hedgehog's, both over ${OUTLINE_APART}, so the leg reds a pepper-shaped pumpkin`);
 }
 
 // ---- 3. reach: every member of every list is drawn by some key (+ the control in section 9) ----

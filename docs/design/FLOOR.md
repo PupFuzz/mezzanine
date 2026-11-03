@@ -5749,12 +5749,14 @@ only. This subsection says where the creatures come from and what they replaced;
   operator's:** a faint light rim on every silhouette, so the dark colourways (a charcoal bear, a dark
   otter, a deep eggplant) do not sink into what they stand on ([§ 10.4](#104-the-art-direction-as-a-specification)'s
   rim bullet, where the edge is eye-judged); and softer, curved hedgehog spines, so the back does not read as a saw-blade at 4× and
-  above. **One change to the approved look is the operator's:** the pumpkin, which read too like the hedgehog
-  (both pale and round and ribbed), is a traditional Halloween pumpkin in every colourway — deep orange, darker than
-  the carrot, its ribs a darker orange and its stem green (the ruling of 2026-11-02, card#12795; the seat added that
-  the orange stays apart from the bell pepper's orange and red, so the pumpkin does not trade one lookalike for another;
-  [AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom)'s pumpkin leg holds both). A seat
-  allocated the pumpkin keeps it; only its paint changed.
+  above. **One redesign of the approved look is the operator's:** the pumpkin, which read too like the hedgehog
+  (both pale and round and ribbed), is a traditional Halloween pumpkin (the rulings of 2026-11-02, card#12795) — a
+  wide, squat body of deep ribbed lobes under a green, curly stem, in a jack-o'-lantern orange that runs from bright to
+  deep across its colourways (one still striped), each darker than every orange, yellow and red carrot. So that the
+  pumpkin does not trade one lookalike for another, the bell pepper's orange colourway is a yellow-green by the same
+  rulings, and the pumpkin stands apart from the pepper and the hedgehog in colour and by outline alone
+  ([AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom)'s pumpkin legs hold all of
+  it). A seat allocated the pumpkin keeps it, and the same colourway slot.
 - **What still comes from the munder-difflin port: nothing.** Read from the code, file by file.
   `portrait-art.js` is upstream's pixel recipes — the head box, the skin palettes, the hairstyles, the
   garments, the outline pass — and the tree's one `licensed` file; it leaves. `seed.js`'s human recipe —
@@ -6698,7 +6700,7 @@ creature generator's sheet is their worked example.
      **`CREST_TOP`**: the topmost ink of a sleeper, in frame units, per species and per variant where it has them —
      as the tool scans it over 100 keys each (1 unit a raster pixel): `bear` 53, `carrot` 31, `eggplant` 39, `fox` 34,
      `frog` 73, `hedgehog` 66 (67 until card#12444's narrower sizes drew a larger one), `mole` 60, `mushroom/bell` 15, `mushroom/dome` 25, `mushroom/wide` 38, `otter` 63,
-     `owl` 49, `peapod` 44, `potato` 56, `pumpkin` 47, `rabbit/lop` 62, `rabbit/upright` 20, `radish` 25 and
+     `owl` 49, `peapod` 44, `potato` 56, `pumpkin` 63 (47 until card#12795's squat pumpkin; re-fit at its old distance under the topmost ink `inkBounds` reads, about 10 units, where the rows around it also stand), `rabbit/lop` 62, `rabbit/upright` 20, `radish` 25 and
      `turnip` 27, and, for card#12212's species, as the floor of the topmost ink `tools/design/svg-document.mjs`'s
      `inkBounds` finds over the sleeper's own documents without their z's: `broccoli` 15, `cabbage` 47, `corn` 45,
      `deer` 37, `penguin` 56, `pepper` 42, `sheep` 68 and `snail` 64 — and the tool holds every scanned seat's drawing at or below it
@@ -9698,15 +9700,19 @@ painter's legs in `server/tests/Feature/Floor/painter-probe.mjs`.*
   ends — equals what the generator's own closed lists give it, read per species where the table states a
   range (so a list inside a range is held only at the range's ends, and that is the leg's stated limit), and every member of every list is drawn by some key of a synthetic population —
   with the control below that proves the reach assertion can fail.
-- **GREEN — the pumpkin is a deep-orange Halloween pumpkin (card#12795, the operator's ruling of 2026-11-02):**
-  every pumpkin colourway's body fill, read in HSL, is an orange (hue 15° to 40°), is darker than every carrot
-  colourway (its lightness under the darkest carrot's, every carrot colourway counted), and has at least twice the
-  chroma of the most saturated hedgehog colour, spines or body — the hedgehog's browns and creams share the orange
-  hues, so saturation is what tells the two apart — and is at least `PEPPER_APART` in CIEDE2000 (sRGB under D65) from
-  every bell pepper colourway, whose orange and red would otherwise make a deep-orange pumpkin the pepper's lookalike
-  instead; the closest pumpkin and pepper pair is printed on every run. **RED:** the colourways the ruling replaced,
-  run through the same leg as its control, red each of its four parts, and the colour difference reproduces published
-  test pairs of Sharma, Wu and Dalal (2005).
+- **GREEN — the pumpkin is a jack-o'-lantern orange (card#12795, the operator's rulings of 2026-11-02):** every
+  pumpkin colourway's body fill is an orange (HSL hue 15° to 40°); is darker by CIELAB L* than every carrot colourway
+  of the orange, yellow and red family (HSL hue 0° to 60° — the purple carrot is another hue family and is compared on
+  nothing, which the leg prints); has at least twice the chroma of the most saturated hedgehog colour, spines or body —
+  the hedgehog's browns and creams share the orange hues, so saturation is what tells the two apart; and is at least
+  `PEPPER_APART` in CIEDE2000 (sRGB under D65) from every bell pepper colourway, none of which may itself be a pumpkin
+  orange. The closest pumpkin and pepper pair is printed on every run. **RED:** the pumpkin and pepper colourways the
+  rulings replaced red each of its four parts; the pepper's old orange put back reds the pepper part against today's
+  pumpkin; and the colour difference reproduces published test pairs of Sharma, Wu and Dalal (2005).
+- **GREEN — the pumpkin's outline is its own (card#12795):** the standing frame's ink of a neutral key (size 1, girth 1,
+  no tilt, nothing worn), read row by row as the span from its leftmost to its rightmost ink, has an intersection over
+  union with the bell pepper's and with the hedgehog's of at most `OUTLINE_APART`; every species' figure is printed.
+  **RED:** the pumpkin's body before card#12795, planted as a pumpkin's outline, is over the bound against both.
 - **GREEN — the salt, two halves over two populations** (§ 14 item 33(2), the seat's ruling of
   2026-10-06) — ⚠ **retired by card#12443: the guarantee is D2's allocation and
   [AT-D2-31](FLEET-STATE.md#at-d2-31-a-seats-character-is-allocated-once-unique-while-it-can-be-and-freed-by-retirement)
