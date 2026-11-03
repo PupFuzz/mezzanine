@@ -42,7 +42,7 @@ const argv = process.argv.slice(2);
 const argOf = (flag, fallback = null) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : fallback; };
 
 const out = argOf('--out');
-if (!out) { console.error('usage: sheet.browser.mjs --out <png> [--kind animal|vegetable] [--new] [--unit px-per-frame-unit] [--variants N] [--desk-top share] [--chrome path]'); process.exit(2); }
+if (!out) { console.error('usage: sheet.browser.mjs --out <png> [--kind animal|vegetable|fruit] [--new] [--unit px-per-frame-unit] [--variants N] [--desk-top share] [--chrome path]'); process.exit(2); }
 const q = new URLSearchParams({
   kind: argOf('--kind', 'all'), new: argv.includes('--new') ? '1' : '', unit: argOf('--unit', '1'), variants: argOf('--variants', '4'), deskTop: argOf('--desk-top', String(DESK_TOP)),
 });

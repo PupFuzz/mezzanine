@@ -104,7 +104,7 @@ const kinds = (k) => KEYS.filter((s) => SP[s].kind === k).length;
 const pals = KEYS.map((s) => SP[s].pals.length);
 const common = pals.sort((a, b) => pals.filter((x) => x === b).length - pals.filter((x) => x === a).length)[0];
 const expect = {
-  species: [[KEYS.length], cell('species')?.match(/(\d+) animal, (\d+) vegetable/)?.slice(1).map(Number), [kinds('animal'), kinds('vegetable')]],
+  species: [[KEYS.length], cell('species')?.match(/(\d+) animal, (\d+) vegetable, (\d+) fruit/)?.slice(1).map(Number), [kinds('animal'), kinds('vegetable'), kinds('fruit')]],
   colourway: [[common, ...new Set(KEYS.filter((s) => SP[s].pals.length !== common).map((s) => SP[s].pals.length))]],
   variant: [[variantsOf('rabbit').length, variantsOf('mushroom').length]],
   girth: [[C.STOUT.length]], size: [[C.SIZES.length]], tilt: [[C.TILTS.length]], eyes: [[C.EYES.length]],
@@ -112,6 +112,15 @@ const expect = {
   hat: [[range(KEYS.map((s) => SP[s].hats))]], neck: [[range(KEYS.map((s) => SP[s].necks))]],
   extra: [[range(KEYS.map((s) => SP[s].extras))]], accents: [[2, C.ACCENTS.length]], side: [[2]],
 };
+check(KEYS.every((sp) => ['animal', 'vegetable', 'fruit'].includes(SP[sp].kind)), `every species is an animal, a vegetable or a fruit (${KEYS.filter((sp) => !['animal', 'vegetable', 'fruit'].includes(SP[sp].kind)).join(', ') || 'none other'})`);
+// THE DISTINCTNESS GATE's POPULATION (card#12796): `tools/characters/distinct.browser.mjs` holds every pair with a species at
+// or after its GATED_FROM key; that key must be in the list, and every species from it on must carry its `added` card, so
+// a species appended later is in the gated population and is marked NEW on the sheet. The browser check itself runs in CI's
+// browser job (it needs headless Chromium); this leg needs none.
+const { GATED_FROM } = await import(pathToFileURL(join(HERE, 'distinct.browser.mjs')).href);
+const gatedAt = KEYS.indexOf(GATED_FROM);
+check(gatedAt > 0 && KEYS.slice(gatedAt).every((sp) => typeof SP[sp].added === 'string'),
+  `the distinctness gate's first species '${GATED_FROM}' is in SPECIES_KEYS (at ${gatedAt}) and every species from it on carries its \`added\` card (${KEYS.length - Math.max(gatedAt, 0)} species)`);
 // The species the colourway row names as the exceptions are exactly the ones with fewer colourways.
 const fewer = KEYS.filter((s) => SP[s].pals.length !== common).map((s) => SP[s].label).sort();
 const named = KEYS.map((s) => SP[s].label).filter((l) => (cell('colourway') ?? '').includes(`the ${l}`)).sort();

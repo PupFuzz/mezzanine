@@ -49,7 +49,9 @@
 # installs ONE pinned headless Chromium and runs `floor-ride.browser.mjs --row starts --selftest`:
 # the lobby and a floor, each loaded once, red on any uncaught exception and on a page that never
 # asks for its stream or never draws its first scene, with that row's own plants each required to
-# red on the same checkout. It is the only browser row wired, and it drives no ride and no timing.
+# red on the same checkout. It is the only floor-ride row wired, and it drives no ride and no timing. The same
+# job runs the character species distinctness check (card#12796, `tools/characters/distinct.browser.mjs
+# --selftest`): a static render of the generator's standing frames, with its own planted controls.
 # The job also runs `seat-token-file.selftest.mjs` (card#12571), which needs its PHP and no browser.
 #
 # WHAT IS DELIBERATELY NOT WIRED HERE, AND WHY — the gates in `tools/design/` named below.
@@ -267,3 +269,13 @@ jobs:
 
       - name: The lobby and a floor start (no uncaught exception, the stream asked for, a scene drawn), with the row's own planted controls
         run: node tools/design/floor-ride.browser.mjs --row starts --selftest
+
+      # card#12796: every pair of character species with at least one species appended from the check's first
+      # (`GATED_FROM`) on is told apart by silhouette or by body colour, measured from the generator's standing frames as
+      # this pinned Chromium draws them; the pairs among the species before it are printed and gate nothing. `--selftest`
+      # runs the planted controls on this checkout: dev's pale pumpkin beside the hedgehog (the pair the operator named)
+      # and a species appended as a copy of an existing one must each be flagged. No ride, no timing: a static render.
+      # `!cancelled()`: independent of the smoke row above, so one push reports both verdicts.
+      - name: Character species are told apart (silhouette or colour), with the check's own planted controls
+        if: ${{ !cancelled() }}
+        run: node tools/characters/distinct.browser.mjs --selftest

@@ -67,7 +67,7 @@ very fact it exists to check.
 
 | Path | Origin | Source URL | Author | SPDX | Retrieved | SHA-256 |
 |---|---|---|---|---|---|---|
-| `resources/characters/creatures.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-28 | `60a98272049f933fcb7fc34c8f96cd4ceaaed1c1d7b033bd5649dade5bcf162c` |
+| `resources/characters/creatures.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-02 | `8e5d51d39d3981283d8b79c49a90ef35868a7d9fd661e1f043fa159cd4251fbe` |
 | `resources/characters/seed.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-27 | `dab43ae24d73b98ce41b4a5f0f51814d171820b28e17f1984e58f0db4d3a7e81` |
 | `resources/characters/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-28 | `c409a469287a58e6dcd7805f94518996525296cec7cc613ec188c0e3755d238b` |
 | `resources/floor/tiles/floor-plane.tsx` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `bdfa6db2bd1fdfd133e444be43c26ef955267bca158115faaa24a57f76f5c1da` |
@@ -98,7 +98,7 @@ mine, it doesn't need a row" is how the one file that *did* come from somewhere 
 
 ## The characters — first-party since card#11046
 
-Every character is an original animal or vegetable creature drawn by the code in
+Every character is an original animal, vegetable or fruit creature drawn by the code in
 `resources/characters/`, written for this repository
 ([`FLOOR.md § 10.2`](design/FLOOR.md#102-characters-original-creatures-drawn-by-code)). The tree
 **holds no port**: the munder-difflin generator it held from card#7340 to card#11046 — and its

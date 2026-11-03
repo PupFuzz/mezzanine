@@ -13,16 +13,23 @@
 // rasterised in the page exactly as the floor shows it (an <img> over the `data:` URI under encodeURIComponent,
 // `floor/painter.js`'s form) at `UNIT` px per frame unit, and read back from a canvas:
 // - THE SILHOUETTE: the pixels at least half opaque (the rim, at RIM_OPACITY, and the contact shadow, at most 0.42,
-//   both stay under it), cropped to their box and fitted, aspect kept, bottom-centred, into a GRID × GRID mask. Two
-//   species' silhouette similarity is the mask IoU, the highest over their variants.
-// - THE BODY COLOUR: the dominant colour of those pixels — CIELAB (D65), binned BIN units a side, the most populous
-//   bin's mean with its 26 neighbours'. Two species' colour distance is the CIEDE2000 ΔE between those colours, the
-//   LEAST over every colourway of the one against every colourway of the other — a seat can be drawn in any of them.
-// THE BAR — a pair is TOO CLOSE when its silhouettes are alike AND its colours are alike: IoU at least IOU_BAR and ΔE
-// at most DE_BAR. Either difference alone tells two creatures apart at a glance; the pair the operator named
-// (card#12795: *"It looks too similar to hedgehog"*, the pale cream pumpkin beside the hedgehog's cream body) had
-// neither, and the `--selftest` control plants dev's pumpkin colourways back into a served copy of the generator and
-// requires that pair to be flagged. Why each figure is what it is: FLOOR.md § 10.4's distinctness bullet.
+//   both stay under it), in SIL_CELL-unit cells of the frame — IN FRAME UNITS, never fitted to the drawing's own box,
+//   because every species stands in one frame on one foot line at one scale. A pair's silhouette similarity is the mask
+//   IoU, the HIGHEST over the two species' variants.
+// - THE BODY COLOUR, WHERE IT IS: COL_CELL-unit cells, each the mean CIELAB (D65) of its inked pixels where at least
+//   half of it is inked; a pair's colour distance is the mean CIEDE2000 ΔE over the cells both frames ink, the LEAST
+//   over every colourway of the one against every colourway of the other (a seat can be drawn in any of them). The
+//   dominant colour (the most populous BIN-unit CIELAB bin with its 26 neighbours) is printed beside it and gates
+//   nothing: a two-tone body's dominant colour is one of its tones.
+// THE BAR — a pair is TOO CLOSE when it is alike in both: IoU at least IOU_BAR AND colour ΔE at most DE_BAR. Either
+// difference alone tells two creatures apart at a glance; the pair the operator named (card#12795: *"It looks too
+// similar to hedgehog"*, the pale cream pumpkin beside the hedgehog's cream body) has neither, and the bar is that
+// pair's figures with a margin. THE GATE holds every pair with at least one species at or after GATED_FROM (the first
+// species card#12796 appended); the pairs among the species before it are printed and gate nothing. `--selftest`'s
+// controls, each required to red: dev's whole pumpkin entry (afacf5ce) planted back into a served copy of the generator
+// makes pumpkin / hedgehog too close; a species appended to that copy as the hedgehog's twin is in the gated population
+// and too close; one difference alone clears a pair; a colour shift reads apart. Why each figure is what it is:
+// FLOOR.md § 10.4's distinctness bullet and § 12's *Species distinctness bar*.
 //
 // NO BUILD STEP, NO DEPENDENCY, NO NETWORK — `sheet.browser.mjs`'s shape: a static server on 127.0.0.1 serves the
 // repository root to the browser `tools/design/headless-chromium.mjs` launches (`--chrome <path>`, `$CHROME`, or the
@@ -31,7 +38,7 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { dirname, extname, join, normalize } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { browser, findChrome } from '../design/headless-chromium.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -47,16 +54,29 @@ const COL_CELL = 12;
 /** The CIELAB bin, a side, the dominant colour is found in. */
 const BIN = 8;
 /** A pair is too close at or over this silhouette IoU … */
-export const IOU_BAR = 0.8;
+export const IOU_BAR = 0.82;
 /** … and at or under this CIEDE2000 ΔE between its closest colourways. */
-export const DE_BAR = 12;
+export const DE_BAR = 10;
 
 /**
- * THE CONTROL's PLANT — the pumpkin's colourways as dev drew them at afacf5ce, before card#12795, read verbatim from
- * that commit's `resources/characters/creatures.js`: the pale cream `#efe2c4` is the one the operator saw beside the
- * hedgehog. The served copy of the generator replaces the pumpkin's `pals` line with this one and nothing else.
+ * THE GATED POPULATION — every pair with at least one species at or after this key in SPECIES_KEYS: the first species
+ * appended under this check (card#12796), so every species appended after it is held too. The pairs among the species
+ * before it were drawn before the check existed and are REPORTED with the gated table, never gated: the seat's ruling
+ * of 2026-11-02 on card#12796 scopes the operator's bar to what the card adds, and the existing pairs under the bar go to
+ * the operator on their own (FLOOR.md § 10.4's distinctness bullet).
  */
-const DEV_PUMPKIN_PALS = "pals: [['#e08a3c'], ['#efe2c4'], ['#8fa0a3'], ['#d9a441', 'stripe'], ['#c8562e']],";
+export const GATED_FROM = 'cat';
+/** The control's planted species, and the existing one it copies. */
+const TWIN = 'twinplant', TWIN_OF = 'hedgehog';
+
+/**
+ * THE CONTROL's PLANT — the pumpkin as dev drew it at afacf5ce, before card#12795, its whole entry (drawing and
+ * colourways) read verbatim from that commit's `resources/characters/creatures.js` into
+ * `distinct-control-pumpkin.js.txt` beside this file: the pale cream `#efe2c4` is the colourway the operator saw beside
+ * the hedgehog. The served copy of the generator replaces whatever pumpkin entry the tree then holds with that one, so
+ * the control stays the pair the operator named however the pumpkin is later redrawn.
+ */
+const DEV_PUMPKIN = join(HERE, 'distinct-control-pumpkin.js.txt');
 
 // ---- colour ----
 const srgb = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
@@ -210,9 +230,9 @@ const PAGE = (base) => `<!doctype html><html lang="en"><head><meta charset="utf-
     }
     return null;
   }
-  window.measure = async () => {
+  window.measure = async (only) => {
     const out = {};
-    for (const sp of C.SPECIES_KEYS) {
+    for (const sp of C.SPECIES_KEYS.filter((k) => only === null || only.includes(k))) {
       const S = C.SPECIES[sp], variants = new Set();
       for (let i = 0; i < 400; i++) variants.add(C.recipe('v/' + sp + '/' + i, sp).variant);
       out[sp] = [];
@@ -225,24 +245,35 @@ const PAGE = (base) => `<!doctype html><html lang="en"><head><meta charset="utf-
         out[sp].push({ variant, pal, key, read: readFrame(g.getImageData(0, 0, W, H).data, W, H, U) });
       }
     }
-    return JSON.stringify({ W, H, kinds: Object.fromEntries(C.SPECIES_KEYS.map((s) => [s, C.SPECIES[s].kind])), out });
+    return JSON.stringify({ keys: C.SPECIES_KEYS, out });
   };
   document.title = 'ready';
 </script></body></html>`;
 
 const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.html': 'text/html; charset=utf-8' };
 const creaturesPath = join(REPO, 'resources', 'characters', 'creatures.js');
-/** The generator with dev's pumpkin colourways planted back — the control's served copy. */
+/**
+ * The control's served copy of the generator, with two plants and nothing else changed: dev's pumpkin entry put
+ * back (`DEV_PUMPKIN`, its whole entry), and a species appended to the list — `TWIN`, the hedgehog's drawing and colourways under a
+ * new key, `added` like every appended species — so it falls in the gated population, a new species copying an existing one.
+ */
 async function plantedCreatures() {
   const src = await readFile(creaturesPath, 'utf8');
-  const at = src.indexOf('\n  pumpkin: {');
-  const line = src.slice(at).match(/\n {4}pals: \[[^\n]*\],/);
-  if (at < 0 || line === null) throw new Error('the pumpkin\'s pals line is not where the control plants it');
-  const planted = src.slice(0, at) + src.slice(at).replace(line[0], `\n    ${DEV_PUMPKIN_PALS}`);
-  return planted;
+  const at = src.indexOf('\n  pumpkin: {\n');
+  const end = at < 0 ? -1 : src.indexOf('\n  },\n', at);
+  const list = src.match(/^export const SPECIES_KEYS = Object\.freeze\(\[([^\]\n]*)\]\);$/m);
+  const withheld = src.indexOf('\nexport const WITHHELD');
+  const doc = withheld < 0 ? -1 : src.lastIndexOf('\n/**', withheld);
+  if (end < 0 || list === null || doc < 0) throw new Error('the control\'s plants have no place in this generator (the pumpkin\'s entry, SPECIES_KEYS, WITHHELD)');
+  const devPumpkin = (await readFile(DEV_PUMPKIN, 'utf8')).replace(/\n$/, '');
+  let planted = `${src.slice(0, at + 1)}${devPumpkin}${src.slice(end + '\n  },'.length)}`;
+  planted = planted.replace(list[0], list[0].replace(']);', `, '${TWIN}']);`));
+  const d2 = planted.lastIndexOf('\n/**', planted.indexOf('\nexport const WITHHELD'));
+  return `${planted.slice(0, d2)}\nAPPROVED['${TWIN}'] = { ...APPROVED.${TWIN_OF}, added: 'control' };${planted.slice(d2)}`;
 }
 
-const server = createServer(async (req, res) => {
+function serve() {
+  return createServer(async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   if (path === '/__distinct.html') { res.writeHead(200, { 'content-type': TYPES['.html'] }); res.end(PAGE('/resources/characters')); return; }
   if (path === '/__control.html') { res.writeHead(200, { 'content-type': TYPES['.html'] }); res.end(PAGE('/__control')); return; }
@@ -255,14 +286,19 @@ const server = createServer(async (req, res) => {
   const file = normalize(join(REPO, path));
   if (!file.startsWith(REPO)) { res.writeHead(403); res.end(); return; }
   try { const body = await readFile(file); res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream' }); res.end(body); } catch { res.writeHead(404); res.end(); }
-});
+  });
+}
 
-async function measure(chrome, page) {
+/**
+ * Measure the species `only` names (every species when null) on `page` — `__distinct.html`, the generator as committed,
+ * or `__control.html`, its planted copy — through `server` and the browser at `chrome`.
+ */
+export async function measure(chrome, server, page, only = null) {
   const url = `http://127.0.0.1:${server.address().port}/${page}`;
   const b = await browser(chrome, 800, 600, 'ready');
   try {
     await b.load(url);
-    const { kinds, out } = JSON.parse(await b.evaluate('window.measure()'));
+    const { keys, out } = JSON.parse(await b.evaluate(`window.measure(${JSON.stringify(only)})`));
     const species = {}, missing = [];
     for (const [sp, frames] of Object.entries(out)) {
       species[sp] = [];
@@ -272,7 +308,7 @@ async function measure(chrome, page) {
         species[sp].push({ variant: fr.variant, pal: fr.pal, key: fr.key, ...fr.read });
       }
     }
-    return { species, kinds, missing };
+    return { species, keys, missing };
   } finally { b.close(); }
 }
 
@@ -281,44 +317,59 @@ const fmt = (p) => `${p.a} / ${p.b}: IoU ${p.iou.toFixed(3)}${p.variants.some((v
 let failures = 0;
 const check = (cond, what) => { console.log(`  ${cond ? 'ok  ' : 'FAIL'} ${what}`); if (!cond) failures++; };
 
-await new Promise((r) => server.listen(0, '127.0.0.1', r));
+/** A server for `measure()`, listening on 127.0.0.1. */
+export async function listen() { const server = serve(); await new Promise((r) => server.listen(0, '127.0.0.1', r)); return server; }
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+const server = await listen();
 try {
   const chrome = findChrome();
   if (!chrome) { console.error('no Chromium found: pass --chrome <path> or set $CHROME'); process.exit(1); }
-  const { species, missing } = await measure(chrome, '__distinct.html');
+  const { species, keys, missing } = await measure(chrome, server, '__distinct.html');
+  const gatedOf = (list) => { const at = list.indexOf(GATED_FROM); return (sp) => at >= 0 && list.indexOf(sp) >= at; };
+  const gated = gatedOf(keys);
   const pairs = pairsOf(species).sort((x, y) => clearance(x) - clearance(y));
-  const n = Object.keys(species).length;
-  console.log(`species distinctness over ${n} species, ${pairs.length} pairs — too close at IoU >= ${IOU_BAR} AND ΔE2000 <= ${DE_BAR} (silhouette in ${SIL_CELL}-unit cells, colour layout in ${COL_CELL}-unit cells, at ${UNIT} px a unit)`);
-  const shown = argv.includes('--all') ? pairs : pairs.slice(0, 25);
-  console.log(`\nthe ${argv.includes('--all') ? '' : `${shown.length} `}closest pairs (least clearance first):`);
-  for (const p of shown) console.log(`  ${fmt(p)}`);
-  const bySil = [...pairs].sort((x, y) => y.iou - x.iou).slice(0, 10), byCol = [...pairs].sort((x, y) => x.de - y.de).slice(0, 10);
-  console.log('\nthe most alike silhouettes:'); for (const p of bySil) console.log(`  ${fmt(p)}`);
-  console.log('\nthe most alike colours:'); for (const p of byCol) console.log(`  ${fmt(p)}`);
+  const held = pairs.filter((p) => gated(p.a) || gated(p.b)), existing = pairs.filter((p) => !gated(p.a) && !gated(p.b));
+  const n = Object.keys(species).length, g = keys.filter(gated).length;
+  console.log(`species distinctness over ${n} species — too close at IoU >= ${IOU_BAR} AND colour layout ΔE2000 <= ${DE_BAR} (silhouette in ${SIL_CELL}-unit cells, colour layout in ${COL_CELL}-unit cells, at ${UNIT} px a unit)`);
+  console.log(`THE GATE holds the ${held.length} pairs with at least one of the ${g} species appended from '${GATED_FROM}' on; the ${existing.length} pairs among the ${n - g} species before it are REPORTED, never gated`);
+  const show = (title, list) => {
+    const shown = argv.includes('--all') ? list : list.slice(0, 25);
+    console.log(`\n${title} — ${argv.includes('--all') ? 'every pair' : `the ${shown.length} closest`} (least clearance first):`);
+    for (const p of shown) console.log(`  ${fmt(p)}`);
+  };
+  show('GATED: pairs with a species appended under this check', held);
+  show('REPORTED: pairs among the species before it', existing);
   console.log('');
-  check(missing.length === 0, `every species, variant and colourway drew a canonical standing frame (${missing.length ? missing.slice(0, 4).join('; ') : `${Object.values(species).reduce((s, l) => s + l.length, 0)} frames`})`);
-  const close = pairs.filter(tooClose);
-  check(close.length === 0, `no pair of the ${n} species is alike in both silhouette and colour${close.length ? ` — ${close.map((p) => `${p.a}/${p.b}`).join(', ')}` : ''}`);
+  check(missing.length === 0, `every species, variant and colourway drew a canonical standing frame (${missing.length ? missing.slice(0, 4).join('; ') : `${Object.values(species).reduce((sum, l) => sum + l.length, 0)} frames`})`);
+  check(g > 0, `'${GATED_FROM}', the first species appended under this check, is in SPECIES_KEYS, so the gate holds a population (${g} species)`);
+  const close = held.filter(tooClose);
+  check(close.length === 0, `no pair with a species appended from '${GATED_FROM}' on is alike in both silhouette and colour, over ${held.length} pairs${close.length ? ` — ${close.map((p) => `${p.a}/${p.b}`).join(', ')}` : ''}`);
+  const report = existing.filter(tooClose);
+  console.log(`  REPORTED (gates nothing): ${report.length} of the ${existing.length} pairs before '${GATED_FROM}' are under the bar${report.length ? ` — ${report.map((p) => `${p.a}/${p.b}`).join(', ')}` : ''}`);
 
   if (argv.includes('--selftest')) {
     console.log('\ncontrols:');
     // (1) dev's pumpkin, planted back: the pale cream colourway beside the hedgehog is the pair the operator named.
-    const planted = await measure(chrome, '__control.html');
+    // (2) a planted species appended to the list, copying an existing one, lands in the gated population and is flagged.
+    const planted = await measure(chrome, server, '__control.html', ['pumpkin', 'hedgehog', TWIN]);
     const ph = pairsOf({ pumpkin: planted.species.pumpkin, hedgehog: planted.species.hedgehog })[0];
-    console.log(`  dev's pumpkin (afacf5ce colourways) / hedgehog: ${fmt(ph)}`);
-    check(tooClose(ph), `CONTROL — dev's pumpkin colourways planted back make pumpkin / hedgehog TOO CLOSE (IoU ${ph.iou.toFixed(3)}, ΔE ${ph.de.toFixed(1)} at colourways ${ph.pals.join(' / ')}), so the bar flags the pair the operator named`);
-    // (2) a species against itself is identical on both measures, and so too close: the reader can see a twin.
-    const self = pairsOf({ x: species[Object.keys(species)[0]], y: species[Object.keys(species)[0]] })[0];
-    check(self.iou === 1 && self.de < 1e-9 && tooClose(self), `CONTROL — a species against itself reads IoU ${self.iou.toFixed(3)}, ΔE ${self.de.toFixed(1)}: too close`);
+    console.log(`  dev's pumpkin (its afacf5ce entry) / hedgehog: ${fmt(ph)}`);
+    check(tooClose(ph), `CONTROL — dev's pumpkin (its afacf5ce entry) planted back makes pumpkin / hedgehog TOO CLOSE (IoU ${ph.iou.toFixed(3)}, ΔE ${ph.de.toFixed(1)} at colourways ${ph.pals.join(' / ')}), so the bar flags the pair the operator named`);
+    const twin = pairsOf({ [TWIN]: planted.species[TWIN] ?? [], [TWIN_OF]: planted.species[TWIN_OF] })[0];
+    const twinGated = gatedOf(planted.keys)(TWIN);
+    console.log(`  a planted '${TWIN}' appended as a copy of the ${TWIN_OF}: ${fmt(twin)}`);
+    check(twinGated && tooClose(twin), `CONTROL — a species appended to the list as a copy of the ${TWIN_OF} is in the gated population (${twinGated}) and TOO CLOSE (IoU ${twin.iou.toFixed(3)}, ΔE ${twin.de.toFixed(1)})`);
     // (3) each measure alone clears a pair: the same silhouette in a far colour, a far silhouette in the same colour.
     const sameShape = { iou: 1, de: DE_BAR + 1 }, sameColour = { iou: IOU_BAR - 0.01, de: 0 };
     check(!tooClose(sameShape) && !tooClose(sameColour), 'CONTROL — one difference alone (colour, or silhouette) clears a pair');
-    // (4) the colour reader sees a colour change: the first species' frames with their colour bins shifted read apart.
-    const sp0 = species[Object.keys(species)[0]];
-    const shifted = sp0.map((f) => ({ ...f, cells: f.cells.map((c) => (c === null ? null : [c[0], c[1] + 40, c[2]])), lab: [f.lab[0], f.lab[1] + 40, f.lab[2]] }));
+    // (4) the colour reader sees a colour change: a species' frames with every cell shifted 40 units along a* read apart.
+    const sp0 = species[keys[0]];
+    const shifted = sp0.map((fr) => ({ ...fr, cells: fr.cells.map((c) => (c === null ? null : [c[0], c[1] + 40, c[2]])), lab: [fr.lab[0], fr.lab[1] + 40, fr.lab[2]] }));
     const sh = pairsOf({ x: sp0, y: shifted })[0];
-    check(sh.de > DE_BAR, `CONTROL — the same frames 40 units along a* read ΔE ${sh.de.toFixed(1)} apart, over the bar`);
+    check(sh.iou === 1 && sh.de > DE_BAR, `CONTROL — the ${keys[0]}'s frames shifted 40 units along a* keep IoU ${sh.iou.toFixed(3)} and read ΔE ${sh.de.toFixed(1)} apart, over the bar`);
   }
 } finally { server.close(); }
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
+}

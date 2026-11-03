@@ -9,7 +9,7 @@ they are actually doing right now — with a drill-down into their tasks and sub
 > manage/remove, and floors + their maps) and `php artisan mezzanine:user:create`, which is what makes a fresh deploy
 > reachable at all — see [The first account](#the-first-account-and-the-way-back-from-a-lockout). The **creature generator** exists in
 > [`resources/characters/`](resources/characters/) — dependency-free ES modules that draw each
-> seat's animal or vegetable creature, as vector SVG, from its identity and the species the server
+> seat's animal, vegetable or fruit creature, as vector SVG, from its identity and the species the server
 > allocated it; open
 > `tools/characters/harness.html` (the creature sheet) over a local static server to see it. The kanban automation in `.github/workflows/` also runs; see
 > [Kanban](#kanban) below.
@@ -483,7 +483,7 @@ tiles that stood in for it from 2026-09-12 (Kenney's Furniture Kit, a bridge cho
 stand-in) left the tree when it landed; their record stays in git and in `docs/PLAN.md § 0`'s D-07
 appends.
 
-The characters are **first-party**: original animal and vegetable creatures drawn by the code in
+The characters are **first-party**: original animal, vegetable and fruit creatures drawn by the code in
 `resources/characters/` as vector SVG (`docs/design/FLOOR.md § 10.2`, card#11046), replacing the
 interim pixel people that came with an earlier port of munder-difflin's generator — that port left the
 tree whole, and its record stays in git and in `docs/PLAN.md § 0`'s D-07 appends. A seat's **body** —
