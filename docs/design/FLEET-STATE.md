@@ -2758,6 +2758,11 @@ samples no fingerprint and takes no `seat_state` lock: it inserts the new seat's
 is no row for it to hold against a fold — and since card#12443 its first statement locks the
 one-row `species_allocation_lock`, which no other writer takes, so the allocation serialises with
 nothing but another allocation ([§ 6.13](#613-the-character-allocation--one-species-per-seat-allocated-at-creation-and-kept-for-life)).
+A **re-issue** for an existing seat does take the seat lock, after the mutex: a transaction that locks or
+writes both a seat's `seat_state` row and its `seats` row takes them through `App\Fleet\SeatLock`, which
+locks `seat_state` first and `seats` second — this section's lock-first order, extended to the pair
+(card#12461). The re-issue and retirement are its callers; before it, the re-issue took `seats` first and
+deadlocked against a retirement of the same seat.
 Read that way, the seat rows written outside the lock are:
 
 - **`Predicates::alarm()`'s updates of `seat_predicates.alarm_since`**, run by the sweep after its per-seat
@@ -3369,10 +3374,11 @@ which costs that one allocation a species it could have had and nothing else —
 `issue()` keeps its **single attempt**: **the allocation's own locks** — the mutex row, which nothing
 else locks, and the inserts of the new seat's rows — have no deadlock partner, so there is no named
 trigger for a retry on this path, and a borrowed `LOCK_ATTEMPTS` loop would defend a path that does
-not exist. ⚠ That claim is narrowed to the allocation's own locks on purpose: `issue()`'s **re-issue
-path** for an existing seat (its `seats` row `FOR UPDATE`, then `seat_state`'s `insertOrIgnore`) against
-a retirement (`seat_state` first, then `seats`, [§ 6.5](#65-the-fold)) can already deadlock on `dev`
-today, with no allocation involved — out of this card's scope, and filed separately by the review. ⚠ **The alternatives
+not exist. The **re-issue path** for an existing seat locks the seat's `seat_state` row and then its
+`seats` row through `App\Fleet\SeatLock` — the order retirement takes the same pair in
+([§ 6.5](#65-the-fold)) — so a re-issue racing a retirement waits for it instead of deadlocking, and the
+single attempt holds there too (card#12461; until then the re-issue took `seats` first, and the two
+deadlocked). ⚠ **The alternatives
 refused:** a `GET_LOCK` named lock — a second serialisation primitive beside the row locks every other
 writer here uses, and one `App\Building\Layouts::serialise()` already shows the row-lock form of
 (`building_layout`'s current row `FOR UPDATE`, [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)),
@@ -7004,10 +7010,11 @@ test over `CharacterAllocation::choose()` with no store.*
   population's plain read above the mutex lock → the presence leg still passes (the lock is held at the
   seam), and the **outcome leg reds on species**: the issuing seat is allocated its own draw, the one
   the probe's committed seat holds, because its snapshot predates the probe. Its sibling plant — the
-  `uq_seat` lookup moved above the mutex — reds the outcome leg by one of two routes **in this
-  harness**: the probe's insert into the issuing seat's `uq_seat` gap waits on that lookup's gap lock
-  and times out at its pinned one second (`1205`), or, where the server lets it through, the issuing
-  seat is allocated the probe's species and the leg reds on species. (The `1213` the review measured on
+  `uq_seat` lookup moved above the mutex — reds the outcome leg on species: the lookup is a plain read,
+  so above the mutex it opens the read view, and the issuing seat is allocated the probe's species
+  (measured on card#12461, which made the lookup a plain read; while it was a locking read, the probe's
+  insert into the issuing seat's `uq_seat` gap could instead wait on its gap lock and time out at its
+  pinned one second, `1205`). (The `1213` the review measured on
   MariaDB 11.8.6 under REPEATABLE READ in round 4 is the two-creations shape, which this one-issue
   harness does not form.) The leg reports whichever it meets by name, and the plant that moves the seam
   instead of the code is the one this RED deliberately is not.

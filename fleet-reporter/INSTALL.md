@@ -419,8 +419,9 @@ Scheduled Task, no cron analogue. The reporter's own hooks are the flusher's sta
 fresh lock spawns one (`maybeRespawnFlusher`, D1 § 2.3) — so once the flusher stops, at logoff or when the
 session that started it ends (unmeasured), the seat reads `offline` until a session's next hook starts another.
 A hook fires around a tool call, not inside one, so inside one `install.js` run no flusher would start, and the
-step therefore spawns `node <artifact> flusher` **unconditionally**, with the reporter's own spawn options
-(`detached`, `stdio: 'ignore'`, `windowsHide`, `unref`, D1 P-7) and `COORD_CONFIG` from the resolver; the
+step therefore spawns `node <artifact> flusher` **unconditionally**, through the reporter's own spawn
+(`detached`, `stdio: 'ignore'`, `windowsHide`, `unref`, and the user's home folder as its working directory, so the
+folder the installer ran from stays free to delete or rename; D1 P-7) and `COORD_CONFIG` from the resolver; the
 flusher's own `acquireLock` makes a loser exit 0, so the installer carries no copy of the respawn's lock logic.
 It then waits, bounded by the artifact's `K.LOCK_STALE_MS`, for a lock naming a live flusher of this artifact (the stale-lock test below), and prints `flusher
 started pid N`, `flusher already running pid N`, or `NO FLUSHER` and exits 1.

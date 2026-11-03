@@ -259,8 +259,9 @@ is not supported"*. The macOS facts this rests on are [§ 6](#6-macos)'s, each m
 **Windows — no supervisor** (Option A, the operator's ruling of 2026-10-25, card#12335). A hook fires
 around a Claude Code tool call, not inside one, so inside one `install.js` run no flusher would start
 and `arrival` would wait its whole window for nothing. The `supervisor` step on `win32` therefore
-spawns `node <artifact> flusher` **unconditionally**, with the reporter's own spawn options
-(`detached`, `stdio: 'ignore'`, `windowsHide`, `unref` — D1 P-7) and `COORD_CONFIG` from the
+spawns `node <artifact> flusher` **unconditionally**, through the reporter's own spawn, `spawnFlusher`
+(`detached`, `stdio: 'ignore'`, `windowsHide`, `unref`, the user's home as its working directory — D1 P-7,
+card#12471) and `COORD_CONFIG` from the
 resolver: the flusher's `acquireLock` makes a loser exit 0 at once (`fleet-reporter.js:3516`,
 `:4409`), so the installer carries **no copy of `maybeRespawnFlusher`'s lock logic** and cannot drift
 from it. It **then waits, bounded by `K.LOCK_STALE_MS` read from the artifact, for a lock naming a
