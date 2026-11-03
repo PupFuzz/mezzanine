@@ -12,7 +12,7 @@ restates none of it.** Where a rule is cited below it is cited by section, never
 | `fleet-reporter.selftest.py` | the hermetic acceptance suite — no network, no credential, no board |
 | `install.js`, `INSTALL.md`, `AGENT-INSTALL.md` | the install on Linux, Windows and macOS: the one node installer, the reference for what each of its steps does on each OS, and the guide a Claude Code agent follows to run it. None is installed on the seat |
 | `install.selftest.py` | the installer's hermetic suite, run on Linux, Windows and macOS: every RED of D6 § 7 the suite owns, in throwaway homes against TLS stubs and a stub `crontab` or `launchctl` |
-| `install.sh`, `INSTALL-LINUX.md` | a shim that runs `install.js` (for reporter `0.6.0` only, then removed) and a redirect stub to `INSTALL.md`, kept because every Linux seat's crontab block names it |
+| `install.sh`, `INSTALL-LINUX.md` | a shim that runs `install.js` (for reporter `0.6.x`, removed in `0.7.0`) and a redirect stub to `INSTALL.md`, kept because every Linux seat's crontab block names it |
 | `UPDATES.md` | one row per `REPORTER_VERSION` saying what an upgrading seat must apply, and the template an update is announced with. Not installed on the seat |
 
 ## The four subcommands (§ 2.1)

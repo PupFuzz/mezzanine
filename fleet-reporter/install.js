@@ -718,16 +718,17 @@ function holder(T) {
   say(`PASS: the lock holder runs the artifact installed at ${new Date(builtMs).toISOString()} (pid ${held.pid}, started ${new Date(startedMs).toISOString()})`);
   return 'current';
 }
-/* The Windows start (D6 § 3.4): one `node <artifact> flusher`, UNCONDITIONALLY, with the reporter's own spawn
- * options (D1 P-7). The flusher's `acquireLock` makes a loser exit 0 at once, so this file holds no copy of the
- * respawn's lock logic. Then a wait, bounded by the artifact's K.LOCK_STALE_MS, for a lock naming a live pid. */
+/* The Windows start (D6 § 3.4): one `node <artifact> flusher`, UNCONDITIONALLY, through the reporter's own spawn
+ * (`spawnFlusher`, D1 P-7), so the installer's flusher runs in the user's home and not in the folder the installer
+ * was run from, which it would otherwise hold for its whole life (card#12471). The flusher's `acquireLock` makes a
+ * loser exit 0 at once, so this file holds no copy of the respawn's lock logic. Then a wait, bounded by the
+ * artifact's K.LOCK_STALE_MS, for a lock naming a live pid. */
 function startFlusherWin32(ctx) {
   const T = ctx.T;
   const env = Object.assign({}, process.env);
   const cc = resolver(ctx, true);
   if (cc) env.COORD_CONFIG = cc; else delete env.COORD_CONFIG;
-  const child = cp.spawn(process.execPath, [T.js, 'flusher'], { detached: true, stdio: 'ignore', windowsHide: true, env });
-  child.unref();
+  const child = reporter().spawnFlusher(T.js, env);
   const bound = require(T.js).K.LOCK_STALE_MS, t0 = Date.now();
   for (;;) {
     const h = lockHolder(T);

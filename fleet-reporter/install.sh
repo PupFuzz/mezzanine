@@ -4,7 +4,7 @@
 # The installer is `install.js`, beside this file: one node implementation for Linux, Windows and macOS
 # (`INSTALL.md` is its reference). This script runs it with the same arguments, so a seat or a note that still
 # names `install.sh` keeps working through the reporter release that ships `install.js` (0.6.0), and it is
-# removed in the reporter release after that (`UPDATES.md`'s 0.6.0 row names both numbers).
+# removed in the reporter minor after that, 0.7.0 (`UPDATES.md`'s 0.6.0 row names both numbers).
 #
 # One argument is refused: `--set-token`. Its meaning changed — the token now comes from the file the Seat
 # tokens page saves, given by path with `--token-file`, never from a prompt — so it is refused by name rather

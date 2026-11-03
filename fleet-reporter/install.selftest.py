@@ -1277,7 +1277,8 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         W = Seat("seat-w-nostart")
         tw = token()
         INGEST.accepted.add(tw)
-        d = planted_copy("rw1", ("install.js", "  child.unref();\n", "  child.kill();\n"))
+        d = planted_copy("rw1", ("install.js", "  const child = reporter().spawnFlusher(T.js, env);\n",
+                                         "  const child = reporter().spawnFlusher(T.js, env);\n  child.kill();\n"))
         cp_ = run_to_files([NODE, str(d / "install.js"), "--token-file", str(write_v2(W.root / "t", tw, INGEST.url, "inst-w", "seat-w")), "--ca-file", str(INGEST.crt)],
                            W.env, W.root, timeout=600)
         check("R-win-1", "the supervisor step with its start disabled ends NO FLUSHER exit 1, and the arrival step never runs",
