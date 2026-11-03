@@ -7010,10 +7010,11 @@ test over `CharacterAllocation::choose()` with no store.*
   population's plain read above the mutex lock → the presence leg still passes (the lock is held at the
   seam), and the **outcome leg reds on species**: the issuing seat is allocated its own draw, the one
   the probe's committed seat holds, because its snapshot predates the probe. Its sibling plant — the
-  `uq_seat` lookup moved above the mutex — reds the outcome leg by one of two routes **in this
-  harness**: the probe's insert into the issuing seat's `uq_seat` gap waits on that lookup's gap lock
-  and times out at its pinned one second (`1205`), or, where the server lets it through, the issuing
-  seat is allocated the probe's species and the leg reds on species. (The `1213` the review measured on
+  `uq_seat` lookup moved above the mutex — reds the outcome leg on species: the lookup is a plain read,
+  so above the mutex it opens the read view, and the issuing seat is allocated the probe's species
+  (measured on card#12461, which made the lookup a plain read; while it was a locking read, the probe's
+  insert into the issuing seat's `uq_seat` gap could instead wait on its gap lock and time out at its
+  pinned one second, `1205`). (The `1213` the review measured on
   MariaDB 11.8.6 under REPEATABLE READ in round 4 is the two-creations shape, which this one-issue
   harness does not form.) The leg reports whichever it meets by name, and the plant that moves the seam
   instead of the code is the one this RED deliberately is not.
