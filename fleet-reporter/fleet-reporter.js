@@ -28,7 +28,7 @@
  *                              `await` between the first write and the exit.
  *   P-5 p99 < 250 ms         — measured by the acceptance suite, worst case = a 64-call reap.
  *   P-6 never print a token  — see `redactSecrets()`; the config token never reaches any stream.
- *   P-7 detached respawn     — `{detached, stdio:'ignore', windowsHide}` + `unref()`.
+ *   P-7 detached respawn     — `{detached, stdio:'ignore', windowsHide, cwd: os.homedir()}` + `unref()`.
  *
  * WINDOWS IS A FIRST-CLASS TARGET, unvalidated on a real seat until the Windows agent seat onboards
  * (D1 § 16, operator ruling 2026-09-13; installer card #7336 is won't-do). Consequences that
@@ -67,7 +67,7 @@ const lazy = (name) => require(name);
  * change to a file a reporter update ships, and `bin/reporter-version-guard.py` fails a PR that changes
  * one without moving it, so two different builds never report the same version. Each version's row in
  * `fleet-reporter/UPDATES.md` says what an upgrading seat must apply. */
-const REPORTER_VERSION = '0.6.0';
+const REPORTER_VERSION = '0.6.1';
 const SCHEMA_VERSION = 1;
 
 /* ── Every number, from § 14 and the section that derives it ──────────────────────────────── */
@@ -1779,6 +1779,26 @@ function listBuckets(dir) {
   } catch (e) { return []; }
 }
 
+/* THE COMPLETE LINES OF AN APPEND-ONLY FILE FROM BYTE `from`, and the byte offset just past the last of
+ * them — the primitive the index-journal fold and the counter-sink fold both cut through (§ 11.4).
+ * Trailing bytes with no final LF are a write in progress and are NOT consumed: `end` stops before them,
+ * so the next read starts at the head of that line and reads it once it is complete (card#12465). The cut
+ * is found in the BYTES, never in the decoded string: a string index counts UTF-16 code units, so a cut
+ * taken there over a line carrying multibyte text lands the cursor inside a line. `end` is `from` when
+ * nothing new is complete. Throws when the file cannot be opened or read; the caller decides what that
+ * costs. */
+function readCompleteLines(file, from) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const size = fs.fstatSync(fd).size;
+    const start = Math.min(from, size);
+    const buf = Buffer.alloc(size - start);
+    const got = buf.length ? fs.readSync(fd, buf, 0, buf.length, start) : 0;
+    const nl = buf.subarray(0, got).lastIndexOf(0x0A);
+    return { end: start + nl + 1, lines: nl < 0 ? [] : buf.toString('utf8', 0, nl).split('\n') };
+  } finally { fs.closeSync(fd); }
+}
+
 /* Fold: snapshot.json, then the snapshot's own bucket from byte `offset`, then every later
  * bucket in full. Appends only ever grow a file, so a byte offset is stable (§ 8.2). */
 function foldIndex(spool, nowMs, opts = {}) {
@@ -1829,23 +1849,15 @@ function foldIndex(spool, nowMs, opts = {}) {
 
   for (const f of pending) {
     const b = f.slice(0, 10);
-    let text = '';
-    try {
-      const fd = fs.openSync(path.join(dir, f), 'r');
-      try {
-        const size = fs.fstatSync(fd).size;
-        const from = (b === snapBucket && !ix.truncated) ? Math.min(snapOffset, size) : 0;
-        const buf = Buffer.alloc(Math.max(0, size - from));
-        if (buf.length) fs.readSync(fd, buf, 0, buf.length, from);
-        text = buf.toString('utf8');
-        ix.bucket = b; ix.offset = size;
-      } finally { fs.closeSync(fd); }
-    } catch (e) { continue; }
-    // Trailing bytes with no final LF are a write in progress: NOT consumed (§ 11.4).
-    const nl = text.lastIndexOf('\n');
-    if (nl < 0) continue;
-    ix.offset -= (text.length - nl - 1);
-    for (const line of text.slice(0, nl).split('\n')) {
+    let read;
+    try { read = readCompleteLines(path.join(dir, f), (b === snapBucket && !ix.truncated) ? snapOffset : 0); }
+    catch (e) { continue; }
+    // Trailing bytes with no final LF are a write in progress: NOT consumed (§ 11.4) — `end` stops
+    // before them, so when this bucket is the last one folded the next fold reads that line once it is
+    // complete (card#12465). The cursor names ONE bucket: a partial line in a bucket a LATER bucket
+    // follows is stepped past with the bucket, and is not held here.
+    ix.bucket = b; ix.offset = read.end;
+    for (const line of read.lines) {
       if (!line) continue;
       let r;
       try { r = JSON.parse(line); } catch (e) { ix.corrupt += 1; continue; }
@@ -2997,6 +3009,33 @@ function readSample(spool, sid, atMs) {
   } catch (e) { count('context_sample_stale'); return null; }
 }
 
+/* THE ONE FLUSHER SPAWN (P-7), shared by the hook's respawn below and the installer's Windows start
+ * (`install.js`), so the two cannot drift. `cwd` is the user's home and never the spawner's: a child
+ * inherits its parent's working directory and holds it for its whole life, and on Windows a process's
+ * working directory cannot be deleted or renamed while it runs — a flusher started from a hook held
+ * the folder that hook ran in until the flusher exited (card#12471).
+ *
+ * WHAT THE SPAWNER RESOLVED AGAINST ITS OWN DIRECTORY, THE FLUSHER STILL RESOLVES THE SAME WAY. The two
+ * paths the flusher takes from its environment, `FLEET_REPORTER_CONFIG` and `$COORD_CONFIG`, are made
+ * absolute against the spawner's directory first when they are relative; an empty `$COORD_CONFIG` keeps
+ * its own meaning (§ 3.1) and is passed as it is. The other paths it reads are absolute already: the script
+ * and `process.execPath` by construction, the default config path because it is built from the home or
+ * `%APPDATA%`, and `spool_dir` and `ca_file` because the config refuses a relative one. */
+function spawnFlusher(script, env) {
+  const child = { ...env };
+  for (const k of ['FLEET_REPORTER_CONFIG', 'COORD_CONFIG']) {
+    if (typeof child[k] === 'string' && child[k] !== '' && !path.isAbsolute(child[k])) child[k] = path.resolve(child[k]);
+  }
+  // `os.homedir()` throws on an account with no home (no passwd entry, no HOME), as § 3.1's roster read
+  // allows for; that seat's flusher keeps its spawner's directory rather than not starting at all.
+  let cwd;
+  try { cwd = os.homedir(); } catch (e) { cwd = undefined; }
+  const proc = lazy('child_process').spawn(process.execPath, [script, 'flusher'],
+    { detached: true, stdio: 'ignore', windowsHide: true, cwd, env: child });
+  proc.unref();
+  return proc;
+}
+
 /* ── § 2.3 — the flusher must be alive whenever the seat is ──────────────────────────────────
  * The heartbeat is only a liveness signal if its absence means something, so every hook
  * invocation opportunistically respawns a dead flusher. 90 s = 1.5 heartbeat intervals: long
@@ -3013,9 +3052,7 @@ function maybeRespawnFlusher(spool, configPathUsed) {
     if (fresh) return false;
     const env = Object.assign({}, process.env);
     if (configPathUsed) env.FLEET_REPORTER_CONFIG = configPathUsed;
-    const child = lazy('child_process').spawn(process.execPath, [__filename, 'flusher'],
-      { detached: true, stdio: 'ignore', windowsHide: true, env });
-    child.unref();
+    spawnFlusher(__filename, env);
     return true;
   } catch (e) { return false; }
 }
@@ -3620,20 +3657,10 @@ function foldCounterSink(spool, state) {
   for (const f of listBuckets(dir)) {
     const b = f.slice(0, 10);
     const from = state.counter_offsets[b] || 0;
-    let text = '', size = 0;
-    try {
-      const fd = fs.openSync(path.join(dir, f), 'r');
-      try {
-        size = fs.fstatSync(fd).size;
-        if (size <= from) continue;
-        const buf = Buffer.alloc(size - from);
-        fs.readSync(fd, buf, 0, buf.length, from);
-        text = buf.toString('utf8');
-      } finally { fs.closeSync(fd); }
-    } catch (e) { continue; }
-    const nl = text.lastIndexOf('\n');
-    if (nl < 0) continue;
-    for (const line of text.slice(0, nl).split('\n')) {
+    let read;
+    try { read = readCompleteLines(path.join(dir, f), from); } catch (e) { continue; }
+    if (read.end <= from) continue;
+    for (const line of read.lines) {
       if (!line) continue;
       let r; try { r = JSON.parse(line); } catch (e) { continue; }
       for (const [k, v] of Object.entries(r.c || {})) if (typeof v === 'number') state.counters[k] = (state.counters[k] || 0) + v;
@@ -3651,7 +3678,7 @@ function foldCounterSink(spool, state) {
       }
       if (r.p === 'hook' && r.t && (!state.last_hook_at || r.t > state.last_hook_at)) state.last_hook_at = r.t;
     }
-    state.counter_offsets[b] = from + nl + 1;
+    state.counter_offsets[b] = read.end;
   }
   renameCounters(state.counters);
 }
@@ -5363,4 +5390,7 @@ module.exports = { sanitize, buildDescriptor, truncateBytes, ulid, buildCounters
    * temp-and-rename primitive; it keys a site as the reader does; and it reads a process's start ticks as the
    * flusher records its own in `flusher.lock`. Requiring this file runs nothing:
    * `main` is guarded above. */
-  loadConfig, parseConfig, allConfigErrors, atomicWrite, siteKey, REPORTER_VERSION, procStartTicks };
+  loadConfig, parseConfig, allConfigErrors, atomicWrite, siteKey, REPORTER_VERSION, procStartTicks,
+  /* `spawnFlusher` is exported for the installer's Windows start alone (card#12471): one spawn, one set of
+   * P-7 options and one working directory for every flusher a seat starts. */
+  spawnFlusher };
