@@ -1407,7 +1407,7 @@ export const STAND_TOP = Object.freeze({
   penguin: Object.freeze({ beanie: 39, beret: 35, flower: 39, ladybug: 39, none: 39, straw: 39 }),
   pepper: Object.freeze({ flower: 42, ladybug: 42, none: 42, straw: 42 }),
   potato: Object.freeze({ beanie: 49, beret: 49, flower: 49, ladybug: 49, none: 49, straw: 49 }),
-  pumpkin: Object.freeze({ flower: 74, ladybug: 75, none: 74 }),
+  pumpkin: Object.freeze({ flower: 76, ladybug: 76, none: 76 }),
   'rabbit/lop': Object.freeze({ beanie: 54, beret: 48, flower: 59, ladybug: 61, none: 61, straw: 55 }),
   'rabbit/upright': Object.freeze({ flower: 9, ladybug: 9, none: 9 }),
   radish: Object.freeze({ flower: 18, ladybug: 18, none: 18 }),
