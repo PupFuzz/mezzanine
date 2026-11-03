@@ -48,6 +48,7 @@ Each verifier hard-codes its own document and none of them is modified when anot
 | `floor-ride.browser.mjs` (`--selftest`), every row but `starts` | ❌ | the same browser, for the same reason; card#12319's builder saw its `arrival-doors` and `opt-in` rows flip under load. |
 | `sleeper-zs.browser.mjs` | ❌ | the same browser, for the same reason. |
 | `seat-token-file.selftest.mjs` | ✅ | the `browser-smoke` job, for the PHP and composer install it shares; it needs no browser. |
+| `tools/characters/distinct.browser.mjs --selftest` (outside this directory, through its `headless-chromium.mjs`) | ✅ | the `browser-smoke` job (card#12796): the character species' standing frames rasterised in the pinned headless Chromium the job installs, red on any pair with a species appended under the check that is alike in both silhouette and colour, with its planted controls each required to red. A static render: no ride, no input, no timing. |
 | `seat-token.browser.mjs` | ❌ | it needs a live server and an operator account's password and second-factor secret, which no runner holds; it is a hand-run walk, not a gate. |
 
 ⛔ **No absent gate is wired as a SKIP.** An "N/A" that reads green is a check reported as passed that never ran — the very defect this workflow closes, re-minted one layer down. They are absent and NAMED, here and in the workflow header, and running them by hand stays a human obligation until each is wired.

@@ -90,7 +90,9 @@ class TheSpeciesListHasOneSourceTest extends TestCase
         $this->assertNotSame([], $this->readerDefects($commented), 'CONTROL (the two readers reading two lists) did not bite');
 
         // A species appended to the generator alone — what a PHP copy of the list would miss — is a different list.
-        $appended = str_replace("'cabbage']);", "'cabbage', 'zebra']);", $source);
+        // Appended to the declaration line itself, whatever its last key is, so a grown list moves no control.
+        $append = static fn (string $key): string => str_replace($m[0], substr($m[0], 0, -strlen(']);')).", '".$key."']);", $source);
+        $appended = $append('zebra');
         $this->assertNotSame($source, $appended);
         $this->assertNotSame(SpeciesList::parse($source)->keys, SpeciesList::parse($appended)->keys,
             'CONTROL (a species appended to the generator) left the parsed list unchanged');
@@ -100,7 +102,7 @@ class TheSpeciesListHasOneSourceTest extends TestCase
         $refusal = null;
 
         try {
-            SpeciesList::parse(str_replace("'cabbage']);", "'cabbage', 'abcdefghijklmnopq']);", $source));
+            SpeciesList::parse($append('abcdefghijklmnopq'));
         } catch (\RuntimeException $e) {
             $refusal = $e->getMessage();
         }
