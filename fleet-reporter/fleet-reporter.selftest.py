@@ -2804,7 +2804,7 @@ hb2 = wire_heartbeats(m16)[-1]["data"]
 eq("  … a second fold does NOT double them (the per-bucket byte offset is recorded)",
    before["sanitizer_redactions"], hb2["counters"]["sanitizer_redactions"])
 # AT-16's second RED: fold without recording the offset and the totals double on the next pass.
-p_nooff = plant_src((r"    state\.counter_offsets\[b\] = from \+ nl \+ 1;", "    /* offset not recorded */"))
+p_nooff = plant_src((r"    state\.counter_offsets\[b\] = read\.end;", "    /* offset not recorded */"))
 s16r = seat("countersink-red")
 for i in range(4):
     hook(s16r, "PreToolUse", pre(ti=FIX4, tuid=f"cr_{i}"))
