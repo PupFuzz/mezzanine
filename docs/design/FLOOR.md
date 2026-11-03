@@ -5751,8 +5751,9 @@ only. This subsection says where the creatures come from and what they replaced;
   rim bullet, where the edge is eye-judged); and softer, curved hedgehog spines, so the back does not read as a saw-blade at 4× and
   above. **One change to the approved look is the operator's:** the pumpkin, which read too like the hedgehog
   (both pale and round and ribbed), is a traditional Halloween pumpkin in every colourway — deep orange, darker than
-  the carrot, its ribs a darker orange and its stem green (the ruling of 2026-11-02, card#12795;
-  [AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom)'s pumpkin leg holds it). A seat
+  the carrot, its ribs a darker orange and its stem green (the ruling of 2026-11-02, card#12795; the seat added that
+  the orange stays apart from the bell pepper's orange and red, so the pumpkin does not trade one lookalike for another;
+  [AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom)'s pumpkin leg holds both). A seat
   allocated the pumpkin keeps it; only its paint changed.
 - **What still comes from the munder-difflin port: nothing.** Read from the code, file by file.
   `portrait-art.js` is upstream's pixel recipes — the head box, the skin palettes, the hairstyles, the
@@ -9701,8 +9702,11 @@ painter's legs in `server/tests/Feature/Floor/painter-probe.mjs`.*
   every pumpkin colourway's body fill, read in HSL, is an orange (hue 15° to 40°), is darker than every carrot
   colourway (its lightness under the darkest carrot's, every carrot colourway counted), and has at least twice the
   chroma of the most saturated hedgehog colour, spines or body — the hedgehog's browns and creams share the orange
-  hues, so saturation is what tells the two apart. **RED:** the colourways the ruling replaced, run through the same
-  leg as its control, red it.
+  hues, so saturation is what tells the two apart — and is at least `PEPPER_APART` in CIEDE2000 (sRGB under D65) from
+  every bell pepper colourway, whose orange and red would otherwise make a deep-orange pumpkin the pepper's lookalike
+  instead; the closest pumpkin and pepper pair is printed on every run. **RED:** the colourways the ruling replaced,
+  run through the same leg as its control, red each of its four parts, and the colour difference reproduces published
+  test pairs of Sharma, Wu and Dalal (2005).
 - **GREEN — the salt, two halves over two populations** (§ 14 item 33(2), the seat's ruling of
   2026-10-06) — ⚠ **retired by card#12443: the guarantee is D2's allocation and
   [AT-D2-31](FLEET-STATE.md#at-d2-31-a-seats-character-is-allocated-once-unique-while-it-can-be-and-freed-by-retirement)

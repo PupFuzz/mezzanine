@@ -404,9 +404,10 @@ const APPROVED = {
   },
   pumpkin: {
     kind: 'vegetable', label: 'pumpkin',
-    // A traditional deep-orange Halloween pumpkin in every colourway: darker than every carrot in HSL lightness, and twice
-    // or more the chroma of any hedgehog colour (the operator's ruling of 2026-11-02, card#12795; the selftest's section 2b holds it).
-    pals: [['#cc5200'], ['#c04400'], ['#c45608'], ['#c84e04', 'stripe'], ['#b04000']],
+    // A traditional deep-orange Halloween pumpkin in every colourway (the operator's ruling of 2026-11-02, card#12795): darker
+    // than every carrot in HSL lightness, twice or more the chroma of any hedgehog colour, and apart from every bell pepper
+    // colourway by CIEDE2000 — the selftest's section 2b holds all three.
+    pals: [['#bc5400'], ['#b44c00'], ['#a84800'], ['#b85000', 'stripe'], ['#a04400']],
     hats: ['ladybug', 'flower', 'sprig'], necks: [], extras: ['glasses', 'mug', 'book'],
     build(c) {
       const [b, stripe] = c.P, X = c.X;
