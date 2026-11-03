@@ -1,11 +1,12 @@
-// The generator of `fx-snack` (docs/design/FLOOR.md § 11, AT-D3-32; card#12749, card#12785, committed by card#12787):
-// it writes server/tests/Feature/Floor/fixtures/fx-snack.json and the four shipped-default variants its runs draw
-// over, server/tests/Feature/Floor/fixtures/maps/snack-{none,moved,sealed,two-spots}.json.
+// The generator of `fx-snack` (docs/design/FLOOR.md § 11, AT-D3-32; card#12749, card#12785, committed by card#12787) and
+// of `fx-restroom` (AT-D3-33; card#12786): it writes server/tests/Feature/Floor/fixtures/fx-snack.json and fx-restroom.json
+// and the shipped-default variants their runs draw over, server/tests/Feature/Floor/fixtures/maps/snack-*.json and
+// restroom-*.json (`VARIANTS` names them).
 //
-//   node tools/design/gen-fx-snack.mjs            rewrite the fixture and the four maps
+//   node tools/design/gen-fx-snack.mjs            rewrite the two fixtures and the maps
 //   node tools/design/gen-fx-snack.mjs --check    write nothing; exit 1 naming each file that differs from what it
 //                                                 would write (a stale copy after a default.tmj change, or a hand edit)
-//   node tools/design/gen-fx-snack.mjs <run>      print that one run of the fixture as JSON to stdout, write nothing
+//   node tools/design/gen-fx-snack.mjs <run>      print that one run of either fixture as JSON to stdout, write nothing
 //
 // The fixture is built in two stages, each its card's own derivation: stage 1 lays card#12749's runs over the hourly
 // windows; stage 2 is card#12785's transform of them onto the chained breaks, which moves each run's clock and adds
@@ -18,7 +19,9 @@
 //
 // fx-snack's runs reference the default by `@json:` and carry no copy of it, and every instant in them comes from the
 // seeded snack schedule, never from a route length — so a re-laid desk changes the maps and leaves fx-snack.json as it
-// was; `--check` says so.
+// was; `--check` says so. fx-restroom's runs are the same, but for the instants a note places INSIDE a visit, which are
+// read off the shipped floor screen's own legs (stage 3) — a re-laid route moves those, and `--check` says so too.
+import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -35,6 +38,7 @@ const ONLY = arg !== null && !CHECK ? arg : null;
 const WALL = 3;
 const SNACK_TABLE = 14;
 const SNACK_TABLE_LOW = 15;
+const RESTROOM_DOOR = 16;
 const cells = (cols, rows) => cols.flatMap((c) => rows.map((r) => [c, r]));
 const span = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
 /** name → edits: { layer, cells: [[col, row]…], from: the gid each cell holds on the default, to: the gid it gets }. */
@@ -63,6 +67,24 @@ const VARIANTS = {
         { layer: 'walls', cells: cells([197], span(40, 54)), from: 0, to: WALL },
         { layer: 'walls', cells: cells([...span(197, 202), ...span(213, 221)], [55]), from: 0, to: WALL },
         { layer: 'furniture', cells: [[216, 61]], from: SNACK_TABLE_LOW, to: 0 },
+    ],
+    // card#12786: the default without its restroom door
+    'restroom-none': [
+        { layer: 'furniture', cells: [[214, 81]], from: RESTROOM_DOOR, to: 0 },
+    ],
+    // a wall from below the low table down to the front edge at x 1600, and along y 560 to the door: the door's forecourt
+    // is closed off, so no route reaches its threshold
+    'restroom-sealed': [
+        { layer: 'walls', cells: cells([200], span(70, 86)), from: 0, to: WALL },
+        { layer: 'walls', cells: cells(span(201, 213), [70]), from: 0, to: WALL },
+    ],
+    // a pocket round the door's forecourt — x 1608 down to the front edge, y 600 along to the door — entered through an
+    // 80 px gap in its top wall (x 1,624–1,704), narrower than a seat's body and the `clear` tier's margins: the floor
+    // `spotsNear()` counts the waiting spots over — open for nobody's walk at `clear` — holds exactly one past the
+    // threshold, and every desk reaches the door through the gap at the `snug` tier
+    'restroom-one-spot': [
+        { layer: 'walls', cells: cells([201], span(75, 86)), from: 0, to: WALL },
+        { layer: 'walls', cells: cells([202, 213], [75]), from: 0, to: WALL },
     ],
 };
 
@@ -306,12 +328,16 @@ function chained(old) {
     const c0Of = (run) => Date.parse(run.http['/api/fleet/snapshot'][0].body.server_time) / 1000;
     const iso = (s) => new Date(Math.round(s * 1000)).toISOString();
 
+    // card#12786: no walker's RESTROOM break falls in a run's window — from 400 s before its clock 0 to 200 s after —
+    // so a snack run draws no restroom visit (the shipped default places the door since that card).
+    const restroomQuiet = (ref) => ALL.every((k) => sc.snackBreaks(draw, k, ref - 400, ref + 200, sc.RESTROOM_CHAIN).length === 0);
+
     // Search days [d0, d1) for a reference second `ref` (the run's clock 0) satisfying `ok(ref)`, the primary walker's
-    // break at ref + 5.
+    // break at ref + 5, with no restroom break near it.
     function search(primary, ok, d0 = 19900, d1 = 21200) {
         for (let day = d0; day < d1; day++) {
             for (const s of sc.snackDay(draw, primary, day)) {
-                if (ok(s - 5, s)) {
+                if (ok(s - 5, s) && restroomQuiet(s - 5)) {
                     return s - 5;
                 }
             }
@@ -333,7 +359,7 @@ function chained(old) {
     const A = search(I2, (ref, s) => {
         const next = breaks(I2, s + 1, s + 7200)[0].start_s;
 
-        return [PM, I1, N].every((k) => quiet(k, ref - 400, ref + 200) && quiet(k, next - 5 - 400, next - 5 + 160));
+        return [PM, I1, N].every((k) => quiet(k, ref - 400, ref + 200) && quiet(k, next - 5 - 400, next - 5 + 160)) && restroomQuiet(next - 5);
     });
     const A_s = A + 5;
     const A_next = breaks(I2, A_s + 1, A_s + 7200)[0].start_s;
@@ -532,21 +558,394 @@ function chained(old) {
     };
 }
 
+// ─── stage 3: card#12786's restroom visits, fx-restroom ───────────────────────────────────────────────────────────
+// Every run is fx-snapshot-4's four `aimla` seats over the shipped default (or a stated variant), its clock 0 a corrected
+// server second a stated few seconds before the walker under test's RESTROOM break (`scene.js`'s `snackDay()` under
+// `RESTROOM_CHAIN`), with no other walker's break of either chain near the run unless the run says so. The frames a visit's
+// legs take on the shipped default are read off the shipped floor screen itself — idle-visit and intern-visit are replayed
+// through the harness's probe and the instant a later delta lands is derived from the legs it drew — so a re-laid map
+// moves those instants with it, and `--check` says so.
+function restroomRuns() {
+    const PM = 'aimla/aimla-pm';
+    const I1 = 'aimla/aimla-impl-1';
+    const I2 = 'aimla/aimla-impl-2';
+    const RV = 'aimla/aimla-review';
+    const N = `aimla/aimla-pm~${PM_CALL}`;
+    const ALL = [PM, I1, I2, RV, N];
+    const R = sc.RESTROOM_CHAIN;
+    const rBreaks = (k, a, b) => sc.snackBreaks(draw, k, a, b, R);
+    const sBreaks = (k, a, b) => sc.snackBreaks(draw, k, a, b);
+    const rDay = (k, d) => sc.snackDay(draw, k, d, R);
+    const iso = (s) => new Date(Math.round(s * 1000)).toISOString();
+    // No break of either chain for `keys` in [ref − 400, ref + span]; `free` lists keys whose restroom breaks are the run's.
+    const quiet = (ref, span, free = []) => ALL.every((k) => sBreaks(k, ref - 400, ref + span).length === 0
+        && (free.includes(k) || rBreaks(k, ref - 400, ref + span).length === 0));
+    const breakNote = (k, s) => {
+        const day = Math.floor(s / 86400);
+        const d = rDay(k, day).includes(s) ? day : day - 1;
+
+        return `restroom break ${rDay(k, d).indexOf(s)} of day ${d}'s chain for \`${k}\` (second ${s}; dwell ${sc.restroomBreak(draw, k, s).dwell_s} s)`;
+    };
+    const clock = (ref) => `The run's clock 0 is the corrected server second ${iso(ref)}`;
+    // The first break of `primary` (days d0 … d1) for which `ok(ref, s)` holds, its clock 0 five seconds before it.
+    function search(primary, ok, d0 = 19900, d1 = 60000) {
+        for (let day = d0; day < d1; day++) {
+            for (const s of rDay(primary, day)) {
+                if (ok(s - 5, s)) {
+                    return s - 5;
+                }
+            }
+        }
+
+        throw new Error(`no restroom instant for ${primary}`);
+    }
+    const IDLE_SEAT = { render_state: 'idle', link_state: 'live', activity_state: 'idle', open_calls: 0, open_turn: false, action: null, longest_open_call: null };
+    const pm = SEATS['aimla-pm'];
+    const pmIdle = { subagents: [{ ...pm.subagents[0], activity_state: 'idle' }] };
+    // Each run's own arguments, kept so a LATE VIEWER of it — the same run loaded `off` seconds after its clock 0 — can be
+    // built from them (card#12786 review r1).
+    const argsOf = new Map();
+    const make = (o) => {
+        const r = run({ ...o, note: '' });
+
+        argsOf.set(r, o);
+
+        return r;
+    };
+    const runs = {};
+    const notes = {};
+    // One run of the harness's probe over a scenario, its first A26 visit of `walker` and the frame it reached.
+    const probe = (scenario, walker) => {
+        const out = spawnSync('node', [join(ROOT, 'server/tests/Feature/Floor/fleet-client-probe.mjs'), join(ROOT, 'server/public/js/wire')],
+            { input: JSON.stringify(scenario), maxBuffer: 1 << 30, cwd: join(ROOT, 'server') });
+
+        if (out.status !== 0) {
+            throw new Error(`the probe failed over a restroom run: ${out.stderr}`);
+        }
+
+        for (const r of JSON.parse(out.stdout).runs[0].floor_renders) {
+            for (const fx of r.frame.scene?.effects ?? []) {
+                if (fx.animation_id === 'A26' && fx.walker_key === walker && fx.leg_kind === 'restroom') {
+                    return fx;
+                }
+            }
+        }
+
+        throw new Error(`the probe drew no visit for ${walker}`);
+    };
+    const legsOf = (fx) => {
+        const at = (kind, why) => fx.legs.find((l) => l.kind === kind && (why === undefined || l.why === why));
+
+        return { door: at('stand', 'door'), inside: at('inside'), wait: at('stand', 'wait'), home: fx.legs[fx.legs.length - 1] };
+    };
+    // A visit's frames as ms from the run's clock 0, its break 5 s after it.
+    const msOf = (f) => 5000 + f * 250;
+
+    // ── idle-visit: aimla-impl-2 idle, its break at clock 0 + 5, nothing else near. ─────────────────────────────────────────
+    const A = search(I2, (ref) => quiet(ref, 360, [I2]) && rBreaks(I2, ref - 400, ref + 360).length === 1
+        && (() => {
+            const next = rBreaks(I2, ref + 6, ref + 6 + R.gap.max)[0].start_s;
+
+            return quiet(next - 5, 360, [I2]);
+        })());
+    const A_s = A + 5;
+    const A_dwell = sc.restroomBreak(draw, I2, A_s).dwell_s;
+    const A_next = rBreaks(I2, A_s + 1, A_s + R.gap.max)[0].start_s;
+    const aUntil = 5000 + (A_dwell + 90) * 1000;
+
+    runs['idle-visit'] = make({ at_s: A, until_ms: aUntil });
+    notes['idle-visit'] = `\`aimla-impl-2\`, idle from the snapshot: out, the leaf, in, the dwell, out, home, then silence. ${clock(A)}: ${breakNote(I2, A_s)} begins 5 s later.`;
+
+    const aVisit = probe(runs['idle-visit'], I2);
+    const aLegs = legsOf(aVisit);
+    // Instants inside idle-visit's visit, as ms from its clock 0.
+    const dwellAt = (fx, s) => msOf(legsOf(fx).inside.start + sc.ELEVATOR_DOOR.close) + s * 1000;
+    const thirtyIn = dwellAt(aVisit, 30);
+    const closing2 = msOf(aLegs.inside.start + 2);
+    const V2 = SEATS['aimla-impl-2'].state_version;
+    const aNote = `${clock(A)}: ${breakNote(I2, A_s)} begins 5 s later; on the shipped default its walker reaches the threshold ${(aLegs.door.start / 4).toFixed(2)} s after it`;
+
+    runs['next-visit'] = make({ at_s: A_next - 5, until_ms: 40000 });
+    notes['next-visit'] = `idle-visit's walker at its NEXT restroom break: ${clock(A_next - 5)}, and ${breakNote(I2, A_next)} begins 5 s later — ${A_next - A_s} s after idle-visit's, derived by this page from the day's anchor and never from idle-visit's.`;
+
+    runs['blocked-visit'] = (() => {
+        const B = search(RV, (ref) => quiet(ref, 120, [RV]));
+
+        notes['blocked-visit'] = `\`aimla-review\`, \`blocked\`, through its own restroom break (${breakNote(RV, B + 5)}, 5 s after clock 0): the control — no visit, the leaf never moves. ${clock(B)}.`;
+
+        return make({ at_s: B, until_ms: 60000 });
+    })();
+
+    // ── busy-visit: aimla-impl-1 working, a working → working delta on the dwell. ──────────────────────────────────────────
+    {
+        const E = search(I1, (ref) => quiet(ref, 360, [I1]));
+        const r = make({ at_s: E, until_ms: 5000 + (sc.restroomBreak(draw, I1, E + 5).dwell_s + 90) * 1000 });
+        const fx = probe(r, I1);
+        const at = dwellAt(fx, 20);
+        const v1 = SEATS['aimla-impl-1'].state_version;
+
+        r.messages.push({ at_ms: at, envelope: { feed_version: 2, t: 'seat.delta', server_time: iso(E + at / 1000), install_id: 'aimla', seat_id: 'aimla-impl-1', state_version: v1 + 1, at: iso(E + at / 1000), changed: ['action', 'longest_open_call', 'open_calls'], patch: { action: null, longest_open_call: null, open_calls: 0 } } });
+        r.messages.sort((a, b) => a.at_ms - b.at_ms);
+        runs['busy-visit'] = r;
+        notes['busy-visit'] = `\`aimla-impl-1\`, \`working\` at an open call, through its restroom break (${breakNote(I1, E + 5)}, 5 s after clock 0) with the line, its desk keeping every fact; at ${at} ms, twenty seconds into the dwell, the call closes with the turn open (A3 → A4, \`working → working\`): the visit goes on. ${clock(E)}.`;
+    }
+
+    // ── intern-visit: aimla-pm's intern idle, the seat working. ────────────────────────────────────────────────────────────
+    const C = search(N, (ref) => quiet(ref, 360, [N]));
+    const cUntil = 5000 + (sc.restroomBreak(draw, N, C + 5).dwell_s + 90) * 1000;
+
+    runs['intern-visit'] = make({ at_s: C, until_ms: cUntil, seats: { 'aimla-pm': pmIdle } });
+    notes['intern-visit'] = `\`aimla-pm\`'s intern \`${PM_CALL}\` at \`idle\` from the snapshot, the seat itself \`working\`, through the intern's restroom break (${breakNote(N, C + 5)}, 5 s after clock 0). ${clock(C)}.`;
+
+    const cVisit = probe(runs['intern-visit'], N);
+    const cThirty = dwellAt(cVisit, 30);
+
+    runs['intern-stop-inside'] = make({ at_s: C, until_ms: cThirty + 40000, seats: { 'aimla-pm': pmIdle },
+        deltas: [{ at_ms: cThirty, seat: 'aimla-pm', v: pm.state_version + 1, patch: { subagents: [], subagents_open: 0 } }] });
+    notes['intern-stop-inside'] = `intern-visit, then at ${cThirty} ms — thirty seconds into the dwell, the leaf closed over the intern — the element lost (\`subagents_open\` 1 → 0): one A10, walked from the threshold once the leaf has opened. ${clock(C)}.`;
+
+    // ── the interrupts over idle-visit. ─────────────────────────────────────────────────────────────────────────────────
+    const blocked = (at) => ({ at_ms: at, seat: 'aimla-impl-2', v: V2 + 1, patch: { render_state: 'blocked', activity_state: 'blocked', blocked_since: iso(A + at / 1000) } });
+
+    runs['recall-inside'] = make({ at_s: A, until_ms: thirtyIn + 40000, deltas: [blocked(thirtyIn)] });
+    notes['recall-inside'] = `idle-visit (${aNote}), then at ${thirtyIn} ms — thirty seconds into the dwell — \`idle → blocked\` (an attention request): the field turns vacant, the leaf opens, the walker walks home and the leaf closes behind it.`;
+    runs['recall-closing'] = make({ at_s: A, until_ms: closing2 + 40000, deltas: [blocked(closing2)] });
+    notes['recall-closing'] = `idle-visit (${aNote}), then at ${closing2} ms — two frames into the leaf's closing over the walker — \`idle → blocked\`: the leaf reverses from where it is, the field never turns, the walker walks home.`;
+    runs['leave-inside'] = make({ at_s: A, until_ms: thirtyIn + 60000, deltas: [{ at_ms: thirtyIn, seat: 'aimla-impl-2', v: V2 + 1, patch: { render_state: 'stale', link_state: 'stale' } }] });
+    notes['leave-inside'] = `idle-visit (${aNote}), then at ${thirtyIn} ms, inside, \`idle → stale\`: the leaf opens and one A2 walks from the threshold.`;
+    runs['reload-inside'] = make({ at_s: A, until_ms: aUntil,
+        deltas: [{ at_ms: thirtyIn, seat: 'aimla-impl-2', v: V2 + 2, patch: { activity_state: 'idle' } }],
+        extra_http: { '/api/fleet/seats/aimla/aimla-impl-2': [{ status: 200, body: seatBody('aimla-impl-2', V2 + 2, thirtyIn, A) }] } });
+    notes['reload-inside'] = `idle-visit (${aNote}), then at ${thirtyIn} ms — thirty seconds into the dwell — a delta two versions ahead for \`aimla-impl-2\`, whose resync fetch returns the seat still idle: a non-delta entry, so the visit is re-derived from it and continues at its phase, inside.`;
+    runs['reload-inside-viewer'] = make({ at_s: A + thirtyIn / 1000 + 0.25, until_ms: aUntil - thirtyIn, beats: range(0, aUntil - thirtyIn, 15000) });
+    notes['reload-inside-viewer'] = `reload-inside's SECOND VIEWER: a page whose clock 0 is one loop frame after reload-inside's resync instant (${aNote}, so clock 0 here is ${thirtyIn / 1000 + 0.25} s after idle-visit's): its first render draws the leaf closed and the field occupied, no walker on the floor.`;
+    runs['restroom-feed-down'] = make({ at_s: A_s - 50, until_ms: 260000, beats: [500] });
+    notes['restroom-feed-down'] = `\`aimla-impl-2\` idle; one heartbeat at 0.5 s and the stream silent after it, past § 9 F1's 45 s, before its restroom break (${breakNote(I2, A_s)}, 50 s after clock 0): no visit, the leaf never moves.`;
+    runs['feed-dies-inside'] = make({ at_s: A, until_ms: aUntil, beats: [500] });
+    notes['feed-dies-inside'] = `idle-visit (${aNote}), the stream silent from 0.5 s, so F1's verdict lands at 45.5 s, inside: the visit finishes and no other starts.`;
+    runs['no-door'] = make({ at_s: A, until_ms: 40000, map: `@json:${MAPS}/restroom-none.json` });
+    notes['no-door'] = `idle-visit (${aNote}) over \`fixtures/maps/restroom-none.json\`, the shipped default without the door's tile: a floor with no restroom.`;
+    runs['restroom-no-route'] = make({ at_s: A, until_ms: 40000, map: `@json:${MAPS}/restroom-sealed.json` });
+    notes['restroom-no-route'] = `idle-visit (${aNote}) over \`fixtures/maps/restroom-sealed.json\`, the shipped default with walls closing the door's forecourt off: its threshold stands where no route reaches.`;
+    runs['map-removes-door'] = make({ at_s: A, until_ms: thirtyIn + 20000,
+        maps: [{ status: 200, body: { install_id: 'aimla', source: 'default', map_version: null, map: '@json:resources/floor/default.tmj' } },
+            { status: 200, body: { install_id: 'aimla', source: 'authored', map_version: 5, map: `@json:${MAPS}/restroom-none.json` } }],
+        deltas: [{ at_ms: thirtyIn, t: 'room.map', map_version: 5, revision_id: 913 }] });
+    notes['map-removes-door'] = `idle-visit (${aNote}), then at ${thirtyIn} ms, inside, a \`room.map\` revision — \`fixtures/maps/restroom-none.json\` as map version 5: the lattice key moved, so the visit ends, the sleeper is at its desk and the door is gone.`;
+    runs['stilled-inside'] = make({ at_s: A, until_ms: thirtyIn + 20000,
+        deltas: [{ at_ms: thirtyIn, seat: 'aimla-impl-1', v: SEATS['aimla-impl-1'].state_version + 2, patch: { activity_state: 'working' } }],
+        extra_http: { '/api/fleet/seats/aimla/aimla-impl-1': [{ status: 401, body: { api_version: 1, server_time: iso(A + thirtyIn / 1000), error: 'token_revoked' } }] } });
+    notes['stilled-inside'] = `idle-visit (${aNote}), then at ${thirtyIn} ms, inside, a delta two versions ahead for \`aimla-impl-1\` whose resync fetch answers 401: the floor stilled (§ 9 F6), the visit ends, the door closed and vacant, the sleeper at its desk.`;
+
+    // ── two-at-the-door: impl-2 at + 5, impl-1 2–10 s after it, both idle. ─────────────────────────────────────────────────
+    let tGap = null;
+    const T = search(I2, (ref, s) => {
+        const other = rBreaks(I1, s + 2, s + 10);
+
+        if (other.length !== 1 || !quiet(ref, 700, [I1, I2]) || rBreaks(I2, ref - 400, ref + 700).length !== 1 || rBreaks(I1, ref - 400, ref + 700).length !== 1) {
+            return false;
+        }
+
+        tGap = other[0].start_s - s;
+
+        return true;
+    });
+    const tUntil = 5000 + (tGap + sc.restroomBreak(draw, I2, T + 5).dwell_s + sc.restroomBreak(draw, I1, T + 5 + tGap).dwell_s + 120) * 1000;
+
+    runs['two-at-the-door'] = make({ at_s: T, until_ms: tUntil, seats: { 'aimla-impl-1': IDLE_SEAT } });
+    notes['two-at-the-door'] = `\`aimla-impl-2\` and \`aimla-impl-1\` both idle; ${breakNote(I2, T + 5)} begins 5 s after clock 0 and ${breakNote(I1, T + 5 + tGap)} ${tGap} s after it: the second waits at spot 1 until the first's exit has closed the leaf. ${clock(T)}.`;
+
+    const second = probe(runs['two-at-the-door'], I1);
+    const waitMid = msOf(0) + (legsOf(second).wait.start + legsOf(second).wait.frames / 2) * 250 + tGap * 1000;
+
+    runs['recall-waiting'] = make({ at_s: T, until_ms: waitMid + 60000, seats: { 'aimla-impl-1': IDLE_SEAT },
+        deltas: [{ at_ms: Math.round(waitMid / 250) * 250, seat: 'aimla-impl-1', v: SEATS['aimla-impl-1'].state_version + 1, patch: { render_state: 'blocked', activity_state: 'blocked', blocked_since: iso(T + Math.round(waitMid / 250) / 4) } }] });
+    notes['recall-waiting'] = `two-at-the-door, then at ${Math.round(waitMid / 250) * 250} ms, halfway through \`aimla-impl-1\`'s wait at its spot, \`idle → blocked\`: it walks home from its spot. ${clock(T)}.`;
+
+    const lateBy = 5 + tGap + 3;
+    runs['reload-queue'] = make({ at_s: T + lateBy, until_ms: tUntil - lateBy * 1000, seats: { 'aimla-impl-1': IDLE_SEAT } });
+    notes['reload-queue'] = `two-at-the-door's page loaded ${lateBy} s after its clock 0 — 3 s after \`aimla-impl-1\`'s break began, both walkers then on their way: a page that decides both breaks on its first pass, in start-second order, gives each the spot and the turn two-at-the-door's continuous viewer gave it. ${clock(T + lateBy)}.`;
+
+    // ── three-at-the-door: four walkers — the occupant, one waiting at spot 1, one at spot 2, and a fourth whose break comes
+    // after the first waiter has left spot 1: it takes spot 1, nearer the door, and still goes in after the one at spot 2.
+    let q = null;
+    search(I2, (ref, s) => {
+        const d1 = sc.restroomBreak(draw, I2, s).dwell_s;
+        const others = [I1, RV, PM, N];
+
+        for (const a of others) {
+            const ab = rBreaks(a, s + 2, s + 60);
+
+            if (ab.length !== 1) continue;
+
+            const da = ab[0].dwell_s;
+
+            for (const c of others.filter((x) => x !== a)) {
+                const cb = rBreaks(c, ab[0].start_s + 2, s + 90);
+
+                if (cb.length !== 1) continue;
+
+                for (const d of others.filter((x) => x !== a && x !== c)) {
+                    // after the occupant has left the door (the first waiter then leaves spot 1), before the first waiter frees it
+                    const db = rBreaks(d, s + d1 + 25, s + d1 + da - 5);
+
+                    if (db.length === 1 && quiet(ref, 900, [I2, a, c, d]) && [I2, a, c, d].every((k) => rBreaks(k, ref - 400, ref + 900).length === 1)) {
+                        q = { s, a, c, d, as: ab[0].start_s, cs: cb[0].start_s, ds: db[0].start_s };
+
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }, 19900, 80000);
+    {
+        const ref = q.s - 5;
+        const seats = { 'aimla-impl-1': IDLE_SEAT, 'aimla-review': { ...IDLE_SEAT, blocked_since: null } };
+        const dw = (k, s) => sc.restroomBreak(draw, k, s).dwell_s;
+
+        runs['three-at-the-door'] = make({ at_s: ref, until_ms: 5000 + (q.ds - q.s + dw(q.c, q.cs) + dw(q.d, q.ds) + dw(q.a, q.as) + 200) * 1000, seats });
+        notes['three-at-the-door'] = `four walkers at one door — \`aimla-impl-1\` and \`aimla-review\` patched idle, \`aimla-pm\` working: ${breakNote(I2, q.s)} 5 s after clock 0, the occupant; ${breakNote(q.a, q.as)}, waiting at spot 1; ${breakNote(q.c, q.cs)}, waiting at spot 2; and ${breakNote(q.d, q.ds)}, which comes after the first waiter has left spot 1 for the door — it takes spot 1, nearer the door than spot 2, and goes in after the walker there, whose break began first. ${clock(ref)}.`;
+    }
+
+    // ── past-the-last-spot: three walkers at a door with one waiting spot. ─────────────────────────────────────────────────
+    {
+        let p = null;
+        const ref = search(I2, (r, s) => {
+            const a = rBreaks(I1, s + 2, s + 30);
+            const c = rBreaks(RV, s + 2, s + 30);
+
+            if (a.length !== 1 || c.length !== 1 || a[0].start_s === c[0].start_s || !quiet(r, 400, [I1, I2, RV])
+                || [I1, I2, RV].some((k) => rBreaks(k, r - 400, r + 400).length !== 1)) {
+                return false;
+            }
+
+            p = { a: a[0].start_s, c: c[0].start_s };
+
+            return true;
+        }, 19900, 80000);
+
+        runs['restroom-past-the-last-spot'] = make({ at_s: ref, until_ms: 5000 + (sc.restroomBreak(draw, I2, ref + 5).dwell_s + 60) * 1000,
+            seats: { 'aimla-impl-1': IDLE_SEAT, 'aimla-review': { ...IDLE_SEAT, blocked_since: null } }, map: `@json:${MAPS}/restroom-one-spot.json` });
+        notes['restroom-past-the-last-spot'] = `\`aimla-impl-2\`, \`aimla-impl-1\` and \`aimla-review\` idle over \`fixtures/maps/restroom-one-spot.json\`, whose door has exactly one waiting spot: ${breakNote(I2, ref + 5)} 5 s after clock 0, ${breakNote(I1, p.a)} and ${breakNote(RV, p.c)} — the third to come takes no visit. ${clock(ref)}.`;
+    }
+
+    // ── the two chains, one walker. ───────────────────────────────────────────────────────────────────────────────────
+    {
+        // snack-then-restroom: impl-1 (working), its snack break at + 5 and its restroom break 10–30 s later.
+        let gap = null;
+        const ref = (() => {
+            for (let day = 19900; day < 80000; day++) {
+                for (const s of sc.snackDay(draw, I1, day)) {
+                    const rb = rBreaks(I1, s + 10, s + 30);
+                    const ref0 = s - 5;
+
+                    if (rb.length === 1 && sBreaks(I1, ref0 - 400, ref0 + 400).length === 1 && rBreaks(I1, ref0 - 400, ref0 + 400).length === 1
+                        && [PM, I2, RV, N].every((k) => sBreaks(k, ref0 - 400, ref0 + 400).length === 0 && rBreaks(k, ref0 - 400, ref0 + 400).length === 0)) {
+                        gap = rb[0].start_s - s;
+
+                        return ref0;
+                    }
+                }
+            }
+
+            throw new Error('no snack-then-restroom instant');
+        })();
+
+        runs['snack-then-restroom'] = make({ at_s: ref, until_ms: 5000 + (gap + 75 + 150 + 120) * 1000 });
+        notes['snack-then-restroom'] = `\`aimla-impl-1\`, \`working\`: its snack break (second ${ref + 5}) 5 s after clock 0 and ${breakNote(I1, ref + 5 + gap)} ${gap} s after it, while it walks to or stands at the tall table: it walks from the table to the door on the frame its snack dwell ends, the line changing there, and home from the door. ${clock(ref)}.`;
+    }
+    {
+        // restroom-then-snack: impl-2 (idle), its restroom break at + 5 and its snack break 25–85 s later, inside.
+        let gap = null;
+        const ref = search(I2, (r, s) => {
+            const sb = sBreaks(I2, s + 25, s + 85);
+
+            if (sb.length !== 1 || sc.restroomBreak(draw, I2, s).dwell_s < sb[0].start_s - s + 5 || rBreaks(I2, r - 400, r + 400).length !== 1
+                || sBreaks(I2, r - 400, r + 400).length !== 1 || ![PM, I1, RV, N].every((k) => sBreaks(k, r - 400, r + 400).length === 0 && rBreaks(k, r - 400, r + 400).length === 0)) {
+                return false;
+            }
+
+            gap = sb[0].start_s - s;
+
+            return true;
+        }, 19900, 80000);
+
+        runs['restroom-then-snack'] = make({ at_s: ref, until_ms: 5000 + (sc.restroomBreak(draw, I2, ref + 5).dwell_s + 75 + 150) * 1000 });
+        notes['restroom-then-snack'] = `\`aimla-impl-2\`, idle: ${breakNote(I2, ref + 5)} 5 s after clock 0 and its snack break ${gap} s after it, while it is inside: it walks from the door to the tall table on the frame the leaf has opened for its exit, and home from the table. ${clock(ref)}.`;
+    }
+
+    // ── queue-of-three: three idle walkers, their breaks about a minute apart, served one after another. ───────────────────
+    {
+        let q3 = null;
+        const ref = search(I2, (r, s) => {
+            const a = rBreaks(I1, s + 30, s + 90);
+            const c = a.length === 1 ? rBreaks(RV, a[0].start_s + 30, a[0].start_s + 90) : [];
+
+            if (a.length !== 1 || c.length !== 1 || !quiet(r, 700, [I1, I2, RV]) || [I1, I2, RV].some((k) => rBreaks(k, r - 400, r + 700).length !== 1)) {
+                return false;
+            }
+
+            q3 = { a: a[0].start_s, c: c[0].start_s };
+
+            return true;
+        }, 19900, 80000);
+
+        runs['queue-of-three'] = make({ at_s: ref, until_ms: 520000, seats: { 'aimla-impl-1': IDLE_SEAT, 'aimla-review': { ...IDLE_SEAT, blocked_since: null } } });
+        notes['queue-of-three'] = `\`aimla-impl-2\`, \`aimla-impl-1\` and \`aimla-review\` idle: ${breakNote(I2, ref + 5)} 5 s after clock 0, ${breakNote(I1, q3.a)} and ${breakNote(RV, q3.c)} — each comes while the one before is inside, waits, and goes in in turn. ${clock(ref)}.`;
+    }
+
+    // ── LATE VIEWERS (card#12786 review r1): each route below replayed by a page loaded `off` seconds after the continuous
+    // run's clock 0 — the same seats, the same breaks, the rest of the run — whose timeline must be the continuous viewer's.
+    const LATE = [150, 170, 200, 260, 330];
+    const lateNames = [];
+
+    for (const route of ['queue-of-three', 'two-at-the-door', 'snack-then-restroom', 'restroom-then-snack']) {
+        const o = argsOf.get(runs[route]);
+
+        for (const off of LATE) {
+            const name = `${route}-at-${off}`;
+
+            runs[name] = run({ ...o, note: '', at_s: o.at_s + off, until_ms: Math.max(30000, o.until_ms - off * 1000) });
+            notes[name] = `${route}'s LATE VIEWER: a page whose clock 0 is ${off} s after ${route}'s — ${clock(o.at_s + off)} — over the same seats and breaks: it draws every break still in flight as ${route}'s continuous viewer drew it.`;
+            lateNames.push(name);
+        }
+    }
+
+    const ORDER = ['idle-visit', 'busy-visit', 'blocked-visit', 'intern-visit', 'two-at-the-door', 'three-at-the-door', 'queue-of-three', 'restroom-past-the-last-spot',
+        'recall-waiting', 'recall-inside', 'recall-closing', 'leave-inside', 'intern-stop-inside', 'snack-then-restroom', 'restroom-then-snack',
+        'reload-inside', 'reload-inside-viewer', 'reload-queue', 'next-visit', 'no-door', 'restroom-no-route', 'restroom-feed-down', 'feed-dies-inside',
+        'map-removes-door', 'stilled-inside', ...lateNames];
+
+    return {
+        note: "docs/design/FLOOR.md § 11's `fx-restroom` (card#12786; AT-D3-33): the restroom door's visits. Every run is fx-snapshot-4's four `aimla` seats over the shipped default map (or the stated variant under `fixtures/maps/`), every instant of the run moved by one constant so that the run's clock 0 is the corrected server second its note states — each walker's restroom breaks are the chain `scene.js`'s `snackDay()` derives under `RESTROOM_CHAIN` from the day's anchor, `day × 86400 + draw(key, 'restroom-anchor:' + day) mod 3600`, each break `3600 + draw(key, 'restroom-gap:' + s) mod …` seconds after the one before, re-derived by the test through the character tree's own `draw()`; no other break of either chain falls near a run unless its note says so. An instant a note places inside a visit is read off the shipped floor screen's own legs for that visit. Heartbeats every 15 s keep the feed live where the run's note does not say otherwise. Generated by `tools/design/gen-fx-snack.mjs`; regenerate rather than edit.",
+        runs: Object.fromEntries(ORDER.map((k) => {
+            const { note, ...rest } = runs[k];
+
+            return [k, { note: notes[k], ...rest }];
+        })),
+    };
+}
+
 // ─── output ──────────────────────────────────────────────────────────────────────────────────────────────────────
 const stage1 = { runs };
 const out = chained(stage1);
+const restroom = restroomRuns();
 if (ONLY !== null) {
-    if (!(ONLY in out.runs)) {
-        console.error(`no run named ${ONLY}; the runs are: ${Object.keys(out.runs).join(' ')}`);
+    const held = out.runs[ONLY] ?? restroom.runs[ONLY] ?? null;
+    if (held === null) {
+        console.error(`no run named ${ONLY}; the runs are: ${[...Object.keys(out.runs), ...Object.keys(restroom.runs)].join(' ')}`);
         process.exit(2);
     }
-    process.stdout.write(JSON.stringify(out.runs[ONLY]));
+    process.stdout.write(JSON.stringify(held));
     process.exit(0);
 }
 
 const base = JSON.parse(readFileSync(join(ROOT, 'resources', 'floor', 'default.tmj'), 'utf8'));
 const files = [
     [join(FX, 'fx-snack.json'), `${JSON.stringify(out)}\n`],
+    [join(FX, 'fx-restroom.json'), `${JSON.stringify(restroom)}\n`],
     ...Object.keys(VARIANTS).map((name) => [join(ROOT, MAPS, `${name}.json`), `${JSON.stringify(variant(base, name))}\n`]),
 ];
 let stale = 0;

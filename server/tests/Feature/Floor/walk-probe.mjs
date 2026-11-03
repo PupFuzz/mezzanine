@@ -18,6 +18,8 @@
  *                a departure's wait from, read from the character tree itself.
  *   `snack-chain` — card#12785: each key's chain of snack breaks as `scene.js`'s `snackBreaks()` derives it, over whole
  *                days and over the window a page at each given instant reads (AT-D3-32).
+ *   `restroom` / `restroom-chain` — card#12786: the restroom's constants and the waiting spots from a given threshold;
+ *                each key's restroom chain and snack chain over whole days (AT-D3-33).
  *   `lattice`  — H6's tileset and registry legs at the scene: `buildScene()` over one drawn frame and its rows twice —
  *                a tileset `pending` then held, the theme registry absent then held — each pair's lattice keys, and
  *                whether `EffectsInFlight` cancels the first scene's walk at a render carrying the second's key.
@@ -248,6 +250,69 @@ if (input.mode === 'snack-chain') {
     }])));
 }
 
-if (!['points', 'draw', 'stack', 'shipped', 'lattice', 'snack', 'snack-chain'].includes(input.mode)) {
+// card#12786 (AT-D3-33): the restroom's constants as the scene declares them, and the waiting spots `spotsNear()` finds on the
+// seat's lattice from a threshold the TEST derived from § 12's rule, clear of the snack spot 0s it names — so the test holds
+// the scene's visits to both. `desks` as the `snack` mode's.
+if (input.mode === 'restroom') {
+    const scene = await mod('floor/scene.js');
+    const { CLEARANCE, spotsNear, cellAt, blockedFor } = await mod('floor/route.js');
+    const map = JSON.parse(readFileSync(join(REPO, input.map ?? join('resources', 'floor', 'default.tmj')), 'utf8'));
+    const grid = mapGrid(map);
+    const tileset = readTileset(TSX, tilesetUrl(map.tilesets[0].source));
+    const standing = registry.KINDS.filter((k) => !PLANE_KINDS.includes(k));
+    const extent = { x: 0, y: 0, width: grid.width * grid.tilewidth, height: grid.height * grid.tileheight };
+    const desks = input.desks ?? mapDesks(map).map((o) => {
+        const slot = { x: o.x, y: o.y, w: o.width, h: o.height };
+        const at = slotOrigin(slot, FURNITURE_BOX);
+
+        return { key: `desk-${o.id}`, rects: [slot, { x: at.x, y: at.y, w: FURNITURE_BOX.width, h: FURNITURE_BOX.height }] };
+    });
+    const cells = mapTiles(map, { x: 0, y: 0 }, () => tileset, null);
+    const obstacles = cells.filter((c) => c.kind === 'wall' || standing.includes(c.kind)).map((c) => ({ x: c.x, y: c.y, w: c.w, h: c.h }));
+    const seat = walkerSize(CHARACTER);
+    const { ELEVATOR_DOOR } = scene;
+
+    answer({
+        gap_s: scene.RESTROOM_GAP_S,
+        day_s: scene.SNACK_DAY_S,
+        dwell_s: scene.RESTROOM_DWELL_S,
+        door: scene.RESTROOM_DOOR,
+        plates: scene.RESTROOM_PLATES,
+        line: scene.RESTROOM_LINE,
+        door_motion: ELEVATOR_DOOR,
+        queue_spacing: scene.queueSpacing(CHARACTER),
+        clearance: CLEARANCE,
+        seat,
+        placed: cells.filter((c) => c.kind === scene.RESTROOM_DOOR.kind).map((c) => ({ x: c.x, y: c.y, w: c.w, h: c.h })),
+        spots: input.from === undefined ? null : (() => {
+            const g = lattice({ extent, cell: Math.min(grid.tilewidth, grid.tileheight), obstacles, desks, body: seat });
+            const at = spotsNear(g, input.from, scene.queueSpacing(CHARACTER), input.clear ?? []);
+
+            return Array.from({ length: input.count ?? 3 }, (_, k) => at(k)?.at ?? null);
+        })(),
+        // whether each point's cell is open at `clear` for the seat's body, as nobody's walk (the threshold's test)
+        open: (input.open ?? []).map((p) => {
+            const g = lattice({ extent, cell: Math.min(grid.tilewidth, grid.tileheight), obstacles, desks, body: seat });
+            const c = cellAt(g, p);
+
+            return c !== null && blockedFor(g, { key: null, anchor: p }, 'clear')[c[1] * g.cols + c[0]] === 0;
+        }),
+    });
+}
+
+// card#12786 (AT-D3-33): each key's chain of restroom breaks as the scene derives it — `snackBreaks()` under `RESTROOM_CHAIN`
+// over whole days from `from_day` — and its snack chain over the same days, so the test holds the two apart.
+if (input.mode === 'restroom-chain') {
+    const scene = await mod('floor/scene.js');
+    const { draw } = await import(pathToFileURL(join(REPO, 'resources', 'characters', 'index.js')).href);
+    const D = scene.SNACK_DAY_S;
+
+    answer(Object.fromEntries(input.keys.map((key) => [key, {
+        days: scene.snackBreaks(draw, key, input.from_day * D, (input.from_day + input.days) * D - 1, scene.RESTROOM_CHAIN),
+        snack: scene.snackBreaks(draw, key, input.from_day * D, (input.from_day + input.days) * D - 1),
+    }])));
+}
+
+if (!['points', 'draw', 'stack', 'shipped', 'lattice', 'snack', 'snack-chain', 'restroom', 'restroom-chain'].includes(input.mode)) {
     throw new Error(`unknown mode ${input.mode}`);
 }

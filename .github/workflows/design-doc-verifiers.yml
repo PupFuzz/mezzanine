@@ -174,8 +174,10 @@ jobs:
       # card#12787: fx-snack.json and the four `fixtures/maps/snack-*.json` copies of the shipped default are
       # generated from `resources/floor/default.tmj`. `--check` writes nothing and reds naming each file that
       # differs from what the generator would write, so a default.tmj change that leaves a copy behind reds here
-      # rather than leaving a fixture drawing the old office. Stock `node`, no dependencies.
-      - name: fx-snack and its maps are the generator's output over the current default
+      # rather than leaving a fixture drawing the old office. Stock `node`, no dependencies. card#12786: the same
+      # generator writes fx-restroom.json and the three `fixtures/maps/restroom-*.json` copies, and replays four of
+      # its runs through the harness's own probe (`fleet-client-probe.mjs`, node builtins only) to read a visit's legs.
+      - name: fx-snack, fx-restroom and their maps are the generator's output over the current default
         run: node tools/design/gen-fx-snack.mjs --check
 
   # THE BROWSER SMOKE (card#12326). The lobby (`/dashboard`) and a floor (`/floor/aimla`), each loaded

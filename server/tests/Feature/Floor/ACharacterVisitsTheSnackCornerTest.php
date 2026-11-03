@@ -1034,8 +1034,9 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
     /** Second RED — the re-roll: a break's gap from `Math.random`. */
     public function test_red_the_re_roll(): void
     {
-        $dir = $this->planted([self::SCENE, '            s += SNACK_GAP_S.min + (draw(key, `snack-gap:${s}`) % (hi - SNACK_GAP_S.min + 1));',
-            '            s += SNACK_GAP_S.min + Math.floor(Math.random() * (hi - SNACK_GAP_S.min + 1));']);
+        // card#12786: the one scheduler both chains share (`snackDay()` under its `chain`).
+        $dir = $this->planted([self::SCENE, '            s += chain.gap.min + (draw(key, `${chain.prefix}-gap:${s}`) % (hi - chain.gap.min + 1));',
+            '            s += chain.gap.min + Math.floor(Math.random() * (hi - chain.gap.min + 1));']);
 
         $this->assertNotSame([], $this->clockDefects($dir), 'a re-rolled gap and the clock guard saw nothing');
     }
@@ -1043,7 +1044,7 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
     /** Third RED — one point: every visitor at spot 0. */
     public function test_red_one_point(): void
     {
-        $dir = $this->planted([self::SCENE, '            if (taken.some((o) => (o.table === best.t.id && o.index === k)', '            if (false && taken.some((o) => (o.table === best.t.id && o.index === k)']);
+        $dir = $this->planted([self::SCENE, '            if (spotTaken(taken, best.t.id, k, s.at, spacing)) {', '            if (false && spotTaken(taken, best.t.id, k, s.at, spacing)) {']);
 
         $this->assertContains("two-visitors does not stand the first at spot 0 and the second at spotsNear()'s spot 1", $this->spotDefects($dir));
     }
@@ -1051,7 +1052,7 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
     /** Fourth RED — the jump home: A2's walk started from the desk's anchor. */
     public function test_red_the_jump_home(): void
     {
-        $dir = $this->planted([self::SCENE, '                at === null ? null : Object.freeze({ x: at.x, y: at.y })));', '                null));']);
+        $dir = $this->planted([self::SCENE, '                trip === null ? null : tripStart(trip)));', '                null));']);
 
         $this->assertContains("leave-mid-trip's A2 walk does not begin where the walker stood", $this->interruptDefects($dir));
     }
@@ -1379,7 +1380,7 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
     /** Fifteenth RED — the seam: the chain run past the next anchor with no gap kept before it. */
     public function test_red_the_seam(): void
     {
-        $dir = $this->planted([self::SCENE, '            const hi = Math.min(SNACK_GAP_S.max, next - s - SNACK_GAP_S.min);', '            const hi = SNACK_GAP_S.max;']);
+        $dir = $this->planted([self::SCENE, '            const hi = Math.min(chain.gap.max, next - s - chain.gap.min);', '            const hi = chain.gap.max;']);
 
         $this->assertNotSame([], array_filter($this->chainDefects($dir), static fn ($d) => str_contains($d, "outside § 12's *Snack gap*")),
             'a gap outside the range at the anchor and the chain guard saw nothing');

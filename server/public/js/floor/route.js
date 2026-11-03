@@ -601,13 +601,14 @@ export function cabStep(leg) {
  * WHERE A WALKER IS — a pure function of time (walk note item 5): the feet's point and where they are drawn
  * (`floor`, or `cab` inside the band's cab), `t_ms` after the walk's start. Inside a `walk` leg, the point at arc
  * length `length × (t − start) ÷ duration` along its polyline — uniform speed; inside a `stand` leg, its `at`; inside
- * a `cab` leg, its `at`, or along its step (`cabStep()`, card#12744) at uniform speed while it steps; before the first
+ * a `cab` leg, its `at`, or along its step (`cabStep()`, card#12744) at uniform speed while it steps; inside an `inside`
+ * leg (card#12786), its `at`, in the restroom door's recess; before the first
  * leg, the first leg's start; past the last leg, the last leg's end. The painter's glide and
  * its depth reconcile both read this one function from one time origin.
  *
  * @param {object} effect an A1 or A2 effect with `legs` and `frame_interval_ms`
  * @param {number} tMs milliseconds since the walk's start
- * @returns {{x: number, y: number, where: 'floor'|'cab', leg: number}|null} `null` for an effect with no legs
+ * @returns {{x: number, y: number, where: 'floor'|'cab'|'inside', leg: number}|null} `null` for an effect with no legs
  */
 export function pointAt(effect, tMs) {
     const legs = effect.legs ?? [];
@@ -625,7 +626,8 @@ export function pointAt(effect, tMs) {
     }
 
     const leg = legs[k];
-    const where = leg.kind === 'cab' ? 'cab' : 'floor';
+    // card#12786: an `inside` leg stands in the restroom door's recess, under its leaf (§ 6.7 item 4).
+    const where = leg.kind === 'cab' ? 'cab' : leg.kind === 'inside' ? 'inside' : 'floor';
 
     const step = leg.kind === 'cab' ? cabStep(leg) : null;
 

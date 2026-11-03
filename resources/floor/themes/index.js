@@ -19,6 +19,6 @@ export const THEMES = Object.freeze(['studio']);
 
 export const HOUSE_THEME = 'studio';
 
-export const KINDS = Object.freeze(['wall', 'accent', 'bookcase', 'plant', 'floor-lamp', 'armchair', 'cushion', 'book-pile', 'snack-table', 'snack-table-low']);
+export const KINDS = Object.freeze(['wall', 'accent', 'bookcase', 'plant', 'floor-lamp', 'armchair', 'cushion', 'book-pile', 'snack-table', 'snack-table-low', 'restroom-door']);
 
 export const API = Object.freeze(['band', 'windowSurround', 'elevatorSurround', 'clockCase', 'plane', 'scenery', 'chair', 'desk', 'monitorFrame', 'deskProps', 'sideTable', 'PALETTE', 'surfaces']);

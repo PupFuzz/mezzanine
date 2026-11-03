@@ -834,6 +834,12 @@ export const NOT_DRAWN_MEMBERS = Object.freeze({
         + "(`in-flight.js`'s `awayDesk()`)",
     snack_interns_held: "the interns' snack trips (§ 6.2 A25) — drawn by the scene as each intern's walker on the floor, never "
         + 'as a desk element; the stool it leaves draws empty',
+    // § 6.2 A26 (card#12786): the restroom break is drawn on the FLOOR, as a walker and the door, never on the desk.
+    restroom_held: "the seat's restroom break (§ 6.2 A26) — drawn by the scene as the break's walker on the floor and the "
+        + "restroom door's leaf and sign (`floor/scene.js`'s `restroomDoor()`), never as a desk element; the desk it leaves draws "
+        + 'its empty chair, every fact kept',
+    restroom_interns_held: "the interns' restroom breaks (§ 6.2 A26) — drawn by the scene as each intern's walker on the floor, "
+        + 'never as a desk element; the stool it leaves draws empty',
 });
 
 /**

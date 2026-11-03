@@ -365,29 +365,73 @@ export function snackSpotOffset(body) {
 }
 
 /**
- * card#12785 — THE DAY's ANCHOR BREAK of walker `key` (§ 6.6 item 4): `day × 86,400 + draw(key, 'snack-anchor:' + day) mod
- * 3600` — a seeded second in the first hour of UTC day `day` of the corrected server clock, under one minimum gap, so the
- * walkers of one floor do not all break at midnight. Absolute seconds.
+ * card#12786 — § 12's *Restroom door* (§ 6.7 item 2): the one standing kind of the restroom, and its tile's size — a door
+ * frame taller than the *Character rect*'s character with its sign plate above. The tile's rect is the obstacle the
+ * lattice blocks, read off the map like every standing tile's.
+ */
+export const RESTROOM_DOOR = Object.freeze({ kind: 'restroom-door', w: 64, h: 144 });
+
+/**
+ * card#12786 — § 12's *Restroom plates* (§ 6.7 item 2): the two rects the scene hands the theme with the door's tile, in
+ * the tile's px from its top-left — `sign`, the slider plate the painter draws the vacant / occupied field inside, and
+ * `plate`, the sign plate the theme draws the pictogram on. The theme draws the rims where the painter draws the field,
+ * whatever the theme, as the elevator's surround is handed its call plates.
+ */
+export const RESTROOM_PLATES = Object.freeze({
+    sign: Object.freeze({ x: 21, y: 58, w: 22, h: 12 }),
+    plate: Object.freeze({ x: 14, y: 2, w: 36, h: 18 }),
+});
+
+/**
+ * card#12786 — THE RECESS the painter clips an occupant to and draws the leaf over (§ 6.7 item 2): the door frame's opening,
+ * inside its jambs and under its head, down to the sill, in the tile's px — the house theme's frame (6 px jambs, a 10 px
+ * head under the sign plate, a 4 px sill), so the leaf fills what the frame leaves open.
+ */
+export const RESTROOM_RECESS = Object.freeze({ x: 6, y: 32, w: 52, h: 107 });
+
+/**
+ * card#12786 — § 12's *Restroom line* (§ 6.7 item 4): the one string every restroom walker carries in its thought bubble,
+ * the operator's words verbatim (2026-11-02, *"their thought bubble shows the status "Taking a restroom break""*). One
+ * string, no list, no seeded pick; [§ 5.4] records it by name as text the wire did not send.
+ */
+export const RESTROOM_LINE = 'Taking a restroom break';
+
+/**
+ * card#12786 — THE RESTROOM GAP (§ 12's *Restroom gap*, § 6.7 item 4): a walker's next restroom break begins a seeded
+ * number of seconds after its previous one BEGAN, uniform over this range — the operator's *"between 1-5 hours since their
+ * last restroom break"* (2026-11-02). Chosen; it carries no fact.
+ */
+export const RESTROOM_GAP_S = Object.freeze({ min: 3600, max: 18000 });
+
+/** § 12's *Restroom dwell* (card#12786): how long a visitor is inside, seeded per key and break. Chosen. */
+export const RESTROOM_DWELL_S = Object.freeze({ min: 90, max: 150 });
+
+/**
+ * card#12785 — THE DAY's ANCHOR BREAK of walker `key` (§ 6.6 item 4): `day × 86,400 + draw(key, '<prefix>-anchor:' + day)
+ * mod <the chain's minimum gap>` — a seeded second in the first hour of UTC day `day` of the corrected server clock, under
+ * one minimum gap, so the walkers of one floor do not all break at midnight. Absolute seconds. `chain` is the chain's
+ * field prefix and gap range — the snack chain's (`SNACK_CHAIN`, § 12's *Snack anchor*) unless named; card#12786's
+ * restroom chain is the same rule under `RESTROOM_CHAIN` (§ 12's *Restroom anchor*), one scheduler for both.
  *
  * @param {function(string, string): number} draw `resources/characters/seed.js`'s `draw()`
  */
-export function snackAnchor(draw, key, day) {
-    return day * SNACK_DAY_S + (draw(key, `snack-anchor:${day}`) % SNACK_GAP_S.min);
+export function snackAnchor(draw, key, day, chain = SNACK_CHAIN) {
+    return day * SNACK_DAY_S + (draw(key, `${chain.prefix}-anchor:${day}`) % chain.gap.min);
 }
 
-/** The chains already derived, per draw function and `<key> <day>` — a pure function's answers, kept small. */
+/** The chains already derived, per draw function and `<prefix> <key> <day>` — a pure function's answers, kept small. */
 const CHAINS = new WeakMap();
 
 /**
  * card#12785 — ONE WALKER's BREAKS IN ONE DAY OF THE CHAIN (§ 6.6 item 4): the start seconds from the day's anchor break
- * up to, and not including, the next day's — each the one before it plus a gap `SNACK_GAP_S.min + draw(key, 'snack-gap:'
- * + s) mod (hi − SNACK_GAP_S.min + 1)`, where `hi` is the least of `SNACK_GAP_S.max` and what still leaves one minimum gap
- * before the next anchor. So EVERY gap — inside a day and across the anchor into the next — lies in `SNACK_GAP_S`: the
- * steps far from the next anchor are uniform over the whole range, and only the last one or two of a day are narrowed so
- * the chain lands on the next day's anchor a whole gap later. One draw per break and two anchors a day, whatever the
- * hour asked about.
+ * up to, and not including, the next day's — each the one before it plus a gap `gap.min + draw(key, '<prefix>-gap:' + s)
+ * mod (hi − gap.min + 1)`, where `hi` is the least of `gap.max` and what still leaves one minimum gap before the next
+ * anchor. So EVERY gap — inside a day and across the anchor into the next — lies in the chain's range: the steps far from
+ * the next anchor are uniform over the whole range, and only the last one or two of a day are narrowed so the chain lands
+ * on the next day's anchor a whole gap later. One draw per break and two anchors a day, whatever the hour asked about.
+ * `chain` as `snackAnchor()`'s (card#12786).
  */
-export function snackDay(draw, key, day) {
+export function snackDay(draw, key, day, chain = SNACK_CHAIN) {
     let cache = CHAINS.get(draw);
 
     if (cache === undefined || cache.size > 512) {
@@ -395,16 +439,16 @@ export function snackDay(draw, key, day) {
         CHAINS.set(draw, cache);
     }
 
-    const id = `${key} ${day}`;
+    const id = `${chain.prefix} ${key} ${day}`;
 
     if (!cache.has(id)) {
-        const next = snackAnchor(draw, key, day + 1);
-        const starts = [snackAnchor(draw, key, day)];
+        const next = snackAnchor(draw, key, day + 1, chain);
+        const starts = [snackAnchor(draw, key, day, chain)];
 
-        for (let s = starts[0]; next - s > SNACK_GAP_S.max;) {
-            const hi = Math.min(SNACK_GAP_S.max, next - s - SNACK_GAP_S.min);
+        for (let s = starts[0]; next - s > chain.gap.max;) {
+            const hi = Math.min(chain.gap.max, next - s - chain.gap.min);
 
-            s += SNACK_GAP_S.min + (draw(key, `snack-gap:${s}`) % (hi - SNACK_GAP_S.min + 1));
+            s += chain.gap.min + (draw(key, `${chain.prefix}-gap:${s}`) % (hi - chain.gap.min + 1));
             starts.push(s);
         }
 
@@ -430,18 +474,40 @@ export function snackBreak(draw, key, start) {
 }
 
 /**
+ * card#12786 — ONE RESTROOM BREAK (§ 6.7 item 4): the break of walker `key` that begins at absolute second `start` — its
+ * dwell inside, `90 + draw(key, 'restroom-dwell:' + start) mod 61` seconds (§ 12's *Restroom dwell*). Its line is the one
+ * fixed string (`RESTROOM_LINE`), so it draws none.
+ */
+export function restroomBreak(draw, key, start) {
+    return Object.freeze({
+        start_s: start,
+        dwell_s: RESTROOM_DWELL_S.min + (draw(key, `restroom-dwell:${start}`) % (RESTROOM_DWELL_S.max - RESTROOM_DWELL_S.min + 1)),
+    });
+}
+
+/**
+ * THE TWO CHAINS OF BREAKS one scheduler derives (card#12785, card#12786): each its field prefix, its gap range and its
+ * one break's draw. The snack chain is § 12's *Snack anchor* and *Snack gap*; the restroom chain § 12's *Restroom anchor*
+ * and *Restroom gap*. A walker's two chains are independent draws over one key.
+ */
+export const SNACK_CHAIN = Object.freeze({ prefix: 'snack', gap: SNACK_GAP_S, at: snackBreak });
+
+export const RESTROOM_CHAIN = Object.freeze({ prefix: 'restroom', gap: RESTROOM_GAP_S, at: restroomBreak });
+
+/**
  * card#12785 — THE BREAKS of walker `key` whose start second lies in `[fromS, toS]`, oldest first (§ 6.6 item 4). A break
  * of day `d` begins at or after `d × 86,400` and before the next day's anchor, inside its first hour, so the days read are
  * the one before `fromS`'s and every day to `toS`'s — the chain is derived from an anchor at most a day and an hour back,
- * never replayed from a first break.
+ * never replayed from a first break. `chain` as `snackAnchor()`'s (card#12786): the restroom chain's breaks are
+ * `restroomBreak()`'s.
  */
-export function snackBreaks(draw, key, fromS, toS) {
+export function snackBreaks(draw, key, fromS, toS, chain = SNACK_CHAIN) {
     const out = [];
 
     for (let day = Math.floor(fromS / SNACK_DAY_S) - 1; day <= Math.floor(toS / SNACK_DAY_S); day++) {
-        for (const s of snackDay(draw, key, day)) {
+        for (const s of snackDay(draw, key, day, chain)) {
             if (s >= fromS && s <= toS) {
-                out.push(snackBreak(draw, key, s));
+                out.push(chain.at(draw, key, s));
             }
         }
     }
@@ -487,6 +553,123 @@ export function snackHome(effect, elapsedMs) {
     const walk = walkLeg(0, points.length === 1 ? Object.freeze([points[0], points[0]]) : points);
 
     return Object.freeze({ ...effect, leg_kind: 'snack-home', legs: Object.freeze([walk]), frames: walk.frames });
+}
+
+/**
+ * card#12786 — HOW OPEN A RESTROOM DOOR's LEAF IS at frame `f` of a leaf timeline (§ 6.7 item 4): 0 closed, 1 open, each
+ * move `{ start, frames, from, to }` stepping from `from` to `to` over its whole frames — the leaves' `steps()` — and the
+ * leaf closed before the first. A pure function of the timeline, read by the holder and the painter alike.
+ */
+export function leafLevel(leaf, f) {
+    let level = 0;
+
+    for (const m of leaf) {
+        if (f >= m.start + m.frames) {
+            level = m.to;
+        } else if (f >= m.start) {
+            level = m.from + (m.to - m.from) * (Math.floor(f - m.start) / m.frames);
+        }
+    }
+
+    return level;
+}
+
+/**
+ * card#12786 — A RESTROOM WALKER COMING OUT EARLY (§ 6.7 item 5): what a recall, or an A2 or A10 that takes the walker over,
+ * does at `elapsedMs` into its visit when the walker is AT THE DOOR — `null` while it is still on its way there (its walk
+ * out, its wait at a spot, its walk to the threshold) or already on its walk home, where it walks on from where it is. At
+ * the threshold while the leaf opens for it, it walks at once (`lead` 0) and the leaf finishes opening and closes behind
+ * it; inside, the field turns vacant now and the leaf opens from where it is — reversing a closing leaf from the frame it
+ * has reached (A24's precedent) — and the walker leaves the threshold when it is open (`lead` the frames that takes), the
+ * leaf closing behind it a step after. Frames from the instant asked about: `{ lead, at, leaf, free }`, `free` the frame
+ * the door is closed again and free for the next occupant.
+ */
+export function restroomExit(effect, elapsedMs) {
+    const D = ELEVATOR_DOOR;
+    const f = elapsedMs / effect.frame_interval_ms;
+    const atDoor = effect.legs.find((l) => l.kind === 'stand' && l.why === 'door');
+    const inside = effect.legs.find((l) => l.kind === 'inside');
+
+    if (atDoor === undefined || inside === undefined || f < atDoor.start || f >= inside.start + inside.frames) {
+        return null;
+    }
+
+    const level = leafLevel(effect.leaf, f);
+    const opening = Math.ceil((1 - level) * D.open - 1e-9);
+    const moves = (from) => (opening > 0 ? [Object.freeze({ start: 0, frames: opening, from: level, to: 1 })] : []).concat(
+        [Object.freeze({ start: from, frames: D.close, from: 1, to: 0 })]);
+
+    if (f < inside.start) {
+        const close = Math.max(opening, D.step);
+
+        return Object.freeze({ lead: 0, at: inside.at, leaf: Object.freeze(moves(close)), free: close + D.close });
+    }
+
+    return Object.freeze({ lead: opening, at: inside.at, leaf: Object.freeze(moves(opening + D.step)), free: opening + D.step + D.close });
+}
+
+/**
+ * card#12786 — THE WALK HOME FROM A RESTROOM VISIT on a recall (§ 6.7 item 5, the operator's *"Walk back"* of card#12749 as
+ * card#12785 applies it): from where the walker is at `elapsedMs` — on its way out or waiting at a spot, back the way it
+ * came; at the door, out first (`restroomExit()`), then its route home from the threshold; on its walk home, the rest of
+ * that route — as frame 0 of a new effect the holder starts at that instant, so no frame drawn moves. `leaf` is the exit's
+ * leaf timeline from that instant, or `null` where the walker was not at the door (its door's own timeline stands).
+ */
+export function restroomHome(effect, elapsedMs) {
+    const I = effect.frame_interval_ms;
+    const legs = effect.legs;
+    const home = legs[legs.length - 1];
+    const exit = restroomExit(effect, elapsedMs);
+    const here = pointAt(effect, elapsedMs);
+    const p = Object.freeze({ x: here.x, y: here.y });
+    const dedupe = (path) => Object.freeze(path.filter((q, i) => i === 0 || q.x !== path[i - 1].x || q.y !== path[i - 1].y).map((q) => Object.freeze({ x: q.x, y: q.y })));
+    // The vertices of a walk leg passed by `ms`, and the ones still ahead of it — `snackHome()`'s reading of a leg.
+    const split = (leg, ms) => {
+        const travelled = leg.length * Math.min(1, Math.max(0, (ms - leg.start * I) / (leg.frames * I)));
+        let at = 0;
+        const passed = [leg.points[0]];
+        const ahead = [];
+
+        for (let i = 1; i < leg.points.length; i++) {
+            at += Math.hypot(leg.points[i].x - leg.points[i - 1].x, leg.points[i].y - leg.points[i - 1].y);
+            (at <= travelled ? passed : ahead).push(leg.points[i]);
+        }
+
+        return { passed, ahead };
+    };
+    let out;
+
+    if (exit !== null) {
+        const walk = walkLeg(exit.lead, home.points);
+
+        out = exit.lead > 0 ? [Object.freeze({ kind: 'inside', start: 0, frames: exit.lead, at: exit.at }), walk] : [walk];
+    } else if (elapsedMs >= home.start * I) {
+        const path = dedupe([p, ...split(home, elapsedMs).ahead]);
+
+        out = [walkLeg(0, path.length === 1 ? Object.freeze([path[0], path[0]]) : path)];
+    } else {
+        // Back the way it came: every walk leg begun by now, the part walked, reversed from where it stands.
+        const walked = legs.filter((l) => l.kind === 'walk' && l.start * I <= elapsedMs).flatMap((l) => split(l, elapsedMs).passed);
+        const path = dedupe([p, ...walked.reverse()]);
+
+        out = [walkLeg(0, path.length === 1 ? Object.freeze([path[0], path[0]]) : path)];
+    }
+
+    const last = out[out.length - 1];
+
+    return Object.freeze({ ...effect, leg_kind: 'restroom-home', legs: Object.freeze(out), frames: last.start + last.frames, leaf: exit?.leaf ?? null, occupied: null });
+}
+
+/**
+ * WHERE A WALK THAT TAKES A TRIP OVER BEGINS (card#12749, § 6.6 item 5; card#12786, § 6.7 item 5): the point the trip's
+ * walker is at in this render's instant, and `lead`, the frames it first stands `inside` the restroom door while the leaf
+ * opens — 0 but for a restroom visit at the door (`restroomExit()`). `trip` is the holder's `{ effect, elapsed_ms }`.
+ */
+export function tripStart(trip) {
+    const exit = trip.effect.animation_id === 'A26' ? restroomExit(trip.effect, trip.elapsed_ms) : null;
+    const p = exit?.at ?? pointAt(trip.effect, trip.elapsed_ms);
+
+    return Object.freeze({ x: p.x, y: p.y, lead: exit?.lead ?? 0 });
 }
 
 /** Where every A1 and A2 walk meets the elevator: the leaves' seam, at their foot (§ 6.2's walk note item 3). */
@@ -808,8 +991,10 @@ function walkEffect(base, id, anchor, door, call, motion, character, box, walkin
     }
 
     // card#12749 (§ 6.6 item 5): an A2 that lands while the seat's snack trip is in flight walks from where the trip has
-    // the character at this render's instant (`start`), never from the desk.
+    // the character at this render's instant (`start`), never from the desk. card#12786 (§ 6.7 item 5): from a restroom
+    // visit at the door, it comes out first — `start.lead` frames `inside` at the threshold while the leaf opens.
     const [from, to] = id === 'A2' ? [start ?? anchor, door] : [door, anchor];
+    const lead = start?.lead ?? 0;
     const routed = walking.route(key, anchor, from, to);
 
     if (routed === null) {
@@ -828,10 +1013,10 @@ function walkEffect(base, id, anchor, door, call, motion, character, box, walkin
         const r = walking.route(key, anchor, a, b);
 
         return r === null ? null : { points: pointsOf(r, a, b), tier: r.tier };
-    }, { points, tier: routed.tier }, from, 0, door, call);
+    }, { points, tier: routed.tier }, from, lead, door, call);
     // A2 queues at the elevator (walk note item 9): drawn alone at the threshold here, re-timed by the holder.
     const drawn = id === 'A2'
-        ? departing([], way, walking.wait(key, base.cause), at)
+        ? departing(lead > 0 ? [Object.freeze({ kind: 'inside', start: 0, frames: lead, at: Object.freeze({ x: from.x, y: from.y }) })] : [], way, walking.wait(key, base.cause), at)
         : {
             queue: null,
             legs: Object.freeze([cab(0, D.open), Object.freeze({ kind: 'stand', start: D.open, frames: D.step, at, why: 'step' }), walkLeg(D.open + D.step, points)]),
@@ -1044,6 +1229,8 @@ export function buildScene(frame, input) {
     // card#12749 (§ 6.6 items 2 and 3): the snack corner's tables, read off the map by kind like every standing tile —
     // the client never finds a place for one — whether or not the theme draws them.
     const snackTables = [];
+    // card#12786 (§ 6.7 items 2 and 3): the restroom doors, read off the map by kind the same way.
+    const restroomDoors = [];
 
     grids.forEach((g, i) => {
         const extent = extents[i];
@@ -1061,6 +1248,10 @@ export function buildScene(frame, input) {
 
             if (SNACK_TABLES[c.kind] !== undefined && standing.includes(c.kind)) {
                 snackTables.push(Object.freeze({ id: `${g.install_id ?? ''}#${c.layer ?? ''}#${c.index}`, room: g.install_id, kind: c.kind, x: c.x, y: c.y, w: c.w, h: c.h, index: c.index }));
+            }
+
+            if (c.kind === RESTROOM_DOOR.kind && standing.includes(c.kind)) {
+                restroomDoors.push(Object.freeze({ id: `${g.install_id ?? ''}#${c.layer ?? ''}#${c.index}`, room: g.install_id, kind: c.kind, x: c.x, y: c.y, w: c.w, h: c.h, index: c.index }));
             }
         }
         const of = (kind) => tileRegions(cells.filter((c) => c.kind === kind))
@@ -1094,7 +1285,16 @@ export function buildScene(frame, input) {
                 continue;
             }
 
-            const doc = docOf(`theme:${theme.name}/scenery:${cell.kind}`, 'scenery', { kind: cell.kind, w: cell.w, h: cell.h, seed: g.seed, index: cell.index });
+            // card#12786: the restroom door's theme document is handed the slider's and the sign plate's rects (§ 12's
+            // *Restroom plates*), where the painter draws the field and the theme the rims.
+            const doc = docOf(`theme:${theme.name}/scenery:${cell.kind}`, 'scenery', {
+                kind: cell.kind,
+                w: cell.w,
+                h: cell.h,
+                seed: g.seed,
+                index: cell.index,
+                ...(cell.kind === RESTROOM_DOOR.kind ? RESTROOM_PLATES : {}),
+            });
 
             if (doc === null) {
                 continue;
@@ -1311,6 +1511,8 @@ export function buildScene(frame, input) {
         trips: input.trips_in_flight ?? new Map(),
     });
     const snack = snackCorner(snackTables, desks, models, anchors, walking, input, box);
+    // card#12786: the restroom door, beside the corner whose walkers and spot 0s it reads.
+    const restroom = restroomDoor(restroomDoors, snack, walking, input, box);
 
     // § 9 F14: every asset the scene asked to be drawn that the painter reported failed, and every
     // tileset that could not be fetched or read.
@@ -1353,6 +1555,9 @@ export function buildScene(frame, input) {
         // card#12749: the snack corner — its tables, every walker this scene could send to one, and the trip a walker
         // takes (`snackCorner()`); the holder (`floor/in-flight.js`) decides when, and keeps each trip it starts.
         snack,
+        // card#12786: the restroom — its doors, each with its threshold, and the visit a walker takes (`restroomDoor()`);
+        // the holder decides when, keeps each visit, and keeps each door's leaf and field.
+        restroom,
         loop_fps: LOOP_FPS,
     });
 }
@@ -1432,6 +1637,8 @@ function snackCorner(tables, desks, models, anchors, walking, input, box) {
             // The held field left A25's values and the desk still draws its character: a trip in flight walks it home.
             recalled: model.character === true && (model.snack_held ?? null) === null,
             busy: model.render_state?.value === 'working',
+            // card#12786: the restroom break's hold (A26), read off its own half as `eligible` is off A25's.
+            restroom_eligible: model.restroom_held?.motion === true,
         }));
 
         for (const stool of model.side_table?.stools ?? []) {
@@ -1451,12 +1658,16 @@ function snackCorner(tables, desks, models, anchors, walking, input, box) {
                 eligible: SNACK_HELD.includes(stool.activity) && model.snack_interns_held?.motion === true,
                 recalled: !SNACK_HELD.includes(stool.activity),
                 busy: stool.activity === 'working',
+                restroom_eligible: SNACK_HELD.includes(stool.activity) && model.restroom_interns_held?.motion === true,
             }));
         }
     }
 
-    const plan = (w, schedule, taken) => {
+    // `from`: card#12786 (§ 6.7 item 7) — a break handed over from the walker's restroom visit walks from the threshold,
+    // not from the anchor; its walk home is to the anchor all the same.
+    const plan = (w, schedule, taken, from = null) => {
         const visitor = w.kind;
+        const start = from ?? w.anchor;
         const mine = ordered.filter((t) => SNACK_TABLES[t.kind].visitor === visitor);
 
         if (mine.length === 0 || reduce || draw === null || w.anchor === null) {
@@ -1478,7 +1689,7 @@ function snackCorner(tables, desks, models, anchors, walking, input, box) {
 
         for (const t of mine) {
             const s0 = spots(t)(0);
-            const r = s0 === null ? null : routed(w.anchor, s0.at);
+            const r = s0 === null ? null : routed(start, s0.at);
 
             if (r !== null && (best === null || polylineLength(r.points) < polylineLength(best.r.points))) {
                 best = { t, r };
@@ -1496,11 +1707,11 @@ function snackCorner(tables, desks, models, anchors, walking, input, box) {
                 return Object.freeze({ full: true });
             }
 
-            if (taken.some((o) => (o.table === best.t.id && o.index === k) || Math.hypot(o.at.x - s.at.x, o.at.y - s.at.y) < Math.max(o.spacing, spacing))) {
+            if (spotTaken(taken, best.t.id, k, s.at, spacing)) {
                 continue;
             }
 
-            const there = k === 0 ? best.r : routed(w.anchor, s.at);
+            const there = k === 0 ? best.r : routed(start, s.at);
             const home = there === null ? null : routed(s.at, w.anchor);
 
             if (home === null) {
@@ -1557,6 +1768,237 @@ function snackCorner(tables, desks, models, anchors, walking, input, box) {
             const t = ordered.find((x) => x.id === tableId);
 
             return t === undefined ? null : spots(t)(k);
+        },
+    });
+}
+
+/**
+ * WHETHER SPOT `k` OF CORNER `id`, standing at `at` for a visitor whose spacing is `spacing`, is TAKEN by a trip in flight
+ * (card#12749; card#12786's one `taken` set across the snack corner and the restroom door, § 6.7 item 3 rule 2): another
+ * visitor stands on it, walks to it, or stands within the larger of the two spacings of it.
+ */
+function spotTaken(taken, id, k, at, spacing) {
+    return taken.some((o) => (o.table === id && o.index === k) || Math.hypot(o.at.x - at.x, o.at.y - at.y) < Math.max(o.spacing, spacing));
+}
+
+/** A plan's answer past the last waiting spot the floor holds (card#12786): no visit for that break. */
+const NO_SPOT = Object.freeze({ full: true });
+
+/**
+ * card#12786 — THE RESTROOM DOOR OF ONE SCENE (FLOOR.md § 6.7 items 2–5): `doors`, the map's restroom doors, each with its
+ * threshold (`null` where none is open) and the rects the painter draws its leaf, its field and its occupant at; `schedule
+ * (key, fromS, toS)`, the walker's restroom chain (`snackBreaks()` under `RESTROOM_CHAIN`); `thought(effect)`, the restroom
+ * line's bubble over a visit's walker; `spot(doorId, k)`; and `plan(walker, break, { from, taken, turn })`, the visit —
+ * `turn(doorId)` the frame, from the visit's start, the door is free for it.
+ *
+ * The walkers are the snack corner's (`snack.walkers`), each with its `restroom_eligible` hold. `plan()` answers `null`
+ * where the floor holds no door (or reduced motion, or no seeded draw), `{ no_route }` where no door's threshold can be
+ * reached, `{ full }` where the walker must wait and no waiting spot is free, and otherwise the visit's effect: the door
+ * nearest by route length from where it sets off (ties by room, then tile); and its legs from the visit's own start —
+ * `walk` to the threshold where the door is free when it arrives (`turn()`, the frame the door frees, at or before its
+ * arrival), else `walk` to the lowest waiting spot no trip in `taken` holds, `stand` there (`wait`) until `turn`, and `walk`
+ * the spot's path to the threshold; then `stand` at the threshold while the leaf opens (`door`), `inside` through the
+ * closing, the dwell and the opening, and `walk` home. With it, the door's leaf timeline (`leaf`), the field's occupied
+ * frames (`occupied`) and the frames the door is held (`claim`), all in the visit's frames. Spots past the threshold are
+ * `spotsNear()`'s at § 12's *Queue spacing* on the SEAT's lattice, clear of both snack spot 0s.
+ */
+function restroomDoor(doors, snack, walking, input, box) {
+    const draw = typeof input.draw === 'function' ? input.draw : null;
+    const reduce = input.reduce === true;
+    const character = input.character;
+    const D = ELEVATOR_DOOR;
+    const seat = walkerSize(character);
+    const grid = doors.length === 0 ? null : walking.grid(seat);
+    const spacing = queueSpacing(character);
+    const ordered = [...doors].sort((a, b) => ((a.room ?? '') < (b.room ?? '') ? -1 : (a.room ?? '') > (b.room ?? '') ? 1 : a.index - b.index));
+    // § 12's *Restroom threshold*: under the door's centre, *Walker clearance*'s depth plus 1 px below its foot, snapped to
+    // its cell on the seat's lattice; where that cell is not open at `clear`, the nearest cell on its row that is, its
+    // centre within the door's width, ties to the left; none, no threshold.
+    const clearAt = (c) => {
+        const centre = cellCentre(grid, c);
+
+        return blockedFor(grid, { key: null, anchor: centre }, CLEARANCE_TIERS[0])[c[1] * grid.cols + c[0]] === 0;
+    };
+    const thresholdOf = (d) => {
+        const under = grid === null ? null : cellAt(grid, { x: d.x + d.w / 2, y: d.y + d.h + CLEARANCE.depth + 1 });
+
+        if (under === null) {
+            return null;
+        }
+
+        const mid = d.x + d.w / 2;
+        const row = [];
+
+        for (let col = 0; col < grid.cols; col++) {
+            const centre = cellCentre(grid, [col, under[1]]);
+
+            if (centre.x >= d.x && centre.x < d.x + d.w) {
+                row.push({ c: [col, under[1]], centre });
+            }
+        }
+
+        row.sort((a, b) => Math.abs(a.centre.x - mid) - Math.abs(b.centre.x - mid) || a.centre.x - b.centre.x);
+
+        const first = clearAt(under) ? { centre: cellCentre(grid, under) } : row.find((r) => clearAt(r.c)) ?? null;
+
+        return first === null ? null : Object.freeze({ x: first.centre.x, y: first.centre.y });
+    };
+    const clear = snack.tables.map((t) => snack.spot(t.id, 0)?.at ?? null).filter((p) => p !== null);
+    const at = (d, r) => Object.freeze({ x: d.x + r.x, y: d.y + r.y, w: r.w, h: r.h });
+    const placed = ordered.map((d) => Object.freeze({
+        ...d,
+        threshold: thresholdOf(d),
+        sign: at(d, RESTROOM_PLATES.sign),
+        plate: at(d, RESTROOM_PLATES.plate),
+        recess: at(d, RESTROOM_RECESS),
+    }));
+    const spotsOf = new Map();
+    const spots = (d) => {
+        if (!spotsOf.has(d.id)) {
+            spotsOf.set(d.id, d.threshold === null ? () => null : spotsNear(grid, d.threshold, spacing, clear));
+        }
+
+        return spotsOf.get(d.id);
+    };
+
+    const plan = (w, brk, { from = null, taken = [], turn = () => 0 } = {}) => {
+        const usable = placed.filter((d) => d.threshold !== null);
+
+        if (placed.length === 0 || reduce || draw === null || w.anchor === null) {
+            return null;
+        }
+
+        const body = w.kind === 'seat' ? seat : INTERN_SIZE;
+        const start = from ?? w.anchor;
+        const routed = (a, b) => {
+            const r = walking.route(w.seat_key, w.anchor, a, b, body);
+
+            return r === null ? null : { points: Object.freeze([a, ...r.cells.map((c) => walking.centre(c)), b].map((q) => Object.freeze({ x: q.x, y: q.y }))), tier: r.tier };
+        };
+        let best = null;
+
+        for (const d of usable) {
+            const r = routed(w.anchor, d.threshold);
+
+            if (r !== null && (best === null || polylineLength(r.points) < polylineLength(best.r.points))) {
+                best = { d, r };
+            }
+        }
+
+        if (best === null) {
+            return Object.freeze({ no_route: true });
+        }
+
+        const d = best.d;
+        const thr = d.threshold;
+        const direct = from === null ? best.r : routed(start, thr);
+        const back = routed(thr, w.anchor);
+
+        if (direct === null || back === null) {
+            return Object.freeze({ no_route: true });
+        }
+
+        const stand = (from_, frames, where, why) => Object.freeze({ kind: 'stand', start: from_, frames, at: where, why });
+        const walkOut = walkLeg(0, direct.points);
+        // The frame, from the visit's start, the door is free for this visitor (the holder's: every visit admitted to it
+        // before this one has freed it).
+        const free = turn(d.id);
+        let lead;
+        let spot;
+        let tier = direct.tier;
+
+        if (free <= walkOut.frames) {
+            lead = [walkOut];
+            spot = Object.freeze({ table: d.id, index: 0, at: thr, spacing });
+        } else {
+            let found = null;
+
+            for (let k = 1; found === null; k++) {
+                const s = spots(d)(k);
+
+                if (s === null) {
+                    return NO_SPOT;
+                }
+
+                if (spotTaken(taken, d.id, k, s.at, spacing)) {
+                    continue;
+                }
+
+                const there = routed(start, s.at);
+
+                if (there !== null) {
+                    found = { k, s, there };
+                }
+            }
+
+            const out = walkLeg(0, found.there.points);
+            const leave = Math.max(out.frames, free);
+            const board = walkLeg(leave, found.s.path);
+
+            lead = [out, stand(out.frames, leave - out.frames, found.s.at, 'wait'), board];
+            spot = Object.freeze({ table: d.id, index: found.k, at: found.s.at, spacing });
+            tier = CLEARANCE_TIERS[Math.max(CLEARANCE_TIERS.indexOf(tier), CLEARANCE_TIERS.indexOf(found.there.tier))];
+        }
+
+        const reached = lead[lead.length - 1];
+        const atDoor = stand(reached.start + reached.frames, D.open, thr, 'door');
+        const dwell = brk.dwell_s * LOOP_FPS;
+        const inside = Object.freeze({ kind: 'inside', start: atDoor.start + D.open, frames: D.close + dwell + D.open, at: thr });
+        const home = walkLeg(inside.start + inside.frames, back.points);
+        const legs = Object.freeze([...lead, atDoor, inside, home]);
+        const intern = w.kind === 'intern';
+
+        return Object.freeze({
+            animation_id: 'A26',
+            ...form('A26', false),
+            cause: null,
+            install_id: w.install_id,
+            seat_id: w.seat_id,
+            ...(intern
+                ? { intern_key: w.key, call_id: w.call_id, intern_seat_key: w.intern_seat_key, seat_species: w.seat_species, slot: w.slot }
+                : { species: w.species }),
+            walker_key: w.key,
+            leg_kind: 'restroom',
+            start_s: brk.start_s,
+            dwell_s: brk.dwell_s,
+            restroom: d.id,
+            threshold: thr,
+            spot,
+            anchor: w.anchor,
+            route: 'routed',
+            clearance: CLEARANCE_TIERS[Math.max(CLEARANCE_TIERS.indexOf(tier), CLEARANCE_TIERS.indexOf(back.tier))],
+            lattice_key: walking.key,
+            size: body,
+            frame: intern ? Object.freeze({ w: STOOL_FRAME, h: STOOL_H }) : Object.freeze((({ w: fw, h: fh }) => ({ w: fw, h: fh }))(characterOverdraw(box, character).overdraw)),
+            frame_interval_ms: 1000 / LOOP_FPS,
+            door: null,
+            side: null,
+            legs,
+            // The door's leaf (§ 12's *Restroom door motion*, the elevator's leaves' frames): opening as the walker
+            // arrives at the threshold, closing over it, opening when the dwell ends, closing a step after it walks away.
+            leaf: Object.freeze([
+                Object.freeze({ start: atDoor.start, frames: D.open, from: 0, to: 1 }),
+                Object.freeze({ start: inside.start, frames: D.close, from: 1, to: 0 }),
+                Object.freeze({ start: inside.start + D.close + dwell, frames: D.open, from: 0, to: 1 }),
+                Object.freeze({ start: home.start + D.step, frames: D.close, from: 1, to: 0 }),
+            ]),
+            // The field reads occupied from the closing's end through the dwell (§ 6.7 item 4).
+            occupied: Object.freeze({ start: inside.start + D.close, frames: dwell }),
+            // The door is held from the threshold stand's first frame to the leaf's close behind the walker.
+            claim: Object.freeze({ start: atDoor.start, end: home.start + D.step + D.close }),
+            frames: home.start + home.frames,
+        });
+    };
+
+    return Object.freeze({
+        doors: Object.freeze(placed),
+        schedule: (key, fromS, toS) => (draw === null ? [] : snackBreaks(draw, key, fromS, toS, RESTROOM_CHAIN)),
+        thought: (effect) => snackThought(RESTROOM_LINE, input.measure, effect),
+        plan,
+        spot: (doorId, k) => {
+            const d = placed.find((x) => x.id === doorId);
+
+            return d === undefined ? null : spots(d)(k);
         },
     });
 }
@@ -2381,13 +2823,13 @@ function internWalks(row, base, frame, interns, band, moving, character, box, wa
         // card#12749 (§ 6.6 item 5): an intern whose snack trip is in flight leaves from where the trip has it at this
         // render's instant — routed from that point by the low call plate, as item 16's turn-round routes from mid-walk.
         if (trip !== null && door !== null) {
-            const p = pointAt(trip.effect, trip.elapsed_ms);
-            const here = Object.freeze({ x: p.x, y: p.y });
+            // card#12786 (§ 6.7 item 5): from a restroom visit at the door, out first (`tripStart()`'s `lead`).
+            const { lead, ...here } = tripStart(trip);
             const r = routed(fx, here, door);
 
             if (r !== null) {
-                const way = wayOut((a, b) => routed(fx, a, b), r, here, 0, door, call);
-                const gone = departing([], way, walking.wait(fx.intern_key, row.cause), sill);
+                const way = wayOut((a, b) => routed(fx, a, b), r, here, lead, door, call);
+                const gone = departing(lead > 0 ? [Object.freeze({ kind: 'inside', start: 0, frames: lead, at: Object.freeze({ ...here }) })] : [], way, walking.wait(fx.intern_key, row.cause), sill);
 
                 out.push(done({ ...fx, from_trip: true }, gone.legs, gone.door, way.tier, gone.queue));
             }
@@ -2726,12 +3168,12 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce, char
             // card#12443: the walker wears the seat's delivered body, read off the desk model this render holds.
             const species = key === null ? null : frame.desks.desks[key]?.species ?? null;
 
-            // card#12749: an A2 over a snack trip in flight starts where the trip has the character now.
+            // card#12749: an A2 over a snack trip in flight starts where the trip has the character now — card#12786: or
+            // over a restroom visit at the door, at the threshold once the leaf has opened (`tripStart()`).
             const trip = id === 'A2' && key !== null ? interns.trips.get(key) ?? null : null;
-            const at = trip === null ? null : pointAt(trip.effect, trip.elapsed_ms);
 
             effects.push(walkEffect({ ...base, species }, id, now, threshold(band), callPoint(band, character, 'main'), motion && !reduce, character, box, walking,
-                at === null ? null : Object.freeze({ x: at.x, y: at.y })));
+                trip === null ? null : tripStart(trip)));
 
             continue;
         }

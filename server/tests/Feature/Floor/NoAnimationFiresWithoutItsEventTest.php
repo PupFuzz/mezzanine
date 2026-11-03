@@ -68,9 +68,11 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
 
         $side = $this->documentSideTableRow();
         $snack = $this->documentSnackRow();
+        $restroom = $this->documentRestroomRow();
 
         $this->assertNotNull($side, '§ 6.2 carries no side-table row in the form this check reads');
         $this->assertNotNull($snack, '§ 6.2 carries no snack row (A25) in the form this check reads');
+        $this->assertNotNull($restroom, '§ 6.2 carries no restroom row (A26) in the form this check reads');
 
         foreach ($this->snapshotSeats('instrument') as $key => $seat) {
             $expected[$key] = $this->heldRowFor($seat);
@@ -83,6 +85,11 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
             foreach ($this->snackHalvesFor($seat) as $half) {
                 $expected["{$key}{$half}"] = $snack;
             }
+
+            // § 6.2 A26 (card#12786): each half of the restroom break the object holds, beside A25's.
+            foreach ($this->restroomHalvesFor($seat) as $half) {
+                $expected["{$key}{$half}"] = $restroom;
+            }
         }
 
         $this->assertNotContains(null, $expected,
@@ -93,12 +100,14 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
         foreach ($rows as $row) {
             $this->assertSame('entered', $row['phase']);
             $seatKey = "{$row['install_id']}/{$row['seat_id']}";
-            // The log row names no half of A25 (§ 11's schema is unchanged); the set enters the seat's half before its
-            // interns', so a seat's first A25 row is `~snack` where its own object holds that half.
+            // The log row names no half of A25 or A26 (§ 11's schema is unchanged); the set enters the seat's half before its
+            // interns', so a seat's first A25 row is `~snack` where its own object holds that half, and A26's `~restroom`.
             $suffix = match (true) {
                 $row['animation_id'] === $side => '~interns',
                 $row['animation_id'] === $snack => in_array('~snack', $this->snackHalvesFor($this->snapshotSeats('instrument')[$seatKey]), true)
                     && ! isset($actual["{$seatKey}~snack"]) ? '~snack' : '~snack-interns',
+                $row['animation_id'] === $restroom => in_array('~restroom', $this->restroomHalvesFor($this->snapshotSeats('instrument')[$seatKey]), true)
+                    && ! isset($actual["{$seatKey}~restroom"]) ? '~restroom' : '~restroom-interns',
                 default => '',
             };
             $actual["{$seatKey}{$suffix}"] = $row['animation_id'];
@@ -438,6 +447,15 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
                     $given = $this->precedenceGives($run, $render, $previous, $entry, '~snack-interns') ?? $given;
                 }
 
+                // A26's two halves (card#12786), the same way.
+                if ($entry['animation_id'] === $this->documentRestroomRow()) {
+                    $given = $this->precedenceGives($run, $render, $previous, $entry, '~restroom');
+
+                    if ($given === null || $given[1] !== $row['cause']) {
+                        $given = $this->precedenceGives($run, $render, $previous, $entry, '~restroom-interns') ?? $given;
+                    }
+                }
+
                 $this->assertNotNull($given,
                     "[{$run}] {$row['animation_id']} on {$key} was left at {$render['at']} ms, in a render where no step of § 11's "
                     .'precedence applies — that render ended no episode, so the row reds whatever it names ('.json_encode($row['cause']).')');
@@ -498,6 +516,9 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
         // half, which the empty chair of row 5 takes away as it takes the desk's row, and the interns' half, which it
         // does not (A23's precedent). The log row names neither, so each half the object holds is asked in turn.
         $snack = $entry['animation_id'] === $this->documentSnackRow();
+        // A restroom episode (§ 6.2 A26, card#12786) is held the same way, under `~restroom` and `~restroom-interns`.
+        $restroom = $entry['animation_id'] === $this->documentRestroomRow();
+        $stem = $snack ? 'snack' : 'restroom';
 
         if ($held === null) {
             // (1): the removal's answer, § 2.3 row 4's `snapshot` or the retired object's version.
@@ -523,7 +544,7 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
         // (2a): the object held now, drawn with row 5's condition at its previous value — a
         // missing seat draws the empty chair, which holds no row.
         $row = match (true) {
-            $snack => ($half === '~snack' && $was['missing']) || ! in_array($half, $this->snackHalvesFor($object), true) ? null : $entry['animation_id'],
+            $snack, $restroom => ($half === "~{$stem}" && $was['missing']) || ! in_array($half, $this->breakHalvesFor($stem, $object), true) ? null : $entry['animation_id'],
             $sideTable => $this->sideTableRowFor($object),
             default => $was['missing'] ? null : $this->heldRowFor($object),
         };
@@ -540,7 +561,7 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
             $motion = match (true) {
                 $previous['stilled'] => false,
                 $render['stilled'] === $previous['stilled'] => $render['frame']['desks'][$key][match (true) {
-                    $snack => $half === '~snack' ? 'snack_held' : 'snack_interns_held',
+                    $snack, $restroom => $half === "~{$stem}" ? "{$stem}_held" : "{$stem}_interns_held",
                     $sideTable => 'interns_held',
                     default => 'held',
                 }]['motion'] ?? null,

@@ -85,6 +85,16 @@ export const PALETTE = Object.freeze({
         cup: '#fffaf0',
         band: '#e0a43a',
     }),
+    // card#12786: the restroom door — its frame, the pediment and sill, the dark recess the open doorway shows, the sign
+    // plate and the slider's rim. The leaf and the field are the painter's, never drawn here.
+    'restroom-door': Object.freeze({
+        frame: '#c48d5c',
+        pediment: '#f6e7d2',
+        sill: '#a8714a',
+        recess: '#281c27',
+        plate: '#fffaf0',
+        rim: '#f6e7d2',
+    }),
 });
 
 /**
@@ -761,13 +771,14 @@ export function surfaces() {
 /**
  * A STANDING SCENERY PIECE (§ 10.6 item 6), at its tile's cell rect, its foot on the cell's floor line,
  * sized by the cell: `bookcase`, `plant`, `floor-lamp`, `armchair`, `cushion`, `book-pile`, or one of the snack
- * corner's two tables, `snack-table` and `snack-table-low` (card#12749, `snackTable()`). The floor
+ * corner's two tables, `snack-table` and `snack-table-low` (card#12749, `snackTable()`), or the restroom's door,
+ * `restroom-door` (card#12786, `restroomDoor()`), which the scene hands its `sign` and `plate` rects as well. The floor
  * lamp's light is § 6.3's decorative glow, the painter's; the theme draws no glow of its own.
  *
  * @param {{kind: string, w: number, h: number, seed: string, index: number}} input the kind, the cell's size,
  *        the grid's seed and the cell's index
  */
-export function scenery({ kind, w, h, seed, index }) {
+export function scenery({ kind, w, h, seed, index, sign = null, plate = null }) {
     finite(w, h);
 
     const pen = new Pen();
@@ -858,9 +869,51 @@ export function scenery({ kind, w, h, seed, index }) {
         s.push(shadow(pen, cx + 2, foot, w * 0.4, 2.5, 0.28) + rimmed(m.join('')));
     } else if (kind === 'snack-table' || kind === 'snack-table-low') {
         s.push(snackTable(pen, SNACK[kind], w, foot));
+    } else if (kind === 'restroom-door') {
+        s.push(restroomDoor(pen, w, foot, sign, plate));
     }
 
     return doc(pen, w, h, s.join(''));
+}
+
+/**
+ * THE RESTROOM DOOR (card#12786, FLOOR.md § 6.7 item 2), its foot on the cell's floor line: a wooden door FRAME face-on —
+ * 6 px jambs, a 10 px head under a small cream pediment, a 4 px sill — and inside it the dark RECESS of an open doorway;
+ * above it the SIGN PLATE at `plate`, a cream rounded plate carrying the restroom pictogram — two round-headed figures side
+ * by side, one in a triangle skirt, in the line colour — and at `sign` the slider plate's RIM. No leaf: the doorway is drawn
+ * open and empty, and the painter draws the leaf over it and the vacant / occupied field inside the rim. No text, no
+ * light, nothing that moves. `sign` and `plate` are the scene's (§ 12's *Restroom plates*), in the cell's px; a rect not
+ * handed is not drawn.
+ */
+function restroomDoor(pen, w, foot, sign, plate) {
+    const P = PALETTE['restroom-door'];
+    const top = 22;
+    const out = [shadow(pen, w / 2 + 2, foot, w * 0.5, 3, 0.28)];
+
+    // the frame: the head and the jambs round the recess, the pediment over the head, the sill at the foot
+    out.push(rimmed(`<path d="${rr(0, top, w, foot - top, 2)}" fill="${pen.face(P.frame, 0.2, 0.18)}" stroke="${line(P.frame)}" stroke-width=".9"/>`
+        + `<path d="${rr(6, top + 10, w - 12, foot - top - 14, 1)}" fill="${pen.v([[0, P.recess], [1, shade(P.recess, 0.3)]])}"/>`
+        + `<path d="${rr(-1, top - 4, w + 2, 6, 2)}" fill="${pen.face(P.pediment, 0.15, 0.2)}" stroke="${line(P.pediment)}" stroke-width=".7"/>`
+        + `<path d="${rr(-1, foot - 4, w + 2, 4, 1)}" fill="${pen.face(P.sill, 0.2, 0.15)}" stroke="${line(P.sill)}" stroke-width=".6"/>`));
+
+    if (plate !== null) {
+        const { x, y, w: pw, h: ph } = plate;
+        const ink = RULES.line;
+        const fig = (cx, skirt) => `<circle cx="${f(cx)}" cy="${f(y + ph * 0.3)}" r="${f(ph * 0.14)}" fill="${ink}"/>`
+            + (skirt
+                ? `<path d="M${f(cx)} ${f(y + ph * 0.46)}L${f(cx + ph * 0.24)} ${f(y + ph * 0.86)}H${f(cx - ph * 0.24)}Z" fill="${ink}"/>`
+                : `<path d="${rr(cx - ph * 0.12, y + ph * 0.46, ph * 0.24, ph * 0.4, ph * 0.08)}" fill="${ink}"/>`);
+
+        out.push(rimmed(`<path d="${rr(x, y, pw, ph, 4)}" fill="${pen.face(P.plate, 0.12, 0.2)}" stroke="${line(P.plate)}" stroke-width=".7"/>`
+            + fig(x + pw * 0.36, false) + fig(x + pw * 0.64, true)));
+    }
+
+    if (sign !== null) {
+        out.push(`<path d="${rr(sign.x - 1.5, sign.y - 1.5, sign.w + 3, sign.h + 3, 3)}" fill="none" stroke="${P.rim}" stroke-width="2"/>`
+            + `<path d="${rr(sign.x - 2.5, sign.y - 2.5, sign.w + 5, sign.h + 5, 3.5)}" fill="none" stroke="${line(P.rim)}" stroke-width=".6"/>`);
+    }
+
+    return out.join('');
 }
 
 /**
