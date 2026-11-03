@@ -192,7 +192,10 @@ function documents(o) {
     out.push(['a hallway grid', 'plane', { w: 1576, h: 96, seed: 'aimla', desks: [], walls: [], accents: [], cell: { w: 8, h: 8 }, band_foot: false, threshold: null }]);
 
     for (const c of cells.filter((c) => c.kind !== null && !o.scene.PLANE_KINDS.includes(c.kind))) {
-        out.push([`default room scenery ${c.kind} at ${c.x},${c.y}`, 'scenery', { kind: c.kind, w: c.w, h: c.h, seed: 'default', index: c.index }]);
+        // card#12786: the restroom door is handed its plates' rects, as the scene hands them (`RESTROOM_PLATES`).
+        const plates = c.kind === o.scene.RESTROOM_DOOR.kind ? o.scene.RESTROOM_PLATES : {};
+
+        out.push([`default room scenery ${c.kind} at ${c.x},${c.y}`, 'scenery', { kind: c.kind, w: c.w, h: c.h, seed: 'default', index: c.index, ...plates }]);
     }
 
     for (const tile of tiles) {

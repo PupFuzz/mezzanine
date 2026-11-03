@@ -49,7 +49,7 @@
 
 import { BUBBLE_PAD, FONT, FONT_NAME, FONT_SCREEN, STOOL_GLYPH, TYPE_ROLES, characterAsset } from './desk-layout.js';
 import { SKY_PAINT } from './floor-layout.js';
-import { ELEVATOR_DOOR } from './scene.js';
+import { ELEVATOR_DOOR, leafLevel } from './scene.js';
 import { cabStep, floorStackOrder, pointAt } from './route.js';
 import { BIRD_LIFT, arcPath, birdShapes, birdhouseShapes, envelopeShapes, legShapes, ringShapes, standingLegShapes, stillNotes } from './bird.js';
 import { RENDER_STATES } from '../lobby/render-state.js';
@@ -116,7 +116,12 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 .plate{fill:var(--scene-plate);stroke:var(--scene-plate-edge)}
 .facts-plate{fill:var(--scene-plate);stroke:var(--scene-plate-edge);stroke-opacity:.35}
 .gauge-track{fill:var(--scene-gauge-track)}.gauge-fill{fill:var(--scene-gauge-fill)}
-.bubble{fill:var(--scene-paper);stroke:var(--scene-trim)}.snack-thought-text{font-style:italic}.bubble-trail{fill:var(--scene-paper);stroke:var(--scene-trim)}.bubble-source{fill:var(--scene-bubble-source)}
+.bubble{fill:var(--scene-paper);stroke:var(--scene-trim)}.snack-thought-text{font-style:italic}
+.restroom-leaf{transform-box:fill-box;transform-origin:left center}.restroom-leaf rect{fill:var(--door);stroke:var(--door-edge);stroke-width:1.5}.restroom-leaf circle{fill:var(--lamp-dim)}
+${[0, 1, 2, 3, 4].map((n) => `@keyframes restroom-leaf-${n}{from{transform:scaleX(${1 - (n / 4) * 0.88})}to{transform:scaleX(${1 - (n / 4) * 0.88})}}`).join('')}
+.restroom-vacant rect{fill:var(--restroom-vacant)}.restroom-occupied rect{fill:var(--restroom-occupied)}.restroom-field-mark{fill:none;stroke:var(--scene-paper);stroke-width:1.6}
+.restroom-occupied{opacity:0;animation-fill-mode:none}.restroom-vacant{animation-fill-mode:none}
+@keyframes restroom-hide{from{opacity:0}to{opacity:0}}.bubble-trail{fill:var(--scene-paper);stroke:var(--scene-trim)}.bubble-source{fill:var(--scene-bubble-source)}
 .lighting-dimmed{opacity:.72}.lighting-dark{opacity:.45}.lighting-desaturated{filter:saturate(.3)}
 .strip-header{font-weight:bold}
 .decor{fill:var(--lamp);opacity:.25}.decor-moving{animation:decor ease-in-out infinite alternate}
@@ -216,14 +221,20 @@ export function measurer() {
     };
 }
 
+/** The break rows drawn as a walker: A25's snack trip (card#12749) and A26's restroom visit (card#12786). */
+const BREAKS = Object.freeze(['A25', 'A26']);
+
 /**
  * The § 6.2 rows drawn as a walker (card#9566, card#12194) — and a seat's snack trip, A25's drawing (card#12749), which
- * is a walk out, a stand and a walk home on the same primitive.
+ * is a walk out, a stand and a walk home on the same primitive, and its restroom visit, A26's (card#12786).
  */
-const isWalk = (fx) => fx.animation_id === 'A1' || fx.animation_id === 'A2' || (fx.animation_id === 'A25' && typeof fx.intern_key !== 'string');
+const isWalk = (fx) => fx.animation_id === 'A1' || fx.animation_id === 'A2' || (BREAKS.includes(fx.animation_id) && typeof fx.intern_key !== 'string');
 
-/** An intern's A10 walk (card#12450), and an intern's snack trip (card#12749): drawn as a walker too, keyed by its intern key. */
-const isInternWalk = (fx) => (fx.animation_id === 'A10' || fx.animation_id === 'A25') && typeof fx.intern_key === 'string';
+/**
+ * An intern's A10 walk (card#12450), and an intern's snack trip (card#12749) or restroom visit (card#12786): drawn as a
+ * walker too, keyed by its intern key.
+ */
+const isInternWalk = (fx) => (fx.animation_id === 'A10' || BREAKS.includes(fx.animation_id)) && typeof fx.intern_key === 'string';
 
 /**
  * One continuous motion's identity across paints (card#12345, card#12194). A bird flight: its row, its post, its leg
@@ -234,8 +245,8 @@ const isInternWalk = (fx) => (fx.animation_id === 'A10' || fx.animation_id === '
 function effectKey(fx) {
     // card#12749: one trip per walker per break (card#12785: a break is its start second), and its walk home a motion of
     // its own.
-    if (fx.animation_id === 'A25') {
-        return `A25 ${fx.walker_key} ${fx.start_s} ${fx.leg_kind}`;
+    if (BREAKS.includes(fx.animation_id)) {
+        return `${fx.animation_id} ${fx.walker_key} ${fx.start_s} ${fx.leg_kind}`;
     }
 
     if (isInternWalk(fx)) {
@@ -770,6 +781,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     function paintEffects(layer, effects, floor) {
         const walkers = [];
 
+
         for (const fx of effects) {
             const seconds = (fx.frames * fx.frame_interval_ms) / 1000;
             // § 6.2's walk note item 8: an effect still in flight from an earlier render is drawn at the
@@ -926,8 +938,10 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         // floor legs, if any, stand at the threshold. card#12705: a departure that waits at a spot beside the threshold
         // walks twice — to its spot, and from it to the threshold when it boards.
         const walks = fx.legs.filter((l) => l.kind === 'walk');
-        const onFloor = fx.legs.filter((l) => l.kind !== 'cab');
+        // card#12786: an `inside` leg is drawn in the restroom door's recess, under its leaf — never on the floor.
+        const onFloor = fx.legs.filter((l) => l.kind !== 'cab' && l.kind !== 'inside');
         const inCab = fx.legs.filter((l) => l.kind === 'cab');
+        const inDoor = fx.legs.filter((l) => l.kind === 'inside');
         const intern = isInternWalk(fx);
         const span = (legs) => (legs.length === 0 ? null : {
             from: Math.min(...legs.map((l) => l.start)) * I,
@@ -936,7 +950,17 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         const shownStyle = (s) => `animation-duration:${sec(s.to - s.from)}s;animation-delay:${sec(s.from - elapsed)}s`;
         const floorSpan = span(onFloor);
         const cabSpan = span(inCab);
-        const shown = node('g', { class: 'fx-walker-shown', style: floorSpan === null ? 'animation-duration:0s' : shownStyle(floorSpan) }, floor.stack);
+        // The floor element's runs: its floor legs' span, less every `inside` leg inside it (card#12786).
+        const runs = floorSpan === null ? [] : inDoor.reduce((acc, l) => acc.flatMap((r) => {
+            const a = l.start * I;
+            const b = (l.start + l.frames) * I;
+
+            return b <= r.from || a >= r.to ? [r] : [...(a > r.from ? [{ from: r.from, to: a }] : []), ...(b < r.to ? [{ from: b, to: r.to }] : [])];
+        }), [floorSpan]);
+        const runsStyle = runs.length <= 1 ? (runs.length === 0 ? 'animation-duration:0s' : shownStyle(runs[0]))
+            : `animation-name:${runs.map(() => 'walker-shown').join(',')};animation-duration:${runs.map((r) => `${sec(r.to - r.from)}s`).join(',')};`
+                + `animation-delay:${runs.map((r) => `${sec(r.from - elapsed)}s`).join(',')}`;
+        const shown = node('g', { class: 'fx-walker-shown', style: runsStyle }, floor.stack);
         // One glide per walk leg, each drawn only through its own SEGMENT — from its walk's start (the first from the
         // walker's first floor frame) to the next walk's — by a second animation on the glide itself (`.fx-walker-leg`), so
         // before its walk the walker stands at the path's first point and after it at its last, which is where every
@@ -976,7 +1000,17 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                     class: 'fx-walker-step',
                     style: `offset-path:path('M ${step.from.x} ${step.from.y} L ${step.to.x} ${step.to.y}');animation-duration:${sec(step.frames * I)}s;animation-delay:${sec(step.start * I - elapsed)}s`,
                 }, cab);
-        const animated = [shown, ...segments.map((sg) => sg.glide)];
+        // card#12786: the walker inside the restroom door — standing at the threshold, clipped to the door's recess and
+        // drawn under its leaf — through its `inside` legs alone, so the closing leaf covers it and the opening one shows it.
+        const recess = inDoor.length === 0 ? null : floor.restroom(inDoor[0].at);
+        const door = recess === null ? null : node('g', {
+            class: 'fx-walker-shown fx-walker-inside',
+            style: `animation-name:${inDoor.map(() => 'walker-shown').join(',')};animation-duration:${inDoor.map((l) => `${sec(l.frames * I)}s`).join(',')};`
+                + `animation-delay:${inDoor.map((l) => `${sec(l.start * I - elapsed)}s`).join(',')}`,
+        }, recess);
+        const stood = inDoor[0]?.at ?? null;
+        const occupant = door === null ? null : node('g', { transform: `translate(${stood.x} ${stood.y})` }, door);
+        const animated = [shown, ...segments.map((sg) => sg.glide), ...(door === null ? [] : [door])];
         const entry = origin({ key: effectKey(fx), started_at: fx.started_at, elapsed_ms: elapsed, nodes: cab === null ? animated : [...animated, cab, ...(step === null ? [] : [inner])] });
         const asset = intern ? `intern:${fx.install_id}/${fx.intern_seat_key}` : characterAsset({ install_id: fx.install_id, seat_id: fx.seat_id });
         // card#12450: an intern walks at its chibi frame and glides (the tree hands no walk frames for an intern key),
@@ -985,7 +1019,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
 
         if (drawn === null) {
             // § 9 F14: the art failed, so the walker is the placeholder rectangle at the character's size.
-            for (const parent of [...segments.map((sg) => sg.glide), inner].filter((p) => p !== null)) {
+            for (const parent of [...segments.map((sg) => sg.glide), inner, occupant].filter((p) => p !== null)) {
                 node('rect', { x: -fx.size.w / 2, y: -fx.size.h, width: fx.size.w, height: fx.size.h, class: 'placeholder' }, parent);
             }
         } else {
@@ -1026,6 +1060,10 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
 
             if (inner !== null) {
                 at(inner);
+            }
+
+            if (occupant !== null) {
+                at(occupant);
             }
         }
 
@@ -1269,6 +1307,53 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             }
         }
 
+        // card#12786 (FLOOR.md § 6.7 items 2 and 4): EACH RESTROOM DOOR's OCCUPANT, LEAF AND FIELD — the painter's, at the
+        // scene's rects, over the theme's frame and recess: the recess clip a visitor inside is drawn in, the leaf in the
+        // building's door colours hinged at its left jamb, and the slider's field — a green field with a ring for vacant, a
+        // red one with a bar for occupied, shape as well as colour, never a word. Their motion is the holder's timeline in
+        // frames from `doors_at`, as sampled steps, pinned to that instant as the elevator's leaves are.
+        const recesses = [];
+        const doorNodes = [];
+        const doorFrameMs = 1000 / scene.loop_fps;
+
+        for (const [n, d] of (scene.restroom_doors ?? []).entries()) {
+            const clip = clippedTo(tiles, node('defs', {}, tiles), d.recess, `restroom-${n}`);
+            const leaf = node('g', { class: 'restroom-leaf' }, tiles);
+            const field = node('g', { class: 'restroom-field', 'aria-hidden': 'true' }, tiles);
+            const vacant = node('g', { class: 'restroom-vacant' }, field);
+            const occupied = node('g', { class: 'restroom-occupied' }, field);
+            const r = d.sign;
+
+            recesses.push({ at: d.threshold, clip });
+            node('rect', { x: d.recess.x, y: d.recess.y, width: d.recess.w, height: d.recess.h, rx: 1.5 }, leaf);
+            node('circle', { cx: d.recess.x + d.recess.w - 7, cy: d.recess.y + d.recess.h * 0.55, r: 2 }, leaf);
+            node('rect', { x: r.x, y: r.y, width: r.w, height: r.h, rx: 2 }, vacant);
+            node('circle', { cx: r.x + r.w / 2, cy: r.y + r.h / 2, r: Math.min(r.w, r.h) * 0.27, class: 'restroom-field-mark' }, vacant);
+            node('rect', { x: r.x, y: r.y, width: r.w, height: r.h, rx: 2 }, occupied);
+            node('path', { d: `M ${r.x + r.w * 0.28} ${r.y + r.h / 2} H ${r.x + r.w * 0.72}`, class: 'restroom-field-mark' }, occupied);
+
+            // The leaf's openness, a step per frame: its level after every move as its base, and one run per frame range
+            // whose level differs from it.
+            const marks = [...new Set([0, ...d.leaf.flatMap((m) => Array.from({ length: m.frames + 1 }, (_, k) => m.start + k)).filter((f) => f > 0)])].sort((a, b) => a - b);
+            const final = leafLevel(d.leaf, Infinity);
+            const step = (v) => Math.round(v * 4);
+            const leafRuns = marks.map((f, i) => ({ from: f, to: marks[i + 1] ?? f, level: step(leafLevel(d.leaf, i + 1 < marks.length ? (f + marks[i + 1]) / 2 : f)) }))
+                .filter((x) => x.to > x.from && x.level !== step(final));
+            const ms = (f) => (f * doorFrameMs) / 1000;
+
+            leaf.setAttribute('style', `transform:scaleX(${1 - (step(final) / 4) * 0.88})`
+                + (leafRuns.length === 0 ? '' : `;animation:${leafRuns.map((x) => `restroom-leaf-${x.level} ${ms(x.to - x.from)}s linear ${ms(x.from)}s`).join(',')}`));
+
+            if (d.occupied.length > 0) {
+                const runsOf = (name) => d.occupied.map((o) => `${name} ${ms(o.frames)}s linear ${ms(o.start)}s`).join(',');
+
+                occupied.setAttribute('style', `animation:${runsOf('walker-shown')}`);
+                vacant.setAttribute('style', `animation:${runsOf('restroom-hide')}`);
+            }
+
+            doorNodes.push(leaf, vacant, occupied);
+        }
+
         for (const d of scene.decorative) {
             node('ellipse', {
                 cx: d.glow.cx,
@@ -1324,7 +1409,15 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         }
 
         const effectsLayer = node('g', { class: 'effects' }, svg);
-        const walkers = paintEffects(effectsLayer, scene.effects, { stack: desks, cab: cabLayer });
+        // card#12786: a door's leaf and field pinned to the render's instant, as the elevator's leaves are.
+        if (doorNodes.length > 0 && Number.isFinite(scene.doors_at)) {
+            pinned.push({ key: null, elapsed_ms: 0, nodes: doorNodes, began: performance.now() - (clock.now() - scene.doors_at) });
+        }
+
+        // card#12786: beside the stack and the cab, the recess clip of the door whose threshold an `inside` leg stands at.
+        const walkers = paintEffects(effectsLayer, scene.effects, Object.assign({ stack: desks, cab: cabLayer }, {
+            restroom: (at) => recesses.find((x) => x.at !== null && x.at.x === at.x && x.at.y === at.y)?.clip ?? null,
+        }));
         const depths = scene.desks.map((desk) => ({ key: desk.key, depth_y: desk.depth_y }));
         const deskNode = (key) => deskNodes.get(key);
 

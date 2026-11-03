@@ -54,11 +54,12 @@ class ALayoutActFiresNoAnimationTest extends TestCase
         // (b) NO ROW FIRED FOR EITHER. The only rows in the log are the snapshot's own held entries, so
         // the population is asserted exactly rather than by a filter that could quietly match nothing: each
         // seat's desk row, and each half of § 6.2's snack row (A25) its object holds — since card#12785 a
-        // `working` seat holds the seat's half beside its A3, as an `idle` one did beside its A6.
+        // `working` seat holds the seat's half beside its A3, as an `idle` one did beside its A6 — and each half of the
+        // restroom row (A26, card#12786), held by the same values.
         $rows = $result['animation_log'];
         $snapshot = $this->snapshotSeats(self::RUN);
         $snapshotSeats = array_keys($snapshot);
-        $predicted = array_sum(array_map(fn (array $seat): int => 1 + count($this->snackHalvesFor($seat)), $snapshot));
+        $predicted = array_sum(array_map(fn (array $seat): int => 1 + count($this->snackHalvesFor($seat)) + count($this->restroomHalvesFor($seat)), $snapshot));
 
         $this->assertCount($predicted, $rows,
             'the log carries rows beyond the held renders the snapshot itself delivered — a layout act fired one');

@@ -162,6 +162,19 @@ export const NOT_LISTED = Object.freeze({
         [`${m}.form`, { reason: "§ 6.4's reduced-motion form of a drawn trip; the list draws no trip to reduce" }],
         [`${m}.frame_interval_ms`, { reason: "a drawn loop's frame rate; the list draws no loop" }],
     ])),
+    // § 6.2 A26 (card#12786): the restroom break's two halves — a walk and a door on the drawing, and nothing the list
+    // could draw.
+    ...Object.fromEntries(['restroom_held', 'restroom_interns_held'].flatMap((m) => [
+        [`${m}.animation_id`, {
+            reason: "the restroom break is the drawing's motion (§ 6.2 A26); the list animates nothing, and the idle or working "
+                + 'state it is held by is on the row as the glyph and the label line, an intern\'s on its stool\'s line',
+        }],
+        [`${m}.motion`, {
+            reason: 'whether the drawing may take the break (§ 6.2 A26); the treatment that stops it is on the row as its badges',
+        }],
+        [`${m}.form`, { reason: "§ 6.4's reduced-motion form of a drawn break; the list draws no break to reduce" }],
+        [`${m}.frame_interval_ms`, { reason: "a drawn loop's frame rate; the list draws no loop" }],
+    ])),
 });
 
 /** The joins, and nothing else: parts a member left null or empty are dropped, never printed blank. */
