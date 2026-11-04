@@ -424,9 +424,11 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
 
     /**
      * What one walker may not stand in, on the scene that drew it: the shipped default's `wall` and standing tiles,
-     * every other desk's slot and drawn box, its own desk off its anchor's row, and everything outside the extent.
+     * every other desk's slot and drawn box, its own desk off its anchor's row and off its chair's column behind the
+     * anchor (card#12513), its own desk's side table and interns' rows (`solid`, the probe's — every seat of the shipped
+     * default reaches the elevator without crossing them), and everything outside the extent.
      *
-     * @return array{blocked: array<string, true>, own: array<string, true>, row: int, origin: array, c: int, cols: int, rows: int}
+     * @return array{blocked: array<string, true>, own: array<string, true>, solid: array<string, true>, row: int, col: int, origin: array, c: int, cols: int, rows: int}
      */
     private function forbidden(array $frame, string $key): array
     {
@@ -436,9 +438,12 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         // The floor's extent, not the scene's (which holds the band): the room's grid at the room's origin.
         $origin = ['x' => $shipped['extent']['x'], 'y' => $shipped['extent']['y']];
         $anchor = $frame['scene']['anchors'][$key];
-        $row = $this->cellOf($anchor, $origin, $c)[1];
+        [$col, $row] = $this->cellOf($anchor, $origin, $c);
         $blocked = [];
         $own = [];
+        $solid = [];
+        // The furniture a seat keeps its feet off, box-relative, as the probe reads it off the desk layout.
+        $probeDesk = $shipped['desks'][0];
 
         foreach ($shipped['obstacles'] as $o) {
             foreach ($this->cellsMeeting($o, $origin, $c) as $cell) {
@@ -456,17 +461,29 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
                     }
                 }
             }
+
+            if ($desk['key'] === $key) {
+                foreach ($probeDesk['solid'] as $r) {
+                    $at = ['x' => $desk['box']['x'] + $r['x'] - $probeDesk['box']['x'], 'y' => $desk['box']['y'] + $r['y'] - $probeDesk['box']['y'], 'w' => $r['w'], 'h' => $r['h']];
+
+                    foreach ($this->cellsMeeting($at, $origin, $c) as $cell) {
+                        $solid[$cell] = true;
+                    }
+                }
+            }
         }
 
         foreach (array_keys($own) as $cell) {
-            if ((int) explode(',', $cell)[1] !== $row) {
+            [$x, $y] = array_map('intval', explode(',', $cell));
+
+            if (($y !== $row && ($x !== $col || $y > $row)) || isset($solid[$cell])) {
                 $blocked[$cell] = true;
             }
         }
 
         unset($extent);
 
-        return ['blocked' => $blocked, 'own' => $own, 'row' => $row, 'origin' => $origin, 'c' => $c,
+        return ['blocked' => $blocked, 'own' => $own, 'solid' => $solid, 'row' => $row, 'col' => $col, 'origin' => $origin, 'c' => $c,
             'cols' => (int) ceil($shipped['extent']['width'] / $c), 'rows' => (int) ceil($shipped['extent']['height'] / $c)];
     }
 
@@ -566,17 +583,23 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         // The cells of the leg at the desk: A2's first walk, A1's only one.
         $cells = array_map(fn ($p) => $this->cellOf($p, $f['origin'], $f['c']), array_slice($legs[0]['points'], 1, -1));
 
-        // H14: every own-desk cell is on the anchor's row, and the first cell off the own desk differs from the anchor's
-        // cell in x only — the walker leaves and reaches its desk sideways.
+        // H14: every own-desk cell is on the anchor's row or on the chair's column behind the anchor (card#12513), none
+        // is on the desk's side table or its interns' rows, and the first cell off the own desk is on that row or that
+        // column — the walker leaves and reaches its desk sideways or from behind its chair, never across its couch.
         $ordered = $walk['animation_id'] === 'A2' ? $cells : array_reverse($cells);
-        $anchorCell = $this->cellOf($frame['scene']['anchors'][$key], $f['origin'], $f['c']);
 
         foreach ($ordered as $cell) {
             $id = implode(',', $cell);
 
             if (isset($f['own'][$id])) {
-                if ($cell[1] !== $f['row']) {
-                    $defects[] = "H14 {$walk['animation_id']} {$key}: own-desk cell {$id} is off the anchor's row {$f['row']}";
+                if (isset($f['solid'][$id])) {
+                    $defects[] = "H14 {$walk['animation_id']} {$key}: own-desk cell {$id} is on its side table";
+
+                    break;
+                }
+
+                if ($cell[1] !== $f['row'] && ($cell[0] !== $f['col'] || $cell[1] > $f['row'])) {
+                    $defects[] = "H14 {$walk['animation_id']} {$key}: own-desk cell {$id} is off the anchor's row {$f['row']} and off the chair's column {$f['col']} behind it";
 
                     break;
                 }
@@ -584,8 +607,8 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
                 continue;
             }
 
-            if ($cell[1] !== $anchorCell[1]) {
-                $defects[] = "H14 {$walk['animation_id']} {$key}: the first cell off its desk, {$id}, is not on the anchor's row";
+            if ($cell[1] !== $f['row'] && $cell[0] !== $f['col']) {
+                $defects[] = "H14 {$walk['animation_id']} {$key}: the first cell off its desk, {$id}, is on neither the anchor's row nor the chair's column";
             }
 
             break;
@@ -1796,7 +1819,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     /** H1: the desks dropped from the obstacles — a path goes through a desk. */
     public function test_red_desks_dropped_from_the_obstacles(): void
     {
-        $dir = $this->mutatedModules([self::SCENE, 'desks: desks.map((d) => ({ key: d.key, rects: [d.slot_rect, d.box].filter((r) => r !== null) })),', 'desks: [],']);
+        $dir = $this->mutatedModules([self::SCENE, 'desks: desks.map((d) => ({ key: d.key, rects: [d.slot_rect, d.box].filter((r) => r !== null), seat: seatOf(d, character) })),', 'desks: [],']);
 
         $this->assertNotSame([], $this->allRouteDefects($dir), 'no path crossed a desk with the desks dropped');
     }
@@ -1812,7 +1835,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     /** H14: every own-desk cell open — the walker cuts across its own desk off its anchor's row. */
     public function test_red_every_own_desk_cell_open(): void
     {
-        $dir = $this->mutatedModules([self::ROUTE, 'if (anchor === null || Math.floor(i / grid.cols) !== anchor[1]) {', 'if (anchor === null) {']);
+        $dir = $this->mutatedModules([self::ROUTE, '                if (!open) {', '                if (anchor === null) {']);
 
         $this->assertNotSame([], array_filter($this->allRouteDefects($dir), static fn ($d) => str_starts_with($d, 'H14')), 'no walker left its desk off its anchor row');
     }
@@ -1843,7 +1866,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
             'return g === null ? null : route(g, from, to, { key: seat, anchor, flip: [...new Set(order)].indexOf(seat) % 2 === 0 });']);
         // The A* search does not see the walker; the plant hands it over.
         $dir = $this->mutatedModulesOn($dir, [self::ROUTE, 'function search(grid, start, goal, blocked, extra) {', 'function search(grid, start, goal, blocked, extra, walker) {']);
-        $dir = $this->mutatedModulesOn($dir, [self::ROUTE, 'blockedFor(grid, walker, tier), grid.tier(tier).centring);', 'blockedFor(grid, walker, tier), grid.tier(tier).centring, walker);']);
+        $dir = $this->mutatedModulesOn($dir, [self::ROUTE, "blockedFor(grid, walker, tier, furniture ?? 'kept'), grid.tier(tier).centring);", "blockedFor(grid, walker, tier, furniture ?? 'kept'), grid.tier(tier).centring, walker);"]);
         $dir = $this->mutatedModulesOn($dir, [self::SCENE, 'function walkRouting({ key, extent, cell, obstacles, desks, draw, character }) {', 'function walkRouting({ key, extent, cell, obstacles, desks, draw, character, order }) {']);
         $dir = $this->mutatedModulesOn($dir, [self::SCENE, '        draw: input.draw ?? null,', "        draw: input.draw ?? null,\n        order: Object.keys(frame.desks.desks),"]);
 

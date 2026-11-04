@@ -14,6 +14,13 @@
  * resolves no kind, so its cells are open until it arrives — and the lattice key (`scene.js`'s `latticeKey()`)
  * cancels every walk routed without it then. Other walkers are never obstacles.
  *
+ * ⛔ A WALKER's OWN DESK IS OPEN TO IT ON ITS ANCHOR's ROW, and a desk's SEAT may also leave from behind its chair
+ * (walk note item 3, card#12513). A desk declares its seat — the chair, its anchor — and the furniture the seat keeps
+ * off, the side table and the interns' rows (`desk-layout.js`'s `seatSolid()`). The seat's walk may take the chair's
+ * column behind the anchor, where the desk lays out nothing but that chair, and keeps its feet off that furniture; it
+ * is routed across it only where no tier connects without (`route()`'s `furniture`), a desk walled in on every side
+ * but its side table's. An intern's walk keeps its stool's row.
+ *
  * ⛔ A WALKER KEEPS CLEAR LIKE A PERSON IN A BUILDING (walk note item 3, card#12442). The feet rule alone lets a path
  * hug an obstacle one cell away while the body — the character's drawn rect, centred on the feet — is painted over
  * it. So every obstacle and every OTHER desk is inflated by the body round the feet: a cell is blocked when its
@@ -62,14 +69,17 @@ const meets = (a, b) => a.w > 0 && a.h > 0 && b.w > 0 && b.h > 0
 /**
  * THE WALKABLE MODEL of one floor (walk note item 3): a grid of lattice cells over the floor's extent, and for each
  * clearance tier the cells blocked for every walker and each desk's cells — because a walker's OWN desk is open to it
- * on its anchor's row (by the feet rule, never inflated: it sits there) and every other desk is blocked whole.
+ * on its anchor's row, and to its seat behind its chair (by the feet rule, never inflated: it sits there), and every
+ * other desk is blocked whole.
  *
  * @param {{extent: {x: number, y: number, width: number, height: number}, cell: number,
  *          obstacles: list<{x: number, y: number, w: number, h: number}>,
- *          desks: list<{key: string, rects: list<{x: number, y: number, w: number, h: number}>}>,
+ *          desks: list<{key: string, rects: list<{x: number, y: number, w: number, h: number}>,
+ *                       seat?: {anchor: {x: number, y: number}, solid: list<{x: number, y: number, w: number, h: number}>}}>,
  *          body: {w: number}}} parts —
  *        `cell` the smallest tile edge over the floor's grids; `obstacles` the `wall` tiles' and standing tiles' rects;
- *        `desks` each desk's slot and drawn box; `body` the walker's drawn character rect, whose width is what clears
+ *        `desks` each desk's slot and drawn box, and its seat — the chair's point and the furniture the seat keeps its
+ *        feet off; `body` the walker's drawn character rect, whose width is what clears
  * @returns {object} the lattice, read only by `route()` and the tests
  */
 export function lattice({ extent, cell, obstacles, desks, body }) {
@@ -137,6 +147,13 @@ export function lattice({ extent, cell, obstacles, desks, body }) {
         }
     }
 
+    // The cell `[x, y]` holding a point, as `cellAt()` reads it — or `null` outside the lattice.
+    const cellOf = (p) => {
+        const x = Math.floor((p.x - extent.x) / c);
+        const y = Math.floor((p.y - extent.y) / c);
+
+        return x < 0 || y < 0 || x >= cols || y >= rows ? null : [x, y];
+    };
     const half = body.w / 2;
     // What each tier blocks round a wall or standing tile, and round another desk. A desk is drawn in the floor's
     // depth order with the walker (walk note item 9) and its box is its art's own extent, so it keeps the bare body
@@ -158,8 +175,17 @@ export function lattice({ extent, cell, obstacles, desks, body }) {
         cell: c,
         cols,
         rows,
-        // Each desk's own cells by the feet rule: what its OWN walker may enter on its anchor's row.
-        desks: Object.freeze(desks.map((d) => Object.freeze({ key: d.key, cells: sorted(d.rects.flatMap(cellsOf)) }))),
+        // Each desk's own cells by the feet rule: what its OWN walker may enter on its anchor's row — and, where the
+        // desk declares its SEAT (card#12513), the chair's cell and the cells of the furniture the seat keeps its
+        // feet off (`blockedFor()`).
+        desks: Object.freeze(desks.map((d) => Object.freeze({
+            key: d.key,
+            cells: sorted(d.rects.flatMap(cellsOf)),
+            seat: (d.seat ?? null) === null ? null : Object.freeze({
+                cell: Object.freeze(cellOf(d.seat.anchor)),
+                solid: new Set(d.seat.solid.flatMap(cellsOf)),
+            }),
+        }))),
         // One tier's model, built the first time a route asks for it — a floor whose every walk routes at `clear`
         // never builds the others.
         tier: (name) => {
@@ -206,16 +232,31 @@ export function cellCentre(grid, [x, y]) {
 }
 
 /**
+ * The walker's desk when the walker is that desk's SEAT (card#12513) — its anchor's cell is the chair's the desk
+ * declares — or `null`: an intern's walk, a walker whose desk declares no seat, or a point nobody's desk holds.
+ */
+function seatDesk(grid, walker) {
+    const anchor = cellAt(grid, walker.anchor);
+    const desk = grid.desks.find((d) => d.key === walker.key) ?? null;
+
+    return anchor === null || desk === null || desk.seat === null || desk.seat.cell === null
+        || desk.seat.cell[0] !== anchor[0] || desk.seat.cell[1] !== anchor[1] ? null : desk;
+}
+
+/**
  * The cells blocked for ONE walker at one tier: the tier's obstacles, every other desk whole as the tier inflates it,
  * and its own desk (by the feet rule) on every row but its anchor's — so it leaves and reaches its desk sideways, at
- * its seated depth (walk note item 3).
+ * its seated depth (walk note item 3). Its desk's SEAT (card#12513) may also take the chair's column behind the anchor,
+ * where the desk lays out nothing but that chair, and with `furniture` `kept` never sets foot on what its desk declares solid to it
+ * (the side table and the interns' rows) — so it walks round the back of its desk rather than across its couch.
  *
  * @param {object} grid `lattice()`'s
  * @param {{key: string, anchor: {x: number, y: number}}} walker
  * @param {string} [tier] one of `CLEARANCE_TIERS`, the strictest when absent
+ * @param {'kept'|'crossed'} [furniture] whether the seat keeps off its desk's solid furniture (`kept`, when absent)
  * @returns {Uint8Array}
  */
-export function blockedFor(grid, walker, tier = CLEARANCE_TIERS[0]) {
+export function blockedFor(grid, walker, tier = CLEARANCE_TIERS[0], furniture = 'kept') {
     const t = grid.tier(tier);
     const out = Uint8Array.from(t.blocked);
     const anchor = cellAt(grid, walker.anchor);
@@ -228,12 +269,20 @@ export function blockedFor(grid, walker, tier = CLEARANCE_TIERS[0]) {
         }
     }
 
-    // The own desk off its anchor's row. A cell of the anchor's row that another desk also meets stays blocked,
-    // because that desk's cells are blocked whoever's row it is.
+    // The own desk off its anchor's row, and off the seat's column behind its chair. A cell of either that another
+    // desk also meets stays blocked, because that desk's cells are blocked whoever's desk it is.
+    const seat = seatDesk(grid, walker)?.seat ?? null;
+
     for (const desk of grid.desks) {
         if (desk.key === walker.key) {
             for (const i of desk.cells) {
-                if (anchor === null || Math.floor(i / grid.cols) !== anchor[1]) {
+                const x = i % grid.cols;
+                const y = Math.floor(i / grid.cols);
+                const open = anchor !== null && (seat === null
+                    ? y === anchor[1]
+                    : (y === anchor[1] || (x === anchor[0] && y < anchor[1])) && (furniture === 'crossed' || !seat.solid.has(i)));
+
+                if (!open) {
                     out[i] = 1;
                 }
             }
@@ -435,14 +484,16 @@ function search(grid, start, goal, blocked, extra) {
 
 /**
  * THE ROUTE between two points for one walker: the first of `CLEARANCE_TIERS` whose blocked set connects them, and
- * that tier's A* path.
+ * that tier's A* path. A desk's SEAT (card#12513) is routed with its desk's solid furniture kept off first, at every
+ * tier, and across it only where no tier connects without — a desk walled in on every side but its side table's.
  *
  * @param {object} grid `lattice()`'s
  * @param {{x: number, y: number}} from
  * @param {{x: number, y: number}} to
  * @param {{key: string, anchor: {x: number, y: number}}} walker the walker whose desk is its own
- * @returns {{cells: list<[number, number]>, tier: string}|null} the cells from `from`'s to `to`'s, both included, and
- *          the tier they were found at; `null` with no open route at any tier
+ * @returns {{cells: list<[number, number]>, tier: string, furniture: 'kept'|'crossed'|null}|null} the cells from
+ *          `from`'s to `to`'s, both included, the tier they were found at, and whether a seat's route keeps off its
+ *          desk's furniture (`null` for any other walker); `null` with no open route at any tier
  */
 export function route(grid, from, to, walker) {
     const start = cellAt(grid, from);
@@ -452,11 +503,13 @@ export function route(grid, from, to, walker) {
         return null;
     }
 
-    for (const tier of CLEARANCE_TIERS) {
-        const cells = search(grid, start, goal, blockedFor(grid, walker, tier), grid.tier(tier).centring);
+    for (const furniture of seatDesk(grid, walker) === null ? [null] : ['kept', 'crossed']) {
+        for (const tier of CLEARANCE_TIERS) {
+            const cells = search(grid, start, goal, blockedFor(grid, walker, tier, furniture ?? 'kept'), grid.tier(tier).centring);
 
-        if (cells !== null) {
-            return Object.freeze({ cells, tier });
+            if (cells !== null) {
+                return Object.freeze({ cells, tier, furniture });
+            }
         }
     }
 
@@ -642,7 +695,10 @@ export function pointAt(effect, tMs) {
     }
 
     const fraction = Math.min(1, Math.max(0, (tMs - leg.start * I) / (leg.frames * I)));
-    const p = along(leg.points, leg.length * fraction);
+    // A finished leg is at its end exactly: `along()` re-sums the segments, and over a path with diagonals that sum can
+    // come out a rounding error over `length`, so the last segment is interpolated just short of its end and the walker
+    // stands a hair off its anchor — a second viewer then derives a different trip from it (card#12513).
+    const p = fraction === 1 ? leg.points[leg.points.length - 1] : along(leg.points, leg.length * fraction);
 
     return { x: p.x, y: p.y, where, leg: k };
 }

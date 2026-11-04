@@ -765,6 +765,21 @@ export function deskAnchor(box, character) {
 }
 
 /**
+ * WHAT THE DESK's OWN SEAT KEEPS ITS FEET OFF (§ 6.2's walk note item 3, card#12513) — box-relative: the side table and
+ * the interns' rows on it. Both reach the box's right edge, so the seat leaves and reaches its chair on the art column's
+ * side of them — sideways at its seated depth, or from behind the chair, whose column the box gives to nothing but the
+ * chair and the bubble — and crosses its couch only where its desk is walled in on every other side (`route.js`'s
+ * `route()`). Read from the layout, never from what was drawn, so two viewers route alike whatever art failed.
+ *
+ * @returns {list<{x: number, y: number, w: number, h: number}>}
+ */
+export function seatSolid(box, character) {
+    const R = deskRects(box, character);
+
+    return [R['side-table'], R['stool-rows']].map(({ x, y, w, h }) => Object.freeze({ x, y, w, h }));
+}
+
+/**
  * THE ONE DEFINITION OF N (§ 5.1's *the glance set*, § 12's flag row): the number of unusual items
  * whose raw form is not drawn on the desk = every line of the model's `unrecognised` list
  * (`field: value` — `render_state`, `link_state`, `activity_state`, `unknown_reason`,
