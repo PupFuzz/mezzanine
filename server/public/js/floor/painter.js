@@ -314,6 +314,10 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     let pinned = [];
     // This paint's origins as they are recorded, so two effects of one key in one paint share one.
     let starts = new Map();
+    // card#12457: each animation `pin()` has pinned, by its delay as the node's style wrote it — `pin()` moves part of
+    // the start into the delay, so a second pin of the same animation must move the authored delay, not the moved one.
+    // Weak: an animation is dropped with its node.
+    const authored = new WeakMap();
     // THE ONE CACHE OF THEME DOCUMENTS (FLOOR.md § 10.6 item 2): a document's URI, KEYED ON ITS INPUTS — the
     // theme, the function and every input — and never on its asset id, because a map re-save changes a
     // plane's grid, slots and runs under the same asset id, and a cache keyed on the id would draw the old
@@ -749,14 +753,33 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
 
     /**
      * One effect's nodes pinned to its origin. Each node's CSS delay already carries this paint's `elapsed_ms`, so the
-     * start that makes the delayed animation read the timeline from `began` is `began + elapsed_ms`. Called for every
+     * instant that makes the delayed animation read the timeline from `began` is `began + elapsed_ms`. Called for every
      * effect after the drawing is in the document (`pinEffects()`), and again for a walker whose node the depth
      * reconcile moved, because a re-inserted node's animations are new.
+     *
+     * card#12457: that instant is never written as the animation's START. It is a live reading (`origin()`), so it can
+     * be later than the time the browser draws the next frame at — `document.timeline.currentTime` holds the last
+     * frame's time through the task, and the next frame's time may be taken before this paint runs (the bird-flight row
+     * read the new node's animation at a negative current time on that frame). An animation started after the frame it
+     * is drawn in is in its BEFORE phase there whatever its delay — the boundary of that phase is never earlier than its
+     * start — and a node drawn only by its animation (`.fx-bird`'s `opacity:0` outside its run, fill `none`) is not
+     * drawn for that frame: the bird blinked after a repaint. So the start is the timeline's time now, which no later
+     * frame precedes, and the difference goes into the animation's own delay: the motion reads the timeline from the
+     * same instant exactly, and is drawn from the first frame after the repaint. The delay moved is always the node's AUTHORED
+     * one, held per animation (`authored`), so pinning an animation again — the depth reconcile re-pins a walker's
+     * every node, the cab's that never moved included — moves its authored delay, never a delay already moved.
      */
     function pin(entry) {
+        const start = document.timeline.currentTime;
+        const instant = entry.began + entry.elapsed_ms;
+
         for (const el of entry.nodes) {
             for (const animation of el.getAnimations()) {
-                animation.startTime = entry.began + entry.elapsed_ms;
+                const delay = authored.get(animation) ?? animation.effect.getTiming().delay;
+
+                authored.set(animation, delay);
+                animation.startTime = start;
+                animation.effect.updateTiming({ delay: delay + instant - start });
             }
         }
     }
