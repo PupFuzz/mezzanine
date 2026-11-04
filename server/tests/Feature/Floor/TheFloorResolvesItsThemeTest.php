@@ -2,13 +2,15 @@
 
 namespace Tests\Feature\Floor;
 
+use App\Floor\FloorThemes;
 use Tests\TestCase;
 
 /**
  * AT-D3-25's SELECTION HALF, the floor's leg — `docs/design/FLOOR.md § 10.6` item 5 and § 9 F23, built at
  * Appendix B row 21 (card#11046): the scene resolves the floor's layout `theme` against the theme
  * registry. A floor naming none, and a floor naming the house theme, resolve to the house theme with no
- * notice; a floor naming a theme the build does not ship resolves to the house theme under F23's notice,
+ * notice; a floor naming another theme the build ships is drawn in it with no notice (card#12845); a
+ * floor naming a theme the build does not ship resolves to the house theme under F23's notice,
  * in § 5.5's words, naming the theme and the floor. The registry is `resources/floor/themes/index.js`,
  * read by the harness from disk as the page reads it by the asset route.
  *
@@ -38,6 +40,26 @@ class TheFloorResolvesItsThemeTest extends TestCase
 
         $this->assertSame($none['theme'], $named['theme']);
         $this->assertSame($noneFrame['notices'], $namedFrame['notices']);
+    }
+
+    /**
+     * card#12845: a floor naming a shipped theme that is NOT the house theme is drawn in that theme, with no notice —
+     * the case the registry could not reach while it held one theme. Every such theme the registry ships is read off
+     * the registry, never listed here, and there is at least one.
+     */
+    public function test_a_floor_naming_another_shipped_theme_is_drawn_in_it_with_no_notice(): void
+    {
+        $registry = FloorThemes::current();
+        $others = array_values(array_diff($registry->themes, [$registry->house]));
+
+        $this->assertNotSame([], $others, 'the registry ships no theme but the house theme — card#12845 ships `cottage`');
+
+        foreach ($others as $theme) {
+            [$scene, $frame] = $this->themed($theme);
+
+            $this->assertSame($theme, $scene['theme'], "a floor naming `{$theme}` was not drawn in it");
+            $this->assertSame([], $this->f23($frame), "a floor naming the shipped `{$theme}` drew F23's notice");
+        }
     }
 
     public function test_a_floor_naming_an_unshipped_theme_is_drawn_in_the_house_theme_under_f23(): void

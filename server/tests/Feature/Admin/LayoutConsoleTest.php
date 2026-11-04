@@ -5,6 +5,7 @@ namespace Tests\Feature\Admin;
 use App\Admin\ConsoleModules;
 use App\Building\Layouts;
 use App\Building\Revisions;
+use App\Floor\FloorThemes;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
@@ -231,6 +232,23 @@ class LayoutConsoleTest extends TestCase
         $this->assertStringContainsString('would share pixels', $refusal);
         $this->assertStringContainsString('`sola`', $refusal);
         $this->assertStringContainsString('`zeta`', $refusal);
+    }
+
+    /**
+     * card#12845: the page tells the operator a floor may name its design, and names every design the build ships and
+     * the house one — read off the registry the save checks against, so the page and the refusal cannot disagree.
+     */
+    public function test_the_page_names_every_design_a_floor_may_name(): void
+    {
+        $themes = FloorThemes::current();
+        $page = $this->actingAs($this->operator())->get(route('admin.layout.edit'))->assertOk()->assertSee('A floor may name its design');
+
+        foreach ($themes->themes as $theme) {
+            $page->assertSee("<code>{$theme}</code>", false);
+        }
+
+        $page->assertSee("the house design, <code>{$themes->house}</code>", false);
+        $this->assertGreaterThan(1, count($themes->themes), 'card#12845 ships a second design beside the house one');
     }
 
     /**
