@@ -80,6 +80,20 @@ final class IngestPipeline
 
     public const IDLE_TRANSACTION_TIMEOUT_S = self::LOCK_WAIT_TIMEOUT_S - 1;
 
+    /**
+     * Every session variable `boundTheWriteSession()` pins, with its value — the one list of them.
+     *
+     * Public because the suite reads it: a test's request shares the test's connection, so
+     * `Tests\TestCase::call()` puts these back after each request, as the end of a production request's
+     * own connection does (card#12530).
+     *
+     * @var array<string, int>
+     */
+    public const SESSION_BOUNDS = [
+        'idle_transaction_timeout' => self::IDLE_TRANSACTION_TIMEOUT_S,
+        'innodb_lock_wait_timeout' => self::LOCK_WAIT_TIMEOUT_S,
+    ];
+
     public function __construct(
         private readonly BodyReader $bodyReader,
         private readonly TokenResolver $tokenResolver,
@@ -213,11 +227,11 @@ final class IngestPipeline
      */
     private function boundTheWriteSession(): void
     {
-        DB::statement(sprintf(
-            'SET SESSION idle_transaction_timeout = %d, innodb_lock_wait_timeout = %d',
-            self::IDLE_TRANSACTION_TIMEOUT_S,
-            self::LOCK_WAIT_TIMEOUT_S,
-        ));
+        DB::statement('SET SESSION '.implode(', ', array_map(
+            static fn (string $variable, int $value): string => sprintf('%s = %d', $variable, $value),
+            array_keys(self::SESSION_BOUNDS),
+            self::SESSION_BOUNDS,
+        )));
     }
 
     /**

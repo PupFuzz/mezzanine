@@ -2,13 +2,19 @@
 
 namespace Tests;
 
+use App\Ingest\IngestPipeline;
+use Illuminate\Database\DetectsLostConnections;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\DB;
+use PDO;
+use PDOException;
 use RuntimeException;
 
 abstract class TestCase extends BaseTestCase
 {
+    use DetectsLostConnections;
+
     /**
      * The store isolation guard required by docs/design/FLEET-STATE.md § 6.2.
      *
@@ -87,6 +93,82 @@ abstract class TestCase extends BaseTestCase
         }
 
         return $app;
+    }
+
+    /**
+     * Every in-test HTTP request, with the session bounds it pinned put back when it returns
+     * (card#12530).
+     *
+     * ⛔ A TEST'S REQUEST RUNS ON THE TEST'S OWN CONNECTION. In production a request's connection is its
+     * own — the stock non-persistent SAPI opens it for the request and closes it after — so
+     * `IngestPipeline::boundTheWriteSession()`'s `SET SESSION` ends with the request, which is what its
+     * docstring rests on. Here the kernel runs in the test's process and writes through the connection
+     * that holds `RefreshDatabase`'s transaction, so without this the bounds stayed on it for the rest of
+     * the test: `idle_transaction_timeout` then had the server END that connection once the test sat
+     * longer than `IngestPipeline::IDLE_TRANSACTION_TIMEOUT_S` with its transaction open, and the
+     * teardown rollback failed `2006 MySQL server has gone away`. Run 40727257707 attempt 1 failed so,
+     * in a test whose shipped-client probes ran past the bound on a slow runner.
+     * `AnIngestRequestsSessionBoundsEndWithTheRequestTest` asserts the put-back.
+     *
+     * WHAT IS PUT BACK is `IngestPipeline::SESSION_BOUNDS`'s variables, on the connection that was the
+     * default when the request began — the connection `boundTheWriteSession()` writes through. A
+     * session that was open before the request gets the values it held; one the request opened, or
+     * reconnected, gets the server's (`DEFAULT`), which is what a fresh session starts with. A session
+     * the server ended during the request has nothing left to put back. The values are read and
+     * written on the raw PDO, so no query event fires and no test that counts or matches emitted SQL
+     * sees them.
+     *
+     * ⚠ THE SET IS THE INGEST'S, NOT EVERY SESSION VARIABLE. Snapshotting all of them costs a scan of
+     * `information_schema.SESSION_VARIABLES` per request — measured at tens of milliseconds on a loaded
+     * host — on every request in the suite. `App\Fleet\SeatRetirement` sets `innodb_lock_wait_timeout`
+     * too, and restores it itself.
+     */
+    public function call($method, $uri, $parameters = [], $cookies = [], $files = [], $server = [], $content = null)
+    {
+        $name = DB::getDefaultConnection();
+        $variables = array_keys(IngestPipeline::SESSION_BOUNDS);
+
+        $opened = DB::connection($name)->getRawPdo();
+        $held = $opened instanceof PDO
+            ? $opened->query('SELECT '.implode(', ', array_map(
+                static fn (string $v): string => "@@SESSION.{$v} AS {$v}",
+                $variables,
+            )))->fetch(PDO::FETCH_ASSOC)
+            : null;
+
+        try {
+            return parent::call($method, $uri, $parameters, $cookies, $files, $server, $content);
+        } finally {
+            $this->putBackSessionBounds(DB::connection($name)->getRawPdo(), $opened, $held, $variables);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $held  the session's values before the request, read on `$opened`
+     * @param  list<string>  $variables
+     */
+    private function putBackSessionBounds(mixed $pdo, mixed $opened, ?array $held, array $variables): void
+    {
+        if (! $pdo instanceof PDO) {
+            return;
+        }
+
+        $same = $pdo === $opened;
+
+        $assignments = array_map(
+            static fn (string $v): string => $v.' = '.($same ? (int) $held[$v] : 'DEFAULT'),
+            $variables,
+        );
+
+        try {
+            $pdo->exec('SET SESSION '.implode(', ', $assignments));
+        } catch (PDOException $e) {
+            // The server ended this session during the request (`IngestWriteBoundTest` drives that):
+            // its variables ended with it.
+            if (! $this->causedByLostConnection($e)) {
+                throw $e;
+            }
+        }
     }
 
     /**
