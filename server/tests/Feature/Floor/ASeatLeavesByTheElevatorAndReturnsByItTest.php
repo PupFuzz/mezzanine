@@ -1547,9 +1547,9 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         }
     }
 
-    // ── AT-D3-35 (card#12793): the queue stands clear of the doors, and a rider steps out first ────────────────
+    // ── AT-D3-34 (card#12793): the queue stands clear of the doors, and a rider steps out first ────────────────
 
-    /** The runs AT-D3-35 replays whose departures queue, each held to the lane. */
+    /** The runs AT-D3-34 replays whose departures queue, each held to the lane. */
     private const LANE_RUNS = ['lane-arrival-meets-queue', 'lane-lone', 'lane-arrival-over-committed-boarder', 'two-walkers', 'mass-departure', 'crossing', 'queue-return-after-boarding'];
 
     /** The fixture floor's open slots: `fx-snapshot-4` holds four of the shipped default's six, slots 0 and 5 open floor. */

@@ -834,7 +834,7 @@ class AnInternRidesTheElevatorTest extends TestCase
         }
     }
 
-    // ── AT-D3-35 (card#12793): an intern's queue keeps the seat's lane clear ────────────────────────────────────
+    // ── AT-D3-34 (card#12793): an intern's queue keeps the seat's lane clear ────────────────────────────────────
 
     /** The seat walker's drawn body (`walk-probe.mjs`'s), whose lane the interns keep too. */
     private function seatBody(): array

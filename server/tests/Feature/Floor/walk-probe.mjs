@@ -22,7 +22,7 @@
  *   `restroom` / `restroom-chain` — card#12786: the restroom's constants and the waiting spots from a given threshold;
  *                each key's restroom chain and snack chain over whole days (AT-D3-33).
  *   `spots`    — card#12793: the elevator lane and the elevator queue's spots on the shipped default with the slots
- *                `open` names left open, with the lane and without it, and the lattice they were searched on (AT-D3-35).
+ *                `open` names left open, with the lane and without it, and the lattice they were searched on (AT-D3-34).
  *   `lattice`  — H6's tileset and registry legs at the scene: `buildScene()` over one drawn frame and its rows twice —
  *                a tileset `pending` then held, the theme registry absent then held — each pair's lattice keys, and
  *                whether `EffectsInFlight` cancels the first scene's walk at a render carrying the second's key.
@@ -318,7 +318,7 @@ if (input.mode === 'restroom-chain') {
     }])));
 }
 
-// card#12793 (AT-D3-35): the elevator queue's spots on the shipped default for a stated set of OPEN slots (`open`, slot
+// card#12793 (AT-D3-34): the elevator queue's spots on the shipped default for a stated set of OPEN slots (`open`, slot
 // indices of `mapDesks()`; every other slot held), on the seat's lattice as the scene builds it — the scene's
 // `elevatorLane()`, and `spotsNear()` from the threshold clear of both call points, with the lane as `avoid` (the
 // scene's call) and without it (as the snack corner calls it) — and the lattice those spots were searched on: its cells,
