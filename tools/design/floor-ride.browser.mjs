@@ -101,12 +101,13 @@ for (const [v, html] of Object.entries(VIEWS)) {
  * The page's own scripted world and the tool's instruments, installed right after the layout's head script and
  * style — so the reader stays the first script on the page — and before the stylesheet link and every module.
  */
-const STAGE = (run, apiDelay, layoutStatus, streamDelay = 0) => `<script>
+const STAGE = (run, apiDelay, layoutStatus, streamDelay = 0, busy = 0) => `<script>
 (() => {
   const RUN = ${JSON.stringify(run).replace(/</g, '\\u003c')};
   const API_DELAY = ${JSON.stringify(apiDelay)};
   const LAYOUT_STATUS = ${JSON.stringify(layoutStatus)};
   const STREAM_DELAY = ${JSON.stringify(streamDelay)};
+  const BUSY = ${JSON.stringify(busy)};
   const html = document.documentElement;
   const T = () => Math.round(performance.now());
   // The instruments: every class change on <html>, every pagereveal, the first drawn scene and the chrome's changes,
@@ -186,6 +187,7 @@ const STAGE = (run, apiDelay, layoutStatus, streamDelay = 0) => `<script>
         setTimeout(() => {
           if (this.readyState === 2) return;
           if (m.end === true) { this.readyState = 2; this.fire('error', {}); return; }
+          for (const until = performance.now() + BUSY; performance.now() < until;);
           R.delivered.push(performance.now());
           this.fire('mezzanine', { data: JSON.stringify(m.envelope) });
         }, m.at_ms - (performance.now() - start));
@@ -209,7 +211,8 @@ const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'te
  * until `/release`), `redirect` (`path → target`), `api` (`path → ms` added to the run's answer), `layout`
  * (`document path → status` for that page's `/api/building`), `media` (emulated), `missing` (paths answered 404 — an
  * asset that failed to load), `stream` (ms added to every message's `at_ms`, so a run's messages land after the page
- * has settled on a slow host); and
+ * has settled on a slow host), `busy` (ms the page spends in one long task as each message lands, before it is
+ * handled — the next frame's time is then taken before the message's paint runs, as on a busy live floor); and
  * `plant` — `[{ file, from, to }]` edits to what is served, `file` a path under `server/public` or `page` (every
  * rendered page).
  */
@@ -224,7 +227,7 @@ function serve(c = {}) {
     let html = VIEWS[view];
     if (view === 'floor') html = html.replace(/data-floor="[^"]*"/, `data-floor="${key}"`).replace(/data-seat="[^"]*"/, `data-seat="${seat}"`);
     const at = html.indexOf('<link rel="stylesheet"');
-    return edit('page', edit(`page:${view}`, html.slice(0, at) + STAGE(run, c.api ?? {}, c.layout ?? {}, c.stream ?? 0) + html.slice(at)));
+    return edit('page', edit(`page:${view}`, html.slice(0, at) + STAGE(run, c.api ?? {}, c.layout ?? {}, c.stream ?? 0, c.busy ?? 0) + html.slice(at)));
   };
   const beacons = [];
   let release = null;
@@ -727,31 +730,44 @@ const ROWS = {
   // and `.fx-hop`, which this row does not sample), and at least one repaint (a new `.fx-bird` node) inside the flight, so the
   // continuity is measured ACROSS a rebuild and not only within one node. Which arc is which leg, and where it starts,
   // is the suite's to hold (`ABirdFliesToItsDestinationTest`); here every arc is judged alike.
+  // card#12457: and no sample in which a bird's node holds its flight under way — its `fly` animation's time from the
+  // flight's start, at that frame, inside the flight — and the bird is not drawn: the blink a repaint made when the pin
+  // started the new node's animation after the frame it was drawn in. The page is busy for 40 ms as each post lands (a
+  // long task, as the live floor has — `busy`), so every repaint's paint runs after the time its next frame is drawn at
+  // was taken, and that pin blinks on every repaint rather than on the repaints a loaded host happens to delay.
+  // ⛔ TWO CLOCKS PER SAMPLE. A frame's time (`t`, the callback's argument) is when the frame began, and the bird's
+  // animations are sampled at it; the drawing the sampler reads is the DOM as the tasks before the callback left it,
+  // which on a busy page includes a paint that ran after `t`. So a post is matched to the drawing by when the callback
+  // ran (`wall`), and a bird whose node a later paint ended is allowed the travel up to `wall`; everything about where
+  // the bird is drawn reads `t`.
   // The PLANTs: the stepped flight the card replaced, the whole-frame delay that snapped the bird back on a repaint, and
   // a painter that draws each rebuild from its own delay without pinning it to the flight's one start (`pinEffects()`),
   // and one that dates the flight from `document.timeline.currentTime` — the last frame's time, behind the page's clock
-  // by however long the tasks since that frame have run — on a page busy for 40 ms as each post lands (a long task, as
-  // the live floor has), so its flight starts that much before its post arrived — and a flight
-  // whose keyframes start a tenth of the way along its arc, so the bird is first drawn past where its start has it.
-  'bird-flight': row('a coordination bird glides along its arc across repaints, from its start to its destination — the desk or the birdhouse\'s perch', { run: 'coord_portal', stream: 3000 },
+  // by however long the tasks since that frame have run, so on this busy page its flight starts that much before its
+  // post arrived — a flight whose keyframes start a tenth of the way along its arc, so the bird is first drawn past where
+  // its start has it, and the pin card#12457 replaced, which writes the flight's instant as the animation's start.
+  'bird-flight': row('a coordination bird glides along its arc across repaints, from its start to its destination — the desk or the birdhouse\'s perch', { run: 'coord_portal', stream: 3000, busy: 40 },
     [
       { plant: [{ file: 'js/floor/painter.js', from: 'style: `animation-duration:${seconds}s;animation-delay:${at(fx.flight_start)}s;offset-path', to: 'style: `animation-duration:${seconds}s;animation-timing-function:steps(${fx.frames});animation-delay:${at(fx.flight_start)}s;offset-path' }] },
       { plant: [{ file: 'js/floor/painter.js', from: 'const flown = fx.elapsed_ms / 1000;', to: 'const flown = (fx.elapsed_frames * fx.frame_interval_ms) / 1000;' }] },
       { plant: [{ file: 'js/floor/painter.js', from: '        host.replaceChildren(svg);\n        pinEffects();\n', to: '        host.replaceChildren(svg);\n' }] },
-      { plant: [
-        { file: 'js/floor/painter.js', from: 'performance.now() - (clock.now() - entry.started_at)', to: 'document.timeline.currentTime - entry.elapsed_ms' },
-        { file: 'page', from: 'R.delivered.push(performance.now());', to: 'for (const until = performance.now() + 40; performance.now() < until;); R.delivered.push(performance.now());' },
-      ] },
+      { plant: [{ file: 'js/floor/painter.js', from: 'performance.now() - (clock.now() - entry.started_at)', to: 'document.timeline.currentTime - entry.elapsed_ms' }] },
       { plant: [{ file: 'js/floor/painter.js', from: '@keyframes fly{from{offset-distance:0%;', to: '@keyframes fly{from{offset-distance:10%;' }] },
+      { plant: [{ file: 'js/floor/painter.js', from: 'animation.startTime = start;\n                animation.effect.updateTiming({ delay: delay + instant - start });', to: 'animation.startTime = instant;' }] },
     ],
     (chrome, c) => within(chrome, c, async (s) => {
       // The sampler is installed before the page's first script, so a flight the run fires before the page settles is
-      // sampled from its start; it runs on every animation frame for the run's first `SAMPLE_MS`.
+      // sampled from its start; it runs on every animation frame for the run's first `SAMPLE_MS`, and on past it while a
+      // bird drawn on the page still has its flight to come or under way (card#12457: a host slow enough to land the last
+      // posts late would otherwise cut the sample inside a flight), to at most `SAMPLE_CAP_MS` — a bound on the row's
+      // cost: a flight still under way there is cut, and judged short of its destination.
       const SAMPLE_MS = 9000;
+      const SAMPLE_CAP_MS = 2 * SAMPLE_MS;
       await s.page('Page.addScriptToEvaluateOnNewDocument', { source: `(window.__birds = { samples: [] }, (() => {
         const ids = new WeakMap(); let next = 0; const paths = new Map(); const t0 = performance.now();
         const arc = (d) => { if (!paths.has(d)) { const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', d); paths.set(d, p); } return paths.get(d); };
         const tick = (now) => {
+          let flying = false;
           for (const el of document.querySelectorAll('#floor-drawing .fx-bird')) {
             if (!ids.has(el)) ids.set(el, next++);
             const cs = getComputedStyle(el);
@@ -760,18 +776,20 @@ const ROWS = {
             const p = arc(d); const len = p.getTotalLength(); const pct = parseFloat(cs.offsetDistance);
             const at = p.getPointAtLength(len * pct / 100); const end = p.getPointAtLength(len); const start = p.getPointAtLength(0);
             const fly = el.getAnimations().find((a) => a.animationName === 'fly');
+            flying ||= fly !== undefined;
             const origin = fly === undefined || fly.startTime === null ? null : fly.startTime + fly.effect.getTiming().delay - t0;
-            window.__birds.samples.push({ t: now - t0, origin, d, el: ids.get(el), pct, len, x: at.x, y: at.y, end: [end.x, end.y], start: [start.x, start.y], shown: Number(cs.opacity) > 0, ms: parseFloat(cs.animationDuration) * 1000 });
+            window.__birds.samples.push({ t: now - t0, wall: performance.now() - t0, origin, d, el: ids.get(el), pct, len, x: at.x, y: at.y, end: [end.x, end.y], start: [start.x, start.y], shown: Number(cs.opacity) > 0, ms: parseFloat(cs.animationDuration) * 1000 });
           }
-          if (now - t0 < ${SAMPLE_MS}) requestAnimationFrame(tick);
+          if (now - t0 < ${SAMPLE_MS} || (flying && now - t0 < ${SAMPLE_CAP_MS})) requestAnimationFrame(tick);
+          else window.__birds.done = true;
         };
         window.__birds.t0 = t0;
         requestAnimationFrame(tick); })())` });
       await s.open('/floor/aimla');
-      await until(() => s.ev(`performance.now() > ${SAMPLE_MS + 100}`), SAMPLE_MS + 5000, 'the page never reached the end of the sample');
+      await until(() => s.ev('window.__birds.done === true'), SAMPLE_CAP_MS + 5000, 'the page never reached the end of the sample');
       const all = await s.ev('window.__birds.samples');
       const t0 = await s.ev('window.__birds.t0');
-      // When each post reached the page, on the samples' clock; a flight's post is the last delivered by a frame after its first sample.
+      // When each post reached the page, on the samples' clock; a flight's post is the last delivered before the callback that first sampled it ran.
       const delivered = (await s.ev('window.__ride.delivered')).map((x) => x - t0);
       const FRAME = 17;
       const SLACK = 3;
@@ -798,7 +816,7 @@ const ROWS = {
         const first = shown[0];
         let lag = null;
         if (first !== undefined) {
-          const post = delivered.filter((t) => t <= xs[0].t + FRAME).at(-1);
+          const post = delivered.filter((t) => t <= xs[0].wall).at(-1);
           if (first.origin === null) d.push(`${arcD}: the bird's first drawn node has no started animation`);
           else if (post === undefined) d.push(`${arcD}: no post was delivered before the bird was first drawn`);
           else {
@@ -814,13 +832,17 @@ const ROWS = {
         }
         const last = shown.at(-1);
         const after = last === undefined ? undefined : xs.find((x) => x.t > last.t);
-        const gap = after === undefined ? FRAME : after.t - last.t;
+        const gap = after === undefined ? FRAME : after.wall - last.t;
         const short = last === undefined ? null : Math.hypot(last.end[0] - last.x, last.end[1] - last.y);
         if (last === undefined) d.push(`${arcD}: the bird was never drawn`);
         else if (short > speed * gap + SLACK) d.push(`${arcD}: the bird's last drawn point is ${short.toFixed(1)} px short of its destination`);
+        // card#12457: under way at its frame's time on its own node's animation (a hair inside both ends, where the
+        // engine's rounding of the times decides the phase), and not drawn.
+        const blinks = xs.filter((x) => !x.shown && x.origin !== null && x.t - x.origin > 0.5 && x.t - x.origin < x.ms - 0.5);
+        if (blinks.length > 0) d.push(`${arcD}: the bird is not drawn on ${blinks.length} frame(s) while it flies — first at ${Math.round(blinks[0].t)} ms, ${Math.round(blinks[0].t - blinks[0].origin)} ms into its ${blinks[0].ms} ms flight (node ${blinks[0].el})`);
         const nodes = new Set(shown.map((x) => x.el)).size;
         if (nodes < 2) d.push(`${arcD}: no repaint landed during the flight (one node) — continuity across a rebuild was not measured`);
-        facts.push({ len: Math.round(xs[0].len), ms: xs[0].ms, samples: shown.length, nodes, firstAfterPostMs: lag, short: short === null ? null : Number(short.toFixed(2)), worstBack: Number(worstBack.toFixed(2)), worstStepOverSpeed: Number(worstStep.toFixed(2)) });
+        facts.push({ len: Math.round(xs[0].len), ms: xs[0].ms, samples: shown.length, nodes, blinks: blinks.length, firstAfterPostMs: lag, short: short === null ? null : Number(short.toFixed(2)), worstBack: Number(worstBack.toFixed(2)), worstStepOverSpeed: Number(worstStep.toFixed(2)) });
       }
       return { defects: d.slice(0, 6), facts };
     })),
@@ -835,7 +857,7 @@ const ROWS = {
   // by more than `SLACK` px and no step longer than § 12's speed covers in the frame gap (plus `SLACK`); and at least one
   // rebuild (a new node) inside the walk. The PLANTs: `steps(frames)`, the glide's delay in whole frames under a pin that
   // reads the exact instant, and the start dated from `document.timeline.currentTime` on a page busy 40 ms per delivery
-  // (the bird row's PLANT 4).
+  // (the bird row's PLANT 4, whose busy page is that row's base condition).
   'walker-glide': row('a walker glides along its routed path across a repaint, never in steps, from its walk\'s own start', { run: 'repaint', stream: 2000 },
     [
       // card#12747: every A2 walks twice (to its call plate and on from it), so each plant reaches the glide of a walker

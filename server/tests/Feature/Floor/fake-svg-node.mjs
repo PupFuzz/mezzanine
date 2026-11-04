@@ -68,6 +68,42 @@ export class Node {
 
     querySelectorAll() { return []; }
 
-    // One animation per node, whose `startTime` the painter may pin (a bird flight's, card#12345) and a probe reads.
-    getAnimations() { return (this.animations ??= [{ startTime: null }]); }
+    // One animation per node, whose `startTime` the painter may pin (a bird flight's, card#12345) and a probe reads —
+    // and whose effect's delay it may move (card#12457: `pin()` starts the animation at the frame's time and carries the
+    // rest of its instant in the delay). The delay starts as the node's style wrote it — its first `animation-delay`, in
+    // ms, 0 where it writes none — and `authored` keeps that value, so a probe can read the instant the pin counted the
+    // authored delay from: `startTime + effect delay − authored`.
+    getAnimations() {
+        if (this.animations === undefined) {
+            const written = /(?:^|;)animation-delay:\s*(-?[\d.]+)(m?s)/.exec(this.attrs.style ?? '');
+            const authored = written === null ? 0 : Number(written[1]) * (written[2] === 's' ? 1000 : 1);
+            const timing = { delay: authored };
+
+            this.animations = [{
+                startTime: null,
+                authored,
+                effect: { getTiming: () => ({ ...timing }), updateTiming: (t) => Object.assign(timing, t) },
+            }];
+        }
+
+        return this.animations;
+    }
+}
+
+/**
+ * What a probe reads of a node's (first) animation: its `start`, its effect's `delay` as it stands and as the style
+ * wrote it (`authored`), all in ms, and `pinned` — the instant on the timeline its authored delay is counted from
+ * (`null` while it has no start). A node whose animation nothing asked for reads all `null`.
+ */
+export function animationOf(n) {
+    const a = n.animations?.[0];
+
+    if (a === undefined) {
+        return { start: null, delay: null, authored: null, pinned: null };
+    }
+
+    const delay = a.effect.getTiming().delay;
+
+    // To the microsecond: the subtraction of a delay read back in floating point is not exact.
+    return { start: a.startTime, delay, authored: a.authored, pinned: a.startTime === null ? null : Math.round((a.startTime + delay - a.authored) * 1000) / 1000 };
 }

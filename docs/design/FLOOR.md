@@ -3551,8 +3551,15 @@ logged.
    on the document timeline — the effect's own start instant, carried onto the timeline by a live reading of
    both clocks (`floor/painter.js`'s `pinEffects()`, one primitive for both, keyed per effect) — so a repaint
    mid-flight or mid-walk neither restarts it nor snaps it to its frame's start, and one first drawn a moment
-   after its start is drawn that far along its path. A walker's node the depth order moves (item 9) is pinned
-   again to that start, because a re-inserted node's animations are new. **In a browser with no
+   after its start is drawn that far along its path. **The pin starts each animation at the timeline's time as it
+   paints (`document.timeline.currentTime`) and carries the rest of that instant in the animation's own delay**
+   (`pin()`, card#12457): the instant is a live reading, later than the time the browser has already taken for the
+   next frame, and an animation started after the frame it is drawn in is in its before phase there whatever its
+   delay — so a node drawn only by its animation was not drawn for the first frame after a repaint: measured on the
+   bird in flight, and by the same rule the bird standing on the birdhouse's ledge and a walker shown through its legs. Each animation's delay is moved
+   from its AUTHORED value, held per animation, so a second pin of one animation lands on the same instant. A walker's
+   node the depth order moves (item 9) is pinned again to that start, because a re-inserted node's animations are
+   new. **In a browser with no
    `Element.getAnimations()`, or a timeline with no time, nothing is pinned**: each is drawn from its negative
    delay alone, a repaint redraws it from the moment it is first styled — the jump the pin removes — and no
    walker node is moved after its paint; the floor's targets have both.

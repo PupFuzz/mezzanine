@@ -163,20 +163,46 @@ class AnInternRidesTheElevatorTest extends TestCase
 
     /**
      * The arrival's walker painted at its first frame and again at a repaint further on (`intern-paint-probe.mjs`):
-     * the start the painter pinned on the walker's glide and on the laptop over it, per paint.
+     * the instant the painter pinned the walker's glide and the laptop over it to, per paint (`pinned` — card#12457:
+     * `pin()` starts each animation at the frame's time and carries the rest of the instant in its delay, so a node's
+     * `start` is the frame's and `pinned` is the instant its authored delay is counted from).
      */
+    /**
+     * `paintedWalk()`'s paints. The render that starts the walk paints at its own instant (`doors_at` the walk's start, 0
+     * on the page's clock); a later paint carries spans read 100 ms before it, as a render's are read before its scene
+     * is built. `frame_ms`, the last frame's time, trails the live timeline as it does at the end of a task.
+     */
+    private const WALK_PAINTS = [
+        ['timeline_ms' => 1000, 'frame_ms' => 990, 'clock_ms' => 0, 'elapsed_ms' => 0, 'doors_at' => 0],
+        ['timeline_ms' => 4000, 'frame_ms' => 3990, 'clock_ms' => 3000, 'elapsed_ms' => 3000, 'doors_at' => 2900],
+    ];
+
+    /**
+     * card#12457: every pinned node of each paint started no later than that paint's frame (`frame_ms`, which no later
+     * frame precedes) — an animation started after the frame it is drawn in is in its before phase there, and a node
+     * drawn only by its animation is not drawn for that frame.
+     */
+    private function aheadOfTheFrameDefects(array $paints): array
+    {
+        $defects = [];
+        foreach ($paints as $i => $p) {
+            foreach (['glide' => [$p['glide']], 'laptop' => [$p['laptop']], 'leaf' => $p['leaves']] as $part => $nodes) {
+                foreach ($nodes as $n) {
+                    if ($n !== null && $n['start'] !== null && $n['start'] > self::WALK_PAINTS[$i]['frame_ms']) {
+                        $defects[] = "paint {$i}: a {$part} starts at {$n['start']} on the timeline, after the frame it is drawn in at ".self::WALK_PAINTS[$i]['frame_ms'];
+                    }
+                }
+            }
+        }
+
+        return $defects;
+    }
+
     private function paintedWalk(?string $dir = null): array
     {
         [$frame, $walk] = $this->firstWalk($this->floorRun('arrive'), 'arrive');
         unset($walk['elapsed_frames'], $walk['elapsed_ms'], $walk['started_at']);
-        // The render that starts the walk paints at its own instant (`doors_at` the walk's start, 0 on the page's clock);
-        // a later paint carries spans read 100 ms before it, as a render's are read before its scene is built.
-        $paints = [
-            ['timeline_ms' => 1000, 'frame_ms' => 990, 'clock_ms' => 0, 'elapsed_ms' => 0, 'doors_at' => 0],
-            ['timeline_ms' => 4000, 'frame_ms' => 3990, 'clock_ms' => 3000, 'elapsed_ms' => 3000, 'doors_at' => 2900],
-        ];
-
-        return $this->probe(['effect' => $walk, 'paints' => $paints, 'doors' => $frame['scene']['doors']],
+        return $this->probe(['effect' => $walk, 'paints' => self::WALK_PAINTS, 'doors' => $frame['scene']['doors']],
             dirname($dir ?? $this->moduleDir()), __DIR__.'/intern-paint-probe.mjs');
     }
 
@@ -189,14 +215,14 @@ class AnInternRidesTheElevatorTest extends TestCase
         $defects = [];
         $expected = [1000, 4000 - (3000 - 2900)];
         foreach ($paints as $i => $p) {
-            $starts = array_map(static fn (array $l): mixed => $l['start'], $p['leaves']);
+            $starts = array_map(static fn (array $l): mixed => $l['pinned'], $p['leaves']);
             if (count($starts) !== 2) {
                 $defects[] = "paint {$i} drew ".count($starts).' leaves';
             } elseif ($starts !== [$expected[$i], $expected[$i]]) {
                 $defects[] = "paint {$i}: the leaves start at ".json_encode($starts)." and their spans' instant is at {$expected[$i]} on the timeline";
             }
         }
-        if (($paints[0]['glide']['start'] ?? null) !== ($paints[0]['leaves'][0]['start'] ?? false)) {
+        if (($paints[0]['glide']['pinned'] ?? null) !== ($paints[0]['leaves'][0]['pinned'] ?? false)) {
             $defects[] = 'on the render that starts the walk, the leaves and the walker are pinned to different starts';
         }
 
@@ -210,8 +236,8 @@ class AnInternRidesTheElevatorTest extends TestCase
         foreach ($paints as $i => $p) {
             if ($p['glide'] === null || $p['laptop'] === null) {
                 $defects[] = "paint {$i} drew no walker or no laptop";
-            } elseif ($p['laptop']['start'] === null || $p['laptop']['start'] !== $p['glide']['start']) {
-                $defects[] = "paint {$i}: the laptop starts at ".json_encode($p['laptop']['start']).' and its walker at '.json_encode($p['glide']['start']);
+            } elseif ($p['laptop']['pinned'] === null || $p['laptop']['pinned'] !== $p['glide']['pinned']) {
+                $defects[] = "paint {$i}: the laptop is pinned to ".json_encode($p['laptop']['pinned']).' and its walker to '.json_encode($p['glide']['pinned']);
             }
         }
 
@@ -299,6 +325,11 @@ class AnInternRidesTheElevatorTest extends TestCase
     public function test_green_the_leaves_are_pinned_to_the_instant_their_spans_are_read(): void
     {
         $this->assertSame([], $this->leafPinDefects($this->paintedWalk()));
+    }
+
+    public function test_green_no_pinned_node_starts_after_its_frame(): void
+    {
+        $this->assertSame([], $this->aheadOfTheFrameDefects($this->paintedWalk()));
     }
 
     // ── GREEN — the rows ─────────────────────────────────────────────────────────────────────
@@ -988,6 +1019,13 @@ class AnInternRidesTheElevatorTest extends TestCase
     {
         $dir = $this->planted(['../floor/painter.js', '                entry.nodes.push(over);', '']);
         $this->assertNotSame([], $this->laptopPinDefects($this->paintedWalk($dir)), 'the plant\'s unpinned laptop was not caught');
+    }
+
+    /** card#12457, the pin the card replaced: the instant written as the start, ahead of the frame. */
+    public function test_red_the_start_ahead_of_the_frame(): void
+    {
+        $dir = $this->planted(['../floor/painter.js', "animation.startTime = start;\n                animation.effect.updateTiming({ delay: delay + instant - start });", 'animation.startTime = instant;']);
+        $this->assertNotSame([], $this->aheadOfTheFrameDefects($this->paintedWalk($dir)), 'the plant\'s start ahead of the frame was not caught');
     }
 
     public function test_red_the_unpinned_leaves(): void

@@ -21,13 +21,14 @@
  * the flights as the scene emitted them, `[{ timeline_ms, frame_ms, clock_ms, elapsed_ms }, …]`, and optionally
  * `degraded`: `'no-get-animations'` (a browser with no `Element.getAnimations()`) or `'no-timeline'` (a timeline
  * with no time). stdout: `{ style, flights: [{ key, paints: [{ bird, rest, perched, hop }] }] }`, each node
- * `{ style, start }` or `null`; `perched` and `hop` (card#12445, the portal bird on the birdhouse's ledge) also carry
+ * `{ style, start, delay, pinned }` or `null` (`fake-svg-node.mjs`'s `animationOf()`: the start the painter wrote, the
+ * effect's delay as it left it, in ms, and the instant the authored delay is counted from); `perched` and `hop` (card#12445, the portal bird on the birdhouse's ledge) also carry
  * their `class`, the ledge's `translate` (`at`), and their bird's `transform` and leg path.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { Node } from './fake-svg-node.mjs';
+import { Node, animationOf } from './fake-svg-node.mjs';
 
 const root = process.argv[2];
 const input = JSON.parse(readFileSync(0, 'utf8'));
@@ -59,7 +60,7 @@ const find = (n, cls) => [
     ...(String(n.attrs?.class ?? '').split(' ').includes(cls) ? [n] : []),
     ...n.children.flatMap((c) => find(c, cls)),
 ];
-const read = (n) => (n === undefined ? null : { style: n.attrs.style ?? null, start: n.animations?.[0]?.startTime ?? null });
+const read = (n) => (n === undefined ? null : { style: n.attrs.style ?? null, ...animationOf(n) });
 // card#12445: a node on the birdhouse's ledge — its class, its timing, the ledge's `translate` (its parent's), and its
 // bird's feet: the bird group's `transform` and the leg path the feet end on.
 const ledge = (n) => {
