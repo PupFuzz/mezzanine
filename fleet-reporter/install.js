@@ -689,33 +689,45 @@ function stopFlusher(T) {
   }
   return pid;
 }
-/* When the lock holder started: the lock's own `started_at`, on every OS, read only after the pid is confirmed
- * to run this artifact's `flusher`, so no `ps lstart` is parsed (D6 § 3.1). The flusher writes it from its own
- * millisecond clock as it takes the lock. Linux's `/proc/<pid>/stat` start time was the source before card#12571
- * and cannot order a start against an artifact written a second earlier: `/proc/stat`'s `btime` is whole
- * seconds and drifts from the wall clock (0.6–2.1 s early, measured on the sandbox and on ubuntu-latest, where
- * a no-op run then restarted a flusher cron had started 1 s after the install), and `/proc/uptime` is
- * virtualized under a container (53 s off on the sandbox host). A value that does not parse reads as the
- * previous build, so the restart it owes is the safe direction. */
-function holderStartMs(T, held) {
-  const t = Date.parse(held.started_at);
-  return Number.isFinite(t) ? t : -Infinity;
+/* Whether the flusher that wrote the lock `held` runs the INSTALLED artifact (card#12476). The artifact's install
+ * instant is its mtime, which `artifact` stamps AFTER the rename that installs it, as a whole millisecond.
+ * A lock whose artifact writes the begin key (the reporter's exported `LOCK_BEGAN_AT_KEY`, 0.6.2 on) is judged by
+ * it: the instant the holder's PROCESS BEGAN, before node read the script. Began STRICTLY after the install instant
+ * ⇒ began after the rename ⇒ read the installed file: a defined order, with no tolerance. Anything else is the
+ * previous build, so the restart it owes is the safe direction — a lock with no begin key under an artifact that
+ * writes one included, since its writer is an older build. The lock's `started_at` is taken AFTER the read, so a
+ * flusher that read the previous artifact a moment before the install, and took the lock after it, read as current
+ * under it (reproduced with the read held across the install). An installed artifact that exports no key (a seat
+ * rotated or restarted by this installer over an artifact before 0.6.2) is judged by `started_at`, the rule its own
+ * flusher can answer. Linux's `/proc/<pid>/stat` start was the source before card#12571 and cannot order a start
+ * against an artifact written a second earlier: `/proc/stat`'s `btime` is whole seconds and drifts from the wall
+ * clock (0.6–2.1 s early, measured on the sandbox and on ubuntu-latest). Returns { current, beganMs, builtMs, by }. */
+function holderRuns(T, held) {
+  const builtMs = Math.round(fs.statSync(T.js).mtimeMs);
+  let key;
+  try { key = require(T.js).LOCK_BEGAN_AT_KEY; } catch (e) { key = undefined; }
+  const by = typeof key === 'string' ? key : 'started_at';
+  const t = Date.parse(held[by]);
+  const beganMs = Number.isFinite(t) ? t : -Infinity;
+  return { current: by === 'started_at' ? beganMs >= builtMs : beganMs > builtMs, beganMs, builtMs, by };
 }
-/* Whether the RUNNING flusher runs the installed build: 'current', 'previous' (started before the artifact
- * was installed — the restart is owed), or 'none' (no live flusher holds the lock: its next start runs the
- * installed build, so nothing is owed). Read-only. */
+/* Whether the RUNNING flusher runs the installed build: 'current', 'previous' (it began before the artifact was
+ * installed — the restart is owed), or 'none' (no live flusher holds the lock: its next start runs the installed
+ * build, so nothing is owed). Read-only. */
 function holder(T) {
   const h = lockHolder(T), held = h.held;
   if (!h.live) {
     say(`no live flusher holds the lock (${h.why}): its next start runs the installed artifact`);
     return 'none';
   }
-  const startedMs = holderStartMs(T, held), builtMs = fs.statSync(T.js).mtimeMs;
-  if (startedMs < builtMs) {
-    say(`FAIL: the lock holder started ${new Date(startedMs).toISOString()}, before the artifact was installed at ${new Date(builtMs).toISOString()}: it runs the previous build`);
+  const r = holderRuns(T, held), at = (ms) => new Date(ms).toISOString();
+  if (!r.current) {
+    say(Number.isFinite(r.beganMs)
+      ? `FAIL: the lock holder started ${at(r.beganMs)}, before the artifact was installed at ${at(r.builtMs)}: it runs the previous build`
+      : `FAIL: the lock holder's flusher.lock carries no usable ${r.by}, which the installed artifact's flusher writes: it runs the previous build`);
     return 'previous';
   }
-  say(`PASS: the lock holder runs the artifact installed at ${new Date(builtMs).toISOString()} (pid ${held.pid}, started ${new Date(startedMs).toISOString()})`);
+  say(`PASS: the lock holder runs the artifact installed at ${at(r.builtMs)} (pid ${held.pid}, started ${at(r.beganMs)})`);
   return 'current';
 }
 /* The Windows start (D6 § 3.4): one `node <artifact> flusher`, UNCONDITIONALLY, through the reporter's own spawn
@@ -753,14 +765,14 @@ function restart(ctx) {
     startFlusherWin32(ctx);
   }
   const waitS = T.platform === 'linux' ? RESTART_WAIT_S : Math.ceil(reporter().K.LOCK_STALE_MS / 1000);
-  const t0 = Date.now(), builtMs = fs.statSync(T.js).mtimeMs;
+  const t0 = Date.now();
   // A start that began before the stop — a hook's, or cron's minute, launched before the artifact was replaced
   // and not yet holding the lock when the stop looked — takes the lock afterwards running the PREVIOUS build. So
   // the wait is for a holder on the installed build, and an older one found in the window is stopped again.
   for (;;) {
     const h = lockHolder(T), l = h.held;
     if (h.live && l.pid !== old) {
-      if (holderStartMs(T, l) >= builtMs) break;
+      if (holderRuns(T, l).current) break;
       say(`pid ${l.pid} took the lock running the previous build (it started before the artifact was installed): stopping it too`);
       stopFlusher(T);
       if (T.platform === 'darwin') launchctl('kickstart', '-k', `${guiDomain()}/${LABEL}`);
@@ -1007,6 +1019,11 @@ function artifact(ctx) {
     const to = T.P.join(T.artifactDir, ...rel.split('/'));
     if (!reporter().atomicWrite(to, fs.readFileSync(f))) refuse(`could not write ${to} (the files before it are installed; run install.js again)`);
   }
+  // THE INSTALL INSTANT, stamped after the script's rename (card#12476): the temp file's write time, which the rename
+  // keeps, comes BEFORE the rename, so a flusher that began between the two read the previous script and still began
+  // after that time. A whole millisecond, so `holderRuns` reads back exactly what was stamped.
+  const installedAt = new Date(Date.now());
+  fs.utimesSync(T.js, installedAt, installedAt);
   for (const [rel, f] of src) if (!fs.readFileSync(f).equals(fs.readFileSync(T.P.join(T.artifactDir, ...rel.split('/'))))) refuse(`${rel} reads back different from the checkout's`);
   say('sha256 ' + sha256(fs.readFileSync(T.js)) + '  ' + T.js);
   say('fixtures-match');
@@ -1468,8 +1485,8 @@ function ancestry(ctx) {
   } else {
     const age = Date.now() - fs.statSync(lockPath(T)).mtimeMs;
     const fresh = age < require(T.js).K.LOCK_STALE_MS;
-    const after = Date.parse(held.started_at) >= fs.statSync(T.js).mtimeMs;
-    say(`pid ${held.pid} is running; the lock was renewed ${Math.round(age / 1000)} s ago${fresh ? '' : ', past K.LOCK_STALE_MS'}; it started ${held.started_at}, ${after ? 'after' : 'BEFORE'} the artifact`);
+    const r = holderRuns(T, held);
+    say(`pid ${held.pid} is running; the lock was renewed ${Math.round(age / 1000)} s ago${fresh ? '' : ', past K.LOCK_STALE_MS'}; it started ${Number.isFinite(r.beganMs) ? new Date(r.beganMs).toISOString() : `with no usable ${r.by}`}, ${r.current ? 'after' : 'BEFORE'} the artifact`);
   }
 }
 

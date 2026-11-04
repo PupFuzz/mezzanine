@@ -67,7 +67,7 @@ const lazy = (name) => require(name);
  * change to a file a reporter update ships, and `bin/reporter-version-guard.py` fails a PR that changes
  * one without moving it, so two different builds never report the same version. Each version's row in
  * `fleet-reporter/UPDATES.md` says what an upgrading seat must apply. */
-const REPORTER_VERSION = '0.6.1';
+const REPORTER_VERSION = '0.6.2';
 const SCHEMA_VERSION = 1;
 
 /* ── Every number, from § 14 and the section that derives it ──────────────────────────────── */
@@ -3600,12 +3600,22 @@ function procStartTicks(pid) {
   return Number.isSafeInteger(v) && v >= 0 ? v : null;
 }
 
+/* THE KEY OF `flusher.lock` THAT SAYS WHICH BUILD THE HOLDER RUNS (card#12476): the instant this process BEGAN, on
+ * the wall clock, which is before node read this file. `started_at` is taken after the read, so a flusher that read
+ * the previous artifact a moment before an install replaced it wrote a `started_at` after the install and read as
+ * running the new build. The installer reads the key's name from here, so an artifact that exports none is one
+ * whose flusher does not write it (`install.js`'s `holderRuns`). */
+const LOCK_BEGAN_AT_KEY = 'began_at';
+
 function acquireLock(spool, state) {
   const lock = path.join(spool, 'flusher.lock');
   // On Linux the lock also carries this process's own start ticks, an identity no wall-clock step can move; the
-  // installer compares it with the pid's live /proc entry to tell this flusher from a reused pid.
+  // installer compares it with the pid's live /proc entry to tell this flusher from a reused pid. `process.uptime()`
+  // counts from the process's own start, before node reads the script: measured on Linux by the order of the
+  // execve, the instant and the script's open; on every OS install.selftest.py's held-read case reds if it is not.
   const ticks = process.platform === 'linux' ? procStartTicks(process.pid) : null;
-  const body = JSON.stringify({ pid: process.pid, started_at: state.owner_started_at, ...(ticks === null ? {} : { start_ticks: ticks }) });
+  const body = JSON.stringify({ pid: process.pid, started_at: state.owner_started_at, ...(ticks === null ? {} : { start_ticks: ticks }),
+    [LOCK_BEGAN_AT_KEY]: rfc3339(Math.floor(now() - process.uptime() * 1000)) });
   ensureDir(spool);
   const tryCreate = () => {
     try { const fd = fs.openSync(lock, 'wx'); fs.writeSync(fd, Buffer.from(body, 'utf8')); fs.closeSync(fd); return true; }
@@ -5391,6 +5401,9 @@ module.exports = { sanitize, buildDescriptor, truncateBytes, ulid, buildCounters
    * flusher records its own in `flusher.lock`. Requiring this file runs nothing:
    * `main` is guarded above. */
   loadConfig, parseConfig, allConfigErrors, atomicWrite, siteKey, REPORTER_VERSION, procStartTicks,
+  /* `LOCK_BEGAN_AT_KEY` is exported for the installer's holder check alone (card#12476): the lock key it judges a
+   * holder's build by, read from the INSTALLED artifact, so an artifact that predates the key exports none. */
+  LOCK_BEGAN_AT_KEY,
   /* `spawnFlusher` is exported for the installer's Windows start alone (card#12471): one spawn, one set of
    * P-7 options and one working directory for every flusher a seat starts. */
   spawnFlusher };

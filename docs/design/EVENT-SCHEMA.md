@@ -289,7 +289,8 @@ on Linux and macOS; on Windows only the second is built (item 1 says why):
 `O_CREAT|O_EXCL` (`fs.openSync(path, 'wx')`), which is atomic on both platforms: exactly one process
 can win it. It holds `{"pid":…,"started_at":…}`, and on Linux since card#12571 also `"start_ticks"`, the
 flusher's own start in clock ticks since boot (field 22 of `/proc/self/stat`), by which the installer tells this
-flusher from a reused pid whatever the wall clock did — since card#12180 a `seq_epoch` is a site's, held in that
+flusher from a reused pid whatever the wall clock did; and since card#12476 `"began_at"`, the wall-clock instant the
+flusher's process began, before it read its script, by which the installer tells which build it runs — since card#12180 a `seq_epoch` is a site's, held in that
 site's `state.json` entry, so the lock names none — and its `mtime` is touched on item 2's cadence.
 A flusher that exits removes the lock only while its body still names that flusher's own `pid` and
 `started_at`; a lock that names another flusher is left in place, because removing it lets the next
