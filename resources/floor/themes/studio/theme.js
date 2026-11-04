@@ -95,6 +95,15 @@ export const PALETTE = Object.freeze({
         plate: '#fffaf0',
         rim: '#f6e7d2',
     }),
+    // card#12844: the office furniture an author can place on any floor — each piece its own row, none with a light.
+    'water-cooler': Object.freeze({ body: '#f4ede0', water: '#a9d3e3', cap: '#6f8fb0', tap: '#9aa7ad', recess: '#5b5560', cup: '#fffaf0' }),
+    'filing-cabinet': Object.freeze({ body: '#9cc3b2', handle: '#b08a4a', label: '#fffaf0', papers: '#f6e7d2', folder: '#e0a43a', pot: '#d97f8f', leaf: '#79a85a' }),
+    copier: Object.freeze({ body: '#e9e4dc', lid: '#d3cdc4', trim: '#6f8fb0', keys: '#a9a39b', paper: '#fffaf0', feet: '#5b5560' }),
+    'coat-rack': Object.freeze({ wood: '#a8714a', coats: Object.freeze(['#c8714f', '#6f9a9a', '#d9a54a', '#8fa66b']), scarf: Object.freeze(['#c98b8f', '#f2e6cf', '#94627e']), hat: '#94627e' }),
+    whiteboard: Object.freeze({ wood: '#b07a4f', frame: '#c9c3bb', board: '#fbfaf6', ink: Object.freeze(['#6f8fb0', '#c8553d', '#7f9f6a']), notes: Object.freeze(['#f2d29b', '#f7b6c8', '#b7d7c8']) }),
+    aquarium: Object.freeze({ stand: '#a8714a', lid: '#5b6b70', water: '#7fc1cc', sand: '#e8d3a6', weed: '#6f9a52', fish: Object.freeze(['#e98a4f', '#f2c14e', '#d97f8f']), pebbles: Object.freeze(['#c98b8f', '#a5b58e', '#e9d8c4']) }),
+    'bean-bag': Object.freeze({ colours: Object.freeze(['#c98b8f', '#6f9a9a', '#d9a54a', '#8fa66b']) }),
+    globe: Object.freeze({ sea: '#6f9fc4', land: '#8fb36b', meridian: '#d4a34f', wood: '#8a5a3a' }),
 });
 
 /**
@@ -772,7 +781,9 @@ export function surfaces() {
  * A STANDING SCENERY PIECE (§ 10.6 item 6), at its tile's cell rect, its foot on the cell's floor line,
  * sized by the cell: `bookcase`, `plant`, `floor-lamp`, `armchair`, `cushion`, `book-pile`, or one of the snack
  * corner's two tables, `snack-table` and `snack-table-low` (card#12749, `snackTable()`), or the restroom's door,
- * `restroom-door` (card#12786, `restroomDoor()`), which the scene hands its `sign` and `plate` rects as well. The floor
+ * `restroom-door` (card#12786, `restroomDoor()`), which the scene hands its `sign` and `plate` rects as well, or one of the
+ * office pieces (card#12844, `OFFICE`): `water-cooler`, `filing-cabinet`, `copier`, `coat-rack`, `whiteboard`, `aquarium`,
+ * `bean-bag` and `globe`. The floor
  * lamp's light is § 6.3's decorative glow, the painter's; the theme draws no glow of its own.
  *
  * @param {{kind: string, w: number, h: number, seed: string, index: number}} input the kind, the cell's size,
@@ -871,10 +882,394 @@ export function scenery({ kind, w, h, seed, index, sign = null, plate = null }) 
         s.push(snackTable(pen, SNACK[kind], w, foot));
     } else if (kind === 'restroom-door') {
         s.push(restroomDoor(pen, w, foot, sign, plate));
+    } else if (OFFICE[kind] !== undefined) {
+        s.push(OFFICE[kind](pen, { w, h, cx, foot, key, next }));
     }
 
     return doc(pen, w, h, s.join(''));
 }
+
+// ── the office pieces (card#12844) ───────────────────────────────────────────────────────────────
+// Each is drawn at the cell's size and its foot on the cell's floor line, at the scale the cell sets against the
+// piece's own tile; nothing on any of them moves, writes text or carries a light (§ 10.6 item 3).
+
+/** A WATER COOLER: a cream cabinet with a dark tap alcove, two plain metal taps over a drip tray and a paper cup on it, and on top a big blue bottle of water with two still bubbles. */
+function waterCooler(pen, { w, h, cx, foot }) {
+    const P = PALETTE['water-cooler'];
+    const k = Math.min(w / 40, h / 120);
+    const bw = 28 * k;
+    const bodyTop = foot - 74 * k;
+    const m = [];
+
+    m.push(`<path d="${rr(cx - bw / 2, bodyTop, bw, 74 * k, 4 * k)}" fill="${pen.face(P.body, 0.2, 0.22)}" stroke="${line(P.body)}" stroke-width=".8"/>`);
+    m.push(`<path d="${rr(cx - bw / 2 + 4 * k, bodyTop + 8 * k, bw - 8 * k, 22 * k, 3 * k)}" fill="${pen.v([[0, P.recess], [1, tint(P.recess, 0.2)]])}"/>`);
+
+    for (const dx of [-5, 5]) {
+        m.push(`<path d="${rr(cx + dx * k - 2.4 * k, bodyTop + 9 * k, 4.8 * k, 7 * k, 1.4 * k)}" fill="${pen.face(P.tap, 0.3, 0.2)}" stroke="${line(P.tap)}" stroke-width=".6"/>`);
+        m.push(`<path d="M${f(cx + dx * k)} ${f(bodyTop + 16 * k)}v${f(2.4 * k)}" stroke="${line(P.tap)}" stroke-width="${f(1.6 * k)}" stroke-linecap="round"/>`);
+    }
+
+    m.push(`<path d="${rr(cx - bw / 2 + 5 * k, bodyTop + 27 * k, bw - 10 * k, 3 * k, 1 * k)}" fill="${pen.face(P.tap, 0.2, 0.2)}" stroke="${line(P.tap)}" stroke-width=".5"/>`);
+    m.push(`<path d="M${f(cx + 2 * k)} ${f(bodyTop + 20 * k)}h${f(6 * k)}l${f(-1 * k)} ${f(7 * k)}h${f(-4 * k)}Z" fill="${pen.face(P.cup, 0.1, 0.2)}" stroke="${line(P.cup)}" stroke-width=".5"/>`);
+    m.push(`<path d="M${f(cx - bw / 2 + 5 * k)} ${f(foot - 10 * k)}h${f(bw - 10 * k)}" stroke="${shade(P.body, 0.18)}" stroke-width="${f(1.2 * k)}" stroke-linecap="round"/>`);
+
+    // the bottle: a neck into the cabinet's top, its round shoulders, the water a little below its top, two bubbles
+    const btw = 26 * k;
+    const btTop = bodyTop - 40 * k;
+    const bottle = `M${f(cx - 4 * k)} ${f(bodyTop + 1)}V${f(bodyTop - 4 * k)}Q${f(cx - btw / 2)} ${f(bodyTop - 5 * k)} ${f(cx - btw / 2)} ${f(bodyTop - 12 * k)}V${f(btTop + 8 * k)}Q${f(cx - btw / 2)} ${f(btTop)} ${f(cx)} ${f(btTop)}Q${f(cx + btw / 2)} ${f(btTop)} ${f(cx + btw / 2)} ${f(btTop + 8 * k)}V${f(bodyTop - 12 * k)}Q${f(cx + btw / 2)} ${f(bodyTop - 5 * k)} ${f(cx + 4 * k)} ${f(bodyTop - 4 * k)}V${f(bodyTop + 1)}Z`;
+
+    m.push(`<path d="${bottle}" fill="${pen.h([[0, tint(P.water, 0.25)], [0.6, P.water], [1, shade(P.water, 0.15)]])}" stroke="${line(P.cap)}" stroke-width=".8"/>`);
+    m.push(`<path d="M${f(cx - btw / 2 + 1)} ${f(btTop + 9 * k)}Q${f(cx)} ${f(btTop + 6 * k)} ${f(cx + btw / 2 - 1)} ${f(btTop + 9 * k)}" fill="none" stroke="${tint(P.water, 0.5)}" stroke-width="${f(1.2 * k)}"/>`);
+    m.push(`<path d="M${f(cx - btw / 2 + 1)} ${f(btTop + 20 * k)}H${f(cx + btw / 2 - 1)}" stroke="${shade(P.water, 0.2)}" stroke-width="${f(0.8 * k)}" opacity=".6"/>`);
+    m.push(`<path d="M${f(cx - btw / 2 + 4 * k)} ${f(btTop + 6 * k)}v${f(22 * k)}" stroke="${RULES.highlight}" stroke-width="${f(2.2 * k)}" stroke-linecap="round" opacity=".7"/>`);
+    m.push(`<circle cx="${f(cx + 4 * k)}" cy="${f(btTop + 26 * k)}" r="${f(1.8 * k)}" fill="none" stroke="${RULES.highlight}" stroke-width="${f(0.7 * k)}"/>`);
+    m.push(`<circle cx="${f(cx + 6.5 * k)}" cy="${f(btTop + 19 * k)}" r="${f(1.2 * k)}" fill="none" stroke="${RULES.highlight}" stroke-width="${f(0.6 * k)}"/>`);
+    m.push(`<path d="${rr(cx - 5 * k, bodyTop - 5 * k, 10 * k, 5 * k, 1.5 * k)}" fill="${pen.face(P.cap, 0.25, 0.2)}" stroke="${line(P.cap)}" stroke-width=".6"/>`);
+
+    return shadow(pen, cx + 2, foot, bw * 0.7, 3.4 * k, 0.3) + rimmed(m.join(''));
+}
+
+/** A FILING CABINET: as many drawers as its cell is tall for, each with a blank cream label holder and a bar handle, and on top a seeded small plant or a stack of papers and a folder. */
+function filingCabinet(pen, { w, h, cx, foot, key, next }) {
+    const P = PALETTE['filing-cabinet'];
+    const k = Math.min(1, w / 48);
+    const bw = w - 6 * k;
+    const x = (w - bw) / 2;
+    const topRoom = Math.min(24 * k, h * 0.3);
+    const bh = Math.max(8, h - 2 - topRoom);
+    const top = foot - bh;
+    const drawers = Math.max(1, Math.round((bh - 6 * k) / 26));
+    const dh = (bh - 6 * k) / drawers;
+    const m = [`<path d="${rr(x, top, bw, bh, 3 * k)}" fill="${pen.face(P.body, 0.22, 0.22)}" stroke="${line(P.body)}" stroke-width=".9"/>`];
+
+    for (let i = 0; i < drawers; i++) {
+        const dy = top + 3 * k + i * dh;
+
+        m.push(`<path d="${rr(x + 3 * k, dy, bw - 6 * k, dh - 3 * k, 2 * k)}" fill="${pen.face(tint(P.body, 0.08), 0.2, 0.15)}" stroke="${line(P.body)}" stroke-width=".7"/>`);
+        m.push(`<path d="${rr(cx - 6 * k, dy + 4 * k, 12 * k, 5 * k, 1 * k)}" fill="${P.label}" stroke="${line(P.handle)}" stroke-width=".6"/>`);
+        m.push(`<path d="${rr(cx - 8 * k, dy + 12 * k, 16 * k, 3.2 * k, 1.6 * k)}" fill="${pen.face(P.handle, 0.35, 0.2)}" stroke="${line(P.handle)}" stroke-width=".6"/>`);
+    }
+
+    m.push(`<path d="M${f(x + 2 * k)} ${f(top + 1.5)}H${f(x + bw - 2 * k)}" stroke="${tint(P.body, 0.45)}" stroke-width="1.2" stroke-linecap="round" opacity=".8"/>`);
+
+    const out = [shadow(pen, cx + 3, foot, bw * 0.62, 4 * k, 0.3), rimmed(m.join(''))];
+
+    if (draw(key, 'theme:filing-top') % 2 === 0) {
+        out.push(pottedPlant(pen, cx + bw * 0.18, top, P.pot, P.leaf, 0.62 * k, 'round', next));
+    } else {
+        const papers = [];
+
+        for (let i = 0; i < 3; i++) {
+            papers.push(`<path d="${rr(x + 5 * k + (next() - 0.5) * 2 * k, top - (i + 1) * 2.2 * k, bw * 0.55, 2.2 * k, 0.6)}" fill="${pen.face(P.papers, 0.1, 0.2)}" stroke="${line(P.papers)}" stroke-width=".45"/>`);
+        }
+
+        papers.push(`<path d="${rr(x + bw * 0.55, top - 9 * k, 12 * k, 9 * k, 1.2 * k)}" transform="rotate(-8 ${f(x + bw * 0.55)} ${f(top)})" fill="${pen.face(P.folder, 0.2, 0.2)}" stroke="${line(P.folder)}" stroke-width=".6"/>`);
+        out.push(rimmed(papers.join(''), 1, 0.45));
+    }
+
+    return out.join('');
+}
+
+/** A COPIER: a rounded cream body on a cabinet of two paper drawers, a grey lid, a sloped panel of plain keys with no lamp and no screen, a sheet in the out tray, and a blue trim line. */
+function copier(pen, { w, h, cx, foot }) {
+    const P = PALETTE.copier;
+    const k = Math.min(w / 80, h / 96);
+    const bw = 70 * k;
+    const x = cx - bw / 2;
+    const m = [];
+    const cabTop = foot - 44 * k;
+    const bodyTop = foot - 74 * k;
+
+    // the cabinet and its two drawers, on little dark feet
+    for (const fx of [x + 6 * k, x + bw - 10 * k]) {
+        m.push(`<path d="${rr(fx, foot - 4 * k, 4 * k, 4 * k, 1 * k)}" fill="${P.feet}"/>`);
+    }
+
+    m.push(`<path d="${rr(x + 2 * k, cabTop, bw - 4 * k, 41 * k, 3 * k)}" fill="${pen.face(shade(P.body, 0.05), 0.15, 0.2)}" stroke="${line(P.body)}" stroke-width=".8"/>`);
+
+    for (let i = 0; i < 2; i++) {
+        const dy = cabTop + 3 * k + i * 19 * k;
+
+        m.push(`<path d="${rr(x + 6 * k, dy, bw - 12 * k, 16 * k, 2 * k)}" fill="${pen.face(P.body, 0.2, 0.15)}" stroke="${line(P.body)}" stroke-width=".6"/>`);
+        m.push(`<path d="${rr(cx - 9 * k, dy + 5 * k, 18 * k, 3 * k, 1.5 * k)}" fill="${shade(P.body, 0.3)}"/>`);
+    }
+
+    // the body, its trim line, the lid, and the panel of keys at the right
+    m.push(`<path d="${rr(x, bodyTop, bw, 31 * k, 5 * k)}" fill="${pen.face(P.body, 0.25, 0.18)}" stroke="${line(P.body)}" stroke-width=".9"/>`);
+    m.push(`<path d="M${f(x + 3 * k)} ${f(bodyTop + 22 * k)}H${f(x + bw - 3 * k)}" stroke="${P.trim}" stroke-width="${f(2 * k)}" stroke-linecap="round"/>`);
+    m.push(`<path d="${rr(x + 3 * k, bodyTop + 8 * k, bw * 0.45, 9 * k, 2 * k)}" fill="${shade(P.body, 0.32)}"/>`);
+    m.push(`<path d="${rr(x - 1 * k, bodyTop - 5 * k, bw * 0.72, 7 * k, 3 * k)}" fill="${pen.face(P.lid, 0.25, 0.2)}" stroke="${line(P.lid)}" stroke-width=".8"/>`);
+
+    const px = x + bw * 0.7;
+    const panel = `M${f(px)} ${f(bodyTop + 2 * k)}L${f(px + 4 * k)} ${f(bodyTop - 7 * k)}H${f(x + bw + 1 * k)}L${f(x + bw - 1 * k)} ${f(bodyTop + 2 * k)}Z`;
+
+    m.push(`<path d="${panel}" fill="${pen.face(P.lid, 0.3, 0.15)}" stroke="${line(P.lid)}" stroke-width=".7"/>`);
+
+    for (let i = 0; i < 3; i++) {
+        m.push(`<path d="${rr(px + 6 * k + i * 4.6 * k, bodyTop - 4.6 * k, 3.4 * k, 2.4 * k, 0.8 * k)}" fill="${P.keys}" stroke="${line(P.keys)}" stroke-width=".4"/>`);
+    }
+
+    // the out tray at the left: a sheet lying in it, its corner curled up
+    m.push(`<path d="M${f(x - 4 * k)} ${f(bodyTop + 12 * k)}L${f(x + 2 * k)} ${f(bodyTop + 10 * k)}V${f(bodyTop + 15 * k)}L${f(x - 4 * k)} ${f(bodyTop + 15 * k)}Z" fill="${pen.face(P.lid, 0.2, 0.2)}" stroke="${line(P.lid)}" stroke-width=".6"/>`);
+    m.push(`<path d="M${f(x - 3 * k)} ${f(bodyTop + 11.6 * k)}L${f(x + 8 * k)} ${f(bodyTop + 9 * k)}L${f(x + 8 * k)} ${f(bodyTop + 11 * k)}Q${f(x - 1 * k)} ${f(bodyTop + 12 * k)} ${f(x - 3 * k)} ${f(bodyTop + 9.6 * k)}Z" fill="${P.paper}" stroke="${line(P.paper)}" stroke-width=".5"/>`);
+
+    return shadow(pen, cx + 3, foot, bw * 0.58, 4 * k, 0.3) + rimmed(m.join(''));
+}
+
+/** A COAT RACK: a turned wooden pole on three splayed feet with a round knob, pegs near its top, a seeded coat hanging from one, a striped scarf from another and a soft hat on the knob. */
+function coatRack(pen, { w, h, cx, foot, key }) {
+    const P = PALETTE['coat-rack'];
+    const k = Math.min(w / 40, h / 136);
+    const top = foot - 128 * k;
+    const coat = pick(key, 'theme:coat', P.coats);
+    const scarf = pick(key, 'theme:scarf', P.scarf);
+    const m = [];
+
+    for (const dx of [-14, 0, 14]) {
+        m.push(`<path d="M${f(cx)} ${f(foot - 14 * k)}Q${f(cx + dx * 0.6 * k)} ${f(foot - 6 * k)} ${f(cx + dx * k)} ${f(foot - 1)}" fill="none" stroke="${line(P.wood)}" stroke-width="${f(3.4 * k)}" stroke-linecap="round"/>`);
+    }
+
+    m.push(`<path d="M${f(cx)} ${f(foot - 8 * k)}V${f(top + 6 * k)}" stroke="${line(P.wood)}" stroke-width="${f(4.4 * k)}" stroke-linecap="round"/>`);
+    m.push(`<path d="M${f(cx)} ${f(foot - 8 * k)}V${f(top + 6 * k)}" stroke="${tint(P.wood, 0.15)}" stroke-width="${f(2.4 * k)}" stroke-linecap="round"/>`);
+
+    for (const side of [-1, 1]) {
+        m.push(`<path d="M${f(cx)} ${f(top + 16 * k)}q${f(side * 6 * k)} ${f(-1 * k)} ${f(side * 9 * k)} ${f(-6 * k)}" fill="none" stroke="${line(P.wood)}" stroke-width="${f(2.4 * k)}" stroke-linecap="round"/>`);
+    }
+
+    m.push(`<circle cx="${f(cx)}" cy="${f(top + 5 * k)}" r="${f(3.6 * k)}" fill="${pen.paint(P.wood)}" stroke="${line(P.wood)}" stroke-width=".6"/>`);
+
+    // the coat, hung from the left peg: shoulders, a body that widens to its hem, a collar and two buttons
+    const ct = top + 12 * k;
+    const coatPath = `M${f(cx - 8 * k)} ${f(ct)}Q${f(cx - 15 * k)} ${f(ct + 2 * k)} ${f(cx - 16 * k)} ${f(ct + 12 * k)}L${f(cx - 18 * k)} ${f(ct + 54 * k)}Q${f(cx - 8 * k)} ${f(ct + 58 * k)} ${f(cx + 1 * k)} ${f(ct + 54 * k)}L${f(cx - 1 * k)} ${f(ct + 10 * k)}Q${f(cx - 2 * k)} ${f(ct + 1 * k)} ${f(cx - 8 * k)} ${f(ct)}Z`;
+
+    m.push(`<path d="${coatPath}" fill="${pen.face(coat, 0.25, 0.2)}" stroke="${line(coat)}" stroke-width=".8"/>`);
+    m.push(`<path d="M${f(cx - 10 * k)} ${f(ct + 1 * k)}L${f(cx - 6 * k)} ${f(ct + 10 * k)}L${f(cx - 3 * k)} ${f(ct + 2 * k)}" fill="${shade(coat, 0.15)}" stroke="${line(coat)}" stroke-width=".6"/>`);
+
+    for (const by of [22, 32, 42]) {
+        m.push(`<circle cx="${f(cx - 4 * k)}" cy="${f(ct + by * k)}" r="${f(1.1 * k)}" fill="${tint(coat, 0.5)}"/>`);
+    }
+
+    // the scarf, from the right peg: two hanging tails with a stripe across each
+    for (const [dx, len] of [[5, 34], [9, 28]]) {
+        m.push(`<path d="${rr(cx + dx * k - 2.6 * k, top + 12 * k, 5.2 * k, len * k, 2 * k)}" fill="${pen.face(scarf, 0.2, 0.15)}" stroke="${line(scarf)}" stroke-width=".6"/>`);
+        m.push(`<path d="M${f(cx + dx * k - 2.4 * k)} ${f(top + (8 + len) * k)}h${f(4.8 * k)}" stroke="${shade(scarf, 0.25)}" stroke-width="${f(1.4 * k)}"/>`);
+    }
+
+    // the hat on the knob: a soft dome with a brim
+    m.push(`<path d="M${f(cx - 9 * k)} ${f(top + 4 * k)}Q${f(cx - 8 * k)} ${f(top - 7 * k)} ${f(cx)} ${f(top - 7 * k)}Q${f(cx + 8 * k)} ${f(top - 7 * k)} ${f(cx + 9 * k)} ${f(top + 4 * k)}Z" fill="${pen.paint(P.hat)}" stroke="${line(P.hat)}" stroke-width=".7"/>`);
+    m.push(`<path d="${rr(cx - 12 * k, top + 2.4 * k, 24 * k, 3.2 * k, 1.6 * k)}" fill="${pen.face(shade(P.hat, 0.08), 0.2, 0.2)}" stroke="${line(P.hat)}" stroke-width=".6"/>`);
+
+    return shadow(pen, cx + 2, foot, 16 * k, 3 * k, 0.3) + rimmed(m.join(''));
+}
+
+/** A WHITEBOARD ON AN EASEL: three wooden legs, a framed white board with a marker tray and three markers, and on the board doodles that say nothing — boxes joined by an arrow, a smiling sun, a star — and two seeded sticky notes. */
+function whiteboard(pen, { w, h, cx, foot, key }) {
+    const P = PALETTE.whiteboard;
+    const k = Math.min(w / 80, h / 128);
+    const bw = 72 * k;
+    const bh = 54 * k;
+    const bx = cx - bw / 2;
+    const by = foot - 122 * k;
+    const [blue, red, green] = P.ink;
+    const m = [];
+
+    // the legs: the back one first, then the two front ones splayed
+    m.push(`<path d="M${f(cx)} ${f(by + 6 * k)}L${f(cx + 4 * k)} ${f(foot - 6 * k)}" stroke="${shade(P.wood, 0.25)}" stroke-width="${f(3 * k)}" stroke-linecap="round"/>`);
+
+    for (const side of [-1, 1]) {
+        m.push(`<path d="M${f(cx + side * 10 * k)} ${f(by - 2 * k)}L${f(cx + side * 26 * k)} ${f(foot - 1)}" stroke="${line(P.wood)}" stroke-width="${f(4 * k)}" stroke-linecap="round"/>`);
+        m.push(`<path d="M${f(cx + side * 10 * k)} ${f(by - 2 * k)}L${f(cx + side * 26 * k)} ${f(foot - 1)}" stroke="${tint(P.wood, 0.15)}" stroke-width="${f(2 * k)}" stroke-linecap="round"/>`);
+    }
+
+    // the board and its frame, and the tray with its markers
+    m.push(`<path d="${rr(bx, by, bw, bh, 3 * k)}" fill="${pen.face(P.frame, 0.25, 0.2)}" stroke="${line(P.frame)}" stroke-width=".9"/>`);
+    m.push(`<path d="${rr(bx + 3 * k, by + 3 * k, bw - 6 * k, bh - 6 * k, 1.5 * k)}" fill="${pen.face(P.board, 0.1, 0.06)}"/>`);
+    m.push(`<path d="${rr(bx + 2 * k, by + bh - 1 * k, bw - 4 * k, 4 * k, 1.5 * k)}" fill="${pen.face(P.wood, 0.2, 0.2)}" stroke="${line(P.wood)}" stroke-width=".6"/>`);
+    [blue, red, green].forEach((c, i) => {
+        m.push(`<path d="${rr(bx + 10 * k + i * 8 * k, by + bh - 2.6 * k, 6.4 * k, 2.2 * k, 1 * k)}" fill="${c}" stroke="${line(c)}" stroke-width=".4"/>`);
+    });
+
+    const ink = (d, c, sw = 1.3) => `<path d="${d}" fill="none" stroke="${c}" stroke-width="${f(sw * k)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    const ox = bx + 7 * k;
+    const oy = by + 9 * k;
+
+    // two boxes and an arrow between them, a third under the arrow's head
+    m.push(ink(rr(ox, oy, 14 * k, 9 * k, 2 * k), blue));
+    m.push(ink(rr(ox + 26 * k, oy, 14 * k, 9 * k, 2 * k), blue));
+    m.push(ink(`M${f(ox + 15 * k)} ${f(oy + 4.5 * k)}H${f(ox + 24.5 * k)}M${f(ox + 21.5 * k)} ${f(oy + 2.4 * k)}L${f(ox + 24.5 * k)} ${f(oy + 4.5 * k)}L${f(ox + 21.5 * k)} ${f(oy + 6.6 * k)}`, red));
+    m.push(ink(`M${f(ox + 33 * k)} ${f(oy + 10 * k)}V${f(oy + 17 * k)}M${f(ox + 31 * k)} ${f(oy + 15 * k)}L${f(ox + 33 * k)} ${f(oy + 17.4 * k)}L${f(ox + 35 * k)} ${f(oy + 15 * k)}`, red));
+    m.push(ink(`M${f(ox + 26 * k)} ${f(oy + 19 * k)}h${f(14 * k)}v${f(9 * k)}h${f(-14 * k)}Z`, green));
+
+    // a smiling sun at the lower left, and a star beside the first box
+    const sx = ox + 7 * k;
+    const sy = oy + 26 * k;
+    const rays = [];
+
+    for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI) / 4;
+
+        rays.push(`M${f(sx + Math.cos(a) * 6.4 * k)} ${f(sy + Math.sin(a) * 6.4 * k)}L${f(sx + Math.cos(a) * 8.8 * k)} ${f(sy + Math.sin(a) * 8.8 * k)}`);
+    }
+
+    m.push(ink(rays.join(''), PALETTE.whiteboard.notes[0], 1.4));
+    m.push(`<circle cx="${f(sx)}" cy="${f(sy)}" r="${f(4.8 * k)}" fill="none" stroke="${red}" stroke-width="${f(1.2 * k)}"/>`);
+    m.push(`<circle cx="${f(sx - 1.6 * k)}" cy="${f(sy - 1 * k)}" r="${f(0.6 * k)}" fill="${blue}"/><circle cx="${f(sx + 1.6 * k)}" cy="${f(sy - 1 * k)}" r="${f(0.6 * k)}" fill="${blue}"/>`);
+    m.push(ink(`M${f(sx - 2 * k)} ${f(sy + 1.2 * k)}Q${f(sx)} ${f(sy + 3.2 * k)} ${f(sx + 2 * k)} ${f(sy + 1.2 * k)}`, blue, 0.9));
+
+    const star = [];
+
+    for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        const r = (i % 2 ? 1.6 : 3.8) * k;
+
+        star.push(`${i ? 'L' : 'M'}${f(ox + 19 * k + Math.cos(a) * r)} ${f(oy + 17 * k + Math.sin(a) * r)}`);
+    }
+
+    m.push(ink(`${star.join('')}Z`, green, 1));
+
+    // two sticky notes at the right, seeded in colour, each a little askew with its fold
+    for (let i = 0; i < 2; i++) {
+        const c = pick(key, `theme:note:${i}`, P.notes);
+        const nx = bx + bw - 19 * k + i * 6 * k;
+        const ny = by + 22 * k + i * 11 * k;
+        const tilt = i ? 6 : -5;
+
+        m.push(`<g transform="rotate(${tilt} ${f(nx + 5 * k)} ${f(ny + 5 * k)})"><path d="M${f(nx)} ${f(ny)}h${f(10 * k)}v${f(7.4 * k)}l${f(-2.6 * k)} ${f(2.6 * k)}h${f(-7.4 * k)}Z" fill="${pen.face(c, 0.15, 0.12)}" stroke="${line(c)}" stroke-width=".4"/><path d="M${f(nx + 10 * k)} ${f(ny + 7.4 * k)}h${f(-2.6 * k)}v${f(2.6 * k)}" fill="${shade(c, 0.15)}"/></g>`);
+    }
+
+    return shadow(pen, cx + 2, foot, 30 * k, 3.4 * k, 0.28) + rimmed(m.join(''), 1.2, 0.45);
+}
+
+/** An AQUARIUM: a wooden stand with two doors, and on it a glass tank under a dark lid with no lamp in it — teal water, sand and pebbles, swaying-shaped weed drawn still, three small round fish and a few bubbles, none of which move. */
+function aquarium(pen, { w, h, cx, foot, key, next }) {
+    const P = PALETTE.aquarium;
+    const k = Math.min(w / 80, h / 104);
+    const tw = 72 * k;
+    const tx = cx - tw / 2;
+    const standTop = foot - 40 * k;
+    const th = 54 * k;
+    const ty = standTop - th;
+    const m = [];
+
+    // the stand: its body, two doors with round knobs, a plinth
+    m.push(`<path d="${rr(tx + 2 * k, standTop, tw - 4 * k, 39 * k, 3 * k)}" fill="${pen.face(P.stand, 0.2, 0.2)}" stroke="${line(P.stand)}" stroke-width=".9"/>`);
+
+    for (const side of [0, 1]) {
+        const dx = tx + 6 * k + side * (tw / 2 - 4 * k);
+
+        m.push(`<path d="${rr(dx, standTop + 5 * k, tw / 2 - 8 * k, 27 * k, 2 * k)}" fill="${pen.face(tint(P.stand, 0.08), 0.2, 0.15)}" stroke="${line(P.stand)}" stroke-width=".6"/>`);
+        m.push(`<circle cx="${f(side ? dx + 4 * k : dx + tw / 2 - 12 * k)}" cy="${f(standTop + 18 * k)}" r="${f(1.6 * k)}" fill="${pen.paint(P.sand)}" stroke="${line(P.stand)}" stroke-width=".4"/>`);
+    }
+
+    const stand = m.join('');
+    const tank = [];
+    const water = ty + 7 * k;
+
+    // the tank: its water, the sand and pebbles, the weed, the fish, the bubbles, the glass's shine, the frame and lid
+    tank.push(`<path d="${rr(tx, ty, tw, th, 3 * k)}" fill="${pen.v([[0, tint(P.water, 0.35)], [1, shade(P.water, 0.12)]])}" stroke="${line(P.lid)}" stroke-width=".9"/>`);
+    tank.push(`<path d="M${f(tx + 1)} ${f(water)}H${f(tx + tw - 1)}V${f(ty + th - 1)}H${f(tx + 1)}Z" fill="${pen.v([[0, P.water], [1, shade(P.water, 0.22)]])}"/>`);
+    tank.push(`<path d="M${f(tx + 1)} ${f(water)}H${f(tx + tw - 1)}" stroke="${tint(P.water, 0.55)}" stroke-width="${f(1.2 * k)}"/>`);
+    tank.push(`<path d="M${f(tx + 1)} ${f(ty + th - 1)}V${f(ty + th - 8 * k)}Q${f(tx + tw * 0.3)} ${f(ty + th - 11 * k)} ${f(tx + tw * 0.55)} ${f(ty + th - 8 * k)}Q${f(tx + tw * 0.8)} ${f(ty + th - 5 * k)} ${f(tx + tw - 1)} ${f(ty + th - 9 * k)}V${f(ty + th - 1)}Z" fill="${pen.v([[0, tint(P.sand, 0.15)], [1, shade(P.sand, 0.12)]])}"/>`);
+
+    for (let i = 0; i < 6; i++) {
+        const c = P.pebbles[i % P.pebbles.length];
+
+        tank.push(`<ellipse cx="${f(tx + 6 * k + next() * (tw - 12 * k))}" cy="${f(ty + th - 3.4 * k)}" rx="${f(2.2 * k)}" ry="${f(1.4 * k)}" fill="${pen.paint(c)}"/>`);
+    }
+
+    for (const [wx, hh] of [[0.14, 30], [0.2, 22], [0.82, 26], [0.88, 34]]) {
+        const bx0 = tx + tw * wx;
+        const top = ty + th - 6 * k - hh * k;
+
+        tank.push(`<path d="M${f(bx0)} ${f(ty + th - 6 * k)}Q${f(bx0 - 4 * k)} ${f(top + hh * 0.66 * k)} ${f(bx0)} ${f(top + hh * 0.4 * k)}Q${f(bx0 + 4 * k)} ${f(top + hh * 0.2 * k)} ${f(bx0)} ${f(top)}" fill="none" stroke="${P.weed}" stroke-width="${f(2.6 * k)}" stroke-linecap="round"/>`);
+    }
+
+    const fish = (x, y, c, dir) => `<g transform="translate(${f(x)} ${f(y)}) scale(${f(dir * k)} ${f(k)})">`
+        + `<path d="M4 0L9 -3.6V3.6Z" fill="${shade(c, 0.1)}" stroke="${line(c)}" stroke-width=".5"/>`
+        + `<ellipse cx="0" cy="0" rx="5.4" ry="3.8" fill="${pen.paint(c, 0.4)}" stroke="${line(c)}" stroke-width=".5"/>`
+        + `<circle cx="-2.6" cy="-0.8" r="1.1" fill="${RULES.highlight}"/><circle cx="-2.8" cy="-0.8" r=".55" fill="${RULES.line}"/></g>`;
+
+    P.fish.forEach((c, i) => {
+        const fx = tx + tw * (0.3 + 0.2 * i) + (next() - 0.5) * 6 * k;
+        const fy = water + (8 + ((i * 11) % 24)) * k;
+
+        tank.push(fish(fx, fy, c, i % 2 ? -1 : 1));
+    });
+
+    for (const [bx0, by0, r] of [[0.66, 0.5, 1.6], [0.68, 0.36, 1.2], [0.65, 0.24, 0.9]]) {
+        tank.push(`<circle cx="${f(tx + tw * bx0)}" cy="${f(ty + th * by0)}" r="${f(r * k)}" fill="none" stroke="${RULES.highlight}" stroke-width="${f(0.6 * k)}"/>`);
+    }
+
+    tank.push(`<path d="M${f(tx + 5 * k)} ${f(ty + 10 * k)}l${f(8 * k)} ${f(-3 * k)}M${f(tx + 5 * k)} ${f(ty + 15 * k)}l${f(14 * k)} ${f(-5 * k)}" stroke="${RULES.highlight}" stroke-width="${f(1.4 * k)}" stroke-linecap="round" opacity=".55"/>`);
+    tank.push(`<path d="${rr(tx - 1.5 * k, ty - 4 * k, tw + 3 * k, 5.5 * k, 2 * k)}" fill="${pen.face(P.lid, 0.25, 0.2)}" stroke="${line(P.lid)}" stroke-width=".7"/>`);
+    tank.push(`<path d="${rr(tx - 1 * k, ty + th - 2 * k, tw + 2 * k, 3.5 * k, 1.4 * k)}" fill="${pen.face(P.lid, 0.2, 0.2)}" stroke="${line(P.lid)}" stroke-width=".6"/>`);
+
+    return shadow(pen, cx + 3, foot, tw * 0.56, 4 * k, 0.3) + rimmed(stand) + rimmed(tank.join(''), 1.1, 0.45);
+}
+
+/** A BEAN BAG: a soft slouched pear of fabric, a seeded colour, a dent where someone last sat and a seam over its top. */
+function beanBag(pen, { w, h, cx, foot, key }) {
+    const c = pick(key, 'theme:bean-bag', PALETTE['bean-bag'].colours);
+    const k = Math.min(w / 56, h / 40);
+    const body = `M${f(cx - 25 * k)} ${f(foot - 6 * k)}Q${f(cx - 28 * k)} ${f(foot - 22 * k)} ${f(cx - 14 * k)} ${f(foot - 31 * k)}Q${f(cx - 2 * k)} ${f(foot - 38 * k)} ${f(cx + 10 * k)} ${f(foot - 33 * k)}Q${f(cx + 26 * k)} ${f(foot - 25 * k)} ${f(cx + 26 * k)} ${f(foot - 9 * k)}Q${f(cx + 24 * k)} ${f(foot)} ${f(cx)} ${f(foot - 0.5 * k)}Q${f(cx - 22 * k)} ${f(foot)} ${f(cx - 25 * k)} ${f(foot - 6 * k)}Z`;
+    const m = `<path d="${body}" fill="${pen.paint(c, 0.34)}" stroke="${line(c)}" stroke-width=".9"/>`
+        + `<path d="M${f(cx - 12 * k)} ${f(foot - 20 * k)}Q${f(cx)} ${f(foot - 13 * k)} ${f(cx + 13 * k)} ${f(foot - 19 * k)}Q${f(cx + 2 * k)} ${f(foot - 25 * k)} ${f(cx - 12 * k)} ${f(foot - 20 * k)}Z" fill="${shade(c, 0.16)}" opacity=".7"/>`
+        + `<path d="M${f(cx - 6 * k)} ${f(foot - 34 * k)}Q${f(cx + 6 * k)} ${f(foot - 30 * k)} ${f(cx + 18 * k)} ${f(foot - 27 * k)}" fill="none" stroke="${line(c)}" stroke-width=".7" stroke-dasharray="${f(1.6 * k)} ${f(1.2 * k)}" opacity=".8"/>`
+        + `<path d="M${f(cx - 18 * k)} ${f(foot - 24 * k)}q${f(3 * k)} ${f(-5 * k)} ${f(9 * k)} ${f(-7 * k)}" fill="none" stroke="${RULES.highlight}" stroke-width="${f(1.6 * k)}" stroke-linecap="round" opacity=".6"/>`;
+
+    return shadow(pen, cx + 2, foot, 26 * k, 3.6 * k, 0.32) + rimmed(m);
+}
+
+/** A GLOBE ON A STAND: a wooden pedestal on a round foot, a brass half-meridian, and a tilted blue globe with soft made-up green lands — no map anyone could read. */
+function globe(pen, { w, h, cx, foot, key }) {
+    const P = PALETTE.globe;
+    const k = Math.min(w / 40, h / 88);
+    const r = 14 * k;
+    const gy = foot - 62 * k;
+    const tilt = 23;
+    const turn = (draw(key, 'theme:globe-turn') % 5) * 4 - 8;
+    const m = [];
+
+    m.push(`<ellipse cx="${f(cx)}" cy="${f(foot - 3 * k)}" rx="${f(12 * k)}" ry="${f(3.4 * k)}" fill="${pen.paint(P.wood)}" stroke="${line(P.wood)}" stroke-width=".7"/>`);
+    m.push(`<path d="M${f(cx - 2.4 * k)} ${f(foot - 5 * k)}Q${f(cx - 4 * k)} ${f(foot - 20 * k)} ${f(cx - 1.6 * k)} ${f(gy + r + 7 * k)}H${f(cx + 1.6 * k)}Q${f(cx + 4 * k)} ${f(foot - 20 * k)} ${f(cx + 2.4 * k)} ${f(foot - 5 * k)}Z" fill="${pen.face(P.wood, 0.25, 0.2)}" stroke="${line(P.wood)}" stroke-width=".7"/>`);
+    m.push(`<ellipse cx="${f(cx)}" cy="${f(foot - 24 * k)}" rx="${f(4 * k)}" ry="${f(1.6 * k)}" fill="${pen.paint(P.wood)}" stroke="${line(P.wood)}" stroke-width=".5"/>`);
+
+    const lands = [
+        `M${f(-8 * k + turn * k * 0.4)} ${f(-7 * k)}q${f(5 * k)} ${f(-4 * k)} ${f(9 * k)} ${f(-1 * k)}q${f(2 * k)} ${f(4 * k)} ${f(-3 * k)} ${f(6 * k)}q${f(-3 * k)} ${f(5 * k)} ${f(-6 * k)} ${f(2 * k)}q${f(-3 * k)} ${f(-3 * k)} ${f(0)} ${f(-7 * k)}Z`,
+        `M${f(2 * k + turn * k * 0.4)} ${f(3 * k)}q${f(6 * k)} ${f(-2 * k)} ${f(8 * k)} ${f(2 * k)}q${f(0)} ${f(5 * k)} ${f(-5 * k)} ${f(6 * k)}q${f(-4 * k)} ${f(0)} ${f(-3 * k)} ${f(-8 * k)}Z`,
+        `M${f(-10 * k + turn * k * 0.4)} ${f(6 * k)}q${f(3 * k)} ${f(-1 * k)} ${f(4 * k)} ${f(2 * k)}q${f(-1 * k)} ${f(3 * k)} ${f(-4 * k)} ${f(1 * k)}Z`,
+    ];
+    const clip = pen.memo(`clip${r}`, (id) => `<clipPath id="${id}"><circle cx="0" cy="0" r="${f(r)}"/></clipPath>`);
+
+    // the half-meridian from pole to pole round the globe's right, and the brass bracket from its foot to the pedestal
+    const R = r + 3 * k;
+    const ring = `M0 ${f(-R)}A${f(R)} ${f(R)} 0 0 1 0 ${f(R)}`;
+    const t = (tilt * Math.PI) / 180;
+
+    m.push(`<path d="M${f(cx - R * Math.sin(t))} ${f(gy + R * Math.cos(t))}Q${f(cx - 1 * k)} ${f(gy + R + 2 * k)} ${f(cx)} ${f(gy + r + 7.5 * k)}" fill="none" stroke="${line(P.meridian)}" stroke-width="${f(2.4 * k)}" stroke-linecap="round"/>`);
+    m.push(`<g transform="translate(${f(cx)} ${f(gy)}) rotate(${tilt})">`
+        + `<circle cx="0" cy="0" r="${f(r)}" fill="${pen.paint(P.sea, 0.45)}" stroke="${line(P.sea)}" stroke-width=".8"/>`
+        + `<g clip-path="${clip}">${lands.map((d) => `<path d="${d}" fill="${pen.paint(P.land, 0.35)}" stroke="${line(P.land)}" stroke-width=".5"/>`).join('')}`
+        + `<ellipse cx="0" cy="0" rx="${f(r)}" ry="${f(r * 0.28)}" fill="none" stroke="${tint(P.sea, 0.4)}" stroke-width=".6" opacity=".7"/></g>`
+        + `<path d="${ring}" fill="none" stroke="${line(P.meridian)}" stroke-width="${f(2.6 * k)}"/>`
+        + `<path d="${ring}" fill="none" stroke="${P.meridian}" stroke-width="${f(1.4 * k)}"/>`
+        + `<circle cx="0" cy="${f(-R)}" r="${f(1.4 * k)}" fill="${P.meridian}"/><circle cx="0" cy="${f(R)}" r="${f(1.4 * k)}" fill="${P.meridian}"/></g>`);
+    m.push(`<ellipse cx="${f(cx - 5 * k)}" cy="${f(gy - 6 * k)}" rx="${f(3.6 * k)}" ry="${f(2.2 * k)}" fill="${RULES.highlight}" opacity=".55"/>`);
+
+    return shadow(pen, cx + 2, foot, 14 * k, 3 * k, 0.3) + rimmed(m.join(''));
+}
+
+/** The office pieces by kind — `scenery()` draws a kind it finds here with the cell's size, foot and seeded draws. */
+const OFFICE = Object.freeze({
+    'water-cooler': waterCooler,
+    'filing-cabinet': filingCabinet,
+    copier,
+    'coat-rack': coatRack,
+    whiteboard,
+    aquarium,
+    'bean-bag': beanBag,
+    globe,
+});
 
 /**
  * THE RESTROOM DOOR (card#12786, FLOOR.md § 6.7 item 2), its foot on the cell's floor line: a wooden door FRAME face-on —
