@@ -818,8 +818,8 @@ const samePoint = (a, b) => a.x === b.x && a.y === b.y;
  * from the threshold — the spot's own path back to it, reversed — with every step it would retrace taken out (`A, B, A`
  * is `A`), so a walker bound for a spot beside the door turns off its route where the two meet rather than touching the
  * seam and stepping back. Every cell either path crosses is open (`route()`, `spotsNear()`), and removing a retraced
- * step keeps every remaining step one of theirs, so the joined path is open floor too. Spot 0 is the threshold: its
- * walk is the route.
+ * step keeps every remaining step one of theirs, so the joined path is open floor too. A walker waiting on the threshold
+ * itself — past the last spot (card#12793: no spot is the threshold) — walks the route.
  */
 function spotWalk(walk, spot) {
     if (spot.path.length === 1) {
@@ -897,7 +897,7 @@ export function waitFrom(queue, shape) {
 /**
  * WHERE A DEPARTURE STANDS AND HOW IT BOARDS, for one waiting spot (walk note item 9, card#12705): its walk to the spot,
  * the frame it arrives there (`arrive`), and its walk from the spot to the threshold when it boards (`board`; `null`
- * at spot 0, which is the threshold). `queue` is the departure's own part, from the render that applied its row —
+ * on the threshold itself, where a walker past the last spot waits). `queue` is the departure's own part, from the render that applied its row —
  * `lead` (the legs before it walks: an intern's laptop fade), `press` (its way to its call plate and its press there,
  * `wayOut()`'s, or `null`; card#12747), `walk` (its route to the threshold — from its plate, where it pressed one), `wait`
  * (its seeded draw, frames) and `threshold`; `spot` is `{index, at, path}`, `spotsNear()`'s.
@@ -958,7 +958,7 @@ export function departureLegs(queue, shape, timing) {
 
 /**
  * A DEPARTURE as the render that applies its row draws it (walk note items 5 and 9): its queue part and, drawn alone, its
- * legs at the threshold — spot 0 and its own wait. `way` is `wayOut()`'s — `press` `null` for a departure that walks
+ * legs at the threshold with its own wait, which the holder replaces when it places it at its spot. `way` is `wayOut()`'s — `press` `null` for a departure that walks
  * straight to the threshold. The holder (`floor/in-flight.js`) gives it its turn at the plates and its spot, and
  * re-times it with every other walker at the elevator.
  */

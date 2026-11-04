@@ -2217,7 +2217,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         $this->assertSame([], $this->walks($this->frameAt($this->floorRun('repaint', $dir), 1625)));
     }
 
-    /** card#12705, APART: every waiting walker on the threshold — card#12194's one point, the spots past the first withheld. */
+    /** card#12705, APART: every waiting walker on spot 0 — card#12194's one point, every spot asked for answered with the first. */
     public function test_red_walkers_waiting_on_one_point(): void
     {
         $dir = $this->mutatedModules([self::SCENE, '        queue_spot: queueSpot,', '        queue_spot: () => queueSpot(0),']);

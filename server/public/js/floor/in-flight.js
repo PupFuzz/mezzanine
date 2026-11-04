@@ -507,11 +507,15 @@ export class EffectsInFlight {
         // leaves' beginning to close on it (`clear`, when its step out is done) at which `pointAt()` puts its feet off the
         // floor of the lane — outside § 12's *Elevator lane*, or back in the cab (item 16's step back in at the door; item
         // 19's blink, which never steps out, on that frame) — or its last frame. A function of that walk's legs alone, so
-        // every render reads one instant off one walk.
+        // every render reads one instant off one walk. A render with no lane (no band) releases at `clear`, as before.
         const laneClear = (h, d) => {
             const from = d.start + d.frames - D.close;
 
-            for (let t = from; lane !== null && t < h.effect.frames; t++) {
+            if (lane === null) {
+                return from;
+            }
+
+            for (let t = from; t < h.effect.frames; t++) {
                 const p = pointAt(h.effect, t * I);
 
                 if (p.where !== 'floor' || !inLane(lane, p)) {
@@ -519,7 +523,7 @@ export class EffectsInFlight {
                 }
             }
 
-            return lane === null ? from : Math.max(from, h.effect.frames);
+            return Math.max(from, h.effect.frames);
         };
         const departing = this.#held.filter((h) => !this.#ended(h, now) && queues(h));
         // When a departure's route reaches the threshold — the order new ones of one render are placed in.
