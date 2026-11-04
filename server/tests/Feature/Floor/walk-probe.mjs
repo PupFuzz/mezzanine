@@ -21,6 +21,8 @@
  *                days and over the window a page at each given instant reads (AT-D3-32).
  *   `restroom` / `restroom-chain` — card#12786: the restroom's constants and the waiting spots from a given threshold;
  *                each key's restroom chain and snack chain over whole days (AT-D3-33).
+ *   `spots`    — card#12793: the elevator lane and the elevator queue's spots on the shipped default with the slots
+ *                `open` names left open, with the lane and without it, and the lattice they were searched on (AT-D3-35).
  *   `lattice`  — H6's tileset and registry legs at the scene: `buildScene()` over one drawn frame and its rows twice —
  *                a tileset `pending` then held, the theme registry absent then held — each pair's lattice keys, and
  *                whether `EffectsInFlight` cancels the first scene's walk at a render carrying the second's key.
@@ -316,6 +318,74 @@ if (input.mode === 'restroom-chain') {
     }])));
 }
 
-if (!['points', 'draw', 'stack', 'shipped', 'lattice', 'snack', 'snack-chain', 'restroom', 'restroom-chain'].includes(input.mode)) {
+// card#12793 (AT-D3-35): the elevator queue's spots on the shipped default for a stated set of OPEN slots (`open`, slot
+// indices of `mapDesks()`; every other slot held), on the seat's lattice as the scene builds it — the scene's
+// `elevatorLane()`, and `spotsNear()` from the threshold clear of both call points, with the lane as `avoid` (the
+// scene's call) and without it (as the snack corner calls it) — and the lattice those spots were searched on: its cells,
+// the tier the threshold's cell is open at, which cells are blocked at that tier and each cell's centring, so the test
+// restates the search itself.
+if (input.mode === 'spots') {
+    const scene = await mod('floor/scene.js');
+    const { CLEARANCE, CLEARANCE_TIERS, spotsNear, cellAt, blockedFor } = await mod('floor/route.js');
+    const map = JSON.parse(readFileSync(join(REPO, 'resources', 'floor', 'default.tmj'), 'utf8'));
+    const grid = mapGrid(map);
+    const tileset = readTileset(TSX, tilesetUrl(map.tilesets[0].source));
+    const standing = registry.KINDS.filter((k) => !PLANE_KINDS.includes(k));
+    const extent = { x: 0, y: 0, width: grid.width * grid.tilewidth, height: grid.height * grid.tileheight };
+    const box = FURNITURE_BOX;
+    const open = input.open ?? [];
+    const desks = mapDesks(map).filter((_, slot) => !open.includes(slot)).map((o) => {
+        const slot = { x: o.x, y: o.y, w: o.width, h: o.height };
+        const at = slotOrigin(slot, box);
+
+        return {
+            key: `desk-${o.id}`,
+            rects: [slot, { x: at.x, y: at.y, w: box.width, h: box.height }],
+            seat: {
+                anchor: { x: at.x + characterCentre(box, CHARACTER), y: at.y + deskAnchor(box, CHARACTER).y },
+                solid: seatSolid(box, CHARACTER).map((r) => ({ x: at.x + r.x, y: at.y + r.y, w: r.w, h: r.h })),
+            },
+        };
+    });
+    const obstacles = mapTiles(map, { x: 0, y: 0 }, () => tileset, null).filter((c) => c.kind === 'wall' || standing.includes(c.kind))
+        .map((c) => ({ x: c.x, y: c.y, w: c.w, h: c.h }));
+    const body = walkerSize(CHARACTER);
+    const g = lattice({ extent, cell: Math.min(grid.tilewidth, grid.tileheight), obstacles, desks, body });
+    const band = backWall(backWallBand(extent), null);
+    const door = threshold(band);
+    const lane = scene.elevatorLane(band, CHARACTER);
+    const calls = ['main', 'low'].map((plate) => scene.callPoint(band, CHARACTER, plate).at);
+    const spacing = scene.queueSpacing(CHARACTER);
+    const count = input.count ?? 6;
+    const first = (avoid) => {
+        const at = spotsNear(g, door, spacing, calls, avoid);
+
+        return Array.from({ length: count }, (_, k) => at(k)?.at ?? null);
+    };
+    const start = cellAt(g, door);
+    const tier = CLEARANCE_TIERS.find((t) => blockedFor(g, { key: null, anchor: door }, t)[start[1] * g.cols + start[0]] === 0) ?? null;
+
+    answer({
+        threshold: door,
+        elevator: band.elevator,
+        body,
+        margin: CLEARANCE.margin,
+        lane,
+        calls,
+        spacing,
+        spots: { lane: first((p) => scene.inLane(lane, p)), none: first(null) },
+        lattice: tier === null ? null : {
+            cols: g.cols,
+            rows: g.rows,
+            origin: g.origin,
+            cell: g.cell,
+            tier,
+            blocked: [...blockedFor(g, { key: null, anchor: door }, tier)],
+            extra: [...g.tier(tier).centring],
+        },
+    });
+}
+
+if (!['points', 'draw', 'stack', 'shipped', 'lattice', 'snack', 'snack-chain', 'restroom', 'restroom-chain', 'spots'].includes(input.mode)) {
     throw new Error(`unknown mode ${input.mode}`);
 }

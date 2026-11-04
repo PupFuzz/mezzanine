@@ -73,7 +73,7 @@
 
 import { emptyChair, staffed } from '../wire/animation-set.js';
 import { pointAt } from './route.js';
-import { ELEVATOR_DOOR, RESTROOM_GAP_S, SNACK_GAP_S, departureLegs, leafLevel, queueLater, queueShape, restroomExit, restroomHome, seatInCab, snackHome, waitFrom } from './scene.js';
+import { ELEVATOR_DOOR, RESTROOM_GAP_S, SNACK_GAP_S, departureLegs, inLane, leafLevel, queueLater, queueShape, restroomExit, restroomHome, seatInCab, snackHome, waitFrom } from './scene.js';
 
 /** The § 6.2 rows drawn as a walk, one per seat at most. */
 export const WALK_ROWS = Object.freeze(['A1', 'A2']);
@@ -388,7 +388,7 @@ export class EffectsInFlight {
         }
 
         this.#call();
-        this.#board(now, ctx.queue_spot ?? (() => null));
+        this.#board(now, ctx.queue_spot ?? (() => null), ctx.lane ?? null);
         this.#seat(now, ctx.threshold ?? null);
 
         return cancelled;
@@ -478,17 +478,18 @@ export class EffectsInFlight {
      * render, after its cancels and its admissions.
      *
      * - **Spots.** A departure the holder has not placed yet takes the LOWEST spot (`queueSpot(k)`, the scene's
-     *   `spotsNear()` spots: 0 the threshold, each later one at least § 12's *Queue spacing* from every other) that no
-     *   other departure still stands on or walks to; new ones of one render are placed in the order their routes reach
-     *   the threshold, ties by key. The threshold is also every boarder's way in, so spot 0 is free only while no other
-     *   departure in flight is still to step in by the time this one reaches it. A spot never changes once taken. Past
-     *   the last spot the floor holds, a walker waits on the threshold.
+     *   `spotsNear()` spots: none in § 12's *Elevator lane* — the threshold included, card#12793 — each at least § 12's
+     *   *Queue spacing* from every other) that no other departure still stands on or walks to; new ones of one render are
+     *   placed in the order their routes reach the threshold, ties by key. A spot never changes once taken. Past the last
+     *   spot the floor holds, a walker waits on the threshold — nearer the door than every spot, so it boards first, and
+     *   it holds the threshold until it steps in.
      * - **Batches.** The leaves open at the first of: a waiting departure's own wait running out (its seeded draw, from
      *   reaching its spot), or a walk with fixed door frames opening them (an arrival, item 19's blink, item 16's
      *   turn-round in the cab or at the door). EVERY departure at its spot by then boards, one at a time, nearest the
      *   door first (by spot, the spots being numbered outward from the threshold): each leaves its spot once the one
-     *   before it has stepped in (the first as the leaves begin opening, or once an arrival has stepped out), walks to
-     *   the threshold, and steps in once the leaves are open. A departure that reaches its spot before the leaves begin
+     *   before it has stepped in (the first as the leaves begin opening, or — card#12793 — once every rider of that
+     *   opening has stepped out and CLEARED THE LANE: `laneClear()`), walks to the threshold, and steps in once the
+     *   leaves are open. A departure that reaches its spot before the leaves begin
      *   to close joins at the back, in the order they arrive (ties by key). The leaves close after the last has stepped
      *   in; a departure whose wait runs out while they close waits for them to shut and opens them again.
      * - **The past is committed.** A departure that has left its spot keeps its leaving and its step (below, `left`), and
@@ -499,23 +500,40 @@ export class EffectsInFlight {
      * Every number is a function of the walks in flight and the instants they began, so a replay draws one queue. A walk
      * with fixed door frames is never re-timed.
      */
-    #board(now, queueSpot) {
+    #board(now, queueSpot, lane) {
         const I = this.#intervalMs;
         const D = ELEVATOR_DOOR;
+        // card#12793 — THE LANE-CLEAR INSTANT of a walk with fixed door frames, in its own frames: the first frame from the
+        // leaves' beginning to close on it (`clear`, when its step out is done) at which `pointAt()` puts its feet off the
+        // floor of the lane — outside § 12's *Elevator lane*, or back in the cab (item 16's step back in at the door; item
+        // 19's blink, which never steps out, on that frame) — or its last frame. A function of that walk's legs alone, so
+        // every render reads one instant off one walk.
+        const laneClear = (h, d) => {
+            const from = d.start + d.frames - D.close;
+
+            for (let t = from; lane !== null && t < h.effect.frames; t++) {
+                const p = pointAt(h.effect, t * I);
+
+                if (p.where !== 'floor' || !inLane(lane, p)) {
+                    return t;
+                }
+            }
+
+            return lane === null ? from : Math.max(from, h.effect.frames);
+        };
         const departing = this.#held.filter((h) => !this.#ended(h, now) && queues(h));
         // When a departure's route reaches the threshold — the order new ones of one render are placed in.
         const reach = (h) => h.at + (h.effect.queue.walk.start + h.effect.queue.walk.frames) * I;
         const placed = departing.filter((h) => h.shape !== undefined);
         const taken = new Set(placed.filter((h) => h.leaves_spot > now).map((h) => h.shape.spot.index));
-        const threshold = (h) => Object.freeze({ index: 0, at: h.effect.queue.threshold, path: Object.freeze([h.effect.queue.threshold]) });
+        // Past the last spot: the threshold, nearer the door than spot 0 (card#12793: no spot is the threshold).
+        const threshold = (h) => Object.freeze({ index: -1, at: h.effect.queue.threshold, path: Object.freeze([h.effect.queue.threshold]) });
         const fresh = departing.filter((h) => h.shape === undefined).sort((a, b) => reach(a) - reach(b) || byKey(a.key, b.key));
 
         for (const h of fresh) {
-            // The threshold, while anyone else is still to pass through it, is not a place to wait.
-            const through = fresh.some((o) => o !== h && o.shape !== undefined) || placed.some((o) => o.steps_in > reach(h));
             let k = 0;
 
-            while ((taken.has(k) || (k === 0 && through)) && queueSpot(k) !== null) {
+            while (taken.has(k) && queueSpot(k) !== null) {
                 k++;
             }
 
@@ -542,7 +560,7 @@ export class EffectsInFlight {
         }).sort((a, b) => a.arrive - b.arrive || byKey(a.h.key, b.h.key));
         const fixed = this.#held
             .filter((h) => h.key !== null && !this.#ended(h, now) && !queues(h) && (h.effect.door ?? null) !== null)
-            .map((h) => ({ open: h.at + h.effect.door.start * I, clear: h.at + (h.effect.door.start + h.effect.door.frames - D.close) * I }))
+            .map((h) => ({ open: h.at + h.effect.door.start * I, clear: h.at + (h.effect.door.start + h.effect.door.frames - D.close) * I, free: h.at + laneClear(h, h.effect.door) * I }))
             .sort((a, b) => a.open - b.open);
         const plans = new Map();
         // An instant in a departure's own frames: on a frame boundary that frame, anywhere else the next one.
@@ -561,13 +579,14 @@ export class EffectsInFlight {
             const kept = c < committed.length ? committed[c].plan.open : Infinity;
             const byWalk = f < fixed.length && fixed[f].open <= due && fixed[f].open < kept;
             const open = Math.min(kept, byWalk ? fixed[f].open : due);
-            // When the next boarder may leave its spot, and when the leaves may begin to close.
-            let free = byWalk && open === fixed[f].open ? fixed[f].clear : open;
+            // When the next boarder may leave its spot — card#12793: after a rider's feet have left the lane — and when the
+            // leaves may begin to close.
+            let free = byWalk && open === fixed[f].open ? fixed[f].free : open;
             let closing = byWalk && open === fixed[f].open ? fixed[f].clear : open + D.open * I;
             const absorb = () => {
                 for (; f < fixed.length && fixed[f].open <= closing; f++) {
                     closing = Math.max(closing, fixed[f].clear);
-                    free = Math.max(free, fixed[f].clear);
+                    free = Math.max(free, fixed[f].free);
                 }
             };
             // A committed boarder keeps its leaving and its step; the next is released from its step as drawn.
@@ -632,8 +651,8 @@ export class EffectsInFlight {
             h.effect = Object.freeze({ ...h.effect, ...drawn });
             h.frames = drawn.frames;
             h.plan = Object.freeze({ open: p.open, approach: p.approach, step: p.step, close });
-            // It holds its spot until it leaves it — at spot 0, the threshold, until it steps in.
-            h.leaves_spot = h.at + (h.shape.spot.index === 0 ? p.step : p.approach) * I;
+            // It holds its spot until it leaves it — on the threshold, past the last spot, until it steps in.
+            h.leaves_spot = h.at + (h.shape.board === null ? p.step : p.approach) * I;
             h.steps_in = h.at + p.step * I;
 
             if (p.open <= now) {
