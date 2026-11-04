@@ -14,9 +14,9 @@ use Tests\TestCase;
  * parse through `fleet-reporter/install.js`'s `parseTokenFile` is `tools/design/seat-token-file.selftest.mjs`'s,
  * in CI; a real browser's click and restore are walked by hand with `tools/design/seat-token.browser.mjs`.
  *
- * ⛔ THE INGEST URL IS `app.url`'s, NEVER THE REQUEST'S. A request-derived URL (`url()`, `route()`,
- * `window.location`) follows whatever `Host` the request carried; the file would then point the
- * seat's reporter at that host. Every arm below runs on a request whose host is NOT `app.url`'s, so a
+ * ⛔ THE INGEST URL IS `app.url`'s, NEVER THE REQUEST'S. A request-derived URL (`window.location`, or
+ * `url()` and `route()` before card#12881 pinned them to `app.url` at boot) follows whatever `Host` the
+ * request carried; the file would then point the seat's reporter at that host. Every arm below runs on a request whose host is NOT `app.url`'s, so a
  * render that took the request's host reds: each arm sets `app.url` to a host the test client's
  * requests are not sent to, and the first arm checks that.
  */
