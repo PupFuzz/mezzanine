@@ -525,18 +525,25 @@ export function route(grid, from, to, walker) {
  * open at. Each spot carries its path back to the point — the cell centres from the spot's down the cost tree to the
  * point's cell, then the point — so a walker standing there walks to the point over open floor.
  *
+ * card#12793 — `avoid`, where a caller passes one (the elevator queue: § 12's *Elevator lane*), is a predicate over a
+ * point that no spot may stand on: the search SKIPS every cell whose centre it holds as it runs, the point itself
+ * included, so no spacing is spent on a cell nobody may stand on and spot 0 is the first cell past it. A skipped cell
+ * is still walked through — a spot's path back may cross it. With none (the snack corner, the restroom door), spot 0
+ * is the point and the spots are what they were.
+ *
  * @param {object} grid `lattice()`'s
  * @param {{x: number, y: number}} point
  * @param {number} spacing the least distance between two spots' centres, px
- * @param {list<{x: number, y: number}>} [clear] points no spot past the first comes within `spacing` of
+ * @param {list<{x: number, y: number}>} [clear] points no spot but the point itself comes within `spacing` of
+ * @param {?function({x: number, y: number}): boolean} [avoid] where no spot stands, the point included; `null` for none
  * @returns {function(number): ({at: {x: number, y: number}, path: list<{x: number, y: number}>}|null)} spot `k`, built on
  *          first ask; `null` past the last spot the open floor holds
  */
-export function spotsNear(grid, point, spacing, clear = []) {
+export function spotsNear(grid, point, spacing, clear = [], avoid = null) {
     const start = cellAt(grid, point);
     const tier = start === null ? null : CLEARANCE_TIERS.find((t) => blockedFor(grid, { key: null, anchor: point }, t)[start[1] * grid.cols + start[0]] === 0) ?? null;
     const origin = Object.freeze({ x: point.x, y: point.y });
-    const spots = [Object.freeze({ at: origin, path: Object.freeze([origin]) })];
+    const spots = avoid !== null && avoid(origin) ? [] : [Object.freeze({ at: origin, path: Object.freeze([origin]) })];
 
     if (tier === null) {
         return (k) => spots[k] ?? null;
@@ -584,7 +591,7 @@ export function spotsNear(grid, point, spacing, clear = []) {
             const i = order[next++];
             const at = cellCentre(grid, [i % cols, Math.floor(i / cols)]);
 
-            if ([...spots.map((p) => p.at), ...clear].every((p) => Math.hypot(p.x - at.x, p.y - at.y) >= spacing)) {
+            if ((avoid === null || !avoid(at)) && [...spots.map((p) => p.at), ...clear].every((p) => Math.hypot(p.x - at.x, p.y - at.y) >= spacing)) {
                 const path = [];
 
                 for (let c = i; c !== -1; c = parent[c]) {

@@ -777,6 +777,8 @@ export class FloorScreen {
             interns: new Set(Object.entries(frame.desks?.desks ?? {}).flatMap(([key, d]) => (d.side_table?.stools ?? []).map((s) => `${key}~${s.call_id}`))),
             // card#12705: the spots by the elevator a departure waits at (walk note item 9) — this render's scene's.
             queue_spot: plain?.queue_spot ?? null,
+            // card#12793: the lane in front of the doors a rider clears before the first waiting walker leaves its spot.
+            lane: plain?.lane ?? null,
         });
         this.#armWalkEnd(now);
 

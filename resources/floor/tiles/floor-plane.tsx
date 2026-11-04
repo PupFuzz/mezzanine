@@ -10,7 +10,7 @@
      rug) were retired at row 22 — the theme draws the floor, and the operator removed the rug — and their ids
      are not reused, so a stored map that placed them names tiles that draw nothing. Every image here owes a
      `docs/ATTRIBUTION.md` row (§ 10.1 Gate 1). -->
-<tileset version="1.10" tiledversion="1.10.2" name="floor-plane" tilewidth="72" tileheight="144" tilecount="14" columns="0">
+<tileset version="1.10" tiledversion="1.10.2" name="floor-plane" tilewidth="72" tileheight="144" tilecount="23" columns="0">
  <grid orientation="orthogonal" width="1" height="1"/>
  <tile id="2">
   <properties>
@@ -96,5 +96,59 @@
    <property name="kind" value="restroom-door"/>
   </properties>
   <image source="floor-plane/restroom-door.svg" width="64" height="144"/>
+ </tile>
+ <tile id="16">
+  <properties>
+   <property name="kind" value="water-cooler"/>
+  </properties>
+  <image source="floor-plane/water-cooler.svg" width="40" height="120"/>
+ </tile>
+ <tile id="17">
+  <properties>
+   <property name="kind" value="filing-cabinet"/>
+  </properties>
+  <image source="floor-plane/filing-cabinet-low.svg" width="48" height="72"/>
+ </tile>
+ <tile id="18">
+  <properties>
+   <property name="kind" value="filing-cabinet"/>
+  </properties>
+  <image source="floor-plane/filing-cabinet.svg" width="48" height="120"/>
+ </tile>
+ <tile id="19">
+  <properties>
+   <property name="kind" value="copier"/>
+  </properties>
+  <image source="floor-plane/copier.svg" width="80" height="96"/>
+ </tile>
+ <tile id="20">
+  <properties>
+   <property name="kind" value="coat-rack"/>
+  </properties>
+  <image source="floor-plane/coat-rack.svg" width="40" height="136"/>
+ </tile>
+ <tile id="21">
+  <properties>
+   <property name="kind" value="whiteboard"/>
+  </properties>
+  <image source="floor-plane/whiteboard.svg" width="80" height="128"/>
+ </tile>
+ <tile id="22">
+  <properties>
+   <property name="kind" value="aquarium"/>
+  </properties>
+  <image source="floor-plane/aquarium.svg" width="80" height="104"/>
+ </tile>
+ <tile id="23">
+  <properties>
+   <property name="kind" value="bean-bag"/>
+  </properties>
+  <image source="floor-plane/bean-bag.svg" width="56" height="40"/>
+ </tile>
+ <tile id="24">
+  <properties>
+   <property name="kind" value="globe"/>
+  </properties>
+  <image source="floor-plane/globe.svg" width="40" height="88"/>
  </tile>
 </tileset>

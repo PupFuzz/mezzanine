@@ -387,21 +387,24 @@ class AnInternRidesTheElevatorTest extends TestCase
         $d = $this->door();
         [$frame, $walk] = $this->firstWalk($this->floorRun('leave-working'), 'leave');
 
-        // card#12747: the laptop fades, it walks to the low call plate and presses it, walks on to the threshold, waits and
-        // takes the door.
-        $this->assertSame(['seat', 'walk', 'stand', 'walk', 'stand', 'stand', 'cab'], $this->kinds($walk));
+        // card#12747: the laptop fades, it walks to the low call plate and presses it, walks on to its spot, waits and
+        // takes the door — card#12793: gliding from its spot, outside the lane, to the threshold first.
+        $this->assertSame(['seat', 'walk', 'stand', 'walk', 'stand', 'walk', 'stand', 'cab'], $this->kinds($walk));
         $this->assertContiguous($walk, 'leave-working');
         $this->assertSame([$this->laptopFade(), 1, 0], [$walk['legs'][0]['frames'], $walk['legs'][0]['laptop_from'], $walk['legs'][0]['laptop_to']]);
         $this->assertEquals($frame['scene']['slot_feet'][self::IMPL_1][$walk['slot']], $walk['legs'][1]['points'][0], 'the departure does not start at its slot');
         $this->assertSame(['press', 'low'], [$walk['legs'][2]['why'], $walk['legs'][2]['plate']], 'the departure does not press the low call plate after its walk from the slot');
-        $this->assertEquals($this->threshold($frame), end($walk['legs'][3]['points']), 'the walk from the plate does not end at the threshold');
+        $this->assertEquals($walk['legs'][4]['at'], end($walk['legs'][3]['points']), 'the walk from the plate does not end at the spot it waits at');
+        $this->assertNotEquals($this->threshold($frame), $walk['legs'][4]['at'], 'the departure waits on the threshold');
+        $this->assertEquals([$walk['legs'][4]['at'], $this->threshold($frame)], [$walk['legs'][5]['points'][0], end($walk['legs'][5]['points'])], 'the glide does not go from its spot to the threshold');
         // Its wait is for the elevator its press called: the leaves open its seeded draw after the press, or as it reaches
         // the threshold if that is later.
         $press = $walk['legs'][2];
         $wait = $walk['legs'][4];
         $this->assertSame(max($wait['start'], $press['start'] + $press['frames'] + $this->seededWait($walk['intern_key'], $walk['cause'])), $wait['start'] + $wait['frames'],
             'the wait does not end the intern key\'s seeded draw after its press');
-        $this->assertSame([$d['open'], $d['step'] + $d['close']], [$walk['legs'][5]['frames'], $walk['legs'][6]['frames']]);
+        // Alone, the leaves open as its wait ends and it steps in at the later of its reaching the door and their being open.
+        $this->assertSame([max(0, $d['open'] - $walk['legs'][5]['frames']), $d['step'] + $d['close']], [$walk['legs'][6]['frames'], $walk['legs'][7]['frames']]);
 
         [, $idle] = $this->firstWalk($this->floorRun('leave-idle'), 'leave');
         $this->assertSame('walk', $idle['legs'][0]['kind'], 'an idle departure fades a laptop it does not have');
@@ -425,14 +428,16 @@ class AnInternRidesTheElevatorTest extends TestCase
         $mid = $this->floorRun('stop-mid-walk');
         [$arrivalFrame, $arrival, $arrivalAt] = $this->firstWalk($mid, 'arrive');
         [$frame, $turn, $turnAt] = $this->firstWalk($mid, 'turn');
-        // card#12747: it turns, walks to the low call plate and presses it, walks on to the threshold, waits and boards.
-        $this->assertSame(['walk', 'stand', 'walk', 'stand', 'stand', 'cab'], $this->kinds($turn));
+        // card#12747: it turns, walks to the low call plate and presses it, walks on to its spot, waits and boards —
+        // card#12793: gliding from its spot to the threshold.
+        $this->assertSame(['walk', 'stand', 'walk', 'stand', 'walk', 'stand', 'cab'], $this->kinds($turn));
         $this->assertContiguous($turn, 'stop-mid-walk');
         $here = $this->pointAt($arrival, $turnAt - $arrivalAt);
         $this->assertEqualsWithDelta($here['x'], $turn['legs'][0]['points'][0]['x'], 0.001, 'the turn does not start where the walker is');
         $this->assertEqualsWithDelta($here['y'], $turn['legs'][0]['points'][0]['y'], 0.001);
         $this->assertSame(['press', 'low'], [$turn['legs'][1]['why'], $turn['legs'][1]['plate']], 'the turn does not press the low call plate');
-        $this->assertEquals($this->threshold($frame), end($turn['legs'][2]['points']), 'the turn does not end at the threshold');
+        $this->assertEquals($turn['legs'][3]['at'], end($turn['legs'][2]['points']), 'the turn does not walk to the spot it waits at');
+        $this->assertEquals($this->threshold($frame), end($turn['legs'][4]['points']), 'the turn does not end at the threshold');
         $this->assertSame(max($turn['legs'][3]['start'], $turn['legs'][1]['start'] + $turn['legs'][1]['frames'] + $this->seededWait($turn['intern_key'], $turn['cause'])),
             $turn['legs'][3]['start'] + $turn['legs'][3]['frames'], 'the turn does not wait its seeded draw after its press');
         $this->assertNotContains('seat', $this->kinds($turn), 'the laptop fades in a turn-round');
@@ -827,6 +832,82 @@ class AnInternRidesTheElevatorTest extends TestCase
                 $this->assertSame([], $x['frame']['scene']['doors'] ?? [], "[{$run}] the leaves move under reduce");
             }
         }
+    }
+
+    // ── AT-D3-34 (card#12793): an intern's queue keeps the seat's lane clear ────────────────────────────────────
+
+    /** The seat walker's drawn body (`walk-probe.mjs`'s), whose lane the interns keep too. */
+    private function seatBody(): array
+    {
+        static $body = null;
+
+        return $body ??= $this->probe(['mode' => 'shipped', 'repeat' => 1, 'walls' => []], null, __DIR__.'/walk-probe.mjs')['body'];
+    }
+
+    /**
+     * card#12793, INTERNS: leave-outside-the-lane's intern fades its laptop out, presses the low plate in turn, and waits
+     * at spot 1 — outside the seat's lane, on the seat's lattice, at least *Queue spacing* from the seat waiting at spot 0
+     * — and when `aimla-pm` returns it boards after the rider has cleared the lane and the seat has stepped in; in every
+     * frame nobody waits in the lane and no boarder walks in it with the rider.
+     */
+    public function test_green_an_intern_waits_outside_the_seats_lane_and_boards_after_the_rider_and_the_seat(): void
+    {
+        $result = $this->floorRun('leave-outside-the-lane');
+        [$frame, $walk] = $this->firstWalk($result, 'leave');
+        $legs = $walk['legs'];
+
+        $this->assertSame('seat', $legs[0]['kind'], 'the intern does not fade its laptop out before it walks');
+        $this->assertSame([1, 0], [$legs[0]['laptop_from'], $legs[0]['laptop_to']], 'the intern does not fade its laptop out before it walks');
+        $press = array_values(array_filter($legs, static fn ($l) => ($l['why'] ?? null) === 'press'))[0];
+        $this->assertSame('low', $press['plate'], 'the intern does not press the low call plate');
+
+        $probe = $this->probe(['mode' => 'spots', 'open' => [0, 5], 'count' => 2], null, __DIR__.'/walk-probe.mjs');
+        $seat = array_values(array_filter($frame['scene']['effects'], static fn ($e) => $e['animation_id'] === 'A2' && ($e['frames'] ?? 0) > 0))[0];
+        $seatSpot = array_values(array_filter($seat['legs'], static fn ($l) => ($l['why'] ?? null) === 'wait'))[0]['at'];
+        $internSpot = array_values(array_filter($legs, static fn ($l) => ($l['why'] ?? null) === 'wait'))[0]['at'];
+        $this->assertEqualsWithDelta($probe['spots']['lane'], [$seatSpot, $internSpot], 0.001, 'the seat and its intern do not wait at the seat lattice\'s spots 0 and 1');
+        $this->assertGreaterThanOrEqual($this->queueSpacing() - 0.001, hypot($seatSpot['x'] - $internSpot['x'], $seatSpot['y'] - $internSpot['y']), 'the intern waits within the spacing of the seat');
+
+        $lane = null;
+        $pairs = 0;
+        $boarded = null;
+
+        foreach ($this->drawn($result) as $x) {
+            $lane ??= $this->elevatorLaneOf($x['frame'], $this->seatBody(), $this->clearanceMargin());
+            [$defects, $n] = $this->laneDefects($x['frame'], $lane);
+            $this->assertSame([], [...$defects, ...$this->callDefects($x['frame'], $this->seatWidth(), $this->clearanceMargin(), $this->callPress())[0]], "at {$x['at']} ms ({$x['trigger']})");
+            $pairs += $n;
+
+            $rider = array_values(array_filter($x['frame']['scene']['effects'], static fn ($e) => $e['animation_id'] === 'A1' && ($e['frames'] ?? 0) > 0));
+            $intern = $this->internWalks($x['frame'], $walk['intern_key']);
+
+            if ($boarded === null && $rider !== [] && $intern !== [] && (float) ($rider[0]['elapsed_ms'] ?? 1) === 0.0) {
+                $boarded = [$rider[0], $intern[0], array_values(array_filter($x['frame']['scene']['effects'], static fn ($e) => $e['animation_id'] === 'A2' && ($e['frames'] ?? 0) > 0))[0]];
+            }
+        }
+
+        $this->assertGreaterThan(0, $pairs, 'no frame drew the rider with a boarder — the run\'s premise is broken');
+        $this->assertNotNull($boarded, 'the run draws no return for aimla-pm while the intern waits — its premise is broken');
+        [$rider, $intern, $seat] = $boarded;
+        $cabOf = static fn (array $w): array => array_values(array_filter($w['legs'], static fn ($l) => $l['kind'] === 'cab'))[0];
+        $leaves = fn (array $w): float => $this->legSpan($w, array_values(array_filter($w['legs'], static fn ($l) => ($l['why'] ?? null) === 'wait'))[0])[1];
+        $out = array_values(array_filter($rider['legs'], static fn ($l) => $l['kind'] === 'walk'))[0];
+        $this->assertGreaterThan($this->legSpan($rider, $out)[0], $leaves($seat), 'the seat leaves its spot before the rider has stepped out');
+        $this->assertGreaterThanOrEqual($this->legSpan($seat, $cabOf($seat))[0] + $this->door()['step'] * $rider['frame_interval_ms'] - 0.001, $leaves($intern),
+            'the intern leaves its spot before the seat has stepped in');
+    }
+
+    /** card#12793 RED — the intern's own lane: the lane sized to an intern's body, so an intern's spot stands in the seat's lane. */
+    public function test_red_the_lane_sized_to_the_intern(): void
+    {
+        $dir = $this->planted([self::SCENE, "    const body = walkerSize(character);\n    const w = Math.max(band.elevator.w, body.w + 2 * CLEARANCE.margin);", "    const body = INTERN_SIZE;\n    const w = Math.max(band.elevator.w, body.w + 2 * CLEARANCE.margin);"]);
+        $defects = [];
+
+        foreach ($this->drawn($this->floorRun('leave-outside-the-lane', $dir)) as $x) {
+            $defects = [...$defects, ...$this->laneDefects($x['frame'], $this->elevatorLaneOf($x['frame'], $this->seatBody(), $this->clearanceMargin()))[0]];
+        }
+
+        $this->assertNotSame([], $defects, 'a walker waited inside the seat\'s lane and the lane guard saw nothing');
     }
 
     // ── RED — each a plant in the shipped tree ───────────────────────────────────────────────

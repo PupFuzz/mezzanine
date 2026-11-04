@@ -653,6 +653,112 @@ trait ChecksTheElevatorQueue
         return [array_values(array_unique($defects)), $pairs];
     }
 
+    /**
+     * card#12793 — THE CLEAR LANE (`docs/design/FLOOR.md § 6.2`'s walk note item 9, § 12's *Elevator lane*): the defects in
+     * how the walkers a frame draws keep the strip in front of the leaves clear, against `$lane` — the TEST's lane,
+     * re-derived from the band and § 12 (`elevatorLaneOf()`), never the one the scene hands the holder — and the number of
+     * rider–boarder pairs sampled — every half loop frame over the frame's horizon, and every leg boundary.
+     *
+     * - **Nobody waits in it:** every departure's `wait` stand is outside the lane — its edges and the threshold, on
+     *   its top edge, included in it.
+     * - **A rider steps out first:** while a RIDER's feet (a walk whose first leg is its `cab` and that walks out onto
+     *   the floor: an arrival, or a walker turned back out of the cab) are on the floor inside the lane, no BOARDER's
+     *   feet (a departure, from the instant it leaves its spot) are on the floor inside it — unless it had left its spot before the
+     *   rider's walk began: a walker gliding to the door when the leaves open on a rider keeps its glide (the committed
+     *   past outranks the lane, § 6.2's walk note item 9).
+     *
+     * Feet are placed by the legs, as `queuedAt()` places them; a walker in its `cab` leg is inside the cab, off the floor.
+     *
+     * @param  array{x: float, y: float, w: float, h: float}  $lane
+     * @return array{0: list<string>, 1: int}
+     */
+    private function laneDefects(array $frame, array $lane): array
+    {
+        $in = static fn (array $p): bool => $p['x'] >= $lane['x'] - 0.001 && $p['x'] <= $lane['x'] + $lane['w'] + 0.001
+            && $p['y'] >= $lane['y'] - 0.001 && $p['y'] <= $lane['y'] + $lane['h'] + 0.001;
+        $walks = $this->departures($frame);
+        $defects = [];
+
+        foreach ($walks as $w) {
+            foreach ($w['legs'] as $l) {
+                if (($l['why'] ?? null) === 'wait' && $in($l['at'])) {
+                    $defects[] = "{$this->walkerKey($w)} waits at ".json_encode([$l['at']['x'], $l['at']['y']]).' inside the lane in front of the doors';
+                }
+            }
+        }
+
+        $riders = array_values(array_filter($frame['scene']['effects'] ?? [], static fn (array $e): bool => ($e['frames'] ?? 0) > 0
+            && ($e['legs'][0]['kind'] ?? null) === 'cab' && array_filter($e['legs'], static fn (array $l): bool => $l['kind'] === 'walk') !== []));
+        $onFloorIn = function (array $w, float $t) use ($in): bool {
+            $p = $this->queuedAt($w, $t);
+
+            return $p['leg']['kind'] !== 'cab' && $in($p);
+        };
+        $pairs = 0;
+
+        foreach ($riders as $r) {
+            // When the rider's walk began, in ms from this frame's instant: a boarder that left its spot before then is
+            // the committed past.
+            $began = -$r['elapsed_ms'];
+            $instants = [];
+            $end = $r['frames'] * $r['frame_interval_ms'] - $r['elapsed_ms'];
+
+            for ($t = 0.0; $t <= $end; $t += $r['frame_interval_ms'] / 2) {
+                $instants[] = $t;
+            }
+
+            foreach ($walks as $b) {
+                $wait = array_values(array_filter($b['legs'], static fn (array $l): bool => ($l['why'] ?? null) === 'wait'))[0] ?? null;
+
+                if ($wait === null || $this->legSpan($b, $wait)[1] < $began - 0.001) {
+                    continue;
+                }
+
+                $ts = $instants;
+
+                foreach ([...$r['legs'], ...$b['legs']] as $l) {
+                    foreach ($this->legSpan(in_array($l, $r['legs'], true) ? $r : $b, $l) as $edge) {
+                        $ts[] = max(0.0, $edge);
+                        $ts[] = max(0.0, $edge - 0.001);
+                    }
+                }
+
+                $leaves = $this->legSpan($b, $wait)[1];
+
+                foreach (array_unique($ts, SORT_REGULAR) as $t) {
+                    // A boarder is read from the instant it leaves its spot: its way to the plates and to its spot is
+                    // walking past, not boarding.
+                    if ($t > $end || $t < $leaves) {
+                        continue;
+                    }
+
+                    $pairs++;
+
+                    if ($onFloorIn($r, $t) && $onFloorIn($b, $t)) {
+                        $defects[] = "at {$t} ms {$this->walkerKey($b)} walks in the lane while {$this->walkerKey($r)}, stepping out of the cab, is still in it";
+                    }
+                }
+            }
+        }
+
+        return [array_values(array_unique($defects)), $pairs];
+    }
+
+    /**
+     * § 12's *Elevator lane*, re-derived for a frame from its band and the widths passed in: the leaves' span or the seat
+     * body plus both *Walker clearance* side margins, whichever is wider, centred on the seam, from the threshold's floor
+     * line down the seat body's drawn height.
+     *
+     * @return array{x: float, y: float, w: float, h: float}
+     */
+    private function elevatorLaneOf(array $frame, array $body, float $margin): array
+    {
+        $e = $frame['scene']['band']['elevator'];
+        $w = max($e['w'], $body['w'] + 2 * $margin);
+
+        return ['x' => $e['seam'] - $w / 2, 'y' => $e['y'] + $e['h'], 'w' => $w, 'h' => $body['h']];
+    }
+
     /** § 12's *Call press*, in loop frames. */
     private function callPress(): int
     {

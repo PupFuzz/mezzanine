@@ -369,11 +369,18 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
                     $defects[] = "A2 {$key} waits {$wait['frames']} frames alone at its spot, not to {$owedWait} frames past its press";
                 }
 
-                if ($doorStand['frames'] !== $d['open'] || $cab['frames'] !== $d['step'] + $d['close']) {
+                // Item 5's timing (card#12793: no spot is the threshold, so it glides there first): the leaves open at
+                // the end of its wait, it steps in at the later of its reaching the door and their being open, and they
+                // close over its step.
+                $open = $wait['start'] + $wait['frames'];
+                $atDoor = $open + (count($walks) > 2 ? end($walks)['frames'] : 0);
+                $step = max($atDoor, $open + $d['open']);
+
+                if ($doorStand['frames'] !== $step - $atDoor || $cab['frames'] !== $d['step'] + $d['close']) {
                     $defects[] = "A2 {$key}'s door stand and cab are not § 12's opening, step and closing";
                 }
 
-                if ($walk['door'] != ['start' => $wait['start'] + $wait['frames'], 'frames' => $d['open'] + $d['step'] + $d['close']]) {
+                if ($walk['door'] != ['start' => $open, 'frames' => $step - $open + $d['step'] + $d['close']]) {
                     $defects[] = "A2 {$key}'s door span ".json_encode($walk['door']).' does not open at the end of its wait';
                 }
             }
@@ -1096,11 +1103,13 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     public function test_green_the_waiting_board_together_one_at_a_time(): void
     {
         $most = 0;
+        $probe = $this->spotsProbe(self::FIXTURE_OPEN_SLOTS);
+        $spots = $this->restatedSpots($probe, $this->laneOfProbe($probe), 6);
 
         foreach (['two-walkers', 'mass-departure'] as $run) {
             foreach ($this->drawn($this->floorRun($run)) as $r) {
                 [$defects, $boarded] = $this->boardingDefects($r['frame'], $this->door());
-                $this->assertSame([], $defects, "[{$run}] at {$r['at']} ms ({$r['trigger']})");
+                $this->assertSame([], [...$defects, ...$this->nearestFirstDefects($r['frame'], $spots)], "[{$run}] at {$r['at']} ms ({$r['trigger']})");
                 $most = max($most, $boarded);
             }
         }
@@ -1117,7 +1126,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     {
         $compared = 0;
 
-        foreach (['two-walkers', 'mass-departure', 'crossing', 'queue-return-after-boarding'] as $run) {
+        foreach (['two-walkers', 'mass-departure', 'crossing', 'queue-return-after-boarding', 'lane-arrival-meets-queue'] as $run) {
             $drawn = $this->drawn($this->floorRun($run));
             [$defects, $n] = $this->continuityDefects($drawn);
             $this->assertSame([], $defects, "[{$run}]");
@@ -1538,6 +1547,482 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         }
     }
 
+    // ── AT-D3-34 (card#12793): the queue stands clear of the doors, and a rider steps out first ────────────────
+
+    /** The runs AT-D3-34 replays whose departures queue, each held to the lane. */
+    private const LANE_RUNS = ['lane-arrival-meets-queue', 'lane-lone', 'lane-arrival-over-committed-boarder', 'two-walkers', 'mass-departure', 'crossing', 'queue-return-after-boarding'];
+
+    /** The fixture floor's open slots: `fx-snapshot-4` holds four of the shipped default's six, slots 0 and 5 open floor. */
+    private const FIXTURE_OPEN_SLOTS = [0, 5];
+
+    /** `walk-probe.mjs`'s `spots` answer for the shipped default with `$open` slots open. */
+    private function spotsProbe(array $open, ?string $dir = null): array
+    {
+        return $this->walkProbe('spots', ['open' => $open, 'count' => 6], $dir);
+    }
+
+    /** § 12's *Elevator lane* for a probe answer, re-derived from its band and body and § 12's *Walker clearance*. */
+    private function laneOfProbe(array $probe): array
+    {
+        $e = $probe['elevator'];
+        $w = max($e['w'], $probe['body']['w'] + 2 * $this->clearanceMargin());
+
+        return ['x' => $e['seam'] - $w / 2, 'y' => $e['y'] + $e['h'], 'w' => $w, 'h' => $probe['body']['h']];
+    }
+
+    /**
+     * card#12793 — THE SPOTS, RESTATED: the rule § 6.2's walk note item 9 states, run here over the lattice the probe
+     * searched on — Dijkstra from the threshold's cell at § 12's step costs plus each cell's centring, no corner cut, the
+     * settled cells in `(cost, y, x)` order; a cell skipped when its centre is in the lane (with `$lane`), within the
+     * spacing of an earlier spot, or within the spacing of a call point; with no lane, the threshold itself first.
+     *
+     * @return list<array{x: float, y: float}>
+     */
+    private function restatedSpots(array $probe, ?array $lane, int $count): array
+    {
+        $L = $probe['lattice'];
+        $cost = $this->stepCost();
+        [$cols, $rows, $cell] = [$L['cols'], $L['rows'], $L['cell']];
+        $door = $probe['threshold'];
+        $start = (int) (floor(($door['y'] - $L['origin']['y']) / $cell) * $cols + floor(($door['x'] - $L['origin']['x']) / $cell));
+        $open = static fn (int $x, int $y): bool => $x >= 0 && $y >= 0 && $x < $cols && $y < $rows && $L['blocked'][$y * $cols + $x] === 0;
+        $g = [$start => 0];
+        $done = [];
+        $heap = new \SplPriorityQueue;
+        $heap->setExtractFlags(\SplPriorityQueue::EXTR_BOTH);
+        $heap->insert($start, 0);
+
+        while (! $heap->isEmpty()) {
+            ['data' => $i, 'priority' => $p] = $heap->extract();
+
+            if (isset($done[$i]) || -$p !== $g[$i]) {
+                continue;
+            }
+
+            $done[$i] = true;
+            [$x, $y] = [$i % $cols, intdiv($i, $cols)];
+
+            for ($dy = -1; $dy <= 1; $dy++) {
+                for ($dx = -1; $dx <= 1; $dx++) {
+                    $diagonal = $dx !== 0 && $dy !== 0;
+
+                    if (($dx === 0 && $dy === 0) || ! $open($x + $dx, $y + $dy) || ($diagonal && (! $open($x + $dx, $y) || ! $open($x, $y + $dy)))) {
+                        continue;
+                    }
+
+                    $n = ($y + $dy) * $cols + $x + $dx;
+                    $gn = $g[$i] + ($diagonal ? $cost['diagonal'] : $cost['straight']) + $L['extra'][$n];
+
+                    if (! isset($done[$n]) && (! isset($g[$n]) || $gn < $g[$n])) {
+                        $g[$n] = $gn;
+                        $heap->insert($n, -$gn);
+                    }
+                }
+            }
+        }
+
+        $order = array_keys($done);
+        usort($order, static fn (int $a, int $b): int => [$g[$a], intdiv($a, $cols), $a % $cols] <=> [$g[$b], intdiv($b, $cols), $b % $cols]);
+        $in = static fn (array $p): bool => $lane !== null && $p['x'] >= $lane['x'] && $p['x'] <= $lane['x'] + $lane['w'] && $p['y'] >= $lane['y'] && $p['y'] <= $lane['y'] + $lane['h'];
+        $spots = $in($door) ? [] : [['x' => $door['x'], 'y' => $door['y']]];
+
+        foreach ($order as $i) {
+            if (count($spots) >= $count) {
+                break;
+            }
+
+            $c = ['x' => $L['origin']['x'] + ($i % $cols + 0.5) * $cell, 'y' => $L['origin']['y'] + (intdiv($i, $cols) + 0.5) * $cell];
+
+            if ($in($c)) {
+                continue;
+            }
+
+            foreach ([...$spots, ...$probe['calls']] as $q) {
+                if (hypot($q['x'] - $c['x'], $q['y'] - $c['y']) < $probe['spacing']) {
+                    continue 2;
+                }
+            }
+
+            $spots[] = $c;
+        }
+
+        return $spots;
+    }
+
+    /**
+     * NEAREST THE DOOR FIRST (§ 6.2's walk note item 9): for every opening of the leaves a frame draws, the departures
+     * standing at their spots as the leaves begin to open step in in the order of their spots — `$spots`, the restated
+     * spots, numbered outward from the threshold. Since card#12793 no spot is the threshold, so the order is read by spot.
+     *
+     * @param  list<array{x: float, y: float}>  $spots
+     * @return list<string>
+     */
+    private function nearestFirstDefects(array $frame, array $spots): array
+    {
+        $defects = [];
+
+        foreach ($this->openings($frame) as [$from, $to]) {
+            $in = [];
+
+            foreach ($this->departures($frame) as $w) {
+                $cab = $this->legSpan($w, $this->legsOf($w, 'cab')[0])[0];
+
+                if ($cab >= $from && $cab < $to && $this->waitingAt($w, $from)) {
+                    $at = $this->waitLeg($w)['at'];
+                    $index = array_search(true, array_map(static fn (array $s): bool => abs($s['x'] - $at['x']) < 0.001 && abs($s['y'] - $at['y']) < 0.001, $spots), true);
+                    $in[] = ['key' => $this->walkerKey($w), 'cab' => $cab, 'spot' => $index === false ? PHP_INT_MAX : $index];
+                }
+            }
+
+            usort($in, static fn ($a, $b) => $a['cab'] <=> $b['cab']);
+
+            for ($k = 1; $k < count($in); $k++) {
+                if ($in[$k]['spot'] < $in[$k - 1]['spot']) {
+                    $defects[] = "{$in[$k]['key']} at spot {$in[$k]['spot']} steps in after {$in[$k - 1]['key']} at spot {$in[$k - 1]['spot']} — not nearest the door first";
+                }
+            }
+        }
+
+        return $defects;
+    }
+
+    /** A walk's `wait` stand. */
+    private function waitLeg(array $walk): array
+    {
+        return array_values(array_filter($walk['legs'], static fn (array $l): bool => ($l['why'] ?? null) === 'wait'))[0];
+    }
+
+    /** The leg right after a walk's `wait` stand — its glide from its spot to the threshold. */
+    private function boardLeg(array $walk): array
+    {
+        $i = array_search($this->waitLeg($walk), $walk['legs'], true);
+
+        return $walk['legs'][$i + 1];
+    }
+
+    /** One walk of a frame, by `ID key`. */
+    private function walkOf(array $frame, string $id, string $key): array
+    {
+        foreach ($this->walks($frame) as $w) {
+            if ($w['animation_id'] === $id && $this->keyOf($w) === $key) {
+                return $w;
+            }
+        }
+
+        $this->fail("the frame draws no {$id} walk for {$key}");
+    }
+
+    /**
+     * card#12793, § 12's figure: the lane the scene hands the holder is the lane re-derived from the band, § 12's
+     * *Walker clearance* and the seat's drawn body; its width at least the body plus both margins; and on the shipped
+     * frame it is the figure § 12's *Elevator lane* row prints.
+     */
+    public function test_green_the_lane_is_section_12s(): void
+    {
+        $frame = $this->frameAt($this->floorRun('lane-lone'), 1000);
+        $body = $this->shipped()['body'];
+        $lane = $this->elevatorLaneOf($frame, $body, $this->clearanceMargin());
+
+        $this->assertEqualsWithDelta($lane, $frame['scene']['lane'], 0.001, 'the lane the scene hands the holder is not § 12\'s *Elevator lane*');
+        $this->assertGreaterThanOrEqual($body['w'] + 2 * $this->clearanceMargin(), $lane['w'], 'the lane is narrower than a seat\'s body and both margins');
+        $this->assertSame(1, preg_match('/^\| \*\*Elevator lane\*\* \| .*? on the shipped frame \*\*(\d+) × (\d+) px\*\*/mu', $this->floorMd(), $m),
+            '§ 12 carries no *Elevator lane* row in the form this test reads');
+        $this->assertSame([(float) $m[1], (float) $m[2]], [(float) $lane['w'], (float) $lane['h']], '§ 12\'s *Elevator lane* is not the lane the shipped frame derives');
+    }
+
+    /**
+     * card#12793, THE SPOTS: the spots `spotsNear()` places — on the fixture floor through the harness, and on the shipped
+     * default with every slot held through the probe — are the first cells of the test's own restatement of the rule, in
+     * order; with no lane the first spot is the threshold, so the snack corner's and the restroom's are where they were;
+     * and in every frame of every queue run, no departure waits in the lane, two waiting at once stand at least *Queue
+     * spacing* apart, and every spot is at least that from both call points.
+     */
+    public function test_green_the_spots_stand_clear_of_the_lane(): void
+    {
+        foreach (['fixture' => self::FIXTURE_OPEN_SLOTS, 'every slot held' => []] as $floor => $open) {
+            $probe = $this->spotsProbe($open);
+            $lane = $this->laneOfProbe($probe);
+            $this->assertEqualsWithDelta($lane, $probe['lane'], 0.001, "[{$floor}] the scene's lane is not § 12's");
+            $this->assertEqualsWithDelta($this->restatedSpots($probe, $lane, 6), $probe['spots']['lane'], 0.001, "[{$floor}] the spots are not the restated rule's");
+            $this->assertEqualsWithDelta($this->restatedSpots($probe, null, 6), $probe['spots']['none'], 0.001, "[{$floor}] the spots with no lane are not the restated rule's");
+            $this->assertEquals($probe['threshold'], $probe['spots']['none'][0], "[{$floor}] with no lane, the first spot is not the point");
+        }
+
+        // The fixture floor's spots as the harness draws them: lane-arrival-meets-queue's two waiters, in the order they arrived.
+        $restated = $this->restatedSpots($probe = $this->spotsProbe(self::FIXTURE_OPEN_SLOTS), $this->laneOfProbe($probe), 2);
+        $both = $this->frameAt($this->floorRun('lane-arrival-meets-queue'), 1500);
+        $this->assertEqualsWithDelta($restated, [$this->waitLeg($this->walkOf($both, 'A2', self::REVIEW))['at'], $this->waitLeg($this->walkOf($both, 'A2', self::IMPL_2))['at']], 0.001,
+            'lane-arrival-meets-queue\'s waiters do not stand at the restated spots 0 and 1');
+
+        $lane = null;
+        $seen = 0;
+
+        foreach (self::LANE_RUNS as $run) {
+            foreach ($this->drawn($this->floorRun($run)) as $r) {
+                $lane ??= $this->elevatorLaneOf($r['frame'], $this->shipped()['body'], $this->clearanceMargin());
+                $spotDefects = array_values(array_filter($this->laneDefects($r['frame'], $lane)[0], static fn ($d) => str_contains($d, 'inside the lane')));
+                $this->assertSame([], [...$spotDefects, ...$this->queueSpacingDefects($r['frame'], $this->queueSpacing())[0],
+                    ...$this->callDefects($r['frame'], $this->shipped()['body']['w'], $this->clearanceMargin(), $this->callPress())[0],
+                    ...$this->cabDefects($r['frame'], $this->cabApart(), $this->cabFloor($r['frame']))[0]], "[{$run}] at {$r['at']} ms ({$r['trigger']})");
+
+                foreach ($this->departures($r['frame']) as $w) {
+                    $seen++;
+
+                    foreach ($probe['calls'] as $call) {
+                        $at = $this->waitLeg($w)['at'];
+                        $this->assertGreaterThanOrEqual($probe['spacing'] - 0.001, hypot($at['x'] - $call['x'], $at['y'] - $call['y']), "[{$run}] a spot within the spacing of a call point");
+                    }
+                }
+            }
+        }
+
+        $this->assertGreaterThan(0, $seen, 'no queue run drew a departure — the runs\' premise is broken');
+    }
+
+    /**
+     * card#12793, THE ORDER WITHIN A DOOR CYCLE: lane-arrival-meets-queue's rider steps out on the opening's open + step
+     * frame; the nearer waiter leaves its spot on the first frame at which the rider's feet are out of the lane — not a
+     * frame earlier, not a frame later — and steps in as it reaches the threshold; the farther leaves its spot as the
+     * nearer has stepped in; the leaves close right after the last steps in; and in every frame no boarder walks in the
+     * lane while a rider is in it.
+     */
+    public function test_green_a_rider_steps_out_and_clears_the_lane_before_anyone_steps_in(): void
+    {
+        $result = $this->floorRun('lane-arrival-meets-queue');
+        $door = $this->door();
+        $at = null;
+
+        foreach ($this->firstDraws($result) as [$frame, $walk]) {
+            if ($walk['animation_id'] === 'A1' && $this->keyOf($walk) === self::PM) {
+                $at = $frame;
+            }
+        }
+
+        $this->assertNotNull($at, 'lane-arrival-meets-queue draws no return for aimla-pm — the run\'s premise is broken');
+        $lane = $this->elevatorLaneOf($at, $this->shipped()['body'], $this->clearanceMargin());
+        $rider = $this->walkOf($at, 'A1', self::PM);
+        $near = $this->walkOf($at, 'A2', self::REVIEW);
+        $far = $this->walkOf($at, 'A2', self::IMPL_2);
+        $I = $rider['frame_interval_ms'];
+        $out = $this->legsOf($rider, 'walk')[0];
+
+        $this->assertSame($door['open'] + $door['step'], $out['start'], 'the rider does not step out on the opening\'s open + step frame');
+        $this->assertTrue($this->waitingAt($near, $this->legSpan($rider, $out)[0]) && $this->waitingAt($far, $this->legSpan($rider, $out)[0]),
+            'both departures are not waiting at their spots as the rider steps out — the run\'s premise is broken');
+
+        // The rider's lane-clear frame: the first frame of its walk at which its feet are out of the lane, read by arc length.
+        $clear = null;
+
+        for ($f = $out['start']; $f <= $rider['frames']; $f++) {
+            $p = $this->queuedAt($rider, $f * $I - $rider['elapsed_ms']);
+
+            if ($p['x'] < $lane['x'] || $p['x'] > $lane['x'] + $lane['w'] || $p['y'] < $lane['y'] || $p['y'] > $lane['y'] + $lane['h']) {
+                $clear = $f * $I - $rider['elapsed_ms'];
+
+                break;
+            }
+        }
+
+        $this->assertNotNull($clear, 'the rider\'s feet never leave the lane');
+        $this->assertGreaterThan($this->legSpan($rider, $out)[0], $clear, 'the rider is out of the lane as it steps out — the run\'s premise is broken');
+        $glide = $this->boardLeg($near);
+        $this->assertEqualsWithDelta($clear, $this->legSpan($near, $glide)[0], 0.001, 'the nearer waiter does not leave its spot on the frame the rider clears the lane');
+        $this->assertSame('walk', $glide['kind'], 'the nearer waiter does not walk from its spot to the threshold');
+        $nearIn = $this->legSpan($near, $this->legsOf($near, 'cab')[0])[0];
+        $this->assertEqualsWithDelta($this->legSpan($near, $glide)[1], $nearIn, 0.001, 'the nearer waiter does not step in as it reaches the threshold');
+        $this->assertEqualsWithDelta($nearIn + $door['step'] * $I, $this->legSpan($far, $this->waitLeg($far))[1], 0.001, 'the farther waiter does not leave its spot as the nearer has stepped in');
+        $farIn = $this->legSpan($far, $this->legsOf($far, 'cab')[0])[0];
+        $shut = max(array_map(static fn (array $o): float => $o[1], $this->openings($at)));
+        $this->assertEqualsWithDelta($farIn + ($door['step'] + $door['close']) * $I, $shut, 0.001, 'the leaves do not close right after the last boarder steps in');
+
+        $pairs = 0;
+
+        foreach ($this->drawn($result) as $r) {
+            [$defects, $n] = $this->laneDefects($r['frame'], $lane);
+            $this->assertSame([], $defects, "at {$r['at']} ms ({$r['trigger']})");
+            $pairs += $n;
+        }
+
+        $this->assertGreaterThan(0, $pairs, 'no frame drew a rider and a boarder together — the run\'s premise is broken');
+    }
+
+    /**
+     * card#12793, THE LONE WALKER: lane-lone's legs are its walk to the main plate, its press, its walk to spot 0 outside
+     * the lane, its wait, its glide to the threshold, its stand at the door and its cab, each starting where the one before
+     * ends; the leaves open at the end of its wait and it steps in at the later of its reaching the door and the leaves'
+     * opening frames — item 5's timing with the glide added.
+     */
+    public function test_green_a_lone_walker_waits_outside_the_lane_and_glides_in(): void
+    {
+        $frame = $this->frameAt($this->floorRun('lane-lone'), 1000);
+        $walk = $this->walkOf($frame, 'A2', self::REVIEW);
+        $legs = $walk['legs'];
+        $door = $this->door();
+
+        $this->assertSame(['walk', 'stand:press', 'walk', 'stand:wait', 'walk', 'stand:door', 'cab'],
+            array_map(static fn (array $l): string => $l['kind'].(isset($l['why']) ? ":{$l['why']}" : ''), $legs), 'lane-lone\'s legs are not the lone walker\'s');
+
+        for ($i = 1; $i < count($legs); $i++) {
+            $this->assertSame($legs[$i - 1]['start'] + $legs[$i - 1]['frames'], $legs[$i]['start'], "lane-lone's leg {$i} does not start where the one before ends");
+        }
+
+        $probe = $this->spotsProbe(self::FIXTURE_OPEN_SLOTS);
+        $this->assertEqualsWithDelta($this->restatedSpots($probe, $this->laneOfProbe($probe), 1)[0], $legs[3]['at'], 0.001, 'the lone walker does not wait at spot 0');
+        $this->assertSame($legs[3]['start'] + $legs[3]['frames'], $walk['door']['start'], 'the leaves do not open at the end of the lone walker\'s wait');
+        $this->assertSame(max($legs[4]['start'] + $legs[4]['frames'], $walk['door']['start'] + $door['open']), $legs[6]['start'],
+            'the lone walker does not step in at the later of its reaching the door and the leaves\' opening');
+        $this->assertSame($this->seededWait(self::REVIEW, $walk['cause']), $legs[3]['start'] + $legs[3]['frames'] - ($legs[1]['start'] + $legs[1]['frames']),
+            'the lone walker does not wait its seeded draw from its press');
+    }
+
+    /**
+     * card#12793, THE COMMITTED PAST: lane-arrival-over-committed-boarder's arrival is admitted after the nearer waiter has
+     * left its spot; that boarder keeps the leaving and the step it was drawn with across the render that admits the
+     * arrival, no walker jumps between renders, and the farther waiter — still at its spot — leaves it only once the
+     * rider has cleared the lane.
+     */
+    public function test_green_a_boarder_already_gliding_keeps_its_glide(): void
+    {
+        $result = $this->floorRun('lane-arrival-over-committed-boarder');
+        $drawn = $this->drawn($result);
+        [$defects, $n] = $this->continuityDefects($drawn);
+        $this->assertSame([], $defects, 'a walker jumped between renders');
+        $this->assertGreaterThan(0, $n, 'no walk was drawn on two renders — the run\'s premise is broken');
+
+        $renders = array_values(array_filter($drawn, static fn (array $r): bool => $r['trigger'] === 'render'));
+        $admit = null;
+
+        foreach ($renders as $k => $r) {
+            if (array_filter($this->walks($r['frame']), fn (array $w): bool => $w['animation_id'] === 'A1' && $this->keyOf($w) === self::PM) !== []) {
+                $admit = $k;
+
+                break;
+            }
+        }
+
+        $this->assertNotNull($admit, 'the run draws no return for aimla-pm — its premise is broken');
+        $absolute = fn (array $r, array $w, array $leg): float => $r['at'] + $this->legSpan($w, $leg)[0];
+        $before = $renders[$admit - 1];
+        $after = $renders[$admit];
+        $was = $this->walkOf($before['frame'], 'A2', self::REVIEW);
+        $is = $this->walkOf($after['frame'], 'A2', self::REVIEW);
+        $this->assertLessThan($after['at'], $absolute($before, $was, $this->boardLeg($was)), 'the nearer waiter has not left its spot when the arrival is admitted — the run\'s premise is broken');
+        $this->assertEqualsWithDelta($absolute($before, $was, $this->boardLeg($was)), $absolute($after, $is, $this->boardLeg($is)), 0.001, 'the committed boarder\'s leaving moved');
+        $this->assertEqualsWithDelta($absolute($before, $was, $this->legsOf($was, 'cab')[0]), $absolute($after, $is, $this->legsOf($is, 'cab')[0]), 0.001, 'the committed boarder\'s step moved');
+
+        $lane = $this->elevatorLaneOf($after['frame'], $this->shipped()['body'], $this->clearanceMargin());
+
+        foreach ($drawn as $r) {
+            $this->assertSame([], $this->laneDefects($r['frame'], $lane)[0], "at {$r['at']} ms ({$r['trigger']})");
+        }
+    }
+
+    /** card#12793: every lane run under `prefers-reduced-motion: reduce` writes its rows at `motion: false`, draws no walker and moves no leaf. */
+    public function test_green_the_lane_runs_reduced(): void
+    {
+        foreach (['lane-arrival-meets-queue', 'lane-lone'] as $run) {
+            $result = $this->floorRun($run, null, ['reduce' => true]);
+
+            $this->assertNotSame([], $this->walkRows($result), "[{$run}] the reduced replay wrote no walk row");
+
+            foreach ($this->edgeRows($result) as $row) {
+                $this->assertFalse($row['motion'], "[{$run}] a reduced row was written with motion");
+            }
+
+            foreach ($this->drawn($result) as $r) {
+                $this->assertSame([], $this->walks($r['frame']), "[{$run}] the reduced replay drew a walker");
+                $this->assertSame([], $r['frame']['scene']['doors'], "[{$run}] the reduced replay opened the leaves");
+            }
+        }
+    }
+
+    /** card#12793 RED — the doorway spot: the threshold kept as spot 0, the lane not passed to `spotsNear()`. */
+    public function test_red_a_spot_on_the_threshold(): void
+    {
+        $dir = $this->mutatedModules([self::SCENE, ",\n            (p) => inLane(lane, p));", ');']);
+        $frame = $this->frameAt($this->floorRun('lane-arrival-meets-queue', $dir), 1500);
+
+        $this->assertNotSame([], $this->laneDefects($frame, $this->elevatorLaneOf($frame, $this->shipped()['body'], $this->clearanceMargin()))[0],
+            'a departure waited on the threshold and the lane guard saw nothing');
+    }
+
+    /** card#12793 RED — the eager boarder: the first boarder released as the rider steps out, as before the lane. */
+    public function test_red_the_boarder_released_as_the_rider_steps_out(): void
+    {
+        $dir = $this->mutatedModules([self::IN_FLIGHT, 'free: h.at + laneClear(h, h.effect.door) * I', 'free: h.at + (h.effect.door.start + h.effect.door.frames - D.close) * I']);
+        $result = $this->floorRun('lane-arrival-meets-queue', $dir);
+        $defects = [];
+
+        foreach ($this->drawn($result) as $r) {
+            $defects = [...$defects, ...$this->laneDefects($r['frame'], $this->elevatorLaneOf($r['frame'], $this->shipped()['body'], $this->clearanceMargin()))[0]];
+        }
+
+        $this->assertNotSame([], $defects, 'a boarder walked into the lane with the rider and the lane guard saw nothing');
+    }
+
+    /** card#12793 RED — the moved past: every departure re-timed on every render, a committed glide included. */
+    public function test_red_the_lane_moves_a_committed_boarder(): void
+    {
+        $dir = $this->mutatedModules([self::IN_FLIGHT, '        const left = (h) => h.plan !== undefined && h.at + h.plan.approach * I <= now;', '        const left = () => false;']);
+
+        $this->assertNotSame([], $this->continuityDefects($this->drawn($this->floorRun('lane-arrival-over-committed-boarder', $dir)))[0],
+            'a boarder already gliding was sent back to its spot and the continuity guard saw nothing');
+    }
+
+    /** card#12793 RED — the lane filtered after the search: the lane's cells still spend the spacing. */
+    public function test_red_the_lane_filtered_after_the_search(): void
+    {
+        $dir = $this->mutatedModules([self::ROUTE, 'const spots = avoid !== null && avoid(origin) ? [] : [Object.freeze({ at: origin, path: Object.freeze([origin]) })];',
+            'const spots = [Object.freeze({ at: origin, path: Object.freeze([origin]) })]; const kept = () => spots.filter((p) => avoid === null || !avoid(p.at));']);
+        $dir = $this->mutatedModulesOn($dir, [self::ROUTE, '(avoid === null || !avoid(at)) && ', '']);
+        $dir = $this->mutatedModulesOn($dir, [self::ROUTE, '        while (spots.length <= k && next < order.length) {', '        while (kept().length <= k && next < order.length) {']);
+        $dir = $this->mutatedModulesOn($dir, [self::ROUTE, "        return spots[k] ?? null;\n    };", "        return kept()[k] ?? null;\n    };"]);
+        $probe = $this->spotsProbe(self::FIXTURE_OPEN_SLOTS, $dir);
+
+        $this->assertNotEquals($this->restatedSpots($probe, $this->laneOfProbe($probe), 6), $probe['spots']['lane'], 'the lane filtered after the search placed the restated spots');
+    }
+
+    /** card#12793 RED — the lane on the body: a rider judged clear by its drawn rect, not its feet. */
+    public function test_red_the_lane_judged_on_the_body(): void
+    {
+        $dir = $this->mutatedModules([self::IN_FLIGHT, "if (p.where !== 'floor' || !inLane(lane, p)) {",
+            "if (p.where !== 'floor' || !inLane({ x: lane.x - h.effect.size.w / 2, y: lane.y, w: lane.w + h.effect.size.w, h: lane.h + h.effect.size.h }, p)) {"]);
+        $result = $this->floorRun('lane-arrival-meets-queue', $dir);
+        $at = null;
+
+        foreach ($this->firstDraws($result) as [$frame, $walk]) {
+            if ($walk['animation_id'] === 'A1' && $this->keyOf($walk) === self::PM) {
+                $at = $frame;
+            }
+        }
+
+        $rider = $this->walkOf($at, 'A1', self::PM);
+        $near = $this->walkOf($at, 'A2', self::REVIEW);
+        $lane = $this->elevatorLaneOf($at, $this->shipped()['body'], $this->clearanceMargin());
+        $I = $rider['frame_interval_ms'];
+        $out = $this->legsOf($rider, 'walk')[0];
+
+        for ($f = $out['start']; $f <= $rider['frames']; $f++) {
+            $p = $this->queuedAt($rider, $f * $I - $rider['elapsed_ms']);
+
+            if ($p['x'] < $lane['x'] || $p['x'] > $lane['x'] + $lane['w'] || $p['y'] < $lane['y'] || $p['y'] > $lane['y'] + $lane['h']) {
+                break;
+            }
+        }
+
+        $this->assertGreaterThan($f * $I - $rider['elapsed_ms'] + 0.001, $this->legSpan($near, $this->boardLeg($near))[0],
+            'a rider judged by its body released the boarder on the frame its feet cleared the lane');
+    }
+
+    /** card#12793 RED — every caller skips its origin: the snack corner's and the restroom's spot 0 lost. */
+    public function test_red_every_caller_skips_the_point(): void
+    {
+        $dir = $this->mutatedModules([self::ROUTE, 'const spots = avoid !== null && avoid(origin) ? [] : [Object.freeze({ at: origin, path: Object.freeze([origin]) })];', 'const spots = [];']);
+        $probe = $this->spotsProbe(self::FIXTURE_OPEN_SLOTS, $dir);
+
+        $this->assertNotEquals($probe['threshold'], $probe['spots']['none'][0], 'spotsNear() dropped its point for a caller with no lane and the spots guard saw nothing');
+    }
+
     // ── The REDs: each plant, replayed against the run § 11 names, breaks that run's GREEN ─────
 
     public function test_red_a2_keyed_on_offline_alone(): void
@@ -1732,10 +2217,10 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         $this->assertSame([], $this->walks($this->frameAt($this->floorRun('repaint', $dir), 1625)));
     }
 
-    /** card#12705, APART: every waiting walker on the threshold — card#12194's one point, the spots past the first withheld. */
+    /** card#12705, APART: every waiting walker on spot 0 — card#12194's one point, every spot asked for answered with the first. */
     public function test_red_walkers_waiting_on_one_point(): void
     {
-        $dir = $this->mutatedModules([self::SCENE, '        queue_spot: queueSpot,', '        queue_spot: (k) => (k === 0 ? queueSpot(0) : null),']);
+        $dir = $this->mutatedModules([self::SCENE, '        queue_spot: queueSpot,', '        queue_spot: () => queueSpot(0),']);
 
         $this->assertNotSame([], $this->queueSpacingDefects($this->frameAt($this->floorRun('two-walkers', $dir), self::BOTH_WALKING_MS), $this->queueSpacing())[0],
             'two walkers waited on one point and the spacing guard saw nothing');
@@ -1760,13 +2245,14 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
             'a walker left waiting at its spot through an opening and the boarding guard saw nothing');
     }
 
-    /** card#12705, TOGETHER: the waiting board in the order they reached their spots — the walker on the threshold last. */
+    /** card#12705, TOGETHER: the waiting board in the order they reached their spots, not nearest the door first. */
     public function test_red_boarding_by_arrival_not_nearest_the_door(): void
     {
         $dir = $this->mutatedModules([self::IN_FLIGHT, '.sort((a, b) => a.h.shape.spot.index - b.h.shape.spot.index || byKey(a.h.key, b.h.key));', '.sort((a, b) => a.arrive - b.arrive || byKey(a.h.key, b.h.key));']);
+        $probe = $this->spotsProbe(self::FIXTURE_OPEN_SLOTS);
 
-        $this->assertNotSame([], $this->boardingDefects($this->frameAt($this->floorRun('mass-departure', $dir), 1000), $this->door())[0],
-            'the walker on the threshold boarded behind the others and the boarding guard saw nothing');
+        $this->assertNotSame([], $this->nearestFirstDefects($this->frameAt($this->floorRun('mass-departure', $dir), 1000), $this->restatedSpots($probe, $this->laneOfProbe($probe), 6)),
+            'the walkers boarded in the order they arrived, not nearest the door first, and the boarding guard saw nothing');
     }
 
     /** card#12705, TOGETHER: every boarder steps in at once, and the leaves close one door's frames after they open. */
