@@ -984,7 +984,8 @@ class AnInternRidesTheElevatorTest extends TestCase
 
     public function test_red_the_plain_cancel(): void
     {
-        $dir = $this->planted([self::SCENE, '            const turned = turnRound(fx, flying, from, door, call, routed, leg, done, walking, row);', '            const turned = null;']);
+        // card#12466: `turnRound()` is every walker's now, handed the intern's geometry; the plant drops its answer.
+        $dir = $this->planted([self::SCENE, "            const turned = turnRound(flying, {\n                to: 'elevator',", "            const turned = null && turnRound(flying, {\n                to: 'elevator',"]);
         $r = $this->floorRun('stop-mid-walk', $dir);
         $this->assertSame([], array_values(array_filter($this->firstWalks($r), static fn ($h) => $h[1]['leg_kind'] !== 'arrive')),
             'the plant still drew an effect after the cancelling render');

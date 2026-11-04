@@ -26,6 +26,9 @@
  *   `lattice`  — H6's tileset and registry legs at the scene: `buildScene()` over one drawn frame and its rows twice —
  *                a tileset `pending` then held, the theme registry absent then held — each pair's lattice keys, and
  *                whether `EffectsInFlight` cancels the first scene's walk at a render carrying the second's key.
+ *   `turn-touched` — card#12466 (AT-D3-35): a seat's walk and the turn-round a later scene drew from it, handed to
+ *                `EffectsInFlight` over a render touching the seat by its row and side alone and by each other clause of
+ *                the walk note's item 6 as well — whether the turn is held, per clause.
  *
  * argv: `<module-dir>` — the client tree's `wire/` (a mutated copy's, for a plant). stdout: the mode's answer.
  */
@@ -194,6 +197,42 @@ if (input.mode === 'lattice') {
         tileset: leg({ tileset: false, withRegistry: true }, { tileset: true, withRegistry: true }),
         registry: leg({ tileset: true, withRegistry: false }, { tileset: true, withRegistry: true }),
     });
+}
+
+// card#12466 (AT-D3-35): which touches let a seat's turn-round replace the walk it turns from. The holder is handed the walk
+// a run's scene drew and, `at` ms later, the turn the next scene drew, over a render that touches the seat by its row and
+// its side alone (`none`) or by one more of item 6's clauses as well — and answers, per clause, whether the turn is held.
+if (input.mode === 'turn-touched') {
+    const { EffectsInFlight } = await mod('floor/in-flight.js');
+    const { walk, turn, key, anchor, door, lattice_key: latticeKey, at } = input;
+    const base = (side) => ({
+        journal: [],
+        anchors: new Map([[key, anchor]]),
+        threshold: door,
+        unconfirmed: () => false,
+        stilled: false,
+        side: () => side,
+        lattice_key: latticeKey,
+    });
+    const [install, seat] = key.split('/');
+    const clauses = {
+        none: (c) => c,
+        journal: (c) => ({ ...c, journal: [{ outcome: 'applied', t: 'seat.insert', install_id: install, seat_id: seat }] }),
+        lattice: (c) => ({ ...c, lattice_key: `${latticeKey} moved` }),
+        stilled: (c) => ({ ...c, stilled: true }),
+        unconfirmed: (c) => ({ ...c, unconfirmed: () => true }),
+        anchor: (c) => ({ ...c, anchors: new Map([[key, { x: anchor.x + 1, y: anchor.y }]]) }),
+        threshold: (c) => ({ ...c, threshold: { x: door.x + 1, y: door.y } }),
+    };
+
+    answer(Object.fromEntries(Object.entries(clauses).map(([name, touch]) => {
+        const holder = new EffectsInFlight(1000 / 4);
+
+        holder.render([walk], 0, base(walk.side));
+        holder.render([turn], at, touch(base(turn.side)));
+
+        return [name, holder.walks(at).get(key)?.effect.leg_kind === 'turn'];
+    })));
 }
 
 // card#12749 (AT-D3-32): the snack corner's constants as the scene declares them, and the spots `spotsNear()` finds on a
@@ -386,6 +425,6 @@ if (input.mode === 'spots') {
     });
 }
 
-if (!['points', 'draw', 'stack', 'shipped', 'lattice', 'snack', 'snack-chain', 'restroom', 'restroom-chain', 'spots'].includes(input.mode)) {
+if (!['points', 'draw', 'stack', 'shipped', 'lattice', 'turn-touched', 'snack', 'snack-chain', 'restroom', 'restroom-chain', 'spots'].includes(input.mode)) {
     throw new Error(`unknown mode ${input.mode}`);
 }

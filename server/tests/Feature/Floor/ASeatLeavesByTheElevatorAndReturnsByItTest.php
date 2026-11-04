@@ -206,6 +206,25 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         return array_column($desk['elements'], 'kind');
     }
 
+    /** card#12466: the walks of `aimla-impl-1` a run draws from `$from` ms on that are NOT a turn-round — a chain, where one is drawn. */
+    private function chained(array $result, int $from): array
+    {
+        return array_values(array_filter($this->walkersFor($result, self::IMPL_1), static fn (array $w): bool => $w['at'] >= $from
+            && ($w['walk']['leg_kind'] ?? null) !== 'turn'));
+    }
+
+    /** card#12466: `aimla-impl-1`'s turn-round as the render at `$at` ms drew it. */
+    private function turnAt(array $result, int $at): array
+    {
+        foreach ($this->walks($this->frameAt($result, $at)) as $w) {
+            if ($this->keyOf($w) === self::IMPL_1 && ($w['leg_kind'] ?? null) === 'turn') {
+                return $w;
+            }
+        }
+
+        $this->fail("the render at {$at} ms draws no turn-round for ".self::IMPL_1);
+    }
+
     /** Every A1/A2 walker any drawn frame carries for one seat, `at => trigger` included. */
     private function walkersFor(array $result, string $key): array
     {
@@ -931,16 +950,19 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
 
     public function test_green_cancel(): void
     {
+        // card#12466 (item 6a): the opposite row turns the walker round from where it is — never a walk of its own from the
+        // other end, which is the chain decision 51 refuses and the turn-round replaces.
         $rtl = $this->floorRun('return-then-leave');
         $this->assertSame(['A1 '.self::IMPL_1, 'A2 '.self::IMPL_1], $this->walkRows($rtl));
-        $this->assertSame([1000], array_values(array_unique(array_column($this->walkersFor($rtl, self::IMPL_1), 'at'))),
-            'return-then-leave draws a walk after the A2 cancelled the A1');
+        $this->assertSame([], $this->chained($rtl, 1500), 'return-then-leave draws a walk of its own after the A2 cancelled the A1');
+        $this->assertSame(['cab'], array_column($this->turnAt($rtl, 1500)['legs'], 'kind'), 'return-then-leave does not turn the arrival round in the cab');
         $this->assertNotContains('character', $this->kinds($this->deskIn($this->lastFloor($rtl), self::IMPL_1)));
 
         $ltr = $this->floorRun('leave-then-return');
-        $this->assertSame([1000], array_values(array_unique(array_column($this->walkersFor($ltr, self::IMPL_1), 'at'))),
-            'leave-then-return draws a walk after the A1 cancelled the A2');
-        $this->assertContains('character', $this->kinds($this->deskIn($this->frameAt($ltr, 1500), self::IMPL_1)));
+        $this->assertSame([], $this->chained($ltr, 1500), 'leave-then-return draws a walk of its own after the A1 cancelled the A2');
+        $this->assertSame(['walk'], array_column($this->turnAt($ltr, 1500)['legs'], 'kind'), 'leave-then-return does not turn the walker back to its desk');
+        $this->assertNotContains('character', $this->kinds($this->deskIn($this->frameAt($ltr, 1500), self::IMPL_1)), 'the desk is not inbound under the walk back');
+        $this->assertContains('character', $this->kinds($this->deskIn($this->lastFloor($ltr), self::IMPL_1)), 'the walk back does not seat the person');
 
         $resync = $this->floorRun('resync-cancels');
         $after = $this->frameAt($resync, 1500);
@@ -1949,7 +1971,8 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     /** card#12793 RED — the eager boarder: the first boarder released as the rider steps out, as before the lane. */
     public function test_red_the_boarder_released_as_the_rider_steps_out(): void
     {
-        $dir = $this->mutatedModules([self::IN_FLIGHT, 'free: h.at + laneClear(h, h.effect.door) * I', 'free: h.at + (h.effect.door.start + h.effect.door.frames - D.close) * I']);
+        // card#12466: the holder reads every door span a walk carries (`spansOf()`), each freed by its own lane clearance.
+        $dir = $this->mutatedModules([self::IN_FLIGHT, 'free: h.at + laneClear(h, d) * I', 'free: h.at + (d.start + d.frames - D.close) * I']);
         $result = $this->floorRun('lane-arrival-meets-queue', $dir);
         $defects = [];
 
@@ -2071,18 +2094,25 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         $this->assertSame(['A2 '.self::IMPL_1], $this->walkRows($this->floorRun('retire', $dir)));
     }
 
+    /** card#12466: the turn-round dropped for the row and the holder admitting the row's own walk — a chain from the desk. */
     public function test_red_a_cancelling_a2_draws_its_own_walk(): void
     {
-        $dir = $this->mutatedModules([self::IN_FLIGHT, 'if (cancelled.includes(key) ||', "if ((cancelled.includes(key) && effect.animation_id !== 'A2') ||"]);
-
-        $this->assertContains(1500, array_column($this->walkersFor($this->floorRun('return-then-leave', $dir), self::IMPL_1), 'at'));
+        $this->assertNotSame([], $this->chained($this->floorRun('return-then-leave', $this->chainPlanted('A2')), 1500));
     }
 
+    /** card#12466: the turn-round dropped for the row and the holder admitting the row's own walk — a chain from the elevator. */
     public function test_red_a_cancelling_a1_draws_its_own_walk(): void
     {
-        $dir = $this->mutatedModules([self::IN_FLIGHT, 'if (cancelled.includes(key) ||', "if ((cancelled.includes(key) && effect.animation_id !== 'A1') ||"]);
+        $this->assertNotSame([], $this->chained($this->floorRun('leave-then-return', $this->chainPlanted('A1')), 1500));
+    }
 
-        $this->assertContains(1500, array_column($this->walkersFor($this->floorRun('leave-then-return', $dir), self::IMPL_1), 'at'));
+    private function chainPlanted(string $id): string
+    {
+        $dir = $this->mutatedModules([self::SCENE, 'if (flying !== null && flying.effect.animation_id !== id && motion',
+            "if (flying !== null && flying.effect.animation_id !== id && id !== '{$id}' && motion"]);
+
+        return $this->mutatedModulesOn($dir, [self::IN_FLIGHT, '(turn ? !turnable.has(key) : cancelled.includes(key))',
+            "(turn ? !turnable.has(key) : cancelled.includes(key) && effect.animation_id !== '{$id}')"]);
     }
 
     public function test_red_a_non_delta_row_that_does_not_cancel(): void
@@ -2119,14 +2149,12 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
 
     public function test_red_cancel_keyed_on_seat_entries_and_own_rows(): void
     {
-        $dir = $this->mutatedModules([self::IN_FLIGHT, 'const touched = touchedKeys.has(h.key)
-                || rowKeys.has(h.key)
-                || ctx.side(h.key) !== h.side
+        $dir = $this->mutatedModules([self::IN_FLIGHT, 'const elsewhere = touchedKeys.has(h.key)
                 || ctx.lattice_key !== h.lattice_key
                 || ctx.unconfirmed(h.key) !== h.unconfirmed
                 || ctx.stilled !== h.stilled
                 || !samePoint(ctx.anchors.get(h.key) ?? null, h.anchor)
-                || !samePoint(ctx.threshold, h.threshold);', 'const touched = touchedKeys.size > 0;']);
+                || !samePoint(ctx.threshold, h.threshold);', 'const elsewhere = touchedKeys.size > 0;']);
 
         $this->assertNotSame([], $this->walks($this->frameAt($this->floorRun('reslot-no-row', $dir), 1500)));
     }
@@ -2362,7 +2390,8 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     /** H10: an unroutable desk falls back to the straight segment. */
     public function test_red_no_route_falls_back_to_the_segment(): void
     {
-        $dir = $this->mutatedModules([self::SCENE, 'const routed = walking.route(key, anchor, from, to);', "const routed = walking.route(key, anchor, from, to) ?? { cells: [], tier: 'feet' };"]);
+        // card#12466: a seat's routes are read through `seatRoutes()`, the one reader its walk and its turn-round share.
+        $dir = $this->mutatedModules([self::SCENE, 'const r = walking.route(key, anchor, a, b);', "const r = walking.route(key, anchor, a, b) ?? { cells: [], tier: 'feet' };"]);
 
         $this->assertNotSame([], $this->noRouteDefects($this->floorRun('walled-in', $dir), self::PM, true));
     }

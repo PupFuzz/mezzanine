@@ -748,6 +748,8 @@ export class FloorScreen {
             laptop_at: (key) => this.#inFlight.laptopAt(key, now),
             // card#12749: the snack trips in flight — where an A2 or an A10 that lands mid-trip walks from.
             trips_in_flight: this.#inFlight.trips(now),
+            // card#12466: the seat walks in flight — what an A1 over a departure, or an A2 over an arrival, turns round.
+            walks_in_flight: this.#inFlight.walks(now),
         }) : null;
 
         if (drawable) {

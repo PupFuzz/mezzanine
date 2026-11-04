@@ -2353,7 +2353,7 @@
           }
         }
       },
-      "note": "`aimla-impl-1`, held `offline`: `offline → working`, then inside A1's walk `working → offline`. One A1 and one A2 row; the A2 cancels the walk and draws none of its own."
+      "note": "`aimla-impl-1`, held `offline`: `offline → working`, then inside A1's walk `working → offline`. One A1 and one A2 row; since card#12466 the A2 turns the arrival round in the cab (§ 6.2's walk note item 6a) — the leaves finish opening on it and close over it — and draws no walk of its own from the desk."
     },
     "leave-then-return": {
       "http": {
@@ -2832,7 +2832,7 @@
           }
         }
       },
-      "note": "`working → offline`, then inside A2's walk `offline → working`: the person seated, no walk."
+      "note": "`working → offline`, then inside A2's walk `offline → working`: since card#12466 the A1 turns the walker back to its desk from where it is (§ 6.2's walk note item 6a), and it sits on that walk's last frame; no walk from the elevator."
     },
     "resync-cancels": {
       "http": {
@@ -18430,7 +18430,7 @@
           }
         },
         {
-          "at_ms": 54144,
+          "at_ms": 48116,
           "envelope": {
             "feed_version": 2,
             "t": "seat.delta",
@@ -18476,7 +18476,7 @@
           }
         }
       },
-      "note": "card#12705, review round 1: `aimla-impl-1` departs (`working → stale`) while `aimla-review` comes and goes, and `aimla-review` RETURNS (`stale → working`) at 54144 ms, when `aimla-impl-1` has already left its spot for the cab — since card#12793 it glides to the threshold from a spot outside the lane, and is still on its way at that instant; before, it waited on the threshold and had stepped in. A re-time from scratch moves a walker that has left its spot back along its walk. The walker that has left its spot keeps its timing; nothing drawn jumps between renders."
+      "note": "card#12705, review round 1: `aimla-impl-1` departs (`working → stale`) while `aimla-review` comes and goes — since card#12466 its return at 17202 ms turns it back and its leaving again at 17404 ms turns it round, so it boards ahead of `aimla-impl-1` — and `aimla-review` RETURNS again (`stale → working`) at 48116 ms, when it has stepped into the cab and `aimla-impl-1` has already left its spot for the cab — since card#12793 it glides to the threshold from a spot outside the lane, and is still on its way at that instant: `aimla-review` turns back out of the cab (§ 6.2's walk note item 6a), a walk with fixed door frames reaching the holder while `aimla-impl-1` is committed to boarding. A re-time from scratch moves a walker that has left its spot back along its walk. The walker that has left its spot keeps its timing; nothing drawn jumps between renders."
     },
     "lane-arrival-meets-queue": {
       "http": {
