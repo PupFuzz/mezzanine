@@ -7,6 +7,7 @@
  *   `shipped`  — the shipped default (`resources/floor/default.tmj`, or the map at `map`; its tileset, the theme
  *                registry's kinds) as the scene reads it: the lattice's cell and extent, the threshold, the walker's
  *                drawn body (`walkerSize()`), each desk's route and the clearance tier it was found at (card#12442),
+ *                the furniture its seat keeps off (`solid`) and whether its route did (`furniture`, card#12513),
  *                every `wall` and standing tile's rect
  *                (resolved through `scene.js`'s `mapTiles()` and `tileset.js`'s reader — the obstacles H1 and H15 hold
  *                a path to), and EVERY `desks` object routed to the threshold (H17), with the cost of the lattice and
@@ -60,7 +61,7 @@ if (input.mode === 'stack') {
 const { PLANE_KINDS, backWall, mapTiles, slotOrigin, threshold, buildScene, walkerSize } = await mod('floor/scene.js');
 const { backWallBand, mapDesks, mapGrid } = await mod('floor/floor-layout.js');
 const { readTileset, tilesetUrl } = await mod('floor/tileset.js');
-const { characterCentre, deskAnchor } = await mod('floor/desk-layout.js');
+const { characterCentre, deskAnchor, seatSolid } = await mod('floor/desk-layout.js');
 const registry = await import(pathToFileURL(join(REPO, 'resources', 'floor', 'themes', 'index.js')).href);
 const { FURNITURE_BOX } = await import(pathToFileURL(join(REPO, 'resources', 'floor', 'furniture-box.js')).href);
 const characters = await import(pathToFileURL(join(REPO, 'resources', 'characters', 'index.js')).href);
@@ -94,6 +95,8 @@ if (input.mode === 'shipped') {
             slot,
             box: { x: at.x, y: at.y, w: box.width, h: box.height },
             anchor: { x: at.x + characterCentre(box, CHARACTER), y: at.y + deskAnchor(box, CHARACTER).y },
+            // card#12513: the furniture the desk's own seat keeps off (`seatSolid()`), which the couch guard reads
+            solid: seatSolid(box, CHARACTER).map((r) => ({ x: at.x + r.x, y: at.y + r.y, w: r.w, h: r.h })),
         };
     });
     const obstacles = () => mapTiles(map, { x: 0, y: 0 }, (url) => (url === tilesetUrl(map.tilesets[0].source) ? tileset : null), null)
@@ -104,7 +107,7 @@ if (input.mode === 'shipped') {
             extent,
             cell: Math.min(grid.tilewidth, grid.tileheight),
             obstacles: obstacles(),
-            desks: desks.map((d) => ({ key: d.key, rects: [d.slot, d.box] })),
+            desks: desks.map((d) => ({ key: d.key, rects: [d.slot, d.box], seat: { anchor: d.anchor, solid: d.solid } })),
             body: walkerSize(CHARACTER),
         });
 
@@ -132,7 +135,7 @@ if (input.mode === 'shipped') {
             const cells = routes[i]?.cells ?? null;
             const points = cells === null ? null : [d.anchor, ...cells.map((c) => cellCentre(g, c)), door];
 
-            return { ...d, cells, clearance: routes[i]?.tier ?? null, points, length: points === null ? null : polylineLength(points) };
+            return { ...d, cells, clearance: routes[i]?.tier ?? null, furniture: routes[i]?.furniture ?? null, points, length: points === null ? null : polylineLength(points) };
         }),
         cost_ms: costs,
     });

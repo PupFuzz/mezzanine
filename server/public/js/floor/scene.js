@@ -32,7 +32,7 @@
 import { ANIMATION_SET, LOOP_FPS, SNACK_HELD, loops } from '../wire/animation-set.js';
 import { footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layout.js';
 import { readEmbedded, splitGid, tilesetUrl } from './tileset.js';
-import { BUBBLE_GAP, BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, internKey, stoolSlots, TRAIL_REACH, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
+import { BUBBLE_GAP, BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, internKey, seatSolid, stoolSlots, TRAIL_REACH, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
 import { CLEARANCE, CLEARANCE_TIERS, blockedFor, cellAt, cellCentre, lattice, pointAt, polylineLength, route, spotsNear } from './route.js';
 import { perchPoint } from './bird.js';
@@ -1090,7 +1090,7 @@ function walkRouting({ key, extent, cell, obstacles, desks, draw, character }) {
                 extent,
                 cell,
                 obstacles,
-                desks: desks.map((d) => ({ key: d.key, rects: [d.slot_rect, d.box].filter((r) => r !== null) })),
+                desks: desks.map((d) => ({ key: d.key, rects: [d.slot_rect, d.box].filter((r) => r !== null), seat: seatOf(d, character) })),
                 // The body the route keeps clear: the walker's drawn rect, the one its effect is drawn at (card#12442).
                 body,
             }));
@@ -2635,6 +2635,19 @@ function birdPortal(left, top, sky) {
 /** Where an envelope or a walk meets a desk: the character's column, at the desk's own mid-height (`deskAnchor()`). */
 function anchorOf(desk) {
     return Object.freeze({ x: desk.anchor_x, y: desk.anchor_y });
+}
+
+/**
+ * A desk's SEAT as the lattice reads it (walk note item 3, card#12513): its chair — the anchor — and the furniture its
+ * own seat keeps its feet off (`seatSolid()`), in scene coordinates.
+ */
+function seatOf(desk, character) {
+    const at = desk.box;
+
+    return Object.freeze({
+        anchor: anchorOf(desk),
+        solid: Object.freeze(seatSolid({ width: at.w, height: at.h }, character).map((r) => Object.freeze({ x: at.x + r.x, y: at.y + r.y, w: r.w, h: r.h }))),
+    });
 }
 
 /** § 6.2's form for one row — its class, whether it loops, and § 6.4's rendering. */
