@@ -899,8 +899,8 @@ const ROWS = {
   // crossing excused as § 6.2 item 9's stated lag (H16); the desks' relative order and `document.activeElement` unchanged
   // (H18); every walker element a child of the floor stack, and a walker shown in the cab inside the band's cab clip group
   // before the leaves (H8); and that the point under each shown walker is never a walker element (H19). Then, with
-  // `aimla-review` standing in its wait on the threshold: its image draws one frame on two ticks (H21), and a click on the
-  // leaves' centre — under the waiting walker — opens the cab (H19). Two MEASUREMENTS are reported as facts: whether
+  // `aimla-review` standing in its wait at its spot beside the doors (card#12793): its image draws one frame on two ticks
+  // (H21), and a click where its drawn body covers the right leaf — under the waiting walker — opens the cab (H19). Two MEASUREMENTS are reported as facts: whether
   // `insertBefore` of a walker's node restarts its running animations (`reinsert`), and whether a re-inserted walker's
   // `<image>` is missing from the next composited frame (`flicker`, the walker's clip compared before and after).
   // The PLANTs: no `pin()` after a move (H20), the walker drawn in the effects layer (H16), every stack child re-appended
@@ -968,12 +968,20 @@ const ROWS = {
         hrefs.push(await s.ev(`(() => { const w = [...document.querySelectorAll('#floor-drawing .fx-walker')].find((g) => getComputedStyle(g.parentNode).opacity !== '0' && getComputedStyle(g).offsetDistance === '100%'); return w === undefined ? null : w.querySelector('image')?.getAttribute('href') ?? null; })()`));
         await sleep(300);
       }
-      if (review === null || hrefs.some((h) => h === null)) d.push('no walker stood on the threshold in its wait to read');
+      if (review === null || hrefs.some((h) => h === null)) d.push('no walker stood at its spot in its wait to read');
       else if (new Set(hrefs).size !== 1) d.push(`the waiting walker drew ${new Set(hrefs).size} different frames on three ticks — it walks in place`);
       facts.reinsert = await s.ev(REINSERT);
       facts.flicker = await flicker(s);
-      await s.click('#floor-drawing .elevator-leaf.left');
-      const leaf = await s.ev(`(() => { const l = document.querySelector('#floor-drawing .elevator-leaf.left').getBoundingClientRect(); const e = document.elementFromPoint(l.x + l.width / 2, l.y + l.height / 2); return e === null ? null : e.tagName + '.' + (e.getAttribute('class') ?? ''); })()`);
+      // card#12793: nobody waits on the threshold any more — the first waiter stands beside the doors, outside the lane,
+      // its drawn body still reaching over the right leaf — so the press is made where that body covers a leaf: the centre
+      // of its image's rect and the right leaf's, overlapping. A waiter that covers no leaf measures nothing, and says so.
+      const under = await s.ev(`(() => { const w = [...document.querySelectorAll('#floor-drawing .fx-walker')].find((g) => getComputedStyle(g.parentNode).opacity !== '0' && getComputedStyle(g).offsetDistance === '100%'); const l = document.querySelector('#floor-drawing .elevator-leaf.right'); if (w === undefined || l === null) return null; const a = w.querySelector('image').getBoundingClientRect(); const b = l.getBoundingClientRect(); const x0 = Math.max(a.left, b.left); const x1 = Math.min(a.right, b.right); const y0 = Math.max(a.top, b.top); const y1 = Math.min(a.bottom, b.bottom); return x1 > x0 && y1 > y0 ? { x: (x0 + x1) / 2, y: (y0 + y1) / 2 } : null; })()`);
+      if (under === null) {
+        d.push('no waiting walker\'s body covers a leaf — the press under a waiting walker measured nothing');
+        return { defects: d.slice(0, 6), facts };
+      }
+      for (const type of ['mousePressed', 'mouseReleased']) await s.page('Input.dispatchMouseEvent', { type, x: under.x, y: under.y, button: 'left', clickCount: 1 });
+      const leaf = await s.ev(`(() => { const e = document.elementFromPoint(${under.x}, ${under.y}); return e === null ? null : e.tagName + '.' + (e.getAttribute('class') ?? ''); })()`);
       const opened = await until(async () => (await s.cab()).open, RIDE_DOOR_MS + 1500, 'never').then(() => true, () => false);
       const cab = await s.cab();
       facts.press = { under: leaf, cab: cab.open, opened };
