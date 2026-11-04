@@ -1062,6 +1062,19 @@ rule violations anyone could have committed at the time.
   `bin/deploy.sh` enforces the half that is enforceable: it **refuses** a target tree carrying
   `trustProxies('*')` and **warns** when none is configured — this paragraph's own reading of the
   two states, not a stricter one.
+- **`APP_URL` is the site's public address, scheme included, and every absolute URL is built on it**
+  (card#12881). `AppServiceProvider::pinUrlOrigin` pins Laravel's URL generator to it, so `route()`,
+  `url()`, `asset()`, redirects and the two-factor reset mail's link never take their host or scheme
+  from the request — a web server that forwards a Host it does not serve can no longer get a reset link
+  mailed on the forger's host. Two consequences for a host: a browser that reaches the site at another
+  address (an IP, a second name) follows its links, forms and redirects onto `APP_URL`'s, and **the application refuses to start —
+  every request and every `artisan` command — when `APP_URL` is not an `http://` or `https://` address
+  with a host**. ⚠ `bin/deploy.sh` does not check that before the window, so on a host whose `APP_URL`
+  fails it the `artisan` commands the window runs fail, and the deploy stops as an in-window failure;
+  set it before deploying. `APP_URL=null` already failed that way before this change (Laravel's console
+  bootstrap rejects a null URL). An `APP_URL` line that is absent altogether takes Laravel's default,
+  `http://localhost`, which starts and builds every link on `localhost` — the smoke step's
+  *"APP_URL is unset"* warning is what names that state.
 - **A deployed host installs with `composer install --no-dev`, and that is a security obligation
   rather than a size one.** `database/factories/` and `database/seeders/` are in composer's
   **`autoload-dev`** block (card#9070's review round moved them), so on a `--no-dev` install
