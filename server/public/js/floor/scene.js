@@ -771,6 +771,39 @@ export function queueSpacing(character) {
     return walkerSize(character).w + CLEARANCE.margin;
 }
 
+/**
+ * card#12793 — § 12's *ELEVATOR LANE* (§ 6.2's walk note item 9; the operator, 2026-11-02: *"Etiquette dictates that people
+ * waiting for elevator leave enough room so that people inside the elevator can come out first"*): the strip of floor in
+ * front of the leaves that no waiting walker's feet stand in, and no boarder's feet enter while a rider's are in it. As
+ * wide as the doorway — the leaves' span, or a seat's drawn body plus both *Walker clearance* side margins where that is
+ * wider, so a narrower door widens it rather than shrinks it — centred on the seam, from the threshold's floor line down
+ * one drawn body's height (`walkerSize()`), so a walker standing outside it is drawn wholly below the doorway's foot. One
+ * lane, sized to the seat, for seats and interns alike. A rect `{x, y, w, h}` in scene px; `null` with no band.
+ *
+ * @param {?object} band the scene's band
+ * @param {{w: number, h: number}} character the seat character's rect
+ */
+export function elevatorLane(band, character) {
+    const door = threshold(band);
+
+    if (door === null) {
+        return null;
+    }
+
+    const body = walkerSize(character);
+    const w = Math.max(band.elevator.w, body.w + 2 * CLEARANCE.margin);
+
+    return Object.freeze({ x: door.x - w / 2, y: door.y, w, h: body.h });
+}
+
+/**
+ * Whether a walker's FEET at `p` are in the lane (`elevatorLane()`): the rect's edges included, so the threshold — on its
+ * top edge — is in it. The lane is a rule on feet, never on drawn bodies (§ 12's *Elevator lane*).
+ */
+export function inLane(lane, p) {
+    return p.x >= lane.x && p.x <= lane.x + lane.w && p.y >= lane.y && p.y <= lane.y + lane.h;
+}
+
 /** The legs' walk primitive: a glide along `points` from frame `start`, `⌈length ÷ walk speed⌉` frames, at least one. */
 function walkLeg(start, points) {
     const length = polylineLength(points);
@@ -785,8 +818,8 @@ const samePoint = (a, b) => a.x === b.x && a.y === b.y;
  * from the threshold — the spot's own path back to it, reversed — with every step it would retrace taken out (`A, B, A`
  * is `A`), so a walker bound for a spot beside the door turns off its route where the two meet rather than touching the
  * seam and stepping back. Every cell either path crosses is open (`route()`, `spotsNear()`), and removing a retraced
- * step keeps every remaining step one of theirs, so the joined path is open floor too. Spot 0 is the threshold: its
- * walk is the route.
+ * step keeps every remaining step one of theirs, so the joined path is open floor too. A walker waiting on the threshold
+ * itself — past the last spot (card#12793: no spot is the threshold) — walks the route.
  */
 function spotWalk(walk, spot) {
     if (spot.path.length === 1) {
@@ -864,7 +897,7 @@ export function waitFrom(queue, shape) {
 /**
  * WHERE A DEPARTURE STANDS AND HOW IT BOARDS, for one waiting spot (walk note item 9, card#12705): its walk to the spot,
  * the frame it arrives there (`arrive`), and its walk from the spot to the threshold when it boards (`board`; `null`
- * at spot 0, which is the threshold). `queue` is the departure's own part, from the render that applied its row —
+ * on the threshold itself, where a walker past the last spot waits). `queue` is the departure's own part, from the render that applied its row —
  * `lead` (the legs before it walks: an intern's laptop fade), `press` (its way to its call plate and its press there,
  * `wayOut()`'s, or `null`; card#12747), `walk` (its route to the threshold — from its plate, where it pressed one), `wait`
  * (its seeded draw, frames) and `threshold`; `spot` is `{index, at, path}`, `spotsNear()`'s.
@@ -925,7 +958,7 @@ export function departureLegs(queue, shape, timing) {
 
 /**
  * A DEPARTURE as the render that applies its row draws it (walk note items 5 and 9): its queue part and, drawn alone, its
- * legs at the threshold — spot 0 and its own wait. `way` is `wayOut()`'s — `press` `null` for a departure that walks
+ * legs at the threshold with its own wait, which the holder replaces when it places it at its spot. `way` is `wayOut()`'s — `press` `null` for a departure that walks
  * straight to the threshold. The holder (`floor/in-flight.js`) gives it its turn at the plates and its spot, and
  * re-times it with every other walker at the elevator.
  */
@@ -1486,6 +1519,8 @@ export function buildScene(frame, input) {
     });
     // card#12705: the spaced spots walkers wait at by the elevator (walk note item 9) — on the seat walker's lattice, whose
     // body is the widest, so a spot open to it is open to an intern — built on the holder's first ask, never otherwise.
+    // card#12793: none in the lane in front of the doors, the threshold included (`elevatorLane()`).
+    const lane = elevatorLane(band, input.character);
     let spots = null;
     const queueSpot = (k) => {
         const door = threshold(band);
@@ -1495,8 +1530,9 @@ export function buildScene(frame, input) {
             return null;
         }
 
-        // card#12747: no spot past the threshold within the spacing of where a departure presses a call plate.
-        spots ??= spotsNear(grid, door, queueSpacing(input.character), ['main', 'low'].map((plate) => callPoint(band, input.character, plate).at));
+        // card#12747: no spot within the spacing of where a departure presses a call plate.
+        spots ??= spotsNear(grid, door, queueSpacing(input.character), ['main', 'low'].map((plate) => callPoint(band, input.character, plate).at),
+            (p) => inLane(lane, p));
 
         return spots(k);
     };
@@ -1552,6 +1588,9 @@ export function buildScene(frame, input) {
         // card#12705: spot `k` by the elevator, `{at, path}` (`spotsNear()`'s), or `null` past the last the floor holds — what the holder
         // (`floor/in-flight.js`) stands each waiting departure at. A function, so a render that queues nobody builds none.
         queue_spot: queueSpot,
+        // card#12793: § 12's *Elevator lane* (`elevatorLane()`), `null` with no band — what the holder releases the first
+        // boarder of a rider's opening against: once every rider has stepped out of it.
+        lane,
         // card#12749: the snack corner — its tables, every walker this scene could send to one, and the trip a walker
         // takes (`snackCorner()`); the holder (`floor/in-flight.js`) decides when, and keeps each trip it starts.
         snack,
