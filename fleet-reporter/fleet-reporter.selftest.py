@@ -156,7 +156,7 @@ class Seat:
         t = time.time() if at_ms is None else int(at_ms) / 1000.0
         os.utime(lock, (t, t))
 
-    def env(self, *, freeze: bool = True, **extra) -> dict:
+    def env(self, *, freeze: bool = True, burst_s: float = 0.0, **extra) -> dict:
         e = dict(os.environ)
         e["FLEET_REPORTER_CONFIG"] = str(self.cfg_path)
         e.pop("FLEET_REPORTER_NOW_MS", None)
@@ -177,24 +177,21 @@ class Seat:
         # ⚠ PER `env()` CALL IS NOT PER HOOK, AND FOR EXACTLY TWO PATHS THAT DIFFERENCE IS REAL.
         # AT-10 and AT-16 call `env()` ONCE, to build a worker's `Popen` environment, and that
         # worker then drives 40 (resp. 15) hooks off the single lock this call froze. Hooks 2..N
-        # there are as old as the burst, not 0 s: for those two paths the window is NARROWED, NOT
-        # CLOSED, and no claim of "0 s on every hook" covers them.
-        # MEASURED rather than extrapolated from the idle p99, because the burst's own
-        # concurrency is the point — 8 workers contend, and the README's own record that hook
-        # latency triples under load applies to the burst itself, so § 3's IDLE p99 understates
-        # it. Driving both bursts and reading the lock's age at the last hook of each:
-        # AT-10 22.6 s, AT-16 6.5 s, against LOCK_STALE_MS 90 s —
-        # a 4.0x margin, not the ~9x an idle 258 ms p99 would suggest. AT-10 would have to reach
-        # ~159 hooks per worker, a 4x growth, before a hook in it read its own lock as stale.
-        # NOT CLOSED HERE, deliberately: closing it means a SECOND freeze implementation inside
-        # generated worker source, which could only re-`utime` on WALL time — the very thing this
-        # change exists to stop doing — and would silently be wrong the day a burst is given a
-        # pinned clock. A duplicated primitive that cannot see the clock its hooks read buys a
-        # margin nothing is spending. The suite's last block, the leaked-flusher sweep, is the guard
-        # instead: if the window is ever crossed, the sweep fails the run and names the leaked
-        # daemon rather than leaving it silent.
+        # there are as old as the burst, not 0 s. Measured on an idle machine at 22.6 s (AT-10) and
+        # 6.5 s (AT-16) at the last hook, against LOCK_STALE_MS 90 s; on a machine at a load
+        # average of ~55 on 4 CPUs AT-10's burst outlasted 90 s, a hook read the lock as dead and
+        # forked a real flusher, which reaped the burst's open calls into the spool (385 lines, not
+        # 320), outlived the block, and posted into the windows of later cases (card#12631, three
+        # runs of three). So such a caller passes `burst_s`, the bound its burst is given, and the
+        # one freeze is dated that far AHEAD of the invocation's clock: a lock from the future
+        # reads fresh to `now() - mtime < LOCK_STALE_MS` for the whole burst, however slow the
+        # machine, through the same primitive and the same clock — no second freeze inside the
+        # generated worker source, which could only re-`utime` on wall time. The suite's last
+        # block, the leaked-flusher sweep, still fails the run if a burst outlasts its bound.
         if freeze:
-            self.freeze_flusher(e.get("FLEET_REPORTER_NOW_MS"))
+            at = e.get("FLEET_REPORTER_NOW_MS")
+            self.freeze_flusher((int(at) if at is not None else int(time.time() * 1000)) + int(burst_s * 1000)
+                                if burst_s else at)
         return e
 
     def events(self) -> list[dict]:
@@ -231,13 +228,21 @@ class Seat:
         except Exception:
             return {}
 
-    def posted(self) -> list[dict]:
-        """Every batch the shared stub received from THIS seat (by the bearer token it presented)."""
-        return [b["batch"] for b in list(INGEST.batches) if b.get("auth") == f"Bearer {self.token}"]
+    def posted(self, since: int = 0) -> list[dict]:
+        """Every batch the shared stub received from THIS seat (by the bearer token it presented), from index
+        `since` of `INGEST.batches` on. A read of a window that does not filter by seat counts whatever another
+        seat's flusher posted into it, and on a loaded machine a flusher of an earlier case can still be
+        posting (card#12631)."""
+        return [b["batch"] for b in list(INGEST.batches[since:]) if b.get("auth") == f"Bearer {self.token}"]
 
-    def wire_heartbeats(self) -> list[dict]:
+    def probed(self, since: int = 0) -> int:
+        """How many health probes (GETs) the shared stub received from THIS seat, from index `since` of
+        `INGEST.get_auths` on — the GET count filtered as `posted` filters the batches."""
+        return sum(1 for a in list(INGEST.get_auths[since:]) if a == f"Bearer {self.token}")
+
+    def wire_heartbeats(self, since: int = 0) -> list[dict]:
         """This seat's heartbeats as the stub received them, in arrival order (D1 § 6.14: never spooled)."""
-        return [e for b in self.posted() for e in b.get("events", []) if e.get("kind") == "reporter.heartbeat"]
+        return [e for b in self.posted(since) for e in b.get("events", []) if e.get("kind") == "reporter.heartbeat"]
 
     def entry(self, site: str = "default") -> dict:
         """One site's `state.json` entry (D1 § 3.1, *State per site*), or {} where there is none."""
@@ -418,6 +423,7 @@ class Ingest:
         self.delay_s = 0.0
         # The same hold for the health probe (GET), counted as it arrives: the flusher's other await.
         self.gets = 0
+        self.get_auths: list[str] = []          # each GET's Authorization, in arrival order (`Seat.probed`)
         self.get_delay_s = 0.0
         # What the health surface answers: the accepted schema-version set, and the status. A set
         # without this reporter's version is an ingest that REFUSES it; a non-200 is an answer
@@ -429,7 +435,8 @@ class Ingest:
         # differently without the suite racing that flusher to change a default between two of them.
         # A held answer closes its connection: the reporter has usually abandoned it by then. An entry's
         # `run` (a callable) runs when that GET arrives, before it is answered: it changes the seat's
-        # files between the probe and the batch POST of one flusher pass.
+        # files between the probe and the batch POST of one flusher pass. An entry with an `auth` is consumed
+        # only by a GET presenting that Authorization, so another seat's probe cannot take it (card#12631).
         self.get_script: list[dict] = []
         self.key = workdir / "stub.key"
         self.crt = workdir / "stub.crt"
@@ -463,8 +470,11 @@ class Ingest:
                 return raw
 
             def do_GET(self):
+                auth = self.headers.get("Authorization", "")
                 outer.gets += 1
-                step = outer.get_script.pop(0) if outer.get_script else {}
+                outer.get_auths.append(auth)
+                i = next((i for i, st in enumerate(outer.get_script) if st.get("auth") in (None, auth)), None)
+                step = outer.get_script.pop(i) if i is not None else {}
                 if step.get("run"):
                     step["run"]()
                 hold = step.get("hold", outer.get_delay_s)
@@ -540,6 +550,20 @@ def seat(name: str, **kw) -> Seat:
     root = TMP / name
     root.mkdir(parents=True, exist_ok=True)
     return Seat(root, kw.pop("ingest", INGEST.url), ca=kw.pop("ca", CA), **kw)
+
+
+HOUR_MS = 3_600_000
+RIG_INTO_HOUR_MS = 60_000
+
+
+def rig_clock_ms() -> int:
+    """Where a rig's pinned clock starts, for a rig whose steps advance it by minutes inside one hour: one minute
+    into an hour, the latest such instant not after now. Started on the wall clock instead, a rig straddled an
+    hour boundary whenever it ran in an hour's last minutes, and its flusher passes then folded and DELETED the
+    counter-sink and index buckets of the hour that had ended (D1 § 11.1's deletion precondition), so a case
+    reading them read nothing and passed on the re-run (card#12631: AT-29's failures on run 40967713344, at
+    22:59 UTC, and on PR #400, at 14:58 UTC). A rig crossing an hour on purpose sets its own clock."""
+    return (int(time.time() * 1000) - RIG_INTO_HOUR_MS) // HOUR_MS * HOUR_MS + RIG_INTO_HOUR_MS
 
 
 # ── flusher daemons THIS run caused to exist (card#7976) ───────────────────────────────────
@@ -957,15 +981,15 @@ def seat_log(s: Seat) -> str:
 # (b) `selftest`, and the flusher's start, on a config whose ca_file the seat must refuse.
 def drive_ca_config(name: str, ca: str, reporter: Path = REPORTER) -> dict:
     s = seat(name, ca=ca)
-    g0 = INGEST.gets
+    g0 = len(INGEST.get_auths)
     r, rep_ = selftest(s, reporter=reporter, **EXTRA_TRUST)
-    d = dict(path=ca, rc=r.returncode, gets=INGEST.gets - g0,
+    d = dict(path=ca, rc=r.returncode, gets=s.probed(g0),
              check=rep_.get("checks", {}).get("config_readable"),
              errors=rep_.get("detail", {}).get("config_readable", {}).get("errors", []))
     hook(s, "PreToolUse", pre(tuid="toolu_ca_start"), reporter=reporter)
     b0 = len(INGEST.batches)
     flush(s, reporter=reporter, **EXTRA_TRUST)
-    d.update(posts=len(INGEST.batches) - b0, log=seat_log(s),
+    d.update(posts=len(s.posted(b0)), log=seat_log(s),
              config_invalid=s.site_counters().get("config_invalid", 0))
     return d
 
@@ -995,20 +1019,20 @@ def drive_ca_vanishes(name: str, reporter: Path = REPORTER) -> dict:
     s = seat(name, ca=str(ca_copy))
     hook(s, "PreToolUse", pre(tuid="toolu_ca_gone"), reporter=reporter)
     b0 = len(INGEST.batches)
-    INGEST.get_script = [{"run": ca_copy.unlink}]
+    INGEST.get_script = [{"run": ca_copy.unlink, "auth": f"Bearer {s.token}"}]
     try:
         flush(s, reporter=reporter, **EXTRA_TRUST)
     finally:
         INGEST.get_script = []
     counters = s.site_counters()
-    d = dict(path=str(ca_copy), posts=len(INGEST.batches) - b0, log=seat_log(s), removed=not ca_copy.exists(),
+    d = dict(path=str(ca_copy), posts=len(s.posted(b0)), log=seat_log(s), removed=not ca_copy.exists(),
              config_invalid=counters.get("config_invalid", 0), retried=counters.get("batches_retried", 0),
              rejected=counters.get("batches_rejected", 0))
     # The refusal is the file's: restored, the same seat delivers the event it kept.
     shutil.copyfile(CA, ca_copy)
     b1 = len(INGEST.batches)
     flush(s, reporter=reporter, **EXTRA_TRUST)
-    d["recovered"] = any(e.get("kind") == "tool.start" for b in INGEST.batches[b1:] for e in b["batch"].get("events", []))
+    d["recovered"] = any(e.get("kind") == "tool.start" for b in s.posted(b1) for e in b.get("events", []))
     return d
 
 
@@ -1032,6 +1056,10 @@ eq("  … and the event is kept: with the file restored, the next pass delivers 
 # FAST_K) so the passes before and after the file appears take milliseconds, not K.FLUSH_MS each.
 CA_APPEARS_PASSES = 20                                  # passes run on the missing file before it is created
 CA_APPEARS_WITHIN_S = 10.0                              # the bound on the recovery; met in well under a second
+# The flusher's own start-time refusal line (`flusherMain`), which no hook writes; and the bound on waiting for
+# it, which only a hung flusher reaches — it orders the steps, it times nothing (card#12631).
+FLUSHER_REFUSED = "— spooling, sending nothing to the site(s) each error scopes to"
+FLUSHER_START_HANG_S = 120.0
 
 
 def drive_ca_appears(name: str, reporter: Path) -> dict:
@@ -1041,22 +1069,26 @@ def drive_ca_appears(name: str, reporter: Path) -> dict:
     s = seat(name, ca=str(ca_later))
     hook(s, "PreToolUse", pre(tuid="toolu_ca_appears"), reporter=reporter)
     (s.spool / "flusher.lock").unlink(missing_ok=True)
-    b0, g0 = len(INGEST.batches), INGEST.gets
+    b0, g0 = len(INGEST.batches), len(INGEST.get_auths)
     p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, **EXTRA_TRUST), cwd=str(HERE),
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     d: dict = {"pid": p.pid, "path": str(ca_later)}
     try:
+        # THE FLUSHER'S OWN REFUSAL, waited for before the file is created: the hook above logs a `config invalid`
+        # line too, so a wait for that phrase alone ended at once and a fixed sleep stood in for the flusher's start.
+        # On a loaded machine the flusher had not read its config by the end of it, found the file already there,
+        # and delivered — the RED read as GREEN (card#12631). `FLUSHER_REFUSED` is the flusher's start line alone.
         t0 = time.time()
-        while p.poll() is None and time.time() - t0 < CA_APPEARS_WITHIN_S and "config invalid" not in seat_log(s):
+        while p.poll() is None and time.time() - t0 < FLUSHER_START_HANG_S and FLUSHER_REFUSED not in seat_log(s):
             time.sleep(0.02)
         time.sleep(CA_APPEARS_PASSES * FAST_K["FLUSH_MS"] / 1000)
-        d.update(refused_at_start="config invalid" in seat_log(s) and "ENOENT" in seat_log(s),
-                 posts_before=len(INGEST.batches) - b0, gets_before=INGEST.gets - g0)
+        d.update(refused_at_start=FLUSHER_REFUSED in seat_log(s) and "ENOENT" in seat_log(s),
+                 posts_before=len(s.posted(b0)), gets_before=s.probed(g0))
         shutil.copyfile(CA, ca_later)
         t1, b1 = time.time(), len(INGEST.batches)
 
         def events_since() -> list[dict]:
-            return [e for b in INGEST.batches[b1:] for e in b["batch"].get("events", [])]
+            return [e for b in s.posted(b1) for e in b.get("events", [])]
 
         while p.poll() is None and time.time() - t1 < CA_APPEARS_WITHIN_S:
             ev = events_since()
@@ -1177,9 +1209,9 @@ def drive_bad_config(name: str, key: str, value, *, reporter: Path = REPORTER, f
     s = seat(name)
     s.cfg[key] = value
     s.write_cfg()
-    g0 = INGEST.gets
+    g0 = len(INGEST.get_auths)
     r, rep_ = selftest(s, reporter=reporter)
-    d = dict(rc=r.returncode, gets=INGEST.gets - g0, check=rep_.get("checks", {}).get("config_readable"),
+    d = dict(rc=r.returncode, gets=s.probed(g0), check=rep_.get("checks", {}).get("config_readable"),
              errors=rep_.get("detail", {}).get("config_readable", {}).get("errors", []))
     if flusher:
         hook(s, "PreToolUse", pre(tuid=f"toolu_{name}"), reporter=reporter)
@@ -1187,7 +1219,7 @@ def drive_bad_config(name: str, key: str, value, *, reporter: Path = REPORTER, f
         flush(s, reporter=reporter)
         c = s.site_counters()
         q = s.spool / "quarantine" / "rejected.default.jsonl"
-        d.update(posts=len(INGEST.batches) - b0, config_invalid=c.get("config_invalid", 0),
+        d.update(posts=len(s.posted(b0)), config_invalid=c.get("config_invalid", 0),
                  retried=c.get("batches_retried", 0), rejected=c.get("batches_rejected", 0),
                  quarantined=q.exists() and q.stat().st_size > 0, log=seat_log(s))
     return d
@@ -1312,10 +1344,48 @@ redgreen("a relative spool_dir writes nothing under the working directory (card#
 # so its time says when. The defect does: a lane still believing its config good builds a request the missing
 # file refuses, and that request — persisted, resent as built — lands once the file is back, carrying whatever
 # that lane decided while the seat could send nothing (a heartbeat in it says `pass`).
+#
+# WHERE "WHILE IT IS GONE" BEGINS IS THE LANE'S OWN VERDICT, read from its log, never a margin after the removal
+# (card#12482). A pass checks the file once, at its start, and then probes and drains: the pass in flight when
+# the file went may have checked it before, and builds its request after the removal on that verdict. The request
+# primitive refuses it (one attempt, `batch refused by the config`), it stays persisted, and it is resent as built
+# once the file is back — the pass's verdict is the unit (D1 § 3.5), and the heartbeat in that request says what
+# its pass decided. The first pass that cannot read the file logs `config invalid: ca_file unreadable …` and builds
+# nothing, and neither does any pass after it until one reads the file again and logs `ca_file readable …`. So the
+# requests the property forbids are the ones built between those two lines. The 0.1 s margin it replaced held only
+# while a pass's check and its build were within 0.1 s of each other, which a loaded machine does not keep: on PR
+# #390's run the pass in flight built its request more than 0.1 s after the removal, and it was counted.
+# `held_pass_flusher` plants a hold between a pass's check and its drain (it changes no decision; the logic is the
+# reporter's): the suite arms it, waits for a pass to be held in it, removes the file, spools an event, and lets
+# the pass go no sooner than 0.2 s after the removal. The slow machine, made certain, in that order.
 CA_GONE_PASSES = 160                                    # scaled passes run with the file removed (~4 s, >= 3 heartbeats)
+LANE_GONE_RE = re.compile(r"^(\S+) \[flusher\[[^\]]*\]\] config invalid: ca_file unreadable", re.M)
+LANE_BACK_RE = re.compile(r"^(\S+) \[flusher\[[^\]]*\]\] ca_file readable at ", re.M)
+PASS_HOLD, PASS_HELD = "pass-hold", "pass-held"         # the planted hold's arm and its marker, in the seat's spool
+HELD_AFTER_REMOVAL_MS = 200                             # the least time a held pass resumes after the removal
 
 
-def drive_ca_gone_live(name: str, reporter: Path) -> dict:
+def log_ms(stamp: str) -> int:
+    """A log line's RFC 3339 millisecond stamp (the reporter's `rfc3339`) as epoch milliseconds."""
+    return calendar.timegm(time.strptime(stamp[:19], "%Y-%m-%dT%H:%M:%S")) * 1000 + int(stamp[20:23])
+
+
+def held_pass_flusher(*defects) -> Path:
+    """The timing-scaled copy in which a pass that finds `PASS_HOLD` in the spool after its ca_file check, and no
+    request persisted from an earlier pass, writes `PASS_HELD` and waits, before its drain, until `PASS_HOLD` is gone.
+    With nothing persisted its drain BUILDS a request (the event the suite spools while it waits): a pass holding a
+    request an earlier pass built — a send the 300 ms scaled deadline cut short, which a loaded machine does —
+    would resend that instead, built before the removal, and the case would measure nothing."""
+    return fast_flusher(("    // The auth stop: nothing sent and nothing probed until a restart on a corrected config (§ 11.5).\n",
+                         f"    if (fs.existsSync(path.join(spool, '{PASS_HOLD}')) && !lane.entry.request) {{\n"
+                         f"      fs.writeFileSync(path.join(spool, '{PASS_HELD}'), '');\n"
+                         f"      while (fs.existsSync(path.join(spool, '{PASS_HOLD}'))) await nap(5);\n"
+                         "    }\n"
+                         "    // The auth stop: nothing sent and nothing probed until a restart on a corrected config (§ 11.5).\n"),
+                        *defects)
+
+
+def drive_ca_gone_live(name: str, reporter: Path, *, held: bool = False, verdict: bool = True) -> dict:
     root = TMP / name
     root.mkdir(parents=True, exist_ok=True)
     ca_copy = root / "pinned-ca.pem"
@@ -1331,39 +1401,65 @@ def drive_ca_gone_live(name: str, reporter: Path) -> dict:
     d: dict = {"pid": p.pid}
 
     def delivered(since: int) -> bool:
-        return any(e.get("kind") == "tool.start" for b in INGEST.batches[since:] for e in b["batch"].get("events", []))
+        return any(e.get("kind") == "tool.start" for b in s.posted(since) for e in b.get("events", []))
 
     try:
         t0 = time.time()
-        while p.poll() is None and time.time() - t0 < CA_APPEARS_WITHIN_S and not delivered(b0):
+        while p.poll() is None and time.time() - t0 < FLUSHER_START_HANG_S and not delivered(b0):
             time.sleep(0.02)
         d["delivered_before"] = delivered(b0)
+        if held:
+            (s.spool / PASS_HOLD).write_text("")
+            t0 = time.time()
+            while p.poll() is None and time.time() - t0 < FLUSHER_START_HANG_S and not (s.spool / PASS_HELD).exists():
+                time.sleep(0.005)
         ca_copy.unlink()
-        gone_from = time.time()
+        gone_from = int(time.time() * 1000)
         b1 = len(INGEST.batches)
         hook(s, "PreToolUse", pre(tuid="toolu_ca_live_2"), reporter=reporter)
+        if held:
+            time.sleep(max(0.0, (gone_from + HELD_AFTER_REMOVAL_MS) / 1000 - time.time()))
+            (s.spool / PASS_HOLD).unlink()
         time.sleep(CA_GONE_PASSES * FAST_K["FLUSH_MS"] / 1000)
-        d.update(posts_while_gone=len(INGEST.batches) - b1, logged="ca_file unreadable" in seat_log(s))
-        gone_to = time.time()
+        # The file stays gone until the lane has said so itself, however slow its passes — a lane that never re-checks
+        # the file (the RED) never does, and is not waited for.
+        t0 = time.time()
+        while verdict and p.poll() is None and time.time() - t0 < FLUSHER_START_HANG_S and not LANE_GONE_RE.search(seat_log(s)):
+            time.sleep(0.02)
+        d.update(posts_while_gone=len(s.posted(b1)), logged="ca_file unreadable" in seat_log(s))
+        gone_to = int(time.time() * 1000)
         shutil.copyfile(CA, ca_copy)
         t1, b2 = time.time(), len(INGEST.batches)
-        while p.poll() is None and time.time() - t1 < CA_APPEARS_WITHIN_S and not delivered(b2):
+        while p.poll() is None and time.time() - t1 < FLUSHER_START_HANG_S and not delivered(b2):
             time.sleep(0.02)
         time.sleep(4 * FAST_K["FLUSH_MS"] / 1000)
-        # Every request that reached the site, by the clock it was BUILT on (its batch_id), from the removal on,
-        # and the config_readable of any heartbeat inside it.
-        built_gone, readable = [], []
-        for b in INGEST.batches[b1:]:
-            if gone_from + 0.1 < ulid_ms(b["batch"].get("batch_id", "")) / 1000 < gone_to:
-                built_gone.append(b["batch"]["batch_id"])
-                readable += [e["data"]["selftest"].get("config_readable") for e in b["batch"].get("events", [])
+        log = seat_log(s)
+        m_gone, m_back = LANE_GONE_RE.search(log), LANE_BACK_RE.search(log)
+        # No `config invalid` line: the lane never reached a verdict of its own (the RED), so nothing it built
+        # after the removal was a pass in flight's, and the window opens at the removal.
+        gone_ms = log_ms(m_gone.group(1)) if m_gone else gone_from
+        back_ms = log_ms(m_back.group(1)) if m_back else gone_to
+        # Every request that reached this seat's site, by the clock it was BUILT on (its batch_id): between the
+        # lane's two verdicts, the property's population, with the config_readable of any heartbeat inside it; or
+        # by the pass in flight at the removal (after the removal, before the first verdict).
+        built_gone, readable, in_flight, margin_counted = [], [], [], []
+        for b in s.posted(b1):
+            at = ulid_ms(b.get("batch_id", ""))
+            if gone_ms <= at < back_ms:
+                built_gone.append(b["batch_id"])
+                readable += [e["data"]["selftest"].get("config_readable") for e in b.get("events", [])
                              if e.get("kind") == "reporter.heartbeat"]
+            elif gone_from <= at < gone_ms:
+                in_flight.append(b["batch_id"])
+            if gone_from + 100 < at < gone_to:
+                margin_counted.append(b["batch_id"])
         d.update(alive=p.poll() is None, delivered_after=delivered(b2), requests_built_while_gone=built_gone,
-                 heartbeats_built_while_gone=readable,
+                 heartbeats_built_while_gone=readable, in_flight=in_flight, margin_counted=margin_counted,
+                 lane_verdict=bool(m_gone),
                  # ATTEMPTS while the file was gone: the request primitive refuses each (`ca_file unreadable`) and
                  # the lane logs it. A lane whose own verdict is `fail` makes none — but the one pass in flight at
                  # the removal may have checked the file before it went, so one is the pass's and not a verdict.
-                 attempts_while_gone=seat_log(s).count("batch refused by the config"))
+                 attempts_while_gone=log.count("batch refused by the config"))
     finally:
         if p.poll() is None:
             p.kill()
@@ -1374,18 +1470,26 @@ def drive_ca_gone_live(name: str, reporter: Path) -> dict:
 
 ca_live = drive_ca_gone_live("ca-gone-live", fast_flusher())
 eq("precondition: a flusher started on a readable pinned ca_file delivers", True, ca_live["delivered_before"])
-# The 0.1 s margin after the removal excludes the pass in flight when the file went: it may have read it before,
-# and it acts on, and heartbeats, that pass's verdict.
-eq("once the file is removed it sends nothing, attempts nothing past the pass in flight at the removal, and no "
-   "request built while it is gone ever reaches the site — its heartbeat is a request, and the lane that cannot send "
-   "builds none", (0, True, []),
-   (ca_live["posts_while_gone"], ca_live["attempts_while_gone"] <= 1, ca_live["requests_built_while_gone"]))
+GONE_LIVE = ("once the file is removed it sends nothing, attempts nothing past the pass in flight at the removal, reaches "
+             "a verdict of its own, and no request built while it is gone ever reaches the site — its heartbeat is a "
+             "request, and the lane that cannot send builds none")
+eq(GONE_LIVE, (0, True, True, []),
+   (ca_live["posts_while_gone"], ca_live["attempts_while_gone"] <= 1, ca_live["lane_verdict"], ca_live["requests_built_while_gone"]))
 eq("  … its log names the unreadable file", True, ca_live["logged"])
 eq("  … and with the file restored the same process delivers again", (True, True), (ca_live["alive"], ca_live["delivered_after"]))
+# THE SLOW MACHINE, MADE CERTAIN (card#12482): the file removed while a pass is held between its check and its
+# drain, and an event spooled, so that pass builds a request after the removal, on the check it made before it.
+ca_held = drive_ca_gone_live("ca-gone-live-held", held_pass_flusher(), held=True)
+eq("precondition: removed while a pass was held after its check, that pass built a request after the removal, and "
+   "it reached the site once the file was back", (True, True), (ca_held["delivered_before"], bool(ca_held["in_flight"])))
+eq("  … and the same holds: " + GONE_LIVE, (0, True, True, []),
+   (ca_held["posts_while_gone"], ca_held["attempts_while_gone"] <= 1, ca_held["lane_verdict"], ca_held["requests_built_while_gone"]))
+eq("RED: the 0.1 s margin after the removal, which the lane's own verdict replaced, counts that pass's request as built "
+   "while the file was gone", True, bool(set(ca_held["in_flight"]) & set(ca_held["margin_counted"])))
 # RED — the two-verdict flusher verbatim: the file re-checked only while the start refused it.
 red_live = drive_ca_gone_live("ca-gone-live-red", fast_flusher(
     ("caRechecked: errors.length === 0 && site.errors.length === (site.caError ? 1 : 0) && typeof site.ca_file === 'string',",
-     "caRechecked: errors.length === 0 && site.errors.length === 1 && site.caError !== null,")))
+     "caRechecked: errors.length === 0 && site.errors.length === 1 && site.caError !== null,")), verdict=False)
 eq("RED: a flusher that re-checks ca_file only while its start refused it reaches nothing while the file is gone, "
    "and yet goes on ATTEMPTING requests, pass after pass, on a verdict of `pass` — each refused by the request primitive",
    (True, 0, True), (red_live["delivered_before"], red_live["posts_while_gone"], red_live["attempts_while_gone"] >= 10))
@@ -2374,6 +2478,9 @@ eq("RED: a parser that throws on the batch delivers NOTHING — the wedge this r
    0, len(INGEST.events()))
 
 # AT-10 — concurrent append at line granularity.
+# The bound a hook burst is given before its one lock freeze could age out (`Seat.env`'s `burst_s`): a hang
+# bound, not a timing (the bursts' measured ages are in `Seat.env`).
+BURST_BOUND_S = 3600
 s10 = seat("concurrent")
 N_PROC, N_EACH = 8, 40
 procs = []
@@ -2388,7 +2495,7 @@ for w in range(N_PROC):
          "            'tool_use_id':'w%d_'+str(i), 'cwd':'/home/agent/mezzanine'}),\n"
          "        capture_output=True, text=True)\n" % (N_EACH, w),
          str(REPORTER), SID],
-        env=s10.env(), cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        env=s10.env(burst_s=BURST_BOUND_S), cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
 for p_ in procs:
     p_.wait()
 raw_lines = []
@@ -2540,9 +2647,11 @@ def epoch_trace(s: Seat, reporter: Path = REPORTER) -> dict:
     the suite's ingest. Returns what state.json, each start's heartbeat and the wire carry. Each start's
     heartbeat is item 0 of its own first request since card#12180 (D1 § 6.14), so the two are read off
     the wire, one per start."""
-    INGEST.batches.clear()
+    mark = len(INGEST.batches)
     runs = (flush(s, reporter=reporter), flush(s, reporter=reporter))
-    posted = [b["batch"] for b in INGEST.batches]
+    # This seat's batches alone: a flusher an earlier case left running posts into the same stub, and its
+    # heartbeat once read as this seat's second one (`index_overflow`, under a second epoch; card#12631).
+    posted = s.posted(mark)
     wire_hbs = [e["data"] for b in posted for e in b.get("events", []) if e.get("kind") == "reporter.heartbeat"]
     hbs = wire_hbs[-2:]
     return {"rcs": [r.returncode for r in runs],
@@ -2786,12 +2895,12 @@ for w in range(W):
          "            'tool_use_id':'c%d_'+str(i), 'cwd':'/home/agent/mezzanine'}),\n"
          "        capture_output=True, text=True)\n" % (E, w),
          str(REPORTER), SID],
-        env=s16.env(), cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        env=s16.env(burst_s=BURST_BOUND_S), cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
 for p_ in procs:
     p_.wait()
 m16 = len(INGEST.batches)
 flush(s16)
-hb = wire_heartbeats(m16)[-1]["data"]
+hb = s16.wire_heartbeats(m16)[-1]["data"]
 eq(f"AT-16: sanitizer_redactions is EXACTLY {2*W*E} after {W}x{E} concurrent hooks, 2 spans each",
    2 * W * E, hb["counters"].get("sanitizer_redactions"))
 pred = hb["predicates"]["descriptor_allowlisted"]
@@ -2800,7 +2909,7 @@ eq(f"  … and descriptor_allowlisted's branches sum to exactly {W*E}",
 before = dict(hb["counters"])
 m16 = len(INGEST.batches)
 flush(s16)
-hb2 = wire_heartbeats(m16)[-1]["data"]
+hb2 = s16.wire_heartbeats(m16)[-1]["data"]
 eq("  … a second fold does NOT double them (the per-bucket byte offset is recorded)",
    before["sanitizer_redactions"], hb2["counters"]["sanitizer_redactions"])
 # AT-16's second RED: fold without recording the offset and the totals double on the next pass.
@@ -2810,19 +2919,22 @@ for i in range(4):
     hook(s16r, "PreToolUse", pre(ti=FIX4, tuid=f"cr_{i}"))
 m16 = len(INGEST.batches)
 flush(s16r, reporter=p_nooff)
-h1 = wire_heartbeats(m16)[-1]["data"]["counters"].get("sanitizer_redactions")
+h1 = s16r.wire_heartbeats(m16)[-1]["data"]["counters"].get("sanitizer_redactions")
 m16 = len(INGEST.batches)
 flush(s16r, reporter=p_nooff)
-h2 = wire_heartbeats(m16)[-1]["data"]["counters"].get("sanitizer_redactions")
+h2 = s16r.wire_heartbeats(m16)[-1]["data"]["counters"].get("sanitizer_redactions")
 eq(f"RED: without the per-bucket offset the totals grow on a re-fold ({h1} -> {h2})", True, h2 > h1)
 
 # AT-16's third case — the hour-roll straddle. Lines written just after the roll must land in
 # the bucket their WRITE time names, not their process-entry time; the 5 s grace covers the rest.
+# The lines before the roll are pinned a minute before it: a pinned clock is an offset taken when the process
+# starts, so a hook's WRITE stamp is its pin plus its own run time, and pinned 200 ms before the roll a hook on a
+# loaded machine wrote after it and the case read one bucket (card#12631). A minute is more than a hook takes.
 s16h = seat("hourroll")
 now_ms = int(time.time() * 1000)
 prev_hour_end = (now_ms // 3600000) * 3600000
 for i in range(3):
-    hook(s16h, "PreToolUse", pre(ti=FIX4, tuid=f"hr_a{i}"), FLEET_REPORTER_NOW_MS=prev_hour_end - 200)
+    hook(s16h, "PreToolUse", pre(ti=FIX4, tuid=f"hr_a{i}"), FLEET_REPORTER_NOW_MS=prev_hour_end - 60_000)
 for i in range(3):
     hook(s16h, "PreToolUse", pre(ti=FIX4, tuid=f"hr_b{i}"), FLEET_REPORTER_NOW_MS=prev_hour_end + 200)
 # Counted BEFORE the flush: the flusher folds and then DELETES a bucket whose hour has ended
@@ -2830,7 +2942,7 @@ for i in range(3):
 cbuckets = sorted(x.name for x in (s16h.spool / "counters").glob("*.jsonl"))
 m16 = len(INGEST.batches)
 flush(s16h)
-hbh = wire_heartbeats(m16)[-1]["data"]
+hbh = s16h.wire_heartbeats(m16)[-1]["data"]
 eq("AT-16 hour-roll: every counter line across the boundary is folded exactly once", 12,
    hbh["counters"].get("sanitizer_redactions"))
 eq("  … and the lines landed in two buckets, split at the roll (write-time derivation)",
@@ -3746,8 +3858,14 @@ def drive_pass(s: Seat, reporter: Path, *, takeover: bool, one_pass: bool, exit_
                          cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     posts: list[tuple[float, float | None]] = []
     taken: bytes | None = None
-    quiet_since = time.time()
     try:
+        # THE QUIET CLOCK STARTS AT THE FLUSHER'S FIRST REQUEST, a probe or a POST (card#12631). Started at the
+        # Popen, a flusher that took longer than `exit_within + HOLD_S` to start on a loaded machine read as one
+        # that sent nothing and had stopped, and the run then crashed reading the state.json it had not written yet.
+        t0 = time.time()
+        while p.poll() is None and time.time() - t0 < FLUSHER_START_HANG_S and not INGEST.batches and not INGEST.gets:
+            time.sleep(0.01)
+        quiet_since = time.time()
         while p.poll() is None:
             n = len(INGEST.batches)
             if n > len(posts):
@@ -5072,10 +5190,16 @@ p19g_nolock = plant(
      "      return true;\n      const fd = fs.openSync(lock, 'wx');\n"))
 
 
-def held_lock(s: Seat, pid: int, age_s: float = 0.0) -> Path:
+# A live holder's lock is dated this far AHEAD when no age is asked for: the hook judges it stale at
+# K.WRITE_LOCK_STALE_MS old by the wall clock, and a hook that took longer than that to start on a loaded machine
+# broke a "live" lock dated now, so the case measured the breaker and crashed on the lock it removed (card#12631).
+HELD_LOCK_AHEAD_S = 120.0
+
+
+def held_lock(s: Seat, pid: int, age_s: "float | None" = None) -> Path:
     lk = s.spool / "write.lock"
     lk.write_text(str(pid), encoding="utf-8")
-    t = time.time() - age_s
+    t = time.time() + HELD_LOCK_AHEAD_S if age_s is None else time.time() - age_s
     os.utime(lk, (t, t))
     return lk
 
@@ -8905,7 +9029,7 @@ class P29:
 
     def __init__(self, name, reporter=REPORTER):
         self.s, self.r = seat(name), reporter
-        self.base = self.t = int(time.time() * 1000)
+        self.base = self.t = rig_clock_ms()
         self.hk("SessionStart", source="startup")
         self.hk("UserPromptSubmit", prompt="go")
 
@@ -9410,7 +9534,7 @@ class P30:
 
     def __init__(self, name, reporter=REPORTER, sid=T30A, start=True):
         self.s, self.r = seat(name, ingest=DEAD), reporter
-        self.base = self.t = int(time.time() * 1000)
+        self.base = self.t = rig_clock_ms()
         if start:
             self.hk("SessionStart", sid=sid, source="startup")
 
