@@ -5361,9 +5361,27 @@
             "server_time": "2026-08-23T14:23:26.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
           }
+        },
+        {
+          "at_ms": 6800,
+          "envelope": {
+            "feed_version": 2,
+            "t": "feed.heartbeat",
+            "server_time": "2026-08-23T14:23:27.000Z",
+            "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
+          }
+        },
+        {
+          "at_ms": 7600,
+          "envelope": {
+            "feed_version": 2,
+            "t": "feed.heartbeat",
+            "server_time": "2026-08-23T14:23:28.000Z",
+            "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
+          }
         }
       ],
-      "until_ms": 6000,
+      "until_ms": 7600,
       "floor": {
         "key": "aimla",
         "local_hours": 9,

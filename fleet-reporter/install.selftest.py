@@ -17,7 +17,8 @@ REDs plant their own defect in a copy and need no outside plant; those say so wh
   R-all-5   (Linux) the token in no argv or environment of any process the install started, by strace.
   R-all-6   a second run on a current seat changes nothing and leaves no attempt directory.
   R-all-7   an upgrade in place from the layout `install.sh` left (Linux) and card#12335's hand-run layout
-            (Windows): artifact first, the stop second, the holder check PASS.
+            (Windows): artifact first, the stop second, the holder check PASS; a flusher that read the previous
+            artifact just before the install and took the lock after it is the previous build (card#12476).
   R-all-8   the user's hooks and keys survive; the to-do tools key and its marker; the board declaration.
   R-all-9   rotation: no matching site, a --site-name naming another, a case-only URL difference, identity.
   R-all-10  uninstall: the reporter's entries by the parsed comparison, the user's kept, the config before the
@@ -1531,8 +1532,11 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
                     check("R-all-10", f"Linux, {label} (its time within the slack): STALE, nothing signalled",
                           r.returncode == 0 and not gone and "no flusher to stop" in r.stdout, tail(r))
             # The parser splits after the LAST `)`: a process whose comm holds `) (` and spaces still reads right.
-            odd = subprocess.Popen([NODE, "-e", "process.title = 'x) y (z'; setTimeout(() => {}, 30000)"])
-            time.sleep(0.5)
+            # It says when its title is set, and the read waits for that line: a fixed half-second read `node` on a
+            # loaded machine (card#12631).
+            odd = subprocess.Popen([NODE, "-e", "process.title = 'x) y (z'; console.log('titled'); setTimeout(() => {}, 30000)"],
+                                   stdout=subprocess.PIPE, text=True)
+            odd.stdout.readline()
             comm = Path(f"/proc/{odd.pid}/comm").read_text().strip()
             r = subprocess.run([NODE, "-e", "console.log(require(process.argv[1]).procStartTicks(Number(process.argv[2])))",
                                 str(CO / "fleet-reporter.js"), str(odd.pid)], capture_output=True, text=True)
@@ -1577,6 +1581,65 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         finally:
             holder_proc.kill()
             holder_proc.wait()
+
+    # ── R-all-7: a flusher that READ the previous artifact just before the install is the previous build ──
+    if want("R-all-7"):
+        print("== R-all-7: a flusher that read the previous artifact just before the install replaced it runs the previous build (card#12476) ==")
+        # A process reads its script, then runs for a while before it takes the lock; an install that lands in that
+        # window leaves it running the bytes it read. The window is HELD, not timed: a preload makes the loader say
+        # it has read the installed script and then wait for a file this suite writes once the install has run, so
+        # the order — read, install, lock — is the same on every machine however slow. The lock's `started_at` is
+        # written after the wait, so judged by it the holder read as current (reproduced before the fix).
+        def held_read_holder(name: str, installer: "Path | None" = None) -> dict:
+            S = Seat(name, coord=False)
+            S.node("artifact")
+            build_b = planted_copy(name + "-b", ("fleet-reporter.js", "const SCHEMA_VERSION = 1;\n", "const SCHEMA_VERSION = 1;\n// build B\n"))
+            spool = Path(S.T["spool"])
+            Path(S.T["config"]).parent.mkdir(parents=True, exist_ok=True)
+            node_eval("const m=require(process.argv[1]); m.writeConfig({config:process.argv[2], token:'mzn_'+'h'.repeat(43), install:'inst-h', seat:'seat-h', url:'https://127.0.0.1:9/api/ingest/events', spool:process.argv[3]});",
+                      S.T["config"], str(spool), env=S.env)
+            read, go, pre = S.root / "read-the-script", S.root / "go", S.root / "hold-the-read.js"
+            pre.write_text("const M = require('module'), fs = require('fs'), orig = M._extensions['.js'];\n"
+                           "M._extensions['.js'] = function (m, f) {\n"
+                           f"  if (fs.realpathSync(f) !== fs.realpathSync({json.dumps(S.T['js'])})) return orig(m, f);\n"
+                           "  const src = fs.readFileSync(f, 'utf8');\n"
+                           # Written beside and renamed in, so the suite never reads it half-written.
+                           f"  fs.writeFileSync({json.dumps(str(read) + '.tmp')}, src.includes('// build B') ? 'B' : 'A');\n"
+                           f"  fs.renameSync({json.dumps(str(read) + '.tmp')}, {json.dumps(str(read))});\n"
+                           f"  while (!fs.existsSync({json.dumps(str(go))})) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);\n"
+                           "  return m._compile(src, f);\n};\n", encoding="utf-8")
+            # Forward slashes: NODE_OPTIONS reads a backslash inside quotes as an escape, and node takes either on Windows.
+            fp = subprocess.Popen([NODE, S.T["js"], "flusher"], env={**S.env, "NODE_OPTIONS": f'--require "{pre.as_posix()}"'}, stdin=subprocess.DEVNULL,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=not IS_WIN)
+            STARTED.add(fp.pid)
+            out = {"read": None, "installed": None, "holder": None, "lock": {}}
+            try:
+                t0 = time.time()
+                while not read.exists() and fp.poll() is None and time.time() - t0 < 120:     # a bound on a hang, not a timing
+                    time.sleep(0.05)
+                out["read"] = read.read_text() if read.exists() else None
+                out["installed"] = S.node("artifact", install=build_b / "install.js")
+                go.write_text("")
+                t0 = time.time()
+                while fp.poll() is None and S.lock_pid() != fp.pid and time.time() - t0 < 120:
+                    time.sleep(0.05)
+                out["lock"] = json.loads((spool / "flusher.lock").read_text()) if S.lock_pid() == fp.pid else {}
+                out["holder"] = S.node("holder", install=(installer or build_b) / "install.js")
+            finally:
+                fp.kill()
+                fp.wait()
+            return out
+
+        h = held_read_holder("held-read")
+        check("R-all-7", "precondition: the flusher read build A, the install then put build B in its place, and the flusher took the lock",
+              h["read"] == "A" and h["installed"].returncode == 0 and "fixtures-match" in h["installed"].stdout and h["lock"].get("began_at"),
+              f"read {h['read']} lock {h['lock']}\n" + tail(h["installed"]))
+        check("R-all-7", "a flusher that read the previous artifact before the install and took the lock after it: FAIL, it runs the previous build",
+              h["holder"].returncode == 1 and "it runs the previous build" in h["holder"].stdout, tail(h["holder"]))
+        red = planted_copy("held-read-red", ("install.js", "const by = typeof key === 'string' ? key : 'started_at';", "const by = 'started_at';"))
+        hr = held_read_holder("held-read-red", installer=red)
+        check("R-all-7", "RED: judged by the lock's started_at, written after the read, the same holder reads as running the installed build",
+              hr["read"] == "A" and hr["holder"].returncode == 0 and "PASS: the lock holder runs the artifact" in hr["holder"].stdout, tail(hr["holder"]))
 
     # ── R-all-12: AGENT-INSTALL.md's prose rules ──────────────────────────────────────────────────────
     if want("R-all-12"):

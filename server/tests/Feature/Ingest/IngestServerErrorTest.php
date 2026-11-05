@@ -26,10 +26,11 @@ use Tests\Feature\Fold\ConcurrencyError;
  * concurrency error as `DeadlockException` — the nested shape. `IngestWriteBoundTest` drives the
  * top-level shape (`QueryException`) and a real server-ended transaction on committed connections.
  *
- * A concurrency error injected here does NOT roll back the savepoint: Laravel skips the rollback
- * because the engine, raising it for real, has already rolled back the whole transaction. The
- * contended cases therefore assert the answer and the counter, and leave "nothing stored" to the
- * committed rig, where the transaction is the top level and is rolled back.
+ * Since laravel/framework v13.40.0 (laravel/framework#62248) Laravel rolls a nested concurrency error
+ * back to its savepoint and ignores a failure of that rollback, which is the case when the engine,
+ * raising the error for real, has already rolled back the whole transaction. An injected error never
+ * reaches that case, so the contended cases assert the answer and the counter, and leave "nothing
+ * stored" to the committed rig, where the transaction is the top level and is rolled back.
  */
 class IngestServerErrorTest extends IngestTestCase
 {
