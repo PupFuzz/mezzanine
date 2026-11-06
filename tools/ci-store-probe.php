@@ -42,12 +42,16 @@
  * app's environment and configuration (`LoadEnvironmentVariables` + `LoadConfiguration`: the process
  * environment over `server/.env`, or a cached config if one exists — what `artisan` sees), takes
  * `connections.mysql`, and has `bin/lib/app-mysql-endpoint.php` turn it into the DSN Laravel's own
- * `MySqlConnector` would build — so `DB_SOCKET` beats `DB_HOST`/`DB_PORT`, and `DB_URL` merges over
- * them, here as in the app. It used to compose `host=DB_HOST;port=DB_PORT` itself; on a socket-only
- * private mariadbd that measured a different server than the suite, and `--expect-tables=none`
- * certified a server nobody had touched. `tools/ci-store-probe.selftest.sh` runs the cases it lists
- * (DB_HOST/DB_PORT, DB_SOCKET with and without a live host, DB_URL by host and by socket) against two
- * private mariadbd instances.
+ * `MySqlConnector` would build — so `DB_SOCKET` beats `DB_HOST`/`DB_PORT` here as in the app. It used
+ * to compose `host=DB_HOST;port=DB_PORT` itself; on a socket-only private mariadbd that measured a
+ * different server than the suite, and `--expect-tables=none` certified a server nobody had touched.
+ *
+ * ⛔ A SET `DB_URL` IS REFUSED, BY NAME. `artisan` follows it and the suite does not (`phpunit.xml`
+ * forces it to empty), and this probe brackets both, so with one set there is no single server to
+ * measure. The refusal reads the app's resolved `url`, so a `DB_URL` in `server/.env` is refused too.
+ *
+ * `tools/ci-store-probe.selftest.sh` runs the cases it lists (DB_HOST/DB_PORT, DB_SOCKET with and
+ * without a live host, and the DB_URL refusal) against two private mariadbd instances.
  *
  * ⚠ WHY SHARING THE ADDRESSING DOES NOT DEFEAT THE CHECK. What this probe proves from outside is what
  * the SERVER holds: it opens its own PDO connection, in its own process, and asks `VERSION()` and
@@ -160,6 +164,15 @@ function appStore(): array
     $connection = $app['config']->get('database.connections.mysql');
     if (! is_array($connection)) {
         fail('server/config/database.php declares no `mysql` connection — the one D-15 pins and this probe measures.');
+    }
+
+    // The same truthiness test ConfigurationUrlParser::parseConfiguration() applies (`! $url`), so "set"
+    // here is exactly "the app would follow it". The URL is never printed: it can carry a password.
+    if ($connection['url'] ?? null) {
+        fail('DB_URL is set (in the environment or server/.env). `artisan` follows it and the test suite '
+            .'does not — server/phpunit.xml forces DB_URL to empty — so the two can address different '
+            .'servers, and no measurement here would be about both. Unset DB_URL and point the connection '
+            .'with DB_HOST/DB_PORT or DB_SOCKET.');
     }
 
     ['config' => $config, 'dsn' => $dsn] = app_mysql_endpoint($connection);

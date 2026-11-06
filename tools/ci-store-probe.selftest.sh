@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ci-store-probe.selftest.sh — proves tools/ci-store-probe.php measures the server the APPLICATION wrote to,
-# in each case listed at the bottom of this file: DB_HOST/DB_PORT, DB_SOCKET with and without a live host,
-# and DB_URL by host and by socket (card#10318). Each case is one way of pointing the app's `mysql`
-# connection at a server. A host of `localhost`, which pdo_mysql takes to mean its default socket, has no
-# case here.
+# in each case listed at the bottom of this file: DB_HOST/DB_PORT, and DB_SOCKET with and without a live
+# host — and that it REFUSES, measuring nothing, when DB_URL is set, by socket and by host (card#10318).
+# Each case is one way of pointing the app's `mysql` connection at a server. A host of `localhost`, which
+# pdo_mysql takes to mean its default socket, has no case here.
 #
 # WHY. The probe is the php-tests lane's proof FROM OUTSIDE the PHP process that a step wrote to the store it
 # claims. card#10318: it used to build its DSN from DB_HOST/DB_PORT alone while server/config/database.php
@@ -19,8 +19,9 @@
 #   · `--expect-tables=none` must FAIL with the probe's own "found tables" verdict — the server it measures
 #     holds tables. A probe that measured the other, empty server passes here: that is the false clean this
 #     file exists to catch.
+# The DB_URL cases are the other way round; `url_refused`, below, says why and what they assert.
 # Every case sets DB_HOST, DB_PORT, DB_SOCKET and DB_URL explicitly, so the checkout's server/.env cannot decide
-# a case; the dead-end port (nothing listens on it) is what a probe that ignored the socket or the URL would hit.
+# a case; the dead-end port (nothing listens on it) is what a probe that ignored the socket would hit.
 #
 # NEEDS mariadbd and mariadb-install-db on PATH, at or above docs/design/FLEET-STATE.md § 6.1's floor (the probe
 # enforces it), php with pdo_mysql, python3, and server/vendor (`composer install`). Not run in CI: the runner image has
@@ -132,10 +133,37 @@ run_case "DB_SOCKET and DB_HOST/DB_PORT both set (the socket wins)" A "unix_sock
   DB_HOST=127.0.0.1 "DB_PORT=$PORT_B" "DB_SOCKET=$SOCK_A" DB_URL=
 run_case "DB_SOCKET with a dead-end DB_HOST/DB_PORT" A "unix_socket=$SOCK_A" \
   DB_HOST=127.0.0.1 "DB_PORT=$PORT_DEAD" "DB_SOCKET=$SOCK_A" DB_URL=
-run_case "DB_URL naming B over a dead-end DB_HOST/DB_PORT" B "host=127.0.0.1;port=$PORT_B" \
-  DB_HOST=127.0.0.1 "DB_PORT=$PORT_DEAD" DB_SOCKET= "DB_URL=mysql://root@127.0.0.1:$PORT_B/$DB"
-run_case "DB_URL whose query names A's socket" A "unix_socket=$SOCK_A" \
-  DB_HOST=127.0.0.1 "DB_PORT=$PORT_DEAD" DB_SOCKET= "DB_URL=mysql://root@127.0.0.1:$PORT_DEAD/$DB?unix_socket=$SOCK_A"
+
+# url_refused <label> <VAR=value…> — a non-empty DB_URL. `artisan` honours it and the SUITE does not
+# (server/phpunit.xml forces DB_URL=""), so with one set the two can address different servers and no
+# measurement is about both: the probe must refuse by name, before it measures anything. The suite's side is
+# run here as `artisan migrate` with DB_URL emptied, which is the effect of that pin; it writes to B. A probe
+# that followed the URL measures A, which is empty — and `--expect-tables=none` then passes: the false clean.
+url_refused() {
+  local label="$1"; shift
+  local -a envs=(DB_CONNECTION=mysql "DB_DATABASE=$DB" DB_USERNAME=root DB_PASSWORD= MYSQL_ATTR_SSL_CA= "$@")
+  section "$label"
+  reset_both
+
+  OUT="$(cd "$REPO/server" && env "${envs[@]}" DB_URL= php artisan migrate --force 2>&1)"; RC=$?
+  exits "$label: the suite's resolution (DB_URL blanked) migrates" 0
+  local a b
+  a="$(tables_on "$SOCK_A")"; b="$(tables_on "$SOCK_B")"
+  eq "$label: it wrote to B and not to A (fixture premise)" "yes" "$([ "$b" -gt 0 ] && [ "$a" -eq 0 ] && echo yes || echo "no (A=$a B=$b)")"
+
+  local expect
+  for expect in none some; do
+    OUT="$(cd "$REPO" && env "${envs[@]}" php "$PROBE" --expect-tables=$expect 2>&1)"; RC=$?
+    exits "$label: --expect-tables=$expect refuses" 1
+    has "$label: --expect-tables=$expect names DB_URL as the reason" "DB_URL is set" "$OUT"
+    hasnt "$label: --expect-tables=$expect measured nothing" "measuring mysql:" "$OUT"
+  done
+}
+
+url_refused "DB_URL whose query names A's socket, over DB_HOST/DB_PORT naming B" \
+  DB_HOST=127.0.0.1 "DB_PORT=$PORT_B" DB_SOCKET= "DB_URL=mysql://root@127.0.0.1:$PORT_B/$DB?unix_socket=$SOCK_A"
+url_refused "DB_URL naming a dead-end port, over DB_HOST/DB_PORT naming B" \
+  DB_HOST=127.0.0.1 "DB_PORT=$PORT_B" DB_SOCKET= "DB_URL=mysql://root@127.0.0.1:$PORT_DEAD/$DB"
 
 printf '\nci-store-probe selftest: %d assertions, %d FAILED\n' "$cases" "$fails"
 [ "$fails" -eq 0 ]
