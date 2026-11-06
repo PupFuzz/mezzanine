@@ -130,6 +130,12 @@ trait DrivesAShippedClientModule
      * process still running `$timeoutS` seconds after it started is killed and reported with status `null`: a run that does
      * not end is a defect its caller names, never a suite that hangs. `null` waits for ever, as one run always has.
      *
+     * ⛔ EACH RUN'S ANSWER IS HELD IN `$out`, OUTSIDE `$live`, AND NOTHING ELSE HOLDS IT (card#12946). A `foreach` over
+     * `$live` takes a value copy of each entry and PHP leaves the last one bound after the loop; were the buffers inside the
+     * entry, that copy would share them, and every `.=` below would copy the whole answer so far — a read quadratic in the
+     * answer's size. A floor run's answer is many megabytes, and that is what took the per-change test job from about half
+     * an hour to about an hour and a half. `TheProbeRigReadsALargeAnswerInLinearTimeTest` holds the read to a time bound.
+     *
      * @param  array<string, array<string, mixed>>  $payloads  by name
      * @param  callable(string, ?int, string, string): void  $done
      */
@@ -138,6 +144,7 @@ trait DrivesAShippedClientModule
         $zone = $this->probeZone();
         $queue = $payloads;
         $live = [];
+        $out = [];
 
         while ($queue !== [] || $live !== []) {
             while ($queue !== [] && count($live) < $parallel) {
@@ -162,7 +169,8 @@ trait DrivesAShippedClientModule
                 fclose($pipes[0]);
                 stream_set_blocking($pipes[1], false);
                 stream_set_blocking($pipes[2], false);
-                $live[$name] = ['process' => $process, 'pipes' => [1 => $pipes[1], 2 => $pipes[2]], 'out' => [1 => '', 2 => ''], 'started' => microtime(true)];
+                $live[$name] = ['process' => $process, 'pipes' => [1 => $pipes[1], 2 => $pipes[2]], 'started' => microtime(true)];
+                $out[$name] = [1 => '', 2 => ''];
             }
 
             $read = [];
@@ -181,7 +189,7 @@ trait DrivesAShippedClientModule
             if ($read !== [] && stream_select($read, $write, $except, 0, 200000) > 0) {
                 foreach ($read as $pipe) {
                     [$name, $k] = $owner[(int) $pipe];
-                    $live[$name]['out'][$k] .= (string) fread($pipe, 1 << 20);
+                    $out[$name][$k] .= (string) fread($pipe, 1 << 20);
 
                     if (feof($pipe)) {
                         fclose($pipe);
@@ -193,9 +201,9 @@ trait DrivesAShippedClientModule
             foreach (array_keys($live) as $name) {
                 if ($live[$name]['pipes'] === []) {
                     $process = $live[$name]['process'];
-                    $out = $live[$name]['out'];
-                    unset($live[$name]);
-                    $done($name, proc_close($process), $out[1], $out[2]);
+                    [1 => $stdout, 2 => $stderr] = $out[$name];
+                    unset($live[$name], $out[$name]);
+                    $done($name, proc_close($process), $stdout, $stderr);
                 } elseif ($timeoutS !== null && microtime(true) - $live[$name]['started'] > $timeoutS) {
                     proc_terminate($live[$name]['process'], 9);
 
@@ -204,9 +212,9 @@ trait DrivesAShippedClientModule
                     }
 
                     proc_close($live[$name]['process']);
-                    $out = $live[$name]['out'];
-                    unset($live[$name]);
-                    $done($name, null, $out[1], $out[2]);
+                    [1 => $stdout, 2 => $stderr] = $out[$name];
+                    unset($live[$name], $out[$name]);
+                    $done($name, null, $stdout, $stderr);
                 }
             }
         }
