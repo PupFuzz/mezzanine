@@ -4,7 +4,6 @@ namespace App\Fold;
 
 use App\Ingest\Counters;
 use App\Ingest\Wire;
-use App\Support\Anchored;
 
 /**
  * One stored `events` row, with the accessors every projection needs.
@@ -189,20 +188,17 @@ final class FoldEvent
             return null;
         }
 
-        if (is_string($value) && preg_match(Anchored::pattern($pattern), $value) === 1) {
+        if (Wire::conforms($value, $pattern)) {
             return $value;
         }
 
         if (! isset($this->refused[$key])) {
             $this->refused[$key] = true;
-            Counters::seat($this->seatRef, self::FORMAT_REFUSED.$key);
+            Counters::seat($this->seatRef, Counters::FORMAT_REFUSED.$key);
         }
 
         return $refusedAs;
     }
-
-    /** D2 § 7.2's `format_refused.<field>` family, completed by the wire field's name. */
-    public const FORMAT_REFUSED = 'format_refused.';
 
     /** @var array<string, true> the keys `conforming()` has already counted for this event */
     private array $refused = [];

@@ -354,7 +354,8 @@ class StateRecompute
         // `data`, the heartbeat's included. So the fold reads them from the `batches` row of the
         // batch the event it is applying arrived in. An implementer who went looking for a
         // `version` member on `reporter.heartbeat`'s `data` would find none and would write a rule
-        // that can never fire.
+        // that can never fire. The stored `reporter_version` is `NULL` where the ingest refused its
+        // format (card#11572), and the `NULL` is copied: the seat then has no reported build.
         $batch = DB::table('batches')->where('id', $e->batchRef)
             ->first(['reporter_version', 'reporter_platform']);
 
