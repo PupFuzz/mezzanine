@@ -3638,8 +3638,9 @@ logged.
      threshold's cell is open at — each with its path back to the threshold over open floor (`floor/route.js`'s
      `spotsNear()`, built on the first ask of a render that queues someone, with the lane as the cells it must AVOID:
      a predicate it skips a cell on as it searches, the origin included, so no spacing is spent on a cell nobody may
-     stand on; its other callers — the snack corner's spots, card#12749, and the restroom door's queue, card#12786 —
-     pass none, so their spot 0 stays their point and their spots do not move) — and at least the
+     stand on; the snack corner's spots, card#12749, pass none, so their spot 0 stays their point and their spots do
+     not move, and the restroom door's queue, card#12786, passes a lane of its own since card#12841, § 12's *Restroom
+     lane*, keeping its threshold as spot 0) — and at least the
      spacing from both plates' standing points, so nobody waits where a walker presses (card#12747). A departure takes the LOWEST spot no
      other departure in flight is still standing on or walking to, departures of one render placed in the order
      their routes reach the threshold, ties by key. No spot is the threshold, which is every boarder's way into the
@@ -11355,7 +11356,8 @@ on the card, and no clause below asserts it.*
   centre is in the lane or within the spacing of an earlier spot or of a call point — answers, in that order, on the
   fixture floor through the harness and on the shipped default with every slot held through the walk probe's `spots`
   answer; and with no lane (`spotsNear()` called as the snack corner calls it) the probe's spots are the
-  restatement's with the threshold first, so the restroom's and the snack corner's spots are where they were.
+  restatement's with the threshold first, so the snack corner's spots are where they were (the restroom door's pass a
+  lane of their own since card#12841, [AT-D3-35](#at-d3-35-the-restroom-queue-stands-clear-of-the-door-and-the-one-inside-steps-out-before-anyone-steps-in)).
   `callDefects()` and `cabDefects()` are empty on every frame of the same runs.
 - **GREEN — the order within a door cycle:** lane-arrival-meets-queue's rider steps out on the opening's open + step
   frame and its `walk` begins there; the nearer waiter's `walk` from its spot begins on the first frame at which
@@ -11396,7 +11398,7 @@ on the card, and no clause below asserts it.*
   first boarder leaves its spot frames after the rider's feet have cleared the lane, while its body still overlaps
   it. Caught by: lane-arrival-meets-queue.
 - **Sixth RED — every caller skips its origin:** make `spotsNear()` drop its point for every caller → the probe's
-  no-lane first spot is not its point, so the snack corner's and the restroom's spot 0 would move. Caught by: the
+  no-lane first spot is not its point, so the snack corner's spot 0 would move. Caught by: the
   spots.
 - **Seventh RED — the intern's own lane:** size the lane to the intern's body → leave-outside-the-lane's walkers
   wait inside the seat's lane. Caught by: leave-outside-the-lane.

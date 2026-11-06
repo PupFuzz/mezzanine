@@ -1733,7 +1733,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     /**
      * card#12793, THE SPOTS: the spots `spotsNear()` places — on the fixture floor through the harness, and on the shipped
      * default with every slot held through the probe — are the first cells of the test's own restatement of the rule, in
-     * order; with no lane the first spot is the threshold, so the snack corner's and the restroom's are where they were;
+     * order; with no lane the first spot is the threshold, so the snack corner's are where they were;
      * and in every frame of every queue run, no departure waits in the lane, two waiting at once stand at least *Queue
      * spacing* apart, and every spot is at least that from both call points.
      */
@@ -2015,7 +2015,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
             'a rider judged by its body released the boarder on the frame its feet cleared the lane');
     }
 
-    /** card#12793 RED — every caller skips its origin: the snack corner's and the restroom's spot 0 lost. */
+    /** card#12793 RED — every caller skips its origin: the snack corner's spot 0 lost. */
     public function test_red_every_caller_skips_the_point(): void
     {
         $dir = $this->mutatedModules([self::ROUTE, 'const spots = avoid !== null && avoid(origin) ? [] : [Object.freeze({ at: origin, path: Object.freeze([origin]) })];', 'const spots = [];']);
