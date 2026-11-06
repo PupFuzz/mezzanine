@@ -277,14 +277,31 @@ function wellFormedness(o) {
             }
         }
 
-        const code = readFileSync(join(o.t.themes, name, 'theme.js'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    }
+
+    // Every module a theme runs: each theme's own and the themes' shared ones (`paint.js`, card#12845) — a request,
+    // a clock or a random source hoisted into a shared module reaches every theme, so the scan reads it too.
+    for (const [label, path] of themeSources(o)) {
+        const code = readFileSync(path, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
         if (/\b(fetch|XMLHttpRequest|import\(|localStorage|new Image|Math\.random|Date\.now|new Date)\b/.test(code)) {
-            defects.push(`${name}: the module requests, reads a clock, a random source or storage`);
+            defects.push(`${label}: the module requests, reads a clock, a random source or storage`);
         }
     }
 
     return defects;
+}
+
+/**
+ * Every module a theme runs, `[label, path]`: each theme the registry names (its `theme.js`) and every shared module
+ * beside the registry (`themes/*.js` but the registry itself, card#12845's `paint.js`) — read off the tree, never listed.
+ */
+function themeSources(o) {
+    const shared = readdirSync(o.t.themes, { withFileTypes: true })
+        .filter((e) => e.isFile() && e.name.endsWith('.js') && e.name !== 'index.js')
+        .map((e) => [`themes/${e.name}`, join(o.t.themes, e.name)]);
+
+    return [...Object.keys(o.themes).map((name) => [name, join(o.t.themes, name, 'theme.js')]), ...shared];
 }
 
 /** Input closure: a seat object passed as an extra argument changes nothing, and the module keeps no state of its own. */
@@ -316,11 +333,13 @@ function closure(o) {
             }
         }
 
-        const src = readFileSync(join(o.t.themes, name, 'theme.js'), 'utf8');
-        const top = src.split('\n').filter((line) => /^(let|var)\s/.test(line));
+    }
+
+    for (const [label, path] of themeSources(o)) {
+        const top = readFileSync(path, 'utf8').split('\n').filter((line) => /^(let|var)\s/.test(line));
 
         if (top.length > 0) {
-            defects.push(`${name}: a module-level binding that can be assigned after load — ${top[0].trim()}`);
+            defects.push(`${label}: a module-level binding that can be assigned after load — ${top[0].trim()}`);
         }
     }
 
@@ -381,56 +400,82 @@ function api(o) {
 /** The colours of a PALETTE entry, flattened. */
 const hexes = (v) => (typeof v === 'string' ? [v.toLowerCase()] : Object.values(v).flatMap(hexes));
 
-/** The drift leg: § 10.6's house table and the house theme's `PALETTE`, piece by piece, both directions; and every colour the module writes is the palette's or the paint rules'. */
+/**
+ * The drift leg, for EVERY theme the registry names (card#12845 — it read the house theme alone while there was one):
+ * the theme's § 10.6 table — the subsection headed `#### The … theme, \`<name>\`` — and its module's `PALETTE`, piece by
+ * piece, both directions; every colour the module writes is the palette's or the paint rules'; and the themes' shared
+ * modules (`paint.js`) write no colour at all, so a colour hoisted out of a theme cannot escape that theme's table.
+ * Defects for any theme but the house theme are named by the theme.
+ */
 function drift(o) {
     const defects = [];
     const doc = readFileSync(o.t.doc, 'utf8');
-    const start = doc.indexOf('#### The house theme, `studio`');
-    const table = doc.slice(start, doc.indexOf('\n\n**What the house picture does NOT', start));
-    const house = o.themes[o.registry.HOUSE_THEME];
-    const rows = [...table.matchAll(/^\| [^|]*`PALETTE(?:\.([\w-]+)|\['([\w-]+)'\])`[^|]* \| [^|]* \| ([^|]*) \| [^|]* \|$/gm)];
-    const seen = new Set();
 
-    if (rows.length === 0) {
-        return ['the house table names no PALETTE piece — the drift leg would compare nothing'];
-    }
+    for (const [name, theme] of Object.entries(o.themes)) {
+        const who = name === o.registry.HOUSE_THEME ? '' : `${name}: `;
+        const heading = new RegExp(`^#### The [^\\n]*theme, \`${name}\``, 'm').exec(doc);
 
-    for (const [, dotted, bracketed, colours] of rows) {
-        const key = dotted ?? bracketed;
-        const stated = new Set([...colours.matchAll(/#[0-9a-fA-F]{6}\b/g)].map((m) => m[0].toLowerCase()));
-        const drawn = new Set(house.PALETTE[key] === undefined ? [] : hexes(house.PALETTE[key]));
-
-        seen.add(key);
-
-        if (house.PALETTE[key] === undefined) {
-            defects.push(`the table's piece ${key} is not in the module's PALETTE`);
+        if (heading === null) {
+            defects.push(`${name}: § 10.6 has no subsection headed "#### The … theme, \`${name}\`" — the drift leg would compare nothing`);
+            continue;
         }
 
-        for (const c of stated) {
-            if (!drawn.has(c)) {
-                defects.push(`${key}: the table states ${c}, the module's PALETTE holds ${[...drawn].join(', ')}`);
+        const rest = doc.slice(heading.index + heading[0].length);
+        const table = rest.slice(0, rest.search(/\n#{2,4} /) === -1 ? rest.length : rest.search(/\n#{2,4} /));
+        const rows = [...table.matchAll(/^\| [^|]*`PALETTE(?:\.([\w-]+)|\['([\w-]+)'\])`[^|]* \| [^|]* \| ([^|]*) \| [^|]* \|$/gm)];
+        const seen = new Set();
+
+        if (rows.length === 0) {
+            defects.push(`${who}the table names no PALETTE piece — the drift leg would compare nothing`);
+            continue;
+        }
+
+        for (const [, dotted, bracketed, colours] of rows) {
+            const key = dotted ?? bracketed;
+            const stated = new Set([...colours.matchAll(/#[0-9a-fA-F]{6}\b/g)].map((m) => m[0].toLowerCase()));
+            const drawn = new Set(theme.PALETTE[key] === undefined ? [] : hexes(theme.PALETTE[key]));
+
+            seen.add(key);
+
+            if (theme.PALETTE[key] === undefined) {
+                defects.push(`${who}the table's piece ${key} is not in the module's PALETTE`);
+            }
+
+            for (const c of stated) {
+                if (!drawn.has(c)) {
+                    defects.push(`${who}${key}: the table states ${c}, the module's PALETTE holds ${[...drawn].join(', ')}`);
+                }
+            }
+
+            for (const c of drawn) {
+                if (!stated.has(c)) {
+                    defects.push(`${who}${key}: the module's PALETTE holds ${c}, the table states ${[...stated].join(', ')}`);
+                }
             }
         }
 
-        for (const c of drawn) {
-            if (!stated.has(c)) {
-                defects.push(`${key}: the module's PALETTE holds ${c}, the table states ${[...stated].join(', ')}`);
+        for (const key of Object.keys(theme.PALETTE)) {
+            if (!seen.has(key)) {
+                defects.push(`${who}the module's PALETTE piece ${key} has no row in the table`);
+            }
+        }
+
+        const allowed = new Set([...hexes(theme.PALETTE), ...hexes(theme.RULES)]);
+        const src = readFileSync(join(o.t.themes, name, 'theme.js'), 'utf8').replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+
+        for (const [c] of src.matchAll(/#[0-9a-fA-F]{6}\b/g)) {
+            if (!allowed.has(c.toLowerCase())) {
+                defects.push(`${who}the module writes ${c}, which is neither a PALETTE colour nor a paint rule's`);
             }
         }
     }
 
-    for (const key of Object.keys(house.PALETTE)) {
-        if (!seen.has(key)) {
-            defects.push(`the module's PALETTE piece ${key} has no row in the table`);
-        }
-    }
+    for (const [label, path] of themeSources(o).filter(([label]) => label.startsWith('themes/'))) {
+        const src = readFileSync(path, 'utf8').replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+        const colour = /#[0-9a-fA-F]{6}\b/.exec(src);
 
-    const allowed = new Set([...hexes(house.PALETTE), ...hexes(house.RULES)]);
-    const src = readFileSync(join(o.t.themes, o.registry.HOUSE_THEME, 'theme.js'), 'utf8').replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
-
-    for (const [c] of src.matchAll(/#[0-9a-fA-F]{6}\b/g)) {
-        if (!allowed.has(c.toLowerCase())) {
-            defects.push(`the module writes ${c}, which is neither a PALETTE colour nor a paint rule's`);
+        if (colour !== null) {
+            defects.push(`${label} writes ${colour[0]} — a shared module holds no colour; every colour is a theme's PALETTE or RULES`);
         }
     }
 
@@ -452,7 +497,6 @@ function bandLeg(o) {
     const defects = [];
     const m = margin(o);
     const { backWall, bandDocuments, SURROUND } = o.scene;
-    const house = o.themes[o.registry.HOUSE_THEME];
 
     if (m === null) {
         return ["§ 12's *Window surround margin* row was not read"];
@@ -495,10 +539,12 @@ function bandLeg(o) {
                     defects.push(`width ${w}: the clock's case is drawn at ${JSON.stringify(d.rect)}, not the clock's rect`);
                 }
 
-                const size = viewBox(house[d.fn](d.input));
+                for (const [name, theme] of Object.entries(o.themes)) {
+                    const size = viewBox(theme[d.fn](d.input));
 
-                if (size === null || Math.abs(size[0] - d.rect.w) > 0.01 || Math.abs(size[1] - d.rect.h) > 0.01) {
-                    defects.push(`width ${w}: ${d.fn}'s document is ${size?.join(' × ')}, its rect ${d.rect.w} × ${d.rect.h}`);
+                    if (size === null || Math.abs(size[0] - d.rect.w) > 0.01 || Math.abs(size[1] - d.rect.h) > 0.01) {
+                        defects.push(`width ${w}: ${name === o.registry.HOUSE_THEME ? '' : `${name}'s `}${d.fn}'s document is ${size?.join(' × ')}, its rect ${d.rect.w} × ${d.rect.h}`);
+                    }
                 }
             }
         }
@@ -655,7 +701,37 @@ async function seatsLeg(o) {
     return defects;
 }
 
-const LEGS = { totality, wellFormedness, closure, api, drift, band: bandLeg, surfaces: surfacesLeg, seats: seatsLeg };
+/**
+ * The furniture-size leg (card#12845): every theme's desk-set documents are DRAWN AT THEIR OWN SIZE in the rects the
+ * layout draws them at — `deskRects()` at the furniture box, into which the painter fits each `xMidYMax meet`: the
+ * document fits the rect and meets it in at least one dimension, so `meet`'s scale is 1. (The chair's document is
+ * narrower than the chair's rect, which is the character's width, and is centred in it unscaled.) Each theme states
+ * those sizes in its own module (`CHAIR`, `DESK`, `MONITOR`, `PROPS`, `TABLE`), so a second theme is a second copy of
+ * them, held here rather than trusted; a document of another size would be scaled, its seats and its desk top off
+ * the rows and lines every theme shares.
+ */
+async function sizesLeg(o) {
+    const defects = [];
+    const { FURNITURE_BOX } = await load(join(REPO, 'resources', 'floor', 'furniture-box.js'));
+    const R = o.deskLayout.deskRects(FURNITURE_BOX, { w: o.characters.SCENE_W, h: o.characters.SCENE_H });
+    const key = KEYS[0];
+
+    for (const [name, theme] of Object.entries(o.themes)) {
+        for (const [fn, rect, input] of [['chair', 'chair', key], ['desk', 'desk-sprite', key], ['monitorFrame', 'monitor-frame', key],
+            ['deskProps', 'desk-props', key], ['sideTable', 'side-table', { ...key, seats: 0 }]]) {
+            const size = viewBox(theme[fn](input));
+            const scale = size === null ? NaN : Math.min(R[rect].w / size[0], R[rect].h / size[1]);
+
+            if (!(Math.abs(scale - 1) < 1e-9)) {
+                defects.push(`${name}: ${fn}'s document is ${size?.join(' × ')}, drawn scaled by ${scale.toFixed(3)} into the layout's ${rect} rect ${R[rect].w} × ${R[rect].h}`);
+            }
+        }
+    }
+
+    return defects;
+}
+
+const LEGS = { totality, wellFormedness, closure, api, drift, band: bandLeg, surfaces: surfacesLeg, seats: seatsLeg, sizes: sizesLeg };
 
 // ── the shipped tree ───────────────────────────────────────────────────────────────────────────────
 const real = await open(shipped);
@@ -680,19 +756,22 @@ printScreenInk(real);
 section('the planted REDs — each must red its leg, naming what the RED says it names');
 
 const THEME = (t) => join(t.themes, 'studio', 'theme.js');
+const SECOND = (t) => join(t.themes, 'cottage', 'theme.js');
+const PAINT = (t) => join(t.themes, 'paint.js');
 const PLANTS = [
     ['the registry against its tree: a directory the registry does not name', 'api', 'themes/attic',
         (t) => cpSync(join(t.themes, 'studio'), join(t.themes, 'attic'), { recursive: true })],
     ['the registry against its tree: a name with no directory', 'api', 'loft, which has no directory',
-        (t) => edit(join(t.themes, 'index.js'), "export const THEMES = Object.freeze(['studio']);", "export const THEMES = Object.freeze(['studio', 'loft']);")],
+        (t) => edit(join(t.themes, 'index.js'), "export const THEMES = Object.freeze(['studio', 'cottage']);", "export const THEMES = Object.freeze(['studio', 'cottage', 'loft']);")],
     ['the theme that reaches out', 'wellFormedness', 'chair — an <image>',
         (t) => edit(THEME(t), "return doc(pen, CHAIR.w, CHAIR.h, rimmed(", 'return doc(pen, CHAIR.w, CHAIR.h, `<image href="https://example.invalid/a.png"/>` + rimmed(')],
     ['an undecodable document: an unescaped &', 'wellFormedness', 'unescaped "&"',
         (t) => edit(THEME(t), "return doc(pen, CHAIR.w, CHAIR.h, rimmed(", "return doc(pen, CHAIR.w, CHAIR.h, '<g>a & b</g>' + rimmed(")],
     ['an undecodable document: an unclosed <g>', 'wellFormedness', 'an unclosed <g>',
         (t) => edit(THEME(t), "return doc(pen, CHAIR.w, CHAIR.h, rimmed(", "return doc(pen, CHAIR.w, CHAIR.h, '<g>' + rimmed(")],
+    // card#12845: the document wrapper is the themes' shared one (`paint.js`), so the plant is there and every theme reds.
     ['an undecodable document: a root without its xmlns', 'wellFormedness', 'no xmlns',
-        (t) => edit(THEME(t), 'return `<svg xmlns="http://www.w3.org/2000/svg" viewBox=', 'return `<svg viewBox=')],
+        (t) => edit(PAINT(t), 'return `<svg xmlns="http://www.w3.org/2000/svg" viewBox=', 'return `<svg viewBox=')],
     ['the kind a theme forgot: armchair', 'api', 'studio: draws nothing for the kind armchair',
         (t) => edit(THEME(t), "} else if (kind === 'armchair') {", "} else if (kind === 'no-armchair') {")],
     ['the kind a theme forgot: a tile with no kind', 'api', 'declares no kind',
@@ -726,6 +805,21 @@ const PLANTS = [
         (t) => edit(join(t.js, 'floor', 'desk-layout.js'), 'export const STOOL_PITCH = 41;', 'export const STOOL_PITCH = 42;')],
     ['the couch\'s cushion under the interns\' feet: its top at the foot line', 'seats', 'TABLE.foot_lift is 0 and the interns\' feet stand',
         (t) => edit(THEME(t), 'row_dy: 56, foot_lift: 1.3 });', 'row_dy: 56, foot_lift: 0 });')],
+    // card#12845's second theme and the shared module: the legs that read every theme must read each of them.
+    ['the second theme\'s palette drifts: its floor changed in the module, its table left', 'drift', "cottage: floor: the table states #cbd3b3, the module's PALETTE holds #c9cdb6",
+        (t) => edit(SECOND(t), "floor: Object.freeze({ boards: '#cbd3b3' }),", "floor: Object.freeze({ boards: '#c9cdb6' }),")],
+    ['the second theme writes a colour its palette does not hold', 'drift', 'cottage: the module writes #123456',
+        (t) => edit(SECOND(t), "const c = pick(deskKey(installId, seatId), 'theme:chair', PALETTE.chair.colours);", "const c = '#123456';")],
+    ['a shared module holds a colour', 'drift', 'themes/paint.js writes #3d2b3c',
+        (t) => edit(PAINT(t), 'fill="${pen.soft(rules.shade, op)}"', 'fill="${pen.soft(\'#3d2b3c\', op)}"')],
+    ['a shared module reads a random source', 'wellFormedness', 'themes/paint.js: the module requests, reads a clock, a random source or storage',
+        (t) => edit(PAINT(t), 'export const f = (v) => Number((+v).toFixed(2));', 'export const f = (v) => Number((+v + Math.random() * 0).toFixed(2));')],
+    ['a shared module holds state', 'closure', 'themes/paint.js: a module-level binding',
+        (t) => edit(PAINT(t), '// ── colour arithmetic', 'let drawn = 0;\n// ── colour arithmetic')],
+    ['the second theme\'s chair is not drawn at its own size in the layout\'s rect', 'sizes', "cottage: chair's document is 54 × 66, drawn scaled by 0.970",
+        (t) => edit(SECOND(t), 'const CHAIR = Object.freeze({ w: 54, h: 64 });', 'const CHAIR = Object.freeze({ w: 54, h: 66 });')],
+    ['the second theme\'s window surround is not its rect', 'band', "cottage's windowSurround's document is",
+        (t) => edit(SECOND(t), '    const W = gw + 64;', '    const W = gw + 60;')],
     ['a draw that is not the key\'s: Math.random() for one seeded choice', 'totality', 'is not one document per input',
         (t) => edit(THEME(t), "const c = pick(deskKey(installId, seatId), 'theme:chair', PALETTE.chair.colours);", 'const c = PALETTE.chair.colours[Math.floor(Math.random() * PALETTE.chair.colours.length)];')],
 ];

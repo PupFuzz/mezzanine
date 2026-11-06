@@ -24,10 +24,10 @@
 //
 // ⛔ EVERY SEEDED CHOICE IS DRAWN THROUGH THE CHARACTER TREE's `draw(key, field)` (§ 10.4's appearance
 // bullet), under field names of its own (`theme:…`), so a room's boards and a desk's chair are the same on
-// every load and in every browser. The relative import resolves the same on disk and under the asset
-// route: both trees sit under `/art/`.
+// every load and in every browser. The colour arithmetic, the seeded draws, the `Pen`, the document wrapper and
+// the drawing primitives are the themes' shared ones (`../paint.js`, card#12845), handed this theme's paint rules.
 
-import { draw } from '../../../characters/seed.js';
+import { brushes, doc, draw, f, finite, leafPath, mix, pick, rr, stream, wallRuns } from '../paint.js';
 
 /** The paint rules (§ 10.6, the creatures' own): the shade, the highlight and the line colour. */
 export const RULES = Object.freeze({ shade: '#3d2b3c', highlight: '#fff6e6', line: '#3a2420' });
@@ -121,136 +121,9 @@ const LIGHT = Object.freeze({
     accent_pool: 0.7, // a pool over the accent region is this share of the floor's
 });
 
-// ── colour arithmetic ─────────────────────────────────────────────────────────────────────────
+// ── the brushes: the shared paint primitives (`../paint.js`) under this theme's paint rules ─────────
 
-function rgb(hex) {
-    const h = hex.slice(1);
-
-    return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
-}
-
-function hex(c) {
-    return `#${c.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('')}`;
-}
-
-/** `a` mixed toward `b` by `t` — over sRGB, as the painter composites (and as the prototype mixed). */
-export function mix(a, b, t) {
-    const A = rgb(a);
-    const B = rgb(b);
-
-    return hex(A.map((v, i) => v + (B[i] - v) * t));
-}
-
-const shade = (c, t) => mix(c, RULES.shade, t);
-const tint = (c, t) => mix(c, RULES.highlight, t);
-const line = (c) => mix(c, RULES.line, 0.5);
-
-/**
- * A size this theme draws over, REFUSED when it is not a finite number: no scene hands one (every size comes
- * from a validated, byte-capped map or the scene's own constants), and a loop over an infinite or `NaN` width
- * would never end or would write `NaN` into a document. The throw is the painter's unit failure (§ 9 F14).
- */
-function finite(...sizes) {
-    if (!sizes.every((v) => Number.isFinite(v) && v >= 0)) {
-        throw new RangeError(`a theme document asked for over a size that is not a finite number: ${sizes.join(', ')}`);
-    }
-}
-
-/** Two decimals, the precision every coordinate is written at. */
-const f = (v) => Number((+v).toFixed(2));
-
-// ── seeded draws ──────────────────────────────────────────────────────────────────────────────
-
-/** A seeded unit value in [0, 1), one named field of one key — through the tree's `draw()`. */
-const unit = (key, field) => draw(key, field) / 4294967296;
-
-/**
- * A run of seeded unit values for one field — the n-th value is its own named draw (`field:n`), so a run is
- * as stable as a single draw and adding a run disturbs no other field.
- */
-function stream(key, field) {
-    let n = 0;
-
-    return () => unit(key, `${field}:${n++}`);
-}
-
-const pick = (key, field, list) => list[draw(key, field) % list.length];
-
-// ── one document's gradients ──────────────────────────────────────────────────────────────────
-
-/** The gradients ONE document defines, each made once and referenced by its fragment id. */
-class Pen {
-    constructor() {
-        this.defs = [];
-        this.made = new Map();
-    }
-
-    memo(key, make) {
-        if (!this.made.has(key)) {
-            const id = `g${this.made.size}`;
-
-            this.defs.push(make(id));
-            this.made.set(key, `url(#${id})`);
-        }
-
-        return this.made.get(key);
-    }
-
-    /** A rounded body's paint: lit from the top-left. */
-    paint(c, k = 0.42) {
-        return this.memo(`p${c}${k}`, (id) => `<radialGradient id="${id}" cx=".38" cy=".3" r=".85" fx=".3" fy=".2"><stop offset="0" stop-color="${tint(c, k)}"/><stop offset=".5" stop-color="${c}"/><stop offset="1" stop-color="${shade(c, 0.26)}"/></radialGradient>`);
-    }
-
-    /** A flat face's paint: lighter at its top-left, darker at its foot. */
-    face(c, a = 0.18, b = 0.16) {
-        return this.memo(`f${c}${a}${b}`, (id) => `<linearGradient id="${id}" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="${tint(c, a)}"/><stop offset=".55" stop-color="${c}"/><stop offset="1" stop-color="${shade(c, b)}"/></linearGradient>`);
-    }
-
-    /** A vertical gradient: `[offset, colour, opacity?]` stops, top to bottom. */
-    v(stops) {
-        return this.memo(`v${JSON.stringify(stops)}`, (id) => `<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">${stops.map(([o, c, op = 1]) => `<stop offset="${o}" stop-color="${c}" stop-opacity="${op}"/>`).join('')}</linearGradient>`);
-    }
-
-    /** A horizontal gradient, left to right. */
-    h(stops) {
-        return this.memo(`h${JSON.stringify(stops)}`, (id) => `<linearGradient id="${id}" x1="0" y1="0" x2="1" y2="0">${stops.map(([o, c, op = 1]) => `<stop offset="${o}" stop-color="${c}" stop-opacity="${op}"/>`).join('')}</linearGradient>`);
-    }
-
-    /** A soft round light or shadow: `op` at its centre, nothing at its rim. */
-    soft(c, op) {
-        return this.memo(`s${c}${op}`, (id) => `<radialGradient id="${id}"><stop offset="0" stop-color="${c}" stop-opacity="${op}"/><stop offset=".55" stop-color="${c}" stop-opacity="${f(op * 0.55)}"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></radialGradient>`);
-    }
-}
-
-/** One standalone SVG document of `w × h`, its gradients first. */
-function doc(pen, w, h, body) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${f(w)} ${f(h)}" width="${f(w)}" height="${f(h)}"><defs>${pen.defs.join('')}</defs>${body}</svg>`;
-}
-
-// ── drawing primitives (the prototype's, under the paint rules) ─────────────────────────────
-
-/** A rounded rect's path. */
-const rr = (x, y, w, h, r) => {
-    const q = Math.max(0, Math.min(r, w / 2, h / 2));
-
-    return `M${f(x + q)} ${f(y)}H${f(x + w - q)}Q${f(x + w)} ${f(y)} ${f(x + w)} ${f(y + q)}V${f(y + h - q)}Q${f(x + w)} ${f(y + h)} ${f(x + w - q)} ${f(y + h)}H${f(x + q)}Q${f(x)} ${f(y + h)} ${f(x)} ${f(y + h - q)}V${f(y + q)}Q${f(x)} ${f(y)} ${f(x + q)} ${f(y)}Z`;
-};
-
-/** A leaf's path, its stem at the origin, pointing up. */
-const leafPath = (len, wid) => `M0 0C${f(wid)} ${f(-len * 0.22)} ${f(wid * 0.85)} ${f(-len * 0.78)} 0 ${f(-len)}C${f(-wid * 0.85)} ${f(-len * 0.78)} ${f(-wid)} ${f(-len * 0.22)} 0 0Z`;
-
-/** The faint cream rim a standing thing carries, as the creatures carry it: the markup again, under it, in cream and a little wider. */
-function rimmed(markup, w = 1.3, op = 0.5) {
-    const rim = markup
-        .replace(/ (fill|stroke)="(?!none")[^"]*"/g, ` $1="${RULES.highlight}"`)
-        .replace(/ stroke-width="([\d.]+)"/g, (m, x) => ` stroke-width="${f(+x + w)}"`)
-        .replace(/ (?:opacity|fill-opacity|stroke-opacity)="[^"]*"/g, '');
-
-    return `<g opacity="${op}">${rim}</g>${markup}`;
-}
-
-/** A soft plum contact shadow at a foot. */
-const shadow = (pen, cx, cy, rx, ry, op = 0.28) => `<ellipse cx="${f(cx)}" cy="${f(cy)}" rx="${f(rx)}" ry="${f(ry)}" fill="${pen.soft(RULES.shade, op)}"/>`;
+const { shade, tint, line, Pen, rimmed, shadow } = brushes(RULES);
 
 /** A small potted plant, its foot at (x, y); `k` scales it. */
 function pottedPlant(pen, x, y, pot, green, k, kind, next) {
@@ -656,76 +529,14 @@ export function plane({ w, h, seed, desks, walls, accents, cell, band_foot: band
         s.push(`<rect x="0" y="0" width="${f(w)}" height="14" fill="${pen.v([[0, RULES.shade, LIGHT.band], [1, RULES.shade, 0]])}"/>`);
     }
 
-    // the walls: a soft rounded top strip with its shadow, a round cap at each free end (a doorway's jamb)
+    // the walls: a soft rounded top strip with its shadow, a round cap at each free end (a doorway's jamb) — each
+    // straight stretch ONE strip, and the free ends where `wallRuns()` finds them (the themes' one answer)
     if (walls.length > 0) {
         const c = PALETTE['wall-run'].strip;
-        const cells = new Set();
-        const at = (x, y) => `${Math.round(x / cell.w)},${Math.round(y / cell.h)}`;
+        const { strips, ends } = wallRuns(walls, cell, w, h);
+        // the caps' markup is made before the strips', so the gradients keep the ids they were first given
+        const caps = ends.map(({ x, y }) => `<circle cx="${f(x)}" cy="${f(y)}" r="${f(Math.min(cell.w, cell.h) * 0.69)}" fill="${pen.paint(c)}" stroke="${line(c)}" stroke-width=".8"/>`);
 
-        for (const r of walls) {
-            for (let y = r.y; y < r.y + r.h - 0.01; y += cell.h) {
-                for (let x = r.x; x < r.x + r.w - 0.01; x += cell.w) {
-                    cells.add(at(x, y));
-                }
-            }
-        }
-
-        const has = (cx, cy) => cells.has(`${cx},${cy}`);
-        const caps = [];
-
-        for (const k of cells) {
-            const [cx, cy] = k.split(',').map(Number);
-            const n = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => has(cx + dx, cy + dy));
-
-            if (n.length !== 1) {
-                continue;
-            }
-
-            // a free end: away from its one neighbour, and not at the grid's edge, where the wall runs on
-            const [dx, dy] = n[0];
-            const x = (cx - dx * 0.5 + 0.5) * cell.w;
-            const y = (cy - dy * 0.5 + 0.5) * cell.h;
-
-            if (x <= 0 || y <= 0 || x >= w || y >= h) {
-                continue;
-            }
-
-            caps.push(`<circle cx="${f(x)}" cy="${f(y)}" r="${f(Math.min(cell.w, cell.h) * 0.69)}" fill="${pen.paint(c)}" stroke="${line(c)}" stroke-width=".8"/>`);
-        }
-
-        // Each straight stretch of wall is ONE strip, whatever runs the region pass handed over: the cells'
-        // maximal runs along a row and down a column (a cell on neither, a strip of its own), so a wall
-        // shows no seam and no bead at every cell.
-        const strips = [];
-        const listed = [...cells].map((k) => k.split(',').map(Number));
-
-        for (const [cx, cy] of listed) {
-            if (!has(cx - 1, cy) && has(cx + 1, cy)) {
-                let n = 1;
-
-                while (has(cx + n, cy)) {
-                    n++;
-                }
-
-                strips.push({ x: cx * cell.w, y: cy * cell.h, w: n * cell.w, h: cell.h });
-            }
-
-            if (!has(cx, cy - 1) && has(cx, cy + 1)) {
-                let n = 1;
-
-                while (has(cx, cy + n)) {
-                    n++;
-                }
-
-                strips.push({ x: cx * cell.w, y: cy * cell.h, w: cell.w, h: n * cell.h });
-            }
-
-            if (!has(cx - 1, cy) && !has(cx + 1, cy) && !has(cx, cy - 1) && !has(cx, cy + 1)) {
-                strips.push({ x: cx * cell.w, y: cy * cell.h, w: cell.w, h: cell.h });
-            }
-        }
-
-        strips.sort((a, b) => a.y - b.y || a.x - b.x || a.w - b.w);
         s.push(strips.map((r) => `<path d="${rr(r.x + 2, r.y + 3, r.w, r.h, 3)}" fill="${RULES.shade}" opacity=".14"/>`).join(''));
         s.push(strips.map((r) => `<path d="${rr(r.x, r.y, r.w, r.h, 3)}" fill="${pen.face(c, 0.25, 0.1)}" stroke="${line(c)}" stroke-width=".8"/>`).join(''));
         s.push(caps.join(''));

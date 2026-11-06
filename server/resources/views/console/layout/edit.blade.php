@@ -71,6 +71,16 @@
             both.
         </li>
         <li>
+            <strong>A floor may name its design</strong> with <code>"theme"</code> — one of the designs
+            this build ships:
+            {!! collect($themes)->map(fn (string $theme): string => '<code>'.e($theme).'</code>')->implode(', ') !!}.
+            A floor that names none is drawn in the house design, <code>{{ $houseTheme }}</code>, and
+            every room on the floor is drawn in the floor's design. For example
+            <code>{ "theme": "{{ $houseTheme }}", "rooms": { "aimla": { "form": "open" } } }</code>. A
+            design is only the room's look: every desk, fact and notice is where it is in any other.
+            A name this build does not ship is refused at the save, naming the ones it does.
+        </li>
+        <li>
             <strong>A floor is planned or it is not.</strong> Give every room on it an
             <code>origin</code> or none of them; a floor with some rooms placed is refused. A
             <code>hallway</code> needs a planned floor — a corridor with no rooms along it is a
