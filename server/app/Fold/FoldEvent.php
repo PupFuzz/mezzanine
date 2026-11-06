@@ -169,8 +169,10 @@ final class FoldEvent
      * uncounted. Anything else that does not match — `""` and a non-string included, as
      * `console_url` always counted them — is `format_refused.<key>`, counted ONCE per event and field however
      * many times a projection reads it (`StateRecompute` reads `harness_label` twice beside the
-     * projection's own read). The count is per instance, and `Fold` builds a fresh instance per
-     * transaction attempt, so a retried event counts once and a rolled-back attempt counts nothing.
+     * projection's own read). The count is per instance and is a row inside the attempt's
+     * transaction, and `Fold` builds a fresh instance per transaction attempt — the window's, and
+     * each of the poison-event rule's one-event attempts (card#11573) — so a rolled-back attempt
+     * counts nothing and the attempt that lands counts once. The quarantine reads no `data` field.
      * A rebuild's replay counts nothing either: `Counters::replaying()` drops it.
      *
      * `$refusedAs` is for a NOT NULL column, where `null` cannot land: it is the value written in

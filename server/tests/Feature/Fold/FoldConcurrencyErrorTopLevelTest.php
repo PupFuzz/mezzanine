@@ -58,13 +58,15 @@ class FoldConcurrencyErrorTopLevelTest extends CommittedSeatTestCase
 
         $contendedQuarantine = new class extends StateRecompute
         {
-            public function after(FoldEvent $e, array $before, string $cause = 'wire_event'): bool
+            // The quarantine's recompute is the seat-scoped one (card#11573), and its savepoint
+            // guard rethrows a concurrency error rather than counting it as a recompute raise.
+            public function forSeat(int $seatRef, array $before, string $cause, array $detail = [], bool $owesRow = false): bool
             {
                 if ($cause === 'fold_error') {
                     throw ConcurrencyError::raised(1205);
                 }
 
-                return parent::after($e, $before, $cause);
+                return parent::forSeat($seatRef, $before, $cause, $detail, $owesRow);
             }
         };
 
