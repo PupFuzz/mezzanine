@@ -6084,8 +6084,13 @@ and the gate on trusting the derived signal at all.*
   reporter) → `A` closed `server_session_close` and `session_close_orphans` +1; a non-array value →
   both sweeps run; a member off the ULID format → ignored, `A` spared; a second clear naming `A`
   again while its `session_ref` is still the first session → `session_close_carried` +1 again (the
-  count is seat-wide). **RED:** the server ignoring `carried_call_ids` → the GREEN's first half fails,
-  `A` closed `server_session_close` at the `session.end`.
+  count is seat-wide). **The turn-open variant (card#12013):** the same stream with the parent's
+  `turn.end` lost, so the `session.end` finds the turn open and the server's turn-open sweep closes the
+  turn → `A` is still open, `session_close_carried` is 1 and `session_close_orphans` is unchanged. The
+  two sweeps are separate queries and each must spare a carried call; this variant is the case γ
+  stream that reaches the turn-open one with a call carried. **RED:** the server ignoring `carried_call_ids` → the GREEN's first
+  half fails, `A` closed `server_session_close` at the `session.end`; the turn-open sweep alone
+  ignoring it → the turn-open variant fails the same way.
 
 ### AT-D2-3 stale, offline and disabled are rendered, never idle
 
