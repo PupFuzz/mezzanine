@@ -1985,8 +1985,9 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     /** card#12793 RED — the lane on the body: a rider judged clear by its drawn rect, not its feet. */
     public function test_red_the_lane_judged_on_the_body(): void
     {
-        $dir = $this->mutatedModules([self::IN_FLIGHT, "if (p.where !== 'floor' || !inLane(lane, p)) {",
-            "if (p.where !== 'floor' || !inLane({ x: lane.x - h.effect.size.w / 2, y: lane.y, w: lane.w + h.effect.size.w, h: lane.h + h.effect.size.h }, p)) {"]);
+        // card#12841: the lane-clear frame is `scene.js`'s `laneFrame()`, which the holder's `#board()` reads.
+        $dir = $this->mutatedModules([self::SCENE, "if ((p.where === 'floor' && inLane(lane, p)) === inside) {",
+            "if ((p.where === 'floor' && inLane({ x: lane.x - effect.size.w / 2, y: lane.y, w: lane.w + effect.size.w, h: lane.h + effect.size.h }, p)) === inside) {"]);
         $result = $this->floorRun('lane-arrival-meets-queue', $dir);
         $at = null;
 
