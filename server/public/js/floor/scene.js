@@ -772,13 +772,28 @@ export function queueSpacing(character) {
 }
 
 /**
+ * card#12793, card#12841 — A DOORWAY'S LANE (§ 12's *Elevator lane* and *Restroom lane*): the strip of floor in front of a
+ * door that no waiting walker's feet stand in, and no incoming walker's feet enter while an outgoing one's are in it. As
+ * wide as the doorway — `span`, or a seat's drawn body plus both *Walker clearance* side margins where that is wider, so a
+ * narrower door widens it rather than shrinks it — centred on `foot`, the doorway's centre on its floor line, and from that
+ * line down one drawn body's height (`walkerSize()`), so a walker standing outside it is drawn wholly below the doorway's
+ * foot. One lane, sized to the seat, for seats and interns alike. A rect `{x, y, w, h}` in scene px.
+ *
+ * @param {{x: number, y: number}} foot
+ * @param {number} span the doorway's width, px
+ * @param {{w: number, h: number}} character the seat character's rect
+ */
+export function doorLane(foot, span, character) {
+    const body = walkerSize(character);
+    const w = Math.max(span, body.w + 2 * CLEARANCE.margin);
+
+    return Object.freeze({ x: foot.x - w / 2, y: foot.y, w, h: body.h });
+}
+
+/**
  * card#12793 — § 12's *ELEVATOR LANE* (§ 6.2's walk note item 9; the operator, 2026-11-02: *"Etiquette dictates that people
- * waiting for elevator leave enough room so that people inside the elevator can come out first"*): the strip of floor in
- * front of the leaves that no waiting walker's feet stand in, and no boarder's feet enter while a rider's are in it. As
- * wide as the doorway — the leaves' span, or a seat's drawn body plus both *Walker clearance* side margins where that is
- * wider, so a narrower door widens it rather than shrinks it — centred on the seam, from the threshold's floor line down
- * one drawn body's height (`walkerSize()`), so a walker standing outside it is drawn wholly below the doorway's foot. One
- * lane, sized to the seat, for seats and interns alike. A rect `{x, y, w, h}` in scene px; `null` with no band.
+ * waiting for elevator leave enough room so that people inside the elevator can come out first"*): `doorLane()` in front of
+ * the leaves, their span wide, centred on the seam at the threshold. `null` with no band.
  *
  * @param {?object} band the scene's band
  * @param {{w: number, h: number}} character the seat character's rect
@@ -786,22 +801,46 @@ export function queueSpacing(character) {
 export function elevatorLane(band, character) {
     const door = threshold(band);
 
-    if (door === null) {
-        return null;
-    }
-
-    const body = walkerSize(character);
-    const w = Math.max(band.elevator.w, body.w + 2 * CLEARANCE.margin);
-
-    return Object.freeze({ x: door.x - w / 2, y: door.y, w, h: body.h });
+    return door === null ? null : doorLane(door, band.elevator.w, character);
 }
 
 /**
- * Whether a walker's FEET at `p` are in the lane (`elevatorLane()`): the rect's edges included, so the threshold — on its
- * top edge — is in it. The lane is a rule on feet, never on drawn bodies (§ 12's *Elevator lane*).
+ * card#12841 — § 12's *RESTROOM LANE* (§ 6.7 item 3 rule 2; the operator's answer to § 14 item 47 Q3, 2026-11-04: the same
+ * etiquette at the restroom door): `doorLane()` in front of a restroom door's leaf — its span the leaf's, the recess it
+ * fills (`RESTROOM_RECESS`), centred on the leaf at the tile's foot. The door's threshold lies inside it: its centre is
+ * within the door's width and at most one lattice cell below the foot, and the lane is wider than the door.
+ *
+ * @param {{x: number, y: number, w: number, h: number}} door the door's tile rect, scene px
+ * @param {{w: number, h: number}} character the seat character's rect
+ */
+export function restroomLane(door, character) {
+    return doorLane({ x: door.x + RESTROOM_RECESS.x + RESTROOM_RECESS.w / 2, y: door.y + door.h }, RESTROOM_RECESS.w, character);
+}
+
+/**
+ * Whether a walker's FEET at `p` are in a lane (`doorLane()`): the rect's edges included, so the elevator's threshold — on
+ * its top edge — is in it. A lane is a rule on feet, never on drawn bodies (§ 12's *Elevator lane*).
  */
 export function inLane(lane, p) {
     return p.x >= lane.x && p.x <= lane.x + lane.w && p.y >= lane.y && p.y <= lane.y + lane.h;
+}
+
+/**
+ * card#12793, card#12841 — THE FRAME A WALKER's FEET CROSS A LANE's EDGE: the first frame of `effect` from `from` at which
+ * `pointAt()` has the feet on the floor inside `lane` (`inside` true: the frame a walker heading for a door sets foot in
+ * its lane) or not (`inside` false: the frame one leaving a door is clear of it — off the floor, back in the cab, counting
+ * as clear), else its last frame. A function of the effect's legs alone, so every render reads one frame off one walk.
+ */
+export function laneFrame(effect, lane, from, inside) {
+    for (let t = from; t < effect.frames; t++) {
+        const p = pointAt(effect, t * effect.frame_interval_ms);
+
+        if ((p.where === 'floor' && inLane(lane, p)) === inside) {
+            return t;
+        }
+    }
+
+    return Math.max(from, effect.frames);
 }
 
 /** The legs' walk primitive: a glide along `points` from frame `start`, `⌈length ÷ walk speed⌉` frames, at least one. */
@@ -1827,19 +1866,22 @@ const NO_SPOT = Object.freeze({ full: true });
  * card#12786 — THE RESTROOM DOOR OF ONE SCENE (FLOOR.md § 6.7 items 2–5): `doors`, the map's restroom doors, each with its
  * threshold (`null` where none is open) and the rects the painter draws its leaf, its field and its occupant at; `schedule
  * (key, fromS, toS)`, the walker's restroom chain (`snackBreaks()` under `RESTROOM_CHAIN`); `thought(effect)`, the restroom
- * line's bubble over a visit's walker; `spot(doorId, k)`; and `plan(walker, break, { from, taken, turn })`, the visit —
- * `turn(doorId)` the frame, from the visit's start, the door is free for it.
+ * line's bubble over a visit's walker; `spot(doorId, k)`; and `plan(walker, break, { from, taken, turn, clear })`, the
+ * visit — `turn(doorId)` the frame, from the visit's start, the door is free for it, and `clear(doorId)` (card#12841) the
+ * frame every walker who came out of it before is clear of its lane (§ 12's *Restroom lane*, each door's `lane`).
  *
  * The walkers are the snack corner's (`snack.walkers`), each with its `restroom_eligible` hold. `plan()` answers `null`
  * where the floor holds no door (or reduced motion, or no seeded draw), `{ no_route }` where no door's threshold can be
  * reached, `{ full }` where the walker must wait and no waiting spot is free, and otherwise the visit's effect: the door
  * nearest by route length from where it sets off (ties by room, then tile); and its legs from the visit's own start —
  * `walk` to the threshold where the door is free when it arrives (`turn()`, the frame the door frees, at or before its
- * arrival), else `walk` to the lowest waiting spot no trip in `taken` holds, `stand` there (`wait`) until `turn`, and `walk`
- * the spot's path to the threshold; then `stand` at the threshold while the leaf opens (`door`), `inside` through the
+ * arrival) and the lane is clear when its feet enter it (`clear()`, at or before that frame — card#12841), else `walk` to
+ * the lowest waiting spot no trip in `taken` holds, `stand` there (`wait`) until the later of the two, and `walk` the
+ * spot's path to the threshold; then `stand` at the threshold while the leaf opens (`door`), `inside` through the
  * closing, the dwell and the opening, and `walk` home. With it, the door's leaf timeline (`leaf`), the field's occupied
- * frames (`occupied`) and the frames the door is held (`claim`), all in the visit's frames. Spots past the threshold are
- * `spotsNear()`'s at § 12's *Queue spacing* on the SEAT's lattice, clear of both snack spot 0s.
+ * frames (`occupied`) and the frames the door is held (`claim`), all in the visit's frames, and the door's `lane`. Spots
+ * past the threshold are `spotsNear()`'s at § 12's *Queue spacing* on the SEAT's lattice, clear of both snack spot 0s and
+ * of the threshold, and — card#12841 — none in the door's lane: the lane is `spotsNear()`'s `avoid`, as the elevator's.
  */
 function restroomDoor(doors, snack, walking, input, box) {
     const draw = typeof input.draw === 'function' ? input.draw : null;
@@ -1890,17 +1932,23 @@ function restroomDoor(doors, snack, walking, input, box) {
         sign: at(d, RESTROOM_PLATES.sign),
         plate: at(d, RESTROOM_PLATES.plate),
         recess: at(d, RESTROOM_RECESS),
+        lane: restroomLane(d, character),
     }));
     const spotsOf = new Map();
+    // Spot 0 is the threshold; spots 1, 2, … are `spotsNear()`'s from it — which skips the threshold, inside the lane, so
+    // it is passed as a `clear` point to keep the waiting spots *Queue spacing* from the walker standing there.
     const spots = (d) => {
         if (!spotsOf.has(d.id)) {
-            spotsOf.set(d.id, d.threshold === null ? () => null : spotsNear(grid, d.threshold, spacing, clear));
+            const near = d.threshold === null ? null : spotsNear(grid, d.threshold, spacing, [d.threshold, ...clear], (p) => inLane(d.lane, p));
+            const door = d.threshold === null ? null : Object.freeze({ at: d.threshold, path: Object.freeze([d.threshold]) });
+
+            spotsOf.set(d.id, near === null ? () => null : (k) => (k === 0 ? door : near(k - 1)));
         }
 
         return spotsOf.get(d.id);
     };
 
-    const plan = (w, brk, { from = null, taken = [], turn = () => 0 } = {}) => {
+    const plan = (w, brk, { from = null, taken = [], turn = () => 0, clear: laneFree = () => 0 } = {}) => {
         const usable = placed.filter((d) => d.threshold !== null);
 
         if (placed.length === 0 || reduce || draw === null || w.anchor === null) {
@@ -1940,13 +1988,16 @@ function restroomDoor(doors, snack, walking, input, box) {
         const stand = (from_, frames, where, why) => Object.freeze({ kind: 'stand', start: from_, frames, at: where, why });
         const walkOut = walkLeg(0, direct.points);
         // The frame, from the visit's start, the door is free for this visitor (the holder's: every visit admitted to it
-        // before this one has freed it).
+        // before this one has freed it), and — card#12841 — the frame every walker who came out of it before is clear of
+        // its lane; and the frame this one's walk straight to the door would set foot in that lane.
         const free = turn(d.id);
+        const cleared = laneFree(d.id);
+        const entry = laneFrame(Object.freeze({ legs: Object.freeze([walkOut]), frames: walkOut.frames, frame_interval_ms: 1000 / LOOP_FPS }), d.lane, 0, true);
         let lead;
         let spot;
         let tier = direct.tier;
 
-        if (free <= walkOut.frames) {
+        if (free <= walkOut.frames && cleared <= entry) {
             lead = [walkOut];
             spot = Object.freeze({ table: d.id, index: 0, at: thr, spacing });
         } else {
@@ -1971,7 +2022,7 @@ function restroomDoor(doors, snack, walking, input, box) {
             }
 
             const out = walkLeg(0, found.there.points);
-            const leave = Math.max(out.frames, free);
+            const leave = Math.max(out.frames, free, cleared);
             const board = walkLeg(leave, found.s.path);
 
             lead = [out, stand(out.frames, leave - out.frames, found.s.at, 'wait'), board];
@@ -2002,6 +2053,8 @@ function restroomDoor(doors, snack, walking, input, box) {
             dwell_s: brk.dwell_s,
             restroom: d.id,
             threshold: thr,
+            // card#12841: the door's lane, which the holder reads this walker's way out of (`laneFrame()`).
+            lane: d.lane,
             spot,
             anchor: w.anchor,
             route: 'routed',
