@@ -86,6 +86,17 @@ const VARIANTS = {
         { layer: 'walls', cells: cells([201], span(75, 86)), from: 0, to: WALL },
         { layer: 'walls', cells: cells([202, 213], [75]), from: 0, to: WALL },
     ],
+    // card#12841: the door moved up the right wall to (1,712, 496) — its tile x 1,712–1,776, y 360–504 — both snack tables
+    // lifted to make room, and a wall at x 1,664 from y 496 to 608: the door's forecourt is a corridor three lattice cells
+    // wide straight down in front of the door and inside its lane, so a walker coming out and one going in both walk the
+    // lane's whole depth, and the first spot `spotsNear()` finds with no lane is in it
+    'restroom-corridor': [
+        { layer: 'furniture', cells: [[213, 51]], from: SNACK_TABLE, to: 0 },
+        { layer: 'furniture', cells: [[216, 61]], from: SNACK_TABLE_LOW, to: 0 },
+        { layer: 'furniture', cells: [[214, 81]], from: RESTROOM_DOOR, to: 0 },
+        { layer: 'furniture', cells: [[214, 62]], from: 0, to: RESTROOM_DOOR },
+        { layer: 'walls', cells: cells([208], span(62, 75)), from: 0, to: WALL },
+    ],
 };
 
 function variant(base, name) {
@@ -831,6 +842,61 @@ function restroomRuns() {
         notes['restroom-past-the-last-spot'] = `\`aimla-impl-2\`, \`aimla-impl-1\` and \`aimla-review\` idle over \`fixtures/maps/restroom-one-spot.json\`, whose door has exactly one waiting spot: ${breakNote(I2, ref + 5)} 5 s after clock 0, ${breakNote(I1, p.a)} and ${breakNote(RV, p.c)} — the third to come takes no visit. ${clock(ref)}.`;
     }
 
+    // ── card#12841: the lane in front of the door, over restroom-corridor. ────────────────────────────────────────────────
+    {
+        const corridor = `@json:${MAPS}/restroom-corridor.json`;
+
+        // lane-two-at-the-door: two-at-the-door's walkers and breaks over the corridor — the second waits outside the lane
+        // and leaves its spot once the first, on its way out down the corridor, is clear of it.
+        runs['lane-two-at-the-door'] = make({ at_s: T, until_ms: tUntil, seats: { 'aimla-impl-1': IDLE_SEAT }, map: corridor });
+        notes['lane-two-at-the-door'] = `two-at-the-door's walkers and breaks (${breakNote(I2, T + 5)} 5 s after clock 0, ${breakNote(I1, T + 5 + tGap)} ${tGap} s after it) over \`fixtures/maps/restroom-corridor.json\`, whose door's forecourt is a corridor down its lane: the second waits at a spot outside the lane and leaves it once the first, walking out down the corridor, is clear of the lane. ${clock(T)}.`;
+
+        // lane-straight-in: aimla-impl-1's break comes as aimla-impl-2 is about to come out, timed so that its walk straight
+        // to the door reaches the threshold after the door has freed and sets foot in the lane while the first is still in
+        // it — the frames read off the floor screen's own legs for each walker's lone visit over the corridor.
+        // (The probe is handed the variant itself: the file it would read is the one this run of the generator writes.)
+        const inline = variant(JSON.parse(readFileSync(join(ROOT, 'resources', 'floor', 'default.tmj'), 'utf8')), 'restroom-corridor');
+        const lone = (k) => {
+            const ref = search(k, (r) => quiet(r, 360, [k]) && rBreaks(k, r - 400, r + 360).length === 1);
+
+            return probe(run({ note: '', at_s: ref, until_ms: 5000 + (sc.restroomBreak(draw, k, ref + 5).dwell_s + 90) * 1000, seats: { 'aimla-impl-1': IDLE_SEAT }, map: inline }), k);
+        };
+        const first = lone(I2);
+        const second = lone(I1);
+        const firstHome = first.legs[first.legs.length - 1];
+        // In the first visit's frames: its walk out of the door (`W`), the door free (`F`) and the lane clear (`C`) behind it,
+        // for its lone visit's dwell; a longer dwell moves all three by four frames a second.
+        const W = firstHome.start;
+        const F = first.claim.end;
+        const C = sc.laneFrame(first, first.lane, W, false);
+        const wo = second.legs[0].frames;
+        const en = sc.laneFrame(Object.freeze({ legs: [second.legs[0]], frames: wo, frame_interval_ms: second.frame_interval_ms }), second.lane, 0, true);
+        let gap = null;
+        const ref = search(I2, (r, s1) => {
+            const shift = 4 * (sc.restroomBreak(draw, I2, s1).dwell_s - first.dwell_s);
+            const later = rBreaks(I1, s1 + 60, s1 + 200);
+
+            if (later.length !== 1 || !quiet(r, 700, [I1, I2]) || rBreaks(I2, r - 400, r + 700).length !== 1 || rBreaks(I1, r - 400, r + 700).length !== 1) {
+                return false;
+            }
+
+            const d = 4 * (later[0].start_s - s1);
+
+            // The door is free by its arrival, and the lane is not by the frame it would set foot in it.
+            if (F + shift <= d + wo && d + en < C + shift) {
+                gap = later[0].start_s - s1;
+
+                return true;
+            }
+
+            return false;
+        }, 19900, 200000);
+        const sUntil = 5000 + (gap + sc.restroomBreak(draw, I1, ref + 5 + gap).dwell_s + 120) * 1000;
+
+        runs['lane-straight-in'] = make({ at_s: ref, until_ms: sUntil, seats: { 'aimla-impl-1': IDLE_SEAT }, map: corridor });
+        notes['lane-straight-in'] = `\`aimla-impl-2\` and \`aimla-impl-1\` both idle over \`fixtures/maps/restroom-corridor.json\`: ${breakNote(I2, ref + 5)} 5 s after clock 0 and ${breakNote(I1, ref + 5 + gap)} ${gap} s after it — timed, off the floor screen's own legs for each walker's lone visit over this map, so that the second's walk straight to the door would reach the threshold after the door has freed behind the first but set foot in the lane while the first, walking out down the corridor, is still in it: the second waits at a spot outside the lane instead. ${clock(ref)}.`;
+    }
+
     // ── the two chains, one walker. ───────────────────────────────────────────────────────────────────────────────────
     {
         // snack-then-restroom: impl-1 (working), its snack break at + 5 and its restroom break 10–30 s later.
@@ -901,7 +967,7 @@ function restroomRuns() {
     const LATE = [150, 170, 200, 260, 330];
     const lateNames = [];
 
-    for (const route of ['queue-of-three', 'two-at-the-door', 'snack-then-restroom', 'restroom-then-snack']) {
+    for (const route of ['queue-of-three', 'two-at-the-door', 'snack-then-restroom', 'restroom-then-snack', 'lane-two-at-the-door', 'lane-straight-in']) {
         const o = argsOf.get(runs[route]);
 
         for (const off of LATE) {
@@ -914,6 +980,7 @@ function restroomRuns() {
     }
 
     const ORDER = ['idle-visit', 'busy-visit', 'blocked-visit', 'intern-visit', 'two-at-the-door', 'three-at-the-door', 'queue-of-three', 'restroom-past-the-last-spot',
+        'lane-two-at-the-door', 'lane-straight-in',
         'recall-waiting', 'recall-inside', 'recall-closing', 'leave-inside', 'intern-stop-inside', 'snack-then-restroom', 'restroom-then-snack',
         'reload-inside', 'reload-inside-viewer', 'reload-queue', 'next-visit', 'no-door', 'restroom-no-route', 'restroom-feed-down', 'feed-dies-inside',
         'map-removes-door', 'stilled-inside', ...lateNames];
