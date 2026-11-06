@@ -24,6 +24,7 @@ use Tests\TestCase;
  */
 class AnInternRidesTheElevatorTest extends TestCase
 {
+    use ChecksTheCommittedPast;
     use ChecksTheElevatorQueue;
     use DrivesTheFloorScreen;
 
@@ -447,14 +448,20 @@ class AnInternRidesTheElevatorTest extends TestCase
     {
         $d = $this->door();
 
-        [, $cab] = $this->firstWalk($r = $this->floorRun('stop-in-cab'), 'turn');
-        $this->assertSame([['kind' => 'cab', 'frames' => $d['close']]], array_map(static fn ($l) => ['kind' => $l['kind'], 'frames' => $l['frames']], $cab['legs']),
-            'stop-in-cab is not the leaves closing over the intern');
-        $this->assertSame([], $this->fades($this->lastFrame($r)));
+        // card#12466: the leaves keep the motion the arrival drew — the span begins where its opening began, and closes as
+        // the intern's last leg ends — and never jump between two renders.
+        foreach (['stop-in-cab' => ['cab'], 'stop-at-door' => ['stand', 'cab']] as $run => $kinds) {
+            [, $turn] = $this->firstWalk($r = $this->floorRun($run), 'turn');
+            $this->assertSame($kinds, $this->kinds($turn), "[{$run}] the turn's legs");
+            $this->assertLessThanOrEqual(0, $turn['door']['start'], "[{$run}] the leaves restart rather than finish the opening drawn");
+            $this->assertEqualsWithDelta(end($turn['legs'])['start'] + end($turn['legs'])['frames'], $turn['door']['start'] + $turn['door']['frames'], 1e-9,
+                "[{$run}] the leaves do not close over the intern");
+            $this->assertSame([], $this->leafDefects($this->drawn($r)), "[{$run}] the leaves jumped between two renders");
+            $this->assertSame([], $this->fades($this->lastFrame($r)));
+        }
 
         [, $door] = $this->firstWalk($this->floorRun('stop-at-door'), 'turn');
-        $this->assertSame(['stand', 'cab'], $this->kinds($door));
-        $this->assertSame([$d['step'], $d['close']], array_column($door['legs'], 'frames'));
+        $this->assertSame($d['step'], $door['legs'][0]['frames'], 'stop-at-door does not step back in over the step frame');
 
         $mid = $this->floorRun('stop-mid-walk');
         [$arrivalFrame, $arrival, $arrivalAt] = $this->firstWalk($mid, 'arrive');
@@ -985,7 +992,8 @@ class AnInternRidesTheElevatorTest extends TestCase
 
     public function test_red_the_plain_cancel(): void
     {
-        $dir = $this->planted([self::SCENE, '            const turned = turnRound(fx, flying, from, door, call, routed, leg, done, walking, row);', '            const turned = null;']);
+        // card#12466: `turnRound()` is every walker's now, handed the intern's geometry; the plant drops its answer.
+        $dir = $this->planted([self::SCENE, "            const turned = turnRound(flying, {\n                to: 'elevator',", "            const turned = null && turnRound(flying, {\n                to: 'elevator',"]);
         $r = $this->floorRun('stop-mid-walk', $dir);
         $this->assertSame([], array_values(array_filter($this->firstWalks($r), static fn ($h) => $h[1]['leg_kind'] !== 'arrive')),
             'the plant still drew an effect after the cancelling render');

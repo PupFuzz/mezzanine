@@ -309,6 +309,9 @@ process.on('unhandledRejection', (error) => {
 
 const turn = () => new Promise((resolve) => setImmediate(resolve));
 
+/** More walk-end refreshes at one instant than this is the end timer spinning, never a run's walks ending together. */
+const WALK_END_SPIN = 20;
+
 const runs = [];
 
 for (let i = 0; i < (fx.repeat ?? 1); i++) {
@@ -918,6 +921,12 @@ async function replay(scenario) {
 
     snap('start');
 
+    // card#12466: the floor's end timer re-armed at 0 ms — `nextEnd()` naming an instant `#ended()` does not reach — fires
+    // at one instant for ever on this clock, and on a page spins a frame callback. A run that fires more walk-end refreshes
+    // at one instant than any run has walks ends there, loudly, rather than hanging the suite.
+    let spinAt = null;
+    let spins = 0;
+
     for (;;) {
         timers.sort((a, b) => a.at - b.at || a.seq - b.seq);
 
@@ -929,6 +938,15 @@ async function replay(scenario) {
 
         timers.shift();
         now = timer.at;
+
+        if (timer.label === 'walk end') {
+            spins = timer.at === spinAt ? spins + 1 : 1;
+            spinAt = timer.at;
+
+            if (spins > WALK_END_SPIN) {
+                throw new Error(`the floor's walk-end refresh re-armed at 0 ms ${spins} times at ${now} ms — its end timer spins`);
+            }
+        }
 
         const outcome = timer.fire();
 
