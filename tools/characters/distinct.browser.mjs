@@ -24,11 +24,11 @@
 // THE BAR — a pair is TOO CLOSE when it is alike in both: IoU at least IOU_BAR AND colour ΔE at most DE_BAR. Either
 // difference alone tells two creatures apart at a glance; the pair the operator named (card#12795: *"It looks too
 // similar to hedgehog"*, the pale cream pumpkin beside the hedgehog's cream body) has neither, and the bar is that
-// pair's figures with a margin. THE GATE holds every pair with at least one species at or after GATED_FROM (the first
-// species card#12796 appended); the pairs among the species before it are printed and gate nothing. `--selftest`'s
-// controls, each required to red: dev's whole pumpkin entry (afacf5ce) planted back into a served copy of the generator
-// makes pumpkin / hedgehog too close; a species appended to that copy as the hedgehog's twin is in the gated population
-// and too close; one difference alone clears a pair; a colour shift reads apart. Why each figure is what it is:
+// pair's figures with a margin. THE GATE holds EVERY PAIR of species (card#12842, once the four pairs among the earlier
+// species that stood under the bar were redrawn apart; card#12796 had gated only the pairs with a species it appended).
+// `--selftest`'s controls, each required to red: dev's whole pumpkin entry (afacf5ce) planted back into a served copy of
+// the generator makes pumpkin / hedgehog too close; a species appended to that copy as the hedgehog's twin is too close;
+// one difference alone clears a pair; a colour shift reads apart. Why each figure is what it is:
 // FLOOR.md § 10.4's distinctness bullet and § 12's *Species distinctness bar*.
 //
 // NO BUILD STEP, NO DEPENDENCY, NO NETWORK — `sheet.browser.mjs`'s shape: a static server on 127.0.0.1 serves the
@@ -58,14 +58,6 @@ export const IOU_BAR = 0.82;
 /** … and at or under this CIEDE2000 ΔE between its closest colourways. */
 export const DE_BAR = 10;
 
-/**
- * THE GATED POPULATION — every pair with at least one species at or after this key in SPECIES_KEYS: the first species
- * appended under this check (card#12796), so every species appended after it is held too. The pairs among the species
- * before it were drawn before the check existed and are REPORTED with the gated table, never gated: the seat's ruling
- * of 2026-11-02 on card#12796 scopes the operator's bar to what the card adds, and the existing pairs under the bar go to
- * the operator on their own (FLOOR.md § 10.4's distinctness bullet).
- */
-export const GATED_FROM = 'cat';
 /** The control's planted species, and the existing one it copies. */
 const TWIN = 'twinplant', TWIN_OF = 'hedgehog';
 
@@ -255,7 +247,7 @@ const creaturesPath = join(REPO, 'resources', 'characters', 'creatures.js');
 /**
  * The control's served copy of the generator, with two plants and nothing else changed: dev's pumpkin entry put
  * back (`DEV_PUMPKIN`, its whole entry), and a species appended to the list — `TWIN`, the hedgehog's drawing and colourways under a
- * new key, `added` like every appended species — so it falls in the gated population, a new species copying an existing one.
+ * new key, `added` like every appended species — a new species copying an existing one.
  */
 async function plantedCreatures() {
   const src = await readFile(creaturesPath, 'utf8');
@@ -326,40 +318,33 @@ try {
   const chrome = findChrome();
   if (!chrome) { console.error('no Chromium found: pass --chrome <path> or set $CHROME'); process.exit(1); }
   const { species, keys, missing } = await measure(chrome, server, '__distinct.html');
-  const gatedOf = (list) => { const at = list.indexOf(GATED_FROM); return (sp) => at >= 0 && list.indexOf(sp) >= at; };
-  const gated = gatedOf(keys);
   const pairs = pairsOf(species).sort((x, y) => clearance(x) - clearance(y));
-  const held = pairs.filter((p) => gated(p.a) || gated(p.b)), existing = pairs.filter((p) => !gated(p.a) && !gated(p.b));
-  const n = Object.keys(species).length, g = keys.filter(gated).length;
+  const n = Object.keys(species).length, all = keys.length * (keys.length - 1) / 2;
   console.log(`species distinctness over ${n} species — too close at IoU >= ${IOU_BAR} AND colour layout ΔE2000 <= ${DE_BAR} (silhouette in ${SIL_CELL}-unit cells, colour layout in ${COL_CELL}-unit cells, at ${UNIT} px a unit)`);
-  console.log(`THE GATE holds the ${held.length} pairs with at least one of the ${g} species appended from '${GATED_FROM}' on; the ${existing.length} pairs among the ${n - g} species before it are REPORTED, never gated`);
+  console.log(`THE GATE holds every pair of the ${keys.length} species in SPECIES_KEYS: ${pairs.length} pairs`);
   const show = (title, list) => {
     const shown = argv.includes('--all') ? list : list.slice(0, 25);
     console.log(`\n${title} — ${argv.includes('--all') ? 'every pair' : `the ${shown.length} closest`} (least clearance first):`);
     for (const p of shown) console.log(`  ${fmt(p)}`);
   };
-  show('GATED: pairs with a species appended under this check', held);
-  show('REPORTED: pairs among the species before it', existing);
+  show('THE GATE', pairs);
   console.log('');
   check(missing.length === 0, `every species, variant and colourway drew a canonical standing frame (${missing.length ? missing.slice(0, 4).join('; ') : `${Object.values(species).reduce((sum, l) => sum + l.length, 0)} frames`})`);
-  check(g > 0, `'${GATED_FROM}', the first species appended under this check, is in SPECIES_KEYS, so the gate holds a population (${g} species)`);
-  const close = held.filter(tooClose);
-  check(close.length === 0, `no pair with a species appended from '${GATED_FROM}' on is alike in both silhouette and colour, over ${held.length} pairs${close.length ? ` — ${close.map((p) => `${p.a}/${p.b}`).join(', ')}` : ''}`);
-  const report = existing.filter(tooClose);
-  console.log(`  REPORTED (gates nothing): ${report.length} of the ${existing.length} pairs before '${GATED_FROM}' are under the bar${report.length ? ` — ${report.map((p) => `${p.a}/${p.b}`).join(', ')}` : ''}`);
+  check(n === keys.length && pairs.length === all, `the gate measured every species in SPECIES_KEYS and holds every pair of them (${n} of ${keys.length} species, ${pairs.length} of ${all} pairs)`);
+  const close = pairs.filter(tooClose);
+  check(close.length === 0, `no pair of species is alike in both silhouette and colour, over ${pairs.length} pairs${close.length ? ` — ${close.map((p) => `${p.a}/${p.b}`).join(', ')}` : ''}`);
 
   if (argv.includes('--selftest')) {
     console.log('\ncontrols:');
     // (1) dev's pumpkin, planted back: the pale cream colourway beside the hedgehog is the pair the operator named.
-    // (2) a planted species appended to the list, copying an existing one, lands in the gated population and is flagged.
+    // (2) a planted species appended to the list, copying an existing one, is flagged.
     const planted = await measure(chrome, server, '__control.html', ['pumpkin', 'hedgehog', TWIN]);
     const ph = pairsOf({ pumpkin: planted.species.pumpkin, hedgehog: planted.species.hedgehog })[0];
     console.log(`  dev's pumpkin (its afacf5ce entry) / hedgehog: ${fmt(ph)}`);
     check(tooClose(ph), `CONTROL — dev's pumpkin (its afacf5ce entry) planted back makes pumpkin / hedgehog TOO CLOSE (IoU ${ph.iou.toFixed(3)}, ΔE ${ph.de.toFixed(1)} at colourways ${ph.pals.join(' / ')}), so the bar flags the pair the operator named`);
     const twin = pairsOf({ [TWIN]: planted.species[TWIN] ?? [], [TWIN_OF]: planted.species[TWIN_OF] })[0];
-    const twinGated = gatedOf(planted.keys)(TWIN);
     console.log(`  a planted '${TWIN}' appended as a copy of the ${TWIN_OF}: ${fmt(twin)}`);
-    check(twinGated && tooClose(twin), `CONTROL — a species appended to the list as a copy of the ${TWIN_OF} is in the gated population (${twinGated}) and TOO CLOSE (IoU ${twin.iou.toFixed(3)}, ΔE ${twin.de.toFixed(1)})`);
+    check(planted.keys.includes(TWIN) && tooClose(twin), `CONTROL — a species appended to the list as a copy of the ${TWIN_OF} is TOO CLOSE (IoU ${twin.iou.toFixed(3)}, ΔE ${twin.de.toFixed(1)})`);
     // (3) each measure alone clears a pair: the same silhouette in a far colour, a far silhouette in the same colour.
     const sameShape = { iou: 1, de: DE_BAR + 1 }, sameColour = { iou: IOU_BAR - 0.01, de: 0 };
     check(!tooClose(sameShape) && !tooClose(sameColour), 'CONTROL — one difference alone (colour, or silhouette) clears a pair');
