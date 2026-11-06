@@ -257,6 +257,19 @@ class RememberedBrowserSettingsTest extends TestCase
         $this->assertSkipped($victim, $victimToken, 'the other account\'s browser still skips the code');
     }
 
+    public function test_a_row_id_that_is_not_a_small_number_is_not_found_and_deletes_nothing(): void
+    {
+        $user = $this->enrolled();
+        $token = $this->remember($user, self::FIREFOX_LINUX);
+
+        $this->signedInAndConfirmed($user);
+        foreach (['99999999999999999999', 'abc', '1 OR 1=1', '-1'] as $id) {
+            $this->delete('/two-factor/remembered-browsers/'.rawurlencode($id))->assertNotFound();
+        }
+
+        $this->assertSame([$this->idFor($token)], $this->idsFor($user));
+    }
+
     public function test_forgetting_an_already_forgotten_browser_from_a_stale_page_is_harmless(): void
     {
         $user = $this->enrolled();

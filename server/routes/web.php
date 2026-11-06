@@ -82,7 +82,8 @@ Route::middleware(['auth', 'mfa', 'password.confirm'])->group(function () {
     // Card#12186 · "Remembered browsers" on the same page, under the same three gates;
     // `App\Http\Controllers\Auth\RememberedBrowserController` owns the argument.
     Route::delete('/two-factor/remembered-browsers/{browser}', [RememberedBrowserController::class, 'destroy'])
-        ->whereNumber('browser')
+        // At most 18 digits, so every id the route admits fits the controller's `int`; a longer one is a 404.
+        ->where('browser', '[0-9]{1,18}')
         ->name('two-factor.browsers.forget');
     Route::delete('/two-factor/remembered-browsers', [RememberedBrowserController::class, 'destroyAll'])
         ->name('two-factor.browsers.forget-all');

@@ -34,13 +34,14 @@ use Symfony\Component\HttpFoundation\Cookie;
  * browser remembered for one account is challenged as normal for any other account that signs in on
  * it.
  *
- * ⛔ REVOCATION IS `forgetAll()`, AND IT HAS THREE CALLERS. Every remembered browser for an account
- * is forgotten when its password, its two-factor secret or its two-factor confirmation changes —
- * `App\Models\User::booted()` calls it on any Eloquent write of those columns, which is every writer
- * this application and Fortify have (see that hook for the list) — and when the account is retired,
- * which `App\Admin\UserRetirement::retire()` calls directly because it writes `retired_at` through
- * the query builder, where no model event fires. The third is the account's own "Forget all"
- * (card#12186, `App\Http\Controllers\Auth\RememberedBrowserController`).
+ * ⛔ REVOCATION IS `forgetAll()`, OR `forget()` FOR ONE BROWSER. Every remembered browser for an
+ * account is forgotten when its password, its two-factor secret or its two-factor confirmation
+ * changes — `App\Models\User::booted()` calls it on any Eloquent write of those columns, which is
+ * every writer this application and Fortify have (see that hook for the list) — and when the account
+ * is retired, which `App\Admin\UserRetirement::retire()` calls directly because it writes
+ * `retired_at` through the query builder, where no model event fires. The account's own "Forget all"
+ * calls it too, and its "Forget" calls `forget()` (card#12186,
+ * `App\Http\Controllers\Auth\RememberedBrowserController`).
  *
  * ⛔ CARD#12186 · THE ACCOUNT LISTS AND FORGETS ITS OWN BROWSERS. `listFor()` and `forget()` are the
  * "Remembered browsers" section of the recovery codes page (`two-factor.codes`). Both are scoped by
