@@ -3050,8 +3050,13 @@ reporter sends `null`, sets `duration_source: "none"`, and counts `negative_dura
 open entry nor a tombstone (the open was lost to spool overflow, or the reporter was installed
 mid-call), the reporter **synthesizes** the pair: it emits a `tool.start` with a fresh `call_id`,
 `descriptor: null`, `event_time` equal to the close time, and `data.synthesized: true`, immediately
-followed by the `tool.end` with `match: "synthesized"`. **D2:** the ledger therefore never contains
-a close without an open — a rule that keeps every consumer's open-call arithmetic total and makes the
+followed by the `tool.end` with `match: "synthesized"`. The pair's `tool_name` and
+`harness_call_ref` are the close payload's, read exactly as [§ 6.5](#65-toolstart) reads the open's:
+a `tool_name` off its pattern is sent as `"INVALID_TOOL_NAME"` and counted `invalid_tool_name`, and a
+`tool_use_id` over 64 B is sent as a `null` ref. One reader serves the open and the close, so a
+synthesized pair carries the same bounds as an observed one, and the ingest's `422` for a field over
+its bound ([§ 12.1](#121-validation-order) step 10) never refuses a batch for it (card#11574).
+**D2:** the ledger therefore never contains a close without an open — a rule that keeps every consumer's open-call arithmetic total and makes the
 anomaly a visible flag rather than a silent negative count.
 
 **A close that arrives after its call was reaped** is *not* that case, and must not be turned into
@@ -5560,7 +5565,7 @@ the two were equal.
 | `payload_key_missing.<key>` | a harness payload key the reporter reads was absent: `session_id`, a key a hook handler reads, `agent_id` on `SubagentStart`, or `tool_response.agentId` on a background launch's `PostToolUse` ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)). The family also carries `payload_key_missing.unsubscribed_hook.<name>`, counted when the reporter is run for a hook outside [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s subscribed set, which a seat wired by the installer's `hooks` step never is | `degraded`, member `harness_contract_moved`, for **every** key in the family: the reporter matches the `payload_key_missing.` prefix, so a key a later build starts reading raises the member with no edit here. A gap that is expected on a correct install is therefore counted under its own name and never in this family: `harness_label_unset` and `context_window_unavailable` |
 | `enum_value_unknown.<wire field>` | a closed-enum field carried a value this reporter does not know, coerced per [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 4 | informational, rendered `reporter_behind` — the harness has added a member and this document owes an edit |
 | `enum_value_unknown.notification_type` | a `Notification` carried a `notification_type` [§ 6.12](#612-attentionrequest)'s lookup table does not know, so **no** `attention.request` was emitted — the one counter in this document that names a harness **payload key** rather than a wire field, and the single exception [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 4 names | informational, rendered `reporter_behind` — this is where `notification_kind`'s unknown case lives, since the field has no `other` member and no event survives to carry one ([§ 6.12](#612-attentionrequest)). A rising value on real seats is the edit's trigger |
-| `invalid_tool_name` | `tool_name` failed its pattern and was sent as `INVALID_TOOL_NAME` | `degraded` |
+| `invalid_tool_name` | `tool_name` failed its pattern and was sent as `INVALID_TOOL_NAME` — once per hook whose payload carried it, the open and the close alike ([§ 6.6](#66-toolend)) | `degraded` |
 | `open_call_index_overflow` | > 64 concurrent open calls or tombstones | `degraded` |
 | `open_session_index_overflow` | > 16 concurrent open sessions; the least-recently-active was evicted and reaped ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)) | `degraded` |
 | `value_clamped.<wire field>` | a numeric value or array exceeded its stated bound and was clamped ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5) | `degraded` — a clamp means the reporter's own arithmetic left its declared range |

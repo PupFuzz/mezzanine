@@ -10435,6 +10435,100 @@ else:
              f"a relative config -> {c_rel['cfgs']}")
 
 
+print("\n== 29. A TOOL CALL THE REPORTER FILLS IN ITSELF IS CHECKED LIKE ANY OTHER (D1 § 6.5, § 6.6, card#11574) ==")
+# A close matching no open call SYNTHESIZES the pair (§ 6.6), and that pair's `tool_name` and
+# `harness_call_ref` come from the CLOSE's payload. The ingest refuses a batch holding one `data` field
+# over its § 6 byte bound with `422` and stores none of it (§ 12.4), so a synthesized `tool.start`
+# carrying a raw over-bound `tool_use_id` cost every event in its batch. The open and the close now read
+# the call through one reader, `toolCallOf`, which holds `tool_name` to its pattern and the ref to its
+# 64 B bound.
+TC_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")     # D1 § 6.5's tool_name pattern
+TC_LONG_REF = "toolu_" + "x" * 94                       # 100 B, over § 6.5's 64 B harness_call_ref bound
+assert len(TC_LONG_REF.encode()) == 100
+
+
+def tc_post(tool, tuid):
+    return {"session_id": SID, "hook_event_name": "PostToolUse", "prompt_id": "p1", "tool_name": tool,
+            "tool_input": {"command": "echo hello"}, "tool_response": {}, "tool_use_id": tuid,
+            "cwd": "/home/agent/mezzanine"}
+
+
+def tc_calls(s):
+    return [(e["kind"], e["data"].get("tool_name"), e["data"].get("harness_call_ref"),
+             e["data"].get("synthesized"), e["data"].get("match"))
+            for e in s.events() if e["kind"] in ("tool.start", "tool.end")]
+
+
+def tc_off_bound(s):
+    """Every tool.start / tool.end field in the spool that the ingest refuses: a tool_name off its
+    pattern, or a harness_call_ref over 64 B. The RED below feeds it a known positive, so its empty
+    answer on the real reporter is a measurement."""
+    out = []
+    for e in s.events():
+        if e["kind"] not in ("tool.start", "tool.end"):
+            continue
+        d = e["data"]
+        if not (isinstance(d.get("tool_name"), str) and TC_NAME_RE.match(d["tool_name"])):
+            out.append((e["kind"], "tool_name", d.get("tool_name")))
+        ref = d.get("harness_call_ref")
+        if ref is not None and len(ref.encode()) > 64:
+            out.append((e["kind"], "harness_call_ref", len(ref.encode())))
+    return out
+
+
+def tc_synth_case(name, tool, tuid, reporter=REPORTER):
+    s = seat(name)
+    hook(s, "PostToolUse", tc_post(tool, tuid), reporter=reporter)
+    return s
+
+
+# A — the finding: an unmatched close with an odd tool_name and a 100 B tool_use_id.
+tcA = tc_synth_case("toolcall-synth-long-ref", "Odd Tool!", TC_LONG_REF)
+eq("a synthesized pair sends the close's tool_name as INVALID_TOOL_NAME and its over-bound ref as null, "
+   "exactly as the open would have",
+   [("tool.start", "INVALID_TOOL_NAME", None, True, None),
+    ("tool.end", "INVALID_TOOL_NAME", None, None, "synthesized")], tc_calls(tcA))
+eq("  … so the spool holds no tool.start / tool.end field the ingest refuses", [], tc_off_bound(tcA))
+eq("  … and the bad name is counted, as it is on the open", 1, tcA.counters().get("invalid_tool_name"))
+
+# B — a name of legal characters over its 64 B bound, with an in-bound ref: the ref is kept.
+tcB = tc_synth_case("toolcall-synth-long-name", "A" * 100, "toolu_inbound")
+eq("a synthesized pair holds a 100 B tool_name to the pattern and keeps an in-bound ref",
+   [("tool.start", "INVALID_TOOL_NAME", "toolu_inbound", True, None),
+    ("tool.end", "INVALID_TOOL_NAME", None, None, "synthesized")], tc_calls(tcB))
+
+# C — the close reads the name as the open stored it, so an odd-named call still pairs by name. Two
+# calls are open, and the over-bound ref was stored as null, so neither exact key nor `sole_open` can
+# match; `lifo_tool_name` is the rule left, and it compares the close's name with the stored one.
+tcC = seat("toolcall-lifo-odd-name")
+hook(tcC, "PreToolUse", pre(tuid="toolu_c1"))
+hook(tcC, "PreToolUse", pre(tool="Odd Tool!", tuid=TC_LONG_REF))
+hook(tcC, "PostToolUse", tc_post("Odd Tool!", TC_LONG_REF))
+eq("an odd-named close pairs with its open by name instead of synthesizing a phantom pair",
+   [("tool.start", "Bash", "toolu_c1", None, None),
+    ("tool.start", "INVALID_TOOL_NAME", None, None, None),
+    ("tool.end", "INVALID_TOOL_NAME", None, None, "lifo_tool_name")], tc_calls(tcC))
+eq("  … and the spool holds no tool.start / tool.end field the ingest refuses", [], tc_off_bound(tcC))
+
+# RED — the close's read as it was before card#11574: the payload's name and ref taken raw. Case A's
+# pair then carries both the odd name and the 100 B ref, which is the field the ingest refuses the
+# batch for; the planted copy also proves `tc_off_bound` finds what it looks for.
+p_raw_close = plant(("      const { toolName, ref } = toolCallOf(payload);\n      const m = matchClose(",
+                     "      const toolName = typeof payload.tool_name === 'string' ? payload.tool_name : 'INVALID_TOOL_NAME';\n"
+                     "      const ref = typeof payload.tool_use_id === 'string' ? payload.tool_use_id : null;\n"
+                     "      const m = matchClose("))
+tcR = tc_synth_case("toolcall-synth-red", "Odd Tool!", TC_LONG_REF, reporter=p_raw_close)
+eq("RED: a close read raw puts the odd tool_name on both halves of the synthesized pair and the 100 B "
+   "ref on its tool.start — a batch the ingest refuses whole with 422",
+   [("tool.start", "tool_name", "Odd Tool!"), ("tool.start", "harness_call_ref", 100),
+    ("tool.end", "tool_name", "Odd Tool!")], tc_off_bound(tcR))
+redgreen("a synthesized tool call carries the same bounds as an observed one (D1 § 6.5, § 6.6, card#11574)",
+         "close read raw -> synthesized tool.start with tool_name 'Odd Tool!' and a 100 B harness_call_ref, "
+         "tool.end with the same name; an odd-named close beside another open call synthesizes a phantom pair",
+         "open and close both read through toolCallOf -> INVALID_TOOL_NAME (counted) and a null ref on the "
+         "synthesized pair, an in-bound ref kept, and the odd-named close paired by lifo_tool_name")
+
+
 print("\n== 21. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
 # WHY THIS IS A CHECK AND NOT JUST A TEARDOWN. Every hook that finds a stale lock forks a real
 # detached flusher (§ 2.3, P-7) — correct reporter behaviour, and nobody's bug in the product —
