@@ -50,7 +50,7 @@ class TheLoungeFloorRoutesEveryWalkTest extends TestCase
     private const TSX = __DIR__.'/../../../../resources/floor/tiles/floor-plane.tsx';
 
     /** The PM office's doorway on the lounge floor: the unpainted cells of its back wall's row, against the partition. */
-    private const DOORWAY = ['row' => 47, 'from' => 78, 'to' => 89];
+    private const DOORWAY = ['row' => 47, 'from' => 64, 'to' => 75];
 
     private function defaultMapPath(): string
     {
@@ -362,7 +362,7 @@ class TheLoungeFloorRoutesEveryWalkTest extends TestCase
         foreach ($doc['layers'] as &$l) {
             if ($l['type'] === 'tilelayer' && in_array(16, $l['data'], true)) {
                 $l['data'][array_search(16, $l['data'], true)] = 0;
-                // desk 2's slot spans x 1,120–1,560, y 24–311: the door's foot cell at (1,200, 296)
+                // desk 2's slot spans x 1,136–1,576, y 24–311: the door's foot cell at (1,200, 296)
                 $l['data'][36 * $doc['width'] + 150] = 16;
             }
         }
