@@ -48,17 +48,26 @@ member.
 
 ## Operator setup — what must be set, by name
 
-Two GitHub Actions **variables** and one **secret**, on `PupFuzz/mezzanine`:
+Two GitHub Actions **variables** and one **environment secret**, on `PupFuzz/mezzanine`.
+
+First create the environment, in the GitHub web UI (repo Settings → Environments → New
+environment): name it `kanban-writeback` and, under *Deployment branches and tags*, limit it to
+the **`main`** branch alone. The promote job declares `environment: kanban-writeback`, so GitHub
+gives the secret to that job only when it runs on `main` — a release push, or a
+`workflow_dispatch` (dry run included) started from `main`. Store the secret there, and once a
+promote run on `main` is green, delete the repository secret of the same name
+(`gh secret delete KANBAN_WRITEBACK_TOKEN --repo PupFuzz/mezzanine`); from then on every
+pull-request workflow, and any run on another branch, gets no token:
 
 ```
-gh secret   set KANBAN_WRITEBACK_TOKEN --repo PupFuzz/mezzanine     # a kanban API token
+gh secret   set KANBAN_WRITEBACK_TOKEN --env kanban-writeback --repo PupFuzz/mezzanine   # a kanban API token
 gh variable set KANBAN_API_BASE        --repo PupFuzz/mezzanine --body 'https://<kanban-host>/api/v3'
 gh variable set KANBAN_EXPECTED_HOST   --repo PupFuzz/mezzanine --body '<kanban-host>'
 ```
 
 | Name | Kind | Why it is that kind |
 |---|---|---|
-| `KANBAN_WRITEBACK_TOKEN` | **secret** | The bearer token the mover sends. Its kanban user must be a **member of board 14 with move permission** — see G-1. Never printed by any workflow here. |
+| `KANBAN_WRITEBACK_TOKEN` | **environment secret** (`kanban-writeback`) | The bearer token the mover sends. Its kanban user holds a **Custom role with Move tasks**, or **Member**, on board 14 — never the board owner or an admin — and is a member of no other board (see G-1; agent-board-toolkit `docs/INSTALL.md` § 6a, *The writeback token's identity*, owns the setup). Issue the token with the `read+write` scope. It is an environment secret so that pull-request workflows cannot read it: a repository secret is readable by every same-repo workflow run, including one a pull request edits. `release-promote-cards.yml`'s `promote` job is the one reader; `git grep -n KANBAN_WRITEBACK_TOKEN .github/` lists every reader, and no guard enforces that there is one. Never printed by any workflow here. |
 | `KANBAN_API_BASE` | **variable** | The real API base. The committed `.release-pr.json` value is a host-scrubbed **placeholder**; the real one arrives out-of-band, so a PR editing that file cannot redirect the token by itself. |
 | `KANBAN_EXPECTED_HOST` | **variable** | The **only** host the token may be sent to, checked before any request. It has **no baked default**: unset ⇒ the mover refuses and the token is never sent. |
 

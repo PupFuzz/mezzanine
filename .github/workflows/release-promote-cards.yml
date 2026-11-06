@@ -8,7 +8,8 @@
 # `main`, pulls every `card#<id>` token out of them, and moves those board-14 cards from
 # "Shipped to dev" to "Released to main". Board id and both stage-id sets come from
 # `.release-pr.json`; the API base and the host pin come from repo VARIABLES; the credential
-# comes from a repo SECRET. Nothing about the board is spelled in this file.
+# comes from the `kanban-writeback` ENVIRONMENT's secret (see the `environment:` line on the
+# job). Nothing about the board is spelled in this file.
 #
 # WHY THE TOKEN MOVER AND NOT THE TOOLKIT'S GENERIC ONE. Owned in ONE place, and only one:
 # `bin/promote-cards-by-token`'s own header, § WHY THIS MOVER AND NOT THE TOOLKIT'S GENERIC ONE.
@@ -19,7 +20,7 @@
 # ISOLATED IN ITS OWN WORKFLOW ON PURPOSE, so a board hiccup can never block or red the
 # release itself — this job is the last thing in the chain, not a gate on it.
 #
-# ⚠ IT CANNOT WORK UNTIL AN OPERATOR SETS THE SECRET AND THE TWO VARIABLES (docs/KANBAN.md
+# ⚠ IT CANNOT WORK UNTIL AN OPERATOR SETS THE ENVIRONMENT SECRET AND THE TWO VARIABLES (docs/KANBAN.md
 # § Operator setup). Until then it FAILS LOUDLY at the preflight below. That is deliberate:
 # the alternative — skipping quietly when a credential is absent — is a release that silently
 # stops promoting and a board that silently stops being true.
@@ -58,6 +59,15 @@ jobs:
     # is pure bash over git + curl + jq, all three stock on ubuntu-latest, so there is
     # nothing to install and no interpreter to pin.
     runs-on: ubuntu-latest
+    # The writeback token is an ENVIRONMENT secret, not a repository one (card#12934;
+    # agent-board-toolkit v0.52.0, required on a public repo). The `kanban-writeback`
+    # environment's deployment branches are `main` only, so GitHub hands the secret to this
+    # job only when it runs on `main` — a push to `main`, or a workflow_dispatch from `main`
+    # (dry run included). Once the repository secret of the same name is deleted (docs/KANBAN.md
+    # § Operator setup), a run on any other ref, and every pull_request-triggered workflow,
+    # gets no token. Keep this the only job that reads the secret; no guard checks that.
+    # `git grep -n KANBAN_WRITEBACK_TOKEN .github/` lists every reader.
+    environment: kanban-writeback
     steps:
       # fetch-depth: 0 + tags — the mover derives the released range from git history and
       # fail-closes on a shallow or tagless clone rather than guessing one.
@@ -89,7 +99,7 @@ jobs:
       # exactly as PR-editable as that one, so a single PR editing both to a lookalike host
       # would satisfy the guard and hand over the token. A repo variable takes repo-settings
       # write, which is outside the code-review plane.
-      - name: Preflight — the secret and the two repo variables must exist
+      - name: Preflight — the environment secret and the two repo variables must exist
         env:
           KANBAN_WRITEBACK_TOKEN: ${{ secrets.KANBAN_WRITEBACK_TOKEN }}
           KANBAN_API_BASE: ${{ vars.KANBAN_API_BASE }}
@@ -98,7 +108,7 @@ jobs:
           set -euo pipefail
           rc=0
           if [ -z "${KANBAN_WRITEBACK_TOKEN:-}" ]; then
-            echo "::error::secrets.KANBAN_WRITEBACK_TOKEN is not set — refusing to run. Set it with: gh secret set KANBAN_WRITEBACK_TOKEN --repo PupFuzz/mezzanine (a kanban API token whose user is a MEMBER of board 14 WITH move permission; a non-member token reads 0 cards and promotes nothing, silently). See docs/KANBAN.md."
+            echo "::error::secrets.KANBAN_WRITEBACK_TOKEN is not set in the kanban-writeback environment — refusing to run. Set it with: gh secret set KANBAN_WRITEBACK_TOKEN --env kanban-writeback --repo PupFuzz/mezzanine (the environment must exist with deployment branches limited to main, and this run must be on main). The token's kanban user must hold a Custom role with Move tasks, or Member, on board 14 — never the board owner or an admin; a non-member token reads 0 cards and promotes nothing, silently. See docs/KANBAN.md § Operator setup."
             rc=1
           fi
           if [ -z "${KANBAN_API_BASE:-}" ]; then
@@ -167,7 +177,7 @@ jobs:
                          "${KANBAN_API_BASE%/}/users/current.json" || echo 000)"
           if [ "$code" != "200" ]; then
             rm -f /tmp/whoami.json
-            echo "::error::the writeback secret did not authenticate — GET /users/current.json returned HTTP $code. The token is malformed, revoked or expired; this is not a board-permission question. Re-issue it and: gh secret set KANBAN_WRITEBACK_TOKEN --repo PupFuzz/mezzanine. See docs/KANBAN.md § G-17."
+            echo "::error::the writeback secret did not authenticate — GET /users/current.json returned HTTP $code. The token is malformed, revoked or expired; this is not a board-permission question. Re-issue it and: gh secret set KANBAN_WRITEBACK_TOKEN --env kanban-writeback --repo PupFuzz/mezzanine. See docs/KANBAN.md § G-17."
             exit 1
           fi
           actual="$(jq -r '.data.id // "absent"' /tmp/whoami.json 2>/dev/null || echo unparseable)"
@@ -180,7 +190,8 @@ jobs:
 
       - name: Promote cards named in the released range
         env:
-          # A kanban API token whose user is a MEMBER of board 14 WITH move permission.
+          # A kanban API token (the kanban-writeback environment secret) whose user holds a
+          # Custom role with Move tasks, or Member, on board 14 — never owner or admin.
           # Unset ⇒ the mover exits 2 saying so; it never degrades to a no-op. Never echoed.
           KANBAN_WRITEBACK_TOKEN: ${{ secrets.KANBAN_WRITEBACK_TOKEN }}
           # Fail-closed host pin, checked BEFORE the token is sent: the mover refuses unless
