@@ -48,6 +48,7 @@
 #cfg	directive	bin/env-mirror-diff.mirror.sh	disable=SC2317	2
 #cfg	directive	bin/env-mirror-diff.sh	disable=SC2016	6
 #cfg	directive	bin/shell-lint.sh	disable=SC2064	1
+#cfg	directive	tools/ci-store-probe.selftest.sh	source=bin/lib/selftest-assert.sh	1
 #pop	bin/dependency-audit.selftest.sh
 #pop	bin/deploy-gate-inputs.selftest.sh
 #pop	bin/deploy-gate-inputs.sh
@@ -63,6 +64,7 @@
 #pop	bin/supervision.sh
 #pop	bin/vendor-pin-check.sh
 #pop	fleet-reporter/install.sh
+#pop	tools/ci-store-probe.selftest.sh
 bin/dependency-audit.selftest.sh	SC2015	54
 bin/dependency-audit.selftest.sh	SC2016	92
 bin/dependency-audit.selftest.sh	SC2018	1

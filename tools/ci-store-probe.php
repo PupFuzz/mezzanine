@@ -38,14 +38,40 @@
  * `§ 6.4`. `Tests\Feature\MySqlColumnTypeTest` owns the emitted DDL, and the migrations
  * themselves own whether they apply. This file only proves WHERE they applied.
  *
- * Connection parameters come from the environment (`DB_HOST`, `DB_PORT`, `DB_DATABASE`,
- * `DB_USERNAME`, `DB_PASSWORD`) — the same variables the lane exports for Laravel, so the script
- * and the application cannot end up addressing different servers.
+ * WHERE IT CONNECTS is the application's answer, not this file's (card#10318). It boots only the
+ * app's environment and configuration (`LoadEnvironmentVariables` + `LoadConfiguration`: the process
+ * environment over `server/.env`, or a cached config if one exists — what `artisan` sees), takes
+ * `connections.mysql`, and has `bin/lib/app-mysql-endpoint.php` turn it into the DSN Laravel's own
+ * `MySqlConnector` would build — so `DB_SOCKET` beats `DB_HOST`/`DB_PORT`, and `DB_URL` merges over
+ * them, here as in the app. It used to compose `host=DB_HOST;port=DB_PORT` itself; on a socket-only
+ * private mariadbd that measured a different server than the suite, and `--expect-tables=none`
+ * certified a server nobody had touched. `tools/ci-store-probe.selftest.sh` runs the cases it lists
+ * (DB_HOST/DB_PORT, DB_SOCKET with and without a live host, DB_URL by host and by socket) against two
+ * private mariadbd instances.
+ *
+ * ⚠ WHY SHARING THE ADDRESSING DOES NOT DEFEAT THE CHECK. What this probe proves from outside is what
+ * the SERVER holds: it opens its own PDO connection, in its own process, and asks `VERSION()` and
+ * `information_schema` — never what the app believes it did. The addressing is shared on purpose: a
+ * second rule for "which server" is the defect card#10318 fixed, not independence. It reads
+ * `connections.mysql` by name, never `database.default`, so a suite that resolved to another
+ * connection or engine writes nothing where this measures, and the `some` half reds. It boots no
+ * service provider and calls none of the app's database code beyond the two framework methods that
+ * file names.
+ *
+ * `DB_DATABASE` must still be EXPORTED by the caller, as before: the lane pins it to § 6.2's test
+ * database, and a value read silently out of a developer's `.env` could name a database that already
+ * holds tables. The endpoint measured is printed on every run; the DSN carries no credential.
  */
 
 declare(strict_types=1);
 
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Bootstrap\LoadConfiguration;
+use Illuminate\Foundation\Bootstrap\LoadEnvironmentVariables;
+
 const FLEET_STATE = __DIR__.'/../docs/design/FLEET-STATE.md';
+
+const SERVER = __DIR__.'/../server';
 
 /** § 6.1's engine row. The `≥` is U+2265, as written in the document. */
 const FLOOR_RE = '/^\|\s*Engine \/ version\s*\|\s*\*\*MariaDB\s*\x{2265}\s*([0-9]+(?:\.[0-9]+)+)\*\*\s*\|/mu';
@@ -87,15 +113,19 @@ function declaredFloor(): string
     return $m[1];
 }
 
-/** Retry rather than fail on the first refused connection: the service container may still be opening. */
-function connect(string $dsn, string $user, string $password): PDO
+/**
+ * Retry rather than fail on the first refused connection: the service container may still be opening.
+ *
+ * @param  array<int, mixed>  $options  the connection's own `options` (its CA, when one is set)
+ */
+function connect(string $dsn, string $user, string $password, array $options): PDO
 {
     $deadline = time() + 60;
     $last = '';
 
     do {
         try {
-            return new PDO($dsn, $user, $password, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+            return new PDO($dsn, $user, $password, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION] + $options);
         } catch (PDOException $e) {
             $last = $e->getMessage();
             usleep(500_000);
@@ -103,6 +133,44 @@ function connect(string $dsn, string $user, string $password): PDO
     } while (time() < $deadline);
 
     fail("could not connect to {$dsn} within 60s: {$last}");
+}
+
+/**
+ * The app's `mysql` connection, resolved the way the app resolves it (see the header).
+ *
+ * @return array{0: string, 1: string, 2: string, 3: string, 4: array<int, mixed>} DSN, database, user, password, PDO options
+ */
+function appStore(): array
+{
+    $server = SERVER;
+    if (! is_file("{$server}/vendor/autoload.php")) {
+        fail("no {$server}/vendor/autoload.php — run `composer install` in server/. The probe resolves its "
+            ."endpoint through the app's own configuration, and there is none to read without it.");
+    }
+    require "{$server}/vendor/autoload.php";
+    require __DIR__.'/../bin/lib/app-mysql-endpoint.php';
+
+    /** @var Application $app */
+    $app = require "{$server}/bootstrap/app.php";
+    $app->bootstrapWith([
+        LoadEnvironmentVariables::class,
+        LoadConfiguration::class,
+    ]);
+
+    $connection = $app['config']->get('database.connections.mysql');
+    if (! is_array($connection)) {
+        fail('server/config/database.php declares no `mysql` connection — the one D-15 pins and this probe measures.');
+    }
+
+    ['config' => $config, 'dsn' => $dsn] = app_mysql_endpoint($connection);
+
+    return [
+        $dsn,
+        (string) ($config['database'] ?? ''),
+        (string) ($config['username'] ?? ''),
+        (string) ($config['password'] ?? ''),
+        (array) ($config['options'] ?? []),
+    ];
 }
 
 $expect = null;
@@ -121,23 +189,20 @@ if (! in_array($expect, ['none', 'some'], true)) {
     fail('--expect-tables=none|some is required.');
 }
 
-$host = getenv('DB_HOST') ?: '127.0.0.1';
-$port = getenv('DB_PORT') ?: '3306';
-$database = getenv('DB_DATABASE') ?: '';
-$user = getenv('DB_USERNAME') ?: 'root';
-$password = (string) getenv('DB_PASSWORD');
-
-if ($database === '') {
+if ((string) getenv('DB_DATABASE') === '') {
     fail('DB_DATABASE is unset. The lane pins it to the § 6.2 test database and this probe reads the same variable.');
 }
 
-$pdo = connect("mysql:host={$host};port={$port}", $user, $password);
+[$dsn, $database, $user, $password, $options] = appStore();
+note("measuring {$dsn} — server/config/database.php's `mysql` connection, as the app resolves it.");
+
+$pdo = connect($dsn, $user, $password, $options);
 
 $version = (string) $pdo->query('SELECT VERSION()')->fetchColumn();
 
 // 1. The product. Laravel's mysql driver speaks to both, and only one of them is what D-15 pins.
 if (stripos($version, 'mariadb') === false) {
-    fail("the server on {$host}:{$port} reports VERSION() '{$version}', which does not name MariaDB. "
+    fail("the server at {$dsn} reports VERSION() '{$version}', which does not name MariaDB. "
         .'docs/PLAN.md D-15 (amended 2026-09-09) pins the store to MariaDB; a lane certifying '
         .'migrations against anything else is certifying the wrong grammar.');
 }

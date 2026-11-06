@@ -11,7 +11,8 @@
  *              command on that host dies at boot.
  *   locality — where does the app actually CONNECT, and does its connection carry a CA? Resolved through
  *              the real `server/config/database.php`, the real `Illuminate\Support\ConfigurationUrlParser`
- *              and the real `MySqlConnector::getDsn()` — the DSN pdo_mysql would be handed.
+ *              and the real `MySqlConnector::getDsn()` — the DSN pdo_mysql would be handed — both called
+ *              through `bin/lib/app-mysql-endpoint.php`, which tools/ci-store-probe.php connects through too.
  *
  * ⚠ NOTHING HERE IS A RE-IMPLEMENTATION. Every answer comes out of `server/vendor/` and `server/config/`.
  * The one judgement this file makes that no app code makes is WHICH HOST NAMES ARE THIS HOST, and that
@@ -43,7 +44,6 @@ declare(strict_types=1);
 use Dotenv\Dotenv;
 use Dotenv\Repository\Adapter\ArrayAdapter;
 use Dotenv\Repository\RepositoryBuilder;
-use Illuminate\Support\ConfigurationUrlParser;
 use Illuminate\Support\Env;
 
 /**
@@ -72,6 +72,7 @@ if (! is_file($autoload)) {
         . 'and config/database.php out of the REAL vendor tree; there is nothing to compare against without it.');
 }
 require $autoload;
+require __DIR__ . '/lib/app-mysql-endpoint.php';
 
 $mode = $argv[1] ?? '';
 $keys = array_slice($argv, 2);
@@ -131,20 +132,14 @@ function freshRepository(): \Dotenv\Repository\RepositoryInterface
 }
 
 /**
- * Where the app CONNECTS, read off the DSN `Illuminate\Database\Connectors\MySqlConnector` would build.
+ * Where the app CONNECTS, read off the DSN `Illuminate\Database\Connectors\MySqlConnector` would build —
+ * `bin/lib/app-mysql-endpoint.php`, the resolver tools/ci-store-probe.php connects through too (card#10318).
  * Calling the connector's own method is the point: `hasSocket()`'s `isset() && ! empty()` decides whether
  * `DB_SOCKET=false` or `DB_SOCKET=0` is a socket at all, and a restatement of that here would be a second
  * answer to a question the framework already answers.
  */
-function storeFromDsn(array $connection): string
+function storeFromDsn(string $dsn): string
 {
-    static $getDsn = null;
-    if ($getDsn === null) {
-        $getDsn = new ReflectionMethod(\Illuminate\Database\Connectors\MySqlConnector::class, 'getDsn');
-        $getDsn->setAccessible(true);
-    }
-    $dsn = $getDsn->invoke(new \Illuminate\Database\Connectors\MySqlConnector, $connection);
-
     if (str_starts_with($dsn, 'mysql:unix_socket=')) {
         return 'socket';
     }
@@ -229,13 +224,14 @@ while (($line = fgets(STDIN)) !== false) {
         continue;
     }
 
-    $connection = (require $repoRoot . '/server/config/database.php')['connections']['mysql'];
-    $connection = (new ConfigurationUrlParser)->parseConfiguration($connection);
+    ['config' => $connection, 'dsn' => $dsn] = app_mysql_endpoint(
+        (require $repoRoot . '/server/config/database.php')['connections']['mysql']
+    );
 
     fwrite($out, implode("\t", [
         $dir,
         'ok',
-        storeFromDsn($connection),
+        storeFromDsn($dsn),
         array_key_exists($caOption, $connection['options'] ?? []) ? 'set' : 'none',
         cacheDriver($repoRoot),
     ]) . "\n");
