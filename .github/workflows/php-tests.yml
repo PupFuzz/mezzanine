@@ -159,8 +159,10 @@ jobs:
           --health-timeout=5s
           --health-retries=24
 
-    # Read by BOTH the application (Laravel's `env()`) and `tools/ci-store-probe.php`, on purpose:
-    # one source for the address means the probe cannot certify a server the suite never used.
+    # Read by the application through Laravel's `env()` — and by `tools/ci-store-probe.php` through
+    # the same `env()`, since the probe takes its address from the app's own `mysql` connection
+    # (card#10318): one rule for the address means the probe cannot certify a server the suite never
+    # used. Each probe step prints the endpoint it measured.
     # `DB_DATABASE` is § 6.2's pinned test database and matches `MARIADB_DATABASE` above — the
     # suite's own copy of it is the forced pin in `phpunit.xml`, which this export does not and
     # must not move. `DB_CONNECTION` agrees with `phpunit.xml`'s unforced declaration; were the two

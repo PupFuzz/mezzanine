@@ -200,7 +200,7 @@ does change what they report, and some of them need an action anyway.
 **Checked and NOT a consumer**, recorded so the next reader does not sweep them again (2026-09-20):
 the CI lane (`.github/workflows/php-tests.yml` runs a MariaDB service container and exports
 `DB_USERNAME: root` with an empty password at the job level — it never sees this host's login);
-`tools/ci-store-probe.php` (reads what that lane exports); `bin/env-mirror-diff.sh` (its own header:
+`tools/ci-store-probe.php` (it resolves the app's `mysql` connection, so in that lane it reads what the lane exports, and run by hand in a checkout it reads that checkout's `server/.env`, as the suite row above does); `bin/env-mirror-diff.sh` (its own header:
 reaches no host, needs no credential); the PHP configuration under `~/etc` and `~/domains` (no
 `env[DB_*]`, no password directive set); the fleet-reporter cron job (its only `mysql` occurrence is
 a redaction selftest fixture); the coordination tooling under `~/.local/bin` (no MariaDB client);
