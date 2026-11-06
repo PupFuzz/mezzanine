@@ -36,6 +36,7 @@ use Tests\TestCase;
  */
 class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
 {
+    use ChecksAWalkersBody;
     use DrivesTheFloorScreen;
 
     private const ROUTE = '../floor/route.js';
@@ -54,15 +55,6 @@ class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
     private const SEAT_WALKS = ['A1', 'A2', 'A25', 'A26'];
 
     // ── § 12's rows, read out of the document ────────────────────────────────────────────────
-
-    /** @return array{margin: int, depth: int} § 12's *Walker clearance* row */
-    private function clearance(): array
-    {
-        $this->assertSame(1, preg_match('/^\| \*\*Walker clearance\*\* \| \*\*(\d+) px beside; (\d+) px in depth\*\* \|/m', $this->floorMd(), $m),
-            '§ 12 carries no *Walker clearance* row in the form this test reads');
-
-        return ['margin' => (int) $m[1], 'depth' => (int) $m[2]];
-    }
 
     /** @return array{reach: int, weight: int} § 12's *Walkway centring* row */
     private function centring(): array
@@ -91,77 +83,7 @@ class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
         return (string) realpath(base_path('../resources/floor/default.tmj'));
     }
 
-    // ── The property ────────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Where one desk's walker stands over something it must not, sampled every pixel along its drawn polyline: a wall
-     * or standing rect within `$side` px of the feet sideways while the feet are within `$depth` px of its depth span,
-     * or another desk's slot or box under the bare body while the feet are inside its depth span.
-     *
-     * @return list<string> the first defect of the desk, or none
-     */
-    private function bodyDefects(array $floor, array $desk, float $side, float $depth): array
-    {
-        $half = $floor['body']['w'] / 2;
-        $rects = [];
-
-        foreach ($floor['obstacles'] as $o) {
-            $rects[] = [$o, $side, $depth, $o['kind']];
-        }
-
-        foreach ($floor['desks'] as $other) {
-            if ($other['key'] !== $desk['key']) {
-                foreach ([$other['slot'], $other['box']] as $r) {
-                    $rects[] = [$r, $half, 0.0, $other['key']];
-                }
-            }
-        }
-
-        $points = $desk['points'] ?? [];
-
-        for ($i = 1; $i < count($points); $i++) {
-            [$a, $b] = [$points[$i - 1], $points[$i]];
-            $n = max(1, (int) ceil(hypot($b['x'] - $a['x'], $b['y'] - $a['y'])));
-
-            for ($k = 0; $k <= $n; $k++) {
-                $p = ['x' => $a['x'] + ($b['x'] - $a['x']) * $k / $n, 'y' => $a['y'] + ($b['y'] - $a['y']) * $k / $n];
-
-                foreach ($rects as [$r, $s, $d, $what]) {
-                    if ($p['x'] - $s < $r['x'] + $r['w'] && $r['x'] < $p['x'] + $s && $r['y'] - $d < $p['y'] && $p['y'] < $r['y'] + $r['h'] + $d) {
-                        return ["{$desk['key']} ({$desk['clearance']}): feet at ".json_encode($p)." stand within {$s} px beside / {$d} px in depth of {$what} ".json_encode([$r['x'], $r['y'], $r['w'], $r['h']])];
-                    }
-                }
-            }
-        }
-
-        return [];
-    }
-
-    /**
-     * card#12513: where one walk's feet stand on its own desk's side table or its interns' rows (`$solid`, scene
-     * coordinates), sampled every pixel along `$points`.
-     *
-     * @return list<string> the first defect, or none
-     */
-    private function couchCrossing(string $what, array $points, array $solid): array
-    {
-        for ($i = 1; $i < count($points); $i++) {
-            [$a, $b] = [$points[$i - 1], $points[$i]];
-            $n = max(1, (int) ceil(hypot($b['x'] - $a['x'], $b['y'] - $a['y'])));
-
-            for ($k = 0; $k <= $n; $k++) {
-                $p = ['x' => $a['x'] + ($b['x'] - $a['x']) * $k / $n, 'y' => $a['y'] + ($b['y'] - $a['y']) * $k / $n];
-
-                foreach ($solid as $r) {
-                    if ($r['x'] < $p['x'] && $p['x'] < $r['x'] + $r['w'] && $r['y'] < $p['y'] && $p['y'] < $r['y'] + $r['h']) {
-                        return ["{$what}: feet at ".json_encode($p).' stand on its own side table '.json_encode([$r['x'], $r['y'], $r['w'], $r['h']])];
-                    }
-                }
-            }
-        }
-
-        return [];
-    }
+    // ── The property (`ChecksAWalkersBody`'s samplers, over a probed floor) ─────────────────────
 
     /** card#12513: every desk of a probed floor whose route crosses its own couch. */
     private function floorCouchDefects(array $floor): array

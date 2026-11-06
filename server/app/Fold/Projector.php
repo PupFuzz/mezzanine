@@ -1199,7 +1199,7 @@ class Projector
             if (is_int($declaredUser) && $declaredUser >= 1 && $declaredUser <= Wire::BOARD_USER_MAX) {
                 $boardUser = $declaredUser;
             } else {
-                Counters::seat($e->seatRef, FoldEvent::FORMAT_REFUSED.'board_user_id');
+                Counters::seat($e->seatRef, Counters::FORMAT_REFUSED.'board_user_id');
             }
         }
 

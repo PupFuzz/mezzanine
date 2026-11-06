@@ -5561,6 +5561,8 @@ CSTEPS = {
     "clear2_end": lambda s, r, t, b: sh(s, "SessionEnd", SID2, r, t, reason="clear"),
     "clear_start2": lambda s, r, t, b: sh(s, "SessionStart", N2SID, r, t, source="clear"),
     "stop_n2_none": lambda s, r, t, b: sh(s, "Stop", N2SID, r, t, **stop(N2SID)),
+    "stop_n2_bg2": lambda s, r, t, b: sh(s, "Stop", N2SID, r, t, **stop(N2SID, AG2)),
+    "sstop2_n2": lambda s, r, t, b: sh(s, "SubagentStop", N2SID, r, t, agent_id=AG2, agent_type="coder", **stop(N2SID)),
     # Fold units: a record journaled out of decision order.
     "dup_open_new": lambda s, r, t, b: index_append(s, t, {"k": "session_open", "session_id": NEWSID, "source": "clear"}),
     "late_carry": lambda s, r, t, b: index_append(s, t, {"k": "carry", "call_id": spawn_id(s), "from_session_id": BGSID}),
@@ -5802,14 +5804,55 @@ eq("  … because the snapshot it wrote persisted the clear tombstone's end_reas
    ([(c.get("end_reason"), c.get("paired_to")) for c in snap.get("sessions_closed", []) if c.get("session_id") == BGSID],
     [e.get("carried_from") for e in snap.get("entries", []) if e.get("call_id") == spawn_id(s)]))
 
-# C11 — two clear tombstones inside the window when a start arrives: the latest is taken and the
-# guess is COUNTED; the next start pairs the remaining one (review R2-5).
-C11 = T2[:-1] + T1[:-1] + ["clear_end", "clear2_end", "clear_start", "clear_start2"]
+# C11 — two terminals, each with a running bound subagent, and both SessionEnd(clear)s land before
+# either SessionStart(clear) (card#12013, review F1 of #337). Each start then finds TWO unpaired
+# clear tombstones inside its window, and recency cannot tell which one is its own: taking the
+# latest crossed the pairing, re-keyed terminal 1's dispatch into terminal 2's new session, and
+# terminal 2's next Stop (listing only its own subagent) aborted it while it ran. An ambiguous pick
+# pairs NOTHING and is counted; each carry stays under its own old session, and each subagent's own
+# SubagentStop closes its dispatch.
+C11 = T2[:-1] + T1[:-1] + ["clear_end", "clear2_end", "clear_start", "clear_start2",
+                           "stop_n2_bg2", "stop_new_bg1", "sstop1_new", "sstop2_n2"]
 s, ev, ctr, _, per = clear_trace("clear-c11", C11)
-C11_WANT = ([(SID2, NEWSID), (BGSID, N2SID)], 1)
-c11_got = lambda s, ctr: (pairs(s), ctr.get("clear_pair_ambiguous"))
-eq("C11: the first start pairs the LATEST unpaired tombstone, counts clear_pair_ambiguous, and the "
-   "second start pairs the remaining one", C11_WANT, c11_got(s, ctr))
+
+
+def c11_got(s, ev, ctr):
+    spawns = {e["session_id"]: e["data"]["call_id"] for e in ev if e["kind"] == "subagent.spawn"}
+    return {
+        "pairs": pairs(s), "ambiguous": ctr.get("clear_pair_ambiguous"), "paired": ctr.get("clear_signals_paired"),
+        "d1": [c[:2] for c in closes_of(ev, spawns[BGSID])], "d2": [c[:2] for c in closes_of(ev, spawns[SID2])],
+    }
+
+
+C11_WANT = {"pairs": [], "ambiguous": 2, "paired": None,
+            "d1": [("completed", "subagent_stop_hook")], "d2": [("completed", "subagent_stop_hook")]}
+v11 = c11_got(s, ev, ctr)
+for k in C11_WANT:
+    eq(f"C11 (two ends, then two starts) {k}: an ambiguous start pairs nothing, and no running subagent "
+       "is aborted by the other terminal's Stop", C11_WANT[k], v11[k])
+
+# C11e — the mirror: both SessionStart(clear)s land before either SessionEnd(clear). Each end finds
+# two unpaired clear-started sessions inside K.CLEAR_GAP_MS and pairs neither. The end's counter and
+# predicate keep the values a found twin gives them (`reap_noop_second_signal`, no predicate).
+C11E = T2[:-1] + T1[:-1] + ["clear_start", "clear_start2", "clear_end", "clear2_end",
+                            "stop_n2_bg2", "stop_new_bg1", "sstop1_new", "sstop2_n2"]
+s, ev, ctr, prd, per = clear_trace("clear-c11e", C11E)
+v11e = c11_got(s, ev, ctr)
+for k in C11_WANT:
+    eq(f"C11e (two starts, then two ends) {k}", C11_WANT[k], v11e[k])
+eq("  … and each end still counts the start-first no-op, as a found twin always has",
+   (2, {"true": 0, "false": 2}), (ctr.get("reap_noop_second_signal"), prd.get("clear_reap_by_session_end")))
+
+# C11s — the same two terminals clearing one after the other inside one K.CLEAR_PAIR_MS (end, start,
+# end, start): every pick has ONE candidate, because a paired tombstone is not a candidate, so both
+# clears pair with their own twin and nothing is counted ambiguous (review R2-5's sequential case).
+C11S = T2[:-1] + T1[:-1] + ["clear_end", "clear_start", "clear2_end", "clear_start2",
+                            "stop_n2_bg2", "stop_new_bg1", "sstop1_new", "sstop2_n2"]
+s, ev, ctr, _, per = clear_trace("clear-c11s", C11S)
+C11S_WANT = dict(C11_WANT, pairs=[(BGSID, NEWSID), (SID2, N2SID)], ambiguous=None, paired=2)
+v11s = c11_got(s, ev, ctr)
+for k in C11S_WANT:
+    eq(f"C11s (one terminal's clear, then the other's) {k}", C11S_WANT[k], v11s[k])
 
 # C12 — the second signal past K.CLEAR_PAIR_MS: no pairing, and the carry stays under OLD.
 C12 = ["prompt", "pre1", "start1", "launch1", "stop_bg1", "clear_end", CLEAR_PAIR_MS, "clear_start",
@@ -5892,9 +5935,10 @@ s, ev, _, _, per = clear_trace("clear-r5", C9, p_r5)
 eq("RED R5: the activity selection REAPING again, as it did before — terminal 1's clear ENDS terminal 2's session "
    "(card#11824; C9 flips)", 1, two_terminal_view(s, ev, per, "clear_end", "clear_start")["sid2_session_end"])
 p_r6 = plant(("(c) => c.end_reason === 'clear' && !c.paired_to,", "(c) => c.end_reason === 'clear',"))
-s, ev, ctr, _, per = clear_trace("clear-r6", C11, p_r6)
-eq("RED R6: findTwinForStart ignoring paired_to — the second start pairs the already-paired "
-   "tombstone again (C11 flips)", ([(SID2, NEWSID), (SID2, N2SID)], 2), c11_got(s, ctr))
+s, ev, ctr, _, per = clear_trace("clear-r6", C11S, p_r6)
+eq("RED R6: findTwinForStart ignoring paired_to — the already-paired tombstone is a second candidate at "
+   "the second start, which then pairs nothing (C11s flips)", ([(BGSID, NEWSID)], 1),
+   (pairs(s), ctr.get("clear_pair_ambiguous")))
 p_r7 = plant(("      if (e && e.session_id === r.from_session_id) e.carried_from = r.from_session_id;",
               "      if (e) e.carried_from = r.from_session_id;"))
 s, ev, _, _, _ = clear_trace("clear-r7", C15, p_r7)
@@ -5936,6 +5980,14 @@ p_r13 = plant(("        if (twin) { pairClear(ctx, ix, sid, twin.session_id, twi
 s, ev, ctr, prd, per = clear_trace("clear-r13", C3, p_r13)
 eq("RED R13: SessionEnd evaluating the predicate on every clear — C3's counter and predicate leave "
    "their pre-card#11817 values", (None, None, {"true": 1, "false": 1}, [(BGSID, NEWSID)]), c3_got(s, ctr, prd))
+p_r14 = plant(("  if (twin.qualified > 1) { count('clear_pair_ambiguous'); return; }\n",
+               "  if (twin.qualified > 1) count('clear_pair_ambiguous');\n"))
+for case, steps in (("C11", C11), ("C11e", C11E)):
+    s, ev, ctr, _, per = clear_trace(f"clear-r14-{case.lower()}", steps, p_r14)
+    v = c11_got(s, ev, ctr)
+    eq(f"RED R14 ({case}): an ambiguous pick that still pairs the latest candidate — the pairing crosses the two "
+       "terminals and each new session's Stop aborts the OTHER terminal's running dispatch (card#12013; "
+       f"{case} flips)", ([("aborted", "reap_turn_boundary")], [("aborted", "reap_turn_boundary")]), (v["d1"], v["d2"]))
 redgreen("a /clear carries a running dispatch into the new session and pairs by tombstone (§ 8.3, § 8.4, card#11817, card#11824)",
          "carry on every abort reason -> a real exit leaves the dispatch open; a pair that does not re-key "
          "-> NEW's Stop cannot select it; no carried_call_ids -> the server would close it; carry on an "
@@ -5945,11 +5997,13 @@ redgreen("a /clear carries a running dispatch into the new session and pairs by 
          "NEW stays open; the wide window at the end -> terminal 2's dispatch is re-keyed into terminal 1's "
          "session and reaped; SessionStart's source dropped when not first -> no pairing; paired_from reset "
          "by a duplicate session_open -> a second pairing; previous_session_id from the pairing, or the predicate on every "
-         "SessionEnd(clear) -> a wire field leaves its pre-card#11817 value",
+         "SessionEnd(clear) -> a wire field leaves its pre-card#11817 value; an ambiguous pick that still pairs "
+         "-> two terminals' overlapping clears cross, and each Stop aborts the other terminal's running dispatch",
          "both hook orders carry the bound dispatch, name it in carried_call_ids, pair once and re-key it; "
          "its SubagentStop under NEW or OLD closes it once with its inner calls; NEW's Stop and real exit "
          "reap it; an unbound dispatch is reaped as before; a second terminal is untouched in both orders; "
-         "a flusher pass between the signals loses nothing; ambiguous and late pairings are counted; past "
+         "a flusher pass between the signals loses nothing; an ambiguous pick pairs nothing and is counted, in "
+         "both hook orders, while sequential clears each pair their own twin; late pairings are counted; past "
          "either window nothing pairs; previous_session_id, both clear counters and the predicate keep their "
          "pre-card#11817 values")
 

@@ -15,7 +15,7 @@
 // the `themes/` directories (AT-D3-25's theme half). Until then a floor resolves to a theme name and is
 // drawn as it was.
 
-export const THEMES = Object.freeze(['studio']);
+export const THEMES = Object.freeze(['studio', 'cottage']);
 
 export const HOUSE_THEME = 'studio';
 

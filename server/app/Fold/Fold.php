@@ -8,6 +8,7 @@ use App\Ingest\IngestPipeline;
 use Illuminate\Contracts\Database\ConcurrencyErrorDetector;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * `docs/design/FLEET-STATE.md § 6.5` — one transaction per pass, per seat.
@@ -402,7 +403,6 @@ final class Fold
         $applied = 0;
 
         foreach ($this->readable($seatRef, $cursor) as $row) {
-            $event = FoldEvent::fromRow($row);
             $ok = false;
 
             // "Retried ALONE ONCE" — two attempts, and only the second failure quarantines. One
@@ -411,6 +411,13 @@ final class Fold
             // replaying against a cursor that had already skipped it. Lock contention does not
             // spend an attempt at all: it yields below.
             foreach ([1, 2] as $attempt) {
+                // ⛔ ONE `FoldEvent` PER ATTEMPT, BUILT INSIDE THE LOOP (card#11573). The instance
+                // remembers which `format_refused.<field>` counts it has written, and the count is a
+                // row inside this attempt's transaction: an attempt that rolls back takes its count
+                // with it and leaves the instance's memory standing, so an instance shared with
+                // attempt 2 landed the event counted zero times.
+                $event = FoldEvent::fromRow($row);
+
                 try {
                     Outbox::transaction(function () use ($event, $seatRef, $cursor, $row) {
                         if (! $this->lockSeatOrYield($seatRef)) {
@@ -450,7 +457,7 @@ final class Fold
                 $applied++;
             } else {
                 try {
-                    $this->quarantine($seatRef, $cursor, $event, $row->received_at);
+                    $this->quarantine($seatRef, $cursor, $row);
                 } catch (CursorRaced) {
                     return $applied;
                 } catch (SeatLockYielded) {
@@ -492,51 +499,95 @@ final class Fold
         return app(ConcurrencyErrorDetector::class)->causedByConcurrencyError($e);
     }
 
-    private function quarantine(int $seatRef, int $cursor, FoldEvent $event, string $receivedAt): void
+    /**
+     * The second half of § 6.5's poison-event rule: record that the event in `$row` was skipped, and
+     * advance the cursor past it.
+     *
+     * ⛔ NOTHING HERE DEPENDS ON THE STEP THAT JUST FAILED (card#11573). This method used to re-run
+     * `StateRecompute::after()` WITH THE POISON EVENT, so a raise that came from the recompute's own
+     * write — card#9346's non-ASCII `harness_label` was one — raised a third time in here. The error
+     * left `pass()`, the event was neither applied nor quarantined, and the seat, still the furthest
+     * behind, failed the same way on every pass and took the rest of each pass's claim with it. Two
+     * things make "a poison event is always applied or quarantined, and the cursor moves past it"
+     * hold whatever raised:
+     *
+     *  1. THE EVENT IS NOT RE-APPLIED IN ANY PART. The recompute is the seat-scoped one,
+     *     `StateRecompute::forSeat()` — the form the sweeper and the retirement act use — which
+     *     writes none of the columns projected from an event. The event raised and was not applied,
+     *     so its activity columns, its `seq` high-water mark and its batch's reporter fields have no
+     *     claim on the seat; the old call wrote them from an event this rule had just declared
+     *     unprojectable. A raise caused by the event's own data cannot recur here.
+     *
+     *  2. THE RECOMPUTE IS GUARDED, IN A SAVEPOINT. A raise the seat itself causes — a derived
+     *     column that cannot be computed, which every event of the seat would hit — rolls back the
+     *     recompute alone, is counted `fold_quarantine_recompute_error` and logged, and the
+     *     quarantine still commits its `fold_error`, its `fold_errors` and its cursor advance. That
+     *     degraded quarantine lacks the transition row, its version bump and the badge write; the
+     *     badge follows from `fold_errors` at the seat's next recompute that succeeds
+     *     (`Badges::serverFor()`). A concurrency error is contention and is rethrown, as everywhere
+     *     else in this class.
+     */
+    private function quarantine(int $seatRef, int $cursor, object $row): void
     {
-        Outbox::transaction(function () use ($seatRef, $cursor, $event, $receivedAt) {
+        Outbox::transaction(function () use ($seatRef, $cursor, $row) {
             if (! $this->lockSeatOrYield($seatRef)) {
                 throw new SeatLockYielded;
             }
-
-            // ⛔ SAMPLED AFTER THE SEAT LOCK AND BEFORE ANY WRITE, AND THE ANSWER TO "WHAT IS `$before`
-            // HERE" IS THAT NOTHING WROTE BEFORE IT — card #7837, stated rather than left to be inferred
-            // from the absence of an `apply()` call.
-            //
-            // This path quarantines an event that RAISED, and both attempts ran inside their own
-            // transactions which rolled back — so no projection of this event survives and the
-            // seat's state is exactly what the last good event left. The two writes below are the
-            // `fold_error` counter and `seat_state.fold_errors`, and NEITHER is a member of the
-            // fingerprint: `Badges::render()` reads the STORED `server_badges` column, and
-            // `derivation_error` reaches it only through `Badges::serverFor()` inside
-            // `writeDerivedColumns()`, which runs after this sample either way. So this sample is
-            // VALUE-IDENTICAL to the one `after()` used to take for itself; what changes is that
-            // the rule is now the same one at all four fold call sites instead of three plus a
-            // coincidence.
-            $before = SeatFacts::versionBearing($seatRef);
 
             Counters::seat($seatRef, 'fold_error');
 
             DB::table('seat_state')->where('seat_ref', $seatRef)
                 ->update(['fold_errors' => DB::raw('fold_errors + 1')]);
 
-            // § 4.3: `derivation_error` is a BADGE and never a state. "Overwriting a seat's derived
-            // state with `unknown` because one event failed to project would DESTROY the reading
-            // its other facts still support" — so the poison-event path labels and never collapses,
-            // which is the same discipline the rest of the document applies. The recompute below
-            // therefore leaves the axes exactly where the last good event left them and only the
-            // badge moves.
-            //
-            // THE `fold_error` CAUSE IS THE WHOLE OF THIS CALL'S REQUEST FOR A ROW. § 6.5 requires
-            // "a transition row records the cause" whether or not the render moved, because the row
-            // is the drill-down's only record that an event was skipped — and `StateRecompute` owns
-            // that, including the version bump that makes the row reachable through the feed. This
-            // method used to write the no-render-change row itself, off a second pair of
-            // `render_state` reads and without a bump, which is how a repeat quarantine on an
-            // already-badged seat wrote three rows at one version.
-            $this->recompute->after($event, $before, 'fold_error');
+            try {
+                // A NESTED `Outbox::transaction()` is a savepoint, and one that throws discards the
+                // delta it enqueued — so a recompute that raises leaves neither a write nor an
+                // announcement of one.
+                Outbox::transaction(function () use ($seatRef, $row) {
+                    // ⛔ SAMPLED AFTER THE TWO WRITES ABOVE AND STILL VALUE-IDENTICAL TO A SAMPLE
+                    // TAKEN BEFORE THEM, which is card #7837's rule ("before the first write of the
+                    // unit of work"): neither write is a member of the fingerprint. `Badges::render()`
+                    // reads the STORED `server_badges` column, and `derivation_error` reaches it only
+                    // through `Badges::serverFor()` inside the recompute below. It is sampled HERE,
+                    // inside the guard, so a raise in the fingerprint's own read is caught as well.
+                    // Both attempts rolled back, so no projection of this event survives and the
+                    // sample is exactly what the last good event left.
+                    $before = SeatFacts::versionBearing($seatRef);
 
-            $this->advance($seatRef, $cursor, $event->id, $receivedAt);
+                    // § 4.3: `derivation_error` is a BADGE and never a state — "overwriting a seat's
+                    // derived state with `unknown` because one event failed to project would DESTROY
+                    // the reading its other facts still support". The recompute leaves the axes where
+                    // the last good event left them, and only the badge moves.
+                    //
+                    // THE `fold_error` CAUSE IS THE WHOLE OF THIS CALL'S REQUEST FOR A ROW (`owesRow`).
+                    // § 6.5 requires "a transition row records the cause" whether or not the render
+                    // moved, because the row is the drill-down's only record that an event was
+                    // skipped, and `settle()` bumps the version for it. The row names the event it
+                    // SKIPPED, under its own key, and cites no `cause_event_ref`: that column says
+                    // "this event caused the change", which a skipped event did not.
+                    $this->recompute->forSeat(
+                        $seatRef,
+                        $before,
+                        'fold_error',
+                        detail: ['kind' => $row->kind, 'skipped_event_id' => $row->event_id],
+                        owesRow: true,
+                    );
+                });
+            } catch (\Throwable $e) {
+                if ($this->contended($e)) {
+                    throw $e;
+                }
+
+                Counters::seat($seatRef, 'fold_quarantine_recompute_error');
+
+                Log::error('fold: the quarantine recompute raised; the event is quarantined without its transition row', [
+                    'seat_ref' => $seatRef,
+                    'event_ref' => (int) $row->id,
+                    'exception' => $e,
+                ]);
+            }
+
+            $this->advance($seatRef, $cursor, (int) $row->id, $row->received_at);
         });
     }
 }

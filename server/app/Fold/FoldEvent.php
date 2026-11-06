@@ -4,7 +4,6 @@ namespace App\Fold;
 
 use App\Ingest\Counters;
 use App\Ingest\Wire;
-use App\Support\Anchored;
 
 /**
  * One stored `events` row, with the accessors every projection needs.
@@ -169,8 +168,10 @@ final class FoldEvent
      * uncounted. Anything else that does not match — `""` and a non-string included, as
      * `console_url` always counted them — is `format_refused.<key>`, counted ONCE per event and field however
      * many times a projection reads it (`StateRecompute` reads `harness_label` twice beside the
-     * projection's own read). The count is per instance, and `Fold` builds a fresh instance per
-     * transaction attempt, so a retried event counts once and a rolled-back attempt counts nothing.
+     * projection's own read). The count is per instance and is a row inside the attempt's
+     * transaction, and `Fold` builds a fresh instance per transaction attempt — the window's, and
+     * each of the poison-event rule's one-event attempts (card#11573) — so a rolled-back attempt
+     * counts nothing and the attempt that lands counts once. The quarantine reads no `data` field.
      * A rebuild's replay counts nothing either: `Counters::replaying()` drops it.
      *
      * `$refusedAs` is for a NOT NULL column, where `null` cannot land: it is the value written in
@@ -187,20 +188,17 @@ final class FoldEvent
             return null;
         }
 
-        if (is_string($value) && preg_match(Anchored::pattern($pattern), $value) === 1) {
+        if (Wire::conforms($value, $pattern)) {
             return $value;
         }
 
         if (! isset($this->refused[$key])) {
             $this->refused[$key] = true;
-            Counters::seat($this->seatRef, self::FORMAT_REFUSED.$key);
+            Counters::seat($this->seatRef, Counters::FORMAT_REFUSED.$key);
         }
 
         return $refusedAs;
     }
-
-    /** D2 § 7.2's `format_refused.<field>` family, completed by the wire field's name. */
-    public const FORMAT_REFUSED = 'format_refused.';
 
     /** @var array<string, true> the keys `conforming()` has already counted for this event */
     private array $refused = [];
