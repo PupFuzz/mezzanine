@@ -3,7 +3,8 @@
     (`routes/web.php`), and `App\Http\Controllers\Auth\TwoFactorRecoveryCodeController` owns the
     argument for why the codes are displayed here at all rather than shown once and hidden.
 
-    Card#9471 added the move to a new authenticator, below the codes.
+    Card#9471 added the move to a new authenticator, below the codes, and card#12186 the remembered
+    browsers below that.
 --}}
 @extends('layouts.app')
 @section('title', 'Recovery codes')
@@ -61,6 +62,53 @@
         @csrf
         <button type="submit">Move to a new authenticator</button>
     </form>
+
+    {{--
+        ⛔ CARD#12186 · REMEMBERED BROWSERS. Each row is one of THIS account's unexpired remembered
+        browsers (`App\Auth\RememberedBrowser::listFor()`, which never selects the token's hash), under
+        the name that class gives it. Forgetting is `App\Http\Controllers\Auth\RememberedBrowserController`'s,
+        which owns what happens to this browser and to this session.
+    --}}
+    <h2>Remembered browsers</h2>
+
+    <p>
+        Each browser below signs you in with your password and no code until it expires. Forget one you
+        have lost or no longer use, and its next sign-in asks for a code. Forgetting a browser does not
+        end a session it is already signed in with.
+    </p>
+
+    @if ($browsers === [])
+        <p>No browser is remembered for your account.</p>
+    @else
+        <table>
+            <thead>
+                <tr><th scope="col">Browser</th><th scope="col">Remembered</th><th scope="col">Expires</th><th scope="col"></th></tr>
+            </thead>
+            <tbody>
+                @foreach ($browsers as $browser)
+                    <tr>
+                        <td>{{ $browser->name }}@if ($browser->current) <strong>(this browser)</strong>@endif</td>
+                        <td><x-utc-time :at="\Illuminate\Support\Carbon::parse($browser->created_at, 'UTC')" /></td>
+                        <td><x-utc-time :at="\Illuminate\Support\Carbon::parse($browser->expires_at, 'UTC')" /></td>
+                        <td>
+                            <form method="POST" action="{{ route('two-factor.browsers.forget', $browser->id) }}">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit">Forget</button>
+                            </form>
+                        </td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+
+        <form method="POST" action="{{ route('two-factor.browsers.forget-all') }}">
+            @csrf
+            @method('DELETE')
+            <button type="submit">Forget all</button>
+        </form>
+        <p>Forget all forgets this browser too, if it is remembered. You stay signed in here.</p>
+    @endif
 
     <p><a href="{{ route('dashboard') }}">Back to the floor</a></p>
 @endsection
