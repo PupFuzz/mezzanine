@@ -4724,14 +4724,19 @@ record, no process ever rewriting what another may be writing**:
 | `session_close` | `session_id`, `closed_at`, `end_reason` — the session tombstone ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)); `end_reason` is the wire member the boundary emitted; `paired_to` is set by `pair` |
 | `carry` | `call_id`, `from_session_id` — a bound dispatch a `/clear` left open ([§ 8.3](#83-the-reap-rules)); applied only while the entry's `session_id` equals `from_session_id`, so a `carry` folded after the `pair` that re-keyed its entry does nothing |
 | `pair` | `old_session_id`, `new_session_id` — written by the second of a `/clear`'s two signals ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)); its fold marks both sessions paired and re-keys every entry carried from old to new that exists at that point in the journal |
+| `clear_ambiguous` | `closed`, `open` — card#12013: the session ids an ambiguous `/clear` pick saw ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)), the clear-closed ones in `closed` and the clear-started ones in `open`, the signal's own session included; written beside the `clear_pair_ambiguous` count. Its fold sets `clear_tally: "ambiguous"` on each entry still in the index and nothing else, so no pairing reads it |
 | `todo_list`, `todo_create`, `todo_update`, `todo_end` | card#12447 — the to-do records [§ 6.16](#616-todoprogress) states: each keyed by `session_id`, appended by a main-agent `PostToolUse` on `TodoWrite`, `TaskCreate` or `TaskUpdate`, and `todo_end` by `SessionEnd` and `SessionStart(source=clear)`; **every text field sanitised by § 7.3 and cut to the title bound before the append, `todo_list` carrying the first in-progress entry alone, and the line measured with `Buffer.byteLength`**, so each line is under the 4 KiB this table's concurrency row requires by construction; folded by the flusher into a per-session LRU map of task texts (capped, evicting) with the session's `titled_id` and title kept beside it, all of which it keeps past the session's close up to [§ 14](#14-every-number-and-where-it-comes-from)'s count and compacts into the snapshot like every other record; no record is appended under `descriptors` `"paths"` or `"none"` |
 
 > **AMENDED — the session records, and the two `/clear` records (card#11817).** The code has journaled
 > `session_open` and `session_close` since the 16-session cap landed, and this table never listed
 > them; the rows above add them with the fields card#11817 gave them, beside `carry` and `pair`. The
 > snapshot's `sessions[]` and `sessions_closed[]` carry the same fields: a `sessions_closed` entry is
-> `{session_id, closed_at, end_reason, paired_to}`. A snapshot an older flusher wrote has no
-> `end_reason`, and such a tombstone loads as never pairable until it expires.
+> `{session_id, closed_at, end_reason, paired_to, clear_tally}`. A snapshot an older flusher wrote has no
+> `end_reason`, and such a tombstone loads as never pairable until it expires. `clear_tally`
+> (card#12013) is the unpaired-half count's decision on the entry ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)):
+> `null` until it is made, `"unpaired"` once counted, `"ambiguous"` from a `clear_ambiguous` record.
+> An entry of a snapshot written before it carries no `clear_tally` key, and loads as `"pre_upgrade"`,
+> decided and never counted, because whether an ambiguous pick saw it was never recorded.
 
 **`agent_scope_id` and `child_agent_id` are two different facts and must never be one field.** Both
 are `agent_id` values and an earlier draft carried exactly one field for both, which is how a single
@@ -5025,13 +5030,38 @@ the cleared session was active microseconds ago by construction.
 > terminal clears, which leaves ONE candidate and pairs it — counted `clear_pair_late` when the
 > twin is older than `CLEAR_GAP_MS`, and narrowed on the end side by that window. Cost of
 > giving up the activity pick's reap: a lost `SessionEnd(clear)` is no longer covered by the start —
-> the old session waits for the 90-minute rule — and shows as `clear_signals_paired` falling behind
-> the seat's clears, which no alarm reads. The counter table below keeps its meanings.
+> the old session waits for the 90-minute rule. The counter table below keeps its meanings.
+>
+> **A half nothing paired is counted (card#12013 F3, the operator's option C).** Recency cannot say
+> which session a lone `SessionStart(clear)` superseded, so a lost `SessionEnd(clear)` keeps the bound
+> above, and is measured instead: whether the loss is real decides whether an identity proof is worth
+> building. The flusher's counting fold (the one that applies each journal record once) counts
+> `clear_start_unpaired` for a clear-started session no `SessionEnd(clear)` paired, and
+> `clear_end_unpaired` for a clear-closed tombstone no `SessionStart(clear)` paired
+> ([§ 9.3](#93-degradation-counters)). A half is decided when its own window has closed — `CLEAR_GAP_MS`
+> after a clear-started session's `opened_at`, `CLEAR_PAIR_MS` after a clear tombstone's `closed_at`,
+> the same windows and predicates the pairing reads — or when a clear-started session closes or is
+> evicted first, since no signal can pair it after that. The decision is kept on the entry as
+> `clear_tally` ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)),
+> so each half counts once across passes and restarts. A half an ambiguous pick saw is marked by its
+> `clear_ambiguous` record and never counts here, because `clear_pair_ambiguous` already did. The
+> counters read the index and move nothing on the floor. **What a count means, by route:** a lost
+> `SessionEnd(clear)` counts one `clear_start_unpaired`, and a lost `SessionStart(clear)` one
+> `clear_end_unpaired`. Two routes count a half whose other signal did arrive: a `SessionStart(clear)`
+> more than `CLEAR_GAP_MS` before its own end counts one of each, as it pairs nothing; and a
+> `SessionEnd(clear)` for a session the flusher already closed (`inferred_silence`, or evicted by the
+> session cap) inside `K.TOMBSTONE_MS` is absorbed as `reap_noop_second_signal`, so its start counts
+> `clear_start_unpaired`. A lost half that another terminal's clear paired with in its place still
+> counts one, on the other terminal's half. A count is the flusher's running total in `state.json`, carried on every
+> heartbeat; the site shows it in the seat's drill-down among the reporter's counters
+> ([`FLEET-STATE.md` § 8.2.3](FLEET-STATE.md#823-the-seat-detail-response)). On the first pass after an
+> upgrade, a half held only in journal records the older build wrote since its last snapshot can count
+> though an ambiguous pick saw it — that build wrote no `clear_ambiguous` record.
 
 | Signal | Counter | If it stops firing |
 |---|---|---|
-| `SessionEnd(reason == "clear")` | `predicates.clear_reap_by_session_end`, `true` branch | since card#11817 nothing reaps the cleared session's calls on the reporter — the server's session-close and orphan rules bound them — and the predicate's `true` branch stops while `false` runs on; `clear_signals_paired` falls behind the seat's clears. Unalarmed ([§ 9.4](#94-the-predicate-constant-alarm)) |
-| `SessionStart(source == "clear")` | `predicates.clear_reap_by_session_end`, `false` branch | the `SessionEnd` signal still reaps, and nothing pairs: carried dispatches stay under the old session; `reap_noop_second_signal` stops, and `clear_signals_paired` falls behind |
+| `SessionEnd(reason == "clear")` | `predicates.clear_reap_by_session_end`, `true` branch | since card#11817 nothing reaps the cleared session's calls on the reporter — the server's session-close and orphan rules bound them — and the predicate's `true` branch stops while `false` runs on; `clear_signals_paired` falls behind the seat's clears, and `clear_start_unpaired` rises by one per lost end (card#12013). Unalarmed ([§ 9.4](#94-the-predicate-constant-alarm)) |
+| `SessionStart(source == "clear")` | `predicates.clear_reap_by_session_end`, `false` branch | the `SessionEnd` signal still reaps, and nothing pairs: carried dispatches stay under the old session; `reap_noop_second_signal` stops, `clear_signals_paired` falls behind, and `clear_end_unpaired` rises by one per lost start (card#12013) |
 
 **The predicate is one classification with two branches, which is what [§ 3.4](#34-why-identity-never-comes-from-the-environment)
 rule 2 asks for.** It is evaluated once per `/clear`, at the moment the reap runs, and its branches
@@ -5555,6 +5585,8 @@ the two were equal.
 | `dispatch_carried_across_clear` | a `/clear`'s session-boundary reap carried an open, bound dispatch call instead of aborting it ([§ 8.3](#83-the-reap-rules), card#11817) | informational; zero on a seat whose `/clear`s land while subagents run means dispatches are unbound at the clear or the carry is not firing — read beside `subagent.stop(aborted, session_cleared)` |
 | `dispatch_rekeyed_to_new_session` | a `/clear`'s pairing moved carried dispatch calls to the new `session_id` ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) | informational; below `dispatch_carried_across_clear` means carries that never paired, or whose `SubagentStop` landed between the two signals |
 | `clear_pair_ambiguous` | more than one unpaired candidate qualified at a `/clear` pairing, so nothing was paired ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals), card#12013) | informational; non-zero means two terminals' clears overlapped inside one window; their carried dispatches stayed under their old sessions |
+| `clear_start_unpaired` | card#12013 — a `SessionStart(source=clear)`'s session that no `SessionEnd(clear)` paired with before its window closed or it closed; counted once, by the flusher ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) | informational, and the measurement of lost `SessionEnd(clear)`s, whose cleared session's calls wait for the server's session and orphan rules. § 8.4 names the routes that count it with the end present |
+| `clear_end_unpaired` | card#12013 — a `SessionEnd(reason=clear)`'s tombstone that no `SessionStart(clear)` paired with inside `CLEAR_PAIR_MS`; counted once, by the flusher ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) | informational, and the measurement of lost `SessionStart(clear)`s, whose carried dispatches stay under the old session |
 | `clear_pair_late` | a `/clear` pairing whose twin was older than `CLEAR_GAP_MS` ([§ 14](#14-every-number-and-where-it-comes-from)) | informational; either a slow second signal or a pairing with another terminal's unpaired half after this clear's own other signal was lost — the case [§ 8.4](#84-detecting-a-clear-with-two-independent-signals) names, made visible |
 | `tombstone_late_close` | a close matched a tombstone — the reap was too eager for that call | informational; the reporter-side half of `late_completion` |
 | `kill_close_same_session` | a `PostToolUseFailure` reported **exit 137** with `is_interrupt: false` under the **same** `session_id` its call was opened in, **or** on a close whose open was never seen at all ([§ 6.6](#66-toolend)'s synthesized pair), where the call's session is unknowable — either way the kill signature's second leg did not fire ([§ 6.6](#66-toolend)) | informational, and the observable for that section's stated residual: an OOM kill increments it legitimately, so it is a rate to look at rather than an alarm. A `/clear` kill appearing here means the close beat both `/clear` signals and closed the call `failed` |
@@ -8404,8 +8436,8 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | Index-journal fold cap | 8 MiB | Derived — ~9 days of a busy seat's index writes with no flusher at all; past it the fold truncates, counts, and badges rather than growing without bound | [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open) |
 | Open-call index | 64 open + 64 tombstones | Chosen — far above any observed concurrency; overflow is itself a signal | [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open) |
 | Tombstone retention | 15 min | Derived — equals the ordinary orphan timeout, so the reporter can name a call for as long as the server holds one open | [§ 12.5](#125-late-completions-and-orphan-timeouts) |
-| `CLEAR_PAIR_MS` | 30 s | **Chosen** (card#11817) — the window inside which `SessionStart(clear)` pairs with an unpaired `clear`-closed session — the one candidate, since more than one pairs nothing ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals), card#12013). The `SessionEnd(clear)` → `SessionStart(clear)` gaps MEASURED on this project's seat are 0.97–2.49 s (2.1.296, interactive, 2026-10-10…13) and 111 ms at 2.1.247; 30 s is about 12× the largest. A cost bound, not a convergence claim: a later start pairs nothing and the carry stays under the old session; revisable on `clear_pair_late`, or on `clear_signals_paired` falling behind the seat's clears | [§ 8.4](#84-detecting-a-clear-with-two-independent-signals) |
-| `CLEAR_GAP_MS` | 5 s | **Derived** (card#11817) — 2× the largest measured `SessionEnd(clear)` → `SessionStart(clear)` gap, 2.49 s, rounded up. `SessionEnd(clear)`'s window for an unpaired `clear`-started session, narrow because that twin is a live session whose calls the pairing re-keys; and the age past which any pairing counts `clear_pair_late`. The `SessionStart`-first order it serves has never been measured, so the figure is the other order's | [§ 8.4](#84-detecting-a-clear-with-two-independent-signals) |
+| `CLEAR_PAIR_MS` | 30 s | **Chosen** (card#11817) — the window inside which `SessionStart(clear)` pairs with an unpaired `clear`-closed session — the one candidate, since more than one pairs nothing ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals), card#12013). The `SessionEnd(clear)` → `SessionStart(clear)` gaps MEASURED on this project's seat are 0.97–2.49 s (2.1.296, interactive, 2026-10-10…13) and 111 ms at 2.1.247; 30 s is about 12× the largest. A cost bound, not a convergence claim: a later start pairs nothing and the carry stays under the old session; revisable on `clear_pair_late`, or on `clear_signals_paired` falling behind the seat's clears. Since card#12013 it is also the age past which an unpaired `clear` tombstone counts `clear_end_unpaired` | [§ 8.4](#84-detecting-a-clear-with-two-independent-signals) |
+| `CLEAR_GAP_MS` | 5 s | **Derived** (card#11817) — 2× the largest measured `SessionEnd(clear)` → `SessionStart(clear)` gap, 2.49 s, rounded up. `SessionEnd(clear)`'s window for an unpaired `clear`-started session, narrow because that twin is a live session whose calls the pairing re-keys; the age past which any pairing counts `clear_pair_late`; and, since card#12013, the age past which an unpaired `clear`-started session counts `clear_start_unpaired`. The `SessionStart`-first order it serves has never been measured, so the figure is the other order's | [§ 8.4](#84-detecting-a-clear-with-two-independent-signals) |
 | Backoff base / factor / cap | 2 s / ×2 / 120 s, full jitter | Derived — 2→4→8→16 covers a ~30 s app restart; the 120 s cap bounds post-recovery staleness; jitter prevents a fleet-wide herd | [§ 11.5](#115-retry-and-backoff) |
 | `Retry-After` clamp | 600 s | Chosen — honours the server without letting a bad header park a seat for hours | [§ 11.5](#115-retry-and-backoff) |
 | Full-spool drain time | ~3.4 h | Derived — ~67,000 events (32 MiB ÷ 500 B) ÷ 20,000 events/hour. Nothing is lost; the seat renders *catching up* for that long | [§ 11.5](#115-retry-and-backoff) |
