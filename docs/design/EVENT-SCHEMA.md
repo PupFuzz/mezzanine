@@ -5056,7 +5056,10 @@ the cleared session was active microseconds ago by construction.
 > heartbeat; the site shows it in the seat's drill-down among the reporter's counters
 > ([`FLEET-STATE.md` § 8.2.3](FLEET-STATE.md#823-the-seat-detail-response)). On the first pass after an
 > upgrade, a half held only in journal records the older build wrote since its last snapshot can count
-> though an ambiguous pick saw it — that build wrote no `clear_ambiguous` record.
+> though an ambiguous pick saw it — that build wrote no `clear_ambiguous` record. A snapshot write that
+> fails after the counting fold re-counts that pass's newly decided halves on the next pass, and a crash
+> between `writeSnapshot` and the `state.json` save loses their counts, so each is off by at most the
+> halves that pass decided.
 
 | Signal | Counter | If it stops firing |
 |---|---|---|
