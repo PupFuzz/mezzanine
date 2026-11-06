@@ -13,17 +13,23 @@ namespace App\Ingest;
 final class ValidBatch
 {
     /**
+     * `$reporterVersion` and `$runtimeVersion` are `null` exactly when the value sent was off its
+     * column's format, and `$formatRefused` names those fields — `BatchWriter` counts each as
+     * `format_refused.<field>` inside its transaction (card#11572).
+     *
      * @param  list<mixed>  $events
+     * @param  list<string>  $formatRefused
      */
     public function __construct(
         public readonly int $schemaVersion,
         public readonly string $batchId,
         public readonly string $seqEpoch,
         public readonly \DateTimeImmutable $sentAt,
-        public readonly string $reporterVersion,
+        public readonly ?string $reporterVersion,
         public readonly string $reporterPlatform,
-        public readonly string $runtimeVersion,
+        public readonly ?string $runtimeVersion,
         public readonly array $events,
         public readonly int $coercedEnumValues,
+        public readonly array $formatRefused,
     ) {}
 }

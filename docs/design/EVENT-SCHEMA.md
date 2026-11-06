@@ -1953,7 +1953,11 @@ A pattern is applied one plane later, and costs one field rather than a batch: w
 § 6.5's `harness_call_ref`, which this document calls opaque, to that column's ASCII — and a value that
 fails stores `null` and counts `format_refused.<field>`
 (`D2-CITED:` [D2 § 6.5](FLEET-STATE.md#65-the-fold)) while the rest of the event lands. Ruled
-2026-09-13 on card#9346, which declined refusing the batch here.
+2026-09-13 on card#9346, which declined refusing the batch here. The envelope's `reporter_version` and
+`runtime_version` take the same rule at step 8: a value within [§ 4.2](#42-batch-envelope-fields)'s
+bound that is not ASCII, the charset of the column the store keeps it in, is stored `null` and counted
+`format_refused.<field>`, and the batch is accepted (`D2-CITED:` [D2 § 6.5](FLEET-STATE.md#65-the-fold),
+card#11572).
 
 **Missing vs null.** A missing key and an explicit `null` are the same thing. The server normalises
 missing → `null` before validation. Producers should send `null` explicitly for legibility.

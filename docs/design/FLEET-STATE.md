@@ -1620,9 +1620,12 @@ CREATE TABLE batches (
   ignored_unknown_kinds SMALLINT UNSIGNED NOT NULL,
   coerced_enum_values   SMALLINT UNSIGNED NOT NULL,
   response_status SMALLINT UNSIGNED NOT NULL,
-  reporter_version  VARCHAR(24) CHARACTER SET ascii NOT NULL,
+  reporter_version  VARCHAR(24) CHARACTER SET ascii NULL,  -- NULL only where the value sent was
+                                               -- off this ASCII column's format: stored NULL and
+                                               -- counted format_refused.<field>, the batch accepted
+                                               -- (D18 at the envelope, card#11572)
   reporter_platform ENUM('linux','win32','darwin','other') NOT NULL,
-  runtime_version   VARCHAR(24) CHARACTER SET ascii NOT NULL,
+  runtime_version   VARCHAR(24) CHARACTER SET ascii NULL,  -- as reporter_version
   KEY ix_batch_id (seat_ref, batch_id, received_at),   -- NOT unique: see below
   KEY ix_batch_recv (seat_ref, received_at),
   KEY ix_purge      (received_at)                       -- the purge's range scan (§ 6.7)
@@ -2821,6 +2824,21 @@ it, lands nothing beyond the count. The checked population and each field's form
 `App\Fold\FoldEvent::conforming()`'s callers, with the pattern bodies in `App\Ingest\Wire` and
 `App\Support\Slug`; `git grep -n "conforming(" -- server/app` re-prints it.
 
+**The batch envelope takes the same rule one plane up, at the ingest (card#11572).** `reporter_version`
+and `runtime_version` are the envelope's two free strings, and both land in ASCII columns of `batches`.
+A value inside D1 § 4.2's 24-byte bound that is not ASCII used to fail the `batches` INSERT, answer
+`503 store_failed` and be re-sent unchanged by a reporter whose every batch carries it, so the seat went
+dark. Step 8 (`App\Ingest\BatchValidator`) now stores `NULL` for it and counts `format_refused.<field>`
+inside the write's transaction, and the batch and its events are accepted. The fold copies the `NULL`
+onto `seat_state.reporter_version`, which reads as a seat with no reported build: `update_required` is
+not raised for it and `SchemaVersions::reporterAtLeast()` answers false. The check is the column's
+ASCII, never semver: an ASCII `reporter_version` off semver is stored as sent, because it is the value
+`update_required` badges. A value over the byte bound, empty or not a string is still `422 invalid_batch`.
+The envelope's other columns are a ULID refused at step 8 (`batch_id`, `seq_epoch`), the coerced
+`reporter_platform`, the parsed `sent_at` with the `clock_skew_ms` derived from it, or the server's own;
+`BatchValidator`'s step-8 note names the population. ⚠ `sent_at` is outside this rule: a value the
+tolerant parse accepts can fall outside `DATETIME(3)`'s range and still fail the write.
+
 **Batch size 500 and claim size 8, derived.** 500 events is ~2.5 batches at D1's 200-event cap, so a
 pass consumes a real seat's arrivals in one transaction, whose hold on the seat's lock
 `Fold::WINDOW_BUDGET_MS` bounds as well — a window stops at whichever it reaches first; 8 seats per claim keeps one worker's transaction footprint small enough that a second
@@ -3572,7 +3590,7 @@ for the same reason: a counter with no stated home is a counter two implementers
 | `compaction_ceiling_closed` | `seat_counters` | seat detail | the sweeper closed a `compaction_open_since` at its 15-minute ceiling ([§ 4.6](#46-every-open-fact-has-a-ceiling)) | rising ⇒ `compaction.end` is not arriving; `PostCompact` is one of D1's un-driven hook stubs, so this is the instrument that says so |
 | `session_close_orphans` | `seat_counters` | seat detail | a `session.end` arrived with calls still open server-side and the server closed them (`abort_reason: session_close`, `close_source: server_session_close`) | rising ⇒ reap `tool.end`s are being lost in transit, since D1's reaps should have closed them on the wire first |
 | `session_close_carried` | `seat_counters` | seat detail | a `session.end` named open calls in `carried_call_ids` and the server left them open (card#11817); counted seat-wide over the named ids still open, not by `session_ref` — after a second `/clear` a carried row's `session_ref` still names the session it was opened in | informational; read beside `server_orphan_closes` on `is_dispatch` rows — carried calls that end at the 60-minute ceiling instead of at a `SubagentStop` are carries the harness did not honour |
-| `format_refused.<field>` | `seat_counters`, one row per wire field | seat detail | the fold met a `data` string, destined for an ASCII column of [§ 6.4](#64-ddl), that fails the format D1 publishes for it — a `turn.start`'s `console_url` off [D1 § 6.3](EVENT-SCHEMA.md#63-turnstart)'s pattern, a heartbeat's `protocol_agent_name` that is not a slug, and every other member [§ 6.5](#65-the-fold) names — and stored `NULL` in its place (`INVALID_TOOL_NAME` for `tool_name`, whose column is `NOT NULL`). Once per event and field (card#9346; until then `console_url` alone was checked, as `console_url_refused`) | none rendered; the field is simply absent and the rest of the event lands. A conforming reporter never sends such a value, so a count here is a reporter that does not check the format it owes, or a value that did not come from a reporter — a reason to look at the seat's token |
+| `format_refused.<field>` | `seat_counters`, one row per wire field | seat detail | the fold met a `data` string, destined for an ASCII column of [§ 6.4](#64-ddl), that fails the format D1 publishes for it — a `turn.start`'s `console_url` off [D1 § 6.3](EVENT-SCHEMA.md#63-turnstart)'s pattern, a heartbeat's `protocol_agent_name` that is not a slug, and every other member [§ 6.5](#65-the-fold) names — and stored `NULL` in its place (`INVALID_TOOL_NAME` for `tool_name`, whose column is `NOT NULL`). Once per event and field (card#9346; until then `console_url` alone was checked, as `console_url_refused`). The ingest counts the same family for the batch envelope's `reporter_version` and `runtime_version`: a value inside D1 § 4.2's byte bound and outside its `batches` column's ASCII is stored `NULL`, once per accepted batch and field, and the batch is accepted (card#11572; until then the write failed and the batch took `503 store_failed` on every retry) | none rendered; the field is simply absent and the rest of the event, or of the batch, lands. A conforming reporter never sends such a value, so a count here is a reporter that does not check the format it owes, or a value that did not come from a reporter — a reason to look at the seat's token |
 | `fold_window_purged` | `seat_counters` | seat detail | the fold's emptiness proof found its unfolded window gone to [§ 6.7](#67-retention-and-purge)'s purge, so the cursor advances to the head that proof covered rather than the seat re-claiming forever ([§ 6.5](#65-the-fold)). Counted on the **proof**, not on the guarded cursor write: a pass that loses the race to an ingest advances nothing and still admits the purge, because the same window is jumped by the ordinary branch on a later pass and that jump must not be silent | non-zero ⇒ that seat's state is honest but shorter, and the fold was down longer than retention; the same admission `rebuild_truncated` makes |
 | `state_rebuilds` / `rebuild_truncated` | `seat_counters` | seat detail | a `mezzanine:rebuild` ran / ran against a window shorter than the seat's history | operator-visible; a truncated rebuild's state is honest but shorter |
 | `sweep_seat_error` | `seat_counters` | seat detail | a sweep pass's work on that seat threw anything but a concurrency error, and the pass skipped the seat and went on ([§ 2.1](#21-processes)) | that seat's time-derived transitions did not advance that pass; the pass counts it among its failed seats and `mezzanine:sweep` prints the count |
@@ -3671,9 +3689,11 @@ the seat already holds. **How the badge is judged:** `Badges::serverFor()` compa
 `seat_state.reporter_version` — the last batch envelope's `reporter_version`, which the fold writes from
 the `batches` row ([§ 6.5](#65-the-fold)) — against that constant through one predicate,
 `SchemaVersions::reporterIsOutdated(?string)`, whose four answers are the whole rule: **null ⇒ not
-raised** — the seat's `reporter_version` is null, and there is no reported build to be behind. Null has
-two routes, and the badge follows both: the seat has sent no batch ([§ 4.5](#45-link-states) rule 1
-already renders it `offline` with *no data yet*), or [§ 6.6](#66-rebuild-from-the-log)'s rebuild reset
+raised** — the seat's `reporter_version` is null, and there is no reported build to be behind. The badge
+follows null by each of its routes: the seat has sent no batch ([§ 4.5](#45-link-states) rule 1
+already renders it `offline` with *no data yet*); its last batch's `reporter_version` was not ASCII, so
+the ingest stored it null and counted `format_refused.reporter_version` ([§ 6.5](#65-the-fold),
+card#11572); or [§ 6.6](#66-rebuild-from-the-log)'s rebuild reset
 the column and refilled it only from `batches` rows that [§ 6.7](#67-retention-and-purge)'s purge had not
 yet deleted (`batches` is purged on `received_at` beside `events`), so a seat dark for longer than that
 retention comes back from a rebuild with null and its badge cleared until it next reports; **a value the version grammar does not
