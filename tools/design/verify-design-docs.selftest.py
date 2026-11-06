@@ -920,7 +920,7 @@ PLANTS = [
         "has no threshold open at `clear`",
     ),
     (
-        # card#12466 G5's RED enumeration over AT-D3-35: its Fourth RED (the closing forgotten) dropped, leaving the
+        # card#12466 G5's RED enumeration over AT-D3-36: its Fourth RED (the closing forgotten) dropped, leaving the
         # Third and the Fifth adjacent -- a RED deleted with its neighbours never renumbered, which G5's contiguity rule
         # must report rather than reading the test's remaining REDs as its whole population.
         "verify-floor.py",
@@ -928,18 +928,18 @@ PLANTS = [
         r"(turn-round-in-cab's leaves jump to open\. Caught by: nothing drawn moves\.\n)"
         r"(- \*\*Fourth RED — the closing forgotten:\*\*[^\n]*\n[^\n]*\n)(- \*\*Fifth RED)",
         "drop",
-        "AT-D3-35's Fourth RED dropped, its Fifth left unrenumbered, which G5 must report as a gap in the test's "
+        "AT-D3-36's Fourth RED dropped, its Fifth left unrenumbered, which G5 must report as a gap in the test's "
         "RED ordinals (card#12466)",
         "numbers its REDs",
     ),
     (
-        # card#12466 G5's artifact closure over AT-D3-35: the artifact its Build bullet reads -- the seat's turn-round,
+        # card#12466 G5's artifact closure over AT-D3-36: the artifact its Build bullet reads -- the seat's turn-round,
         # which Appendix B row 37 builds -- renamed in the Reads clause, so it names an artifact no step builds.
         "verify-floor.py",
         "docs/design/FLOOR.md",
         r"(the \*\*restroom break\*\*, the \*\*)(seat's turn-round)(\*\*\.\n)",
         "rename",
-        "the artifact AT-D3-35 reads, renamed to one no Appendix B row builds, which G5 must refuse as a read nothing "
+        "the artifact AT-D3-36 reads, renamed to one no Appendix B row builds, which G5 must refuse as a read nothing "
         "schedules (card#12466)",
         "which no Appendix B Artifact cell names",
     ),

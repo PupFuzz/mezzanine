@@ -75,7 +75,7 @@
 
 import { emptyChair, staffed } from '../wire/animation-set.js';
 import { pointAt } from './route.js';
-import { ELEVATOR_DOOR, RESTROOM_GAP_S, SNACK_GAP_S, departureLegs, inLane, leafLevel, queueLater, queueShape, restroomExit, restroomHome, seatInCab, snackHome, waitFrom } from './scene.js';
+import { ELEVATOR_DOOR, RESTROOM_GAP_S, SNACK_GAP_S, departureLegs, laneFrame, leafLevel, queueLater, queueShape, restroomExit, restroomHome, seatInCab, snackHome, waitFrom } from './scene.js';
 
 /** The § 6.2 rows drawn as a walk, one per seat at most. */
 export const WALK_ROWS = Object.freeze(['A1', 'A2']);
@@ -184,9 +184,10 @@ export class EffectsInFlight {
     #decided = new Set();
 
     /**
-     * card#12786 — the restroom doors' timelines, oldest first: `{ door, key, seq, spot, at, leaf, occupied, free }` per
-     * visit — `at` the visit's start on the page's clock, `leaf` and `occupied` in frames from it, `free` the instant (ms)
-     * the door is closed behind the visit and free for the next, `seq` its admission's order.
+     * card#12786 — the restroom doors' timelines, oldest first: `{ door, key, seq, spot, at, leaf, occupied, free, lane, clear }`
+     * per visit — `at` the visit's start on the page's clock, `leaf` and `occupied` in frames from it, `free` the instant (ms)
+     * the door is closed behind the visit and free for the next, `seq` its admission's order; card#12841: `lane` the door's
+     * (§ 12's *Restroom lane*) and `clear` the instant (ms) the visit's walker, on its way out, is clear of it.
      */
     #doors = [];
 
@@ -329,11 +330,11 @@ export class EffectsInFlight {
                 if (t.kind === 'restroom') {
                     // card#12786 (§ 6.7 item 5): an A2 or an A10 that takes the visitor over brings it out first, the leaf
                     // opening and closing behind it; every other clause cuts the visit, the door drawn closed and vacant.
-                    const over = effects.some((e) => e.from_trip === true && e.frames > 0
+                    const over = effects.find((e) => e.from_trip === true && e.frames > 0
                         && (t.intern ? isInternWalk(e) && e.intern_key === k : e.animation_id === 'A2' && keyOf(e) === t.seat));
 
-                    if (over && !this.#ended(t, now)) {
-                        this.#leaveDoor(k, t, now);
+                    if (over !== undefined && !this.#ended(t, now)) {
+                        this.#leaveDoor(k, t, now, over);
                     } else {
                         this.#doors = this.#doors.filter((e) => e.key !== k);
                     }
@@ -542,23 +543,12 @@ export class EffectsInFlight {
         // leaves' beginning to close on it (`clear`, when its step out is done) at which `pointAt()` puts its feet off the
         // floor of the lane — outside § 12's *Elevator lane*, or back in the cab (item 16's step back in at the door; item
         // 19's blink, which never steps out, on that frame) — or its last frame. A function of that walk's legs alone, so
-        // every render reads one instant off one walk. A render with no lane (no band) releases at `clear`, as before.
+        // every render reads one instant off one walk (`laneFrame()`, card#12841's restroom door reads the same). A render
+        // with no lane (no band) releases at `clear`, as before.
         const laneClear = (h, d) => {
             const from = d.start + d.frames - D.close;
 
-            if (lane === null) {
-                return from;
-            }
-
-            for (let t = from; t < h.effect.frames; t++) {
-                const p = pointAt(h.effect, t * I);
-
-                if (p.where !== 'floor' || !inLane(lane, p)) {
-                    return t;
-                }
-            }
-
-            return Math.max(from, h.effect.frames);
+            return lane === null ? from : laneFrame(h.effect, lane, from, false);
         };
         const departing = this.#held.filter((h) => !this.#ended(h, now) && queues(h));
         // When a departure's route reaches the threshold — the order new ones of one render are placed in.
@@ -765,7 +755,7 @@ export class EffectsInFlight {
                 const home = t.kind === 'restroom' ? restroomHome(t.effect, now - t.at) : snackHome(t.effect, now - t.at);
 
                 if (t.kind === 'restroom') {
-                    this.#leaveDoor(k, t, now);
+                    this.#leaveDoor(k, t, now, home);
                 }
 
                 this.#trips.set(k, { ...t, effect: home, at: now, frames: home.frames, home: true });
@@ -881,19 +871,23 @@ export class EffectsInFlight {
     /**
      * ONE TRIP ADMITTED (card#12749; card#12786): walker `w`'s break `s` of `chain`, starting at `at` on the page's clock —
      * from its anchor, or from `from` on a hand-over — planned by the scene over the spots every trip in flight holds then
-     * and, for a visit, the door's turn: the instant every visit already admitted to that door has freed it.
+     * and, for a visit, the door's turn: the instant every visit already admitted to that door has freed it — and,
+     * card#12841, the instant every such visit's walker is clear of the door's lane on its way out.
      */
     #admit(w, chain, s, at, from, now, ctx, lines) {
         const I = this.#intervalMs;
         const taken = this.#taken(at, w.key);
+        // The frame, from `at`, by which every visit already in flight for door `id` has reached its instant `field`.
+        const after = (field) => (id) => Math.max(0, Math.ceil((Math.max(at, ...this.#doors.filter((e) => e.door === id).map((e) => e[field])) - at) / I - 1e-9));
         const effect = chain === 'snack'
             ? ctx.snack.plan(w, s, taken, from)
             : ctx.restroom.plan(w, s, {
                 from,
                 taken,
                 // The door serves its visits in the order they were admitted: this one's turn is the frame every visit
-                // already in flight for its door has freed it.
-                turn: (id) => Math.max(0, Math.ceil((Math.max(at, ...this.#doors.filter((e) => e.door === id).map((e) => e.free)) - at) / I - 1e-9)),
+                // already in flight for its door has freed it; the lane's, the frame every such walker is out of it.
+                turn: after('free'),
+                clear: after('clear'),
             });
 
         if (effect === null || effect.full === true) {
@@ -932,7 +926,10 @@ export class EffectsInFlight {
         });
 
         if (chain === 'restroom') {
-            this.#doors.push({ door: effect.restroom, key: w.key, seq: this.#seq++, spot: effect.spot, at, leaf: effect.leaf, occupied: effect.occupied, free: at + effect.claim.end * I });
+            const home = effect.legs[effect.legs.length - 1];
+
+            this.#doors.push({ door: effect.restroom, key: w.key, seq: this.#seq++, spot: effect.spot, at, leaf: effect.leaf, occupied: effect.occupied, free: at + effect.claim.end * I,
+                lane: effect.lane, clear: at + laneFrame(effect, effect.lane, home.start, false) * I });
         }
     }
 
@@ -967,10 +964,12 @@ export class EffectsInFlight {
 
     /**
      * card#12786 — A VISITOR LEAVING ITS DOOR EARLY (§ 6.7 item 5): its door's timeline from `now` is `restroomExit()`'s —
-     * the field vacant, the leaf opening and closing behind it — where it is at the door; it stands where the walker is on
-     * its walk home already; and it is dropped where the walker never reached the door, so the door serves the next.
+     * the field vacant, the leaf opening and closing behind it — where it is at the door, and (card#12841) its lane clears
+     * on the frame `walk`, the effect that walks it away from `now` (its walk home, or the A2 or A10 that took it over),
+     * has it out of the lane; it stands where the walker is on its walk home already; and it is dropped where the walker
+     * never reached the door, so the door serves the next.
      */
-    #leaveDoor(k, t, now) {
+    #leaveDoor(k, t, now, walk) {
         const I = this.#intervalMs;
         const exit = restroomExit(t.effect, now - t.at);
         const home = t.effect.legs[t.effect.legs.length - 1];
@@ -982,16 +981,17 @@ export class EffectsInFlight {
 
         if (exit !== null) {
             Object.assign(entry, { at: now, leaf: exit.leaf, occupied: null, free: now + exit.free * I });
+            entry.clear = now + laneFrame(walk, entry.lane, exit.lead, false) * I;
         } else if (now - t.at < home.start * I) {
             this.#doors = this.#doors.filter((e) => e !== entry);
         }
     }
 
-    /** card#12786: a door's visit whose leaf has closed and whose claim has ended by `now`. */
+    /** card#12786: a door's visit whose leaf has closed, whose claim has ended and (card#12841) whose lane is clear by `now`. */
     #doorDone(e, now) {
         const end = Math.max(0, ...e.leaf.map((m) => m.start + m.frames));
 
-        return now >= e.free && now >= e.at + end * this.#intervalMs;
+        return now >= e.free && now >= e.clear && now >= e.at + end * this.#intervalMs;
     }
 
     /**

@@ -931,7 +931,8 @@ class AnInternRidesTheElevatorTest extends TestCase
     /** card#12793 RED — the intern's own lane: the lane sized to an intern's body, so an intern's spot stands in the seat's lane. */
     public function test_red_the_lane_sized_to_the_intern(): void
     {
-        $dir = $this->planted([self::SCENE, "    const body = walkerSize(character);\n    const w = Math.max(band.elevator.w, body.w + 2 * CLEARANCE.margin);", "    const body = INTERN_SIZE;\n    const w = Math.max(band.elevator.w, body.w + 2 * CLEARANCE.margin);"]);
+        // card#12841: the elevator's lane is `doorLane()`'s, the rule both doors share.
+        $dir = $this->planted([self::SCENE, "    const body = walkerSize(character);\n    const w = Math.max(span, body.w + 2 * CLEARANCE.margin);", "    const body = INTERN_SIZE;\n    const w = Math.max(span, body.w + 2 * CLEARANCE.margin);"]);
         $defects = [];
 
         foreach ($this->drawn($this->floorRun('leave-outside-the-lane', $dir)) as $x) {

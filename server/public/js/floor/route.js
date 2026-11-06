@@ -525,11 +525,11 @@ export function route(grid, from, to, walker) {
  * open at. Each spot carries its path back to the point — the cell centres from the spot's down the cost tree to the
  * point's cell, then the point — so a walker standing there walks to the point over open floor.
  *
- * card#12793 — `avoid`, where a caller passes one (the elevator queue: § 12's *Elevator lane*), is a predicate over a
- * point that no spot may stand on: the search SKIPS every cell whose centre it holds as it runs, the point itself
- * included, so no spacing is spent on a cell nobody may stand on and spot 0 is the first cell past it. A skipped cell
- * is still walked through — a spot's path back may cross it. With none (the snack corner, the restroom door), spot 0
- * is the point and the spots are what they were.
+ * card#12793 — `avoid`, where a caller passes one (the elevator queue: § 12's *Elevator lane*; card#12841, the restroom
+ * door: *Restroom lane*), is a predicate over a point that no spot may stand on: the search SKIPS every cell whose centre
+ * it holds as it runs, the point itself included, so no spacing is spent on a cell nobody may stand on and spot 0 is the
+ * first cell past it. A skipped cell is still walked through — a spot's path back may cross it. With none (the snack
+ * corner), spot 0 is the point and the spots are what they were.
  *
  * @param {object} grid `lattice()`'s
  * @param {{x: number, y: number}} point
