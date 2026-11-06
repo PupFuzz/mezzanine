@@ -67,7 +67,7 @@ const lazy = (name) => require(name);
  * change to a file a reporter update ships, and `bin/reporter-version-guard.py` fails a PR that changes
  * one without moving it, so two different builds never report the same version. Each version's row in
  * `fleet-reporter/UPDATES.md` says what an upgrading seat must apply. */
-const REPORTER_VERSION = '0.6.4';
+const REPORTER_VERSION = '0.6.5';
 const SCHEMA_VERSION = 1;
 
 /* ── Every number, from § 14 and the section that derives it ──────────────────────────────── */
@@ -2114,6 +2114,19 @@ function key(payload, name) {
   return payload[name];
 }
 
+/* § 6.5 — the tool call a hook payload names, held to the bounds the ingest enforces: `tool_name` to its
+ * pattern (else the literal `INVALID_TOOL_NAME`, counted) and `tool_use_id` to `harness_call_ref`'s 64 B
+ * (else `null`). The open AND the close read it here, because a close that matches no open call puts its
+ * own name and ref on the wire as the synthesized pair's (§ 6.6), and the ingest refuses a whole batch
+ * with `422` for one field over its bound (card#11574). One reader also keeps the close's name and ref
+ * comparable with the ones the open stored, which `matchClose`'s keys compare against. */
+function toolCallOf(payload) {
+  let toolName = key(payload, 'tool_name');
+  if (typeof toolName !== 'string' || !TOOL_NAME_RE.test(toolName)) { count('invalid_tool_name'); toolName = 'INVALID_TOOL_NAME'; }
+  const ref = typeof payload.tool_use_id === 'string' && bytes(payload.tool_use_id) <= 64 ? payload.tool_use_id : null;
+  return { toolName, ref };
+}
+
 /* A PROJECT LABEL IS A PROJECT NAME, AND THE HOME DIRECTORY'S BASENAME IS THE OS USERNAME.
  * § 1's non-goals are explicit and binding: "PII beyond install_id/seat_id … no OS usernames.
  * Usernames leak through absolute paths, which is why § 7.3 rule 6 rewrites them." Rule 6
@@ -2692,8 +2705,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
     /* ── PreToolUse (§ 6.5, § 6.7) ─────────────────────────────────────────────────────────── */
     case 'PreToolUse': {
       touchSession(ctx, ix, sid);
-      let toolName = key(payload, 'tool_name');
-      if (typeof toolName !== 'string' || !TOOL_NAME_RE.test(toolName)) { count('invalid_tool_name'); toolName = 'INVALID_TOOL_NAME'; }
+      const { toolName, ref } = toolCallOf(payload);
       const ti = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
       const mode = descriptorMode(ctx.config);
       const d = buildDescriptor(toolName, ti, mode);
@@ -2721,7 +2733,6 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       }
       const isDispatch = toolName === 'Agent' || toolName === 'Task';
       const callId = ulid(atMs);
-      const ref = typeof payload.tool_use_id === 'string' && bytes(payload.tool_use_id) <= 64 ? payload.tool_use_id : null;
       const openBefore = ix.calls.size;
       // § 6.7 — the title is the dispatch's free-text description, so only `descriptors: "full"` sends it.
       const title = isDispatch && mode === 'full' && typeof ti.description === 'string' ? sanitize(`${ti.description}`, K.TITLE_CAP) : null;
@@ -2765,8 +2776,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       // the flusher derives the title, because a hook that read the map and emitted would be the
       // read-modify-write § 8.2 forbids.
       if (!failed && !agentId) todoFromClose(ctx, ix, sid, payload);
-      const toolName = typeof payload.tool_name === 'string' ? payload.tool_name : 'INVALID_TOOL_NAME';
-      const ref = typeof payload.tool_use_id === 'string' ? payload.tool_use_id : null;
+      const { toolName, ref } = toolCallOf(payload);
       const m = matchClose(ix, sid, toolName, ref);
       let entry = m.entry, matchKind = m.match;
       if (!entry) {
