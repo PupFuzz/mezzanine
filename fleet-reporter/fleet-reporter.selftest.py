@@ -1528,20 +1528,59 @@ eq("GREEN: the real source carries no verification-disabling spelling", [],
 # case (c) above: the same `DEAD` address, no proxy, `not_measured`. The ingest's certificate carries
 # IP:127.0.0.1, so verification through the tunnel is the real check, with the seat's own `ca_file`.
 class ConnectProxy:
-    """A plain-HTTP CONNECT proxy on 127.0.0.1. `answer=False` accepts TCP, reads the CONNECT, and never
-    answers it — the proxy that costs a client its whole connect deadline."""
+    """A CONNECT proxy on 127.0.0.1. `answer=False` accepts TCP, reads the CONNECT, and never answers it — the
+    proxy that costs a client its whole connect deadline. `require` (card#9498) is the one
+    `Proxy-Authorization` value it admits: any other, or none, is answered `407`. `tls` (card#9498) is a
+    (certificate, key) pair it serves its own TLS on before it reads the CONNECT — an `https://` proxy.
+    `auths` records, per CONNECT, the `Proxy-Authorization` value it carried (None when it carried none);
+    the suite compares it and never prints it."""
 
-    def __init__(self, upstream_port: int, *, answer: bool = True):
+    def __init__(self, upstream_port: int, *, answer: bool = True, require: "str | None" = None,
+                 tls: "tuple[Path, Path] | None" = None):
         self.upstream_port = upstream_port
         self.answer = answer
+        self.require = require
         self.connects: list[str] = []
+        self.auths: list = []
+        self.refused = 0                 # CONNECTs answered 407
+        self.handshakes_failed = 0       # TLS sessions a client abandoned before any CONNECT (tls only)
+        self.ctx = None
+        if tls is not None:
+            self.ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            self.ctx.load_cert_chain(str(tls[0]), str(tls[1]))
         self.lsock = socket.create_server(("127.0.0.1", 0))
         self.port = self.lsock.getsockname()[1]
         threading.Thread(target=self._accept, daemon=True).start()
 
     @property
     def url(self) -> str:
-        return f"http://127.0.0.1:{self.port}"
+        return f"{'https' if self.ctx else 'http'}://127.0.0.1:{self.port}"
+
+    @staticmethod
+    def _pump_both(a, b):
+        """Both directions on ONE thread, for a TLS client socket: an SSL object is not read and written from
+        two threads at once. `pending()` is TLS data already decrypted that `select` cannot see."""
+        import select
+        try:
+            while True:
+                ready = [x for x in (a, b) if isinstance(x, ssl.SSLSocket) and x.pending()]
+                if not ready:
+                    ready, _, _ = select.select([a, b], [], [], 60)
+                    if not ready:
+                        return
+                for src in ready:
+                    chunk = src.recv(65536)
+                    if not chunk:
+                        return
+                    (b if src is a else a).sendall(chunk)
+        except OSError:
+            pass
+        finally:
+            for x in (a, b):
+                try:
+                    x.close()
+                except OSError:
+                    pass
 
     def _accept(self):
         while True:
@@ -1571,15 +1610,30 @@ class ConnectProxy:
         conn.settimeout(60)
         buf = b""
         try:
+            if self.ctx is not None:
+                try:
+                    conn = self.ctx.wrap_socket(conn, server_side=True)
+                except (ssl.SSLError, OSError):
+                    self.handshakes_failed += 1
+                    return
             while b"\r\n\r\n" not in buf:
                 chunk = conn.recv(4096)
                 if not chunk:
                     return
                 buf += chunk
-            self.connects.append(buf.split(b"\r\n", 1)[0].decode("ascii", "replace").rsplit(" ", 1)[0])
+            head = buf.split(b"\r\n\r\n", 1)[0].decode("latin-1").split("\r\n")
+            self.connects.append(head[0].rsplit(" ", 1)[0])
+            auth = next((ln.split(":", 1)[1].strip() for ln in head[1:]
+                         if ln.lower().startswith("proxy-authorization:")), None)
+            self.auths.append(auth)
             if not self.answer:
                 while conn.recv(4096):   # hold until the client gives up and closes
                     pass
+                return
+            if self.require is not None and auth != self.require:
+                self.refused += 1
+                conn.sendall(b"HTTP/1.1 407 Proxy Authentication Required\r\n"
+                             b"Proxy-Authenticate: Basic realm=\"suite\"\r\nContent-Length: 0\r\n\r\n")
                 return
             up = socket.create_connection(("127.0.0.1", self.upstream_port))
             conn.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
@@ -1587,6 +1641,9 @@ class ConnectProxy:
             if rest:
                 up.sendall(rest)
             conn.settimeout(None)
+            if self.ctx is not None:
+                self._pump_both(conn, up)
+                return
             threading.Thread(target=self._pump, args=(up, conn), daemon=True).start()
             self._pump(conn, up)
         except OSError:
@@ -1737,6 +1794,178 @@ redgreen("the health probe takes the seat's route, proxy_url included, and a sil
          f"'{rep_sil['detail']['sites']['default'].get('probe_error')}' in {t_sil:.1f} s, pass {t_sil_pass:.1f} s")
 PROXY.stop()
 SILENT_PROXY.stop()
+
+
+# (h) A PROXY THAT NEEDS A LOGIN, AND AN `https://` PROXY ON A PRIVATE CA (card#9498). `proxy_url`'s userinfo
+# was registered as a secret and never sent: a proxy that requires a login answered every CONNECT `407`, the
+# reporter classified that retryable, and the seat retried forever, delivered nothing, and read not_measured.
+# And an `https://` proxy's own TLS session trusted the system store alone, ignoring `ca_file`, so a proxy on a
+# private CA failed every connect. The credential below needs percent-encoding (a space, `@`, `/`, `:`, `%` and
+# a non-ASCII letter) and ends in a `%` that names no byte, which is kept as written. Every value is synthetic.
+import base64
+import urllib.parse
+
+PX_USER = "svc-proxy"
+PX_PASS = "Pr0xy p@ss/w:rd%-wörd%zz"            # the credential's bytes, as the proxy checks them
+PX_PASS_IN_URL = urllib.parse.quote(PX_PASS[:-3], safe="") + "%zz"
+PX_BASIC = "Basic " + base64.b64encode(f"{PX_USER}:{PX_PASS}".encode("utf-8")).decode()
+PX_WRONG = "Wr0ng-proxy-passw0rd"
+PX_SECRETS = [PX_PASS, PX_PASS_IN_URL, PX_BASIC.split(" ", 1)[1], PX_WRONG,
+              base64.b64encode(f"{PX_USER}:{PX_WRONG}".encode()).decode()]
+
+
+def px_url(port: int, *, scheme: str = "http", pw_in_url: str = PX_PASS_IN_URL) -> str:
+    return f"{scheme}://{PX_USER}:{pw_in_url}@127.0.0.1:{port}"
+
+
+def px_leaks(texts: list) -> list:
+    """The index, in PX_SECRETS, of every secret spelling found in any of `texts` (never the spelling)."""
+    return [f"#{i}" for t in texts for i, p in enumerate(PX_SECRETS) if p in (t or "")]
+
+
+def px_sweep(s: Seat, streams: list) -> list:
+    """Every secret spelling found in the seat's files — its spool, log, counters, state.json and REJECTED
+    markers; its config.json is where the credential legitimately lives — and in the given output streams."""
+    hits = []
+    for f in sorted(s.root.rglob("*")):
+        if f.is_file() and f != s.cfg_path:
+            hits += [f"{f.relative_to(s.root)}:{h}" for h in px_leaks([f.read_text(encoding="utf-8", errors="replace")])]
+    return hits + [f"stream:{h}" for h in px_leaks(streams)]
+
+
+def px_seat(name: str, url: str, **kw) -> Seat:
+    s = seat(name, ingest=DEAD, **kw)
+    s.cfg["proxy_url"] = url
+    s.write_cfg()
+    return s
+
+
+def px_pass(s: Seat, proxy: ConnectProxy, reporter: Path = REPORTER) -> dict:
+    """The one-shot, then one flusher pass with one spooled event, on `s` through `proxy`."""
+    c0, b0 = len(proxy.connects), len(INGEST.batches)
+    r, rep_ = selftest(s, reporter=reporter)
+    hook(s, "PreToolUse", pre(tuid="toolu_px"), reporter=reporter)
+    f = flush(s, reporter=reporter)
+    sd = rep_.get("detail", {}).get("sites", {}).get("default", {})
+    return {"rc": r.returncode, "checks": rep_.get("checks", {}), "site": rep_.get("sites", {}).get("default", {}),
+            "probe_error": sd.get("probe_error"), "errors": sd.get("errors", []),
+            "connects": proxy.connects[c0:], "auths": proxy.auths[c0:],
+            "delivered": any(e.get("kind") == "tool.start" for b in s.posted(b0) for e in b.get("events", [])),
+            "streams": [r.stdout, r.stderr, f.stdout, f.stderr]}
+
+
+def net(d: dict) -> tuple:
+    return (d["rc"], d["checks"].get("tls_verify"), d["checks"].get("schema_version_accepted"))
+
+
+eq("precondition: every CONNECT the no-userinfo proxy above was asked for carried no Proxy-Authorization",
+   (True, {None}), (len(PROXY.auths) > 0, set(PROXY.auths)))
+
+AUTH_PROXY = ConnectProxy(INGEST.port, require=PX_BASIC)
+px_g = px_pass(px_seat("px-auth", px_url(AUTH_PROXY.port)), AUTH_PROXY)
+eq("GREEN: through a proxy that requires a login, proxy_url's userinfo is sent percent-decoded as "
+   "Proxy-Authorization: Basic on every CONNECT, the probe passes, selftest exits 0, and the batch arrives",
+   ((0, "pass", "pass"), True, 0, True),
+   (net(px_g), bool(px_g["auths"]) and all(a == PX_BASIC for a in px_g["auths"]), AUTH_PROXY.refused, px_g["delivered"]))
+p_noauth = plant(("      if (auth) connectHeaders['Proxy-Authorization'] = auth;\n", ""))
+px_r = px_pass(px_seat("px-auth-red", px_url(AUTH_PROXY.port)), AUTH_PROXY, reporter=p_noauth)
+eq("RED: a reporter that sends no Proxy-Authorization is refused 407 and measures nothing, and nothing is "
+   "delivered", ({None}, False, "not_measured"),
+   (set(px_r["auths"]), px_r["delivered"], px_r["checks"].get("schema_version_accepted")))
+
+# A 407 IS THE CONFIG'S CREDENTIAL REFUSED, SO IT IS A CONFIG FAILURE AND THE LANE STOPS: selftest fails
+# config_readable naming the field, and a running flusher asks the proxy once and stops, counting
+# config_invalid, until it restarts on a corrected config (§ 11.5's auth stop).
+s_wrong = px_seat("px-wrong", px_url(AUTH_PROXY.port, pw_in_url=PX_WRONG))
+px_w = px_pass(s_wrong, AUTH_PROXY)
+eq("GREEN: a credential the proxy refuses fails the site's config_readable, and selftest exits 1, its error "
+   "naming proxy_url and the 407", (1, "fail", "fail", True),
+   (px_w["rc"], px_w["checks"].get("config_readable"), px_w["site"].get("config_readable"),
+    any("proxy_url" in e and "407" in e for e in px_w["errors"])))
+eq("  … and the flusher pass after it asks the proxy for its probe's tunnel alone — one CONNECT for the "
+   "one-shot, one for the pass — sends nothing, counts config_invalid on the site and logs the stop",
+   (2, False, 1, True),
+   (len(px_w["connects"]), px_w["delivered"], s_wrong.site_counters().get("config_invalid", 0),
+    "refused by the proxy on proxy_url's credential" in seat_log(s_wrong)))
+
+
+def px_running(name: str, reporter: Path, run_s: float = 2.0) -> dict:
+    """A long-lived flusher (scaled timings, a backoff of 0, so a lane in retry attempts every pass) on a seat
+    whose proxy refuses its credential, with an event spooled: how many CONNECTs it makes in `run_s`."""
+    s = px_seat(name, px_url(AUTH_PROXY.port, pw_in_url=PX_WRONG))
+    hook(s, "PreToolUse", pre(tuid="toolu_px_run"), reporter=reporter)
+    (s.spool / "flusher.lock").unlink(missing_ok=True)
+    c0 = len(AUTH_PROXY.connects)
+    p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, FLEET_REPORTER_BACKOFF_MAX_MS=0),
+                         cwd=str(HERE), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        time.sleep(run_s)
+    finally:
+        if p.poll() is None:
+            p.kill()
+        out, err = p.communicate()
+        s.freeze_flusher()
+    return {"connects": len(AUTH_PROXY.connects) - c0, "seat": s, "streams": [out, err]}
+
+
+run_g = px_running("px-run", fast_flusher())
+eq(f"GREEN: a running flusher refused 407 asks the proxy once and stops — CONNECTs in 2 s of "
+   f"{FAST_K['FLUSH_MS']} ms passes", 1, run_g["connects"])
+run_r = px_running("px-run-red", fast_flusher(
+    ("    if (r.proxyRefused) return { kind: 'proxy_auth', status: 407, error: r.error };\n", ""),
+    ("      if (probe.proxy_refused) authStop(ctxOf, lane, { status: 407, text: '', body: null }, 'probe');\n      else if",
+     "      if")))
+eq("RED: a flusher that classifies the 407 retryable asks the proxy again, pass after pass", True,
+   run_r["connects"] >= 5)
+
+# THE HTTPS PROXY. Its certificate is from a CA of its own, so the seat's ca_file holds both the ingest's
+# and the proxy's (ca replaces the default store for every certificate the seat verifies, § 3.5).
+PX_TLS_DIR = TMP / "px-tls"
+PX_TLS_DIR.mkdir(exist_ok=True)
+subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(PX_TLS_DIR / "px.key"),
+                "-out", str(PX_TLS_DIR / "px.crt"), "-days", "2", "-subj", "/CN=127.0.0.1",
+                "-addext", "subjectAltName=IP:127.0.0.1"], check=True, capture_output=True)
+PX_BOTH_CA = PX_TLS_DIR / "ingest-and-proxy-ca.pem"
+PX_BOTH_CA.write_text(Path(CA).read_text() + (PX_TLS_DIR / "px.crt").read_text())
+TLS_PROXY = ConnectProxy(INGEST.port, require=PX_BASIC, tls=(PX_TLS_DIR / "px.crt", PX_TLS_DIR / "px.key"))
+px_t = px_pass(px_seat("px-tls", px_url(TLS_PROXY.port, scheme="https"), ca=str(PX_BOTH_CA)), TLS_PROXY)
+eq("GREEN: through an https:// proxy whose certificate only ca_file trusts — with a login — the probe passes, "
+   "selftest exits 0, and the batch arrives: the one-shot's tunnel, then the pass's probe and batch",
+   ((0, "pass", "pass"), True, [DEAD_TARGET] * 3), (net(px_t), px_t["delivered"], px_t["connects"]))
+f0 = TLS_PROXY.handshakes_failed
+px_tn = px_pass(px_seat("px-tls-untrusted", px_url(TLS_PROXY.port, scheme="https"), ca=CA), TLS_PROXY)
+eq("GREEN: verification is on for the proxy too — a ca_file without the proxy's CA reaches no CONNECT, "
+   "measures nothing, and delivers nothing", ((2, "not_measured", "not_measured"), [], False, True),
+   (net(px_tn), px_tn["connects"], px_tn["delivered"], TLS_PROXY.handshakes_failed > f0))
+p_noca = plant(("      if (tlsProxy && ca) connectOpts.ca = ca;\n", ""))
+f1 = TLS_PROXY.handshakes_failed
+px_tr = px_pass(px_seat("px-tls-red", px_url(TLS_PROXY.port, scheme="https"), ca=str(PX_BOTH_CA)), TLS_PROXY,
+                reporter=p_noca)
+eq("RED: a reporter whose proxy TLS ignores ca_file fails every handshake with the proxy and measures nothing",
+   ((2, "not_measured", "not_measured"), [], False, True),
+   (net(px_tr), px_tr["connects"], px_tr["delivered"], TLS_PROXY.handshakes_failed > f1))
+
+# THE CREDENTIAL NEVER LEAVES THE CONFIG: no spelling of it — as written, decoded, or as the header's value —
+# in any file the refused seats wrote, nor in any output stream of the seats above, the refused seat's error,
+# marker and log included.
+px_hits = (px_sweep(run_g["seat"], run_g["streams"]) + px_sweep(s_wrong, px_w["streams"])
+           + px_leaks([st for d_ in (px_g, px_t, px_tn) for st in d_["streams"]]))
+eq("GREEN: no spelling of the proxy credential reaches the refused seats' spool, log, counters, state.json or "
+   "REJECTED marker, nor the selftest or flusher output of any seat above", [], px_hits)
+(s_wrong.spool / "log" / "px-control.log").write_text(f"planted: {PX_WRONG}\n", encoding="utf-8")
+eq("  NEGATIVE CONTROL: the same sweep finds the refused password planted into the log by hand", True,
+   len(px_sweep(s_wrong, [])) > 0)
+(s_wrong.spool / "log" / "px-control.log").unlink()
+redgreen("a proxy that needs a login gets proxy_url's credential, a 407 stops the lane as a config failure, and an "
+         "https proxy verifies against ca_file (card#9498)",
+         f"no Proxy-Authorization -> schema {px_r['checks'].get('schema_version_accepted')}, delivered "
+         f"{px_r['delivered']}; 407 retryable -> {run_r['connects']} CONNECTs in 2 s; proxy TLS without ca_file -> "
+         f"{net(px_tr)}",
+         f"credential sent -> {net(px_g)}, delivered {px_g['delivered']}; refused -> selftest rc {px_w['rc']} "
+         f"config_readable {px_w['checks'].get('config_readable')}, {run_g['connects']} CONNECT in 2 s; https proxy on "
+         f"ca_file -> {net(px_t)}, delivered {px_t['delivered']}; leaks {px_hits}")
+AUTH_PROXY.stop()
+TLS_PROXY.stop()
 
 
 print("\n== 2. SANITIZER — § 7.5's descriptor fixtures, the four REDs AT-2 names, and card#11292's ==")
@@ -4148,6 +4377,7 @@ def drive_at27(box, reporter: Path = REPORTER) -> dict:
             "degraded": hb.get("degraded") if hb else None,
             "fingerprint": hb.get("config_fingerprint") if hb else None,
             "detail": rep27.get("detail", {}).get("protocol_agent_name_in_roster"),
+            "rt_detail": rep27.get("detail", {}).get("rt_name_ok"),
             # § 6.14's relayed role (card#11144), kept OUT of `wire()` so every AT-27 comparison above
             # stays the name pair's. An absent member reads `<absent>`, never None, as in `wire()`.
             "role": (hb["protocol_agent_role"] if "protocol_agent_role" in hb else "<absent>") if hb else None}
@@ -4637,8 +4867,8 @@ eq("roundtable — a malformed declaration declares nothing: null and `undeclare
 # ⛔ RED — the check reads the protocol roster instead of cross_project.identity: `pm-solo` is no roster
 # member, so a reporter checking against the wrong key reports `disagreed` for a correct declaration.
 r_wrong_key = drive_rt(rt_box("red-wrong-key"), reporter=plant(
-    ("  if (read.identity === name) return { name, check: 'checked', malformed: null, config: site.path };",
-     "  if (readRosterNames(site.path).names?.includes(name)) return { name, check: 'checked', malformed: null, config: site.path };")))
+    ("  if (read.identity === name) return { name, check: 'checked', malformed: null, config: site.path, identity: read.identity };",
+     "  if (readRosterNames(site.path).names?.includes(name)) return { name, check: 'checked', malformed: null, config: site.path, identity: read.identity };")))
 eq("RED: a reporter checking the roundtable name against the roster reports a correct declaration `disagreed`",
    "disagreed", r_wrong_key["rt"]["check"])
 # ⛔ RED — the null omitted rather than sent on an undeclared seat.
@@ -4658,6 +4888,27 @@ eq("rt_name_ok — passes on checked, unchecked (two ways) and undeclared; FAILS
    "declaration, with selftest's exit 1",
    [(0, "pass"), (1, "fail"), (0, "pass"), (0, "pass"), (0, "pass"), (1, "fail")],
    [x["rt_ok"] for x in (rt_checked, rt_disagreed, rt_no_block, rt_no_config, rt_absent, rt_bad)])
+# THE DETAIL NAMES THE IDENTITY IT COMPARED AGAINST ON `checked` TOO (card#12344): it carried it on `disagreed`
+# alone, so a checked seat printed `cross_project_identity: null` beside `checked`, which a reader took for "no
+# identity found". Every other member of the detail is as it was.
+eq("rt_name_ok's detail on a checked seat names the identity it checked against, and on a disagreed one the "
+   "identity it disagreed with", (RT_NAME, "coder-solo"),
+   ((rt_checked["rt_detail"] or {}).get("cross_project_identity"),
+    (rt_disagreed["rt_detail"] or {}).get("cross_project_identity")))
+eq("  … and the checked seat's detail is otherwise unchanged: the same members, the declaration, the check, the "
+   "config read, no read error and no malformed declaration",
+   (["config", "cross_project_identity", "declared", "malformed_declaration", "read_error",
+     "roundtable_agent_name_check"], RT_NAME, "checked", True, None, None),
+   (sorted(rt_checked["rt_detail"] or {}), (rt_checked["rt_detail"] or {}).get("declared"),
+    (rt_checked["rt_detail"] or {}).get("roundtable_agent_name_check"),
+    str((rt_checked["rt_detail"] or {}).get("config", "")).endswith("coordination.config.json"),
+    (rt_checked["rt_detail"] or {}).get("read_error"), (rt_checked["rt_detail"] or {}).get("malformed_declaration")))
+r_noid = drive_rt(rt_box("red-checked-no-identity"), reporter=plant(
+    ("check: 'checked', malformed: null, config: site.path, identity: read.identity };",
+     "check: 'checked', malformed: null, config: site.path };")))
+eq("RED: a reporter whose checked branch carries no identity prints cross_project_identity null beside `checked`",
+   (None, "checked"), ((r_noid["rt_detail"] or {}).get("cross_project_identity"),
+                       (r_noid["rt_detail"] or {}).get("roundtable_agent_name_check")))
 r_nofail = drive_rt(rt_box("red-rt-never-fails", coord=dict(AT27_ROSTER, cross_project={"identity": "coder-solo"})), reporter=plant(
     ("  results.rt_name_ok = rt ? rt.check !== 'disagreed' && rt.malformed === null : null;",
      "  results.rt_name_ok = rt ? true : null;")))

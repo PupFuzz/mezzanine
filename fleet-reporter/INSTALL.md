@@ -240,7 +240,8 @@ A fresh config is D1 § 3.1's multi-site form with one site named `default`: `in
 `spool_dir`, `wrapped_statusline` (the seat's current `statusLine.command`, recorded for [the
 wrap](#the-statusline-wrap)), `protocol_agent_name`, `descriptors` `"full"`, `enabled`, the board pair, and
 `sites: [{ name, ingest_url, token, ca_file, proxy_url }]`, `ca_file` from `--ca-file` (an absolute path, or
-`null`), `proxy_url` `null` (a hand edit, because a proxy URL can carry a password). It refuses a config that
+`null`), `proxy_url` `null` (a hand edit, because a proxy URL can carry a password: [What this install does not give
+you](#what-this-install-does-not-give-you-by-name) says how to set it). It refuses a config that
 already exists. Its other modes — `add-site`, `set-token`, `remove-site`, `set-descriptors`, the board pair
 and `wrapped_statusline` — read the config, lift a single-site file written before card#12180 into `sites`
 under `default`, change one thing, and write the result; `add-site` and `set-token` change `sites` and nothing
@@ -516,7 +517,9 @@ its report and `selftest rc=`. The command probes each site's `ingest_url` with 
   failing names each rule the config breaks; the reporter never falls back to the system trust store for an
   unreadable `ca_file` (D1 § 3.5). `protocol_agent_name_in_roster` failing is a declared name the roster does not
   hold (`detail.…read_via` says which roster was read); `rt_name_ok` failing is a `roundtable_agent_name` other
-  than the coordination config's `cross_project.identity`.
+  than the coordination config's `cross_project.identity`. A site's `config_readable` also fails when its proxy
+  answers the probe's `CONNECT` with `407`: the proxy wants a login that `proxy_url` does not carry, or refuses the
+  one it carries; the flusher stops sending to that site on the same answer until it restarts.
 - **`rc=2`**: nothing failed and something is `not_measured`: a site that did not answer, or answered without its
   accepted set. Run again once it answers.
 
@@ -712,6 +715,12 @@ sleep and wake with no `seq_collision`; `read_via` `$COORD_CONFIG`; `selftest`, 
 - **No restore of `settings.json` from a backup, ever.** The uninstall removes the reporter's entries structurally.
 - **No edit of `settings.local.json`, a project's `.claude/settings.json` or managed settings.**
 - **`harness_label` stays unset** ([`config-check`](#config-check) says why).
+- **`proxy_url` is a hand edit** of the config (D1 § 3.1, § 3.5): `http://host:port` or `https://host:port`, with
+  the proxy's login as userinfo when it needs one, `http://user:password@host:port`, a reserved character in either
+  part percent-encoded (`@` as `%40`, `:` as `%3A`). The reporter sends the login to the proxy as
+  `Proxy-Authorization: Basic` and writes it nowhere else. An `https://` proxy's certificate is verified like the
+  ingest's: with `ca_file` set, that file is the whole trust store, so it holds the proxy's CA as well as the
+  site's. Then run `node install.js restart` and `selftest`.
 - **`roundtable_agent_name` is a hand edit** of the config (D1 § 3.1): set it to `cross_project.identity` of the
   coordination config `$COORD_CONFIG` names, then run `node install.js restart`. Only a `checked` name joins the
   desk to the fleet's cross-install posts.

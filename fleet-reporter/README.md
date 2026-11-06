@@ -121,7 +121,9 @@ thousand times — AT-28's backfill case alone runs a flusher pass per injected 
 stands up TLS ingest stubs on 127.0.0.1 with a throwaway self-signed certificate, trusted through the reporter's **own**
 `ca_file` key — so the transport path runs with certificate verification ON rather than being
 proven by turning it off. A `CONNECT` proxy stub in front of it drives the `proxy_url` route against
-an ingest address the seat cannot reach directly, for the health probe and the sender alike. AT-28's
+an ingest address the seat cannot reach directly, for the health probe and the sender alike; a stub that
+requires a login and answers `407` otherwise, and an `https://` stub on a certificate only `ca_file` trusts, drive
+`proxy_url`'s userinfo, the stop a `407` makes and the proxy's own TLS (card#9498). AT-28's
 site stubs (card#12180) also run the server's own store and fold rules — insert-or-ignore by `event_id`,
 the `batch_id` replay memory, the per-seat `seq` mark with its gap and collision counts, `clock_skew_ms`
 and the rate limiter's two limits — read from `server/app`, so what they count is what a site would.
@@ -249,7 +251,8 @@ holds, and known SHAPES (`CRED_PREFIX_RE`). A shape list is permanently one cred
 behind — it does not match a bare 32-character hex string — so the value leg is the only guard
 for a secret with no recognisable prefix, and § 5 of the suite tests it *in isolation* with a
 control proving the shape leg cannot see the value. Every configured secret is registered
-(`registerConfigSecrets`), including `proxy_url` userinfo, rather than only the seat token.
+(`registerConfigSecrets`), including `proxy_url` userinfo — as written, percent-decoded, and as the
+`Proxy-Authorization` value sent to the proxy — rather than only the seat token.
 
 ## What is NOT built here
 

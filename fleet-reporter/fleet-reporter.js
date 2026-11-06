@@ -67,7 +67,7 @@ const lazy = (name) => require(name);
  * change to a file a reporter update ships, and `bin/reporter-version-guard.py` fails a PR that changes
  * one without moving it, so two different builds never report the same version. Each version's row in
  * `fleet-reporter/UPDATES.md` says what an upgrading seat must apply. */
-const REPORTER_VERSION = '0.6.5';
+const REPORTER_VERSION = '0.6.6';
 const SCHEMA_VERSION = 1;
 
 /* ── Every number, from § 14 and the section that derives it ──────────────────────────────── */
@@ -623,7 +623,7 @@ function resolveRoundtable(cfg) {
     count('roundtable_agent_name_unchecked');
     return { name, check: 'unchecked', malformed: null, config: site.path, read_error: read.error ?? null };
   }
-  if (read.identity === name) return { name, check: 'checked', malformed: null, config: site.path };
+  if (read.identity === name) return { name, check: 'checked', malformed: null, config: site.path, identity: read.identity };
   count('roundtable_agent_name_disagreed');
   return { name, check: 'disagreed', malformed: null, config: site.path, identity: read.identity };
 }
@@ -703,7 +703,10 @@ function registerSecret(v) { if (typeof v === 'string' && v.length >= 8 && !SECR
  * carries and every element of `sites` a multi-site file carries, read from the raw file rather than from
  * `loadConfig`'s normalised list, so an element that failed validation still has its secrets registered
  * before anything names it in a line. Reading the top level alone registered nothing under the
- * multi-site form, and a site's proxy password reached the marker's copy of a server body unredacted. */
+ * multi-site form, and a site's proxy password reached the marker's copy of a server body unredacted.
+ * Each part is registered as written in the file (percent-encoded), as decoded, and — for `proxy_url` — as
+ * the `Proxy-Authorization` value `proxyAuthorization` builds from it, so every spelling of the credential
+ * this process holds is one the sink redacts, from `registerSecret`'s 8-character floor up (card#9498). */
 function registerConfigSecrets(cfg) {
   if (!cfg || typeof cfg !== 'object') return;
   const holders = [cfg].concat(Array.isArray(cfg.sites) ? cfg.sites.filter((x) => x && typeof x === 'object') : []);
@@ -712,13 +715,43 @@ function registerConfigSecrets(cfg) {
     for (const key of ['proxy_url', 'ingest_url']) {
       const raw = h[key];
       if (typeof raw !== 'string') continue;
-      try {
-        const u = new URL(raw);
-        if (u.password) registerSecret(decodeURIComponent(u.password));
-        if (u.username) registerSecret(decodeURIComponent(u.username));
-      } catch (e) { /* not a parseable URL: `loadConfig` refuses it by field name and never echoes the value (card#9521) */ }
+      let u;
+      try { u = new URL(raw); } catch (e) { continue; /* not a parseable URL: `loadConfig` refuses it by field name and never echoes the value (card#9521) */ }
+      for (const part of [u.password, u.username]) {
+        if (!part) continue;
+        registerSecret(part);
+        registerSecret(userinfoBytes(part).toString('utf8'));
+      }
+      const auth = key === 'proxy_url' ? proxyAuthorization(u) : null;
+      if (auth) registerSecret(auth.slice('Basic '.length));
     }
   }
+}
+
+/* A URL USERINFO PART, PERCENT-DECODED TO THE BYTES IT NAMES (card#9498). `new URL` keeps `username` and
+ * `password` percent-encoded, and the credential is the bytes they encode, so `p%40ss` is the password
+ * `p@ss`. A `%` that is not followed by two hex digits is kept as written, as curl reads one: the value
+ * still names one credential, where `decodeURIComponent` throws on it and the secret went unregistered. */
+const isHexByte = (c) => (c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x46) || (c >= 0x61 && c <= 0x66);
+function userinfoBytes(part) {
+  const b = Buffer.from(part, 'utf8');
+  const out = [];
+  for (let i = 0; i < b.length; i++) {
+    if (b[i] === 0x25 && i + 2 < b.length && isHexByte(b[i + 1]) && isHexByte(b[i + 2])) {
+      out.push(parseInt(String.fromCharCode(b[i + 1], b[i + 2]), 16)); i += 2;
+    } else out.push(b[i]);
+  }
+  return Buffer.from(out);
+}
+
+/* THE PROXY'S CREDENTIAL, FROM `proxy_url`'S USERINFO, AND THE ONE PLACE IT IS BUILT (card#9498): the
+ * `Proxy-Authorization: Basic` value `ingestRequest` sends on its CONNECT, or null when the URL carries no
+ * userinfo (then no header is sent). RFC 7617: base64 of `user:password`, each part the bytes its
+ * percent-encoding names. `registerConfigSecrets` registers the value it returns, so the header value is a
+ * redacted secret too. */
+function proxyAuthorization(u) {
+  if (!u.username && !u.password) return null;
+  return 'Basic ' + Buffer.concat([userinfoBytes(u.username), Buffer.from(':'), userinfoBytes(u.password)]).toString('base64');
 }
 /* § 7.3 RULE 3's SHAPE LIST, and the ONE copy of it: the sanitizer runs this regex as rule 3 and the
  * log sink below runs it as `redactSecrets`' shape leg, so a prefix added for one is added for both.
@@ -3436,8 +3469,9 @@ const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
  * committed with the answer lost, and its `next_seq` may name seqs the site holds — under which this
  * build's first request would put different events (review round 4's F1). A fresh `seq_epoch`, `next_seq`
  * 1 and no request make that collision unreachable; the lines ahead of the carried cursor arrive again
- * and are answered as duplicates. The cost is one `epoch_reset` per upgraded seat, and § 10.2's accepted
- * `seq_gap` residual where the hand-over's last batch was committed (card#12210). The entry records no
+ * and are answered as duplicates. The cost is one `epoch_reset` per upgraded seat: since card#12210 the
+ * ingest counts `seq_gap` over every seq a batch carried, duplicates included, so the re-send counts no gap
+ * (§ 10.2). The entry records no
  * URL until a flusher start whose configured URL parses binds it; `legacy` (not serialized) is what `siteEntry`
  * reads that by, set here at the adoption and again by `markUnbound` at every later read of an entry saved before
  * that binding — a first start under an unparseable URL saves the entry unbound (delta review N1). */
@@ -4082,6 +4116,10 @@ const getAgent = (site) => (site.agent || (site.agent = new (lazy('https').Agent
  *   - ROUTE: the site's `proxy_url` set ⇒ an HTTP CONNECT tunnel to the ingest host through that proxy;
  *     null ⇒ direct, on the site's keep-alive agent. The site's `proxy_url` ONLY — HTTP(S)_PROXY
  *     environment variables are IGNORED, § 3.4 rule 1: no transport decision from ambient environment.
+ *     A `proxy_url` with userinfo sends it on the CONNECT as `Proxy-Authorization: Basic`
+ *     (`proxyAuthorization`, a registered secret); an `https://` proxy's own TLS session verifies against
+ *     `ca_file` as the ingest's does; and a CONNECT answered `407` ends the request with `proxyRefused`
+ *     set — a refusal of the config's credential, which no retry can change (card#9498).
  *   - TLS: `https://` ingest only, verification on, `ca_file` as the TLS `ca` option, which replaces
  *     the default trust store (the seat trusts only that file). It is read per request, and one that
  *     is not an absolute path, or cannot be read, ends the request as `invalid` before any socket
@@ -4102,7 +4140,7 @@ const getAgent = (site) => (site.agent || (site.agent = new (lazy('https').Agent
  * — through a proxy, the CONNECT answered 200) and `secured` (the TLS handshake with it completed). */
 function ingestRequest(site, { method, path: pathOf, headers, body }) {
   return new Promise((resolve) => {
-    const out = { status: null, headers: null, body: null, error: null, deadline: null, invalid: null, tcp: false, secured: false };
+    const out = { status: null, headers: null, body: null, error: null, deadline: null, invalid: null, tcp: false, secured: false, proxyRefused: false };
     let settled = false, connectTimer = null, requestTimer = null;
     const live = [];   // every request and socket this call opened, destroyed when a deadline ends it
     const done = (error) => {
@@ -4158,10 +4196,18 @@ function ingestRequest(site, { method, path: pathOf, headers, body }) {
     let connect;
     try {
       const u = new URL(site.proxy_url);
-      connect = lazy(u.protocol === 'https:' ? 'https' : 'http').request({
-        host: u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80),
-        method: 'CONNECT', path: `${url.hostname}:${port}`, headers: { Host: `${url.hostname}:${port}` }, agent: false,
-      });
+      const tlsProxy = u.protocol === 'https:';
+      const connectHeaders = { Host: `${url.hostname}:${port}` };
+      const auth = proxyAuthorization(u);
+      if (auth) connectHeaders['Proxy-Authorization'] = auth;
+      const connectOpts = {
+        host: u.hostname, port: u.port || (tlsProxy ? 443 : 80),
+        method: 'CONNECT', path: `${url.hostname}:${port}`, headers: connectHeaders, agent: false,
+      };
+      // An `https://` proxy's own TLS session trusts what the ingest's does: `ca_file` replaces the
+      // default store for every certificate this seat verifies (card#9498).
+      if (tlsProxy && ca) connectOpts.ca = ca;
+      connect = lazy(tlsProxy ? 'https' : 'http').request(connectOpts);
     } catch (e) { done(`proxy: ${e && e.message}`); return; }
     live.push(connect);
     connect.on('error', (e) => done(`proxy: ${e && e.message}`));
@@ -4169,6 +4215,11 @@ function ingestRequest(site, { method, path: pathOf, headers, body }) {
       live.push(tunnel);
       tunnel.on('error', (e) => done(String(e && e.code || e && e.message)));
       if (settled) { tunnel.destroy(); return; }
+      if (res.statusCode === 407) {
+        out.proxyRefused = true; tunnel.destroy();
+        done("proxy: proxy CONNECT 407 — the proxy refused proxy_url's credential (or it carries none)");
+        return;
+      }
       if (res.statusCode !== 200) { tunnel.destroy(); done(`proxy: proxy CONNECT ${res.statusCode}`); return; }
       out.tcp = true;
       const tlsOpts = { socket: tunnel, host: url.hostname };
@@ -4202,6 +4253,9 @@ function postBatch(site, body) {
     // is not absolute or cannot be read — is `refused`: config_invalid, keep spooling, send nothing (§ 3.5). Never
     // `permanent`: that quarantines the batch, and a config typo would cost the events it holds (card#9521).
     if (r.invalid) return { kind: 'refused', status: 0, error: r.invalid };
+    // The proxy refused `proxy_url`'s credential: a config failure, so the lane stops (`authStop`), never
+    // the retry ladder, which resent it forever (card#9498).
+    if (r.proxyRefused) return { kind: 'proxy_auth', status: 407, error: r.error };
     // A deadline, a connect/DNS/TLS failure, a proxy that refused or never answered, or an answer
     // cut off before its end: all transient by nature (§ 11.5).
     if (r.error) return { kind: 'retryable', status: 0, error: r.error };
@@ -4721,8 +4775,10 @@ async function flusherMain() {
       }
       lane.healthEveryMs = unmeasured ? K.HEARTBEAT_MS : K.HEALTH_MS;
       // A probe the ingest refused `401 unauthenticated` is a measured `token_accepted` fail, and it
-      // starts the same auth stop a refused batch does (§ 6.14, § 11.5).
-      if (probe.checks.token_accepted === false) authStop(ctxOf, lane, { status: probe.http_status, text: probe.text, body: probe.body }, 'probe');
+      // starts the same auth stop a refused batch does (§ 6.14, § 11.5); so does a probe whose CONNECT the
+      // site's proxy answered `407` (card#9498).
+      if (probe.proxy_refused) authStop(ctxOf, lane, { status: 407, text: '', body: null }, 'probe');
+      else if (probe.checks.token_accepted === false) authStop(ctxOf, lane, { status: probe.http_status, text: probe.text, body: probe.body }, 'probe');
     }
     if (lane.authStopped) return;
     await laneDrain(ctxOf, lane);
@@ -4899,17 +4955,23 @@ const markerLine = (siteName, res, count) =>
   + `${count === undefined ? '' : ` events=${count}`} body=${redactSecrets(String(res.text || '').slice(0, 512))}`;
 
 /* THE AUTH STOP (§ 11.5): the ingest's own `401 unauthenticated` or `403 identity_mismatch`, to a batch or
- * (the `401`) to the probe. The bytes are not what was refused, so the cursor and the persisted request
- * stay and nothing is quarantined; `auth_refused` counts on the site, the marker and the log say which, and
- * the lane sends nothing and probes nothing until the flusher restarts — every recovery is a config write,
- * so a restart is the one thing that can lift it. Lane state, never saved. */
+ * (the `401`) to the probe — or the site's proxy answering its CONNECT `407`, to either (card#9498). The
+ * bytes are not what was refused, so the cursor and the persisted request stay and nothing is quarantined;
+ * the marker and the log say which, and the lane sends nothing and probes nothing until the flusher
+ * restarts — every recovery is a config write, so a restart is the one thing that can lift it. The ingest's
+ * refusals count `auth_refused` on the site; the proxy's is a config failure, `config_invalid` on the site,
+ * because the token was never presented to the ingest. Lane state, never saved. */
 function authStop(c, lane, res, what) {
   lane.authStopped = true;
-  lane.entry.counters.auth_refused = (lane.entry.counters.auth_refused || 0) + 1;
+  const proxy = res.status === 407;
+  if (proxy) count('config_invalid', 1, lane.name);
+  else lane.entry.counters.auth_refused = (lane.entry.counters.auth_refused || 0) + 1;
   if (res.status === 401) lane.entry.selftest.token_accepted = false;
   const line = markerLine(lane.name, res);
   appendRejectedMarker(c.spool, lane.name, line);
-  logLine(c.spool, lane.role, `${what} refused on its credential — this site's lane stops until the flusher restarts on a corrected config (a 401 is the token, a 403 the pair it was issued for): ${line}`);
+  logLine(c.spool, lane.role, proxy
+    ? `${what} refused by the proxy on proxy_url's credential (407: missing, wrong, or a scheme other than Basic) — this site's lane stops until the flusher restarts on a corrected config: ${line}`
+    : `${what} refused on its credential — this site's lane stops until the flusher restarts on a corrected config (a 401 is the token, a 403 the pair it was issued for): ${line}`);
   c.persist();
 }
 
@@ -5049,7 +5111,7 @@ async function laneDrain(c, lane) {
       c.persist();
       continue;
     }
-    if (res.kind === 'auth') { authStop(c, lane, res, 'batch'); return; }
+    if (res.kind === 'auth' || res.kind === 'proxy_auth') { authStop(c, lane, res, 'batch'); return; }
     if (res.kind === 'refused') {
       // config_invalid: keep spooling and send nothing. Fail closed, loudly, on the client's
       // own surface (§ 3.5), naming what the config got wrong. The request stays persisted.
@@ -5099,7 +5161,8 @@ async function laneDrain(c, lane) {
  *     another seat is `true` here and meets `403 identity_mismatch` on the first batch (§ 6.14). */
 function refreshHealth(site) {
   return ingestRequest(site, { method: 'GET', path: (u) => u.pathname.replace(/\/events$/, '/health') }).then((r) => {
-    const probe = { reached: null, http_status: r.status, accepted_schema_versions: null, error: r.error, checks: null, body: null, text: null };
+    const probe = { reached: null, http_status: r.status, accepted_schema_versions: null, error: r.error, checks: null, body: null, text: null,
+      proxy_refused: r.proxyRefused };
     if (r.status !== null) probe.reached = true;
     else if (r.error && !r.deadline && r.tcp && !r.secured) probe.reached = false;
     if (r.body) {
@@ -5397,6 +5460,12 @@ async function selftestMain() {
       const probe = await refreshHealth(site);
       Object.assign(r, probe.checks);
       Object.assign(d, { reached: probe.reached, probe_error: probe.error, http_status: probe.http_status, accepted_schema_versions: probe.accepted_schema_versions });
+      // The proxy refused `proxy_url`'s credential: a config failure the flusher stops on (`authStop`), so the
+      // site's `config_readable` fails here, its error naming the field and never the value (card#9498).
+      if (probe.proxy_refused) {
+        const e = `${site.label}proxy_url: the proxy answered CONNECT 407 — its credential is missing from proxy_url's userinfo, wrong, or needs a scheme other than Basic (§ 3.5)`;
+        r.config_readable = false; d.errors = d.errors.concat([e]); detail.config_readable.errors = detail.config_readable.errors.concat([e]);
+      }
     }
     sites[key] = {};
     for (const c of SITE_CHECKS) sites[key][c] = verdict(r[c]);
