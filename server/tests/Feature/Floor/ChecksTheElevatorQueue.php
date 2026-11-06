@@ -312,6 +312,14 @@ trait ChecksTheElevatorQueue
             $shared = array_filter($frame['scene']['effects'] ?? [], fn (array $e): bool => ($e['frames'] ?? 0) > 0 && ! in_array($e, $walks, true)
                 && is_array($e['door'] ?? null) && $e['door']['start'] * $I - $e['elapsed_ms'] < $to
                 && ($e['door']['start'] + $e['door']['frames']) * $I - $e['elapsed_ms'] > $from);
+            // card#12466: a seat turned back OUT of the cab mid-batch — an A1 turn-round from the cab, stepping out through
+            // this opening after a boarder has already stepped in — holds the doorway until it has cleared the lane in front
+            // of it (card#12793's `laneClear()`), so the next boarder's leaving comes after that, not a step after the one
+            // before it: where one shares the opening, a later boarder's wait is not judged late here, and `laneDefects()`
+            // holds that no boarder walks in the lane while it is there. A plain arrival clears the lane before the first
+            // boarder is released, so for it the step rule stands and every boarder is judged.
+            $out = array_filter($shared, static fn (array $e): bool => ($e['leg_kind'] ?? null) === 'turn' && $e['animation_id'] === 'A1'
+                && ($e['legs'][0]['kind'] ?? null) === 'cab') !== [];
 
             // Nearest the door first: one waiting ON the threshold — its wait where its door stand is — as the leaves begin to
             // open is in the doorway, and steps in before every other boarder.
@@ -330,7 +338,7 @@ trait ChecksTheElevatorQueue
                 // One still waiting then leaves then — within the frame a walk begun between two loop frames rounds up by.
                 // Never before this frame's instant: what was free before it was judged on the frames that drew it, and a
                 // boarder cancelled since (item 6) is not drawn here, its follower keeping the leaving it already had.
-                $ready = $k === 0 ? ($shared === [] ? $from : null) : $boarders[$k - 1]['in'] + $door['step'] * $I;
+                $ready = $k === 0 ? ($shared === [] ? $from : null) : ($out ? null : $boarders[$k - 1]['in'] + $door['step'] * $I);
                 $ready = $ready === null ? null : max(0.0, $ready);
 
                 if ($ready !== null && $this->waitingAt($b['walk'], $ready - 0.001) && $I - 0.001 <= $b['leaves'] - $ready) {

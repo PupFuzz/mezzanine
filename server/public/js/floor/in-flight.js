@@ -22,7 +22,9 @@
  * lattice key differs from the one the walk was routed on. A same-side delta — `working ↔ idle`, an action or a
  * context change under an A1, `stale → offline` under an A2 — leaves the walker on its way: under a walk the desk
  * draws every fact of the applied object but the character, and the walker IS that character. No walk starts from
- * a cancelled one, and a render whose journal fires two walk rows for one seat draws neither. The 1 s age tick and
+ * a cancelled one, and a render whose journal fires two walk rows for one seat draws neither — but since card#12466 a
+ * cancelling A1 or A2 drawn as a TURN-ROUND of the walk it cancels (item 6a: the scene's `seatTurn()`, from the walk
+ * `walks()` hands it) REPLACES that walk, where nothing but its row and side touched the walk. The 1 s age tick and
  * the paint-only refresh are not renders and never reach `render()`.
  *
  * ⛔ AN INTERN WALKS TOO, ONE WALK PER INTERN (§ 6.2's *Interns ride the elevator too*, items 13–17; card#12450). An
@@ -91,6 +93,24 @@ const keyOf = (effect) => `${effect.install_id}/${effect.seat_id}`;
 
 /** An intern's A10 walk (card#12450) — keyed by its intern key, never by its seat's. */
 const isInternWalk = (effect) => effect.animation_id === 'A10' && typeof effect.intern_key === 'string';
+
+/**
+ * A walk's door spans (item 10): its own `door`, and — card#12466 — the `door_rest` a seat's turn-round carries, the leaves
+ * still closing from the walk it replaced, which close as they began to however the turn's own frames run.
+ */
+const spansOf = (effect) => [effect.door_rest, effect.door].filter((d) => d !== null && d !== undefined);
+
+/**
+ * card#12744: what a turn-round that begins in the cab keeps of the walk it replaces — its rider spot and where its feet
+ * were (`was`, read before the replaced walk left the holder) — so it turns from where it stands; nothing otherwise. One
+ * reader for item 16's intern turn-round and, since card#12466, a seat's.
+ */
+const keptInCab = (was, effect) => (was !== undefined && was.at.where === 'cab' && effect.legs[0]?.kind === 'cab'
+    ? { cab_slot: was.slot, cab_from: Object.freeze({ x: was.at.x, y: was.at.y }) }
+    : {});
+
+/** card#12466: a seat's turn-round (item 6a) — an A1 or A2 effect drawn from the opposite walk in flight, with frames to run. */
+const isSeatTurn = (effect) => WALK_ROWS.includes(effect.animation_id) && effect.leg_kind === 'turn' && effect.frames > 0;
 
 /** An intern's A24 laptop fade (card#12451). */
 const isFade = (effect) => effect.animation_id === 'A24' && typeof effect.intern_key === 'string';
@@ -215,10 +235,24 @@ export class EffectsInFlight {
         // An intern a walk of this render replaces (item 16's turn-round), and an intern whose fade a newer one replaces.
         const replaced = new Set(effects.filter((e) => isInternWalk(e) && e.frames > 0).map((e) => e.intern_key));
         const refaded = new Set(effects.filter(isFade).map((e) => e.intern_key));
+        // card#12466 (item 6a): a seat whose walk this render's row turns round — the turn drawn by the scene, the render
+        // carrying that seat's one walk row — and, of those, the seats whose walk nothing but that row touched, which alone
+        // the turn may replace: any other clause (a non-delta entry, row 5, the stilled floor, the anchor, the threshold,
+        // the lattice key) cancels the walk as it always did, and no walk starts from it.
+        const walkCount = new Map();
+
+        for (const effect of effects) {
+            if (WALK_ROWS.includes(effect.animation_id)) {
+                walkCount.set(keyOf(effect), (walkCount.get(keyOf(effect)) ?? 0) + 1);
+            }
+        }
+
+        const turning = new Set(effects.filter((e) => isSeatTurn(e) && walkCount.get(keyOf(e)) === 1).map(keyOf));
+        const turnable = new Set();
         // card#12744: where an arrival item 16 turns round in the cab stands — its rider spot and its feet now — which its
-        // turn-round keeps, so the intern turns from where it is.
+        // turn-round keeps, so the intern turns from where it is; card#12466: a seat's turn-round in the cab likewise.
         const inCab = new Map(this.#held
-            .filter((h) => h.intern === true && replaced.has(h.key) && h.cab_slot !== undefined && !this.#ended(h, now))
+            .filter((h) => (h.intern === true ? replaced : turning).has(h.key) && h.cab_slot !== undefined && !this.#ended(h, now))
             .map((h) => [h.key, { slot: h.cab_slot, at: pointAt(h.effect, now - h.at) }]));
 
         this.#held = this.#held.filter((h) => {
@@ -254,17 +288,22 @@ export class EffectsInFlight {
                 return true;
             }
 
-            const touched = touchedKeys.has(h.key)
-                || rowKeys.has(h.key)
-                || ctx.side(h.key) !== h.side
+            const elsewhere = touchedKeys.has(h.key)
                 || ctx.lattice_key !== h.lattice_key
                 || ctx.unconfirmed(h.key) !== h.unconfirmed
                 || ctx.stilled !== h.stilled
                 || !samePoint(ctx.anchors.get(h.key) ?? null, h.anchor)
                 || !samePoint(ctx.threshold, h.threshold);
+            const touched = elsewhere
+                || rowKeys.has(h.key)
+                || ctx.side(h.key) !== h.side;
 
             if (touched) {
                 cancelled.push(h.key);
+
+                if (!elsewhere && turning.has(h.key)) {
+                    turnable.add(h.key);
+                }
             }
 
             return !touched;
@@ -308,14 +347,6 @@ export class EffectsInFlight {
             }
         }
 
-        const walkCount = new Map();
-
-        for (const effect of effects) {
-            if (WALK_ROWS.includes(effect.animation_id)) {
-                walkCount.set(keyOf(effect), (walkCount.get(keyOf(effect)) ?? 0) + 1);
-            }
-        }
-
         for (const effect of effects) {
             if (!(effect.frames > 0) && !(effect.still_frames > 0)) {
                 continue;
@@ -341,9 +372,7 @@ export class EffectsInFlight {
                     frames: effect.frames,
                     key: effect.intern_key,
                     intern: true,
-                    ...(was !== undefined && was.at.where === 'cab' && effect.legs[0]?.kind === 'cab'
-                        ? { cab_slot: was.slot, cab_from: Object.freeze({ x: was.at.x, y: was.at.y }) }
-                        : {}),
+                    ...keptInCab(was, effect),
                     anchor: effect.anchor ?? null,
                     threshold: ctx.threshold,
                     unconfirmed: ctx.unconfirmed(keyOf(effect)),
@@ -369,16 +398,22 @@ export class EffectsInFlight {
             const key = keyOf(effect);
 
             // No walk starts from a cancelled one, and two walk rows for one seat in one render are a
-            // walk the second delta cancelled.
-            if (cancelled.includes(key) || walkCount.get(key) > 1 || this.#held.some((h) => h.key === key)) {
+            // walk the second delta cancelled — but for card#12466's turn-round, which REPLACES the walk its row cancelled
+            // (item 6a), and only where nothing but that row touched it.
+            const turn = isSeatTurn(effect);
+
+            if ((turn ? !turnable.has(key) : cancelled.includes(key)) || walkCount.get(key) > 1 || this.#held.some((h) => h.key === key)) {
                 continue;
             }
+
+            const was = turn ? inCab.get(key) : undefined;
 
             this.#held.push({
                 effect,
                 at: now,
                 frames: effect.frames,
                 key,
+                ...keptInCab(was, effect),
                 anchor: ctx.anchors.get(key) ?? null,
                 threshold: ctx.threshold,
                 unconfirmed: ctx.unconfirmed(key),
@@ -553,8 +588,10 @@ export class EffectsInFlight {
             return { h, arrive, own: Math.max(arrive, h.pinned ?? h.at + (waitFrom(h.effect.queue, h.shape) + h.effect.queue.wait) * I), board: h.shape.board?.frames ?? 0 };
         }).sort((a, b) => a.arrive - b.arrive || byKey(a.h.key, b.h.key));
         const fixed = this.#held
-            .filter((h) => h.key !== null && !this.#ended(h, now) && !queues(h) && (h.effect.door ?? null) !== null)
-            .map((h) => ({ open: h.at + h.effect.door.start * I, clear: h.at + (h.effect.door.start + h.effect.door.frames - D.close) * I, free: h.at + laneClear(h, h.effect.door) * I }))
+            .filter((h) => h.key !== null && !this.#ended(h, now))
+            // A queued walk's own door is re-timed below; the leaves a turn-round carries over (`door_rest`) are not.
+            .flatMap((h) => (queues(h) ? [h.effect.door_rest].filter((d) => d !== null && d !== undefined) : spansOf(h.effect))
+                .map((d) => ({ open: h.at + d.start * I, clear: h.at + (d.start + d.frames - D.close) * I, free: h.at + laneClear(h, d) * I })))
             .sort((a, b) => a.open - b.open);
         const plans = new Map();
         // An instant in a departure's own frames: on a frame boundary that frame, anywhere else the next one.
@@ -1075,6 +1112,16 @@ export class EffectsInFlight {
     }
 
     /**
+     * card#12466: every seat's A1 or A2 walk in flight at `now`, seat key → `{ effect, elapsed_ms }` — what a seat's
+     * turn-round turns from (§ 6.2's walk note item 6a), as `interns()` is for item 16.
+     */
+    walks(now) {
+        return new Map(this.#held
+            .filter((h) => h.key !== null && WALK_ROWS.includes(h.effect.animation_id) && !this.#ended(h, now))
+            .map((h) => [h.key, Object.freeze({ effect: h.effect, elapsed_ms: Math.max(0, now - h.at) })]));
+    }
+
+    /**
      * An intern's laptop opacity at `now` where something in flight is moving it, else `null` (its held state decides):
      * an A24 fade at its point between its two ends, or an arrival — 0 before its `seat` leg, rising through it.
      */
@@ -1119,9 +1166,9 @@ export class EffectsInFlight {
     nextEnd(now) {
         const ends = [...this.#held, ...this.#trips.values()]
             .filter((h) => !this.#ended(h, now))
-            .map((h) => h.at + h.frames * this.#intervalMs - now);
+            .map((h) => this.#endAt(h) - now);
 
-        return ends.length === 0 ? null : Math.max(0, Math.min(...ends));
+        return ends.length === 0 ? null : Math.min(...ends);
     }
 
     /**
@@ -1130,11 +1177,11 @@ export class EffectsInFlight {
      */
     doors(now) {
         const spans = this.#held
-            .filter((h) => h.key !== null && !this.#ended(h, now) && h.effect.door !== null && h.effect.door !== undefined)
-            .map((h) => {
+            .filter((h) => h.key !== null && !this.#ended(h, now))
+            .flatMap((h) => {
                 const elapsed = this.#elapsed(h, now);
 
-                return { from: h.effect.door.start - elapsed, to: h.effect.door.start + h.effect.door.frames - elapsed };
+                return spansOf(h.effect).map((d) => ({ from: d.start - elapsed, to: d.start + d.frames - elapsed }));
             })
             .filter((s) => s.to > 0)
             .sort((a, b) => a.from - b.from);
@@ -1185,8 +1232,24 @@ export class EffectsInFlight {
         return Math.max(0, Math.floor((now - h.at) / this.#intervalMs));
     }
 
+    /**
+     * card#12466 — THE INSTANT AN EFFECT ENDS, IN WHOLE MILLISECONDS: its start plus its frames' time, rounded. Every true end
+     * is a whole millisecond — the clock is `Date.now()`'s and every builder's frames are whole, but for a turn-round that
+     * carries the rest of a drawn motion, whose frames are one whole instant minus another divided by the frame interval —
+     * so the rounding takes off only the float noise of that division (`0.8000000000000007` frames is 200 ms, not
+     * `200.00000000000017`). Read at each call, never stored, so `#board()` re-timing a departure's frames moves its end too.
+     */
+    #endAt(h) {
+        return Math.round(h.at + h.frames * this.#intervalMs);
+    }
+
+    /**
+     * An effect has ended once its end instant has come — the instant `nextEnd()` names and the paint-only refresh is set
+     * for, so the refresh always finds it ended: on a whole-millisecond clock a live effect is at least 1 ms from its end,
+     * and the refresh never re-arms at 0 ms. A turn-round can end part-way through a frame; it ends at its own instant.
+     */
     #ended(h, now) {
-        return this.#elapsed(h, now) >= h.frames;
+        return now >= this.#endAt(h);
     }
 }
 

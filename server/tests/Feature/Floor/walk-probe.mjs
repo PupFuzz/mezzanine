@@ -31,6 +31,13 @@
  *   `lattice`  — H6's tileset and registry legs at the scene: `buildScene()` over one drawn frame and its rows twice —
  *                a tileset `pending` then held, the theme registry absent then held — each pair's lattice keys, and
  *                whether `EffectsInFlight` cancels the first scene's walk at a render carrying the second's key.
+ *   `turn-touched` — card#12466 (AT-D3-36): a seat's walk and the turn-round a later scene drew from it, handed to
+ *                `EffectsInFlight` over a render touching the seat by its row and side alone and by each other clause of
+ *                the walk note's item 6 as well — whether the turn is held, per clause.
+ *   `turn-blind` — card#12466 (AT-D3-36): each case's walk handed to `scene.js`'s `turnRound()` at each of its instants, both
+ *                ways, as drawn and with every label stripped (each leg's `why` and `plate`, the queue part, `leg_kind`, the
+ *                animation id, the cause), over stand-in straight routes — every pair of answers that differ, and how many
+ *                cases turned a figure on the floor, in the cab and inside a restroom door.
  *
  * argv: `<module-dir>` — the client tree's `wire/` (a mutated copy's, for a plant). stdout: the mode's answer.
  */
@@ -313,6 +320,94 @@ if (input.mode === 'lattice') {
     });
 }
 
+// card#12466 (AT-D3-36): which touches let a seat's turn-round replace the walk it turns from. The holder is handed the walk
+// a run's scene drew and, `at` ms later, the turn the next scene drew, over a render that touches the seat by its row and
+// its side alone (`none`) or by one more of item 6's clauses as well — and answers, per clause, whether the turn is held.
+if (input.mode === 'turn-touched') {
+    const { EffectsInFlight } = await mod('floor/in-flight.js');
+    const { walk, turn, key, anchor, door, lattice_key: latticeKey, at } = input;
+    const base = (side) => ({
+        journal: [],
+        anchors: new Map([[key, anchor]]),
+        threshold: door,
+        unconfirmed: () => false,
+        stilled: false,
+        side: () => side,
+        lattice_key: latticeKey,
+    });
+    const [install, seat] = key.split('/');
+    const clauses = {
+        none: (c) => c,
+        journal: (c) => ({ ...c, journal: [{ outcome: 'applied', t: 'seat.insert', install_id: install, seat_id: seat }] }),
+        lattice: (c) => ({ ...c, lattice_key: `${latticeKey} moved` }),
+        stilled: (c) => ({ ...c, stilled: true }),
+        unconfirmed: (c) => ({ ...c, unconfirmed: () => true }),
+        anchor: (c) => ({ ...c, anchors: new Map([[key, { x: anchor.x + 1, y: anchor.y }]]) }),
+        threshold: (c) => ({ ...c, threshold: { x: door.x + 1, y: door.y } }),
+    };
+
+    answer(Object.fromEntries(Object.entries(clauses).map(([name, touch]) => {
+        const holder = new EffectsInFlight(1000 / 4);
+
+        holder.render([walk], 0, base(walk.side));
+        holder.render([turn], at, touch(base(turn.side)));
+
+        return [name, holder.walks(at).get(key)?.effect.leg_kind === 'turn'];
+    })));
+}
+
+// card#12466 (AT-D3-36): THE TURN READS NO LABEL. Each case is a walk a run drew, its anchor and the threshold; at each of its
+// instants, both ways (an intern only to the elevator), `turnRound()` is handed the walk as drawn and the same walk with every
+// label stripped — each leg's `why` and `plate`, the queue part, `leg_kind`, the animation id, the cause — over one stand-in
+// geometry whose routes are straight lines, and the two answers must be the same bytes. The stand-in routes answer for any
+// point, so a case turns wherever the real map would; what is compared is only what the turn decided from the walk.
+if (input.mode === 'turn-blind') {
+    const { turnRound } = await mod('floor/scene.js');
+    const strip = (fx) => {
+        const { queue, leg_kind: legKind, animation_id: id, cause, turned_in: turnedIn, turned_at: turnedAt, from_trip: fromTrip, ...rest } = fx;
+
+        return { ...rest, legs: fx.legs.map(({ why, plate, ...leg }) => leg) };
+    };
+    const differ = [];
+    const turned = { floor: 0, cab: 0, inside: 0 };
+    let compared = 0;
+
+    for (const c of input.cases) {
+        const lead = c.intern ? [{ kind: 'seat', start: 0, frames: 2, at: c.anchor, laptop_from: 1, laptop_to: 0 }] : [];
+
+        for (const to of c.intern ? ['elevator'] : ['desk', 'elevator']) {
+            const way = {
+                to,
+                door: c.door,
+                anchor: c.anchor,
+                lead,
+                home: (p) => ({ points: [p, c.anchor], tier: 'probe' }),
+                out: (p, legs) => ({
+                    legs: [...legs, { kind: 'walk', start: Math.max(0, ...legs.map((l) => l.start + l.frames)), frames: 1, points: [p, c.door], length: 0 }],
+                    door: { start: 0, frames: 1 },
+                    queue: { from: p },
+                    tier: 'probe',
+                }),
+            };
+
+            for (const t of c.times) {
+                const drawn = JSON.stringify(turnRound({ effect: c.effect, elapsed_ms: t }, way));
+                const blind = JSON.stringify(turnRound({ effect: strip(c.effect), elapsed_ms: t }, way));
+
+                compared++;
+
+                if (drawn !== blind) {
+                    differ.push(`${c.name} to the ${to} at ${t} ms: ${drawn.slice(0, 160)} — stripped: ${blind.slice(0, 160)}`);
+                } else if (drawn !== 'null') {
+                    turned[pointAt(c.effect, t).where]++;
+                }
+            }
+        }
+    }
+
+    answer({ compared, turned, differ: differ.slice(0, 20), differ_count: differ.length });
+}
+
 // card#12749 (AT-D3-32): the snack corner's constants as the scene declares them, and the spots `spotsNear()` finds on a
 // visitor's own lattice from a spot 0 the TEST derived from § 12's rule — so the test holds the scene's trips to both.
 if (input.mode === 'snack') {
@@ -513,6 +608,6 @@ if (input.mode === 'spots') {
     });
 }
 
-if (!['points', 'draw', 'stack', 'shipped', 'walks', 'lattice', 'snack', 'snack-chain', 'restroom', 'restroom-chain', 'spots'].includes(input.mode)) {
+if (!['points', 'draw', 'stack', 'shipped', 'walks', 'lattice', 'turn-touched', 'turn-blind', 'snack', 'snack-chain', 'restroom', 'restroom-chain', 'spots'].includes(input.mode)) {
     throw new Error(`unknown mode ${input.mode}`);
 }
