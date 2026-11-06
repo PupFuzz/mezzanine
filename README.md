@@ -247,6 +247,16 @@ An account's remembered browsers are all forgotten when its password changes, wh
 is reset by email, disabled, re-enrolled or moved to a new authenticator, and when the account is
 retired. The next sign-in on each of them asks for a code again.
 
+**Forgetting one browser.** The recovery codes page (`/two-factor/recovery-codes`, linked from the
+dashboard, behind your password) lists your account's remembered browsers under **Remembered
+browsers**: each one's name as read from its browser and system when it was remembered (for example
+"Firefox on Linux"), when it was remembered and when it expires, with the browser you are using marked
+**(this browser)**. **Forget** forgets that one browser, and **Forget all** forgets every one of them,
+the browser you are using included. A forgotten browser is asked for a code at its next sign-in.
+Forgetting changes no session: you stay signed in, and a session the forgotten browser already has
+lasts until it ends. A browser remembered before this list existed is listed as "Browser remembered
+on <date>". The host stores the name only, never the browser's full user-agent text.
+
 The browser holds a random token in a cookie marked `Secure`, `HttpOnly` and `SameSite=Lax`; the
 host stores only a hash of it, in the `remembered_browsers` table. Because the cookie is `Secure`, a
 browser keeps it only over HTTPS. Like every cookie this application sets, it is encrypted with
