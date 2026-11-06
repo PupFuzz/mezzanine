@@ -423,11 +423,24 @@ if a.selftest:
     hits = [b for b in planted['below'] if b['pair'] == 'stale/disabled' and b['reviewed']]
     assert len(hits) == len(VISIONS) * len(CONDITIONS), f'control 2: listed {len(hits)} times, not {len(VISIONS) * len(CONDITIONS)}'
     assert not clean(planted), 'control 2: the acceptance stayed green on the duplicate'
-    # Control 3 (M1): a TOKENS-ONLY breach — offline := disabled's token. As drawn they differ (dark vs dimmed),
-    # so a check that read the drawn condition alone would stay green; the unfiltered acceptance must red.
-    planted = report('PLANT', palette({**PROPOSED, 'offline': PROPOSED['disabled']}), quiet=True)   # on the PROPOSAL, so the two tokens are identical
-    tok = [b for b in planted['below'] if b['pair'] == 'offline/disabled' and b['condition'] == 'tokens']
-    drawn_ok = [b for b in planted['below'] if b['pair'] == 'offline/disabled' and b['condition'].startswith('drawn')]
+    # Control 3 (M1): a TOKENS-ONLY breach — a reviewed state given the token of a state in another lighting class. As
+    # drawn they differ, so a check that read the drawn condition alone would stay green; the unfiltered acceptance
+    # must red. ⚠ WHICH pair is tokens-only depends on the surfaces read (card#12845): the first plant, offline :=
+    # disabled's token, also breached AS DRAWN over the second theme's floor at its darkest under tritan vision, which
+    # made it prove nothing. So the plant is FOUND over the surfaces read — that first one tried first — and a tree
+    # where no reviewed state stays apart, as drawn, from another class's token reds this control by name.
+    def tokens_only(r, t):
+        pal = palette({**PROPOSED, r: palette({})[t]})   # the two tokens identical
+        pair = '/'.join(sorted((r, t), key=DRAWN.index))
+        result = report('PLANT', pal, quiet=True)
+        drawn = [b for b in result['below'] if b['pair'] == pair and b['condition'].startswith('drawn')]
+        return (result, pair) if drawn == [] else None
+    trials = [('offline', 'disabled')] + [(r, t) for r in REVIEWED for t in DRAWN if LIGHTING[t] != LIGHTING[r] and (r, t) != ('offline', 'disabled')]
+    found = next((x for x in (tokens_only(r, t) for r, t in trials) if x is not None), None)
+    assert found is not None, 'control 3: no reviewed state, given another lighting class\'s token, stays apart from it as drawn over every surface — no tokens-only plant exists to prove the filter'
+    planted, plant_pair = found
+    tok = [b for b in planted['below'] if b['pair'] == plant_pair and b['condition'] == 'tokens']
+    drawn_ok = [b for b in planted['below'] if b['pair'] == plant_pair and b['condition'].startswith('drawn')]
     assert len(tok) == len(VISIONS), f'control 3: the tokens-only duplicate was listed {len(tok)} times in the tokens, not {len(VISIONS)}'
     assert drawn_ok == [], 'control 3: the plant is not tokens-only — it also breached as drawn, so it proves nothing about the filter'
     assert not clean(planted), 'control 3: the acceptance stayed green on a tokens-only breach'

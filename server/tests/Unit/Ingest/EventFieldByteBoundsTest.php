@@ -181,6 +181,7 @@ class EventFieldByteBoundsTest extends TestCase
                 runtimeVersion: 'v22.11.0',
                 events: [],
                 coercedEnumValues: 0,
+                formatRefused: [],
             ),
             new TokenBinding(1, 'mzn_abcdefgh', 1, 'aimla', 'aimla-pm'),
         );

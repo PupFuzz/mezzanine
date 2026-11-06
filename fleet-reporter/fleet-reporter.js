@@ -67,7 +67,7 @@ const lazy = (name) => require(name);
  * change to a file a reporter update ships, and `bin/reporter-version-guard.py` fails a PR that changes
  * one without moving it, so two different builds never report the same version. Each version's row in
  * `fleet-reporter/UPDATES.md` says what an upgrading seat must apply. */
-const REPORTER_VERSION = '0.6.2';
+const REPORTER_VERSION = '0.6.3';
 const SCHEMA_VERSION = 1;
 
 /* ── Every number, from § 14 and the section that derives it ──────────────────────────────── */
@@ -101,7 +101,7 @@ const K = {
   TOMBSTONES: 64,                // § 8.2
   SESSIONS: 16,                  // § 8.2
   TOMBSTONE_MS: 900000,          // § 8.2 15 min, == the ordinary orphan timeout
-  CLEAR_PAIR_MS: 30000,          // § 8.4 the window inside which SessionStart(clear) pairs with the latest
+  CLEAR_PAIR_MS: 30000,          // § 8.4 the window inside which SessionStart(clear) pairs with the one
                                  // unpaired clear-ended session; ~12x the largest measured gap (card#11817)
   CLEAR_GAP_MS: 5000,            // § 8.4 2x the largest measured SessionEnd(clear)->SessionStart(clear) gap
                                  // (2.49 s, 2.1.296): SessionEnd(clear)'s window for an unpaired clear-started
@@ -2444,11 +2444,12 @@ function touchSession(ctx, ix, sessionId, source = null) {
  * mark: SessionStart(clear) for the latest clear-closed session no start has paired yet,
  * SessionEnd(clear) for the latest clear-started session no end has paired yet. This is pairing by
  * RECENCY inside a window, not by identity — the hooks carry nothing that ties one to the other —
- * so the windows are what bound a wrong pick: two terminals' clears overlapping, or one clear whose
- * own other signal was lost, can pair one terminal's half with the other's. SessionEnd's window is
+ * so the windows are what bound a wrong pick: one clear whose own other signal was lost, beside
+ * another terminal's clear, can pair one terminal's half with the other's. SessionEnd's window is
  * the narrow one (K.CLEAR_GAP_MS, twice the largest measured gap) because the twin it adopts is a
  * LIVE session whose calls it re-keys; any pairing older than that window is counted
- * `clear_pair_late`, and a pick with more than one candidate `clear_pair_ambiguous`. */
+ * `clear_pair_late`. A pick with more than one candidate pairs nothing and is counted
+ * `clear_pair_ambiguous` (pairClear, card#12013). */
 function latestUnpaired(map, unpairedClear, markedAt, windowMs, nowMs) {
   let twin = null, qualified = 0;
   for (const [sid, x] of map) {
@@ -2471,13 +2472,17 @@ const findTwinForEnd = (ix, nowMs) => latestUnpaired(ix.sessions,
  * SessionStart and SessionEnd cases — because changing what a wire field MEANS is a schema bump
  * (docs/VERSIONING.md, wire rule 4). `clear_signals_paired` is the pairing's own, additive counter. */
 function pairClear(ctx, ix, oldSid, newSid, twin) {
+  // MORE THAN ONE CANDIDATE IS NOT A PICK (card#12013). Recency cannot tell this clear's twin from
+  // another terminal's: with two terminals' SessionEnd(clear)s both ahead of either SessionStart(clear),
+  // the latest crossed them, and the other terminal's next Stop aborted this one's running subagent.
+  // Unpaired, each carry stays under its own old session, where its SubagentStop still closes it.
+  if (twin.qualified > 1) { count('clear_pair_ambiguous'); return; }
   const rekeyed = [...ix.calls.values()].filter((e) => e.carried_from === oldSid).length;
   const rec = { k: 'pair', old_session_id: oldSid, new_session_id: newSid };
   journal(ctx.spool, rec);
   applyIndexRecord(ix, rec, now());
   count('clear_signals_paired');
   if (rekeyed) count('dispatch_rekeyed_to_new_session', rekeyed);
-  if (twin.qualified > 1) count('clear_pair_ambiguous');
   if (twin.age_ms > K.CLEAR_GAP_MS) count('clear_pair_late');
 }
 
