@@ -17,7 +17,8 @@ specific to Mezzanine and has no counterpart there.
 > released version is the root `VERSION` file on `main` (`git show origin/main:VERSION`). The
 > releases are the tags (`git tag --list 'v*'`), each immutable and never moved, and each release's
 > notes are its section of `docs/CHANGELOG.md` — or, once [step 13](#release-flow) has moved it,
-> the whole of `docs/changelog/v<version>.md` — written to per PR (`docs/PLAN.md § 4` owns its
+> the whole of `docs/changelog/v<version>.md` — written per PR as one note each in
+> `docs/changelog.d/` and gathered into that section by the release (`docs/PLAN.md § 4` owns its
 > format and the archive layout). The first tag, `v0.1.0`, is the bootstrap case the ⚠ under
 > [§ Release flow](#release-flow) records, not a release anybody reviewed as one.
 > **Deploy state is `docs/PLAN.md § 5`'s to record** — its `bin/deploy.sh` bullet says whether the
@@ -44,7 +45,8 @@ specific to Mezzanine and has no counterpart there.
    quietly cut a release nobody reviewed as one.
 3. **Every tag `v<version>` owes a changelog entry** describing the bundle of PRs it carries.
    The changelog lives at [`docs/CHANGELOG.md`](CHANGELOG.md), which holds `## [Unreleased]` and
-   the latest released section; **every released section older than the latest lives at
+   the latest released section; the entries for what has not been released yet live one file per
+   change in [`docs/changelog.d/`](changelog.d/README.md) until step 4 gathers them; **every released section older than the latest lives at
    [`docs/changelog/`](changelog/)`v<version>.md`, one file per tag**, moved there verbatim by
    [step 13](#release-flow). The tag is the archive's unit precisely because this rule makes the
    tag the unit that owes the entry. **This policy owns the obligation and not the format**:
@@ -339,9 +341,23 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
    current one).
 2. **Branch `release/v<version>` off `dev`.**
 3. **Bump `VERSION`** to the new semver.
-4. **Retitle `## [Unreleased]` in [`docs/CHANGELOG.md`](CHANGELOG.md) and open a fresh empty
-   one** (core rule 3; `docs/PLAN.md § 4` owns the format). The release collects entries that
-   the feature PRs already wrote — it does not author them.
+4. **Gather the notes into the version's section** (core rule 3; `docs/PLAN.md § 4` owns the
+   format) — on the release branch, after step 3:
+
+   ```
+   python3 bin/changelog-fragments.py assemble --date <YYYY-MM-DD, the merge date>
+   git add -A docs/CHANGELOG.md docs/changelog.d
+   ```
+
+   It writes `## [<VERSION>] — <date>` directly under `## [Unreleased]` in
+   [`docs/CHANGELOG.md`](CHANGELOG.md), holding every note in
+   [`docs/changelog.d/`](changelog.d/README.md) highest card number first, and deletes the notes;
+   `## [Unreleased]` stays empty. The release collects entries that the change PRs already wrote —
+   it does not author them. **When the release branch later takes in more `dev` work**, run it
+   again with `--into-existing`: the new notes join the same section, re-ordered by the same
+   rule. It refuses rather than guessing — a line written by hand under `[Unreleased]`, a
+   malformed note, or a section for this version that already exists without
+   `--into-existing` (which is what an un-bumped `VERSION` looks like) — and changes nothing then.
 5. **State the deploy verdict for BOTH targets** — see
    [§ Deploy is not a tag](#deploy-is-not-a-tag--and-mezzanine-has-two-targets). A release
    that says nothing about a target has not said "nothing to do" about it.
@@ -478,7 +494,8 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
 > merged on 2026-08-30 breaking three documented rules at once and merging green.
 > [`bin/release-pr-guard.py`](../bin/release-pr-guard.py), on every PR whose base is `main`,
 > asserts **step 2/7's head branch**, **step 3's `VERSION` bump** (strictly greater than
-> `main`'s) and **step 4's changelog section**. That file's docstring is the contract; this
+> `main`'s) and **step 4's changelog section** — and, since card#12935, that step 4 left no note
+> in `docs/changelog.d/` unassembled (**R9**). That file's docstring is the contract; this
 > list stays the authority, and where the two disagree **this document wins and the guard is
 > the defect**.
 >
@@ -491,7 +508,9 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
 > work is legitimate and shipping without noticing is not**. `docs/changelog/` is residue to R6a
 > like any other path — `RELEASE_ARTIFACT_PATHS` is `VERSION` and `docs/CHANGELOG.md` and nothing
 > else — which is why step 13 lands its move on `dev` first rather than riding the release
-> branch. The rule, the escape hatch and the reason it is a tree comparison rather than an
+> branch. The one other difference R6a accepts is step 4's own: a note in `docs/changelog.d/`
+> that the head deleted is excused only when that note's exact line, as `dev` holds it, is in the
+> head's changelog — so a note `dev` gained or edited after the cut is residue (card#12935). The rule, the escape hatch and the reason it is a tree comparison rather than an
 > ancestry test are the guard docstring's; they are not restated here. What this document adds is the measurement that bought it: PR #176
 > (v0.5.0) sat open for roughly a day at a head four merges behind `dev`, every check green,
 > and merging it would have shipped a release omitting four cards.

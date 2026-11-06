@@ -67,6 +67,7 @@ resources/floor/            the floor's themes (first-party, vector), its tilese
 fleet-reporter/             cross-platform hook bundle + its installer (install.js), reference and agent guide
 docs/                       design notes, feed schema, CHANGELOG, ATTRIBUTION
 docs/changelog/             archived releases, one file per tag (v0.2.0.md, …)
+docs/changelog.d/           one changelog note per unreleased change, gathered by the release
 bin/, tools/                prod deploy (bin/deploy.sh), kanban + design-doc
                             automation, CI gates, harnesses          ← exists
 ```
