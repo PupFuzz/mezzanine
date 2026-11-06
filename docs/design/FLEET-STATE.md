@@ -1622,7 +1622,7 @@ CREATE TABLE batches (
   response_status SMALLINT UNSIGNED NOT NULL,
   reporter_version  VARCHAR(24) CHARACTER SET ascii NULL,  -- NULL only where the value sent was
                                                -- off this ASCII column's format: stored NULL and
-                                               -- counted format_refused.<field>, the batch accepted
+                                               -- counted `format_refused.<field>`, the batch accepted
                                                -- (D18 at the envelope, card#11572)
   reporter_platform ENUM('linux','win32','darwin','other') NOT NULL,
   runtime_version   VARCHAR(24) CHARACTER SET ascii NULL,  -- as reporter_version
