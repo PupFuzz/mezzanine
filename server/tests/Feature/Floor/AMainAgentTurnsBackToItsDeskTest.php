@@ -28,6 +28,7 @@ use Tests\TestCase;
  */
 class AMainAgentTurnsBackToItsDeskTest extends TestCase
 {
+    use ChecksTheCommittedPast;
     use ChecksTheElevatorQueue;
     use DrivesTheFloorScreen;
 
@@ -184,156 +185,6 @@ class AMainAgentTurnsBackToItsDeskTest extends TestCase
         return $last['frame'];
     }
 
-    // ── the guards ───────────────────────────────────────────────────────────────────────────
-
-    /**
-     * THE WALKER STAYS WHERE IT IS DRAWN: on every pair of consecutive drawn frames, each seat walk of the earlier frame still
-     * running at the later frame's instant is placed by its own legs there, and the later frame must draw that seat's walker
-     * at the same point (within 1.5 px) — or, where it draws none, the walker must have been at its desk's anchor (it sat).
-     *
-     * @return array{0: list<string>, 1: int} the defects, and the comparisons made
-     */
-    private function walkerDefects(array $drawn): array
-    {
-        $defects = [];
-        $compared = 0;
-
-        for ($i = 1; $i < count($drawn); $i++) {
-            [$a, $b] = [$drawn[$i - 1], $drawn[$i]];
-            $dt = $b['at'] - $a['at'];
-
-            foreach ($this->walks($a['frame']) as $w) {
-                if ($dt >= $w['frames'] * $w['frame_interval_ms'] - $w['elapsed_ms']) {
-                    // It has ended by the later frame: it must hand the figure over where the floor then draws it — an
-                    // A1 at its desk's anchor (it sits), an A2 inside the cab (it has ridden away) — or it teleported.
-                    $last = end($w['legs']);
-                    $key = $this->keyOf($w);
-                    $anchor = $b['frame']['scene']['anchors'][$key] ?? null;
-                    $handed = $w['animation_id'] === 'A2'
-                        ? $last['kind'] === 'cab'
-                        : $last['kind'] === 'walk' && $anchor !== null && hypot(end($last['points'])['x'] - $anchor['x'], end($last['points'])['y'] - $anchor['y']) <= 1.5;
-
-                    if (! $handed && $this->walks($b['frame'], $key) === []) {
-                        $compared++;
-                        $defects[] = "at {$b['at']} ms {$key}'s {$w['animation_id']} ended in its {$last['kind']} leg, not ".($w['animation_id'] === 'A2' ? 'in the cab' : 'at its desk');
-                    }
-
-                    continue;
-                }
-
-                $key = $this->keyOf($w);
-                $was = $this->queuedAt($w, $dt);
-                $now = $this->walks($b['frame'], $key);
-                $compared++;
-
-                if ($now === []) {
-                    $anchor = $b['frame']['scene']['anchors'][$key] ?? null;
-
-                    if ($anchor === null || hypot($was['x'] - $anchor['x'], $was['y'] - $anchor['y']) > 1.5) {
-                        $defects[] = "at {$b['at']} ms {$key} vanished from its {$was['leg']['kind']} leg at ({$was['x']}, {$was['y']})";
-                    }
-
-                    continue;
-                }
-
-                $is = $this->queuedAt($now[0], 0);
-                $d = hypot($was['x'] - $is['x'], $was['y'] - $is['y']);
-
-                if ($d > 1.5) {
-                    $defects[] = "at {$b['at']} ms {$key} jumped {$d} px (was in its {$was['leg']['kind']} leg, now in its {$is['leg']['kind']})";
-                }
-            }
-        }
-
-        return [$defects, $compared];
-    }
-
-    /**
-     * How open the elevator's leaves are `$t` ms after a frame's instant, 0 shut to 1 open: every walk's door spans — its
-     * `door` and the `door_rest` a turn-round carries — at their exact elapsed instants, merged where they meet as the
-     * holder's `doors()` merges them; inside a span the leaves open over § 12's opening frames from its start and close over
-     * its closing frames to its end.
-     */
-    private function leafLevel(array $frame, float $t): float
-    {
-        $d = $this->door();
-        $spans = [];
-
-        foreach ($frame['scene']['effects'] ?? [] as $e) {
-            if (($e['frames'] ?? 0) <= 0) {
-                continue;
-            }
-
-            $I = $e['frame_interval_ms'];
-
-            foreach (['door_rest', 'door'] as $f) {
-                if (is_array($e[$f] ?? null)) {
-                    $spans[] = [$e[$f]['start'] * $I - $e['elapsed_ms'], ($e[$f]['start'] + $e[$f]['frames']) * $I - $e['elapsed_ms'], $I];
-                }
-            }
-        }
-
-        usort($spans, static fn ($a, $b) => $a[0] <=> $b[0]);
-        $merged = [];
-
-        foreach ($spans as $s) {
-            $last = count($merged) - 1;
-
-            if ($last >= 0 && $s[0] <= $merged[$last][1]) {
-                $merged[$last][1] = max($merged[$last][1], $s[1]);
-            } else {
-                $merged[] = $s;
-            }
-        }
-
-        foreach ($merged as [$from, $to, $I]) {
-            if ($t >= $from && $t < $to) {
-                $open = min(1, ($t - $from) / ($d['open'] * $I));
-                $closing = $to - $d['close'] * $I;
-
-                return $t < $closing ? $open : min($open, 1 - ($t - $closing) / ($d['close'] * $I));
-            }
-        }
-
-        return 0.0;
-    }
-
-    /** THE LEAVES KEEP THE MOTION DRAWN: between consecutive frames, the leaves as open by the earlier as by the later. */
-    private function leafDefects(array $drawn): array
-    {
-        $defects = [];
-
-        for ($i = 1; $i < count($drawn); $i++) {
-            [$a, $b] = [$drawn[$i - 1], $drawn[$i]];
-            $was = $this->leafLevel($a['frame'], $b['at'] - $a['at']);
-            $is = $this->leafLevel($b['frame'], 0);
-
-            if (abs($was - $is) > 0.01) {
-                $defects[] = "at {$b['at']} ms the leaves jumped from {$was} open to {$is}";
-            }
-        }
-
-        return $defects;
-    }
-
-    /** At every drawn frame, at most one walk per seat. */
-    private function oneWalkDefects(array $drawn): array
-    {
-        $defects = [];
-
-        foreach ($drawn as $r) {
-            $keys = array_map(fn (array $w): string => $this->keyOf($w), $this->walks($r['frame']));
-
-            foreach (array_count_values($keys) as $key => $n) {
-                if ($n > 1) {
-                    $defects[] = "at {$r['at']} ms {$key} has {$n} walks";
-                }
-            }
-        }
-
-        return $defects;
-    }
-
     // ── GREEN — the rows ─────────────────────────────────────────────────────────────────────
 
     public function test_green_the_rows(): void
@@ -361,17 +212,17 @@ class AMainAgentTurnsBackToItsDeskTest extends TestCase
         $d = $this->door();
         $speed = $this->walkSpeed();
         $cases = [
-            'turn-mid-floor' => [['walk'], 'walk'],
-            'turn-pressing' => [['walk'], 'press'],
-            'turn-at-threshold' => [['walk'], 'wait'],
-            'turn-doors-opening' => [['walk'], 'walk'],
-            'turn-queued' => [['walk'], 'wait'],
+            'turn-mid-floor' => [['walk'], 'floor'],
+            'turn-pressing' => [['walk'], 'floor'],
+            'turn-at-threshold' => [['walk'], 'floor'],
+            'turn-doors-opening' => [['walk'], 'floor'],
+            'turn-queued' => [['walk'], 'floor'],
             'turn-in-open-cab' => [['cab', 'walk'], 'cab'],
             'turn-in-cab-at-a-spot' => [['cab', 'walk'], 'cab'],
             'turn-in-closing-cab' => [['cab', 'stand', 'walk'], 'cab'],
             'turn-riding-together' => [['cab', 'stand', 'walk'], 'cab'],
             'turn-from-restroom' => [['inside', 'walk'], 'inside'],
-            'turn-from-snack' => [['walk'], 'walk'],
+            'turn-from-snack' => [['walk'], 'floor'],
         ];
 
         foreach ($cases as $run => [$legs, $in]) {
@@ -381,7 +232,7 @@ class AMainAgentTurnsBackToItsDeskTest extends TestCase
 
             $this->assertSame('A1', $turn['animation_id'], "[{$run}] the turn is not the return's A1");
             $this->assertSame($legs, array_column($turn['legs'], 'kind'), "[{$run}] the turn's legs");
-            $this->assertSame($in, $turn['turned_in'], "[{$run}] the turn names another leg than the one it turned in");
+            $this->assertSame($in, $turn['turned_in'], "[{$run}] the turn names another place than the one the figure was drawn in");
 
             // It walks to its desk: the last leg ends at the scene's anchor, its frames its points' length at walk speed.
             $walk = end($turn['legs']);
@@ -695,6 +546,163 @@ class AMainAgentTurnsBackToItsDeskTest extends TestCase
         }
     }
 
+    // ── GREEN — the seeded fuzz: flips at any instant, nested to any depth ───────────────────
+
+    /** The fuzz set's file (`tools/design/gen-fx-turn-back.mjs`'s `FUZZ` seeds and `DENSE` offsets). */
+    private const FUZZ = 'fx-turn-back-fuzz';
+
+    /** A probe that has not ended this long after it started is a run that never ends — the end timer spinning. */
+    private const FUZZ_TIMEOUT_S = 180.0;
+
+    /** The fuzz runs the plant of review round 2's F-A must break: the mass departures seeded where the turn read a `line`. */
+    private const LABEL_RUNS = ['fuzz-mass-s7-4', 'fuzz-mass-s7-5', 'fuzz-mass-s7-21'];
+
+    /** The shipped tree's fuzz outcome, replayed once per process and read by every test below. */
+    private static ?array $fuzzed = null;
+
+    /** How many probes run at once: the runner's own cores, as `nproc` counts them. */
+    private function cores(): int
+    {
+        return max(1, (int) trim((string) shell_exec('nproc 2>/dev/null')));
+    }
+
+    /**
+     * Replay fuzz runs — on the shipped tree, or on `$dir` — all at once, each read by the committed-past checks as it ends:
+     * `[name => defects]`, a run that did not end or whose probe failed carrying that as its defect; and, on the shipped tree,
+     * the walks each run drew, one case per walk at its applying render, for the `turn-blind` probe.
+     *
+     * @param  list<string>|null  $names  every run of the file when `null`
+     * @return array{defects: array<string, list<string>>, compared: int, blind: list<array<string, mixed>>, wall_s: float}
+     */
+    private function fuzz(?array $names = null, ?string $dir = null): array
+    {
+        $runs = $this->fixtureFile(self::FUZZ)['runs'];
+        $payloads = $names === null ? $runs : array_intersect_key($runs, array_flip($names));
+        $out = ['defects' => [], 'compared' => 0, 'blind' => [], 'wall_s' => 0.0];
+        $started = microtime(true);
+
+        $this->assertNotSame([], $payloads, 'the fuzz set holds none of the runs asked for');
+
+        $this->runProbes($payloads, $this->cores(), self::FUZZ_TIMEOUT_S, function (string $name, ?int $status, string $stdout, string $stderr) use (&$out, $dir): void {
+            if ($status === null) {
+                $out['defects'][$name] = ['the run did not end within '.self::FUZZ_TIMEOUT_S.' s'];
+
+                return;
+            }
+
+            $result = $status === 0 ? (json_decode($stdout, true)['runs'][0] ?? null) : null;
+
+            if ($result === null) {
+                $lines = array_values(array_filter(explode("\n", $stderr), static fn (string $l): bool => str_starts_with($l, 'Error')));
+                $out['defects'][$name] = ['the probe failed: '.($lines[0] ?? trim($stderr))];
+
+                return;
+            }
+
+            $drawn = $this->drawn($result);
+            [$defects, $n] = $this->committedPastDefects($drawn);
+            $out['defects'][$name] = [
+                ...array_map(static fn (string $r): string => "unscripted request {$r}", $result['unscripted']),
+                ...array_map(static fn (string $r): string => "unhandled rejection {$r}", $result['rejections']),
+                ...$defects,
+            ];
+            $out['compared'] += $n;
+
+            if ($dir === null) {
+                array_push($out['blind'], ...$this->blindCases($name, $drawn));
+            }
+        }, $dir);
+
+        $out['wall_s'] = round(microtime(true) - $started, 1);
+        ksort($out['defects']);
+
+        return $out;
+    }
+
+    private function fuzzed(): array
+    {
+        return self::$fuzzed ??= $this->fuzz();
+    }
+
+    /**
+     * The `turn-blind` probe's cases from one run: each walk — a seat's A1 or A2, an intern's A10 — at the render that first
+     * drew it, with the anchor it walks to or from and the threshold, at two instants inside each of its legs.
+     */
+    private function blindCases(string $run, array $drawn): array
+    {
+        $cases = [];
+
+        foreach ($drawn as $r) {
+            if ($r['trigger'] !== 'render') {
+                continue;
+            }
+
+            foreach ($r['frame']['scene']['effects'] ?? [] as $e) {
+                if (! in_array($e['animation_id'], ['A1', 'A2', 'A10'], true) || ($e['frames'] ?? 0) <= 0 || ($e['legs'] ?? []) === []) {
+                    continue;
+                }
+
+                $intern = $e['animation_id'] === 'A10';
+                $id = $run.' '.($e['intern_key'] ?? $this->keyOf($e)).' '.$e['cause'].' '.($e['leg_kind'] ?? '');
+                $anchor = $intern ? ($e['anchor'] ?? null) : ($r['frame']['scene']['anchors'][$this->keyOf($e)] ?? null);
+
+                if (isset($cases[$id]) || $anchor === null) {
+                    continue;
+                }
+
+                $I = $e['frame_interval_ms'];
+                $times = [];
+
+                foreach ($e['legs'] as $l) {
+                    foreach ([min(0.5, $l['frames'] / 2), $l['frames'] * 0.75] as $f) {
+                        $times[] = round(($l['start'] + $f) * $I);
+                    }
+                }
+
+                $cases[$id] = ['name' => $id, 'effect' => $e, 'anchor' => $anchor, 'door' => $this->threshold($r['frame']), 'intern' => $intern,
+                    'times' => array_values(array_unique(array_filter($times, static fn ($t): bool => $t < $e['frames'] * $I)))];
+            }
+        }
+
+        return array_values($cases);
+    }
+
+    /**
+     * THE SEEDED FUZZ HOLDS THE COMMITTED PAST: every run of `fx-turn-back-fuzz` — one walker flipped one to four times at
+     * seeded instants over seven committed runs (a departure alone and second in a queue, an arrival, a mass departure, a
+     * seat with its interns, a restroom visit and a snack trip), and the dense closing-cab runs — ends, and on every pair of
+     * consecutive drawn frames no walker jumps or vanishes, the leaves keep their motion and no seat has two walks.
+     */
+    public function test_green_the_seeded_fuzz_moves_nothing_drawn(): void
+    {
+        $fuzzed = $this->fuzzed();
+        $bad = array_filter($fuzzed['defects'], static fn (array $d): bool => $d !== []);
+
+        $this->assertSame([], $bad, 'a fuzz run broke the committed past');
+        $names = array_keys($this->fixtureFile(self::FUZZ)['runs']);
+        sort($names);
+        $this->assertSame($names, array_keys($fuzzed['defects']), 'a fuzz run was not replayed');
+        $this->assertGreaterThan(0, $fuzzed['compared'], 'no walker was compared across two renders — the fuzz read nothing');
+    }
+
+    /**
+     * THE TURN READS NO LABEL (the class review rounds 1 and 2 each re-minted): every walk the fuzz drew, handed to
+     * `turnRound()` at two instants in each of its legs, both ways, turns exactly as the same walk does with every leg's
+     * `why` and `plate`, its queue part, its `leg_kind`, its animation id and its cause stripped — and the comparison reaches
+     * a figure on the floor, in the cab and inside a restroom door, each with a turn drawn.
+     */
+    public function test_green_the_turn_reads_no_label(): void
+    {
+        $answer = $this->probe(['mode' => 'turn-blind', 'cases' => $this->fuzzed()['blind']], null, __DIR__.'/walk-probe.mjs');
+
+        $this->assertSame([], $answer['differ'], 'a turn-round read a label of the walk it turned from');
+        $this->assertGreaterThan(0, $answer['compared'], 'the probe compared nothing');
+
+        foreach (['floor', 'cab', 'inside'] as $where) {
+            $this->assertGreaterThan(0, $answer['turned'][$where] ?? 0, "no case turned a figure {$where} — the comparison never reached that pose");
+        }
+    }
+
     // ── GREEN — what may replace a walk ──────────────────────────────────────────────────────
 
     /** The turn replaces the walk only where nothing but its row touched it; every other clause of item 6 cancels it. */
@@ -726,15 +734,16 @@ class AMainAgentTurnsBackToItsDeskTest extends TestCase
     /** Second RED — the turn from the far end: a walk back that starts at the threshold, not where the walker is. */
     public function test_red_the_turn_from_the_threshold(): void
     {
-        $dir = $this->mutatedModules([self::SCENE, "    const p = here();\n\n    if (p.x === way.anchor.x", "    const p = way.door;\n\n    if (p.x === way.anchor.x"]);
+        $dir = $this->mutatedModules([self::SCENE, "    const h = homeFrom(p, where === 'inside' ? pose.inside_left : 0);", "    const h = homeFrom(at, where === 'inside' ? pose.inside_left : 0);"]);
 
         $this->assertNotSame([], $this->walkerDefects($this->drawn($this->floorRun('turn-mid-floor', $dir)))[0], 'a walk back began at the threshold and the guard saw nothing');
     }
 
-    /** Third RED — the leaves restarted: a seat's turn-round handed the intern's own frames (`keep` false). */
+    /** Third RED — the leaves restarted: a turn that stays in an opening cab restarting the leaves, as item 16 drew an intern's. */
     public function test_red_the_leaves_restarted(): void
     {
-        $dir = $this->mutatedModules([self::SCENE, "        anchor,\n        keep: true,", "        anchor,\n        keep: false,"]);
+        $dir = $this->mutatedModules([self::SCENE, "            if (leaves.state === 'open') {\n                const door = finish(0);\n",
+            "            if (leaves.state === 'open') {\n                const door = Object.freeze({ start: 0, frames: D.close });\n"]);
 
         $this->assertNotSame([], $this->leafDefects($this->drawn($this->floorRun('turn-round-in-cab', $dir))), 'the leaves restarted from open and the guard saw nothing');
     }
@@ -751,7 +760,7 @@ class AMainAgentTurnsBackToItsDeskTest extends TestCase
     /** Fifth RED — the leaves left behind: leaves opening on a walker that turns on the threshold dropped with its walk. */
     public function test_red_the_leaves_left_behind(): void
     {
-        $dir = $this->mutatedModules([self::SCENE, "        door: leaves.state === 'open' ? finish(0) : null,", '        door: null,']);
+        $dir = $this->mutatedModules([self::SCENE, '    return { legs: [...inside, h.walk], door: null, ...rest, tier: h.tier };', '    return { legs: [...inside, h.walk], door: null, tier: h.tier };']);
 
         $this->assertNotSame([], $this->leafDefects($this->drawn($this->floorRun('turn-doors-opening', $dir))), 'the leaves snapped shut as the walker turned and the guard saw nothing');
     }
@@ -812,5 +821,40 @@ class AMainAgentTurnsBackToItsDeskTest extends TestCase
         $dir = $this->mutatedModules([self::SCENE, '    const spans = [effect.door_rest, effect.door]', '    const spans = [effect.door]']);
 
         $this->assertNotSame([], $this->leafDefects($this->drawn($this->floorRun('turn-again-in-ride', $dir))), 'the closing a ride carried was lost and the guard saw nothing');
+    }
+
+    /**
+     * Twelfth RED — the turn reads a label (review round 2's F-A, planted): `turnRound()` seating a walker whose leg is a `line`
+     * wait, wherever it stands. The turn-blind comparison must differ, and the mass departures the fuzz seeded in a mid-floor
+     * turn-round's `line` wait must draw the walker vanishing from it.
+     */
+    public function test_red_the_turn_reads_a_label(): void
+    {
+        $dir = $this->mutatedModules([self::SCENE, "    const pose = poseOf(flying);\n    const turned = turn(pose, way);\n",
+            "    const pose = poseOf(flying);\n    const turned = way.to === 'desk' && flying.effect.legs[pointAt(flying.effect, flying.elapsed_ms).leg].why === 'line' ? { seated: true } : turn(pose, way);\n"]);
+
+        $blind = $this->probe(['mode' => 'turn-blind', 'cases' => $this->fuzzed()['blind']], $dir, __DIR__.'/walk-probe.mjs');
+        $this->assertNotSame([], $blind['differ'], 'a turn read a leg\'s `why` and the turn-blind comparison saw nothing');
+
+        $planted = $this->fuzz(self::LABEL_RUNS, $dir)['defects'];
+        $runs = self::LABEL_RUNS;
+        sort($runs);
+        $this->assertSame($runs, array_keys(array_filter($planted, static fn (array $d): bool => array_filter($d, static fn (string $x): bool => str_contains($x, 'vanished')) !== [])),
+            'the planted label read seated a walker from a mid-floor `line` wait and the fuzz saw nothing');
+    }
+
+    /**
+     * Thirteenth RED — the end read two ways (review round 2's 0 ms re-arm, planted): `#ended()` reading the elapsed ms
+     * against the frames' time, as it did before card#12466's end instants, while `nextEnd()` reads the end instant — so a
+     * dense run's refresh, set for an end `#ended()` does not reach, re-arms at 0 ms.
+     */
+    public function test_red_the_end_read_two_ways(): void
+    {
+        $dir = $this->mutatedModules([self::IN_FLIGHT, '        return now >= this.#endAt(h);', '        return now - h.at >= h.frames * this.#intervalMs;']);
+        $dense = array_values(array_filter(array_keys($this->fixtureFile(self::FUZZ)['runs']), static fn (string $n): bool => str_starts_with($n, 'dense-')));
+
+        $this->assertNotSame([], $dense, 'the fuzz set holds no dense run');
+        $spun = array_filter($this->fuzz($dense, $dir)['defects'], static fn (array $d): bool => array_filter($d, static fn (string $x): bool => str_contains($x, 're-armed at 0 ms')) !== []);
+        $this->assertNotSame([], $spun, 'the end was read two ways and no dense run spun');
     }
 }

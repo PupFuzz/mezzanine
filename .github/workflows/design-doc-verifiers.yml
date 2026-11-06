@@ -182,8 +182,9 @@ jobs:
 
       # card#12466: fx-turn-back.json is committed runs with deltas placed inside the legs the shipped floor screen draws
       # for each walk, read by replaying the run through the harness's probe. A re-routed desk, a moved plate or a
-      # re-seeded wait moves those instants; `--check` reds when the committed file no longer matches the generator.
-      - name: fx-turn-back is the generator's output over the shipped floor screen
+      # re-seeded wait moves those instants; `--check` reds when the committed file no longer matches the generator. It
+      # holds fx-turn-back-fuzz.json too: the seeded flips over committed runs, from the generator's committed seeds.
+      - name: fx-turn-back and its fuzz set are the generator's output over the shipped floor screen
         run: node tools/design/gen-fx-turn-back.mjs --check
 
   # THE BROWSER SMOKE (card#12326). The lobby (`/dashboard`) and a floor (`/floor/aimla`), each loaded

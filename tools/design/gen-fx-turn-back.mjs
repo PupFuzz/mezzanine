@@ -1,9 +1,10 @@
 // The generator of `fx-turn-back` (docs/design/FLOOR.md § 11, AT-D3-36; card#12466): it writes
 // server/tests/Feature/Floor/fixtures/fx-turn-back.json.
 //
-//   node tools/design/gen-fx-turn-back.mjs            rewrite the fixture
-//   node tools/design/gen-fx-turn-back.mjs --check    write nothing; exit 1 when the file differs from what it would write
+//   node tools/design/gen-fx-turn-back.mjs            rewrite the fixture and its fuzz set (fx-turn-back-fuzz.json)
+//   node tools/design/gen-fx-turn-back.mjs --check    write nothing; exit 1 when either file differs from what it would write
 //                                                     (a stale copy after a route, a wait or a map changed, or a hand edit)
+//   node tools/design/gen-fx-turn-back.mjs --fuzz     rewrite the fuzz set alone, from the committed fx-turn-back.json
 //   node tools/design/gen-fx-turn-back.mjs <run>      print that one run as JSON to stdout, write nothing
 //
 // Every run is a run already committed — fx-elevator's `leave-stale`, `two-walkers`, `mass-departure` or
@@ -11,6 +12,12 @@
 // Every instant a note places INSIDE a walk is read off the legs the shipped floor screen draws for that walk: the run so
 // far is replayed through the harness's own probe, and the delta lands a stated fraction of the way through the named
 // leg. So a re-routed desk, a moved plate or a re-seeded wait moves the instants with it, and `--check` says so.
+//
+// The FUZZ SET (card#12466 design pass, after review round 2 found with a seeded fuzz what nine hand-placed runs missed):
+// `fx-turn-back-fuzz.json`, every run a committed base run with one to four flips of one walker at seeded instants — the
+// committed `FUZZ` seeds below, an LCG over each — and the dense closing-cab runs (`DENSE`), a flip at an offset into
+// turn-in-closing-cab's turn-round at which the holder's end instant used to spin. No probe is run for it: its instants
+// are the seed's, not read off any leg, so a seed reaches whatever leg its instant lands in.
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -19,9 +26,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const FX = join(ROOT, 'server', 'tests', 'Feature', 'Floor', 'fixtures');
 const OUT = join(FX, 'fx-turn-back.json');
+const OUT_FUZZ = join(FX, 'fx-turn-back-fuzz.json');
 const arg = process.argv[2] ?? null;
 const CHECK = arg === '--check';
-const ONLY = arg !== null && !CHECK ? arg : null;
+const FUZZ_ONLY = arg === '--fuzz';
+const ONLY = arg !== null && !CHECK && !FUZZ_ONLY ? arg : null;
 const { LOOP_FPS } = await import(pathToFileURL(join(ROOT, 'server', 'public', 'js', 'wire', 'animation-set.js')).href);
 const { ELEVATOR_DOOR: D } = await import(pathToFileURL(join(ROOT, 'server', 'public', 'js', 'floor', 'scene.js')).href);
 const I = 1000 / LOOP_FPS;
@@ -34,6 +43,8 @@ const clone = (v) => JSON.parse(JSON.stringify(v));
 
 const IMPL_1 = 'aimla/aimla-impl-1';
 const IMPL_2 = 'aimla/aimla-impl-2';
+/** `aimla-impl-1`'s state version in fx-elevator's leave-stale and return-from-stale, before any delta added here. */
+const V1 = 31108;
 
 /** One replay through the harness's probe — the shipped floor screen over the run. */
 function probe(scenario) {
@@ -122,10 +133,133 @@ const add = (name, run) => {
     order.push(name);
 };
 
+// ── the fuzz set (fx-turn-back-fuzz.json) ────────────────────────────────────────────────────────────────────────────────
+//
+// SEVEN BASES, each a committed run and the one walker its flips turn: fx-elevator's leave-stale (`aimla-impl-1` out at
+// 1000 ms), two-walkers (`aimla-impl-1` the second departure), return-then-leave's arrival alone, fx-restroom's
+// leave-inside, fx-snack's leave-mid-trip, mass-departure (its last departure) and return-from-stale with its interns (the
+// seat out again with both calls closed, then back without them). Each scenario flips the walker one to four times,
+// alternating the base's two patches from a seeded instant `t0 + 60 ms` plus a draw over `span`, the flips 5–125 ms apart
+// one time in seven and 80 ms–2.7 s apart otherwise; it runs on 40 s past its last flip.
+const FUZZ_BASES = (() => {
+    const OFF = { render_state: 'offline', link_state: 'offline' };
+    const arrive = clone(elevator.runs['return-then-leave']);
+    const a = arrive.messages.find((m) => m.envelope.t === 'seat.delta' && m.at_ms === 1000);
+
+    arrive.messages = arrive.messages.filter((m) => m.envelope.t !== 'seat.delta' || m.at_ms <= 1000);
+
+    const visit = restroom.runs['leave-inside'];
+    const trip = snack.runs['leave-mid-trip'];
+    const mass = elevator.runs['mass-departure'];
+    const massDeltas = mass.messages.filter((m) => m.envelope.t === 'seat.delta');
+    const massLast = massDeltas.at(-1);
+    const back = elevator.runs['return-from-stale'];
+
+    return [
+        { name: 'leave-stale', t: elevator.runs['leave-stale'], clock: constClock, seat: 'aimla-impl-1', v: V1, seq: [LIVE('working'), STALE], t0: 1000, span: 9000 },
+        { name: 'two-walkers', t: elevator.runs['two-walkers'], clock: constClock, seat: 'aimla-impl-1', v: 31152, seq: [LIVE('working'), OFF], t0: 1750, span: 9000 },
+        { name: 'arrive', t: arrive, clock: constClock, seat: 'aimla-impl-1', v: a.envelope.state_version, seq: [OFF, LIVE('working')], t0: 1000, span: 9000 },
+        { name: 'restroom', t: visit, clock: runClock, seat: 'aimla-impl-2', v: 20545, seq: [LIVE('idle'), STALE], t0: leaveAt(visit), span: 9000 },
+        { name: 'snack', t: trip, clock: runClock, seat: 'aimla-impl-2', v: 20545, seq: [LIVE('idle'), STALE], t0: leaveAt(trip), span: 9000 },
+        {
+            name: 'mass', t: mass, clock: constClock, seat: massLast.envelope.seat_id, seq: [LIVE('working'), STALE], t0: massLast.at_ms, span: 14000,
+            v: Math.max(...massDeltas.filter((m) => m.envelope.seat_id === massLast.envelope.seat_id).map((m) => m.envelope.state_version)),
+        },
+        {
+            name: 'interns', t: back, clock: constClock, seat: 'aimla-impl-1', v: V1, t0: 1000, span: 9000,
+            // Back with the run's own patch less its interns: a closed `call_id` never reopens (D1 § 8.6), so the interns
+            // that turned round with the seat are gone for good, and every later flip moves the seat alone.
+            seq: [{ ...STALE, subagents: [], subagents_open: 0 }, { ...back.messages.find((m) => m.envelope.t === 'seat.delta').envelope.patch, subagents: [], subagents_open: 0 }],
+        },
+    ];
+})();
+
+/**
+ * THE COMMITTED SEEDS — review round 2's own two sweeps, which drew `per_base` scenarios over every base in the order above,
+ * an LCG from each seed — and the scenarios of each base kept (`take`, by index; every base is named). Kept where the sweep
+ * found the turn-round reading a label on the tree it reviewed (`61957df5`, merged with `dev`): seed 7's mass 4, 5, 21, 23,
+ * 27 and 37 and seed 99's mass 20 and 35 (a walker seated from a mid-floor turn-round's `line` wait, ~560 px from its desk),
+ * seed 7's interns 3, 12 and 24 and seed 99's interns 22 (the same, beside interns), seed 7's arrive 11 and interns 39 and
+ * seed 99's interns 15 (the end timer spinning); and a spread of the rest. The set is sized for the suite's wall time: every
+ * run is a probe of its own, run one per core (AT-D3-36).
+ */
+const FUZZ = [
+    { seed: 7, per_base: 40, take: { 'leave-stale': [0, 13, 26], 'two-walkers': [0, 13, 26], arrive: [0, 11, 26], restroom: [0, 13, 26], snack: [0, 13, 26], mass: [4, 5, 21, 23, 27, 37], interns: [0, 3, 12, 24, 39] } },
+    { seed: 99, per_base: 40, take: { 'leave-stale': [5], 'two-walkers': [5], arrive: [5], restroom: [5], snack: [5], mass: [20, 35], interns: [15, 22] } },
+];
+
+/** One seed's scenarios, `[name, run]` in base order, each run's note naming its flips. */
+function fuzzRuns({ seed, per_base: perBase, take }) {
+    let s = seed;
+    const rnd = () => {
+        s = (s * 1664525 + 1013904223) >>> 0;
+
+        return s / 2 ** 32;
+    };
+    const out = [];
+
+    for (const b of FUZZ_BASES) {
+        const clockOf = b.clock(b.t);
+
+        for (let i = 0; i < perBase; i++) {
+            const flips = 1 + Math.floor(rnd() * 4);
+            let at = b.t0 + 60 + Math.floor(rnd() * b.span);
+            const added = [];
+            let v = b.v;
+
+            for (let k = 0; k < flips; k++) {
+                added.push(delta(at, b.seat, ++v, b.seq[k % 2], clockOf));
+                at += rnd() < 0.15 ? 5 + Math.floor(rnd() * 120) : 80 + Math.floor(rnd() * 2600);
+            }
+
+            if (!take[b.name].includes(i)) {
+                continue;
+            }
+
+            const states = added.map((d) => `\`${d.envelope.patch.render_state}\` at ${d.at_ms} ms`).join(', ');
+
+            out.push([`fuzz-${b.name}-s${seed}-${i}`,
+                make(b.t, added, `fuzz seed ${seed}, scenario ${i} of ${b.name}: \`${b.seat}\` flips to ${states}; every walker stays where it is drawn and the leaves keep their motion.`, at + 40000)]);
+        }
+    }
+
+    return out;
+}
+
+/**
+ * THE DENSE RUNS: turn-in-closing-cab's and turn-in-open-cab's turn-round, flipped back out `d` ms after the return —
+ * offsets at which the turn-round's frames end part-way through a frame, so an end instant read with float noise
+ * re-armed the holder's end timer at 0 ms for ever (review round 2: 17 of 336 dense sweeps hung; these are three of them).
+ */
+const DENSE = [['turn-in-closing-cab', 300], ['turn-in-closing-cab', 840], ['turn-in-open-cab', 240]];
+
+function denseRuns(turnBack) {
+    return DENSE.map(([base, d]) => {
+        const r0 = turnBack[base];
+        const last = r0.messages.filter((m) => m.envelope.t === 'seat.delta').at(-1);
+        const flip = { at_ms: last.at_ms + d, envelope: { ...last.envelope, state_version: last.envelope.state_version + 1, changed: Object.keys(STALE), patch: STALE } };
+
+        return [`dense-${base}-${d}`, make(r0, [flip], `${base}, then \`aimla-impl-1\` \`working → stale\` again ${d} ms after its return at ${last.at_ms} ms, inside the turn-round that return drew: it turns from where it is and the run ends — the holder's end instants are whole milliseconds.`, last.at_ms + d + 30000)];
+    });
+}
+
+/** The fuzz file over a set of turn-back runs — the generator's own, or the committed file's. */
+function fuzzFile(turnBack) {
+    return {
+        note: "docs/design/FLOOR.md § 11's `fx-turn-back-fuzz` (card#12466; AT-D3-36): one walker flipped one to four times at seeded instants over seven committed runs, and turn-in-closing-cab's and turn-in-open-cab's turn-rounds flipped again at offsets whose end instants fall part-way through a frame. Generated by `tools/design/gen-fx-turn-back.mjs` from its committed `FUZZ` seeds and `DENSE` offsets; regenerate rather than edit.",
+        runs: Object.fromEntries([...FUZZ.flatMap(fuzzRuns), ...denseRuns(turnBack)]),
+    };
+}
+
+if (FUZZ_ONLY) {
+    writeFileSync(OUT_FUZZ, `${JSON.stringify(fuzzFile(load('fx-turn-back').runs))}\n`);
+    console.log(OUT_FUZZ.slice(ROOT.length + 1));
+    process.exit(0);
+}
+
 // ── aimla-impl-1 leaving alone: fx-elevator's leave-stale, its A2 at 1000 ms. ────────────────────────────────────────────
 const leave = elevator.runs['leave-stale'];
 const lc = constClock(leave);
-const V1 = 31108;
 const alone = walkAt(probe(make(leave, [], '', 60000)), IMPL_1, 1000, 'A2');
 const back = (at) => delta(at, 'aimla-impl-1', V1 + 1, LIVE('working'), lc);
 const lone = [
@@ -401,22 +535,34 @@ if (ONLY !== null) {
     process.exit(0);
 }
 
-const bytes = `${JSON.stringify(out)}\n`;
+const files = [[OUT, `${JSON.stringify(out)}\n`], [OUT_FUZZ, `${JSON.stringify(fuzzFile(out.runs))}\n`]];
 
 if (CHECK) {
-    let held = null;
+    let stale = 0;
 
-    try {
-        held = readFileSync(OUT, 'utf8');
-    } catch {
-        // a missing file is stale like a differing one
+    for (const [path, bytes] of files) {
+        let held = null;
+
+        try {
+            held = readFileSync(path, 'utf8');
+        } catch {
+            // a missing file is stale like a differing one
+        }
+
+        const name = path.slice(FX.length + 1);
+
+        if (held === bytes) {
+            console.log(`fresh: ${name} matches the generator`);
+        } else {
+            stale++;
+            console.log(`stale: server/tests/Feature/Floor/fixtures/${name} differs from what the generator writes — run node tools/design/gen-fx-turn-back.mjs`);
+        }
     }
 
-    const fresh = held === bytes;
-
-    console.log(fresh ? 'fresh: fx-turn-back.json matches the generator' : 'stale: server/tests/Feature/Floor/fixtures/fx-turn-back.json differs from what the generator writes — run node tools/design/gen-fx-turn-back.mjs');
-    process.exit(fresh ? 0 : 1);
+    process.exit(stale === 0 ? 0 : 1);
 }
 
-writeFileSync(OUT, bytes);
-console.log(OUT.slice(ROOT.length + 1));
+for (const [path, bytes] of files) {
+    writeFileSync(path, bytes);
+    console.log(path.slice(ROOT.length + 1));
+}

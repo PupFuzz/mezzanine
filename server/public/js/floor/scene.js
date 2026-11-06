@@ -1166,7 +1166,7 @@ function seatWalk(base, id, walking, character, box, parts) {
 /**
  * card#12466 — A SEAT's A1 OR A2 THAT LANDS WHILE ITS OPPOSITE WALK IS IN FLIGHT turns the walker round (§ 6.2's walk note
  * item 6a): `turnRound()`, the intern's primitive, handed the seat's geometry — its desk's anchor, the main call plate, its
- * own seeded wait for the row's `cause` — with the leaves' motion kept. An A1 over a departure walks the person back to its
+ * own seeded wait for the row's `cause`. An A1 over a departure walks the person back to its
  * desk from where it is; an A2 over an arrival walks it back out from where it is. A walker already at its desk, or one
  * with no open route, is the row drawn without its walk; the holder admits the turn only where nothing but the row itself
  * touched the walk it replaces (`floor/in-flight.js`).
@@ -1179,7 +1179,6 @@ function seatTurn(base, id, flying, anchor, door, call, character, box, walking)
         to: id === 'A1' ? 'desk' : 'elevator',
         door,
         anchor,
-        keep: true,
         lead: [],
         home: (p) => routeTo(p, anchor),
         out: (p, lead) => {
@@ -1207,7 +1206,7 @@ function seatTurn(base, id, flying, anchor, door, call, character, box, walking)
         ...(turned.queue === undefined ? {} : { queue: turned.queue }),
         leg_kind: 'turn',
         turned_in: turned.turned_in,
-        ...(turned.turned_at === undefined ? {} : { turned_at: turned.turned_at }),
+        turned_at: turned.turned_at,
         clearance: turned.tier,
     });
 }
@@ -2968,15 +2967,17 @@ function internWalks(row, base, frame, interns, band, moving, character, box, wa
     };
     const walk = (start, r) => walkLeg(start, r.points);
     const leg = (kind, start, frames, at, why = null) => Object.freeze({ kind, start, frames, at, ...(why === null ? {} : { why }) });
-    const done = (fx, legs, doorSpan, tier, queue = null) => Object.freeze({
+    // `rest` (card#12466): the leaves' closing a turn-round carries from the walk it replaced (`door_rest`), as a seat's does.
+    const done = (fx, legs, doorSpan, tier, queue = null, rest = null) => Object.freeze({
         ...fx,
         route: 'routed',
         clearance: tier,
         legs: Object.freeze(legs),
-        door: Object.freeze(doorSpan),
+        door: doorSpan === null ? null : Object.freeze(doorSpan),
+        ...(rest === null ? {} : { door_rest: Object.freeze(rest) }),
         ...(queue === null ? {} : { queue }),
         no_route: false,
-        frames: Math.max(...legs.map((l) => l.start + l.frames), doorSpan.start + doorSpan.frames),
+        frames: Math.max(...legs.map((l) => l.start + l.frames), ...[doorSpan, rest].filter((d) => d !== null).map((d) => d.start + d.frames)),
     });
     // A departure from the slot (item 13): the laptop fades out from `from` (a `seat` leg; none when it is already 0),
     // then the walk by the low call plate and the press (card#12747; straight to the threshold where a plate's route is
@@ -3046,7 +3047,6 @@ function internWalks(row, base, frame, interns, band, moving, character, box, wa
                 to: 'elevator',
                 door: sill,
                 anchor: fx.anchor,
-                keep: false,
                 lead: F > 0 ? [Object.freeze({ ...leg('seat', 0, F, fx.anchor), laptop_from: from, laptop_to: 0 })] : [],
                 out: (p, lead) => {
                     const r = routed(fx, p, door);
@@ -3055,15 +3055,16 @@ function internWalks(row, base, frame, interns, band, moving, character, box, wa
                         return null;
                     }
 
-                    const way = wayOut((a, b) => routed(fx, a, b), r, p, lead.length === 0 ? 0 : F, door, call);
+                    // It walks once its lead — the laptop's fade at its stool — has ended.
+                    const way = wayOut((a, b) => routed(fx, a, b), r, p, Math.max(0, ...lead.map((l) => l.start + l.frames)), door, call);
 
                     return { ...departing(lead, way, walking.wait(fx.intern_key, row.cause), sill), tier: way.tier };
                 },
             });
 
             if (turned !== null) {
-                out.push(done({ ...fx, leg_kind: 'turn', turned_in: turned.turned_in, ...(turned.turned_at === undefined ? {} : { turned_at: turned.turned_at }) },
-                    turned.legs, turned.door, turned.tier, turned.queue ?? null));
+                out.push(done({ ...fx, leg_kind: 'turn', turned_in: turned.turned_in, turned_at: turned.turned_at },
+                    turned.legs, turned.door, turned.tier, turned.queue ?? null, turned.door_rest ?? null));
             }
 
             continue;
@@ -3080,88 +3081,86 @@ function internWalks(row, base, frame, interns, band, moving, character, box, wa
 }
 
 /**
- * THE TURN-ROUND — ONE PRIMITIVE FOR EVERY WALKER WHOSE FACT REVERSES WHILE ITS WALK IS IN FLIGHT: § 6.2's walk note item
- * 16 for an intern (card#12450) and item 6a for a seat (card#12466). The walker turns from wherever it is at the cancelling
- * render's instant, never finishing the walk it was on, and the new effect REPLACES the old one in the holder (one walk per
- * walker). `flying` is the holder's `{ effect, elapsed_ms }`; `way` is the walker's own geometry — `to` (where the row sends
- * it: `elevator` or `desk`), `door` (the threshold), `anchor` (its desk's anchor or its stool's foot), `lead` (the legs an
- * intern's departure from its stool begins with: its laptop's fade), `out(from, lead)` (its way out from a point:
- * `departing()`'s parts and the route's tier, or `null`), `home(from)` (its route from a point to its anchor,
- * `{ points, tier }` or `null`) and `keep`.
- *
- * ⛔ THE DIRECTION IS THE ROW's, NEVER THE WALK's SHAPE, AND THE CASE IS WHERE THE FIGURE IS (card#12466 review round 1). The
- * walk turned from may itself be a turn-round — of any shape — so nothing is read off whether it carries a queue part or
- * which kind of walk it was: the case is the leg the figure stands in at this instant (the cab, the threshold's step, a
- * restroom door's `inside`, the floor, its `line` beside the desk), and the leaves' state at this instant
- * (`leavesNow()`, over every span the walk carries).
- *
- * TO THE ELEVATOR (an intern's item 16 cases, and since card#12466 a seat's A2): in the cab with the leaves opening or open
- * it never steps out and they close over it; in the cab with them closing it rides on behind them; on the threshold's
- * step it steps back in and they close; coming out of a restroom door it finishes coming out and leaves from the door; on
- * the floor it turns at `pointAt()`'s point and walks out — by its call plate, its seeded wait and the full door, a
- * departure the holder queues; in an intern's `seat` leg it is at its stool, an ordinary departure fading the laptop out
- * from the opacity it has reached.
- *
- * TO ITS DESK (card#12466, a seat's A1: a closed `call_id` never reopens, so no intern turns this way): standing in its
- * `line` beside its desk, or anywhere at its anchor, it is home and sits at once (`{ seated: true }`); coming out of a
- * restroom door it finishes coming out and walks home from the door; on the floor it turns at its point and walks home;
- * in the cab with the leaves opening or open it steps out once they are open and walks home; in the cab with them closing
- * or shut the ride completes — they close as they began to, stay shut through the next frame, and open again on it, and
- * it steps out and walks home, the arrival A1 draws.
- *
- * `keep` (a seat, card#12466): THE LEAVES KEEP THE MOTION ALREADY DRAWN. Leaves that have begun to open finish opening
- * before they close, and leaves that have begun to close close as they began to — the span moving them now carried over
- * from the walk the turn replaces, in frames from now (`door`, or `door_rest` for a closing the walker is no longer behind)
- * — so nothing drawn is re-timed. An intern's turn-round restarts the leaves from its own frames, as item 16 was built.
- *
- * @returns {?object} `{ turned_in, legs, door, door_rest?, queue?, tier, turned_at? }`; `{ seated: true }` for a walker
- *          already at its desk; `null` where no route exists or nothing is left to draw
+ * card#12466 — A WALKER's POSE, `flying.elapsed_ms` into the walk it is on: the only thing a turn-round reads of that walk
+ * (`turn()`). `p` is where its feet are drawn (`pointAt()`, a cab step glided), `where` is where they are — `floor`, `cab`
+ * or `inside` a restroom door, a property of the leg's KIND, which is its geometry — `inside_left` the frames until the
+ * walker is out of that door (0 elsewhere), `leaves` what the elevator's leaves are doing now (`leavesNow()`, over the
+ * walk's own `door` and `door_rest`) and `tier` the clearance tier the walk was routed at, which a turn that walks no new
+ * route keeps. No leg's reason (`why`), no queue part and no walk kind is in it: a pose cannot say which walk it came from.
  */
-function turnRound(flying, way) {
-    const D = ELEVATOR_DOOR;
+export function poseOf(flying) {
     const fx = flying.effect;
-    const I = fx.frame_interval_ms;
-    const elapsed = flying.elapsed_ms;
-    const legs = fx.legs;
-    const k = Math.max(0, legs.findIndex((l) => elapsed < (l.start + l.frames) * I));
-    const now = legs[k === -1 ? legs.length - 1 : k];
+    const e = flying.elapsed_ms / fx.frame_interval_ms;
+    const here = pointAt(fx, flying.elapsed_ms);
+    const leg = fx.legs[here.leg];
+
+    return Object.freeze({
+        p: Object.freeze({ x: here.x, y: here.y }),
+        where: here.where,
+        inside_left: here.where === 'inside' ? leg.start + leg.frames - e : 0,
+        leaves: leavesNow(fx, e),
+        tier: fx.clearance,
+    });
+}
+
+/** Two points as one where they agree to a millionth of a pixel — a figure that close to its anchor or the threshold is on it. */
+const atPoint = (a, b) => Math.round(a.x * 1e6) === Math.round(b.x * 1e6) && Math.round(a.y * 1e6) === Math.round(b.y * 1e6);
+
+/**
+ * THE TURN-ROUND — ONE PRIMITIVE FOR EVERY WALKER WHOSE FACT REVERSES WHILE ITS WALK IS IN FLIGHT: § 6.2's walk note item
+ * 16 for an intern (card#12450) and item 6a for a seat (card#12466). The walker turns from where it is drawn at the
+ * cancelling render's instant, finishing only what is physically irreversible — a closing or shut cab, coming out of a
+ * restroom door — and the new effect REPLACES the old one in the holder (one walk per walker). `flying` is the holder's
+ * `{ effect, elapsed_ms }`; `way` is the walker's own geometry — `to` (where the row sends it: `elevator` or `desk`), `door`
+ * (the threshold), `anchor` (its desk's anchor or its stool's foot), `lead` (the legs an intern's departure from its stool
+ * begins with: its laptop's fade), `out(from, lead)` (its way out from a point: `departing()`'s parts and the route's tier,
+ * or `null`) and `home(from)` (its route from a point to its anchor, `{ points, tier }` or `null`).
+ *
+ * ⛔ THE TURN READS THE FIGURE's POSE AND THE ROW's DIRECTION, NEVER A LABEL OF THE WALK IT LEAVES (card#12466, review
+ * rounds 1 and 2): `turn()` is handed `poseOf(flying)` and `way` and nothing else, so no leg's `why`, no queue part, no
+ * `leg_kind` and no animation id can decide what it draws. A turn-round of a turn-round of any depth is the same reading
+ * of the same two facts — where the figure is and what the leaves are doing. `walk-probe.mjs`'s `turn-blind` mode holds it
+ * to that: the same walk with every label stripped turns the same way.
+ */
+export function turnRound(flying, way) {
+    const pose = poseOf(flying);
+    const turned = turn(pose, way);
+
+    return turned === null || turned.seated === true ? turned : { ...turned, turned_in: pose.where, turned_at: pose.p };
+}
+
+/**
+ * The turn itself (`turnRound()`), from a pose (`poseOf()`). Leaves that have begun to open finish opening before they
+ * close, and leaves that have begun to close close as they began to — the span moving them now carried over in frames from
+ * now (`door`, or `door_rest` for a closing the walker is no longer behind) — so nothing drawn is re-timed.
+ *
+ * TO THE ELEVATOR (an intern's item 16, a seat's A2): in the cab with the leaves opening or open it stays in and they close
+ * over it; in the cab with them closing it rides on behind them; in the cab behind shut leaves it has gone (`null`); on the
+ * floor at the threshold with the leaves open it steps back in and they close; coming out of a restroom door it finishes
+ * coming out and leaves from the door; at its anchor it is an ordinary departure from there (an intern's laptop fading out
+ * from the opacity it has reached, `way.lead`); anywhere else on the floor it walks out from where it is — by its call
+ * plate, its seeded wait and the full door, a departure the holder queues.
+ *
+ * TO ITS DESK (a seat's A1: a closed `call_id` never reopens, so no intern turns this way): on the floor at its anchor it
+ * is home and sits at once (`{ seated: true }`); anywhere else on the floor it walks home from where it is; coming out of a
+ * restroom door it finishes coming out and walks home from the door; in the cab with the leaves opening or open it steps
+ * out once they are open and walks home; in the cab with them closing or shut the ride completes — they close as they
+ * began to, stay shut through the next frame, and open again on it, and it steps out and walks home, the arrival A1 draws.
+ *
+ * @returns {?object} `{ legs, door, door_rest?, queue?, tier }`; `{ seated: true }` for a walker already at its desk;
+ *          `null` where no route exists or nothing is left to draw — `turnRound()` adds the pose it turned from,
+ *          `turned_in` (`floor`, `cab` or `inside`) and `turned_at` (the drawn point)
+ */
+function turn(pose, way) {
+    const D = ELEVATOR_DOOR;
     const at = way.door;
 
     if (at === null) {
         return null;
     }
 
-    const leg = (kind, start, frames, p, why = null) => Object.freeze({ kind, start, frames, at: p, ...(why === null ? {} : { why }) });
-    const here = () => {
-        const p = pointAt(fx, elapsed);
-
-        return Object.freeze({ x: p.x, y: p.y });
-    };
-
-    if (!way.keep) {
-        // Item 16 as built for an intern, an arrival turned to the elevator, its leaves restarted from its own frames.
-        if (now.kind === 'cab') {
-            return { turned_in: 'cab', legs: [leg('cab', 0, D.close, at)], door: { start: 0, frames: D.close }, tier: fx.clearance };
-        }
-
-        if (now.kind === 'stand') {
-            return { turned_in: 'stand', legs: [leg('stand', 0, D.step, at, 'step'), leg('cab', D.step, D.close, at)], door: { start: 0, frames: D.step + D.close }, tier: fx.clearance };
-        }
-
-        if (now.kind === 'walk') {
-            const p = here();
-            const gone = way.out(p, []);
-
-            return gone === null ? null : { turned_in: 'walk', turned_at: p, legs: gone.legs, door: gone.door, queue: gone.queue, tier: gone.tier };
-        }
-
-        // In an intern's `seat` leg: at its stool, its laptop part-way up — an ordinary departure from the opacity it reached.
-        const gone = way.out(way.anchor, way.lead);
-
-        return gone === null ? null : { turned_in: 'seat', legs: gone.legs, door: gone.door, queue: gone.queue, tier: gone.tier };
-    }
-
-    const leaves = leavesNow(fx, elapsed / I);
+    const { p, where, leaves } = pose;
+    const leg = (kind, start, frames, q, why = null) => Object.freeze({ kind, start, frames, at: q, ...(why === null ? {} : { why }) });
     // The span moving the leaves now, finished: opening ones open fully and close once `after` (frames from now) has passed.
     const finish = (after) => {
         const close = Math.max(after, leaves.span.start + D.open);
@@ -3170,63 +3169,46 @@ function turnRound(flying, way) {
     };
     // Whatever the leaves are doing now, carried over as a span the walker is no longer behind.
     const carried = leaves.state === 'closing' ? leaves.span : leaves.state === 'open' ? finish(0) : null;
-    const inside = now.kind === 'inside' ? now.start + now.frames - elapsed / I : null;
+    const rest = carried === null ? {} : { door_rest: carried };
+    const inside = where === 'inside' ? [leg('inside', 0, pose.inside_left, p)] : [];
 
     if (way.to === 'elevator') {
-        if (now.kind === 'cab') {
+        if (where === 'cab') {
             if (leaves.state === 'open') {
                 const door = finish(0);
 
-                return { turned_in: 'cab', legs: [leg('cab', 0, door.start + door.frames, at)], door, tier: fx.clearance };
+                return { legs: [leg('cab', 0, door.start + door.frames, at)], door, tier: pose.tier };
             }
 
             // Behind leaves already closing it rides on; behind shut ones it has gone, and nothing is left to draw.
             return leaves.state === 'closing'
-                ? { turned_in: 'cab', legs: [leg('cab', 0, leaves.span.start + leaves.span.frames, at)], door: null, door_rest: leaves.span, tier: fx.clearance }
+                ? { legs: [leg('cab', 0, leaves.span.start + leaves.span.frames, at)], door: null, door_rest: leaves.span, tier: pose.tier }
                 : null;
         }
 
-        if (now.kind === 'stand' && now.why === 'step' && leaves.state === 'open') {
+        if (where === 'floor' && atPoint(p, at) && leaves.state === 'open') {
             const door = finish(D.step);
 
-            return { turned_in: 'stand', legs: [leg('stand', 0, D.step, at, 'step'), leg('cab', D.step, door.start + door.frames - D.step, at)], door, tier: fx.clearance };
+            return { legs: [leg('stand', 0, D.step, at, 'step'), leg('cab', D.step, door.start + door.frames - D.step, at)], door, tier: pose.tier };
         }
 
-        const from = inside === null ? here() : now.at;
-        const gone = way.out(from, inside === null ? [] : [leg('inside', 0, inside, now.at)]);
+        const home = where === 'floor' && atPoint(p, way.anchor);
+        const gone = home ? way.out(way.anchor, way.lead) : way.out(p, inside);
 
-        if (gone === null) {
-            return null;
-        }
-
-        return {
-            turned_in: inside === null ? (now.why ?? now.kind) : 'inside',
-            turned_at: from,
-            legs: gone.legs,
-            door: gone.door,
-            queue: gone.queue,
-            tier: gone.tier,
-            ...(carried === null ? {} : { door_rest: carried }),
-        };
+        return gone === null ? null : { legs: gone.legs, door: gone.door, queue: gone.queue, tier: gone.tier, ...rest };
     }
 
-    if (now.kind === 'stand' && now.why === 'line') {
+    if (where === 'floor' && atPoint(p, way.anchor)) {
         return { seated: true };
     }
 
-    const homeFrom = (p, start) => {
-        const r = way.home(p);
+    const homeFrom = (q, start) => {
+        const r = way.home(q);
 
         return r === null ? null : { walk: walkLeg(start, r.points), tier: r.tier };
     };
 
-    if (inside !== null) {
-        const h = homeFrom(now.at, inside);
-
-        return h === null ? null : { turned_in: 'inside', legs: [leg('inside', 0, inside, now.at), h.walk], door: null, ...(carried === null ? {} : { door_rest: carried }), tier: h.tier };
-    }
-
-    if (now.kind === 'cab') {
+    if (where === 'cab') {
         const h = homeFrom(at, 0);
 
         if (h === null) {
@@ -3237,15 +3219,16 @@ function turnRound(flying, way) {
             // The leaves opening or open: it steps out once they are open, and walks home while they close behind it.
             const out = Math.max(0, leaves.span.start + D.open) + D.step;
 
-            return { turned_in: 'cab', legs: [leg('cab', 0, out, at), Object.freeze({ ...h.walk, start: out })], door: finish(out), tier: h.tier };
+            return { legs: [leg('cab', 0, out, at), Object.freeze({ ...h.walk, start: out })], door: finish(out), tier: h.tier };
         }
 
-        // Closing over it, or shut: the ride completes as drawn, they stay shut a frame, and open again on it.
-        const shut = leaves.state === 'closing' ? leaves.span.start + leaves.span.frames : 0;
-        const R = Math.ceil(shut - 1e-9) + 1;
+        // Closing over it, or shut: the ride completes as drawn, they stay shut a frame, and open again on it. The leaves'
+        // last closing instant is a whole millisecond — two whole-ms instants apart — so the frame after it is counted in ms.
+        const I = 1000 / LOOP_FPS;
+        const shut = leaves.state === 'closing' ? Math.round((leaves.span.start + leaves.span.frames) * I) : 0;
+        const R = Math.ceil(shut / I) + 1;
 
         return {
-            turned_in: 'cab',
             legs: [leg('cab', 0, R + D.open, at), leg('stand', R + D.open, D.step, at, 'step'), Object.freeze({ ...h.walk, start: R + D.open + D.step })],
             door: Object.freeze({ start: R, frames: D.open + D.step + D.close }),
             ...(leaves.state === 'closing' ? { door_rest: leaves.span } : {}),
@@ -3253,27 +3236,15 @@ function turnRound(flying, way) {
         };
     }
 
-    const p = here();
-
-    if (p.x === way.anchor.x && p.y === way.anchor.y) {
-        return { seated: true };
-    }
-
-    const h = homeFrom(p, 0);
+    // On the floor, or coming out of a restroom door first: it walks home from where it is.
+    const h = homeFrom(p, where === 'inside' ? pose.inside_left : 0);
 
     if (h === null) {
         return null;
     }
 
-    // Leaves that have begun to open for it finish opening and close behind it; a closing it left behind closes as it began.
-    return {
-        turned_in: now.kind === 'walk' ? 'walk' : now.why ?? now.kind,
-        turned_at: p,
-        legs: [h.walk],
-        door: leaves.state === 'open' ? finish(0) : null,
-        ...(leaves.state === 'closing' ? { door_rest: leaves.span } : {}),
-        tier: h.tier,
-    };
+    // Leaves that have begun to open finish opening and close behind it; a closing it left behind closes as it began.
+    return { legs: [...inside, h.walk], door: null, ...rest, tier: h.tier };
 }
 
 /**

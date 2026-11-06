@@ -30,6 +30,7 @@ use Tests\TestCase;
  */
 class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
 {
+    use ChecksTheCommittedPast;
     use ChecksTheElevatorQueue;
     use DrivesTheFloorScreen;
 
@@ -1153,6 +1154,8 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
             [$defects, $n] = $this->continuityDefects($drawn);
             $this->assertSame([], $defects, "[{$run}]");
             $compared += $n;
+            // card#12466: the committed past AT-D3-36 holds — no walker jumps or vanishes, the leaves keep their motion.
+            $this->assertSame([], $this->committedPastDefects($drawn)[0], "[{$run}] the committed past broke");
 
             foreach ($drawn as $r) {
                 $this->assertSame([], [...$this->queueSpacingDefects($r['frame'], $this->queueSpacing())[0], ...$this->boardingDefects($r['frame'], $this->door())[0]],

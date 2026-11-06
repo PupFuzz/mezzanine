@@ -1166,9 +1166,9 @@ export class EffectsInFlight {
     nextEnd(now) {
         const ends = [...this.#held, ...this.#trips.values()]
             .filter((h) => !this.#ended(h, now))
-            .map((h) => h.at + h.frames * this.#intervalMs - now);
+            .map((h) => this.#endAt(h) - now);
 
-        return ends.length === 0 ? null : Math.max(0, Math.min(...ends));
+        return ends.length === 0 ? null : Math.min(...ends);
     }
 
     /**
@@ -1233,13 +1233,23 @@ export class EffectsInFlight {
     }
 
     /**
-     * An effect has ended once its own frames' time has passed — `nextEnd()`'s instant, the paint-only refresh's. Read in ms,
-     * not in whole elapsed frames: a turn-round that carries the rest of a drawn motion (card#12466) can end part-way
-     * through a frame, and a whole-frame reading would leave it running past the instant `nextEnd()` names, re-arming a
-     * refresh at 0 ms until the frame boundary. For a whole number of frames the two readings agree.
+     * card#12466 — THE INSTANT AN EFFECT ENDS, IN WHOLE MILLISECONDS: its start plus its frames' time, rounded. Every true end
+     * is a whole millisecond — the clock is `Date.now()`'s and every builder's frames are whole, but for a turn-round that
+     * carries the rest of a drawn motion, whose frames are one whole instant minus another divided by the frame interval —
+     * so the rounding takes off only the float noise of that division (`0.8000000000000007` frames is 200 ms, not
+     * `200.00000000000017`). Read at each call, never stored, so `#board()` re-timing a departure's frames moves its end too.
+     */
+    #endAt(h) {
+        return Math.round(h.at + h.frames * this.#intervalMs);
+    }
+
+    /**
+     * An effect has ended once its end instant has come — the instant `nextEnd()` names and the paint-only refresh is set
+     * for, so the refresh always finds it ended: on a whole-millisecond clock a live effect is at least 1 ms from its end,
+     * and the refresh never re-arms at 0 ms. A turn-round can end part-way through a frame; it ends at its own instant.
      */
     #ended(h, now) {
-        return now - h.at >= h.frames * this.#intervalMs;
+        return now >= this.#endAt(h);
     }
 }
 
