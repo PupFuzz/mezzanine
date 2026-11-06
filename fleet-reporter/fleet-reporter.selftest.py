@@ -5547,6 +5547,12 @@ CSTEPS = {
     # `reporter_restart`, which selects entries older than the flusher's start) selects nothing, and
     # the pass is only what this case is about: a fold and a snapshot write between the two signals.
     "flush": lambda s, r, t, b: flush(s, reporter=r, FLEET_REPORTER_NOW_MS=b - 1000),
+    # A flusher pass on the trace's OWN clock: the counting fold that decides, once a pairing window has
+    # passed, that a clear's half went unpaired (card#12013 F3, option C).
+    "flush_now": lambda s, r, t, b: flush(s, reporter=r, FLEET_REPORTER_NOW_MS=t),
+    # An upgrade from a build whose snapshot carries no `clear_tally`: the key is stripped from every
+    # entry of the snapshot the last pass wrote.
+    "strip_tally": lambda s, r, t, b: strip_tally(s),
     # The second terminal: session SID2, dispatch D2 bound to AG2, inner call I2 inside it.
     "start_t2": lambda s, r, t, b: sh(s, "SessionStart", SID2, r, t, source="startup"),
     "prompt2": lambda s, r, t, b: sh(s, "UserPromptSubmit", SID2, r, t, prompt="go", prompt_id="p2"),
@@ -5629,6 +5635,15 @@ def snapshot(s):
         return json.loads((s.spool / "index" / "snapshot.json").read_text(encoding="utf-8"))
     except Exception:
         return {}
+
+
+def strip_tally(s):
+    p = s.spool / "index" / "snapshot.json"
+    snap = json.loads(p.read_text(encoding="utf-8"))
+    for member in ("sessions", "sessions_closed"):
+        for x in snap.get(member, []):
+            x.pop("clear_tally", None)
+    p.write_text(json.dumps(snap), encoding="utf-8")
 
 
 C1 = ["prompt", "pre1", "start1", "launch1", "inner1", "stop_bg1", "clear_end", "clear_start"]
@@ -5910,6 +5925,49 @@ c15_got = lambda s: [(e.get("session_id"), e.get("carried_from")) for e in snaps
                      if e.get("call_id") == spawn_id(s)]
 eq("C15: a late carry for a re-keyed entry does not re-flag it", C15_WANT, c15_got(s))
 
+# C16 (card#12013 F3, option C) — A HALF OF A /CLEAR THAT NOTHING PAIRED IS COUNTED, ONCE, BY THE FLUSHER,
+# once its window has passed: `clear_start_unpaired` for a SessionStart(clear) no SessionEnd(clear) paired
+# (the end was lost), `clear_end_unpaired` for the mirror. A paired half never counts, and neither does a
+# half that took part in an ambiguous pick, which `clear_pair_ambiguous` already counts. Nothing on the
+# floor moves: the counters are read off the flusher's totals in state.json, which the heartbeat carries.
+def unpaired(s):
+    c = s.state().get("counters") or {}
+    return {"start": c.get("clear_start_unpaired"), "end": c.get("clear_end_unpaired")}
+
+
+NONE_UNPAIRED = {"start": None, "end": None}
+C16_CASES = [
+    # (label, steps, want)
+    ("C16a: a lost SessionEnd(clear) — the start counts once, across two passes past the window",
+     T1 + ["clear_start", CLEAR_PAIR_MS, "flush_now", "flush_now"], {"start": 1, "end": None}),
+    ("C16b: a lost SessionStart(clear) — the end counts once, across two passes past the window",
+     T1 + ["clear_end", CLEAR_PAIR_MS, "flush_now", "flush_now"], {"start": None, "end": 1}),
+    ("C16c: a matched clear (measured order) counts nothing", C1 + [CLEAR_PAIR_MS, "flush_now"], NONE_UNPAIRED),
+    ("C16d: a matched clear (SessionStart first) counts nothing", C3 + [CLEAR_PAIR_MS, "flush_now"], NONE_UNPAIRED),
+    ("C16e: two terminals' ends, then two starts (ambiguous) count nothing unpaired",
+     C11 + [CLEAR_PAIR_MS, "flush_now"], NONE_UNPAIRED),
+    ("C16f: two terminals' starts, then two ends (ambiguous) count nothing unpaired",
+     C11E + [CLEAR_PAIR_MS, "flush_now"], NONE_UNPAIRED),
+    ("C16g: a pass INSIDE the window decides nothing early (end first)",
+     T1 + ["clear_end", "flush_now", "clear_start", CLEAR_PAIR_MS, "flush_now"], NONE_UNPAIRED),
+    ("C16h: a pass INSIDE the window decides nothing early (start first)",
+     T1 + ["clear_start", "flush_now", "clear_end", CLEAR_PAIR_MS, "flush_now"], NONE_UNPAIRED),
+    ("C16i: a lost end whose new session closes before any pass still counts once",
+     T1 + ["clear_start", "end_new", CLEAR_PAIR_MS, "flush_now"], {"start": 1, "end": None}),
+    ("C16j: a start more than K.CLEAR_GAP_MS before its end pairs nothing, and each half counts once",
+     C12C + [CLEAR_PAIR_MS, "flush_now"], {"start": 1, "end": 1}),
+    ("C16k: an upgrade — a start an older flusher's snapshot holds is not counted",
+     T1 + ["clear_start", "flush_now", "strip_tally", CLEAR_PAIR_MS, "flush_now"], NONE_UNPAIRED),
+    ("C16l: an upgrade — an end an older flusher's snapshot holds is not counted",
+     T1 + ["clear_end", "flush_now", "strip_tally", CLEAR_PAIR_MS, "flush_now"], NONE_UNPAIRED),
+]
+for label, steps, want in C16_CASES:
+    s, ev, ctr, _, _ = clear_trace("clear-" + label.split(":")[0].lower(), steps)
+    eq(label, want, unpaired(s))
+s, ev, ctr, _, _ = clear_trace("clear-c16e-amb", C11 + [CLEAR_PAIR_MS, "flush_now"])
+eq("  … and the ambiguous double clear is still counted where it always was", 2,
+   (s.state().get("counters") or {}).get("clear_pair_ambiguous"))
+
 # ── REDs, each planted on a COPY and shown to flip its GREEN ──────────────────────────────────
 p_r1 = plant(("const carried = (e) => abortReason === 'session_cleared' && e.is_dispatch && !!e.child_agent_id;",
               "const carried = (e) => e.is_dispatch && !!e.child_agent_id;"))
@@ -5949,7 +6007,7 @@ p_r8 = plant(("(e) => e.agent_scope_id === agentId), 'turn_boundary'",
 s, ev, _, _, _ = clear_trace("clear-r8", C2B, p_r8)
 eq("RED R8: the SubagentStop scope reap keeps its session term — under the OLD id it misses the "
    "inner call opened under NEW (C2b flips)", [], closes_of(ev, call_of(ev, "Bash", NEWSID)))
-p_r9 = plant(("(s) => s.opened_at, K.CLEAR_GAP_MS, nowMs);", "(s) => s.opened_at, K.CLEAR_PAIR_MS, nowMs);"))
+p_r9 = plant(("windowMs: K.CLEAR_GAP_MS, counter: 'clear_start_unpaired'", "windowMs: K.CLEAR_PAIR_MS, counter: 'clear_start_unpaired'"))
 s, ev, _, _, per = clear_trace("clear-r9", C13, p_r9)
 D2r = spawn_id(s)
 eq("RED R9: findTwinForEnd on the wide window — terminal 2's end adopts terminal 1's unpaired "
@@ -5980,14 +6038,51 @@ p_r13 = plant(("        if (twin) { pairClear(ctx, ix, sid, twin.session_id, twi
 s, ev, ctr, prd, per = clear_trace("clear-r13", C3, p_r13)
 eq("RED R13: SessionEnd evaluating the predicate on every clear — C3's counter and predicate leave "
    "their pre-card#11817 values", (None, None, {"true": 1, "false": 1}, [(BGSID, NEWSID)]), c3_got(s, ctr, prd))
-p_r14 = plant(("  if (twin.qualified > 1) { count('clear_pair_ambiguous'); return; }\n",
-               "  if (twin.qualified > 1) count('clear_pair_ambiguous');\n"))
+p_r14 = plant(("    count('clear_pair_ambiguous');\n    return;\n  }\n",
+               "    count('clear_pair_ambiguous');\n  }\n"))
 for case, steps in (("C11", C11), ("C11e", C11E)):
     s, ev, ctr, _, per = clear_trace(f"clear-r14-{case.lower()}", steps, p_r14)
     v = c11_got(s, ev, ctr)
     eq(f"RED R14 ({case}): an ambiguous pick that still pairs the latest candidate — the pairing crosses the two "
        "terminals and each new session's Stop aborts the OTHER terminal's running dispatch (card#12013; "
        f"{case} flips)", ([("aborted", "reap_turn_boundary")], [("aborted", "reap_turn_boundary")]), (v["d1"], v["d2"]))
+# R15–R20 — the unpaired-half tally (card#12013 F3, option C), each plant flipping one C16 case.
+C16 = {label.split(":")[0]: (steps, want) for label, steps, want in C16_CASES}
+
+
+def c16_planted(tag, case, *subs):
+    s, _, _, _, _ = clear_trace(f"clear-{tag}-{case.lower()}", C16[case][0], plant(*subs))
+    return unpaired(s)
+
+
+eq("RED R15: an ambiguous pick that marks nothing — the halves it saw are counted unpaired as well "
+   "(C16e and C16f flip)", [{"start": 2, "end": 2}, {"start": 2, "end": 2}],
+   [c16_planted("r15", case, ("    journal(ctx.spool, rec);\n    applyIndexRecord(ix, rec, now());\n    count('clear_pair_ambiguous');",
+                              "    count('clear_pair_ambiguous');")) for case in ("C16e", "C16f")])
+eq("RED R16: a tally that records nothing on the entry — the second pass counts the same start again "
+   "(C16a flips)", {"start": 2, "end": None},
+   c16_planted("r16", "C16a", ("  x.clear_tally = 'unpaired';\n  count(half.counter);", "  count(half.counter);")))
+v = c16_planted("r17", "C16a", ("  if (!ix.counting || x.clear_tally", "  if (x.clear_tally"))
+eq("RED R17: a tally in every fold, not the flusher's counting one alone — the start counts more than once "
+   "(C16a flips)", True, (v["start"] or 0) > 1)
+eq("RED R18: no window — a pass inside the window counts the end before its start arrives (C16g flips)",
+   {"start": None, "end": 1},
+   c16_planted("r18", "C16g", ("  if (!final && nowMs - Date.parse(half.markedAt(x) || 0) <= half.windowMs) return;\n", "")))
+eq("RED R19: no tally at the close — a lost end whose new session closed before a pass is never counted "
+   "(C16i flips)", NONE_UNPAIRED,
+   c16_planted("r19", "C16i", ("      if (s) tallyUnpairedClear(ix, CLEAR_HALF.start, s, nowMs, true);\n", "")))
+eq("RED R20: an older snapshot's entry loaded as undecided — the upgrade counts a start it cannot judge "
+   "(C16k flips)", {"start": 1, "end": None},
+   c16_planted("r20", "C16k", ("? x.clear_tally : 'pre_upgrade');", "? x.clear_tally : null);")))
+redgreen("a /clear half that nothing paired is counted once, by the flusher, after its window (card#12013 F3, option C)",
+         "no ambiguous mark -> an ambiguous double clear counts four unpaired halves; no tally mark -> a second "
+         "pass counts the same half again; a tally in every fold -> a half counts more than once; no window -> a "
+         "pass inside the window counts an end before its start arrives; no tally at the close -> a lost end "
+         "whose new session closed first is never counted; an older snapshot's entry undecided -> the upgrade "
+         "counts a half it cannot judge",
+         "a lost end counts clear_start_unpaired once and a lost start clear_end_unpaired once, across passes; "
+         "matched clears in either order and ambiguous double clears in either order count neither; a pass "
+         "inside the window decides nothing; a half the snapshot of an older build holds is not counted")
 redgreen("a /clear carries a running dispatch into the new session and pairs by tombstone (§ 8.3, § 8.4, card#11817, card#11824)",
          "carry on every abort reason -> a real exit leaves the dispatch open; a pair that does not re-key "
          "-> NEW's Stop cannot select it; no carried_call_ids -> the server would close it; carry on an "

@@ -67,7 +67,7 @@ const lazy = (name) => require(name);
  * change to a file a reporter update ships, and `bin/reporter-version-guard.py` fails a PR that changes
  * one without moving it, so two different builds never report the same version. Each version's row in
  * `fleet-reporter/UPDATES.md` says what an upgrading seat must apply. */
-const REPORTER_VERSION = '0.6.3';
+const REPORTER_VERSION = '0.6.4';
 const SCHEMA_VERSION = 1;
 
 /* ── Every number, from § 14 and the section that derives it ──────────────────────────────── */
@@ -1627,16 +1627,26 @@ function applyIndexRecord(ix, r, nowMs) {
       if (!s) {
         ix.sessions.set(r.session_id, {
           session_id: r.session_id, opened_at: r.at, last_active: r.at, turns: 0, aborted_calls: 0,
-          start_source: r.source || null, paired_from: null,
+          start_source: r.source || null, paired_from: null, clear_tally: null,
         });
       } else if (r.source === 'clear') s.start_source = r.source;
       todoSessionOpened(ix, r);
       break;
     }
-    case 'session_close':
+    case 'session_close': {
+      // A clear-started session that closes unpaired can never be paired now (card#12013 F3).
+      const s = ix.sessions.get(r.session_id);
+      if (s) tallyUnpairedClear(ix, CLEAR_HALF.start, s, nowMs, true);
       ix.sessions.delete(r.session_id); ix.turns.delete(r.session_id);
-      ix.sessionsClosed.set(r.session_id, { closed_at: r.at, end_reason: r.end_reason || null, paired_to: null });
+      ix.sessionsClosed.set(r.session_id, { closed_at: r.at, end_reason: r.end_reason || null, paired_to: null, clear_tally: null });
       todoSessionClosed(ix, r.session_id, r.end_reason || null, r.at);
+      break;
+    }
+    case 'clear_ambiguous':
+      // card#12013 F3 — the halves an ambiguous pick saw, which `clear_pair_ambiguous` counted (pairClear).
+      // Marks for the tally alone: no pairing predicate reads `clear_tally`.
+      for (const sid of r.closed || []) { const c = ix.sessionsClosed.get(sid); if (c && !c.clear_tally) c.clear_tally = 'ambiguous'; }
+      for (const sid of r.open || []) { const o = ix.sessions.get(sid); if (o && !o.clear_tally) o.clear_tally = 'ambiguous'; }
       break;
     case 'todo_list': case 'todo_create': case 'todo_update': case 'todo_end':
       applyTodoRecord(ix, r);
@@ -1752,6 +1762,10 @@ function capIndex(ix, nowMs) {
     if (nowMs - Date.parse(tb.closed_at || 0) > K.TOMBSTONE_MS) ix.tombstones.delete(id);
   }
   while (ix.tombstones.size > K.TOMBSTONES) { ix.tombstones.delete(ix.tombstones.keys().next().value); count('open_call_index_overflow'); }
+  // card#12013 F3 — each /clear half whose window has closed unpaired is counted, before the tombstone
+  // that holds it can age out (K.TOMBSTONE_MS is far past either window).
+  for (const c of ix.sessionsClosed.values()) tallyUnpairedClear(ix, CLEAR_HALF.end, c, nowMs, false);
+  for (const s of ix.sessions.values()) tallyUnpairedClear(ix, CLEAR_HALF.start, s, nowMs, false);
   for (const [sid, c] of ix.sessionsClosed) if (nowMs - Date.parse(c.closed_at || 0) > K.TOMBSTONE_MS) ix.sessionsClosed.delete(sid);
   // § 6.15 — `agents` holds an instant only for a child some open dispatch is bound to, so its size is
   // at most the open-call index's own bound and nothing in it ages by a clock.
@@ -1766,6 +1780,7 @@ function capIndex(ix, nowMs) {
     let victim = null;
     for (const [sid, s] of ix.sessions) if (!victim || Date.parse(s.last_active || 0) < Date.parse(ix.sessions.get(victim).last_active || 0)) victim = sid;
     count('open_session_index_overflow');
+    tallyUnpairedClear(ix, CLEAR_HALF.start, ix.sessions.get(victim), nowMs, true);
     // The eviction is REPORTED, not performed here: the fold cannot emit, and an evicted
     // session owes a full session boundary on the wire (§ 8.2). The caller reaps it.
     ix.evicted.push(victim);
@@ -1811,11 +1826,15 @@ function foldIndex(spool, nowMs, opts = {}) {
     snapBucket = snap.bucket || null; snapOffset = snap.offset || 0;
     for (const e of snap.entries || []) ix.calls.set(e.call_id, e);
     for (const t of snap.tombstones || []) ix.tombstones.set(t.call_id, t);
-    for (const s of snap.sessions || []) ix.sessions.set(s.session_id, s);
+    // card#12013 F3 — an entry a snapshot from before `clear_tally` holds carries no key at all (this build
+    // writes `null`), and loads as already decided: whether an ambiguous pick saw it was never recorded, so
+    // counting it now could count an ambiguous half as unpaired.
+    const tally = (x) => (Object.prototype.hasOwnProperty.call(x, 'clear_tally') ? x.clear_tally : 'pre_upgrade');
+    for (const s of snap.sessions || []) ix.sessions.set(s.session_id, Object.assign(s, { clear_tally: tally(s) }));
     // A snapshot an older flusher wrote has no end_reason / paired_to: such a tombstone loads as
     // never pairable, and expires in K.TOMBSTONE_MS (card#11817's upgrade note).
     for (const c of snap.sessions_closed || []) {
-      ix.sessionsClosed.set(c.session_id, { closed_at: c.closed_at, end_reason: c.end_reason || null, paired_to: c.paired_to || null });
+      ix.sessionsClosed.set(c.session_id, { closed_at: c.closed_at, end_reason: c.end_reason || null, paired_to: c.paired_to || null, clear_tally: tally(c) });
     }
     for (const t of snap.turns || []) ix.turns.set(t.session_id, t);
     for (const a of snap.attention || []) ix.attention.set(a.session_id, a);
@@ -2450,21 +2469,45 @@ function touchSession(ctx, ix, sessionId, source = null) {
  * LIVE session whose calls it re-keys; any pairing older than that window is counted
  * `clear_pair_late`. A pick with more than one candidate pairs nothing and is counted
  * `clear_pair_ambiguous` (pairClear, card#12013). */
-function latestUnpaired(map, unpairedClear, markedAt, windowMs, nowMs) {
-  let twin = null, qualified = 0;
+/* THE TWO HALVES OF A /CLEAR, AS THE INDEX HOLDS THEM, AND EACH ONE'S WINDOW: what makes an entry an
+ * unpaired half, when it was marked, and how long the OTHER signal may still pair it. The pairing reads
+ * them (`latestUnpaired`), and so does `tallyUnpairedClear`, which counts a half its window closed on
+ * unpaired — one definition, so the counter cannot drift from what the pairing would have accepted.
+ * `side` names the index map the half lives in, which is what a `clear_ambiguous` record marks. */
+const CLEAR_HALF = {
+  end: { side: 'closed', unpaired: (c) => c.end_reason === 'clear' && !c.paired_to, markedAt: (c) => c.closed_at,
+    windowMs: K.CLEAR_PAIR_MS, counter: 'clear_end_unpaired' },
+  start: { side: 'open', unpaired: (s) => s.start_source === 'clear' && !s.paired_from, markedAt: (s) => s.opened_at,
+    windowMs: K.CLEAR_GAP_MS, counter: 'clear_start_unpaired' },
+};
+function latestUnpaired(map, half, nowMs) {
+  let twin = null;
+  const candidates = [];
   for (const [sid, x] of map) {
-    if (!unpairedClear(x)) continue;
-    const age = nowMs - Date.parse(markedAt(x) || 0);
-    if (age > windowMs) continue;
-    qualified += 1;
+    if (!half.unpaired(x)) continue;
+    const age = nowMs - Date.parse(half.markedAt(x) || 0);
+    if (age > half.windowMs) continue;
+    candidates.push(sid);
     if (!twin || age < twin.age_ms) twin = { session_id: sid, age_ms: age };
   }
-  return twin ? Object.assign(twin, { qualified }) : null;
+  return twin ? Object.assign(twin, { qualified: candidates.length, candidates, side: half.side }) : null;
 }
-const findTwinForStart = (ix, nowMs) => latestUnpaired(ix.sessionsClosed,
-  (c) => c.end_reason === 'clear' && !c.paired_to, (c) => c.closed_at, K.CLEAR_PAIR_MS, nowMs);
-const findTwinForEnd = (ix, nowMs) => latestUnpaired(ix.sessions,
-  (s) => s.start_source === 'clear' && !s.paired_from, (s) => s.opened_at, K.CLEAR_GAP_MS, nowMs);
+const findTwinForStart = (ix, nowMs) => latestUnpaired(ix.sessionsClosed, CLEAR_HALF.end, nowMs);
+const findTwinForEnd = (ix, nowMs) => latestUnpaired(ix.sessions, CLEAR_HALF.start, nowMs);
+
+/* card#12013 F3, option C — A HALF OF A /CLEAR THAT NOTHING PAIRED IS COUNTED, ONCE, AND ONLY BY THE
+ * FLUSHER'S COUNTING FOLD (`ix.counting`), which applies each journal record once. It is decided when the
+ * half's window has closed — after it no signal can pair it — or earlier when the entry leaves the index
+ * (`final`: a session that closes or is evicted can no longer be paired). `clear_tally` records the
+ * decision on the entry, and the snapshot persists it, so a later pass does not count it again; a half that
+ * took part in an ambiguous pick carries `ambiguous` (its `clear_ambiguous` record), since
+ * `clear_pair_ambiguous` already counted it. Counting only: nothing here pairs, reaps or emits. */
+function tallyUnpairedClear(ix, half, x, nowMs, final) {
+  if (!ix.counting || x.clear_tally || !half.unpaired(x)) return;
+  if (!final && nowMs - Date.parse(half.markedAt(x) || 0) <= half.windowMs) return;
+  x.clear_tally = 'unpaired';
+  count(half.counter);
+}
 
 /* The pairing is REPORTER-INTERNAL: it moves carried index entries and nothing on the wire names it.
  * `session.start.previous_session_id`, `reap_noop_second_signal`, `clear_second_signal_found_nothing`
@@ -2476,7 +2519,17 @@ function pairClear(ctx, ix, oldSid, newSid, twin) {
   // another terminal's: with two terminals' SessionEnd(clear)s both ahead of either SessionStart(clear),
   // the latest crossed them, and the other terminal's next Stop aborted this one's running subagent.
   // Unpaired, each carry stays under its own old session, where its SubagentStop still closes it.
-  if (twin.qualified > 1) { count('clear_pair_ambiguous'); return; }
+  // The halves it could not tell apart are marked, so `tallyUnpairedClear` does not count them a second
+  // time as unpaired: the signal that looked (`oldSid` closed, `newSid` open) and every candidate it saw.
+  if (twin.qualified > 1) {
+    const rec = { k: 'clear_ambiguous',
+      closed: [...new Set([oldSid, ...(twin.side === 'closed' ? twin.candidates : [])])],
+      open: [...new Set([newSid, ...(twin.side === 'open' ? twin.candidates : [])])] };
+    journal(ctx.spool, rec);
+    applyIndexRecord(ix, rec, now());
+    count('clear_pair_ambiguous');
+    return;
+  }
   const rekeyed = [...ix.calls.values()].filter((e) => e.carried_from === oldSid).length;
   const rec = { k: 'pair', old_session_id: oldSid, new_session_id: newSid };
   journal(ctx.spool, rec);
