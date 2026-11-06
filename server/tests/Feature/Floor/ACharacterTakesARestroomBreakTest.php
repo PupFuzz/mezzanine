@@ -48,6 +48,9 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     /** One loop frame, ms (§ 12's loop rate). */
     private const FRAME = 250;
 
+    /** card#12841: one display frame at 60 Hz, ms — the step the lane's sampler reads feet at. */
+    private const DISPLAY_MS = 1000 / 60;
+
     /** @var array<string, array<string, mixed>> the shipped tree's runs, replayed once per process */
     private static array $runs = [];
 
@@ -194,15 +197,20 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         return $this->probe(['mode' => 'draw', 'cases' => [[$key, $field]]], null, __DIR__.'/walk-probe.mjs')[0];
     }
 
-    /** The restroom as the scene module declares it, with the waiting spots `spotsNear()` finds from `$from`, clear of `$clear`. */
-    private function restroom(?array $from = null, array $clear = [], int $count = 3, ?array $frame = null): array
+    /**
+     * The restroom as the scene module declares it, with the waiting spots `spotsNear()` finds from `$from`, clear of
+     * `$clear` — and, card#12841, none in `$lane` where one is given, as the scene calls it — over the shipped default or
+     * the map at the repo path `$map`.
+     */
+    private function restroom(?array $from = null, array $clear = [], int $count = 3, ?array $frame = null, ?array $lane = null, ?string $map = null): array
     {
         $desks = $frame === null ? [] : ['desks' => array_map(static fn (array $d): array => [
             'key' => $d['key'],
             'rects' => array_values(array_filter([$d['slot_rect'], $d['box']], static fn ($r) => $r !== null)),
         ], $frame['scene']['desks'])];
 
-        return $this->probe(['mode' => 'restroom'] + ($from === null ? [] : ['from' => $from, 'clear' => $clear, 'count' => $count]) + $desks, null, __DIR__.'/walk-probe.mjs');
+        return $this->probe(['mode' => 'restroom'] + ($from === null ? [] : ['from' => $from, 'clear' => $clear, 'count' => $count] + ($lane === null ? [] : ['lane' => $lane]))
+            + ($map === null ? [] : ['map' => $map]) + $desks, null, __DIR__.'/walk-probe.mjs');
     }
 
     // ── § 12's rows ──────────────────────────────────────────────────────────────────────────
@@ -227,6 +235,7 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         $m = $read('/^\| \*\*Restroom door motion\*\* \| \*Elevator leaves\*\' \*\*(\d+) \/ (\d+) \/ (\d+)\*\* frames/m', '*Restroom door motion*');
         $c = $read('/^\| \*\*Walker clearance\*\* \| \*\*(\d+) px beside; (\d+) px in depth\*\* \|/m', '*Walker clearance*');
         $s = $read('/^\| \*\*Character rect\*\* \| \*\*([\d.]+) × ([\d.]+)\*\* px \|/m', '*Character rect*');
+        $ln = $read('/^\| \*\*Restroom lane\*\* \| \*\*the leaf\'s width, (\d+) px, or the seat\'s drawn width plus both \*Walker clearance\* side margins, whichever is wider, × one drawn body\'s height\*\* — on the shipped frame \*\*([\d.]+) × (\d+) px\*\*/mu', '*Restroom lane*');
 
         return [
             'gap' => [$n($g[1]), $n($g[2])],
@@ -242,6 +251,8 @@ class ACharacterTakesARestroomBreakTest extends TestCase
             'margin' => (int) $c[1],
             'depth' => (int) $c[2],
             'seat_w' => (float) $s[1],
+            'seat_h' => (float) $s[2],
+            'lane' => ['leaf' => (int) $ln[1], 'w' => (float) $ln[2], 'h' => (float) $ln[3]],
         ];
     }
 
@@ -818,7 +829,7 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         $frame = $this->drawn($two)[0]['frame'];
         $thr = $first['threshold'];
         $snack = $this->snackSpotZeros($frame);
-        $spots = $this->restroom($thr, $snack, 2, $frame)['spots'];
+        $spots = $this->restroom($thr, $snack, 2, $frame, $this->laneOf($this->door($frame)))['spots'];
 
         if ($first['spot']['index'] !== 0 || $second['spot']['index'] !== 1 || $second['spot']['at'] != $spots[1]
             || hypot($spots[1]['x'] - $thr['x'], $spots[1]['y'] - $thr['y']) < $f['seat_w'] + $f['margin']) {
@@ -1391,6 +1402,287 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         $this->assertSame([], $this->lateDefects());
     }
 
+    // ── AT-D3-35 (card#12841): the restroom queue stands clear of the door, and the one inside steps out first ──────
+
+    /** The map the lane runs draw over: the door's forecourt a corridor down its lane. */
+    private const CORRIDOR = 'server/tests/Feature/Floor/fixtures/maps/restroom-corridor.json';
+
+    /** The runs AT-D3-35 holds to the lane: its own, over the corridor, and AT-D3-33's queues over the shipped default. */
+    private const LANE_RUNS = ['lane-two-at-the-door', 'lane-straight-in', 'two-at-the-door', 'three-at-the-door', 'queue-of-three'];
+
+    /**
+     * § 12's *Restroom lane* for a door the scene read, re-derived from its tile rect and § 12 — never the lane the scene
+     * hands the painter: the leaf's width or the seat's drawn width plus both *Walker clearance* side margins, whichever is
+     * wider, centred on the door's centre line, from its foot down the seat's drawn height.
+     *
+     * @return array{x: float, y: float, w: float, h: float}
+     */
+    private function laneOf(array $door): array
+    {
+        $f = $this->section12();
+        $w = (float) max($f['lane']['leaf'], $f['seat_w'] + 2 * $f['margin']);
+
+        return ['x' => $door['x'] + $door['w'] / 2 - $w / 2, 'y' => (float) ($door['y'] + $door['h']), 'w' => $w, 'h' => $f['seat_h']];
+    }
+
+    /** Whether feet at `$p` are in `$lane`, its edges included. */
+    private function inLane(array $lane, array $p): bool
+    {
+        return $p['x'] >= $lane['x'] - 0.001 && $p['x'] <= $lane['x'] + $lane['w'] + 0.001 && $p['y'] >= $lane['y'] - 0.001 && $p['y'] <= $lane['y'] + $lane['h'] + 0.001;
+    }
+
+    /**
+     * Where a walker's FEET are `$ms` after its effect began, and whether they are on the floor — `route.js`'s `pointAt()`
+     * restated over the legs: a `walk` glides along its points by arc length over its frames, every other leg stands at its
+     * `at`, an `inside` leg in the door's recess and a `cab` leg in the cab, both off the floor; past the last leg, its end.
+     *
+     * @return array{x: float, y: float, floor: bool}
+     */
+    private function feetAt(array $effect, float $ms): array
+    {
+        $I = $effect['frame_interval_ms'];
+        $legs = $effect['legs'];
+        $leg = $legs[count($legs) - 1];
+
+        foreach ($legs as $l) {
+            if ($ms < ($l['start'] + $l['frames']) * $I) {
+                $leg = $l;
+
+                break;
+            }
+        }
+
+        if ($leg['kind'] !== 'walk') {
+            $at = $leg['at'] ?? ['x' => NAN, 'y' => NAN];
+
+            return ['x' => (float) $at['x'], 'y' => (float) $at['y'], 'floor' => ! in_array($leg['kind'], ['inside', 'cab'], true)];
+        }
+
+        $pts = $leg['points'];
+        $seg = [];
+
+        for ($i = 1; $i < count($pts); $i++) {
+            $seg[] = hypot($pts[$i]['x'] - $pts[$i - 1]['x'], $pts[$i]['y'] - $pts[$i - 1]['y']);
+        }
+
+        $to = array_sum($seg) * min(1.0, max(0.0, ($ms - $leg['start'] * $I) / ($leg['frames'] * $I)));
+
+        foreach ($seg as $i => $len) {
+            if ($to <= $len || $i === count($seg) - 1) {
+                $u = $len == 0 ? 1.0 : min(1.0, $to / $len);
+
+                return ['x' => $pts[$i]['x'] + ($pts[$i + 1]['x'] - $pts[$i]['x']) * $u, 'y' => $pts[$i]['y'] + ($pts[$i + 1]['y'] - $pts[$i]['y']) * $u, 'floor' => true];
+            }
+
+            $to -= $len;
+        }
+
+        return ['x' => (float) $pts[0]['x'], 'y' => (float) $pts[0]['y'], 'floor' => true];
+    }
+
+    /**
+     * card#12841 — THE CLEAR LANE AT THE RESTROOM DOOR (`docs/design/FLOOR.md § 6.7` item 3 rule 2 and item 4, § 12's
+     * *Restroom lane*): the defects in how the walkers a frame draws keep the strip in front of the door clear, against
+     * `$lane` — the TEST's lane (`laneOf()`) — and the number of instants sampled at which one walker is on its way out of
+     * the door and another on its way in: every 60 Hz display frame both walk at once (`DISPLAY_MS`), and both ends — a
+     * half loop frame was measured to step over a crossing a quarter of a loop frame long.
+     *
+     * - **Nobody waits in it:** every visit's `wait` stand is outside the lane.
+     * - **The one coming out goes first:** while a walker on a walk AWAY from the threshold (a walk whose first point is
+     *   the threshold: the walk home, or the A2 or A10 that took a visitor over at the door) has its feet on the floor in
+     *   the lane, no other walker on a walk TOWARD it (a walk whose last point is the threshold: a visitor's walk straight
+     *   to the door, or from its spot) has its feet on the floor in the lane.
+     *
+     * @return array{0: list<string>, 1: int}
+     */
+    private function restroomLaneDefects(array $frame, int $renderAt, array $lane, array $threshold): array
+    {
+        $defects = [];
+        $effects = array_values(array_filter($frame['scene']['effects'] ?? [], static fn (array $e): bool => ($e['frames'] ?? 0) > 0 && isset($e['legs'], $e['frame_interval_ms'])));
+        $same = static fn (array $p): bool => abs($p['x'] - $threshold['x']) < 0.001 && abs($p['y'] - $threshold['y']) < 0.001;
+        // Each effect's walks from and to the threshold, as spans on the run's clock (ms).
+        $walks = [];
+
+        foreach ($effects as $i => $e) {
+            $start = $this->startedAt($e, $renderAt);
+
+            foreach ($e['legs'] as $l) {
+                if (($l['why'] ?? null) === 'wait' && $this->inLane($lane, $l['at'])) {
+                    $defects[] = "{$this->walkerOf($e)} waits at ".json_encode([$l['at']['x'], $l['at']['y']]).' inside the lane in front of the restroom door';
+                }
+
+                if ($l['kind'] === 'walk' && ($same($l['points'][0]) || $same(end($l['points'])))) {
+                    $walks[] = ['out' => $same($l['points'][0]), 'e' => $i, 'start' => $start,
+                        'span' => [$start + $l['start'] * $e['frame_interval_ms'], $start + ($l['start'] + $l['frames']) * $e['frame_interval_ms']]];
+                }
+            }
+        }
+
+        $pairs = 0;
+
+        foreach ($walks as $o) {
+            foreach ($walks as $n) {
+                if (! $o['out'] || $n['out'] || $o['e'] === $n['e']) {
+                    continue;
+                }
+
+                [$a, $b] = [max($o['span'][0], $n['span'][0]), min($o['span'][1], $n['span'][1])];
+                $ts = $a > $b ? [] : [$a, $b];
+
+                for ($t = $a + self::DISPLAY_MS; $t < $b; $t += self::DISPLAY_MS) {
+                    $ts[] = $t;
+                }
+
+                foreach ($ts as $t) {
+                    $pairs++;
+                    $po = $this->feetAt($effects[$o['e']], $t - $o['start']);
+                    $pn = $this->feetAt($effects[$n['e']], $t - $n['start']);
+
+                    if ($po['floor'] && $pn['floor'] && $this->inLane($lane, $po) && $this->inLane($lane, $pn)) {
+                        $defects[] = "at {$t} ms {$this->walkerOf($effects[$n['e']])} walks into the lane while {$this->walkerOf($effects[$o['e']])}, coming out, is still in it";
+                    }
+                }
+            }
+        }
+
+        return [array_values(array_unique($defects)), $pairs];
+    }
+
+    /** The walker an effect draws: a visit's walker key, an elevator walk's seat or intern. */
+    private function walkerOf(array $e): string
+    {
+        return $e['walker_key'] ?? $e['intern_key'] ?? "{$e['install_id']}/{$e['seat_id']}";
+    }
+
+    /** The lane defects over every frame of `$runs` (the shipped tree, or a planted copy), and the instants sampled. */
+    private function laneRunDefects(array $runs, ?string $dir = null): array
+    {
+        $defects = [];
+        $pairs = 0;
+
+        foreach ($runs as $run) {
+            foreach ($this->drawn($this->restroomRun($run, $dir)) as $r) {
+                $door = $this->door($r['frame']);
+
+                if ($door === null || $door['threshold'] === null) {
+                    continue;
+                }
+
+                [$d, $n] = $this->restroomLaneDefects($r['frame'], $r['at'], $this->laneOf($door), $door['threshold']);
+                $pairs += $n;
+
+                foreach ($d as $x) {
+                    $defects[] = "[{$run}] at {$r['at']} ms ({$r['trigger']}): {$x}";
+                }
+            }
+        }
+
+        return [array_values(array_unique($defects)), $pairs];
+    }
+
+    /**
+     * card#12841, § 12's figure: the lane the scene hands the painter with each door is the lane re-derived from the door's
+     * tile and § 12, at least the seat's body and both margins wide, with the threshold inside it — on the shipped default
+     * and over the corridor — and on the shipped frame it is the figure § 12's *Restroom lane* row prints.
+     */
+    public function test_green_the_restroom_lane_is_section_12s(): void
+    {
+        $f = $this->section12();
+
+        foreach (['idle-visit', 'lane-two-at-the-door'] as $run) {
+            $door = $this->door($this->drawn($this->restroomRun($run))[0]['frame']);
+            $lane = $this->laneOf($door);
+
+            $this->assertEqualsWithDelta($lane, $door['lane'], 0.001, "[{$run}] the lane the scene hands the painter is not § 12's *Restroom lane*");
+            $this->assertGreaterThanOrEqual($f['seat_w'] + 2 * $f['margin'], $lane['w'], "[{$run}] the lane is narrower than a seat's body and both margins");
+            $this->assertTrue($this->inLane($lane, $door['threshold']), "[{$run}] the threshold is not inside the lane");
+        }
+
+        $this->assertSame([$f['lane']['w'], $f['lane']['h']], [$lane['w'], $lane['h']], '§ 12\'s *Restroom lane* is not the lane the shipped frame derives');
+    }
+
+    /**
+     * card#12841, THE SPOTS: over the corridor, the spot the scene stands lane-two-at-the-door's second walker at is the
+     * probe's spot 1 with the test's lane — `spotsNear()` called as the scene calls it — outside the lane and at least
+     * *Queue spacing* from the threshold, where with no lane spot 1 lies inside it (the map's premise: the lane moves the
+     * spot); on the shipped default the lane moves none of the first four waiting spots; and in every frame of every queue
+     * run, no visitor waits in the lane.
+     */
+    public function test_green_the_restroom_queue_stands_clear_of_the_lane(): void
+    {
+        $f = $this->section12();
+        $run = $this->restroomRun('lane-two-at-the-door');
+        [$second] = $this->visitsOf($run)[self::IMPL_1];
+        $frame = $this->drawn($run)[0]['frame'];
+        $door = $this->door($frame);
+        $lane = $this->laneOf($door);
+        $with = $this->restroom($door['threshold'], [], 2, $frame, $lane, self::CORRIDOR)['spots'];
+        $without = $this->restroom($door['threshold'], [], 2, $frame, null, self::CORRIDOR)['spots'];
+
+        $this->assertTrue($this->inLane($lane, $without[1]), 'over the corridor spot 1 with no lane is outside the lane — the map\'s premise is broken');
+        $this->assertSame(1, $second['spot']['index']);
+        $this->assertEqualsWithDelta($with[1], $second['spot']['at'], 0.001, 'lane-two-at-the-door\'s second walker does not wait at spot 1 as the lane places it');
+        $this->assertFalse($this->inLane($lane, $with[1]), 'spot 1 is inside the lane');
+        $this->assertGreaterThanOrEqual($f['seat_w'] + $f['margin'] - 0.001, hypot($with[1]['x'] - $door['threshold']['x'], $with[1]['y'] - $door['threshold']['y']), 'spot 1 is within *Queue spacing* of the threshold');
+
+        $shipped = $this->drawn($this->restroomRun('two-at-the-door'))[0]['frame'];
+        $sd = $this->door($shipped);
+        $snack = $this->snackSpotZeros($shipped);
+        $this->assertEquals($this->restroom($sd['threshold'], $snack, 5, $shipped)['spots'], $this->restroom($sd['threshold'], $snack, 5, $shipped, $this->laneOf($sd))['spots'],
+            'the lane moved a waiting spot on the shipped default');
+
+        $this->assertSame([], array_values(array_filter($this->laneRunDefects(self::LANE_RUNS)[0], static fn (string $d): bool => str_contains($d, 'waits at'))));
+    }
+
+    /**
+     * card#12841, THE ONE INSIDE STEPS OUT FIRST: lane-two-at-the-door's second walker leaves its spot on the first frame
+     * at which the first's feet, walking out down the corridor, are out of the lane — later than the door frees (the
+     * premise: there the lane, not the leaf, is the later) — and lane-straight-in's second, whose break came as the first
+     * was about to come out, waits at a spot outside the lane rather than walking straight up it, and leaves the spot on
+     * that frame too; and in every frame of every queue run, no walker on its way to the door is in the lane while one
+     * coming out is.
+     */
+    public function test_green_the_occupant_clears_the_lane_before_the_next_steps_in(): void
+    {
+        foreach (['lane-two-at-the-door', 'lane-straight-in'] as $name) {
+            $result = $this->restroomRun($name);
+            $v = $this->visitsOf($result);
+            $this->assertTrue(isset($v[self::IMPL_2], $v[self::IMPL_1]), "[{$name}] does not draw both visits");
+            [$first, $fa] = $v[self::IMPL_2];
+            [$second, $sa] = $v[self::IMPL_1];
+            $lane = $this->laneOf($this->door($this->drawn($result)[0]['frame']));
+            $home = $this->legsOf($first)['home'];
+            $I = $first['frame_interval_ms'];
+            $clear = null;
+
+            for ($fr = $home['start']; $fr <= $first['frames']; $fr++) {
+                $p = $this->feetAt($first, $fr * $I);
+
+                if (! $p['floor'] || ! $this->inLane($lane, $p)) {
+                    $clear = $this->startedAt($first, $fa) + $fr * $I;
+
+                    break;
+                }
+            }
+
+            $L = $this->legsOf($second);
+            $this->assertNotNull($clear, "[{$name}] the first's feet never leave the lane");
+            $this->assertNotNull($L['wait'], "[{$name}] the second walker does not wait at a spot");
+            $this->assertEqualsWithDelta($clear, $this->startedAt($second, $sa) + $L['board']['start'] * $I, 0.001, "[{$name}] the second does not leave its spot on the frame the first is clear of the lane");
+            $this->assertGreaterThan($this->claimOf($first, $fa)[1], $clear, "[{$name}] the first is clear of the lane by the time the door frees — the run's premise is broken");
+        }
+
+        [$defects, $pairs] = $this->laneRunDefects(self::LANE_RUNS);
+        $this->assertSame([], $defects);
+        $this->assertGreaterThan(0, $pairs, 'no frame drew a walker coming out and one going in together — the runs\' premise is broken');
+    }
+
+    /** card#12841, A LATE VIEWER: the lane runs, each loaded late, draw every break still in flight as the continuous viewer drew it. */
+    public function test_green_a_late_viewer_keeps_the_lane(): void
+    {
+        $this->assertSame([], $this->lateDefects(null, ['lane-two-at-the-door', 'lane-straight-in']));
+    }
+
     // ── RED — each a plant in the shipped tree ───────────────────────────────────────────────
 
     /** A copy of the shipped tree with each `[file, anchor, replacement]` applied, every anchor found exactly once. */
@@ -1428,7 +1720,7 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     /** Third RED — two occupants: a visitor let in while the door is held. */
     public function test_red_two_occupants(): void
     {
-        $dir = $this->planted([self::IN_FLIGHT, '                turn: (id) => Math.max(0, ', '                turn: (id) => 0 * Math.max(0, ']);
+        $dir = $this->planted([self::IN_FLIGHT, "                turn: after('free'),\n                clear: after('clear'),", "                turn: () => 0,\n                clear: () => 0,"]);
 
         $this->assertContains('two-at-the-door\'s second walker reaches the door before the first\'s exit has closed the leaf', $this->orderDefects($dir));
     }
@@ -1436,7 +1728,7 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     /** Fourth RED — the queue jumped: a visit waits only for the visitor at the threshold, not for those waiting before it. */
     public function test_red_the_queue_jumped(): void
     {
-        $dir = $this->planted([self::IN_FLIGHT, '...this.#doors.filter((e) => e.door === id).map((e) => e.free)', '...this.#doors.filter((e) => e.door === id && e.spot.index === 0).map((e) => e.free)']);
+        $dir = $this->planted([self::IN_FLIGHT, '...this.#doors.filter((e) => e.door === id).map((e) => e[field])', '...this.#doors.filter((e) => e.door === id && e.spot.index === 0).map((e) => e[field])']);
 
         $this->assertNotSame([], array_filter($this->orderDefects($dir), static fn ($d) => str_starts_with($d, 'three-at-the-door')), 'a queue jumped and the order guard saw nothing');
     }
@@ -1542,5 +1834,39 @@ class ACharacterTakesARestroomBreakTest extends TestCase
             "        if (now >= at + effect.frames * I) {\n            return;\n        }\n\n        // A trip already over by `now` — on a page that loaded after it ended — is recorded all the same: it is drawn by"]);
 
         $this->assertNotSame([], $this->lateDefects($dir, ['two-at-the-door', 'restroom-then-snack']), 'a late page forgetting an ended visit and the late-viewer guard saw nothing');
+    }
+
+    /** card#12841 RED — the lane not passed: the restroom's spots found as before the lane, only the threshold skipped. */
+    public function test_red_the_restroom_lane_not_passed(): void
+    {
+        $dir = $this->planted([self::SCENE, ', [d.threshold, ...clear], (p) => inLane(d.lane, p));', ', [d.threshold, ...clear], (p) => p.x === d.threshold.x && p.y === d.threshold.y);']);
+
+        $this->assertNotSame([], array_filter($this->laneRunDefects(['lane-two-at-the-door'], $dir)[0], static fn ($d) => str_contains($d, 'waits at')),
+            'a visitor waited in the lane and the lane guard saw nothing');
+    }
+
+    /** card#12841 Second RED — released as the leaf closes: the next visitor leaves its spot whoever is still in the lane. */
+    public function test_red_released_as_the_leaf_closes(): void
+    {
+        $dir = $this->planted([self::IN_FLIGHT, "                clear: after('clear'),", '                clear: () => 0,']);
+
+        $this->assertNotSame([], $this->laneRunDefects(['lane-two-at-the-door'], $dir)[0], 'a visitor walked into the lane with the one coming out and the lane guard saw nothing');
+    }
+
+    /** card#12841 Third RED — straight in through the lane: a walk straight to the door wherever the one coming out is. */
+    public function test_red_straight_in_through_the_lane(): void
+    {
+        $dir = $this->planted([self::SCENE, '        if (free <= walkOut.frames && cleared <= entry) {', '        if (free <= walkOut.frames) {']);
+
+        $this->assertNotSame([], $this->laneRunDefects(['lane-straight-in'], $dir)[0], 'a visitor walked straight up the lane into the one coming out and the lane guard saw nothing');
+    }
+
+    /** card#12841 Fourth RED — the lane clear from the page: a page that loaded late times the lane from its own load. */
+    public function test_red_the_lane_clear_from_the_page(): void
+    {
+        $dir = $this->planted([self::IN_FLIGHT, 'lane: effect.lane, clear: at + laneFrame(effect, effect.lane, home.start, false) * I });',
+            'lane: effect.lane, clear: Math.max(at, now - 30000) + laneFrame(effect, effect.lane, home.start, false) * I });']);
+
+        $this->assertNotSame([], $this->lateDefects($dir, ['lane-two-at-the-door', 'lane-straight-in']), 'a late page timing the lane from its own load and the late-viewer guard saw nothing');
     }
 }
