@@ -48,6 +48,9 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     /** One loop frame, ms (§ 12's loop rate). */
     private const FRAME = 250;
 
+    /** card#12841: one display frame at 60 Hz, ms — the step the lane's sampler reads feet at. */
+    private const DISPLAY_MS = 1000 / 60;
+
     /** @var array<string, array<string, mixed>> the shipped tree's runs, replayed once per process */
     private static array $runs = [];
 
@@ -1481,7 +1484,8 @@ class ACharacterTakesARestroomBreakTest extends TestCase
      * card#12841 — THE CLEAR LANE AT THE RESTROOM DOOR (`docs/design/FLOOR.md § 6.7` item 3 rule 2 and item 4, § 12's
      * *Restroom lane*): the defects in how the walkers a frame draws keep the strip in front of the door clear, against
      * `$lane` — the TEST's lane (`laneOf()`) — and the number of instants sampled at which one walker is on its way out of
-     * the door and another on its way in: every half loop frame both walk at once, and both ends.
+     * the door and another on its way in: every 60 Hz display frame both walk at once (`DISPLAY_MS`), and both ends — a
+     * half loop frame was measured to step over a crossing a quarter of a loop frame long.
      *
      * - **Nobody waits in it:** every visit's `wait` stand is outside the lane.
      * - **The one coming out goes first:** while a walker on a walk AWAY from the threshold (a walk whose first point is
@@ -1525,7 +1529,7 @@ class ACharacterTakesARestroomBreakTest extends TestCase
                 [$a, $b] = [max($o['span'][0], $n['span'][0]), min($o['span'][1], $n['span'][1])];
                 $ts = $a > $b ? [] : [$a, $b];
 
-                for ($t = $a + self::FRAME / 2; $t < $b; $t += self::FRAME / 2) {
+                for ($t = $a + self::DISPLAY_MS; $t < $b; $t += self::DISPLAY_MS) {
                     $ts[] = $t;
                 }
 
@@ -1716,7 +1720,7 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     /** Third RED — two occupants: a visitor let in while the door is held. */
     public function test_red_two_occupants(): void
     {
-        $dir = $this->planted([self::IN_FLIGHT, "                turn: after('free'),", '                turn: () => 0,']);
+        $dir = $this->planted([self::IN_FLIGHT, "                turn: after('free'),\n                clear: after('clear'),", "                turn: () => 0,\n                clear: () => 0,"]);
 
         $this->assertContains('two-at-the-door\'s second walker reaches the door before the first\'s exit has closed the leaf', $this->orderDefects($dir));
     }

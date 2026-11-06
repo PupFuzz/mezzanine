@@ -11289,8 +11289,8 @@ is the operator's reading of the preview and of the sandbox, recorded on the car
   `restroom_eligible` always true) → blocked-visit walks a `blocked` seat to the door. Caught by: who.
 - **Second RED — the re-roll:** draw a break's dwell from `Math.random` → reload-inside's viewer and idle-visit's two
   replays disagree. Caught by: the clock and the reload.
-- **Third RED — two occupants:** hand every visit a turn of frame 0 → two-at-the-door's second walker reaches the door
-  while the first is inside. Caught by: one occupant.
+- **Third RED — two occupants:** hand every visit a turn of frame 0, its lane clear at frame 0 too (card#12841: the lane
+  alone also holds a visitor back) → two-at-the-door's second walker reaches the door while the first is inside. Caught by: one occupant.
 - **Fourth RED — the queue jumped:** a visit waits only for the visitor at the threshold, not for those admitted before it
   → three-at-the-door's walkers go in out of their breaks' order, two at once. Caught by: the order.
 - **Fifth RED — the sign on a timer:** leave the door on the visit's own frames when its occupant is recalled →
@@ -11436,7 +11436,7 @@ The look of the queue at the door is the operator's reading of the floor, and no
   at which the first's feet, on its walk home, are outside the lane — later than the door frees behind it (the premise:
   there the lane is the later of the two); lane-straight-in's second walker, whose walk straight to the door would set
   foot in the lane while the first is in it, waits at a spot outside the lane and leaves it on that same frame; and on
-  every frame of every run above, at no half-frame instant is a walker on a walk away from the threshold and another on
+  every frame of every run above, at no 60 Hz display frame is a walker on a walk away from the threshold and another on
   a walk toward it with both their feet on the floor in the lane (`restroomLaneDefects()`), over a sampled population
   asserted non-empty.
 - **GREEN — a late viewer:** lane-two-at-the-door and lane-straight-in, each loaded 150, 170, 200, 260 and 330 s after
