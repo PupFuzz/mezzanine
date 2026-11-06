@@ -19,8 +19,9 @@
  *                a departure's wait from, read from the character tree itself.
  *   `snack-chain` — card#12785: each key's chain of snack breaks as `scene.js`'s `snackBreaks()` derives it, over whole
  *                days and over the window a page at each given instant reads (AT-D3-32).
- *   `restroom` / `restroom-chain` — card#12786: the restroom's constants and the waiting spots from a given threshold;
- *                each key's restroom chain and snack chain over whole days (AT-D3-33).
+ *   `restroom` / `restroom-chain` — card#12786: the restroom's constants and the waiting spots from a given threshold
+ *                (card#12841: none in a given `lane`, as the scene calls it); each key's restroom chain and snack chain
+ *                over whole days (AT-D3-33, AT-D3-35).
  *   `spots`    — card#12793: the elevator lane and the elevator queue's spots on the shipped default with the slots
  *                `open` names left open, with the lane and without it, and the lattice they were searched on (AT-D3-34).
  *   `lattice`  — H6's tileset and registry legs at the scene: `buildScene()` over one drawn frame and its rows twice —
@@ -257,7 +258,9 @@ if (input.mode === 'snack-chain') {
 
 // card#12786 (AT-D3-33): the restroom's constants as the scene declares them, and the waiting spots `spotsNear()` finds on the
 // seat's lattice from a threshold the TEST derived from § 12's rule, clear of the snack spot 0s it names — so the test holds
-// the scene's visits to both. `desks` as the `snack` mode's.
+// the scene's visits to both. `desks` as the `snack` mode's. card#12841: with a `lane` (the test's § 12 *Restroom lane*),
+// `spotsNear()` is called as the scene calls it — the lane its `avoid`, the threshold one of its `clear` points — and the
+// answer is the threshold then those spots, so index `k` is the scene's spot `k` either way.
 if (input.mode === 'restroom') {
     const scene = await mod('floor/scene.js');
     const { CLEARANCE, spotsNear, cellAt, blockedFor } = await mod('floor/route.js');
@@ -291,9 +294,17 @@ if (input.mode === 'restroom') {
         placed: cells.filter((c) => c.kind === scene.RESTROOM_DOOR.kind).map((c) => ({ x: c.x, y: c.y, w: c.w, h: c.h })),
         spots: input.from === undefined ? null : (() => {
             const g = lattice({ extent, cell: Math.min(grid.tilewidth, grid.tileheight), obstacles, desks, body: seat });
-            const at = spotsNear(g, input.from, scene.queueSpacing(CHARACTER), input.clear ?? []);
+            const lane = input.lane ?? null;
 
-            return Array.from({ length: input.count ?? 3 }, (_, k) => at(k)?.at ?? null);
+            if (lane === null) {
+                const at = spotsNear(g, input.from, scene.queueSpacing(CHARACTER), input.clear ?? []);
+
+                return Array.from({ length: input.count ?? 3 }, (_, k) => at(k)?.at ?? null);
+            }
+
+            const at = spotsNear(g, input.from, scene.queueSpacing(CHARACTER), [input.from, ...(input.clear ?? [])], (p) => scene.inLane(lane, p));
+
+            return Array.from({ length: input.count ?? 3 }, (_, k) => (k === 0 ? input.from : at(k - 1)?.at ?? null));
         })(),
         // whether each point's cell is open at `clear` for the seat's body, as nobody's walk (the threshold's test)
         open: (input.open ?? []).map((p) => {
