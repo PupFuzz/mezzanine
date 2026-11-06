@@ -17,12 +17,16 @@
 # `docs/changelog/*.md` archive file is past R5's contents-API cliff. Off the release path R7
 # only warns. R7 was added so a skipped step 13 reds the release that owes it rather than, weeks
 # later, R5 redding an unrelated feature PR (card#9814).
-# On EVERY PR it asserts `docs/PLAN.md § 4`'s changelog discipline (R4-R5): a PR whose head ref
-# or title names a card carries that card's line-initial `- **card#NNNN**` bullet under
-# `## [Unreleased]`, and `docs/CHANGELOG.md` stays below the contents-API truncation cliff with
-# a fortnight of measured growth to spare. R4 was added after a 2026-08-30 sweep found SIX
-# cards merged into `dev` with no changelog entry at all — including the whole fleet-reporter —
-# because nothing on any surface had ever checked the rule both docs state.
+# On EVERY PR it asserts `docs/PLAN.md § 4`'s changelog discipline (R4-R5, R8): a PR whose head
+# ref or title names a card carries that card's note in `docs/changelog.d/` (R4), a change PR
+# writes nothing under `## [Unreleased]` by hand and carries only well-formed notes (R8), and
+# `docs/CHANGELOG.md` stays below the contents-API truncation cliff with a fortnight of measured
+# growth to spare (R5). R4 was added after a 2026-08-30 sweep found SIX cards merged into `dev`
+# with no changelog entry at all — including the whole fleet-reporter — because nothing on any
+# surface had ever checked the rule both docs state. R4 moved from a CHANGELOG bullet to a note of
+# its own, and R8 was added, after parallel PRs conflicted on `[Unreleased]` about seven times in
+# one day (card#12935). On a release PR R9 refuses a head that still carries a note, and R6
+# accepts the release deleting a note only when that note's exact line is in its CHANGELOG.
 #
 # WHY IT EXISTS. On 2026-08-30, PR #38 merged `dev` -> `main` green with none of the three: the
 # head was the integration branch (which `delete_branch_on_merge` would have DELETED — a
@@ -86,8 +90,8 @@
 # TRIGGER and every rule is left exactly as it was — R2 most of all, since it is the one this
 # repo added after the merge it failed to stop (see `bin/release-pr-guard.py`, defect 2).
 # R2 is also the ONLY rule with that property: R1 (head branch shape), R3 (changelog section),
-# R4 (the card's bullet) and R5 (changelog size) all read content a merge does not move, so they
-# are unchanged by merging and pass afterwards. The gate is on the JOB rather than inside R2
+# R4 (the card's note), R5 (changelog size), R8 (the notes path) and R9 (notes assembled) all
+# read content a merge does not move, so they are unchanged by merging and pass afterwards. The gate is on the JOB rather than inside R2
 # because a verdict on a closed PR is unactionable whichever rule produces it: the head cannot
 # move and the PR cannot merge, so nothing an author does can answer it.
 
@@ -179,6 +183,12 @@ jobs:
       # reds are evidence rather than a check that always fails.
       - name: Self-test (RED fixtures for every rule and every fail-loud path, plus controls)
         run: python3 bin/release-pr-guard.selftest.py
+
+      # The guard imports `bin/changelog-fragments.py` to judge a changelog note (R4, R8, R9, R6a),
+      # and the release flow runs the same file to assemble the notes into the CHANGELOG. Its own
+      # fixtures run here, and its last section checks every note in THIS checkout (card#12935).
+      - name: Self-test the changelog-note assembler, and check this checkout's notes
+        run: python3 bin/changelog-fragments.selftest.py
 
       # Refs go through `env:`, NEVER string-interpolated into the shell: `${{ }}` inside `run:`
       # is a script-injection sink. That matters most for the TITLE, which R4 reads and which is

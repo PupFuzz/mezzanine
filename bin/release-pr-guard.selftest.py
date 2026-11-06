@@ -47,6 +47,9 @@ WORKFLOW = REPO / ".github" / "workflows" / "release-pr-guard.yml"
 # extraction under test must be the extraction that runs in CI.
 AUTHORITIES = (".release-pr.json", ".github/workflows/auto-tag-version.yml",
                "bin/promote-cards-by-token")
+# card#12935: the per-change changelog notes. Each fixture's `docs/changelog.d/` is built from
+# these, never copied from this repo, so an arm's notes are exactly the ones it names.
+NOTES = "docs/changelog.d"
 
 fails = 0
 checks = 0
@@ -112,6 +115,11 @@ def changelog_with(version: str) -> str:
             f"- **card#8174** — a line.\n")
 
 
+def note(card: str, text: str | None = None) -> dict[str, str]:
+    """One well-formed changelog note for `card`, as a `{path: content}` entry."""
+    return {f"{NOTES}/{card}.md": f"- **card#{card}** — {text or f'what card#{card} did.'}\n"}
+
+
 def unreleased_with(*cards: str, extra: str = "") -> str:
     """A changelog whose `[Unreleased]` section carries a line-initial bullet per card."""
     body = "".join(f"- **card#{c}** — what card#{c} did.\n" for c in cards)
@@ -138,7 +146,8 @@ def make_repo(*, base_version: str | None = "0.1.0",
               older_days_ago: int = 30,
               base_branch: str = "main",
               head_branch: str = "release/v0.2.0",
-              base_files: dict[str, str] | None = None) -> Path:
+              base_files: dict[str, str] | None = None,
+              head_files: dict[str, str | None] | None = None) -> Path:
     """A two-branch fixture repo carrying this repo's real authority files.
 
     `None` for a version or the head changelog means the FILE IS ABSENT at that side — the
@@ -153,6 +162,9 @@ def make_repo(*, base_version: str | None = "0.1.0",
     `base_files` are extra paths written into the BASE commit, so the head (cut from it) carries
     them too and R6 — whose subject defaults to the base — measures them as no residue. § 11b
     plants `docs/changelog/<tag>.md` archive files this way.
+
+    `head_files` are paths the HEAD commit writes on top of the base — `None` deletes one. § 10
+    adds and removes `docs/changelog.d/` notes this way (card#12935).
     """
     repo = Path(tempfile.mkdtemp(prefix="relguard-fx-"))
     FIXTURES.append(repo)
@@ -202,6 +214,13 @@ def make_repo(*, base_version: str | None = "0.1.0",
         (repo / "docs" / "CHANGELOG.md").unlink()
     else:
         (repo / "docs" / "CHANGELOG.md").write_text(head_changelog, encoding="utf-8")
+    for rel, content in (head_files or {}).items():
+        dst = repo / rel
+        if content is None:
+            dst.unlink()
+            continue
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text(content, encoding="utf-8")
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", "head", "--allow-empty")
     return repo
@@ -711,15 +730,18 @@ eq("  CONTROL: the same PR done correctly PASSES", 0, r.returncode)
 
 
 # =============================================================================================
-print("== 10. R4 — the card's changelog bullet, and every carve-out that lets one go ==")
-# THE DEFECT THIS ARM GUARDS: on 2026-08-30 a sweep of `dev` found 30 cards named in commit
-# subjects and 25 bulleted — card#7335 (the WHOLE fleet-reporter), #7455, #7456, #7457, #7521
-# and #7929 had merged with no changelog entry. Nothing checked it. Every red below is a plant
-# of that exact shape, and § 10's own control comes first so the reds are evidence.
+print("== 10. R4 and R8 — the change's own changelog note (card#12935), and every carve-out ==")
+# THE DEFECT R4 GUARDS: on 2026-08-30 a sweep of `dev` found 30 cards named in commit subjects
+# and 25 bulleted — card#7335 (the WHOLE fleet-reporter), #7455, #7456, #7457, #7521 and #7929
+# had merged with no changelog entry. THE DEFECT R8 GUARDS (card#12935): every change PR wrote
+# its bullet at the top of `## [Unreleased]`, so changes built side by side conflicted there —
+# about seven times in one day on 2026-11-06. Since then a change writes
+# `docs/changelog.d/<card>.md` and leaves the CHANGELOG alone. § 10's own control comes first so the reds are evidence.
 # The fixture's own branch NAME is irrelevant to R4 — the guard is told the head REF as an
 # argument (that is what a PR event carries) and reads content at `HEAD`. Every arm below sets
 # the ref it means, so the dict fixes only the two sides' content and the base branch.
-R4FX = dict(base_version="0.1.0", head_version="0.1.0", base_branch="dev")
+R4FX = dict(base_version="0.1.0", head_version="0.1.0", base_branch="dev",
+            head_changelog=UNRELEASED_ONLY)
 
 
 def r4(repo, **kw):
@@ -729,142 +751,226 @@ def r4(repo, **kw):
     return guard(repo, **kw)
 
 
-# --- THE CONTROL: a card-bearing feature PR that DID write its bullet passes.
-fx = make_repo(**R4FX, head_changelog=unreleased_with("8174"))
+def fx4(**kw) -> Path:
+    """A § 10 fixture: `R4FX` with any key overridden."""
+    return make_repo(**dict(R4FX, **kw))
+
+
+# --- THE CONTROL: a card-bearing change PR that added its note and left the CHANGELOG alone.
+fx = fx4(head_files=note("8174"))
 r = r4(fx)
-eq("a feature PR naming card#8174 WITH its bullet → exit 0", 0, r.returncode)
+eq("a change PR naming card#8174 WITH its note → exit 0", 0, r.returncode)
 eq("  … with no rule flagged", [], rules_flagged(r))
+eq("  … and the run PRINTS what it measured", True,
+   "card#8174: yes" in r.stdout and "0 line(s) added under `## [Unreleased]`" in r.stdout)
 if r.returncode != 0:
     print(r.stdout, r.stderr, file=sys.stderr)
 
-# --- THE PLANT: the same PR with the bullet gone. The changelog is NOT empty — it carries some
-# OTHER card's bullet — so this fails on the card's identity, not on "the file looks bare".
-fx = make_repo(**R4FX, head_changelog=unreleased_with("7929"))
+# --- THE PLANT: the same PR with its note gone. The directory is NOT empty — it carries some
+# OTHER card's note — so this fails on the card's identity, not on "the directory looks bare".
+fx = fx4(head_files=note("7929"))
 r = r4(fx)
-eq("the bullet missing (another card's bullet present) → RED", 1, r.returncode)
+eq("the note missing (another card's note present) → RED", 1, r.returncode)
 eq("  … R4 alone (single-variable off the control above)", ["R4"], rules_flagged(r))
-eq("  … and the message names the card and the exact line to add",
-   True, "card#8174" in r.stdout and "`- **card#8174** — `" in r.stdout)
+eq("  … and the message names the file and the exact line to write",
+   True, "docs/changelog.d/8174.md containing exactly one line" in r.stdout
+   and "- **card#8174** — <what changed" in r.stdout)
 eq("  … and names the surface that created the obligation",
    True, "head ref 'card-8174-changelog-gate'" in r.stdout)
 
-# --- The rule is LINE-INITIAL, which docs/PLAN.md § 4 says in as many words (their incident:
-# a prose mention discharged another card's obligation). Both near-miss shapes must still red.
-fx = make_repo(**R4FX,
-               head_changelog="# Changelog\n\n## [Unreleased]\n\n  - **card#8174** — indented.\n")
+# --- THE OLD WAY, which every PR used before card#12935: the bullet written under
+# `## [Unreleased]` and no note. Both halves red — R4 (no note) and R8 (a line added there).
+fx = fx4(head_changelog=unreleased_with("8174"))
 r = r4(fx)
-eq("an INDENTED bullet does not satisfy R4 (line-initial is the rule)", ["R4"], rules_flagged(r))
-fx = make_repo(**R4FX,
-               head_changelog="# Changelog\n\n## [Unreleased]\n\n- see **card#8174** for why.\n")
+eq("a bullet added under [Unreleased] with no note → RED on R4 and R8", ["R4", "R8"],
+   rules_flagged(r))
+eq("  … and R8 says to move that bullet into its note, naming the file",
+   True, "R8 notes path: this PR adds 1 line(s) under `## [Unreleased]`" in r.stdout
+   and "Move it to docs/changelog.d/8174.md" in r.stdout)
+# Single variable: the same edit WITH the note is R8 alone — the hand-written line is the defect.
+fx = fx4(head_changelog=unreleased_with("8174"), head_files=note("8174"))
 r = r4(fx)
-eq("bold-ANYWHERE in a bullet does not satisfy R4", ["R4"], rules_flagged(r))
+eq("  … the same bullet WITH the note too → R8 alone", ["R8"], rules_flagged(r))
 
-# --- Section scoping: a bullet under a RELEASED section is a released entry, not this PR's.
-fx = make_repo(**R4FX, head_changelog=("# Changelog\n\n## [Unreleased]\n\n"
-                                       "## [0.1.0] - 2026-08-30\n\n- **card#8174** — old.\n"))
+# --- R8 holds on a TOKENLESS PR as well: no card named, a line added under [Unreleased].
+fx = fx4(head_changelog=UNRELEASED_ONLY + "- a hand-written entry.\n")
+r = r4(fx, head_ref="chore/tidy")
+eq("a tokenless PR adding a line under [Unreleased] → R8", ["R8"], rules_flagged(r))
+# CONTROL: REMOVING a line there is allowed — a revert, or the move card#12935 made.
+fx = fx4(head_changelog="# Changelog\n\n## [Unreleased]\n")
+r = r4(fx, head_ref="chore/tidy")
+eq("  CONTROL: a PR that only REMOVES a line under [Unreleased] → exit 0", 0, r.returncode)
+# CONTROL: R8 is scoped to [Unreleased]. A line added under a RELEASED section is not its business.
+fx = fx4(base_changelog=changelog_with("0.1.0"),
+         head_changelog=changelog_with("0.1.0") + "- **card#7000** — a released entry fixed.\n")
+r = r4(fx, head_ref="chore/tidy")
+eq("  CONTROL: a line added under a RELEASED section is not R8's → exit 0", 0, r.returncode)
+
+# --- THE NOTE'S FORM. Each malformed shape is refused under R8, naming the file. Tokenless, so R8
+# is the only rule that can speak. These are the shapes the assembler would refuse at release.
+for label, files, needle in (
+        ("a name that is not `<card>.md`",
+         {f"{NOTES}/card-8174.md": "- **card#8174** — x.\n"}, "not a fragment name"),
+        ("a card number with a leading zero",
+         {f"{NOTES}/08174.md": "- **card#8174** — x.\n"}, "not a fragment name"),
+        ("two lines", {f"{NOTES}/8174.md": "- **card#8174** — x.\n- more.\n"},
+         "exactly ONE line"),
+        ("no final newline", {f"{NOTES}/8174.md": "- **card#8174** — x."}, "exactly ONE line"),
+        ("no em dash after the token", {f"{NOTES}/8174.md": "- **card#8174** - x.\n"},
+         "em dash"),
+        ("the bullet names another card", {f"{NOTES}/8174.md": "- **card#7929** — x.\n"},
+         "named for card#8174 but its bullet names card#7929"),
+        ("a note in a subdirectory", {f"{NOTES}/old/8174.md": "- **card#8174** — x.\n"},
+         "never in a subdirectory")):
+    fx = fx4(head_files=files)
+    r = r4(fx, head_ref="chore/tidy")
+    eq(f"a malformed note — {label} → R8", ["R8"], rules_flagged(r))
+    eq(f"  … and the message says why ({needle!r})", True, needle in r.stdout)
+# On a card PR, a note NAMED for the card discharges R4 and its form is R8's alone — one defect,
+# one rule.
+fx = fx4(head_files={f"{NOTES}/8174.md": "- **card#8174** - no em dash.\n"})
 r = r4(fx)
-eq("a bullet under a RELEASED section does not discharge the Unreleased obligation",
-   ["R4"], rules_flagged(r))
+eq("a malformed note named for the PR's card → R8 alone (R4 is discharged by the name)",
+   ["R8"], rules_flagged(r))
+# A malformed note the PR did NOT touch is not this author's to fix — it is on the base already.
+bad_note = {f"{NOTES}/7000.md": "- **card#7000** - on the base already.\n"}
+fx = fx4(base_files=bad_note)
+r = r4(fx, head_ref="chore/tidy")
+eq("a malformed note the PR did not touch → not refused here", 0, r.returncode)
+# CONTROL: the same note, CHANGED by this PR and still malformed, is refused.
+fx = fx4(base_files=bad_note,
+         head_files={f"{NOTES}/7000.md": "- **card#7000** - edited, still malformed.\n"})
+r = r4(fx, head_ref="chore/tidy")
+eq("  CONTROL: the same note edited by this PR, still malformed → R8", ["R8"], rules_flagged(r))
+# The directory's README is not a note and is never judged as one.
+fx = fx4(head_files={f"{NOTES}/README.md": "# anything\n\nprose.\n"})
+r = r4(fx, head_ref="chore/tidy")
+eq("docs/changelog.d/README.md is not a note → exit 0", 0, r.returncode)
 
 # --- The TITLE is the second surface, and it stands alone.
-fx = make_repo(**R4FX, head_branch="chore/tidy", head_changelog=unreleased_with())
-r = r4(fx, head_ref="chore/tidy", title="ci(release): gate the bullet (card#8174)")
+fx = fx4()
+r = r4(fx, head_ref="chore/tidy", title="ci(release): gate the note (card#8174)")
 eq("a token in the TITLE alone creates the obligation → RED", ["R4"], rules_flagged(r))
 eq("  … and the message says the title is what named it", True, "PR title" in r.stdout)
-fx = make_repo(**R4FX, head_branch="chore/tidy", head_changelog=unreleased_with("8174"))
-r = r4(fx, head_ref="chore/tidy", title="ci(release): gate the bullet (card#8174)")
-eq("  … and the same PR WITH the bullet passes (the title surface discriminates)",
+fx = fx4(head_files=note("8174"))
+r = r4(fx, head_ref="chore/tidy", title="ci(release): gate the note (card#8174)")
+eq("  … and the same PR WITH the note passes (the title surface discriminates)",
    0, r.returncode)
 
-# --- Spelling: the branch says `card-8174`, the bullet says `card#8174`. One obligation.
-fx = make_repo(**R4FX, head_branch="card-8174-x", head_changelog=unreleased_with("8174"))
+# --- Spelling: the branch says `card-8174`, the note is `8174.md`. One obligation, keyed on id.
+fx = fx4(head_files=note("8174"))
 r = r4(fx, head_ref="card-8174-x")
-eq("branch-ergonomic `card-8174` is discharged by a `card#8174` bullet (id, not spelling)",
+eq("branch-ergonomic `card-8174` is discharged by the `8174.md` note (id, not spelling)",
    0, r.returncode)
-# CONTROL: the guard is not simply ignoring the branch — the same branch with no bullet reds.
-fx = make_repo(**R4FX, head_branch="card-8174-x", head_changelog=unreleased_with())
+fx = fx4()
 r = r4(fx, head_ref="card-8174-x")
-eq("  CONTROL: the same branch with no bullet DOES red (the surface is really read)",
+eq("  CONTROL: the same branch with no note DOES red (the surface is really read)",
    ["R4"], rules_flagged(r))
 
-# --- Two cards named, one bulleted: the message must name the MISSING one and only it.
-fx = make_repo(**R4FX, head_branch="card-8174-x", head_changelog=unreleased_with("8174"))
+# --- A further note on the same card (`<card>-<slug>.md`) discharges it too.
+fx = fx4(head_files={f"{NOTES}/8174-second-part.md": "- **card#8174** — the second part.\n"})
+r = r4(fx)
+eq("a `8174-second-part.md` note discharges card#8174 → exit 0", 0, r.returncode)
+
+# --- Two cards named, one noted: the message must name the MISSING one and only it.
+fx = fx4(head_files=note("8174"))
 r = r4(fx, head_ref="card-8174-x", title="two cards (card#7929)")
 eq("a second card named in the title is a second obligation → RED", ["R4"], rules_flagged(r))
 eq("  … naming card#7929 and NOT card#8174 (which is discharged)",
    (True, False),
-   ("no line-initial `- **card#7929**`" in r.stdout,
-    "no line-initial `- **card#8174**`" in r.stdout))
+   ("names card#7929" in r.stdout, "names card#8174" in r.stdout))
 
 # --- A card-ish token the GRAMMAR does not accept invents no obligation. That is
 # card-token-lint's defect to report; R4 refusing to guess an id is the honest half.
-fx = make_repo(**R4FX, head_branch="chore/tidy", head_changelog=unreleased_with())
+fx = fx4()
 r = r4(fx, head_ref="chore/tidy", title="cards #8174 and other prose")
 eq("`cards #8174` (plural — the correlators drop it) creates NO R4 obligation", 0, r.returncode)
 r = r4(fx, head_ref="chore/tidy", title="card#8174 and other prose")
 eq("  CONTROL: the parseable spelling in the same slot DOES create one",
    ["R4"], rules_flagged(r))
 
-# --- THE REVERT CARVE-OUT. The exemption is the REMOVAL, not a title or a branch name: the
-# bullet exists at the base and does not at the head.
-fx = make_repo(**R4FX, base_changelog=unreleased_with("8174"),
-               head_changelog=unreleased_with())
+# --- THE REVERT CARVE-OUT. The exemption is the REMOVAL, not a title or a branch name: the note
+# exists at the base and does not at the head.
+fx = fx4(base_files=note("8174"), head_files={f"{NOTES}/8174.md": None})
 r = r4(fx)
-eq("a PR that REMOVES card#8174's bullet is exempt → exit 0", 0, r.returncode)
+eq("a PR that REMOVES card#8174's note is exempt → exit 0", 0, r.returncode)
 eq("  … and SAYS it exempted rather than staying silent",
    True, "R4 exempt: card#8174" in r.stdout)
-# CONTROL, single-variable: the same head with a base that never had the bullet is the
-# ordinary miss and must red. Without this the exemption would be indistinguishable from R4
-# simply not firing.
-fx = make_repo(**R4FX, base_changelog=unreleased_with(), head_changelog=unreleased_with())
+# CONTROL, single-variable: the same head with a base that never had the note is the ordinary
+# miss and must red. Without this the exemption would be indistinguishable from R4 not firing.
+fx = fx4()
 r = r4(fx)
-eq("  CONTROL: same head, base with no bullet → RED (the exemption discriminates)",
+eq("  CONTROL: same head, base with no note → RED (the exemption discriminates)",
    ["R4"], rules_flagged(r))
 
-# --- THE BASE-REF CARVE-OUT. On the release path step 4 has just emptied `[Unreleased]`, so a
-# release PR whose title cites a card must NOT be asked for a bullet under it.
+# --- THE BASE-REF CARVE-OUT. On the release path step 4 has just gathered every note, so a
+# release PR whose title cites a card must NOT be asked for one.
 fx = make_repo(base_version="0.1.0", head_version="0.2.0",
                head_changelog=changelog_with("0.2.0"))
 r = guard(fx, base_ref="main", head_ref="release/v0.2.0",
           title="Release v0.2.0 (card#8174)")
-eq("a release PR citing a card is NOT asked for an [Unreleased] bullet → exit 0",
-   0, r.returncode)
-eq("  … and says so rather than passing silently", True, "R4 NOT APPLICABLE" in r.stdout)
-# CONTROL: the same title and the same (empty-Unreleased) changelog on a FEATURE PR reds — so
-# the pass above is the base ref's doing, not the fixture's.
-fx = make_repo(**R4FX, head_changelog=changelog_with("0.2.0"))
+eq("a release PR citing a card is NOT asked for a note → exit 0", 0, r.returncode)
+eq("  … and says so rather than passing silently", True, "R4, R8 NOT APPLICABLE" in r.stdout)
+# CONTROL: the same title and changelog on a change PR reds — so the pass above is the base
+# ref's doing, not the fixture's.
+fx = fx4(head_changelog=changelog_with("0.2.0"))
 r = r4(fx, head_ref="chore/tidy", title="Release v0.2.0 (card#8174)")
 eq("  CONTROL: the same title + changelog into `dev` DOES red (base ref is what carved it out)",
    ["R4"], rules_flagged(r))
 
 # --- THE BACK-MERGE / REBASE CASE is out of scope at the TRIGGER, not by an exemption: the
 # documented sync branch names no card on either surface. This is why R4 reads the head ref and
-# the title and NOT commit subjects — a back-merge CONTAINS card-bearing subjects.
-fx = make_repo(**R4FX, head_branch="sync/main-to-dev-post-v0.1.0",
-               head_changelog=unreleased_with())
+# the title and NOT commit subjects — a back-merge CONTAINS card-bearing subjects. The
+# back-merge also brings the release's DELETION of the notes it gathered, which R8 allows.
+fx = fx4(base_files=note("8174"), head_files={f"{NOTES}/8174.md": None},
+         head_changelog="# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-08-30\n\n"
+                        "- **card#8174** — what card#8174 did.\n")
 r = r4(fx, head_ref="sync/main-to-dev-post-v0.1.0", title="Back-merge main to dev post v0.1.0")
-eq("the documented back-merge branch names no card → R4 never fires", 0, r.returncode)
+eq("the documented back-merge branch names no card → R4 never fires, R8 holds", 0,
+   r.returncode)
 eq("  … and says it is not applicable, naming the tokenless reason",
    True, "R4 NOT APPLICABLE — neither the head ref nor the PR title names a card" in r.stdout)
 
-# --- FAIL LOUD: a changelog with no `## [Unreleased]` heading cannot be judged by R4's rule.
-fx = make_repo(**R4FX, head_changelog="# Changelog\n\n## [0.1.0]\n\n- **card#8174** — x.\n")
+# --- FAIL LOUD: a changelog with no `## [Unreleased]` heading cannot be judged by R8's rule —
+# on every change PR, named card or not.
+fx = fx4(head_changelog="# Changelog\n\n## [0.1.0]\n\n- **card#8174** — x.\n",
+         head_files=note("8174"))
 r = r4(fx)
-eq("no `## [Unreleased]` heading + a named card → exit 2, not a verdict", 2, r.returncode)
-eq("  … and says the rule is scoped to that section", True, "R4's rule is scoped" in r.stderr)
+eq("no `## [Unreleased]` heading → exit 2, not a verdict", 2, r.returncode)
+eq("  … and says R8 asks about that section", True, "R8 asks whether" in r.stderr)
+r = r4(fx, head_ref="chore/tidy")
+eq("  … on a tokenless PR too", 2, r.returncode)
 
 # --- FAIL LOUD: the card grammar is EXTRACTED, and every failure to extract it is exit 2.
-fx = make_repo(**R4FX, head_changelog=unreleased_with("8174"))
+fx = fx4(head_files=note("8174"))
 (fx / "bin/promote-cards-by-token").unlink()
 r = r4(fx)
 eq("card-grammar authority absent → exit 2, no private copy of the grammar", 2, r.returncode)
 eq("  … and names the authority it could not read", True, "authority not found" in r.stderr)
-fx = make_repo(**R4FX, head_changelog=unreleased_with("8174"))
+fx = fx4(head_files=note("8174"))
 p = fx / "bin/promote-cards-by-token"
 p.write_text(p.read_text() + "\nCARD_RE='\\bcard([0-9]+)'\n", encoding="utf-8")
 r = r4(fx)
 eq("card-grammar authority DUPLICATED → exit 2 (ambiguity is not a pass)", 2, r.returncode)
 eq("  … and refuses to hardcode the grammar", True, "rather than hardcoding" in r.stderr)
+
+
+# =============================================================================================
+print("== 10b. R9 — a release assembles every note (card#12935) ==")
+# Release flow step 4 runs `bin/changelog-fragments.py assemble`, which gathers every note into
+# the version's section and deletes it. A release head still carrying one would ship it with no
+# CHANGELOG line and have the NEXT release collect it again. The base carries the note too, so
+# the head does not differ from `dev` there and R6 stays silent: R9 is the only rule that speaks.
+fx = make_repo(**dict(CONTROL, base_files=note("8174")))
+r = guard(fx)
+eq("a release head still carrying a note → R9", ["R9"], rules_flagged(r))
+eq("  … naming the note and the command that assembles it", True,
+   "8174.md" in r.stdout and "changelog-fragments.py assemble" in r.stdout)
+# CONTROL: § 3's release, which carries no note, passes — and the directory's README is no note.
+fx = make_repo(**dict(CONTROL, base_files={f"{NOTES}/README.md": "# notes\n"}))
+r = guard(fx)
+eq("  CONTROL: a release head with only the README in docs/changelog.d/ → exit 0",
+   0, r.returncode)
 
 
 # =============================================================================================
@@ -879,15 +985,20 @@ CLIFF = 1024 * 1024
 
 
 def sized_changelog(nbytes: int, *cards: str) -> str:
-    head = unreleased_with(*(cards or ("8174",)))
+    """A changelog of exactly `nbytes`, its bulk under a RELEASED section. Since card#12935 a
+    change PR adds nothing under `[Unreleased]` (R8), so the bytes R5 measures arrive with
+    releases and archive moves — and the fixtures put them where those put them."""
+    body = "".join(f"- **card#{c}** — what card#{c} did.\n" for c in (cards or ("7929",)))
+    head = f"# Changelog\n\n## [Unreleased]\n\n## [0.0.1] - 2026-08-01\n\n{body}"
     pad = nbytes - len(head.encode("utf-8"))
     return head + ("x" * max(0, pad))
 
 
-R5FX = dict(base_version="0.1.0", head_version="0.1.0", base_branch="dev")
+R5FX = dict(base_version="0.1.0", head_version="0.1.0", base_branch="dev",
+            head_files=note("8174"))
 
 # --- CONTROL: a small changelog is nowhere near the threshold.
-fx = make_repo(**R5FX, head_changelog=unreleased_with("8174"))
+fx = make_repo(**R5FX, head_changelog=UNRELEASED_ONLY)
 r = r4(fx)
 eq("a small changelog → exit 0, R5 silent", 0, r.returncode)
 eq("  … and the run PRINTS the threshold it derived (no silent verdict)",
@@ -898,7 +1009,7 @@ eq("  … and the run PRINTS the threshold it derived (no silent verdict)",
 fx = make_repo(**R5FX, head_changelog=sized_changelog(BIG))
 r = r4(fx)
 eq("600,000 B grown entirely inside the window → RED", 1, r.returncode)
-eq("  … R5 alone (the bullet is present, so R4 is silent)", ["R5"], rules_flagged(r))
+eq("  … R5 alone (the note is present, so R4 is silent)", ["R5"], rules_flagged(r))
 eq("  … and the message names the size, the threshold and the cliff",
    (True, True, True),
    (f"{BIG:,} B at the head" in r.stdout, f"{CLIFF - BIG:,} B threshold" in r.stdout,
@@ -1035,7 +1146,7 @@ eq("four released sections → RED on R7, naming BOTH excess archive files",
 # --- OFF THE RELEASE PATH R7 WARNS AND NEVER REFUSES. The same three-section changelog on a
 # feature PR into `dev`: its author did not skip step 13 and cannot fix it in their PR, which is
 # the exact misdirected red card#9814 exists to end.
-fx = make_repo(**R4FX, head_changelog=TWO_RELEASED + THIRD)
+fx = fx4(head_changelog=TWO_RELEASED + THIRD)
 r = r4(fx, head_ref="chore/tidy")
 eq("the same three sections on a feature PR → exit 0", 0, r.returncode)
 eq("  … with no rule flagged", [], rules_flagged(r))
@@ -1064,8 +1175,8 @@ r = guard(fx)
 eq("  CONTROL: the same archive file AT the cliff → exit 0 (the boundary discriminates)",
    0, r.returncode)
 # Off the release path the oversize archive warns, and does not refuse.
-fx = make_repo(**R4FX, head_changelog=unreleased_with(),
-               base_files={ARCHIVE: "x" * (mod.CONTENTS_API_CLIFF_BYTES + 1)})
+fx = fx4(head_changelog=unreleased_with(),
+         base_files={ARCHIVE: "x" * (mod.CONTENTS_API_CLIFF_BYTES + 1)})
 r = r4(fx, head_ref="chore/tidy")
 eq("the same oversize archive on a feature PR → exit 0 with a ::warning:: naming it",
    (0, True),
@@ -1080,7 +1191,7 @@ eq("the same oversize archive on a feature PR → exit 0 with a ::warning:: nami
 # excess sections are exactly the state R7 exists to detect, on every feature PR until the next
 # release. A malformed config then failed every one of them with exit 2, from a rule that can do
 # no more than warn there. Measured on that code: exit 2.
-fx = make_repo(**R4FX, head_changelog=TWO_RELEASED + THIRD)
+fx = fx4(head_changelog=TWO_RELEASED + THIRD)
 (fx / ".release-pr.json").write_text("{not json", encoding="utf-8")
 r = r4(fx, head_ref="chore/tidy")
 eq("excess sections + an UNREADABLE `.release-pr.json` on a feature PR → exit 0, never 2",
@@ -1128,8 +1239,8 @@ eq("  … naming the file, and counted rather than quoted away",
 # worse than the exit 2 that was removed. A filename is not the repo's to validate, so the guard
 # reads it lossily and PRINTS it lossily rather than refusing anything.
 LATIN1 = "docs/changelog/inv\udce9.md"          # one 0xe9 byte — latin-1 `é`, invalid UTF-8
-fx = make_repo(**R4FX, head_changelog=unreleased_with(),
-               base_files={LATIN1: "x" * (mod.CONTENTS_API_CLIFF_BYTES + 1)})
+fx = fx4(head_changelog=unreleased_with(),
+         base_files={LATIN1: "x" * (mod.CONTENTS_API_CLIFF_BYTES + 1)})
 r = r4(fx, head_ref="chore/tidy")
 eq("an archive filename that is not valid UTF-8, on a feature PR → exit 0, no traceback",
    (0, False), (r.returncode, "Traceback" in r.stderr))
@@ -1452,6 +1563,44 @@ r = r6(fx, body="")
 eq("  CONTROL: both cards carried under the RETITLED section → exit 0", 0, r.returncode)
 if r.returncode != 0:
     print(r.stdout, r.stderr, file=sys.stderr)
+
+# --- R6a AND THE ASSEMBLED NOTES (card#12935). Release flow step 4 deletes every note in
+# `docs/changelog.d/` it gathered into the version's section, so each one differs from `dev`. A
+# deletion is excused only when the note's exact line, as `dev` holds it, is in the head's
+# changelog. Here `dev` holds card#7929's note from before the cut and the release assembled it.
+ASSEMBLED = changelog_with("0.2.0") + "- **card#7929** — what card#7929 did.\n"
+R6NOTES = dict(R6FX, base_files=note("7929"), head_files={f"{NOTES}/7929.md": None},
+               head_changelog=ASSEMBLED)
+fx = make_repo(**R6NOTES)
+add_integration(fx)
+r = r6(fx, body="")
+eq("a release that assembled and deleted `dev`'s note → exit 0 (the deletion is excused)",
+   0, r.returncode)
+if r.returncode != 0:
+    print(r.stdout, r.stderr, file=sys.stderr)
+# PLANT: the note deleted but its line NOT in the head's changelog — a note dropped, not gathered.
+fx = make_repo(**dict(R6NOTES, head_changelog=changelog_with("0.2.0")))
+add_integration(fx)
+r = r6(fx, body="")
+eq("  PLANT: the note deleted without its line in the CHANGELOG → R6", ["R6"], rules_flagged(r))
+eq("  … naming the note's path as residue", True,
+   f"residue outside VERSION, docs/CHANGELOG.md: {NOTES}/7929.md" in r.stdout)
+# PLANT: a note `dev` gained AFTER the cut — #176's harm, arriving as a file.
+fx = make_repo(**R6NOTES)
+add_integration(fx, files=note("7000"))
+r = r6(fx, body="")
+eq("  PLANT: a note merged to `dev` after the cut → R6 naming it", (["R6"], True),
+   (rules_flagged(r), f"{NOTES}/7000.md" in r.stdout))
+# …and its hatch is the ordinary one: declared exactly, it passes.
+r = r6(fx, body=f"Release-excludes: {NOTES}/7000.md — lands in the next release.")
+eq("  … and declared exactly in `Release-excludes:`, it passes", 0, r.returncode)
+# PLANT: a note `dev` EDITED after the cut — the head carries the old line, so the new text
+# would be lost. Same path, different content: not assembled, so residue.
+fx = make_repo(**R6NOTES)
+add_integration(fx, files=note("7929", "the text as dev corrected it."))
+r = r6(fx, body="")
+eq("  PLANT: a note `dev` edited after the cut → R6 (the old line is not the note dev holds)",
+   (["R6"], True), (rules_flagged(r), f"{NOTES}/7929.md" in r.stdout))
 
 # --- APPLICABILITY: R6 is a question about a release. A feature PR is untouched by it, even
 # with `dev` far ahead of its branch.

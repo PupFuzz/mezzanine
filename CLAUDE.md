@@ -880,9 +880,9 @@ Everything this repository used to put in a body keeps its obligation and change
 ## What you will see change | ## Highlights
 ## What you do | ## Upgrade warnings
 ## What you must do | ## Upgrade warnings
-## What it replaces | docs/CHANGELOG.md — the defect, its history, and what the change replaced
+## What it replaces | the change's own note, docs/changelog.d/<card>.md — the defect, its history, and what the change replaced
 ## Evidence | the review-request round (`coord-review`), and the card
-## Docs | docs/CHANGELOG.md; the Rule X1 doc-sync audit trail goes to the review round
+## Docs | the change's own note, docs/changelog.d/<card>.md; the Rule X1 doc-sync audit trail goes to the review round
 ## Not verified | a card, cited from the review round
 -->
 
@@ -917,6 +917,12 @@ recorded is a fabricated attestation), and a detached HEAD and an empty range ar
 same marker `release-pr-body` leaves — so `grep '<!-- AUTHOR:'` finds an unfilled body of either
 kind. **A RELEASE PR still uses `release-pr-body`**; this tool emits no version, no bundled table
 and no artifact checklist, and is wrong for one.
+
+**The change's changelog line is a file of its own, never an edit to `docs/CHANGELOG.md`**
+(card#12935): add `docs/changelog.d/<card>.md` holding the one bullet line, and check it with
+`python3 bin/changelog-fragments.py check`. `docs/changelog.d/README.md` states the format;
+`release-pr-guard` R4 and R8 enforce it, and the release gathers the notes (`docs/VERSIONING.md §
+Release flow`, step 4).
 
 ⛔ **A PR BODY DOES NOT OPEN WITH A `FROM:` LINE.** Operator directive, 2026-09-17, fleet-wide with no
 per-repo exemption; the linter's `attribution-line` rule reds it.

@@ -405,20 +405,36 @@ the six split three and three** — the gate refuses #7335, #7456 and #7929 as t
 rule violations anyone could have committed at the time.
 
 - **The enforced unit is the card, not the PR.** A PR whose **head branch or title** carries
-  `card#NNNN` owes a line-initial `- **card#NNNN** — …` bullet under `## [Unreleased]` in
-  `docs/CHANGELOG.md`, **in the same PR**. Tokenless PRs owe nothing. Bold-anywhere is not
-  accepted — line-initial is the rule, and their incident log records why (a prose mention
-  discharged another card's obligation).
+  `card#NNNN` owes a changelog note for that card **in the same PR**: a file of its own,
+  `docs/changelog.d/<card>.md` (or `<card>-<slug>.md` for a further note on a card whose first
+  is still unreleased), holding exactly one line — the line-initial `- **card#NNNN** — …`
+  bullet as it will appear in `docs/CHANGELOG.md`. Tokenless PRs owe nothing. Bold-anywhere is
+  not accepted — line-initial is the rule, and their incident log records why (a prose mention
+  discharged another card's obligation). `docs/changelog.d/README.md` states the format to
+  authors; `bin/changelog-fragments.py` is the one program that reads it, and both the guard
+  and the release run it.
   ⛔ **Enforced by `bin/release-pr-guard.py` R4** on every PR. Two surfaces, not three: the
   branch and the title are the two the correlators parse
   (`bin/card-token-lint.py § SURFACES`), and keying on commit **subjects** — which this bullet
-  said before card#8174 — would drag every back-merge into scope and demand it re-add bullets
-  the release had just retitled away. Two carve-outs, both argued in the guard's docstring: a PR
-  whose base is `main` owes nothing under `[Unreleased]` (step 4 has just emptied it), and a PR
-  that **removes** a card's existing bullet is exempt for that card (a revert of unreleased work
-  owes the deletion of an entry, not one more — and the removal is the only way to claim it).
-- **Written at PR time; the release only collects.** The release retitles `[Unreleased]` and
-  opens a fresh empty one.
+  said before card#8174 — would drag every back-merge into scope and demand it re-add notes
+  the release had just gathered away. Two carve-outs, both argued in the guard's docstring: a PR
+  whose base is `main` owes no note (step 4 has just gathered them), and a PR that **removes** a
+  card's existing note is exempt for that card (a revert of unreleased work owes the deletion of
+  an entry, not one more — and the removal is the only way to claim it).
+- **A change PR never edits `docs/CHANGELOG.md`'s `## [Unreleased]`** (card#12935). Until then
+  every change wrote its bullet at the top of that section, so any two PRs built side by side
+  edited the same lines and the second to merge conflicted — about seven times in one day on
+  2026-11-06, each costing a builder round-trip and a CI run. A note per change in its own file
+  shares no lines with any other change's.
+  ⛔ **Enforced by `bin/release-pr-guard.py` R8** on every PR into `dev`: it refuses a line ADDED
+  under `## [Unreleased]` (removing one is allowed) and a malformed note among those the PR adds
+  or changes, each with the exact file and line to write instead.
+- **Written at PR time; the release only collects.** Release flow step 4 runs
+  `bin/changelog-fragments.py assemble`, which writes the version's section directly under
+  `## [Unreleased]` from every note — highest card number first, then file name, so the same
+  notes give the same section on any machine — and deletes the notes. `## [Unreleased]` stays
+  empty. ⛔ **`release-pr-guard` R9** refuses a release PR that still carries a note, and **R6**
+  accepts the release deleting a note only when that note's exact line is in its changelog.
 - **The gate fails closed on every unmeasurable state** (a history too truncated to see past the
   size window, no `[Unreleased]` heading, an unreadable authority — never a skip). Note the
   shape: it is *unmeasurable*, not *shallow* — R5 measures a shallow clone that can still answer,
