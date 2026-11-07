@@ -14,6 +14,13 @@
  * resolves no kind, so its cells are open until it arrives — and the lattice key (`scene.js`'s `latticeKey()`)
  * cancels every walk routed without it then. Other walkers are never obstacles.
  *
+ * ⛔ A WALKER's OWN DESK IS OPEN TO IT ON ITS ANCHOR's ROW, and a desk's SEAT may also leave from behind its chair
+ * (walk note item 3, card#12513). A desk declares its seat — the chair, its anchor — and the furniture the seat keeps
+ * off, the side table and the interns' rows (`desk-layout.js`'s `seatSolid()`). The seat's walk may take the chair's
+ * column behind the anchor, where the desk lays out nothing but that chair, and keeps its feet off that furniture; it
+ * is routed across it only where no tier connects without (`route()`'s `furniture`), a desk walled in on every side
+ * but its side table's. An intern's walk keeps its stool's row.
+ *
  * ⛔ A WALKER KEEPS CLEAR LIKE A PERSON IN A BUILDING (walk note item 3, card#12442). The feet rule alone lets a path
  * hug an obstacle one cell away while the body — the character's drawn rect, centred on the feet — is painted over
  * it. So every obstacle and every OTHER desk is inflated by the body round the feet: a cell is blocked when its
@@ -30,7 +37,9 @@
  * that connects the two points and names it, so a map too tight for a body still walks, on the best route that fits.
  *
  * ⛔ NOTHING HERE KNOWS ABOUT ELEVATORS. A1 and A2 hand `route()` a desk's anchor and the elevator's threshold; a
- * later destination hands it another point.
+ * later destination hands it another point. `spotsNear()` answers where several walkers can stand apart near one point —
+ * the scene asks it about the threshold, for the queue there (walk note item 9, card#12705) — over the same step rule
+ * and the same blocked sets `route()` searches.
  */
 
 /** § 12's *Route lattice and cost* row: an orthogonal step costs 10, a diagonal one 14 — integers, so no float ties. */
@@ -60,14 +69,17 @@ const meets = (a, b) => a.w > 0 && a.h > 0 && b.w > 0 && b.h > 0
 /**
  * THE WALKABLE MODEL of one floor (walk note item 3): a grid of lattice cells over the floor's extent, and for each
  * clearance tier the cells blocked for every walker and each desk's cells — because a walker's OWN desk is open to it
- * on its anchor's row (by the feet rule, never inflated: it sits there) and every other desk is blocked whole.
+ * on its anchor's row, and to its seat behind its chair (by the feet rule, never inflated: it sits there), and every
+ * other desk is blocked whole.
  *
  * @param {{extent: {x: number, y: number, width: number, height: number}, cell: number,
  *          obstacles: list<{x: number, y: number, w: number, h: number}>,
- *          desks: list<{key: string, rects: list<{x: number, y: number, w: number, h: number}>}>,
+ *          desks: list<{key: string, rects: list<{x: number, y: number, w: number, h: number}>,
+ *                       seat?: {anchor: {x: number, y: number}, solid: list<{x: number, y: number, w: number, h: number}>}}>,
  *          body: {w: number}}} parts —
  *        `cell` the smallest tile edge over the floor's grids; `obstacles` the `wall` tiles' and standing tiles' rects;
- *        `desks` each desk's slot and drawn box; `body` the walker's drawn character rect, whose width is what clears
+ *        `desks` each desk's slot and drawn box, and its seat — the chair's point and the furniture the seat keeps its
+ *        feet off; `body` the walker's drawn character rect, whose width is what clears
  * @returns {object} the lattice, read only by `route()` and the tests
  */
 export function lattice({ extent, cell, obstacles, desks, body }) {
@@ -135,6 +147,13 @@ export function lattice({ extent, cell, obstacles, desks, body }) {
         }
     }
 
+    // The cell `[x, y]` holding a point, as `cellAt()` reads it — or `null` outside the lattice.
+    const cellOf = (p) => {
+        const x = Math.floor((p.x - extent.x) / c);
+        const y = Math.floor((p.y - extent.y) / c);
+
+        return x < 0 || y < 0 || x >= cols || y >= rows ? null : [x, y];
+    };
     const half = body.w / 2;
     // What each tier blocks round a wall or standing tile, and round another desk. A desk is drawn in the floor's
     // depth order with the walker (walk note item 9) and its box is its art's own extent, so it keeps the bare body
@@ -156,8 +175,17 @@ export function lattice({ extent, cell, obstacles, desks, body }) {
         cell: c,
         cols,
         rows,
-        // Each desk's own cells by the feet rule: what its OWN walker may enter on its anchor's row.
-        desks: Object.freeze(desks.map((d) => Object.freeze({ key: d.key, cells: sorted(d.rects.flatMap(cellsOf)) }))),
+        // Each desk's own cells by the feet rule: what its OWN walker may enter on its anchor's row — and, where the
+        // desk declares its SEAT (card#12513), the chair's cell and the cells of the furniture the seat keeps its
+        // feet off (`blockedFor()`).
+        desks: Object.freeze(desks.map((d) => Object.freeze({
+            key: d.key,
+            cells: sorted(d.rects.flatMap(cellsOf)),
+            seat: (d.seat ?? null) === null ? null : Object.freeze({
+                cell: Object.freeze(cellOf(d.seat.anchor)),
+                solid: new Set(d.seat.solid.flatMap(cellsOf)),
+            }),
+        }))),
         // One tier's model, built the first time a route asks for it — a floor whose every walk routes at `clear`
         // never builds the others.
         tier: (name) => {
@@ -204,16 +232,31 @@ export function cellCentre(grid, [x, y]) {
 }
 
 /**
+ * The walker's desk when the walker is that desk's SEAT (card#12513) — its anchor's cell is the chair's the desk
+ * declares — or `null`: an intern's walk, a walker whose desk declares no seat, or a point nobody's desk holds.
+ */
+function seatDesk(grid, walker) {
+    const anchor = cellAt(grid, walker.anchor);
+    const desk = grid.desks.find((d) => d.key === walker.key) ?? null;
+
+    return anchor === null || desk === null || desk.seat === null || desk.seat.cell === null
+        || desk.seat.cell[0] !== anchor[0] || desk.seat.cell[1] !== anchor[1] ? null : desk;
+}
+
+/**
  * The cells blocked for ONE walker at one tier: the tier's obstacles, every other desk whole as the tier inflates it,
  * and its own desk (by the feet rule) on every row but its anchor's — so it leaves and reaches its desk sideways, at
- * its seated depth (walk note item 3).
+ * its seated depth (walk note item 3). Its desk's SEAT (card#12513) may also take the chair's column behind the anchor,
+ * where the desk lays out nothing but that chair, and with `furniture` `kept` never sets foot on what its desk declares solid to it
+ * (the side table and the interns' rows) — so it walks round the back of its desk rather than across its couch.
  *
  * @param {object} grid `lattice()`'s
  * @param {{key: string, anchor: {x: number, y: number}}} walker
  * @param {string} [tier] one of `CLEARANCE_TIERS`, the strictest when absent
+ * @param {'kept'|'crossed'} [furniture] whether the seat keeps off its desk's solid furniture (`kept`, when absent)
  * @returns {Uint8Array}
  */
-export function blockedFor(grid, walker, tier = CLEARANCE_TIERS[0]) {
+export function blockedFor(grid, walker, tier = CLEARANCE_TIERS[0], furniture = 'kept') {
     const t = grid.tier(tier);
     const out = Uint8Array.from(t.blocked);
     const anchor = cellAt(grid, walker.anchor);
@@ -226,12 +269,20 @@ export function blockedFor(grid, walker, tier = CLEARANCE_TIERS[0]) {
         }
     }
 
-    // The own desk off its anchor's row. A cell of the anchor's row that another desk also meets stays blocked,
-    // because that desk's cells are blocked whoever's row it is.
+    // The own desk off its anchor's row, and off the seat's column behind its chair. A cell of either that another
+    // desk also meets stays blocked, because that desk's cells are blocked whoever's desk it is.
+    const seat = seatDesk(grid, walker)?.seat ?? null;
+
     for (const desk of grid.desks) {
         if (desk.key === walker.key) {
             for (const i of desk.cells) {
-                if (anchor === null || Math.floor(i / grid.cols) !== anchor[1]) {
+                const x = i % grid.cols;
+                const y = Math.floor(i / grid.cols);
+                const open = anchor !== null && (seat === null
+                    ? y === anchor[1]
+                    : (y === anchor[1] || (x === anchor[0] && y < anchor[1])) && (furniture === 'crossed' || !seat.solid.has(i)));
+
+                if (!open) {
                     out[i] = 1;
                 }
             }
@@ -292,32 +343,32 @@ function centringCost(cols, rows, cell, blocked, edge) {
 }
 
 /**
- * A* over the lattice (walk note item 3) at ONE tier's blocked set: 8-connected, `STEP_COST` plus the centring cost
- * of the cell entered, a diagonal refused when either orthogonal neighbour is blocked (no corner is cut), the octile
- * heuristic in the step units — never above the true cost, since no centring cost is negative — and the open set
- * ordered by `(f, g descending, y, x)`: a total order, so one path for one set of inputs.
+ * The steps out of cell `(x, y)` over a blocked set, each handed to `visit(cell index, STEP_COST)`: 8-connected, a diagonal refused when
+ * either orthogonal neighbour is blocked (no corner is cut) — the one step rule `search()` and `spotsNear()` walk by.
  */
-function search(grid, start, goal, blocked, extra) {
-    const { cols, rows } = grid;
-    const s = start[1] * cols + start[0];
-    const t = goal[1] * cols + goal[0];
+function steps(cols, rows, blocked, x, y, visit) {
+    const open = (cx, cy) => cx >= 0 && cy >= 0 && cx < cols && cy < rows && blocked[cy * cols + cx] === 0;
 
-    if (blocked[s] === 1 || blocked[t] === 1) {
-        return null;
+    for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            if ((dx === 0 && dy === 0) || !open(x + dx, y + dy)) {
+                continue;
+            }
+
+            const diagonal = dx !== 0 && dy !== 0;
+
+            if (diagonal && (!open(x + dx, y) || !open(x, y + dy))) {
+                continue;
+            }
+
+            visit((y + dy) * cols + x + dx, diagonal ? STEP_COST.diagonal : STEP_COST.straight);
+        }
     }
+}
 
-    const h = (i) => {
-        const dx = Math.abs((i % cols) - goal[0]);
-        const dy = Math.abs(Math.floor(i / cols) - goal[1]);
-
-        return STEP_COST.straight * Math.max(dx, dy) + (STEP_COST.diagonal - STEP_COST.straight) * Math.min(dx, dy);
-    };
-    const g = new Int32Array(cols * rows).fill(-1);
-    const parent = new Int32Array(cols * rows).fill(-1);
-    const closed = new Uint8Array(cols * rows);
-    // The open set: a binary heap of `[f, g, y, x, i]`, least first by `(f, g desc, y, x)`.
+/** A binary heap ordered by `before` (least first) — the open set of `search()` and of `spotsNear()`'s cost field. */
+function minHeap(before) {
     const heap = [];
-    const before = (a, b) => a[0] - b[0] || b[1] - a[1] || a[2] - b[2] || a[3] - b[3];
     const push = (e) => {
         heap.push(e);
 
@@ -363,12 +414,42 @@ function search(grid, start, goal, blocked, extra) {
 
         return top;
     };
-    const open = (x, y) => x >= 0 && y >= 0 && x < cols && y < rows && blocked[y * cols + x] === 0;
+
+    return { push, pop, size: () => heap.length };
+}
+
+/**
+ * A* over the lattice (walk note item 3) at ONE tier's blocked set: 8-connected, `STEP_COST` plus the centring cost
+ * of the cell entered, a diagonal refused when either orthogonal neighbour is blocked (no corner is cut), the octile
+ * heuristic in the step units — never above the true cost, since no centring cost is negative — and the open set
+ * ordered by `(f, g descending, y, x)`: a total order, so one path for one set of inputs.
+ */
+function search(grid, start, goal, blocked, extra) {
+    const { cols, rows } = grid;
+    const s = start[1] * cols + start[0];
+    const t = goal[1] * cols + goal[0];
+
+    if (blocked[s] === 1 || blocked[t] === 1) {
+        return null;
+    }
+
+    const h = (i) => {
+        const dx = Math.abs((i % cols) - goal[0]);
+        const dy = Math.abs(Math.floor(i / cols) - goal[1]);
+
+        return STEP_COST.straight * Math.max(dx, dy) + (STEP_COST.diagonal - STEP_COST.straight) * Math.min(dx, dy);
+    };
+    const g = new Int32Array(cols * rows).fill(-1);
+    const parent = new Int32Array(cols * rows).fill(-1);
+    const closed = new Uint8Array(cols * rows);
+    // The open set: least first by `(f, g desc, y, x)`.
+    const before = (a, b) => a[0] - b[0] || b[1] - a[1] || a[2] - b[2] || a[3] - b[3];
+    const { push, pop, size } = minHeap(before);
 
     g[s] = 0;
     push([h(s), 0, start[1], start[0], s]);
 
-    while (heap.length > 0) {
+    while (size() > 0) {
         const [, gc, y, x, i] = pop();
 
         if (closed[i] === 1 || gc !== g[i]) {
@@ -387,29 +468,15 @@ function search(grid, start, goal, blocked, extra) {
             return cells.reverse();
         }
 
-        for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-                if ((dx === 0 && dy === 0) || !open(x + dx, y + dy)) {
-                    continue;
-                }
+        steps(cols, rows, blocked, x, y, (n, cost) => {
+            const gn = gc + cost + extra[n];
 
-                const diagonal = dx !== 0 && dy !== 0;
-
-                // No corner cut: a diagonal needs both orthogonal neighbours open.
-                if (diagonal && (!open(x + dx, y) || !open(x, y + dy))) {
-                    continue;
-                }
-
-                const n = (y + dy) * cols + x + dx;
-                const gn = gc + (diagonal ? STEP_COST.diagonal : STEP_COST.straight) + extra[n];
-
-                if (closed[n] === 0 && (g[n] === -1 || gn < g[n])) {
-                    g[n] = gn;
-                    parent[n] = i;
-                    push([gn + h(n), gn, y + dy, x + dx, n]);
-                }
+            if (closed[n] === 0 && (g[n] === -1 || gn < g[n])) {
+                g[n] = gn;
+                parent[n] = i;
+                push([gn + h(n), gn, Math.floor(n / cols), n % cols, n]);
             }
-        }
+        });
     }
 
     return null;
@@ -417,14 +484,16 @@ function search(grid, start, goal, blocked, extra) {
 
 /**
  * THE ROUTE between two points for one walker: the first of `CLEARANCE_TIERS` whose blocked set connects them, and
- * that tier's A* path.
+ * that tier's A* path. A desk's SEAT (card#12513) is routed with its desk's solid furniture kept off first, at every
+ * tier, and across it only where no tier connects without — a desk walled in on every side but its side table's.
  *
  * @param {object} grid `lattice()`'s
  * @param {{x: number, y: number}} from
  * @param {{x: number, y: number}} to
  * @param {{key: string, anchor: {x: number, y: number}}} walker the walker whose desk is its own
- * @returns {{cells: list<[number, number]>, tier: string}|null} the cells from `from`'s to `to`'s, both included, and
- *          the tier they were found at; `null` with no open route at any tier
+ * @returns {{cells: list<[number, number]>, tier: string, furniture: 'kept'|'crossed'|null}|null} the cells from
+ *          `from`'s to `to`'s, both included, the tier they were found at, and whether a seat's route keeps off its
+ *          desk's furniture (`null` for any other walker); `null` with no open route at any tier
  */
 export function route(grid, from, to, walker) {
     const start = cellAt(grid, from);
@@ -434,15 +503,108 @@ export function route(grid, from, to, walker) {
         return null;
     }
 
-    for (const tier of CLEARANCE_TIERS) {
-        const cells = search(grid, start, goal, blockedFor(grid, walker, tier), grid.tier(tier).centring);
+    for (const furniture of seatDesk(grid, walker) === null ? [null] : ['kept', 'crossed']) {
+        for (const tier of CLEARANCE_TIERS) {
+            const cells = search(grid, start, goal, blockedFor(grid, walker, tier, furniture ?? 'kept'), grid.tier(tier).centring);
 
-        if (cells !== null) {
-            return Object.freeze({ cells, tier });
+            if (cells !== null) {
+                return Object.freeze({ cells, tier, furniture });
+            }
         }
     }
 
     return null;
+}
+
+/**
+ * SPACED SPOTS NEAR A POINT (walk note item 9, card#12705): where several walkers can stand near one point and never on
+ * one another — spot 0 the point itself, each later spot the cheapest open cell, by the route cost FROM the point (`STEP_COST`
+ * plus the tier's centring, no corner cut), whose centre is at least `spacing` px from every earlier spot and from every
+ * point of `clear` (where something else stands — the scene's call-plate points, card#12747); ties by `(y, x)`. Open means
+ * open for NOBODY's walk: every desk blocked as another walker meets it, at the strictest tier the point's own cell is
+ * open at. Each spot carries its path back to the point — the cell centres from the spot's down the cost tree to the
+ * point's cell, then the point — so a walker standing there walks to the point over open floor.
+ *
+ * card#12793 — `avoid`, where a caller passes one (the elevator queue: § 12's *Elevator lane*; card#12841, the restroom
+ * door: *Restroom lane*), is a predicate over a point that no spot may stand on: the search SKIPS every cell whose centre
+ * it holds as it runs, the point itself included, so no spacing is spent on a cell nobody may stand on and spot 0 is the
+ * first cell past it. A skipped cell is still walked through — a spot's path back may cross it. With none (the snack
+ * corner), spot 0 is the point and the spots are what they were.
+ *
+ * @param {object} grid `lattice()`'s
+ * @param {{x: number, y: number}} point
+ * @param {number} spacing the least distance between two spots' centres, px
+ * @param {list<{x: number, y: number}>} [clear] points no spot but the point itself comes within `spacing` of
+ * @param {?function({x: number, y: number}): boolean} [avoid] where no spot stands, the point included; `null` for none
+ * @returns {function(number): ({at: {x: number, y: number}, path: list<{x: number, y: number}>}|null)} spot `k`, built on
+ *          first ask; `null` past the last spot the open floor holds
+ */
+export function spotsNear(grid, point, spacing, clear = [], avoid = null) {
+    const start = cellAt(grid, point);
+    const tier = start === null ? null : CLEARANCE_TIERS.find((t) => blockedFor(grid, { key: null, anchor: point }, t)[start[1] * grid.cols + start[0]] === 0) ?? null;
+    const origin = Object.freeze({ x: point.x, y: point.y });
+    const spots = avoid !== null && avoid(origin) ? [] : [Object.freeze({ at: origin, path: Object.freeze([origin]) })];
+
+    if (tier === null) {
+        return (k) => spots[k] ?? null;
+    }
+
+    const { cols, rows } = grid;
+    const blocked = blockedFor(grid, { key: null, anchor: point }, tier);
+    const extra = grid.tier(tier).centring;
+    const s = start[1] * cols + start[0];
+    const g = new Int32Array(cols * rows).fill(-1);
+    const parent = new Int32Array(cols * rows).fill(-1);
+    const done = new Uint8Array(cols * rows);
+    // Dijkstra from the point's cell — a total order `(cost, y, x)` over the settled cells, one answer for one input.
+    const order = [];
+    const { push, pop, size } = minHeap((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+
+    g[s] = 0;
+    push([0, start[1], start[0], s]);
+
+    while (size() > 0) {
+        const [gc, y, x, i] = pop();
+
+        if (done[i] === 1 || gc !== g[i]) {
+            continue;
+        }
+
+        done[i] = 1;
+        order.push(i);
+
+        steps(cols, rows, blocked, x, y, (n, cost) => {
+            const gn = gc + cost + extra[n];
+
+            if (done[n] === 0 && (g[n] === -1 || gn < g[n])) {
+                g[n] = gn;
+                parent[n] = i;
+                push([gn, Math.floor(n / cols), n % cols, n]);
+            }
+        });
+    }
+
+    let next = 0;
+
+    return (k) => {
+        while (spots.length <= k && next < order.length) {
+            const i = order[next++];
+            const at = cellCentre(grid, [i % cols, Math.floor(i / cols)]);
+
+            if ((avoid === null || !avoid(at)) && [...spots.map((p) => p.at), ...clear].every((p) => Math.hypot(p.x - at.x, p.y - at.y) >= spacing)) {
+                const path = [];
+
+                for (let c = i; c !== -1; c = parent[c]) {
+                    path.push(Object.freeze(cellCentre(grid, [c % cols, Math.floor(c / cols)])));
+                }
+
+                path.push(origin);
+                spots.push(Object.freeze({ at: Object.freeze(at), path: Object.freeze(path) }));
+            }
+        }
+
+        return spots[k] ?? null;
+    };
 }
 
 /** A polyline's length — the sum of its segments. */
@@ -478,15 +640,35 @@ function along(points, s) {
 }
 
 /**
+ * A `cab` leg's STEP INSIDE THE CAB (card#12744, walk note item 10): `{from, to, start, frames}` in the walk's frames —
+ * a boarder's step from the threshold to its rider spot over the leg's first frames (`enter`), or an arrival's from its
+ * spot to the threshold over its last (`leave`) — or `null` for a rider that stands at its `at` the whole leg. The one
+ * reading of the leg's step: `pointAt()` and the painter's cab glide both take it from here.
+ */
+export function cabStep(leg) {
+    if (leg.enter !== undefined) {
+        return { from: leg.enter.from, to: leg.at, start: leg.start, frames: leg.enter.frames };
+    }
+
+    if (leg.leave !== undefined) {
+        return { from: leg.at, to: leg.leave.to, start: leg.start + leg.frames - leg.leave.frames, frames: leg.leave.frames };
+    }
+
+    return null;
+}
+
+/**
  * WHERE A WALKER IS — a pure function of time (walk note item 5): the feet's point and where they are drawn
  * (`floor`, or `cab` inside the band's cab), `t_ms` after the walk's start. Inside a `walk` leg, the point at arc
- * length `length × (t − start) ÷ duration` along its polyline — uniform speed; inside a `stand` or `cab` leg, its
- * `at`; before the first leg, the first leg's start; past the last leg, the last leg's end. The painter's glide and
+ * length `length × (t − start) ÷ duration` along its polyline — uniform speed; inside a `stand` leg, its `at`; inside
+ * a `cab` leg, its `at`, or along its step (`cabStep()`, card#12744) at uniform speed while it steps; inside an `inside`
+ * leg (card#12786), its `at`, in the restroom door's recess; before the first
+ * leg, the first leg's start; past the last leg, the last leg's end. The painter's glide and
  * its depth reconcile both read this one function from one time origin.
  *
  * @param {object} effect an A1 or A2 effect with `legs` and `frame_interval_ms`
  * @param {number} tMs milliseconds since the walk's start
- * @returns {{x: number, y: number, where: 'floor'|'cab', leg: number}|null} `null` for an effect with no legs
+ * @returns {{x: number, y: number, where: 'floor'|'cab'|'inside', leg: number}|null} `null` for an effect with no legs
  */
 export function pointAt(effect, tMs) {
     const legs = effect.legs ?? [];
@@ -504,14 +686,26 @@ export function pointAt(effect, tMs) {
     }
 
     const leg = legs[k];
-    const where = leg.kind === 'cab' ? 'cab' : 'floor';
+    // card#12786: an `inside` leg stands in the restroom door's recess, under its leaf (§ 6.7 item 4).
+    const where = leg.kind === 'cab' ? 'cab' : leg.kind === 'inside' ? 'inside' : 'floor';
+
+    const step = leg.kind === 'cab' ? cabStep(leg) : null;
+
+    if (step !== null) {
+        const u = Math.min(1, Math.max(0, (tMs - step.start * I) / (step.frames * I)));
+
+        return { x: step.from.x + (step.to.x - step.from.x) * u, y: step.from.y + (step.to.y - step.from.y) * u, where, leg: k };
+    }
 
     if (leg.kind !== 'walk') {
         return { x: leg.at.x, y: leg.at.y, where, leg: k };
     }
 
     const fraction = Math.min(1, Math.max(0, (tMs - leg.start * I) / (leg.frames * I)));
-    const p = along(leg.points, leg.length * fraction);
+    // A finished leg is at its end exactly: `along()` re-sums the segments, and over a path with diagonals that sum can
+    // come out a rounding error over `length`, so the last segment is interpolated just short of its end and the walker
+    // stands a hair off its anchor — a second viewer then derives a different trip from it (card#12513).
+    const p = fraction === 1 ? leg.points[leg.points.length - 1] : along(leg.points, leg.length * fraction);
 
     return { x: p.x, y: p.y, where, leg: k };
 }

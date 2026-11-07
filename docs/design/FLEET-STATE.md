@@ -1620,9 +1620,12 @@ CREATE TABLE batches (
   ignored_unknown_kinds SMALLINT UNSIGNED NOT NULL,
   coerced_enum_values   SMALLINT UNSIGNED NOT NULL,
   response_status SMALLINT UNSIGNED NOT NULL,
-  reporter_version  VARCHAR(24) CHARACTER SET ascii NOT NULL,
+  reporter_version  VARCHAR(24) CHARACTER SET ascii NULL,  -- NULL only where the value sent was
+                                               -- off this ASCII column's format: stored NULL and
+                                               -- counted `format_refused.<field>`, the batch accepted
+                                               -- (D18 at the envelope, card#11572)
   reporter_platform ENUM('linux','win32','darwin','other') NOT NULL,
-  runtime_version   VARCHAR(24) CHARACTER SET ascii NOT NULL,
+  runtime_version   VARCHAR(24) CHARACTER SET ascii NULL,  -- as reporter_version
   KEY ix_batch_id (seat_ref, batch_id, received_at),   -- NOT unique: see below
   KEY ix_batch_recv (seat_ref, received_at),
   KEY ix_purge      (received_at)                       -- the purge's range scan (§ 6.7)
@@ -2758,6 +2761,11 @@ samples no fingerprint and takes no `seat_state` lock: it inserts the new seat's
 is no row for it to hold against a fold — and since card#12443 its first statement locks the
 one-row `species_allocation_lock`, which no other writer takes, so the allocation serialises with
 nothing but another allocation ([§ 6.13](#613-the-character-allocation--one-species-per-seat-allocated-at-creation-and-kept-for-life)).
+A **re-issue** for an existing seat does take the seat lock, after the mutex: a transaction that locks or
+writes both a seat's `seat_state` row and its `seats` row takes them through `App\Fleet\SeatLock`, which
+locks `seat_state` first and `seats` second — this section's lock-first order, extended to the pair
+(card#12461). The re-issue and retirement are its callers; before it, the re-issue took `seats` first and
+deadlocked against a retirement of the same seat.
 Read that way, the seat rows written outside the lock are:
 
 - **`Predicates::alarm()`'s updates of `seat_predicates.alarm_since`**, run by the sweep after its per-seat
@@ -2800,6 +2808,17 @@ written at the version the last one already announced and no client would ever b
 skipped. The event stays in `events`: the fix plus `mezzanine:rebuild --seat` recovers the seat exactly,
 which is only true because the log is the source of truth and the projections are derived.
 
+**The quarantine never depends on the step that failed (card#11573).** It writes nothing projected from
+the skipped event — no activity column, no `seq` high-water mark, no batch reporter field — and runs the
+seat-scoped recompute the sweeper and the retirement act use, which writes the badge and the transition
+row. That recompute runs in a savepoint: if it raises too (a seat whose derived columns cannot be computed
+at all), it rolls back alone, `fold_quarantine_recompute_error` increments
+([§ 7.2](#72-this-planes-own-counters-and-badges)), and the quarantine still commits `fold_error`,
+`seat_state.fold_errors` and the cursor advance. Such a quarantine has no transition row; the badge
+follows from `fold_errors` at the seat's next recompute that succeeds. So a poison event is always either
+applied or quarantined, and the cursor always moves past it — a raise inside the quarantine used to leave
+`pass()`, and the seat, still the furthest behind, failed the same way on every pass.
+
 **A `data` string off its published format costs that field, never the event (card#9346).** The ingest
 refuses a field over its byte bound and checks no pattern ([D1 § 12.1](EVENT-SCHEMA.md#121-validation-order)
 step 10), so a value off its pattern reaches `project()`. Every `data` string this fold writes into an
@@ -2815,6 +2834,21 @@ stays a raise. A refused `call_id` or `request_id` is the event's key, so that e
 it, lands nothing beyond the count. The checked population and each field's format are
 `App\Fold\FoldEvent::conforming()`'s callers, with the pattern bodies in `App\Ingest\Wire` and
 `App\Support\Slug`; `git grep -n "conforming(" -- server/app` re-prints it.
+
+**The batch envelope takes the same rule one plane up, at the ingest (card#11572).** `reporter_version`
+and `runtime_version` are the envelope's two free strings, and both land in ASCII columns of `batches`.
+A value inside D1 § 4.2's 24-byte bound that is not ASCII used to fail the `batches` INSERT, answer
+`503 store_failed` and be re-sent unchanged by a reporter whose every batch carries it, so the seat went
+dark. Step 8 (`App\Ingest\BatchValidator`) now stores `NULL` for it and counts `format_refused.<field>`
+inside the write's transaction, and the batch and its events are accepted. The fold copies the `NULL`
+onto `seat_state.reporter_version`, which reads as a seat with no reported build: `update_required` is
+not raised for it and `SchemaVersions::reporterAtLeast()` answers false. The check is the column's
+ASCII, never semver: an ASCII `reporter_version` off semver is stored as sent, because it is the value
+`update_required` badges. A value over the byte bound, empty or not a string is still `422 invalid_batch`.
+The envelope's other columns are a ULID refused at step 8 (`batch_id`, `seq_epoch`), the coerced
+`reporter_platform`, the parsed `sent_at` with the `clock_skew_ms` derived from it, or the server's own;
+`BatchValidator`'s step-8 note names the population. ⚠ `sent_at` is outside this rule: a value the
+tolerant parse accepts can fall outside `DATETIME(3)`'s range and still fail the write.
 
 **Batch size 500 and claim size 8, derived.** 500 events is ~2.5 batches at D1's 200-event cap, so a
 pass consumes a real seat's arrivals in one transaction, whose hold on the seat's lock
@@ -3369,10 +3403,11 @@ which costs that one allocation a species it could have had and nothing else —
 `issue()` keeps its **single attempt**: **the allocation's own locks** — the mutex row, which nothing
 else locks, and the inserts of the new seat's rows — have no deadlock partner, so there is no named
 trigger for a retry on this path, and a borrowed `LOCK_ATTEMPTS` loop would defend a path that does
-not exist. ⚠ That claim is narrowed to the allocation's own locks on purpose: `issue()`'s **re-issue
-path** for an existing seat (its `seats` row `FOR UPDATE`, then `seat_state`'s `insertOrIgnore`) against
-a retirement (`seat_state` first, then `seats`, [§ 6.5](#65-the-fold)) can already deadlock on `dev`
-today, with no allocation involved — out of this card's scope, and filed separately by the review. ⚠ **The alternatives
+not exist. The **re-issue path** for an existing seat locks the seat's `seat_state` row and then its
+`seats` row through `App\Fleet\SeatLock` — the order retirement takes the same pair in
+([§ 6.5](#65-the-fold)) — so a re-issue racing a retirement waits for it instead of deadlocking, and the
+single attempt holds there too (card#12461; until then the re-issue took `seats` first, and the two
+deadlocked). ⚠ **The alternatives
 refused:** a `GET_LOCK` named lock — a second serialisation primitive beside the row locks every other
 writer here uses, and one `App\Building\Layouts::serialise()` already shows the row-lock form of
 (`building_layout`'s current row `FOR UPDATE`, [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)),
@@ -3557,6 +3592,7 @@ for the same reason: a counter with no stated home is a counter two implementers
 | Counter | Stored | Exposed | Incremented when | Consequence |
 |---|---|---|---|---|
 | `fold_error` | `seat_counters`; `seat_state.fold_errors` | seat detail | a wire event raised twice in `project()` and its cursor was advanced past it | seat badges `derivation_error`; the event is replayable |
+| `fold_quarantine_recompute_error` | `seat_counters` | seat detail | the recompute inside a `fold_error` quarantine raised as well, so that quarantine committed its `fold_error`, `fold_errors` and cursor advance without its transition row ([§ 6.5](#65-the-fold), card#11573) | the seat's derived columns could not be computed at that moment; `derivation_error` appears at its next recompute that succeeds, and the server log carries the exception |
 | `fold_lag_alarm_entered` | `seat_counters` | seat detail | a seat's `fold_lag_ms` first crossed 60 s in a lag episode | seat badges `fold_lag`; `fleet.fold` degrades past 300 s |
 | `server_orphan_closes` | `seat_counters` | seat detail | the sweeper closed a call at its materialized `orphan_due_at` | the server-side twin of D1's `orphan_timeout_closes`, counted separately because one is D1's ledger rule and one is this sweeper's execution of it — a divergence between them means the sweeper is not running |
 | `attention_long_wait` | `seat_counters` | seat detail | an attention request was resolved — for the first time, by any path — after a wait of **60 minutes or more** ([§ 4.4](#44-activity-states-every-entry-and-exit-edge)) | visibility only, and it resolves nothing: how often a seat waited on a human for longer than the ceiling card#9527 removed would have let it render. A request still open is not counted; its desk says so with `blocked_since` |
@@ -3566,7 +3602,7 @@ for the same reason: a counter with no stated home is a counter two implementers
 | `compaction_ceiling_closed` | `seat_counters` | seat detail | the sweeper closed a `compaction_open_since` at its 15-minute ceiling ([§ 4.6](#46-every-open-fact-has-a-ceiling)) | rising ⇒ `compaction.end` is not arriving; `PostCompact` is one of D1's un-driven hook stubs, so this is the instrument that says so |
 | `session_close_orphans` | `seat_counters` | seat detail | a `session.end` arrived with calls still open server-side and the server closed them (`abort_reason: session_close`, `close_source: server_session_close`) | rising ⇒ reap `tool.end`s are being lost in transit, since D1's reaps should have closed them on the wire first |
 | `session_close_carried` | `seat_counters` | seat detail | a `session.end` named open calls in `carried_call_ids` and the server left them open (card#11817); counted seat-wide over the named ids still open, not by `session_ref` — after a second `/clear` a carried row's `session_ref` still names the session it was opened in | informational; read beside `server_orphan_closes` on `is_dispatch` rows — carried calls that end at the 60-minute ceiling instead of at a `SubagentStop` are carries the harness did not honour |
-| `format_refused.<field>` | `seat_counters`, one row per wire field | seat detail | the fold met a `data` string, destined for an ASCII column of [§ 6.4](#64-ddl), that fails the format D1 publishes for it — a `turn.start`'s `console_url` off [D1 § 6.3](EVENT-SCHEMA.md#63-turnstart)'s pattern, a heartbeat's `protocol_agent_name` that is not a slug, and every other member [§ 6.5](#65-the-fold) names — and stored `NULL` in its place (`INVALID_TOOL_NAME` for `tool_name`, whose column is `NOT NULL`). Once per event and field (card#9346; until then `console_url` alone was checked, as `console_url_refused`) | none rendered; the field is simply absent and the rest of the event lands. A conforming reporter never sends such a value, so a count here is a reporter that does not check the format it owes, or a value that did not come from a reporter — a reason to look at the seat's token |
+| `format_refused.<field>` | `seat_counters`, one row per wire field | seat detail | the fold met a `data` string, destined for an ASCII column of [§ 6.4](#64-ddl), that fails the format D1 publishes for it — a `turn.start`'s `console_url` off [D1 § 6.3](EVENT-SCHEMA.md#63-turnstart)'s pattern, a heartbeat's `protocol_agent_name` that is not a slug, and every other member [§ 6.5](#65-the-fold) names — and stored `NULL` in its place (`INVALID_TOOL_NAME` for `tool_name`, whose column is `NOT NULL`). Once per event and field (card#9346; until then `console_url` alone was checked, as `console_url_refused`). The ingest counts the same family for the batch envelope's `reporter_version` and `runtime_version`: a value inside D1 § 4.2's byte bound and outside its `batches` column's ASCII is stored `NULL`, once per accepted batch and field, and the batch is accepted (card#11572; until then the write failed and the batch took `503 store_failed` on every retry) | none rendered; the field is simply absent and the rest of the event, or of the batch, lands. A conforming reporter never sends such a value, so a count here is a reporter that does not check the format it owes, or a value that did not come from a reporter — a reason to look at the seat's token |
 | `fold_window_purged` | `seat_counters` | seat detail | the fold's emptiness proof found its unfolded window gone to [§ 6.7](#67-retention-and-purge)'s purge, so the cursor advances to the head that proof covered rather than the seat re-claiming forever ([§ 6.5](#65-the-fold)). Counted on the **proof**, not on the guarded cursor write: a pass that loses the race to an ingest advances nothing and still admits the purge, because the same window is jumped by the ordinary branch on a later pass and that jump must not be silent | non-zero ⇒ that seat's state is honest but shorter, and the fold was down longer than retention; the same admission `rebuild_truncated` makes |
 | `state_rebuilds` / `rebuild_truncated` | `seat_counters` | seat detail | a `mezzanine:rebuild` ran / ran against a window shorter than the seat's history | operator-visible; a truncated rebuild's state is honest but shorter |
 | `sweep_seat_error` | `seat_counters` | seat detail | a sweep pass's work on that seat threw anything but a concurrency error, and the pass skipped the seat and went on ([§ 2.1](#21-processes)) | that seat's time-derived transitions did not advance that pass; the pass counts it among its failed seats and `mezzanine:sweep` prints the count |
@@ -3665,9 +3701,11 @@ the seat already holds. **How the badge is judged:** `Badges::serverFor()` compa
 `seat_state.reporter_version` — the last batch envelope's `reporter_version`, which the fold writes from
 the `batches` row ([§ 6.5](#65-the-fold)) — against that constant through one predicate,
 `SchemaVersions::reporterIsOutdated(?string)`, whose four answers are the whole rule: **null ⇒ not
-raised** — the seat's `reporter_version` is null, and there is no reported build to be behind. Null has
-two routes, and the badge follows both: the seat has sent no batch ([§ 4.5](#45-link-states) rule 1
-already renders it `offline` with *no data yet*), or [§ 6.6](#66-rebuild-from-the-log)'s rebuild reset
+raised** — the seat's `reporter_version` is null, and there is no reported build to be behind. The badge
+follows null by each of its routes: the seat has sent no batch ([§ 4.5](#45-link-states) rule 1
+already renders it `offline` with *no data yet*); its last batch's `reporter_version` was not ASCII, so
+the ingest stored it null and counted `format_refused.reporter_version` ([§ 6.5](#65-the-fold),
+card#11572); or [§ 6.6](#66-rebuild-from-the-log)'s rebuild reset
 the column and refilled it only from `batches` rows that [§ 6.7](#67-retention-and-purge)'s purge had not
 yet deleted (`batches` is purged on `received_at` beside `events`), so a seat dark for longer than that
 retention comes back from a rebuild with null and its badge cleared until it next reports; **a value the version grammar does not
@@ -6066,8 +6104,13 @@ and the gate on trusting the derived signal at all.*
   reporter) → `A` closed `server_session_close` and `session_close_orphans` +1; a non-array value →
   both sweeps run; a member off the ULID format → ignored, `A` spared; a second clear naming `A`
   again while its `session_ref` is still the first session → `session_close_carried` +1 again (the
-  count is seat-wide). **RED:** the server ignoring `carried_call_ids` → the GREEN's first half fails,
-  `A` closed `server_session_close` at the `session.end`.
+  count is seat-wide). **The turn-open variant (card#12013):** the same stream with the parent's
+  `turn.end` lost, so the `session.end` finds the turn open and the server's turn-open sweep closes the
+  turn → `A` is still open, `session_close_carried` is 1 and `session_close_orphans` is unchanged. The
+  two sweeps are separate queries and each must spare a carried call; this variant is the case γ
+  stream that reaches the turn-open one with a call carried. **RED:** the server ignoring `carried_call_ids` → the GREEN's first
+  half fails, `A` closed `server_session_close` at the `session.end`; the turn-open sweep alone
+  ignoring it → the turn-open variant fails the same way.
 
 ### AT-D2-3 stale, offline and disabled are rendered, never idle
 
@@ -7004,10 +7047,11 @@ test over `CharacterAllocation::choose()` with no store.*
   population's plain read above the mutex lock → the presence leg still passes (the lock is held at the
   seam), and the **outcome leg reds on species**: the issuing seat is allocated its own draw, the one
   the probe's committed seat holds, because its snapshot predates the probe. Its sibling plant — the
-  `uq_seat` lookup moved above the mutex — reds the outcome leg by one of two routes **in this
-  harness**: the probe's insert into the issuing seat's `uq_seat` gap waits on that lookup's gap lock
-  and times out at its pinned one second (`1205`), or, where the server lets it through, the issuing
-  seat is allocated the probe's species and the leg reds on species. (The `1213` the review measured on
+  `uq_seat` lookup moved above the mutex — reds the outcome leg on species: the lookup is a plain read,
+  so above the mutex it opens the read view, and the issuing seat is allocated the probe's species
+  (measured on card#12461, which made the lookup a plain read; while it was a locking read, the probe's
+  insert into the issuing seat's `uq_seat` gap could instead wait on its gap lock and time out at its
+  pinned one second, `1205`). (The `1213` the review measured on
   MariaDB 11.8.6 under REPEATABLE READ in round 4 is the two-creations shape, which this one-issue
   harness does not form.) The leg reports whichever it meets by name, and the plant that moves the seam
   instead of the code is the one this RED deliberately is not.
@@ -7794,7 +7838,7 @@ prints by name on every run rather than reporting a clean over it.
 | S27 | § 3.4, § 9.2 | The heartbeat plus a server-side staleness alarm is the structural backstop; no gating on undocumented environment markers; every predicate reports both branches and is alarmed when one goes constant | [§ 5](#5-server-side-predicates-and-their-controls) (all three rules, restated for this plane with its own predicates and controls) |
 | S28 | § 9.3, § 11.3 | `spool_dropped_events` badges the seat `lossy` **and the number is rendered** — a loss is never a badge alone | [§ 7.3](#73-how-the-reporters-own-counters-are-handled) (badges render with their counter value and `uptime_s`), [§ 7.1](#71-d1s-server-side-counters--where-they-live) (no server counter writes `lossy`, so the rendered number always belongs to the badge beside it) |
 | S29 | § 6.2 | **A consumer must not read `end_reason: "other"` as a degradation signal** — it is "a common value, not a residue", the majority of D1's own capture run, and what a non-interactive `claude -p` session ends with | [§ 6.4](#64-ddl) (`sessions.end_reason` carries `other` as an ordinary member), [§ 4.8](#48-what-may-never-mint-a-state) (the explicit row: no badge, no degradation, no rule reads it), [AT-D2-1](#at-d2-1-idle-is-minted-by-exactly-one-rule) (a `clean_turn_then_exit` with `end_reason: other` leaves `badges` empty and moves no counter) |
-| S30 | § 6.3 | `console_url` is stored against its session as of the newest `turn.start`, a value failing D1's pattern is refused at the fold, and the member reaches an **operator** only — never the seat object, the snapshot or the stream (card#9416) | [§ 6.4](#64-ddl) (`sessions.console_url`), [§ 7.2](#72-this-planes-own-counters-and-badges) (`console_url_refused`), [§ 8.2.3](#823-the-seat-detail-response) (`detail.console_url`, gated) |
+| S30 | § 6.3 | `console_url` is stored against its session as of the newest `turn.start`, a value failing D1's pattern is refused at the fold, and the member reaches an **operator** only — never the seat object, the snapshot or the stream (card#9416) | [§ 6.4](#64-ddl) (`sessions.console_url`), [§ 7.2](#72-this-planes-own-counters-and-badges) (`format_refused.console_url`), [§ 8.2.3](#823-the-seat-detail-response) (`detail.console_url`, gated) |
 | S31 | § 4.1 | a seat whose last reported `reporter_version` is behind `current_reporter_version` — the server's copy of the build it was built with, pinned to the artifact — is badged `update_required`, and neither reporter-version member refuses a batch (card#11818 part 2) | [§ 7.2](#72-this-planes-own-counters-and-badges) (the predicate, where the constant lives, what it never refuses), [§ 13](#13-decisions-taken-revisable-at-review) row 59 |
 | S32 | § 6.15 | a `subagent.activity` sets the `activity_state` of the one OPEN DISPATCH call it names, guarded on that call's own last-writer-wins triple and never on its `applied_*` one, moves no seat state, no `last_activity_*` and no badge, and creates no row; `subagents[].activity_state` is `working` from the call's open (card#12451) | [§ 6.4](#64-ddl) (`calls.activity_state` and its triple), [§ 6.5](#65-the-fold) (the projection), [§ 3.2](#32-the-activity-event-set) and [§ 4.8](#48-what-may-never-mint-a-state) (not activity, mints no state), [§ 8.2.1](#821-the-seat-state-object) (the member), [AT-D2-32](#at-d2-32-an-interns-activity-is-the-reporters-word-and-an-open-dispatch-is-working-until-it-says-otherwise) |
 | S33 | § 3.1 (*`board_user_id` and `board_api_base`*, card#12447) | the seat's declared board user and board fingerprint are stored off the seat object as the last heartbeat's values and **checked against the board before anything joins on them** — by the board poll's link pass, never the fold | [§ 2.1](#21-processes) (the board poll row), [§ 6.4](#64-ddl) (`board_user_declared`, `board_fingerprint_declared`, `seats.board_user_source`), [§ 6.5](#65-the-fold), [§ 7.2](#72-this-planes-own-counters-and-badges); `BOARD-TASK.md § 4.4` |

@@ -188,8 +188,10 @@ final class SeatRetirement
             // § 6.5's lock-first rule. Without it, a writer that commits to this seat between the
             // sample and the recompute's own `seat_state` write turns that write into a `1020`
             // ("Record has changed since last read"), and a writer that holds the row and then
-            // needs one this act already holds closes a deadlock.
-            DB::table('seat_state')->where('seat_ref', $seatRef)->lockForUpdate()->value('seat_ref');
+            // needs one this act already holds closes a deadlock. The `seats` row this act writes below is
+            // locked with it, in `SeatLock`'s one order (card#12461): `issue()`'s re-issue takes the same pair
+            // the same way, so the two serialise here instead of deadlocking.
+            SeatLock::forUpdate($seatRef, ['id']);
 
             // ⛔ SAMPLED BEFORE THE `seats` WRITE BELOW — card #7837, and this is a SIBLING of that
             // card's fold defect rather than a precaution.

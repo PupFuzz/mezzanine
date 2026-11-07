@@ -240,6 +240,28 @@ class At2ClearTraceMintsNoIdleTest extends FoldTestCase
         $this->assertSame(0, $this->counter('late_close_cross_session'));
     }
 
+    public function test_case_gamma_a_carried_dispatch_stays_open_when_the_clear_lands_with_its_turn_open(): void
+    {
+        // The reporter emits `turn.end` before `session.end`, so the turn-open sweep in
+        // `Projector::sessionEnd` runs only when that `turn.end` is lost or arrives after the
+        // `session.end`. It is a separate query from the turn-closed sweep, and it must leave the
+        // carried dispatch open too (card#12013).
+        [$events, $dispatch] = $this->carriedClearTrace([fn (string $a) => [$a]]);
+        unset($events[3]);                            // the parent's turn.end never arrives
+        $events = array_values($events);
+
+        $this->deliver(array_slice($events, 0, 5));   // …through the session.start after the clear
+        $this->fold();
+
+        $session = DB::table('sessions')->where('seat_ref', $this->seatRef)
+            ->where('session_id', $this->sessionId)->first();
+        $this->assertSame('session_close', $session->turn_close_source, 'the turn-open sweep did not run');
+        $this->assertNull($this->callRow($dispatch)->closed_at, 'the turn-open sweep closed the carried dispatch');
+        $this->assertSame(1, $this->openDispatches());
+        $this->assertSame(0, $this->counter('session_close_orphans'));
+        $this->assertSame(1, $this->counter('session_close_carried'));
+    }
+
     public function test_case_gamma_controls_an_absent_or_malformed_carry_is_swept(): void
     {
         // An older reporter: nothing carried, so the session close sweeps the dispatch as before.

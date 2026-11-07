@@ -259,8 +259,9 @@ is not supported"*. The macOS facts this rests on are [§ 6](#6-macos)'s, each m
 **Windows — no supervisor** (Option A, the operator's ruling of 2026-10-25, card#12335). A hook fires
 around a Claude Code tool call, not inside one, so inside one `install.js` run no flusher would start
 and `arrival` would wait its whole window for nothing. The `supervisor` step on `win32` therefore
-spawns `node <artifact> flusher` **unconditionally**, with the reporter's own spawn options
-(`detached`, `stdio: 'ignore'`, `windowsHide`, `unref` — D1 P-7) and `COORD_CONFIG` from the
+spawns `node <artifact> flusher` **unconditionally**, through the reporter's own spawn, `spawnFlusher`
+(`detached`, `stdio: 'ignore'`, `windowsHide`, `unref`, the user's home as its working directory — D1 P-7,
+card#12471) and `COORD_CONFIG` from the
 resolver: the flusher's `acquireLock` makes a loser exit 0 at once (`fleet-reporter.js:3516`,
 `:4409`), so the installer carries **no copy of `maybeRespawnFlusher`'s lock logic** and cannot drift
 from it. It **then waits, bounded by `K.LOCK_STALE_MS` read from the artifact, for a lock naming a
@@ -509,7 +510,7 @@ says; **all** = the three runners, **lin/win/mac** = that runner, **seat** = the
 | R-all-4 | the take rule: a file nobody else could reach ⇒ no warning; group-readable in a traversable chain ⇒ warning naming group, the window from `birthtime`/`ctime` (a copy with an old `mtime` still reports the copy's age), the accounts; a file already at the named path ⇒ not moved; after every take the named file is 0600 in 0700 (POSIX) or owner-only (win), and the config write passes; the file is gone afterwards | all |
 | R-all-5 | the token in no stdout, stderr, argv or environment of any spawned process — strace on lin; *not measured* recorded on win/mac | lin (+ recorded elsewhere) |
 | R-all-6 | second run on a current seat: owned files keep bytes and mtimes, no restart, attempt directory removed, `ALREADY CURRENT` | all |
-| R-all-7 | upgrade in place from a seat laid out by today's `install.sh` (lin) and by card#12335's hand-run section (win): artifact replaced first, flusher stopped second, the holder-after-artifact check PASSes; the crontab block reads `already current` on lin; a run against the Windows layout re-checks the ACLs and starts the flusher | lin win |
+| R-all-7 | upgrade in place from a seat laid out by today's `install.sh` (lin) and by card#12335's hand-run section (win): artifact replaced first, flusher stopped second, the holder-after-artifact check PASSes; the crontab block reads `already current` on lin; a run against the Windows layout re-checks the ACLs and starts the flusher; a flusher whose read of the previous artifact is held across an install, and which takes the lock after it, is the previous build (card#12476; its RED judges by `started_at`) | lin win |
 | R-win-3 | a `settings.json` fixture in the documented quoted forward-slash form (`INSTALL-LINUX.md:2502-2503`): an upgrade leaves it **byte-equal** (no second entry per hook); `--uninstall` removes exactly those entries; a backslash-form entry planted beside them is recognised as the reporter's too | win |
 | R-all-13 | the crontab read: stderr `no crontab for <user>` with status 1 ⇒ empty, the block written; any other failure (a stub exiting 1 with other text, or exiting 2) ⇒ the step refuses and `crontab` is never called with a file, at install and at uninstall | lin |
 | R-all-14 | `reporter-version-guard.py`: a helper edited **outside** the `artifact` region that changes `--render-shipping`'s crontab, plist or hook output ⇒ FAIL naming `supervisor` or `hooks`; a missing or duplicated region at a rev that has `install.js`, or a render failing at such a rev ⇒ exit 2 | all |

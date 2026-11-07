@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Auth;
 
+use App\Auth\RememberedBrowser;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -62,6 +63,8 @@ class TwoFactorRecoveryCodeController extends Controller
             // with nothing to show is one that never enrolled — and `mfa` on this route has
             // already refused that.
             'codes' => $user->recoveryCodes(),
+            // Card#12186 · the page's "Remembered browsers" section.
+            'browsers' => RememberedBrowser::listFor($request, $user),
         ]);
     }
 }

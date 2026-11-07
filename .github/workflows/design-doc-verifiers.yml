@@ -49,7 +49,9 @@
 # installs ONE pinned headless Chromium and runs `floor-ride.browser.mjs --row starts --selftest`:
 # the lobby and a floor, each loaded once, red on any uncaught exception and on a page that never
 # asks for its stream or never draws its first scene, with that row's own plants each required to
-# red on the same checkout. It is the only browser row wired, and it drives no ride and no timing.
+# red on the same checkout. It is the only floor-ride row wired, and it drives no ride and no timing. The same
+# job runs the character species distinctness check (card#12796, card#12842, `tools/characters/distinct.browser.mjs
+# --selftest`): a static render of the generator's standing frames, with its own planted controls.
 # The job also runs `seat-token-file.selftest.mjs` (card#12571), which needs its PHP and no browser.
 #
 # WHAT IS DELIBERATELY NOT WIRED HERE, AND WHY — the gates in `tools/design/` named below.
@@ -169,6 +171,22 @@ jobs:
       - name: Artifact gate (floor-preview.html, with its own planted controls)
         run: node tools/design/floor-preview.selftest.mjs
 
+      # card#12787: fx-snack.json and the four `fixtures/maps/snack-*.json` copies of the shipped default are
+      # generated from `resources/floor/default.tmj`. `--check` writes nothing and reds naming each file that
+      # differs from what the generator would write, so a default.tmj change that leaves a copy behind reds here
+      # rather than leaving a fixture drawing the old office. Stock `node`, no dependencies. card#12786: the same
+      # generator writes fx-restroom.json and the three `fixtures/maps/restroom-*.json` copies, and replays four of
+      # its runs through the harness's own probe (`fleet-client-probe.mjs`, node builtins only) to read a visit's legs.
+      - name: fx-snack, fx-restroom and their maps are the generator's output over the current default
+        run: node tools/design/gen-fx-snack.mjs --check
+
+      # card#12466: fx-turn-back.json is committed runs with deltas placed inside the legs the shipped floor screen draws
+      # for each walk, read by replaying the run through the harness's probe. A re-routed desk, a moved plate or a
+      # re-seeded wait moves those instants; `--check` reds when the committed file no longer matches the generator. It
+      # holds fx-turn-back-fuzz.json too: the seeded flips over committed runs, from the generator's committed seeds.
+      - name: fx-turn-back and its fuzz set are the generator's output over the shipped floor screen
+        run: node tools/design/gen-fx-turn-back.mjs --check
+
   # THE BROWSER SMOKE (card#12326). The lobby (`/dashboard`) and a floor (`/floor/aimla`), each loaded
   # once in headless Chromium, as the served markup (`render-floor-view.php` renders each view through
   # the layout, so it needs `php` and `server/`'s composer install, and no database and no `.env`), the
@@ -260,3 +278,12 @@ jobs:
 
       - name: The lobby and a floor start (no uncaught exception, the stream asked for, a scene drawn), with the row's own planted controls
         run: node tools/design/floor-ride.browser.mjs --row starts --selftest
+
+      # card#12796, card#12842: every pair of character species is told apart by silhouette or by body colour, measured
+      # from the generator's standing frames as this pinned Chromium draws them. `--selftest`
+      # runs the planted controls on this checkout: dev's pale pumpkin beside the hedgehog (the pair the operator named)
+      # and a species appended as a copy of an existing one must each be flagged. No ride, no timing: a static render.
+      # `!cancelled()`: independent of the smoke row above, so one push reports both verdicts.
+      - name: Character species are told apart (silhouette or colour), with the check's own planted controls
+        if: ${{ !cancelled() }}
+        run: node tools/characters/distinct.browser.mjs --selftest

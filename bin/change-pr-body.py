@@ -105,8 +105,8 @@ HIGHLIGHTS_PLACEHOLDER = (
     "     now refuses, the file that must exist before first run, the behaviour that changed\n"
     "     under a key they already set. Never the builder's terms (the symbol that moved, the\n"
     "     guard added, the copies deleted): a change with no installer-visible face gets NO line\n"
-    "     here and is carried by `docs/CHANGELOG.md`. Delete this comment when you have written\n"
-    "     them. -->")
+    "     here and is carried by its changelog note, `docs/changelog.d/<card>.md`. Delete this\n"
+    "     comment when you have written them. -->")
 
 UPGRADE_PLACEHOLDER = (
     "<!-- AUTHOR: an INSTRUCTION with its ordering, not a description of the change — the\n"

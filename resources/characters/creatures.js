@@ -1,12 +1,16 @@
 // The creature generator — first-party, card#11046 (docs/design/FLOOR.md § 10.2, § 10.4).
 //
-// Every character is an original animal or vegetable creature, drawn as a STANDALONE SVG DOCUMENT per
+// Every character is an original animal, vegetable or fruit creature, drawn as a STANDALONE SVG DOCUMENT per
 // frame and selected from its key through seed.js's draw — the same key, the same document, on every
 // engine and every reload. The one exception is the BODY of a seat on a floor: the species the server
 // allocated it and delivers (`character.species`, card#12443), which the painter hands in as `force` /
 // `species`; everything else is still the key's draw. The species of the operator-approved design sheet
-// (2026-10-05) are ported and not redesigned; the seat's two additions to them are the faint light rim (`RIM`)
-// and the hedgehog's softer, curved spines. The species marked `added` (card#12212) are the seat's own drawing to
+// (2026-10-05) are ported and not redesigned, but for the pumpkin; the seat's two additions to them are the faint light
+// rim (`RIM`) and the hedgehog's softer, curved spines; and the operator has since had the pumpkin redrawn as a squat,
+// jack-o'-lantern orange Halloween pumpkin, and the pepper's orange made a yellow-green (2026-11-02, card#12795); and the
+// bell pepper, cabbage, frog, rabbit, hedgehog, bear and owl redrawn apart by outline (2026-11-04, card#12842: the
+// pepper's lobes and stem, the cabbage's ruff, the frog's back legs, the lop's wide ears, the hedgehog's crown spines,
+// the bear's ears, the owl's tufts and wings). The species marked `added` (card#12212, card#12796) are the seat's own drawing to
 // the same look, appended to the one list every key draws its species from (FLOOR.md § 10.4's growth bullet).
 //
 // ⛔ This module builds DOCUMENTS, never URIs: the painter makes the `data:` URI, so no text in the asset
@@ -113,6 +117,7 @@ function makeCtx(pen, key, P, st) {
 }
 
 export const GREENS = ['#79a85a', '#8db55e', '#6b9a52', '#9ab062'];
+const PUMPKIN_STEM = shade(GREENS[2], 0.22);   // a green stem, a shade under the green of its curl (card#12795)
 
 // ---- the species: each draws its BODY and returns where the shared features go ----
 // face {y, es (eye half-spacing), s (eye scale), my (mouth y), ms (mouth scale), beak}
@@ -150,9 +155,11 @@ const APPROVED = {
     hats: ['beret', 'beanie', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
     build(c) {
       const [b, m] = c.P, X = c.X;
+      // card#12842: big round ears set high and wide on the crown — the bear's outline is a round head with two round
+      // ears standing clear of it, never the owl's one tall egg with its pointed tufts
       for (const s of [-1, 1]) {
-        c.back(c.ell(X(s * 29), 66, 12.5, 12, b));
-        c.back(`<ellipse cx="${X(s * 29)}" cy="67" rx="6.5" ry="6" fill="${c.pen.paint(m)}"/>`);
+        c.back(c.ell(X(s * 31), 61, 15, 14.5, b));
+        c.back(`<ellipse cx="${X(s * 31)}" cy="62.5" rx="8" ry="7.5" fill="${c.pen.paint(m)}"/>`);
       }
       const body = c.sym([[0, 116], [26, 122], [36, 146], [37, 168], [29, 183], [0, 186]]);
       c.body(c.shape(body, b));
@@ -182,7 +189,9 @@ const APPROVED = {
       }
       c.body(c.shape(c.sym([[0, 118], [22, 123], [30, 146], [32, 168], [26, 183], [0, 186]]), b));
             c.body(c.shape(c.sym([[0, 64], [22, 66], [34, 80], [37, 98], [33, 115], [20, 126], [0, 129]]), b));
-      if (lop) for (const s of [-1, 1]) c.body(`<g transform="rotate(${-s * 16} ${X(s * 30)} 74)">${c.ell(X(s * 34), 98, 10, 26, b)}<ellipse cx="${X(s * 34)}" cy="100" rx="4.6" ry="18" fill="${inner}" opacity=".75"/></g>`);
+      // card#12842: the lop's ears are long and swing out wide from the crown — a wide, long-eared outline where the
+      // hedgehog's ring of spines narrows to its body (no wider than the pumpkin, the widest intern the stool frame holds)
+      if (lop) for (const s of [-1, 1]) c.body(`<g transform="rotate(${-s * 21} ${X(s * 28)} 74)">${c.ell(X(s * 31), 104, 10.5, 32, b)}<ellipse cx="${X(s * 31)}" cy="107" rx="5" ry="23" fill="${inner}" opacity=".75"/></g>`);
       for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * 5.5)}" cy="112.5" rx="6.6" ry="5.4" fill="${c.pen.paint(m)}"/>`);
       c.body(c.flat(`M50.8 106.6Q54 105.2 57.2 106.6Q55.6 110 54 110.4Q52.4 110 50.8 106.6Z`, '#e08c88'));
       return { face: { y: 97, es: 13, s: 1, my: 118, ms: 0.8 }, hat: { x: 54, y: 65, w: 29 }, neck: { y: 124, w: 27 * c.st },
@@ -196,15 +205,16 @@ const APPROVED = {
     hats: ['beret', 'beanie', 'flower', 'ladybug', 'straw'], necks: ['scarf', 'neckerchief'], extras: ['glasses', 'satchel'],
     build(c) {
       const [b, m] = c.P, X = c.X;
-      for (const s of [-1, 1]) c.back(c.shape(`M${X(s * 18)} 60Q${X(s * 28)} 50 ${X(s * 31)} 42Q${X(s * 34)} 48 ${X(s * 33)} 52Q${X(s * 38)} 52 ${X(s * 39)} 70Z`, b));
+      // card#12842: tall pointed ear tufts, a horned owl's, rising well over the crown
+      for (const s of [-1, 1]) c.back(c.shape(`M${X(s * 16)} 62Q${X(s * 27)} 48 ${X(s * 32)} 30Q${X(s * 36)} 42 ${X(s * 35)} 50Q${X(s * 40)} 52 ${X(s * 40)} 72Z`, b));
       const body = c.sym([[0, 52], [26, 55], [40, 72], [44, 102], [44, 140], [38, 168], [24, 183], [0, 186]]);
       c.body(c.shape(body, b));
       const dots = [[-14, 134, 1.6], [9, 140, 1.3], [-4, 152, 1.8], [16, 158, 1.4], [-17, 164, 1.3], [4, 170, 1.5]];
       for (const [dx, y, r] of dots) c.body(`<circle cx="${X(dx)}" cy="${y}" r="${r}" fill="${shade(b, 0.3)}" opacity=".45"/>`);
       c.body(`<path d="${c.sym([[0, 79], [13, 73], [28, 77], [33, 95], [27, 111], [13, 118], [0, 115]])}" fill="${c.pen.paint(m)}" stroke="${line(m)}" stroke-width=".9" opacity=".97"/>`);
       for (const s of [-1, 1]) {
-        c.front(c.shape(`M${X(s * 36)} 110C${X(s * 50)} 126 ${X(s * 49)} 162 ${X(s * 35)} 174C${X(s * 33)} 150 ${X(s * 30)} 128 ${X(s * 36)} 110Z`, shade(b, 0.12)));
-        c.front(`<path d="M${X(s * 40)} 132Q${X(s * 43)} 146 ${X(s * 39)} 160M${X(s * 36)} 136Q${X(s * 38)} 150 ${X(s * 36)} 164" stroke="${shade(b, 0.4)}" stroke-width="1" fill="none" opacity=".5" stroke-linecap="round"/>`);
+        c.front(c.shape(`M${X(s * 36)} 108C${X(s * 55)} 122 ${X(s * 56)} 162 ${X(s * 36)} 178C${X(s * 33)} 152 ${X(s * 30)} 128 ${X(s * 36)} 108Z`, shade(b, 0.12)));
+        c.front(`<path d="M${X(s * 43)} 130Q${X(s * 47)} 146 ${X(s * 43)} 162M${X(s * 38)} 134Q${X(s * 41)} 150 ${X(s * 38)} 166" stroke="${shade(b, 0.4)}" stroke-width="1" fill="none" opacity=".5" stroke-linecap="round"/>`);
       }
       c.front(`<g data-part="mouth"><path d="M49.4 103Q54 100.4 58.6 103Q56 111 54 113Q52 111 49.4 103Z" fill="${c.pen.paint('#e3a447')}" stroke="#8a5a2a" stroke-width="1" stroke-linejoin="round"/></g>`);
       return { face: { y: 94, es: 13.5, s: 1.22, my: null, ms: 1, beak: true }, hat: { x: 54, y: 54, w: 28 }, neck: { y: 121, w: 40 * c.st },
@@ -217,9 +227,15 @@ const APPROVED = {
     hats: ['ladybug', 'flower', 'sprig'], necks: ['bow', 'neckerchief', 'scarf'], extras: ['glasses', 'satchel', 'mug', 'book'],
     build(c) {
       const [b, m] = c.P, X = c.X;
-      const body = c.sym([[0, 80], [11, 77], [16, 66], [24, 62], [33, 66], [39, 80], [46, 102], [47, 130], [45, 156], [38, 176], [24, 185], [0, 186]]);
+      // card#12842: a frog SITTING — tall eye domes over a wide head, a waist, and the folded back legs bulging out low
+      // on either side, so the frog's outline widens to its foot where the bell pepper's narrows to its lobes
+      const body = c.sym([[0, 80], [11, 76], [16, 63], [25, 57], [34, 62], [40, 78], [46, 100], [43, 124], [37, 146], [35, 168], [26, 184], [0, 186]]);
       c.body(c.shape(body, b));
-      c.body(`<ellipse cx="54" cy="158" rx="${f(31 * c.st)}" ry="26" fill="${c.pen.paint(m)}" clip-path="${c.pen.clip(body)}" opacity=".95"/>`);
+      c.body(`<ellipse cx="54" cy="160" rx="${f(25 * c.st)}" ry="25" fill="${c.pen.paint(m)}" clip-path="${c.pen.clip(body)}" opacity=".95"/>`);
+      for (const s of [-1, 1]) {
+        c.body(c.ell(X(s * 37), 165, 16 * c.st, 20, shade(b, 0.04)));
+        c.body(`<path d="M${X(s * 30)} 152Q${X(s * 40)} 146 ${X(s * 47)} 156" stroke="${tint(b, 0.4)}" stroke-width="1.6" fill="none" opacity=".6" stroke-linecap="round"/>`);
+      }
       if (chance(c.key, 'spots', 1, 2)) for (const [dx, y, r] of [[-37, 116, 4], [38, 122, 3.2], [-30, 136, 3], [33, 140, 3.6]]) c.body(`<circle cx="${X(dx)}" cy="${y}" r="${r}" fill="${shade(b, 0.18)}" opacity=".5"/>`);
       return { face: { y: 79, es: 24 * c.st, s: 1.05, my: 101, ms: 1.6 }, hat: { x: 54, y: 78, w: 10 }, neck: { y: 118, w: 44 * c.st },
         arms: { y: 157, dx: 40 * c.st, col: b }, feet: { dx: 24 * c.st, col: shade(b, 0.12), rx: 13 }, shadow: 44 * c.st, blushDx: 8 };
@@ -250,18 +266,22 @@ const APPROVED = {
       const [b, m] = c.P, X = c.X, cy = 112;
       // Softer, curved spines (card#11046): each spine a rounded tip swept a little toward the back,
       // valleys and tips joined by curves — never the straight saw-tooth a zigzag polyline reads as at 4x.
+      // card#12842: the crown's spines longer and pointier, a spiky crest over the face that the rabbit's soft round head
+      // never has; toward the sides they shorten back to card#11046's length, so the body's width at the lap is unchanged
       const N = 15, a0 = -205, a1 = 25, at = (i) => (a0 + (a1 - a0) * i / (N * 2)) * Math.PI / 180;
       const pt = (a, r) => [54 + Math.cos(a) * r * c.st, cy + Math.sin(a) * r * 1.02];
+      // how far a spine's tip stands out at angle a: 50 at the sides, rising to CREST over the crown (a = −90°)
+      const CREST = 68, up = (a) => Math.max(0, Math.cos(a + Math.PI / 2) * 1.4 - 0.4);
       let spikes = `M${X(-30)} 168L${pt(at(0), 41).map(f).join(' ')}`;
       for (let i = 1; i < N * 2; i += 2) {
-        const tip = pt(at(i) + 0.05, 50), v = pt(at(i + 1), 41.5);
-        const c1 = pt(at(i - 0.55), 47.5), c2 = pt(at(i + 0.45), 47.5);
+        const len = 50 + (CREST - 50) * up(at(i)), tip = pt(at(i) + 0.05, len), v = pt(at(i + 1), 41.5);
+        const c1 = pt(at(i - 0.55), 47.5 + (len - 50) * 0.5), c2 = pt(at(i + 0.45), 47.5 + (len - 50) * 0.5);
         spikes += `Q${c1.map(f).join(' ')} ${tip.map(f).join(' ')}Q${c2.map(f).join(' ')} ${v.map(f).join(' ')}`;
       }
       spikes += `L${X(30)} 168Z`;
       c.back(`<path d="${spikes}" fill="${c.pen.paint(b)}" stroke="${line(b)}" stroke-width="1.5" stroke-linejoin="round"/>`);
       for (let i = 1; i < N * 2; i += 2) {
-        const p0 = pt(at(i), 36), p1 = pt(at(i) + 0.03, 41), p2 = pt(at(i) + 0.04, 45.5);
+        const len = 50 + (CREST - 50) * up(at(i)), p0 = pt(at(i), 36), p1 = pt(at(i) + 0.03, 41 + (len - 50) * 0.4), p2 = pt(at(i) + 0.04, len - 4.5);
         c.back(`<path d="M${p0.map(f).join(' ')}Q${p1.map(f).join(' ')} ${p2.map(f).join(' ')}" stroke="${tint(b, 0.35)}" stroke-width="1.2" fill="none" stroke-linecap="round" opacity=".55"/>`);
       }
       for (const s of [-1, 1]) c.back(c.ell(X(s * 23), 73, 6.5, 6.5, m));
@@ -402,18 +422,29 @@ const APPROVED = {
   },
   pumpkin: {
     kind: 'vegetable', label: 'pumpkin',
-    pals: [['#e08a3c'], ['#efe2c4'], ['#8fa0a3'], ['#d9a441', 'stripe'], ['#c8562e']],
+    // A traditional Halloween pumpkin (the operator's rulings of 2026-11-02, card#12795): jack-o'-lantern orange, bright
+    // through deep, in every colourway, darker than every orange, yellow and red carrot colourway by CIELAB L*, far more
+    // saturated than any hedgehog colour and apart from every bell pepper colourway by CIEDE2000; and a wide, squat body of
+    // deep ribbed lobes under a green, curly stem, apart from the pepper and the hedgehog by outline. The selftest's
+    // section 2b holds the colours and its outline leg the shape.
+    pals: [['#cc5800'], ['#c45200'], ['#ba4a00'], ['#c85600', 'stripe'], ['#b04400']],
     hats: ['ladybug', 'flower', 'sprig'], necks: [], extras: ['glasses', 'mug', 'book'],
     build(c) {
       const [b, stripe] = c.P, X = c.X;
-      const body = c.sym([[0, 73], [10, 67], [24, 66], [38, 74], [46, 94], [48, 122], [45, 152], [36, 174], [20, 185], [0, 186]]);
-      c.body(c.shape(body, b));
-      for (const dx of [-32, -14, 14, 32]) c.body(`<path d="M${X(dx * 0.4)} 70C${X(dx * 1.45)} 88 ${X(dx * 1.45)} 166 ${X(dx * 0.5)} 185" stroke="${stripe ? tint(b, 0.6) : shade(b, 0.25)}" stroke-width="${stripe ? 3.2 : 1.4}" fill="none" opacity="${stripe ? 0.7 : 0.6}" stroke-linecap="round"/>`);
-      c.body(c.shape(`M51 70C50 58 56 48 62 46L65 50.5C60 53 58 60 58 70Z`, '#7f6a3a'));
-      c.body(`<path d="M61 56C68 54 72 60 68 63C65 65 63 61 66 60" stroke="#6b9a52" stroke-width="1.6" fill="none" stroke-linecap="round"/>`);
-      if (chance(c.key, 'pleaf', 1, 2)) c.body(c.leaf(51, 66, -62, 18, 8, GREENS[1]));
-      return { face: { y: 106, es: 16, s: 1.05, my: 122, ms: 1 }, hat: { x: 46, y: 64, w: 20 }, neck: null,
-        arms: { y: 146, dx: 44 * c.st, col: b, small: true }, feet: { dx: 20 * c.st, col: shade(b, 0.25) }, shadow: 44 * c.st };
+      // the lobes, back to front: the outer pair turned away (a shade darker), the inner pair, the front lobe; each lobe's
+      // own outline and its own light are the deep ribs between them
+      const lobes = [[-33, 143, 21, 40, 0.16], [33, 143, 21, 40, 0.16], [-18, 141, 22, 44, 0.07], [18, 141, 22, 44, 0.07], [0, 142, 20, 44, 0]];
+      for (const [dx, cy, rx, ry, dark] of lobes) {
+        const col = shade(b, dark);
+        c.body(c.ell(X(dx), cy, rx * c.st, ry, col));
+        if (stripe) c.body(`<path d="M${X(dx)} ${cy - ry + 6}C${X(dx - rx * 0.18)} ${f(cy - ry * 0.3)} ${X(dx - rx * 0.18)} ${f(cy + ry * 0.3)} ${X(dx)} ${cy + ry - 6}" stroke="${tint(col, 0.55)}" stroke-width="3.4" fill="none" opacity=".65" stroke-linecap="round"/>`);
+      }
+      // the stem in the top's hollow, leaning aside, and its curling tendril
+      c.body(c.shape(`M50 102C49 91 54 83 60 79L63.5 83.5C59 86 57 93 57.5 102Z`, PUMPKIN_STEM));
+      c.body(`<path d="M59.5 89C68 84 76 89 72.5 95C69.5 99.5 64.5 95.5 67.5 92.5" stroke="${GREENS[2]}" stroke-width="1.7" fill="none" stroke-linecap="round"/>`);
+      if (chance(c.key, 'pleaf', 1, 2)) c.body(c.leaf(49, 100, -62, 18, 8, GREENS[1]));
+      return { face: { y: 124, es: 18, s: 1.05, my: 139, ms: 1 }, hat: { x: 37, y: 99, w: 18 }, neck: null,
+        arms: { y: 152, dx: 52 * c.st, col: b, small: true }, feet: { dx: 24 * c.st, col: shade(b, 0.25) }, shadow: 54 * c.st };
     },
   },
   potato: {
@@ -566,18 +597,26 @@ const APPROVED = {
   },
   pepper: {
     kind: 'vegetable', label: 'bell pepper', added: 'card#12212',
-    pals: [['#d8453a'], ['#e9b63a'], ['#e7832f'], ['#6f9a3c'], ['#6a4a86']],
+    // the third colourway, an orange until card#12795, is a yellow-green: the pumpkin owns the oranges (the operator's
+    // ruling of 2026-11-02)
+    pals: [['#d8453a'], ['#e9b63a'], ['#a8c040'], ['#6f9a3c'], ['#6a4a86']],
     hats: ['ladybug', 'flower', 'straw'], necks: [], extras: ['glasses', 'mug', 'book'],
     build(c) {
       const [b] = c.P, X = c.X, stem = '#6f9a4e';
-      // three lobes: high shoulders with a dip for the stem, and a bumped foot
-      const body = c.sym([[0, 74], [14, 66], [29, 66], [40, 76], [44, 104], [44, 140], [40, 168], [29, 183], [12, 180], [0, 183]]);
+      // card#12842: the blocky bell — broad square shoulders with a deep dip for the stem, tapering to three round lobes
+      // with clear notches between them, so the pepper's outline is its own beside the cabbage's round head and the
+      // frog's wide sitting haunches
+      const body = c.sym([[0, 78], [10, 66], [24, 58], [38, 60], [47, 74], [49, 96], [46, 120], [40, 142], [33, 160], [29, 174], [22, 185], [14, 177], [6, 184], [0, 184]]);
       c.body(c.shape(body, b));
-      for (const dx of [-16, 16]) c.body(`<path d="M${X(dx * 0.9)} 70C${X(dx * 1.6)} 110 ${X(dx * 1.6)} 150 ${X(dx * 0.9)} 184" stroke="${shade(b, 0.3)}" stroke-width="1.6" fill="none" opacity=".5" stroke-linecap="round"/>`);
-      c.body(`<path d="M${X(-30)} 92Q${X(-37)} 122 ${X(-31)} 152" stroke="#fff" stroke-width="4.2" fill="none" opacity=".32" stroke-linecap="round"/>`);
-      // the stem, leaning aside, on its calyx
-      c.body(`<path d="M${X(4)} 72C${X(4)} 62 ${X(7)} 54 ${X(12)} 48" stroke="${line(stem)}" stroke-width="7" fill="none" stroke-linecap="round"/><path d="M${X(4)} 72C${X(4)} 62 ${X(7)} 54 ${X(12)} 48" stroke="${stem}" stroke-width="4.6" fill="none" stroke-linecap="round"/>`);
-      for (const a of [-60, -20, 20, 60]) c.body(c.leaf(X(4), 74, a, 11, 5, shade(stem, 0.08)));
+      // the grooves between the lobes, deep and running into the notches
+      for (const dx of [-15, 15]) c.body(`<path d="M${X(dx * 0.75)} 70C${X(dx * 1.7)} 106 ${X(dx * 1.5)} 150 ${X(dx * 1.07)} 176" stroke="${shade(b, 0.34)}" stroke-width="2" fill="none" opacity=".55" stroke-linecap="round"/>`);
+      // the gloss: a long shine down the left shoulder and a short one on the right lobe
+      c.body(`<path d="M${X(-33)} 82Q${X(-41)} 116 ${X(-32)} 154" stroke="#fff" stroke-width="5" fill="none" opacity=".4" stroke-linecap="round"/>`);
+      c.body(`<path d="M${X(28)} 150Q${X(31)} 160 ${X(27)} 168" stroke="#fff" stroke-width="3" fill="none" opacity=".3" stroke-linecap="round"/>`);
+      // the stem: thick and hooked, rising from a star-shaped calyx in the shoulders' dip
+      const sd = `M${X(2)} 74C${X(1)} 62 ${X(4)} 50 ${X(12)} 44C${X(17)} 41 ${X(21)} 44 ${X(20)} 48`;
+      c.body(`<path d="${sd}" stroke="${line(stem)}" stroke-width="9" fill="none" stroke-linecap="round"/><path d="${sd}" stroke="${stem}" stroke-width="6.4" fill="none" stroke-linecap="round"/><path d="M${X(0)} 70C${X(-0.5)} 60 ${X(2)} 52 ${X(7)} 48" stroke="${tint(stem, 0.4)}" stroke-width="1.6" fill="none" stroke-linecap="round" opacity=".7"/>`);
+      for (const a of [-75, -38, 0, 38, 75]) c.body(c.leaf(X(2), 75, a, 12, 5.5, shade(stem, 0.08)));
       return { face: { y: 108, es: 15, s: 1.05, my: 124, ms: 1 }, hat: { x: X(-8), y: 66, w: 18 }, neck: null,
         arms: { y: 146, dx: 42 * c.st, col: b, small: true }, feet: { dx: 18 * c.st, col: shade(b, 0.25) }, shadow: 42 * c.st };
     },
@@ -588,15 +627,520 @@ const APPROVED = {
     hats: ['ladybug', 'flower', 'beret'], necks: ['bow', 'neckerchief'], extras: ['glasses', 'mug', 'book'],
     build(c) {
       const [b, m] = c.P, X = c.X;
-      // the outer leaves, behind: three scalloped leaves fanning left, right and up, each with a pale midrib
-      for (const [dx, y, rx, ry, rot] of [[-19, 122, 19, 38, -20], [19, 122, 19, 38, 20], [0, 94, 32, 28, 0]]) {
-        c.back(`<g transform="rotate(${rot} ${X(dx)} ${y})">${c.shape(scallop(X(dx), y, rx * c.st, ry, 12, 4), m)}<path d="M${X(dx)} ${y + ry * 0.8}L${X(dx)} ${y - ry * 0.7}" stroke="${tint(m, 0.45)}" stroke-width="1.4" stroke-linecap="round" opacity=".7"/></g>`);
+      // card#12842: the head in a ruffled collar — two wide outer leaves flare out low on either side, their frilled
+      // edges past the head, so the cabbage's outline widens at its foot where the bell pepper's narrows to its lobes
+      for (const s of [-1, 1]) {
+        c.back(`<g transform="rotate(${s * 38} ${X(s * 26)} 150)">${c.shape(scallop(X(s * 26), 150, 20 * c.st, 32, 11, 4.2), m)}<path d="M${X(s * 26)} 176L${X(s * 26)} 126" stroke="${tint(m, 0.45)}" stroke-width="1.5" stroke-linecap="round" opacity=".75"/>${[-1, 1].map((v) => `<path d="M${X(s * 26)} ${150 + v * 8}L${X(s * 26 + v * 9)} ${144 + v * 8}" stroke="${tint(m, 0.45)}" stroke-width="1" stroke-linecap="round" opacity=".6"/>`).join('')}</g>`);
       }
-      const head = c.sym([[0, 72], [24, 74], [38, 90], [43, 118], [42, 148], [35, 174], [20, 185], [0, 186]]);
+      const head = c.sym([[0, 74], [24, 76], [38, 92], [42, 118], [41, 148], [33, 173], [18, 184], [0, 186]]);
       c.body(c.shape(head, b));
+      // the inner leaves folded over the head: a curl at the crown and the veins running up from the heart
+      c.body(`<path d="M${X(-22)} 92Q54 74 ${X(24)} 94" stroke="${shade(b, 0.22)}" stroke-width="1.6" fill="none" opacity=".55" stroke-linecap="round"/>`);
       for (const a of [-40, -14, 14, 40]) c.body(`<path d="M54 185Q${X(a * 0.9)} 160 ${X(a * 1.1)} 138" stroke="${tint(b, 0.4)}" stroke-width="1.6" fill="none" opacity=".6" stroke-linecap="round"/>`);
-      return { face: { y: 110, es: 15, s: 1.05, my: 126, ms: 1 }, hat: { x: 54, y: 72, w: 24 }, neck: { y: 150, w: 35 * c.st },
+      return { face: { y: 110, es: 15, s: 1.05, my: 126, ms: 1 }, hat: { x: 54, y: 74, w: 24 }, neck: { y: 150, w: 35 * c.st },
         arms: { y: 148, dx: 40 * c.st, col: b, small: true }, feet: { dx: 18 * c.st, col: shade(b, 0.25) }, shadow: 40 * c.st };
+    },
+  },
+  // ---- card#12796: twelve more animals and twelve fruits, drawn to the approved look and appended to the list ----
+  // Each is held apart from every other species by `tools/characters/distinct.browser.mjs` (silhouette and colour, FLOOR.md
+  // § 10.4's distinctness bullet) — the operator's *"Try to make each character unique from others."*
+  cat: {
+    kind: 'animal', label: 'cat-ish', added: 'card#12796',
+    pals: [['#8f93a6', '#f1eee9'], ['#3b3842', '#f5f1ea'], ['#b7a9b8', '#f6eff2'], ['#6e7f9a', '#e9edf2'], ['#d9cfc4', '#7a5e52']],
+    hats: ['beret', 'beanie', 'flower', 'ladybug'], necks: ['bow', 'neckerchief', 'scarf'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    build(c) {
+      const [b, m] = c.P, X = c.X, t = c.side, pink = '#eea2ab';
+      // the tail, a long soft S up the side, its tip curling in over the shoulder
+      const tail = `M${X(t * 16)} 178C${X(t * 38)} 180 ${X(t * 41)} 150 ${X(t * 35)} 130C${X(t * 30)} 114 ${X(t * 33)} 96 ${X(t * 40)} 92C${X(t * 45)} 90 ${X(t * 45)} 99 ${X(t * 40)} 100`;
+      c.back(`<path d="${tail}" stroke="${line(b)}" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="${tail}" stroke="${b}" stroke-width="8.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`);
+      // the ears: tall soft triangles, pink inside
+      for (const s of [-1, 1]) {
+        c.back(c.shape(`M${X(s * 12)} 74L${X(s * 22)} 42Q${X(s * 25)} 38 ${X(s * 29)} 42L${X(s * 38)} 82Z`, b));
+        c.back(c.flat(`M${X(s * 18)} 72L${X(s * 24)} 50Q${X(s * 25.5)} 48 ${X(s * 27.5)} 51L${X(s * 33)} 76Z`, pink, 'opacity=".85"'));
+      }
+      const body = c.sym([[0, 114], [20, 119], [27, 140], [30, 164], [26, 182], [0, 185]]);
+      c.body(c.shape(body, b));
+      c.body(`<ellipse cx="54" cy="146" rx="${f(13 * c.st)}" ry="20" fill="${m}" clip-path="${c.pen.clip(body)}"/>`);
+      // a wide round head, cheeks fuller than the crown
+      const head = c.sym([[0, 64], [22, 66], [36, 78], [42, 98], [39, 113], [28, 124], [0, 128]]);
+      c.body(c.shape(head, b));
+      // card#12796's named draw `tabby`: three soft stripes on the brow
+      if (chance(c.key, 'tabby', 1, 2)) for (const [dx, a] of [[-7, -10], [0, 0], [7, 10]]) c.body(`<path d="M${X(dx)} 67Q${X(dx * 1.2)} 73 ${X(dx * 1.1)} 79" stroke="${shade(b, 0.4)}" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".7" transform="rotate(${a} ${X(dx)} 67)"/>`);
+      for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * 5.6)}" cy="114" rx="6.4" ry="5" fill="${c.pen.paint(m)}"/>`);
+      c.body(c.flat('M51 108.6Q54 107.4 57 108.6Q55.4 111.6 54 112Q52.6 111.6 51 108.6Z', pink));
+      for (const s of [-1, 1]) c.body(`<path d="M${X(s * 12)} 112L${X(s * 28)} 108M${X(s * 12)} 115L${X(s * 28)} 116" stroke="${line(b)}" stroke-width=".9" stroke-linecap="round" opacity=".6"/>`);
+      return { face: { y: 98, es: 14, s: 1, my: 117, ms: 0.85 }, hat: { x: 54, y: 65, w: 22 }, neck: { y: 122, w: 26 * c.st },
+        arms: { y: 150, dx: 27 * c.st, col: b }, feet: { dx: 13 * c.st, col: m }, shadow: 32 * c.st };
+    },
+  },
+  panda: {
+    kind: 'animal', label: 'panda-ish', added: 'card#12796',
+    pals: [['#f7f4ef', '#2e2a31'], ['#f4ebdc', '#6b4a3b'], ['#f3f2f6', '#3b405c'], ['#fbf0f1', '#5c3a4c'], ['#eef3ec', '#2f4a3c']],
+    hats: ['beret', 'beanie', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    build(c) {
+      const [b, d] = c.P, X = c.X;
+      for (const s of [-1, 1]) c.back(c.ell(X(s * 29), 63, 12.5, 12, d));
+      // a round, chubby body with the dark band over the shoulders and the dark legs
+      const body = c.sym([[0, 112], [28, 118], [40, 142], [41, 166], [32, 183], [0, 186]]);
+      c.body(c.shape(body, b));
+      const clip = c.pen.clip(body);
+      c.body(`<path d="M${X(-46)} 116Q54 136 ${X(46)} 116L${X(46)} 142Q54 152 ${X(-46)} 142Z" fill="${c.pen.paint(d)}" clip-path="${clip}"/>`);
+      for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * 22)}" cy="182" rx="${f(15 * c.st)}" ry="14" fill="${c.pen.paint(d)}" clip-path="${clip}"/>`);
+      c.body(c.shape(c.sym([[0, 56], [26, 58], [39, 72], [43, 94], [39, 112], [26, 125], [0, 129]]), b));
+      // the eye patches, tilted, a little lighter than the ears so the eyes read on them
+      for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * 14)}" cy="99" rx="9.5" ry="12" transform="rotate(${s * -28} ${X(s * 14)} 99)" fill="${tint(d, 0.18)}"/>`);
+      c.body(`<ellipse cx="54" cy="114" rx="11" ry="8" fill="${tint(b, 0.3)}" opacity=".9"/>`);
+      c.body(c.flat('M49.5 108.5Q54 106 58.5 108.5Q57 113 54 113.5Q51 113 49.5 108.5Z', d));
+      return { face: { y: 98, es: 14, s: 1, my: 118, ms: 0.85 }, hat: { x: 54, y: 57, w: 30 }, neck: { y: 127, w: 34 * c.st },
+        arms: { y: 150, dx: 37 * c.st, col: d }, feet: { dx: 17 * c.st, col: d }, shadow: 40 * c.st };
+    },
+  },
+  koala: {
+    kind: 'animal', label: 'koala-ish', added: 'card#12796',
+    pals: [['#9b9ca6', '#eceaea'], ['#8b8f99', '#e8e8ea'], ['#7e8794', '#e3e6ea'], ['#a7aab4', '#f1f0ee'], ['#9a948f', '#efebe6']],
+    hats: ['beret', 'beanie', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    build(c) {
+      const [b, m] = c.P, X = c.X;
+      // the ears: big round fluffy discs out to the sides, pale tufts inside
+      for (const s of [-1, 1]) {
+        c.back(c.shape(scallop(X(s * 33), 76, 16 * c.st, 15, 11, 1.6), b));
+        c.back(`<path d="${scallop(X(s * 34), 78, 9.5 * c.st, 9, 9, 1.2)}" fill="${m}" opacity=".95"/>`);
+      }
+      const body = c.sym([[0, 116], [22, 121], [31, 144], [33, 166], [28, 183], [0, 186]]);
+      c.body(c.shape(body, b));
+      c.body(`<ellipse cx="54" cy="152" rx="${f(17 * c.st)}" ry="24" fill="${m}" clip-path="${c.pen.clip(body)}" opacity=".9"/>`);
+      c.body(c.shape(c.sym([[0, 64], [24, 66], [36, 79], [39, 98], [35, 115], [23, 126], [0, 129]]), b));
+      // the big dark nose, longer than wide
+      c.body(`<path d="M47.6 102C47.6 97 60.4 97 60.4 102C60.4 110 58 116 54 116C50 116 47.6 110 47.6 102Z" fill="${c.pen.paint('#3d3438')}" stroke="#241c20" stroke-width="1"/><ellipse cx="51.8" cy="101.4" rx="2" ry="1.2" fill="#fff" opacity=".45"/>`);
+      return { face: { y: 95, es: 16, s: 0.95, my: 121, ms: 0.75 }, hat: { x: 54, y: 65, w: 22 }, neck: { y: 125, w: 30 * c.st },
+        arms: { y: 150, dx: 31 * c.st, col: b }, feet: { dx: 14 * c.st, col: shade(b, 0.2) }, shadow: 34 * c.st };
+    },
+  },
+  raccoon: {
+    kind: 'animal', label: 'raccoon-ish', added: 'card#12796',
+    pals: [['#8a7f78', '#efe9e2', '#3a3236'], ['#9a8a7a', '#f2ebe0', '#45362e'], ['#7a7470', '#e9e6e2', '#2e2a2c'], ['#a89a86', '#f6efe2', '#4f4034'], ['#857a84', '#efe8ee', '#3a3040']],
+    hats: ['beanie', 'beret', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    build(c) {
+      const [b, m, d] = c.P, X = c.X, t = c.side;
+      // the ringed tail, fat and bushy, out to one side
+      const tc = X(t * 38), tail = `M${X(t * 16)} 176C${X(t * 30)} 186 ${X(t * 52)} 170 ${X(t * 54)} 146C${X(t * 56)} 124 ${X(t * 48)} 108 ${X(t * 40)} 108C${X(t * 30)} 110 ${X(t * 30)} 140 ${X(t * 20)} 156Z`;
+      c.back(c.shape(tail, b));
+      const tclip = c.pen.clip(tail);
+      for (const y of [118, 138, 160]) c.back(`<path d="M${f(tc - 30)} ${y}L${f(tc + 30)} ${y - 6 * t}" stroke="${d}" stroke-width="7" clip-path="${tclip}" opacity=".9"/>`);
+      for (const s of [-1, 1]) {
+        c.back(c.shape(`M${X(s * 14)} 74Q${X(s * 20)} 52 ${X(s * 28)} 50Q${X(s * 35)} 56 ${X(s * 34)} 80Z`, b));
+        c.back(c.flat(`M${X(s * 19)} 72Q${X(s * 22)} 58 ${X(s * 27.5)} 57Q${X(s * 31)} 62 ${X(s * 30)} 76Z`, m, 'opacity=".9"'));
+      }
+      const body = c.sym([[0, 114], [21, 119], [29, 140], [31, 164], [27, 182], [0, 185]]);
+      c.body(c.shape(body, b));
+      c.body(`<ellipse cx="54" cy="150" rx="${f(14 * c.st)}" ry="22" fill="${m}" clip-path="${c.pen.clip(body)}" opacity=".85"/>`);
+      const head = c.sym([[0, 64], [20, 66], [34, 80], [42, 100], [34, 114], [18, 124], [0, 127]]);
+      c.body(c.shape(head, b));
+      const hclip = c.pen.clip(head);
+      // the white brows and muzzle, and the dark mask band across the eyes
+      c.body(`<path d="M${X(-40)} 92Q54 76 ${X(40)} 92L${X(40)} 86Q54 70 ${X(-40)} 86Z" fill="${m}" clip-path="${hclip}" opacity=".95"/>`);
+      c.body(`<path d="M${X(-42)} 104Q${X(-30)} 88 ${X(-12)} 92Q54 98 ${X(12)} 92Q${X(30)} 88 ${X(42)} 104Q${X(30)} 110 ${X(16)} 106Q54 102 ${X(-16)} 106Q${X(-30)} 110 ${X(-42)} 104Z" fill="${c.pen.paint(d)}" clip-path="${hclip}"/>`);
+      c.body(`<ellipse cx="54" cy="114" rx="12" ry="8.5" fill="${c.pen.paint(m)}"/>`);
+      c.body(c.flat('M50 109Q54 107 58 109Q56.6 113 54 113.4Q51.4 113 50 109Z', d));
+      return { face: { y: 98, es: 14, s: 1, my: 118.5, ms: 0.8 }, hat: { x: 54, y: 65, w: 22 }, neck: { y: 122, w: 27 * c.st },
+        arms: { y: 150, dx: 28 * c.st, col: d }, feet: { dx: 13 * c.st, col: d }, shadow: 33 * c.st };
+    },
+  },
+  duck: {
+    kind: 'animal', label: 'duck-ish', added: 'card#12796',
+    pals: [['#f4d04a', '#f29a38'], ['#b9d7f0', '#f0a23c'], ['#7aa0d8', '#efa04a'], ['#8fcfe0', '#ec9436'], ['#f7c8d8', '#e88f3a']],
+    hats: ['beret', 'beanie', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel'],
+    build(c) {
+      const [b, bill] = c.P, X = c.X, t = c.side;
+      // a round body, wider than the head, with a tail tuft flicked up behind
+      c.back(c.shape(`M${X(t * 28)} 150Q${X(t * 50)} 140 ${X(t * 50)} 124Q${X(t * 44)} 136 ${X(t * 32)} 136Z`, shade(b, 0.06)));
+      const body = c.sym([[0, 118], [26, 122], [40, 138], [44, 158], [38, 176], [24, 185], [0, 186]]);
+      c.body(c.shape(body, b));
+      c.body(`<ellipse cx="54" cy="160" rx="${f(26 * c.st)}" ry="20" fill="${tint(b, 0.35)}" clip-path="${c.pen.clip(body)}" opacity=".7"/>`);
+      // the head, a ball on the body, with a curl of down on the crown
+      c.body(c.shape(c.sym([[0, 66], [18, 68], [29, 80], [31, 98], [27, 114], [16, 124], [0, 127]]), b));
+      c.body(`<path d="M${X(-2)} 68Q${X(-4)} 56 ${X(4)} 54Q${X(10)} 54 ${X(8)} 60" stroke="${line(b)}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`);
+      // the flat bill, wider than deep, over where a mouth would be
+      c.front(`<g data-part="mouth"><path d="M${X(-11)} 107Q54 102 ${X(11)} 107Q${X(12)} 114 54 116Q${X(-12)} 114 ${X(-11)} 107Z" fill="${c.pen.paint(bill)}" stroke="${line(bill)}" stroke-width="1.1" stroke-linejoin="round"/><path d="M${X(-8)} 110.5Q54 112.5 ${X(8)} 110.5" stroke="${line(bill)}" stroke-width=".9" fill="none" opacity=".6"/><ellipse cx="51" cy="106" rx="2.4" ry=".9" fill="#fff" opacity=".5"/></g>`);
+      return { face: { y: 94, es: 12.5, s: 1, my: null, ms: 1, beak: true }, hat: { x: 54, y: 67, w: 18 }, neck: { y: 122, w: 26 * c.st },
+        arms: { y: 148, dx: 40 * c.st, col: shade(b, 0.08) }, feet: { dx: 15 * c.st, col: bill, rx: 11 }, shadow: 42 * c.st };
+    },
+  },
+  axolotl: {
+    kind: 'animal', label: 'axolotl-ish', added: 'card#12796',
+    pals: [['#f5aabb', '#e05f7e'], ['#f4eaee', '#e889a6'], ['#c6b2e6', '#8f62c4'], ['#f3d07c', '#e3895a'], ['#7f8f76', '#b9c47a']],
+    hats: ['flower', 'ladybug', 'beret'], necks: ['bow', 'neckerchief'], extras: ['glasses', 'mug', 'book'],
+    build(c) {
+      const [b, g] = c.P, X = c.X, t = c.side;
+      // the tail fin, curling out behind
+      c.back(c.shape(`M${X(t * 18)} 176C${X(t * 40)} 184 ${X(t * 50)} 168 ${X(t * 46)} 150C${X(t * 44)} 162 ${X(t * 34)} 168 ${X(t * 20)} 160Z`, tint(b, 0.12)));
+      // the gill fronds, three a side, fanning out from behind the head
+      for (const s of [-1, 1]) for (const [y, a, l] of [[84, 52, 17], [94, 78, 18], [104, 102, 15]]) {
+        c.back(`<g transform="translate(${X(s * 36)} ${y}) rotate(${s * a})"><path d="${leafD(l, 4.6)}" fill="${c.pen.paint(g)}" stroke="${line(g)}" stroke-width="1.3" stroke-linejoin="round"/>${[0.35, 0.55, 0.75].map((k) => `<path d="M0 ${f(-l * k)}l${f(3.6)} ${f(-2)}M0 ${f(-l * k)}l${f(-3.6)} ${f(-2)}" stroke="${tint(g, 0.4)}" stroke-width="1" stroke-linecap="round" opacity=".8"/>`).join('')}</g>`);
+      }
+      const body = c.sym([[0, 116], [18, 120], [24, 142], [26, 166], [22, 183], [0, 186]]);
+      c.body(c.shape(body, b));
+      c.body(`<ellipse cx="54" cy="156" rx="${f(13 * c.st)}" ry="22" fill="${tint(b, 0.4)}" clip-path="${c.pen.clip(body)}" opacity=".8"/>`);
+      // the wide, flat-topped head
+      c.body(c.shape(c.sym([[0, 72], [24, 73], [37, 82], [41, 98], [37, 113], [24, 122], [0, 124]]), b));
+      return { face: { y: 98, es: 19, s: 0.95, my: 110, ms: 1.25 }, hat: { x: 54, y: 72, w: 22 }, neck: { y: 120, w: 22 * c.st },
+        arms: { y: 148, dx: 25 * c.st, col: b, small: true }, feet: { dx: 12 * c.st, col: shade(b, 0.1), rx: 7 }, shadow: 32 * c.st, blushDx: 2 };
+    },
+  },
+  capybara: {
+    kind: 'animal', label: 'capybara-ish', added: 'card#12796',
+    pals: [['#b07f50', '#d9ad7c'], ['#9a7356', '#c9a07a'], ['#a07a5a', '#cfa886'], ['#8c7462', '#b8a08a'], ['#a8885c', '#d4b886']],
+    hats: ['straw', 'beret', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    build(c) {
+      const [b, m] = c.P, X = c.X, yuzu = '#f2b23a';
+      // one blocky loaf of a body, flat on top, with little round ears at the corners
+      for (const s of [-1, 1]) c.back(c.ell(X(s * 30), 84, 6, 5.4, shade(b, 0.12)));
+      const body = c.sym([[0, 84], [28, 84], [41, 90], [46, 106], [47, 140], [47, 168], [39, 184], [0, 186]]);
+      c.body(c.shape(body, b));
+      const clip = c.pen.clip(body);
+      // the big square snout and the chest, a shade lighter
+      c.body(`<rect x="${X(-23)}" y="108" width="${f(46 * c.st)}" height="25" rx="11" fill="${c.pen.paint(m)}" opacity=".95"/>`);
+      c.body(`<ellipse cx="54" cy="164" rx="${f(24 * c.st)}" ry="20" fill="${m}" clip-path="${clip}" opacity=".55"/>`);
+      for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * 6)}" cy="115" rx="2.2" ry="2.8" fill="${shade(b, 0.6)}"/>`);
+      // the yuzu it carries on its head, with a leaf
+      c.body(`<circle cx="${X(4)}" cy="74" r="10" fill="${c.pen.paint(yuzu)}" stroke="${line(yuzu)}" stroke-width="1.3"/>`);
+      c.body(c.leaf(X(6), 65, 40, 10, 4.4, GREENS[1]));
+      return { face: { y: 98, es: 18, s: 0.92, my: 127, ms: 0.8 }, hat: { x: X(-14), y: 84, w: 18 }, neck: { y: 138, w: 40 * c.st },
+        arms: { y: 156, dx: 44 * c.st, col: shade(b, 0.06) }, feet: { dx: 20 * c.st, col: shade(b, 0.3) }, shadow: 46 * c.st };
+    },
+  },
+  pig: {
+    kind: 'animal', label: 'pig-ish', added: 'card#12796',
+    pals: [['#f5b7be', '#e68f9c'], ['#f9cdd6', '#e9a2b0'], ['#f4a6b0', '#e2849a'], ['#c9837a', '#e8a8a0'], ['#6a5068', '#c0909e']],
+    hats: ['beret', 'beanie', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    build(c) {
+      const [b, m] = c.P, X = c.X, t = c.side;
+      // the curly tail
+      c.back(`<path d="M${X(t * 30)} 160Q${X(t * 44)} 154 ${X(t * 44)} 146Q${X(t * 44)} 138 ${X(t * 38)} 140Q${X(t * 33)} 143 ${X(t * 38)} 148Q${X(t * 44)} 152 ${X(t * 48)} 146" stroke="${line(b)}" stroke-width="3.6" fill="none" stroke-linecap="round"/><path d="M${X(t * 30)} 160Q${X(t * 44)} 154 ${X(t * 44)} 146Q${X(t * 44)} 138 ${X(t * 38)} 140Q${X(t * 33)} 143 ${X(t * 38)} 148Q${X(t * 44)} 152 ${X(t * 48)} 146" stroke="${b}" stroke-width="2" fill="none" stroke-linecap="round"/>`);
+      c.body(c.shape(c.sym([[0, 118], [23, 122], [31, 146], [32, 168], [27, 183], [0, 186]]), b));
+      c.body(c.shape(c.sym([[0, 66], [24, 68], [37, 82], [41, 100], [37, 116], [25, 127], [0, 130]]), b));
+      // the ears, folded forward over the brow
+      for (const s of [-1, 1]) c.body(c.shape(`M${X(s * 18)} 72Q${X(s * 30)} 60 ${X(s * 42)} 66Q${X(s * 40)} 82 ${X(s * 32)} 86Q${X(s * 26)} 78 ${X(s * 18)} 72Z`, shade(b, 0.05)));
+      // the snout, a disc with two nostrils
+      c.body(`<ellipse cx="54" cy="112" rx="12" ry="8.6" fill="${c.pen.paint(m)}" stroke="${line(m)}" stroke-width="1.2"/>`);
+      for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * 4.4)}" cy="112.4" rx="2" ry="3" fill="${shade(m, 0.55)}"/>`);
+      return { face: { y: 97, es: 16, s: 1, my: 124, ms: 0.75 }, hat: { x: 54, y: 67, w: 20 }, neck: { y: 128, w: 32 * c.st },
+        arms: { y: 150, dx: 29 * c.st, col: b }, feet: { dx: 14 * c.st, col: shade(m, 0.2), rx: 7 }, shadow: 34 * c.st };
+    },
+  },
+  elephant: {
+    kind: 'animal', label: 'elephant-ish', added: 'card#12796',
+    pals: [['#8fa3c9', '#e2b8c8'], ['#a99bc9', '#e8c2d6'], ['#9ab0d8', '#e2bcd0'], ['#c0a6c8', '#ecc8dc'], ['#a9b8ea', '#e9cad8']],
+    hats: ['beanie', 'beret', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    build(c) {
+      const [b, inner] = c.P, X = c.X, t = c.side;
+      // the great ears, flapped out to the sides, pink inside
+      for (const s of [-1, 1]) {
+        const ear = `M${X(s * 22)} 72C${X(s * 40)} 58 ${X(s * 54)} 72 ${X(s * 52)} 96C${X(s * 50)} 116 ${X(s * 40)} 124 ${X(s * 26)} 116Z`;
+        c.back(c.shape(ear, b));
+        c.back(`<path d="M${X(s * 26)} 80C${X(s * 38)} 70 ${X(s * 48)} 80 ${X(s * 46)} 96C${X(s * 45)} 110 ${X(s * 38)} 115 ${X(s * 28)} 110Z" fill="${inner}" opacity=".75"/>`);
+      }
+      c.body(c.shape(c.sym([[0, 116], [26, 121], [35, 146], [36, 168], [30, 183], [0, 186]]), b));
+      c.body(c.shape(c.sym([[0, 62], [22, 64], [32, 76], [35, 96], [30, 112], [18, 122], [0, 124]]), b));
+      // the trunk, curling to one side, drawn where a mouth would be (the owl's beak's place)
+      const tr = `M${X(-6)} 104C${X(-6)} 122 ${X(-4 + t * 2)} 134 ${X(t * 10)} 140C${X(t * 16)} 143 ${X(t * 20)} 138 ${X(t * 17)} 134C${X(t * 12)} 134 ${X(6)} 126 ${X(6)} 104Z`;
+      c.front(`<g data-part="mouth"><path d="${tr}" fill="${c.pen.paint(b)}" stroke="${line(b)}" stroke-width="1.5" stroke-linejoin="round"/>${[112, 120, 128].map((y) => `<path d="M${X(-5)} ${y}Q54 ${y + 2} ${X(5)} ${y}" stroke="${shade(b, 0.3)}" stroke-width=".9" fill="none" opacity=".6"/>`).join('')}</g>`);
+      return { face: { y: 94, es: 15, s: 1, my: null, ms: 1, beak: true }, hat: { x: 54, y: 63, w: 22 }, neck: { y: 122, w: 30 * c.st },
+        arms: { y: 152, dx: 33 * c.st, col: b }, feet: { dx: 16 * c.st, col: tint(b, 0.25), rx: 10 }, shadow: 38 * c.st };
+    },
+  },
+  turtle: {
+    kind: 'animal', label: 'turtle-ish', added: 'card#12796',
+    pals: [['#8fc07c', '#8a6038', '#f0dc9a'], ['#9ccaa2', '#4f7a5c', '#e9e2a8'], ['#c4d48c', '#a06a3c', '#f4e4b0'], ['#80b8b2', '#3f6a7a', '#e6e8c0'], ['#b2c98a', '#7a5a7c', '#efe0b4']],
+    hats: ['beanie', 'beret', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'mug', 'book'],
+    build(c) {
+      const [skin, shell, belly] = c.P, X = c.X;
+      // the shell, a wide dome behind the body, its scutes a shade lighter
+      const dome = `M${X(-44)} 176C${X(-50)} 128 ${X(-34)} 104 54 102C${X(34)} 104 ${X(50)} 128 ${X(44)} 176Z`;
+      c.back(c.shape(dome, shell));
+      c.back(`<path d="${dome}" fill="none" stroke="${tint(shell, 0.35)}" stroke-width="3" opacity=".6" transform="translate(0 2)"/>`);
+      for (const [dx, y] of [[-34, 132], [34, 132], [-38, 160], [38, 160]]) c.back(`<ellipse cx="${X(dx)}" cy="${y}" rx="${f(6 * c.st)}" ry="9" fill="${tint(shell, 0.28)}" opacity=".7"/>`);
+      // the plastron, the pale belly plate with its seams
+      const plate = c.sym([[0, 118], [22, 121], [29, 140], [30, 164], [24, 182], [0, 185]]);
+      c.body(c.shape(plate, belly));
+      for (const y of [140, 160]) c.body(`<path d="M${X(-28)} ${y}Q54 ${y + 3} ${X(28)} ${y}" stroke="${shade(belly, 0.3)}" stroke-width="1.2" fill="none" opacity=".6" clip-path="${c.pen.clip(plate)}"/>`);
+      c.body(`<path d="M54 120V184" stroke="${shade(belly, 0.3)}" stroke-width="1.2" opacity=".5"/>`);
+      // the head, round and a little small, on a short neck
+      c.body(c.shape(c.sym([[0, 70], [20, 72], [30, 84], [32, 100], [28, 113], [16, 121], [0, 123]]), skin));
+      return { face: { y: 96, es: 12.5, s: 0.95, my: 111, ms: 0.8 }, hat: { x: 54, y: 71, w: 19 }, neck: { y: 120, w: 22 * c.st },
+        arms: { y: 146, dx: 33 * c.st, col: skin }, feet: { dx: 18 * c.st, col: skin }, shadow: 46 * c.st };
+    },
+  },
+  sloth: {
+    kind: 'animal', label: 'sloth-ish', added: 'card#12796',
+    pals: [['#9aa08a', '#ebe6d2', '#4f4a3a'], ['#8a8e7c', '#e4e2d2', '#463f34'], ['#8f9a84', '#e6e8d6', '#3f4636'], ['#a3a58c', '#efecd8', '#57503e'], ['#949a90', '#e6e6de', '#44443e']],
+    hats: ['beanie', 'beret', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'bow'], extras: ['glasses', 'satchel'],
+    build(c) {
+      const [b, m, d] = c.P, X = c.X;
+      // a shaggy body and a shaggy round head, each a softly scalloped outline
+      c.body(c.shape(scallop(54, 152, 32 * c.st, 33, 16, 1.8), b));
+      c.body(c.shape(scallop(54, 97, 35 * c.st, 32, 18, 1.6), b));
+      // the pale face mask, the dark streaks from the eyes, the dark nose
+      c.body(`<ellipse cx="54" cy="101" rx="${f(26 * c.st)}" ry="20" fill="${c.pen.paint(m)}"/>`);
+      for (const s of [-1, 1]) c.body(`<path d="M${X(s * 6)} 94Q${X(s * 14)} 90 ${X(s * 22)} 96Q${X(s * 28)} 104 ${X(s * 24)} 110Q${X(s * 16)} 106 ${X(s * 10)} 100Z" fill="${d}" opacity=".85"/>`);
+      c.body(`<ellipse cx="54" cy="108" rx="4.6" ry="3.4" fill="${shade(d, 0.2)}"/>`);
+      // the long arms, wrapped round the belly in a hug, three claws a paw
+      for (const s of [-1, 1]) {
+        c.front(`<path d="M${X(s * 30)} 128C${X(s * 40)} 148 ${X(s * 30)} 168 ${X(s * 6)} 162" stroke="${line(b)}" stroke-width="12" fill="none" stroke-linecap="round"/><path d="M${X(s * 30)} 128C${X(s * 40)} 148 ${X(s * 30)} 168 ${X(s * 6)} 162" stroke="${shade(b, 0.08)}" stroke-width="9.4" fill="none" stroke-linecap="round"/>`);
+        c.front(`<path d="M${X(s * 4)} 158l${f(-s * 5)} -2M${X(s * 3)} 162l${f(-s * 6)} 0M${X(s * 4)} 166l${f(-s * 5)} 2" stroke="${tint(m, 0.2)}" stroke-width="1.8" stroke-linecap="round"/>`);
+      }
+      return { face: { y: 97, es: 15, s: 0.95, my: 115, ms: 0.85 }, hat: { x: 54, y: 66, w: 22 }, neck: { y: 126, w: 28 * c.st },
+        arms: null, feet: { dx: 14 * c.st, col: shade(b, 0.2) }, shadow: 34 * c.st };
+    },
+  },
+  lion: {
+    kind: 'animal', label: 'lion cub-ish', added: 'card#12796',
+    pals: [['#e8b450', '#b8692f', '#f7e4c0'], ['#efc14e', '#c45a2a', '#fbe8c0'], ['#f6d77c', '#c47a3a', '#fbecd0'], ['#cba36b', '#7a5236', '#f0dcbc'], ['#e9b96b', '#a8562e', '#f8e6c4']],
+    hats: ['beret', 'beanie', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    build(c) {
+      const [b, mane, m] = c.P, X = c.X, t = c.side;
+      // the tail, thin, with its dark tuft
+      c.back(`<path d="M${X(t * 20)} 176C${X(t * 40)} 178 ${X(t * 44)} 158 ${X(t * 40)} 146" stroke="${line(b)}" stroke-width="5.4" fill="none" stroke-linecap="round"/><path d="M${X(t * 20)} 176C${X(t * 40)} 178 ${X(t * 44)} 158 ${X(t * 40)} 146" stroke="${b}" stroke-width="3.2" fill="none" stroke-linecap="round"/>`);
+      c.back(`<ellipse cx="${X(t * 40)}" cy="142" rx="5.4" ry="7" fill="${c.pen.paint(mane)}" stroke="${line(mane)}" stroke-width="1.2"/>`);
+      // the mane, a scalloped ring framing the face
+      c.back(c.shape(scallop(54, 96, 47 * c.st, 43, 15, 3.8), mane));
+      for (const s of [-1, 1]) c.back(c.ell(X(s * 26), 66, 7.5, 7.5, b));
+      const body = c.sym([[0, 118], [18, 122], [24, 142], [26, 164], [23, 182], [0, 185]]);
+      c.body(c.shape(body, b));
+      c.body(`<ellipse cx="54" cy="152" rx="${f(12 * c.st)}" ry="20" fill="${m}" clip-path="${c.pen.clip(body)}" opacity=".8"/>`);
+      c.body(c.shape(c.sym([[0, 66], [22, 68], [32, 80], [35, 98], [31, 113], [20, 123], [0, 126]]), b));
+      for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * 5.6)}" cy="113" rx="6.6" ry="5.2" fill="${c.pen.paint(m)}"/>`);
+      c.body(c.flat('M50.2 107.6Q54 105.6 57.8 107.6Q56.4 111.4 54 112Q51.6 111.4 50.2 107.6Z', shade(mane, 0.35)));
+      return { face: { y: 97, es: 13.5, s: 1, my: 117, ms: 0.85 }, hat: { x: 54, y: 67, w: 20 }, neck: { y: 122, w: 26 * c.st },
+        arms: { y: 150, dx: 24 * c.st, col: b }, feet: { dx: 12 * c.st, col: shade(b, 0.12) }, shadow: 30 * c.st };
+    },
+  },
+  strawberry: {
+    kind: 'fruit', label: 'strawberry', added: 'card#12796',
+    pals: [['#e2384c', '#5f9a48'], ['#f27fa0', '#6aa05a'], ['#b8243e', '#4f8a44'], ['#ec5a78', '#5f9a48'], ['#c83c5a', '#6aa05a']],
+    hats: ['ladybug', 'flower', 'beret'], necks: ['bow'], extras: ['glasses', 'book'],
+    build(c) {
+      const [b, g] = c.P, X = c.X, seed = '#f6dd84';
+      // a broad heart of a berry, full at the shoulders and round at its foot
+      const berry = c.sym([[0, 78], [18, 74], [35, 80], [44, 98], [41, 120], [32, 144], [21, 164], [10, 178], [0, 183]]);
+      c.body(c.shape(berry, b));
+      const clip = c.pen.clip(berry);
+      for (const [dx, y] of [[-30, 96], [30, 96], [-33, 118], [33, 118], [-23, 140], [23, 140], [-12, 160], [12, 160], [0, 172], [-18, 128], [18, 128], [-7, 150], [7, 150]]) {
+        c.body(`<ellipse cx="${X(dx)}" cy="${y}" rx="1.5" ry="2.3" fill="${seed}" clip-path="${clip}"/>`);
+      }
+      // the calyx, a flat star of leaves over the shoulders, and its stalk
+      c.body(`<path d="M54 76L${X(3)} 62" stroke="${line(g)}" stroke-width="3.6" stroke-linecap="round"/><path d="M54 76L${X(3)} 62" stroke="${g}" stroke-width="2" stroke-linecap="round"/>`);
+      for (const a of [-118, -80, -40, 0, 40, 80, 118]) c.body(c.leaf(54, 78, a, a === 0 ? 10 : 15, 6, g));
+      return { face: { y: 110, es: 15, s: 1.02, my: 125, ms: 0.95 }, hat: { x: 54, y: 66, w: 22 }, neck: { y: 152, w: 24 * c.st },
+        arms: { y: 138, dx: 39 * c.st, col: b, small: true }, feet: { dx: 11 * c.st, col: shade(b, 0.25), rx: 6 }, shadow: 30 * c.st };
+    },
+  },
+  apple: {
+    kind: 'fruit', label: 'apple', added: 'card#12796',
+    pals: [['#d8343c'], ['#9fcb4c'], ['#f0d04c'], ['#c63a5a'], ['#7fbf6a', 'blush']],
+    hats: ['ladybug', 'flower', 'straw'], necks: [], extras: ['glasses', 'mug', 'book'],
+    build(c) {
+      const [b, blush] = c.P, X = c.X;
+      // round and full above, tapering a little to its foot, with the dip where the stalk sits
+      const apple = c.sym([[0, 98], [10, 92], [26, 90], [40, 100], [46, 120], [44, 146], [36, 168], [22, 182], [10, 182], [0, 186]]);
+      c.body(c.shape(apple, b));
+      if (blush) c.body(`<ellipse cx="${X(c.side * 16)}" cy="124" rx="28" ry="26" fill="${c.pen.soft('#e04a4a', 0.75)}" clip-path="${c.pen.clip(apple)}"/>`);
+      c.body(`<path d="M${X(-30)} 112Q${X(-36)} 132 ${X(-30)} 150" stroke="#fff" stroke-width="4" fill="none" opacity=".35" stroke-linecap="round"/>`);
+      // a tall stalk and its one big leaf — the apple's crest
+      c.body(`<path d="M54 98C54 84 ${X(2)} 72 ${X(6)} 62" stroke="#5a3a24" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M54 98C54 84 ${X(2)} 72 ${X(6)} 62" stroke="#8a5a34" stroke-width="2.8" fill="none" stroke-linecap="round"/>`);
+      c.body(c.leaf(X(4), 76, 58, 26, 10, GREENS[0]));
+      return { face: { y: 124, es: 15, s: 1.02, my: 139, ms: 0.95 }, hat: { x: X(-14), y: 92, w: 18 }, neck: null,
+        arms: { y: 148, dx: 44 * c.st, col: b, small: true }, feet: { dx: 14 * c.st, col: shade(b, 0.28), rx: 7 }, shadow: 38 * c.st };
+    },
+  },
+  banana: {
+    kind: 'fruit', label: 'banana', added: 'card#12796',
+    pals: [['#f4d44a'], ['#dfe06e'], ['#f2c43a', 'spots'], ['#c4574a'], ['#b8c8dc']],
+    hats: ['ladybug', 'flower', 'beret'], necks: ['bow', 'scarf'], extras: ['glasses', 'satchel'],
+    build(c) {
+      const [b, spots] = c.P, X = c.X, t = c.side, tip = '#5a4232';
+      // one long crescent standing on its end, curving away to the key's side, its stalk at the top
+      const pts = [[2, 44], [12, 60], [22, 86], [26, 116], [24, 146], [16, 170], [4, 184], [-6, 184], [-14, 170], [-20, 146], [-22, 116], [-18, 88], [-10, 62], [-4, 46]].map(([dx, y]) => [54 + t * dx * c.st, y]);
+      const body = smooth(pts);
+      c.body(c.shape(body, b));
+      c.body(`<path d="M${X(t * 12)} 66C${X(t * 20)} 96 ${X(t * 20)} 140 ${X(t * 8)} 176" stroke="${shade(b, 0.2)}" stroke-width="1.6" fill="none" opacity=".55" stroke-linecap="round"/>`);
+      c.body(`<path d="M${X(-t * 15)} 98Q${X(-t * 18)} 124 ${X(-t * 15)} 150" stroke="#fff" stroke-width="3.4" fill="none" opacity=".35" stroke-linecap="round"/>`);
+      if (spots) for (const [dx, y, r] of [[-12, 96, 1.6], [14, 120, 1.9], [-10, 150, 1.5], [10, 164, 1.7], [16, 90, 1.3]]) c.body(`<circle cx="${X(t * dx)}" cy="${y}" r="${r}" fill="#6a4a2a" opacity=".55"/>`);
+      c.body(`<path d="M${X(-t * 1)} 48L${X(-t * 3)} 34" stroke="${tip}" stroke-width="6.4" stroke-linecap="round"/><path d="M${X(-t * 1)} 48L${X(-t * 3)} 34" stroke="#8a7a4a" stroke-width="4" stroke-linecap="round"/>`);
+      c.body(`<ellipse cx="${X(-t * 1)}" cy="183" rx="4" ry="2.4" fill="${tip}"/>`);
+      return { face: { y: 100, es: 11.5, s: 0.95, my: 113, ms: 0.85 }, hat: { x: X(-t * 3), y: 48, w: 12 }, neck: { y: 126, w: 22 * c.st },
+        arms: { y: 132, dx: 25 * c.st, col: b, small: true }, feet: { dx: 9 * c.st, col: shade(b, 0.3), rx: 5 }, shadow: 24 * c.st };
+    },
+  },
+  lemon: {
+    kind: 'fruit', label: 'lemon', added: 'card#12796',
+    pals: [['#f6dc3c'], ['#c9dc4c'], ['#f6c94a'], ['#f2e88a'], ['#ead23c', 'leaf']],
+    hats: ['ladybug', 'flower', 'beret', 'straw'], necks: [], extras: ['glasses', 'mug', 'book'],
+    build(c) {
+      const [b] = c.P, X = c.X;
+      // lying on its side: a wide oval with a nub at each end, low and broad
+      const lemon = smooth([[54, 98], [X(22), 100], [X(38), 112], [X(45), 132], [X(50), 146], [X(43), 160], [X(32), 178], [54, 184], [X(-32), 178], [X(-43), 160], [X(-50), 146], [X(-45), 132], [X(-38), 112], [X(-22), 100]]);
+      c.body(c.shape(lemon, b));
+      const clip = c.pen.clip(lemon);
+      for (const [dx, y] of [[-24, 120], [-14, 112], [20, 116], [30, 132], [-32, 146], [14, 170], [-20, 168], [32, 158]]) c.body(`<circle cx="${X(dx)}" cy="${y}" r="1" fill="${shade(b, 0.25)}" opacity=".55" clip-path="${clip}"/>`);
+      c.body(`<path d="M${X(-30)} 126Q${X(-36)} 140 ${X(-32)} 156" stroke="#fff" stroke-width="3.8" fill="none" opacity=".4" stroke-linecap="round"/>`);
+      // a little stalk and two leaves on top
+      c.body(`<path d="M54 100L${X(2)} 92" stroke="#6a5a3a" stroke-width="3" stroke-linecap="round"/>`);
+      c.body(c.leaf(X(2), 94, 62, 18, 7, GREENS[1]));
+      c.body(c.leaf(X(1), 94, -48, 14, 6, GREENS[2]));
+      return { face: { y: 124, es: 15, s: 1, my: 138, ms: 0.95 }, hat: { x: X(-14), y: 100, w: 18 }, neck: null,
+        arms: { y: 156, dx: 42 * c.st, col: b, small: true }, feet: { dx: 15 * c.st, col: shade(b, 0.3), rx: 6 }, shadow: 40 * c.st };
+    },
+  },
+  dragonfruit: {
+    kind: 'fruit', label: 'dragon fruit', added: 'card#12796',
+    pals: [['#e2408a', '#8fc24a'], ['#d84aa0', '#9ac04a'], ['#c3306c', '#6fa04a'], ['#f27ab0', '#a8c84a'], ['#f0607e', '#7fb04a']],
+    hats: ['ladybug', 'flower', 'beret'], necks: ['bow', 'neckerchief'], extras: ['glasses', 'satchel', 'book'],
+    build(c) {
+      const [b, g] = c.P, X = c.X;
+      // the scale-flames standing out of the outline, and the crown at the top, green at their tips
+      const flame = (x, y, ang, len, wid) => `<g transform="translate(${f(x)} ${f(y)}) rotate(${f(ang)})"><path d="${leafD(len, wid)}" fill="${c.pen.paint(b)}" stroke="${line(b)}" stroke-width="1.3" stroke-linejoin="round"/><path d="M0 ${f(-len * 0.55)}C${f(wid * 0.6)} ${f(-len * 0.7)} ${f(wid * 0.3)} ${f(-len * 0.92)} 0 ${f(-len)}C${f(-wid * 0.3)} ${f(-len * 0.92)} ${f(-wid * 0.6)} ${f(-len * 0.7)} 0 ${f(-len * 0.55)}Z" fill="${g}"/></g>`;
+      for (const [dx, y, a] of [[-28, 88, -50], [28, 88, 50], [-36, 116, -75], [36, 116, 75], [-36, 146, -100], [36, 146, 100], [-26, 170, -125], [26, 170, 125]]) c.back(flame(X(dx), y, a, 14, 6.5));
+      for (const [dx, a, l] of [[-8, -24, 22], [0, 0, 26], [8, 24, 22]]) c.back(flame(X(dx), 70, a, l, 7.5));
+      const fruit = c.sym([[0, 64], [22, 68], [36, 84], [42, 110], [42, 140], [36, 166], [22, 182], [0, 186]]);
+      c.body(c.shape(fruit, b));
+      // the flat scales on the skin, in rows, each a soft green-tipped arc
+      for (const [dx, y] of [[-18, 86], [18, 86], [0, 150], [-24, 132], [24, 132], [-14, 172], [14, 172]]) c.body(`<path d="M${X(dx - 8)} ${y + 6}Q${X(dx)} ${y - 6} ${X(dx + 8)} ${y + 6}" stroke="${g}" stroke-width="2.6" fill="none" stroke-linecap="round" opacity=".85"/>`);
+      return { face: { y: 108, es: 15, s: 1.02, my: 122, ms: 0.95 }, hat: { x: 54, y: 62, w: 20 }, neck: { y: 136, w: 30 * c.st },
+        arms: { y: 146, dx: 40 * c.st, col: b, small: true }, feet: { dx: 15 * c.st, col: shade(b, 0.25) }, shadow: 38 * c.st };
+    },
+  },
+  peach: {
+    kind: 'fruit', label: 'peach', added: 'card#12796',
+    pals: [['#f7b48c', '#ef6f62'], ['#f7d2c8', '#f08f9c'], ['#f5a07a', '#e8584a'], ['#f2c0a8', '#e27a86'], ['#eea69a', '#d9586e']],
+    hats: ['ladybug', 'flower', 'beret', 'straw'], necks: [], extras: ['glasses', 'mug', 'book'],
+    build(c) {
+      const [b, blush] = c.P, X = c.X, t = c.side;
+      // a squat, heart-topped peach with its pointed tip, broad and low
+      const peach = c.sym([[0, 96], [8, 88], [22, 86], [38, 96], [48, 118], [48, 144], [42, 164], [30, 180], [12, 186], [0, 186]]);
+      c.body(c.shape(peach, b));
+      const clip = c.pen.clip(peach);
+      c.body(`<ellipse cx="${X(t * 22)}" cy="132" rx="34" ry="40" fill="${c.pen.soft(blush, 0.8)}" clip-path="${clip}"/>`);
+      // the cleft, a soft line from the top down one side, and the fuzz's sheen
+      c.body(`<path d="M54 96C${X(-t * 6)} 120 ${X(-t * 8)} 150 ${X(-t * 2)} 184" stroke="${shade(b, 0.28)}" stroke-width="1.8" fill="none" opacity=".6" stroke-linecap="round"/>`);
+      c.body(`<path d="M${X(-34)} 116Q${X(-40)} 134 ${X(-34)} 152" stroke="#fff" stroke-width="5" fill="none" opacity=".3" stroke-linecap="round"/>`);
+      c.body(`<path d="M54 92L${X(-2)} 82" stroke="#6a4a2a" stroke-width="3.4" stroke-linecap="round"/>`);
+      for (const a of [-58, 52]) c.body(c.leaf(X(-2), 84, a, 18, 7.5, GREENS[2]));
+      return { face: { y: 122, es: 16, s: 1.02, my: 137, ms: 0.95 }, hat: { x: X(t * 18), y: 90, w: 18 }, neck: null,
+        arms: { y: 150, dx: 47 * c.st, col: b, small: true }, feet: { dx: 18 * c.st, col: shade(b, 0.25) }, shadow: 44 * c.st };
+    },
+  },
+  pineapple: {
+    kind: 'fruit', label: 'pineapple', added: 'card#12796',
+    pals: [['#e8b33a', '#5f9a48'], ['#f2cc5c', '#4f8a44'], ['#d89a3c', '#6aa05a'], ['#c97a3a', '#3f7f50'], ['#f0d48a', '#79a85a']],
+    hats: ['ladybug', 'flower'], necks: ['bow', 'scarf'], extras: ['glasses', 'mug', 'book'],
+    build(c) {
+      const [b, g] = c.P, X = c.X;
+      // the crown (its neck sits low on the fruit, so no satchel: one would hang below the foot line): tall spiky leaves fanned up from the top
+      for (const [a, l, w] of [[-52, 30, 6], [52, 30, 6], [-30, 40, 6.5], [30, 40, 6.5], [-12, 50, 6.5], [12, 50, 6.5], [0, 58, 6]]) c.back(c.leaf(54, 98, a, l, w, a === 0 ? tint(g, 0.1) : g));
+      const fruit = c.sym([[0, 94], [19, 96], [29, 110], [33, 134], [32, 158], [26, 176], [13, 185], [0, 186]]);
+      c.body(c.shape(fruit, b));
+      // the diamond weave, clipped to the fruit, a dot at each crossing
+      const clip = c.pen.clip(fruit), lc = shade(b, 0.3);
+      let weave = '';
+      for (let k = -6; k <= 6; k++) weave += `M${X(k * 12 - 40)} 90L${X(k * 12 + 60)} 190M${X(k * 12 + 40)} 90L${X(k * 12 - 60)} 190`;
+      c.body(`<path d="${weave}" stroke="${lc}" stroke-width="1.2" fill="none" opacity=".55" clip-path="${clip}"/>`);
+      for (let r = 0; r < 8; r++) for (let k = -4; k <= 4; k++) { const y = 102 + r * 12, dx = k * 12 + (r % 2 ? 6 : 0); c.body(`<circle cx="${X(dx)}" cy="${y}" r="1.2" fill="${shade(b, 0.45)}" opacity=".5" clip-path="${clip}"/>`); }
+      return { face: { y: 122, es: 12, s: 0.95, my: 136, ms: 0.9 }, hat: { x: 54, y: 46, w: 12 }, neck: { y: 150, w: 26 * c.st },
+        arms: { y: 148, dx: 31 * c.st, col: b, small: true }, feet: { dx: 12 * c.st, col: shade(b, 0.3) }, shadow: 30 * c.st };
+    },
+  },
+  watermelon: {
+    kind: 'fruit', label: 'watermelon slice', added: 'card#12796',
+    pals: [['#ef4a5c', '#3f8a4a'], ['#f4d24a', '#3f8a4a'], ['#f58a9a', '#4f9a5a'], ['#e13248', '#2f6f3c'], ['#f6a0b8', '#6aa05a']],
+    hats: ['ladybug', 'flower', 'straw'], necks: [], extras: ['glasses', 'book'],
+    build(c) {
+      const [b, rind] = c.P, X = c.X, pale = '#f4f6e2';
+      // a wedge standing on its rind: a soft point at the top, the rind's arc for its foot
+      const wedge = `M${X(-4)} 66Q54 60 ${X(4)} 66L${X(46)} 160Q${X(52)} 170 ${X(44)} 176Q54 192 ${X(-44)} 176Q${X(-52)} 170 ${X(-46)} 160Z`;
+      c.body(c.shape(wedge, rind));
+      const flesh = `M${X(-3.4)} 72Q54 67 ${X(3.4)} 72L${X(40)} 158Q${X(44)} 165 ${X(38)} 168Q54 180 ${X(-38)} 168Q${X(-44)} 165 ${X(-40)} 158Z`;
+      c.body(`<path d="${flesh}" fill="${pale}" stroke="${tint(rind, 0.5)}" stroke-width="1"/>`);
+      const inner = `M${X(-3)} 76Q54 72 ${X(3)} 76L${X(36)} 154Q${X(39)} 160 ${X(34)} 162Q54 172 ${X(-34)} 162Q${X(-39)} 160 ${X(-36)} 154Z`;
+      c.body(`<path d="${inner}" fill="${c.pen.paint(b)}"/>`);
+      for (const [dx, y, a] of [[-8, 100, -20], [10, 108, 20], [-22, 142, -30], [22, 144, 30], [-4, 152, 0], [-14, 124, -10], [16, 128, 15]]) c.body(`<ellipse cx="${X(dx)}" cy="${y}" rx="1.7" ry="3" transform="rotate(${a} ${X(dx)} ${y})" fill="#2e2428"/>`);
+      return { face: { y: 120, es: 13, s: 0.98, my: 134, ms: 0.9 }, hat: { x: 54, y: 64, w: 12 }, neck: null,
+        arms: { y: 148, dx: 38 * c.st, col: shade(b, 0.05), small: true }, feet: { dx: 16 * c.st, col: rind, rx: 7 }, shadow: 44 * c.st };
+    },
+  },
+  avocado: {
+    kind: 'fruit', label: 'avocado half', added: 'card#12796',
+    pals: [['#4f7a30', '#dfe48e', '#8a5a3a'], ['#3a4a2c', '#e6e89c', '#7a4a2c'], ['#6f9a3c', '#ecebaa', '#9a6a3a'], ['#59683c', '#d6dc8a', '#6a4030'], ['#4a6a4c', '#e2e6ac', '#a0703c']],
+    hats: ['ladybug', 'flower', 'beret'], necks: ['bow'], extras: ['glasses', 'book'],
+    build(c) {
+      const [skin, flesh, pit] = c.P, X = c.X;
+      // the half, cut face to the viewer: a pear of dark skin, the pale flesh inside it greening toward the skin
+      const outer = c.sym([[0, 66], [14, 68], [23, 80], [29, 102], [39, 130], [42, 154], [36, 175], [20, 185], [0, 186]]);
+      c.body(c.shape(outer, skin));
+      const inner = c.sym([[0, 71], [11, 73], [19, 84], [25, 104], [34, 131], [37, 154], [31, 172], [17, 180], [0, 181]]);
+      const id = c.pen.uid();
+      c.pen.defs.push(`<radialGradient id="${id}" cx=".5" cy=".62" r=".62"><stop offset="0" stop-color="${tint(flesh, 0.3)}"/><stop offset=".62" stop-color="${flesh}"/><stop offset="1" stop-color="${mix(flesh, skin, 0.45)}"/></radialGradient>`);
+      c.body(`<path d="${inner}" fill="url(#${id})"/>`);
+      // the pit, round and glossy, low in the belly
+      c.body(`<circle cx="54" cy="152" r="${f(16 * c.st)}" fill="${c.pen.paint(pit)}" stroke="${line(pit)}" stroke-width="1.4"/><ellipse cx="${X(-6)}" cy="145" rx="4.6" ry="3" fill="#fff" opacity=".35"/>`);
+      return { face: { y: 104, es: 12, s: 0.95, my: 117, ms: 0.85 }, hat: { x: 54, y: 67, w: 16 }, neck: { y: 132, w: 30 * c.st },
+        arms: { y: 140, dx: 37 * c.st, col: skin, small: true }, feet: { dx: 15 * c.st, col: skin }, shadow: 38 * c.st };
+    },
+  },
+  mango: {
+    kind: 'fruit', label: 'mango', added: 'card#12796',
+    pals: [['#8fc04c', '#f2c84a', '#ec5e4a'], ['#f2c84a', '#f4a03a', '#e6484a'], ['#f4d85c', '#f6b23a', '#f08a4a'], ['#a8c85a', '#e8d05a', '#d6485c'], ['#e8a43a', '#ec6a3a', '#c8304a']],
+    hats: ['ladybug', 'flower', 'beret'], necks: ['bow', 'neckerchief'], extras: ['glasses', 'satchel', 'book'],
+    build(c) {
+      const [g, y, r] = c.P, X = c.X, t = c.side;
+      // a kidney: one long oval leaning to the key's side, the inner curve dented, green below ripening to a red cheek
+      const pts = [[6, 60], [22, 66], [36, 84], [42, 112], [40, 142], [32, 166], [18, 182], [0, 186], [-16, 180], [-28, 160], [-30, 136], [-26, 114], [-26, 96], [-22, 76], [-10, 62]].map(([dx, yy]) => [54 + t * dx * c.st, yy]);
+      const body = smooth(pts);
+      const id = c.pen.uid();
+      c.pen.defs.push(`<linearGradient id="${id}" x1="${t < 0 ? 1 : 0}" y1="1" x2="${t < 0 ? 0 : 1}" y2="0"><stop offset=".08" stop-color="${g}"/><stop offset=".5" stop-color="${y}"/><stop offset=".92" stop-color="${r}"/></linearGradient>`);
+      c.body(`<path d="${body}" fill="url(#${id})" stroke="${line(y)}" stroke-width="1.6" stroke-linejoin="round"/>`);
+      c.body(`<ellipse cx="${X(t * 14)}" cy="96" rx="20" ry="22" fill="${c.pen.soft(tint(y, 0.6), 0.55)}" clip-path="${c.pen.clip(body)}"/>`);
+      c.body(`<path d="M${X(t * 4)} 62L${X(t * 6)} 50" stroke="#5a4028" stroke-width="3.4" stroke-linecap="round"/>`);
+      c.body(c.leaf(X(t * 6), 52, t * 70, 16, 6.5, GREENS[2]));
+      return { face: { y: 110, es: 14, s: 1, my: 124, ms: 0.9 }, hat: { x: X(-t * 6), y: 62, w: 16 }, neck: { y: 138, w: 28 * c.st },
+        arms: { y: 146, dx: 36 * c.st, col: y, small: true }, feet: { dx: 13 * c.st, col: shade(g, 0.3), rx: 6 }, shadow: 34 * c.st };
+    },
+  },
+  kiwi: {
+    kind: 'fruit', label: 'kiwi half', added: 'card#12796',
+    pals: [['#86c43c', '#7a5a3a'], ['#e6d84a', '#8a6a40'], ['#a2d24e', '#6a4a30'], ['#c4d84a', '#7a5a3a'], ['#70b040', '#5a4030']],
+    hats: ['ladybug', 'flower', 'beret', 'straw'], necks: [], extras: ['glasses', 'mug', 'book'],
+    build(c) {
+      const [flesh, skin] = c.P, X = c.X, cy = 132, R = 48;
+      // the half, cut face to the viewer: the fuzzy brown skin's rim, the bright flesh, its pale heart and its ring of seeds
+      c.body(c.shape(scallop(54, cy, R * c.st, R, 34, 0.9), skin));
+      const id = c.pen.uid();
+      c.pen.defs.push(`<radialGradient id="${id}" cx=".5" cy=".55" r=".55"><stop offset="0" stop-color="${tint(flesh, 0.55)}"/><stop offset=".45" stop-color="${flesh}"/><stop offset="1" stop-color="${shade(flesh, 0.12)}"/></radialGradient>`);
+      c.body(`<ellipse cx="54" cy="${cy}" rx="${f((R - 5) * c.st)}" ry="${R - 5}" fill="url(#${id})"/>`);
+      const hy = cy + 12;
+      for (let i = 0; i < 16; i++) { const a = (i / 16) * 2 * Math.PI, rr = 15 + (i % 2) * 3; c.body(`<ellipse cx="${f(54 + Math.cos(a) * rr * c.st)}" cy="${f(hy + Math.sin(a) * rr * 0.9)}" rx="1.3" ry="2.3" transform="rotate(${f(a * 180 / Math.PI + 90)} ${f(54 + Math.cos(a) * rr * c.st)} ${f(hy + Math.sin(a) * rr * 0.9)})" fill="#2a2024"/>`); }
+      c.body(`<ellipse cx="54" cy="${hy}" rx="${f(8 * c.st)}" ry="7" fill="${c.pen.soft('#fbf8e2', 0.95)}"/>`);
+      for (let i = 0; i < 12; i++) { const a = (i / 12) * 2 * Math.PI; c.body(`<path d="M${f(54 + Math.cos(a) * 9 * c.st)} ${f(hy + Math.sin(a) * 8)}L${f(54 + Math.cos(a) * 34 * c.st)} ${f(hy + Math.sin(a) * 30)}" stroke="${tint(flesh, 0.5)}" stroke-width=".8" opacity=".5"/>`); }
+      return { face: { y: 104, es: 15, s: 0.98, my: 118, ms: 0.85 }, hat: { x: 54, y: 86, w: 20 }, neck: null,
+        arms: { y: 140, dx: 47 * c.st, col: skin, small: true }, feet: { dx: 16 * c.st, col: skin }, shadow: 42 * c.st };
+    },
+  },
+  starfruit: {
+    kind: 'fruit', label: 'starfruit', added: 'card#12796',
+    pals: [['#f2cf4a'], ['#e3dc72'], ['#f6b84c'], ['#cfe074'], ['#f7e3a0']],
+    hats: ['ladybug', 'flower', 'beret'], necks: [], extras: ['glasses'],
+    build(c) {
+      const [b] = c.P, cy = 142, Ro = 54, Ri = 30;
+      // a five-pointed star with rounded points: the top point its crown, two its arms and two its feet
+      const pts = [];
+      for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? Ri : Ro; pts.push([54 + Math.cos(a) * r * c.st, cy + Math.sin(a) * r * (i === 4 || i === 6 ? 0.96 : 1)]); }
+      const star = smooth(pts);
+      c.body(c.shape(star, b));
+      // the ridges, a pale line from the heart out to each point
+      for (let i = 0; i < 10; i += 2) { const a = -Math.PI / 2 + i * Math.PI / 5; c.body(`<path d="M54 ${cy}L${f(54 + Math.cos(a) * (Ro - 10) * c.st)} ${f(cy + Math.sin(a) * (Ro - 10))}" stroke="${tint(b, 0.5)}" stroke-width="2" stroke-linecap="round" opacity=".7"/>`); }
+      c.body(`<path d="M${f(54 - 6)} ${cy - 46}L54 ${cy - 56}" stroke="#6a5a3a" stroke-width="2.6" stroke-linecap="round"/>`);
+      return { face: { y: 124, es: 12, s: 0.95, my: 137, ms: 0.85 }, hat: { x: 54, y: 88, w: 12 }, neck: null,
+        arms: null, feet: null, shadow: 36 * c.st };
     },
   },
 };
@@ -633,7 +1177,7 @@ export const SPECIES = Object.freeze(Object.fromEntries(Object.entries(APPROVED)
  * The list GROWS BY APPENDING and never shrinks under a seat: a seat's species is stored at its creation, so an
  * appended species moves no seat (FLOOR.md § 10.4's growth bullet); removing one is D2 § 6.13's process rule.
  */
-export const SPECIES_KEYS = Object.freeze(['fox', 'bear', 'rabbit', 'owl', 'frog', 'mole', 'hedgehog', 'otter', 'radish', 'turnip', 'mushroom', 'peapod', 'carrot', 'eggplant', 'pumpkin', 'potato', 'penguin', 'snail', 'sheep', 'deer', 'corn', 'broccoli', 'pepper', 'cabbage']);
+export const SPECIES_KEYS = Object.freeze(['fox', 'bear', 'rabbit', 'owl', 'frog', 'mole', 'hedgehog', 'otter', 'radish', 'turnip', 'mushroom', 'peapod', 'carrot', 'eggplant', 'pumpkin', 'potato', 'penguin', 'snail', 'sheep', 'deer', 'corn', 'broccoli', 'pepper', 'cabbage', 'cat', 'panda', 'koala', 'raccoon', 'duck', 'axolotl', 'capybara', 'pig', 'elephant', 'turtle', 'sloth', 'lion', 'strawberry', 'apple', 'banana', 'lemon', 'dragonfruit', 'peach', 'pineapple', 'watermelon', 'avocado', 'mango', 'kiwi', 'starfruit']);
 
 // ---- the shared dimensions (closed populations) ----
 export const EYES = ['round', 'sparkle', 'happy', 'sleepy', 'bead'];
@@ -1344,13 +1888,15 @@ const Z_INK = '#4f4380', Z_FILL = '#ece8ff';
  * `tools/design/sleeper-zs.browser.mjs` holds every scanned seat's drawing at or below it.
  */
 export const CREST_TOP = Object.freeze({
-  bear: 53, carrot: 31, eggplant: 39, fox: 34, frog: 73, hedgehog: 66, mole: 60,
-  'mushroom/bell': 15, 'mushroom/dome': 25, 'mushroom/wide': 38, otter: 63, owl: 49, peapod: 44, potato: 56,
-  pumpkin: 47, 'rabbit/lop': 62, 'rabbit/upright': 20, radish: 25, turnip: 27,
+  bear: 53, carrot: 31, eggplant: 39, fox: 34, frog: 73, hedgehog: 61, mole: 60,
+  'mushroom/bell': 15, 'mushroom/dome': 25, 'mushroom/wide': 38, otter: 63, owl: 47, peapod: 44, potato: 56,
+  pumpkin: 63, 'rabbit/lop': 62, 'rabbit/upright': 20, radish: 25, turnip: 27,
   // card#12212's species: each the floor of the topmost ink `tools/design/svg-document.mjs`'s inkBounds reads over the
   // sleeper's own documents (without their z's) across the selftest's keys — tools/characters/selftest.mjs § 8b holds
   // every entry at or above that ink on every run, beside the tool's raster scan
   penguin: 56, snail: 64, sheep: 68, deer: 37, corn: 45, broccoli: 15, pepper: 42, cabbage: 47,
+  // card#12796's species, derived the same way
+  cat: 58, panda: 63, koala: 71, raccoon: 67, duck: 76, axolotl: 86, capybara: 63, pig: 72, elephant: 77, turtle: 85, sloth: 73, lion: 72, strawberry: 53, apple: 51, banana: 51, lemon: 77, dragonfruit: 55, peach: 67, pineapple: 35, watermelon: 61, avocado: 70, mango: 57, kiwi: 90, starfruit: 76,
 });
 
 /**
@@ -1372,33 +1918,57 @@ export function standEntry(key, force) {
  * key of its population's ink at or under its row on every run, and each row within a unit of the highest such ink.
  */
 export const STAND_TOP = Object.freeze({
-  bear: Object.freeze({ beanie: 46, beret: 40, flower: 49, ladybug: 49, none: 49, straw: 47 }),
+  apple: Object.freeze({ flower: 57, ladybug: 57, none: 57, straw: 57 }),
+  avocado: Object.freeze({ beret: 54, flower: 59, ladybug: 63, none: 63 }),
+  axolotl: Object.freeze({ beret: 57, flower: 65, ladybug: 66, none: 66 }),
+  banana: Object.freeze({ beret: 29, flower: 29, ladybug: 29, none: 29 }),
+  bear: Object.freeze({ beanie: 42, beret: 40, flower: 42, ladybug: 42, none: 42, straw: 42 }),
   broccoli: Object.freeze({ beanie: 31, beret: 26, flower: 33, ladybug: 33, none: 33 }),
-  cabbage: Object.freeze({ beret: 56, flower: 61, ladybug: 61, none: 61 }),
+  cabbage: Object.freeze({ beret: 58, flower: 67, ladybug: 70, none: 71 }),
+  capybara: Object.freeze({ beret: 54, flower: 55, ladybug: 54, none: 54, straw: 55 }),
   carrot: Object.freeze({ flower: 3, ladybug: 3, none: 3 }),
+  cat: Object.freeze({ beanie: 36, beret: 36, flower: 36, ladybug: 36, none: 36 }),
   corn: Object.freeze({ flower: 30, ladybug: 30, none: 30, straw: 30 }),
   deer: Object.freeze({ beret: 26, flower: 26, ladybug: 26, none: 26, straw: 26 }),
+  dragonfruit: Object.freeze({ beret: 42, flower: 42, ladybug: 42, none: 42 }),
+  duck: Object.freeze({ beanie: 51, beret: 51, flower: 51, ladybug: 51, none: 51, straw: 51 }),
   eggplant: Object.freeze({ flower: 31, ladybug: 31, none: 31 }),
+  elephant: Object.freeze({ beanie: 53, beret: 48, flower: 56, ladybug: 59, none: 59, straw: 54 }),
   fox: Object.freeze({ beret: 21, flower: 21, ladybug: 21, none: 21 }),
-  frog: Object.freeze({ flower: 57, ladybug: 57, none: 57 }),
-  hedgehog: Object.freeze({ beret: 54, flower: 59, ladybug: 59, none: 59 }),
+  frog: Object.freeze({ flower: 53, ladybug: 53, none: 53 }),
+  hedgehog: Object.freeze({ beret: 40, flower: 40, ladybug: 40, none: 40 }),
+  kiwi: Object.freeze({ beret: 72, flower: 79, ladybug: 81, none: 81, straw: 78 }),
+  koala: Object.freeze({ beanie: 55, beret: 50, flower: 55, ladybug: 55, none: 55 }),
+  lemon: Object.freeze({ beret: 82, flower: 82, ladybug: 82, none: 81, straw: 81 }),
+  lion: Object.freeze({ beanie: 48, beret: 48, flower: 48, ladybug: 48, none: 48, straw: 48 }),
+  mango: Object.freeze({ beret: 42, flower: 41, ladybug: 42, none: 41 }),
   mole: Object.freeze({ beanie: 52, beret: 47, flower: 57, ladybug: 59, none: 59, straw: 53 }),
   'mushroom/bell': Object.freeze({ flower: 15, ladybug: 17, none: 17 }),
   'mushroom/dome': Object.freeze({ flower: 25, ladybug: 27, none: 27 }),
   'mushroom/wide': Object.freeze({ flower: 39, ladybug: 41, none: 41 }),
   otter: Object.freeze({ beanie: 42, beret: 37, flower: 46, ladybug: 49, none: 49, straw: 44 }),
-  owl: Object.freeze({ beanie: 37, beret: 37, flower: 37, ladybug: 37, none: 37, straw: 37 }),
+  owl: Object.freeze({ beanie: 25, beret: 25, flower: 25, ladybug: 25, none: 25, straw: 25 }),
+  panda: Object.freeze({ beanie: 46, beret: 40, flower: 46, ladybug: 46, none: 46, straw: 46 }),
+  peach: Object.freeze({ beret: 70, flower: 70, ladybug: 70, none: 70, straw: 70 }),
   peapod: Object.freeze({ flower: 18, ladybug: 18, none: 18 }),
   penguin: Object.freeze({ beanie: 39, beret: 35, flower: 39, ladybug: 39, none: 39, straw: 39 }),
-  pepper: Object.freeze({ flower: 42, ladybug: 42, none: 42, straw: 42 }),
+  pepper: Object.freeze({ flower: 36, ladybug: 36, none: 36, straw: 36 }),
+  pig: Object.freeze({ beanie: 57, beret: 53, flower: 59, ladybug: 59, none: 59, straw: 59 }),
+  pineapple: Object.freeze({ flower: 38, ladybug: 38, none: 38 }),
   potato: Object.freeze({ beanie: 49, beret: 49, flower: 49, ladybug: 49, none: 49, straw: 49 }),
-  pumpkin: Object.freeze({ flower: 43, ladybug: 43, none: 43 }),
+  pumpkin: Object.freeze({ flower: 76, ladybug: 76, none: 76 }),
   'rabbit/lop': Object.freeze({ beanie: 54, beret: 48, flower: 59, ladybug: 61, none: 61, straw: 55 }),
   'rabbit/upright': Object.freeze({ flower: 9, ladybug: 9, none: 9 }),
+  raccoon: Object.freeze({ beanie: 45, beret: 45, flower: 45, ladybug: 45, none: 45, straw: 45 }),
   radish: Object.freeze({ flower: 18, ladybug: 18, none: 18 }),
   sheep: Object.freeze({ beanie: 62, beret: 58, flower: 65, ladybug: 65, none: 65, straw: 64 }),
+  sloth: Object.freeze({ beanie: 56, beret: 51, flower: 59, ladybug: 61, none: 61, straw: 58 }),
   snail: Object.freeze({ beret: 59, flower: 59, ladybug: 59, none: 59, straw: 59 }),
+  starfruit: Object.freeze({ beret: 76, flower: 80, ladybug: 83, none: 83 }),
+  strawberry: Object.freeze({ beret: 51, flower: 58, ladybug: 58, none: 58 }),
   turnip: Object.freeze({ flower: 25, ladybug: 25, none: 25 }),
+  turtle: Object.freeze({ beanie: 61, beret: 57, flower: 64, ladybug: 67, none: 67, straw: 63 }),
+  watermelon: Object.freeze({ flower: 56, ladybug: 60, none: 61, straw: 58 }),
 });
 
 /**
@@ -1424,9 +1994,12 @@ export function crestOfKey(key, { pose, species } = {}) {
  * every run, and each row within two units of the highest such ink.
  */
 export const FACE_TOP = Object.freeze({
-  bear: 76, broccoli: 107, cabbage: 88, carrot: 67, corn: 77, deer: 77, eggplant: 83, fox: 77, frog: 57, hedgehog: 77,
-  mole: 81, 'mushroom/bell': 90, 'mushroom/dome': 90, 'mushroom/wide': 90, otter: 64, owl: 69, peapod: 68, penguin: 72,
-  pepper: 86, potato: 85, pumpkin: 84, 'rabbit/lop': 76, 'rabbit/upright': 76, radish: 82, sheep: 85, snail: 84, turnip: 86,
+  apple: 103, avocado: 84, axolotl: 78, banana: 80, bear: 76, broccoli: 107, cabbage: 88, capybara: 78, carrot: 67,
+  cat: 77, corn: 77, deer: 77, dragonfruit: 87, duck: 74, eggplant: 83, elephant: 73, fox: 77, frog: 57, hedgehog: 77,
+  kiwi: 84, koala: 75, lemon: 103, lion: 76, mango: 89, mole: 81, 'mushroom/bell': 90, 'mushroom/dome': 90,
+  'mushroom/wide': 90, otter: 64, owl: 69, panda: 77, peach: 101, peapod: 68, penguin: 72, pepper: 86, pig: 76,
+  pineapple: 102, potato: 85, pumpkin: 102, 'rabbit/lop': 76, 'rabbit/upright': 76, raccoon: 77, radish: 82, sheep: 85,
+  sloth: 77, snail: 84, starfruit: 104, strawberry: 89, turnip: 86, turtle: 76, watermelon: 100,
 });
 
 /**

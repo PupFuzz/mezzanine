@@ -31,8 +31,8 @@ the fix is still one commit.
 
 WHAT THIS GATE ASSERTS — the rules below, in TWO FAMILIES, applicable on different conditions.
 
-RELEASE SHAPE (R1-R3, R6-R7) — refused only on a PR whose base is the release branch (R7 also
-WARNS off it):
+RELEASE SHAPE (R1-R3, R6-R7, R9) — refused only on a PR whose base is the release branch (R7
+also WARNS off it):
   * R1 — HEAD BRANCH SHAPE. The head ref must be exactly `release/` + the tag this PR would
     mint (see AUTHORITY SOURCING). It is an EQUALITY against the head's own `VERSION`, not a
     shape match, so `release/v0.3.0` carrying `VERSION` 0.2.0 is also refused: the branch name
@@ -42,8 +42,8 @@ WARNS off it):
     the release branch's tip, by semver precedence. EQUAL is exactly #38; LOWER is worse.
   * R3 — CHANGELOG SECTION. `docs/CHANGELOG.md` at the head must carry a level-2 section
     naming the new version, and the `[Unreleased]` heading does not count as one (step 4 of
-    the release flow RETITLES it — a version still sitting under `Unreleased` is precisely the
-    not-yet-released state).
+    the release flow writes the version's own section beneath it — a version still sitting under
+    `Unreleased` is precisely the not-yet-released state).
   * R6 — CURRENT WITH THE INTEGRATION BRANCH, or saying what it leaves out. The release
     head's CONTENT equals `origin/dev`'s, modulo the release's own two edits (`VERSION` and
     `docs/CHANGELOG.md`), and the changelog edit does not DROP a card `dev` holds. Residue is
@@ -52,11 +52,21 @@ WARNS off it):
   * R7 — RELEASE FLOW STEP 13 WAS DONE. `docs/CHANGELOG.md` at the head carries at most TWO
     released sections — the one this release mints and the previous latest — and no
     `docs/changelog/*.md` archive file is past R5's contents-API cliff. See WHY R7 EXISTS below.
+  * R9 — EVERY NOTE ASSEMBLED (card#12935). The release head carries no note in
+    `docs/changelog.d/`: release flow step 4 gathered each into the version's section and deleted
+    it. A note left behind would ship with no CHANGELOG line and be collected again next release.
 
-CHANGELOG DISCIPLINE (R4-R5) — on EVERY PR, because that is where the entries are written:
-  * R4 — THE CARD'S BULLET. If the head ref or the PR title names a card, `docs/CHANGELOG.md`
-    at the head must carry a line-initial `- **card#NNNN**` bullet for that card under
-    `## [Unreleased]`. `docs/PLAN.md § 4` owns the rule; this is its first enforcement.
+CHANGELOG DISCIPLINE (R4-R5, R8) — on EVERY PR (R4 and R8 off the release path), because that
+is where the entries are written:
+  * R4 — THE CARD'S NOTE. If the head ref or the PR title names a card, the head must carry a
+    note for that card in `docs/changelog.d/` — a file named `<card>.md` or `<card>-<slug>.md`.
+    Before card#12935 the obligation was a bullet under `## [Unreleased]`; it is the same
+    obligation in a file of its own, so changes built side by side stop conflicting on the
+    CHANGELOG. `docs/PLAN.md § 4` owns the rule; `bin/changelog-fragments.py` owns the format.
+  * R8 — THE NOTES PATH (card#12935). A change PR adds no line under `## [Unreleased]` — that
+    section is written only by the release, from the notes — and every note it adds or changes
+    is well-formed by the format `bin/changelog-fragments.py` checks, so the release's assembler
+    will accept it. Removing a line there is allowed: a revert, or the move card#12935 made.
   * R5 — CHANGELOG SIZE. `docs/CHANGELOG.md` at the head must stay below `cliff − the bytes it
     actually grew in the last HEADROOM_DAYS`, so the file reds while there is still a fortnight
     of runway before the contents API silently truncates it. `docs/PLAN.md § 4`'s "our addition
@@ -85,14 +95,27 @@ sees a feature PR at all: it has no `branches:` filter (see the workflow's own c
 two reasons) and decides applicability internally. A new path-filtered workflow would have the
 required-check pending trap baked in from birth.
 
+⚠ R4 IS STATED BELOW AS IT WAS BUILT, ABOUT BULLETS; SINCE card#12935 READ "NOTE" FOR "BULLET" AND
+"`docs/changelog.d/`" FOR "`[Unreleased]`" THROUGHOUT. The incident, the carve-outs and the known
+limit carry over unchanged: the rule moved file, not meaning.
+
+WHY R8 EXISTS (card#12935). Every change PR wrote its bullet at the top of `## [Unreleased]`, so
+any two built side by side edited the same lines, and the second to merge conflicted — about seven
+times in one day on 2026-11-06, one PR needing four `dev` merges, each a builder round-trip and a
+CI run. A note per change in its own file removes the shared lines; R8 keeps them removed, because
+a single hand-written bullet under `[Unreleased]` re-creates the conflict for every PR open beside
+it and would also stop the release assembler, which refuses a section it did not write. R8's
+format half judges only the notes THIS PR adds or changes: a malformed note already on the base is
+not this author's to fix, and redding them for it is the misdirected red R7 exists to end.
+
 R4'S CARVE-OUTS — a gate that reds on correct work gets switched off, so the exemptions are
 argued rather than assumed. THE PRECEDENT is `release-consistency.yml`'s back-merge exemption
 in the framework repo, which keys on `BASE_REF` and on a documented branch SHAPE, never on
 "did the artifact change?" — because inferring the class from the artifact is circular.
   1. BASE IS THE RELEASE BRANCH ⇒ R4 DOES NOT APPLY. Keyed on the base ref exactly as the
-     precedent is. Release flow step 4 RETITLES `## [Unreleased]` and opens a fresh EMPTY one,
-     so on a release PR the section R4 reads is empty BY CONSTRUCTION and every bullet it would
-     look for has just moved into the version section. Requiring one there would red the
+     precedent is. Release flow step 4 gathers every note into the version's section and
+     deletes it, so on a release PR the notes R4 reads are gone BY CONSTRUCTION and every one it
+     would look for has just moved into the version section. Requiring one there would red the
      correctly-executed step 4. The release path already has its own rule about that file (R3).
   2. THIS PR REMOVES THE CARD'S BULLET ⇒ that card is EXEMPT. A revert of work that has not
      been released yet does not owe an entry — it owes the DELETION of one, because
@@ -111,7 +134,7 @@ in the framework repo, which keys on `BASE_REF` and on a documented branch SHAPE
      that is the reason the surfaces are the head ref and the title rather than the commit
      SUBJECTS. `sync/main-to-dev-post-v0.1.0` names no card on either surface, so R4 never
      fires on it — while a subject-keyed rule would drag every back-merge into scope and demand
-     it re-add bullets the release had just retitled away. `docs/PLAN.md § 4` said
+     it re-add notes the release had just gathered away. `docs/PLAN.md § 4` said
      "title/subjects"; the two surfaces the correlators actually parse are the branch name and
      the title (`bin/card-token-lint.py § SURFACES`), and § 4 now says so.
 
@@ -317,16 +340,16 @@ same state as an EMPTY body. A PR with no body is a real state and means "no dec
 (R6 reds if there is residue); a run that was never TOLD the body cannot see a declaration that
 may well be there, so R6 exits 2 rather than refusing a PR for a line it was not shown.
 
-Exit 0 = clean. The release-shape rules may have been NOT APPLICABLE; R4 and R5 were judged, and
-         off the release path R7 can only have warned.
+Exit 0 = clean. The release-shape rules may have been NOT APPLICABLE; R5 was judged; off the
+         release path R8 was judged, R4 too where a card is named, and R7 can only have warned.
 Exit 1 = this PR breaks a rule — the author fixes the PR.
 Exit 2 = the guard COULD NOT MEASURE — missing `VERSION`, unreadable base rev, an unresolvable
          integration branch (R6), a run not given the PR body while R6 has residue to declare,
-         unparseable semver, absent `docs/CHANGELOG.md`, no `## [Unreleased]` heading to scope
-         R4 or R6b to, a shallow clone R5 cannot measure growth in, an archive directory R7
-         cannot list (its one unmeasurable state off the release path — it reads no AUTHORITY
-         there), or an authority that moved.
-         Someone fixes
+         unparseable semver, absent `docs/CHANGELOG.md`, no `## [Unreleased]` heading at the head
+         for R8 (any PR off the release path) or at the integration tip for R6b, a
+         `docs/changelog.d/` listing git cannot produce, a shallow clone R5 cannot measure
+         growth in, an archive directory R7 cannot list (its one unmeasurable state off the
+         release path — it reads no AUTHORITY there), or an authority that moved. Someone fixes
          the repo or this guard. The split matters: a 1 and a 2 send different people to
          different files, and collapsing them would send authors to rename branches that were
          fine.
@@ -338,6 +361,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import importlib.util
 import json
 import re
 import subprocess
@@ -345,6 +369,14 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# The changelog-fragment primitive (card#12935): what a fragment is, how the CHANGELOG's headings
+# read, and how a release assembles the fragments. Loaded from beside THIS file, not from
+# `--repo`, because it is code this guard runs, not an authority it reads about the repo judged.
+_CF_SPEC = importlib.util.spec_from_file_location(
+    "changelog_fragments", Path(__file__).resolve().parent / "changelog-fragments.py")
+cf = importlib.util.module_from_spec(_CF_SPEC)
+_CF_SPEC.loader.exec_module(cf)
 
 # --- The authorities, by path. Each is read at run time; none is restated. -------------------
 TAG_WORKFLOW = ".github/workflows/auto-tag-version.yml"
@@ -370,17 +402,22 @@ CHANGELOG_PATH = "docs/CHANGELOG.md"
 # SOURCING for what was looked for and why nothing in this repo states this one machine-readably.
 INTEGRATION_BRANCH = "dev"
 # The only two paths a release PR is EXPECTED to carry differently from the integration branch:
-# release flow steps 3 and 4 ARE these two edits and nothing else. R6a's residue is every other
-# differing path.
+# release flow steps 3 and 4 ARE these two edits. Step 4 also DELETES the fragments it assembled,
+# and R6a excuses each deletion only when the fragment's exact line is in the head's changelog
+# (`currency_residue`); every other differing path is residue.
 RELEASE_ARTIFACT_PATHS = (VERSION_PATH, CHANGELOG_PATH)
+# `docs/PLAN.md § 4` (card#12935): one changelog note per change, in its own file. The directory
+# and the format are the fragment primitive's; this guard reads them, never restates them.
+FRAGMENT_DIR = cf.FRAGMENT_DIR
 # `docs/VERSIONING.md` core rule 3 and § Release flow step 13 ("move the released section that is
 # no longer the latest … into `docs/changelog/v<previous version>.md`"); `docs/PLAN.md § 4` owns
 # the layout. R7's second clause reads every `*.md` directly under it.
 CHANGELOG_ARCHIVE_DIR = "docs/changelog"
 # R7's limit. Step 13 leaves the live file holding `## [Unreleased]` plus exactly the latest
-# released section; step 4 of the NEXT release then retitles `[Unreleased]`, adding the one that
-# release mints. So a release PR whose predecessor's step 13 was done carries exactly TWO. It is a
-# literal because the two steps that produce it are prose, and those are its owners.
+# released section; step 4 of the NEXT release then writes its own section under `[Unreleased]`,
+# adding the one that release mints. So a release PR whose predecessor's step 13 was done carries
+# exactly TWO. It is a literal because the two steps that produce it are prose, and those are its
+# owners.
 MAX_RELEASED_SECTIONS = 2
 # `docs/PLAN.md § 4` ("a line-initial `- **card#NNNN** — …` bullet under `## [Unreleased]`"),
 # restated in `docs/CHANGELOG.md`'s own preamble. Both halves are literals: the heading R4 is
@@ -657,6 +694,37 @@ def decode_changelog(raw: bytes, where: str) -> str:
             f"headings and bullets cannot be applied to bytes this guard cannot read.") from exc
 
 
+def fragments_at(repo: Path, sha: str) -> dict[str, bytes]:
+    """{name inside FRAGMENT_DIR: bytes} for every blob under it at `sha` — the README included.
+
+    Recursive and NUL-separated for the reasons `archive_sizes` records: a file in a
+    subdirectory must surface (as `sub/x.md`, which the fragment primitive refuses by name) rather
+    than drop out, and a non-ASCII name must not be C-quoted past the comparison. An absent
+    directory lists nothing, which is a real state (a base before card#12935).
+    """
+    r = _git(repo, "ls-tree", "-r", "-z", "--name-only", sha, "--", FRAGMENT_DIR + "/")
+    if r.returncode != 0:
+        raise Unmeasurable(
+            f"`git ls-tree -r -z --name-only {sha[:7]} -- {FRAGMENT_DIR}/` failed in {repo} "
+            f"({r.stderr.strip()}) — the changelog notes cannot be listed, so R4, R8 and R9 "
+            f"cannot be judged.")
+    out: dict[str, bytes] = {}
+    for path in r.stdout.split("\0"):
+        if not path:
+            continue
+        raw = read_bytes_at(repo, sha, path)
+        if raw is None:
+            raise Unmeasurable(f"{printable(path)} is listed at {sha[:7]} but `git show` cannot "
+                               f"read it — the changelog notes cannot be judged.")
+        out[path[len(FRAGMENT_DIR) + 1:]] = raw
+    return out
+
+
+def note_names(frags: dict[str, bytes]) -> list[str]:
+    """The names in FRAGMENT_DIR that are meant to be notes — everything but the README."""
+    return sorted(n for n in frags if cf.is_fragment_name(n))
+
+
 def read_version(repo: Path, rev: str, role: str, version_re: re.Pattern) -> str:
     """`rev` is a RESOLVED commit sha (see `resolve_rev`), which is why messages abbreviate it."""
     raw = read_at(repo, rev, VERSION_PATH)
@@ -754,29 +822,22 @@ def check_version_bump(head_version: str, base_version: str, release_branch: str
             f"a broken release ships the next version up ({CANON_DOC} § Anti-patterns)."]
 
 
-def _heading_text(line: str) -> str | None:
-    """The text of a level-2 heading line, or None if this line is not one."""
-    m = re.match(r"^##[ \t]+(.*\S)[ \t]*$", line)
-    return m.group(1) if m else None
-
-
-def _is_unreleased_heading(heading: str) -> bool:
-    """ONE predicate for 'this is the Unreleased section', used by R3 and R4 both.
-
-    They are two halves of one statement — R3 must not accept a version sitting under it, R4
-    must look for its bullets underneath it — so a second spelling of "which heading is the
-    Unreleased one" could put the two rules on opposite sides of the same heading.
-    """
-    return "unreleased" in heading.lower()
+# The heading reading is the changelog-fragment primitive's (`bin/changelog-fragments.py`), so R3,
+# R4, R8 and the release assembler all mean the same thing by "a level-2 heading" and by "the
+# Unreleased section": R3 must not accept a version sitting under that heading, R8 must look for
+# hand-written lines underneath it, and the assembler writes the release section beneath it — a
+# second spelling of either predicate could put two of them on opposite sides of one heading.
+_heading_text = cf.heading_text
+_is_unreleased_heading = cf.is_unreleased_heading
 
 
 def changelog_sections(text: str) -> list[str]:
     """Level-2 heading texts, excluding the `Unreleased` one.
 
-    Release flow step 4 RETITLES `## [Unreleased]`, so a version sitting under an Unreleased
-    heading is the not-yet-released state and must not satisfy R3. Nothing else about the
-    heading's spelling is asserted: `docs/PLAN.md § 4` owns the format and this guard has no
-    business ruling on it.
+    Release flow step 4 writes the version's section UNDER `## [Unreleased]`, so a version
+    sitting under an Unreleased heading is the not-yet-released state and must not satisfy R3.
+    Nothing else about the heading's spelling is asserted: `docs/PLAN.md § 4` owns the format and
+    this guard has no business ruling on it.
     """
     out = []
     for line in text.splitlines():
@@ -790,23 +851,13 @@ def unreleased_region(text: str) -> str | None:
     """The lines under the first `## [Unreleased]` heading, up to the next level-2 heading.
 
     None means there is NO Unreleased heading — which is not "no bullets", it is a changelog
-    R4's rule cannot be applied to, and the caller turns it into exit 2.
+    R8's and R6b's rules cannot be applied to, and the caller turns it into exit 2.
     """
     lines = text.splitlines()
-    start = None
-    for i, line in enumerate(lines):
-        h = _heading_text(line)
-        if h is not None and _is_unreleased_heading(h):
-            start = i + 1
-            break
-    if start is None:
+    span = cf.unreleased_span(lines)
+    if span is None:
         return None
-    end = len(lines)
-    for j in range(start, len(lines)):
-        if _heading_text(lines[j]) is not None:
-            end = j
-            break
-    return "\n".join(lines[start:end])
+    return "\n".join(lines[span[0] + 1:span[1]])
 
 
 def bulleted_card_ids(region: str) -> set[str]:
@@ -835,8 +886,9 @@ def check_changelog(text: str, version: str) -> list[str]:
     return [f"R3 changelog: {CHANGELOG_PATH} at the head carries no released section naming "
             f"{version!r} (released sections found: {seen}). Every tag `v<version>` owes a "
             f"changelog entry ({CANON_DOC} § The core rules, rule 3); release flow step 4 "
-            f"retitles `## [Unreleased]` to the new version and opens a fresh empty one. An "
-            f"`[Unreleased]` heading does not count — that is the state this step ends."]
+            f"writes it under `## [Unreleased]` from the notes in {FRAGMENT_DIR}/ (`python3 "
+            f"bin/changelog-fragments.py assemble --date <merge date>`). An `[Unreleased]` "
+            f"heading does not count — that is the state this step ends."]
 
 
 # --- R6: the release head is CURRENT with the integration branch ------------------------------
@@ -858,7 +910,9 @@ def changed_paths(repo: Path, head_rev: str, other_rev: str) -> list[str]:
     return [ln for ln in r.stdout.splitlines() if ln.strip()]
 
 
-def currency_residue(paths: list[str], head_changelog: str, integration_region: str) -> list[str]:
+def currency_residue(paths: list[str], head_changelog: str, integration_region: str,
+                     head_frags: dict[str, bytes],
+                     integration_frags: dict[str, bytes]) -> list[str]:
     """R6's two measurements, composed into ONE set of residue tokens.
 
     R6a — CONTENT. Every differing path, minus the release's own two edits. The name-diff is
@@ -866,16 +920,38 @@ def currency_residue(paths: list[str], head_changelog: str, integration_region: 
     integration branch, so a non-artifact difference is either `dev` moving after the cut (the
     harm card#9707 measured) or the release branch carrying a feature edit of its own — which
     is also not a release, and also worth the red.
+    ⭐ THE ASSEMBLED FRAGMENTS (card#12935). Release flow step 4 DELETES every note in
+    `docs/changelog.d/` it gathered into the version's section, so each one is a differing path.
+    A deletion is excused only when the note's EXACT line, as `dev` holds it, is a line of the
+    head's changelog — which is what "this release assembled it" means. A note `dev` gained after
+    the cut is not in the head's changelog, and neither is the new text of a note `dev` edited
+    after the cut, so both stay residue: the same harm card#9707 measured, now arriving as a file
+    rather than as a bullet.
 
     R6b — CARDS. R6a excuses `docs/CHANGELOG.md`, and that file is exactly where the named harm
     hides: "four fewer cards than `dev` held" IS a changelog difference and nothing else, so
     without R6b the one path the excuse covers would be the one path the defect travels on. So
     every card bulleted under the integration branch's `## [Unreleased]` must be bulleted
     SOMEWHERE in the head's changelog. Not scoped to `[Unreleased]` at the head, deliberately:
-    release flow step 4 RETITLES that section, so a correct release carries those very bullets
-    under the new version's heading and a scoped rule would red every correctly-executed one.
+    release flow step 4 moves those entries under the new version's heading, so a scoped rule
+    would red every correctly-executed release. (Since card#12935 R8 keeps `dev`'s
+    `[Unreleased]` empty, so R6b finds nothing there in the normal state; the notes it held
+    before are R6a's ⭐ case above.)
     """
-    residue = sorted(p for p in paths if p not in RELEASE_ARTIFACT_PATHS)
+    head_lines = set(head_changelog.splitlines())
+    prefix = FRAGMENT_DIR + "/"
+
+    def assembled(path: str) -> bool:
+        name = path[len(prefix):]
+        if not path.startswith(prefix) or name in head_frags or name not in integration_frags:
+            return False
+        try:
+            line = integration_frags[name].decode("utf-8").rstrip("\n")
+        except UnicodeDecodeError:
+            return False
+        return cf.is_fragment_name(name) and line in head_lines
+
+    residue = sorted(p for p in paths if p not in RELEASE_ARTIFACT_PATHS and not assembled(p))
     dropped = bulleted_card_ids(integration_region) - bulleted_card_ids(head_changelog)
     return residue + [f"card#{c}" for c in sorted(dropped, key=int)]
 
@@ -925,9 +1001,12 @@ def check_release_currency(residue: list[str], declared: set[str] | None, reason
         return [f"R6 currency: the release head ({head_sha[:7]}) is not current with "
                 f"`{INTEGRATION_BRANCH}` ({integration_sha[:7]}), and the PR body declares no "
                 f"exclusion. A release is `{INTEGRATION_BRANCH}`'s content plus {VERSION_PATH} "
-                f"and {CHANGELOG_PATH}; these differ and are neither: "
+                f"and {CHANGELOG_PATH}, minus the {FRAGMENT_DIR}/ notes it assembled into that "
+                f"file; these differ and are neither: "
                 f"{', '.join(residue)}. Either bring the release branch up to date with "
-                f"`{INTEGRATION_BRANCH}`, or declare the exclusion by putting this line in the "
+                f"`{INTEGRATION_BRANCH}` (and, if that brings notes, run `python3 "
+                f"bin/changelog-fragments.py assemble --into-existing --date <merge date>`), "
+                f"or declare the exclusion by putting this line in the "
                 f"PR body:\n    {exact_line}\n"
                 f"Measured on card#9707: PR #176 sat open for a day at a head four merges "
                 f"behind `{INTEGRATION_BRANCH}` with every check green, and would have shipped "
@@ -976,38 +1055,111 @@ def cards_named(accept_re: re.Pattern, surfaces: list[tuple[str, str]]) -> dict[
     return named
 
 
-def check_card_bullets(head_region: str, base_region: str | None,
-                       named: dict[str, list[str]]) -> tuple[list[str], list[str]]:
-    """R4 — every card this PR names owes a line-initial bullet under `## [Unreleased]`.
+def note_template(cid: str) -> str:
+    """The file and the line an author writes for one card — every R4/R8 message ends on it."""
+    return (f"{FRAGMENT_DIR}/{cid}.md containing exactly one line:\n"
+            f"    - **card#{cid}** — <what changed, in the same style as the CHANGELOG's bullets>")
 
-    Returns (problems, notes); a note is an exemption that fired, printed so a reader can see
-    the gate DECIDED rather than skipped.
+
+def check_card_fragments(head_frags: dict[str, bytes], base_frags: dict[str, bytes],
+                         named: dict[str, list[str]]) -> tuple[list[str], list[str]]:
+    """R4 — every card this PR names owes a note of its own in `docs/changelog.d/`.
+
+    A note counts when a file NAMED for the card is there at the head; whether it is well-formed is
+    R8's question, so a malformed note reds once, under the rule that says what is wrong with it.
+    Returns (problems, notes); a note is an exemption that fired, printed so a reader can see the
+    gate DECIDED rather than skipped.
     """
-    at_head = bulleted_card_ids(head_region)
-    at_base = bulleted_card_ids(base_region) if base_region is not None else set()
+    def cards(frags: dict[str, bytes]) -> set[str]:
+        return {c for c in (cf.card_of_name(n) for n in frags) if c is not None}
+
+    at_head, at_base = cards(head_frags), cards(base_frags)
     problems, notes = [], []
     for cid, surfaces in named.items():
         if cid in at_head:
             continue
         if cid in at_base:
             notes.append(
-                f"R4 exempt: card#{cid} had a bullet on the base and this PR REMOVES it. That "
-                f"is a revert of unreleased work, which owes the deletion of an entry rather "
-                f"than one more — `[Unreleased]` describes the tree as it will ship. No other "
-                f"way to claim this exemption exists: it is the removal itself, not a title or "
-                f"a branch name.")
+                f"R4 exempt: card#{cid} had a note in {FRAGMENT_DIR}/ on the base and this PR "
+                f"REMOVES it. That is a revert of unreleased work, which owes the deletion of an "
+                f"entry rather than one more — the notes describe the tree as it will ship. No "
+                f"other way to claim this exemption exists: it is the removal itself, not a "
+                f"title or a branch name.")
             continue
         problems.append(
-            f"R4 changelog bullet: this PR names card#{cid} ({', '.join(surfaces)}), but "
-            f"{CHANGELOG_PATH} at the head carries no line-initial `- **card#{cid}**` bullet "
-            f"under `{UNRELEASED_HEADING}`. Add one — the line must START with "
-            f"`- **card#{cid}** — ` (bold anywhere else in the line does not count, and a "
-            f"bullet under a released section does not either). {CHANGELOG_CANON_DOC} owns the "
-            f"rule; on 2026-08-30 a sweep of `dev` found SIX cards with no entry at all, "
-            f"including the whole fleet-reporter, because nothing had ever checked this. The "
-            f"only case that owes no bullet is a revert of unreleased work, and it is "
-            f"recognised by REMOVING the card's existing bullet, not by naming itself a revert.")
+            f"R4 changelog note: this PR names card#{cid} ({', '.join(surfaces)}), but the head "
+            f"carries no note for it in {FRAGMENT_DIR}/. Add {note_template(cid)}\n"
+            f"Each change writes its own file and leaves {CHANGELOG_PATH} alone, so changes built "
+            f"side by side never conflict; the release PR gathers the notes into the CHANGELOG "
+            f"({CHANGELOG_CANON_DOC}). The only case that owes no note is a revert of unreleased "
+            f"work, recognised by REMOVING the card's existing note, not by naming itself a "
+            f"revert.")
     return problems, notes
+
+
+def added_lines(head_region: str, base_region: str | None) -> list[str]:
+    """Non-blank lines under `[Unreleased]` at the head that the base does not carry (multiset)."""
+    pool: dict[str, int] = {}
+    for ln in (base_region or "").splitlines():
+        if ln.strip():
+            pool[ln] = pool.get(ln, 0) + 1
+    out = []
+    for ln in head_region.splitlines():
+        if not ln.strip():
+            continue
+        if pool.get(ln, 0):
+            pool[ln] -= 1
+        else:
+            out.append(ln)
+    return out
+
+
+def check_notes_path(added: list[str], head_frags: dict[str, bytes],
+                     base_frags: dict[str, bytes]) -> list[str]:
+    """R8 — a change's entry goes in its own note, never into `[Unreleased]`, and is well-formed.
+
+    (a) No line is ADDED under `## [Unreleased]`. Removing one is allowed (a revert, or the move
+        card#12935 made); adding one is the shared-lines edit that made parallel PRs conflict.
+    (b) Every note this PR adds or changes is well-formed — the assembler would refuse it at
+        release otherwise. A malformed note the PR did NOT touch is not this author's to fix, so
+        it is not judged here (the release's assembler and `changelog-fragments.py check` see it).
+    """
+    problems = []
+    if added:
+        cards = sorted({m.group(1) for ln in added for m in [_BULLET_RE.match(ln)] if m},
+                       key=int)
+        fix = ("\n".join(f"  Move it to {note_template(c)}" for c in cards)
+               if cards else f"  Move each entry into its own note in {FRAGMENT_DIR}/.")
+        problems.append(
+            f"R8 notes path: this PR adds {len(added)} line(s) under `{UNRELEASED_HEADING}` in "
+            f"{CHANGELOG_PATH}. Since card#12935 that section is written only by the release, from "
+            f"the notes in {FRAGMENT_DIR}/ — two PRs editing its top lines is what made parallel "
+            f"changes conflict. Take the line(s) out of {CHANGELOG_PATH} and put each in a note "
+            f"of its own:\n" + fix + "\n  Added: " + "\n         ".join(added)
+            + f"\n  If most of these are OTHER changes' entries, this branch was cut before "
+              f"card#12935 moved them into notes: take in `{INTEGRATION_BRANCH}` first (keep "
+              f"its {CHANGELOG_PATH}), then move this PR's own line into its note.")
+    for name in sorted(head_frags):
+        if not cf.is_fragment_name(name) or base_frags.get(name) == head_frags[name]:
+            continue
+        try:
+            cf.parse_fragment(name, head_frags[name])
+        except cf.Refused as exc:
+            problems.append(f"R8 notes path: {printable(str(exc))}")
+    return problems
+
+
+def check_notes_assembled(head_frags: dict[str, bytes]) -> list[str]:
+    """R9 — a release head carries no note: step 4 gathered every one into the CHANGELOG."""
+    left = note_names(head_frags)
+    if not left:
+        return []
+    return [f"R9 notes assembled: the release head still carries {len(left)} note(s) in "
+            f"{FRAGMENT_DIR}/ ({', '.join(printable(n) for n in left)}). Release flow step 4 "
+            f"gathers every note into the version's section and deletes it; a note left here "
+            f"would ship without its CHANGELOG line and be collected again by the NEXT release. "
+            f"Run `python3 bin/changelog-fragments.py assemble --date <merge date>` on the release "
+            f"branch and commit the result ({CANON_DOC} § Release flow, step 4)."]
 
 
 # --- R5: changelog size, against a threshold derived from this file's own growth --------------
@@ -1316,6 +1468,11 @@ def run(args) -> int:
     base_changelog = (decode_changelog(base_raw, f"base revision ({base_sha[:7]})")
                       if base_raw is not None else None)
 
+    # The changelog notes (card#12935), both sides: R4 and R8 compare them off the release path,
+    # R9 and R6a read the head's on it.
+    head_frags = fragments_at(repo, head_sha)
+    base_frags = fragments_at(repo, base_sha)
+
     problems: list[str] = []
     notes: list[str] = []
     applicable: list[str] = []
@@ -1342,6 +1499,10 @@ def run(args) -> int:
         problems += check_head_branch(head_ref, expected_head)
         problems += check_version_bump(head_version, base_version, release_branch)
         problems += check_changelog(changelog, head_version)
+        applicable.append("R9")
+        print(f"  measured:     {len(note_names(head_frags))} note(s) left in {FRAGMENT_DIR}/ at "
+              f"the head (a release assembles every one)")
+        problems += check_notes_assembled(head_frags)
     else:
         print(f"  R1-R3 NOT APPLICABLE — this PR targets {base_ref!r}, and the release branch "
               f"is {release_branch!r} (from `on.push.branches` in {TAG_WORKFLOW}). The "
@@ -1382,7 +1543,8 @@ def run(args) -> int:
                 f"broken changelog on the integration branch, not a release that satisfies it "
                 f"({CHANGELOG_CANON_DOC}).")
         residue = currency_residue(changed_paths(repo, head_sha, integration_sha),
-                                   changelog, integration_region)
+                                   changelog, integration_region, head_frags,
+                                   fragments_at(repo, integration_sha))
         residue_desc = (", ".join(residue) if residue
                         else "none — the head carries what that branch carries")
         print(f"  measured:     head {head_sha[:7]} vs `{INTEGRATION_BRANCH}` "
@@ -1411,45 +1573,50 @@ def run(args) -> int:
               f"branch {release_branch!r}, and 'is this current with `{INTEGRATION_BRANCH}`?' "
               f"is a question about a release, not about a feature PR.")
 
-    # --- R4: the card's changelog bullet, off the release path only ---------------------------
+    # --- R4 and R8: the change's own note, off the release path only ------------------------
     # Keyed on the BASE REF exactly as `release-consistency.yml`'s back-merge exemption is: on
-    # the release path, step 4 has just retitled `[Unreleased]` and emptied it by construction,
-    # so requiring a bullet there would red the correctly-executed step.
+    # the release path, step 4 has just gathered every note into the CHANGELOG and deleted it, so
+    # requiring one there would red the correctly-executed step. R9 is that path's rule instead.
     if is_release_pr:
-        print(f"  R4 NOT APPLICABLE — base is the release branch: release flow step 4 empties "
-              f"`{UNRELEASED_HEADING}`, so a bullet under it is not owed here. The bullets were "
-              f"owed on the feature PRs this release collects.")
+        print(f"  R4, R8 NOT APPLICABLE — base is the release branch: release flow step 4 "
+              f"gathers the notes in {FRAGMENT_DIR}/ into the CHANGELOG, so no note is owed "
+              f"here. The notes were owed on the change PRs this release collects; R9 checks "
+              f"that every one was gathered.")
     else:
+        region = unreleased_region(changelog)
+        if region is None:
+            raise Unmeasurable(
+                f"{CHANGELOG_PATH} at the head ({head_sha[:7]}) has no `{UNRELEASED_HEADING}` "
+                f"heading. R8 asks whether this PR wrote under that section, so with no such "
+                f"heading the rule cannot be applied at all — which is a broken changelog, not a "
+                f"PR that satisfies it. Restore the heading ({CHANGELOG_CANON_DOC}).")
+        base_region = (unreleased_region(base_changelog)
+                       if base_changelog is not None else None)
         accept_re = load_card_grammar(repo)
         named = cards_named(accept_re, [("head ref " + repr(head_ref), head_ref),
                                         ("PR title", title)])
         print(f"                card grammar `{accept_re.pattern}` <- {CARD_GRAMMAR_SOURCE}")
         if not named:
             print(f"  R4 NOT APPLICABLE — neither the head ref nor the PR title names a card, "
-                  f"so no changelog bullet is owed ({CHANGELOG_CANON_DOC}: tokenless PRs owe "
+                  f"so no changelog note is owed ({CHANGELOG_CANON_DOC}: tokenless PRs owe "
                   f"nothing). A back-merge or a rebase lands here, by naming no card rather "
                   f"than by any exemption.")
         else:
             applicable.append("R4")
-            region = unreleased_region(changelog)
-            if region is None:
-                raise Unmeasurable(
-                    f"{CHANGELOG_PATH} at the head ({head_sha[:7]}) has no "
-                    f"`{UNRELEASED_HEADING}` heading, and this PR names "
-                    f"card#{', card#'.join(named)}. R4's rule is scoped to that section, so "
-                    f"with no such heading the rule cannot be applied at all — which is a "
-                    f"broken changelog, not a PR that satisfies it. Restore the heading "
-                    f"({CHANGELOG_CANON_DOC}).")
-            base_region = (unreleased_region(base_changelog)
-                           if base_changelog is not None else None)
-            # Per NAMED card, not the whole bullet list: on this repo that list is already
-            # thirty entries long and would bury the one fact a reader wants.
-            at_head = bulleted_card_ids(region)
-            print(f"  measured:     cards named -> bulleted under `{UNRELEASED_HEADING}`: "
-                  + ", ".join(f"card#{c}: {'yes' if c in at_head else 'NO'}" for c in named))
-            r4_problems, r4_notes = check_card_bullets(region, base_region, named)
+            # Per NAMED card, not the whole list: the directory holds every unreleased note and
+            # would bury the one fact a reader wants.
+            noted = {cf.card_of_name(n) for n in head_frags}
+            print(f"  measured:     cards named -> note in {FRAGMENT_DIR}/: "
+                  + ", ".join(f"card#{c}: {'yes' if c in noted else 'NO'}" for c in named))
+            r4_problems, r4_notes = check_card_fragments(head_frags, base_frags, named)
             problems += r4_problems
             notes += r4_notes
+        applicable.append("R8")
+        added = added_lines(region, base_region)
+        changed = [n for n in note_names(head_frags) if base_frags.get(n) != head_frags[n]]
+        print(f"  measured:     {len(added)} line(s) added under `{UNRELEASED_HEADING}`; "
+              f"{len(changed)} note(s) added or changed in {FRAGMENT_DIR}/")
+        problems += check_notes_path(added, head_frags, base_frags)
 
     # --- R5: changelog size, on every path ----------------------------------------------------
     applicable.append("R5")
@@ -1514,10 +1681,11 @@ def run(args) -> int:
           f"integration branch survived only because a ruleset backstop that had never been "
           f"exercised happened to hold — and a sweep the same day found six cards whose work "
           f"had merged with no changelog entry at all.")
-    print(f"The rules this enforces are {CANON_DOC} § Release flow steps 2, 3, 4 and 7 (R1-R3), "
+    print(f"The rules this enforces are {CANON_DOC} § Release flow steps 2, 3, 4 and 7 (R1-R3, "
+          f"R9), "
           f"§ Release flow step 2's 'off `{INTEGRATION_BRANCH}`' read as a statement about the "
           f"release's CONTENT (R6), § Release flow step 13 (R7), and {CHANGELOG_CANON_DOC} "
-          f"(R4-R5). Fix the PR and push; "
+          f"(R4-R5, R8). Fix the PR and push; "
           f"this gate re-runs on every push, and on a title, body or base change.")
     return 1
 
@@ -1527,9 +1695,10 @@ def main(argv: list[str] | None = None) -> int:
         description="Refuse a PR into the release branch that is not shaped like a release "
                     "(head branch, VERSION bump, changelog section) or that ships less than the "
                     "integration branch holds without declaring what it leaves out or that "
-                    "skipped archiving the previous release (release flow step 13), and refuse "
-                    "any PR that names a card without a changelog bullet or that pushes the "
-                    "changelog past its size threshold.")
+                    "skipped archiving the previous release (release flow step 13) or left a "
+                    "changelog note unassembled, and refuse any PR that names a card without a "
+                    "changelog note, that writes under [Unreleased] by hand or carries a "
+                    "malformed note, or that pushes the changelog past its size threshold.")
     ap.add_argument("--base-ref", required=True, help="the PR's base branch name")
     ap.add_argument("--head-ref", required=True, help="the PR's head branch name")
     ap.add_argument("--title", default="",

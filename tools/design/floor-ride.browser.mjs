@@ -101,12 +101,13 @@ for (const [v, html] of Object.entries(VIEWS)) {
  * The page's own scripted world and the tool's instruments, installed right after the layout's head script and
  * style — so the reader stays the first script on the page — and before the stylesheet link and every module.
  */
-const STAGE = (run, apiDelay, layoutStatus, streamDelay = 0) => `<script>
+const STAGE = (run, apiDelay, layoutStatus, streamDelay = 0, busy = 0) => `<script>
 (() => {
   const RUN = ${JSON.stringify(run).replace(/</g, '\\u003c')};
   const API_DELAY = ${JSON.stringify(apiDelay)};
   const LAYOUT_STATUS = ${JSON.stringify(layoutStatus)};
   const STREAM_DELAY = ${JSON.stringify(streamDelay)};
+  const BUSY = ${JSON.stringify(busy)};
   const html = document.documentElement;
   const T = () => Math.round(performance.now());
   // The instruments: every class change on <html>, every pagereveal, the first drawn scene and the chrome's changes,
@@ -186,6 +187,7 @@ const STAGE = (run, apiDelay, layoutStatus, streamDelay = 0) => `<script>
         setTimeout(() => {
           if (this.readyState === 2) return;
           if (m.end === true) { this.readyState = 2; this.fire('error', {}); return; }
+          for (const until = performance.now() + BUSY; performance.now() < until;);
           R.delivered.push(performance.now());
           this.fire('mezzanine', { data: JSON.stringify(m.envelope) });
         }, m.at_ms - (performance.now() - start));
@@ -209,7 +211,8 @@ const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'te
  * until `/release`), `redirect` (`path → target`), `api` (`path → ms` added to the run's answer), `layout`
  * (`document path → status` for that page's `/api/building`), `media` (emulated), `missing` (paths answered 404 — an
  * asset that failed to load), `stream` (ms added to every message's `at_ms`, so a run's messages land after the page
- * has settled on a slow host); and
+ * has settled on a slow host), `busy` (ms the page spends in one long task as each message lands, before it is
+ * handled — the next frame's time is then taken before the message's paint runs, as on a busy live floor); and
  * `plant` — `[{ file, from, to }]` edits to what is served, `file` a path under `server/public` or `page` (every
  * rendered page).
  */
@@ -224,7 +227,7 @@ function serve(c = {}) {
     let html = VIEWS[view];
     if (view === 'floor') html = html.replace(/data-floor="[^"]*"/, `data-floor="${key}"`).replace(/data-seat="[^"]*"/, `data-seat="${seat}"`);
     const at = html.indexOf('<link rel="stylesheet"');
-    return edit('page', edit(`page:${view}`, html.slice(0, at) + STAGE(run, c.api ?? {}, c.layout ?? {}, c.stream ?? 0) + html.slice(at)));
+    return edit('page', edit(`page:${view}`, html.slice(0, at) + STAGE(run, c.api ?? {}, c.layout ?? {}, c.stream ?? 0, c.busy ?? 0) + html.slice(at)));
   };
   const beacons = [];
   let release = null;
@@ -442,6 +445,12 @@ const RULE = 'js/wire/ride-arrival.js';
 const RIDE = 'js/wire/ride.js';
 const PERFORMER = 'js/wire/ride-page.js';
 const row = (what, base, plant, run) => ({ what, base, plant, run });
+/**
+ * The bird row's stream delay (`stream`): ms added to every `coord_portal` message, so its posts land after the page has
+ * opened its stream even on a slow host — a message due before the stream opens is skipped. card#12457 raised it so a
+ * host slow to boot the floor still opens the stream before the first post is due.
+ */
+const BIRD_STREAM_MS = 5000;
 
 /**
  * A browser without `color-mix()`: the painter's `@supports` condition made one no browser meets (its fallback is derived
@@ -457,7 +466,8 @@ const NO_MIX = [
  * card#12194's walker sampler, installed before the page's first script and run on every animation frame for the first
  * `ms`: each `.fx-walker` (the gliding group) — its path, its point and feet `y` from its computed `offset-distance`, whether
  * its shown group draws it, its node (a rebuild is a new one) and its place among the floor stack's children (a move is a
- * new place for the same node), its glide's timing function and start on the timeline — and, per frame, the floor stack:
+ * new place for the same node), its glide's timing function, duration and start on the timeline, read off the `glide`
+ * animation itself (card#12705: a walker with two walk legs runs a second, `walker-shown`, on each glide) — and, per frame, the floor stack:
  * each desk's key, place and foot line (its desk sprite's viewport `y + height`), each walker's place, which element has
  * focus, any walker element outside the stack, a walker shown in the cab outside the band's cab or after its leaves, and any
  * point under a shown walker that is a walker element.
@@ -489,7 +499,7 @@ const WALKER_SAMPLER = (ms) => `(window.__walkers = { samples: [], frames: [] },
       const index = kids.indexOf(shownEl);
       if (index === -1) frame.loose.push('walker in ' + (shownEl.parentNode?.getAttribute('class') ?? '?'));
       frame.walkers.push({ y: at.y, index, shown });
-      window.__walkers.samples.push({ t: now - t0, d, el: id(shownEl), index, pct, len, x: at.x, y: at.y, shown, origin, timing: cs.animationTimingFunction, ms: parseFloat(cs.animationDuration) * 1000 });
+      window.__walkers.samples.push({ t: now - t0, d, el: id(shownEl), index, pct, len, x: at.x, y: at.y, shown, origin, timing: glide === undefined ? cs.animationTimingFunction : glide.effect.getKeyframes()[0]?.easing ?? null, ms: glide === undefined ? parseFloat(cs.animationDuration) * 1000 : glide.effect.getTiming().duration });
       if (shown) {
         const img = el.querySelector('image, rect');
         if (img !== null) {
@@ -718,39 +728,55 @@ const ROWS = {
   // is sampled on every animation frame from the page's first script: its point on its own arc, read from its computed
   // `offset-distance`, whether it is drawn, and the flight's own start on the timeline (its `fly` animation's start
   // time plus its delay). Judged per flight (one arc): its start no earlier than the delivery of the post that drew it
-  // and no later than its first drawn point; its first drawn point within one frame's travel (plus `SLACK` px) of
-  // where a flight from that start, at its own duration, has reached at that sample — a bird first drawn at a paint
-  // after its start is legitimately that far along its arc; no step backward, no step longer than the flight's own
+  // and no later than its first drawn point; its first drawn point within `SLACK` px of where a flight from that start,
+  // at its own duration, has reached at that sample — a bird first drawn at a paint after its start is legitimately that
+  // far along its arc, and the pin draws it exactly there (card#12457: the frame's travel this once allowed on top hid
+  // the 10 % keyframes PLANT on a host slow enough to space its frames out); no step backward, no step longer than the flight's own
   // speed covers in the frame gap (plus `SLACK` px), its last drawn point within one such step of the arc's end (the
   // desk, or the birdhouse's perch for a portal bird — card#12445's ledge dwell and hop are other nodes, `.fx-perched`
   // and `.fx-hop`, which this row does not sample), and at least one repaint (a new `.fx-bird` node) inside the flight, so the
   // continuity is measured ACROSS a rebuild and not only within one node. Which arc is which leg, and where it starts,
   // is the suite's to hold (`ABirdFliesToItsDestinationTest`); here every arc is judged alike.
+  // card#12457: and no sample in which a bird's node holds its flight under way — its `fly` animation's time from the
+  // flight's start, at that frame, inside the flight — and the bird is not drawn: the blink a repaint made when the pin
+  // started the new node's animation after the frame it was drawn in. The page is busy for 40 ms as each post lands (a
+  // long task, as the live floor has — `busy`), so every repaint's paint runs after the time its next frame is drawn at
+  // was taken, and that pin blinks on every repaint rather than on the repaints a loaded host happens to delay.
+  // ⛔ TWO CLOCKS PER SAMPLE. A frame's time (`t`, the callback's argument) is when the frame began, and the bird's
+  // animations are sampled at it; the drawing the sampler reads is the DOM as the tasks before the callback left it,
+  // which on a busy page includes a paint that ran after `t`. So a post is matched to the drawing by when the callback
+  // ran (`wall`), and a bird whose node a later paint ended is allowed the travel up to `wall`; everything about where
+  // the bird is drawn reads `t`.
   // The PLANTs: the stepped flight the card replaced, the whole-frame delay that snapped the bird back on a repaint, and
   // a painter that draws each rebuild from its own delay without pinning it to the flight's one start (`pinEffects()`),
   // and one that dates the flight from `document.timeline.currentTime` — the last frame's time, behind the page's clock
-  // by however long the tasks since that frame have run — on a page busy for 40 ms as each post lands (a long task, as
-  // the live floor has), so its flight starts that much before its post arrived — and a flight
-  // whose keyframes start a tenth of the way along its arc, so the bird is first drawn past where its start has it.
-  'bird-flight': row('a coordination bird glides along its arc across repaints, from its start to its destination — the desk or the birdhouse\'s perch', { run: 'coord_portal', stream: 3000 },
+  // by however long the tasks since that frame have run, so on this busy page its flight starts that much before its
+  // post arrived — a flight whose keyframes start a tenth of the way along its arc, so the bird is first drawn past where
+  // its start has it, and the pin card#12457 replaced, which writes the flight's instant as the animation's start.
+  'bird-flight': row('a coordination bird glides along its arc across repaints, from its start to its destination — the desk or the birdhouse\'s perch', { run: 'coord_portal', stream: BIRD_STREAM_MS, busy: 40 },
     [
       { plant: [{ file: 'js/floor/painter.js', from: 'style: `animation-duration:${seconds}s;animation-delay:${at(fx.flight_start)}s;offset-path', to: 'style: `animation-duration:${seconds}s;animation-timing-function:steps(${fx.frames});animation-delay:${at(fx.flight_start)}s;offset-path' }] },
       { plant: [{ file: 'js/floor/painter.js', from: 'const flown = fx.elapsed_ms / 1000;', to: 'const flown = (fx.elapsed_frames * fx.frame_interval_ms) / 1000;' }] },
       { plant: [{ file: 'js/floor/painter.js', from: '        host.replaceChildren(svg);\n        pinEffects();\n', to: '        host.replaceChildren(svg);\n' }] },
-      { plant: [
-        { file: 'js/floor/painter.js', from: 'performance.now() - (clock.now() - entry.started_at)', to: 'document.timeline.currentTime - entry.elapsed_ms' },
-        { file: 'page', from: 'R.delivered.push(performance.now());', to: 'for (const until = performance.now() + 40; performance.now() < until;); R.delivered.push(performance.now());' },
-      ] },
+      { plant: [{ file: 'js/floor/painter.js', from: 'performance.now() - (clock.now() - entry.started_at)', to: 'document.timeline.currentTime - entry.elapsed_ms' }] },
       { plant: [{ file: 'js/floor/painter.js', from: '@keyframes fly{from{offset-distance:0%;', to: '@keyframes fly{from{offset-distance:10%;' }] },
+      { plant: [{ file: 'js/floor/painter.js', from: 'animation.startTime = start;\n                animation.effect.updateTiming({ delay: delay + instant - start });', to: 'animation.startTime = instant;' }] },
     ],
     (chrome, c) => within(chrome, c, async (s) => {
       // The sampler is installed before the page's first script, so a flight the run fires before the page settles is
-      // sampled from its start; it runs on every animation frame for the run's first `SAMPLE_MS`.
-      const SAMPLE_MS = 9000;
+      // sampled from its start; it runs on every animation frame until the run's last message is due (`SAMPLE_MS`, read
+      // off the run), and on past it until every message has been delivered and no bird drawn on the page still has its
+      // flight to come or under way (card#12457: a host slow enough to land the last posts late would otherwise cut the
+      // sample inside a flight), to at most `SAMPLE_CAP_MS` — a bound on the row's cost: a flight still under way there
+      // is cut, and judged short of its destination, and a message never delivered is named.
+      const messages = (fixtureRun('coord_portal').messages ?? []).filter((m) => m.end !== true);
+      const SAMPLE_MS = BIRD_STREAM_MS + Math.max(...messages.map((m) => m.at_ms));
+      const SAMPLE_CAP_MS = 2 * SAMPLE_MS;
       await s.page('Page.addScriptToEvaluateOnNewDocument', { source: `(window.__birds = { samples: [] }, (() => {
         const ids = new WeakMap(); let next = 0; const paths = new Map(); const t0 = performance.now();
         const arc = (d) => { if (!paths.has(d)) { const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', d); paths.set(d, p); } return paths.get(d); };
         const tick = (now) => {
+          let flying = false;
           for (const el of document.querySelectorAll('#floor-drawing .fx-bird')) {
             if (!ids.has(el)) ids.set(el, next++);
             const cs = getComputedStyle(el);
@@ -759,18 +785,21 @@ const ROWS = {
             const p = arc(d); const len = p.getTotalLength(); const pct = parseFloat(cs.offsetDistance);
             const at = p.getPointAtLength(len * pct / 100); const end = p.getPointAtLength(len); const start = p.getPointAtLength(0);
             const fly = el.getAnimations().find((a) => a.animationName === 'fly');
+            flying ||= fly !== undefined;
             const origin = fly === undefined || fly.startTime === null ? null : fly.startTime + fly.effect.getTiming().delay - t0;
-            window.__birds.samples.push({ t: now - t0, origin, d, el: ids.get(el), pct, len, x: at.x, y: at.y, end: [end.x, end.y], start: [start.x, start.y], shown: Number(cs.opacity) > 0, ms: parseFloat(cs.animationDuration) * 1000 });
+            window.__birds.samples.push({ t: now - t0, wall: performance.now() - t0, origin, d, el: ids.get(el), pct, len, x: at.x, y: at.y, end: [end.x, end.y], start: [start.x, start.y], shown: Number(cs.opacity) > 0, ms: parseFloat(cs.animationDuration) * 1000 });
           }
-          if (now - t0 < ${SAMPLE_MS}) requestAnimationFrame(tick);
+          const pending = flying || (window.__ride?.delivered.length ?? 0) < ${messages.length};
+          if (now - t0 < ${SAMPLE_MS} || (pending && now - t0 < ${SAMPLE_CAP_MS})) requestAnimationFrame(tick);
+          else window.__birds.done = true;
         };
         window.__birds.t0 = t0;
         requestAnimationFrame(tick); })())` });
       await s.open('/floor/aimla');
-      await until(() => s.ev(`performance.now() > ${SAMPLE_MS + 100}`), SAMPLE_MS + 5000, 'the page never reached the end of the sample');
+      await until(() => s.ev('window.__birds.done === true'), SAMPLE_CAP_MS + 5000, 'the page never reached the end of the sample');
       const all = await s.ev('window.__birds.samples');
       const t0 = await s.ev('window.__birds.t0');
-      // When each post reached the page, on the samples' clock; a flight's post is the last delivered by a frame after its first sample.
+      // When each post reached the page, on the samples' clock; a flight's post is the last delivered before the callback that first sampled it ran.
       const delivered = (await s.ev('window.__ride.delivered')).map((x) => x - t0);
       const FRAME = 17;
       const SLACK = 3;
@@ -796,8 +825,9 @@ const ROWS = {
         }
         const first = shown[0];
         let lag = null;
+        let firstOff = null;
         if (first !== undefined) {
-          const post = delivered.filter((t) => t <= xs[0].t + FRAME).at(-1);
+          const post = delivered.filter((t) => t <= xs[0].wall).at(-1);
           if (first.origin === null) d.push(`${arcD}: the bird's first drawn node has no started animation`);
           else if (post === undefined) d.push(`${arcD}: no post was delivered before the bird was first drawn`);
           else {
@@ -806,22 +836,30 @@ const ROWS = {
             if (first.origin > first.t + 2) d.push(`${arcD}: the flight starts ${(first.origin - first.t).toFixed(1)} ms after its first drawn point`);
             const owed = xs[0].len * Math.min(1, Math.max(0, (first.t - first.origin) / xs[0].ms));
             const along = xs[0].len * first.pct / 100;
-            const before = xs.filter((x) => x.t < first.t).at(-1);
+            firstOff = Number(Math.abs(along - owed).toFixed(2));
             lag = Number((first.t - post).toFixed(1));
-            if (Math.abs(along - owed) > speed * (before === undefined ? FRAME : first.t - before.t) + SLACK) d.push(`${arcD}: the bird's first drawn point is ${along.toFixed(1)} px along its arc, where a flight from its start has reached ${owed.toFixed(1)} px`);
+            if (Math.abs(along - owed) > SLACK) d.push(`${arcD}: the bird's first drawn point is ${along.toFixed(1)} px along its arc, where a flight from its start has reached ${owed.toFixed(1)} px`);
           }
         }
         const last = shown.at(-1);
         const after = last === undefined ? undefined : xs.find((x) => x.t > last.t);
-        const gap = after === undefined ? FRAME : after.t - last.t;
+        const gap = after === undefined ? FRAME : after.wall - last.t;
         const short = last === undefined ? null : Math.hypot(last.end[0] - last.x, last.end[1] - last.y);
         if (last === undefined) d.push(`${arcD}: the bird was never drawn`);
         else if (short > speed * gap + SLACK) d.push(`${arcD}: the bird's last drawn point is ${short.toFixed(1)} px short of its destination`);
+        // card#12457: under way at its frame's time on its own node's animation (a hair inside both ends, where the
+        // engine's rounding of the times decides the phase), and not drawn.
+        const blinks = xs.filter((x) => !x.shown && x.origin !== null && x.t - x.origin > 0.5 && x.t - x.origin < x.ms - 0.5);
+        if (blinks.length > 0) d.push(`${arcD}: the bird is not drawn on ${blinks.length} frame(s) while it flies — first at ${Math.round(blinks[0].t)} ms, ${Math.round(blinks[0].t - blinks[0].origin)} ms into its ${blinks[0].ms} ms flight (node ${blinks[0].el})`);
         const nodes = new Set(shown.map((x) => x.el)).size;
         if (nodes < 2) d.push(`${arcD}: no repaint landed during the flight (one node) — continuity across a rebuild was not measured`);
-        facts.push({ len: Math.round(xs[0].len), ms: xs[0].ms, samples: shown.length, nodes, firstAfterPostMs: lag, short: short === null ? null : Number(short.toFixed(2)), worstBack: Number(worstBack.toFixed(2)), worstStepOverSpeed: Number(worstStep.toFixed(2)) });
+        facts.push({ len: Math.round(xs[0].len), ms: xs[0].ms, samples: shown.length, nodes, blinks: blinks.length, firstAfterPostMs: lag, firstOffPx: firstOff, short: short === null ? null : Number(short.toFixed(2)), worstBack: Number(worstBack.toFixed(2)), worstStepOverSpeed: Number(worstStep.toFixed(2)) });
       }
-      return { defects: d.slice(0, 6), facts };
+      const opened = (await s.ev('window.__ride.streams'))[0]?.[0] ?? null;
+      // A message due before the page opened its stream is never delivered (the stand-in skips it): the row then measured
+      // less than the run, which is a miss of the measurement, named as one.
+      if (delivered.length < messages.length) d.unshift(`${delivered.length} of the run's ${messages.length} messages were delivered — the stream opened at ${opened === null ? 'no time' : Math.round(opened - t0) + ' ms'}; the row measured less than the run`);
+      return { defects: d.slice(0, 6), facts: { streamOpenedMs: opened === null ? null : Math.round(opened - t0), delivered: delivered.map(Math.round), flights: facts } };
     })),
 
   // ⭐ THE WALKER GLIDES (card#12194, FLOOR.md § 6.2's walk note items 8 and 9). The operator's *"For walking characters,
@@ -834,14 +872,22 @@ const ROWS = {
   // by more than `SLACK` px and no step longer than § 12's speed covers in the frame gap (plus `SLACK`); and at least one
   // rebuild (a new node) inside the walk. The PLANTs: `steps(frames)`, the glide's delay in whole frames under a pin that
   // reads the exact instant, and the start dated from `document.timeline.currentTime` on a page busy 40 ms per delivery
-  // (the bird row's PLANT 4).
+  // (the bird row's PLANT 4, whose busy page is that row's base condition).
   'walker-glide': row('a walker glides along its routed path across a repaint, never in steps, from its walk\'s own start', { run: 'repaint', stream: 2000 },
     [
-      { plant: [{ file: 'js/floor/painter.js', from: "animation-duration:${sec(walk.frames * I)}s;animation-delay", to: "animation-duration:${sec(walk.frames * I)}s;animation-timing-function:steps(${walk.frames});animation-delay" }] },
+      // card#12747: every A2 walks twice (to its call plate and on from it), so each plant reaches the glide of a walker
+      // with more than one walk leg as well as the lone glide.
+      { plant: [
+        { file: 'js/floor/painter.js', from: "animation-duration:${sec(walk.frames * I)}s;animation-delay", to: "animation-duration:${sec(walk.frames * I)}s;animation-timing-function:steps(${walk.frames});animation-delay" },
+        { file: 'js/floor/painter.js', from: 'animation-timing-function:linear,linear;', to: 'animation-timing-function:steps(${walk.frames}),linear;' },
+      ] },
       // The glide's delay in whole frames while its pin reads the exact instant, the bird row's second PLANT's form: handed
       // to BOTH, the whole-frame elapsed cancels inside the pin (`began + elapsed` against `walk.start × I − elapsed`), so
       // a pinning browser draws it right — measured, NOT CAUGHT — and the defect a pinning browser can show is the mismatch.
-      { plant: [{ file: 'js/floor/painter.js', from: 'animation-delay:${sec(walk.start * I - elapsed)}s`', to: 'animation-delay:${sec(walk.start * I - (fx.elapsed_frames ?? 0) * I)}s`' }] },
+      { plant: [
+        { file: 'js/floor/painter.js', from: 'animation-delay:${sec(walk.start * I - elapsed)}s`', to: 'animation-delay:${sec(walk.start * I - (fx.elapsed_frames ?? 0) * I)}s`' },
+        { file: 'js/floor/painter.js', from: 'animation-delay:${sec(walk.start * I - elapsed)}s,', to: 'animation-delay:${sec(walk.start * I - (fx.elapsed_frames ?? 0) * I)}s,' },
+      ] },
       { plant: [
         { file: 'js/floor/painter.js', from: 'performance.now() - (clock.now() - entry.started_at)', to: 'document.timeline.currentTime - entry.elapsed_ms' },
         { file: 'page', from: 'R.delivered.push(performance.now());', to: 'for (const until = performance.now() + 40; performance.now() < until;); R.delivered.push(performance.now());' },
@@ -873,9 +919,11 @@ const ROWS = {
           }
           f.firstAfterPostMs = post === undefined ? null : Number((first.t - post).toFixed(1));
         }
-        if (f.rebuilds < 2) d.push(`${path.slice(0, 40)}: no repaint landed during the walk (one node) — continuity across a rebuild was not measured`);
         facts.push(f);
       }
+      // card#12747: an A2 walks to its call plate and on from it, two glides, and the run's one mid-walk repaint lands in
+      // one of them — so the rebuild is owed by the walk, not by each glide.
+      if (walks.size > 0 && facts.every((f) => f.rebuilds < 2)) d.push('no repaint landed during any glide of the walk (one node each) — continuity across a rebuild was not measured');
       return { defects: d.slice(0, 6), facts };
     })),
 
@@ -888,8 +936,8 @@ const ROWS = {
   // crossing excused as § 6.2 item 9's stated lag (H16); the desks' relative order and `document.activeElement` unchanged
   // (H18); every walker element a child of the floor stack, and a walker shown in the cab inside the band's cab clip group
   // before the leaves (H8); and that the point under each shown walker is never a walker element (H19). Then, with
-  // `aimla-review` standing in its wait on the threshold: its image draws one frame on two ticks (H21), and a click on the
-  // leaves' centre — under the waiting walker — opens the cab (H19). Two MEASUREMENTS are reported as facts: whether
+  // `aimla-review` standing in its wait at its spot beside the doors (card#12793): its image draws one frame on two ticks
+  // (H21), and a click where its drawn body covers the right leaf — under the waiting walker — opens the cab (H19). Two MEASUREMENTS are reported as facts: whether
   // `insertBefore` of a walker's node restarts its running animations (`reinsert`), and whether a re-inserted walker's
   // `<image>` is missing from the next composited frame (`flicker`, the walker's clip compared before and after).
   // The PLANTs: no `pin()` after a move (H20), the walker drawn in the effects layer (H16), every stack child re-appended
@@ -957,12 +1005,20 @@ const ROWS = {
         hrefs.push(await s.ev(`(() => { const w = [...document.querySelectorAll('#floor-drawing .fx-walker')].find((g) => getComputedStyle(g.parentNode).opacity !== '0' && getComputedStyle(g).offsetDistance === '100%'); return w === undefined ? null : w.querySelector('image')?.getAttribute('href') ?? null; })()`));
         await sleep(300);
       }
-      if (review === null || hrefs.some((h) => h === null)) d.push('no walker stood on the threshold in its wait to read');
+      if (review === null || hrefs.some((h) => h === null)) d.push('no walker stood at its spot in its wait to read');
       else if (new Set(hrefs).size !== 1) d.push(`the waiting walker drew ${new Set(hrefs).size} different frames on three ticks — it walks in place`);
       facts.reinsert = await s.ev(REINSERT);
       facts.flicker = await flicker(s);
-      await s.click('#floor-drawing .elevator-leaf.left');
-      const leaf = await s.ev(`(() => { const l = document.querySelector('#floor-drawing .elevator-leaf.left').getBoundingClientRect(); const e = document.elementFromPoint(l.x + l.width / 2, l.y + l.height / 2); return e === null ? null : e.tagName + '.' + (e.getAttribute('class') ?? ''); })()`);
+      // card#12793: nobody waits on the threshold any more — the first waiter stands beside the doors, outside the lane,
+      // its drawn body still reaching over the right leaf — so the press is made where that body covers a leaf: the centre
+      // of its image's rect and the right leaf's, overlapping. A waiter that covers no leaf measures nothing, and says so.
+      const under = await s.ev(`(() => { const w = [...document.querySelectorAll('#floor-drawing .fx-walker')].find((g) => getComputedStyle(g.parentNode).opacity !== '0' && getComputedStyle(g).offsetDistance === '100%'); const l = document.querySelector('#floor-drawing .elevator-leaf.right'); if (w === undefined || l === null) return null; const a = w.querySelector('image').getBoundingClientRect(); const b = l.getBoundingClientRect(); const x0 = Math.max(a.left, b.left); const x1 = Math.min(a.right, b.right); const y0 = Math.max(a.top, b.top); const y1 = Math.min(a.bottom, b.bottom); return x1 > x0 && y1 > y0 ? { x: (x0 + x1) / 2, y: (y0 + y1) / 2 } : null; })()`);
+      if (under === null) {
+        d.push('no waiting walker\'s body covers a leaf — the press under a waiting walker measured nothing');
+        return { defects: d.slice(0, 6), facts };
+      }
+      for (const type of ['mousePressed', 'mouseReleased']) await s.page('Input.dispatchMouseEvent', { type, x: under.x, y: under.y, button: 'left', clickCount: 1 });
+      const leaf = await s.ev(`(() => { const e = document.elementFromPoint(${under.x}, ${under.y}); return e === null ? null : e.tagName + '.' + (e.getAttribute('class') ?? ''); })()`);
       const opened = await until(async () => (await s.cab()).open, RIDE_DOOR_MS + 1500, 'never').then(() => true, () => false);
       const cab = await s.cab();
       facts.press = { under: leaf, cab: cab.open, opened };

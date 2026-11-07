@@ -3650,7 +3650,7 @@
                             "type": "",
                             "visible": true,
                             "width": 440,
-                            "x": 1136,
+                            "x": 1264,
                             "y": 24
                           },
                           {
@@ -3711,7 +3711,7 @@
                 "tilewidth": 8,
                 "type": "map",
                 "version": "1.10",
-                "width": 209
+                "width": 223
               }
             }
           }
@@ -4171,7 +4171,7 @@
                         "type": "",
                         "visible": true,
                         "width": 440,
-                        "x": 1136,
+                        "x": 1264,
                         "y": 24
                       },
                       {
@@ -4230,7 +4230,7 @@
                 "tilewidth": 8,
                 "type": "map",
                 "version": "1.10",
-                "width": 209
+                "width": 223
               }
             }
           }

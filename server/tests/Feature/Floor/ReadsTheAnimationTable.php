@@ -171,7 +171,11 @@ trait ReadsTheAnimationTable
         $held = [];
 
         foreach ($this->documentAnimationRows($md) as $id => $row) {
-            if ($row['class'] !== 'held' || ! str_starts_with($row['condition'], 'render_state == "')) {
+            // A row held under a DERIVED episode key (`<seat key>~…`, § 6.2 A23's, A25's and A26's) is held BESIDE the desk's
+            // own row, never instead of it, so it is no desk row here even where its condition names `render_state`
+            // (A25's seat half, card#12749): its readers are `documentSideTableRow()` and `documentSnackRow()`.
+            if ($row['class'] !== 'held' || ! str_starts_with($row['condition'], 'render_state == "')
+                || str_contains($row['condition'], '<seat key>~')) {
                 continue;
             }
 
@@ -270,7 +274,103 @@ trait ReadsTheAnimationTable
      */
     protected function predictedRowFor(array $seat, string $enteredId, ?string $md = null): ?string
     {
+        foreach (['snack', 'restroom'] as $stem) {
+            if ($enteredId === $this->documentBreakRow($stem, $md)) {
+                return $this->breakHalvesFor($stem, $seat, $md) !== [] ? $enteredId : null;
+            }
+        }
+
         return $enteredId === $this->documentSideTableRow($md) ? $this->sideTableRowFor($seat, $md) : $this->heldRowFor($seat, $md);
+    }
+
+    /**
+     * § 6.2's SNACK row (A25, card#12749) — the one `held` row held under BOTH derived keys `<seat key>~snack` and
+     * `<seat key>~snack-interns`, or `null` where the table holds none or more than one. Its two halves' conditions are
+     * read off its own cell by `snackHalvesFor()`. `documentBreakRow('snack')`.
+     */
+    protected function documentSnackRow(?string $md = null): ?string
+    {
+        return $this->documentBreakRow('snack', $md);
+    }
+
+    /** § 6.2's RESTROOM row (A26, card#12786), held under `<seat key>~restroom` and `~restroom-interns` — `documentBreakRow('restroom')`. */
+    protected function documentRestroomRow(?string $md = null): ?string
+    {
+        return $this->documentBreakRow('restroom', $md);
+    }
+
+    /**
+     * A BREAK row of § 6.2 (card#12749's A25 `snack`, card#12786's A26 `restroom`) — the one `held` row held under BOTH
+     * derived keys `<seat key>~<stem>` and `<seat key>~<stem>-interns`, or `null` where the table holds none or more than
+     * one.
+     */
+    protected function documentBreakRow(string $stem, ?string $md = null): ?string
+    {
+        $q = preg_quote($stem, '/');
+        $rows = array_filter($this->documentAnimationRows($md), static fn (array $row): bool => $row['class'] === 'held'
+            && str_contains($row['condition'], "<seat key>~{$stem}-interns") && preg_match("/<seat key>~{$q}(?!-)/", $row['condition']) === 1);
+
+        return count($rows) === 1 ? array_key_first($rows) : null;
+    }
+
+    /**
+     * The HALVES of § 6.2's snack row one seat object holds (card#12749, card#12785) — `breakHalvesFor('snack')`.
+     *
+     * @param  array<string, mixed>  $seat
+     * @return list<string>
+     */
+    protected function snackHalvesFor(array $seat, ?string $md = null): array
+    {
+        return $this->breakHalvesFor('snack', $seat, $md);
+    }
+
+    /**
+     * The HALVES of § 6.2's restroom row one seat object holds (card#12786) — `breakHalvesFor('restroom')`.
+     *
+     * @param  array<string, mixed>  $seat
+     * @return list<string>
+     */
+    protected function restroomHalvesFor(array $seat, ?string $md = null): array
+    {
+        return $this->breakHalvesFor('restroom', $seat, $md);
+    }
+
+    /**
+     * The HALVES of a § 6.2 break row one seat object holds (card#12749, card#12785, card#12786): `~<stem>` where the
+     * seat's `render_state` is one of the values the cell names for the seat, `~<stem>-interns` where an element of its
+     * `subagents[]` reads one of the `activity_state` values the cell names for its interns — each set read off the cell
+     * (`render_state ∈ {"idle", "working"}`), so a reworded condition is loud here (`[]` with nothing parsed reads as no
+     * half held, and the callers' expectations then name it).
+     *
+     * @param  array<string, mixed>  $seat
+     * @return list<string> the suffixes held, in the order the set enters them
+     */
+    protected function breakHalvesFor(string $stem, array $seat, ?string $md = null): array
+    {
+        $id = $this->documentBreakRow($stem, $md);
+
+        if ($id === null
+            || preg_match('/^render_state ∈ \{([^}]+)\} for the seat/u', $this->documentAnimationRows($md)[$id]['condition'], $s) !== 1
+            || preg_match('/reads activity_state ∈ \{([^}]+)\} for its interns/u', $this->documentAnimationRows($md)[$id]['condition'], $i) !== 1) {
+            return [];
+        }
+
+        $values = static fn (string $set): array => preg_match_all('/"([a-z_]+)"/', $set, $m) > 0 ? $m[1] : [];
+        $halves = [];
+
+        if (in_array($seat['render_state'] ?? null, $values($s[1]), true)) {
+            $halves[] = "~{$stem}";
+        }
+
+        foreach (is_array($seat['subagents'] ?? null) ? $seat['subagents'] : [] as $element) {
+            if (in_array($element['activity_state'] ?? null, $values($i[1]), true)) {
+                $halves[] = "~{$stem}-interns";
+
+                break;
+            }
+        }
+
+        return $halves;
     }
 
     /**

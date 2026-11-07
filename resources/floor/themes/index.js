@@ -15,10 +15,10 @@
 // the `themes/` directories (AT-D3-25's theme half). Until then a floor resolves to a theme name and is
 // drawn as it was.
 
-export const THEMES = Object.freeze(['studio']);
+export const THEMES = Object.freeze(['studio', 'cottage']);
 
 export const HOUSE_THEME = 'studio';
 
-export const KINDS = Object.freeze(['wall', 'accent', 'bookcase', 'plant', 'floor-lamp', 'armchair', 'cushion', 'book-pile']);
+export const KINDS = Object.freeze(['wall', 'accent', 'bookcase', 'plant', 'floor-lamp', 'armchair', 'cushion', 'book-pile', 'snack-table', 'snack-table-low', 'restroom-door', 'water-cooler', 'filing-cabinet', 'copier', 'coat-rack', 'whiteboard', 'aquarium', 'bean-bag', 'globe']);
 
 export const API = Object.freeze(['band', 'windowSurround', 'elevatorSurround', 'clockCase', 'plane', 'scenery', 'chair', 'desk', 'monitorFrame', 'deskProps', 'sideTable', 'PALETTE', 'surfaces']);

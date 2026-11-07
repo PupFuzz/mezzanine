@@ -71,6 +71,10 @@
     --door: #dbe5ee;
     --door-edge: #9fb1c4;
     --door-frame: #2b3340;
+    /* card#12786: the restroom door's slider field (FLOOR.md § 6.7 item 2) — vacant green under a white ring, occupied red
+       under a white bar, shape as well as colour. */
+    --restroom-vacant: #5f9a62;
+    --restroom-occupied: #c8553d;
     /* The welcome mat the lobby view behind the cab's doors lays before the front doors (card#12113) — a copy of
        the lobby's `INK.mat`, held equal by the same test. */
     --lobby-mat: #e7866d;

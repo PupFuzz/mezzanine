@@ -907,6 +907,43 @@ PLANTS = [
         "meets `desks` object id",
     ),
     (
+        # card#12786 G-scenery leg 4 over the FILE: the restroom door moved down to the grid's last row, its foot on the
+        # front edge, so the row its threshold would stand on lies outside the grid. The anchor takes the THIRD tile layer's
+        # data (`furniture`) whole, and the `door-down` kind moves the one cell carrying the door's GID -- the tileset's
+        # `restroom-door` tile, read out of the checkout -- five rows down, so the plant stores no GID of its own.
+        "verify-floor.py",
+        "resources/floor/default.tmj",
+        r"(\"data\":\[[\s\S]*?\"data\":\[[\s\S]*?\"data\":\[\n)([^\]]*)(\])",
+        "door-down",
+        "the restroom door moved onto the front edge, where no threshold stands, which G-scenery leg 4 must refuse as a "
+        "door that serves nobody (card#12786)",
+        "has no threshold open at `clear`",
+    ),
+    (
+        # card#12466 G5's RED enumeration over AT-D3-36: its Fourth RED (the closing forgotten) dropped, leaving the
+        # Third and the Fifth adjacent -- a RED deleted with its neighbours never renumbered, which G5's contiguity rule
+        # must report rather than reading the test's remaining REDs as its whole population.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(turn-round-in-cab's leaves jump to open\. Caught by: nothing drawn moves\.\n)"
+        r"(- \*\*Fourth RED — the closing forgotten:\*\*[^\n]*\n[^\n]*\n)(- \*\*Fifth RED)",
+        "drop",
+        "AT-D3-36's Fourth RED dropped, its Fifth left unrenumbered, which G5 must report as a gap in the test's "
+        "RED ordinals (card#12466)",
+        "numbers its REDs",
+    ),
+    (
+        # card#12466 G5's artifact closure over AT-D3-36: the artifact its Build bullet reads -- the seat's turn-round,
+        # which Appendix B row 37 builds -- renamed in the Reads clause, so it names an artifact no step builds.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(the \*\*restroom break\*\*, the \*\*)(seat's turn-round)(\*\*\.\n)",
+        "rename",
+        "the artifact AT-D3-36 reads, renamed to one no Appendix B row builds, which G5 must refuse as a read nothing "
+        "schedules (card#12466)",
+        "which no Appendix B Artifact cell names",
+    ),
+    (
         # G-walls leg 2: the wall tile declares `kind: wall`.  Its kind dropped in the tileset is the
         # class "a stored map's walls lost their meaning" (FLOOR.md section 10.6's retirements).
         "verify-floor.py",
@@ -1160,6 +1197,19 @@ HOLDS = [
     ),
 ]
 
+
+def _door_down(rows):
+    """The furniture layer's rows with the restroom door's cell moved five rows down -- its GID read off the tileset."""
+    tsx = (ROOT / "resources/floor/tiles/floor-plane.tsx").read_text()
+    tid = int(re.search(r'<tile id="(\d+)">\s*<properties>\s*<property name="kind" value="restroom-door"/>', tsx).group(1))
+    gid = str(tid + 1)
+    lines = rows.split("\n")
+    cells = [l.strip().rstrip(",").split(", ") if l.strip() else [] for l in lines]
+    r = next(i for i, c in enumerate(cells) if gid in c)
+    c = cells[r].index(gid)
+    cells[r][c], cells[r + 5][c] = "0", gid
+    return "\n".join("    " + ", ".join(v) + ("," if l.rstrip().endswith(",") else "") if v else l for l, v in zip(lines, cells))
+
 def _box_height():
     """The furniture box's height, out of `resources/floor/furniture-box.js`'s one declaration line."""
     line = re.search(r"^export const FURNITURE_BOX = Object\.freeze\(\{ width: (\d+), height: (\d+) \}\);$",
@@ -1196,6 +1246,8 @@ MUTATIONS = {
     # The first GID the anchored layer places, written at the anchored cell (G-scenery leg 2).
     "piece-cell": lambda m: (m.group(1) + re.search(r'[1-9]\d*', m.group(1)[m.group(1).rindex('"data":['):].replace('"data":[', '', 1)).group(0)
                              if re.search(r'[1-9]', m.group(1)[m.group(1).rindex('"data":['):]) else m.group(1) + m.group(2)) + m.group(3),
+    # card#12786: the restroom door's cell moved five rows down (G-scenery leg 4).
+    "door-down": lambda m: m.group(1) + _door_down(m.group(2)) + m.group(3),
     # The previous object's `x` and `width` are the first of each after the layer's name in
     # group(1); `x + width - 1` is the last pixel column of its half-open span.
     "overlap": lambda m: (m.group(1)

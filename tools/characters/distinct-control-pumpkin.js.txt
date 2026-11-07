@@ -1,0 +1,16 @@
+  pumpkin: {
+    kind: 'vegetable', label: 'pumpkin',
+    pals: [['#e08a3c'], ['#efe2c4'], ['#8fa0a3'], ['#d9a441', 'stripe'], ['#c8562e']],
+    hats: ['ladybug', 'flower', 'sprig'], necks: [], extras: ['glasses', 'mug', 'book'],
+    build(c) {
+      const [b, stripe] = c.P, X = c.X;
+      const body = c.sym([[0, 73], [10, 67], [24, 66], [38, 74], [46, 94], [48, 122], [45, 152], [36, 174], [20, 185], [0, 186]]);
+      c.body(c.shape(body, b));
+      for (const dx of [-32, -14, 14, 32]) c.body(`<path d="M${X(dx * 0.4)} 70C${X(dx * 1.45)} 88 ${X(dx * 1.45)} 166 ${X(dx * 0.5)} 185" stroke="${stripe ? tint(b, 0.6) : shade(b, 0.25)}" stroke-width="${stripe ? 3.2 : 1.4}" fill="none" opacity="${stripe ? 0.7 : 0.6}" stroke-linecap="round"/>`);
+      c.body(c.shape(`M51 70C50 58 56 48 62 46L65 50.5C60 53 58 60 58 70Z`, '#7f6a3a'));
+      c.body(`<path d="M61 56C68 54 72 60 68 63C65 65 63 61 66 60" stroke="#6b9a52" stroke-width="1.6" fill="none" stroke-linecap="round"/>`);
+      if (chance(c.key, 'pleaf', 1, 2)) c.body(c.leaf(51, 66, -62, 18, 8, GREENS[1]));
+      return { face: { y: 106, es: 16, s: 1.05, my: 122, ms: 1 }, hat: { x: 46, y: 64, w: 20 }, neck: null,
+        arms: { y: 146, dx: 44 * c.st, col: b, small: true }, feet: { dx: 20 * c.st, col: shade(b, 0.25) }, shadow: 44 * c.st };
+    },
+  },

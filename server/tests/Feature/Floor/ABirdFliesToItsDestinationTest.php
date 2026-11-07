@@ -226,7 +226,7 @@ class ABirdFliesToItsDestinationTest extends TestCase
         $this->assertNotSame([], $this->paintDefects($this->paint($flights, $eased)), 'CONTROL (an unmodelled timing function) did not bite');
 
         // A painter that pins nothing: every node's start is the browser's, which a rebuild moves.
-        $unpinned = $this->mutatedModules([self::PAINTER, 'animation.startTime = entry.began + entry.elapsed_ms;', '']);
+        $unpinned = $this->mutatedModules([self::PAINTER, 'animation.startTime = start;', '']);
         $this->assertNotSame([], $this->paintDefects($this->paint($flights, $unpinned)), 'CONTROL (no pinned start) did not bite');
 
         // A start re-derived at every paint instead of recorded at the flight's first: a clock step moves it.
@@ -236,12 +236,21 @@ class ABirdFliesToItsDestinationTest extends TestCase
         // The start dated from the last frame's time: the flight starts before its render, by however long the task ran.
         $stale = $this->mutatedModules([self::PAINTER, 'performance.now() - (clock.now() - entry.started_at)', 'document.timeline.currentTime - entry.elapsed_ms']);
         $this->assertNotSame([], $this->paintDefects($this->paint($flights, $stale)), 'CONTROL (the start from document.timeline.currentTime) did not bite');
+
+        // card#12457, the pin the card replaced: the flight's instant written as the animation's start, ahead of the frame
+        // the browser draws it in — the bird, and the bird standing on the ledge, blink for that frame.
+        $ahead = $this->mutatedModules([self::PAINTER,
+            "animation.startTime = start;\n                animation.effect.updateTiming({ delay: delay + instant - start });",
+            'animation.startTime = instant;']);
+        $this->assertNotSame([], $this->paintDefects($this->paint($flights, $ahead)), 'CONTROL (the start ahead of the frame) did not bite on the flight');
+        $this->assertNotSame([], $this->ledgeDefects($this->paint($painted, $ahead), $painted), 'CONTROL (the start ahead of the frame) did not bite on the ledge');
     }
 
     /**
      * A browser with no `Element.getAnimations()`, or a timeline with no time, still gets its bird: the painter skips
      * the pin and keeps the negative delay (card#12345's review, F4). The control drops that guard: with no
-     * `getAnimations()` the paint then throws, and with no timeline time it pins a start anyway.
+     * `getAnimations()` the paint then throws, and with no timeline time it pins anyway — a start, or (card#12457, the
+     * start being the timeline's time, which is none) a delay moved off the one the style wrote.
      */
     public function test_a_browser_that_cannot_pin_still_draws_the_bird(): void
     {
@@ -256,13 +265,14 @@ class ABirdFliesToItsDestinationTest extends TestCase
                 foreach ($f['paints'] as $i => $p) {
                     $this->assertNotNull($p['bird'], "{$degraded}: paint {$i} of {$f['animation_id']} {$f['cause']} drew no bird");
                     $this->assertNull($p['bird']['start'], "{$degraded}: paint {$i} of {$f['animation_id']} {$f['cause']} pinned a start");
+                    $this->assertSame($p['bird']['authored'], $p['bird']['delay'], "{$degraded}: paint {$i} of {$f['animation_id']} {$f['cause']} moved its delay");
                 }
             }
 
             [$status, $stdout] = $this->runProbe($payload, dirname($unguarded), __DIR__.'/bird-paint-probe.mjs');
             $bit = $degraded === 'no-get-animations'
                 ? $status !== 0
-                : $status === 0 && in_array(false, array_map(static fn (array $f) => $f['paints'][0]['bird']['start'] === null, json_decode($stdout, true)['flights']), true);
+                : $status === 0 && in_array(false, array_map(static fn (array $f) => $f['paints'][0]['bird']['start'] === null && $f['paints'][0]['bird']['delay'] === $f['paints'][0]['bird']['authored'], json_decode($stdout, true)['flights']), true);
             $this->assertTrue($bit, "CONTROL ({$degraded} with the guard removed) did not bite");
         }
     }
@@ -462,9 +472,11 @@ class ABirdFliesToItsDestinationTest extends TestCase
                     }
                 }
 
+                $defects = [...$defects, ...$this->aheadOfTheFrame($key, 'perched', [$i => $paint['perched']]), ...$this->aheadOfTheFrame($key, 'hop', [$i => $paint['hop']])];
                 $window = function (array $n): array {
                     $d = $this->declarations(preg_replace("/offset-path:path\\('[^']*'\\)/", '', $n['style']));
-                    $from = $n['start'] + (float) $d['animation-delay'] * 1000;
+                    // card#12457: from the animation's own delay, as the pin left it (`paintDefects()`).
+                    $from = $n['start'] + $n['delay'];
 
                     return [round($from, 3), round($from + (float) $d['animation-duration'] * 1000, 3)];
                 };
@@ -679,10 +691,14 @@ class ABirdFliesToItsDestinationTest extends TestCase
             $origins = [];
 
             foreach ($nodes as $i => $n) {
-                $timing[$i] = $this->timing($n['style'], $rule) + ['start' => $n['start']];
+                // card#12457: the delay is the animation's own, as the pin left it — `pin()` starts it at the frame's time
+                // and carries the rest of the flight's instant in it, so the style's delay is no longer the whole of it.
+                $timing[$i] = ['start' => $n['start'], 'delay' => $n['delay']] + $this->timing($n['style'], $rule);
                 // Where the node's animation reads the flight from: its pinned start plus its (negative) delay.
                 $origins[$i] = $n['start'] + $timing[$i]['delay'];
             }
+
+            $defects = [...$defects, ...$this->aheadOfTheFrame($key, 'bird', $nodes)];
 
             // card#12445: the flight starts `flight_start` frames into the effect (after the hop out and the dwell, coming
             // in), and `wait_frames` later where it waited for the ledge.
@@ -731,6 +747,28 @@ class ABirdFliesToItsDestinationTest extends TestCase
 
             if (abs($points[0] - $points[1]) > 0.5) {
                 $defects[] = sprintf('%s: at one instant the paint before a repaint draws the bird %.1f px along its arc and the repaint %.1f px', $key, $points[0], $points[1]);
+            }
+        }
+
+        return $defects;
+    }
+
+    /**
+     * card#12457: each node's animation started no later than the time of the frame it is first drawn in — at a paint,
+     * `document.timeline.currentTime` (the paint's `frame_ms`), which no later frame precedes. An animation started after
+     * its frame is in its before phase there whatever its delay, and a node drawn only by its animation is not drawn.
+     *
+     * @param  array<int, array<string, mixed>|null>  $nodes  by paint index
+     * @return list<string>
+     */
+    private function aheadOfTheFrame(string $key, string $part, array $nodes): array
+    {
+        $defects = [];
+
+        foreach ($nodes as $i => $n) {
+            if ($n !== null && $n['start'] !== null && $n['start'] > self::PAINTS[$i]['frame_ms']) {
+                $defects[] = sprintf('%s: paint %d starts its %s at %.1f ms on the timeline, after the frame it is drawn in at %.1f ms — not drawn for that frame',
+                    $key, $i, $part, $n['start'], self::PAINTS[$i]['frame_ms']);
             }
         }
 

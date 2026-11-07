@@ -156,7 +156,7 @@ class Seat:
         t = time.time() if at_ms is None else int(at_ms) / 1000.0
         os.utime(lock, (t, t))
 
-    def env(self, *, freeze: bool = True, **extra) -> dict:
+    def env(self, *, freeze: bool = True, burst_s: float = 0.0, **extra) -> dict:
         e = dict(os.environ)
         e["FLEET_REPORTER_CONFIG"] = str(self.cfg_path)
         e.pop("FLEET_REPORTER_NOW_MS", None)
@@ -177,24 +177,21 @@ class Seat:
         # ⚠ PER `env()` CALL IS NOT PER HOOK, AND FOR EXACTLY TWO PATHS THAT DIFFERENCE IS REAL.
         # AT-10 and AT-16 call `env()` ONCE, to build a worker's `Popen` environment, and that
         # worker then drives 40 (resp. 15) hooks off the single lock this call froze. Hooks 2..N
-        # there are as old as the burst, not 0 s: for those two paths the window is NARROWED, NOT
-        # CLOSED, and no claim of "0 s on every hook" covers them.
-        # MEASURED rather than extrapolated from the idle p99, because the burst's own
-        # concurrency is the point — 8 workers contend, and the README's own record that hook
-        # latency triples under load applies to the burst itself, so § 3's IDLE p99 understates
-        # it. Driving both bursts and reading the lock's age at the last hook of each:
-        # AT-10 22.6 s, AT-16 6.5 s, against LOCK_STALE_MS 90 s —
-        # a 4.0x margin, not the ~9x an idle 258 ms p99 would suggest. AT-10 would have to reach
-        # ~159 hooks per worker, a 4x growth, before a hook in it read its own lock as stale.
-        # NOT CLOSED HERE, deliberately: closing it means a SECOND freeze implementation inside
-        # generated worker source, which could only re-`utime` on WALL time — the very thing this
-        # change exists to stop doing — and would silently be wrong the day a burst is given a
-        # pinned clock. A duplicated primitive that cannot see the clock its hooks read buys a
-        # margin nothing is spending. The suite's last block, the leaked-flusher sweep, is the guard
-        # instead: if the window is ever crossed, the sweep fails the run and names the leaked
-        # daemon rather than leaving it silent.
+        # there are as old as the burst, not 0 s. Measured on an idle machine at 22.6 s (AT-10) and
+        # 6.5 s (AT-16) at the last hook, against LOCK_STALE_MS 90 s; on a machine at a load
+        # average of ~55 on 4 CPUs AT-10's burst outlasted 90 s, a hook read the lock as dead and
+        # forked a real flusher, which reaped the burst's open calls into the spool (385 lines, not
+        # 320), outlived the block, and posted into the windows of later cases (card#12631, three
+        # runs of three). So such a caller passes `burst_s`, the bound its burst is given, and the
+        # one freeze is dated that far AHEAD of the invocation's clock: a lock from the future
+        # reads fresh to `now() - mtime < LOCK_STALE_MS` for the whole burst, however slow the
+        # machine, through the same primitive and the same clock — no second freeze inside the
+        # generated worker source, which could only re-`utime` on wall time. The suite's last
+        # block, the leaked-flusher sweep, still fails the run if a burst outlasts its bound.
         if freeze:
-            self.freeze_flusher(e.get("FLEET_REPORTER_NOW_MS"))
+            at = e.get("FLEET_REPORTER_NOW_MS")
+            self.freeze_flusher((int(at) if at is not None else int(time.time() * 1000)) + int(burst_s * 1000)
+                                if burst_s else at)
         return e
 
     def events(self) -> list[dict]:
@@ -231,13 +228,21 @@ class Seat:
         except Exception:
             return {}
 
-    def posted(self) -> list[dict]:
-        """Every batch the shared stub received from THIS seat (by the bearer token it presented)."""
-        return [b["batch"] for b in list(INGEST.batches) if b.get("auth") == f"Bearer {self.token}"]
+    def posted(self, since: int = 0) -> list[dict]:
+        """Every batch the shared stub received from THIS seat (by the bearer token it presented), from index
+        `since` of `INGEST.batches` on. A read of a window that does not filter by seat counts whatever another
+        seat's flusher posted into it, and on a loaded machine a flusher of an earlier case can still be
+        posting (card#12631)."""
+        return [b["batch"] for b in list(INGEST.batches[since:]) if b.get("auth") == f"Bearer {self.token}"]
 
-    def wire_heartbeats(self) -> list[dict]:
+    def probed(self, since: int = 0) -> int:
+        """How many health probes (GETs) the shared stub received from THIS seat, from index `since` of
+        `INGEST.get_auths` on — the GET count filtered as `posted` filters the batches."""
+        return sum(1 for a in list(INGEST.get_auths[since:]) if a == f"Bearer {self.token}")
+
+    def wire_heartbeats(self, since: int = 0) -> list[dict]:
         """This seat's heartbeats as the stub received them, in arrival order (D1 § 6.14: never spooled)."""
-        return [e for b in self.posted() for e in b.get("events", []) if e.get("kind") == "reporter.heartbeat"]
+        return [e for b in self.posted(since) for e in b.get("events", []) if e.get("kind") == "reporter.heartbeat"]
 
     def entry(self, site: str = "default") -> dict:
         """One site's `state.json` entry (D1 § 3.1, *State per site*), or {} where there is none."""
@@ -418,6 +423,7 @@ class Ingest:
         self.delay_s = 0.0
         # The same hold for the health probe (GET), counted as it arrives: the flusher's other await.
         self.gets = 0
+        self.get_auths: list[str] = []          # each GET's Authorization, in arrival order (`Seat.probed`)
         self.get_delay_s = 0.0
         # What the health surface answers: the accepted schema-version set, and the status. A set
         # without this reporter's version is an ingest that REFUSES it; a non-200 is an answer
@@ -429,7 +435,8 @@ class Ingest:
         # differently without the suite racing that flusher to change a default between two of them.
         # A held answer closes its connection: the reporter has usually abandoned it by then. An entry's
         # `run` (a callable) runs when that GET arrives, before it is answered: it changes the seat's
-        # files between the probe and the batch POST of one flusher pass.
+        # files between the probe and the batch POST of one flusher pass. An entry with an `auth` is consumed
+        # only by a GET presenting that Authorization, so another seat's probe cannot take it (card#12631).
         self.get_script: list[dict] = []
         self.key = workdir / "stub.key"
         self.crt = workdir / "stub.crt"
@@ -463,8 +470,11 @@ class Ingest:
                 return raw
 
             def do_GET(self):
+                auth = self.headers.get("Authorization", "")
                 outer.gets += 1
-                step = outer.get_script.pop(0) if outer.get_script else {}
+                outer.get_auths.append(auth)
+                i = next((i for i, st in enumerate(outer.get_script) if st.get("auth") in (None, auth)), None)
+                step = outer.get_script.pop(i) if i is not None else {}
                 if step.get("run"):
                     step["run"]()
                 hold = step.get("hold", outer.get_delay_s)
@@ -540,6 +550,20 @@ def seat(name: str, **kw) -> Seat:
     root = TMP / name
     root.mkdir(parents=True, exist_ok=True)
     return Seat(root, kw.pop("ingest", INGEST.url), ca=kw.pop("ca", CA), **kw)
+
+
+HOUR_MS = 3_600_000
+RIG_INTO_HOUR_MS = 60_000
+
+
+def rig_clock_ms() -> int:
+    """Where a rig's pinned clock starts, for a rig whose steps advance it by minutes inside one hour: one minute
+    into an hour, the latest such instant not after now. Started on the wall clock instead, a rig straddled an
+    hour boundary whenever it ran in an hour's last minutes, and its flusher passes then folded and DELETED the
+    counter-sink and index buckets of the hour that had ended (D1 § 11.1's deletion precondition), so a case
+    reading them read nothing and passed on the re-run (card#12631: AT-29's failures on run 40967713344, at
+    22:59 UTC, and on PR #400, at 14:58 UTC). A rig crossing an hour on purpose sets its own clock."""
+    return (int(time.time() * 1000) - RIG_INTO_HOUR_MS) // HOUR_MS * HOUR_MS + RIG_INTO_HOUR_MS
 
 
 # ── flusher daemons THIS run caused to exist (card#7976) ───────────────────────────────────
@@ -957,15 +981,15 @@ def seat_log(s: Seat) -> str:
 # (b) `selftest`, and the flusher's start, on a config whose ca_file the seat must refuse.
 def drive_ca_config(name: str, ca: str, reporter: Path = REPORTER) -> dict:
     s = seat(name, ca=ca)
-    g0 = INGEST.gets
+    g0 = len(INGEST.get_auths)
     r, rep_ = selftest(s, reporter=reporter, **EXTRA_TRUST)
-    d = dict(path=ca, rc=r.returncode, gets=INGEST.gets - g0,
+    d = dict(path=ca, rc=r.returncode, gets=s.probed(g0),
              check=rep_.get("checks", {}).get("config_readable"),
              errors=rep_.get("detail", {}).get("config_readable", {}).get("errors", []))
     hook(s, "PreToolUse", pre(tuid="toolu_ca_start"), reporter=reporter)
     b0 = len(INGEST.batches)
     flush(s, reporter=reporter, **EXTRA_TRUST)
-    d.update(posts=len(INGEST.batches) - b0, log=seat_log(s),
+    d.update(posts=len(s.posted(b0)), log=seat_log(s),
              config_invalid=s.site_counters().get("config_invalid", 0))
     return d
 
@@ -995,20 +1019,20 @@ def drive_ca_vanishes(name: str, reporter: Path = REPORTER) -> dict:
     s = seat(name, ca=str(ca_copy))
     hook(s, "PreToolUse", pre(tuid="toolu_ca_gone"), reporter=reporter)
     b0 = len(INGEST.batches)
-    INGEST.get_script = [{"run": ca_copy.unlink}]
+    INGEST.get_script = [{"run": ca_copy.unlink, "auth": f"Bearer {s.token}"}]
     try:
         flush(s, reporter=reporter, **EXTRA_TRUST)
     finally:
         INGEST.get_script = []
     counters = s.site_counters()
-    d = dict(path=str(ca_copy), posts=len(INGEST.batches) - b0, log=seat_log(s), removed=not ca_copy.exists(),
+    d = dict(path=str(ca_copy), posts=len(s.posted(b0)), log=seat_log(s), removed=not ca_copy.exists(),
              config_invalid=counters.get("config_invalid", 0), retried=counters.get("batches_retried", 0),
              rejected=counters.get("batches_rejected", 0))
     # The refusal is the file's: restored, the same seat delivers the event it kept.
     shutil.copyfile(CA, ca_copy)
     b1 = len(INGEST.batches)
     flush(s, reporter=reporter, **EXTRA_TRUST)
-    d["recovered"] = any(e.get("kind") == "tool.start" for b in INGEST.batches[b1:] for e in b["batch"].get("events", []))
+    d["recovered"] = any(e.get("kind") == "tool.start" for b in s.posted(b1) for e in b.get("events", []))
     return d
 
 
@@ -1032,6 +1056,10 @@ eq("  … and the event is kept: with the file restored, the next pass delivers 
 # FAST_K) so the passes before and after the file appears take milliseconds, not K.FLUSH_MS each.
 CA_APPEARS_PASSES = 20                                  # passes run on the missing file before it is created
 CA_APPEARS_WITHIN_S = 10.0                              # the bound on the recovery; met in well under a second
+# The flusher's own start-time refusal line (`flusherMain`), which no hook writes; and the bound on waiting for
+# it, which only a hung flusher reaches — it orders the steps, it times nothing (card#12631).
+FLUSHER_REFUSED = "— spooling, sending nothing to the site(s) each error scopes to"
+FLUSHER_START_HANG_S = 120.0
 
 
 def drive_ca_appears(name: str, reporter: Path) -> dict:
@@ -1041,22 +1069,26 @@ def drive_ca_appears(name: str, reporter: Path) -> dict:
     s = seat(name, ca=str(ca_later))
     hook(s, "PreToolUse", pre(tuid="toolu_ca_appears"), reporter=reporter)
     (s.spool / "flusher.lock").unlink(missing_ok=True)
-    b0, g0 = len(INGEST.batches), INGEST.gets
+    b0, g0 = len(INGEST.batches), len(INGEST.get_auths)
     p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, **EXTRA_TRUST), cwd=str(HERE),
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     d: dict = {"pid": p.pid, "path": str(ca_later)}
     try:
+        # THE FLUSHER'S OWN REFUSAL, waited for before the file is created: the hook above logs a `config invalid`
+        # line too, so a wait for that phrase alone ended at once and a fixed sleep stood in for the flusher's start.
+        # On a loaded machine the flusher had not read its config by the end of it, found the file already there,
+        # and delivered — the RED read as GREEN (card#12631). `FLUSHER_REFUSED` is the flusher's start line alone.
         t0 = time.time()
-        while p.poll() is None and time.time() - t0 < CA_APPEARS_WITHIN_S and "config invalid" not in seat_log(s):
+        while p.poll() is None and time.time() - t0 < FLUSHER_START_HANG_S and FLUSHER_REFUSED not in seat_log(s):
             time.sleep(0.02)
         time.sleep(CA_APPEARS_PASSES * FAST_K["FLUSH_MS"] / 1000)
-        d.update(refused_at_start="config invalid" in seat_log(s) and "ENOENT" in seat_log(s),
-                 posts_before=len(INGEST.batches) - b0, gets_before=INGEST.gets - g0)
+        d.update(refused_at_start=FLUSHER_REFUSED in seat_log(s) and "ENOENT" in seat_log(s),
+                 posts_before=len(s.posted(b0)), gets_before=s.probed(g0))
         shutil.copyfile(CA, ca_later)
         t1, b1 = time.time(), len(INGEST.batches)
 
         def events_since() -> list[dict]:
-            return [e for b in INGEST.batches[b1:] for e in b["batch"].get("events", [])]
+            return [e for b in s.posted(b1) for e in b.get("events", [])]
 
         while p.poll() is None and time.time() - t1 < CA_APPEARS_WITHIN_S:
             ev = events_since()
@@ -1177,9 +1209,9 @@ def drive_bad_config(name: str, key: str, value, *, reporter: Path = REPORTER, f
     s = seat(name)
     s.cfg[key] = value
     s.write_cfg()
-    g0 = INGEST.gets
+    g0 = len(INGEST.get_auths)
     r, rep_ = selftest(s, reporter=reporter)
-    d = dict(rc=r.returncode, gets=INGEST.gets - g0, check=rep_.get("checks", {}).get("config_readable"),
+    d = dict(rc=r.returncode, gets=s.probed(g0), check=rep_.get("checks", {}).get("config_readable"),
              errors=rep_.get("detail", {}).get("config_readable", {}).get("errors", []))
     if flusher:
         hook(s, "PreToolUse", pre(tuid=f"toolu_{name}"), reporter=reporter)
@@ -1187,7 +1219,7 @@ def drive_bad_config(name: str, key: str, value, *, reporter: Path = REPORTER, f
         flush(s, reporter=reporter)
         c = s.site_counters()
         q = s.spool / "quarantine" / "rejected.default.jsonl"
-        d.update(posts=len(INGEST.batches) - b0, config_invalid=c.get("config_invalid", 0),
+        d.update(posts=len(s.posted(b0)), config_invalid=c.get("config_invalid", 0),
                  retried=c.get("batches_retried", 0), rejected=c.get("batches_rejected", 0),
                  quarantined=q.exists() and q.stat().st_size > 0, log=seat_log(s))
     return d
@@ -1312,10 +1344,48 @@ redgreen("a relative spool_dir writes nothing under the working directory (card#
 # so its time says when. The defect does: a lane still believing its config good builds a request the missing
 # file refuses, and that request — persisted, resent as built — lands once the file is back, carrying whatever
 # that lane decided while the seat could send nothing (a heartbeat in it says `pass`).
+#
+# WHERE "WHILE IT IS GONE" BEGINS IS THE LANE'S OWN VERDICT, read from its log, never a margin after the removal
+# (card#12482). A pass checks the file once, at its start, and then probes and drains: the pass in flight when
+# the file went may have checked it before, and builds its request after the removal on that verdict. The request
+# primitive refuses it (one attempt, `batch refused by the config`), it stays persisted, and it is resent as built
+# once the file is back — the pass's verdict is the unit (D1 § 3.5), and the heartbeat in that request says what
+# its pass decided. The first pass that cannot read the file logs `config invalid: ca_file unreadable …` and builds
+# nothing, and neither does any pass after it until one reads the file again and logs `ca_file readable …`. So the
+# requests the property forbids are the ones built between those two lines. The 0.1 s margin it replaced held only
+# while a pass's check and its build were within 0.1 s of each other, which a loaded machine does not keep: on PR
+# #390's run the pass in flight built its request more than 0.1 s after the removal, and it was counted.
+# `held_pass_flusher` plants a hold between a pass's check and its drain (it changes no decision; the logic is the
+# reporter's): the suite arms it, waits for a pass to be held in it, removes the file, spools an event, and lets
+# the pass go no sooner than 0.2 s after the removal. The slow machine, made certain, in that order.
 CA_GONE_PASSES = 160                                    # scaled passes run with the file removed (~4 s, >= 3 heartbeats)
+LANE_GONE_RE = re.compile(r"^(\S+) \[flusher\[[^\]]*\]\] config invalid: ca_file unreadable", re.M)
+LANE_BACK_RE = re.compile(r"^(\S+) \[flusher\[[^\]]*\]\] ca_file readable at ", re.M)
+PASS_HOLD, PASS_HELD = "pass-hold", "pass-held"         # the planted hold's arm and its marker, in the seat's spool
+HELD_AFTER_REMOVAL_MS = 200                             # the least time a held pass resumes after the removal
 
 
-def drive_ca_gone_live(name: str, reporter: Path) -> dict:
+def log_ms(stamp: str) -> int:
+    """A log line's RFC 3339 millisecond stamp (the reporter's `rfc3339`) as epoch milliseconds."""
+    return calendar.timegm(time.strptime(stamp[:19], "%Y-%m-%dT%H:%M:%S")) * 1000 + int(stamp[20:23])
+
+
+def held_pass_flusher(*defects) -> Path:
+    """The timing-scaled copy in which a pass that finds `PASS_HOLD` in the spool after its ca_file check, and no
+    request persisted from an earlier pass, writes `PASS_HELD` and waits, before its drain, until `PASS_HOLD` is gone.
+    With nothing persisted its drain BUILDS a request (the event the suite spools while it waits): a pass holding a
+    request an earlier pass built — a send the 300 ms scaled deadline cut short, which a loaded machine does —
+    would resend that instead, built before the removal, and the case would measure nothing."""
+    return fast_flusher(("    // The auth stop: nothing sent and nothing probed until a restart on a corrected config (§ 11.5).\n",
+                         f"    if (fs.existsSync(path.join(spool, '{PASS_HOLD}')) && !lane.entry.request) {{\n"
+                         f"      fs.writeFileSync(path.join(spool, '{PASS_HELD}'), '');\n"
+                         f"      while (fs.existsSync(path.join(spool, '{PASS_HOLD}'))) await nap(5);\n"
+                         "    }\n"
+                         "    // The auth stop: nothing sent and nothing probed until a restart on a corrected config (§ 11.5).\n"),
+                        *defects)
+
+
+def drive_ca_gone_live(name: str, reporter: Path, *, held: bool = False, verdict: bool = True) -> dict:
     root = TMP / name
     root.mkdir(parents=True, exist_ok=True)
     ca_copy = root / "pinned-ca.pem"
@@ -1331,39 +1401,65 @@ def drive_ca_gone_live(name: str, reporter: Path) -> dict:
     d: dict = {"pid": p.pid}
 
     def delivered(since: int) -> bool:
-        return any(e.get("kind") == "tool.start" for b in INGEST.batches[since:] for e in b["batch"].get("events", []))
+        return any(e.get("kind") == "tool.start" for b in s.posted(since) for e in b.get("events", []))
 
     try:
         t0 = time.time()
-        while p.poll() is None and time.time() - t0 < CA_APPEARS_WITHIN_S and not delivered(b0):
+        while p.poll() is None and time.time() - t0 < FLUSHER_START_HANG_S and not delivered(b0):
             time.sleep(0.02)
         d["delivered_before"] = delivered(b0)
+        if held:
+            (s.spool / PASS_HOLD).write_text("")
+            t0 = time.time()
+            while p.poll() is None and time.time() - t0 < FLUSHER_START_HANG_S and not (s.spool / PASS_HELD).exists():
+                time.sleep(0.005)
         ca_copy.unlink()
-        gone_from = time.time()
+        gone_from = int(time.time() * 1000)
         b1 = len(INGEST.batches)
         hook(s, "PreToolUse", pre(tuid="toolu_ca_live_2"), reporter=reporter)
+        if held:
+            time.sleep(max(0.0, (gone_from + HELD_AFTER_REMOVAL_MS) / 1000 - time.time()))
+            (s.spool / PASS_HOLD).unlink()
         time.sleep(CA_GONE_PASSES * FAST_K["FLUSH_MS"] / 1000)
-        d.update(posts_while_gone=len(INGEST.batches) - b1, logged="ca_file unreadable" in seat_log(s))
-        gone_to = time.time()
+        # The file stays gone until the lane has said so itself, however slow its passes — a lane that never re-checks
+        # the file (the RED) never does, and is not waited for.
+        t0 = time.time()
+        while verdict and p.poll() is None and time.time() - t0 < FLUSHER_START_HANG_S and not LANE_GONE_RE.search(seat_log(s)):
+            time.sleep(0.02)
+        d.update(posts_while_gone=len(s.posted(b1)), logged="ca_file unreadable" in seat_log(s))
+        gone_to = int(time.time() * 1000)
         shutil.copyfile(CA, ca_copy)
         t1, b2 = time.time(), len(INGEST.batches)
-        while p.poll() is None and time.time() - t1 < CA_APPEARS_WITHIN_S and not delivered(b2):
+        while p.poll() is None and time.time() - t1 < FLUSHER_START_HANG_S and not delivered(b2):
             time.sleep(0.02)
         time.sleep(4 * FAST_K["FLUSH_MS"] / 1000)
-        # Every request that reached the site, by the clock it was BUILT on (its batch_id), from the removal on,
-        # and the config_readable of any heartbeat inside it.
-        built_gone, readable = [], []
-        for b in INGEST.batches[b1:]:
-            if gone_from + 0.1 < ulid_ms(b["batch"].get("batch_id", "")) / 1000 < gone_to:
-                built_gone.append(b["batch"]["batch_id"])
-                readable += [e["data"]["selftest"].get("config_readable") for e in b["batch"].get("events", [])
+        log = seat_log(s)
+        m_gone, m_back = LANE_GONE_RE.search(log), LANE_BACK_RE.search(log)
+        # No `config invalid` line: the lane never reached a verdict of its own (the RED), so nothing it built
+        # after the removal was a pass in flight's, and the window opens at the removal.
+        gone_ms = log_ms(m_gone.group(1)) if m_gone else gone_from
+        back_ms = log_ms(m_back.group(1)) if m_back else gone_to
+        # Every request that reached this seat's site, by the clock it was BUILT on (its batch_id): between the
+        # lane's two verdicts, the property's population, with the config_readable of any heartbeat inside it; or
+        # by the pass in flight at the removal (after the removal, before the first verdict).
+        built_gone, readable, in_flight, margin_counted = [], [], [], []
+        for b in s.posted(b1):
+            at = ulid_ms(b.get("batch_id", ""))
+            if gone_ms <= at < back_ms:
+                built_gone.append(b["batch_id"])
+                readable += [e["data"]["selftest"].get("config_readable") for e in b.get("events", [])
                              if e.get("kind") == "reporter.heartbeat"]
+            elif gone_from <= at < gone_ms:
+                in_flight.append(b["batch_id"])
+            if gone_from + 100 < at < gone_to:
+                margin_counted.append(b["batch_id"])
         d.update(alive=p.poll() is None, delivered_after=delivered(b2), requests_built_while_gone=built_gone,
-                 heartbeats_built_while_gone=readable,
+                 heartbeats_built_while_gone=readable, in_flight=in_flight, margin_counted=margin_counted,
+                 lane_verdict=bool(m_gone),
                  # ATTEMPTS while the file was gone: the request primitive refuses each (`ca_file unreadable`) and
                  # the lane logs it. A lane whose own verdict is `fail` makes none — but the one pass in flight at
                  # the removal may have checked the file before it went, so one is the pass's and not a verdict.
-                 attempts_while_gone=seat_log(s).count("batch refused by the config"))
+                 attempts_while_gone=log.count("batch refused by the config"))
     finally:
         if p.poll() is None:
             p.kill()
@@ -1374,18 +1470,26 @@ def drive_ca_gone_live(name: str, reporter: Path) -> dict:
 
 ca_live = drive_ca_gone_live("ca-gone-live", fast_flusher())
 eq("precondition: a flusher started on a readable pinned ca_file delivers", True, ca_live["delivered_before"])
-# The 0.1 s margin after the removal excludes the pass in flight when the file went: it may have read it before,
-# and it acts on, and heartbeats, that pass's verdict.
-eq("once the file is removed it sends nothing, attempts nothing past the pass in flight at the removal, and no "
-   "request built while it is gone ever reaches the site — its heartbeat is a request, and the lane that cannot send "
-   "builds none", (0, True, []),
-   (ca_live["posts_while_gone"], ca_live["attempts_while_gone"] <= 1, ca_live["requests_built_while_gone"]))
+GONE_LIVE = ("once the file is removed it sends nothing, attempts nothing past the pass in flight at the removal, reaches "
+             "a verdict of its own, and no request built while it is gone ever reaches the site — its heartbeat is a "
+             "request, and the lane that cannot send builds none")
+eq(GONE_LIVE, (0, True, True, []),
+   (ca_live["posts_while_gone"], ca_live["attempts_while_gone"] <= 1, ca_live["lane_verdict"], ca_live["requests_built_while_gone"]))
 eq("  … its log names the unreadable file", True, ca_live["logged"])
 eq("  … and with the file restored the same process delivers again", (True, True), (ca_live["alive"], ca_live["delivered_after"]))
+# THE SLOW MACHINE, MADE CERTAIN (card#12482): the file removed while a pass is held between its check and its
+# drain, and an event spooled, so that pass builds a request after the removal, on the check it made before it.
+ca_held = drive_ca_gone_live("ca-gone-live-held", held_pass_flusher(), held=True)
+eq("precondition: removed while a pass was held after its check, that pass built a request after the removal, and "
+   "it reached the site once the file was back", (True, True), (ca_held["delivered_before"], bool(ca_held["in_flight"])))
+eq("  … and the same holds: " + GONE_LIVE, (0, True, True, []),
+   (ca_held["posts_while_gone"], ca_held["attempts_while_gone"] <= 1, ca_held["lane_verdict"], ca_held["requests_built_while_gone"]))
+eq("RED: the 0.1 s margin after the removal, which the lane's own verdict replaced, counts that pass's request as built "
+   "while the file was gone", True, bool(set(ca_held["in_flight"]) & set(ca_held["margin_counted"])))
 # RED — the two-verdict flusher verbatim: the file re-checked only while the start refused it.
 red_live = drive_ca_gone_live("ca-gone-live-red", fast_flusher(
     ("caRechecked: errors.length === 0 && site.errors.length === (site.caError ? 1 : 0) && typeof site.ca_file === 'string',",
-     "caRechecked: errors.length === 0 && site.errors.length === 1 && site.caError !== null,")))
+     "caRechecked: errors.length === 0 && site.errors.length === 1 && site.caError !== null,")), verdict=False)
 eq("RED: a flusher that re-checks ca_file only while its start refused it reaches nothing while the file is gone, "
    "and yet goes on ATTEMPTING requests, pass after pass, on a verdict of `pass` — each refused by the request primitive",
    (True, 0, True), (red_live["delivered_before"], red_live["posts_while_gone"], red_live["attempts_while_gone"] >= 10))
@@ -1424,20 +1528,59 @@ eq("GREEN: the real source carries no verification-disabling spelling", [],
 # case (c) above: the same `DEAD` address, no proxy, `not_measured`. The ingest's certificate carries
 # IP:127.0.0.1, so verification through the tunnel is the real check, with the seat's own `ca_file`.
 class ConnectProxy:
-    """A plain-HTTP CONNECT proxy on 127.0.0.1. `answer=False` accepts TCP, reads the CONNECT, and never
-    answers it — the proxy that costs a client its whole connect deadline."""
+    """A CONNECT proxy on 127.0.0.1. `answer=False` accepts TCP, reads the CONNECT, and never answers it — the
+    proxy that costs a client its whole connect deadline. `require` (card#9498) is the one
+    `Proxy-Authorization` value it admits: any other, or none, is answered `407`. `tls` (card#9498) is a
+    (certificate, key) pair it serves its own TLS on before it reads the CONNECT — an `https://` proxy.
+    `auths` records, per CONNECT, the `Proxy-Authorization` value it carried (None when it carried none);
+    the suite compares it and never prints it."""
 
-    def __init__(self, upstream_port: int, *, answer: bool = True):
+    def __init__(self, upstream_port: int, *, answer: bool = True, require: "str | None" = None,
+                 tls: "tuple[Path, Path] | None" = None):
         self.upstream_port = upstream_port
         self.answer = answer
+        self.require = require
         self.connects: list[str] = []
+        self.auths: list = []
+        self.refused = 0                 # CONNECTs answered 407
+        self.handshakes_failed = 0       # TLS sessions a client abandoned before any CONNECT (tls only)
+        self.ctx = None
+        if tls is not None:
+            self.ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            self.ctx.load_cert_chain(str(tls[0]), str(tls[1]))
         self.lsock = socket.create_server(("127.0.0.1", 0))
         self.port = self.lsock.getsockname()[1]
         threading.Thread(target=self._accept, daemon=True).start()
 
     @property
     def url(self) -> str:
-        return f"http://127.0.0.1:{self.port}"
+        return f"{'https' if self.ctx else 'http'}://127.0.0.1:{self.port}"
+
+    @staticmethod
+    def _pump_both(a, b):
+        """Both directions on ONE thread, for a TLS client socket: an SSL object is not read and written from
+        two threads at once. `pending()` is TLS data already decrypted that `select` cannot see."""
+        import select
+        try:
+            while True:
+                ready = [x for x in (a, b) if isinstance(x, ssl.SSLSocket) and x.pending()]
+                if not ready:
+                    ready, _, _ = select.select([a, b], [], [], 60)
+                    if not ready:
+                        return
+                for src in ready:
+                    chunk = src.recv(65536)
+                    if not chunk:
+                        return
+                    (b if src is a else a).sendall(chunk)
+        except OSError:
+            pass
+        finally:
+            for x in (a, b):
+                try:
+                    x.close()
+                except OSError:
+                    pass
 
     def _accept(self):
         while True:
@@ -1467,15 +1610,30 @@ class ConnectProxy:
         conn.settimeout(60)
         buf = b""
         try:
+            if self.ctx is not None:
+                try:
+                    conn = self.ctx.wrap_socket(conn, server_side=True)
+                except (ssl.SSLError, OSError):
+                    self.handshakes_failed += 1
+                    return
             while b"\r\n\r\n" not in buf:
                 chunk = conn.recv(4096)
                 if not chunk:
                     return
                 buf += chunk
-            self.connects.append(buf.split(b"\r\n", 1)[0].decode("ascii", "replace").rsplit(" ", 1)[0])
+            head = buf.split(b"\r\n\r\n", 1)[0].decode("latin-1").split("\r\n")
+            self.connects.append(head[0].rsplit(" ", 1)[0])
+            auth = next((ln.split(":", 1)[1].strip() for ln in head[1:]
+                         if ln.lower().startswith("proxy-authorization:")), None)
+            self.auths.append(auth)
             if not self.answer:
                 while conn.recv(4096):   # hold until the client gives up and closes
                     pass
+                return
+            if self.require is not None and auth != self.require:
+                self.refused += 1
+                conn.sendall(b"HTTP/1.1 407 Proxy Authentication Required\r\n"
+                             b"Proxy-Authenticate: Basic realm=\"suite\"\r\nContent-Length: 0\r\n\r\n")
                 return
             up = socket.create_connection(("127.0.0.1", self.upstream_port))
             conn.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
@@ -1483,6 +1641,9 @@ class ConnectProxy:
             if rest:
                 up.sendall(rest)
             conn.settimeout(None)
+            if self.ctx is not None:
+                self._pump_both(conn, up)
+                return
             threading.Thread(target=self._pump, args=(up, conn), daemon=True).start()
             self._pump(conn, up)
         except OSError:
@@ -1633,6 +1794,178 @@ redgreen("the health probe takes the seat's route, proxy_url included, and a sil
          f"'{rep_sil['detail']['sites']['default'].get('probe_error')}' in {t_sil:.1f} s, pass {t_sil_pass:.1f} s")
 PROXY.stop()
 SILENT_PROXY.stop()
+
+
+# (h) A PROXY THAT NEEDS A LOGIN, AND AN `https://` PROXY ON A PRIVATE CA (card#9498). `proxy_url`'s userinfo
+# was registered as a secret and never sent: a proxy that requires a login answered every CONNECT `407`, the
+# reporter classified that retryable, and the seat retried forever, delivered nothing, and read not_measured.
+# And an `https://` proxy's own TLS session trusted the system store alone, ignoring `ca_file`, so a proxy on a
+# private CA failed every connect. The credential below needs percent-encoding (a space, `@`, `/`, `:`, `%` and
+# a non-ASCII letter) and ends in a `%` that names no byte, which is kept as written. Every value is synthetic.
+import base64
+import urllib.parse
+
+PX_USER = "svc-proxy"
+PX_PASS = "Pr0xy p@ss/w:rd%-wörd%zz"            # the credential's bytes, as the proxy checks them
+PX_PASS_IN_URL = urllib.parse.quote(PX_PASS[:-3], safe="") + "%zz"
+PX_BASIC = "Basic " + base64.b64encode(f"{PX_USER}:{PX_PASS}".encode("utf-8")).decode()
+PX_WRONG = "Wr0ng-proxy-passw0rd"
+PX_SECRETS = [PX_PASS, PX_PASS_IN_URL, PX_BASIC.split(" ", 1)[1], PX_WRONG,
+              base64.b64encode(f"{PX_USER}:{PX_WRONG}".encode()).decode()]
+
+
+def px_url(port: int, *, scheme: str = "http", pw_in_url: str = PX_PASS_IN_URL) -> str:
+    return f"{scheme}://{PX_USER}:{pw_in_url}@127.0.0.1:{port}"
+
+
+def px_leaks(texts: list) -> list:
+    """The index, in PX_SECRETS, of every secret spelling found in any of `texts` (never the spelling)."""
+    return [f"#{i}" for t in texts for i, p in enumerate(PX_SECRETS) if p in (t or "")]
+
+
+def px_sweep(s: Seat, streams: list) -> list:
+    """Every secret spelling found in the seat's files — its spool, log, counters, state.json and REJECTED
+    markers; its config.json is where the credential legitimately lives — and in the given output streams."""
+    hits = []
+    for f in sorted(s.root.rglob("*")):
+        if f.is_file() and f != s.cfg_path:
+            hits += [f"{f.relative_to(s.root)}:{h}" for h in px_leaks([f.read_text(encoding="utf-8", errors="replace")])]
+    return hits + [f"stream:{h}" for h in px_leaks(streams)]
+
+
+def px_seat(name: str, url: str, **kw) -> Seat:
+    s = seat(name, ingest=DEAD, **kw)
+    s.cfg["proxy_url"] = url
+    s.write_cfg()
+    return s
+
+
+def px_pass(s: Seat, proxy: ConnectProxy, reporter: Path = REPORTER) -> dict:
+    """The one-shot, then one flusher pass with one spooled event, on `s` through `proxy`."""
+    c0, b0 = len(proxy.connects), len(INGEST.batches)
+    r, rep_ = selftest(s, reporter=reporter)
+    hook(s, "PreToolUse", pre(tuid="toolu_px"), reporter=reporter)
+    f = flush(s, reporter=reporter)
+    sd = rep_.get("detail", {}).get("sites", {}).get("default", {})
+    return {"rc": r.returncode, "checks": rep_.get("checks", {}), "site": rep_.get("sites", {}).get("default", {}),
+            "probe_error": sd.get("probe_error"), "errors": sd.get("errors", []),
+            "connects": proxy.connects[c0:], "auths": proxy.auths[c0:],
+            "delivered": any(e.get("kind") == "tool.start" for b in s.posted(b0) for e in b.get("events", [])),
+            "streams": [r.stdout, r.stderr, f.stdout, f.stderr]}
+
+
+def net(d: dict) -> tuple:
+    return (d["rc"], d["checks"].get("tls_verify"), d["checks"].get("schema_version_accepted"))
+
+
+eq("precondition: every CONNECT the no-userinfo proxy above was asked for carried no Proxy-Authorization",
+   (True, {None}), (len(PROXY.auths) > 0, set(PROXY.auths)))
+
+AUTH_PROXY = ConnectProxy(INGEST.port, require=PX_BASIC)
+px_g = px_pass(px_seat("px-auth", px_url(AUTH_PROXY.port)), AUTH_PROXY)
+eq("GREEN: through a proxy that requires a login, proxy_url's userinfo is sent percent-decoded as "
+   "Proxy-Authorization: Basic on every CONNECT, the probe passes, selftest exits 0, and the batch arrives",
+   ((0, "pass", "pass"), True, 0, True),
+   (net(px_g), bool(px_g["auths"]) and all(a == PX_BASIC for a in px_g["auths"]), AUTH_PROXY.refused, px_g["delivered"]))
+p_noauth = plant(("      if (auth) connectHeaders['Proxy-Authorization'] = auth;\n", ""))
+px_r = px_pass(px_seat("px-auth-red", px_url(AUTH_PROXY.port)), AUTH_PROXY, reporter=p_noauth)
+eq("RED: a reporter that sends no Proxy-Authorization is refused 407 and measures nothing, and nothing is "
+   "delivered", ({None}, False, "not_measured"),
+   (set(px_r["auths"]), px_r["delivered"], px_r["checks"].get("schema_version_accepted")))
+
+# A 407 IS THE CONFIG'S CREDENTIAL REFUSED, SO IT IS A CONFIG FAILURE AND THE LANE STOPS: selftest fails
+# config_readable naming the field, and a running flusher asks the proxy once and stops, counting
+# config_invalid, until it restarts on a corrected config (§ 11.5's auth stop).
+s_wrong = px_seat("px-wrong", px_url(AUTH_PROXY.port, pw_in_url=PX_WRONG))
+px_w = px_pass(s_wrong, AUTH_PROXY)
+eq("GREEN: a credential the proxy refuses fails the site's config_readable, and selftest exits 1, its error "
+   "naming proxy_url and the 407", (1, "fail", "fail", True),
+   (px_w["rc"], px_w["checks"].get("config_readable"), px_w["site"].get("config_readable"),
+    any("proxy_url" in e and "407" in e for e in px_w["errors"])))
+eq("  … and the flusher pass after it asks the proxy for its probe's tunnel alone — one CONNECT for the "
+   "one-shot, one for the pass — sends nothing, counts config_invalid on the site and logs the stop",
+   (2, False, 1, True),
+   (len(px_w["connects"]), px_w["delivered"], s_wrong.site_counters().get("config_invalid", 0),
+    "refused by the proxy on proxy_url's credential" in seat_log(s_wrong)))
+
+
+def px_running(name: str, reporter: Path, run_s: float = 2.0) -> dict:
+    """A long-lived flusher (scaled timings, a backoff of 0, so a lane in retry attempts every pass) on a seat
+    whose proxy refuses its credential, with an event spooled: how many CONNECTs it makes in `run_s`."""
+    s = px_seat(name, px_url(AUTH_PROXY.port, pw_in_url=PX_WRONG))
+    hook(s, "PreToolUse", pre(tuid="toolu_px_run"), reporter=reporter)
+    (s.spool / "flusher.lock").unlink(missing_ok=True)
+    c0 = len(AUTH_PROXY.connects)
+    p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, FLEET_REPORTER_BACKOFF_MAX_MS=0),
+                         cwd=str(HERE), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        time.sleep(run_s)
+    finally:
+        if p.poll() is None:
+            p.kill()
+        out, err = p.communicate()
+        s.freeze_flusher()
+    return {"connects": len(AUTH_PROXY.connects) - c0, "seat": s, "streams": [out, err]}
+
+
+run_g = px_running("px-run", fast_flusher())
+eq(f"GREEN: a running flusher refused 407 asks the proxy once and stops — CONNECTs in 2 s of "
+   f"{FAST_K['FLUSH_MS']} ms passes", 1, run_g["connects"])
+run_r = px_running("px-run-red", fast_flusher(
+    ("    if (r.proxyRefused) return { kind: 'proxy_auth', status: 407, error: r.error };\n", ""),
+    ("      if (probe.proxy_refused) authStop(ctxOf, lane, { status: 407, text: '', body: null }, 'probe');\n      else if",
+     "      if")))
+eq("RED: a flusher that classifies the 407 retryable asks the proxy again, pass after pass", True,
+   run_r["connects"] >= 5)
+
+# THE HTTPS PROXY. Its certificate is from a CA of its own, so the seat's ca_file holds both the ingest's
+# and the proxy's (ca replaces the default store for every certificate the seat verifies, § 3.5).
+PX_TLS_DIR = TMP / "px-tls"
+PX_TLS_DIR.mkdir(exist_ok=True)
+subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(PX_TLS_DIR / "px.key"),
+                "-out", str(PX_TLS_DIR / "px.crt"), "-days", "2", "-subj", "/CN=127.0.0.1",
+                "-addext", "subjectAltName=IP:127.0.0.1"], check=True, capture_output=True)
+PX_BOTH_CA = PX_TLS_DIR / "ingest-and-proxy-ca.pem"
+PX_BOTH_CA.write_text(Path(CA).read_text() + (PX_TLS_DIR / "px.crt").read_text())
+TLS_PROXY = ConnectProxy(INGEST.port, require=PX_BASIC, tls=(PX_TLS_DIR / "px.crt", PX_TLS_DIR / "px.key"))
+px_t = px_pass(px_seat("px-tls", px_url(TLS_PROXY.port, scheme="https"), ca=str(PX_BOTH_CA)), TLS_PROXY)
+eq("GREEN: through an https:// proxy whose certificate only ca_file trusts — with a login — the probe passes, "
+   "selftest exits 0, and the batch arrives: the one-shot's tunnel, then the pass's probe and batch",
+   ((0, "pass", "pass"), True, [DEAD_TARGET] * 3), (net(px_t), px_t["delivered"], px_t["connects"]))
+f0 = TLS_PROXY.handshakes_failed
+px_tn = px_pass(px_seat("px-tls-untrusted", px_url(TLS_PROXY.port, scheme="https"), ca=CA), TLS_PROXY)
+eq("GREEN: verification is on for the proxy too — a ca_file without the proxy's CA reaches no CONNECT, "
+   "measures nothing, and delivers nothing", ((2, "not_measured", "not_measured"), [], False, True),
+   (net(px_tn), px_tn["connects"], px_tn["delivered"], TLS_PROXY.handshakes_failed > f0))
+p_noca = plant(("      if (tlsProxy && ca) connectOpts.ca = ca;\n", ""))
+f1 = TLS_PROXY.handshakes_failed
+px_tr = px_pass(px_seat("px-tls-red", px_url(TLS_PROXY.port, scheme="https"), ca=str(PX_BOTH_CA)), TLS_PROXY,
+                reporter=p_noca)
+eq("RED: a reporter whose proxy TLS ignores ca_file fails every handshake with the proxy and measures nothing",
+   ((2, "not_measured", "not_measured"), [], False, True),
+   (net(px_tr), px_tr["connects"], px_tr["delivered"], TLS_PROXY.handshakes_failed > f1))
+
+# THE CREDENTIAL NEVER LEAVES THE CONFIG: no spelling of it — as written, decoded, or as the header's value —
+# in any file the refused seats wrote, nor in any output stream of the seats above, the refused seat's error,
+# marker and log included.
+px_hits = (px_sweep(run_g["seat"], run_g["streams"]) + px_sweep(s_wrong, px_w["streams"])
+           + px_leaks([st for d_ in (px_g, px_t, px_tn) for st in d_["streams"]]))
+eq("GREEN: no spelling of the proxy credential reaches the refused seats' spool, log, counters, state.json or "
+   "REJECTED marker, nor the selftest or flusher output of any seat above", [], px_hits)
+(s_wrong.spool / "log" / "px-control.log").write_text(f"planted: {PX_WRONG}\n", encoding="utf-8")
+eq("  NEGATIVE CONTROL: the same sweep finds the refused password planted into the log by hand", True,
+   len(px_sweep(s_wrong, [])) > 0)
+(s_wrong.spool / "log" / "px-control.log").unlink()
+redgreen("a proxy that needs a login gets proxy_url's credential, a 407 stops the lane as a config failure, and an "
+         "https proxy verifies against ca_file (card#9498)",
+         f"no Proxy-Authorization -> schema {px_r['checks'].get('schema_version_accepted')}, delivered "
+         f"{px_r['delivered']}; 407 retryable -> {run_r['connects']} CONNECTs in 2 s; proxy TLS without ca_file -> "
+         f"{net(px_tr)}",
+         f"credential sent -> {net(px_g)}, delivered {px_g['delivered']}; refused -> selftest rc {px_w['rc']} "
+         f"config_readable {px_w['checks'].get('config_readable')}, {run_g['connects']} CONNECT in 2 s; https proxy on "
+         f"ca_file -> {net(px_t)}, delivered {px_t['delivered']}; leaks {px_hits}")
+AUTH_PROXY.stop()
+TLS_PROXY.stop()
 
 
 print("\n== 2. SANITIZER — § 7.5's descriptor fixtures, the four REDs AT-2 names, and card#11292's ==")
@@ -2374,6 +2707,9 @@ eq("RED: a parser that throws on the batch delivers NOTHING — the wedge this r
    0, len(INGEST.events()))
 
 # AT-10 — concurrent append at line granularity.
+# The bound a hook burst is given before its one lock freeze could age out (`Seat.env`'s `burst_s`): a hang
+# bound, not a timing (the bursts' measured ages are in `Seat.env`).
+BURST_BOUND_S = 3600
 s10 = seat("concurrent")
 N_PROC, N_EACH = 8, 40
 procs = []
@@ -2388,7 +2724,7 @@ for w in range(N_PROC):
          "            'tool_use_id':'w%d_'+str(i), 'cwd':'/home/agent/mezzanine'}),\n"
          "        capture_output=True, text=True)\n" % (N_EACH, w),
          str(REPORTER), SID],
-        env=s10.env(), cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        env=s10.env(burst_s=BURST_BOUND_S), cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
 for p_ in procs:
     p_.wait()
 raw_lines = []
@@ -2540,9 +2876,11 @@ def epoch_trace(s: Seat, reporter: Path = REPORTER) -> dict:
     the suite's ingest. Returns what state.json, each start's heartbeat and the wire carry. Each start's
     heartbeat is item 0 of its own first request since card#12180 (D1 § 6.14), so the two are read off
     the wire, one per start."""
-    INGEST.batches.clear()
+    mark = len(INGEST.batches)
     runs = (flush(s, reporter=reporter), flush(s, reporter=reporter))
-    posted = [b["batch"] for b in INGEST.batches]
+    # This seat's batches alone: a flusher an earlier case left running posts into the same stub, and its
+    # heartbeat once read as this seat's second one (`index_overflow`, under a second epoch; card#12631).
+    posted = s.posted(mark)
     wire_hbs = [e["data"] for b in posted for e in b.get("events", []) if e.get("kind") == "reporter.heartbeat"]
     hbs = wire_hbs[-2:]
     return {"rcs": [r.returncode for r in runs],
@@ -2786,12 +3124,12 @@ for w in range(W):
          "            'tool_use_id':'c%d_'+str(i), 'cwd':'/home/agent/mezzanine'}),\n"
          "        capture_output=True, text=True)\n" % (E, w),
          str(REPORTER), SID],
-        env=s16.env(), cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        env=s16.env(burst_s=BURST_BOUND_S), cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
 for p_ in procs:
     p_.wait()
 m16 = len(INGEST.batches)
 flush(s16)
-hb = wire_heartbeats(m16)[-1]["data"]
+hb = s16.wire_heartbeats(m16)[-1]["data"]
 eq(f"AT-16: sanitizer_redactions is EXACTLY {2*W*E} after {W}x{E} concurrent hooks, 2 spans each",
    2 * W * E, hb["counters"].get("sanitizer_redactions"))
 pred = hb["predicates"]["descriptor_allowlisted"]
@@ -2800,29 +3138,32 @@ eq(f"  … and descriptor_allowlisted's branches sum to exactly {W*E}",
 before = dict(hb["counters"])
 m16 = len(INGEST.batches)
 flush(s16)
-hb2 = wire_heartbeats(m16)[-1]["data"]
+hb2 = s16.wire_heartbeats(m16)[-1]["data"]
 eq("  … a second fold does NOT double them (the per-bucket byte offset is recorded)",
    before["sanitizer_redactions"], hb2["counters"]["sanitizer_redactions"])
 # AT-16's second RED: fold without recording the offset and the totals double on the next pass.
-p_nooff = plant_src((r"    state\.counter_offsets\[b\] = from \+ nl \+ 1;", "    /* offset not recorded */"))
+p_nooff = plant_src((r"    state\.counter_offsets\[b\] = read\.end;", "    /* offset not recorded */"))
 s16r = seat("countersink-red")
 for i in range(4):
     hook(s16r, "PreToolUse", pre(ti=FIX4, tuid=f"cr_{i}"))
 m16 = len(INGEST.batches)
 flush(s16r, reporter=p_nooff)
-h1 = wire_heartbeats(m16)[-1]["data"]["counters"].get("sanitizer_redactions")
+h1 = s16r.wire_heartbeats(m16)[-1]["data"]["counters"].get("sanitizer_redactions")
 m16 = len(INGEST.batches)
 flush(s16r, reporter=p_nooff)
-h2 = wire_heartbeats(m16)[-1]["data"]["counters"].get("sanitizer_redactions")
+h2 = s16r.wire_heartbeats(m16)[-1]["data"]["counters"].get("sanitizer_redactions")
 eq(f"RED: without the per-bucket offset the totals grow on a re-fold ({h1} -> {h2})", True, h2 > h1)
 
 # AT-16's third case — the hour-roll straddle. Lines written just after the roll must land in
 # the bucket their WRITE time names, not their process-entry time; the 5 s grace covers the rest.
+# The lines before the roll are pinned a minute before it: a pinned clock is an offset taken when the process
+# starts, so a hook's WRITE stamp is its pin plus its own run time, and pinned 200 ms before the roll a hook on a
+# loaded machine wrote after it and the case read one bucket (card#12631). A minute is more than a hook takes.
 s16h = seat("hourroll")
 now_ms = int(time.time() * 1000)
 prev_hour_end = (now_ms // 3600000) * 3600000
 for i in range(3):
-    hook(s16h, "PreToolUse", pre(ti=FIX4, tuid=f"hr_a{i}"), FLEET_REPORTER_NOW_MS=prev_hour_end - 200)
+    hook(s16h, "PreToolUse", pre(ti=FIX4, tuid=f"hr_a{i}"), FLEET_REPORTER_NOW_MS=prev_hour_end - 60_000)
 for i in range(3):
     hook(s16h, "PreToolUse", pre(ti=FIX4, tuid=f"hr_b{i}"), FLEET_REPORTER_NOW_MS=prev_hour_end + 200)
 # Counted BEFORE the flush: the flusher folds and then DELETES a bucket whose hour has ended
@@ -2830,7 +3171,7 @@ for i in range(3):
 cbuckets = sorted(x.name for x in (s16h.spool / "counters").glob("*.jsonl"))
 m16 = len(INGEST.batches)
 flush(s16h)
-hbh = wire_heartbeats(m16)[-1]["data"]
+hbh = s16h.wire_heartbeats(m16)[-1]["data"]
 eq("AT-16 hour-roll: every counter line across the boundary is folded exactly once", 12,
    hbh["counters"].get("sanitizer_redactions"))
 eq("  … and the lines landed in two buckets, split at the roll (write-time derivation)",
@@ -3746,8 +4087,14 @@ def drive_pass(s: Seat, reporter: Path, *, takeover: bool, one_pass: bool, exit_
                          cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     posts: list[tuple[float, float | None]] = []
     taken: bytes | None = None
-    quiet_since = time.time()
     try:
+        # THE QUIET CLOCK STARTS AT THE FLUSHER'S FIRST REQUEST, a probe or a POST (card#12631). Started at the
+        # Popen, a flusher that took longer than `exit_within + HOLD_S` to start on a loaded machine read as one
+        # that sent nothing and had stopped, and the run then crashed reading the state.json it had not written yet.
+        t0 = time.time()
+        while p.poll() is None and time.time() - t0 < FLUSHER_START_HANG_S and not INGEST.batches and not INGEST.gets:
+            time.sleep(0.01)
+        quiet_since = time.time()
         while p.poll() is None:
             n = len(INGEST.batches)
             if n > len(posts):
@@ -4030,6 +4377,7 @@ def drive_at27(box, reporter: Path = REPORTER) -> dict:
             "degraded": hb.get("degraded") if hb else None,
             "fingerprint": hb.get("config_fingerprint") if hb else None,
             "detail": rep27.get("detail", {}).get("protocol_agent_name_in_roster"),
+            "rt_detail": rep27.get("detail", {}).get("rt_name_ok"),
             # § 6.14's relayed role (card#11144), kept OUT of `wire()` so every AT-27 comparison above
             # stays the name pair's. An absent member reads `<absent>`, never None, as in `wire()`.
             "role": (hb["protocol_agent_role"] if "protocol_agent_role" in hb else "<absent>") if hb else None}
@@ -4519,8 +4867,8 @@ eq("roundtable — a malformed declaration declares nothing: null and `undeclare
 # ⛔ RED — the check reads the protocol roster instead of cross_project.identity: `pm-solo` is no roster
 # member, so a reporter checking against the wrong key reports `disagreed` for a correct declaration.
 r_wrong_key = drive_rt(rt_box("red-wrong-key"), reporter=plant(
-    ("  if (read.identity === name) return { name, check: 'checked', malformed: null, config: site.path };",
-     "  if (readRosterNames(site.path).names?.includes(name)) return { name, check: 'checked', malformed: null, config: site.path };")))
+    ("  if (read.identity === name) return { name, check: 'checked', malformed: null, config: site.path, identity: read.identity };",
+     "  if (readRosterNames(site.path).names?.includes(name)) return { name, check: 'checked', malformed: null, config: site.path, identity: read.identity };")))
 eq("RED: a reporter checking the roundtable name against the roster reports a correct declaration `disagreed`",
    "disagreed", r_wrong_key["rt"]["check"])
 # ⛔ RED — the null omitted rather than sent on an undeclared seat.
@@ -4540,6 +4888,27 @@ eq("rt_name_ok — passes on checked, unchecked (two ways) and undeclared; FAILS
    "declaration, with selftest's exit 1",
    [(0, "pass"), (1, "fail"), (0, "pass"), (0, "pass"), (0, "pass"), (1, "fail")],
    [x["rt_ok"] for x in (rt_checked, rt_disagreed, rt_no_block, rt_no_config, rt_absent, rt_bad)])
+# THE DETAIL NAMES THE IDENTITY IT COMPARED AGAINST ON `checked` TOO (card#12344): it carried it on `disagreed`
+# alone, so a checked seat printed `cross_project_identity: null` beside `checked`, which a reader took for "no
+# identity found". Every other member of the detail is as it was.
+eq("rt_name_ok's detail on a checked seat names the identity it checked against, and on a disagreed one the "
+   "identity it disagreed with", (RT_NAME, "coder-solo"),
+   ((rt_checked["rt_detail"] or {}).get("cross_project_identity"),
+    (rt_disagreed["rt_detail"] or {}).get("cross_project_identity")))
+eq("  … and the checked seat's detail is otherwise unchanged: the same members, the declaration, the check, the "
+   "config read, no read error and no malformed declaration",
+   (["config", "cross_project_identity", "declared", "malformed_declaration", "read_error",
+     "roundtable_agent_name_check"], RT_NAME, "checked", True, None, None),
+   (sorted(rt_checked["rt_detail"] or {}), (rt_checked["rt_detail"] or {}).get("declared"),
+    (rt_checked["rt_detail"] or {}).get("roundtable_agent_name_check"),
+    str((rt_checked["rt_detail"] or {}).get("config", "")).endswith("coordination.config.json"),
+    (rt_checked["rt_detail"] or {}).get("read_error"), (rt_checked["rt_detail"] or {}).get("malformed_declaration")))
+r_noid = drive_rt(rt_box("red-checked-no-identity"), reporter=plant(
+    ("check: 'checked', malformed: null, config: site.path, identity: read.identity };",
+     "check: 'checked', malformed: null, config: site.path };")))
+eq("RED: a reporter whose checked branch carries no identity prints cross_project_identity null beside `checked`",
+   (None, "checked"), ((r_noid["rt_detail"] or {}).get("cross_project_identity"),
+                       (r_noid["rt_detail"] or {}).get("roundtable_agent_name_check")))
 r_nofail = drive_rt(rt_box("red-rt-never-fails", coord=dict(AT27_ROSTER, cross_project={"identity": "coder-solo"})), reporter=plant(
     ("  results.rt_name_ok = rt ? rt.check !== 'disagreed' && rt.malformed === null : null;",
      "  results.rt_name_ok = rt ? true : null;")))
@@ -5072,10 +5441,16 @@ p19g_nolock = plant(
      "      return true;\n      const fd = fs.openSync(lock, 'wx');\n"))
 
 
-def held_lock(s: Seat, pid: int, age_s: float = 0.0) -> Path:
+# A live holder's lock is dated this far AHEAD when no age is asked for: the hook judges it stale at
+# K.WRITE_LOCK_STALE_MS old by the wall clock, and a hook that took longer than that to start on a loaded machine
+# broke a "live" lock dated now, so the case measured the breaker and crashed on the lock it removed (card#12631).
+HELD_LOCK_AHEAD_S = 120.0
+
+
+def held_lock(s: Seat, pid: int, age_s: "float | None" = None) -> Path:
     lk = s.spool / "write.lock"
     lk.write_text(str(pid), encoding="utf-8")
-    t = time.time() - age_s
+    t = time.time() + HELD_LOCK_AHEAD_S if age_s is None else time.time() - age_s
     os.utime(lk, (t, t))
     return lk
 
@@ -5423,6 +5798,12 @@ CSTEPS = {
     # `reporter_restart`, which selects entries older than the flusher's start) selects nothing, and
     # the pass is only what this case is about: a fold and a snapshot write between the two signals.
     "flush": lambda s, r, t, b: flush(s, reporter=r, FLEET_REPORTER_NOW_MS=b - 1000),
+    # A flusher pass on the trace's OWN clock: the counting fold that decides, once a pairing window has
+    # passed, that a clear's half went unpaired (card#12013 F3, option C).
+    "flush_now": lambda s, r, t, b: flush(s, reporter=r, FLEET_REPORTER_NOW_MS=t),
+    # An upgrade from a build whose snapshot carries no `clear_tally`: the key is stripped from every
+    # entry of the snapshot the last pass wrote.
+    "strip_tally": lambda s, r, t, b: strip_tally(s),
     # The second terminal: session SID2, dispatch D2 bound to AG2, inner call I2 inside it.
     "start_t2": lambda s, r, t, b: sh(s, "SessionStart", SID2, r, t, source="startup"),
     "prompt2": lambda s, r, t, b: sh(s, "UserPromptSubmit", SID2, r, t, prompt="go", prompt_id="p2"),
@@ -5437,6 +5818,8 @@ CSTEPS = {
     "clear2_end": lambda s, r, t, b: sh(s, "SessionEnd", SID2, r, t, reason="clear"),
     "clear_start2": lambda s, r, t, b: sh(s, "SessionStart", N2SID, r, t, source="clear"),
     "stop_n2_none": lambda s, r, t, b: sh(s, "Stop", N2SID, r, t, **stop(N2SID)),
+    "stop_n2_bg2": lambda s, r, t, b: sh(s, "Stop", N2SID, r, t, **stop(N2SID, AG2)),
+    "sstop2_n2": lambda s, r, t, b: sh(s, "SubagentStop", N2SID, r, t, agent_id=AG2, agent_type="coder", **stop(N2SID)),
     # Fold units: a record journaled out of decision order.
     "dup_open_new": lambda s, r, t, b: index_append(s, t, {"k": "session_open", "session_id": NEWSID, "source": "clear"}),
     "late_carry": lambda s, r, t, b: index_append(s, t, {"k": "carry", "call_id": spawn_id(s), "from_session_id": BGSID}),
@@ -5503,6 +5886,15 @@ def snapshot(s):
         return json.loads((s.spool / "index" / "snapshot.json").read_text(encoding="utf-8"))
     except Exception:
         return {}
+
+
+def strip_tally(s):
+    p = s.spool / "index" / "snapshot.json"
+    snap = json.loads(p.read_text(encoding="utf-8"))
+    for member in ("sessions", "sessions_closed"):
+        for x in snap.get(member, []):
+            x.pop("clear_tally", None)
+    p.write_text(json.dumps(snap), encoding="utf-8")
 
 
 C1 = ["prompt", "pre1", "start1", "launch1", "inner1", "stop_bg1", "clear_end", "clear_start"]
@@ -5678,14 +6070,55 @@ eq("  … because the snapshot it wrote persisted the clear tombstone's end_reas
    ([(c.get("end_reason"), c.get("paired_to")) for c in snap.get("sessions_closed", []) if c.get("session_id") == BGSID],
     [e.get("carried_from") for e in snap.get("entries", []) if e.get("call_id") == spawn_id(s)]))
 
-# C11 — two clear tombstones inside the window when a start arrives: the latest is taken and the
-# guess is COUNTED; the next start pairs the remaining one (review R2-5).
-C11 = T2[:-1] + T1[:-1] + ["clear_end", "clear2_end", "clear_start", "clear_start2"]
+# C11 — two terminals, each with a running bound subagent, and both SessionEnd(clear)s land before
+# either SessionStart(clear) (card#12013, review F1 of #337). Each start then finds TWO unpaired
+# clear tombstones inside its window, and recency cannot tell which one is its own: taking the
+# latest crossed the pairing, re-keyed terminal 1's dispatch into terminal 2's new session, and
+# terminal 2's next Stop (listing only its own subagent) aborted it while it ran. An ambiguous pick
+# pairs NOTHING and is counted; each carry stays under its own old session, and each subagent's own
+# SubagentStop closes its dispatch.
+C11 = T2[:-1] + T1[:-1] + ["clear_end", "clear2_end", "clear_start", "clear_start2",
+                           "stop_n2_bg2", "stop_new_bg1", "sstop1_new", "sstop2_n2"]
 s, ev, ctr, _, per = clear_trace("clear-c11", C11)
-C11_WANT = ([(SID2, NEWSID), (BGSID, N2SID)], 1)
-c11_got = lambda s, ctr: (pairs(s), ctr.get("clear_pair_ambiguous"))
-eq("C11: the first start pairs the LATEST unpaired tombstone, counts clear_pair_ambiguous, and the "
-   "second start pairs the remaining one", C11_WANT, c11_got(s, ctr))
+
+
+def c11_got(s, ev, ctr):
+    spawns = {e["session_id"]: e["data"]["call_id"] for e in ev if e["kind"] == "subagent.spawn"}
+    return {
+        "pairs": pairs(s), "ambiguous": ctr.get("clear_pair_ambiguous"), "paired": ctr.get("clear_signals_paired"),
+        "d1": [c[:2] for c in closes_of(ev, spawns[BGSID])], "d2": [c[:2] for c in closes_of(ev, spawns[SID2])],
+    }
+
+
+C11_WANT = {"pairs": [], "ambiguous": 2, "paired": None,
+            "d1": [("completed", "subagent_stop_hook")], "d2": [("completed", "subagent_stop_hook")]}
+v11 = c11_got(s, ev, ctr)
+for k in C11_WANT:
+    eq(f"C11 (two ends, then two starts) {k}: an ambiguous start pairs nothing, and no running subagent "
+       "is aborted by the other terminal's Stop", C11_WANT[k], v11[k])
+
+# C11e — the mirror: both SessionStart(clear)s land before either SessionEnd(clear). Each end finds
+# two unpaired clear-started sessions inside K.CLEAR_GAP_MS and pairs neither. The end's counter and
+# predicate keep the values a found twin gives them (`reap_noop_second_signal`, no predicate).
+C11E = T2[:-1] + T1[:-1] + ["clear_start", "clear_start2", "clear_end", "clear2_end",
+                            "stop_n2_bg2", "stop_new_bg1", "sstop1_new", "sstop2_n2"]
+s, ev, ctr, prd, per = clear_trace("clear-c11e", C11E)
+v11e = c11_got(s, ev, ctr)
+for k in C11_WANT:
+    eq(f"C11e (two starts, then two ends) {k}", C11_WANT[k], v11e[k])
+eq("  … and each end still counts the start-first no-op, as a found twin always has",
+   (2, {"true": 0, "false": 2}), (ctr.get("reap_noop_second_signal"), prd.get("clear_reap_by_session_end")))
+
+# C11s — the same two terminals clearing one after the other inside one K.CLEAR_PAIR_MS (end, start,
+# end, start): every pick has ONE candidate, because a paired tombstone is not a candidate, so both
+# clears pair with their own twin and nothing is counted ambiguous (review R2-5's sequential case).
+C11S = T2[:-1] + T1[:-1] + ["clear_end", "clear_start", "clear2_end", "clear_start2",
+                            "stop_n2_bg2", "stop_new_bg1", "sstop1_new", "sstop2_n2"]
+s, ev, ctr, _, per = clear_trace("clear-c11s", C11S)
+C11S_WANT = dict(C11_WANT, pairs=[(BGSID, NEWSID), (SID2, N2SID)], ambiguous=None, paired=2)
+v11s = c11_got(s, ev, ctr)
+for k in C11S_WANT:
+    eq(f"C11s (one terminal's clear, then the other's) {k}", C11S_WANT[k], v11s[k])
 
 # C12 — the second signal past K.CLEAR_PAIR_MS: no pairing, and the carry stays under OLD.
 C12 = ["prompt", "pre1", "start1", "launch1", "stop_bg1", "clear_end", CLEAR_PAIR_MS, "clear_start",
@@ -5743,6 +6176,49 @@ c15_got = lambda s: [(e.get("session_id"), e.get("carried_from")) for e in snaps
                      if e.get("call_id") == spawn_id(s)]
 eq("C15: a late carry for a re-keyed entry does not re-flag it", C15_WANT, c15_got(s))
 
+# C16 (card#12013 F3, option C) — A HALF OF A /CLEAR THAT NOTHING PAIRED IS COUNTED, ONCE, BY THE FLUSHER,
+# once its window has passed: `clear_start_unpaired` for a SessionStart(clear) no SessionEnd(clear) paired
+# (the end was lost), `clear_end_unpaired` for the mirror. A paired half never counts, and neither does a
+# half that took part in an ambiguous pick, which `clear_pair_ambiguous` already counts. Nothing on the
+# floor moves: the counters are read off the flusher's totals in state.json, which the heartbeat carries.
+def unpaired(s):
+    c = s.state().get("counters") or {}
+    return {"start": c.get("clear_start_unpaired"), "end": c.get("clear_end_unpaired")}
+
+
+NONE_UNPAIRED = {"start": None, "end": None}
+C16_CASES = [
+    # (label, steps, want)
+    ("C16a: a lost SessionEnd(clear) — the start counts once, across two passes past the window",
+     T1 + ["clear_start", CLEAR_PAIR_MS, "flush_now", "flush_now"], {"start": 1, "end": None}),
+    ("C16b: a lost SessionStart(clear) — the end counts once, across two passes past the window",
+     T1 + ["clear_end", CLEAR_PAIR_MS, "flush_now", "flush_now"], {"start": None, "end": 1}),
+    ("C16c: a matched clear (measured order) counts nothing", C1 + [CLEAR_PAIR_MS, "flush_now"], NONE_UNPAIRED),
+    ("C16d: a matched clear (SessionStart first) counts nothing", C3 + [CLEAR_PAIR_MS, "flush_now"], NONE_UNPAIRED),
+    ("C16e: two terminals' ends, then two starts (ambiguous) count nothing unpaired",
+     C11 + [CLEAR_PAIR_MS, "flush_now"], NONE_UNPAIRED),
+    ("C16f: two terminals' starts, then two ends (ambiguous) count nothing unpaired",
+     C11E + [CLEAR_PAIR_MS, "flush_now"], NONE_UNPAIRED),
+    ("C16g: a pass INSIDE the window decides nothing early (end first)",
+     T1 + ["clear_end", "flush_now", "clear_start", CLEAR_PAIR_MS, "flush_now"], NONE_UNPAIRED),
+    ("C16h: a pass INSIDE the window decides nothing early (start first)",
+     T1 + ["clear_start", "flush_now", "clear_end", CLEAR_PAIR_MS, "flush_now"], NONE_UNPAIRED),
+    ("C16i: a lost end whose new session closes before any pass still counts once",
+     T1 + ["clear_start", "end_new", CLEAR_PAIR_MS, "flush_now"], {"start": 1, "end": None}),
+    ("C16j: a start more than K.CLEAR_GAP_MS before its end pairs nothing, and each half counts once",
+     C12C + [CLEAR_PAIR_MS, "flush_now"], {"start": 1, "end": 1}),
+    ("C16k: an upgrade — a start an older flusher's snapshot holds is not counted",
+     T1 + ["clear_start", "flush_now", "strip_tally", CLEAR_PAIR_MS, "flush_now"], NONE_UNPAIRED),
+    ("C16l: an upgrade — an end an older flusher's snapshot holds is not counted",
+     T1 + ["clear_end", "flush_now", "strip_tally", CLEAR_PAIR_MS, "flush_now"], NONE_UNPAIRED),
+]
+for label, steps, want in C16_CASES:
+    s, ev, ctr, _, _ = clear_trace("clear-" + label.split(":")[0].lower(), steps)
+    eq(label, want, unpaired(s))
+s, ev, ctr, _, _ = clear_trace("clear-c16e-amb", C11 + [CLEAR_PAIR_MS, "flush_now"])
+eq("  … and the ambiguous double clear is still counted where it always was", 2,
+   (s.state().get("counters") or {}).get("clear_pair_ambiguous"))
+
 # ── REDs, each planted on a COPY and shown to flip its GREEN ──────────────────────────────────
 p_r1 = plant(("const carried = (e) => abortReason === 'session_cleared' && e.is_dispatch && !!e.child_agent_id;",
               "const carried = (e) => e.is_dispatch && !!e.child_agent_id;"))
@@ -5768,9 +6244,10 @@ s, ev, _, _, per = clear_trace("clear-r5", C9, p_r5)
 eq("RED R5: the activity selection REAPING again, as it did before — terminal 1's clear ENDS terminal 2's session "
    "(card#11824; C9 flips)", 1, two_terminal_view(s, ev, per, "clear_end", "clear_start")["sid2_session_end"])
 p_r6 = plant(("(c) => c.end_reason === 'clear' && !c.paired_to,", "(c) => c.end_reason === 'clear',"))
-s, ev, ctr, _, per = clear_trace("clear-r6", C11, p_r6)
-eq("RED R6: findTwinForStart ignoring paired_to — the second start pairs the already-paired "
-   "tombstone again (C11 flips)", ([(SID2, NEWSID), (SID2, N2SID)], 2), c11_got(s, ctr))
+s, ev, ctr, _, per = clear_trace("clear-r6", C11S, p_r6)
+eq("RED R6: findTwinForStart ignoring paired_to — the already-paired tombstone is a second candidate at "
+   "the second start, which then pairs nothing (C11s flips)", ([(BGSID, NEWSID)], 1),
+   (pairs(s), ctr.get("clear_pair_ambiguous")))
 p_r7 = plant(("      if (e && e.session_id === r.from_session_id) e.carried_from = r.from_session_id;",
               "      if (e) e.carried_from = r.from_session_id;"))
 s, ev, _, _, _ = clear_trace("clear-r7", C15, p_r7)
@@ -5781,7 +6258,7 @@ p_r8 = plant(("(e) => e.agent_scope_id === agentId), 'turn_boundary'",
 s, ev, _, _, _ = clear_trace("clear-r8", C2B, p_r8)
 eq("RED R8: the SubagentStop scope reap keeps its session term — under the OLD id it misses the "
    "inner call opened under NEW (C2b flips)", [], closes_of(ev, call_of(ev, "Bash", NEWSID)))
-p_r9 = plant(("(s) => s.opened_at, K.CLEAR_GAP_MS, nowMs);", "(s) => s.opened_at, K.CLEAR_PAIR_MS, nowMs);"))
+p_r9 = plant(("windowMs: K.CLEAR_GAP_MS, counter: 'clear_start_unpaired'", "windowMs: K.CLEAR_PAIR_MS, counter: 'clear_start_unpaired'"))
 s, ev, _, _, per = clear_trace("clear-r9", C13, p_r9)
 D2r = spawn_id(s)
 eq("RED R9: findTwinForEnd on the wide window — terminal 2's end adopts terminal 1's unpaired "
@@ -5812,6 +6289,51 @@ p_r13 = plant(("        if (twin) { pairClear(ctx, ix, sid, twin.session_id, twi
 s, ev, ctr, prd, per = clear_trace("clear-r13", C3, p_r13)
 eq("RED R13: SessionEnd evaluating the predicate on every clear — C3's counter and predicate leave "
    "their pre-card#11817 values", (None, None, {"true": 1, "false": 1}, [(BGSID, NEWSID)]), c3_got(s, ctr, prd))
+p_r14 = plant(("    count('clear_pair_ambiguous');\n    return;\n  }\n",
+               "    count('clear_pair_ambiguous');\n  }\n"))
+for case, steps in (("C11", C11), ("C11e", C11E)):
+    s, ev, ctr, _, per = clear_trace(f"clear-r14-{case.lower()}", steps, p_r14)
+    v = c11_got(s, ev, ctr)
+    eq(f"RED R14 ({case}): an ambiguous pick that still pairs the latest candidate — the pairing crosses the two "
+       "terminals and each new session's Stop aborts the OTHER terminal's running dispatch (card#12013; "
+       f"{case} flips)", ([("aborted", "reap_turn_boundary")], [("aborted", "reap_turn_boundary")]), (v["d1"], v["d2"]))
+# R15–R20 — the unpaired-half tally (card#12013 F3, option C), each plant flipping one C16 case.
+C16 = {label.split(":")[0]: (steps, want) for label, steps, want in C16_CASES}
+
+
+def c16_planted(tag, case, *subs):
+    s, _, _, _, _ = clear_trace(f"clear-{tag}-{case.lower()}", C16[case][0], plant(*subs))
+    return unpaired(s)
+
+
+eq("RED R15: an ambiguous pick that marks nothing — the halves it saw are counted unpaired as well "
+   "(C16e and C16f flip)", [{"start": 2, "end": 2}, {"start": 2, "end": 2}],
+   [c16_planted("r15", case, ("    journal(ctx.spool, rec);\n    applyIndexRecord(ix, rec, now());\n    count('clear_pair_ambiguous');",
+                              "    count('clear_pair_ambiguous');")) for case in ("C16e", "C16f")])
+eq("RED R16: a tally that records nothing on the entry — the second pass counts the same start again "
+   "(C16a flips)", {"start": 2, "end": None},
+   c16_planted("r16", "C16a", ("  x.clear_tally = 'unpaired';\n  count(half.counter);", "  count(half.counter);")))
+v = c16_planted("r17", "C16a", ("  if (!ix.counting || x.clear_tally", "  if (x.clear_tally"))
+eq("RED R17: a tally in every fold, not the flusher's counting one alone — the start counts more than once "
+   "(C16a flips)", True, (v["start"] or 0) > 1)
+eq("RED R18: no window — a pass inside the window counts the end before its start arrives (C16g flips)",
+   {"start": None, "end": 1},
+   c16_planted("r18", "C16g", ("  if (!final && nowMs - Date.parse(half.markedAt(x) || 0) <= half.windowMs) return;\n", "")))
+eq("RED R19: no tally at the close — a lost end whose new session closed before a pass is never counted "
+   "(C16i flips)", NONE_UNPAIRED,
+   c16_planted("r19", "C16i", ("      if (s) tallyUnpairedClear(ix, CLEAR_HALF.start, s, nowMs, true);\n", "")))
+eq("RED R20: an older snapshot's entry loaded as undecided — the upgrade counts a start it cannot judge "
+   "(C16k flips)", {"start": 1, "end": None},
+   c16_planted("r20", "C16k", ("? x.clear_tally : 'pre_upgrade');", "? x.clear_tally : null);")))
+redgreen("a /clear half that nothing paired is counted once, by the flusher, after its window (card#12013 F3, option C)",
+         "no ambiguous mark -> an ambiguous double clear counts four unpaired halves; no tally mark -> a second "
+         "pass counts the same half again; a tally in every fold -> a half counts more than once; no window -> a "
+         "pass inside the window counts an end before its start arrives; no tally at the close -> a lost end "
+         "whose new session closed first is never counted; an older snapshot's entry undecided -> the upgrade "
+         "counts a half it cannot judge",
+         "a lost end counts clear_start_unpaired once and a lost start clear_end_unpaired once, across passes; "
+         "matched clears in either order and ambiguous double clears in either order count neither; a pass "
+         "inside the window decides nothing; a half the snapshot of an older build holds is not counted")
 redgreen("a /clear carries a running dispatch into the new session and pairs by tombstone (§ 8.3, § 8.4, card#11817, card#11824)",
          "carry on every abort reason -> a real exit leaves the dispatch open; a pair that does not re-key "
          "-> NEW's Stop cannot select it; no carried_call_ids -> the server would close it; carry on an "
@@ -5821,11 +6343,13 @@ redgreen("a /clear carries a running dispatch into the new session and pairs by 
          "NEW stays open; the wide window at the end -> terminal 2's dispatch is re-keyed into terminal 1's "
          "session and reaped; SessionStart's source dropped when not first -> no pairing; paired_from reset "
          "by a duplicate session_open -> a second pairing; previous_session_id from the pairing, or the predicate on every "
-         "SessionEnd(clear) -> a wire field leaves its pre-card#11817 value",
+         "SessionEnd(clear) -> a wire field leaves its pre-card#11817 value; an ambiguous pick that still pairs "
+         "-> two terminals' overlapping clears cross, and each Stop aborts the other terminal's running dispatch",
          "both hook orders carry the bound dispatch, name it in carried_call_ids, pair once and re-key it; "
          "its SubagentStop under NEW or OLD closes it once with its inner calls; NEW's Stop and real exit "
          "reap it; an unbound dispatch is reaped as before; a second terminal is untouched in both orders; "
-         "a flusher pass between the signals loses nothing; ambiguous and late pairings are counted; past "
+         "a flusher pass between the signals loses nothing; an ambiguous pick pairs nothing and is counted, in "
+         "both hook orders, while sequential clears each pair their own twin; late pairings are counted; past "
          "either window nothing pairs; previous_session_id, both clear counters and the predicate keep their "
          "pre-card#11817 values")
 
@@ -8905,7 +9429,7 @@ class P29:
 
     def __init__(self, name, reporter=REPORTER):
         self.s, self.r = seat(name), reporter
-        self.base = self.t = int(time.time() * 1000)
+        self.base = self.t = rig_clock_ms()
         self.hk("SessionStart", source="startup")
         self.hk("UserPromptSubmit", prompt="go")
 
@@ -9410,7 +9934,7 @@ class P30:
 
     def __init__(self, name, reporter=REPORTER, sid=T30A, start=True):
         self.s, self.r = seat(name, ingest=DEAD), reporter
-        self.base = self.t = int(time.time() * 1000)
+        self.base = self.t = rig_clock_ms()
         if start:
             self.hk("SessionStart", sid=sid, source="startup")
 
@@ -9973,6 +10497,287 @@ redgreen("a board declaration rides every heartbeat, as a digest, and a malforme
          "config error — each flips its GREEN",
          "the heartbeat carries board_user_id and a 16-hex fingerprint of the normalized base on every send, null "
          "and null when undeclared or malformed, counted and named in selftest's detail, the seat still sending")
+
+
+print("\n== 27. A PARTLY-WRITTEN INDEX-JOURNAL LINE IS READ ONCE IT IS COMPLETE (D1 § 8.2, § 11.4, card#12465) ==")
+# THE FOLD'S BYTE CURSOR STOPS AT THE HEAD OF A LINE THAT HAS NO LF YET. The flusher folds the index
+# journal from `snapshot.json`'s (bucket, offset) and writes the offset back, so a cursor that steps past
+# a partial tail skips that record for good: the next fold starts inside the line, finds a fragment and
+# counts it corrupt, and the call it opened is never in the index. Two shapes, one per branch of the old
+# cut: a tail that is the whole unread range (no LF read at all), and a tail after a complete line, whose
+# multibyte text a cut counted in UTF-16 code units rather than bytes lands the cursor inside.
+#
+# THE CLOCK IS PINNED FOR EVERY INVOCATION, hooks and flusher alike, so each one appends to the ONE bucket
+# under test: an append the flusher makes to the bucket holding the partial line would be glued onto it,
+# which is a different state (a torn line followed by writes, § 11.4's counted corrupt line) from the write
+# in progress this block is about.
+TAIL_AT = int((time.time() - 3900) * 1000)
+
+
+def snap_of(s: Seat) -> dict:
+    try:
+        return json.loads((s.spool / "index" / "snapshot.json").read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def refs_in_index(s: Seat) -> set:
+    sn = snap_of(s)
+    return {e.get("harness_call_ref") for e in (sn.get("entries") or []) + (sn.get("tombstones") or [])}
+
+
+def tail_case(name: str, reporter: Path, *, complete_first: "str | None") -> dict:
+    """Plant the last journal line `tail_ééé` opened as a partial tail, fold, complete it, fold again.
+
+    `complete_first` is the tuid of a call opened, COMPLETE, after the first snapshot and before the
+    partial line, so the fold reads an LF before the tail; None leaves the partial line the whole unread
+    range. Returns what the snapshot held at each step."""
+    s = seat(name)
+    hook(s, "PreToolUse", pre(tuid="tail_first"), reporter=reporter, FLEET_REPORTER_NOW_MS=TAIL_AT)
+    flush(s, reporter=reporter, FLEET_REPORTER_NOW_MS=TAIL_AT)
+    if complete_first:
+        hook(s, "PreToolUse", pre(tuid=complete_first), reporter=reporter, FLEET_REPORTER_NOW_MS=TAIL_AT)
+    hook(s, "PreToolUse", pre(tuid="tail_ééé"), reporter=reporter, FLEET_REPORTER_NOW_MS=TAIL_AT)
+    jf = sorted((s.spool / "index").glob("*.jsonl"))
+    if len(jf) != 1:
+        raise AssertionError(f"{name}: the pinned clock put the journal in {len(jf)} buckets, not one")
+    data = jf[0].read_bytes()
+    head, last = data[:-1].rsplit(b"\n", 1)
+    if b'"harness_call_ref":"tail_\xc3\xa9\xc3\xa9\xc3\xa9"' not in last:
+        raise AssertionError(f"{name}: the journal's last line is not the planted call's open: {last[:80]!r}")
+    cut = last.index(b'"is_dispatch"')        # after the multibyte ref, so the partial tail carries it
+    head = head + b"\n"
+    jf[0].write_bytes(head + last[:cut])
+    flush(s, reporter=reporter, FLEET_REPORTER_NOW_MS=TAIL_AT)
+    held = {"offset": snap_of(s).get("offset"), "partial_at": len(head),
+            "tail_intact": jf[0].read_bytes().endswith(last[:cut])}
+    with open(jf[0], "ab") as fh:              # the write in progress finishes
+        fh.write(last[cut:] + b"\n")
+    flush(s, reporter=reporter, FLEET_REPORTER_NOW_MS=TAIL_AT)
+    held.update({"read": "tail_ééé" in refs_in_index(s),
+                 "end_offset": snap_of(s).get("offset"), "size": jf[0].stat().st_size,
+                 "corrupt": s.site_counters().get("spool_corrupt_lines", 0),
+                 "first_read": complete_first is None or complete_first in refs_in_index(s)})
+    return held
+
+
+def tail_verdict(h: dict) -> tuple:
+    return (h["offset"] == h["partial_at"], h["tail_intact"], h["read"], h["end_offset"] == h["size"],
+            h["corrupt"], h["first_read"])
+
+
+TAIL_GOOD = (True, True, True, True, 0, True)
+t_only = tail_case("index-tail-only", REPORTER, complete_first=None)
+eq("a partial last line that is the whole unread range: the snapshot's cursor stays at its head, the "
+   "line is untouched, and once it is completed the next fold reads the call it opened — no fragment "
+   "counted corrupt, the cursor at the file's end", TAIL_GOOD, tail_verdict(t_only))
+t_after = tail_case("index-tail-after", REPORTER, complete_first="tail_üüü_complete")
+eq("a partial last line carrying multibyte text after a complete one: the cursor stops at the partial "
+   "line's head in BYTES, and the completed line is read once", TAIL_GOOD, tail_verdict(t_after))
+
+# THE REDS, planted on copies of the one primitive both folds cut through. The first consumes every byte
+# read, the old `nl < 0` branch's shape; the second cuts at the decoded string's last LF, the old
+# arithmetic's unit: a count of UTF-16 code units used as a byte offset.
+p_tail_all = plant(("return { end: start + nl + 1,", "return { end: start + got,"))
+p_tail_u16 = plant(("return { end: start + nl + 1,",
+                    "return { end: start + buf.toString('utf8', 0, got).lastIndexOf('\\n') + 1,"))
+r_only = tail_case("index-tail-only-red", p_tail_all, complete_first=None)
+eq("RED: a fold that consumes the trailing bytes steps its cursor past the partial line, and the call "
+   "it opens is never in the index once the line completes",
+   (False, False), (r_only["offset"] == r_only["partial_at"], r_only["read"]))
+r_after = tail_case("index-tail-after-red", p_tail_u16, complete_first="tail_üüü_complete")
+eq("RED: a fold that cuts in UTF-16 code units lands its cursor short of the partial line's head when a "
+   "complete line before it carries multibyte text, and re-reads a fragment as a corrupt line",
+   (False, True), (r_after["offset"] == r_after["partial_at"], r_after["corrupt"] > 0))
+redgreen("a partly-written index-journal line is read once complete, never stepped past (D1 § 11.4, card#12465)",
+         f"cursor consumes the tail -> offset {r_only['offset']} vs partial line at {r_only['partial_at']}, "
+         f"completed call read={r_only['read']}; cut in UTF-16 units -> offset {r_after['offset']} vs "
+         f"{r_after['partial_at']}, corrupt lines {r_after['corrupt']}",
+         f"no LF read: offset {t_only['offset']} == {t_only['partial_at']}, read once complete; after a "
+         f"complete line: offset {t_after['offset']} == {t_after['partial_at']} in bytes, read once complete, "
+         f"0 corrupt")
+
+
+print("\n== 28. A RESPAWNED FLUSHER RUNS IN THE USER'S HOME, NOT IN THE FOLDER ITS HOOK RAN IN (D1 P-7, card#12471) ==")
+# A CHILD HOLDS ITS WORKING DIRECTORY FOR ITS WHOLE LIFE, and the flusher lives for as long as the seat.
+# On Windows a process's working directory cannot be deleted or renamed while it runs, so a flusher that
+# inherited its hook's — whatever project folder the agent was in — held that folder until it exited.
+# Measured here as /proc/<pid>/cwd of the real detached flusher a hook forks; what that hold costs on
+# Windows is not measurable on this platform, and is not claimed. The second case is what moving the
+# directory must not break: a config path the hook was given RELATIVE to its own directory.
+#
+# THE FLUSHER IS FOUND BY ITS OWN HOME, NOT BY `spawned_flushers()`: that sweep matches a config path
+# under TMP, and the RED below hands the flusher a relative one, which it would miss and leave running.
+# Each case's home directory is its own, so the match names that case's daemon and no other.
+def flushers_homed(home: Path) -> "list[tuple[int, str, str]]":
+    found = []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            argv = [x.decode("utf-8", "replace") for x in (entry / "cmdline").read_bytes().split(b"\0") if x]
+            env = dict(kv.decode("utf-8", "replace").split("=", 1)
+                       for kv in (entry / "environ").read_bytes().split(b"\0") if b"=" in kv)
+            cwd = os.readlink(entry / "cwd")
+        except OSError:
+            continue
+        if len(argv) >= 3 and argv[1].endswith("fleet-reporter.js") and argv[2] == "flusher" \
+                and env.get("HOME") == str(home):
+            found.append((int(entry.name), cwd, env.get("FLEET_REPORTER_CONFIG", "")))
+    return found
+
+
+def respawn_case(name: str, reporter: Path, *, relative_cfg: bool = False) -> dict:
+    s = seat(name, ingest=DEAD)
+    home = s.root / "home"
+    home.mkdir()
+    caller = s.root if relative_cfg else s.root / "project"
+    caller.mkdir(exist_ok=True)
+    (s.spool / "flusher.lock").unlink()          # no live flusher: the hook's respawn rule fires
+    env = s.env(freeze=False, HOME=str(home))
+    if relative_cfg:
+        env["FLEET_REPORTER_CONFIG"] = s.cfg_path.name
+    subprocess.run(["node", str(reporter), "hook", "PreToolUse"], input=json.dumps(pre(tuid="cwd_1")),
+                   capture_output=True, text=True, env=env, cwd=str(caller))
+    t0, got = time.time(), []
+    while not got and time.time() - t0 < 20:
+        got = flushers_homed(home)
+        time.sleep(0.2)
+    for pid, _, _ in got:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    t0 = time.time()
+    while flushers_homed(home) and time.time() - t0 < 15:
+        time.sleep(0.2)
+    for pid, _, _ in flushers_homed(home):     # re-read: only a pid that is STILL this case's daemon
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+    return {"home": str(home), "caller": str(caller), "cfg": str(s.cfg_path),
+            "cwds": [c for _, c, _ in got], "cfgs": [c for _, _, c in got]}
+
+
+if spawned_flushers() is None:
+    skip("card#12471: a respawned flusher's working directory — /proc is not readable here")
+else:
+    c_green = respawn_case("respawn-cwd", REPORTER)
+    eq("the flusher a hook forks runs in the user's home directory, not the directory the hook ran in",
+       [c_green["home"]], c_green["cwds"])
+    c_rel = respawn_case("respawn-cwd-rel", REPORTER, relative_cfg=True)
+    eq("  … and a config path the hook was given relative to its own directory reaches that flusher "
+       "absolute, so it still names the same file", ([c_rel["home"]], [c_rel["cfg"]]),
+       (c_rel["cwds"], c_rel["cfgs"]))
+    p_cwd = plant(("windowsHide: true, cwd, env: child }", "windowsHide: true, env: child }"))
+    c_red = respawn_case("respawn-cwd-red", p_cwd)
+    eq("RED: a spawn with no `cwd` hands the flusher the hook's own working directory",
+       [c_red["caller"]], c_red["cwds"])
+    p_rel = plant(("child[k] = path.resolve(child[k]);", "child[k] = child[k];"))
+    c_rel_red = respawn_case("respawn-cwd-rel-red", p_rel, relative_cfg=True)
+    eq("RED: with the relative config path passed on as it is, the flusher in the user's home reads a "
+       "path that names no file there", ([c_rel_red["home"]], ["config.json"]),
+       (c_rel_red["cwds"], c_rel_red["cfgs"]))
+    redgreen("a respawned flusher does not hold its hook's folder, and still reads its hook's config (D1 P-7, card#12471)",
+             f"spawn with no cwd -> flusher cwd {c_red['cwds']}, the hook's folder {c_red['caller']}; a relative "
+             f"config passed on unresolved -> the flusher in {c_rel_red['cwds']} reads {c_rel_red['cfgs']}",
+             f"spawn with cwd os.homedir() -> flusher cwd {c_green['cwds']}, the hook ran in {c_green['caller']}; "
+             f"a relative config -> {c_rel['cfgs']}")
+
+
+print("\n== 29. A TOOL CALL THE REPORTER FILLS IN ITSELF IS CHECKED LIKE ANY OTHER (D1 § 6.5, § 6.6, card#11574) ==")
+# A close matching no open call SYNTHESIZES the pair (§ 6.6), and that pair's `tool_name` and
+# `harness_call_ref` come from the CLOSE's payload. The ingest refuses a batch holding one `data` field
+# over its § 6 byte bound with `422` and stores none of it (§ 12.4), so a synthesized `tool.start`
+# carrying a raw over-bound `tool_use_id` cost every event in its batch. The open and the close now read
+# the call through one reader, `toolCallOf`, which holds `tool_name` to its pattern and the ref to its
+# 64 B bound.
+TC_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")     # D1 § 6.5's tool_name pattern
+TC_LONG_REF = "toolu_" + "x" * 94                       # 100 B, over § 6.5's 64 B harness_call_ref bound
+assert len(TC_LONG_REF.encode()) == 100
+
+
+def tc_post(tool, tuid):
+    return {"session_id": SID, "hook_event_name": "PostToolUse", "prompt_id": "p1", "tool_name": tool,
+            "tool_input": {"command": "echo hello"}, "tool_response": {}, "tool_use_id": tuid,
+            "cwd": "/home/agent/mezzanine"}
+
+
+def tc_calls(s):
+    return [(e["kind"], e["data"].get("tool_name"), e["data"].get("harness_call_ref"),
+             e["data"].get("synthesized"), e["data"].get("match"))
+            for e in s.events() if e["kind"] in ("tool.start", "tool.end")]
+
+
+def tc_off_bound(s):
+    """Every tool.start / tool.end field in the spool that the ingest refuses: a tool_name off its
+    pattern, or a harness_call_ref over 64 B. The RED below feeds it a known positive, so its empty
+    answer on the real reporter is a measurement."""
+    out = []
+    for e in s.events():
+        if e["kind"] not in ("tool.start", "tool.end"):
+            continue
+        d = e["data"]
+        if not (isinstance(d.get("tool_name"), str) and TC_NAME_RE.match(d["tool_name"])):
+            out.append((e["kind"], "tool_name", d.get("tool_name")))
+        ref = d.get("harness_call_ref")
+        if ref is not None and len(ref.encode()) > 64:
+            out.append((e["kind"], "harness_call_ref", len(ref.encode())))
+    return out
+
+
+def tc_synth_case(name, tool, tuid, reporter=REPORTER):
+    s = seat(name)
+    hook(s, "PostToolUse", tc_post(tool, tuid), reporter=reporter)
+    return s
+
+
+# A — the finding: an unmatched close with an odd tool_name and a 100 B tool_use_id.
+tcA = tc_synth_case("toolcall-synth-long-ref", "Odd Tool!", TC_LONG_REF)
+eq("a synthesized pair sends the close's tool_name as INVALID_TOOL_NAME and its over-bound ref as null, "
+   "exactly as the open would have",
+   [("tool.start", "INVALID_TOOL_NAME", None, True, None),
+    ("tool.end", "INVALID_TOOL_NAME", None, None, "synthesized")], tc_calls(tcA))
+eq("  … so the spool holds no tool.start / tool.end field the ingest refuses", [], tc_off_bound(tcA))
+eq("  … and the bad name is counted, as it is on the open", 1, tcA.counters().get("invalid_tool_name"))
+
+# B — a name of legal characters over its 64 B bound, with an in-bound ref: the ref is kept.
+tcB = tc_synth_case("toolcall-synth-long-name", "A" * 100, "toolu_inbound")
+eq("a synthesized pair holds a 100 B tool_name to the pattern and keeps an in-bound ref",
+   [("tool.start", "INVALID_TOOL_NAME", "toolu_inbound", True, None),
+    ("tool.end", "INVALID_TOOL_NAME", None, None, "synthesized")], tc_calls(tcB))
+
+# C — the close reads the name as the open stored it, so an odd-named call still pairs by name. Two
+# calls are open, and the over-bound ref was stored as null, so neither exact key nor `sole_open` can
+# match; `lifo_tool_name` is the rule left, and it compares the close's name with the stored one.
+tcC = seat("toolcall-lifo-odd-name")
+hook(tcC, "PreToolUse", pre(tuid="toolu_c1"))
+hook(tcC, "PreToolUse", pre(tool="Odd Tool!", tuid=TC_LONG_REF))
+hook(tcC, "PostToolUse", tc_post("Odd Tool!", TC_LONG_REF))
+eq("an odd-named close pairs with its open by name instead of synthesizing a phantom pair",
+   [("tool.start", "Bash", "toolu_c1", None, None),
+    ("tool.start", "INVALID_TOOL_NAME", None, None, None),
+    ("tool.end", "INVALID_TOOL_NAME", None, None, "lifo_tool_name")], tc_calls(tcC))
+eq("  … and the spool holds no tool.start / tool.end field the ingest refuses", [], tc_off_bound(tcC))
+
+# RED — the close's read as it was before card#11574: the payload's name and ref taken raw. Case A's
+# pair then carries both the odd name and the 100 B ref, which is the field the ingest refuses the
+# batch for; the planted copy also proves `tc_off_bound` finds what it looks for.
+p_raw_close = plant(("      const { toolName, ref } = toolCallOf(payload);\n      const m = matchClose(",
+                     "      const toolName = typeof payload.tool_name === 'string' ? payload.tool_name : 'INVALID_TOOL_NAME';\n"
+                     "      const ref = typeof payload.tool_use_id === 'string' ? payload.tool_use_id : null;\n"
+                     "      const m = matchClose("))
+tcR = tc_synth_case("toolcall-synth-red", "Odd Tool!", TC_LONG_REF, reporter=p_raw_close)
+eq("RED: a close read raw puts the odd tool_name on both halves of the synthesized pair and the 100 B "
+   "ref on its tool.start — a batch the ingest refuses whole with 422",
+   [("tool.start", "tool_name", "Odd Tool!"), ("tool.start", "harness_call_ref", 100),
+    ("tool.end", "tool_name", "Odd Tool!")], tc_off_bound(tcR))
+redgreen("a synthesized tool call carries the same bounds as an observed one (D1 § 6.5, § 6.6, card#11574)",
+         "close read raw -> synthesized tool.start with tool_name 'Odd Tool!' and a 100 B harness_call_ref, "
+         "tool.end with the same name; an odd-named close beside another open call synthesizes a phantom pair",
+         "open and close both read through toolCallOf -> INVALID_TOOL_NAME (counted) and a null ref on the "
+         "synthesized pair, an in-bound ref kept, and the odd-named close paired by lifo_tool_name")
 
 
 print("\n== 21. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")

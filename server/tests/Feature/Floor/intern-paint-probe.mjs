@@ -13,12 +13,12 @@
  * argv[2]: the module tree's root (`server/public/js` or a mutated copy). stdin: `{ effect, paints, doors? }` — the walker
  * as the scene emitted it, `[{ timeline_ms, frame_ms, clock_ms, elapsed_ms, doors_at? }, …]`, and optionally the walks'
  * door spans, which draw the band and its elevator with the leaves open over them from each paint's `doors_at`. stdout:
- * `[{ glide, laptop, leaves }, …]`, one per paint, each node `{ style, start }` or `null` (`leaves` a list).
+ * `[{ glide, laptop, leaves }, …]`, one per paint, each node `{ style, start, delay, pinned }` or `null` (`leaves` a list) — `fake-svg-node.mjs`'s `animationOf()`.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { Node } from './fake-svg-node.mjs';
+import { Node, animationOf } from './fake-svg-node.mjs';
 
 const root = process.argv[2];
 const input = JSON.parse(readFileSync(0, 'utf8'));
@@ -63,7 +63,7 @@ const find = (n, cls) => [
     ...(String(n.attrs?.class ?? '').split(' ').includes(cls) ? [n] : []),
     ...n.children.flatMap((c) => find(c, cls)),
 ];
-const read = (n) => (n === undefined ? null : { style: n.attrs.style ?? null, start: n.animations?.[0]?.startTime ?? null });
+const read = (n) => (n === undefined ? null : { style: n.attrs.style ?? null, ...animationOf(n) });
 
 const fx = input.effect;
 const painter = createPainter({ characters, themes: {}, failed: () => {}, select: () => {}, clock: { now: () => clocks.page } });

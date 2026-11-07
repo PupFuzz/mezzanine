@@ -22,7 +22,9 @@
  * lattice key differs from the one the walk was routed on. A same-side delta — `working ↔ idle`, an action or a
  * context change under an A1, `stale → offline` under an A2 — leaves the walker on its way: under a walk the desk
  * draws every fact of the applied object but the character, and the walker IS that character. No walk starts from
- * a cancelled one, and a render whose journal fires two walk rows for one seat draws neither. The 1 s age tick and
+ * a cancelled one, and a render whose journal fires two walk rows for one seat draws neither — but since card#12466 a
+ * cancelling A1 or A2 drawn as a TURN-ROUND of the walk it cancels (item 6a: the scene's `seatTurn()`, from the walk
+ * `walks()` hands it) REPLACES that walk, where nothing but its row and side touched the walk. The 1 s age tick and
  * the paint-only refresh are not renders and never reach `render()`.
  *
  * ⛔ AN INTERN WALKS TOO, ONE WALK PER INTERN (§ 6.2's *Interns ride the elevator too*, items 13–17; card#12450). An
@@ -33,9 +35,47 @@
  * chair emptying moves no intern). An arrival whose intern leaves the array while it is in flight is REPLACED by item 16's
  * turn-round when the loss walks, and is a plain cancel when it does not (item 15's cap). A24's laptop fade is held per
  * intern too, and a later fade replaces it from the opacity it reached.
+ *
+ * ⛔ THE DEPARTURES QUEUE AT THE ELEVATOR, AND THIS IS WHERE (item 9, card#12705). Each departure — A2's walk, an intern's
+ * walk out — arrives with its queue part, drawn alone; on every render, after its cancels and admissions, the holder
+ * gives each new one its waiting spot and re-times every departure in flight together (`#board()`): the leaves open for
+ * one, every one waiting boards in turn, and they close after the last. It writes nothing and fires nothing: a re-timed
+ * walk is the same row's drawing, re-timed by a delivered message that admitted or cancelled another walk.
+ *
+ * ⛔ THE DEPARTURES PRESS THE CALL PLATES ONE AT A TIME, AND THIS IS WHERE EACH WAITS ITS TURN (item 9, card#12747). Before
+ * the queue's re-timing, each new departure that walks by a plate is given its turn there (`#call()`): it waits where it
+ * set off until the walker before it has pressed and walked a walker's width away. The turn is given on the render that
+ * admits it and never changes, so the walk to the plates is never re-timed.
+ *
+ * ⛔ RIDERS STAND APART IN THE CAB, AND THIS IS WHERE EACH STANDS (item 10, card#12744). After the queue's re-timing,
+ * every walk in flight with a `cab` leg is given a rider spot (`#seat()`) — the lowest no other rider holds over its
+ * cab leg, kept once that leg has begun — and its cab leg is stood there. It moves where a cab leg stands and never
+ * when any leg is.
+ *
+ * ⛔ THE SNACK TRIPS ARE HELD HERE TOO, ONE PER WALKER (FLOOR.md § 6.6, card#12749), beside the walks and never in their
+ * place: a trip is the drawing of § 6.2's HELD row A25, which no render's rows start, so it is admitted by `breaks()` —
+ * on every render, paint-only refresh and tick — at its seeded second, and only while the walker's hold permits it and
+ * the strip reads *live*. The walk's cancel clauses end it on a render (a non-delta entry for the seat, which re-derives
+ * it at its phase; row 5 or the stilled floor; the lattice key; the threshold; the anchor), an A2 or an A10 leave of the
+ * walker takes it over from where it stands (the scene routes those from the trip's point), and a delivered change that
+ * recalls the walker — out of `idle` and `working` (card#12785) — walks it home along its route (`snackHome()`, the
+ * operator's ruling of 2026-11-02). Its spot is kept from its admission until it leaves the spot, and nothing a later
+ * render admits or cancels re-times it. Breaks due on one pass are decided in start-second order (`breaks()`, item 3).
+ *
+ * ⛔ THE RESTROOM VISITS ARE HELD HERE TOO, IN THE SAME MAP, ONE TRIP PER WALKER ACROSS BOTH CHAINS (FLOOR.md § 6.7,
+ * card#12786): a visit is the drawing of § 6.2's HELD row A26, admitted by the same pass over one ordered list of both
+ * chains' due breaks, with one `taken` set of spots. The DOOR is held here as well (`#doors`): each visit's leaf timeline,
+ * its field's occupied frames and the frame the door frees, kept apart from the walker's effect so a door a walker has
+ * left — a hand-over to the snack corner, an A2 that took it over — still closes behind it. A visit waits for every visit
+ * admitted to its door before it — the door serves its visits in the order they were admitted, which is the order their
+ * breaks began — and its turn is fixed on admission, so no later admission, exit or cancel re-times it. A break of one
+ * chain that comes due while the walker's trip of the other is in flight waits for that trip's hand-over point (the snack
+ * dwell's end, or the leaf opened for the exit) and starts there, from where the walker stands (§ 6.7 item 7).
  */
 
 import { emptyChair, staffed } from '../wire/animation-set.js';
+import { pointAt } from './route.js';
+import { ELEVATOR_DOOR, RESTROOM_GAP_S, SNACK_GAP_S, departureLegs, laneFrame, leafLevel, queueLater, queueShape, restroomExit, restroomHome, seatInCab, snackHome, waitFrom } from './scene.js';
 
 /** The § 6.2 rows drawn as a walk, one per seat at most. */
 export const WALK_ROWS = Object.freeze(['A1', 'A2']);
@@ -54,16 +94,117 @@ const keyOf = (effect) => `${effect.install_id}/${effect.seat_id}`;
 /** An intern's A10 walk (card#12450) — keyed by its intern key, never by its seat's. */
 const isInternWalk = (effect) => effect.animation_id === 'A10' && typeof effect.intern_key === 'string';
 
+/**
+ * A walk's door spans (item 10): its own `door`, and — card#12466 — the `door_rest` a seat's turn-round carries, the leaves
+ * still closing from the walk it replaced, which close as they began to however the turn's own frames run.
+ */
+const spansOf = (effect) => [effect.door_rest, effect.door].filter((d) => d !== null && d !== undefined);
+
+/**
+ * card#12744: what a turn-round that begins in the cab keeps of the walk it replaces — its rider spot and where its feet
+ * were (`was`, read before the replaced walk left the holder) — so it turns from where it stands; nothing otherwise. One
+ * reader for item 16's intern turn-round and, since card#12466, a seat's.
+ */
+const keptInCab = (was, effect) => (was !== undefined && was.at.where === 'cab' && effect.legs[0]?.kind === 'cab'
+    ? { cab_slot: was.slot, cab_from: Object.freeze({ x: was.at.x, y: was.at.y }) }
+    : {});
+
+/** card#12466: a seat's turn-round (item 6a) — an A1 or A2 effect drawn from the opposite walk in flight, with frames to run. */
+const isSeatTurn = (effect) => WALK_ROWS.includes(effect.animation_id) && effect.leg_kind === 'turn' && effect.frames > 0;
+
 /** An intern's A24 laptop fade (card#12451). */
 const isFade = (effect) => effect.animation_id === 'A24' && typeof effect.intern_key === 'string';
 
 const samePoint = (a, b) => a !== null && b !== null && a !== undefined && b !== undefined && a.x === b.x && a.y === b.y;
+
+/** A departure that queues at the elevator (walk note item 9, card#12705): A2's walk and an intern's walk out. */
+const queues = (h) => (h.effect.queue ?? null) !== null;
+
+/** Two keys by code unit, never `localeCompare` — the tie-break every viewer agrees on. */
+const byKey = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+/** card#12786: the longest gap of either chain — how far back a pass looks for a break still to decide. */
+const GAP_MAX_S = Math.max(SNACK_GAP_S.max, RESTROOM_GAP_S.max);
+
+/** card#12786: the id each break is decided once under — `<walker key> <chain> <start second>`. */
+const breakId = (key, chain, startS) => `${key} ${chain} ${startS}`;
+
+/**
+ * card#12786 — A TRIP's HAND-OVER POINT (§ 6.7 item 7), in its frames: where a break of the other chain that came due during
+ * it takes the walker on — a snack trip's at the end of its dwell at the table, a restroom visit's when the leaf has opened
+ * for its exit, the end of its `inside` leg.
+ */
+function handPoint(effect) {
+    const leg = effect.animation_id === 'A26' ? effect.legs.find((l) => l.kind === 'inside') : effect.legs[1];
+
+    return leg.start + leg.frames;
+}
+
+/**
+ * THE FEWEST WHOLE FRAMES a part of an effect starting at `now` must wait so that it meets none of `taken` — the one rule
+ * the birdhouse's ledge (card#12445) and the call plates (card#12747) share: `own` is the part in frames from the effect's
+ * start, `taken` the parts already held, in ms on the page's clock; each wait that meets one moves past it, until none
+ * meets.
+ */
+function clearOf(own, taken, now, I) {
+    let wait = 0;
+    let moved = true;
+
+    while (moved) {
+        moved = false;
+
+        for (const t of taken) {
+            const from = now + (wait + own.from) * I;
+            const to = now + (wait + own.to) * I;
+
+            if (from < t.to && t.from < to) {
+                wait = Math.ceil((t.to - now) / I) - own.from;
+                moved = true;
+            }
+        }
+    }
+
+    return wait;
+}
 
 export class EffectsInFlight {
     /** `{ effect, at, frames, key, anchor, threshold, unconfirmed, stilled, side, lattice_key }`, oldest first. */
     #held = [];
 
     #intervalMs;
+
+    /**
+     * card#12749 — the snack trips in flight, walker key → `{ effect, at, frames, key, seat, intern, anchor, threshold,
+     * unconfirmed, stilled, lattice_key, home }`: `at` the trip's start on the page's clock (in the past for a trip
+     * admitted at its phase), `home` whether it is a recall's walk home.
+     */
+    #trips = new Map();
+
+    /** `<walker key> <chain> <break start second>` → each break decided once: a trip started, or no trip for that break. */
+    #decided = new Set();
+
+    /**
+     * card#12786 — the restroom doors' timelines, oldest first: `{ door, key, seq, spot, at, leaf, occupied, free, lane, clear }`
+     * per visit — `at` the visit's start on the page's clock, `leaf` and `occupied` in frames from it, `free` the instant (ms)
+     * the door is closed behind the visit and free for the next, `seq` its admission's order; card#12841: `lane` the door's
+     * (§ 12's *Restroom lane*) and `clear` the instant (ms) the visit's walker, on its way out, is clear of it.
+     */
+    #doors = [];
+
+    /** card#12786: the order visits were admitted to their door in. */
+    #seq = 0;
+
+    /** card#12786: walker key → `{ chain, s, id }`, a break waiting for the walker's other trip to reach its hand-over. */
+    #deferred = new Map();
+
+    /** The windows a non-delta entry re-derives (§ 6.6 item 5): decided again, at their phase, on the next live pass. */
+    #rederive = new Set();
+
+    /** The corrected server instant (ms) of the first snack pass — a break that began before it is entered at its phase. */
+    #observedFrom = null;
+
+    /** § 5.5's *no open route … snack table* and *… restroom door* lines already written, `<seat key> <lattice key>`. */
+    #narrated = new Set();
 
     /** @param {number} intervalMs one loop frame (§ 12's loop rate) */
     constructor(intervalMs) {
@@ -94,6 +235,25 @@ export class EffectsInFlight {
         // An intern a walk of this render replaces (item 16's turn-round), and an intern whose fade a newer one replaces.
         const replaced = new Set(effects.filter((e) => isInternWalk(e) && e.frames > 0).map((e) => e.intern_key));
         const refaded = new Set(effects.filter(isFade).map((e) => e.intern_key));
+        // card#12466 (item 6a): a seat whose walk this render's row turns round — the turn drawn by the scene, the render
+        // carrying that seat's one walk row — and, of those, the seats whose walk nothing but that row touched, which alone
+        // the turn may replace: any other clause (a non-delta entry, row 5, the stilled floor, the anchor, the threshold,
+        // the lattice key) cancels the walk as it always did, and no walk starts from it.
+        const walkCount = new Map();
+
+        for (const effect of effects) {
+            if (WALK_ROWS.includes(effect.animation_id)) {
+                walkCount.set(keyOf(effect), (walkCount.get(keyOf(effect)) ?? 0) + 1);
+            }
+        }
+
+        const turning = new Set(effects.filter((e) => isSeatTurn(e) && walkCount.get(keyOf(e)) === 1).map(keyOf));
+        const turnable = new Set();
+        // card#12744: where an arrival item 16 turns round in the cab stands — its rider spot and its feet now — which its
+        // turn-round keeps, so the intern turns from where it is; card#12466: a seat's turn-round in the cab likewise.
+        const inCab = new Map(this.#held
+            .filter((h) => (h.intern === true ? replaced : turning).has(h.key) && h.cab_slot !== undefined && !this.#ended(h, now))
+            .map((h) => [h.key, { slot: h.cab_slot, at: pointAt(h.effect, now - h.at) }]));
 
         this.#held = this.#held.filter((h) => {
             if (this.#ended(h, now)) {
@@ -128,27 +288,62 @@ export class EffectsInFlight {
                 return true;
             }
 
-            const touched = touchedKeys.has(h.key)
-                || rowKeys.has(h.key)
-                || ctx.side(h.key) !== h.side
+            const elsewhere = touchedKeys.has(h.key)
                 || ctx.lattice_key !== h.lattice_key
                 || ctx.unconfirmed(h.key) !== h.unconfirmed
                 || ctx.stilled !== h.stilled
                 || !samePoint(ctx.anchors.get(h.key) ?? null, h.anchor)
                 || !samePoint(ctx.threshold, h.threshold);
+            const touched = elsewhere
+                || rowKeys.has(h.key)
+                || ctx.side(h.key) !== h.side;
 
             if (touched) {
                 cancelled.push(h.key);
+
+                if (!elsewhere && turning.has(h.key)) {
+                    turnable.add(h.key);
+                }
             }
 
             return !touched;
         });
 
-        const walkCount = new Map();
+        // card#12749 (§ 6.6 item 5): the walk's cancel clauses, read for each snack trip — and an A2 or an A10 leave of the
+        // walker, which the scene drew from the trip's point, takes the trip over. A trip a non-delta entry ended is
+        // re-derived from the new object on the next pass: the same key and break give the same trip, at its phase.
+        for (const [k, t] of this.#trips) {
+            const nonDelta = touchedKeys.has(t.seat);
+            const touched = this.#ended(t, now)
+                || nonDelta
+                || (t.intern ? replaced.has(k) || !(ctx.interns ?? new Set()).has(k) : rowKeys.has(t.seat) || ctx.side(t.seat) !== 'staffed')
+                || t.lattice_key !== ctx.lattice_key
+                || t.unconfirmed !== ctx.unconfirmed(t.seat)
+                || t.stilled !== ctx.stilled
+                || !samePoint(t.anchor, t.intern ? (ctx.slot_foot ?? (() => null))(t.effect) : ctx.anchors.get(t.seat) ?? null)
+                || !samePoint(t.threshold, ctx.threshold);
 
-        for (const effect of effects) {
-            if (WALK_ROWS.includes(effect.animation_id)) {
-                walkCount.set(keyOf(effect), (walkCount.get(keyOf(effect)) ?? 0) + 1);
+            if (touched) {
+                this.#trips.delete(k);
+                this.#deferred.delete(k);
+
+                if (t.kind === 'restroom') {
+                    // card#12786 (§ 6.7 item 5): an A2 or an A10 that takes the visitor over brings it out first, the leaf
+                    // opening and closing behind it; every other clause cuts the visit, the door drawn closed and vacant.
+                    const over = effects.find((e) => e.from_trip === true && e.frames > 0
+                        && (t.intern ? isInternWalk(e) && e.intern_key === k : e.animation_id === 'A2' && keyOf(e) === t.seat));
+
+                    if (over !== undefined && !this.#ended(t, now)) {
+                        this.#leaveDoor(k, t, now, over);
+                    } else {
+                        this.#doors = this.#doors.filter((e) => e.key !== k);
+                    }
+                }
+
+                if (nonDelta && !t.home && !this.#ended(t, now)) {
+                    this.#rederive.add(breakId(k, t.kind, t.effect.start_s));
+                    this.#decided.delete(breakId(k, t.kind, t.effect.start_s));
+                }
             }
         }
 
@@ -169,12 +364,15 @@ export class EffectsInFlight {
                     continue;
                 }
 
+                const was = inCab.get(effect.intern_key);
+
                 this.#held.push({
                     effect,
                     at: now,
                     frames: effect.frames,
                     key: effect.intern_key,
                     intern: true,
+                    ...keptInCab(was, effect),
                     anchor: effect.anchor ?? null,
                     threshold: ctx.threshold,
                     unconfirmed: ctx.unconfirmed(keyOf(effect)),
@@ -200,16 +398,22 @@ export class EffectsInFlight {
             const key = keyOf(effect);
 
             // No walk starts from a cancelled one, and two walk rows for one seat in one render are a
-            // walk the second delta cancelled.
-            if (cancelled.includes(key) || walkCount.get(key) > 1 || this.#held.some((h) => h.key === key)) {
+            // walk the second delta cancelled — but for card#12466's turn-round, which REPLACES the walk its row cancelled
+            // (item 6a), and only where nothing but that row touched it.
+            const turn = isSeatTurn(effect);
+
+            if ((turn ? !turnable.has(key) : cancelled.includes(key)) || walkCount.get(key) > 1 || this.#held.some((h) => h.key === key)) {
                 continue;
             }
+
+            const was = turn ? inCab.get(key) : undefined;
 
             this.#held.push({
                 effect,
                 at: now,
                 frames: effect.frames,
                 key,
+                ...keptInCab(was, effect),
                 anchor: ctx.anchors.get(key) ?? null,
                 threshold: ctx.threshold,
                 unconfirmed: ctx.unconfirmed(key),
@@ -219,17 +423,666 @@ export class EffectsInFlight {
             });
         }
 
+        this.#call();
+        this.#board(now, ctx.queue_spot ?? (() => null), ctx.lane ?? null);
+        this.#seat(now, ctx.threshold ?? null);
+
         return cancelled;
+    }
+
+    /**
+     * card#12744 — RIDERS STAND APART IN THE CAB (walk note item 10): every walk in flight with a `cab` leg is given a
+     * rider spot (`scene.js`'s `cabSpot()`) and its cab leg stood there (`seatInCab()`), on each render after the queue's
+     * re-timing. Only where the cab leg stands moves; no frame of any walk is re-timed.
+     *
+     * - **The lowest spot free over its whole cab leg.** Walks are seated in the order their cab legs begin, ties by key:
+     *   each takes the lowest spot no other walk already seated holds over any instant of its own cab leg. So a lone
+     *   rider stands at spot 0, the threshold, as it always has; boarders take spots in the order they step in, the
+     *   first — nearest the door, item 9 — on the threshold and each later one further in; arrivals revealed together
+     *   in one opening stand apart from the frame the leaves begin to open.
+     * - **A rider in the cab keeps its spot.** A walk whose cab leg has begun by now keeps the spot it was drawn at on
+     *   every later render, whatever a later render admits or cancels, so no rider moves in the cab between two
+     *   renders; a walk whose cab leg is still to come is re-seated with the rest. Item 16's turn-round in the cab
+     *   keeps the spot of the arrival it replaces, and steps from where that arrival stood.
+     * - **Past the last spot**, riders share points (`cabSpot()`): a cab holds `CAB_SPOTS` apart.
+     */
+    #seat(now, door) {
+        if (door === null) {
+            return;
+        }
+
+        const I = this.#intervalMs;
+        const riders = this.#held
+            .filter((h) => !this.#ended(h, now) && (h.effect.legs ?? []).some((l) => l.kind === 'cab'))
+            .map((h) => {
+                const cab = h.effect.legs.find((l) => l.kind === 'cab');
+
+                return { h, from: h.at + cab.start * I, to: h.at + (cab.start + cab.frames) * I };
+            });
+        const seated = riders.filter((r) => r.h.cab_slot !== undefined && r.from <= now);
+        const rest = riders.filter((r) => !seated.includes(r)).sort((a, b) => a.from - b.from || byKey(a.h.key, b.h.key));
+
+        for (const r of rest) {
+            const taken = new Set(seated.filter((o) => o.from < r.to && r.from < o.to).map((o) => o.h.cab_slot));
+            let k = 0;
+
+            while (taken.has(k)) {
+                k++;
+            }
+
+            r.h.cab_slot = k;
+            seated.push(r);
+        }
+
+        for (const { h } of riders) {
+            h.effect = Object.freeze({ ...h.effect, legs: seatInCab(h.effect.legs, door, h.cab_slot, h.cab_from ?? null) });
+        }
+    }
+
+    /**
+     * card#12747 — THE CALL PLATES, ONE PRESSER AT A TIME (walk note item 9): each departure with a press that the holder has
+     * not yet given its turn — in the order they were admitted, so a render's new ones in their rows' order — waits where
+     * it sets off (`queueLater()`, its `line`) the fewest whole frames that keep its time at the plates — from reaching them
+     * to the end of its press and its `gap` after (the frames § 12's *Queue spacing* takes at § 12's *Walk speed*) — clear
+     * of every departure already given its turn. Both plates are one place: their standing points are closer than two
+     * walkers keep apart. A turn is given once, on the render that admits the departure, before any frame of it is drawn,
+     * and never changes: nothing a later render admits or cancels re-times a walker's way to the plates.
+     */
+    #call() {
+        const I = this.#intervalMs;
+        const span = (q) => ({ from: q.press.stand.start, to: q.press.stand.start + q.press.stand.frames + q.press.gap });
+        const pressing = this.#held.filter((h) => h.key !== null && (h.effect.queue?.press ?? null) !== null);
+
+        for (const h of pressing.filter((x) => x.called !== true)) {
+            const taken = pressing.filter((o) => o.called === true).map((o) => {
+                const s = span(o.effect.queue);
+
+                return { from: o.at + s.from * I, to: o.at + s.to * I };
+            });
+            const wait = clearOf(span(h.effect.queue), taken, h.at, I);
+
+            if (wait > 0) {
+                h.effect = Object.freeze({ ...h.effect, queue: queueLater(h.effect.queue, wait) });
+            }
+
+            h.called = true;
+        }
+    }
+
+    /**
+     * card#12705 — THE QUEUE AT THE ELEVATOR (walk note item 9): every departure in flight, re-timed together on each
+     * render, after its cancels and its admissions.
+     *
+     * - **Spots.** A departure the holder has not placed yet takes the LOWEST spot (`queueSpot(k)`, the scene's
+     *   `spotsNear()` spots: none in § 12's *Elevator lane* — the threshold included, card#12793 — each at least § 12's
+     *   *Queue spacing* from every other) that no other departure still stands on or walks to; new ones of one render are
+     *   placed in the order their routes reach the threshold, ties by key. A spot never changes once taken. Past the last
+     *   spot the floor holds, a walker waits on the threshold — nearer the door than every spot, so it boards first, and
+     *   it holds the threshold until it steps in.
+     * - **Batches.** The leaves open at the first of: a waiting departure's own wait running out (its seeded draw, from
+     *   reaching its spot), or a walk with fixed door frames opening them (an arrival, item 19's blink, item 16's
+     *   turn-round in the cab or at the door). EVERY departure at its spot by then boards, one at a time, nearest the
+     *   door first (by spot, the spots being numbered outward from the threshold): each leaves its spot once the one
+     *   before it has stepped in (the first as the leaves begin opening, or — card#12793 — once every rider of that
+     *   opening has stepped out and CLEARED THE LANE: `laneClear()`), walks to the threshold, and steps in once the
+     *   leaves are open. A departure that reaches its spot before the leaves begin
+     *   to close joins at the back, in the order they arrive (ties by key). The leaves close after the last has stepped
+     *   in; a departure whose wait runs out while they close waits for them to shut and opens them again.
+     * - **The past is committed.** A departure that has left its spot keeps its leaving and its step (below, `left`), and
+     *   no departure is re-timed to leave before `now` — so no walker's drawn position changes between two renders.
+     * - **Committed batches stay put.** A batch whose leaves began opening by a render keeps that instant on every later
+     *   render, so a cancel among its walkers re-times the rest of it from the same opening, never undoes it.
+     *
+     * Every number is a function of the walks in flight and the instants they began, so a replay draws one queue. A walk
+     * with fixed door frames is never re-timed.
+     */
+    #board(now, queueSpot, lane) {
+        const I = this.#intervalMs;
+        const D = ELEVATOR_DOOR;
+        // card#12793 — THE LANE-CLEAR INSTANT of a walk with fixed door frames, in its own frames: the first frame from the
+        // leaves' beginning to close on it (`clear`, when its step out is done) at which `pointAt()` puts its feet off the
+        // floor of the lane — outside § 12's *Elevator lane*, or back in the cab (item 16's step back in at the door; item
+        // 19's blink, which never steps out, on that frame) — or its last frame. A function of that walk's legs alone, so
+        // every render reads one instant off one walk (`laneFrame()`, card#12841's restroom door reads the same). A render
+        // with no lane (no band) releases at `clear`, as before.
+        const laneClear = (h, d) => {
+            const from = d.start + d.frames - D.close;
+
+            return lane === null ? from : laneFrame(h.effect, lane, from, false);
+        };
+        const departing = this.#held.filter((h) => !this.#ended(h, now) && queues(h));
+        // When a departure's route reaches the threshold — the order new ones of one render are placed in.
+        const reach = (h) => h.at + (h.effect.queue.walk.start + h.effect.queue.walk.frames) * I;
+        const placed = departing.filter((h) => h.shape !== undefined);
+        const taken = new Set(placed.filter((h) => h.leaves_spot > now).map((h) => h.shape.spot.index));
+        // Past the last spot: the threshold, nearer the door than spot 0 (card#12793: no spot is the threshold).
+        const threshold = (h) => Object.freeze({ index: -1, at: h.effect.queue.threshold, path: Object.freeze([h.effect.queue.threshold]) });
+        const fresh = departing.filter((h) => h.shape === undefined).sort((a, b) => reach(a) - reach(b) || byKey(a.key, b.key));
+
+        for (const h of fresh) {
+            let k = 0;
+
+            while (taken.has(k) && queueSpot(k) !== null) {
+                k++;
+            }
+
+            const spot = queueSpot(k);
+
+            taken.add(k);
+            h.shape = queueShape(h.effect.queue, spot === null ? threshold(h) : Object.freeze({ index: k, ...spot }));
+        }
+
+        // ⛔ THE PAST IS COMMITTED. A departure that has left its spot by now — its `approach` (the frame it leaves, or at
+        // spot 0 the frame the leaves begin to open on it) at or before `now` — keeps its leaving and its step exactly:
+        // nothing a later render admits or cancels moves it back to its spot or along its walk. Only the departures still
+        // standing at or walking to their spots are re-timed, and none to leave before `now`. So no walker's drawn
+        // position changes between two renders, and a spot whose walker has left is never stood on by it again.
+        const left = (h) => h.plan !== undefined && h.at + h.plan.approach * I <= now;
+        const committed = departing.filter(left).sort((a, b) => a.plan.open - b.plan.open || a.steps_in - b.steps_in);
+        const waiting = departing.filter((h) => !left(h)).map((h) => {
+            const arrive = h.at + h.shape.arrive * I;
+
+            // Its own opening: its wait run out, or the opening of the batch it was committed to — never before it is at
+            // its spot, so the walker whose instant opens a batch is always in it.
+            // card#12747: the wait is counted from its press — the call it waits for — where it pressed one (`waitFrom()`).
+            return { h, arrive, own: Math.max(arrive, h.pinned ?? h.at + (waitFrom(h.effect.queue, h.shape) + h.effect.queue.wait) * I), board: h.shape.board?.frames ?? 0 };
+        }).sort((a, b) => a.arrive - b.arrive || byKey(a.h.key, b.h.key));
+        const fixed = this.#held
+            .filter((h) => h.key !== null && !this.#ended(h, now))
+            // A queued walk's own door is re-timed below; the leaves a turn-round carries over (`door_rest`) are not.
+            .flatMap((h) => (queues(h) ? [h.effect.door_rest].filter((d) => d !== null && d !== undefined) : spansOf(h.effect))
+                .map((d) => ({ open: h.at + d.start * I, clear: h.at + (d.start + d.frames - D.close) * I, free: h.at + laneClear(h, d) * I })))
+            .sort((a, b) => a.open - b.open);
+        const plans = new Map();
+        // An instant in a departure's own frames: on a frame boundary that frame, anywhere else the next one.
+        const frame = (h, ms) => {
+            const x = (ms - h.at) / I;
+
+            return Math.abs(x - Math.round(x)) < 1e-6 ? Math.round(x) : Math.ceil(x);
+        };
+        let f = 0;
+        let c = 0;
+        let shut = -Infinity;
+
+        while (waiting.length > 0 || f < fixed.length || c < committed.length) {
+            const due = waiting.length === 0 ? Infinity : Math.max(shut, Math.min(...waiting.map((w) => w.own)));
+            // The next opening: a committed batch's (it already happened), a fixed walk's, or a waiting departure's own.
+            const kept = c < committed.length ? committed[c].plan.open : Infinity;
+            const byWalk = f < fixed.length && fixed[f].open <= due && fixed[f].open < kept;
+            const open = Math.min(kept, byWalk ? fixed[f].open : due);
+            // When the next boarder may leave its spot — card#12793: after a rider's feet have left the lane — and when the
+            // leaves may begin to close.
+            let free = byWalk && open === fixed[f].open ? fixed[f].free : open;
+            let closing = byWalk && open === fixed[f].open ? fixed[f].clear : open + D.open * I;
+            const absorb = () => {
+                for (; f < fixed.length && fixed[f].open <= closing; f++) {
+                    closing = Math.max(closing, fixed[f].clear);
+                    free = Math.max(free, fixed[f].free);
+                }
+            };
+            // A committed boarder keeps its leaving and its step; the next is released from its step as drawn.
+            const keep = (h) => {
+                free = Math.max(free, h.at + (h.plan.step + D.step) * I);
+                closing = Math.max(closing, free);
+                plans.set(h, { open: h.plan.open, approach: h.plan.approach, step: h.plan.step, kept: h.plan });
+                absorb();
+            };
+            // Each boarder's leaving and step in its OWN whole frames (`frame()`), never before `now`, and the next
+            // released from the step as drawn, so two walks begun between each other's loop frames step a whole step apart.
+            const board = (w) => {
+                const approach = Math.max(w.h.shape.arrive, frame(w.h, Math.max(free, w.arrive, now)));
+                const step = Math.max(approach + w.board, frame(w.h, open + D.open * I));
+
+                free = w.h.at + (step + D.step) * I;
+                closing = Math.max(closing, free);
+                plans.set(w.h, { open, approach, step });
+                absorb();
+            };
+
+            if (byWalk && open === fixed[f].open) {
+                f++;
+            }
+
+            // The committed boarders of every opening this batch reaches, in the order they stepped in; then everyone at a
+            // spot when the leaves began to open, nearest the door first; then whoever arrives before they begin to
+            // close, in the order they arrive.
+            for (; c < committed.length && committed[c].plan.open <= closing; c++) {
+                keep(committed[c]);
+            }
+
+            absorb();
+
+            const there = waiting.filter((w) => w.arrive <= open).sort((a, b) => a.h.shape.spot.index - b.h.shape.spot.index || byKey(a.h.key, b.h.key));
+
+            for (const w of there) {
+                waiting.splice(waiting.indexOf(w), 1);
+                board(w);
+            }
+
+            while (waiting.length > 0 && waiting[0].arrive <= closing) {
+                board(waiting.shift());
+            }
+
+            const close = closing + D.close * I;
+
+            // This batch's boarders are the plans with no closing yet.
+            for (const p of plans.values()) {
+                p.close ??= close;
+            }
+
+            shut = close;
+        }
+
+        for (const h of departing) {
+            const p = plans.get(h);
+            // Leaves already closing behind a committed walker close as they began to: its cab leg is not cut short.
+            const close = p.kept !== undefined && p.kept.close - D.close * I <= now ? Math.max(p.close, p.kept.close) : p.close;
+            const drawn = departureLegs(h.effect.queue, h.shape, { open: frame(h, p.open), approach: p.approach, step: p.step, close: Math.max(frame(h, close), p.step + D.step + D.close) });
+
+            h.effect = Object.freeze({ ...h.effect, ...drawn });
+            h.frames = drawn.frames;
+            h.plan = Object.freeze({ open: p.open, approach: p.approach, step: p.step, close });
+            // It holds its spot until it leaves it — on the threshold, past the last spot, until it steps in.
+            h.leaves_spot = h.at + (h.shape.board === null ? p.step : p.approach) * I;
+            h.steps_in = h.at + p.step * I;
+
+            if (p.open <= now) {
+                h.pinned = p.open;
+            }
+        }
+    }
+
+    /**
+     * card#12749 — THE BREAK PASS (FLOOR.md § 6.6 items 4–6; card#12786, § 6.7 items 4–7), on every render, paint-only
+     * refresh and tick, over the scene just built (`snack`, `scene.js`'s `snackCorner()`; `restroom`, its `restroomDoor()`):
+     *
+     * 1. **A recall walks home.** A trip whose walker's hold has ended while the desk or the stool still draws it — the
+     *    held field left its row's values (`recalled`; card#12785: `idle ↔ working` is not a recall) — becomes its walk home
+     *    from where it is now (`snackHome()`; a restroom visit's `restroomHome()`, which comes out of the door first); one
+     *    whose hold the desk's treatment stilled ((2b): a lag, `config_invalid`, an unrecognised value, a dark desk) ends,
+     *    and the character is drawn at its desk — a visit's door closed and vacant.
+     * 2. **Each break is decided once** (card#12785: the breaks are the walker's chains, `scene.js`'s `snackBreaks()`, the
+     *    snack chain 60 to 120 minutes apart and the restroom chain 60 to 300). A break is decided at the first pass on or
+     *    after its seeded second, and at that pass only: a trip starts where the walker's hold permits it (`eligible`, or
+     *    `restroom_eligible`), the strip reads *live*, the walker has no trip in flight, and the scene finds it a table and
+     *    a spot, or a door and its turn — otherwise no trip for that break. A break that began before this page was
+     *    watching, or that a non-delta entry re-derives, is entered at its phase on the first pass that reads *live*. The
+     *    trip's start is its break's second, so the walker is drawn where its trip has it, never from the start.
+     * 3. **Breaks due on one pass are decided in START-SECOND order, then by walker key, across BOTH chains** (card#12785,
+     *    the card#12749 review's N1; card#12786): the order a viewer watching throughout decided them in, one pass each, so
+     *    a page loaded during overlapping trips gives each the spot and the turn it took then.
+     * 4. **A break that comes due while the walker's trip of the OTHER chain is in flight waits for it** (card#12786, § 6.7
+     *    item 7): it starts at that trip's hand-over point — the snack dwell's end at the table, or the leaf opened for the
+     *    exit at the restroom door — or at its own second where that is later, from where the walker is then, the trip in
+     *    flight ending there; a hand-over due before a later break of the pass is admitted before it.
+     *
+     * @param {number} now the page's clock, ms
+     * @param {{ snack: ?object, restroom: ?object, server_ms: ?number, live: boolean, unconfirmed: function(string): ?boolean,
+     *          stilled: boolean, threshold: ?object }} ctx
+     * @returns {list<string>} § 5.5's lines this pass owes — a desk inside a room with no open route to its table or door
+     */
+    breaks(now, ctx) {
+        const lines = [];
+        const corner = ctx.snack ?? null;
+        const door = ctx.restroom ?? null;
+
+        for (const [k, t] of this.#trips) {
+            if (this.#ended(t, now)) {
+                this.#trips.delete(k);
+            }
+        }
+
+        this.#doors = this.#doors.filter((e) => !this.#doorDone(e, now));
+
+        if (corner === null || ctx.server_ms === null || ctx.server_ms === undefined) {
+            return lines;
+        }
+
+        this.#observedFrom ??= ctx.server_ms;
+
+        const walkers = new Map(corner.walkers.map((w) => [w.key, w]));
+
+        for (const [k, t] of this.#trips) {
+            const w = walkers.get(k);
+
+            if (t.home || w === undefined || (t.kind === 'restroom' ? w.restroom_eligible : w.eligible)) {
+                continue;
+            }
+
+            this.#deferred.delete(k);
+
+            if (w.recalled) {
+                const home = t.kind === 'restroom' ? restroomHome(t.effect, now - t.at) : snackHome(t.effect, now - t.at);
+
+                if (t.kind === 'restroom') {
+                    this.#leaveDoor(k, t, now, home);
+                }
+
+                this.#trips.set(k, { ...t, effect: home, at: now, frames: home.frames, home: true });
+            } else {
+                this.#trips.delete(k);
+                this.#doors = this.#doors.filter((e) => e.key !== k);
+            }
+        }
+
+        const nowS = Math.floor(ctx.server_ms / 1000);
+        // A server second on the page's clock.
+        const page = (sec) => now - (ctx.server_ms - sec * 1000);
+
+        for (const id of this.#decided) {
+            if (Number(id.slice(id.lastIndexOf(' ') + 1)) < nowS - 2 * GAP_MAX_S) {
+                this.#decided.delete(id);
+            }
+        }
+
+        // Every break whose second has come and that no pass has decided — at most one per walker and chain in a gap's
+        // length, since the gaps are at least an hour — oldest first, ties by key.
+        const due = [];
+        const chains = [['snack', corner], ...(door === null ? [] : [['restroom', door]])];
+
+        for (const w of corner.walkers) {
+            for (const [chain, of] of chains) {
+                for (const s of of.schedule(w.key, nowS - GAP_MAX_S, nowS)) {
+                    const id = breakId(w.key, chain, s.start_s);
+
+                    if (!this.#decided.has(id) && ctx.server_ms >= s.start_s * 1000) {
+                        due.push({ w, s, id, chain });
+                    }
+                }
+            }
+        }
+
+        due.sort((a, b) => a.s.start_s - b.s.start_s || byKey(a.w.key, b.w.key));
+
+        for (const { w, s, id, chain } of due) {
+            const late = s.start_s * 1000 < this.#observedFrom || this.#rederive.has(id);
+
+            if (late && !ctx.live) {
+                continue;
+            }
+
+            // A hand-over that came due before this break began is the earlier admission.
+            this.#handOver(Math.min(now, page(s.start_s)), now, walkers, ctx, lines);
+            this.#decided.add(id);
+            this.#rederive.delete(id);
+
+            // A break whose second lies further back than its dwell and ten minutes of walking is not asked for a route:
+            // a bound chosen past the routes of the floors shipped and measured, and the cost of a longer one is only that
+            // a page loaded during its trip does not enter it at its phase.
+            if (!ctx.live || !(chain === 'restroom' ? w.restroom_eligible : w.eligible) || ctx.server_ms - s.start_s * 1000 > (s.dwell_s + 600) * 1000) {
+                continue;
+            }
+
+            const held = this.#trips.get(w.key);
+
+            if (held !== undefined) {
+                // card#12786 (§ 6.7 item 7): one trip at a time — a break of the other chain waits for its hand-over.
+                if (!held.home && held.kind !== chain) {
+                    this.#deferred.set(w.key, { chain, s, id });
+                }
+
+                continue;
+            }
+
+            this.#admit(w, chain, s, page(s.start_s), null, now, ctx, lines);
+        }
+
+        this.#handOver(now, now, walkers, ctx, lines);
+
+        return lines;
+    }
+
+    /**
+     * card#12786 — THE HAND-OVERS DUE BY `until` (§ 6.7 item 7), oldest first: each deferred break whose walker's trip in
+     * flight has reached its hand-over point starts there — at that instant, from where the walker is then — and the trip
+     * in flight ends there. One whose walker is no longer on a trip of the other chain, or no longer held, is dropped.
+     */
+    #handOver(until, now, walkers, ctx, lines) {
+        const ready = [];
+
+        for (const [k, d] of this.#deferred) {
+            const t = this.#trips.get(k);
+            const w = walkers.get(k);
+
+            if (t === undefined || t.home || t.kind === d.chain || w === undefined || !ctx.live || !(d.chain === 'restroom' ? w.restroom_eligible : w.eligible)) {
+                this.#deferred.delete(k);
+
+                continue;
+            }
+
+            const at = Math.max(t.at + handPoint(t.effect) * this.#intervalMs, now - (ctx.server_ms - d.s.start_s * 1000));
+
+            if (at <= until) {
+                ready.push({ k, d, t, w, at });
+            }
+        }
+
+        ready.sort((a, b) => a.at - b.at || byKey(a.k, b.k));
+
+        for (const { k, d, t, w, at } of ready) {
+            const p = pointAt(t.effect, at - t.at);
+
+            // The new trip replaces the one in flight from `at` on; where it cannot start, that trip runs on.
+            this.#deferred.delete(k);
+            this.#admit(w, d.chain, d.s, at, Object.freeze({ x: p.x, y: p.y }), now, ctx, lines);
+        }
+    }
+
+    /**
+     * ONE TRIP ADMITTED (card#12749; card#12786): walker `w`'s break `s` of `chain`, starting at `at` on the page's clock —
+     * from its anchor, or from `from` on a hand-over — planned by the scene over the spots every trip in flight holds then
+     * and, for a visit, the door's turn: the instant every visit already admitted to that door has freed it — and,
+     * card#12841, the instant every such visit's walker is clear of the door's lane on its way out.
+     */
+    #admit(w, chain, s, at, from, now, ctx, lines) {
+        const I = this.#intervalMs;
+        const taken = this.#taken(at, w.key);
+        // The frame, from `at`, by which every visit already in flight for door `id` has reached its instant `field`.
+        const after = (field) => (id) => Math.max(0, Math.ceil((Math.max(at, ...this.#doors.filter((e) => e.door === id).map((e) => e[field])) - at) / I - 1e-9));
+        const effect = chain === 'snack'
+            ? ctx.snack.plan(w, s, taken, from)
+            : ctx.restroom.plan(w, s, {
+                from,
+                taken,
+                // The door serves its visits in the order they were admitted: this one's turn is the frame every visit
+                // already in flight for its door has freed it; the lane's, the frame every such walker is out of it.
+                turn: after('free'),
+                clear: after('clear'),
+            });
+
+        if (effect === null || effect.full === true) {
+            return;
+        }
+
+        if (effect.no_route === true) {
+            const once = `${chain === 'snack' ? '' : 'restroom '}${w.seat_key} ${ctx.lattice_key ?? ''}`;
+
+            if (w.in_room && !this.#narrated.has(once)) {
+                this.#narrated.add(once);
+                lines.push(`${w.seat_key}: no open route between its desk and the ${chain === 'snack' ? 'snack table' : 'restroom door'} — drawn without the trip`);
+            }
+
+            return;
+        }
+
+        // A trip already over by `now` — on a page that loaded after it ended — is recorded all the same: it is drawn by
+        // nothing (every reader skips an ended trip), and the next pass drops it, but every later decision of THIS pass
+        // plans with it, as a viewer watching throughout did — the door it held, the spot it stood on, the hand-over point a
+        // break of the other chain waited for (card#12786 review r1).
+        this.#trips.set(w.key, {
+            effect,
+            at,
+            frames: effect.frames,
+            key: w.key,
+            seat: w.seat_key,
+            intern: w.kind === 'intern',
+            anchor: w.anchor,
+            threshold: ctx.threshold,
+            unconfirmed: ctx.unconfirmed(w.seat_key),
+            stilled: ctx.stilled,
+            lattice_key: effect.lattice_key,
+            home: false,
+            kind: chain,
+        });
+
+        if (chain === 'restroom') {
+            const home = effect.legs[effect.legs.length - 1];
+
+            this.#doors.push({ door: effect.restroom, key: w.key, seq: this.#seq++, spot: effect.spot, at, leaf: effect.leaf, occupied: effect.occupied, free: at + effect.claim.end * I,
+                lane: effect.lane, clear: at + laneFrame(effect, effect.lane, home.start, false) * I });
+        }
+    }
+
+    /**
+     * card#12786 — THE SPOTS HELD AT `at` (one `taken` set across both corners, § 6.7 item 3 rule 2): each snack trip's spot,
+     * from its admission to its end (card#12749), and each visit's waiting spot until it leaves it and its threshold while
+     * it stands there or is inside — every walker's but `except`'s, whose trip a hand-over is ending — each only while its
+     * trip is in flight at `at`, so a trip a late page records already over holds nothing past its end.
+     */
+    #taken(at, except) {
+        const I = this.#intervalMs;
+
+        return [...this.#trips.values()].filter((t) => !t.home && t.key !== except && at >= t.at && at < t.at + t.frames * I).flatMap((t) => {
+            if (t.kind !== 'restroom') {
+                return [t.effect.spot];
+            }
+
+            const legs = t.effect.legs;
+            const atDoor = legs.find((l) => l.kind === 'stand' && l.why === 'door');
+            const home = legs[legs.length - 1];
+            // A waiting visit's legs are its walk to its spot, its wait there and its walk to the threshold (`board`).
+            const board = t.effect.spot.index > 0 ? legs[2] : null;
+            const waiting = board !== null && at < t.at + board.start * I;
+            const there = at >= t.at + atDoor.start * I && at < t.at + home.start * I;
+
+            return [
+                ...(waiting ? [t.effect.spot] : []),
+                ...(there ? [Object.freeze({ table: t.effect.restroom, index: 0, at: t.effect.threshold, spacing: t.effect.spot.spacing })] : []),
+            ];
+        });
+    }
+
+    /**
+     * card#12786 — A VISITOR LEAVING ITS DOOR EARLY (§ 6.7 item 5): its door's timeline from `now` is `restroomExit()`'s —
+     * the field vacant, the leaf opening and closing behind it — where it is at the door, and (card#12841) its lane clears
+     * on the frame `walk`, the effect that walks it away from `now` (its walk home, or the A2 or A10 that took it over),
+     * has it out of the lane; it stands where the walker is on its walk home already; and it is dropped where the walker
+     * never reached the door, so the door serves the next.
+     */
+    #leaveDoor(k, t, now, walk) {
+        const I = this.#intervalMs;
+        const exit = restroomExit(t.effect, now - t.at);
+        const home = t.effect.legs[t.effect.legs.length - 1];
+        const entry = this.#doors.find((e) => e.key === k);
+
+        if (entry === undefined) {
+            return;
+        }
+
+        if (exit !== null) {
+            Object.assign(entry, { at: now, leaf: exit.leaf, occupied: null, free: now + exit.free * I });
+            entry.clear = now + laneFrame(walk, entry.lane, exit.lead, false) * I;
+        } else if (now - t.at < home.start * I) {
+            this.#doors = this.#doors.filter((e) => e !== entry);
+        }
+    }
+
+    /** card#12786: a door's visit whose leaf has closed, whose claim has ended and (card#12841) whose lane is clear by `now`. */
+    #doorDone(e, now) {
+        const end = Math.max(0, ...e.leaf.map((m) => m.start + m.frames));
+
+        return now >= e.free && now >= e.clear && now >= e.at + end * this.#intervalMs;
+    }
+
+    /**
+     * card#12786 — EACH RESTROOM DOOR's LEAF AND FIELD at `now` (§ 6.7 item 4), door id → `{ leaf, occupied, level,
+     * occupied_now }`: its visits' leaf moves and occupied spans in frames from `now` (the painter's), the leaf's openness
+     * now, and whether the field reads occupied now. A door with no visit in flight is closed and vacant.
+     */
+    restroomDoors(now) {
+        const I = this.#intervalMs;
+        const out = new Map();
+
+        for (const e of this.#doors) {
+            const shift = (e.at - now) / I;
+            const d = out.get(e.door) ?? { leaf: [], occupied: [] };
+
+            d.leaf.push(...e.leaf.map((m) => Object.freeze({ ...m, start: m.start + shift })));
+
+            if (e.occupied !== null) {
+                d.occupied.push(Object.freeze({ start: e.occupied.start + shift, frames: e.occupied.frames }));
+            }
+
+            out.set(e.door, d);
+        }
+
+        return new Map([...out].map(([id, d]) => {
+            const leaf = d.leaf.sort((a, b) => a.start - b.start);
+
+            return [id, Object.freeze({
+                leaf: Object.freeze(leaf),
+                occupied: Object.freeze(d.occupied.filter((o) => o.start + o.frames > 0)),
+                level: leafLevel(leaf, 0),
+                occupied_now: d.occupied.some((o) => o.start <= 0 && 0 < o.start + o.frames),
+            })];
+        }));
+    }
+
+    /**
+     * card#12749: milliseconds until the next break to decide begins — any walker's, either chain's (card#12786), eligible
+     * or not, since its break is decided at its second whatever the walker holds then — or the next hand-over a deferred
+     * break waits for, or `null` with none, so the screen paints at it. A walker's next break is never more than a gap's
+     * length away (card#12785).
+     */
+    nextBreak(now, snack, restroom, serverMs) {
+        if ((snack ?? null) === null || serverMs === null || serverMs === undefined) {
+            return null;
+        }
+
+        const nowS = Math.floor(serverMs / 1000);
+        let next = null;
+
+        for (const [chain, of] of [['snack', snack], ...((restroom ?? null) === null ? [] : [['restroom', restroom]])]) {
+            for (const w of snack.walkers) {
+                for (const s of of.schedule(w.key, nowS, nowS + GAP_MAX_S)) {
+                    if (!this.#decided.has(breakId(w.key, chain, s.start_s)) && s.start_s * 1000 > serverMs) {
+                        next = Math.min(next ?? Infinity, s.start_s * 1000 - serverMs);
+                    }
+                }
+            }
+        }
+
+        for (const [k, d] of this.#deferred) {
+            const t = this.#trips.get(k);
+
+            if (t !== undefined && !t.home && t.kind !== d.chain) {
+                next = Math.min(next ?? Infinity, Math.max(0, t.at + handPoint(t.effect) * this.#intervalMs - now));
+            }
+        }
+
+        return next;
+    }
+
+    /** card#12749: every snack trip in flight at `now`, walker key → `{ effect, elapsed_ms }` — what an A2 or A10 leaves from. */
+    trips(now) {
+        return new Map([...this.#trips.values()]
+            .filter((t) => !this.#ended(t, now))
+            .map((t) => [t.key, Object.freeze({ effect: Object.freeze({ ...t.effect }), elapsed_ms: Math.max(0, now - t.at) })]));
+    }
+
+    /** card#12749: the walkers away on a trip at `now` — their desk draws its empty chair, their stool draws empty. */
+    away(now) {
+        return new Set([...this.#trips.values()].filter((t) => !this.#ended(t, now)).map((t) => t.key));
     }
 
     /**
      * Every effect still in flight at `now`, each with the frame it has reached, the instant it started on the
      * page's clock (`started_at`) and the milliseconds since — `elapsed_ms`, the exact instant a CONTINUOUS motion
      * (A19's and A22's flight, card#12345) is drawn at, so a repaint mid-frame continues the flight where it is
-     * rather than snapping it back to the start of its frame.
+     * rather than snapping it back to the start of its frame. The snack trips in flight are among them (card#12749).
      */
     current(now) {
-        return this.#held
+        return [...this.#held, ...this.#trips.values()]
             .filter((h) => !this.#ended(h, now))
             .map((h) => Object.freeze({ ...h.effect, elapsed_frames: this.#elapsed(h, now), started_at: h.at, elapsed_ms: Math.max(0, now - h.at) }));
     }
@@ -259,10 +1112,28 @@ export class EffectsInFlight {
     }
 
     /**
+     * card#12466: every seat's A1 or A2 walk in flight at `now`, seat key → `{ effect, elapsed_ms }` — what a seat's
+     * turn-round turns from (§ 6.2's walk note item 6a), as `interns()` is for item 16.
+     */
+    walks(now) {
+        return new Map(this.#held
+            .filter((h) => h.key !== null && WALK_ROWS.includes(h.effect.animation_id) && !this.#ended(h, now))
+            .map((h) => [h.key, Object.freeze({ effect: h.effect, elapsed_ms: Math.max(0, now - h.at) })]));
+    }
+
+    /**
      * An intern's laptop opacity at `now` where something in flight is moving it, else `null` (its held state decides):
      * an A24 fade at its point between its two ends, or an arrival — 0 before its `seat` leg, rising through it.
      */
     laptopAt(key, now) {
+        const trip = this.#trips.get(key);
+
+        // card#12749: an intern on a snack trip has no laptop with it — a working one's (card#12785) is drawn again with the
+        // intern, on its stool, at the paint-only refresh that ends the trip.
+        if (trip !== undefined && !this.#ended(trip, now)) {
+            return 0;
+        }
+
         const h = this.#held.find((x) => x.key === key && !this.#ended(x, now) && (x.fade === true || (x.intern === true && x.effect.leg_kind === 'arrive')));
 
         if (h === undefined) {
@@ -293,11 +1164,11 @@ export class EffectsInFlight {
      * held render § 6.2's transient cells refuse (card#12239).
      */
     nextEnd(now) {
-        const ends = this.#held
+        const ends = [...this.#held, ...this.#trips.values()]
             .filter((h) => !this.#ended(h, now))
-            .map((h) => h.at + h.frames * this.#intervalMs - now);
+            .map((h) => this.#endAt(h) - now);
 
-        return ends.length === 0 ? null : Math.max(0, Math.min(...ends));
+        return ends.length === 0 ? null : Math.min(...ends);
     }
 
     /**
@@ -306,11 +1177,11 @@ export class EffectsInFlight {
      */
     doors(now) {
         const spans = this.#held
-            .filter((h) => h.key !== null && !this.#ended(h, now) && h.effect.door !== null && h.effect.door !== undefined)
-            .map((h) => {
+            .filter((h) => h.key !== null && !this.#ended(h, now))
+            .flatMap((h) => {
                 const elapsed = this.#elapsed(h, now);
 
-                return { from: h.effect.door.start - elapsed, to: h.effect.door.start + h.effect.door.frames - elapsed };
+                return spansOf(h.effect).map((d) => ({ from: d.start - elapsed, to: d.start + d.frames - elapsed }));
             })
             .filter((s) => s.to > 0)
             .sort((a, b) => a.from - b.from);
@@ -352,22 +1223,7 @@ export class EffectsInFlight {
 
                 return { from: h.at + (h.effect.wait_frames + p.from) * I, to: h.at + (h.effect.wait_frames + p.to) * I };
             });
-        let wait = 0;
-        let moved = true;
-
-        while (moved) {
-            moved = false;
-
-            for (const t of taken) {
-                const from = now + (wait + own.from) * I;
-                const to = now + (wait + own.to) * I;
-
-                if (from < t.to && t.from < to) {
-                    wait = Math.ceil((t.to - now) / I) - own.from;
-                    moved = true;
-                }
-            }
-        }
+        const wait = clearOf(own, taken, now, I);
 
         return wait === 0 ? effect : Object.freeze({ ...effect, wait_frames: wait, span_frames: effect.span_frames + wait });
     }
@@ -376,8 +1232,24 @@ export class EffectsInFlight {
         return Math.max(0, Math.floor((now - h.at) / this.#intervalMs));
     }
 
+    /**
+     * card#12466 — THE INSTANT AN EFFECT ENDS, IN WHOLE MILLISECONDS: its start plus its frames' time, rounded. Every true end
+     * is a whole millisecond — the clock is `Date.now()`'s and every builder's frames are whole, but for a turn-round that
+     * carries the rest of a drawn motion, whose frames are one whole instant minus another divided by the frame interval —
+     * so the rounding takes off only the float noise of that division (`0.8000000000000007` frames is 200 ms, not
+     * `200.00000000000017`). Read at each call, never stored, so `#board()` re-timing a departure's frames moves its end too.
+     */
+    #endAt(h) {
+        return Math.round(h.at + h.frames * this.#intervalMs);
+    }
+
+    /**
+     * An effect has ended once its end instant has come — the instant `nextEnd()` names and the paint-only refresh is set
+     * for, so the refresh always finds it ended: on a whole-millisecond clock a live effect is at least 1 ms from its end,
+     * and the refresh never re-arms at 0 ms. A turn-round can end part-way through a frame; it ends at its own instant.
+     */
     #ended(h, now) {
-        return this.#elapsed(h, now) >= h.frames;
+        return now >= this.#endAt(h);
     }
 }
 
@@ -389,4 +1261,23 @@ export class EffectsInFlight {
  */
 export function inboundDesk(model) {
     return Object.freeze({ ...model, character: false, pose: 'empty-chair', bubble: null, held: null });
+}
+
+/**
+ * ⛔ THE AWAY DESK — a desk whose character is away on its snack break (FLOOR.md § 6.6 item 4; card#12749, card#12785).
+ * The desk keeps EVERY fact of the applied object at the desk — its chip, its label line, its monitor lit as its state
+ * lights it, its badges, its facts plate and its task bubble, the card the seat works on — and draws its chair empty: no
+ * character, so no pose and no held marker (no z's, no typing). The bubble stays with no thought trail, the trail being
+ * the thinker's and away with it (`scene.js`'s `placeBubbles()`); § 5.1 rule 3's *a desk that draws no character draws
+ * no bubble* is read for a state that draws no character, and this desk's state draws one, which is away. An A1
+ * walker's desk is `inboundDesk()`'s, and is not this.
+ */
+export function awayDesk(model) {
+    return Object.freeze({
+        ...model,
+        character: false,
+        pose: 'empty-chair',
+        bubble: model.bubble === null || model.bubble === undefined ? null : Object.freeze({ ...model.bubble, trail: false }),
+        held: null,
+    });
 }

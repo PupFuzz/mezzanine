@@ -267,7 +267,12 @@ final class BatchWriter
                 'ignored_unknown_kinds' => $ignoredUnknownKinds,
                 'ignored_unknown_fields' => $unknownFields,
                 'coerced_enum_values' => $coerced,
-            ]);
+            ] + array_fill_keys(
+                // card#11572: an envelope field `BatchValidator` stored as `null` because it was off
+                // its column's format — once per accepted batch, under this transaction.
+                array_map(fn (string $field) => Counters::FORMAT_REFUSED.$field, $batch->formatRefused),
+                1,
+            ));
 
             return new Acceptance(
                 batchId: $batch->batchId,

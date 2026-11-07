@@ -67,15 +67,17 @@ very fact it exists to check.
 
 | Path | Origin | Source URL | Author | SPDX | Retrieved | SHA-256 |
 |---|---|---|---|---|---|---|
-| `resources/characters/creatures.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-28 | `60a98272049f933fcb7fc34c8f96cd4ceaaed1c1d7b033bd5649dade5bcf162c` |
+| `resources/characters/creatures.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `6c14181865000606779b0b2d97d51438eb4941356dd62f3110197eab7ba10af4` |
 | `resources/characters/seed.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-27 | `dab43ae24d73b98ce41b4a5f0f51814d171820b28e17f1984e58f0db4d3a7e81` |
 | `resources/characters/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-28 | `c409a469287a58e6dcd7805f94518996525296cec7cc613ec188c0e3755d238b` |
-| `resources/floor/tiles/floor-plane.tsx` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `71fef94ccfb339af81d98b33ced640a0d256611340c591e160df06a9a2311890` |
+| `resources/floor/tiles/floor-plane.tsx` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `9d37334bed46f1454c7cd3a82e99d7179cf618daaf7c5e1bf72927754c5ac8a2` |
 | `resources/floor/tiles/floor-plane/wall-strip.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-04 | `7e3c516867896cf61896d9e8557c9c0b8f349408432dca2b1d58d569202426d6` |
-| `resources/floor/default.tmj` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `0fca97022fb4b8133682aa92aad5b465faa47c1790d4a0a0d4df84a91966abe9` |
+| `resources/floor/default.tmj` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `f9fcf0884ae29ba08bccee3a7d78acd3d24dbee4010436f69f6dc7a5213d1f4e` |
 | `resources/floor/furniture-box.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-28 | `025b287ea0f0c89a8aeebf54a44f4489adc9e4d9ee5c22ba57514aad6b5ca38a` |
-| `resources/floor/themes/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `084aedec11906eb303001e99f9ddf05414d931417c7d47695912fdd313d60157` |
-| `resources/floor/themes/studio/theme.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `31a3b3c3aad9c3adbbd45fb1bdaaeba720ee5cb507abbe1f919a29a99654c7dd` |
+| `resources/floor/themes/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `4dc1acb3c0e8a074766db39d16d4baac67c09eec87a59e6eb770ac0d48ea416a` |
+| `resources/floor/themes/studio/theme.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `16c835b36d4b8f330e76c4c78945bcc54c85ba7643fc0abfdf29af17b2c5428d` |
+| `resources/floor/themes/cottage/theme.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `782bcc7462ab56a8492a4af1333c2f40df2c546b085f92de436327ae4beb3948` |
+| `resources/floor/themes/paint.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `673bf79eba995a33bd285aa08488a92a2b8e6fef665f1cc20440cbab1fdbb6a0` |
 | `resources/floor/tiles/floor-plane/accent.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `437c9295c17acba54ee563516aa8f24ad73431b1a9e6d25bd72013c97de6fdd3` |
 | `resources/floor/tiles/floor-plane/armchair.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `abe8944932787bd3372ef18f059f37166960e36bc1df9cc0102612dc7357e670` |
 | `resources/floor/tiles/floor-plane/book-pile.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `37fb464552f477fe02ebe0157ff19dac9319425a1ef0693a9d36a85be350ca08` |
@@ -86,6 +88,18 @@ very fact it exists to check.
 | `resources/floor/tiles/floor-plane/plant-large.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `e662c7e51a250d158537522d22c01eef522ec921288400c536174b93d962d3a0` |
 | `resources/floor/tiles/floor-plane/plant-narrow.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `6861306033201eab9a13a698005c451e137820cfb4c6b6080536b188fc6c2a31` |
 | `resources/floor/tiles/floor-plane/plant.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `1cf4c0c61b87f54750c93332abea6783328e6f2df238144daf3aae804210dfb7` |
+| `resources/floor/tiles/floor-plane/snack-table.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-02 | `dfd1836bc5ca5e512fc34a9b6a01635b762a41ec149d3d30b7e3d2248dcf19dc` |
+| `resources/floor/tiles/floor-plane/snack-table-low.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-02 | `4963e1ae7c30b13f8547528a7be5b4c9ae20f509ed8f64760c6665d2d437406e` |
+| `resources/floor/tiles/floor-plane/restroom-door.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-02 | `46fae0d509afa4bfe5061173954e17c05ab636ac9bf704b94cbfbb8ed195c647` |
+| `resources/floor/tiles/floor-plane/aquarium.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `94ab95ceedab9ac89642330bc2c8b823579e80e0b4a5ce01fa788fe99dd736b4` |
+| `resources/floor/tiles/floor-plane/bean-bag.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `280f24018fe554c51c403d128c3b2b1f2a3924dac0f42aca8de8046c6a18f7a7` |
+| `resources/floor/tiles/floor-plane/coat-rack.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `3f9b1c96f2e9beb40c6adaf50b0cebd09ea7c995454953f709399169bbdeb433` |
+| `resources/floor/tiles/floor-plane/copier.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `97e3aefd222d5d2115aeff7a5e49c996b1653c00e8b0c2cdd32bd13a71a61aa0` |
+| `resources/floor/tiles/floor-plane/filing-cabinet-low.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `e3a7da7b8f7c4bf28266d3d835cb8689b2e97de53689b2b29e3475289cd1ea1b` |
+| `resources/floor/tiles/floor-plane/filing-cabinet.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `ab4e874460b21283045127f8bc95e74f36d74145faf86a108bee3ad1e32dd868` |
+| `resources/floor/tiles/floor-plane/globe.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `0a09bfaa1e4ca023809a7deda5afa0b79110efe2daea2709eec32ca9d17385e1` |
+| `resources/floor/tiles/floor-plane/water-cooler.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `f4677b63a1c80497156d9e48cc5643e7b0a37f4c4994bc48b2e7446e12650ab6` |
+| `resources/floor/tiles/floor-plane/whiteboard.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `3e695bde0dcaec0e978b622b00927e618f43b089796b399523bd28b53d4e5753` |
 <!-- asset-manifest:end -->
 
 **Why first-party files are listed too.** The character tree's three files — `creatures.js`,
@@ -96,7 +110,7 @@ mine, it doesn't need a row" is how the one file that *did* come from somewhere 
 
 ## The characters — first-party since card#11046
 
-Every character is an original animal or vegetable creature drawn by the code in
+Every character is an original animal, vegetable or fruit creature drawn by the code in
 `resources/characters/`, written for this repository
 ([`FLOOR.md § 10.2`](design/FLOOR.md#102-characters-original-creatures-drawn-by-code)). The tree
 **holds no port**: the munder-difflin generator it held from card#7340 to card#11046 — and its

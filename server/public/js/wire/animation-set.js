@@ -52,8 +52,8 @@ import { isRenderState } from '../lobby/render-state.js';
  * links followed to their own text, emphasis and backticks dropped, whitespace collapsed.
  */
 export const ANIMATION_SET = Object.freeze({
-    A1: Object.freeze({ class: 'edge', animation: "arrive — the elevator's leaves open on the character standing in the cab, it steps out, walks its routed path to its desk and sits", reduced: 'the character is simply present' }),
-    A2: Object.freeze({ class: 'edge', animation: 'depart — the character stands, walks its routed path to the elevator, waits there for up to a minute, the leaves open, it steps into the cab, and the leaves close over it, leaving the chair empty', reduced: 'the chair is empty and labelled' }),
+    A1: Object.freeze({ class: 'edge', animation: "arrive — the elevator's leaves open on the character standing in the cab, it steps out, walks its routed path to its desk and sits; a seat that leaves again on its way in turns round to the elevator from where it is (card#12466, the walk note's item 6a)", reduced: 'the character is simply present' }),
+    A2: Object.freeze({ class: 'edge', animation: 'depart — the character stands, walks its routed path to the call plate by the elevator and presses it, walks on and waits — at a spot of its own, beside or behind the clear lane in front of the doors, never in the doorway — for up to 30 seconds from its press, the leaves open, anyone arriving steps out and clears the lane, it walks to the doorway and steps into the cab in turn with every walker then waiting, each to a place of its own inside, and the leaves close over the last of them, leaving the chair empty; a seat that starts working again on its way out turns back to its desk from where it is, and walks home (card#12466, the walk note\'s item 6a)', reduced: 'the chair is empty and labelled' }),
     A3: Object.freeze({ class: 'held', animation: 'work — typing at the keyboard, with the eye blink and the gentle in-place wiggle, 4 fps loop', reduced: 'a working pose, static, with the glyph' }),
     A4: Object.freeze({ class: 'held', animation: 'think — leaning back, watching the monitor, with the same blink and wiggle, 4 fps loop', reduced: 'a thinking pose, static' }),
     A5: Object.freeze({ class: 'edge', animation: "tool-swap — the monitor's glyph changes, one 250 ms cross-fade", reduced: 'the glyph changes with no fade' }),
@@ -61,7 +61,7 @@ export const ANIMATION_SET = Object.freeze({
     A7: Object.freeze({ class: 'held', animation: "attention — a raised hand and a marker above the desk, its glow lit and dark in turn by the sleeper's pulse of brightness, phase-offset per seat, 4 fps loop", reduced: 'a static raised-hand pose and the marker, at full brightness' }),
     A8: Object.freeze({ class: 'held', animation: 'stalled — head in hands, static, with the api_error_type line', reduced: 'identical' }),
     A9: Object.freeze({ class: 'held', animation: "unknown — a question marker over an occupied desk, its glow lit and dark in turn by the sleeper's pulse of brightness, phase-offset per seat, 4 fps loop", reduced: 'the question marker drawn once, at full brightness, and still' }),
-    A10: Object.freeze({ class: 'edge', animation: "intern-arrive / intern-leave — the elevator's leaves open on the intern standing in the cab, it steps out and walks its routed path to its stool, sits, and its laptop fades in; or its laptop fades out, it stands, walks its routed path to the elevator, waits there for up to a minute, the leaves open, it steps in and they close over it", reduced: 'the stool is simply occupied or empty' }),
+    A10: Object.freeze({ class: 'edge', animation: "intern-arrive / intern-leave — the elevator's leaves open on the intern standing in the cab, it steps out and walks its routed path to its stool, sits, and its laptop fades in; or its laptop fades out, it stands, walks its routed path to the low call plate by the elevator and presses it, walks on and waits — at a spot of its own, beside or behind the clear lane in front of the doors, never in the doorway — for up to 30 seconds from its press, the leaves open, anyone arriving steps out and clears the lane, it walks to the doorway and steps in in turn with every walker then waiting, each to a place of its own inside, and they close over the last of them", reduced: 'the stool is simply occupied or empty' }),
     A11: Object.freeze({ class: 'edge', animation: 'badge-raise — a badge appears with a single 250 ms fade', reduced: 'the badge is simply present' }),
     A12: Object.freeze({ class: 'edge', animation: 'gauge — the context bar eases to its new value over 250 ms', reduced: 'the bar jumps to the value' }),
     A13: Object.freeze({ class: 'edge', animation: 'retire — the character stands, leaves, and the desk is removed from the floor (§ 3.5, card#9078: it used to clear the desk and stamp a plate)', reduced: 'the desk is simply absent on the next render' }),
@@ -78,6 +78,8 @@ export const ANIMATION_SET = Object.freeze({
     A22: Object.freeze({ class: 'edge', animation: "portal-bird — the bird carries the envelope from a resolved origin desk on this floor to the floor's bird portal and leaves, or arrives from the portal at a resolved destination desk on this floor, for a post whose other end resolves to a desk on another floor of this building", reduced: "a still envelope at the portal or at the desk for the moving form's duration, then gone" }),
     A23: Object.freeze({ class: 'held', animation: 'intern-type — each working intern at the side table types at the laptop on its lap, swaying gently left and right, 4 fps loop', reduced: 'each working intern sits still with its laptop on its lap' }),
     A24: Object.freeze({ class: 'edge', animation: "laptop — an intern's laptop fades in or out over the laptop fade", reduced: 'the laptop is simply present or absent' }),
+    A25: Object.freeze({ class: 'held', animation: "snack — every one to two hours, at a second seeded from the walker's key and its previous break, a character gets up from its desk or its stool, walks its routed path to the floor's snack corner, stands at the table of its own height for a seeded dwell, and walks back — a busy one with a food thought in a bubble over its head — and walks home at once, from where it stands, when a delivered change takes it out of its work or its rest; between breaks it draws nothing of its own, and the character at its desk or on its stool stands", reduced: 'no trip: the character stays at its desk or on its stool in its held pose' }),
+    A26: Object.freeze({ class: 'held', animation: "restroom — every one to five hours, at a second seeded from the walker's key and its previous restroom break, a character gets up from its desk or its stool, walks its routed path to the floor's restroom door with Taking a restroom break in a bubble over its head, waits its turn beside the door, clear of the lane in front of it, if the door is held, and walks to the door once the one inside has come out and walked clear of that lane, stands at the threshold as the leaf opens, is covered as it closes — the slider's field turning occupied — stays inside for a seeded dwell, comes out as the leaf opens again, the field vacant, and walks back, the leaf closing behind it — and walks home at once, from where it is, coming out first if it is inside, when a delivered change takes it out of its work or its rest; between breaks it draws nothing of its own, and the door stands closed and vacant", reduced: 'no trip: the character stays at its desk or on its stool in its held pose, the leaf closed, the field vacant' }),
 });
 
 /**
@@ -90,7 +92,11 @@ export const ANIMATION_SET = Object.freeze({
  *   · `heartbeat` — an `edge` row fired by each `feed.heartbeat` RECEIVED.
  *   · `desk`      — a `held` render `desk/desk-render.js` selects for the state it draws, entered
  *                   and left by `held()` against the object that holds it: the desk's own (`held`), and
- *                   A23, its side table's (`interns_held`, card#12448), under the derived key `INTERNS`.
+ *                   A23, its side table's (`interns_held`, card#12448), under the derived key `INTERNS`; and A25, the
+ *                   snack trip's (card#12749), the seat's half (`snack_held`) under `SNACK` and its interns' half
+ *                   (`snack_interns_held`) under `SNACK_INTERNS`; and A26, the restroom break's (card#12786), the
+ *                   seat's half (`restroom_held`) under `RESTROOM` and its interns' (`restroom_interns_held`) under
+ *                   `RESTROOM_INTERNS`.
  *   · `slot`      — A16, whose trigger is § 3.3's displacement and therefore a fact about the
  *                   SLOT FUNCTION, Appendix B row 7's artifact. `displaced()` is the entry that
  *                   row calls, and `floor/floor-screen.js` calls it (card#7341 step 7); the log row
@@ -130,6 +136,8 @@ export const FIRED_BY = Object.freeze({
     A22: 'coord',
     A23: 'desk',
     A24: 'delta',
+    A25: 'desk',
+    A26: 'desk',
 });
 
 /**
@@ -142,19 +150,55 @@ export const FIRED_BY = Object.freeze({
 export const INTERNS = '~interns';
 
 /**
- * The held renders one desk carries — the desk's own, then its side table's — each with its episode key's suffix, the
- * desk model's member it is, and the member of `held()`'s `conditions` entry that is its prior.
+ * THE SNACK TRIP's TWO EPISODE KEYS (card#12749; FLOOR.md § 6.6 item 1): A25 is held by the same `idle` that holds A6, or
+ * since card#12785 the `working` that holds A3 or A4 (the seat's half), and by the interns' own `idle` or `working` (their
+ * half), so — as A23 beside the desk's row — each is entered and left
+ * under a derived key of its own: `<seat key>~snack` and `<seat key>~snack-interns`, one episode per SEAT for each.
+ */
+export const SNACK = '~snack';
+
+export const SNACK_INTERNS = '~snack-interns';
+
+/**
+ * THE RESTROOM BREAK's TWO EPISODE KEYS (card#12786; FLOOR.md § 6.7 item 1): A26 is held by the values that hold A25
+ * (`SNACK_HELD`, one list for both rows), so — beside A25's — each half is entered and left under a derived key of its
+ * own: `<seat key>~restroom` and `<seat key>~restroom-interns`, one episode per SEAT for each.
+ */
+export const RESTROOM = '~restroom';
+
+export const RESTROOM_INTERNS = '~restroom-interns';
+
+/**
+ * THE VALUES THAT HOLD A25, AND A26 — one list both rows read (card#12786, § 6.7 item 1) (§ 6.2's A25 row; card#12785 —
+ * the operator's ruling of 2026-11-02, *"I want all agents and
+ * subagents to be able to go at random even work working"*): a seat's `render_state` and an intern's `activity_state`
+ * hold the snack break while they read one of these — `idle` (the card#12749 trip) or `working` (the busy break, its walker
+ * carrying a food thought). Every other value ends the hold, and a trip in flight walks home (§ 6.6 item 5).
+ */
+export const SNACK_HELD = Object.freeze(['idle', 'working']);
+
+/**
+ * The held renders one desk carries — the desk's own, its side table's, the snack trip's two halves and the restroom
+ * break's two (card#12786) — each with its
+ * episode key's suffix, the desk model's member it is, and the member of `held()`'s `conditions` entry that is its prior.
  */
 const HOLDS = Object.freeze([
     Object.freeze({ suffix: '', field: 'held', prior: 'prior' }),
     Object.freeze({ suffix: INTERNS, field: 'interns_held', prior: 'prior_interns' }),
+    Object.freeze({ suffix: SNACK, field: 'snack_held', prior: 'prior_snack' }),
+    Object.freeze({ suffix: SNACK_INTERNS, field: 'snack_interns_held', prior: 'prior_snack_interns' }),
+    Object.freeze({ suffix: RESTROOM, field: 'restroom_held', prior: 'prior_restroom' }),
+    Object.freeze({ suffix: RESTROOM_INTERNS, field: 'restroom_interns_held', prior: 'prior_restroom_interns' }),
 ]);
 
-/** A key of the episode map → its seat's key and the hold it is the episode of. */
+/**
+ * A key of the episode map → its seat's key and the hold it is the episode of — the LONGEST suffix that ends the key, so
+ * `~snack-interns` is never read as `~interns` (a seat key carries no `~`).
+ */
 function holdOf(key) {
-    const interns = key.endsWith(INTERNS);
+    const hold = HOLDS.filter((h) => h.suffix !== '' && key.endsWith(h.suffix)).sort((a, b) => b.suffix.length - a.suffix.length)[0] ?? HOLDS[0];
 
-    return [interns ? key.slice(0, -INTERNS.length) : key, HOLDS[interns ? 1 : 0]];
+    return [key.slice(0, key.length - hold.suffix.length), hold];
 }
 
 /**
@@ -556,8 +600,9 @@ export class AnimationSet {
      * § 6.2's `held` class over one frame: enter every desk's held render against the object that
      * holds it, and leave the ones whose hold has ended with the `cause` § 11's precedence gives.
      *
-     * ⛔ A DESK CARRIES TWO HOLDS (card#12448): its own, and its side table's A23 under `INTERNS`'s
-     * derived key, each entered and left by the same rule below against the same seat object.
+     * ⛔ A DESK CARRIES SIX HOLDS: its own, its side table's A23 under `INTERNS`'s derived key (card#12448), the
+     * snack trip's A25 under `SNACK`'s and `SNACK_INTERNS`' (card#12749), and the restroom break's A26 under `RESTROOM`'s
+     * and `RESTROOM_INTERNS`' (card#12786), each entered and left by the same rule below against the same seat object.
      *
      * ⛔ AN EPISODE IS ONE CONTINUOUS RUN OF ONE RENDER ON ONE SEAT (§ 11). A change of the held
      * row OR of whether motion is drawn leaves one episode and enters another, because two rows
@@ -575,12 +620,14 @@ export class AnimationSet {
      * @param {Map<string, *>} removed key → the `cause` the protocol journalled when it REMOVED the
      *        seat (`seat.removed`, Appendix B step 10): a removed seat has no held object left to read
      *        a version off, so the version that ended its hold travels with the removal instead
-     * @param {Map<string, {prior: ?object, prior_interns: ?object, unconfirmed: boolean, stilled: boolean}>} conditions
+     * @param {Map<string, {prior: ?object, prior_interns: ?object, prior_snack: ?object, prior_snack_interns: ?object, prior_restroom: ?object, prior_restroom_interns: ?object, unconfirmed: boolean, stilled: boolean}>} conditions
      *        key → what § 11's precedence compares with the render before this one, for each seat
      *        held now: `prior`, the held rendering the object held NOW draws with every client
      *        condition at the value it had in the previous render (the desk floor derives it, because
-     *        the desk render is its module and not this one), and `prior_interns` the same for its side
-     *        table's (A23, card#12448); `unconfirmed`, whether § 2.3 row 5's
+     *        the desk render is its module and not this one), `prior_interns` the same for its side
+     *        table's (A23, card#12448), and `prior_snack` and `prior_snack_interns` for the snack trip's two halves
+     *        (A25, card#12749), and `prior_restroom` and `prior_restroom_interns` for the restroom break's (A26,
+     *        card#12786); `unconfirmed`, whether § 2.3 row 5's
      *        condition holds in this render and did not in the previous one; and `stilled`, the same
      *        for § 9 F6's stilled floor
      */

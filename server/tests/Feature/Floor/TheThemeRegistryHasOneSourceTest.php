@@ -41,7 +41,7 @@ class TheThemeRegistryHasOneSourceTest extends TestCase
         $source = (string) file_get_contents($this->module());
 
         foreach ([
-            'a computed list' => ["export const THEMES = Object.freeze(['studio']);", "const S = 'studio';\nexport const THEMES = Object.freeze([S]);", 'not a quoted name'],
+            'a computed list' => ["export const THEMES = Object.freeze(['studio', 'cottage']);", "const S = 'studio';\nexport const THEMES = Object.freeze([S, 'cottage']);", 'not a quoted name'],
             'a list declared twice' => ["export const KINDS = Object.freeze([", "export const KINDS = Object.freeze(['x']);\nexport const KINDS = Object.freeze([", 'declares KINDS 2 times'],
             'a house theme the list does not hold' => ["export const HOUSE_THEME = 'studio';", "export const HOUSE_THEME = 'nowhere';", 'which its own THEMES does not hold'],
             'no house theme at all' => ["export const HOUSE_THEME = 'studio';", '', 'declares HOUSE_THEME 0 times'],

@@ -27,7 +27,7 @@ final class TwoFactorLoginResponse extends FortifyTwoFactorLoginResponse
         $response = parent::toResponse($request);
 
         if ($request->boolean(RememberedBrowser::FIELD)) {
-            $response->headers->setCookie(RememberedBrowser::issue($request->user()));
+            $response->headers->setCookie(RememberedBrowser::issue($request->user(), $request->userAgent()));
         }
 
         return $response;

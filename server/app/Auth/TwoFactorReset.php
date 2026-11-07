@@ -28,30 +28,22 @@ use Laravel\Fortify\Actions\DisableTwoFactorAuthentication;
  * `App\Http\Controllers\Auth\TwoFactorResetController` never logs them in. A reset that
  * authenticated would be a password-less login built by accident — the mailbox alone would then be
  * a complete credential rather than one factor's worth of it. After a reset the account has no
- * second factor, so `App\Http\Middleware\EnsureTwoFactorSatisfied` sends the next signed-in
- * request to the enrolment screen: the same forced-enrolment path a brand-new account takes.
+ * second factor, so `App\Http\Middleware\EnsureTwoFactorSatisfied` sends the next sign-in to the
+ * enrolment screen: the same forced-enrolment path a brand-new account takes.
  *
- * ⛔ NOTHING HERE DELETES SESSIONS OR ROTATES `remember_token`, AND THAT IS DELIBERATE RATHER THAN
- * AN OMISSION — the neighbouring act, `App\Admin\UserProvisioning::update()`, does both when it
- * writes a password, and this is the argument for why the same code here would be mechanism for a
- * property already held.
- *   · A password change needs them because a live session survives the hash: nothing in the
- *     framework removes a `web_sessions` row when the password changes, and `AuthenticateSession`
- *     is not on this application's middleware stack. That class's docblock measured it. (A remember
- *     cookie is voided by the hash change itself since laravel/framework 13.31.)
- *   · Clearing the ENROLMENT is different in kind: `two_factor_confirmed_at` is read from the
- *     `users` row by `EnsureTwoFactorSatisfied` on EVERY request, so the instant this act nulls
- *     it, every existing session — and any session a remember cookie subsequently mints — is
- *     refused at the gate and redirected to enrolment. Re-enrolling from that session requires
- *     `password.confirm` (`config/fortify.php` sets `confirmPassword => true`), which a session
- *     thief without the password cannot satisfy. The revocation is the column write; a session
- *     delete would be a second mechanism for it, free to disagree.
- *   · It is also the better answer for the person this feature exists for: the operator who lost
- *     their authenticator still has their password, and an old browser session that is now pinned
- *     to the enrolment screen is where they want to be.
- *   · Remembered browsers (card#12179) ARE forgotten by a consumed reset, and not by anything in
- *     this class: the disable action's write of the two-factor columns fires `App\Models\User`'s
- *     update hook, which calls `App\Auth\RememberedBrowser::forgetAll()`.
+ * ⛔ A CONSUMED RESET ENDS EVERY SESSION OF THE ACCOUNT AND VOIDS ITS REMEMBER-ME COOKIES (card#12964),
+ * and FORGETS ITS REMEMBERED BROWSERS (card#12179) — neither by anything in this class: the disable
+ * action's write of the two-factor columns fires `App\Models\User`'s update hook, which calls
+ * `App\Auth\AccountSessions::end()`, keeping no session because the reset runs signed out, and
+ * `App\Auth\RememberedBrowser::forgetAll()`.
+ *   · Until card#12964 this class argued the opposite: nulling `two_factor_confirmed_at` sends every
+ *     existing session to the enrolment screen, so ending them looked like a second mechanism. That
+ *     left a hole. Enrolling needs `password.confirm`, and a session that re-proved the password within
+ *     `auth.password_timeout` satisfies it from its own session data, so a copied session cookie
+ *     could enrol an authenticator of its holder's choosing after the owner's reset. Ending the
+ *     sessions closes it.
+ *   · The owner loses nothing by it: they still have their password, and signing in with it lands
+ *     on the enrolment screen.
  *
  * ⛔ NO ENUMERATION ORACLE IN THE ANSWER. `request()` returns `void` and takes every path that
  * cannot produce a code — no such address, a RETIRED account, an account with no confirmed second
