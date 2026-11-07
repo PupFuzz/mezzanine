@@ -114,31 +114,110 @@ trait DrivesAShippedClientModule
      */
     protected function runProbe(array $payload, ?string $moduleDir = null, ?string $script = null): array
     {
-        $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+        $result = null;
 
+        $this->runProbes(['run' => $payload], 1, null, static function (string $name, ?int $status, string $stdout, string $stderr) use (&$result): void {
+            $result = [$status, $stdout, $stderr];
+        }, $moduleDir, $script);
+
+        return $result;
+    }
+
+    /**
+     * MANY RUNS AT ONCE (card#12466): each payload through its own probe process, at most `$parallel` of them alive together,
+     * every pipe read as it fills — so neither a full stdout nor a full stderr stalls a process — and `$done($name, $status,
+     * $stdout, $stderr)` called as each one ends, so a caller holds one run's answer at a time and never all of them. A
+     * process still running `$timeoutS` seconds after it started is killed and reported with status `null`: a run that does
+     * not end is a defect its caller names, never a suite that hangs. `null` waits for ever, as one run always has.
+     *
+     * ⛔ EACH RUN'S ANSWER IS HELD IN `$out`, OUTSIDE `$live`, AND NOTHING ELSE HOLDS IT (card#12946). A `foreach` over
+     * `$live` takes a value copy of each entry and PHP leaves the last one bound after the loop; were the buffers inside the
+     * entry, that copy would share them, and every `.=` below would copy the whole answer so far — a read quadratic in the
+     * answer's size. A floor run's answer is many megabytes, and that is what took the per-change test job from about half
+     * an hour to about an hour and a half. `TheProbeRigReadsALargeAnswerInLinearTimeTest` holds the read to a time bound.
+     *
+     * @param  array<string, array<string, mixed>>  $payloads  by name
+     * @param  callable(string, ?int, string, string): void  $done
+     */
+    protected function runProbes(array $payloads, int $parallel, ?float $timeoutS, callable $done, ?string $moduleDir = null, ?string $script = null): void
+    {
         $zone = $this->probeZone();
+        $queue = $payloads;
+        $live = [];
+        $out = [];
 
-        $process = proc_open(
-            ['node', $script ?? $this->probeScript(), $moduleDir ?? $this->moduleDir()],
-            $descriptors,
-            $pipes,
-            null,
-            $zone === null ? null : ['TZ' => $zone] + getenv(),
-        );
+        while ($queue !== [] || $live !== []) {
+            while ($queue !== [] && count($live) < $parallel) {
+                $name = (string) array_key_first($queue);
+                $payload = $queue[$name];
+                unset($queue[$name]);
 
-        if (! is_resource($process)) {
-            $this->fail('node could not be started — this suite drives the shipped client, and there is nothing to drive it with');
+                $process = proc_open(
+                    ['node', $script ?? $this->probeScript(), $moduleDir ?? $this->moduleDir()],
+                    [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                    $pipes,
+                    null,
+                    $zone === null ? null : ['TZ' => $zone] + getenv(),
+                );
+
+                if (! is_resource($process)) {
+                    $this->fail('node could not be started — this suite drives the shipped client, and there is nothing to drive it with');
+                }
+
+                // The probe reads its whole stdin before it writes a byte, so this write cannot wait on its output.
+                fwrite($pipes[0], (string) json_encode($payload));
+                fclose($pipes[0]);
+                stream_set_blocking($pipes[1], false);
+                stream_set_blocking($pipes[2], false);
+                $live[$name] = ['process' => $process, 'pipes' => [1 => $pipes[1], 2 => $pipes[2]], 'started' => microtime(true)];
+                $out[$name] = [1 => '', 2 => ''];
+            }
+
+            $read = [];
+            $owner = [];
+
+            foreach ($live as $name => $p) {
+                foreach ($p['pipes'] as $k => $pipe) {
+                    $read[] = $pipe;
+                    $owner[(int) $pipe] = [$name, $k];
+                }
+            }
+
+            $write = null;
+            $except = null;
+
+            if ($read !== [] && stream_select($read, $write, $except, 0, 200000) > 0) {
+                foreach ($read as $pipe) {
+                    [$name, $k] = $owner[(int) $pipe];
+                    $out[$name][$k] .= (string) fread($pipe, 1 << 20);
+
+                    if (feof($pipe)) {
+                        fclose($pipe);
+                        unset($live[$name]['pipes'][$k]);
+                    }
+                }
+            }
+
+            foreach (array_keys($live) as $name) {
+                if ($live[$name]['pipes'] === []) {
+                    $process = $live[$name]['process'];
+                    [1 => $stdout, 2 => $stderr] = $out[$name];
+                    unset($live[$name], $out[$name]);
+                    $done($name, proc_close($process), $stdout, $stderr);
+                } elseif ($timeoutS !== null && microtime(true) - $live[$name]['started'] > $timeoutS) {
+                    proc_terminate($live[$name]['process'], 9);
+
+                    foreach ($live[$name]['pipes'] as $pipe) {
+                        fclose($pipe);
+                    }
+
+                    proc_close($live[$name]['process']);
+                    [1 => $stdout, 2 => $stderr] = $out[$name];
+                    unset($live[$name], $out[$name]);
+                    $done($name, null, $stdout, $stderr);
+                }
+            }
         }
-
-        fwrite($pipes[0], (string) json_encode($payload));
-        fclose($pipes[0]);
-
-        $stdout = (string) stream_get_contents($pipes[1]);
-        $stderr = (string) stream_get_contents($pipes[2]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-
-        return [proc_close($process), $stdout, $stderr];
     }
 
     /**

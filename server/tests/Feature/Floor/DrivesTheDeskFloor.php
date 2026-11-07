@@ -85,8 +85,9 @@ trait DrivesTheDeskFloor
 
     /**
      * The `held` rows the floor wrote for one seat's DESK, in call order — the desk's own render. The side
-     * table's A23 (card#12448) is an episode of its own beside them, on the same seat's rows, and is not
-     * among these: every caller reads the desk's render.
+     * table's A23 (card#12448), the snack trip's A25 (card#12749) and the restroom break's A26 (card#12786) are episodes
+     * of their own beside them, on the
+     * same seat's rows, and are not among these: every caller reads the desk's render.
      *
      * @param  array<string, mixed>  $result
      * @return list<array<string, mixed>>
@@ -95,10 +96,10 @@ trait DrivesTheDeskFloor
     {
         [$install, $seat] = explode('/', $key, 2);
 
-        $side = $this->documentSideTableRow();
+        $beside = [$this->documentSideTableRow(), $this->documentSnackRow(), $this->documentRestroomRow()];
 
         return array_values(array_filter($result['animation_log'], static fn (array $row): bool => $row['class'] === 'held'
-            && $row['install_id'] === $install && $row['seat_id'] === $seat && $row['animation_id'] !== $side));
+            && $row['install_id'] === $install && $row['seat_id'] === $seat && ! in_array($row['animation_id'], $beside, true)));
     }
 
     /** A copy of the shipped tree with one anchored edit in `desk/desk-render.js`. */

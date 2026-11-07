@@ -240,7 +240,8 @@ A fresh config is D1 § 3.1's multi-site form with one site named `default`: `in
 `spool_dir`, `wrapped_statusline` (the seat's current `statusLine.command`, recorded for [the
 wrap](#the-statusline-wrap)), `protocol_agent_name`, `descriptors` `"full"`, `enabled`, the board pair, and
 `sites: [{ name, ingest_url, token, ca_file, proxy_url }]`, `ca_file` from `--ca-file` (an absolute path, or
-`null`), `proxy_url` `null` (a hand edit, because a proxy URL can carry a password). It refuses a config that
+`null`), `proxy_url` `null` (a hand edit, because a proxy URL can carry a password: [What this install does not give
+you](#what-this-install-does-not-give-you-by-name) says how to set it). It refuses a config that
 already exists. Its other modes — `add-site`, `set-token`, `remove-site`, `set-descriptors`, the board pair
 and `wrapped_statusline` — read the config, lift a single-site file written before card#12180 into `sites`
 under `default`, change one thing, and write the result; `add-site` and `set-token` change `sites` and nothing
@@ -419,8 +420,9 @@ Scheduled Task, no cron analogue. The reporter's own hooks are the flusher's sta
 fresh lock spawns one (`maybeRespawnFlusher`, D1 § 2.3) — so once the flusher stops, at logoff or when the
 session that started it ends (unmeasured), the seat reads `offline` until a session's next hook starts another.
 A hook fires around a tool call, not inside one, so inside one `install.js` run no flusher would start, and the
-step therefore spawns `node <artifact> flusher` **unconditionally**, with the reporter's own spawn options
-(`detached`, `stdio: 'ignore'`, `windowsHide`, `unref`, D1 P-7) and `COORD_CONFIG` from the resolver; the
+step therefore spawns `node <artifact> flusher` **unconditionally**, through the reporter's own spawn
+(`detached`, `stdio: 'ignore'`, `windowsHide`, `unref`, and the user's home folder as its working directory, so the
+folder the installer ran from stays free to delete or rename; D1 P-7) and `COORD_CONFIG` from the resolver; the
 flusher's own `acquireLock` makes a loser exit 0, so the installer carries no copy of the respawn's lock logic.
 It then waits, bounded by the artifact's `K.LOCK_STALE_MS`, for a lock naming a live flusher of this artifact (the stale-lock test below), and prints `flusher
 started pid N`, `flusher already running pid N`, or `NO FLUSHER` and exits 1.
@@ -430,9 +432,14 @@ started pid N`, `flusher already running pid N`, or `NO FLUSHER` and exits 1.
 `holder` asks, read-only, whether the RUNNING flusher runs the installed build: `PASS: the lock holder runs the
 artifact installed at …`, or `FAIL: … before the artifact was installed …: it runs the previous build`, which owes
 the restart, or `no live flusher holds the lock`, which owes nothing (its next start runs the installed build).
-The holder's start time is the lock's own `started_at`, which the flusher writes from its own millisecond clock
-as it takes the lock, read only after the lock passes the test below, on every OS. The restart is owed when the holder runs the
-previous build or the board step rewrote the config.
+Which build the holder runs is read from the lock's own `began_at`, on every OS, only after the lock passes the test
+below: the instant the flusher's process began, before node read the script, which the flusher writes into its lock
+from 0.6.2 on (card#12476). The installed artifact's install instant is its mtime, which the `artifact` step stamps
+after the rename that installs it. A holder that began strictly after that instant read the installed file; any other
+holder — a lock without `began_at` under an artifact whose flusher writes it included — runs the previous build. Over
+an installed artifact from before 0.6.2 (a rotation, `add-site` or restart run by this installer on a seat not yet
+upgraded), the lock's `started_at` is compared instead, the one key that artifact's flusher writes. The restart is
+owed when the holder runs the previous build or the board step rewrote the config.
 
 **On Linux, a lock that carries `start_ticks` names a running flusher exactly when its pid is alive and the
 pid's own start in `/proc/<pid>/stat` (field 22, clock ticks since boot) equals it.** The flusher writes that
@@ -450,7 +457,7 @@ and it reads no path: a hook-respawned flusher runs the artifact by its **realpa
 junctioned home its command line does not spell the path this installer uses, and a path comparison read a live
 flusher as stale (card#12571's review, round 2). Its three answers:
 
-- **live**: the stop signals it; the holder check compares its `started_at` with the artifact.
+- **live**: the stop signals it; the holder check compares its `began_at` with the artifact's install instant.
 - **stale** — the pid is dead, or began after `started_at`: its flusher died (a reboot, say) and the pid, if alive,
   is another process's. It names no flusher: nothing is signalled, the step says `… the lock is stale: no flusher
   to stop, nothing signalled`, and it goes on, as the reporter's own `acquireLock` takes such a lock over once it is
@@ -483,8 +490,11 @@ takes then is folded past by the old flusher and lost, uncounted, and nothing el
 holder's start from `/proc`, which reads a second or two early — `/proc/stat`'s `btime` is whole seconds and the
 wall clock drifts from the boot clock (0.9 s and 2.1 s on the sandbox) — so a holder started within two seconds of
 the install read as older; on `ubuntu-latest` that made a no-op run restart a flusher cron had started a second
-after the install, which is why `install.js` reads the lock's `started_at` instead (card#12571; `/proc/uptime`,
-the other boot clock, is virtualized under a container and was 53 s off on the sandbox host). **Measured on the sandbox seat** (2026-10-23, attempt
+after the install, which is why `install.js` read the lock's `started_at` instead (card#12571; `/proc/uptime`,
+the other boot clock, is virtualized under a container and was 53 s off on the sandbox host). `started_at` is taken
+after the flusher has read its script, so a flusher that read the previous artifact a moment before the install, and
+took the lock after it, read as running the new build: reproduced by holding a flusher's read across an install, and
+the reason the check reads `began_at` since card#12476. **Measured on the sandbox seat** (2026-10-23, attempt
 `20261023T015956Z-upgrade-12180`): run before the stop, the check printed `FAIL: the lock holder started
 2026-10-22T02:29:59.050Z, before the artifact was installed at 2026-10-23T02:00:54.912Z`; the stop printed
 `flusher pid 901 exited 5 s after SIGTERM`; cron's 02:01 start took the lock and the check printed `PASS`. The new
@@ -507,7 +517,9 @@ its report and `selftest rc=`. The command probes each site's `ingest_url` with 
   failing names each rule the config breaks; the reporter never falls back to the system trust store for an
   unreadable `ca_file` (D1 § 3.5). `protocol_agent_name_in_roster` failing is a declared name the roster does not
   hold (`detail.…read_via` says which roster was read); `rt_name_ok` failing is a `roundtable_agent_name` other
-  than the coordination config's `cross_project.identity`.
+  than the coordination config's `cross_project.identity`. A site's `config_readable` also fails when its proxy
+  answers the probe's `CONNECT` with `407`: the proxy wants a login that `proxy_url` does not carry, or refuses the
+  one it carries; the flusher stops sending to that site on the same answer until it restarts.
 - **`rc=2`**: nothing failed and something is `not_measured`: a site that did not answer, or answered without its
   accepted set. Run again once it answers.
 
@@ -703,6 +715,12 @@ sleep and wake with no `seq_collision`; `read_via` `$COORD_CONFIG`; `selftest`, 
 - **No restore of `settings.json` from a backup, ever.** The uninstall removes the reporter's entries structurally.
 - **No edit of `settings.local.json`, a project's `.claude/settings.json` or managed settings.**
 - **`harness_label` stays unset** ([`config-check`](#config-check) says why).
+- **`proxy_url` is a hand edit** of the config (D1 § 3.1, § 3.5): `http://host:port` or `https://host:port`, with
+  the proxy's login as userinfo when it needs one, `http://user:password@host:port`, a reserved character in either
+  part percent-encoded (`@` as `%40`, `:` as `%3A`). The reporter sends the login to the proxy as
+  `Proxy-Authorization: Basic` and writes it nowhere else. An `https://` proxy's certificate is verified like the
+  ingest's: with `ca_file` set, that file is the whole trust store, so it holds the proxy's CA as well as the
+  site's. Then run `node install.js restart` and `selftest`.
 - **`roundtable_agent_name` is a hand edit** of the config (D1 § 3.1): set it to `cross_project.identity` of the
   coordination config `$COORD_CONFIG` names, then run `node install.js restart`. Only a `checked` name joins the
   desk to the fleet's cross-install posts.

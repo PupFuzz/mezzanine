@@ -141,9 +141,10 @@ class SeatTokenController extends Controller
      * (card#12571, D6 § 4.2), or null when the site is not `https:` — D6 § 4.2's token-file parser
      * refuses a non-https `ingest_url`, so on such a site the button is not rendered at all.
      *
-     * ⛔ FROM `app.url`, NEVER FROM THE REQUEST. `url()` and `route()` follow the request's `Host`, so a
-     * file built from them would point the seat's reporter at whatever host the request named. This is
-     * `IssueCoordHook`'s derivation of its hook URL, for the events route.
+     * ⛔ FROM `app.url`, NEVER FROM THE REQUEST. A URL that followed the request's `Host` would point the
+     * seat's reporter at whatever host the request named. `url()` and `route()` no longer do — they are
+     * pinned to `app.url` as it stood at boot (`AppServiceProvider::pinUrlOrigin`, card#12881) — and this
+     * reads the setting itself, which is `IssueCoordHook`'s derivation of its hook URL, for the events route.
      *
      * Public for `tools/design/render-floor-view.php tokens-issued`, which renders the issue response for
      * `tools/design/seat-token-file.selftest.mjs` with this derivation rather than a copy of it.

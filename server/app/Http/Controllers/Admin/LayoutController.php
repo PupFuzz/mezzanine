@@ -7,6 +7,7 @@ use App\Building\InvalidBuildingLayout;
 use App\Building\Layouts;
 use App\Building\RevisionDiff;
 use App\Building\Revisions;
+use App\Floor\FloorThemes;
 use App\Http\Controllers\Controller;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -48,9 +49,13 @@ class LayoutController extends Controller
     public function edit(): View
     {
         $current = Layouts::current();
+        // § 10.6 item 5: the designs a floor may name, read off the registry the save checks against (card#12845)
+        $themes = FloorThemes::current();
 
         return view('console.layout.edit', [
             'active' => 'layout',
+            'themes' => $themes->themes,
+            'houseTheme' => $themes->house,
             'document' => $current === null ? self::EMPTY_DOCUMENT : (string) $current->document,
             'version' => (int) ($current->layout_version ?? 0),
             'updatedBy' => $current?->updated_by,

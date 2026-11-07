@@ -24,6 +24,8 @@ use Tests\TestCase;
  */
 class AnInternRidesTheElevatorTest extends TestCase
 {
+    use ChecksTheCommittedPast;
+    use ChecksTheElevatorQueue;
     use DrivesTheFloorScreen;
 
     private const IMPL_1 = 'aimla/aimla-impl-1';
@@ -162,20 +164,46 @@ class AnInternRidesTheElevatorTest extends TestCase
 
     /**
      * The arrival's walker painted at its first frame and again at a repaint further on (`intern-paint-probe.mjs`):
-     * the start the painter pinned on the walker's glide and on the laptop over it, per paint.
+     * the instant the painter pinned the walker's glide and the laptop over it to, per paint (`pinned` — card#12457:
+     * `pin()` starts each animation at the frame's time and carries the rest of the instant in its delay, so a node's
+     * `start` is the frame's and `pinned` is the instant its authored delay is counted from).
      */
+    /**
+     * `paintedWalk()`'s paints. The render that starts the walk paints at its own instant (`doors_at` the walk's start, 0
+     * on the page's clock); a later paint carries spans read 100 ms before it, as a render's are read before its scene
+     * is built. `frame_ms`, the last frame's time, trails the live timeline as it does at the end of a task.
+     */
+    private const WALK_PAINTS = [
+        ['timeline_ms' => 1000, 'frame_ms' => 990, 'clock_ms' => 0, 'elapsed_ms' => 0, 'doors_at' => 0],
+        ['timeline_ms' => 4000, 'frame_ms' => 3990, 'clock_ms' => 3000, 'elapsed_ms' => 3000, 'doors_at' => 2900],
+    ];
+
+    /**
+     * card#12457: every pinned node of each paint started no later than that paint's frame (`frame_ms`, which no later
+     * frame precedes) — an animation started after the frame it is drawn in is in its before phase there, and a node
+     * drawn only by its animation is not drawn for that frame.
+     */
+    private function aheadOfTheFrameDefects(array $paints): array
+    {
+        $defects = [];
+        foreach ($paints as $i => $p) {
+            foreach (['glide' => [$p['glide']], 'laptop' => [$p['laptop']], 'leaf' => $p['leaves']] as $part => $nodes) {
+                foreach ($nodes as $n) {
+                    if ($n !== null && $n['start'] !== null && $n['start'] > self::WALK_PAINTS[$i]['frame_ms']) {
+                        $defects[] = "paint {$i}: a {$part} starts at {$n['start']} on the timeline, after the frame it is drawn in at ".self::WALK_PAINTS[$i]['frame_ms'];
+                    }
+                }
+            }
+        }
+
+        return $defects;
+    }
+
     private function paintedWalk(?string $dir = null): array
     {
         [$frame, $walk] = $this->firstWalk($this->floorRun('arrive'), 'arrive');
         unset($walk['elapsed_frames'], $walk['elapsed_ms'], $walk['started_at']);
-        // The render that starts the walk paints at its own instant (`doors_at` the walk's start, 0 on the page's clock);
-        // a later paint carries spans read 100 ms before it, as a render's are read before its scene is built.
-        $paints = [
-            ['timeline_ms' => 1000, 'frame_ms' => 990, 'clock_ms' => 0, 'elapsed_ms' => 0, 'doors_at' => 0],
-            ['timeline_ms' => 4000, 'frame_ms' => 3990, 'clock_ms' => 3000, 'elapsed_ms' => 3000, 'doors_at' => 2900],
-        ];
-
-        return $this->probe(['effect' => $walk, 'paints' => $paints, 'doors' => $frame['scene']['doors']],
+        return $this->probe(['effect' => $walk, 'paints' => self::WALK_PAINTS, 'doors' => $frame['scene']['doors']],
             dirname($dir ?? $this->moduleDir()), __DIR__.'/intern-paint-probe.mjs');
     }
 
@@ -188,14 +216,14 @@ class AnInternRidesTheElevatorTest extends TestCase
         $defects = [];
         $expected = [1000, 4000 - (3000 - 2900)];
         foreach ($paints as $i => $p) {
-            $starts = array_map(static fn (array $l): mixed => $l['start'], $p['leaves']);
+            $starts = array_map(static fn (array $l): mixed => $l['pinned'], $p['leaves']);
             if (count($starts) !== 2) {
                 $defects[] = "paint {$i} drew ".count($starts).' leaves';
             } elseif ($starts !== [$expected[$i], $expected[$i]]) {
                 $defects[] = "paint {$i}: the leaves start at ".json_encode($starts)." and their spans' instant is at {$expected[$i]} on the timeline";
             }
         }
-        if (($paints[0]['glide']['start'] ?? null) !== ($paints[0]['leaves'][0]['start'] ?? false)) {
+        if (($paints[0]['glide']['pinned'] ?? null) !== ($paints[0]['leaves'][0]['pinned'] ?? false)) {
             $defects[] = 'on the render that starts the walk, the leaves and the walker are pinned to different starts';
         }
 
@@ -209,8 +237,8 @@ class AnInternRidesTheElevatorTest extends TestCase
         foreach ($paints as $i => $p) {
             if ($p['glide'] === null || $p['laptop'] === null) {
                 $defects[] = "paint {$i} drew no walker or no laptop";
-            } elseif ($p['laptop']['start'] === null || $p['laptop']['start'] !== $p['glide']['start']) {
-                $defects[] = "paint {$i}: the laptop starts at ".json_encode($p['laptop']['start']).' and its walker at '.json_encode($p['glide']['start']);
+            } elseif ($p['laptop']['pinned'] === null || $p['laptop']['pinned'] !== $p['glide']['pinned']) {
+                $defects[] = "paint {$i}: the laptop is pinned to ".json_encode($p['laptop']['pinned']).' and its walker to '.json_encode($p['glide']['pinned']);
             }
         }
 
@@ -300,6 +328,11 @@ class AnInternRidesTheElevatorTest extends TestCase
         $this->assertSame([], $this->leafPinDefects($this->paintedWalk()));
     }
 
+    public function test_green_no_pinned_node_starts_after_its_frame(): void
+    {
+        $this->assertSame([], $this->aheadOfTheFrameDefects($this->paintedWalk()));
+    }
+
     // ── GREEN — the rows ─────────────────────────────────────────────────────────────────────
 
     public function test_green_each_run_writes_the_rows_section_6_2_names(): void
@@ -386,12 +419,24 @@ class AnInternRidesTheElevatorTest extends TestCase
         $d = $this->door();
         [$frame, $walk] = $this->firstWalk($this->floorRun('leave-working'), 'leave');
 
-        $this->assertSame(['seat', 'walk', 'stand', 'stand', 'cab'], $this->kinds($walk));
+        // card#12747: the laptop fades, it walks to the low call plate and presses it, walks on to its spot, waits and
+        // takes the door — card#12793: gliding from its spot, outside the lane, to the threshold first.
+        $this->assertSame(['seat', 'walk', 'stand', 'walk', 'stand', 'walk', 'stand', 'cab'], $this->kinds($walk));
         $this->assertContiguous($walk, 'leave-working');
         $this->assertSame([$this->laptopFade(), 1, 0], [$walk['legs'][0]['frames'], $walk['legs'][0]['laptop_from'], $walk['legs'][0]['laptop_to']]);
         $this->assertEquals($frame['scene']['slot_feet'][self::IMPL_1][$walk['slot']], $walk['legs'][1]['points'][0], 'the departure does not start at its slot');
-        $this->assertSame($this->seededWait($walk['intern_key'], $walk['cause']), $walk['legs'][2]['frames'], 'the wait is not the intern key\'s seeded draw');
-        $this->assertSame([$d['open'], $d['step'] + $d['close']], [$walk['legs'][3]['frames'], $walk['legs'][4]['frames']]);
+        $this->assertSame(['press', 'low'], [$walk['legs'][2]['why'], $walk['legs'][2]['plate']], 'the departure does not press the low call plate after its walk from the slot');
+        $this->assertEquals($walk['legs'][4]['at'], end($walk['legs'][3]['points']), 'the walk from the plate does not end at the spot it waits at');
+        $this->assertNotEquals($this->threshold($frame), $walk['legs'][4]['at'], 'the departure waits on the threshold');
+        $this->assertEquals([$walk['legs'][4]['at'], $this->threshold($frame)], [$walk['legs'][5]['points'][0], end($walk['legs'][5]['points'])], 'the glide does not go from its spot to the threshold');
+        // Its wait is for the elevator its press called: the leaves open its seeded draw after the press, or as it reaches
+        // the threshold if that is later.
+        $press = $walk['legs'][2];
+        $wait = $walk['legs'][4];
+        $this->assertSame(max($wait['start'], $press['start'] + $press['frames'] + $this->seededWait($walk['intern_key'], $walk['cause'])), $wait['start'] + $wait['frames'],
+            'the wait does not end the intern key\'s seeded draw after its press');
+        // Alone, the leaves open as its wait ends and it steps in at the later of its reaching the door and their being open.
+        $this->assertSame([max(0, $d['open'] - $walk['legs'][5]['frames']), $d['step'] + $d['close']], [$walk['legs'][6]['frames'], $walk['legs'][7]['frames']]);
 
         [, $idle] = $this->firstWalk($this->floorRun('leave-idle'), 'leave');
         $this->assertSame('walk', $idle['legs'][0]['kind'], 'an idle departure fades a laptop it does not have');
@@ -403,25 +448,36 @@ class AnInternRidesTheElevatorTest extends TestCase
     {
         $d = $this->door();
 
-        [, $cab] = $this->firstWalk($r = $this->floorRun('stop-in-cab'), 'turn');
-        $this->assertSame([['kind' => 'cab', 'frames' => $d['close']]], array_map(static fn ($l) => ['kind' => $l['kind'], 'frames' => $l['frames']], $cab['legs']),
-            'stop-in-cab is not the leaves closing over the intern');
-        $this->assertSame([], $this->fades($this->lastFrame($r)));
+        // card#12466: the leaves keep the motion the arrival drew — the span begins where its opening began, and closes as
+        // the intern's last leg ends — and never jump between two renders.
+        foreach (['stop-in-cab' => ['cab'], 'stop-at-door' => ['stand', 'cab']] as $run => $kinds) {
+            [, $turn] = $this->firstWalk($r = $this->floorRun($run), 'turn');
+            $this->assertSame($kinds, $this->kinds($turn), "[{$run}] the turn's legs");
+            $this->assertLessThanOrEqual(0, $turn['door']['start'], "[{$run}] the leaves restart rather than finish the opening drawn");
+            $this->assertEqualsWithDelta(end($turn['legs'])['start'] + end($turn['legs'])['frames'], $turn['door']['start'] + $turn['door']['frames'], 1e-9,
+                "[{$run}] the leaves do not close over the intern");
+            $this->assertSame([], $this->leafDefects($this->drawn($r)), "[{$run}] the leaves jumped between two renders");
+            $this->assertSame([], $this->fades($this->lastFrame($r)));
+        }
 
         [, $door] = $this->firstWalk($this->floorRun('stop-at-door'), 'turn');
-        $this->assertSame(['stand', 'cab'], $this->kinds($door));
-        $this->assertSame([$d['step'], $d['close']], array_column($door['legs'], 'frames'));
+        $this->assertSame($d['step'], $door['legs'][0]['frames'], 'stop-at-door does not step back in over the step frame');
 
         $mid = $this->floorRun('stop-mid-walk');
         [$arrivalFrame, $arrival, $arrivalAt] = $this->firstWalk($mid, 'arrive');
         [$frame, $turn, $turnAt] = $this->firstWalk($mid, 'turn');
-        $this->assertSame(['walk', 'stand', 'stand', 'cab'], $this->kinds($turn));
+        // card#12747: it turns, walks to the low call plate and presses it, walks on to its spot, waits and boards —
+        // card#12793: gliding from its spot to the threshold.
+        $this->assertSame(['walk', 'stand', 'walk', 'stand', 'walk', 'stand', 'cab'], $this->kinds($turn));
         $this->assertContiguous($turn, 'stop-mid-walk');
         $here = $this->pointAt($arrival, $turnAt - $arrivalAt);
         $this->assertEqualsWithDelta($here['x'], $turn['legs'][0]['points'][0]['x'], 0.001, 'the turn does not start where the walker is');
         $this->assertEqualsWithDelta($here['y'], $turn['legs'][0]['points'][0]['y'], 0.001);
-        $this->assertEquals($this->threshold($frame), end($turn['legs'][0]['points']), 'the turn does not end at the threshold');
-        $this->assertSame($this->seededWait($turn['intern_key'], $turn['cause']), $turn['legs'][1]['frames']);
+        $this->assertSame(['press', 'low'], [$turn['legs'][1]['why'], $turn['legs'][1]['plate']], 'the turn does not press the low call plate');
+        $this->assertEquals($turn['legs'][3]['at'], end($turn['legs'][2]['points']), 'the turn does not walk to the spot it waits at');
+        $this->assertEquals($this->threshold($frame), end($turn['legs'][4]['points']), 'the turn does not end at the threshold');
+        $this->assertSame(max($turn['legs'][3]['start'], $turn['legs'][1]['start'] + $turn['legs'][1]['frames'] + $this->seededWait($turn['intern_key'], $turn['cause'])),
+            $turn['legs'][3]['start'] + $turn['legs'][3]['frames'], 'the turn does not wait its seeded draw after its press');
         $this->assertNotContains('seat', $this->kinds($turn), 'the laptop fades in a turn-round');
 
         foreach ($this->drawn($mid) as $r) {
@@ -469,6 +525,11 @@ class AnInternRidesTheElevatorTest extends TestCase
 
     // ── GREEN — several at once, the cap, one render ─────────────────────────────────────────
 
+    /**
+     * Two interns leaving on one delta each draw their own wait over their own key, and queue at the elevator as seats do
+     * (item 14, card#12705): they wait at two spots at least § 12's *Queue spacing* apart, and when the leaves open for
+     * the first, the other boards behind it, one at a time, before they close.
+     */
     public function test_green_two_interns_walk_their_own_routes_and_waits_and_the_leaves_open_once(): void
     {
         $r = $this->floorRun('two-interns');
@@ -476,13 +537,182 @@ class AnInternRidesTheElevatorTest extends TestCase
         $this->assertCount(2, $leaves, 'the two departures are not two effects');
         [[, $a], [, $b]] = $leaves;
         $this->assertNotSame($a['intern_key'], $b['intern_key']);
-        $this->assertSame($this->seededWait($a['intern_key'], $a['cause']), $a['legs'][2]['frames']);
-        $this->assertSame($this->seededWait($b['intern_key'], $b['cause']), $b['legs'][2]['frames']);
+        $this->assertSame($this->seededWait($a['intern_key'], $a['cause']), $a['queue']['wait']);
+        $this->assertSame($this->seededWait($b['intern_key'], $b['cause']), $b['queue']['wait']);
+
+        $pairs = 0;
+        $most = 0;
+
+        foreach ($this->drawn($r) as $x) {
+            [$apart, $seen] = $this->queueSpacingDefects($x['frame'], $this->queueSpacing());
+            [$together, $boarded] = $this->boardingDefects($x['frame'], $this->door());
+            $this->assertSame([], [...$apart, ...$together], "at {$x['at']} ms ({$x['trigger']})");
+            $pairs += $seen;
+            $most = max($most, $boarded);
+        }
+
+        $this->assertGreaterThan(0, $pairs, 'the two departing interns never waited at once — the run\'s premise is broken');
+        $this->assertSame(2, $most, 'the two departing interns did not board one opening of the leaves');
 
         $arrivals = array_values(array_filter($this->firstWalks($r), static fn ($h) => $h[1]['leg_kind'] === 'arrive'));
         $this->assertCount(2, $arrivals);
         $doors = $arrivals[0][0]['scene']['doors'];
         $this->assertCount(1, $doors, 'the leaves open more than once for two interns revealed together');
+    }
+
+    /**
+     * card#12705 review round 1: an intern that has left its spot for the cab is never drawn back at it — in
+     * queue-gain-after-boarding a delta trades interns after intern 01 has stepped in, and its freed spot goes to a later
+     * departure: no walker jumps between renders, no two wait on one point, and the queue boards together.
+     */
+    public function test_green_an_intern_that_has_boarded_stays_boarded(): void
+    {
+        $drawn = $this->drawn($this->floorRun('queue-gain-after-boarding'));
+        [$jumps, $compared] = $this->continuityDefects($drawn);
+
+        $this->assertSame([], $jumps);
+        $this->assertGreaterThan(0, $compared, 'no intern walk was drawn on two renders — the run\'s premise is broken');
+
+        foreach ($drawn as $x) {
+            $this->assertSame([], [...$this->queueSpacingDefects($x['frame'], $this->queueSpacing())[0], ...$this->boardingDefects($x['frame'], $this->door())[0]],
+                "at {$x['at']} ms ({$x['trigger']})");
+        }
+    }
+
+    /**
+     * card#12744, APART IN THE CAB (the walk note's item 10): interns revealed together in the cab, boarding together and
+     * turning round in it stand at spots of their own, on the cab floor, and step between the threshold and their spots —
+     * in two-interns both ways, middle-leaves' three arrivals, queue-gain-after-boarding and two-stop-mid-step.
+     */
+    public function test_green_interns_in_the_cab_stand_apart(): void
+    {
+        $arriving = 0;
+        $pairs = 0;
+
+        foreach (['two-interns', 'middle-leaves', 'queue-gain-after-boarding', 'two-stop-mid-step', 'gain-and-loss-one-render'] as $run) {
+            foreach ($this->drawn($this->floorRun($run)) as $x) {
+                [$defects, $seen] = $this->cabDefects($x['frame'], $this->cabApart(), $this->cabFloor($x['frame']));
+                $this->assertSame([], $defects, "[{$run}] at {$x['at']} ms ({$x['trigger']})");
+                $pairs += $seen;
+
+                if ($run === 'middle-leaves' && $seen > 0 && array_filter($x['frame']['scene']['effects'], static fn ($e) => ($e['leg_kind'] ?? null) === 'arrive') !== []) {
+                    $arriving += $seen;
+                }
+            }
+        }
+
+        $this->assertGreaterThan(0, $pairs, 'no frame drew two interns standing in the cab at once — the runs\' premise is broken');
+        $this->assertGreaterThan(0, $arriving, 'middle-leaves\' three arrivals never stood in the cab together — the run\'s premise is broken');
+    }
+
+    /**
+     * card#12744: item 16's turn-round in the cab starts where the arrival it replaces stood — two-stop-mid-step's intern 2
+     * is lost while it steps from its spot to the threshold, and stop-in-cab's while it stands — so no intern jumps
+     * between the render before the loss and the render that applies it.
+     */
+    public function test_green_an_intern_turns_round_in_the_cab_from_where_it_stands(): void
+    {
+        $compared = 0;
+
+        foreach (['stop-in-cab', 'two-stop-mid-step'] as $run) {
+            [$jumps, $n] = $this->continuityDefects($this->drawn($this->floorRun($run)), true);
+            $this->assertSame([], $jumps, "[{$run}]");
+            $compared += $n;
+        }
+
+        $this->assertGreaterThan(0, $compared, 'no intern walk was drawn on two renders — the runs\' premise is broken');
+    }
+
+    /**
+     * card#12747, THE LOW CALL PLATE (the walk note's item 9 and item 14): in every frame of the intern runs that walk out
+     * — a departure, two leaving on one delta, item 16's turn-round in the walk and the seat legs, and the queue run —
+     * every intern presses the low plate for § 12's *Call press*, standing where § 12's *Call plates* puts an intern, the
+     * plate within its reach and the main one not; and two-interns' two departures press in turn.
+     */
+    public function test_green_interns_press_the_low_call_plate_one_at_a_time(): void
+    {
+        $pairs = 0;
+
+        foreach (['leave-working', 'leave-idle', 'two-interns', 'stop-mid-walk', 'queue-gain-after-boarding', 'middle-leaves'] as $run) {
+            foreach ($this->drawn($this->floorRun($run)) as $x) {
+                [$defects, $seen] = $this->callDefects($x['frame'], $this->seatWidth(), $this->clearanceMargin(), $this->callPress());
+                $this->assertSame([], $defects, "[{$run}] at {$x['at']} ms ({$x['trigger']})");
+                $pairs += $seen;
+            }
+        }
+
+        $this->assertGreaterThan(0, $pairs, 'no frame drew an intern pressing while another stood or walked to the plates — the runs\' premise is broken');
+
+        // The main plate is out of an intern's reach where it stands to press: above its drawn height.
+        [$frame, $walk] = $this->firstWalk($this->floorRun('leave-working'), 'leave');
+        $main = $frame['scene']['band']['elevator']['calls']['main'];
+        $feet = array_values(array_filter($walk['legs'], static fn ($l) => ($l['why'] ?? null) === 'press'))[0]['at'];
+        $this->assertLessThan($feet['y'] - $walk['size']['h'], $main['y'] + $main['h'] / 2, 'the main call plate is within an intern\'s reach');
+    }
+
+    /** card#12747: an intern sent to the seat's main plate, where it stands. */
+    public function test_red_an_intern_at_the_main_call_plate(): void
+    {
+        $dir = $this->planted([self::SCENE, "    const call = callPoint(band, character, 'low');", "    const call = callPoint(band, character, 'main');"]);
+        [$frame] = $this->firstWalk($this->floorRun('leave-working', $dir), 'leave');
+        $defects = $this->callDefects($frame, $this->seatWidth(), $this->clearanceMargin(), $this->callPress())[0];
+
+        $this->assertNotSame([], array_filter($defects, static fn ($d) => str_contains($d, 'not low')), 'an intern pressed the main plate and the call-plate guard saw nothing');
+        $this->assertNotSame([], array_filter($defects, static fn ($d) => str_contains($d, 'out of its reach')), 'an intern reached the main plate and the reach guard saw nothing');
+    }
+
+    /** card#12747: no turn at the plates — two interns of one delta press on one point. */
+    public function test_red_interns_pressing_on_one_another(): void
+    {
+        $dir = $this->planted([self::IN_FLIGHT, "        this.#call();\n", '']);
+        $defects = array_merge(...array_map(fn ($x) => $this->callDefects($x['frame'], $this->seatWidth(), $this->clearanceMargin(), $this->callPress())[0],
+            $this->drawn($this->floorRun('two-interns', $dir))));
+
+        $this->assertNotSame([], array_filter($defects, static fn ($d) => str_contains($d, 'pressing its call plate')), 'two interns pressed together and the call-plate guard saw nothing');
+    }
+
+    /** card#12747: an intern's departure that walks straight to the threshold. */
+    public function test_red_an_intern_that_skips_the_call_plate(): void
+    {
+        $dir = $this->planted([self::SCENE, "    const call = callPoint(band, character, 'low');", '    const call = null;']);
+        [$frame] = $this->firstWalk($this->floorRun('leave-working', $dir), 'leave');
+
+        $this->assertNotSame([], $this->callDefects($frame, $this->seatWidth(), $this->clearanceMargin(), $this->callPress())[0],
+            'an intern walked straight to the threshold and the call-plate guard saw nothing');
+    }
+
+    /** The shipped seat walker's drawn width (`walk-probe.mjs`'s body). */
+    private function seatWidth(): float
+    {
+        return $this->queueSpacing() - $this->clearanceMargin();
+    }
+
+    /** card#12744: every intern revealed in the cab on the threshold — one point for the two arrivals. */
+    public function test_red_interns_on_one_point_in_the_cab(): void
+    {
+        $dir = $this->planted([self::IN_FLIGHT, '            r.h.cab_slot = k;', '            r.h.cab_slot = 0;']);
+        $defects = array_merge(...array_map(fn ($x) => $this->cabDefects($x['frame'], $this->cabApart(), $this->cabFloor($x['frame']))[0],
+            $this->drawn($this->floorRun('two-interns', $dir))));
+
+        $this->assertNotSame([], $defects, 'two interns stood on one point in the cab and the cab guard saw nothing');
+    }
+
+    /** card#12744: the turn-round in the cab standing at the arrival's spot, not where the arrival stood mid-step. */
+    public function test_red_the_turn_round_from_the_spot(): void
+    {
+        $dir = $this->planted([self::IN_FLIGHT, '{ cab_slot: was.slot, cab_from: Object.freeze({ x: was.at.x, y: was.at.y }) }', '{ cab_slot: was.slot }']);
+
+        $this->assertNotSame([], $this->continuityDefects($this->drawn($this->floorRun('two-stop-mid-step', $dir)), true)[0],
+            'an intern turned round at its spot while it stood mid-step and the continuity guard saw nothing');
+    }
+
+    public function test_red_the_queue_re_timed_from_scratch(): void
+    {
+        $dir = $this->planted([self::IN_FLIGHT, '        const left = (h) => h.plan !== undefined && h.at + h.plan.approach * I <= now;', '        const left = () => false;']);
+        $drawn = $this->drawn($this->floorRun('queue-gain-after-boarding', $dir));
+        $spacing = array_merge(...array_map(fn ($x) => $this->queueSpacingDefects($x['frame'], $this->queueSpacing())[0], $drawn));
+
+        $this->assertNotSame([], [...$this->continuityDefects($drawn)[0], ...$spacing], 'an intern in the cab was re-timed back to its spot and no guard saw it');
     }
 
     public function test_green_at_the_cap_nothing_walks(): void
@@ -642,6 +872,83 @@ class AnInternRidesTheElevatorTest extends TestCase
         }
     }
 
+    // ── AT-D3-34 (card#12793): an intern's queue keeps the seat's lane clear ────────────────────────────────────
+
+    /** The seat walker's drawn body (`walk-probe.mjs`'s), whose lane the interns keep too. */
+    private function seatBody(): array
+    {
+        static $body = null;
+
+        return $body ??= $this->probe(['mode' => 'shipped', 'repeat' => 1, 'walls' => []], null, __DIR__.'/walk-probe.mjs')['body'];
+    }
+
+    /**
+     * card#12793, INTERNS: leave-outside-the-lane's intern fades its laptop out, presses the low plate in turn, and waits
+     * at spot 1 — outside the seat's lane, on the seat's lattice, at least *Queue spacing* from the seat waiting at spot 0
+     * — and when `aimla-pm` returns it boards after the rider has cleared the lane and the seat has stepped in; in every
+     * frame nobody waits in the lane and no boarder walks in it with the rider.
+     */
+    public function test_green_an_intern_waits_outside_the_seats_lane_and_boards_after_the_rider_and_the_seat(): void
+    {
+        $result = $this->floorRun('leave-outside-the-lane');
+        [$frame, $walk] = $this->firstWalk($result, 'leave');
+        $legs = $walk['legs'];
+
+        $this->assertSame('seat', $legs[0]['kind'], 'the intern does not fade its laptop out before it walks');
+        $this->assertSame([1, 0], [$legs[0]['laptop_from'], $legs[0]['laptop_to']], 'the intern does not fade its laptop out before it walks');
+        $press = array_values(array_filter($legs, static fn ($l) => ($l['why'] ?? null) === 'press'))[0];
+        $this->assertSame('low', $press['plate'], 'the intern does not press the low call plate');
+
+        $probe = $this->probe(['mode' => 'spots', 'open' => [0, 5], 'count' => 2], null, __DIR__.'/walk-probe.mjs');
+        $seat = array_values(array_filter($frame['scene']['effects'], static fn ($e) => $e['animation_id'] === 'A2' && ($e['frames'] ?? 0) > 0))[0];
+        $seatSpot = array_values(array_filter($seat['legs'], static fn ($l) => ($l['why'] ?? null) === 'wait'))[0]['at'];
+        $internSpot = array_values(array_filter($legs, static fn ($l) => ($l['why'] ?? null) === 'wait'))[0]['at'];
+        $this->assertEqualsWithDelta($probe['spots']['lane'], [$seatSpot, $internSpot], 0.001, 'the seat and its intern do not wait at the seat lattice\'s spots 0 and 1');
+        $this->assertGreaterThanOrEqual($this->queueSpacing() - 0.001, hypot($seatSpot['x'] - $internSpot['x'], $seatSpot['y'] - $internSpot['y']), 'the intern waits within the spacing of the seat');
+
+        $lane = null;
+        $pairs = 0;
+        $boarded = null;
+
+        foreach ($this->drawn($result) as $x) {
+            $lane ??= $this->elevatorLaneOf($x['frame'], $this->seatBody(), $this->clearanceMargin());
+            [$defects, $n] = $this->laneDefects($x['frame'], $lane);
+            $this->assertSame([], [...$defects, ...$this->callDefects($x['frame'], $this->seatWidth(), $this->clearanceMargin(), $this->callPress())[0]], "at {$x['at']} ms ({$x['trigger']})");
+            $pairs += $n;
+
+            $rider = array_values(array_filter($x['frame']['scene']['effects'], static fn ($e) => $e['animation_id'] === 'A1' && ($e['frames'] ?? 0) > 0));
+            $intern = $this->internWalks($x['frame'], $walk['intern_key']);
+
+            if ($boarded === null && $rider !== [] && $intern !== [] && (float) ($rider[0]['elapsed_ms'] ?? 1) === 0.0) {
+                $boarded = [$rider[0], $intern[0], array_values(array_filter($x['frame']['scene']['effects'], static fn ($e) => $e['animation_id'] === 'A2' && ($e['frames'] ?? 0) > 0))[0]];
+            }
+        }
+
+        $this->assertGreaterThan(0, $pairs, 'no frame drew the rider with a boarder — the run\'s premise is broken');
+        $this->assertNotNull($boarded, 'the run draws no return for aimla-pm while the intern waits — its premise is broken');
+        [$rider, $intern, $seat] = $boarded;
+        $cabOf = static fn (array $w): array => array_values(array_filter($w['legs'], static fn ($l) => $l['kind'] === 'cab'))[0];
+        $leaves = fn (array $w): float => $this->legSpan($w, array_values(array_filter($w['legs'], static fn ($l) => ($l['why'] ?? null) === 'wait'))[0])[1];
+        $out = array_values(array_filter($rider['legs'], static fn ($l) => $l['kind'] === 'walk'))[0];
+        $this->assertGreaterThan($this->legSpan($rider, $out)[0], $leaves($seat), 'the seat leaves its spot before the rider has stepped out');
+        $this->assertGreaterThanOrEqual($this->legSpan($seat, $cabOf($seat))[0] + $this->door()['step'] * $rider['frame_interval_ms'] - 0.001, $leaves($intern),
+            'the intern leaves its spot before the seat has stepped in');
+    }
+
+    /** card#12793 RED — the intern's own lane: the lane sized to an intern's body, so an intern's spot stands in the seat's lane. */
+    public function test_red_the_lane_sized_to_the_intern(): void
+    {
+        // card#12841: the elevator's lane is `doorLane()`'s, the rule both doors share.
+        $dir = $this->planted([self::SCENE, "    const body = walkerSize(character);\n    const w = Math.max(span, body.w + 2 * CLEARANCE.margin);", "    const body = INTERN_SIZE;\n    const w = Math.max(span, body.w + 2 * CLEARANCE.margin);"]);
+        $defects = [];
+
+        foreach ($this->drawn($this->floorRun('leave-outside-the-lane', $dir)) as $x) {
+            $defects = [...$defects, ...$this->laneDefects($x['frame'], $this->elevatorLaneOf($x['frame'], $this->seatBody(), $this->clearanceMargin()))[0]];
+        }
+
+        $this->assertNotSame([], $defects, 'a walker waited inside the seat\'s lane and the lane guard saw nothing');
+    }
+
     // ── RED — each a plant in the shipped tree ───────────────────────────────────────────────
 
     /**
@@ -685,7 +992,8 @@ class AnInternRidesTheElevatorTest extends TestCase
 
     public function test_red_the_plain_cancel(): void
     {
-        $dir = $this->planted([self::SCENE, "            const turned = turnRound(fx, flying, from, door, routed, walk, leg, done, walking, row);", '            const turned = null;']);
+        // card#12466: `turnRound()` is every walker's now, handed the intern's geometry; the plant drops its answer.
+        $dir = $this->planted([self::SCENE, "            const turned = turnRound(flying, {\n                to: 'elevator',", "            const turned = null && turnRound(flying, {\n                to: 'elevator',"]);
         $r = $this->floorRun('stop-mid-walk', $dir);
         $this->assertSame([], array_values(array_filter($this->firstWalks($r), static fn ($h) => $h[1]['leg_kind'] !== 'arrive')),
             'the plant still drew an effect after the cancelling render');
@@ -722,6 +1030,13 @@ class AnInternRidesTheElevatorTest extends TestCase
         $this->assertNotSame([], $this->laptopPinDefects($this->paintedWalk($dir)), 'the plant\'s unpinned laptop was not caught');
     }
 
+    /** card#12457, the pin the card replaced: the instant written as the start, ahead of the frame. */
+    public function test_red_the_start_ahead_of_the_frame(): void
+    {
+        $dir = $this->planted(['../floor/painter.js', "animation.startTime = start;\n                animation.effect.updateTiming({ delay: delay + instant - start });", 'animation.startTime = instant;']);
+        $this->assertNotSame([], $this->aheadOfTheFrameDefects($this->paintedWalk($dir)), 'the plant\'s start ahead of the frame was not caught');
+    }
+
     public function test_red_the_unpinned_leaves(): void
     {
         $dir = $this->planted(['../floor/painter.js', '            pinned.push({ key: null, elapsed_ms: 0, nodes: walkLeaves, began: performance.now() - (clock.now() - scene.doors_at) });', '']);
@@ -735,20 +1050,34 @@ class AnInternRidesTheElevatorTest extends TestCase
         $this->assertContains(self::BASE + 2, $causes, 'the plant drew no walk at the cap');
     }
 
-    public function test_red_a_queue_and_the_seats_own_wait(): void
+    public function test_red_an_intern_out_of_the_queue_and_the_seats_own_wait(): void
     {
-        $queue = $this->planted([self::SCENE, '        const wait = walking.wait(fx.intern_key, row.cause);
-        const legs = [', '        const wait = walking.wait(fx.intern_key, row.cause) + out.reduce((n, e) => n + e.frames, 0);
-        const legs = [']);
-        $leaves = array_values(array_filter($this->firstWalks($this->floorRun('two-interns', $queue)), static fn ($h) => $h[1]['leg_kind'] === 'leave'));
-        $owed = array_map(fn ($h) => $this->seededWait($h[1]['intern_key'], $h[1]['cause']), $leaves);
-        $this->assertNotSame($owed, array_map(static fn ($h) => $h[1]['legs'][2]['frames'], $leaves), 'the queue plant left every wait its own draw');
+        // An intern's departure drawn without its queue part (card#12705): it waits its own draw on the threshold — on
+        // the point the other intern waits at.
+        $alone = $this->planted([self::SCENE, '        return done(fx, gone.legs, gone.door, way.tier, gone.queue);', '        return done(fx, gone.legs, gone.door, way.tier);']);
+        $defects = [];
 
-        $seatKey = $this->planted([self::SCENE, '        const wait = walking.wait(fx.intern_key, row.cause);
-        const legs = [', '        const wait = walking.wait(seat, row.cause);
-        const legs = [']);
+        foreach ($this->drawn($this->floorRun('two-interns', $alone)) as $x) {
+            $defects = [...$defects, ...$this->queueSpacingDefects($x['frame'], $this->queueSpacing())[0]];
+        }
+
+        $this->assertNotSame([], $defects, 'two interns waited out of the queue and the spacing guard saw nothing');
+
+        $seatKey = $this->planted([self::SCENE, '            way, walking.wait(fx.intern_key, row.cause), sill);', '            way, walking.wait(seat, row.cause), sill);']);
         $leaves = array_values(array_filter($this->firstWalks($this->floorRun('two-interns', $seatKey)), static fn ($h) => $h[1]['leg_kind'] === 'leave'));
-        $this->assertSame($leaves[0][1]['legs'][2]['frames'], $leaves[1][1]['legs'][2]['frames'], 'two interns of one delta waited apart under the seat key');
+        $this->assertSame($leaves[0][1]['queue']['wait'], $leaves[1][1]['queue']['wait'], 'two interns of one delta waited apart under the seat key');
+    }
+
+    /** § 12's *Queue spacing*: the shipped walker's drawn width (`walk-probe.mjs`'s body) plus *Walker clearance*'s side margin. */
+    private function queueSpacing(): float
+    {
+        static $body = null;
+
+        $this->assertSame(1, preg_match('/^\| \*\*Walker clearance\*\* \| \*\*(\d+) px beside;/m', $this->floorMd(), $m),
+            '§ 12 carries no *Walker clearance* row in the form this test reads');
+        $body ??= $this->probe(['mode' => 'shipped', 'repeat' => 1, 'walls' => []], null, __DIR__.'/walk-probe.mjs')['body']['w'];
+
+        return (float) $body + (int) $m[1];
     }
 
     public function test_red_the_null_default_and_the_seat_level_laptop(): void

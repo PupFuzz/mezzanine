@@ -91,10 +91,10 @@ import { floors, heldBody, roomsOf } from '../lobby/lobby-model.js';
 import { plates } from '../lobby/building-model.js';
 import { Ride } from '../wire/ride.js';
 import { buildFleetJoin, buildJoin } from './coord-join.js';
-import { statusStrip } from './status-strip.js';
+import { LIVE, feedStatus, statusStrip } from './status-strip.js';
 import { failureRender } from '../wire/failure-render.js';
 import { buildScene, threshold } from './scene.js';
-import { EffectsInFlight, inboundDesk, walkSide } from './in-flight.js';
+import { EffectsInFlight, awayDesk, inboundDesk, walkSide } from './in-flight.js';
 import { createCamera, fit, frameOn, glideMs, pan, panBy, pinch, resize, zoom, zoomStep } from '../wire/camera.js';
 import { TilesetLoader, tilesetUrl } from './tileset.js';
 import {
@@ -299,6 +299,12 @@ export class FloorScreen {
 
     /** The timer that ends the next walk in flight with a paint-only refresh, or `null`. */
     #walkTimer = null;
+
+    /** card#12749: the snack corner of the last scene built (`scene.js`'s `snackCorner()`), or `null`. */
+    #snack = null;
+
+    /** card#12786: the restroom of the last scene built (`scene.js`'s `restroomDoor()`), or `null`. */
+    #restroom = null;
 
     /** Who is handed a walk's paint-only refresh — the page's paint, the harness's record. */
     #onRefresh = null;
@@ -740,6 +746,10 @@ export class FloorScreen {
             ...this.#sceneDocs(frame, rows),
             interns_in_flight: this.#inFlight.interns(now),
             laptop_at: (key) => this.#inFlight.laptopAt(key, now),
+            // card#12749: the snack trips in flight — where an A2 or an A10 that lands mid-trip walks from.
+            trips_in_flight: this.#inFlight.trips(now),
+            // card#12466: the seat walks in flight — what an A1 over a departure, or an A2 over an arrival, turns round.
+            walks_in_flight: this.#inFlight.walks(now),
         }) : null;
 
         if (drawable) {
@@ -767,6 +777,10 @@ export class FloorScreen {
                 return plain?.slot_feet?.[key]?.[slot] ?? null;
             },
             interns: new Set(Object.entries(frame.desks?.desks ?? {}).flatMap(([key, d]) => (d.side_table?.stools ?? []).map((s) => `${key}~${s.call_id}`))),
+            // card#12705: the spots by the elevator a departure waits at (walk note item 9) — this render's scene's.
+            queue_spot: plain?.queue_spot ?? null,
+            // card#12793: the lane in front of the doors a rider clears before the first waiting walker leaves its spot.
+            lane: plain?.lane ?? null,
         });
         this.#armWalkEnd(now);
 
@@ -795,13 +809,38 @@ export class FloorScreen {
      * drawn as `in-flight.js`'s `inboundDesk()` draws it (item 4).
      */
     #overlay(frame, plain, now) {
+        // card#12749 (FLOOR.md § 6.6): the break pass — a recall walks its walker home, and a break whose second has come
+        // is decided — over the scene just built, before anything is drawn from the holder; card#12786 (§ 6.7): the
+        // restroom's breaks in the same pass.
+        this.#snack = plain.snack ?? null;
+        this.#restroom = plain.restroom ?? null;
+
+        for (const line of this.#inFlight.breaks(now, {
+            snack: this.#snack,
+            restroom: this.#restroom,
+            server_ms: correctedNowMs(this.#client.clockOffsetMs, now),
+            // § 6.6 item 1: a trip STARTS only while § 5.5's feed status reads *live* — a permission, never a driver.
+            live: feedStatus(this.#client.feed) === LIVE,
+            unconfirmed: (key) => frame.desks?.desks?.[key]?.unconfirmed ?? null,
+            stilled: (frame.failure?.sign_in ?? null) !== null,
+            threshold: threshold(plain.band),
+            lattice_key: plain.lattice_key ?? null,
+        })) {
+            this.#client.record(line);
+        }
+
+        this.#armWalkEnd(now);
+
         const inbound = this.#inFlight.inbound(now);
         const inboundInterns = this.#inFlight.inboundInterns(now);
+        // A walker away on a snack trip: its desk draws the empty chair with every fact of its object at the desk, its
+        // task bubble included and no z's (§ 6.6 item 4) — `awayDesk()`'s render — and its stool draws empty.
+        const away = this.#inFlight.away(now);
         let scene = plain;
 
         let desks = null;
 
-        if (inbound.size > 0) {
+        if (inbound.size > 0 || away.size > 0) {
             desks = { ...frame.desks.desks };
 
             for (const key of inbound) {
@@ -809,20 +848,28 @@ export class FloorScreen {
                     desks[key] = inboundDesk(desks[key]);
                 }
             }
+
+            for (const key of away) {
+                if (desks[key] !== undefined && !inbound.has(key)) {
+                    desks[key] = awayDesk(desks[key]);
+                }
+            }
         }
 
-        if (inboundInterns.size > 0) {
+        if (inboundInterns.size > 0 || away.size > 0) {
             desks ??= { ...frame.desks.desks };
+            const off = (key, s) => inboundInterns.has(`${key}~${s.call_id}`) || away.has(`${key}~${s.call_id}`);
 
             // card#12450: an intern whose arrival is in flight is drawn by its walker, so its stool draws empty — its
-            // slot kept, the side table seated for it — until the paint-only refresh at the arrival's end seats it.
+            // slot kept, the side table seated for it — until the paint-only refresh at the arrival's end seats it; and
+            // one on a snack trip (card#12749) until the refresh at the trip's end.
             for (const key of Object.keys(desks)) {
                 const stools = desks[key].side_table?.stools ?? [];
 
-                if (stools.some((s) => inboundInterns.has(`${key}~${s.call_id}`))) {
+                if (stools.some((s) => off(key, s))) {
                     desks[key] = Object.freeze({
                         ...desks[key],
-                        side_table: Object.freeze({ ...desks[key].side_table, stools: stools.filter((s) => !inboundInterns.has(`${key}~${s.call_id}`)) }),
+                        side_table: Object.freeze({ ...desks[key].side_table, stools: stools.filter((s) => !off(key, s)) }),
                     });
                 }
             }
@@ -836,9 +883,23 @@ export class FloorScreen {
         // whose subagent went idle on the way stays down — so each walk in flight carries it, read off the frame.
         const heldOf = (fx) => (frame.desks?.desks?.[`${fx.install_id}/${fx.seat_id}`]?.side_table?.stools ?? [])
             .find((s) => s.call_id === fx.call_id)?.activity ?? null;
+        // card#12785 (§ 6.6 item 4): a snack trip's walker carries its break's food thought while it is BUSY — its held
+        // state `working` in this render's scene — and none while it is idle or walking home from a recall; read each
+        // render, so a walker whose state turns working mid-trip thinks of food from that render and one that turns idle
+        // stops.
+        const walkers = new Map((plain.snack?.walkers ?? []).map((w) => [w.key, w]));
+        // card#12786 (§ 6.7 item 4): every restroom visitor, busy or idle, carries the restroom line from its walk out to its
+        // walk home — none on a recall's walk home, which is no break.
         const current = this.#inFlight.current(now).map((fx) => (fx.animation_id === 'A10' && typeof fx.intern_key === 'string'
             ? Object.freeze({ ...fx, held_activity: heldOf(fx) })
-            : fx));
+            : fx.animation_id === 'A25'
+                ? Object.freeze({ ...fx, thought: fx.leg_kind === 'snack' && walkers.get(fx.walker_key)?.busy === true ? plain.snack.thought(fx.line, fx) : null })
+                : fx.animation_id === 'A26'
+                    ? Object.freeze({ ...fx, thought: fx.leg_kind === 'restroom' ? plain.restroom.thought(fx) : null })
+                    : fx));
+        // card#12786: each restroom door's leaf and field at this instant, in frames from `doors_at` — the painter's.
+        const doorsNow = this.#inFlight.restroomDoors(now);
+        const closed = Object.freeze({ leaf: Object.freeze([]), occupied: Object.freeze([]), level: 0, occupied_now: false });
 
         return Object.freeze({
             ...scene,
@@ -847,6 +908,9 @@ export class FloorScreen {
             // holder's, this render's new ones included.
             effects: Object.freeze([...plain.effects.filter((e) => !(e.frames > 0) && !(e.still_frames > 0)), ...current]),
             doors: Object.freeze(this.#inFlight.doors(now)),
+            // card#12786 (§ 6.7 items 2 and 4): every restroom door the scene reads, with its leaf and its field from the
+            // holder — closed and vacant with no visit in flight — at the rects the painter draws them.
+            restroom_doors: Object.freeze((plain.restroom?.doors ?? []).map((d) => Object.freeze({ ...d, ...(doorsNow.get(d.id) ?? closed) }))),
             // The instant on the page's clock `doors` is in frames from — the painter pins the leaves' motion to it, as it
             // pins every walker to its own start, so neither the scene's build nor the browser's layout of the paint
             // that follows delays the leaves behind a walker already stepping out through them (card#12450).
@@ -870,7 +934,11 @@ export class FloorScreen {
             this.#walkTimer = null;
         }
 
-        const ms = this.#inFlight.nextEnd(now);
+        // card#12749: the next break's second paints too, so a trip begins on its own second (card#12786: either chain's,
+        // and a deferred break's hand-over).
+        const ends = [this.#inFlight.nextEnd(now), this.#inFlight.nextBreak(now, this.#snack, this.#restroom, correctedNowMs(this.#client.clockOffsetMs, now))]
+            .filter((v) => v !== null);
+        const ms = ends.length === 0 ? null : Math.min(...ends);
 
         if (ms !== null) {
             this.#walkTimer = timers.after(ms, () => {

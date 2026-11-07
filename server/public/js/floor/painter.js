@@ -41,15 +41,16 @@
  *
  * ⛔ THE ONE TIMER HERE IS A HELD LOOP's OWN FRAMES, at the interval the scene carries (§ 6.3's
  * second bullet: "except a state-held loop's own frames at the fixed rate"), and it runs only for a
- * character whose held render the animation set drew WITH motion, or while an A1 or A2 walker is in
- * flight — its stride and its place among the desks, an edge row's own bounded frames (card#12194).
+ * character whose held render the animation set drew WITH motion, or while a walker is in flight — A1's or
+ * A2's, an intern's A10 (card#12450) or a snack trip's A25 (card#12749) — its stride and its place among the
+ * desks, its row's own bounded frames (card#12194).
  * Decorative motion is the stylesheet's, at the cycle the scene states.
  */
 
 import { BUBBLE_PAD, FONT, FONT_NAME, FONT_SCREEN, STOOL_GLYPH, TYPE_ROLES, characterAsset } from './desk-layout.js';
 import { SKY_PAINT } from './floor-layout.js';
-import { ELEVATOR_DOOR } from './scene.js';
-import { floorStackOrder, pointAt } from './route.js';
+import { ELEVATOR_DOOR, leafLevel } from './scene.js';
+import { cabStep, floorStackOrder, pointAt } from './route.js';
 import { BIRD_LIFT, arcPath, birdShapes, birdhouseShapes, envelopeShapes, legShapes, ringShapes, standingLegShapes, stillNotes } from './bird.js';
 import { RENDER_STATES } from '../lobby/render-state.js';
 import { CAB_STYLE, LANDING, THEME_REGISTRY, cabTheme, clippedTo, drawCabInterior, node, paintCab, rideLeaves, themeModule } from './cab-paint.js';
@@ -115,7 +116,12 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 .plate{fill:var(--scene-plate);stroke:var(--scene-plate-edge)}
 .facts-plate{fill:var(--scene-plate);stroke:var(--scene-plate-edge);stroke-opacity:.35}
 .gauge-track{fill:var(--scene-gauge-track)}.gauge-fill{fill:var(--scene-gauge-fill)}
-.bubble{fill:var(--scene-paper);stroke:var(--scene-trim)}.bubble-trail{fill:var(--scene-paper);stroke:var(--scene-trim)}.bubble-source{fill:var(--scene-bubble-source)}
+.bubble{fill:var(--scene-paper);stroke:var(--scene-trim)}.snack-thought-text{font-style:italic}
+.restroom-leaf{transform-box:fill-box;transform-origin:left center}.restroom-leaf rect{fill:var(--door);stroke:var(--door-edge);stroke-width:1.5}.restroom-leaf circle{fill:var(--lamp-dim)}
+${[0, 1, 2, 3, 4].map((n) => `@keyframes restroom-leaf-${n}{from{transform:scaleX(${1 - (n / 4) * 0.88})}to{transform:scaleX(${1 - (n / 4) * 0.88})}}`).join('')}
+.restroom-vacant rect{fill:var(--restroom-vacant)}.restroom-occupied rect{fill:var(--restroom-occupied)}.restroom-field-mark{fill:none;stroke:var(--scene-paper);stroke-width:1.6}
+.restroom-occupied{opacity:0;animation-fill-mode:none}.restroom-vacant{animation-fill-mode:none}
+@keyframes restroom-hide{from{opacity:0}to{opacity:0}}.bubble-trail{fill:var(--scene-paper);stroke:var(--scene-trim)}.bubble-source{fill:var(--scene-bubble-source)}
 .lighting-dimmed{opacity:.72}.lighting-dark{opacity:.45}.lighting-desaturated{filter:saturate(.3)}
 .strip-header{font-weight:bold}
 .decor{fill:var(--lamp);opacity:.25}.decor-moving{animation:decor ease-in-out infinite alternate}
@@ -124,7 +130,7 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 @keyframes ring-fade{from{transform:scale(1);opacity:1}to{transform:scale(1);opacity:0}}
 .fx-flash{fill:var(--scene-flash);opacity:0;animation-name:flash}
 @keyframes flash{from{opacity:.8}to{opacity:0}}
-.fx-walker{offset-rotate:0deg;animation-name:glide;animation-timing-function:linear;animation-fill-mode:both}.fx-walker-shown{opacity:0;pointer-events:none;animation-name:walker-shown;animation-fill-mode:none}
+.fx-walker,.fx-walker-step{offset-rotate:0deg;animation-name:glide;animation-timing-function:linear;animation-fill-mode:both}.fx-walker-leg{opacity:0}.fx-walker-shown{opacity:0;pointer-events:none;animation-name:walker-shown;animation-fill-mode:none}
 @keyframes glide{from{offset-distance:0%}to{offset-distance:100%}}
 @keyframes walker-shown{from{opacity:1}to{opacity:1}}
 .fx-laptop{animation-name:laptop;animation-fill-mode:both}
@@ -215,11 +221,20 @@ export function measurer() {
     };
 }
 
-/** The § 6.2 rows drawn as a walker (card#9566, card#12194). */
-const isWalk = (fx) => fx.animation_id === 'A1' || fx.animation_id === 'A2';
+/** The break rows drawn as a walker: A25's snack trip (card#12749) and A26's restroom visit (card#12786). */
+const BREAKS = Object.freeze(['A25', 'A26']);
 
-/** An intern's A10 walk (card#12450): drawn as a walker too, keyed by its intern key. */
-const isInternWalk = (fx) => fx.animation_id === 'A10' && typeof fx.intern_key === 'string';
+/**
+ * The § 6.2 rows drawn as a walker (card#9566, card#12194) — and a seat's snack trip, A25's drawing (card#12749), which
+ * is a walk out, a stand and a walk home on the same primitive, and its restroom visit, A26's (card#12786).
+ */
+const isWalk = (fx) => fx.animation_id === 'A1' || fx.animation_id === 'A2' || (BREAKS.includes(fx.animation_id) && typeof fx.intern_key !== 'string');
+
+/**
+ * An intern's A10 walk (card#12450), and an intern's snack trip (card#12749) or restroom visit (card#12786): drawn as a
+ * walker too, keyed by its intern key.
+ */
+const isInternWalk = (fx) => (fx.animation_id === 'A10' || BREAKS.includes(fx.animation_id)) && typeof fx.intern_key === 'string';
 
 /**
  * One continuous motion's identity across paints (card#12345, card#12194). A bird flight: its row, its post, its leg
@@ -228,6 +243,12 @@ const isInternWalk = (fx) => fx.animation_id === 'A10' && typeof fx.intern_key =
  * never inherits a cancelled one's origin.
  */
 function effectKey(fx) {
+    // card#12749: one trip per walker per break (card#12785: a break is its start second), and its walk home a motion of
+    // its own.
+    if (BREAKS.includes(fx.animation_id)) {
+        return `${fx.animation_id} ${fx.walker_key} ${fx.start_s} ${fx.leg_kind}`;
+    }
+
     if (isInternWalk(fx)) {
         return `A10 ${fx.intern_key} ${fx.cause} ${fx.leg_kind}`;
     }
@@ -293,6 +314,10 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
     let pinned = [];
     // This paint's origins as they are recorded, so two effects of one key in one paint share one.
     let starts = new Map();
+    // card#12457: each animation `pin()` has pinned, by its delay as the node's style wrote it — `pin()` moves part of
+    // the start into the delay, so a second pin of the same animation must move the authored delay, not the moved one.
+    // Weak: an animation is dropped with its node.
+    const authored = new WeakMap();
     // THE ONE CACHE OF THEME DOCUMENTS (FLOOR.md § 10.6 item 2): a document's URI, KEYED ON ITS INPUTS — the
     // theme, the function and every input — and never on its asset id, because a map re-save changes a
     // plane's grid, slots and runs under the same asset id, and a cache keyed on the id would draw the old
@@ -728,14 +753,33 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
 
     /**
      * One effect's nodes pinned to its origin. Each node's CSS delay already carries this paint's `elapsed_ms`, so the
-     * start that makes the delayed animation read the timeline from `began` is `began + elapsed_ms`. Called for every
+     * instant that makes the delayed animation read the timeline from `began` is `began + elapsed_ms`. Called for every
      * effect after the drawing is in the document (`pinEffects()`), and again for a walker whose node the depth
      * reconcile moved, because a re-inserted node's animations are new.
+     *
+     * card#12457: that instant is never written as the animation's START. It is a live reading (`origin()`), so it can
+     * be later than the time the browser draws the next frame at — `document.timeline.currentTime` holds the last
+     * frame's time through the task, and the next frame's time may be taken before this paint runs (the bird-flight row
+     * read the new node's animation at a negative current time on that frame). An animation started after the frame it
+     * is drawn in is in its BEFORE phase there whatever its delay — the boundary of that phase is never earlier than its
+     * start — and a node drawn only by its animation (`.fx-bird`'s `opacity:0` outside its run, fill `none`) is not
+     * drawn for that frame: the bird blinked after a repaint. So the start is the timeline's time now, which no later
+     * frame precedes, and the difference goes into the animation's own delay: the motion reads the timeline from the
+     * same instant exactly, and is drawn from the first frame after the repaint. The delay moved is always the node's AUTHORED
+     * one, held per animation (`authored`), so pinning an animation again — the depth reconcile re-pins a walker's
+     * every node, the cab's that never moved included — moves its authored delay, never a delay already moved.
      */
     function pin(entry) {
+        const start = document.timeline.currentTime;
+        const instant = entry.began + entry.elapsed_ms;
+
         for (const el of entry.nodes) {
             for (const animation of el.getAnimations()) {
-                animation.startTime = entry.began + entry.elapsed_ms;
+                const delay = authored.get(animation) ?? animation.effect.getTiming().delay;
+
+                authored.set(animation, delay);
+                animation.startTime = start;
+                animation.effect.updateTiming({ delay: delay + instant - start });
             }
         }
     }
@@ -759,6 +803,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
      */
     function paintEffects(layer, effects, floor) {
         const walkers = [];
+
 
         for (const fx of effects) {
             const seconds = (fx.frames * fx.frame_interval_ms) / 1000;
@@ -872,11 +917,23 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             }
         }
 
+        // card#12744: the riders in the cab, the one deepest in drawn first — a rider further in is behind one nearer the
+        // doors — ties in the order they were drawn. Placed once, before anything is pinned, so no animation restarts.
+        const riders = walkers.filter((x) => x.cab !== null);
+        const deepFirst = [...riders].sort((a, b) => a.cab_y - b.cab_y);
+
+        if (deepFirst.some((w, i) => w !== riders[i])) {
+            for (const w of deepFirst) {
+                floor.cab.insertBefore(w.cab, null);
+            }
+        }
+
         return walkers;
     }
 
     /**
-     * One A1 or A2 walker (§ 6.2's walk note items 3–5, card#12194): the seat's character, its feet on the scene's
+     * One walker — A1's or A2's (§ 6.2's walk note items 3–5, card#12194), an intern's A10 (card#12450) or a snack trip's
+     * A25 (card#12749), which is a walk out, a stand at its table and a walk home: the character, its feet on the scene's
      * routed path, as TWO elements — the scene decided every number, and `elapsed_ms` is how far into the walk this
      * paint lands. Neither is ever a pointer target (`.fx-walker-shown`'s `pointer-events:none`): the elevator under a
      * waiting walker and a desk it stands in front of keep every press.
@@ -884,22 +941,30 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
      * - THE FLOOR ELEMENT, in the floor stack: `g.fx-walker-shown` is drawn only through the walker's floor legs (its
      *   `walker-shown` run), and inside it `g.fx-walker` GLIDES the walk leg — `offset-distance` 0 → 100 % along the
      *   path, `linear`, `fill-mode: both`, so before the leg it stands at the path's first point and after it at its
-     *   last, which is where every `stand` leg stands.
-     * - THE CAB ELEMENT, in the band's cab behind the leaves, still at the threshold and drawn only through the `cab`
-     *   leg — so the opening leaves reveal it and the closing ones cover it.
+     *   last, which is where every `stand` leg stands. A walker with more than one walk leg (a departure waiting at a
+     *   spot beside the threshold walks to it, then from it, card#12705) has one such glide per leg, every one a child
+     *   of the floor element (`g.fx-walker.fx-walker-leg`), each drawn by its own `walker-shown` run from its walk's
+     *   start to the next walk's.
+     * - THE CAB ELEMENT, in the band's cab behind the leaves, drawn only through the `cab` leg — so the opening leaves
+     *   reveal it and the closing ones cover it — at the leg's rider spot (the threshold for a lone rider), gliding
+     *   between the threshold and its spot through the leg's step (`g.fx-walker-step`, card#12744). The riders in the
+     *   cab are ordered deepest first (`paintEffects()`).
      *
-     * The three animated groups are pinned together to one origin (`origin()`); the floor image strides only inside
-     * the walk leg (its `stepping` window) and stands at its phase-0 frame outside it; the cab image never strides.
+     * The animated groups are pinned together to one origin (`origin()`); the floor image strides only inside its walk
+     * legs (their `stepping` windows) and stands at its phase-0 frame outside them; the cab image never strides.
      */
     function paintWalker(floor, fx) {
         const I = fx.frame_interval_ms;
         const sec = (ms) => ms / 1000;
         const elapsed = fx.elapsed_ms ?? 0;
         // card#12450: an intern's turn-round in the cab or on the threshold, and its gain-and-loss blink, walk no leg: its
-        // floor legs, if any, stand at the threshold.
-        const walk = fx.legs.find((l) => l.kind === 'walk') ?? null;
-        const onFloor = fx.legs.filter((l) => l.kind !== 'cab');
+        // floor legs, if any, stand at the threshold. card#12705: a departure that waits at a spot beside the threshold
+        // walks twice — to its spot, and from it to the threshold when it boards.
+        const walks = fx.legs.filter((l) => l.kind === 'walk');
+        // card#12786: an `inside` leg is drawn in the restroom door's recess, under its leaf — never on the floor.
+        const onFloor = fx.legs.filter((l) => l.kind !== 'cab' && l.kind !== 'inside');
         const inCab = fx.legs.filter((l) => l.kind === 'cab');
+        const inDoor = fx.legs.filter((l) => l.kind === 'inside');
         const intern = isInternWalk(fx);
         const span = (legs) => (legs.length === 0 ? null : {
             from: Math.min(...legs.map((l) => l.start)) * I,
@@ -908,22 +973,68 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         const shownStyle = (s) => `animation-duration:${sec(s.to - s.from)}s;animation-delay:${sec(s.from - elapsed)}s`;
         const floorSpan = span(onFloor);
         const cabSpan = span(inCab);
-        const still = walk === null ? (onFloor[0]?.at ?? inCab[0].at) : null;
-        const path = walk === null ? `M ${still.x} ${still.y} L ${still.x} ${still.y}` : `M ${walk.points.map((p) => `${p.x} ${p.y}`).join(' L ')}`;
-        const shown = node('g', { class: 'fx-walker-shown', style: floorSpan === null ? 'animation-duration:0s' : shownStyle(floorSpan) }, floor.stack);
-        const glide = node('g', {
-            class: 'fx-walker',
-            style: walk === null
-                ? `offset-path:path('${path}');animation-duration:0s`
-                : `offset-path:path('${path}');animation-duration:${sec(walk.frames * I)}s;animation-delay:${sec(walk.start * I - elapsed)}s`,
-        }, shown);
+        // The floor element's runs: its floor legs' span, less every `inside` leg inside it (card#12786).
+        const runs = floorSpan === null ? [] : inDoor.reduce((acc, l) => acc.flatMap((r) => {
+            const a = l.start * I;
+            const b = (l.start + l.frames) * I;
+
+            return b <= r.from || a >= r.to ? [r] : [...(a > r.from ? [{ from: r.from, to: a }] : []), ...(b < r.to ? [{ from: b, to: r.to }] : [])];
+        }), [floorSpan]);
+        const runsStyle = runs.length <= 1 ? (runs.length === 0 ? 'animation-duration:0s' : shownStyle(runs[0]))
+            : `animation-name:${runs.map(() => 'walker-shown').join(',')};animation-duration:${runs.map((r) => `${sec(r.to - r.from)}s`).join(',')};`
+                + `animation-delay:${runs.map((r) => `${sec(r.from - elapsed)}s`).join(',')}`;
+        const shown = node('g', { class: 'fx-walker-shown', style: runsStyle }, floor.stack);
+        // One glide per walk leg, each drawn only through its own SEGMENT — from its walk's start (the first from the
+        // walker's first floor frame) to the next walk's — by a second animation on the glide itself (`.fx-walker-leg`), so
+        // before its walk the walker stands at the path's first point and after it at its last, which is where every
+        // `stand` leg between two walks stands, and every glide is a child of the floor element. A walker with one walk (or
+        // none) has the one glide, shown through the floor element's run alone, as it always was.
+        const segments = (walks.length === 0 ? [null] : walks).map((walk, i, all) => {
+            const still = walk === null ? (onFloor[0]?.at ?? inCab[0].at) : null;
+            const path = walk === null ? `M ${still.x} ${still.y} L ${still.x} ${still.y}` : `M ${walk.points.map((p) => `${p.x} ${p.y}`).join(' L ')}`;
+            const leg = all.length === 1 ? null : { from: i === 0 ? floorSpan.from : walk.start * I, to: i === all.length - 1 ? floorSpan.to : all[i + 1].start * I };
+            const glide = node('g', {
+                class: leg === null ? 'fx-walker' : 'fx-walker fx-walker-leg',
+                style: walk === null
+                    ? `offset-path:path('${path}');animation-duration:0s`
+                    : leg === null
+                        ? `offset-path:path('${path}');animation-duration:${sec(walk.frames * I)}s;animation-delay:${sec(walk.start * I - elapsed)}s`
+                        : `offset-path:path('${path}');animation-name:glide,walker-shown;animation-timing-function:linear,linear;animation-fill-mode:both,none;`
+                            + `animation-duration:${sec(walk.frames * I)}s,${sec(leg.to - leg.from)}s;animation-delay:${sec(walk.start * I - elapsed)}s,${sec(leg.from - elapsed)}s`,
+            }, shown);
+
+            return { walk, glide };
+        });
         const cab = cabSpan === null || floor.cab === null ? null : node('g', {
             class: 'fx-walker-shown fx-walker-cab',
             style: shownStyle(cabSpan),
         }, floor.cab);
-        const door = inCab[0]?.at ?? null;
-        const inner = cab === null ? null : node('g', { transform: `translate(${door.x} ${door.y})` }, cab);
-        const entry = origin({ key: effectKey(fx), started_at: fx.started_at, elapsed_ms: elapsed, nodes: cab === null ? [shown, glide] : [shown, glide, cab] });
+        // card#12744: the rider stands at its cab leg's spot — the threshold for a lone rider — and steps between the
+        // threshold and its spot inside the cab along its leg's step (`cabStep()`), glided as a walk leg is, at the
+        // speed that covers it in its frames.
+        const standing = inCab[0] ?? null;
+        const step = standing === null ? null : cabStep(standing);
+        const spot = standing?.at ?? null;
+        const inner = cab === null
+            ? null
+            : step === null
+                ? node('g', { transform: `translate(${spot.x} ${spot.y})` }, cab)
+                : node('g', {
+                    class: 'fx-walker-step',
+                    style: `offset-path:path('M ${step.from.x} ${step.from.y} L ${step.to.x} ${step.to.y}');animation-duration:${sec(step.frames * I)}s;animation-delay:${sec(step.start * I - elapsed)}s`,
+                }, cab);
+        // card#12786: the walker inside the restroom door — standing at the threshold, clipped to the door's recess and
+        // drawn under its leaf — through its `inside` legs alone, so the closing leaf covers it and the opening one shows it.
+        const recess = inDoor.length === 0 ? null : floor.restroom(inDoor[0].at);
+        const door = recess === null ? null : node('g', {
+            class: 'fx-walker-shown fx-walker-inside',
+            style: `animation-name:${inDoor.map(() => 'walker-shown').join(',')};animation-duration:${inDoor.map((l) => `${sec(l.frames * I)}s`).join(',')};`
+                + `animation-delay:${inDoor.map((l) => `${sec(l.start * I - elapsed)}s`).join(',')}`,
+        }, recess);
+        const stood = inDoor[0]?.at ?? null;
+        const occupant = door === null ? null : node('g', { transform: `translate(${stood.x} ${stood.y})` }, door);
+        const animated = [shown, ...segments.map((sg) => sg.glide), ...(door === null ? [] : [door])];
+        const entry = origin({ key: effectKey(fx), started_at: fx.started_at, elapsed_ms: elapsed, nodes: cab === null ? animated : [...animated, cab, ...(step === null ? [] : [inner])] });
         const asset = intern ? `intern:${fx.install_id}/${fx.intern_seat_key}` : characterAsset({ install_id: fx.install_id, seat_id: fx.seat_id });
         // card#12450: an intern walks at its chibi frame and glides (the tree hands no walk frames for an intern key),
         // with its laptop drawn over it through its `seat` legs.
@@ -931,7 +1042,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
 
         if (drawn === null) {
             // § 9 F14: the art failed, so the walker is the placeholder rectangle at the character's size.
-            for (const parent of [glide, inner].filter((p) => p !== null)) {
+            for (const parent of [...segments.map((sg) => sg.glide), inner, occupant].filter((p) => p !== null)) {
                 node('rect', { x: -fx.size.w / 2, y: -fx.size.h, width: fx.size.w, height: fx.size.h, class: 'placeholder' }, parent);
             }
         } else {
@@ -939,23 +1050,29 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             // centred on the feet — the standing frame is drawn in the widened frame, so the image is the same width
             // the desk's viewport is; `fx.size` stays the character's rect, the placeholder's size above.
             const at = (parent) => image(parent, drawn.uris[0], -fx.frame.w / 2, -fx.frame.h, fx.frame.w, fx.frame.h, asset, { class: intern ? 'intern' : 'character', preserveAspectRatio: MEET });
-            const el = at(glide);
 
-            if (!intern && walk !== null) {
-                const window = { entry, from_ms: walk.start * I, to_ms: (walk.start + walk.frames) * I };
+            for (const { walk, glide } of segments) {
+                const el = at(glide);
 
-                // A walk starts at its stand frame: A1's and A2's walks are the whole list, `loopFrom` 0, and take no loop
-                // offset (§ 10.4 item 4); it strides only inside its walk leg. The cab's image is never stepped.
-                stepping.push([el, drawn.uris, drawn.loopFrom, 0, window]);
+                if (!intern && walk !== null) {
+                    const window = { entry, from_ms: walk.start * I, to_ms: (walk.start + walk.frames) * I };
+
+                    // A walk starts at its stand frame: A1's and A2's walks are the whole list, `loopFrom` 0, and take no loop
+                    // offset (§ 10.4 item 4); it strides only inside its walk legs. The cab's image is never stepped.
+                    stepping.push([el, drawn.uris, drawn.loopFrom, 0, window]);
+                }
             }
 
             // card#12450/card#12451: the intern's laptop through its `seat` leg — rising from 0 to 1 on an arrival whose
-            // intern is HELD working at this paint (none where it went idle on the way), falling to 0 on a departure.
+            // intern is HELD working at this paint (none where it went idle on the way), falling to 0 on a departure. The
+            // `seat` leg is at the slot, so its laptop is the segment's that stands there: the first on a departure, the
+            // last on an arrival.
             const seatLeg = intern ? fx.legs.find((l) => l.kind === 'seat') ?? null : null;
             const laptop = seatLeg === null ? null : characterFrames(fx.install_id, fx.intern_seat_key, asset, fx.seat_species, null, 'laptop');
 
             if (seatLeg !== null && laptop !== null) {
                 const to = fx.leg_kind === 'arrive' ? (fx.held_activity === 'idle' ? 0 : seatLeg.laptop_to) : seatLeg.laptop_to;
+                const glide = (fx.leg_kind === 'arrive' ? segments[segments.length - 1] : segments[0]).glide;
                 const over = image(glide, laptop.uris[0], -fx.frame.w / 2, -fx.frame.h, fx.frame.w, fx.frame.h, asset, { class: 'intern fx-laptop', preserveAspectRatio: MEET });
 
                 laptopOver(over, seatLeg.laptop_from, to, seatLeg.frames, I, elapsed - seatLeg.start * I);
@@ -967,9 +1084,32 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             if (inner !== null) {
                 at(inner);
             }
+
+            if (occupant !== null) {
+                at(occupant);
+            }
         }
 
-        return { key: intern ? fx.intern_key : `${fx.install_id}/${fx.seat_id}`, fx, entry, node: shown };
+        // card#12785 (FLOOR.md § 6.6 item 4): a busy walker's food thought, which the scene laid out relative to the
+        // walker's feet — drawn inside every glide, so it travels with the walker on each leg and stands with it at the
+        // table: the trail, smallest first, then the cloud, then the line or two of the break's food line.
+        if ((fx.thought ?? null) !== null) {
+            for (const { glide } of segments) {
+                const g = node('g', { class: 'snack-thought' }, glide);
+
+                for (const c of fx.thought.trail) {
+                    node('circle', { cx: c.x, cy: c.y, r: c.r, class: 'bubble-trail' }, g);
+                }
+
+                node('path', { d: fx.thought.cloud.d, class: 'bubble' }, g);
+
+                for (const line of fx.thought.lines) {
+                    text(g, { x: line.x, y: line.y, text: line.text, id: `${fx.walker_key}:thought` }, 'bubble-text snack-thought-text');
+                }
+            }
+        }
+
+        return { key: intern ? fx.intern_key : `${fx.install_id}/${fx.seat_id}`, fx, entry, node: shown, cab, cab_y: standing?.at.y ?? null };
     }
 
     /**
@@ -1190,6 +1330,53 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             }
         }
 
+        // card#12786 (FLOOR.md § 6.7 items 2 and 4): EACH RESTROOM DOOR's OCCUPANT, LEAF AND FIELD — the painter's, at the
+        // scene's rects, over the theme's frame and recess: the recess clip a visitor inside is drawn in, the leaf in the
+        // building's door colours hinged at its left jamb, and the slider's field — a green field with a ring for vacant, a
+        // red one with a bar for occupied, shape as well as colour, never a word. Their motion is the holder's timeline in
+        // frames from `doors_at`, as sampled steps, pinned to that instant as the elevator's leaves are.
+        const recesses = [];
+        const doorNodes = [];
+        const doorFrameMs = 1000 / scene.loop_fps;
+
+        for (const [n, d] of (scene.restroom_doors ?? []).entries()) {
+            const clip = clippedTo(tiles, node('defs', {}, tiles), d.recess, `restroom-${n}`);
+            const leaf = node('g', { class: 'restroom-leaf' }, tiles);
+            const field = node('g', { class: 'restroom-field', 'aria-hidden': 'true' }, tiles);
+            const vacant = node('g', { class: 'restroom-vacant' }, field);
+            const occupied = node('g', { class: 'restroom-occupied' }, field);
+            const r = d.sign;
+
+            recesses.push({ at: d.threshold, clip });
+            node('rect', { x: d.recess.x, y: d.recess.y, width: d.recess.w, height: d.recess.h, rx: 1.5 }, leaf);
+            node('circle', { cx: d.recess.x + d.recess.w - 7, cy: d.recess.y + d.recess.h * 0.55, r: 2 }, leaf);
+            node('rect', { x: r.x, y: r.y, width: r.w, height: r.h, rx: 2 }, vacant);
+            node('circle', { cx: r.x + r.w / 2, cy: r.y + r.h / 2, r: Math.min(r.w, r.h) * 0.27, class: 'restroom-field-mark' }, vacant);
+            node('rect', { x: r.x, y: r.y, width: r.w, height: r.h, rx: 2 }, occupied);
+            node('path', { d: `M ${r.x + r.w * 0.28} ${r.y + r.h / 2} H ${r.x + r.w * 0.72}`, class: 'restroom-field-mark' }, occupied);
+
+            // The leaf's openness, a step per frame: its level after every move as its base, and one run per frame range
+            // whose level differs from it.
+            const marks = [...new Set([0, ...d.leaf.flatMap((m) => Array.from({ length: m.frames + 1 }, (_, k) => m.start + k)).filter((f) => f > 0)])].sort((a, b) => a - b);
+            const final = leafLevel(d.leaf, Infinity);
+            const step = (v) => Math.round(v * 4);
+            const leafRuns = marks.map((f, i) => ({ from: f, to: marks[i + 1] ?? f, level: step(leafLevel(d.leaf, i + 1 < marks.length ? (f + marks[i + 1]) / 2 : f)) }))
+                .filter((x) => x.to > x.from && x.level !== step(final));
+            const ms = (f) => (f * doorFrameMs) / 1000;
+
+            leaf.setAttribute('style', `transform:scaleX(${1 - (step(final) / 4) * 0.88})`
+                + (leafRuns.length === 0 ? '' : `;animation:${leafRuns.map((x) => `restroom-leaf-${x.level} ${ms(x.to - x.from)}s linear ${ms(x.from)}s`).join(',')}`));
+
+            if (d.occupied.length > 0) {
+                const runsOf = (name) => d.occupied.map((o) => `${name} ${ms(o.frames)}s linear ${ms(o.start)}s`).join(',');
+
+                occupied.setAttribute('style', `animation:${runsOf('walker-shown')}`);
+                vacant.setAttribute('style', `animation:${runsOf('restroom-hide')}`);
+            }
+
+            doorNodes.push(leaf, vacant, occupied);
+        }
+
         for (const d of scene.decorative) {
             node('ellipse', {
                 cx: d.glow.cx,
@@ -1245,7 +1432,15 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         }
 
         const effectsLayer = node('g', { class: 'effects' }, svg);
-        const walkers = paintEffects(effectsLayer, scene.effects, { stack: desks, cab: cabLayer });
+        // card#12786: a door's leaf and field pinned to the render's instant, as the elevator's leaves are.
+        if (doorNodes.length > 0 && Number.isFinite(scene.doors_at)) {
+            pinned.push({ key: null, elapsed_ms: 0, nodes: doorNodes, began: performance.now() - (clock.now() - scene.doors_at) });
+        }
+
+        // card#12786: beside the stack and the cab, the recess clip of the door whose threshold an `inside` leg stands at.
+        const walkers = paintEffects(effectsLayer, scene.effects, Object.assign({ stack: desks, cab: cabLayer }, {
+            restroom: (at) => recesses.find((x) => x.at !== null && x.at.x === at.x && x.at.y === at.y)?.clip ?? null,
+        }));
         const depths = scene.desks.map((desk) => ({ key: desk.key, depth_y: desk.depth_y }));
         const deskNode = (key) => deskNodes.get(key);
 
@@ -1269,8 +1464,8 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         // scene carries — one interval for the whole floor. Each character steps through its OWN held loop — a walker's
         // walk, a sleeper's pulse after its still — so a loop of one length never draws another drawing's frames, from the
         // offset it was pushed with: the seat's own for a held loop, 0 for a walk. The loop is `uris[loopFrom ..]`
-        // (§ 10.4 item 4), so the still never steps. A walker strides only inside its walk leg and stands at its phase-0
-        // frame outside it, its time `performance.now() − began` — the origin its pinned animations read.
+        // (§ 10.4 item 4), so the still never steps. A walker strides only inside its walk legs and stands at its phase-0
+        // frame outside them, its time `performance.now() − began` — the origin its pinned animations read.
         const moving = stepping;
         const walking = walkers.length > 0;
         const interval = scene.desks.map((d) => [d.held, d.interns_held]).flat().find((h) => h?.motion)?.frame_interval_ms ?? (walking ? 1000 / scene.loop_fps : null);

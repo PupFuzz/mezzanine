@@ -40,6 +40,15 @@ final class Counters
     public const TOKEN_WRONG_SURFACE = 'token_wrong_surface';
 
     /**
+     * D2 § 7.2's `format_refused.<field>` family, completed by the wire field's name: a wire string
+     * off its published format, stored `null` in its place (the operator's D18, card#9346). Two planes
+     * count it, which is why the name lives here: the fold for a `data` field
+     * (`App\Fold\FoldEvent::conforming()`) and the ingest for a batch-envelope field
+     * (`BatchValidator`, card#11572).
+     */
+    public const FORMAT_REFUSED = 'format_refused.';
+
+    /**
      * Increment a per-seat counter. `$seatRef` MUST come from a token binding.
      *
      * `$at` is when the evidence for the increment was RECEIVED, on the server clock, and it moves

@@ -12,7 +12,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use RuntimeException;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -38,6 +40,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->pinUrlOrigin();
+
         /*
          * ⛔ THE `eloquent` PROVIDER DRIVER IS REPLACED, NOT ADDED BESIDE. Card#9070's D2 makes a
          * retired account stop authenticating, and the only way that holds for EVERY credential
@@ -86,5 +90,46 @@ class AppServiceProvider extends ServiceProvider
          * nothing and is idempotent.
          */
         RateLimiter::for('seat-token-issue', fn (Request $request) => Limit::perMinute(10)->by('seat-token-issue:'.$request->user()->id));
+    }
+
+    /**
+     * ⛔ CARD#12881 · EVERY ABSOLUTE URL THIS APPLICATION BUILDS IS ON `APP_URL`, NEVER ON THE REQUEST'S
+     * `Host`. Laravel's URL generator is the one primitive `route()`, `url()`, `asset()`,
+     * `redirect()->route()`, `to_route()` and a mail's action button all go through, and unpinned it
+     * takes its scheme and host from the request. Behind a web server that forwards a Host it does not
+     * serve, a two-factor reset requested with a forged Host then mails the account's owner a link to
+     * the forger's host. The origin and the scheme are pinned separately because the generator swaps
+     * the pinned root's scheme for the REQUEST's unless the scheme is forced too — an `https` site
+     * reached over plain HTTP behind a proxy would otherwise build `http://` links.
+     *
+     * The pin also decides a link built with no HTTP request at all (a scheduled command, a queued
+     * job, `artisan tinker`), where the generator would otherwise read the console's stand-in request.
+     *
+     * ⛔ AN `APP_URL` THE PIN CANNOT USE REFUSES TO BOOT, in every context, rather than being skipped.
+     * The generator treats an empty or null origin as no pin at all, so skipping would silently put
+     * every link back on the request's Host — this defect, re-opened by configuration. The value is not
+     * echoed: a URL can carry credentials in its user-info part.
+     *
+     * NOT COVERED HERE, by design: `url()->full()` / `$request->fullUrl()` (the "intended" URL a
+     * sign-in returns to) and `back()`'s `Referer` read the request itself, not the generator. Each
+     * hands a visitor's OWN request back to that same visitor, so a forged Host reaches nobody else
+     * through them.
+     */
+    private function pinUrlOrigin(): void
+    {
+        $url = config('app.url');
+        $parts = is_string($url) ? parse_url($url) : false;
+        $scheme = is_array($parts) ? strtolower($parts['scheme'] ?? '') : '';
+
+        if (! in_array($scheme, ['http', 'https'], true) || ($parts['host'] ?? '') === '') {
+            throw new RuntimeException(
+                'APP_URL in server/.env must be this site\'s address, starting http:// or https:// and naming its host '
+                .'(for example https://mezzanine.example.com). Every link the application emails, redirects to or '
+                .'renders is built on it, so the application does not start until APP_URL is one.'
+            );
+        }
+
+        URL::useOrigin($url);
+        URL::forceScheme($scheme);
     }
 }

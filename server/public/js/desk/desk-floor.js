@@ -266,6 +266,12 @@ export class DeskFloor {
                 prior: model?.held ?? null,
                 // § 6.2 A23 (card#12448): the side table's held rendering under the same prior conditions.
                 prior_interns: model?.interns_held ?? null,
+                // § 6.2 A25 (card#12749): the snack trip's two halves under the same prior conditions.
+                prior_snack: model?.snack_held ?? null,
+                prior_snack_interns: model?.snack_interns_held ?? null,
+                // § 6.2 A26 (card#12786): the restroom break's two halves, the same way.
+                prior_restroom: model?.restroom_held ?? null,
+                prior_restroom_interns: model?.restroom_interns_held ?? null,
                 unconfirmed: now.missing && !wasMissing,
                 stilled: now.stilled && !before.stilled,
             });

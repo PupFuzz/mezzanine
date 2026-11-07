@@ -26,25 +26,35 @@ use Tests\TestCase;
  * ⛔ EACH RED IS A PLANT, seen to break the GREEN it guards: the lattice before card#12442 (the feet rule alone), a
  * column narrowed past the margins (a tier drops), a gap narrower than the body (the feet rule's squeeze is seen), and
  * the centring switched off.
+ *
+ * ⛔ A SEAT NEVER WALKS ACROSS ITS OWN COUCH (card#12513, walk note item 3). The side table and the interns' rows on it
+ * (`desk-layout.js`'s `seatSolid()`, read back through the probe) are the furniture a seat's walk keeps its feet off,
+ * sampled every pixel along its drawn polyline, on the shipped default's routes and on the routed runs below — one per
+ * walk kind and desk whose walk went the long way round across its side table before card#12513 (the detour the
+ * operator saw: past the far end of the couch and back along its front). Its REDs are the router before card#12513
+ * (the seat on its anchor's row alone) and the side table left open to the seat (the chair's column alone).
  */
 class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
 {
+    use ChecksAWalkersBody;
     use DrivesTheFloorScreen;
 
     private const ROUTE = '../floor/route.js';
 
     private const CUBICLES = __DIR__.'/fixtures/maps/solo-cubicles.json';
 
+    /**
+     * card#12513: routed runs whose seat walk crossed its own side table before the seat could leave from behind its
+     * chair — `return-from-stale` (A1) and `leave-stale` (A2) at the shipped default's desk the left strip's furniture
+     * walls in on its left, `idle-trip` (A25) and `idle-visit` (A26) at a desk whose snack table and restroom door are
+     * to its right, past its couch.
+     */
+    private const COUCH_RUNS = ['return-from-stale', 'leave-stale', 'idle-trip', 'idle-visit'];
+
+    /** The routed seat walks the couch guard reads (§ 6.2's A1, A2, A25 and A26 — an intern's walk keeps its stool's row). */
+    private const SEAT_WALKS = ['A1', 'A2', 'A25', 'A26'];
+
     // ── § 12's rows, read out of the document ────────────────────────────────────────────────
-
-    /** @return array{margin: int, depth: int} § 12's *Walker clearance* row */
-    private function clearance(): array
-    {
-        $this->assertSame(1, preg_match('/^\| \*\*Walker clearance\*\* \| \*\*(\d+) px beside; (\d+) px in depth\*\* \|/m', $this->floorMd(), $m),
-            '§ 12 carries no *Walker clearance* row in the form this test reads');
-
-        return ['margin' => (int) $m[1], 'depth' => (int) $m[2]];
-    }
 
     /** @return array{reach: int, weight: int} § 12's *Walkway centring* row */
     private function centring(): array
@@ -73,50 +83,54 @@ class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
         return (string) realpath(base_path('../resources/floor/default.tmj'));
     }
 
-    // ── The property ────────────────────────────────────────────────────────────────────────────
+    // ── The property (`ChecksAWalkersBody`'s samplers, over a probed floor) ─────────────────────
+
+    /** card#12513: every desk of a probed floor whose route crosses its own couch. */
+    private function floorCouchDefects(array $floor): array
+    {
+        return array_merge([], ...array_map(fn ($d) => $this->couchCrossing("{$d['key']} ({$d['furniture']})", $d['points'] ?? [], $d['solid']), $floor['desks']));
+    }
 
     /**
-     * Where one desk's walker stands over something it must not, sampled every pixel along its drawn polyline: a wall
-     * or standing rect within `$side` px of the feet sideways while the feet are within `$depth` px of its depth span,
-     * or another desk's slot or box under the bare body while the feet are inside its depth span.
-     *
-     * @return list<string> the first defect of the desk, or none
+     * card#12513: every seat walk of the couch runs, as each render drew it, whose feet stand on its own desk's side
+     * table — the desk's solid rects placed on the rendered desk's box from the probe's box-relative ones.
      */
-    private function bodyDefects(array $floor, array $desk, float $side, float $depth): array
+    private function runCouchDefects(?string $dir = null): array
     {
-        $half = $floor['body']['w'] / 2;
-        $rects = [];
+        $probe = $this->floor($this->defaultMapPath())['desks'][0];
+        $defects = [];
+        $measured = 0;
 
-        foreach ($floor['obstacles'] as $o) {
-            $rects[] = [$o, $side, $depth, $o['kind']];
-        }
+        foreach (self::COUCH_RUNS as $run) {
+            foreach ($this->floorRun($run, $dir)['floor_renders'] as $r) {
+                $scene = $r['frame']['scene'] ?? null;
 
-        foreach ($floor['desks'] as $other) {
-            if ($other['key'] !== $desk['key']) {
-                foreach ([$other['slot'], $other['box']] as $r) {
-                    $rects[] = [$r, $half, 0.0, $other['key']];
-                }
-            }
-        }
+                foreach ($scene['effects'] ?? [] as $e) {
+                    if (! in_array($e['animation_id'], self::SEAT_WALKS, true) || isset($e['intern_key'])) {
+                        continue;
+                    }
 
-        $points = $desk['points'] ?? [];
+                    $key = "{$e['install_id']}/{$e['seat_id']}";
+                    $desk = array_values(array_filter($scene['desks'], static fn ($d) => $d['key'] === $key))[0] ?? null;
+                    $legs = array_values(array_filter($e['legs'] ?? [], static fn ($l) => $l['kind'] === 'walk'));
 
-        for ($i = 1; $i < count($points); $i++) {
-            [$a, $b] = [$points[$i - 1], $points[$i]];
-            $n = max(1, (int) ceil(hypot($b['x'] - $a['x'], $b['y'] - $a['y'])));
+                    if ($desk === null || $legs === []) {
+                        continue;
+                    }
 
-            for ($k = 0; $k <= $n; $k++) {
-                $p = ['x' => $a['x'] + ($b['x'] - $a['x']) * $k / $n, 'y' => $a['y'] + ($b['y'] - $a['y']) * $k / $n];
+                    $solid = array_map(static fn ($s) => ['x' => $desk['box']['x'] + $s['x'] - $probe['box']['x'], 'y' => $desk['box']['y'] + $s['y'] - $probe['box']['y'], 'w' => $s['w'], 'h' => $s['h']], $probe['solid']);
+                    $measured++;
 
-                foreach ($rects as [$r, $s, $d, $what]) {
-                    if ($p['x'] - $s < $r['x'] + $r['w'] && $r['x'] < $p['x'] + $s && $r['y'] - $d < $p['y'] && $p['y'] < $r['y'] + $r['h'] + $d) {
-                        return ["{$desk['key']} ({$desk['clearance']}): feet at ".json_encode($p)." stand within {$s} px beside / {$d} px in depth of {$what} ".json_encode([$r['x'], $r['y'], $r['w'], $r['h']])];
+                    foreach ($legs as $leg) {
+                        array_push($defects, ...$this->couchCrossing("[{$run}] {$e['animation_id']} {$key}", $leg['points'], $solid));
                     }
                 }
             }
         }
 
-        return [];
+        $this->assertGreaterThan(0, $measured, 'no seat walk of the couch runs was drawn — the couch guard measured nothing');
+
+        return array_values(array_unique($defects));
     }
 
     /** Every desk's defects at the bare body: nothing beside or in front of the feet, under the drawn rect. */
@@ -203,6 +217,19 @@ class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
             'a desk of the shipped default does not reach the elevator at the clear tier');
         $this->assertSame([], $this->bareDefects($floor));
         $this->assertSame([], $this->marginDefects($floor));
+        // card#12513: and none across its own couch.
+        $this->assertSame(array_fill_keys(array_column($floor['desks'], 'key'), 'kept'), array_column($floor['desks'], 'furniture', 'key'),
+            'a desk of the shipped default reaches the elevator only across its own side table');
+        $this->assertSame([], $this->floorCouchDefects($floor));
+    }
+
+    /**
+     * card#12513: every seat walk of the couch runs — the elevator's, the snack corner's and the restroom's — keeps its
+     * feet off its own side table.
+     */
+    public function test_green_a_seat_walks_round_its_couch(): void
+    {
+        $this->assertSame([], $this->runCouchDefects());
     }
 
     /**
@@ -216,6 +243,10 @@ class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
         $tiers = $this->tiers($floor);
 
         fwrite(STDERR, "\n[card#12442] the cubicles' tiers: ".json_encode($tiers)."\n");
+        // card#12513: a cubicle walls its desk in on every side but its side table's, so its seat crosses it — printed,
+        // and a route the router calls `kept` must keep off it.
+        fwrite(STDERR, '[card#12513] the cubicles\' seats and their couches: '.json_encode(array_column($floor['desks'], 'furniture', 'key'))."\n");
+        $this->assertSame([], $this->floorCouchDefects(['desks' => array_values(array_filter($floor['desks'], static fn ($d) => $d['furniture'] === 'kept'))]));
         $this->assertNotSame([], $tiers);
         $this->assertSame([], array_keys(array_filter($tiers, static fn ($t) => ! in_array($t, ['clear', 'snug'], true))),
             'a desk of the cubicles walks on the feet rule alone, or not at all');
@@ -292,6 +323,28 @@ class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
         $this->assertContains('feet', $this->tiers($floor), 'CONTROL (a gap narrower than the body) left no desk on the feet rule');
         $this->assertSame([], array_keys(array_filter($this->tiers($floor), static fn ($t) => $t === null)), 'a desk stopped walking');
         $this->assertNotSame([], $this->bareDefects($floor), 'the body guard did not see a body squeezed through a gap narrower than itself');
+    }
+
+    /**
+     * card#12513: the router before card#12513 — the seat leaves and reaches its desk on its anchor's row alone — walks
+     * the shipped default's walled-in desk across its couch, on the probe and in the elevator's runs.
+     */
+    public function test_red_the_seat_on_its_anchors_row_alone(): void
+    {
+        $dir = $this->mutatedModules([self::ROUTE, "    const seat = seatDesk(grid, walker)?.seat ?? null;\n", "    const seat = null;\n"]);
+
+        $this->assertNotSame([], $this->floorCouchDefects($this->floor($this->defaultMapPath(), $dir)), 'CONTROL (the seat on its anchor\'s row alone) walked no desk of the shipped default across its couch');
+        $this->assertNotSame([], array_filter($this->runCouchDefects($dir), static fn ($d) => str_starts_with($d, '[return-from-stale] A1')), 'the couch guard did not see the return-from-stale walk across its couch');
+    }
+
+    /** card#12513: the side table left open to the seat — the snack and restroom trips to its right cut across it. */
+    public function test_red_the_couch_left_open_to_the_seat(): void
+    {
+        $dir = $this->mutatedModules([self::ROUTE, "(furniture === 'crossed' || !seat.solid.has(i))", 'true']);
+        $defects = $this->runCouchDefects($dir);
+
+        $this->assertNotSame([], array_filter($defects, static fn ($d) => str_starts_with($d, '[idle-trip] A25')), 'the couch guard did not see the snack trip across its couch');
+        $this->assertNotSame([], array_filter($defects, static fn ($d) => str_starts_with($d, '[idle-visit] A26')), 'the couch guard did not see the restroom trip across its couch');
     }
 
     /** The centring switched off: the cubicles' walkways are walked along an edge. */

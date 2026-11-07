@@ -9,7 +9,7 @@ they are actually doing right now — with a drill-down into their tasks and sub
 > manage/remove, and floors + their maps) and `php artisan mezzanine:user:create`, which is what makes a fresh deploy
 > reachable at all — see [The first account](#the-first-account-and-the-way-back-from-a-lockout). The **creature generator** exists in
 > [`resources/characters/`](resources/characters/) — dependency-free ES modules that draw each
-> seat's animal or vegetable creature, as vector SVG, from its identity and the species the server
+> seat's animal, vegetable or fruit creature, as vector SVG, from its identity and the species the server
 > allocated it; open
 > `tools/characters/harness.html` (the creature sheet) over a local static server to see it. The kanban automation in `.github/workflows/` also runs; see
 > [Kanban](#kanban) below.
@@ -67,6 +67,7 @@ resources/floor/            the floor's themes (first-party, vector), its tilese
 fleet-reporter/             cross-platform hook bundle + its installer (install.js), reference and agent guide
 docs/                       design notes, feed schema, CHANGELOG, ATTRIBUTION
 docs/changelog/             archived releases, one file per tag (v0.2.0.md, …)
+docs/changelog.d/           one changelog note per unreleased change, gathered by the release
 bin/, tools/                prod deploy (bin/deploy.sh), kanban + design-doc
                             automation, CI gates, harnesses          ← exists
 ```
@@ -246,6 +247,17 @@ An account's remembered browsers are all forgotten when its password changes, wh
 is reset by email, disabled, re-enrolled or moved to a new authenticator, and when the account is
 retired. The next sign-in on each of them asks for a code again.
 
+**Forgetting one browser.** The recovery codes page (`/two-factor/recovery-codes`, linked from the
+dashboard, behind your password) lists your account's remembered browsers under **Remembered
+browsers**: each one's name as read from its browser and system when it was remembered (for example
+"Firefox on Linux"), when it was remembered and when it expires, with the browser you are using marked
+**(this browser)**. **Forget** forgets that one browser, and **Forget all** forgets every one of them,
+the browser you are using included. A forgotten browser is asked for a code at its next sign-in.
+Forgetting signs no browser out: you stay signed in here, and a session the forgotten browser already
+has stays signed in until it ends or you use **Sign out everywhere else** (below). A browser remembered
+before this list existed is listed as "Browser remembered
+on <date>". The host stores the name only, never the browser's full user-agent text.
+
 The browser holds a random token in a cookie marked `Secure`, `HttpOnly` and `SameSite=Lax`; the
 host stores only a hash of it, in the `remembered_browsers` table. Because the cookie is `Secure`, a
 browser keeps it only over HTTPS. Like every cookie this application sets, it is encrypted with
@@ -253,6 +265,22 @@ browser keeps it only over HTTPS. Like every cookie this application sets, it is
 `APP_KEY` does the same only when the old key is left out of `APP_PREVIOUS_KEYS`, which keeps old
 cookies readable. `App\Auth\RememberedBrowser`
 owns the mechanism and the 30-day constant.
+
+### Signing out a lost device
+
+The recovery codes page has a **Sign out everywhere else** button, in its Remembered browsers section.
+It signs out every other browser and device signed in to your account, including any that ticked
+**Remember me** on the sign-in page, and the browser you press it in stays signed in. Each browser it
+signs out is sent to the sign-in page at its next request.
+
+The same happens to an account's other sessions when its second factor is disabled, re-enrolled or
+moved to a new authenticator; the browser that made the change stays signed in. An emailed reset of
+the second factor signs out every session of the account, and so does a password change in the admin
+console, the operator's own session included when the password is their own. A retired account's
+sessions are refused at their next request.
+
+Sessions are ended in the database session store, `SESSION_DRIVER=database`, which `.env.example` and
+`config/session.php` both set. `App\Auth\AccountSessions` owns the mechanism.
 
 ### Losing your authenticator
 
@@ -269,11 +297,13 @@ owns the mechanism and the 30-day constant.
    and asks for a code from it. **Your current authenticator and recovery codes keep working until
    that code is confirmed**, so a move you leave unfinished changes nothing on the account.
    Confirming replaces them in one step: the old authenticator entry and every current recovery
-   code stop working, and the page shows the new set of codes. It is also the way to move a working
+   code stop working, every other browser signed in to the account is signed out, and the page shows
+   the new set of codes. It is also the way to move a working
    account to a replacement phone.
 2. **An emailed reset**, at `/two-factor-reset`, linked from the challenge screen. A code goes to
    the address **already on the account** — there is no field that could redirect it — and entering
-   it **removes the second factor and signs nobody in**: you then log in with your password and are
+   it **removes the second factor, signs out every session of the account and signs nobody in**: you
+   then log in with your password and are
    made to enrol a new authenticator before anything is reachable. The code is single-use, expires
    in 30 minutes, and is typed into a form rather than clicked in a link, so it never reaches a web
    server's access log.
@@ -483,7 +513,7 @@ tiles that stood in for it from 2026-09-12 (Kenney's Furniture Kit, a bridge cho
 stand-in) left the tree when it landed; their record stays in git and in `docs/PLAN.md § 0`'s D-07
 appends.
 
-The characters are **first-party**: original animal and vegetable creatures drawn by the code in
+The characters are **first-party**: original animal, vegetable and fruit creatures drawn by the code in
 `resources/characters/` as vector SVG (`docs/design/FLOOR.md § 10.2`, card#11046), replacing the
 interim pixel people that came with an earlier port of munder-difflin's generator — that port left the
 tree whole, and its record stays in git and in `docs/PLAN.md § 0`'s D-07 appends. A seat's **body** —

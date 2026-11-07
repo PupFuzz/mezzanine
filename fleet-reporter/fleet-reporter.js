@@ -28,7 +28,7 @@
  *                              `await` between the first write and the exit.
  *   P-5 p99 < 250 ms         — measured by the acceptance suite, worst case = a 64-call reap.
  *   P-6 never print a token  — see `redactSecrets()`; the config token never reaches any stream.
- *   P-7 detached respawn     — `{detached, stdio:'ignore', windowsHide}` + `unref()`.
+ *   P-7 detached respawn     — `{detached, stdio:'ignore', windowsHide, cwd: os.homedir()}` + `unref()`.
  *
  * WINDOWS IS A FIRST-CLASS TARGET, unvalidated on a real seat until the Windows agent seat onboards
  * (D1 § 16, operator ruling 2026-09-13; installer card #7336 is won't-do). Consequences that
@@ -67,7 +67,7 @@ const lazy = (name) => require(name);
  * change to a file a reporter update ships, and `bin/reporter-version-guard.py` fails a PR that changes
  * one without moving it, so two different builds never report the same version. Each version's row in
  * `fleet-reporter/UPDATES.md` says what an upgrading seat must apply. */
-const REPORTER_VERSION = '0.6.0';
+const REPORTER_VERSION = '0.6.6';
 const SCHEMA_VERSION = 1;
 
 /* ── Every number, from § 14 and the section that derives it ──────────────────────────────── */
@@ -101,7 +101,7 @@ const K = {
   TOMBSTONES: 64,                // § 8.2
   SESSIONS: 16,                  // § 8.2
   TOMBSTONE_MS: 900000,          // § 8.2 15 min, == the ordinary orphan timeout
-  CLEAR_PAIR_MS: 30000,          // § 8.4 the window inside which SessionStart(clear) pairs with the latest
+  CLEAR_PAIR_MS: 30000,          // § 8.4 the window inside which SessionStart(clear) pairs with the one
                                  // unpaired clear-ended session; ~12x the largest measured gap (card#11817)
   CLEAR_GAP_MS: 5000,            // § 8.4 2x the largest measured SessionEnd(clear)->SessionStart(clear) gap
                                  // (2.49 s, 2.1.296): SessionEnd(clear)'s window for an unpaired clear-started
@@ -623,7 +623,7 @@ function resolveRoundtable(cfg) {
     count('roundtable_agent_name_unchecked');
     return { name, check: 'unchecked', malformed: null, config: site.path, read_error: read.error ?? null };
   }
-  if (read.identity === name) return { name, check: 'checked', malformed: null, config: site.path };
+  if (read.identity === name) return { name, check: 'checked', malformed: null, config: site.path, identity: read.identity };
   count('roundtable_agent_name_disagreed');
   return { name, check: 'disagreed', malformed: null, config: site.path, identity: read.identity };
 }
@@ -703,7 +703,10 @@ function registerSecret(v) { if (typeof v === 'string' && v.length >= 8 && !SECR
  * carries and every element of `sites` a multi-site file carries, read from the raw file rather than from
  * `loadConfig`'s normalised list, so an element that failed validation still has its secrets registered
  * before anything names it in a line. Reading the top level alone registered nothing under the
- * multi-site form, and a site's proxy password reached the marker's copy of a server body unredacted. */
+ * multi-site form, and a site's proxy password reached the marker's copy of a server body unredacted.
+ * Each part is registered as written in the file (percent-encoded), as decoded, and — for `proxy_url` — as
+ * the `Proxy-Authorization` value `proxyAuthorization` builds from it, so every spelling of the credential
+ * this process holds is one the sink redacts, from `registerSecret`'s 8-character floor up (card#9498). */
 function registerConfigSecrets(cfg) {
   if (!cfg || typeof cfg !== 'object') return;
   const holders = [cfg].concat(Array.isArray(cfg.sites) ? cfg.sites.filter((x) => x && typeof x === 'object') : []);
@@ -712,13 +715,43 @@ function registerConfigSecrets(cfg) {
     for (const key of ['proxy_url', 'ingest_url']) {
       const raw = h[key];
       if (typeof raw !== 'string') continue;
-      try {
-        const u = new URL(raw);
-        if (u.password) registerSecret(decodeURIComponent(u.password));
-        if (u.username) registerSecret(decodeURIComponent(u.username));
-      } catch (e) { /* not a parseable URL: `loadConfig` refuses it by field name and never echoes the value (card#9521) */ }
+      let u;
+      try { u = new URL(raw); } catch (e) { continue; /* not a parseable URL: `loadConfig` refuses it by field name and never echoes the value (card#9521) */ }
+      for (const part of [u.password, u.username]) {
+        if (!part) continue;
+        registerSecret(part);
+        registerSecret(userinfoBytes(part).toString('utf8'));
+      }
+      const auth = key === 'proxy_url' ? proxyAuthorization(u) : null;
+      if (auth) registerSecret(auth.slice('Basic '.length));
     }
   }
+}
+
+/* A URL USERINFO PART, PERCENT-DECODED TO THE BYTES IT NAMES (card#9498). `new URL` keeps `username` and
+ * `password` percent-encoded, and the credential is the bytes they encode, so `p%40ss` is the password
+ * `p@ss`. A `%` that is not followed by two hex digits is kept as written, as curl reads one: the value
+ * still names one credential, where `decodeURIComponent` throws on it and the secret went unregistered. */
+const isHexByte = (c) => (c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x46) || (c >= 0x61 && c <= 0x66);
+function userinfoBytes(part) {
+  const b = Buffer.from(part, 'utf8');
+  const out = [];
+  for (let i = 0; i < b.length; i++) {
+    if (b[i] === 0x25 && i + 2 < b.length && isHexByte(b[i + 1]) && isHexByte(b[i + 2])) {
+      out.push(parseInt(String.fromCharCode(b[i + 1], b[i + 2]), 16)); i += 2;
+    } else out.push(b[i]);
+  }
+  return Buffer.from(out);
+}
+
+/* THE PROXY'S CREDENTIAL, FROM `proxy_url`'S USERINFO, AND THE ONE PLACE IT IS BUILT (card#9498): the
+ * `Proxy-Authorization: Basic` value `ingestRequest` sends on its CONNECT, or null when the URL carries no
+ * userinfo (then no header is sent). RFC 7617: base64 of `user:password`, each part the bytes its
+ * percent-encoding names. `registerConfigSecrets` registers the value it returns, so the header value is a
+ * redacted secret too. */
+function proxyAuthorization(u) {
+  if (!u.username && !u.password) return null;
+  return 'Basic ' + Buffer.concat([userinfoBytes(u.username), Buffer.from(':'), userinfoBytes(u.password)]).toString('base64');
 }
 /* § 7.3 RULE 3's SHAPE LIST, and the ONE copy of it: the sanitizer runs this regex as rule 3 and the
  * log sink below runs it as `redactSecrets`' shape leg, so a prefix added for one is added for both.
@@ -1627,16 +1660,26 @@ function applyIndexRecord(ix, r, nowMs) {
       if (!s) {
         ix.sessions.set(r.session_id, {
           session_id: r.session_id, opened_at: r.at, last_active: r.at, turns: 0, aborted_calls: 0,
-          start_source: r.source || null, paired_from: null,
+          start_source: r.source || null, paired_from: null, clear_tally: null,
         });
       } else if (r.source === 'clear') s.start_source = r.source;
       todoSessionOpened(ix, r);
       break;
     }
-    case 'session_close':
+    case 'session_close': {
+      // A clear-started session that closes unpaired can never be paired now (card#12013 F3).
+      const s = ix.sessions.get(r.session_id);
+      if (s) tallyUnpairedClear(ix, CLEAR_HALF.start, s, nowMs, true);
       ix.sessions.delete(r.session_id); ix.turns.delete(r.session_id);
-      ix.sessionsClosed.set(r.session_id, { closed_at: r.at, end_reason: r.end_reason || null, paired_to: null });
+      ix.sessionsClosed.set(r.session_id, { closed_at: r.at, end_reason: r.end_reason || null, paired_to: null, clear_tally: null });
       todoSessionClosed(ix, r.session_id, r.end_reason || null, r.at);
+      break;
+    }
+    case 'clear_ambiguous':
+      // card#12013 F3 — the halves an ambiguous pick saw, which `clear_pair_ambiguous` counted (pairClear).
+      // Marks for the tally alone: no pairing predicate reads `clear_tally`.
+      for (const sid of r.closed || []) { const c = ix.sessionsClosed.get(sid); if (c && !c.clear_tally) c.clear_tally = 'ambiguous'; }
+      for (const sid of r.open || []) { const o = ix.sessions.get(sid); if (o && !o.clear_tally) o.clear_tally = 'ambiguous'; }
       break;
     case 'todo_list': case 'todo_create': case 'todo_update': case 'todo_end':
       applyTodoRecord(ix, r);
@@ -1752,6 +1795,10 @@ function capIndex(ix, nowMs) {
     if (nowMs - Date.parse(tb.closed_at || 0) > K.TOMBSTONE_MS) ix.tombstones.delete(id);
   }
   while (ix.tombstones.size > K.TOMBSTONES) { ix.tombstones.delete(ix.tombstones.keys().next().value); count('open_call_index_overflow'); }
+  // card#12013 F3 — each /clear half whose window has closed unpaired is counted, before the tombstone
+  // that holds it can age out (K.TOMBSTONE_MS is far past either window).
+  for (const c of ix.sessionsClosed.values()) tallyUnpairedClear(ix, CLEAR_HALF.end, c, nowMs, false);
+  for (const s of ix.sessions.values()) tallyUnpairedClear(ix, CLEAR_HALF.start, s, nowMs, false);
   for (const [sid, c] of ix.sessionsClosed) if (nowMs - Date.parse(c.closed_at || 0) > K.TOMBSTONE_MS) ix.sessionsClosed.delete(sid);
   // § 6.15 — `agents` holds an instant only for a child some open dispatch is bound to, so its size is
   // at most the open-call index's own bound and nothing in it ages by a clock.
@@ -1766,6 +1813,7 @@ function capIndex(ix, nowMs) {
     let victim = null;
     for (const [sid, s] of ix.sessions) if (!victim || Date.parse(s.last_active || 0) < Date.parse(ix.sessions.get(victim).last_active || 0)) victim = sid;
     count('open_session_index_overflow');
+    tallyUnpairedClear(ix, CLEAR_HALF.start, ix.sessions.get(victim), nowMs, true);
     // The eviction is REPORTED, not performed here: the fold cannot emit, and an evicted
     // session owes a full session boundary on the wire (§ 8.2). The caller reaps it.
     ix.evicted.push(victim);
@@ -1777,6 +1825,26 @@ function listBuckets(dir) {
   try {
     return fs.readdirSync(dir).filter((f) => /^\d{10}\.jsonl$/.test(f)).sort();
   } catch (e) { return []; }
+}
+
+/* THE COMPLETE LINES OF AN APPEND-ONLY FILE FROM BYTE `from`, and the byte offset just past the last of
+ * them — the primitive the index-journal fold and the counter-sink fold both cut through (§ 11.4).
+ * Trailing bytes with no final LF are a write in progress and are NOT consumed: `end` stops before them,
+ * so the next read starts at the head of that line and reads it once it is complete (card#12465). The cut
+ * is found in the BYTES, never in the decoded string: a string index counts UTF-16 code units, so a cut
+ * taken there over a line carrying multibyte text lands the cursor inside a line. `end` is `from` when
+ * nothing new is complete. Throws when the file cannot be opened or read; the caller decides what that
+ * costs. */
+function readCompleteLines(file, from) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const size = fs.fstatSync(fd).size;
+    const start = Math.min(from, size);
+    const buf = Buffer.alloc(size - start);
+    const got = buf.length ? fs.readSync(fd, buf, 0, buf.length, start) : 0;
+    const nl = buf.subarray(0, got).lastIndexOf(0x0A);
+    return { end: start + nl + 1, lines: nl < 0 ? [] : buf.toString('utf8', 0, nl).split('\n') };
+  } finally { fs.closeSync(fd); }
 }
 
 /* Fold: snapshot.json, then the snapshot's own bucket from byte `offset`, then every later
@@ -1791,11 +1859,15 @@ function foldIndex(spool, nowMs, opts = {}) {
     snapBucket = snap.bucket || null; snapOffset = snap.offset || 0;
     for (const e of snap.entries || []) ix.calls.set(e.call_id, e);
     for (const t of snap.tombstones || []) ix.tombstones.set(t.call_id, t);
-    for (const s of snap.sessions || []) ix.sessions.set(s.session_id, s);
+    // card#12013 F3 — an entry a snapshot from before `clear_tally` holds carries no key at all (this build
+    // writes `null`), and loads as already decided: whether an ambiguous pick saw it was never recorded, so
+    // counting it now could count an ambiguous half as unpaired.
+    const tally = (x) => (Object.prototype.hasOwnProperty.call(x, 'clear_tally') ? x.clear_tally : 'pre_upgrade');
+    for (const s of snap.sessions || []) ix.sessions.set(s.session_id, Object.assign(s, { clear_tally: tally(s) }));
     // A snapshot an older flusher wrote has no end_reason / paired_to: such a tombstone loads as
     // never pairable, and expires in K.TOMBSTONE_MS (card#11817's upgrade note).
     for (const c of snap.sessions_closed || []) {
-      ix.sessionsClosed.set(c.session_id, { closed_at: c.closed_at, end_reason: c.end_reason || null, paired_to: c.paired_to || null });
+      ix.sessionsClosed.set(c.session_id, { closed_at: c.closed_at, end_reason: c.end_reason || null, paired_to: c.paired_to || null, clear_tally: tally(c) });
     }
     for (const t of snap.turns || []) ix.turns.set(t.session_id, t);
     for (const a of snap.attention || []) ix.attention.set(a.session_id, a);
@@ -1829,23 +1901,15 @@ function foldIndex(spool, nowMs, opts = {}) {
 
   for (const f of pending) {
     const b = f.slice(0, 10);
-    let text = '';
-    try {
-      const fd = fs.openSync(path.join(dir, f), 'r');
-      try {
-        const size = fs.fstatSync(fd).size;
-        const from = (b === snapBucket && !ix.truncated) ? Math.min(snapOffset, size) : 0;
-        const buf = Buffer.alloc(Math.max(0, size - from));
-        if (buf.length) fs.readSync(fd, buf, 0, buf.length, from);
-        text = buf.toString('utf8');
-        ix.bucket = b; ix.offset = size;
-      } finally { fs.closeSync(fd); }
-    } catch (e) { continue; }
-    // Trailing bytes with no final LF are a write in progress: NOT consumed (§ 11.4).
-    const nl = text.lastIndexOf('\n');
-    if (nl < 0) continue;
-    ix.offset -= (text.length - nl - 1);
-    for (const line of text.slice(0, nl).split('\n')) {
+    let read;
+    try { read = readCompleteLines(path.join(dir, f), (b === snapBucket && !ix.truncated) ? snapOffset : 0); }
+    catch (e) { continue; }
+    // Trailing bytes with no final LF are a write in progress: NOT consumed (§ 11.4) — `end` stops
+    // before them, so when this bucket is the last one folded the next fold reads that line once it is
+    // complete (card#12465). The cursor names ONE bucket: a partial line in a bucket a LATER bucket
+    // follows is stepped past with the bucket, and is not held here.
+    ix.bucket = b; ix.offset = read.end;
+    for (const line of read.lines) {
       if (!line) continue;
       let r;
       try { r = JSON.parse(line); } catch (e) { ix.corrupt += 1; continue; }
@@ -2081,6 +2145,19 @@ function parsePayload(raw) {
 function key(payload, name) {
   if (payload[name] === undefined) { count(`payload_key_missing.${name}`); return null; }
   return payload[name];
+}
+
+/* § 6.5 — the tool call a hook payload names, held to the bounds the ingest enforces: `tool_name` to its
+ * pattern (else the literal `INVALID_TOOL_NAME`, counted) and `tool_use_id` to `harness_call_ref`'s 64 B
+ * (else `null`). The open AND the close read it here, because a close that matches no open call puts its
+ * own name and ref on the wire as the synthesized pair's (§ 6.6), and the ingest refuses a whole batch
+ * with `422` for one field over its bound (card#11574). One reader also keeps the close's name and ref
+ * comparable with the ones the open stored, which `matchClose`'s keys compare against. */
+function toolCallOf(payload) {
+  let toolName = key(payload, 'tool_name');
+  if (typeof toolName !== 'string' || !TOOL_NAME_RE.test(toolName)) { count('invalid_tool_name'); toolName = 'INVALID_TOOL_NAME'; }
+  const ref = typeof payload.tool_use_id === 'string' && bytes(payload.tool_use_id) <= 64 ? payload.tool_use_id : null;
+  return { toolName, ref };
 }
 
 /* A PROJECT LABEL IS A PROJECT NAME, AND THE HOME DIRECTORY'S BASENAME IS THE OS USERNAME.
@@ -2432,26 +2509,51 @@ function touchSession(ctx, ix, sessionId, source = null) {
  * mark: SessionStart(clear) for the latest clear-closed session no start has paired yet,
  * SessionEnd(clear) for the latest clear-started session no end has paired yet. This is pairing by
  * RECENCY inside a window, not by identity — the hooks carry nothing that ties one to the other —
- * so the windows are what bound a wrong pick: two terminals' clears overlapping, or one clear whose
- * own other signal was lost, can pair one terminal's half with the other's. SessionEnd's window is
+ * so the windows are what bound a wrong pick: one clear whose own other signal was lost, beside
+ * another terminal's clear, can pair one terminal's half with the other's. SessionEnd's window is
  * the narrow one (K.CLEAR_GAP_MS, twice the largest measured gap) because the twin it adopts is a
  * LIVE session whose calls it re-keys; any pairing older than that window is counted
- * `clear_pair_late`, and a pick with more than one candidate `clear_pair_ambiguous`. */
-function latestUnpaired(map, unpairedClear, markedAt, windowMs, nowMs) {
-  let twin = null, qualified = 0;
+ * `clear_pair_late`. A pick with more than one candidate pairs nothing and is counted
+ * `clear_pair_ambiguous` (pairClear, card#12013). */
+/* THE TWO HALVES OF A /CLEAR, AS THE INDEX HOLDS THEM, AND EACH ONE'S WINDOW: what makes an entry an
+ * unpaired half, when it was marked, and how long the OTHER signal may still pair it. The pairing reads
+ * them (`latestUnpaired`), and so does `tallyUnpairedClear`, which counts a half its window closed on
+ * unpaired — one definition, so the counter cannot drift from what the pairing would have accepted.
+ * `side` names the index map the half lives in, which is what a `clear_ambiguous` record marks. */
+const CLEAR_HALF = {
+  end: { side: 'closed', unpaired: (c) => c.end_reason === 'clear' && !c.paired_to, markedAt: (c) => c.closed_at,
+    windowMs: K.CLEAR_PAIR_MS, counter: 'clear_end_unpaired' },
+  start: { side: 'open', unpaired: (s) => s.start_source === 'clear' && !s.paired_from, markedAt: (s) => s.opened_at,
+    windowMs: K.CLEAR_GAP_MS, counter: 'clear_start_unpaired' },
+};
+function latestUnpaired(map, half, nowMs) {
+  let twin = null;
+  const candidates = [];
   for (const [sid, x] of map) {
-    if (!unpairedClear(x)) continue;
-    const age = nowMs - Date.parse(markedAt(x) || 0);
-    if (age > windowMs) continue;
-    qualified += 1;
+    if (!half.unpaired(x)) continue;
+    const age = nowMs - Date.parse(half.markedAt(x) || 0);
+    if (age > half.windowMs) continue;
+    candidates.push(sid);
     if (!twin || age < twin.age_ms) twin = { session_id: sid, age_ms: age };
   }
-  return twin ? Object.assign(twin, { qualified }) : null;
+  return twin ? Object.assign(twin, { qualified: candidates.length, candidates, side: half.side }) : null;
 }
-const findTwinForStart = (ix, nowMs) => latestUnpaired(ix.sessionsClosed,
-  (c) => c.end_reason === 'clear' && !c.paired_to, (c) => c.closed_at, K.CLEAR_PAIR_MS, nowMs);
-const findTwinForEnd = (ix, nowMs) => latestUnpaired(ix.sessions,
-  (s) => s.start_source === 'clear' && !s.paired_from, (s) => s.opened_at, K.CLEAR_GAP_MS, nowMs);
+const findTwinForStart = (ix, nowMs) => latestUnpaired(ix.sessionsClosed, CLEAR_HALF.end, nowMs);
+const findTwinForEnd = (ix, nowMs) => latestUnpaired(ix.sessions, CLEAR_HALF.start, nowMs);
+
+/* card#12013 F3, option C — A HALF OF A /CLEAR THAT NOTHING PAIRED IS COUNTED, ONCE, AND ONLY BY THE
+ * FLUSHER'S COUNTING FOLD (`ix.counting`), which applies each journal record once. It is decided when the
+ * half's window has closed — after it no signal can pair it — or earlier when the entry leaves the index
+ * (`final`: a session that closes or is evicted can no longer be paired). `clear_tally` records the
+ * decision on the entry, and the snapshot persists it, so a later pass does not count it again; a half that
+ * took part in an ambiguous pick carries `ambiguous` (its `clear_ambiguous` record), since
+ * `clear_pair_ambiguous` already counted it. Counting only: nothing here pairs, reaps or emits. */
+function tallyUnpairedClear(ix, half, x, nowMs, final) {
+  if (!ix.counting || x.clear_tally || !half.unpaired(x)) return;
+  if (!final && nowMs - Date.parse(half.markedAt(x) || 0) <= half.windowMs) return;
+  x.clear_tally = 'unpaired';
+  count(half.counter);
+}
 
 /* The pairing is REPORTER-INTERNAL: it moves carried index entries and nothing on the wire names it.
  * `session.start.previous_session_id`, `reap_noop_second_signal`, `clear_second_signal_found_nothing`
@@ -2459,13 +2561,27 @@ const findTwinForEnd = (ix, nowMs) => latestUnpaired(ix.sessions,
  * SessionStart and SessionEnd cases — because changing what a wire field MEANS is a schema bump
  * (docs/VERSIONING.md, wire rule 4). `clear_signals_paired` is the pairing's own, additive counter. */
 function pairClear(ctx, ix, oldSid, newSid, twin) {
+  // MORE THAN ONE CANDIDATE IS NOT A PICK (card#12013). Recency cannot tell this clear's twin from
+  // another terminal's: with two terminals' SessionEnd(clear)s both ahead of either SessionStart(clear),
+  // the latest crossed them, and the other terminal's next Stop aborted this one's running subagent.
+  // Unpaired, each carry stays under its own old session, where its SubagentStop still closes it.
+  // The halves it could not tell apart are marked, so `tallyUnpairedClear` does not count them a second
+  // time as unpaired: the signal that looked (`oldSid` closed, `newSid` open) and every candidate it saw.
+  if (twin.qualified > 1) {
+    const rec = { k: 'clear_ambiguous',
+      closed: [...new Set([oldSid, ...(twin.side === 'closed' ? twin.candidates : [])])],
+      open: [...new Set([newSid, ...(twin.side === 'open' ? twin.candidates : [])])] };
+    journal(ctx.spool, rec);
+    applyIndexRecord(ix, rec, now());
+    count('clear_pair_ambiguous');
+    return;
+  }
   const rekeyed = [...ix.calls.values()].filter((e) => e.carried_from === oldSid).length;
   const rec = { k: 'pair', old_session_id: oldSid, new_session_id: newSid };
   journal(ctx.spool, rec);
   applyIndexRecord(ix, rec, now());
   count('clear_signals_paired');
   if (rekeyed) count('dispatch_rekeyed_to_new_session', rekeyed);
-  if (twin.qualified > 1) count('clear_pair_ambiguous');
   if (twin.age_ms > K.CLEAR_GAP_MS) count('clear_pair_late');
 }
 
@@ -2622,8 +2738,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
     /* ── PreToolUse (§ 6.5, § 6.7) ─────────────────────────────────────────────────────────── */
     case 'PreToolUse': {
       touchSession(ctx, ix, sid);
-      let toolName = key(payload, 'tool_name');
-      if (typeof toolName !== 'string' || !TOOL_NAME_RE.test(toolName)) { count('invalid_tool_name'); toolName = 'INVALID_TOOL_NAME'; }
+      const { toolName, ref } = toolCallOf(payload);
       const ti = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
       const mode = descriptorMode(ctx.config);
       const d = buildDescriptor(toolName, ti, mode);
@@ -2651,7 +2766,6 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       }
       const isDispatch = toolName === 'Agent' || toolName === 'Task';
       const callId = ulid(atMs);
-      const ref = typeof payload.tool_use_id === 'string' && bytes(payload.tool_use_id) <= 64 ? payload.tool_use_id : null;
       const openBefore = ix.calls.size;
       // § 6.7 — the title is the dispatch's free-text description, so only `descriptors: "full"` sends it.
       const title = isDispatch && mode === 'full' && typeof ti.description === 'string' ? sanitize(`${ti.description}`, K.TITLE_CAP) : null;
@@ -2695,8 +2809,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       // the flusher derives the title, because a hook that read the map and emitted would be the
       // read-modify-write § 8.2 forbids.
       if (!failed && !agentId) todoFromClose(ctx, ix, sid, payload);
-      const toolName = typeof payload.tool_name === 'string' ? payload.tool_name : 'INVALID_TOOL_NAME';
-      const ref = typeof payload.tool_use_id === 'string' ? payload.tool_use_id : null;
+      const { toolName, ref } = toolCallOf(payload);
       const m = matchClose(ix, sid, toolName, ref);
       let entry = m.entry, matchKind = m.match;
       if (!entry) {
@@ -2997,6 +3110,33 @@ function readSample(spool, sid, atMs) {
   } catch (e) { count('context_sample_stale'); return null; }
 }
 
+/* THE ONE FLUSHER SPAWN (P-7), shared by the hook's respawn below and the installer's Windows start
+ * (`install.js`), so the two cannot drift. `cwd` is the user's home and never the spawner's: a child
+ * inherits its parent's working directory and holds it for its whole life, and on Windows a process's
+ * working directory cannot be deleted or renamed while it runs — a flusher started from a hook held
+ * the folder that hook ran in until the flusher exited (card#12471).
+ *
+ * WHAT THE SPAWNER RESOLVED AGAINST ITS OWN DIRECTORY, THE FLUSHER STILL RESOLVES THE SAME WAY. The two
+ * paths the flusher takes from its environment, `FLEET_REPORTER_CONFIG` and `$COORD_CONFIG`, are made
+ * absolute against the spawner's directory first when they are relative; an empty `$COORD_CONFIG` keeps
+ * its own meaning (§ 3.1) and is passed as it is. The other paths it reads are absolute already: the script
+ * and `process.execPath` by construction, the default config path because it is built from the home or
+ * `%APPDATA%`, and `spool_dir` and `ca_file` because the config refuses a relative one. */
+function spawnFlusher(script, env) {
+  const child = { ...env };
+  for (const k of ['FLEET_REPORTER_CONFIG', 'COORD_CONFIG']) {
+    if (typeof child[k] === 'string' && child[k] !== '' && !path.isAbsolute(child[k])) child[k] = path.resolve(child[k]);
+  }
+  // `os.homedir()` throws on an account with no home (no passwd entry, no HOME), as § 3.1's roster read
+  // allows for; that seat's flusher keeps its spawner's directory rather than not starting at all.
+  let cwd;
+  try { cwd = os.homedir(); } catch (e) { cwd = undefined; }
+  const proc = lazy('child_process').spawn(process.execPath, [script, 'flusher'],
+    { detached: true, stdio: 'ignore', windowsHide: true, cwd, env: child });
+  proc.unref();
+  return proc;
+}
+
 /* ── § 2.3 — the flusher must be alive whenever the seat is ──────────────────────────────────
  * The heartbeat is only a liveness signal if its absence means something, so every hook
  * invocation opportunistically respawns a dead flusher. 90 s = 1.5 heartbeat intervals: long
@@ -3013,9 +3153,7 @@ function maybeRespawnFlusher(spool, configPathUsed) {
     if (fresh) return false;
     const env = Object.assign({}, process.env);
     if (configPathUsed) env.FLEET_REPORTER_CONFIG = configPathUsed;
-    const child = lazy('child_process').spawn(process.execPath, [__filename, 'flusher'],
-      { detached: true, stdio: 'ignore', windowsHide: true, env });
-    child.unref();
+    spawnFlusher(__filename, env);
     return true;
   } catch (e) { return false; }
 }
@@ -3331,8 +3469,9 @@ const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
  * committed with the answer lost, and its `next_seq` may name seqs the site holds — under which this
  * build's first request would put different events (review round 4's F1). A fresh `seq_epoch`, `next_seq`
  * 1 and no request make that collision unreachable; the lines ahead of the carried cursor arrive again
- * and are answered as duplicates. The cost is one `epoch_reset` per upgraded seat, and § 10.2's accepted
- * `seq_gap` residual where the hand-over's last batch was committed (card#12210). The entry records no
+ * and are answered as duplicates. The cost is one `epoch_reset` per upgraded seat: since card#12210 the
+ * ingest counts `seq_gap` over every seq a batch carried, duplicates included, so the re-send counts no gap
+ * (§ 10.2). The entry records no
  * URL until a flusher start whose configured URL parses binds it; `legacy` (not serialized) is what `siteEntry`
  * reads that by, set here at the adoption and again by `markUnbound` at every later read of an entry saved before
  * that binding — a first start under an unparseable URL saves the entry unbound (delta review N1). */
@@ -3563,12 +3702,22 @@ function procStartTicks(pid) {
   return Number.isSafeInteger(v) && v >= 0 ? v : null;
 }
 
+/* THE KEY OF `flusher.lock` THAT SAYS WHICH BUILD THE HOLDER RUNS (card#12476): the instant this process BEGAN, on
+ * the wall clock, which is before node read this file. `started_at` is taken after the read, so a flusher that read
+ * the previous artifact a moment before an install replaced it wrote a `started_at` after the install and read as
+ * running the new build. The installer reads the key's name from here, so an artifact that exports none is one
+ * whose flusher does not write it (`install.js`'s `holderRuns`). */
+const LOCK_BEGAN_AT_KEY = 'began_at';
+
 function acquireLock(spool, state) {
   const lock = path.join(spool, 'flusher.lock');
   // On Linux the lock also carries this process's own start ticks, an identity no wall-clock step can move; the
-  // installer compares it with the pid's live /proc entry to tell this flusher from a reused pid.
+  // installer compares it with the pid's live /proc entry to tell this flusher from a reused pid. `process.uptime()`
+  // counts from the process's own start, before node reads the script: measured on Linux by the order of the
+  // execve, the instant and the script's open; on every OS install.selftest.py's held-read case reds if it is not.
   const ticks = process.platform === 'linux' ? procStartTicks(process.pid) : null;
-  const body = JSON.stringify({ pid: process.pid, started_at: state.owner_started_at, ...(ticks === null ? {} : { start_ticks: ticks }) });
+  const body = JSON.stringify({ pid: process.pid, started_at: state.owner_started_at, ...(ticks === null ? {} : { start_ticks: ticks }),
+    [LOCK_BEGAN_AT_KEY]: rfc3339(Math.floor(now() - process.uptime() * 1000)) });
   ensureDir(spool);
   const tryCreate = () => {
     try { const fd = fs.openSync(lock, 'wx'); fs.writeSync(fd, Buffer.from(body, 'utf8')); fs.closeSync(fd); return true; }
@@ -3620,20 +3769,10 @@ function foldCounterSink(spool, state) {
   for (const f of listBuckets(dir)) {
     const b = f.slice(0, 10);
     const from = state.counter_offsets[b] || 0;
-    let text = '', size = 0;
-    try {
-      const fd = fs.openSync(path.join(dir, f), 'r');
-      try {
-        size = fs.fstatSync(fd).size;
-        if (size <= from) continue;
-        const buf = Buffer.alloc(size - from);
-        fs.readSync(fd, buf, 0, buf.length, from);
-        text = buf.toString('utf8');
-      } finally { fs.closeSync(fd); }
-    } catch (e) { continue; }
-    const nl = text.lastIndexOf('\n');
-    if (nl < 0) continue;
-    for (const line of text.slice(0, nl).split('\n')) {
+    let read;
+    try { read = readCompleteLines(path.join(dir, f), from); } catch (e) { continue; }
+    if (read.end <= from) continue;
+    for (const line of read.lines) {
       if (!line) continue;
       let r; try { r = JSON.parse(line); } catch (e) { continue; }
       for (const [k, v] of Object.entries(r.c || {})) if (typeof v === 'number') state.counters[k] = (state.counters[k] || 0) + v;
@@ -3651,7 +3790,7 @@ function foldCounterSink(spool, state) {
       }
       if (r.p === 'hook' && r.t && (!state.last_hook_at || r.t > state.last_hook_at)) state.last_hook_at = r.t;
     }
-    state.counter_offsets[b] = from + nl + 1;
+    state.counter_offsets[b] = read.end;
   }
   renameCounters(state.counters);
 }
@@ -3977,6 +4116,10 @@ const getAgent = (site) => (site.agent || (site.agent = new (lazy('https').Agent
  *   - ROUTE: the site's `proxy_url` set ⇒ an HTTP CONNECT tunnel to the ingest host through that proxy;
  *     null ⇒ direct, on the site's keep-alive agent. The site's `proxy_url` ONLY — HTTP(S)_PROXY
  *     environment variables are IGNORED, § 3.4 rule 1: no transport decision from ambient environment.
+ *     A `proxy_url` with userinfo sends it on the CONNECT as `Proxy-Authorization: Basic`
+ *     (`proxyAuthorization`, a registered secret); an `https://` proxy's own TLS session verifies against
+ *     `ca_file` as the ingest's does; and a CONNECT answered `407` ends the request with `proxyRefused`
+ *     set — a refusal of the config's credential, which no retry can change (card#9498).
  *   - TLS: `https://` ingest only, verification on, `ca_file` as the TLS `ca` option, which replaces
  *     the default trust store (the seat trusts only that file). It is read per request, and one that
  *     is not an absolute path, or cannot be read, ends the request as `invalid` before any socket
@@ -3997,7 +4140,7 @@ const getAgent = (site) => (site.agent || (site.agent = new (lazy('https').Agent
  * — through a proxy, the CONNECT answered 200) and `secured` (the TLS handshake with it completed). */
 function ingestRequest(site, { method, path: pathOf, headers, body }) {
   return new Promise((resolve) => {
-    const out = { status: null, headers: null, body: null, error: null, deadline: null, invalid: null, tcp: false, secured: false };
+    const out = { status: null, headers: null, body: null, error: null, deadline: null, invalid: null, tcp: false, secured: false, proxyRefused: false };
     let settled = false, connectTimer = null, requestTimer = null;
     const live = [];   // every request and socket this call opened, destroyed when a deadline ends it
     const done = (error) => {
@@ -4053,10 +4196,18 @@ function ingestRequest(site, { method, path: pathOf, headers, body }) {
     let connect;
     try {
       const u = new URL(site.proxy_url);
-      connect = lazy(u.protocol === 'https:' ? 'https' : 'http').request({
-        host: u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80),
-        method: 'CONNECT', path: `${url.hostname}:${port}`, headers: { Host: `${url.hostname}:${port}` }, agent: false,
-      });
+      const tlsProxy = u.protocol === 'https:';
+      const connectHeaders = { Host: `${url.hostname}:${port}` };
+      const auth = proxyAuthorization(u);
+      if (auth) connectHeaders['Proxy-Authorization'] = auth;
+      const connectOpts = {
+        host: u.hostname, port: u.port || (tlsProxy ? 443 : 80),
+        method: 'CONNECT', path: `${url.hostname}:${port}`, headers: connectHeaders, agent: false,
+      };
+      // An `https://` proxy's own TLS session trusts what the ingest's does: `ca_file` replaces the
+      // default store for every certificate this seat verifies (card#9498).
+      if (tlsProxy && ca) connectOpts.ca = ca;
+      connect = lazy(tlsProxy ? 'https' : 'http').request(connectOpts);
     } catch (e) { done(`proxy: ${e && e.message}`); return; }
     live.push(connect);
     connect.on('error', (e) => done(`proxy: ${e && e.message}`));
@@ -4064,6 +4215,11 @@ function ingestRequest(site, { method, path: pathOf, headers, body }) {
       live.push(tunnel);
       tunnel.on('error', (e) => done(String(e && e.code || e && e.message)));
       if (settled) { tunnel.destroy(); return; }
+      if (res.statusCode === 407) {
+        out.proxyRefused = true; tunnel.destroy();
+        done("proxy: proxy CONNECT 407 — the proxy refused proxy_url's credential (or it carries none)");
+        return;
+      }
       if (res.statusCode !== 200) { tunnel.destroy(); done(`proxy: proxy CONNECT ${res.statusCode}`); return; }
       out.tcp = true;
       const tlsOpts = { socket: tunnel, host: url.hostname };
@@ -4097,6 +4253,9 @@ function postBatch(site, body) {
     // is not absolute or cannot be read — is `refused`: config_invalid, keep spooling, send nothing (§ 3.5). Never
     // `permanent`: that quarantines the batch, and a config typo would cost the events it holds (card#9521).
     if (r.invalid) return { kind: 'refused', status: 0, error: r.invalid };
+    // The proxy refused `proxy_url`'s credential: a config failure, so the lane stops (`authStop`), never
+    // the retry ladder, which resent it forever (card#9498).
+    if (r.proxyRefused) return { kind: 'proxy_auth', status: 407, error: r.error };
     // A deadline, a connect/DNS/TLS failure, a proxy that refused or never answered, or an answer
     // cut off before its end: all transient by nature (§ 11.5).
     if (r.error) return { kind: 'retryable', status: 0, error: r.error };
@@ -4616,8 +4775,10 @@ async function flusherMain() {
       }
       lane.healthEveryMs = unmeasured ? K.HEARTBEAT_MS : K.HEALTH_MS;
       // A probe the ingest refused `401 unauthenticated` is a measured `token_accepted` fail, and it
-      // starts the same auth stop a refused batch does (§ 6.14, § 11.5).
-      if (probe.checks.token_accepted === false) authStop(ctxOf, lane, { status: probe.http_status, text: probe.text, body: probe.body }, 'probe');
+      // starts the same auth stop a refused batch does (§ 6.14, § 11.5); so does a probe whose CONNECT the
+      // site's proxy answered `407` (card#9498).
+      if (probe.proxy_refused) authStop(ctxOf, lane, { status: 407, text: '', body: null }, 'probe');
+      else if (probe.checks.token_accepted === false) authStop(ctxOf, lane, { status: probe.http_status, text: probe.text, body: probe.body }, 'probe');
     }
     if (lane.authStopped) return;
     await laneDrain(ctxOf, lane);
@@ -4794,17 +4955,23 @@ const markerLine = (siteName, res, count) =>
   + `${count === undefined ? '' : ` events=${count}`} body=${redactSecrets(String(res.text || '').slice(0, 512))}`;
 
 /* THE AUTH STOP (§ 11.5): the ingest's own `401 unauthenticated` or `403 identity_mismatch`, to a batch or
- * (the `401`) to the probe. The bytes are not what was refused, so the cursor and the persisted request
- * stay and nothing is quarantined; `auth_refused` counts on the site, the marker and the log say which, and
- * the lane sends nothing and probes nothing until the flusher restarts — every recovery is a config write,
- * so a restart is the one thing that can lift it. Lane state, never saved. */
+ * (the `401`) to the probe — or the site's proxy answering its CONNECT `407`, to either (card#9498). The
+ * bytes are not what was refused, so the cursor and the persisted request stay and nothing is quarantined;
+ * the marker and the log say which, and the lane sends nothing and probes nothing until the flusher
+ * restarts — every recovery is a config write, so a restart is the one thing that can lift it. The ingest's
+ * refusals count `auth_refused` on the site; the proxy's is a config failure, `config_invalid` on the site,
+ * because the token was never presented to the ingest. Lane state, never saved. */
 function authStop(c, lane, res, what) {
   lane.authStopped = true;
-  lane.entry.counters.auth_refused = (lane.entry.counters.auth_refused || 0) + 1;
+  const proxy = res.status === 407;
+  if (proxy) count('config_invalid', 1, lane.name);
+  else lane.entry.counters.auth_refused = (lane.entry.counters.auth_refused || 0) + 1;
   if (res.status === 401) lane.entry.selftest.token_accepted = false;
   const line = markerLine(lane.name, res);
   appendRejectedMarker(c.spool, lane.name, line);
-  logLine(c.spool, lane.role, `${what} refused on its credential — this site's lane stops until the flusher restarts on a corrected config (a 401 is the token, a 403 the pair it was issued for): ${line}`);
+  logLine(c.spool, lane.role, proxy
+    ? `${what} refused by the proxy on proxy_url's credential (407: missing, wrong, or a scheme other than Basic) — this site's lane stops until the flusher restarts on a corrected config: ${line}`
+    : `${what} refused on its credential — this site's lane stops until the flusher restarts on a corrected config (a 401 is the token, a 403 the pair it was issued for): ${line}`);
   c.persist();
 }
 
@@ -4944,7 +5111,7 @@ async function laneDrain(c, lane) {
       c.persist();
       continue;
     }
-    if (res.kind === 'auth') { authStop(c, lane, res, 'batch'); return; }
+    if (res.kind === 'auth' || res.kind === 'proxy_auth') { authStop(c, lane, res, 'batch'); return; }
     if (res.kind === 'refused') {
       // config_invalid: keep spooling and send nothing. Fail closed, loudly, on the client's
       // own surface (§ 3.5), naming what the config got wrong. The request stays persisted.
@@ -4994,7 +5161,8 @@ async function laneDrain(c, lane) {
  *     another seat is `true` here and meets `403 identity_mismatch` on the first batch (§ 6.14). */
 function refreshHealth(site) {
   return ingestRequest(site, { method: 'GET', path: (u) => u.pathname.replace(/\/events$/, '/health') }).then((r) => {
-    const probe = { reached: null, http_status: r.status, accepted_schema_versions: null, error: r.error, checks: null, body: null, text: null };
+    const probe = { reached: null, http_status: r.status, accepted_schema_versions: null, error: r.error, checks: null, body: null, text: null,
+      proxy_refused: r.proxyRefused };
     if (r.status !== null) probe.reached = true;
     else if (r.error && !r.deadline && r.tcp && !r.secured) probe.reached = false;
     if (r.body) {
@@ -5292,6 +5460,12 @@ async function selftestMain() {
       const probe = await refreshHealth(site);
       Object.assign(r, probe.checks);
       Object.assign(d, { reached: probe.reached, probe_error: probe.error, http_status: probe.http_status, accepted_schema_versions: probe.accepted_schema_versions });
+      // The proxy refused `proxy_url`'s credential: a config failure the flusher stops on (`authStop`), so the
+      // site's `config_readable` fails here, its error naming the field and never the value (card#9498).
+      if (probe.proxy_refused) {
+        const e = `${site.label}proxy_url: the proxy answered CONNECT 407 — its credential is missing from proxy_url's userinfo, wrong, or needs a scheme other than Basic (§ 3.5)`;
+        r.config_readable = false; d.errors = d.errors.concat([e]); detail.config_readable.errors = detail.config_readable.errors.concat([e]);
+      }
     }
     sites[key] = {};
     for (const c of SITE_CHECKS) sites[key][c] = verdict(r[c]);
@@ -5363,4 +5537,10 @@ module.exports = { sanitize, buildDescriptor, truncateBytes, ulid, buildCounters
    * temp-and-rename primitive; it keys a site as the reader does; and it reads a process's start ticks as the
    * flusher records its own in `flusher.lock`. Requiring this file runs nothing:
    * `main` is guarded above. */
-  loadConfig, parseConfig, allConfigErrors, atomicWrite, siteKey, REPORTER_VERSION, procStartTicks };
+  loadConfig, parseConfig, allConfigErrors, atomicWrite, siteKey, REPORTER_VERSION, procStartTicks,
+  /* `LOCK_BEGAN_AT_KEY` is exported for the installer's holder check alone (card#12476): the lock key it judges a
+   * holder's build by, read from the INSTALLED artifact, so an artifact that predates the key exports none. */
+  LOCK_BEGAN_AT_KEY,
+  /* `spawnFlusher` is exported for the installer's Windows start alone (card#12471): one spawn, one set of
+   * P-7 options and one working directory for every flusher a seat starts. */
+  spawnFlusher };

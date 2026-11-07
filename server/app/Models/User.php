@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Auth\AccountSessions;
 use App\Auth\RememberedBrowser;
 use App\Auth\TwoFactorIssuer;
 use BaconQrCode\Renderer\Color\Rgb;
@@ -44,8 +45,9 @@ class User extends Authenticatable
     public const ROLES = [self::OBSERVER, self::OPERATOR];
 
     /**
-     * ⛔ CARD#12179 · A CHANGED CREDENTIAL FORGETS EVERY REMEMBERED BROWSER. The trigger is the column
-     * write itself, so it holds for every writer rather than for a list of call sites:
+     * ⛔ CARD#12179 · A CHANGED CREDENTIAL FORGETS EVERY REMEMBERED BROWSER, AND (CARD#12964) ENDS EVERY
+     * OTHER SESSION OF THE ACCOUNT. The trigger is the column write itself, so it holds for every writer
+     * rather than for a list of call sites:
      *   · `password` — `App\Admin\UserProvisioning::update()`, the console's password change and the
      *     only one (Fortify's `resetPasswords()` and `updatePasswords()` are off in `config/fortify.php`);
      *   · `two_factor_secret` / `two_factor_confirmed_at` — Fortify's enable (re-enrol, `force`),
@@ -53,19 +55,28 @@ class User extends Authenticatable
      *     Fortify's disable action) and the move to a new authenticator
      *     (`App\Http\Controllers\Auth\TwoFactorMoveController::confirm()`).
      * Retirement writes through the query builder, which fires no model event, so
-     * `App\Admin\UserRetirement::retire()` calls the same `RememberedBrowser::forgetAll()` itself.
+     * `App\Admin\UserRetirement::retire()` calls the same `RememberedBrowser::forgetAll()` itself; its
+     * sessions need nothing here, because `App\Auth\ActiveUserProvider` resolves no retired account
+     * from a session or a remember-me cookie.
+     *
+     * "Other" sessions: `App\Auth\AccountSessions::end()` keeps the session making this request when
+     * it is this account's own — a move, a re-enrolment or turning two-factor off — and keeps none
+     * when it is not: an emailed reset runs signed out, and a console password change is made by an
+     * operator (`App\Admin\UserProvisioning::update()` also ends the operator's own session when it
+     * is their own password). Every remember-me cookie the account has issued is voided either way.
      *
      * ⚠ `two_factor_recovery_codes` IS NOT A TRIGGER: signing in with a recovery code rewrites it
      * (`replaceRecoveryCode()`), and so does regenerating the codes, and neither changes the factor.
      * ⚠ A PASSWORD REHASH ON SIGN-IN IS ONE (`config('hashing.rehash_on_login')`, after a change to the
-     * hashing cost): the stored hash changes with the password unchanged, and the account's browsers
-     * are asked for a code once more. That errs towards the challenge.
+     * hashing cost): the stored hash changes with the password unchanged, the account's browsers are
+     * asked for a code once more, and its other sessions end. That errs towards the challenge.
      */
     protected static function booted(): void
     {
         static::updated(function (User $user): void {
             if ($user->wasChanged(['password', 'two_factor_secret', 'two_factor_confirmed_at'])) {
                 RememberedBrowser::forgetAll($user->getKey());
+                AccountSessions::end($user, AccountSessions::currentFor($user));
             }
         });
     }

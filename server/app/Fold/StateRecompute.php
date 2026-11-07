@@ -148,14 +148,15 @@ class StateRecompute
      * `SeatFacts::versionBearing()` sampled before the FIRST write of the unit of work** — which
      * is the fingerprint the connected client is currently holding.
      *
+     * ONLY FOR AN EVENT THAT WAS APPLIED, so the cause is always `wire_event`. § 6.5's poison-event
+     * rule records an event it SKIPPED, and `Fold::quarantine()` does that through `forSeat()`
+     * below: an event that raised has no columns to project here (card#11573).
+     *
      * @param  array<string, mixed>  $before  `SeatFacts::versionBearing($e->seatRef)`, sampled
      *                                        before the first write of this unit of work
-     * @param  string  $cause  a `seat_state_transitions.cause` member. Anything other than
-     *                         `wire_event` is a caller that owes a row whatever the render did —
-     *                         today only § 6.5's poison-event rule, via `Fold::quarantine()`.
      * @return bool whether `state_version` was bumped (⇒ a `seat.delta` was published)
      */
-    public function after(FoldEvent $e, array $before, string $cause = 'wire_event'): bool
+    public function after(FoldEvent $e, array $before): bool
     {
         $this->writeSnapshotColumns($e);
         // The event's own receipt is the instant of any `idle` edge this event mints (card#9418).
@@ -164,31 +165,27 @@ class StateRecompute
         return $this->settle(
             seatRef: $e->seatRef,
             before: $before,
-            cause: $cause,
-            // `events.id`, and only when the cause is a wire event — which is what lets the
-            // drill-down say *this event did it* rather than *something did it around then*.
-            causeEventRef: $cause === 'wire_event' ? $e->id : null,
-            // A fold error's row names the event it SKIPPED; a wire event's names the event that
-            // caused the change. Same row, two different claims about one id, so they are not
-            // written under one key.
-            detail: $cause === 'fold_error'
-                ? ['kind' => $e->kind, 'skipped_event_id' => $e->eventId]
-                : ['kind' => $e->kind, 'event_id' => $e->eventId],
-            // Preserves this method's original rule exactly: any cause other than `wire_event` is
-            // a caller that owes a row whatever the render did.
-            owesRow: $cause !== 'wire_event',
+            cause: 'wire_event',
+            // `events.id` — which is what lets the drill-down say *this event did it* rather than
+            // *something did it around then*. A fold error's row names the event it SKIPPED under
+            // its own key and cites no id here (`Fold::quarantine()`): same row, two different
+            // claims about one id, so they are not written under one key.
+            causeEventRef: $e->id,
+            detail: ['kind' => $e->kind, 'event_id' => $e->eventId],
+            owesRow: false,
         );
     }
 
     /**
      * The same recompute, for a writer that has no event — `docs/design/FLEET-STATE.md § 2.1`'s
-     * **sweeper** and the retirement act (`App\Fleet\SeatRetirement`).
+     * **sweeper**, the retirement act (`App\Fleet\SeatRetirement`), and the fold's own quarantine
+     * (`Fold::quarantine()`), whose event raised and so has nothing to project (card#11573).
      *
      * ⛔ THE POINT IS THAT THERE IS ONE OF THESE, NOT THREE. § 6.5 states `state_version` and the
      * delta as A PER-WRITER RULE and names all three writers — "the fold above; the SWEEPER, whose
      * every pass recomputes `link_state` and `render_state` for every seat; and the retirement act,
      * which states its own bump and publish". A second implementation of the bump/row bookkeeping
-     * for the two writers that carry no `FoldEvent` would be a second copy of the nesting property
+     * for the callers that carry no `FoldEvent` would be a second copy of the nesting property
      * `settle()` exists to hold (every transition row lands at a version bumped for it), free to
      * drift — and the first thing it would drift on is the one delta a permanently quiet desk ever
      * gets, which is the sweeper's own `live → stale`.
@@ -357,7 +354,8 @@ class StateRecompute
         // `data`, the heartbeat's included. So the fold reads them from the `batches` row of the
         // batch the event it is applying arrived in. An implementer who went looking for a
         // `version` member on `reporter.heartbeat`'s `data` would find none and would write a rule
-        // that can never fire.
+        // that can never fire. The stored `reporter_version` is `NULL` where the ingest refused its
+        // format (card#11572), and the `NULL` is copied: the seat then has no reported build.
         $batch = DB::table('batches')->where('id', $e->batchRef)
             ->first(['reporter_version', 'reporter_platform']);
 

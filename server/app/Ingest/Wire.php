@@ -89,6 +89,19 @@ final class Wire
      */
     public const HARNESS_CALL_REF = '[\x00-\x7F]{1,64}';
 
+    /**
+     * D1 § 4.2's `reporter_version` and `runtime_version`, held to their COLUMN's format: ASCII, the
+     * charset D2 § 6.4 stores both in (card#11572). The 1…24-byte bound is checked first, by
+     * `BatchValidator`, as a refusal; this pattern is the null-and-count check that follows it.
+     *
+     * Not semver for `reporter_version`, though § 4.2 types it so: an ASCII build off the pattern is
+     * stored as sent, because it is what `update_required` badges as a build that is not current
+     * (`SchemaVersions::reporterIsOutdated()`, AT-D2-30's `0.3.0-dev`), and nulling it would clear
+     * that badge. `runtime_version` is § 4.2's bare `string`, so the column's format is the only one
+     * it has.
+     */
+    public const ENVELOPE_VERSION = '[\x00-\x7F]{1,24}';
+
     /** § 4.3 — `data` is kind-specific and ≤ 3 KiB serialized. */
     public const DATA_MAX_BYTES = 3072;
 
@@ -140,7 +153,18 @@ final class Wire
 
     public static function isUlid(mixed $value): bool
     {
-        return is_string($value) && preg_match(Anchored::pattern(self::ULID), $value) === 1;
+        return self::conforms($value, self::ULID);
+    }
+
+    /**
+     * Is this value a string on the format `$pattern` publishes — the one match both planes that
+     * null-and-count a value off its format use (D18): the fold for a `data` field
+     * (`App\Fold\FoldEvent::conforming()`) and the ingest for a batch-envelope field
+     * (`BatchValidator`). A non-string is never on a string's format.
+     */
+    public static function conforms(mixed $value, string $pattern): bool
+    {
+        return is_string($value) && preg_match(Anchored::pattern($pattern), $value) === 1;
     }
 
     /**
