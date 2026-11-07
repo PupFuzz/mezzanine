@@ -2,6 +2,7 @@
 
 namespace App\Admin;
 
+use App\Auth\AccountSessions;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -128,18 +129,17 @@ final class UserProvisioning
      *   · A SIGNED-IN BROWSER'S AUTHORITY IS A ROW. `config/session.php` resolves `SESSION_DRIVER`
      *     to `database`, which is also what `.env.example` ships, and the table name to
      *     `web_sessions` from its OWN default — no `SESSION_TABLE` is set anywhere, which is why
-     *     the config expression and not the env var is what the code below reads. Nothing in the
-     *     framework removes that row when the hash changes, and Laravel's opt-in for it,
-     *     `Illuminate\Session\Middleware\AuthenticateSession`, is NOT on this application's stack:
-     *     `bootstrap/app.php` aliases `mfa` and `fleet.read` and adds nothing to `web`, and
-     *     `route:list` carries it on ZERO of this application's routes. There was no second
-     *     mechanism doing this elsewhere.
+     *     the config expression and not the env var is what `App\Auth\AccountSessions` reads.
+     *     Nothing in the framework removes that row when the hash changes, and Laravel's opt-in for
+     *     it, `Illuminate\Session\Middleware\AuthenticateSession`, is NOT on this application's
+     *     stack: `bootstrap/app.php` aliases `mfa` and `fleet.read` and adds nothing to `web`.
+     *     `AccountSessions::end()` is the one mechanism that ends a session (card#12964).
      *   · REMEMBER-ME IS LIVE END TO END. The checkbox in `resources/views/auth/login.blade.php`,
      *     `rememberToken()` on the users migration, and `App\Auth\ActiveUserProvider` resolving a
      *     user BY that token. Since laravel/framework 13.31 `SessionGuard::userFromRecaller()`
      *     refuses a cookie whose embedded password hash no longer matches, so a password write
-     *     already voids old remember cookies; rotating the token below is the application's own
-     *     guard for the same property, independent of that framework version.
+     *     already voids old remember cookies; rotating the token (`AccountSessions::end()`) is the
+     *     application's own guard for the same property, independent of that framework version.
      *
      * ⛔ EVERY ROW GOES, INCLUDING THE ONE THIS REQUEST IS ON. "Log the other devices out but keep
      * mine" is not available to a recovery act: a stolen session cookie IS this session's id, so
@@ -153,16 +153,8 @@ final class UserProvisioning
      * `AuthenticateSession` compares — the middleware this application does not run. It would have
      * been a no-op with a reassuring name.
      *
-     * ⚠ THE TABLE NAME IS READ FROM THE CONFIG, WHICH IS WHERE THE MIGRATION READS IT —
-     * `config('session.table', 'web_sessions')`, both halves. The rename off Laravel's stock
-     * `sessions` is forced (`docs/design/FLEET-STATE.md` § 6.4 owns that name for the fold's own
-     * projection), so a literal here would be a third copy free to disagree with the store.
-     *
-     * ⚠ WHAT THIS CANNOT DO, SAID RATHER THAN LEFT TO BE ASSUMED: it invalidates sessions only for
-     * a session store that IS this database. Under `SESSION_DRIVER=file` or `redis` the rows live
-     * somewhere this delete cannot reach and it removes nothing, silently. `config/session.php`'s
-     * default and `.env.example` both say `database`; a deployment that changes that takes this
-     * property with it.
+     * ⚠ WHAT THIS CANNOT DO is `AccountSessions`'s to state: it ends sessions only in a database
+     * session store.
      *
      * @throws \InvalidArgumentException if the account is retired
      */
@@ -186,21 +178,22 @@ final class UserProvisioning
             // An empty new password means "leave the current one alone" — never "clear it". The
             // console's edit form states the same thing to the operator; `User::$casts` declares
             // `password => 'hashed'`, so the assignment below is the only place a plaintext goes.
-            if ($password !== null && $password !== '') {
+            $newPassword = $password !== null && $password !== '';
+
+            if ($newPassword) {
                 $user->password = $password;
-
-                // The two credentials the old password bought, taken back in the same transaction
-                // that replaces it — see the docblock for why the session row outlives the hash,
-                // why the token is rotated anyway, and why this one deletes the current session's
-                // row too.
-                $user->setRememberToken(Str::random(60));
-
-                DB::table(config('session.table', 'web_sessions'))
-                    ->where('user_id', $user->getKey())
-                    ->delete();
             }
 
             $user->save();
+
+            // The two credentials the old password bought, taken back in the same transaction that
+            // replaces it — see the docblock for why the session row outlives the hash, why the
+            // token is rotated anyway, and why the current session's row goes too. `save()` has
+            // already ended every OTHER session through `User::booted()`; this call is the one that
+            // also ends the session making this request when the operator reset their own password.
+            if ($newPassword) {
+                AccountSessions::end($user, null);
+            }
 
             return $user;
         });
