@@ -2,6 +2,7 @@
 
 use App\Compose\ComposeCredential;
 use App\Http\Controllers\ArtController;
+use App\Http\Controllers\Auth\OtherSessionsController;
 use App\Http\Controllers\Auth\RememberedBrowserController;
 use App\Http\Controllers\Auth\TwoFactorMoveController;
 use App\Http\Controllers\Auth\TwoFactorRecoveryCodeController;
@@ -87,6 +88,11 @@ Route::middleware(['auth', 'mfa', 'password.confirm'])->group(function () {
         ->name('two-factor.browsers.forget');
     Route::delete('/two-factor/remembered-browsers', [RememberedBrowserController::class, 'destroyAll'])
         ->name('two-factor.browsers.forget-all');
+
+    // Card#12964 · "Sign out everywhere else", in the same section and under the same three gates;
+    // `App\Http\Controllers\Auth\OtherSessionsController` owns the argument.
+    Route::delete('/sessions/others', [OtherSessionsController::class, 'destroy'])
+        ->name('sessions.sign-out-others');
 });
 
 /*

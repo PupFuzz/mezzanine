@@ -24,6 +24,12 @@ use Illuminate\Http\Request;
  * already holds is left as it is, and so is the one making this request. "Forget all" forgets the
  * browser making the request too, if it is remembered: the list it was shown included it, and the
  * button says all.
+ *
+ * ⚠ FORGET CANNOT END THE FORGOTTEN BROWSER'S SESSION, because nothing stored ties the two: a
+ * `remembered_browsers` row carries no session id, and a `web_sessions` row carries no reference to
+ * the remembered-browser cookie (card#12964 measured it). A lost browser that is still signed in is
+ * signed out by "Sign out everywhere else" on the same page (`OtherSessionsController`), which the
+ * page points to beside Forget.
  */
 class RememberedBrowserController extends Controller
 {

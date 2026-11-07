@@ -67,14 +67,17 @@
         ⛔ CARD#12186 · REMEMBERED BROWSERS. Each row is one of THIS account's unexpired remembered
         browsers (`App\Auth\RememberedBrowser::listFor()`, which never selects the token's hash), under
         the name that class gives it. Forgetting is `App\Http\Controllers\Auth\RememberedBrowserController`'s,
-        which owns what happens to this browser and to this session.
+        which owns what happens to this browser and to this session. Card#12964 added "Sign out everywhere
+        else" below the list, shown whether or not any browser is remembered;
+        `App\Http\Controllers\Auth\OtherSessionsController` owns what it ends.
     --}}
     <h2>Remembered browsers</h2>
 
     <p>
         Each browser below signs you in with your password and no code until it expires. Forget one you
         have lost or no longer use, and its next sign-in asks for a code. Forgetting a browser does not
-        end a session it is already signed in with.
+        sign it out. If a lost browser may still be signed in, use <strong>Sign out everywhere
+        else</strong> below.
     </p>
 
     @if ($browsers === [])
@@ -109,6 +112,18 @@
         </form>
         <p>Forget all forgets this browser too, if it is remembered. You stay signed in here.</p>
     @endif
+
+    <p>
+        <strong>Sign out everywhere else</strong> signs out every other browser and device signed in to
+        your account, including any that ticked <em>Remember me</em> when signing in. This browser stays
+        signed in.
+    </p>
+
+    <form method="POST" action="{{ route('sessions.sign-out-others') }}">
+        @csrf
+        @method('DELETE')
+        <button type="submit">Sign out everywhere else</button>
+    </form>
 
     <p><a href="{{ route('dashboard') }}">Back to the floor</a></p>
 @endsection
