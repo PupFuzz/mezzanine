@@ -44,8 +44,10 @@ clock. Nothing is read off the wall clock except what is about the wall clock: t
 reporter measures those on the filesystem's clock, and the preload leaves them there), process spawns, and the
 P-5 latency figures, whose hooks run with no preload at all (`clock="off"`) so they time the reporter a seat runs,
 and AT-27's cron-line run, whose subject is the bare environment cron gives a flusher. A wait on a process is a hang bound (`TestClock.HANG_S`), never a timing: a verdict does not
-depend on how long anything took. § 0 proves the clock — what the reporter reads, that a slow pinned hook stamps
-its pin, that the write lock keeps the wall clock — and § 1's probe case has a RED for a driver that forgets to
+depend on how long anything took. The wrapped status line's spawnSync timeout, a wall-clock bound node enforces
+itself, is widened by the preload to a hang bound. § 0 proves the clock — what the reporter reads, which native
+timeouts it sets, that a slow pinned hook stamps its pin and a slow wrapped status line passes through, that the
+write lock keeps the wall clock — and § 1's probe case has a RED for a driver that forgets to
 advance it.
 """
 from __future__ import annotations
@@ -960,13 +962,21 @@ def pre(tool="Bash", ti=None, tuid="toolu_1", **extra):
 
 print("== 0. THE TEST CLOCK — the reporter processes here read a clock the suite sets (card#12631) ==")
 # `fixed-clock.cjs` replaces the reporter's clock read; `Seat.env` puts every invocation on it (`fixed`, or a
-# `TestClock` for a long-running flusher). This block proves the three things the rest of the suite leans on:
+# `TestClock` for a long-running flusher). This block proves what the rest of the suite leans on:
 # that the reporter reads no clock the file does not replace, that a pinned process reads its pin and nothing
-# later however slow it runs, and that the write lock's deliberate wall-clock reads are left on the wall clock.
+# later however slow it runs, that the write lock's deliberate wall-clock reads are left on the wall clock, and
+# that every native (wall-clock) timeout in the reporter is either widened by the file or classified here.
 CLOCK_READ_RE = re.compile(r"\bDate\.now\(|\bnew Date\(\)|(?<![\w.])Date\(\)|\bperformance\.now\b|\bprocess\.hrtime\b"
-                           r"|\bsetInterval\(|\bsetImmediate\(")
+                           r"|\bprocess\.uptime\(|\bsetInterval\(|\bsetImmediate\(")
 TOP_DECL_RE = re.compile(r"^(?:async\s+)?function\s+(\w+)|^const\s+(\w+)\s*=")
 SEAT_CLOCK_READERS = {"CLOCK_OFFSET", "now"}       # FLEET_REPORTER_NOW_MS's offset, and `now()` built on it
+# Clock reads other than Date.now() that stay on the wall clock, by (declaration, read), each with its reason.
+WALL_CLOCK_SOURCES = {
+    ("acquireLock", "process.uptime("):
+        "the time since this process began, subtracted from now() for flusher.lock's `began_at`; only the "
+        "installer reads that key (install.js `holderRuns`), and install.selftest.py runs the reporter on the wall "
+        "clock, so no case in this suite compares it with anything",
+}
 
 
 def clock_reads(src: str) -> list[tuple[str, str]]:
@@ -989,24 +999,62 @@ WALL_CLOCK_READERS = set(json.loads(subprocess.run(
 
 
 def clock_inventory_ok(src: str) -> tuple:
-    reads = clock_reads(src)
-    other = sorted({r for _, r in reads if r != "Date.now("})
+    """(unclassified reads other than Date.now(), Date.now() readers neither clock owns, wall readers that no longer
+    read it, WALL_CLOCK_SOURCES entries the source no longer has)."""
+    reads = set(clock_reads(src))
+    other = sorted({r for d, r in reads if r != "Date.now(" and (d, r) not in WALL_CLOCK_SOURCES})
     where = {d for d, r in reads if r == "Date.now("}
-    return (other, sorted(where - SEAT_CLOCK_READERS - WALL_CLOCK_READERS), sorted(WALL_CLOCK_READERS - where))
+    return (other, sorted(where - SEAT_CLOCK_READERS - WALL_CLOCK_READERS), sorted(WALL_CLOCK_READERS - where),
+            sorted(f"{d}: {r}" for d, r in WALL_CLOCK_SOURCES if (d, r) not in reads))
 
 
-eq("the reporter reads one clock, Date.now(), and only in the seat clock (CLOCK_OFFSET, now) and the functions "
-   f"fixed-clock.cjs leaves on the wall clock ({sorted(WALL_CLOCK_READERS)}), each of which still reads it — "
-   "no new Date(), performance.now, process.hrtime, setInterval or setImmediate", ([], [], []),
-   clock_inventory_ok(REPORTER.read_text(encoding="utf-8")))
+eq("the reporter reads one clock the file replaces, Date.now(), and only in the seat clock (CLOCK_OFFSET, now) and "
+   f"the functions fixed-clock.cjs leaves on the wall clock ({sorted(WALL_CLOCK_READERS)}), each of which still reads "
+   "it; its other clock reads are the classified wall sources "
+   f"({sorted(f'{d}: {r}' for d, r in WALL_CLOCK_SOURCES)}) — no new Date(), performance.now, process.hrtime, "
+   "setInterval or setImmediate", ([], [], [], []), clock_inventory_ok(REPORTER.read_text(encoding="utf-8")))
 _inv_src = REPORTER.read_text(encoding="utf-8").replace(
     "function releaseWriteLock(spool) {", "function releaseWriteLock(spool) {\n  const x = new Date(); void x;", 1)
-eq("RED (the inventory): a clock read the file does not replace — `new Date()` — is named", (["new Date()"], [], []),
+eq("RED (the inventory): a clock read the file does not replace — `new Date()` — is named", (["new Date()"], [], [], []),
    clock_inventory_ok(_inv_src))
 _inv_src = REPORTER.read_text(encoding="utf-8").replace(
     "function releaseWriteLock(spool) {", "function releaseWriteLock(spool) {\n  void Date.now();", 1)
-eq("RED (the inventory): a Date.now() in a function neither clock owns is named", ([], ["releaseWriteLock"], []),
+eq("RED (the inventory): a Date.now() in a function neither clock owns is named", ([], ["releaseWriteLock"], [], []),
    clock_inventory_ok(_inv_src))
+_inv_src = REPORTER.read_text(encoding="utf-8").replace(
+    "function releaseWriteLock(spool) {", "function releaseWriteLock(spool) {\n  void process.uptime();", 1)
+eq("RED (the inventory): a wall source read outside the declaration it is classified for is named",
+   (["process.uptime("], [], [], []), clock_inventory_ok(_inv_src))
+
+# NATIVE TIMEOUTS: a wall-clock bound node enforces itself — a child_process `timeout` option, a synchronous
+# `Atomics.wait`, a socket's or request's `.setTimeout`, `AbortSignal.timeout`, `timers/promises` — which no clock
+# read can move, so a case whose verdict needs it not to fire races the host's load. Each one in the reporter is
+# classified here: `widened` (fixed-clock.cjs's `widenNativeTimeouts` holds it to the preload's hang bound) or
+# `wall` (it stays on the wall clock, with the reason no verdict reads it). A new one reds until it is classified.
+NATIVE_TIMER_RE = re.compile(r"\btimeout\b(?=\s*[:,}])|\bAtomics\.wait\(|\.setTimeout\(|\bAbortSignal\.timeout\b"
+                             r"|timers/promises")
+NATIVE_TIMER_SITES = {
+    "shell: true, input: Buffer.from(raw, 'utf8'), timeout: K.WRAPPED_STATUSLINE_MS,":
+        "widened: the wrapped status line command's spawnSync timeout, which a loaded machine's `sh` start-up "
+        "outlasts (§ 11's passthrough); the case below shows it widened, and native on the wall clock",
+    "const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);":
+        "wall: the write lock's poll, on the wall clock with the lock's ages (below), and win32's rename retries; a "
+        "case reads what the wait led to (a count, a broken lock), never how long it took",
+}
+
+
+def native_timers_ok(src: str) -> tuple:
+    code = [ln.split("//", 1)[0].strip() for ln in src.splitlines()
+            if not ln.lstrip().startswith(("*", "/*")) and NATIVE_TIMER_RE.search(ln.split("//", 1)[0])]
+    return (sorted(c for c in code if c not in NATIVE_TIMER_SITES), [t for t in NATIVE_TIMER_SITES if code.count(t) != 1])
+
+
+eq("every native timeout in the reporter is classified — widened by fixed-clock.cjs, or on the wall clock with its "
+   "reason", ([], []), native_timers_ok(REPORTER.read_text(encoding="utf-8")))
+_plant_timeout = "require('child_process').execFileSync('true', [], { timeout: 1000 });"
+eq("RED (the native-timeout inventory): a new child_process `timeout` is named until it is classified",
+   ([_plant_timeout], []), native_timers_ok(REPORTER.read_text(encoding="utf-8").replace(
+       "function releaseWriteLock(spool) {", f"function releaseWriteLock(spool) {{\n  {_plant_timeout}", 1)))
 
 # THE TIMERS `TestClock.idle` READS. It counts a loop's nap (set inside `nap`) and a request's deadline (the
 # `'request'` timer `ingestRequest` sets beside its `'connect'` one); any other timer would be invisible to it, so
@@ -1092,11 +1140,45 @@ eq("GREEN: a hook pinned 2 h ahead waits out a live holder's write lock on the w
    "write_lock_timeout 1, nothing broken, the holder's lock left in place", (0, 1, 0, True), wl_green)
 eq("RED (the test clock on the write lock): the same hook reads that lock as 2 h stale and breaks it", (0, 0, 1, False),
    wl_red)
+
+# THE WRAPPED STATUS LINE'S TIMEOUT IS WIDENED ON THE TEST CLOCK, AND NATIVE ON THE WALL CLOCK. The slowness is planted,
+# made certain, as above: the wrapped command sleeps SLOW_MS before it prints, past K.WRAPPED_STATUSLINE_MS, which is
+# what a loaded machine's `sh` start-up does to § 11's passthrough at random. A preload without `widenNativeTimeouts`
+# lets spawnSync kill it: a blank line and wrapped_statusline_failures 1.
+K_WRAPPED_MS = int(subprocess.run(["node", "-e", "process.stdout.write(String(require(process.argv[1]).K.WRAPPED_STATUSLINE_MS))",
+                                   str(REPORTER)], capture_output=True, text=True).stdout)
+assert SLOW_MS > K_WRAPPED_MS, (SLOW_MS, K_WRAPPED_MS)
+_slow_wrapped = TMP / "slow-wrapped.sh"
+_slow_wrapped.write_text(f"#!/bin/sh\nsleep {SLOW_MS / 1000}\nprintf 'SLOW STATUS LINE'\n", encoding="utf-8")
+_slow_wrapped.chmod(0o755)
+_no_widen = tmpdir("fr-clock-plant-") / "fixed-clock.cjs"
+_widen_anchor = "  widenNativeTimeouts(frames, fromMain);\n"
+assert _widen_anchor in _fc_src, "plant anchor not found (the RED would be vacuous)"
+_no_widen.write_text(_fc_src.replace(_widen_anchor, "", 1), encoding="utf-8")
+
+
+def slow_wrapped(name: str, **envx) -> tuple:
+    s = seat(name, wrapped=str(_slow_wrapped))
+    r = statusline(s, {"session_id": SID}, **envx)
+    return (r.returncode, r.stdout, s.counters().get("wrapped_statusline_failures", 0))
+
+
+sw_green = slow_wrapped("clock-wrapped-slow")
+sw_red = slow_wrapped("clock-wrapped-slow-red", NODE_OPTIONS=f"--require={_no_widen}")
+sw_wall = slow_wrapped("clock-wrapped-slow-wall", clock="wall")
+eq(f"GREEN: a wrapped status line {SLOW_MS} ms slow, past the reporter's {K_WRAPPED_MS} ms timeout, is passed through "
+   "on the test clock — the timeout is widened to a hang bound", (0, "SLOW STATUS LINE", 0), sw_green)
+eq("RED (the preload without widenNativeTimeouts): spawnSync kills it — a blank line and wrapped_statusline_failures 1",
+   (0, "", 1), sw_red)
+eq("  … and with the preload inert (`wall`) the reporter's own timeout fires as a seat runs it", (0, "", 1), sw_wall)
 redgreen("a reporter process this suite starts through `Seat.env` runs on a clock the suite sets (card#12631)",
          f"the clock left to run -> a hook pinned to {PIN_RFC} and {SLOW_MS} ms slow stamps {st_wall}; the test clock "
-         f"on the write lock too -> a live holder's lock read as stale and broken {wl_red}; a `new Date()` or a "
-         "Date.now() outside the seat clock -> named by the inventory",
-         f"fixed-clock.cjs -> the same hook stamps {st_fixed}; the write lock on the wall clock {wl_green}; the "
+         f"on the write lock too -> a live holder's lock read as stale and broken {wl_red}; the preload without "
+         f"widenNativeTimeouts -> a wrapped status line {SLOW_MS} ms slow is killed {sw_red}; a `new Date()`, a "
+         "Date.now() outside the seat clock, a wall source outside its declaration or a new native timeout -> named "
+         "by the inventory",
+         f"fixed-clock.cjs -> the same hook stamps {st_fixed}; the write lock on the wall clock {wl_green}; the slow "
+         f"wrapped status line passed through {sw_green}; the "
          f"reporter's clock reads are the seat clock {sorted(SEAT_CLOCK_READERS)} and the wall readers "
          f"{sorted(WALL_CLOCK_READERS)}")
 

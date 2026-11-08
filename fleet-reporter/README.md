@@ -136,10 +136,13 @@ every hook's, statusline's, `selftest`'s and flusher's environment, preloads `fi
 pins or else the instant they start, so a slow process stamps exactly its pin. A long-running flusher reads a clock
 file the case writes, and its naps and request deadlines fire only when the case advances that file; the case then
 waits for the process to go idle rather than sleeping, and reads every "when" off the same clock. The seat write
-lock keeps the wall clock, which is where the reporter measures a lock file's age. Two kinds of run go without the
+lock keeps the wall clock, which is where the reporter measures a lock file's age. The wrapped status line
+command's timeout runs on the wall clock inside node, where no clock read reaches it, so on the test clock the
+preload widens it to a hang bound, and a slow machine's shell start-up no longer blanks the line a case checks. Two kinds of run go without the
 preload on purpose: the P-5 latency samples, which time the reporter a seat runs, and AT-27's cron-line run, whose
 subject is the bare environment cron gives the flusher. The suite's § 0 checks the preload against the reporter's
-source, and shows a slow pinned hook stamping its pin where the wall clock would not. The installer's suite runs on
+source, its clock reads and its native timeouts alike, and shows a slow pinned hook stamping its pin and a slow wrapped
+status line passing through where the wall clock would not. The installer's suite runs on
 the wall clock: its subject is real process start times and file times.
 
 **The last block signals processes, and only ever its own.** § 2.3 has every hook fork a real

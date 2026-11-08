@@ -13,7 +13,9 @@
  * offset are both built on it. The reporter reads no other clock: no `new Date()` without an argument, no
  * `performance.now`, no `process.hrtime`, no `setInterval` or `setImmediate`. § 0 of fleet-reporter.selftest.py
  * asserts that inventory against the source, and its timers' (below), so a new clock read or timer reds there
- * rather than escaping this file.
+ * rather than escaping this file. It also widens the reporter's NATIVE timeouts (`child_process.spawnSync`'s
+ * `timeout`, `widenNativeTimeouts` below), which run on the wall clock inside node and no clock read can move;
+ * § 0 inventories those against the source too.
  *
  * WHOSE READS. Only a read made BY THE REPORTER SCRIPT (the caller frame's file is the process's main
  * script, `process.argv[1]`), and not by the functions in WALL_CLOCK_READERS: the seat write lock deliberately measures a
@@ -44,6 +46,7 @@ const path = require('path');
 
 const MODE = process.env.FLEET_REPORTER_TEST_CLOCK || 'wall';
 const WALL_CLOCK_READERS = new Set(['breakStaleWriteLock', 'acquireWriteLock']);
+const NATIVE_HANG_MS = 120000;
 module.exports = { WALL_CLOCK_READERS };
 
 if (MODE !== 'wall') install();
@@ -91,8 +94,28 @@ function install() {
     if (fromMain(f) && !WALL_CLOCK_READERS.has(f.getFunctionName() || '')) return clock();
     return realDateNow();
   };
+  widenNativeTimeouts(frames, fromMain);
 
   if (file !== null) fakeTimers(file, clock, frames, fromMain);
+}
+
+/* The reporter's native timeouts off the wall clock. `spawnSync`'s `timeout` ends the child after that much WALL
+ * time, inside node, where no clock read reaches: the wrapped status line command's K.WRAPPED_STATUSLINE_MS is
+ * outlasted by a loaded machine's `sh` start-up alone, which blanks the line a case asserts on. So a spawnSync the
+ * reporter script makes waits at least NATIVE_HANG_MS — a hang bound, never a timing: no verdict may depend on a
+ * child finishing inside the reporter's own timeout, and a case about that timeout firing must run on the wall
+ * clock. A call made without a timeout passes through as made, and so does every call from outside the script. */
+function widenNativeTimeouts(frames, fromMain) {
+  const cp = require('child_process');
+  const realSpawnSync = cp.spawnSync;
+  cp.spawnSync = function spawnSync(command, ...rest) {
+    if (fromMain(frames(spawnSync)[0])) {
+      const at = Array.isArray(rest[0]) ? 1 : 0;   // spawnSync(command[, args][, options])
+      const o = rest[at];
+      if (o && o.timeout > 0) rest[at] = { ...o, timeout: Math.max(o.timeout, NATIVE_HANG_MS) };
+    }
+    return realSpawnSync.call(this, command, ...rest);
+  };
 }
 
 /* The reporter's timers on the file's clock. A timer is due at (clock when set) + delay and fires on the
