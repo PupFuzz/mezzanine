@@ -3,12 +3,13 @@
  * module*; hoisted out of `floor/painter.js` at its second caller, the lobby, card#12113). The cab's room in depth
  * (`drawCabInterior()`, card#12051), the views its open doors look out on (`drawOfficeView()`, card#12052, and
  * `drawLobbyView()`, card#12113), the cab dialog's drawing (`paintCab()`), its colours (`cabTheme()`), the ride's leaf
- * motion (`rideLeaves()`, `cabLeaves()`), the classes all of them paint with (`CAB_STYLE`) and the one URI a drawn document
- * is shown by (`svgUri`, which the floor's painter imports).
+ * motion (`rideLeaves()`, `cabLeaves()`), the classes all of them paint with (`CAB_STYLE`), the one URI a drawn document
+ * is shown by (`svgUri`, which the floor's painter imports), the lobby's theme loader (`loadThemes()`) and the scene's themes
+ * input (`themeInputs()`, which the floor's painter re-exports).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ IT HAS NO STATIC IMPORT, AND ITS ONLY DYNAMIC ONES ARE THE THEME's: `loadHousePalette()` loads the theme registry
- * and the house theme's module (`resources/floor/themes`), the two the import-graph test follows. The floor's painter (`floor/painter.js`) draws the scene, the desks and the band, and loads the
+ * ⛔ IT HAS NO STATIC IMPORT, AND ITS ONLY DYNAMIC ONES ARE THE THEME's: `loadThemes()` loads the theme registry
+ * and the theme modules it names (`resources/floor/themes`), the two the import-graph test follows. The floor's painter (`floor/painter.js`) draws the scene, the desks and the band, and loads the
  * floor's whole scene machinery to do it; the lobby page draws a room and a cab and no desk, so it loads this file and
  * not the painter — which is what keeps the lobby page's import graph on its one path to the animation set
  * (`Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`). The painter imports this file and
@@ -28,24 +29,69 @@ export const THEME_REGISTRY = '/art/floor/themes/index.js';
 export const themeModule = (name) => `/art/floor/themes/${encodeURIComponent(name)}/theme.js`;
 
 /**
+ * THE THEMES, LOADED — the theme registry (`THEME_REGISTRY`) and each theme module `pick(registry)` names, answered as the
+ * scene's `themes` input (`themeInputs()`), or `null` when the registry did not load. A module that did not load is held
+ * as `null` under its name, as `floor/painter.js`'s `loadArt()` holds it. ⛔ THE ONLY DYNAMIC IMPORTS ON THE LOBBY PAGE,
+ * and the one site they are written: the asset route's registry, and the theme modules it names — the two the lobby's
+ * import-graph bound follows into `resources/floor/themes/` by name, every `THEMES` entry
+ * (`TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`). The lobby loads the house theme's for its cab's palette
+ * (`loadHousePalette()`) and every theme for the view behind the cab's doors (card#12987, `floor/door-view.js`).
+ *
+ * @param {function(object): list<string>} [pick] which of the registry's themes to load — every one by default
+ * @returns {Promise<{asset: string, registry: {names: list<string>, house: string, kinds: list<string>}, modules: Object<string, object|null>}|null>}
+ */
+export async function loadThemes(pick = (registry) => registry.THEMES) {
+    let registry;
+
+    try {
+        registry = await import(THEME_REGISTRY);
+    } catch {
+        return null;
+    }
+
+    const names = [...pick(registry)];
+    const modules = await Promise.all(names.map(async (name) => {
+        try {
+            return await import(themeModule(name));
+        } catch {
+            return null;
+        }
+    }));
+
+    return themeInputs(registry, Object.fromEntries(names.map((name, i) => [name, modules[i]])));
+}
+
+/**
  * THE HOUSE THEME's ELEVATOR PALETTE, LOADED — `{frame, lamp}`, its `PALETTE.elevator`, or `null` when the registry or
  * the house theme's module did not load (a cab then drawn in the sheet's door frame and lamp, `cabTheme()`'s
  * fallback). For a page that constructs no painter — the lobby, which has no desk to paint and so loads no other art
- * (`floor/painter.js`'s `loadArt()` loads the floor's, every theme included). ⛔ THE ONLY DYNAMIC IMPORTS ON THE LOBBY
- * PAGE: the asset route's registry and the one theme module it names house — the two the lobby's import-graph bound
- * follows into `resources/floor/themes/` by name (`TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`).
+ * for its cab (`floor/painter.js`'s `loadArt()` loads the floor's, every theme included). Through `loadThemes()`, the
+ * page's one loader.
  *
  * @returns {Promise<{frame: string, lamp: string}|null>}
  */
 export async function loadHousePalette() {
-    try {
-        const registry = await import(THEME_REGISTRY);
-        const house = await import(themeModule(registry.HOUSE_THEME));
+    const themes = await loadThemes((registry) => [registry.HOUSE_THEME]);
 
-        return house.PALETTE?.elevator ?? null;
-    } catch {
-        return null;
-    }
+    return themes?.modules[themes.registry.house]?.PALETTE?.elevator ?? null;
+}
+
+/**
+ * The scene's `themes` input (FLOOR.md § 10.6 items 5 and 8) from a loaded registry and its modules: the registry's
+ * asset id — what § 9 F14's strip names when its import was rejected — the registry's names, house theme and kinds, or
+ * `null`, and each named theme's module, a rejected one `null`. The floor page (`floor/painter.js` re-exports it), the
+ * harness and `loadThemes()` build it through this one function, so the floor scene and the cab's door view read one
+ * shape.
+ *
+ * @param {object|null} registry the registry module, or `null`
+ * @param {Object<string, object|null>} modules the theme modules by name
+ */
+export function themeInputs(registry, modules) {
+    return Object.freeze({
+        asset: THEME_REGISTRY,
+        registry: registry === null ? null : Object.freeze({ names: registry.THEMES, house: registry.HOUSE_THEME, kinds: registry.KINDS }),
+        modules: Object.freeze({ ...modules }),
+    });
 }
 
 /**

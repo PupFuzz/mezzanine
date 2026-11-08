@@ -1239,7 +1239,7 @@ const ONE_FRAME = new Set(['A5', 'A11', 'A12', 'A14', 'A17']);
  * @param {object} frame `FloorScreen#draw()`'s frame
  * @param {object} input `{ box, measure, character, draw, themes, maps, hallway, tilesets, layout_version,
  *        failed, reduce, effects, previous }` — `draw` the character tree's seeded draw (`seed.js`'s `draw()`, or
- *        `null` where the tree failed to load); `themes` is `painter.js`'s `themeInputs()`; `maps` is
+ *        `null` where the tree failed to load); `themes` is `cab-paint.js`'s `themeInputs()` (re-exported by `painter.js`); `maps` is
  *        install_id → the held map document or `null`; `tilesets` is `TilesetLoader#held`; `layout_version` the
  *        building layout's version held; `failed` the asset ids the painter reported; `effects` the animation-log
  *        rows this render wrote; `previous` key → the box the last scene drew; `interns_in_flight`, `laptop_at`,

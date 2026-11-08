@@ -56,7 +56,7 @@ import { RENDER_STATES } from '../lobby/render-state.js';
 import { CAB_STYLE, LANDING, THEME_REGISTRY, cabTheme, clippedTo, drawCabInterior, node, paintCab, rideLeaves, svgUri, themeModule } from './cab-paint.js';
 
 // The cab's drawing is `cab-paint.js`'s since card#12113 (both pages draw it); its names stay readable from here.
-export { CAB, CAB_STYLE, LANDING, LOBBY_VIEW, OFFICE, THEME_REGISTRY, cabLeaves, cabTheme, drawCabInterior, drawLobbyView, drawOfficeView, paintCab, rideLeaves, svgUri, themeModule } from './cab-paint.js';
+export { CAB, CAB_STYLE, LANDING, LOBBY_VIEW, OFFICE, THEME_REGISTRY, cabLeaves, cabTheme, drawCabInterior, drawLobbyView, drawOfficeView, paintCab, rideLeaves, svgUri, themeInputs, themeModule } from './cab-paint.js';
 
 /** The furniture box — `resources/floor/furniture-box.js`, by the asset route. */
 export const FURNITURE_MODULE = '/art/floor/furniture-box.js';
@@ -169,23 +169,6 @@ export async function loadArt() {
     const modules = await Promise.all(names.map((name) => load(themeModule(name), `theme:${name}`)));
 
     return { furniture, characters, registry, themes: Object.fromEntries(names.map((name, i) => [name, modules[i]])), failed };
-}
-
-/**
- * The scene's `themes` input (FLOOR.md § 10.6 items 5 and 8) from what `loadArt()` held: the registry's
- * asset id — what § 9 F14's strip names when its import was rejected — the registry's names, house theme and
- * kinds, or `null`, and each named theme's module, a rejected one `null`. The page and the harness build it
- * through this one function.
- *
- * @param {object|null} registry the registry module, or `null`
- * @param {Object<string, object|null>} modules the theme modules by name
- */
-export function themeInputs(registry, modules) {
-    return Object.freeze({
-        asset: THEME_REGISTRY,
-        registry: registry === null ? null : Object.freeze({ names: registry.THEMES, house: registry.HOUSE_THEME, kinds: registry.KINDS }),
-        modules: Object.freeze({ ...modules }),
-    });
 }
 
 /**

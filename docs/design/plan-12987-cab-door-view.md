@@ -31,6 +31,19 @@ The RED the outside read proposed in the pairwise rule's place — *a nearest-po
 wall-and-plant pair* — was CHECKED and is false over cells (§ 3.3's evidence), so the order's RED is pinned on
 the pair the live aimla map actually fails: a piece behind the PM's partition, painted over it.
 
+**Slice 2's build (2026-11-08) folds design review round 3 in place**, by the seat's ruling on the card (no revision 4;
+the five required items amended where they stand, in this file and in `FLOOR.md`): **M1** — a piece on the map's last row
+tied with the far wall and was painted under it; the far wall is now the first body of its boundary (§ 3.3's key gains a
+tier), and the ray-cast check counts a tie instead of skipping it (§ 10); **M3** — a layer's or a tileset's offset puts
+cells off the grid; every cell is placed on it once, at the model's input, by its tile index (§ 3.3's *On the grid*;
+the slice-2 impl review's F1 showed a rounding snap moved a whole layer a cell across the footprint's edges at an offset of
+half a cell or more); **m2** — S3b's
+wording (§ 6); **m4** — pieces on one boundary in the floor page's tile order, before any distance (§ 3.3); **m6** — the
+random-scene check is committed with tie counting and planted controls (§ 10, `tools/design/door-view.selftest.mjs`). M2
+(the wake on a stop's data arriving) and m1 (slice 3's anchors) are slice 3's; m3 (a room at `origin.y > 0` has its top
+row undrawn — planned floors only, none live) and m5 (a failed off-floor fetch seen on a later layout — needs a layout
+re-save in the same document) are accepted on the record (card comment 16208).
+
 **Design approval.** Operator directive of 2026-11-08, recorded on card#12987, verbatim: *"When standing
 in the elevator cab and the door opens or closes, currently a generic office space is shown. I want to see
 the actual floor layout and theme as someone would see it for each specific floor. For example, when
@@ -162,9 +175,9 @@ The floor is composed exactly as the floor page composes it — the same calls, 
 | the stop's plaque row: `rooms[]` (`install_id`, `form`, `origin?`), `hallway`, `theme` | `plates()` over the layout the client holds — the same list the cab's buttons read | the floor to compose; the theme to colour it |
 | each room's map and the hallway's | `Building#room(id).held.map` where the room is not mapless (§ 5); `placeRooms(rooms, extents, hallway)` → origins, `extent`, `draw_order` | the **floor plane**: one slab the size of the extent, Z from 0 to `extent.height · SCALE`, X from `(threshold.x − extent.x − extent.width) · SCALE` on the rider's left to `(threshold.x − extent.x) · SCALE` = 74 px · SCALE ≈ 103 cm on the right; a gap between side-by-side rooms (`ROOM_GAP_PX`) is plain floor. **The hallway** (a planned floor only) is read as the floor page reads it — a grid at the floor's origin, seeded with the floor's key (scene.js:1357 `grids.push({ install_id: null, map: input.hallway, origin: { x: 0, y: 0 }, seed: frame.floor.key })`), its own extent standing in for a footprint (scene.js:1385's fallback) — so its cells enter the rows below; it contributes no walls of its own, as a corridor is open to the rooms along it. No live floor is planned, so § 7's planned fixture is where this is first exercised |
 | each room's **footprint** (`placeRooms()`'s `footprint`, never the union extent) | arithmetic | the room's **walls**, full height (222 cm), as planes on the footprint's edges: the **far wall** along its bottom edge, a body of zero depth on that row boundary; the **side walls** along its left and right edges, planes of zero width **cut into row strips** so each strip takes its place in § 3.3's order (an interior side wall — a room's edge with another room beyond it — stands between the eye and that room's contents and must be painted after them and before its own). Each room its own, so two rooms of different heights or an L-shaped plan get walls where their rooms end and nowhere else; two rooms whose footprints share an edge contribute one coincident strip per row, drawn once (identical strips deduped). **A footprint's TOP edge is the band the rider stands in**, behind the eye, and is never drawn |
-| `wall` cells, one by one | `mapTiles()` cells whose `kind` is `wall` | a **box per cell**, the cell's own 8 px square (11 cm): a **wall** (222 cm) where the cell lies on its room's footprint edge — its left, right or bottom edge — else a **partition** (§ 12's *Partition height*, 120 cm). **A cell in the footprint's TOP ROW is the near wall** — the author outlining the room along the band — and is not drawn, as the footprint's top edge is not: drawn, it would stand at `Z = 0` across the doorway and fill it. **A cell under a desk's slab is not drawn**: the desk stands on it, as the floor page draws the slab over the run (reachable: an author pastes a map with a wall tile under a slot through the console, F21's own route). The rule's one artefact, accepted: where an interior partition meets the perimeter, its end cell lies on the edge and is a 222-cm post 11 cm wide — against the perimeter wall, which the plan's § 3.5 already accepts as a wainscot |
+| `wall` cells, one by one | `mapTiles()` cells whose `kind` is `wall`, placed on the grid by their tile index (§ 3.3's *On the grid*) | a **box per cell**, the cell's own 8 px square (11 cm): a **wall** (222 cm) where the cell lies on its room's footprint edge — its left, right or bottom edge — else a **partition** (§ 12's *Partition height*, 120 cm). **A cell in the footprint's TOP ROW is the near wall** — the author outlining the room along the band — and is not drawn, as the footprint's top edge is not: drawn, it would stand at `Z = 0` across the doorway and fill it. **A cell under a desk's slab is not drawn**: the desk stands on it, as the floor page draws the slab over the run (reachable: an author pastes a map with a wall tile under a slot through the console, F21's own route). The rule's one artefact, accepted: where an interior partition meets the perimeter, its end cell lies on the edge and is a 222-cm post 11 cm wide — against the perimeter wall, which the plan's § 3.5 already accepts as a wainscot |
 | `accent` cells | `mapTiles()` cells whose `kind` is `accent`, **merged along each row** by `door-view.js`'s own `rowRuns()` — adjacent cells of one row, one rect; a dozen lines, and NOT `tileRegions()`, which is the floor page's lattice-and-draw-order region pass with `misordered()` behind it and stays in `scene.js` | flat **accent runs** on the floor plane, in the theme's accent colour, drawn before every body and in no order among themselves (coplanar and disjoint). Without the merge the solo-agents floor is `node tools/design/door-view-plan.mjs <solo-agents.tmj>`'s *accent cells* figure of polygons; with it, its *runs* figure |
-| each room's `desks` objects | `mapDesks(map)`; **`deskSlab(foot)`** (m-c) — the desk's rect from the furniture box's BOTTOM-LEFT point `foot`: `{ x: foot.x + ART_W / 2 − 90, y: foot.y − 100, w: 180, h: 60 }`. `deskRects()` computes that rect inline today as `{ x: mid − 90, y: H − 100, w: 180, h: 60 }` (desk-layout.js:442, 451) and calls `deskSlab({ x: 0, y: H })` after slice 1; the door view calls `deskSlab({ x: slot.x, y: slot.y + slot.h })` — the slot's bottom-left, where `slotOrigin()` anchors the box — so the box's height cancels and the view needs neither the box (`FURNITURE_BOX`, loaded by the floor painter alone) nor `slotOrigin()`. `deskRects()`'s `character` argument is the creature tree's `SCENE_W × SCENE_H`, which only the character rects read and the lobby does not load; the door view never calls `deskRects()` | an **empty desk** per slot, two bodies: its **top**, the slab's rect 0–76 cm high, legs drawn as marks on its near face; its **monitor's back**, `deskRects()`'s `frame` width (96 px, desk-layout.js:456) at the slab's page-right end — **the rider's LEFT third** (the page's right is the rider's left, § 3.1) — one cell deep on the slab's near edge (the page's `y: slab − 46` is up the page, toward the rider), 76–147 cm. Each body is cut into row strips (§ 3.3). Prisms in the theme's `PALETTE.view` colours; no chair, character or seat key: § 6.3's scenery rule, and a chair's back over an empty desk adds a body for no reading the operator named |
+| each room's `desks` objects | `mapDesks(map)`; **`deskSlab(foot)`** (m-c) — the desk's rect from the furniture box's BOTTOM-LEFT point `foot`: `{ x: foot.x + ART_W / 2 − 90, y: foot.y − 100, w: 180, h: 60 }`. `deskRects()` computes that rect inline today as `{ x: mid − 90, y: H − 100, w: 180, h: 60 }` (desk-layout.js:442, 451) and calls `deskSlab({ x: 0, y: H })` after slice 1; the door view calls `deskSlab({ x: slot.x, y: slot.y + slot.h })` — the slot's bottom-left, where `slotOrigin()` anchors the box — so the box's height cancels and the view needs neither the box (`FURNITURE_BOX`, loaded by the floor painter alone) nor `slotOrigin()`. `deskRects()`'s `character` argument is the creature tree's `SCENE_W × SCENE_H`, which only the character rects read and the lobby does not load; the door view never calls `deskRects()` | an **empty desk** per slot, two bodies: its **top**, the slab's rect 0–76 cm high, legs drawn as marks on its near face; its **monitor's back**, `monitorFrame(slab)`'s width (96 px — the one rect `deskRects()`'s `frame` is, hoisted beside `deskSlab()` in slice 2) at the slab's page-right end — **the rider's LEFT third** (the page's right is the rider's left, § 3.1) — one cell deep on the slab's near edge (the page's `y: slab − 46` is up the page, toward the rider), 76–147 cm. Each body is cut into row strips (§ 3.3). Prisms in the theme's `PALETTE.view` colours; no chair, character or seat key: § 6.3's scenery rule, and a chair's back over an empty desk adds a body for no reading the operator named |
 | standing kinds — `theme.kinds` less **`PLANE_KINDS`** (m-a: hoisted with `mapTiles()`), as `buildScene()` derives `standing` (scene.js:1379 `const standing = theme.kinds.filter(...)`) | `mapTiles()` cells with `kind`; **`sceneryInput(cell, seed)`** — the document input `buildScene()` builds inline today (scene.js:1454–1461 — `{ kind, w, h, seed, index }`, plus `RESTROOM_PLATES` for the restroom door at :1460), hoisted so both callers hand the theme one shape; the theme's `scenery()` document from it | a **billboard**: the theme's own drawing of the piece, a body of zero depth standing on the cell's floor line at `(X, Z)` of the cell's bottom edge — a row boundary — `w · SCALE` wide and `h · SCALE` tall, shown as an `<image href="data:…">` exactly as the floor shows it (§ 10.6 item 2's asset shape) |
 | the theme | `floorTheme(floor, registry)` (house theme for `null`; house theme under F23's notice for an unshipped name); the module's `PALETTE` | the view's colour carriers (§ 3.4); no module held ⇒ § 5's bare room in the sheet's tokens |
 
@@ -185,6 +198,8 @@ test anchored on the old module moves:
 | `mapTiles()`, `safeEmbedded()` (its private helper), `PLANE_KINDS`, `RESTROOM_DOOR`, `RESTROOM_PLATES`, and the new `sceneryInput()` | `scene.js` | `floor/map-tiles.js` (new) | `floor-layout.js`, `tileset.js` (no imports of its own) |
 | `ART_W` and the new `deskSlab(foot)` | `desk-layout.js` (`deskRects()`'s inline `desk`) | `floor/desk-geometry.js` (new) | none |
 | `svgUri` | `floor/painter.js` | `floor/cab-paint.js` | none static (its one dynamic-import site is the declared loader) |
+| `monitorFrame(slab)` — slice 2 | `desk-layout.js` (`deskRects()`'s inline `frame`) | `floor/desk-geometry.js` | none |
+| `themeInputs()` — slice 2, beside the new `loadThemes()` | `floor/painter.js` | `floor/cab-paint.js` | none static |
 
 **Not moved, since revision 3:** `tileLook()`, `tileRegions()` and `misordered()` stay in `scene.js` (the
 door view reads cells, § 3.2's rows above; the region pass is the floor page's own), and `slotOrigin()` stays
@@ -203,14 +218,14 @@ missed anchor fails loudly in CI rather than passing against unmodified code —
 test green" only if the list is complete. The list is derived, not recalled: run
 
 ```bash
-grep -rn "ELEVATOR = {\|BAND_H\|thresholdOf\|floorTheme\|unshippedThemeNotice\|themes.house, notice\|mapTiles\|safeEmbedded\|RESTROOM_DOOR\|RESTROOM_PLATES\|PLANE_KINDS\|sceneryInput\|ART_W\|deskSlab\|svgUri" server/tests --include=*.php
+grep -rn "ELEVATOR = \|BAND_H\|thresholdOf\|floorTheme\|unshippedThemeNotice\|themes.house, notice\|mapTiles\|safeEmbedded\|RESTROOM_DOOR\|RESTROOM_PLATES\|PLANE_KINDS\|sceneryInput\|ART_W\|deskSlab\|svgUri" server/tests --include=*.php
 ```
 
 and keep every hit that names the OLD module as the file it mutates or reads. On 2026-11-08 that was:
 `TheFloorDrawsItsFrameTest.php:153` (*the band*, anchor `export const BAND_H = 160;` in `scene.js`) and
 `:765` (the `BAND_H` regex over `scene.js`'s text), both to `floor-layout.js`; `TheFloorDrawsItsFrameTest.php:196`
-(anchor `const ELEVATOR = { dx: 32,` in `scene.js` — moved AND exported, so the anchor becomes
-`export const ELEVATOR = { dx: 32,` in `floor-layout.js`); `TheFloorResolvesItsThemeTest.php:85` (a
+(anchor `const ELEVATOR = { dx: 32,` in `scene.js` — moved, exported AND frozen, so the anchor became
+`export const ELEVATOR = Object.freeze({ dx: 32,` in `floor-layout.js`, as the tree has it); `TheFloorResolvesItsThemeTest.php:85` (a
 mutation inside `floorTheme()`'s body — `: { theme: themes.house, notice: unshippedThemeNotice(floor.theme, floor.name) };`
 in `scene.js`), to `floor-theme.js` — a hit r2's list did not have; and `TheNewDeskKeepsEveryLeafTest.php:376–377`
 (`svgUri` in `painter.js`), to `cab-paint.js`. `TheFloorsTilesDrawWithoutSeamsTest.php:93–94` reads
@@ -250,14 +265,38 @@ in `map-tiles.js` reds in slice 1.
   a side wall is cut into row strips; a desk's top and monitor are cut into row strips, the slab's rows
   being the cell rows its exact rect touches (snapped outward, at most 7 px = 10 cm each way — the view
   draws the desk one cell deeper at most, which at a 10-m room is not a reading); the far wall and every
-  billboard are bodies of zero depth on a row boundary. So the order has ONE AXIS and needs no graph:
+  billboard are bodies of zero depth on a row boundary. **On the grid (design review round 3's M3):** a layer's
+  or a group's offset and a tileset's offset (`mapTiles()` adds both, as Tiled draws them) put a cell off the
+  grid, so the model places every cell once, at its input, BY ITS TILE INDEX — its column and row in its layer
+  (`mapTiles()`'s `col` and `row`) at the room's origin, moved only by the WHOLE cells of the offset, the part
+  under a cell truncated toward zero (`trunc(offset / T) · T`); a billboard's foot line is the boundary under
+  its cell so placed — and classifies a cell (top row, under a slab, on a footprint edge) on that place. The
+  footprint is the same grid at the same origin, so a cell on its top row or edge is there BY CONSTRUCTION,
+  whatever the author dragged the layer by. The residual is under a cell (at most 7 px, 9.7 cm) of where the
+  author dragged the layer, toward the tile's own cell, which the view does not draw. *Rejected:* rounding the
+  drawn pixels to the nearest grid cell — at an offset of half a cell or more it moves the whole layer one cell
+  across the unmoved footprint's edges, drawing the near-wall row across the doorway, turning the perimeter's
+  walls into partitions and putting a last-row piece behind the far wall (the slice-2 impl review's F1);
+  flooring them — the same for every negative offset. The selftest's `bravo` is dragged on both sides of half a
+  cell and below zero, with the rounding and the flooring each planted as a RED. So the order has ONE AXIS and
+  needs no graph:
 
-  **far rows first; a boundary's bodies between the row beyond it and the row before it; within one row,
-  the body farther from the eye's centre line first (`min |X|` over its span, 0 where it straddles `X = 0`),
-  a desk's parts taking the desk's own distance and its higher part later; then the map's own tile order.**
+  **far rows first; a boundary's bodies between the row beyond it and the row before it — on a boundary the
+  far wall first (M1), then the pieces in the floor page's own tile order (m4); within one row, the body
+  farther from the eye's centre line first (`min |X|` over its span, 0 where it straddles `X = 0`), a desk's
+  parts taking the desk's own distance and its higher part later; then the map's own tile order.**
 
-  As a sort key: `(−key, −mx, rank, index)` with `key = 2·row + 1` for a body in a row and `key = 2·m` for a
-  body on the boundary `y = m·T`, `mx` the distance above, `rank` 0 for a desk's top and 1 for its monitor.
+  As a sort key: `(−key, tier, …)` with `key = 2·row + 1` for a body in a row and `key = 2·m` for a body on the
+  boundary `y = m·T`, `tier` 0 for a plane on a boundary (the far wall) and every body in a row, 1 for a piece;
+  then, between two pieces, `index` (the tile order), and otherwise `(−mx, rank, index)` — `mx` the distance
+  above, `rank` 0 for a desk's top and 1 for its monitor. **Why the far wall is first on its boundary (M1):** a
+  piece on the map's last row stands on the far wall's own plane, so the two are COPLANAR — no separating plane
+  orders them — and the revision-3 key broke that tie by `−mx`, which painted the far wall (straddling `X = 0`,
+  `mx` 0) over any piece off the centre line and hid it; the shipped default's armchair and aimla's bookcase on
+  their last rows survived only by straddling the centre line. A piece stands IN the room, so it is in front.
+  **Why tile order between pieces (m4):** two pieces on one foot line are coplanar too; the floor page stacks
+  them in tile order (`buildScene()`'s scenery loop), so the view does, rather than by a distance the geometry
+  does not ask for.
   *Why it is exactly the separating-plane rule on this population:* two bodies in different rows are
   Z-separated with the eye in front of both, and the farther row is painted first; a boundary body and a row
   body are Z-separated (touching), the boundary body after the row beyond it and before the row before it;
@@ -272,7 +311,9 @@ in `map-tiles.js` reds in slice 1.
   deleted, and with them r2's A1 (the tool's stacked rects were never the build's bodies — now the cells
   are, on both sides), m-d (every body has a place; nothing is reported as a defect or falls back to the bare
   room) and m-e (there is nothing to detect).
-- **Evidence (re-printed by the tool).** `node tools/design/door-view-plan.mjs <map.tmj>` builds the bodies
+- **Evidence (re-printed by the tool).** ⚠ The tool's ray cast below SKIPS a pair one ray meets at one depth — a
+  tie — and that is how M1 passed it: a coplanar piece and far wall were never measured. The build's check
+  (`tools/design/door-view.selftest.mjs`, § 10) counts every tie against the order its shared plane owes. `node tools/design/door-view-plan.mjs <map.tmj>` builds the bodies
   above from a map and checks the order against an EXACT RAY CAST — 4,000 rays from the eye through the
   doorway; for every pair of bodies one ray meets at different depths the nearer must be painted later — and
   prints the violations per order, for this order and two others: the nearest-point sort over the same
@@ -594,7 +635,7 @@ they cannot):
   order's RED is pinned on, aimla's own shape), and a row of `wall` cells along the top row `x 0..400, y 0..8`
   (the near wall: not drawn).
 - **C** — key `charlie`, two rooms unplanned (`charlie` and `charlie-2`, side by side with `ROOM_GAP_PX`
-  between), the first 300 px tall and the second 500 px: per-room walls at each footprint's own far edge,
+  between), the first 296 px tall and the second 496 px (whole 8-px rows; 300 and 500 are not): per-room walls at each footprint's own far edge,
   the gap plain floor with a side wall on each side of it, and a map for `charlie-2` that names a second
   tileset the loader does not hold.
 
@@ -608,7 +649,7 @@ painter's, as the `beyond` leg does) and reads back, under `.cab-beyond`:
 | **S1** `entering` (doors on `alpha`, everything held) | `scene.ride.stop` = `'alpha'`; the root group's `--dv-floor` / `--dv-wall-top` = studio's `#d9c7a5` / `#eef0e0`; wall cells: the column's cells less its top-row cell, every projected `x` of each near face RIGHT of the doorway's centre line, each top BELOW the horizon `y = box.y + (door.h − eye) · ky` (partitions); **no cell inside the slab's rows and X span** (the under-slab reading); desk bodies: one desk's strips (the second culled), LEFT of centre, the union of its top strips' near faces equal to the probe's own `at()` over the slab's snapped rect; its monitor's faces after its top's within each row; **draw order: the plant's `<image>` follows every face of cells in rows `y ≥ 504` and precedes every face of cells in rows `y < 504` in document order**; no accent polygon |
 | **S2** `chosen('bravo')` (everything held) | `stop` = `'bravo'`; cottage's `#cbd3b3` / `#d7e6ee`; wall cells: the partition row's cells, their near faces spanning the centre line together, their tops BELOW the horizon, the `x 0` cell's top ABOVE it (the post); the top-row cells drawn nowhere (no body with `Z` under a cell's depth); desk bodies: zero; accent polygons ≥ 1; one `<image>` whose `href` equals `svgUri(cottage.scenery(sceneryInput(cell, 'bravo')))` recomputed by the probe, **and it precedes every face of the partition row in document order** (the order's RED) |
 | **S3** `chosen('bravo')` with `bravo`'s map scripted to 503 (R2, never held) | `view.bare` = `true`, reason `mapless`; cottage custom properties on the root; no wall, desk, accent or `<image>`; the shell's floor, walls and ceiling present |
-| **S3b** `chosen('bravo')` with `bravo`'s map HELD at `map_version` 1, the layout reporting 2, and the press's refetch scripted to 503 (m-g: R2 over a held map — `Building#room()` answers `{ held: <the v1 map>, failure: { status: 503 } }`, building.js:291) | `bare`, reason `mapless` — the held v1 map is F16's extent, not a map to draw; otherwise as S3 |
+| **S3b** `chosen('bravo')` with `bravo`'s map HELD at `map_version` 1, the layout the page holds reporting 2 (a `building.layout` applied before the press), and the press's `enterRooms()` refetch of that held map scripted to 503 — the press fetches no layout (cut 2), so the held map's refetch is its only request for `bravo` (round 3's m2) (m-g: R2 over a held map — `Building#room()` answers `{ held: <the v1 map>, failure: { status: 503 } }`, building.js:291) | `bare`, reason `mapless` — the held v1 map is F16's extent, not a map to draw; otherwise as S3 |
 | **S4** `chosen('bravo')` with `bravo`'s map answering 300 ms after `chosen` began (R1) | the first paint as S3 with no failure; after the answer, exactly one further paint under `.cab-beyond` in that phase, S2's readings, and the leaves' animations the same objects as before the repaint (the existing *follow each phase without restarting* reading) |
 | **S5** `chosen('bravo')` with the cottage module absent from `themes` (R3) | `bare`, reason `theme`; the root group carries NO `style`; the shell drawn in the sheet's classes |
 | **S6** `chosen('charlie')` | two far walls at different `Z` (the two footprints' heights), side-wall strips at four distinct `X` (each footprint's two edges), the gap's floor polygon between them; `charlie-2`'s missing tileset ⇒ `bare`, reason `tileset`, with the whole floor bare (not `charlie` alone) |
@@ -674,6 +715,12 @@ locally (§ 4's hop).
   in `min |X|` order, as the floor page paints them "over each other"; nothing is reported and nothing
   falls back to the bare room. The random-scene check keeps slabs disjoint by construction and so does not
   measure this case; its route is the console's paste of an F21 map.
+- **Rooms on cell grids of different sizes on one floor, or a `wall` tile larger than its cell** (slice 2's build;
+  round 3's *not covered* list). The model takes the floor's grid from its first room's `tileheight` and draws
+  every `wall` cell as that grid's square at the cell its tile index gives it. Every shipped and live map is on one
+  8-px grid with an 8 × 8 wall tile (`floor-plane.tsx`'s tile 2), and `App\Floor\FloorMap` accepts
+  any positive grid, so the route is an author's map on another grid: NOT defended — the view is drawn on the
+  first room's grid and nothing is reported.
 - **Hairlines between faces.** Adjacent cells' faces share edges, and the floor page merges runs precisely
   because a shape drawn cell by cell leaves a hairline where a shared edge lands on a fractional device
   pixel (scene.js's ⛔ *WHY ONE AREA AND NOT ITS CELLS* over `tileRegions()`). The door view's faces are
@@ -704,8 +751,8 @@ as each lands).
    `floor/map-tiles.js`; `ART_W` and the new `deskSlab(foot)` (which `deskRects()` now calls with
    `{ x: 0, y: H }`) into `floor/desk-geometry.js`; `svgUri` into `cab-paint.js`. Each name re-exported from
    its old module. **Retarget every anchor § 3.2's grep lists** — `TheFloorDrawsItsFrameTest.php:153`,
-   `:196` (`export const ELEVATOR = { dx: 32,` now) and `:765`, `TheFloorResolvesItsThemeTest.php:85`,
-   `TheNewDeskKeepsEveryLeafTest.php:376–377` — and re-run the grep on the branch before the PR, so the
+   `:196` (`export const ELEVATOR = Object.freeze({ dx: 32,` now — the frozen object slice 1 shipped) and `:765`,
+   `TheFloorResolvesItsThemeTest.php:85`, `TheNewDeskKeepsEveryLeafTest.php:376–377` — and re-run the grep on the branch before the PR, so the
    list is the tree's and not this file's. Add `DOOR_VIEW_ROOTS` to
    `TheBuildingCameraMovesTheViewerAndNeverTheFleetTest` and its planted-import RED; run it.
 2. **The model.** `floor/door-view.js` `doorView(stopRow, building, tilesets, themes)` → the frozen model
@@ -717,6 +764,18 @@ as each lands).
    `PALETTE.view` in both themes and the selftest's drift leg; `wire/ride.js` `sceneRide()` adds `stop` (its
    RED in `TheFloorsRideIsNavigationTest`); `cab-paint.js` `loadThemes()` beside `loadHousePalette()` and
    the lobby walk's needles updated to follow every `THEMES` entry; `door-view.js` added to `DOOR_VIEW_ROOTS`.
+   **As built:** the selftest is `tools/design/door-view.selftest.mjs`, wired into `design-doc-verifiers.yml`'s
+   `design-artifact` job — its *fixtures* leg (§ 6's floors A, B — on the grid and dragged off it by each offset the
+   selftest's `DRAGS` names — and C, § 7's planned floor with a hallway, with
+   S3, S3b, S5, S6 and S7's model readings) and its *order* leg (§ 10), each RED planted in a mirror of the module
+   tree; round 3's folds M1, M3, m2, m4 and m6 are in the code, this file and `FLOOR.md`. Two pieces the model
+   reads were hoisted where the lobby may load them, each re-exported where it was: `monitorFrame()` into
+   `desk-geometry.js` (`deskRects()`'s monitor rect; `TheDeskIsReLaidTest`'s frame RED retargeted onto it) and
+   `themeInputs()` into `cab-paint.js` (the shape `loadThemes()` answers). `Building#mapless()`'s RED in
+   `TheFloorComposesItsRoomsTest` moved onto the hoisted predicate. ⚠ `floor/painter.js`'s `loadArt()` still loads
+   the registry and every theme module through its own `import()`s beside `loadThemes()`: two loaders of one set,
+   left for its own change because `loadArt()`'s answer (the raw registry and the failed asset ids) is read by the
+   floor page and two probes.
 3. **The paint and the wiring.** `cab-paint.js` `drawFloorView()` (projection, culling, the sorted order,
    the ceiling at 222 cm, the anti-seam stroke rules, the bare room, the carriers with their `var()`
    fallbacks and `MIXED` rows); `BEYOND.office` → it; `drawOfficeView()` reduced to the shell the bare room
@@ -770,7 +829,7 @@ recommendations taken), each one figure or one rule the operator's reading of th
 
 ## 10. The random-scene check, as run
 
-The script is not in the repo (a scratch check, `rowmc.mjs`, the shape of r2's `mc.mjs`); its construction
+The design round's script was a scratch check, never committed (`rowmc.mjs`, the shape of r2's `mc.mjs`); its construction
 is § 3.3's: a room of 60–223 × 30–87 cells, half the time a second room beside it with a two-cell gap and
 its own depth; up to ten runs of `wall` cells, vertical or horizontal, classified per cell by the footprint
 rule; up to six desks at UNALIGNED `y` (slabs disjoint, snapped to rows as the view snaps them), each a top
@@ -799,6 +858,27 @@ billboards keyed to their own cell's row rather than the boundary. Before the tw
 first run printed `row violations 310 in 158 scenes` (seed 12345; monitors before their tops) and then
 `43 in 8 scenes` (two desks at different `y` in one row) — the check discriminated before it passed
 (canon #9). What it does not measure: intersecting slabs (§ 7), and anything about the rendered look.
+
+**The check as committed (slice 2; round 3's m6).** The scratch script above skipped every pair a ray meets at ONE
+depth, which is how round 3's M1 — a piece on the last row painted under the far wall it stands against — passed it.
+It is now the *order* leg of `tools/design/door-view.selftest.mjs`, and it differs from the scratch check in three ways:
+it checks the BUILD (each random floor is a map built by `doorView()` itself, over the shipped tileset, so the bodies
+are the model's and not a restatement of it); some floors have their tile layers dragged −7 to +7 px off the grid and a
+quarter of the pieces stand on the last row (M3's and M1's routes); and a TIE is owed an order — the body on the eye's
+side of the plane two touching bodies share, a piece over the far wall it stands on, and between two pieces on one foot
+line the later in tile order — with any tie no rule names counted and printed. Rays and pieces are re-derived per run
+by the command, so no figure is written here:
+
+```
+node tools/design/door-view.selftest.mjs --order 800 300 12345 777    # the scratch check's two seeds and size
+```
+
+Its controls are planted REDs, each a mirror of the module tree with one defect, required to red the leg: *pieces
+last*; the revision-3 key (no tier — M1, red by `far-wall over billboard (a tie)`); no snap (M3); a monitor at its own
+distance. The ray cast samples a sliver too thin for three comparator terms — the straddle clause, the inner-edge
+distance and a desk's distance ahead of its rank — so each is held by a fixture reading instead (`alpha`'s partition
+in a monitor's row, `echo`'s straddling cell and desk), each with its own planted RED, and the rounding and flooring
+snaps by `bravo`'s drags. CI runs a smaller default (`node tools/design/door-view.selftest.mjs`) with the same controls.
 
 ## 11. Open question — not decided here
 

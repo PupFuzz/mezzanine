@@ -116,10 +116,11 @@ class TheDeskIsReLaidTest extends TestCase
     public function test_red_a_rect_that_is_not_the_tables(): void
     {
         foreach ([
-            'the frame 4 px further left' => ['const frame = { x: desk.x + desk.w - 96, y: slab - 46, w: 96, h: 46 };', 'const frame = { x: desk.x + desk.w - 100, y: slab - 46, w: 96, h: 46 };', 'monitor-frame'],
-            'the creature centred again' => ['const sitter = desk.x + desk.w / 3 - cw / 2;', 'const sitter = mid - cw / 2;', 'character'],
-        ] as $what => [$from, $to, $kind]) {
-            $defects = $this->tableDefects($this->sceneOf(self::SHIPPED, $this->mutatedModules(['../floor/desk-layout.js', $from, $to])));
+            // The frame's rect is `desk-geometry.js`'s `monitorFrame()`, which `deskRects()` and the cab's door view both read.
+            'the frame 4 px further left' => ['../floor/desk-geometry.js', 'return { x: slab.x + slab.w - 96, y: slab.y - 46, w: 96, h: 46 };', 'return { x: slab.x + slab.w - 100, y: slab.y - 46, w: 96, h: 46 };', 'monitor-frame'],
+            'the creature centred again' => ['../floor/desk-layout.js', 'const sitter = desk.x + desk.w / 3 - cw / 2;', 'const sitter = mid - cw / 2;', 'character'],
+        ] as $what => [$file, $from, $to, $kind]) {
+            $defects = $this->tableDefects($this->sceneOf(self::SHIPPED, $this->mutatedModules([$file, $from, $to])));
 
             $this->assertNotSame([], array_filter($defects, fn (string $d): bool => str_contains($d, "`{$kind}`")), "RED ({$what}) did not fail the table leg on `{$kind}`");
         }

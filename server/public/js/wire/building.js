@@ -224,6 +224,18 @@ export class Building {
     }
 
     /**
+     * § 9 F16's predicate, the one every reader of a room's map asks: a room is MAPLESS when it was never answered or its
+     * last request failed — under a failure `held` is F16's extent, not a map to draw. The floor page draws the room's
+     * desks with no map by it (`floor/floor-screen.js`), and the cab's door view draws the floor's bare room by it
+     * (`floor/door-view.js`), so the two cannot disagree on which rooms have a map.
+     */
+    mapless(installId) {
+        const room = this.room(installId);
+
+        return room === null || room.failure !== null;
+    }
+
+    /**
      * § 4.4's floor entry: fetch each room "whose map the client does not already hold at the
      * `map_version` `/api/building` reported". A room whose last request failed is fetched again
      * whatever it holds — entering a room is F16's "retry on the user's action".
