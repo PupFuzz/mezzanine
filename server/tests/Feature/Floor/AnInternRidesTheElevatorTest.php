@@ -827,6 +827,98 @@ class AnInternRidesTheElevatorTest extends TestCase
             'the cancelled intern is not drawn seated at the desk\'s new place');
     }
 
+    /** The runs card#12993's rule is read over: a close at every point of an arrival, a seated leave, a pair, a hole, a close inside a restroom visit, a gain inside a break, and a resync under a leave. */
+    private const NEVER_VANISHES = ['stop-in-cab', 'stop-at-door', 'stop-mid-walk', 'leave-working', 'two-interns', 'middle-leaves',
+        'intern-stop-inside', 'intern-arrives-in-its-break', 'intern-leave-resync'];
+
+    /**
+     * card#12993 — every frame of a run that draws an intern once draws it on until the elevator has closed over it: at its
+     * stool, by its own A10 walk or by a trip (§ 6.6, § 6.7), and gone only once a walk out — whose last leg is the cab —
+     * has run its frames. A trip that began before the intern's arrival ended is a defect too: the arrival walks to a stool
+     * that then draws empty while the intern is somewhere the floor never walked it. Each defect names the run, the intern
+     * and the instant.
+     *
+     * @return list<string>
+     */
+    private function vanishDefects(array $runs, ?string $dir = null): array
+    {
+        $defects = [];
+
+        foreach ($runs as $run) {
+            $seen = [];
+            $gone = [];
+            $arrived = [];
+
+            foreach ($this->drawn($this->floorRun($run, $dir)) as $x) {
+                $here = [];
+
+                foreach ($x['frame']['scene']['desks'] as $desk) {
+                    foreach ($desk['elements'] as $e) {
+                        if ($e['kind'] === 'stool' && isset($e['call_id'])) {
+                            $here["{$desk['key']}~{$e['call_id']}"] = true;
+                        }
+                    }
+                }
+
+                foreach ($this->internWalks($x['frame']) as $w) {
+                    $here[$w['intern_key']] = true;
+
+                    if ($w['leg_kind'] === 'arrive') {
+                        $arrived[$w['intern_key']] = $w['started_at'] + $w['frames'] * $w['frame_interval_ms'];
+                    } else {
+                        $last = $w['legs'][count($w['legs']) - 1]['kind'];
+                        $last === 'cab' || $defects[] = "[{$run}] {$w['intern_key']}'s walk out at {$x['at']} ms ends in a {$last} leg, not the cab";
+                        $gone[$w['intern_key']] = $w['started_at'] + $w['frames'] * $w['frame_interval_ms'];
+                    }
+                }
+
+                // A snack trip or a restroom visit draws the intern too (inside the restroom, behind its door) — but only one
+                // that began once its arrival had ended: one begun before is a figure the floor never walked there.
+                foreach ($x['frame']['scene']['effects'] ?? [] as $t) {
+                    if (! in_array($t['animation_id'], ['A25', 'A26'], true) || ($t['frames'] ?? 0) <= 0 || ! str_contains($t['walker_key'] ?? '', '~')) {
+                        continue;
+                    }
+
+                    $here[$t['walker_key']] = true;
+
+                    if (isset($arrived[$t['walker_key']]) && $t['started_at'] + 1 < $arrived[$t['walker_key']]) {
+                        $defects[] = "[{$run}] {$t['walker_key']}'s {$t['animation_id']} trip began at {$t['started_at']} ms, before its arrival ended at {$arrived[$t['walker_key']]} ms";
+                    }
+                }
+
+                foreach (array_keys($seen) as $key) {
+                    if (! isset($here[$key]) && ! (isset($gone[$key]) && $x['at'] >= $gone[$key] - 1)) {
+                        $defects[] = "[{$run}] {$key} is drawn nowhere at {$x['at']} ms ({$x['trigger']}) with no walk out run to the cab";
+                        unset($seen[$key]);
+                    }
+                }
+
+                $seen = array_merge($seen, array_diff_key($here, $gone));
+            }
+        }
+
+        return $defects;
+    }
+
+    public function test_green_an_intern_is_drawn_from_its_arrival_until_the_elevator_closes_over_it(): void
+    {
+        $this->assertSame([], $this->vanishDefects(self::NEVER_VANISHES));
+    }
+
+    public function test_red_a_break_from_before_the_intern_arrived(): void
+    {
+        $dir = $this->planted([self::IN_FLIGHT, 'if (page(s.start_s) < (this.#elevatorUntil.get(w.key) ?? -Infinity)) {', 'if (false) {']);
+        $this->assertNotSame([], $this->vanishDefects(['intern-arrives-in-its-break'], $dir),
+            'with the trip admitted for a break that began before the intern arrived, the intern is still drawn at its stool');
+    }
+
+    public function test_red_a_resync_cancels_the_walk_out(): void
+    {
+        $dir = $this->planted([self::IN_FLIGHT, "const touched = (touchedKeys.has(seat) && h.effect.leg_kind === 'arrive')", 'const touched = touchedKeys.has(seat)']);
+        $this->assertNotSame([], $this->vanishDefects(['intern-leave-resync'], $dir),
+            'with a resync cancelling the walk out, the intern is still drawn to the elevator');
+    }
+
     public function test_green_an_old_reporter_types_and_a_snapshot_draws_every_intern_seated(): void
     {
         $old = $this->lastFrame($this->floorRun('old-reporter'));

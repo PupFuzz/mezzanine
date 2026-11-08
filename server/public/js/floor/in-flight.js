@@ -206,6 +206,12 @@ export class EffectsInFlight {
     /** § 5.5's *no open route … snack table* and *… restroom door* lines already written, `<seat key> <lattice key>`. */
     #narrated = new Set();
 
+    /**
+     * card#12993 — walker key → the instant (the page's clock, ms) its latest elevator walk ends: a seat's A1 or A2, an
+     * intern's A10, a turn-round of either. A break that begins before it takes no trip (`breaks()`).
+     */
+    #elevatorUntil = new Map();
+
     /** @param {number} intervalMs one loop frame (§ 12's loop rate) */
     constructor(intervalMs) {
         this.#intervalMs = intervalMs;
@@ -267,7 +273,10 @@ export class EffectsInFlight {
 
             if (h.intern === true) {
                 const seat = keyOf(h.effect);
-                const touched = touchedKeys.has(seat)
+                // card#12993: an intern walking out has left the array, and a closed call never reopens, so no object that
+                // replaces its seat's can change where it is going — a non-delta entry leaves it on its way. Cancelled, it
+                // would be drawn nowhere: its stool is already empty.
+                const touched = (touchedKeys.has(seat) && h.effect.leg_kind === 'arrive')
                     || h.lattice_key !== ctx.lattice_key
                     || h.unconfirmed !== ctx.unconfirmed(seat)
                     || h.stilled !== ctx.stilled
@@ -366,6 +375,7 @@ export class EffectsInFlight {
 
                 const was = inCab.get(effect.intern_key);
 
+                this.#rideUntil(effect.intern_key, now, effect.frames);
                 this.#held.push({
                     effect,
                     at: now,
@@ -408,6 +418,7 @@ export class EffectsInFlight {
 
             const was = turn ? inCab.get(key) : undefined;
 
+            this.#rideUntil(key, now, effect.frames);
             this.#held.push({
                 effect,
                 at: now,
@@ -477,6 +488,11 @@ export class EffectsInFlight {
         for (const { h } of riders) {
             h.effect = Object.freeze({ ...h.effect, legs: seatInCab(h.effect.legs, door, h.cab_slot, h.cab_from ?? null) });
         }
+    }
+
+    /** card#12993: walker `key`'s elevator walk, admitted at `now` with `frames` to run, ends no earlier than this one. */
+    #rideUntil(key, now, frames) {
+        this.#elevatorUntil.set(key, Math.max(this.#elevatorUntil.get(key) ?? -Infinity, now + frames * this.#intervalMs));
     }
 
     /**
@@ -775,6 +791,13 @@ export class EffectsInFlight {
             }
         }
 
+        // No break this pass can reach began more than a gap before now, so an elevator walk that ended earlier bars none.
+        for (const [k, until] of this.#elevatorUntil) {
+            if (until < now - GAP_MAX_S * 1000) {
+                this.#elevatorUntil.delete(k);
+            }
+        }
+
         // Every break whose second has come and that no pass has decided — at most one per walker and chain in a gap's
         // length, since the gaps are at least an hour — oldest first, ties by key.
         const due = [];
@@ -810,6 +833,12 @@ export class EffectsInFlight {
             // a bound chosen past the routes of the floors shipped and measured, and the cost of a longer one is only that
             // a page loaded during its trip does not enter it at its phase.
             if (!ctx.live || !(chain === 'restroom' ? w.restroom_eligible : w.eligible) || ctx.server_ms - s.start_s * 1000 > (s.dwell_s + 600) * 1000) {
+                continue;
+            }
+
+            // § 6.6 item 4's *When* (card#12993): a walker on an elevator walk at its break's second was not at its desk or
+            // stool — and an intern a delta gained since did not exist then, so every break it had before is declined here.
+            if (page(s.start_s) < (this.#elevatorUntil.get(w.key) ?? -Infinity)) {
                 continue;
             }
 
