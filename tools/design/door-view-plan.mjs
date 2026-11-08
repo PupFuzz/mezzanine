@@ -31,7 +31,7 @@
  *
  * ⚠ ITS ORDER CHECK IS THE DESIGN ROUND's, NOT THE BUILD's GATE: it skips a pair a ray meets at one depth (a tie) and its
  * `row` order predates design review round 3's folds (the far wall first on its boundary, pieces in tile order, cells
- * snapped to the grid) — the build's order and its check, ties included, are `floor/door-view.js` and
+ * placed on the grid by their tile index) — the build's order and its check, ties included, are `floor/door-view.js` and
  * `tools/design/door-view.selftest.mjs`.
  *
  * argv: `<map.tmj> [tiles-per-char] [rays]` (default 4 → one character is 32 px on an 8-px grid; 4000 rays). Reads the

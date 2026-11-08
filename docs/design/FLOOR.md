@@ -2050,10 +2050,12 @@ panel.
     culled, a face that does not face the eye is not drawn, the room's own far wall is the depth limit —
     clipped to the doorway as the office was, **in one total order on the cell grid**: every body lies in
     one row of the map's grid (a cell; a desk's top and monitor and the footprint's side walls cut into row
-    strips) or on one row boundary (a billboard on its foot line; the far wall) — **the model snaps every
-    cell and every foot line to the grid once, at its input**, since a layer's, a group's or a tileset's
-    offset puts a cell off it (card#12987's design review round 3), and classifies each cell on the snapped
-    place — and the order is far rows first, a boundary's bodies between the row beyond it and the row
+    strips) or on one row boundary (a billboard on its foot line; the far wall) — **the model places every
+    cell on the grid once, at its input, by its tile index** — its column and row at the room's origin, moved
+    only by the whole cells of a layer's, a group's or a tileset's offset, the part under a cell dropped —
+    so a cell on its room's top row or edge is classified there by construction, whatever an author dragged a
+    layer by (card#12987: rounding the drawn pixels moved a whole layer a cell across the footprint's edges) —
+    and the order is far rows first, a boundary's bodies between the row beyond it and the row
     before it (**on a boundary the far wall first, then the pieces in the floor page's tile order**: a piece
     on the last row stands on the far wall's own plane and is in front of it, and two pieces on one foot
     line stack as the floor page stacks them), within a row the body farther from the eye's centre line

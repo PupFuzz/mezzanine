@@ -14,10 +14,11 @@
  *
  * ⛔ EVERY BODY LIES IN ONE ROW OF THE FLOOR's CELL GRID, OR ON ONE ROW BOUNDARY, SO THE DRAW ORDER IS ONE SORT (plan § 3.3):
  * a `wall` cell is its own row; a room's side walls, a desk's top and its monitor's back are cut into row strips; the far
- * wall and every standing piece (a billboard on its foot line) lie on a boundary. Cells are SNAPPED to the grid once, here,
- * by their centre (a layer's or a tileset's offset puts a cell off it — design review round 3's M3), so the invariant holds
- * for every map the floor page draws. The order: far rows first; a boundary's bodies between the row beyond it and the row
- * before it — on a boundary the far wall first, then the pieces in the floor page's own tile order (round 3's M1 and m4);
+ * wall and every standing piece (a billboard on its foot line) lie on a boundary. A cell is placed on the grid once, here,
+ * by its tile index (a layer's or a tileset's offset draws it off the grid), so the invariant holds for every map the floor
+ * page draws. The order: far rows first; a boundary's bodies between the row beyond it and the row before it — on a
+ * boundary the far wall first (a piece on the last row stands on its plane, in front of it), then the pieces in the floor
+ * page's own tile order;
  * within a row, the body farther from the eye's centre line first, a desk's parts at the desk's distance and its higher
  * part later. `tools/design/door-view.selftest.mjs` checks that order against an exact ray cast over random floors, ties
  * on a shared plane included.
@@ -138,7 +139,8 @@ function paletteOf(P) {
 function project(stopRow, placement, maps, tilesetFor, kinds, module) {
     const rooms = new Map(placement.rooms.map((room) => [room.install_id, room]));
     const T = mapGrid(maps.get(placement.draw_order[0])).tileheight;
-    const snap = (v) => Math.round(v / T) * T;
+    // Whole cells of a layer's or a tileset's offset, truncated toward zero (see the cell loop below).
+    const whole = (v) => Math.trunc(v / T) * T;
     const threshold = thresholdOf(placement.extent);
     const X = (px) => (threshold.x - px) * SCALE;
     const Z = (py) => (py - threshold.y) * SCALE;
@@ -198,12 +200,22 @@ function project(stopRow, placement, maps, tilesetFor, kinds, module) {
 
     // Every cell of every grid, in the floor page's tile order: a `wall` cell a box of its own, an `accent` cell a piece of
     // a flat run, a standing kind a billboard on its foot line.
+    //
+    // ⛔ A CELL IS PLACED BY ITS TILE INDEX, NOT BY ITS DRAWN PIXELS: its column and row in its layer, moved only by WHOLE
+    // cells of the offset `mapTiles()` added (the layer's and its groups' `offsetx`/`offsety` and the tileset's), the
+    // part under a cell truncated toward zero. The footprint is the map's own grid at the room's origin, so a cell on the
+    // footprint's top row or edge is there by construction whatever an author dragged a layer by. Rounding the drawn
+    // pixels would move a whole layer one cell across the footprint's edges at an offset of half a cell or more, and
+    // flooring them would do the same for any negative offset; the selftest's dragged fixtures hold both.
     for (const g of grids) {
         const f = g.footprint;
+        const grid = mapGrid(g.map);
 
         for (const cell of mapTiles(g.map, g.origin, tilesetFor, g.room ? g.seed : null)) {
-            const x = snap(cell.x + cell.w / 2 - T / 2);
-            const y = snap(cell.y + cell.h / 2 - T / 2);
+            const atX = g.origin.x + cell.col * grid.tilewidth;
+            const atY = g.origin.y + cell.row * grid.tileheight;
+            const x = atX + whole(cell.x - atX);
+            const y = atY + whole(cell.y + cell.h - atY - grid.tileheight);
 
             if (cell.kind === 'accent') {
                 accents.push({ x, y });
@@ -218,7 +230,7 @@ function project(stopRow, placement, maps, tilesetFor, kinds, module) {
 
                 push({ kind: edge ? 'wall' : 'partition', x1: X(x + T), x2: X(x), z1: Z(y), z2: Z(y + T), y1: 0, y2: edge ? ROOM_H : PARTITION_H }, (2 * y) / T + 1);
             } else if (standing.includes(cell.kind)) {
-                const foot = snap(cell.y + cell.h);
+                const foot = y + T;
 
                 push({
                     kind: 'billboard',

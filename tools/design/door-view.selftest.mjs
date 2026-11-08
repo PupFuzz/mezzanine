@@ -12,8 +12,10 @@
 //   column right of the seam, a desk left of it, a wall cell under its slab, a plant inside the column), `bravo` (cottage; a
 //   partition row crossing the centre line with its perimeter post, the near-wall row, a bookcase behind the partition, a
 //   bookcase on the last row off the centre line, two pieces on one foot line, every floor cell accent — and again with its
-//   tile layers dragged 3 px), `charlie` (two rooms of different heights, and again with a tileset the loader lacks), `delta`
-//   (a planned floor: a hallway and a room placed below it), and the bare routes R2–R4. Each reading is the plan's § 3.5 shape: centimetres in the rider's frame, and document order.
+//   tile layers dragged by each offset `DRAGS` names, on both sides of half a cell and below zero), `charlie` (two rooms of
+//   different heights, and again with a tileset the loader lacks), `delta` (a planned floor: a hallway and a room placed
+//   below it), `echo` (a planned room off the 8-px lattice, so a partition cell and a desk straddle the centre line), and
+//   the bare routes R2–R4. Each reading is the plan's § 3.5 shape: centimetres in the rider's frame, and document order.
 // - ORDER — the plan's § 10 random-scene check, committed (design review round 3's m6): random floors of one or two rooms,
 //   runs of wall cells, desks at unaligned y, standing pieces (some on the last row, some layers dragged off the grid), each
 //   built by `doorView()` itself; rays from the eye through the doorway; for every pair of bodies one ray meets at different
@@ -213,7 +215,8 @@ function alphaMap(o) {
         w: 200,
         h: H,
         // one column of wall cells right of the seam (x 40..48), down the whole map; one wall cell under the first slab
-        walls: [...Array.from({ length: H }, (_, r) => [5, r]), [30, 45]],
+        // ...and one partition cell in the first desk's monitor row, between the desk and the centre line
+        walls: [...Array.from({ length: H }, (_, r) => [5, r]), [30, 45], [15, 42]],
         pieces: [{ gid: plantOf(o).gid, col: 6, row: 62 }],
         desks: [{ x: 200, y: 200 }, { x: 1200, y: 200 }],
     }));
@@ -251,6 +254,9 @@ function bravoMap(o, offset = null) {
 }
 
 const charlieMap = (o, h, extra = false) => resolve(o, makeMap({ w: 60, h: h / T, tilesets: extra ? [{ firstgid: 1000, source: 'tiles/extra.tsx' }] : [] }));
+
+/** The offsets `bravo`'s tile layers are dragged by: under half a cell, half, over half, nearly whole, and negative. */
+const DRAGS = Object.freeze([3, 4, 5, 7, -3]);
 
 const close = (a, b, tol = 0.6) => Math.abs(a - b) <= tol;
 const cm = (o, px) => px * o.view.SCALE;
@@ -295,6 +301,11 @@ async function fixtures(o) {
         say(monitors.length === 1 && index(monitors[0]) > index(tops.find((b) => close(b.z1, monitors[0].z1))),
             'alpha: the monitor\'s back is not painted after the desk top it stands on');
 
+        const inner = v.bodies.find((b) => b.kind === 'partition' && close(b.x2, X(120)) && close(b.z1, Z(336)));
+
+        say(inner !== undefined && monitors.length === 1 && index(inner) > index(monitors[0]),
+            'alpha: a partition nearer the centre line than the desk, in its monitor\'s row, is painted before the monitor — a desk\'s rank ahead of its distance');
+
         const plant = v.bodies.find((b) => b.kind === 'billboard' && b.piece === 'plant');
         const cell = o.mapTiles.mapTiles(map, { x: 0, y: 0 }, () => o.read, 'alpha').find((c) => c.kind === 'plant');
 
@@ -306,8 +317,8 @@ async function fixtures(o) {
     }
 
     // ── S2: bravo, everything held — and again with its tile layers dragged 3 px (round 3's M3) ─────────────────
-    for (const offset of [null, 3]) {
-        const who = offset === null ? 'bravo' : 'bravo dragged 3 px';
+    for (const offset of [null, ...DRAGS]) {
+        const who = offset === null ? 'bravo' : `bravo dragged ${offset} px`;
         const map = bravoMap(o, offset);
         const H = map.height;
         const { building, tilesets } = await held(o, { bravo: { map } });
@@ -328,7 +339,7 @@ async function fixtures(o) {
         const cells = o.mapTiles.mapTiles(map, { x: 0, y: 0 }, () => o.read, 'bravo').filter((c) => c.kind === 'bookcase');
         const behind = v.bodies.find((b) => b.kind === 'billboard' && close(b.z1, Z(488)));
 
-        say(behind !== undefined && behind.href === o.svgUri(cottage.scenery(o.mapTiles.sceneryInput(cells.find((c) => Math.round((c.y + c.h) / T) * T === 488), 'bravo'))), `${who}: the bookcase's billboard is not the cottage theme's own scenery document`);
+        say(behind !== undefined && behind.href === o.svgUri(cottage.scenery(o.mapTiles.sceneryInput(cells.find((c) => c.col === 25 && c.row === 60), 'bravo'))), `${who}: the bookcase's billboard is not the cottage theme's own scenery document`);
         say(behind !== undefined && row.every((b) => index(behind) < index(b)), `${who}: the bookcase behind the partition is painted over it (pieces last — the order's RED)`);
 
         const farWall = v.bodies.find((b) => b.kind === 'far-wall');
@@ -370,6 +381,35 @@ async function fixtures(o) {
         say(v.bare === false && far.length === 1 && close(far[0].z1, Z(96 + 296)), `delta (planned): ${JSON.stringify({ bare: v.bare, reason: v.reason, far: far.map((b) => b.z1.toFixed(1)) })} — one far wall, the room's, at ${Z(392).toFixed(1)} cm is owed (the hallway contributes none)`);
         say(v.accents.length === 1 && close(v.accents[0].z1, Z(40)), `delta (planned): the hallway's accent row is ${v.accents.length} run(s) — one, at ${Z(40).toFixed(1)} cm, is owed`);
         say(close(v.floor.z2, Z(392)), 'delta (planned): the floor plane is not the extent the hallway and the room make');
+    }
+
+    // ── echo: a planned room at origin x 3, off the 8-px lattice the threshold's seam (x 74) sits on, so a partition cell
+    // (x 67..75) straddles the centre line with neighbours on both sides, and a desk straddles it with a partition cell
+    // touching its right end ─────
+    {
+        const hallway = resolve(o, makeMap({ w: 60, h: 12 }));
+        const room = resolve(o, makeMap({
+            w: 60,
+            h: 37,
+            walls: [...Array.from({ length: 21 }, (_, c) => [c, 6]), [6, 20]],
+            desks: [{ x: 38, y: 0 }],
+        }));
+        const { building, tilesets } = await held(o, { echo: { map: room } });
+        const row = { ...stopRow('echo', ['echo']), hallway, rooms: [{ install_id: 'echo', form: 'open', reported: true, origin: { x: 3, y: 96 } }] };
+        const v = doorView(row, building, tilesets, o.themes);
+        const index = (b) => v.bodies.indexOf(b);
+        const partitionRow = v.bodies.filter((b) => b.kind === 'partition' && close(b.z1, Z(96 + 48)));
+        const straddler = partitionRow.find((b) => b.x1 < 0 && b.x2 > 0);
+        const beside = partitionRow.filter((b) => close(b.x1, straddler?.x2 ?? NaN) || close(b.x2, straddler?.x1 ?? NaN));
+
+        say(straddler !== undefined && beside.length === 2 && beside.every((b) => index(b) < index(straddler)),
+            `echo: the partition cell straddling the centre line is not painted after both its neighbours (${beside.length} found) — the straddle clause`);
+
+        const cell = v.bodies.find((b) => b.kind === 'partition' && close(b.z1, Z(96 + 160)));
+        const top = v.bodies.find((b) => b.kind === 'desk-top' && close(b.z1, Z(96 + 160)));
+
+        say(cell !== undefined && top !== undefined && top.x1 < 0 && top.x2 > 0 && close(cell.x1, top.x2) && index(top) > index(cell),
+            'echo: the desk straddling the centre line is not painted after the partition touching its right end — a distance read off the body\'s centre');
     }
 
     // ── the bare routes (plan § 5) ──────────────────────────────────────────────────────────────────
@@ -479,7 +519,7 @@ function scene(o, rnd) {
             }
         }
 
-        rooms[`room-${r}`] = resolve(o, makeMap({ w: W, h: H, walls, pieces, desks, offset: rnd() < 0.3 ? Math.floor(rnd() * 8) : null }));
+        rooms[`room-${r}`] = resolve(o, makeMap({ w: W, h: H, walls, pieces, desks, offset: rnd() < 0.3 ? Math.floor(rnd() * 15) - 7 : null }));
     }
 
     const building = { room: (id) => ({ held: { map: rooms[id] }, failure: null }), mapless: () => false };
@@ -701,9 +741,19 @@ const PLANTS = [
     ['round 3\'s m4: two pieces on one foot line by their distance, not the tile order', 'fixtures', 'round 3\'s m4',
         (t) => edit(VIEW(t), '(a.tier === 1 ? a.seq - b.seq : ', '(a.tier === 1 ? b.mx - a.mx || a.seq - b.seq : ')],
     ['round 3\'s M3: no snap, the cells left where a dragged layer puts them', 'fixtures', 'bravo dragged 3 px',
-        (t) => edit(VIEW(t), 'const snap = (v) => Math.round(v / T) * T;', 'const snap = (v) => v;')],
+        (t) => edit(VIEW(t), 'const whole = (v) => Math.trunc(v / T) * T;', 'const whole = (v) => v;')],
     ['round 3\'s M3, through the random floors', 'order', 'violations',
-        (t) => edit(VIEW(t), 'const snap = (v) => Math.round(v / T) * T;', 'const snap = (v) => v;')],
+        (t) => edit(VIEW(t), 'const whole = (v) => Math.trunc(v / T) * T;', 'const whole = (v) => v;')],
+    ['the offset ROUNDED to the grid (half a cell or more moves the layer a cell)', 'fixtures', 'bravo dragged 4 px',
+        (t) => edit(VIEW(t), 'const whole = (v) => Math.trunc(v / T) * T;', 'const whole = (v) => Math.round(v / T) * T;')],
+    ['the offset FLOORED to the grid (a negative offset moves the layer a cell)', 'fixtures', 'bravo dragged -3 px',
+        (t) => edit(VIEW(t), 'const whole = (v) => Math.trunc(v / T) * T;', 'const whole = (v) => Math.floor(v / T) * T;')],
+    ['no straddle clause (a body across the centre line at its nearer edge\'s distance)', 'fixtures', 'the straddle clause',
+        (t) => edit(VIEW(t), 'const mxOf = (x1, x2) => (x1 <= 0 && x2 >= 0 ? 0 : Math.min(Math.abs(x1), Math.abs(x2)));', 'const mxOf = (x1, x2) => Math.min(Math.abs(x1), Math.abs(x2));')],
+    ['a body\'s distance from the centre line read off its centre', 'fixtures', 'a distance read off the body\'s centre',
+        (t) => edit(VIEW(t), 'const mxOf = (x1, x2) => (x1 <= 0 && x2 >= 0 ? 0 : Math.min(Math.abs(x1), Math.abs(x2)));', 'const mxOf = (x1, x2) => Math.abs(x1 + x2) / 2;')],
+    ['a desk\'s rank ahead of its distance', 'fixtures', 'a desk\'s rank ahead of its distance',
+        (t) => edit(VIEW(t), 'b.mx - a.mx || a.rank - b.rank || a.seq - b.seq)', 'a.rank - b.rank || b.mx - a.mx || a.seq - b.seq)')],
     ['a monitor at its own distance, not its desk\'s', 'order', 'over monitor',
         (t) => edit(VIEW(t), "y1: DESK_H, y2: MONITOR_TOP }), { mx, rank: 1 });", "y1: DESK_H, y2: MONITOR_TOP }), { rank: 1 });")],
 ];

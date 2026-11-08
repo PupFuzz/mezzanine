@@ -129,8 +129,11 @@ export function mapTiles(map, origin, tilesetFor, owner) {
                 properties: tile?.properties ?? null,
                 // § 10.6 item 6: what the floor's theme draws the tile as — never its image.
                 kind: typeof tile?.properties?.kind === 'string' ? tile.properties.kind : null,
-                // The cell's place in its layer — a standing piece's seeded choices are the cell's.
+                // The cell's place in its layer — a standing piece's seeded choices are the cell's — and that place as the
+                // layer's column and row, before any offset (the cab's door view classifies a cell by it).
                 index: i,
+                col,
+                row,
             });
         });
     }
