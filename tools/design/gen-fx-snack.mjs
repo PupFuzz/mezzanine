@@ -715,6 +715,38 @@ function restroomRuns() {
         deltas: [{ at_ms: cThirty, seat: 'aimla-pm', v: pm.state_version + 1, patch: { subagents: [], subagents_open: 0 } }] });
     notes['intern-stop-inside'] = `intern-visit, then at ${cThirty} ms — thirty seconds into the dwell, the leaf closed over the intern — the element lost (\`subagents_open\` 1 → 0): one A10, walked from the threshold once the leaf has opened. ${clock(C)}.`;
 
+    // ── card#12993: a walker that arrives by the elevator after its break began, or during it, takes no trip for it. ────
+    const NONE = { subagents: [], subagents_open: 0 };
+    const GAIN = 65000;
+    const STOP = GAIN + 41000;
+    const working = { ...pm.subagents[0], activity_state: 'working', started_at: iso(C + (GAIN - 6000) / 1000) };
+
+    runs['intern-arrives-in-its-break'] = make({ at_s: C, until_ms: STOP + 70000, seats: { 'aimla-pm': NONE },
+        deltas: [
+            { at_ms: GAIN, seat: 'aimla-pm', v: pm.state_version + 1, patch: { subagents: [working], subagents_open: 1 } },
+            { at_ms: STOP, seat: 'aimla-pm', v: pm.state_version + 2, patch: { subagents: [], subagents_open: 0 } },
+        ] });
+    notes['intern-arrives-in-its-break'] = `\`aimla-pm\` with no interns, then at ${GAIN} ms its intern \`${PM_CALL}\` gained \`working\` (\`subagents_open\` 0 → 1; \`started_at\` 6 s earlier on the seat's clock), ${(GAIN - 5000) / 1000} s after the intern's restroom break began (${breakNote(N, C + 5)}, 5 s after clock 0) — before the intern existed — and at ${STOP} ms, 41 s after the gain, lost (1 → 0): it arrives, sits, takes no trip for that break, and leaves from its stool by the elevator (the sequence seen live on 2026-11-08). ${clock(C)}.`;
+
+    runs['seat-arrives-in-its-break'] = make({ at_s: A, until_ms: 60000, seats: { 'aimla-impl-2': { render_state: 'stale', link_state: 'stale' } },
+        deltas: [{ at_ms: 2000, seat: 'aimla-impl-2', v: V2 + 1, patch: { render_state: 'idle', link_state: 'live' } }] });
+    notes['seat-arrives-in-its-break'] = `\`aimla-impl-2\` \`stale\` from the snapshot, then at 2000 ms \`stale → idle\`: its A1 walk from the elevator is in flight when its restroom break begins (${breakNote(I2, A + 5)}, 5 s after clock 0), so it takes no trip for that break and sits at its desk. ${clock(A)}.`;
+
+    // A resync for the seat while its intern waits at the elevator: the intern walks on. Clock 0 well clear of every break.
+    {
+        const Q = search(N, (ref) => quiet(ref + 2000 - 600, 720)) + 2000;
+        const resync = seatBody('aimla-pm', pm.state_version + 3, 13000, Q);
+
+        Object.assign(resync, NONE);
+        runs['intern-leave-resync'] = make({ at_s: Q, until_ms: 90000, seats: { 'aimla-pm': { subagents: [{ ...pm.subagents[0], activity_state: 'working' }] } },
+            deltas: [
+                { at_ms: 5000, seat: 'aimla-pm', v: pm.state_version + 1, patch: NONE },
+                { at_ms: 13000, seat: 'aimla-pm', v: pm.state_version + 3, patch: { open_calls: 0 } },
+            ],
+            extra_http: { '/api/fleet/seats/aimla/aimla-pm': [{ status: 200, body: resync }] } });
+        notes['intern-leave-resync'] = `\`aimla-pm\`'s intern \`${PM_CALL}\` seated \`working\` from the snapshot, lost at 5000 ms (\`subagents_open\` 1 → 0), and at 13000 ms, while its walk out is in flight, a delta two versions ahead for \`aimla-pm\` whose resync fetch returns the seat without it: a non-delta entry for the seat, which leaves the intern walking out to the elevator. No break of either chain falls near. ${clock(Q)}.`;
+    }
+
     // ── the interrupts over idle-visit. ─────────────────────────────────────────────────────────────────────────────────
     const blocked = (at) => ({ at_ms: at, seat: 'aimla-impl-2', v: V2 + 1, patch: { render_state: 'blocked', activity_state: 'blocked', blocked_since: iso(A + at / 1000) } });
 
@@ -981,7 +1013,7 @@ function restroomRuns() {
 
     const ORDER = ['idle-visit', 'busy-visit', 'blocked-visit', 'intern-visit', 'two-at-the-door', 'three-at-the-door', 'queue-of-three', 'restroom-past-the-last-spot',
         'lane-two-at-the-door', 'lane-straight-in',
-        'recall-waiting', 'recall-inside', 'recall-closing', 'leave-inside', 'intern-stop-inside', 'snack-then-restroom', 'restroom-then-snack',
+        'recall-waiting', 'recall-inside', 'recall-closing', 'leave-inside', 'intern-stop-inside', 'intern-arrives-in-its-break', 'seat-arrives-in-its-break', 'intern-leave-resync', 'snack-then-restroom', 'restroom-then-snack',
         'reload-inside', 'reload-inside-viewer', 'reload-queue', 'next-visit', 'no-door', 'restroom-no-route', 'restroom-feed-down', 'feed-dies-inside',
         'map-removes-door', 'stilled-inside', ...lateNames];
 

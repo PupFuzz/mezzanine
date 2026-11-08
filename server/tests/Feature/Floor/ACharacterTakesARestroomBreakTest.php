@@ -779,6 +779,41 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         $this->assertSame([], $this->whoDefects());
     }
 
+    /**
+     * card#12993 (§ 6.6 item 4's *When*): a walker on an elevator walk at its break's second takes no trip for that break —
+     * seat-arrives-in-its-break's A1 is in flight when its break begins, so no visit is drawn, and the seat is at its desk
+     * once its walk has ended. (The intern's half, a break that began before the intern arrived, is AT-D3-31's.)
+     *
+     * @return list<string>
+     */
+    private function arrivalDefects(?string $dir = null): array
+    {
+        $defects = [];
+        $walked = false;
+        $last = null;
+
+        foreach ($this->drawn($this->restroomRun('seat-arrives-in-its-break', $dir)) as $r) {
+            $walked = $walked || $this->effectsOf($r['frame'], 'A1') !== [];
+            $last = $r['frame'];
+
+            if ($this->visits($r['frame'], self::IMPL_2) !== []) {
+                $defects[] = "[seat-arrives-in-its-break] a visit at {$r['at']} ms for a break that began while aimla-impl-2 walked in";
+
+                break;
+            }
+        }
+
+        $walked || $defects[] = '[seat-arrives-in-its-break] no A1 was drawn — the run is not the scenario it says';
+        $last === null || $this->drawsCharacter($last, self::IMPL_2) || $defects[] = '[seat-arrives-in-its-break] aimla-impl-2 is not at its desk at the end';
+
+        return $defects;
+    }
+
+    public function test_green_a_walker_arriving_at_its_break_takes_no_trip(): void
+    {
+        $this->assertSame([], $this->arrivalDefects());
+    }
+
     // ── GREEN — one occupant, and the order ────────────────────────────────────────────────
 
     /**
@@ -1701,6 +1736,12 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     }
 
     /** RED — the timer walk: the visit drawn whenever the break comes, whatever the held state. */
+    public function test_red_a_trip_over_the_arrival(): void
+    {
+        $dir = $this->planted([self::IN_FLIGHT, 'if (page(s.start_s) < (this.#elevatorUntil.get(w.key) ?? -Infinity)) {', 'if (false) {']);
+        $this->assertNotSame([], $this->arrivalDefects($dir), 'with the elevator walk ignored, no visit was drawn over the arrival');
+    }
+
     public function test_red_the_timer_walk(): void
     {
         $dir = $this->planted([self::SCENE, '            restroom_eligible: model.restroom_held?.motion === true,', '            restroom_eligible: true,']);
