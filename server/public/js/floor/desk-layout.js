@@ -49,6 +49,11 @@
 import { TRUNCATION_MARK } from '../desk/task-bubble.js';
 import { BADGES } from '../wire/member-sets.js';
 import { UNRECOGNISED } from '../desk/desk-render.js';
+import { ART_W, deskSlab } from './desk-geometry.js';
+
+// The art column's width is `desk-geometry.js`'s, beside the desk's slab that the cab's door view reads too; it stays
+// readable from here.
+export { ART_W } from './desk-geometry.js';
 
 /** The pitch every text row is laid on, in scene pixels — the page's font is chosen to fit it. */
 export const LINE = 12;
@@ -138,9 +143,6 @@ export const BUBBLE_BAND = BUBBLE_LINES * LINE + 2 * BUBBLE_PAD;
 
 /** The gap a bubble keeps above the mark a pose draws over the head — the sleeper's z's, the `?` or the `!` (`bubbleSeat()`). */
 export const BUBBLE_GAP = 1;
-
-/** The art column's width — the character, the desk, the monitor, the chip and the plate (§ 2.2: Chosen). */
-export const ART_W = 216;
 
 /**
  * THE BUBBLE's WIDEST (card#12446, the operator's ruling (B) of 2026-10-28): the art column's width, so a bubble set on
@@ -439,16 +441,16 @@ export function deskRects(box, character) {
     const W = box.width;
     const H = box.height;
     const top = BUBBLE_BAND;
-    const slab = H - 100;
+    const desk = deskSlab({ x: 0, y: H });
+    const slab = desk.y;
     const colB = ART_W + GUTTER;
     // The facts are cut inside the plate's right padding, so the plate never reaches past the box.
     const widthB = W - colB - FACTS_PLATE_PAD;
     const mid = ART_W / 2;
     const cw = character.w * CHARACTER_SCALE;
     const ch = character.h * CHARACTER_SCALE;
-    // § 10.6: the desk is 180 wide under the art column's centre, and the creature's centre stands at a
-    // third of its width (the operator's ruling of 2026-10-06, card#11046); the chair follows it.
-    const desk = { x: mid - 90, y: slab, w: 180, h: 60 };
+    // § 10.6: the creature's centre stands at a third of the desk's width (the operator's ruling of 2026-10-06,
+    // card#11046); the chair follows it.
     const sitter = desk.x + desk.w / 3 - cw / 2;
     // The monitor's frame: 96 × 46, its right edge the desk's, standing on the desk's top; the screen
     // inset 4 px inside it and 31 px tall; the text `SCREEN_INSET` inside the screen on every side, so its

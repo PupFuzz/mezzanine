@@ -30,7 +30,8 @@ use Tests\TestCase;
  * (`TheLobbySkyIsTheFloorsA17Test` holds the rows that set writes); and, since card#12113, `wire/ride.js`, which reads one
  * CONSTANT out of the set's module (`LOOP_FPS`, the ride's fade) and is held to importing that name and no other, so it
  * can neither construct a set nor write a row — and no other module the page loads can IMPORT the log or the set; that
- * is asserted over the page's whole import graph from `lobby/main.js`, as its edges into the two modules. Two things the
+ * is asserted over the page's whole import graph from `lobby/main.js`, as its edges into the two modules, and over the
+ * graph of each module the cab's door view imports (`DOOR_VIEW_ROOTS`), walked as roots beside it. Two things the
  * graph cannot see are held elsewhere: `lobby/main.js` holds the page's log without importing it, and
  * `LobbyPageWiringTest` holds it to handing that log to the screen and using it nowhere else; and a camera act writing a
  * row through the lobby's own set, on the one path, is caught by the replayed log (the planted *Fit the lobby* below).
@@ -71,6 +72,20 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         'wire/live-page.js' => 'wire/animation-log.js',
         'lobby/lobby-screen.js' => 'wire/animation-set.js',
         'wire/ride.js' => 'wire/animation-set.js',
+    ];
+
+    /**
+     * The modules the cab's door view imports (card#12987, `docs/design/plan-12987-cab-door-view.md` § 3.2), each walked as
+     * a root beside `lobby/main.js` and held to the same defects — so the boundary is checked before the lobby screen
+     * imports the view, not discovered when it does.
+     */
+    private const DOOR_VIEW_ROOTS = [
+        'floor/floor-layout.js',
+        'floor/floor-theme.js',
+        'floor/map-tiles.js',
+        'floor/tileset.js',
+        'floor/desk-geometry.js',
+        'floor/cab-paint.js',
     ];
 
     /** The ride's one import from the set's module — a constant, never the set (card#12113). */
@@ -307,6 +322,19 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
         $this->assertNotSame([], array_filter($this->graphDefects(dirname($dir)), static fn (string $d): bool => str_contains($d, 'cannot follow')),
             'CONTROL (a third dynamic import in the asset loader) did not bite for its reason');
+    }
+
+    /**
+     * A module the cab's door view will import (`DOOR_VIEW_ROOTS`) reaching for the set — on no lobby path today, so only
+     * its own root can catch it before the lobby screen imports the view.
+     */
+    public function test_red_a_door_view_module_that_imports_the_set(): void
+    {
+        $dir = $this->mutatedModules(['../floor/map-tiles.js', "import { mapGrid, mapLayers } from './floor-layout.js';\n",
+            "import { mapGrid, mapLayers } from './floor-layout.js';\nimport { LOOP_FPS } from '../wire/animation-set.js';\n"]);
+
+        $this->assertNotSame([], array_filter($this->graphDefects(dirname($dir)), static fn (string $d): bool => str_contains($d, 'floor/map-tiles.js loads wire/animation-set.js')),
+            'CONTROL (a door-view module importing the set) did not bite for its reason');
     }
 
     /** A commented-out import is no import: the walk reads code, and documentation naming a module does not red. */
@@ -628,8 +656,8 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     }
 
     /**
-     * Every module the lobby page loads, from `lobby/main.js` through every specifier each module names
-     * (`ModuleSpecifiers::of()`) — and a defect for each import of the animation log or the animation set by any module but
+     * Every module the lobby page loads, from `lobby/main.js` and from each of `DOOR_VIEW_ROOTS`, through every specifier
+     * each module names (`ModuleSpecifiers::of()`) — and a defect for each import of the animation log or the animation set by any module but
      * its importer on `PATH`, for each module on `PATH` that no longer loads its one, for the ride's import from the set
      * being anything but its constant, and for each specifier the walk cannot follow but the asset loader's two, which it
      * follows into `resources/floor/themes/` by name.
@@ -643,7 +671,7 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         // The asset route's tree is the repository's `resources/`, whichever copy of the module tree is walked.
         $resources = dirname($this->jsRoot(), 3).'/resources';
         $seen = [];
-        $queue = ['lobby/main.js'];
+        $queue = ['lobby/main.js', ...self::DOOR_VIEW_ROOTS];
         $defects = [];
         $edges = [];
 
