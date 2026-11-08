@@ -31,7 +31,7 @@
 import { BAND_H, ELEVATOR, mapDesks, mapGrid, placeRooms, thresholdOf } from './floor-layout.js';
 import { floorTheme } from './floor-theme.js';
 import { PLANE_KINDS, mapTiles, sceneryInput } from './map-tiles.js';
-import { tilesetUrl } from './tileset.js';
+import { namedTilesets } from './tileset.js';
 import { deskSlab, monitorFrame } from './desk-geometry.js';
 import { CAB, svgUri } from './cab-paint.js';
 
@@ -77,7 +77,7 @@ export const VIEW_CARRIERS = Object.freeze([
  *        the scene's `themes` input (`floor/cab-paint.js`'s `themeInputs()`)
  * @returns {object} the frozen model: `stop`, `bare`, `reason` (`stop` / `mapless` / `tileset` / `theme`, or `null`), `theme`,
  *          `palette` (the custom properties, or `null` with no module held), and — for a floor drawn — `floor` (the floor
- *          plane's rect), `accents` (flat runs) and `bodies` in the order they are painted
+ *          plane's rect), `height` (the ceiling's, `ROOM_H`), `accents` (flat runs) and `bodies` in the order they are painted
  */
 export function doorView(stopRow, building, tilesets, themes) {
     if (stopRow === null) {
@@ -95,11 +95,8 @@ export function doorView(stopRow, building, tilesets, themes) {
 
     const maps = new Map(ids.map((id) => [id, building.room(id).held.map]));
     const placement = placeRooms(stopRow.rooms, new Map(ids.map((id) => [id, mapGrid(maps.get(id))])), stopRow.hallway ?? null);
-    const docs = [...(placement.hallway === null ? [] : [stopRow.hallway]), ...maps.values()];
     const held = tilesets.held;
-    const urls = docs.flatMap((doc) => (Array.isArray(doc.tilesets) ? doc.tilesets : [])
-        .filter((entry) => typeof entry?.source === 'string')
-        .map((entry) => tilesetUrl(entry.source)));
+    const urls = namedTilesets([placement.hallway === null ? null : stopRow.hallway, ...maps.values()]);
 
     // An absent set reads every tile of it as no kind — a floor with no walls, accents or pieces drawn with confidence.
     if (urls.some((url) => held.get(url)?.tileset === undefined)) {
@@ -172,12 +169,15 @@ function project(stopRow, placement, maps, tilesetFor, kinds, module) {
         ...placement.draw_order.map((id) => ({ seed: id, map: maps.get(id), origin: rooms.get(id).origin, footprint: rooms.get(id).footprint, room: true })),
     ];
 
-    // The desks' slabs, each snapped OUTWARD to the rows it touches (at most a cell deeper), so each strip spans its row.
+    // The desks' slabs, each snapped OUTWARD to the rows of ITS ROOM's grid it touches (at most a cell deeper), so each strip
+    // spans one of the rows the room's cells, walls and footprint lie in — the room's origin may be off the floor's 8-px
+    // lattice (an authored planned floor), and a strip on the floor's lattice would then sort against the room's rows by key
+    // rather than by depth.
     const slabs = grids.filter((g) => g.room).flatMap((g) => mapDesks(g.map).map((desk) => {
         const exact = deskSlab({ x: g.origin.x + desk.x, y: g.origin.y + desk.y + desk.height });
-        const y0 = Math.floor(exact.y / T) * T;
+        const y0 = g.origin.y + Math.floor((exact.y - g.origin.y) / T) * T;
 
-        return { ...exact, y: y0, h: Math.ceil((exact.y + exact.h) / T) * T - y0 };
+        return { ...exact, y: y0, h: g.origin.y + Math.ceil((exact.y + exact.h - g.origin.y) / T) * T - y0 };
     }));
     const underSlab = (x, y) => slabs.some((s) => x < s.x + s.w && s.x < x + T && y < s.y + s.h && s.y < y + T);
 
@@ -264,6 +264,7 @@ function project(stopRow, placement, maps, tilesetFor, kinds, module) {
 
     return {
         floor: Object.freeze({ x1: X(extent.x + extent.width), x2: X(extent.x), z1: Z(extent.y), z2: Z(extent.y + extent.height) }),
+        height: ROOM_H,
         accents: Object.freeze(rowRuns(accents, T).map((r) => Object.freeze({ x1: X(r.x + r.w), x2: X(r.x), z1: Z(r.y), z2: Z(r.y + T) }))),
         bodies: Object.freeze(bodies.map(({ body }) => Object.freeze(body))),
     };

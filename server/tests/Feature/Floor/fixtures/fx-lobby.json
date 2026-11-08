@@ -7228,8 +7228,13 @@
    "lobby": true
   },
   "lobby_ride": {
-   "note": "FLOOR.md § 11 fx-lobby's **lobby-ride** run (AT-D3-28, card#12113): `lobby_plaque`'s snapshot, heartbeat and three floors, the lobby's own lobby link handed over, and the lobby's elevator ridden three times: to `aimla` (*Floor 2*) — a second press while the first ride is opening, refused; the layout re-fetched by a `building.layout` (3 500 ms) while the viewer is `inside`, relabelling `kanban` *the deck*, so the cab's stops are re-derived; the doors open on `aimla` and the ride leaves for `/floor/aimla#ride`, abandoned at the bound (the harness does not navigate) — then Escape `inside`, a stay; then *Lobby* pressed in the cab, a stay. The ride writes no animation-log row.",
+   "note": "FLOOR.md § 11 fx-lobby's **lobby-ride** run (AT-D3-28, card#12113): `lobby_plaque`'s snapshot, heartbeat and three floors, the lobby's own lobby link handed over, and the lobby's elevator ridden three times: to `aimla` (*Floor 2*) — a second press while the first ride is opening, refused; the layout re-fetched by a `building.layout` (3 500 ms) while the viewer is `inside`, relabelling `kanban` *the deck*, so the cab's stops are re-derived; the doors open on `aimla` and the ride leaves for `/floor/aimla#ride`, abandoned at the bound (the harness does not navigate) — then Escape `inside`, a stay; then *Lobby* pressed in the cab, a stay. The first press asks for every stop's room map and their tileset, for the floor behind the cab's doors (card#12987) — each answered once, held by version, so the later presses ask for none. The ride writes no animation-log row.",
    "http": {
+    "/api/building/rooms/aimla/map": [{"status": 200, "body": {"install_id": "aimla", "source": "default", "map_version": null, "map": "@json:resources/floor/default.tmj"}}],
+    "/api/building/rooms/kanban/map": [{"status": 200, "body": {"install_id": "kanban", "source": "default", "map_version": null, "map": "@json:resources/floor/default.tmj"}}],
+    "/api/building/rooms/sola/map": [{"status": 200, "body": {"install_id": "sola", "source": "default", "map_version": null, "map": "@json:resources/floor/default.tmj"}}],
+    "/api/building/rooms/kanban-bridge/map": [{"status": 200, "body": {"install_id": "kanban-bridge", "source": "default", "map_version": null, "map": "@json:resources/floor/default.tmj"}}],
+    "/art/floor/tiles/floor-plane.tsx": [{"status": 200, "text": "@text:resources/floor/tiles/floor-plane.tsx"}],
     "/api/fleet/snapshot": [
      {
       "status": 200,

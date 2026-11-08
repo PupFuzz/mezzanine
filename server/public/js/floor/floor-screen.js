@@ -72,8 +72,9 @@
  * screen constructs it with what is the floor's own — `endsRide()`, the departure's one ending predicate; the
  * stop the page stands at, its floor's key and name; and the stops' source, `plates()` of the composed floors,
  * re-derived on every frame — and asks it on every frame for `frame.ride` (`rideFrame()`) and `scene.ride`
- * (`sceneRide()`, the leaves and the view behind the cab's doors). The press is accepted only on a frame that
- * drew a scene, and the arrival flag `arriveByRide()` records is consumed by the first render that draws one,
+ * (`sceneRide()`, the leaves and the view behind the cab's doors, with the floor's model behind them attached by
+ * `floor/door-views.js`, whose press-time fetches wake the page as they land: card#12987). The press is accepted
+ * only on a frame that drew a scene, and the arrival flag `arriveByRide()` records is consumed by the first render that draws one,
  * expiring by a clock comparison there (the head script's `t0` bound). The page paints `rideView()` after each
  * ride method rather than waiting on a render. Its leaves are `scene.ride`, never `scene.doors`, which stays
  * the walks'.
@@ -96,7 +97,8 @@ import { failureRender } from '../wire/failure-render.js';
 import { buildScene, threshold } from './scene.js';
 import { EffectsInFlight, awayDesk, walkSide } from './in-flight.js';
 import { createCamera, fit, frameOn, glideMs, pan, panBy, pinch, resize, zoom, zoomStep } from '../wire/camera.js';
-import { TilesetLoader, tilesetUrl } from './tileset.js';
+import { TilesetLoader, namedTilesets } from './tileset.js';
+import { DoorViews } from './door-views.js';
 import {
     assignSlots,
     backWallBand,
@@ -315,15 +317,19 @@ export class FloorScreen {
     /** The elevator's ride (§ 4.5, card#11795) — `wire/ride.js`'s state machine, over this screen's floor. */
     #ride;
 
+    /** The views behind the cab's doors (card#12987) — `floor/door-views.js`, over this screen's building and loader. */
+    #doorViews;
+
     /**
      * @param {object} client a `FleetClient` — the seats, the journal, the record and the offset
      * @param {object} building a `wire/building.js` `Building` — the layout and each room's map
      * @param {{now: function(): number}} clock the browser's own clock
      * @param {object} log `wire/animation-log.js`'s `createAnimationLog()`
-     * @param {object} [options] `{ floor, seat, reduce, local_time, surface }` —
+     * @param {object} [options] `{ floor, seat, reduce, local_time, surface, wake }` —
      *        `local_time` reads the VIEWER's civil time and exists because a build host has one time
      *        zone and § 4.2's sky has four phases; the viewer's own `Date` is the default. `surface`
-     *        (required) is the drawing's size in CSS px, any positive size (§ 4.5).
+     *        (required) is the drawing's size in CSS px, any positive size (§ 4.5). `wake` is the
+     *        page's render request, asked each time a ride's press-time fetch answers (card#12987).
      * @param {TilesetLoader} [tilesets] the tilesets' loader, over the page's own `fetch`
      */
     constructor(client, building, clock, log, options = {}, tilesets = null) {
@@ -340,13 +346,24 @@ export class FloorScreen {
         this.#panel = new DrillDownPanel(client);
         this.#camera = createCamera(options.surface);
         this.#room = new RoomClock(clock, options.local_time);
+
+        // The cab's stops — the plaques, which the ride offers and whose floors the door view draws.
+        const stops = () => plates(this.#snapshotShape(), this.#building.floors);
+
         this.#ride = new Ride({
             clock,
             reduce: options.reduce === true,
             lobby_href: options.lobby_href ?? null,
             endsRide,
             currentStop: (frame) => ({ current: frame.floor.key, current_name: frame.floor.name }),
-            stops: () => plates(this.#snapshotShape(), this.#building.floors),
+            stops,
+        });
+        this.#doorViews = new DoorViews({
+            building,
+            tilesets,
+            rows: stops,
+            themes: () => this.#sceneInput?.themes ?? null,
+            wake: options.wake,
         });
     }
 
@@ -612,15 +629,10 @@ export class FloorScreen {
             return;
         }
 
-        const docs = [
+        await this.#tilesets.load(namedTilesets([
             target.hallway ?? null,
             ...target.rooms.map((room) => this.#building.room(room.install_id)?.held?.map ?? null),
-        ].filter((doc) => doc !== null);
-        const urls = docs.flatMap((doc) => (Array.isArray(doc.tilesets) ? doc.tilesets : [])
-            .filter((entry) => typeof entry?.source === 'string')
-            .map((entry) => tilesetUrl(entry.source)));
-
-        await this.#tilesets.load(urls);
+        ]));
     }
 
     /**
@@ -911,7 +923,7 @@ export class FloorScreen {
             doors_at: now,
             // § 4.5: the elevator's leaves while a ride holds them — the painter draws them from this and
             // adds nothing for a walk's door span meanwhile; `doors` stays the walks' (AT-D3-23's instrument).
-            ride: this.#ride.sceneRide(now),
+            ride: this.#doorViews.attach(this.#ride.sceneRide(now)),
         });
     }
 
@@ -1023,7 +1035,14 @@ export class FloorScreen {
             return null;
         }
 
-        return this.#ride.press(last);
+        const answer = this.#ride.press(last);
+
+        // The press fetches every stop's data for the view behind the cab's doors (card#12987), and wakes the page as it lands.
+        if (answer !== null) {
+            this.#doorViews.prefetch();
+        }
+
+        return answer;
     }
 
     entered() {
@@ -1090,7 +1109,7 @@ export class FloorScreen {
         this.#lastDrawn = Object.freeze({
             ...this.#lastDrawn,
             ride: this.#ride.rideFrame(now),
-            scene: scene === null ? null : Object.freeze({ ...scene, ride: this.#ride.sceneRide(now) }),
+            scene: scene === null ? null : Object.freeze({ ...scene, ride: this.#doorViews.attach(this.#ride.sceneRide(now)) }),
         });
 
         return this.#lastDrawn;

@@ -44,6 +44,14 @@ random-scene check is committed with tie counting and planted controls (§ 10, `
 row undrawn — planned floors only, none live) and m5 (a failed off-floor fetch seen on a later layout — needs a layout
 re-save in the same document) are accepted on the record (card comment 16208).
 
+**Slice 3's build (2026-11-08) folds the rest in place, by the same ruling**: design review round 3's **M2** — nothing woke a frame
+when a stop's data landed — is a wake each press-time fetch asks of the page, held by one primitive both screens hold,
+`floor/door-views.js` (§ 4); its **m1** — the retarget list — is the tree's, re-grepped on the branch (§ 8); the slice-2 impl
+review's **F-A** — a desk's slab snapped to the floor's 8-px lattice while the room's cells sit on the room's — anchors the slab
+at its room's origin, so § 3.3's one-row-per-body sentence holds with no precondition on a room's origin; and its **F-B** — the
+order leg covered unplanned floors only — adds planned floors with a room origin on and off the lattice (§ 10), seen to red on
+the pre-fix slab line.
+
 **Design approval.** Operator directive of 2026-11-08, recorded on card#12987, verbatim: *"When standing
 in the elevator cab and the door opens or closes, currently a generic office space is shown. I want to see
 the actual floor layout and theme as someone would see it for each specific floor. For example, when
@@ -263,8 +271,10 @@ in `map-tiles.js` reds in slice 1.
 - **The bodies are on the cell grid in Z (cut 1; replaces revision 2's boxes-and-graph).** Every body the
   view paints lies in ONE ROW of the map's 8-px grid or ON ONE ROW BOUNDARY: a `wall` cell is its own row;
   a side wall is cut into row strips; a desk's top and monitor are cut into row strips, the slab's rows
-  being the cell rows its exact rect touches (snapped outward, at most 7 px = 10 cm each way — the view
-  draws the desk one cell deeper at most, which at a 10-m room is not a reading); the far wall and every
+  being the cell rows of its ROOM's grid its exact rect touches (snapped outward from the room's origin, at most 7 px = 10 cm
+  each way — the view draws the desk one cell deeper at most, which at a 10-m room is not a reading; anchored at the room's
+  origin since slice 3, so a planned room whose origin is off the floor's 8-px lattice keeps its desks in its own cells' rows
+  — the slice-2 review's F-A — and the sentence holds with no precondition on the origin); the far wall and every
   billboard are bodies of zero depth on a row boundary. **On the grid (design review round 3's M3):** a layer's
   or a group's offset and a tileset's offset (`mapTiles()` adds both, as Tiled draws them) put a cell off the
   grid, so the model places every cell once, at its input, BY ITS TILE INDEX — its column and row in its layer
@@ -553,6 +563,12 @@ names the operator's round trip to the deployment as unmeasured from this host, 
 either is enough; the press is the cheaper failure, and a stop whose data is late is the bare room (§ 5)
 until it arrives.
 
+**Each step wakes the page (design review round 3's M2; slice 3).** The sequence's promises write into the building, the loader
+and the loaded themes, and nothing else paints a frame because one of them landed: so each step, as it answers, asks the page for
+a render (both pages' `requestRender`, handed to the screen as `wake`), which composes `scene.ride` again and reaches the rule
+below. The sequence, the memo and the wake are ONE primitive both screens hold — `floor/door-views.js`'s `DoorViews` — so the two
+pages cannot run two sequences.
+
 **A model that arrives during a phase whose doors move repaints the cab once.** `wire/ride-page.js`
 `perform()` returns early on an unchanged phase today; it gains one more case — the phase is `entering`,
 `chosen` or `leaving` and `view.cab.view` is not the object last painted (the memo makes identity the
@@ -793,6 +809,23 @@ as each lands).
    `fetchLayout()` in it, S8 is the check; `ride-page.js`'s repaint-on-arrival case. The probe's door-view
    leg, the scenario table and the RED table (§ 6), `test_green_section_12s_door_view_is_door_view`, the
    browser tool's `door-view` row. Appendix B row 44 gets its landing marker. Title: `… (closes card#12987)`.
+   **As built:** the press sequence, the memo and the wake are `floor/door-views.js`'s `DoorViews`, which both screens construct
+   (the floor screen over its own loader and its scene's themes, the lobby over a loader of its own and `loadThemes()`), and
+   whose `attach()` composes `scene.ride.view`; the probe's door-view leg is `server/tests/Feature/Floor/door-view-leg.mjs`,
+   run by `elevator-control-probe.mjs` over the fixture floors the model's selftest builds (hoisted to
+   `tools/design/door-view-fixtures.mjs`, one source for both); the bare room's classes and the floor view's are one
+   vocabulary (`.dv-…`); the three projections behind the cab's doors share one lens (`cab-paint.js`'s `throughDoor()`); the
+   harness records a frame's `scene.ride.view` as its stop, bareness and body count (`fleet-client-probe.mjs`'s
+   `recorded()`), and the ride fixtures script the maps a press now asks for. The m1 retarget, re-grepped on the branch:
+   the `BEYOND` call line's three anchors and the `BEYOND` table's two; the office REDs moved onto `drawFloorView()`'s and
+   the bare room's lines; `officeDefects`' census and parts read the floor view (S1) and the bare room drawn alone; the
+   probe's view count reads `.floor-view`; and `figureDefects()`'s `BAND_H` text — already two texts since slice 1, which
+   moved `BAND_H` into `floor-layout.js` (`TheFloorDrawsItsFrameTest.php`'s `$layout` beside `$scene`) — needed no edit.
+   Two of § 6's REDs are planted where the build puts their line: a billboard's `href` is made by the model, so *the house
+   theme's documents* is planted at `doorView()`'s `project()` call (the house module handed in for the stop's); and *the model
+   read off the page* drops `ride.view` where `location` names a floor page, at `paintCab()`'s `BEYOND` call. The table gains
+   *the press's wake removed* (M2's RED), *the memo dropped*, the floor and the bare room's census REDs, and *a face with no
+   anti-seam stroke*.
 
 **The import depth (m10).** § 12's *Cab hold* row names the module graph's serial import depth as the
 lever on a slow round trip and gives the command that prints it; run in `server/public/js` on 2026-11-08
@@ -872,6 +905,10 @@ by the command, so no figure is written here:
 ```
 node tools/design/door-view.selftest.mjs --order 800 300 12345 777    # the scratch check's two seeds and size
 ```
+
+Since slice 3 (the slice-2 review's F-B) the leg draws PLANNED floors too — a hallway at the floor's origin and one room below
+it at `origin.y` 96 + 0, 3, 5 and 8 (`ORIGIN_YS`), on the floor's 8-px lattice and off it — and a desk's slab snapped to the floor's
+lattice in place of its room's is one of its planted REDs.
 
 Its controls are planted REDs, each a mirror of the module tree with one defect, required to red the leg: *pieces
 last*; the revision-3 key (no tier — M1, red by `far-wall over billboard (a tie)`); no snap (M3); a monitor at its own

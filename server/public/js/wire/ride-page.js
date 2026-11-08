@@ -12,7 +12,9 @@
  * performed and, on a change, performs that phase's entry once — the cab dialog, its fades, the cab's drawing
  * (`floor/cab-paint.js`'s `paintCab()`, handed in), the ride's one timer (armed at one site, the previous cancelled), the
  * navigation to the screen's route — or, on a change to no ride, the teardown. A phase of no length
- * (`prefers-reduced-motion`) is performed at once.
+ * (`prefers-reduced-motion`) is performed at once. Within a phase whose cab shows the doors' view, the one other case: a
+ * floor model the screen attached after the phase was entered (`scene.ride.view`, a press's fetch landing, card#12987)
+ * repaints the cab once.
  *
  * ⛔ THE DEPARTING PAGE's ONE `pageswap` LISTENER IS `skipUnlessCabLeaving()` (`wire/ride-arrival.js`), fed the page's
  * last painted frame's ride (`lastRide()`, the page's own): it reads the frame and touches no DOM, so the browser
@@ -26,6 +28,9 @@
 
 import { cabPanel } from '../floor/cab-panel.js';
 import { skipUnlessCabLeaving } from './ride-arrival.js';
+
+/** The phases whose cab is drawn with the doors' view in sight, so a floor model that arrives during one repaints it (card#12987). */
+const REPAINTED = Object.freeze(['entering', 'chosen', 'leaving']);
 
 /**
  * The cab dialog's element ids under a page's prefix — what `partials/ride-cab.blade.php` declares with the same prefix
@@ -81,6 +86,15 @@ export function ridePage({ prefix, screen, paint, paintCab, elevator, lastRide, 
     let performed = null;
     let rideTimer = null;
 
+    /** The floor model the cab was last painted with (`scene.ride.view`, card#12987) — compared by identity, never re-derived. */
+    let paintedView = null;
+
+    /** The cab's drawing, from the frame's `scene.ride`, the model it carries recorded. */
+    function drawCab(sceneRide) {
+        paintedView = sceneRide?.view ?? null;
+        paintCab(doors, sceneRide);
+    }
+
     /** The outbound view transition the `pageswap` rule let through, kept so a later cab close can skip it. */
     let outbound = null;
 
@@ -130,7 +144,7 @@ export function ridePage({ prefix, screen, paint, paintCab, elevator, lastRide, 
             panel.style.opacity = '0';
             cab.showModal();
             fade(cab, 0, 1, ride.fade_ms);
-            paintCab(doors, view.cab);
+            drawCab(view.cab);
             after(ride.ms, () => screen().shut());
         },
         // The buttons fade in and answer; focus on the current stop's.
@@ -144,12 +158,12 @@ export function ridePage({ prefix, screen, paint, paintCab, elevator, lastRide, 
         chosen: (ride, view) => {
             panel.inert = true;
             fade(panel, 1, 0, ride.fade_ms);
-            paintCab(doors, view.cab);
+            drawCab(view.cab);
             after(ride.ms, () => screen().opened());
         },
         // The ride's navigation. The cab stays open — it is what the browser snapshots — bounded by *Cab hold*.
         leaving: (ride, view) => {
-            paintCab(doors, view.cab);
+            drawCab(view.cab);
             window.location.assign(ride.route);
             after(ride.ms, () => screen().abandoned());
         },
@@ -193,6 +207,13 @@ export function ridePage({ prefix, screen, paint, paintCab, elevator, lastRide, 
         const phase = ride?.phase ?? null;
 
         if (phase === performed) {
+            // A floor model that arrived while the cab's doors are drawn — R1's data landing after the phase was entered —
+            // repaints the cab ONCE: the screen memoises the model, so an unchanged one is the object last painted, and the
+            // leaves are placed at the phase's elapsed time (`cabLeaves()`), so the repaint lands mid-motion.
+            if (REPAINTED.includes(phase) && view.cab !== null && view.cab.view !== paintedView) {
+                drawCab(view.cab);
+            }
+
             return;
         }
 
@@ -215,7 +236,7 @@ export function ridePage({ prefix, screen, paint, paintCab, elevator, lastRide, 
             cab.close();
         }
 
-        paintCab(doors, view.cab);
+        drawCab(view.cab);
         elevator()?.focus({ preventScroll: true });
     }
 

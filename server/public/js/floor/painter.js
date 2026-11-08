@@ -34,7 +34,7 @@
  * reorders it; with no ride they are the walks' (`leafAnimation()`), as before. The cab's interior is
  * `paintCab()`'s (`floor/cab-paint.js` since card#12113, which both pages draw the cab with), into the cab dialog's own element: the room in depth `drawCabInterior()` draws (card#12051), and on
  * its back wall the door in the house theme's elevator palette, a plain dial, the view of the stop the doors open on
- * seen through it — the ride's `beyond`: the office (`drawOfficeView()`, card#12052) or the lobby (`drawLobbyView()`,
+ * seen through it — the ride's `beyond`: the stop's own floor (`drawFloorView()`, card#12987) or the lobby (`drawLobbyView()`,
  * card#12113) — the two leaves in the building's door colours, and no text — the cab's words are
  * the page's (`floor/cab-panel.js`); beside the door, a decorative call plate that names, lights and does nothing
  * (card#12071). The band's leaves open onto the same room, seen from the landing, drawn behind them (card#12052).
@@ -56,7 +56,7 @@ import { RENDER_STATES } from '../lobby/render-state.js';
 import { CAB_STYLE, LANDING, THEME_REGISTRY, cabTheme, clippedTo, drawCabInterior, node, paintCab, rideLeaves, svgUri, themeModule } from './cab-paint.js';
 
 // The cab's drawing is `cab-paint.js`'s since card#12113 (both pages draw it); its names stay readable from here.
-export { CAB, CAB_STYLE, LANDING, LOBBY_VIEW, OFFICE, THEME_REGISTRY, cabLeaves, cabTheme, drawCabInterior, drawLobbyView, drawOfficeView, paintCab, rideLeaves, svgUri, themeInputs, themeModule } from './cab-paint.js';
+export { CAB, CAB_STYLE, LANDING, LOBBY_VIEW, OFFICE, THEME_REGISTRY, cabLeaves, cabTheme, drawCabInterior, drawFloorView, drawLobbyView, drawOfficeView, paintCab, rideLeaves, svgUri, themeInputs, themeModule } from './cab-paint.js';
 
 /** The furniture box — `resources/floor/furniture-box.js`, by the asset route. */
 export const FURNITURE_MODULE = '/art/floor/furniture-box.js';
