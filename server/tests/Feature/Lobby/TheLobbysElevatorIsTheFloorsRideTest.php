@@ -24,7 +24,7 @@ use Tests\TestCase;
  * (`lobby-room-probe.mjs`).
  *
  * ⚠ WHAT THIS LEAVES TO THE TESTS THAT ALREADY HOLD IT, NAMED SO NOTHING IS READ AS CLAIMED HERE: `paintCab()` drawing
- * `drawLobbyView()`'s lobby for `lobby` and the office for `office`, each clipped, the lobby view carrying no A17 sky, word
+ * `drawLobbyView()`'s lobby for `lobby` and the stop's floor for `office`, each clipped, the lobby view carrying no A17 sky, word
  * or seat, `LOBBY_VIEW` equal to § 12's *Lobby view*, and the painter never inferring `beyond` from the page —
  * `Tests\Feature\Floor\TheElevatorIsAControlOnTheDrawingTest` (slice A); the cab's panel and its *you are here* marking —
  * `Tests\Feature\Floor\TheCabPanelReconcilesByKeyTest`; the page's wiring of the performer, the cab partial and the
@@ -133,6 +133,40 @@ class TheLobbysElevatorIsTheFloorsRideTest extends TestCase
         $this->assertNotSame([], $this->partialDefects($own, $this->lobbyPage()), 'RED (a cab dialog of the lobby\'s own) did not bite');
     }
 
+    /**
+     * THE PRESS FETCHES EACH STOP'S ROOM, AND NO LAYOUT (card#12987; the plan's § 4): against the same run with no ride, the
+     * lobby's rides add exactly each stop's room map and the tileset they name, once — held by version, so the later presses
+     * ask for none — and no `GET /api/building`. Its RED: the press fetching nothing.
+     */
+    public function test_green_the_press_fetches_each_stops_room_and_no_layout(): void
+    {
+        $this->assertSame([], $this->pressFetchDefects(self::RIDE));
+
+        $dir = $this->mutatedModules([self::SCREEN, "        if (answer !== null) {\n            this.#doorViews.prefetch();\n        }\n", '']);
+        $this->assertNotSame([], $this->pressFetchDefects(self::RIDE, $dir), 'RED (the lobby\'s press fetching nothing) did not bite');
+    }
+
+    /** @return list<string> the requests a run's rides add, against what the press owes */
+    private function pressFetchDefects(string $run, ?string $dir = null): array
+    {
+        $lobby = $this->fixture($run)['lobby'];
+        unset($lobby['ride']);
+
+        $count = static fn (array $result): array => array_count_values($result['final']['requests']);
+        $added = $count($this->replay($run, $dir));
+
+        foreach ($count($this->replay($run, $dir, ['lobby' => $lobby])) as $path => $n) {
+            $added[$path] = ($added[$path] ?? 0) - $n;
+        }
+
+        $added = array_filter($added, static fn (int $n): bool => $n !== 0);
+        ksort($added);
+        $owed = array_fill_keys(['/api/building/rooms/aimla/map', '/api/building/rooms/kanban-bridge/map', '/api/building/rooms/kanban/map', '/api/building/rooms/sola/map', '/art/floor/tiles/floor-plane.tsx'], 1);
+        ksort($owed);
+
+        return $added === $owed ? [] : ['the rides added the requests '.json_encode($added).' — each stop\'s room and its tileset once, and nothing else, is owed: '.json_encode($owed)];
+    }
+
     public function test_red_the_lobby_drawn_for_a_floors_stop_or_the_office_for_the_lobbys(): void
     {
         $dir = $this->mutatedModules(['ride.js', "beyond: stop === null ? 'lobby' : 'office'", "beyond: stop === null ? 'office' : 'lobby'"]);
@@ -149,8 +183,8 @@ class TheLobbysElevatorIsTheFloorsRideTest extends TestCase
 
     public function test_red_the_stops_captured_at_the_press(): void
     {
-        $dir = $this->mutatedModules([self::SCREEN, '            stops: () => plates(this.#body(), this.#building.floors),',
-            "            stops: (() => { let held; return () => (held ??= plates(this.#body(), this.#building.floors)); })(),"]);
+        $dir = $this->mutatedModules([self::SCREEN, '        const stops = () => plates(this.#body(), this.#building.floors);',
+            '        const stops = (() => { let held; return () => (held ??= plates(this.#body(), this.#building.floors)); })();']);
 
         $this->assertNotSame([], $this->stopDefects($this->replay(self::RIDE, $dir)), 'RED (the stops captured at the press) did not bite');
     }
@@ -184,7 +218,7 @@ class TheLobbysElevatorIsTheFloorsRideTest extends TestCase
 
     public function test_red_the_elevator_pressed_while_a_ride_is_in_flight(): void
     {
-        $dir = $this->mutatedModules([self::SCREEN, "        return this.#ride.press(last);\n", "        this.#ride.returned();\n\n        return this.#ride.press(last);\n"]);
+        $dir = $this->mutatedModules([self::SCREEN, "        const answer = this.#ride.press(last);\n", "        this.#ride.returned();\n\n        const answer = this.#ride.press(last);\n"]);
 
         $this->assertNotSame([], $this->refusalDefects($this->replay(self::RIDE, $dir)), 'RED (a press accepted mid-ride) did not bite');
     }

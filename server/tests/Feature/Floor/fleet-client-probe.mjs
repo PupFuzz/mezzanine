@@ -327,6 +327,19 @@ console.log(JSON.stringify({
 }, null, 2));
 
 /**
+ * A screen's frame as the run records it: a copy, with the floor model behind the cab's doors (`scene.ride.view`,
+ * card#12987 — every body of a floor, each standing piece a whole theme document) recorded as what a frame test reads of
+ * it, the stop it is of and whether it is the bare room, and why. The model's bodies and drawing are
+ * `TheElevatorIsAControlOnTheDrawingTest`'s door-view leg's and `tools/design/door-view.selftest.mjs`'s; a run that copied
+ * them into every frame it records would carry a floor's documents once per paint.
+ */
+function recorded(frame) {
+    return JSON.parse(JSON.stringify(frame, (key, value) => (key === 'view' && Array.isArray(value?.bodies)
+        ? { stop: value.stop, bare: value.bare, reason: value.reason, theme: value.theme, bodies: value.bodies.length }
+        : value)));
+}
+
+/**
  * The viewer's civil time for § 4.2's clock and sky, on the floor or the lobby (`floor` or `lobby` in the
  * scenario): its own `local_hours`/`local_minutes` where it states them, else the scenario clock read as
  * UTC — see the header's *the viewer's civil time is the scenario's*.
@@ -603,7 +616,7 @@ async function replay(scenario) {
 
     if ((scenario.floor ?? null) !== null) {
         screen = startFloorScreen(client, buildingHttp.fetch, clock, log, (frame, trigger = 'render') => {
-            floorRenders.push({ at: now, trigger, frame: JSON.parse(JSON.stringify(frame)) });
+            floorRenders.push({ at: now, trigger, frame: recorded(frame) });
         }, {
             floor: scenario.floor.key,
             seat: scenario.floor.seat ?? null,
@@ -679,7 +692,7 @@ async function replay(scenario) {
     // The lobby's screen, started below beside the floor's — the ride's methods are the same on both (`wire/ride.js`).
     if (lobbyRun !== null) {
         lobby = startLobbyScreen(client, buildingHttp.fetch, clock, log, (frame) => {
-            lobbyRenders.push({ at: now, trigger: 'render', frame: JSON.parse(JSON.stringify(frame)) });
+            lobbyRenders.push({ at: now, trigger: 'render', frame: recorded(frame) });
         }, {
             surface: lobbyRun.surface ?? HARNESS_SURFACE,
             reduce: scenario.reduce === true,
@@ -713,7 +726,7 @@ async function replay(scenario) {
         const frame = answer === null ? null : rider().rideView();
 
         if (frame !== null) {
-            (screen === null ? lobbyRenders : floorRenders).push({ at: now, trigger: 'ride', frame: JSON.parse(JSON.stringify(frame)) });
+            (screen === null ? lobbyRenders : floorRenders).push({ at: now, trigger: 'ride', frame: recorded(frame) });
         }
 
         rideActs.push({
@@ -744,7 +757,7 @@ async function replay(scenario) {
             const frame = lobby.tickView();
 
             if (frame !== null) {
-                lobbyRenders.push({ at: now, trigger: 'tick', frame: JSON.parse(JSON.stringify(frame)) });
+                lobbyRenders.push({ at: now, trigger: 'tick', frame: recorded(frame) });
             }
         });
     }

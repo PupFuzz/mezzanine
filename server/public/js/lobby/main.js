@@ -39,7 +39,8 @@
  * the cab's Escape, and the departing page's one `pageswap` rule — is `wire/ride-page.js`'s, which the floor wires with
  * its own dialog. This file hands it the screen, its paint, `floor/cab-paint.js`'s `paintCab()`, the drawn elevator
  * and the last painted frame's ride, and calls its `perform()` last in every paint. The cab and the room's cab are in
- * the house theme's elevator palette once `loadHousePalette()` answers. The arrival is the layout head script's: the
+ * the house theme's elevator palette once `loadHousePalette()` answers. A press's fetches for the floor behind the cab's
+ * doors (card#12987) each ask for a render as they land, so the cab repaints on the floor's arrival. The arrival is the layout head script's: the
  * screen is told before its first render, and the hold ends on the first frame that drew the room — `revealed()` is
  * called there and nowhere else.
  */
@@ -337,6 +338,8 @@ try {
         surface: surface(),
         reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
         lobby_href: el('lobby').dataset.lobbyHref,
+        // card#12987: a ride's press-time fetch for the view behind the cab's doors asks for a render as it lands.
+        wake: requestRender,
     });
 } catch (error) {
     cannotStart(error);

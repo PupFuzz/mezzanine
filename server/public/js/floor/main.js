@@ -58,7 +58,8 @@
  * prefix), a stop's press, the cab's Escape, and the departing page's one `pageswap` rule — is `wire/ride-page.js`'s,
  * which the lobby wires with its own dialog (card#12113: one ride, one cab). This file hands it the screen, its
  * paint, the painter's `paintCab()`, the drawn elevator and the last painted frame's ride, and calls its
- * `perform()` last in every paint. The arrival is the layout head script's (`wire/ride-arrival.js` says how the
+ * `perform()` last in every paint; a press's fetches for the floor behind the cab's doors (card#12987) each ask for a
+ * render as they land, so the cab repaints on the floor's arrival. The arrival is the layout head script's (`wire/ride-arrival.js` says how the
  * halves meet): the screen is told before its first render, and the hold ends on the first frame that drew a
  * scene — `revealed()` is called there and nowhere else.
  */
@@ -379,6 +380,8 @@ const screen = startFloorScreen(client, pageFetch, clock, log, paint, {
     // § 6.2's walk note item 4: a walk's last frame is a paint-only refresh on the browser's timer — it
     // reaches `paint` and never `screen.render()`, so it drains nothing and writes no animation-log row.
     timers,
+    // card#12987: a ride's press-time fetch for the view behind the cab's doors asks for a render as it lands.
+    wake: requestRender,
 });
 
 // § 4.5: entered by a ride — the layout head script's record — so the first drawn scene arrives (the screen's

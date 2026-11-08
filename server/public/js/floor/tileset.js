@@ -84,6 +84,21 @@ export function tilesetUrl(source) {
     return resolvePath(FLOOR_ART, source);
 }
 
+/**
+ * Every tileset the documents name by `source` — a room's map, a floor's hallway — as the URL the asset route serves it at
+ * (`tilesetUrl()`, `null` for one that climbs out of the asset root); a `null` document (a floor with no hallway, a room
+ * with no map held) names none. What the floor page loads for the floor it draws and the cab's door view for a stop's floor.
+ *
+ * @param {list<object|null>} docs
+ * @returns {list<string|null>}
+ */
+export function namedTilesets(docs) {
+    return docs.filter((doc) => doc !== null)
+        .flatMap((doc) => (Array.isArray(doc.tilesets) ? doc.tilesets : []))
+        .filter((entry) => typeof entry?.source === 'string')
+        .map((entry) => tilesetUrl(entry.source));
+}
+
 /** A cell's GID split into the tile it names and Tiled's three flip flags. */
 export function splitGid(cell) {
     const raw = Number(cell) >>> 0;

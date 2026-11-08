@@ -153,6 +153,7 @@ class LobbyPageWiringTest extends TestCase
             'focus back on no elevator' => ['ride', '    elevator: () => room.control,', '    elevator: () => null,'],
             'a pageswap rule reading no frame' => ['ride', "    lastRide: () => lastFrame?.ride ?? null,", "    lastRide: () => null,"],
             'a ride arriving here never told the screen' => ['ride', "    screen.arriveByRide(rideArrival);\n", ''],
+            'a press whose fetches wake nothing' => ['ride', '        wake: requestRender,', '        wake: () => {},'],
             // The room's leaves are the ride's: painted from the frame's `scene.ride` and nothing else.
             'leaves painted from no ride' => ['room drawing', 'paintRoom(document, room, frame.scene.ride, frame.sky, painted)', 'paintRoom(document, room, null, frame.sky, painted)'],
             // The house theme's elevator palette on the cab and the room's cab.
@@ -455,7 +456,9 @@ class LobbyPageWiringTest extends TestCase
             'ride' => ["import { ridePage } from '../wire/ride-page.js';", "import { cabTheme, loadHousePalette, paintCab } from '../floor/cab-paint.js';",
                 'roomDrawing(document, () => cab.act(screen.ride()))', "    prefix: 'lobby',\n", "    paintCab,\n",
                 '    elevator: () => room.control,', '    lastRide: () => lastFrame?.ride ?? null,', "    cab.perform({\n",
-                "    lobby_href: el('lobby').dataset.lobbyHref,", "    screen.arriveByRide(rideArrival);\n"],
+                "    lobby_href: el('lobby').dataset.lobbyHref,", "    screen.arriveByRide(rideArrival);\n",
+                // card#12987: the press's fetches for the floor behind the cab's doors wake the page as they land.
+                '        wake: requestRender,'],
             // The room's drawing and its leaves, painted from the frame's ride.
             'room drawing' => ["import { paintRoom, roomDrawing, themeRoomCab } from './building-paint.js';", 'layer.prepend(room.art);',
                 'paintRoom(document, room, frame.scene.ride, frame.sky, painted)'],

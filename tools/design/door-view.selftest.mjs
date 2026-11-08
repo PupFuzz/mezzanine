@@ -17,7 +17,8 @@
 //   below it), `echo` (a planned room off the 8-px lattice, so a partition cell and a desk straddle the centre line), and
 //   the bare routes R2–R4. Each reading is the plan's § 3.5 shape: centimetres in the rider's frame, and document order.
 // - ORDER — the plan's § 10 random-scene check, committed (design review round 3's m6): random floors of one or two rooms,
-//   runs of wall cells, desks at unaligned y, standing pieces (some on the last row, some layers dragged off the grid), each
+//   runs of wall cells, desks at unaligned y, standing pieces (some on the last row, some layers dragged off the grid) — and
+//   planned floors, a hallway and one room placed below it with its origin on and off the floor's 8-px lattice — each
 //   built by `doorView()` itself; rays from the eye through the doorway; for every pair of bodies one ray meets at different
 //   depths the nearer must be painted later, and for every pair it meets AT THE SAME DEPTH — a tie, which the first version
 //   of this check skipped and so could not see round 3's M1 — the order a shared plane owes: the one on the eye's side of a
@@ -32,6 +33,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { alphaMap, bravoMap, charlieMap, held, kit, makeMap, resolve, scripted, stopRow } from './door-view-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..');
@@ -84,20 +86,7 @@ async function open(t) {
     const modules = Object.fromEntries(await Promise.all(registry.THEMES.map(async (name) => [name, await load(join(themesDir, name, 'theme.js'))])));
     const cab = await load(js('floor', 'cab-paint.js'));
     const tileset = await load(js('floor', 'tileset.js'));
-    const url = tileset.tilesetUrl('tiles/floor-plane.tsx');
-    const tsx = readFileSync(join(t.root, 'resources', 'floor', 'tiles', 'floor-plane.tsx'), 'utf8');
-    const read = tileset.readTileset(tsx, url);
-    const gids = {};
-
-    // Every tile of the shipped set by kind and size: `gid = id + 1` under the maps' one `firstgid`.
-    for (let id = 0; id < 256; id++) {
-        const tile = read.tile(id);
-        const kind = tile?.properties?.kind;
-
-        if (typeof kind === 'string') {
-            (gids[kind] ??= []).push({ gid: id + 1, w: tile.sw ?? T, h: tile.sh ?? T });
-        }
-    }
+    const tiles = kit(tileset, readFileSync(join(t.root, 'resources', 'floor', 'tiles', 'floor-plane.tsx'), 'utf8'));
 
     return {
         t,
@@ -111,149 +100,9 @@ async function open(t) {
         Building: (await load(js('wire', 'building.js'))).Building,
         TilesetLoader: tileset.TilesetLoader,
         tilesetUrl: tileset.tilesetUrl,
-        tsx,
-        url,
-        read,
-        gids,
+        ...tiles,
     };
 }
-
-// ── maps, built inline ──────────────────────────────────────────────────────────────────────────────
-const TILESET_ENTRY = Object.freeze({ firstgid: 1, source: 'tiles/floor-plane.tsx' });
-
-/**
- * An 8-px map: `walls` and `accents` as `[col, row]` cells, `pieces` as `{gid, col, row}` (the tile bottom-aligned to
- * its cell, so its foot is `(row + 1) · 8`), `desks` as Tiled objects, `offset` on both tile layers, `tilesets` extra.
- */
-function makeMap({ w, h, walls = [], accents = [], pieces = [], desks = [], offset = null, tilesets = [] }) {
-    const layer = (name, cells) => {
-        const data = new Array(w * h).fill(0);
-
-        for (const [col, row, gid] of cells) {
-            data[row * w + col] = gid;
-        }
-
-        return { name, type: 'tilelayer', width: w, height: h, data, visible: true, opacity: 1, ...(offset === null ? {} : { offsetx: offset, offsety: offset }) };
-    };
-
-    return {
-        width: w,
-        height: h,
-        tilewidth: T,
-        tileheight: T,
-        tilesets: [TILESET_ENTRY, ...tilesets],
-        layers: [
-            layer('accent', accents.map(([c, r]) => [c, r, 'ACCENT'])),
-            layer('walls', walls.map(([c, r]) => [c, r, 'WALL'])),
-            layer('furniture', pieces.map((p) => [p.col, p.row, p.gid])),
-            { name: 'desks', type: 'objectgroup', objects: desks.map((d, i) => ({ id: i + 1, x: d.x, y: d.y, width: d.width ?? 216, height: d.height ?? 240 })) },
-        ],
-    };
-}
-
-/** `makeMap()`'s `WALL` and `ACCENT` placeholders resolved to the shipped set's gids. */
-function resolve(o, map) {
-    for (const layer of map.layers) {
-        if (layer.type === 'tilelayer') {
-            layer.data = layer.data.map((g) => (g === 'WALL' ? o.gids.wall[0].gid : g === 'ACCENT' ? o.gids.accent[0].gid : g));
-        }
-    }
-
-    return map;
-}
-
-/** A scripted same-origin fetch: each path's answer, or a 503 per path named in `fail`. */
-function scripted(o, rooms, { fail = [], layout = null } = {}) {
-    return async (path) => {
-        const answer = (status, body) => ({ status, ok: status === 200, json: async () => body, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) });
-
-        if (fail.some((f) => path.includes(f))) {
-            return answer(503, null);
-        }
-
-        if (path === '/api/building' && layout !== null) {
-            return answer(200, layout);
-        }
-
-        if (path === o.url) {
-            return answer(200, o.tsx);
-        }
-
-        const id = decodeURIComponent(path.match(/^\/api\/building\/rooms\/(.+)\/map$/)?.[1] ?? '');
-
-        if (rooms[id] !== undefined) {
-            return answer(200, { install_id: id, source: 'authored', map_version: rooms[id].version ?? 1, map: rooms[id].map });
-        }
-
-        return answer(404, null);
-    };
-}
-
-/** A stop's plaque row (`plates()`'s shape) for an unplanned floor of `ids`. */
-const stopRow = (key, ids, theme = null) => ({ floor: key, name: key, label: null, theme, hallway: null, rooms: ids.map((id) => ({ install_id: id, form: 'open', reported: true })) });
-
-/** The page's `Building` and `TilesetLoader`, every room entered and every tileset loaded through the scripted fetch. */
-async function held(o, rooms, options = {}) {
-    const fetch = scripted(o, rooms, options);
-    const building = new o.Building(fetch);
-    const tilesets = new o.TilesetLoader(fetch);
-
-    await building.enterRooms(Object.keys(rooms));
-    await tilesets.load(Object.values(rooms).flatMap(({ map }) => map.tilesets.map((entry) => o.tilesetUrl(entry.source))));
-
-    return { building, tilesets, fetch };
-}
-
-// ── the fixture floors (plan § 6) ───────────────────────────────────────────────────────────────────
-const plantOf = (o) => o.gids.plant.find((g) => g.w === 80 && g.h === 128);
-const bookcaseOf = (o) => o.gids.bookcase.find((g) => g.w === 72);
-
-function alphaMap(o) {
-    const H = 90;
-
-    return resolve(o, makeMap({
-        w: 200,
-        h: H,
-        // one column of wall cells right of the seam (x 40..48), down the whole map; one wall cell under the first slab
-        // ...and one partition cell in the first desk's monitor row, between the desk and the centre line
-        walls: [...Array.from({ length: H }, (_, r) => [5, r]), [30, 45], [15, 42]],
-        pieces: [{ gid: plantOf(o).gid, col: 6, row: 62 }],
-        desks: [{ x: 200, y: 200 }, { x: 1200, y: 200 }],
-    }));
-}
-
-function bravoMap(o, offset = null) {
-    const W = 160;
-    const H = 90;
-    const accents = [];
-
-    for (let r = 0; r < H; r++) {
-        for (let c = 0; c < W; c++) {
-            accents.push([c, r]);
-        }
-    }
-
-    return resolve(o, makeMap({
-        w: W,
-        h: H,
-        accents,
-        // the partition row y 400..408 from x 0..600; the near-wall row x 0..400 on the top row
-        walls: [...Array.from({ length: 75 }, (_, c) => [c, 50]), ...Array.from({ length: 50 }, (_, c) => [c, 0])],
-        pieces: [
-            // behind the partition (foot y 488), inside the doorway's frustum — the order's RED (aimla's shape)
-            { gid: bookcaseOf(o).gid, col: 25, row: 60 },
-            // on the last row, off the centre line — round 3's M1
-            { gid: bookcaseOf(o).gid, col: 50, row: H - 1 },
-            // two pieces on one foot line, the earlier in tile order nearer the centre line — round 3's m4
-            { gid: bookcaseOf(o).gid, col: 70, row: 30 },
-            { gid: bookcaseOf(o).gid, col: 75, row: 30 },
-        ],
-        desks: [{ x: 900, y: 100 }],
-        offset,
-    }));
-}
-
-const charlieMap = (o, h, extra = false) => resolve(o, makeMap({ w: 60, h: h / T, tilesets: extra ? [{ firstgid: 1000, source: 'tiles/extra.tsx' }] : [] }));
 
 /** The offsets `bravo`'s tile layers are dragged by: under half a cell, half, over half, nearly whole, and negative. */
 const DRAGS = Object.freeze([3, 4, 5, 7, -3]);
@@ -464,10 +313,15 @@ async function fixtures(o) {
 // ── the ORDER leg (plan § 10) ───────────────────────────────────────────────────────────────────────
 const rng = (seed) => { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; }; };
 
-/** One random floor: one or two rooms, wall runs, desks at unaligned y (slabs disjoint), pieces, layers sometimes off the grid. */
-function scene(o, rnd) {
+/**
+ * One random floor: one or two rooms, wall runs, desks at unaligned y (slabs disjoint), pieces, layers sometimes off the grid.
+ * With `oy` a number, a PLANNED floor instead: a hallway at the floor's origin and one room placed below it at `origin.y` 96 + `oy`
+ * — off the 8-px lattice the floor's own grid sits on when `oy` is not a multiple of 8 (`BuildingLayout::origin()` accepts any
+ * integer), so the room's cells, walls and desks must all sit on the room's own lattice.
+ */
+function scene(o, rnd, oy = null) {
     const rooms = {};
-    const count = rnd() < 0.5 ? 1 : 2;
+    const count = oy !== null || rnd() < 0.5 ? 1 : 2;
     const standing = Object.entries(o.gids).filter(([kind]) => kind !== 'wall' && kind !== 'accent').flatMap(([, list]) => list);
 
     for (let r = 0; r < count; r++) {
@@ -524,9 +378,18 @@ function scene(o, rnd) {
 
     const building = { room: (id) => ({ held: { map: rooms[id] }, failure: null }), mapless: () => false };
     const tilesets = { held: new Map([[o.url, { tileset: o.read }]]) };
+    const row = stopRow('random', Object.keys(rooms), rnd() < 0.5 ? 'cottage' : null);
+    const planned = oy === null ? row : {
+        ...row,
+        hallway: resolve(o, makeMap({ w: 60, h: 12 })),
+        rooms: row.rooms.map((room) => ({ ...room, origin: { x: 0, y: 96 + oy } })),
+    };
 
-    return o.view.doorView(stopRow('random', Object.keys(rooms), rnd() < 0.5 ? 'cottage' : null), building, tilesets, o.themes);
+    return o.view.doorView(planned, building, tilesets, o.themes);
 }
+
+/** The planned floors' room offsets off the floor's 8-px lattice: on it (0, 8) and off it (3, 5). */
+const ORIGIN_YS = Object.freeze([0, 3, 5, 8]);
 
 /** Where a ray from the eye along `d` first meets an axis-aligned body, or `null`. */
 function hit(b, d) {
@@ -602,11 +465,18 @@ function inFrustum(b) {
     return Math.min(...xs) < 55 / 120 && -55 / 120 < Math.max(...xs) && Math.min(...ys) < 155 / 120 && (155 - 200) / 120 < Math.max(...ys);
 }
 
-/** The ORDER leg: `scenes` random floors per seed, `rays` rays each. Defects name each violated class. */
-function order(o, { scenes = 260, rays = 220, seeds = [12345, 777], print = false } = {}) {
+/**
+ * The ORDER leg: `scenes` random floors per seed, `rays` rays each — unplanned floors, then planned ones at each `ORIGIN_YS`
+ * (`planned` floors per seed and offset). Defects name each violated class, and the floors it was found on.
+ */
+function order(o, { scenes = 260, rays = 220, planned = 100, seeds = [12345, 777], print = false } = {}) {
     const defects = [];
+    const runs = [
+        ...seeds.map((seed) => ({ seed, oy: null, count: scenes, who: `seed ${seed}` })),
+        ...ORIGIN_YS.flatMap((oy) => seeds.map((seed) => ({ seed: seed + oy, oy, count: planned, who: `seed ${seed + oy}, planned, room origin.y 96 + ${oy}` }))),
+    ];
 
-    for (const seed of seeds) {
+    for (const { seed, oy, count: scenes, who } of runs) {
         const rnd = rng(seed);
         const violations = new Map();
         const unowed = new Map();
@@ -617,7 +487,7 @@ function order(o, { scenes = 260, rays = 220, seeds = [12345, 777], print = fals
         let floors = 0;
 
         for (let s = 0; s < scenes; s++) {
-            const v = scene(o, rnd);
+            const v = scene(o, rnd, oy);
 
             if (v.bare) {
                 continue;
@@ -672,16 +542,16 @@ function order(o, { scenes = 260, rays = 220, seeds = [12345, 777], print = fals
         const list = [...violations.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ×${n}`).join('; ');
 
         if (print || total > 0) {
-            console.log(`  seed ${seed}: ${floors} floors drawn of ${scenes}, ${bodies} bodies (${pieces} pieces), ${rays} rays each; ${pairs} (near, far) pairs owed an order, ${ties} ties`
+            console.log(`  ${who}: ${floors} floors drawn of ${scenes}, ${bodies} bodies (${pieces} pieces), ${rays} rays each; ${pairs} (near, far) pairs owed an order, ${ties} ties`
                 + ` — violations ${total}${total ? `: ${list}` : ''}; ties no rule names: ${unowed.size === 0 ? 'none' : [...unowed.entries()].map(([k, n]) => `${k} ×${n}`).join('; ')}`);
         }
 
         if (floors < scenes / 2 || pairs === 0 || ties === 0) {
-            defects.push(`seed ${seed}: the order leg measured nothing — ${floors} floors drawn, ${pairs} pairs, ${ties} ties`);
+            defects.push(`${who}: the order leg measured nothing — ${floors} floors drawn, ${pairs} pairs, ${ties} ties`);
         }
 
         if (total > 0) {
-            defects.push(`seed ${seed}: ${total} order violations — ${list}`);
+            defects.push(`${who}: ${total} order violations — ${list}`);
         }
     }
 
@@ -754,6 +624,9 @@ const PLANTS = [
         (t) => edit(VIEW(t), 'const mxOf = (x1, x2) => (x1 <= 0 && x2 >= 0 ? 0 : Math.min(Math.abs(x1), Math.abs(x2)));', 'const mxOf = (x1, x2) => Math.abs(x1 + x2) / 2;')],
     ['a desk\'s rank ahead of its distance', 'fixtures', 'a desk\'s rank ahead of its distance',
         (t) => edit(VIEW(t), 'b.mx - a.mx || a.rank - b.rank || a.seq - b.seq)', 'a.rank - b.rank || b.mx - a.mx || a.seq - b.seq)')],
+    ['a desk\'s slab snapped to the FLOOR\'s lattice, not its room\'s (a planned room off the 8-px lattice)', 'order', 'planned, room origin.y 96 + 3',
+        (t) => edit(VIEW(t), 'const y0 = g.origin.y + Math.floor((exact.y - g.origin.y) / T) * T;\n\n        return { ...exact, y: y0, h: g.origin.y + Math.ceil((exact.y + exact.h - g.origin.y) / T) * T - y0 };',
+            'const y0 = Math.floor(exact.y / T) * T;\n\n        return { ...exact, y: y0, h: Math.ceil((exact.y + exact.h) / T) * T - y0 };')],
     ['a monitor at its own distance, not its desk\'s', 'order', 'over monitor',
         (t) => edit(VIEW(t), "y1: DESK_H, y2: MONITOR_TOP }), { mx, rank: 1 });", "y1: DESK_H, y2: MONITOR_TOP }), { rank: 1 });")],
 ];
