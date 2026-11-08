@@ -32,6 +32,21 @@ NO NETWORK, NO CREDENTIAL, NO BOARD. The ingest stub is a TLS server on 127.0.0.
 throwaway self-signed certificate, trusted through the reporter's OWN `ca_file` config key —
 which is the supported private-CA path (D1 § 3.5) and therefore exercises the real code path
 with certificate verification ON, rather than proving anything by turning it off.
+
+A REPORTER PROCESS RUNS ON A CLOCK THIS SUITE SETS (card#12631). `fixed-clock.cjs`, beside this file and never
+installed, is preloaded into each one through NODE_OPTIONS by `Seat.env`. A one-shot (a hook, the statusline,
+`selftest`, a one-pass flusher) reads ONE instant for its whole life — FLEET_REPORTER_NOW_MS's when a case pins it,
+which keeps that variable's meaning, the instant the process starts at — so a hook that runs slow stamps its pin
+and nothing later. A long-running flusher reads a `TestClock` file, and its naps and request deadlines fire only
+when the case advances that clock (`ClockedFlusher`): a case steps it and waits for the process to go idle — an
+observable read off the preload's acknowledgement file — instead of sleeping, and reads every "when" off that
+clock. Nothing is read off the wall clock except what is about the wall clock: the seat write lock's ages (the
+reporter measures those on the filesystem's clock, and the preload leaves them there), process spawns, and the
+P-5 latency figures, whose hooks run with no preload at all (`clock="off"`) so they time the reporter a seat runs,
+and AT-27's cron-line run, whose subject is the bare environment cron gives a flusher. A wait on a process is a hang bound (`TestClock.HANG_S`), never a timing: a verdict does not
+depend on how long anything took. § 0 proves the clock — what the reporter reads, that a slow pinned hook stamps
+its pin, that the write lock keeps the wall clock — and § 1's probe case has a RED for a driver that forgets to
+advance it.
 """
 from __future__ import annotations
 
@@ -110,6 +125,263 @@ def seat_token(name: str) -> str:
     return "mzn_" + base64.urlsafe_b64encode(hashlib.sha256(name.encode()).digest()).decode()[:43]
 
 
+# ── the test clock (card#12631) ────────────────────────────────────────────────────────────
+FIXED_CLOCK = HERE / "fixed-clock.cjs"
+
+
+def test_clock_env(e: dict, clock: "TestClock | str") -> dict:
+    """Put a reporter invocation's environment on the test clock: `fixed`, a `TestClock`, `wall` (the preload
+    loaded and inert), or `off` — no preload at all, for the P-5 latency figures, which measure the reporter as
+    a seat runs it."""
+    mode = f"file:{clock.path}" if isinstance(clock, TestClock) else clock
+    assert mode in ("fixed", "wall", "off") or mode.startswith("file:"), mode
+    want = f"--require={FIXED_CLOCK}"
+    opts = [o for o in e.get("NODE_OPTIONS", "").split() if o and o != want]
+    if mode == "off":
+        e.pop("FLEET_REPORTER_TEST_CLOCK", None)
+    else:
+        e["FLEET_REPORTER_TEST_CLOCK"] = mode
+        opts.append(want)
+    if opts:
+        e["NODE_OPTIONS"] = " ".join(opts)
+    else:
+        e.pop("NODE_OPTIONS", None)
+    return e
+
+
+class TestClock:
+    """A clock a reporter process reads from a file, and whose timers it fires (`fixed-clock.cjs`, mode `file:`).
+    Time moves only through `set`/`advance`; nothing in the process waits on the wall clock.
+
+    `settle` is the observable that replaces a sleep: it returns once the process has acted on the clock the
+    test last wrote and is IDLE. A flusher runs `loops` loops (the seat loop and one lane per site), and each
+    of them, between passes, holds exactly one nap; a lane awaiting a request holds that request's deadline
+    instead, and a loop doing anything else holds neither. So the process is idle when its naps and its
+    in-flight requests add up to `loops`, no timer is due at the clock, and every request in flight is one a
+    stub is HOLDING on purpose (`held()`, the stubs' count of requests they hold while the client keeps the
+    connection open): a request still in transit is a pass still running. `oneshot` is a one-shot process's
+    idle instead: no nap, and at least one request in flight, which is all such a process can wait on.
+    `HANG_S` bounds a stall, never a timing: a step that does not settle inside it is reported by name, and no
+    verdict is read from how long a step took."""
+
+    HANG_S = 300.0
+    # The reporter's timers: its loops' naps and its request deadlines. `sleep` is the previous build's name for
+    # its one loop's nap (AT-28 Case F drives that build, `PREVIOUS_BUILD`).
+    TIMER_SOURCES = {"nap", "sleep", "ingestRequest"}
+
+    def __init__(self, root: Path, start_ms: int):
+        self._unknown: list = []
+        self.stalled = False
+        self.path = root / "test-clock"
+        self.ack_path = root / "test-clock.ack"
+        self.ack_path.unlink(missing_ok=True)
+        self.ms = int(start_ms)
+        self.set(self.ms)
+
+    def set(self, ms: int) -> None:
+        self.ms = int(ms)
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        tmp.write_text(str(self.ms), encoding="utf-8")
+        os.replace(tmp, self.path)
+
+    def ack(self) -> dict:
+        try:
+            return json.loads(self.ack_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    def idle(self, loops: "int | None", *, held=None, oneshot: bool = False) -> bool:
+        a = self.ack()
+        if a.get("clock") != self.ms:
+            return False
+        ts = a.get("timers") or []
+        unknown = sorted({t["by"] for t in ts} - self.TIMER_SOURCES)
+        if unknown and unknown != self._unknown:
+            # A timer this predicate cannot place would read as a pass still running, or as none: say so loudly.
+            self._unknown = unknown
+            bad(f"test clock: a reporter timer set by {unknown}, which TestClock.idle does not know "
+                f"(it knows {sorted(self.TIMER_SOURCES)}) — teach it what that timer waits on")
+        if any(t["due"] <= self.ms for t in ts):
+            return False
+        naps = sum(1 for t in ts if t["by"] in ("nap", "sleep"))
+        requests = sum(1 for t in ts if t["by"] == "ingestRequest" and "'request'" in (t.get("src") or ""))
+        if oneshot:
+            return naps == 0 and requests >= 1
+        if loops is None:                     # loops have ended and how many is unknown: every one left napping
+            return naps >= 1 and requests == 0
+        return naps + requests == loops and requests <= (held() if callable(held) else int(held or 0))
+
+    def settle(self, proc, loops: int, *, held=None, oneshot: bool = False, also=None, what: str = "") -> bool:
+        """Wait until `proc` is idle at the current clock (see the class), has exited, or `also()` holds — a case's
+        own observable for a state it wants to act in before the process is idle. False on a stall — reported once,
+        after which every later settle on this clock is False at once, so one stalled case costs one hang bound."""
+        if self.stalled:
+            return False
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < self.HANG_S:
+            if proc.poll() is not None or self.idle(loops, held=held, oneshot=oneshot) or (also is not None and also()):
+                return True
+            time.sleep(0.005)
+        self.stalled = True
+        bad(f"test clock: the process did not settle at clock {self.ms} within the {self.HANG_S:.0f} s hang bound"
+            + (f" ({what})" if what else "") + f"; last ack {self.ack()}")
+        return False
+
+    def advance(self, by_ms: int, proc, loops: int, **kw) -> bool:
+        self.set(self.ms + int(by_ms))
+        return self.settle(proc, loops, **kw)
+
+    def await_stdin(self, proc, what: str = "") -> bool:
+        """Wait until a hook on this clock is blocked reading its payload (the ack's `stdin`), or has exited."""
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < self.HANG_S:
+            if proc.poll() is not None or self.ack().get("stdin") == "reading":
+                return True
+            time.sleep(0.005)
+        bad(f"test clock: the hook never reached its stdin read within the {self.HANG_S:.0f} s hang bound ({what})")
+        return False
+
+
+def hold_open(handler, seconds: float, owner) -> None:
+    """Hold a stub's answer for `seconds` — exactly the sleep it always was — and count it in `owner.holding` for
+    as long as the client keeps the connection open. That count is what `TestClock.idle` reads as a request held
+    on purpose: a deadline the clock fires closes the connection, and the count with it, while the stub goes on
+    holding (and then does what it always did) as before."""
+    import select
+    counted = True
+    with owner._hold_lock:
+        owner.holding += 1
+    try:
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            if not counted:
+                time.sleep(min(0.05, max(0.0, end - time.monotonic())))
+                continue
+            try:
+                # Readable means the client sent something on a request it is waiting on, which is only ever its
+                # close (TLS close_notify, FIN or RST): the reporter sends nothing more on a socket it waits on.
+                r, _, _ = select.select([handler.connection], [], [], min(0.02, max(0.0, end - time.monotonic())))
+                gone = bool(r)
+            except (OSError, ValueError):
+                gone = True
+            if gone:
+                counted = False
+                with owner._hold_lock:
+                    owner.holding -= 1
+    finally:
+        if counted:
+            with owner._hold_lock:
+                owner.holding -= 1
+
+
+class ClockedFlusher:
+    """A long-running flusher (`node fleet-reporter.js flusher`, no ONE_PASS) on a `TestClock`: its passes run when
+    the case advances the clock past their naps, and nowhere else. `sites` is how many site lanes it runs, beside
+    the seat loop; `held` counts the requests the case's stubs hold on purpose (`TestClock.idle`). Started with the
+    seat's lock released, as every long-running driver here does, and settled before the constructor returns, so
+    the first pass (the start-up seat pass, each lane's first probe and drain) has happened."""
+
+    def __init__(self, s: "Seat", reporter: Path, *, start_ms: "int | None" = None, sites: int = 1,
+                 held=None, also=None, capture: bool = False, **envx):
+        self.seat = s
+        self.loops = 1 + sites
+        self.held = held
+        self.clock = TestClock(s.root, rig_clock_ms() if start_ms is None else start_ms)
+        INGEST.clock = self.clock
+        (s.spool / "flusher.lock").unlink(missing_ok=True)
+        self.proc = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, clock=self.clock, **envx),
+                                     cwd=str(HERE), text=True,
+                                     stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
+                                     stderr=subprocess.PIPE if capture else subprocess.DEVNULL)
+        self.streams: list = []
+        self.clock.settle(self.proc, self.loops, held=held, also=also, what="the flusher's start")
+
+    @property
+    def ms(self) -> int:
+        return self.clock.ms
+
+    def alive(self) -> bool:
+        return self.proc.poll() is None
+
+    def settle(self, *, also=None, what: str = "") -> bool:
+        return self.clock.settle(self.proc, self.loops, held=self.held, also=also, what=what)
+
+    def wait(self, pred, *, what: str = "") -> bool:
+        """Wait, with the clock where it is, until `pred()` holds or the process exits — for an observable the
+        process writes on its own (a log line) with no step of the clock behind it."""
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < TestClock.HANG_S:
+            if pred() or not self.alive():
+                return True
+            time.sleep(0.005)
+        bad(f"test clock: {what or 'a condition'} did not hold within the {TestClock.HANG_S:.0f} s hang bound")
+        return False
+
+    def step(self, by_ms: int, *, also=None, what: str = "") -> bool:
+        """Advance the clock by `by_ms` and wait for the flusher to be idle at it (or `also()`)."""
+        return self.clock.advance(by_ms, self.proc, self.loops, held=self.held, also=also, what=what)
+
+    def elapse(self, ms: int, by_ms: int, *, what: str = "") -> None:
+        """Let `ms` of the clock pass, `by_ms` at a time: one pass of every loop per step."""
+        for _ in range(max(1, -(-int(ms) // int(by_ms)))):
+            if not self.alive() or not self.step(by_ms, what=what):
+                return
+
+    def run_until(self, pred, by_ms: int, max_steps: int, *, also=None, what: str = "") -> "int | None":
+        """Step by `by_ms` until `pred()` holds: the number of steps it took, 0 when it held already, None
+        when it still does not after `max_steps` — a count of the CLOCK's steps, never a wall-clock time."""
+        for k in range(max_steps + 1):
+            if pred():
+                return k
+            if k == max_steps or not self.alive() or not self.step(by_ms, also=also, what=what):
+                return None
+        return None
+
+    def close(self, *, terminate: bool = False) -> None:
+        """Kill the flusher (or, with `terminate`, SIGTERM it and let it end its pass)."""
+        if self.proc.poll() is None:
+            if terminate:
+                self.proc.terminate()
+                for _ in range(400):
+                    if self.proc.poll() is not None:
+                        break
+                    # A SIGTERM ends the loops' naps at once (`halt`); a request in flight still has to end, which
+                    # only its deadline on this clock or the stub's answer does.
+                    self.clock.set(self.clock.ms + 1000)
+                    time.sleep(0.02)
+            if self.proc.poll() is None:
+                self.proc.kill()
+        out, err = self.proc.communicate()
+        self.streams = [out or "", err or ""]
+        if INGEST.clock is self.clock:
+            INGEST.clock = None
+        self.seat.freeze_flusher()
+
+
+def clocked_oneshot(s: "Seat", argv: list, reporter: Path, *, step_ms: int, max_steps: int = 400, **envx) -> dict:
+    """A one-shot (`selftest`, or `flusher` under ONE_PASS) on a `TestClock`, for a case about WHICH DEADLINE a
+    request waits out: the clock steps `step_ms` each time the process is waiting on a request and nothing else,
+    until it exits. `clock_ms` is how far the clock had moved when it did — the deadlines it waited out, in the
+    clock's milliseconds, to one step. The process's own run time, and the host's load, are not in it."""
+    clock = TestClock(s.root, int(time.time() * 1000))
+    env = s.env(clock=clock, **envx)
+    p = subprocess.Popen(["node", str(reporter), *argv], env=env, cwd=str(HERE), text=True,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    start = clock.ms
+    try:
+        clock.settle(p, 0, oneshot=True, what=f"{argv[0]} start")
+        for _ in range(max_steps):
+            if p.poll() is not None:
+                break
+            clock.advance(step_ms, p, 0, oneshot=True, what=f"{argv[0]} waiting on a request")
+        out, err = p.communicate(timeout=TestClock.HANG_S)
+    finally:
+        if p.poll() is None:
+            p.kill()
+            p.wait()
+    return {"rc": p.returncode, "stdout": out, "stderr": err, "clock_ms": clock.ms - start}
+
+
 class Seat:
     def __init__(self, root: Path, ingest: str, *, ca: str | None = None,
                  enabled: bool = True, wrapped: str | None = None, token: "str | None" = None):
@@ -156,10 +428,15 @@ class Seat:
         t = time.time() if at_ms is None else int(at_ms) / 1000.0
         os.utime(lock, (t, t))
 
-    def env(self, *, freeze: bool = True, burst_s: float = 0.0, **extra) -> dict:
+    def env(self, *, freeze: bool = True, burst_s: float = 0.0, clock: "TestClock | str" = "fixed", **extra) -> dict:
         e = dict(os.environ)
         e["FLEET_REPORTER_CONFIG"] = str(self.cfg_path)
         e.pop("FLEET_REPORTER_NOW_MS", None)
+        # EVERY REPORTER PROCESS THIS SUITE STARTS RUNS ON THE TEST CLOCK (card#12631, `fixed-clock.cjs`):
+        # `fixed` by default — the process reads one instant, FLEET_REPORTER_NOW_MS's when a case pins it —
+        # or a `TestClock`'s file, for a long-running flusher whose time the case moves itself. Through
+        # NODE_OPTIONS, so a flusher a hook forks inherits it.
+        test_clock_env(e, clock)
         # THE MACHINE RUNNING THIS SUITE IS NOT A SEAT UNDER TEST. A developer's shell or an agent
         # seat exports `$COORD_CONFIG`, and D1 § 3.1 makes a set variable the whole of the roster
         # resolution — so an inherited one would put THIS box's coordination roster into every
@@ -307,7 +584,7 @@ def flush(seat: Seat, *, reporter: Path = REPORTER, **envx):
     try:
         return subprocess.run(
             ["node", str(reporter), "flusher"], capture_output=True, text=True,
-            env=env, cwd=str(HERE), timeout=90)
+            env=env, cwd=str(HERE), timeout=TestClock.HANG_S)
     finally:
         seat.freeze_flusher()
 
@@ -418,13 +695,9 @@ class Ingest:
         self.batches: list[dict] = []
         self.status = 202
         self.body_override: dict | None = None
-        # Seconds a POST is HELD after it is recorded and before it is answered: a slow ingest,
-        # which is the only condition under which a flusher's pass can outlast its own lock.
-        self.delay_s = 0.0
-        # The same hold for the health probe (GET), counted as it arrives: the flusher's other await.
+        # The health probe (GET), counted as it arrives: the flusher's other await.
         self.gets = 0
         self.get_auths: list[str] = []          # each GET's Authorization, in arrival order (`Seat.probed`)
-        self.get_delay_s = 0.0
         # What the health surface answers: the accepted schema-version set, and the status. A set
         # without this reporter's version is an ingest that REFUSES it; a non-200 is an answer
         # that carries no set at all (a bad token, an outage page) — card#9373 tells those apart.
@@ -438,6 +711,21 @@ class Ingest:
         # files between the probe and the batch POST of one flusher pass. An entry with an `auth` is consumed
         # only by a GET presenting that Authorization, so another seat's probe cannot take it (card#12631).
         self.get_script: list[dict] = []
+        # THE TEST CLOCK A CASE RUNS ITS FLUSHER ON, when it does (`ClockedFlusher`), and every request's place in
+        # one arrival order: `get_clocks[i]` is the clock GET i arrived at, a batch's `clock` and `seq` the same for
+        # a POST. A case reads WHEN a request happened on the clock it set, and in what order, instead of
+        # timing arrivals on the wall clock (card#12631).
+        self.clock: "TestClock | None" = None
+        self.get_clocks: list = []
+        self.get_seqs: list[int] = []
+        self._seq = 0
+        self._seq_lock = threading.Lock()
+        self.holding = 0
+        self._hold_lock = threading.Lock()
+        # A GATE instead of a timed hold: each request of a method in `gate_methods` waits, once recorded, until the
+        # case releases the semaphore — so "written while POST 1 is held" holds however slow the machine.
+        self.gate: "threading.Semaphore | None" = None
+        self.gate_methods: set = set()
         self.key = workdir / "stub.key"
         self.crt = workdir / "stub.crt"
         subprocess.run(
@@ -471,15 +759,20 @@ class Ingest:
 
             def do_GET(self):
                 auth = self.headers.get("Authorization", "")
-                outer.gets += 1
-                outer.get_auths.append(auth)
+                with outer._seq_lock:
+                    outer._seq += 1
+                    outer.get_seqs.append(outer._seq)
+                    outer.get_clocks.append(outer.clock.ms if outer.clock else None)
+                    outer.get_auths.append(auth)
+                    outer.gets += 1
                 i = next((i for i, st in enumerate(outer.get_script) if st.get("auth") in (None, auth)), None)
                 step = outer.get_script.pop(i) if i is not None else {}
                 if step.get("run"):
                     step["run"]()
-                hold = step.get("hold", outer.get_delay_s)
-                if hold:
-                    time.sleep(hold)
+                if outer.gate is not None and "GET" in outer.gate_methods:
+                    outer.gate.acquire(timeout=TestClock.HANG_S)
+                if step.get("hold"):
+                    hold_open(self, step["hold"], outer)
                 if outer.get_status == 200:
                     body = json.dumps({"accepted_schema_versions": step.get("accepted", outer.accepted),
                                        "server_time": "2026-08-24T00:00:00.000Z",
@@ -503,10 +796,13 @@ class Ingest:
                     batch = json.loads(raw)
                 except Exception:
                     batch = {"_unparseable": raw[:200].decode("utf-8", "replace")}
-                outer.batches.append({"batch": batch, "auth": self.headers.get("Authorization", ""),
-                                      "ctype": self.headers.get("Content-Type", "")})
-                if outer.delay_s:
-                    time.sleep(outer.delay_s)
+                with outer._seq_lock:
+                    outer._seq += 1
+                    outer.batches.append({"batch": batch, "auth": self.headers.get("Authorization", ""),
+                                          "ctype": self.headers.get("Content-Type", ""), "seq": outer._seq,
+                                          "clock": outer.clock.ms if outer.clock else None})
+                if outer.gate is not None and "POST" in outer.gate_methods:
+                    outer.gate.acquire(timeout=TestClock.HANG_S)
                 st = outer.status
                 body = json.dumps(outer.body_override or {
                     "batch_id": batch.get("batch_id"), "accepted": len(batch.get("events", [])),
@@ -662,7 +958,150 @@ def pre(tool="Bash", ti=None, tuid="toolu_1", **extra):
     return p
 
 
-print("== 1. The `selftest` subcommand — the checks of § 6.14's member table this build implements, and each one's RED ==")
+print("== 0. THE TEST CLOCK — every reporter process here reads a clock the suite sets (card#12631) ==")
+# `fixed-clock.cjs` replaces the reporter's clock read; `Seat.env` puts every invocation on it (`fixed`, or a
+# `TestClock` for a long-running flusher). This block proves the three things the rest of the suite leans on:
+# that the reporter reads no clock the file does not replace, that a pinned process reads its pin and nothing
+# later however slow it runs, and that the write lock's deliberate wall-clock reads are left on the wall clock.
+CLOCK_READ_RE = re.compile(r"\bDate\.now\(|\bnew Date\(\)|(?<![\w.])Date\(\)|\bperformance\.now\b|\bprocess\.hrtime\b"
+                           r"|\bsetInterval\(|\bsetImmediate\(")
+TOP_DECL_RE = re.compile(r"^(?:async\s+)?function\s+(\w+)|^const\s+(\w+)\s*=")
+SEAT_CLOCK_READERS = {"CLOCK_OFFSET", "now"}       # FLEET_REPORTER_NOW_MS's offset, and `now()` built on it
+
+
+def clock_reads(src: str) -> list[tuple[str, str]]:
+    """(the top-level declaration it sits in, what it reads) for every clock read in a reporter source."""
+    out, decl = [], "<module>"
+    for line in src.splitlines():
+        m = TOP_DECL_RE.match(line)
+        if m:
+            decl = m.group(1) or m.group(2)
+        code = line.split("//", 1)[0]
+        if code.lstrip().startswith("*") or code.lstrip().startswith("/*"):
+            continue
+        out += [(decl, x.group(0)) for x in CLOCK_READ_RE.finditer(code)]
+    return out
+
+
+WALL_CLOCK_READERS = set(json.loads(subprocess.run(
+    ["node", "-e", "process.stdout.write(JSON.stringify([...require(process.argv[1]).WALL_CLOCK_READERS]))",
+     str(FIXED_CLOCK)], capture_output=True, text=True).stdout or "[]"))
+
+
+def clock_inventory_ok(src: str) -> tuple:
+    reads = clock_reads(src)
+    other = sorted({r for _, r in reads if r != "Date.now("})
+    where = {d for d, r in reads if r == "Date.now("}
+    return (other, sorted(where - SEAT_CLOCK_READERS - WALL_CLOCK_READERS), sorted(WALL_CLOCK_READERS - where))
+
+
+eq("the reporter reads one clock, Date.now(), and only in the seat clock (CLOCK_OFFSET, now) and the functions "
+   f"fixed-clock.cjs leaves on the wall clock ({sorted(WALL_CLOCK_READERS)}), each of which still reads it — "
+   "no new Date(), performance.now, process.hrtime, setInterval or setImmediate", ([], [], []),
+   clock_inventory_ok(REPORTER.read_text(encoding="utf-8")))
+_inv_src = REPORTER.read_text(encoding="utf-8").replace(
+    "function releaseWriteLock(spool) {", "function releaseWriteLock(spool) {\n  const x = new Date(); void x;", 1)
+eq("RED (the inventory): a clock read the file does not replace — `new Date()` — is named", (["new Date()"], [], []),
+   clock_inventory_ok(_inv_src))
+_inv_src = REPORTER.read_text(encoding="utf-8").replace(
+    "function releaseWriteLock(spool) {", "function releaseWriteLock(spool) {\n  void Date.now();", 1)
+eq("RED (the inventory): a Date.now() in a function neither clock owns is named", ([], ["releaseWriteLock"], []),
+   clock_inventory_ok(_inv_src))
+
+# THE TIMERS `TestClock.idle` READS. It counts a loop's nap (set inside `nap`) and a request's deadline (the
+# `'request'` timer `ingestRequest` sets beside its `'connect'` one); any other timer would be invisible to it, so
+# the reporter's timers are inventoried the same way, against the three sites that predicate knows.
+TIMER_SITES = ["const t = setTimeout(done, ms);",
+               "requestTimer = setTimeout(() => endByDeadline('request', 'timeout'), K.REQUEST_MS);",
+               "connectTimer = setTimeout(() => endByDeadline('connect', 'connect deadline'), K.CONNECT_MS);"]
+
+
+def timer_sites_ok(src: str) -> tuple:
+    code = [ln.split("//", 1)[0].strip() for ln in src.splitlines()
+            if not ln.lstrip().startswith(("*", "/*")) and "setTimeout(" in ln.split("//", 1)[0]]
+    return (sorted(c for c in code if c not in TIMER_SITES), [t for t in TIMER_SITES if code.count(t) != 1],
+            "const nap = (ms) => new Promise((resolve) => {" in src)
+
+
+eq("the reporter sets exactly the three timers the test clock's idle predicate knows — a loop's nap, and a "
+   "request's two deadlines", ([], [], True), timer_sites_ok(REPORTER.read_text(encoding="utf-8")))
+eq("RED (the timer inventory): a fourth timer is named", (["setTimeout(() => {}, 1);"], [], True),
+   timer_sites_ok(REPORTER.read_text(encoding="utf-8").replace(
+       "function releaseWriteLock(spool) {", "function releaseWriteLock(spool) {\n  setTimeout(() => {}, 1);", 1)))
+
+# A PINNED PROCESS READS ITS PIN AND NOTHING LATER, however long it runs. The slowness is planted, made certain:
+# the copy sleeps 1.5 s after loading and before it handles the hook, which is a loaded machine's start-up. On the
+# wall clock (the seam as it was: FLEET_REPORTER_NOW_MS sets the start and real time keeps running) the event is
+# stamped 1.5 s after the pin; on the test clock it is stamped AT the pin.
+SLOW_MS = 1500
+p_slow = plant(("if (require.main === module) main();", f"if (require.main === module) {{ sleepSync({SLOW_MS}); main(); }}"))
+PIN = rig_clock_ms()
+
+
+def pinned_stamps(name: str, clock: str) -> list[str]:
+    s = seat(name)
+    subprocess.run(["node", str(p_slow), "hook", "PreToolUse"], input=json.dumps(pre(tuid=f"{name}_1")),
+                   capture_output=True, text=True, env=s.env(clock=clock, FLEET_REPORTER_NOW_MS=PIN), cwd=str(HERE))
+    return sorted({e["event_time"] for e in s.events()})
+
+
+def rfc_ms(stamp: str) -> int:
+    return calendar.timegm(time.strptime(stamp[:19], "%Y-%m-%dT%H:%M:%S")) * 1000 + int(stamp[20:23])
+
+
+PIN_RFC = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(PIN / 1000)) + ".%03dZ" % (PIN % 1000)
+st_fixed, st_wall = pinned_stamps("clock-pinned-fixed", "fixed"), pinned_stamps("clock-pinned-wall", "wall")
+eq(f"GREEN: a hook pinned to {PIN_RFC} that runs {SLOW_MS} ms slow stamps every event at the pin, on the test clock",
+   [PIN_RFC], st_fixed)
+eq(f"RED (the wall clock): the same hook with the clock left to run stamps {SLOW_MS} ms or more past the pin",
+   True, bool(st_wall) and all(rfc_ms(x) - PIN >= SLOW_MS for x in st_wall))
+
+# THE WRITE LOCK KEEPS THE WALL CLOCK. Its ages are durations on the filesystem's clock (the reporter's header
+# over `sleepSync`), and a hook pinned two hours ahead must still see a live holder's lock as fresh and wait it
+# out, counting `write_lock_timeout`; a preload that put those reads on the test clock too would read that lock
+# as two hours stale and break it (and, pinned behind, would never time out at all).
+_holder = subprocess.Popen(["sleep", "300"])
+
+
+def held_lock_counts(name: str, preload: Path) -> tuple:
+    s = seat(name)
+    lk = s.spool / "write.lock"
+    lk.write_text(str(_holder.pid), encoding="utf-8")
+    t = time.time() + 120
+    os.utime(lk, (t, t))
+    env = s.env(FLEET_REPORTER_NOW_MS=int(time.time() * 1000) + 2 * HOUR_MS)
+    env["NODE_OPTIONS"] = env["NODE_OPTIONS"].replace(str(FIXED_CLOCK), str(preload))
+    r = subprocess.run(["node", str(REPORTER), "hook", "PreToolUse"], input=json.dumps(pre(tuid=f"{name}_1")),
+                       capture_output=True, text=True, env=env, cwd=str(HERE), timeout=TestClock.HANG_S)
+    c = s.counters()
+    return (r.returncode, c.get("write_lock_timeout", 0), c.get("write_lock_broken", 0), lk.exists())
+
+
+_all_fake = tmpdir("fr-clock-plant-") / "fixed-clock.cjs"
+_fc_src = FIXED_CLOCK.read_text(encoding="utf-8")
+_fc_plant = "const WALL_CLOCK_READERS = new Set([]);"
+_fc_anchor = "const WALL_CLOCK_READERS = new Set(['breakStaleWriteLock', 'acquireWriteLock']);"
+assert _fc_anchor in _fc_src, "plant anchor not found (the RED would be vacuous)"
+_all_fake.write_text(_fc_src.replace(_fc_anchor, _fc_plant, 1), encoding="utf-8")
+try:
+    wl_green, wl_red = held_lock_counts("clock-write-lock", FIXED_CLOCK), held_lock_counts("clock-write-lock-red", _all_fake)
+finally:
+    _holder.kill()
+    _holder.wait()
+eq("GREEN: a hook pinned 2 h ahead waits out a live holder's write lock on the wall clock — exit 0, "
+   "write_lock_timeout 1, nothing broken, the holder's lock left in place", (0, 1, 0, True), wl_green)
+eq("RED (the test clock on the write lock): the same hook reads that lock as 2 h stale and breaks it", (0, 0, 1, False),
+   wl_red)
+redgreen("every reporter process in this suite runs on a clock the suite sets (card#12631)",
+         f"the clock left to run -> a hook pinned to {PIN_RFC} and {SLOW_MS} ms slow stamps {st_wall}; the test clock "
+         f"on the write lock too -> a live holder's lock read as stale and broken {wl_red}; a `new Date()` or a "
+         "Date.now() outside the seat clock -> named by the inventory",
+         f"fixed-clock.cjs -> the same hook stamps {st_fixed}; the write lock on the wall clock {wl_green}; the "
+         f"reporter's clock reads are the seat clock {sorted(SEAT_CLOCK_READERS)} and the wall readers "
+         f"{sorted(WALL_CLOCK_READERS)}")
+
+
+print("\n== 1. The `selftest` subcommand — the checks of § 6.14's member table this build implements, and each one's RED ==")
 s1 = seat("selftest-seat")
 gets_before = INGEST.gets
 r, rep = selftest(s1)
@@ -778,25 +1217,19 @@ redgreen("the one-shot selftest measures the ingest, and says when it could not 
 # passed every assertion here. So the order is asserted below, on the copy AND on the reporter itself.
 FAST_K = {"FLUSH_MS": 25, "REQUEST_MS": 300, "HEARTBEAT_MS": 1200, "HEALTH_MS": 4800}
 K_ORDER = ["FLUSH_MS", "REQUEST_MS", "HEARTBEAT_MS", "HEALTH_MS"]
-POLL_S = 0.01                                      # drive_probes' poll of the stub's GET count
-HOLD_PAST_DEADLINE_S = 2 * FAST_K["REQUEST_MS"] / 1000   # probes 2 and 3: answered only after the deadline
-# Probe 4 answers after a third of the deadline: many POLL_S polls see it ARRIVE before it answers, so
-# the heartbeat split is taken before the heartbeat that follows the answer unless the suite stalls for
-# the whole hold; and it still answers inside the deadline, so it measures.
-REFUSAL_HOLD_S = FAST_K["REQUEST_MS"] / 3000
-# LOWER BOUND on the retry. The flusher counts from `atMs`, taken at the start of the pass; the suite
-# times ARRIVALS at the stub, each noticed by a POLL_S poll. An arrival trails its pass's `atMs` by
-# that pass's pre-probe work (index fold, snapshot) and a fresh TLS handshake, and those lags differ
-# between two passes. Measured for card#9373 round 3, the retry landed up to a few tens of milliseconds
-# past HEARTBEAT_MS on an idle machine, and as far as a few tens UNDER it with the suite and the flusher
-# pinned to one CPU. RETRY_SLACK_S is sized for a loaded CI runner stalling one of those lags or one
-# poll, and is asserted to stay under half the gap to the every-pass retry, so the slack can never
-# admit the defect the bound exists to catch.
-RETRY_SLACK_S = 0.25
-RETRY_AT_LEAST_S = FAST_K["HEARTBEAT_MS"] / 1000 - RETRY_SLACK_S
-EVERY_PASS_RETRY_S = (FAST_K["REQUEST_MS"] + FAST_K["FLUSH_MS"]) / 1000
-RETRY_WITHIN_S = FAST_K["HEALTH_MS"] / 2000        # UPPER BOUND: half the full cadence, a retry and not the next round
-WINDOW_S = 0.9 * FAST_K["HEALTH_MS"] / 1000        # past this a fixed-cadence flusher could probe again
+# THE CASE RUNS ON THE TEST CLOCK (card#12631): the flusher's passes, its probe deadline and its cadences
+# all read the `TestClock` the driver steps one FLUSH_MS at a time, and the stub stamps each probe with the
+# clock it arrived at. So the retry below is measured in the clock's milliseconds, EXACTLY: a probe arrives
+# at the clock its pass began at, because nothing moves the clock while a pass runs. Before, the suite timed
+# arrivals on the wall clock and needed a slack for a loaded machine's lags, and on a host at load ~55-90 the
+# held probes' answers and the deadline still raced. A held probe is now held for HELD_S of wall time — far
+# past any step — and ended by the deadline the clock fires, so it can never be answered first.
+HELD_S = 60.0                                      # probes 2 and 3: held until the clock's deadline ends them
+PROBE_STEPS_MAX = 600                              # a hang bound on the clock's steps, far past the window
+RETRY_AT_LEAST_MS = FAST_K["HEARTBEAT_MS"]         # LOWER BOUND: one heartbeat interval after the probe began
+EVERY_PASS_RETRY_MS = FAST_K["REQUEST_MS"] + FAST_K["FLUSH_MS"]   # the defect: the deadline plus one nap
+RETRY_WITHIN_MS = FAST_K["HEALTH_MS"] // 2         # UPPER BOUND: half the full cadence, a retry and not the next round
+WINDOW_MS = 9 * FAST_K["HEALTH_MS"] // 10          # past this a fixed-cadence flusher could probe again
 
 _prod_src = REPORTER.read_text(encoding="utf-8")
 PROD_K = {k: int(re.search(rf"\b{k}: (\d+),", _prod_src).group(1)) for k in K_ORDER}
@@ -805,14 +1238,11 @@ eq(f"precondition: the reporter's own intervals are in the order the retry bound
    all(PROD_K[a] < PROD_K[b] for a, b in zip(K_ORDER, K_ORDER[1:])))
 eq(f"precondition: the scaled copy keeps that order ({FAST_K})", True,
    all(FAST_K[a] < FAST_K[b] for a, b in zip(K_ORDER, K_ORDER[1:])))
-eq(f"precondition: the lower bound ({RETRY_AT_LEAST_S:.2f} s) sits above an every-pass retry "
-   f"(~{EVERY_PASS_RETRY_S:.3f} s) by more than twice the slack", True,
-   RETRY_AT_LEAST_S - EVERY_PASS_RETRY_S > 2 * RETRY_SLACK_S)
-eq(f"precondition: the upper bound ({RETRY_WITHIN_S:.2f} s) sits above a heartbeat-interval retry plus one "
-   f"pass (~{(FAST_K['HEARTBEAT_MS'] + FAST_K['FLUSH_MS']) / 1000:.3f} s) by more than twice the slack, "
-   f"and inside the window", True,
-   RETRY_WITHIN_S - (FAST_K["HEARTBEAT_MS"] + FAST_K["FLUSH_MS"]) / 1000 > 2 * RETRY_SLACK_S
-   and RETRY_WITHIN_S < WINDOW_S)
+eq(f"precondition: the lower bound ({RETRY_AT_LEAST_MS} ms) sits above an every-pass retry "
+   f"({EVERY_PASS_RETRY_MS} ms)", True, RETRY_AT_LEAST_MS > EVERY_PASS_RETRY_MS)
+eq(f"precondition: the upper bound ({RETRY_WITHIN_MS} ms) sits above a heartbeat-interval retry plus one "
+   f"pass ({FAST_K['HEARTBEAT_MS'] + FAST_K['FLUSH_MS']} ms), and inside the window", True,
+   FAST_K["HEARTBEAT_MS"] + FAST_K["FLUSH_MS"] < RETRY_WITHIN_MS < WINDOW_MS)
 
 
 def fast_flusher(*defects) -> Path:
@@ -846,46 +1276,66 @@ def wire_heartbeats(mark: int = 0) -> list[dict]:
             if e.get("kind") == "reporter.heartbeat"]
 
 
-def drive_probes(name: str, reporter: Path) -> dict:
+def drive_probes(name: str, reporter: Path, *, step_ms: int = FAST_K["FLUSH_MS"]) -> dict:
     """A long-lived flusher on an `enabled: false` seat (no spooled event is sent, so the probe is its
     only GET and every POST is a heartbeat-only request) against scripted health answers: probe 1
     accepts this version; probes 2 and 3 are held past the probe deadline; probe 4 answers with a set
-    that lacks the version. Heartbeats are split at the moment a probe ARRIVES at the stub. The site's
-    lane awaits each probe before it builds, so a heartbeat received after probe k arrived was built
-    after probe k-1 resolved."""
+    that lacks the version. Heartbeats are split by ARRIVAL ORDER at the stub: the site's lane awaits each
+    probe before it builds, so a heartbeat that arrived after probe k was built after probe k-1 resolved.
+
+    On the test clock, stepped `step_ms` at a time (`step_ms=0` is the planted "forgot to advance the clock"
+    driver). A probe held by the stub is ended by stepping the clock one REQUEST_MS, which fires its
+    deadline; `retry_ms` is the clock between probes 2 and 3."""
     s = seat(name, enabled=False)
-    (s.spool / "flusher.lock").unlink(missing_ok=True)
-    mark = len(INGEST.batches)
-    INGEST.gets = 0
-    INGEST.get_script = [{}, {"hold": HOLD_PAST_DEADLINE_S}, {"hold": HOLD_PAST_DEADLINE_S},
-                         {"accepted": [999], "hold": REFUSAL_HOLD_S}]
-    p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False),
-                         cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    arrived: dict[int, float] = {}
-    split: dict[int, int] = {}
+    auth = f"Bearer {s.token}"
+    mark, g0 = len(INGEST.batches), len(INGEST.get_auths)
+    INGEST.get_script = [{"auth": auth}, {"hold": HELD_S, "auth": auth}, {"hold": HELD_S, "auth": auth},
+                         {"accepted": [999], "auth": auth}]
+
+    def probes() -> list[tuple[int, int]]:
+        """(arrival seq, clock) of this seat's probes, in order."""
+        return [(INGEST.get_seqs[i], INGEST.get_clocks[i]) for i in range(g0, len(INGEST.get_auths))
+                if INGEST.get_auths[i] == auth]
+
+    deadlined: set[int] = set()
+
+    def held_open() -> bool:
+        return any(k in (2, 3) and k not in deadlined for k in range(1, len(probes()) + 1))
+
+    def heartbeats() -> list[tuple[int, dict]]:
+        """(arrival seq, selftest object) of this seat's heartbeats, in order."""
+        return [(b["seq"], e["data"]["selftest"]) for b in list(INGEST.batches[mark:]) if b.get("auth") == auth
+                for e in b["batch"].get("events", []) if e.get("kind") == "reporter.heartbeat"]
+
+    def hb_after(seq: int) -> list[dict]:
+        return [x for q, x in heartbeats() if q > seq]
+
+    f = ClockedFlusher(s, reporter, also=held_open)
     try:
-        started = time.time()
-        while p.poll() is None and time.time() - started < 30:
-            for k in (2, 3, 4):
-                if k not in arrived and INGEST.gets >= k:
-                    arrived[k] = time.time()
-                    split[k] = len(heartbeat_selftests(mark))
-            if 4 in arrived and len(heartbeat_selftests(mark)) > split[4]:
+        for _ in range(PROBE_STEPS_MAX):
+            pr = probes()
+            if not f.alive():
                 break
-            if 2 in arrived and 4 not in arrived and time.time() - arrived[2] > WINDOW_S:
+            if len(pr) >= 4 and hb_after(pr[3][0]):
                 break
-            time.sleep(POLL_S)
+            if len(pr) >= 2 and len(pr) < 4 and f.ms - pr[1][1] > WINDOW_MS:
+                break
+            if held_open():
+                deadlined.add(min(k for k in (2, 3) if k <= len(pr) and k not in deadlined))
+                f.step(FAST_K["REQUEST_MS"], also=held_open, what="a held probe's deadline")
+            else:
+                f.step(step_ms, also=held_open, what="a pass")
     finally:
-        if p.poll() is None:
-            p.kill()
-            p.wait()
+        f.close()
         INGEST.get_script = []
-        s.freeze_flusher()
-    hbs = heartbeat_selftests(mark)
-    return {"before": hbs[: split.get(2, len(hbs))],
-            "after_timeouts": hbs[split.get(2, len(hbs)): split.get(4, len(hbs))],
-            "after_refusal": hbs[split[4]:] if 4 in arrived else [],
-            "retry_s": round(arrived[3] - arrived[2], 2) if 3 in arrived and 2 in arrived else None}
+    pr, hbs = probes(), heartbeats()
+    inf = float("inf")
+    s2, s4 = (pr[1][0] if len(pr) >= 2 else inf), (pr[3][0] if len(pr) >= 4 else inf)
+    return {"before": [x for q, x in hbs if q < s2],
+            "after_timeouts": [x for q, x in hbs if s2 < q < s4],
+            "after_refusal": [x for q, x in hbs if q > s4],
+            "retry_ms": pr[2][1] - pr[1][1] if len(pr) >= 3 else None,
+            "probes": len(pr), "clock_ms": f.ms - pr[0][1] if pr else None}
 
 
 def pair(st: dict) -> tuple:
@@ -899,11 +1349,11 @@ eq("GREEN: after probes that timed out, every heartbeat still reports the last m
    "no false `schema_version_accepted` fail", (True, {("pass", "pass")}),
    (bool(g_f["after_timeouts"]), {pair(x) for x in g_f["after_timeouts"]}))
 eq(f"GREEN: a probe that measured nothing re-probes no sooner than K.HEARTBEAT_MS (at least "
-   f"{RETRY_AT_LEAST_S:.2f} s at the scaled {FAST_K['HEARTBEAT_MS']} ms)", True,
-   g_f["retry_s"] is not None and g_f["retry_s"] >= RETRY_AT_LEAST_S)
-eq(f"GREEN: … and well inside the K.HEALTH_MS cadence (under {RETRY_WITHIN_S} s at the scaled "
+   f"{RETRY_AT_LEAST_MS} ms of the clock at the scaled {FAST_K['HEARTBEAT_MS']} ms)", True,
+   g_f["retry_ms"] is not None and g_f["retry_ms"] >= RETRY_AT_LEAST_MS)
+eq(f"GREEN: … and well inside the K.HEALTH_MS cadence (under {RETRY_WITHIN_MS} ms of the clock at the scaled "
    f"{FAST_K['HEALTH_MS']} ms)", True,
-   g_f["retry_s"] is not None and g_f["retry_s"] < RETRY_WITHIN_S)
+   g_f["retry_ms"] is not None and g_f["retry_ms"] < RETRY_WITHIN_MS)
 eq("GREEN: a later probe that DID measure overwrites — an answer lacking this version turns the kept "
    "pass into a fail", ("pass", "fail"), pair(g_f["after_refusal"][-1]) if g_f["after_refusal"] else None)
 
@@ -916,7 +1366,7 @@ r_f = drive_probes("flusher-keeps-last-red-overwrite", fast_flusher(
 eq("RED: a flusher that lets a timed-out probe overwrite heartbeats a false fail after it",
    True, ("fail", "fail") in {pair(x) for x in r_f["after_timeouts"]})
 eq("  … and, on a fixed K.HEALTH_MS cadence, does not re-probe inside half of it", True,
-   r_f["retry_s"] is None or r_f["retry_s"] >= RETRY_WITHIN_S)
+   r_f["retry_ms"] is None or r_f["retry_ms"] >= RETRY_WITHIN_MS)
 
 # RED 2 — keep-last read as keep-FIRST: a measured value is never replaced, so a refusal that arrives
 # after a pass is hidden behind it.
@@ -933,20 +1383,30 @@ eq("RED: a flusher that never replaces a measured value keeps reporting pass aft
 r_e = drive_probes("flusher-keeps-last-red-everypass", fast_flusher(
     ("healthEveryMs = unmeasured ? K.HEARTBEAT_MS : K.HEALTH_MS;", "healthEveryMs = unmeasured ? 0 : K.HEALTH_MS;")))
 eq(f"RED: a flusher that re-probes on every pass while a check is unmeasured fails the lower bound "
-   f"(retry under {RETRY_AT_LEAST_S:.2f} s)", True,
-   r_e["retry_s"] is not None and r_e["retry_s"] < RETRY_AT_LEAST_S)
+   f"(retry under {RETRY_AT_LEAST_MS} ms of the clock)", True,
+   r_e["retry_ms"] is not None and r_e["retry_ms"] < RETRY_AT_LEAST_MS)
 eq("  … while its retry sits under the upper bound too, so the lower bound is the assertion that catches it",
-   True, r_e["retry_s"] is not None and r_e["retry_s"] < RETRY_WITHIN_S)
+   True, r_e["retry_ms"] is not None and r_e["retry_ms"] < RETRY_WITHIN_MS)
+# THE HARNESS'S OWN RED — the driver that FORGETS TO ADVANCE THE CLOCK (card#12631). The same green copy,
+# driven with a step of 0: the clock never moves, so no nap ever ends and no cadence ever comes due, however
+# long the driver runs on the wall clock. The case's GREEN assertions must fail, every run: a case whose
+# verdict could still go green here would be reading the wall clock somewhere.
+r_0 = drive_probes("flusher-keeps-last-red-clock-frozen", fast_flusher(), step_ms=0)
+eq("RED (the test clock): a driver that never advances the clock sees the first probe and nothing after it "
+   "— no retry, no second probe, the clock where it started", (1, None, 0),
+   (r_0["probes"], r_0["retry_ms"], r_0["clock_ms"]))
+eq("  … so the GREEN assertions above would fail on it: no heartbeat after a timed-out probe", False,
+   bool(r_0["after_timeouts"]))
 redgreen("the flusher keeps the last MEASURED network checks and re-probes sooner when a probe measured "
          "nothing, but no sooner than one heartbeat interval (§ 6.14, card#9373 rounds 2-3; timing scaled on a copy)",
          f"null overwrites + fixed cadence -> heartbeats after the timed-out probes "
-         f"{sorted({pair(x) for x in r_f['after_timeouts']})}, re-probe after {r_f['retry_s']} s; "
+         f"{sorted({pair(x) for x in r_f['after_timeouts']})}, re-probe after {r_f['retry_ms']} ms; "
          f"never replacing a measured value -> heartbeat after a refusing answer "
          f"{pair(r_k['after_refusal'][-1]) if r_k['after_refusal'] else None}; "
-         f"re-probe on every pass -> re-probe after {r_e['retry_s']} s (lower bound {RETRY_AT_LEAST_S:.2f} s)",
+         f"re-probe on every pass -> re-probe after {r_e['retry_ms']} ms (lower bound {RETRY_AT_LEAST_MS} ms)",
          f"keep-last + K.HEARTBEAT_MS retry -> before {pair(g_f['before'][-1]) if g_f['before'] else None}, "
          f"after timeouts {sorted({pair(x) for x in g_f['after_timeouts']})}, re-probe after "
-         f"{g_f['retry_s']} s (bounds [{RETRY_AT_LEAST_S:.2f}, {RETRY_WITHIN_S}) s at {FAST_K}), after a refusal "
+         f"{g_f['retry_ms']} ms (bounds [{RETRY_AT_LEAST_MS}, {RETRY_WITHIN_MS}) ms of the clock at {FAST_K}), after a refusal "
          f"{pair(g_f['after_refusal'][-1]) if g_f['after_refusal'] else None}")
 
 # RED — an http:// ingest_url is REFUSED at install (§ 3.5), not downgraded.
@@ -1055,11 +1515,10 @@ eq("  … and the event is kept: with the file restored, the next pass delivers 
 # replaced it, and sent nothing until an operator restarted it. Driven on the timing-scaled copy (§ 1's
 # FAST_K) so the passes before and after the file appears take milliseconds, not K.FLUSH_MS each.
 CA_APPEARS_PASSES = 20                                  # passes run on the missing file before it is created
-CA_APPEARS_WITHIN_S = 10.0                              # the bound on the recovery; met in well under a second
-# The flusher's own start-time refusal line (`flusherMain`), which no hook writes; and the bound on waiting for
-# it, which only a hung flusher reaches — it orders the steps, it times nothing (card#12631).
+CA_APPEARS_WITHIN_PASSES = 2                            # the recovery: the next pass after the file appears delivers
+# The flusher's own start-time refusal line (`flusherMain`), which no hook writes (card#12631): the hook above logs
+# a `config invalid` line too, so only this phrase says the FLUSHER read its config with the file missing.
 FLUSHER_REFUSED = "— spooling, sending nothing to the site(s) each error scopes to"
-FLUSHER_START_HANG_S = 120.0
 
 
 def drive_ca_appears(name: str, reporter: Path) -> dict:
@@ -1067,54 +1526,47 @@ def drive_ca_appears(name: str, reporter: Path) -> dict:
     root.mkdir(parents=True, exist_ok=True)
     ca_later = root / "pinned-ca.pem"
     s = seat(name, ca=str(ca_later))
-    hook(s, "PreToolUse", pre(tuid="toolu_ca_appears"), reporter=reporter)
-    (s.spool / "flusher.lock").unlink(missing_ok=True)
+    t = rig_clock_ms()
+    hook(s, "PreToolUse", pre(tuid="toolu_ca_appears"), reporter=reporter, FLEET_REPORTER_NOW_MS=t)
     b0, g0 = len(INGEST.batches), len(INGEST.get_auths)
-    p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, **EXTRA_TRUST), cwd=str(HERE),
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    d: dict = {"pid": p.pid, "path": str(ca_later)}
+    # On the test clock (card#12631): the flusher's start, and then every pass, is a step the suite takes and
+    # waits out, so "N passes on the missing file" is N passes however slow the machine, and the recovery is
+    # counted in the clock's passes rather than timed. The flusher's start-time refusal is read once it has
+    # settled: `FLUSHER_REFUSED` is that line alone, which no hook writes.
+    f = ClockedFlusher(s, reporter, start_ms=t, **EXTRA_TRUST)
+    d: dict = {"pid": f.proc.pid, "path": str(ca_later)}
     try:
-        # THE FLUSHER'S OWN REFUSAL, waited for before the file is created: the hook above logs a `config invalid`
-        # line too, so a wait for that phrase alone ended at once and a fixed sleep stood in for the flusher's start.
-        # On a loaded machine the flusher had not read its config by the end of it, found the file already there,
-        # and delivered — the RED read as GREEN (card#12631). `FLUSHER_REFUSED` is the flusher's start line alone.
-        t0 = time.time()
-        while p.poll() is None and time.time() - t0 < FLUSHER_START_HANG_S and FLUSHER_REFUSED not in seat_log(s):
-            time.sleep(0.02)
-        time.sleep(CA_APPEARS_PASSES * FAST_K["FLUSH_MS"] / 1000)
+        for _ in range(CA_APPEARS_PASSES):
+            f.step(FAST_K["FLUSH_MS"], what="a pass on the missing ca_file")
         d.update(refused_at_start=FLUSHER_REFUSED in seat_log(s) and "ENOENT" in seat_log(s),
                  posts_before=len(s.posted(b0)), gets_before=s.probed(g0))
         shutil.copyfile(CA, ca_later)
-        t1, b1 = time.time(), len(INGEST.batches)
+        b1 = len(INGEST.batches)
 
         def events_since() -> list[dict]:
             return [e for b in s.posted(b1) for e in b.get("events", [])]
 
-        while p.poll() is None and time.time() - t1 < CA_APPEARS_WITHIN_S:
+        def recovered() -> bool:
             ev = events_since()
-            if any(e.get("kind") == "tool.start" for e in ev) and any(
-                    e.get("kind") == "reporter.heartbeat" and e["data"]["selftest"].get("config_readable") == "pass"
-                    for e in ev):
-                break
-            time.sleep(0.02)
+            return any(e.get("kind") == "tool.start" for e in ev) and any(
+                e.get("kind") == "reporter.heartbeat" and e["data"]["selftest"].get("config_readable") == "pass" for e in ev)
+
+        passes = f.run_until(recovered, FAST_K["FLUSH_MS"], CA_APPEARS_WITHIN_PASSES, what="a pass after the file appears")
         ev = events_since()
-        d.update(alive=p.poll() is None, owner_pid=s.state().get("owner_pid"),
+        d.update(alive=f.alive(), owner_pid=s.state().get("owner_pid"),
                  delivered=any(e.get("kind") == "tool.start" for e in ev),
                  heartbeat_readable=[e["data"]["selftest"].get("config_readable") for e in ev
                                      if e.get("kind") == "reporter.heartbeat"],
-                 recovery_s=round(time.time() - t1, 2))
+                 recovery_passes=passes)
     finally:
-        if p.poll() is None:
-            p.kill()
-        p.wait()
-        s.freeze_flusher()
+        f.close()
     return d
 
 
 ca_appears = drive_ca_appears("ca-appears", fast_flusher())
 eq("a flusher started on a missing ca_file refuses the config at start, and sends and probes nothing while "
    "the file is missing", (True, 0, 0), (ca_appears["refused_at_start"], ca_appears["posts_before"], ca_appears["gets_before"]))
-eq(f"  … once the file is created, the SAME flusher delivers the spooled event within {CA_APPEARS_WITHIN_S} s, "
+eq(f"  … once the file is created, the SAME flusher delivers the spooled event within {CA_APPEARS_WITHIN_PASSES} passes of the clock, "
    "with no restart", (True, True, ca_appears["pid"]),
    (ca_appears["alive"], ca_appears["delivered"], ca_appears["owner_pid"]))
 eq("  … and a heartbeat it sends after that carries config_readable `pass`", True,
@@ -1126,11 +1578,11 @@ eq("RED: a flusher that checks ca_file only at start is still alive and delivers
    (True, True, False), (red_appears["refused_at_start"], red_appears["alive"], red_appears["delivered"]))
 redgreen("a flusher started on an unreadable ca_file resumes once the file is readable, with no restart (§ 3.5, card#9500)",
          f"checked only at start -> refused at start {red_appears['refused_at_start']}, file created, "
-         f"{CA_APPEARS_WITHIN_S} s later alive {red_appears['alive']}, delivered {red_appears['delivered']}, "
+         f"{CA_APPEARS_WITHIN_PASSES} passes later alive {red_appears['alive']}, delivered {red_appears['delivered']}, "
          f"heartbeat config_readable {red_appears['heartbeat_readable']}",
          f"re-checked each pass -> refused at start {ca_appears['refused_at_start']} (posts {ca_appears['posts_before']}, "
          f"probes {ca_appears['gets_before']} while missing), file created, same pid {ca_appears['owner_pid'] == ca_appears['pid']}, "
-         f"delivered {ca_appears['delivered']} in {ca_appears['recovery_s']} s, heartbeat config_readable "
+         f"delivered {ca_appears['delivered']} in {ca_appears['recovery_passes']} pass(es), heartbeat config_readable "
          f"{ca_appears['heartbeat_readable']}")
 
 # (c) A `ca_file` that is a string but not an absolute path is the same config error: § 3.1 types the
@@ -1303,7 +1755,7 @@ def drive_relative_spool(name: str, reporter: Path = REPORTER) -> dict:
     spawned, _ = await_flushers(True, 2.0)          # a hook that finds no lock under its spool forks one
     reap_flushers(spawned)
     f = subprocess.run(["node", str(reporter), "flusher"], capture_output=True, text=True,
-                       env=s.env(freeze=False, FLEET_REPORTER_ONE_PASS="1"), cwd=str(cwd_flusher), timeout=90)
+                       env=s.env(freeze=False, FLEET_REPORTER_ONE_PASS="1"), cwd=str(cwd_flusher), timeout=TestClock.HANG_S)
     reap_flushers(spawned_flushers() or [])
     files = lambda d: sorted(str(x.relative_to(d)) for x in d.rglob("*") if x.is_file())
     return dict(hook_rc=r.returncode, hook_out=r.stdout + r.stderr, flusher_rc=f.returncode,
@@ -1391,48 +1843,46 @@ def drive_ca_gone_live(name: str, reporter: Path, *, held: bool = False, verdict
     ca_copy = root / "pinned-ca.pem"
     shutil.copyfile(CA, ca_copy)
     s = seat(name, ca=str(ca_copy))
-    hook(s, "PreToolUse", pre(tuid="toolu_ca_live_1"), reporter=reporter)
-    (s.spool / "flusher.lock").unlink(missing_ok=True)
+    # On the test clock (card#12631): every hook is pinned to it and every pass is a step the suite waits out, so
+    # "removed while a pass is held", "resumed 0.2 s after the removal" and "N passes with the file gone" are
+    # exactly that on the clock the reporter stamps its log lines and its batch ids with, however slow the host.
+    t = rig_clock_ms()
+    hook(s, "PreToolUse", pre(tuid="toolu_ca_live_1"), reporter=reporter, FLEET_REPORTER_NOW_MS=t)
     b0 = len(INGEST.batches)
     # The backoff seam (timing only) makes a lane that does attempt while the file is gone attempt on every pass,
     # so its count is not left to the ladder's jitter.
-    p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, FLEET_REPORTER_BACKOFF_MAX_MS=0),
-                         cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    d: dict = {"pid": p.pid}
+    f = ClockedFlusher(s, reporter, start_ms=t, FLEET_REPORTER_BACKOFF_MAX_MS=0)
+    d: dict = {"pid": f.proc.pid}
+    step = FAST_K["FLUSH_MS"]
 
     def delivered(since: int) -> bool:
         return any(e.get("kind") == "tool.start" for b in s.posted(since) for e in b.get("events", []))
 
     try:
-        t0 = time.time()
-        while p.poll() is None and time.time() - t0 < FLUSHER_START_HANG_S and not delivered(b0):
-            time.sleep(0.02)
         d["delivered_before"] = delivered(b0)
         if held:
             (s.spool / PASS_HOLD).write_text("")
-            t0 = time.time()
-            while p.poll() is None and time.time() - t0 < FLUSHER_START_HANG_S and not (s.spool / PASS_HELD).exists():
-                time.sleep(0.005)
+            f.run_until(lambda: (s.spool / PASS_HELD).exists(), step, 4, what="a pass reaching the planted hold")
         ca_copy.unlink()
-        gone_from = int(time.time() * 1000)
+        gone_from = f.ms
         b1 = len(INGEST.batches)
-        hook(s, "PreToolUse", pre(tuid="toolu_ca_live_2"), reporter=reporter)
+        hook(s, "PreToolUse", pre(tuid="toolu_ca_live_2"), reporter=reporter, FLEET_REPORTER_NOW_MS=f.ms)
         if held:
-            time.sleep(max(0.0, (gone_from + HELD_AFTER_REMOVAL_MS) / 1000 - time.time()))
+            f.step(HELD_AFTER_REMOVAL_MS, what="the hold past the removal")
             (s.spool / PASS_HOLD).unlink()
-        time.sleep(CA_GONE_PASSES * FAST_K["FLUSH_MS"] / 1000)
-        # The file stays gone until the lane has said so itself, however slow its passes — a lane that never re-checks
-        # the file (the RED) never does, and is not waited for.
-        t0 = time.time()
-        while verdict and p.poll() is None and time.time() - t0 < FLUSHER_START_HANG_S and not LANE_GONE_RE.search(seat_log(s)):
-            time.sleep(0.02)
+        for _ in range(CA_GONE_PASSES):
+            f.step(step, what="a pass with the file gone")
+        # The file stays gone until the lane has said so itself — a lane that never re-checks the file (the RED)
+        # never does, and is not waited for.
+        if verdict:
+            f.run_until(lambda: bool(LANE_GONE_RE.search(seat_log(s))), step, 4, what="the lane's own verdict")
         d.update(posts_while_gone=len(s.posted(b1)), logged="ca_file unreadable" in seat_log(s))
-        gone_to = int(time.time() * 1000)
+        gone_to = f.ms
         shutil.copyfile(CA, ca_copy)
-        t1, b2 = time.time(), len(INGEST.batches)
-        while p.poll() is None and time.time() - t1 < FLUSHER_START_HANG_S and not delivered(b2):
-            time.sleep(0.02)
-        time.sleep(4 * FAST_K["FLUSH_MS"] / 1000)
+        b2 = len(INGEST.batches)
+        f.run_until(lambda: delivered(b2), step, 4, what="a pass after the file is restored")
+        for _ in range(4):
+            f.step(step, what="a pass after the restore")
         log = seat_log(s)
         m_gone, m_back = LANE_GONE_RE.search(log), LANE_BACK_RE.search(log)
         # No `config invalid` line: the lane never reached a verdict of its own (the RED), so nothing it built
@@ -1453,7 +1903,7 @@ def drive_ca_gone_live(name: str, reporter: Path, *, held: bool = False, verdict
                 in_flight.append(b["batch_id"])
             if gone_from + 100 < at < gone_to:
                 margin_counted.append(b["batch_id"])
-        d.update(alive=p.poll() is None, delivered_after=delivered(b2), requests_built_while_gone=built_gone,
+        d.update(alive=f.alive(), delivered_after=delivered(b2), requests_built_while_gone=built_gone,
                  heartbeats_built_while_gone=readable, in_flight=in_flight, margin_counted=margin_counted,
                  lane_verdict=bool(m_gone),
                  # ATTEMPTS while the file was gone: the request primitive refuses each (`ca_file unreadable`) and
@@ -1461,10 +1911,7 @@ def drive_ca_gone_live(name: str, reporter: Path, *, held: bool = False, verdict
                  # the removal may have checked the file before it went, so one is the pass's and not a verdict.
                  attempts_while_gone=log.count("batch refused by the config"))
     finally:
-        if p.poll() is None:
-            p.kill()
-        p.wait()
-        s.freeze_flusher()
+        f.close()
     return d
 
 
@@ -1755,43 +2202,52 @@ eq("  … and its one-shot probe measures direct, exit 0", ("pass", "pass", 0),
 # CONNECT answer is inside it — so the probe gives up at the connect deadline, measures nothing, and
 # costs the flush loop K.CONNECT_MS instead of K.REQUEST_MS.
 s_sil = proxied_seat("proxy-silent", SILENT_PROXY, enabled=False)
-t0 = time.monotonic()
-r_sil, rep_sil = selftest(s_sil)
-t_sil = time.monotonic() - t0
+# ON THE TEST CLOCK (card#12631): the deadlines are the reporter's own timers, and they fire when the clock the
+# suite steps reaches them, so "waited out the connect deadline, not the request deadline" is read off the clock
+# (to one DEADLINE_STEP_MS step) rather than timed on the wall clock, and the RED's two request deadlines cost the
+# run no wall time at all.
+DEADLINE_STEP_MS = 250
+K_CONNECT_MS, K_REQUEST_MS = int(K_CONNECT_S * 1000), int(K_REQUEST_S * 1000)
+o_sil = clocked_oneshot(s_sil, ["selftest"], REPORTER, step_ms=DEADLINE_STEP_MS)
+r_sil = subprocess.CompletedProcess([], o_sil["rc"], o_sil["stdout"], o_sil["stderr"])
+rep_sil = json.loads(o_sil["stdout"]) if _safe(o_sil["stdout"]) else {"checks": {}, "detail": {"sites": {"default": {}}}}
+t_sil = o_sil["clock_ms"]
 eq("GREEN: against a proxy that never answers CONNECT, the one-shot reports both network checks "
    "not_measured and exits 2", ("not_measured", "not_measured", 2),
-   (rep_sil["checks"]["tls_verify"], rep_sil["checks"]["schema_version_accepted"], r_sil.returncode))
+   (rep_sil["checks"].get("tls_verify"), rep_sil["checks"].get("schema_version_accepted"), r_sil.returncode))
 eq("  … naming the connect deadline as why", "connect deadline", rep_sil["detail"]["sites"]["default"].get("probe_error"))
 eq(f"  … having asked that proxy for the tunnel and waited out the connect deadline, not the request "
-   f"deadline ({K_CONNECT_S} s <= {t_sil:.1f} s < {DEADLINE_SPLIT_S} s)", (True, True),
-   (DEAD_TARGET in SILENT_PROXY.connects, K_CONNECT_S <= t_sil < DEADLINE_SPLIT_S))
+   f"deadline ({K_CONNECT_MS} ms <= {t_sil} ms of the clock < {K_REQUEST_MS} ms)", (True, True),
+   (DEAD_TARGET in SILENT_PROXY.connects, K_CONNECT_MS <= t_sil < K_REQUEST_MS))
 # THE PASS MAKES TWO REQUESTS SINCE card#12180: the probe, and the site's heartbeat, which is a request of its
 # own (D1 § 6.14) built after the probe gave up. Both go through the silent proxy, so each is held for the
 # connect deadline, and the bound is on the two together: two connect deadlines, against two request ones.
-t0 = time.monotonic()
-flush(s_sil)
-t_sil_pass = time.monotonic() - t0
+(s_sil.spool / "flusher.lock").unlink(missing_ok=True)
+t_sil_pass = clocked_oneshot(s_sil, ["flusher"], REPORTER, step_ms=DEADLINE_STEP_MS, freeze=False,
+                             FLEET_REPORTER_ONE_PASS="1")["clock_ms"]
+s_sil.freeze_flusher()
 eq(f"GREEN: a flusher pass on that seat — its probe and its heartbeat's request — is held for two connect "
-   f"deadlines only ({2 * K_CONNECT_S} s <= {t_sil_pass:.1f} s < {2 * DEADLINE_SPLIT_S} s)", True,
-   2 * K_CONNECT_S <= t_sil_pass < 2 * DEADLINE_SPLIT_S)
+   f"deadlines only ({2 * K_CONNECT_MS} ms <= {t_sil_pass} ms of the clock < {K_CONNECT_MS + K_REQUEST_MS} ms)", True,
+   2 * K_CONNECT_MS <= t_sil_pass < K_CONNECT_MS + K_REQUEST_MS)
 p_noconnect = plant(("    connectTimer = setTimeout(() => endByDeadline('connect', 'connect deadline'), K.CONNECT_MS);\n", ""))
-t0 = time.monotonic()
-flush(s_sil, reporter=p_noconnect)
-t_sil_red = time.monotonic() - t0
+(s_sil.spool / "flusher.lock").unlink(missing_ok=True)
+t_sil_red = clocked_oneshot(s_sil, ["flusher"], p_noconnect, step_ms=DEADLINE_STEP_MS, freeze=False,
+                            FLEET_REPORTER_ONE_PASS="1")["clock_ms"]
+s_sil.freeze_flusher()
 eq(f"RED: with no connect deadline the same pass waits out two request deadlines "
-   f"({t_sil_red:.1f} s >= {2 * DEADLINE_SPLIT_S} s)", True, t_sil_red >= 2 * DEADLINE_SPLIT_S)
+   f"({t_sil_red} ms of the clock >= {2 * K_REQUEST_MS} ms)", True, t_sil_red >= 2 * K_REQUEST_MS)
 redgreen("the health probe takes the seat's route, proxy_url included, and a silent proxy costs the connect "
          "deadline, not the request deadline (§ 3.5, card#9473)",
          f"probe without the proxy -> CONNECTs {bp_connects}, one-shot "
          f"{rep_bp['checks']['tls_verify']}/{rep_bp['checks']['schema_version_accepted']} rc={r_bp.returncode}, "
          f"heartbeat {pair(hb_bp[-1]) if hb_bp else None}; sender without the proxy -> batches {len(got_psr)}, "
-         f"CONNECTs {conn_psr}; no connect deadline -> silent-proxy pass {t_sil_red:.1f} s",
+         f"CONNECTs {conn_psr}; no connect deadline -> silent-proxy pass {t_sil_red} ms of the clock",
          f"probe via ingestRequest -> CONNECTs {px_connects}, one-shot "
          f"{rep_px['checks']['tls_verify']}/{rep_px['checks']['schema_version_accepted']} rc={r_px.returncode}, "
          f"heartbeat {pair(hb_px[-1]) if hb_px else None}; sender -> batches {len(got_ps)}, CONNECTs {conn_ps}; "
          f"no proxy_url -> batches {len(got_d)}, CONNECTs {conn_d}; silent proxy -> one-shot "
          f"{rep_sil['checks']['schema_version_accepted']} rc={r_sil.returncode} "
-         f"'{rep_sil['detail']['sites']['default'].get('probe_error')}' in {t_sil:.1f} s, pass {t_sil_pass:.1f} s")
+         f"'{rep_sil['detail']['sites']['default'].get('probe_error')}' in {t_sil} ms of the clock, pass {t_sil_pass} ms")
 PROXY.stop()
 SILENT_PROXY.stop()
 
@@ -1889,28 +2345,29 @@ eq("  … and the flusher pass after it asks the proxy for its probe's tunnel al
     "refused by the proxy on proxy_url's credential" in seat_log(s_wrong)))
 
 
-def px_running(name: str, reporter: Path, run_s: float = 2.0) -> dict:
+PX_RUN_PASSES = 80                                      # 2 s of the clock at the scaled FLUSH_MS
+
+
+def px_running(name: str, reporter: Path, passes: int = PX_RUN_PASSES) -> dict:
     """A long-lived flusher (scaled timings, a backoff of 0, so a lane in retry attempts every pass) on a seat
-    whose proxy refuses its credential, with an event spooled: how many CONNECTs it makes in `run_s`."""
+    whose proxy refuses its credential, with an event spooled: how many CONNECTs it makes in `passes` passes of
+    the test clock (card#12631) — a count of passes, where it was a count of wall-clock seconds."""
     s = px_seat(name, px_url(AUTH_PROXY.port, pw_in_url=PX_WRONG))
-    hook(s, "PreToolUse", pre(tuid="toolu_px_run"), reporter=reporter)
-    (s.spool / "flusher.lock").unlink(missing_ok=True)
+    t = rig_clock_ms()
+    hook(s, "PreToolUse", pre(tuid="toolu_px_run"), reporter=reporter, FLEET_REPORTER_NOW_MS=t)
     c0 = len(AUTH_PROXY.connects)
-    p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, FLEET_REPORTER_BACKOFF_MAX_MS=0),
-                         cwd=str(HERE), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    f = ClockedFlusher(s, reporter, start_ms=t, capture=True, FLEET_REPORTER_BACKOFF_MAX_MS=0)
     try:
-        time.sleep(run_s)
+        for _ in range(passes):
+            f.step(FAST_K["FLUSH_MS"], what="a pass refused by the proxy")
     finally:
-        if p.poll() is None:
-            p.kill()
-        out, err = p.communicate()
-        s.freeze_flusher()
-    return {"connects": len(AUTH_PROXY.connects) - c0, "seat": s, "streams": [out, err]}
+        f.close()
+    return {"connects": len(AUTH_PROXY.connects) - c0, "seat": s, "streams": f.streams}
 
 
 run_g = px_running("px-run", fast_flusher())
-eq(f"GREEN: a running flusher refused 407 asks the proxy once and stops — CONNECTs in 2 s of "
-   f"{FAST_K['FLUSH_MS']} ms passes", 1, run_g["connects"])
+eq(f"GREEN: a running flusher refused 407 asks the proxy once and stops — CONNECTs over {PX_RUN_PASSES} passes of the test clock, "
+   f"{FAST_K['FLUSH_MS']} ms each", 1, run_g["connects"])
 run_r = px_running("px-run-red", fast_flusher(
     ("    if (r.proxyRefused) return { kind: 'proxy_auth', status: 407, error: r.error };\n", ""),
     ("      if (probe.proxy_refused) authStop(ctxOf, lane, { status: 407, text: '', body: null }, 'probe');\n      else if",
@@ -1959,10 +2416,10 @@ eq("  NEGATIVE CONTROL: the same sweep finds the refused password planted into t
 redgreen("a proxy that needs a login gets proxy_url's credential, a 407 stops the lane as a config failure, and an "
          "https proxy verifies against ca_file (card#9498)",
          f"no Proxy-Authorization -> schema {px_r['checks'].get('schema_version_accepted')}, delivered "
-         f"{px_r['delivered']}; 407 retryable -> {run_r['connects']} CONNECTs in 2 s; proxy TLS without ca_file -> "
+         f"{px_r['delivered']}; 407 retryable -> {run_r['connects']} CONNECTs in {PX_RUN_PASSES} passes; proxy TLS without ca_file -> "
          f"{net(px_tr)}",
          f"credential sent -> {net(px_g)}, delivered {px_g['delivered']}; refused -> selftest rc {px_w['rc']} "
-         f"config_readable {px_w['checks'].get('config_readable')}, {run_g['connects']} CONNECT in 2 s; https proxy on "
+         f"config_readable {px_w['checks'].get('config_readable')}, {run_g['connects']} CONNECT in {PX_RUN_PASSES} passes; https proxy on "
          f"ca_file -> {net(px_t)}, delivered {px_t['delivered']}; leaks {px_hits}")
 AUTH_PROXY.stop()
 TLS_PROXY.stop()
@@ -2178,9 +2635,10 @@ redgreen("`descriptors` (D1 § 3.1, card#11292)",
 print("\n== 3. NEVER BLOCKS THE SEAT (P-1..P-5, AT-3) ==")
 s3 = seat("neverblocks")
 timings = []
+# The latency figures are of the reporter as a seat runs it: no test-clock preload (`clock="off"`).
 for i in range(60):
     t0 = time.perf_counter()
-    r = hook(s3, "PreToolUse", pre(tuid=f"toolu_{i}"))
+    r = hook(s3, "PreToolUse", pre(tuid=f"toolu_{i}"), clock="off")
     timings.append((time.perf_counter() - t0) * 1000)
     if r.returncode != 0 or r.stdout:
         bad(f"PreToolUse #{i} exit={r.returncode} stdout={r.stdout!r}")
@@ -2210,7 +2668,7 @@ p99 = statistics.quantiles(timings, n=100)[98]
 base, rep = [], []
 for _ in range(20):                       # interleaved, so both see the same load
     t0 = time.perf_counter()
-    hook(s3, "PreToolUse", pre(tuid=f"lat_{_}"))
+    hook(s3, "PreToolUse", pre(tuid=f"lat_{_}"), clock="off")
     rep.append((time.perf_counter() - t0) * 1000)
     t0 = time.perf_counter()
     subprocess.run(["node", "-e", ""], capture_output=True)
@@ -2238,7 +2696,7 @@ s3b = seat("reap-at-cap")
 for i in range(64):
     hook(s3b, "PreToolUse", pre(tool="Bash", tuid=f"cap_{i}"))
 t0 = time.perf_counter()
-r = hook(s3b, "SessionEnd", {"session_id": SID, "hook_event_name": "SessionEnd", "reason": "clear"})
+r = hook(s3b, "SessionEnd", {"session_id": SID, "hook_event_name": "SessionEnd", "reason": "clear"}, clock="off")
 reap_ms = (time.perf_counter() - t0) * 1000
 # The reap is the worst case the budget is derived against, so it is measured the same way:
 # its EXIT CODE and its OUTPUT are asserted always (those are not load-sensitive), its cost is
@@ -3156,14 +3614,14 @@ eq(f"RED: without the per-bucket offset the totals grow on a re-fold ({h1} -> {h
 
 # AT-16's third case — the hour-roll straddle. Lines written just after the roll must land in
 # the bucket their WRITE time names, not their process-entry time; the 5 s grace covers the rest.
-# The lines before the roll are pinned a minute before it: a pinned clock is an offset taken when the process
-# starts, so a hook's WRITE stamp is its pin plus its own run time, and pinned 200 ms before the roll a hook on a
-# loaded machine wrote after it and the case read one bucket (card#12631). A minute is more than a hook takes.
+# The lines before the roll are pinned 200 ms before it, and each hook WRITES at its pin: every reporter process
+# here reads the test clock (card#12631), on which a hook's own run time is zero. Before it, a pin was an offset
+# taken at process start, a hook on a loaded machine wrote after the roll, and the case read one bucket.
 s16h = seat("hourroll")
 now_ms = int(time.time() * 1000)
 prev_hour_end = (now_ms // 3600000) * 3600000
 for i in range(3):
-    hook(s16h, "PreToolUse", pre(ti=FIX4, tuid=f"hr_a{i}"), FLEET_REPORTER_NOW_MS=prev_hour_end - 60_000)
+    hook(s16h, "PreToolUse", pre(ti=FIX4, tuid=f"hr_a{i}"), FLEET_REPORTER_NOW_MS=prev_hour_end - 200)
 for i in range(3):
     hook(s16h, "PreToolUse", pre(ti=FIX4, tuid=f"hr_b{i}"), FLEET_REPORTER_NOW_MS=prev_hour_end + 200)
 # Counted BEFORE the flush: the flusher folds and then DELETES a bucket whose hour has ended
@@ -4028,8 +4486,8 @@ print("\n== 18. A FLUSHER THAT LOSES OWNERSHIP STOPS SENDING AND EXITS; A LIVE O
 # awaits several 15 s requests, so a LIVE flusher's lock could age past LOCK_STALE_MS and a hook
 # would correctly start another.
 #
-# A SLOW INGEST IS THE ONLY FIXTURE. `INGEST.delay_s` holds every POST before answering it; the
-# takeover is written WHILE the first POST is held, which is the real race (a new owner claims
+# A SLOW INGEST IS THE ONLY FIXTURE. `INGEST.gate` holds every POST (or the probe) until the case lets it go;
+# the takeover is written WHILE the first POST is held, which is the real race (a new owner claims
 # state.json during a request), made deterministic by holding the request rather than by timing.
 # The spool holds enough events for several drain rounds (`BATCH_EVENTS` per POST): one real
 # hook line re-minted under fresh event ids, instead of hundreds of hook processes.
@@ -4040,7 +4498,8 @@ HOLD_S = 0.4
 
 def owned_seat(name: str, events: int) -> Seat:
     s = seat(name)
-    hook(s, "PreToolUse", pre(tuid=f"{name}_0"))
+    s.rig = rig_clock_ms()                    # the clock its flusher will run on (`drive_pass`), and its hook
+    hook(s, "PreToolUse", pre(tuid=f"{name}_0"), FLEET_REPORTER_NOW_MS=s.rig)
     bucket = sorted(s.spool.glob("*.jsonl"))[0]
     rec = next(json.loads(l) for l in bucket.read_text(encoding="utf-8").splitlines()
                if l and json.loads(l)["e"]["kind"] == "tool.start")
@@ -4064,62 +4523,67 @@ def take_over(s: Seat) -> bytes:
     return body
 
 
-def drive_pass(s: Seat, reporter: Path, *, takeover: bool, one_pass: bool, exit_within: float,
+def drive_pass(s: Seat, reporter: Path, *, takeover: bool, one_pass: bool,
                hold_health: bool = False, refuse: bool = False) -> dict:
-    """Run a real flusher against the held ingest and observe each POST as it arrives.
+    """Run a real flusher on the test clock against the gated ingest and observe each request as it is held.
 
-    For every POST: the wall time it was seen and the lock's mtime at that moment. With
-    `takeover`, the other owner is written while POST 1 is held — or, with `hold_health`, while
-    the health probe is held instead (the POSTs are then not held). `exit_within` is how long
-    after the last request the process is given to exit on its own; one still running then is
-    SIGKILLed and reported as not exited (SIGTERM would let it finish its pass, which is not an
-    exit).
+    Every POST (or, with `hold_health`, the health probe instead) is HELD at the stub until the case releases it:
+    the case reads the lock's mtime, writes the takeover when `takeover` asks for one (while POST 1 is held, or
+    while the probe is), advances the clock by HOLD_S — the hold, on the clock the reporter stamps the lock
+    with — and only then lets the answer go (card#12631: a timed hold raced the takeover on a loaded machine).
+    For every POST: the clock it arrived at and the lock's mtime then, both on the test clock. The process has
+    EXITED ON ITS OWN when it ends before it next goes idle: an idle flusher holds its loops' naps and is waiting
+    for its next pass, which only a later pass, a signal or a loss could change — so the case stops there.
     """
     lock = s.spool / "flusher.lock"
     lock.unlink(missing_ok=True)
+    auth = f"Bearer {s.token}"
     INGEST.batches.clear()
     INGEST.gets = 0
-    INGEST.delay_s, INGEST.get_delay_s = (0.0, HOLD_S) if hold_health else (HOLD_S, 0.0)
+    b0, g0 = 0, len(INGEST.get_auths)
+    INGEST.gate, INGEST.gate_methods = threading.Semaphore(0), ({"GET"} if hold_health else {"POST"})
     if refuse:   # every POST answered with the ingest's own 422: a disposal that WRITES (the quarantine, the marker)
         INGEST.status, INGEST.body_override = 422, {"error": "invalid_batch", "field": "events", "reason": "planted"}
+    clock = TestClock(s.root, getattr(s, "rig", None) or rig_clock_ms())
+    INGEST.clock = clock
     envx = {"FLEET_REPORTER_ONE_PASS": "1"} if one_pass else {}
-    p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, **envx),
+    p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, clock=clock, **envx),
                          cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    posts: list[tuple[float, float | None]] = []
+    posts: list[tuple[int, float | None]] = []
     taken: bytes | None = None
+    released = 0
+
+    def held() -> list:
+        """This seat's requests of the gated method, in arrival order."""
+        if hold_health:
+            return [a for a in INGEST.get_auths[g0:] if a == auth]
+        return [b for b in INGEST.batches[b0:] if b.get("auth") == auth]
+
     try:
-        # THE QUIET CLOCK STARTS AT THE FLUSHER'S FIRST REQUEST, a probe or a POST (card#12631). Started at the
-        # Popen, a flusher that took longer than `exit_within + HOLD_S` to start on a loaded machine read as one
-        # that sent nothing and had stopped, and the run then crashed reading the state.json it had not written yet.
-        t0 = time.time()
-        while p.poll() is None and time.time() - t0 < FLUSHER_START_HANG_S and not INGEST.batches and not INGEST.gets:
-            time.sleep(0.01)
-        quiet_since = time.time()
-        while p.poll() is None:
-            n = len(INGEST.batches)
-            if n > len(posts):
-                seen = time.time()
+        while clock.settle(p, 2, also=lambda: len(held()) > released, what="a pass of the gated ingest"):
+            if p.poll() is not None:
+                break
+            if len(held()) <= released:
+                break                                  # idle: waiting for its next pass, and still running
+            if not hold_health:
                 try:
-                    mtime = lock.stat().st_mtime
+                    mtime = lock.stat().st_mtime * 1000
                 except FileNotFoundError:
                     mtime = None
-                posts.extend([(seen, mtime)] * (n - len(posts)))
-                quiet_since = seen
-                if takeover and taken is None and not hold_health:
-                    taken = take_over(s)
-            if hold_health and INGEST.gets and taken is None:
-                quiet_since = time.time()
-                if takeover:
-                    taken = take_over(s)
-            if time.time() - quiet_since > exit_within + HOLD_S:
-                break
-            time.sleep(0.01)
+                posts.append((clock.ms, mtime))
+            if takeover and taken is None:
+                taken = take_over(s)
+            clock.set(clock.ms + int(HOLD_S * 1000))
+            INGEST.gate.release()
+            released += 1
         exited = p.poll() is not None
     finally:
         if p.poll() is None:
             p.kill()
             p.wait()
-        INGEST.delay_s = INGEST.get_delay_s = 0.0
+        for _ in range(64):
+            INGEST.gate.release()                      # no handler thread is left waiting on a case that ended
+        INGEST.gate, INGEST.gate_methods, INGEST.clock = None, set(), None
         INGEST.status, INGEST.body_override = 202, None
     lost_log = []
     for f in sorted((s.spool / "log").glob("*.log")) if (s.spool / "log").exists() else []:
@@ -4128,7 +4592,7 @@ def drive_pass(s: Seat, reporter: Path, *, takeover: bool, one_pass: bool, exit_
         lock_body = json.loads(lock.read_text(encoding="utf-8"))
     except (FileNotFoundError, ValueError):
         lock_body = None
-    return {"posts": posts, "n_posts": len(INGEST.batches), "exited": exited, "taken": taken,
+    return {"posts": posts, "n_posts": len(s.posted(b0)), "exited": exited, "taken": taken,
             "state_bytes": (s.spool / "state.json").read_bytes(),
             "lost_counted": s.counters().get("flusher_lost_ownership", 0), "sink": s.counters(),
             "corrupt_quarantined": _lines(s.spool / "quarantine" / "corrupt.jsonl"),
@@ -4142,8 +4606,9 @@ def _lines(f: Path) -> int:
 
 
 def refreshed_between_posts(posts) -> list[bool]:
-    """For POST k >= 2: was the lock touched AFTER POST k-1 was seen? Clock-free — both sides are
-    the wall clock, and a touch between posts lands at least HOLD_S after the previous arrival."""
+    """For POST k >= 2: was the lock touched AFTER POST k-1 arrived? Both sides are the test clock, which the
+    case advances by HOLD_S while each POST is held, so a touch between posts lands HOLD_S after the previous
+    arrival and a lock touched once per pass stays at or before the first."""
     return [m is not None and m > posts[k - 1][0] for k, (_, m) in enumerate(posts) if k >= 1]
 
 
@@ -4156,7 +4621,7 @@ N_EVENTS = 2 * int(subprocess.run(
 # ingest REFUSES that POST (its own 422), so acting on the answer would WRITE — the rejected-batch
 # quarantine and the marker — which is what an ex-owner must not do.
 g_a = drive_pass(owned_seat("own-lost-green", N_EVENTS), REPORTER, takeover=True,
-                 one_pass=False, exit_within=1.5, refuse=True)
+                 one_pass=False, refuse=True)
 eq("GREEN: ownership taken while POST 1 is in flight -> no further POST after that one",
    1, g_a["n_posts"])
 eq("  … state.json still holds the new owner's bytes: the ex-owner wrote nothing after the loss",
@@ -4173,8 +4638,7 @@ eq("GREEN: resuming from the answered POST, the ex-owner disposes of nothing in 
    (0, False, None), (g_a["rejected_quarantined"], g_a["marker"], g_a["sink"].get("batches_rejected")))
 
 # GREEN — no takeover, one pass of three held POSTs: the pass outlasts any single touch.
-g_b = drive_pass(owned_seat("own-touch-green", N_EVENTS), REPORTER, takeover=False, one_pass=True,
-                 exit_within=1.5)
+g_b = drive_pass(owned_seat("own-touch-green", N_EVENTS), REPORTER, takeover=False, one_pass=True)
 eq(f"GREEN: a pass of {g_b['n_posts']} POSTs each held {HOLD_S} s refreshes the lock between "
    f"every pair of posts", True, g_b["n_posts"] >= 3 and all(refreshed_between_posts(g_b["posts"])))
 eq("  … and a flusher that still owns its lock releases it on exit", None, g_b["lock"])
@@ -4187,8 +4651,7 @@ p_own = plant_src(
      "  if (assertOwner(spool, state) === false) return false;\n  if (!atomicWrite(statePath(spool)"),
     (re.escape("  assertOwner(spool, state);\n  atomicWrite(path.join(indexDir(spool), 'snapshot.json')"),
      "  if (assertOwner(spool, state) === false) return;\n  atomicWrite(path.join(indexDir(spool), 'snapshot.json')"))
-r_a = drive_pass(owned_seat("own-lost-red", N_EVENTS), p_own, takeover=True, one_pass=False,
-                 exit_within=1.5)
+r_a = drive_pass(owned_seat("own-lost-red", N_EVENTS), p_own, takeover=True, one_pass=False)
 # Since card#12180 a save that is refused sends nothing — the pre-send save persists the request before any
 # POST (D1 § 3.1) — so this defect no longer POSTs past the takeover; what it still does is the rest of it.
 eq("RED: with the loss returned and ignored, the ex-owner never exits on its own", False, r_a["exited"])
@@ -4197,22 +4660,20 @@ eq("  … and its count never reaches a surface anyone reads", 0, r_a["lost_coun
 # RED 2 — the lock renewed once per pass only, as before: no touch between posts.
 p_touch = plant_src((re.escape("    renewLock(spool, state);\n    const res = await postBatch(lane.site, composeBody(req));"),
                      "    const res = await postBatch(lane.site, composeBody(req));"))
-r_b = drive_pass(owned_seat("own-touch-red", N_EVENTS), p_touch, takeover=False, one_pass=True,
-                 exit_within=1.5)
+r_b = drive_pass(owned_seat("own-touch-red", N_EVENTS), p_touch, takeover=False, one_pass=True)
 eq("RED: renewed once per pass, the lock is NOT refreshed between held posts", True,
    r_b["n_posts"] >= 3 and not any(refreshed_between_posts(r_b["posts"])))
 
 # RED 3 — the unconditional unlink on exit.
 p_unlink = plant_src((re.escape("if (held && held.pid === process.pid && held.started_at === state.owner_started_at) fs.unlinkSync(lock);"),
                       "fs.unlinkSync(lock);"))
-r_c = drive_pass(owned_seat("own-unlink-red", N_EVENTS), p_unlink, takeover=True, one_pass=False,
-                 exit_within=1.5)
+r_c = drive_pass(owned_seat("own-unlink-red", N_EVENTS), p_unlink, takeover=True, one_pass=False)
 eq("RED: an ex-owner that unlinks unconditionally deletes the NEW owner's lock", None, r_c["lock"])
 
 # RED 4 — no check on resuming from the POST: the answered batch is disposed of by an ex-owner.
 p_send = plant_src((re.escape("    assertOwner(spool, state);   // resumed from an await: nothing below acts for an ex-owner\n"), ""))
 r_d = drive_pass(owned_seat("own-send-red", N_EVENTS), p_send, takeover=True,
-                 one_pass=False, exit_within=1.5, refuse=True)
+                 one_pass=False, refuse=True)
 eq("RED: with no check after the POST's await, the ex-owner quarantines and marks the refused batch "
    "the new owner will dispose of again — posts sent, quarantined, marker written",
    (1, 1, True), (r_d["n_posts"], r_d["rejected_quarantined"], r_d["marker"]))
@@ -4238,7 +4699,7 @@ def tail_effects(s: Seat, r: dict) -> dict:
 
 T_TAIL = time.time()
 tail_green_seat = tail_seat("own-tail-green")
-g_t = drive_pass(tail_green_seat, REPORTER, takeover=True, one_pass=False, exit_within=1.5, hold_health=True)
+g_t = drive_pass(tail_green_seat, REPORTER, takeover=True, one_pass=False, hold_health=True)
 e_gt = tail_effects(tail_green_seat, g_t)
 eq("GREEN: takeover while the health probe is held -> the ex-owner quarantines nothing, counts nothing, "
    "sends nothing, and exits counting the loss once",
@@ -4250,7 +4711,7 @@ eq("  … state.json still holds the new owner's bytes", g_t["taken"], g_t["stat
 CHECK_AFTER_HEALTH = re.escape("      assertOwner(spool, state);   // resumed from an await: see assertOwner's header\n")
 tail_red_seat = tail_seat("own-tail-red")
 r_t = drive_pass(tail_red_seat, plant_src((CHECK_AFTER_HEALTH, "")), takeover=True, one_pass=False,
-                 exit_within=1.5, hold_health=True)
+                 hold_health=True)
 e_rt = tail_effects(tail_red_seat, r_t)
 eq("RED: with no check after the probe's await, the ex-owner quarantines the torn line the new owner will "
    "dispose of again — and the save that follows is what finally stops it, before any request",
@@ -4264,7 +4725,7 @@ eq("GREEN: a count folded into state.counters by a save that then throws still r
 tail_unfold_seat = tail_seat("own-unfold-red")
 r_u = drive_pass(tail_unfold_seat, plant_src((CHECK_AFTER_HEALTH, ""),
                                              (re.escape("  unfoldUnsaved();\n  flushCounters"), "  flushCounters")),
-                 takeover=True, one_pass=False, exit_within=1.5, hold_health=True)
+                 takeover=True, one_pass=False, hold_health=True)
 e_ru = tail_effects(tail_unfold_seat, r_u)
 eq("RED: without the unfold, the line is quarantined and counted nowhere (§ 0 item 9) "
    "— quarantined, corrupt-lines in sink, exited, and lost-ownership count",
@@ -4273,7 +4734,7 @@ T_TAIL = time.time() - T_TAIL
 
 
 def _ages(posts):
-    return [round(t - m, 2) if m is not None else None for t, m in posts]
+    return [round((t - m) / 1000, 2) if m is not None else None for t, m in posts]
 
 
 redgreen("a flusher that loses ownership stops sending and exits (§ 2.3, card#9393)",
@@ -4561,7 +5022,7 @@ def cron_start(box, cc: "str | None", installer: Path = INSTALL_JS, reporter: Pa
     try:
         subprocess.run(["/usr/bin/env", "-i", f"HOME={home}", "LOGNAME=fleet-reporter-suite", "SHELL=/bin/sh",
                         "PATH=/usr/bin:/bin", "FLEET_REPORTER_ONE_PASS=1", "/bin/sh", "-c", expanded],
-                       capture_output=True, text=True, timeout=90)
+                       capture_output=True, text=True, timeout=TestClock.HANG_S)
     finally:
         s.freeze_flusher()
     return expanded, last_heartbeat(s)
@@ -4690,18 +5151,14 @@ eq("RED: a hook that resolves the roster is seen by that structural check", True
 
 # NEVER PER FLUSH. A long-lived flusher on the timing-scaled copy (§ 1's FAST_K), over several heartbeats.
 def at27_long_run(name: str, reporter: Path) -> list:
+    """Three heartbeats of one long-running flusher, on the test clock (card#12631): a pass per step, a step a
+    quarter of the scaled heartbeat interval, so a heartbeat comes due every fourth pass however slow the host."""
     s, env = at27_box(name)
-    (s.spool / "flusher.lock").unlink(missing_ok=True)
-    proc = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, **env), cwd=str(HERE),
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    f = ClockedFlusher(s, reporter, **env)
     try:
-        t0 = time.time()
-        while time.time() - t0 < 20 and len(s.wire_heartbeats()) < 3:
-            time.sleep(0.1)
+        f.run_until(lambda: len(s.wire_heartbeats()) >= 3, FAST_K["HEARTBEAT_MS"] // 4, 16, what="a heartbeat")
     finally:
-        proc.kill()
-        proc.wait()
-        s.freeze_flusher()
+        f.close()
     return [e["data"].get("counters", {}).get("protocol_agent_name_unchecked", 0) for e in s.wire_heartbeats()]
 
 
@@ -5379,19 +5836,28 @@ def silence_race(name: str, reporter: Path) -> Seat:
 
     The Stop hook is started and held on its stdin, which it reads after its old entry-time clock
     and before its index fold; a one-pass flusher then closes the silent session; then the Stop is
-    released. That is the probe's measured interleaving with the timing removed."""
+    released. That is the probe's measured interleaving with the timing removed.
+
+    ON THE TEST CLOCK (card#12631): the held Stop reads a `TestClock`, and the suite moves that clock only once
+    the Stop is blocked on its stdin — so every clock read it makes before its payload is at `t0`, and every
+    read after it at `t0 + 2 s` — and the flusher runs pinned between them, at `t0 + 1 s`. The interleaving the
+    probe measured is then exact: before, a 1 s wall sleep stood for "past node start-up", which a loaded host
+    can outlast."""
     s = seat(name, ingest=DEAD)
-    old = int(time.time() * 1000) - 92 * 60_000
+    t0 = rig_clock_ms()
+    old = t0 - 92 * 60_000
     hook(s, "UserPromptSubmit", {"session_id": SID, "hook_event_name": "UserPromptSubmit",
                                  "prompt_id": "p1", "prompt": "go"},
          reporter=reporter, FLEET_REPORTER_NOW_MS=old)
     hook(s, "PreToolUse", pre(), reporter=reporter, FLEET_REPORTER_NOW_MS=old + 1000)
+    clock = TestClock(s.root, t0)
     held = subprocess.Popen(["node", str(reporter), "hook", "Stop"], stdin=subprocess.PIPE,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True,
-                            env=s.env(), cwd=str(HERE))
-    time.sleep(1.0)   # past node start-up and config load: the old reporter has read its clock
-    flush(s, reporter=reporter)
-    held.communicate(json.dumps({"session_id": SID, "hook_event_name": "Stop"}), timeout=30)
+                            env=s.env(clock=clock, FLEET_REPORTER_NOW_MS=t0), cwd=str(HERE))
+    clock.await_stdin(held, what="the held Stop")
+    flush(s, reporter=reporter, FLEET_REPORTER_NOW_MS=t0 + 1000)
+    clock.set(t0 + 2000)
+    held.communicate(json.dumps({"session_id": SID, "hook_event_name": "Stop"}), timeout=TestClock.HANG_S)
     return s
 
 
@@ -5830,7 +6296,9 @@ def clear_trace(name, steps, reporter=REPORTER):
     """Drive `steps` on a pinned clock (100 ms apart; an int in `steps` advances it by that many
     ms). Returns (seat, events, counters, predicates, {step: [events that step emitted]})."""
     s = seat(name)
-    base = int(time.time() * 1000)
+    # One minute into an hour (`rig_clock_ms`): a trace of a few seconds then never straddles an hour boundary,
+    # which would split its index journal across two buckets and let a flusher pass reap the first.
+    base = rig_clock_ms()
     t = base
     sh(s, "SessionStart", BGSID, reporter, t, source="startup")
     per = {}
@@ -6385,6 +6853,7 @@ def k_of(src: str, name: str) -> int:
 
 K_RES_MS = k_of(_prod_src, "RESIDENCY_MS")
 K_HB_MS = k_of(_prod_src, "HEARTBEAT_MS")
+K_FLUSH_MS = k_of(_prod_src, "FLUSH_MS")
 K_BATCH = k_of(_prod_src, "BATCH_EVENTS")
 K_SITE_EPH = k_of(_prod_src, "SITE_EVENTS_PER_HOUR")
 K_HEADROOM = k_of(_prod_src, "HEARTBEAT_HEADROOM")
@@ -6562,6 +7031,7 @@ class SiteStub:
       {"commit_drop": True}                            store the batch, then close without answering
       {"commit_hang": s}                               store it, then hold the answer `s` seconds and close
       {"hold": s}                                      hold `s` seconds, then ingest and answer normally
+    A `get_script` entry may also carry `until` (a callable): the probe is answered once it holds.
     `binding` maps a bearer token to the `(install_id, seat_id)` the site issued it for: a batch claiming
     another pair is `403 identity_mismatch`, and an event claiming another is `422 invalid_event`
     (BatchValidator, EventValidator). `clock_ms`, when set, is the arrival clock — the reporter's injected
@@ -6589,6 +7059,8 @@ class SiteStub:
         self.limits = False
         self.windows: dict = {}
         self.lock = threading.Lock()
+        self.holding = 0                     # answers held right now on a connection the client keeps (`hold_open`)
+        self._hold_lock = threading.Lock()
         outer = self
 
         class H(http.server.BaseHTTPRequestHandler):
@@ -6621,7 +7093,11 @@ class SiteStub:
                     outer.gets += 1
                     step = outer.get_script.pop(0) if outer.get_script else {}
                 if step.get("hold"):
-                    time.sleep(step["hold"])
+                    hold_open(self, step["hold"], outer)
+                if step.get("until"):
+                    t_until = time.monotonic()
+                    while not step["until"]() and time.monotonic() - t_until < TestClock.HANG_S:
+                        time.sleep(0.005)
                 st = step.get("status", outer.get_status)
                 body = step.get("body", outer.get_body)
                 tok = self.headers.get("Authorization", "")[7:]
@@ -6652,7 +7128,7 @@ class SiteStub:
                     act["run"]()
                 arrival = outer.clock_ms if outer.clock_ms is not None else int(time.time() * 1000)
                 if act and act.get("hold"):
-                    time.sleep(act["hold"])
+                    hold_open(self, act["hold"], outer)
                 if act and "status" in act:
                     outer.answers.append(act["status"])
                     self._send(act["status"], act.get("body", {}), act.get("headers"))
@@ -6702,7 +7178,7 @@ class SiteStub:
                     return
                 if act and act.get("commit_hang"):
                     outer.answers.append("hung")
-                    time.sleep(act["commit_hang"])
+                    hold_open(self, act["commit_hang"], outer)
                     self.close_connection = True
                     try:
                         self.connection.shutdown(socket.SHUT_RDWR)
@@ -6818,10 +7294,13 @@ def events_bytes(raw: bytes) -> bytes:
 
 
 def fl_bg(s: Seat, at_ms: int, reporter: Path = REPORTER, **envx) -> subprocess.Popen:
-    """A one-pass flusher in the background, so the suite can kill it mid-request (`kill_when`)."""
+    """A one-pass flusher in the background, so the suite can kill it mid-request (`kill_when`). On a `TestClock`
+    held at `at_ms` (card#12631): its request deadline is on that clock, which nothing moves, so the request it is
+    killed in is still in flight however long the suite takes to see the stub's commit."""
     (s.spool / "flusher.lock").unlink(missing_ok=True)
     return subprocess.Popen(["node", str(reporter), "flusher"],
-                            env=s.env(freeze=False, FLEET_REPORTER_ONE_PASS="1", FLEET_REPORTER_NOW_MS=at_ms, **envx),
+                            env=s.env(freeze=False, clock=TestClock(s.root, at_ms), FLEET_REPORTER_ONE_PASS="1",
+                                      FLEET_REPORTER_NOW_MS=at_ms, **envx),
                             cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -6917,32 +7396,6 @@ def m_flusher(*defects) -> Path:
     seconds: FLUSH_MS < REQUEST_MS < HEARTBEAT_MS < HEALTH_MS, production's order."""
     return plant_src(*[(rf"\b{k}: \d+,", f"{k}: {v},") for k, v in M_K.items()],
                      *[(re.escape(old), new) for old, new in defects])
-
-
-def live(s: Seat, reporter: Path, **envx) -> subprocess.Popen:
-    (s.spool / "flusher.lock").unlink(missing_ok=True)
-    return subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, **envx), cwd=str(HERE),
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-
-def stop_live(p: subprocess.Popen, s: Seat) -> None:
-    if p.poll() is None:
-        p.terminate()
-        try:
-            p.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            p.kill()
-            p.wait()
-    s.freeze_flusher()
-
-
-def wait_for(cond, timeout: float = 20.0) -> bool:
-    t0 = time.time()
-    while time.time() - t0 < timeout:
-        if cond():
-            return True
-        time.sleep(0.01)
-    return False
 
 
 TRANSPORT_KEYS_PY = ["ingest_url", "token", "ca_file", "proxy_url"]
@@ -7044,10 +7497,12 @@ def case_c(tag: str, reporter: Path = REPORTER) -> dict:
     m = multi_seat(f"at28-c-{tag}", [site_cfg("sa", sa.url), site_cfg("sb", sb.url)])
     ids = spool_events(m, 250, AT28_T0, tag="c")
     sb.script = [REFUSE_422]
-    # sa's probe is held, so sb's lane has built, sent and disposed of its refused request before sa's lane
-    # builds its first one: a cursor shared across sites would already have moved past what sa never sent.
-    sa.get_script = [{"hold": 1.0}]
-    fl(m, AT28_T0 + 60_000, reporter=reporter)
+    # sa's probe is held until sb's lane has built, sent and disposed of its refused request (its quarantine file
+    # exists), so sa's lane builds its first one after it: a cursor shared across sites would already have moved
+    # past what sa never sent. The order is the observable, not a 1 s wall-clock hold a loaded host could outlast
+    # (card#12631); and the pass runs on a test clock nothing moves, so the held probe's deadline cannot fire.
+    sa.get_script = [{"until": lambda: (m.spool / "quarantine" / "rejected.sb.jsonl").exists()}]
+    fl(m, AT28_T0 + 60_000, reporter=reporter, clock=TestClock(m.root, AT28_T0 + 60_000))
     fl(m, AT28_T0 + 120_000, reporter=reporter)
     refused = [e["event_id"] for e in sb.posts[0].get("events", [])]
     hb = {nm: st.heartbeats()[-1]["data"] for nm, st in (("sa", sa), ("sb", sb))}
@@ -7549,19 +8004,18 @@ def k_deferred(tag: str, reporter: Path = REPORTER, *, live: bool = False) -> di
     sb.script = [{"run": lambda: spool_events(m, 5, AT28_T0 + 100, tag="k2b")}, COMMIT_DROP]
     if live:
         # Without a restart: a long-lived flusher on the timing-scaled copy, its backoff forced to zero, and the
-        # stub dropping every answer past HEARTBEAT_MS of real time.
+        # stub dropping every answer across three heartbeat intervals — of the test clock (card#12631), a pass per
+        # scaled FLUSH_MS step, where it was wall time.
         sb.default = COMMIT_DROP
-        (m.spool / "flusher.lock").unlink(missing_ok=True)
-        pr = subprocess.Popen(["node", str(reporter), "flusher"], env=m.env(freeze=False, FLEET_REPORTER_BACKOFF_MAX_MS=0),
-                              cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(3 * FAST_K["HEARTBEAT_MS"] / 1000)
-        held = req_of(m)
-        sb.default = None
-        t_accept = time.time()
-        time.sleep(2 * FAST_K["HEARTBEAT_MS"] / 1000)
-        pr.kill()
-        pr.wait()
-        m.freeze_flusher()
+        f = ClockedFlusher(m, reporter, sites=2, held=lambda: sa.holding + sb.holding, FLEET_REPORTER_BACKOFF_MAX_MS=0)
+        try:
+            f.elapse(3 * FAST_K["HEARTBEAT_MS"], FAST_K["FLUSH_MS"], what="three heartbeat intervals of dropped answers")
+            held = req_of(m)
+            sb.default = None
+            t_accept = f.ms / 1000
+            f.elapse(2 * FAST_K["HEARTBEAT_MS"], FAST_K["FLUSH_MS"], what="two heartbeat intervals after the accept")
+        finally:
+            f.close()
     else:
         fl(m, t, reporter=reporter)
         held = req_of(m)
@@ -7996,7 +8450,11 @@ redgreen("Case H — selftest names the site, and a refused token fails it (AT-2
 # ── Case M — a refused credential stops the lane and loses nothing; only the ingest's own refusal stops it ─
 STATE_MEMBERS = sorted(["seq_epoch", "next_seq", "cursors", "counters", "counter_rises", "selftest", "request",
                         "window", "ingest_url_sha256", "identity_sha256"])
-PERIODS_S = 3 * M_K["HEALTH_MS"] / 1000
+# Case M's flushers run on the test clock (card#12631): a pass per M_STEP_MS step, and "three K.HEALTH_MS periods"
+# is that much of the clock, where it was that much wall time a loaded host could stretch or squeeze.
+PERIODS_MS = 3 * M_K["HEALTH_MS"]
+M_STEP_MS = M_K["FLUSH_MS"]
+M_WAIT_STEPS = 600                    # a hang bound on the clock's steps for a lane's first answer, far past it
 
 
 def m_auth(tag: str, reporter: Path, *, kind: str) -> dict:
@@ -8010,24 +8468,24 @@ def m_auth(tag: str, reporter: Path, *, kind: str) -> dict:
         sb.accept_tokens, sb.post_only_auth = set(), True
     else:
         sb.binding = {tok_bad: ("aimla", "another-seat")}
-    p = live(m, reporter)
+    f = ClockedFlusher(m, reporter, sites=2, held=lambda: sa.holding + sb.holding)
     try:
-        wait_for(lambda: len(sb.answers) >= 1)
-        time.sleep(0.2)
+        f.run_until(lambda: len(sb.answers) >= 1, M_STEP_MS, M_WAIT_STEPS, what="sb's first answer")
+        f.step(M_STEP_MS, what="the pass after the refusal")
         n_at = len(sb.posts) + sb.gets
         entry_at = m.entry("sb")
         req_at = entry_at.get("request")
-        time.sleep(PERIODS_S)
+        f.elapse(PERIODS_MS, M_STEP_MS, what="three periods of the stop")
         quiet1 = len(sb.posts) + sb.gets - n_at
         if kind == "401":
             sb.accept_tokens = {tok_bad}                       # the site now resolves it: no restart
         else:
             sb.binding = {}
-        time.sleep(PERIODS_S)
+        f.elapse(PERIODS_MS, M_STEP_MS, what="three more, the token now resolved")
         quiet2 = len(sb.posts) + sb.gets - n_at - quiet1
         req_held = m.entry("sb").get("request")
     finally:
-        stop_live(p, m)
+        f.close(terminate=True)
     marker = (m.spool / "REJECTED.sb.txt").read_text(encoding="utf-8") if (m.spool / "REJECTED.sb.txt").exists() else ""
     a_hbs = [h["data"]["counters"] for h in sa.heartbeats()]
     good = seat_token(f"m-good-{tag}")
@@ -8094,14 +8552,14 @@ def m_front(tag: str, reporter: Path, front: str) -> dict:
     f = FRONTS[front]
     sb.default = f
     sb.get_status, sb.get_body, sb.get_headers = f["status"], f["body"], f.get("headers")
-    p = live(m, reporter, FLEET_REPORTER_BACKOFF_MAX_MS=0)
+    cf = ClockedFlusher(m, reporter, sites=2, held=lambda: sa.holding + sb.holding, FLEET_REPORTER_BACKOFF_MAX_MS=0)
     try:
-        wait_for(lambda: len(sb.posts) >= 1)
-        time.sleep(0.3)
+        cf.run_until(lambda: len(sb.posts) >= 1, M_STEP_MS, M_WAIT_STEPS, what="sb's first batch")
+        cf.step(M_STEP_MS, what="the pass after it")
         e0 = m.entry("sb")
         n0 = len(sb.posts)
         r0 = (e0.get("counters") or {}).get("batches_retried", 0)
-        time.sleep(PERIODS_S)
+        cf.elapse(PERIODS_MS, M_STEP_MS, what="three periods behind the front")
         e1 = m.entry("sb")
         rising = (len(sb.posts) > n0, (e1.get("counters") or {}).get("batches_retried", 0) > r0)
         # The request's bytes and bookkeeping, `attempts` aside — the one member each retry records.
@@ -8113,10 +8571,10 @@ def m_front(tag: str, reporter: Path, front: str) -> dict:
         sb.default = None
         sb.get_status, sb.get_body, sb.get_headers = 200, None, None
         n_off = len(sb.posts)
-        wait_for(lambda: ids <= sb.store.held(), timeout=15)
+        cf.run_until(lambda: ids <= sb.store.held(), M_STEP_MS, M_WAIT_STEPS, what="the backlog after the front")
         after = sb.posts[n_off:]
     finally:
-        stop_live(p, m)
+        cf.close(terminate=True)
     marker = (m.spool / "REJECTED.sb.txt").read_text(encoding="utf-8") if (m.spool / "REJECTED.sb.txt").exists() else ""
     log = log_text(m)
     return {"auth_refused": counters1.get("auth_refused", 0), "rising": rising, "kept": kept,
@@ -8201,20 +8659,20 @@ def m_count(tag: str, reporter: Path, kind: str) -> dict:
     else:
         sb.default = FRONTS["waf-403"]
         sb.get_status, sb.get_body = 403, FRONTS["waf-403"]["body"]
-    p = live(m, reporter, FLEET_REPORTER_BACKOFF_MAX_MS=0)
+    f = ClockedFlusher(m, reporter, sites=2, held=lambda: sa.holding + sb.holding, FLEET_REPORTER_BACKOFF_MAX_MS=0)
     try:
-        wait_for(lambda: len(sb.answers) + sb.gets >= 1)
-        time.sleep(0.2)
+        f.run_until(lambda: len(sb.answers) + sb.gets >= 1, M_STEP_MS, M_WAIT_STEPS, what="sb's first request")
+        f.step(M_STEP_MS, what="the pass after it")
         n0 = len(sb.posts) + sb.gets
-        time.sleep(PERIODS_S + M_K["HEALTH_MS"] / 2000)       # three periods and a half: three whole cycles fit
+        f.elapse(PERIODS_MS + M_K["HEALTH_MS"] // 2, M_STEP_MS, what="three periods and a half")   # three whole cycles fit
         n1 = len(sb.posts) + sb.gets - n0
         refused = (m.entry("sb").get("counters") or {}).get("auth_refused", 0)
         if kind == "front":
             sb.default = None
             sb.get_status, sb.get_body = 200, None
-            time.sleep(PERIODS_S)
+            f.elapse(PERIODS_MS, M_STEP_MS, what="three periods with the front removed")
     finally:
-        stop_live(p, m)
+        f.close(terminate=True)
     return {"count": n1, "auth_refused": refused, "recovered": len(sb.store.rows) > 0}
 
 
@@ -8518,7 +8976,9 @@ def j_seat(tag: str):
         s.cfg.pop(k, None)
     s.cfg["sites"] = [site_cfg("sa", sa.url)]
     s.write_cfg()
-    now_ms = int(time.time() * 1000)
+    # The clock Case J's flushers run on (`case_j` starts its live one a second after this pass): one minute into
+    # an hour, so the case's few steps never straddle one, and every batch id is on that one clock.
+    now_ms = s.rig = rig_clock_ms()
     u_at, f_at = now_ms - 3 * 3600_000, now_ms - 2 * 3600_000
     spool_events(s, 5, u_at, tag="ju")
     # A bucket of lines a build before card#12180 spooled, a heartbeat of ANOTHER site's: § 3.1 rule 1 skips them,
@@ -8527,7 +8987,7 @@ def j_seat(tag: str):
     line = json.dumps({"v": 1, "t": "2026-08-24T00:00:00.000Z", "e": {"kind": "reporter.heartbeat", "event_id": "01J" + "0" * 23,
                                                                        "data": {"config_fingerprint": "0000000000000000"}}}) + "\n"
     fb.write_text(line * 150_000, encoding="utf-8")
-    fl(s)                                                    # sa receives the bucket and passes the old heartbeats
+    fl(s, now_ms)                                            # sa receives the bucket and passes the old heartbeats
     ub = s.spool / f"{time.strftime('%Y%m%d%H', time.gmtime(u_at / 1000))}.jsonl"
     os.chmod(ub, 0)                                          # unreadable from here on: sa has every line of it
     s.cfg["sites"].append(site_cfg("sb", sb.url))
@@ -8541,27 +9001,41 @@ def case_j(tag: str, reporter: Path = REPORTER) -> dict:
     s, sa, sb, ub = j_seat(tag)
     q = s.spool / "quarantine" / "corrupt.jsonl"
     n_sink = len(sink_lines(s))
-    p = live(s, reporter)
+    # On the test clock (card#12631): the takeover is written at the first step the quarantine shows the bucket,
+    # and the ex-owner has exited when it ends before its next idle; `exited_s` is the clock it took, 0 for an
+    # exit on the pass that found the loss.
+    quarantined = lambda: q.exists() and "unreadable_bucket" in q.read_text(encoding="utf-8")   # noqa: E731
+    step = k_of(_prod_src, "FLUSH_MS")
+    # The claim is written the moment the quarantine shows the bucket — `also`, so mid-drain and not after the
+    # pass — exactly the observable the wall-clock driver waited on.
+    f = ClockedFlusher(s, reporter, start_ms=s.rig + 1000, sites=2, held=lambda: sa.holding + sb.holding, also=quarantined)
     claimed_at = None
-    if wait_for(lambda: q.exists() and "unreadable_bucket" in q.read_text(encoding="utf-8"), timeout=30):
-        take_over(s)
-        claimed_at = time.time()
     try:
-        p.wait(timeout=30)
-    except subprocess.TimeoutExpired:
-        p.kill()
-        p.wait()
-    exited_s = None if claimed_at is None else round(time.time() - claimed_at, 1)
-    s.freeze_flusher()
+        if f.run_until(quarantined, step, 30, also=quarantined, what="the unreadable bucket's quarantine") is not None:
+            take_over(s)
+            claimed_at = f.ms / 1000
+            # The loss is logged by the loop that found it; the real reporter halts every loop first, so it then
+            # exits with no step of the clock. A loop that ended alone leaves the others napping — one loop fewer
+            # is then the idle — and only the clock reaching their next check ends them.
+            f.wait(lambda: "lost ownership" in log_text(s), what="the ex-owner's lost-ownership line")
+            if f.alive():
+                f.loops = None                # some loops ended; the rest are idle once every one left is napping
+                f.settle(what="the loops the loss left running")
+            f.run_until(lambda: not f.alive(), step, 3, what="the ex-owner's exit")
+    finally:
+        f.close()
+    # The clock from the claim to the exit — or, for a process still running after three passes, to the kill,
+    # as the wall-clock driver measured to its kill.
+    exited_s = None if claimed_at is None else round(f.ms / 1000 - claimed_at, 1)
     os.chmod(ub, 0o600)
     lines = [ln for ln in sink_lines(s)[n_sink:] if ln.get("p") == "flusher"]
     lost = sum(ln.get("c", {}).get("flusher_lost_ownership", 0) for ln in lines)
     s_b = sum((ln.get("s") or {}).get("sb", {}).get("spool_dropped_events", 0) for ln in lines)
     late = [b for b in sa.posts if claimed_at and ulid_ms(b.get("batch_id", "")) / 1000 > claimed_at]
     # The new owner: a fresh flusher folds the sink, and each site's heartbeat composes its counters.
-    fl(s)
+    fl(s, f.ms + 1000)
     hb_a = sa.heartbeats()[-1]["data"]["counters"] if sa.heartbeats() else {}
-    return {"claimed": claimed_at is not None, "rc": p.returncode, "exited_s": exited_s, "lost": lost, "s_b": s_b,
+    return {"claimed": claimed_at is not None, "rc": f.proc.returncode, "exited_s": exited_s, "lost": lost, "s_b": s_b,
             "late_a": len(late), "a_dropped": hb_a.get("spool_dropped_events"),
             "b_entry": (s.entry("sb").get("counters") or {}).get("spool_dropped_events", 0)}
 
@@ -8735,7 +9209,7 @@ def at3_run(tag: str, n_sites: int) -> dict:
         # Each hook finds the spool over the shrunk bound, so each reads state.json for the per-site cursors (§ 11.3).
         spool_events(s, 4, int(time.time() * 1000) - 7200_000 - (i + 1) * 3600_000, tag=f"at3o{i}", pad=900)
         t0 = time.perf_counter()
-        hook(s, "PreToolUse", pre(tuid=f"at3{tag}{i}"), reporter=P_SMALL_BOUND)
+        hook(s, "PreToolUse", pre(tuid=f"at3{tag}{i}"), reporter=P_SMALL_BOUND, clock="off")
         walls.append((time.perf_counter() - t0) * 1000)
     return {"full": full, "state_bytes": state_bytes, "median": statistics.median(walls),
             "p99": max(walls), "appends": tree_lines(s) - lines0}
@@ -8880,17 +9354,21 @@ else:
         st = site_stub(f"f2-{tag}")
         if how == "kill":
             s = seat(f"at28-f2-{tag}", ingest=st.url)
+            # The previous build's flusher on the test clock (card#12631): one loop, a pass per K.FLUSH_MS step,
+            # its hooks pinned to that clock. The pass that is killed is the one whose answer the stub hangs.
+            t0 = rig_clock_ms()
             for i in range(4):
-                hook(s, "PreToolUse", pre(tuid=f"f2{tag}a{i}"), reporter=OLD)
-            p = live(s, OLD)
-            wait_for(lambda: len(st.store.rows) >= 4, timeout=30)
-            for i in range(3):
-                hook(s, "PreToolUse", pre(tuid=f"f2{tag}b{i}"), reporter=OLD)
-            st.script = [{"commit_hang": 60}]
-            seen = wait_for(lambda: len(st.posts) >= 2 and st.answers[-1:] == ["hung"], timeout=40)
-            p.kill()
-            p.wait()
-            s.freeze_flusher()
+                hook(s, "PreToolUse", pre(tuid=f"f2{tag}a{i}"), reporter=OLD, FLEET_REPORTER_NOW_MS=t0)
+            fo = ClockedFlusher(s, OLD, start_ms=t0, sites=0, held=lambda: st.holding)
+            try:
+                fo.run_until(lambda: len(st.store.rows) >= 4, K_FLUSH_MS, 3, what="the previous build's first batch")
+                for i in range(3):
+                    hook(s, "PreToolUse", pre(tuid=f"f2{tag}b{i}"), reporter=OLD, FLEET_REPORTER_NOW_MS=fo.ms)
+                st.script = [{"commit_hang": 60}]
+                hung = lambda: len(st.posts) >= 2 and st.answers[-1:] == ["hung"]   # noqa: E731
+                seen = fo.run_until(hung, K_FLUSH_MS, 4, also=hung, what="the hung commit") is not None
+            finally:
+                fo.close()
         else:
             s = seat(f"at28-f2-{tag}", ingest=st.url)
             for i in range(4):
@@ -8910,7 +9388,7 @@ else:
             (s.spool / "flusher.lock").unlink(missing_ok=True)
             os.chmod(s.spool, 0o500)
             try:
-                subprocess.run(["node", str(reporter), "flusher"], capture_output=True, text=True, timeout=60,
+                subprocess.run(["node", str(reporter), "flusher"], capture_output=True, text=True, timeout=TestClock.HANG_S,
                                env=s.env(freeze=False, FLEET_REPORTER_ONE_PASS="1"), cwd=str(HERE))
             finally:
                 os.chmod(s.spool, 0o700)
@@ -9078,6 +9556,11 @@ B_K = {"FLUSH_MS": 2000, "REQUEST_MS": 8000, "HEARTBEAT_MS": 12000, "HEALTH_MS":
 B_CONNECT = 4000
 EPS_S = B_CONNECT / 5000          # a fifth of the connect deadline: the smallest stall a sequential drain adds
 B_DRIVE_S = 40
+# ON THE TEST CLOCK (card#12631): the case steps the flusher's clock B_STEP_MS at a time and runs a hook every
+# second of it, so every gap below is a gap on the clock the reporter stamps with — read at the step a batch is
+# seen — and the down site's held request ends at its deadline on that clock. Before, the gaps were wall-clock
+# arrival times, and a loaded host's own stalls landed in them.
+B_STEP_MS = 1000
 
 
 def b_flusher(*defects) -> Path:
@@ -9115,7 +9598,8 @@ class BlackHole:
         self.sock.close()
 
 
-def case_b(tag: str, reporter: Path, *, blackhole: bool, recover: bool = False) -> dict:
+def case_b(tag: str, reporter: Path, *, blackhole: bool, recover: bool = False, lanes: int = 2) -> dict:
+    """`lanes`: the lane loops `reporter` runs — one per site, or ONE for SEQUENTIAL's single drain loop."""
     sa = site_stub(f"b-a-{tag}")
     hole = BlackHole() if blackhole else None
     sb = None if blackhole else site_stub(f"b-b-{tag}")
@@ -9125,38 +9609,46 @@ def case_b(tag: str, reporter: Path, *, blackhole: bool, recover: bool = False) 
     # One hook before the flusher starts, so its first seat pass folds predicate counts into the seat's totals
     # before any request is built: the bookkeeping a request's heartbeat is composed from then exists, and a
     # later fold changes it while sb's request is held.
-    hook(m, "PreToolUse", pre(tuid=f"b{tag}pre"))
-    p = live(m, reporter, FLEET_REPORTER_BACKOFF_MAX_MS=0)
+    t0 = rig_clock_ms()
+    hook(m, "PreToolUse", pre(tuid=f"b{tag}pre"), FLEET_REPORTER_NOW_MS=t0)
+    # The black hole never accepts, so a request to it is in flight until its connect deadline: the one request
+    # the case holds there on purpose, beside whatever the silent stub holds.
+    f = ClockedFlusher(m, reporter, start_ms=t0, sites=lanes,
+                       held=lambda: sa.holding + (sb.holding if sb else 1), FLEET_REPORTER_BACKOFF_MAX_MS=0)
     arrivals, snaps, reqs = [], [], set()
-    t_start = time.time()
+    t_start = f.ms / 1000
     seen_posts = 0
-    next_hook = t_start
+
+    def observe() -> None:
+        nonlocal seen_posts
+        if len(sa.posts) > seen_posts:
+            arrivals.extend([f.ms / 1000] * (len(sa.posts) - seen_posts))
+            seen_posts = len(sa.posts)
+        try:
+            snaps.append(json.loads((m.spool / "index" / "snapshot.json").read_text(encoding="utf-8"))["taken_at"])
+        except Exception:
+            pass
+        rq = m.entry("sb").get("request")
+        if rq:
+            reqs.add(rq["batch_id"])
+
     try:
-        while time.time() - t_start < B_DRIVE_S:
-            if time.time() >= next_hook:
-                # The live flusher holds the lock: this hook must find it, not have the suite's freeze
-                # replace it (`hook()` freezes the lock for seats with no live flusher).
-                subprocess.run(["node", str(REPORTER), "hook", "PreToolUse"], input=json.dumps(pre(tuid=f"b{tag}{int(next_hook * 10)}")),
-                               capture_output=True, text=True, env=m.env(freeze=False), cwd=str(HERE))
-                next_hook += 1.0
-            if len(sa.posts) > seen_posts:
-                arrivals += [time.time()] * (len(sa.posts) - seen_posts)
-                seen_posts = len(sa.posts)
-            try:
-                snaps.append(json.loads((m.spool / "index" / "snapshot.json").read_text(encoding="utf-8"))["taken_at"])
-            except Exception:
-                pass
-            rq = m.entry("sb").get("request")
-            if rq:
-                reqs.add(rq["batch_id"])
-            time.sleep(0.02)
+        observe()
+        while f.alive() and f.ms / 1000 - t_start < B_DRIVE_S:
+            # The live flusher holds the lock: this hook must find it, not have the suite's freeze replace it
+            # (`hook()` freezes the lock for seats with no live flusher). Pinned to the flusher's clock, the lock
+            # it renews reads fresh to the hook.
+            subprocess.run(["node", str(REPORTER), "hook", "PreToolUse"], input=json.dumps(pre(tuid=f"b{tag}{f.ms}")),
+                           capture_output=True, text=True, env=m.env(freeze=False, FLEET_REPORTER_NOW_MS=f.ms), cwd=str(HERE))
+            f.step(B_STEP_MS, what="Case B's drive")
+            observe()
         outage_req = m.entry("sb").get("request")
         d = {}
         if recover and sb:
             sb.default = None
-            t_rec = time.time()
+            t_rec = f.ms / 1000
             ids = {e["event_id"] for e in m.events()}
-            wait_for(lambda: ids <= sb.store.held(), timeout=60)
+            f.run_until(lambda: ids <= sb.store.held(), B_STEP_MS, 600, what="sb's recovery")
             first = sb.store.batch_log[0]["batch_id"] if sb.store.batch_log else None
             first_body = next((b for b in sb.posts if b.get("batch_id") == first), {})
             same_id = [r for r, b in zip(sb.raw, sb.posts) if b.get("batch_id") == first]
@@ -9168,12 +9660,12 @@ def case_b(tag: str, reporter: Path, *, blackhole: bool, recover: bool = False) 
                  "held_bytes": outage_req is not None and first_body.get("events") == outage_req["events"]
                  and len(same_id) >= 2 and len({events_bytes(r) for r in same_id}) == 1,
                  "one_request": len(reqs) == 1, "t_rec": t_rec}
-            time.sleep(B_K["REQUEST_MS"] / 1000)
+            f.elapse(B_K["REQUEST_MS"], B_STEP_MS, what="a request deadline after the recovery")
             hbs = [r["event"] for r in sb.store.rows if r["kind"] == "reporter.heartbeat"]
             d["hbs"] = [(h["event_time"], h["data"]["oldest_unsent_age_s"]) for h in hbs]
             d["dropped"] = (m.entry("sb").get("counters") or {}).get("spool_dropped_events", 0)
     finally:
-        stop_live(p, m)
+        f.close(terminate=True)
         if hole:
             hole.close()
     gaps = [b - a for a, b in zip(arrivals, arrivals[1:])]
@@ -9221,12 +9713,12 @@ SEQUENTIAL = ("  if (running) await Promise.all([seatMain(), ...lanes.map(laneMa
               "  if (running) await Promise.all([seatMain(), (async () => { while (running) { for (const l of lanes) { "
               "try { await lanePass(l); } catch (e) { if (e instanceof LostOwnership) { lost(e); break; } } } "
               "if (onePass || !running) break; await nap(K.FLUSH_MS); } })()]);")
-b_r1 = case_b("silent-red", b_flusher(SEQUENTIAL), blackhole=False)
+b_r1 = case_b("silent-red", b_flusher(SEQUENTIAL), blackhole=False, lanes=1)
 eq(f"RED: a reporter that drains sites in sequence inside one pass -> sa's inter-batch gap reaches FLUSH_MS + "
    f"REQUEST_MS (> the bound {FLUSH_S + RTT_S + EPS_S} s)", True,
    b_r1["max_gap"] is not None and b_r1["max_gap"] >= FLUSH_S + REQ_S * 0.9)
 if abort == "0":
-    b_r2 = case_b("hole-red", b_flusher(SEQUENTIAL), blackhole=True)
+    b_r2 = case_b("hole-red", b_flusher(SEQUENTIAL), blackhole=True, lanes=1)
     eq(f"RED: … and FLUSH_MS + CONNECT_MS on the black-holed port (> the bound)", True,
        b_r2["max_gap"] is not None and b_r2["max_gap"] >= FLUSH_S + B_CONNECT / 1000 * 0.9)
 # THIRD RED — found by this case's first run: the persisted request held as the built object, not as a copy, so
@@ -9977,7 +10469,7 @@ class P30:
             pr.stdin.write(json.dumps(pl))
             pr.stdin.close()
         for pr in procs:
-            pr.wait(timeout=30)
+            pr.wait(timeout=TestClock.HANG_S)
 
     def flush(self, passes=1, **kw):
         self.tick()
