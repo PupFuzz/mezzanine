@@ -56,7 +56,7 @@ the house theme (`studio`, `resources/floor/themes/index.js` `HOUSE_THEME`); `so
 map (revision 3), the other three on the shipped default `resources/floor/default.tmj`, which
 `GET /api/building/rooms/{install_id}/map` answers for a room with no authored map
 (`App\Http\Controllers\BuildingController`, `ShippedDefaultMap::map()`; § 4.4's floor row). The operator's
-three examples are therefore three different maps under two themes, and § 2.4 below reads each.
+three examples are therefore three different maps under two themes, and § 3.5 below reads each.
 
 ## 2. The shape, and what was rejected
 
@@ -128,9 +128,9 @@ The floor is composed exactly as the floor page composes it — the same calls, 
 | Read from | By | Becomes, in the view |
 |---|---|---|
 | the stop's plaque row: `rooms[]` (`install_id`, `form`, `origin?`), `hallway`, `theme` | `plates()` over the layout the client holds — the same list the cab's buttons read | the floor to compose; the theme to colour it |
-| each room's map and the hallway's | `Building#room(id).held.map`; `placeRooms(rooms, extents, hallway)` → origins, `extent`, `draw_order` | the **floor plane**: one slab the size of the extent, Z from 0 to `extent.height · SCALE`, X from `(threshold.x − extent.x − extent.width) · SCALE` to `threshold.x · SCALE`; a gap between side-by-side rooms (`ROOM_GAP_PX`) is plain floor |
+| each room's map and the hallway's | `Building#room(id).held.map`; `placeRooms(rooms, extents, hallway)` → origins, `extent`, `draw_order` | the **floor plane**: one slab the size of the extent, Z from 0 to `extent.height · SCALE`, X from `(threshold.x − extent.x − extent.width) · SCALE` on the rider's left to `(threshold.x − extent.x) · SCALE` = 74 px · SCALE ≈ 103 cm on the right; a gap between side-by-side rooms (`ROOM_GAP_PX`) is plain floor |
 | the extent's four edges | arithmetic | the room's **walls**, full height (222 cm): the far wall at `Z = depth`, the side walls at the extent's left and right x; the near wall is the band the rider stands in, behind the eye, and is not drawn |
-| `wall` cells, merged | `mapTiles()` → `tileRegions()` (the scene's one region pass) → rects | a **box** per rect, `SCALE` thick: a **wall** (222 cm) where the rect's long side lies on an extent edge, else a **partition** (§ 12's *Partition height*, 120 cm) |
+| `wall` cells, merged | `mapTiles()` → `tileRegions()` (the scene's one region pass) → rects | a **box** per rect, the rect's own footprint (a cell's 8 px is 11 cm thick): a **wall** (222 cm) where the rect's long side lies on an extent edge, else a **partition** (§ 12's *Partition height*, 120 cm) |
 | `accent` cells, merged | the same pass | flat **accent regions** on the floor plane, in the theme's accent colour |
 | each room's `desks` objects | `mapDesks(map)`; `slotOrigin()`; `deskRects(box).desk-sprite` = `{ x: 18, y: H − 100, w: 180, h: 60 }` in the furniture box anchored at the slot's bottom-left | an **empty desk** per slot: a top 180 px wide and 60 px deep at the sprite's rect, 76 cm high, four legs, a monitor's back on its right third and a pushed-in chair — prisms in the theme's `PALETTE.view` colours. No character, chair colour or seat key: § 6.3's scenery rule |
 | standing kinds (every `KINDS` member but `wall`/`accent`) | `mapTiles()` cells with `kind`; the theme's `scenery({kind, w, h, seed, index})` document — the same input `buildScene()` hands it | a **billboard**: the theme's own drawing of the piece, standing on the cell's floor line at `(X, Z)` of the cell's bottom edge, `w · SCALE` wide and `h · SCALE` tall, shown as an `<image href="data:…">` exactly as the floor shows it (§ 10.6 item 2's asset shape) |
@@ -151,7 +151,7 @@ contributes no plane and no furniture (§ 5).
   faces the eye: a box's near face always (every box has `Z ≥ 0`, the eye is at `Z = −120`); its top only if
   its height is under `CAB.eye` (a partition's is, a wall's is not); its left or right end only when the box
   lies wholly to one side of `X = 0`. Partitions beside the doorway at `Z` under ~0.8 m are cut by the door's
-  own frame, as a doorway hides what stands beside it (§ 2.4's readings show where that bites).
+  own frame, as a doorway hides what stands beside it (§ 3.5's readings show where that bites).
 - **Draw order: the painter's algorithm over non-intersecting boxes** — farthest NEAREST point first (a
   box's nearest point to the eye, by `Z` then by `|X|`), floor plane and accents first, the far wall next,
   then boxes and billboards in that order. Desk slots never intersect (F21 refuses the map); walls and
@@ -162,7 +162,7 @@ contributes no plane and no furniture (§ 5).
   lobby are; the existing checks (`officeDefects`' clip leg, `seamDefects`) hold it.
 - **Cost, derived rather than asserted.** Element count per paint = planes (1 + accent rects) + far and side
   walls (3) + wall rects × ≤ 4 faces + desks × ~11 + billboards. Over the three live maps the merged wall
-  rects number 5 (aimla), 15 (solo-agents) and 5 (default) — the command in § 2.4 prints them — so the
+  rects number 5 (aimla), 15 (solo-agents) and 5 (default) — the command in § 3.5 prints them — so the
   heaviest live floor paints well under a few hundred nodes, once per phase entry. The accent regions are the
   open term: `tileRegions()` merges a 63 %-accent floor (solo-agents) into row runs per region, and the probe
   (§ 6) records the count rather than this file guessing it. No per-frame work: the view is painted once per
@@ -295,13 +295,16 @@ maps on either page. So:
 
 - **At the press (`opening`), the screen asks `Building#enterRooms()` for every stop's rooms not held at
   the version `/api/building` reported** — held by version, so the second ride on a page fetches nothing —
-  and the lobby page constructs a `TilesetLoader` and loads the maps' tilesets as the floor page does. On
-  this install that is at most four map documents of 178–233 KB each (`wc -c resources/floor/default.tmj`;
-  the authored ones from the store) once per page, on a press the viewer has already made; the alternative
+  and the lobby page constructs a `TilesetLoader` and loads the maps' tilesets as the floor page does. The
+  population is every room the stops name less the page's own floor's — § 1's `installs` line prints the
+  rooms, and each document's size is `wc -c resources/floor/default.tmj` for an unauthored room and
+  `strlen($r->map)` over `Floors::all()` for an authored one (the two authored maps on 2026-11-08 were of
+  the default's order, under a quarter of a megabyte each) — once per page, on a press the viewer has
+  already made; the alternative
   — fetching at `choose`, the chosen floor only — leaves 1.25 s (`ridePhase('chosen')`: a fade and *Ride door
-  motion*) between the request and the doors opening, which § 12's *Cab hold* row already shows the
-  operator's round trip can exceed. A press that fetches is the cheaper failure: the view is ready when the
-  buttons appear.
+  motion*) between the request and the doors opening — and § 12's *Cab hold* row names the operator's round
+  trip to the deployment as unmeasured from this host, so no figure here says that is enough. A press that
+  fetches is the cheaper failure: the view is ready when the buttons appear.
 - **The lobby loads the theme modules the registry names at the press too**, through `cab-paint.js`'s one
   dynamic-import site (`loadHousePalette()` generalised to `loadThemes()`, answering the registry and every
   module), so `TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`'s walk still follows one declared loader
@@ -333,8 +336,8 @@ Two routes reach a stop whose model cannot be built, each named with the sequenc
   record with no `held`.
 - **R2 — the map request failed.** Any page: a room whose `GET /api/building/rooms/{id}/map` answered a
   non-200 holds F16's failure (`{ held, failure: { status } }`); the floor page draws that room's desks
-  mapless. Reproducible in the probe with a scripted fetch answering 503, and on the sandbox by the console's
-  own failure injection on the route.
+  mapless. Reproducible in the probe with a scripted fetch answering 503; on the sandbox it has no switch —
+  reaching it there takes a failing map route, which this design does not add.
 
 In both, **the view is the stop's bare room**: the floor plane, far and side walls, ceiling and lights of
 `OFFICE`'s size (520 × 900 × 280 cm — the shell `drawOfficeView()` draws today, kept for exactly this), in

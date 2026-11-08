@@ -2014,10 +2014,12 @@ panel.
     elevator's own threshold: the seam 74 px in from the floor's extent's left edge, on its top edge
     (`scene.js`'s `threshold()`). **The rider faces into the room, toward the page's own viewer, so the
     rider's right is the floor's −x**: `X = (threshold.x − px.x) · scale`, `Z = (px.y − threshold.y) · scale`,
-    at [§ 12](#12-every-number-and-where-it-comes-from)'s *Door-view scale*. What each datum becomes: the
-    extent, a floor plane closed by a far wall and two side walls of the band's height; a `wall` run whose
-    long side lies on an extent edge, a wall of that height, and every other run a partition of [§ 12](#12-every-number-and-where-it-comes-from)'s
-    *Partition height*; an `accent` run, a flat region on the plane in the theme's accent; a `desks` object,
+    at [§ 12](#12-every-number-and-where-it-comes-from)'s *Door-view scale* — 200 / 144 cm per floor px, the
+    cab door's 200 cm over the band's leaves' 144 px, the one object drawn on both sides of the doorway. What
+    each datum becomes: the extent, a floor plane closed by a far wall and two side walls of the band's height
+    (160 px, so 222 cm at that scale); a `wall` run whose long side lies on an extent edge, a wall of that
+    height, and every other run a partition of [§ 12](#12-every-number-and-where-it-comes-from)'s *Partition
+    height*, 120 cm; an `accent` run, a flat region on the plane in the theme's accent; a `desks` object,
     an EMPTY desk at its sprite's rect (`deskRects()`'s `desk-sprite`) — a top, legs, a monitor seen from
     behind and a pushed-in chair, in the theme's `PALETTE.view` colours, no character and no seat key; a
     standing piece, the theme's own `scenery()` document as a billboard on the cell's floor line, shown as the
