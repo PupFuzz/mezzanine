@@ -310,6 +310,51 @@ class TheFloorsRideIsNavigationTest extends TestCase
         $this->assertSame([], $this->beyondDefects($this->floorRun(self::RIDES)));
     }
 
+    /**
+     * `scene.ride.stop` (card#12987, § 4.5's *Through the open doors at a FLOOR is that floor*): the key of the stop the
+     * doors open on — the floor's own until the choice, the chosen stop's from `chosen` on, `null` for the lobby — so the
+     * screen resolves the floor behind the doors from the ride, never from the page. Read on every frame of the run that
+     * drew a scene under a ride.
+     */
+    public function test_green_the_stop_behind_the_doors_is_the_stop_they_open_on(): void
+    {
+        $this->assertSame([], $this->stopDefects($this->floorRun(self::RIDES)));
+    }
+
+    /** @return list<string> every frame whose `scene.ride.stop` is not the key of the stop its doors open on */
+    private function stopDefects(array $result): array
+    {
+        $defects = [];
+        $seen = [];
+
+        foreach ($this->rideFrames($result) as $render) {
+            $ride = $render['frame']['ride'];
+            $scene = $render['frame']['scene']['ride'] ?? null;
+
+            if ($scene === null) {
+                continue;
+            }
+
+            $chosen = in_array($ride['phase'], ['chosen', 'leaving', 'staying'], true);
+            $expected = $chosen ? $ride['chosen']['key'] : $ride['current'];
+            $seen[$ride['phase'].':'.($expected === $ride['current'] ? 'own' : 'other')] = true;
+
+            if (! array_key_exists('stop', $scene) || $scene['stop'] !== $expected) {
+                $defects[] = "[{$render['at']} {$ride['phase']}] stop is ".json_encode($scene['stop'] ?? '(absent)').' where the doors open on '.json_encode($expected);
+            }
+        }
+
+        // The run must meet the page's own stop before the choice and another stop after it, or a `stop` that never
+        // followed the choice would read clean.
+        foreach (['entering:own', 'chosen:other', 'leaving:other', 'staying:own'] as $case) {
+            if (! isset($seen[$case])) {
+                $defects[] = "the run drew no {$case} frame — the stop behind the doors was never read there";
+            }
+        }
+
+        return $defects;
+    }
+
     /** @return list<string> every frame whose `scene.ride.beyond` is not the view of the stop its doors open on */
     private function beyondDefects(array $result): array
     {
@@ -710,6 +755,11 @@ class TheFloorsRideIsNavigationTest extends TestCase
         ] as $what => [$from, $to]) {
             $this->assertNotSame([], $this->beyondDefects($this->floorRun(self::RIDES, $this->mutatedModules([$ride, $from, $to]))), "{$what} did not bite");
         }
+
+        // RED 28 — `stop` read off the page's own stop rather than the stop the doors open on (card#12987): the page's own
+        // floor behind the opening doors on every ride.
+        $dir = $this->mutatedModules([$ride, "'office', stop });", "'office', stop: ride.current });"]);
+        $this->assertNotSame([], $this->stopDefects($this->floorRun(self::RIDES, $dir)), 'RED 28 (stop from the page, not the chosen stop) did not bite');
     }
 
     // ── The GREENs over a planted tree ───────────────────────────────────────────────────────────

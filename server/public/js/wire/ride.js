@@ -21,7 +21,8 @@
  *
  * ⛔ `beyond` IS DECIDED HERE, FROM THE STOP THE DOORS OPEN ON, NEVER BY THE PAINTER FROM THE PAGE IT RUNS ON (§ 4.5's
  * *Through the open doors at the LOBBY is the lobby*): before the choice the page's own stop, from `chosen` on the
- * chosen one; a floor's stop is `office`, the lobby's (`null`) is `lobby`.
+ * chosen one; a floor's stop is `office`, the lobby's (`null`) is `lobby`. `stop` carries the key itself, from the same
+ * expression (card#12987: the floor behind the doors is that floor).
  */
 
 import { LOOP_FPS } from './animation-set.js';
@@ -322,7 +323,9 @@ export class Ride {
     /**
      * The ride's leaves, as the painter draws them — the phase, how far into it, and when its doors move — and
      * `beyond`, the view behind the cab's doors: the stop they open on, `office` for a floor and `lobby` for the
-     * lobby (§ 4.5). Before the choice that stop is the page's own; from `chosen` on, the chosen one.
+     * lobby (§ 4.5). Before the choice that stop is the page's own; from `chosen` on, the chosen one. `stop` is that
+     * stop itself — the floor's key, `null` for the lobby — from the same expression, so the screen resolves the floor
+     * behind the doors (`floor/door-view.js`) from the stop `beyond` names and never from the page (card#12987).
      */
     sceneRide(now) {
         const ride = this.#ride;
@@ -334,7 +337,7 @@ export class Ride {
         const { ms, door_delay_ms: doorDelayMs } = ridePhase(ride.phase, this.#reduce);
         const stop = CHOSEN_ON.includes(ride.phase) ? ride.chosen.key : ride.current;
 
-        return Object.freeze({ phase: ride.phase, elapsed_ms: now - ride.started_at, ms, door_delay_ms: doorDelayMs, beyond: stop === null ? 'lobby' : 'office' });
+        return Object.freeze({ phase: ride.phase, elapsed_ms: now - ride.started_at, ms, door_delay_ms: doorDelayMs, beyond: stop === null ? 'lobby' : 'office', stop });
     }
 
     /** One timer's step: `from` to `to` (`null` ends the ride), or `null` out of phase. */

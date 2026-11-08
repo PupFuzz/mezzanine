@@ -580,9 +580,10 @@ class TheFloorComposesItsRoomsTest extends TestCase
      */
     public function test_red_a_failed_map_drawn_from_the_last_held_one_hides_the_failure(): void
     {
-        $silent = $this->mutatedModules([self::FLOOR_SCREEN,
-            '            const mapless = state.state === null || state.state.failure !== null;',
-            '            const mapless = state.state === null;',
+        // The predicate is `wire/building.js`'s `mapless()`, which the floor screen and the cab's door view both read.
+        $silent = $this->mutatedModules(['building.js',
+            '        return room === null || room.failure !== null;',
+            '        return room === null;',
         ]);
 
         $frame = $this->lastFloor($this->floorRun(self::ROOM_MAP, $silent));

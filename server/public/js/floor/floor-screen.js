@@ -1290,7 +1290,7 @@ export class FloorScreen {
         for (const placed of placement.rooms) {
             const state = held.get(placed.install_id);
             const seats = seatsByRoom.get(placed.install_id) ?? [];
-            const mapless = state.state === null || state.state.failure !== null;
+            const mapless = this.#building.mapless(placed.install_id);
             const slots = mapless ? [] : mapDesks(state.map);
             const assignment = assignSlots(seats, slots.length, mapReservation(slots));
 

@@ -187,6 +187,13 @@ jobs:
       - name: fx-turn-back and its fuzz set are the generator's output over the shipped floor screen
         run: node tools/design/gen-fx-turn-back.mjs --check
 
+      # card#12987: the cab's door view (`server/public/js/floor/door-view.js`) — the plan's fixture floors read in the
+      # rider's frame, and its draw order checked against an exact ray cast over random floors, ties on a shared plane
+      # included; every planted RED (each a mirror of the module tree with one defect) must red the leg it names. Stock
+      # `node`, no dependencies.
+      - name: The cab's door view — its fixture readings and its draw order, with its own planted REDs
+        run: node tools/design/door-view.selftest.mjs
+
   # THE BROWSER SMOKE (card#12326). The lobby (`/dashboard`) and a floor (`/floor/aimla`), each loaded
   # once in headless Chromium, as the served markup (`render-floor-view.php` renders each view through
   # the layout, so it needs `php` and `server/`'s composer install, and no database and no `.env`), the

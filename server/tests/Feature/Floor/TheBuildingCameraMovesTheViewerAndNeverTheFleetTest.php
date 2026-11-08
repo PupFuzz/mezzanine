@@ -38,9 +38,9 @@ use Tests\TestCase;
  * The walk reads, in each module's code (its comments blanked), every string-literal specifier after `from`, after a
  * bare `import` and inside `import(` (`Tests\Feature\Support\ModuleSpecifiers`) and follows each that starts `./` or `../`;
  * every other specifier is a DEFECT it cannot follow, never one it skips (card#7343 r2-1) — with ONE declared exception,
- * followed rather than skipped: `floor/cab-paint.js`'s `loadHousePalette()`, whose two dynamic imports load the asset
- * route's theme registry and the house theme it names (the cab's palette, § 4.5), are walked into
- * `resources/floor/themes/` by name, the registry's `HOUSE_THEME` read off its own line. Its REDs plant the import in
+ * followed rather than skipped: `floor/cab-paint.js`'s `loadThemes()`, whose two dynamic imports load the asset
+ * route's theme registry and the theme modules it names (the cab's palette, § 4.5, and the floor behind the cab's doors,
+ * card#12987), are walked into `resources/floor/themes/` by name — every theme the registry's `THEMES` line names. Its REDs plant the import in
  * each form into the room's drawing (`lobby/building-scene.js`), each held to the reason it must red for.
  *
  * ⚠ WHAT THIS DOES NOT HOLD: the room drawn as the reference's room and the directory painted on its board —
@@ -86,6 +86,7 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         'floor/tileset.js',
         'floor/desk-geometry.js',
         'floor/cab-paint.js',
+        'floor/door-view.js',
     ];
 
     /** The ride's one import from the set's module — a constant, never the set (card#12113). */
@@ -94,7 +95,7 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     /** The one module whose dynamic imports the walk follows into the asset route, and the two it holds them to. */
     private const ASSET_LOADER = 'floor/cab-paint.js';
 
-    private const ASSET_IMPORTS = ['await import(THEME_REGISTRY)', 'await import(themeModule(registry.HOUSE_THEME))'];
+    private const ASSET_IMPORTS = ['await import(THEME_REGISTRY)', 'await import(themeModule(name))'];
 
     private const EPSILON = 1e-6;
 
@@ -317,8 +318,8 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     /** A dynamic import beside the asset loader's two — one the walk was never told of — is a defect, never followed. */
     public function test_red_a_third_dynamic_import_in_the_asset_loader(): void
     {
-        $dir = $this->mutatedModules(['../floor/cab-paint.js', "        return house.PALETTE?.elevator ?? null;\n",
-            "        await import(registry.HOUSE_THEME + '.js');\n        return house.PALETTE?.elevator ?? null;\n"]);
+        $dir = $this->mutatedModules(['../floor/cab-paint.js', "    const names = [...pick(registry)];\n",
+            "    await import(registry.HOUSE_THEME + '.js');\n    const names = [...pick(registry)];\n"]);
 
         $this->assertNotSame([], array_filter($this->graphDefects(dirname($dir)), static fn (string $d): bool => str_contains($d, 'cannot follow')),
             'CONTROL (a third dynamic import in the asset loader) did not bite for its reason');
@@ -701,14 +702,22 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
                 $queue[] = $base;
             }
 
-            // The asset loader's two dynamic imports, and only those two, are followed into the asset route by name.
+            // The asset loader's two dynamic imports, and only those two, are followed into the asset route by name: the
+            // registry, and every theme module its `THEMES` line names (any of them may be loaded — card#12987's view
+            // behind the cab's doors loads them all).
             if ($file === self::ASSET_LOADER && count($unfollowable) === count(self::ASSET_IMPORTS)
                 && array_filter(self::ASSET_IMPORTS, static fn (string $needle): bool => ! str_contains(ModuleSpecifiers::withoutComments($source), $needle)) === []) {
                 $registry = (string) file_get_contents($resources.'/floor/themes/index.js');
-                $this->assertSame(1, preg_match("/^export const HOUSE_THEME = '([a-z0-9-]+)';$/m", $registry, $house), 'the theme registry names no house theme');
+                $this->assertSame(1, preg_match("/^export const THEMES = Object\\.freeze\\(\\[([^\\]]*)\\]\\);$/m", $registry, $line), 'the theme registry names no themes');
+                $this->assertGreaterThan(0, preg_match_all("/'([a-z0-9-]+)'/", $line[1], $names), 'the theme registry\'s THEMES line names no theme');
                 $queue[] = '@resources/floor/themes/index.js';
-                $queue[] = "@resources/floor/themes/{$house[1]}/theme.js";
                 $edges[] = [$file, '@resources/floor/themes/index.js'];
+
+                foreach ($names[1] as $name) {
+                    $queue[] = "@resources/floor/themes/{$name}/theme.js";
+                    $edges[] = [$file, "@resources/floor/themes/{$name}/theme.js"];
+                }
+
                 $unfollowable = [];
             }
 

@@ -49,7 +49,7 @@
 import { TRUNCATION_MARK } from '../desk/task-bubble.js';
 import { BADGES } from '../wire/member-sets.js';
 import { UNRECOGNISED } from '../desk/desk-render.js';
-import { ART_W, deskSlab } from './desk-geometry.js';
+import { ART_W, deskSlab, monitorFrame } from './desk-geometry.js';
 
 // The art column's width is `desk-geometry.js`'s, beside the desk's slab that the cab's door view reads too; it stays
 // readable from here.
@@ -452,10 +452,10 @@ export function deskRects(box, character) {
     // § 10.6: the creature's centre stands at a third of the desk's width (the operator's ruling of 2026-10-06,
     // card#11046); the chair follows it.
     const sitter = desk.x + desk.w / 3 - cw / 2;
-    // The monitor's frame: 96 × 46, its right edge the desk's, standing on the desk's top; the screen
+    // The monitor's frame (`monitorFrame()`: 96 × 46, its right edge the desk's, standing on the desk's top); the screen
     // inset 4 px inside it and 31 px tall; the text `SCREEN_INSET` inside the screen on every side, so its
     // rect's height is what decides how many lines the screen holds (§ 12's monitor row, card#12446).
-    const frame = { x: desk.x + desk.w - 96, y: slab - 46, w: 96, h: 46 };
+    const frame = monitorFrame(desk);
     const screen = { x: frame.x + 4, y: frame.y + 4, w: 88, h: 31 };
     // § 10.6 (card#11468): the side table stands on the desk's own foot line, its interns in front of it and the
     // *+N more* tag under it; the facts stack upward from just above it, inside the plate's padding. These row

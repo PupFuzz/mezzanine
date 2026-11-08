@@ -48,6 +48,10 @@ export const PALETTE = Object.freeze({
     landing: Object.freeze({ top: '#f7f0e0', bottom: '#ebdfc6', rim: '#d9a54a', glow: '#fff4d6' }),
     'wall-run': Object.freeze({ strip: '#9aa982' }),
     desk: Object.freeze({ wood: '#b5794c' }),
+    // card#12987: the floor seen through the cab's open doors — the empty desks' tops and edges, the monitors' backs and the
+    // partitions, which the cab's painter reads as `--dv-…` custom properties (`floor/door-view.js`). Every theme carries
+    // the house theme's keys (the drift leg).
+    view: Object.freeze({ desk: '#b5794c', desk_edge: '#8a5a3a', monitor: '#efe2cc', partition: '#b7c6a0', partition_cap: '#8d9b74' }),
     chair: Object.freeze({ colours: Object.freeze(['#c8714f', '#d9a54a', '#8fa66b', '#c98b8f', '#6f9a9a', '#a77c5a']) }),
     'monitor-frame': Object.freeze({ bezel: '#efe2cc' }),
     'desk-props': Object.freeze({
