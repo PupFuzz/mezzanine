@@ -421,6 +421,8 @@ class FloorPageWiringTest extends TestCase
 '],
             'lobby' => ["const lobbyHref = document.querySelector('a.floor-home').href;", "const lobbyHref = '/dashboard';"],
             'performed' => ['    cab.perform({', '    ({'],
+            // card#12987: the press's fetches for the floor behind the cab's doors wake the page as they land.
+            'wake' => ['    wake: requestRender,', '    wake: () => {},'],
         ] as $key => [$from, $to]) {
             $planted = str_replace($from, $to, $js);
             $this->assertNotSame($planted, $js, "the ride's {$key} control's anchor is gone — it mutated nothing");
@@ -554,6 +556,7 @@ class FloorPageWiringTest extends TestCase
             'arrival' => ['const rideArrival = arrival(html, performance.now());', 'screen.arriveByRide(rideArrival);'],
             'lobby' => ["const lobbyHref = document.querySelector('a.floor-home').href;", '    lobby_href: lobbyHref,'],
             'navigation' => ['window.location.assign(ride.route);'],
+            'wake' => ['    wake: requestRender,'],
         ];
 
         foreach ($wired as $key => $needles) {

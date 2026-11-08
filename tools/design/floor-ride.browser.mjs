@@ -1183,10 +1183,10 @@ const ROWS = {
   // HALF OPEN by pausing its own leaf motion at its midpoint — the band's in `opening`, the cab's in `chosen`, each the
   // ride's real motion — and measured as drawn: between the two leaves' inner edges is the open doorway, and through it
   // the layer behind the leaves shows — the cab's room on the band (`.band-cab .cab-back`), the office in the cab
-  // (`.cab-beyond .office-back`) — and NOTHING drawn over the leaves' layer crosses it: no seam line left standing in the
+  // (`.cab-beyond .dv-back`) — and NOTHING drawn over the leaves' layer crosses it: no seam line left standing in the
   // doorway (the seam is the leaves' own edges). At a desktop and a phone window, and with the house theme failed.
   // With `--shots`, each held door is saved: the cab half and fully open, the floor's elevator zoomed, half open.
-  'through-doors': row('through the open doors the office shows from inside the cab and the cab from the floor, each door held half open, and nothing — no seam line — is drawn across the open doorway', {},
+  'through-doors': row('through the open doors the floor shows from inside the cab and the cab from the floor, each door held half open, and nothing — no seam line — is drawn across the open doorway', {},
     { plant: [
       { file: 'js/floor/painter.js', from: "            node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, control);\n",
         to: "            node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, control);\n            node('line', { x1: e.seam, y1: e.y, x2: e.seam, y2: e.y + e.h, class: 'elevator-seam' }, control);\n" },
@@ -1228,10 +1228,10 @@ const ROWS = {
           await buttonsIn(s);
           await s.click('#floor-cab-stops li[data-stop="zeta"] button');
           await until(() => s.ev("document.querySelector('#floor-cab-doors .elevator-leaf')?.getAnimations().length > 0"), 2000, 'the cab\'s leaves never moved');
-          const cab = await hold(s, '#floor-cab-doors', '.cab-beyond .office-back', '.cab-beyond', 0.5);
+          const cab = await hold(s, '#floor-cab-doors', '.cab-beyond .dv-back', '.cab-beyond', 0.5);
           if (c.plant.length === 0) await s.shot(`cab-half-open-${tag}`);
           judge(`${tag} cab`, cab);
-          if (c.plant.length === 0) { await hold(s, '#floor-cab-doors', '.cab-beyond .office-back', '.cab-beyond', 1); await s.shot(`cab-open-${tag}`); }
+          if (c.plant.length === 0) { await hold(s, '#floor-cab-doors', '.cab-beyond .dv-back', '.cab-beyond', 1); await s.shot(`cab-open-${tag}`); }
           facts[tag] = { band: { open: band.open, over: band.over }, cab: { open: cab.open, over: cab.over } };
         });
       }
@@ -1245,7 +1245,7 @@ const ROWS = {
   // floor's plate and every call button are filled, every stop's button keeps its shadow, the body its rim, and every
   // text holds WCAG AA on what it sits on. Two plants, one per surface: the painter's fallback removed, and the call
   // buttons' plain fill removed from the sheet, leaving only their mix.
-  'cab-no-mix': row('with color-mix() unavailable, the cab, the office through its doors and the cab behind the floor\'s leaves are each still painted, every surface in a theme colour, and the button popup keeps its fills, shadows, rim and WCAG AA text with the theme and without it', { plant: NO_MIX },
+  'cab-no-mix': row('with color-mix() unavailable, the cab, the floor through its doors and the cab behind the floor\'s leaves are each still painted, every surface in a theme colour, and the button popup keeps its fills, shadows, rim and WCAG AA text with the theme and without it', { plant: NO_MIX },
     [
       { plant: [{ file: 'js/floor/cab-paint.js', from: '${unmixed(MIXED)}@supports', to: '@supports' }] },
       { plant: [{ file: 'css/mezzanine.css', from: '    background: var(--door);\n    box-shadow: inset 0 2px 2px rgb(255 255 255 / 0.6);\n}', to: '    box-shadow: inset 0 2px 2px rgb(255 255 255 / 0.6);\n}' }] },
@@ -1266,7 +1266,7 @@ const ROWS = {
             const panel = document.getElementById('floor-cab-panel');
             return {
               fills: Object.fromEntries(['#floor-cab-doors .cab-back', '#floor-cab-doors .cab-side', '#floor-cab-doors .cab-ceiling', '#floor-cab-doors .cab-floor', '#floor-cab-doors .cab-plate-body',
-                '#floor-cab-doors .office-floor', '#floor-cab-doors .office-wall', '#floor-cab-doors .office-back', '#floor-cab-doors .office-ceiling', '#floor-cab-doors .office-desk-top',
+                '#floor-cab-doors .dv-floor', '#floor-cab-doors .dv-wall', '#floor-cab-doors .dv-back', '#floor-cab-doors .dv-ceiling', '#floor-cab-doors .dv-desk',
                 '#floor-drawing .band-cab .cab-back', '#floor-drawing .band-cab .cab-side', '#floor-drawing .band-cab .cab-floor'].map((sel) => [sel, fill(sel)])),
               popup: {
                 plates: [...document.querySelectorAll('#floor-cab-stops li > button')].map((b) => ({ current: b.parentElement.classList.contains('current'), background: cs(b).backgroundColor, shadow: cs(b).boxShadow })),
@@ -1577,7 +1577,7 @@ const ROWS = {
   // card#12113 (AT-D3-28): the doors held half open on each page show the view the stop owes — on the lobby, its room's
   // leaves open on the cab behind them, the cab's doors closing in `entering` on the lobby (the page's own stop) and
   // opening in `chosen` on the office (a floor's); on a floor, the cab's doors opening on *Lobby* show the lobby.
-  'lobby-doors': row('the doors held half open on each page show the view the stop owes: on the lobby, the cab behind the room\'s leaves, the lobby in entering and the office for a floor; on a floor, the lobby for *Lobby*', {},
+  'lobby-doors': row('the doors held half open on each page show the view the stop owes: on the lobby, the cab behind the room\'s leaves, the lobby in entering and the floor for a floor; on a floor, the lobby for *Lobby*', {},
     { plant: [{ file: RIDE, from: "beyond: stop === null ? 'lobby' : 'office'", to: "beyond: stop === null ? 'office' : 'lobby'" }] },
     async (chrome, c) => {
       const d = [];
@@ -1610,10 +1610,10 @@ const ROWS = {
           shows(`${tag} the lobby's cab in entering`, entering);
           await until(() => s.ev("!document.getElementById('lobby-cab-panel').inert"), RIDE_DOOR_MS + DOOR_PHASE_MS + 2000, 'the lobby\'s cab never reached inside');
           await buttonsIn(s, 'lobby');
-          // A floor chosen: the cab's doors open on the office.
+          // A floor chosen: the cab's doors open on that floor.
           await s.click('#lobby-cab-stops li[data-stop="zeta"] button');
           await until(() => s.ev("document.querySelector('#lobby-cab-doors .elevator-leaf')?.getAnimations().length > 0"), 2000, 'the lobby\'s cab never opened its doors');
-          const chosen = await hold(s, '#lobby-cab-doors', '.cab-beyond .office-back', '.cab-beyond', 0.5);
+          const chosen = await hold(s, '#lobby-cab-doors', '.cab-beyond .dv-back', '.cab-beyond', 0.5);
           if (c.plant.length === 0) await s.shot(`lobby-cab-chosen-half-open-${tag}`);
           shows(`${tag} the lobby's cab opening on a floor`, chosen);
           facts[`${tag} lobby`] = { room: room.open, entering: entering.open, chosen: chosen.open };
@@ -1630,6 +1630,54 @@ const ROWS = {
           shows(`${tag} the floor's cab opening on the lobby`, toLobby);
           facts[`${tag} floor`] = { toLobby: toLobby.open };
         });
+      }
+      return { defects: d, facts };
+    }),
+
+  // card#12987: the operator's *"I want to see the actual floor layout and theme as someone would see it for each specific
+  // floor"*. From the lobby and from a floor, a floor chosen in the cab, its doors held HALF OPEN and then fully open: what
+  // shows in the open doorway is THAT floor's view — its root carrying the stop's theme carriers, its walls, desks and standing
+  // pieces drawn (the run's floors are the shipped default map, the plan's § 3.5 *sola* table) — never the bare room. With
+  // `--shots`, each held door is saved, for the reading neither end can verify locally: the operator's, against the plan's
+  // § 3.5 tables, on the sandbox. One plant: the floor view's model ignored (the bare room for every floor).
+  'door-view': row('through the cab\'s doors held half open, a chosen floor shows its own layout and theme — walls, desks and standing pieces in the floor\'s theme — from the lobby and from a floor', {},
+    { plant: [{ file: 'js/floor/cab-paint.js', from: "`cab-${ride.beyond}`, ride.view);", to: "`cab-${ride.beyond}`, null);" }] },
+    async (chrome, c) => {
+      const d = [];
+      const facts = {};
+      const viewOf = (s, root) => s.ev(`(() => { const v = document.querySelector('${root} .cab-beyond .floor-view'); if (v === null) return null;
+        const n = (cls) => v.querySelectorAll('.' + cls).length;
+        return { style: v.getAttribute('style'), walls: n('dv-wall') + n('dv-partition'), desks: n('dv-desk'), pieces: n('dv-piece'), bare: v.querySelector('.dv-room') !== null }; })()`);
+      const judge = (where, held, v) => {
+        if (held.error !== undefined) { d.push(`${where}: ${held.error}`); return; }
+        if (!(held.open > 2)) d.push(`${where}: the doors held half open leave no gap (${held.open} px)`);
+        if (!held.shows) d.push(`${where}: the floor does not show in the open doorway: ${JSON.stringify(held.seen)} vs ${JSON.stringify(held.gap)}`);
+        if (v === null || v.bare || v.style === null || v.desks === 0 || v.pieces === 0 || v.walls < 3) d.push(`${where}: the doorway shows no floor of its own: ${JSON.stringify(v)}`);
+      };
+      for (const [name, viewport] of [['desktop', CAB_WINDOWS.desktop], ['phone', CAB_WINDOWS.phone]]) {
+        const tag = `${name}-${viewport.w}x${viewport.h}`;
+        for (const [from, prefix] of [['/dashboard', 'lobby'], ['/floor/aimla', 'floor']]) {
+          await within(chrome, { ...c, viewport }, async (s) => {
+            await s.open(from);
+            if (prefix === 'lobby') {
+              await s.click('#lobby-room [data-key="elevator"]');
+              await until(() => s.ev("document.getElementById('lobby-cab').open"), RIDE_DOOR_MS + 1500, 'the lobby\'s elevator opened no cab');
+              await until(() => s.ev("!document.getElementById('lobby-cab-panel').inert"), RIDE_DOOR_MS + DOOR_PHASE_MS + 2000, 'the lobby\'s cab never reached inside');
+              await buttonsIn(s, 'lobby');
+            } else {
+              await intoTheCab(s);
+              await buttonsIn(s);
+            }
+            await s.click(`#${prefix}-cab-stops li[data-stop="zeta"] button`);
+            await until(() => s.ev(`document.querySelector('#${prefix}-cab-doors .elevator-leaf')?.getAnimations().length > 0`), 2000, 'the cab never opened its doors');
+            const half = await hold(s, `#${prefix}-cab-doors`, '.cab-beyond .dv-back', '.cab-beyond', 0.5);
+            if (c.plant.length === 0) await s.shot(`door-view-${prefix}-half-open-${tag}`);
+            const v = await viewOf(s, `#${prefix}-cab-doors`);
+            judge(`${tag} ${prefix}: zeta half open`, half, v);
+            if (c.plant.length === 0) { await hold(s, `#${prefix}-cab-doors`, '.cab-beyond .dv-back', '.cab-beyond', 1); await s.shot(`door-view-${prefix}-open-${tag}`); }
+            facts[`${tag} ${prefix}`] = { open: half.open, view: v };
+          });
+        }
       }
       return { defects: d, facts };
     }),

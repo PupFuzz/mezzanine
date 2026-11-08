@@ -8025,7 +8025,7 @@
       "reduce": true
     },
     "floor_rides": {
-      "note": "card#11795's AT-D3-26, the departure (FLOOR.md § 4.5): `building_rides`' snapshot and heartbeats on the floor `aimla` (the shipped default map, `@json:`) under a layout of three floors — `aimla` and `kappa` unlabelled, `zeta` labelled *the annex* — with the page's own lobby link handed over (`floor.lobby_href`) and `aimla-pm`'s drill-down open (50 ms, `fx-drilldown`'s `panel_feed_lives` responses). `kappa`'s and `zeta`'s rooms answer the shipped default map too, which a page arriving on either floor asks for (`tools/design/floor-ride.browser.mjs`); this floor's screen never does. Four rides, each the press, the leaves' timer (`entered`), the doors' (`shut`), a stop, the doors open (`opened`) and its end: to `zeta`, to `kappa` (each `abandoned` at the bound — the harness does not navigate), a stay on `aimla` (`arrived`), and the lobby — with a heartbeat drawn during the stay (9 300 ms). The ride writes no animation-log row and leaves the drill-down open.",
+      "note": "card#11795's AT-D3-26, the departure (FLOOR.md § 4.5): `building_rides`' snapshot and heartbeats on the floor `aimla` (the shipped default map, `@json:`) under a layout of three floors — `aimla` and `kappa` unlabelled, `zeta` labelled *the annex* — with the page's own lobby link handed over (`floor.lobby_href`) and `aimla-pm`'s drill-down open (50 ms, `fx-drilldown`'s `panel_feed_lives` responses). `kappa`'s and `zeta`'s rooms answer the shipped default map too, which a page arriving on either floor asks for (`tools/design/floor-ride.browser.mjs`), and which this floor's screen asks for at the first press, for the floor behind the cab's doors (card#12987): held by version, so no later press asks again. Four rides, each the press, the leaves' timer (`entered`), the doors' (`shut`), a stop, the doors open (`opened`) and its end: to `zeta`, to `kappa` (each `abandoned` at the bound — the harness does not navigate), a stay on `aimla` (`arrived`), and the lobby — with a heartbeat drawn during the stay (9 300 ms). The ride writes no animation-log row and leaves the drill-down open.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -8438,6 +8438,8 @@
     "floor_ride_in_flight": {
       "note": "card#11795's AT-D3-26, the guards (FLOOR.md § 4.5): `floor_rides`' floor, and every ride method asked in every phase the departing page reaches — no ride, `opening`, `entering`, `inside`, `chosen`, `leaving` and `staying`. Each method is one act marked `probe` with its phase, after the acts marked `setup` that drive a fresh ride there, and followed by a `returned` marked `reset` that ends whatever is left. Last, a ride whose cab is closed in `chosen` and whose doors then open (`carried`): the closed cab is carried into `leaving`. `arriving` is the arrival's (`floor_ride_arrival`).",
       "http": {
+        "/api/building/rooms/kappa/map": [{"status": 200, "body": {"install_id": "kappa", "source": "default", "map_version": null, "map": "@json:resources/floor/default.tmj"}}],
+        "/api/building/rooms/zeta/map": [{"status": 200, "body": {"install_id": "zeta", "source": "default", "map_version": null, "map": "@json:resources/floor/default.tmj"}}],
         "/api/fleet/snapshot": [
           {
             "status": 200,
@@ -9111,6 +9113,8 @@
     "floor_ride_floor_removed": {
       "note": "card#11795's AT-D3-26, a building that moves under a ride (FLOOR.md § 4.5, § 7): `floor_rides`' floor with a ride `inside` when a `building.layout` (1500 ms) re-fetches a layout without `kappa` — the cab's stops are re-derived and `kappa` leaves them — and, inside a second ride, another (4500 ms) that puts `aimla`'s room on a floor keyed `beta`, so the route's segment redirects and the ride ends.",
       "http": {
+        "/api/building/rooms/kappa/map": [{"status": 200, "body": {"install_id": "kappa", "source": "default", "map_version": null, "map": "@json:resources/floor/default.tmj"}}],
+        "/api/building/rooms/zeta/map": [{"status": 200, "body": {"install_id": "zeta", "source": "default", "map_version": null, "map": "@json:resources/floor/default.tmj"}}],
         "/api/fleet/snapshot": [
           {
             "status": 200,

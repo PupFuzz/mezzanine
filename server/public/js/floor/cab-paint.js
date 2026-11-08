@@ -1,8 +1,8 @@
 /**
  * THE ELEVATOR's CAB, DRAWN — one drawing for both pages (`docs/design/FLOOR.md` § 4.5's *One ride, one cab, one
  * module*; hoisted out of `floor/painter.js` at its second caller, the lobby, card#12113). The cab's room in depth
- * (`drawCabInterior()`, card#12051), the views its open doors look out on (`drawOfficeView()`, card#12052, and
- * `drawLobbyView()`, card#12113), the cab dialog's drawing (`paintCab()`), its colours (`cabTheme()`), the ride's leaf
+ * (`drawCabInterior()`, card#12051), the views its open doors look out on (`drawFloorView()`, a floor's stop's own floor,
+ * card#12987, with its bare room `drawOfficeView()`, and `drawLobbyView()`, card#12113), the cab dialog's drawing (`paintCab()`), its colours (`cabTheme()`), the ride's leaf
  * motion (`rideLeaves()`, `cabLeaves()`), the classes all of them paint with (`CAB_STYLE`), the one URI a drawn document
  * is shown by (`svgUri`, which the floor's painter imports), the lobby's theme loader (`loadThemes()`) and the scene's themes
  * input (`themeInputs()`, which the floor's painter re-exports).
@@ -16,8 +16,9 @@
  * re-exports what it always exported from here, so a floor reader finds each name where it was.
  *
  * ⛔ THIS FILE DECIDES NOTHING ABOUT THE RIDE. Which phase the leaves are in, how far into it and which view stands
- * behind the doors (`beyond`) are the ride frame's (`wire/ride.js`'s `sceneRide()`), read here and never inferred
- * from the page this runs on.
+ * behind the doors (`beyond`) are the ride frame's (`wire/ride.js`'s `sceneRide()`), and the floor behind them (`view`)
+ * the model the screen resolved for the ride's `stop` (`floor/door-view.js`) — read here and never inferred from the page
+ * this runs on.
  */
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -118,7 +119,7 @@ export function node(name, attrs = {}, parent = null) {
 }
 
 /**
- * EVERY RULE THAT MIXES ITS COLOUR (card#12051's cab, card#12052's office view, card#12113's lobby view), and the ONLY place `STYLE` may write
+ * EVERY RULE THAT MIXES ITS COLOUR (card#12051's cab, card#12113's lobby view, card#12987's floor view and its bare room), and the ONLY place `STYLE` may write
  * `color-mix()`. ⛔ A BROWSER WITHOUT `color-mix()` MUST NOT SEE THESE AS NOTHING: a declaration holding `var()` is
  * accepted when it is parsed and fails only when its value is computed, so a plain colour declared before it in the
  * same rule would be thrown away and the surface left unpainted (black). The fallback is therefore a RULE OF ITS OWN,
@@ -133,11 +134,18 @@ const MIXED = `.cab-back{fill:color-mix(in srgb,var(--cab-frame) 78%,var(--door)
 .cab-light{fill:color-mix(in srgb,var(--cab-lamp) 35%,var(--door));stroke:color-mix(in srgb,var(--cab-lamp) 60%,var(--door));stroke-width:.8}.cab-rim{fill:none;stroke:color-mix(in srgb,var(--cab-frame) 50%,var(--scene-ink));stroke-width:4}
 .cab-frame{fill:var(--cab-frame);stroke:color-mix(in srgb,var(--cab-frame) 65%,var(--scene-ink));stroke-width:.8}
 .cab-plate-body{fill:color-mix(in srgb,var(--cab-frame) 62%,var(--door));stroke:color-mix(in srgb,var(--cab-frame) 55%,var(--scene-ink));stroke-width:.5}
-.office-ceiling{fill:color-mix(in srgb,var(--scene-paper) 82%,var(--house-wall-2))}.office-floor{fill:color-mix(in srgb,var(--scene-floor) 80%,var(--scene-trim))}.office-plank{stroke:color-mix(in srgb,var(--scene-trim) 60%,var(--scene-floor));stroke-width:.5;stroke-opacity:.5}
-.office-wall{fill:color-mix(in srgb,var(--scene-paper) 62%,var(--house-wall-2))}.office-wall.right{fill:color-mix(in srgb,var(--scene-paper) 52%,var(--house-wall-2))}.office-back{fill:color-mix(in srgb,var(--scene-paper) 58%,var(--house-wall))}
-.office-light{fill:var(--scene-paper);stroke:color-mix(in srgb,var(--lamp) 55%,var(--scene-paper));stroke-width:.4}
-.office-desk-top{fill:color-mix(in srgb,var(--scene-stool) 62%,var(--scene-paper))}.office-desk-side{fill:color-mix(in srgb,var(--scene-stool) 70%,var(--scene-ink))}.office-leg{fill:color-mix(in srgb,var(--scene-trim) 70%,var(--scene-ink))}
-.office-chair{fill:color-mix(in srgb,var(--house-trim) 78%,var(--scene-paper))}.office-pot{fill:color-mix(in srgb,var(--scene-stool) 72%,var(--scene-ink))}.office-leaf{fill:color-mix(in srgb,var(--scene-gauge-fill) 70%,var(--house-wall))}
+.dv-ceiling{fill:color-mix(in srgb,var(--scene-paper) 82%,var(--house-wall-2));stroke:color-mix(in srgb,var(--scene-paper) 82%,var(--house-wall-2));stroke-width:.5}
+.dv-floor{fill:var(--dv-floor,color-mix(in srgb,var(--scene-floor) 80%,var(--scene-trim)));stroke:var(--dv-floor,color-mix(in srgb,var(--scene-floor) 80%,var(--scene-trim)));stroke-width:.5}
+.dv-plank{stroke:color-mix(in srgb,var(--scene-trim) 60%,var(--scene-floor));stroke-width:.5;stroke-opacity:.5}
+.dv-accent{fill:var(--dv-accent,color-mix(in srgb,var(--scene-floor) 60%,var(--scene-trim)));stroke:var(--dv-accent,color-mix(in srgb,var(--scene-floor) 60%,var(--scene-trim)));stroke-width:.5}
+.dv-wall{fill:var(--dv-wall-top,color-mix(in srgb,var(--scene-paper) 62%,var(--house-wall-2)));stroke:var(--dv-wall-top,color-mix(in srgb,var(--scene-paper) 62%,var(--house-wall-2)));stroke-width:.5}
+.dv-wall.right{fill:var(--dv-wall-bottom,color-mix(in srgb,var(--scene-paper) 52%,var(--house-wall-2)));stroke:var(--dv-wall-bottom,color-mix(in srgb,var(--scene-paper) 52%,var(--house-wall-2)))}
+.dv-back{fill:var(--dv-wall-bottom,color-mix(in srgb,var(--scene-paper) 58%,var(--house-wall)));stroke:var(--dv-wall-bottom,color-mix(in srgb,var(--scene-paper) 58%,var(--house-wall)));stroke-width:.5}
+.dv-light{fill:var(--dv-lamplight,var(--scene-paper));stroke:color-mix(in srgb,var(--lamp) 55%,var(--scene-paper));stroke-width:.4}
+.dv-partition{fill:var(--dv-partition,color-mix(in srgb,var(--scene-paper) 70%,var(--house-wall-2)));stroke:var(--dv-partition,color-mix(in srgb,var(--scene-paper) 70%,var(--house-wall-2)));stroke-width:.5}
+.dv-desk{fill:var(--dv-desk,color-mix(in srgb,var(--scene-stool) 62%,var(--scene-paper)));stroke:var(--dv-desk,color-mix(in srgb,var(--scene-stool) 62%,var(--scene-paper)));stroke-width:.5}
+.dv-desk-edge{fill:var(--dv-desk-edge,color-mix(in srgb,var(--scene-stool) 70%,var(--scene-ink)));stroke:var(--dv-desk-edge,color-mix(in srgb,var(--scene-stool) 70%,var(--scene-ink)));stroke-width:.5}
+.dv-leg{stroke:var(--dv-desk-edge,color-mix(in srgb,var(--scene-trim) 70%,var(--scene-ink)));stroke-width:.8}
 .lobby-view-ceiling{fill:color-mix(in srgb,var(--scene-paper) 82%,var(--scene-floor))}.lobby-view-floor{fill:color-mix(in srgb,var(--scene-stool) 55%,var(--scene-floor))}.lobby-view-plank{stroke:color-mix(in srgb,var(--scene-stool) 80%,var(--scene-trim));stroke-width:.5;stroke-opacity:.6}
 .lobby-view-wall{fill:color-mix(in srgb,var(--scene-paper) 75%,var(--scene-floor))}.lobby-view-back{fill:color-mix(in srgb,var(--scene-paper) 70%,var(--scene-floor))}.lobby-view-rail{stroke:color-mix(in srgb,var(--scene-stool) 55%,var(--scene-paper));stroke-width:1.2}
 .lobby-view-light{fill:color-mix(in srgb,var(--scene-paper) 85%,var(--lamp));stroke:color-mix(in srgb,var(--lamp) 45%,var(--scene-floor));stroke-width:.3;stroke-linejoin:round}.lobby-view-arch{fill:color-mix(in srgb,var(--scene-stool) 60%,var(--scene-floor));stroke:var(--scene-trim);stroke-width:.3}
@@ -165,8 +173,9 @@ export const CAB_STYLE = `
 .cab-light-glow{fill:var(--cab-lamp);opacity:.28}.cab-sill{fill:var(--door-edge)}.cab-recess{fill:var(--ground-deep)}.cab-dial{fill:none;stroke:var(--door-edge);stroke-width:1.2}.cab-lamp{fill:var(--cab-lamp)}
 .band-cab{--cab-frame:var(--door-frame);--cab-lamp:var(--lamp)}
 .cab-plate{pointer-events:none}.cab-plate-window{fill:var(--ground-deep)}.cab-plate-button{fill:var(--door);stroke:var(--door-edge);stroke-width:.5}.cab-plate-keyhole{fill:var(--scene-ink)}
-.office-skirting{fill:var(--house-trim)}.office-sky-stop{stop-color:var(--scene-glass)}.office-day-stop{stop-color:var(--scene-paper)}.office-mullion{fill:none;stroke:var(--house-trim);stroke-width:.7}
-.office-sun{fill:var(--scene-paper);opacity:.32}.office-shade-stop{stop-color:var(--scene-ink)}.office-back-shade{fill:var(--scene-ink)}.office-leaf.lit{fill:var(--scene-gauge-fill)}
+.dv-skirting{fill:var(--dv-skirting,var(--house-trim));stroke:var(--dv-skirting,var(--house-trim));stroke-width:.5}.dv-shade-stop{stop-color:var(--scene-ink)}.dv-back-shade{fill:var(--scene-ink)}
+.dv-partition-cap{fill:var(--dv-partition-cap,var(--house-trim));stroke:var(--dv-partition-cap,var(--house-trim));stroke-width:.5}
+.dv-monitor{fill:var(--dv-monitor,var(--scene-paper));stroke:var(--dv-monitor,var(--scene-paper));stroke-width:.5}
 .lobby-view-skirting{fill:var(--scene-stool)}.lobby-view-sky-stop{stop-color:var(--scene-glass)}.lobby-view-day-stop{stop-color:var(--scene-paper)}.lobby-view-shade-stop{stop-color:var(--scene-ink)}.lobby-view-back-shade{fill:var(--scene-ink)}
 .lobby-view-sun{fill:var(--scene-paper);opacity:.3}.lobby-view-mat{fill:var(--lobby-mat)}.lobby-view-door-frame{fill:var(--door-edge)}.lobby-view-handle{fill:var(--door-edge)}.lobby-view-mullion{fill:none;stroke:var(--door-frame);stroke-width:.5}
 ${unmixed(MIXED)}@supports (fill:color-mix(in srgb,currentColor 50%,transparent)){${MIXED}}
@@ -248,7 +257,7 @@ export function cabLeaves(ride) {
  * wall is drawn at `view / back` of the frame's size). The interior is a ONE-POINT PERSPECTIVE of that room — the side
  * walls, the ceiling and the floor receding from the frame to the doors' wall at the eye's point — so the room is a box
  * taller than it is wide, never the window's shape. The cab dialog's drawing is the frame, one unit a centimetre
- * (`paintCab()`'s viewBox). `back` is also the eye the office through the doors is seen from (`OFFICE.view`).
+ * (`paintCab()`'s viewBox). `back` is also the eye every view through the doors is seen from (`OFFICE.view`).
  */
 export const CAB = Object.freeze({ w: 200, d: 140, h: 230, eye: 155, back: 120, view: 94, door: Object.freeze({ w: 110, h: 200 }) });
 
@@ -431,24 +440,54 @@ function drawCallPlate(parent, back, frameRight) {
 }
 
 /**
- * THE OFFICE THE CAB's DOORS OPEN ONTO (§ 4.5's *cab's look*, card#12052; § 12's *Office view*), in centimetres: the
- * room's width, its depth beyond the doorway, its height, how far its left wall stands from the door's centre line, and
- * the eye's distance from the doorway — the rider's own eye in the cab (`CAB.back`, card#12071), so the office through the
- * doors and the cab around them are one view from one point.
+ * THE BARE ROOM BEHIND THE CAB's DOORS (§ 4.5's *cab's look*, card#12052; § 12's *Office view*), in centimetres: the room's
+ * width, its depth beyond the doorway, its height, how far its left wall stands from the door's centre line, and the eye's
+ * distance from the doorway — the rider's own eye in the cab (`CAB.back`, card#12071), so the room through the doors and
+ * the cab around them are one view from one point. Its height is *Door-view scale*'s room height (the band's 160 px at
+ * 200 / 144 cm per px), so a floor that arrives behind the doors replaces it under the same ceiling (card#12987).
  */
-export const OFFICE = Object.freeze({ w: 520, d: 900, h: 280, left: 220, view: CAB.back });
+export const OFFICE = Object.freeze({ w: 520, d: 900, h: 222, left: 220, view: CAB.back });
 
 /**
- * THE OFFICE OUTSIDE, REUSABLE (card#12052): a one-point perspective of the room of `OFFICE` seen through a doorway,
- * drawn into `parent` and clipped to `box` (`{x, y, w, h}`, the doorway, read as `CAB.door` — 110 × 200 cm — with the
- * eye `CAB.eye` over the floor, so its vanishing point is the cab's). The floor, the ceiling with its lights, two walls
- * and the far wall, windows of daylight on the left wall and the far one with the light they cast on the floor, two
- * empty desks with a chair at each, and a plant, every surface shaded deeper toward the back.
+ * A room seen through a doorway (`box`, read as `CAB.door` — 110 × 200 cm — with the eye `CAB.eye` over the floor and `view`
+ * cm behind the doorway, so its vanishing point is the cab's): `at(X, Y, Z)` — `X` across from the door's centre line, `Y` up
+ * from the floor, `Z` back from the doorway — on the box, and `pts()` the polygon text of its points. The one projection
+ * every view behind the cab's doors is drawn with.
+ */
+function throughDoor(box, view) {
+    const kx = box.w / CAB.door.w;
+    const ky = box.h / CAB.door.h;
+    const at = (X, Y, Z) => {
+        const s = view / (view + Z);
+
+        return [box.x + box.w / 2 + X * s * kx, box.y + (CAB.door.h - CAB.eye + (CAB.eye - Y) * s) * ky];
+    };
+    const pts = (...ps) => ps.map((p) => p.map((v) => +v.toFixed(2)).join(',')).join(' ');
+
+    return { at, pts, kx, ky };
+}
+
+/** The depth overlays a view's surfaces carry, deepening toward the back, as gradients under `defs` prefixed `id`. */
+function viewShades(defs, id, stop, far) {
+    for (const [name, x1, y1, x2, y2] of [['shade-left', 0, 0, 1, 0], ['shade-right', 1, 0, 0, 0], ['shade-floor', 0, 1, 0, 0], ['shade-ceiling', 0, 0, 0, 1]]) {
+        const grad = node('linearGradient', { id: `${id}-${name}`, x1, y1, x2, y2 }, defs);
+        node('stop', { offset: 0, class: stop, 'stop-opacity': 0 }, grad);
+        node('stop', { offset: 1, class: stop, 'stop-opacity': far[name] }, grad);
+    }
+}
+
+/**
+ * THE BARE ROOM, REUSABLE (card#12052's office, reduced by card#12987 to its shell): a one-point perspective of the room of
+ * `OFFICE` seen through a doorway, drawn into `parent` and clipped to `box` (`{x, y, w, h}`, the doorway, `throughDoor()`'s
+ * lens) — the floor and its boards, the ceiling with its lights, two walls and the far wall with a skirting along each foot,
+ * every surface shaded deeper toward the back — and NOTHING STANDING IN IT: no desk, wall cell, accent, piece, window or
+ * daylight. It is the view behind the doors at a floor's stop whose data the client does not wholly hold
+ * (`drawFloorView()`'s bare room, plan-12987 § 5).
  *
- * ⛔ IT IS SCENERY AND NOTHING ELSE (§ 6.3, card#12052): it draws no character, no seat, no desk slot, no name, no badge
- * and no word, reads no fleet or floor datum — its only inputs are a box and an id — and nothing in it moves. Its
- * colours are its classes in `STYLE`, the sheet's tokens and their mixes, never an argument or an inline colour. `id`
- * prefixes the ids it defines, so two views drawn into one document do not share one.
+ * ⛔ IT IS SCENERY AND NOTHING ELSE (§ 6.3): no character, seat, name, badge or word, no datum — its only inputs are a box
+ * and an id — and nothing in it moves. Its colours are its classes in `STYLE` — the floor view's `--dv-…` carriers where an
+ * ancestor sets them (`drawFloorView()`'s root group, from the stop's theme), the sheet's tokens and their mixes where none
+ * does — never an argument or an inline colour. `id` prefixes the ids it defines.
  *
  * @param {Element} parent
  * @param {{x: number, y: number, w: number, h: number}} box
@@ -456,114 +495,184 @@ export const OFFICE = Object.freeze({ w: 520, d: 900, h: 280, left: 220, view: C
  * @returns {{clip: {x: number, y: number, w: number, h: number}}} the rect it is clipped to
  */
 export function drawOfficeView(parent, box, id = 'office') {
-    const kx = box.w / CAB.door.w;
-    const ky = box.h / CAB.door.h;
-    // A point of the office — `X` across from the door's centre line, `Y` up from the floor, `Z` back from the doorway.
-    const at = (X, Y, Z) => {
-        const s = OFFICE.view / (OFFICE.view + Z);
-
-        return [box.x + box.w / 2 + X * s * kx, box.y + (CAB.door.h - CAB.eye + (CAB.eye - Y) * s) * ky];
-    };
-    const pts = (...ps) => ps.map((p) => p.map((v) => +v.toFixed(2)).join(',')).join(' ');
+    const { at, pts } = throughDoor(box, OFFICE.view);
     const [l, r, H, D] = [-OFFICE.left, OFFICE.w - OFFICE.left, OFFICE.h, OFFICE.d];
-    const g = node('g', { class: 'office-view' }, parent);
+    const g = node('g', { class: 'dv-room' }, parent);
     const defs = node('defs', {}, g);
-    const shade = (name, x1, y1, x2, y2, far) => {
-        const grad = node('linearGradient', { id: `${id}-${name}`, x1, y1, x2, y2 }, defs);
-        node('stop', { offset: 0, class: 'office-shade-stop', 'stop-opacity': 0 }, grad);
-        node('stop', { offset: 1, class: 'office-shade-stop', 'stop-opacity': far }, grad);
-    };
-    shade('shade-left', 0, 0, 1, 0, 0.22);
-    shade('shade-right', 1, 0, 0, 0, 0.22);
-    shade('shade-floor', 0, 1, 0, 0, 0.2);
-    shade('shade-ceiling', 0, 0, 0, 1, 0.18);
-    // Daylight in the glass: the sky's glass at the head, paler toward the sill.
-    const glass = node('linearGradient', { id: `${id}-glass`, x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
-    node('stop', { offset: 0, class: 'office-sky-stop' }, glass);
-    node('stop', { offset: 1, class: 'office-day-stop' }, glass);
+
+    viewShades(defs, id, 'dv-shade-stop', { 'shade-left': 0.22, 'shade-right': 0.22, 'shade-floor': 0.2, 'shade-ceiling': 0.18 });
 
     const room = clippedTo(g, defs, box, id);
     const face = (cls, points, overlay) => {
         node('polygon', { points, class: cls }, room);
         if (overlay !== undefined) {
-            node('polygon', { points, fill: `url(#${id}-${overlay})`, class: 'office-shade' }, room);
+            node('polygon', { points, fill: `url(#${id}-${overlay})`, class: 'dv-shade' }, room);
         }
     };
-    const line = (cls, a, b) => node('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], class: cls }, room);
 
-    // The room: the ceiling, the floor and its boards, the two walls, the far wall, a skirting along each wall's foot.
-    face('office-ceiling', pts(at(l, H, 0), at(r, H, 0), at(r, H, D), at(l, H, D)), 'shade-ceiling');
-    face('office-floor', pts(at(l, 0, 0), at(r, 0, 0), at(r, 0, D), at(l, 0, D)), 'shade-floor');
+    face('dv-ceiling', pts(at(l, H, 0), at(r, H, 0), at(r, H, D), at(l, H, D)), 'shade-ceiling');
+    face('dv-floor', pts(at(l, 0, 0), at(r, 0, 0), at(r, 0, D), at(l, 0, D)), 'shade-floor');
     for (let X = l + 40; X < r; X += 40) {
-        line('office-plank', at(X, 0, 0), at(X, 0, D));
+        const [a, b] = [at(X, 0, 0), at(X, 0, D)];
+        node('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], class: 'dv-plank' }, room);
     }
-    face('office-wall left', pts(at(l, H, 0), at(l, H, D), at(l, 0, D), at(l, 0, 0)), 'shade-left');
-    face('office-wall right', pts(at(r, H, 0), at(r, H, D), at(r, 0, D), at(r, 0, 0)), 'shade-right');
+    face('dv-wall left', pts(at(l, H, 0), at(l, H, D), at(l, 0, D), at(l, 0, 0)), 'shade-left');
+    face('dv-wall right', pts(at(r, H, 0), at(r, H, D), at(r, 0, D), at(r, 0, 0)), 'shade-right');
     const [bx, by] = at(l, H, D);
     const [bx2, by2] = at(r, 0, D);
-    node('rect', { x: bx, y: by, width: bx2 - bx, height: by2 - by, class: 'office-back' }, room);
+    node('rect', { x: bx, y: by, width: bx2 - bx, height: by2 - by, class: 'dv-back' }, room);
     // The far wall, all of it at the room's full depth: one even shade, as deep as the walls' far edges.
-    node('rect', { x: bx, y: by, width: bx2 - bx, height: by2 - by, class: 'office-shade office-back-shade', 'fill-opacity': 0.22 }, room);
+    node('rect', { x: bx, y: by, width: bx2 - bx, height: by2 - by, class: 'dv-shade dv-back-shade', 'fill-opacity': 0.22 }, room);
     for (const X of [l, r]) {
-        face('office-skirting', pts(at(X, 10, 0), at(X, 10, D), at(X, 0, D), at(X, 0, 0)));
+        face('dv-skirting', pts(at(X, 10, 0), at(X, 10, D), at(X, 0, D), at(X, 0, 0)));
     }
-    face('office-skirting', pts(at(l, 10, D), at(r, 10, D), at(r, 0, D), at(l, 0, D)));
+    face('dv-skirting', pts(at(l, 10, D), at(r, 10, D), at(r, 0, D), at(l, 0, D)));
 
-    // A window, given its four corners as drawn: its glass in daylight and its frame, an outline and a cross of mullions.
-    const window_ = (corners) => {
-        const [a, b, c, d] = corners;
-        node('polygon', { points: pts(a, b, c, d), fill: `url(#${id}-glass)`, class: 'office-glass' }, room);
-        const mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
-        node('path', { d: `M${pts(a, b, c, d, a).replace(/ /g, 'L')}M${pts(mid(a, b), mid(d, c)).replace(' ', 'L')}M${pts(mid(a, d), mid(b, c)).replace(' ', 'L')}`, class: 'office-mullion' }, room);
-    };
-    const windows = [[380, 520], [580, 720], [770, 870]];
-    for (const [z1, z2] of windows) {
-        window_([at(l, 235, z1), at(l, 235, z2), at(l, 85, z2), at(l, 85, z1)]);
+    for (const Z of VIEW_LIGHTS.at(D)) {
+        face('dv-light', pts(at(-VIEW_LIGHTS.w / 2, H, Z), at(VIEW_LIGHTS.w / 2, H, Z), at(VIEW_LIGHTS.w / 2, H, Z + VIEW_LIGHTS.d), at(-VIEW_LIGHTS.w / 2, H, Z + VIEW_LIGHTS.d)));
     }
-    window_([at(l + 70, 235, D), at(r - 70, 235, D), at(r - 70, 85, D), at(l + 70, 85, D)]);
-    // The daylight each side window lays on the floor, slanting in toward the room.
-    for (const [z1, z2] of windows) {
-        node('polygon', { points: pts(at(l, 0, z1 + 20), at(l, 0, z2 + 20), at(l + 160, 0, Math.min(D, z2 + 90)), at(l + 160, 0, Math.min(D, z1 + 90))), class: 'office-sun' }, room);
-    }
-
-    // The ceiling's lights.
-    for (const Z of [240, 470, 690]) {
-        face('office-light', pts(at(-45, H, Z), at(45, H, Z), at(45, H, Z + 50), at(-45, H, Z + 50)));
-    }
-
-    // A plant: a pot and its leaves, smaller with depth.
-    const plant = (X, Z) => {
-        face('office-pot', pts(at(X - 16, 0, Z), at(X + 16, 0, Z), at(X + 20, 38, Z), at(X - 20, 38, Z)));
-        const s = OFFICE.view / (OFFICE.view + Z);
-        for (const [dx, Y, rx, ry, lit] of [[-16, 62, 16, 22, false], [16, 66, 15, 24, false], [0, 92, 18, 26, false], [-8, 76, 12, 16, true], [10, 104, 11, 15, true]]) {
-            const [cx, cy] = at(X + dx, Y, Z);
-            node('ellipse', { cx, cy, rx: rx * s * kx, ry: ry * s * ky, class: lit ? 'office-leaf lit' : 'office-leaf' }, room);
-        }
-    };
-    // An empty desk from `x1` to `x2`, `z1` to `z2`: two back legs and a modesty panel, two front legs, its top and the
-    // top's front edge; and its chair, pushed in toward the desk from the near side, its back to the viewer.
-    const desk = (x1, x2, z1, z2) => {
-        for (const X of [x1 + 3, x2 - 7]) {
-            face('office-leg', pts(at(X, 72, z2 - 4), at(X + 4, 72, z2 - 4), at(X + 4, 0, z2 - 4), at(X, 0, z2 - 4)));
-        }
-        face('office-desk-side', pts(at(x1 + 7, 72, z2 - 6), at(x2 - 7, 72, z2 - 6), at(x2 - 7, 30, z2 - 6), at(x1 + 7, 30, z2 - 6)));
-        for (const X of [x1 + 3, x2 - 7]) {
-            face('office-leg', pts(at(X, 72, z1 + 4), at(X + 4, 72, z1 + 4), at(X + 4, 0, z1 + 4), at(X, 0, z1 + 4)));
-        }
-        face('office-desk-top', pts(at(x1, 76, z1), at(x2, 76, z1), at(x2, 76, z2), at(x1, 76, z2)));
-        face('office-desk-side', pts(at(x1, 76, z1), at(x2, 76, z1), at(x2, 72, z1), at(x1, 72, z1)));
-        const cx = (x1 + x2) / 2;
-        const cz = z1 - 22;
-        face('office-chair', pts(at(cx - 20, 4, cz - 4), at(cx + 20, 4, cz - 4), at(cx + 20, 0, cz - 4), at(cx - 20, 0, cz - 4)));
-        face('office-leg', pts(at(cx - 2, 44, cz), at(cx + 2, 44, cz), at(cx + 2, 4, cz), at(cx - 2, 4, cz)));
-        face('office-chair', pts(at(cx - 22, 46, cz - 20), at(cx + 22, 46, cz - 20), at(cx + 22, 46, cz + 20), at(cx - 22, 46, cz + 20)));
-        face('office-chair', pts(at(cx - 21, 98, cz - 22), at(cx + 21, 98, cz - 22), at(cx + 21, 52, cz - 22), at(cx - 21, 52, cz - 22)));
-    };
-    desk(-175, -55, 540, 610);
-    plant(l + 35, 420);
-    desk(-10, 130, 240, 320);
 
     return { clip: box };
+}
+
+/**
+ * The ceiling's lights in a view behind the cab's doors (card#12052's office's, kept by the floor view, plan-12987 § 3.3): a
+ * panel `w` × `d` cm on the door's centre line every `pitch` cm from `first`, each wholly short of the depth `D` (`at(D)`).
+ */
+const VIEW_LIGHTS = Object.freeze({
+    w: 90,
+    d: 50,
+    first: 240,
+    pitch: 225,
+    at(D) {
+        return Array.from({ length: Math.max(0, Math.floor((D - this.d - this.first) / this.pitch) + 1) }, (_, i) => this.first + i * this.pitch);
+    },
+});
+
+/**
+ * THE FLOOR THE CAB's DOORS OPEN ONTO (§ 4.5's *Through the open doors at a FLOOR is that floor*, card#12987; the plan's
+ * § 3.3): `view`, the stop's model (`floor/door-view.js`'s `doorView()`, which the screen resolved and the ride carries as
+ * `scene.ride.view`), PROJECTED into `parent` and clipped to `box` with `throughDoor()`'s lens — the floor plane, the
+ * ceiling at the room's height with the bare room's lights, the accent runs flat on the plane, then every body in the order
+ * the model answers it. A body whose projection lies wholly outside the doorway is culled; of a body's faces only those that
+ * face the eye are drawn — its near face, its top where it is lower than the eye, its end where it lies wholly to one side
+ * of the door's centre line. A standing piece is its theme's own document, an `<image>` on its foot line (§ 10.6 item 2's
+ * asset shape), facing the rider (§ 14 item 48's ruling 1). A bare model — or none — is the bare room
+ * (`drawOfficeView()`), in the stop's palette where the model names one.
+ *
+ * ⛔ IT DECIDES NOTHING AND IS SCENERY (§ 6.3): no word, no seat, no character, no fact and no motion; no window and no
+ * daylight (§ 10.6 item 3). ITS COLOURS ARE THE THEME's CARRIERS: the root group's `style` holds the model's palette as
+ * `--dv-…` custom properties and nothing else, and every surface is painted by its `.dv-…` class in `STYLE`, whose `var()`
+ * falls to the sheet's tokens when the root carries none (no theme module held) — never an inline colour. Each face's class
+ * strokes its own fill, so adjacent faces leave no hairline where a shared edge lands on a fractional pixel (the plan's § 7).
+ *
+ * @param {Element} parent
+ * @param {{x: number, y: number, w: number, h: number}} box
+ * @param {string} [id]
+ * @param {object|null} [view] `doorView()`'s model
+ * @returns {{clip: {x: number, y: number, w: number, h: number}}} the rect it is clipped to
+ */
+export function drawFloorView(parent, box, id = 'floor', view = null) {
+    const palette = view?.palette ?? null;
+    const g = node('g', {
+        class: 'floor-view',
+        style: palette === null ? null : Object.entries(palette).map(([property, colour]) => `${property}:${colour};`).join(''),
+    }, parent);
+
+    if (view === null || view.bare) {
+        return drawOfficeView(g, box, id);
+    }
+
+    const { at, pts } = throughDoor(box, OFFICE.view);
+    const defs = node('defs', {}, g);
+
+    viewShades(defs, id, 'dv-shade-stop', { 'shade-left': 0.22, 'shade-right': 0.22, 'shade-floor': 0.2, 'shade-ceiling': 0.18 });
+
+    const room = clippedTo(g, defs, box, id);
+    const poly = (cls, ...corners) => node('polygon', { points: pts(...corners), class: cls }, room);
+    const { x1, x2, z1, z2 } = view.floor;
+    const H = view.height;
+
+    poly('dv-ceiling', at(x1, H, z1), at(x2, H, z1), at(x2, H, z2), at(x1, H, z2));
+    node('polygon', { points: pts(at(x1, H, z1), at(x2, H, z1), at(x2, H, z2), at(x1, H, z2)), fill: `url(#${id}-shade-ceiling)`, class: 'dv-shade' }, room);
+    for (const Z of VIEW_LIGHTS.at(z2)) {
+        poly('dv-light', at(-VIEW_LIGHTS.w / 2, H, Z), at(VIEW_LIGHTS.w / 2, H, Z), at(VIEW_LIGHTS.w / 2, H, Z + VIEW_LIGHTS.d), at(-VIEW_LIGHTS.w / 2, H, Z + VIEW_LIGHTS.d));
+    }
+    poly('dv-floor', at(x1, 0, z1), at(x2, 0, z1), at(x2, 0, z2), at(x1, 0, z2));
+    node('polygon', { points: pts(at(x1, 0, z1), at(x2, 0, z1), at(x2, 0, z2), at(x1, 0, z2)), fill: `url(#${id}-shade-floor)`, class: 'dv-shade' }, room);
+    for (const a of view.accents) {
+        if (inDoorway(box, at, a.x1, a.x2, 0, 0, a.z1, a.z2)) {
+            poly('dv-accent', at(a.x1, 0, a.z1), at(a.x2, 0, a.z1), at(a.x2, 0, a.z2), at(a.x1, 0, a.z2));
+        }
+    }
+
+    for (const b of view.bodies) {
+        if (inDoorway(box, at, b.x1, b.x2, b.y1, b.y2, b.z1, b.z2)) {
+            drawBody(room, at, pts, b);
+        }
+    }
+
+    return { clip: box };
+}
+
+/** Whether a body's projected bounding rect meets the doorway `box` — a body wholly outside it is culled. */
+function inDoorway(box, at, x1, x2, y1, y2, z1, z2) {
+    const corners = [x1, x2].flatMap((X) => [y1, y2].flatMap((Y) => [z1, z2].map((Z) => at(X, Y, Z))));
+    const xs = corners.map((c) => c[0]);
+    const ys = corners.map((c) => c[1]);
+
+    return Math.max(...xs) > box.x && Math.min(...xs) < box.x + box.w && Math.max(...ys) > box.y && Math.min(...ys) < box.y + box.h;
+}
+
+/**
+ * Each body kind's classes: its faces', and its top's where it is lower than the eye. A side-wall strip and a wall cell are
+ * the room's wall; the far wall the bare room's back; a desk's top its desk colour over its edge, a monitor's back its own.
+ */
+const BODY_CLASS = Object.freeze({
+    'far-wall': Object.freeze({ face: 'dv-back', top: 'dv-back' }),
+    'side-wall': Object.freeze({ face: 'dv-wall', top: 'dv-wall' }),
+    wall: Object.freeze({ face: 'dv-wall', top: 'dv-wall' }),
+    partition: Object.freeze({ face: 'dv-partition', top: 'dv-partition-cap' }),
+    'desk-top': Object.freeze({ face: 'dv-desk-edge', top: 'dv-desk' }),
+    monitor: Object.freeze({ face: 'dv-monitor', top: 'dv-monitor' }),
+});
+
+/** One body's faces that face the eye (`drawFloorView()`'s rule), or a standing piece's document on its foot line. */
+function drawBody(room, at, pts, b) {
+    if (b.kind === 'billboard') {
+        const [left, head] = at(b.x1, b.y2, b.z1);
+        const [right, foot] = at(b.x2, b.y1, b.z1);
+
+        node('image', { href: b.href, x: +left.toFixed(2), y: +head.toFixed(2), width: +(right - left).toFixed(2), height: +(foot - head).toFixed(2), preserveAspectRatio: 'none', class: 'dv-piece' }, room);
+
+        return;
+    }
+
+    const cls = BODY_CLASS[b.kind];
+
+    // Its end, on the side of the door's centre line it lies wholly on — a zero-width strip is nothing but its end.
+    if (b.z2 > b.z1 && (b.x1 > 0 || b.x2 < 0)) {
+        const X = b.x1 > 0 ? b.x1 : b.x2;
+
+        node('polygon', { points: pts(at(X, b.y2, b.z1), at(X, b.y2, b.z2), at(X, b.y1, b.z2), at(X, b.y1, b.z1)), class: cls.face }, room);
+    }
+
+    if (b.z2 > b.z1 && b.x2 > b.x1 && b.y2 < CAB.eye) {
+        node('polygon', { points: pts(at(b.x1, b.y2, b.z1), at(b.x2, b.y2, b.z1), at(b.x2, b.y2, b.z2), at(b.x1, b.y2, b.z2)), class: cls.top }, room);
+    }
+
+    if (b.x2 > b.x1) {
+        node('polygon', { points: pts(at(b.x1, b.y2, b.z1), at(b.x2, b.y2, b.z1), at(b.x2, b.y1, b.z1), at(b.x1, b.y1, b.z1)), class: cls.face }, room);
+    }
+
+    // A desk's legs, as marks on its top's near face.
+    if (b.kind === 'desk-top') {
+        for (const X of [b.x1 + 6, b.x2 - 6]) {
+            const [p, q] = [at(X, b.y2, b.z1), at(X, b.y1, b.z1)];
+
+            node('line', { x1: +p[0].toFixed(2), y1: +p[1].toFixed(2), x2: +q[0].toFixed(2), y2: +q[1].toFixed(2), class: 'dv-leg' }, room);
+        }
+    }
 }
 
 /**
@@ -603,16 +712,8 @@ export const LOBBY_VIEW = Object.freeze({
  * @returns {{clip: {x: number, y: number, w: number, h: number}}} the rect it is clipped to
  */
 export function drawLobbyView(parent, box, id = 'lobby') {
-    const kx = box.w / CAB.door.w;
-    const ky = box.h / CAB.door.h;
     const V = LOBBY_VIEW;
-    // A point of the lobby — `X` across from the door's centre line, `Y` up from the floor, `Z` back from the doorway.
-    const at = (X, Y, Z) => {
-        const s = V.view / (V.view + Z);
-
-        return [box.x + box.w / 2 + X * s * kx, box.y + (CAB.door.h - CAB.eye + (CAB.eye - Y) * s) * ky];
-    };
-    const pts = (...ps) => ps.map((p) => p.map((v) => +v.toFixed(2)).join(',')).join(' ');
+    const { at, pts, ky } = throughDoor(box, V.view);
     const [l, r, H, D] = [-V.w / 2, V.w / 2, V.h, V.d];
     const g = node('g', { class: 'lobby-view' }, parent);
     const defs = node('defs', {}, g);
@@ -738,8 +839,11 @@ export function cabTheme(el, palette) {
     el.style.setProperty('--cab-lamp', palette.lamp);
 }
 
-/** What the open doors look out on, by `scene.ride`'s `beyond` (§ 4.5): a floor's stop's office, the lobby's lobby. */
-const BEYOND = Object.freeze({ office: drawOfficeView, lobby: drawLobbyView });
+/**
+ * What the open doors look out on, by `scene.ride`'s `beyond` (§ 4.5): at a floor's stop that floor (the ride's `view`, the
+ * model the screen resolved for its `stop`), at the lobby's the lobby.
+ */
+const BEYOND = Object.freeze({ office: drawFloorView, lobby: drawLobbyView });
 
 /**
  * THE CAB's INTERIOR (§ 4.5, card#11795; in depth, card#12051) into `host`, the cab dialog's own drawing element:
@@ -747,8 +851,8 @@ const BEYOND = Object.freeze({ office: drawOfficeView, lobby: drawLobbyView });
  * whole space — and on its back wall the door: its frame in the house theme's elevator palette (`--cab-frame`,
  * `cabTheme()`'s, set on the dialog), a plain dial and its lamp (`--cab-lamp`) — no numeral and no arrow — the dark
  * doorway, the layer behind the leaves (`.cab-beyond`: what the open doors look out on — the ride's `beyond`, read here
- * and never inferred from the page this runs on: `drawOfficeView()`'s office for a floor's stop, card#12052, and
- * `drawLobbyView()`'s lobby for the lobby's, card#12113), and the two leaves in the building's door colours, moving as
+ * and never inferred from the page this runs on: `drawFloorView()`'s projection of the ride's `view` for a floor's stop,
+ * card#12987, and `drawLobbyView()`'s lobby for the lobby's, card#12113), and the two leaves in the building's door colours, moving as
  * `cabLeaves()` says, the seam between them being their own edges; beside the door's frame, under the layer behind the
  * leaves, the decorative call plate (`drawCallPlate()`, card#12071). The cab's space is fitted WHOLE into `host`
  * (`meet`, card#12039) and nothing is drawn past it (`overflow: hidden`, card#12051): the room is a box taller than it
@@ -757,8 +861,8 @@ const BEYOND = Object.freeze({ office: drawOfficeView, lobby: drawLobbyView });
  * cabs are this one, and the painter hands its own on.
  *
  * @param {Element} host
- * @param {{phase: string, elapsed_ms: number, ms: number, door_delay_ms: number|null, beyond: 'office'|'lobby'}|null} ride
- *        `scene.ride`
+ * @param {{phase: string, elapsed_ms: number, ms: number, door_delay_ms: number|null, beyond: 'office'|'lobby', view: object|null}|null} ride
+ *        `scene.ride` — `view` the floor model behind the doors at a floor's stop
  */
 export function paintCab(host, ride) {
     if (ride === null || ride === undefined) {
@@ -795,7 +899,7 @@ export function paintCab(host, ride) {
     // ⛔ THE LAYER BEHIND THE LEAVES: the doorway's own group, under the leaves and over the dark recess — what the
     // open doors look out on, the stop the ride's `beyond` names (card#12052, card#12113), clipped to the doorway and
     // still: the leaves reveal it.
-    BEYOND[ride.beyond](node('g', { class: 'cab-beyond' }, cab), L, `cab-${ride.beyond}`);
+    BEYOND[ride.beyond](node('g', { class: 'cab-beyond' }, cab), L, `cab-${ride.beyond}`, ride.view);
 
     const style = cabLeaves(ride);
 

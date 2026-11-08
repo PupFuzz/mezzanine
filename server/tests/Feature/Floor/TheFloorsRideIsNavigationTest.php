@@ -321,6 +321,63 @@ class TheFloorsRideIsNavigationTest extends TestCase
         $this->assertSame([], $this->stopDefects($this->floorRun(self::RIDES)));
     }
 
+    /**
+     * THE PRESS FETCHES EACH STOP'S ROOM, AND NO LAYOUT (card#12987; the plan's § 4, cut 2): against the same run with no
+     * ride, the rides add exactly the other stops' room maps — `kappa`'s and `zeta`'s, each once, held by version so no later
+     * press asks again — and no `GET /api/building`, whose failure both screens state as a fact. And every frame drawn under a
+     * ride carries the view of the stop its doors open on: the floor's model for that stop at a floor's stop, none at the
+     * lobby's.
+     */
+    public function test_green_the_press_fetches_each_stops_room_and_no_layout(): void
+    {
+        [$with, $without] = $this->withAndWithoutRide(self::RIDES);
+
+        $this->assertSame([], $this->pressFetchDefects($with, $without));
+        $this->assertSame([], $this->viewDefects($with));
+    }
+
+    /** @return list<string> the requests the rides add to the run, against what the press owes */
+    private function pressFetchDefects(array $with, array $without): array
+    {
+        $count = static fn (array $requests): array => array_count_values($requests);
+        $added = $count($with['final']['requests']);
+
+        foreach ($count($without['final']['requests']) as $path => $n) {
+            $added[$path] = ($added[$path] ?? 0) - $n;
+        }
+
+        $added = array_filter($added, static fn (int $n): bool => $n !== 0);
+        ksort($added);
+        $owed = ['/api/building/rooms/kappa/map' => 1, '/api/building/rooms/zeta/map' => 1];
+
+        return $added === $owed ? [] : ['the rides added the requests '.json_encode($added).' — each other stop\'s room once and nothing else is owed: '.json_encode($owed)];
+    }
+
+    /** @return list<string> every frame drawn under a ride whose view is not the stop its doors open on */
+    private function viewDefects(array $result): array
+    {
+        $defects = [];
+        $floors = 0;
+
+        foreach ($this->rideFrames($result) as $render) {
+            $scene = $render['frame']['scene']['ride'] ?? null;
+
+            if ($scene === null) {
+                continue;
+            }
+
+            $view = array_key_exists('view', $scene) ? $scene['view'] : '(absent)';
+
+            if ($scene['beyond'] === 'lobby' ? $view !== null : ($view['stop'] ?? null) !== $scene['stop']) {
+                $defects[] = "[{$render['at']} {$render['frame']['ride']['phase']}] the view behind the doors is ".json_encode($view).' where the doors open on '.json_encode($scene['stop']);
+            }
+
+            $floors += $scene['beyond'] === 'office' ? 1 : 0;
+        }
+
+        return $floors === 0 ? ['the run drew no frame whose doors open on a floor — the view was never read'] : $defects;
+    }
+
     /** @return list<string> every frame whose `scene.ride.stop` is not the key of the stop its doors open on */
     private function stopDefects(array $result): array
     {
@@ -657,9 +714,21 @@ class TheFloorsRideIsNavigationTest extends TestCase
         $this->assertNotSame($this->doorsByRender($without), $this->doorsByRender($with), 'RED 1 (ride leaves in `scene.doors`) did not bite');
 
         // RED 2 — the ride writing a row through the animation set.
-        $dir = $this->mutatedModules([$screen, '        return this.#ride.press(last);', "        this.#set.displaced(last.floor.key, 'ride', 'ride', 0);\n        return this.#ride.press(last);"]);
+        $dir = $this->mutatedModules([$screen, '        const answer = this.#ride.press(last);', "        this.#set.displaced(last.floor.key, 'ride', 'ride', 0);\n        const answer = this.#ride.press(last);"]);
         [$with, $without] = $this->withAndWithoutRide(self::RIDES, $dir);
         $this->assertNotSame($without['animation_log'], $with['animation_log'], 'RED 2 (a row through animation-set.js) did not bite');
+
+        // card#12987's — the press fetching nothing for the view behind the doors; the press refetching the layout; the view
+        // attached for the page's own floor at every stop.
+        $dir = $this->mutatedModules([$screen, "        if (answer !== null) {\n            this.#doorViews.prefetch();\n        }\n", '']);
+        $this->assertNotSame([], $this->pressFetchDefects(...$this->withAndWithoutRide(self::RIDES, $dir)), 'RED (the press fetching nothing) did not bite');
+        $dir = $this->mutatedModules(['../floor/door-views.js', "    prefetch() {\n", "    prefetch() {\n        this.#building.fetchLayout();\n"]);
+        // The refetch is a request the run scripts no answer for, so this control's runs admit an unscripted one.
+        $floor = $this->fixture(self::RIDES)['floor'];
+        $this->assertNotSame([], $this->pressFetchDefects($this->replay(self::RIDES, $dir, [], true), $this->replay(self::RIDES, $dir, ['floor' => ['ride' => []] + $floor], true)),
+            'RED (the press refetching the layout) did not bite');
+        $dir = $this->mutatedModules(['../floor/door-views.js', "view: ride.beyond === 'lobby' ? null : this.#view(ride.stop) });", "view: ride.beyond === 'lobby' ? null : this.#view(this.#rows()?.[0]?.floor) });"]);
+        $this->assertNotSame([], $this->viewDefects($this->floorRun(self::RIDES, $dir)), 'RED (the view of the page\'s own floor at every stop) did not bite');
 
         // RED 3 — the route built from the stop's name.
         $dir = $this->mutatedModules([$ride, 'chosen: { key: stop.key, name: stop.name, href: stop.href } };',
@@ -713,7 +782,7 @@ class TheFloorsRideIsNavigationTest extends TestCase
         $this->assertRedBy(fn () => $this->test_green_a_stay_ends_with_no_ride_and_leaves_the_drill_down_alone_in($dir), 'RED 11 (a stay that closes the drill-down)');
 
         // RED 12 — `scene.ride` attached in `draw()` only: the walk's end and the tick lose it.
-        $dir = $this->mutatedModules([$screen, "            ride: this.#ride.sceneRide(now),\n        });\n    }\n\n    /** One timer at a time",
+        $dir = $this->mutatedModules([$screen, "            ride: this.#doorViews.attach(this.#ride.sceneRide(now)),\n        });\n    }\n\n    /** One timer at a time",
             "        });\n    }\n\n    /** One timer at a time"]);
         $this->assertRedBy(fn () => $this->test_green_scene_ride_is_on_every_scene_producer_in($dir), 'RED 12 (scene.ride from one producer)');
 
