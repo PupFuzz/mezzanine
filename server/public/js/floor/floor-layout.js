@@ -235,7 +235,7 @@ export function mapGrid(map) {
  * every group above it are `visible` — so a reader decides which of those apply to it rather than
  * re-walking the tree.
  *
- * ⛔ THE ONE WALK OF A MAP'S LAYER TREE ON THIS CLIENT. The tiles (`floor/scene.js`'s `mapTiles()`)
+ * ⛔ THE ONE WALK OF A MAP'S LAYER TREE ON THIS CLIENT. The tiles (`floor/map-tiles.js`'s `mapTiles()`)
  * and the desk slots (`mapDesks()` below) both read it; a reader that looked at `map.layers` itself
  * would see the top level only, which is how a map the console accepted with its `desks` inside a
  * group was drawn with `S = 0` and every seat in the overflow row (card#11187).
@@ -462,6 +462,34 @@ export function backWallBand(extent) {
         y: extent.y,
         width: extent.width,
     });
+}
+
+/**
+ * The back-wall band's height (§ 4.2) — "its height is a drawing layer's" (`backWallBand()` above): a wall
+ * about 2.2 m tall at the floor's scale (card#11045, the operator's 2026-10-01 ruling: tall office
+ * windows, not a jail's). FLOOR.md § 12's *Back-wall band height* row is its other home, and
+ * `Tests\Feature\Floor\TheFloorDrawsItsFrameTest` holds the two equal.
+ */
+export const BAND_H = 160;
+
+/**
+ * THE TWO-DOOR ELEVATOR's PLACE ON THE BAND (§ 4.2), in px: its leaves `dx` in from the band's left edge, `w` wide
+ * and `h` tall, standing on the band's foot; its frame `frame` px each side and `header` px over them. The band's
+ * drawing (`scene.js`'s `backWall()`) hangs it here, and the threshold below is its seam at its foot.
+ */
+export const ELEVATOR = Object.freeze({ dx: 32, w: 84, h: 144, frame: 6, header: 14 });
+
+/**
+ * THE THRESHOLD OF A BAND STANDING OVER `extent` (§ 6.2's walk note item 3): the elevator leaves' seam, at their
+ * foot — the point `(extent.x + ELEVATOR.dx + ELEVATOR.w / 2, extent.y)`, whatever the floor's maps. The one
+ * formula: `backWall()`'s `seam` reads it, so the band's drawing and every reader of the threshold from an extent
+ * alone agree on where the doors are.
+ *
+ * @param {{x: number, y: number}} extent the floor's extent (or the band's span, which shares its left and top)
+ * @returns {{x: number, y: number}}
+ */
+export function thresholdOf(extent) {
+    return Object.freeze({ x: extent.x + ELEVATOR.dx + ELEVATOR.w / 2, y: extent.y });
 }
 
 /**

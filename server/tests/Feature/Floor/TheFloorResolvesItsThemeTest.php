@@ -81,7 +81,7 @@ class TheFloorResolvesItsThemeTest extends TestCase
 
     public function test_red_the_unshipped_name_drawn_as_named(): void
     {
-        $dir = $this->mutatedModules(['../floor/scene.js',
+        $dir = $this->mutatedModules(['../floor/floor-theme.js',
             "        : { theme: themes.house, notice: unshippedThemeNotice(floor.theme, floor.name) };",
             "        : { theme: floor.theme, notice: null };"]);
 

@@ -139,24 +139,24 @@ class TheFloorDrawsItsFrameTest extends TestCase
      */
     public function test_green_section_12s_frame_figures_are_the_scenes(): void
     {
-        $this->assertSame([], $this->figureDefects($this->floorMd(), (string) file_get_contents($this->jsRoot().'/floor/scene.js')));
+        $this->assertSame([], $this->figureDefects($this->floorMd(), $this->frameSources()));
     }
 
     // ── RED — each defect planted in the shipped module it would live in ──────────────────────
 
     public function test_red_a_frame_figure_moved_in_one_home(): void
     {
-        $scene = (string) file_get_contents($this->jsRoot().'/floor/scene.js');
+        $sources = $this->frameSources();
         $md = $this->floorMd();
 
         foreach ([
-            'the band' => ['export const BAND_H = 160;', 'export const BAND_H = 161;'],
-            'the zone' => ['const ZONE_W = 332;', 'const ZONE_W = 333;'],
-            'the pitch' => ['pitch: 360,', 'pitch: 361,'],
-            'the glazing' => ['h: 80, dy: 22 };', 'h: 81, dy: 22 };'],
-        ] as $what => [$from, $to]) {
-            $this->assertSame(1, substr_count($scene, $from), "the control's anchor for {$what} is not in scene.js exactly once");
-            $this->assertNotSame([], $this->figureDefects($md, str_replace($from, $to, $scene)), "RED ({$what} moved in scene.js alone) did not bite");
+            'the band' => ['floor-layout.js', 'export const BAND_H = 160;', 'export const BAND_H = 161;'],
+            'the zone' => ['scene.js', 'const ZONE_W = 332;', 'const ZONE_W = 333;'],
+            'the pitch' => ['scene.js', 'pitch: 360,', 'pitch: 361,'],
+            'the glazing' => ['scene.js', 'h: 80, dy: 22 };', 'h: 81, dy: 22 };'],
+        ] as $what => [$file, $from, $to]) {
+            $this->assertSame(1, substr_count($sources[$file], $from), "the control's anchor for {$what} is not in {$file} exactly once");
+            $this->assertNotSame([], $this->figureDefects($md, [$file => str_replace($from, $to, $sources[$file])] + $sources), "RED ({$what} moved in {$file} alone) did not bite");
         }
     }
 
@@ -193,7 +193,7 @@ class TheFloorDrawsItsFrameTest extends TestCase
 
     public function test_red_the_elevator_hung_over_the_clock(): void
     {
-        $dir = $this->mutatedModules(['../floor/scene.js', 'const ELEVATOR = { dx: 32,', 'const ELEVATOR = { dx: 120,']);
+        $dir = $this->mutatedModules(['../floor/floor-layout.js', 'export const ELEVATOR = Object.freeze({ dx: 32,', 'export const ELEVATOR = Object.freeze({ dx: 120,']);
 
         $this->assertNotSame([], $this->clockDefects($this->sceneOf(self::ONE_DESK, $dir)), 'RED (the elevator over the clock) did not bite');
     }
@@ -750,9 +750,29 @@ JS;
         return $found;
     }
 
-    /** § 12's four frame figures against `scene.js`'s constants. @return list<string> */
-    private function figureDefects(string $md, string $scene): array
+    /**
+     * The two modules the frame's figures live in, by file name: the band's height in `floor-layout.js`, the zone and the
+     * windows in `scene.js`.
+     *
+     * @return array<string, string>
+     */
+    private function frameSources(): array
     {
+        return [
+            'scene.js' => (string) file_get_contents($this->jsRoot().'/floor/scene.js'),
+            'floor-layout.js' => (string) file_get_contents($this->jsRoot().'/floor/floor-layout.js'),
+        ];
+    }
+
+    /**
+     * § 12's four frame figures against the modules' constants (`frameSources()`).
+     *
+     * @param  array<string, string>  $sources
+     * @return list<string>
+     */
+    private function figureDefects(string $md, array $sources): array
+    {
+        ['scene.js' => $scene, 'floor-layout.js' => $layout] = $sources;
         $row = function (string $value) use ($md): string {
             $this->assertSame(1, preg_match('/^\| '.preg_quote($value, '/').' \| ([^|]+) \|/m', $md, $m), "§ 12's `{$value}` row did not parse");
 
@@ -762,7 +782,7 @@ JS;
         $this->assertSame(1, preg_match('/\*\*(\d+) px\*\*/', $row('Back wall\'s reserved zone'), $zone), 'the zone row\'s figure did not parse');
         $this->assertSame(1, preg_match('/\*\*(\d+) px\*\* \/ \*\*(\d+) × (\d+) px\*\*/', $row('Window pitch / glazing'), $window), 'the window row\'s figures did not parse');
 
-        $this->assertSame(1, preg_match('/^export const BAND_H = (\d+);$/m', $scene, $h), 'scene.js\'s BAND_H did not parse');
+        $this->assertSame(1, preg_match('/^export const BAND_H = (\d+);$/m', $layout, $h), 'floor-layout.js\'s BAND_H did not parse');
         $this->assertSame(1, preg_match('/^const ZONE_W = (\d+);$/m', $scene, $z), 'scene.js\'s ZONE_W did not parse');
         $this->assertSame(1, preg_match('/^const WINDOW = \{([^}]*)\};$/m', $scene, $w), 'scene.js\'s WINDOW did not parse');
         preg_match_all('/(\w+): ([\d.]+)/', $w[1], $members);
@@ -778,7 +798,7 @@ JS;
             'the glazing\'s height' => [$window[3], $win['h'] ?? null],
         ] as $what => [$doc, $code]) {
             if ((string) $doc !== (string) $code) {
-                $defects[] = "§ 12 states {$what} as {$doc} and scene.js draws it at ".($code ?? 'nothing');
+                $defects[] = "§ 12 states {$what} as {$doc} and the floor's modules draw it at ".($code ?? 'nothing');
             }
         }
 

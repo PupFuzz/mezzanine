@@ -53,10 +53,10 @@ import { ELEVATOR_DOOR, leafLevel } from './scene.js';
 import { cabStep, floorStackOrder, pointAt } from './route.js';
 import { BIRD_LIFT, arcPath, birdShapes, birdhouseShapes, envelopeShapes, legShapes, ringShapes, standingLegShapes, stillNotes } from './bird.js';
 import { RENDER_STATES } from '../lobby/render-state.js';
-import { CAB_STYLE, LANDING, THEME_REGISTRY, cabTheme, clippedTo, drawCabInterior, node, paintCab, rideLeaves, themeModule } from './cab-paint.js';
+import { CAB_STYLE, LANDING, THEME_REGISTRY, cabTheme, clippedTo, drawCabInterior, node, paintCab, rideLeaves, svgUri, themeModule } from './cab-paint.js';
 
 // The cab's drawing is `cab-paint.js`'s since card#12113 (both pages draw it); its names stay readable from here.
-export { CAB, CAB_STYLE, LANDING, LOBBY_VIEW, OFFICE, THEME_REGISTRY, cabLeaves, cabTheme, drawCabInterior, drawLobbyView, drawOfficeView, paintCab, rideLeaves, themeModule } from './cab-paint.js';
+export { CAB, CAB_STYLE, LANDING, LOBBY_VIEW, OFFICE, THEME_REGISTRY, cabLeaves, cabTheme, drawCabInterior, drawLobbyView, drawOfficeView, paintCab, rideLeaves, svgUri, themeModule } from './cab-paint.js';
 
 /** The furniture box — `resources/floor/furniture-box.js`, by the asset route. */
 export const FURNITURE_MODULE = '/art/floor/furniture-box.js';
@@ -69,13 +69,6 @@ const MEET = 'xMidYMax meet';
 
 /** A text's type role when its element names none — `fit()`'s own default (`desk-layout.js`). */
 const FACT = 'fact';
-
-/**
- * A character frame's URI: the character tree hands back a standalone SVG DOCUMENT and the painter alone
- * makes it a URI — `data:image/svg+xml;charset=utf-8,` over `encodeURIComponent` (§ 10.2), so no file in
- * the asset tree carries one (§ 10.1 clause 2).
- */
-export const svgUri = (doc) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(doc)}`;
 
 /**
  * card#12445: how small the portal bird is drawn as it vanishes into the birdhouse's hole, at the end of its hop in

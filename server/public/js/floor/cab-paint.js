@@ -3,7 +3,8 @@
  * module*; hoisted out of `floor/painter.js` at its second caller, the lobby, card#12113). The cab's room in depth
  * (`drawCabInterior()`, card#12051), the views its open doors look out on (`drawOfficeView()`, card#12052, and
  * `drawLobbyView()`, card#12113), the cab dialog's drawing (`paintCab()`), its colours (`cabTheme()`), the ride's leaf
- * motion (`rideLeaves()`, `cabLeaves()`) and the classes all of them paint with (`CAB_STYLE`).
+ * motion (`rideLeaves()`, `cabLeaves()`), the classes all of them paint with (`CAB_STYLE`) and the one URI a drawn document
+ * is shown by (`svgUri`, which the floor's painter imports).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ IT HAS NO STATIC IMPORT, AND ITS ONLY DYNAMIC ONES ARE THE THEME's: `loadHousePalette()` loads the theme registry
@@ -46,6 +47,14 @@ export async function loadHousePalette() {
         return null;
     }
 }
+
+/**
+ * A drawn document's URI: a character frame or a theme document is a standalone SVG DOCUMENT, and the client alone makes
+ * it a URI — `data:image/svg+xml;charset=utf-8,` over `encodeURIComponent` (§ 10.2), so no file in the asset tree carries
+ * one (§ 10.1 clause 2). Here rather than in the floor's painter, which imports it, so the cab's view can draw a theme's
+ * pieces on a page that loads no painter.
+ */
+export const svgUri = (doc) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(doc)}`;
 
 /** An SVG element named `name`, its attributes set (a `null` or `undefined` value left unset), under `parent`. */
 export function node(name, attrs = {}, parent = null) {
@@ -726,7 +735,7 @@ export function paintCab(host, ride) {
     const h = (CAB.door.h * back.h) / CAB.h;
     const L = { x: back.x + (back.w - w) / 2, y: back.y + back.h - h, w, h };
     // The door's trim — frame, recess, dial, sill — keeps the proportions it was drawn at for leaves 84 units wide
-    // (the floor's own elevator's, `scene.js`'s `ELEVATOR`): `f` is this door's scale against that width. A look, not a fact.
+    // (the floor's own elevator's, `floor-layout.js`'s `ELEVATOR`): `f` is this door's scale against that width. A look, not a fact.
     const f = L.w / 84;
     const seam = L.x + L.w / 2;
     const foot = L.y + L.h;
