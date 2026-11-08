@@ -2,7 +2,7 @@
 /**
  * THE DOOR VIEW's DERIVATION, PRINTED FROM A MAP (card#12987; `docs/design/plan-12987-cab-door-view.md` § 3.5): what a
  * rider in the cab would have in front of them on one floor, read off the floor's Tiled map alone — a coarse plan of
- * the map with the elevator's threshold marked, and every wall run and desk sprite in the rider's frame in cm.
+ * the map with the elevator's threshold marked, and every body the view draws in the rider's frame in cm.
  *
  * A DESIGN-TIME READER, NOT THE BUILD: it restates the arithmetic the plan states so a reviewer can re-print the plan's
  * tables from a map, and it is deliberately independent of `floor/door-view.js` (the build's model), so the two can be
@@ -18,15 +18,19 @@
  * scale*, `CAB.door.h / ELEVATOR.h`. A single-room, unplanned floor is assumed (the room's origin is the extent's origin),
  * which is every floor on the sandbox on 2026-11-08; a planned floor's rooms would be offset by their origins.
  *
- * It then prints THE DRAW ORDER the plan's § 3.3 rule gives (the separating-plane rule: for each pair of boxes whose
- * projections overlap, the axis that separates them and which box the eye's side puts later), the order's cycle check, and
- * every pair the rejected nearest-point sort would reverse — the design's evidence that the rule is needed and that it
- * holds on these maps. Walls are boxes of the band's height, partitions of § 12's *Partition height*, desks prisms of the
- * sprite rect to the monitor's crest, standing pieces billboards of zero depth on their foot line; the eye is the cab's
- * (`CAB.eye` up, `OFFICE.view` behind the doorway plane).
+ * THE BODIES ARE THE MAP's CELLS (the plan's § 3.2 and § 3.3): every `wall` cell is one box — a WALL of the band's height
+ * where the cell lies on the footprint's edge, a PARTITION of § 12's *Partition height* elsewhere, not drawn in the
+ * footprint's top row (the near wall) or under a desk's slab; the footprint's far wall is a plane on its far edge and its
+ * side walls are planes cut into row strips; each desk is its top and its monitor's back, cut into row strips; each
+ * standing piece is a billboard of zero depth on its foot line, a row boundary. THE DRAW ORDER is one total order over
+ * those bodies — rows far to near, a boundary's bodies between the row beyond it and the row before it, within one row the
+ * body farther from the eye's centre line first, a desk's higher part after its lower — and this tool CHECKS it against an
+ * exact ray cast through the doorway (every pair of bodies one ray meets must be painted far first), prints the counts
+ * the plan's cost figures are taken from (bodies, bodies inside the doorway's frustum, faces per cell and per row run),
+ * and runs the rejected nearest-point sort through the same check for comparison.
  *
- * argv: `<map.tmj> [tiles-per-char]` (default 4 → one character is 32 px on an 8-px grid). Reads the tileset's `kind`
- * per tile from `resources/floor/tiles/floor-plane.tsx` relative to the repository root.
+ * argv: `<map.tmj> [tiles-per-char] [rays]` (default 4 → one character is 32 px on an 8-px grid; 4000 rays). Reads the
+ * tileset's `kind` per tile from `resources/floor/tiles/floor-plane.tsx` relative to the repository root.
  */
 
 import fs from 'node:fs';
@@ -37,15 +41,17 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SEAM_PX = 32 + 84 / 2;
 const SCALE = 200 / 144;
 const DESK_SPRITE = { x: 18, w: 180, fromBottom: 100, h: 60 };
+const MONITOR = { w: 96, top: 147 };
+const DESK_TOP = 76;
 const WALL_H = 160 * SCALE;
 const PARTITION_H = 120;
-const DESK_H = 147;
 const EYE = { x: 0, y: 155, z: -120 };
+const DOOR = { w: 110, h: 200 };
 
-const [mapPath, perChar = '4'] = process.argv.slice(2);
+const [mapPath, perChar = '4', rayCount = '4000'] = process.argv.slice(2);
 
 if (!mapPath) {
-    console.error('usage: door-view-plan.mjs <map.tmj> [tiles-per-char]');
+    console.error('usage: door-view-plan.mjs <map.tmj> [tiles-per-char] [rays]');
     process.exit(2);
 }
 
@@ -77,7 +83,7 @@ const put = (tx, ty, ch, force = false) => {
 const walls = [];
 const standing = [];
 const desks = [];
-let accent = 0;
+const accentCells = [];
 
 for (const L of map.layers) {
     if (L.type === 'tilelayer') {
@@ -88,7 +94,7 @@ for (const L of map.layers) {
             const ty = Math.floor(i / W);
 
             if (kind === 'accent') {
-                accent += 1;
+                accentCells.push([tx * T, ty * T]);
                 put(tx, ty, '.');
             } else if (kind === 'wall') {
                 walls.push([tx * T, ty * T]);
@@ -123,152 +129,187 @@ console.log(`== ${mapPath}: ${W * T} × ${H * T} px, one character ${C * T} px; 
 console.log(`   ${Array.from({ length: grid[0].length }, (_, i) => (i % 5 === 0 ? String(Math.floor((i * C * T) / 100)).slice(-1) : ' ')).join('')}`);
 grid.forEach((row, r) => console.log(`${String(r * C * T).padStart(4)}${row.join('')}`));
 
-// Wall cells merged into rects the way `tileRegions()` merges them: runs along a row, identical runs stacked down columns.
-const set = new Set(walls.map(([x, y]) => `${x},${y}`));
-const seen = new Set();
-const runs = [];
-
-for (const [x, y] of walls.sort((a, b) => a[1] - b[1] || a[0] - b[0])) {
-    if (seen.has(`${x},${y}`)) continue;
-    let x2 = x;
-
-    while (set.has(`${x2 + T},${y}`)) {
-        x2 += T;
-        seen.add(`${x2},${y}`);
-    }
-    seen.add(`${x},${y}`);
-    runs.push({ x, y, w: x2 + T - x, h: T });
-}
-
-const used = new Set();
-const rects = [];
-
-runs.forEach((r, i) => {
-    if (used.has(i)) return;
-    let h = r.h;
-
-    for (;;) {
-        const j = runs.findIndex((q, qi) => !used.has(qi) && qi !== i && q.x === r.x && q.w === r.w && q.y === r.y + h);
-
-        if (j < 0) break;
-        used.add(j);
-        h += T;
-    }
-    used.add(i);
-    rects.push({ ...r, h });
-});
-
 const cm = (px) => Math.round(px * SCALE);
 const X = (px) => cm(SEAM_PX - px);
-const onEdge = (r) => (r.w > r.h ? r.y === 0 || r.y + r.h === H * T : r.x === 0 || r.x + r.w === W * T);
+const slabOf = (d) => ({ x: d.x + DESK_SPRITE.x, y: d.y + d.h - DESK_SPRITE.fromBottom, w: DESK_SPRITE.w, h: DESK_SPRITE.h });
+// The VIEW's slab covers the cell rows the exact rect touches — snapped outward, at most 7 px (10 cm) each way — so every
+// body in one row spans the row's whole depth and the row order's within-row rule (outer first) is exact (plan § 3.3).
+const snapped = (s) => { const y0 = Math.floor(s.y / T) * T; const y1 = Math.ceil((s.y + s.h) / T) * T; return { x: s.x, y: y0, w: s.w, h: y1 - y0 }; };
+const slabs = desks.map((d) => snapped(slabOf(d)));
+const underSlab = (x, y) => slabs.some((s) => x < s.x + s.w && s.x < x + T && y < s.y + s.h && s.y < y + T);
+const onEdge = (x, y) => x === 0 || x + T === W * T || y + T === H * T;
 
-console.log(`\nwall tiles ${walls.length}, merged rects ${rects.length}; accent on ${((accent / (W * H)) * 100).toFixed(1)} % of cells; scale ${SCALE.toFixed(3)} cm/px; rider's X positive to the RIGHT`);
-for (const r of rects.sort((a, b) => a.y - b.y || a.x - b.x)) {
-    console.log(`  ${onEdge(r) ? 'WALL     ' : 'PARTITION'} px x${r.x}..${r.x + r.w} y${r.y}..${r.y + r.h}  →  X ${X(r.x + r.w)}..${X(r.x)} cm, Z ${cm(r.y)}..${cm(r.y + r.h)} cm`);
+// ── the cells, classified (plan § 3.2) ───────────────────────────────────────────────────────────────
+const cells = walls.map(([x, y]) => ({ x, y, cls: y === 0 ? 'near' : underSlab(x, y) ? 'under-slab' : onEdge(x, y) ? 'WALL' : 'PARTITION' }));
+const drawnCells = cells.filter((c) => c.cls === 'WALL' || c.cls === 'PARTITION');
+const count = (cls) => cells.filter((c) => c.cls === cls).length;
+
+console.log(`\nwall cells ${walls.length}: WALL ${count('WALL')}, PARTITION ${count('PARTITION')}, near wall (top row, not drawn) ${count('near')}, under a desk's slab (not drawn) ${count('under-slab')}`);
+console.log(`accent cells ${accentCells.length} (${((accentCells.length / (W * H)) * 100).toFixed(1)} % of cells), merged along rows into ${rowRuns(accentCells.map(([x, y]) => ({ x, y, cls: 'accent' }))).length} runs; scale ${SCALE.toFixed(3)} cm/px; rider's X positive to the RIGHT`);
+
+/** Same-class cells side by side in one row, as one run — a PRINT grouping here, and the build's SVG-count merge (§ 3.3). */
+function rowRuns(list) {
+    const sorted = [...list].sort((a, b) => a.y - b.y || a.x - b.x);
+    const runs = [];
+
+    for (const c of sorted) {
+        const last = runs[runs.length - 1];
+
+        if (last && last.y === c.y && last.cls === c.cls && last.x + last.w === c.x) last.w += T;
+        else runs.push({ x: c.x, y: c.y, w: T, h: T, cls: c.cls });
+    }
+
+    return runs;
+}
+
+/** Runs of one column stacked down rows, for the plan's legibility only — the model never stacks. */
+function columnGroups(runs) {
+    const groups = [];
+
+    for (const r of [...runs].sort((a, b) => a.x - b.x || a.y - b.y)) {
+        const g = groups.find((g) => g.x === r.x && g.w === r.w && g.cls === r.cls && g.y + g.h === r.y);
+
+        if (g) g.h += r.h;
+        else groups.push({ ...r });
+    }
+
+    return groups.sort((a, b) => a.y - b.y || a.x - b.x);
+}
+
+console.log(`\ncells as the plan's tables list them (grouped for printing only — each line is ${'`'}n${'`'} cells of one class):`);
+for (const g of columnGroups(rowRuns(drawnCells))) {
+    console.log(`  ${g.cls.padEnd(9)} ${String((g.w / T) * (g.h / T)).padStart(3)} cells  px x${g.x}..${g.x + g.w} y${g.y}..${g.y + g.h}  →  X ${X(g.x + g.w)}..${X(g.x)} cm, Z ${cm(g.y)}..${cm(g.y + g.h)} cm`);
 }
 for (const d of desks) {
-    const sx = d.x + DESK_SPRITE.x;
-    const sy = d.y + d.h - DESK_SPRITE.fromBottom;
+    const s = slabOf(d);
 
-    console.log(`  desk #${d.id}${d.reserved ? ' (reserved)' : ''} sprite px x${sx}..${sx + DESK_SPRITE.w} y${sy}..${sy + DESK_SPRITE.h}  →  X ${X(sx + DESK_SPRITE.w)}..${X(sx)} cm, Z ${cm(sy)}..${cm(sy + DESK_SPRITE.h)} cm`);
+    const v = snapped(s);
+
+    console.log(`  desk #${d.id}${d.reserved ? ' (reserved)' : ''} slab px x${s.x}..${s.x + s.w} y${s.y}..${s.y + s.h}  →  X ${X(s.x + s.w)}..${X(s.x)} cm, Z ${cm(s.y)}..${cm(s.y + s.h)} cm (drawn on rows y${v.y}..${v.y + v.h}: Z ${cm(v.y)}..${cm(v.y + v.h)} cm); its monitor X ${X(s.x + s.w)}..${X(s.x + s.w - MONITOR.w)} cm`);
 }
 for (const s of standing) {
     console.log(`  ${s.kind} px x${s.x}..${s.x + s.w} foot y${s.y + s.h}  →  X ${X(s.x + s.w)}..${X(s.x)} cm, Z ${cm(s.y + s.h)} cm, ${cm(s.h)} cm tall`);
 }
 
-// ── the draw order (plan § 3.3) ───────────────────────────────────────────────────────────────────
+// ── the bodies and the order (plan § 3.3) ───────────────────────────────────────────────────────────────
 
-/** Every box in the rider's frame, cm: `x1 < x2` across (right positive), `z1 <= z2` into the room, `h` up from the floor. */
-const boxes = [];
+/** Every body in the rider's frame, cm, unrounded: `x1 < x2` across (right positive), `z1 <= z2` into the room, `y1 < y2` up. */
+const bodies = [];
+const Xf = (px) => (SEAM_PX - px) * SCALE;
+const Zf = (py) => py * SCALE;
+const rowKey = (py) => 2 * Math.floor(py / T) + 1;
+const boundaryKey = (py) => 2 * Math.round(py / T);
+// A body's distance from the eye's centre line: 0 where it straddles X = 0. A desk's parts take the DESK's (`mx` handed in):
+// its monitor stands on its top, X-inside it, and the two are ordered by height (rank), never by their own X.
+const mxOf = (x1, x2) => (x1 <= 0 && 0 <= x2 ? 0 : Math.min(Math.abs(x1), Math.abs(x2)));
+const push = (b, key, tag, rank = 0, mx = mxOf(b.x1, b.x2)) => {
+    bodies.push({ ...b, key, mx, rank, tag, i: bodies.length });
+};
+const strips = (px, py, pw, ph, y1, y2, tag, rank = 0, mx = undefined) => {
+    for (let k = Math.floor(py / T); k * T < py + ph; k++) {
+        const a = Math.max(py, k * T);
+        const b = Math.min(py + ph, (k + 1) * T);
 
-for (const r of rects) {
-    if (r.w > r.h && r.y === 0) continue; // a top-row run is the near wall the rider stands in: not drawn
-    boxes.push({ name: `${onEdge(r) ? 'wall' : 'partition'}@${r.x},${r.y}`, x1: X(r.x + r.w), x2: X(r.x), z1: cm(r.y), z2: cm(r.y + r.h), h: onEdge(r) ? WALL_H : PARTITION_H });
-}
-for (const d of desks) {
-    const sx = d.x + DESK_SPRITE.x;
-    const sy = d.y + d.h - DESK_SPRITE.fromBottom;
+        if (b > a) push({ x1: Xf(px + pw), x2: Xf(px), z1: Zf(a), z2: Zf(b), y1, y2 }, rowKey(a), tag, rank, mx);
+    }
+};
 
-    boxes.push({ name: `desk#${d.id}`, x1: X(sx + DESK_SPRITE.w), x2: X(sx), z1: cm(sy), z2: cm(sy + DESK_SPRITE.h), h: DESK_H });
+push({ x1: Xf(W * T), x2: Xf(0), z1: Zf(H * T), z2: Zf(H * T), y1: 0, y2: WALL_H }, boundaryKey(H * T), 'far-wall');
+strips(0, 0, 0, H * T, 0, WALL_H, 'side-wall');
+strips(W * T, 0, 0, H * T, 0, WALL_H, 'side-wall');
+for (const c of drawnCells) push({ x1: Xf(c.x + T), x2: Xf(c.x), z1: Zf(c.y), z2: Zf(c.y + T), y1: 0, y2: c.cls === 'WALL' ? WALL_H : PARTITION_H }, rowKey(c.y), c.cls.toLowerCase());
+for (const s of slabs) {
+    const mx = mxOf(Xf(s.x + s.w), Xf(s.x));
+
+    strips(s.x, s.y, s.w, s.h, 0, DESK_TOP, 'desk-top', 0, mx);
+    strips(s.x + s.w - MONITOR.w, s.y, MONITOR.w, T, DESK_TOP, MONITOR.top, 'monitor', 1, mx);
 }
-for (const s of standing) {
-    boxes.push({ name: `${s.kind}@${s.x},${s.y}`, x1: X(s.x + s.w), x2: X(s.x), z1: cm(s.y + s.h), z2: cm(s.y + s.h), h: cm(s.h) });
-}
+for (const s of standing) push({ x1: Xf(s.x + s.w), x2: Xf(s.x), z1: Zf(s.y + s.h), z2: Zf(s.y + s.h), y1: 0, y2: s.h * SCALE }, boundaryKey(s.y + s.h), `${s.kind}@${s.x},${s.y}`);
+
+const ORDERS = {
+    // § 3.3's order: far row first; a boundary's bodies between the row beyond and the row before; outer |X| first; a desk's higher part later
+    row: (B) => [...B].sort((a, b) => b.key - a.key || b.mx - a.mx || a.rank - b.rank || a.i - b.i),
+    // the rejected rule over the same bodies: by nearest point, with no place for a boundary between rows
+    nearest: (B) => [...B].sort((a, b) => b.z1 - a.z1 || b.mx - a.mx || a.rank - b.rank || a.i - b.i),
+    // the floor page's habit, planes then scenery: every billboard after every other body
+    piecesLast: (B) => { const o = ORDERS.row(B); return [...o.filter((b) => b.z1 !== b.z2 || b.tag === 'far-wall'), ...o.filter((b) => b.z1 === b.z2 && b.tag !== 'far-wall')]; },
+};
 
 // The projection: the office view's `at()` without the window's scale — screen x = X / (Z − EYE.z), screen y = (EYE.y − Y) / (Z − EYE.z).
 const screenRect = (b) => {
     const xs = [];
     const ys = [];
 
-    for (const x of [b.x1, b.x2]) for (const z of [b.z1, b.z2]) for (const y of [0, b.h]) {
+    for (const x of [b.x1, b.x2]) for (const z of [b.z1, b.z2]) for (const y of [b.y1, b.y2]) {
         xs.push(x / (z - EYE.z));
         ys.push((EYE.y - y) / (z - EYE.z));
     }
 
     return { x1: Math.min(...xs), x2: Math.max(...xs), y1: Math.min(...ys), y2: Math.max(...ys) };
 };
-const overlaps = (a, b) => a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2;
+// The doorway at Z = 0 seen from the eye: the frustum every drawn body must reach into.
+const doorway = { x1: -DOOR.w / 2 / -EYE.z, x2: DOOR.w / 2 / -EYE.z, y1: (EYE.y - DOOR.h) / -EYE.z, y2: EYE.y / -EYE.z };
+const inFrustum = (b) => { const r = screenRect(b); return r.x1 < doorway.x2 && doorway.x1 < r.x2 && r.y1 < doorway.y2 && doorway.y1 < r.y2; };
+const visible = bodies.filter(inFrustum);
 
-/**
- * The pair's order under the separating-plane rule (plan § 3.3): each axis that separates the two gives a verdict — the
- * box on the eye's side of that plane is drawn later, or none where the eye lies between them on that axis. Both axes
- * agreeing is the order; one axis alone is the order; neither giving a verdict means no ray meets both and the pair needs
- * none; and the two DISAGREEING is a pair whose projections cannot overlap (the nearer-in-X box's steepest sight line is
- * shallower than the nearer-in-Z box's shallowest), so it is printed as a defect of this tool if they do.
- */
-const verdict = (a, b, lo, hi, eye) => {
-    // `lo`/`hi` are the names of the interval members along one axis; the eye's coordinate on it decides the side.
-    if (a[hi] <= b[lo]) return eye <= a[hi] ? { later: a } : eye >= b[lo] ? { later: b } : null;
-    if (b[hi] <= a[lo]) return eye <= b[hi] ? { later: b } : eye >= a[lo] ? { later: a } : null;
+// Faces: a cell's near face always; its top where the eye is above it; one end where it lies wholly to one side of X = 0.
+const facesOf = (b) => 1 + (b.y2 < EYE.y ? 1 : 0) + (b.x1 > 0 || b.x2 < 0 ? 1 : 0);
+const cellBodies = visible.filter((b) => b.tag === 'wall' || b.tag === 'partition');
+const runBodies = rowRuns(drawnCells).map((r) => ({ x1: Xf(r.x + r.w), x2: Xf(r.x), z1: Zf(r.y), z2: Zf(r.y + T), y1: 0, y2: r.cls === 'WALL' ? WALL_H : PARTITION_H })).filter(inFrustum);
+const sum = (list, f) => list.reduce((n, b) => n + f(b), 0);
 
-    return undefined; // not separated on this axis
+const accentRuns = rowRuns(accentCells.map(([x, y]) => ({ x, y, cls: 'accent' })));
+const accentVisible = accentRuns.filter((r) => inFrustum({ x1: Xf(r.x + r.w), x2: Xf(r.x), z1: Zf(r.y), z2: Zf(r.y + T), y1: 0, y2: 0 }));
+
+console.log(`\naccent runs inside the frustum ${accentVisible.length} of ${accentRuns.length} (flat on the plane, drawn before every body, no order among them)`);
+console.log(`bodies ${bodies.length} (far wall 1, side-wall strips ${bodies.filter((b) => b.tag === 'side-wall').length}, cells ${drawnCells.length}, desk strips ${bodies.filter((b) => b.tag === 'desk-top' || b.tag === 'monitor').length}, billboards ${standing.length}); inside the doorway's frustum ${visible.length}`);
+console.log(`faces inside the frustum: per cell ${sum(cellBodies, facesOf)} over ${cellBodies.length} cells; merged along row runs ${sum(runBodies, facesOf)} over ${runBodies.length} runs; desk-strip faces ${sum(visible.filter((b) => b.tag === 'desk-top' || b.tag === 'monitor'), facesOf)}; billboards ${visible.filter((b) => b.z1 === b.z2 && b.tag !== 'far-wall').length}`);
+
+// ── the exact ray cast: every pair one ray meets must be painted far first ─────────────────────────────
+let seed = 12345;
+const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+const rayHit = (b, o, d) => {
+    let t0 = 0;
+    let t1 = 1e9;
+
+    for (const [lo, hi, i] of [[b.x1, b.x2, 0], [b.y1, b.y2, 1], [b.z1, b.z2, 2]]) {
+        if (Math.abs(d[i]) < 1e-12) { if (o[i] < lo || o[i] > hi) return null; continue; }
+        let a = (lo - o[i]) / d[i];
+        let c = (hi - o[i]) / d[i];
+
+        if (a > c) [a, c] = [c, a];
+        t0 = Math.max(t0, a);
+        t1 = Math.min(t1, c);
+        if (t0 > t1 + 1e-12) return null;
+    }
+
+    return t0;
 };
-const order = (a, b) => {
-    const z = verdict(a, b, 'z1', 'z2', EYE.z);
-    const x = verdict(a, b, 'x1', 'x2', EYE.x);
+const positions = Object.fromEntries(Object.entries(ORDERS).map(([k, f]) => [k, new Map(f(visible).map((b, p) => [b.i, p]))]));
+const violations = Object.fromEntries(Object.keys(ORDERS).map((k) => [k, new Map()]));
+let pairs = 0;
 
-    if (z === undefined && x === undefined) return { defect: `${a.name} and ${b.name} intersect — the plan's pre-split did not run` };
-    const verdicts = [z, x].filter((v) => v !== undefined && v !== null);
+for (let r = 0; r < Number(rayCount); r++) {
+    const d = [-DOOR.w / 2 + DOOR.w * rnd(), DOOR.h * rnd() - EYE.y, -EYE.z];
+    const o = [EYE.x, EYE.y, EYE.z];
+    const hits = visible.map((b) => [rayHit(b, o, d), b]).filter(([t]) => t !== null).sort((a, b) => a[0] - b[0]);
 
-    if (verdicts.length === 0) return null;
-    if (verdicts.length === 2 && verdicts[0].later !== verdicts[1].later) return { defect: `${a.name} and ${b.name} are nearer on opposite axes yet overlap in projection` };
-    const later = verdicts[0].later;
+    for (let p = 0; p < hits.length; p++) for (let q = p + 1; q < hits.length; q++) {
+        if (hits[q][0] - hits[p][0] < 1e-9) continue; // coplanar: no order owed
+        pairs += 1;
+        for (const k of Object.keys(ORDERS)) {
+            if (positions[k].get(hits[p][1].i) < positions[k].get(hits[q][1].i)) {
+                const key = `${hits[q][1].tag} painted over ${hits[p][1].tag}`;
 
-    return { first: later === a ? b : a, later, axis: verdicts.length === 2 ? 'X and Z' : z !== undefined && z !== null ? 'Z' : 'X' };
-};
-
-const screens = boxes.map(screenRect);
-const edges = [];
-const defects = [];
-
-for (let i = 0; i < boxes.length; i++) {
-    for (let j = i + 1; j < boxes.length; j++) {
-        if (!overlaps(screens[i], screens[j])) continue;
-        const o = order(boxes[i], boxes[j]);
-
-        if (o === null) continue;
-        if (o.defect) { defects.push(o.defect); continue; }
-        edges.push({ first: boxes.indexOf(o.first), later: boxes.indexOf(o.later), axis: o.axis });
+                violations[k].set(key, (violations[k].get(key) ?? 0) + 1);
+            }
+        }
     }
 }
 
-// Kahn's sort over the pairwise edges; whatever it cannot place is a cycle.
-const indeg = boxes.map(() => 0);
-for (const e of edges) indeg[e.later] += 1;
-const sorted = [];
-const ready = boxes.map((_, i) => i).filter((i) => indeg[i] === 0);
-while (ready.length > 0) {
-    const i = ready.shift();
-    sorted.push(i);
-    for (const e of edges) if (e.first === i && --indeg[e.later] === 0) ready.push(e.later);
+console.log(`\nray cast — ${rayCount} rays through the doorway, ${pairs} (near, far) pairs owed an order:`);
+for (const [k, v] of Object.entries(violations)) {
+    const total = [...v.values()].reduce((a, b) => a + b, 0);
+
+    console.log(`  ${k.padEnd(11)} violations ${String(total).padStart(6)}${total ? `  — ${[...v.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([key, n]) => `${key} ×${n}`).join('; ')}` : ''}`);
 }
-const cycle = boxes.map((_, i) => i).filter((i) => !sorted.includes(i));
-
-// The rejected rule, for comparison: farthest nearest point first, by Z then |X|.
-const nearest = (b) => ({ z: b.z1, x: Math.min(Math.abs(b.x1), Math.abs(b.x2)) });
-const byNearest = boxes.map((_, i) => i).sort((i, j) => nearest(boxes[j]).z - nearest(boxes[i]).z || nearest(boxes[j]).x - nearest(boxes[i]).x);
-const reversed = edges.filter((e) => byNearest.indexOf(e.first) > byNearest.indexOf(e.later));
-
-console.log(`\ndraw order — ${boxes.length} boxes, ${edges.length} overlapping pairs ordered by the separating-plane rule, cycle ${cycle.length === 0 ? 'none' : boxes.filter((_, i) => cycle.includes(i)).map((b) => b.name).join(' ')}${defects.length ? `\n  DEFECTS: ${defects.join('; ')}` : ''}`);
-for (const e of edges) console.log(`  ${boxes[e.first].name} before ${boxes[e.later].name}  (${e.axis}-separated; the eye on ${boxes[e.later].name}'s side)`);
-console.log(`  nearest-point sort would reverse ${reversed.length} of these: ${reversed.map((e) => `${boxes[e.first].name} over ${boxes[e.later].name}`).join('; ') || '—'}`);
