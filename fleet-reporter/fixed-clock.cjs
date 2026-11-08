@@ -50,7 +50,9 @@ if (MODE !== 'wall') install();
 
 function install() {
   const realDateNow = Date.now;
-  const MAIN = process.argv[1] ? path.resolve(process.argv[1]) : null;
+  // Node names the main module by its real path (symlinks resolved), so the caller frame is compared with that.
+  let MAIN = null;
+  if (process.argv[1]) { try { MAIN = fs.realpathSync(path.resolve(process.argv[1])); } catch (e) { MAIN = path.resolve(process.argv[1]); } }
   const die = (msg) => { try { process.stderr.write(`fixed-clock: ${msg}\n`); } catch (e) { /* nothing */ } process.exit(86); };
 
   // The caller frames of a replaced function, as V8 call sites, without the replacement's own frame.

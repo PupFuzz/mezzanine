@@ -432,7 +432,7 @@ class Seat:
         e = dict(os.environ)
         e["FLEET_REPORTER_CONFIG"] = str(self.cfg_path)
         e.pop("FLEET_REPORTER_NOW_MS", None)
-        # EVERY REPORTER PROCESS THIS SUITE STARTS RUNS ON THE TEST CLOCK (card#12631, `fixed-clock.cjs`):
+        # A REPORTER PROCESS BUILT FROM THIS ENVIRONMENT RUNS ON THE TEST CLOCK (card#12631, `fixed-clock.cjs`):
         # `fixed` by default — the process reads one instant, FLEET_REPORTER_NOW_MS's when a case pins it —
         # or a `TestClock`'s file, for a long-running flusher whose time the case moves itself. Through
         # NODE_OPTIONS, so a flusher a hook forks inherits it.
@@ -958,7 +958,7 @@ def pre(tool="Bash", ti=None, tuid="toolu_1", **extra):
     return p
 
 
-print("== 0. THE TEST CLOCK — every reporter process here reads a clock the suite sets (card#12631) ==")
+print("== 0. THE TEST CLOCK — the reporter processes here read a clock the suite sets (card#12631) ==")
 # `fixed-clock.cjs` replaces the reporter's clock read; `Seat.env` puts every invocation on it (`fixed`, or a
 # `TestClock` for a long-running flusher). This block proves the three things the rest of the suite leans on:
 # that the reporter reads no clock the file does not replace, that a pinned process reads its pin and nothing
@@ -1092,7 +1092,7 @@ eq("GREEN: a hook pinned 2 h ahead waits out a live holder's write lock on the w
    "write_lock_timeout 1, nothing broken, the holder's lock left in place", (0, 1, 0, True), wl_green)
 eq("RED (the test clock on the write lock): the same hook reads that lock as 2 h stale and breaks it", (0, 0, 1, False),
    wl_red)
-redgreen("every reporter process in this suite runs on a clock the suite sets (card#12631)",
+redgreen("a reporter process this suite starts through `Seat.env` runs on a clock the suite sets (card#12631)",
          f"the clock left to run -> a hook pinned to {PIN_RFC} and {SLOW_MS} ms slow stamps {st_wall}; the test clock "
          f"on the write lock too -> a live holder's lock read as stale and broken {wl_red}; a `new Date()` or a "
          "Date.now() outside the seat clock -> named by the inventory",
@@ -3614,8 +3614,8 @@ eq(f"RED: without the per-bucket offset the totals grow on a re-fold ({h1} -> {h
 
 # AT-16's third case — the hour-roll straddle. Lines written just after the roll must land in
 # the bucket their WRITE time names, not their process-entry time; the 5 s grace covers the rest.
-# The lines before the roll are pinned 200 ms before it, and each hook WRITES at its pin: every reporter process
-# here reads the test clock (card#12631), on which a hook's own run time is zero. Before it, a pin was an offset
+# The lines before the roll are pinned 200 ms before it, and each hook WRITES at its pin: the hooks here read the
+# test clock (card#12631), on which a hook's own run time is zero. Before it, a pin was an offset
 # taken at process start, a hook on a loaded machine wrote after the roll, and the case read one bucket.
 s16h = seat("hourroll")
 now_ms = int(time.time() * 1000)
