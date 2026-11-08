@@ -1283,30 +1283,15 @@ export class EffectsInFlight {
 }
 
 /**
- * ⛔ THE INBOUND DESK — THE ONE PLUG POINT FOR THE OPERATOR's RULING ON IT (card#9566, r3 F1). While an
- * A1 walker is on its way, its desk draws the empty chair: no character, so no bubble (§ 5.1 rule 3) and
- * no held marker, with its label line, chip, badges and every other fact the applied object's. That is
- * option A, the seat's recommendation, in force until the ruling.
- */
-export function inboundDesk(model) {
-    return Object.freeze({ ...model, character: false, pose: 'empty-chair', bubble: null, held: null });
-}
-
-/**
- * ⛔ THE AWAY DESK — a desk whose character is away on its snack break (FLOOR.md § 6.6 item 4; card#12749, card#12785).
- * The desk keeps EVERY fact of the applied object at the desk — its chip, its label line, its monitor lit as its state
- * lights it, its badges, its facts plate and its task bubble, the card the seat works on — and draws its chair empty: no
- * character, so no pose and no held marker (no z's, no typing). The bubble stays with no thought trail, the trail being
- * the thinker's and away with it (`scene.js`'s `placeBubbles()`); § 5.1 rule 3's *a desk that draws no character draws
- * no bubble* is read for a state that draws no character, and this desk's state draws one, which is away. An A1
- * walker's desk is `inboundDesk()`'s, and is not this.
+ * ⛔ THE AWAY DESK — THE ONE RENDER OF A DESK WHOSE AGENT IS NOT AT IT (FLOOR.md § 5.1 rule 3). Every way a character
+ * leaves a desk whose state draws one comes here: an A1 walker still on its way in from the elevator (§ 6.2's walk note
+ * item 4), and a walker away on a snack break or a restroom break, or walking home from one on a recall
+ * (§ 6.6 item 4, § 6.7). The desk draws its chair empty — no character, so no pose, no held marker (no z's, no typing) and
+ * no task bubble, a bubble showing only while its agent is at the desk — and every other fact of the applied object: its
+ * label line, chip, badges, facts plate and its monitor lit as its state lights it. The paint-only refresh at the walk's
+ * end draws the desk from the applied object again, bubble and all. A desk whose STATE draws no character — `stale`,
+ * `offline`, an unconfirmed seat — has none already (`desk/desk-render.js`), so an A2 departure needs nothing here.
  */
 export function awayDesk(model) {
-    return Object.freeze({
-        ...model,
-        character: false,
-        pose: 'empty-chair',
-        bubble: model.bubble === null || model.bubble === undefined ? null : Object.freeze({ ...model.bubble, trail: false }),
-        held: null,
-    });
+    return Object.freeze({ ...model, character: false, pose: 'empty-chair', bubble: null, held: null });
 }

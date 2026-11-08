@@ -2281,9 +2281,6 @@ export function placeBubbles(desks, measure, W, delivered) {
             source: b.source,
             degraded_note: b.degraded_note,
             truncated: b.truncated || title.truncated,
-            // card#12785: a desk whose character is away on its snack break keeps its bubble — the card it works on —
-            // and draws no trail, which is the thinker's and leaves with it (`in-flight.js`'s `awayDesk()`).
-            trail: b.trail !== false,
         });
     }
 
@@ -2322,7 +2319,7 @@ export function placeBubbles(desks, measure, W, delivered) {
             // § 5.1 (card#11468): the cloud round the measured rect, and the trail of growing circles from just
             // above the creature to the cloud, on the anchor's line — to the bubble where it was set, parted or not.
             cloud: cloudOutline(rect),
-            trail: want.trail ? trailCircles(foot.x, foot.y, rect.y + rect.h) : Object.freeze([]),
+            trail: trailCircles(foot.x, foot.y, rect.y + rect.h),
         });
     }
 
