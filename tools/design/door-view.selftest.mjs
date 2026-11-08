@@ -12,8 +12,8 @@
 //   column right of the seam, a desk left of it, a wall cell under its slab, a plant inside the column), `bravo` (cottage; a
 //   partition row crossing the centre line with its perimeter post, the near-wall row, a bookcase behind the partition, a
 //   bookcase on the last row off the centre line, two pieces on one foot line, every floor cell accent — and again with its
-//   tile layers dragged 3 px), `charlie` (two rooms of different heights, and again with a tileset the loader lacks), and the
-//   bare routes R1–R4. Each reading is the plan's § 3.5 shape: centimetres in the rider's frame, and document order.
+//   tile layers dragged 3 px), `charlie` (two rooms of different heights, and again with a tileset the loader lacks), `delta`
+//   (a planned floor: a hallway and a room placed below it), and the bare routes R2–R4. Each reading is the plan's § 3.5 shape: centimetres in the rider's frame, and document order.
 // - ORDER — the plan's § 10 random-scene check, committed (design review round 3's m6): random floors of one or two rooms,
 //   runs of wall cells, desks at unaligned y, standing pieces (some on the last row, some layers dragged off the grid), each
 //   built by `doorView()` itself; rays from the eye through the doorway; for every pair of bodies one ray meets at different
@@ -356,6 +356,20 @@ async function fixtures(o) {
         const bare = doorView(stopRow('charlie', ['charlie', 'charlie-2']), missing.building, missing.tilesets, o.themes);
 
         say(bare.bare === true && bare.reason === 'tileset' && bare.bodies.length === 0, `charlie: a tileset the loader lacks reads ${JSON.stringify({ bare: bare.bare, reason: bare.reason, bodies: bare.bodies.length })} — the whole floor bare, reason tileset, is owed`);
+    }
+
+    // ── a planned floor: a hallway at the floor's origin and a room placed below it (the plan's § 7 asks for one) ─────
+    {
+        const hallway = resolve(o, makeMap({ w: 60, h: 12, accents: Array.from({ length: 60 }, (_, c) => [c, 5]) }));
+        const room = charlieMap(o, 296);
+        const { building, tilesets } = await held(o, { delta: { map: room } });
+        const row = { ...stopRow('delta', ['delta']), hallway, rooms: [{ install_id: 'delta', form: 'open', reported: true, origin: { x: 0, y: 96 } }] };
+        const v = doorView(row, building, tilesets, o.themes);
+        const far = v.bodies.filter((b) => b.kind === 'far-wall');
+
+        say(v.bare === false && far.length === 1 && close(far[0].z1, Z(96 + 296)), `delta (planned): ${JSON.stringify({ bare: v.bare, reason: v.reason, far: far.map((b) => b.z1.toFixed(1)) })} — one far wall, the room's, at ${Z(392).toFixed(1)} cm is owed (the hallway contributes none)`);
+        say(v.accents.length === 1 && close(v.accents[0].z1, Z(40)), `delta (planned): the hallway's accent row is ${v.accents.length} run(s) — one, at ${Z(40).toFixed(1)} cm, is owed`);
+        say(close(v.floor.z2, Z(392)), 'delta (planned): the floor plane is not the extent the hallway and the room make');
     }
 
     // ── the bare routes (plan § 5) ──────────────────────────────────────────────────────────────────

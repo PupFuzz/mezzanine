@@ -3,8 +3,9 @@
  * module*; hoisted out of `floor/painter.js` at its second caller, the lobby, card#12113). The cab's room in depth
  * (`drawCabInterior()`, card#12051), the views its open doors look out on (`drawOfficeView()`, card#12052, and
  * `drawLobbyView()`, card#12113), the cab dialog's drawing (`paintCab()`), its colours (`cabTheme()`), the ride's leaf
- * motion (`rideLeaves()`, `cabLeaves()`), the classes all of them paint with (`CAB_STYLE`) and the one URI a drawn document
- * is shown by (`svgUri`, which the floor's painter imports).
+ * motion (`rideLeaves()`, `cabLeaves()`), the classes all of them paint with (`CAB_STYLE`), the one URI a drawn document
+ * is shown by (`svgUri`, which the floor's painter imports), the lobby's theme loader (`loadThemes()`) and the scene's themes
+ * input (`themeInputs()`, which the floor's painter re-exports).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ IT HAS NO STATIC IMPORT, AND ITS ONLY DYNAMIC ONES ARE THE THEME's: `loadThemes()` loads the theme registry

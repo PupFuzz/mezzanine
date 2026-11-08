@@ -181,15 +181,15 @@ function project(stopRow, placement, maps, tilesetFor, kinds, module) {
 
     // The rooms' walls, per FOOTPRINT (never the union extent): the far wall on its bottom edge, the side walls on its left
     // and right edges cut into row strips — a strip two rooms share drawn once. The top edge is the band, behind the eye.
-    const strips = new Set();
+    const sideStrips = new Set();
 
     for (const { footprint: f } of grids.filter((g) => g.room)) {
         push({ kind: 'far-wall', x1: X(f.x + f.width), x2: X(f.x), z1: Z(f.y + f.height), z2: Z(f.y + f.height), y1: 0, y2: ROOM_H }, (2 * (f.y + f.height)) / T);
 
         for (const edge of [f.x, f.x + f.width]) {
             for (let y = f.y; y < f.y + f.height; y += T) {
-                if (!strips.has(`${edge}:${y}`)) {
-                    strips.add(`${edge}:${y}`);
+                if (!sideStrips.has(`${edge}:${y}`)) {
+                    sideStrips.add(`${edge}:${y}`);
                     push({ kind: 'side-wall', x1: X(edge), x2: X(edge), z1: Z(y), z2: Z(y + T), y1: 0, y2: ROOM_H }, (2 * y) / T + 1);
                 }
             }
@@ -258,7 +258,7 @@ function project(stopRow, placement, maps, tilesetFor, kinds, module) {
 }
 
 /** Adjacent cells of one row as one rect (plan § 3.2's accent row) — the accent's merge, flat on the plane and unordered. */
-export function rowRuns(cells, T) {
+function rowRuns(cells, T) {
     const runs = [];
 
     for (const c of [...cells].sort((a, b) => a.y - b.y || a.x - b.x)) {

@@ -706,6 +706,12 @@ locally (§ 4's hop).
   in `min |X|` order, as the floor page paints them "over each other"; nothing is reported and nothing
   falls back to the bare room. The random-scene check keeps slabs disjoint by construction and so does not
   measure this case; its route is the console's paste of an F21 map.
+- **Rooms on cell grids of different sizes on one floor, or a `wall` tile larger than its cell** (slice 2's build;
+  round 3's *not covered* list). The model takes the floor's grid from its first room's `tileheight` and draws
+  every `wall` cell as that grid's square at the cell its centre snaps to. Every shipped and live map is on one
+  8-px grid with an 8 × 8 wall tile (`floor-plane.tsx`'s tile 2), and `App\Floor\FloorMap` accepts
+  any positive grid, so the route is an author's map on another grid: NOT defended — the view is drawn on the
+  first room's grid and nothing is reported.
 - **Hairlines between faces.** Adjacent cells' faces share edges, and the floor page merges runs precisely
   because a shape drawn cell by cell leaves a hairline where a shared edge lands on a fractional device
   pixel (scene.js's ⛔ *WHY ONE AREA AND NOT ITS CELLS* over `tileRegions()`). The door view's faces are
@@ -750,7 +756,7 @@ as each lands).
    RED in `TheFloorsRideIsNavigationTest`); `cab-paint.js` `loadThemes()` beside `loadHousePalette()` and
    the lobby walk's needles updated to follow every `THEMES` entry; `door-view.js` added to `DOOR_VIEW_ROOTS`.
    **As built:** the selftest is `tools/design/door-view.selftest.mjs`, wired into `design-doc-verifiers.yml`'s
-   `design-artifact` job — its *fixtures* leg (§ 6's floors A, B — on the grid and dragged 3 px off it — and C, with
+   `design-artifact` job — its *fixtures* leg (§ 6's floors A, B — on the grid and dragged 3 px off it — and C, § 7's planned floor with a hallway, with
    S3, S3b, S5, S6 and S7's model readings) and its *order* leg (§ 10), each RED planted in a mirror of the module
    tree; round 3's folds M1, M3, m2, m4 and m6 are in the code, this file and `FLOOR.md`. Two pieces the model
    reads were hoisted where the lobby may load them, each re-exported where it was: `monitorFrame()` into
@@ -813,7 +819,7 @@ recommendations taken), each one figure or one rule the operator's reading of th
 
 ## 10. The random-scene check, as run
 
-The script is not in the repo (a scratch check, `rowmc.mjs`, the shape of r2's `mc.mjs`); its construction
+The design round's script was a scratch check, never committed (`rowmc.mjs`, the shape of r2's `mc.mjs`); its construction
 is § 3.3's: a room of 60–223 × 30–87 cells, half the time a second room beside it with a two-cell gap and
 its own depth; up to ten runs of `wall` cells, vertical or horizontal, classified per cell by the footprint
 rule; up to six desks at UNALIGNED `y` (slabs disjoint, snapped to rows as the view snaps them), each a top
