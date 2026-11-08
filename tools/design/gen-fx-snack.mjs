@@ -163,6 +163,12 @@ const K = { pm: 'aimla/aimla-pm', i1: 'aimla/aimla-impl-1', i2: 'aimla/aimla-imp
 function run({ note, at_s, seats = {}, deltas = [], beats = null, until_ms, map = '@json:resources/floor/default.tmj', maps = null, extra_http = {}, reduce = false }) {
     const body = clone(BASE);
     body.installs[0].seats = body.installs[0].seats.map((s) => ({ ...s, ...(seats[s.seat_id] ?? {}) }));
+    // The published counts are D2 § 8.2.4's over the population the run seeds (`seats_live` counts `link_state ==
+    // "live"`), so a run that seeds a seat non-live publishes it — never fx-snapshot-4's all-live 4 / 4. The
+    // heartbeats count the same population as the run's deltas leave it at each beat.
+    const seeded = new Map(body.installs[0].seats.map((s) => [s.seat_id, s.link_state]));
+    const counts = (links) => ({ seats_total: links.size, seats_live: [...links.values()].filter((l) => l === 'live').length });
+    body.fleet = { ...body.fleet, ...counts(seeded) };
     const d = at_s * 1000 - T0;
     const shifted = shift(body, d);
     const http = {
@@ -173,10 +179,13 @@ function run({ note, at_s, seats = {}, deltas = [], beats = null, until_ms, map 
         ...extra_http,
     };
     const server = (ms) => iso(at_s * 1000 + ms);
-    const fleet = (ms) => ({ db: 'ok', fold: 'ok', sweep: 'ok', sweep_last_run_at: server(ms - 2000), ingest_last_receipt_at: server(ms), max_fold_lag_ms: 50, seats_total: 4, seats_live: 4 });
     const messages = [];
+    // A beat counts every link_state delta strictly before it: a beat at a delta's own instant sorts ahead of it below.
+    const linkDeltas = deltas.filter((m) => m.t !== 'room.map' && 'link_state' in m.patch).sort((a, b) => a.at_ms - b.at_ms);
+    const linksAt = (ms) => new Map([...seeded, ...linkDeltas.filter((m) => m.at_ms < ms).map((m) => [m.seat, m.patch.link_state])]);
     for (const ms of beats ?? range(500, until_ms, 15000)) {
-        messages.push({ at_ms: ms, envelope: { feed_version: 2, t: 'feed.heartbeat', server_time: server(ms), fleet: fleet(ms) } });
+        const fleet = { db: 'ok', fold: 'ok', sweep: 'ok', sweep_last_run_at: server(ms - 2000), ingest_last_receipt_at: server(ms), max_fold_lag_ms: 50, ...counts(linksAt(ms)) };
+        messages.push({ at_ms: ms, envelope: { feed_version: 2, t: 'feed.heartbeat', server_time: server(ms), fleet } });
     }
     for (const m of deltas) {
         messages.push(m.t === 'room.map'

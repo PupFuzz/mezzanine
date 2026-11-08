@@ -1735,13 +1735,15 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         return $dir;
     }
 
-    /** RED — the timer walk: the visit drawn whenever the break comes, whatever the held state. */
+    /** RED — a trip over the arrival: a break that begins while the walker's elevator walk is in flight drawn as a visit anyway. */
     public function test_red_a_trip_over_the_arrival(): void
     {
         $dir = $this->planted([self::IN_FLIGHT, 'if (page(s.start_s) < (this.#elevatorUntil.get(w.key) ?? -Infinity)) {', 'if (false) {']);
+
         $this->assertNotSame([], $this->arrivalDefects($dir), 'with the elevator walk ignored, no visit was drawn over the arrival');
     }
 
+    /** RED — the timer walk: the visit drawn whenever the break comes, whatever the held state. */
     public function test_red_the_timer_walk(): void
     {
         $dir = $this->planted([self::SCENE, '            restroom_eligible: model.restroom_held?.motion === true,', '            restroom_eligible: true,']);
