@@ -1,4 +1,4 @@
-<!-- BEGIN coord:solo-orientation (synced from coord v0.69.0) -->
+<!-- BEGIN coord:solo-orientation (synced from coord v0.74.0) -->
 # Agent Board Framework — solo agent orientation
 
 > **⚠ Only two sections of this file reach a session automatically: `## Who you are` and
@@ -75,6 +75,11 @@ deliberately does not list those lines: nothing re-checks this doc against the h
 session start, so a second copy of them here would drift against the one you actually see.
 What you WRITE into that file at session end is owned by the session-end ritual below and by
 the handoff skeleton's own header, not by this section.
+
+**Search the record before you ask about the past (WAYPOINT).** Before you ask about a past decision, write
+"no prior decision", act on a reference you cannot place, mint a card, or brief a designer or reviewer on a
+topic with history, search — your SessionStart `WAYPOINT:` line names the command. When, how, reading the
+answer and its limit: `WAYPOINT.md` § `Using it — every seat` [owns: waypoint-usage]; quote the null-result sentence when you claim absence.
 
 **Then read all your boards.** There is no inbox (no counterparty can send you threads —
 § Explicitly absent says why that is a rule, not an observation). Your source of truth at
@@ -202,7 +207,8 @@ body — write it for the software installer**. Its section set is the RELEASE b
 PR's section shape is your repo's own, and its OUT table binds every body. Nothing is dropped; only
 the home moves. **Run `pr-body-lint.py --body-file <the body file> --title "<the PR title>"`
 before `gh pr create`:** it reds on the release section set and scope line when the title opens
-`release:`, and on narration openers, live-state readings and the audit rows on any PR, and on a solo
+`release:`, and on narration openers, live-state readings, the audit rows and the `Origin:` line
+(the coord plugin's `docs/USER-GATING.md` § 2g) on any PR, and on a solo
 install it is the only reader besides you — so adopt `templates/workflows/pr-body-lint.yml` in
 your repo too, and read a green as "the shape is right", never as "the audience is right".
 
@@ -244,7 +250,7 @@ merge-button intent) using each repo's own conventions. Use it whenever cutting 
   self-drive loop moving. On a seat started with `--dangerously-skip-permissions` (the
   framework's launcher shim passes it by default — card#11739) the classifier does not run
   and a raw merge is NOT blocked unless an explicit `permissions.ask` / deny rule matches it —
-  the wrapper is still the only sanctioned path, and `coord-merge-guard` (`docs/MERGE-GUARD.md`)
+  the wrapper is still the only sanctioned path, and `coord-merge-guard` (the coord plugin's `docs/MERGE-GUARD.md`)
   or server-side branch protection is the only gate the framework provides on a merge to the
   release branch.
 - **Back-merge sync PRs (release → integration) → you self-merge** once **BOTH** hold: the
@@ -399,7 +405,7 @@ action.
     fresh context, not on your whole accreted session.
   - **A DESIGN rather than code** (a design document, an implementation plan, an amendment to
     a ratified doc) → the **`designer`**, whose tier your install picks separately
-    (`docs/MODEL-TIERING.md` § The design tier) and which can read a cited external spec at its
+    (the coord plugin's `docs/MODEL-TIERING.md` § The design tier) and which can read a cited external spec at its
     source. It writes the design; implementing it is a separate `coder` dispatch — and it gets its
     own `Built:` slot, the three-slot form `built-line.md` owns.
 
@@ -409,7 +415,7 @@ be peer-tier with the producer — judge it yourself only if you are at that tie
 spawn a peer-tier reviewer subagent. Never let a cheaper seat rubber-stamp reasoning it can't
 actually check. (When the check *is* mechanical, tier doesn't matter — the tool is the
 verifier.) A producer ABOVE the review ceiling — the `designer` on its default pin — is the one
-exception, and who may review its work is owned by `docs/MODEL-TIERING.md` § The design tier;
+exception, and who may review its work is owned by the coord plugin's `docs/MODEL-TIERING.md` § The design tier;
 follow it there.
 
 **Non-trivial coding is dispatched because your human asked for it (card#4870, card#5937).** The
@@ -424,7 +430,7 @@ nobody was asked and nobody refused, so the grant stands exactly as written. Abs
 decline. What **this** section owns is the
 operational boundary: any coding task beyond a few trivial lines — feature, bugfix, refactor, test —
 is dispatched to a **fresh `coder`** subagent (or **`mechanic`** for a fully-specified mechanical
-procedure), one-per-task so work never accretes onto your session. Inline is legitimate **only for trivial** edits (a
+procedure), one-per-task so work never accretes onto your session. `coord-build`, the coder's envelope, refuses a second branch for a card, a worktree in a scratchpad or temp dir, and a branch before its first commit — `branch-discipline.md` says what each refusal means and what to do. Inline is legitimate **only for trivial** edits (a
 version bump, a one-line doc fix) — that trivial-tier carve-out is the *sole* exception **while
 dispatch is available** (the one other inline path, `inline (dispatch-prohibited: …)`, applies only
 when an operator/environment directive prohibits dispatch for the session up front — see the
@@ -570,7 +576,7 @@ to read it. The page is output, not state: nothing owes a re-render and nothing 
 The SessionStart check reports what is about the board, and its UNMEASURED verdict means a read
 did not happen, not that the sprint is finished.
 Vocabulary, worked configs, why the page and the lanes the census reads cannot drift
-apart, and the exit codes: **`docs/SPRINT.md`** — which owns those claims; do not restate them
+apart, and the exit codes: the coord plugin's **`docs/SPRINT.md`** — which owns those claims; do not restate them
 here.
 
 The **manual board-state check** is the documented fallback when the SessionStart hook is
@@ -608,8 +614,8 @@ up.
    restate** their status here. If a PR's review plane or a board card already owns a status,
    record the *pointer* (`PR 88 · plane-2`, `card #140 · Doing`), not a durable copy of the value —
    a restated PR/card status is a shadow that goes stale when the SoT moves. Log verification
-   **acts** + pointers, never the verified value itself (see `docs/task-tracking-standard.md`
-   §5.1, the re-accretion guard).
+   **acts** + pointers, never the verified value itself (see the coord plugin's
+   `docs/task-tracking-standard.md` §5.1, the re-accretion guard).
    **Mark the live region:** keep the `<!-- coord:status-region -->` line above your session block
    — that ONE line is the whole convention (the seeded handoff skeleton already carries it, and the
    region runs from it to the next block heading — `SR_BLOCK_START_RE` in `state-retention.py` owns
@@ -632,7 +638,7 @@ up.
    and fires on the tool call that changed it, whatever wrote it. Read that as an enforced CHECK
    and never as a refusal: the write has already landed when it speaks, so correcting the line is
    still yours to do, and the line above is still the step. What it prints and when, claim
-   classes, outcomes, `--control` and the honest limits: **`docs/HANDOFF-VERIFICATION.md`** — not
+   classes, outcomes, `--control` and the honest limits: the coord plugin's **`docs/HANDOFF-VERIFICATION.md`** — not
    restated here.
 
 5. **Save lessons learned to memory.** Durable takeaways from the session — a repo or tooling
@@ -661,7 +667,7 @@ as the **final action of that turn**, without deferring (`clear-decision.sh --ex
 `clear_context` tool). Do **not** clear mid-review-round, mid-build, or with an unanswered operator
 message in front of you.
 <!-- MIRROR-END(milestone-clear: solo-CLAUDE.md) -->
-<!-- MIRROR: lockstep copy of the rule docs/CONTEXT-RESET.md § Roles owns; edit every copy together (CONTEXT-RESET.md § Mirror registry). -->
+<!-- MIRROR: lockstep copy of the rule CONTEXT-RESET.md § Roles owns; edit every copy together (CONTEXT-RESET.md § Mirror registry). -->
 
 Between milestones, these catch a session that grew heavy mid-task:
 
@@ -673,7 +679,7 @@ Between milestones, these catch a session that grew heavy mid-task:
   CLEAR nudge** carrying the clear-decision token-arithmetic verdict + net savings (card#4874, the
   cost-optimal signal). Either way: finish the in-flight step, write your handoff, self-clear at the
   next clean boundary. Treat it as the cost-ceiling catch, not the routine trigger (the milestone
-  rule above is). Mechanism: `docs/CONTEXT-RESET.md`.
+  rule above is). Mechanism: the coord plugin's `docs/CONTEXT-RESET.md`.
 
 **Clearing your context** at milestones keeps per-turn token cost low. To clear
 safely: your work must be committed/pushed AND the handoff written (session-end ritual steps
@@ -687,7 +693,8 @@ dispatch in flight never holds a clear, *provided* your handoff **ENUMERATES** t
 (which subagent · what it was dispatched to do · what you owe on its return). Unenumerated, that
 completion returns to a session with no record of commissioning it and it cannot be judged, so the
 listing is the **condition**, not advice. Your OWN unfinished step still holds the clear. Detail +
-what to write: `docs/CONTEXT-RESET.md § Running subagents do not hold the clear`.
+what to write: the coord plugin's `docs/CONTEXT-RESET.md § Running subagents do not hold the
+clear`.
 <!-- MIRROR-BEGIN(chat-gate: solo-CLAUDE.md) -->
 Do NOT clear mid-decision, mid-gate, or with an
 unanswered message from your human in front of you. Otherwise clear as the **FINAL ACTION of THIS
@@ -699,7 +706,7 @@ with your human? Both **NO** → clear this turn. "Could a message arrive?" is *
 hold.**
 <!-- MIRROR-END(chat-gate: solo-CLAUDE.md) -->
 <!-- MIRROR: the region above is a lockstep copy — same prose in pm-CLAUDE.md,
-     docs/CONTEXT-RESET.md, and hooks/context-backstop.py (which carries it twice: WARNING +
+     the coord plugin's docs/CONTEXT-RESET.md, and its templates/hooks/context-backstop.py (which carries it twice: WARNING +
      platform-line) = five copies across four files. Edit all five; the copy registry is
      CONTEXT-RESET.md § "Mirror registry". The MIRROR-BEGIN/END markers are LOAD-BEARING: the
      framework repo's own CI guard .githooks/chat-gate-mirror-drift.selftest.py extracts exactly
@@ -717,13 +724,17 @@ Reading new inbound after the decision burns the tokens the clear exists to save
 work that keeps the decided clear from ever landing; **unread inbound is safe** and resurfaces on the
 post-clear resume. This does **not** override the your-human-message preempt above (push vs. pull): a
 message *thrust into* the running turn is still answered first and **defers** the clear; a
-not-yet-*read* inbox does not. Full protocol: `docs/CONTEXT-RESET.md § Performing a decided clear`.
+not-yet-*read* inbox does not. Full protocol: the coord plugin's `docs/CONTEXT-RESET.md § Performing a
+decided clear`.
 
 **How (GNU `screen` platform):** as your VERY LAST action of the turn, run `clear-agent.sh`
 (on PATH; self-detects your screen session via `$STY`) — or `clear-agent.sh <your-session>`
 if `$STY` isn't propagated. The injected `/clear` queues and fires the moment your turn ends
 and the prompt is idle. `SessionStart` re-fires and re-orients you from your handoff +
 boards; any live-wake channel stays live (the process is not restarted).
+Why clear-tool drift never holds a decided clear, and what a refusal's `ESCALATE to=pm
+action=report` line asks of you: the coord plugin's `docs/CONTEXT-RESET.md § Performing a decided
+clear`.
 
 **Platform:** GNU `screen` on Linux. On Windows no screen is needed: `clear-agent.sh` types
 into your own console and refuses (exit 5) if someone is typing there. Auto-compaction is the automatic safety net regardless; the milestone
