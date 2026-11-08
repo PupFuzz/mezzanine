@@ -682,9 +682,16 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         }
 
         $kinds = [];
+        $seen = false;
+        $back = null;
 
         foreach ($this->drawn($busy) as $r) {
+            if ($this->visits($r['frame'], self::IMPL_1) === []) {
+                $back ??= $seen ? $r : null;
+            }
+
             foreach ($this->visits($r['frame'], self::IMPL_1) as $v) {
+                $seen = true;
                 $kinds[] = $v['leg_kind'];
 
                 if (($v['thought']['text'] ?? null) !== $line) {
@@ -694,11 +701,20 @@ class ACharacterTakesARestroomBreakTest extends TestCase
                 $desk = $this->desk($r['frame'], self::IMPL_1);
                 $model = $r['frame']['desks']['desks'][self::IMPL_1];
 
-                if ($model['render_state']['value'] !== 'working' || $model['monitor']['lit'] === 'off' || $this->drawsCharacter($r['frame'], self::IMPL_1)
-                    || ($desk['bubble']['text'] ?? null) === null || ($desk['bubble']['trail'] ?? null) !== []) {
-                    $defects[] = "at {$r['at']} ms busy-visit's desk does not draw its working facts and its task bubble with no trail, its chair empty";
+                if ($model['render_state']['value'] !== 'working' || $model['monitor']['lit'] === 'off' || $this->drawsCharacter($r['frame'], self::IMPL_1)) {
+                    $defects[] = "at {$r['at']} ms busy-visit's desk does not draw its working facts, its chair empty";
+                }
+
+                // card#12994: a bubble shows only while its agent is at the desk.
+                if ($desk['bubble'] !== null) {
+                    $defects[] = "at {$r['at']} ms busy-visit's desk draws its task bubble while its walker is away";
                 }
             }
+        }
+
+        if ($back === null || ($this->desk($back['frame'], self::IMPL_1)['bubble']['text'] ?? null) === null
+            || ($this->desk($back['frame'], self::IMPL_1)['bubble']['trail'] ?? []) === []) {
+            $defects[] = 'busy-visit\'s task bubble, with its trail, is not back when its walker sits down again';
         }
 
         if (array_values(array_unique($kinds)) !== ['restroom']) {
@@ -1741,6 +1757,16 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         $dir = $this->planted([self::IN_FLIGHT, 'if (page(s.start_s) < (this.#elevatorUntil.get(w.key) ?? -Infinity)) {', 'if (false) {']);
 
         $this->assertNotSame([], $this->arrivalDefects($dir), 'with the elevator walk ignored, no visit was drawn over the arrival');
+    }
+
+    /** RED — the bubble over the empty chair (card#12994): the away desk drawn keeping its task bubble. */
+    public function test_red_the_bubble_over_the_empty_chair(): void
+    {
+        $dir = $this->planted([self::IN_FLIGHT, "    return Object.freeze({ ...model, character: false, pose: 'empty-chair', bubble: null, held: null });",
+            "    return Object.freeze({ ...model, character: false, pose: 'empty-chair', held: null });"]);
+
+        $this->assertNotSame([], array_filter($this->busyDefects($dir), static fn ($d) => str_contains($d, 'draws its task bubble while its walker is away')),
+            'a desk drawing its task bubble over its empty chair and the busy guard saw nothing');
     }
 
     /** RED — the timer walk: the visit drawn whenever the break comes, whatever the held state. */

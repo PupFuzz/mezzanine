@@ -94,7 +94,7 @@ import { buildFleetJoin, buildJoin } from './coord-join.js';
 import { LIVE, feedStatus, statusStrip } from './status-strip.js';
 import { failureRender } from '../wire/failure-render.js';
 import { buildScene, threshold } from './scene.js';
-import { EffectsInFlight, awayDesk, inboundDesk, walkSide } from './in-flight.js';
+import { EffectsInFlight, awayDesk, walkSide } from './in-flight.js';
 import { createCamera, fit, frameOn, glideMs, pan, panBy, pinch, resize, zoom, zoomStep } from '../wire/camera.js';
 import { TilesetLoader, tilesetUrl } from './tileset.js';
 import {
@@ -805,8 +805,8 @@ export class FloorScreen {
 
     /**
      * A scene with the effects in flight on it: every one at its elapsed frame (item 8), the elevator's
-     * leaves from the walks' door frames (item 10), and each desk an A1 walker is still on its way to
-     * drawn as `in-flight.js`'s `inboundDesk()` draws it (item 4).
+     * leaves from the walks' door frames (item 10), and each desk whose agent is not at it — an A1 walker still on
+     * its way to it (item 4), or a walker on a break — drawn as `in-flight.js`'s `awayDesk()` draws it.
      */
     #overlay(frame, plain, now) {
         // card#12749 (FLOOR.md § 6.6): the break pass — a recall walks its walker home, and a break whose second has come
@@ -833,8 +833,8 @@ export class FloorScreen {
 
         const inbound = this.#inFlight.inbound(now);
         const inboundInterns = this.#inFlight.inboundInterns(now);
-        // A walker away on a snack trip: its desk draws the empty chair with every fact of its object at the desk, its
-        // task bubble included and no z's (§ 6.6 item 4) — `awayDesk()`'s render — and its stool draws empty.
+        // A walker away on a break (§ 6.6 item 4, § 6.7): its stool draws empty, and its desk, like an A1 walker's, is
+        // `awayDesk()`'s — the empty chair, no task bubble and no z's, every other fact of its object at the desk.
         const away = this.#inFlight.away(now);
         let scene = plain;
 
@@ -843,14 +843,8 @@ export class FloorScreen {
         if (inbound.size > 0 || away.size > 0) {
             desks = { ...frame.desks.desks };
 
-            for (const key of inbound) {
+            for (const key of new Set([...inbound, ...away])) {
                 if (desks[key] !== undefined) {
-                    desks[key] = inboundDesk(desks[key]);
-                }
-            }
-
-            for (const key of away) {
-                if (desks[key] !== undefined && !inbound.has(key)) {
                     desks[key] = awayDesk(desks[key]);
                 }
             }

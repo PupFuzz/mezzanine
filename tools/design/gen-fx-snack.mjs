@@ -707,7 +707,7 @@ function restroomRuns() {
         r.messages.push({ at_ms: at, envelope: { feed_version: 2, t: 'seat.delta', server_time: iso(E + at / 1000), install_id: 'aimla', seat_id: 'aimla-impl-1', state_version: v1 + 1, at: iso(E + at / 1000), changed: ['action', 'longest_open_call', 'open_calls'], patch: { action: null, longest_open_call: null, open_calls: 0 } } });
         r.messages.sort((a, b) => a.at_ms - b.at_ms);
         runs['busy-visit'] = r;
-        notes['busy-visit'] = `\`aimla-impl-1\`, \`working\` at an open call, through its restroom break (${breakNote(I1, E + 5)}, 5 s after clock 0) with the line, its desk keeping every fact; at ${at} ms, twenty seconds into the dwell, the call closes with the turn open (A3 → A4, \`working → working\`): the visit goes on. ${clock(E)}.`;
+        notes['busy-visit'] = `\`aimla-impl-1\`, \`working\` at an open call, through its restroom break (${breakNote(I1, E + 5)}, 5 s after clock 0) with the line, its desk keeping its facts and drawing no task bubble; at ${at} ms, twenty seconds into the dwell, the call closes with the turn open (A3 → A4, \`working → working\`): the visit goes on. ${clock(E)}.`;
     }
 
     // ── intern-visit: aimla-pm's intern idle, the seat working. ────────────────────────────────────────────────────────────
