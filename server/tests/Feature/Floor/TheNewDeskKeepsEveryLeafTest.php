@@ -371,8 +371,8 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 "heldArt(g, drawn, { ...e, animation: desk.held }, cls, e.install_id, e.key);"],
             'an intern typing on a desk whose treatment stills it' => ['../desk/desk-render.js',
                 "return heldRendering('A23', permitted, reduce);", "return heldRendering('A23', true, reduce);"],
-            // card#11046 — AT-D3-24's painter half, each planted in the shipped painter.
-            'a character shown through an image that is not an SVG document (a raster frame)' => ['../floor/painter.js',
+            // card#11046 — AT-D3-24's painter half, each planted in the shipped module the painter draws it through.
+            'a character shown through an image that is not an SVG document (a raster frame)' => ['../floor/cab-paint.js',
                 'export const svgUri = (doc) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(doc)}`;',
                 'export const svgUri = (doc) => `data:image/png;base64,${encodeURIComponent(doc)}`;'],
             'a canvas made for a character' => ['../floor/painter.js',

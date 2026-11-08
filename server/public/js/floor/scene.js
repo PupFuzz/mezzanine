@@ -30,26 +30,28 @@
  */
 
 import { ANIMATION_SET, LOOP_FPS, SNACK_HELD, loops } from '../wire/animation-set.js';
-import { footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layout.js';
-import { readEmbedded, splitGid, tilesetUrl } from './tileset.js';
+import { BAND_H, ELEVATOR, footprintsIntersect, mapDesks, mapGrid, thresholdOf } from './floor-layout.js';
+import { floorTheme } from './floor-theme.js';
+import { PLANE_KINDS, RESTROOM_DOOR, RESTROOM_PLATES, mapTiles, sceneryInput } from './map-tiles.js';
+import { tilesetUrl } from './tileset.js';
 import { BUBBLE_GAP, BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, internKey, seatSolid, stoolSlots, TRAIL_REACH, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
 import { CLEARANCE, CLEARANCE_TIERS, blockedFor, cellAt, cellCentre, lattice, pointAt, polylineLength, route, spotsNear } from './route.js';
 import { perchPoint } from './bird.js';
 import { SNACK_LINES } from './snack-lines.js';
 
-/**
- * The back-wall band's height (§ 4.2) — "its height is a drawing layer's" (`floor-layout.js`): a wall
- * about 2.2 m tall at the floor's scale (card#11045, the operator's 2026-10-01 ruling: tall office
- * windows, not a jail's). FLOOR.md § 12's *Back-wall band height* row is its other home, and
- * `Tests\Feature\Floor\TheFloorDrawsItsFrameTest` holds the two equal — as it does `ZONE_W` and
- * `WINDOW`'s pitch and glazing below.
- */
-export const BAND_H = 160;
+// The pure readers a page without this module's scene machinery also needs (the cab's door view, card#12987) live
+// in modules that import no animation; each name stays readable from here.
+export { BAND_H } from './floor-layout.js';
+export { floorTheme, unshippedThemeNotice } from './floor-theme.js';
+export { PLANE_KINDS, RESTROOM_DOOR, RESTROOM_PLATES, mapTiles } from './map-tiles.js';
 
 /**
  * THE FLOOR's FRAME (§ 4.2's frame list, card#11045 PR-D) — the band's parts, in scene px from the
- * band's left edge and top. Layout, carrying no fact, and this module's own.
+ * band's left edge and top. Layout, carrying no fact, and this module's own — but for the band's height and the
+ * elevator's place (`BAND_H`, `ELEVATOR`), which `floor-layout.js` holds beside the one threshold formula
+ * (`thresholdOf()`). `Tests\Feature\Floor\TheFloorDrawsItsFrameTest` holds `ZONE_W` and `WINDOW`'s pitch and glazing
+ * equal to FLOOR.md § 12's rows, as it does `BAND_H`.
  *
  * ⛔ THE RESERVED ZONE IS THE BAND's LEFT `ZONE_W` px, AND NO WINDOW EVER ENTERS IT: the two-door
  * elevator and the wall clock hang there, so the clock is never covered whatever the floor's width.
@@ -72,7 +74,6 @@ export const BAND_H = 160;
  * window — or its sill — could only be drawn inside the zone. A stored map can be that narrow (F21).
  */
 const ZONE_W = 332;
-const ELEVATOR = { dx: 32, w: 84, h: 144, frame: 6, header: 14 };
 /**
  * The wall clock, RAISED 44 px to the top of the band (card#12241, the operator's ruling of 2026-10-23:
  * *"I want the clock raised to the height of the current birdhouse"*): its rect's top is `dy` under the
@@ -119,14 +120,6 @@ export const CALL_PRESS_FRAMES = 4;
 /** The slab under the floor's rooms — the front wall's top edge, scenery, outside every grid (§ 4.2). */
 export const SLAB_H = 8;
 
-/**
- * FLOOR.md § 10.6 item 6's two classes of tile kind: the PLANE kinds, whose cells are merged into runs by the
- * one region pass (`tileRegions()`) and handed to the grid's plane document, and every other kind of the
- * registry's set, which STANDS — drawn at its tile's cell rect by the floor's theme. A tile with no kind, or
- * a kind the registry does not name, is drawn by nothing: the floor never draws a tile's image.
- */
-export const PLANE_KINDS = Object.freeze(['wall', 'accent']);
-
 /** The overflow strip's gap below the floor's extent, and its header — § 3.2's labelled row. */
 export const STRIP_GAP = 24;
 
@@ -163,38 +156,6 @@ function glowOf(cell) {
  */
 export function intersectNotice(a, b, installId, seats) {
     return `desk objects \`${a}\` and \`${b}\` intersect — ${roomSuffix(installId, seats)}`;
-}
-
-/**
- * § 9 F23's notice, in § 5.5's words (card#11046, FLOOR.md § 10.6 item 5): the theme as the layout names
- * it, and the floor by its name — `label ?? key`, the one rendering rule § 4.6 states.
- */
-export function unshippedThemeNotice(name, floorName) {
-    return `floor theme \`${name}\` is not installed — drawn in the house theme — \`${floorName}\``;
-}
-
-/**
- * The theme a floor is drawn in (FLOOR.md § 10.6 item 5): the one its layout entry names when the registry
- * holds it; the house theme when it names none; and the house theme under § 9 F23's notice when it names
- * one the build does not ship. With no registry held (`themes` absent — it failed to load, which is § 9
- * F14's), nothing is resolved and nothing is claimed.
- *
- * @param {{theme: string|null, name: string}} floor the frame's floor
- * @param {{names: list<string>, house: string}|null|undefined} themes the registry's `THEMES` and `HOUSE_THEME`
- * @returns {{theme: string|null, notice: string|null}}
- */
-export function floorTheme(floor, themes) {
-    if (themes === null || themes === undefined) {
-        return { theme: null, notice: null };
-    }
-
-    if (floor.theme === null || floor.theme === undefined) {
-        return { theme: themes.house, notice: null };
-    }
-
-    return themes.names.includes(floor.theme)
-        ? { theme: floor.theme, notice: null }
-        : { theme: themes.house, notice: unshippedThemeNotice(floor.theme, floor.name) };
 }
 
 /**
@@ -363,24 +324,6 @@ export function snackSpacing(body) {
 export function snackSpotOffset(body) {
     return Object.freeze({ dx: -body.w / 2, mirror: body.w / 2, dy: CLEARANCE.depth + 1 });
 }
-
-/**
- * card#12786 — § 12's *Restroom door* (§ 6.7 item 2): the one standing kind of the restroom, and its tile's size — a door
- * frame taller than the *Character rect*'s character with its sign plate above. The tile's rect is the obstacle the
- * lattice blocks, read off the map like every standing tile's.
- */
-export const RESTROOM_DOOR = Object.freeze({ kind: 'restroom-door', w: 64, h: 144 });
-
-/**
- * card#12786 — § 12's *Restroom plates* (§ 6.7 item 2): the two rects the scene hands the theme with the door's tile, in
- * the tile's px from its top-left — `sign`, the slider plate the painter draws the vacant / occupied field inside, and
- * `plate`, the sign plate the theme draws the pictogram on. The theme draws the rims where the painter draws the field,
- * whatever the theme, as the elevator's surround is handed its call plates.
- */
-export const RESTROOM_PLATES = Object.freeze({
-    sign: Object.freeze({ x: 21, y: 58, w: 22, h: 12 }),
-    plate: Object.freeze({ x: 14, y: 2, w: 36, h: 18 }),
-});
 
 /**
  * card#12786 — THE RECESS the painter clips an occupant to and draws the leaf over (§ 6.7 item 2): the door frame's opening,
@@ -1449,16 +1392,7 @@ export function buildScene(frame, input) {
                 continue;
             }
 
-            // card#12786: the restroom door's theme document is handed the slider's and the sign plate's rects (§ 12's
-            // *Restroom plates*), where the painter draws the field and the theme the rims.
-            const doc = docOf(`theme:${theme.name}/scenery:${cell.kind}`, 'scenery', {
-                kind: cell.kind,
-                w: cell.w,
-                h: cell.h,
-                seed: g.seed,
-                index: cell.index,
-                ...(cell.kind === RESTROOM_DOOR.kind ? RESTROOM_PLATES : {}),
-            });
+            const doc = docOf(`theme:${theme.name}/scenery:${cell.kind}`, 'scenery', sceneryInput(cell, g.seed));
 
             if (doc === null) {
                 continue;
@@ -2398,88 +2332,6 @@ export function placeBubbles(desks, measure, W, delivered) {
 }
 
 /**
- * Every tile a map draws, in document order bottom first (§ 10.3's `layers[]` row), each cell
- * resolved to its tileset image and source rectangle — an image-collection tile is drawn at its own
- * size, bottom-aligned to its cell, as Tiled draws one.
- */
-export function mapTiles(map, origin, tilesetFor, owner) {
-    const grid = mapGrid(map);
-
-    if (grid === null) {
-        return [];
-    }
-
-    // Each `tilesets[]` entry by its `firstgid`, highest first, so a GID finds its own.
-    const sets = (Array.isArray(map.tilesets) ? map.tilesets : [])
-        .map((entry) => ({
-            firstgid: entry?.firstgid ?? 1,
-            tileset: typeof entry?.source === 'string' ? tilesetFor(tilesetUrl(entry.source)) : safeEmbedded(entry),
-            url: typeof entry?.source === 'string' ? tilesetUrl(entry.source) : null,
-        }))
-        .sort((a, b) => b.firstgid - a.firstgid);
-
-    const out = [];
-
-    // § 10.3's layer tree, groups walked, through the one walk `mapDesks()` reads it by too.
-    for (const { layer, offset: here, opacity: alpha, visible } of mapLayers(map)) {
-        if (!visible || layer.type !== 'tilelayer' || !Array.isArray(layer.data)) {
-            continue;
-        }
-
-        const columns = layer.width ?? grid.width;
-
-        layer.data.forEach((cell, i) => {
-            // Tiled's flip bits are stripped and never carried: the floor draws every tile unrotated (§ 10.6 item 6).
-            const { gid } = splitGid(cell);
-
-            if (gid === 0) {
-                return;
-            }
-
-            const set = sets.find((s) => gid >= s.firstgid);
-
-            if (set === undefined) {
-                return;
-            }
-
-            const tile = set.tileset?.tile(gid - set.firstgid) ?? null;
-            const col = i % columns;
-            const row = Math.floor(i / columns);
-            const offsetX = set.tileset?.offset.x ?? 0;
-            const offsetY = set.tileset?.offset.y ?? 0;
-            const w = tile?.sw ?? grid.tilewidth;
-            const h = tile?.sh ?? grid.tileheight;
-
-            out.push({
-                room: owner,
-                layer: layer.name ?? null,
-                x: origin.x + here.x + col * grid.tilewidth + offsetX,
-                y: origin.y + here.y + (row + 1) * grid.tileheight - h + offsetY,
-                w,
-                h,
-                image: tile?.image ?? null,
-                // The image's own size, so a sheet tile is drawn as a window onto its sheet.
-                iw: tile?.iw ?? w,
-                ih: tile?.ih ?? h,
-                tileset: set.url,
-                sx: tile?.sx ?? 0,
-                sy: tile?.sy ?? 0,
-                sw: w,
-                sh: h,
-                opacity: alpha,
-                properties: tile?.properties ?? null,
-                // § 10.6 item 6: what the floor's theme draws the tile as — never its image.
-                kind: typeof tile?.properties?.kind === 'string' ? tile.properties.kind : null,
-                // The cell's place in its layer — a standing piece's seeded choices are the cell's.
-                index: i,
-            });
-        });
-    }
-
-    return out.map((cell) => Object.freeze(cell));
-}
-
-/**
  * WHAT A TILE IS, TO THE FLOOR — its KIND and its cell's size, and nothing about its image (FLOOR.md § 10.6
  * item 6: the floor draws a placed tile by its kind in the floor's theme and never draws the tile's image).
  * Tiles of one look are one kind at one size, so `tileRegions()` joins them on it into the runs a plane
@@ -2670,14 +2522,6 @@ function misordered(tiles, regions, regionOf) {
     return late;
 }
 
-function safeEmbedded(entry) {
-    try {
-        return readEmbedded(entry);
-    } catch {
-        return null;
-    }
-}
-
 /**
  * § 9 F21 for one room, from the map alone: its `desks` objects pairwise on step 7's half-open
  * footprint test (`floor/floor-layout.js`'s own, F18's), and each against the furniture box.
@@ -2771,7 +2615,7 @@ export function backWall(span, room) {
             ...lift,
             frame: Object.freeze(frameRect),
             surround: Object.freeze({ ...frameRect, w: frameRect.w + SURROUND.elevator_reach }),
-            seam: lift.x + lift.w / 2,
+            seam: thresholdOf(span).x,
             // card#12747: the two call plates the theme draws in the surround — `main` at a seat's reach, `low` an intern's.
             calls: Object.freeze({ main: plate(CALL_PLATES.main), low: plate(CALL_PLATES.low) }),
         }),
