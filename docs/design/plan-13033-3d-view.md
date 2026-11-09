@@ -16,6 +16,13 @@ home angle, an exploded stack (B2, the seat's ruling); `room.map` applied by the
 rule (M2); a RED that can fire (M3); and the minors folded where they stand. § 13 is now the operator's rulings,
 decided, and no open question remains in this file.
 
+**Revision 3 (2026-11-09)** folds design review round 2 (card comment 16469): the storey derived from the HOME
+CAMERA's own sight lines by a bounded fixed point, not from parallel rays (M1); an absolute near limit from the floor
+page's zoom ceiling (M2); the scene INPUT assembly hoisted beside `composeFloor()` and each painter's failures routed
+to the building screen (M3); AT-D3-37 rebuilt on a named fixture run with an explicit import bound (M4); and the
+minors, including the false claims the review found (the deploy's `npm ci`, the extent figures, the converter test's
+exclusion). The resize rule, the arrival rule and the copy-cost rule are decided in § 3.3 and § 5.
+
 **Design approval.** The operator's request of 2026-11-09, recorded on card#13033: offered a building view, a
 floor view, or both, the operator chose *"Both"*, building view first. The card's technical notes fix the library
 (Three.js with OrbitControls, plain ES modules, no framework), the order (building view ships first and leaves the
@@ -56,7 +63,10 @@ derived on 2026-11-08 by `plan-12987-cab-door-view.md` § 1 — the three `php a
 the layout document, the installs and each authored map; the readings that day were one planned floor (`aimla`,
 theme `cottage`) and four implicit floors (`kanban`, `mezzanine`, `sola`, `solo-agents`, house theme), two of them
 on authored maps and the rest on the shipped default `resources/floor/default.tmj` (1,784 × 696 px,
-`FLOOR.md` § 10.3). ⚠ **Not re-run for this plan**: the worktree carries no `.env`, and the live checkout is not
+`FLOOR.md` § 10.3; **the scene's extent is taller than the map**: the band is drawn ABOVE the frame's extent — `scene.js`
+L2566 `y = span.y − BAND_H` — and `scene.extent` is the union of band, extent, desks and strip (L1626–1634), so the
+shipped default's slab is **1,784 × 856 scene px**, and deeper by the overflow strip's gap, header and row only when
+`frame.overflow.length > 0` (L1503) — **one figure, used everywhere below**). ⚠ **Not re-run for this plan**: the worktree carries no `.env`, and the live checkout is not
 this plan's to enter. The coder re-runs those three commands before slice 3 and records the readings in the PR.
 
 Each floor's **drawing** is `floor/scene.js`'s `buildScene(frame, input)` painted by `floor/painter.js` — the
@@ -85,7 +95,18 @@ entry. Three hoists come first, each at its second caller:
    moves: `composeFloor(floor, building, seatsByRoom)` → `{ planned, hallway, extent, band, rooms, draw_order,
    overlaps, overflow, desk_positions, notices, assignments }`, frozen; `#drawFloor()` calls it and keeps the
    journal-dependent rest (`#displacements(assignments, …)`, `#coordinate(…)`, the statement, the narration).
-   Behaviour-preserving: every existing floor test is the control.
+   **And the scene's INPUT assembly moves with it** (review round 2's M3: `buildScene(frame, input)` reads nineteen
+   input members — `grep -o 'input\.[a-z_]*' scene.js | sort -u` — assembled today in three places: the page's art
+   inputs in `floor/main.js` L427–445, the per-frame documents in `FloorScreen#sceneDocs()` L1119–1131, and the
+   handover `sceneInputs()` L525). The same module exports **`artInputs(art, measure)`** — the L427–445 literal:
+   `{ box, measure, character, draw, crest, headClear, themes }` from `loadArt()`'s result and the page's measurer,
+   `themeInputs()` (`cab-paint.js` L90) as today — **`roomMaps(frame, building)`** — the `Map` of each room's held
+   map, L1122 — and **`sceneInput(art, docs)`** — the frozen union of the art inputs and the per-frame documents
+   `{ maps, hallway, tilesets, layout_version, failed, reduce, effects, previous }` plus the four in-flight members,
+   with the member list `SCENE_INPUT_KEYS` exported beside it. `#sceneDocs()` becomes one `sceneInput()` call;
+   `floor/main.js` calls `artInputs()`; the building screen calls both. The painter's `failed` callback
+   (`createPainter({ failed })`, `painter.js` L249–260) feeds the screen's `assetsFailed()` set on both screens, so
+   `failed` is one member with one writer per screen. Behaviour-preserving: every existing floor test is the control.
 2. **`floor/floor-data.js` — the press-time prefetch, hoisted out of `floor/door-views.js`'s `prefetch()`**
    (L68–88): every row's rooms through `Building#enterRooms()`, each held map's tilesets through the page's
    `TilesetLoader`, and the theme modules through `cab-paint.js`'s `loadThemes()` where the page holds none —
@@ -122,22 +143,39 @@ unit*, Chosen: it keeps a 1,784 px floor about 18 units wide, which is the scale
   `floor-screen.js` L716's comment) gets the **stack's widest footprint** and **no picture**; its list entry carries
   the floor's own notices (`composeFloor()`'s `notices` — `mapFailureNotice()`, `NO_SEATS_REPORTED` — the floor
   page's words, not new ones).
-- **A storey is derived from VISIBILITY at the camera's home angle, not from wall height** — the design review's B2
-  and the seat's ruling on it: an exploded stack. The home looks down at `HOME_POLAR` = 50° from vertical, so an
-  upper slab hides everything on the slab under it beyond `s · tan(HOME_POLAR)` behind the front edge, `s` being
-  the storey (front edges align — the alignment bullet below). The first draft's `BAND_H` storey (160 px, 1.6 units)
-  would have shown the first 1.9 units of a 10-unit-deep floor and nothing else: only the top floor would have read.
-  So `storeySpacing(depths, homePolar) = max(depths) · cot(homePolar) + SLAB_T` — the spacing at which the DEEPEST
-  slab's **back edge** is just visible under the slab above it from the home angle; for a floor of the shipped
-  default's depth (band 160 + grid 696 + the overflow strip's gap and header, ≈ 1,000 px, ≈ 10 units) that is ≈ 8.5
-  units. Pure, in `stack-model.js`, re-derived from the stack's own slabs on every frame, and § 12's *Building view
-  storey* row is Derived from it. Its test (§ 8 item 3) computes, for every slab below the top, the depth the home
-  sight line reaches on it under the slab above — `s · tan(homePolar)` — and fails when that is less than the
-  slab's depth. ⚠ The review's wording names the FRONT edge as what is occluded; with front edges aligned the front
-  edge is the one part that is always visible (the sight line to it rises clear of the upper slab's front edge), and
-  it is the **back** edge that disappears first — the test is pinned on the back edge, the stricter reading. The
-  slab itself is **0.12 units** thick (12 scene px, § 12's *Building view slab*, Chosen: thick enough to read as a
-  slab edge at the entry framing, thin enough that the picture is the slab).
+- **A storey is derived from VISIBILITY from the home camera, not from wall height** — the design review's B2 and
+  the seat's ruling on it: an exploded stack. The home camera is a 45° `PerspectiveCamera` at `HOME_POLAR` = 50°
+  from vertical, aimed at the stack's centre from `fitDistance()`; its sight lines to the LOWER slabs come in
+  steeper than the 40° a parallel-ray reading assumes (review round 2's M1), and on a steeper line the slab above
+  hides more of the slab below. With front edges aligned (the alignment bullet below) the front edge is always
+  visible and the **back edge** disappears first, so the condition is: the ray from the camera to each lower slab's
+  back edge crosses the plane of the slab above's front edge BELOW that slab's underside. In the camera's vertical
+  plane, with `h_k` the camera's height above slab `k`'s top, `a` its horizontal distance in front of the aligned
+  front edges and `d_k` the slab's depth, that is `s ≥ SLAB_T + h_k · d_k / (a + d_k)` for every `k` below the top
+  — exact for the back corners too, since a ray's vertical projection does not depend on its `x`. `h_k` and `a`
+  are the camera's, and the camera's distance depends on the stack's height, which depends on `s`: so
+  `storeySpacing(slabs, surface)` is a **bounded fixed-point iteration** — `s₀` the parallel-ray value
+  `max(d) · cot(50°) + SLAB_T`, `sᵢ₊₁ = g(sᵢ)` with `g(s) = SLAB_T + max_k h_k(s) · d_k / (a(s) + d_k)` where
+  `h_k(s)` and `a(s)` are read off the home camera `cameraLimits()` computes for a stack of spacing `s`; stop when
+  `|sᵢ₊₁ − sᵢ| < 0.01` unit (one scene px) or after **8** iterations, and use the last iterate. **Why it
+  converges:** `g` depends on `s` only through the camera's climb — `h_k` and `a` both grow with the fit distance,
+  whose slope in `s` is bounded by `n / (2 · sin(half-angle))`, and the ratio `d_k / (a + d_k)` shrinks as `a`
+  grows — so `g` is a contraction on every stack this plan measured: by finite difference `g′` is **0.04–0.11** for
+  two, five and ten floors of the shipped default's depth on 1,280 × 600 and 1,280 × 800 stages, and the iteration
+  settled in **3–4** steps (the plan's scratch script, `occl.py`, re-creatable from this paragraph; the probe in
+  § 8 item 3 re-runs the derivation on its fixtures). **At the bound** the page draws the stack at the last iterate
+  — the slabs are all drawn and only a lower slab's back band could be clipped — and the probe, which asserts
+  convergence within the bound on every fixture, is where a non-contracting stack reds. Figures: for this install's
+  five floors at the shipped default's depth (8.56 units) on a 1,280 × 600 stage `s` is **≈ 8.9 units** (the
+  parallel-ray `s₀` = 7.30 would show slab 0's first 6.9 units and hide its band); for two floors it is ≈ 6.2 (the
+  camera is lower, so the parallel-ray value over-spaces); for ten, ≈ 10.2. The first draft's `BAND_H` storey (160
+  px, 1.6 units) would have shown the first 1.9 units of each lower slab — the top floor alone. Pure, in
+  `stack-model.js`; § 12's *Building view storey* row is Derived from it. **`s` is re-derived whenever a slab's
+  extent changes** — a map re-saved, a seat overflowing onto the strip (§ 1: the strip exists only while
+  `frame.overflow.length > 0`), a floor arriving — and the stack re-lays out as a setting, no glide (§ 6.5); what
+  the camera does then is § 3.3's arrival rule. The slab itself is **0.12 units** thick (12 scene px, § 12's
+  *Building view slab*, Chosen: thick enough to read as a slab edge at the entry framing, thin enough that the
+  picture is the slab).
 - **Order.** `plates()` orders floors by key ascending and the directory draws them top to bottom in that order
   (§ 4.1's floor-list row). The stack puts **the first row at the top storey** and the last just above the ground,
   so a viewer who has read the directory finds the floors where the directory put them — the operator's ruling 3 of
@@ -149,7 +187,7 @@ unit*, Chosen: it keeps a 1,784 px floor about 18 units wide, which is the scale
   drawing's top edge faces **−z**; the default camera stands in front (+z) and above, so a slab reads as the floor
   page reads it: back wall at the far edge, desks nearer.
 
-`stackModel(rows, extents, lobbyHref)` returns `{ storey: s, slabs: [{ floor, name, href, level, storey, box: {x, y, z, w, h,
+`stackModel(rows, extents, lobbyHref, surface)` returns `{ storey: s, slabs: [{ floor, name, href, level, storey, box: {x, y, z, w, h,
 d}, picture: boolean }], ground: {…}, bounds: {x, y, z, w, h, d} }` — frozen, no DOM, no Three.
 
 ### 3.2 The texture — the floor page's drawing, rasterised, with its palette inlined
@@ -183,8 +221,14 @@ So the pipeline, in `building/floor-picture.js` (DOM; its two string functions a
    predicate**: `var(--name` followed by `)` OR by `,` — the fallback form `var(--dv-floor, color-mix(…))` that
    `cab-paint.js` L138–148 uses, which `ThePageChromeIsOneLinkedStylesheetTest`'s own regex `var\(--([a-z0-9_-]+)\)`
    (L181) does not match — less the tokens the painter sets on elements itself (`setProperty('--…')`, which that test
-   reads at L186). That test drives `tokenNames()` under node (as its `painterStyle()` already evaluates `STYLE` under
-   node, L229–235) in place of its regex, so the sheet's reader and the picture's are one function.
+   reads at L186). It returns `[{ name, hasFallback }]`, and that test drives it under node (as its `painterStyle()`
+   already evaluates `STYLE` under node, L229–235) in place of its regex — holding the **no-fallback** tokens to the
+   sheet's `:root` as today, and **exempting the fallback-form tokens from the declared check**: the cab's `--dv-*`
+   carriers (`door-view.js` `VIEW_CARRIERS` L55–67, read off a theme's `PALETTE` by `paletteOf()` L126) are declared
+   on no `:root` — the door-view model carries them as `palette` and `cab-paint.js` writes them inline on the view's
+   root group, a form the sheet test's `setProperty('--…')` read (L186 over `painterJs()`, L262–266) does not match
+   — so a predicate that counted them would red the sheet test on the shipped tree (review round 2, minor 1). The picture's half
+   resolves every name and step 4 drops the empty ones, so a fallback-form token keeps its fallback.
 2. The page resolves each with `getComputedStyle(document.documentElement).getPropertyValue()` once, and again on
    a `prefers-color-scheme` or text-size change if the sheet ever keys on one (today it does not — stated so the
    reader knows why it is read once).
@@ -198,6 +242,8 @@ So the pipeline, in `building/floor-picture.js` (DOM; its two string functions a
    the painter's own `var(--x, fallback)` with nothing, where leaving it out lets the fallback stand).
 5. A `Blob` of type `image/svg+xml;charset=utf-8` → object URL → `<img>` → `drawImage()` onto a canvas of
    `tw × th` → `THREE.CanvasTexture` with `colorSpace = SRGBColorSpace`, `minFilter = LinearMipmapLinearFilter`,
+   **the canvas kept for the texture's life** (a `CanvasTexture`'s `image` IS the canvas; it is what a context
+   restore re-uploads from — § 7), the object URL revoked and the `<img>` dropped once drawn,
    `anisotropy` the renderer's maximum (the slab is seen obliquely; without anisotropy the desk text smears).
 6. **Texture size**: `textureSize(extent, max)` — 1 texture px per scene px, scaled down proportionally when the
    extent's longer side exceeds `max = min(gl.MAX_TEXTURE_SIZE, 4096)` (§ 12's *Building view texture cap*, Chosen).
@@ -212,10 +258,17 @@ flight** (`buildScene()`'s `effects: []`), the desks staffed as the client holds
 that shows a held loop's static form claims exactly what the held field claims, and a walk mid-stride on a slab the
 viewer cannot see move would be motion with no visible driver. **Every render paints every floor in full** — N painter
 paints, one per `plates()` row, because the painter rebuilds its drawing on each paint and identity is no signal —
-and then **rasterises the floors whose serialised SVG differs from the last uploaded** (a string compare); the
-rasterisation is **awaited inside the render** (the `<img>` decode is asynchronous), so a render's textures are that
-render's frame and never a later one's, and the browser leg (§ 8 item 5) prints the per-floor paint and rasterise
-times, which this plan does not predict. A texture is never re-made on a timer: the ages the desks carry are those of the
+and then **rasterises the floors whose serialised SVG differs from the last uploaded** (a string compare). ⚠ **The
+compare is a correctness guard, not a cost bound** (review round 2, minor 3): a staffed desk's text carries its age
+readouts (`DeskFloor`'s `floorAgeReadouts()`, `desk-floor.js` L165, re-read each render; on the floor page the
+painter's `refresh()` re-reads them every tick, L1513), so on nearly every render every staffed floor's SVG differs
+and is re-rasterised — the compare skips only a floor whose desks are all unstaffed or unchanged in the same
+second. What bounds the cost is `requestRender()`'s coalescing and the measured trigger in § 10, not the compare.
+The building screen wires the desk floor's 1 s tick to NOTHING — a slab's ages are as of its last render, a still —
+so no render is caused by the clock. The rasterisation is **awaited inside the render** (the `<img>` decode is
+asynchronous), so a render's textures are that render's frame and never a later one's, and the browser leg (§ 8
+item 5) prints the per-floor paint and rasterise times, which this plan does not predict. A texture is never
+re-made on a timer: the ages the desks carry are those of the
 render, which is § 2.5's own rule for a render, and the 1 s age tick repaints **no** texture (the tick redraws text
 nobody can read at a slab's scale and would cost N rasterisations a second; § 12 of this file records it as a seat
 ruling, and the list beside the stage carries each floor's name and notices, never an age).
@@ -234,14 +287,29 @@ in `stack-model.js` from the stack's `bounds` (§ 12's *Building view camera*, C
   never loses the building off the screen; and on every `change` the page clamps **`target.y ≥ 0`** and calls
   `update()` — the sphere alone lets a downward pan carry the target, and the camera with it, under the ground slab,
   and with `maxPolarAngle` below π/2 the clamp is what keeps the camera above it;
-- **home** — azimuth 0 (in front), polar **50°** from vertical (`HOME_POLAR`, the angle the storey is derived
+- **home** — azimuth 0 (in front), polar **50°** from vertical (`HOME_POLAR`, the camera the storey is derived
   from), at `fitDistance(bounds, fov, aspect)` — the distance at which the bounds' bounding sphere fits the narrower
-  of the surface's two half-angles — pure trigonometry, re-run on resize so the entry framing is the floor page's
-  *fit*: a setting, no glide (§ 6.5). The exploded stack is tall — five floors of the shipped default's depth are
-  about 43 units high — so the home framing is far and every slab small; the near bound below is what brings a desk
-  to reading size;
-- **`minDistance`** 0.3 × fit, **`maxDistance`** 4 × fit — close enough to read a desk's name on the top slab,
-  far enough to see the whole stack small;
+  of the surface's two half-angles — pure trigonometry: the entry framing is the floor page's *fit*, a setting, no
+  glide (§ 6.5). The exploded stack is tall — five floors of the shipped default's depth are about 44.5 units high,
+  the fit about 64 units on a 1,280 × 600 stage — so at home every slab is small and the near bound below is what
+  brings a desk to reading size. **Resize and arrival — one rule, the floor page's** (`floor-screen.js` L372: *a
+  viewer who moved keeps its zoom and its centre, clamped*): `cameraLimits()` is re-derived on every resize and on
+  every change of the stack's bounds (a slab's extent arriving or changing re-derives `s`, § 3.1); while the camera
+  is **untouched** — no OrbitControls `start` event has fired yet — the home framing is re-applied, so a viewer who
+  opened the page while maps were still arriving sees the finished stack framed, and the page's stylesheet sizing
+  the stage never leaves the stack mis-framed; after the first gesture the camera keeps its position and target
+  and only the new limits clamp it (OrbitControls' `update()` applies them), and the stack re-lays out under it;
+- **`minDistance`** — **absolute, derived from legibility, independent of the stack** (review round 2's M2: a
+  bound proportional to the fit gets farther as floors are added — 0.3 × fit on five floors left a desk's name
+  about 5 px tall). The threshold is the floor page's own: at the 2-D camera's zoom 1 one scene px is one screen px
+  and the painter's type is its CSS size — `FONT_NAME` 13 px bold, `FONT` 10 px, `FONT_SCREEN` 7 px
+  (`desk-layout.js` L69, L62, L80) — and the floor page lets a viewer go to **`ZOOM_CEILING` = 4** screen px per
+  scene px (`wire/camera.js` L72). So `legibleDistance(surfaceHeightPx) = H / (2 · UNIT · tan(fov/2) · ZOOM_CEILING)`:
+  the distance at which one scene px is four screen px on this stage — 1.81 units on a 600 px stage, 2.41 on 800
+  px — and the 3-D view's closest look equals the 2-D floor's closest look (at the home polar's foreshortening,
+  cos 50° = 0.64, the 13 px name is about 33 px; nearly overhead it is 52). `camera.near` is **0.1** and `far`
+  **8 × fit** (past `maxDistance` and the stack's radius); **`maxDistance`** stays **4 × fit** — the whole stack
+  small;
 - **`minPolarAngle`** 0.1 rad (nearly overhead: a plan view of the top floor is a legitimate view),
   **`maxPolarAngle`** π/2 − 0.05 (with the target clamp above, never under the ground slab);
 - **`zoomToCursor`** true, **`enableDamping`** false (no inertia: an interrupted gesture stops where it is, the
@@ -250,7 +318,12 @@ in `stack-model.js` from the stack's `bounds` (§ 12's *Building view camera*, C
 
 Gestures are **OrbitControls' convention** — left-drag rotates, the wheel zooms, right-drag or two-finger drag pans
 — spelled out on the hint line under the canvas (as `partials/camera-hint.blade.php` says the floor's), and **the
-wheel over the canvas never scrolls the page**: the operator's ruling 1 of 2026-11-09 (card comment 16451). The 2-D
+wheel over the canvas never scrolls the page**: the operator's ruling 1 of 2026-11-09 (card comment 16451).
+OrbitControls alone does not deliver that ruling: its `onMouseWheel` (r187 L1783–1787) returns BEFORE
+`preventDefault()` while a drag is in progress (`state !== NONE`), so a wheel turned mid-drag would scroll the page
+(review round 2, minor 7). The page adds its own `wheel` listener on the canvas, `{ passive: false }`, that calls
+`preventDefault()` unconditionally and nothing else — the ruling's mechanism is the page's, the zoom stays
+OrbitControls'. The 2-D
 floor and lobby keep the gestures of 2026-10-01 (card#11045, § 13 row 39: the plain wheel pans, Ctrl+wheel zooms);
 a 3-D view has no *edge* at which a wheel could hand itself to the page (row 39's Q3), and OrbitControls has no
 wheel-pan mode, so the ruling is also the only shape the library offers without a fork. The keyboard: the canvas is a tab stop, OrbitControls'
@@ -294,15 +367,15 @@ WebGL. New files under `server/public/js/`:
 
 | Module | DOM / WebGL | Owns | Driven by |
 |---|---|---|---|
-| `floor/floor-compose.js` (hoist) | none | `composeFloor(floor, building, seatsByRoom)` — § 2 item 1 | every existing floor test (control); `TheFloorCompositionIsOneForBothScreensTest`: `floor-screen.js` imports it and holds no second `placeRooms()`/`assignSlots()` call site |
+| `floor/floor-compose.js` (hoist) | none | `composeFloor(floor, building, seatsByRoom)`, `artInputs()`, `roomMaps()`, `sceneInput()`, `SCENE_INPUT_KEYS` — § 2 item 1 | every existing floor test (control); `TheFloorCompositionIsOneForBothScreensTest`: `floor-screen.js` imports it and holds no second `placeRooms()`/`assignSlots()` call site |
 | `floor/floor-data.js` (hoist) | none (`fetch` injected) | `FloorData` — § 2 item 2 | `TheElevatorIsAControlOnTheDrawingTest`'s door-view leg (control), the building screen's probe |
 | `building/stack-model.js` | none | `stackModel()`, `cameraLimits()`, `fitDistance()`, `dollyBy()`, `textureSize()`, `isClick()`, `labelAnchor()`, the unit and storey constants | `stack-model-probe.mjs` under `TheBuildingViewStacksTheFloorsTest` (AT-D3-37) |
-| `building/building-screen.js` | none | `BuildingScreen`: drains the journal once (`LobbyScreen#render()`'s shape, L162–186: `building.layout` applied, the layout fetched once after the first applied snapshot), runs ONE `DeskFloor` over every held seat with `reduce: true`, holds one `FloorData` and prefetches every row on entry and on each layout change; **applies `room.map`** through `Building#applyRoomMap(entry, rendered)` with `rendered` = every room of every `plates()` row (D2 § 8.7's *a client applies a `room.map` only for a room it renders* — this screen renders every room), records the apply's line in the client's record as the floor screen does (`floor-screen.js` L657–667) and re-runs `FloorData#prefetch()` so the new map's tilesets are held — **the interface change**: `BuildingScreen#render()` is `applyRoomMap()`'s second screen caller (the floor screen's `#layoutActs()` is the first; the lobby applies none, `lobby-screen.js` L23) and the first whose `rendered` set is the whole building, so a re-saved or recovered map refreshes its slab on the next render; and per `plates()` row: `composeFloor()` → the frame → `buildScene()` with `effects: []` → `{ row, frame, scene }`; returns `{ floors, stack: stackModel(…), strip, failure, statement, layout, notices }`. No camera (the 3-D camera is the page's and holds no state the screen reads), no ride, no panel | `fleet-client-probe.mjs` gains a `building` entry beside `floor` and `lobby` (one renderer per scenario, L519's rule); AT-D3-37 |
+| `building/building-screen.js` | none | `BuildingScreen`: drains the journal once (`LobbyScreen#render()`'s shape, L162–186: `building.layout` applied, the layout fetched once after the first applied snapshot), runs ONE `DeskFloor` over every held seat with `reduce: true`, holds one `FloorData` and prefetches every row on entry and on each layout change; **applies `room.map`** through `Building#applyRoomMap(entry, rendered)` with `rendered` = every room of every `plates()` row (D2 § 8.7's *a client applies a `room.map` only for a room it renders* — this screen renders every room), records the apply's line in the client's record as the floor screen does (`floor-screen.js` L657–667) and re-runs `FloorData#prefetch()` so the new map's tilesets are held — **the interface change**: `BuildingScreen#render()` is `applyRoomMap()`'s second screen caller (the floor screen's `#layoutActs()` is the first; the lobby applies none, `lobby-screen.js` L23) and the first whose `rendered` set is the whole building, so a re-saved or recovered map refreshes its slab on the next render; and per `plates()` row: `composeFloor()` → the frame → `buildScene(frame, sceneInput(art, docs))` with `effects: []`, `previous` empty, the four in-flight members empty, `maps` from `roomMaps()`, `hallway` the row's, `tilesets` the `FloorData`'s, `failed` this screen's set — fed by every floor's painter through `createPainter({ failed: (ids) => screen.assetsFailed(ids) })`, so a theme or character a slab could not draw is on that floor's notices as it is on the floor page's strip → `{ row, frame, scene }`; returns `{ floors, stack: stackModel(…), strip, failure, statement, layout, notices }`. No camera (the 3-D camera is the page's and holds no state the screen reads), no ride, no panel | `fleet-client-probe.mjs` gains a `building` entry beside `floor` and `lobby` (one renderer per scenario, L519's rule); AT-D3-37 |
 | `building/floor-picture.js` | DOM (hidden hosts, canvas, `<img>`); `tokenNames()` and `pictureSvg()` pure | one painter per floor over a hidden `<div>` in `#building-pictures`, the rasterisation of § 3.2, the string compare that skips an unchanged picture | `picture-probe.mjs` for the two pure functions; the browser leg for the rest |
 | `building/stack-paint.js` | **Three.js** | the renderer over `#building-canvas`, the slab meshes (`BoxGeometry`, a `MeshBasicMaterial` per face — the top face the floor's `CanvasTexture`, the others the sheet's slab token), the ground slab, lights (none: unlit materials, the drawings carry their own light), OrbitControls with `cameraLimits()`, the raycast, `resize()`, and the per-frame label projection | the browser leg |
 | `building/main.js` | DOM entry | `livePage()`, the ids, the screen, the pictures, the paint, the WebGL check, the docking of the list | `BuildingPageWiringTest` (ids both ways; the log handed to the screen and used nowhere else — `LobbyPageWiringTest`'s shape) |
 
-Changed files: `floor/floor-screen.js` (calls `composeFloor()`), `floor/door-views.js` (holds a `FloorData`),
+Changed files: `floor/floor-screen.js` (calls `composeFloor()` and `sceneInput()`), `floor/main.js` (calls `artInputs()`), `floor/door-views.js` (holds a `FloorData`),
 `floor/painter.js` (`host` option), `server/app/Support/PublicAsset.php` (§ 5's bare specifier),
 `server/routes/web.php`, `server/resources/views/building.blade.php` (new), `dashboard.blade.php` and
 `floor.blade.php` (the entry link, § 6), `public/css/mezzanine.css` (the stage's size: the viewport height the
@@ -315,8 +388,10 @@ chrome leaves, `#floor-drawing`'s rule at L851–858), `server/tests/Feature/Sup
 nothing — and `failure`/`statement`). `buildScene()` reads `frame.desks`, `frame.overflow`, `frame.floor`,
 `frame.rooms`, `frame.draw_order`, `frame.coord_fleet`, `frame.band`, `frame.room`, `frame.planned`,
 `frame.extent`, `frame.coord` (grep over `scene.js`, re-run by the coder; `frame.h` at L2141 is `effect.frame.h` and not the frame's) — the building screen hands every one,
-and the slice-3 probe holds the frame's member set equal to the floor screen's frame's at the same fixture, so a
-member the floor screen adds later reds here instead of drawing a slab from a frame missing it.
+and the slice-3 probe holds **both** member sets — the frame's AND the scene input's — equal to the floor screen's
+at the same fixture and holds `SCENE_INPUT_KEYS` equal to the set of `input.<member>` reads in `scene.js`, so a
+member the floor screen adds later, or an input the building screen drops (`hallway`, `failed`), reds here instead
+of drawing a slab from a scene missing it.
 
 ## 5. Three.js — where it comes from, how it is pinned, how it is attributed
 
@@ -364,26 +439,37 @@ CUSTOMIZE zone, L126) and prunes paths holding `vendor` (`EXCLUDE_DIRS`, L170); 
 in no lockfile, so **no advisory on Three.js would reach the audit**. The leg: `three` is added to
 `server/package.json`'s `devDependencies` at the exact vendored version (`0.187.0`, no range) so `package-lock.json`
 names it and both of the audit's sources cover it — OSV over the lockfile, and `mrdoob/three.js`'s own advisories
-through source 2's per-dependency read. Nothing installs it (the suite runs with no `node_modules`,
-`php-tests.yml` L103), and the vendor header's version is held equal to the lockfile's by a check in
+through source 2's per-dependency read. **The cost: the deploy installs it.** `bin/deploy.sh` runs `npm ci`
+inside the maintenance window (L4260–4264) and `npm run build` (L4268), so every deploy downloads and unpacks
+`three@0.187.0` into `server/node_modules` — **21,030,536 B unpacked in 1,277 files** (`dist.unpackedSize` /
+`dist.fileCount` from `https://registry.npmjs.org/three/0.187.0`, read 2026-11-09), served by nothing and imported
+by nothing (the test suite runs with no `node_modules`, `php-tests.yml` L103; the page imports the vendored copy).
+A first draft of this paragraph said nothing installs it; review round 2 (minor 2) read the deploy. The vendor header's version is held equal to the lockfile's by a check in
 `bin/vendor-pin-check.sh`'s run (a row-level comparison beside the sha: the header's `plugin version` line against
 `package-lock.json`'s `node_modules/three` version), so the audited version is the served one. Accepting the gap on
 the record was considered and rejected: a rendering library that reads no network input is a low-risk surface, but
 a declared-and-checked one costs one lockfile entry.
 
-**Whole-tree walks over `public/js` that will reach `public/js/vendor/`**, each decided:
-`EveryTimeGoesThroughTheConverterTest` scans every `.js` under `public/js` for time-formatting patterns
-(`Intl.DateTimeFormat`, `toLocale*String`, the `Date` getters — L43–52) and asks each finding to go through
-`wire/clock.js` — **exclude** `vendor/` from its population by name, with the reason in the test: third-party code
-the repository does not edit prints no time on a page, and a finding there could not be routed through the
-converter; its non-trivial-count assertion is unaffected. `CoordModuleWiringTest` and `DrillDownModuleWiringTest`
-walk the tree for a second `export function clockTime(` and for the drill-down's imports — **include**: a vendored
-file cannot carry the one anchor they look for, and the walk costs nothing. `DrivesAShippedClientModule::mutatedModules()`
-copies the WHOLE `public/js` tree for every planted control (L227–235, for the `../` imports) — **include**: the copy
-grows by about 2.1 MB per control, and the coder states the count of `mutatedModules()` calls across the suite and the
-measured suite-time delta in the slice-2 PR body; a copy that skipped `vendor/` would break only a building-module
-control and would be a second layout the probes must know about. `EveryModuleAPageLoadsIsVersionedTest` **must**
-include it (above). `ModuleSpecifiers` walks reach it only from `building/main.js` (the building page's own graph
+**Whole-tree walks over `public/js` that will reach `public/js/vendor/` — every one INCLUDES it**, each read:
+`EveryTimeGoesThroughTheConverterTest` scans every `.js` under `public/js` for its `JS_RULES` (L42–55) and asks each
+finding to go through `wire/clock.js`; `TheLobbySkyIsTheFloorsA17Test::sourceDefects()` (L429–455) walks every `.js`
+for a phase literal. **Measured 2026-11-09 on the three r187 files** (fetched from jsDelivr, comments stripped as
+the tests strip them): every `JS_RULES` pattern and `PHASE_LITERAL` find **0** matches — so an exclusion would narrow
+a guard with no reachable finding (canon #6), and a first draft's `vendor/` exclusion for the converter test is
+withdrawn (review round 2, minor 4); should an upstream version ever match one, the finding is read like any other
+and allowed by name in the test's allow-list, which is how it treats its own exceptions. `CoordModuleWiringTest` and
+`DrillDownModuleWiringTest` walk the tree for a second `export function clockTime(` and for the drill-down's imports
+— a vendored file cannot carry the anchor they look for. `EveryModuleAPageLoadsIsVersionedTest` includes it (above)
+and **gains `/building` in `pages()`** (L272–277 hardcodes the lobby, the floor, the console and enrolment; without
+the row the building page's module scripts would go unversioned unchecked — review round 2, minor 5).
+`DrivesAShippedClientModule::mutatedModules()` copies the WHOLE `public/js` tree for every planted control (L235, for
+the `../` imports): `grep -rc 'mutatedModules(' server/tests` counts **487** call sites today, and the tree grows from
+1.35 MB (`du -sb server/public/js`) to about 3.5 MB with the vendored files, so a suite run writes about 1.7 GB of
+copies instead of 0.66 GB. **The decision rule** (a seat ruling, § 12): the slice-2 PR body states the `php-tests`
+job's wall time before and after; a delta **under 5 %** of the baseline keeps the plain copy; over it,
+`mutatedModules()` **symlinks** `vendor/` into each copy instead of copying it — nothing is ever planted under
+`vendor/`, and a symlink resolves the same relative imports, so no probe learns a second layout. **The one
+exclusion that stands**: none. `ModuleSpecifiers` walks reach it only from `building/main.js` (the building page's own graph
 test, § 8).
 
 **Attribution.** The asset manifest's gate walks `resources/` alone (`bin/asset-provenance.py` L189
@@ -448,7 +534,10 @@ are listed below* — leaves `#building-canvas` and the camera row hidden, leave
 (`data-home="flow"`), paints no picture and constructs no painter. The list is the whole page then, and it is
 the same list the drawn page docks to its slabs (§ 3.4), so no second rendering exists. A renderer that **loses**
 its context later (`webglcontextlost`) shows the same statement and stops painting; `webglcontextrestored`
-rebuilds the slabs from the last frame. The statement is a constant in `building-screen.js` (text is a decision),
+rebuilds the slabs from the last frame and **re-uploads every floor's texture, bypassing § 3.2's string compare**
+(the compare says whether the DRAWING changed, and a lost context has lost every upload regardless) — the canvases
+are still held as each `CanvasTexture`'s `image`, so the re-upload is Three's own `needsUpdate` over them and no
+floor is re-painted for it (review round 2, minor 6). The statement is a constant in `building-screen.js` (text is a decision),
 and the WebGL probe is the page's (a capability read is the browser's own fact, not a model's).
 
 ## 8. How the tests pin it — each RED a plant in the shipped tree
@@ -463,36 +552,78 @@ Node, through the house rig (`DrivesAShippedClientModule`, `DrivesTheFleetClient
    decision; whether it should read `composeFloor()`'s geometry half instead is a smell noted for that module's
    next change, not this card's scope. The door-view leg of `TheElevatorIsAControlOnTheDrawingTest` is `FloorData`'s control.
 2. **AT-D3-37 — the building view stacks the floors** (`FLOOR.md` § 11, gated at Appendix B row 47):
-   `fx-snapshot-4` under `fx-camera.json`'s two-floor layout (the `building_room` run's own) entered at
-   `/building` through the probe's `building` entry; GREEN: one `{ row, scene }` per `plates()` row, in `plates()`
+   a **new run `building_stack` in `fx-camera.json`** (review round 2's M4a: `building_room` has `rooms: []`, no map
+   endpoint and heartbeats only, so it could drive neither the `room.map` clause nor the failing-map clause): the
+   `building_room` layout (`aimla` open, `zeta` *the annex*, `layout_version` 3) plus a third floor `theta`;
+   `fx-snapshot-4`'s seats; `/api/building/rooms/aimla/map` answering TWICE as `camera_floor`'s does — the shipped
+   default (`@json:resources/floor/default.tmj`, `map_version: null`) then an authored body at `map_version` 4;
+   `/api/building/rooms/zeta/map` an authored body once; `/api/building/rooms/theta/map` **503**
+   (`camera_nothing_measurable`'s shape); `/art/floor/tiles/floor-plane.tsx` the shipped tileset; messages: a
+   heartbeat, a `seat.delta`, then `camera_floor`'s `room.map` for `aimla` at `map_version` 4 (`revision_id` 881),
+   then `end` — entered at `/building` through the probe's `building` entry; GREEN: one `{ row, scene }` per `plates()` row, in `plates()`
    order; each scene's extent is the extent the floor screen computes for that floor at the same fixture (the
    probe runs `floor` for each key and compares — the slab shows what the floor page shows); the stack's slabs are
    `n` with storeys `n − 1 − level`; **one picture rule**: a slab carries a picture exactly when its scene's extent
-   is non-null — a floor whose room-map request failed carries the floor page's `mapFailureNotice()` line, and
-   whether it also carries a picture follows its extent alone (§ 9 F16: a map held before the failure keeps its
-   extent, so that floor still shows); a `room.map` delivered on the stream re-fetches that room's map and the next
-   render's scene for its floor is built from the new document; the frame holds no count, no camera and no ride
+   is non-null — `theta`, whose map request failed, carries the floor page's `mapFailureNotice()` line and no
+   picture (no map was ever held, so no extent; § 9 F16: a map held before a failure keeps its extent, so such a
+   floor would still show); the `room.map` for `aimla` re-fetches its map and the next render's scene for `aimla` is
+   built from the authored document (its extent differs from the default's — the assertion); the scene input's
+   member set equals the floor screen's (`SCENE_INPUT_KEYS`) and `theta`'s `failed`-driven notices are the floor
+   page's; the frame holds no count, no camera and no ride
    member; the animation log holds the
    fixture's own rows and nothing a slab or a texture wrote — the screen reaches the log only through its one
-   `DeskFloor`, held over the page's import graph from `building/main.js` as the lobby's test holds the lobby's.
+   `DeskFloor`, held over the page's import graph from `building/main.js` **by an explicit bound in the form the
+   lobby's test uses** (`TheBuildingCameraMovesTheViewerAndNeverTheFleetTest` `PATH` L71–75 and `RIDE_IMPORT` L93: an
+   importer may load the set's module only if listed, and a constants-only importer is held to its EXACT import
+   line). Review round 2's M4b: the first draft's *reaches the set only through `live-page.js` and the desk floor*
+   was false of the design — `floor/scene.js` L32, which every slab's scene goes through, imports from
+   `wire/animation-set.js`, and so does one module on the desk floor's graph. The building page's bound, each read
+   from the shipped tree on 2026-11-09: constructors — `wire/live-page.js` → `wire/animation-log.js`,
+   `desk/desk-floor.js` → `wire/animation-set.js` (`new AnimationSet`, L87, the one constructor on this graph);
+   constants-only importers, each to its one import line — `floor/scene.js`:
+   `import { ANIMATION_SET, LOOP_FPS, SNACK_HELD, loops } from '../wire/animation-set.js';` (a frozen table, two
+   constants and the pure `loops()` reader), `desk/desk-render.js`:
+   `import { SNACK_HELD, heldRendering } from '../wire/animation-set.js';` (a constant and the pure held-render
+   reader). Any other importer of the set's module on the graph, or either of these two importing another name
+   (`AnimationSet` beside its constants is the lobby test's own RED, L310–312), reds. ⚠ The review's list named
+   `desk-poses.js` and `state-words.js` as importers; both only MENTION the module in a comment (`grep -n
+   "animation-set" desk/desk-poses.js desk/state-words.js` prints header prose and no `import`), so they are not on
+   the bound. The module's other importers — `floor/in-flight.js` (`emptyChair`, `staffed`; its one importer is
+   `floor-screen.js` L98, and `scene.js` names it only in comments), `floor/floor-screen.js` (`LOOP_FPS`),
+   `lobby/lobby-screen.js` (the lobby's constructor) and `wire/ride.js` — are not on this page's graph; the test's
+   `ModuleSpecifiers` walk from `building/main.js` is what establishes that, and the bound is written to that walk.
    REDs, each planted in the shipped tree and watched red: *the recounted floor* — `stackModel()` reading
    `row.held` or `row.staffing` to size or label a slab; *the swapped order* — `storey = level`; *the frame the
-   floor page would not draw* — a member dropped from the building frame that `buildScene()` reads (the member-set
-   equality); *the ride on the roof* — a `Ride` constructed in the building screen; *the journal drained twice* —
+   floor page would not draw* — a member dropped from the building frame that `buildScene()` reads, or an input member (`hallway`, `failed`)
+   dropped from `sceneInput()`'s docs (the member-set equality over both); *the ride on the roof* — a `Ride` constructed in the building screen; *the journal drained twice* —
    the harness's `building` entry wraps `client.takeWire` and COUNTS calls per render (its `desk_floor` entry already
    wraps it to observe the drain, `fleet-client-probe.mjs` L586–589) and fails a render that drained more than once;
    the plant that proves it fires is `this.#desks.render()` — which drains for itself, `desk-floor.js` L134 — in
-   place of `renderWith(journal)`, a change every other assertion passes. ⚠ The probe's *two renderers, one journal*
+   place of `renderWith(journal)`: the desk floor then reads a journal the screen already emptied, applies nothing,
+   and the desks GREEN reds with it — the counter is the assertion that NAMES the cause (a first draft said the
+   other assertions pass; review round 2, minor 9, corrected it). ⚠ The probe's *two renderers, one journal*
    rule (L519–520) reads SCENARIO keys, not calls, and would not catch this; the counter is what does; *the map that
    never refreshes* — `applyRoomMap()` not called on a `room.map` entry → the delivered map's scene is the old one.
-3. **The stack's arithmetic** — `stack-model-probe.mjs`: `storeySpacing()` over fixtures of two and five slabs of
-   unequal depth, and **the occlusion test**: for every slab below the top, the depth the home sight line reaches on
-   it under the slab above (`s · tan(homePolar)`) is at least that slab's depth, so its back edge is visible — fails
-   on the first draft's `BAND_H` storey (the control) and on a stack whose deepest slab is not the one the spacing
-   was derived from; `fitDistance()` fits the bounding sphere for a wide and a tall surface; `cameraLimits()`'s polar
-   range excludes under-ground; `dollyBy()` clamps at both ends; `isClick()` refuses a 4 px move and accepts 3
-   (`< DRAG_SLOP_PX`); `textureSize()` holds 1:1 under the cap and scales proportionally over it
-   (controls: a 1,784 × 1,000 extent at cap 4096 is itself; at cap 1024 it is 1024 × 574). `tokenNames()` returns
+3. **The stack's arithmetic** — `stack-model-probe.mjs`: `storeySpacing()` over fixtures of two, five and ten
+   slabs of the shipped default's depth and of unequal depths, on 1,280 × 600 and 1,280 × 800 surfaces, asserting
+   convergence within the bound (§ 3.1: `|Δs| < 0.01` within 8 iterations); and **the occlusion test, cast from the
+   computed camera**: take `cameraLimits(stackModel(…), surface).home` — the position `fitDistance()` and
+   `HOME_POLAR` give — and for every slab below the top cast the ray from that position to each of the slab's three
+   back-edge points (both corners and the middle); where the ray crosses the vertical plane of the slab above's
+   front edge, its height must be below that slab's underside (`rayClears(camera, point, slabAbove)`, pure, in
+   `stack-model.js`). ⚠ The first draft's test checked `s · tan(θ) ≥ D`, which the formula satisfies by
+   construction and so could fail only on the `BAND_H` control (review round 2's M1); this one reads the camera, not
+   the formula. **Plants, each seen red**: `storeySpacing()` replaced by the parallel-ray formula
+   `max(d) · cot(50°) + SLAB_T` → on the five-floor default fixture slab 0's back-edge rays cross the plane above at
+   about 1.6 units ABOVE the underside (6.9 of its 8.56 units visible); the `BAND_H` storey → every lower slab
+   fails; a stack whose deepest slab is not the one the spacing was derived from → that slab fails. **The near
+   limit**: `legibleDistance()` on a 2-slab and a 5-slab stack is the SAME figure for the same surface (1.81 units
+   at 600 px) and below each stack's fit (the range is not degenerate), and at it `screenPxPerScenePx()` is
+   `ZOOM_CEILING`; the plant is `0.3 × fit`, which differs between the two stacks. `fitDistance()` fits the bounding
+   sphere for a wide and a tall surface; `cameraLimits()`'s polar range excludes under-ground; `dollyBy()` clamps at
+   both ends; `isClick()` refuses a 4 px move and accepts 3 (`< DRAG_SLOP_PX`); `textureSize()` holds 1:1 under the
+   cap and scales proportionally over it (controls: a 1,784 × 856 extent at cap 4096 is itself; at cap 1024 it is
+   1024 × 491). `tokenNames()` returns
    every token the sheet test holds `STYLE` to; `pictureSvg()` writes each token once on the root and the sizes
    in place of the percentages (plant: a token left out → the probe's own `var()` rect reads black in the browser
    leg, which is the leg that can see it).
@@ -518,14 +649,16 @@ Each slice is one PR to `dev`, titled `card#13033 [no-close]: …` until the las
 only when the operator has read the sandbox (§ 13 ruling 5's reading); each carries
 `docs/changelog.d/13033-<slug>.md` and the `FLOOR.md` landing marker for its half of row 47.
 
-1. **The hoists** (`floor-compose.js`, `floor-data.js`, the painter's `host`), with test 1 and no behaviour change;
+1. **The hoists** (`floor-compose.js` with `composeFloor()`, `artInputs()`, `roomMaps()`, `sceneInput()`;
+   `floor-data.js`; the painter's `host`), with test 1 and no behaviour change;
    the import-graph bounds of the lobby (`TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`) unchanged.
 2. **Three.js vendored and pinned**: the three files and `LICENSE`, the vendor headers, `vendor-pin-check.sh`'s
    leader column with its `--selftest` seen red on a planted body edit, `BARE_SPECIFIERS` and the import-map
-   assertion, `ModuleSpecifiers::judge()`, `docs/ATTRIBUTION.md`'s section; the transfer-size measurement in the
-   PR body.
-3. **The model and the screen**: `stack-model.js`, `building-screen.js`, the probe's `building` entry, tests 2–3,
-   `FLOOR.md`'s AT-D3-37 red list confirmed against the plants.
+   assertion, `ModuleSpecifiers::judge()`, `docs/ATTRIBUTION.md`'s section, `three` in `package.json`'s
+   devDependencies and `/building` in `EveryModuleAPageLoadsIsVersionedTest::pages()`; the transfer-size
+   measurement and the `php-tests` wall-time delta (§ 5's decision rule) in the PR body.
+3. **The model and the screen**: `stack-model.js`, `building-screen.js`, the probe's `building` entry, the
+   `building_stack` run in `fx-camera.json`, tests 2–3, `FLOOR.md`'s AT-D3-37 red list confirmed against the plants.
 4. **The page**: route, view, `main.js`, `floor-picture.js`, `stack-paint.js`, the stylesheet, the entry links,
    test 4, the browser leg with its plants, `render-floor-view.php building`; the sandbox deployed and a screenshot
    on the card for the operator's reading — this is the reading stage 2 waits on.
@@ -541,18 +674,23 @@ only when the operator has read the sandbox (§ 13 ruling 5's reading); each car
   `prefers-color-scheme` block, the textures keep the scheme at load. Named, not defended: no such block exists
   (grep `prefers-color-scheme` over the sheet at build), and the fix then is a re-resolve on the media query's
   `change`.
-- **Texture memory — UNMEASURED.** Per floor, three copies exist at the moment of upload: the rasterising canvas
-  (w × h × 4 B), the decoded `<img>` bitmap (the same), and the GPU texture with its mipmaps (× 4/3). At the cap that
-  is 64 + 64 + 85 ≈ 213 MB per floor in flight; at the shipped default (≈ 2,100 × 1,000) ≈ 8.4 + 8.4 + 11.2 ≈ 28 MB,
-  of which the mipmapped texture (≈ 11 MB) stays once the canvas and bitmap are released after upload. Ten floors at
-  the cap would hold ≈ 850 MB of textures — a hazard with no live precondition on this install (§ 1's five floors,
-  none above 2,100 px). Not defended beyond the cap; the browser leg reads `performance.memory` where available, and
-  a per-page texture budget is a stage-2 question when floors become scenes.
-- **Paint and rasterisation time.** Every render paints N floors in full and re-rasterises the changed ones, awaited
-  inside the render: a delta storm could request several renders a second. The string compare skips unchanged floors, and `requestRender()`'s coalescing (`live-page.js`) bounds
-  renders to one at a time; not throttled further until measured — the browser leg prints the per-floor
-  rasterise time, and a figure over 100 ms per floor on the pinned shell is the trigger to add a per-floor minimum
-  interval (a seat ruling then).
+- **Texture memory — UNMEASURED.** Per floor, three copies exist at the moment of upload: the canvas (w × h × 4 B),
+  the decoded `<img>` bitmap (the same), and the GPU texture with its mipmaps (× 4/3); **the canvas stays** for the
+  texture's life (§ 3.2 step 5 — it is the `CanvasTexture`'s `image` and the restore path's source), the bitmap goes.
+  At the cap that is 64 + 64 + 85 ≈ 213 MB per floor in flight and ≈ 149 MB resident; at the shipped default's
+  1,784 × 856 it is 6.1 + 6.1 + 8.1 ≈ 20 MB in flight and ≈ 14 MB resident. Ten floors at the cap would hold ≈ 1.5 GB
+  resident — a hazard with no live precondition on this install (§ 1's five floors, none wider than the default's
+  1,784 px). Not defended beyond the cap; the browser leg reads `performance.memory` where available, and a per-page
+  texture budget is a stage-2 question when floors become scenes.
+- **Paint and rasterisation time.** Every render paints N floors in full and — since a staffed floor's text carries
+  ages (§ 3.2) — re-rasterises nearly every one, awaited inside the render: a delta storm could request several
+  renders a second. `requestRender()`'s coalescing (`live-page.js`) bounds renders to one at a time; nothing else
+  does until measured — the browser leg prints the per-floor paint and rasterise times, and a figure over 100 ms per
+  floor on the pinned shell is the trigger to add a per-floor minimum interval (a seat ruling then).
+- **The stack moves under the viewer.** `s` is re-derived when a slab's extent changes (§ 3.1) — a seat overflowing
+  onto the strip makes its floor's slab deeper and can move every storey — so the stack re-lays out while a viewer
+  looks at it. § 3.3's arrival rule keeps a touched camera where it is; what is not defended is the jump itself,
+  which is the floor page's own behaviour when its extent grows (*Fit the floor* re-frames), read on the sandbox.
 - **The `three` bare specifier and the import map's placement.** The map must precede every module script
   (`layouts/app.blade.php` L123's ⛔); the building view inherits it. A browser without import-map support
   cannot resolve `three` — nor any module the pages load today, since every import already goes through the map
@@ -635,9 +773,10 @@ would do, stated now so stage 1 builds nothing that stage 2 must undo:
 
 ## 12. Seat rulings — reversible by the operator, each one constant or one rule
 
-1. The unit (100 scene px), the storey derived from the deepest slab at the 50° home angle (the design review's
-   B2 — the coordinator's seat ruling, taken), the slab thickness (12 px), the texture cap (4,096 over the 2,048
-   floor), the camera figures of § 3.3 — § 12's rows.
+1. The unit (100 scene px), the storey derived from the home camera's sight lines by the bounded fixed point of
+   § 3.1 (the design review's B2 — the coordinator's seat ruling — refined by round 2's M1), the slab thickness
+   (12 px), the texture cap (4,096 over the 2,048 floor), the camera figures of § 3.3 including the near limit at
+   the floor page's `ZOOM_CEILING` — § 12's rows.
 2. The lobby is a plain ground slab with no picture (the order itself is the operator's ruling 3).
 3. A floor with no extent takes the stack's widest footprint and no picture.
 4. Textures are stills under `reduce`, re-rasterised per render on change, never on the age tick.
@@ -645,12 +784,16 @@ would do, stated now so stage 1 builds nothing that stage 2 must undo:
 6. The list docks to the slabs while the renderer runs and flows below the stage otherwise.
 7. Three.js is vendored unminified from the npm package at the pinned version; no minification step.
 8. The advisory leg is a lockfile entry held equal to the vendored version (§ 5), not an accepted gap.
-9. `EveryTimeGoesThroughTheConverterTest` excludes `vendor/`; every other whole-tree walk includes it (§ 5).
+9. Every whole-tree walk includes `vendor/` (§ 5; measured 0 findings on r187).
+10. The resize/arrival rule: an untouched camera is re-homed, a touched one is clamped and kept (§ 3.3).
+11. The `mutatedModules()` copy-cost rule: a `php-tests` wall-time delta under 5 % keeps the plain copy; over it,
+    `vendor/` is symlinked into each copy (§ 5).
 
 ## 13. Operator rulings of 2026-11-09 — decided (card comment 16451; `kbcard comments --task 13033`)
 
-The first revision carried these as questions with recommendations; the operator answered each the same day, and
-this section is the record. No open question remains in this file.
+The first revision carried these as questions with recommendations; the operator answered each the same day. The
+list below is **summarised**; the card's text is quoted exactly in `FLOOR.md` § 14 item 49. No open question
+remains in this file.
 
 1. **Gestures.** The 3-D view uses OrbitControls' convention — left-drag rotates, the wheel zooms, right-drag pans —
    spelled out on the hint line, and the wheel over the canvas never scrolls the page. The 2-D floor keeps the
